@@ -9,3 +9,7 @@ Thumbs.db
 # Local reference repos
 /superpowers/
 /gitnexus/
+
+# Node build artifacts
+/node_modules/
+/dist/

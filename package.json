@@ -1,0 +1,18 @@
+{
+  "name": "claw-kit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "claw": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "start": "node ./dist/cli.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.30",
+    "typescript": "^5.8.3"
+  }
+}
