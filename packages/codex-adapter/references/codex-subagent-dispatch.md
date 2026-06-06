@@ -4,13 +4,12 @@ Use this note when `workflowGuidance.delegateSubagents` is present.
 
 ## Core rule
 
-`delegateSubagents` is not advisory prose. Each entry is a structured dispatch contract. In the Codex adapter, the main agent should execute delegation with:
+`delegateSubagents` is not advisory prose. Each entry is a structured dispatch contract.
 
-- `spawn_agent`
-- `close_agent`
+Codex has multi-agent capability. Use `tool_search` to locate the current session's agent-management tools, then execute delegation through that surface.
 
-Use `wait_agent` only when the entry says `waitForCompletion: true`.
-When the current thread already has a suitable same-type specialist subagent, prefer reusing it when the entry says `preferReuseSameTypeInThread: true`.
+Only wait on a specialist when the entry says `waitForCompletion: true`.
+When the current thread already has a suitable same-type specialist subagent, reuse it when the entry says `preferReuseSameTypeInThread: true`.
 
 For deposition specialists, the default dispatch shape is:
 
@@ -26,7 +25,7 @@ For investigation specialists:
 - include the corresponding `skill` item explicitly
 - include only the narrow task bundle needed by that specialist
 
-This plugin assumes Codex multi-agent support is part of the normal Codex environment. If the active tool list does not already show the subagent tools, do a tool-discovery step first rather than assuming the capability is absent. Do not silently replace delegated review or deposition with a casual inline pass and then claim the subagent workflow happened.
+This plugin assumes Codex multi-agent support is part of the normal Codex environment. Use `tool_search` to locate the current session's subagent tools. Do not silently replace delegated review or deposition with a casual inline pass and then claim the subagent workflow happened.
 Do not invent an extra "user must explicitly authorize delegation in this turn" gate. If the session is running `@claw-kit` and the workflow contract requires a delegated specialist, dispatch it unless the user explicitly forbids delegation.
 Do not document or implement inline fallback as a normal branch of the Codex adapter. Codex sessions should be treated as having real multi-agent capability.
 
@@ -42,7 +41,7 @@ Honor `workflowGuidance.nextStep` ordering exactly.
   - keep the specialist open for reuse
 - `researcher`
   - run for investigation-first tasks or bounded analysis subtasks
-  - prefer reuse when the current thread already has a suitable investigation specialist
+  - reuse the current thread's suitable investigation specialist
 
 ## Reuse policy
 
@@ -52,9 +51,9 @@ Honor `workflowGuidance.nextStep` ordering exactly.
 
 ## Discovery rule
 
-- Treat `spawn_agent` / `wait_agent` / `close_agent` as part of the normal Codex tool surface.
-- If they are not already visible in the current tool list, do a tool-discovery pass and then use them.
-- Do not treat the absence of a fresh user authorization message as discovery failure.
+- Codex has multi-agent capability.
+- Use `tool_search` to locate the current session's agent-management tools.
+- Do not hard-code exact tool names in workflow assumptions.
 
 ## Minimal bundles
 
@@ -70,7 +69,7 @@ Send:
 Expected behavior:
 
 - fire-and-forget deposition
-- the main agent should not wait on a result before continuing the task lifecycle
+- the main agent does not wait on a result before continuing the task lifecycle
 - any returned payload is optional telemetry, not a required handoff contract
 
 ### `adr-writer`
@@ -84,7 +83,7 @@ Send:
 Expected behavior:
 
 - fire-and-forget deposition
-- the main agent should not wait on a result before continuing
+- the main agent does not wait on a result before continuing
 - any returned payload is optional telemetry, not a required handoff contract
 
 ### `researcher`
@@ -109,7 +108,7 @@ Expected behavior:
 - For `truth-writer` and `adr-writer`, default to `worker + gpt-5.4-mini + explicit skill item`.
 - For `researcher`, default to `explorer + explicit skill item`.
 - Follow `waitForCompletion` directly instead of inferring wait behavior from prose.
-- Follow `closePolicy` directly. `truth-writer` and `adr-writer` should remain open for same-thread reuse.
+- Follow `closePolicy` directly. `truth-writer` and `adr-writer` remain open for same-thread reuse.
 - Apply the returned result back into canonical `.claw` state through `claw plan edit`, `claw truth ingest`, or follow-up user confirmation.
 - Only close a deposition specialist when it is no longer useful for later same-type work in the thread.
 

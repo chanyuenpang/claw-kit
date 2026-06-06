@@ -4,9 +4,9 @@
 
 `claw-kit` does not depend on Codex hooks for correctness.
 
-Hook registration has been removed from the active adapter. This note remains as historical design context only.
+The active adapter now registers a minimal `SessionStart` hook for bootstrap hints only.
 
-The core workflow must still work when hooks do not fire. Hooks are treated as an enhancement layer for:
+The core workflow works without hooks. Hooks are an enhancement layer for:
 
 - lightweight bootstrap nudges
 - end-of-session reminders
@@ -14,7 +14,13 @@ The core workflow must still work when hooks do not fire. Hooks are treated as a
 
 ## Why this matters
 
-Recent evidence suggests plugin-level hooks may execute in some Codex builds, but support is still uneven enough that we should not bind canonical harness semantics to them.
+Plugin-level hooks execute in some Codex builds, but support is still uneven enough that canonical harness semantics do not bind to them.
+
+Current active use:
+
+- `SessionStart` calls a dedicated bootstrap entry.
+- When cwd resolves into a `.claw` project, that entry runs `claw context`, compresses the result, and injects developer-visible startup guidance.
+- The injected guidance tells the agent to use `[@claw-kit](plugin://claw-kit@claw-kit-local)` for the rest of the task flow.
 
 ## Testing strategy
 
@@ -22,6 +28,7 @@ The previous local hook lab used:
 
 - `../../scripts/log-hook-event.mjs`
 - `../../references/codex-hook-lab.md`
+- active bootstrap entry: `../../hooks/session-start-bootstrap.mjs`
 
 The first question is not "can hooks automate the harness?" but "which events fire at all in this runtime?"
 
@@ -40,6 +47,6 @@ The first question is not "can hooks automate the harness?" but "which events fi
 
 ## Decision rule
 
-- If `SessionStart` is reliable, use it for attach-free bootstrap hints only.
-- If `Stop` is reliable, use it for truth or ADR reminders, not mandatory writes.
-- If `PreToolUse` or `PostToolUse` is reliable for selected tools, use it for diagnostics or validation, not core task binding.
+- `SessionStart` is for attach-free bootstrap hints only.
+- `Stop` is for truth or ADR reminders, not mandatory writes.
+- `PreToolUse` and `PostToolUse` are for diagnostics or validation, not core task binding.

@@ -21,7 +21,7 @@ Use this skill when the user asks to search project context, recall prior `.claw
 - `claw search` is the recommended Codex-facing recall command.
 - `claw search` is project-scoped and uses the project-level `.claw/memory.sqlite`.
 - The searchable project recall surface includes `.claw/truth/`, including ADR content under `.claw/truth/adr/`.
-- Task-specific supporting documents should be captured in `plan.references` instead of relying on a task-local search mode.
+- Task-specific supporting documents are captured in `plan.references`, not a task-local search mode.
 - The underlying index remains a rebuildable `.claw` artifact, not Codex memory.
-- Task-level working context should usually come from the active plan's structured fields, not from `memory.md` alone.
-- If `.claw/project.json` has `gitnexus.enabled = true` and the question is really about current code relationships rather than project recall, prefer a researcher specialist that can discover and use GitNexus-oriented capabilities.
+- Task-level working context comes from the active plan's structured fields, not from `memory.md` alone.
+- When `.claw/project.json` has `gitnexus.enabled = true` and the question is about current code relationships rather than project recall, use a researcher specialist that discovers and uses GitNexus-oriented capabilities.

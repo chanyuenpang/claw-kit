@@ -4,18 +4,15 @@ import { readJsonFile } from "./io.js";
 import type { ArchivedTaskRecord, PlanDocument, ProjectContext, TaskMeta, TaskRetentionResult } from "./types.js";
 
 export function enforceTaskRetention(project: ProjectContext, currentTaskName?: string): TaskRetentionResult {
-  const autoAchieveTask = project.projectConfig?.autoAchieveTask ?? true;
   const maxTasksToKeep = project.projectConfig?.maxTasksToKeep ?? 99;
   const archiveTasksRoot = path.join(project.clawDir, "archive", "tasks");
   const prunedArchivedTasks: ArchivedTaskRecord[] = [];
   let archivedCurrentTask: ArchivedTaskRecord | undefined;
 
-  if (autoAchieveTask) {
-    for (const taskName of listActiveTaskNames(project)) {
-      const archivedTask = archiveTaskDirectory(project, taskName, archiveTasksRoot);
-      if (archivedTask && taskName === currentTaskName) {
-        archivedCurrentTask = archivedTask;
-      }
+  for (const taskName of listActiveTaskNames(project)) {
+    const archivedTask = archiveTaskDirectory(project, taskName, archiveTasksRoot);
+    if (archivedTask && taskName === currentTaskName) {
+      archivedCurrentTask = archivedTask;
     }
   }
 
@@ -34,7 +31,6 @@ export function enforceTaskRetention(project: ProjectContext, currentTaskName?: 
 
   return {
     enabled: true,
-    autoAchieveTask,
     maxTasksToKeep,
     ...(archivedCurrentTask ? { archivedCurrentTask } : {}),
     prunedArchivedTasks,

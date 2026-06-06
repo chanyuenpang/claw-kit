@@ -45,7 +45,6 @@ test("initProject creates a minimal .claw project scaffold", () => {
   const result = initProject({
     cwd: root,
     projectName: "Demo Project",
-    autoAchieveTask: false,
     maxTasksToKeep: 20,
     contextPaths: ["docs/project-guide.md"],
     externalDocPaths: ["docs/", "README.md"],
@@ -56,7 +55,6 @@ test("initProject creates a minimal .claw project scaffold", () => {
   ) as {
     id: string;
     name: string;
-    autoAchieveTask: boolean;
     maxTasksToKeep: number;
     contextPaths: string[];
     memory: { externalDocPaths: string[] };
@@ -71,7 +69,6 @@ test("initProject creates a minimal .claw project scaffold", () => {
   assert.deepEqual(projectConfig, {
     id: "demo-project",
     name: "Demo Project",
-    autoAchieveTask: false,
     maxTasksToKeep: 20,
     contextPaths: ["docs/project-guide.md"],
     memory: {
@@ -561,7 +558,6 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
   const projectConfig = JSON.parse(fs.readFileSync(result.projectJsonPath, "utf-8")) as {
     id: string;
     name: string;
-    autoAchieveTask: boolean;
     maxTasksToKeep: number;
     contextPaths: string[];
     memory: { externalDocPaths: string[] };
@@ -571,10 +567,8 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
   assert.equal(result.ok, true);
   assert.equal(result.changed, true);
   assert.ok(result.issueCountBefore > 0);
-  assert.ok(result.fixedPaths.includes("autoAchieveTask"));
   assert.equal(projectConfig.id, "fix-me");
   assert.equal(projectConfig.name, "Fix Me");
-  assert.equal(projectConfig.autoAchieveTask, true);
   assert.equal(projectConfig.maxTasksToKeep, 99);
   assert.deepEqual(projectConfig.contextPaths, []);
   assert.deepEqual(projectConfig.memory.externalDocPaths, ["docs/"]);
@@ -586,7 +580,6 @@ test("enforceTaskRetention archives completed task and prunes archive by updated
   initProject({
     cwd: root,
     projectName: "Retention Project",
-    autoAchieveTask: true,
     maxTasksToKeep: 1,
     force: true,
   });
@@ -647,7 +640,6 @@ test("enforceTaskRetention also archives legacy completed tasks still left in ac
   initProject({
     cwd: root,
     projectName: "Retention Sweep Project",
-    autoAchieveTask: true,
     maxTasksToKeep: 99,
     force: true,
   });

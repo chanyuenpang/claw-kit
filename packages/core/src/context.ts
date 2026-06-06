@@ -147,9 +147,11 @@ function readProjectConfig(projectJsonPath: string): ProjectConfig {
 }
 
 function normalizeProjectConfig(projectConfig: ProjectConfig): ProjectConfig {
+  const { autoAchieveTask: _autoAchieveTask, ...rest } = projectConfig as ProjectConfig & {
+    autoAchieveTask?: unknown;
+  };
   return {
-    ...projectConfig,
-    autoAchieveTask: projectConfig.autoAchieveTask ?? true,
+    ...rest,
     maxTasksToKeep:
       Number.isInteger(projectConfig.maxTasksToKeep) && (projectConfig.maxTasksToKeep as number) >= 1
         ? projectConfig.maxTasksToKeep

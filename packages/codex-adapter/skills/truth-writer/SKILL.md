@@ -17,19 +17,20 @@ Turn reports, code discoveries, or completed task outcomes into durable canonica
 
 ## Delegation model
 
-This skill should normally run as a dedicated deposition subagent.
+This skill runs as a dedicated deposition subagent.
 
-The main agent should:
+The main agent must:
 
 1. finish the primary task work
 2. take the completed subagent's task report, or an equivalent completed subtask report
-3. reuse an existing `truth-writer` worker in the current thread when practical; otherwise dispatch a new one
+3. reuse an existing `truth-writer` worker in the current thread when it still fits the same role; otherwise dispatch a new one
 4. when dispatching a new one, prefer `agent_type: "worker"` with model `gpt-5.4-mini`
 5. attach this `claw-kit:truth-writer` skill explicitly in the dispatch bundle
 6. do not block the main task lifecycle waiting for a result
 7. treat any returned payload as optional telemetry only
 
-The main agent should not spend its primary context budget drafting large truth documents inline unless delegation is unavailable.
+The main agent does not spend its primary context budget drafting large truth documents inline.
+Canonical truth updates run through `truth-writer`, not a main-agent inline shortcut.
 
 ## What truth is for
 
@@ -75,14 +76,14 @@ Skip:
 ## Codex workflow
 
 1. Main agent captures the completed subagent's task report, or an equivalent completed subtask report.
-2. Main agent should not expand that input into a larger custom bundle unless the workflow truly lacks a usable task report.
-3. Main agent should prefer dispatch when `workflowGuidance.delegateSubagents` contains a `truth-writer` entry.
+2. Main agent does not expand that input into a larger custom bundle unless the workflow truly lacks a usable task report.
+3. Main agent dispatches `truth-writer` when `workflowGuidance.delegateSubagents` contains a `truth-writer` entry.
 4. The truth subagent reads the relevant truth docs.
 5. The truth subagent updates or creates the canonical truth through `claw truth ingest`.
 
 ## Output expectation
 
-The delegated truth writer may return a minimal completion payload, but the main agent should not rely on it:
+The delegated truth writer can return a minimal completion payload, but the main agent does not rely on it:
 
 - optional `status`
 - optional `updatedPaths`
@@ -93,7 +94,7 @@ Returning nothing is also acceptable. Do not send a long write-up back to the ma
 
 Use this skill at task-completion time when:
 
-- a subtask has completed and its task report may contain reusable knowledge
+- a subtask has completed and its task report contains reusable knowledge
 - all current plan tasks are done but the plan is not yet closed
 - `workflowGuidance` says truth deposition should happen before retrospective closure
 

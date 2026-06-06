@@ -9,7 +9,6 @@ import type {
   ProjectProtocolIssue,
 } from "./types.js";
 
-const DEFAULT_AUTO_ACHIEVE_TASK = true;
 const DEFAULT_MAX_TASKS_TO_KEEP = 99;
 
 export function checkProjectProtocol(cwd: string): ProjectProtocolCheckResult {
@@ -99,15 +98,15 @@ function readRawProjectConfig(projectJsonPath: string): {
 
 function normalizeProjectConfig(raw: unknown, projectRoot: string): ProjectConfig {
   const source = asObject(raw);
+  const { autoAchieveTask: _autoAchieveTask, ...sourceWithoutLegacyAutoAchieve } = source ?? {};
   const sourceMemory = asObject(source?.memory);
   const sourceGitnexus = asObject(source?.gitnexus);
   const maxTasksToKeep = source?.maxTasksToKeep;
 
   return {
-    ...source,
+    ...sourceWithoutLegacyAutoAchieve,
     id: deriveProjectId(source, projectRoot),
     name: deriveProjectName(source, projectRoot),
-    autoAchieveTask: typeof source?.autoAchieveTask === "boolean" ? source.autoAchieveTask : DEFAULT_AUTO_ACHIEVE_TASK,
     maxTasksToKeep:
       Number.isInteger(maxTasksToKeep) && (maxTasksToKeep as number) >= 1
         ? (maxTasksToKeep as number)
@@ -161,7 +160,6 @@ function validateProjectConfig(raw: unknown, issues: ProjectProtocolIssue[]): vo
   const config = raw as Record<string, unknown>;
   requireString(config, "id", issues);
   requireString(config, "name", issues);
-  requireBoolean(config, "autoAchieveTask", issues);
   requireIntegerAtLeast(config, "maxTasksToKeep", 1, issues);
   requireStringArray(config, "contextPaths", issues);
 

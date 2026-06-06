@@ -8,7 +8,6 @@ export type InitProjectInput = {
   cwd: string;
   projectId?: string;
   projectName?: string;
-  autoAchieveTask?: boolean;
   maxTasksToKeep?: number;
   contextPaths?: string[];
   externalDocPaths?: string[];
@@ -45,13 +44,11 @@ export function initProject(input: InitProjectInput): InitProjectResult {
 
   const projectName = input.projectName?.trim() || path.basename(projectRoot);
   const projectId = normalizeProjectId(input.projectId ?? projectName, projectRoot);
-  const autoAchieveTask = input.autoAchieveTask ?? true;
   const maxTasksToKeep = input.maxTasksToKeep ?? 99;
   validateMaxTasksToKeep(maxTasksToKeep, projectRoot);
   const projectConfig: ProjectConfig = {
     id: projectId,
     name: projectName,
-    autoAchieveTask,
     maxTasksToKeep,
     contextPaths: [...(input.contextPaths ?? [])],
     memory: {

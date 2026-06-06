@@ -39,7 +39,6 @@ async function main(): Promise<void> {
           cwd: process.cwd(),
           projectId: readOptionalFlag(args, "--id"),
           projectName: readOptionalFlag(args, "--name"),
-          autoAchieveTask: readBooleanValueFlag(args, "--auto-achieve-task"),
           maxTasksToKeep: readOptionalNumber(args, "--max-tasks-to-keep"),
           contextPaths: readRepeatedFlag(args, "--context-path"),
           externalDocPaths: readRepeatedFlag(args, "--ext-path"),
@@ -360,7 +359,6 @@ function compactCompletionRefresh(completionRefresh: CompletionRefreshResult): R
   return {
     taskRetention: {
       enabled: completionRefresh.taskRetention.enabled,
-      autoAchieveTask: completionRefresh.taskRetention.autoAchieveTask,
       maxTasksToKeep: completionRefresh.taskRetention.maxTasksToKeep,
       archivedCurrentTask: completionRefresh.taskRetention.archivedCurrentTask
         ? {
@@ -639,7 +637,7 @@ function printUsage(): void {
       "",
       "Commands:",
       "  init [--id <project-id>] [--name <project-name>] [--context-path <file>] [--ext-path <path>]",
-      "       [--gitnexus true|false] [--auto-achieve-task true|false] [--max-tasks-to-keep <n>] [--force]",
+      "       [--gitnexus true|false] [--max-tasks-to-keep <n>] [--force]",
       "  context [--task <name>]",
       "  check",
       "  plan write --task <name> [--plan <relative-path>] [--title <text>] [--goal <text>] [--content <json-file>]",

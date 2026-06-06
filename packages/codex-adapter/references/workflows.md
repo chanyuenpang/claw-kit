@@ -16,7 +16,7 @@ This reference distills the built-in workflow definitions from `OpenClaw-dev`.
 - description: exploratory discussion, brainstorming, decision-making
 - stages: `discuss -> summarize -> decide`
 - atomicity rules:
-  - discussion and decision may coexist
+  - discussion and decision can coexist
   - summary should still be explicit
 
 ## Documentation
@@ -25,7 +25,7 @@ This reference distills the built-in workflow definitions from `OpenClaw-dev`.
 - stages: `research -> write -> review`
 - atomicity rules:
   - write and review must not be merged
-  - research may merge with write when scope is small
+  - small-scope documentation work can merge research with writing
 
 ## Ops
 
@@ -47,4 +47,4 @@ This reference distills the built-in workflow definitions from `OpenClaw-dev`.
 ## Completion strategy
 
 - root plans: require user confirmation before `end.completed`
-- subplans: may be auto-completable when all tasks are done
+- subplans: are auto-completable when all tasks are done

@@ -1,7 +1,6 @@
 export type ProjectConfig = {
   id?: string;
   name?: string;
-  autoAchieveTask?: boolean;
   maxTasksToKeep?: number;
   contextPaths?: string[];
   memory?: {
@@ -545,7 +544,6 @@ export type ArchivedTaskRecord = {
 
 export type TaskRetentionResult = {
   enabled: boolean;
-  autoAchieveTask: boolean;
   maxTasksToKeep: number;
   archivedCurrentTask?: ArchivedTaskRecord;
   prunedArchivedTasks: ArchivedTaskRecord[];

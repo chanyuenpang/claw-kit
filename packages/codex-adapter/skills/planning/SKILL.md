@@ -45,7 +45,7 @@ Use this when the request is more than a tiny one-file change, or when task shap
   - root cause narrowed to one defensible conclusion
   - minimal repair implemented and verified
   - next route clarified without further blind changes
-- Verification should usually be explicit and separately visible.
+- Verification must be explicit and separately visible for non-trivial work.
 - Decompose by:
   - shared foundations first
   - core logic second
@@ -75,7 +75,7 @@ When the task is substantial, align task decomposition with the workflow pattern
 
 ## Recommended workflow coverage
 
-A solid plan should usually represent:
+A solid plan represents:
 
 - requirements or framing
 - explicit scope and non-goals
@@ -97,7 +97,7 @@ Simple 1-2 task plans can stay lean. Bigger plans should show explicit decomposi
   - verification task -> pass/fail evidence
   - closure task -> retrospective, durable notes, or next-step entry
 - High-risk facts should be written down early when they affect task shape or delegation.
-- A plan should be handoff-ready: another agent should be able to continue from the plan without rereading the whole thread.
+- A plan must be handoff-ready: another agent must be able to continue from the plan without rereading the whole thread.
 
 ## How to write
 

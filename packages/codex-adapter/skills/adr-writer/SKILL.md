@@ -17,19 +17,20 @@ Capture durable architecture decisions from plans or completed work into canonic
 
 ## Delegation model
 
-This skill should normally run as a dedicated ADR deposition subagent.
+This skill runs as a dedicated ADR deposition subagent.
 
-The main agent should:
+The main agent must:
 
 1. identify the completed plan to deposit
 2. pass the completed plan file as the deposition bundle
-3. reuse an existing `adr-writer` worker in the current thread when practical; otherwise dispatch a new one
+3. reuse an existing `adr-writer` worker in the current thread when it still fits the same role; otherwise dispatch a new one
 4. when dispatching a new one, prefer `agent_type: "worker"` with model `gpt-5.4-mini`
 5. attach this `claw-kit:adr-writer` skill explicitly in the dispatch bundle
 6. do not block the main task lifecycle waiting for a result
 7. treat any returned payload as optional telemetry only
 
 This keeps the main agent focused on primary execution and coordination.
+Canonical ADR updates run through `adr-writer`, not a main-agent inline shortcut.
 
 ## What counts as ADR-worthy
 
@@ -84,7 +85,7 @@ Unless the repository already uses a stronger local convention, keep ADRs compac
 
 ## Output expectation
 
-The delegated ADR writer may return a minimal completion payload, but the main agent should not rely on it:
+The delegated ADR writer can return a minimal completion payload, but the main agent does not rely on it:
 
 - optional `status`
 - optional `updatedPaths`
@@ -93,7 +94,7 @@ Do not send a long decision essay back to the main agent.
 
 ## Timing rule
 
-Prefer this skill only when the plan has already been completed and the CLI guidance points to ADR deposition:
+Use this skill when the plan has already been completed and the CLI guidance points to ADR deposition:
 
 - `claw plan done` or `claw plan edit --plan-status end.completed` has already succeeded
 - `workflowGuidance.delegateSubagents` includes an `adr-writer` entry

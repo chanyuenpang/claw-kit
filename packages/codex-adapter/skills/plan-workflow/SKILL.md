@@ -25,9 +25,9 @@ Use this skill when planning or editing execution state in an existing `.claw/` 
 - If task scope is missing, `plan write` is the first harness action.
 - `plan write` is the canonical path for establishing task scope.
 - When using `plan write`, write the task title, goal, tasks, and supporting plan text in the user's preferred language unless the repository has an explicit stronger convention.
-- After `plan write`, read `workflowGuidance`, refine the plan directly if needed, and use `askUser` to confirm the route before advancing the lifecycle.
-- If requirements are already confirmed and execution should begin, move the plan into `process.active` before updating task progress.
-- When the plan first enters `process.active`, read `workflowGuidance.goalMode`. If the thread has no conflicting active goal, set one from `workflowGuidance.goalMode.recommendedObjective` using `/goal` or `create_goal` when available.
+- After `plan write`, read `workflowGuidance`, refine the plan directly until the route is clear, and use `askUser` to confirm the route before advancing the lifecycle.
+- When requirements are confirmed and execution begins, move the plan into `process.active` before updating task progress.
+- When the plan first enters `process.active`, read `workflowGuidance.goalMode` and create the thread goal from `workflowGuidance.goalMode.recommendedObjective` using the current host goal surface.
 - After `plan edit`, read `workflowGuidance` again to decide whether the next delegated step is more execution, `truth-writer` from a completed subtask report, or user confirmation.
 - After `plan done`, read `workflowGuidance` again and treat `adr-writer` as the completed-plan deposition step, using the completed `plan.json` without waiting on a return.
 - After each `plan write`, `plan edit`, and `plan done`, consume `workflowGuidance` and surface only the compact `planSummary` when it helps coordination.
@@ -42,4 +42,4 @@ Use this skill when planning or editing execution state in an existing `.claw/` 
 - Never set `prepare.review` directly.
 - `end.completed` requires `retrospective.summary`.
 - Once a plan is in `process.active`, do not interrupt it unless there is a real blocker or the user explicitly changes direction.
-- If multi-agent tools are not already visible, do a discovery pass and then use them.
+- Codex has multi-agent capability. Use `tool_search` to locate the current session's agent-management tools, then use them.
