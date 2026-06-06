@@ -4,9 +4,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import {
+  checkProjectProtocol,
   ClawError,
   buildMemoryIndex,
   editPlan,
+  ensureProjectProtocol,
+  enforceTaskRetention,
   ingestTruth,
   initProject,
   resolveProjectContext,
@@ -36,6 +39,8 @@ async function main(): Promise<void> {
           cwd: process.cwd(),
           projectId: readOptionalFlag(args, "--id"),
           projectName: readOptionalFlag(args, "--name"),
+          autoAchieveTask: readBooleanValueFlag(args, "--auto-achieve-task"),
+          maxTasksToKeep: readOptionalNumber(args, "--max-tasks-to-keep"),
           contextPaths: readRepeatedFlag(args, "--context-path"),
           externalDocPaths: readRepeatedFlag(args, "--ext-path"),
           gitnexusEnabled: readBooleanValueFlag(args, "--gitnexus") ?? false,
@@ -46,7 +51,22 @@ async function main(): Promise<void> {
         );
         return;
       case "context":
-        printJson(resolveContext(process.cwd(), readOptionalFlag(args, "--task")));
+        printJson({
+          ...resolveContext(process.cwd(), readOptionalFlag(args, "--task")),
+          protocolCheck: checkProjectProtocol(process.cwd()),
+        });
+        return;
+      case "check":
+        const checkResult = ensureProjectProtocol(process.cwd());
+        printJson({
+          command: "check",
+          ok: checkResult.ok,
+          changed: checkResult.changed,
+          projectRoot: checkResult.projectRoot,
+          projectJsonPath: checkResult.projectJsonPath,
+          issueCountBefore: checkResult.issueCountBefore,
+          fixedPaths: checkResult.fixedPaths,
+        });
         return;
       case "plan":
         await runPlan(args);
@@ -294,12 +314,18 @@ function compactPlanCommandResult(
   },
   completionRefresh?: CompletionRefreshResult,
 ): Record<string, unknown> {
+  const resolvedPlanPath =
+    completionRefresh?.taskRetention.archivedCurrentTask?.taskName === result.taskName &&
+    completionRefresh.taskRetention.archivedCurrentTask.archivedPlanPath
+      ? completionRefresh.taskRetention.archivedCurrentTask.archivedPlanPath
+      : result.planPath;
+
   return {
     ok: true,
     command,
     taskName: result.taskName,
     planFile: result.planFile,
-    planPath: result.planPath,
+    planPath: resolvedPlanPath,
     planStatus: result.planStatus,
     stage: result.workflowGuidance.stage,
     summary: result.workflowGuidance.summary,
@@ -332,9 +358,28 @@ function compactPlanCommandResult(
 
 function compactCompletionRefresh(completionRefresh: CompletionRefreshResult): Record<string, unknown> {
   return {
+    taskRetention: {
+      enabled: completionRefresh.taskRetention.enabled,
+      autoAchieveTask: completionRefresh.taskRetention.autoAchieveTask,
+      maxTasksToKeep: completionRefresh.taskRetention.maxTasksToKeep,
+      archivedCurrentTask: completionRefresh.taskRetention.archivedCurrentTask
+        ? {
+            taskName: completionRefresh.taskRetention.archivedCurrentTask.taskName,
+            archivedTaskDir: completionRefresh.taskRetention.archivedCurrentTask.archivedTaskDir,
+            archivedPlanPath: completionRefresh.taskRetention.archivedCurrentTask.archivedPlanPath,
+          }
+        : null,
+      prunedArchivedTasks: completionRefresh.taskRetention.prunedArchivedTasks.map((task: {
+        taskName: string;
+        archivedTaskDir: string;
+      }) => ({
+        taskName: task.taskName,
+        archivedTaskDir: task.archivedTaskDir,
+      })),
+    },
     memory: {
       projectIndexed: completionRefresh.memory.project.indexedCount,
-      taskIndexed: completionRefresh.memory.task.indexedCount,
+      taskIndexed: completionRefresh.memory.task?.indexedCount ?? 0,
     },
     gitnexus:
       completionRefresh.gitnexus?.enabled === true
@@ -368,9 +413,10 @@ function mergeDonePatch(
 }
 
 type CompletionRefreshResult = {
+  taskRetention: ReturnType<typeof enforceTaskRetention>;
   memory: {
     project: ReturnType<typeof buildMemoryIndex>;
-    task: ReturnType<typeof buildMemoryIndex>;
+    task?: ReturnType<typeof buildMemoryIndex>;
   };
   gitnexus?: {
     enabled: true;
@@ -386,20 +432,24 @@ type CompletionRefreshResult = {
 
 function runCompletionRefresh(input: { cwd: string; taskName: string }): CompletionRefreshResult {
   const project = resolveProjectContext(input.cwd);
+  const taskRetention = enforceTaskRetention(project, input.taskName);
   const projectMemory = buildMemoryIndex({
     cwd: input.cwd,
     scope: "project",
   });
-  const taskMemory = buildMemoryIndex({
-    cwd: input.cwd,
-    scope: "task",
-    taskName: input.taskName,
-  });
+  const taskMemory = taskRetention.archivedCurrentTask
+    ? undefined
+    : buildMemoryIndex({
+        cwd: input.cwd,
+        scope: "task",
+        taskName: input.taskName,
+      });
 
   return {
+    taskRetention,
     memory: {
       project: projectMemory,
-      task: taskMemory,
+      ...(taskMemory ? { task: taskMemory } : {}),
     },
     gitnexus: refreshGitNexusIfEnabled(project.projectRoot, project.projectConfig),
   };
@@ -589,8 +639,9 @@ function printUsage(): void {
       "",
       "Commands:",
       "  init [--id <project-id>] [--name <project-name>] [--context-path <file>] [--ext-path <path>]",
-      "       [--gitnexus true|false] [--force]",
+      "       [--gitnexus true|false] [--auto-achieve-task true|false] [--max-tasks-to-keep <n>] [--force]",
       "  context [--task <name>]",
+      "  check",
       "  plan write --task <name> [--plan <relative-path>] [--title <text>] [--goal <text>] [--content <json-file>]",
       "               [--parent-task-id <number>]",
       "  plan edit --task <name> [--plan <relative-path>] [--patch <json-file>] [--plan-status <status>]",

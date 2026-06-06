@@ -8,6 +8,8 @@ export type InitProjectInput = {
   cwd: string;
   projectId?: string;
   projectName?: string;
+  autoAchieveTask?: boolean;
+  maxTasksToKeep?: number;
   contextPaths?: string[];
   externalDocPaths?: string[];
   gitnexusEnabled?: boolean;
@@ -43,9 +45,14 @@ export function initProject(input: InitProjectInput): InitProjectResult {
 
   const projectName = input.projectName?.trim() || path.basename(projectRoot);
   const projectId = normalizeProjectId(input.projectId ?? projectName, projectRoot);
+  const autoAchieveTask = input.autoAchieveTask ?? true;
+  const maxTasksToKeep = input.maxTasksToKeep ?? 99;
+  validateMaxTasksToKeep(maxTasksToKeep, projectRoot);
   const projectConfig: ProjectConfig = {
     id: projectId,
     name: projectName,
+    autoAchieveTask,
+    maxTasksToKeep,
     contextPaths: [...(input.contextPaths ?? [])],
     memory: {
       externalDocPaths: [...(input.externalDocPaths ?? [])],
@@ -92,6 +99,15 @@ function normalizeProjectId(candidate: string, projectRoot: string): string {
     });
   }
   return normalized;
+}
+
+function validateMaxTasksToKeep(value: number, projectRoot: string): void {
+  if (!Number.isInteger(value) || value < 1) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "maxTasksToKeep must be an integer greater than or equal to 1.", {
+      projectRoot,
+      value,
+    });
+  }
 }
 
 function ensureDir(dirPath: string, createdPaths: string[]): void {

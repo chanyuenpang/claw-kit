@@ -5,7 +5,9 @@ import os from "node:os";
 import path from "node:path";
 import {
   buildMemoryIndex,
+  ensureProjectProtocol,
   editPlan,
+  enforceTaskRetention,
   getMemory,
   ingestTruth,
   initProject,
@@ -43,6 +45,8 @@ test("initProject creates a minimal .claw project scaffold", () => {
   const result = initProject({
     cwd: root,
     projectName: "Demo Project",
+    autoAchieveTask: false,
+    maxTasksToKeep: 20,
     contextPaths: ["docs/project-guide.md"],
     externalDocPaths: ["docs/", "README.md"],
     gitnexusEnabled: true,
@@ -52,6 +56,8 @@ test("initProject creates a minimal .claw project scaffold", () => {
   ) as {
     id: string;
     name: string;
+    autoAchieveTask: boolean;
+    maxTasksToKeep: number;
     contextPaths: string[];
     memory: { externalDocPaths: string[] };
     gitnexus: { enabled: boolean };
@@ -65,6 +71,8 @@ test("initProject creates a minimal .claw project scaffold", () => {
   assert.deepEqual(projectConfig, {
     id: "demo-project",
     name: "Demo Project",
+    autoAchieveTask: false,
+    maxTasksToKeep: 20,
     contextPaths: ["docs/project-guide.md"],
     memory: {
       externalDocPaths: ["docs/", "README.md"],
@@ -528,6 +536,156 @@ test("existing .claw project without project.json still works", async () => {
 
   assert.equal(result.project.projectId, path.basename(root));
   assert.equal(result.task?.taskName, "legacy-task");
+});
+
+test("ensureProjectProtocol rewrites project.json into explicit canonical protocol fields", () => {
+  const root = createFixture("project-check-fix");
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify(
+      {
+        id: "Fix Me",
+        name: "Fix Me",
+        maxTasksToKeep: 0,
+        memory: {
+          externalDocPaths: ["docs/", 123],
+        },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+
+  const result = ensureProjectProtocol(root);
+  const projectConfig = JSON.parse(fs.readFileSync(result.projectJsonPath, "utf-8")) as {
+    id: string;
+    name: string;
+    autoAchieveTask: boolean;
+    maxTasksToKeep: number;
+    contextPaths: string[];
+    memory: { externalDocPaths: string[] };
+    gitnexus: { enabled: boolean };
+  };
+
+  assert.equal(result.ok, true);
+  assert.equal(result.changed, true);
+  assert.ok(result.issueCountBefore > 0);
+  assert.ok(result.fixedPaths.includes("autoAchieveTask"));
+  assert.equal(projectConfig.id, "fix-me");
+  assert.equal(projectConfig.name, "Fix Me");
+  assert.equal(projectConfig.autoAchieveTask, true);
+  assert.equal(projectConfig.maxTasksToKeep, 99);
+  assert.deepEqual(projectConfig.contextPaths, []);
+  assert.deepEqual(projectConfig.memory.externalDocPaths, ["docs/"]);
+  assert.equal(projectConfig.gitnexus.enabled, false);
+});
+
+test("enforceTaskRetention archives completed task and prunes archive by updatedAt", async () => {
+  const root = createFixture("task-retention");
+  initProject({
+    cwd: root,
+    projectName: "Retention Project",
+    autoAchieveTask: true,
+    maxTasksToKeep: 1,
+    force: true,
+  });
+  await writePlan({
+    cwd: root,
+    taskName: "older-task",
+    title: "Older task",
+    goalText: "Archive older task",
+    content: {
+      title: "Older task",
+      status: "end.completed",
+      goal: { text: "Archive older task" },
+      tasks: [],
+      retrospective: { summary: "Older complete." },
+    },
+  });
+  await writePlan({
+    cwd: root,
+    taskName: "newer-task",
+    title: "Newer task",
+    goalText: "Archive newer task",
+    content: {
+      title: "Newer task",
+      status: "end.completed",
+      goal: { text: "Archive newer task" },
+      tasks: [],
+      retrospective: { summary: "Newer complete." },
+    },
+  });
+
+  const olderMetaPath = path.join(root, ".claw", "tasks", "older-task", "meta.json");
+  const olderMeta = JSON.parse(fs.readFileSync(olderMetaPath, "utf-8")) as { updatedAt: string };
+  olderMeta.updatedAt = "2026-01-01T00:00:00.000Z";
+  fs.writeFileSync(olderMetaPath, `${JSON.stringify(olderMeta, null, 2)}\n`, "utf-8");
+
+  const newerMetaPath = path.join(root, ".claw", "tasks", "newer-task", "meta.json");
+  const newerMeta = JSON.parse(fs.readFileSync(newerMetaPath, "utf-8")) as { updatedAt: string };
+  newerMeta.updatedAt = "2026-02-01T00:00:00.000Z";
+  fs.writeFileSync(newerMetaPath, `${JSON.stringify(newerMeta, null, 2)}\n`, "utf-8");
+
+  const project = resolveContext(root).project;
+  const first = enforceTaskRetention(project, "older-task");
+
+  assert.equal(first.archivedCurrentTask?.taskName, "older-task");
+  assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "older-task")), false);
+  assert.equal(first.prunedArchivedTasks[0]?.taskName, "older-task");
+  assert.equal(fs.existsSync(first.archivedCurrentTask?.archivedTaskDir ?? ""), false);
+
+  const second = enforceTaskRetention(project, "newer-task");
+
+  assert.equal(second.archivedCurrentTask, undefined);
+  assert.deepEqual(second.prunedArchivedTasks, []);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "archive", "tasks", "newer-task")), true);
+});
+
+test("enforceTaskRetention also archives legacy completed tasks still left in active tasks", async () => {
+  const root = createFixture("task-retention-legacy-completed");
+  initProject({
+    cwd: root,
+    projectName: "Retention Sweep Project",
+    autoAchieveTask: true,
+    maxTasksToKeep: 99,
+    force: true,
+  });
+  await writePlan({
+    cwd: root,
+    taskName: "legacy-completed",
+    title: "Legacy completed",
+    goalText: "Archive legacy completed task",
+    content: {
+      title: "Legacy completed",
+      status: "end.completed",
+      goal: { text: "Archive legacy completed task" },
+      tasks: [],
+      retrospective: { summary: "Legacy complete." },
+    },
+  });
+  await writePlan({
+    cwd: root,
+    taskName: "current-completed",
+    title: "Current completed",
+    goalText: "Archive current completed task",
+    content: {
+      title: "Current completed",
+      status: "end.completed",
+      goal: { text: "Archive current completed task" },
+      tasks: [],
+      retrospective: { summary: "Current complete." },
+    },
+  });
+
+  const project = resolveContext(root).project;
+  const result = enforceTaskRetention(project, "current-completed");
+
+  assert.equal(result.archivedCurrentTask?.taskName, "current-completed");
+  assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "legacy-completed")), false);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "current-completed")), false);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "archive", "tasks", "legacy-completed")), true);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "archive", "tasks", "current-completed")), true);
 });
 
 test("concurrent plan writes fail fast with PLAN_WRITE_CONFLICT", async () => {

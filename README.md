@@ -14,7 +14,7 @@ npm link .\packages\cli
 Then use it from any project directory:
 
 ```powershell
-claw init
+claw init --auto-achieve-task true --max-tasks-to-keep 20
 claw context
 claw plan write --task my-task --title "My task" --goal "Define the first task"
 ```

@@ -1,6 +1,8 @@
 export type ProjectConfig = {
   id?: string;
   name?: string;
+  autoAchieveTask?: boolean;
+  maxTasksToKeep?: number;
   contextPaths?: string[];
   memory?: {
     externalDocPaths?: string[];
@@ -506,4 +508,45 @@ export type TruthIngestResult = {
   targetPath: string;
   bytesWritten: number;
   mode: "append" | "replace";
+};
+
+export type ProjectProtocolIssue = {
+  path: string;
+  message: string;
+};
+
+export type ProjectProtocolCheckResult = {
+  ok: boolean;
+  projectRoot: string;
+  projectJsonPath: string;
+  issues: ProjectProtocolIssue[];
+};
+
+export type ProjectProtocolEnsureResult = {
+  ok: boolean;
+  changed: boolean;
+  projectRoot: string;
+  projectJsonPath: string;
+  issueCountBefore: number;
+  issueCountAfter: number;
+  fixedPaths: string[];
+  issuesBefore: ProjectProtocolIssue[];
+  issuesAfter: ProjectProtocolIssue[];
+  projectConfig: ProjectConfig;
+};
+
+export type ArchivedTaskRecord = {
+  taskName: string;
+  sourceTaskDir: string;
+  archivedTaskDir: string;
+  archivedPlanPath?: string;
+  updatedAt?: string;
+};
+
+export type TaskRetentionResult = {
+  enabled: boolean;
+  autoAchieveTask: boolean;
+  maxTasksToKeep: number;
+  archivedCurrentTask?: ArchivedTaskRecord;
+  prunedArchivedTasks: ArchivedTaskRecord[];
 };

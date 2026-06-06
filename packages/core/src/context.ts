@@ -137,13 +137,31 @@ export function resolveTaskName(taskName: string): string {
 
 function readProjectConfig(projectJsonPath: string): ProjectConfig {
   try {
-    return readJsonFile<ProjectConfig>(projectJsonPath);
+    return normalizeProjectConfig(readJsonFile<ProjectConfig>(projectJsonPath));
   } catch (error) {
     throw new ClawError("PROJECT_CONFIG_INVALID", "Failed to parse .claw/project.json.", {
       path: projectJsonPath,
       cause: error instanceof Error ? error.message : String(error),
     });
   }
+}
+
+function normalizeProjectConfig(projectConfig: ProjectConfig): ProjectConfig {
+  return {
+    ...projectConfig,
+    autoAchieveTask: projectConfig.autoAchieveTask ?? true,
+    maxTasksToKeep:
+      Number.isInteger(projectConfig.maxTasksToKeep) && (projectConfig.maxTasksToKeep as number) >= 1
+        ? projectConfig.maxTasksToKeep
+        : 99,
+    contextPaths: [...(projectConfig.contextPaths ?? [])],
+    memory: {
+      externalDocPaths: [...(projectConfig.memory?.externalDocPaths ?? [])],
+    },
+    gitnexus: {
+      enabled: projectConfig.gitnexus?.enabled ?? false,
+    },
+  };
 }
 
 function deriveProjectId(projectRoot: string, projectConfig: ProjectConfig | null): string {

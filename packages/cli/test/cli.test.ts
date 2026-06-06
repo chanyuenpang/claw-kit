@@ -89,7 +89,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   };
 
   const initResult = runClaw(
-    ["init", "--name", "CLI E2E", "--gitnexus", "true", "--ext-path", "docs/"],
+    ["init", "--name", "CLI E2E", "--gitnexus", "true", "--auto-achieve-task", "false", "--ext-path", "docs/"],
     root,
     env,
   );
@@ -172,6 +172,119 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   const gitnexusLog = fs.readFileSync(shim.logPath, "utf-8");
   assert.match(gitnexusLog, /analyze --no-ai-context/);
   assert.match(gitnexusLog, /analyze\r?\n?$/m);
+});
+
+test("cli init writes maxTasksToKeep into project.json", () => {
+  const root = createFixture("init-max-tasks");
+
+  runClaw(
+    ["init", "--name", "Task Retention", "--auto-achieve-task", "false", "--max-tasks-to-keep", "12"],
+    root,
+  );
+
+  const projectConfig = JSON.parse(
+    fs.readFileSync(path.join(root, ".claw", "project.json"), "utf-8"),
+  ) as JsonRecord;
+  assert.equal(projectConfig.maxTasksToKeep, 12);
+  assert.equal(projectConfig.autoAchieveTask, false);
+});
+
+test("cli init writes default maxTasksToKeep into project.json", () => {
+  const root = createFixture("init-default-max-tasks");
+
+  runClaw(["init", "--name", "Default Retention"], root);
+
+  const projectConfig = JSON.parse(
+    fs.readFileSync(path.join(root, ".claw", "project.json"), "utf-8"),
+  ) as JsonRecord;
+  assert.equal(projectConfig.maxTasksToKeep, 99);
+  assert.equal(projectConfig.autoAchieveTask, true);
+});
+
+test("cli context includes protocolCheck for existing .claw projects", () => {
+  const root = createFixture("context-check");
+  runClaw(["init", "--name", "Context Check"], root);
+
+  const result = runClaw(["context"], root);
+  const protocolCheck = result.protocolCheck as JsonRecord;
+
+  assert.equal(protocolCheck.ok, true);
+  assert.equal(protocolCheck.issues instanceof Array, true);
+  assert.equal(result.project !== undefined, true);
+});
+
+test("cli check auto-corrects project.json into explicit protocol fields", () => {
+  const root = createFixture("check-invalid-project");
+  fs.mkdirSync(path.join(root, ".claw"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify(
+      {
+        id: "broken-project",
+        name: "Broken Project",
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+
+  const result = runClaw(["check"], root);
+  const projectConfig = JSON.parse(
+    fs.readFileSync(path.join(root, ".claw", "project.json"), "utf-8"),
+  ) as JsonRecord;
+
+  assert.equal(result.command, "check");
+  assert.equal(result.ok, true);
+  assert.equal(result.changed, true);
+  assert.ok(Number(result.issueCountBefore) > 0);
+  assert.ok((result.fixedPaths as unknown[]).includes("autoAchieveTask"));
+  assert.ok((result.fixedPaths as unknown[]).includes("maxTasksToKeep"));
+  assert.equal(projectConfig.id, "broken-project");
+  assert.equal(projectConfig.name, "Broken Project");
+  assert.equal(projectConfig.autoAchieveTask, true);
+  assert.equal(projectConfig.maxTasksToKeep, 99);
+  assert.deepEqual(projectConfig.contextPaths, []);
+  assert.deepEqual(projectConfig.memory, { externalDocPaths: [] });
+  assert.deepEqual(projectConfig.gitnexus, { enabled: false });
+});
+
+test("cli plan done archives current task when autoAchieveTask is enabled", () => {
+  const root = createFixture("plan-done-archive");
+  runClaw(["init", "--name", "Archive On Complete", "--auto-achieve-task", "true", "--max-tasks-to-keep", "99"], root);
+
+  runClaw(
+    [
+      "plan",
+      "write",
+      "--task",
+      "archive-task",
+      "--title",
+      "Archive task",
+      "--goal",
+      "Archive after completion",
+    ],
+    root,
+  );
+  runClaw(["plan", "edit", "--task", "archive-task", "--plan-status", "process.active"], root);
+
+  const doneResult = runClaw(
+    ["plan", "done", "--task", "archive-task", "--summary", "Archive this completed task."],
+    root,
+  );
+
+  const completionRefresh = doneResult.completionRefresh as JsonRecord;
+  const taskRetention = completionRefresh.taskRetention as JsonRecord;
+  const archivedCurrentTask = taskRetention.archivedCurrentTask as JsonRecord;
+  const memory = completionRefresh.memory as JsonRecord;
+
+  assert.equal(taskRetention.autoAchieveTask, true);
+  assert.equal(archivedCurrentTask.taskName, "archive-task");
+  assert.match(String(archivedCurrentTask.archivedTaskDir), /archive[\\/]tasks[\\/]archive-task$/);
+  assert.match(String(doneResult.planPath), /archive[\\/]tasks[\\/]archive-task[\\/].*plan\.json$/);
+  assert.equal(memory.taskIndexed, 0);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "archive-task")), false);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "archive", "tasks", "archive-task")), true);
 });
 
 test("cli plan done skips gitnexus refresh when project config disables it", () => {
