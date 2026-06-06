@@ -5,6 +5,9 @@ Thumbs.db
 # Editor settings
 .idea/
 .vscode/
+.codex/
+.claw/
+.agents/
 
 # Local reference repos
 /superpowers/
@@ -13,3 +16,6 @@ Thumbs.db
 # Node build artifacts
 /node_modules/
 /dist/
+/packages/*/dist/
+/packages/*/dist-test/
+/packages/*/coverage/

@@ -1,0 +1,43 @@
+{
+  "name": "claw-kit",
+  "version": "0.1.2+codex.20260607001500",
+  "description": "Thin Codex adapter for claw-kit. Start with using-claw-kit as the single main-agent workflow, then drive .claw plan, search, truth, and ADR workflows through the local claw CLI while consuming compact workflowGuidance and specialist subagent contracts for truth and ADR deposition.",
+  "author": {
+    "name": "chanyuenpang",
+    "url": "https://github.com/chanyuenpang"
+  },
+  "homepage": "https://github.com/chanyuenpang/claw-kit",
+  "repository": "https://github.com/chanyuenpang/claw-kit",
+  "license": "MIT",
+  "keywords": [
+    "claw",
+    "openclaw",
+    "codex",
+    "harness",
+    "planning",
+    "truth",
+    "adr"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Claw Kit",
+    "shortDescription": "Prompt-driven .claw harness with compact workflowGuidance and delegated deposition subagents.",
+    "longDescription": "Use Claw Kit to recover .claw context from the current project, starting with using-claw-kit as the single main-agent workflow. Search existing project context with claw search when useful, then bind task scope through plan write and follow compact workflowGuidance from claw plan commands to drive planning, execution, truth, and ADR workflows. Truth deposition and ADR deposition should run as narrow reusable specialist subagents so the main agent stays focused on coordination and execution.",
+    "developerName": "chanyuenpang",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Start with using-claw-kit, then tell me the right .claw task and plan flow to use from claw workflowGuidance.",
+      "Start with using-claw-kit, then create a new .claw task, write the initial plan, and follow the returned workflowGuidance.",
+      "Start with using-claw-kit, then continue this .claw task, read workflowGuidance from claw plan commands, and route truth or ADR deposition correctly."
+    ],
+    "websiteURL": "https://github.com/chanyuenpang/claw-kit",
+    "privacyPolicyURL": "https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement",
+    "termsOfServiceURL": "https://docs.github.com/en/site-policy/github-terms/github-terms-of-service",
+    "brandColor": "#0F766E"
+  }
+}

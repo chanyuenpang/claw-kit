@@ -1,15 +1,17 @@
 {
   "name": "claw-kit",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "private": true,
-  "type": "module",
-  "bin": {
-    "claw": "./dist/cli.js"
-  },
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "check": "tsc -p tsconfig.json --noEmit",
-    "start": "node ./dist/cli.js"
+    "build": "npm run build -w @claw-kit/core && npm run build -w @claw-kit/cli && npm run build -w @claw-kit/openclaw-adapter && npm run build -w @claw-kit/codex-adapter",
+    "check": "npm run build -w @claw-kit/core && npm run check -w @claw-kit/cli && npm run check -w @claw-kit/openclaw-adapter && npm run check -w @claw-kit/codex-adapter",
+    "install:local-cli": "npm run build && npm link .\\packages\\cli",
+    "uninstall:local-cli": "npm unlink -g @claw-kit/cli",
+    "test": "npm run build -w @claw-kit/core && npm run build -w @claw-kit/cli && npm run test -w @claw-kit/core && npm run test -w @claw-kit/cli",
+    "start": "node ./packages/cli/dist/cli.js"
   },
   "devDependencies": {
     "@types/node": "^22.15.30",

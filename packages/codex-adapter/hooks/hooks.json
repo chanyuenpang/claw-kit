@@ -1,0 +1,54 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claw hook SessionStart",
+            "timeout": 10,
+            "statusMessage": "Claw Kit hook: SessionStart"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claw hook UserPromptSubmit",
+            "timeout": 10,
+            "statusMessage": "Claw Kit hook: UserPromptSubmit"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claw hook Stop",
+            "timeout": 10,
+            "statusMessage": "Claw Kit hook: Stop"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "manual|auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claw hook PreCompact",
+            "timeout": 10,
+            "statusMessage": "Claw Kit hook: PreCompact"
+          }
+        ]
+      }
+    ]
+  }
+}
