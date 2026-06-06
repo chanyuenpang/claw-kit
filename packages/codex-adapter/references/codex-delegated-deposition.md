@@ -4,7 +4,7 @@ Use this note when coordinating completion work in the Codex adapter.
 
 ## Core rule
 
-The main agent should not spend its primary context window performing plan review, truth deposition, or ADR deposition inline when delegation is available.
+The main agent should not spend its primary context window performing truth deposition or ADR deposition inline when delegation is available.
 
 Treat these as delegated specialist workflows:
 

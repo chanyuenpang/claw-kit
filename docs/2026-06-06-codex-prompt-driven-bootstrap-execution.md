@@ -27,14 +27,14 @@ The practical result is:
   - tells the agent to run `claw context` first
   - tells the agent to lead with harness state instead of a generic greeting
 
-- `packages/codex-adapter/skills/master-workflow/SKILL.md`
+- `packages/codex-adapter/skills/using-claw-kit/SKILL.md`
   - now defines the prompt-driven replacement for hook behavior
   - routes startup into planning, execution, or truth/ADR deposition paths
 
 ### Supporting workflow skills
 
 - `packages/codex-adapter/skills/plan-workflow/SKILL.md`
-- `packages/codex-adapter/skills/memory-workflow/SKILL.md`
+- `packages/codex-adapter/skills/search-workflow/SKILL.md`
 - `packages/codex-adapter/skills/truth-workflow/SKILL.md`
 
 These now all explicitly start by resolving `claw context`.

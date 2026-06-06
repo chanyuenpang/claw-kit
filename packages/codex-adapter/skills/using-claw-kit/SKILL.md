@@ -7,7 +7,7 @@ description: Use first whenever the @claw-kit plugin is invoked in a Codex threa
 
 Use this skill first whenever the `@claw-kit` plugin is invoked.
 
-This is the main-agent workflow skill. The main agent should be able to run the normal `.claw` flow from this skill plus CLI `workflowGuidance` without separately loading `bootstrap`, `master-workflow`, `plan-workflow`, or `truth-workflow`.
+This is the main-agent workflow skill. The main agent should be able to run the normal `.claw` flow from this skill plus CLI `workflowGuidance` without depending on any legacy entry skill.
 
 ## First action
 

@@ -102,7 +102,7 @@ Core:
 Adapter:
 
 - OpenClaw-specific change-summary requirements for Feishu cards
-- OpenClaw-specific plan review follow-up dispatch
+- OpenClaw-specific requirements-exit follow-up dispatch
 - OpenClaw-specific completion side effects
 
 Why:

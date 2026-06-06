@@ -7,7 +7,7 @@ Use this note when checking whether `@claw-kit` starts the right way in a fresh 
 When the plugin is invoked in a `.claw` project:
 
 1. Codex should prefer `using-claw-kit`.
-2. `using-claw-kit` should route into `claw-kit:bootstrap`.
+2. `using-claw-kit` should recover `.claw` context directly without relying on a legacy bootstrap alias.
 3. The first meaningful assistant message should mention recovered `.claw` state rather than a generic greeting.
 
 ## Good signs

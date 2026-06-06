@@ -4,7 +4,7 @@ export * from "./errors.js";
 export * from "./init.js";
 export * from "./memory.js";
 export * from "./plan-events.js";
-export * from "./plan-review.js";
+export * from "./requirements-gate.js";
 export * from "./plan.js";
 export * from "./plan-view.js";
 export * from "./switch-task.js";

@@ -9,7 +9,7 @@ import {
   REQUIREMENTS_INSTRUCTION,
   REQUIREMENTS_NEXT_ACTION,
   isProcessStatus,
-} from "./plan-review.js";
+} from "./requirements-gate.js";
 import { buildPlanViewModel } from "./plan-view.js";
 import { ensureInsideDir, normalizePlanFile, slugFromFilePath } from "./paths.js";
 import type {
