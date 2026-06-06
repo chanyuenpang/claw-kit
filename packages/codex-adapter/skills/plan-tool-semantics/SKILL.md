@@ -52,6 +52,37 @@ Important:
 
 - do not use task memory as the main place for fresh task context
 - use the plan's structured fields instead
+- write the plan as a decision memo, not a raw action list
+
+Quality bar for a newly written plan:
+
+- the plan should make the current round goal explicit
+- the plan should make scope boundaries explicit
+- the plan should make stage ordering explicit when the work is non-trivial
+- the plan should make round-complete conditions testable
+- the plan should make verification visible instead of implying it
+
+In practice, a good plan answers:
+
+- what this round is trying to resolve
+- why the work is split this way
+- what is deliberately out of scope
+- what must happen first versus later
+- what observable condition means this round is complete
+
+Preferred task shape when complexity warrants it:
+
+- research or audit
+- decision
+- implementation
+- verification
+- closure
+
+Try to avoid mixed tasks that hide state, such as:
+
+- investigating and implementing in the same task
+- implementing and validating in the same task when execution risk is real
+- using a broad task title whose completion cannot be judged
 
 ## `claw plan edit`
 
@@ -140,6 +171,14 @@ Prefer these fields as the main task-level working memory:
 - `keyDecisions`
   - durable implementation or architecture decisions already present in the plan
 
+Field intent:
+
+- `references`
+  - supporting files, evidence, search hits, investigation anchors, and task-specific materials that should stay visible to later agents
+- `keyDecisions`
+  - durable decisions that affect implementation shape, architecture, workflow, or follow-on work
+  - do not fill this with tentative ideas or unresolved options
+
 Task `memory.md` remains compatibility storage, not the preferred new write path for active task context.
 
 ## Subplans
@@ -158,7 +197,7 @@ When using the plan tools in Codex:
 
 1. Resolve the project from `cwd`.
 2. Use `plan write` to create or bind task scope.
-3. Use `plan review` semantics before leaving requirements.
+3. Before leaving requirements, refine the plan until it has clear goal, scope, task atomicity, and verification coverage.
 4. Use `plan edit` for lifecycle and structured context mutation.
 5. Use `switch-task` only when intentionally returning to historical work.
 
@@ -167,7 +206,11 @@ When using the plan tools in Codex:
 Do not do these:
 
 - treat task memory as the primary fresh task-context store
+- start writing action steps before the round goal and boundary are clear
 - create an implicit extra scope outside `.claw/tasks/<task>`
+- write a plan that has no explicit verification step when the work has execution risk
+- write completion as a vague outcome such as "fix everything" or "clean up the system"
+- fill `keyDecisions` with speculation instead of durable decisions
 - set `prepare.review` directly as if it were a normal public status
 - use `switch-task` as the default way to start all new work
 - skip `retrospective.summary` when moving to `end.completed`
