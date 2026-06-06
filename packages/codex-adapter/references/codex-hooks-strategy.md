@@ -4,6 +4,8 @@
 
 `claw-kit` does not depend on Codex hooks for correctness.
 
+Hook registration has been removed from the active adapter. This note remains as historical design context only.
+
 The core workflow must still work when hooks do not fire. Hooks are treated as an enhancement layer for:
 
 - lightweight bootstrap nudges
@@ -16,9 +18,8 @@ Recent evidence suggests plugin-level hooks may execute in some Codex builds, bu
 
 ## Testing strategy
 
-Use the local hook lab in this adapter:
+The previous local hook lab used:
 
-- `../../hooks/hooks.json`
 - `../../scripts/log-hook-event.mjs`
 - `../../references/codex-hook-lab.md`
 

@@ -4,9 +4,10 @@
 
 Determine which plugin-level Codex hooks actually fire in this runtime before we design any production automation on top of them.
 
-## Files
+This document is historical. Active hook registration has been removed from `claw-kit`.
 
-- `../../hooks/hooks.json`
+## Files used during the experiment
+
 - `../../scripts/log-hook-event.mjs`
 - log output: `../../.hook-lab/events.jsonl`
 
