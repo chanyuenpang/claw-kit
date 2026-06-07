@@ -2,6 +2,8 @@ export type ProjectConfig = {
   id?: string;
   name?: string;
   maxTasksToKeep?: number;
+  externalTruthSkill?: string | null;
+  externalAdrSkill?: string | null;
   contextPaths?: string[];
   memory?: {
     externalDocPaths?: string[];
@@ -123,6 +125,8 @@ export type WorkflowGuidanceSubagentName = "truth-writer" | "adr-writer";
 
 export type WorkflowGuidanceSubagent = {
   name: WorkflowGuidanceSubagentName;
+  skill: string;
+  model: "gpt-5.4-mini";
   waitForCompletion: boolean;
   preferReuseSameTypeInThread: true;
   inputContract: string;

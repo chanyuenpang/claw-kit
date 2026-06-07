@@ -8,5 +8,7 @@
   },
   "gitnexus": {
     "enabled": false
-  }
+  },
+  "externalTruthSkill": null,
+  "externalAdrSkill": null
 }

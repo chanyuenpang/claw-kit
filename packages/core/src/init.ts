@@ -9,6 +9,8 @@ export type InitProjectInput = {
   projectId?: string;
   projectName?: string;
   maxTasksToKeep?: number;
+  externalTruthSkill?: string | null;
+  externalAdrSkill?: string | null;
   contextPaths?: string[];
   externalDocPaths?: string[];
   gitnexusEnabled?: boolean;
@@ -50,6 +52,8 @@ export function initProject(input: InitProjectInput): InitProjectResult {
     id: projectId,
     name: projectName,
     maxTasksToKeep,
+    externalTruthSkill: normalizeOptionalSkill(input.externalTruthSkill),
+    externalAdrSkill: normalizeOptionalSkill(input.externalAdrSkill),
     contextPaths: [...(input.contextPaths ?? [])],
     memory: {
       externalDocPaths: [...(input.externalDocPaths ?? [])],
@@ -105,6 +109,14 @@ function validateMaxTasksToKeep(value: number, projectRoot: string): void {
       value,
     });
   }
+}
+
+function normalizeOptionalSkill(value: string | null | undefined): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
 }
 
 function ensureDir(dirPath: string, createdPaths: string[]): void {

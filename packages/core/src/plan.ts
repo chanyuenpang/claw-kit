@@ -135,6 +135,7 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
       taskName,
       planFile,
       plan,
+      projectConfig: project.projectConfig,
     }),
     planView: buildPlanViewModel({
       taskName,
@@ -289,6 +290,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
       taskName: task.taskName,
       planFile,
       plan: next,
+      projectConfig: task.project.projectConfig,
       previousStatus,
       completionHooks,
       changedTaskIds,

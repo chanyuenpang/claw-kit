@@ -107,7 +107,19 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   };
 
   const initResult = runClaw(
-    ["init", "--name", "CLI E2E", "--gitnexus", "true", "--ext-path", "docs/"],
+    [
+      "init",
+      "--name",
+      "CLI E2E",
+      "--gitnexus",
+      "true",
+      "--ext-path",
+      "docs/",
+      "--external-truth-skill",
+      "external-truth-writer",
+      "--external-adr-skill",
+      "external-adr-writer",
+    ],
     root,
     env,
   );
@@ -160,6 +172,8 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   assert.equal(taskDone.stage, "done");
   const truthDelegate = ((taskDone.delegateSubagents as JsonRecord[])[0] ?? {});
   assert.equal(truthDelegate.name, "truth-writer");
+  assert.equal(truthDelegate.skill, "external-truth-writer");
+  assert.equal(truthDelegate.model, "gpt-5.4-mini");
   assert.equal(truthDelegate.waitForCompletion, false);
   assert.equal(truthDelegate.preferReuseSameTypeInThread, true);
   assert.equal(truthDelegate.closePolicy, "keep_open_for_reuse");
@@ -188,6 +202,8 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   const gitnexus = completionRefresh.gitnexus as JsonRecord;
   const adrDelegate = ((doneResult.delegateSubagents as JsonRecord[])[0] ?? {});
   assert.equal(adrDelegate.name, "adr-writer");
+  assert.equal(adrDelegate.skill, "external-adr-writer");
+  assert.equal(adrDelegate.model, "gpt-5.4-mini");
   assert.equal(adrDelegate.waitForCompletion, false);
   assert.equal(adrDelegate.preferReuseSameTypeInThread, true);
   assert.equal(adrDelegate.closePolicy, "keep_open_for_reuse");
@@ -211,6 +227,8 @@ test("cli init writes maxTasksToKeep into project.json", () => {
     fs.readFileSync(path.join(root, ".claw", "project.json"), "utf-8"),
   ) as JsonRecord;
   assert.equal(projectConfig.maxTasksToKeep, 12);
+  assert.equal(projectConfig.externalTruthSkill, null);
+  assert.equal(projectConfig.externalAdrSkill, null);
 });
 
 test("cli init writes default maxTasksToKeep into project.json", () => {
@@ -222,6 +240,8 @@ test("cli init writes default maxTasksToKeep into project.json", () => {
     fs.readFileSync(path.join(root, ".claw", "project.json"), "utf-8"),
   ) as JsonRecord;
   assert.equal(projectConfig.maxTasksToKeep, 99);
+  assert.equal(projectConfig.externalTruthSkill, null);
+  assert.equal(projectConfig.externalAdrSkill, null);
 });
 
 test("cli context includes protocolCheck for existing .claw projects", () => {
@@ -272,6 +292,8 @@ test("cli context auto-corrects malformed existing .claw state", () => {
   assert.ok(Array.isArray(bootstrap.fixedPaths));
   assert.equal(protocolCheck.ok, true);
   assert.equal(projectConfig.maxTasksToKeep, 99);
+  assert.equal(projectConfig.externalTruthSkill, null);
+  assert.equal(projectConfig.externalAdrSkill, null);
   assert.deepEqual(projectConfig.memory, { externalDocPaths: [] });
 });
 
@@ -304,6 +326,8 @@ test("cli check auto-corrects project.json into explicit protocol fields", () =>
   assert.equal(projectConfig.id, "broken-project");
   assert.equal(projectConfig.name, "Broken Project");
   assert.equal(projectConfig.maxTasksToKeep, 99);
+  assert.equal(projectConfig.externalTruthSkill, null);
+  assert.equal(projectConfig.externalAdrSkill, null);
   assert.deepEqual(projectConfig.contextPaths, []);
   assert.deepEqual(projectConfig.memory, { externalDocPaths: [] });
   assert.deepEqual(projectConfig.gitnexus, { enabled: false });

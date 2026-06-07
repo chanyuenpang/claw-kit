@@ -1,6 +1,6 @@
 {
   "name": "@claw-kit/openclaw-adapter",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "private": true,
   "type": "module",
   "types": "./dist/index.d.ts",

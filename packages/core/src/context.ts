@@ -156,6 +156,8 @@ function normalizeProjectConfig(projectConfig: ProjectConfig): ProjectConfig {
       Number.isInteger(projectConfig.maxTasksToKeep) && (projectConfig.maxTasksToKeep as number) >= 1
         ? projectConfig.maxTasksToKeep
         : 99,
+    externalTruthSkill: normalizeOptionalSkill(projectConfig.externalTruthSkill),
+    externalAdrSkill: normalizeOptionalSkill(projectConfig.externalAdrSkill),
     contextPaths: [...(projectConfig.contextPaths ?? [])],
     memory: {
       externalDocPaths: [...(projectConfig.memory?.externalDocPaths ?? [])],
@@ -178,4 +180,12 @@ function deriveProjectId(projectRoot: string, projectConfig: ProjectConfig | nul
     }
   }
   throw new ClawError("PROJECT_ROOT_NOT_FOUND", "Unable to derive a project id.", { projectRoot });
+}
+
+function normalizeOptionalSkill(value: string | null | undefined): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
 }

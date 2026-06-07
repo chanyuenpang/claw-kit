@@ -39,6 +39,8 @@ Report the recovered harness state before normal conversation:
 - current task and active plan, when present
 - current plan status
 - relevant `.claw/project.json` behavior:
+  - `externalTruthSkill`
+  - `externalAdrSkill`
   - `memory.externalDocPaths`
   - `gitnexus.enabled`
 
@@ -95,8 +97,8 @@ When `workflowGuidance.delegateSubagents` is present:
 - Do not bypass writer specialists by writing canonical truth or ADR content inline from the main agent.
 - Do not add a separate permission gate unless the user explicitly disables delegation.
 - Dispatch specialist writers as `worker` subagents.
-- Use `gpt-5.4-mini` for writer specialists by default.
-- Attach the corresponding writer skill explicitly when dispatching, such as `claw-kit:truth-writer` or `claw-kit:adr-writer`.
+- Use the `model` value from `workflowGuidance.delegateSubagents[*]`. The built-in writer contract sets this to `gpt-5.4-mini`.
+- Attach the exact writer skill from `workflowGuidance.delegateSubagents[*].skill` when dispatching.
 - Reuse an existing same-type specialist.
 - Respect `waitForCompletion` and `closePolicy`.
 - Do not claim truth or ADR deposition happened unless the corresponding subagent was actually spawned.

@@ -14,8 +14,8 @@ When the current thread already has a suitable same-type specialist subagent, re
 For deposition specialists, the default dispatch shape is:
 
 - `agent_type: "worker"`
-- `model: "gpt-5.4-mini"`
-- include the corresponding `skill` item explicitly
+- `model` from `delegateSubagents[*].model`
+- include the exact `delegateSubagents[*].skill` item explicitly
 - include only the narrow task bundle needed by that specialist
 
 For investigation specialists:
@@ -63,7 +63,7 @@ Keep subagent bundles narrow. Do not dump the whole main-session context.
 
 Send:
 
-- the `claw-kit:truth-writer` skill item
+- the skill item named by `delegateSubagents[*].skill`
 - the completed subagent's task report, or an equivalent completed subtask report
 
 Expected behavior:
@@ -76,7 +76,7 @@ Expected behavior:
 
 Send:
 
-- the `claw-kit:adr-writer` skill item
+- the skill item named by `delegateSubagents[*].skill`
 - completed plan path
 - completed plan JSON
 

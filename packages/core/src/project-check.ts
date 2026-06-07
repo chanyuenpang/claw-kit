@@ -111,6 +111,8 @@ function normalizeProjectConfig(raw: unknown, projectRoot: string): ProjectConfi
       Number.isInteger(maxTasksToKeep) && (maxTasksToKeep as number) >= 1
         ? (maxTasksToKeep as number)
         : DEFAULT_MAX_TASKS_TO_KEEP,
+    externalTruthSkill: normalizeOptionalSkill(source?.externalTruthSkill),
+    externalAdrSkill: normalizeOptionalSkill(source?.externalAdrSkill),
     contextPaths: normalizeStringArray(source?.contextPaths),
     memory: {
       ...sourceMemory,
@@ -161,6 +163,8 @@ function validateProjectConfig(raw: unknown, issues: ProjectProtocolIssue[]): vo
   requireString(config, "id", issues);
   requireString(config, "name", issues);
   requireIntegerAtLeast(config, "maxTasksToKeep", 1, issues);
+  requireNullableString(config, "externalTruthSkill", issues);
+  requireNullableString(config, "externalAdrSkill", issues);
   requireStringArray(config, "contextPaths", issues);
 
   const memory = requireObject(config, "memory", issues);
@@ -186,6 +190,22 @@ function requireString(
   }
   if (typeof source[key] !== "string" || !String(source[key]).trim()) {
     issues.push({ path: label, message: "Field must be a non-empty string." });
+  }
+}
+
+function requireNullableString(
+  source: Record<string, unknown>,
+  key: string,
+  issues: ProjectProtocolIssue[],
+  label = key,
+): void {
+  if (!(key in source)) {
+    issues.push({ path: label, message: "Field is required and must be explicitly present." });
+    return;
+  }
+  const value = source[key];
+  if (value !== null && typeof value !== "string") {
+    issues.push({ path: label, message: "Field must be a string or null." });
   }
 }
 
@@ -275,4 +295,12 @@ function readNonEmptyString(value: unknown): string | undefined {
   }
   const trimmed = value.trim();
   return trimmed ? trimmed : undefined;
+}
+
+function normalizeOptionalSkill(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
 }

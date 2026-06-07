@@ -2,15 +2,18 @@ import path from "node:path";
 import type {
   PlanCompletionHooks,
   PlanDocument,
+  ProjectConfig,
   PlanTask,
   PlanStatus,
   WorkflowGuidance,
   WorkflowGuidanceSubagent,
 } from "./types.js";
 
-function truthWriterDelegate(): WorkflowGuidanceSubagent {
+function truthWriterDelegate(projectConfig: ProjectConfig | null): WorkflowGuidanceSubagent {
   return {
     name: "truth-writer",
+    skill: normalizeWriterSkill(projectConfig?.externalTruthSkill, "claw-kit:truth-writer"),
+    model: "gpt-5.4-mini",
     waitForCompletion: false,
     preferReuseSameTypeInThread: true,
     inputContract: "completed subtask report",
@@ -19,9 +22,11 @@ function truthWriterDelegate(): WorkflowGuidanceSubagent {
   };
 }
 
-function adrWriterDelegate(): WorkflowGuidanceSubagent {
+function adrWriterDelegate(projectConfig: ProjectConfig | null): WorkflowGuidanceSubagent {
   return {
     name: "adr-writer",
+    skill: normalizeWriterSkill(projectConfig?.externalAdrSkill, "claw-kit:adr-writer"),
+    model: "gpt-5.4-mini",
     waitForCompletion: false,
     preferReuseSameTypeInThread: true,
     inputContract: "completed plan.json only",
@@ -46,11 +51,12 @@ export function buildPlanWorkflowGuidance(params: {
   taskName: string;
   planFile: string;
   plan: PlanDocument;
+  projectConfig?: ProjectConfig | null;
   previousStatus?: PlanStatus;
   completionHooks?: PlanCompletionHooks;
   changedTaskIds?: number[];
 }): WorkflowGuidance {
-  const { taskName, planFile, plan, previousStatus, completionHooks, changedTaskIds } = params;
+  const { taskName, planFile, plan, projectConfig = null, previousStatus, completionHooks, changedTaskIds } = params;
   const scopedPlan = planFile === "plan.json" ? "" : ` --plan ${planFile}`;
   const editBase = `claw plan edit --task ${taskName}${scopedPlan}`;
   const doneBase = `claw plan done --task ${taskName}${scopedPlan}`;
@@ -159,7 +165,7 @@ export function buildPlanWorkflowGuidance(params: {
           recommendedCommands: [
             `${doneBase} --summary \"<retrospective summary>\"`,
           ],
-          delegateSubagents: [truthWriterDelegate()],
+          delegateSubagents: [truthWriterDelegate(projectConfig)],
         };
       }
 
@@ -231,12 +237,12 @@ export function buildPlanWorkflowGuidance(params: {
         nextStep:
           "Dispatch `adr-writer` with the completed `plan.json`.",
         notes: [
-          ...(completionHooks?.truthCandidate.suggestedTruthPaths.length
+        ...(completionHooks?.truthCandidate.suggestedTruthPaths.length
             ? [`Suggested truth targets: ${completionHooks.truthCandidate.suggestedTruthPaths.join(", ")}`]
             : []),
           "Use completed `plan.json` as the ADR bundle.",
         ],
-        delegateSubagents: [adrWriterDelegate()],
+        delegateSubagents: [adrWriterDelegate(projectConfig)],
       };
     case "end.closed":
     case "end.leave":
@@ -248,4 +254,12 @@ export function buildPlanWorkflowGuidance(params: {
         recommendedCommands: [`${editBase} --plan-status prepare.requirements`],
       };
   }
+}
+
+function normalizeWriterSkill(value: string | null | undefined, fallback: string): string {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+  const trimmed = value.trim();
+  return trimmed || fallback;
 }

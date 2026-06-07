@@ -46,6 +46,8 @@ test("initProject creates a minimal .claw project scaffold", () => {
     cwd: root,
     projectName: "Demo Project",
     maxTasksToKeep: 20,
+    externalTruthSkill: "external-truth-writer",
+    externalAdrSkill: "external-adr-writer",
     contextPaths: ["docs/project-guide.md"],
     externalDocPaths: ["docs/", "README.md"],
     gitnexusEnabled: true,
@@ -56,6 +58,8 @@ test("initProject creates a minimal .claw project scaffold", () => {
     id: string;
     name: string;
     maxTasksToKeep: number;
+    externalTruthSkill: string | null;
+    externalAdrSkill: string | null;
     contextPaths: string[];
     memory: { externalDocPaths: string[] };
     gitnexus: { enabled: boolean };
@@ -70,6 +74,8 @@ test("initProject creates a minimal .claw project scaffold", () => {
     id: "demo-project",
     name: "Demo Project",
     maxTasksToKeep: 20,
+    externalTruthSkill: "external-truth-writer",
+    externalAdrSkill: "external-adr-writer",
     contextPaths: ["docs/project-guide.md"],
     memory: {
       externalDocPaths: ["docs/", "README.md"],
@@ -267,6 +273,8 @@ test("plan edit can move from requirements to process.active without a separate 
   const truthDelegate = result.workflowGuidance.delegateSubagents?.[0];
   assert.ok(truthDelegate);
   assert.equal(truthDelegate.name, "truth-writer");
+  assert.equal(truthDelegate.skill, "claw-kit:truth-writer");
+  assert.equal(truthDelegate.model, "gpt-5.4-mini");
   assert.equal(truthDelegate.waitForCompletion, false);
   assert.equal(truthDelegate.preferReuseSameTypeInThread, true);
   assert.equal(truthDelegate.closePolicy, "keep_open_for_reuse");
@@ -423,6 +431,59 @@ test("memory search defaults to project scope and task scope prioritizes active 
   assert.equal(taskMemory.sources[0]?.kind, "active_plan");
 });
 
+test("workflow guidance uses external writer skills from project config", async () => {
+  const root = createFixture("external-writer-skill-guidance");
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify(
+      {
+        id: "external-writer-skill-guidance",
+        name: "External Writer Guidance",
+        maxTasksToKeep: 99,
+        externalTruthSkill: "external-truth-writer",
+        externalAdrSkill: "external-adr-writer",
+        contextPaths: [],
+        memory: { externalDocPaths: [] },
+        gitnexus: { enabled: false },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Verify external writer routing",
+    content: {
+      title: "Demo task",
+      status: "process.active",
+      goal: { text: "Verify external writer routing" },
+      tasks: [{ id: 1, title: "Complete the task", status: "pending" }],
+    },
+  });
+
+  const taskDone = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    taskId: 1,
+    taskStatus: "done",
+  });
+  assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.skill, "external-truth-writer");
+  assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.model, "gpt-5.4-mini");
+
+  const completed = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    planStatus: "end.completed",
+    patch: { retrospective: { summary: "Done." } },
+  });
+  assert.equal(completed.workflowGuidance.delegateSubagents?.[0]?.skill, "external-adr-writer");
+  assert.equal(completed.workflowGuidance.delegateSubagents?.[0]?.model, "gpt-5.4-mini");
+});
+
 test("truth ingest writes only under .claw/truth", () => {
   const root = createFixture("truth-ingest");
 
@@ -475,6 +536,8 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
     id: string;
     name: string;
     maxTasksToKeep: number;
+    externalTruthSkill: string | null;
+    externalAdrSkill: string | null;
     contextPaths: string[];
     memory: { externalDocPaths: string[] };
     gitnexus: { enabled: boolean };
@@ -486,6 +549,8 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
   assert.equal(projectConfig.id, "fix-me");
   assert.equal(projectConfig.name, "Fix Me");
   assert.equal(projectConfig.maxTasksToKeep, 99);
+  assert.equal(projectConfig.externalTruthSkill, null);
+  assert.equal(projectConfig.externalAdrSkill, null);
   assert.deepEqual(projectConfig.contextPaths, []);
   assert.deepEqual(projectConfig.memory.externalDocPaths, ["docs/"]);
   assert.equal(projectConfig.gitnexus.enabled, false);
