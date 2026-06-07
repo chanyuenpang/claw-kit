@@ -52,6 +52,7 @@ const LEGACY_PLAN_STATUS_MAP: Record<LegacyPlanStatus, PlanStatus> = {
 };
 
 const PLAN_TASK_STATUSES: PlanTaskStatus[] = ["pending", "in_progress", "subagent_running", "done", "blocked"];
+const TRUTH_FOLLOWUP_TASK_TITLE = "Update truth (if got valuable contexts)";
 
 export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult & { events: PlanEvent[] }> {
   const project = resolveProjectContext(input.cwd);
@@ -69,6 +70,7 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
     input.content ?? createSeedPlan(taskName, input.title, input.goalText, effectiveStatus),
     effectiveStatus,
   );
+  plan.tasks = withTruthFollowupTasks(plan.tasks);
 
   let parentPlanPath: string | undefined;
   if (input.parentTaskId !== undefined) {
@@ -180,7 +182,8 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
       next.status = "prepare.requirements";
     }
     const currentIds = new Set(next.tasks.map((taskItem) => taskItem.id));
-    for (const taskItem of input.appendTasks) {
+    const expandedAppendTasks = withTruthFollowupTasks(input.appendTasks);
+    for (const taskItem of expandedAppendTasks) {
       if (currentIds.has(taskItem.id)) {
         throw new ClawError("PROJECT_CONFIG_INVALID", `Task id ${taskItem.id} already exists in plan.`);
       }
@@ -357,6 +360,43 @@ function normalizePlanDocument(plan: PlanDocument, fallbackStatus?: PlanStatus):
 function normalizePlanTask(task: PlanTask): PlanTask {
   validatePlanTask(task);
   return task;
+}
+
+function withTruthFollowupTasks(tasks: PlanTask[]): PlanTask[] {
+  const result: PlanTask[] = [];
+  let nextGeneratedId = Math.max(0, ...tasks.map((task) => task.id)) + 1;
+
+  for (let index = 0; index < tasks.length; index += 1) {
+    const task = normalizePlanTask(tasks[index]!);
+    result.push(task);
+
+    if (!shouldAutoAppendTruthFollowup(task)) {
+      continue;
+    }
+
+    const nextTask = tasks[index + 1];
+    if (nextTask && isTruthFollowupTask(nextTask)) {
+      continue;
+    }
+
+    result.push({
+      id: nextGeneratedId,
+      title: TRUTH_FOLLOWUP_TASK_TITLE,
+      detail: "Capture durable truth from this task if it produced valuable context.",
+      status: "pending",
+    });
+    nextGeneratedId += 1;
+  }
+
+  return result;
+}
+
+function shouldAutoAppendTruthFollowup(task: PlanTask): boolean {
+  return !isTruthFollowupTask(task);
+}
+
+function isTruthFollowupTask(task: PlanTask): boolean {
+  return task.title.trim().toLowerCase() === TRUTH_FOLLOWUP_TASK_TITLE.toLowerCase();
 }
 
 function validatePlanDocument(plan: PlanDocument): void {

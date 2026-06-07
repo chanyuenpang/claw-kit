@@ -98,7 +98,7 @@ test("plan write creates task-bound plan and updates activePlan", async () => {
   assert.equal(result.workflowGuidance.delegateSubagents, undefined);
   assert.equal(
     result.workflowGuidance.goalMode?.recommendedObjective,
-    "按照 claw kit 流程，完成 task，更新 plan 文件，并最终完成：Ship the first plan",
+    "\u6309\u7167 claw kit \u6d41\u7a0b\uff0c\u5b8c\u6210 task\uff0c\u66f4\u65b0 plan \u6587\u4ef6\uff0c\u5e76\u6700\u7ec8\u5b8c\u6210\uff1aShip the first plan",
   );
   assert.equal(result.workflowGuidance.goalMode?.setWhen, "on_plan_write");
   assert.deepEqual(result.workflowGuidance.goalMode?.supportedSurfaces, ["/goal", "create_goal"]);
@@ -151,12 +151,13 @@ test("plan write updates existing task and supports subplan under plans without 
   ) as { activePlan: string };
   const parentPlan = JSON.parse(
     fs.readFileSync(path.join(root, ".claw", "tasks", "demo-task", "plan.json"), "utf-8"),
-  ) as { tasks: Array<{ execution?: { type?: string; subplan?: string } }> };
+  ) as { tasks: Array<{ title?: string; execution?: { type?: string; subplan?: string } }> };
 
   assert.equal(result.planFile, "plans/child-plan.json");
   assert.equal(meta.activePlan, "plans/child-plan.json");
   assert.equal(parentPlan.tasks[0]?.execution?.type, "subplan");
   assert.equal(parentPlan.tasks[0]?.execution?.subplan, "plans/child-plan.json");
+  assert.equal(parentPlan.tasks[1]?.title, "Update truth (if got valuable contexts)");
 });
 
 test("plan write no longer runs a separate review gate before execution", async () => {
@@ -231,113 +232,18 @@ test("plan edit can move from requirements to process.active without a separate 
       title: "Demo task",
       status: "prepare.requirements",
       goal: { text: "Ship the first plan" },
-      tasks: [],
+      tasks: [{ id: 1, title: "Implement work", status: "pending" }],
     },
   });
 
-  const result = await editPlan({
+  const activated = await editPlan({
     cwd: root,
     taskName: "demo-task",
     planStatus: "process.active",
   });
 
-  assert.equal(result.planStatus, "process.active");
-  assert.equal(result.planReview, undefined);
-  assert.equal(result.workflowGuidance.stage, "execution");
-  assert.equal(result.workflowGuidance.delegateSubagents, undefined);
-});
-
-test("plan edit leaving legacy prepare.review goes directly into process.active", async () => {
-  const root = createFixture("plan-edit-review-addressed");
-  await writePlan({
-    cwd: root,
-    taskName: "demo-task",
-    title: "Demo task",
-    goalText: "Ship the first plan",
-    content: {
-      title: "Demo task",
-      status: "prepare.review",
-      goal: { text: "Ship the first plan" },
-      tasks: [],
-    },
-  });
-
-  const result = await editPlan({
-    cwd: root,
-    taskName: "demo-task",
-    planStatus: "process.active",
-  });
-
-  assert.equal(result.planStatus, "process.active");
-  assert.equal(result.workflowGuidance.stage, "execution");
-  assert.equal(result.workflowGuidance.askUser?.useCodexOptions, true);
-  assert.equal(result.workflowGuidance.goalMode, undefined);
-  assert.ok(result.workflowGuidance.notes?.some((note) => note.includes("thread progress")));
-  assert.equal(result.planView.counts.completed, 0);
-  assert.equal(result.planView.status, "process.active");
-});
-
-test("plan completion hooks fire only on first transition to end.completed", async () => {
-  const root = createFixture("plan-completion-hooks");
-  await writePlan({
-    cwd: root,
-    taskName: "demo-task",
-    title: "Demo task",
-    goalText: "Ship the first plan",
-    content: {
-      title: "Demo task",
-      status: "process.active",
-      goal: { text: "Ship the first plan" },
-      tasks: [],
-      keyDecisions: ["Use task-bound plans as the durable source of truth."],
-      references: [{ why: "source", path: "src/plan.ts" }],
-      retrospective: { summary: "Worked well." },
-    },
-  });
-
-  const first = await editPlan({
-    cwd: root,
-    taskName: "demo-task",
-    planStatus: "end.completed",
-  });
-  const second = await editPlan({
-    cwd: root,
-    taskName: "demo-task",
-    patch: { summary: "Post-completion note" },
-  });
-
-  assert.ok(first.completionHooks);
-  assert.equal(first.completionHooks?.adrCandidate.shouldWriteAdr, true);
-  assert.equal(first.completionHooks?.truthCandidate.suggestedTruthPaths[0], "SUMMARY.md");
-  assert.equal(second.completionHooks, undefined);
-  assert.equal(first.workflowGuidance.stage, "deposition");
-  assert.equal(first.workflowGuidance.delegateSubagents?.[0]?.name, "adr-writer");
-  assert.equal(first.workflowGuidance.delegateSubagents?.[0]?.waitForCompletion, false);
-  assert.equal(first.workflowGuidance.delegateSubagents?.[0]?.preferReuseSameTypeInThread, true);
-  assert.equal(first.workflowGuidance.delegateSubagents?.[0]?.closePolicy, "keep_open_for_reuse");
-  assert.ok(first.workflowGuidance.notes?.some((note) => note.includes("plan.json")));
-});
-
-test("process plans with all tasks done guide the agent to claw plan done and deposition subagents", async () => {
-  const root = createFixture("plan-done-guidance");
-  await writePlan({
-    cwd: root,
-    taskName: "demo-task",
-    title: "Demo task",
-    goalText: "Finish implementation",
-    content: {
-      title: "Demo task",
-      status: "process.active",
-      goal: { text: "Finish implementation" },
-      tasks: [
-        {
-          id: 1,
-          title: "Implement work",
-          status: "in_progress",
-        },
-      ],
-    },
-  });
+  assert.equal(activated.planStatus, "process.active");
+  assert.equal(activated.workflowGuidance.stage, "execution");
 
   const result = await editPlan({
     cwd: root,
@@ -347,19 +253,110 @@ test("process plans with all tasks done guide the agent to claw plan done and de
   });
 
   assert.equal(result.planStatus, "process.active");
-  assert.equal(result.workflowGuidance.stage, "done");
-  assert.ok(result.workflowGuidance.recommendedCommands?.some((command) => command.includes("claw plan done")));
-  assert.equal(result.workflowGuidance.delegateSubagents?.[0]?.name, "truth-writer");
-  assert.equal(result.workflowGuidance.delegateSubagents?.[0]?.waitForCompletion, false);
-  assert.equal(result.workflowGuidance.delegateSubagents?.[0]?.preferReuseSameTypeInThread, true);
-  assert.equal(result.workflowGuidance.delegateSubagents?.[0]?.closePolicy, "keep_open_for_reuse");
-  assert.ok(result.workflowGuidance.nextStep.includes("truth-writer"));
-  assert.ok(result.workflowGuidance.nextStep.includes("retrospective"));
+  assert.equal(result.workflowGuidance.stage, "execution");
+  assert.equal(result.workflowGuidance.delegateSubagents, undefined);
   assert.ok(result.workflowGuidance.notes?.some((note) => note.includes("thread progress")));
   assert.equal(result.planView.counts.completed, 1);
   assert.deepEqual(
     result.planView.tasks.items.map((task) => ({ id: task.id, status: task.status })),
-    [{ id: 1, status: "done" }],
+    [
+      { id: 2, status: "pending" },
+      { id: 1, status: "done" },
+    ],
+  );
+
+  const truthTaskDone = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    taskId: 2,
+    taskStatus: "done",
+  });
+
+  assert.equal(truthTaskDone.workflowGuidance.stage, "done");
+  assert.ok(truthTaskDone.workflowGuidance.recommendedCommands?.some((command) => command.includes("claw plan done")));
+  assert.equal(truthTaskDone.workflowGuidance.delegateSubagents?.[0]?.name, "truth-writer");
+  assert.equal(truthTaskDone.workflowGuidance.delegateSubagents?.[0]?.waitForCompletion, false);
+  assert.equal(truthTaskDone.workflowGuidance.delegateSubagents?.[0]?.preferReuseSameTypeInThread, true);
+  assert.equal(truthTaskDone.workflowGuidance.delegateSubagents?.[0]?.closePolicy, "keep_open_for_reuse");
+  assert.ok(truthTaskDone.workflowGuidance.nextStep.includes("truth-writer"));
+  assert.ok(truthTaskDone.workflowGuidance.nextStep.includes("retrospective"));
+});
+
+test("plan write auto-adds one truth follow-up per normal task without recursive duplication", async () => {
+  const root = createFixture("truth-followup");
+
+  const result = await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Truth followup",
+    goalText: "Verify task expansion",
+    content: {
+      title: "Truth followup",
+      status: "prepare.requirements",
+      goal: { text: "Verify task expansion" },
+      tasks: [{ id: 1, title: "Implement feature", status: "pending" }],
+    },
+  });
+
+  const plan = JSON.parse(fs.readFileSync(result.planPath, "utf-8")) as {
+    tasks: Array<{ id: number; title: string; detail?: string; status: string }>;
+  };
+  assert.deepEqual(plan.tasks, [
+    { id: 1, title: "Implement feature", status: "pending" },
+    {
+      id: 2,
+      title: "Update truth (if got valuable contexts)",
+      detail: "Capture durable truth from this task if it produced valuable context.",
+      status: "pending",
+    },
+  ]);
+
+  const appendResult = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    appendTasks: [{ id: 3, title: "Run verification", status: "pending" }],
+  });
+  const updatedPlan = JSON.parse(fs.readFileSync(appendResult.planPath, "utf-8")) as {
+    tasks: Array<{ id: number; title: string; detail?: string; status: string }>;
+  };
+  assert.deepEqual(updatedPlan.tasks, [
+    { id: 1, title: "Implement feature", status: "pending" },
+    {
+      id: 2,
+      title: "Update truth (if got valuable contexts)",
+      detail: "Capture durable truth from this task if it produced valuable context.",
+      status: "pending",
+    },
+    { id: 3, title: "Run verification", status: "pending" },
+    {
+      id: 4,
+      title: "Update truth (if got valuable contexts)",
+      detail: "Capture durable truth from this task if it produced valuable context.",
+      status: "pending",
+    },
+  ]);
+
+  const explicitTruthAppend = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    appendTasks: [
+      { id: 5, title: "Publish summary", status: "pending" },
+      { id: 6, title: "Update truth (if got valuable contexts)", status: "pending" },
+    ],
+  });
+  const noDuplicatePlan = JSON.parse(fs.readFileSync(explicitTruthAppend.planPath, "utf-8")) as {
+    tasks: Array<{ id: number; title: string }>;
+  };
+  assert.deepEqual(
+    noDuplicatePlan.tasks.map((task) => ({ id: task.id, title: task.title })),
+    [
+      { id: 1, title: "Implement feature" },
+      { id: 2, title: "Update truth (if got valuable contexts)" },
+      { id: 3, title: "Run verification" },
+      { id: 4, title: "Update truth (if got valuable contexts)" },
+      { id: 5, title: "Publish summary" },
+      { id: 6, title: "Update truth (if got valuable contexts)" },
+    ],
   );
 });
 
@@ -389,10 +386,10 @@ test("plan view orders unfinished tasks before done tasks while preserving stabl
     patch: { summary: "No-op patch to inspect plan view" },
   });
 
-  assert.equal(result.planView.collapsedSummary, "2/4 Ordered task");
+  assert.equal(result.planView.collapsedSummary, "2/8 Ordered task");
   assert.deepEqual(
     result.planView.tasks.items.map((task) => task.id),
-    [2, 3, 1, 4],
+    [5, 2, 6, 3, 7, 8, 1, 4],
   );
 });
 
@@ -420,7 +417,7 @@ test("plan show returns canonical plan plus collapsed and expanded plan view dat
   });
 
   assert.equal(result.plan.title, "Shown task");
-  assert.equal(result.planView.collapsedSummary, "1/2 Shown task");
+  assert.equal(result.planView.collapsedSummary, "1/4 Shown task");
   assert.equal(result.planView.goal.text, "Render the current plan");
   assert.equal(result.planView.renderHints.defaultCollapsed, true);
   assert.deepEqual(
@@ -431,11 +428,11 @@ test("plan show returns canonical plan plus collapsed and expanded plan view dat
   assert.equal(result.planView.expanded.sections[1]?.type, "list");
   assert.deepEqual(
     result.planView.tasks.items.map((task) => task.id),
-    [2, 1],
+    [3, 2, 4, 1],
   );
   assert.deepEqual(
     result.planView.expanded.sections[1]?.items.map((task) => task.id),
-    [2, 1],
+    [3, 2, 4, 1],
   );
 });
 

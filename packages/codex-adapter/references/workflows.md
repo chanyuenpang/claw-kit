@@ -48,3 +48,21 @@ This reference distills the built-in workflow definitions from `OpenClaw-dev`.
 
 - root plans: require user confirmation before `end.completed`
 - subplans: are auto-completable when all tasks are done
+
+## Claw Kit default harness chain
+
+- `prepare.requirements`
+- confirm route
+- create tasks
+- each normal task is paired with an auto-generated `Update truth (if got valuable contexts)` task
+- `process.active`
+- process one task
+- complete its paired truth task
+- dispatch `truth-writer`
+- process next task
+- complete its paired truth task
+- dispatch `truth-writer`
+- continue until all tasks are done
+- complete retrospective
+- `claw plan done`
+- dispatch `adr-writer`

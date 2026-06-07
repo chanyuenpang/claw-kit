@@ -52,6 +52,22 @@ Do not replace it with freeform workflow reasoning unless the command output is 
 
 ## Lifecycle interpretation
 
+- canonical chain
+  - `prepare.requirements`
+  - confirm route
+  - create tasks
+  - each normal task is paired with an auto-generated `Update truth (if got valuable contexts)` task
+  - `process.active`
+  - process one task
+  - complete its paired truth task
+  - dispatch `truth-writer`
+  - process next task
+  - complete its paired truth task
+  - dispatch `truth-writer`
+  - continue until all tasks are done
+  - complete retrospective
+  - `claw plan done`
+  - dispatch `adr-writer`
 - `prepare.requirements`
   - read `goalMode`
   - create the thread goal from `recommendedObjective`
@@ -62,7 +78,8 @@ Do not replace it with freeform workflow reasoning unless the command output is 
 - `process.*` with task completion but open plan
   - read `delegateSubagents`
   - use `tool_search` to locate agent-management tools
-  - dispatch `truth-writer` before plan closure
+  - complete the paired `Update truth (if got valuable contexts)` task before moving to the next normal task
+  - dispatch `truth-writer` from that paired truth task and before plan closure
   - then complete retrospective capture and use `claw plan done`
 - `end.completed`
   - read `delegateSubagents`
