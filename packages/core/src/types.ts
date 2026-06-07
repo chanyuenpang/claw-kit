@@ -134,6 +134,12 @@ export type WorkflowGuidance = {
   stage: "requirements" | "review" | "discussion" | "execution" | "done" | "deposition" | "paused";
   summary: string;
   nextStep: string;
+  nextTask?: {
+    id: number;
+    title: string;
+    status: PlanTaskStatus;
+    detail?: string;
+  };
   notes?: string[];
   recommendedCommands?: string[];
   delegateSubagents?: WorkflowGuidanceSubagent[];

@@ -145,19 +145,20 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
     root,
     env,
   );
-  assert.equal(appendResult.planSummary, "0/2 E2E task");
+  assert.equal(appendResult.planSummary, "0/1 E2E task");
+  assert.deepEqual(appendResult.nextTask, {
+    id: 1,
+    title: "Ship verification",
+    status: "pending",
+  });
 
   const taskDone = runClaw(
     ["plan", "edit", "--task", "e2e-task", "--task-id", "1", "--task-status", "done"],
     root,
     env,
   );
-  assert.equal(taskDone.stage, "execution");
-  assert.equal(taskDone.delegateSubagents, undefined);
-
-  const truthTaskDone = runClaw(["plan", "edit", "--task", "e2e-task", "--task-id", "2", "--task-status", "done"], root, env);
-  assert.equal(truthTaskDone.stage, "done");
-  const truthDelegate = ((truthTaskDone.delegateSubagents as JsonRecord[])[0] ?? {});
+  assert.equal(taskDone.stage, "done");
+  const truthDelegate = ((taskDone.delegateSubagents as JsonRecord[])[0] ?? {});
   assert.equal(truthDelegate.name, "truth-writer");
   assert.equal(truthDelegate.waitForCompletion, false);
   assert.equal(truthDelegate.preferReuseSameTypeInThread, true);
@@ -194,7 +195,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   assert.equal(Number(memory.taskIndexed), 0);
   assert.equal(gitnexus.command, "gitnexus analyze");
   assert.equal(gitnexus.refreshed, true);
-  assert.equal(doneResult.planSummary, "2/2 E2E task");
+  assert.equal(doneResult.planSummary, "1/1 E2E task");
 
   const gitnexusLog = fs.readFileSync(shim.logPath, "utf-8");
   assert.match(gitnexusLog, /analyze --no-ai-context/);

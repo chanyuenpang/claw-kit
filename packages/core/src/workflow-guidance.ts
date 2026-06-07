@@ -2,6 +2,7 @@ import path from "node:path";
 import type {
   PlanCompletionHooks,
   PlanDocument,
+  PlanTask,
   PlanStatus,
   WorkflowGuidance,
   WorkflowGuidanceSubagent,
@@ -33,6 +34,14 @@ function buildGoalModeObjective(planGoal: string): string {
   return `\u6309\u7167 claw kit \u6d41\u7a0b\uff0c\u5b8c\u6210 task\uff0c\u66f4\u65b0 plan \u6587\u4ef6\uff0c\u5e76\u6700\u7ec8\u5b8c\u6210\uff1a${planGoal}`;
 }
 
+function nextUnfinishedTask(plan: PlanDocument): PlanTask | undefined {
+  return plan.tasks.find((task) => task.status !== "done");
+}
+
+function formatNextTask(task: PlanTask): string {
+  return `#${task.id} ${task.title}`;
+}
+
 export function buildPlanWorkflowGuidance(params: {
   taskName: string;
   planFile: string;
@@ -49,6 +58,7 @@ export function buildPlanWorkflowGuidance(params: {
   const allTasksDone = hasTasks && plan.tasks.every((task) => task.status === "done");
   const justEnteredProcess = previousStatus?.startsWith("prepare.") && plan.status.startsWith("process.");
   const justCompletedTasks = (changedTaskIds?.length ?? 0) > 0;
+  const nextTask = nextUnfinishedTask(plan);
 
   switch (plan.status) {
     case "prepare.requirements":
@@ -136,11 +146,11 @@ export function buildPlanWorkflowGuidance(params: {
     case "process.wait":
     case "process.discussing":
       if (allTasksDone) {
-        return {
-          stage: "done",
-          summary: "All plan tasks are done. Do truth deposition, then close the plan.",
-          nextStep:
-            "Dispatch `truth-writer`, complete the retrospective, then close the plan with `claw plan done`.",
+      return {
+        stage: "done",
+        summary: "All plan tasks are done. Do truth deposition, then close the plan.",
+        nextStep:
+          "Dispatch `truth-writer`, complete the retrospective, then close the plan with `claw plan done`.",
         notes: [
           "`all task done` is not ADR completion.",
           "ADR happens after completed `plan.json` exists.",
@@ -160,16 +170,26 @@ export function buildPlanWorkflowGuidance(params: {
           : "Execution is in progress.",
         nextStep:
           justEnteredProcess
-            ? "Confirm the route with the user if needed, then execute and update task status as work progresses."
-            : "Continue execution, update task status with `claw plan edit`, and close with `claw plan done` when work is complete.",
+            ? `Confirm the route with the user if needed, then start with ${nextTask ? formatNextTask(nextTask) : "the next task"} and update task status as work progresses.`
+            : `Continue execution with ${nextTask ? formatNextTask(nextTask) : "the next task"}, update task status with \`claw plan edit\`, and close with \`claw plan done\` when work is complete.`,
+        ...(nextTask
+          ? {
+              nextTask: {
+                id: nextTask.id,
+                title: nextTask.title,
+                status: nextTask.status,
+                ...(nextTask.detail ? { detail: nextTask.detail } : {}),
+              },
+            }
+          : {}),
         notes: [
           "Use delegated specialists for truth and ADR deposition.",
           "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
           "If the host shows thread progress, sync it after this plan edit.",
           ...(justCompletedTasks
             ? [
-                "A task status changed. Re-check remaining tasks.",
-                "If the completed subtask produced reusable knowledge, dispatch `truth-writer`.",
+                "If the completed subtask produced reusable knowledge, dispatch truth-writer.",
+                `Continue with next task: ${nextTask ? `id ${nextTask.id} content ${nextTask.title}` : "id <next> content <next task>"}.`,
               ]
             : []),
         ],

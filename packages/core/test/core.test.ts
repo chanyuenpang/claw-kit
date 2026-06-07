@@ -157,7 +157,6 @@ test("plan write updates existing task and supports subplan under plans without 
   assert.equal(meta.activePlan, "plans/child-plan.json");
   assert.equal(parentPlan.tasks[0]?.execution?.type, "subplan");
   assert.equal(parentPlan.tasks[0]?.execution?.subplan, "plans/child-plan.json");
-  assert.equal(parentPlan.tasks[1]?.title, "Update truth (if got valuable contexts)");
 });
 
 test("plan write no longer runs a separate review gate before execution", async () => {
@@ -244,6 +243,9 @@ test("plan edit can move from requirements to process.active without a separate 
 
   assert.equal(activated.planStatus, "process.active");
   assert.equal(activated.workflowGuidance.stage, "execution");
+  assert.equal(activated.workflowGuidance.nextTask?.id, 1);
+  assert.equal(activated.workflowGuidance.nextTask?.title, "Implement work");
+  assert.ok(activated.workflowGuidance.nextStep.includes("#1 Implement work"));
 
   const result = await editPlan({
     cwd: root,
@@ -253,111 +255,23 @@ test("plan edit can move from requirements to process.active without a separate 
   });
 
   assert.equal(result.planStatus, "process.active");
-  assert.equal(result.workflowGuidance.stage, "execution");
-  assert.equal(result.workflowGuidance.delegateSubagents, undefined);
   assert.ok(result.workflowGuidance.notes?.some((note) => note.includes("thread progress")));
   assert.equal(result.planView.counts.completed, 1);
   assert.deepEqual(
     result.planView.tasks.items.map((task) => ({ id: task.id, status: task.status })),
-    [
-      { id: 2, status: "pending" },
-      { id: 1, status: "done" },
-    ],
+    [{ id: 1, status: "done" }],
   );
 
-  const truthTaskDone = await editPlan({
-    cwd: root,
-    taskName: "demo-task",
-    taskId: 2,
-    taskStatus: "done",
-  });
-
-  assert.equal(truthTaskDone.workflowGuidance.stage, "done");
-  assert.ok(truthTaskDone.workflowGuidance.recommendedCommands?.some((command) => command.includes("claw plan done")));
-  assert.equal(truthTaskDone.workflowGuidance.delegateSubagents?.[0]?.name, "truth-writer");
-  assert.equal(truthTaskDone.workflowGuidance.delegateSubagents?.[0]?.waitForCompletion, false);
-  assert.equal(truthTaskDone.workflowGuidance.delegateSubagents?.[0]?.preferReuseSameTypeInThread, true);
-  assert.equal(truthTaskDone.workflowGuidance.delegateSubagents?.[0]?.closePolicy, "keep_open_for_reuse");
-  assert.ok(truthTaskDone.workflowGuidance.nextStep.includes("truth-writer"));
-  assert.ok(truthTaskDone.workflowGuidance.nextStep.includes("retrospective"));
-});
-
-test("plan write auto-adds one truth follow-up per normal task without recursive duplication", async () => {
-  const root = createFixture("truth-followup");
-
-  const result = await writePlan({
-    cwd: root,
-    taskName: "demo-task",
-    title: "Truth followup",
-    goalText: "Verify task expansion",
-    content: {
-      title: "Truth followup",
-      status: "prepare.requirements",
-      goal: { text: "Verify task expansion" },
-      tasks: [{ id: 1, title: "Implement feature", status: "pending" }],
-    },
-  });
-
-  const plan = JSON.parse(fs.readFileSync(result.planPath, "utf-8")) as {
-    tasks: Array<{ id: number; title: string; detail?: string; status: string }>;
-  };
-  assert.deepEqual(plan.tasks, [
-    { id: 1, title: "Implement feature", status: "pending" },
-    {
-      id: 2,
-      title: "Update truth (if got valuable contexts)",
-      detail: "Capture durable truth from this task if it produced valuable context.",
-      status: "pending",
-    },
-  ]);
-
-  const appendResult = await editPlan({
-    cwd: root,
-    taskName: "demo-task",
-    appendTasks: [{ id: 3, title: "Run verification", status: "pending" }],
-  });
-  const updatedPlan = JSON.parse(fs.readFileSync(appendResult.planPath, "utf-8")) as {
-    tasks: Array<{ id: number; title: string; detail?: string; status: string }>;
-  };
-  assert.deepEqual(updatedPlan.tasks, [
-    { id: 1, title: "Implement feature", status: "pending" },
-    {
-      id: 2,
-      title: "Update truth (if got valuable contexts)",
-      detail: "Capture durable truth from this task if it produced valuable context.",
-      status: "pending",
-    },
-    { id: 3, title: "Run verification", status: "pending" },
-    {
-      id: 4,
-      title: "Update truth (if got valuable contexts)",
-      detail: "Capture durable truth from this task if it produced valuable context.",
-      status: "pending",
-    },
-  ]);
-
-  const explicitTruthAppend = await editPlan({
-    cwd: root,
-    taskName: "demo-task",
-    appendTasks: [
-      { id: 5, title: "Publish summary", status: "pending" },
-      { id: 6, title: "Update truth (if got valuable contexts)", status: "pending" },
-    ],
-  });
-  const noDuplicatePlan = JSON.parse(fs.readFileSync(explicitTruthAppend.planPath, "utf-8")) as {
-    tasks: Array<{ id: number; title: string }>;
-  };
-  assert.deepEqual(
-    noDuplicatePlan.tasks.map((task) => ({ id: task.id, title: task.title })),
-    [
-      { id: 1, title: "Implement feature" },
-      { id: 2, title: "Update truth (if got valuable contexts)" },
-      { id: 3, title: "Run verification" },
-      { id: 4, title: "Update truth (if got valuable contexts)" },
-      { id: 5, title: "Publish summary" },
-      { id: 6, title: "Update truth (if got valuable contexts)" },
-    ],
-  );
+  assert.equal(result.workflowGuidance.stage, "done");
+  assert.ok(result.workflowGuidance.recommendedCommands?.some((command) => command.includes("claw plan done")));
+  const truthDelegate = result.workflowGuidance.delegateSubagents?.[0];
+  assert.ok(truthDelegate);
+  assert.equal(truthDelegate.name, "truth-writer");
+  assert.equal(truthDelegate.waitForCompletion, false);
+  assert.equal(truthDelegate.preferReuseSameTypeInThread, true);
+  assert.equal(truthDelegate.closePolicy, "keep_open_for_reuse");
+  assert.ok(result.workflowGuidance.nextStep.includes("truth-writer"));
+  assert.ok(result.workflowGuidance.nextStep.includes("retrospective"));
 });
 
 test("plan view orders unfinished tasks before done tasks while preserving stable order", async () => {
@@ -386,10 +300,10 @@ test("plan view orders unfinished tasks before done tasks while preserving stabl
     patch: { summary: "No-op patch to inspect plan view" },
   });
 
-  assert.equal(result.planView.collapsedSummary, "2/8 Ordered task");
+  assert.equal(result.planView.collapsedSummary, "2/4 Ordered task");
   assert.deepEqual(
     result.planView.tasks.items.map((task) => task.id),
-    [5, 2, 6, 3, 7, 8, 1, 4],
+    [2, 3, 1, 4],
   );
 });
 
@@ -417,7 +331,7 @@ test("plan show returns canonical plan plus collapsed and expanded plan view dat
   });
 
   assert.equal(result.plan.title, "Shown task");
-  assert.equal(result.planView.collapsedSummary, "1/4 Shown task");
+  assert.equal(result.planView.collapsedSummary, "1/2 Shown task");
   assert.equal(result.planView.goal.text, "Render the current plan");
   assert.equal(result.planView.renderHints.defaultCollapsed, true);
   assert.deepEqual(
@@ -428,11 +342,11 @@ test("plan show returns canonical plan plus collapsed and expanded plan view dat
   assert.equal(result.planView.expanded.sections[1]?.type, "list");
   assert.deepEqual(
     result.planView.tasks.items.map((task) => task.id),
-    [3, 2, 4, 1],
+    [2, 1],
   );
   assert.deepEqual(
     result.planView.expanded.sections[1]?.items.map((task) => task.id),
-    [3, 2, 4, 1],
+    [2, 1],
   );
 });
 

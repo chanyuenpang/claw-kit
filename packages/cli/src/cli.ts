@@ -426,6 +426,12 @@ function compactPlanCommandResult(
       stage: string;
       summary: string;
       nextStep: string;
+      nextTask?: {
+        id: number;
+        title: string;
+        status: string;
+        detail?: string;
+      };
       notes?: string[];
       recommendedCommands?: string[];
       delegateSubagents?: unknown[];
@@ -460,6 +466,7 @@ function compactPlanCommandResult(
     stage: result.workflowGuidance.stage,
     summary: result.workflowGuidance.summary,
     nextStep: result.workflowGuidance.nextStep,
+    ...(result.workflowGuidance.nextTask ? { nextTask: result.workflowGuidance.nextTask } : {}),
     ...(result.workflowGuidance.notes?.length ? { notes: result.workflowGuidance.notes } : {}),
     ...(result.workflowGuidance.recommendedCommands?.length
       ? { recommendedCommands: result.workflowGuidance.recommendedCommands }

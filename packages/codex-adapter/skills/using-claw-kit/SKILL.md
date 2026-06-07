@@ -16,18 +16,15 @@ The default claw-kit execution chain is:
 1. stay in `prepare.requirements`
 2. refine and confirm the route
 3. create the concrete task list
-4. treat each normal task as paired with an auto-generated `Update truth (if got valuable contexts)` task
-5. move the plan to `process.active`
-6. process task 1
-7. complete its paired truth task
+4. move the plan to `process.active`
+5. process task 1
+6. dispatch `truth-writer`
+7. process task 2
 8. dispatch `truth-writer`
-9. process task 2
-10. complete its paired truth task
-11. dispatch `truth-writer`
-12. continue this pattern until all tasks are done
-13. write the retrospective
-14. run `claw plan done`
-15. dispatch `adr-writer`
+9. continue this pattern until all tasks are done
+10. write the retrospective
+11. run `claw plan done`
+12. dispatch `adr-writer`
 
 Treat this as the canonical harness flow.
 Do not compress it into "finish work and write docs later".
@@ -60,12 +57,10 @@ Do not tell the user that claw-kit cannot proceed because `.claw` is missing, ma
 8. Once the route is confirmed, move the plan to `process.active` before doing any implementation or updating task progress.
 9. Set the thread goal from `workflowGuidance.goalMode.recommendedObjective` immediately after `claw plan write`.
 10. During execution, process one task at a time and update progress with `claw plan edit`.
-11. Treat each normal task as followed by an auto-generated `Update truth (if got valuable contexts)` task.
-12. Complete that paired truth task before starting the next normal task.
-13. Dispatch `truth-writer` from the paired truth task when there is reusable context to deposit.
-14. When all tasks are done, complete the retrospective.
-15. Close the plan with `claw plan done` only after `retrospective.summary` exists.
-16. After `claw plan done`, dispatch ADR deposition using the completed `plan.json`.
+11. After a meaningful completed task, dispatch `truth-writer` when there is reusable context to deposit.
+12. When all tasks are done, complete the retrospective.
+13. Close the plan with `claw plan done` only after `retrospective.summary` exists.
+14. After `claw plan done`, dispatch ADR deposition using the completed `plan.json`.
 
 ## Investigation-first rule
 
