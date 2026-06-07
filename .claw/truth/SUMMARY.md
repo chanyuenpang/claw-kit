@@ -17,4 +17,4 @@
 - Codex delegated specialists 可以在同线程复用同类型子代理；`truth-writer`、`adr-writer` 与 `researcher` 派发后保持可复用，不应在 dispatch 后立即关闭。
 - `claw plan write` 与 `appendTasks` 已移除自动 truth follow-up；lighter model 的执行链是 normal task -> conditional `truth-writer` -> next task，而不是自动插入 `Update truth (if got valuable contexts)`。
 - 当计划首次进入 `process.active` 时，`claw-kit` 可以基于 `plan.goal.text` 推荐 Codex thread goal；Goal mode 仍是 host-level thread feature，且不应自动覆盖已有 active goal。
-- `claw plan write` and `appendTasks` no longer auto-insert truth follow-up tasks; the lighter chain is normal task -> conditional `truth-writer` -> next task.
+- `release-truth-followup-publish` added ADR `release-truth-followup-workflow.md`, which freezes the no-auto-truth-followup contract and keeps truth deposition delegated to `truth-writer`.
