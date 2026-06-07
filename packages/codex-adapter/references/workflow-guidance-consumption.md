@@ -35,33 +35,37 @@ Do not replace it with freeform workflow reasoning unless the command output is 
 ### `recommendedCommands`
 
 - Use these commands as the default follow-up CLI actions.
-- If you choose a different command, there is a concrete reason grounded in the current harness state.
+- Use a different command only when the current harness state makes the recommended command invalid.
 
 ### `nextStep`
 
 - Preserve its ordering.
-- Example: if it says review first, revise second, and only then advance, follow that order exactly.
+- Example: when it says review first, revise second, and only then advance, follow that order exactly.
 
 ### `goalMode`
 
 - When present, treat it as a thread-goal recommendation tied to the active plan.
-- Current intended use is `setWhen = on_enter_process_active`.
-- When the plan enters `process.active`, set the thread goal from `recommendedObjective`.
+- Current intended use is `setWhen = on_plan_write`.
+- After `claw plan write`, set the thread goal from `recommendedObjective`.
 - Do not automatically overwrite an unrelated active goal already attached to the thread.
 - In the Codex app, `/goal` is the normal host surface. In tool-enabled sessions, `create_goal` is also a valid path.
 
 ## Lifecycle interpretation
 
 - `prepare.requirements`
+  - read `goalMode`
+  - create the thread goal from `recommendedObjective`
   - refine the plan directly until the route is clear
   - then use Codex options to confirm the route
 - `process.*` with task completion but open plan
-  - when guidance points to `truth-writer`, do truth deposition before plan closure
+  - read `delegateSubagents`
+  - use `tool_search` to locate agent-management tools
+  - dispatch `truth-writer` before plan closure
   - then complete retrospective capture and use `claw plan done`
-- `process.active` entry
-  - when guidance includes `goalMode`, map `plan.goal.text` into a thread goal
 - `end.completed`
-  - when guidance points to `adr-writer`, use the completed `plan.json` as the ADR deposition bundle
+  - read `delegateSubagents`
+  - use `tool_search` to locate agent-management tools
+  - dispatch `adr-writer` with the completed `plan.json` as the ADR deposition bundle
 
 ## Project declaration interactions
 
@@ -69,7 +73,7 @@ Do not replace it with freeform workflow reasoning unless the command output is 
 - `contextPaths` may exist for schema alignment with OpenClaw, but current Codex-first flows do not need to consume it.
 - `memory.externalDocPaths` affects what `claw search` indexes as project recall context, including directory paths like `docs/`.
 - `gitnexus.enabled` decides whether `claw plan done` should refresh GitNexus after completion.
-- If the installed GitNexus CLI does not support `--no-ai-context`, `claw plan done` reports a compatibility fallback to plain `gitnexus analyze`; treat that as successful environment adaptation rather than a workflow failure.
+- A GitNexus CLI without `--no-ai-context` support makes `claw plan done` report a compatibility path to plain `gitnexus analyze`; treat that as successful environment adaptation rather than a workflow failure.
 
 ## Anti-patterns
 

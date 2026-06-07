@@ -139,7 +139,7 @@ export type WorkflowGuidance = {
   delegateSubagents?: WorkflowGuidanceSubagent[];
   goalMode?: {
     recommendedObjective: string;
-    setWhen: "on_enter_process_active";
+    setWhen: "on_plan_write";
     ifNoActiveGoal: true;
     doNotOverwriteExisting: true;
     supportedSurfaces: Array<"/goal" | "create_goal">;

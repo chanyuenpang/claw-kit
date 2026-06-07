@@ -50,10 +50,7 @@ async function main(): Promise<void> {
         );
         return;
       case "context":
-        printJson({
-          ...resolveContext(process.cwd(), readOptionalFlag(args, "--task")),
-          protocolCheck: checkProjectProtocol(process.cwd()),
-        });
+        printJson(runContextCommand(args));
         return;
       case "check":
         const checkResult = ensureProjectProtocol(process.cwd());
@@ -202,6 +199,35 @@ function runSearch(args: string[]): void {
       limit: readOptionalNumber(args, "--limit"),
     }),
   });
+}
+
+function runContextCommand(args: string[]): Record<string, unknown> {
+  const taskName = readOptionalFlag(args, "--task");
+  let initialized = false;
+  let corrected = false;
+  let fixedPaths: string[] = [];
+
+  try {
+    const ensureResult = ensureProjectProtocol(process.cwd());
+    corrected = ensureResult.changed;
+    fixedPaths = ensureResult.fixedPaths;
+  } catch (error) {
+    if (!(error instanceof ClawError) || error.code !== "CLAW_DIR_NOT_FOUND") {
+      throw error;
+    }
+    initProject({ cwd: process.cwd() });
+    initialized = true;
+  }
+
+  return {
+    ...resolveContext(process.cwd(), taskName),
+    protocolCheck: checkProjectProtocol(process.cwd()),
+    bootstrap: {
+      initialized,
+      corrected,
+      fixedPaths,
+    },
+  };
 }
 
 function runTruth(args: string[]): void {

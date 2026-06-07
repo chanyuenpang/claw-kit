@@ -46,7 +46,7 @@ Honor `workflowGuidance.nextStep` ordering exactly.
 ## Reuse policy
 
 - Prefer reusing an existing same-type subagent already active in the current Codex thread when it is still suitable for the same narrow specialist role.
-- Fall back to spawning a new subagent when no such specialist exists, or when the existing one has drifted away from the required role.
+- Spawn a new subagent when no such specialist exists, or when the existing one has drifted away from the required role.
 - Reuse is a thread-level optimization to reduce context churn. It does not widen the bundle contract for any specialist.
 
 ## Discovery rule
@@ -93,14 +93,14 @@ Send:
 - the `claw-kit:researcher` skill item
 - the exact investigation question
 - any narrow target files, modules, or paths
-- whether `gitnexus.enabled` is true when that matters
+- the `gitnexus.enabled` state when that matters
 
 Expected behavior:
 
 - use `claw search` first for project/truth/ADR recall
 - use GitNexus-oriented capabilities when enabled and materially useful for code investigation
 - return a compact findings bundle with anchors and recommended next step
-- wait only when the main agent is blocked on the answer
+- wait exactly when the main agent is blocked on the answer
 
 ## Main-agent responsibilities
 

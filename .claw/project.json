@@ -1,0 +1,12 @@
+{
+  "id": "claw-kit",
+  "name": "claw-kit",
+  "maxTasksToKeep": 99,
+  "contextPaths": [],
+  "memory": {
+    "externalDocPaths": []
+  },
+  "gitnexus": {
+    "enabled": false
+  }
+}

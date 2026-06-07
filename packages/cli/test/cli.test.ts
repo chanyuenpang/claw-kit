@@ -102,14 +102,16 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   );
   assert.equal(writeResult.stage, "requirements");
   assert.equal(writeResult.planSummary, "0/0 E2E task");
+  const writeGoalMode = writeResult.goalMode as JsonRecord;
+  assert.equal(writeGoalMode.recommendedObjective, "Verify the CLI lifecycle");
+  assert.equal(writeGoalMode.setWhen, "on_plan_write");
 
   const activateResult = runClaw(
     ["plan", "edit", "--task", "e2e-task", "--plan-status", "process.active"],
     root,
     env,
   );
-  const goalMode = activateResult.goalMode as JsonRecord;
-  assert.equal(goalMode.recommendedObjective, "Verify the CLI lifecycle");
+  assert.equal(activateResult.goalMode, undefined);
 
   const patchPath = path.join(root, "append-tasks.json");
   fs.writeFileSync(
@@ -202,10 +204,49 @@ test("cli context includes protocolCheck for existing .claw projects", () => {
 
   const result = runClaw(["context"], root);
   const protocolCheck = result.protocolCheck as JsonRecord;
+  const bootstrap = result.bootstrap as JsonRecord;
 
   assert.equal(protocolCheck.ok, true);
   assert.equal(protocolCheck.issues instanceof Array, true);
   assert.equal(result.project !== undefined, true);
+  assert.equal(bootstrap.initialized, false);
+  assert.equal(bootstrap.corrected, false);
+});
+
+test("cli context auto-initializes when .claw is missing", () => {
+  const root = createFixture("context-init");
+
+  const result = runClaw(["context"], root);
+  const bootstrap = result.bootstrap as JsonRecord;
+  const protocolCheck = result.protocolCheck as JsonRecord;
+
+  assert.equal(bootstrap.initialized, true);
+  assert.equal(bootstrap.corrected, false);
+  assert.equal(protocolCheck.ok, true);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "project.json")), true);
+  assert.equal((result.project as JsonRecord).projectRoot, root);
+});
+
+test("cli context auto-corrects malformed existing .claw state", () => {
+  const root = createFixture("context-correct");
+  fs.mkdirSync(path.join(root, ".claw"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify({ id: "broken-project", name: "Broken Project" }, null, 2),
+    "utf-8",
+  );
+
+  const result = runClaw(["context"], root);
+  const bootstrap = result.bootstrap as JsonRecord;
+  const protocolCheck = result.protocolCheck as JsonRecord;
+  const projectConfig = JSON.parse(fs.readFileSync(path.join(root, ".claw", "project.json"), "utf-8")) as JsonRecord;
+
+  assert.equal(bootstrap.initialized, false);
+  assert.equal(bootstrap.corrected, true);
+  assert.ok(Array.isArray(bootstrap.fixedPaths));
+  assert.equal(protocolCheck.ok, true);
+  assert.equal(projectConfig.maxTasksToKeep, 99);
+  assert.deepEqual(projectConfig.memory, { externalDocPaths: [] });
 });
 
 test("cli check auto-corrects project.json into explicit protocol fields", () => {

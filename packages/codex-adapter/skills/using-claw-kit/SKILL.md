@@ -19,14 +19,15 @@ claw context
 
 Then report the recovered harness state before normal conversation:
 
-- whether `.claw/` was found
-- current task and active plan, if any
+- whether `.claw/` was initialized or corrected in this bootstrap pass
+- current task and active plan, when present
 - current plan status
 - relevant `.claw/project.json` behavior:
   - `memory.externalDocPaths`
   - `gitnexus.enabled`
 
 Do not open with a generic greeting when `.claw` context is available.
+Do not tell the user that claw-kit cannot proceed because `.claw` is missing, malformed, or has no current task. `claw context` bootstraps the project and the claw-kit workflow continues from there.
 
 ## Main workflow
 
@@ -37,7 +38,7 @@ Do not open with a generic greeting when `.claw` context is available.
 5. Follow `workflowGuidance.nextStep` and `recommendedCommands` instead of inventing your own next-step heuristic.
 6. If `workflowGuidance.askUser` is present, use Codex option-style confirmation.
 7. If requirements are confirmed, move the plan to `process.active` before updating task progress.
-8. When `workflowGuidance.goalMode` appears, set the thread goal from `workflowGuidance.goalMode.recommendedObjective`.
+8. Set the thread goal from `workflowGuidance.goalMode.recommendedObjective` immediately after `claw plan write`.
 9. During execution, update progress with `claw plan edit`.
 10. When all tasks are done, dispatch truth deposition before closing the plan.
 11. Close the plan with `claw plan done` only after `retrospective.summary` exists.
@@ -53,7 +54,8 @@ If the task is primarily investigation, analysis, or evidence gathering rather t
 - reuse an existing same-type `researcher` in the thread
 - give the researcher a narrow brief and specific targets
 - have the researcher use `claw search` first for `.claw` context, truth, and ADR lookup
-- if `.claw/project.json` says `gitnexus.enabled = true`, have the researcher discover and use GitNexus-oriented capabilities for code investigation
+- read `.claw/project.json`
+- treat `gitnexus.enabled = true` as a direct instruction to discover and use GitNexus-oriented capabilities for code investigation
 
 ## Plan rules
 
@@ -70,7 +72,7 @@ If the task is primarily investigation, analysis, or evidence gathering rather t
 
 When `workflowGuidance.delegateSubagents` is present:
 
-- Codex has multi-agent capability. When needed, use `tool_search` to locate the current session's agent-management tools.
+- Codex has multi-agent capability. Use `tool_search` to locate the current session's agent-management tools.
 - Dispatch the named specialist; do not merely describe delegation.
 - Do not bypass writer specialists by writing canonical truth or ADR content inline from the main agent.
 - Do not add a separate permission gate unless the user explicitly disables delegation.
@@ -107,19 +109,19 @@ ADR flow:
 - Task-specific docs or investigation artifacts should be attached through `plan.references`, not through a task-local search mode.
 - `claw plan done` refreshes project/task search indexes.
 - `gitnexus.enabled` in `.claw/project.json` controls whether `claw plan done` also runs GitNexus reindex.
-- GitNexus `--no-ai-context` fallback is normal compatibility behavior, not a workflow failure.
+- A GitNexus CLI that lacks `--no-ai-context` support uses the plain `gitnexus analyze` compatibility path. Treat that as normal environment adaptation, not a workflow failure.
 
 ## Hooks
 
 Hooks are enhancement, not the correctness path.
 
-- `SessionStart` is the bootstrap hook path for sessions that start inside a `.claw` project.
+- `SessionStart` listens to session start globally; the only claw-kit runtime gate is that `cwd` resolves inside a `.claw` project.
 - The bootstrap hook adds compact project context and tells the agent to use `[@claw-kit](plugin://claw-kit@claw-kit-local)`.
-- The core workflow must still work if hooks do not fire, so prompt-driven startup plus CLI `workflowGuidance` remains valid.
+- The core workflow remains valid without hook delivery. Prompt-driven startup plus CLI `workflowGuidance` stays authoritative.
 
 ## Reference loading
 
-Only load these when the current task needs deeper detail:
+Load these as the next detail layer for the current workflow:
 
 - Plan semantics: `../../references/workflows.md`
 - Workflow guidance fields: `../../references/workflow-guidance-consumption.md`

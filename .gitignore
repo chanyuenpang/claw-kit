@@ -6,7 +6,10 @@ Thumbs.db
 .idea/
 .vscode/
 .codex/
-.claw/
+.claw/tasks/
+.claw/archive/
+.claw/*.sqlite
+.claw/tmp/
 .agents/
 
 # Local reference repos

@@ -23,11 +23,12 @@ The main agent must:
 
 1. identify the completed plan to deposit
 2. pass the completed plan file as the deposition bundle
-3. reuse an existing `adr-writer` worker in the current thread when it still fits the same role; otherwise dispatch a new one
-4. when dispatching a new one, prefer `agent_type: "worker"` with model `gpt-5.4-mini`
-5. attach this `claw-kit:adr-writer` skill explicitly in the dispatch bundle
-6. do not block the main task lifecycle waiting for a result
-7. treat any returned payload as optional telemetry only
+3. reuse an existing `adr-writer` worker in the current thread when it still fits the same role
+4. dispatch a new `adr-writer` worker when no suitable same-type specialist is already active
+5. use `agent_type: "worker"` with model `gpt-5.4-mini` for a new writer
+6. attach this `claw-kit:adr-writer` skill explicitly in the dispatch bundle
+7. do not block the main task lifecycle waiting for a result
+8. treat any returned payload as optional telemetry only
 
 This keeps the main agent focused on primary execution and coordination.
 Canonical ADR updates run through `adr-writer`, not a main-agent inline shortcut.
@@ -54,14 +55,14 @@ Do not write an ADR for:
 The plan and its durable decisions are the source:
 
 - completed plans can yield accepted ADRs
-- active plans may still yield proposed ADRs if the decision is already explicit and durable
+- active plans yield proposed ADRs when the decision is already explicit and durable
 
 ## ADR rules
 
-- Prefer updating an existing ADR if the decision already exists.
+- Update an existing ADR when the decision already exists.
 - Create a new ADR only for a distinct decision.
 - Keep filenames in searchable kebab-case.
-- Follow the local numbering convention if it is clearly present.
+- Follow the local numbering convention when the repository already uses one.
 - Write body text in Chinese while preserving exact identifiers and paths.
 
 ## ADR shape
@@ -80,8 +81,8 @@ Unless the repository already uses a stronger local convention, keep ADRs compac
 1. Main agent passes the completed `plan.json`.
 2. The ADR subagent reads existing ADRs first.
 3. The ADR subagent reads durable decisions and retrospective context from the completed plan itself.
-4. The ADR subagent decides whether to update or create an ADR in `.claw/truth/adr/`.
-5. The ADR subagent updates `SUMMARY.md` if the ADR set materially changed.
+4. The ADR subagent updates an existing ADR when the decision already exists and creates a new ADR when the decision is distinct.
+5. The ADR subagent updates `SUMMARY.md` when the ADR set materially changed.
 
 ## Output expectation
 
@@ -94,10 +95,11 @@ Do not send a long decision essay back to the main agent.
 
 ## Timing rule
 
-Use this skill when the plan has already been completed and the CLI guidance points to ADR deposition:
+Use this skill after plan completion in this order:
 
 - `claw plan done` or `claw plan edit --plan-status end.completed` has already succeeded
-- `workflowGuidance.delegateSubagents` includes an `adr-writer` entry
+- `workflowGuidance.delegateSubagents` has been read
+- `tool_search` has located the current session's agent-management tools
 - the completed plan file is available as the deposition bundle
 
 Do not use ADR deposition as the immediate next step for mere task completion while the plan is still open.

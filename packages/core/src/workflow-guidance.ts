@@ -62,6 +62,13 @@ export function buildPlanWorkflowGuidance(params: {
           `${editBase} --plan-status process.active`,
           `${editBase} --plan-status process.discussing`,
         ],
+        goalMode: {
+          recommendedObjective: plan.goal.text,
+          setWhen: "on_plan_write" as const,
+          ifNoActiveGoal: true as const,
+          doNotOverwriteExisting: true as const,
+          supportedSurfaces: ["/goal", "create_goal"] as Array<"/goal" | "create_goal">,
+        },
         askUser: {
           reason: "Requirements still need explicit confirmation before execution starts.",
           useCodexOptions: true,
@@ -165,17 +172,6 @@ export function buildPlanWorkflowGuidance(params: {
           `${editBase} --task-id <id> --task-status done`,
           `${doneBase} --summary \"<retrospective summary>\"`,
         ],
-        ...(justEnteredProcess
-          ? {
-              goalMode: {
-                recommendedObjective: plan.goal.text,
-                setWhen: "on_enter_process_active" as const,
-                ifNoActiveGoal: true as const,
-                doNotOverwriteExisting: true as const,
-                supportedSurfaces: ["/goal", "create_goal"] as Array<"/goal" | "create_goal">,
-              },
-            }
-          : {}),
         ...(justEnteredProcess
           ? {
               askUser: {

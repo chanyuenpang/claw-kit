@@ -4,7 +4,7 @@ Use this note when Codex plugin hooks are unavailable or unreliable.
 
 ## Decision
 
-For `claw-kit` on Codex, prompt-driven bootstrap remains the fallback even though a minimal `SessionStart` hook now exists.
+For `claw-kit` on Codex, prompt-driven bootstrap remains the baseline path alongside a minimal `SessionStart` hook.
 
 The plugin works on these rules:
 
@@ -17,9 +17,10 @@ The plugin works on these rules:
 When `@claw-kit` is used in a real project thread:
 
 1. run `claw context`
-2. identify whether `.claw/` exists
-3. identify current task and active plan, if any
-4. tell the user what the next harness step should be
+2. identify current task and active plan, when present
+3. tell the user what the next harness step should be
+
+`claw context` is responsible for initializing a missing `.claw` directory or correcting malformed project protocol state before normal workflow continues.
 
 ## Default routing
 
@@ -32,7 +33,7 @@ When `@claw-kit` is used in a real project thread:
 - task near completion:
   - update plan status
   - deposit truth
-  - deposit ADRs when decisions are durable
+  - deposit ADRs after `claw plan done`
 
 ## Non-goals
 

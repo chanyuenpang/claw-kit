@@ -96,6 +96,9 @@ test("plan write creates task-bound plan and updates activePlan", async () => {
   assert.ok(fs.existsSync(result.planPath));
   assert.equal(result.workflowGuidance.stage, "requirements");
   assert.equal(result.workflowGuidance.delegateSubagents, undefined);
+  assert.equal(result.workflowGuidance.goalMode?.recommendedObjective, "Ship the first plan");
+  assert.equal(result.workflowGuidance.goalMode?.setWhen, "on_plan_write");
+  assert.deepEqual(result.workflowGuidance.goalMode?.supportedSurfaces, ["/goal", "create_goal"]);
   assert.equal(result.planView.collapsedSummary, "0/0 Demo task");
   assert.equal(result.planView.goal.defaultCollapsed, true);
   assert.equal(result.planView.renderHints.defaultCollapsed, true);
@@ -265,8 +268,7 @@ test("plan edit leaving legacy prepare.review goes directly into process.active"
   assert.equal(result.planStatus, "process.active");
   assert.equal(result.workflowGuidance.stage, "execution");
   assert.equal(result.workflowGuidance.askUser?.useCodexOptions, true);
-  assert.equal(result.workflowGuidance.goalMode?.recommendedObjective, "Ship the first plan");
-  assert.deepEqual(result.workflowGuidance.goalMode?.supportedSurfaces, ["/goal", "create_goal"]);
+  assert.equal(result.workflowGuidance.goalMode, undefined);
   assert.ok(result.workflowGuidance.notes?.some((note) => note.includes("thread progress")));
   assert.equal(result.planView.counts.completed, 0);
   assert.equal(result.planView.status, "process.active");
