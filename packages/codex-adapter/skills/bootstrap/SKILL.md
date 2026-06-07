@@ -11,11 +11,10 @@ Use this compatibility skill only when an older prompt explicitly asks for `boot
 
 ## Minimal bootstrap
 
-1. Run `claw context`.
-2. Report `.claw` project state:
+1. Report `.claw` project state:
    - project root
    - active task, if present
    - active plan and status, if present
-3. Continue by following `using-claw-kit`.
+2. Continue by following `using-claw-kit`.
 
 Do not duplicate workflow rules here; keep the main workflow in `using-claw-kit`.

@@ -10,17 +10,15 @@ The plugin works on these rules:
 
 - skills load reliably
 - plugin command hooks are enhancement only
-- `.claw` context must still be recovered at the start of real work
+- `SessionStart` bootstrap recovers `.claw` context before the main workflow starts
 
 ## Required startup routine
 
 When `@claw-kit` is used in a real project thread:
 
-1. run `claw context`
+1. consume the recovered harness state from session bootstrap
 2. identify current task and active plan, when present
 3. tell the user what the next harness step should be
-
-`claw context` is responsible for initializing a missing `.claw` directory or correcting malformed project protocol state before normal workflow continues.
 
 ## Default routing
 

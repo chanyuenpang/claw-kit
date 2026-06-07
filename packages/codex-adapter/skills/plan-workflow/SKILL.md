@@ -9,8 +9,6 @@ Use this skill when planning or editing execution state in an existing `.claw/` 
 
 ## Commands
 
-- Inspect current harness context:
-  - `claw context`
 - Create or bind a task plan:
   - `claw plan write --task <task> --title "<title>" --goal "<goal>"`
 - Import a full plan document:
@@ -27,7 +25,8 @@ Use this skill when planning or editing execution state in an existing `.claw/` 
 - When using `plan write`, write the task title, goal, tasks, and supporting plan text in the user's preferred language unless the repository has an explicit stronger convention.
 - After `plan write`, read `workflowGuidance.goalMode` and create the thread goal from `workflowGuidance.goalMode.recommendedObjective` using the current host goal surface.
 - After `plan write`, read `workflowGuidance`, refine the plan directly until the route is clear, and use `askUser` to confirm the route before advancing the lifecycle.
-- When requirements are confirmed and execution begins, move the plan into `process.active` before updating task progress.
+- Do not start implementation while the plan is still in `prepare.requirements`.
+- When requirements are confirmed and execution begins, move the plan into `process.active` before doing any implementation or updating task progress.
 - After `plan edit`, read `workflowGuidance` again, use `tool_search` to locate the current session's agent-management tools, and execute the returned specialist dispatch contract directly.
 - After `plan done`, read `workflowGuidance` again, use `tool_search` to locate the current session's agent-management tools, and dispatch `adr-writer` with the completed `plan.json` without waiting on a return.
 - After each `plan write`, `plan edit`, and `plan done`, consume `workflowGuidance` and surface only the compact `planSummary` when it helps coordination.

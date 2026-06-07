@@ -54,6 +54,24 @@ function runClawExpectFailure(args: string[], cwd: string, env?: NodeJS.ProcessE
   return JSON.parse(match[0]) as JsonRecord;
 }
 
+function runClawRaw(args: string[], cwd: string, env?: NodeJS.ProcessEnv): { status: number | null; stdout: string; stderr: string } {
+  const cliPath = path.resolve(thisDir, "..", "dist", "cli.js");
+  const result = spawnSync(process.execPath, [cliPath, ...args], {
+    cwd,
+    env: {
+      ...process.env,
+      ...env,
+    },
+    encoding: "utf-8",
+  });
+
+  return {
+    status: result.status,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  };
+}
+
 function createGitnexusShim(mode: "fallback" | "primary"): { binDir: string; logPath: string } {
   const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-kit-gitnexus-bin-"));
   const logPath = path.join(binDir, "gitnexus.log");
@@ -103,7 +121,10 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   assert.equal(writeResult.stage, "requirements");
   assert.equal(writeResult.planSummary, "0/0 E2E task");
   const writeGoalMode = writeResult.goalMode as JsonRecord;
-  assert.equal(writeGoalMode.recommendedObjective, "Verify the CLI lifecycle");
+  assert.equal(
+    writeGoalMode.recommendedObjective,
+    "按照 claw kit 流程，完成 task，更新 plan 文件，并最终完成：Verify the CLI lifecycle",
+  );
   assert.equal(writeGoalMode.setWhen, "on_plan_write");
 
   const activateResult = runClaw(
@@ -364,7 +385,7 @@ test("cli search rejects task-local scope flags", () => {
   assert.match(String(payload.message), /project-scoped only/i);
 });
 
-test("cli hook records a compact hook event", () => {
+test("cli hook emits SessionStart additionalContext inside .claw projects", () => {
   const root = createFixture("hook");
   runClaw(["init", "--name", "Hook Project"], root);
   const home = path.join(root, "home");
@@ -374,23 +395,16 @@ test("cli hook records a compact hook event", () => {
     HOME: home,
   };
 
-  const result = runClaw(["hook", "SessionStart"], root, env);
-  assert.equal(result.ok, true);
-  assert.equal(result.command, "hook");
-  assert.equal(result.eventName, "SessionStart");
-  assert.equal(result.skipped, false);
-  assert.equal(result.projectRoot, root);
-
-  const logPath = path.join(home, ".codex", "claw-kit-hook.log");
-  const records = fs.readFileSync(logPath, "utf-8").trim().split(/\r?\n/).map((line) => JSON.parse(line) as JsonRecord);
-  assert.equal(records.length, 1);
-  assert.equal(records[0]?.eventName, "SessionStart");
-  assert.equal(records[0]?.cwd, root);
-  assert.equal(records[0]?.projectRoot, root);
-  assert.match(String(records[0]?.clawDir), /\\.claw$/);
+  const result = runClawRaw(["hook", "SessionStart"], root, env);
+  assert.equal(result.status, 0);
+  const payload = JSON.parse(result.stdout) as JsonRecord;
+  const hookSpecificOutput = payload.hookSpecificOutput as JsonRecord;
+  assert.equal(hookSpecificOutput.hookEventName, "SessionStart");
+  assert.match(String(hookSpecificOutput.additionalContext), /using-claw-kit/);
+  assert.match(String(hookSpecificOutput.additionalContext), /Hook Project|hook-project/i);
 });
 
-test("cli hook skips outside .claw projects without writing a log", () => {
+test("cli hook stays quiet outside .claw projects", () => {
   const root = createFixture("hook-skip");
   const home = path.join(root, "home");
   fs.mkdirSync(home, { recursive: true });
@@ -399,11 +413,7 @@ test("cli hook skips outside .claw projects without writing a log", () => {
     HOME: home,
   };
 
-  const result = runClaw(["hook", "SessionStart"], root, env);
-  assert.equal(result.ok, true);
-  assert.equal(result.command, "hook");
-  assert.equal(result.eventName, "SessionStart");
-  assert.equal(result.skipped, true);
-  assert.match(String(result.reason), /not inside a \.claw project/);
-  assert.equal(fs.existsSync(path.join(home, ".codex", "claw-kit-hook.log")), false);
+  const result = runClawRaw(["hook", "SessionStart"], root, env);
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout.trim(), "");
 });

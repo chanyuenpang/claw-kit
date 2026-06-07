@@ -6,8 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"$PLUGIN_ROOT/hooks/session-start-bootstrap.mjs\"",
-            "commandWindows": "node \"%PLUGIN_ROOT%\\hooks\\session-start-bootstrap.mjs\"",
+            "command": "claw hook SessionStart",
+            "commandWindows": "claw hook SessionStart",
             "statusMessage": "Loading .claw session context"
           }
         ]

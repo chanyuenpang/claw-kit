@@ -9,8 +9,6 @@ Use this skill when the user wants to capture canonical project truth in an exis
 
 ## Commands
 
-- Inspect current harness context:
-  - `claw context`
 - Replace a truth document:
   - `claw truth ingest --target features/<slug>.md --input <report-file>`
 - Append to a truth document:

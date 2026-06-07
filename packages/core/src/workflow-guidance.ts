@@ -29,6 +29,10 @@ function adrWriterDelegate(): WorkflowGuidanceSubagent {
   };
 }
 
+function buildGoalModeObjective(planGoal: string): string {
+  return `\u6309\u7167 claw kit \u6d41\u7a0b\uff0c\u5b8c\u6210 task\uff0c\u66f4\u65b0 plan \u6587\u4ef6\uff0c\u5e76\u6700\u7ec8\u5b8c\u6210\uff1a${planGoal}`;
+}
+
 export function buildPlanWorkflowGuidance(params: {
   taskName: string;
   planFile: string;
@@ -52,10 +56,11 @@ export function buildPlanWorkflowGuidance(params: {
         stage: "requirements",
         summary: "Task scope is bound. Confirm the route before execution.",
         nextStep:
-          "Refine the plan if needed, confirm the route with the user, then move into process.* when execution should start.",
+          "Refine the plan if needed, confirm the route with the user, then move to process.active before doing any implementation or task execution.",
         notes: [
           "Planning should already satisfy the old review quality bar.",
-          "Move to `process.active` before updating task progress.",
+          "Do not start implementation while the plan is still in `prepare.requirements`.",
+          "Move to `process.active` before updating task progress or executing the task.",
         ],
         recommendedCommands: [
           `${editBase} --patch <updated-plan.json>`,
@@ -63,7 +68,7 @@ export function buildPlanWorkflowGuidance(params: {
           `${editBase} --plan-status process.discussing`,
         ],
         goalMode: {
-          recommendedObjective: plan.goal.text,
+          recommendedObjective: buildGoalModeObjective(plan.goal.text),
           setWhen: "on_plan_write" as const,
           ifNoActiveGoal: true as const,
           doNotOverwriteExisting: true as const,

@@ -120,6 +120,8 @@ Simple 1-2 task plans can stay lean. Bigger plans should show explicit decomposi
 12. Read the returned `workflowGuidance`.
 13. Improve the plan immediately if it still mixes stages, lacks verification, has weak boundaries, or has no clear round-complete condition.
 14. If `workflowGuidance.askUser` is present, use Codex option-style confirmation to resolve route choices instead of freeform clarification.
+15. Do not start implementation while the plan is still in `prepare.requirements`.
+16. Once the route is confirmed, move the plan to `process.active` before doing any implementation.
 
 If a task or subtask is primarily investigation:
 

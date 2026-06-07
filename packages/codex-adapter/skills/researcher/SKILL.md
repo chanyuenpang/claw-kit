@@ -42,13 +42,12 @@ The main agent provides only the minimum bundle needed, such as:
 
 ## Recommended investigation order
 
-1. Run `claw context`.
-2. Use `claw search --query "<topic>"` to recover relevant `.claw` context first.
-3. For truth lookup, use `claw search` against `.claw/truth/` facts.
-4. For architecture history, use `claw search` against ADR content under `.claw/truth/adr/`.
-5. Read `.claw/project.json`.
-6. Treat `gitnexus.enabled = true` as a direct instruction to use `tool_search` to locate GitNexus capabilities and use them for code investigation.
-7. Use local code inspection only for the exact files or paths needed to answer the question.
+1. Use `claw search --query "<topic>"` to recover relevant `.claw` context first.
+2. For truth lookup, use `claw search` against `.claw/truth/` facts.
+3. For architecture history, use `claw search` against ADR content under `.claw/truth/adr/`.
+4. Read `.claw/project.json`.
+5. Treat `gitnexus.enabled = true` as a direct instruction to use `tool_search` to locate GitNexus capabilities and use them for code investigation.
+6. Use local code inspection only for the exact files or paths needed to answer the question.
 
 ## GitNexus rule
 

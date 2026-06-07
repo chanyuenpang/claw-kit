@@ -86,7 +86,7 @@ async function main(): Promise<void> {
         runTruth(args);
         return;
       case "hook":
-        runHook(args);
+        await runHook(args);
         return;
       default:
         printUsage();
@@ -201,27 +201,29 @@ function runSearch(args: string[]): void {
   });
 }
 
-function runContextCommand(args: string[]): Record<string, unknown> {
+type JsonRecord = Record<string, unknown>;
+
+function runContextCommand(args: string[], cwd = process.cwd()): Record<string, unknown> {
   const taskName = readOptionalFlag(args, "--task");
   let initialized = false;
   let corrected = false;
   let fixedPaths: string[] = [];
 
   try {
-    const ensureResult = ensureProjectProtocol(process.cwd());
+    const ensureResult = ensureProjectProtocol(cwd);
     corrected = ensureResult.changed;
     fixedPaths = ensureResult.fixedPaths;
   } catch (error) {
     if (!(error instanceof ClawError) || error.code !== "CLAW_DIR_NOT_FOUND") {
       throw error;
     }
-    initProject({ cwd: process.cwd() });
+    initProject({ cwd });
     initialized = true;
   }
 
   return {
-    ...resolveContext(process.cwd(), taskName),
-    protocolCheck: checkProjectProtocol(process.cwd()),
+    ...resolveContext(cwd, taskName),
+    protocolCheck: checkProjectProtocol(cwd),
     bootstrap: {
       initialized,
       corrected,
@@ -251,10 +253,14 @@ function runTruth(args: string[]): void {
   }
 }
 
-function runHook(args: string[]): void {
+async function runHook(args: string[]): Promise<void> {
   const eventName = args.shift();
   if (!eventName) {
     throw new ClawError("PROJECT_CONFIG_INVALID", "claw hook requires an event name.");
+  }
+  if (eventName === "SessionStart") {
+    await runSessionStartHook();
+    return;
   }
   const project = tryResolveHookProject(process.cwd());
   if (!project) {
@@ -291,6 +297,35 @@ function runHook(args: string[]): void {
   });
 }
 
+async function runSessionStartHook(): Promise<void> {
+  const payload = await readStdinJson();
+  const hookCwd = resolveHookCwd(payload);
+
+  if (!hookCwd || !containsClawDir(hookCwd)) {
+    return;
+  }
+
+  try {
+    const context = runContextCommand([], hookCwd);
+    const additionalContext = buildSessionStartAdditionalContext(context, hookCwd);
+
+    if (!additionalContext) {
+      return;
+    }
+
+    process.stdout.write(
+      `${JSON.stringify({
+        hookSpecificOutput: {
+          hookEventName: "SessionStart",
+          additionalContext,
+        },
+      })}\n`,
+    );
+  } catch {
+    return;
+  }
+}
+
 function tryResolveHookProject(cwd: string): ReturnType<typeof resolveProjectContext> | null {
   try {
     return resolveProjectContext(cwd);
@@ -299,6 +334,76 @@ function tryResolveHookProject(cwd: string): ReturnType<typeof resolveProjectCon
       return null;
     }
     throw error;
+  }
+}
+
+function resolveHookCwd(payload: unknown): string | null {
+  if (payload && typeof payload === "object" && typeof (payload as { cwd?: unknown }).cwd === "string") {
+    const cwd = (payload as { cwd: string }).cwd.trim();
+    return cwd ? cwd : null;
+  }
+  const cwd = process.cwd().trim();
+  return cwd ? cwd : null;
+}
+
+function containsClawDir(cwd: string): boolean {
+  try {
+    let current = path.resolve(cwd);
+    while (true) {
+      if (fs.existsSync(path.join(current, ".claw"))) {
+        return true;
+      }
+      const parent = path.dirname(current);
+      if (parent === current) {
+        return false;
+      }
+      current = parent;
+    }
+  } catch {
+    return false;
+  }
+}
+
+function buildSessionStartAdditionalContext(context: Record<string, unknown>, sessionCwd: string): string | null {
+  const project = context.project as JsonRecord | undefined;
+  if (!project) {
+    return null;
+  }
+
+  const projectName = typeof project.projectName === "string" && project.projectName.trim()
+    ? project.projectName.trim()
+    : typeof project.projectId === "string" && project.projectId.trim()
+      ? project.projectId.trim()
+      : path.basename(String(project.projectRoot ?? sessionCwd ?? "project"));
+  const projectRoot = typeof project.projectRoot === "string" ? project.projectRoot : sessionCwd;
+  const projectId = typeof project.projectId === "string" ? project.projectId : projectName;
+  const clawDir = typeof project.clawDir === "string" ? project.clawDir : path.join(projectRoot, ".claw");
+  const protocolOk = (context.protocolCheck as JsonRecord | undefined)?.ok === true ? "ok" : "needs attention";
+
+  return [
+    `This session started inside a .claw project: ${projectName} (${projectId}).`,
+    `Project root: ${projectRoot}`,
+    `.claw directory: ${clawDir}`,
+    `Project protocol check: ${protocolOk}.`,
+    "Load claw-kit:using-claw-kit as the main workflow skill for this session.",
+    "Report the recovered harness state and continue through claw workflowGuidance.",
+    "Use [@claw-kit](plugin://claw-kit@claw-kit-local) to drive planning, search, truth, and ADR workflows for the rest of the task.",
+  ].join("\n");
+}
+
+async function readStdinJson(): Promise<unknown> {
+  const chunks: string[] = [];
+  for await (const chunk of process.stdin) {
+    chunks.push(typeof chunk === "string" ? chunk : chunk.toString("utf8"));
+  }
+  const raw = chunks.join("").trim();
+  if (!raw) {
+    return null;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
   }
 }
 

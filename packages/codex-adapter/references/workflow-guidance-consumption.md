@@ -57,6 +57,8 @@ Do not replace it with freeform workflow reasoning unless the command output is 
   - create the thread goal from `recommendedObjective`
   - refine the plan directly until the route is clear
   - then use Codex options to confirm the route
+  - do not start implementation in this stage
+  - move the plan to `process.active` before doing any implementation or task execution
 - `process.*` with task completion but open plan
   - read `delegateSubagents`
   - use `tool_search` to locate agent-management tools

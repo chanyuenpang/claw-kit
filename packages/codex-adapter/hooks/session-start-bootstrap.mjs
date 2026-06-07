@@ -4,8 +4,33 @@ import path from "node:path";
 
 const payload = await readStdinJson();
 const sessionCwd = resolveSessionCwd(payload);
+const logPath = resolveLogPath();
 
-if (!sessionCwd || !containsClawDir(sessionCwd)) {
+if (!sessionCwd) {
+  writeDebugLog({
+    timestamp: new Date().toISOString(),
+    eventName: "SessionStart",
+    cwd: null,
+    matchedClawProject: false,
+    contextCommandRan: false,
+    contextCommandOk: false,
+    emittedAdditionalContext: false,
+    reason: "no session cwd",
+  });
+  process.exit(0);
+}
+
+if (!containsClawDir(sessionCwd)) {
+  writeDebugLog({
+    timestamp: new Date().toISOString(),
+    eventName: "SessionStart",
+    cwd: sessionCwd,
+    matchedClawProject: false,
+    contextCommandRan: false,
+    contextCommandOk: false,
+    emittedAdditionalContext: false,
+    reason: "cwd is not inside a .claw project",
+  });
   process.exit(0);
 }
 
@@ -16,6 +41,18 @@ const contextResult = spawnSync("claw", ["context"], {
 });
 
 if (contextResult.status !== 0) {
+  writeDebugLog({
+    timestamp: new Date().toISOString(),
+    eventName: "SessionStart",
+    cwd: sessionCwd,
+    matchedClawProject: true,
+    contextCommandRan: true,
+    contextCommandOk: false,
+    emittedAdditionalContext: false,
+    reason: "claw context failed",
+    contextExitCode: contextResult.status,
+    stderr: contextResult.stderr ?? "",
+  });
   process.exit(0);
 }
 
@@ -23,13 +60,47 @@ let context;
 try {
   context = JSON.parse(contextResult.stdout);
 } catch {
+  writeDebugLog({
+    timestamp: new Date().toISOString(),
+    eventName: "SessionStart",
+    cwd: sessionCwd,
+    matchedClawProject: true,
+    contextCommandRan: true,
+    contextCommandOk: false,
+    emittedAdditionalContext: false,
+    reason: "failed to parse claw context stdout",
+    stdout: contextResult.stdout ?? "",
+  });
   process.exit(0);
 }
 
 const additionalContext = buildAdditionalContext(context);
 if (!additionalContext) {
+  writeDebugLog({
+    timestamp: new Date().toISOString(),
+    eventName: "SessionStart",
+    cwd: sessionCwd,
+    matchedClawProject: true,
+    contextCommandRan: true,
+    contextCommandOk: true,
+    emittedAdditionalContext: false,
+    reason: "no additionalContext generated",
+  });
   process.exit(0);
 }
+
+writeDebugLog({
+  timestamp: new Date().toISOString(),
+  eventName: "SessionStart",
+  cwd: sessionCwd,
+  matchedClawProject: true,
+  contextCommandRan: true,
+  contextCommandOk: true,
+  emittedAdditionalContext: true,
+  projectRoot: context?.project?.projectRoot ?? null,
+  projectId: context?.project?.projectId ?? null,
+  bootstrap: context?.bootstrap ?? null,
+});
 
 process.stdout.write(
   `${JSON.stringify({
@@ -71,6 +142,20 @@ function resolveSessionCwd(payload) {
     return payload.cwd;
   }
   return process.cwd();
+}
+
+function resolveLogPath() {
+  const home = process.env.USERPROFILE ?? process.env.HOME ?? process.cwd();
+  return path.join(home, ".codex", "claw-kit-session-start.jsonl");
+}
+
+function writeDebugLog(record) {
+  try {
+    fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    fs.appendFileSync(logPath, `${JSON.stringify(record)}\n`, "utf-8");
+  } catch {
+    // Keep hook execution non-fatal even if local logging fails.
+  }
 }
 
 function containsClawDir(cwd) {

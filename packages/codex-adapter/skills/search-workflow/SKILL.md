@@ -9,8 +9,6 @@ Use this skill when the user asks to search project context, recall prior `.claw
 
 ## Commands
 
-- Inspect current harness context:
-  - `claw context`
 - Search project context:
   - `claw search --query "<text>"`
 - Search truth or ADR context:

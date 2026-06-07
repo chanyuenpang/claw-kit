@@ -7,14 +7,12 @@ Use this note when checking whether a fresh Codex thread entering a `.claw` proj
 When a session starts and its `cwd` resolves inside a `.claw` project:
 
 1. Codex uses `using-claw-kit`.
-2. `using-claw-kit` recovers `.claw` context directly without relying on a legacy bootstrap alias.
+2. `SessionStart` bootstrap has already recovered `.claw` context before `using-claw-kit` continues the workflow.
 3. The first meaningful assistant message mentions recovered `.claw` state rather than a generic greeting.
 
 When `@claw-kit` is explicitly invoked outside an existing `.claw` project:
 
-1. Codex runs `claw context`.
-2. `claw context` initializes `.claw` automatically.
-3. Codex enters the normal claw-kit flow instead of reporting that no harness can be recovered.
+1. Codex enters the normal claw-kit flow instead of reporting that no harness can be recovered.
 
 ## Good signs
 

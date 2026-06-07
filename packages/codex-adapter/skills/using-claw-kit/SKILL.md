@@ -11,13 +11,7 @@ This is the main-agent workflow skill. The main agent runs the normal `.claw` fl
 
 ## First action
 
-Run:
-
-```powershell
-claw context
-```
-
-Then report the recovered harness state before normal conversation:
+Report the recovered harness state before normal conversation:
 
 - whether `.claw/` was initialized or corrected in this bootstrap pass
 - current task and active plan, when present
@@ -27,7 +21,7 @@ Then report the recovered harness state before normal conversation:
   - `gitnexus.enabled`
 
 Do not open with a generic greeting when `.claw` context is available.
-Do not tell the user that claw-kit cannot proceed because `.claw` is missing, malformed, or has no current task. `claw context` bootstraps the project and the claw-kit workflow continues from there.
+Do not tell the user that claw-kit cannot proceed because `.claw` is missing, malformed, or has no current task. Session bootstrap already recovered the harness state and the claw-kit workflow continues from there.
 
 ## Main workflow
 
@@ -37,12 +31,13 @@ Do not tell the user that claw-kit cannot proceed because `.claw` is missing, ma
 4. After every `claw plan write`, `claw plan edit`, or `claw plan done`, consume `workflowGuidance` and the compact `planSummary`.
 5. Follow `workflowGuidance.nextStep` and `recommendedCommands` instead of inventing your own next-step heuristic.
 6. If `workflowGuidance.askUser` is present, use Codex option-style confirmation.
-7. If requirements are confirmed, move the plan to `process.active` before updating task progress.
-8. Set the thread goal from `workflowGuidance.goalMode.recommendedObjective` immediately after `claw plan write`.
-9. During execution, update progress with `claw plan edit`.
-10. When all tasks are done, dispatch truth deposition before closing the plan.
-11. Close the plan with `claw plan done` only after `retrospective.summary` exists.
-12. After `claw plan done`, dispatch ADR deposition using the completed `plan.json`.
+7. Do not start implementation while the plan is still in `prepare.requirements`.
+8. Once the route is confirmed, move the plan to `process.active` before doing any implementation or updating task progress.
+9. Set the thread goal from `workflowGuidance.goalMode.recommendedObjective` immediately after `claw plan write`.
+10. During execution, update progress with `claw plan edit`.
+11. When all tasks are done, dispatch truth deposition before closing the plan.
+12. Close the plan with `claw plan done` only after `retrospective.summary` exists.
+13. After `claw plan done`, dispatch ADR deposition using the completed `plan.json`.
 
 ## Investigation-first rule
 

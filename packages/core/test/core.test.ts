@@ -96,7 +96,10 @@ test("plan write creates task-bound plan and updates activePlan", async () => {
   assert.ok(fs.existsSync(result.planPath));
   assert.equal(result.workflowGuidance.stage, "requirements");
   assert.equal(result.workflowGuidance.delegateSubagents, undefined);
-  assert.equal(result.workflowGuidance.goalMode?.recommendedObjective, "Ship the first plan");
+  assert.equal(
+    result.workflowGuidance.goalMode?.recommendedObjective,
+    "按照 claw kit 流程，完成 task，更新 plan 文件，并最终完成：Ship the first plan",
+  );
   assert.equal(result.workflowGuidance.goalMode?.setWhen, "on_plan_write");
   assert.deepEqual(result.workflowGuidance.goalMode?.supportedSurfaces, ["/goal", "create_goal"]);
   assert.equal(result.planView.collapsedSummary, "0/0 Demo task");
