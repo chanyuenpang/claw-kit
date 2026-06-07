@@ -9,6 +9,7 @@ Thumbs.db
 .claw/tasks/
 .claw/archive/
 .claw/*.sqlite
+.claw/*.sqlite-*
 .claw/tmp/
 .agents/
 
