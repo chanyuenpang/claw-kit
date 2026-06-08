@@ -34,6 +34,13 @@ ADR deposition belongs after the completed `plan.json` exists.
 
 ## First action
 
+If recovered harness state is not already present in the session context:
+
+1. run `claw context` from the current working directory before normal conversation
+2. treat the returned `bootstrap` object as the startup recovery result for this explicit `@claw-kit` invocation
+3. continue even when `.claw/` had to be initialized or corrected during that call
+4. do not broaden this into generic background auto-init; this recovery path exists because the user explicitly invoked `@claw-kit`
+
 Report the recovered harness state before normal conversation:
 
 - whether `.claw/` was initialized or corrected in this bootstrap pass
@@ -46,7 +53,7 @@ Report the recovered harness state before normal conversation:
   - `gitnexus.enabled`
 
 Do not open with a generic greeting when recovered harness state is available.
-Do not tell the user that claw-kit cannot proceed because `.claw` is missing, malformed, or has no current task. Session bootstrap already recovered the harness state and the claw-kit workflow continues from there.
+Do not tell the user that claw-kit cannot proceed because `.claw` is missing, malformed, or has no current task. Session bootstrap or the explicit `claw context` recovery call already recovered the harness state and the claw-kit workflow continues from there.
 
 ## Main workflow
 

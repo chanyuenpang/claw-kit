@@ -13,6 +13,8 @@ When a session starts and its `cwd` resolves inside a `.claw` project:
 When `@claw-kit` is explicitly invoked outside an existing `.claw` project:
 
 1. Codex enters the normal claw-kit flow instead of reporting that no harness can be recovered.
+2. Codex runs `claw context` to recover startup state for that explicit invocation.
+3. If needed, `.claw/` is initialized or corrected before the agent continues.
 
 ## Good signs
 

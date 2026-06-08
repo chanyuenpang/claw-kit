@@ -1,6 +1,6 @@
 {
   "name": "claw-kit",
-  "version": "0.1.20+codex.20260609000522",
+  "version": "0.1.21+codex.20260609010008",
   "description": "Thin Codex adapter for claw-kit. Start with using-claw-kit as the single main-agent workflow, then drive .claw plan, search, truth, and ADR workflows through the local claw CLI while consuming compact workflowGuidance and specialist subagent contracts for truth and ADR deposition.",
   "author": {
     "name": "chanyuenpang",
@@ -23,7 +23,7 @@
   "interface": {
     "displayName": "Claw Kit",
     "shortDescription": "Prompt-driven .claw harness with compact workflowGuidance and delegated deposition subagents.",
-    "longDescription": "Use Claw Kit to recover .claw context from the current project, starting with using-claw-kit as the single main-agent workflow. Search existing project context with claw search when useful, then bind task scope through plan write and follow compact workflowGuidance from claw plan commands to drive planning, execution, truth, and ADR workflows. Truth deposition and ADR deposition should run as narrow reusable specialist subagents so the main agent stays focused on coordination and execution.",
+    "longDescription": "Use Claw Kit to recover .claw context from the current project, starting with using-claw-kit as the single main-agent workflow. When @claw-kit is invoked explicitly and no harness state has been recovered yet, run claw context first so the current project can be initialized or corrected before workflow coordination continues. Search existing project context with claw search when useful, then bind task scope through plan write and follow compact workflowGuidance from claw plan commands to drive planning, execution, truth, and ADR workflows. Truth deposition and ADR deposition should run as narrow reusable specialist subagents so the main agent stays focused on coordination and execution.",
     "developerName": "chanyuenpang",
     "category": "Developer Tools",
     "capabilities": [
@@ -32,9 +32,9 @@
       "Write"
     ],
     "defaultPrompt": [
-      "Start with using-claw-kit, then tell me the right .claw task and plan flow to use from claw workflowGuidance.",
-      "Start with using-claw-kit, then create a new .claw task, write the initial plan, and follow the returned workflowGuidance.",
-      "Start with using-claw-kit, then continue this .claw task, read workflowGuidance from claw plan commands, and route truth or ADR deposition correctly."
+      "Start with using-claw-kit. If no .claw harness state has been recovered yet, run claw context first, then tell me the right .claw task and plan flow to use from claw workflowGuidance.",
+      "Start with using-claw-kit. If needed, run claw context to initialize or correct this project first, then create a new .claw task, write the initial plan, and follow the returned workflowGuidance.",
+      "Start with using-claw-kit. If no harness state is present yet, recover it with claw context first, then continue this .claw task, read workflowGuidance from claw plan commands, and route truth or ADR deposition correctly."
     ],
     "websiteURL": "https://github.com/chanyuenpang/claw-kit",
     "privacyPolicyURL": "https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement",

@@ -18,8 +18,9 @@ When `@claw-kit` is used in a real project thread:
 
 1. consume the recovered harness state from session bootstrap
 2. if a session-bound active plan can be recovered, surface only the minimal claw workflow snapshot and the recomputed `workflowGuidance` contract
-3. otherwise fall back to the default startup bootstrap
-4. tell the user what the next harness step should be
+3. otherwise run `claw context` from the current working directory to recover startup state for this explicit invocation
+4. treat `claw context.bootstrap` as the canonical init-or-correction result for that explicit bootstrap pass
+5. tell the user what the next harness step should be
 
 ## Default routing
 
@@ -27,6 +28,10 @@ When `@claw-kit` is used in a real project thread:
   - use `[@claw-kit](plugin://claw-kit@claw-kit-local)`
   - treat the recovered `workflowGuidance` as the only next-step contract
   - do not repeat static project metadata such as project root or `.claw` path
+- no recovered harness state yet:
+  - run `claw context`
+  - continue when it auto-initializes `.claw/` or corrects `project.json`
+  - report the recovered harness state before normal conversation
 - no task scope:
   - create or bind one with `claw plan write`
 - task in `prepare.requirements`:
@@ -47,3 +52,4 @@ When `@claw-kit` is used in a real project thread:
 - do not depend on `PreToolUse` or `PostToolUse`
 - do not invent a second task-binding mechanism outside `plan write`
 - do not branch startup recovery by `SessionStart.source`; use one startup flow and decide only from recoverable workflow or project state
+- do not auto-initialize arbitrary repos in the background without an explicit `@claw-kit` invocation

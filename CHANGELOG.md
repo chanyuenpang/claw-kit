@@ -2,6 +2,13 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.1.21] - 2026-06-09
+
+### Changed
+
+- explicit `@claw-kit` entry now recovers startup state with `claw context` when no harness state has been injected yet, allowing non-initialized projects to bootstrap cleanly on demand
+- Codex adapter bootstrap guidance, validation notes, and default prompts now document the explicit recovery path while keeping background `SessionStart` behavior conservative outside `.claw` projects
+
 ## [0.1.19] - 2026-06-08
 
 ### Added
