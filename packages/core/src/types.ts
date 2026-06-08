@@ -149,10 +149,7 @@ export type WorkflowGuidance = {
   delegateSubagents?: WorkflowGuidanceSubagent[];
   goalMode?: {
     recommendedObjective: string;
-    setWhen: "on_plan_write";
-    ifNoActiveGoal: true;
-    doNotOverwriteExisting: true;
-    supportedSurfaces: Array<"/goal" | "create_goal">;
+    allowOverwrite: true;
   };
   askUser?: {
     reason: string;
@@ -384,8 +381,6 @@ export type PlanWriteResult = {
   parentPlan?: string;
   parentTaskId?: number;
   planReview?: PlanReviewResult;
-  nextAction?: "collect_requirements" | "revise_plan_from_review" | "proceed";
-  instruction?: string;
   workflowGuidance: WorkflowGuidance;
   planView: PlanViewModel;
 };
@@ -413,8 +408,6 @@ export type PlanEditResult = {
   emittedEvents: string[];
   changedTaskIds: number[];
   planReview?: PlanReviewResult;
-  nextAction?: "collect_requirements" | "revise_plan_from_review" | "proceed";
-  instruction?: string;
   completionHooks?: PlanCompletionHooks;
   workflowGuidance: WorkflowGuidance;
   planView: PlanViewModel;

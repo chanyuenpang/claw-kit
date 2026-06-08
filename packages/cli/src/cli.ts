@@ -2,7 +2,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   checkProjectProtocol,
   ClawError,
@@ -90,6 +90,9 @@ async function main(): Promise<void> {
       case "hook":
         await runHook(args);
         return;
+      case "internal-completion-refresh":
+        runInternalCompletionRefresh(args);
+        return;
       default:
         printUsage();
         process.exitCode = 1;
@@ -155,7 +158,7 @@ async function runPlan(args: string[]): Promise<void> {
         patch: mergedPatch,
         planStatus: "end.completed",
       });
-      const completionRefresh = runCompletionRefresh({
+      const completionRefresh = queueCompletionRefresh({
         cwd: process.cwd(),
         taskName: result.taskName,
       });
@@ -447,8 +450,6 @@ function compactPlanCommandResult(
       suggestions: string[];
       completionPolicy: string;
     };
-    nextAction?: string;
-    instruction?: string;
   },
   completionRefresh?: CompletionRefreshResult,
 ): Record<string, unknown> {
@@ -484,48 +485,7 @@ function compactPlanCommandResult(
           },
         }
       : {}),
-    ...(result.nextAction ? { nextAction: result.nextAction } : {}),
-    ...(result.instruction ? { instruction: result.instruction } : {}),
     planSummary: result.planView.collapsedSummary,
-    ...(completionRefresh ? { completionRefresh: compactCompletionRefresh(completionRefresh) } : {}),
-  };
-}
-
-function compactCompletionRefresh(completionRefresh: CompletionRefreshResult): Record<string, unknown> {
-  return {
-    taskRetention: {
-      enabled: completionRefresh.taskRetention.enabled,
-      maxTasksToKeep: completionRefresh.taskRetention.maxTasksToKeep,
-      archivedCurrentTask: completionRefresh.taskRetention.archivedCurrentTask
-        ? {
-            taskName: completionRefresh.taskRetention.archivedCurrentTask.taskName,
-            archivedTaskDir: completionRefresh.taskRetention.archivedCurrentTask.archivedTaskDir,
-            archivedPlanPath: completionRefresh.taskRetention.archivedCurrentTask.archivedPlanPath,
-          }
-        : null,
-      prunedArchivedTasks: completionRefresh.taskRetention.prunedArchivedTasks.map((task: {
-        taskName: string;
-        archivedTaskDir: string;
-      }) => ({
-        taskName: task.taskName,
-        archivedTaskDir: task.archivedTaskDir,
-      })),
-    },
-    memory: {
-      projectIndexed: completionRefresh.memory.project.indexedCount,
-      taskIndexed: completionRefresh.memory.task?.indexedCount ?? 0,
-    },
-    gitnexus:
-      completionRefresh.gitnexus?.enabled === true
-        ? {
-            refreshed: true,
-            command: completionRefresh.gitnexus.command,
-            exitCode: completionRefresh.gitnexus.exitCode,
-          }
-        : {
-            refreshed: false,
-            reason: completionRefresh.gitnexus?.reason ?? "gitnexus refresh did not run",
-          },
   };
 }
 
@@ -548,51 +508,222 @@ function mergeDonePatch(
 
 type CompletionRefreshResult = {
   taskRetention: ReturnType<typeof enforceTaskRetention>;
+  asyncRefresh: {
+    queued: true;
+    startedAt: string;
+    statusFile: string;
+    operations: Array<"memory.reindex.project" | "memory.reindex.task" | "gitnexus.refresh">;
+  };
+};
+
+type CompletionRefreshStatus = {
+  ok: true;
+  startedAt: string;
+  finishedAt: string;
+  cwd: string;
+  taskName: string;
   memory: {
     project: ReturnType<typeof buildMemoryIndex>;
     task?: ReturnType<typeof buildMemoryIndex>;
   };
-  gitnexus?: {
-    enabled: true;
-    command: string;
-    exitCode: number;
-    stdout: string;
-    stderr: string;
-  } | {
-    enabled: false;
-    reason: string;
+  gitnexus?: GitNexusRefreshResult;
+} | {
+  ok: false;
+  startedAt: string;
+  finishedAt: string;
+  cwd: string;
+  taskName: string;
+  error: {
+    code: string;
+    message: string;
+    details?: unknown;
   };
 };
 
-function runCompletionRefresh(input: { cwd: string; taskName: string }): CompletionRefreshResult {
+type GitNexusRefreshResult = {
+  enabled: true;
+  command: string;
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+} | {
+  enabled: false;
+  reason: string;
+};
+
+function queueCompletionRefresh(input: { cwd: string; taskName: string }): CompletionRefreshResult {
   const project = resolveProjectContext(input.cwd);
   const taskRetention = enforceTaskRetention(project, input.taskName);
-  const projectMemory = buildMemoryIndex({
-    cwd: input.cwd,
-    scope: "project",
-  });
-  const taskMemory = taskRetention.archivedCurrentTask
-    ? undefined
-    : buildMemoryIndex({
+  const startedAt = new Date().toISOString();
+  const statusFile = createCompletionRefreshStatusFile(project.clawDir, input.taskName, startedAt);
+  const operations: CompletionRefreshResult["asyncRefresh"]["operations"] = ["memory.reindex.project"];
+  if (!taskRetention.archivedCurrentTask) {
+    operations.push("memory.reindex.task");
+  }
+  if (project.projectConfig?.gitnexus?.enabled === true) {
+    operations.push("gitnexus.refresh");
+  }
+
+  fs.mkdirSync(path.dirname(statusFile), { recursive: true });
+  fs.writeFileSync(
+    statusFile,
+    JSON.stringify(
+      {
+        ok: true,
+        queued: true,
+        startedAt,
         cwd: input.cwd,
-        scope: "task",
         taskName: input.taskName,
-      });
+        operations,
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+
+  const child = spawn(
+    process.execPath,
+    [
+      resolveCliEntryPath(),
+      "internal-completion-refresh",
+      "--cwd",
+      input.cwd,
+      "--task",
+      input.taskName,
+      "--status-file",
+      statusFile,
+    ],
+    {
+      cwd: input.cwd,
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+    },
+  );
+  child.unref();
 
   return {
     taskRetention,
-    memory: {
-      project: projectMemory,
-      ...(taskMemory ? { task: taskMemory } : {}),
+    asyncRefresh: {
+      queued: true,
+      startedAt,
+      statusFile,
+      operations,
     },
-    gitnexus: refreshGitNexusIfEnabled(project.projectRoot, project.projectConfig),
+  };
+}
+
+function resolveCliEntryPath(): string {
+  const entry = process.argv[1];
+  if (!entry) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "Unable to resolve the current claw CLI entry path.");
+  }
+  return entry;
+}
+
+function runInternalCompletionRefresh(args: string[]): void {
+  const cwd = readRequiredFlag(args, "--cwd");
+  const taskName = readRequiredFlag(args, "--task");
+  const statusFile = readRequiredFlag(args, "--status-file");
+  const startedAt = new Date().toISOString();
+
+  try {
+    const projectMemory = buildMemoryIndex({
+      cwd,
+      scope: "project",
+    });
+    const taskMemory = tryBuildTaskMemoryIndex(cwd, taskName);
+    const status: CompletionRefreshStatus = {
+      ok: true,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      cwd,
+      taskName,
+      memory: {
+        project: projectMemory,
+        ...(taskMemory ? { task: taskMemory } : {}),
+      },
+      gitnexus: refreshGitNexusIfEnabled(cwd, resolveProjectContext(cwd).projectConfig),
+    };
+    fs.writeFileSync(statusFile, `${JSON.stringify(status, null, 2)}\n`, "utf-8");
+  } catch (error) {
+    const payload: CompletionRefreshStatus = {
+      ok: false,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      cwd,
+      taskName,
+      error: error instanceof ClawError
+        ? {
+            code: error.code,
+            message: error.message,
+            ...(error.details ? { details: error.details } : {}),
+          }
+        : {
+            code: "COMPLETION_REFRESH_FAILED",
+            message: error instanceof Error ? error.message : "Unknown completion refresh failure.",
+          },
+    };
+    fs.writeFileSync(statusFile, `${JSON.stringify(payload, null, 2)}\n`, "utf-8");
+    process.exitCode = 1;
+  }
+}
+
+function tryBuildTaskMemoryIndex(cwd: string, taskName: string): ReturnType<typeof buildMemoryIndex> | undefined {
+  try {
+    return buildMemoryIndex({
+      cwd,
+      scope: "task",
+      taskName,
+    });
+  } catch (error) {
+    if (error instanceof ClawError && error.code === "TASK_NOT_FOUND") {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+function createCompletionRefreshStatusFile(clawDir: string, taskName: string, startedAt: string): string {
+  const stamp = startedAt.replace(/[:.]/g, "-");
+  const safeTaskName = taskName.replace(/[^a-zA-Z0-9._-]+/g, "-");
+  return path.join(clawDir, "logs", "completion-refresh", `${stamp}-${safeTaskName}.json`);
+}
+
+function compactCompletionRefresh(completionRefresh: CompletionRefreshResult): Record<string, unknown> {
+  return {
+    taskRetention: {
+      enabled: completionRefresh.taskRetention.enabled,
+      maxTasksToKeep: completionRefresh.taskRetention.maxTasksToKeep,
+      archivedCurrentTask: completionRefresh.taskRetention.archivedCurrentTask
+        ? {
+            taskName: completionRefresh.taskRetention.archivedCurrentTask.taskName,
+            archivedTaskDir: completionRefresh.taskRetention.archivedCurrentTask.archivedTaskDir,
+            archivedPlanPath: completionRefresh.taskRetention.archivedCurrentTask.archivedPlanPath,
+          }
+        : null,
+      prunedArchivedTasks: completionRefresh.taskRetention.prunedArchivedTasks.map((task: {
+        taskName: string;
+        archivedTaskDir: string;
+      }) => ({
+        taskName: task.taskName,
+        archivedTaskDir: task.archivedTaskDir,
+      })),
+    },
+    asyncRefresh: {
+      queued: completionRefresh.asyncRefresh.queued,
+      startedAt: completionRefresh.asyncRefresh.startedAt,
+      statusFile: completionRefresh.asyncRefresh.statusFile,
+      operations: completionRefresh.asyncRefresh.operations,
+    },
   };
 }
 
 function refreshGitNexusIfEnabled(
   cwd: string,
   projectConfig: ProjectConfig | null,
-): CompletionRefreshResult["gitnexus"] {
+): GitNexusRefreshResult {
   const enabled = projectConfig?.gitnexus?.enabled === true;
 
   if (!enabled) {

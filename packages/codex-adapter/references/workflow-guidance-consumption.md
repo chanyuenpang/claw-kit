@@ -80,10 +80,11 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextSt
   - when requirements are clear, move the plan directly to `process.active` before doing any implementation or task execution
 - `process.*` with task completion but open plan
   - every completed task returns the `truth-writer` delegate contract
-  - the agent decides whether the completed task actually needs truth doc deposition
+  - the main agent decides whether the completed task actually needs truth doc deposition
+  - the main agent curates the valuable findings into a completed subtask report before dispatch
   - read `delegateSubagents`
   - use `tool_search` to locate agent-management tools
-  - dispatch `truth-writer` when the agent judges that the completed task produced reusable truth
+  - dispatch `truth-writer` with the curated completed subtask report when the completed task produced reusable truth
   - then complete retrospective capture and use `claw plan done`
 - `end.completed`
   - read `delegateSubagents`

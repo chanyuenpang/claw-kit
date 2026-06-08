@@ -72,6 +72,52 @@ function runClawRaw(args: string[], cwd: string, env?: NodeJS.ProcessEnv): { sta
   };
 }
 
+async function waitForCompletionRefreshStatus(statusFile: string, timeoutMs = 5000): Promise<JsonRecord> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    if (fs.existsSync(statusFile)) {
+      const raw = fs.readFileSync(statusFile, "utf-8").trim();
+      if (raw) {
+        const payload = JSON.parse(raw) as JsonRecord;
+        if ("finishedAt" in payload) {
+          return payload;
+        }
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
+  throw new Error(`Timed out waiting for completion refresh status file: ${statusFile}`);
+}
+
+function getLatestCompletionRefreshStatusFile(root: string): string | null {
+  const logDir = path.join(root, ".claw", "logs", "completion-refresh");
+  if (!fs.existsSync(logDir)) {
+    return null;
+  }
+  const entries = fs
+    .readdirSync(logDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+    .map((entry) => path.join(logDir, entry.name))
+    .sort((left, right) => fs.statSync(right).mtimeMs - fs.statSync(left).mtimeMs);
+  return entries[0] ?? null;
+}
+
+async function waitForLatestCompletionRefreshStatus(root: string, timeoutMs = 5000): Promise<JsonRecord> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const statusFile = getLatestCompletionRefreshStatusFile(root);
+    if (statusFile) {
+      return waitForCompletionRefreshStatus(statusFile, timeoutMs);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
+  throw new Error(`Timed out waiting for completion refresh status file under ${root}`);
+}
+
 function createGitnexusShim(mode: "fallback" | "primary"): { binDir: string; logPath: string } {
   const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-kit-gitnexus-bin-"));
   const logPath = path.join(binDir, "gitnexus.log");
@@ -97,7 +143,7 @@ exit /b 0
   return { binDir, logPath };
 }
 
-test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnexus fallback refresh", () => {
+test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnexus fallback refresh", async () => {
   const root = createFixture("e2e");
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
   fs.writeFileSync(path.join(root, "docs", "guide.md"), "external alpha doc\n", "utf-8");
@@ -140,7 +186,13 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
     writeGoalMode.recommendedObjective,
     "\u6309\u7167 claw \u6d41\u7a0b\uff0c\u63a8\u8fdb\u4efb\u52a1\uff0c\u66f4\u65b0plan\uff0c\u5b8c\u6210\uff1aVerify the CLI lifecycle",
   );
-  assert.equal(writeGoalMode.setWhen, "on_plan_write");
+  assert.equal(writeGoalMode.allowOverwrite, true);
+  assert.equal("nextAction" in writeResult, false);
+  assert.equal("instruction" in writeResult, false);
+  assert.equal("askUser" in writeResult, false);
+  assert.deepEqual(writeResult.notes, [
+    "Do not start implementation while the plan is still in `prepare.requirements`.",
+  ]);
 
   const activateResult = runClaw(
     ["plan", "edit", "--task", "e2e-task", "--plan-status", "process.active"],
@@ -167,6 +219,30 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
     status: "pending",
   });
 
+  const inProgressPath = path.join(root, "mark-in-progress.json");
+  fs.writeFileSync(
+    inProgressPath,
+    JSON.stringify(
+      {
+        tasks: [{ id: 1, title: "Ship verification", status: "in_progress" }],
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  const inProgressResult = runClaw(
+    ["plan", "edit", "--task", "e2e-task", "--patch", inProgressPath],
+    root,
+    env,
+  );
+  assert.equal(inProgressResult.nextStep, "Continue the current task.");
+  assert.equal("nextTask" in inProgressResult, false);
+  assert.deepEqual(inProgressResult.recommendedCommands, [
+    "claw plan edit --task e2e-task --task-id 1 --task-status done",
+  ]);
+  assert.equal("notes" in inProgressResult, false);
+
   const taskDone = runClaw(
     ["plan", "edit", "--task", "e2e-task", "--task-id", "1", "--task-status", "done"],
     root,
@@ -181,8 +257,12 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   assert.equal(truthDelegate.preferReuseSameTypeInThread, true);
   assert.equal(truthDelegate.closePolicy, "keep_open_for_reuse");
   assert.equal(
+    truthDelegate.inputContract,
+    "curated completed subtask report with valuable findings for truth deposition",
+  );
+  assert.equal(
     taskDone.nextStep,
-    "1. Sync the thread progress with our tasks. 2. Dispatch `truth-writer` if the completed work produced valuable context worth depositing as truth doc. 3. Close the plan with `claw plan done` after writing the retrospective summary.",
+    "1. Sync the thread progress with our tasks. 2. Curate the valuable findings from the completed work into a completed subtask report, then dispatch `truth-writer` with that report. 3. Close the plan with `claw plan done` after writing the retrospective summary.",
   );
 
   const truthInputPath = path.join(root, "truth-report.md");
@@ -204,9 +284,6 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
     root,
     env,
   );
-  const completionRefresh = doneResult.completionRefresh as JsonRecord;
-  const memory = completionRefresh.memory as JsonRecord;
-  const gitnexus = completionRefresh.gitnexus as JsonRecord;
   const adrDelegate = ((doneResult.delegateSubagents as JsonRecord[])[0] ?? {});
   assert.equal(adrDelegate.name, "adr-writer");
   assert.equal(adrDelegate.skill, "external-adr-writer");
@@ -214,10 +291,15 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   assert.equal(adrDelegate.waitForCompletion, false);
   assert.equal(adrDelegate.preferReuseSameTypeInThread, true);
   assert.equal(adrDelegate.closePolicy, "keep_open_for_reuse");
-  assert.ok(Number(memory.projectIndexed) > 0);
-  assert.equal(Number(memory.taskIndexed), 0);
+  assert.equal("completionRefresh" in doneResult, false);
+  const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
+  const memory = refreshStatus.memory as JsonRecord;
+  const gitnexus = refreshStatus.gitnexus as JsonRecord;
+  assert.equal(refreshStatus.ok, true);
+  assert.ok(Number((memory.project as JsonRecord).indexedCount) > 0);
+  assert.equal((memory.task as JsonRecord | undefined), undefined);
   assert.equal(gitnexus.command, "gitnexus analyze");
-  assert.equal(gitnexus.refreshed, true);
+  assert.equal(gitnexus.enabled, true);
   assert.equal(doneResult.planSummary, "1/1 E2E task");
 
   const gitnexusLog = fs.readFileSync(shim.logPath, "utf-8");
@@ -311,7 +393,7 @@ test("cli returns truth-writer contract on completed task before final plan comp
   assert.equal("summary" in taskDone, false);
   assert.equal(
     taskDone.nextStep,
-    "1. Sync the thread progress with our tasks. 2. Dispatch `truth-writer` if the completed task produced valuable context worth depositing as truth doc. 3. Continue with task #2.",
+    "1. Sync the thread progress with our tasks. 2. Curate the valuable findings from the completed task into a completed subtask report, then dispatch `truth-writer` with that report. 3. Continue with task #2.",
   );
   assert.deepEqual(taskDone.nextTask, {
     id: 2,
@@ -321,6 +403,46 @@ test("cli returns truth-writer contract on completed task before final plan comp
   const truthDelegate = ((taskDone.delegateSubagents as JsonRecord[])[0] ?? {});
   assert.equal(truthDelegate.name, "truth-writer");
   assert.equal(truthDelegate.skill, "external-truth-writer");
+  assert.equal(
+    truthDelegate.inputContract,
+    "curated completed subtask report with valuable findings for truth deposition",
+  );
+});
+
+test("cli task status changed back to pending does not return nextTask", () => {
+  const root = createFixture("cli-pending-no-next-task");
+  runClaw(["init", "--name", "Pending No NextTask"], root);
+
+  const contentPath = path.join(root, "plan.json");
+  fs.writeFileSync(
+    contentPath,
+    JSON.stringify(
+      {
+        title: "Pending No NextTask",
+        status: "process.active",
+        goal: { text: "Keep pending edits lightweight" },
+        tasks: [
+          { id: 1, title: "Current task", status: "in_progress" },
+          { id: 2, title: "Later task", status: "pending" }
+        ]
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  runClaw(["plan", "write", "--task", "demo-task", "--content", contentPath], root);
+
+  const result = runClaw(
+    ["plan", "edit", "--task", "demo-task", "--task-id", "1", "--task-status", "pending"],
+    root,
+  );
+
+  assert.equal(result.nextStep, "Continue with task #1.");
+  assert.equal("nextTask" in result, false);
+  assert.deepEqual(result.recommendedCommands, [
+    "claw plan edit --task demo-task --task-id <id> --task-status done",
+  ]);
 });
 
 test("cli init writes maxTasksToKeep into project.json", () => {
@@ -438,7 +560,7 @@ test("cli check auto-corrects project.json into explicit protocol fields", () =>
   assert.deepEqual(projectConfig.gitnexus, { enabled: false });
 });
 
-test("cli plan done always archives the current completed task", () => {
+test("cli plan done always archives the current completed task", async () => {
   const root = createFixture("plan-done-archive");
   runClaw(["init", "--name", "Archive On Complete", "--max-tasks-to-keep", "99"], root);
 
@@ -462,20 +584,16 @@ test("cli plan done always archives the current completed task", () => {
     root,
   );
 
-  const completionRefresh = doneResult.completionRefresh as JsonRecord;
-  const taskRetention = completionRefresh.taskRetention as JsonRecord;
-  const archivedCurrentTask = taskRetention.archivedCurrentTask as JsonRecord;
-  const memory = completionRefresh.memory as JsonRecord;
-
-  assert.equal(archivedCurrentTask.taskName, "archive-task");
-  assert.match(String(archivedCurrentTask.archivedTaskDir), /archive[\\/]tasks[\\/]archive-task$/);
+  assert.equal("completionRefresh" in doneResult, false);
   assert.match(String(doneResult.planPath), /archive[\\/]tasks[\\/]archive-task[\\/].*plan\.json$/);
-  assert.equal(memory.taskIndexed, 0);
+  const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
+  const memory = refreshStatus.memory as JsonRecord;
+  assert.equal((memory.task as JsonRecord | undefined), undefined);
   assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "archive-task")), false);
   assert.equal(fs.existsSync(path.join(root, ".claw", "archive", "tasks", "archive-task")), true);
 });
 
-test("cli plan done skips gitnexus refresh when project config disables it", () => {
+test("cli plan done skips gitnexus refresh when project config disables it", async () => {
   const root = createFixture("gitnexus-disabled");
   const env = {
     PATH: process.env.PATH ?? "",
@@ -504,8 +622,10 @@ test("cli plan done skips gitnexus refresh when project config disables it", () 
     root,
     env,
   );
-  const gitnexus = ((doneResult.completionRefresh as JsonRecord).gitnexus as JsonRecord);
-  assert.equal(gitnexus.refreshed, false);
+  assert.equal("completionRefresh" in doneResult, false);
+  const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
+  const gitnexus = (refreshStatus.gitnexus as JsonRecord);
+  assert.equal(gitnexus.enabled, false);
   assert.match(String(gitnexus.reason), /not enabled/);
 });
 

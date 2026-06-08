@@ -6,8 +6,6 @@ import { ClawError } from "./errors.js";
 import { readJsonFile, withFileLock, writeJsonFile } from "./io.js";
 import { buildPlanEvent } from "./plan-events.js";
 import {
-  REQUIREMENTS_INSTRUCTION,
-  REQUIREMENTS_NEXT_ACTION,
   isProcessStatus,
 } from "./requirements-gate.js";
 import { buildPlanViewModel } from "./plan-view.js";
@@ -128,9 +126,6 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
     eventType,
     ...(plan.parentPlan ? { parentPlan: plan.parentPlan } : {}),
     ...(plan.parentTaskId !== undefined ? { parentTaskId: plan.parentTaskId } : {}),
-    ...(plan.status === "prepare.requirements"
-      ? { nextAction: REQUIREMENTS_NEXT_ACTION, instruction: REQUIREMENTS_INSTRUCTION }
-      : {}),
     workflowGuidance: buildPlanWorkflowGuidance({
       taskName,
       planFile,
@@ -286,9 +281,6 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
     previousPlanStatus: previousStatus,
     emittedEvents: events.map((event) => event.type),
     changedTaskIds,
-    ...(next.status === "prepare.requirements"
-      ? { nextAction: REQUIREMENTS_NEXT_ACTION, instruction: REQUIREMENTS_INSTRUCTION }
-      : {}),
     ...(completionHooks ? { completionHooks } : {}),
     workflowGuidance: buildPlanWorkflowGuidance({
       taskName: task.taskName,

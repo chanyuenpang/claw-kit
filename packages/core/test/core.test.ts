@@ -106,11 +106,11 @@ test("plan write creates task-bound plan and updates activePlan", async () => {
     result.workflowGuidance.goalMode?.recommendedObjective,
     "\u6309\u7167 claw \u6d41\u7a0b\uff0c\u63a8\u8fdb\u4efb\u52a1\uff0c\u66f4\u65b0plan\uff0c\u5b8c\u6210\uff1aShip the first plan",
   );
-  assert.equal(result.workflowGuidance.goalMode?.setWhen, "on_plan_write");
-  assert.deepEqual(result.workflowGuidance.goalMode?.supportedSurfaces, ["/goal", "create_goal"]);
+  assert.equal(result.workflowGuidance.goalMode?.allowOverwrite, true);
   assert.ok(result.workflowGuidance.summary.includes("Enter goal mode first"));
   assert.ok(result.workflowGuidance.nextStep.includes("Enter goal mode"));
-  assert.equal(result.workflowGuidance.askUser?.options[0]?.id, "clarify-requirements");
+  assert.ok(result.workflowGuidance.nextStep.includes("Review whether requirements are clear enough to execute"));
+  assert.equal(result.workflowGuidance.askUser, undefined);
   assert.equal(result.planView.collapsedSummary, "0/0 Demo task");
   assert.equal(result.planView.goal.defaultCollapsed, true);
   assert.equal(result.planView.renderHints.defaultCollapsed, true);
@@ -119,7 +119,7 @@ test("plan write creates task-bound plan and updates activePlan", async () => {
   assert.equal(result.planView.expanded.sections[1]?.id, "tasks");
 });
 
-test("plan write guidance can skip askUser when requirements are already clear", async () => {
+test("plan write guidance leaves requirement judgment to the agent", async () => {
   const root = createFixture("plan-write-clear-requirements");
 
   const result = await writePlan({
@@ -137,8 +137,11 @@ test("plan write guidance can skip askUser when requirements are already clear",
 
   assert.equal(result.workflowGuidance.askUser, undefined);
   assert.ok(result.workflowGuidance.nextStep.includes("Enter goal mode"));
-  assert.ok(result.workflowGuidance.nextStep.includes("Move directly into `process.active`"));
-  assert.ok(result.workflowGuidance.notes?.some((note) => note.includes("legacy `claw context` workflow step")));
+  assert.ok(result.workflowGuidance.nextStep.includes("If requirements are clear, move into `process.active`"));
+  assert.ok(result.workflowGuidance.nextStep.includes("If requirements are not clear, ask the user to clarify the missing scope first"));
+  assert.deepEqual(result.workflowGuidance.notes, [
+    "Do not start implementation while the plan is still in `prepare.requirements`.",
+  ]);
 });
 
 test("plan write auto-assigns stable integer task ids when omitted", async () => {
@@ -332,6 +335,10 @@ test("plan edit can move from requirements to process.active without a separate 
   assert.equal(truthDelegate.waitForCompletion, false);
   assert.equal(truthDelegate.preferReuseSameTypeInThread, true);
   assert.equal(truthDelegate.closePolicy, "keep_open_for_reuse");
+  assert.equal(
+    truthDelegate.inputContract,
+    "curated completed subtask report with valuable findings for truth deposition",
+  );
   assert.ok(result.workflowGuidance.nextStep.includes("truth-writer"));
   assert.ok(result.workflowGuidance.nextStep.includes("retrospective"));
 });
@@ -391,7 +398,7 @@ test("process entry returns the first task and task completion returns truth-wri
   assert.equal(taskDone.workflowGuidance.nextTask?.id, 2);
   assert.equal(
     taskDone.workflowGuidance.nextStep,
-    "1. Sync the thread progress with our tasks. 2. Dispatch `truth-writer` if the completed task produced valuable context worth depositing as truth doc. 3. Continue with task #2.",
+    "1. Sync the thread progress with our tasks. 2. Curate the valuable findings from the completed task into a completed subtask report, then dispatch `truth-writer` with that report. 3. Continue with task #2.",
   );
   assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.skill, "external-truth-writer");
 });
@@ -426,6 +433,38 @@ test("plan edit appendTasks auto-assigns ids when omitted", async () => {
       { id: 4, title: "Auto id task" },
     ],
   );
+});
+
+test("plan edit changing a task back to pending does not advertise nextTask", async () => {
+  const root = createFixture("plan-edit-pending-no-next-task");
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Verify pending edits stay lightweight",
+    content: {
+      title: "Demo task",
+      status: "process.active",
+      goal: { text: "Verify pending edits stay lightweight" },
+      tasks: [
+        { id: 1, title: "Current task", status: "in_progress" },
+        { id: 2, title: "Later task", status: "pending" },
+      ],
+    },
+  });
+
+  const result = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    taskId: 1,
+    taskStatus: "pending",
+  });
+
+  assert.equal(result.workflowGuidance.nextStep, "Continue with task #1.");
+  assert.equal(result.workflowGuidance.nextTask, undefined);
+  assert.deepEqual(result.workflowGuidance.recommendedCommands, [
+    "claw plan edit --task demo-task --task-id <id> --task-status done",
+  ]);
 });
 
 test("plan view orders unfinished tasks before done tasks while preserving stable order", async () => {
