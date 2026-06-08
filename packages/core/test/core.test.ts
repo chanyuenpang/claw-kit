@@ -229,6 +229,82 @@ test("plan write updates existing task and supports subplan under plans without 
   assert.equal(parentPlan.tasks[0]?.execution?.subplan, "plans/child-plan.json");
 });
 
+test("subplan completion resumes the parent plan and marks the parent task done", async () => {
+  const root = createFixture("subplan-complete-resume-parent");
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Ship the parent plan",
+    content: {
+      title: "Demo task",
+      status: "process.active",
+      goal: { text: "Ship the parent plan" },
+      tasks: [
+        {
+          id: 1,
+          title: "Implement child work",
+          status: "pending",
+        },
+        {
+          id: 2,
+          title: "Resume parent work",
+          status: "pending",
+        },
+      ],
+    },
+  });
+
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    filePath: "child-plan.json",
+    parentTaskId: 1,
+    title: "Child plan",
+    goalText: "Handle a subplan",
+    content: {
+      title: "Child plan",
+      status: "process.active",
+      goal: { text: "Handle a subplan" },
+      tasks: [{ id: 1, title: "Finish child", status: "done" }],
+      retrospective: { summary: "Child complete." },
+    },
+  });
+
+  const result = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    planFile: "plans/child-plan.json",
+    planStatus: "end.completed",
+    patch: {
+      retrospective: { summary: "Child complete." },
+    },
+  });
+
+  const meta = JSON.parse(
+    fs.readFileSync(path.join(root, ".claw", "tasks", "demo-task", "meta.json"), "utf-8"),
+  ) as { activePlan: string; status: string };
+  const parentPlan = JSON.parse(
+    fs.readFileSync(path.join(root, ".claw", "tasks", "demo-task", "plan.json"), "utf-8"),
+  ) as { status: string; tasks: Array<{ id: number; status: string }> };
+  const childPlan = JSON.parse(
+    fs.readFileSync(path.join(root, ".claw", "tasks", "demo-task", "plans", "child-plan.json"), "utf-8"),
+  ) as { status: string };
+
+  assert.equal(result.planFile, "plan.json");
+  assert.equal(result.planStatus, "process.active");
+  assert.equal(result.workflowGuidance.stage, "execution");
+  assert.equal(result.workflowGuidance.nextTask?.id, 2);
+  assert.equal(result.workflowGuidance.nextTask?.title, "Resume parent work");
+  assert.equal(result.workflowGuidance.delegateSubagents, undefined);
+  assert.equal(meta.activePlan, "plan.json");
+  assert.equal(meta.status, "active");
+  assert.equal(parentPlan.status, "process.active");
+  assert.equal(parentPlan.tasks[0]?.status, "done");
+  assert.equal(parentPlan.tasks[1]?.status, "pending");
+  assert.equal(childPlan.status, "end.completed");
+});
+
 test("plan write no longer runs a separate review gate before execution", async () => {
   const root = createFixture("plan-write-review");
 

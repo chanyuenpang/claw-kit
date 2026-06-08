@@ -479,6 +479,75 @@ test("cli subplan write keeps task rootPlan stable and derives goal from the par
   assert.equal(((childPlan.goal as JsonRecord).text), "Implement child work: Split the risky work into a subplan");
 });
 
+test("cli plan done on a subplan resumes the parent plan instead of archiving the whole task", () => {
+  const root = createFixture("cli-subplan-done-resume-parent");
+  runClaw(["init", "--name", "Subplan Done Resume Parent", "--max-tasks-to-keep", "99"], root);
+  runClaw(["plan", "write", "--title", "demo-task", "--goal", "Parent goal"], root);
+
+  const rootPatchPath = path.join(root, "root-tasks.json");
+  fs.writeFileSync(
+    rootPatchPath,
+    JSON.stringify(
+      {
+        tasks: [
+          { id: 1, title: "Implement child work", detail: "Split the risky work into a subplan", status: "pending" },
+          { id: 2, title: "Resume parent work", status: "pending" },
+        ],
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  runClaw(["plan", "edit", "--task", "demo-task", "--patch", rootPatchPath], root);
+  runClaw(["plan", "edit", "--task", "demo-task", "--plan-status", "process.active"], root);
+  runClaw(["subplan", "write", "--parent", "demo-task", "--task-id", "1", "--title", "child-plan"], root);
+
+  const childPatchPath = path.join(root, "child-plan.json");
+  fs.writeFileSync(
+    childPatchPath,
+    JSON.stringify(
+      {
+        tasks: [{ id: 1, title: "Finish child", status: "pending" }],
+        retrospective: { summary: "Child complete." },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  runClaw(["plan", "edit", "--task", "demo-task", "--plan", "plans/child-plan.json", "--patch", childPatchPath], root);
+  runClaw(["plan", "edit", "--task", "demo-task", "--plan", "plans/child-plan.json", "--plan-status", "process.active"], root);
+  runClaw(["plan", "edit", "--task", "demo-task", "--plan", "plans/child-plan.json", "--task-id", "1", "--task-status", "done"], root);
+
+  const doneResult = runClaw(
+    ["plan", "done", "--task", "demo-task", "--plan", "plans/child-plan.json", "--summary", "Child complete."],
+    root,
+  );
+
+  const meta = JSON.parse(fs.readFileSync(path.join(root, ".claw", "tasks", "demo-task", "meta.json"), "utf-8")) as JsonRecord;
+  const parentPlan = JSON.parse(fs.readFileSync(path.join(root, ".claw", "tasks", "demo-task", "plan.json"), "utf-8")) as JsonRecord;
+  const childPlan = JSON.parse(
+    fs.readFileSync(path.join(root, ".claw", "tasks", "demo-task", "plans", "child-plan.json"), "utf-8"),
+  ) as JsonRecord;
+
+  assert.equal(doneResult.planStatus, "process.active");
+  assert.match(String(doneResult.planPath), /tasks[\\/]demo-task[\\/]plan\.json$/);
+  assert.equal(doneResult.nextStep, "Continue with task #2.");
+  assert.deepEqual(doneResult.nextTask, {
+    id: 2,
+    title: "Resume parent work",
+    status: "pending",
+  });
+  assert.equal("archivedPlanPath" in doneResult, false);
+  assert.equal(meta.activePlan, "plan.json");
+  assert.equal(meta.status, "active");
+  assert.equal(((parentPlan.tasks as JsonRecord[])[0] as JsonRecord).status, "done");
+  assert.equal(((parentPlan.tasks as JsonRecord[])[1] as JsonRecord).status, "pending");
+  assert.equal(childPlan.status, "end.completed");
+  assert.equal(fs.existsSync(path.join(root, ".claw", "archive", "tasks", "demo-task")), false);
+});
+
 test("cli init writes maxTasksToKeep into project.json", () => {
   const root = createFixture("init-max-tasks");
 

@@ -2,6 +2,17 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.1.22] - 2026-06-09
+
+### Fixed
+
+- subplan completion now resumes the parent plan workflow instead of leaving the task pinned to the child plan
+- parent task state and `meta.activePlan` now recover cleanly after subplan completion, so `plan done` continues the restored parent workflow instead of archiving the whole task
+
+### Added
+
+- core and CLI regression coverage for `subplan -> complete -> resume parent plan`
+
 ## [0.1.21] - 2026-06-09
 
 ### Changed

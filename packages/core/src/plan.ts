@@ -278,29 +278,56 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
     );
   }
 
+  let resultPlanFile = planFile;
+  let resultPlanPath = planPath;
+  let resultPlan = next;
+
+  if (completionHooks?.subplanClosureCandidate) {
+    const resumedParent = completeSubplanAndResumeParent({
+      task,
+      closure: completionHooks.subplanClosureCandidate,
+    });
+    resultPlanFile = resumedParent.planFile;
+    resultPlanPath = resumedParent.planPath;
+    resultPlan = resumedParent.plan;
+    task.meta.activePlan = resumedParent.planFile;
+    task.meta.rules = resumedParent.plan.rules;
+    task.meta.status = taskMetaStatusForPlanStatus(resumedParent.plan.status);
+    if (resumedParent.plan.taskType !== undefined) {
+      task.meta.taskType = resumedParent.plan.taskType;
+    } else {
+      delete task.meta.taskType;
+    }
+    saveTaskMeta(task);
+  }
+
   return {
     taskName: task.taskName,
-    planPath,
-    planFile,
-    planStatus: next.status,
+    planPath: resultPlanPath,
+    planFile: resultPlanFile,
+    planStatus: resultPlan.status,
     previousPlanStatus: previousStatus,
     emittedEvents: events.map((event) => event.type),
     changedTaskIds,
     ...(completionHooks ? { completionHooks } : {}),
     workflowGuidance: buildPlanWorkflowGuidance({
       taskName: task.taskName,
-      planFile,
-      plan: next,
+      planFile: resultPlanFile,
+      plan: resultPlan,
       projectConfig: task.project.projectConfig,
-      previousStatus,
-      completionHooks,
-      changedTaskIds,
-      completedTaskIds,
+      ...(completionHooks?.subplanClosureCandidate
+        ? {}
+        : {
+            previousStatus,
+            completionHooks,
+            changedTaskIds,
+            completedTaskIds,
+          }),
     }),
     planView: buildPlanViewModel({
       taskName: task.taskName,
-      planFile,
-      plan: next,
+      planFile: resultPlanFile,
+      plan: resultPlan,
     }),
     events,
   };
@@ -755,6 +782,47 @@ function resolveSubplanContext(task: TaskContext, parentTaskId: number, parentPl
     parentPlanPath,
     parentPlan,
     parentTask,
+  };
+}
+
+function completeSubplanAndResumeParent(params: {
+  task: TaskContext;
+  closure: {
+    parentPlan: string;
+    parentTaskId: number;
+  };
+}): {
+  planFile: string;
+  planPath: string;
+  plan: PlanDocument;
+} {
+  const parentPlanFile = normalizePlanFile(params.closure.parentPlan);
+  const parentPlanPath = requireInsideTask(params.task, parentPlanFile);
+  const parentPlan = normalizePlanDocument(readJsonFile<PlanDocument>(parentPlanPath));
+  const parentTask = parentPlan.tasks.find((item) => item.id === params.closure.parentTaskId);
+  if (!parentTask) {
+    throw new ClawError(
+      "PROJECT_CONFIG_INVALID",
+      `subplan_parent_task_not_found: parent PlanTask ${params.closure.parentTaskId} does not exist in ${parentPlanFile}.`,
+    );
+  }
+
+  parentTask.status = "done";
+  if (parentTask.execution?.type === "subplan" && parentTask.execution?.subplan) {
+    parentTask.execution = {
+      ...parentTask.execution,
+      planPath: parentTask.execution.planPath ?? parentTask.execution.subplan,
+    };
+  }
+
+  withFileLock(parentPlanPath, () => {
+    writeJsonFile(parentPlanPath, parentPlan);
+  });
+
+  return {
+    planFile: parentPlanFile,
+    planPath: parentPlanPath,
+    plan: parentPlan,
   };
 }
 
