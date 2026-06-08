@@ -7,7 +7,7 @@ Use this note when checking whether a fresh Codex thread entering a `.claw` proj
 When a session starts and its `cwd` resolves inside a `.claw` project:
 
 1. Codex uses `using-claw-kit`.
-2. `SessionStart` bootstrap has already recovered `.claw` context before `using-claw-kit` continues the workflow.
+2. `SessionStart` bootstrap has already recovered startup harness state before `using-claw-kit` continues the workflow.
 3. The first meaningful assistant message mentions recovered `.claw` state rather than a generic greeting.
 
 When `@claw-kit` is explicitly invoked outside an existing `.claw` project:
@@ -24,6 +24,6 @@ When `@claw-kit` is explicitly invoked outside an existing `.claw` project:
 ## Bad signs
 
 - generic greeting with no harness state
-- starting normal chat before recovering `.claw` context
+- starting normal chat before startup recovery completes
 - saying claw-kit cannot proceed because `.claw` is missing or malformed
 - suggesting an alternate task-binding mechanism unrelated to `plan write`

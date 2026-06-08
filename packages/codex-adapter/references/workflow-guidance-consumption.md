@@ -73,7 +73,7 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextSt
 - `prepare.requirements`
   - read `goalMode`
   - create the thread goal from `recommendedObjective`
-  - treat hook bootstrap as the source of recovered `claw context`; do not add a separate `claw context` workflow step here
+  - treat hook bootstrap as the source of startup recovery; do not add a separate recovery workflow step here
   - review whether requirements are already clear enough to execute
   - only use Codex options when requirements are still ambiguous
   - do not start implementation in this stage

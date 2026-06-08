@@ -17,6 +17,7 @@ import {
   resolveContext,
   searchMemory,
   showPlan,
+  writeSubplan,
   switchTask,
   writePlan,
   type InitProjectInput,
@@ -72,6 +73,9 @@ async function main(): Promise<void> {
       case "plan":
         await runPlan(args);
         return;
+      case "subplan":
+        await runSubplan(args);
+        return;
       case "switch-task":
         printJson(
           switchTask({
@@ -109,32 +113,31 @@ async function runPlan(args: string[]): Promise<void> {
   const subcommand = args.shift();
   switch (subcommand) {
     case "write": {
-      const contentPath = readOptionalFlag(args, "--content");
-      const content = contentPath ? readJson<PlanDocument>(contentPath) : undefined;
+      rejectFlags(args, ["--task", "--plan", "--content", "--status", "--plan-status", "--parent-task-id", "--description"]);
         const result = await writePlan({
           cwd: process.cwd(),
-          taskName: readOptionalFlag(args, "--task"),
-          filePath: readOptionalFlag(args, "--plan"),
-          title: readOptionalFlag(args, "--title"),
-          description: readOptionalFlag(args, "--description"),
-          goalText: readOptionalFlag(args, "--goal"),
-          planStatus: readOptionalFlag(args, "--status"),
+          title: readRequiredFlag(args, "--title"),
+          goalText: readRequiredFlag(args, "--goal"),
           ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
-          content,
-          parentTaskId: readOptionalNumber(args, "--parent-task-id"),
         });
+      assertNoRemainingArgs(args, "plan write");
       printJson(compactPlanCommandResult("plan.write", result));
       return;
     }
     case "edit": {
       const patchPath = readOptionalFlag(args, "--patch");
       const appendTasksPath = readOptionalFlag(args, "--append-tasks");
+      const mergedPatch = mergeEditPatchFlags(
+        patchPath ? readJson<Partial<PlanDocument>>(patchPath) : undefined,
+        readRepeatedFlag(args, "--rule"),
+        readRepeatedFlag(args, "--key-decision"),
+      );
       const result = await editPlan({
         cwd: process.cwd(),
         taskName: readRequiredFlag(args, "--task"),
         planFile: readOptionalFlag(args, "--plan"),
         changeSummary: readOptionalFlag(args, "--summary"),
-        patch: patchPath ? readJson<Partial<PlanDocument>>(patchPath) : undefined,
+        patch: mergedPatch,
         planStatus: readOptionalFlag(args, "--plan-status"),
         taskId: readOptionalNumber(args, "--task-id"),
         taskStatus: readOptionalFlag(args, "--task-status") as PlanTask["status"] | undefined,
@@ -500,6 +503,26 @@ function tryResolveActiveWorkflowSnapshot(
   }
 }
 
+async function runSubplan(args: string[]): Promise<void> {
+  const subcommand = args.shift();
+  switch (subcommand) {
+    case "write": {
+      const result = await writeSubplan({
+        cwd: process.cwd(),
+        parentTaskName: readRequiredFlag(args, "--parent"),
+        parentTaskId: readOptionalNumber(args, "--task-id") ?? failMissingNumericFlag("--task-id"),
+        title: readRequiredFlag(args, "--title"),
+        ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
+      });
+      assertNoRemainingArgs(args, "subplan write");
+      printJson(compactPlanCommandResult("plan.write", result));
+      return;
+    }
+    default:
+      throw new ClawError("PROJECT_CONFIG_INVALID", `Unknown subplan subcommand "${subcommand ?? ""}".`);
+  }
+}
+
 function findSessionBoundTask(tasksDir: string, ownerSessionKey: string): string | null {
   if (!fs.existsSync(tasksDir)) {
     return null;
@@ -635,6 +658,7 @@ function compactPlanCommandResult(
       askUser?: unknown;
       goalMode?: unknown;
     };
+    planSchema?: unknown;
     planView: PlanViewModel;
     planReview?: {
       score: number;
@@ -669,6 +693,7 @@ function compactPlanCommandResult(
       : {}),
     ...(result.workflowGuidance.askUser ? { askUser: result.workflowGuidance.askUser } : {}),
     ...(result.workflowGuidance.goalMode ? { goalMode: result.workflowGuidance.goalMode } : {}),
+    ...(command === "plan.write" && result.planSchema ? { planSchema: result.planSchema } : {}),
     ...(result.planReview
       ? {
           planReview: {
@@ -681,6 +706,25 @@ function compactPlanCommandResult(
       : {}),
     planSummary: result.planView.collapsedSummary,
   };
+}
+
+function mergeEditPatchFlags(
+  patch: Partial<PlanDocument> | undefined,
+  rules: string[],
+  keyDecisions: string[],
+): Partial<PlanDocument> | undefined {
+  const merged = patch ? structuredClone(patch) : {};
+  if (rules.length > 0) {
+    merged.rules = [...(merged.rules ?? []), ...rules];
+  }
+  if (keyDecisions.length > 0) {
+    merged.keyDecisions = [...(merged.keyDecisions ?? []), ...keyDecisions];
+  }
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+function failMissingNumericFlag(flag: string): never {
+  throw new ClawError("PROJECT_CONFIG_INVALID", `Missing required flag ${flag}.`, { flag });
 }
 
 function mergeDonePatch(
@@ -1052,6 +1096,24 @@ function readBooleanFlag(args: string[], flag: string): boolean {
   return true;
 }
 
+function rejectFlags(args: string[], flags: string[]): void {
+  for (const flag of flags) {
+    if (args.includes(flag)) {
+      throw new ClawError("PROJECT_CONFIG_INVALID", `${flag} is not supported for this command.`, { flag });
+    }
+  }
+}
+
+function assertNoRemainingArgs(args: string[], command: string): void {
+  if (args.length === 0) {
+    return;
+  }
+  throw new ClawError("PROJECT_CONFIG_INVALID", `Unknown arguments for ${command}: ${args.join(" ")}`, {
+    command,
+    remainingArgs: args,
+  });
+}
+
 function printJson(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
 }
@@ -1102,9 +1164,11 @@ function printUsage(): void {
       "       [--gitnexus true|false] [--max-tasks-to-keep <n>] [--force]",
       "  context [--task <name>]",
       "  check",
-      "  plan write --task <name> [--plan <relative-path>] [--title <text>] [--goal <text>] [--content <json-file>]",
-      "               [--parent-task-id <number>]",
-      "  plan edit --task <name> [--plan <relative-path>] [--patch <json-file>] [--plan-status <status>]",
+      "  plan write --title <text> --goal <text>",
+      "             Creates the task scope and initial plan skeleton at prepare.requirements.",
+      "             Use plan edit to fill requirements and other plan fields.",
+      "  subplan write --parent <task-name> --task-id <number> --title <text>",
+      "  plan edit --task <name> [--plan <relative-path>] [--patch <json-file>] [--rule <text>] [--key-decision <text>] [--plan-status <status>]",
       "  plan show --task <name> [--plan <relative-path>]",
       "  plan done --task <name> [--plan <relative-path>] [--summary <text>] [--patch <json-file>]",
       "  switch-task --from <task> --to <task>",

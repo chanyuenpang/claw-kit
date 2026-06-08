@@ -96,9 +96,10 @@ test("plan write creates task-bound plan and updates activePlan", async () => {
     goalText: "Ship the first plan",
   });
 
-  const meta = JSON.parse(fs.readFileSync(result.metaPath, "utf-8")) as { activePlan: string };
+  const meta = JSON.parse(fs.readFileSync(result.metaPath, "utf-8")) as { activePlan: string; rootPlan: string };
   assert.equal(result.planFile, "plan.json");
   assert.equal(meta.activePlan, "plan.json");
+  assert.equal(meta.rootPlan, "plan.json");
   assert.ok(fs.existsSync(result.planPath));
   assert.equal(result.workflowGuidance.stage, "requirements");
   assert.equal(result.workflowGuidance.delegateSubagents, undefined);
@@ -110,7 +111,12 @@ test("plan write creates task-bound plan and updates activePlan", async () => {
   assert.ok(result.workflowGuidance.summary.includes("Enter goal mode first"));
   assert.ok(result.workflowGuidance.nextStep.includes("Enter goal mode"));
   assert.ok(result.workflowGuidance.nextStep.includes("Review whether requirements are clear enough to execute"));
+  assert.ok(result.workflowGuidance.nextStep.includes("Fill the `requirements` section"));
   assert.equal(result.workflowGuidance.askUser, undefined);
+  assert.deepEqual(result.planSchema.references[0], {
+    path: "<string>",
+    why: "<string>",
+  });
   assert.equal(result.planView.collapsedSummary, "Demo task");
   assert.equal(result.planView.goal.defaultCollapsed, true);
   assert.equal(result.planView.renderHints.defaultCollapsed, true);
@@ -137,6 +143,7 @@ test("plan write guidance leaves requirement judgment to the agent", async () =>
 
   assert.equal(result.workflowGuidance.askUser, undefined);
   assert.ok(result.workflowGuidance.nextStep.includes("Enter goal mode"));
+  assert.ok(result.workflowGuidance.nextStep.includes("Fill the `requirements` section"));
   assert.ok(result.workflowGuidance.nextStep.includes("If requirements are clear, move into `process.active`"));
   assert.ok(result.workflowGuidance.nextStep.includes("If requirements are not clear, ask the user to clarify the missing scope first"));
   assert.deepEqual(result.workflowGuidance.notes, [

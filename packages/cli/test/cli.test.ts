@@ -172,7 +172,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   assert.equal(initResult.projectId, "cli-e2e");
 
   const writeResult = runClaw(
-    ["plan", "write", "--task", "e2e-task", "--title", "E2E task", "--goal", "Verify the CLI lifecycle"],
+    ["plan", "write", "--title", "e2e-task", "--goal", "Verify the CLI lifecycle"],
     root,
     env,
   );
@@ -180,7 +180,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   assert.equal("summary" in writeResult, false);
   assert.equal("taskName" in writeResult, false);
   assert.equal("planFile" in writeResult, false);
-  assert.equal(writeResult.planSummary, "E2E task");
+  assert.equal(writeResult.planSummary, "e2e-task");
   const writeGoalMode = writeResult.goalMode as JsonRecord;
   assert.equal(
     writeGoalMode.recommendedObjective,
@@ -193,6 +193,10 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   assert.deepEqual(writeResult.notes, [
     "Do not start implementation while the plan is still in `prepare.requirements`.",
   ]);
+  assert.deepEqual(((writeResult.planSchema as JsonRecord).references as JsonRecord[])[0], {
+    path: "<string>",
+    why: "<string>",
+  });
 
   const activateResult = runClaw(
     ["plan", "edit", "--task", "e2e-task", "--plan-status", "process.active"],
@@ -212,7 +216,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
     root,
     env,
   );
-  assert.equal(appendResult.planSummary, "0/1 E2E task");
+  assert.equal(appendResult.planSummary, "0/1 e2e-task");
   assert.deepEqual(appendResult.nextTask, {
     id: 1,
     title: "Ship verification",
@@ -300,7 +304,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   assert.equal((memory.task as JsonRecord | undefined), undefined);
   assert.equal(gitnexus.command, "gitnexus analyze");
   assert.equal(gitnexus.enabled, true);
-  assert.equal(doneResult.planSummary, "1/1 E2E task");
+  assert.equal(doneResult.planSummary, "1/1 e2e-task");
 
   const gitnexusLog = fs.readFileSync(shim.logPath, "utf-8");
   assert.match(gitnexusLog, /analyze --no-ai-context/);
@@ -311,7 +315,7 @@ test("cli plan edit append-tasks auto-assigns ids when omitted", () => {
   const root = createFixture("append-auto-task-ids");
   runClaw(["init", "--name", "Append Auto Ids"], root);
   runClaw(
-    ["plan", "write", "--task", "demo-task", "--title", "Demo task", "--goal", "Verify auto ids"],
+    ["plan", "write", "--title", "demo-task", "--goal", "Verify auto ids"],
     root,
   );
   runClaw(["plan", "edit", "--task", "demo-task", "--plan-status", "process.active"], root);
@@ -332,7 +336,7 @@ test("cli plan edit append-tasks auto-assigns ids when omitted", () => {
   );
   const result = runClaw(["plan", "edit", "--task", "demo-task", "--append-tasks", autoPath], root);
 
-  assert.equal(result.planSummary, "0/2 Demo task");
+  assert.equal(result.planSummary, "0/2 demo-task");
   assert.deepEqual(result.nextTask, {
     id: 3,
     title: "Existing numbered task",
@@ -369,9 +373,6 @@ test("cli returns truth-writer contract on completed task before final plan comp
     contentPath,
     JSON.stringify(
       {
-        title: "CLI Truth Contract",
-        status: "process.active",
-        goal: { text: "Verify task completion contract" },
         tasks: [
           { id: 1, title: "First task", status: "pending" },
           { id: 2, title: "Second task", status: "pending" }
@@ -382,7 +383,9 @@ test("cli returns truth-writer contract on completed task before final plan comp
     ),
     "utf-8",
   );
-  runClaw(["plan", "write", "--task", "demo-task", "--content", contentPath], root);
+  runClaw(["plan", "write", "--title", "demo-task", "--goal", "Verify task completion contract"], root);
+  runClaw(["plan", "edit", "--task", "demo-task", "--patch", contentPath], root);
+  runClaw(["plan", "edit", "--task", "demo-task", "--plan-status", "process.active"], root);
 
   const taskDone = runClaw(
     ["plan", "edit", "--task", "demo-task", "--task-id", "1", "--task-status", "done"],
@@ -418,9 +421,6 @@ test("cli task status changed back to pending does not return nextTask", () => {
     contentPath,
     JSON.stringify(
       {
-        title: "Pending No NextTask",
-        status: "process.active",
-        goal: { text: "Keep pending edits lightweight" },
         tasks: [
           { id: 1, title: "Current task", status: "in_progress" },
           { id: 2, title: "Later task", status: "pending" }
@@ -431,7 +431,9 @@ test("cli task status changed back to pending does not return nextTask", () => {
     ),
     "utf-8",
   );
-  runClaw(["plan", "write", "--task", "demo-task", "--content", contentPath], root);
+  runClaw(["plan", "write", "--title", "demo-task", "--goal", "Keep pending edits lightweight"], root);
+  runClaw(["plan", "edit", "--task", "demo-task", "--patch", contentPath], root);
+  runClaw(["plan", "edit", "--task", "demo-task", "--plan-status", "process.active"], root);
 
   const result = runClaw(
     ["plan", "edit", "--task", "demo-task", "--task-id", "1", "--task-status", "pending"],
@@ -443,6 +445,38 @@ test("cli task status changed back to pending does not return nextTask", () => {
   assert.deepEqual(result.recommendedCommands, [
     "claw plan edit --task demo-task --task-id <id> --task-status done",
   ]);
+});
+
+test("cli subplan write keeps task rootPlan stable and derives goal from the parent task", () => {
+  const root = createFixture("cli-subplan-write");
+  runClaw(["init", "--name", "Subplan Write"], root);
+  runClaw(["plan", "write", "--title", "demo-task", "--goal", "Parent goal"], root);
+
+  const patchPath = path.join(root, "root-tasks.json");
+  fs.writeFileSync(
+    patchPath,
+    JSON.stringify(
+      {
+        tasks: [{ id: 1, title: "Implement child work", detail: "Split the risky work into a subplan", status: "pending" }],
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  runClaw(["plan", "edit", "--task", "demo-task", "--patch", patchPath], root);
+
+  const result = runClaw(
+    ["subplan", "write", "--parent", "demo-task", "--task-id", "1", "--title", "child-plan"],
+    root,
+  );
+
+  assert.match(String(result.planPath), /tasks[\\/]demo-task[\\/]plans[\\/]child-plan\.json$/);
+  const meta = JSON.parse(fs.readFileSync(path.join(root, ".claw", "tasks", "demo-task", "meta.json"), "utf-8")) as JsonRecord;
+  const childPlan = JSON.parse(fs.readFileSync(String(result.planPath), "utf-8")) as JsonRecord;
+  assert.equal(meta.rootPlan, "plan.json");
+  assert.equal(meta.activePlan, "plans/child-plan.json");
+  assert.equal(((childPlan.goal as JsonRecord).text), "Implement child work: Split the risky work into a subplan");
 });
 
 test("cli init writes maxTasksToKeep into project.json", () => {
@@ -568,10 +602,8 @@ test("cli plan done always archives the current completed task", async () => {
     [
       "plan",
       "write",
-      "--task",
-      "archive-task",
       "--title",
-      "Archive task",
+      "archive-task",
       "--goal",
       "Archive after completion",
     ],
@@ -601,10 +633,8 @@ test("cli plan show automatically reads archived tasks when the active task is a
     [
       "plan",
       "write",
-      "--task",
-      "archived-task",
       "--title",
-      "Archived task",
+      "archived-task",
       "--goal",
       "Show archived plan",
     ],
@@ -618,7 +648,7 @@ test("cli plan show automatically reads archived tasks when the active task is a
   assert.equal(result.archived, true);
   assert.match(String(result.planPath), /archive[\\/]tasks[\\/]archived-task[\\/].*plan\.json$/);
   const planView = result.planView as JsonRecord;
-  assert.equal(String(planView.collapsedSummary), "Archived task");
+  assert.equal(String(planView.collapsedSummary), "archived-task");
 });
 
 test("cli plan done skips gitnexus refresh when project config disables it", async () => {
@@ -633,9 +663,6 @@ test("cli plan done skips gitnexus refresh when project config disables it", asy
     contentPath,
     JSON.stringify(
       {
-        title: "No Gitnexus",
-        status: "process.active",
-        goal: { text: "Close without gitnexus" },
         tasks: [{ id: 1, title: "Done task", status: "done" }],
       },
       null,
@@ -643,7 +670,9 @@ test("cli plan done skips gitnexus refresh when project config disables it", asy
     ),
     "utf-8",
   );
-  runClaw(["plan", "write", "--task", "disabled-task", "--content", contentPath], root, env);
+  runClaw(["plan", "write", "--title", "disabled-task", "--goal", "Close without gitnexus"], root, env);
+  runClaw(["plan", "edit", "--task", "disabled-task", "--patch", contentPath], root, env);
+  runClaw(["plan", "edit", "--task", "disabled-task", "--plan-status", "process.active"], root, env);
 
   const doneResult = runClaw(
     ["plan", "done", "--task", "disabled-task", "--summary", "No gitnexus refresh needed."],
@@ -697,18 +726,15 @@ test("plan write binds owner session key and SessionStart recovers active workfl
     [
       "plan",
       "write",
-      "--task",
-      "demo-task",
       "--title",
-      "Demo task",
+      "demo-task",
       "--goal",
       "Recover compact workflow guidance",
-      "--status",
-      "process.active",
     ],
     root,
     env,
   );
+  runClaw(["plan", "edit", "--task", "demo-task", "--plan-status", "process.active"], root, env);
 
   const meta = JSON.parse(
     fs.readFileSync(path.join(root, ".claw", "tasks", "demo-task", "meta.json"), "utf-8"),

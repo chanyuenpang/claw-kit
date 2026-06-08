@@ -15,11 +15,14 @@ import type {
   PlanDocument,
   PlanEditInput,
   PlanEditResult,
+  PlanRequirements,
+  PlanSchema,
   PlanShowInput,
   PlanShowResult,
   PlanStatus,
   PlanTask,
   PlanTaskStatus,
+  SubplanWriteInput,
   PlanWriteInput,
   PlanWriteResult,
   TaskContext,
@@ -70,7 +73,7 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
 
   let parentPlanPath: string | undefined;
   if (input.parentTaskId !== undefined) {
-    const subplanContext = resolveSubplanContext(task, input.parentTaskId);
+    const subplanContext = resolveSubplanContext(task, input.parentTaskId, input.parentPlanFile);
     parentPlanPath = subplanContext.parentPlanPath;
     plan = normalizePlanDocument({
       ...plan,
@@ -99,6 +102,7 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
   });
 
   task.meta.activePlan = planFile;
+  task.meta.rootPlan = task.meta.rootPlan ?? "plan.json";
   task.meta.rules = plan.rules;
   task.meta.status = taskMetaStatusForPlanStatus(plan.status);
   if (plan.taskType) {
@@ -132,6 +136,7 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
       plan,
       projectConfig: project.projectConfig,
     }),
+    planSchema: buildPlanSchema(),
     planView: buildPlanViewModel({
       taskName,
       planFile,
@@ -318,6 +323,39 @@ export function showPlan(input: PlanShowInput): PlanShowResult {
   };
 }
 
+export async function writeSubplan(input: SubplanWriteInput): Promise<PlanWriteResult & { events: PlanEvent[] }> {
+  const parentTask = resolveTaskContext(resolveProjectContext(input.cwd), input.parentTaskName);
+  const parentPlanFile = normalizePlanFile(parentTask.meta.rootPlan ?? "plan.json");
+  const parentPlanPath = requireInsideTask(parentTask, parentPlanFile);
+  const parentPlan = normalizePlanDocument(readJsonFile<PlanDocument>(parentPlanPath));
+  const parentPlanTask = parentPlan.tasks.find((task) => task.id === input.parentTaskId);
+  if (!parentPlanTask) {
+    throw new ClawError(
+      "PROJECT_CONFIG_INVALID",
+      `Parent task id ${input.parentTaskId} does not exist in ${parentPlanFile}.`,
+      {
+        taskName: parentTask.taskName,
+        planFile: parentPlanFile,
+        parentTaskId: input.parentTaskId,
+      },
+    );
+  }
+
+  const derivedPlanFile = normalizePlanFile(`plans/${slugFromFilePath(input.title)}.json`);
+  const goalText = parentPlanTask.detail?.trim() ? `${parentPlanTask.title}: ${parentPlanTask.detail}` : parentPlanTask.title;
+
+  return writePlan({
+    cwd: input.cwd,
+    taskName: parentTask.taskName,
+    filePath: derivedPlanFile,
+    title: input.title,
+    goalText,
+    parentTaskId: input.parentTaskId,
+    parentPlanFile,
+    ownerSessionKey: input.ownerSessionKey,
+  });
+}
+
 export function normalizePlanStatus(status: unknown): PlanStatus | null {
   if (typeof status !== "string") {
     return null;
@@ -341,10 +379,19 @@ function normalizePlanDocument(plan: PlanDocument, fallbackStatus?: PlanStatus):
     ...plan,
     status: effectiveStatus,
     goal: { text: plan.goal?.text ?? "" },
+    requirements: normalizePlanRequirements(plan.requirements),
     tasks: normalizePlanTasks(rawTasks),
   };
   validatePlanDocument(normalized);
   return normalized;
+}
+
+function normalizePlanRequirements(requirements: PlanDocument["requirements"]): PlanRequirements {
+  return {
+    summary: requirements?.summary ?? "",
+    openQuestions: Array.isArray(requirements?.openQuestions) ? requirements.openQuestions : [],
+    acceptanceCriteria: Array.isArray(requirements?.acceptanceCriteria) ? requirements.acceptanceCriteria : [],
+  };
 }
 
 function normalizePlanTasks(tasks: PlanTask[], startId = 1): PlanTask[] {
@@ -393,6 +440,11 @@ function validatePlanDocument(plan: PlanDocument): void {
   if (!plan.goal?.text?.trim()) {
     throw new ClawError("PROJECT_CONFIG_INVALID", "Plan goal.text is required.");
   }
+  if (plan.requirements) {
+    if (!Array.isArray(plan.requirements.openQuestions) || !Array.isArray(plan.requirements.acceptanceCriteria)) {
+      throw new ClawError("PROJECT_CONFIG_INVALID", "Plan requirements must use string arrays for openQuestions and acceptanceCriteria.");
+    }
+  }
   for (const task of plan.tasks) {
     validatePlanTask(task);
   }
@@ -426,6 +478,9 @@ function applyPlanPatch(target: PlanDocument, patch: Partial<PlanDocument>): voi
   }
   if (patch.summary !== undefined) {
     target.summary = patch.summary;
+  }
+  if (patch.requirements !== undefined) {
+    target.requirements = normalizePlanRequirements(patch.requirements);
   }
   if (patch.taskType !== undefined) {
     target.taskType = patch.taskType;
@@ -470,7 +525,18 @@ function createSeedPlan(taskName: string, title?: string, goalText?: string, sta
     goal: {
       text: goalText ?? "",
     },
+    requirements: {
+      summary: "",
+      openQuestions: [],
+      acceptanceCriteria: [],
+    },
     tasks: [],
+    references: [],
+    rules: [],
+    keyDecisions: [],
+    retrospective: {
+      summary: "",
+    },
   };
 }
 
@@ -478,13 +544,16 @@ function deriveTaskName(input: PlanWriteInput): string {
   if (input.taskName?.trim()) {
     return resolveTaskName(input.taskName);
   }
+  if (input.title?.trim()) {
+    return resolveTaskName(input.title);
+  }
   if (input.filePath?.trim()) {
     const derived = slugFromFilePath(input.filePath);
     if (derived) {
       return derived;
     }
   }
-  throw new ClawError("TASK_NAME_INVALID", "plan write requires --task or a filePath that can derive a task name.");
+  throw new ClawError("TASK_NAME_INVALID", "plan write requires a title or a filePath that can derive a task name.");
 }
 
 function derivePlanFile(task: TaskContext, filePath?: string, parentTaskId?: number): string {
@@ -665,14 +734,14 @@ function mergeReferences(parentReferences?: PlanDocument["references"], childRef
   return [...merged.values()];
 }
 
-function resolveSubplanContext(task: TaskContext, parentTaskId: number): {
+function resolveSubplanContext(task: TaskContext, parentTaskId: number, parentPlanFile?: string): {
   parentPlanFile: string;
   parentPlanPath: string;
   parentPlan: PlanDocument;
   parentTask: PlanTask;
 } {
-  const parentPlanFile = task.activePlan;
-  const parentPlanPath = task.activePlanPath;
+  const resolvedParentPlanFile = normalizePlanFile(parentPlanFile ?? task.activePlan);
+  const parentPlanPath = requireInsideTask(task, resolvedParentPlanFile);
   const parentPlan = normalizePlanDocument(readJsonFile<PlanDocument>(parentPlanPath));
   const parentTask = parentPlan.tasks.find((item) => item.id === parentTaskId);
   if (!parentTask) {
@@ -682,9 +751,43 @@ function resolveSubplanContext(task: TaskContext, parentTaskId: number): {
     );
   }
   return {
-    parentPlanFile,
+    parentPlanFile: resolvedParentPlanFile,
     parentPlanPath,
     parentPlan,
     parentTask,
+  };
+}
+
+function buildPlanSchema(): PlanSchema {
+  return {
+    title: "<string>",
+    status: "prepare.requirements",
+    goal: {
+      text: "<string>",
+    },
+    requirements: {
+      summary: "<string>",
+      openQuestions: ["<string>"],
+      acceptanceCriteria: ["<string>"],
+    },
+    tasks: [
+      {
+        id: 1,
+        title: "<string>",
+        detail: "<string>",
+        status: "pending",
+      },
+    ],
+    references: [
+      {
+        path: "<string>",
+        why: "<string>",
+      },
+    ],
+    rules: ["<string>"],
+    keyDecisions: ["<string>"],
+    retrospective: {
+      summary: "<string>",
+    },
   };
 }

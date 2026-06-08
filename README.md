@@ -20,7 +20,7 @@ Then use it from any project directory:
 
 ```powershell
 claw init --max-tasks-to-keep 20 --external-truth-skill external-truth-writer --external-adr-skill external-adr-writer
-claw plan write --task my-task --title "My task" --goal "Define the first task"
+claw plan write --title "My task" --goal "Define the first task"
 ```
 
 ## Published npm packages

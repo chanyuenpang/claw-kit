@@ -46,6 +46,12 @@ export type PlanReference = {
   path: string;
 };
 
+export type PlanRequirements = {
+  summary: string;
+  openQuestions: string[];
+  acceptanceCriteria: string[];
+};
+
 export type PlanRetrospective = {
   summary: string;
   whatWorked?: string[];
@@ -80,6 +86,7 @@ export type PlanDocument = {
   goal: {
     text: string;
   };
+  requirements?: PlanRequirements;
   parentPlan?: string;
   parentTaskId?: number;
   summary?: string;
@@ -155,6 +162,38 @@ export type WorkflowGuidance = {
     reason: string;
     useCodexOptions: true;
     options: WorkflowGuidanceOption[];
+  };
+};
+
+export type PlanSchema = {
+  title: "<string>";
+  status: "prepare.requirements";
+  goal: {
+    text: "<string>";
+  };
+  requirements: {
+    summary: "<string>";
+    openQuestions: ["<string>"];
+    acceptanceCriteria: ["<string>"];
+  };
+  tasks: [
+    {
+      id: 1;
+      title: "<string>";
+      detail: "<string>";
+      status: "pending";
+    }
+  ];
+  references: [
+    {
+      path: "<string>";
+      why: "<string>";
+    }
+  ];
+  rules: ["<string>"];
+  keyDecisions: ["<string>"];
+  retrospective: {
+    summary: "<string>";
   };
 };
 
@@ -319,6 +358,7 @@ export type TaskMeta = {
   subagents: unknown[];
   status?: TaskStatus;
   taskType?: string;
+  rootPlan?: string;
   activePlan?: string;
   ownerSessionKey?: string;
   boundAt?: string;
@@ -367,6 +407,7 @@ export type PlanWriteInput = {
   ownerSessionKey?: string;
   content?: PlanDocument;
   parentTaskId?: number;
+  parentPlanFile?: string;
   reviewer?: PlanReviewer;
   workflowDefinitions?: string;
 };
@@ -385,7 +426,16 @@ export type PlanWriteResult = {
   parentTaskId?: number;
   planReview?: PlanReviewResult;
   workflowGuidance: WorkflowGuidance;
+  planSchema: PlanSchema;
   planView: PlanViewModel;
+};
+
+export type SubplanWriteInput = {
+  cwd: string;
+  parentTaskName: string;
+  parentTaskId: number;
+  title: string;
+  ownerSessionKey?: string;
 };
 
 export type PlanEditInput = {

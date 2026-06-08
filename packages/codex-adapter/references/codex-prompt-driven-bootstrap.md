@@ -10,7 +10,7 @@ The plugin works on these rules:
 
 - skills load reliably
 - plugin command hooks are enhancement only
-- `SessionStart` bootstrap recovers `.claw` context before the main workflow starts
+- `SessionStart` bootstrap recovers startup harness state before the main workflow starts
 
 ## Required startup routine
 
@@ -46,4 +46,4 @@ When `@claw-kit` is used in a real project thread:
 - do not depend on `SessionStart` for correctness
 - do not depend on `PreToolUse` or `PostToolUse`
 - do not invent a second task-binding mechanism outside `plan write`
-- do not branch startup recovery by `SessionStart.source`; use one startup flow and decide only from recoverable `.claw` context
+- do not branch startup recovery by `SessionStart.source`; use one startup flow and decide only from recoverable workflow or project state

@@ -21,7 +21,7 @@ Current active use:
 - `SessionStart` calls a dedicated bootstrap entry.
 - `SessionStart` listens to all session starts.
 - The only claw-kit runtime gate is that `cwd` resolves into a `.claw` project.
-- When that gate is met, the entry runs `claw context`, compresses the result, and injects developer-visible startup guidance.
+- When that gate is met, the entry gathers current project startup state and injects developer-visible startup guidance.
 - The injected guidance tells the agent to use `[@claw-kit](plugin://claw-kit@claw-kit-local)` for the rest of the task flow.
 
 ## Testing strategy

@@ -45,7 +45,7 @@ Report the recovered harness state before normal conversation:
   - `memory.externalDocPaths`
   - `gitnexus.enabled`
 
-Do not open with a generic greeting when `.claw` context is available.
+Do not open with a generic greeting when recovered harness state is available.
 Do not tell the user that claw-kit cannot proceed because `.claw` is missing, malformed, or has no current task. Session bootstrap already recovered the harness state and the claw-kit workflow continues from there.
 
 ## Main workflow
@@ -57,7 +57,7 @@ Do not tell the user that claw-kit cannot proceed because `.claw` is missing, ma
 5. Follow `workflowGuidance.nextStep` and `recommendedCommands` as the required next-step contract instead of inventing your own heuristic.
 6. After `claw plan write`, set the thread goal from `workflowGuidance.goalMode.recommendedObjective` immediately.
 7. If `workflowGuidance.askUser` is present, use Codex option-style confirmation.
-8. Treat recovered `claw context` as a hook/bootstrap responsibility, not a post-plan workflow step.
+8. Treat startup recovery as a hook/bootstrap responsibility, not a post-plan workflow step.
 9. If requirements are already clear, move directly to `process.active`.
 10. Do not start implementation while the plan is still in `prepare.requirements`.
 11. During execution, process one task at a time and update progress with `claw plan edit`.

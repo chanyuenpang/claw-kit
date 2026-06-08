@@ -80,14 +80,14 @@ export function buildPlanWorkflowGuidance(params: {
         stage: "requirements",
         summary: "Task scope is bound. Enter goal mode first, then decide whether requirements are clear enough to execute.",
         nextStep:
-          "1. Enter goal mode with the recommended objective. 2. Review whether requirements are clear enough to execute. 3. If requirements are clear, move into `process.active`. 4. If requirements are not clear, ask the user to clarify the missing scope first.",
+          "1. Enter goal mode with the recommended objective. 2. Review whether requirements are clear enough to execute. 3. Fill the `requirements` section and any other needed plan fields such as `tasks`, `references`, `rules`, and `keyDecisions`. 4. If requirements are clear, move into `process.active`. 5. If requirements are not clear, ask the user to clarify the missing scope first.",
         notes: [
           "Do not start implementation while the plan is still in `prepare.requirements`.",
         ],
         recommendedCommands: [
           `${editBase} --patch <updated-plan.json>`,
+          `${editBase} --rule "..." --key-decision "..."`,
           `${editBase} --plan-status process.active`,
-          `${editBase} --plan-status process.discussing`,
         ],
         goalMode: {
           recommendedObjective: buildGoalModeObjective(plan.goal.text),

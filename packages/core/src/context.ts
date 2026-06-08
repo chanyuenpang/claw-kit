@@ -37,6 +37,9 @@ export function resolveTaskContext(project: ProjectContext, taskName: string): T
   }
 
   const meta = readJsonFile<TaskMeta>(metaPath);
+  if (!meta.rootPlan) {
+    meta.rootPlan = "plan.json";
+  }
   const activePlan = normalizePlanFile(typeof meta.activePlan === "string" ? meta.activePlan : "plan.json");
   const activePlanPath = ensureInsideDir(taskDir, activePlan);
   if (!activePlanPath) {
@@ -108,6 +111,7 @@ export function ensureTaskMeta(
       updatedAt: now,
       subagents: [],
       status: "active",
+      rootPlan: "plan.json",
       activePlan: "plan.json",
       ...(ownerSessionKey?.trim()
         ? {
