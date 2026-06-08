@@ -136,7 +136,8 @@ test("plan write guidance can skip askUser when requirements are already clear",
   });
 
   assert.equal(result.workflowGuidance.askUser, undefined);
-  assert.ok(result.workflowGuidance.nextStep.includes("move directly to `process.active`"));
+  assert.ok(result.workflowGuidance.nextStep.includes("Enter goal mode"));
+  assert.ok(result.workflowGuidance.nextStep.includes("Move directly into `process.active`"));
   assert.ok(result.workflowGuidance.notes?.some((note) => note.includes("legacy `claw context` workflow step")));
 });
 
@@ -304,7 +305,8 @@ test("plan edit can move from requirements to process.active without a separate 
   assert.equal(activated.workflowGuidance.stage, "execution");
   assert.equal(activated.workflowGuidance.nextTask?.id, 1);
   assert.equal(activated.workflowGuidance.nextTask?.title, "Implement work");
-  assert.ok(activated.workflowGuidance.nextStep.includes("#1 Implement work"));
+  assert.ok(activated.workflowGuidance.nextStep.includes("Sync the thread progress with our tasks."));
+  assert.ok(activated.workflowGuidance.nextStep.includes("task #1"));
 
   const result = await editPlan({
     cwd: root,
@@ -314,7 +316,6 @@ test("plan edit can move from requirements to process.active without a separate 
   });
 
   assert.equal(result.planStatus, "process.active");
-  assert.ok(result.workflowGuidance.notes?.some((note) => note.includes("thread progress")));
   assert.equal(result.planView.counts.completed, 1);
   assert.deepEqual(
     result.planView.tasks.items.map((task) => ({ id: task.id, status: task.status })),
@@ -333,6 +334,66 @@ test("plan edit can move from requirements to process.active without a separate 
   assert.equal(truthDelegate.closePolicy, "keep_open_for_reuse");
   assert.ok(result.workflowGuidance.nextStep.includes("truth-writer"));
   assert.ok(result.workflowGuidance.nextStep.includes("retrospective"));
+});
+
+test("process entry returns the first task and task completion returns truth-writer contract before plan completion", async () => {
+  const root = createFixture("process-entry-and-truth-contract");
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify(
+      {
+        id: "process-entry-and-truth-contract",
+        name: "Process Entry And Truth Contract",
+        maxTasksToKeep: 99,
+        externalTruthSkill: "external-truth-writer",
+        externalAdrSkill: null,
+        contextPaths: [],
+        memory: { externalDocPaths: [] },
+        gitnexus: { enabled: false },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Verify process entry and task completion semantics",
+    content: {
+      title: "Demo task",
+      status: "prepare.requirements",
+      goal: { text: "Verify process entry and task completion semantics" },
+      tasks: [
+        { id: 1, title: "First task", status: "pending" },
+        { id: 2, title: "Second task", status: "pending" },
+      ],
+    },
+  });
+
+  const activated = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    planStatus: "process.active",
+  });
+  assert.equal(activated.workflowGuidance.nextTask?.id, 1);
+  assert.equal(activated.workflowGuidance.delegateSubagents, undefined);
+
+  const taskDone = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    taskId: 1,
+    taskStatus: "done",
+  });
+  assert.equal(taskDone.workflowGuidance.stage, "execution");
+  assert.equal(taskDone.workflowGuidance.nextTask?.id, 2);
+  assert.equal(
+    taskDone.workflowGuidance.nextStep,
+    "1. Sync the thread progress with our tasks. 2. Dispatch `truth-writer` if the completed task produced valuable context worth depositing as truth doc. 3. Continue with task #2.",
+  );
+  assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.skill, "external-truth-writer");
 });
 
 test("plan edit appendTasks auto-assigns ids when omitted", async () => {

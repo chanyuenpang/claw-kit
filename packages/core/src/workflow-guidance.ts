@@ -43,8 +43,8 @@ function nextUnfinishedTask(plan: PlanDocument): PlanTask | undefined {
   return plan.tasks.find((task) => task.status !== "done");
 }
 
-function formatNextTask(task: PlanTask): string {
-  return `#${task.id} ${task.title}`;
+function formatTaskRef(task: PlanTask): string {
+  return `task #${task.id}`;
 }
 
 function requirementsNeedClarification(plan: PlanDocument): boolean {
@@ -59,15 +59,16 @@ export function buildPlanWorkflowGuidance(params: {
   previousStatus?: PlanStatus;
   completionHooks?: PlanCompletionHooks;
   changedTaskIds?: number[];
+  completedTaskIds?: number[];
 }): WorkflowGuidance {
-  const { taskName, planFile, plan, projectConfig = null, previousStatus, completionHooks, changedTaskIds } = params;
+  const { taskName, planFile, plan, projectConfig = null, previousStatus, completionHooks, completedTaskIds } = params;
   const scopedPlan = planFile === "plan.json" ? "" : ` --plan ${planFile}`;
   const editBase = `claw plan edit --task ${taskName}${scopedPlan}`;
   const doneBase = `claw plan done --task ${taskName}${scopedPlan}`;
   const hasTasks = plan.tasks.length > 0;
   const allTasksDone = hasTasks && plan.tasks.every((task) => task.status === "done");
   const justEnteredProcess = previousStatus?.startsWith("prepare.") && plan.status.startsWith("process.");
-  const justCompletedTasks = (changedTaskIds?.length ?? 0) > 0;
+  const hasCompletedTasks = (completedTaskIds?.length ?? 0) > 0;
   const nextTask = nextUnfinishedTask(plan);
   const needsClarification = requirementsNeedClarification(plan);
 
@@ -78,8 +79,8 @@ export function buildPlanWorkflowGuidance(params: {
         summary: "Task scope is bound. Enter goal mode first, then decide whether requirements are clear enough to execute.",
         nextStep:
           needsClarification
-            ? "Enter goal mode from `workflowGuidance.goalMode`, review whether requirements are clear, and if they are not, ask the user to clarify before execution begins."
-            : "Enter goal mode from `workflowGuidance.goalMode`, verify requirements are already clear, then move directly to `process.active` before doing any implementation or task execution.",
+            ? "1. Enter goal mode from `workflowGuidance.goalMode`. 2. Review whether requirements are clear enough to execute. 3. Ask the user to clarify any missing scope before moving into `process.active`."
+            : "1. Enter goal mode from `workflowGuidance.goalMode`. 2. Confirm the requirements are already clear enough to execute. 3. Move directly into `process.active` before doing any implementation or task execution.",
         notes: [
           "The legacy `claw context` workflow step is now handled by session bootstrap hooks instead of the post-plan workflow.",
           "After `plan write`, goal mode is the first required follow-up action.",
@@ -132,7 +133,7 @@ export function buildPlanWorkflowGuidance(params: {
         stage: "review",
         summary: "This plan is in a legacy review stage.",
         nextStep:
-          "Fold any remaining review notes into the plan, confirm the route with the user, then move back into process.*.",
+          "1. Fold the remaining review notes into the plan. 2. Confirm the route with the user. 3. Move the plan back into `prepare.requirements` or `process.discussing`.",
         notes: ["Do not create a separate review pass. Merge review criteria into planning itself."],
         recommendedCommands: [
           `${editBase} --patch <reviewed-plan.json>`,
@@ -170,11 +171,10 @@ export function buildPlanWorkflowGuidance(params: {
         stage: "done",
         summary: "All plan tasks are done. Do truth deposition, then close the plan.",
         nextStep:
-          "Dispatch `truth-writer`, complete the retrospective, then close the plan with `claw plan done`.",
+          "1. Sync the thread progress with our tasks. 2. Dispatch `truth-writer` if the completed work produced valuable context worth depositing as truth doc. 3. Close the plan with `claw plan done` after writing the retrospective summary.",
         notes: [
           "`all task done` is not ADR completion.",
           "ADR happens after completed `plan.json` exists.",
-          "If the host shows thread progress, sync it to the current plan state now.",
         ],
           recommendedCommands: [
             `${doneBase} --summary \"<retrospective summary>\"`,
@@ -189,9 +189,11 @@ export function buildPlanWorkflowGuidance(params: {
           ? "Execution is starting."
           : "Execution is in progress.",
         nextStep:
-          justEnteredProcess
-            ? `Confirm the route with the user if needed, then start with ${nextTask ? formatNextTask(nextTask) : "the next task"} and update task status as work progresses.`
-            : `Continue execution with ${nextTask ? formatNextTask(nextTask) : "the next task"}, update task status with \`claw plan edit\`, and close with \`claw plan done\` when work is complete.`,
+          hasCompletedTasks
+            ? `1. Sync the thread progress with our tasks. 2. Dispatch \`truth-writer\` if the completed task produced valuable context worth depositing as truth doc. 3. Continue with ${nextTask ? formatTaskRef(nextTask) : "the next task"}.`
+            : justEnteredProcess
+              ? `1. Sync the thread progress with our tasks. 2. Start with ${nextTask ? formatTaskRef(nextTask) : "the next task"}.`
+              : `1. Sync the thread progress with our tasks. 2. Continue with ${nextTask ? formatTaskRef(nextTask) : "the next task"}. 3. Update task status with \`claw plan edit\`.`,
         ...(nextTask
           ? {
               nextTask: {
@@ -205,42 +207,14 @@ export function buildPlanWorkflowGuidance(params: {
         notes: [
           "Use delegated specialists for truth and ADR deposition.",
           "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
-          "If the host shows thread progress, sync it after this plan edit.",
-          ...(justCompletedTasks
-            ? [
-                "If the completed subtask produced reusable knowledge, dispatch truth-writer.",
-                `Continue with next task: ${nextTask ? `id ${nextTask.id} content ${nextTask.title}` : "id <next> content <next task>"}.`,
-              ]
-            : []),
         ],
         recommendedCommands: [
           `${editBase} --task-id <id> --task-status done`,
           `${doneBase} --summary \"<retrospective summary>\"`,
         ],
-        ...(justEnteredProcess
+        ...(hasCompletedTasks
           ? {
-              askUser: {
-                reason: "Execution is starting and any remaining route choice should be made explicit with the user.",
-                useCodexOptions: true,
-                options: [
-                  {
-                    id: "execute-current-route",
-                    label: "Execute route",
-                    description: "Proceed with the current plan as written.",
-                    recommended: true,
-                  },
-                  {
-                    id: "revise-before-execution",
-                    label: "Revise first",
-                    description: "Adjust the plan before deeper implementation begins.",
-                  },
-                  {
-                    id: "pause-for-input",
-                    label: "Pause for input",
-                    description: "Wait for additional requirements or direction from the user.",
-                  },
-                ],
-              },
+              delegateSubagents: [truthWriterDelegate(projectConfig)],
             }
           : {}),
       };

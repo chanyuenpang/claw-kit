@@ -130,7 +130,10 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
     root,
     env,
   );
-  assert.equal(writeResult.stage, "requirements");
+  assert.equal("stage" in writeResult, false);
+  assert.equal("summary" in writeResult, false);
+  assert.equal("taskName" in writeResult, false);
+  assert.equal("planFile" in writeResult, false);
   assert.equal(writeResult.planSummary, "0/0 E2E task");
   const writeGoalMode = writeResult.goalMode as JsonRecord;
   assert.equal(
@@ -169,7 +172,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
     root,
     env,
   );
-  assert.equal(taskDone.stage, "done");
+  assert.equal("stage" in taskDone, false);
   const truthDelegate = ((taskDone.delegateSubagents as JsonRecord[])[0] ?? {});
   assert.equal(truthDelegate.name, "truth-writer");
   assert.equal(truthDelegate.skill, "external-truth-writer");
@@ -177,6 +180,10 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   assert.equal(truthDelegate.waitForCompletion, false);
   assert.equal(truthDelegate.preferReuseSameTypeInThread, true);
   assert.equal(truthDelegate.closePolicy, "keep_open_for_reuse");
+  assert.equal(
+    taskDone.nextStep,
+    "1. Sync the thread progress with our tasks. 2. Dispatch `truth-writer` if the completed work produced valuable context worth depositing as truth doc. 3. Close the plan with `claw plan done` after writing the retrospective summary.",
+  );
 
   const truthInputPath = path.join(root, "truth-report.md");
   fs.writeFileSync(truthInputPath, "# Finding\n\nDurable truth.\n", "utf-8");
@@ -260,6 +267,60 @@ test("cli plan edit append-tasks auto-assigns ids when omitted", () => {
     { id: 3, title: "Existing numbered task" },
     { id: 4, title: "Auto numbered task" },
   ]);
+});
+
+test("cli returns truth-writer contract on completed task before final plan completion", () => {
+  const root = createFixture("cli-truth-contract-before-done");
+  runClaw(
+    [
+      "init",
+      "--name",
+      "CLI Truth Contract",
+      "--external-truth-skill",
+      "external-truth-writer",
+    ],
+    root,
+  );
+
+  const contentPath = path.join(root, "plan.json");
+  fs.writeFileSync(
+    contentPath,
+    JSON.stringify(
+      {
+        title: "CLI Truth Contract",
+        status: "process.active",
+        goal: { text: "Verify task completion contract" },
+        tasks: [
+          { id: 1, title: "First task", status: "pending" },
+          { id: 2, title: "Second task", status: "pending" }
+        ]
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  runClaw(["plan", "write", "--task", "demo-task", "--content", contentPath], root);
+
+  const taskDone = runClaw(
+    ["plan", "edit", "--task", "demo-task", "--task-id", "1", "--task-status", "done"],
+    root,
+  );
+
+  assert.equal("stage" in taskDone, false);
+  assert.equal("summary" in taskDone, false);
+  assert.equal(
+    taskDone.nextStep,
+    "1. Sync the thread progress with our tasks. 2. Dispatch `truth-writer` if the completed task produced valuable context worth depositing as truth doc. 3. Continue with task #2.",
+  );
+  assert.deepEqual(taskDone.nextTask, {
+    id: 2,
+    title: "Second task",
+    status: "pending",
+  });
+  const truthDelegate = ((taskDone.delegateSubagents as JsonRecord[])[0] ?? {});
+  assert.equal(truthDelegate.name, "truth-writer");
+  assert.equal(truthDelegate.skill, "external-truth-writer");
 });
 
 test("cli init writes maxTasksToKeep into project.json", () => {

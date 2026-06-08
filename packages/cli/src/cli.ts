@@ -461,20 +461,16 @@ function compactPlanCommandResult(
   return {
     ok: true,
     command,
-    taskName: result.taskName,
-    planFile: result.planFile,
     planPath: resolvedPlanPath,
     planStatus: result.planStatus,
-    stage: result.workflowGuidance.stage,
-    summary: result.workflowGuidance.summary,
     nextStep: result.workflowGuidance.nextStep,
     ...(result.workflowGuidance.nextTask ? { nextTask: result.workflowGuidance.nextTask } : {}),
+    ...(result.workflowGuidance.delegateSubagents?.length
+      ? { delegateSubagents: result.workflowGuidance.delegateSubagents }
+      : {}),
     ...(result.workflowGuidance.notes?.length ? { notes: result.workflowGuidance.notes } : {}),
     ...(result.workflowGuidance.recommendedCommands?.length
       ? { recommendedCommands: result.workflowGuidance.recommendedCommands }
-      : {}),
-    ...(result.workflowGuidance.delegateSubagents?.length
-      ? { delegateSubagents: result.workflowGuidance.delegateSubagents }
       : {}),
     ...(result.workflowGuidance.askUser ? { askUser: result.workflowGuidance.askUser } : {}),
     ...(result.workflowGuidance.goalMode ? { goalMode: result.workflowGuidance.goalMode } : {}),

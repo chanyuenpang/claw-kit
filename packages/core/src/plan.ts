@@ -161,6 +161,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
   const previousStatus = previous.status;
   const events: PlanEvent[] = [];
   const changedTaskIds: number[] = [];
+  const completedTaskIds: number[] = [];
   const next = structuredClone(previous);
   const requestedStatus = input.planStatus ? normalizePlanStatus(input.planStatus) : undefined;
 
@@ -218,6 +219,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
     planTask.status = input.taskStatus;
     changedTaskIds.push(planTask.id);
     if (previousTaskStatus !== "done" && input.taskStatus === "done") {
+      completedTaskIds.push(planTask.id);
       events.push(
         buildPlanEvent("plan_task_completed", {
           planPath,
@@ -296,6 +298,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
       previousStatus,
       completionHooks,
       changedTaskIds,
+      completedTaskIds,
     }),
     planView: buildPlanViewModel({
       taskName: task.taskName,
