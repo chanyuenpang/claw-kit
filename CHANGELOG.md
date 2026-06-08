@@ -2,6 +2,18 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.1.19] - 2026-06-08
+
+### Added
+
+- archived-task fallback for `claw plan show`, returning archived plan views when the active task has already been moved under `.claw/archive/tasks/`
+- explicit `archivedPlanPath` in `claw plan done` results when completion retention archives the current task
+
+### Changed
+
+- unified `SessionStart` recovery now restores session-bound active workflow snapshots through `ownerSessionKey` and recomputed `workflowGuidance`
+- `plan write` now binds the current host session onto task metadata for startup recovery
+- `.claw/logs/` is now ignored as runtime-only state
 ## [0.1.12] - 2026-06-08
 
 ### Added

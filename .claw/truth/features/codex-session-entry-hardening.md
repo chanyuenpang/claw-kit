@@ -6,28 +6,32 @@ Accepted working truth for the current Codex adapter startup path.
 
 ## Core facts
 
-- `@claw-kit` 的主入口是 `claw-kit:using-claw-kit`。
-- `SessionStart` hook 只负责 session-entry bootstrap enhancement，不负责 canonical harness correctness。
-- 当前启动脚本是 `packages/codex-adapter/hooks/session-start-bootstrap.mjs`。
-- 启动时先根据 `cwd` 判断是否位于 `.claw` 项目内。
-- 命中 `.claw` 项目时，脚本执行 `claw context`，把紧凑 project context 和 “应使用 [@claw-kit](plugin://claw-kit@claw-kit-local) 推进任务” 的提示写入 `additionalContext`。
-- 不在 `.claw` 项目时，hook 应静默退出，不污染普通 session。
+- `@claw-kit` session entry still routes through `claw-kit:using-claw-kit`.
+- `SessionStart` is an enhancement layer for developer-visible startup context, not the source of canonical workflow correctness.
+- The startup hook implementation lives at `packages/codex-adapter/hooks/session-start-bootstrap.mjs`.
+- Startup follows one unified flow; it does not branch on `SessionStart.source` such as `compact`.
+- During `plan write`, the active task metadata is bound to the current host session with `ownerSessionKey` and `boundAt`.
+- On `SessionStart`, the adapter first attempts to recover a session-bound active workflow from current `.claw` state.
+- If recovery finds an active plan for the current session, the hook injects a minimal claw workflow snapshot and recomputed `workflowGuidance`.
+- The recovered `workflowGuidance` is the only next-step contract surfaced back to the agent.
+- If no recoverable active workflow exists, startup falls back to the existing default prompt behavior without extra recovery text.
 
 ## Workflow implications
 
-- startup hook 负责把 session 引到正确入口，但不会替代 `claw plan write`、`claw plan edit`、`claw plan done` 这些 canonical CLI 行为。
-- 主 agent 仍需读取 `.claw` context，并消费 `workflowGuidance` 推进后续流程。
-- 即使 hook 可用，prompt-driven startup 仍然是主路径。
+- The startup hook may restore the current workflow contract, but it does not replace `claw plan write`, `claw plan edit`, or `claw plan done`.
+- Canonical next-step routing still comes from current plan state plus recomputed `workflowGuidance`, not from hook event type or tool-use heuristics.
+- Session recovery is valid only when `.claw` can recover an active plan bound to the current session.
 
 ## Related files
 
 - `packages/codex-adapter/hooks/session-start-bootstrap.mjs`
 - `packages/codex-adapter/hooks/hooks.json`
-- `packages/codex-adapter/.codex-plugin/plugin.json`
-- `packages/codex-adapter/hooks/session-start-bootstrap.test.mjs`
-- `packages/codex-adapter/skills/using-claw-kit/SKILL.md`
+- `packages/cli/src/cli.ts`
+- `packages/core/src/context.ts`
+- `packages/core/src/plan.ts`
+- `packages/core/src/types.ts`
 
 ## Boundaries
 
-- hook 只能注入 developer-visible startup context，不能可靠接管 goal、subagent、truth、ADR 等 thread orchestration 行为。
-- canonical harness correctness 仍绑定在 prompt-driven workflow 和 local claw CLI 上。
+- The hook only injects minimal startup context; it does not take over goal, subagent, truth, or ADR orchestration.
+- If `.claw` cannot recover a session-bound active workflow, the adapter should behave like normal startup rather than inventing recovery guidance.

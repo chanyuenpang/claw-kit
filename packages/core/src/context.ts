@@ -71,7 +71,12 @@ export function resolveContext(cwd: string, taskName?: string): ResolvedContext 
   };
 }
 
-export function ensureTaskMeta(project: ProjectContext, taskName: string, description?: string): TaskContext {
+export function ensureTaskMeta(
+  project: ProjectContext,
+  taskName: string,
+  description?: string,
+  ownerSessionKey?: string,
+): TaskContext {
   const resolvedTaskName = resolveTaskName(taskName);
   const taskDir = path.join(project.tasksDir, resolvedTaskName);
   const metaPath = path.join(taskDir, "meta.json");
@@ -85,6 +90,15 @@ export function ensureTaskMeta(project: ProjectContext, taskName: string, descri
     if (description && !meta.description) {
       meta.description = description;
     }
+    if (ownerSessionKey?.trim()) {
+      const normalizedOwnerSessionKey = ownerSessionKey.trim();
+      if (meta.ownerSessionKey !== normalizedOwnerSessionKey) {
+        meta.ownerSessionKey = normalizedOwnerSessionKey;
+        meta.boundAt = now;
+      } else if (!meta.boundAt) {
+        meta.boundAt = now;
+      }
+    }
   } else {
     meta = {
       name: resolvedTaskName,
@@ -95,6 +109,12 @@ export function ensureTaskMeta(project: ProjectContext, taskName: string, descri
       subagents: [],
       status: "active",
       activePlan: "plan.json",
+      ...(ownerSessionKey?.trim()
+        ? {
+            ownerSessionKey: ownerSessionKey.trim(),
+            boundAt: now,
+          }
+        : {}),
     };
   }
 

@@ -320,6 +320,8 @@ export type TaskMeta = {
   status?: TaskStatus;
   taskType?: string;
   activePlan?: string;
+  ownerSessionKey?: string;
+  boundAt?: string;
   rules?: string[];
   prevTask?: string;
   leaveState?: LeaveState;
@@ -362,6 +364,7 @@ export type PlanWriteInput = {
   description?: string;
   goalText?: string;
   planStatus?: string;
+  ownerSessionKey?: string;
   content?: PlanDocument;
   parentTaskId?: number;
   reviewer?: PlanReviewer;
@@ -420,12 +423,13 @@ export type PlanShowInput = {
 };
 
 export type PlanShowResult = {
-  taskName: string;
-  planPath: string;
-  planFile: string;
-  plan: PlanDocument;
-  planView: PlanViewModel;
-};
+    taskName: string;
+    planPath: string;
+    planFile: string;
+    archived?: true;
+    plan: PlanDocument;
+    planView: PlanViewModel;
+  };
 
 export type SwitchTaskInput = {
   cwd: string;

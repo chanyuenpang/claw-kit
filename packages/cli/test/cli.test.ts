@@ -586,11 +586,39 @@ test("cli plan done always archives the current completed task", async () => {
 
   assert.equal("completionRefresh" in doneResult, false);
   assert.match(String(doneResult.planPath), /archive[\\/]tasks[\\/]archive-task[\\/].*plan\.json$/);
+  assert.equal(String(doneResult.archivedPlanPath), String(doneResult.planPath));
   const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
   const memory = refreshStatus.memory as JsonRecord;
   assert.equal((memory.task as JsonRecord | undefined), undefined);
   assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "archive-task")), false);
   assert.equal(fs.existsSync(path.join(root, ".claw", "archive", "tasks", "archive-task")), true);
+});
+
+test("cli plan show automatically reads archived tasks when the active task is archived away", () => {
+  const root = createFixture("plan-show-archived");
+  runClaw(["init", "--name", "Archived Show", "--max-tasks-to-keep", "99"], root);
+  runClaw(
+    [
+      "plan",
+      "write",
+      "--task",
+      "archived-task",
+      "--title",
+      "Archived task",
+      "--goal",
+      "Show archived plan",
+    ],
+    root,
+  );
+  runClaw(["plan", "edit", "--task", "archived-task", "--plan-status", "process.active"], root);
+  runClaw(["plan", "done", "--task", "archived-task", "--summary", "Archive this task."], root);
+
+  const result = runClaw(["plan", "show", "--task", "archived-task"], root);
+
+  assert.equal(result.archived, true);
+  assert.match(String(result.planPath), /archive[\\/]tasks[\\/]archived-task[\\/].*plan\.json$/);
+  const planView = result.planView as JsonRecord;
+  assert.equal(String(planView.collapsedSummary), "Archived task");
 });
 
 test("cli plan done skips gitnexus refresh when project config disables it", async () => {
@@ -656,6 +684,47 @@ test("cli hook emits SessionStart additionalContext inside .claw projects", () =
   assert.equal(hookSpecificOutput.hookEventName, "SessionStart");
   assert.match(String(hookSpecificOutput.additionalContext), /using-claw-kit/);
   assert.match(String(hookSpecificOutput.additionalContext), /Hook Project|hook-project/i);
+});
+
+test("plan write binds owner session key and SessionStart recovers active workflow snapshot", () => {
+  const root = createFixture("hook-active-workflow");
+  runClaw(["init", "--name", "Hook Project"], root);
+  const env = {
+    CODEX_THREAD_ID: "thread-demo",
+  };
+
+  runClaw(
+    [
+      "plan",
+      "write",
+      "--task",
+      "demo-task",
+      "--title",
+      "Demo task",
+      "--goal",
+      "Recover compact workflow guidance",
+      "--status",
+      "process.active",
+    ],
+    root,
+    env,
+  );
+
+  const meta = JSON.parse(
+    fs.readFileSync(path.join(root, ".claw", "tasks", "demo-task", "meta.json"), "utf-8"),
+  ) as { ownerSessionKey?: string; boundAt?: string };
+  assert.equal(meta.ownerSessionKey, "thread-demo");
+  assert.ok(meta.boundAt);
+
+  const result = runClawRaw(["hook", "SessionStart"], root, env);
+  assert.equal(result.status, 0);
+  const payload = JSON.parse(result.stdout) as JsonRecord;
+  const hookSpecificOutput = payload.hookSpecificOutput as JsonRecord;
+  const additionalContext = String(hookSpecificOutput.additionalContext);
+  assert.match(additionalContext, /Claw workflow snapshot is recovered\./);
+  assert.match(additionalContext, /task: demo-task/);
+  assert.match(additionalContext, /plan status: process\.active/);
+  assert.match(additionalContext, /Treat returned claw workflowGuidance as the only next-step contract\./);
 });
 
 test("cli hook stays quiet outside .claw projects", () => {

@@ -55,7 +55,7 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
   const project = resolveProjectContext(input.cwd);
   const taskName = deriveTaskName(input);
   const createdTask = !fs.existsSync(path.join(project.tasksDir, taskName, "meta.json"));
-  const task = ensureTaskMeta(project, taskName, input.description);
+  const task = ensureTaskMeta(project, taskName, input.description, input.ownerSessionKey);
   const planFile = derivePlanFile(task, input.filePath, input.parentTaskId);
   const planPath = requireInsideTask(task, planFile);
   const createdPlan = !fs.existsSync(planPath);
@@ -302,24 +302,17 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
 }
 
 export function showPlan(input: PlanShowInput): PlanShowResult {
-  const task = resolveTaskContext(resolveProjectContext(input.cwd), input.taskName);
-  const planFile = normalizePlanFile(input.planFile ?? task.activePlan);
-  const planPath = requireInsideTask(task, planFile);
-  if (!fs.existsSync(planPath)) {
-    throw new ClawError("PLAN_NOT_FOUND", `Plan "${planFile}" does not exist for task "${task.taskName}".`, {
-      taskName: task.taskName,
-      planFile,
-    });
-  }
-  const plan = normalizePlanDocument(readJsonFile<PlanDocument>(planPath));
+  const resolved = resolveShowPlanTarget(input);
+  const plan = normalizePlanDocument(readJsonFile<PlanDocument>(resolved.planPath));
   return {
-    taskName: task.taskName,
-    planPath,
-    planFile,
+    taskName: resolved.taskName,
+    planPath: resolved.planPath,
+    planFile: resolved.planFile,
+    ...(resolved.archived ? { archived: true as const } : {}),
     plan,
     planView: buildPlanViewModel({
-      taskName: task.taskName,
-      planFile,
+      taskName: resolved.taskName,
+      planFile: resolved.planFile,
       plan,
     }),
   };
@@ -516,6 +509,65 @@ function requireInsideTask(task: TaskContext, relativePlan: string): string {
     throw new ClawError("ACTIVE_PLAN_INVALID", `Plan file "${relativePlan}" escapes the task directory.`);
   }
   return resolved;
+}
+
+function resolveShowPlanTarget(input: PlanShowInput): {
+  taskName: string;
+  planFile: string;
+  planPath: string;
+  archived: boolean;
+} {
+  const project = resolveProjectContext(input.cwd);
+  try {
+    const task = resolveTaskContext(project, input.taskName);
+    const planFile = normalizePlanFile(input.planFile ?? task.activePlan);
+    const planPath = requireInsideTask(task, planFile);
+    if (!fs.existsSync(planPath)) {
+      throw new ClawError("PLAN_NOT_FOUND", `Plan "${planFile}" does not exist for task "${task.taskName}".`, {
+        taskName: task.taskName,
+        planFile,
+      });
+    }
+    return {
+      taskName: task.taskName,
+      planFile,
+      planPath,
+      archived: false,
+    };
+  } catch (error) {
+    if (!(error instanceof ClawError) || error.code !== "TASK_NOT_FOUND") {
+      throw error;
+    }
+  }
+
+  const archivedTaskDir = path.join(project.clawDir, "archive", "tasks", input.taskName);
+  const archivedMetaPath = path.join(archivedTaskDir, "meta.json");
+  if (!fs.existsSync(archivedMetaPath)) {
+    throw new ClawError("TASK_NOT_FOUND", `Task "${input.taskName}" does not exist.`, { taskName: input.taskName });
+  }
+
+  const archivedMeta = readJsonFile<TaskContext["meta"]>(archivedMetaPath);
+  const planFile = normalizePlanFile(input.planFile ?? archivedMeta.activePlan ?? "plan.json");
+  const planPath = ensureInsideDir(archivedTaskDir, planFile);
+  if (!planPath) {
+    throw new ClawError("ACTIVE_PLAN_INVALID", `Plan file "${planFile}" escapes the archived task directory.`, {
+      taskName: input.taskName,
+      planFile,
+    });
+  }
+  if (!fs.existsSync(planPath)) {
+    throw new ClawError("PLAN_NOT_FOUND", `Plan "${planFile}" does not exist for archived task "${input.taskName}".`, {
+      taskName: input.taskName,
+      planFile,
+    });
+  }
+
+  return {
+    taskName: input.taskName,
+    planFile,
+    planPath,
+    archived: true,
+  };
 }
 
 function canSetPlanStatus(

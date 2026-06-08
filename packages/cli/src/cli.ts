@@ -6,6 +6,7 @@ import { spawn, spawnSync } from "node:child_process";
 import {
   checkProjectProtocol,
   ClawError,
+  buildPlanWorkflowGuidance,
   buildMemoryIndex,
   editPlan,
   ensureProjectProtocol,
@@ -26,6 +27,8 @@ import {
   type PlanTask,
   type PlanViewModel,
   type ProjectConfig,
+  type TaskMeta,
+  type WorkflowGuidance,
 } from "@veewo/claw-core";
 
 async function main(): Promise<void> {
@@ -108,17 +111,18 @@ async function runPlan(args: string[]): Promise<void> {
     case "write": {
       const contentPath = readOptionalFlag(args, "--content");
       const content = contentPath ? readJson<PlanDocument>(contentPath) : undefined;
-      const result = await writePlan({
-        cwd: process.cwd(),
-        taskName: readOptionalFlag(args, "--task"),
-        filePath: readOptionalFlag(args, "--plan"),
-        title: readOptionalFlag(args, "--title"),
-        description: readOptionalFlag(args, "--description"),
-        goalText: readOptionalFlag(args, "--goal"),
-        planStatus: readOptionalFlag(args, "--status"),
-        content,
-        parentTaskId: readOptionalNumber(args, "--parent-task-id"),
-      });
+        const result = await writePlan({
+          cwd: process.cwd(),
+          taskName: readOptionalFlag(args, "--task"),
+          filePath: readOptionalFlag(args, "--plan"),
+          title: readOptionalFlag(args, "--title"),
+          description: readOptionalFlag(args, "--description"),
+          goalText: readOptionalFlag(args, "--goal"),
+          planStatus: readOptionalFlag(args, "--status"),
+          ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
+          content,
+          parentTaskId: readOptionalNumber(args, "--parent-task-id"),
+        });
       printJson(compactPlanCommandResult("plan.write", result));
       return;
     }
@@ -165,23 +169,24 @@ async function runPlan(args: string[]): Promise<void> {
       printJson(compactPlanCommandResult("plan.done", result, completionRefresh));
       return;
     }
-    case "show": {
-      const result = showPlan({
-        cwd: process.cwd(),
-        taskName: readRequiredFlag(args, "--task"),
-        planFile: readOptionalFlag(args, "--plan"),
+      case "show": {
+        const result = showPlan({
+          cwd: process.cwd(),
+          taskName: readRequiredFlag(args, "--task"),
+          planFile: readOptionalFlag(args, "--plan"),
       });
       printJson({
         ok: true,
         command: "plan.show",
-        taskName: result.taskName,
-        planFile: result.planFile,
-        planPath: result.planPath,
-        planStatus: result.plan.status,
-        planView: result.planView,
-      });
-      return;
-    }
+          taskName: result.taskName,
+          planFile: result.planFile,
+          planPath: result.planPath,
+          ...(result.archived ? { archived: true } : {}),
+          planStatus: result.plan.status,
+          planView: result.planView,
+        });
+        return;
+      }
     default:
       throw new ClawError("PROJECT_CONFIG_INVALID", `Unknown plan subcommand "${subcommand ?? ""}".`);
   }
@@ -208,7 +213,11 @@ function runSearch(args: string[]): void {
 
 type JsonRecord = Record<string, unknown>;
 
-function runContextCommand(args: string[], cwd = process.cwd()): Record<string, unknown> {
+function runContextCommand(
+  args: string[],
+  cwd = process.cwd(),
+  ownerSessionKey = resolveOwnerSessionKey(),
+): Record<string, unknown> {
   const taskName = readOptionalFlag(args, "--task");
   let initialized = false;
   let corrected = false;
@@ -226,8 +235,15 @@ function runContextCommand(args: string[], cwd = process.cwd()): Record<string, 
     initialized = true;
   }
 
+  const resolved = resolveContext(cwd, taskName);
+  const activeWorkflow =
+    !taskName && ownerSessionKey
+      ? tryResolveActiveWorkflowSnapshot(cwd, ownerSessionKey)
+      : null;
+
   return {
-    ...resolveContext(cwd, taskName),
+    ...resolved,
+    ...(activeWorkflow ? { activeWorkflow } : {}),
     protocolCheck: checkProjectProtocol(cwd),
     bootstrap: {
       initialized,
@@ -305,13 +321,14 @@ async function runHook(args: string[]): Promise<void> {
 async function runSessionStartHook(): Promise<void> {
   const payload = await readStdinJson();
   const hookCwd = resolveHookCwd(payload);
+  const ownerSessionKey = resolveOwnerSessionKey(payload);
 
   if (!hookCwd || !containsClawDir(hookCwd)) {
     return;
   }
 
   try {
-    const context = runContextCommand([], hookCwd);
+    const context = runContextCommand([], hookCwd, ownerSessionKey);
     const additionalContext = buildSessionStartAdditionalContext(context, hookCwd);
 
     if (!additionalContext) {
@@ -370,6 +387,11 @@ function containsClawDir(cwd: string): boolean {
 }
 
 function buildSessionStartAdditionalContext(context: Record<string, unknown>, sessionCwd: string): string | null {
+  const activeWorkflow = context.activeWorkflow as JsonRecord | undefined;
+  if (activeWorkflow) {
+    return buildRecoveredWorkflowAdditionalContext(activeWorkflow);
+  }
+
   const project = context.project as JsonRecord | undefined;
   if (!project) {
     return null;
@@ -394,6 +416,176 @@ function buildSessionStartAdditionalContext(context: Record<string, unknown>, se
     "Report the recovered harness state and follow the claw workflowGuidance return fields as the required next-step contract.",
     "Use [@claw-kit](plugin://claw-kit@claw-kit-local) to drive planning, search, truth, and ADR workflows for the rest of the task.",
   ].join("\n");
+}
+
+function buildRecoveredWorkflowAdditionalContext(activeWorkflow: JsonRecord): string {
+  const taskName = String(activeWorkflow.taskName ?? "");
+  const planFile = String(activeWorkflow.planFile ?? "plan.json");
+  const planStatus = String(activeWorkflow.planStatus ?? "");
+  const planSummary = String(activeWorkflow.planSummary ?? "");
+  const workflowGuidance = activeWorkflow.workflowGuidance as JsonRecord | undefined;
+  const nextStep = String(workflowGuidance?.nextStep ?? "");
+  const recommendedCommands = toStringList(workflowGuidance?.recommendedCommands);
+  const delegateSubagents = toDelegateNames(workflowGuidance?.delegateSubagents);
+  const askUser = summarizeAskUser(workflowGuidance?.askUser as JsonRecord | undefined);
+  const goalMode = summarizeGoalMode(workflowGuidance?.goalMode as JsonRecord | undefined);
+
+  const lines = [
+    "Use [@claw-kit](plugin://claw-kit@claw-kit-local) for this session.",
+    "Claw workflow snapshot is recovered.",
+    "Treat returned claw workflowGuidance as the only next-step contract.",
+    "",
+    "Current claw workflow snapshot:",
+    `- task: ${taskName}`,
+    `- plan: ${planFile}`,
+    `- plan status: ${planStatus}`,
+    `- plan summary: ${planSummary}`,
+    `- next step: ${nextStep}`,
+  ];
+
+  if (recommendedCommands.length > 0) {
+    lines.push(`- recommended commands: ${recommendedCommands.join(" | ")}`);
+  }
+  if (delegateSubagents.length > 0) {
+    lines.push(`- delegate subagents: ${delegateSubagents.join(", ")}`);
+  }
+  if (askUser) {
+    lines.push(`- ask user: ${askUser}`);
+  }
+  if (goalMode) {
+    lines.push(`- goal mode: ${goalMode}`);
+  }
+
+  return lines.join("\n");
+}
+
+function tryResolveActiveWorkflowSnapshot(
+  cwd: string,
+  ownerSessionKey: string,
+): {
+  taskName: string;
+  planFile: string;
+  planPath: string;
+  planStatus: string;
+  planSummary: string;
+  workflowGuidance: WorkflowGuidance;
+} | null {
+  const project = resolveProjectContext(cwd);
+  const taskName = findSessionBoundTask(project.tasksDir, ownerSessionKey);
+  if (!taskName) {
+    return null;
+  }
+
+  try {
+    const result = showPlan({
+      cwd,
+      taskName,
+    });
+
+    return {
+      taskName: result.taskName,
+      planFile: result.planFile,
+      planPath: result.planPath,
+      planStatus: result.plan.status,
+      planSummary: result.planView.collapsedSummary,
+      workflowGuidance: buildPlanWorkflowGuidance({
+        taskName: result.taskName,
+        planFile: result.planFile,
+        plan: result.plan,
+        projectConfig: project.projectConfig,
+      }),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function findSessionBoundTask(tasksDir: string, ownerSessionKey: string): string | null {
+  if (!fs.existsSync(tasksDir)) {
+    return null;
+  }
+
+  const candidates = fs
+    .readdirSync(tasksDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => {
+      const metaPath = path.join(tasksDir, entry.name, "meta.json");
+      if (!fs.existsSync(metaPath)) {
+        return null;
+      }
+
+      try {
+        const meta = JSON.parse(stripBom(fs.readFileSync(metaPath, "utf-8"))) as TaskMeta;
+        if (meta.ownerSessionKey !== ownerSessionKey) {
+          return null;
+        }
+
+        return {
+          taskName: entry.name,
+          sortKey: meta.boundAt ?? meta.updatedAt ?? meta.createdAt ?? "",
+        };
+      } catch {
+        return null;
+      }
+    })
+    .filter((candidate): candidate is { taskName: string; sortKey: string } => candidate !== null)
+    .sort((left, right) => right.sortKey.localeCompare(left.sortKey));
+
+  return candidates[0]?.taskName ?? null;
+}
+
+function resolveOwnerSessionKey(payload?: unknown): string | null {
+  const envCandidates = [
+    process.env.CODEX_THREAD_ID,
+    process.env.CODEX_SESSION_ID,
+  ];
+  for (const candidate of envCandidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+
+  const payloadSessionId =
+    payload && typeof payload === "object" && typeof (payload as { session_id?: unknown }).session_id === "string"
+      ? (payload as { session_id: string }).session_id.trim()
+      : "";
+  if (payloadSessionId) {
+    return payloadSessionId;
+  }
+  return null;
+}
+
+function toStringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value
+      .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      .map((item) => item.trim())
+    : [];
+}
+
+function toDelegateNames(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((entry) => (entry && typeof entry === "object" && typeof (entry as { name?: unknown }).name === "string"
+      ? (entry as { name: string }).name.trim()
+      : ""))
+    .filter((entry): entry is string => Boolean(entry));
+}
+
+function summarizeAskUser(value: JsonRecord | undefined): string | null {
+  if (!value || typeof value.reason !== "string" || !value.reason.trim()) {
+    return null;
+  }
+  return value.reason.trim();
+}
+
+function summarizeGoalMode(value: JsonRecord | undefined): string | null {
+  if (!value || typeof value.recommendedObjective !== "string" || !value.recommendedObjective.trim()) {
+    return null;
+  }
+  return value.recommendedObjective.trim();
 }
 
 async function readStdinJson(): Promise<unknown> {
@@ -452,18 +644,20 @@ function compactPlanCommandResult(
     };
   },
   completionRefresh?: CompletionRefreshResult,
-): Record<string, unknown> {
-  const resolvedPlanPath =
-    completionRefresh?.taskRetention.archivedCurrentTask?.taskName === result.taskName &&
-    completionRefresh.taskRetention.archivedCurrentTask.archivedPlanPath
-      ? completionRefresh.taskRetention.archivedCurrentTask.archivedPlanPath
-      : result.planPath;
+  ): Record<string, unknown> {
+    const archivedPlanPath =
+      completionRefresh?.taskRetention.archivedCurrentTask?.taskName === result.taskName &&
+      completionRefresh.taskRetention.archivedCurrentTask.archivedPlanPath
+        ? completionRefresh.taskRetention.archivedCurrentTask.archivedPlanPath
+        : undefined;
+    const resolvedPlanPath = archivedPlanPath ?? result.planPath;
 
-  return {
-    ok: true,
-    command,
-    planPath: resolvedPlanPath,
-    planStatus: result.planStatus,
+    return {
+      ok: true,
+      command,
+      planPath: resolvedPlanPath,
+      ...(archivedPlanPath ? { archivedPlanPath } : {}),
+      planStatus: result.planStatus,
     nextStep: result.workflowGuidance.nextStep,
     ...(result.workflowGuidance.nextTask ? { nextTask: result.workflowGuidance.nextTask } : {}),
     ...(result.workflowGuidance.delegateSubagents?.length

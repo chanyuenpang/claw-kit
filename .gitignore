@@ -8,6 +8,7 @@ Thumbs.db
 .codex/
 .claw/tasks/
 .claw/archive/
+.claw/logs/
 .claw/*.sqlite
 .claw/*.sqlite-*
 .claw/tmp/

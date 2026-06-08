@@ -543,6 +543,42 @@ test("plan show returns canonical plan plus collapsed and expanded plan view dat
   );
 });
 
+test("plan show falls back to archived tasks when the active task no longer exists", async () => {
+  const root = createFixture("plan-show-archived");
+  initProject({
+    cwd: root,
+    projectName: "Archived Show",
+    maxTasksToKeep: 99,
+    force: true,
+  });
+  await writePlan({
+    cwd: root,
+    taskName: "archived-task",
+    title: "Archived task",
+    goalText: "Show archived plan",
+    content: {
+      title: "Archived task",
+      status: "end.completed",
+      goal: { text: "Show archived plan" },
+      tasks: [{ id: 1, title: "Done task", status: "done" }],
+      retrospective: { summary: "Archived." },
+    },
+  });
+
+  const project = resolveContext(root).project;
+  enforceTaskRetention(project, "archived-task");
+
+  const result = showPlan({
+    cwd: root,
+    taskName: "archived-task",
+  });
+
+  assert.equal(result.archived, true);
+  assert.match(result.planPath, /archive[\\/]tasks[\\/]archived-task[\\/].*plan\.json$/);
+  assert.equal(result.plan.title, "Archived task");
+  assert.equal(result.planView.collapsedSummary, "1/1 Archived task");
+});
+
 test("switch-task writes lineage metadata without session runtime", async () => {
   const root = createFixture("switch-task");
   await writePlan({ cwd: root, taskName: "source-task", title: "Source", goalText: "Source goal" });
