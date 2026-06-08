@@ -81,15 +81,13 @@ Common blockers:
 
 ## Remote Install Paths
 
-Before npm publish, remote Windows machines should install from GitHub:
+Windows one-shot install:
 
 ```powershell
-git clone https://github.com/chanyuenpang/claw-kit.git
-cd claw-kit
 powershell -ExecutionPolicy Bypass -File .\scripts\install-cli.ps1
 ```
 
-After npm publish, the preferred install path becomes:
+Direct npm install:
 
 ```powershell
 npm install -g @veewo/claw
@@ -99,4 +97,4 @@ npm install -g @veewo/claw
 
 - `@veewo/claw` depends on `@veewo/claw-core`, so publish order matters.
 - The local executable name remains `claw`.
-- `scripts/install-cli.ps1` is the supported GitHub-based Windows bootstrap path until npm publish is live.
+- `scripts/install-cli.ps1` now installs the published npm package directly.

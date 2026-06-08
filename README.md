@@ -2,16 +2,15 @@
 
 `claw-kit` is a project-local harness toolkit built around `.claw/`.
 
-## Local CLI
+## Install CLI
 
-Build and install the local CLI with:
+Install the published CLI with:
 
 ```powershell
-npm run build
-npm link .\packages\cli
+npm install -g @veewo/claw
 ```
 
-Or use the one-shot install script after cloning the repo:
+Or use the one-shot install script:
 
 ```powershell
 .\scripts\install-cli.ps1
@@ -28,12 +27,6 @@ claw plan write --task my-task --title "My task" --goal "Define the first task"
 
 - CLI package: `@veewo/claw`
 - Core package: `@veewo/claw-core`
-
-Install the published CLI with:
-
-```powershell
-npm install -g @veewo/claw
-```
 
 `project.json` keeps explicit harness settings. External writer overrides are optional and default to the built-in writer skills:
 
