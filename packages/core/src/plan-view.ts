@@ -15,7 +15,7 @@ export function buildPlanViewModel(input: {
     planFile,
     title: plan.title,
     status: plan.status,
-    collapsedSummary: `${completed}/${total} ${plan.title}`,
+    collapsedSummary: total > 0 ? `${completed}/${total} ${plan.title}` : plan.title,
     counts: {
       completed,
       total,

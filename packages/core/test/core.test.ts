@@ -111,7 +111,7 @@ test("plan write creates task-bound plan and updates activePlan", async () => {
   assert.ok(result.workflowGuidance.nextStep.includes("Enter goal mode"));
   assert.ok(result.workflowGuidance.nextStep.includes("Review whether requirements are clear enough to execute"));
   assert.equal(result.workflowGuidance.askUser, undefined);
-  assert.equal(result.planView.collapsedSummary, "0/0 Demo task");
+  assert.equal(result.planView.collapsedSummary, "Demo task");
   assert.equal(result.planView.goal.defaultCollapsed, true);
   assert.equal(result.planView.renderHints.defaultCollapsed, true);
   assert.equal(result.planView.expanded.sections[0]?.id, "goal");

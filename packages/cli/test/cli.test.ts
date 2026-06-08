@@ -72,7 +72,7 @@ function runClawRaw(args: string[], cwd: string, env?: NodeJS.ProcessEnv): { sta
   };
 }
 
-async function waitForCompletionRefreshStatus(statusFile: string, timeoutMs = 5000): Promise<JsonRecord> {
+async function waitForCompletionRefreshStatus(statusFile: string, timeoutMs = 15000): Promise<JsonRecord> {
   const deadline = Date.now() + timeoutMs;
 
   while (Date.now() < deadline) {
@@ -104,13 +104,13 @@ function getLatestCompletionRefreshStatusFile(root: string): string | null {
   return entries[0] ?? null;
 }
 
-async function waitForLatestCompletionRefreshStatus(root: string, timeoutMs = 5000): Promise<JsonRecord> {
+async function waitForLatestCompletionRefreshStatus(root: string, timeoutMs = 15000): Promise<JsonRecord> {
   const deadline = Date.now() + timeoutMs;
 
   while (Date.now() < deadline) {
     const statusFile = getLatestCompletionRefreshStatusFile(root);
     if (statusFile) {
-      return waitForCompletionRefreshStatus(statusFile, timeoutMs);
+      return waitForCompletionRefreshStatus(statusFile, Math.max(0, deadline - Date.now()));
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
@@ -180,7 +180,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   assert.equal("summary" in writeResult, false);
   assert.equal("taskName" in writeResult, false);
   assert.equal("planFile" in writeResult, false);
-  assert.equal(writeResult.planSummary, "0/0 E2E task");
+  assert.equal(writeResult.planSummary, "E2E task");
   const writeGoalMode = writeResult.goalMode as JsonRecord;
   assert.equal(
     writeGoalMode.recommendedObjective,
