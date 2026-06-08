@@ -21,6 +21,8 @@ Accepted working truth for local development on this machine.
 - `claw memory ...` remains available, but it is not the recommended Codex workflow concept.
 - Local installation is currently done through `npm link .\\packages\\cli`.
 - On this machine, the global wrappers are created under `C:\\nvm4w\\nodejs`.
+- 远程 Windows 机器应该优先使用 `scripts/install-cli.ps1`：脚本会执行 `npm install`、`npm run build`，移除旧的全局链接，然后用 `npm link --force .\\packages\\cli` 重新链接 CLI。
+- 根目录 `README.md` 已把远程用户导向这个安装脚本，而不是要求他们手工拼装安装步骤。
 
 ## Practical implications
 

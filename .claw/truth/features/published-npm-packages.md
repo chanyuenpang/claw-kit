@@ -18,6 +18,8 @@
 - `packages/core/package.json` 只打包 `dist/src` 和 `README.md`，这样 `npm pack` 不会把测试工件带进发布包。
 - `packages/cli/package.json` 只打包 `dist` 和 `README.md`，CLI 包体保持最小化。
 - `README.md` 记录了发布包名、全局安装命令、`npm pack --dry-run` 验证步骤，以及先发 core 再发 CLI 的发布顺序。
+- `packages/core/README.md` 和 `packages/cli/README.md` 已作为各自发布包的包级说明文件，确保 `npm pack` 会把面向用户的安装与使用说明一起带入发布物。
+- `scripts/install-cli.ps1` 是远程 Windows 机器的推荐本地安装入口，和根目录 `README.md` 一起构成了“先构建再重连 CLI”的标准安装路径。
 
 ## 相关代码
 
@@ -33,4 +35,3 @@
 - `npm run check`
 - `npm pack --dry-run` in `packages/core`
 - `npm pack --dry-run` in `packages/cli`
-
