@@ -135,7 +135,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   const writeGoalMode = writeResult.goalMode as JsonRecord;
   assert.equal(
     writeGoalMode.recommendedObjective,
-    "\u6309\u7167 claw kit \u6d41\u7a0b\uff0c\u5b8c\u6210 task\uff0c\u66f4\u65b0 plan \u6587\u4ef6\uff0c\u5e76\u6700\u7ec8\u5b8c\u6210\uff1aVerify the CLI lifecycle",
+    "\u6309\u7167 claw \u6d41\u7a0b\uff0c\u63a8\u8fdb\u4efb\u52a1\uff0c\u66f4\u65b0plan\uff0c\u5b8c\u6210\uff1aVerify the CLI lifecycle",
   );
   assert.equal(writeGoalMode.setWhen, "on_plan_write");
 

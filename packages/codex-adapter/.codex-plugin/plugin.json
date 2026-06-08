@@ -1,6 +1,6 @@
 {
   "name": "claw-kit",
-  "version": "0.1.13+codex.20260608133250",
+  "version": "0.1.14+codex.20260608134600",
   "description": "Thin Codex adapter for claw-kit. Start with using-claw-kit as the single main-agent workflow, then drive .claw plan, search, truth, and ADR workflows through the local claw CLI while consuming compact workflowGuidance and specialist subagent contracts for truth and ADR deposition.",
   "author": {
     "name": "chanyuenpang",
