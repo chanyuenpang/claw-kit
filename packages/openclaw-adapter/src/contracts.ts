@@ -7,7 +7,7 @@ import type {
   PlanStatus,
   TaskMeta,
   TruthDepositionCandidate,
-} from "@claw-kit/core";
+} from "@veewo/claw-core";
 
 export type OpenClawSessionBinding = {
   sessionKey: string;

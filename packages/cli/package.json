@@ -1,13 +1,27 @@
 {
-  "name": "@claw-kit/cli",
+  "name": "@veewo/claw",
   "version": "0.1.12",
-  "private": true,
   "type": "module",
+  "description": "Publishable claw CLI for .claw project bootstrap, planning, search, truth ingestion, and completion refresh.",
+  "homepage": "https://github.com/chanyuenpang/claw-kit",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chanyuenpang/claw-kit.git",
+    "directory": "packages/cli"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "bin": {
     "claw": "./dist/cli.js"
   },
   "dependencies": {
-    "@claw-kit/core": "file:../core"
+    "@veewo/claw-core": "0.1.12"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

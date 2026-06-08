@@ -8,3 +8,5 @@
 - Truth and ADR deposition run through delegated writer specialists, not inline main-agent writes.
 - Writer delegation contracts now carry explicit `skill` and `model` fields.
 - `.claw/project.json` supports explicit `externalTruthSkill` and `externalAdrSkill` overrides with `null` defaults.
+- `@veewo/claw-core` and `@veewo/claw` are the publishable npm packages; core must publish before CLI because CLI depends on the published core package.
+- `publish-claw-npm-package` locks the release readiness check to local build, tests, and `npm pack --dry-run`, with `@veewo/claw-core` published before `@veewo/claw`.

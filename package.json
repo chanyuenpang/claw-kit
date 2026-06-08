@@ -6,11 +6,11 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build -w @claw-kit/core && npm run build -w @claw-kit/cli && npm run build -w @claw-kit/openclaw-adapter && npm run build -w @claw-kit/codex-adapter",
-    "check": "npm run build -w @claw-kit/core && npm run check -w @claw-kit/cli && npm run check -w @claw-kit/openclaw-adapter && npm run check -w @claw-kit/codex-adapter",
+    "build": "npm run build -w @veewo/claw-core && npm run build -w @veewo/claw && npm run build -w @claw-kit/openclaw-adapter && npm run build -w @claw-kit/codex-adapter",
+    "check": "npm run build -w @veewo/claw-core && npm run check -w @veewo/claw && npm run check -w @claw-kit/openclaw-adapter && npm run check -w @claw-kit/codex-adapter",
     "install:local-cli": "npm run build && npm link .\\packages\\cli",
-    "uninstall:local-cli": "npm unlink -g @claw-kit/cli",
-    "test": "npm run build -w @claw-kit/core && npm run build -w @claw-kit/cli && npm run test -w @claw-kit/core && npm run test -w @claw-kit/cli",
+    "uninstall:local-cli": "npm unlink -g @veewo/claw",
+    "test": "npm run build -w @veewo/claw-core && npm run build -w @veewo/claw && npm run test -w @veewo/claw-core && npm run test -w @veewo/claw",
     "start": "node ./packages/cli/dist/cli.js"
   },
   "devDependencies": {

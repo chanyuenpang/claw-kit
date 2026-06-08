@@ -8,7 +8,7 @@
     ".": "./dist/index.js"
   },
   "dependencies": {
-    "@claw-kit/core": "file:../core"
+    "@veewo/claw-core": "0.1.12"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

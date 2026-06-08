@@ -1,8 +1,22 @@
 {
-  "name": "@claw-kit/core",
+  "name": "@veewo/claw-core",
   "version": "0.1.12",
-  "private": true,
   "type": "module",
+  "description": "Core .claw harness primitives for project context, plan lifecycle, search, truth ingestion, and retention.",
+  "homepage": "https://github.com/chanyuenpang/claw-kit",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chanyuenpang/claw-kit.git",
+    "directory": "packages/core"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist/src",
+    "README.md"
+  ],
   "types": "./dist/src/index.d.ts",
   "exports": {
     ".": {

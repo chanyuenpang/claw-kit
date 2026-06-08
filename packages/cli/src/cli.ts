@@ -26,7 +26,7 @@ import {
   type PlanTask,
   type PlanViewModel,
   type ProjectConfig,
-} from "@claw-kit/core";
+} from "@veewo/claw-core";
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
