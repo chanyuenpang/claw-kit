@@ -7,9 +7,9 @@ This execution pass moved the Codex adapter away from hook-dependent startup and
 The practical result is:
 
 - `@claw-kit` should point Codex toward `claw-kit:bootstrap`
-- bootstrap should recover `.claw` context first
+- bootstrap hook should recover `.claw` context first
 - task scope should still be established through `claw plan write`
-- plan, memory, truth, and ADR workflows should explicitly resolve context instead of waiting for hooks
+- plan, memory, truth, and ADR workflows should consume recovered context instead of adding a separate manual `claw context` step
 
 ## What changed
 
@@ -24,7 +24,7 @@ The practical result is:
 
 - `packages/codex-adapter/skills/bootstrap/SKILL.md`
   - now acts as the primary session-entry skill
-  - tells the agent to run `claw context` first
+  - expects recovered harness state from bootstrap instead of telling the agent to run `claw context` manually
   - tells the agent to lead with harness state instead of a generic greeting
 
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md`
@@ -37,7 +37,7 @@ The practical result is:
 - `packages/codex-adapter/skills/search-workflow/SKILL.md`
 - `packages/codex-adapter/skills/truth-workflow/SKILL.md`
 
-These now all explicitly start by resolving `claw context`.
+These should now treat `claw context` as bootstrap-owned context recovery rather than a post-plan workflow step.
 
 ### Reference note
 

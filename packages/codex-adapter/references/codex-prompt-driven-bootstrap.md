@@ -25,7 +25,10 @@ When `@claw-kit` is used in a real project thread:
 - no task scope:
   - create or bind one with `claw plan write`
 - task in `prepare.requirements`:
-  - continue planning and review before execution
+  - enter goal mode first
+  - check whether requirements are already clear
+  - ask the user only if requirements are still ambiguous
+  - otherwise move directly to `process.active`
 - task in `process.*`:
   - execute against the active plan
 - task near completion:

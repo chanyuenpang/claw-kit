@@ -2,7 +2,7 @@ import type { PlanDocument, PlanReviewInput, PlanReviewResult, PlanReviewer, Pla
 
 export const REQUIREMENTS_NEXT_ACTION = "collect_requirements" as const;
 export const REQUIREMENTS_INSTRUCTION =
-  "Collect requirements first. Clarify scope if needed, then update goal, rules, references, and tasks before moving to process.active/process.wait/process.discussing.";
+  "Enter goal mode first. Then review whether requirements are clear enough to execute; clarify scope only if needed, otherwise move directly to process.active/process.wait/process.discussing.";
 export const REVIEW_NEXT_ACTION = "revise_plan_from_review" as const;
 export const REVIEW_INSTRUCTION =
   "Plan review found actionable feedback. Revise goal, rules, references, and tasks using planReview, then move to process.active/process.wait/process.discussing.";

@@ -218,6 +218,50 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   assert.match(gitnexusLog, /analyze\r?\n?$/m);
 });
 
+test("cli plan edit append-tasks auto-assigns ids when omitted", () => {
+  const root = createFixture("append-auto-task-ids");
+  runClaw(["init", "--name", "Append Auto Ids"], root);
+  runClaw(
+    ["plan", "write", "--task", "demo-task", "--title", "Demo task", "--goal", "Verify auto ids"],
+    root,
+  );
+  runClaw(["plan", "edit", "--task", "demo-task", "--plan-status", "process.active"], root);
+
+  const explicitPath = path.join(root, "append-explicit.json");
+  fs.writeFileSync(
+    explicitPath,
+    JSON.stringify([{ id: 3, title: "Existing numbered task", status: "pending" }], null, 2),
+    "utf-8",
+  );
+  runClaw(["plan", "edit", "--task", "demo-task", "--append-tasks", explicitPath], root);
+
+  const autoPath = path.join(root, "append-auto.json");
+  fs.writeFileSync(
+    autoPath,
+    JSON.stringify([{ title: "Auto numbered task", status: "pending" }], null, 2),
+    "utf-8",
+  );
+  const result = runClaw(["plan", "edit", "--task", "demo-task", "--append-tasks", autoPath], root);
+
+  assert.equal(result.planSummary, "0/2 Demo task");
+  assert.deepEqual(result.nextTask, {
+    id: 3,
+    title: "Existing numbered task",
+    status: "pending",
+  });
+
+  const planShow = runClaw(["plan", "show", "--task", "demo-task"], root);
+  const planView = planShow.planView as JsonRecord;
+  const tasks = ((planView.tasks as JsonRecord).items as JsonRecord[]).map((task) => ({
+    id: Number(task.id),
+    title: String(task.title),
+  }));
+  assert.deepEqual(tasks, [
+    { id: 3, title: "Existing numbered task" },
+    { id: 4, title: "Auto numbered task" },
+  ]);
+});
+
 test("cli init writes maxTasksToKeep into project.json", () => {
   const root = createFixture("init-max-tasks");
 

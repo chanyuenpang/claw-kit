@@ -14,17 +14,18 @@ This is the main-agent workflow skill. The main agent runs the normal `.claw` fl
 The default claw-kit execution chain is:
 
 1. stay in `prepare.requirements`
-2. refine and confirm the route
-3. create the concrete task list
-4. move the plan to `process.active`
-5. process task 1
-6. dispatch `truth-writer`
-7. process task 2
-8. dispatch `truth-writer`
-9. continue this pattern until all tasks are done
-10. write the retrospective
-11. run `claw plan done`
-12. dispatch `adr-writer`
+2. enter goal mode
+3. check whether requirements are already clear
+4. ask the user only if requirements are still ambiguous
+5. move the plan to `process.active`
+6. process task 1
+7. dispatch `truth-writer`
+8. process task 2
+9. dispatch `truth-writer`
+10. continue this pattern until all tasks are done
+11. write the retrospective
+12. run `claw plan done`
+13. dispatch `adr-writer`
 
 Treat this as the canonical harness flow.
 Do not compress it into "finish work and write docs later".
@@ -53,16 +54,17 @@ Do not tell the user that claw-kit cannot proceed because `.claw` is missing, ma
 2. If no task scope exists and the user is starting work, create or bind one through `claw plan write`.
 3. Treat `plan write` as the canonical task-scope entrypoint.
 4. After every `claw plan write`, `claw plan edit`, or `claw plan done`, consume `workflowGuidance` and the compact `planSummary`.
-5. Follow `workflowGuidance.nextStep` and `recommendedCommands` instead of inventing your own next-step heuristic.
-6. If `workflowGuidance.askUser` is present, use Codex option-style confirmation.
-7. Do not start implementation while the plan is still in `prepare.requirements`.
-8. Once the route is confirmed, move the plan to `process.active` before doing any implementation or updating task progress.
-9. Set the thread goal from `workflowGuidance.goalMode.recommendedObjective` immediately after `claw plan write`.
-10. During execution, process one task at a time and update progress with `claw plan edit`.
-11. After a meaningful completed task, dispatch `truth-writer` when there is reusable context to deposit.
-12. When all tasks are done, complete the retrospective.
-13. Close the plan with `claw plan done` only after `retrospective.summary` exists.
-14. After `claw plan done`, dispatch ADR deposition using the completed `plan.json`.
+5. Follow `workflowGuidance.nextStep` and `recommendedCommands` as the required next-step contract instead of inventing your own heuristic.
+6. After `claw plan write`, set the thread goal from `workflowGuidance.goalMode.recommendedObjective` immediately.
+7. If `workflowGuidance.askUser` is present, use Codex option-style confirmation.
+8. Treat recovered `claw context` as a hook/bootstrap responsibility, not a post-plan workflow step.
+9. If requirements are already clear, move directly to `process.active`.
+10. Do not start implementation while the plan is still in `prepare.requirements`.
+11. During execution, process one task at a time and update progress with `claw plan edit`.
+12. After a meaningful completed task, dispatch `truth-writer` when there is reusable context to deposit.
+13. When all tasks are done, complete the retrospective.
+14. Close the plan with `claw plan done` only after `retrospective.summary` exists.
+15. After `claw plan done`, dispatch ADR deposition using the completed `plan.json`.
 
 ## Investigation-first rule
 

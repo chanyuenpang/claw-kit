@@ -388,7 +388,7 @@ function buildSessionStartAdditionalContext(context: Record<string, unknown>, se
     `.claw directory: ${clawDir}`,
     `Project protocol check: ${protocolOk}.`,
     "Load claw-kit:using-claw-kit as the main workflow skill for this session.",
-    "Report the recovered harness state and continue through claw workflowGuidance.",
+    "Report the recovered harness state and follow the claw workflowGuidance return fields as the required next-step contract.",
     "Use [@claw-kit](plugin://claw-kit@claw-kit-local) to drive planning, search, truth, and ADR workflows for the rest of the task.",
   ].join("\n");
 }

@@ -133,7 +133,7 @@ function buildAdditionalContext(context) {
     `.claw directory: ${clawDir}`,
     `Project protocol check: ${protocolOk}.`,
     `For this session, use [@claw-kit](plugin://claw-kit@claw-kit-local) to drive planning, search, truth, and ADR workflows.`,
-    "Start with the Claw Kit main workflow and continue the task through claw workflowGuidance instead of inventing a parallel process.",
+    "Start with the Claw Kit main workflow and treat returned claw workflowGuidance fields as the required next-step contract instead of inventing a parallel process.",
   ].join("\n");
 }
 

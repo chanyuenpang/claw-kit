@@ -7,6 +7,7 @@ Use this note when a Codex session is driving `claw` commands that return `workf
 When a `claw` plan command returns `workflowGuidance`, the Codex adapter treats it as the primary next-step contract.
 
 Do not replace it with freeform workflow reasoning unless the command output is unavailable.
+Do not invent an alternative next-step sequence when `workflowGuidance`, `nextStep`, or `recommendedCommands` already tell you what to do next.
 
 ## Fields to honor
 
@@ -35,11 +36,13 @@ Do not replace it with freeform workflow reasoning unless the command output is 
 ### `recommendedCommands`
 
 - Use these commands as the default follow-up CLI actions.
+- Treat them as the authoritative command sequence unless the current harness state makes a specific command invalid.
 - Use a different command only when the current harness state makes the recommended command invalid.
 
 ### `nextStep`
 
 - Preserve its ordering.
+- Treat it as the required execution order for the next harness action, not as optional advice.
 - Example: when it says review first, revise second, and only then advance, follow that order exactly.
 
 ### `goalMode`
@@ -47,6 +50,7 @@ Do not replace it with freeform workflow reasoning unless the command output is 
 - When present, treat it as a thread-goal recommendation tied to the active plan.
 - Current intended use is `setWhen = on_plan_write`.
 - After `claw plan write`, set the thread goal from `recommendedObjective`.
+- Treat entering goal mode as the first required follow-up after `plan write`.
 - Do not automatically overwrite an unrelated active goal already attached to the thread.
 - In the Codex app, `/goal` is the normal host surface. In tool-enabled sessions, `create_goal` is also a valid path.
 
@@ -54,8 +58,9 @@ Do not replace it with freeform workflow reasoning unless the command output is 
 
 - canonical chain
   - `prepare.requirements`
-  - confirm route
-  - create tasks
+  - enter goal mode
+  - check whether requirements are clear
+  - ask the user only when requirements are still ambiguous
   - `process.active`
   - process one task
   - dispatch `truth-writer`
@@ -68,10 +73,11 @@ Do not replace it with freeform workflow reasoning unless the command output is 
 - `prepare.requirements`
   - read `goalMode`
   - create the thread goal from `recommendedObjective`
-  - refine the plan directly until the route is clear
-  - then use Codex options to confirm the route
+  - treat hook bootstrap as the source of recovered `claw context`; do not add a separate `claw context` workflow step here
+  - review whether requirements are already clear enough to execute
+  - only use Codex options when requirements are still ambiguous
   - do not start implementation in this stage
-  - move the plan to `process.active` before doing any implementation or task execution
+  - when requirements are clear, move the plan directly to `process.active` before doing any implementation or task execution
 - `process.*` with task completion but open plan
   - read `delegateSubagents`
   - use `tool_search` to locate agent-management tools

@@ -181,12 +181,14 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
       next.status = "prepare.requirements";
     }
     const currentIds = new Set(next.tasks.map((taskItem) => taskItem.id));
-    for (const taskItem of input.appendTasks) {
+    const appendedTasks = normalizePlanTasks(input.appendTasks, nextAvailableTaskId(next.tasks));
+    for (const taskItem of appendedTasks) {
       if (currentIds.has(taskItem.id)) {
         throw new ClawError("PROJECT_CONFIG_INVALID", `Task id ${taskItem.id} already exists in plan.`);
       }
       validatePlanTask(taskItem);
       next.tasks.push(taskItem);
+      currentIds.add(taskItem.id);
     }
   }
 
@@ -346,19 +348,54 @@ function normalizePlanDocument(plan: PlanDocument, fallbackStatus?: PlanStatus):
   if (!effectiveStatus) {
     throw new ClawError("PLAN_STATUS_INVALID", `Unsupported plan status "${String(plan.status)}".`);
   }
+  const rawTasks = Array.isArray(plan.tasks) ? plan.tasks : [];
   const normalized: PlanDocument = {
     ...plan,
     status: effectiveStatus,
     goal: { text: plan.goal?.text ?? "" },
-    tasks: Array.isArray(plan.tasks) ? plan.tasks.map((task) => normalizePlanTask(task)) : [],
+    tasks: normalizePlanTasks(rawTasks),
   };
   validatePlanDocument(normalized);
   return normalized;
 }
 
-function normalizePlanTask(task: PlanTask): PlanTask {
-  validatePlanTask(task);
-  return task;
+function normalizePlanTasks(tasks: PlanTask[], startId = 1): PlanTask[] {
+  const explicitIds = tasks
+    .map((task) => task.id)
+    .filter((id): id is number => Number.isInteger(id));
+  const usedIds = new Set<number>(explicitIds);
+  let nextId = explicitIds.length > 0 ? Math.max(startId, Math.max(...explicitIds) + 1) : startId;
+
+  return tasks.map((task) => {
+    const normalizedId = Number.isInteger(task.id) ? task.id : reserveNextTaskId(usedIds, nextId);
+    usedIds.add(normalizedId);
+    nextId = normalizedId + 1;
+    return normalizePlanTask(task, normalizedId);
+  });
+}
+
+function reserveNextTaskId(usedIds: Set<number>, candidate: number): number {
+  let next = candidate;
+  while (usedIds.has(next)) {
+    next += 1;
+  }
+  return next;
+}
+
+function nextAvailableTaskId(tasks: PlanTask[]): number {
+  const explicitIds = tasks
+    .map((task) => task.id)
+    .filter((id): id is number => Number.isInteger(id));
+  return explicitIds.length > 0 ? Math.max(...explicitIds) + 1 : 1;
+}
+
+function normalizePlanTask(task: PlanTask, fallbackId?: number): PlanTask {
+  const normalizedTask: PlanTask = {
+    ...task,
+    id: Number.isInteger(task.id) ? task.id : fallbackId ?? task.id,
+  };
+  validatePlanTask(normalizedTask);
+  return normalizedTask;
 }
 
 function validatePlanDocument(plan: PlanDocument): void {
@@ -427,7 +464,7 @@ function applyPlanPatch(target: PlanDocument, patch: Partial<PlanDocument>): voi
     target.keyDecisions = patch.keyDecisions;
   }
   if (patch.tasks !== undefined) {
-    target.tasks = patch.tasks.map((task) => normalizePlanTask(task));
+    target.tasks = normalizePlanTasks(patch.tasks as PlanTask[]);
   }
   if (patch.status !== undefined) {
     const normalized = normalizePlanStatus(patch.status);

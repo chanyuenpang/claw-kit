@@ -108,12 +108,65 @@ test("plan write creates task-bound plan and updates activePlan", async () => {
   );
   assert.equal(result.workflowGuidance.goalMode?.setWhen, "on_plan_write");
   assert.deepEqual(result.workflowGuidance.goalMode?.supportedSurfaces, ["/goal", "create_goal"]);
+  assert.ok(result.workflowGuidance.summary.includes("Enter goal mode first"));
+  assert.ok(result.workflowGuidance.nextStep.includes("Enter goal mode"));
+  assert.equal(result.workflowGuidance.askUser?.options[0]?.id, "clarify-requirements");
   assert.equal(result.planView.collapsedSummary, "0/0 Demo task");
   assert.equal(result.planView.goal.defaultCollapsed, true);
   assert.equal(result.planView.renderHints.defaultCollapsed, true);
   assert.equal(result.planView.expanded.sections[0]?.id, "goal");
   assert.equal(result.planView.expanded.sections[0]?.defaultExpanded, false);
   assert.equal(result.planView.expanded.sections[1]?.id, "tasks");
+});
+
+test("plan write guidance can skip askUser when requirements are already clear", async () => {
+  const root = createFixture("plan-write-clear-requirements");
+
+  const result = await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Ship the first plan",
+    content: {
+      title: "Demo task",
+      status: "prepare.requirements",
+      goal: { text: "Ship the first plan" },
+      tasks: [{ id: 1, title: "Implement work", status: "pending" }],
+    },
+  });
+
+  assert.equal(result.workflowGuidance.askUser, undefined);
+  assert.ok(result.workflowGuidance.nextStep.includes("move directly to `process.active`"));
+  assert.ok(result.workflowGuidance.notes?.some((note) => note.includes("legacy `claw context` workflow step")));
+});
+
+test("plan write auto-assigns stable integer task ids when omitted", async () => {
+  const root = createFixture("plan-write-auto-task-ids");
+
+  const result = await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Ship the first plan",
+    content: {
+      title: "Demo task",
+      status: "prepare.requirements",
+      goal: { text: "Ship the first plan" },
+      tasks: [
+        { title: "First task", status: "pending" } as unknown as { id: number; title: string; status: "pending" },
+        { title: "Second task", status: "pending" } as unknown as { id: number; title: string; status: "pending" },
+      ],
+    },
+  });
+
+  assert.deepEqual(
+    result.planView.tasks.items.map((task) => ({ id: task.id, title: task.title })),
+    [
+      { id: 1, title: "First task" },
+      { id: 2, title: "Second task" },
+    ],
+  );
+  assert.equal(result.workflowGuidance.askUser, undefined);
 });
 
 test("plan write updates existing task and supports subplan under plans without switching task scope", async () => {
@@ -280,6 +333,38 @@ test("plan edit can move from requirements to process.active without a separate 
   assert.equal(truthDelegate.closePolicy, "keep_open_for_reuse");
   assert.ok(result.workflowGuidance.nextStep.includes("truth-writer"));
   assert.ok(result.workflowGuidance.nextStep.includes("retrospective"));
+});
+
+test("plan edit appendTasks auto-assigns ids when omitted", async () => {
+  const root = createFixture("plan-edit-auto-task-ids");
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Ship the first plan",
+    content: {
+      title: "Demo task",
+      status: "process.active",
+      goal: { text: "Ship the first plan" },
+      tasks: [{ id: 3, title: "Existing task", status: "pending" }],
+    },
+  });
+
+  const result = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    appendTasks: [
+      { title: "Auto id task", status: "pending" } as unknown as { id: number; title: string; status: "pending" },
+    ],
+  });
+
+  assert.deepEqual(
+    result.planView.tasks.items.map((task) => ({ id: task.id, title: task.title })),
+    [
+      { id: 3, title: "Existing task" },
+      { id: 4, title: "Auto id task" },
+    ],
+  );
 });
 
 test("plan view orders unfinished tasks before done tasks while preserving stable order", async () => {

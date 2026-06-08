@@ -21,7 +21,6 @@ Then use it from any project directory:
 
 ```powershell
 claw init --max-tasks-to-keep 20 --external-truth-skill external-truth-writer --external-adr-skill external-adr-writer
-claw context
 claw plan write --task my-task --title "My task" --goal "Define the first task"
 ```
 
@@ -64,6 +63,8 @@ npm install -g @veewo/claw
 - `claw plan edit`
 - `claw switch-task`
 - `claw truth ingest`
+
+`claw context` still exists as a CLI command, but Codex workflow bootstrap should recover context through the session hook instead of treating it as a manual post-plan step.
 
 ## Publish workflow
 

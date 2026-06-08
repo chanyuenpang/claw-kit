@@ -12,9 +12,10 @@ Then run:
 
 ```bash
 claw init
-claw context
 claw plan write --task my-task --title "My task" --goal "Define the first task"
 ```
+
+`claw context` remains available as a command, but Codex startup workflow should rely on the session hook/bootstrap to recover context instead of treating it as a required manual step after plan creation.
 
 Repository:
 

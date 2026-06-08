@@ -47,6 +47,10 @@ function formatNextTask(task: PlanTask): string {
   return `#${task.id} ${task.title}`;
 }
 
+function requirementsNeedClarification(plan: PlanDocument): boolean {
+  return plan.tasks.length === 0;
+}
+
 export function buildPlanWorkflowGuidance(params: {
   taskName: string;
   planFile: string;
@@ -65,18 +69,24 @@ export function buildPlanWorkflowGuidance(params: {
   const justEnteredProcess = previousStatus?.startsWith("prepare.") && plan.status.startsWith("process.");
   const justCompletedTasks = (changedTaskIds?.length ?? 0) > 0;
   const nextTask = nextUnfinishedTask(plan);
+  const needsClarification = requirementsNeedClarification(plan);
 
   switch (plan.status) {
     case "prepare.requirements":
       return {
         stage: "requirements",
-        summary: "Task scope is bound. Confirm the route before execution.",
+        summary: "Task scope is bound. Enter goal mode first, then decide whether requirements are clear enough to execute.",
         nextStep:
-          "Refine the plan if needed, confirm the route with the user, then move to process.active before doing any implementation or task execution.",
+          needsClarification
+            ? "Enter goal mode from `workflowGuidance.goalMode`, review whether requirements are clear, and if they are not, ask the user to clarify before execution begins."
+            : "Enter goal mode from `workflowGuidance.goalMode`, verify requirements are already clear, then move directly to `process.active` before doing any implementation or task execution.",
         notes: [
-          "Planning should already satisfy the old review quality bar.",
+          "The legacy `claw context` workflow step is now handled by session bootstrap hooks instead of the post-plan workflow.",
+          "After `plan write`, goal mode is the first required follow-up action.",
           "Do not start implementation while the plan is still in `prepare.requirements`.",
-          "Move to `process.active` before updating task progress or executing the task.",
+          needsClarification
+            ? "If requirements are still ambiguous, resolve that ambiguity before moving into `process.active`."
+            : "Requirements already look clear enough to move directly into `process.active`.",
         ],
         recommendedCommands: [
           `${editBase} --patch <updated-plan.json>`,
@@ -90,28 +100,32 @@ export function buildPlanWorkflowGuidance(params: {
           doNotOverwriteExisting: true as const,
           supportedSurfaces: ["/goal", "create_goal"] as Array<"/goal" | "create_goal">,
         },
-        askUser: {
-          reason: "Requirements still need explicit confirmation before execution starts.",
-          useCodexOptions: true,
-          options: [
-            {
-              id: "approve-route",
-              label: "Approve route",
-              description: "The current plan is acceptable and can move toward execution.",
-              recommended: true,
-            },
-            {
-              id: "revise-plan",
-              label: "Revise plan",
-              description: "The current plan needs scope, task, or sequencing changes before execution.",
-            },
-            {
-              id: "pause-discussion",
-              label: "Discuss first",
-              description: "The route is still ambiguous and needs a user discussion turn before work starts.",
-            },
-          ],
-        },
+        ...(needsClarification
+          ? {
+              askUser: {
+                reason: "Requirements are not yet clear enough to start execution directly.",
+                useCodexOptions: true as const,
+                options: [
+                  {
+                    id: "clarify-requirements",
+                    label: "Clarify requirements",
+                    description: "Collect the missing scope or constraints before execution starts.",
+                    recommended: true,
+                  },
+                  {
+                    id: "revise-plan",
+                    label: "Revise plan",
+                    description: "Update goal, tasks, or sequencing to make the plan execution-ready.",
+                  },
+                  {
+                    id: "pause-discussion",
+                    label: "Discuss first",
+                    description: "Keep the plan in discussion until the user resolves the ambiguity.",
+                  },
+                ],
+              },
+            }
+          : {}),
       };
     case "prepare.review":
       return {

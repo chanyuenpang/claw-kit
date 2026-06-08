@@ -24,12 +24,14 @@ Use this skill when planning or editing execution state in an existing `.claw/` 
 - `plan write` is the canonical path for establishing task scope.
 - When using `plan write`, write the task title, goal, tasks, and supporting plan text in the user's preferred language unless the repository has an explicit stronger convention.
 - After `plan write`, read `workflowGuidance.goalMode` and create the thread goal from `workflowGuidance.goalMode.recommendedObjective` using the current host goal surface.
-- After `plan write`, read `workflowGuidance`, refine the plan directly until the route is clear, and use `askUser` to confirm the route before advancing the lifecycle.
+- After `plan write`, treat hook bootstrap as the source of recovered `claw context`; do not insert a separate `claw context` workflow step.
+- After `plan write`, read `workflowGuidance`, check whether requirements are already clear enough to execute, and use `askUser` only when they are not.
 - Do not start implementation while the plan is still in `prepare.requirements`.
-- When requirements are confirmed and execution begins, move the plan into `process.active` before doing any implementation or updating task progress.
+- When requirements are clear and execution begins, move the plan directly into `process.active` before doing any implementation or updating task progress.
 - After `plan edit`, read `workflowGuidance` again, use `tool_search` to locate the current session's agent-management tools, and execute the returned specialist dispatch contract directly.
 - After `plan done`, read `workflowGuidance` again, use `tool_search` to locate the current session's agent-management tools, and dispatch `adr-writer` with the completed `plan.json` without waiting on a return.
 - After each `plan write`, `plan edit`, and `plan done`, consume `workflowGuidance` and surface only the compact `planSummary` when it helps coordination.
+- Treat returned `workflowGuidance.nextStep` and `recommendedCommands` as the required next-step contract whenever they are present.
 - Use two-part lifecycle states:
   - `prepare.requirements`
   - `process.active`
