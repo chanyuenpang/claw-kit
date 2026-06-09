@@ -150,6 +150,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   const shim = createGitnexusShim("fallback");
   const env = {
     PATH: `${shim.binDir}${path.delimiter}${process.env.PATH ?? ""}`,
+    CLAW_EMBEDDING_MOCK: "1",
   };
 
   const initResult = runClaw(
@@ -201,7 +202,6 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   );
   runClaw(["search", "index", "--refresh"], root, {
     ...env,
-    CLAW_EMBEDDING_MOCK: "1",
   });
 
   const writeResult = runClaw(
@@ -313,7 +313,6 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
 
   const searchResult = runClaw(["search", "--query", "alpha"], root, {
     ...env,
-    CLAW_EMBEDDING_MOCK: "1",
   });
   assert.equal(searchResult.command, "search");
   assert.equal(searchResult.scope, "project");
@@ -729,7 +728,8 @@ test("cli check auto-corrects project.json into explicit protocol fields", () =>
 
 test("cli plan done always archives the current completed task", async () => {
   const root = createFixture("plan-done-archive");
-  runClaw(["init", "--name", "Archive On Complete", "--max-tasks-to-keep", "99"], root);
+  const env = { CLAW_EMBEDDING_MOCK: "1" };
+  runClaw(["init", "--name", "Archive On Complete", "--max-tasks-to-keep", "99"], root, env);
 
   runClaw(
     [
@@ -741,12 +741,14 @@ test("cli plan done always archives the current completed task", async () => {
       "Archive after completion",
     ],
     root,
+    env,
   );
-  runClaw(["plan", "edit", "--task", "archive-task", "--plan-status", "process.active"], root);
+  runClaw(["plan", "edit", "--task", "archive-task", "--plan-status", "process.active"], root, env);
 
   const doneResult = runClaw(
     ["plan", "done", "--task", "archive-task", "--summary", "Archive this completed task."],
     root,
+    env,
   );
 
   assert.equal("completionRefresh" in doneResult, false);
@@ -788,6 +790,7 @@ test("cli plan done skips gitnexus refresh when project config disables it", asy
   const root = createFixture("gitnexus-disabled");
   const env = {
     PATH: process.env.PATH ?? "",
+    CLAW_EMBEDDING_MOCK: "1",
   };
 
   runClaw(["init", "--name", "No Gitnexus"], root, env);

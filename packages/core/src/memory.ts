@@ -172,26 +172,10 @@ function syncProjectMemoryIndex(
       db.exec("DELETE FROM doc_embeddings;");
     }
     const indexedDocs = insertDocs(db, limitedDocsToInsert);
-    let vectorIndexingFailed = false;
     if (shouldIndexVectors && embedding) {
-      try {
-        indexDocEmbeddings(db, indexedDocs, embedding);
-      } catch (error) {
-        if (!isEmbeddingGenerationFailure(error)) {
-          throw error;
-        }
-        vectorIndexingFailed = true;
-        db.exec("DELETE FROM doc_embeddings;");
-      }
+      indexDocEmbeddings(db, indexedDocs, embedding);
     }
     db.exec("COMMIT");
-    if (vectorIndexingFailed) {
-      return {
-        vectorIndex: null,
-        processedFileCount: limitedDocsToInsert.length,
-        pendingFileCount,
-      };
-    }
   } catch (error) {
     db.exec("ROLLBACK");
     throw error;
@@ -279,6 +263,12 @@ export function searchMemory(input: MemorySearchInput): MemorySearchResult {
   const { scope, project, task } = resolveMemoryScope(input);
   const storePath = getMemoryStorePath(project, scope, task);
   if (!fs.existsSync(storePath)) {
+    if (scope === "project") {
+      throw new ClawError(
+        "MEMORY_VECTOR_INDEX_REQUIRED",
+        "Project search requires a refreshed vector index. Run `claw search index --refresh` first.",
+      );
+    }
     buildMemoryIndex({
       cwd: input.cwd,
       scope,
@@ -672,12 +662,6 @@ function cleanupTemporaryEmbeddingOutput(outputPath: string): void {
   if (fs.existsSync(outputPath)) {
     fs.unlinkSync(outputPath);
   }
-}
-
-function isEmbeddingGenerationFailure(error: unknown): boolean {
-  return error instanceof ClawError &&
-    error.code === "PROJECT_CONFIG_INVALID" &&
-    error.message === "Memory embedding generation failed.";
 }
 
 function resolveEmbeddingApiKey(embedding: MemoryEmbeddingConfig): string | null {

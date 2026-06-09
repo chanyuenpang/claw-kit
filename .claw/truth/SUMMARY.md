@@ -41,4 +41,4 @@
 - `packages/core/test/core.test.ts` 已新增 query planner 语义和中文多词 project recall 场景覆盖；本轮校验通过 `npm test -- packages/core/test/core.test.ts` 与 `npm run check`。
 - search candidate recall 这一轮的验证证据包括：`packages/core/test/core.test.ts` 50/50 通过、`npm run check` 通过，以及在 `NeonSpark` 的 live search 中，多词中文 query 不再让 `contents.md` 压过聚焦文档， conversational `搜打撤` 查询继续优先命中 system design 类文档。
 - Current release/package state tracks `0.1.22` on `package.json`, `packages/core/package.json`, and `packages/cli/package.json`, with `packages/codex-adapter/.codex-plugin/plugin.json` on `0.1.22+codex.20260609022301`; `scripts/install-cli.ps1` remains the Windows reinstall path for keeping `@veewo/claw` aligned.
-- `packages/core/src/memory.ts` 现在在 project memory refresh 时会把 embedding 生成失败降级为 text-only indexing，避免刷新整体失败；但 project search 仍然保持 vector-required 契约，缺少 refreshed vector index 时继续返回 `MEMORY_VECTOR_INDEX_REQUIRED`。
+- `packages/core/src/memory.ts` 保持严格契约：project memory refresh 如果 embedding 生成失败就必须失败，不能降级为 text-only indexing；project search 继续保持 vector-required 契约，缺少 refreshed vector index 时返回 `MEMORY_VECTOR_INDEX_REQUIRED`。
