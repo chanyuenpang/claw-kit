@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { resolveProjectContext, resolveTaskContext } from "./context.js";
 import { ClawError } from "./errors.js";
 import { readJsonFile, readTextFile } from "./io.js";
-import { buildProjectKeywordSearchPlan } from "./memory-query.js";
+import { buildProjectKeywordSearchPlan, buildProjectQueryIntent } from "./memory-query.js";
 import type {
   MemoryEmbeddingConfig,
   MemoryGetInput,
@@ -714,15 +714,30 @@ function searchProjectMemoryHybrid(
     );
   }
 
+  const queryIntent = buildProjectQueryIntent(query);
   const queryEmbedding = runEmbeddingWorker({
     embedding,
-    texts: [query],
+    texts: [queryIntent.embeddingText || query],
   }).vectors[0];
   if (!queryEmbedding?.length) {
     throw new ClawError("MEMORY_VECTOR_INDEX_REQUIRED", "Unable to generate a query embedding for project search.");
   }
 
   const candidateLimit = Math.max(limit * 4, 20);
+  const projectDocs = db
+    .prepare("SELECT source_path, kind, content FROM docs")
+    .all() as Array<{ source_path: string; kind: string; content: string }>;
+  const docSignals = new Map(
+    projectDocs.map((row) => [
+      row.source_path,
+      buildProjectSearchSignals({
+        sourcePath: row.source_path,
+        content: row.content,
+        query,
+        queryIntent,
+      }),
+    ]),
+  );
   const ftsRows = searchProjectMemoryKeywords(db, query, candidateLimit);
 
   const vectorRows = db
@@ -741,14 +756,22 @@ function searchProjectMemoryHybrid(
   }
 
   const rankedVectors = vectorRows
-    .map((row) => ({
-      sourcePath: row.source_path,
-      kind: row.kind,
-      snippet: buildSnippet(row.chunk_text),
-      similarity: cosineSimilarity(queryEmbedding, parseEmbeddingJson(row.embedding_json)),
-    }))
+    .map((row) => {
+      const signals = docSignals.get(row.source_path);
+      return {
+        sourcePath: row.source_path,
+        kind: row.kind,
+        snippet: buildSnippet(row.chunk_text),
+        similarity: cosineSimilarity(queryEmbedding, parseEmbeddingJson(row.embedding_json)),
+        exactBoost: signals?.exactBoost ?? 0,
+      };
+    })
     .filter((row) => Number.isFinite(row.similarity))
-    .sort((left, right) => right.similarity - left.similarity);
+    .sort((left, right) => {
+      const leftScore = left.similarity + left.exactBoost;
+      const rightScore = right.similarity + right.exactBoost;
+      return rightScore - leftScore;
+    });
 
   const bestVectorBySource = new Map<string, { kind: string; snippet: string; similarity: number }>();
   for (const row of rankedVectors) {
@@ -764,33 +787,49 @@ function searchProjectMemoryHybrid(
 
   const fused = new Map<string, MemorySearchResultEntry & { vectorRank?: number; textRank?: number }>();
   Array.from(bestVectorBySource.entries())
-    .sort((left, right) => right[1].similarity - left[1].similarity)
+    .sort((left, right) => {
+      const leftScore = left[1].similarity + (docSignals.get(left[0])?.exactBoost ?? 0);
+      const rightScore = right[1].similarity + (docSignals.get(right[0])?.exactBoost ?? 0);
+      return rightScore - leftScore;
+    })
     .slice(0, candidateLimit)
     .forEach(([sourcePath, row], index) => {
+      const signals = docSignals.get(sourcePath);
       fused.set(sourcePath, {
         sourcePath,
         kind: row.kind,
         snippet: row.snippet,
-        score: reciprocalRankScore(index + 1, 0.7),
+        score: reciprocalRankScore(index + 1, 0.7) + (signals?.exactBoost ?? 0),
         vectorRank: index + 1,
       });
     });
 
   ftsRows.forEach((row, index) => {
     const existing = fused.get(row.source_path);
+    const signals = docSignals.get(row.source_path);
     const nextScore = (existing?.score ?? 0) + reciprocalRankScore(index + 1, 0.3);
     fused.set(row.source_path, {
       sourcePath: row.source_path,
       kind: existing?.kind ?? row.kind,
       snippet: row.snippet || existing?.snippet || "",
-      score: nextScore,
+      score: nextScore + (existing ? 0 : (signals?.exactBoost ?? 0)),
       vectorRank: existing?.vectorRank,
       textRank: index + 1,
     });
   });
 
   return Array.from(fused.values())
-    .sort((left, right) => right.score - left.score)
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+      const leftSignals = docSignals.get(left.sourcePath);
+      const rightSignals = docSignals.get(right.sourcePath);
+      if ((rightSignals?.strongMatchedTermCount ?? 0) !== (leftSignals?.strongMatchedTermCount ?? 0)) {
+        return (rightSignals?.strongMatchedTermCount ?? 0) - (leftSignals?.strongMatchedTermCount ?? 0);
+      }
+      return (rightSignals?.matchedTermCount ?? 0) - (leftSignals?.matchedTermCount ?? 0);
+    })
     .slice(0, limit)
     .map(({ sourcePath, kind, snippet, score }) => ({
       sourcePath,
@@ -957,6 +996,76 @@ function matchesAllSubstrings(db: DatabaseSync, sourcePath: string, substringTer
 
 function escapeLikePattern(term: string): string {
   return term.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
+}
+
+function buildProjectSearchSignals(input: {
+  sourcePath: string;
+  content: string;
+  query: string;
+  queryIntent: {
+    terms: string[];
+    strongTerms: string[];
+    weakTerms: string[];
+  };
+}): {
+  matchedTermCount: number;
+  strongMatchedTermCount: number;
+  exactBoost: number;
+} {
+  const normalizedQuery = input.query.trim();
+  const normalizedContent = input.content.toLowerCase();
+  const normalizedPath = input.sourcePath.toLowerCase();
+  const fileName = path.basename(input.sourcePath).toLowerCase();
+  const lowerTerms = input.queryIntent.terms.map((term) => term.toLowerCase());
+  const lowerStrongTerms = input.queryIntent.strongTerms.map((term) => term.toLowerCase());
+  const lowerWeakTerms = input.queryIntent.weakTerms.map((term) => term.toLowerCase());
+  const matchedContentTerms = lowerTerms.filter((term) => normalizedContent.includes(term));
+  const matchedPathTerms = lowerTerms.filter((term) => normalizedPath.includes(term));
+  const matchedTerms = new Set([...matchedContentTerms, ...matchedPathTerms]);
+  const strongMatchedTerms = new Set(
+    lowerStrongTerms.filter((term) => normalizedContent.includes(term) || normalizedPath.includes(term)),
+  );
+  const weakMatchedTerms = new Set(
+    lowerWeakTerms.filter((term) => normalizedContent.includes(term) || normalizedPath.includes(term)),
+  );
+  const matchedCharacters = Array.from(matchedTerms).reduce((sum, term) => sum + term.length, 0);
+  const normalizedLength = Math.max(Array.from(input.content.trim()).length, 1);
+  const coverageRatio = lowerTerms.length > 0 ? matchedTerms.size / lowerTerms.length : 0;
+  const strongCoverageRatio = lowerStrongTerms.length > 0 ? strongMatchedTerms.size / lowerStrongTerms.length : 0;
+  const densityRatio = matchedCharacters / normalizedLength;
+  const fileNameHits = lowerTerms.filter((term) => fileName.includes(term)).length;
+  const pathHits = matchedPathTerms.length;
+  const phraseMatch = normalizedQuery.length > 0
+    && (normalizedContent.includes(normalizedQuery.toLowerCase()) || normalizedPath.includes(normalizedQuery.toLowerCase()));
+  const weakOnlyPenalty = strongMatchedTerms.size === 0 && weakMatchedTerms.size > 0 ? 0.012 : 0;
+  const missingStrongPenalty =
+    lowerStrongTerms.length > 0 && strongMatchedTerms.size === 0
+      ? 0.035
+      : lowerStrongTerms.length > 1 && strongMatchedTerms.size === 1
+        ? 0.01
+        : 0;
+  const indexFilePenalty = isIndexLikeDocName(fileName) ? 0.02 : 0;
+
+  return {
+    matchedTermCount: matchedTerms.size,
+    strongMatchedTermCount: strongMatchedTerms.size,
+    exactBoost:
+      strongMatchedTerms.size * 0.016
+      + weakMatchedTerms.size * 0.004
+      + coverageRatio * 0.008
+      + strongCoverageRatio * 0.014
+      + densityRatio * 0.02
+      + fileNameHits * 0.012
+      + pathHits * 0.006
+      + (phraseMatch ? 0.018 : 0)
+      - weakOnlyPenalty
+      - missingStrongPenalty
+      - indexFilePenalty,
+  };
+}
+
+function isIndexLikeDocName(fileName: string): boolean {
+  return fileName === "contents.md" || fileName === "summary.md" || fileName === "index.md" || fileName === "readme.md";
 }
 
 function reciprocalRankScore(rank: number, weight: number): number {

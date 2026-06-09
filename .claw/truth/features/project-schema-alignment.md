@@ -36,6 +36,8 @@
 - 对多词 query，planner 会同时保留整句 multi-term `MATCH` 和逐词 fallback query，而不是只把原始 query 直接喂给一次 FTS。
 - 这条 planner 对中文多词查询同样有效；例如 `搜打撤 哈基宝` 会展开为 exact multi-term query 加单词级 fallback，从而避免 recall 过度依赖“所有词必须同条命中”。
 - project-level hybrid search 会先汇总这些 keyword candidates，再与现有 vector recall 融合，因此提升的是 recall 质量，而不是放弃 vector-required contract。
+- `packages/core/src/memory-query.ts` 新增 `extractProjectKeywordTerms()`，让 project search 的 query-term 抽取和 keyword planner 共享同一套中文/多词入口。
+- `packages/core/src/memory.ts` 的 project-scoped hybrid search 现在加入 document-level ranking signals，包括 `query term coverage`、`matched-character density / content focus`、`path / filename hits` 和 `exact phrase boost`，用来提高中文精确命中文档的前排优先级，避免 `.claw` memory / truth 或泛噪声文档抢位。
 - Project-level search requires vector indexing to be configured and refreshed; missing `memory.embedding`, missing `vector_index` metadata, or missing stored vectors now fail with `MEMORY_VECTOR_INDEX_REQUIRED` instead of silently degrading.
 - Task-scope memory search still uses the existing active-plan-plus-task-memory FTS path and does not participate in the hybrid/vector recall flow.
 - Codex-facing recall is `claw search --query "<topic>"`; this reads the indexed project context before planning or investigation, and it remains document recall rather than code search.

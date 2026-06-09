@@ -17,6 +17,7 @@ Accepted
 - 多词中文 recall 的改进继续参考 `openclaw-dev` 的 memory search 设计，但核心是 query planner、keyword recall 与 vector fusion，而不是更换 embedding 路线
 - 这次 rescue refresh 还要求显式的 CPU 逃生路径，用来覆盖 Windows 上 DirectML / CUDA 初始化失败或首轮真实推理失败的情况，而不是依赖 OpenAI auth 兜底
 - 大型项目 refresh 还需要把刷新进度切成可重复推进的批次，而不是一次性吞下整个语料集
+- 这次 retrieval quality 迭代继续复用 `openclaw-dev` 的成熟混排思路，但只吸收适合 `claw-kit` 的那部分：共享的中文/多词 keyword term 入口，以及面向 project-scoped hybrid ranking 的文档级 signals。
 
 ## Decision
 
@@ -40,6 +41,7 @@ Accepted
 - local embedding inference 现在默认在单个 worker/model session 内分批执行，避免把整个 text set 塞进一次 ONNX 调用。
 - 大量向量结果在 worker 侧改为写入临时文件，再通过轻量元数据经由 stdout 返回，避免巨大的 IPC payload。
 - 大型项目的默认 refresh 进度上限是每轮最多处理 100 个新增或变更文件，让 backlog 通过重复运行自然推进。
+- `packages/core/test/core.test.ts` 新增了中文排序回归用例，并把使用 `CLAW_EMBEDDING_MOCK` 的 project-search / memory-refresh 测试改成串行，避免并发共享环境变量污染。
 - `claw context` / protocol auto-repair must backfill that default local embedding config into older project schemas instead of leaving `memory.embedding` empty.
 - `claw-kit` 自身项目不把仓库 `docs/` 目录加入 `memory.externalDocPaths`，这样 `claw search` 继续面向 `.claw` memory / truth / ADR 文档，而不是把实现文档目录默认并入 recall。
 - `memory.externalDocPaths` / `claw search` external memory paths 只纳入 `.md` 文件，保持 `claw search` 是文档 recall，而不是代码搜索。

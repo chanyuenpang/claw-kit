@@ -33,6 +33,8 @@ Accepted working truth for local development on this machine.
 - 在 NeonSpark 的真实重测里，最初失败点先从 DirectML gating 收敛到过大的 embedding 输入张量（`33737 x 512`，请求分配约 `26.5 GB`），随后又暴露出 stdout 巨型 vector JSON；最终通过临时文件回传结果把这条链路打通。
 - 该重测最后确认 `claw search index --refresh` 可以在大项目上成功完成，并产出 `indexedCount: 698` 与 `vectorIndex.chunkCount: 33737`。
 - 用户面文档现在把默认的 `100` 文件分片推进和 `cpu` rescue path 讲清楚了，但没有暴露新的 CLI 参数。
+- `packages/core/test/core.test.ts` 新增了中文排序回归：`project search prioritizes exact Chinese document hits over weaker project-memory matches`。
+- 使用 `CLAW_EMBEDDING_MOCK` 的 project-search / memory-refresh 测试现在显式标记为 `{ concurrency: false }`，避免 Node test 并发下共享环境变量污染造成假红。
 - Project-level `claw search --query` now generates a real query embedding and uses a trimmed hybrid recall that fuses vector and FTS results.
 - Project-level `claw search --query` now fails with `MEMORY_VECTOR_INDEX_REQUIRED` when the refreshed vector index is missing, instead of silently degrading to non-vector search.
 - Task-scope memory search still keeps the previous FTS and task-memory behavior.

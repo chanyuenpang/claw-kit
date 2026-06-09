@@ -20,7 +20,11 @@ import {
   writePlan,
 } from "../src/index.js";
 import { readTextFile } from "../src/io.js";
-import { buildProjectKeywordSearchPlan } from "../src/memory-query.js";
+import {
+  buildProjectKeywordSearchPlan,
+  buildProjectQueryIntent,
+  extractProjectKeywordTerms,
+} from "../src/memory-query.js";
 
 function createFixture(name: string): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), `claw-kit-${name}-`));
@@ -860,7 +864,7 @@ test("project search rejects queries when no vector index is available", () => {
   );
 });
 
-test("project search keeps recall for multi-term Chinese queries across different markdown docs", () => {
+test("project search keeps recall for multi-term Chinese queries across different markdown docs", { concurrency: false }, () => {
   const root = createFixture("memory-search-chinese-multi-term");
   fs.writeFileSync(
     path.join(root, ".claw", "project.json"),
@@ -960,6 +964,148 @@ test("project keyword search plan uses substring fallback for short Chinese term
   );
 });
 
+test("project keyword extraction keeps meaningful Chinese terms from conversational queries", () => {
+  assert.deepEqual(
+    extractProjectKeywordTerms("\u4e4b\u524d\u8ba8\u8bba\u7684\u90a3\u4e2a\u641c\u6253\u64a4\u65b9\u6848"),
+    ["\u8ba8\u8bba", "\u641c\u6253\u64a4", "\u65b9\u6848"],
+  );
+});
+
+test("project keyword extraction drops OpenClaw-style English stop words", () => {
+  assert.deepEqual(
+    extractProjectKeywordTerms("please show me that thing we discussed about the extraction API"),
+    ["discussed", "extraction", "api"],
+  );
+});
+
+test("project keyword search plan skips weak standalone fallback terms from conversational Chinese queries", () => {
+  assert.deepEqual(
+    buildProjectKeywordSearchPlan("\u4e4b\u524d\u8ba8\u8bba\u7684\u90a3\u4e2a\u641c\u6253\u64a4\u65b9\u6848"),
+    [
+      {
+        query: "\"\u641c\u6253\u64a4\"",
+        matchedTerms: ["\u8ba8\u8bba", "\u641c\u6253\u64a4", "\u65b9\u6848"],
+        substringTerms: ["\u8ba8\u8bba", "\u65b9\u6848"],
+      },
+      {
+        query: "\"\u641c\u6253\u64a4\"",
+        matchedTerms: ["\u641c\u6253\u64a4", "\u65b9\u6848"],
+        substringTerms: ["\u65b9\u6848"],
+      },
+      {
+        query: "\"\u641c\u6253\u64a4\"",
+        matchedTerms: ["\u641c\u6253\u64a4"],
+        substringTerms: [],
+      },
+    ],
+  );
+});
+
+test("project query intent uses strong terms for conversational Chinese embedding text", () => {
+  assert.deepEqual(
+    buildProjectQueryIntent("\u4e4b\u524d\u8ba8\u8bba\u7684\u90a3\u4e2a\u641c\u6253\u64a4\u65b9\u6848"),
+    {
+      terms: ["\u8ba8\u8bba", "\u641c\u6253\u64a4", "\u65b9\u6848"],
+      strongTerms: ["\u641c\u6253\u64a4"],
+      weakTerms: ["\u8ba8\u8bba", "\u65b9\u6848"],
+      embeddingText: "\u641c\u6253\u64a4",
+    },
+  );
+});
+
+test("project search prioritizes strong-term Chinese docs for conversational queries over generic plan docs", { concurrency: false }, () => {
+  const root = createFixture("memory-search-conversational-chinese-ranking");
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify(
+      {
+        id: "memory-search-conversational-chinese-ranking",
+        memory: {
+          externalDocPaths: ["docs/"],
+          embedding: {
+            provider: "local",
+            model: "Snowflake/snowflake-arctic-embed-xs",
+            local: {
+              modelCacheDir: path.join(root, ".model-cache"),
+            },
+          },
+        },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project memory notes\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "shared truth summary\n", "utf-8");
+  fs.writeFileSync(path.join(root, "docs", "sdtz-guide.md"), "\u641c\u6253\u64a4\u6a21\u5f0f\u8bf4\u660e\n", "utf-8");
+  fs.writeFileSync(path.join(root, "docs", "generic-plan-a.md"), "\u5185\u5b58\u4f18\u5316\u65b9\u6848\n", "utf-8");
+  fs.writeFileSync(path.join(root, "docs", "generic-plan-b.md"), "\u7f51\u7edc\u91cd\u6784\u65b9\u6848\n", "utf-8");
+
+  const previousMockEnv = process.env.CLAW_EMBEDDING_MOCK;
+  process.env.CLAW_EMBEDDING_MOCK = "1";
+
+  try {
+    buildMemoryIndex({ cwd: root });
+
+    const result = searchMemory({ cwd: root, query: "\u4e4b\u524d\u8ba8\u8bba\u7684\u90a3\u4e2a\u641c\u6253\u64a4\u65b9\u6848", limit: 5 });
+    assert.equal(path.basename(result.results[0]?.sourcePath ?? ""), "sdtz-guide.md");
+  } finally {
+    if (previousMockEnv === undefined) {
+      delete process.env.CLAW_EMBEDDING_MOCK;
+    } else {
+      process.env.CLAW_EMBEDDING_MOCK = previousMockEnv;
+    }
+  }
+});
+
+test("project search demotes index-like docs when a focused Chinese doc matches the same topic", { concurrency: false }, () => {
+  const root = createFixture("memory-search-index-doc-penalty");
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify(
+      {
+        id: "memory-search-index-doc-penalty",
+        memory: {
+          externalDocPaths: ["docs/"],
+          embedding: {
+            provider: "local",
+            model: "Snowflake/snowflake-arctic-embed-xs",
+            local: {
+              modelCacheDir: path.join(root, ".model-cache"),
+            },
+          },
+        },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project memory notes\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "shared truth summary\n", "utf-8");
+  fs.writeFileSync(path.join(root, "docs", "contents.md"), "\u8fd9\u91cc\u5217\u51fa\u641c\u6253\u64a4\u3001\u6b66\u5668\u3001\u9053\u5177\u3001\u7cfb\u7edf\u3001\u6280\u672f\u5b9e\u73b0\u7d22\u5f15\u3002\n", "utf-8");
+  fs.writeFileSync(path.join(root, "docs", "sdtz-guide.md"), "\u641c\u6253\u64a4\u6a21\u5f0f\u8bf4\u660e\n", "utf-8");
+
+  const previousMockEnv = process.env.CLAW_EMBEDDING_MOCK;
+  process.env.CLAW_EMBEDDING_MOCK = "1";
+
+  try {
+    buildMemoryIndex({ cwd: root });
+
+    const result = searchMemory({ cwd: root, query: "\u641c\u6253\u64a4", limit: 5 });
+    assert.equal(path.basename(result.results[0]?.sourcePath ?? ""), "sdtz-guide.md");
+  } finally {
+    if (previousMockEnv === undefined) {
+      delete process.env.CLAW_EMBEDDING_MOCK;
+    } else {
+      process.env.CLAW_EMBEDDING_MOCK = previousMockEnv;
+    }
+  }
+});
+
 test("project search keeps recall for multi-term Chinese queries across different markdown docs", () => {
   const root = createFixture("memory-search-chinese-multi-term");
   fs.writeFileSync(
@@ -1012,7 +1158,7 @@ test("project search keeps recall for multi-term Chinese queries across differen
   }
 });
 
-test("project search uses substring fallback for short Chinese multi-term queries", () => {
+test("project search uses substring fallback for short Chinese multi-term queries", { concurrency: false }, () => {
   const root = createFixture("memory-search-short-chinese-multi-term");
   fs.writeFileSync(
     path.join(root, ".claw", "project.json"),
@@ -1064,7 +1210,65 @@ test("project search uses substring fallback for short Chinese multi-term querie
   }
 });
 
-test("project memory refresh generates local embedding metadata and vector rows for markdown sources", () => {
+test("project search prioritizes exact Chinese document hits over weaker project-memory matches", { concurrency: false }, () => {
+  const root = createFixture("memory-search-chinese-ranking");
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify(
+      {
+        id: "memory-search-chinese-ranking",
+        memory: {
+          externalDocPaths: ["docs/"],
+          embedding: {
+            provider: "local",
+            model: "Snowflake/snowflake-arctic-embed-xs",
+            local: {
+              modelCacheDir: path.join(root, ".model-cache"),
+            },
+          },
+        },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project memory notes\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "shared truth summary\n", "utf-8");
+  fs.writeFileSync(path.join(root, "docs", "sdtz-guide.md"), "\u641c\u6253\u64a4\u6a21\u5f0f\u8bf4\u660e\n", "utf-8");
+  fs.writeFileSync(path.join(root, "docs", "hjb-guide.md"), "\u54c8\u57fa\u5b9d\u89d2\u8272\u8bf4\u660e\n", "utf-8");
+  fs.writeFileSync(
+    path.join(root, "docs", "noise-a.md"),
+    "\u641c\u6253\u64a4\u76f8\u5173\u6218\u672f\u4e0e\u8d5b\u5b63\u5e73\u8861\u3001\u5c40\u5185\u8def\u7ebf\u3001\u641c\u6253\u64a4\u6280\u5de7\u3001\u591a\u4eba\u641c\u6253\u64a4\u7ecf\u9a8c\u3001\u88c5\u5907\u3001\u64a4\u79bb\u3002\n",
+    "utf-8",
+  );
+  fs.writeFileSync(
+    path.join(root, "docs", "noise-b.md"),
+    "\u54c8\u57fa\u5b9d\u517b\u6210\u3001\u54c8\u57fa\u5b9d\u642d\u914d\u3001\u54c8\u57fa\u5b9d\u7ecf\u9a8c\u3002\n",
+    "utf-8",
+  );
+
+  const previousMockEnv = process.env.CLAW_EMBEDDING_MOCK;
+  process.env.CLAW_EMBEDDING_MOCK = "1";
+
+  try {
+    buildMemoryIndex({ cwd: root });
+
+    const multiTerm = searchMemory({ cwd: root, query: "\u641c\u6253\u64a4 \u54c8\u57fa\u5b9d", limit: 5 });
+    const topTwo = multiTerm.results.slice(0, 2).map((item) => path.basename(item.sourcePath)).sort();
+
+    assert.deepEqual(topTwo, ["hjb-guide.md", "sdtz-guide.md"]);
+  } finally {
+    if (previousMockEnv === undefined) {
+      delete process.env.CLAW_EMBEDDING_MOCK;
+    } else {
+      process.env.CLAW_EMBEDDING_MOCK = previousMockEnv;
+    }
+  }
+});
+
+test("project memory refresh generates local embedding metadata and vector rows for markdown sources", { concurrency: false }, () => {
   const root = createFixture("memory-local-embeddings");
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
   fs.writeFileSync(
@@ -1152,7 +1356,7 @@ test("project memory refresh generates local embedding metadata and vector rows 
   }
 });
 
-test("project memory refresh incrementally reuses unchanged docs and syncs changed or deleted markdown docs", () => {
+test("project memory refresh incrementally reuses unchanged docs and syncs changed or deleted markdown docs", { concurrency: false }, () => {
   const root = createFixture("memory-incremental-refresh");
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
   fs.writeFileSync(
@@ -1268,7 +1472,7 @@ test("project memory refresh incrementally reuses unchanged docs and syncs chang
   }
 });
 
-test("project memory refresh defaults to processing changed files in 100-file batches", () => {
+test("project memory refresh defaults to processing changed files in 100-file batches", { concurrency: false }, () => {
   const root = createFixture("memory-default-file-batches");
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
   fs.writeFileSync(

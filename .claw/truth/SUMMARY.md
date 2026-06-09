@@ -14,6 +14,7 @@
 - `packages/core/src/embedding-local.ts` now advances local inference in fixed internal batches within a single worker/model session, and `packages/core/src/embedding-worker.ts` / `packages/core/src/memory.ts` now use temp-file handoff instead of giant stdout JSON for embedding results.
 - Large refreshes keep the existing `claw search index --refresh` contract while advancing backlog in bounded batches and keeping vector payload transport off stdout.
 - Large-project retest evidence from `NeonSpark` shows the final working path: `claw search index --refresh` completed with `indexedCount: 698` and `vectorIndex.chunkCount: 33737` after the batching and temp-file fixes.
+- Chinese and multi-term retrieval quality now also uses shared keyword-term extraction plus document-level hybrid ranking signals, so exact Chinese hits can outrank weaker project-memory noise without expanding the public config surface or turning `claw search` into code search.
 - In the `claw-kit` repo itself, `memory.externalDocPaths` stays empty, so local project recall excludes the repository `docs/` folder and indexes only `.claw` memory/truth/ADR Markdown.
 - `claw search index --refresh` 现在把当前项目的 sqlite memory index 视为增量同步目标，而不是每次都全量删库重建。
 - project memory sync 会记录 `docs.content_hash`；未变更的 markdown 文档会复用原有 sqlite `docs` row 与 embeddings，变更文档只重算并替换自身记录，被删除的 markdown 文档会从 `docs`、`docs_fts`、`doc_embeddings` 清理。
