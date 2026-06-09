@@ -368,6 +368,9 @@ function normalizeMemoryEmbeddingConfig(value: unknown): MemoryEmbeddingConfig |
             ...(readNonEmptyString(local.modelCacheDir)
               ? { modelCacheDir: readNonEmptyString(local.modelCacheDir) }
               : {}),
+            ...((local.device === "dml" || local.device === "cuda" || local.device === "cpu" || local.device === "wasm")
+              ? { device: local.device }
+              : {}),
           },
         }
       : {}),
@@ -439,6 +442,18 @@ function requireNullableEmbeddingConfig(
       }
       if ("modelCacheDir" in localObject && typeof localObject.modelCacheDir !== "string") {
         issues.push({ path: `${label}.local.modelCacheDir`, message: "Field must be a string when present." });
+      }
+      if (
+        "device" in localObject &&
+        localObject.device !== "dml" &&
+        localObject.device !== "cuda" &&
+        localObject.device !== "cpu" &&
+        localObject.device !== "wasm"
+      ) {
+        issues.push({
+          path: `${label}.local.device`,
+          message: 'Field must be "dml", "cuda", "cpu", or "wasm" when present.',
+        });
       }
     }
   }

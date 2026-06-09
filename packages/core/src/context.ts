@@ -250,6 +250,12 @@ function normalizeMemoryEmbeddingConfig(value: MemoryEmbeddingConfig | null | un
             ...(typeof value.local.modelCacheDir === "string" && value.local.modelCacheDir.trim()
               ? { modelCacheDir: value.local.modelCacheDir.trim() }
               : {}),
+            ...((value.local.device === "dml" ||
+              value.local.device === "cuda" ||
+              value.local.device === "cpu" ||
+              value.local.device === "wasm")
+              ? { device: value.local.device }
+              : {}),
           },
         }
       : {}),

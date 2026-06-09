@@ -830,7 +830,7 @@ test("project search rejects queries when no vector index is available", () => {
             },
             store: {
               vector: {
-                enabled: true,
+                enabled: false,
               },
             },
           },
@@ -1258,6 +1258,73 @@ test("project memory refresh incrementally reuses unchanged docs and syncs chang
       assert.equal(removedEmbeddings.count, 0);
     } finally {
       secondDb.close();
+    }
+  } finally {
+    if (previousMockEnv === undefined) {
+      delete process.env.CLAW_EMBEDDING_MOCK;
+    } else {
+      process.env.CLAW_EMBEDDING_MOCK = previousMockEnv;
+    }
+  }
+});
+
+test("project memory refresh defaults to processing changed files in 100-file batches", () => {
+  const root = createFixture("memory-default-file-batches");
+  fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify(
+      {
+        id: "memory-default-file-batches",
+        name: "Memory Default File Batches",
+        maxTasksToKeep: 99,
+        externalTruthSkill: null,
+        externalAdrSkill: null,
+        contextPaths: [],
+        memory: {
+          externalDocPaths: ["docs/"],
+          embedding: {
+            provider: "local",
+            model: "Snowflake/snowflake-arctic-embed-xs",
+            local: {
+              modelCacheDir: path.join(root, ".model-cache"),
+            },
+          },
+        },
+        gitnexus: {
+          enabled: false,
+        },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project alpha memory\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "shared beta truth\n", "utf-8");
+  for (let index = 0; index < 101; index += 1) {
+    fs.writeFileSync(path.join(root, "docs", `doc-${index.toString().padStart(3, "0")}.md`), `doc ${index}\n`, "utf-8");
+  }
+
+  const previousMockEnv = process.env.CLAW_EMBEDDING_MOCK;
+  process.env.CLAW_EMBEDDING_MOCK = "1";
+
+  try {
+    const firstIndex = buildMemoryIndex({ cwd: root });
+    const secondIndex = buildMemoryIndex({ cwd: root });
+    const db = new DatabaseSync(secondIndex.storePath);
+
+    try {
+      const docs = db.prepare("SELECT COUNT(*) AS count FROM docs").get() as { count: number };
+
+      assert.equal(firstIndex.indexedCount, 103);
+      assert.equal(firstIndex.processedFileCount, 100);
+      assert.equal(firstIndex.pendingFileCount, 3);
+      assert.equal(secondIndex.processedFileCount, 3);
+      assert.equal(secondIndex.pendingFileCount, 0);
+      assert.equal(docs.count, 103);
+    } finally {
+      db.close();
     }
   } finally {
     if (previousMockEnv === undefined) {

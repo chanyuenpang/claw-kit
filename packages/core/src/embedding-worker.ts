@@ -1,11 +1,16 @@
 import fs from "node:fs";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
+import {
+  resolveLocalExecutionDevice,
+  runLocalEmbeddingWithFallback,
+} from "./embedding-local.js";
 import type { MemoryEmbeddingConfig } from "./types.js";
 
 type WorkerInput = {
   embedding: MemoryEmbeddingConfig;
   texts: string[];
+  outputPath?: string;
 };
 
 type WorkerOutput = {
@@ -25,6 +30,15 @@ async function main(): Promise<void> {
       : input.embedding.provider === "local"
         ? await buildLocalOutput(input)
         : await buildOpenAiOutput(input);
+  if (input.outputPath?.trim()) {
+    fs.writeFileSync(input.outputPath, `${JSON.stringify(output)}\n`, "utf-8");
+    process.stdout.write(`${JSON.stringify({
+      dimensions: output.dimensions,
+      vectorCount: output.vectors.length,
+      outputPath: input.outputPath,
+    })}\n`);
+    return;
+  }
   process.stdout.write(`${JSON.stringify(output)}\n`);
 }
 
@@ -63,57 +77,31 @@ async function buildLocalOutput(input: WorkerInput): Promise<WorkerOutput> {
   }
 
   const modelId = input.embedding.local?.modelPath?.trim() || input.embedding.model;
-  const requestedDevice = resolveLocalDevice(input.embedding);
-  const devicesToTry = requestedDevice === "dml" || requestedDevice === "cuda"
-    ? [requestedDevice, "cpu"]
-    : [requestedDevice];
-
-  let extractor: {
-    (input: string[] | string, options: { pooling: "mean"; normalize: true }): Promise<{ data: ArrayLike<number> }>;
-  } | null = null;
-  let lastError: unknown = null;
-  for (const device of devicesToTry) {
-    try {
-      extractor = await (pipeline as unknown as (
+  const requestedDevice = resolveLocalExecutionDevice(input.embedding, {
+    cudaAvailable: isCudaAvailable(),
+  });
+  const output = await runLocalEmbeddingWithFallback({
+    texts: input.texts,
+    dimensions: resolveDimensions(input.embedding, 384),
+    requestedDevice,
+    createExtractor: async (device) =>
+      (pipeline as unknown as (
         task: "feature-extraction",
         model: string,
         options: Record<string, unknown>,
       ) => Promise<{
         (input: string[] | string, options: { pooling: "mean"; normalize: true }): Promise<{ data: ArrayLike<number> }>;
+        dispose?: () => Promise<void> | void;
       }>)("feature-extraction", modelId, {
         device,
         dtype: "fp32",
         session_options: { logSeverityLevel: 3 },
-      });
-      break;
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  if (!extractor) {
-    throw lastError instanceof Error ? lastError : new Error("Unable to initialize local embedding model.");
-  }
-
-  const result = await extractor(input.texts, {
-    pooling: "mean",
-    normalize: true,
-  });
-  const rawData = Array.from(result.data as ArrayLike<number>);
-  const inferredDimensions = input.texts.length > 0 ? Math.floor(rawData.length / input.texts.length) : 0;
-  const dimensions = resolveDimensions(input.embedding, inferredDimensions);
-  const vectors = input.texts.map((_, textIndex) => {
-    const start = textIndex * inferredDimensions;
-    const end = start + Math.min(dimensions, inferredDimensions);
-    const vector = rawData.slice(start, end);
-    if (vector.length < dimensions) {
-      vector.push(...Array.from({ length: dimensions - vector.length }, () => 0));
-    }
-    return vector;
+      }),
   });
 
   return {
-    dimensions,
-    vectors,
+    dimensions: output.dimensions,
+    vectors: output.vectors,
   };
 }
 
@@ -168,16 +156,6 @@ function resolveOpenAiBaseUrl(embedding: MemoryEmbeddingConfig): string {
   return configured.endsWith("/embeddings")
     ? configured
     : `${configured.replace(/\/+$/, "")}/embeddings`;
-}
-
-function resolveLocalDevice(embedding: MemoryEmbeddingConfig): "dml" | "cuda" | "cpu" | "wasm" {
-  const configured = embedding.local?.modelPath;
-  void configured;
-  const isWindows = process.platform === "win32";
-  if (isWindows) {
-    return "dml";
-  }
-  return isCudaAvailable() ? "cuda" : "cpu";
 }
 
 function isCudaAvailable(): boolean {

@@ -15,6 +15,8 @@ Accepted
 - refresh 不再每次全量重建 sqlite，而是参考 `openclaw-dev:src/agents/project-memory-bootstrap.ts` 的成熟 bootstrap / refresh 语义，在 `claw-kit` 中做裁剪式 sqlite 增量同步
 - project-level `claw search --query` 现在也消费 refreshed vectors，并参考 `openclaw-dev` 的 hybrid query 设计迁移最小可用子集
 - 多词中文 recall 的改进继续参考 `openclaw-dev` 的 memory search 设计，但核心是 query planner、keyword recall 与 vector fusion，而不是更换 embedding 路线
+- 这次 rescue refresh 还要求显式的 CPU 逃生路径，用来覆盖 Windows 上 DirectML / CUDA 初始化失败或首轮真实推理失败的情况，而不是依赖 OpenAI auth 兜底
+- 大型项目 refresh 还需要把刷新进度切成可重复推进的批次，而不是一次性吞下整个语料集
 
 ## Decision
 
@@ -32,6 +34,12 @@ Accepted
 - 如果当前项目缺少 refreshed vector index，project search 返回 `MEMORY_VECTOR_INDEX_REQUIRED`，而不是 silent fallback。
 - project memory refresh 从 `.claw/project.json` 读取 embedding 配置，同时支持 OpenAI embeddings 和 GitNexus-inspired local embedding provider。
 - 当选择 local provider 时，默认模型与运行策略固定为 `Snowflake/snowflake-arctic-embed-xs`、`384` 维、Windows `DirectML` 优先且回退到 CPU。
+- local provider 的设备选择与 fallback 现在由 `packages/core/src/embedding-local.ts` 统一执行：`CLAW_EMBEDDING_LOCAL_DEVICE` / `CLAW_EMBEDDING_DEVICE` 优先于 `.claw/project.json` 的 `memory.embedding.local.device`，再退回平台默认；`dml` / `cuda` 都会在首轮真实推理失败后重试 `cpu`。
+- 这让 CPU rescue refresh 同时支持一次性环境覆盖和稳定的 per-project schema 配置。
+- 这条 rescue path 只改变本地执行设备和重试策略，不改变 `claw search index --refresh` 的检索契约，也不扩大索引的文档面。
+- local embedding inference 现在默认在单个 worker/model session 内分批执行，避免把整个 text set 塞进一次 ONNX 调用。
+- 大量向量结果在 worker 侧改为写入临时文件，再通过轻量元数据经由 stdout 返回，避免巨大的 IPC payload。
+- 大型项目的默认 refresh 进度上限是每轮最多处理 100 个新增或变更文件，让 backlog 通过重复运行自然推进。
 - `claw context` / protocol auto-repair must backfill that default local embedding config into older project schemas instead of leaving `memory.embedding` empty.
 - `claw-kit` 自身项目不把仓库 `docs/` 目录加入 `memory.externalDocPaths`，这样 `claw search` 继续面向 `.claw` memory / truth / ADR 文档，而不是把实现文档目录默认并入 recall。
 - `memory.externalDocPaths` / `claw search` external memory paths 只纳入 `.md` 文件，保持 `claw search` 是文档 recall，而不是代码搜索。
@@ -59,6 +67,8 @@ Accepted
 - `.claw/archive/tasks/incremental-memory-index-refresh/plan.json`
 - `.claw/archive/tasks/hybrid-vector-project-search/plan.json`
 - `.claw/archive/tasks/multi-term-chinese-search-recall/plan.json`
+- `.claw/archive/tasks/embedding-refresh-cpu-fallback/plan.json`
+- `.claw/archive/tasks/embedding-refresh-batching/plan.json`
 
 ## Search Terms
 
@@ -77,3 +87,8 @@ Accepted
 - `fuzzy retrieval`
 - `Snowflake/snowflake-arctic-embed-xs`
 - `DirectML`
+- `CLAW_EMBEDDING_LOCAL_DEVICE`
+- `CLAW_EMBEDDING_DEVICE`
+- `cpu rescue refresh`
+- `100-file batch`
+- `temp-file handoff`

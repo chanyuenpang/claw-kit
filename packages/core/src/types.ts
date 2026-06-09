@@ -8,6 +8,7 @@ export type MemoryEmbeddingConfig = {
   local?: {
     modelPath?: string;
     modelCacheDir?: string;
+    device?: "dml" | "cuda" | "cpu" | "wasm";
   };
   outputDimensionality?: number;
   store?: {
@@ -525,6 +526,7 @@ export type MemoryIndexInput = {
   cwd: string;
   scope?: MemoryScope;
   taskName?: string;
+  maxFiles?: number;
 };
 
 export type MemorySearchInput = {
@@ -552,6 +554,8 @@ export type MemoryIndexResult = {
   scope: MemoryScope;
   storePath: string;
   indexedCount: number;
+  processedFileCount: number;
+  pendingFileCount: number;
   sources: string[];
   embedding?: MemoryEmbeddingConfig | null;
   vectorIndex?: {

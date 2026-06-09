@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -24,6 +25,8 @@ import type {
   TaskContext,
 } from "./types.js";
 
+const DEFAULT_PROJECT_REFRESH_FILE_LIMIT = 100;
+
 export function buildMemoryIndex(input: MemoryIndexInput): MemoryIndexResult {
   const { scope, project, task } = resolveMemoryScope(input);
   const storePath = getMemoryStorePath(project, scope, task);
@@ -34,10 +37,19 @@ export function buildMemoryIndex(input: MemoryIndexInput): MemoryIndexResult {
   const db = new DatabaseSync(storePath);
   try {
     prepareSchema(db);
-    const vectorIndex =
+    const syncResult =
       scope === "project"
-        ? syncProjectMemoryIndex(db, sources, embedding ?? null)
-        : rebuildTaskMemoryIndex(db, sources);
+        ? syncProjectMemoryIndex(
+            db,
+            sources,
+            embedding ?? null,
+            input.maxFiles ?? DEFAULT_PROJECT_REFRESH_FILE_LIMIT,
+          )
+        : {
+            vectorIndex: rebuildTaskMemoryIndex(db, sources),
+            processedFileCount: sources.length,
+            pendingFileCount: 0,
+          };
     upsertMetadata(db, "scope", scope);
     upsertMetadata(db, "indexed_at", new Date().toISOString());
     if (embedding) {
@@ -45,8 +57,8 @@ export function buildMemoryIndex(input: MemoryIndexInput): MemoryIndexResult {
     } else {
       deleteMetadata(db, "embedding_config");
     }
-    if (vectorIndex) {
-      upsertMetadata(db, "vector_index", JSON.stringify(vectorIndex));
+    if (syncResult.vectorIndex) {
+      upsertMetadata(db, "vector_index", JSON.stringify(syncResult.vectorIndex));
     } else {
       deleteMetadata(db, "vector_index");
     }
@@ -55,8 +67,10 @@ export function buildMemoryIndex(input: MemoryIndexInput): MemoryIndexResult {
       scope,
       storePath,
       indexedCount: sources.length,
+      processedFileCount: syncResult.processedFileCount,
+      pendingFileCount: syncResult.pendingFileCount,
       sources: sources.map((entry) => entry.sourcePath),
-      ...(scope === "project" ? { embedding, vectorIndex } : {}),
+      ...(scope === "project" ? { embedding, vectorIndex: syncResult.vectorIndex } : {}),
     };
   } finally {
     db.close();
@@ -93,7 +107,12 @@ function syncProjectMemoryIndex(
   db: DatabaseSync,
   sources: MemorySourceEntry[],
   embedding: MemoryEmbeddingConfig | null,
-): MemoryIndexResult["vectorIndex"] {
+  maxFiles?: number,
+): {
+  vectorIndex: MemoryIndexResult["vectorIndex"];
+  processedFileCount: number;
+  pendingFileCount: number;
+} {
   const currentEmbeddingConfig = embedding ? JSON.stringify(embedding) : null;
   const storedEmbeddingConfig = getMetadata(db, "embedding_config");
   const shouldIndexVectors = canBuildProjectVectors(embedding);
@@ -127,6 +146,12 @@ function syncProjectMemoryIndex(
     }
     return existing.kind !== source.kind || existing.content_hash !== source.contentHash;
   });
+  const canLimitFiles = !maxFiles
+    ? false
+    : maxFiles > 0 && (!requiresVectorReset || existingDocs.length === 0);
+  const sortedDocsToInsert = [...docsToInsert].sort((left, right) => left.sourcePath.localeCompare(right.sourcePath));
+  const limitedDocsToInsert = canLimitFiles ? sortedDocsToInsert.slice(0, maxFiles) : sortedDocsToInsert;
+  const pendingFileCount = sortedDocsToInsert.length - limitedDocsToInsert.length;
 
   db.exec("BEGIN");
   try {
@@ -134,7 +159,7 @@ function syncProjectMemoryIndex(
     if (requiresVectorReset) {
       db.exec("DELETE FROM doc_embeddings;");
     }
-    const indexedDocs = insertDocs(db, docsToInsert);
+    const indexedDocs = insertDocs(db, limitedDocsToInsert);
     if (shouldIndexVectors && embedding) {
       indexDocEmbeddings(db, indexedDocs, embedding);
     }
@@ -145,9 +170,17 @@ function syncProjectMemoryIndex(
   }
 
   if (!shouldIndexVectors || !embedding) {
-    return null;
+    return {
+      vectorIndex: null,
+      processedFileCount: limitedDocsToInsert.length,
+      pendingFileCount,
+    };
   }
-  return summarizeVectorIndex(db, embedding);
+  return {
+    vectorIndex: summarizeVectorIndex(db, embedding),
+    processedFileCount: limitedDocsToInsert.length,
+    pendingFileCount,
+  };
 }
 
 function insertDocs(
@@ -567,17 +600,25 @@ function runEmbeddingWorker(input: {
   texts: string[];
 }): { dimensions: number; vectors: number[][] } {
   const workerPath = fileURLToPath(new URL("./embedding-worker.js", import.meta.url));
+  const outputPath = path.join(
+    os.tmpdir(),
+    `claw-embedding-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.json`,
+  );
   const result = spawnSync(
     process.execPath,
     [workerPath],
     {
-      input: JSON.stringify(input),
+      input: JSON.stringify({
+        ...input,
+        outputPath,
+      }),
       encoding: "utf-8",
       env: process.env,
       maxBuffer: 10 * 1024 * 1024,
     },
   );
   if (result.status !== 0) {
+    cleanupTemporaryEmbeddingOutput(outputPath);
     throw new ClawError(
       "PROJECT_CONFIG_INVALID",
       "Memory embedding generation failed.",
@@ -587,12 +628,22 @@ function runEmbeddingWorker(input: {
       },
     );
   }
-  const payload = JSON.parse(stripBom(result.stdout)) as { dimensions: number; vectors: number[][] };
-  return payload;
+  try {
+    const payload = JSON.parse(stripBom(fs.readFileSync(outputPath, "utf-8"))) as { dimensions: number; vectors: number[][] };
+    return payload;
+  } finally {
+    cleanupTemporaryEmbeddingOutput(outputPath);
+  }
 }
 
 function stripBom(content: string): string {
   return content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
+}
+
+function cleanupTemporaryEmbeddingOutput(outputPath: string): void {
+  if (fs.existsSync(outputPath)) {
+    fs.unlinkSync(outputPath);
+  }
 }
 
 function resolveEmbeddingApiKey(embedding: MemoryEmbeddingConfig): string | null {

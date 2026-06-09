@@ -9,6 +9,11 @@
 - `claw search` is project-scoped document recall for project memory, truth, ADR, and external docs; code investigation still belongs to `researcher` plus GitNexus, not `claw search`.
 - `claw search` only indexes configured external memory paths for `.md` files, and `claw search index --refresh` now materializes project-scoped vector data plus `vectorIndex` metadata from `memory.embedding`.
 - `claw init` and `claw context` protocol repair now auto-fill a default local embedding config into older `.claw/project.json` files, using `Snowflake/snowflake-arctic-embed-xs`, `.claw/models`, and `store.vector.enabled = true`.
+- `memory.embedding.local.device` is now an explicit project-level local-device selector, and `CLAW_EMBEDDING_LOCAL_DEVICE` / `CLAW_EMBEDDING_DEVICE` provide one-off rescue overrides; both feed `packages/core/src/embedding-local.ts`, which always keeps a `cpu` retry path for GPU-class `dml` / `cuda` devices.
+- `claw search index --refresh` is now covered as a bounded 100-file batch process per run, with repeated refreshes automatically advancing the remaining backlog, and `packages/core/src/embedding-local.ts` is also covered for worker-side inference batching order preservation.
+- `packages/core/src/embedding-local.ts` now advances local inference in fixed internal batches within a single worker/model session, and `packages/core/src/embedding-worker.ts` / `packages/core/src/memory.ts` now use temp-file handoff instead of giant stdout JSON for embedding results.
+- Large refreshes keep the existing `claw search index --refresh` contract while advancing backlog in bounded batches and keeping vector payload transport off stdout.
+- Large-project retest evidence from `NeonSpark` shows the final working path: `claw search index --refresh` completed with `indexedCount: 698` and `vectorIndex.chunkCount: 33737` after the batching and temp-file fixes.
 - In the `claw-kit` repo itself, `memory.externalDocPaths` stays empty, so local project recall excludes the repository `docs/` folder and indexes only `.claw` memory/truth/ADR Markdown.
 - `claw search index --refresh` 现在把当前项目的 sqlite memory index 视为增量同步目标，而不是每次都全量删库重建。
 - project memory sync 会记录 `docs.content_hash`；未变更的 markdown 文档会复用原有 sqlite `docs` row 与 embeddings，变更文档只重算并替换自身记录，被删除的 markdown 文档会从 `docs`、`docs_fts`、`doc_embeddings` 清理。

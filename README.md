@@ -67,7 +67,7 @@ Configured `memory.externalDocPaths` are treated as markdown-only recall roots: 
 
 Project search now expects a refreshed vector index. Configure `memory.embedding` and run `claw search index --refresh` before using `claw search --query ...`.
 
-`claw search index --refresh` syncs the current project's recall index incrementally. Unchanged markdown docs keep their existing sqlite rows and embeddings, changed docs are re-embedded, deleted docs are removed, and changing the embedding config triggers a full vector refresh. For local semantic indexing, `provider: "local"` uses a GitNexus-style transformers setup with `Snowflake/snowflake-arctic-embed-xs`, 384 dimensions, and Windows DirectML-to-CPU fallback by default:
+`claw search index --refresh` syncs the current project's recall index incrementally. Unchanged markdown docs keep their existing sqlite rows and embeddings, changed docs are re-embedded, deleted docs are removed, and changing the embedding config triggers a full vector refresh. For large projects, project refresh now defaults to processing at most 100 newly added or changed files per run, so repeated refreshes naturally advance the remaining backlog instead of trying to embed the full corpus in one shot. For local semantic indexing, `provider: "local"` uses a GitNexus-style transformers setup with `Snowflake/snowflake-arctic-embed-xs`, 384 dimensions, worker-side batch inference, and Windows DirectML-to-CPU fallback by default:
 
 ```json
 {
@@ -83,6 +83,11 @@ Project search now expects a refreshed vector index. Configure `memory.embedding
   }
 }
 ```
+
+If you need to force a local refresh onto CPU, set either:
+
+- `memory.embedding.local.device` to `cpu` in `.claw/project.json`
+- `CLAW_EMBEDDING_LOCAL_DEVICE=cpu` in the current shell for a one-off rescue refresh
 
 If your environment uses remote embeddings, set `memory.embedding` to an OpenAI-style config instead:
 
