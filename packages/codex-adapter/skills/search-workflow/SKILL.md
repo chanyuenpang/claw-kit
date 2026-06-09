@@ -11,6 +11,8 @@ Use this skill when the user asks to search project context, recall prior `.claw
 
 - Search project context:
   - `claw search --query "<text>"`
+- Refresh the project recall index explicitly:
+  - `claw search index --refresh`
 - Search truth or ADR context:
   - `claw search --query "<truth-or-adr-topic>"`
 
@@ -18,6 +20,9 @@ Use this skill when the user asks to search project context, recall prior `.claw
 
 - `claw search` is the recommended Codex-facing recall command.
 - `claw search` is project-scoped and uses the project-level `.claw/memory.sqlite`.
+- `claw search` is for documentation-style recall: project memory, truth docs, ADRs, and declared external docs.
+- Use `claw search` before `claw plan write` when you want to recover prior project context, and before research work when you want truth/ADR recall.
+- Do not treat `claw search` as a code-search surface. For current code relationships or implementation tracing, use a researcher specialist and GitNexus-oriented capabilities when available.
 - The searchable project recall surface includes `.claw/truth/`, including ADR content under `.claw/truth/adr/`.
 - Task-specific supporting documents are captured in `plan.references`, not a task-local search mode.
 - The underlying index remains a rebuildable `.claw` artifact, not Codex memory.

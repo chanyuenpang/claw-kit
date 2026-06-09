@@ -1,4 +1,4 @@
-# ADR: Apps SDK plan widget surface
+﻿# ADR: Apps SDK plan widget surface
 
 ## Status
 

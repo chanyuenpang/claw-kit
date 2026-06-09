@@ -32,12 +32,13 @@ Prefer updating an existing truth doc over creating a new fragmented one.
 
 ## Writing rules
 
-- write body text in Chinese
+- write body text in Chinese when the repository expects Chinese docs, but treat mojibake as corruption rather than valid prose
 - preserve exact code identifiers, paths, config keys, commands, and error text
 - bind conclusions to real code paths whenever possible
 - distinguish primary anchors from related files in prose
 - keep the result in readable markdown rather than machine-oriented JSON
 - never invent code paths or facts
+- do not copy suspicious shell mojibake such as `鐨`, `锛`, or `銆` back into canonical truth; repair or rewrite the sentence first
 
 ## Useful sections
 

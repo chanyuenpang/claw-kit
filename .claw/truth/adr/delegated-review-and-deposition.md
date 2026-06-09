@@ -1,4 +1,4 @@
-# ADR: Delegated review and deposition
+﻿# ADR: Delegated review and deposition
 
 ## Status
 

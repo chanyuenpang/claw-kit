@@ -1,4 +1,4 @@
-# Superseded Apps SDK plan widget server
+﻿# Superseded Apps SDK plan widget server
 
 ## 结论
 

@@ -58,20 +58,21 @@ Do not tell the user that claw-kit cannot proceed because `.claw` is missing, ma
 ## Main workflow
 
 1. Before writing a new plan, optionally run `claw search --query "<topic>"` to recover relevant project context from `.claw` indexes and external doc paths.
-2. If no task scope exists and the user is starting work, create or bind one through `claw plan write`.
-3. Treat `plan write` as the canonical task-scope entrypoint.
-4. After every `claw plan write`, `claw plan edit`, or `claw plan done`, consume `workflowGuidance` and the compact `planSummary`.
-5. Follow `workflowGuidance.nextStep` and `recommendedCommands` as the required next-step contract instead of inventing your own heuristic.
-6. After `claw plan write`, set the thread goal from `workflowGuidance.goalMode.recommendedObjective` immediately.
-7. If `workflowGuidance.askUser` is present, use Codex option-style confirmation.
-8. Treat startup recovery as a hook/bootstrap responsibility, not a post-plan workflow step.
-9. If requirements are already clear, move directly to `process.active`.
-10. Do not start implementation while the plan is still in `prepare.requirements`.
-11. During execution, process one task at a time and update progress with `claw plan edit`.
-12. After a meaningful completed task, dispatch `truth-writer` when there is reusable context to deposit.
-13. When all tasks are done, complete the retrospective.
-14. Close the plan with `claw plan done` only after `retrospective.summary` exists.
-15. After `claw plan done`, dispatch ADR deposition using the completed `plan.json`.
+2. Treat `claw search` as document recall for project memory, truth, ADR, and external docs; do not use it as a code-search substitute.
+3. If no task scope exists and the user is starting work, create or bind one through `claw plan write`.
+4. Treat `plan write` as the canonical task-scope entrypoint.
+5. After every `claw plan write`, `claw plan edit`, or `claw plan done`, consume `workflowGuidance` and the compact `planSummary`.
+6. Follow `workflowGuidance.nextStep` and `recommendedCommands` as the required next-step contract instead of inventing your own heuristic.
+7. After `claw plan write`, set the thread goal from `workflowGuidance.goalMode.recommendedObjective` immediately.
+8. If `workflowGuidance.askUser` is present, use Codex option-style confirmation.
+9. Treat startup recovery as a hook/bootstrap responsibility, not a post-plan workflow step.
+10. If requirements are already clear, move directly to `process.active`.
+11. Do not start implementation while the plan is still in `prepare.requirements`.
+12. During execution, process one task at a time and update progress with `claw plan edit`.
+13. After a meaningful completed task, dispatch `truth-writer` when there is reusable context to deposit.
+14. When all tasks are done, complete the retrospective.
+15. Close the plan with `claw plan done` only after `retrospective.summary` exists.
+16. After `claw plan done`, dispatch ADR deposition using the completed `plan.json`.
 
 ## Investigation-first rule
 
@@ -82,7 +83,7 @@ If the task is primarily investigation, analysis, or evidence gathering rather t
 - attach `claw-kit:researcher` explicitly
 - reuse an existing same-type `researcher` in the thread
 - give the researcher a narrow brief and specific targets
-- have the researcher use `claw search` first for `.claw` context, truth, and ADR lookup
+- have the researcher use `claw search` first for `.claw` context, truth, and ADR lookup before deeper code investigation
 - read `.claw/project.json`
 - treat `gitnexus.enabled = true` as a direct instruction to discover and use GitNexus-oriented capabilities for code investigation
 
@@ -134,7 +135,9 @@ ADR flow:
 
 - Use `claw search --query "<text>"` for Codex-facing recall.
 - `claw search` is project-scoped.
+- `claw search` is best used before `plan write` and before research work when you need project-document recall.
 - `claw search` can be used to recover truth and ADR context because `.claw/truth/` content is part of the searchable project recall surface.
+- `claw search` is not the code-search surface; use GitNexus-oriented investigation when the question is about current implementation or code relationships.
 - Task-specific docs or investigation artifacts should be attached through `plan.references`, not through a task-local search mode.
 - `claw plan done` refreshes project/task search indexes.
 - `gitnexus.enabled` in `.claw/project.json` controls whether `claw plan done` also runs GitNexus reindex.

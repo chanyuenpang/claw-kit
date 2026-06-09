@@ -1,4 +1,4 @@
-# ADR: Codex Hook Lifecycle Scope Gating
+﻿# ADR: Codex Hook Lifecycle Scope Gating
 
 ## Status
 

@@ -1,3 +1,23 @@
+export type MemoryEmbeddingConfig = {
+  provider: "openai" | "local";
+  model: string;
+  remote?: {
+    apiKeyEnvVar?: string;
+    baseUrl?: string;
+  };
+  local?: {
+    modelPath?: string;
+    modelCacheDir?: string;
+  };
+  outputDimensionality?: number;
+  store?: {
+    vector?: {
+      enabled?: boolean;
+      extensionPath?: string;
+    };
+  };
+};
+
 export type ProjectConfig = {
   id?: string;
   name?: string;
@@ -7,6 +27,7 @@ export type ProjectConfig = {
   contextPaths?: string[];
   memory?: {
     externalDocPaths?: string[];
+    embedding?: MemoryEmbeddingConfig | null;
   };
   gitnexus?: {
     enabled?: boolean;
@@ -532,6 +553,14 @@ export type MemoryIndexResult = {
   storePath: string;
   indexedCount: number;
   sources: string[];
+  embedding?: MemoryEmbeddingConfig | null;
+  vectorIndex?: {
+    enabled: boolean;
+    provider: "openai" | "local";
+    model: string;
+    dimensions: number;
+    chunkCount: number;
+  } | null;
 };
 
 export type MemorySearchResult = {

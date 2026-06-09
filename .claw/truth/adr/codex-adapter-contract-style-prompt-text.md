@@ -1,4 +1,4 @@
-# ADR: Codex Adapter Uses Contract-Style Prompt Text
+﻿# ADR: Codex Adapter Uses Contract-Style Prompt Text
 
 ## Status
 

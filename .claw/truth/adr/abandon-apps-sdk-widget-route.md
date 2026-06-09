@@ -1,4 +1,4 @@
-# ADR: Abandon Apps SDK widget route
+﻿# ADR: Abandon Apps SDK widget route
 
 ## Status
 

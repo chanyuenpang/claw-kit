@@ -1,4 +1,4 @@
-# ADR: Codex subagent reuse policy
+﻿# ADR: Codex subagent reuse policy
 
 ## Status
 

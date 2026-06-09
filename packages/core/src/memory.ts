@@ -1,10 +1,15 @@
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
+import { fileURLToPath } from "node:url";
 import { resolveProjectContext, resolveTaskContext } from "./context.js";
 import { ClawError } from "./errors.js";
 import { readJsonFile, readTextFile } from "./io.js";
+import { buildProjectKeywordSearchPlan } from "./memory-query.js";
 import type {
+  MemoryEmbeddingConfig,
   MemoryGetInput,
   MemoryGetResult,
   MemoryIndexInput,
@@ -23,34 +28,187 @@ export function buildMemoryIndex(input: MemoryIndexInput): MemoryIndexResult {
   const { scope, project, task } = resolveMemoryScope(input);
   const storePath = getMemoryStorePath(project, scope, task);
   const sources = collectMemorySources(project, scope, task);
+  const embedding = scope === "project" ? resolveProjectMemoryEmbeddingConfig(project) : undefined;
 
   fs.mkdirSync(path.dirname(storePath), { recursive: true });
   const db = new DatabaseSync(storePath);
   try {
     prepareSchema(db);
-    db.exec("DELETE FROM docs;");
-    db.exec("DELETE FROM docs_fts;");
-    const insertDoc = db.prepare(
-      "INSERT INTO docs (source_path, kind, content) VALUES (?, ?, ?)",
-    );
-    const insertFts = db.prepare(
-      "INSERT INTO docs_fts (rowid, source_path, kind, content) VALUES (?, ?, ?, ?)",
-    );
-
-    for (const source of sources) {
-      const result = insertDoc.run(source.sourcePath, source.kind, source.content);
-      insertFts.run(result.lastInsertRowid, source.sourcePath, source.kind, source.content);
+    const vectorIndex =
+      scope === "project"
+        ? syncProjectMemoryIndex(db, sources, embedding ?? null)
+        : rebuildTaskMemoryIndex(db, sources);
+    upsertMetadata(db, "scope", scope);
+    upsertMetadata(db, "indexed_at", new Date().toISOString());
+    if (embedding) {
+      upsertMetadata(db, "embedding_config", JSON.stringify(embedding));
+    } else {
+      deleteMetadata(db, "embedding_config");
     }
+    if (vectorIndex) {
+      upsertMetadata(db, "vector_index", JSON.stringify(vectorIndex));
+    } else {
+      deleteMetadata(db, "vector_index");
+    }
+
+    return {
+      scope,
+      storePath,
+      indexedCount: sources.length,
+      sources: sources.map((entry) => entry.sourcePath),
+      ...(scope === "project" ? { embedding, vectorIndex } : {}),
+    };
   } finally {
     db.close();
   }
+}
 
-  return {
-    scope,
-    storePath,
-    indexedCount: sources.length,
-    sources: sources.map((entry) => entry.sourcePath),
-  };
+function rebuildTaskMemoryIndex(
+  db: DatabaseSync,
+  sources: MemorySourceEntry[],
+): MemoryIndexResult["vectorIndex"] {
+  db.exec("DELETE FROM docs;");
+  db.exec("DELETE FROM docs_fts;");
+  db.exec("DELETE FROM doc_embeddings;");
+  const insertDoc = db.prepare(
+    "INSERT INTO docs (source_path, kind, content, content_hash) VALUES (?, ?, ?, ?)",
+  );
+  const insertFts = db.prepare(
+    "INSERT INTO docs_fts (rowid, source_path, kind, content) VALUES (?, ?, ?, ?)",
+  );
+
+  for (const source of sources) {
+    const result = insertDoc.run(
+      source.sourcePath,
+      source.kind,
+      source.content,
+      hashMemoryContent(source.content),
+    );
+    insertFts.run(Number(result.lastInsertRowid), source.sourcePath, source.kind, source.content);
+  }
+  return null;
+}
+
+function syncProjectMemoryIndex(
+  db: DatabaseSync,
+  sources: MemorySourceEntry[],
+  embedding: MemoryEmbeddingConfig | null,
+): MemoryIndexResult["vectorIndex"] {
+  const currentEmbeddingConfig = embedding ? JSON.stringify(embedding) : null;
+  const storedEmbeddingConfig = getMetadata(db, "embedding_config");
+  const shouldIndexVectors = canBuildProjectVectors(embedding);
+  const requiresVectorReset = storedEmbeddingConfig !== currentEmbeddingConfig || !shouldIndexVectors;
+  const nextSources = sources.map((source) => ({
+    ...source,
+    contentHash: hashMemoryContent(source.content),
+  }));
+  const nextByPath = new Map(nextSources.map((source) => [source.sourcePath, source]));
+  const existingDocs = db
+    .prepare("SELECT id, source_path, kind, content_hash FROM docs")
+    .all() as Array<{ id: number; source_path: string; kind: string; content_hash: string | null }>;
+  const existingByPath = new Map(existingDocs.map((doc) => [doc.source_path, doc]));
+  const docsToDelete = existingDocs.filter((doc) => {
+    const next = nextByPath.get(doc.source_path);
+    if (!next) {
+      return true;
+    }
+    if (requiresVectorReset) {
+      return true;
+    }
+    return doc.kind !== next.kind || doc.content_hash !== next.contentHash;
+  });
+  const docsToInsert = nextSources.filter((source) => {
+    const existing = existingByPath.get(source.sourcePath);
+    if (!existing) {
+      return true;
+    }
+    if (requiresVectorReset) {
+      return true;
+    }
+    return existing.kind !== source.kind || existing.content_hash !== source.contentHash;
+  });
+
+  db.exec("BEGIN");
+  try {
+    deleteDocsById(db, docsToDelete.map((doc) => doc.id));
+    if (requiresVectorReset) {
+      db.exec("DELETE FROM doc_embeddings;");
+    }
+    const indexedDocs = insertDocs(db, docsToInsert);
+    if (shouldIndexVectors && embedding) {
+      indexDocEmbeddings(db, indexedDocs, embedding);
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+
+  if (!shouldIndexVectors || !embedding) {
+    return null;
+  }
+  return summarizeVectorIndex(db, embedding);
+}
+
+function insertDocs(
+  db: DatabaseSync,
+  sources: Array<MemorySourceEntry & { contentHash: string }>,
+): Array<{ docId: number; sourcePath: string; kind: string; content: string }> {
+  const insertDoc = db.prepare(
+    "INSERT INTO docs (source_path, kind, content, content_hash) VALUES (?, ?, ?, ?)",
+  );
+  const insertFts = db.prepare(
+    "INSERT INTO docs_fts (rowid, source_path, kind, content) VALUES (?, ?, ?, ?)",
+  );
+  const indexedDocs: Array<{ docId: number; sourcePath: string; kind: string; content: string }> = [];
+
+  for (const source of sources) {
+    const result = insertDoc.run(source.sourcePath, source.kind, source.content, source.contentHash);
+    const docId = Number(result.lastInsertRowid);
+    insertFts.run(docId, source.sourcePath, source.kind, source.content);
+    indexedDocs.push({
+      docId,
+      sourcePath: source.sourcePath,
+      kind: source.kind,
+      content: source.content,
+    });
+  }
+
+  return indexedDocs;
+}
+
+function deleteDocsById(db: DatabaseSync, docIds: number[]): void {
+  if (docIds.length === 0) {
+    return;
+  }
+  const deleteFts = db.prepare("DELETE FROM docs_fts WHERE rowid = ?");
+  const deleteEmbeddings = db.prepare("DELETE FROM doc_embeddings WHERE doc_id = ?");
+  const deleteDoc = db.prepare("DELETE FROM docs WHERE id = ?");
+  for (const docId of docIds) {
+    deleteFts.run(docId);
+    deleteEmbeddings.run(docId);
+    deleteDoc.run(docId);
+  }
+}
+
+function upsertMetadata(db: DatabaseSync, key: string, value: string): void {
+  db.prepare(
+    [
+      "INSERT INTO index_metadata (key, value) VALUES (?, ?)",
+      "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    ].join(" "),
+  ).run(key, value);
+}
+
+function deleteMetadata(db: DatabaseSync, key: string): void {
+  db.prepare("DELETE FROM index_metadata WHERE key = ?").run(key);
+}
+
+function getMetadata(db: DatabaseSync, key: string): string | null {
+  const row = db.prepare("SELECT value FROM index_metadata WHERE key = ?").get(key) as
+    | { value: string }
+    | undefined;
+  return row?.value ?? null;
 }
 
 export function searchMemory(input: MemorySearchInput): MemorySearchResult {
@@ -70,25 +228,10 @@ export function searchMemory(input: MemorySearchInput): MemorySearchResult {
   const db = new DatabaseSync(storePath);
   try {
     prepareSchema(db);
-    const limit = input.limit ?? 10;
-    const rows = db
-      .prepare(
-        [
-          "SELECT source_path, kind, snippet(docs_fts, 2, '[', ']', ' ... ', 18) AS snippet, bm25(docs_fts) AS score",
-          "FROM docs_fts",
-          "WHERE docs_fts MATCH ?",
-          "ORDER BY score ASC",
-          "LIMIT ?",
-        ].join(" "),
-      )
-      .all(input.query, limit) as Array<{ source_path: string; kind: string; snippet: string; score: number }>;
-
-    const results: MemorySearchResultEntry[] = rows.map((row) => ({
-      sourcePath: row.source_path,
-      kind: row.kind,
-      snippet: row.snippet,
-      score: row.score,
-    }));
+    const results =
+      scope === "project"
+        ? searchProjectMemoryHybrid(db, input.query, input.limit ?? 10, project)
+        : searchTaskMemoryFts(db, input.query, input.limit ?? 10);
 
     return {
       scope,
@@ -252,15 +395,55 @@ function prepareSchema(db: DatabaseSync): void {
       "  id INTEGER PRIMARY KEY,",
       "  source_path TEXT NOT NULL,",
       "  kind TEXT NOT NULL,",
-      "  content TEXT NOT NULL",
+      "  content TEXT NOT NULL,",
+      "  content_hash TEXT",
       ");",
       "CREATE VIRTUAL TABLE IF NOT EXISTS docs_fts USING fts5(",
       "  source_path,",
       "  kind,",
       "  content",
       ");",
+      "CREATE TABLE IF NOT EXISTS index_metadata (",
+      "  key TEXT PRIMARY KEY,",
+      "  value TEXT NOT NULL",
+      ");",
+      "CREATE TABLE IF NOT EXISTS doc_embeddings (",
+      "  doc_id INTEGER NOT NULL,",
+      "  chunk_index INTEGER NOT NULL,",
+      "  source_path TEXT NOT NULL,",
+      "  kind TEXT NOT NULL,",
+      "  chunk_text TEXT NOT NULL,",
+      "  embedding_json TEXT NOT NULL,",
+      "  PRIMARY KEY (doc_id, chunk_index)",
+      ");",
     ].join("\n"),
   );
+  const docsColumns = db.prepare("PRAGMA table_info(docs)").all() as Array<{ name: string }>;
+  if (!docsColumns.some((column) => column.name === "content_hash")) {
+    db.exec("ALTER TABLE docs ADD COLUMN content_hash TEXT;");
+  }
+}
+
+function resolveProjectMemoryEmbeddingConfig(project: ProjectContext): MemoryEmbeddingConfig | null {
+  const configured = project.projectConfig?.memory?.embedding;
+  if (!configured) {
+    return null;
+  }
+  return {
+    provider: configured.provider,
+    model: configured.model,
+    ...(configured.remote ? { remote: configured.remote } : {}),
+    ...(configured.local ? { local: configured.local } : {}),
+    ...(configured.outputDimensionality ? { outputDimensionality: configured.outputDimensionality } : {}),
+    store: {
+      vector: {
+        enabled: configured.store?.vector?.enabled ?? true,
+        ...(configured.store?.vector?.extensionPath
+          ? { extensionPath: configured.store.vector.extensionPath }
+          : {}),
+      },
+    },
+  };
 }
 
 function listFiles(rootDir: string, matcher: (filePath: string) => boolean): string[] {
@@ -286,5 +469,479 @@ function listFiles(rootDir: string, matcher: (filePath: string) => boolean): str
 }
 
 function isExternalDocFile(filePath: string): boolean {
-  return /\.(md|mdx|txt|json)$/i.test(filePath);
+  return /\.md$/i.test(filePath);
+}
+
+function indexDocEmbeddings(
+  db: DatabaseSync,
+  docs: Array<{ docId: number; sourcePath: string; kind: string; content: string }>,
+  embedding: MemoryEmbeddingConfig | null,
+) : void {
+  if (!embedding || embedding.store?.vector?.enabled === false) {
+    return;
+  }
+  if (!canBuildProjectVectors(embedding)) {
+    return;
+  }
+
+  const chunks = docs.flatMap((doc) =>
+    chunkMarkdownContent(doc.content).map((chunkText, chunkIndex) => ({
+      docId: doc.docId,
+      chunkIndex,
+      sourcePath: doc.sourcePath,
+      kind: doc.kind,
+      chunkText,
+    })),
+  );
+  if (chunks.length === 0) {
+    return;
+  }
+
+  const output = runEmbeddingWorker({
+    embedding,
+    texts: chunks.map((chunk) => chunk.chunkText),
+  });
+  const insertEmbedding = db.prepare(
+    [
+      "INSERT INTO doc_embeddings (doc_id, chunk_index, source_path, kind, chunk_text, embedding_json)",
+      "VALUES (?, ?, ?, ?, ?, ?)",
+    ].join(" "),
+  );
+  chunks.forEach((chunk, index) => {
+    insertEmbedding.run(
+      chunk.docId,
+      chunk.chunkIndex,
+      chunk.sourcePath,
+      chunk.kind,
+      chunk.chunkText,
+      JSON.stringify(output.vectors[index] ?? []),
+    );
+  });
+}
+
+function summarizeVectorIndex(
+  db: DatabaseSync,
+  embedding: MemoryEmbeddingConfig,
+): MemoryIndexResult["vectorIndex"] {
+  const vectorCount = db
+    .prepare("SELECT COUNT(*) AS count FROM doc_embeddings")
+    .get() as { count: number };
+  const firstVector = db
+    .prepare("SELECT embedding_json FROM doc_embeddings ORDER BY doc_id ASC, chunk_index ASC LIMIT 1")
+    .get() as { embedding_json: string } | undefined;
+  const dimensions = firstVector
+    ? parseEmbeddingJson(firstVector.embedding_json).length
+    : resolveEmbeddingDimensions(embedding, 0);
+  return {
+    enabled: true,
+    provider: embedding.provider,
+    model: embedding.model,
+    dimensions,
+    chunkCount: vectorCount.count,
+  };
+}
+
+function canBuildProjectVectors(embedding: MemoryEmbeddingConfig | null): boolean {
+  if (!embedding || embedding.store?.vector?.enabled === false) {
+    return false;
+  }
+  if (embedding.provider === "openai" && !resolveEmbeddingApiKey(embedding)) {
+    return false;
+  }
+  return true;
+}
+
+function hashMemoryContent(content: string): string {
+  return createHash("sha256").update(content, "utf8").digest("hex");
+}
+
+function chunkMarkdownContent(content: string): string[] {
+  return content
+    .split(/\r?\n\s*\r?\n/g)
+    .map((chunk) => chunk.trim())
+    .filter((chunk) => chunk.length > 0);
+}
+
+function runEmbeddingWorker(input: {
+  embedding: MemoryEmbeddingConfig;
+  texts: string[];
+}): { dimensions: number; vectors: number[][] } {
+  const workerPath = fileURLToPath(new URL("./embedding-worker.js", import.meta.url));
+  const result = spawnSync(
+    process.execPath,
+    [workerPath],
+    {
+      input: JSON.stringify(input),
+      encoding: "utf-8",
+      env: process.env,
+      maxBuffer: 10 * 1024 * 1024,
+    },
+  );
+  if (result.status !== 0) {
+    throw new ClawError(
+      "PROJECT_CONFIG_INVALID",
+      "Memory embedding generation failed.",
+      {
+        stdout: result.stdout,
+        stderr: result.stderr,
+      },
+    );
+  }
+  const payload = JSON.parse(stripBom(result.stdout)) as { dimensions: number; vectors: number[][] };
+  return payload;
+}
+
+function stripBom(content: string): string {
+  return content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
+}
+
+function resolveEmbeddingApiKey(embedding: MemoryEmbeddingConfig): string | null {
+  const envVar = embedding.remote?.apiKeyEnvVar?.trim();
+  if (!envVar) {
+    return null;
+  }
+  const value = process.env[envVar];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function resolveEmbeddingDimensions(embedding: MemoryEmbeddingConfig, fallback: number): number {
+  if (typeof embedding.outputDimensionality === "number" && embedding.outputDimensionality > 0) {
+    return embedding.outputDimensionality;
+  }
+  if (embedding.provider === "local") {
+    return 384;
+  }
+  return fallback > 0 ? fallback : 1536;
+}
+
+function searchTaskMemoryFts(
+  db: DatabaseSync,
+  query: string,
+  limit: number,
+): MemorySearchResultEntry[] {
+  const rows = db
+    .prepare(
+      [
+        "SELECT source_path, kind, snippet(docs_fts, 2, '[', ']', ' ... ', 18) AS snippet, bm25(docs_fts) AS score",
+        "FROM docs_fts",
+        "WHERE docs_fts MATCH ?",
+        "ORDER BY score ASC",
+        "LIMIT ?",
+      ].join(" "),
+    )
+    .all(query, limit) as Array<{ source_path: string; kind: string; snippet: string; score: number }>;
+
+  return rows.map((row) => ({
+    sourcePath: row.source_path,
+    kind: row.kind,
+    snippet: row.snippet,
+    score: row.score,
+  }));
+}
+
+function searchProjectMemoryHybrid(
+  db: DatabaseSync,
+  query: string,
+  limit: number,
+  project: ProjectContext,
+): MemorySearchResultEntry[] {
+  const embedding = resolveProjectMemoryEmbeddingConfig(project);
+  if (!embedding || embedding.store?.vector?.enabled === false) {
+    throw new ClawError(
+      "MEMORY_VECTOR_INDEX_REQUIRED",
+      "Project search requires memory.embedding with vector indexing enabled. Configure .claw/project.json and run `claw search index --refresh` first.",
+    );
+  }
+
+  const vectorIndexMetadata = db
+    .prepare("SELECT value FROM index_metadata WHERE key = ?")
+    .get("vector_index") as { value: string } | undefined;
+  if (!vectorIndexMetadata) {
+    throw new ClawError(
+      "MEMORY_VECTOR_INDEX_REQUIRED",
+      "Project search requires a refreshed vector index. Run `claw search index --refresh` first.",
+    );
+  }
+
+  const queryEmbedding = runEmbeddingWorker({
+    embedding,
+    texts: [query],
+  }).vectors[0];
+  if (!queryEmbedding?.length) {
+    throw new ClawError("MEMORY_VECTOR_INDEX_REQUIRED", "Unable to generate a query embedding for project search.");
+  }
+
+  const candidateLimit = Math.max(limit * 4, 20);
+  const ftsRows = searchProjectMemoryKeywords(db, query, candidateLimit);
+
+  const vectorRows = db
+    .prepare(
+      [
+        "SELECT source_path, kind, chunk_text, embedding_json",
+        "FROM doc_embeddings",
+      ].join(" "),
+    )
+    .all() as Array<{ source_path: string; kind: string; chunk_text: string; embedding_json: string }>;
+  if (vectorRows.length === 0) {
+    throw new ClawError(
+      "MEMORY_VECTOR_INDEX_REQUIRED",
+      "Project search requires stored vectors. Run `claw search index --refresh` first.",
+    );
+  }
+
+  const rankedVectors = vectorRows
+    .map((row) => ({
+      sourcePath: row.source_path,
+      kind: row.kind,
+      snippet: buildSnippet(row.chunk_text),
+      similarity: cosineSimilarity(queryEmbedding, parseEmbeddingJson(row.embedding_json)),
+    }))
+    .filter((row) => Number.isFinite(row.similarity))
+    .sort((left, right) => right.similarity - left.similarity);
+
+  const bestVectorBySource = new Map<string, { kind: string; snippet: string; similarity: number }>();
+  for (const row of rankedVectors) {
+    const existing = bestVectorBySource.get(row.sourcePath);
+    if (!existing || row.similarity > existing.similarity) {
+      bestVectorBySource.set(row.sourcePath, {
+        kind: row.kind,
+        snippet: row.snippet,
+        similarity: row.similarity,
+      });
+    }
+  }
+
+  const fused = new Map<string, MemorySearchResultEntry & { vectorRank?: number; textRank?: number }>();
+  Array.from(bestVectorBySource.entries())
+    .sort((left, right) => right[1].similarity - left[1].similarity)
+    .slice(0, candidateLimit)
+    .forEach(([sourcePath, row], index) => {
+      fused.set(sourcePath, {
+        sourcePath,
+        kind: row.kind,
+        snippet: row.snippet,
+        score: reciprocalRankScore(index + 1, 0.7),
+        vectorRank: index + 1,
+      });
+    });
+
+  ftsRows.forEach((row, index) => {
+    const existing = fused.get(row.source_path);
+    const nextScore = (existing?.score ?? 0) + reciprocalRankScore(index + 1, 0.3);
+    fused.set(row.source_path, {
+      sourcePath: row.source_path,
+      kind: existing?.kind ?? row.kind,
+      snippet: row.snippet || existing?.snippet || "",
+      score: nextScore,
+      vectorRank: existing?.vectorRank,
+      textRank: index + 1,
+    });
+  });
+
+  return Array.from(fused.values())
+    .sort((left, right) => right.score - left.score)
+    .slice(0, limit)
+    .map(({ sourcePath, kind, snippet, score }) => ({
+      sourcePath,
+      kind,
+      snippet,
+      score,
+    }));
+}
+
+function searchProjectMemoryKeywords(
+  db: DatabaseSync,
+  query: string,
+  limit: number,
+): Array<{ source_path: string; kind: string; snippet: string; score: number }> {
+  const plan = buildProjectKeywordSearchPlan(query);
+  if (plan.length === 0) {
+    return [];
+  }
+
+  const searchFts = db.prepare(
+    [
+      "SELECT docs.source_path, docs.kind, snippet(docs_fts, 2, '[', ']', ' ... ', 18) AS snippet, bm25(docs_fts) AS score",
+      "FROM docs_fts",
+      "JOIN docs ON docs.id = docs_fts.rowid",
+      "WHERE docs_fts MATCH ?",
+      "ORDER BY score ASC",
+      "LIMIT ?",
+    ].join(" "),
+  );
+  const bySource = new Map<
+    string,
+    {
+      source_path: string;
+      kind: string;
+      snippet: string;
+      score: number;
+      matchedTerms: Set<string>;
+      exactMatches: number;
+    }
+  >();
+
+  for (const step of plan) {
+    const rows = collectProjectKeywordRows(db, searchFts, step, limit);
+    for (const row of rows) {
+      const existing = bySource.get(row.source_path);
+      if (!existing) {
+        bySource.set(row.source_path, {
+          ...row,
+          matchedTerms: new Set(step.matchedTerms),
+          exactMatches: step.matchedTerms.length > 1 ? 1 : 0,
+        });
+        continue;
+      }
+      if (row.score < existing.score) {
+        existing.score = row.score;
+      }
+      if (row.snippet && row.snippet.length > existing.snippet.length) {
+        existing.snippet = row.snippet;
+      }
+      if (step.matchedTerms.length > 1) {
+        existing.exactMatches += 1;
+      }
+      for (const term of step.matchedTerms) {
+        existing.matchedTerms.add(term);
+      }
+    }
+  }
+
+  return Array.from(bySource.values())
+    .sort((left, right) => {
+      if (right.matchedTerms.size !== left.matchedTerms.size) {
+        return right.matchedTerms.size - left.matchedTerms.size;
+      }
+      if (right.exactMatches !== left.exactMatches) {
+        return right.exactMatches - left.exactMatches;
+      }
+      return left.score - right.score;
+    })
+    .slice(0, limit)
+    .map(({ source_path, kind, snippet, score }) => ({
+      source_path,
+      kind,
+      snippet,
+      score,
+    }));
+}
+
+function collectProjectKeywordRows(
+  db: DatabaseSync,
+  searchFts: ReturnType<DatabaseSync["prepare"]>,
+  step: ReturnType<typeof buildProjectKeywordSearchPlan>[number],
+  limit: number,
+): Array<{ source_path: string; kind: string; snippet: string; score: number }> {
+  const rows: Array<{ source_path: string; kind: string; snippet: string; score: number }> = [];
+  const seen = new Set<string>();
+
+  if (step.query) {
+    const ftsRows = searchFts.all(step.query, limit) as Array<{
+      source_path: string;
+      kind: string;
+      snippet: string;
+      score: number;
+    }>;
+    for (const row of ftsRows) {
+      if (matchesAllSubstrings(db, row.source_path, step.substringTerms)) {
+        rows.push(row);
+        seen.add(row.source_path);
+      }
+    }
+  }
+
+  if (step.substringTerms.length > 0) {
+    const substringRows = searchDocsBySubstring(db, step.substringTerms, limit);
+    for (const row of substringRows) {
+      if (!seen.has(row.source_path)) {
+        rows.push(row);
+        seen.add(row.source_path);
+      }
+    }
+  }
+
+  return rows;
+}
+
+function searchDocsBySubstring(
+  db: DatabaseSync,
+  substringTerms: string[],
+  limit: number,
+): Array<{ source_path: string; kind: string; snippet: string; score: number }> {
+  const clauses = substringTerms.map(() => "content LIKE ? ESCAPE '\\'").join(" AND ");
+  const query = [
+    "SELECT source_path, kind, content",
+    "FROM docs",
+    `WHERE ${clauses}`,
+    "LIMIT ?",
+  ].join(" ");
+  const dynamicRows = db
+    .prepare(query)
+    .all(...substringTerms.map((term) => `%${escapeLikePattern(term)}%`), limit) as Array<{
+    source_path: string;
+    kind: string;
+    content: string;
+  }>;
+  return dynamicRows.map((row) => ({
+    source_path: row.source_path,
+    kind: row.kind,
+    snippet: buildSnippet(row.content),
+    score: 0,
+  }));
+}
+
+function matchesAllSubstrings(db: DatabaseSync, sourcePath: string, substringTerms: string[]): boolean {
+  if (substringTerms.length === 0) {
+    return true;
+  }
+  const row = db
+    .prepare("SELECT content FROM docs WHERE source_path = ?")
+    .get(sourcePath) as { content: string } | undefined;
+  if (!row) {
+    return false;
+  }
+  return substringTerms.every((term) => row.content.includes(term));
+}
+
+function escapeLikePattern(term: string): string {
+  return term.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
+}
+
+function reciprocalRankScore(rank: number, weight: number): number {
+  return weight * (1 / (40 + rank));
+}
+
+function parseEmbeddingJson(value: string): number[] {
+  const parsed = JSON.parse(value) as unknown;
+  return Array.isArray(parsed) ? parsed.map((entry) => Number(entry)) : [];
+}
+
+function cosineSimilarity(left: number[], right: number[]): number {
+  const dimensions = Math.min(left.length, right.length);
+  if (dimensions === 0) {
+    return Number.NEGATIVE_INFINITY;
+  }
+  let dot = 0;
+  let leftNorm = 0;
+  let rightNorm = 0;
+  for (let index = 0; index < dimensions; index += 1) {
+    const leftValue = left[index] ?? 0;
+    const rightValue = right[index] ?? 0;
+    dot += leftValue * rightValue;
+    leftNorm += leftValue * leftValue;
+    rightNorm += rightValue * rightValue;
+  }
+  if (leftNorm === 0 || rightNorm === 0) {
+    return Number.NEGATIVE_INFINITY;
+  }
+  return dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm));
+}
+
+function buildSnippet(text: string): string {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (normalized.length <= 180) {
+    return normalized;
+  }
+  return `${normalized.slice(0, 177)}...`;
 }

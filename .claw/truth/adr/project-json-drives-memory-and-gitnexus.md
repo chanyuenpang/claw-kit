@@ -1,4 +1,4 @@
-# ADR: Project JSON Drives Memory And GitNexus
+﻿# ADR: Project JSON Drives Memory And GitNexus
 
 ## Status
 

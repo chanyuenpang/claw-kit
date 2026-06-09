@@ -1,4 +1,4 @@
-# Codex Session Entry Hardening
+﻿# Codex Session Entry Hardening
 
 ## Status
 

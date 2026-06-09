@@ -1,4 +1,4 @@
-# ADR: Release 0.1.18 publish and install protocol
+﻿# ADR: Release 0.1.18 publish and install protocol
 
 ## Status
 

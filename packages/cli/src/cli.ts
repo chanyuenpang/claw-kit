@@ -196,6 +196,27 @@ async function runPlan(args: string[]): Promise<void> {
 }
 
 function runSearch(args: string[]): void {
+  const subcommand = args[0];
+  if (subcommand === "index") {
+    args.shift();
+    const refresh = readBooleanFlag(args, "--refresh");
+    if (!refresh) {
+      throw new ClawError(
+        "PROJECT_CONFIG_INVALID",
+        "claw search index requires --refresh.",
+      );
+    }
+    assertNoRemainingArgs(args, "search index");
+    printJson({
+      ok: true,
+      command: "search.index.refresh",
+      ...buildMemoryIndex({
+        cwd: process.cwd(),
+        scope: "project",
+      }),
+    });
+    return;
+  }
   if (args.includes("--scope") || args.includes("--task")) {
     throw new ClawError(
       "PROJECT_CONFIG_INVALID",
@@ -1173,6 +1194,7 @@ function printUsage(): void {
       "  plan done --task <name> [--plan <relative-path>] [--summary <text>] [--patch <json-file>]",
       "  switch-task --from <task> --to <task>",
       "  search --query <text> [--limit <n>]",
+      "  search index --refresh",
       "  truth ingest --target <relative-path-under-truth> [--input <file> | --content <text>] [--append]",
       "  hook <event-name>",
     ].join("\n"),

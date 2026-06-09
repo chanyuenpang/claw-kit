@@ -1,4 +1,4 @@
-# ADR: Codex recall uses claw search
+﻿# ADR: Codex recall uses claw search
 
 ## Status
 

@@ -63,7 +63,8 @@ The plan and its durable decisions are the source:
 - Create a new ADR only for a distinct decision.
 - Keep filenames in searchable kebab-case.
 - Follow the local numbering convention when the repository already uses one.
-- Write body text in Chinese while preserving exact identifiers and paths.
+- Write body text in Chinese when the target repository expects Chinese docs, while preserving exact identifiers and paths.
+- Treat mojibake strings such as `鐨`, `锛`, and `銆` as corruption; repair or rewrite them before writing canonical ADR text.
 
 ## ADR shape
 

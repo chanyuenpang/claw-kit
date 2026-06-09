@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { ClawError } from "./errors.js";
 import { normalizeTaskName } from "./paths.js";
+import { ensureUtf8Bom } from "./text-encoding.js";
 import type { ProjectConfig } from "./types.js";
 
 export type InitProjectInput = {
@@ -57,6 +58,7 @@ export function initProject(input: InitProjectInput): InitProjectResult {
     contextPaths: [...(input.contextPaths ?? [])],
     memory: {
       externalDocPaths: [...(input.externalDocPaths ?? [])],
+      embedding: null,
     },
     gitnexus: {
       enabled: input.gitnexusEnabled ?? false,
@@ -128,6 +130,7 @@ function ensureDir(dirPath: string, createdPaths: string[]): void {
 }
 
 function writeFile(filePath: string, content: string, createdPaths: string[]): void {
-  fs.writeFileSync(filePath, content, "utf-8");
+  const nextContent = /\.md$/i.test(filePath) ? ensureUtf8Bom(content) : content;
+  fs.writeFileSync(filePath, nextContent, "utf-8");
   createdPaths.push(filePath);
 }

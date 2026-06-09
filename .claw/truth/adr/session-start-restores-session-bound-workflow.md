@@ -1,4 +1,4 @@
-# ADR: SessionStart 恢复 session 绑定的 workflow snapshot
+﻿# ADR: SessionStart 恢复 session 绑定的 workflow snapshot
 
 ## Status
 

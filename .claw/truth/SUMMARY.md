@@ -1,13 +1,31 @@
-# Claw Kit Truth Summary
+﻿# Claw Kit Truth Summary
 
 - `claw-kit` is a host-neutral `.claw` harness core extracted from OpenClaw semantics.
 - Codex startup uses prompt-driven bootstrap plus unified `SessionStart` context injection.
 - `SessionStart` attempts session-bound active workflow recovery from current `.claw` state before falling back to default startup behavior.
 - Recovered startup context injects only a minimal claw workflow snapshot, and recomputed `workflowGuidance` remains the only next-step contract.
 - `claw search` is the Codex-facing recall command; `memory.externalDocPaths` extends project recall sources.
+- `claw search --query` stays compatible, and `claw search index --refresh` is the explicit project index refresh entrypoint that returns `search.index.refresh`.
+- `claw search` is project-scoped document recall for project memory, truth, ADR, and external docs; code investigation still belongs to `researcher` plus GitNexus, not `claw search`.
+- `claw search` only indexes configured external memory paths for `.md` files, and `claw search index --refresh` now materializes project-scoped vector data plus `vectorIndex` metadata from `memory.embedding`.
+- `claw search index --refresh` 现在把当前项目的 sqlite memory index 视为增量同步目标，而不是每次都全量删库重建。
+- project memory sync 会记录 `docs.content_hash`；未变更的 markdown 文档会复用原有 sqlite `docs` row 与 embeddings，变更文档只重算并替换自身记录，被删除的 markdown 文档会从 `docs`、`docs_fts`、`doc_embeddings` 清理。
+- `memory.embedding` 配置变化会触发整套向量重建，保证向量数据与 `vectorIndex` / embedding metadata 保持一致。
+- Project-level `claw search --query` now generates a real query embedding and runs a trimmed hybrid recall that fuses vector candidates with FTS results.
+- project-level `claw search --query` 现在有显式 keyword search plan：多词查询会同时保留整句 multi-term query 和逐词 fallback query，再把这些 keyword candidates 与现有 vector recall 融合。
+- 这套 planner 对中文多词查询同样生效；像 `搜打撤 哈基宝` 这样的 query 不再只依赖一次“同一条同时命中所有词”的 FTS `MATCH`。
+- Project-level search no longer silently falls back when vectors are missing; it now fails with `MEMORY_VECTOR_INDEX_REQUIRED` until a refreshed vector index exists.
+- Task-scope memory search keeps the existing task-memory and FTS semantics; the hybrid/vector query path is project-only.
 - `claw plan write`, `claw plan edit`, and `claw plan done` return compact `workflowGuidance` and `planSummary` contracts.
 - Thread goal mode starts on `plan write`.
 - Truth and ADR deposition run through delegated writer specialists, not inline main-agent writes.
 - Writer delegation contracts now carry explicit `skill` and `model` fields.
-- `.claw/project.json` supports explicit `externalTruthSkill` and `externalAdrSkill` overrides with `null` defaults.
+- `.claw/project.json` supports explicit `externalTruthSkill` and `externalAdrSkill` overrides with `null` defaults, and `memory.embedding` now carries the project embedding config plus index metadata support, including the local `Snowflake/snowflake-arctic-embed-xs` / 384-dimension path with Windows DirectML-to-CPU fallback.
+- `packages/core/src/embedding-worker.ts` is the new embedding worker used for project embedding generation.
+- This hybrid query migration follows the mature `openclaw-dev` memory query design, but only copies the smallest subset that fits `claw-kit`.
+- 这次 multi-term recall 调整同样参考了 `openclaw-dev` 的 memory search 设计，但重点是 query planner、keyword recall 和 vector fusion，而不是单纯替换 embedding。
+- incremental refresh 的 sqlite sync 语义参考了 `openclaw-dev` 的 bootstrap / refresh 思路，但在 `claw-kit` 里实现的是裁剪后的 sqlite 迁移与同步逻辑。
+- README, CLI README, and core/cli tests already cover the new hybrid project search contract.
+- README、`packages/cli/README.md` 与 `packages/core/test/core.test.ts` 已覆盖 incremental refresh 契约。
+- `packages/core/test/core.test.ts` 已新增 query planner 语义和中文多词 project recall 场景覆盖；本轮校验通过 `npm test -- packages/core/test/core.test.ts` 与 `npm run check`。
 - Current release/package state tracks `0.1.22` on `package.json`, `packages/core/package.json`, and `packages/cli/package.json`, with `packages/codex-adapter/.codex-plugin/plugin.json` on `0.1.22+codex.20260609022301`; `scripts/install-cli.ps1` remains the Windows reinstall path for keeping `@veewo/claw` aligned.

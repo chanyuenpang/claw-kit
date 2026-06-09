@@ -72,7 +72,8 @@ Skip:
 - Do not invent code paths.
 - Keep the document readable markdown, not machine-json fragments.
 - Update `SUMMARY.md` when the truth set materially changes.
-- Write body text in Chinese while preserving exact identifiers and paths.
+- Write body text in Chinese when the target repository expects Chinese docs, while preserving exact identifiers and paths.
+- Treat mojibake strings such as `鐨`, `锛`, and `銆` as corruption; repair or rewrite them before writing canonical truth text.
 
 ## Codex workflow
 

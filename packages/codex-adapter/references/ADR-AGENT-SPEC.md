@@ -46,8 +46,9 @@ Extract durable architecture decisions from plan records and completed work into
 
 ## Writing rules
 
-- write body text in Chinese
+- write body text in Chinese when the repository expects Chinese docs, but treat mojibake as corruption rather than valid prose
 - preserve exact code identifiers, paths, config keys, commands, and error text
 - keep ADRs compact and durable
 - do not copy full plans into ADRs
 - do not invent paths, dates, owners, or alternatives
+- do not copy suspicious shell mojibake such as `鐨`, `锛`, or `銆` back into canonical docs; repair or rewrite the sentence first

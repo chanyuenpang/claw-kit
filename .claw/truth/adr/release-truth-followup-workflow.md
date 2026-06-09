@@ -1,4 +1,4 @@
-# ADR: Release truth follow-up workflow
+﻿# ADR: Release truth follow-up workflow
 
 ## Status
 

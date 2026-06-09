@@ -10,6 +10,7 @@ export * from "./plan.js";
 export * from "./plan-view.js";
 export * from "./switch-task.js";
 export * from "./task-retention.js";
+export * from "./text-encoding.js";
 export * from "./truth.js";
 export * from "./types.js";
 export * from "./workflow-guidance.js";

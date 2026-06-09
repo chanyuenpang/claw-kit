@@ -1,4 +1,4 @@
-# Codex Goal mode integration
+﻿# Codex Goal mode integration
 
 - Codex Goal mode is a host-level thread feature, not a `claw-kit` plugin-owned runtime.
 - Official Codex docs describe Goal mode as a persistent thread objective started through `/goal`, with progress controls shown above the composer in the app, and equivalent support in the CLI and IDE surfaces.

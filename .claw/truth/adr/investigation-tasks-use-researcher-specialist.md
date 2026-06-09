@@ -1,4 +1,4 @@
-# ADR: Investigation tasks use researcher specialist
+﻿# ADR: Investigation tasks use researcher specialist
 
 ## Status
 

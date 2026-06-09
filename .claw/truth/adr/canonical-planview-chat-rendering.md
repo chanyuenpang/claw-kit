@@ -1,4 +1,4 @@
-# ADR: Canonical planView chat rendering
+﻿# ADR: Canonical planView chat rendering
 
 ## Status
 

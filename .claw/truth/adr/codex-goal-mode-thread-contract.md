@@ -1,4 +1,4 @@
-# Codex Goal mode is a thread-level contract
+﻿# Codex Goal mode is a thread-level contract
 
 ## Context
 

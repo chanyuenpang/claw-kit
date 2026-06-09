@@ -39,7 +39,8 @@ claw plan write --title "My task" --goal "Define the first task"
   "externalAdrSkill": null,
   "contextPaths": [],
   "memory": {
-    "externalDocPaths": []
+    "externalDocPaths": [],
+    "embedding": null
   },
   "gitnexus": {
     "enabled": false
@@ -52,12 +53,53 @@ claw plan write --title "My task" --goal "Define the first task"
 - `claw init`
 - `claw context`
 - `claw search`
+- `claw search index --refresh`
 - `claw plan write`
 - `claw plan edit`
 - `claw switch-task`
 - `claw truth ingest`
 
 `claw context` still exists as a CLI command, but Codex workflow bootstrap should recover context through the session hook instead of treating it as a manual post-plan step.
+
+`claw search` is a project-scoped recall command for `.claw` documentation surfaces such as project memory, truth, ADR, and `memory.externalDocPaths`. It is best used before `claw plan write` and before research-style investigation when you want to recover prior project context. It is not the code-search surface; for current implementation or relationship tracing, use a researcher flow with GitNexus-oriented tooling when available.
+
+Configured `memory.externalDocPaths` are treated as markdown-only recall roots: `claw search` indexes `.md` files from those paths rather than arbitrary text or code files.
+
+Project search now expects a refreshed vector index. Configure `memory.embedding` and run `claw search index --refresh` before using `claw search --query ...`.
+
+`claw search index --refresh` syncs the current project's recall index incrementally. Unchanged markdown docs keep their existing sqlite rows and embeddings, changed docs are re-embedded, deleted docs are removed, and changing the embedding config triggers a full vector refresh. For local semantic indexing, `provider: "local"` uses a GitNexus-style transformers setup with `Snowflake/snowflake-arctic-embed-xs`, 384 dimensions, and Windows DirectML-to-CPU fallback by default:
+
+```json
+{
+  "memory": {
+    "externalDocPaths": [],
+    "embedding": {
+      "provider": "local",
+      "model": "Snowflake/snowflake-arctic-embed-xs",
+      "local": {
+        "modelCacheDir": ".claw/models"
+      }
+    }
+  }
+}
+```
+
+If your environment uses remote embeddings, set `memory.embedding` to an OpenAI-style config instead:
+
+```json
+{
+  "memory": {
+    "externalDocPaths": [],
+    "embedding": {
+      "provider": "openai",
+      "model": "text-embedding-3-small",
+      "remote": {
+        "apiKeyEnvVar": "OPENAI_API_KEY"
+      }
+    }
+  }
+}
+```
 
 ## Publish workflow
 

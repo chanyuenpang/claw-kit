@@ -1,4 +1,4 @@
-# ADR: CLI-guided plan lifecycle
+﻿# ADR: CLI-guided plan lifecycle
 
 ## Status
 

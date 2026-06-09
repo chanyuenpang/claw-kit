@@ -3,9 +3,11 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import {
   buildMemoryIndex,
   ensureProjectProtocol,
+  ensureUtf8Bom,
   editPlan,
   enforceTaskRetention,
   getMemory,
@@ -17,6 +19,8 @@ import {
   switchTask,
   writePlan,
 } from "../src/index.js";
+import { readTextFile } from "../src/io.js";
+import { buildProjectKeywordSearchPlan } from "../src/memory-query.js";
 
 function createFixture(name: string): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), `claw-kit-${name}-`));
@@ -61,7 +65,10 @@ test("initProject creates a minimal .claw project scaffold", () => {
     externalTruthSkill: string | null;
     externalAdrSkill: string | null;
     contextPaths: string[];
-    memory: { externalDocPaths: string[] };
+    memory: {
+      externalDocPaths: string[];
+      embedding: null;
+    };
     gitnexus: { enabled: boolean };
   };
 
@@ -79,6 +86,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
     contextPaths: ["docs/project-guide.md"],
     memory: {
       externalDocPaths: ["docs/", "README.md"],
+      embedding: null,
     },
     gitnexus: {
       enabled: true,
@@ -438,7 +446,7 @@ test("process entry returns the first task and task completion returns truth-wri
         externalTruthSkill: "external-truth-writer",
         externalAdrSkill: null,
         contextPaths: [],
-        memory: { externalDocPaths: [] },
+        memory: { externalDocPaths: [], embedding: null },
         gitnexus: { enabled: false },
       },
       null,
@@ -692,6 +700,13 @@ test("memory search defaults to project scope and task scope prioritizes active 
         id: "memory-search",
         memory: {
           externalDocPaths: ["docs/"],
+          embedding: {
+            provider: "local",
+            model: "Snowflake/snowflake-arctic-embed-xs",
+            local: {
+              modelCacheDir: path.join(root, ".model-cache"),
+            },
+          },
         },
       },
       null,
@@ -703,6 +718,7 @@ test("memory search defaults to project scope and task scope prioritizes active 
   fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project alpha memory\n", "utf-8");
   fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "shared beta truth\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "guide.md"), "zeta external doc\n", "utf-8");
+  fs.writeFileSync(path.join(root, "docs", "notes.txt"), "legacy txt doc\n", "utf-8");
   await writePlan({
     cwd: root,
     taskName: "demo-task",
@@ -719,20 +735,490 @@ test("memory search defaults to project scope and task scope prioritizes active 
   });
   fs.writeFileSync(path.join(root, ".claw", "tasks", "demo-task", "memory.md"), "legacy epsilon task memory\n", "utf-8");
 
-  const projectIndex = buildMemoryIndex({ cwd: root });
-  const taskIndex = buildMemoryIndex({ cwd: root, scope: "task", taskName: "demo-task" });
-  const projectSearch = searchMemory({ cwd: root, query: "alpha" });
-  const externalSearch = searchMemory({ cwd: root, query: "zeta" });
-  const taskSearch = searchMemory({ cwd: root, scope: "task", taskName: "demo-task", query: "gamma" });
-  const taskMemory = getMemory({ cwd: root, scope: "task", taskName: "demo-task" });
+  const previousMockEnv = process.env.CLAW_EMBEDDING_MOCK;
+  process.env.CLAW_EMBEDDING_MOCK = "1";
 
-  assert.equal(projectIndex.scope, "project");
-  assert.equal(taskIndex.scope, "task");
-  assert.ok(projectSearch.results.some((item) => item.sourcePath.endsWith(path.join(".claw", "memory.md"))));
-  assert.ok(projectIndex.sources.some((item) => item.endsWith(path.join("docs", "guide.md"))));
-  assert.ok(externalSearch.results.some((item) => item.sourcePath.endsWith(path.join("docs", "guide.md"))));
-  assert.ok(taskSearch.results.some((item) => item.kind === "active_plan"));
-  assert.equal(taskMemory.sources[0]?.kind, "active_plan");
+  try {
+    const projectIndex = buildMemoryIndex({ cwd: root });
+    const taskIndex = buildMemoryIndex({ cwd: root, scope: "task", taskName: "demo-task" });
+    const projectSearch = searchMemory({ cwd: root, query: "alpha" });
+    const externalSearch = searchMemory({ cwd: root, query: "zeta" });
+    const txtSearch = searchMemory({ cwd: root, query: "legacy" });
+    const taskSearch = searchMemory({ cwd: root, scope: "task", taskName: "demo-task", query: "gamma" });
+    const taskMemory = getMemory({ cwd: root, scope: "task", taskName: "demo-task" });
+
+    assert.equal(projectIndex.scope, "project");
+    assert.equal(taskIndex.scope, "task");
+    assert.deepEqual(projectIndex.embedding, {
+      provider: "local",
+      model: "Snowflake/snowflake-arctic-embed-xs",
+      local: {
+        modelCacheDir: path.join(root, ".model-cache"),
+      },
+      store: {
+        vector: {
+          enabled: true,
+        },
+      },
+    });
+    assert.ok(projectSearch.results.some((item) => item.sourcePath.endsWith(path.join(".claw", "memory.md"))));
+    assert.ok(projectIndex.sources.some((item) => item.endsWith(path.join("docs", "guide.md"))));
+    assert.equal(projectIndex.sources.some((item) => item.endsWith(path.join("docs", "notes.txt"))), false);
+    assert.ok(externalSearch.results.some((item) => item.sourcePath.endsWith(path.join("docs", "guide.md"))));
+    assert.equal(txtSearch.results.some((item) => item.sourcePath.endsWith(path.join("docs", "notes.txt"))), false);
+    assert.ok(taskSearch.results.some((item) => item.kind === "active_plan"));
+    assert.equal(taskMemory.sources[0]?.kind, "active_plan");
+  } finally {
+    if (previousMockEnv === undefined) {
+      delete process.env.CLAW_EMBEDDING_MOCK;
+    } else {
+      process.env.CLAW_EMBEDDING_MOCK = previousMockEnv;
+    }
+  }
+});
+
+test("project search rejects queries when no vector index is available", () => {
+  const root = createFixture("memory-search-no-vectors");
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify(
+      {
+        id: "memory-search-no-vectors",
+        memory: {
+          externalDocPaths: [],
+          embedding: null,
+        },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project alpha memory\n", "utf-8");
+
+  assert.throws(
+    () => searchMemory({ cwd: root, query: "alpha" }),
+    /requires memory\.embedding|vector index/i,
+  );
+});
+
+/* test("project keyword search plan keeps exact multi-term query and per-term Chinese fallbacks", () => {
+  assert.deepEqual(
+    buildProjectKeywordSearchPlan("搜打撤 哈基宝"),
+    [
+      { query: "\"搜打撤\" AND \"哈基宝\"", matchedTerms: ["搜打撤", "哈基宝"] },
+      { query: "\"搜打撤\"", matchedTerms: ["搜打撤"] },
+      { query: "\"哈基宝\"", matchedTerms: ["哈基宝"] },
+    ],
+  );
+});
+
+test("project search keeps recall for multi-term Chinese queries across different markdown docs", () => {
+  const root = createFixture("memory-search-chinese-multi-term");
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify(
+      {
+        id: "memory-search-chinese-multi-term",
+        memory: {
+          externalDocPaths: ["docs/"],
+          embedding: {
+            provider: "local",
+            model: "Snowflake/snowflake-arctic-embed-xs",
+            local: {
+              modelCacheDir: path.join(root, ".model-cache"),
+            },
+          },
+        },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "项目检索记忆\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "共享中文 truth\n", "utf-8");
+  fs.writeFileSync(path.join(root, "docs", "sdtz.md"), "这里记录搜打撤模式的说明\n", "utf-8");
+  fs.writeFileSync(path.join(root, "docs", "hjb.md"), "这里记录哈基宝的说明\n", "utf-8");
+
+  const previousMockEnv = process.env.CLAW_EMBEDDING_MOCK;
+  process.env.CLAW_EMBEDDING_MOCK = "1";
+
+  try {
+    buildMemoryIndex({ cwd: root });
+
+    const firstTerm = searchMemory({ cwd: root, query: "搜打撤" });
+    const secondTerm = searchMemory({ cwd: root, query: "哈基宝" });
+    const multiTerm = searchMemory({ cwd: root, query: "搜打撤 哈基宝", limit: 5 });
+
+    assert.ok(firstTerm.results.some((item) => item.sourcePath.endsWith(path.join("docs", "sdtz.md"))));
+    assert.ok(secondTerm.results.some((item) => item.sourcePath.endsWith(path.join("docs", "hjb.md"))));
+    assert.ok(multiTerm.results.some((item) => item.sourcePath.endsWith(path.join("docs", "sdtz.md"))));
+    assert.ok(multiTerm.results.some((item) => item.sourcePath.endsWith(path.join("docs", "hjb.md"))));
+  } finally {
+    if (previousMockEnv === undefined) {
+      delete process.env.CLAW_EMBEDDING_MOCK;
+    } else {
+      process.env.CLAW_EMBEDDING_MOCK = previousMockEnv;
+    }
+  }
+});
+
+*/
+
+test("project keyword search plan keeps exact multi-term query and per-term Chinese fallbacks", () => {
+  assert.deepEqual(
+    buildProjectKeywordSearchPlan("\u641c\u6253\u64a4 \u54c8\u57fa\u5b9d"),
+    [
+      {
+        query: "\"\u641c\u6253\u64a4\" AND \"\u54c8\u57fa\u5b9d\"",
+        matchedTerms: ["\u641c\u6253\u64a4", "\u54c8\u57fa\u5b9d"],
+        substringTerms: [],
+      },
+      {
+        query: "\"\u641c\u6253\u64a4\"",
+        matchedTerms: ["\u641c\u6253\u64a4"],
+        substringTerms: [],
+      },
+      {
+        query: "\"\u54c8\u57fa\u5b9d\"",
+        matchedTerms: ["\u54c8\u57fa\u5b9d"],
+        substringTerms: [],
+      },
+    ],
+  );
+});
+
+test("project keyword search plan uses substring fallback for short Chinese terms", () => {
+  assert.deepEqual(
+    buildProjectKeywordSearchPlan("\u641c\u6253 \u54c8\u57fa"),
+    [
+      {
+        query: null,
+        matchedTerms: ["\u641c\u6253", "\u54c8\u57fa"],
+        substringTerms: ["\u641c\u6253", "\u54c8\u57fa"],
+      },
+      {
+        query: null,
+        matchedTerms: ["\u641c\u6253"],
+        substringTerms: ["\u641c\u6253"],
+      },
+      {
+        query: null,
+        matchedTerms: ["\u54c8\u57fa"],
+        substringTerms: ["\u54c8\u57fa"],
+      },
+    ],
+  );
+});
+
+test("project search keeps recall for multi-term Chinese queries across different markdown docs", () => {
+  const root = createFixture("memory-search-chinese-multi-term");
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify(
+      {
+        id: "memory-search-chinese-multi-term",
+        memory: {
+          externalDocPaths: ["docs/"],
+          embedding: {
+            provider: "local",
+            model: "Snowflake/snowflake-arctic-embed-xs",
+            local: {
+              modelCacheDir: path.join(root, ".model-cache"),
+            },
+          },
+        },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "\u9879\u76ee\u68c0\u7d22\u8bb0\u5fc6\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "\u5171\u4eab\u4e2d\u6587 truth\n", "utf-8");
+  fs.writeFileSync(path.join(root, "docs", "sdtz.md"), "\u8fd9\u91cc\u8bb0\u5f55\u641c\u6253\u64a4\u6a21\u5f0f\u7684\u8bf4\u660e\n", "utf-8");
+  fs.writeFileSync(path.join(root, "docs", "hjb.md"), "\u8fd9\u91cc\u8bb0\u5f55\u54c8\u57fa\u5b9d\u7684\u8bf4\u660e\n", "utf-8");
+
+  const previousMockEnv = process.env.CLAW_EMBEDDING_MOCK;
+  process.env.CLAW_EMBEDDING_MOCK = "1";
+
+  try {
+    buildMemoryIndex({ cwd: root });
+
+    const firstTerm = searchMemory({ cwd: root, query: "\u641c\u6253\u64a4" });
+    const secondTerm = searchMemory({ cwd: root, query: "\u54c8\u57fa\u5b9d" });
+    const multiTerm = searchMemory({ cwd: root, query: "\u641c\u6253\u64a4 \u54c8\u57fa\u5b9d", limit: 5 });
+
+    assert.ok(firstTerm.results.some((item) => item.sourcePath.endsWith(path.join("docs", "sdtz.md"))));
+    assert.ok(secondTerm.results.some((item) => item.sourcePath.endsWith(path.join("docs", "hjb.md"))));
+    assert.ok(multiTerm.results.some((item) => item.sourcePath.endsWith(path.join("docs", "sdtz.md"))));
+    assert.ok(multiTerm.results.some((item) => item.sourcePath.endsWith(path.join("docs", "hjb.md"))));
+  } finally {
+    if (previousMockEnv === undefined) {
+      delete process.env.CLAW_EMBEDDING_MOCK;
+    } else {
+      process.env.CLAW_EMBEDDING_MOCK = previousMockEnv;
+    }
+  }
+});
+
+test("project search uses substring fallback for short Chinese multi-term queries", () => {
+  const root = createFixture("memory-search-short-chinese-multi-term");
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify(
+      {
+        id: "memory-search-short-chinese-multi-term",
+        memory: {
+          externalDocPaths: ["docs/"],
+          embedding: {
+            provider: "local",
+            model: "Snowflake/snowflake-arctic-embed-xs",
+            local: {
+              modelCacheDir: path.join(root, ".model-cache"),
+            },
+          },
+        },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "\u77ed\u8bcd\u4e2d\u6587\u68c0\u7d22\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "\u77ed\u8bcd truth\n", "utf-8");
+  fs.writeFileSync(path.join(root, "docs", "sdtz.md"), "\u8fd9\u91cc\u8bb0\u5f55\u641c\u6253\u64a4\u6a21\u5f0f\u7684\u8bf4\u660e\n", "utf-8");
+  fs.writeFileSync(path.join(root, "docs", "hjb.md"), "\u8fd9\u91cc\u8bb0\u5f55\u54c8\u57fa\u5b9d\u89d2\u8272\u7684\u8bf4\u660e\n", "utf-8");
+
+  const previousMockEnv = process.env.CLAW_EMBEDDING_MOCK;
+  process.env.CLAW_EMBEDDING_MOCK = "1";
+
+  try {
+    buildMemoryIndex({ cwd: root });
+
+    const shortFirst = searchMemory({ cwd: root, query: "\u641c\u6253" });
+    const shortSecond = searchMemory({ cwd: root, query: "\u54c8\u57fa" });
+    const multiTerm = searchMemory({ cwd: root, query: "\u641c\u6253 \u54c8\u57fa", limit: 5 });
+
+    assert.ok(shortFirst.results.some((item) => item.sourcePath.endsWith(path.join("docs", "sdtz.md"))));
+    assert.ok(shortSecond.results.some((item) => item.sourcePath.endsWith(path.join("docs", "hjb.md"))));
+    assert.ok(multiTerm.results.some((item) => item.sourcePath.endsWith(path.join("docs", "sdtz.md"))));
+    assert.ok(multiTerm.results.some((item) => item.sourcePath.endsWith(path.join("docs", "hjb.md"))));
+  } finally {
+    if (previousMockEnv === undefined) {
+      delete process.env.CLAW_EMBEDDING_MOCK;
+    } else {
+      process.env.CLAW_EMBEDDING_MOCK = previousMockEnv;
+    }
+  }
+});
+
+test("project memory refresh generates local embedding metadata and vector rows for markdown sources", () => {
+  const root = createFixture("memory-local-embeddings");
+  fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify(
+      {
+        id: "memory-local-embeddings",
+        name: "Memory Local Embeddings",
+        maxTasksToKeep: 99,
+        externalTruthSkill: null,
+        externalAdrSkill: null,
+        contextPaths: [],
+        memory: {
+          externalDocPaths: ["docs/"],
+          embedding: {
+            provider: "local",
+            model: "Snowflake/snowflake-arctic-embed-xs",
+            local: {
+              modelCacheDir: path.join(root, ".model-cache"),
+            },
+          },
+        },
+        gitnexus: {
+          enabled: false,
+        },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project alpha memory\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "shared beta truth\n", "utf-8");
+  fs.writeFileSync(path.join(root, "docs", "guide.md"), "gamma markdown doc\n", "utf-8");
+  fs.writeFileSync(path.join(root, "docs", "notes.txt"), "should stay unindexed\n", "utf-8");
+
+  const previousMockEnv = process.env.CLAW_EMBEDDING_MOCK;
+  process.env.CLAW_EMBEDDING_MOCK = "1";
+
+  try {
+    const result = buildMemoryIndex({ cwd: root });
+
+    assert.deepEqual(result.embedding, {
+      provider: "local",
+      model: "Snowflake/snowflake-arctic-embed-xs",
+      local: {
+        modelCacheDir: path.join(root, ".model-cache"),
+      },
+      store: {
+        vector: {
+          enabled: true,
+        },
+      },
+    });
+    assert.deepEqual(result.vectorIndex, {
+      enabled: true,
+      provider: "local",
+      model: "Snowflake/snowflake-arctic-embed-xs",
+      dimensions: 384,
+      chunkCount: 3,
+    });
+    assert.equal(result.sources.some((item) => item.endsWith(path.join("docs", "notes.txt"))), false);
+
+    const db = new DatabaseSync(result.storePath);
+    try {
+      const metadata = db
+        .prepare("SELECT value FROM index_metadata WHERE key = ?")
+        .get("vector_index") as { value: string } | undefined;
+      const vectors = db
+        .prepare("SELECT COUNT(*) AS count FROM doc_embeddings")
+        .get() as { count: number };
+
+      assert.ok(metadata);
+      assert.deepEqual(JSON.parse(metadata.value), result.vectorIndex);
+      assert.equal(vectors.count, 3);
+    } finally {
+      db.close();
+    }
+  } finally {
+    if (previousMockEnv === undefined) {
+      delete process.env.CLAW_EMBEDDING_MOCK;
+    } else {
+      process.env.CLAW_EMBEDDING_MOCK = previousMockEnv;
+    }
+  }
+});
+
+test("project memory refresh incrementally reuses unchanged docs and syncs changed or deleted markdown docs", () => {
+  const root = createFixture("memory-incremental-refresh");
+  fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify(
+      {
+        id: "memory-incremental-refresh",
+        name: "Memory Incremental Refresh",
+        maxTasksToKeep: 99,
+        externalTruthSkill: null,
+        externalAdrSkill: null,
+        contextPaths: [],
+        memory: {
+          externalDocPaths: ["docs/"],
+          embedding: {
+            provider: "local",
+            model: "Snowflake/snowflake-arctic-embed-xs",
+            local: {
+              modelCacheDir: path.join(root, ".model-cache"),
+            },
+          },
+        },
+        gitnexus: {
+          enabled: false,
+        },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project alpha memory\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "shared beta truth\n", "utf-8");
+  fs.writeFileSync(path.join(root, "docs", "stable.md"), "stable doc stays the same\n", "utf-8");
+  fs.writeFileSync(path.join(root, "docs", "change.md"), "first version paragraph\n\nsecond paragraph\n", "utf-8");
+  fs.writeFileSync(path.join(root, "docs", "remove.md"), "remove me later\n", "utf-8");
+
+  const previousMockEnv = process.env.CLAW_EMBEDDING_MOCK;
+  process.env.CLAW_EMBEDDING_MOCK = "1";
+
+  try {
+    const firstIndex = buildMemoryIndex({ cwd: root });
+    const firstDb = new DatabaseSync(firstIndex.storePath);
+    let stableBefore: { id: number } | undefined;
+    let changedBefore: { id: number } | undefined;
+    let removedBefore: { id: number } | undefined;
+    let stableEmbeddingBefore: { embedding_json: string } | undefined;
+
+    try {
+      stableBefore = firstDb
+        .prepare("SELECT id FROM docs WHERE source_path = ?")
+        .get(path.join(root, "docs", "stable.md")) as { id: number } | undefined;
+      changedBefore = firstDb
+        .prepare("SELECT id FROM docs WHERE source_path = ?")
+        .get(path.join(root, "docs", "change.md")) as { id: number } | undefined;
+      removedBefore = firstDb
+        .prepare("SELECT id FROM docs WHERE source_path = ?")
+        .get(path.join(root, "docs", "remove.md")) as { id: number } | undefined;
+      stableEmbeddingBefore = firstDb
+        .prepare("SELECT embedding_json FROM doc_embeddings WHERE doc_id = ? AND chunk_index = 0")
+        .get(stableBefore?.id ?? -1) as { embedding_json: string } | undefined;
+    } finally {
+      firstDb.close();
+    }
+
+    fs.writeFileSync(path.join(root, "docs", "change.md"), "updated version paragraph only\n", "utf-8");
+    fs.unlinkSync(path.join(root, "docs", "remove.md"));
+
+    const secondIndex = buildMemoryIndex({ cwd: root });
+    const secondDb = new DatabaseSync(secondIndex.storePath);
+
+    try {
+      const stableAfter = secondDb
+        .prepare("SELECT id FROM docs WHERE source_path = ?")
+        .get(path.join(root, "docs", "stable.md")) as { id: number } | undefined;
+      const changedAfter = secondDb
+        .prepare("SELECT id, content FROM docs WHERE source_path = ?")
+        .get(path.join(root, "docs", "change.md")) as { id: number; content: string } | undefined;
+      const removedAfter = secondDb
+        .prepare("SELECT id FROM docs WHERE source_path = ?")
+        .get(path.join(root, "docs", "remove.md")) as { id: number } | undefined;
+      const stableEmbeddingAfter = secondDb
+        .prepare("SELECT embedding_json FROM doc_embeddings WHERE doc_id = ? AND chunk_index = 0")
+        .get(stableAfter?.id ?? -1) as { embedding_json: string } | undefined;
+      const changedEmbeddings = secondDb
+        .prepare("SELECT COUNT(*) AS count FROM doc_embeddings WHERE doc_id = ?")
+        .get(changedAfter?.id ?? -1) as { count: number };
+      const removedEmbeddings = secondDb
+        .prepare("SELECT COUNT(*) AS count FROM doc_embeddings WHERE source_path = ?")
+        .get(path.join(root, "docs", "remove.md")) as { count: number };
+
+      assert.ok(stableBefore);
+      assert.ok(changedBefore);
+      assert.ok(removedBefore);
+      assert.ok(stableAfter);
+      assert.ok(changedAfter);
+      assert.equal(stableAfter.id, stableBefore.id);
+      assert.notEqual(changedAfter.id, changedBefore.id);
+      assert.equal(changedAfter.content, "updated version paragraph only\n");
+      assert.equal(removedAfter, undefined);
+      assert.equal(stableEmbeddingAfter?.embedding_json, stableEmbeddingBefore?.embedding_json);
+      assert.equal(changedEmbeddings.count, 1);
+      assert.equal(removedEmbeddings.count, 0);
+    } finally {
+      secondDb.close();
+    }
+  } finally {
+    if (previousMockEnv === undefined) {
+      delete process.env.CLAW_EMBEDDING_MOCK;
+    } else {
+      process.env.CLAW_EMBEDDING_MOCK = previousMockEnv;
+    }
+  }
 });
 
 test("workflow guidance uses external writer skills from project config", async () => {
@@ -747,7 +1233,7 @@ test("workflow guidance uses external writer skills from project config", async 
         externalTruthSkill: "external-truth-writer",
         externalAdrSkill: "external-adr-writer",
         contextPaths: [],
-        memory: { externalDocPaths: [] },
+        memory: { externalDocPaths: [], embedding: null },
         gitnexus: { enabled: false },
       },
       null,
@@ -798,7 +1284,7 @@ test("truth ingest writes only under .claw/truth", () => {
   });
 
   assert.ok(result.targetPath.startsWith(path.join(root, ".claw", "truth")));
-  assert.equal(fs.readFileSync(result.targetPath, "utf-8"), "# Feature\n\nCanonical truth.\n");
+  assert.equal(readTextFile(result.targetPath), "# Feature\n\nCanonical truth.\n");
 });
 
 test("existing .claw project without project.json still works", async () => {
@@ -827,6 +1313,13 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
         maxTasksToKeep: 0,
         memory: {
           externalDocPaths: ["docs/", 123],
+          embedding: {
+            provider: "openai",
+            model: "text-embedding-3-small",
+            remote: {
+              apiKeyEnvVar: "OPENAI_API_KEY",
+            },
+          },
         },
       },
       null,
@@ -843,7 +1336,21 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
     externalTruthSkill: string | null;
     externalAdrSkill: string | null;
     contextPaths: string[];
-    memory: { externalDocPaths: string[] };
+    memory: {
+      externalDocPaths: string[];
+      embedding: {
+        provider: string;
+        model: string;
+        remote: {
+          apiKeyEnvVar: string;
+        };
+        store: {
+          vector: {
+            enabled: boolean;
+          };
+        };
+      } | null;
+    };
     gitnexus: { enabled: boolean };
   };
 
@@ -857,6 +1364,18 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
   assert.equal(projectConfig.externalAdrSkill, null);
   assert.deepEqual(projectConfig.contextPaths, []);
   assert.deepEqual(projectConfig.memory.externalDocPaths, ["docs/"]);
+  assert.deepEqual(projectConfig.memory.embedding, {
+    provider: "openai",
+    model: "text-embedding-3-small",
+    remote: {
+      apiKeyEnvVar: "OPENAI_API_KEY",
+    },
+    store: {
+      vector: {
+        enabled: true,
+      },
+    },
+  });
   assert.equal(projectConfig.gitnexus.enabled, false);
 });
 
@@ -1003,4 +1522,28 @@ test("concurrent plan writes fail fast with PLAN_WRITE_CONFLICT", async () => {
   );
 
   fs.unlinkSync(`${planPath}.lock`);
+});
+
+test("ensureUtf8Bom prefixes markdown text exactly once", () => {
+  const original = "# ADR\n\n中文正文。\n";
+  const once = ensureUtf8Bom(original);
+  const twice = ensureUtf8Bom(once);
+
+  assert.equal(once.charCodeAt(0), 0xfeff);
+  assert.equal(twice, once);
+});
+
+test("truth ingest writes markdown with UTF-8 BOM for Windows PowerShell compatibility", () => {
+  const root = createFixture("truth-bom");
+
+  const result = ingestTruth({
+    cwd: root,
+    target: "adr/test.md",
+    content: "# 标题\n\n中文正文。\n",
+  });
+
+  const raw = fs.readFileSync(result.targetPath);
+  assert.equal(raw[0], 0xef);
+  assert.equal(raw[1], 0xbb);
+  assert.equal(raw[2], 0xbf);
 });

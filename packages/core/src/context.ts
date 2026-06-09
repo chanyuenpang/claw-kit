@@ -3,7 +3,7 @@ import path from "node:path";
 import { ClawError } from "./errors.js";
 import { readJsonFile, withFileLock } from "./io.js";
 import { ensureInsideDir, findProjectRoot, isValidTaskName, normalizePlanFile, normalizeTaskName } from "./paths.js";
-import type { ProjectConfig, ProjectContext, ResolvedContext, TaskContext, TaskMeta } from "./types.js";
+import type { MemoryEmbeddingConfig, ProjectConfig, ProjectContext, ResolvedContext, TaskContext, TaskMeta } from "./types.js";
 
 export function resolveProjectContext(cwd: string): ProjectContext {
   const projectRoot = findProjectRoot(cwd);
@@ -185,6 +185,7 @@ function normalizeProjectConfig(projectConfig: ProjectConfig): ProjectConfig {
     contextPaths: [...(projectConfig.contextPaths ?? [])],
     memory: {
       externalDocPaths: [...(projectConfig.memory?.externalDocPaths ?? [])],
+      embedding: normalizeMemoryEmbeddingConfig(projectConfig.memory?.embedding),
     },
     gitnexus: {
       enabled: projectConfig.gitnexus?.enabled ?? false,
@@ -212,4 +213,56 @@ function normalizeOptionalSkill(value: string | null | undefined): string | null
   }
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+}
+
+function normalizeMemoryEmbeddingConfig(value: MemoryEmbeddingConfig | null | undefined): MemoryEmbeddingConfig | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const provider = value.provider === "local" ? "local" : "openai";
+  const model = typeof value.model === "string" ? value.model.trim() : "";
+  if (!model) {
+    return null;
+  }
+
+  return {
+    provider,
+    model,
+    ...(value.remote
+      ? {
+          remote: {
+            ...(typeof value.remote.apiKeyEnvVar === "string" && value.remote.apiKeyEnvVar.trim()
+              ? { apiKeyEnvVar: value.remote.apiKeyEnvVar.trim() }
+              : {}),
+            ...(typeof value.remote.baseUrl === "string" && value.remote.baseUrl.trim()
+              ? { baseUrl: value.remote.baseUrl.trim() }
+              : {}),
+          },
+        }
+      : {}),
+    ...(value.local
+      ? {
+          local: {
+            ...(typeof value.local.modelPath === "string" && value.local.modelPath.trim()
+              ? { modelPath: value.local.modelPath.trim() }
+              : {}),
+            ...(typeof value.local.modelCacheDir === "string" && value.local.modelCacheDir.trim()
+              ? { modelCacheDir: value.local.modelCacheDir.trim() }
+              : {}),
+          },
+        }
+      : {}),
+    ...(Number.isInteger(value.outputDimensionality) && (value.outputDimensionality as number) > 0
+      ? { outputDimensionality: value.outputDimensionality as number }
+      : {}),
+    store: {
+      vector: {
+        enabled: value.store?.vector?.enabled ?? true,
+        ...(typeof value.store?.vector?.extensionPath === "string" && value.store.vector.extensionPath.trim()
+          ? { extensionPath: value.store.vector.extensionPath.trim() }
+          : {}),
+      },
+    },
+  };
 }

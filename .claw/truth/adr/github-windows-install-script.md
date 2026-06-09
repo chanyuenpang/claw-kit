@@ -1,4 +1,4 @@
-# ADR: Use GitHub checkout plus PowerShell for Windows installs
+﻿# ADR: Use GitHub checkout plus PowerShell for Windows installs
 
 ## Status
 

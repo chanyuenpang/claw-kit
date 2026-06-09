@@ -170,6 +170,39 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
     env,
   );
   assert.equal(initResult.projectId, "cli-e2e");
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify(
+      {
+        id: "cli-e2e",
+        name: "CLI E2E",
+        maxTasksToKeep: 99,
+        externalTruthSkill: "external-truth-writer",
+        externalAdrSkill: "external-adr-writer",
+        contextPaths: [],
+        memory: {
+          externalDocPaths: ["docs/"],
+          embedding: {
+            provider: "local",
+            model: "Snowflake/snowflake-arctic-embed-xs",
+            local: {
+              modelCacheDir: path.join(root, ".model-cache"),
+            },
+          },
+        },
+        gitnexus: {
+          enabled: true,
+        },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  runClaw(["search", "index", "--refresh"], root, {
+    ...env,
+    CLAW_EMBEDDING_MOCK: "1",
+  });
 
   const writeResult = runClaw(
     ["plan", "write", "--title", "e2e-task", "--goal", "Verify the CLI lifecycle"],
@@ -278,7 +311,10 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   );
   assert.match(String(truthResult.targetPath), /\\.claw[\\/]+truth[\\/]+features[\\/]+e2e\.md$/);
 
-  const searchResult = runClaw(["search", "--query", "alpha"], root, env);
+  const searchResult = runClaw(["search", "--query", "alpha"], root, {
+    ...env,
+    CLAW_EMBEDDING_MOCK: "1",
+  });
   assert.equal(searchResult.command, "search");
   assert.equal(searchResult.scope, "project");
   assert.ok(Array.isArray(searchResult.results));
@@ -624,7 +660,7 @@ test("cli context auto-corrects malformed existing .claw state", () => {
   assert.equal(projectConfig.maxTasksToKeep, 99);
   assert.equal(projectConfig.externalTruthSkill, null);
   assert.equal(projectConfig.externalAdrSkill, null);
-  assert.deepEqual(projectConfig.memory, { externalDocPaths: [] });
+  assert.deepEqual(projectConfig.memory, { externalDocPaths: [], embedding: null });
 });
 
 test("cli check auto-corrects project.json into explicit protocol fields", () => {
@@ -659,7 +695,7 @@ test("cli check auto-corrects project.json into explicit protocol fields", () =>
   assert.equal(projectConfig.externalTruthSkill, null);
   assert.equal(projectConfig.externalAdrSkill, null);
   assert.deepEqual(projectConfig.contextPaths, []);
-  assert.deepEqual(projectConfig.memory, { externalDocPaths: [] });
+  assert.deepEqual(projectConfig.memory, { externalDocPaths: [], embedding: null });
   assert.deepEqual(projectConfig.gitnexus, { enabled: false });
 });
 
@@ -763,6 +799,136 @@ test("cli search rejects task-local scope flags", () => {
   const payload = error.error as JsonRecord;
   assert.equal(payload.code, "PROJECT_CONFIG_INVALID");
   assert.match(String(payload.message), /project-scoped only/i);
+});
+
+test("cli search rejects project queries when no vector index is available", () => {
+  const root = createFixture("search-requires-vectors");
+  runClaw(["init", "--name", "Search Requires Vectors"], root);
+
+  const error = runClawExpectFailure(["search", "--query", "alpha"], root);
+  const payload = error.error as JsonRecord;
+  assert.equal(payload.code, "MEMORY_VECTOR_INDEX_REQUIRED");
+  assert.match(String(payload.message), /vector index|memory\.embedding/i);
+});
+
+test("cli search index refresh returns project index metadata and embedding config", () => {
+  const root = createFixture("search-index-refresh");
+  fs.mkdirSync(path.join(root, ".claw", "truth"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify(
+      {
+        id: "search-index-refresh",
+        name: "Search Index Refresh",
+        maxTasksToKeep: 99,
+        externalTruthSkill: null,
+        externalAdrSkill: null,
+        contextPaths: [],
+        memory: {
+          externalDocPaths: [],
+          embedding: {
+            provider: "openai",
+            model: "text-embedding-3-small",
+            remote: {
+              apiKeyEnvVar: "OPENAI_API_KEY",
+            },
+          },
+        },
+        gitnexus: {
+          enabled: false,
+        },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project alpha memory\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "shared beta truth\n", "utf-8");
+
+  const result = runClaw(["search", "index", "--refresh"], root);
+
+  assert.equal(result.command, "search.index.refresh");
+  assert.equal(result.scope, "project");
+  assert.ok(Number(result.indexedCount) >= 2);
+  assert.deepEqual(result.embedding, {
+    provider: "openai",
+    model: "text-embedding-3-small",
+    remote: {
+      apiKeyEnvVar: "OPENAI_API_KEY",
+    },
+    store: {
+      vector: {
+        enabled: true,
+      },
+    },
+  });
+});
+
+test("cli search index refresh returns local vector index metadata and only indexes markdown memory paths", () => {
+  const root = createFixture("search-index-refresh-local");
+  fs.mkdirSync(path.join(root, ".claw", "truth"), { recursive: true });
+  fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify(
+      {
+        id: "search-index-refresh-local",
+        name: "Search Index Refresh Local",
+        maxTasksToKeep: 99,
+        externalTruthSkill: null,
+        externalAdrSkill: null,
+        contextPaths: [],
+        memory: {
+          externalDocPaths: ["docs/"],
+          embedding: {
+            provider: "local",
+            model: "Snowflake/snowflake-arctic-embed-xs",
+            local: {
+              modelCacheDir: path.join(root, ".model-cache"),
+            },
+          },
+        },
+        gitnexus: {
+          enabled: false,
+        },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project alpha memory\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "shared beta truth\n", "utf-8");
+  fs.writeFileSync(path.join(root, "docs", "guide.md"), "gamma markdown doc\n", "utf-8");
+  fs.writeFileSync(path.join(root, "docs", "notes.txt"), "should stay unindexed\n", "utf-8");
+
+  const result = runClaw(["search", "index", "--refresh"], root, {
+    CLAW_EMBEDDING_MOCK: "1",
+  });
+
+  assert.equal(result.command, "search.index.refresh");
+  assert.equal(result.scope, "project");
+  assert.deepEqual(result.embedding, {
+    provider: "local",
+    model: "Snowflake/snowflake-arctic-embed-xs",
+    local: {
+      modelCacheDir: path.join(root, ".model-cache"),
+    },
+    store: {
+      vector: {
+        enabled: true,
+      },
+    },
+  });
+  assert.deepEqual(result.vectorIndex, {
+    enabled: true,
+    provider: "local",
+    model: "Snowflake/snowflake-arctic-embed-xs",
+    dimensions: 384,
+    chunkCount: 3,
+  });
+  assert.equal((result.sources as string[]).some((item) => item.endsWith(path.join("docs", "notes.txt"))), false);
 });
 
 test("cli hook emits SessionStart additionalContext inside .claw projects", () => {

@@ -3,6 +3,7 @@ import path from "node:path";
 import { ClawError } from "./errors.js";
 import { findProjectRoot, normalizeTaskName } from "./paths.js";
 import type {
+  MemoryEmbeddingConfig,
   ProjectConfig,
   ProjectProtocolCheckResult,
   ProjectProtocolEnsureResult,
@@ -115,8 +116,8 @@ function normalizeProjectConfig(raw: unknown, projectRoot: string): ProjectConfi
     externalAdrSkill: normalizeOptionalSkill(source?.externalAdrSkill),
     contextPaths: normalizeStringArray(source?.contextPaths),
     memory: {
-      ...sourceMemory,
       externalDocPaths: normalizeStringArray(sourceMemory?.externalDocPaths),
+      embedding: normalizeMemoryEmbeddingConfig(sourceMemory?.embedding),
     },
     gitnexus: {
       ...sourceGitnexus,
@@ -170,6 +171,7 @@ function validateProjectConfig(raw: unknown, issues: ProjectProtocolIssue[]): vo
   const memory = requireObject(config, "memory", issues);
   if (memory) {
     requireStringArray(memory, "externalDocPaths", issues, "memory.externalDocPaths");
+    requireNullableEmbeddingConfig(memory, "embedding", issues, "memory.embedding");
   }
 
   const gitnexus = requireObject(config, "gitnexus", issues);
@@ -303,4 +305,147 @@ function normalizeOptionalSkill(value: unknown): string | null {
   }
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+}
+
+function normalizeMemoryEmbeddingConfig(value: unknown): MemoryEmbeddingConfig | null {
+  const embedding = asObject(value);
+  if (!embedding) {
+    return null;
+  }
+
+  const remote = asObject(embedding.remote);
+  const local = asObject(embedding.local);
+  const store = asObject(embedding.store);
+  const vector = asObject(store?.vector);
+  const provider = embedding.provider === "local" ? "local" : "openai";
+  const model = readNonEmptyString(embedding.model);
+  if (!model) {
+    return null;
+  }
+
+  return {
+    provider,
+    model,
+    ...(remote
+      ? {
+          remote: {
+            ...(readNonEmptyString(remote.apiKeyEnvVar) ? { apiKeyEnvVar: readNonEmptyString(remote.apiKeyEnvVar) } : {}),
+            ...(readNonEmptyString(remote.baseUrl) ? { baseUrl: readNonEmptyString(remote.baseUrl) } : {}),
+          },
+        }
+      : {}),
+    ...(local
+      ? {
+          local: {
+            ...(readNonEmptyString(local.modelPath) ? { modelPath: readNonEmptyString(local.modelPath) } : {}),
+            ...(readNonEmptyString(local.modelCacheDir)
+              ? { modelCacheDir: readNonEmptyString(local.modelCacheDir) }
+              : {}),
+          },
+        }
+      : {}),
+    ...(Number.isInteger(embedding.outputDimensionality) && (embedding.outputDimensionality as number) > 0
+      ? { outputDimensionality: embedding.outputDimensionality as number }
+      : {}),
+    store: {
+      vector: {
+        enabled: typeof vector?.enabled === "boolean" ? vector.enabled : true,
+        ...(readNonEmptyString(vector?.extensionPath)
+          ? { extensionPath: readNonEmptyString(vector?.extensionPath) }
+          : {}),
+      },
+    },
+  };
+}
+
+function requireNullableEmbeddingConfig(
+  source: Record<string, unknown>,
+  key: string,
+  issues: ProjectProtocolIssue[],
+  label = key,
+): void {
+  if (!(key in source)) {
+    issues.push({ path: label, message: "Field is required and must be explicitly present." });
+    return;
+  }
+  const value = source[key];
+  if (value === null) {
+    return;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    issues.push({ path: label, message: "Field must be an object or null." });
+    return;
+  }
+
+  const embedding = value as Record<string, unknown>;
+  const provider = embedding.provider;
+  if (provider !== "openai" && provider !== "local") {
+    issues.push({ path: `${label}.provider`, message: 'Field must be "openai" or "local".' });
+  }
+  if (typeof embedding.model !== "string" || !String(embedding.model).trim()) {
+    issues.push({ path: `${label}.model`, message: "Field must be a non-empty string." });
+  }
+
+  const remote = embedding.remote;
+  if (remote !== undefined) {
+    if (!remote || typeof remote !== "object" || Array.isArray(remote)) {
+      issues.push({ path: `${label}.remote`, message: "Field must be an object when present." });
+    } else {
+      const remoteObject = remote as Record<string, unknown>;
+      if ("apiKeyEnvVar" in remoteObject && typeof remoteObject.apiKeyEnvVar !== "string") {
+        issues.push({ path: `${label}.remote.apiKeyEnvVar`, message: "Field must be a string when present." });
+      }
+      if ("baseUrl" in remoteObject && typeof remoteObject.baseUrl !== "string") {
+        issues.push({ path: `${label}.remote.baseUrl`, message: "Field must be a string when present." });
+      }
+    }
+  }
+
+  const local = embedding.local;
+  if (local !== undefined) {
+    if (!local || typeof local !== "object" || Array.isArray(local)) {
+      issues.push({ path: `${label}.local`, message: "Field must be an object when present." });
+    } else {
+      const localObject = local as Record<string, unknown>;
+      if ("modelPath" in localObject && typeof localObject.modelPath !== "string") {
+        issues.push({ path: `${label}.local.modelPath`, message: "Field must be a string when present." });
+      }
+      if ("modelCacheDir" in localObject && typeof localObject.modelCacheDir !== "string") {
+        issues.push({ path: `${label}.local.modelCacheDir`, message: "Field must be a string when present." });
+      }
+    }
+  }
+
+  if ("outputDimensionality" in embedding) {
+    const value = embedding.outputDimensionality;
+    if (!Number.isInteger(value) || (value as number) < 1) {
+      issues.push({ path: `${label}.outputDimensionality`, message: "Field must be a positive integer when present." });
+    }
+  }
+
+  const store = embedding.store;
+  if (store !== undefined) {
+    if (!store || typeof store !== "object" || Array.isArray(store)) {
+      issues.push({ path: `${label}.store`, message: "Field must be an object when present." });
+    } else {
+      const storeObject = store as Record<string, unknown>;
+      const vector = storeObject.vector;
+      if (vector !== undefined) {
+        if (!vector || typeof vector !== "object" || Array.isArray(vector)) {
+          issues.push({ path: `${label}.store.vector`, message: "Field must be an object when present." });
+        } else {
+          const vectorObject = vector as Record<string, unknown>;
+          if ("enabled" in vectorObject && typeof vectorObject.enabled !== "boolean") {
+            issues.push({ path: `${label}.store.vector.enabled`, message: "Field must be a boolean when present." });
+          }
+          if ("extensionPath" in vectorObject && typeof vectorObject.extensionPath !== "string") {
+            issues.push({
+              path: `${label}.store.vector.extensionPath`,
+              message: "Field must be a string when present.",
+            });
+          }
+        }
+      }
+    }
+  }
 }

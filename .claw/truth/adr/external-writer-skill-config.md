@@ -1,4 +1,4 @@
-# ADR: External writer skill config
+﻿# ADR: External writer skill config
 
 ## Status
 

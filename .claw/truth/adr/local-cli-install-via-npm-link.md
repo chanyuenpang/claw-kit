@@ -1,4 +1,4 @@
-# ADR: Use npm link for the first local claw install path
+﻿# ADR: Use npm link for the first local claw install path
 
 ## Context
 

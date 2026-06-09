@@ -1,4 +1,4 @@
-# ADR: Prompt-Driven Codex Bootstrap
+﻿# ADR: Prompt-Driven Codex Bootstrap
 
 ## Context
 

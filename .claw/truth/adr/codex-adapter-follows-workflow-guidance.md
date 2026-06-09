@@ -1,4 +1,4 @@
-# ADR: Codex adapter follows workflowGuidance
+﻿# ADR: Codex adapter follows workflowGuidance
 
 ## Status
 

@@ -24,6 +24,9 @@
       "default": "./dist/src/index.js"
     }
   },
+  "dependencies": {
+    "@huggingface/transformers": "^3.0.0"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
