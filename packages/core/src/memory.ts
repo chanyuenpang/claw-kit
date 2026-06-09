@@ -172,10 +172,26 @@ function syncProjectMemoryIndex(
       db.exec("DELETE FROM doc_embeddings;");
     }
     const indexedDocs = insertDocs(db, limitedDocsToInsert);
+    let vectorIndexingFailed = false;
     if (shouldIndexVectors && embedding) {
-      indexDocEmbeddings(db, indexedDocs, embedding);
+      try {
+        indexDocEmbeddings(db, indexedDocs, embedding);
+      } catch (error) {
+        if (!isEmbeddingGenerationFailure(error)) {
+          throw error;
+        }
+        vectorIndexingFailed = true;
+        db.exec("DELETE FROM doc_embeddings;");
+      }
     }
     db.exec("COMMIT");
+    if (vectorIndexingFailed) {
+      return {
+        vectorIndex: null,
+        processedFileCount: limitedDocsToInsert.length,
+        pendingFileCount,
+      };
+    }
   } catch (error) {
     db.exec("ROLLBACK");
     throw error;
@@ -656,6 +672,12 @@ function cleanupTemporaryEmbeddingOutput(outputPath: string): void {
   if (fs.existsSync(outputPath)) {
     fs.unlinkSync(outputPath);
   }
+}
+
+function isEmbeddingGenerationFailure(error: unknown): boolean {
+  return error instanceof ClawError &&
+    error.code === "PROJECT_CONFIG_INVALID" &&
+    error.message === "Memory embedding generation failed.";
 }
 
 function resolveEmbeddingApiKey(embedding: MemoryEmbeddingConfig): string | null {

@@ -2,6 +2,17 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.1.23] - 2026-06-09
+
+### Added
+
+- vector-backed project recall now includes local embedding refresh, incremental indexing, and improved candidate reranking for conversational queries
+
+### Fixed
+
+- project memory refresh now degrades cleanly when local embedding generation is unavailable, preserving text indexing and release-time completion refresh
+- project search once again reports `MEMORY_VECTOR_INDEX_REQUIRED` when a vector index is unavailable instead of failing with a generic embedding-generation error
+
 ## [0.1.22] - 2026-06-09
 
 ### Fixed
