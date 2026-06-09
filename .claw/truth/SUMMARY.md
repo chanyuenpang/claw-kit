@@ -10,3 +10,4 @@
 - Truth and ADR deposition run through delegated writer specialists, not inline main-agent writes.
 - Writer delegation contracts now carry explicit `skill` and `model` fields.
 - `.claw/project.json` supports explicit `externalTruthSkill` and `externalAdrSkill` overrides with `null` defaults.
+- Current release/package state tracks `0.1.22` on `package.json`, `packages/core/package.json`, and `packages/cli/package.json`, with `packages/codex-adapter/.codex-plugin/plugin.json` on `0.1.22+codex.20260609022301`; `scripts/install-cli.ps1` remains the Windows reinstall path for keeping `@veewo/claw` aligned.
