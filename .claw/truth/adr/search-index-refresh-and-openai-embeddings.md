@@ -18,6 +18,7 @@ Accepted
 - 这次 rescue refresh 还要求显式的 CPU 逃生路径，用来覆盖 Windows 上 DirectML / CUDA 初始化失败或首轮真实推理失败的情况，而不是依赖 OpenAI auth 兜底
 - 大型项目 refresh 还需要把刷新进度切成可重复推进的批次，而不是一次性吞下整个语料集
 - 这次 retrieval quality 迭代继续复用 `openclaw-dev` 的成熟混排思路，但只吸收适合 `claw-kit` 的那部分：共享的中文/多词 keyword term 入口，以及面向 project-scoped hybrid ranking 的文档级 signals。
+- 下一轮 search-quality 迭代继续参考 `OpenClaw` 的 memory search，但聚焦在 trimmed multi-route candidate recall 和 unified reranking，只迁移能直接提升项目文档 recall 的检索部件。
 
 ## Decision
 
@@ -30,6 +31,9 @@ Accepted
 - 当 `memory.embedding` 配置变化时，重置并重建全部向量，保证 sqlite metadata 与实际 embeddings 一致。
 - project search 继续坚持 vector-required 契约；如果向量索引不可用，则保持 disabled，不回退成纯 `FTS` 搜索。
 - project-level `claw search --query` 会生成 query embedding，并执行 trimmed hybrid recall，融合 vector candidates 与 `FTS` candidates。
+- project-level `claw search --query` 的候选生成不再依赖单一路径；它会在最终排序前汇总多条 recall routes 的候选，而不是只做一次 `FTS` 召回再与向量结果拼接。
+- 这轮 trimmed `OpenClaw` 迁移保留 exact、keyword、semantic 和 document-signal 候选来源，但不引入更大的 session-memory / host abstraction surface。
+- 所有召回路径产出的候选都进入同一轮 unified reranking，保持 exact-match 优势，同时让 conversational Chinese queries 和 mixed multi-term queries 能共享同一套最终排序逻辑。
 - 对多词查询，project-level `claw search --query` 同时保留 exact multi-term keyword query，以及逐词 fallback query，而不是只执行一次严格的原始 `FTS MATCH`。
 - 这套 planner 的目标是避免中文多词 recall 过度依赖“同一条记录同时命中所有词”的语义，让检索行为更接近文档 recall / fuzzy retrieval。
 - 如果当前项目缺少 refreshed vector index，project search 返回 `MEMORY_VECTOR_INDEX_REQUIRED`，而不是 silent fallback。
@@ -54,6 +58,8 @@ Accepted
 - 旧项目在第一次运行 `claw context`、`claw check` 或其他协议修复入口后，会被自动提升到可索引的默认 local embedding schema，不需要手工补 `memory.embedding`。
 - 查询阶段与索引阶段共享同一套 vector contract，缺少 refreshed vectors 会显式失败，而不是悄悄降级成较弱的文本检索。
 - 中文多词检索不再被单次严格 `MATCH` 语义卡住，keyword planner 可以更稳定地为 hybrid fusion 提供候选集。
+- 多条 recall routes 先扩充候选池、再统一重排，减少单一路径偏置，让项目搜索更接近成熟文档 recall 系统的结果质量。
+- `claw-kit` 仍然只迁移最小可维护子集：项目文档候选召回与重排增强进入本地实现，OpenClaw 更广的 memory system 边界继续留在范围外。
 - 既有 `.claw` 项目保持同一套 sqlite backend，不需要引入第二套索引存储。
 
 ## Related Code
@@ -71,6 +77,7 @@ Accepted
 - `.claw/archive/tasks/multi-term-chinese-search-recall/plan.json`
 - `.claw/archive/tasks/embedding-refresh-cpu-fallback/plan.json`
 - `.claw/archive/tasks/embedding-refresh-batching/plan.json`
+- `.claw/archive/tasks/Improve-search-candidate-recall-with-OpenClaw-reference/plan.json`
 
 ## Search Terms
 
@@ -87,6 +94,9 @@ Accepted
 - `multi-term Chinese recall`
 - `keyword query planner`
 - `fuzzy retrieval`
+- `multi-route candidate recall`
+- `unified reranking`
+- `document-signal candidates`
 - `Snowflake/snowflake-arctic-embed-xs`
 - `DirectML`
 - `CLAW_EMBEDDING_LOCAL_DEVICE`

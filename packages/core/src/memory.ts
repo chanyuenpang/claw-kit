@@ -26,6 +26,18 @@ import type {
 } from "./types.js";
 
 const DEFAULT_PROJECT_REFRESH_FILE_LIMIT = 100;
+const PROJECT_SEARCH_CANDIDATE_MULTIPLIER = 8;
+
+type ProjectDocSearchSignals = {
+  matchedTerms: string[];
+  strongMatchedTerms: string[];
+  weakMatchedTerms: string[];
+  matchedTermCount: number;
+  strongMatchedTermCount: number;
+  fileNameHits: number;
+  pathHits: number;
+  exactBoost: number;
+};
 
 export function buildMemoryIndex(input: MemoryIndexInput): MemoryIndexResult {
   const { scope, project, task } = resolveMemoryScope(input);
@@ -723,7 +735,7 @@ function searchProjectMemoryHybrid(
     throw new ClawError("MEMORY_VECTOR_INDEX_REQUIRED", "Unable to generate a query embedding for project search.");
   }
 
-  const candidateLimit = Math.max(limit * 4, 20);
+  const candidateLimit = Math.max(limit * PROJECT_SEARCH_CANDIDATE_MULTIPLIER, 40);
   const projectDocs = db
     .prepare("SELECT source_path, kind, content FROM docs")
     .all() as Array<{ source_path: string; kind: string; content: string }>;
@@ -736,9 +748,10 @@ function searchProjectMemoryHybrid(
         query,
         queryIntent,
       }),
-    ]),
+      ]),
   );
   const ftsRows = searchProjectMemoryKeywords(db, query, candidateLimit);
+  const signalRows = searchProjectMemorySignals(projectDocs, docSignals, candidateLimit);
 
   const vectorRows = db
     .prepare(
@@ -785,7 +798,14 @@ function searchProjectMemoryHybrid(
     }
   }
 
-  const fused = new Map<string, MemorySearchResultEntry & { vectorRank?: number; textRank?: number }>();
+  const fused = new Map<
+    string,
+    MemorySearchResultEntry & {
+      vectorRank?: number;
+      textRank?: number;
+      signalRank?: number;
+    }
+  >();
   Array.from(bestVectorBySource.entries())
     .sort((left, right) => {
       const leftScore = left[1].similarity + (docSignals.get(left[0])?.exactBoost ?? 0);
@@ -799,7 +819,7 @@ function searchProjectMemoryHybrid(
         sourcePath,
         kind: row.kind,
         snippet: row.snippet,
-        score: reciprocalRankScore(index + 1, 0.7) + (signals?.exactBoost ?? 0),
+        score: reciprocalRankScore(index + 1, 0.6) + (signals?.exactBoost ?? 0),
         vectorRank: index + 1,
       });
     });
@@ -807,7 +827,7 @@ function searchProjectMemoryHybrid(
   ftsRows.forEach((row, index) => {
     const existing = fused.get(row.source_path);
     const signals = docSignals.get(row.source_path);
-    const nextScore = (existing?.score ?? 0) + reciprocalRankScore(index + 1, 0.3);
+    const nextScore = (existing?.score ?? 0) + reciprocalRankScore(index + 1, 0.25);
     fused.set(row.source_path, {
       sourcePath: row.source_path,
       kind: existing?.kind ?? row.kind,
@@ -818,25 +838,22 @@ function searchProjectMemoryHybrid(
     });
   });
 
-  return Array.from(fused.values())
-    .sort((left, right) => {
-      if (right.score !== left.score) {
-        return right.score - left.score;
-      }
-      const leftSignals = docSignals.get(left.sourcePath);
-      const rightSignals = docSignals.get(right.sourcePath);
-      if ((rightSignals?.strongMatchedTermCount ?? 0) !== (leftSignals?.strongMatchedTermCount ?? 0)) {
-        return (rightSignals?.strongMatchedTermCount ?? 0) - (leftSignals?.strongMatchedTermCount ?? 0);
-      }
-      return (rightSignals?.matchedTermCount ?? 0) - (leftSignals?.matchedTermCount ?? 0);
-    })
-    .slice(0, limit)
-    .map(({ sourcePath, kind, snippet, score }) => ({
-      sourcePath,
-      kind,
-      snippet,
-      score,
-    }));
+  signalRows.forEach((row, index) => {
+    const existing = fused.get(row.source_path);
+    const signals = docSignals.get(row.source_path);
+    const nextScore = (existing?.score ?? 0) + reciprocalRankScore(index + 1, 0.15);
+    fused.set(row.source_path, {
+      sourcePath: row.source_path,
+      kind: existing?.kind ?? row.kind,
+      snippet: existing?.snippet || row.snippet || "",
+      score: nextScore + (existing ? 0 : (signals?.exactBoost ?? 0)),
+      vectorRank: existing?.vectorRank,
+      textRank: existing?.textRank,
+      signalRank: index + 1,
+    });
+  });
+
+  return rerankProjectSearchCandidates(Array.from(fused.values()), docSignals, limit);
 }
 
 function searchProjectMemoryKeywords(
@@ -981,6 +998,39 @@ function searchDocsBySubstring(
   }));
 }
 
+function searchProjectMemorySignals(
+  projectDocs: Array<{ source_path: string; kind: string; content: string }>,
+  docSignals: Map<string, ProjectDocSearchSignals>,
+  limit: number,
+): Array<{ source_path: string; kind: string; snippet: string; score: number }> {
+  return projectDocs
+    .filter((row) => (docSignals.get(row.source_path)?.matchedTermCount ?? 0) > 0)
+    .sort((left, right) => {
+      const leftSignals = docSignals.get(left.source_path);
+      const rightSignals = docSignals.get(right.source_path);
+      if ((rightSignals?.strongMatchedTermCount ?? 0) !== (leftSignals?.strongMatchedTermCount ?? 0)) {
+        return (rightSignals?.strongMatchedTermCount ?? 0) - (leftSignals?.strongMatchedTermCount ?? 0);
+      }
+      if ((rightSignals?.matchedTermCount ?? 0) !== (leftSignals?.matchedTermCount ?? 0)) {
+        return (rightSignals?.matchedTermCount ?? 0) - (leftSignals?.matchedTermCount ?? 0);
+      }
+      if ((rightSignals?.exactBoost ?? 0) !== (leftSignals?.exactBoost ?? 0)) {
+        return (rightSignals?.exactBoost ?? 0) - (leftSignals?.exactBoost ?? 0);
+      }
+      if ((rightSignals?.fileNameHits ?? 0) !== (leftSignals?.fileNameHits ?? 0)) {
+        return (rightSignals?.fileNameHits ?? 0) - (leftSignals?.fileNameHits ?? 0);
+      }
+      return (rightSignals?.pathHits ?? 0) - (leftSignals?.pathHits ?? 0);
+    })
+    .slice(0, limit)
+    .map((row) => ({
+      source_path: row.source_path,
+      kind: row.kind,
+      snippet: buildSnippet(row.content),
+      score: 0,
+    }));
+}
+
 function matchesAllSubstrings(db: DatabaseSync, sourcePath: string, substringTerms: string[]): boolean {
   if (substringTerms.length === 0) {
     return true;
@@ -998,6 +1048,80 @@ function escapeLikePattern(term: string): string {
   return term.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
 }
 
+function rerankProjectSearchCandidates(
+  candidates: Array<
+    MemorySearchResultEntry & {
+      vectorRank?: number;
+      textRank?: number;
+      signalRank?: number;
+    }
+  >,
+  docSignals: Map<string, ProjectDocSearchSignals>,
+  limit: number,
+): MemorySearchResultEntry[] {
+  const remaining = [...candidates];
+  const selected: MemorySearchResultEntry[] = [];
+  const coveredStrongTerms = new Set<string>();
+  const coveredTerms = new Set<string>();
+
+  while (remaining.length > 0 && selected.length < limit) {
+    let bestIndex = 0;
+    let bestScore = Number.NEGATIVE_INFINITY;
+
+    for (let index = 0; index < remaining.length; index += 1) {
+      const candidate = remaining[index];
+      const signals = docSignals.get(candidate.sourcePath);
+      const routeCount =
+        (candidate.vectorRank ? 1 : 0) + (candidate.textRank ? 1 : 0) + (candidate.signalRank ? 1 : 0);
+      const uncoveredStrongTerms = (signals?.strongMatchedTerms ?? []).filter((term) => !coveredStrongTerms.has(term));
+      const uncoveredTerms = (signals?.matchedTerms ?? []).filter((term) => !coveredTerms.has(term));
+      const adjustedScore =
+        candidate.score
+        + uncoveredStrongTerms.length * 0.045
+        + uncoveredTerms.length * 0.01
+        + Math.max(routeCount - 1, 0) * 0.003;
+
+      if (adjustedScore > bestScore) {
+        bestScore = adjustedScore;
+        bestIndex = index;
+        continue;
+      }
+      if (adjustedScore === bestScore) {
+        const currentBest = remaining[bestIndex];
+        const currentSignals = docSignals.get(currentBest.sourcePath);
+        if ((signals?.strongMatchedTermCount ?? 0) !== (currentSignals?.strongMatchedTermCount ?? 0)) {
+          if ((signals?.strongMatchedTermCount ?? 0) > (currentSignals?.strongMatchedTermCount ?? 0)) {
+            bestIndex = index;
+          }
+          continue;
+        }
+        if ((signals?.matchedTermCount ?? 0) !== (currentSignals?.matchedTermCount ?? 0)) {
+          if ((signals?.matchedTermCount ?? 0) > (currentSignals?.matchedTermCount ?? 0)) {
+            bestIndex = index;
+          }
+          continue;
+        }
+        if ((signals?.exactBoost ?? 0) > (currentSignals?.exactBoost ?? 0)) {
+          bestIndex = index;
+        }
+      }
+    }
+
+    const [next] = remaining.splice(bestIndex, 1);
+    const nextSignals = docSignals.get(next.sourcePath);
+    nextSignals?.strongMatchedTerms.forEach((term) => coveredStrongTerms.add(term));
+    nextSignals?.matchedTerms.forEach((term) => coveredTerms.add(term));
+    selected.push({
+      sourcePath: next.sourcePath,
+      kind: next.kind,
+      snippet: next.snippet,
+      score: next.score,
+    });
+  }
+
+  return selected;
+}
+
 function buildProjectSearchSignals(input: {
   sourcePath: string;
   content: string;
@@ -1007,11 +1131,7 @@ function buildProjectSearchSignals(input: {
     strongTerms: string[];
     weakTerms: string[];
   };
-}): {
-  matchedTermCount: number;
-  strongMatchedTermCount: number;
-  exactBoost: number;
-} {
+}): ProjectDocSearchSignals {
   const normalizedQuery = input.query.trim();
   const normalizedContent = input.content.toLowerCase();
   const normalizedPath = input.sourcePath.toLowerCase();
@@ -1044,19 +1164,24 @@ function buildProjectSearchSignals(input: {
       : lowerStrongTerms.length > 1 && strongMatchedTerms.size === 1
         ? 0.01
         : 0;
-  const indexFilePenalty = isIndexLikeDocName(fileName) ? 0.02 : 0;
+  const indexFilePenalty = isIndexLikeDocName(fileName) ? 0.06 : 0;
 
   return {
+    matchedTerms: Array.from(matchedTerms),
+    strongMatchedTerms: Array.from(strongMatchedTerms),
+    weakMatchedTerms: Array.from(weakMatchedTerms),
     matchedTermCount: matchedTerms.size,
     strongMatchedTermCount: strongMatchedTerms.size,
+    fileNameHits,
+    pathHits,
     exactBoost:
       strongMatchedTerms.size * 0.016
       + weakMatchedTerms.size * 0.004
       + coverageRatio * 0.008
       + strongCoverageRatio * 0.014
       + densityRatio * 0.02
-      + fileNameHits * 0.012
-      + pathHits * 0.006
+      + fileNameHits * 0.025
+      + pathHits * 0.01
       + (phraseMatch ? 0.018 : 0)
       - weakOnlyPenalty
       - missingStrongPenalty

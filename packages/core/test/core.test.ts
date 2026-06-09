@@ -1158,6 +1158,60 @@ test("project search keeps recall for multi-term Chinese queries across differen
   }
 });
 
+test("project search reranks multi-term Chinese queries to cover distinct strong terms near the top", { concurrency: false }, () => {
+  const root = createFixture("memory-search-chinese-multi-term-coverage");
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify(
+      {
+        id: "memory-search-chinese-multi-term-coverage",
+        memory: {
+          externalDocPaths: ["docs/"],
+          embedding: {
+            provider: "local",
+            model: "Snowflake/snowflake-arctic-embed-xs",
+            local: {
+              modelCacheDir: path.join(root, ".model-cache"),
+            },
+          },
+        },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project memory notes\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "shared truth summary\n", "utf-8");
+  fs.writeFileSync(path.join(root, "docs", "sdtz-guide.md"), "\u641c\u6253\u64a4\u6a21\u5f0f\u8bf4\u660e\n", "utf-8");
+  fs.writeFileSync(path.join(root, "docs", "hjb-guide.md"), "\u54c8\u57fa\u5b9d\u7cfb\u7edf\u8bf4\u660e\n", "utf-8");
+  fs.writeFileSync(
+    path.join(root, "docs", "noise.md"),
+    "\u641c\u6253\u64a4\u6280\u672f\u5b9e\u73b0 \u641c\u6253\u64a4\u4ea4\u4e92\u89c4\u5219 \u641c\u6253\u64a4\u754c\u9762\u8bf4\u660e\n",
+    "utf-8",
+  );
+
+  const previousMockEnv = process.env.CLAW_EMBEDDING_MOCK;
+  process.env.CLAW_EMBEDDING_MOCK = "1";
+
+  try {
+    buildMemoryIndex({ cwd: root });
+
+    const result = searchMemory({ cwd: root, query: "\u641c\u6253\u64a4 \u54c8\u57fa\u5b9d", limit: 3 });
+    const topBasenames = result.results.slice(0, 2).map((item) => path.basename(item.sourcePath));
+
+    assert.ok(topBasenames.includes("sdtz-guide.md"));
+    assert.ok(topBasenames.includes("hjb-guide.md"));
+  } finally {
+    if (previousMockEnv === undefined) {
+      delete process.env.CLAW_EMBEDDING_MOCK;
+    } else {
+      process.env.CLAW_EMBEDDING_MOCK = previousMockEnv;
+    }
+  }
+});
+
 test("project search uses substring fallback for short Chinese multi-term queries", { concurrency: false }, () => {
   const root = createFixture("memory-search-short-chinese-multi-term");
   fs.writeFileSync(
@@ -1201,6 +1255,60 @@ test("project search uses substring fallback for short Chinese multi-term querie
     assert.ok(shortSecond.results.some((item) => item.sourcePath.endsWith(path.join("docs", "hjb.md"))));
     assert.ok(multiTerm.results.some((item) => item.sourcePath.endsWith(path.join("docs", "sdtz.md"))));
     assert.ok(multiTerm.results.some((item) => item.sourcePath.endsWith(path.join("docs", "hjb.md"))));
+  } finally {
+    if (previousMockEnv === undefined) {
+      delete process.env.CLAW_EMBEDDING_MOCK;
+    } else {
+      process.env.CLAW_EMBEDDING_MOCK = previousMockEnv;
+    }
+  }
+});
+
+test("project search can rescue filename-aligned Chinese plan docs through candidate reranking", { concurrency: false }, () => {
+  const root = createFixture("memory-search-filename-rescue");
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify(
+      {
+        id: "memory-search-filename-rescue",
+        memory: {
+          externalDocPaths: ["docs/"],
+          embedding: {
+            provider: "local",
+            model: "Snowflake/snowflake-arctic-embed-xs",
+            local: {
+              modelCacheDir: path.join(root, ".model-cache"),
+            },
+          },
+        },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  fs.mkdirSync(path.join(root, "docs", "plans"), { recursive: true });
+  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project memory notes\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "shared truth summary\n", "utf-8");
+  fs.writeFileSync(
+    path.join(root, "docs", "plans", "\u641c\u6253\u64a4\u65b9\u6848.md"),
+    "\u7cfb\u7edf\u8bbe\u8ba1\u6458\u8981\n",
+    "utf-8",
+  );
+  fs.writeFileSync(
+    path.join(root, "docs", "sdtz-test-log.md"),
+    "\u641c\u6253\u64a4\u6d4b\u8bd5\u8bb0\u5f55 \u641c\u6253\u64a4\u6d4b\u8bd5\u8bb0\u5f55 \u641c\u6253\u64a4\u6d4b\u8bd5\u8bb0\u5f55\n",
+    "utf-8",
+  );
+
+  const previousMockEnv = process.env.CLAW_EMBEDDING_MOCK;
+  process.env.CLAW_EMBEDDING_MOCK = "1";
+
+  try {
+    buildMemoryIndex({ cwd: root });
+
+    const result = searchMemory({ cwd: root, query: "\u4e4b\u524d\u8ba8\u8bba\u7684\u90a3\u4e2a\u641c\u6253\u64a4\u65b9\u6848", limit: 3 });
+    assert.equal(path.basename(result.results[0]?.sourcePath ?? ""), "\u641c\u6253\u64a4\u65b9\u6848.md");
   } finally {
     if (previousMockEnv === undefined) {
       delete process.env.CLAW_EMBEDDING_MOCK;

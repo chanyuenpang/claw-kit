@@ -22,6 +22,8 @@
 - Project-level `claw search --query` now generates a real query embedding and runs a trimmed hybrid recall that fuses vector candidates with FTS results.
 - project-level `claw search --query` 现在有显式 keyword search plan：多词查询会同时保留整句 multi-term query 和逐词 fallback query，再把这些 keyword candidates 与现有 vector recall 融合。
 - 这套 planner 对中文多词查询同样生效；像 `搜打撤 哈基宝` 这样的 query 不再只依赖一次“同一条同时命中所有词”的 FTS `MATCH`。
+- project search 的 candidate recall 进一步对齐了裁剪版 OpenClaw 设计：先并行收集 widened keyword candidates、document-signal candidates 和 vector candidates，再做 coverage-aware 统一 rerank。
+- rerank 现在更强调 filename/path 命中与文档级 term coverage，并对 `contents.md`、`summary.md`、`index.md`、`README.md` 这类 index-like 文档做更强的降权，避免它们压过更聚焦的主题文档。
 - Project-level search no longer silently falls back when vectors are missing; it now fails with `MEMORY_VECTOR_INDEX_REQUIRED` until a refreshed vector index exists.
 - Task-scope memory search keeps the existing task-memory and FTS semantics; the hybrid/vector query path is project-only.
 - `claw plan write`, `claw plan edit`, and `claw plan done` return compact `workflowGuidance` and `planSummary` contracts.
@@ -32,8 +34,10 @@
 - `packages/core/src/embedding-worker.ts` is the new embedding worker used for project embedding generation.
 - This hybrid query migration follows the mature `openclaw-dev` memory query design, but only copies the smallest subset that fits `claw-kit`.
 - 这次 multi-term recall 调整同样参考了 `openclaw-dev` 的 memory search 设计，但重点是 query planner、keyword recall 和 vector fusion，而不是单纯替换 embedding。
+- Improve-search-candidate-recall-with-OpenClaw-reference 这一轮继续参考 `openclaw-dev` 的成熟 memory search，但只迁移适合 `claw-kit` 的 multi-route candidate recall、document-signal route 和 unified rerank 最小子集。
 - incremental refresh 的 sqlite sync 语义参考了 `openclaw-dev` 的 bootstrap / refresh 思路，但在 `claw-kit` 里实现的是裁剪后的 sqlite 迁移与同步逻辑。
 - README, CLI README, and core/cli tests already cover the new hybrid project search contract.
 - README、`packages/cli/README.md` 与 `packages/core/test/core.test.ts` 已覆盖 incremental refresh 契约。
 - `packages/core/test/core.test.ts` 已新增 query planner 语义和中文多词 project recall 场景覆盖；本轮校验通过 `npm test -- packages/core/test/core.test.ts` 与 `npm run check`。
+- search candidate recall 这一轮的验证证据包括：`packages/core/test/core.test.ts` 50/50 通过、`npm run check` 通过，以及在 `NeonSpark` 的 live search 中，多词中文 query 不再让 `contents.md` 压过聚焦文档， conversational `搜打撤` 查询继续优先命中 system design 类文档。
 - Current release/package state tracks `0.1.22` on `package.json`, `packages/core/package.json`, and `packages/cli/package.json`, with `packages/codex-adapter/.codex-plugin/plugin.json` on `0.1.22+codex.20260609022301`; `scripts/install-cli.ps1` remains the Windows reinstall path for keeping `@veewo/claw` aligned.
