@@ -660,7 +660,21 @@ test("cli context auto-corrects malformed existing .claw state", () => {
   assert.equal(projectConfig.maxTasksToKeep, 99);
   assert.equal(projectConfig.externalTruthSkill, null);
   assert.equal(projectConfig.externalAdrSkill, null);
-  assert.deepEqual(projectConfig.memory, { externalDocPaths: [], embedding: null });
+  assert.deepEqual(projectConfig.memory, {
+    externalDocPaths: [],
+    embedding: {
+      provider: "local",
+      model: "Snowflake/snowflake-arctic-embed-xs",
+      local: {
+        modelCacheDir: ".claw/models",
+      },
+      store: {
+        vector: {
+          enabled: true,
+        },
+      },
+    },
+  });
 });
 
 test("cli check auto-corrects project.json into explicit protocol fields", () => {
@@ -695,7 +709,21 @@ test("cli check auto-corrects project.json into explicit protocol fields", () =>
   assert.equal(projectConfig.externalTruthSkill, null);
   assert.equal(projectConfig.externalAdrSkill, null);
   assert.deepEqual(projectConfig.contextPaths, []);
-  assert.deepEqual(projectConfig.memory, { externalDocPaths: [], embedding: null });
+  assert.deepEqual(projectConfig.memory, {
+    externalDocPaths: [],
+    embedding: {
+      provider: "local",
+      model: "Snowflake/snowflake-arctic-embed-xs",
+      local: {
+        modelCacheDir: ".claw/models",
+      },
+      store: {
+        vector: {
+          enabled: true,
+        },
+      },
+    },
+  });
   assert.deepEqual(projectConfig.gitnexus, { enabled: false });
 });
 

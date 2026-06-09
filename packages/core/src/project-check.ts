@@ -11,6 +11,8 @@ import type {
 } from "./types.js";
 
 const DEFAULT_MAX_TASKS_TO_KEEP = 99;
+const DEFAULT_EMBEDDING_MODEL = "Snowflake/snowflake-arctic-embed-xs";
+const DEFAULT_EMBEDDING_CACHE_DIR = ".claw/models";
 
 export function checkProjectProtocol(cwd: string): ProjectProtocolCheckResult {
   const projectRoot = findRequiredProjectRoot(cwd);
@@ -310,7 +312,18 @@ function normalizeOptionalSkill(value: unknown): string | null {
 function normalizeMemoryEmbeddingConfig(value: unknown): MemoryEmbeddingConfig | null {
   const embedding = asObject(value);
   if (!embedding) {
-    return null;
+    return {
+      provider: "local",
+      model: DEFAULT_EMBEDDING_MODEL,
+      local: {
+        modelCacheDir: DEFAULT_EMBEDDING_CACHE_DIR,
+      },
+      store: {
+        vector: {
+          enabled: true,
+        },
+      },
+    };
   }
 
   const remote = asObject(embedding.remote);
@@ -320,7 +333,21 @@ function normalizeMemoryEmbeddingConfig(value: unknown): MemoryEmbeddingConfig |
   const provider = embedding.provider === "local" ? "local" : "openai";
   const model = readNonEmptyString(embedding.model);
   if (!model) {
-    return null;
+    return {
+      provider: "local",
+      model: DEFAULT_EMBEDDING_MODEL,
+      local: {
+        modelCacheDir: DEFAULT_EMBEDDING_CACHE_DIR,
+      },
+      store: {
+        vector: {
+          enabled: typeof vector?.enabled === "boolean" ? vector.enabled : true,
+          ...(readNonEmptyString(vector?.extensionPath)
+            ? { extensionPath: readNonEmptyString(vector?.extensionPath) }
+            : {}),
+        },
+      },
+    };
   }
 
   return {

@@ -18,7 +18,7 @@
   - directory paths like `docs/`
 - External memory paths only index `.md` files from the configured path set.
 - `memory.embedding` now accepts the OpenClaw-compatible subset used by `openclaw-dev`: `provider` (`openai|local`), `model`, `remote.apiKeyEnvVar`, `remote.baseUrl`, `local.modelPath`, `local.modelCacheDir`, `outputDimensionality`, `store.vector.enabled`, and `store.vector.extensionPath`.
-- `claw init` and protocol normalization write `memory.embedding = null` by default.
+- `claw init` and protocol normalization now auto-fill a default local embedding config when `memory.embedding` is missing, using `Snowflake/snowflake-arctic-embed-xs`, `.claw/models`, and `store.vector.enabled = true`.
 - `buildMemoryIndex` returns the project embedding config and persists `scope`, `indexed_at`, and `embedding_config` into sqlite `index_metadata` so future embedding/vector initialization can reuse stable metadata.
 - `claw search index --refresh` 不再默认全量清空 project sqlite index；已有 sqlite store 会被当作增量同步目标。
 - project sync 会为 `docs` 记录 `content_hash`，未变更 markdown 文档会复用既有 `docs` row 与 `doc_embeddings`；只有内容变更的文档才会替换对应 `docs` / `docs_fts` / `doc_embeddings` 并重算 embeddings。
@@ -27,6 +27,8 @@
 - `claw search index --refresh` 现在生成并同步 project-scoped vectors from `memory.embedding` and stores `vectorIndex` metadata in sqlite alongside the embeddings.
 - The local embedding provider follows the GitNexus-style setup: default model `Snowflake/snowflake-arctic-embed-xs`, 384 dimensions, and a Windows DirectML-first path that falls back to CPU when DirectML fails.
 - `packages/core/src/embedding-worker.ts` is the dedicated worker that builds the embedding outputs.
+- `claw context` / protocol repair therefore upgrades older `.claw/project.json` files in-place instead of leaving them on a no-embedding schema.
+- In the `claw-kit` repo itself, `memory.externalDocPaths` is intentionally empty, so project recall stays on `.claw` memory/truth Markdown and does not pull `docs/` into the search surface.
 - project-level `claw search --query "<topic>"` 除了 query embedding 之外，现在还会先构造 project keyword search plan。
 - 对多词 query，planner 会同时保留整句 multi-term `MATCH` 和逐词 fallback query，而不是只把原始 query 直接喂给一次 FTS。
 - 这条 planner 对中文多词查询同样有效；例如 `搜打撤 哈基宝` 会展开为 exact multi-term query 加单词级 fallback，从而避免 recall 过度依赖“所有词必须同条命中”。

@@ -8,6 +8,8 @@
 - `claw search --query` stays compatible, and `claw search index --refresh` is the explicit project index refresh entrypoint that returns `search.index.refresh`.
 - `claw search` is project-scoped document recall for project memory, truth, ADR, and external docs; code investigation still belongs to `researcher` plus GitNexus, not `claw search`.
 - `claw search` only indexes configured external memory paths for `.md` files, and `claw search index --refresh` now materializes project-scoped vector data plus `vectorIndex` metadata from `memory.embedding`.
+- `claw init` and `claw context` protocol repair now auto-fill a default local embedding config into older `.claw/project.json` files, using `Snowflake/snowflake-arctic-embed-xs`, `.claw/models`, and `store.vector.enabled = true`.
+- In the `claw-kit` repo itself, `memory.externalDocPaths` stays empty, so local project recall excludes the repository `docs/` folder and indexes only `.claw` memory/truth/ADR Markdown.
 - `claw search index --refresh` 现在把当前项目的 sqlite memory index 视为增量同步目标，而不是每次都全量删库重建。
 - project memory sync 会记录 `docs.content_hash`；未变更的 markdown 文档会复用原有 sqlite `docs` row 与 embeddings，变更文档只重算并替换自身记录，被删除的 markdown 文档会从 `docs`、`docs_fts`、`doc_embeddings` 清理。
 - `memory.embedding` 配置变化会触发整套向量重建，保证向量数据与 `vectorIndex` / embedding metadata 保持一致。

@@ -32,6 +32,8 @@ Accepted
 - 如果当前项目缺少 refreshed vector index，project search 返回 `MEMORY_VECTOR_INDEX_REQUIRED`，而不是 silent fallback。
 - project memory refresh 从 `.claw/project.json` 读取 embedding 配置，同时支持 OpenAI embeddings 和 GitNexus-inspired local embedding provider。
 - 当选择 local provider 时，默认模型与运行策略固定为 `Snowflake/snowflake-arctic-embed-xs`、`384` 维、Windows `DirectML` 优先且回退到 CPU。
+- `claw context` / protocol auto-repair must backfill that default local embedding config into older project schemas instead of leaving `memory.embedding` empty.
+- `claw-kit` 自身项目不把仓库 `docs/` 目录加入 `memory.externalDocPaths`，这样 `claw search` 继续面向 `.claw` memory / truth / ADR 文档，而不是把实现文档目录默认并入 recall。
 - `memory.externalDocPaths` / `claw search` external memory paths 只纳入 `.md` 文件，保持 `claw search` 是文档 recall，而不是代码搜索。
 
 ## Consequences
@@ -39,6 +41,7 @@ Accepted
 - 项目 refresh 成为可重复执行的同步操作，未变更文档不会重复写入或重复生成向量。
 - 文档变更、删除和 embedding 配置漂移都会被显式收敛到 sqlite 状态同步里，减少 metadata 与向量内容不一致的问题。
 - `claw search` 的 recall 面继续保持项目级文档语义，不会因为外部路径或 `FTS` 回退而漂移成通用代码搜索。
+- 旧项目在第一次运行 `claw context`、`claw check` 或其他协议修复入口后，会被自动提升到可索引的默认 local embedding schema，不需要手工补 `memory.embedding`。
 - 查询阶段与索引阶段共享同一套 vector contract，缺少 refreshed vectors 会显式失败，而不是悄悄降级成较弱的文本检索。
 - 中文多词检索不再被单次严格 `MATCH` 语义卡住，keyword planner 可以更稳定地为 hybrid fusion 提供候选集。
 - 既有 `.claw` 项目保持同一套 sqlite backend，不需要引入第二套索引存储。

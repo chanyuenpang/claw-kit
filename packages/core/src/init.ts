@@ -5,6 +5,9 @@ import { normalizeTaskName } from "./paths.js";
 import { ensureUtf8Bom } from "./text-encoding.js";
 import type { ProjectConfig } from "./types.js";
 
+const DEFAULT_EMBEDDING_MODEL = "Snowflake/snowflake-arctic-embed-xs";
+const DEFAULT_EMBEDDING_CACHE_DIR = ".claw/models";
+
 export type InitProjectInput = {
   cwd: string;
   projectId?: string;
@@ -58,7 +61,18 @@ export function initProject(input: InitProjectInput): InitProjectResult {
     contextPaths: [...(input.contextPaths ?? [])],
     memory: {
       externalDocPaths: [...(input.externalDocPaths ?? [])],
-      embedding: null,
+      embedding: {
+        provider: "local",
+        model: DEFAULT_EMBEDDING_MODEL,
+        local: {
+          modelCacheDir: DEFAULT_EMBEDDING_CACHE_DIR,
+        },
+        store: {
+          vector: {
+            enabled: true,
+          },
+        },
+      },
     },
     gitnexus: {
       enabled: input.gitnexusEnabled ?? false,

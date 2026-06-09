@@ -67,7 +67,18 @@ test("initProject creates a minimal .claw project scaffold", () => {
     contextPaths: string[];
     memory: {
       externalDocPaths: string[];
-      embedding: null;
+      embedding: {
+        provider: string;
+        model: string;
+        local: {
+          modelCacheDir: string;
+        };
+        store: {
+          vector: {
+            enabled: boolean;
+          };
+        };
+      };
     };
     gitnexus: { enabled: boolean };
   };
@@ -86,7 +97,18 @@ test("initProject creates a minimal .claw project scaffold", () => {
     contextPaths: ["docs/project-guide.md"],
     memory: {
       externalDocPaths: ["docs/", "README.md"],
-      embedding: null,
+      embedding: {
+        provider: "local",
+        model: "Snowflake/snowflake-arctic-embed-xs",
+        local: {
+          modelCacheDir: ".claw/models",
+        },
+        store: {
+          vector: {
+            enabled: true,
+          },
+        },
+      },
     },
     gitnexus: {
       enabled: true,
@@ -446,7 +468,21 @@ test("process entry returns the first task and task completion returns truth-wri
         externalTruthSkill: "external-truth-writer",
         externalAdrSkill: null,
         contextPaths: [],
-        memory: { externalDocPaths: [], embedding: null },
+        memory: {
+          externalDocPaths: [],
+          embedding: {
+            provider: "local",
+            model: "Snowflake/snowflake-arctic-embed-xs",
+            local: {
+              modelCacheDir: ".claw/models",
+            },
+            store: {
+              vector: {
+                enabled: true,
+              },
+            },
+          },
+        },
         gitnexus: { enabled: false },
       },
       null,
@@ -786,7 +822,18 @@ test("project search rejects queries when no vector index is available", () => {
         id: "memory-search-no-vectors",
         memory: {
           externalDocPaths: [],
-          embedding: null,
+          embedding: {
+            provider: "local",
+            model: "Snowflake/snowflake-arctic-embed-xs",
+            local: {
+              modelCacheDir: ".claw/models",
+            },
+            store: {
+              vector: {
+                enabled: true,
+              },
+            },
+          },
         },
       },
       null,
@@ -1233,7 +1280,21 @@ test("workflow guidance uses external writer skills from project config", async 
         externalTruthSkill: "external-truth-writer",
         externalAdrSkill: "external-adr-writer",
         contextPaths: [],
-        memory: { externalDocPaths: [], embedding: null },
+        memory: {
+          externalDocPaths: [],
+          embedding: {
+            provider: "local",
+            model: "Snowflake/snowflake-arctic-embed-xs",
+            local: {
+              modelCacheDir: ".claw/models",
+            },
+            store: {
+              vector: {
+                enabled: true,
+              },
+            },
+          },
+        },
         gitnexus: { enabled: false },
       },
       null,
