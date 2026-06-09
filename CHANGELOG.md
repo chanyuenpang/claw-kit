@@ -2,6 +2,17 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.1.24] - 2026-06-09
+
+### Fixed
+
+- project memory refresh now backfills vectors for existing docs when sqlite `docs` rows remain but `doc_embeddings` are missing
+- `claw search index --refresh` continues to fail when embedding generation fails, instead of degrading to text-only success
+
+### Added
+
+- regression coverage for the "existing docs plus missing embeddings" repair path
+
 ## [0.1.23] - 2026-06-09
 
 ### Added

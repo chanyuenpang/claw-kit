@@ -1580,6 +1580,97 @@ test("project memory refresh incrementally reuses unchanged docs and syncs chang
   }
 });
 
+test("project memory refresh backfills vectors for existing docs when embeddings are missing", { concurrency: false }, () => {
+  const root = createFixture("memory-backfill-missing-embeddings");
+  fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify(
+      {
+        id: "memory-backfill-missing-embeddings",
+        name: "Memory Backfill Missing Embeddings",
+        maxTasksToKeep: 99,
+        externalTruthSkill: null,
+        externalAdrSkill: null,
+        contextPaths: [],
+        memory: {
+          externalDocPaths: ["docs/"],
+          embedding: {
+            provider: "local",
+            model: "Snowflake/snowflake-arctic-embed-xs",
+            local: {
+              modelCacheDir: path.join(root, ".model-cache"),
+            },
+          },
+        },
+        gitnexus: {
+          enabled: false,
+        },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project alpha memory\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "shared beta truth\n", "utf-8");
+  fs.writeFileSync(path.join(root, "docs", "guide.md"), "gamma markdown doc\n", "utf-8");
+
+  const previousMockEnv = process.env.CLAW_EMBEDDING_MOCK;
+  process.env.CLAW_EMBEDDING_MOCK = "1";
+
+  try {
+    const firstIndex = buildMemoryIndex({ cwd: root });
+    assert.deepEqual(firstIndex.vectorIndex, {
+      enabled: true,
+      provider: "local",
+      model: "Snowflake/snowflake-arctic-embed-xs",
+      dimensions: 384,
+      chunkCount: 3,
+    });
+
+    const db = new DatabaseSync(firstIndex.storePath);
+    try {
+      db.exec("DELETE FROM doc_embeddings;");
+      db.prepare("DELETE FROM index_metadata WHERE key = ?").run("vector_index");
+    } finally {
+      db.close();
+    }
+
+    const repairedIndex = buildMemoryIndex({ cwd: root });
+    assert.deepEqual(repairedIndex.vectorIndex, {
+      enabled: true,
+      provider: "local",
+      model: "Snowflake/snowflake-arctic-embed-xs",
+      dimensions: 384,
+      chunkCount: 3,
+    });
+    assert.equal(repairedIndex.processedFileCount, 0);
+
+    const repairedDb = new DatabaseSync(repairedIndex.storePath);
+    try {
+      const vectors = repairedDb
+        .prepare("SELECT COUNT(*) AS count FROM doc_embeddings")
+        .get() as { count: number };
+      const metadata = repairedDb
+        .prepare("SELECT value FROM index_metadata WHERE key = ?")
+        .get("vector_index") as { value: string } | undefined;
+
+      assert.equal(vectors.count, 3);
+      assert.ok(metadata);
+      assert.deepEqual(JSON.parse(metadata.value), repairedIndex.vectorIndex);
+    } finally {
+      repairedDb.close();
+    }
+  } finally {
+    if (previousMockEnv === undefined) {
+      delete process.env.CLAW_EMBEDDING_MOCK;
+    } else {
+      process.env.CLAW_EMBEDDING_MOCK = previousMockEnv;
+    }
+  }
+});
+
 test("project memory refresh defaults to processing changed files in 100-file batches", { concurrency: false }, () => {
   const root = createFixture("memory-default-file-batches");
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });

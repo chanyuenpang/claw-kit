@@ -18,6 +18,7 @@
 - In the `claw-kit` repo itself, `memory.externalDocPaths` stays empty, so local project recall excludes the repository `docs/` folder and indexes only `.claw` memory/truth/ADR Markdown.
 - `claw search index --refresh` 现在把当前项目的 sqlite memory index 视为增量同步目标，而不是每次都全量删库重建。
 - project memory sync 会记录 `docs.content_hash`；未变更的 markdown 文档会复用原有 sqlite `docs` row 与 embeddings，变更文档只重算并替换自身记录，被删除的 markdown 文档会从 `docs`、`docs_fts`、`doc_embeddings` 清理。
+- 对于历史上仍保留 `docs` 行、但缺少 `doc_embeddings` 的旧数据，refresh 会在 `insertDocs` 之后继续扫描并回填缺失向量，避免 `vector_index.chunkCount` 因旧记录漏索引而停在 0。
 - `memory.embedding` 配置变化会触发整套向量重建，保证向量数据与 `vectorIndex` / embedding metadata 保持一致。
 - Project-level `claw search --query` now generates a real query embedding and runs a trimmed hybrid recall that fuses vector candidates with FTS results.
 - project-level `claw search --query` 现在有显式 keyword search plan：多词查询会同时保留整句 multi-term query 和逐词 fallback query，再把这些 keyword candidates 与现有 vector recall 融合。
@@ -40,5 +41,5 @@
 - README、`packages/cli/README.md` 与 `packages/core/test/core.test.ts` 已覆盖 incremental refresh 契约。
 - `packages/core/test/core.test.ts` 已新增 query planner 语义和中文多词 project recall 场景覆盖；本轮校验通过 `npm test -- packages/core/test/core.test.ts` 与 `npm run check`。
 - search candidate recall 这一轮的验证证据包括：`packages/core/test/core.test.ts` 50/50 通过、`npm run check` 通过，以及在 `NeonSpark` 的 live search 中，多词中文 query 不再让 `contents.md` 压过聚焦文档， conversational `搜打撤` 查询继续优先命中 system design 类文档。
-- Current release/package state tracks `0.1.22` on `package.json`, `packages/core/package.json`, and `packages/cli/package.json`, with `packages/codex-adapter/.codex-plugin/plugin.json` on `0.1.22+codex.20260609022301`; `scripts/install-cli.ps1` remains the Windows reinstall path for keeping `@veewo/claw` aligned.
+- Current release/package state tracks `0.1.24` on `package.json`, `packages/core/package.json`, and `packages/cli/package.json`, with `packages/codex-adapter/.codex-plugin/plugin.json` on `0.1.24+codex.20260609202003`; `scripts/install-cli.ps1` remains the Windows reinstall path for keeping `@veewo/claw` aligned, and the global CLI now reports `@veewo/claw@0.1.24` after reinstall.
 - `packages/core/src/memory.ts` 保持严格契约：project memory refresh 如果 embedding 生成失败就必须失败，不能降级为 text-only indexing；project search 继续保持 vector-required 契约，缺少 refreshed vector index 时返回 `MEMORY_VECTOR_INDEX_REQUIRED`。

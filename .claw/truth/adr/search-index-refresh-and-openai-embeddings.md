@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-现有 ADR 已经确认 `claw search` 是 Codex-facing 的文档 recall 入口，`.claw/project.json` 是 project memory 配置的 canonical 来源。后续两轮 completed plan 又把 project memory refresh 的长期契约补充完整了：
+现有 ADR 已经确认 `claw search` 是 Codex-facing 的文档 recall 入口，`.claw/project.json` 是 project memory 配置的 canonical 来源。后续几轮 completed plan 进一步把 project memory refresh 的长期契约补充完整了，尤其是这次 embedding 失败即 refresh 失败的约束：
 
 - 手动刷新继续暴露为项目级 `claw search index --refresh`
 - `claw search` 的 external memory paths 只索引 `.md` 文件，不把 recall 面扩成代码搜索
@@ -43,6 +43,7 @@ Accepted
 - local provider 的设备选择与 fallback 现在由 `packages/core/src/embedding-local.ts` 统一执行：`CLAW_EMBEDDING_LOCAL_DEVICE` / `CLAW_EMBEDDING_DEVICE` 优先于 `.claw/project.json` 的 `memory.embedding.local.device`，再退回平台默认；`dml` / `cuda` 都会在首轮真实推理失败后重试 `cpu`。
 - 这让 CPU rescue refresh 同时支持一次性环境覆盖和稳定的 per-project schema 配置。
 - 这条 rescue path 只改变本地执行设备和重试策略，不改变 `claw search index --refresh` 的检索契约，也不扩大索引的文档面。
+- 对于历史上仍保留 `docs` 行、但缺少 `doc_embeddings` 的项目数据，refresh 会在 `insertDocs` 之后继续扫描并回填缺失向量，而不是把这些旧记录当成已完成索引跳过。
 - 如果 embedding generation 最终仍然失败，`claw search index --refresh` 就必须失败；不允许降级成 text-only indexing 来伪装 refresh 成功。
 - local embedding inference 现在默认在单个 worker/model session 内分批执行，避免把整个 text set 塞进一次 ONNX 调用。
 - 大量向量结果在 worker 侧改为写入临时文件，再通过轻量元数据经由 stdout 返回，避免巨大的 IPC payload。
@@ -56,10 +57,11 @@ Accepted
 
 - 项目 refresh 成为可重复执行的同步操作，未变更文档不会重复写入或重复生成向量。
 - 文档变更、删除和 embedding 配置漂移都会被显式收敛到 sqlite 状态同步里，减少 metadata 与向量内容不一致的问题。
+- 历史旧数据如果只剩 `docs` row 但缺少 `doc_embeddings`，refresh 也会把它们纳入补写范围，避免向量索引因为旧记录漏扫而不完整。
 - `claw search` 的 recall 面继续保持项目级文档语义，不会因为外部路径或 `FTS` 回退而漂移成通用代码搜索。
 - 旧项目在第一次运行 `claw context`、`claw check` 或其他协议修复入口后，会被自动提升到可索引的默认 local embedding schema，不需要手工补 `memory.embedding`。
 - 查询阶段与索引阶段共享同一套 vector contract，缺少 refreshed vectors 会显式失败，而不是悄悄降级成较弱的文本检索。
-- refresh failure 会直接暴露 embedding/provider/runtime 问题；调用方必须修复环境或改配置，而不是依赖 text-only refresh 继续前进。
+- refresh failure 会直接暴露 embedding/provider/runtime 问题；调用方必须修复环境或改配置，然后重新执行显式 refresh，而不是依赖 text-only refresh 继续前进。
 - 中文多词检索不再被单次严格 `MATCH` 语义卡住，keyword planner 可以更稳定地为 hybrid fusion 提供候选集。
 - 多条 recall routes 先扩充候选池、再统一重排，减少单一路径偏置，让项目搜索更接近成熟文档 recall 系统的结果质量。
 - `claw-kit` 仍然只迁移最小可维护子集：项目文档候选召回与重排增强进入本地实现，OpenClaw 更广的 memory system 边界继续留在范围外。
@@ -89,6 +91,7 @@ Accepted
 - `content_hash`
 - `docs_fts`
 - `doc_embeddings`
+- `listDocsMissingEmbeddings`
 - `memory.embedding`
 - `vector-required`
 - `MEMORY_VECTOR_INDEX_REQUIRED`

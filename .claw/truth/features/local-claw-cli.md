@@ -21,6 +21,7 @@ Accepted working truth for local development on this machine.
 - `claw search index --refresh` is the explicit project index refresh entrypoint and returns `search.index.refresh`.
 - `claw search index --refresh` 现在会对当前项目的 markdown recall index 做增量同步，而不是每次都全量重建 sqlite store。
 - 未变更文档会复用既有 sqlite rows 与 embeddings；变更文档只替换自身 `docs` / `docs_fts` / `doc_embeddings` 记录并重算 embeddings；删除文档会被清理。
+- 对于已经存在 `docs` 记录但缺少 `doc_embeddings` 的旧数据，`packages/core/src/memory.ts` 里的 `syncProjectMemoryIndex` 会在 `insertDocs` 后再用 `listDocsMissingEmbeddings(db)` + `indexDocEmbeddings` 补齐向量，避免 refresh 只看见 docs 行就误报完成。
 - `memory.embedding` 配置变更时，`claw search index --refresh` 会重建全部向量，保证 project search metadata 一致。
 - `claw search index --refresh` now builds project-scoped vector data from `memory.embedding` and records `vectorIndex` metadata in the project index.
 - When `memory.embedding.provider` is `local`, the CLI follows the GitNexus-style embedding setup with `Snowflake/snowflake-arctic-embed-xs`, 384 dimensions, and Windows DirectML-to-CPU fallback.

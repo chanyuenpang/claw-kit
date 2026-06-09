@@ -11,18 +11,18 @@
 - `@veewo/claw-core` 提供核心 `.claw` harness 语义。
 - `@veewo/claw` 提供可发布的 CLI 入口，并依赖 `@veewo/claw-core`。
 
-当前版本线已经同步到 `0.1.22`：
+当前版本线已经同步到 `0.1.24`：
 
-- 根 `package.json` 版本是 `0.1.22`。
-- `packages/core/package.json` 版本是 `0.1.22`。
-- `packages/cli/package.json` 版本是 `0.1.22`。
-- `packages/codex-adapter/.codex-plugin/plugin.json` 使用 `0.1.22+codex.20260609022301` 作为适配器版本号。
+- 根 `package.json` 版本是 `0.1.24`。
+- `packages/core/package.json` 版本是 `0.1.24`。
+- `packages/cli/package.json` 版本是 `0.1.24`。
+- `packages/codex-adapter/.codex-plugin/plugin.json` 使用 `0.1.24+codex.20260609202003` 作为适配器版本号。
 
 本地安装和刷新仍然遵循同一条稳定路径：
 
 - `scripts/install-cli.ps1` 是远程 Windows 机器的推荐安装入口，会清理旧的全局 `@veewo/claw` 链接并重新安装当前版本。
-- 这次刷新后，`npm install -g @veewo/claw` 对应的全局 CLI 已经回到 `@veewo/claw@0.1.22`。
-- 刷新 Codex 插件缓存时，`packages/codex-adapter/.codex-plugin/`、`hooks/`、`references/`、`scripts/`、`skills/` 和 `package.json` 需要一起同步，避免缓存里的 `plugin.json`、`hooks.json`、提示词和版本信息滞后。
+- 这次执行 `powershell -ExecutionPolicy Bypass -File .\scripts\install-cli.ps1` 之后，`npm ls -g` 已确认全局 CLI 回到了 `@veewo/claw@0.1.24`。
+- 本地 Codex 插件缓存已同步到 `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.24+codex.20260609202003`，其中 `.codex-plugin`、`hooks`、`references`、`scripts`、`skills` 和 `package.json` 都已一并复制，避免缓存里的版本、提示词和钩子滞后。
 
 ## 相关代码
 

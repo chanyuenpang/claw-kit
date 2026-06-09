@@ -171,9 +171,9 @@ function syncProjectMemoryIndex(
     if (requiresVectorReset) {
       db.exec("DELETE FROM doc_embeddings;");
     }
-    const indexedDocs = insertDocs(db, limitedDocsToInsert);
+    insertDocs(db, limitedDocsToInsert);
     if (shouldIndexVectors && embedding) {
-      indexDocEmbeddings(db, indexedDocs, embedding);
+      indexDocEmbeddings(db, listDocsMissingEmbeddings(db), embedding);
     }
     db.exec("COMMIT");
   } catch (error) {
@@ -568,6 +568,31 @@ function indexDocEmbeddings(
       JSON.stringify(output.vectors[index] ?? []),
     );
   });
+}
+
+function listDocsMissingEmbeddings(
+  db: DatabaseSync,
+): Array<{ docId: number; sourcePath: string; kind: string; content: string }> {
+  return db
+    .prepare(
+      [
+        "SELECT d.id AS doc_id, d.source_path, d.kind, d.content",
+        "FROM docs d",
+        "LEFT JOIN doc_embeddings e ON e.doc_id = d.id",
+        "GROUP BY d.id, d.source_path, d.kind, d.content",
+        "HAVING COUNT(e.doc_id) = 0",
+      ].join(" "),
+    )
+    .all()
+    .map((row) => {
+      const typed = row as { doc_id: number; source_path: string; kind: string; content: string };
+      return {
+        docId: typed.doc_id,
+        sourcePath: typed.source_path,
+        kind: typed.kind,
+        content: typed.content,
+      };
+    });
 }
 
 function summarizeVectorIndex(

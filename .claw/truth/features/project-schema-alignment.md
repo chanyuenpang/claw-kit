@@ -23,6 +23,7 @@
 - `buildMemoryIndex` returns the project embedding config and persists `scope`, `indexed_at`, and `embedding_config` into sqlite `index_metadata` so future embedding/vector initialization can reuse stable metadata.
 - `claw search index --refresh` 不再默认全量清空 project sqlite index；已有 sqlite store 会被当作增量同步目标。
 - project sync 会为 `docs` 记录 `content_hash`，未变更 markdown 文档会复用既有 `docs` row 与 `doc_embeddings`；只有内容变更的文档才会替换对应 `docs` / `docs_fts` / `doc_embeddings` 并重算 embeddings。
+- 如果 `docs` 记录已经存在但 `doc_embeddings` 为空，`packages/core/src/memory.ts` 会在 `insertDocs` 之后再扫描 `listDocsMissingEmbeddings(db)`，并调用 `indexDocEmbeddings` 回填这些旧文档的向量。
 - 当 markdown 文档已从 recall surface 删除时，refresh 会把对应记录从 `docs`、`docs_fts`、`doc_embeddings` 清理掉。
 - 当 `memory.embedding` 配置变化时，refresh 会重置并重建全部向量，确保 `vectorIndex`、`embedding_config` 和实际 embeddings 保持一致。
 - `claw search index --refresh` 现在生成并同步 project-scoped vectors from `memory.embedding` and stores `vectorIndex` metadata in sqlite alongside the embeddings.
