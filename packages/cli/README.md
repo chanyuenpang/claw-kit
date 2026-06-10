@@ -18,7 +18,7 @@ Then run:
 ```bash
 claw init
 claw search index --refresh
-claw search --query "existing truth or ADR topic"
+claw search "existing truth or ADR topic"
 claw plan write --title "My task" --goal "Define the first task"
 ```
 
@@ -41,7 +41,7 @@ That first refresh creates the project-local sqlite recall store at `.claw/memor
 
 `claw search index --refresh` supports local semantic indexing with a GitNexus-style transformers backend when `.claw/project.json` sets `memory.embedding.provider` to `local`. Local embedding execution now batches inference inside a single worker/model session by default, and you can still force CPU rescue refreshes with `memory.embedding.local.device = cpu` or `CLAW_EMBEDDING_LOCAL_DEVICE=cpu`.
 
-`claw search --query ...` expects that refreshed vector index to exist. If the project has no vector index yet, the command fails until you configure `memory.embedding` and run `claw search index --refresh`.
+`claw search ...` accepts either `claw search "topic"` or `claw search --query "topic"`, and expects that refreshed vector index to exist. If the project has no vector index yet, the command fails until you configure `memory.embedding` and run `claw search index --refresh`.
 
 Repository:
 

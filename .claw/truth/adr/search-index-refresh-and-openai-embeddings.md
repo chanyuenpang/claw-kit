@@ -12,6 +12,7 @@ Accepted
 - `claw search` 的 external memory paths 只索引 `.md` 文件，不把 recall 面扩成代码搜索
 - project memory refresh 既支持 OpenAI embeddings，也支持 GitNexus-inspired 的 local embedding provider
 - local provider 需要稳定的默认模型与运行策略，避免每个项目各自漂移
+- 默认 local embedding contract 需要跟随默认模型一起演进，而不是把所有 local 模型都硬绑到同一个固定维度
 - refresh 不再每次全量重建 sqlite，而是参考 `openclaw-dev:src/agents/project-memory-bootstrap.ts` 的成熟 bootstrap / refresh 语义，在 `claw-kit` 中做裁剪式 sqlite 增量同步
 - project-level `claw search --query` 现在也消费 refreshed vectors，并参考 `openclaw-dev` 的 hybrid query 设计迁移最小可用子集
 - 多词中文 recall 的改进继续参考 `openclaw-dev` 的 memory search 设计，但核心是 query planner、keyword recall 与 vector fusion，而不是更换 embedding 路线
@@ -39,7 +40,11 @@ Accepted
 - 如果当前项目缺少 refreshed vector index，project search 返回 `MEMORY_VECTOR_INDEX_REQUIRED`，而不是 silent fallback。
 - project-level `claw search --query` 不负责在缺少 index 时隐式触发一次 refresh；项目搜索必须先有显式的 `claw search index --refresh` 结果。
 - project memory refresh 从 `.claw/project.json` 读取 embedding 配置，同时支持 OpenAI embeddings 和 GitNexus-inspired local embedding provider。
-- 当选择 local provider 时，默认模型与运行策略固定为 `Snowflake/snowflake-arctic-embed-xs`、`384` 维、Windows `DirectML` 优先且回退到 CPU。
+- 当选择 local provider 时，默认模型与运行策略固定为 `Snowflake/snowflake-arctic-embed-m-v2.0`、Windows `DirectML` 优先且回退到 CPU。
+- local provider 的默认维度改为 model-aware contract，而不是“local 一律固定同一个维度”：
+- 默认 `Snowflake/snowflake-arctic-embed-m-v2.0` 解析为 `768` 维
+- 显式 legacy `Snowflake/snowflake-arctic-embed-xs` 继续默认解析为 `384` 维，保持兼容
+- 显式 `memory.embedding.outputDimensionality` 继续是最高优先级 override
 - local provider 的设备选择与 fallback 现在由 `packages/core/src/embedding-local.ts` 统一执行：`CLAW_EMBEDDING_LOCAL_DEVICE` / `CLAW_EMBEDDING_DEVICE` 优先于 `.claw/project.json` 的 `memory.embedding.local.device`，再退回平台默认；`dml` / `cuda` 都会在首轮真实推理失败后重试 `cpu`。
 - 这让 CPU rescue refresh 同时支持一次性环境覆盖和稳定的 per-project schema 配置。
 - 这条 rescue path 只改变本地执行设备和重试策略，不改变 `claw search index --refresh` 的检索契约，也不扩大索引的文档面。
@@ -60,12 +65,14 @@ Accepted
 - 历史旧数据如果只剩 `docs` row 但缺少 `doc_embeddings`，refresh 也会把它们纳入补写范围，避免向量索引因为旧记录漏扫而不完整。
 - `claw search` 的 recall 面继续保持项目级文档语义，不会因为外部路径或 `FTS` 回退而漂移成通用代码搜索。
 - 旧项目在第一次运行 `claw context`、`claw check` 或其他协议修复入口后，会被自动提升到可索引的默认 local embedding schema，不需要手工补 `memory.embedding`。
+- 新项目与被 protocol auto-repair 修复的旧项目都会默认切到 `Snowflake/snowflake-arctic-embed-m-v2.0`；但已经显式写入 legacy `Snowflake/snowflake-arctic-embed-xs` 或显式 `outputDimensionality` 的项目不会被偷偷改写掉它们的兼容语义。
 - 查询阶段与索引阶段共享同一套 vector contract，缺少 refreshed vectors 会显式失败，而不是悄悄降级成较弱的文本检索。
 - refresh failure 会直接暴露 embedding/provider/runtime 问题；调用方必须修复环境或改配置，然后重新执行显式 refresh，而不是依赖 text-only refresh 继续前进。
 - 中文多词检索不再被单次严格 `MATCH` 语义卡住，keyword planner 可以更稳定地为 hybrid fusion 提供候选集。
 - 多条 recall routes 先扩充候选池、再统一重排，减少单一路径偏置，让项目搜索更接近成熟文档 recall 系统的结果质量。
 - `claw-kit` 仍然只迁移最小可维护子集：项目文档候选召回与重排增强进入本地实现，OpenClaw 更广的 memory system 边界继续留在范围外。
 - 既有 `.claw` 项目保持同一套 sqlite backend，不需要引入第二套索引存储。
+- local 默认模型切到 multilingual `Snowflake/snowflake-arctic-embed-m-v2.0` 后，中文 recall 的 baseline 会更好；代价是默认向量维度与本地推理成本上升到 `768` 维级别，因此 refresh/index metadata 必须和模型默认一起保持一致。
 
 ## Related Code
 
@@ -103,7 +110,10 @@ Accepted
 - `multi-route candidate recall`
 - `unified reranking`
 - `document-signal candidates`
+- `Snowflake/snowflake-arctic-embed-m-v2.0`
 - `Snowflake/snowflake-arctic-embed-xs`
+- `768 dimensions`
+- `outputDimensionality override`
 - `DirectML`
 - `CLAW_EMBEDDING_LOCAL_DEVICE`
 - `CLAW_EMBEDDING_DEVICE`

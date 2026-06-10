@@ -103,7 +103,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
       externalDocPaths: ["docs/", "README.md"],
       embedding: {
         provider: "local",
-        model: "Snowflake/snowflake-arctic-embed-xs",
+        model: "Snowflake/snowflake-arctic-embed-m-v2.0",
         local: {
           modelCacheDir: ".claw/models",
         },
@@ -143,7 +143,10 @@ test("plan write creates task-bound plan and updates activePlan", async () => {
   );
   assert.equal(result.workflowGuidance.goalMode?.allowOverwrite, true);
   assert.ok(result.workflowGuidance.summary.includes("Enter goal mode first"));
-  assert.ok(result.workflowGuidance.nextStep.includes("Enter goal mode"));
+  assert.ok(result.workflowGuidance.summary.includes("Do not wait for extra authorization"));
+  assert.ok(result.workflowGuidance.nextStep.includes("Enter goal mode first"));
+  assert.ok(result.workflowGuidance.nextStep.includes("If this thread already has a goal, update it"));
+  assert.ok(result.workflowGuidance.nextStep.includes("already authorized to use goal mode and delegated subagents"));
   assert.ok(result.workflowGuidance.nextStep.includes("Review whether requirements are clear enough to execute"));
   assert.ok(result.workflowGuidance.nextStep.includes("Fill the `requirements` section"));
   assert.equal(result.workflowGuidance.askUser, undefined);
@@ -176,12 +179,14 @@ test("plan write guidance leaves requirement judgment to the agent", async () =>
   });
 
   assert.equal(result.workflowGuidance.askUser, undefined);
-  assert.ok(result.workflowGuidance.nextStep.includes("Enter goal mode"));
+  assert.ok(result.workflowGuidance.nextStep.includes("Enter goal mode first"));
+  assert.ok(result.workflowGuidance.nextStep.includes("already authorized to use goal mode and delegated subagents"));
   assert.ok(result.workflowGuidance.nextStep.includes("Fill the `requirements` section"));
   assert.ok(result.workflowGuidance.nextStep.includes("If requirements are clear, move into `process.active`"));
   assert.ok(result.workflowGuidance.nextStep.includes("If requirements are not clear, ask the user to clarify the missing scope first"));
   assert.deepEqual(result.workflowGuidance.notes, [
     "Do not start implementation while the plan is still in `prepare.requirements`.",
+    "Use goal mode as the first follow-up after `plan write`, even when the thread does not yet have a goal.",
   ]);
 });
 
@@ -1455,6 +1460,38 @@ test("project memory refresh generates local embedding metadata and vector rows 
     } finally {
       db.close();
     }
+  } finally {
+    if (previousMockEnv === undefined) {
+      delete process.env.CLAW_EMBEDDING_MOCK;
+    } else {
+      process.env.CLAW_EMBEDDING_MOCK = previousMockEnv;
+    }
+  }
+});
+
+test("project memory refresh uses 768 dimensions for the default local embedding model", { concurrency: false }, () => {
+  const root = createEmptyFixture("memory-default-local-embeddings");
+  initProject({
+    cwd: root,
+    projectName: "Memory Default Local Embeddings",
+    externalDocPaths: ["docs/"],
+  });
+  fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+  fs.writeFileSync(path.join(root, "docs", "guide.md"), "default local embedding doc\n", "utf-8");
+
+  const previousMockEnv = process.env.CLAW_EMBEDDING_MOCK;
+  process.env.CLAW_EMBEDDING_MOCK = "1";
+
+  try {
+    const result = buildMemoryIndex({ cwd: root });
+
+    assert.ok(result.embedding);
+    assert.equal(result.embedding.model, "Snowflake/snowflake-arctic-embed-m-v2.0");
+    assert.equal(result.vectorIndex?.enabled, true);
+    assert.equal(result.vectorIndex?.provider, "local");
+    assert.equal(result.vectorIndex?.model, "Snowflake/snowflake-arctic-embed-m-v2.0");
+    assert.equal(result.vectorIndex?.dimensions, 768);
+    assert.ok(Number(result.vectorIndex?.chunkCount) >= 3);
   } finally {
     if (previousMockEnv === undefined) {
       delete process.env.CLAW_EMBEDDING_MOCK;

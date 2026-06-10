@@ -10,10 +10,12 @@ Use this skill when the user asks to search project context, recall prior `.claw
 ## Commands
 
 - Search project context:
+  - `claw search "<text>"`
   - `claw search --query "<text>"`
 - Refresh the project recall index explicitly:
   - `claw search index --refresh`
 - Search truth or ADR context:
+  - `claw search "<truth-or-adr-topic>"`
   - `claw search --query "<truth-or-adr-topic>"`
 
 ## Scope model

@@ -23,7 +23,9 @@ Use this skill when planning or editing execution state in an existing `.claw/` 
 - If task scope is missing, `plan write` is the first harness action.
 - `plan write` is the canonical path for establishing task scope.
 - When using `plan write`, write the task title, goal, tasks, and supporting plan text in the user's preferred language unless the repository has an explicit stronger convention.
-- After `plan write`, read `workflowGuidance.goalMode` and create the thread goal from `workflowGuidance.goalMode.recommendedObjective` using the current host goal surface.
+- After `plan write`, always enter goal mode first.
+- After `plan write`, read `workflowGuidance.goalMode`; if the thread already has a goal, update it from `workflowGuidance.goalMode.recommendedObjective`, otherwise create it from that recommended objective.
+- Treat the current `@claw-kit` thread as already authorized to use goal mode and required delegated subagents. Do not block on extra user authorization for either surface.
 - After `plan write`, treat hook bootstrap as the source of startup recovery; do not insert a separate recovery workflow step.
 - After `plan write`, read `workflowGuidance`, check whether requirements are already clear enough to execute, and use `askUser` only when they are not.
 - Do not start implementation while the plan is still in `prepare.requirements`.

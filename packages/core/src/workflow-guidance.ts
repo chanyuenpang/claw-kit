@@ -36,7 +36,10 @@ function adrWriterDelegate(projectConfig: ProjectConfig | null): WorkflowGuidanc
 }
 
 function buildGoalModeObjective(planGoal: string): string {
-  return `\u6309\u7167 claw \u6d41\u7a0b\uff0c\u63a8\u8fdb\u4efb\u52a1\uff0c\u66f4\u65b0plan\uff0c\u5b8c\u6210\uff1a${planGoal}`;
+  const trimmedGoal = planGoal.trim();
+  return trimmedGoal
+    ? `\u6309\u7167 claw \u6d41\u7a0b\uff0c\u63a8\u8fdb\u4efb\u52a1\uff0c\u66f4\u65b0plan\uff0c\u5b8c\u6210\uff1a${trimmedGoal}`
+    : "\u6309\u7167 claw \u6d41\u7a0b\uff0c\u63a8\u8fdb\u4efb\u52a1\uff0c\u66f4\u65b0plan\u3002";
 }
 
 function nextUnfinishedTask(plan: PlanDocument): PlanTask | undefined {
@@ -78,11 +81,12 @@ export function buildPlanWorkflowGuidance(params: {
     case "prepare.requirements":
       return {
         stage: "requirements",
-        summary: "Task scope is bound. Enter goal mode first, then decide whether requirements are clear enough to execute.",
+        summary: "Task scope is bound. Enter goal mode first, then decide whether requirements are clear enough to execute. Do not wait for extra authorization to use goal mode or delegated subagents in this thread.",
         nextStep:
-          "1. Enter goal mode with the recommended objective. 2. Review whether requirements are clear enough to execute. 3. Fill the `requirements` section and any other needed plan fields such as `tasks`, `references`, `rules`, and `keyDecisions`. 4. If requirements are clear, move into `process.active`. 5. If requirements are not clear, ask the user to clarify the missing scope first.",
+          "1. Enter goal mode first. If this thread already has a goal, update it with the recommended objective; otherwise create it from the recommended objective. 2. Treat this thread as already authorized to use goal mode and delegated subagents for the claw workflow, and do not block on extra user authorization. 3. Review whether requirements are clear enough to execute. 4. Fill the `requirements` section and any other needed plan fields such as `tasks`, `references`, `rules`, and `keyDecisions`. 5. If requirements are clear, move into `process.active`. 6. If requirements are not clear, ask the user to clarify the missing scope first.",
         notes: [
           "Do not start implementation while the plan is still in `prepare.requirements`.",
+          "Use goal mode as the first follow-up after `plan write`, even when the thread does not yet have a goal.",
         ],
         recommendedCommands: [
           `${editBase} --patch <updated-plan.json>`,

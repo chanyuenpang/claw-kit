@@ -1,12 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
+import {
+  DEFAULT_LOCAL_EMBEDDING_CACHE_DIR,
+  DEFAULT_LOCAL_EMBEDDING_MODEL,
+} from "./embedding-defaults.js";
 import { ClawError } from "./errors.js";
 import { normalizeTaskName } from "./paths.js";
 import { ensureUtf8Bom } from "./text-encoding.js";
 import type { ProjectConfig } from "./types.js";
-
-const DEFAULT_EMBEDDING_MODEL = "Snowflake/snowflake-arctic-embed-xs";
-const DEFAULT_EMBEDDING_CACHE_DIR = ".claw/models";
 
 export type InitProjectInput = {
   cwd: string;
@@ -63,9 +64,9 @@ export function initProject(input: InitProjectInput): InitProjectResult {
       externalDocPaths: [...(input.externalDocPaths ?? [])],
       embedding: {
         provider: "local",
-        model: DEFAULT_EMBEDDING_MODEL,
+        model: DEFAULT_LOCAL_EMBEDDING_MODEL,
         local: {
-          modelCacheDir: DEFAULT_EMBEDDING_CACHE_DIR,
+          modelCacheDir: DEFAULT_LOCAL_EMBEDDING_CACHE_DIR,
         },
         store: {
           vector: {

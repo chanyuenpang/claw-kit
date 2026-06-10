@@ -24,9 +24,10 @@ Accepted working truth for local development on this machine.
 - 对于已经存在 `docs` 记录但缺少 `doc_embeddings` 的旧数据，`packages/core/src/memory.ts` 里的 `syncProjectMemoryIndex` 会在 `insertDocs` 后再用 `listDocsMissingEmbeddings(db)` + `indexDocEmbeddings` 补齐向量，避免 refresh 只看见 docs 行就误报完成。
 - `memory.embedding` 配置变更时，`claw search index --refresh` 会重建全部向量，保证 project search metadata 一致。
 - `claw search index --refresh` now builds project-scoped vector data from `memory.embedding` and records `vectorIndex` metadata in the project index.
-- When `memory.embedding.provider` is `local`, the CLI follows the GitNexus-style embedding setup with `Snowflake/snowflake-arctic-embed-xs`, 384 dimensions, and Windows DirectML-to-CPU fallback.
+- When `memory.embedding.provider` is `local`, the CLI follows the GitNexus-style embedding setup with default model `Snowflake/snowflake-arctic-embed-m-v2.0`, model-derived default dimensions, and Windows DirectML-to-CPU fallback.
+- 默认 local 维度现在按模型决定：`Snowflake/snowflake-arctic-embed-m-v2.0` 默认 `768`，显式旧模型 `Snowflake/snowflake-arctic-embed-xs` 继续默认 `384`；显式 `memory.embedding.outputDimensionality` 仍然优先覆盖默认值。
 - 本地 embedding 的救援路径现在有两个显式控制面：`.claw/project.json` 的 `memory.embedding.local.device` 和 shell 覆盖 `CLAW_EMBEDDING_LOCAL_DEVICE`，前者适合稳定的 per-project 配置，后者适合一次性 CPU rescue refresh。
-- 真实验证表明，`CLAW_EMBEDDING_LOCAL_DEVICE=cpu; claw search index --refresh` 可以完成 local rescue refresh，并产出 project-scoped vector metadata（`dimensions: 384`, `chunkCount: 422`）。
+- 真实验证表明，`CLAW_EMBEDDING_LOCAL_DEVICE=cpu; claw search index --refresh` 可以完成 local rescue refresh，并产出 project-scoped vector metadata；默认模型路径的 `dimensions` 现在是 `768`，而显式旧模型 `Snowflake/snowflake-arctic-embed-xs` 仍然保持 `384`。
 - `packages/core/test/core.test.ts` 锁定了默认 refresh 的文件批次节流：每次 refresh 最多处理 100 个新增或变更文件，后续重复 refresh 会自动继续消化剩余 backlog，而不会卡在单次调用边界。
 - `packages/core/test/embedding-local.test.ts` 锁定了 worker 侧推理 batching：大文本集合会被拆进多次 extractor 调用，但输出顺序保持稳定。
 - `packages/core/src/embedding-local.ts` 现在在单个 worker/model session 内按固定批次推进本地推理，而不是把完整文本集一次性塞给单个 ONNX 调用；这个默认 batch size 属于内部实现细节，不暴露成用户配置面。

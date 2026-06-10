@@ -22,6 +22,7 @@ function runClaw(args: string[], cwd: string, env?: NodeJS.ProcessEnv): JsonReco
       ...env,
     },
     encoding: "utf-8",
+    windowsHide: true,
   });
 
   if (result.status !== 0) {
@@ -40,6 +41,7 @@ function runClawExpectFailure(args: string[], cwd: string, env?: NodeJS.ProcessE
       ...env,
     },
     encoding: "utf-8",
+    windowsHide: true,
   });
 
   if (result.status === 0) {
@@ -63,6 +65,7 @@ function runClawRaw(args: string[], cwd: string, env?: NodeJS.ProcessEnv): { sta
       ...env,
     },
     encoding: "utf-8",
+    windowsHide: true,
   });
 
   return {
@@ -225,6 +228,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   assert.equal("askUser" in writeResult, false);
   assert.deepEqual(writeResult.notes, [
     "Do not start implementation while the plan is still in `prepare.requirements`.",
+    "Use goal mode as the first follow-up after `plan write`, even when the thread does not yet have a goal.",
   ]);
   assert.deepEqual(((writeResult.planSchema as JsonRecord).references as JsonRecord[])[0], {
     path: "<string>",
@@ -344,6 +348,60 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   const gitnexusLog = fs.readFileSync(shim.logPath, "utf-8");
   assert.match(gitnexusLog, /analyze --no-ai-context/);
   assert.match(gitnexusLog, /analyze\r?\n?$/m);
+});
+
+test("cli search accepts a positional query for project recall", () => {
+  const root = createFixture("search-positional-query");
+  const env = {
+    CLAW_EMBEDDING_MOCK: "1",
+  };
+
+  runClaw(
+    [
+      "init",
+      "--name",
+      "Search Positional Query",
+      "--ext-path",
+      "docs/",
+    ],
+    root,
+    env,
+  );
+  fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+  fs.writeFileSync(path.join(root, "docs", "guide.md"), "external alpha doc\n", "utf-8");
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify(
+      {
+        id: "search-positional-query",
+        name: "Search Positional Query",
+        maxTasksToKeep: 99,
+        contextPaths: [],
+        memory: {
+          externalDocPaths: ["docs/"],
+          embedding: {
+            provider: "local",
+            model: "Snowflake/snowflake-arctic-embed-xs",
+            local: {
+              modelCacheDir: path.join(root, ".model-cache"),
+            },
+          },
+        },
+        gitnexus: {
+          enabled: false,
+        },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  runClaw(["search", "index", "--refresh"], root, env);
+
+  const searchResult = runClaw(["search", "alpha"], root, env);
+  assert.equal(searchResult.command, "search");
+  assert.equal(searchResult.scope, "project");
+  assert.ok(Array.isArray(searchResult.results));
 });
 
 test("cli plan edit append-tasks auto-assigns ids when omitted", () => {
@@ -594,6 +652,10 @@ test("cli init writes maxTasksToKeep into project.json", () => {
   assert.equal(projectConfig.maxTasksToKeep, 12);
   assert.equal(projectConfig.externalTruthSkill, null);
   assert.equal(projectConfig.externalAdrSkill, null);
+  assert.equal(
+    ((projectConfig.memory as JsonRecord).embedding as JsonRecord).model,
+    "Snowflake/snowflake-arctic-embed-m-v2.0",
+  );
 });
 
 test("cli init writes default maxTasksToKeep into project.json", () => {
@@ -607,6 +669,10 @@ test("cli init writes default maxTasksToKeep into project.json", () => {
   assert.equal(projectConfig.maxTasksToKeep, 99);
   assert.equal(projectConfig.externalTruthSkill, null);
   assert.equal(projectConfig.externalAdrSkill, null);
+  assert.equal(
+    ((projectConfig.memory as JsonRecord).embedding as JsonRecord).model,
+    "Snowflake/snowflake-arctic-embed-m-v2.0",
+  );
 });
 
 test("cli context includes protocolCheck for existing .claw projects", () => {
@@ -622,6 +688,10 @@ test("cli context includes protocolCheck for existing .claw projects", () => {
   assert.equal(result.project !== undefined, true);
   assert.equal(bootstrap.initialized, false);
   assert.equal(bootstrap.corrected, false);
+  assert.equal(
+    ((((result.project as JsonRecord).projectConfig as JsonRecord).memory as JsonRecord).embedding as JsonRecord).model,
+    "Snowflake/snowflake-arctic-embed-m-v2.0",
+  );
 });
 
 test("cli context auto-initializes when .claw is missing", () => {
@@ -636,6 +706,10 @@ test("cli context auto-initializes when .claw is missing", () => {
   assert.equal(protocolCheck.ok, true);
   assert.equal(fs.existsSync(path.join(root, ".claw", "project.json")), true);
   assert.equal((result.project as JsonRecord).projectRoot, root);
+  assert.equal(
+    ((((result.project as JsonRecord).projectConfig as JsonRecord).memory as JsonRecord).embedding as JsonRecord).model,
+    "Snowflake/snowflake-arctic-embed-m-v2.0",
+  );
 });
 
 test("cli context auto-corrects malformed existing .claw state", () => {
@@ -663,7 +737,7 @@ test("cli context auto-corrects malformed existing .claw state", () => {
     externalDocPaths: [],
     embedding: {
       provider: "local",
-      model: "Snowflake/snowflake-arctic-embed-xs",
+      model: "Snowflake/snowflake-arctic-embed-m-v2.0",
       local: {
         modelCacheDir: ".claw/models",
       },
@@ -712,7 +786,7 @@ test("cli check auto-corrects project.json into explicit protocol fields", () =>
     externalDocPaths: [],
     embedding: {
       provider: "local",
-      model: "Snowflake/snowflake-arctic-embed-xs",
+      model: "Snowflake/snowflake-arctic-embed-m-v2.0",
       local: {
         modelCacheDir: ".claw/models",
       },
@@ -977,8 +1051,11 @@ test("cli hook emits SessionStart additionalContext inside .claw projects", () =
   const payload = JSON.parse(result.stdout) as JsonRecord;
   const hookSpecificOutput = payload.hookSpecificOutput as JsonRecord;
   assert.equal(hookSpecificOutput.hookEventName, "SessionStart");
-  assert.match(String(hookSpecificOutput.additionalContext), /using-claw-kit/);
-  assert.match(String(hookSpecificOutput.additionalContext), /Hook Project|hook-project/i);
+  const additionalContext = String(hookSpecificOutput.additionalContext);
+  assert.match(additionalContext, /using-claw-kit/);
+  assert.match(additionalContext, /Hook Project|hook-project/i);
+  assert.match(additionalContext, /explicitly authorized to use goal mode and delegate subagents/i);
+  assert.match(additionalContext, /Do not treat missing user authorization as a reason to block normal claw goal-mode entry/i);
 });
 
 test("plan write binds owner session key and SessionStart recovers active workflow snapshot", () => {
@@ -1017,6 +1094,8 @@ test("plan write binds owner session key and SessionStart recovers active workfl
   assert.match(additionalContext, /task: demo-task/);
   assert.match(additionalContext, /plan status: process\.active/);
   assert.match(additionalContext, /Treat returned claw workflowGuidance as the only next-step contract\./);
+  assert.match(additionalContext, /already authorized to use goal mode and delegate the claw workflow's required subagents/i);
+  assert.match(additionalContext, /Do not block on extra user authorization for goal mode, truth-writer, or adr-writer/i);
 });
 
 test("cli hook stays quiet outside .claw projects", () => {

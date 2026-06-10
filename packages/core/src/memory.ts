@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { resolveProjectContext, resolveTaskContext } from "./context.js";
+import { resolveDefaultLocalEmbeddingDimensions } from "./embedding-defaults.js";
 import { ClawError } from "./errors.js";
 import { readJsonFile, readTextFile } from "./io.js";
 import { buildProjectKeywordSearchPlan, buildProjectQueryIntent } from "./memory-query.js";
@@ -658,6 +659,7 @@ function runEmbeddingWorker(input: {
       encoding: "utf-8",
       env: process.env,
       maxBuffer: 10 * 1024 * 1024,
+      windowsHide: true,
     },
   );
   if (result.status !== 0) {
@@ -703,7 +705,7 @@ function resolveEmbeddingDimensions(embedding: MemoryEmbeddingConfig, fallback: 
     return embedding.outputDimensionality;
   }
   if (embedding.provider === "local") {
-    return 384;
+    return resolveDefaultLocalEmbeddingDimensions(embedding.model);
   }
   return fallback > 0 ? fallback : 1536;
 }

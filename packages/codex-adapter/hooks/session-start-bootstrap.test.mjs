@@ -23,6 +23,7 @@ test("SessionStart hook emits additionalContext for .claw projects", () => {
       input: JSON.stringify({ cwd: root, session_id: "demo" }),
       encoding: "utf-8",
       env: process.env,
+      windowsHide: true,
     },
   );
 
@@ -32,6 +33,8 @@ test("SessionStart hook emits additionalContext for .claw projects", () => {
   assert.match(context, /claw-kit/i);
   assert.match(context, /@\claw-kit|\[@claw-kit\]/i);
   assert.match(context, /Project protocol check: ok\./);
+  assert.match(context, /explicitly authorized to use goal mode and delegate subagents/i);
+  assert.match(context, /Do not treat missing user authorization as a reason to block normal claw goal-mode entry/i);
 });
 
 test("SessionStart hook stays quiet outside .claw projects", () => {
@@ -44,6 +47,7 @@ test("SessionStart hook stays quiet outside .claw projects", () => {
       input: JSON.stringify({ cwd: root, session_id: "demo" }),
       encoding: "utf-8",
       env: process.env,
+      windowsHide: true,
     },
   );
 

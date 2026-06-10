@@ -4,11 +4,13 @@
 - Codex startup uses prompt-driven bootstrap plus unified `SessionStart` context injection.
 - `SessionStart` attempts session-bound active workflow recovery from current `.claw` state before falling back to default startup behavior.
 - Recovered startup context injects only a minimal claw workflow snapshot, and recomputed `workflowGuidance` remains the only next-step contract.
+- The non-recovered startup prompt is intentionally slim: it should not repeat project-root, protocol-check, or "report recovered state" lines.
+- In the normal startup prompt, the current `@claw-kit` thread is explicitly pre-authorized for Goal mode and required delegated subagents including `truth-writer` and `adr-writer`, so missing per-turn authorization is not a valid blocker.
 - `claw search` is the Codex-facing recall command; `memory.externalDocPaths` extends project recall sources.
 - `claw search --query` stays compatible, and `claw search index --refresh` is the explicit project index refresh entrypoint that returns `search.index.refresh`.
 - `claw search` is project-scoped document recall for project memory, truth, ADR, and external docs; code investigation still belongs to `researcher` plus GitNexus, not `claw search`.
 - `claw search` only indexes configured external memory paths for `.md` files, and `claw search index --refresh` now materializes project-scoped vector data plus `vectorIndex` metadata from `memory.embedding`.
-- `claw init` and `claw context` protocol repair now auto-fill a default local embedding config into older `.claw/project.json` files, using `Snowflake/snowflake-arctic-embed-xs`, `.claw/models`, and `store.vector.enabled = true`.
+- `claw init` and `claw context` protocol repair now auto-fill a default local embedding config into older `.claw/project.json` files, using `Snowflake/snowflake-arctic-embed-m-v2.0`, `.claw/models`, and `store.vector.enabled = true`.
 - `memory.embedding.local.device` is now an explicit project-level local-device selector, and `CLAW_EMBEDDING_LOCAL_DEVICE` / `CLAW_EMBEDDING_DEVICE` provide one-off rescue overrides; both feed `packages/core/src/embedding-local.ts`, which always keeps a `cpu` retry path for GPU-class `dml` / `cuda` devices.
 - `claw search index --refresh` is now covered as a bounded 100-file batch process per run, with repeated refreshes automatically advancing the remaining backlog, and `packages/core/src/embedding-local.ts` is also covered for worker-side inference batching order preservation.
 - `packages/core/src/embedding-local.ts` now advances local inference in fixed internal batches within a single worker/model session, and `packages/core/src/embedding-worker.ts` / `packages/core/src/memory.ts` now use temp-file handoff instead of giant stdout JSON for embedding results.
@@ -28,10 +30,10 @@
 - Project-level search no longer silently falls back when vectors are missing; it now fails with `MEMORY_VECTOR_INDEX_REQUIRED` until a refreshed vector index exists.
 - Task-scope memory search keeps the existing task-memory and FTS semantics; the hybrid/vector query path is project-only.
 - `claw plan write`, `claw plan edit`, and `claw plan done` return compact `workflowGuidance` and `planSummary` contracts.
-- Thread goal mode starts on `plan write`.
+- Thread goal mode starts on `plan write`, and the first follow-up is to enter Goal mode, updating the existing thread goal when one already exists and otherwise creating one from `workflowGuidance.goalMode.recommendedObjective`.
 - Truth and ADR deposition run through delegated writer specialists, not inline main-agent writes.
 - Writer delegation contracts now carry explicit `skill` and `model` fields.
-- `.claw/project.json` supports explicit `externalTruthSkill` and `externalAdrSkill` overrides with `null` defaults, and `memory.embedding` now carries the project embedding config plus index metadata support, including the local `Snowflake/snowflake-arctic-embed-xs` / 384-dimension path with Windows DirectML-to-CPU fallback.
+- `.claw/project.json` supports explicit `externalTruthSkill` and `externalAdrSkill` overrides with `null` defaults, and `memory.embedding` now carries the project embedding config plus index metadata support, including the default local `Snowflake/snowflake-arctic-embed-m-v2.0` / 768-dimension path plus explicit legacy `Snowflake/snowflake-arctic-embed-xs` / 384-dimension compatibility, both with Windows DirectML-to-CPU fallback.
 - `packages/core/src/embedding-worker.ts` is the new embedding worker used for project embedding generation.
 - This hybrid query migration follows the mature `openclaw-dev` memory query design, but only copies the smallest subset that fits `claw-kit`.
 - 这次 multi-term recall 调整同样参考了 `openclaw-dev` 的 memory search 设计，但重点是 query planner、keyword recall 和 vector fusion，而不是单纯替换 embedding。
@@ -41,5 +43,5 @@
 - README、`packages/cli/README.md` 与 `packages/core/test/core.test.ts` 已覆盖 incremental refresh 契约。
 - `packages/core/test/core.test.ts` 已新增 query planner 语义和中文多词 project recall 场景覆盖；本轮校验通过 `npm test -- packages/core/test/core.test.ts` 与 `npm run check`。
 - search candidate recall 这一轮的验证证据包括：`packages/core/test/core.test.ts` 50/50 通过、`npm run check` 通过，以及在 `NeonSpark` 的 live search 中，多词中文 query 不再让 `contents.md` 压过聚焦文档， conversational `搜打撤` 查询继续优先命中 system design 类文档。
-- Current release/package state tracks `0.1.24` on `package.json`, `packages/core/package.json`, and `packages/cli/package.json`, with `packages/codex-adapter/.codex-plugin/plugin.json` on `0.1.24+codex.20260609202003`; `scripts/install-cli.ps1` remains the Windows reinstall path for keeping `@veewo/claw` aligned, and the global CLI now reports `@veewo/claw@0.1.24` after reinstall.
+- Current release/package state tracks `0.1.25` on `package.json`, `packages/core/package.json`, `packages/cli/package.json`, `packages/openclaw-adapter/package.json`, and `packages/codex-adapter/package.json`, with `packages/codex-adapter/.codex-plugin/plugin.json` on `0.1.25+codex.20260610173000`.
 - `packages/core/src/memory.ts` 保持严格契约：project memory refresh 如果 embedding 生成失败就必须失败，不能降级为 text-only indexing；project search 继续保持 vector-required 契约，缺少 refreshed vector index 时返回 `MEMORY_VECTOR_INDEX_REQUIRED`。

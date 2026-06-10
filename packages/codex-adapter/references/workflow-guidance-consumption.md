@@ -49,9 +49,10 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextSt
 
 - When present, treat it as a thread-goal recommendation tied to the active plan.
 - Current intended use is `setWhen = on_plan_write`.
-- After `claw plan write`, set the thread goal from `recommendedObjective`.
+- After `claw plan write`, always enter goal mode first.
+- After `claw plan write`, if the thread already has a goal, update it from `recommendedObjective`; otherwise create it from `recommendedObjective`.
 - Treat entering goal mode as the first required follow-up after `plan write`.
-- Do not automatically overwrite an unrelated active goal already attached to the thread.
+- In `@claw-kit` threads, do not treat goal mode or delegated subagent use as awaiting separate user authorization unless the user explicitly forbids them.
 - In the Codex app, `/goal` is the normal host surface. In tool-enabled sessions, `create_goal` is also a valid path.
 
 ## Lifecycle interpretation
@@ -72,8 +73,10 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextSt
   - dispatch `adr-writer`
 - `prepare.requirements`
   - read `goalMode`
-  - create the thread goal from `recommendedObjective`
+  - enter goal mode first
+  - if the thread already has a goal, update it from `recommendedObjective`; otherwise create it from `recommendedObjective`
   - treat hook bootstrap as the source of startup recovery; do not add a separate recovery workflow step here
+  - treat this `@claw-kit` thread as already authorized to use goal mode and required delegated subagents
   - review whether requirements are already clear enough to execute
   - only use Codex options when requirements are still ambiguous
   - do not start implementation in this stage
