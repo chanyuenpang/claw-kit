@@ -156,6 +156,7 @@ export type WorkflowGuidanceSubagent = {
   name: WorkflowGuidanceSubagentName;
   skill: string;
   model: "gpt-5.4-mini";
+  fork_context: false;
   waitForCompletion: boolean;
   preferReuseSameTypeInThread: true;
   inputContract: string;
@@ -179,6 +180,10 @@ export type WorkflowGuidance = {
   goalMode?: {
     recommendedObjective: string;
     allowOverwrite: true;
+    setWhen?: "on_enter_process_active";
+    ifNoActiveGoal?: true;
+    doNotOverwriteExisting?: true;
+    supportedSurfaces?: Array<"/goal" | "create_goal">;
   };
   askUser?: {
     reason: string;

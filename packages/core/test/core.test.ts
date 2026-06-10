@@ -137,15 +137,11 @@ test("plan write creates task-bound plan and updates activePlan", async () => {
   assert.ok(fs.existsSync(result.planPath));
   assert.equal(result.workflowGuidance.stage, "requirements");
   assert.equal(result.workflowGuidance.delegateSubagents, undefined);
-  assert.equal(
-    result.workflowGuidance.goalMode?.recommendedObjective,
-    "\u6309\u7167 claw \u6d41\u7a0b\uff0c\u63a8\u8fdb\u4efb\u52a1\uff0c\u66f4\u65b0plan\uff0c\u5b8c\u6210\uff1aShip the first plan",
-  );
-  assert.equal(result.workflowGuidance.goalMode?.allowOverwrite, true);
-  assert.ok(result.workflowGuidance.summary.includes("Enter goal mode first"));
-  assert.ok(result.workflowGuidance.nextStep.includes("Enter goal mode"));
+  assert.equal(result.workflowGuidance.goalMode, undefined);
+  assert.ok(result.workflowGuidance.summary.includes("Fill the remaining plan fields"));
   assert.ok(result.workflowGuidance.nextStep.includes("Review whether requirements are clear enough to execute"));
   assert.ok(result.workflowGuidance.nextStep.includes("Fill the `requirements` section"));
+  assert.ok(result.workflowGuidance.nextStep.includes("move into `process.active`"));
   assert.equal(result.workflowGuidance.askUser, undefined);
   assert.deepEqual(result.planSchema.references[0], {
     path: "<string>",
@@ -176,12 +172,30 @@ test("plan write guidance leaves requirement judgment to the agent", async () =>
   });
 
   assert.equal(result.workflowGuidance.askUser, undefined);
-  assert.ok(result.workflowGuidance.nextStep.includes("Enter goal mode"));
   assert.ok(result.workflowGuidance.nextStep.includes("Fill the `requirements` section"));
   assert.ok(result.workflowGuidance.nextStep.includes("If requirements are clear, move into `process.active`"));
   assert.ok(result.workflowGuidance.nextStep.includes("If requirements are not clear, ask the user to clarify the missing scope first"));
   assert.deepEqual(result.workflowGuidance.notes, [
     "Do not start implementation while the plan is still in `prepare.requirements`.",
+    "If requirements are already complete after editing the plan, switch the status to `process.active` immediately.",
+  ]);
+});
+
+test("plan write without goal tells the agent to fill goal first", async () => {
+  const root = createFixture("plan-write-no-goal");
+
+  const result = await writePlan({
+    cwd: root,
+    title: "Goal later task",
+  });
+
+  assert.equal(result.planStatus, "prepare.requirements");
+  assert.equal(result.workflowGuidance.goalMode, undefined);
+  assert.ok(result.workflowGuidance.summary.includes("Add the goal first"));
+  assert.ok(result.workflowGuidance.nextStep.includes("Fill `goal.text`"));
+  assert.deepEqual(result.workflowGuidance.recommendedCommands?.slice(0, 2), [
+    "claw plan edit --task Goal-later-task --plan-status process.active",
+    "claw plan edit --task Goal-later-task --patch <updated-plan.json>",
   ]);
 });
 
@@ -425,6 +439,11 @@ test("plan edit can move from requirements to process.active without a separate 
   assert.equal(activated.workflowGuidance.stage, "execution");
   assert.equal(activated.workflowGuidance.nextTask?.id, 1);
   assert.equal(activated.workflowGuidance.nextTask?.title, "Implement work");
+  assert.equal(
+    activated.workflowGuidance.goalMode?.recommendedObjective,
+    "\u6309\u7167 claw \u6d41\u7a0b\uff0c\u63a8\u8fdb\u4efb\u52a1\uff0c\u66f4\u65b0plan\uff0c\u5b8c\u6210\uff1aShip the first plan",
+  );
+  assert.equal(activated.workflowGuidance.goalMode?.setWhen, "on_enter_process_active");
   assert.ok(activated.workflowGuidance.nextStep.includes("Sync the thread progress with our tasks."));
   assert.ok(activated.workflowGuidance.nextStep.includes("task #1"));
 
@@ -449,6 +468,7 @@ test("plan edit can move from requirements to process.active without a separate 
   assert.equal(truthDelegate.name, "truth-writer");
   assert.equal(truthDelegate.skill, "claw-kit:truth-writer");
   assert.equal(truthDelegate.model, "gpt-5.4-mini");
+  assert.equal(truthDelegate.fork_context, false);
   assert.equal(truthDelegate.waitForCompletion, false);
   assert.equal(truthDelegate.preferReuseSameTypeInThread, true);
   assert.equal(truthDelegate.closePolicy, "keep_open_for_reuse");
@@ -458,6 +478,24 @@ test("plan edit can move from requirements to process.active without a separate 
   );
   assert.ok(result.workflowGuidance.nextStep.includes("truth-writer"));
   assert.ok(result.workflowGuidance.nextStep.includes("retrospective"));
+});
+
+test("plan edit rejects entering process.active without goal text", async () => {
+  const root = createFixture("plan-edit-active-requires-goal");
+  await writePlan({
+    cwd: root,
+    title: "Goal later task",
+  });
+
+  await assert.rejects(
+    () =>
+      editPlan({
+        cwd: root,
+        taskName: "Goal-later-task",
+        planStatus: "process.active",
+      }),
+    /goal\.text is required before the plan can leave prepare\.requirements/,
+  );
 });
 
 test("process entry returns the first task and task completion returns truth-writer contract before plan completion", async () => {
@@ -532,6 +570,7 @@ test("process entry returns the first task and task completion returns truth-wri
     "1. Sync the thread progress with our tasks. 2. Curate the valuable findings from the completed task into a completed subtask report, then dispatch `truth-writer` with that report. 3. Continue with task #2.",
   );
   assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.skill, "external-truth-writer");
+  assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.fork_context, false);
 });
 
 test("plan edit appendTasks auto-assigns ids when omitted", async () => {
@@ -1794,6 +1833,7 @@ test("workflow guidance uses external writer skills from project config", async 
   });
   assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.skill, "external-truth-writer");
   assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.model, "gpt-5.4-mini");
+  assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.fork_context, false);
 
   const completed = await editPlan({
     cwd: root,
@@ -1803,6 +1843,7 @@ test("workflow guidance uses external writer skills from project config", async 
   });
   assert.equal(completed.workflowGuidance.delegateSubagents?.[0]?.skill, "external-adr-writer");
   assert.equal(completed.workflowGuidance.delegateSubagents?.[0]?.model, "gpt-5.4-mini");
+  assert.equal(completed.workflowGuidance.delegateSubagents?.[0]?.fork_context, false);
 });
 
 test("truth ingest writes only under .claw/truth", () => {

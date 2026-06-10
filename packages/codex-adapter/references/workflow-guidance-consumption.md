@@ -19,11 +19,13 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextSt
 - Treat each entry as a structured contract, not a string hint.
 - Honor per-entry fields directly:
   - `name`
+  - `fork_context`
   - `waitForCompletion`
   - `preferReuseSameTypeInThread`
   - `inputContract`
   - `outputContract`
   - `closePolicy`
+- When a writer entry says `fork_context: false`, dispatch it without full-history forked context. Keep the bundle narrow and explicit instead of cloning the whole main thread.
 - Prefer reusing an existing same-type specialist in the current thread before spawning a new one when the entry says to.
 - `truth-writer` and `adr-writer` entries do not wait and remain reusable in-thread.
 
@@ -48,9 +50,8 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextSt
 ### `goalMode`
 
 - When present, treat it as a thread-goal recommendation tied to the active plan.
-- Current intended use is `setWhen = on_plan_write`.
-- After `claw plan write`, set the thread goal from `recommendedObjective`.
-- Treat entering goal mode as the first required follow-up after `plan write`.
+- Current intended use is `setWhen = on_enter_process_active`.
+- When a plan first enters `process.active`, set the thread goal from `recommendedObjective` if the thread does not already have an active goal.
 - Do not automatically overwrite an unrelated active goal already attached to the thread.
 - In the Codex app, `/goal` is the normal host surface. In tool-enabled sessions, `create_goal` is also a valid path.
 
@@ -71,13 +72,15 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextSt
   - `claw plan done`
   - dispatch `adr-writer`
 - `prepare.requirements`
-  - read `goalMode`
-  - create the thread goal from `recommendedObjective`
   - treat hook bootstrap as the source of startup recovery; do not add a separate recovery workflow step here
+  - if `goal.text` is missing, fill it before trying to enter `process.active`
   - review whether requirements are already clear enough to execute
   - only use Codex options when requirements are still ambiguous
   - do not start implementation in this stage
   - when requirements are clear, move the plan directly to `process.active` before doing any implementation or task execution
+- `process.active` on first entry
+  - read `goalMode`
+  - create the thread goal from `recommendedObjective` when there is no active thread goal yet
 - `process.*` with task completion but open plan
   - every completed task returns the `truth-writer` delegate contract
   - the main agent decides whether the completed task actually needs truth doc deposition

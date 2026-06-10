@@ -2,6 +2,19 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.1.25] - 2026-06-10
+
+### Changed
+
+- `claw plan write` now supports the minimal `claw plan write "<title>" [--goal "<text>"]` root-plan entrypoint
+- requirements-stage workflow guidance now tells agents to fill `goal.text` first when it is missing, then complete the remaining plan fields and move to `process.active` as soon as requirements are clear
+- `workflowGuidance.goalMode` is now emitted on first entry into `process.active` instead of on `plan write`, and Codex adapter guidance was aligned to that lifecycle
+
+### Fixed
+
+- plans can no longer enter `process.active` without `goal.text`, making the goal gate an enforced lifecycle rule instead of prompt-only advice
+- delegated writer contracts now explicitly include `fork_context: false` so narrow deposition workers do not inherit full thread history by default
+
 ## [0.1.24] - 2026-06-09
 
 ### Fixed

@@ -63,10 +63,10 @@ Do not tell the user that claw-kit cannot proceed because `.claw` is missing, ma
 4. Treat `plan write` as the canonical task-scope entrypoint.
 5. After every `claw plan write`, `claw plan edit`, or `claw plan done`, consume `workflowGuidance` and the compact `planSummary`.
 6. Follow `workflowGuidance.nextStep` and `recommendedCommands` as the required next-step contract instead of inventing your own heuristic.
-7. After `claw plan write`, set the thread goal from `workflowGuidance.goalMode.recommendedObjective` immediately.
+7. When a plan first enters `process.active`, set the thread goal from `workflowGuidance.goalMode.recommendedObjective` if the thread does not already have an active goal.
 8. If `workflowGuidance.askUser` is present, use Codex option-style confirmation.
 9. Treat startup recovery as a hook/bootstrap responsibility, not a post-plan workflow step.
-10. If requirements are already clear, move directly to `process.active`.
+10. If requirements are already clear and `goal.text` is set, move directly to `process.active`.
 11. Do not start implementation while the plan is still in `prepare.requirements`.
 12. During execution, process one task at a time and update progress with `claw plan edit`.
 13. After a meaningful completed task, dispatch `truth-writer` when there is reusable context to deposit.

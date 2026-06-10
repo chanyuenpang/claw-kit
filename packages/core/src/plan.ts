@@ -464,8 +464,9 @@ function validatePlanDocument(plan: PlanDocument): void {
   if (!plan.title?.trim()) {
     throw new ClawError("PROJECT_CONFIG_INVALID", "Plan title is required.");
   }
-  if (!plan.goal?.text?.trim()) {
-    throw new ClawError("PROJECT_CONFIG_INVALID", "Plan goal.text is required.");
+  const goalText = typeof plan.goal?.text === "string" ? plan.goal.text.trim() : "";
+  if (!goalText && plan.status !== "prepare.requirements") {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "Plan goal.text is required before the plan can leave prepare.requirements.");
   }
   if (plan.requirements) {
     if (!Array.isArray(plan.requirements.openQuestions) || !Array.isArray(plan.requirements.acceptanceCriteria)) {

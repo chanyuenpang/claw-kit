@@ -5,14 +5,17 @@
 - planning 现在直接拥有 requirements 到 process 的质量门；`plan-review` 不再是必须单独经过的 workflow gate。
 - `claw-kit` 主线是 CLI-driven `.claw` harness，而不是 Apps SDK / app / widget / chat-rendering surface。
 - `claw plan write`、`claw plan edit`、`claw plan done` 的默认返回值是 compact contract：`ok`、`planStatus`、`workflowGuidance`、`planSummary`，以及可选 `completionRefresh`。
+- `claw plan write` 支持最简 positional title 入口：`claw plan write "<title>" [--goal "<text>"]`，`--goal` 可以省略。
+- `plan write` 落在 `prepare.requirements` 且缺少 `goal.text` 时，`workflowGuidance` 的第一优先动作是先补 `goal.text`，再补 `requirements`、`tasks`、`references`、`rules`、`keyDecisions`，需求足够清楚后立刻切到 `process.active`。
+- `goal.text` 是离开 `prepare.requirements` 的硬门；没有 goal 时，任何把 plan 切到 `process.active` 的尝试都应直接失败。
 - plan 命令不再返回 render blocks，不再提供 `claw plan app` / `claw plan render`。
 - 当所有当前任务完成时，CLI 仍先把可复用知识交给 `truth-writer`，再走 retrospective 与 `claw plan done`；计划完成后再把 `plan.json` 交给 `adr-writer`。
 
 ## 真实代码锚点
 
-- 计划生命周期与结果裁剪：`packages/core/src/plan.ts`
-- workflow guidance 生成：`packages/core/src/workflow-guidance.ts`
-- CLI 紧凑输出与 completion refresh：`packages/cli/src/cli.ts`
+- 计划生命周期、`goal.text` gate、以及 `process.active` 禁入校验：`packages/core/src/plan.ts`（`writePlan()`、`validatePlanDocument()`、`editPlan()`）
+- `prepare.requirements` guidance 与推荐命令顺序：`packages/core/src/workflow-guidance.ts`
+- CLI 的 positional title 入口、帮助文案与紧凑输出：`packages/cli/src/cli.ts`
 - 结果类型：`packages/core/src/types.ts`
 
 ## 验证基线

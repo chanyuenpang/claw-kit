@@ -10,7 +10,8 @@ Use this skill when planning or editing execution state in an existing `.claw/` 
 ## Commands
 
 - Create or bind a task plan:
-  - `claw plan write --title "<title>" --goal "<goal>"`
+  - `claw plan write "<title>" [--goal "<goal>"]`
+  - `claw plan write --title "<title>" [--goal "<goal>"]`
 - Create a subplan under an existing task:
   - `claw subplan write --parent <task-name> --task-id <id> --title "<title>"`
 - Edit a plan with a structured patch:
@@ -23,7 +24,8 @@ Use this skill when planning or editing execution state in an existing `.claw/` 
 - If task scope is missing, `plan write` is the first harness action.
 - `plan write` is the canonical path for establishing task scope.
 - When using `plan write`, write the task title, goal, tasks, and supporting plan text in the user's preferred language unless the repository has an explicit stronger convention.
-- After `plan write`, read `workflowGuidance.goalMode` and create the thread goal from `workflowGuidance.goalMode.recommendedObjective` using the current host goal surface.
+- `goal.text` must be filled before the plan can move to `process.active`.
+- When a plan first enters `process.active`, read `workflowGuidance.goalMode` and create the thread goal from `workflowGuidance.goalMode.recommendedObjective` using the current host goal surface if there is no active thread goal yet.
 - After `plan write`, treat hook bootstrap as the source of startup recovery; do not insert a separate recovery workflow step.
 - After `plan write`, read `workflowGuidance`, check whether requirements are already clear enough to execute, and use `askUser` only when they are not.
 - Do not start implementation while the plan is still in `prepare.requirements`.

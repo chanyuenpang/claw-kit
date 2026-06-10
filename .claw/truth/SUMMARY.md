@@ -28,7 +28,9 @@
 - Project-level search no longer silently falls back when vectors are missing; it now fails with `MEMORY_VECTOR_INDEX_REQUIRED` until a refreshed vector index exists.
 - Task-scope memory search keeps the existing task-memory and FTS semantics; the hybrid/vector query path is project-only.
 - `claw plan write`, `claw plan edit`, and `claw plan done` return compact `workflowGuidance` and `planSummary` contracts.
-- Thread goal mode starts on `plan write`.
+- `claw plan write` now accepts `claw plan write "<title>" [--goal "<text>"]`; when `goal.text` is missing, requirements-stage guidance tells the agent to fill goal first, then fill the rest of the plan, and move to `process.active` as soon as requirements are clear.
+- `goal.text` is the hard gate for leaving `prepare.requirements`; `process.active` cannot start without it.
+- Thread goal mode no longer starts on `plan write`; `workflowGuidance.goalMode` is emitted on first entry into `process.active` with `setWhen = on_enter_process_active`, `ifNoActiveGoal = true`, `doNotOverwriteExisting = true`, and `supportedSurfaces = ["/goal", "create_goal"]`.
 - Truth and ADR deposition run through delegated writer specialists, not inline main-agent writes.
 - Writer delegation contracts now carry explicit `skill` and `model` fields.
 - `.claw/project.json` supports explicit `externalTruthSkill` and `externalAdrSkill` overrides with `null` defaults, and `memory.embedding` now carries the project embedding config plus index metadata support, including the local `Snowflake/snowflake-arctic-embed-xs` / 384-dimension path with Windows DirectML-to-CPU fallback.
@@ -41,5 +43,5 @@
 - README、`packages/cli/README.md` 与 `packages/core/test/core.test.ts` 已覆盖 incremental refresh 契约。
 - `packages/core/test/core.test.ts` 已新增 query planner 语义和中文多词 project recall 场景覆盖；本轮校验通过 `npm test -- packages/core/test/core.test.ts` 与 `npm run check`。
 - search candidate recall 这一轮的验证证据包括：`packages/core/test/core.test.ts` 50/50 通过、`npm run check` 通过，以及在 `NeonSpark` 的 live search 中，多词中文 query 不再让 `contents.md` 压过聚焦文档， conversational `搜打撤` 查询继续优先命中 system design 类文档。
-- Current release/package state tracks `0.1.24` on `package.json`, `packages/core/package.json`, and `packages/cli/package.json`, with `packages/codex-adapter/.codex-plugin/plugin.json` on `0.1.24+codex.20260609202003`; `scripts/install-cli.ps1` remains the Windows reinstall path for keeping `@veewo/claw` aligned, and the global CLI now reports `@veewo/claw@0.1.24` after reinstall.
+- Current release/package state tracks `0.1.25` on `package.json`, `packages/core/package.json`, and `packages/cli/package.json`, keeps `package-lock.json` aligned across the workspace packages, uses `0.1.25+codex.20260610012622` in `packages/codex-adapter/.codex-plugin/plugin.json`, has both `@veewo/claw-core@0.1.25` and `@veewo/claw@0.1.25` published with `latest` dist-tags resolving to `0.1.25`, and has a successful clean-environment install smoke path that bootstraps npm CLI in temp, installs `@veewo/claw@0.1.25` into a temp prefix, and runs `claw init`; the release process also now has a durable managed-environment constraint that publish can succeed without a direct `npm` binary on `PATH` by using registry API, bundled node, and tar-based packaging.
 - `packages/core/src/memory.ts` 保持严格契约：project memory refresh 如果 embedding 生成失败就必须失败，不能降级为 text-only indexing；project search 继续保持 vector-required 契约，缺少 refreshed vector index 时返回 `MEMORY_VECTOR_INDEX_REQUIRED`。

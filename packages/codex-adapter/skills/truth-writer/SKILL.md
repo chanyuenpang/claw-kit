@@ -26,9 +26,10 @@ The main agent must:
 3. reuse an existing `truth-writer` worker in the current thread when it still fits the same role
 4. dispatch a new `truth-writer` worker when no suitable same-type specialist is already active
 5. use `agent_type: "worker"` with model `gpt-5.4-mini` for a new writer
-6. attach this `claw-kit:truth-writer` skill explicitly in the dispatch bundle
-7. do not block the main task lifecycle waiting for a result
-8. treat any returned payload as optional telemetry only
+6. set `fork_context: false` for a new writer so the dispatch does not clone full thread history
+7. attach this `claw-kit:truth-writer` skill explicitly in the dispatch bundle
+8. do not block the main task lifecycle waiting for a result
+9. treat any returned payload as optional telemetry only
 
 The main agent does not spend its primary context budget drafting large truth documents inline.
 Canonical truth updates run through `truth-writer`, not a main-agent inline shortcut.

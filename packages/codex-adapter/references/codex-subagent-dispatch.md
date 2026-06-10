@@ -15,6 +15,7 @@ For deposition specialists, the default dispatch shape is:
 
 - `agent_type: "worker"`
 - `model` from `delegateSubagents[*].model`
+- `fork_context` from `delegateSubagents[*].fork_context`
 - include the exact `delegateSubagents[*].skill` item explicitly
 - include only the narrow task bundle needed by that specialist
 
@@ -106,6 +107,7 @@ Expected behavior:
 
 - Reuse or spawn only the specialist needed by current `workflowGuidance`.
 - For `truth-writer` and `adr-writer`, default to `worker + gpt-5.4-mini + explicit skill item`.
+- For `truth-writer` and `adr-writer`, honor `fork_context: false` by avoiding full-history forked context and sending only the narrow deposition bundle.
 - For `researcher`, default to `explorer + explicit skill item`.
 - Follow `waitForCompletion` directly instead of inferring wait behavior from prose.
 - Follow `closePolicy` directly. `truth-writer` and `adr-writer` remain open for same-thread reuse.

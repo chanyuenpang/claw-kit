@@ -114,12 +114,19 @@ async function runPlan(args: string[]): Promise<void> {
   switch (subcommand) {
     case "write": {
       rejectFlags(args, ["--task", "--plan", "--content", "--status", "--plan-status", "--parent-task-id", "--description"]);
-        const result = await writePlan({
-          cwd: process.cwd(),
-          title: readRequiredFlag(args, "--title"),
-          goalText: readRequiredFlag(args, "--goal"),
-          ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
-        });
+      const title = readOptionalFlag(args, "--title") ?? readOptionalPositionalArg(args);
+      if (!title) {
+        throw new ClawError(
+          "PROJECT_CONFIG_INVALID",
+          "plan write requires a title. Use `claw plan write \"<title>\"` or `claw plan write --title \"<title>\"`.",
+        );
+      }
+      const result = await writePlan({
+        cwd: process.cwd(),
+        title,
+        goalText: readOptionalFlag(args, "--goal"),
+        ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
+      });
       assertNoRemainingArgs(args, "plan write");
       printJson(compactPlanCommandResult("plan.write", result));
       return;
@@ -1068,6 +1075,16 @@ function readRequiredFlag(args: string[], flag: string): string {
   return value;
 }
 
+function readOptionalPositionalArg(args: string[]): string | undefined {
+  if (args.length === 0) {
+    return undefined;
+  }
+  if (args[0]?.startsWith("--")) {
+    return undefined;
+  }
+  return args.shift();
+}
+
 function readRepeatedFlag(args: string[], flag: string): string[] {
   const values: string[] = [];
   while (true) {
@@ -1185,9 +1202,10 @@ function printUsage(): void {
       "       [--gitnexus true|false] [--max-tasks-to-keep <n>] [--force]",
       "  context [--task <name>]",
       "  check",
-      "  plan write --title <text> --goal <text>",
+      "  plan write \"<title>\" [--goal <text>]",
+      "  plan write --title <text> [--goal <text>]",
       "             Creates the task scope and initial plan skeleton at prepare.requirements.",
-      "             Use plan edit to fill requirements and other plan fields.",
+      "             If goal is omitted, fill goal.text and the rest of the plan, then switch to process.active.",
       "  subplan write --parent <task-name> --task-id <number> --title <text>",
       "  plan edit --task <name> [--plan <relative-path>] [--patch <json-file>] [--rule <text>] [--key-decision <text>] [--plan-status <status>]",
       "  plan show --task <name> [--plan <relative-path>]",
