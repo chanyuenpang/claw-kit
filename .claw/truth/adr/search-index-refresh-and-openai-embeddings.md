@@ -29,7 +29,7 @@ Accepted
 - 未变更文档复用既有 `docs` row 与 `doc_embeddings`
 - 已变更文档替换自身记录并重建对应 embeddings
 - 已删除文档清理 `docs`、`docs_fts`、`doc_embeddings`
-- 当 `memory.embedding` 配置变化时，重置并重建全部向量，保证 sqlite metadata 与实际 embeddings 一致。
+- 当 `memory.embedding` 配置变化触发向量 reset 时，`claw search index --refresh` 仍然沿用每轮默认 100 文件的 bounded batching，reset 后的后续 refresh 继续推进 backlog，而不是一次性整库重建。
 - project search 继续坚持 vector-required 契约；如果向量索引不可用，则保持 disabled，不回退成纯 `FTS` 搜索。
 - project-level `claw search --query` 会生成 query embedding，并执行 trimmed hybrid recall，融合 vector candidates 与 `FTS` candidates。
 - project-level `claw search --query` 的候选生成不再依赖单一路径；它会在最终排序前汇总多条 recall routes 的候选，而不是只做一次 `FTS` 召回再与向量结果拼接。
@@ -61,7 +61,7 @@ Accepted
 ## Consequences
 
 - 项目 refresh 成为可重复执行的同步操作，未变更文档不会重复写入或重复生成向量。
-- 文档变更、删除和 embedding 配置漂移都会被显式收敛到 sqlite 状态同步里，减少 metadata 与向量内容不一致的问题。
+- 文档变更、删除和 embedding 配置漂移都会被显式收敛到 sqlite 状态同步里，减少 metadata 与向量内容不一致的问题；embedding reset 只会重置当前向量状态，不会把 refresh 退化成单次全库重建。
 - 历史旧数据如果只剩 `docs` row 但缺少 `doc_embeddings`，refresh 也会把它们纳入补写范围，避免向量索引因为旧记录漏扫而不完整。
 - `claw search` 的 recall 面继续保持项目级文档语义，不会因为外部路径或 `FTS` 回退而漂移成通用代码搜索。
 - 旧项目在第一次运行 `claw context`、`claw check` 或其他协议修复入口后，会被自动提升到可索引的默认 local embedding schema，不需要手工补 `memory.embedding`。
