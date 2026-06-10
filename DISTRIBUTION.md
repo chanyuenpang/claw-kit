@@ -2,6 +2,15 @@
 
 This document is the maintainer release and npm distribution handbook for this repository.
 
+Current release baseline should be derived from the repository at runtime instead of trusted from static prose:
+
+```powershell
+node -p "require('./packages/core/package.json').version"
+node -p "require('./packages/cli/package.json').version"
+node -p "require('./packages/codex-adapter/.codex-plugin/plugin.json').version"
+git show --no-patch --decorate --oneline HEAD
+```
+
 ## Scope
 
 Use this guide when you need to:
@@ -24,6 +33,8 @@ Default mode is `full-publish` unless a narrower mode is explicitly requested.
 - `prepare-only`: verify and dry-run package artifacts only
 - `publish-only`: publish already-prepared package versions
 
+If the user does not explicitly narrow the mode, run `full-publish`.
+
 ## Versioning Rules
 
 Keep package versions aligned unless there is a strong reason to split them.
@@ -39,28 +50,71 @@ Update these files together for a release:
 7. `packages/codex-adapter/.codex-plugin/plugin.json`
 8. `CHANGELOG.md`
 
+Version rules:
+
+- Keep `packages/core` and `packages/cli` on the same release version unless there is a deliberate split.
+- Keep adapter package versions aligned with the release unless there is a deliberate reason not to.
+- Use `semver+codex.<timestamp>` for `packages/codex-adapter/.codex-plugin/plugin.json`.
+- Run `npm install` after editing version files so `package-lock.json` stays consistent.
+
+Published package mapping:
+
+- `packages/core` -> `@veewo/claw-core`
+- `packages/cli` -> `@veewo/claw`
+- local executable name -> `claw`
+
 ## Release Checklist
 
 1. Confirm the target version.
 2. Ensure the working tree is clean enough for a release commit.
-3. Run verification:
-   - `npm test`
-   - `npm run check`
-4. Dry-run package artifacts:
-   - `cd packages/core && npm pack --dry-run`
-   - `cd ../cli && npm pack --dry-run`
-5. Confirm npm auth:
-   - `npm whoami`
-6. Publish `@veewo/claw-core` first:
-   - `cd packages/core && npm publish --access public`
-7. Publish `@veewo/claw` second:
-   - `cd ../cli && npm publish --access public`
-8. Verify published versions:
-   - `npm view @veewo/claw-core version`
-   - `npm view @veewo/claw version`
-9. Verify install:
-   - `npm install -g @veewo/claw`
-   - `claw --help`
+3. Align version files and changelog.
+4. Run `npm install`.
+5. Run verification commands.
+6. Dry-run package artifacts.
+7. Confirm npm auth.
+8. Publish `@veewo/claw-core` first.
+9. Publish `@veewo/claw` second.
+10. Verify published versions.
+11. Refresh the locally installed CLI and local Codex plugin cache.
+12. Run post-publish install verification.
+
+Execution policy by mode:
+
+- `full-publish`: complete all 12 steps.
+- `prepare-only`: complete through step 6 only.
+- `publish-only`: complete steps 7-12 only.
+
+## Verification Commands
+
+Run these from the repository root unless noted:
+
+```powershell
+npm test
+npm run check
+cd packages\core
+npm pack --dry-run
+cd ..\cli
+npm pack --dry-run
+cd ..\..
+git status --short
+git show --no-patch --decorate --oneline HEAD
+```
+
+Recommended extra release checks:
+
+```powershell
+node -p "require('./packages/core/package.json').version"
+node -p "require('./packages/cli/package.json').version"
+node -p "require('./packages/codex-adapter/.codex-plugin/plugin.json').version"
+rg -n "\"version\":|@veewo/claw|@veewo/claw-core" package.json package-lock.json CHANGELOG.md packages -g "!**/node_modules/**"
+```
+
+Expected outcome:
+
+- tests and checks pass
+- both `npm pack --dry-run` commands succeed
+- release versions are aligned where expected
+- no unexpected dirty changes remain before publish
 
 ## Auth and Permission Checks
 
@@ -79,6 +133,25 @@ Common blockers:
 - `403 Forbidden`: missing scope permission or package ownership
 - version already exists: bump the version before retrying
 
+## Publish Sequence
+
+Publish order matters because `@veewo/claw` depends on `@veewo/claw-core`.
+
+```powershell
+cd packages\core
+npm publish --access public
+cd ..\cli
+npm publish --access public
+cd ..\..
+```
+
+Verify the registry after publish:
+
+```powershell
+npm view @veewo/claw-core version --registry=https://registry.npmjs.org
+npm view @veewo/claw version --registry=https://registry.npmjs.org
+```
+
 ## Remote Install Paths
 
 Windows one-shot install:
@@ -92,6 +165,41 @@ Direct npm install:
 ```powershell
 npm install -g @veewo/claw
 ```
+
+After publishing, refresh the maintainer machine as part of release completion:
+
+1. Reinstall the global CLI.
+2. Sync the local Codex plugin cache if `packages/codex-adapter` changed.
+3. Verify that the local command and plugin cache actually point at the new release.
+
+Use the closeout workflow for the local-copy details:
+
+- [docs/2026-06-08-closeout-workflow.md](G:/Projects/claw-kit/docs/2026-06-08-closeout-workflow.md)
+
+## Post-publish Install Verification
+
+Run these checks on Windows after reinstalling the CLI:
+
+```powershell
+npm install -g @veewo/claw
+npm list -g @veewo/claw --depth=0
+(Get-Command claw).Source
+claw --help
+```
+
+If the release changed the Codex adapter, also verify the plugin cache copy:
+
+```powershell
+Get-Content packages/codex-adapter/.codex-plugin/plugin.json
+Get-ChildItem C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit
+```
+
+Expected outcome:
+
+- the global npm package version matches the published `@veewo/claw` version
+- `claw` resolves from `C:\Users\chany\AppData\Roaming\npm\claw.ps1`
+- `claw --help` succeeds
+- the local plugin cache contains the expected manifest version when adapter files changed
 
 ## Notes
 

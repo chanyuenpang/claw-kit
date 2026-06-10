@@ -42,6 +42,20 @@ One-shot Windows install script:
 powershell -ExecutionPolicy Bypass -File .\scripts\install-cli.ps1
 ```
 
+Verification standard:
+
+```powershell
+npm list -g @veewo/claw --depth=0
+(Get-Command claw).Source
+claw --help
+```
+
+Pass criteria:
+
+1. the reported global `@veewo/claw` version matches the release target
+2. `claw` resolves from `C:\Users\chany\AppData\Roaming\npm\claw.ps1`
+3. the command surface is reachable through `claw --help`
+
 ### 2.2 Local Codex plugin cache
 
 When `packages/codex-adapter` changes, sync the local Codex plugin cache under:
@@ -65,6 +79,20 @@ After sync, confirm:
 2. `hooks.json` matches the current implementation
 3. updated skills and references are present in cache
 
+Recommended verification commands:
+
+```powershell
+Get-Content packages/codex-adapter/.codex-plugin/plugin.json
+Get-Content C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\<plugin-version>\.codex-plugin\plugin.json
+Get-ChildItem C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit
+```
+
+Pass criteria:
+
+1. repo manifest version and cached manifest version are identical
+2. the expected cache directory exists under `claw-kit-local\claw-kit\<plugin-version>\`
+3. the copied plugin files are readable from the cache path
+
 ## 3. commit + push
 
 Before commit:
@@ -72,6 +100,7 @@ Before commit:
 1. `npm test`
 2. `npm run check`
 3. `git status --short`
+4. verify local CLI and plugin cache if the release surface changed
 
 Standard sequence:
 
@@ -97,8 +126,9 @@ Requirements:
 6. Update the locally installed CLI
 7. Update the local Codex plugin cache if needed
 8. Check canonical `.claw` changes
-9. `git commit`
-10. `git push`
+9. Verify local CLI and plugin cache versions
+10. `git commit`
+11. `git push`
 
 ## Notes
 
