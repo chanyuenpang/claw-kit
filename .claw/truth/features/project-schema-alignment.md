@@ -26,6 +26,8 @@
 - 如果 `docs` 记录已经存在但 `doc_embeddings` 为空，`packages/core/src/memory.ts` 会在 `insertDocs` 之后再扫描 `listDocsMissingEmbeddings(db)`，并调用 `indexDocEmbeddings` 回填这些旧文档的向量。
 - 当 markdown 文档已从 recall surface 删除时，refresh 会把对应记录从 `docs`、`docs_fts`、`doc_embeddings` 清理掉。
 - 当 `memory.embedding` 配置变化时，refresh 会重置并重建全部向量，确保 `vectorIndex`、`embedding_config` 和实际 embeddings 保持一致。
+- 当 `memory.embedding` 配置变化触发向量 reset 时，refresh 仍保留 bounded batching 合同：`packages/core/src/memory.ts` 中控制文件限流的 `canLimitFiles` 只取决于 `maxFiles > 0`，不会因为 `requiresVectorReset` 而关闭默认的 100 文件节流。
+- 因此，embedding 配置切换后的 project refresh 仍可能暂时只包含当前批次的 docs / vectors；后续 refresh 会继续补完剩余文件，而不是一次性整库重建。
 - `claw search index --refresh` 现在生成并同步 project-scoped vectors from `memory.embedding` and stores `vectorIndex` metadata in sqlite alongside the embeddings.
 - The local embedding provider follows the GitNexus-style setup: default model `Snowflake/snowflake-arctic-embed-m-v2.0`, model-derived default dimensions, and a Windows DirectML-first path that falls back to CPU when DirectML fails.
 - 默认 local 维度不再对所有模型一律硬编码成 `384`。当前契约是：

@@ -159,9 +159,7 @@ function syncProjectMemoryIndex(
     }
     return existing.kind !== source.kind || existing.content_hash !== source.contentHash;
   });
-  const canLimitFiles = !maxFiles
-    ? false
-    : maxFiles > 0 && (!requiresVectorReset || existingDocs.length === 0);
+  const canLimitFiles = !maxFiles ? false : maxFiles > 0;
   const sortedDocsToInsert = [...docsToInsert].sort((left, right) => left.sourcePath.localeCompare(right.sourcePath));
   const limitedDocsToInsert = canLimitFiles ? sortedDocsToInsert.slice(0, maxFiles) : sortedDocsToInsert;
   const pendingFileCount = sortedDocsToInsert.length - limitedDocsToInsert.length;

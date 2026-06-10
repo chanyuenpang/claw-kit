@@ -7,6 +7,14 @@ Accepted working truth for local development on this machine.
 ## Core facts
 
 - `claw init` now exists and bootstraps a minimal `.claw` project.
+- `packages/core/src/init.ts` 的 `initProject()` 现在还会在初始化完成后检查项目根目录 `.gitignore`，当缺少 claw-kit 专用规则块时只追加一次：
+  `# claw-kit`
+  `.claw/*`
+  `!.claw/project.json`
+  `!.claw/truth/`
+  `!.claw/truth/**`
+- 这条 `.gitignore` 变更被明确限制在 `initProject()`；`project-check` / protocol repair 与 `claw context` 不负责修改 `.gitignore`。
+- 重复执行 `claw init` 不会重复追加同一规则块；已有 `.gitignore` 只会在缺块时补一次。
 - The local CLI command surface includes:
   - `claw init`
   - `claw context`
@@ -23,12 +31,16 @@ Accepted working truth for local development on this machine.
 - 未变更文档会复用既有 sqlite rows 与 embeddings；变更文档只替换自身 `docs` / `docs_fts` / `doc_embeddings` 记录并重算 embeddings；删除文档会被清理。
 - 对于已经存在 `docs` 记录但缺少 `doc_embeddings` 的旧数据，`packages/core/src/memory.ts` 里的 `syncProjectMemoryIndex` 会在 `insertDocs` 后再用 `listDocsMissingEmbeddings(db)` + `indexDocEmbeddings` 补齐向量，避免 refresh 只看见 docs 行就误报完成。
 - `memory.embedding` 配置变更时，`claw search index --refresh` 会重建全部向量，保证 project search metadata 一致。
+- 即使 `memory.embedding` 配置变化触发向量重建，`packages/core/src/memory.ts` 的 `syncProjectMemoryIndex()` 仍然保持单次 bounded batching：默认每轮最多处理 100 个文件，不会因为 reset 路径而绕过限流整库重建。
+- 这意味着 embedding 配置变化后的重建过程中，单次 refresh 可能暂时只保留当前批次写入的 docs/vector 状态；后续 refresh 会继续补完剩余文件，而不是在一次模型切换后直接处理整个项目。
 - `claw search index --refresh` now builds project-scoped vector data from `memory.embedding` and records `vectorIndex` metadata in the project index.
 - When `memory.embedding.provider` is `local`, the CLI follows the GitNexus-style embedding setup with default model `Snowflake/snowflake-arctic-embed-m-v2.0`, model-derived default dimensions, and Windows DirectML-to-CPU fallback.
 - 默认 local 维度现在按模型决定：`Snowflake/snowflake-arctic-embed-m-v2.0` 默认 `768`，显式旧模型 `Snowflake/snowflake-arctic-embed-xs` 继续默认 `384`；显式 `memory.embedding.outputDimensionality` 仍然优先覆盖默认值。
 - 本地 embedding 的救援路径现在有两个显式控制面：`.claw/project.json` 的 `memory.embedding.local.device` 和 shell 覆盖 `CLAW_EMBEDDING_LOCAL_DEVICE`，前者适合稳定的 per-project 配置，后者适合一次性 CPU rescue refresh。
 - 真实验证表明，`CLAW_EMBEDDING_LOCAL_DEVICE=cpu; claw search index --refresh` 可以完成 local rescue refresh，并产出 project-scoped vector metadata；默认模型路径的 `dimensions` 现在是 `768`，而显式旧模型 `Snowflake/snowflake-arctic-embed-xs` 仍然保持 `384`。
 - `packages/core/test/core.test.ts` 锁定了默认 refresh 的文件批次节流：每次 refresh 最多处理 100 个新增或变更文件，后续重复 refresh 会自动继续消化剩余 backlog，而不会卡在单次调用边界。
+- `packages/core/test/core.test.ts` 现在额外覆盖 embedding 配置变化后的 batching 契约：完成一次 103 文件索引后切换 embedding model，reset 后第一轮 refresh 仍只处理 100 个文件，第二轮再补完剩余 3 个。
+- `packages/core/test/core.test.ts` 现在覆盖了 `.gitignore` 注入的三条 init 语义：新项目生成规则块、已有 `.gitignore` 只追加一次、重复 init 不重复追加。
 - `packages/core/test/embedding-local.test.ts` 锁定了 worker 侧推理 batching：大文本集合会被拆进多次 extractor 调用，但输出顺序保持稳定。
 - `packages/core/src/embedding-local.ts` 现在在单个 worker/model session 内按固定批次推进本地推理，而不是把完整文本集一次性塞给单个 ONNX 调用；这个默认 batch size 属于内部实现细节，不暴露成用户配置面。
 - `packages/core/src/embedding-worker.ts` 改为把 embedding 结果写入临时文件，只通过 stdout 返回轻量元数据，从而避开巨型 JSON IPC；`packages/core/src/memory.ts` 负责读取该临时文件并清理它。

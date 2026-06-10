@@ -32,10 +32,19 @@ export type InitProjectResult = {
   createdPaths: string[];
 };
 
+const CLAW_GITIGNORE_BLOCK = [
+  "# claw-kit",
+  ".claw/*",
+  "!.claw/project.json",
+  "!.claw/truth/",
+  "!.claw/truth/**",
+].join("\n");
+
 export function initProject(input: InitProjectInput): InitProjectResult {
   const projectRoot = path.resolve(input.cwd);
   const clawDir = path.join(projectRoot, ".claw");
   const projectJsonPath = path.join(clawDir, "project.json");
+  const gitignorePath = path.join(projectRoot, ".gitignore");
   const memoryPath = path.join(clawDir, "memory.md");
   const truthSummaryPath = path.join(clawDir, "truth", "SUMMARY.md");
   const tasksDir = path.join(clawDir, "tasks");
@@ -96,6 +105,7 @@ export function initProject(input: InitProjectInput): InitProjectResult {
     `# ${projectName} Truth Summary\n\n- Project initialized for claw-kit.\n- No durable truth has been recorded yet.\n`,
     createdPaths,
   );
+  ensureClawGitignoreRules(gitignorePath, createdPaths);
 
   return {
     projectRoot,
@@ -148,4 +158,20 @@ function writeFile(filePath: string, content: string, createdPaths: string[]): v
   const nextContent = /\.md$/i.test(filePath) ? ensureUtf8Bom(content) : content;
   fs.writeFileSync(filePath, nextContent, "utf-8");
   createdPaths.push(filePath);
+}
+
+function ensureClawGitignoreRules(gitignorePath: string, createdPaths: string[]): void {
+  const existed = fs.existsSync(gitignorePath);
+  const existing = existed ? fs.readFileSync(gitignorePath, "utf-8") : "";
+  if (existing.includes(CLAW_GITIGNORE_BLOCK)) {
+    return;
+  }
+
+  const nextContent = existing.trim().length > 0
+    ? `${existing.replace(/\s*$/, "")}\n\n${CLAW_GITIGNORE_BLOCK}\n`
+    : `${CLAW_GITIGNORE_BLOCK}\n`;
+  fs.writeFileSync(gitignorePath, nextContent, "utf-8");
+  if (!existed || !createdPaths.includes(gitignorePath)) {
+    createdPaths.push(gitignorePath);
+  }
 }
