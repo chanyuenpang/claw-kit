@@ -1,6 +1,6 @@
 {
   "name": "claw-kit",
-  "version": "0.1.26",
+  "version": "0.1.27",
   "private": true,
   "workspaces": [
     "packages/*"
@@ -12,7 +12,7 @@
     "repair:truth-encoding": "npm run build -w @veewo/claw-core && node scripts/truth-encoding-audit.mjs --write",
     "uninstall:local-cli": "npm uninstall -g @veewo/claw",
     "test": "npm run build -w @veewo/claw-core && npm run build -w @veewo/claw && npm run test -w @veewo/claw-core && npm run test -w @veewo/claw",
-    "start": "node ./packages/cli/dist/cli.js"
+    "start": "node ./packages/cli/dist/bin.js"
   },
   "devDependencies": {
     "@types/node": "^22.15.30",

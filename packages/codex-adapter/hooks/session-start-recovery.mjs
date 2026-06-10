@@ -100,7 +100,7 @@ writeDebugLog({
   emittedAdditionalContext: true,
   projectRoot: context?.project?.projectRoot ?? null,
   projectId: context?.project?.projectId ?? null,
-  bootstrap: context?.bootstrap ?? null,
+  startupRecovery: context?.startupRecovery ?? null,
 });
 
 process.stdout.write(

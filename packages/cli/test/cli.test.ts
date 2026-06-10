@@ -14,7 +14,7 @@ function createFixture(name: string): string {
 }
 
 function runClaw(args: string[], cwd: string, env?: NodeJS.ProcessEnv): JsonRecord {
-  const cliPath = path.resolve(thisDir, "..", "dist", "cli.js");
+  const cliPath = path.resolve(thisDir, "..", "dist", "bin.js");
   const result = spawnSync(process.execPath, [cliPath, ...args], {
     cwd,
     env: {
@@ -33,7 +33,7 @@ function runClaw(args: string[], cwd: string, env?: NodeJS.ProcessEnv): JsonReco
 }
 
 function runClawExpectFailure(args: string[], cwd: string, env?: NodeJS.ProcessEnv): JsonRecord {
-  const cliPath = path.resolve(thisDir, "..", "dist", "cli.js");
+  const cliPath = path.resolve(thisDir, "..", "dist", "bin.js");
   const result = spawnSync(process.execPath, [cliPath, ...args], {
     cwd,
     env: {
@@ -57,7 +57,7 @@ function runClawExpectFailure(args: string[], cwd: string, env?: NodeJS.ProcessE
 }
 
 function runClawRaw(args: string[], cwd: string, env?: NodeJS.ProcessEnv): { status: number | null; stdout: string; stderr: string } {
-  const cliPath = path.resolve(thisDir, "..", "dist", "cli.js");
+  const cliPath = path.resolve(thisDir, "..", "dist", "bin.js");
   const result = spawnSync(process.execPath, [cliPath, ...args], {
     cwd,
     env: {
@@ -707,13 +707,13 @@ test("cli context includes protocolCheck for existing .claw projects", () => {
 
   const result = runClaw(["context"], root);
   const protocolCheck = result.protocolCheck as JsonRecord;
-  const bootstrap = result.bootstrap as JsonRecord;
+  const startupRecovery = result.startupRecovery as JsonRecord;
 
   assert.equal(protocolCheck.ok, true);
   assert.equal(protocolCheck.issues instanceof Array, true);
   assert.equal(result.project !== undefined, true);
-  assert.equal(bootstrap.initialized, false);
-  assert.equal(bootstrap.corrected, false);
+  assert.equal(startupRecovery.initialized, false);
+  assert.equal(startupRecovery.corrected, false);
   assert.equal(
     ((((result.project as JsonRecord).projectConfig as JsonRecord).memory as JsonRecord).embedding as JsonRecord).model,
     "Snowflake/snowflake-arctic-embed-m-v2.0",
@@ -724,11 +724,11 @@ test("cli context auto-initializes when .claw is missing", () => {
   const root = createFixture("context-init");
 
   const result = runClaw(["context"], root);
-  const bootstrap = result.bootstrap as JsonRecord;
+  const startupRecovery = result.startupRecovery as JsonRecord;
   const protocolCheck = result.protocolCheck as JsonRecord;
 
-  assert.equal(bootstrap.initialized, true);
-  assert.equal(bootstrap.corrected, false);
+  assert.equal(startupRecovery.initialized, true);
+  assert.equal(startupRecovery.corrected, false);
   assert.equal(protocolCheck.ok, true);
   assert.equal(fs.existsSync(path.join(root, ".claw", "project.json")), true);
   assert.equal((result.project as JsonRecord).projectRoot, root);
@@ -748,13 +748,13 @@ test("cli context auto-corrects malformed existing .claw state", () => {
   );
 
   const result = runClaw(["context"], root);
-  const bootstrap = result.bootstrap as JsonRecord;
+  const startupRecovery = result.startupRecovery as JsonRecord;
   const protocolCheck = result.protocolCheck as JsonRecord;
   const projectConfig = JSON.parse(fs.readFileSync(path.join(root, ".claw", "project.json"), "utf-8")) as JsonRecord;
 
-  assert.equal(bootstrap.initialized, false);
-  assert.equal(bootstrap.corrected, true);
-  assert.ok(Array.isArray(bootstrap.fixedPaths));
+  assert.equal(startupRecovery.initialized, false);
+  assert.equal(startupRecovery.corrected, true);
+  assert.ok(Array.isArray(startupRecovery.fixedPaths));
   assert.equal(protocolCheck.ok, true);
   assert.equal(projectConfig.maxTasksToKeep, 99);
   assert.equal(projectConfig.externalTruthSkill, null);
@@ -774,6 +774,19 @@ test("cli context auto-corrects malformed existing .claw state", () => {
       },
     },
   });
+});
+
+test("context suppresses the node:sqlite ExperimentalWarning banner", () => {
+  const root = createFixture("context-warning");
+
+  runClaw(["init", "--name", "Context Warning"], root);
+
+  const result = runClawRaw(["context"], root);
+  assert.equal(result.status, 0);
+  assert.doesNotMatch(result.stderr, /ExperimentalWarning: SQLite is an experimental feature/);
+
+  const payload = JSON.parse(result.stdout) as JsonRecord;
+  assert.equal((payload.project as JsonRecord).projectName, "Context Warning");
 });
 
 test("cli check auto-corrects project.json into explicit protocol fields", () => {

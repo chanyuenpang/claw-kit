@@ -1,25 +1,25 @@
-# Codex prompt-driven bootstrap
+# Codex startup recovery
 
 Use this note when Codex plugin hooks are unavailable or unreliable.
 
 ## Decision
 
-For `claw-kit` on Codex, prompt-driven bootstrap remains the baseline path alongside a minimal `SessionStart` hook.
+For `claw-kit` on Codex, prompt-driven startup recovery remains the baseline path alongside a minimal `SessionStart` hook.
 
 The plugin works on these rules:
 
 - skills load reliably
 - plugin command hooks are enhancement only
-- `SessionStart` bootstrap recovers startup harness state before the main workflow starts
+- `SessionStart` recovery restores startup harness state before the main workflow starts
 
 ## Required startup routine
 
 When `@claw-kit` is used in a real project thread:
 
-1. consume the recovered harness state from session bootstrap
+1. consume the recovered harness state from `SessionStart`
 2. if a session-bound active plan can be recovered, surface only the minimal claw workflow snapshot and the recomputed `workflowGuidance` contract
 3. otherwise run `claw context` from the current working directory to recover startup state for this explicit invocation
-4. treat `claw context.bootstrap` as the canonical init-or-correction result for that explicit bootstrap pass
+4. treat `claw context.startupRecovery` as the canonical init-or-correction result for that explicit recovery pass
 5. tell the user what the next harness step should be
 
 ## Default routing

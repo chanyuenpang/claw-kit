@@ -7,9 +7,22 @@ description: Use when new work needs a .claw task scope and initial plan.
 
 This skill ports the intent of OpenClaw planning into Codex.
 
+## Commands
+
+- Create or bind a task plan:
+  - `claw plan write "<title>" [--goal "<goal>"]`
+  - `claw plan write --title "<title>" [--goal "<goal>"]`
+- Create a subplan under an existing task:
+  - `claw subplan write --parent <task-name> --task-id <id> --title "<title>"`
+- Edit a plan with a structured patch:
+  - `claw plan edit --task <task> --patch <json-file>`
+- Change lifecycle status:
+  - `claw plan edit --task <task> --plan-status process.active`
+
 ## When to use
 
 Use this when the request is more than a tiny one-file change, or when task shape, dependencies, or completion criteria are unclear.
+Use it both for writing the initial task-bound plan and for advancing that plan through the active workflow lifecycle.
 
 ## Planning principles
 
@@ -122,6 +135,9 @@ Simple 1-2 task plans can stay lean. Bigger plans should show explicit decomposi
 14. If `workflowGuidance.askUser` is present, use Codex option-style confirmation to resolve route choices instead of freeform clarification.
 15. Do not start implementation while the plan is still in `prepare.requirements`.
 16. Once the route is confirmed, move the plan to `process.active` before doing any implementation.
+17. When a plan first enters `process.active`, read `workflowGuidance.goalMode` and create the thread goal from `workflowGuidance.goalMode.recommendedObjective` if there is no active thread goal yet.
+18. After `plan edit`, read `workflowGuidance` again and execute the returned specialist dispatch contract directly.
+19. After `plan done`, read `workflowGuidance` again and dispatch `adr-writer` with the completed `plan.json` without waiting on a return.
 
 If a task or subtask is primarily investigation:
 
@@ -133,6 +149,7 @@ If a task or subtask is primarily investigation:
 
 - Do not use task memory as the primary place for new task context.
 - Use `claw search` as the Codex-facing recall command in workflow text.
+- If task scope is missing, `plan write` is the first harness action.
 - Do not start with action sequencing if the round goal and scope boundary are still unclear.
 - Do not jump straight into execution if the plan still lacks key stages.
 - Do not merge investigation and implementation into one task when the workflow should preserve a separate research phase.
@@ -141,3 +158,19 @@ If a task or subtask is primarily investigation:
 - Do not treat `prepare.review` as user-settable. It is an internal review gate.
 - Keep `plan write` as the canonical task-binding mechanism. Do not invent a second task-scope workflow.
 - Treat `workflowGuidance` returned by plan commands as the canonical next-step contract once the plan exists.
+- Treat the current `@claw-kit` thread as already authorized to use goal mode and required delegated subagents.
+- Do not block on extra user authorization for goal mode, truth-writer, or adr-writer.
+- After `plan write`, treat startup recovery as already handled; do not insert a separate visible recovery workflow step here.
+- When requirements are clear and execution begins, move the plan directly into `process.active` before doing any implementation or updating task progress.
+- After each `plan write`, `plan edit`, and `plan done`, consume `workflowGuidance` and surface only the compact `planSummary` when it helps coordination.
+- Treat returned `workflowGuidance.nextStep` and `recommendedCommands` as the required next-step contract whenever they are present.
+- Use two-part lifecycle states:
+  - `prepare.requirements`
+  - `process.active`
+  - `process.wait`
+  - `process.discussing`
+  - `end.completed`
+  - `end.closed`
+  - `end.leave`
+- `end.completed` requires `retrospective.summary`.
+- Once a plan is in `process.active`, do not interrupt it unless there is a real blocker or the user explicitly changes direction.

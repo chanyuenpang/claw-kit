@@ -4,11 +4,11 @@
 
 `claw-kit` does not depend on Codex hooks for correctness.
 
-The active adapter now registers a minimal `SessionStart` hook for bootstrap hints only.
+The active adapter now registers a minimal `SessionStart` hook for startup recovery hints only.
 
 The core workflow works without hooks. Hooks are an enhancement layer for:
 
-- lightweight bootstrap nudges
+- lightweight startup recovery nudges
 - end-of-session reminders
 - tool-level observability
 
@@ -18,7 +18,7 @@ Plugin-level hooks execute in some Codex builds, but support is still uneven eno
 
 Current active use:
 
-- `SessionStart` calls a dedicated bootstrap entry.
+- `SessionStart` calls a dedicated recovery entry.
 - `SessionStart` listens to all session starts.
 - The only claw-kit runtime gate is that `cwd` resolves into a `.claw` project.
 - When that gate is met, the entry gathers current project startup state and injects developer-visible startup guidance.
@@ -30,7 +30,7 @@ The previous local hook lab used:
 
 - `../../scripts/log-hook-event.mjs`
 - `../../references/codex-hook-lab.md`
-- active bootstrap entry: `../../hooks/session-start-bootstrap.mjs`
+- active recovery entry: `../../hooks/session-start-recovery.mjs`
 
 The first question is not "can hooks automate the harness?" but "which events fire at all in this runtime?"
 
@@ -49,6 +49,6 @@ The first question is not "can hooks automate the harness?" but "which events fi
 
 ## Decision rule
 
-- `SessionStart` is for attach-free bootstrap hints only.
+- `SessionStart` is for attach-free startup recovery hints only.
 - `Stop` is for truth or ADR reminders, not mandatory writes.
 - `PreToolUse` and `PostToolUse` are for diagnostics or validation, not core task binding.

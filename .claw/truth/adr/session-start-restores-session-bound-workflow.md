@@ -36,6 +36,9 @@ Accepted
 - workflow 恢复与 `workflowGuidance` contract 保持一致，减少 adapter 在 compact 后自行发明下一步的空间
 - 没有 active workflow 时，系统仍然退回现有 `using-claw-kit` 入口，不增加新的恢复文案分支
 - 默认 startup prompt 现在也成为 adapter contract 的一部分：它负责声明 thread-local authorization，减少 Goal mode 与 delegated specialists 的误阻塞
+- 历史版本实跑对比进一步说明，startup feel 的风险不在于它“过重”本身，而在于一旦把 startup recovery 暴露成独立入口，它就会与 `plan write`、`process.active` 并列竞争主 agent 的注意力，稀释 task-scope 主流程
+- 因此较早版本也不应被概括成“普遍更轻”；durable 结论是 startup surface 必须收敛到恢复当前 workflow contract，而不能扩张成另一个显式 workflow 起点
+- active adapter surface 现已统一采用 `startupRecovery` 命名；这类恢复结果属于 hook/runtime 侧状态，而不是用户面前的另一条 workflow skill
 
 ## Related Code
 
@@ -43,7 +46,7 @@ Accepted
 - `packages/core/src/context.ts`
 - `packages/core/src/plan.ts`
 - `packages/core/src/types.ts`
-- `packages/codex-adapter/hooks/session-start-bootstrap.mjs`
+- `packages/codex-adapter/hooks/session-start-recovery.mjs`
 - `packages/codex-adapter/hooks/hooks.json`
 
 ## Search Terms

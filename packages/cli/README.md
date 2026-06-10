@@ -1,6 +1,6 @@
 # @veewo/claw
 
-Publishable `claw` CLI for `.claw` project bootstrap, planning, search, truth ingestion, and completion refresh.
+Publishable `claw` CLI for `.claw` project startup recovery, planning, search, truth ingestion, and completion refresh.
 
 Install:
 
@@ -22,7 +22,7 @@ claw search "existing truth or ADR topic"
 claw plan write --title "My task" --goal "Define the first task"
 ```
 
-Codex startup workflow should rely on the session hook/bootstrap to recover startup state instead of treating any extra manual recovery step as required after plan creation.
+Codex startup workflow should rely on the session hook/startup recovery path instead of treating any extra manual recovery step as required after plan creation.
 
 `claw search` is project-scoped recall for project docs: `.claw` memory, truth, ADR, and declared markdown external docs. Call it before plan creation and before research-style investigation. It is meant to absorb a natural-language prompt or keyword query against project documentation, recover prior truth and ADR context, and narrow the space before later code-location work. It is not a code-search command.
 

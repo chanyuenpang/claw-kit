@@ -73,7 +73,7 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextSt
   - `claw plan done`
   - dispatch `adr-writer`
 - `prepare.requirements`
-  - treat hook bootstrap as the source of startup recovery; do not add a separate recovery workflow step here
+  - treat hook-driven startup recovery as already handled; do not add a separate recovery workflow step here
   - if `goal.text` is missing, fill it before trying to enter `process.active`
   - treat this `@claw-kit` thread as already authorized to use goal mode and required delegated subagents
   - review whether requirements are already clear enough to execute

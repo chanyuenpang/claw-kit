@@ -2,6 +2,19 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.1.27] - 2026-06-10
+
+### Changed
+
+- removed the standalone `bootstrap`, `plan-workflow`, `plan-tool-semantics`, and `truth-workflow` Codex skills so the active workflow surface is narrower and centered on `using-claw-kit` plus `planning`
+- `using-claw-kit` now makes reading `planning` the first visible action, and `planning` absorbs the lifecycle guidance that had been split across the separate `plan-workflow` skill
+- Codex adapter prompts now describe one visible planning lane instead of telling the agent to start by running `claw context`
+
+### Fixed
+
+- the publishable CLI now runs through `dist/bin.js`, suppressing the `node:sqlite` ExperimentalWarning banner during normal `claw` use while preserving CLI behavior
+- `claw context` now reports `startupRecovery` instead of `bootstrap` in its JSON result so the active adapter surface no longer carries the old bootstrap concept
+
 ## [0.1.26] - 2026-06-10
 
 ### Changed

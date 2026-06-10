@@ -1,9 +1,12 @@
 ﻿# Claw Kit Truth Summary
 
 - `claw-kit` is a host-neutral `.claw` harness core extracted from OpenClaw semantics.
-- Codex startup uses prompt-driven bootstrap plus unified `SessionStart` context injection.
+- Codex startup uses prompt-driven `using-claw-kit` session entry plus unified `SessionStart` startup-recovery context injection.
 - `SessionStart` attempts session-bound active workflow recovery from current `.claw` state before falling back to default startup behavior.
 - Recovered startup context injects only a minimal claw workflow snapshot, and recomputed `workflowGuidance` remains the only next-step contract.
+- `planning` is now the single visible planning skill; it absorbs lifecycle and `workflowGuidance` consumption rules that had previously been split across standalone Codex workflow skills.
+- `using-claw-kit` now makes reading `planning` the first visible action, and no longer exposes separate bootstrap, claw-context, or reference-loading steps ahead of the main workflow.
+- Active adapter startup surfaces now use `startupRecovery` naming in `claw context` results, hook logging, and active reference filenames such as `session-start-recovery.mjs` and `codex-startup-recovery.md`.
 - The non-recovered startup prompt is intentionally slim: it should not repeat project-root, protocol-check, or "report recovered state" lines.
 - In the normal startup prompt, the current `@claw-kit` thread is explicitly pre-authorized for Goal mode and required delegated subagents including `truth-writer` and `adr-writer`, so missing per-turn authorization is not a valid blocker.
 - `claw search` is the Codex-facing recall command; `memory.externalDocPaths` extends project recall sources.

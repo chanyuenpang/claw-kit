@@ -276,7 +276,7 @@ function runContextCommand(
     ...resolved,
     ...(activeWorkflow ? { activeWorkflow } : {}),
     protocolCheck: checkProjectProtocol(cwd),
-    bootstrap: {
+    startupRecovery: {
       initialized,
       corrected,
       fixedPaths,

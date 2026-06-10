@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 const hooksDir = path.dirname(fileURLToPath(import.meta.url));
 const pluginRoot = path.resolve(hooksDir, "..");
 const repoRoot = path.resolve(pluginRoot, "..", "..");
-const cliPath = path.join(repoRoot, "packages", "cli", "dist", "cli.js");
+const cliPath = path.join(repoRoot, "packages", "cli", "dist", "bin.js");
 
 test("SessionStart hook emits additionalContext for .claw projects", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "claw-kit-hook-project-"));
@@ -32,7 +32,7 @@ test("SessionStart hook emits additionalContext for .claw projects", () => {
   const context = payload.hookSpecificOutput.additionalContext;
   assert.match(context, /claw-kit/i);
   assert.match(context, /@\claw-kit|\[@claw-kit\]/i);
-  assert.match(context, /Project protocol check: ok\./);
+  assert.doesNotMatch(context, /Project protocol check:/);
   assert.match(context, /explicitly authorized to use goal mode and delegate subagents/i);
   assert.match(context, /Do not treat missing user authorization as a reason to block normal claw goal-mode entry/i);
 });
