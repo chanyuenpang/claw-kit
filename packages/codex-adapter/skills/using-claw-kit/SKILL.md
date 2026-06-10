@@ -16,6 +16,23 @@ Keep the core chain minimal:
 
 `user prompt` -> `claw search` -> `claw plan write` -> `plan status: process.active` -> `process task 1` -> `spawn or reuse truth-writer` -> `process task 2` -> `reuse truth-writer` -> `...` -> `retrospective` -> `claw plan done` -> `spawn adr-writer`
 
+Detailed call flow:
+
+1. Read `../planning/SKILL.md`.
+2. If prior project context is relevant, run `claw search --query "<topic>"` first.
+3. Treat `claw search` as project-doc recall for truth, ADR, and markdown docs; do not use it as a code-search substitute.
+4. Create or bind task scope through `claw plan write`.
+5. Treat `claw plan write` as the only normal task-scope entrypoint.
+6. After every `claw plan write`, `claw plan edit`, or `claw plan done`, follow returned `workflowGuidance`.
+7. If `workflowGuidance.askUser` is present, resolve the route first.
+8. If requirements are clear and `goal.text` is set, move the plan to `process.active`.
+9. Do not start implementation while the plan is still in `prepare.requirements`.
+10. During execution, process one task at a time and update progress with `claw plan edit`.
+11. After a meaningful completed task, dispatch `truth-writer` when there is reusable context to deposit.
+12. When all tasks are done, complete the retrospective.
+13. Close the plan with `claw plan done` only after `retrospective.summary` exists.
+14. After `claw plan done`, dispatch `adr-writer` using the completed `plan.json`.
+
 ## First action
 
 The first action is to read `../planning/SKILL.md`.
