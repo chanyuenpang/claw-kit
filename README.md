@@ -66,7 +66,7 @@ claw plan write --title "My task" --goal "Define the first task"
 
 `claw context` still exists as a CLI command, but Codex workflow bootstrap should recover context through the session hook instead of treating it as a manual post-plan step.
 
-`claw search` is a project-scoped recall command for `.claw` documentation surfaces such as project memory, truth, ADR, and `memory.externalDocPaths`. It is best used before `claw plan write` and before research-style investigation when you want to recover prior project context. It is not the code-search surface; for current implementation or relationship tracing, use a researcher flow with GitNexus-oriented tooling when available.
+`claw search` is a project-scoped recall command for project documentation surfaces such as `.claw` memory, truth, ADR, and markdown files from `memory.externalDocPaths`. Call it before `claw plan write`, and call it before research-style investigation. Its job is to absorb a natural-language prompt or keyword query against the project's docs, recover prior truth and ADR context, and narrow the search space before you move on to code-location work. It is not the code-search surface; for current implementation or relationship tracing, use a researcher flow with GitNexus-oriented tooling when available.
 
 Configured `memory.externalDocPaths` are treated as markdown-only recall roots: `claw search` indexes `.md` files from those paths rather than arbitrary text or code files.
 
