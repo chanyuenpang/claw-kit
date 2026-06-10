@@ -1,5 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
+import {
+  DEFAULT_LOCAL_EMBEDDING_CACHE_DIR,
+  DEFAULT_LOCAL_EMBEDDING_MODEL,
+} from "./embedding-defaults.js";
 import { ClawError } from "./errors.js";
 import { findProjectRoot, normalizeTaskName } from "./paths.js";
 import type {
@@ -11,9 +15,6 @@ import type {
 } from "./types.js";
 
 const DEFAULT_MAX_TASKS_TO_KEEP = 99;
-const DEFAULT_EMBEDDING_MODEL = "Snowflake/snowflake-arctic-embed-xs";
-const DEFAULT_EMBEDDING_CACHE_DIR = ".claw/models";
-
 export function checkProjectProtocol(cwd: string): ProjectProtocolCheckResult {
   const projectRoot = findRequiredProjectRoot(cwd);
   const projectJsonPath = path.join(projectRoot, ".claw", "project.json");
@@ -314,9 +315,9 @@ function normalizeMemoryEmbeddingConfig(value: unknown): MemoryEmbeddingConfig |
   if (!embedding) {
     return {
       provider: "local",
-      model: DEFAULT_EMBEDDING_MODEL,
+      model: DEFAULT_LOCAL_EMBEDDING_MODEL,
       local: {
-        modelCacheDir: DEFAULT_EMBEDDING_CACHE_DIR,
+        modelCacheDir: DEFAULT_LOCAL_EMBEDDING_CACHE_DIR,
       },
       store: {
         vector: {
@@ -335,9 +336,9 @@ function normalizeMemoryEmbeddingConfig(value: unknown): MemoryEmbeddingConfig |
   if (!model) {
     return {
       provider: "local",
-      model: DEFAULT_EMBEDDING_MODEL,
+      model: DEFAULT_LOCAL_EMBEDDING_MODEL,
       local: {
-        modelCacheDir: DEFAULT_EMBEDDING_CACHE_DIR,
+        modelCacheDir: DEFAULT_LOCAL_EMBEDDING_CACHE_DIR,
       },
       store: {
         vector: {

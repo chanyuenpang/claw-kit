@@ -4,13 +4,17 @@
 - Codex startup uses prompt-driven bootstrap plus unified `SessionStart` context injection.
 - `SessionStart` attempts session-bound active workflow recovery from current `.claw` state before falling back to default startup behavior.
 - Recovered startup context injects only a minimal claw workflow snapshot, and recomputed `workflowGuidance` remains the only next-step contract.
+- The non-recovered startup prompt is intentionally slim: it should not repeat project-root, protocol-check, or "report recovered state" lines.
+- In the normal startup prompt, the current `@claw-kit` thread is explicitly pre-authorized for Goal mode and required delegated subagents including `truth-writer` and `adr-writer`, so missing per-turn authorization is not a valid blocker.
 - `claw search` is the Codex-facing recall command; `memory.externalDocPaths` extends project recall sources.
 - `claw search --query` stays compatible, and `claw search index --refresh` is the explicit project index refresh entrypoint that returns `search.index.refresh`.
 - `claw search` is project-scoped document recall for project memory, truth, ADR, and external docs; code investigation still belongs to `researcher` plus GitNexus, not `claw search`.
 - `claw search` only indexes configured external memory paths for `.md` files, and `claw search index --refresh` now materializes project-scoped vector data plus `vectorIndex` metadata from `memory.embedding`.
-- `claw init` and `claw context` protocol repair now auto-fill a default local embedding config into older `.claw/project.json` files, using `Snowflake/snowflake-arctic-embed-xs`, `.claw/models`, and `store.vector.enabled = true`.
+- `claw init` and `claw context` protocol repair now auto-fill a default local embedding config into older `.claw/project.json` files, using `Snowflake/snowflake-arctic-embed-m-v2.0`, `.claw/models`, and `store.vector.enabled = true`.
+- `claw init` 现在会在项目根目录自动补齐 claw-kit 专用 `.gitignore` 规则块，但 `.gitignore` 变更只属于 `initProject()`；`project-check` / protocol repair 与 `claw context` 不会写 `.gitignore`，重复 init 也不会重复追加同一规则块。对应 canonical ADR 是 `init-project-gitignore-ownership`。
 - `memory.embedding.local.device` is now an explicit project-level local-device selector, and `CLAW_EMBEDDING_LOCAL_DEVICE` / `CLAW_EMBEDDING_DEVICE` provide one-off rescue overrides; both feed `packages/core/src/embedding-local.ts`, which always keeps a `cpu` retry path for GPU-class `dml` / `cuda` devices.
 - `claw search index --refresh` is now covered as a bounded 100-file batch process per run, with repeated refreshes automatically advancing the remaining backlog, and `packages/core/src/embedding-local.ts` is also covered for worker-side inference batching order preservation.
+- 即使 `memory.embedding` 配置变化触发向量 reset，`claw search index --refresh` 仍保持每轮默认 100 文件的 bounded batching；reset 后的后续 refresh 继续补完剩余文件，而不是因为模型切换而一次性整库重建。
 - `packages/core/src/embedding-local.ts` now advances local inference in fixed internal batches within a single worker/model session, and `packages/core/src/embedding-worker.ts` / `packages/core/src/memory.ts` now use temp-file handoff instead of giant stdout JSON for embedding results.
 - Large refreshes keep the existing `claw search index --refresh` contract while advancing backlog in bounded batches and keeping vector payload transport off stdout.
 - Large-project retest evidence from `NeonSpark` shows the final working path: `claw search index --refresh` completed with `indexedCount: 698` and `vectorIndex.chunkCount: 33737` after the batching and temp-file fixes.
@@ -30,10 +34,11 @@
 - `claw plan write`, `claw plan edit`, and `claw plan done` return compact `workflowGuidance` and `planSummary` contracts.
 - `claw plan write` now accepts `claw plan write "<title>" [--goal "<text>"]`; when `goal.text` is missing, requirements-stage guidance tells the agent to fill goal first, then fill the rest of the plan, and move to `process.active` as soon as requirements are clear.
 - `goal.text` is the hard gate for leaving `prepare.requirements`; `process.active` cannot start without it.
-- Thread goal mode no longer starts on `plan write`; `workflowGuidance.goalMode` is emitted on first entry into `process.active` with `setWhen = on_enter_process_active`, `ifNoActiveGoal = true`, `doNotOverwriteExisting = true`, and `supportedSurfaces = ["/goal", "create_goal"]`.
+- Thread goal mode no longer starts on `plan write`; `workflowGuidance.goalMode` is emitted on first entry into `process.active` with `allowOverwrite = true`, `setWhen = on_enter_process_active`, `ifNoActiveGoal = true`, `doNotOverwriteExisting = true`, and `supportedSurfaces = ["/goal", "create_goal"]`.
+- Active `@claw-kit` threads are still pre-authorized for Goal mode and required delegated subagents, but that authorization only matters once the workflow actually returns those contracts.
 - Truth and ADR deposition run through delegated writer specialists, not inline main-agent writes.
 - Writer delegation contracts now carry explicit `skill` and `model` fields.
-- `.claw/project.json` supports explicit `externalTruthSkill` and `externalAdrSkill` overrides with `null` defaults, and `memory.embedding` now carries the project embedding config plus index metadata support, including the local `Snowflake/snowflake-arctic-embed-xs` / 384-dimension path with Windows DirectML-to-CPU fallback.
+- `.claw/project.json` supports explicit `externalTruthSkill` and `externalAdrSkill` overrides with `null` defaults, and `memory.embedding` now carries the project embedding config plus index metadata support, including the default local `Snowflake/snowflake-arctic-embed-m-v2.0` / 768-dimension path plus explicit legacy `Snowflake/snowflake-arctic-embed-xs` / 384-dimension compatibility, both with Windows DirectML-to-CPU fallback.
 - `packages/core/src/embedding-worker.ts` is the new embedding worker used for project embedding generation.
 - This hybrid query migration follows the mature `openclaw-dev` memory query design, but only copies the smallest subset that fits `claw-kit`.
 - 这次 multi-term recall 调整同样参考了 `openclaw-dev` 的 memory search 设计，但重点是 query planner、keyword recall 和 vector fusion，而不是单纯替换 embedding。
@@ -43,5 +48,7 @@
 - README、`packages/cli/README.md` 与 `packages/core/test/core.test.ts` 已覆盖 incremental refresh 契约。
 - `packages/core/test/core.test.ts` 已新增 query planner 语义和中文多词 project recall 场景覆盖；本轮校验通过 `npm test -- packages/core/test/core.test.ts` 与 `npm run check`。
 - search candidate recall 这一轮的验证证据包括：`packages/core/test/core.test.ts` 50/50 通过、`npm run check` 通过，以及在 `NeonSpark` 的 live search 中，多词中文 query 不再让 `contents.md` 压过聚焦文档， conversational `搜打撤` 查询继续优先命中 system design 类文档。
-- Current release/package state tracks `0.1.25` on `package.json`, `packages/core/package.json`, and `packages/cli/package.json`, keeps `package-lock.json` aligned across the workspace packages, uses `0.1.25+codex.20260610012622` in `packages/codex-adapter/.codex-plugin/plugin.json`, has both `@veewo/claw-core@0.1.25` and `@veewo/claw@0.1.25` published with `latest` dist-tags resolving to `0.1.25`, and has a successful clean-environment install smoke path that bootstraps npm CLI in temp, installs `@veewo/claw@0.1.25` into a temp prefix, and runs `claw init`; the release process also now has a durable managed-environment constraint that publish can succeed without a direct `npm` binary on `PATH` by using registry API, bundled node, and tar-based packaging.
+<<<<<<< HEAD
+- Current release/package state tracks `0.1.25` on `package.json`, `packages/core/package.json`, `packages/cli/package.json`, `packages/openclaw-adapter/package.json`, and `packages/codex-adapter/package.json`, with `packages/codex-adapter/.codex-plugin/plugin.json` on `0.1.25+codex.20260610173000`.
+- Both `@veewo/claw-core@0.1.25` and `@veewo/claw@0.1.25` are already published, and the managed-environment release path can still verify and publish successfully without relying on a direct `npm` binary on `PATH` by using registry/API plus bundled-node fallbacks.
 - `packages/core/src/memory.ts` 保持严格契约：project memory refresh 如果 embedding 生成失败就必须失败，不能降级为 text-only indexing；project search 继续保持 vector-required 契约，缺少 refreshed vector index 时返回 `MEMORY_VECTOR_INDEX_REQUIRED`。

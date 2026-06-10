@@ -53,6 +53,7 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextSt
 - Current intended use is `setWhen = on_enter_process_active`.
 - When a plan first enters `process.active`, set the thread goal from `recommendedObjective` if the thread does not already have an active goal.
 - Do not automatically overwrite an unrelated active goal already attached to the thread.
+- In `@claw-kit` threads, do not treat goal mode or delegated subagent use as awaiting separate user authorization unless the user explicitly forbids them.
 - In the Codex app, `/goal` is the normal host surface. In tool-enabled sessions, `create_goal` is also a valid path.
 
 ## Lifecycle interpretation
@@ -74,6 +75,7 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextSt
 - `prepare.requirements`
   - treat hook bootstrap as the source of startup recovery; do not add a separate recovery workflow step here
   - if `goal.text` is missing, fill it before trying to enter `process.active`
+  - treat this `@claw-kit` thread as already authorized to use goal mode and required delegated subagents
   - review whether requirements are already clear enough to execute
   - only use Codex options when requirements are still ambiguous
   - do not start implementation in this stage

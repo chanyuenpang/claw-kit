@@ -14,6 +14,9 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 - plans can no longer enter `process.active` without `goal.text`, making the goal gate an enforced lifecycle rule instead of prompt-only advice
 - delegated writer contracts now explicitly include `fork_context: false` so narrow deposition workers do not inherit full thread history by default
+- Codex `SessionStart` bootstrap prompt is slimmer and no longer repeats project root, protocol-check, or "report recovered state" instructions
+- `plan write` workflow guidance now makes goal mode the first required follow-up and treats goal mode plus delegated subagents as pre-authorized within the current `@claw-kit` thread
+- Windows child `node` processes spawned by embedding refresh, hook bootstrap, and GitNexus refresh now run with hidden windows to avoid interrupting terminal input
 
 ## [0.1.24] - 2026-06-09
 

@@ -38,6 +38,7 @@ const contextResult = spawnSync("claw", ["context"], {
   cwd: sessionCwd,
   encoding: "utf-8",
   shell: process.platform === "win32",
+  windowsHide: true,
 });
 
 if (contextResult.status !== 0) {

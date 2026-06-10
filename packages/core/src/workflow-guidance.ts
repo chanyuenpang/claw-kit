@@ -38,7 +38,10 @@ function adrWriterDelegate(projectConfig: ProjectConfig | null): WorkflowGuidanc
 }
 
 function buildGoalModeObjective(planGoal: string): string {
-  return `\u6309\u7167 claw \u6d41\u7a0b\uff0c\u63a8\u8fdb\u4efb\u52a1\uff0c\u66f4\u65b0plan\uff0c\u5b8c\u6210\uff1a${planGoal}`;
+  const trimmedGoal = planGoal.trim();
+  return trimmedGoal
+    ? `\u6309\u7167 claw \u6d41\u7a0b\uff0c\u63a8\u8fdb\u4efb\u52a1\uff0c\u66f4\u65b0plan\uff0c\u5b8c\u6210\uff1a${trimmedGoal}`
+    : "\u6309\u7167 claw \u6d41\u7a0b\uff0c\u63a8\u8fdb\u4efb\u52a1\uff0c\u66f4\u65b0plan\u3002";
 }
 
 function buildGoalMode(planGoal: string) {
@@ -93,8 +96,8 @@ export function buildPlanWorkflowGuidance(params: {
       return {
         stage: "requirements",
         summary: hasGoal
-          ? "Task scope is bound. Fill the remaining plan fields, then move into execution as soon as requirements are clear."
-          : "Task scope is bound. Add the goal first, then fill the remaining plan fields before execution.",
+          ? "Task scope is bound. Fill the remaining plan fields, then move into execution as soon as requirements are clear. This @claw-kit thread is already authorized to use goal mode and delegated subagents when the workflow requires them."
+          : "Task scope is bound. Add the goal first, then fill the remaining plan fields before execution. This @claw-kit thread is already authorized to use goal mode and delegated subagents when the workflow requires them.",
         nextStep:
           hasGoal
             ? "1. Review whether requirements are clear enough to execute. 2. Fill the `requirements` section and any other needed plan fields such as `tasks`, `references`, `rules`, and `keyDecisions`. 3. If requirements are clear, move into `process.active`. 4. If requirements are not clear, ask the user to clarify the missing scope first."
@@ -102,6 +105,7 @@ export function buildPlanWorkflowGuidance(params: {
         notes: [
           "Do not start implementation while the plan is still in `prepare.requirements`.",
           "If requirements are already complete after editing the plan, switch the status to `process.active` immediately.",
+          "Do not block on extra user authorization when the workflow later returns goal mode or delegated subagents.",
         ],
         recommendedCommands: [
           `${editBase} --plan-status process.active`,

@@ -5,18 +5,20 @@
 - `claw-kit` 只在 plan 首次进入 `process.active` 后才返回 Goal mode 建议；`plan write` 仍停留在 `prepare.requirements` 时不应返回 `goalMode`。
 - In `workflowGuidance`, `goalMode` now carries:
   - `recommendedObjective`
+  - `allowOverwrite = true`
   - `setWhen = on_enter_process_active`
   - `ifNoActiveGoal = true`
   - `doNotOverwriteExisting = true`
   - `supportedSurfaces = [\"/goal\", \"create_goal\"]`
 - The recommended objective is taken directly from canonical `plan.goal.text`.
 - `goalMode` 只有在 `goal.text` 已存在时才成立，因为 harness 本身禁止没有 goal 的 plan 离开 `prepare.requirements`。
+- Active `@claw-kit` threads are still pre-authorized to use Goal mode when the workflow later returns this recommendation, so no extra per-turn authorization gate should block it.
 - The Codex adapter should check whether the current thread already has an active goal before setting one from the active plan.
 
 ## 真实代码锚点
 
 - `packages/core/src/workflow-guidance.ts`
-  - `buildGoalMode()` 定义 `setWhen = on_enter_process_active`、`ifNoActiveGoal = true`、`doNotOverwriteExisting = true`、`supportedSurfaces`
+  - `buildGoalMode()` 定义 `allowOverwrite = true`、`setWhen = on_enter_process_active`、`ifNoActiveGoal = true`、`doNotOverwriteExisting = true`、`supportedSurfaces`
   - `buildPlanWorkflowGuidance()` 只在 `justEnteredProcess && hasGoal` 时返回 `goalMode`
 - `packages/core/src/plan.ts`
   - `validatePlanDocument()` 要求 `goal.text` 缺失时 plan 不能离开 `prepare.requirements`

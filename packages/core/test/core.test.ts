@@ -92,6 +92,10 @@ test("initProject creates a minimal .claw project scaffold", () => {
   assert.ok(fs.existsSync(path.join(root, ".claw", "memory.md")));
   assert.ok(fs.existsSync(path.join(root, ".claw", "truth", "SUMMARY.md")));
   assert.ok(fs.existsSync(path.join(root, ".claw", "tasks")));
+  assert.equal(
+    fs.readFileSync(path.join(root, ".gitignore"), "utf-8"),
+    "# claw-kit\n.claw/*\n!.claw/project.json\n!.claw/truth/\n!.claw/truth/**\n",
+  );
   assert.deepEqual(projectConfig, {
     id: "demo-project",
     name: "Demo Project",
@@ -103,7 +107,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
       externalDocPaths: ["docs/", "README.md"],
       embedding: {
         provider: "local",
-        model: "Snowflake/snowflake-arctic-embed-xs",
+        model: "Snowflake/snowflake-arctic-embed-m-v2.0",
         local: {
           modelCacheDir: ".claw/models",
         },
@@ -118,6 +122,32 @@ test("initProject creates a minimal .claw project scaffold", () => {
       enabled: true,
     },
   });
+});
+
+test("initProject appends claw gitignore rules once when project already has a gitignore", () => {
+  const root = createEmptyFixture("init-gitignore-existing");
+  const gitignorePath = path.join(root, ".gitignore");
+  fs.writeFileSync(gitignorePath, "node_modules/\n", "utf-8");
+
+  initProject({
+    cwd: root,
+    projectName: "Demo Project",
+    force: true,
+  });
+
+  const once = fs.readFileSync(gitignorePath, "utf-8");
+  assert.equal(
+    once,
+    "node_modules/\n\n# claw-kit\n.claw/*\n!.claw/project.json\n!.claw/truth/\n!.claw/truth/**\n",
+  );
+
+  initProject({
+    cwd: root,
+    projectName: "Demo Project",
+    force: true,
+  });
+
+  assert.equal(fs.readFileSync(gitignorePath, "utf-8"), once);
 });
 
 test("plan write creates task-bound plan and updates activePlan", async () => {
@@ -139,6 +169,7 @@ test("plan write creates task-bound plan and updates activePlan", async () => {
   assert.equal(result.workflowGuidance.delegateSubagents, undefined);
   assert.equal(result.workflowGuidance.goalMode, undefined);
   assert.ok(result.workflowGuidance.summary.includes("Fill the remaining plan fields"));
+  assert.ok(result.workflowGuidance.summary.includes("already authorized to use goal mode and delegated subagents"));
   assert.ok(result.workflowGuidance.nextStep.includes("Review whether requirements are clear enough to execute"));
   assert.ok(result.workflowGuidance.nextStep.includes("Fill the `requirements` section"));
   assert.ok(result.workflowGuidance.nextStep.includes("move into `process.active`"));
@@ -178,6 +209,7 @@ test("plan write guidance leaves requirement judgment to the agent", async () =>
   assert.deepEqual(result.workflowGuidance.notes, [
     "Do not start implementation while the plan is still in `prepare.requirements`.",
     "If requirements are already complete after editing the plan, switch the status to `process.active` immediately.",
+    "Do not block on extra user authorization when the workflow later returns goal mode or delegated subagents.",
   ]);
 });
 
@@ -1503,6 +1535,38 @@ test("project memory refresh generates local embedding metadata and vector rows 
   }
 });
 
+test("project memory refresh uses 768 dimensions for the default local embedding model", { concurrency: false }, () => {
+  const root = createEmptyFixture("memory-default-local-embeddings");
+  initProject({
+    cwd: root,
+    projectName: "Memory Default Local Embeddings",
+    externalDocPaths: ["docs/"],
+  });
+  fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+  fs.writeFileSync(path.join(root, "docs", "guide.md"), "default local embedding doc\n", "utf-8");
+
+  const previousMockEnv = process.env.CLAW_EMBEDDING_MOCK;
+  process.env.CLAW_EMBEDDING_MOCK = "1";
+
+  try {
+    const result = buildMemoryIndex({ cwd: root });
+
+    assert.ok(result.embedding);
+    assert.equal(result.embedding.model, "Snowflake/snowflake-arctic-embed-m-v2.0");
+    assert.equal(result.vectorIndex?.enabled, true);
+    assert.equal(result.vectorIndex?.provider, "local");
+    assert.equal(result.vectorIndex?.model, "Snowflake/snowflake-arctic-embed-m-v2.0");
+    assert.equal(result.vectorIndex?.dimensions, 768);
+    assert.ok(Number(result.vectorIndex?.chunkCount) >= 3);
+  } finally {
+    if (previousMockEnv === undefined) {
+      delete process.env.CLAW_EMBEDDING_MOCK;
+    } else {
+      process.env.CLAW_EMBEDDING_MOCK = previousMockEnv;
+    }
+  }
+});
+
 test("project memory refresh incrementally reuses unchanged docs and syncs changed or deleted markdown docs", { concurrency: false }, () => {
   const root = createFixture("memory-incremental-refresh");
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
@@ -1764,6 +1828,88 @@ test("project memory refresh defaults to processing changed files in 100-file ba
       assert.equal(firstIndex.pendingFileCount, 3);
       assert.equal(secondIndex.processedFileCount, 3);
       assert.equal(secondIndex.pendingFileCount, 0);
+      assert.equal(docs.count, 103);
+    } finally {
+      db.close();
+    }
+  } finally {
+    if (previousMockEnv === undefined) {
+      delete process.env.CLAW_EMBEDDING_MOCK;
+    } else {
+      process.env.CLAW_EMBEDDING_MOCK = previousMockEnv;
+    }
+  }
+});
+
+test("project memory refresh still batches files after embedding config changes", { concurrency: false }, () => {
+  const root = createFixture("memory-batches-after-embedding-config-change");
+  fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+
+  const writeProjectConfig = (model: string) => {
+    fs.writeFileSync(
+      path.join(root, ".claw", "project.json"),
+      JSON.stringify(
+        {
+          id: "memory-batches-after-embedding-config-change",
+          name: "Memory Batches After Embedding Config Change",
+          maxTasksToKeep: 99,
+          externalTruthSkill: null,
+          externalAdrSkill: null,
+          contextPaths: [],
+          memory: {
+            externalDocPaths: ["docs/"],
+            embedding: {
+              provider: "local",
+              model,
+              local: {
+                modelCacheDir: path.join(root, ".model-cache"),
+              },
+            },
+          },
+          gitnexus: {
+            enabled: false,
+          },
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+  };
+
+  writeProjectConfig("Snowflake/snowflake-arctic-embed-xs");
+  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project alpha memory\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "shared beta truth\n", "utf-8");
+  for (let index = 0; index < 101; index += 1) {
+    fs.writeFileSync(path.join(root, "docs", `doc-${index.toString().padStart(3, "0")}.md`), `doc ${index}\n`, "utf-8");
+  }
+
+  const previousMockEnv = process.env.CLAW_EMBEDDING_MOCK;
+  process.env.CLAW_EMBEDDING_MOCK = "1";
+
+  try {
+    const firstIndex = buildMemoryIndex({ cwd: root });
+    const secondIndex = buildMemoryIndex({ cwd: root });
+
+    assert.equal(firstIndex.processedFileCount, 100);
+    assert.equal(firstIndex.pendingFileCount, 3);
+    assert.equal(secondIndex.processedFileCount, 3);
+    assert.equal(secondIndex.pendingFileCount, 0);
+
+    writeProjectConfig("Snowflake/snowflake-arctic-embed-m-v2.0");
+
+    const resetIndex = buildMemoryIndex({ cwd: root });
+    const completionIndex = buildMemoryIndex({ cwd: root });
+    const db = new DatabaseSync(resetIndex.storePath);
+
+    try {
+      const docs = db.prepare("SELECT COUNT(*) AS count FROM docs").get() as { count: number };
+
+      assert.equal(resetIndex.indexedCount, 103);
+      assert.equal(resetIndex.processedFileCount, 100);
+      assert.equal(resetIndex.pendingFileCount, 3);
+      assert.equal(completionIndex.processedFileCount, 3);
+      assert.equal(completionIndex.pendingFileCount, 0);
       assert.equal(docs.count, 103);
     } finally {
       db.close();

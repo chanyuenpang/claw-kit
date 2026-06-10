@@ -26,6 +26,7 @@ Use this skill when planning or editing execution state in an existing `.claw/` 
 - When using `plan write`, write the task title, goal, tasks, and supporting plan text in the user's preferred language unless the repository has an explicit stronger convention.
 - `goal.text` must be filled before the plan can move to `process.active`.
 - When a plan first enters `process.active`, read `workflowGuidance.goalMode` and create the thread goal from `workflowGuidance.goalMode.recommendedObjective` using the current host goal surface if there is no active thread goal yet.
+- Treat the current `@claw-kit` thread as already authorized to use goal mode and required delegated subagents. Do not block on extra user authorization for either surface.
 - After `plan write`, treat hook bootstrap as the source of startup recovery; do not insert a separate recovery workflow step.
 - After `plan write`, read `workflowGuidance`, check whether requirements are already clear enough to execute, and use `askUser` only when they are not.
 - Do not start implementation while the plan is still in `prepare.requirements`.

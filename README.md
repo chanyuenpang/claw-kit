@@ -16,6 +16,11 @@ Or use the one-shot install script:
 .\scripts\install-cli.ps1
 ```
 
+After the CLI is installed, semantic search still needs one-time project setup:
+
+1. Run `claw context` in the target project so `.claw/project.json` is normalized and the default local embedding config is present.
+2. Run one `claw search index --refresh` to create the sqlite index, download or reuse the local embedding model, and build the first batch of vectors.
+
 Then use it from any project directory:
 
 ```powershell
@@ -61,13 +66,22 @@ claw plan write --title "My task" --goal "Define the first task"
 
 `claw context` still exists as a CLI command, but Codex workflow bootstrap should recover context through the session hook instead of treating it as a manual post-plan step.
 
-`claw search` is a project-scoped recall command for `.claw` documentation surfaces such as project memory, truth, ADR, and `memory.externalDocPaths`. It is best used before `claw plan write` and before research-style investigation when you want to recover prior project context. It is not the code-search surface; for current implementation or relationship tracing, use a researcher flow with GitNexus-oriented tooling when available.
+`claw search` is a project-scoped recall command for project documentation surfaces such as `.claw` memory, truth, ADR, and markdown files from `memory.externalDocPaths`. Call it before `claw plan write`, and call it before research-style investigation. Its job is to absorb a natural-language prompt or keyword query against the project's docs, recover prior truth and ADR context, and narrow the search space before you move on to code-location work. It is not the code-search surface; for current implementation or relationship tracing, use a researcher flow with GitNexus-oriented tooling when available.
 
 Configured `memory.externalDocPaths` are treated as markdown-only recall roots: `claw search` indexes `.md` files from those paths rather than arbitrary text or code files.
 
-Project search now expects a refreshed vector index. Configure `memory.embedding` and run `claw search index --refresh` before using `claw search --query ...`.
+Project search now expects a refreshed vector index. Configure `memory.embedding` and run `claw search index --refresh` before using `claw search ...` with either `claw search "topic"` or `claw search --query "topic"`.
 
-`claw search index --refresh` syncs the current project's recall index incrementally. Unchanged markdown docs keep their existing sqlite rows and embeddings, changed docs are re-embedded, deleted docs are removed, and changing the embedding config triggers a full vector refresh. For large projects, project refresh now defaults to processing at most 100 newly added or changed files per run, so repeated refreshes naturally advance the remaining backlog instead of trying to embed the full corpus in one shot. For local semantic indexing, `provider: "local"` uses a GitNexus-style transformers setup with `Snowflake/snowflake-arctic-embed-xs`, 384 dimensions, worker-side batch inference, and Windows DirectML-to-CPU fallback by default:
+Recommended first-time search setup from a project root:
+
+```powershell
+claw context
+claw search index --refresh
+```
+
+That first refresh is the point where claw creates the project-local sqlite recall store at `.claw/memory.sqlite`, downloads or reuses the local embedding model cache under `.claw/models`, and writes the initial vector index for searchable markdown docs.
+
+`claw search index --refresh` syncs the current project's recall index incrementally. Unchanged markdown docs keep their existing sqlite rows and embeddings, changed docs are re-embedded, deleted docs are removed, and changing the embedding config triggers a full vector refresh. For large projects, project refresh now defaults to processing at most 100 newly added or changed files per run, so repeated refreshes naturally advance the remaining backlog instead of trying to embed the full corpus in one shot. For local semantic indexing, `provider: "local"` now defaults to `Snowflake/snowflake-arctic-embed-m-v2.0` with 768 dimensions, worker-side batch inference, and Windows DirectML-to-CPU fallback by default. Existing projects that explicitly keep `Snowflake/snowflake-arctic-embed-xs` continue to resolve to 384 dimensions unless they override `outputDimensionality`:
 
 ```json
 {
@@ -75,7 +89,7 @@ Project search now expects a refreshed vector index. Configure `memory.embedding
     "externalDocPaths": [],
     "embedding": {
       "provider": "local",
-      "model": "Snowflake/snowflake-arctic-embed-xs",
+      "model": "Snowflake/snowflake-arctic-embed-m-v2.0",
       "local": {
         "modelCacheDir": ".claw/models"
       }
@@ -108,7 +122,9 @@ If your environment uses remote embeddings, set `memory.embedding` to an OpenAI-
 
 ## Publish workflow
 
-Dry-run the publish artifacts:
+For a real release, use the full maintainer workflow in [DISTRIBUTION.md](G:/Projects/claw-kit/DISTRIBUTION.md) and the local-copy refresh checks in [docs/2026-06-08-closeout-workflow.md](G:/Projects/claw-kit/docs/2026-06-08-closeout-workflow.md).
+
+Quick artifact dry-run:
 
 ```powershell
 cd packages\core
@@ -124,6 +140,15 @@ cd packages\core
 npm publish --access public
 cd ..\cli
 npm publish --access public
+```
+
+Post-publish install verification on Windows:
+
+```powershell
+npm install -g @veewo/claw
+npm list -g @veewo/claw --depth=0
+(Get-Command claw).Source
+claw --help
 ```
 
 `@veewo/claw` depends on `@veewo/claw-core`, so publish `core` first.

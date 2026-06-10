@@ -2,6 +2,10 @@ import fs from "node:fs";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
 import {
+  DEFAULT_LOCAL_EMBEDDING_DIMENSIONS,
+  resolveDefaultLocalEmbeddingDimensions,
+} from "./embedding-defaults.js";
+import {
   resolveLocalExecutionDevice,
   runLocalEmbeddingWithFallback,
 } from "./embedding-local.js";
@@ -43,7 +47,7 @@ async function main(): Promise<void> {
 }
 
 function buildMockOutput(input: WorkerInput): WorkerOutput {
-  const dimensions = resolveDimensions(input.embedding, 384);
+  const dimensions = resolveDimensions(input.embedding, DEFAULT_LOCAL_EMBEDDING_DIMENSIONS);
   return {
     dimensions,
     vectors: input.texts.map((text, textIndex) => buildMockVector(text, dimensions, textIndex)),
@@ -61,7 +65,7 @@ function buildMockVector(text: string, dimensions: number, textIndex: number): n
 async function buildLocalOutput(input: WorkerInput): Promise<WorkerOutput> {
   if (!input.texts.length) {
     return {
-      dimensions: resolveDimensions(input.embedding, 384),
+      dimensions: resolveDimensions(input.embedding, DEFAULT_LOCAL_EMBEDDING_DIMENSIONS),
       vectors: [],
     };
   }
@@ -82,7 +86,7 @@ async function buildLocalOutput(input: WorkerInput): Promise<WorkerOutput> {
   });
   const output = await runLocalEmbeddingWithFallback({
     texts: input.texts,
-    dimensions: resolveDimensions(input.embedding, 384),
+    dimensions: resolveDimensions(input.embedding, DEFAULT_LOCAL_EMBEDDING_DIMENSIONS),
     requestedDevice,
     createExtractor: async (device) =>
       (pipeline as unknown as (
@@ -192,7 +196,7 @@ function resolveDimensions(embedding: MemoryEmbeddingConfig, fallback: number): 
     return embedding.outputDimensionality;
   }
   if (embedding.provider === "local") {
-    return 384;
+    return resolveDefaultLocalEmbeddingDimensions(embedding.model);
   }
   return fallback > 0 ? fallback : 1536;
 }
