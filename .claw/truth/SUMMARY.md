@@ -48,7 +48,7 @@
 - README、`packages/cli/README.md` 与 `packages/core/test/core.test.ts` 已覆盖 incremental refresh 契约。
 - `packages/core/test/core.test.ts` 已新增 query planner 语义和中文多词 project recall 场景覆盖；本轮校验通过 `npm test -- packages/core/test/core.test.ts` 与 `npm run check`。
 - search candidate recall 这一轮的验证证据包括：`packages/core/test/core.test.ts` 50/50 通过、`npm run check` 通过，以及在 `NeonSpark` 的 live search 中，多词中文 query 不再让 `contents.md` 压过聚焦文档， conversational `搜打撤` 查询继续优先命中 system design 类文档。
-<<<<<<< HEAD
-- Current release/package state tracks `0.1.25` on `package.json`, `packages/core/package.json`, `packages/cli/package.json`, `packages/openclaw-adapter/package.json`, and `packages/codex-adapter/package.json`, with `packages/codex-adapter/.codex-plugin/plugin.json` on `0.1.25+codex.20260610173000`.
-- Both `@veewo/claw-core@0.1.25` and `@veewo/claw@0.1.25` are already published, and the managed-environment release path can still verify and publish successfully without relying on a direct `npm` binary on `PATH` by using registry/API plus bundled-node fallbacks.
+- 当前 workspace 版本线是 `0.1.26`：`package.json`、`packages/core/package.json`、`packages/cli/package.json`、`packages/openclaw-adapter/package.json` 和 `packages/codex-adapter/package.json` 都已经对齐到 `0.1.26`，`packages/codex-adapter/.codex-plugin/plugin.json` 当前是 `0.1.26+codex.20260610193003`。
+- release sync 现在有一条明确的预发布规则：如果本地已有 release guidance / truth 调整，先单独提交，再合并 `origin/main`；遇到 workflow guidance、CLI tests、Codex adapter docs/skills 或 `.claw/truth/` 冲突时，合并结果要同时保留远端更新和本地已验证的 goal gate / positional-title 行为，然后再跑 `npm test` 与 `npm run check`。
+- canonical `.claw/truth/` markdown 需要保持 UTF-8 BOM；truth ingestion 和 `npm run check` 的 truth encoding audit 都把这当作稳定约束，缺少 BOM 的 truth 文档在 Windows PowerShell 路径上不算完成态。
 - `packages/core/src/memory.ts` 保持严格契约：project memory refresh 如果 embedding 生成失败就必须失败，不能降级为 text-only indexing；project search 继续保持 vector-required 契约，缺少 refreshed vector index 时返回 `MEMORY_VECTOR_INDEX_REQUIRED`。

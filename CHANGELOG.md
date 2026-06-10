@@ -2,6 +2,20 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.1.26] - 2026-06-10
+
+### Changed
+
+- merged the local workflow-guidance updates with the later `origin/main` search, init, and Codex adapter changes
+- `claw plan write` keeps the positional-title root-plan entrypoint while `claw search` also accepts a positional project query
+- requirements-stage guidance now keeps the hard `goal.text` gate for entering `process.active` while also treating active `@claw-kit` threads as pre-authorized for later goal-mode and delegated-subagent use
+
+### Fixed
+
+- plans still cannot enter `process.active` without `goal.text`, and `workflowGuidance.goalMode` is emitted on first entry into `process.active` instead of on `plan write`
+- delegated writer contracts continue to carry `fork_context: false` and the merged Codex adapter docs/skills now align with that execution contract
+- Windows child `node` processes spawned by embedding refresh, hook bootstrap, and GitNexus refresh run hidden, and the merged truth/docs set now passes truth encoding audit
+
 ## [0.1.25] - 2026-06-10
 
 ### Changed

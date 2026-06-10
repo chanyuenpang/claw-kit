@@ -8,6 +8,7 @@ Accepted working truth for the current `claw-kit` workflow revision.
 
 - `claw plan write` and `appendTasks` no longer auto-insert `Update truth (if got valuable contexts)` tasks.
 - The workflow is back to the lighter model: finish the normal task, dispatch `truth-writer` only when the completed subtask produced reusable knowledge, then continue with the next task.
+- canonical `.claw/truth/` markdown is expected to stay in UTF-8 with BOM for Windows PowerShell compatibility; truth deposition should preserve that encoding instead of rewriting files as plain UTF-8 without BOM.
 - The compact task-completion guidance now says:
   - `If the completed subtask produced reusable knowledge, dispatch truth-writer.`
   - `Continue with next task: id xx content xxx`
@@ -18,4 +19,12 @@ Accepted working truth for the current `claw-kit` workflow revision.
 
 - Future agents should not assume automatic truth follow-up tasks are part of plan creation or task appends.
 - `truth-writer` remains the canonical deposition specialist, but it is triggered explicitly from completed work rather than injected plan tasks.
+- If a truth doc fails repo encoding audit after merge or manual edits, restore UTF-8 BOM before treating the deposition as complete; `npm run check` enforces this through the truth encoding audit.
 - Plan reading and task completion should follow the lighter chain: normal task -> conditional `truth-writer` -> next task.
+
+## Related code
+
+- `packages/core/src/truth.ts`
+- `packages/core/src/text-encoding.ts`
+- `packages/core/test/core.test.ts`
+- `scripts/truth-encoding-audit.mjs`
