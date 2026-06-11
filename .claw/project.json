@@ -7,7 +7,7 @@
     "externalDocPaths": [],
     "embedding": {
       "provider": "local",
-      "model": "Snowflake/snowflake-arctic-embed-xs",
+      "model": "Snowflake/snowflake-arctic-embed-m-v2.0",
       "local": {
         "modelCacheDir": ".claw/models"
       },
