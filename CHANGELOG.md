@@ -2,6 +2,18 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.1.34] - 2026-06-12
+
+### Changed
+
+- `workflowGuidance` now has explicit paused and discussion execution states so `process.wait` and `process.discussing` tell the agent to pause Goal Mode instead of pretending execution is still active
+- resuming a paused plan back into `process.active` now re-emits Goal Mode restart guidance through the compact workflow contract
+
+### Fixed
+
+- core and CLI workflow guidance now distinguish first entry into `process.active` from resume-after-pause, keeping `goalMode.setWhen` aligned with the actual lifecycle transition
+- canonical release truth and shared embedding cache ADRs now reflect the current 0.1.33 release/install facts and the recovered repair lane for corrupted shared global embedding cache state
+
 ## [0.1.33] - 2026-06-11
 
 ### Changed

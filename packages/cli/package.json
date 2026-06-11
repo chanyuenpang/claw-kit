@@ -1,6 +1,6 @@
 {
   "name": "@veewo/claw",
-  "version": "0.1.33",
+  "version": "0.1.34",
   "type": "module",
   "description": "Publishable claw CLI for .claw project startup recovery, planning, search, truth ingestion, and completion refresh.",
   "homepage": "https://github.com/chanyuenpang/claw-kit",
@@ -21,7 +21,7 @@
     "claw": "./dist/bin.js"
   },
   "dependencies": {
-    "@veewo/claw-core": "0.1.33"
+    "@veewo/claw-core": "0.1.34"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
