@@ -180,7 +180,7 @@ export type WorkflowGuidance = {
   goalMode?: {
     recommendedObjective: string;
     allowOverwrite: true;
-    setWhen?: "on_enter_process_active";
+    setWhen?: "on_enter_process_active" | "on_resume_process_active";
   };
   askUser?: {
     reason: string;

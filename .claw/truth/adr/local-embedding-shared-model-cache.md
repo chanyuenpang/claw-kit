@@ -28,6 +28,8 @@ This work also confirmed several boundaries:
 - explicit `memory.embedding.local.modelCacheDir` must remain supported
 - if either the explicit local cache or the global cache already contains the target model, the runtime should reuse it instead of downloading again
 
+这次 `tiny-world` 的修复把一个更窄但更重要的故障类也固定下来：当共享全局模型缓存里的 `Snowflake/snowflake-arctic-embed-m-v2.0` 已经损坏、缺失或不完整时，正确的修复路径不是回退到项目本地 `.claw/models` 作为默认补救方案，而是清理损坏的全局模型目录，重新恢复共享缓存，然后用真实的 search / index refresh 重新验证模型加载与检索链路。
+
 ## Decision
 
 - Default local embedding cache resolution moves to a runtime-resolved user-level shared cache directory.
@@ -38,6 +40,8 @@ This work also confirmed several boundaries:
 - If the target model already exists in the platform-global cache, cleanup keeps the global copy and removes the duplicate project-local cache tree.
 - This is a one-time legacy cache cleanup for existing projects, not a new project-level default model-directory policy.
 - 这套语义在 `D:\Users\chany\Documents\claw-kit` 的实际清理里已经得到验证：`.claw/project.json` 里移除了 `memory.embedding.local.modelCacheDir = ".claw/models"`，项目内 `.claw/models` 已删除，保留的是 `C:\Users\chany\AppData\Local\claw\models` 里的共享副本。
+- 当共享全局缓存损坏或不完整时，优先修复全局模型目录并恢复共享副本，再通过真实的 search / index refresh 验证可加载性；不要把 project-local fallback 提升成这类故障的默认修复 lane。
+- 这次 tiny-world 修复确认：只要共享全局 `Snowflake/snowflake-arctic-embed-m-v2.0` 缓存可被恢复，仓库侧就不需要通过重写 `.claw/project.json` 来绕开损坏状态。
 
 Runtime cache resolution for a target local embedding model now works in this order:
 
@@ -64,6 +68,8 @@ Recommended platform-global cache roots:
 - The legacy `.claw/models` path remains only as a fallback path when the global cache directory is unavailable.
 - Cleaning up a legacy project that still points at `.claw/models` should leave the project without an explicit local cache dir once the global cache can satisfy the model.
 - This change only affects model artifact caching. It does not move sqlite recall data, vector indexes, or remote embedding behavior.
+- For this failure class, repair flows should clear and restore the shared global model directory first, then revalidate with real search / index refresh; project-local fallback is not the default repair path.
+- Project config rewrites are not the canonical remediation for corrupted shared model cache state.
 
 ## Related Code
 

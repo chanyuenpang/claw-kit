@@ -15,7 +15,7 @@ type DelegateConfigKey = "truthWriter" | "adrWriter";
 
 type GoalModeTemplate = {
   allowOverwrite: true;
-  setWhen?: "on_enter_process_active";
+  setWhen?: "on_enter_process_active" | "on_resume_process_active";
 };
 
 type GuidanceStateTemplate = {
@@ -153,6 +153,8 @@ export function buildPlanWorkflowGuidance(params: {
   const hasTasks = plan.tasks.length > 0;
   const allTasksDone = hasTasks && plan.tasks.every((task) => task.status === "done");
   const justEnteredProcess = plan.status.startsWith("process.") && (!previousStatus || previousStatus.startsWith("prepare."));
+  const resumedIntoActive = plan.status === "process.active"
+    && (previousStatus === "process.wait" || previousStatus === "process.discussing");
   const hasChangedTasks = (changedTaskIds?.length ?? 0) > 0;
   const hasCompletedTasks = (completedTaskIds?.length ?? 0) > 0;
   const nextTask = nextUnfinishedTask(plan);
@@ -199,9 +201,18 @@ export function buildPlanWorkflowGuidance(params: {
         ...(template.askUser ? { askUser: template.askUser } : {}),
       };
     }
-    case "process.active":
     case "process.wait":
     case "process.discussing": {
+      const template = renderStateTemplate(plan.status, vars);
+      return {
+        stage: template.stage as WorkflowGuidance["stage"],
+        summary: template.summary,
+        nextsteps: template.nextsteps,
+        ...(template.notes ? { notes: template.notes } : {}),
+        ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),
+      };
+    }
+    case "process.active": {
       if (allTasksDone) {
         const template = renderStateTemplate("process.allTasksDone", vars);
         return {
@@ -218,7 +229,9 @@ export function buildPlanWorkflowGuidance(params: {
 
       const templateKey = hasCompletedTasks
         ? "process.hasCompletedTasks"
-        : justEnteredProcess
+        : resumedIntoActive
+          ? "process.resumedActive"
+          : justEnteredProcess
           ? "process.justEntered"
           : activeTask
             ? "process.activeTask"
@@ -240,7 +253,7 @@ export function buildPlanWorkflowGuidance(params: {
             }
           : {}),
         ...(template.notes ? { notes: template.notes } : {}),
-        ...(template.goalMode && justEnteredProcess && hasGoal
+        ...(template.goalMode && (justEnteredProcess || resumedIntoActive) && hasGoal
           ? { goalMode: buildGoalMode(plan.goal.text, template.goalMode) }
           : {}),
         ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),

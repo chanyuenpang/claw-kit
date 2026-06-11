@@ -421,6 +421,41 @@ test("cli plan edit rejects partial single-reference shortcut flags", () => {
   assert.match(String(error.message), /--reference-path and --reference-why must be provided together/);
 });
 
+test("cli plan edit wait and resume surfaces goal mode pause and restart guidance", () => {
+  const root = createFixture("plan-edit-wait-and-resume-guidance");
+  runClaw(["init", "--name", "Wait And Resume Guidance"], root);
+  runClaw(["plan", "write", "--title", "demo-task", "--goal", "Pause and resume cleanly"], root);
+
+  const patchPath = path.join(root, "wait-guidance-tasks.json");
+  fs.writeFileSync(
+    patchPath,
+    JSON.stringify([{ id: 1, title: "Implement work", status: "in_progress" }], null, 2),
+    "utf-8",
+  );
+  runClaw(["plan", "edit", "--task", "demo-task", "--append-tasks", patchPath], root);
+  runClaw(["plan", "edit", "--task", "demo-task", "--plan-status", "process.active"], root);
+
+  const waitResult = runClaw(["plan", "edit", "--task", "demo-task", "--plan-status", "process.wait"], root);
+  assert.equal(waitResult.planStatus, "process.wait");
+  assert.deepEqual(waitResult.nextsteps, [
+    "1. Pause Goal Mode.",
+    "2. When resuming the plan, restart Goal Mode.",
+    "3. Resume through `process.active` when execution should continue.",
+  ]);
+  assert.equal(waitResult.goalMode, undefined);
+
+  const resumeResult = runClaw(["plan", "edit", "--task", "demo-task", "--plan-status", "process.active"], root);
+  const resumeGoalMode = resumeResult.goalMode as JsonRecord;
+  assert.equal(resumeResult.planStatus, "process.active");
+  assert.deepEqual(resumeResult.nextsteps, [
+    "Sync the thread progress with our tasks.",
+    "Restart Goal Mode.",
+    "Resume with task #1.",
+  ]);
+  assert.equal(resumeGoalMode.setWhen, "on_resume_process_active");
+  assert.match(String(resumeGoalMode.recommendedObjective), /Pause and resume cleanly/);
+});
+
 test("cli search accepts a positional query for project recall", () => {
   const root = createFixture("search-positional-query");
   const env = {

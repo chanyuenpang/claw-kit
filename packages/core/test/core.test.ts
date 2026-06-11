@@ -636,6 +636,107 @@ test("plan edit rejects entering process.active without goal text", async () => 
   );
 });
 
+test("plan edit process.wait guidance pauses goal mode and points resume back to active", async () => {
+  const root = createFixture("plan-edit-wait-guidance");
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Pause execution cleanly",
+    content: {
+      title: "Demo task",
+      status: "process.active",
+      goal: { text: "Pause execution cleanly" },
+      tasks: [{ id: 1, title: "Implement work", status: "in_progress" }],
+    },
+  });
+
+  const paused = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    planStatus: "process.wait",
+  });
+
+  assert.equal(paused.planStatus, "process.wait");
+  assert.equal(paused.workflowGuidance.stage, "paused");
+  assert.deepEqual(paused.workflowGuidance.nextsteps, [
+    "1. Pause Goal Mode.",
+    "2. When resuming the plan, restart Goal Mode.",
+    "3. Resume through `process.active` when execution should continue.",
+  ]);
+  assert.deepEqual(paused.workflowGuidance.recommendedCommands, [
+    "claw plan edit --task demo-task --plan-status process.active",
+  ]);
+  assert.equal(paused.workflowGuidance.goalMode, undefined);
+});
+
+test("plan edit process.discussing guidance pauses goal mode and waits for discussion resolution", async () => {
+  const root = createFixture("plan-edit-discussing-guidance");
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Discuss the next route",
+    content: {
+      title: "Demo task",
+      status: "process.active",
+      goal: { text: "Discuss the next route" },
+      tasks: [{ id: 1, title: "Decide route", status: "in_progress" }],
+    },
+  });
+
+  const discussing = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    planStatus: "process.discussing",
+  });
+
+  assert.equal(discussing.planStatus, "process.discussing");
+  assert.equal(discussing.workflowGuidance.stage, "discussion");
+  assert.deepEqual(discussing.workflowGuidance.nextsteps, [
+    "1. Pause Goal Mode.",
+    "2. When resuming the plan, restart Goal Mode.",
+    "3. Resolve the discussion, then resume through `process.active`.",
+  ]);
+  assert.deepEqual(discussing.workflowGuidance.recommendedCommands, [
+    "claw plan edit --task demo-task --plan-status process.active",
+  ]);
+  assert.equal(discussing.workflowGuidance.goalMode, undefined);
+});
+
+test("resuming from process.wait to process.active re-emits goal mode guidance", async () => {
+  const root = createFixture("plan-edit-resume-from-wait");
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Resume execution with goal mode",
+    content: {
+      title: "Demo task",
+      status: "process.wait",
+      goal: { text: "Resume execution with goal mode" },
+      tasks: [{ id: 1, title: "Implement work", status: "pending" }],
+    },
+  });
+
+  const resumed = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    planStatus: "process.active",
+  });
+
+  assert.equal(resumed.planStatus, "process.active");
+  assert.equal(resumed.workflowGuidance.stage, "execution");
+  assert.equal(resumed.workflowGuidance.goalMode?.setWhen, "on_resume_process_active");
+  assert.ok(resumed.workflowGuidance.goalMode?.recommendedObjective?.includes("Resume execution with goal mode"));
+  assert.deepEqual(resumed.workflowGuidance.nextsteps, [
+    "Sync the thread progress with our tasks.",
+    "Restart Goal Mode.",
+    "Resume with task #1.",
+  ]);
+  assert.ok(resumed.workflowGuidance.nextsteps.includes("Sync the thread progress with our tasks."));
+});
+
 test("process entry returns the first task and task completion returns truth-writer contract before plan completion", async () => {
   const root = createFixture("process-entry-and-truth-contract");
   fs.writeFileSync(

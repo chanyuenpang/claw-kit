@@ -150,6 +150,50 @@
         "setWhen": "on_enter_process_active"
       }
     },
+    "process.resumedActive": {
+      "stage": "execution",
+      "summary": "Execution is resuming.",
+      "nextsteps": [
+        "Sync the thread progress with our tasks.",
+        "Restart Goal Mode.",
+        "Resume with {{nextTaskRef}}."
+      ],
+      "notes": "The plan is moving back from a paused status into active execution.",
+      "recommendedCommands": [
+        "{{taskDoneCommand}}",
+        "{{doneBase}} --summary \"<retrospective summary>\""
+      ],
+      "goalMode": {
+        "allowOverwrite": true,
+        "setWhen": "on_resume_process_active"
+      }
+    },
+    "process.wait": {
+      "stage": "paused",
+      "summary": "Execution is paused.",
+      "nextsteps": [
+        "1. Pause Goal Mode.",
+        "2. When resuming the plan, restart Goal Mode.",
+        "3. Resume through `process.active` when execution should continue."
+      ],
+      "notes": "Use `process.wait` for a real blocker or a deliberate hold. Do not keep executing while the plan is paused.",
+      "recommendedCommands": [
+        "{{editBase}} --plan-status process.active"
+      ]
+    },
+    "process.discussing": {
+      "stage": "discussion",
+      "summary": "The plan is paused for discussion.",
+      "nextsteps": [
+        "1. Pause Goal Mode.",
+        "2. When resuming the plan, restart Goal Mode.",
+        "3. Resolve the discussion, then resume through `process.active`."
+      ],
+      "notes": "Use `process.discussing` for route discussion or decision-making. Resume execution only after the discussion is settled.",
+      "recommendedCommands": [
+        "{{editBase}} --plan-status process.active"
+      ]
+    },
     "process.activeTask": {
       "stage": "{{processStage}}",
       "summary": "Execution is in progress.",
