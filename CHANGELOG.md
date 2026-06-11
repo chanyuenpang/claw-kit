@@ -2,6 +2,17 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.1.32] - 2026-06-11
+
+### Fixed
+
+- local embedding workers now clamp tokenizer max length to the effective model/request cap instead of letting oversized inputs reach ONNX with an invalid sequence shape
+- oversized markdown sections are now split into smaller embedding chunks before refresh so local indexing no longer stalls on very long truth or summary documents
+
+### Changed
+
+- local embedding refresh now targets smaller chunk sizes by default, reducing peak memory pressure during CPU indexing runs
+
 ## [0.1.31] - 2026-06-11
 
 ### Fixed

@@ -51,6 +51,7 @@ Accepted
 - 对于历史上仍保留 `docs` 行、但缺少 `doc_embeddings` 的项目数据，refresh 会在 `insertDocs` 之后继续扫描并回填缺失向量，而不是把这些旧记录当成已完成索引跳过。
 - 如果 embedding generation 最终仍然失败，`claw search index --refresh` 就必须失败；不允许降级成 text-only indexing 来伪装 refresh 成功。
 - local embedding inference 现在默认在单个 worker/model session 内分批执行，避免把整个 text set 塞进一次 ONNX 调用。
+- `packages/core/src/embedding-local.ts` 的 `DEFAULT_LOCAL_EMBEDDING_BATCH_SIZE` 现在固定为 `4`，并且刻意独立于 `packages/core/src/memory.ts` 的 `DEFAULT_PROJECT_REFRESH_FILE_LIMIT = 100`。
 - 大量向量结果在 worker 侧改为写入临时文件，再通过轻量元数据经由 stdout 返回，避免巨大的 IPC payload。
 - 大型项目的默认 refresh 进度上限是每轮最多处理 100 个新增或变更文件，让 backlog 通过重复运行自然推进。
 - `packages/core/test/core.test.ts` 新增了中文排序回归用例，并把使用 `CLAW_EMBEDDING_MOCK` 的 project-search / memory-refresh 测试改成串行，避免并发共享环境变量污染。
@@ -78,6 +79,7 @@ Accepted
 
 - `packages/core/src/memory.ts`
 - `packages/core/src/embedding-worker.ts`
+- `packages/core/src/embedding-local.ts`
 - `packages/core/src/context.ts`
 - `packages/core/src/project-check.ts`
 - `packages/cli/src/cli.ts`

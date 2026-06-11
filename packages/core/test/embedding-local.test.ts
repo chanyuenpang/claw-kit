@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildLocalDeviceAttemptOrder,
   resolveLocalExecutionDevice,
+  resolveLocalTokenizerMaxLength,
   runLocalEmbeddingWithFallback,
 } from "../src/embedding-local.js";
 import type { MemoryEmbeddingConfig } from "../src/types.js";
@@ -58,6 +59,14 @@ test("buildLocalDeviceAttemptOrder retries cpu after gpu-class devices only", ()
   assert.deepEqual(buildLocalDeviceAttemptOrder("cuda"), ["cuda", "cpu"]);
   assert.deepEqual(buildLocalDeviceAttemptOrder("cpu"), ["cpu"]);
   assert.deepEqual(buildLocalDeviceAttemptOrder("wasm"), ["wasm"]);
+});
+
+test("resolveLocalTokenizerMaxLength clamps tokenizer max length to the model limit", () => {
+  assert.equal(resolveLocalTokenizerMaxLength(32768, 8192), 8192);
+  assert.equal(resolveLocalTokenizerMaxLength(4096, 8192, 2048), 2048);
+  assert.equal(resolveLocalTokenizerMaxLength(null, 8192, 2048), 2048);
+  assert.equal(resolveLocalTokenizerMaxLength(32768, null, 2048), 2048);
+  assert.equal(resolveLocalTokenizerMaxLength(0, 0), null);
 });
 
 test("runLocalEmbeddingWithFallback retries cpu after gpu runtime failure", async () => {
@@ -124,12 +133,14 @@ test("runLocalEmbeddingWithFallback splits large text sets into bounded batches"
       },
   });
 
-  assert.equal(batchInputs.length, 2);
-  assert.equal(batchInputs[0]?.length, 32);
-  assert.equal(batchInputs[1]?.length, 3);
+  assert.equal(batchInputs.length, 9);
+  assert.equal(batchInputs[0]?.length, 4);
+  assert.equal(batchInputs[7]?.length, 4);
+  assert.equal(batchInputs[8]?.length, 3);
   assert.equal(result.vectors.length, 35);
   assert.deepEqual(result.vectors[0], [1, 101]);
-  assert.deepEqual(result.vectors[31], [32, 132]);
+  assert.deepEqual(result.vectors[3], [4, 104]);
+  assert.deepEqual(result.vectors[31], [4, 104]);
   assert.deepEqual(result.vectors[32], [1, 101]);
   assert.deepEqual(result.vectors[34], [3, 103]);
 });

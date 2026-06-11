@@ -28,6 +28,13 @@ import type {
 
 const DEFAULT_PROJECT_REFRESH_FILE_LIMIT = 100;
 const PROJECT_SEARCH_CANDIDATE_MULTIPLIER = 8;
+const DEFAULT_EMBEDDING_TARGET_TOKENS = 1024;
+const DEFAULT_EMBEDDING_MAX_TOKENS = 2048;
+const DEFAULT_EMBEDDING_CHARS_PER_TOKEN = 3;
+const DEFAULT_EMBEDDING_TARGET_CHARS =
+  DEFAULT_EMBEDDING_TARGET_TOKENS * DEFAULT_EMBEDDING_CHARS_PER_TOKEN;
+const DEFAULT_EMBEDDING_MAX_CHARS =
+  DEFAULT_EMBEDDING_MAX_TOKENS * DEFAULT_EMBEDDING_CHARS_PER_TOKEN;
 
 type ProjectDocSearchSignals = {
   matchedTerms: string[];
@@ -631,10 +638,80 @@ function hashMemoryContent(content: string): string {
 }
 
 function chunkMarkdownContent(content: string): string[] {
-  return content
+  const paragraphChunks = content
     .split(/\r?\n\s*\r?\n/g)
     .map((chunk) => chunk.trim())
-    .filter((chunk) => chunk.length > 0);
+    .filter((chunk) => chunk.length > 0)
+    .flatMap((chunk) => splitOversizedMarkdownChunk(chunk));
+
+  const mergedChunks: string[] = [];
+  let current = "";
+  for (const chunk of paragraphChunks) {
+    if (!current) {
+      current = chunk;
+      continue;
+    }
+    if ((`${current}\n\n${chunk}`).length <= DEFAULT_EMBEDDING_TARGET_CHARS) {
+      current = `${current}\n\n${chunk}`;
+      continue;
+    }
+    mergedChunks.push(current);
+    current = chunk;
+  }
+  if (current) {
+    mergedChunks.push(current);
+  }
+  return mergedChunks;
+}
+
+function splitOversizedMarkdownChunk(chunk: string): string[] {
+  if (chunk.length <= DEFAULT_EMBEDDING_MAX_CHARS) {
+    return [chunk];
+  }
+
+  const pieces: string[] = [];
+  let start = 0;
+  while (start < chunk.length) {
+    const remaining = chunk.length - start;
+    if (remaining <= DEFAULT_EMBEDDING_MAX_CHARS) {
+      pieces.push(chunk.slice(start).trim());
+      break;
+    }
+
+    const preferredSplit = findPreferredChunkBoundary(
+      chunk,
+      start,
+      Math.min(start + DEFAULT_EMBEDDING_TARGET_CHARS, chunk.length),
+      Math.min(start + DEFAULT_EMBEDDING_MAX_CHARS, chunk.length),
+    );
+    pieces.push(chunk.slice(start, preferredSplit).trim());
+    start = preferredSplit;
+    while (start < chunk.length && /\s/.test(chunk[start] ?? "")) {
+      start += 1;
+    }
+  }
+
+  return pieces.filter((piece) => piece.length > 0);
+}
+
+function findPreferredChunkBoundary(
+  text: string,
+  start: number,
+  preferredEnd: number,
+  hardEnd: number,
+): number {
+  const lowerBound = Math.max(start + Math.floor(DEFAULT_EMBEDDING_TARGET_CHARS / 2), start + 1);
+  for (let index = preferredEnd; index >= lowerBound; index -= 1) {
+    const current = text[index];
+    const previous = text[index - 1];
+    if (current === "\n" || current === " " || current === "\t") {
+      return index;
+    }
+    if (previous && /[.?!,;:。！？；：，、]/.test(previous)) {
+      return index;
+    }
+  }
+  return hardEnd;
 }
 
 function runEmbeddingWorker(input: {

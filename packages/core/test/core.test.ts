@@ -1587,6 +1587,54 @@ test("project memory refresh uses 768 dimensions for the default local embedding
   }
 });
 
+test("project memory refresh splits oversized markdown paragraphs into multiple embedding chunks", { concurrency: false }, () => {
+  const root = createEmptyFixture("memory-oversized-paragraph-split");
+  initProject({
+    cwd: root,
+    projectName: "Memory Oversized Paragraph Split",
+    externalDocPaths: ["docs/"],
+  });
+  fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+  const oversizedParagraph = "甲".repeat(7000);
+  fs.writeFileSync(
+    path.join(root, "docs", "oversized.md"),
+    `# Oversized\n\n${oversizedParagraph}\n`,
+    "utf-8",
+  );
+
+  const previousMockEnv = process.env.CLAW_EMBEDDING_MOCK;
+  process.env.CLAW_EMBEDDING_MOCK = "1";
+
+  try {
+    const result = buildMemoryIndex({ cwd: root });
+    const db = new DatabaseSync(result.storePath);
+    try {
+      const sourcePath = path.join(root, "docs", "oversized.md");
+      const rows = db
+        .prepare(
+          [
+            "SELECT chunk_index, chunk_text",
+            "FROM doc_embeddings",
+            "WHERE source_path = ?",
+            "ORDER BY chunk_index ASC",
+          ].join(" "),
+        )
+        .all(sourcePath) as Array<{ chunk_index: number; chunk_text: string }>;
+
+      assert.ok(rows.length >= 2);
+      assert.ok(rows.every((row) => row.chunk_text.length <= 6144));
+    } finally {
+      db.close();
+    }
+  } finally {
+    if (previousMockEnv === undefined) {
+      delete process.env.CLAW_EMBEDDING_MOCK;
+    } else {
+      process.env.CLAW_EMBEDDING_MOCK = previousMockEnv;
+    }
+  }
+});
+
 test("project memory refresh surfaces embedding worker timeouts", { concurrency: false }, () => {
   const root = createEmptyFixture("memory-embedding-timeout");
   initProject({

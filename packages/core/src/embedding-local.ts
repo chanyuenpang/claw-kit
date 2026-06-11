@@ -26,7 +26,32 @@ type RunLocalEmbeddingOptions = {
   createExtractor: (device: LocalExecutionDevice) => Promise<LocalExtractor>;
 };
 
-const DEFAULT_LOCAL_EMBEDDING_BATCH_SIZE = 32;
+const DEFAULT_LOCAL_EMBEDDING_BATCH_SIZE = 4;
+
+function parsePositiveInteger(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : null;
+}
+
+export function resolveLocalTokenizerMaxLength(
+  tokenizerMaxLength: unknown,
+  modelMaxPositionEmbeddings: unknown,
+  requestedMaxLength?: unknown,
+): number | null {
+  const normalizedTokenizerMaxLength = parsePositiveInteger(tokenizerMaxLength);
+  const normalizedModelMaxPositionEmbeddings = parsePositiveInteger(modelMaxPositionEmbeddings);
+  const normalizedRequestedMaxLength = parsePositiveInteger(requestedMaxLength);
+  const candidates = [
+    normalizedTokenizerMaxLength,
+    normalizedModelMaxPositionEmbeddings,
+    normalizedRequestedMaxLength,
+  ].filter((value): value is number => value !== null);
+  if (candidates.length > 0) {
+    return Math.min(...candidates);
+  }
+  return null;
+}
 
 export function parseLocalExecutionDevice(value: string | null | undefined): LocalExecutionDevice | null {
   const normalized = value?.trim().toLowerCase();

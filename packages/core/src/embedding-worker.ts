@@ -7,6 +7,7 @@ import {
 } from "./embedding-defaults.js";
 import {
   resolveLocalExecutionDevice,
+  resolveLocalTokenizerMaxLength,
   runLocalEmbeddingWithFallback,
 } from "./embedding-local.js";
 import type { MemoryEmbeddingConfig } from "./types.js";
@@ -20,6 +21,21 @@ type WorkerInput = {
 type WorkerOutput = {
   dimensions: number;
   vectors: number[][];
+};
+
+const DEFAULT_EMBEDDING_MAX_TOKENS = 2048;
+
+type LocalPipelineExtractor = {
+  (input: string[] | string, options: { pooling: "mean"; normalize: true }): Promise<{ data: ArrayLike<number> }>;
+  dispose?: () => Promise<void> | void;
+  tokenizer?: {
+    model_max_length?: number;
+  };
+  model?: {
+    config?: {
+      max_position_embeddings?: number;
+    };
+  };
 };
 
 async function main(): Promise<void> {
@@ -88,19 +104,26 @@ async function buildLocalOutput(input: WorkerInput): Promise<WorkerOutput> {
     texts: input.texts,
     dimensions: resolveDimensions(input.embedding, DEFAULT_LOCAL_EMBEDDING_DIMENSIONS),
     requestedDevice,
-    createExtractor: async (device) =>
-      (pipeline as unknown as (
+    createExtractor: async (device) => {
+      const extractor = await (pipeline as unknown as (
         task: "feature-extraction",
         model: string,
         options: Record<string, unknown>,
-      ) => Promise<{
-        (input: string[] | string, options: { pooling: "mean"; normalize: true }): Promise<{ data: ArrayLike<number> }>;
-        dispose?: () => Promise<void> | void;
-      }>)("feature-extraction", modelId, {
+      ) => Promise<LocalPipelineExtractor>)("feature-extraction", modelId, {
         device,
         dtype: "fp32",
         session_options: { logSeverityLevel: 3 },
-      }),
+      });
+      const safeTokenizerMaxLength = resolveLocalTokenizerMaxLength(
+        extractor.tokenizer?.model_max_length,
+        extractor.model?.config?.max_position_embeddings,
+        DEFAULT_EMBEDDING_MAX_TOKENS,
+      );
+      if (safeTokenizerMaxLength !== null && extractor.tokenizer) {
+        extractor.tokenizer.model_max_length = safeTokenizerMaxLength;
+      }
+      return extractor;
+    },
   });
 
   return {
