@@ -70,8 +70,8 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
   - dispatch `truth-writer`
   - continue until all tasks are done
   - complete retrospective
-  - `claw plan done`
   - dispatch `adr-writer`
+  - `claw plan done`
 - `prepare.requirements`
   - treat hook-driven startup recovery as already handled; do not add a separate recovery workflow step here
   - if `goal.text` is missing, fill it before trying to enter `process.active`
@@ -90,11 +90,10 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
   - read `delegateSubagents`
   - use `tool_search` to locate agent-management tools
   - dispatch `truth-writer` with the curated completed subtask report when the completed task produced reusable truth
-  - then complete retrospective capture and use `claw plan done`
+  - when all tasks are done, complete retrospective capture, read `delegateSubagents`, and dispatch `adr-writer` before root `claw plan done`
 - `end.completed`
-  - read `delegateSubagents`
-  - use `tool_search` to locate agent-management tools
-  - dispatch `adr-writer` with the completed `plan.json` as the ADR deposition bundle
+  - for root plans, treat this as closeout/archive rather than the ADR trigger
+  - for subplans, consume the returned resumed-parent workflow snapshot
 
 ## Project declaration interactions
 

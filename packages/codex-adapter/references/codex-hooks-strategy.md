@@ -4,7 +4,7 @@
 
 `claw-kit` does not depend on Codex hooks for correctness.
 
-The active adapter now registers a minimal `SessionStart` hook for startup recovery hints only.
+The active adapter now registers a compact `SessionStart` hook for startup recovery hints only.
 
 The core workflow works without hooks. Hooks are an enhancement layer for:
 
@@ -22,6 +22,7 @@ Current active use:
 - `SessionStart` listens to all session starts.
 - The only claw-kit runtime gate is that `cwd` resolves into a `.claw` project.
 - When that gate is met, the entry gathers current project startup state and injects developer-visible startup guidance.
+- When a session-bound active task is recovered, that guidance also carries the current plan content needed to resume safely.
 - The injected guidance tells the agent to use `[@claw-kit](plugin://claw-kit@claw-kit-local)` for the rest of the task flow.
 
 ## Testing strategy

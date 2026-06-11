@@ -36,6 +36,11 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const command = args.shift();
 
+  if (command === "--help" || command === "-h") {
+    printUsage();
+    return;
+  }
+
   try {
     switch (command) {
       case "init":
@@ -134,10 +139,14 @@ async function runPlan(args: string[]): Promise<void> {
     case "edit": {
       const patchPath = readOptionalFlag(args, "--patch");
       const appendTasksPath = readOptionalFlag(args, "--append-tasks");
+      const referencePath = readOptionalFlag(args, "--reference-path");
+      const referenceWhy = readOptionalFlag(args, "--reference-why");
       const mergedPatch = mergeEditPatchFlags(
         patchPath ? readJson<Partial<PlanDocument>>(patchPath) : undefined,
         readRepeatedFlag(args, "--rule"),
         readRepeatedFlag(args, "--key-decision"),
+        referencePath,
+        referenceWhy,
       );
       const result = await editPlan({
         cwd: process.cwd(),
@@ -454,6 +463,7 @@ function buildRecoveredWorkflowAdditionalContext(activeWorkflow: JsonRecord): st
   const planFile = String(activeWorkflow.planFile ?? "plan.json");
   const planStatus = String(activeWorkflow.planStatus ?? "");
   const planSummary = String(activeWorkflow.planSummary ?? "");
+  const planContent = activeWorkflow.planContent as JsonRecord | undefined;
   const workflowGuidance = activeWorkflow.workflowGuidance as JsonRecord | undefined;
   const nextsteps = toStringList(workflowGuidance?.nextsteps);
   const recommendedCommands = toStringList(workflowGuidance?.recommendedCommands);
@@ -495,8 +505,65 @@ function buildRecoveredWorkflowAdditionalContext(activeWorkflow: JsonRecord): st
   if (goalMode) {
     lines.push(`- goal mode: ${goalMode}`);
   }
+  if (planContent) {
+    lines.push("");
+    lines.push("Current plan content:");
+    lines.push(...summarizeRecoveredPlanContent(planContent));
+  }
 
   return lines.join("\n");
+}
+
+function summarizeRecoveredPlanContent(planContent: JsonRecord): string[] {
+  const lines: string[] = [];
+  const goalText =
+    planContent.goal &&
+      typeof planContent.goal === "object" &&
+      typeof (planContent.goal as { text?: unknown }).text === "string"
+      ? (planContent.goal as { text: string }).text.trim()
+      : "";
+  if (goalText) {
+    lines.push(`- goal: ${goalText}`);
+  }
+
+  const tasks = Array.isArray(planContent.tasks) ? planContent.tasks : [];
+  if (tasks.length > 0) {
+    lines.push("- tasks:");
+    for (const task of tasks) {
+      if (!task || typeof task !== "object") {
+        continue;
+      }
+      const id = typeof (task as { id?: unknown }).id === "number" ? (task as { id: number }).id : "?";
+      const title = typeof (task as { title?: unknown }).title === "string" ? (task as { title: string }).title.trim() : "";
+      const status = typeof (task as { status?: unknown }).status === "string"
+        ? (task as { status: string }).status.trim()
+        : "unknown";
+      if (title) {
+        lines.push(`  - #${id} [${status}] ${title}`);
+      }
+    }
+  }
+
+  const references = Array.isArray(planContent.references) ? planContent.references : [];
+  if (references.length > 0) {
+    lines.push("- references:");
+    for (const reference of references.slice(0, 5)) {
+      if (!reference || typeof reference !== "object") {
+        continue;
+      }
+      const refPath = typeof (reference as { path?: unknown }).path === "string"
+        ? (reference as { path: string }).path.trim()
+        : "";
+      const why = typeof (reference as { why?: unknown }).why === "string"
+        ? (reference as { why: string }).why.trim()
+        : "";
+      if (refPath) {
+        lines.push(`  - ${refPath}${why ? ` :: ${why}` : ""}`);
+      }
+    }
+  }
+
+  return lines.length > 0 ? lines : ["- plan content present in activeWorkflow.planContent JSON."];
 }
 
 function tryResolveActiveWorkflowSnapshot(
@@ -508,6 +575,7 @@ function tryResolveActiveWorkflowSnapshot(
   planPath: string;
   planStatus: string;
   planSummary: string;
+  planContent: PlanDocument;
   workflowGuidance: WorkflowGuidance;
 } | null {
   const project = resolveProjectContext(cwd);
@@ -528,6 +596,7 @@ function tryResolveActiveWorkflowSnapshot(
       planPath: result.planPath,
       planStatus: result.plan.status,
       planSummary: result.planView.collapsedSummary,
+      planContent: result.plan,
       workflowGuidance: buildPlanWorkflowGuidance({
         taskName: result.taskName,
         planFile: result.planFile,
@@ -734,13 +803,24 @@ function mergeEditPatchFlags(
   patch: Partial<PlanDocument> | undefined,
   rules: string[],
   keyDecisions: string[],
+  referencePath?: string,
+  referenceWhy?: string,
 ): Partial<PlanDocument> | undefined {
+  if ((referencePath && !referenceWhy) || (!referencePath && referenceWhy)) {
+    throw new ClawError(
+      "PROJECT_CONFIG_INVALID",
+      "--reference-path and --reference-why must be provided together.",
+    );
+  }
   const merged = patch ? structuredClone(patch) : {};
   if (rules.length > 0) {
     merged.rules = [...(merged.rules ?? []), ...rules];
   }
   if (keyDecisions.length > 0) {
     merged.keyDecisions = [...(merged.keyDecisions ?? []), ...keyDecisions];
+  }
+  if (referencePath && referenceWhy) {
+    merged.references = [...(merged.references ?? []), { path: referencePath, why: referenceWhy }];
   }
   return Object.keys(merged).length > 0 ? merged : undefined;
 }
@@ -1324,7 +1404,7 @@ function printUsage(): void {
       "             Creates the task scope and initial plan skeleton at prepare.requirements.",
       "             If goal is omitted, fill goal.text and the rest of the plan, then switch to process.active.",
       "  subplan write --parent <task-name> --task-id <number> --title <text>",
-      "  plan edit --task <name> [--plan <relative-path>] [--patch <json-file>] [--rule <text>] [--key-decision <text>] [--plan-status <status>]",
+      "  plan edit --task <name> [--plan <relative-path>] [--patch <json-file>] [--reference-path <path> --reference-why <why>] [--rule <text>] [--key-decision <text>] [--task-id <id> --task-status <status>] [--plan-status <status>]",
       "  plan show --task <name> [--plan <relative-path>]",
       "  plan done --task <name> [--plan <relative-path>] [--summary <text>] [--patch <json-file>]",
       "  switch-task --from <task> --to <task>",

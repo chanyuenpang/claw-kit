@@ -2,6 +2,24 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.1.31] - 2026-06-11
+
+### Fixed
+
+- `claw --help` and `claw -h` now print usage and exit successfully after global install, matching the repository's release verification contract
+
+## [0.1.30] - 2026-06-11
+
+### Changed
+
+- SessionStart recovery now returns current plan content in both `context.activeWorkflow.planContent` and the additional prompt surface so a half-finished task can resume without reopening the plan first
+- the workflow guidance release surface now consistently routes ADR deposition from `all tasks done` before root `claw plan done`, and the CLI help/docs now advertise task status updates plus single-reference edit flags
+
+### Fixed
+
+- `@veewo/claw-core` build output now ships `workflow-guidance.config.json`, keeping runtime guidance and source guidance aligned in published artifacts
+- startup recovery docs and hook strategy notes no longer contradict the current recovered-plan payload behavior
+
 ## [0.1.29] - 2026-06-11
 
 ### Fixed

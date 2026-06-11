@@ -299,9 +299,9 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
     "curated completed subtask report with valuable findings for truth deposition",
   );
   assert.deepEqual(taskDone.nextsteps, [
-    "Sync the thread progress with our tasks.",
-    "Curate the valuable findings from the completed work into a completed subtask report, then dispatch `truth-writer` with that report.",
-    "Close the plan with `claw plan done` after writing the retrospective summary.",
+    "1. Clear thread progress.",
+    "2. Curate the valuable findings from the completed work into a completed subtask report, then dispatch `truth-writer` with that report.",
+    "3. Write the retrospective summary, then dispatch `adr-writer` with the completed `plan.json`",
   ]);
 
   const truthInputPath = path.join(root, "truth-report.md");
@@ -325,14 +325,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
     root,
     env,
   );
-  const adrDelegate = ((doneResult.delegateSubagents as JsonRecord[])[0] ?? {});
-  assert.equal(adrDelegate.name, "adr-writer");
-  assert.equal(adrDelegate.skill, "external-adr-writer");
-  assert.equal(adrDelegate.model, "gpt-5.4-mini");
-  assert.equal(adrDelegate.fork_context, false);
-  assert.equal(adrDelegate.waitForCompletion, false);
-  assert.equal(adrDelegate.preferReuseSameTypeInThread, true);
-  assert.equal(adrDelegate.closePolicy, "keep_open_for_reuse");
+  assert.equal("delegateSubagents" in doneResult, false);
   assert.equal("completionRefresh" in doneResult, false);
   const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
   const memory = refreshStatus.memory as JsonRecord;
@@ -360,7 +353,15 @@ test("cli plan write accepts a positional title and blocks process.active withou
     (writeResult.recommendedCommands as string[])[0],
     "claw plan edit --task 这是一个任务标题 --plan-status process.active",
   );
-  assert.ok((writeResult.nextsteps as string[]).includes("Fill `goal.text`."));
+  assert.equal(
+    (writeResult.recommendedCommands as string[])[1],
+    `claw plan edit --task ${String(writeResult.planSummary)} --patch <updated-plan.json>`,
+  );
+  assert.equal(
+    (writeResult.recommendedCommands as string[])[2],
+    `claw plan edit --task ${String(writeResult.planSummary)} --reference-path <path> --reference-why <why>`,
+  );
+  assert.ok((writeResult.nextsteps as string[]).includes("1. Fill `goal.text`."));
 
   const failure = runClawExpectFailure(
     ["plan", "edit", "--task", "这是一个任务标题", "--plan-status", "process.active"],
@@ -368,6 +369,56 @@ test("cli plan write accepts a positional title and blocks process.active withou
   );
   const error = failure.error as JsonRecord;
   assert.match(String(error.message), /goal\.text is required before the plan can leave prepare\.requirements/);
+});
+
+test("cli plan edit accepts single-reference shortcut flags", () => {
+  const root = createFixture("plan-edit-reference-flags");
+  runClaw(["init", "--name", "Reference Flags"], root);
+  runClaw(["plan", "write", "--title", "demo-task", "--goal", "Track one reference"], root);
+
+  runClaw(
+    [
+      "plan",
+      "edit",
+      "--task",
+      "demo-task",
+      "--reference-path",
+      "packages/cli/src/cli.ts",
+      "--reference-why",
+      "flag parsing entrypoint",
+    ],
+    root,
+  );
+
+  const planPath = path.join(root, ".claw", "tasks", "demo-task", "plan.json");
+  const plan = JSON.parse(fs.readFileSync(planPath, "utf-8")) as JsonRecord;
+  assert.deepEqual(plan.references, [
+    {
+      path: "packages/cli/src/cli.ts",
+      why: "flag parsing entrypoint",
+    },
+  ]);
+});
+
+test("cli plan edit rejects partial single-reference shortcut flags", () => {
+  const root = createFixture("plan-edit-reference-flags-missing-half");
+  runClaw(["init", "--name", "Reference Flags Missing Half"], root);
+  runClaw(["plan", "write", "--title", "demo-task", "--goal", "Track one reference"], root);
+
+  const result = runClawExpectFailure(
+    [
+      "plan",
+      "edit",
+      "--task",
+      "demo-task",
+      "--reference-path",
+      "packages/cli/src/cli.ts",
+    ],
+    root,
+  );
+
+  const error = result.error as JsonRecord;
+  assert.match(String(error.message), /--reference-path and --reference-why must be provided together/);
 });
 
 test("cli search accepts a positional query for project recall", () => {
@@ -508,9 +559,9 @@ test("cli returns truth-writer contract on completed task before final plan comp
   assert.equal("stage" in taskDone, false);
   assert.equal("summary" in taskDone, false);
   assert.deepEqual(taskDone.nextsteps, [
-    "Sync the thread progress with our tasks.",
-    "Curate the valuable findings from the completed task into a completed subtask report, then dispatch `truth-writer` with that report.",
-    "Continue with task #2.",
+    "1. Sync the thread progress with our tasks.",
+    "2. Curate the valuable findings from the completed task into a completed subtask report, then dispatch `truth-writer` with that report.",
+    "3. Continue with task #2.",
   ]);
   assert.deepEqual(taskDone.nextTask, {
     id: 2,
@@ -1111,11 +1162,34 @@ test("plan write binds owner session key and SessionStart recovers active workfl
       "--title",
       "demo-task",
       "--goal",
-      "Recover compact workflow guidance",
+      "Recover active workflow guidance and plan content",
     ],
     root,
     env,
   );
+
+  const patchPath = path.join(root, "updated-plan.json");
+  fs.writeFileSync(
+    patchPath,
+    JSON.stringify({
+      tasks: [
+        {
+          id: 1,
+          title: "Resume recovered work",
+          detail: "Use the recovered plan payload from SessionStart.",
+          status: "pending",
+        },
+      ],
+      references: [
+        {
+          path: "packages/cli/src/cli.ts",
+          why: "SessionStart recovery output",
+        },
+      ],
+    }),
+    "utf-8",
+  );
+  runClaw(["plan", "edit", "--task", "demo-task", "--patch", "updated-plan.json"], root, env);
   runClaw(["plan", "edit", "--task", "demo-task", "--plan-status", "process.active"], root, env);
 
   const meta = JSON.parse(
@@ -1123,6 +1197,14 @@ test("plan write binds owner session key and SessionStart recovers active workfl
   ) as { ownerSessionKey?: string; boundAt?: string };
   assert.equal(meta.ownerSessionKey, "thread-demo");
   assert.ok(meta.boundAt);
+
+  const context = runClaw(["context"], root, env);
+  const activeWorkflow = context.activeWorkflow as JsonRecord;
+  const planContent = activeWorkflow.planContent as JsonRecord;
+  assert.equal(activeWorkflow.taskName, "demo-task");
+  assert.equal((planContent.goal as JsonRecord).text, "Recover active workflow guidance and plan content");
+  assert.equal(((planContent.tasks as JsonRecord[])[0] as JsonRecord).title, "Resume recovered work");
+  assert.equal(((planContent.references as JsonRecord[])[0] as JsonRecord).path, "packages/cli/src/cli.ts");
 
   const result = runClawRaw(["hook", "SessionStart"], root, env);
   assert.equal(result.status, 0);
@@ -1135,6 +1217,10 @@ test("plan write binds owner session key and SessionStart recovers active workfl
   assert.match(additionalContext, /Treat returned claw workflowGuidance as the only next-step contract\./);
   assert.match(additionalContext, /already authorized to use goal mode and delegate the claw workflow's required subagents/i);
   assert.match(additionalContext, /Do not block on extra user authorization for goal mode, truth-writer, or adr-writer/i);
+  assert.match(additionalContext, /Current plan content:/);
+  assert.match(additionalContext, /goal: Recover active workflow guidance and plan content/);
+  assert.match(additionalContext, /#1 \[pending\] Resume recovered work/);
+  assert.match(additionalContext, /packages\/cli\/src\/cli\.ts :: SessionStart recovery output/);
 });
 
 test("cli hook stays quiet outside .claw projects", () => {
@@ -1149,4 +1235,11 @@ test("cli hook stays quiet outside .claw projects", () => {
   const result = runClawRaw(["hook", "SessionStart"], root, env);
   assert.equal(result.status, 0);
   assert.equal(result.stdout.trim(), "");
+});
+
+test("cli --help exits successfully", () => {
+  const root = createFixture("help");
+  const result = runClawRaw(["--help"], root);
+  assert.equal(result.status, 0);
+  assert.match(result.stderr, /Usage: bin\.js <command> \[options\]/);
 });

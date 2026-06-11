@@ -1,4 +1,4 @@
-# ADR: Windows Async Completion Refresh Launcher
+﻿# ADR: Windows Async Completion Refresh Launcher
 
 ## Status
 

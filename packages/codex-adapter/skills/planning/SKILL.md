@@ -16,6 +16,8 @@ This skill ports the intent of OpenClaw planning into Codex.
   - `claw subplan write --parent <task-name> --task-id <id> --title "<title>"`
 - Edit a plan with a structured patch:
   - `claw plan edit --task <task> --patch <json-file>`
+- Update a task's execution state:
+  - `claw plan edit --task <task> --task-id <id> --task-status in_progress`
 - Change lifecycle status:
   - `claw plan edit --task <task> --plan-status process.active`
 
@@ -137,7 +139,7 @@ Simple 1-2 task plans can stay lean. Bigger plans should show explicit decomposi
 16. Once the route is confirmed, move the plan to `process.active` before doing any implementation.
 17. When `workflowGuidance.goalMode` is present, create the thread goal from `workflowGuidance.goalMode.recommendedObjective` before continuing if there is no active thread goal yet.
 18. After `plan edit`, read `workflowGuidance` again and execute the returned specialist dispatch contract directly.
-19. After `plan done`, read `workflowGuidance` again and dispatch `adr-writer` with the completed `plan.json` without waiting on a return.
+19. For root plans, dispatch `adr-writer` from the `all tasks done` guidance before `plan done`. After `plan done`, only continue workflow-guided closeout that still remains, such as subplan parent resumption.
 
 If a task or subtask is primarily investigation:
 

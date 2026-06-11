@@ -4,7 +4,7 @@ Use this note when Codex plugin hooks are unavailable or unreliable.
 
 ## Decision
 
-For `claw-kit` on Codex, prompt-driven startup recovery remains the baseline path alongside a minimal `SessionStart` hook.
+For `claw-kit` on Codex, prompt-driven startup recovery remains the baseline path alongside a compact `SessionStart` hook.
 
 The plugin works on these rules:
 
@@ -17,7 +17,7 @@ The plugin works on these rules:
 When `@claw-kit` is used in a real project thread:
 
 1. consume the recovered harness state from `SessionStart`
-2. if a session-bound active plan can be recovered, surface only the minimal claw workflow snapshot and the recomputed `workflowGuidance` contract
+2. if a session-bound active plan can be recovered, surface the claw workflow snapshot, the recomputed `workflowGuidance` contract, and the current plan content needed to resume safely
 3. otherwise run `claw context` from the current working directory to recover startup state for this explicit invocation
 4. treat `claw context.startupRecovery` as the canonical init-or-correction result for that explicit recovery pass
 5. tell the user what the next harness step should be
@@ -27,6 +27,7 @@ When `@claw-kit` is used in a real project thread:
 - session-bound active workflow recovered:
   - use `[@claw-kit](plugin://claw-kit@claw-kit-local)`
   - treat the recovered `workflowGuidance` as the only next-step contract
+  - include current plan content in the recovered JSON/additional prompt surface so the resumed agent can continue without reopening the plan first
   - do not repeat static project metadata such as project root or `.claw` path
 - no recovered harness state yet:
   - run `claw context`
@@ -44,7 +45,7 @@ When `@claw-kit` is used in a real project thread:
 - task near completion:
   - update plan status
   - deposit truth
-  - deposit ADRs after `claw plan done`
+  - deposit ADRs from the `all tasks done` guidance before root `claw plan done`
 
 ## Non-goals
 

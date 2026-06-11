@@ -32,15 +32,15 @@
       "stage": "requirements",
       "summary": "Task scope is bound. Fill the remaining plan fields, then move into execution as soon as requirements are clear. This @claw-kit thread is already authorized to use goal mode and delegated subagents when the workflow requires them.",
       "nextsteps": [
-        "Set Goal Mode.",
-        "Fill the missing plan fields.",
-        "Move into `process.active` once requirements are clear."
+        "1. Set Goal Mode.",
+        "2. Fill the missing plan fields.",
+        "3. Move into `process.active` once requirements are clear."
       ],
       "notes": "Fill only the fields still needed to execute, such as `requirements`, `tasks`, `references`, `rules`, and `keyDecisions`. If scope is still unclear, clarify it with the user before switching to `process.active`.",
       "recommendedCommands": [
         "{{editBase}} --plan-status process.active",
         "{{editBase}} --patch <updated-plan.json>",
-        "{{editBase}} --rule \"...\" --key-decision \"...\""
+        "{{editBase}} --reference-path <path> --reference-why <why>"
       ],
       "goalMode": {
         "allowOverwrite": true
@@ -50,25 +50,25 @@
       "stage": "requirements",
       "summary": "Task scope is bound. Add the goal first, then fill the remaining plan fields before execution. This @claw-kit thread is already authorized to use goal mode and delegated subagents when the workflow requires them.",
       "nextsteps": [
-        "Fill `goal.text`.",
-        "Set Goal Mode.",
-        "Fill the missing plan fields.",
-        "Move into `process.active` once requirements are clear."
+        "1. Fill `goal.text`.",
+        "2. Set Goal Mode.",
+        "3. Fill the missing plan fields.",
+        "4. Move into `process.active` once requirements are clear."
       ],
       "notes": "Fill only the fields still needed to execute, such as `requirements`, `tasks`, `references`, `rules`, and `keyDecisions`. If scope is still unclear, clarify it with the user before switching to `process.active`.",
       "recommendedCommands": [
         "{{editBase}} --plan-status process.active",
         "{{editBase}} --patch <updated-plan.json>",
-        "{{editBase}} --rule \"...\" --key-decision \"...\""
+        "{{editBase}} --reference-path <path> --reference-why <why>"
       ]
     },
     "prepare.review": {
       "stage": "review",
       "summary": "This plan is in a legacy review stage.",
       "nextsteps": [
-        "Fold the remaining review notes into the plan.",
-        "Confirm the route with the user.",
-        "Move the plan back into `prepare.requirements` or `process.discussing`."
+        "1. Fold the remaining review notes into the plan.",
+        "2. Confirm the route with the user.",
+        "3. Move the plan back into `prepare.requirements` or `process.discussing`."
       ],
       "notes": "Do not create a separate review pass. Merge review criteria into planning itself.",
       "recommendedCommands": [
@@ -101,32 +101,33 @@
     },
     "process.allTasksDone": {
       "stage": "done",
-      "summary": "All plan tasks are done. Do truth deposition, then close the plan.",
+      "summary": "All plan tasks are done. Clear thread progress, deposit truth, then finish retrospective and ADR closeout.",
       "nextsteps": [
-        "Sync the thread progress with our tasks.",
-        "Curate the valuable findings from the completed work into a completed subtask report, then dispatch `truth-writer` with that report.",
-        "Close the plan with `claw plan done` after writing the retrospective summary."
+        "1. Clear thread progress.",
+        "2. Curate the valuable findings from the completed work into a completed subtask report, then dispatch `truth-writer` with that report.",
+        "3. Write the retrospective summary, then dispatch `adr-writer` with the completed `plan.json`"
       ],
-      "notes": "`all task done` is not ADR completion. ADR happens after completed `plan.json` exists.",
+      "notes": "Truth doc, ADR doc generation is an essential feature in claw-kit.",
       "recommendedCommands": [
         "{{doneBase}} --summary \"<retrospective summary>\""
       ],
       "delegateSubagents": [
-        "truthWriter"
+        "truthWriter",
+        "adrWriter"
       ]
     },
     "process.hasCompletedTasks": {
       "stage": "{{processStage}}",
       "summary": "Execution is in progress.",
       "nextsteps": [
-        "Sync the thread progress with our tasks.",
-        "Curate the valuable findings from the completed task into a completed subtask report, then dispatch `truth-writer` with that report.",
-        "Continue with {{nextTaskRef}}."
+        "1. Sync the thread progress with our tasks.",
+        "2. Curate the valuable findings from the completed task into a completed subtask report, then dispatch `truth-writer` with that report.",
+        "3. Continue with {{nextTaskRef}}."
       ],
-      "notes": "Use delegated specialists for truth and ADR deposition. In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
+      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
       "recommendedCommands": [
         "{{taskDoneCommand}}",
-        "{{doneBase}} --summary \"<retrospective summary>\""
+        "{{editBase}} --task-id <id> --task-status in_progress"
       ],
       "delegateSubagents": [
         "truthWriter"
@@ -139,7 +140,7 @@
         "Sync the thread progress with our tasks.",
         "Start with {{nextTaskRef}}."
       ],
-      "notes": "Use delegated specialists for truth and ADR deposition. In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
+      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
       "recommendedCommands": [
         "{{taskDoneCommand}}",
         "{{doneBase}} --summary \"<retrospective summary>\""
@@ -168,18 +169,7 @@
       "recommendedCommands": [
         "{{taskDoneCommand}}"
       ]
-    },
-    "end.completed": {
-      "stage": "deposition",
-      "summary": "The plan is completed. Deposit ADRs now.",
-      "nextsteps": [
-        "Dispatch `adr-writer` with the completed `plan.json`."
-      ],
-      "notes": "{{suggestedTruthTargetsNote}} Use completed `plan.json` as the ADR bundle.",
-      "delegateSubagents": [
-        "adrWriter"
-      ]
-    },
+    },    
     "end.closed": {
       "stage": "paused",
       "summary": "The plan is no longer active.",

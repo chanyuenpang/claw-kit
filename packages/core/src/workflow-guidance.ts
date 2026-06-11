@@ -126,6 +126,16 @@ function renderStateTemplate(key: string, vars: TemplateVars): GuidanceStateTemp
   return renderTemplateValue(template, vars);
 }
 
+function buildConfiguredDelegates(
+  keys: DelegateConfigKey[] | undefined,
+  projectConfig: ProjectConfig | null,
+): WorkflowGuidanceSubagent[] | undefined {
+  if (!keys?.length) {
+    return undefined;
+  }
+  return keys.map((key) => buildConfiguredDelegate(key, projectConfig));
+}
+
 export function buildPlanWorkflowGuidance(params: {
   taskName: string;
   planFile: string;
@@ -200,7 +210,9 @@ export function buildPlanWorkflowGuidance(params: {
           nextsteps: template.nextsteps,
           ...(template.notes ? { notes: template.notes } : {}),
           ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),
-          delegateSubagents: [truthWriterDelegate(projectConfig)],
+          ...(template.delegateSubagents
+            ? { delegateSubagents: buildConfiguredDelegates(template.delegateSubagents, projectConfig) }
+            : {}),
         };
       }
 
@@ -232,21 +244,26 @@ export function buildPlanWorkflowGuidance(params: {
           ? { goalMode: buildGoalMode(plan.goal.text, template.goalMode) }
           : {}),
         ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),
-        ...(hasCompletedTasks
+        ...(hasCompletedTasks && template.delegateSubagents
           ? {
-              delegateSubagents: [truthWriterDelegate(projectConfig)],
+              delegateSubagents: buildConfiguredDelegates(template.delegateSubagents, projectConfig),
             }
           : {}),
       };
     }
     case "end.completed": {
-      const template = renderStateTemplate("end.completed", vars);
+      const template = workflowGuidanceConfig.states["end.completed"]
+        ? renderStateTemplate("end.completed", vars)
+        : renderStateTemplate("end.closed", vars);
       return {
         stage: template.stage as WorkflowGuidance["stage"],
         summary: template.summary,
         nextsteps: template.nextsteps,
         ...(template.notes ? { notes: template.notes } : {}),
-        delegateSubagents: [adrWriterDelegate(projectConfig)],
+        ...(template.delegateSubagents
+          ? { delegateSubagents: buildConfiguredDelegates(template.delegateSubagents, projectConfig) }
+          : {}),
+        ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),
       };
     }
     case "end.closed":

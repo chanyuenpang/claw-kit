@@ -37,8 +37,13 @@ function createEmptyFixture(name: string): string {
 }
 
 test("workflow guidance json config is emitted with the build output", () => {
-  const configPath = new URL("../src/workflow-guidance.config.json", import.meta.url);
-  assert.equal(fs.existsSync(configPath), true);
+  const distConfigPath = new URL("../src/workflow-guidance.config.json", import.meta.url);
+  const sourceConfigPath = new URL("../../src/workflow-guidance.config.json", import.meta.url);
+  assert.equal(fs.existsSync(distConfigPath), true);
+  assert.deepEqual(
+    JSON.parse(fs.readFileSync(distConfigPath, "utf-8")),
+    JSON.parse(fs.readFileSync(sourceConfigPath, "utf-8")),
+  );
 });
 
 test("context resolves nested cwd to project .claw", () => {
@@ -176,9 +181,9 @@ test("plan write creates task-bound plan and updates activePlan", async () => {
   assert.equal(result.workflowGuidance.goalMode?.setWhen, undefined);
   assert.ok(result.workflowGuidance.summary.includes("Fill the remaining plan fields"));
   assert.ok(result.workflowGuidance.summary.includes("already authorized to use goal mode and delegated subagents"));
-  assert.ok(result.workflowGuidance.nextsteps.includes("Set Goal Mode."));
-  assert.ok(result.workflowGuidance.nextsteps.includes("Fill the missing plan fields."));
-  assert.ok(result.workflowGuidance.nextsteps.includes("Move into `process.active` once requirements are clear."));
+  assert.ok(result.workflowGuidance.nextsteps.includes("1. Set Goal Mode."));
+  assert.ok(result.workflowGuidance.nextsteps.includes("2. Fill the missing plan fields."));
+  assert.ok(result.workflowGuidance.nextsteps.includes("3. Move into `process.active` once requirements are clear."));
   assert.equal(result.workflowGuidance.askUser, undefined);
   assert.equal(result.plan.title, "Demo task");
   assert.equal(result.plan.status, "prepare.requirements");
@@ -208,9 +213,14 @@ test("plan write guidance leaves requirement judgment to the agent", async () =>
   });
 
   assert.equal(result.workflowGuidance.askUser, undefined);
-  assert.ok(result.workflowGuidance.nextsteps.includes("Set Goal Mode."));
-  assert.ok(result.workflowGuidance.nextsteps.includes("Fill the missing plan fields."));
-  assert.ok(result.workflowGuidance.nextsteps.includes("Move into `process.active` once requirements are clear."));
+  assert.ok(result.workflowGuidance.nextsteps.includes("1. Set Goal Mode."));
+  assert.ok(result.workflowGuidance.nextsteps.includes("2. Fill the missing plan fields."));
+  assert.ok(result.workflowGuidance.nextsteps.includes("3. Move into `process.active` once requirements are clear."));
+  assert.deepEqual(result.workflowGuidance.recommendedCommands, [
+    "claw plan edit --task demo-task --plan-status process.active",
+    "claw plan edit --task demo-task --patch <updated-plan.json>",
+    "claw plan edit --task demo-task --reference-path <path> --reference-why <why>",
+  ]);
   assert.equal(
     result.workflowGuidance.notes,
     "Fill only the fields still needed to execute, such as `requirements`, `tasks`, `references`, `rules`, and `keyDecisions`. If scope is still unclear, clarify it with the user before switching to `process.active`.",
@@ -228,11 +238,12 @@ test("plan write without goal tells the agent to fill goal first", async () => {
   assert.equal(result.planStatus, "prepare.requirements");
   assert.equal(result.workflowGuidance.goalMode, undefined);
   assert.ok(result.workflowGuidance.summary.includes("Add the goal first"));
-  assert.ok(result.workflowGuidance.nextsteps.includes("Fill `goal.text`."));
-  assert.ok(result.workflowGuidance.nextsteps.includes("Set Goal Mode."));
-  assert.deepEqual(result.workflowGuidance.recommendedCommands?.slice(0, 2), [
+  assert.ok(result.workflowGuidance.nextsteps.includes("1. Fill `goal.text`."));
+  assert.ok(result.workflowGuidance.nextsteps.includes("2. Set Goal Mode."));
+  assert.deepEqual(result.workflowGuidance.recommendedCommands, [
     "claw plan edit --task Goal-later-task --plan-status process.active",
     "claw plan edit --task Goal-later-task --patch <updated-plan.json>",
+    "claw plan edit --task Goal-later-task --reference-path <path> --reference-why <why>",
   ]);
 });
 
@@ -498,7 +509,9 @@ test("plan edit can move from requirements to process.active without a separate 
   assert.equal(result.workflowGuidance.stage, "done");
   assert.ok(result.workflowGuidance.recommendedCommands?.some((command) => command.includes("claw plan done")));
   const truthDelegate = result.workflowGuidance.delegateSubagents?.[0];
+  const adrDelegate = result.workflowGuidance.delegateSubagents?.[1];
   assert.ok(truthDelegate);
+  assert.ok(adrDelegate);
   assert.equal(truthDelegate.name, "truth-writer");
   assert.equal(truthDelegate.skill, "claw-kit:truth-writer");
   assert.equal(truthDelegate.model, "gpt-5.4-mini");
@@ -510,8 +523,12 @@ test("plan edit can move from requirements to process.active without a separate 
     truthDelegate.inputContract,
     "curated completed subtask report with valuable findings for truth deposition",
   );
+  assert.equal(adrDelegate.name, "adr-writer");
+  assert.equal(adrDelegate.skill, "claw-kit:adr-writer");
+  assert.equal(adrDelegate.model, "gpt-5.4-mini");
+  assert.equal(adrDelegate.fork_context, false);
   assert.ok(result.workflowGuidance.nextsteps.some((step) => step.includes("truth-writer")));
-  assert.ok(result.workflowGuidance.nextsteps.some((step) => step.includes("retrospective")));
+  assert.ok(result.workflowGuidance.nextsteps.some((step) => step.includes("adr-writer")));
 });
 
 test("plan edit rejects entering process.active without goal text", async () => {
@@ -600,9 +617,9 @@ test("process entry returns the first task and task completion returns truth-wri
   assert.equal(taskDone.workflowGuidance.stage, "execution");
   assert.equal(taskDone.workflowGuidance.nextTask?.id, 2);
   assert.deepEqual(taskDone.workflowGuidance.nextsteps, [
-    "Sync the thread progress with our tasks.",
-    "Curate the valuable findings from the completed task into a completed subtask report, then dispatch `truth-writer` with that report.",
-    "Continue with task #2.",
+    "1. Sync the thread progress with our tasks.",
+    "2. Curate the valuable findings from the completed task into a completed subtask report, then dispatch `truth-writer` with that report.",
+    "3. Continue with task #2.",
   ]);
   assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.skill, "external-truth-writer");
   assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.fork_context, false);
@@ -2036,9 +2053,7 @@ test("workflow guidance uses external writer skills from project config", async 
     planStatus: "end.completed",
     patch: { retrospective: { summary: "Done." } },
   });
-  assert.equal(completed.workflowGuidance.delegateSubagents?.[0]?.skill, "external-adr-writer");
-  assert.equal(completed.workflowGuidance.delegateSubagents?.[0]?.model, "gpt-5.4-mini");
-  assert.equal(completed.workflowGuidance.delegateSubagents?.[0]?.fork_context, false);
+  assert.equal(completed.workflowGuidance.delegateSubagents, undefined);
 });
 
 test("truth ingest writes only under .claw/truth", () => {

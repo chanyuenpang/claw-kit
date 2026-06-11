@@ -61,5 +61,5 @@ This reference distills the built-in workflow definitions from `OpenClaw-dev`.
 - dispatch `truth-writer`
 - continue until all tasks are done
 - complete retrospective
-- `claw plan done`
 - dispatch `adr-writer`
+- `claw plan done`

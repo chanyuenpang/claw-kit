@@ -15,7 +15,7 @@ Use it to recover startup shape, route into the right `.claw` workflow, and foll
 
 Keep the core chain minimal:
 
-`user prompt` -> `claw search` -> `claw plan write` -> `plan status: process.active` -> `process task 1` -> `spawn or reuse truth-writer` -> `process task 2` -> `reuse truth-writer` -> `...` -> `retrospective` -> `claw plan done` -> `spawn adr-writer`
+`user prompt` -> `claw search` -> `claw plan write` -> `plan status: process.active` -> `process task 1` -> `spawn or reuse truth-writer` -> `process task 2` -> `reuse truth-writer` -> `...` -> `all tasks done` -> `complete retrospective` -> `spawn adr-writer` -> `claw plan done`
 
 Detailed call flow:
 
@@ -30,9 +30,9 @@ Detailed call flow:
 9. Do not start implementation while the plan is still in `prepare.requirements`.
 10. During execution, process one task at a time and update progress with `claw plan edit`.
 11. After a meaningful completed task, dispatch `truth-writer` when there is reusable context to deposit.
-12. When all tasks are done, complete the retrospective.
+12. When all tasks are done, clear thread progress, complete the retrospective, and dispatch `adr-writer` from returned `workflowGuidance`.
 13. Close the plan with `claw plan done` only after `retrospective.summary` exists.
-14. After `claw plan done`, dispatch `adr-writer` using the completed `plan.json`.
+14. Treat root `claw plan done` as closeout and archival, not as the ADR dispatch trigger.
 
 ## First action
 
@@ -50,4 +50,4 @@ Use `planning` as the visible plan-entry skill for the current task, then contin
 - If `goal.text` is missing, fill it before trying to enter `process.active`.
 - Reuse the existing `truth-writer` when possible; otherwise dispatch a new one.
 - Keep truth deposition between task execution and retrospective closure.
-- Run ADR deposition after `claw plan done`.
+- Run ADR deposition from the `all tasks done` guidance before root `claw plan done`.

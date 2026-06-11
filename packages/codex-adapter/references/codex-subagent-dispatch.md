@@ -39,7 +39,7 @@ Honor `workflowGuidance.nextsteps` ordering exactly.
   - run at task-completion time before plan closure
   - keep the specialist open for reuse
 - `adr-writer`
-  - run only after the plan is completed and retrospective is present
+  - run when `all tasks done` guidance says retrospective is ready for ADR closeout
   - keep the specialist open for reuse
 - `researcher`
   - run for investigation-first tasks or bounded analysis subtasks
