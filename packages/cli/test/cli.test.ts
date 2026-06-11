@@ -815,9 +815,6 @@ test("cli context auto-corrects malformed existing .claw state", () => {
     embedding: {
       provider: "local",
       model: "Snowflake/snowflake-arctic-embed-m-v2.0",
-      local: {
-        modelCacheDir: ".claw/models",
-      },
       store: {
         vector: {
           enabled: true,
@@ -877,9 +874,6 @@ test("cli check auto-corrects project.json into explicit protocol fields", () =>
     embedding: {
       provider: "local",
       model: "Snowflake/snowflake-arctic-embed-m-v2.0",
-      local: {
-        modelCacheDir: ".claw/models",
-      },
       store: {
         vector: {
           enabled: true,

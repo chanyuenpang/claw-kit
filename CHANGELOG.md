@@ -2,6 +2,18 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.1.33] - 2026-06-11
+
+### Changed
+
+- local embedding cache resolution now defaults to a platform-global shared model cache instead of persisting `.claw/models` into project config
+- projects that explicitly configure a local cache now reuse the global model when the local directory is empty, and only download into the explicit local directory when neither cache already has the model
+
+### Fixed
+
+- `claw init` and protocol normalization no longer re-persist the legacy default `memory.embedding.local.modelCacheDir = ".claw/models"` into `.claw/project.json`
+- the `claw-kit` repo's own `.claw/project.json` and canonical truth now reflect the shared-cache contract after the local model tree was folded into the Windows global cache
+
 ## [0.1.32] - 2026-06-11
 
 ### Fixed

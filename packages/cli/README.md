@@ -35,11 +35,11 @@ claw context
 claw search index --refresh
 ```
 
-That first refresh creates the project-local sqlite recall store at `.claw/memory.sqlite`, downloads or reuses the local embedding cache under `.claw/models`, and writes the first vector index for searchable markdown docs.
+That first refresh creates the project-local sqlite recall store at `.claw/memory.sqlite`, resolves the local embedding cache, and writes the first vector index for searchable markdown docs. By default claw uses a platform-global model cache directory (`%LOCALAPPDATA%\\claw\\models` on Windows, `~/Library/Caches/claw/models` on macOS, and `$XDG_CACHE_HOME/claw/models` or `~/.cache/claw/models` on Linux). Project-local `.claw/models` remains available as a fallback cache location instead of the default primary cache.
 
 `claw search index --refresh` incrementally syncs the current project's markdown recall index. Unchanged docs reuse existing sqlite rows and embeddings, changed docs are re-embedded, deleted docs are removed, and embedding config changes trigger a full vector refresh. On large projects, the refresh now defaults to processing at most 100 newly added or changed files per run so the backlog can advance across multiple refreshes.
 
-`claw search index --refresh` supports local semantic indexing with a GitNexus-style transformers backend when `.claw/project.json` sets `memory.embedding.provider` to `local`. Local embedding execution now batches inference inside a single worker/model session by default, and you can still force CPU rescue refreshes with `memory.embedding.local.device = cpu` or `CLAW_EMBEDDING_LOCAL_DEVICE=cpu`.
+`claw search index --refresh` supports local semantic indexing with a GitNexus-style transformers backend when `.claw/project.json` sets `memory.embedding.provider` to `local`. Local embedding execution now batches inference inside a single worker/model session by default, and you can still force CPU rescue refreshes with `memory.embedding.local.device = cpu` or `CLAW_EMBEDDING_LOCAL_DEVICE=cpu`. If you explicitly set `memory.embedding.local.modelCacheDir`, claw first checks that local cache for the target model, then reuses the global cache when it already has the model, and only downloads into the configured local cache when neither location has it. Without an explicit local cache dir, claw downloads into the platform-global cache by default.
 
 `claw search ...` accepts either `claw search "topic"` or `claw search --query "topic"`, and expects that refreshed vector index to exist. If the project has no vector index yet, the command fails until you configure `memory.embedding` and run `claw search index --refresh`.
 

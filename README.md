@@ -79,9 +79,9 @@ claw context
 claw search index --refresh
 ```
 
-That first refresh is the point where claw creates the project-local sqlite recall store at `.claw/memory.sqlite`, downloads or reuses the local embedding model cache under `.claw/models`, and writes the initial vector index for searchable markdown docs.
+That first refresh is the point where claw creates the project-local sqlite recall store at `.claw/memory.sqlite`, resolves the local embedding model cache, and writes the initial vector index for searchable markdown docs. By default claw now uses a platform-global model cache directory (`%LOCALAPPDATA%\\claw\\models` on Windows, `~/Library/Caches/claw/models` on macOS, and `$XDG_CACHE_HOME/claw/models` or `~/.cache/claw/models` on Linux). Project-local `.claw/models` is now a fallback cache location instead of the default primary cache.
 
-`claw search index --refresh` syncs the current project's recall index incrementally. Unchanged markdown docs keep their existing sqlite rows and embeddings, changed docs are re-embedded, deleted docs are removed, and changing the embedding config triggers a full vector refresh. For large projects, project refresh now defaults to processing at most 100 newly added or changed files per run, so repeated refreshes naturally advance the remaining backlog instead of trying to embed the full corpus in one shot. For local semantic indexing, `provider: "local"` now defaults to `Snowflake/snowflake-arctic-embed-m-v2.0` with 768 dimensions, worker-side batch inference, and Windows DirectML-to-CPU fallback by default. Existing projects that explicitly keep `Snowflake/snowflake-arctic-embed-xs` continue to resolve to 384 dimensions unless they override `outputDimensionality`:
+`claw search index --refresh` syncs the current project's recall index incrementally. Unchanged markdown docs keep their existing sqlite rows and embeddings, changed docs are re-embedded, deleted docs are removed, and changing the embedding config triggers a full vector refresh. For large projects, project refresh now defaults to processing at most 100 newly added or changed files per run, so repeated refreshes naturally advance the remaining backlog instead of trying to embed the full corpus in one shot. For local semantic indexing, `provider: "local"` now defaults to `Snowflake/snowflake-arctic-embed-m-v2.0` with 768 dimensions, worker-side batch inference, and Windows DirectML-to-CPU fallback by default. Existing projects that explicitly keep `Snowflake/snowflake-arctic-embed-xs` continue to resolve to 384 dimensions unless they override `outputDimensionality`. `memory.embedding.local.modelCacheDir` is now an explicit override, not the default path contract:
 
 ```json
 {
@@ -89,14 +89,19 @@ That first refresh is the point where claw creates the project-local sqlite reca
     "externalDocPaths": [],
     "embedding": {
       "provider": "local",
-      "model": "Snowflake/snowflake-arctic-embed-m-v2.0",
-      "local": {
-        "modelCacheDir": ".claw/models"
-      }
+      "model": "Snowflake/snowflake-arctic-embed-m-v2.0"
     }
   }
 }
 ```
+
+If you explicitly set `memory.embedding.local.modelCacheDir`, claw resolves cache usage in this order:
+
+1. If that configured local cache already contains the target model, use it.
+2. Otherwise, if the platform-global cache already contains the target model, reuse the global cache.
+3. Otherwise, download the model into the configured local cache.
+
+If `memory.embedding.local.modelCacheDir` is not set, claw uses the platform-global cache by default and only falls back to `.claw/models` when the global cache directory is unavailable.
 
 If you need to force a local refresh onto CPU, set either:
 

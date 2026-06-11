@@ -316,9 +316,6 @@ function normalizeMemoryEmbeddingConfig(value: unknown): MemoryEmbeddingConfig |
     return {
       provider: "local",
       model: DEFAULT_LOCAL_EMBEDDING_MODEL,
-      local: {
-        modelCacheDir: DEFAULT_LOCAL_EMBEDDING_CACHE_DIR,
-      },
       store: {
         vector: {
           enabled: true,
@@ -337,9 +334,6 @@ function normalizeMemoryEmbeddingConfig(value: unknown): MemoryEmbeddingConfig |
     return {
       provider: "local",
       model: DEFAULT_LOCAL_EMBEDDING_MODEL,
-      local: {
-        modelCacheDir: DEFAULT_LOCAL_EMBEDDING_CACHE_DIR,
-      },
       store: {
         vector: {
           enabled: typeof vector?.enabled === "boolean" ? vector.enabled : true,
@@ -364,15 +358,7 @@ function normalizeMemoryEmbeddingConfig(value: unknown): MemoryEmbeddingConfig |
       : {}),
     ...(local
       ? {
-          local: {
-            ...(readNonEmptyString(local.modelPath) ? { modelPath: readNonEmptyString(local.modelPath) } : {}),
-            ...(readNonEmptyString(local.modelCacheDir)
-              ? { modelCacheDir: readNonEmptyString(local.modelCacheDir) }
-              : {}),
-            ...((local.device === "dml" || local.device === "cuda" || local.device === "cpu" || local.device === "wasm")
-              ? { device: local.device }
-              : {}),
-          },
+          local: normalizeLocalEmbeddingConfig(local),
         }
       : {}),
     ...(Number.isInteger(embedding.outputDimensionality) && (embedding.outputDimensionality as number) > 0
@@ -387,6 +373,24 @@ function normalizeMemoryEmbeddingConfig(value: unknown): MemoryEmbeddingConfig |
       },
     },
   };
+}
+
+function normalizeLocalEmbeddingConfig(local: Record<string, unknown>): Record<string, unknown> | undefined {
+  const normalized: Record<string, unknown> = {};
+  const modelPath = readNonEmptyString(local.modelPath);
+  const modelCacheDir = readNonEmptyString(local.modelCacheDir);
+
+  if (modelPath) {
+    normalized.modelPath = modelPath;
+  }
+  if (modelCacheDir && modelCacheDir !== DEFAULT_LOCAL_EMBEDDING_CACHE_DIR) {
+    normalized.modelCacheDir = modelCacheDir;
+  }
+  if (local.device === "dml" || local.device === "cuda" || local.device === "cpu" || local.device === "wasm") {
+    normalized.device = local.device;
+  }
+
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
 }
 
 function requireNullableEmbeddingConfig(

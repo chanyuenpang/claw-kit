@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
-  DEFAULT_LOCAL_EMBEDDING_CACHE_DIR,
   DEFAULT_LOCAL_EMBEDDING_MODEL,
 } from "./embedding-defaults.js";
 import { ClawError } from "./errors.js";
@@ -74,9 +73,6 @@ export function initProject(input: InitProjectInput): InitProjectResult {
       embedding: {
         provider: "local",
         model: DEFAULT_LOCAL_EMBEDDING_MODEL,
-        local: {
-          modelCacheDir: DEFAULT_LOCAL_EMBEDDING_CACHE_DIR,
-        },
         store: {
           vector: {
             enabled: true,

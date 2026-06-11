@@ -18,7 +18,12 @@
   - directory paths like `docs/`
 - External memory paths only index `.md` files from the configured path set.
 - `memory.embedding` now accepts the OpenClaw-compatible subset used by `openclaw-dev`: `provider` (`openai|local`), `model`, `remote.apiKeyEnvVar`, `remote.baseUrl`, `local.modelPath`, `local.modelCacheDir`, `outputDimensionality`, `store.vector.enabled`, and `store.vector.extensionPath`.
-- `claw init` and protocol normalization now auto-fill a default local embedding config when `memory.embedding` is missing, using `Snowflake/snowflake-arctic-embed-m-v2.0`, `.claw/models`, and `store.vector.enabled = true`.
+- `claw init` and protocol normalization now auto-fill a default local embedding config when `memory.embedding` is missing, using `Snowflake/snowflake-arctic-embed-m-v2.0` and `store.vector.enabled = true`; the default cache location is now runtime-resolved instead of being persisted into `project.json`.
+- `packages/core/src/embedding-defaults.ts` now resolves platform-global cache roots (`%LOCALAPPDATA%\\claw\\models` on Windows, `~/Library/Caches/claw/models` on macOS, and `$XDG_CACHE_HOME/claw/models` or `~/.cache/claw/models` on Linux) and the local/global/fallback cache-selection order for embedding models.
+- `packages/core/src/embedding-worker.ts` now resolves cache usage by model id: explicit local cache wins only when that local cache already contains the model; otherwise an existing global cache is reused; if both are missing, downloads go to the explicit local cache when configured, or to the global cache by default.
+- `packages/core/src/project-check.ts` 里的 `ensureProjectProtocol -> normalizeProjectConfig` 是既有项目自动迁移的最佳落点，因为它会在协议修复时回写 `project.json`。
+- `packages/core/src/init.ts` no longer writes a default `modelCacheDir` into new project config, and `packages/core/src/project-check.ts` removes legacy `.claw/models` during protocol normalization so shared-cache semantics stay implicit while explicit custom paths remain intact.
+- 在当前 `claw-kit` 仓库里，这条迁移已经落地为可见结果：`.claw/project.json` 里不再保留 legacy `memory.embedding.local.modelCacheDir = ".claw/models"`，而项目内 `.claw/models` 的 Snowflake 模型已并入 `C:\Users\chany\AppData\Local\claw\models`，因此仓库本身不再依赖本地模型缓存目录。
 - `memory.embedding.local.device` 现在是 schema 明确支持的本地设备字段，允许 `dml|cuda|cpu|wasm`；这类显式选择会在 `context.ts`、`project-check.ts` 与 `types.ts` 的协议修复/校验路径里保留下来，而不是被重置掉。
 - `buildMemoryIndex` returns the project embedding config and persists `scope`, `indexed_at`, and `embedding_config` into sqlite `index_metadata` so future embedding/vector initialization can reuse stable metadata.
 - `claw search index --refresh` 不再默认全量清空 project sqlite index；已有 sqlite store 会被当作增量同步目标。
@@ -60,8 +65,10 @@
 ## Evidence
 
 - [packages/core/src/init.ts](D:/Users/chany/Documents/claw-kit/packages/core/src/init.ts)
+- [packages/core/src/embedding-defaults.ts](D:/Users/chany/Documents/claw-kit/packages/core/src/embedding-defaults.ts)
 - [packages/core/src/memory.ts](D:/Users/chany/Documents/claw-kit/packages/core/src/memory.ts)
 - [packages/core/src/embedding-worker.ts](D:/Users/chany/Documents/claw-kit/packages/core/src/embedding-worker.ts)
+- [packages/core/src/project-check.ts](D:/Users/chany/Documents/claw-kit/packages/core/src/project-check.ts)
 - [packages/cli/src/cli.ts](D:/Users/chany/Documents/claw-kit/packages/cli/src/cli.ts)
 - [packages/core/test/core.test.ts](D:/Users/chany/Documents/claw-kit/packages/core/test/core.test.ts)
 - [packages/cli/README.md](D:/Users/chany/Documents/claw-kit/packages/cli/README.md)

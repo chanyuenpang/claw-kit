@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   DEFAULT_LOCAL_EMBEDDING_DIMENSIONS,
   resolveDefaultLocalEmbeddingDimensions,
+  resolveLocalEmbeddingCacheDir,
 } from "./embedding-defaults.js";
 import {
   resolveLocalExecutionDevice,
@@ -92,11 +93,10 @@ async function buildLocalOutput(input: WorkerInput): Promise<WorkerOutput> {
 
   const { pipeline, env } = await import("@huggingface/transformers");
   env.allowLocalModels = false;
-  if (input.embedding.local?.modelCacheDir?.trim()) {
-    env.cacheDir = path.resolve(input.embedding.local.modelCacheDir);
-  }
-
   const modelId = input.embedding.local?.modelPath?.trim() || input.embedding.model;
+  env.cacheDir = resolveLocalEmbeddingCacheDir(modelId, input.embedding.local?.modelCacheDir, {
+    cwd: process.cwd(),
+  });
   const requestedDevice = resolveLocalExecutionDevice(input.embedding, {
     cudaAvailable: isCudaAvailable(),
   });

@@ -25,6 +25,10 @@ import {
   buildProjectQueryIntent,
   extractProjectKeywordTerms,
 } from "../src/memory-query.js";
+import {
+  resolveDefaultLocalEmbeddingCacheDir,
+  resolveLocalEmbeddingCacheDir,
+} from "../src/embedding-defaults.js";
 
 function createFixture(name: string): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), `claw-kit-${name}-`));
@@ -84,8 +88,8 @@ test("initProject creates a minimal .claw project scaffold", () => {
       embedding: {
         provider: string;
         model: string;
-        local: {
-          modelCacheDir: string;
+        local?: {
+          modelCacheDir?: string;
         };
         store: {
           vector: {
@@ -118,9 +122,6 @@ test("initProject creates a minimal .claw project scaffold", () => {
       embedding: {
         provider: "local",
         model: "Snowflake/snowflake-arctic-embed-m-v2.0",
-        local: {
-          modelCacheDir: ".claw/models",
-        },
         store: {
           vector: {
             enabled: true,
@@ -224,6 +225,92 @@ test("plan write guidance leaves requirement judgment to the agent", async () =>
   assert.equal(
     result.workflowGuidance.notes,
     "Fill only the fields still needed to execute, such as `requirements`, `tasks`, `references`, `rules`, and `keyDecisions`. If scope is still unclear, clarify it with the user before switching to `process.active`.",
+  );
+});
+
+test("local embedding cache resolver prefers explicit local cache dir over shared default", () => {
+  assert.equal(
+    resolveLocalEmbeddingCacheDir(
+      "Snowflake/snowflake-arctic-embed-m-v2.0",
+      path.join("workspace", ".claw", "models"),
+      {
+        platform: "win32",
+        env: { LOCALAPPDATA: "C:\\Users\\demo\\AppData\\Local" },
+        homedir: "C:\\Users\\demo",
+      },
+    ),
+    path.resolve(path.join("workspace", ".claw", "models")),
+  );
+});
+
+test("local embedding cache resolver uses platform shared cache when modelCacheDir is omitted", () => {
+  assert.equal(
+    resolveDefaultLocalEmbeddingCacheDir({
+      platform: "win32",
+      env: { LOCALAPPDATA: "C:\\Users\\demo\\AppData\\Local" },
+      homedir: "C:\\Users\\demo",
+    }),
+    path.join("C:\\Users\\demo\\AppData\\Local", "claw", "models"),
+  );
+  assert.equal(
+    resolveDefaultLocalEmbeddingCacheDir({
+      platform: "darwin",
+      env: {},
+      homedir: "/Users/demo",
+    }),
+    path.join("/Users/demo", "Library", "Caches", "claw", "models"),
+  );
+  assert.equal(
+    resolveDefaultLocalEmbeddingCacheDir({
+      platform: "linux",
+      env: {},
+      homedir: "/home/demo",
+    }),
+    path.join("/home/demo", ".cache", "claw", "models"),
+  );
+});
+
+test("local embedding cache resolver reuses global cache when configured local cache does not contain the model", () => {
+  const root = createEmptyFixture("embedding-cache-global-hit");
+  const localCache = path.join(root, "local-cache");
+  const globalCache = path.join(root, "global-cache");
+  fs.mkdirSync(localCache, { recursive: true });
+  fs.mkdirSync(path.join(globalCache, "Snowflake", "snowflake-arctic-embed-m-v2.0", "onnx"), { recursive: true });
+
+  assert.equal(
+    resolveLocalEmbeddingCacheDir(
+      "Snowflake/snowflake-arctic-embed-m-v2.0",
+      localCache,
+      {
+        cwd: root,
+        platform: "linux",
+        env: {},
+        homedir: root,
+        globalCacheDir: globalCache,
+      },
+    ),
+    globalCache,
+  );
+});
+
+test("local embedding cache resolver downloads into configured local cache when local and global are both missing", () => {
+  const root = createEmptyFixture("embedding-cache-local-download");
+  const localCache = path.join(root, "local-cache");
+  const globalCache = path.join(root, "global-cache");
+
+  assert.equal(
+    resolveLocalEmbeddingCacheDir(
+      "Snowflake/snowflake-arctic-embed-m-v2.0",
+      localCache,
+      {
+        cwd: root,
+        platform: "linux",
+        env: {},
+        homedir: root,
+        globalCacheDir: globalCache,
+      },
+    ),
+    path.resolve(localCache),
   );
 });
 
@@ -2207,6 +2294,73 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
     },
   });
   assert.equal(projectConfig.gitnexus.enabled, false);
+});
+
+test("ensureProjectProtocol removes legacy default local modelCacheDir so runtime shared cache becomes implicit", () => {
+  const root = createFixture("project-check-legacy-model-cache");
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify(
+      {
+        id: "legacy-cache",
+        name: "Legacy Cache",
+        maxTasksToKeep: 99,
+        externalTruthSkill: null,
+        externalAdrSkill: null,
+        contextPaths: [],
+        memory: {
+          externalDocPaths: [],
+          embedding: {
+            provider: "local",
+            model: "Snowflake/snowflake-arctic-embed-m-v2.0",
+            local: {
+              modelCacheDir: ".claw/models",
+            },
+            store: {
+              vector: {
+                enabled: true,
+              },
+            },
+          },
+        },
+        gitnexus: {
+          enabled: false,
+        },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+
+  const result = ensureProjectProtocol(root);
+  const projectConfig = JSON.parse(fs.readFileSync(result.projectJsonPath, "utf-8")) as {
+    memory: {
+      embedding: {
+        provider: string;
+        model: string;
+        local?: {
+          modelCacheDir?: string;
+        };
+        store: {
+          vector: {
+            enabled: boolean;
+          };
+        };
+      };
+    };
+  };
+
+  assert.equal(result.changed, true);
+  assert.deepEqual(projectConfig.memory.embedding, {
+    provider: "local",
+    model: "Snowflake/snowflake-arctic-embed-m-v2.0",
+    store: {
+      vector: {
+        enabled: true,
+      },
+    },
+  });
 });
 
 test("enforceTaskRetention archives completed task and prunes archive by updatedAt", async () => {
