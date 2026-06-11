@@ -15,6 +15,7 @@ Accepted working truth for the current Codex adapter startup path.
 - During `plan write`, the active task metadata is bound to the current host session with `ownerSessionKey` and `boundAt`.
 - On `SessionStart`, the adapter first attempts to recover a session-bound active workflow from current `.claw` state.
 - If recovery finds an active plan for the current session, the hook injects a minimal claw workflow snapshot and recomputed `workflowGuidance`.
+- Recovered startup context also carries the active plan content in hook-specific `additionalContext` JSON, so the resumed agent can see the current goal, tasks, and references without rehydrating the plan by hand.
 - The recovered `workflowGuidance` is the only next-step contract surfaced back to the agent.
 - If no recoverable active workflow exists, startup falls back to the existing default prompt behavior without extra recovery text.
 
@@ -32,6 +33,7 @@ Accepted working truth for the current Codex adapter startup path.
 - `packages/codex-adapter/hooks/session-start-recovery.mjs`
 - `packages/codex-adapter/hooks/hooks.json`
 - `packages/cli/src/cli.ts`
+- `packages/cli/test/cli.test.ts`
 - `packages/core/src/context.ts`
 - `packages/core/src/plan.ts`
 - `packages/core/src/types.ts`

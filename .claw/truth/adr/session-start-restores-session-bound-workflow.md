@@ -12,6 +12,7 @@ Accepted
 
 - 同一线程发生 Codex compact 之后，startup 恢复不应再按 source 分叉出另一套 compact 专用流程
 - 恢复逻辑必须优先依赖当前 `.claw` canonical state，而不是 recent tool use 或 thread 内瞬时推断
+- 如果 session-bound active workflow 能够恢复，startup payload 需要把当前 plan content 一并带回 JSON / additional prompt surface，方便 resumed agent 直接续跑而不必先重新打开 plan
 
 同时，startup 恢复只在能够确认当前 session 对应的 active workflow 时才应该注入最小 workflow contract；否则应保持现有 startup 行为不变，避免创造额外 recover prompt 干扰 `using-claw-kit` 的默认入口。
 
@@ -25,6 +26,7 @@ Accepted
 - `SessionStart` 不再按 hook source 区分 `startup`、`resume`、`compact` 的恢复逻辑
 - `SessionStart` 启动时尝试从 `.claw` 中恢复与当前 `ownerSessionKey` 绑定的 active workflow
 - 恢复成功时，只注入最小 workflow snapshot 和基于当前 canonical state 重算得到的 `workflowGuidance`
+- 恢复成功时，额外把当前 plan content 放进 recovered JSON / additional prompt surface，但仍然保持最小化，不重复 project root、`.claw` 路径或 raw 计划历史
 - 注入内容只包含继续执行所需的最小 contract，不重复 project root、`.claw` 路径或 raw `plan.json`
 - 如果没有可恢复的 active workflow，则保持精简版 startup 提示：保留 `.claw` 项目识别、`using-claw-kit` 入口、当前 thread 对 Goal mode / required delegated subagents 的显式授权，以及 “follow workflowGuidance” 合同
 - 默认 startup prompt 不再重复 project root、protocol check、或要求 agent 先 “report recovered harness state”
@@ -32,6 +34,7 @@ Accepted
 ## Consequences
 
 - Codex compact 后的同线程继续对话可以自动回到当前 session 已绑定的 workflow，而不是重新靠 prompt 猜测上下文
+- resumed agent 可以直接看到当前 plan content，因此恢复后的第一轮更像“继续执行”而不是“重新发现计划”
 - startup recovery 继续保持为 enhancement，而不是替代 `plan write`、`plan edit`、`plan done` 和 truth/ADR deposition 的 correctness 机制
 - workflow 恢复与 `workflowGuidance` contract 保持一致，减少 adapter 在 compact 后自行发明下一步的空间
 - 没有 active workflow 时，系统仍然退回现有 `using-claw-kit` 入口，不增加新的恢复文案分支
@@ -43,6 +46,7 @@ Accepted
 ## Related Code
 
 - `packages/cli/src/cli.ts`
+- `packages/cli/test/cli.test.ts`
 - `packages/core/src/context.ts`
 - `packages/core/src/plan.ts`
 - `packages/core/src/types.ts`
