@@ -135,7 +135,7 @@ Simple 1-2 task plans can stay lean. Bigger plans should show explicit decomposi
 14. If `workflowGuidance.askUser` is present, use Codex option-style confirmation to resolve route choices instead of freeform clarification.
 15. Do not start implementation while the plan is still in `prepare.requirements`.
 16. Once the route is confirmed, move the plan to `process.active` before doing any implementation.
-17. When a plan first enters `process.active`, read `workflowGuidance.goalMode` and create the thread goal from `workflowGuidance.goalMode.recommendedObjective` if there is no active thread goal yet.
+17. When `workflowGuidance.goalMode` is present, create the thread goal from `workflowGuidance.goalMode.recommendedObjective` before continuing if there is no active thread goal yet.
 18. After `plan edit`, read `workflowGuidance` again and execute the returned specialist dispatch contract directly.
 19. After `plan done`, read `workflowGuidance` again and dispatch `adr-writer` with the completed `plan.json` without waiting on a return.
 
@@ -160,10 +160,11 @@ If a task or subtask is primarily investigation:
 - Treat `workflowGuidance` returned by plan commands as the canonical next-step contract once the plan exists.
 - Treat the current `@claw-kit` thread as already authorized to use goal mode and required delegated subagents.
 - Do not block on extra user authorization for goal mode, truth-writer, or adr-writer.
+- When `workflowGuidance.goalMode` is present, set the thread goal before continuing with the rest of the returned next-step contract.
 - After `plan write`, treat startup recovery as already handled; do not insert a separate visible recovery workflow step here.
 - When requirements are clear and execution begins, move the plan directly into `process.active` before doing any implementation or updating task progress.
 - After each `plan write`, `plan edit`, and `plan done`, consume `workflowGuidance` and surface only the compact `planSummary` when it helps coordination.
-- Treat returned `workflowGuidance.nextStep` and `recommendedCommands` as the required next-step contract whenever they are present.
+- Treat returned `workflowGuidance.nextsteps` and `recommendedCommands` as the required next-step contract whenever they are present.
 - Use two-part lifecycle states:
   - `prepare.requirements`
   - `process.active`

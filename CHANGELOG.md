@@ -2,6 +2,32 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.1.29] - 2026-06-11
+
+### Fixed
+
+- `claw plan done` on Windows now keeps returning JSON even when completion refresh is launched asynchronously in the background
+- Windows completion refresh now launches through an external process boundary so async indexing can continue without breaking the caller's stdout capture
+
+### Changed
+
+- completion refresh status files can move through queued and running states before writing the final finished payload, making long local embedding cold starts observable
+- release verification now explicitly covers the Windows async completion-refresh launch path together with the final status-file completion path
+
+## [0.1.28] - 2026-06-11
+
+### Changed
+
+- `workflowGuidance.nextStep` is now `workflowGuidance.nextsteps`, returned as a string array across core, CLI, and Codex adapter guidance references
+- `workflowGuidance.notes` is now a single string instead of a list, keeping the compact contract flatter for downstream consumers
+- `claw plan write` now returns the full canonical `plan` instead of a separate `planSchema` teaching object
+- requirements, execution, and completion workflow guidance is now driven through `packages/core/src/workflow-guidance.config.json` so the guidance contract can be edited from one JSON surface
+
+### Fixed
+
+- plan-write, plan-edit, and plan-done compact outputs now stay aligned with the current workflowGuidance contract instead of mixing old `nextStep` and schema-shaped fields
+- CLI and core regression coverage now verifies the JSON-backed workflow guidance output, the `nextsteps` array contract, the string `notes` contract, and full-plan return on `plan write`
+
 ## [0.1.27] - 2026-06-10
 
 ### Changed

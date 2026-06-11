@@ -33,7 +33,7 @@ Do not document or implement inline fallback as a normal branch of the Codex ada
 
 ## Dispatch order
 
-Honor `workflowGuidance.nextStep` ordering exactly.
+Honor `workflowGuidance.nextsteps` ordering exactly.
 
 - `truth-writer`
   - run at task-completion time before plan closure

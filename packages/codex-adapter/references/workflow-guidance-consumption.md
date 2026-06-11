@@ -7,7 +7,7 @@ Use this note when a Codex session is driving `claw` commands that return `workf
 When a `claw` plan command returns `workflowGuidance`, the Codex adapter treats it as the primary next-step contract.
 
 Do not replace it with freeform workflow reasoning unless the command output is unavailable.
-Do not invent an alternative next-step sequence when `workflowGuidance`, `nextStep`, or `recommendedCommands` already tell you what to do next.
+Do not invent an alternative next-step sequence when `workflowGuidance`, `nextsteps`, or `recommendedCommands` already tell you what to do next.
 
 ## Fields to honor
 
@@ -41,7 +41,7 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextSt
 - Treat them as the authoritative command sequence unless the current harness state makes a specific command invalid.
 - Use a different command only when the current harness state makes the recommended command invalid.
 
-### `nextStep`
+### `nextsteps`
 
 - Preserve its ordering.
 - Treat it as the required execution order for the next harness action, not as optional advice.

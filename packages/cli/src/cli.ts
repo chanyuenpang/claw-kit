@@ -455,9 +455,10 @@ function buildRecoveredWorkflowAdditionalContext(activeWorkflow: JsonRecord): st
   const planStatus = String(activeWorkflow.planStatus ?? "");
   const planSummary = String(activeWorkflow.planSummary ?? "");
   const workflowGuidance = activeWorkflow.workflowGuidance as JsonRecord | undefined;
-  const nextStep = String(workflowGuidance?.nextStep ?? "");
+  const nextsteps = toStringList(workflowGuidance?.nextsteps);
   const recommendedCommands = toStringList(workflowGuidance?.recommendedCommands);
   const delegateSubagents = toDelegateNames(workflowGuidance?.delegateSubagents);
+  const notes = typeof workflowGuidance?.notes === "string" ? workflowGuidance.notes.trim() : "";
   const askUser = summarizeAskUser(workflowGuidance?.askUser as JsonRecord | undefined);
   const goalMode = summarizeGoalMode(workflowGuidance?.goalMode as JsonRecord | undefined);
 
@@ -473,11 +474,17 @@ function buildRecoveredWorkflowAdditionalContext(activeWorkflow: JsonRecord): st
     `- plan: ${planFile}`,
     `- plan status: ${planStatus}`,
     `- plan summary: ${planSummary}`,
-    `- next step: ${nextStep}`,
   ];
+
+  if (nextsteps.length > 0) {
+    lines.push(`- next steps: ${nextsteps.join(" | ")}`);
+  }
 
   if (recommendedCommands.length > 0) {
     lines.push(`- recommended commands: ${recommendedCommands.join(" | ")}`);
+  }
+  if (notes) {
+    lines.push(`- notes: ${notes}`);
   }
   if (delegateSubagents.length > 0) {
     lines.push(`- delegate subagents: ${delegateSubagents.join(", ")}`);
@@ -672,23 +679,8 @@ function compactPlanCommandResult(
     planFile: string;
     planPath: string;
     planStatus: string;
-    workflowGuidance: {
-      stage: string;
-      summary: string;
-      nextStep: string;
-      nextTask?: {
-        id: number;
-        title: string;
-        status: string;
-        detail?: string;
-      };
-      notes?: string[];
-      recommendedCommands?: string[];
-      delegateSubagents?: unknown[];
-      askUser?: unknown;
-      goalMode?: unknown;
-    };
-    planSchema?: unknown;
+    workflowGuidance: WorkflowGuidance;
+    plan?: unknown;
     planView: PlanViewModel;
     planReview?: {
       score: number;
@@ -712,30 +704,30 @@ function compactPlanCommandResult(
       planPath: resolvedPlanPath,
       ...(archivedPlanPath ? { archivedPlanPath } : {}),
       planStatus: result.planStatus,
-    nextStep: result.workflowGuidance.nextStep,
-    ...(result.workflowGuidance.nextTask ? { nextTask: result.workflowGuidance.nextTask } : {}),
-    ...(result.workflowGuidance.delegateSubagents?.length
-      ? { delegateSubagents: result.workflowGuidance.delegateSubagents }
-      : {}),
-    ...(result.workflowGuidance.notes?.length ? { notes: result.workflowGuidance.notes } : {}),
-    ...(result.workflowGuidance.recommendedCommands?.length
-      ? { recommendedCommands: result.workflowGuidance.recommendedCommands }
-      : {}),
-    ...(result.workflowGuidance.askUser ? { askUser: result.workflowGuidance.askUser } : {}),
-    ...(result.workflowGuidance.goalMode ? { goalMode: result.workflowGuidance.goalMode } : {}),
-    ...(command === "plan.write" && result.planSchema ? { planSchema: result.planSchema } : {}),
-    ...(result.planReview
-      ? {
-          planReview: {
-            score: result.planReview.score,
-            issueCount: result.planReview.issues.length,
-            suggestions: result.planReview.suggestions,
-            completionPolicy: result.planReview.completionPolicy,
-          },
-        }
-      : {}),
-    planSummary: result.planView.collapsedSummary,
-  };
+      nextsteps: result.workflowGuidance.nextsteps,
+      ...(result.workflowGuidance.nextTask ? { nextTask: result.workflowGuidance.nextTask } : {}),
+      ...(result.workflowGuidance.delegateSubagents?.length
+        ? { delegateSubagents: result.workflowGuidance.delegateSubagents }
+        : {}),
+      ...(result.workflowGuidance.notes?.trim() ? { notes: result.workflowGuidance.notes } : {}),
+      ...(result.workflowGuidance.recommendedCommands?.length
+        ? { recommendedCommands: result.workflowGuidance.recommendedCommands }
+        : {}),
+      ...(result.workflowGuidance.askUser ? { askUser: result.workflowGuidance.askUser } : {}),
+      ...(result.workflowGuidance.goalMode ? { goalMode: result.workflowGuidance.goalMode } : {}),
+      ...(command === "plan.write" && result.plan ? { plan: result.plan } : {}),
+      ...(result.planReview
+        ? {
+            planReview: {
+              score: result.planReview.score,
+              issueCount: result.planReview.issues.length,
+              suggestions: result.planReview.suggestions,
+              completionPolicy: result.planReview.completionPolicy,
+            },
+          }
+        : {}),
+      planSummary: result.planView.collapsedSummary,
+    };
 }
 
 function mergeEditPatchFlags(
@@ -780,11 +772,27 @@ type CompletionRefreshResult = {
     queued: true;
     startedAt: string;
     statusFile: string;
-    operations: Array<"memory.reindex.project" | "memory.reindex.task" | "gitnexus.refresh">;
+    operations: CompletionRefreshOperation[];
   };
 };
 
+type CompletionRefreshOperation = "memory.reindex.project" | "memory.reindex.task" | "gitnexus.refresh";
+
 type CompletionRefreshStatus = {
+  ok: true;
+  queued: true;
+  startedAt: string;
+  cwd: string;
+  taskName: string;
+  operations: CompletionRefreshOperation[];
+} | {
+  ok: true;
+  running: true;
+  startedAt: string;
+  cwd: string;
+  taskName: string;
+  operations: CompletionRefreshOperation[];
+} | {
   ok: true;
   startedAt: string;
   finishedAt: string;
@@ -850,26 +858,11 @@ function queueCompletionRefresh(input: { cwd: string; taskName: string }): Compl
     "utf-8",
   );
 
-  const child = spawn(
-    process.execPath,
-    [
-      resolveCliEntryPath(),
-      "internal-completion-refresh",
-      "--cwd",
-      input.cwd,
-      "--task",
-      input.taskName,
-      "--status-file",
-      statusFile,
-    ],
-    {
-      cwd: input.cwd,
-      detached: true,
-      stdio: "ignore",
-      windowsHide: true,
-    },
-  );
-  child.unref();
+  launchCompletionRefreshWorker({
+    cwd: input.cwd,
+    taskName: input.taskName,
+    statusFile,
+  });
 
   return {
     taskRetention,
@@ -890,13 +883,110 @@ function resolveCliEntryPath(): string {
   return entry;
 }
 
+function launchCompletionRefreshWorker(input: {
+  cwd: string;
+  taskName: string;
+  statusFile: string;
+}): void {
+  if (process.platform === "win32") {
+    const launcherScript = [
+      "$node = $env:CLAW_COMPLETION_NODE",
+      "$entry = $env:CLAW_COMPLETION_ENTRY",
+      "$cwd = $env:CLAW_COMPLETION_CWD",
+      "$task = $env:CLAW_COMPLETION_TASK",
+      "$status = $env:CLAW_COMPLETION_STATUS",
+      "Start-Process -FilePath $node -ArgumentList @($entry, 'internal-completion-refresh', '--cwd', $cwd, '--task', $task, '--status-file', $status) -WorkingDirectory $cwd -WindowStyle Hidden",
+    ].join("; ");
+    const launcher = spawnSync(
+      "powershell.exe",
+      ["-NoProfile", "-Command", launcherScript],
+      {
+        cwd: input.cwd,
+        stdio: "ignore",
+        windowsHide: true,
+        env: {
+          ...process.env,
+          CLAW_COMPLETION_NODE: process.execPath,
+          CLAW_COMPLETION_ENTRY: resolveCliEntryPath(),
+          CLAW_COMPLETION_CWD: input.cwd,
+          CLAW_COMPLETION_TASK: input.taskName,
+          CLAW_COMPLETION_STATUS: input.statusFile,
+        },
+      },
+    );
+    if (launcher.error) {
+      throw new ClawError(
+        "PROJECT_CONFIG_INVALID",
+        "Unable to launch background completion refresh.",
+        {
+          cwd: input.cwd,
+          message: launcher.error.message,
+        },
+      );
+    }
+    if ((launcher.status ?? 0) !== 0) {
+      throw new ClawError(
+        "PROJECT_CONFIG_INVALID",
+        "Background completion refresh launcher exited unexpectedly.",
+        {
+          cwd: input.cwd,
+          exitCode: launcher.status ?? 0,
+        },
+      );
+    }
+    return;
+  }
+
+  const child = spawn(
+    process.execPath,
+    [
+      resolveCliEntryPath(),
+      "internal-completion-refresh",
+      "--cwd",
+      input.cwd,
+      "--task",
+      input.taskName,
+      "--status-file",
+      input.statusFile,
+    ],
+    {
+      cwd: input.cwd,
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+    },
+  );
+  child.unref();
+}
+
 function runInternalCompletionRefresh(args: string[]): void {
   const cwd = readRequiredFlag(args, "--cwd");
   const taskName = readRequiredFlag(args, "--task");
   const statusFile = readRequiredFlag(args, "--status-file");
   const startedAt = new Date().toISOString();
+  const queuedStatus = readJson<CompletionRefreshStatus>(statusFile);
+  const operations: CompletionRefreshOperation[] =
+    "operations" in queuedStatus && Array.isArray(queuedStatus.operations)
+      ? queuedStatus.operations as CompletionRefreshOperation[]
+      : ["memory.reindex.project"];
 
   try {
+    fs.writeFileSync(
+      statusFile,
+      `${JSON.stringify(
+        {
+          ok: true,
+          running: true,
+          startedAt,
+          cwd,
+          taskName,
+          operations,
+        } satisfies CompletionRefreshStatus,
+        null,
+        2,
+      )}\n`,
+      "utf-8",
+    );
     const projectMemory = buildMemoryIndex({
       cwd,
       scope: "project",

@@ -1,4 +1,5 @@
 import path from "node:path";
+import workflowGuidanceConfigJson from "./workflow-guidance.config.json" with { type: "json" };
 import type {
   PlanCompletionHooks,
   PlanDocument,
@@ -7,52 +8,82 @@ import type {
   PlanStatus,
   WorkflowGuidance,
   WorkflowGuidanceSubagent,
+  WorkflowGuidanceOption,
 } from "./types.js";
 
-function truthWriterDelegate(projectConfig: ProjectConfig | null): WorkflowGuidanceSubagent {
-  return {
-    name: "truth-writer",
-    skill: normalizeWriterSkill(projectConfig?.externalTruthSkill, "claw-kit:truth-writer"),
-    model: "gpt-5.4-mini",
-    fork_context: false,
-    waitForCompletion: false,
-    preferReuseSameTypeInThread: true,
-    inputContract: "curated completed subtask report with valuable findings for truth deposition",
-    outputContract: "optional telemetry only",
-    closePolicy: "keep_open_for_reuse",
+type DelegateConfigKey = "truthWriter" | "adrWriter";
+
+type GoalModeTemplate = {
+  allowOverwrite: true;
+  setWhen?: "on_enter_process_active";
+};
+
+type GuidanceStateTemplate = {
+  stage: WorkflowGuidance["stage"] | "{{processStage}}";
+  summary: string;
+  nextsteps: string[];
+  notes?: string;
+  recommendedCommands?: string[];
+  delegateSubagents?: DelegateConfigKey[];
+  goalMode?: GoalModeTemplate;
+  askUser?: {
+    reason: string;
+    useCodexOptions: true;
+    options: WorkflowGuidanceOption[];
   };
+};
+
+type GuidanceConfig = {
+  goalModeObjective: {
+    withGoal: string;
+    withoutGoal: string;
+  };
+  delegates: Record<DelegateConfigKey, Omit<WorkflowGuidanceSubagent, "skill"> & { fallbackSkill: string }>;
+  states: Record<string, GuidanceStateTemplate>;
+};
+
+type TemplateVars = Record<string, string>;
+
+const workflowGuidanceConfig = workflowGuidanceConfigJson as GuidanceConfig;
+
+function truthWriterDelegate(projectConfig: ProjectConfig | null): WorkflowGuidanceSubagent {
+  return buildConfiguredDelegate("truthWriter", projectConfig);
 }
 
 function adrWriterDelegate(projectConfig: ProjectConfig | null): WorkflowGuidanceSubagent {
+  return buildConfiguredDelegate("adrWriter", projectConfig);
+}
+
+function buildConfiguredDelegate(key: DelegateConfigKey, projectConfig: ProjectConfig | null): WorkflowGuidanceSubagent {
+  const config = workflowGuidanceConfig.delegates[key];
+  const overrideSkill = key === "truthWriter" ? projectConfig?.externalTruthSkill : projectConfig?.externalAdrSkill;
   return {
-    name: "adr-writer",
-    skill: normalizeWriterSkill(projectConfig?.externalAdrSkill, "claw-kit:adr-writer"),
-    model: "gpt-5.4-mini",
-    fork_context: false,
-    waitForCompletion: false,
-    preferReuseSameTypeInThread: true,
-    inputContract: "completed plan.json only",
-    outputContract: "optional telemetry only",
-    closePolicy: "keep_open_for_reuse",
+    name: config.name,
+    skill: normalizeWriterSkill(overrideSkill, config.fallbackSkill),
+    model: config.model,
+    fork_context: config.fork_context,
+    waitForCompletion: config.waitForCompletion,
+    preferReuseSameTypeInThread: config.preferReuseSameTypeInThread,
+    inputContract: config.inputContract,
+    outputContract: config.outputContract,
+    closePolicy: config.closePolicy,
+  };
+}
+
+function buildGoalMode(planGoal: string, template: GoalModeTemplate): NonNullable<WorkflowGuidance["goalMode"]> {
+  return {
+    recommendedObjective: buildGoalModeObjective(planGoal),
+    allowOverwrite: template.allowOverwrite,
+    ...(template.setWhen ? { setWhen: template.setWhen } : {}),
   };
 }
 
 function buildGoalModeObjective(planGoal: string): string {
   const trimmedGoal = planGoal.trim();
-  return trimmedGoal
-    ? `\u6309\u7167 claw \u6d41\u7a0b\uff0c\u63a8\u8fdb\u4efb\u52a1\uff0c\u66f4\u65b0plan\uff0c\u5b8c\u6210\uff1a${trimmedGoal}`
-    : "\u6309\u7167 claw \u6d41\u7a0b\uff0c\u63a8\u8fdb\u4efb\u52a1\uff0c\u66f4\u65b0plan\u3002";
-}
-
-function buildGoalMode(planGoal: string) {
-  return {
-    recommendedObjective: buildGoalModeObjective(planGoal),
-    allowOverwrite: true as const,
-    setWhen: "on_enter_process_active" as const,
-    ifNoActiveGoal: true as const,
-    doNotOverwriteExisting: true as const,
-    supportedSurfaces: ["/goal", "create_goal"] as Array<"/goal" | "create_goal">,
-  } satisfies NonNullable<WorkflowGuidance["goalMode"]>;
+  const template = trimmedGoal
+    ? workflowGuidanceConfig.goalModeObjective.withGoal
+    : workflowGuidanceConfig.goalModeObjective.withoutGoal;
+  return renderTemplateString(template, { planGoal: trimmedGoal });
 }
 
 function nextUnfinishedTask(plan: PlanDocument): PlanTask | undefined {
@@ -65,6 +96,34 @@ function currentActiveTask(plan: PlanDocument): PlanTask | undefined {
 
 function formatTaskRef(task: PlanTask): string {
   return `task #${task.id}`;
+}
+
+function renderTemplateString(template: string, vars: TemplateVars): string {
+  return template.replace(/{{\s*([a-zA-Z0-9_]+)\s*}}/g, (_, key: string) => vars[key] ?? "");
+}
+
+function renderTemplateValue<T>(value: T, vars: TemplateVars): T {
+  if (typeof value === "string") {
+    return renderTemplateString(value, vars) as T;
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => renderTemplateValue(item, vars))
+      .filter((item) => !(typeof item === "string" && item.trim().length === 0)) as T;
+  }
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value).map(([key, entryValue]) => [key, renderTemplateValue(entryValue, vars)]);
+    return Object.fromEntries(entries) as T;
+  }
+  return value;
+}
+
+function renderStateTemplate(key: string, vars: TemplateVars): GuidanceStateTemplate {
+  const template = workflowGuidanceConfig.states[key];
+  if (!template) {
+    throw new Error(`Unknown workflow guidance template: ${key}`);
+  }
+  return renderTemplateValue(template, vars);
 }
 
 export function buildPlanWorkflowGuidance(params: {
@@ -90,97 +149,74 @@ export function buildPlanWorkflowGuidance(params: {
   const activeTask = currentActiveTask(plan);
   const shouldReturnNextTask = hasCompletedTasks || justEnteredProcess || (!hasChangedTasks && !activeTask);
   const hasGoal = typeof plan.goal.text === "string" && plan.goal.text.trim().length > 0;
+  const nextTaskRef = nextTask ? formatTaskRef(nextTask) : "the next task";
+  const processStage = plan.status === "process.discussing" ? "discussion" : "execution";
+  const taskDoneCommand = activeTask && !hasCompletedTasks && !justEnteredProcess
+    ? `${editBase} --task-id ${activeTask.id} --task-status done`
+    : `${editBase} --task-id <id> --task-status done`;
+  const suggestedTruthTargetsNote = completionHooks?.truthCandidate.suggestedTruthPaths.length
+    ? `Suggested truth targets: ${completionHooks.truthCandidate.suggestedTruthPaths.join(", ")}`
+    : "";
+  const vars: TemplateVars = {
+    editBase,
+    doneBase,
+    nextTaskRef,
+    processStage,
+    taskDoneCommand,
+    suggestedTruthTargetsNote,
+  };
 
   switch (plan.status) {
-    case "prepare.requirements":
+    case "prepare.requirements": {
+      const template = renderStateTemplate(hasGoal ? "prepare.requirements.withGoal" : "prepare.requirements.withoutGoal", vars);
       return {
-        stage: "requirements",
-        summary: hasGoal
-          ? "Task scope is bound. Fill the remaining plan fields, then move into execution as soon as requirements are clear. This @claw-kit thread is already authorized to use goal mode and delegated subagents when the workflow requires them."
-          : "Task scope is bound. Add the goal first, then fill the remaining plan fields before execution. This @claw-kit thread is already authorized to use goal mode and delegated subagents when the workflow requires them.",
-        nextStep:
-          hasGoal
-            ? "1. Review whether requirements are clear enough to execute. 2. Fill the `requirements` section and any other needed plan fields such as `tasks`, `references`, `rules`, and `keyDecisions`. 3. If requirements are clear, move into `process.active`. 4. If requirements are not clear, ask the user to clarify the missing scope first."
-            : "1. Fill `goal.text`. 2. Collect requirements and fill the rest of the plan fields such as `requirements`, `tasks`, `references`, `rules`, and `keyDecisions`. 3. If requirements are clear, move into `process.active`. 4. If requirements are not clear, ask the user to clarify the missing scope first.",
-        notes: [
-          "Do not start implementation while the plan is still in `prepare.requirements`.",
-          "If requirements are already complete after editing the plan, switch the status to `process.active` immediately.",
-          "Do not block on extra user authorization when the workflow later returns goal mode or delegated subagents.",
-        ],
-        recommendedCommands: [
-          `${editBase} --plan-status process.active`,
-          `${editBase} --patch <updated-plan.json>`,
-          `${editBase} --rule "..." --key-decision "..."`,
-        ],
+        stage: template.stage as WorkflowGuidance["stage"],
+        summary: template.summary,
+        nextsteps: template.nextsteps,
+        ...(template.notes ? { notes: template.notes } : {}),
+        ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),
+        ...(template.goalMode && hasGoal ? { goalMode: buildGoalMode(plan.goal.text, template.goalMode) } : {}),
       };
-    case "prepare.review":
+    }
+    case "prepare.review": {
+      const template = renderStateTemplate("prepare.review", vars);
       return {
-        stage: "review",
-        summary: "This plan is in a legacy review stage.",
-        nextStep:
-          "1. Fold the remaining review notes into the plan. 2. Confirm the route with the user. 3. Move the plan back into `prepare.requirements` or `process.discussing`.",
-        notes: ["Do not create a separate review pass. Merge review criteria into planning itself."],
-        recommendedCommands: [
-          `${editBase} --patch <reviewed-plan.json>`,
-          `${editBase} --plan-status prepare.requirements`,
-          `${editBase} --plan-status process.discussing`,
-        ],
-        askUser: {
-          reason: "This legacy review stage should be resolved back into normal planning before execution.",
-          useCodexOptions: true,
-          options: [
-            {
-              id: "merge-revisions",
-              label: "Revise plan",
-              description: "Apply the remaining plan changes directly, then continue with normal planning.",
-              recommended: true,
-            },
-            {
-              id: "discuss-tradeoff",
-              label: "Discuss tradeoff",
-              description: "The review raised a route choice that should be clarified with the user.",
-            },
-            {
-              id: "hold-plan",
-              label: "Hold execution",
-              description: "Pause until missing requirements or constraints are clarified.",
-            },
-          ],
-        },
+        stage: template.stage as WorkflowGuidance["stage"],
+        summary: template.summary,
+        nextsteps: template.nextsteps,
+        ...(template.notes ? { notes: template.notes } : {}),
+        ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),
+        ...(template.askUser ? { askUser: template.askUser } : {}),
       };
+    }
     case "process.active":
     case "process.wait":
-    case "process.discussing":
+    case "process.discussing": {
       if (allTasksDone) {
-      return {
-        stage: "done",
-        summary: "All plan tasks are done. Do truth deposition, then close the plan.",
-        nextStep:
-          "1. Sync the thread progress with our tasks. 2. Curate the valuable findings from the completed work into a completed subtask report, then dispatch `truth-writer` with that report. 3. Close the plan with `claw plan done` after writing the retrospective summary.",
-        notes: [
-          "`all task done` is not ADR completion.",
-          "ADR happens after completed `plan.json` exists.",
-        ],
-          recommendedCommands: [
-            `${doneBase} --summary \"<retrospective summary>\"`,
-          ],
+        const template = renderStateTemplate("process.allTasksDone", vars);
+        return {
+          stage: template.stage as WorkflowGuidance["stage"],
+          summary: template.summary,
+          nextsteps: template.nextsteps,
+          ...(template.notes ? { notes: template.notes } : {}),
+          ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),
           delegateSubagents: [truthWriterDelegate(projectConfig)],
         };
       }
 
+      const templateKey = hasCompletedTasks
+        ? "process.hasCompletedTasks"
+        : justEnteredProcess
+          ? "process.justEntered"
+          : activeTask
+            ? "process.activeTask"
+            : "process.default";
+      const template = renderStateTemplate(templateKey, vars);
+
       return {
-        stage: plan.status === "process.discussing" ? "discussion" : "execution",
-        summary: justEnteredProcess
-          ? "Execution is starting."
-          : "Execution is in progress.",
-        nextStep:
-          hasCompletedTasks
-            ? `1. Sync the thread progress with our tasks. 2. Curate the valuable findings from the completed task into a completed subtask report, then dispatch \`truth-writer\` with that report. 3. Continue with ${nextTask ? formatTaskRef(nextTask) : "the next task"}.`
-            : justEnteredProcess
-              ? `1. Sync the thread progress with our tasks. 2. Start with ${nextTask ? formatTaskRef(nextTask) : "the next task"}.`
-              : activeTask
-                ? "Continue the current task."
-                : `Continue with ${nextTask ? formatTaskRef(nextTask) : "the next task"}.`,
+        stage: template.stage as WorkflowGuidance["stage"],
+        summary: template.summary,
+        nextsteps: template.nextsteps,
         ...(shouldReturnNextTask && nextTask
           ? {
               nextTask: {
@@ -191,54 +227,38 @@ export function buildPlanWorkflowGuidance(params: {
               },
             }
           : {}),
-        ...(hasCompletedTasks || justEnteredProcess
-          ? {
-              notes: [
-                "Use delegated specialists for truth and ADR deposition.",
-                "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
-              ],
-            }
+        ...(template.notes ? { notes: template.notes } : {}),
+        ...(template.goalMode && justEnteredProcess && hasGoal
+          ? { goalMode: buildGoalMode(plan.goal.text, template.goalMode) }
           : {}),
-        ...(justEnteredProcess && hasGoal
-          ? {
-              goalMode: buildGoalMode(plan.goal.text),
-            }
-          : {}),
-        recommendedCommands: [
-          ...(activeTask && !hasCompletedTasks && !justEnteredProcess
-            ? [`${editBase} --task-id ${activeTask.id} --task-status done`]
-            : [`${editBase} --task-id <id> --task-status done`]),
-          ...(hasCompletedTasks || justEnteredProcess ? [`${doneBase} --summary \"<retrospective summary>\"`] : []),
-        ],
+        ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),
         ...(hasCompletedTasks
           ? {
               delegateSubagents: [truthWriterDelegate(projectConfig)],
             }
           : {}),
       };
-    case "end.completed":
+    }
+    case "end.completed": {
+      const template = renderStateTemplate("end.completed", vars);
       return {
-        stage: "deposition",
-        summary: "The plan is completed. Deposit ADRs now.",
-        nextStep:
-          "Dispatch `adr-writer` with the completed `plan.json`.",
-        notes: [
-        ...(completionHooks?.truthCandidate.suggestedTruthPaths.length
-            ? [`Suggested truth targets: ${completionHooks.truthCandidate.suggestedTruthPaths.join(", ")}`]
-            : []),
-          "Use completed `plan.json` as the ADR bundle.",
-        ],
+        stage: template.stage as WorkflowGuidance["stage"],
+        summary: template.summary,
+        nextsteps: template.nextsteps,
+        ...(template.notes ? { notes: template.notes } : {}),
         delegateSubagents: [adrWriterDelegate(projectConfig)],
       };
+    }
     case "end.closed":
-    case "end.leave":
+    case "end.leave": {
+      const template = renderStateTemplate("end.closed", vars);
       return {
-        stage: "paused",
-        summary: "The plan is no longer active.",
-        nextStep:
-          "Reopen through `prepare.requirements` before resuming, or leave it as historical context.",
-        recommendedCommands: [`${editBase} --plan-status prepare.requirements`],
+        stage: template.stage as WorkflowGuidance["stage"],
+        summary: template.summary,
+        nextsteps: template.nextsteps,
+        ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),
       };
+    }
   }
 }
 

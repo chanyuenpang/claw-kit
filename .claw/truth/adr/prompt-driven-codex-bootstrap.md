@@ -1,27 +1,46 @@
-﻿# ADR: Prompt-Driven Codex Bootstrap
+﻿# ADR: Prompt-driven Codex startup recovery
+
+## Status
+
+Accepted
 
 ## Context
 
-`claw-kit` originally explored Codex hooks as the automatic session-entry mechanism for `.claw` harness behavior.
+`claw-kit` 早期曾把 Codex 启动入口表述成 prompt-driven `bootstrap`，用来替代尚不稳定的 hook 自动化。
 
-In local testing:
+后续 adapter 收敛后，durable 结论已经变化：
 
-- plugin capabilities were injected correctly
-- plugin cache refresh worked
-- hook configuration could be installed and feature-gated
-- command hook log files still did not appear
-
-At the same time, Codex session transcripts showed that plugin skills were being loaded at startup.
+- prompt 仍然是 Codex 主流程的 correctness surface
+- `SessionStart` hook 现在可以承担 startup recovery enhancement
+- startup 恢复结果统一落在 `startupRecovery` / `session-start-recovery` 命名下
+- 可见入口不应再把 `bootstrap` 作为单独 workflow skill 暴露给主 agent
 
 ## Decision
 
-For the Codex adapter, use prompt-driven bootstrap as the primary startup mechanism.
+Codex adapter 采用 prompt-driven session entry 加 startup recovery enhancement 的组合，但不再保留 standalone `bootstrap` 概念：
 
-The first session-entry skill is `claw-kit:bootstrap`.
+- 唯一可见 session-entry skill 是 `claw-kit:using-claw-kit`
+- `using-claw-kit` 的第一条可见动作是读取 `planning`
+- `planning` 是唯一可见 planning skill；旧的 legacy plan skill surfaces 不再作为 active main-agent path 保留
+- `SessionStart` / `claw context` 暴露的 `startupRecovery` 只属于 hook/runtime 侧恢复状态，不是另一条可见 workflow 入口
 
 ## Consequences
 
-- Codex startup should recover `.claw` context explicitly via prompt/skill flow.
-- `plan write` remains the canonical task-binding mechanism.
-- Hooks stay experimental and optional.
-- Future Codex runtime improvements may reintroduce hooks as an enhancement layer, but not as a correctness dependency.
+- prompt surface 继续负责主流程合同，但不会再制造一个与 `using-claw-kit` 并列的 `bootstrap` 入口
+- startup recovery 可以继续存在并随 runtime 演进，但它只恢复当前 workflow contract，不负责发明新的计划入口
+- active adapter 文案、skill 引导和 canonical ADR 都应围绕 `using-claw-kit` -> `planning` -> `workflowGuidance` 维护
+
+## Related Code
+
+- `packages/codex-adapter/skills/using-claw-kit/SKILL.md`
+- `packages/codex-adapter/skills/planning/SKILL.md`
+- `packages/codex-adapter/hooks/session-start-recovery.mjs`
+- `packages/codex-adapter/references/codex-startup-recovery.md`
+
+## Search Terms
+
+- `startupRecovery`
+- `session-start-recovery`
+- `using-claw-kit`
+- `planning`
+- `bootstrap`

@@ -24,7 +24,7 @@ Codex 适配器会把完成期知识沉淀委派给 specialist。对 `truth-writ
 
 ## Related Code
 
-- `packages/codex-adapter/skills/bootstrap/SKILL.md`
+- `packages/codex-adapter/skills/using-claw-kit/SKILL.md`
 - `packages/codex-adapter/references/codex-subagent-dispatch.md`
 - `packages/codex-adapter/references/TRUTH-AGENT-SPEC.md`
 - `packages/codex-adapter/references/ADR-AGENT-SPEC.md`

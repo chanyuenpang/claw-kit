@@ -16,7 +16,6 @@ import type {
   PlanEditInput,
   PlanEditResult,
   PlanRequirements,
-  PlanSchema,
   PlanShowInput,
   PlanShowResult,
   PlanStatus,
@@ -136,7 +135,7 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
       plan,
       projectConfig: project.projectConfig,
     }),
-    planSchema: buildPlanSchema(),
+    plan,
     planView: buildPlanViewModel({
       taskName,
       planFile,
@@ -827,36 +826,3 @@ function completeSubplanAndResumeParent(params: {
   };
 }
 
-function buildPlanSchema(): PlanSchema {
-  return {
-    title: "<string>",
-    status: "prepare.requirements",
-    goal: {
-      text: "<string>",
-    },
-    requirements: {
-      summary: "<string>",
-      openQuestions: ["<string>"],
-      acceptanceCriteria: ["<string>"],
-    },
-    tasks: [
-      {
-        id: 1,
-        title: "<string>",
-        detail: "<string>",
-        status: "pending",
-      },
-    ],
-    references: [
-      {
-        path: "<string>",
-        why: "<string>",
-      },
-    ],
-    rules: ["<string>"],
-    keyDecisions: ["<string>"],
-    retrospective: {
-      summary: "<string>",
-    },
-  };
-}

@@ -36,7 +36,6 @@ Codex adapter prompt 采用 contract-style wording：
 ## Related code
 
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md`
-- `packages/codex-adapter/skills/plan-workflow/SKILL.md`
 - `packages/codex-adapter/skills/planning/SKILL.md`
 - `packages/codex-adapter/skills/researcher/SKILL.md`
 - `packages/codex-adapter/skills/truth-writer/SKILL.md`

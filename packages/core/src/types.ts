@@ -167,23 +167,20 @@ export type WorkflowGuidanceSubagent = {
 export type WorkflowGuidance = {
   stage: "requirements" | "review" | "discussion" | "execution" | "done" | "deposition" | "paused";
   summary: string;
-  nextStep: string;
+  nextsteps: string[];
   nextTask?: {
     id: number;
     title: string;
     status: PlanTaskStatus;
     detail?: string;
   };
-  notes?: string[];
+  notes?: string;
   recommendedCommands?: string[];
   delegateSubagents?: WorkflowGuidanceSubagent[];
   goalMode?: {
     recommendedObjective: string;
     allowOverwrite: true;
     setWhen?: "on_enter_process_active";
-    ifNoActiveGoal?: true;
-    doNotOverwriteExisting?: true;
-    supportedSurfaces?: Array<"/goal" | "create_goal">;
   };
   askUser?: {
     reason: string;
@@ -453,7 +450,7 @@ export type PlanWriteResult = {
   parentTaskId?: number;
   planReview?: PlanReviewResult;
   workflowGuidance: WorkflowGuidance;
-  planSchema: PlanSchema;
+  plan: PlanDocument;
   planView: PlanViewModel;
 };
 

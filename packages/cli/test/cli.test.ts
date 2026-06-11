@@ -217,19 +217,17 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   assert.equal("taskName" in writeResult, false);
   assert.equal("planFile" in writeResult, false);
   assert.equal(writeResult.planSummary, "e2e-task");
-  assert.equal(writeResult.goalMode, undefined);
+  assert.match(String((writeResult.goalMode as JsonRecord).recommendedObjective), /Verify the CLI lifecycle/);
+  assert.equal((writeResult.goalMode as JsonRecord).setWhen, undefined);
   assert.equal("nextAction" in writeResult, false);
   assert.equal("instruction" in writeResult, false);
   assert.equal("askUser" in writeResult, false);
-  assert.deepEqual(writeResult.notes, [
-    "Do not start implementation while the plan is still in `prepare.requirements`.",
-    "If requirements are already complete after editing the plan, switch the status to `process.active` immediately.",
-    "Do not block on extra user authorization when the workflow later returns goal mode or delegated subagents.",
-  ]);
-  assert.deepEqual(((writeResult.planSchema as JsonRecord).references as JsonRecord[])[0], {
-    path: "<string>",
-    why: "<string>",
-  });
+  assert.equal(
+    writeResult.notes,
+    "Fill only the fields still needed to execute, such as `requirements`, `tasks`, `references`, `rules`, and `keyDecisions`. If scope is still unclear, clarify it with the user before switching to `process.active`.",
+  );
+  assert.equal((writeResult.plan as JsonRecord).title, "e2e-task");
+  assert.equal((writeResult.plan as JsonRecord).status, "prepare.requirements");
 
   const activateResult = runClaw(
     ["plan", "edit", "--task", "e2e-task", "--plan-status", "process.active"],
@@ -237,10 +235,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
     env,
   );
   const activateGoalMode = activateResult.goalMode as JsonRecord;
-  assert.equal(
-    activateGoalMode.recommendedObjective,
-    "\u6309\u7167 claw \u6d41\u7a0b\uff0c\u63a8\u8fdb\u4efb\u52a1\uff0c\u66f4\u65b0plan\uff0c\u5b8c\u6210\uff1aVerify the CLI lifecycle",
-  );
+  assert.match(String(activateGoalMode.recommendedObjective), /Verify the CLI lifecycle/);
   assert.equal(activateGoalMode.setWhen, "on_enter_process_active");
 
   const patchPath = path.join(root, "append-tasks.json");
@@ -278,7 +273,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
     root,
     env,
   );
-  assert.equal(inProgressResult.nextStep, "Continue the current task.");
+  assert.deepEqual(inProgressResult.nextsteps, ["Continue the current task."]);
   assert.equal("nextTask" in inProgressResult, false);
   assert.deepEqual(inProgressResult.recommendedCommands, [
     "claw plan edit --task e2e-task --task-id 1 --task-status done",
@@ -303,10 +298,11 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
     truthDelegate.inputContract,
     "curated completed subtask report with valuable findings for truth deposition",
   );
-  assert.equal(
-    taskDone.nextStep,
-    "1. Sync the thread progress with our tasks. 2. Curate the valuable findings from the completed work into a completed subtask report, then dispatch `truth-writer` with that report. 3. Close the plan with `claw plan done` after writing the retrospective summary.",
-  );
+  assert.deepEqual(taskDone.nextsteps, [
+    "Sync the thread progress with our tasks.",
+    "Curate the valuable findings from the completed work into a completed subtask report, then dispatch `truth-writer` with that report.",
+    "Close the plan with `claw plan done` after writing the retrospective summary.",
+  ]);
 
   const truthInputPath = path.join(root, "truth-report.md");
   fs.writeFileSync(truthInputPath, "# Finding\n\nDurable truth.\n", "utf-8");
@@ -364,7 +360,7 @@ test("cli plan write accepts a positional title and blocks process.active withou
     (writeResult.recommendedCommands as string[])[0],
     "claw plan edit --task 这是一个任务标题 --plan-status process.active",
   );
-  assert.match(String(writeResult.nextStep), /Fill `goal\.text`/);
+  assert.ok((writeResult.nextsteps as string[]).includes("Fill `goal.text`."));
 
   const failure = runClawExpectFailure(
     ["plan", "edit", "--task", "这是一个任务标题", "--plan-status", "process.active"],
@@ -511,10 +507,11 @@ test("cli returns truth-writer contract on completed task before final plan comp
 
   assert.equal("stage" in taskDone, false);
   assert.equal("summary" in taskDone, false);
-  assert.equal(
-    taskDone.nextStep,
-    "1. Sync the thread progress with our tasks. 2. Curate the valuable findings from the completed task into a completed subtask report, then dispatch `truth-writer` with that report. 3. Continue with task #2.",
-  );
+  assert.deepEqual(taskDone.nextsteps, [
+    "Sync the thread progress with our tasks.",
+    "Curate the valuable findings from the completed task into a completed subtask report, then dispatch `truth-writer` with that report.",
+    "Continue with task #2.",
+  ]);
   assert.deepEqual(taskDone.nextTask, {
     id: 2,
     title: "Second task",
@@ -558,7 +555,7 @@ test("cli task status changed back to pending does not return nextTask", () => {
     root,
   );
 
-  assert.equal(result.nextStep, "Continue with task #1.");
+  assert.deepEqual(result.nextsteps, ["Continue with task #1."]);
   assert.equal("nextTask" in result, false);
   assert.deepEqual(result.recommendedCommands, [
     "claw plan edit --task demo-task --task-id <id> --task-status done",
@@ -651,7 +648,10 @@ test("cli plan done on a subplan resumes the parent plan instead of archiving th
 
   assert.equal(doneResult.planStatus, "process.active");
   assert.match(String(doneResult.planPath), /tasks[\\/]demo-task[\\/]plan\.json$/);
-  assert.equal(doneResult.nextStep, "1. Sync the thread progress with our tasks. 2. Start with task #2.");
+  assert.deepEqual(doneResult.nextsteps, [
+    "Sync the thread progress with our tasks.",
+    "Start with task #2.",
+  ]);
   assert.deepEqual(doneResult.nextTask, {
     id: 2,
     title: "Resume parent work",

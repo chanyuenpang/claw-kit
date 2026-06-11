@@ -657,6 +657,7 @@ function runEmbeddingWorker(input: {
       encoding: "utf-8",
       env: process.env,
       maxBuffer: 10 * 1024 * 1024,
+      timeout: resolveEmbeddingWorkerTimeoutMs(),
       windowsHide: true,
     },
   );
@@ -668,6 +669,12 @@ function runEmbeddingWorker(input: {
       {
         stdout: result.stdout,
         stderr: result.stderr,
+        ...(result.error ? { workerError: result.error.message } : {}),
+        ...(result.signal ? { signal: result.signal } : {}),
+        ...(result.error && "code" in result.error ? { errorCode: result.error.code } : {}),
+        ...(result.error && "code" in result.error && result.error.code === "ETIMEDOUT"
+          ? { timedOut: true, timeoutMs: resolveEmbeddingWorkerTimeoutMs() }
+          : {}),
       },
     );
   }
@@ -677,6 +684,15 @@ function runEmbeddingWorker(input: {
   } finally {
     cleanupTemporaryEmbeddingOutput(outputPath);
   }
+}
+
+function resolveEmbeddingWorkerTimeoutMs(): number {
+  const raw = process.env.CLAW_EMBEDDING_WORKER_TIMEOUT_MS?.trim();
+  if (!raw) {
+    return 30 * 60 * 1000;
+  }
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 30 * 60 * 1000;
 }
 
 function stripBom(content: string): string {

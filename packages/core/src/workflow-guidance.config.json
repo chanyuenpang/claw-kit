@@ -1,0 +1,194 @@
+{
+  "goalModeObjective": {
+    "withGoal": "Using claw-kit, update plan, follow returned workflowGuidance，finish your goal：{{planGoal}}",
+    "withoutGoal": "Using claw-kit, update plan, follow returned workflowGuidance，finish your goal."
+  },
+  "delegates": {
+    "truthWriter": {
+      "name": "truth-writer",
+      "fallbackSkill": "claw-kit:truth-writer",
+      "model": "gpt-5.4-mini",
+      "fork_context": false,
+      "waitForCompletion": false,
+      "preferReuseSameTypeInThread": true,
+      "inputContract": "curated completed subtask report with valuable findings for truth deposition",
+      "outputContract": "optional telemetry only",
+      "closePolicy": "keep_open_for_reuse"
+    },
+    "adrWriter": {
+      "name": "adr-writer",
+      "fallbackSkill": "claw-kit:adr-writer",
+      "model": "gpt-5.4-mini",
+      "fork_context": false,
+      "waitForCompletion": false,
+      "preferReuseSameTypeInThread": true,
+      "inputContract": "plan.json",
+      "outputContract": "optional telemetry only",
+      "closePolicy": "keep_open_for_reuse"
+    }
+  },
+  "states": {
+    "prepare.requirements.withGoal": {
+      "stage": "requirements",
+      "summary": "Task scope is bound. Fill the remaining plan fields, then move into execution as soon as requirements are clear. This @claw-kit thread is already authorized to use goal mode and delegated subagents when the workflow requires them.",
+      "nextsteps": [
+        "Set Goal Mode.",
+        "Fill the missing plan fields.",
+        "Move into `process.active` once requirements are clear."
+      ],
+      "notes": "Fill only the fields still needed to execute, such as `requirements`, `tasks`, `references`, `rules`, and `keyDecisions`. If scope is still unclear, clarify it with the user before switching to `process.active`.",
+      "recommendedCommands": [
+        "{{editBase}} --plan-status process.active",
+        "{{editBase}} --patch <updated-plan.json>",
+        "{{editBase}} --rule \"...\" --key-decision \"...\""
+      ],
+      "goalMode": {
+        "allowOverwrite": true
+      }
+    },
+    "prepare.requirements.withoutGoal": {
+      "stage": "requirements",
+      "summary": "Task scope is bound. Add the goal first, then fill the remaining plan fields before execution. This @claw-kit thread is already authorized to use goal mode and delegated subagents when the workflow requires them.",
+      "nextsteps": [
+        "Fill `goal.text`.",
+        "Set Goal Mode.",
+        "Fill the missing plan fields.",
+        "Move into `process.active` once requirements are clear."
+      ],
+      "notes": "Fill only the fields still needed to execute, such as `requirements`, `tasks`, `references`, `rules`, and `keyDecisions`. If scope is still unclear, clarify it with the user before switching to `process.active`.",
+      "recommendedCommands": [
+        "{{editBase}} --plan-status process.active",
+        "{{editBase}} --patch <updated-plan.json>",
+        "{{editBase}} --rule \"...\" --key-decision \"...\""
+      ]
+    },
+    "prepare.review": {
+      "stage": "review",
+      "summary": "This plan is in a legacy review stage.",
+      "nextsteps": [
+        "Fold the remaining review notes into the plan.",
+        "Confirm the route with the user.",
+        "Move the plan back into `prepare.requirements` or `process.discussing`."
+      ],
+      "notes": "Do not create a separate review pass. Merge review criteria into planning itself.",
+      "recommendedCommands": [
+        "{{editBase}} --patch <reviewed-plan.json>",
+        "{{editBase}} --plan-status prepare.requirements",
+        "{{editBase}} --plan-status process.discussing"
+      ],
+      "askUser": {
+        "reason": "This legacy review stage should be resolved back into normal planning before execution.",
+        "useCodexOptions": true,
+        "options": [
+          {
+            "id": "merge-revisions",
+            "label": "Revise plan",
+            "description": "Apply the remaining plan changes directly, then continue with normal planning.",
+            "recommended": true
+          },
+          {
+            "id": "discuss-tradeoff",
+            "label": "Discuss tradeoff",
+            "description": "The review raised a route choice that should be clarified with the user."
+          },
+          {
+            "id": "hold-plan",
+            "label": "Hold execution",
+            "description": "Pause until missing requirements or constraints are clarified."
+          }
+        ]
+      }
+    },
+    "process.allTasksDone": {
+      "stage": "done",
+      "summary": "All plan tasks are done. Do truth deposition, then close the plan.",
+      "nextsteps": [
+        "Sync the thread progress with our tasks.",
+        "Curate the valuable findings from the completed work into a completed subtask report, then dispatch `truth-writer` with that report.",
+        "Close the plan with `claw plan done` after writing the retrospective summary."
+      ],
+      "notes": "`all task done` is not ADR completion. ADR happens after completed `plan.json` exists.",
+      "recommendedCommands": [
+        "{{doneBase}} --summary \"<retrospective summary>\""
+      ],
+      "delegateSubagents": [
+        "truthWriter"
+      ]
+    },
+    "process.hasCompletedTasks": {
+      "stage": "{{processStage}}",
+      "summary": "Execution is in progress.",
+      "nextsteps": [
+        "Sync the thread progress with our tasks.",
+        "Curate the valuable findings from the completed task into a completed subtask report, then dispatch `truth-writer` with that report.",
+        "Continue with {{nextTaskRef}}."
+      ],
+      "notes": "Use delegated specialists for truth and ADR deposition. In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
+      "recommendedCommands": [
+        "{{taskDoneCommand}}",
+        "{{doneBase}} --summary \"<retrospective summary>\""
+      ],
+      "delegateSubagents": [
+        "truthWriter"
+      ]
+    },
+    "process.justEntered": {
+      "stage": "{{processStage}}",
+      "summary": "Execution is starting.",
+      "nextsteps": [
+        "Sync the thread progress with our tasks.",
+        "Start with {{nextTaskRef}}."
+      ],
+      "notes": "Use delegated specialists for truth and ADR deposition. In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
+      "recommendedCommands": [
+        "{{taskDoneCommand}}",
+        "{{doneBase}} --summary \"<retrospective summary>\""
+      ],
+      "goalMode": {
+        "allowOverwrite": true,
+        "setWhen": "on_enter_process_active"
+      }
+    },
+    "process.activeTask": {
+      "stage": "{{processStage}}",
+      "summary": "Execution is in progress.",
+      "nextsteps": [
+        "Continue the current task."
+      ],
+      "recommendedCommands": [
+        "{{taskDoneCommand}}"
+      ]
+    },
+    "process.default": {
+      "stage": "{{processStage}}",
+      "summary": "Execution is in progress.",
+      "nextsteps": [
+        "Continue with {{nextTaskRef}}."
+      ],
+      "recommendedCommands": [
+        "{{taskDoneCommand}}"
+      ]
+    },
+    "end.completed": {
+      "stage": "deposition",
+      "summary": "The plan is completed. Deposit ADRs now.",
+      "nextsteps": [
+        "Dispatch `adr-writer` with the completed `plan.json`."
+      ],
+      "notes": "{{suggestedTruthTargetsNote}} Use completed `plan.json` as the ADR bundle.",
+      "delegateSubagents": [
+        "adrWriter"
+      ]
+    },
+    "end.closed": {
+      "stage": "paused",
+      "summary": "The plan is no longer active.",
+      "nextsteps": [
+        "Reopen through `prepare.requirements` before resuming, or leave it as historical context."
+      ],
+      "recommendedCommands": [
+        "{{editBase}} --plan-status prepare.requirements"
+      ]
+    }
+  }
+}

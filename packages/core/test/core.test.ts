@@ -36,6 +36,11 @@ function createEmptyFixture(name: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), `claw-kit-${name}-`));
 }
 
+test("workflow guidance json config is emitted with the build output", () => {
+  const configPath = new URL("../src/workflow-guidance.config.json", import.meta.url);
+  assert.equal(fs.existsSync(configPath), true);
+});
+
 test("context resolves nested cwd to project .claw", () => {
   const root = createFixture("context");
   fs.mkdirSync(path.join(root, "src", "nested"), { recursive: true });
@@ -167,17 +172,17 @@ test("plan write creates task-bound plan and updates activePlan", async () => {
   assert.ok(fs.existsSync(result.planPath));
   assert.equal(result.workflowGuidance.stage, "requirements");
   assert.equal(result.workflowGuidance.delegateSubagents, undefined);
-  assert.equal(result.workflowGuidance.goalMode, undefined);
+  assert.ok(result.workflowGuidance.goalMode?.recommendedObjective?.includes("Ship the first plan"));
+  assert.equal(result.workflowGuidance.goalMode?.setWhen, undefined);
   assert.ok(result.workflowGuidance.summary.includes("Fill the remaining plan fields"));
   assert.ok(result.workflowGuidance.summary.includes("already authorized to use goal mode and delegated subagents"));
-  assert.ok(result.workflowGuidance.nextStep.includes("Review whether requirements are clear enough to execute"));
-  assert.ok(result.workflowGuidance.nextStep.includes("Fill the `requirements` section"));
-  assert.ok(result.workflowGuidance.nextStep.includes("move into `process.active`"));
+  assert.ok(result.workflowGuidance.nextsteps.includes("Set Goal Mode."));
+  assert.ok(result.workflowGuidance.nextsteps.includes("Fill the missing plan fields."));
+  assert.ok(result.workflowGuidance.nextsteps.includes("Move into `process.active` once requirements are clear."));
   assert.equal(result.workflowGuidance.askUser, undefined);
-  assert.deepEqual(result.planSchema.references[0], {
-    path: "<string>",
-    why: "<string>",
-  });
+  assert.equal(result.plan.title, "Demo task");
+  assert.equal(result.plan.status, "prepare.requirements");
+  assert.deepEqual(result.plan.references, []);
   assert.equal(result.planView.collapsedSummary, "Demo task");
   assert.equal(result.planView.goal.defaultCollapsed, true);
   assert.equal(result.planView.renderHints.defaultCollapsed, true);
@@ -203,14 +208,13 @@ test("plan write guidance leaves requirement judgment to the agent", async () =>
   });
 
   assert.equal(result.workflowGuidance.askUser, undefined);
-  assert.ok(result.workflowGuidance.nextStep.includes("Fill the `requirements` section"));
-  assert.ok(result.workflowGuidance.nextStep.includes("If requirements are clear, move into `process.active`"));
-  assert.ok(result.workflowGuidance.nextStep.includes("If requirements are not clear, ask the user to clarify the missing scope first"));
-  assert.deepEqual(result.workflowGuidance.notes, [
-    "Do not start implementation while the plan is still in `prepare.requirements`.",
-    "If requirements are already complete after editing the plan, switch the status to `process.active` immediately.",
-    "Do not block on extra user authorization when the workflow later returns goal mode or delegated subagents.",
-  ]);
+  assert.ok(result.workflowGuidance.nextsteps.includes("Set Goal Mode."));
+  assert.ok(result.workflowGuidance.nextsteps.includes("Fill the missing plan fields."));
+  assert.ok(result.workflowGuidance.nextsteps.includes("Move into `process.active` once requirements are clear."));
+  assert.equal(
+    result.workflowGuidance.notes,
+    "Fill only the fields still needed to execute, such as `requirements`, `tasks`, `references`, `rules`, and `keyDecisions`. If scope is still unclear, clarify it with the user before switching to `process.active`.",
+  );
 });
 
 test("plan write without goal tells the agent to fill goal first", async () => {
@@ -224,7 +228,8 @@ test("plan write without goal tells the agent to fill goal first", async () => {
   assert.equal(result.planStatus, "prepare.requirements");
   assert.equal(result.workflowGuidance.goalMode, undefined);
   assert.ok(result.workflowGuidance.summary.includes("Add the goal first"));
-  assert.ok(result.workflowGuidance.nextStep.includes("Fill `goal.text`"));
+  assert.ok(result.workflowGuidance.nextsteps.includes("Fill `goal.text`."));
+  assert.ok(result.workflowGuidance.nextsteps.includes("Set Goal Mode."));
   assert.deepEqual(result.workflowGuidance.recommendedCommands?.slice(0, 2), [
     "claw plan edit --task Goal-later-task --plan-status process.active",
     "claw plan edit --task Goal-later-task --patch <updated-plan.json>",
@@ -471,13 +476,10 @@ test("plan edit can move from requirements to process.active without a separate 
   assert.equal(activated.workflowGuidance.stage, "execution");
   assert.equal(activated.workflowGuidance.nextTask?.id, 1);
   assert.equal(activated.workflowGuidance.nextTask?.title, "Implement work");
-  assert.equal(
-    activated.workflowGuidance.goalMode?.recommendedObjective,
-    "\u6309\u7167 claw \u6d41\u7a0b\uff0c\u63a8\u8fdb\u4efb\u52a1\uff0c\u66f4\u65b0plan\uff0c\u5b8c\u6210\uff1aShip the first plan",
-  );
+  assert.ok(activated.workflowGuidance.goalMode?.recommendedObjective?.includes("Ship the first plan"));
   assert.equal(activated.workflowGuidance.goalMode?.setWhen, "on_enter_process_active");
-  assert.ok(activated.workflowGuidance.nextStep.includes("Sync the thread progress with our tasks."));
-  assert.ok(activated.workflowGuidance.nextStep.includes("task #1"));
+  assert.ok(activated.workflowGuidance.nextsteps.includes("Sync the thread progress with our tasks."));
+  assert.ok(activated.workflowGuidance.nextsteps.includes("Start with task #1."));
 
   const result = await editPlan({
     cwd: root,
@@ -508,8 +510,8 @@ test("plan edit can move from requirements to process.active without a separate 
     truthDelegate.inputContract,
     "curated completed subtask report with valuable findings for truth deposition",
   );
-  assert.ok(result.workflowGuidance.nextStep.includes("truth-writer"));
-  assert.ok(result.workflowGuidance.nextStep.includes("retrospective"));
+  assert.ok(result.workflowGuidance.nextsteps.some((step) => step.includes("truth-writer")));
+  assert.ok(result.workflowGuidance.nextsteps.some((step) => step.includes("retrospective")));
 });
 
 test("plan edit rejects entering process.active without goal text", async () => {
@@ -597,10 +599,11 @@ test("process entry returns the first task and task completion returns truth-wri
   });
   assert.equal(taskDone.workflowGuidance.stage, "execution");
   assert.equal(taskDone.workflowGuidance.nextTask?.id, 2);
-  assert.equal(
-    taskDone.workflowGuidance.nextStep,
-    "1. Sync the thread progress with our tasks. 2. Curate the valuable findings from the completed task into a completed subtask report, then dispatch `truth-writer` with that report. 3. Continue with task #2.",
-  );
+  assert.deepEqual(taskDone.workflowGuidance.nextsteps, [
+    "Sync the thread progress with our tasks.",
+    "Curate the valuable findings from the completed task into a completed subtask report, then dispatch `truth-writer` with that report.",
+    "Continue with task #2.",
+  ]);
   assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.skill, "external-truth-writer");
   assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.fork_context, false);
 });
@@ -662,7 +665,7 @@ test("plan edit changing a task back to pending does not advertise nextTask", as
     taskStatus: "pending",
   });
 
-  assert.equal(result.workflowGuidance.nextStep, "Continue with task #1.");
+  assert.deepEqual(result.workflowGuidance.nextsteps, ["Continue with task #1."]);
   assert.equal(result.workflowGuidance.nextTask, undefined);
   assert.deepEqual(result.workflowGuidance.recommendedCommands, [
     "claw plan edit --task demo-task --task-id <id> --task-status done",
@@ -1563,6 +1566,52 @@ test("project memory refresh uses 768 dimensions for the default local embedding
       delete process.env.CLAW_EMBEDDING_MOCK;
     } else {
       process.env.CLAW_EMBEDDING_MOCK = previousMockEnv;
+    }
+  }
+});
+
+test("project memory refresh surfaces embedding worker timeouts", { concurrency: false }, () => {
+  const root = createEmptyFixture("memory-embedding-timeout");
+  initProject({
+    cwd: root,
+    projectName: "Memory Embedding Timeout",
+    externalDocPaths: ["docs/"],
+  });
+  fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+  fs.writeFileSync(path.join(root, "docs", "guide.md"), "timeout doc\n", "utf-8");
+
+  const previousMockEnv = process.env.CLAW_EMBEDDING_MOCK;
+  const previousTimeoutEnv = process.env.CLAW_EMBEDDING_WORKER_TIMEOUT_MS;
+  delete process.env.CLAW_EMBEDDING_MOCK;
+  process.env.CLAW_EMBEDDING_WORKER_TIMEOUT_MS = "1";
+
+  try {
+    assert.throws(
+      () => buildMemoryIndex({ cwd: root }),
+      (error: unknown) => {
+        const payload = error as {
+          code?: unknown;
+          message?: unknown;
+          details?: Record<string, unknown>;
+        };
+        assert.equal(payload.code, "PROJECT_CONFIG_INVALID");
+        assert.match(String(payload.message), /Memory embedding generation failed/);
+        const details = payload.details;
+        assert.equal(details?.timedOut, true);
+        assert.equal(details?.timeoutMs, 1);
+        return true;
+      },
+    );
+  } finally {
+    if (previousMockEnv === undefined) {
+      delete process.env.CLAW_EMBEDDING_MOCK;
+    } else {
+      process.env.CLAW_EMBEDDING_MOCK = previousMockEnv;
+    }
+    if (previousTimeoutEnv === undefined) {
+      delete process.env.CLAW_EMBEDDING_WORKER_TIMEOUT_MS;
+    } else {
+      process.env.CLAW_EMBEDDING_WORKER_TIMEOUT_MS = previousTimeoutEnv;
     }
   }
 });
