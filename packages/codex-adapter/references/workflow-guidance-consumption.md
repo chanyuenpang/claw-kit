@@ -13,10 +13,11 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
 
 ### `delegateSubagents`
 
-- Dispatch the listed specialist workflow(s) first.
+- Dispatch the listed specialist workflow(s) first. Do not demote them into optional follow-up suggestions.
 - Codex has multi-agent capability. Use `tool_search` to locate the current session's agent-management tools, then execute delegation through that tool surface rather than only describing the handoff.
 - Do not add a separate per-turn authorization requirement for subagent use. `@claw-kit` workflow contracts already authorize the required specialist dispatch unless the user explicitly forbids it.
 - Treat each entry as a structured contract, not a string hint.
+- Execute each entry field-by-field instead of compressing it into a generic "dispatch a writer" intention.
 - Honor per-entry fields directly:
   - `name`
   - `fork_context`
@@ -50,8 +51,9 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
 ### `goalMode`
 
 - When present, treat it as a thread-goal recommendation tied to the active plan.
-- Current intended use is `setWhen = on_enter_process_active`.
+- Current intended use is `setWhen = on_enter_process_active` for first entry and `setWhen = on_resume_process_active` when execution resumes from `process.wait` or `process.discussing`.
 - When a plan first enters `process.active`, set the thread goal from `recommendedObjective` if the thread does not already have an active goal.
+- When a plan resumes into `process.active` from `process.wait` or `process.discussing`, restore Goal Mode to the active state from `recommendedObjective`.
 - Do not automatically overwrite an unrelated active goal already attached to the thread.
 - In `@claw-kit` threads, do not treat goal mode or delegated subagent use as awaiting separate user authorization unless the user explicitly forbids them.
 - In the Codex app, `/goal` is the normal host surface. In tool-enabled sessions, `create_goal` is also a valid path.

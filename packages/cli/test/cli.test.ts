@@ -300,9 +300,13 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   );
   assert.deepEqual(taskDone.nextsteps, [
     "1. Clear thread progress.",
-    "2. Curate the valuable findings from the completed work into a completed subtask report, then dispatch `truth-writer` with that report.",
-    "3. Write the retrospective summary, then dispatch `adr-writer` with the completed `plan.json`",
+    "2. Read `delegateSubagents`, curate the valuable findings from the completed work into a completed subtask report, then execute the returned `truth-writer` dispatch contract field-by-field. Do not treat it as a suggestion.",
+    "3. Write the retrospective summary, then read `delegateSubagents` again and execute the returned `adr-writer` dispatch contract field-by-field with the completed `plan.json`.",
   ]);
+  assert.equal(
+    taskDone.notes,
+    "Truth doc and ADR doc generation are essential claw-kit features. When this state returns `delegateSubagents`, each entry is a required structured contract whose fields must be honored directly.",
+  );
 
   const truthInputPath = path.join(root, "truth-report.md");
   fs.writeFileSync(truthInputPath, "# Finding\n\nDurable truth.\n", "utf-8");
@@ -439,7 +443,7 @@ test("cli plan edit wait and resume surfaces goal mode pause and restart guidanc
   assert.equal(waitResult.planStatus, "process.wait");
   assert.deepEqual(waitResult.nextsteps, [
     "1. Pause Goal Mode.",
-    "2. When resuming the plan, restart Goal Mode.",
+    "2. When resuming the plan, restore Goal Mode to the active state.",
     "3. Resume through `process.active` when execution should continue.",
   ]);
   assert.equal(waitResult.goalMode, undefined);
@@ -449,9 +453,13 @@ test("cli plan edit wait and resume surfaces goal mode pause and restart guidanc
   assert.equal(resumeResult.planStatus, "process.active");
   assert.deepEqual(resumeResult.nextsteps, [
     "Sync the thread progress with our tasks.",
-    "Restart Goal Mode.",
+    "Restore Goal Mode to the active state.",
     "Resume with task #1.",
   ]);
+  assert.equal(
+    resumeResult.notes,
+    "The plan is moving back from a paused status into active execution, so Goal Mode should be restored to the active state before work resumes.",
+  );
   assert.equal(resumeGoalMode.setWhen, "on_resume_process_active");
   assert.match(String(resumeGoalMode.recommendedObjective), /Pause and resume cleanly/);
 });
@@ -595,9 +603,13 @@ test("cli returns truth-writer contract on completed task before final plan comp
   assert.equal("summary" in taskDone, false);
   assert.deepEqual(taskDone.nextsteps, [
     "1. Sync the thread progress with our tasks.",
-    "2. Curate the valuable findings from the completed task into a completed subtask report, then dispatch `truth-writer` with that report.",
+    "2. Read `delegateSubagents`, curate the valuable findings from the completed task into a completed subtask report, then execute the returned `truth-writer` dispatch contract field-by-field. Do not treat it as a suggestion.",
     "3. Continue with task #2.",
   ]);
+  assert.equal(
+    taskDone.notes,
+    "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. When this state returns `delegateSubagents`, each entry is a required structured contract whose fields must be honored directly.",
+  );
   assert.deepEqual(taskDone.nextTask, {
     id: 2,
     title: "Second task",

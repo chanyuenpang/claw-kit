@@ -595,6 +595,14 @@ test("plan edit can move from requirements to process.active without a separate 
 
   assert.equal(result.workflowGuidance.stage, "done");
   assert.ok(result.workflowGuidance.recommendedCommands?.some((command) => command.includes("claw plan done")));
+  assert.equal(
+    result.workflowGuidance.summary,
+    "All plan tasks are done. Clear thread progress, then execute each returned delegateSubagents entry field-by-field for truth deposition and ADR closeout.",
+  );
+  assert.equal(
+    result.workflowGuidance.notes,
+    "Truth doc and ADR doc generation are essential claw-kit features. When this state returns `delegateSubagents`, each entry is a required structured contract whose fields must be honored directly.",
+  );
   const truthDelegate = result.workflowGuidance.delegateSubagents?.[0];
   const adrDelegate = result.workflowGuidance.delegateSubagents?.[1];
   assert.ok(truthDelegate);
@@ -616,6 +624,11 @@ test("plan edit can move from requirements to process.active without a separate 
   assert.equal(adrDelegate.fork_context, false);
   assert.ok(result.workflowGuidance.nextsteps.some((step) => step.includes("truth-writer")));
   assert.ok(result.workflowGuidance.nextsteps.some((step) => step.includes("adr-writer")));
+  assert.deepEqual(result.workflowGuidance.nextsteps, [
+    "1. Clear thread progress.",
+    "2. Read `delegateSubagents`, curate the valuable findings from the completed work into a completed subtask report, then execute the returned `truth-writer` dispatch contract field-by-field. Do not treat it as a suggestion.",
+    "3. Write the retrospective summary, then read `delegateSubagents` again and execute the returned `adr-writer` dispatch contract field-by-field with the completed `plan.json`.",
+  ]);
 });
 
 test("plan edit rejects entering process.active without goal text", async () => {
@@ -661,7 +674,7 @@ test("plan edit process.wait guidance pauses goal mode and points resume back to
   assert.equal(paused.workflowGuidance.stage, "paused");
   assert.deepEqual(paused.workflowGuidance.nextsteps, [
     "1. Pause Goal Mode.",
-    "2. When resuming the plan, restart Goal Mode.",
+    "2. When resuming the plan, restore Goal Mode to the active state.",
     "3. Resume through `process.active` when execution should continue.",
   ]);
   assert.deepEqual(paused.workflowGuidance.recommendedCommands, [
@@ -695,7 +708,7 @@ test("plan edit process.discussing guidance pauses goal mode and waits for discu
   assert.equal(discussing.workflowGuidance.stage, "discussion");
   assert.deepEqual(discussing.workflowGuidance.nextsteps, [
     "1. Pause Goal Mode.",
-    "2. When resuming the plan, restart Goal Mode.",
+    "2. When resuming the plan, restore Goal Mode to the active state.",
     "3. Resolve the discussion, then resume through `process.active`.",
   ]);
   assert.deepEqual(discussing.workflowGuidance.recommendedCommands, [
@@ -729,9 +742,13 @@ test("resuming from process.wait to process.active re-emits goal mode guidance",
   assert.equal(resumed.workflowGuidance.stage, "execution");
   assert.equal(resumed.workflowGuidance.goalMode?.setWhen, "on_resume_process_active");
   assert.ok(resumed.workflowGuidance.goalMode?.recommendedObjective?.includes("Resume execution with goal mode"));
+  assert.equal(
+    resumed.workflowGuidance.notes,
+    "The plan is moving back from a paused status into active execution, so Goal Mode should be restored to the active state before work resumes.",
+  );
   assert.deepEqual(resumed.workflowGuidance.nextsteps, [
     "Sync the thread progress with our tasks.",
-    "Restart Goal Mode.",
+    "Restore Goal Mode to the active state.",
     "Resume with task #1.",
   ]);
   assert.ok(resumed.workflowGuidance.nextsteps.includes("Sync the thread progress with our tasks."));
@@ -804,9 +821,13 @@ test("process entry returns the first task and task completion returns truth-wri
   });
   assert.equal(taskDone.workflowGuidance.stage, "execution");
   assert.equal(taskDone.workflowGuidance.nextTask?.id, 2);
+  assert.equal(
+    taskDone.workflowGuidance.notes,
+    "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. When this state returns `delegateSubagents`, each entry is a required structured contract whose fields must be honored directly.",
+  );
   assert.deepEqual(taskDone.workflowGuidance.nextsteps, [
     "1. Sync the thread progress with our tasks.",
-    "2. Curate the valuable findings from the completed task into a completed subtask report, then dispatch `truth-writer` with that report.",
+    "2. Read `delegateSubagents`, curate the valuable findings from the completed task into a completed subtask report, then execute the returned `truth-writer` dispatch contract field-by-field. Do not treat it as a suggestion.",
     "3. Continue with task #2.",
   ]);
   assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.skill, "external-truth-writer");
@@ -2279,6 +2300,10 @@ test("workflow guidance uses external writer skills from project config", async 
     taskId: 1,
     taskStatus: "done",
   });
+  assert.equal(
+    taskDone.workflowGuidance.notes,
+    "Truth doc and ADR doc generation are essential claw-kit features. When this state returns `delegateSubagents`, each entry is a required structured contract whose fields must be honored directly.",
+  );
   assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.skill, "external-truth-writer");
   assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.model, "gpt-5.4-mini");
   assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.fork_context, false);

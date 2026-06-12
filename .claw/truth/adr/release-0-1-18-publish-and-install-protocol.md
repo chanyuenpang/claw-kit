@@ -25,6 +25,7 @@ Accepted
 - 发布完成后仍必须验证 `@veewo/claw` 的安装烟测；`0.1.33` 的基线证据是安装 `@veewo/claw@0.1.33` 后成功运行 `claw --help`
 - 正式 publish 完成后，除了安装烟测，还要刷新并验证本地 CLI 与本地 Codex plugin cache，确保 npm 包与适配器缓存都已经切到新发布版本
 - `0.1.33` release closeout 的 done 条件还包括本机全局 `claw` CLI 刷新、`packages/codex-adapter` 对应本地 Codex plugin cache 刷新，以及最终 release commit 推送到 `origin/main`
+- `0.1.35` release closeout 再次验证了这条协议：workspace、lockfile、changelog 和 codex plugin manifest 先对齐到 `0.1.35` / `0.1.35+codex.20260612132837`，然后按 `@veewo/claw-core` 先于 `@veewo/claw` 的顺序成功发布，再刷新本机全局 `@veewo/claw@0.1.35` 与本地 Codex plugin cache 并复核 `claw.ps1`、`claw --help` 和 registry 版本
 - 发布完成后删除本机临时 `npm token` 配置
 
 ## Consequences

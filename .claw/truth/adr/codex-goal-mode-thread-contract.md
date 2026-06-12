@@ -14,6 +14,7 @@ Default policy:
 - only set a thread goal if the thread does not already have an active goal
 - do not overwrite an unrelated active goal automatically
 - use `setWhen = on_enter_process_active` so `plan write` / `prepare.requirements` guidance does not claim Goal mode ownership before execution actually starts
+- when execution resumes from `process.wait` or `process.discussing` back into `process.active`, explicitly restore the active Goal mode state instead of treating the re-entry as a passive continuation
 - if `plan.goal.text` is missing, block the lifecycle from entering `process.active` instead of emitting a premature Goal mode recommendation
 
 ## Consequences
@@ -23,6 +24,7 @@ Default policy:
 - The same plan remains portable across hosts, because the canonical source stays in `.claw`, while Goal mode remains an optional Codex-host enhancement.
 - Goal mode no longer competes with requirements collection; agents finish filling `goal.text`, `requirements`, `tasks`, and related fields before active execution begins.
 - `goalMode` emission becomes a one-time activation boundary on first `process.active` entry, instead of a repeated `plan write` side effect.
+- resumed active execution keeps the Goal mode contract visible, so a wait/discussion pause does not strand the thread in a half-restored state.
 - The no-active-goal and no-overwrite semantics remain durable host-side safety rules instead of a best-effort prompt suggestion.
 
 ## Related Code

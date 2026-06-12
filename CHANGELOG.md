@@ -4,6 +4,18 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## [0.1.34] - 2026-06-12
 
+## [0.1.35] - 2026-06-12
+
+### Changed
+
+- workflow guidance steps that return `delegateSubagents` now explicitly tell agents to read the structured dispatch entries and execute them field-by-field instead of treating delegation like optional follow-up advice
+
+### Fixed
+
+- Codex adapter workflow-guidance references and core/CLI regression coverage now lock the delegated subagent contract to the stricter mandatory wording, reducing the chance that release prompts drift back toward suggestion-style dispatch
+
+## [0.1.34] - 2026-06-12
+
 ### Changed
 
 - `workflowGuidance` now has explicit paused and discussion execution states so `process.wait` and `process.discussing` tell the agent to pause Goal Mode instead of pretending execution is still active
