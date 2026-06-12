@@ -38,6 +38,9 @@ Accepted working truth for local development on this machine.
 - 默认 local 维度现在按模型决定：`Snowflake/snowflake-arctic-embed-m-v2.0` 默认 `768`，显式旧模型 `Snowflake/snowflake-arctic-embed-xs` 继续默认 `384`；显式 `memory.embedding.outputDimensionality` 仍然优先覆盖默认值。
 - 本地 embedding 的救援路径现在有两个显式控制面：`.claw/project.json` 的 `memory.embedding.local.device` 和 shell 覆盖 `CLAW_EMBEDDING_LOCAL_DEVICE`，前者适合稳定的 per-project 配置，后者适合一次性 CPU rescue refresh。
 - 真实验证表明，`CLAW_EMBEDDING_LOCAL_DEVICE=cpu; claw search index --refresh` 可以完成 local rescue refresh，并产出 project-scoped vector metadata；默认模型路径的 `dimensions` 现在是 `768`，而显式旧模型 `Snowflake/snowflake-arctic-embed-xs` 仍然保持 `384`。
+- For the active local model cache, deleting only `.claw/models/Snowflake/snowflake-arctic-embed-m-v2.0` and rerunning a real `claw search --query "<topic>"` path recreates the ONNX payload at the same SHA256, so a timestamp change alone does not imply a different model artifact.
+- Running `claw search --query ...` and `claw search index --refresh` in parallel immediately after that deletion can hit `Load model ... system error number 13`; the stable recovery path is to rerun `claw search index --refresh` serially with `CLAW_EMBEDDING_LOCAL_DEVICE=cpu`.
+- A successful serial rescue refresh for `Snowflake/snowflake-arctic-embed-m-v2.0` returns `search.index.refresh` with `processedFileCount: 3`, `pendingFileCount: 0`, `vectorIndex.dimensions: 768`, and `vectorIndex.chunkCount: 509`.
 - `packages/core/test/core.test.ts` 锁定了默认 refresh 的文件批次节流：每次 refresh 最多处理 100 个新增或变更文件，后续重复 refresh 会自动继续消化剩余 backlog，而不会卡在单次调用边界。
 - `packages/core/test/core.test.ts` 现在额外覆盖 embedding 配置变化后的 batching 契约：完成一次 103 文件索引后切换 embedding model，reset 后第一轮 refresh 仍只处理 100 个文件，第二轮再补完剩余 3 个。
 - `packages/core/test/core.test.ts` 现在覆盖了 `.gitignore` 注入的三条 init 语义：新项目生成规则块、已有 `.gitignore` 只追加一次、重复 init 不重复追加。
@@ -63,9 +66,13 @@ Accepted working truth for local development on this machine.
 - Task-scope memory search still keeps the previous FTS and task-memory behavior.
 - Before writing a new plan, agents may run `claw search --query "<topic>"` to recover relevant project context.
 - `claw memory ...` remains available, but it is not the recommended Codex workflow concept.
-- Local installation is currently done through `npm link .\\packages\\cli`.
-- On this machine, the global wrappers are created under `C:\\nvm4w\\nodejs`.
-- 远程 Windows 机器应该优先使用 `scripts/install-cli.ps1`：脚本会执行 `npm install`、`npm run build`，移除旧的全局链接，然后用 `npm link --force .\\packages\\cli` 重新链接 CLI。
+- Local installation on this machine is currently refreshed through `npm run install:local-cli`.
+- After the repo was updated to `0.1.34`, the repo-supported `npm run install:local-cli` path completed successfully and reinstalled the global CLI as `@veewo/claw@0.1.34`.
+- That install script removes prior global installs and links before running `npm install -g @veewo/claw`, so the final global state reflects the package registry install rather than an older link.
+- On this machine, `(Get-Command claw).Source` resolves to `C:\Users\chany\AppData\Roaming\npm\claw.ps1`.
+- `claw --help` is a useful post-install smoke check because it confirms the refreshed command surface, including `plan write`, `plan edit`, `plan done`, `search`, and `hook`.
+- On this machine, the global wrappers are created under `C:\Users\chany\AppData\Roaming\npm`.
+- 远程 Windows 机器应该优先使用 `scripts/install-cli.ps1`：脚本会移除旧的全局安装与链接，然后用 `npm install -g @veewo/claw` 刷新 CLI。
 - 根目录 `README.md` 已把远程用户导向这个安装脚本，而不是要求他们手工拼装安装步骤。
 
 ## Practical implications

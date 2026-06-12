@@ -23,7 +23,7 @@
 - `packages/core/src/embedding-worker.ts` now resolves cache usage by model id: explicit local cache wins only when that local cache already contains the model; otherwise an existing global cache is reused; if both are missing, downloads go to the explicit local cache when configured, or to the global cache by default.
 - `packages/core/src/project-check.ts` 里的 `ensureProjectProtocol -> normalizeProjectConfig` 是既有项目自动迁移的最佳落点，因为它会在协议修复时回写 `project.json`。
 - `packages/core/src/init.ts` no longer writes a default `modelCacheDir` into new project config, and `packages/core/src/project-check.ts` removes legacy `.claw/models` during protocol normalization so shared-cache semantics stay implicit while explicit custom paths remain intact.
-- 在当前 `claw-kit` 仓库里，这条迁移已经落地为可见结果：`.claw/project.json` 里不再保留 legacy `memory.embedding.local.modelCacheDir = ".claw/models"`，而项目内 `.claw/models` 的 Snowflake 模型已并入 `C:\Users\chany\AppData\Local\claw\models`，因此仓库本身不再依赖本地模型缓存目录。
+- 在当前 `claw-kit` 仓库里，这条迁移已经落地为可见结果：`.claw/project.json` 里不再保留 legacy `memory.embedding.local.modelCacheDir = ".claw/models"`，因此仓库配置本身不再把项目内模型缓存目录当作必需契约；运行时仍可能按 fallback / recovery 语义在 `.claw/models` 下保留或重建本地缓存。
 - `memory.embedding.local.device` 现在是 schema 明确支持的本地设备字段，允许 `dml|cuda|cpu|wasm`；这类显式选择会在 `context.ts`、`project-check.ts` 与 `types.ts` 的协议修复/校验路径里保留下来，而不是被重置掉。
 - `buildMemoryIndex` returns the project embedding config and persists `scope`, `indexed_at`, and `embedding_config` into sqlite `index_metadata` so future embedding/vector initialization can reuse stable metadata.
 - `claw search index --refresh` 不再默认全量清空 project sqlite index；已有 sqlite store 会被当作增量同步目标。
@@ -35,6 +35,7 @@
 - 因此，embedding 配置切换后的 project refresh 仍可能暂时只包含当前批次的 docs / vectors；后续 refresh 会继续补完剩余文件，而不是一次性整库重建。
 - `claw search index --refresh` 现在生成并同步 project-scoped vectors from `memory.embedding` and stores `vectorIndex` metadata in sqlite alongside the embeddings.
 - The local embedding provider follows the GitNexus-style setup: default model `Snowflake/snowflake-arctic-embed-m-v2.0`, model-derived default dimensions, and a Windows DirectML-first path that falls back to CPU when DirectML fails.
+- The active project config in `.claw/project.json` points local embedding at `Snowflake/snowflake-arctic-embed-m-v2.0` without pinning an explicit `modelCacheDir`; cache resolution is runtime-driven between local fallback and shared machine-global surfaces.
 - 默认 local 维度不再对所有模型一律硬编码成 `384`。当前契约是：
 - `Snowflake/snowflake-arctic-embed-m-v2.0` 默认 `768` 维
 - 显式旧模型 `Snowflake/snowflake-arctic-embed-xs` 继续默认 `384` 维
@@ -61,6 +62,7 @@
 - 这次 multi-term 中文 recall 的迁移同样参考 `openclaw-dev` 的 memory search 设计，但在 `claw-kit` 中只搬运了适合当前项目的 query planner + keyword recall + vector fusion 最小子集。
 - incremental refresh 的存在不改变 project search 的可用性契约：project recall 依然要求 vector index，不能回退成纯 FTS fallback。
 - 这套 refresh 语义参考的是 `openclaw-dev` 对已有 sqlite 的 incremental bootstrap / sync 思路，但 `claw-kit` 只搬运了适合当前项目的最小 sqlite 增量迁移子集。
+- For the local ONNX cache, re-downloading the active `Snowflake/snowflake-arctic-embed-m-v2.0` artifact after deleting only that versioned cache directory should preserve the SHA256 if the upstream payload is unchanged; a different timestamp alone is not evidence of a different artifact.
 
 ## Evidence
 

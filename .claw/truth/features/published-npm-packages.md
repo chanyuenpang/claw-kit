@@ -11,36 +11,44 @@
 - `@veewo/claw-core` 提供核心 `.claw` harness 语义。
 - `@veewo/claw` 提供可发布的 CLI 入口，并依赖 `@veewo/claw-core`。
 
-当前版本线已经同步到 `0.1.33`：
+当前版本线已经同步到 `0.1.34`：
 
-- 这次 closeout 不是重发旧的 `0.1.32` 包，而是在合并了已经领先于已发布 `0.1.32` artifact 的代码之后，把整条 workspace/package 版本线从 `0.1.32` 统一推进到 `0.1.33`。
+- 这次 closeout 不是重发旧的 `0.1.33` 包，而是在合并了已经领先于已发布 `0.1.33` artifact 的代码之后，把整条 workspace/package 版本线从 `0.1.33` 统一推进到 `0.1.34`。
 
-- 根 `package.json` 版本是 `0.1.33`。
-- `packages/core/package.json` 版本是 `0.1.33`。
-- `packages/cli/package.json` 版本是 `0.1.33`。
-- `package-lock.json` 也已经把 workspace 包版本线同步到 `0.1.33`，包括根包、`@veewo/claw-core`、`@veewo/claw`、`@claw-kit/openclaw-adapter` 和 `@claw-kit/codex-adapter`。
-- `packages/codex-adapter/.codex-plugin/plugin.json` 使用 `0.1.33+codex.20260611235356` 作为适配器版本号。
-- `@veewo/claw-core@0.1.33` 与 `@veewo/claw@0.1.33` 都已经成功发布到 npm registry。
-- 通过 `npm view @veewo/claw-core version --registry=https://registry.npmjs.org` 与 `npm view @veewo/claw version --registry=https://registry.npmjs.org` 校验后，两个包当前都解析到 `0.1.33`。
+- 根 `package.json` 版本是 `0.1.34`。
+- `packages/core/package.json` 版本是 `0.1.34`。
+- `packages/cli/package.json` 版本是 `0.1.34`。
+- `package-lock.json` 也已经把 workspace 包版本线同步到 `0.1.34`，包括根包、`@veewo/claw-core`、`@veewo/claw`、`@claw-kit/openclaw-adapter` 和 `@claw-kit/codex-adapter`。
+- `packages/codex-adapter/.codex-plugin/plugin.json` 使用 `0.1.34+codex.20260612023130` 作为适配器版本号。
+- `@veewo/claw-core@0.1.34` 与 `@veewo/claw@0.1.34` 都已经成功发布到 npm registry。
+- 通过 `npm view @veewo/claw-core version --registry=https://registry.npmjs.org` 与 `npm view @veewo/claw version --registry=https://registry.npmjs.org` 校验后，两个包当前都解析到 `0.1.34`。
+
+最近一次远端对齐也留下了一条可复用的本地同步锚点：
+
+- `origin` remote 指向 `https://github.com/chanyuenpang/claw-kit.git`。
+- 同步前本地 `HEAD` 是 `e24e9b4faca973e5f95b52fee234dae31d888022`，`origin/main` 已前进到 `5044ffe19897dc9abbe58cb358d1f44fb0c935c4`。
+- `git rev-list --left-right --count HEAD...origin/main` 返回 `0 4`，说明本地 checkout 在同步前没有本地提交落后远端 4 个提交。
+- `git pull --ff-only origin main` 成功 fast-forward 到 `5044ffe19897dc9abbe58cb358d1f44fb0c935c4`，所以这次更新没有引入本地分叉合并。
+- 最终验收时 repo `main` 的 `HEAD` 就是 `5044ffe19897dc9abbe58cb358d1f44fb0c935c4`。
 
 当前发布链也形成了一条稳定的 release target 判定规则：
 
 - 如果合并后的 `HEAD` 已经领先于 npm registry 里的已发布 artifact，但 workspace 包版本号仍停留在旧值，则下一次发布必须先把整条 workspace/package 版本线整体推进到下一个补丁版本，再进入发布流程。
-- 这次合并后的代码面已经超过已发布 `0.1.32` artifact，而根包、core、cli 以及 lockfile 仍都写着 `0.1.32`，因此正确目标版本是 `0.1.33`，而不是重发 `0.1.32`。
+- 这次合并后的代码面已经超过已发布 `0.1.33` artifact，而根包、core、cli 以及 lockfile 仍都写着 `0.1.33`，因此正确目标版本是 `0.1.34`，而不是重发 `0.1.33`。
 
 发布前的本地验证闸门保持同一条稳定路径：
 
 - `npm test` 必须通过。
 - `npm run check` 必须通过。
 - `npm whoami` 必须返回发布账号 `chanyuenpang`。
-- `npm pack --dry-run` 需要分别在 `packages/core` 和 `packages/cli` 产出 `veewo-claw-core-0.1.33.tgz` 与 `veewo-claw-0.1.33.tgz`，用来证明双包当前都能被正确打包。
+- `npm pack --dry-run` 需要分别在 `packages/core` 和 `packages/cli` 产出 `veewo-claw-core-0.1.34.tgz` 与 `veewo-claw-0.1.34.tgz`，用来证明双包当前都能被正确打包。
 
 正式发布后的安装与命令解析验证也已经形成稳定事实：
 
 - 验证是在临时目录里自举 npm CLI 后完成的，不依赖宿主环境预先把 `npm` 放进 `PATH`。
 - 验证路径是：临时安装刚发布的 `@veewo/claw` 到独立 prefix，再在全新的 smoke project 中运行 `claw init`。
-- 发布完成后还需要把本地 CLI 刷新到刚发布的新版本，并确认命令解析继续指向真实全局 shim；当前稳定解析路径是 `C:\nvm4w\nodejs\claw.ps1`。
-- 这条安装验证已经成功，说明已发布的 CLI 包可以在干净环境里完成初始化；当前已验证版本是 `@veewo/claw@0.1.33`。
+- 发布完成后还需要把本地 CLI 刷新到刚发布的新版本，并确认命令解析继续指向真实全局 shim；当前稳定解析路径是 `C:\Users\chany\AppData\Roaming\npm\claw.ps1`。
+- 这条安装验证已经成功，说明已发布的 CLI 包可以在干净环境里完成初始化；当前已验证版本是 `@veewo/claw@0.1.34`。
 
 当前这条发布链还保留一个稳定环境约束：
 
@@ -50,9 +58,10 @@
 本地安装和缓存刷新仍然遵循同一条稳定路径：
 
 - `scripts/install-cli.ps1` 是远程 Windows 机器的推荐安装入口，会清理旧的全局 `@veewo/claw` 链接并重新安装当前版本。
-- 本地 Codex 插件缓存版本线需要和 `packages/codex-adapter/.codex-plugin/plugin.json` 保持一致；当前目标版本是 `0.1.33+codex.20260611235356`。
-- 同步本地 Codex 插件缓存时，当前 canonical 目标目录是 `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.33+codex.20260611235356`；同步后还要再次核对缓存目录里的 manifest 与仓库 `packages/codex-adapter/.codex-plugin/plugin.json` 完全一致。
+- 本地 Codex 插件缓存版本线需要和 `packages/codex-adapter/.codex-plugin/plugin.json` 保持一致；当前目标版本是 `0.1.34+codex.20260612023130`。
+- 同步本地 Codex 插件缓存时，当前 canonical 目标目录是 `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.34+codex.20260612023130`；同步后还要再次核对缓存目录里的 manifest 与仓库 `packages/codex-adapter/.codex-plugin/plugin.json` 完全一致。
 - 同步时仍应复制 `.codex-plugin`、`hooks`、`references`、`scripts`、`skills` 和 `package.json`，避免缓存里的版本、提示词和钩子滞后。
+- 最终验收时本地插件缓存路径就是 `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.34+codex.20260612023130`，且缓存内 `plugin.json` 与仓库 manifest 保持同版本。
 
 ## 相关代码
 
