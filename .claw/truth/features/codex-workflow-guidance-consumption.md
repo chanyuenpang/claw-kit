@@ -3,6 +3,9 @@
 - Codex adapter 应把 `workflowGuidance` 视为主合同，但 planning 自身现在负责计划质量，不再把 standalone `plan-review` 当成进入下一阶段的必经门。
 - 当 `claw` 计划命令返回结果时，adapter 应优先消费 compact 字段：`planStatus`、`workflowGuidance`、`planSummary`，以及需要时的 `completionRefresh`。
 - `planSummary` 是聊天协作中可展示的紧凑计划状态；adapter 不应期待 render blocks、widget envelope、`claw plan app` 或 `claw plan render`。
+- 正常 planned work 应先用 `claw plan write` 绑定 task scope；如果 project recall 有帮助，再在 `plan write` 之后运行 `claw search --query "<topic>"`。
+- 低复杂度 direct work 可以跳过 formal planning，但当 complexity score 低于 `4` 时，允许在执行前先跑一次 `claw search --query "<topic>"`。
+- `claw direct` 的 guidance 应允许可选 pre-search、直接执行、可选 `truth-writer` 派发，并复用 `claw plan done` 的异步 completion-refresh path。
 - investigation-first 是 Codex workflow 的主流程规则：当 task 主要是调查、分析或证据收集，而不是直接实现时，应优先派发 `researcher` specialist。
 - `researcher` 可由 task shape 触发，不必等待 `workflowGuidance.delegateSubagents` 明确列出；派发时使用 `worker` + `gpt-5.4-mini` + 显式 `claw-kit:researcher` skill item，并优先复用同线程已有 researcher。
 - `researcher` 的调查顺序应先 `claw search --query "<topic>"` 检索 `.claw` context、truth 和 ADR；当 `gitnexus.enabled = true` 时，再发现并使用 GitNexus 相关能力做代码调查。

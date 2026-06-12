@@ -25,6 +25,7 @@
 - `packages/codex-adapter/.codex-plugin/plugin.json` 的插件版本是 `0.1.37+codex.20260612174327`。
 - `CHANGELOG.md` 追加了 `0.1.37` 条目，说明 planning 现在有复杂度评分、低复杂度 direct path，以及 `claw direct` 的异步 closeout 合同。
 - `npm install -g @veewo/claw@0.1.37` 在版本更新后成功运行，说明 lockfile 与 workspace 版本仍然一致。
+- 这次 0.1.37 closeout 还通过了 `2026-06-12` 的 `npm test` 与 `npm run check`，并把 release commit `ff2b175` 推送到了 `origin/main`。
 
 release target 之所以从 registry 上的 `0.1.36` 前推到 `0.1.37`，是因为本地 workspace 已经包含发布就绪但尚未发布的复杂度评分 / `claw direct` 工作流变更。
 

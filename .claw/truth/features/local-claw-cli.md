@@ -22,9 +22,13 @@ Accepted working truth for local development on this machine.
   - `claw search index --refresh`
   - `claw plan write`
   - `claw plan edit`
+  - `claw direct`
   - `claw switch-task`
   - `claw memory index/search/get` for legacy/debug and low-level index management
   - `claw truth ingest`
+- Normal planned work should bind task scope with `claw plan write` first; when project context recall is useful, run `claw search --query "<topic>"` after `plan write`.
+- Low-complexity direct work with complexity score below `4` still skips formal planning, but it may run `claw search --query "<topic>"` before execution when prior project context matters.
+- `claw direct` help now says it can optionally run `claw search` before execution, then solve directly, then optionally dispatch `truth-writer`, and still reuse the asynchronous completion-refresh path from `claw plan done`.
 - Codex-facing recall should use `claw search --query "<topic>"` as project-scoped document recall for project memory, truth, ADR, and external docs; it is not code search.
 - `claw search index --refresh` is the explicit project index refresh entrypoint and returns `search.index.refresh`.
 - `claw search index --refresh` 现在会对当前项目的 markdown recall index 做增量同步，而不是每次都全量重建 sqlite store。
@@ -68,13 +72,14 @@ Accepted working truth for local development on this machine.
 - Project-level `claw search --query` now generates a real query embedding and uses a trimmed hybrid recall that fuses vector and FTS results.
 - Project-level `claw search --query` now fails with `MEMORY_VECTOR_INDEX_REQUIRED` when the refreshed vector index is missing, instead of silently degrading to non-vector search.
 - Task-scope memory search still keeps the previous FTS and task-memory behavior.
-- Before writing a new plan, agents may run `claw search --query "<topic>"` to recover relevant project context.
+- Normal planned work should bind task scope with `claw plan write` first; if project recall helps, use `claw search --query "<topic>"` afterward.
 - `claw memory ...` remains available, but it is not the recommended Codex workflow concept.
 - Local installation on this machine is currently refreshed through `npm run install:local-cli`.
 - After the repo was updated to `0.1.34`, the repo-supported `npm run install:local-cli` path completed successfully and reinstalled the global CLI as `@veewo/claw@0.1.34`.
 - That install script removes prior global installs and links before running `npm install -g @veewo/claw`, so the final global state reflects the package registry install rather than an older link.
 - On this machine, `(Get-Command claw).Source` resolves to `C:\Users\chany\AppData\Roaming\npm\claw.ps1`.
 - `claw --help` is a useful post-install smoke check because it confirms the refreshed command surface, including `plan write`, `plan edit`, `plan done`, `search`, and `hook`.
+- The 0.1.37 closeout verification passed with `npm test` and `npm run check` on `2026-06-12`, and the release commit `ff2b175` was pushed to `origin/main`.
 - On this machine, the global wrappers are created under `C:\Users\chany\AppData\Roaming\npm`.
 - 远程 Windows 机器应该优先使用 `scripts/install-cli.ps1`：脚本会移除旧的全局安装与链接，然后用 `npm install -g @veewo/claw` 刷新 CLI。
 - 根目录 `README.md` 已把远程用户导向这个安装脚本，而不是要求他们手工拼装安装步骤。
