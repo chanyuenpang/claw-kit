@@ -20,6 +20,7 @@ Accepted
 - `process.active` 成为由 `goal.text` 驱动的显式执行门：`plan.goal.text` 未填写时，计划不能离开 `prepare.requirements`
 - 执行中的知识沉淀继续委派给 `truth-writer`
 - `process.allTasksDone` 是 root plan 的 ADR 沉淀边界：在这里读取 `delegateSubagents`，写完 retrospective 后再把完成态 `plan.json` 交给 `adr-writer`
+- `process.allTasksDone` 只有在 retrospective 和 `keyDecisions` 都已更新后，才允许进入 ADR deposition 和 plan completion
 - `end.completed` 只承担 root plan 的 closeout/archive 语义；它不再是 ADR dispatch trigger
 
 ## Consequences
@@ -32,6 +33,7 @@ Accepted
 - 生命周期门禁从文案建议上升为实际约束，避免无目标 active plan 进入执行态
 - `truth-writer` 与 `adr-writer` 仍保留为完成期 specialist，而不是把 ADR 写作提前到计划仍开放时处理
 - root plan 的 ADR 派发位置固定在 `process.allTasksDone`，因此 `claw plan done` 只做 closeout/archive，不再和 ADR dispatch 竞争同一个职责
+- root plan closeout 需要先补齐 retrospective 和 `keyDecisions`，再进入 ADR deposition 和完成态收口
 - 历史版本实跑对比说明，workflow feel 的主要回退点并不是 `plan write` 本身必然更重；新版 `plan write` 反而已经比部分旧版更窄、更干净
 - 真正的回退来自 task 建立与推进被拆散到多个可见 surface：如果 startup recovery 先占据入口，而 `process.active` 又不够突出，`plan write` 就不再像唯一 task-scope 入口，主 agent 也更容易遗漏“计划后立即切到 active 执行”这一动作
 - 因而这份 ADR 的 durable 含义不是单独继续压缩 `plan write`，而是保持 `plan write -> process.active` 作为最显眼、最连续的主流程链路，避免被并列 surface 稀释
