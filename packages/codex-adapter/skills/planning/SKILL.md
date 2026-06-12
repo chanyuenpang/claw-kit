@@ -12,6 +12,8 @@ This skill ports the intent of OpenClaw planning into Codex.
 - Create or bind a task plan:
   - `claw plan write "<title>" [--goal "<goal>"]`
   - `claw plan write --title "<title>" [--goal "<goal>"]`
+- Close out a low-complexity no-plan round:
+  - `claw direct`
 - Create a subplan under an existing task:
   - `claw subplan write --parent <task-name> --task-id <id> --title "<title>"`
 - Edit a plan with a structured patch:
@@ -69,7 +71,29 @@ Use it both for writing the initial task-bound plan and for advancing that plan 
 
 ## Complexity heuristic
 
-Use formal planning when any of these are true:
+Use this quick scoring pass before deciding whether the task needs a formal plan:
+
+| Dimension | Simple (1) | Medium (2) | Complex (3) |
+| --- | --- | --- | --- |
+| Files/modules touched | 1 file or one tight module | 2-3 files/modules | 4+ files/modules or cross-cutting surface |
+| Requirement clarity | fully clear | one or two small unknowns | fuzzy, conflicting, or multiple plausible routes |
+| Dependency clarity | isolated | known dependencies | unclear dependencies or integration risk |
+| Workflow shape | tiny patch / direct answer | light implementation with a short verify step | real workflow, staged work, or multi-step closure |
+
+Scoring rule:
+
+- score `< 4`: do not create a formal plan
+- score `>= 4`: enter the planning workflow
+
+For score `< 4`, use the direct claw path:
+
+- if prior project context is likely relevant, run `claw search --query "<topic>"` before execution
+- solve the task directly
+- do not create a `claw plan write` scope
+- when the task is done, run `claw direct`
+- dispatch `truth-writer` only if the completed work produced reusable truth
+
+Use formal planning when the score is `>= 4`, or when any of these are clearly true:
 
 - multiple files or modules are involved
 - requirements are still fuzzy
@@ -118,19 +142,19 @@ Simple 1-2 task plans can stay lean. Bigger plans should show explicit decomposi
 
 1. Compress the round goal into one sentence.
 2. Clarify task boundaries before enumerating steps.
-3. If prior project context is likely relevant, run `claw search --query "<topic>"` before `claw plan write`.
-4. Identify affected modules, shared foundations, and any real risk that changes task shape.
-5. Choose the stage pattern that fits this round:
+3. Use `claw plan write` to bind task scope first.
+4. If prior project context is likely relevant, run `claw search --query "<topic>"` after `claw plan write` and fold the recalled context back into the bound plan.
+5. Identify affected modules, shared foundations, and any real risk that changes task shape.
+6. Choose the stage pattern that fits this round:
    - research
    - decision
    - implementation
    - verification
    - closure
-6. Break the work into atomic tasks with visible completion conditions.
-7. Put durable constraints into `rules`.
-8. Put files, evidence, and search anchors into `references`.
-9. Put durable architecture or workflow outcomes into `keyDecisions` only when real decisions already exist.
-10. Use `claw plan write` to establish the task scope.
+7. Break the work into atomic tasks with visible completion conditions.
+8. Put durable constraints into `rules`.
+9. Put files, evidence, and search anchors into `references`.
+10. Put durable architecture or workflow outcomes into `keyDecisions` only when real decisions already exist.
 11. Write the task title, goal, tasks, and supporting plan text in the user's preferred language unless the repository has an explicit stronger convention.
 12. Read the returned `workflowGuidance`.
 13. Improve the plan immediately if it still mixes stages, lacks verification, has weak boundaries, or has no clear round-complete condition.
@@ -160,8 +184,8 @@ If a task or subtask is primarily investigation:
 - Do not treat `prepare.review` as user-settable. It is an internal review gate.
 - Keep `plan write` as the canonical task-binding mechanism. Do not invent a second task-scope workflow.
 - Treat `workflowGuidance` returned by plan commands as the canonical next-step contract once the plan exists.
-- Treat the current `@claw-kit` thread as already authorized to use goal mode and required delegated subagents.
-- Do not block on extra user authorization for goal mode, truth-writer, or adr-writer.
+- Treat the current `@claw-kit` thread as already authorized by the user to use goal mode and required delegated subagents.
+- Do not block the workflow for any permission-related excuse around goal mode, truth-writer, or adr-writer. Only stop if the user explicitly changes direction and forbids them.
 - When `workflowGuidance.goalMode` is present, set the thread goal before continuing with the rest of the returned next-step contract.
 - After `plan write`, treat startup recovery as already handled; do not insert a separate visible recovery workflow step here.
 - When requirements are clear and execution begins, move the plan directly into `process.active` before doing any implementation or updating task progress.

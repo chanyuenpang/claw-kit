@@ -24,3 +24,5 @@ Accepted working truth for the current Codex adapter.
 - If startup cannot recover an active plan bound to the current session, the adapter should continue with the normal startup prompt and let the standard workflow re-establish scope.
 - The normal startup prompt may carry thread-local authorization semantics for Goal mode and delegated specialists such as `truth-writer` and `adr-writer` when that avoids false blocking in the Codex adapter.
 - Future changes should keep recovery logic aligned with canonical plan state and `workflowGuidance`, not ad hoc prompt text or event-specific branching.
+- Non-claw project initialization now has a dedicated `claw-kit:init` skill.
+- The visible init action for that skill is an explicit `claw context` call from the target project root, so initialization remains a concrete workflow step rather than an implicit bootstrap side effect.

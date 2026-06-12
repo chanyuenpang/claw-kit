@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import {
+  buildDirectWorkflowGuidance,
   checkProjectProtocol,
   ClawError,
   buildPlanWorkflowGuidance,
@@ -96,6 +98,9 @@ async function main(): Promise<void> {
       case "search":
         runSearch(args);
         return;
+      case "direct":
+        runDirect(args);
+        return;
       case "truth":
         runTruth(args);
         return;
@@ -173,6 +178,7 @@ async function runPlan(args: string[]): Promise<void> {
           "plan done requires --summary or a patch file containing retrospective.summary.",
         );
       }
+      ensureGitNexusReadyForPlanDone(process.cwd());
       const result = await editPlan({
         cwd: process.cwd(),
         taskName: readRequiredFlag(args, "--task"),
@@ -249,6 +255,26 @@ function runSearch(args: string[]): void {
       scope: "project",
     }),
   });
+}
+
+function runDirect(args: string[]): void {
+  assertNoRemainingArgs(args, "direct");
+  const completionRefresh = queueCompletionRefresh({
+    cwd: process.cwd(),
+    taskName: "__direct__",
+    includeTaskRetention: false,
+    includeTaskMemory: false,
+    statusLabel: "direct",
+  });
+  printJson(
+    compactDirectCommandResult(
+      "direct",
+      buildDirectWorkflowGuidance({
+        projectConfig: resolveProjectContext(process.cwd()).projectConfig,
+      }),
+      completionRefresh,
+    ),
+  );
 }
 
 type JsonRecord = Record<string, unknown>;
@@ -451,8 +477,8 @@ function buildSessionStartAdditionalContext(context: Record<string, unknown>, se
     `This session started inside a .claw project: ${projectName} (${projectId}).`,
     `.claw directory: ${clawDir}`,
     "Load claw-kit:using-claw-kit as the main workflow skill for this session.",
-    "In this current thread, the agent is explicitly authorized to use goal mode and delegate subagents required by the claw workflow.",
-    "Do not treat missing user authorization as a reason to block normal claw goal-mode entry, truth deposition, or ADR deposition.",
+    "The user has already authorized this current thread to use goal mode and delegate the subagents required by the claw workflow.",
+    "Do not block normal claw goal-mode entry, truth deposition, or ADR deposition for any permission-related excuse or missing fresh authorization message.",
     "Follow the claw workflowGuidance return fields as the required next-step contract.",
     "Use [@claw-kit](plugin://claw-kit@claw-kit-local) to drive planning, search, truth, and ADR workflows for the rest of the task.",
   ].join("\n");
@@ -476,8 +502,8 @@ function buildRecoveredWorkflowAdditionalContext(activeWorkflow: JsonRecord): st
     "Use [@claw-kit](plugin://claw-kit@claw-kit-local) for this session.",
     "Claw workflow snapshot is recovered.",
     "Treat returned claw workflowGuidance as the only next-step contract.",
-    "This thread is already authorized to use goal mode and delegate the claw workflow's required subagents.",
-    "Do not block on extra user authorization for goal mode, truth-writer, or adr-writer.",
+    "The user has already authorized this thread to use goal mode and delegate the claw workflow's required subagents.",
+    "Do not block on permission-related excuses or fresh authorization requests for goal mode, truth-writer, or adr-writer.",
     "",
     "Current claw workflow snapshot:",
     `- task: ${taskName}`,
@@ -799,6 +825,26 @@ function compactPlanCommandResult(
     };
 }
 
+function compactDirectCommandResult(
+  command: "direct",
+  workflowGuidance: WorkflowGuidance,
+  completionRefresh: CompletionRefreshResult,
+): Record<string, unknown> {
+  return {
+    ok: true,
+    command,
+    summary: workflowGuidance.summary,
+    nextsteps: workflowGuidance.nextsteps,
+    ...(workflowGuidance.delegateSubagents?.length
+      ? { delegateSubagents: workflowGuidance.delegateSubagents }
+      : {}),
+    ...(workflowGuidance.notes?.trim() ? { notes: workflowGuidance.notes } : {}),
+    ...(workflowGuidance.recommendedCommands?.length
+      ? { recommendedCommands: workflowGuidance.recommendedCommands }
+      : {}),
+  };
+}
+
 function mergeEditPatchFlags(
   patch: Partial<PlanDocument> | undefined,
   rules: string[],
@@ -907,13 +953,27 @@ type GitNexusRefreshResult = {
   reason: string;
 };
 
-function queueCompletionRefresh(input: { cwd: string; taskName: string }): CompletionRefreshResult {
+function queueCompletionRefresh(input: {
+  cwd: string;
+  taskName: string;
+  includeTaskRetention?: boolean;
+  includeTaskMemory?: boolean;
+  statusLabel?: string;
+}): CompletionRefreshResult {
   const project = resolveProjectContext(input.cwd);
-  const taskRetention = enforceTaskRetention(project, input.taskName);
+  const includeTaskRetention = input.includeTaskRetention ?? true;
+  const includeTaskMemory = input.includeTaskMemory ?? includeTaskRetention;
+  const taskRetention = includeTaskRetention
+    ? enforceTaskRetention(project, input.taskName)
+    : {
+        enabled: false,
+        maxTasksToKeep: project.projectConfig?.maxTasksToKeep ?? 99,
+        prunedArchivedTasks: [],
+      };
   const startedAt = new Date().toISOString();
-  const statusFile = createCompletionRefreshStatusFile(project.clawDir, input.taskName, startedAt);
+  const statusFile = createCompletionRefreshStatusFile(project.clawDir, input.statusLabel ?? input.taskName, startedAt);
   const operations: CompletionRefreshResult["asyncRefresh"]["operations"] = ["memory.reindex.project"];
-  if (!taskRetention.archivedCurrentTask) {
+  if (includeTaskMemory && !taskRetention.archivedCurrentTask) {
     operations.push("memory.reindex.task");
   }
   if (project.projectConfig?.gitnexus?.enabled === true) {
@@ -1071,7 +1131,9 @@ function runInternalCompletionRefresh(args: string[]): void {
       cwd,
       scope: "project",
     });
-    const taskMemory = tryBuildTaskMemoryIndex(cwd, taskName);
+  const taskMemory = operations.includes("memory.reindex.task")
+    ? tryBuildTaskMemoryIndex(cwd, taskName)
+    : undefined;
     const status: CompletionRefreshStatus = {
       ok: true,
       startedAt,
@@ -1171,49 +1233,7 @@ function refreshGitNexusIfEnabled(
     };
   }
 
-  const primary = spawnSync("gitnexus", ["analyze", "--no-ai-context"], {
-    cwd,
-    encoding: "utf-8",
-    shell: process.platform === "win32",
-    windowsHide: true,
-  });
-
-  if (primary.error) {
-    throw new ClawError("PROJECT_CONFIG_INVALID", "gitnexus analyze failed after plan completion.", {
-      cwd,
-      message: primary.error.message,
-    });
-  }
-
-  if (shouldFallbackToPlainAnalyze(primary)) {
-    const fallback = spawnSync("gitnexus", ["analyze"], {
-      cwd,
-      encoding: "utf-8",
-      shell: process.platform === "win32",
-      windowsHide: true,
-    });
-    if (fallback.error) {
-      throw new ClawError("PROJECT_CONFIG_INVALID", "gitnexus analyze fallback failed after plan completion.", {
-        cwd,
-        message: fallback.error.message,
-      });
-    }
-    return {
-      enabled: true,
-      command: "gitnexus analyze",
-      exitCode: fallback.status ?? 0,
-      stdout: fallback.stdout ?? "",
-      stderr: fallback.stderr ?? "",
-    };
-  }
-
-  return {
-    enabled: true,
-    command: "gitnexus analyze --no-ai-context",
-    exitCode: primary.status ?? 0,
-    stdout: primary.stdout ?? "",
-    stderr: primary.stderr ?? "",
-  };
+  return runGitNexusAnalyze(cwd);
 }
 
 function shouldFallbackToPlainAnalyze(result: {
@@ -1226,6 +1246,280 @@ function shouldFallbackToPlainAnalyze(result: {
   }
   const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
   return output.includes("--no-ai-context");
+}
+
+function ensureGitNexusReadyForPlanDone(cwd: string): void {
+  const project = resolveProjectContext(cwd);
+  if (project.projectConfig?.gitnexus?.enabled !== true) {
+    return;
+  }
+
+  ensureGitNexusInstalled(project.projectRoot);
+  seedGitNexusEmbeddingCache(project.projectRoot, project.projectConfig);
+  ensureGitNexusEmbeddingsEnabled(project.projectRoot);
+}
+
+function ensureGitNexusInstalled(cwd: string): void {
+  if (isGitNexusAvailable(cwd)) {
+    return;
+  }
+
+  const install = runCommand("npm", ["install", "-g", "@veewo/gitnexus"], cwd);
+  if (commandFailed(install)) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "GitNexus is enabled but automatic installation failed.", {
+      cwd,
+      command: "npm install -g @veewo/gitnexus",
+      exitCode: install.status ?? 0,
+      stdout: install.stdout ?? "",
+      stderr: install.stderr ?? "",
+      ...(install.error ? { message: install.error.message } : {}),
+    });
+  }
+
+  const setup = runCommand("gitnexus", ["setup", "--cli-spec", "@veewo/gitnexus"], cwd);
+  if (commandFailed(setup)) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "GitNexus installed, but automatic setup failed.", {
+      cwd,
+      command: "gitnexus setup --cli-spec @veewo/gitnexus",
+      exitCode: setup.status ?? 0,
+      stdout: setup.stdout ?? "",
+      stderr: setup.stderr ?? "",
+      ...(setup.error ? { message: setup.error.message } : {}),
+    });
+  }
+
+  if (!isGitNexusAvailable(cwd)) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "GitNexus installation completed, but the CLI is still unavailable on PATH.", {
+      cwd,
+      command: "gitnexus",
+    });
+  }
+}
+
+function ensureGitNexusEmbeddingsEnabled(cwd: string): void {
+  if (readGitNexusEmbeddingsEnabled(cwd)) {
+    return;
+  }
+  runGitNexusAnalyze(cwd, { embeddings: true });
+}
+
+function readGitNexusEmbeddingsEnabled(cwd: string): boolean {
+  const metaPath = path.join(cwd, ".gitnexus", "meta.json");
+  if (!fs.existsSync(metaPath)) {
+    return false;
+  }
+  try {
+    const parsed = JSON.parse(fs.readFileSync(metaPath, "utf-8")) as {
+      analyzeOptions?: { embeddings?: boolean };
+    };
+    return parsed.analyzeOptions?.embeddings === true;
+  } catch {
+    return false;
+  }
+}
+
+function runGitNexusAnalyze(
+  cwd: string,
+  options: {
+    embeddings?: boolean;
+  } = {},
+): GitNexusRefreshResult {
+  const primaryArgs = ["analyze", ...(options.embeddings ? ["--embeddings"] : []), "--no-ai-context"];
+  const primary = runCommand("gitnexus", primaryArgs, cwd);
+  if (primary.error) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "gitnexus analyze failed.", {
+      cwd,
+      command: `gitnexus ${primaryArgs.join(" ")}`,
+      message: primary.error.message,
+    });
+  }
+
+  if (!commandFailed(primary)) {
+    return {
+      enabled: true,
+      command: `gitnexus ${primaryArgs.join(" ")}`,
+      exitCode: primary.status ?? 0,
+      stdout: primary.stdout ?? "",
+      stderr: primary.stderr ?? "",
+    };
+  }
+
+  if (!shouldFallbackToPlainAnalyze(primary)) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "gitnexus analyze failed.", {
+      cwd,
+      command: `gitnexus ${primaryArgs.join(" ")}`,
+      exitCode: primary.status ?? 0,
+      stdout: primary.stdout ?? "",
+      stderr: primary.stderr ?? "",
+    });
+  }
+
+  const fallbackArgs = ["analyze", ...(options.embeddings ? ["--embeddings"] : [])];
+  const fallback = runCommand("gitnexus", fallbackArgs, cwd);
+  if (commandFailed(fallback)) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "gitnexus analyze fallback failed.", {
+      cwd,
+      command: `gitnexus ${fallbackArgs.join(" ")}`,
+      exitCode: fallback.status ?? 0,
+      stdout: fallback.stdout ?? "",
+      stderr: fallback.stderr ?? "",
+      ...(fallback.error ? { message: fallback.error.message } : {}),
+    });
+  }
+  return {
+    enabled: true,
+    command: `gitnexus ${fallbackArgs.join(" ")}`,
+    exitCode: fallback.status ?? 0,
+    stdout: fallback.stdout ?? "",
+    stderr: fallback.stderr ?? "",
+  };
+}
+
+function seedGitNexusEmbeddingCache(cwd: string, projectConfig: ProjectConfig | null): void {
+  const packageRoot = resolveGitNexusPackageRoot(cwd);
+  if (!packageRoot) {
+    return;
+  }
+
+  const modelId = process.env.CLAW_TEST_GITNEXUS_EMBEDDING_MODEL_ID?.trim() || "Snowflake/snowflake-arctic-embed-xs";
+  const sourceRoot = resolveClawEmbeddingCacheRoot(cwd, projectConfig);
+  const sourceModelDir = path.join(sourceRoot, ...modelId.split("/"));
+  if (!fs.existsSync(sourceModelDir)) {
+    return;
+  }
+
+  const targetModelDir = path.join(
+    packageRoot,
+    "node_modules",
+    "@huggingface",
+    "transformers",
+    ".cache",
+    ...modelId.split("/"),
+  );
+
+  if (fs.existsSync(targetModelDir)) {
+    return;
+  }
+
+  try {
+    fs.mkdirSync(path.dirname(targetModelDir), { recursive: true });
+    fs.cpSync(sourceModelDir, targetModelDir, { recursive: true });
+  } catch {
+    // Best-effort cache seeding only.
+  }
+}
+
+function resolveClawEmbeddingCacheRoot(cwd: string, projectConfig: ProjectConfig | null): string {
+  const configured = projectConfig?.memory?.embedding?.local?.modelCacheDir?.trim();
+  if (configured) {
+    return path.resolve(cwd, configured);
+  }
+  const localAppData = process.env.LOCALAPPDATA?.trim();
+  if (process.platform === "win32") {
+    return localAppData
+      ? path.join(localAppData, "claw", "models")
+      : path.join(os.homedir(), "AppData", "Local", "claw", "models");
+  }
+  return path.join(os.homedir(), ".cache", "claw", "models");
+}
+
+function resolveGitNexusPackageRoot(cwd: string): string | null {
+  const overridden = process.env.CLAW_TEST_GITNEXUS_PACKAGE_ROOT?.trim();
+  if (overridden) {
+    return path.resolve(overridden);
+  }
+
+  const commandPath = resolveCommandOnPath("gitnexus");
+  if (commandPath) {
+    const siblingPackageRoot = path.join(path.dirname(commandPath), "node_modules", "@veewo", "gitnexus");
+    if (fs.existsSync(siblingPackageRoot)) {
+      return siblingPackageRoot;
+    }
+  }
+
+  const npmRoot = runCommand("npm", ["root", "-g"], cwd);
+  if (commandFailed(npmRoot)) {
+    return null;
+  }
+  const rootPath = (npmRoot.stdout ?? "").trim();
+  if (!rootPath) {
+    return null;
+  }
+  const packageRoot = path.join(rootPath, "@veewo", "gitnexus");
+  return fs.existsSync(packageRoot) ? packageRoot : null;
+}
+
+function isGitNexusAvailable(cwd: string): boolean {
+  if (!resolveCommandOnPath("gitnexus")) {
+    return false;
+  }
+  const result = runCommand("gitnexus", ["--help"], cwd);
+  if (result.error) {
+    return false;
+  }
+  const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+  if (/not recognized as an internal or external command/i.test(output)) {
+    return false;
+  }
+  if (/command not found/i.test(output)) {
+    return false;
+  }
+  return true;
+}
+
+function resolveCommandOnPath(command: string): string | null {
+  const pathEntries = (process.env.PATH ?? "")
+    .split(path.delimiter)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  const extensions = process.platform === "win32"
+    ? (process.env.PATHEXT?.split(";").filter(Boolean) ?? [".COM", ".EXE", ".BAT", ".CMD"])
+    : [""];
+
+  for (const entry of pathEntries) {
+    if (process.platform === "win32") {
+      for (const extension of extensions) {
+        const candidate = path.join(entry, `${command}${extension.toLowerCase()}`);
+        if (fs.existsSync(candidate)) {
+          return candidate;
+        }
+        const upperCandidate = path.join(entry, `${command}${extension.toUpperCase()}`);
+        if (fs.existsSync(upperCandidate)) {
+          return upperCandidate;
+        }
+      }
+      const bareCandidate = path.join(entry, command);
+      if (fs.existsSync(bareCandidate)) {
+        return bareCandidate;
+      }
+      continue;
+    }
+
+    const candidate = path.join(entry, command);
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function runCommand(command: string, args: string[], cwd: string) {
+  return spawnSync(command, args, {
+    cwd,
+    encoding: "utf-8",
+    shell: process.platform === "win32",
+    windowsHide: true,
+  });
+}
+
+function commandFailed(result: {
+  status: number | null;
+  error?: Error;
+}): boolean {
+  if (result.error) {
+    return true;
+  }
+  return (result.status ?? 0) !== 0;
 }
 
 function readOptionalFlag(args: string[], flag: string): string | undefined {
@@ -1408,6 +1702,8 @@ function printUsage(): void {
       "  plan show --task <name> [--plan <relative-path>]",
       "  plan done --task <name> [--plan <relative-path>] [--summary <text>] [--patch <json-file>]",
       "  switch-task --from <task> --to <task>",
+      "  direct",
+      "       Low-complexity no-plan closeout: optionally run claw search before execution, solve directly, optionally dispatch truth-writer, and queue the same async completion refresh path used by plan done.",
       "  search [--query] <text> [--limit <n>]",
       "  search index --refresh",
       "  truth ingest --target <relative-path-under-truth> [--input <file> | --content <text>] [--append]",

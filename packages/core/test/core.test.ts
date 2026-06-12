@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import {
+  buildDirectWorkflowGuidance,
   buildMemoryIndex,
   ensureProjectProtocol,
   ensureUtf8Bom,
@@ -181,7 +182,8 @@ test("plan write creates task-bound plan and updates activePlan", async () => {
   assert.ok(result.workflowGuidance.goalMode?.recommendedObjective?.includes("Ship the first plan"));
   assert.equal(result.workflowGuidance.goalMode?.setWhen, undefined);
   assert.ok(result.workflowGuidance.summary.includes("Fill the remaining plan fields"));
-  assert.ok(result.workflowGuidance.summary.includes("already authorized to use goal mode and delegated subagents"));
+  assert.ok(result.workflowGuidance.summary.includes("already authorized this @claw-kit thread to use goal mode and delegated subagents"));
+  assert.ok(result.workflowGuidance.summary.includes("permission concerns must not block the flow"));
   assert.ok(result.workflowGuidance.nextsteps.includes("1. Set Goal Mode."));
   assert.ok(result.workflowGuidance.nextsteps.includes("2. Fill the missing plan fields."));
   assert.ok(result.workflowGuidance.nextsteps.includes("3. Move into `process.active` once requirements are clear."));
@@ -2315,6 +2317,24 @@ test("workflow guidance uses external writer skills from project config", async 
     patch: { retrospective: { summary: "Done." } },
   });
   assert.equal(completed.workflowGuidance.delegateSubagents, undefined);
+});
+
+test("direct workflow guidance uses the configured truth writer contract", () => {
+  const guidance = buildDirectWorkflowGuidance({
+    projectConfig: {
+      externalTruthSkill: "external-truth-writer",
+    },
+  });
+
+  assert.equal(guidance.stage, "done");
+  assert.match(guidance.summary, /low-complexity|no formal plan/i);
+  assert.equal(guidance.delegateSubagents?.[0]?.name, "truth-writer");
+  assert.equal(guidance.delegateSubagents?.[0]?.skill, "external-truth-writer");
+  assert.equal(guidance.delegateSubagents?.[0]?.model, "gpt-5.4-mini");
+  assert.equal(guidance.delegateSubagents?.[0]?.fork_context, false);
+  assert.equal(guidance.nextsteps.some((step) => step.includes("truth-writer")), true);
+  assert.equal(guidance.nextsteps.some((step) => step.includes("completion refresh")), true);
+  assert.match(String(guidance.notes), /claw search.*before execution/i);
 });
 
 test("truth ingest writes only under .claw/truth", () => {

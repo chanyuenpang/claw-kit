@@ -56,6 +56,10 @@ Accepted working truth for local development on this machine.
 - Windows 下的 `claw plan done` 现在会先把 JSON 结果返回给调用方，再通过外部 launcher 异步启动 `internal-completion-refresh`；不再直接在同一个主 CLI 进程里用 `detached + unref` 后台化 refresh。
 - `packages/cli/src/cli.ts` 里的 completion refresh status file 现在会显式经历 `queued` / `running` / `finished` 生命周期；如果 refresh 失败，失败 payload 仍写回同一个 status file。
 - `packages/core/src/memory.ts` 现在给 `embedding-worker.js` 加了默认 30 分钟硬超时，并把 `timedOut` / `timeoutMs` 写进失败细节，避免异步 refresh 因 embedding 子进程无限挂起而长期占住 sqlite lock。
+- 当 `gitnexus.enabled = true` 时，`claw plan done` 会先在前台跑 GitNexus 预检；如果 CLI 不存在，会先尝试 `npm install -g @veewo/gitnexus`，再执行 `gitnexus setup --cli-spec @veewo/gitnexus`，安装或 setup 失败会直接阻断 completion refresh。
+- 如果 GitNexus 已安装但 embeddings 还没有持久化到 GitNexus 自己的 analyze 配置里，`claw plan done` 会前台补跑 `gitnexus analyze --embeddings`，并尽量从匹配的 claw 模型缓存预热 GitNexus transformers cache，避免第二次下载。
+- 背景 completion refresh 仍然保留现有的 `gitnexus analyze --no-ai-context` 路径；当已安装的 GitNexus CLI 不支持该参数时，会回退到普通 `gitnexus analyze`。
+- `packages/cli/test/cli.test.ts` 新增了 `plan done` 的三类回归覆盖：安装失败必须先于 completion refresh 暴露、embeddings 自愈和 cache seeding、以及 `--no-ai-context` fallback。
 - 在 NeonSpark 的真实重测里，最初失败点先从 DirectML gating 收敛到过大的 embedding 输入张量（`33737 x 512`，请求分配约 `26.5 GB`），随后又暴露出 stdout 巨型 vector JSON；最终通过临时文件回传结果把这条链路打通。
 - 该重测最后确认 `claw search index --refresh` 可以在大项目上成功完成，并产出 `indexedCount: 698` 与 `vectorIndex.chunkCount: 33737`。
 - 用户面文档现在把默认的 `100` 文件分片推进和 `cpu` rescue path 讲清楚了，但没有暴露新的 CLI 参数。

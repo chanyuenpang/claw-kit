@@ -8,6 +8,11 @@ Default closeout includes three actions:
 2. Update the locally installed copy
 3. `commit + push`
 
+Workflow closeout also includes two required checks after task execution:
+
+1. confirm the workflow actually dispatched `truth-writer` and `adr-writer` when the returned contract required them
+2. if this task has a git commit flow, inspect the repo for task-related doc artifacts and include them in the same commit instead of leaving them behind
+
 ## 1. Update version numbers
 
 Keep these files aligned for a release:
@@ -101,6 +106,8 @@ Before commit:
 2. `npm run check`
 3. `git status --short`
 4. verify local CLI and plugin cache if the release surface changed
+5. verify whether this task round required `truth-writer` or `adr-writer`, and confirm those delegations actually happened
+6. if this task round produced canonical truth, ADR, or other task-scoped docs, make sure they are either intentionally excluded or staged with the same commit
 
 Standard sequence:
 
@@ -115,6 +122,8 @@ Requirements:
 - Do not commit unverified changes.
 - If [`.claw/project.json`](/D:/Users/chany/Documents/claw-kit/.claw/project.json) or [`.claw/truth/`](/D:/Users/chany/Documents/claw-kit/.claw/truth) changed canonically, include them in the release commit.
 - If writer specialists updated truth or ADR during closeout, include those final canonical changes before `git push`.
+- If the workflow contract called for `truth-writer` or `adr-writer`, verify the dispatch happened before calling the task fully closed out.
+- If the task produced round-specific docs that still belong to the shipped change, do not leave them as residue outside the commit.
 
 ## Recommended order
 
@@ -126,9 +135,10 @@ Requirements:
 6. Update the locally installed CLI
 7. Update the local Codex plugin cache if needed
 8. Check canonical `.claw` changes
-9. Verify local CLI and plugin cache versions
-10. `git commit`
-11. `git push`
+9. Confirm writer delegation and remaining task doc artifacts
+10. Verify local CLI and plugin cache versions
+11. `git commit`
+12. `git push`
 
 ## Notes
 

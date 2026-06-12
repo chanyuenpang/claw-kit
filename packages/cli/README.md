@@ -24,7 +24,7 @@ claw plan write --title "My task" --goal "Define the first task"
 
 Codex startup workflow should rely on the session hook/startup recovery path instead of treating any extra manual recovery step as required after plan creation.
 
-`claw search` is project-scoped recall for project docs: `.claw` memory, truth, ADR, and declared markdown external docs. Call it before plan creation and before research-style investigation. It is meant to absorb a natural-language prompt or keyword query against project documentation, recover prior truth and ADR context, and narrow the space before later code-location work. It is not a code-search command.
+`claw search` is project-scoped recall for project docs: `.claw` memory, truth, ADR, and declared markdown external docs. For normal planned work, call it after `claw plan write` so recall can improve the already-bound task scope; for low-complexity direct work, call it before execution when project context matters; and for research-style investigation, call it before the broader investigation step. It is meant to absorb a natural-language prompt or keyword query against project documentation, recover prior truth and ADR context, and narrow the surface before later code-location work. It is not a code-search command.
 
 Configured `memory.externalDocPaths` only contribute `.md` files to this recall surface.
 

@@ -1,6 +1,6 @@
 {
   "name": "@veewo/claw-core",
-  "version": "0.1.35",
+  "version": "0.1.37",
   "type": "module",
   "description": "Core .claw harness primitives for project context, plan lifecycle, search, truth ingestion, and retention.",
   "homepage": "https://github.com/chanyuenpang/claw-kit",

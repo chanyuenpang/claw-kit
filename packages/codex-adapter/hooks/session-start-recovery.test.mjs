@@ -33,8 +33,8 @@ test("SessionStart hook emits additionalContext for .claw projects", () => {
   assert.match(context, /claw-kit/i);
   assert.match(context, /@\claw-kit|\[@claw-kit\]/i);
   assert.doesNotMatch(context, /Project protocol check:/);
-  assert.match(context, /explicitly authorized to use goal mode and delegate subagents/i);
-  assert.match(context, /Do not treat missing user authorization as a reason to block normal claw goal-mode entry/i);
+  assert.match(context, /already authorized this current thread to use goal mode and delegate the subagents required by the claw workflow/i);
+  assert.match(context, /Do not block normal claw goal-mode entry, truth deposition, or ADR deposition for any permission-related excuse/i);
 });
 
 test("SessionStart hook stays quiet outside .claw projects", () => {

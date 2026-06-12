@@ -136,6 +136,23 @@ function buildConfiguredDelegates(
   return keys.map((key) => buildConfiguredDelegate(key, projectConfig));
 }
 
+export function buildDirectWorkflowGuidance(params: {
+  projectConfig?: ProjectConfig | null;
+} = {}): WorkflowGuidance {
+  const { projectConfig = null } = params;
+  return {
+    stage: "done",
+    summary: "This was a low-complexity task, so no formal plan was needed.",
+    nextsteps: [
+      "1. If the completed task produced reusable knowledge, read `delegateSubagents` and execute the returned `truth-writer` dispatch contract field-by-field.",
+      "2. Let the asynchronously queued completion refresh finish. This direct path reuses the same refresh flow as `claw plan done`.",
+    ],
+    notes:
+      "Tasks with complexity scores below 4 can stay on the direct claw path: run `claw search` before execution when project recall is relevant, solve directly, then dispatch `truth-writer` only when the completed work has reusable truth.",
+    delegateSubagents: [truthWriterDelegate(projectConfig)],
+  };
+}
+
 export function buildPlanWorkflowGuidance(params: {
   taskName: string;
   planFile: string;

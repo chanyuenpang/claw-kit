@@ -125,24 +125,63 @@ function createGitnexusShim(mode: "fallback" | "primary"): { binDir: string; log
   const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-kit-gitnexus-bin-"));
   const logPath = path.join(binDir, "gitnexus.log");
   const cmdPath = path.join(binDir, "gitnexus.cmd");
-  const script =
-    mode === "fallback"
-      ? `@echo off
-setlocal
-echo %*>>"${logPath}"
-echo %* | findstr /C:"--no-ai-context" >nul
-if %errorlevel%==0 (
-  echo unknown option --no-ai-context 1>&2
-  exit /b 1
-)
-exit /b 0
-`
-      : `@echo off
-setlocal
-echo %*>>"${logPath}"
-exit /b 0
+  const jsPath = path.join(binDir, "gitnexus-shim.js");
+  const script = `
+const fs = require("node:fs");
+const path = require("node:path");
+
+const args = process.argv.slice(2);
+fs.appendFileSync(${JSON.stringify(logPath)}, \`\${args.join(" ")}\\n\`);
+
+if (args.includes("--no-ai-context") && ${JSON.stringify(mode)} === "fallback") {
+  process.stderr.write("unknown option --no-ai-context\\n");
+  process.exit(1);
+}
+
+if (args[0] === "analyze" && args.includes("--embeddings")) {
+  const metaPath = path.join(process.cwd(), ".gitnexus", "meta.json");
+  fs.mkdirSync(path.dirname(metaPath), { recursive: true });
+  let meta = {};
+  if (fs.existsSync(metaPath)) {
+    try {
+      meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+    } catch {
+      meta = {};
+    }
+  }
+  meta.analyzeOptions = {
+    ...(meta.analyzeOptions || {}),
+    embeddings: true,
+  };
+  fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2) + "\\n", "utf-8");
+}
 `;
-  fs.writeFileSync(cmdPath, script, "utf-8");
+  fs.writeFileSync(jsPath, script, "utf-8");
+  fs.writeFileSync(cmdPath, `@echo off\r\n"${process.execPath}" "${jsPath}" %*\r\n`, "utf-8");
+  return { binDir, logPath };
+}
+
+function createNpmShim(mode: "fail-install" | "pass"): { binDir: string; logPath: string } {
+  const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-kit-npm-bin-"));
+  const logPath = path.join(binDir, "npm.log");
+  const cmdPath = path.join(binDir, "npm.cmd");
+  const jsPath = path.join(binDir, "npm-shim.js");
+  const script = `
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+fs.appendFileSync(${JSON.stringify(logPath)}, \`\${args.join(" ")}\\n\`);
+if (args[0] === "install" && ${JSON.stringify(mode)} === "fail-install") {
+  process.stderr.write("install failed\\n");
+  process.exit(1);
+}
+if (args[0] === "root" && args[1] === "-g") {
+  process.stdout.write("C:/fake-global-root\\n");
+  process.exit(0);
+}
+process.exit(0);
+`;
+  fs.writeFileSync(jsPath, script, "utf-8");
+  fs.writeFileSync(cmdPath, `@echo off\r\n"${process.execPath}" "${jsPath}" %*\r\n`, "utf-8");
   return { binDir, logPath };
 }
 
@@ -342,6 +381,8 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   assert.equal(doneResult.planSummary, "1/1 e2e-task");
 
   const gitnexusLog = fs.readFileSync(shim.logPath, "utf-8");
+  assert.match(gitnexusLog, /analyze --embeddings --no-ai-context/);
+  assert.match(gitnexusLog, /analyze --embeddings\r?\n?$/m);
   assert.match(gitnexusLog, /analyze --no-ai-context/);
   assert.match(gitnexusLog, /analyze\r?\n?$/m);
 });
@@ -1027,6 +1068,185 @@ test("cli plan done skips gitnexus refresh when project config disables it", asy
   assert.match(String(gitnexus.reason), /not enabled/);
 });
 
+test("cli plan done fails before completion refresh when gitnexus auto-install fails", () => {
+  const root = createFixture("gitnexus-install-fails");
+  const npmShim = createNpmShim("fail-install");
+  const env = {
+    PATH: npmShim.binDir,
+    CLAW_EMBEDDING_MOCK: "1",
+  };
+
+  runClaw(["init", "--name", "Gitnexus Install Fail", "--gitnexus", "true"], root, env);
+  const contentPath = path.join(root, "plan.json");
+  fs.writeFileSync(
+    contentPath,
+    JSON.stringify(
+      {
+        tasks: [{ id: 1, title: "Done task", status: "done" }],
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  runClaw(["plan", "write", "--title", "install-task", "--goal", "Catch install failure"], root, env);
+  runClaw(["plan", "edit", "--task", "install-task", "--patch", contentPath], root, env);
+  runClaw(["plan", "edit", "--task", "install-task", "--plan-status", "process.active"], root, env);
+
+  const failure = runClawExpectFailure(
+    ["plan", "done", "--task", "install-task", "--summary", "Should fail before queuing refresh."],
+    root,
+    env,
+  );
+
+  const error = failure.error as JsonRecord;
+  assert.match(String(error.message), /automatic installation failed/i);
+  assert.equal(getLatestCompletionRefreshStatusFile(root), null);
+  const npmLog = fs.readFileSync(npmShim.logPath, "utf-8");
+  assert.match(npmLog, /install -g @veewo\/gitnexus/);
+});
+
+test("cli plan done auto-enables gitnexus embeddings and seeds the matching model cache", async () => {
+  const root = createFixture("gitnexus-embeddings-preflight");
+  const shim = createGitnexusShim("primary");
+  const fakePackageRoot = path.join(root, "fake-global", "@veewo", "gitnexus");
+  const targetCacheDir = path.join(
+    fakePackageRoot,
+    "node_modules",
+    "@huggingface",
+    "transformers",
+    ".cache",
+    "Snowflake",
+    "snowflake-arctic-embed-xs",
+  );
+  const sourceCacheDir = path.join(root, ".model-cache", "Snowflake", "snowflake-arctic-embed-xs");
+  fs.mkdirSync(path.join(fakePackageRoot, "node_modules", "@huggingface", "transformers"), { recursive: true });
+  fs.mkdirSync(sourceCacheDir, { recursive: true });
+  fs.writeFileSync(path.join(sourceCacheDir, "config.json"), "{\"model\":\"xs\"}\n", "utf-8");
+  fs.writeFileSync(path.join(sourceCacheDir, "tokenizer.json"), "{\"ok\":true}\n", "utf-8");
+
+  const env = {
+    PATH: `${shim.binDir}${path.delimiter}${process.env.PATH ?? ""}`,
+    CLAW_EMBEDDING_MOCK: "1",
+    CLAW_TEST_GITNEXUS_PACKAGE_ROOT: fakePackageRoot,
+  };
+
+  runClaw(["init", "--name", "Gitnexus Embeddings Preflight", "--gitnexus", "true"], root, env);
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify(
+      {
+        id: "gitnexus-embeddings-preflight",
+        name: "Gitnexus Embeddings Preflight",
+        maxTasksToKeep: 99,
+        externalTruthSkill: null,
+        externalAdrSkill: null,
+        contextPaths: [],
+        memory: {
+          externalDocPaths: [],
+          embedding: {
+            provider: "local",
+            model: "Snowflake/snowflake-arctic-embed-xs",
+            local: {
+              modelCacheDir: path.join(root, ".model-cache"),
+            },
+          },
+        },
+        gitnexus: {
+          enabled: true,
+        },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  const contentPath = path.join(root, "plan.json");
+  fs.writeFileSync(
+    contentPath,
+    JSON.stringify(
+      {
+        tasks: [{ id: 1, title: "Done task", status: "done" }],
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+
+  runClaw(["plan", "write", "--title", "preflight-task", "--goal", "Enable GitNexus embeddings"], root, env);
+  runClaw(["plan", "edit", "--task", "preflight-task", "--patch", contentPath], root, env);
+  runClaw(["plan", "edit", "--task", "preflight-task", "--plan-status", "process.active"], root, env);
+
+  const doneResult = runClaw(
+    ["plan", "done", "--task", "preflight-task", "--summary", "Enable embeddings before background refresh."],
+    root,
+    env,
+  );
+
+  assert.equal(doneResult.planSummary, "1/1 preflight-task");
+  const meta = JSON.parse(fs.readFileSync(path.join(root, ".gitnexus", "meta.json"), "utf-8")) as {
+    analyzeOptions?: { embeddings?: boolean };
+  };
+  assert.equal(meta.analyzeOptions?.embeddings, true);
+  assert.equal(fs.existsSync(path.join(targetCacheDir, "config.json")), true);
+
+  const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
+  const gitnexus = refreshStatus.gitnexus as JsonRecord;
+  assert.equal(gitnexus.command, "gitnexus analyze --no-ai-context");
+
+  const gitnexusLog = fs.readFileSync(shim.logPath, "utf-8");
+  assert.match(gitnexusLog, /analyze --embeddings --no-ai-context/);
+  assert.match(gitnexusLog, /analyze --no-ai-context/);
+});
+
+test("cli direct returns truth-writer guidance and queues completion refresh for low-complexity no-plan work", async () => {
+  const root = createFixture("direct-no-plan");
+  const env = {
+    CLAW_EMBEDDING_MOCK: "1",
+  };
+
+  runClaw(
+    [
+      "init",
+      "--name",
+      "Direct No Plan",
+      "--external-truth-skill",
+      "external-truth-writer",
+    ],
+    root,
+    env,
+  );
+  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "direct flow memory\n", "utf-8");
+
+  const result = runClaw(["direct"], root, env);
+
+  assert.equal(result.command, "direct");
+  assert.equal("planStatus" in result, false);
+  assert.equal("planSummary" in result, false);
+  assert.equal("completionRefresh" in result, false);
+  assert.match(String(result.summary), /low-complexity|no formal plan/i);
+  assert.match(String(result.notes), /claw search.*before execution/i);
+  assert.ok(Array.isArray(result.nextsteps));
+  assert.equal((result.nextsteps as string[]).some((step) => step.includes("truth-writer")), true);
+  assert.equal((result.nextsteps as string[]).some((step) => step.includes("completion refresh")), true);
+
+  const truthDelegate = ((result.delegateSubagents as JsonRecord[])[0] ?? {});
+  assert.equal(truthDelegate.name, "truth-writer");
+  assert.equal(truthDelegate.skill, "external-truth-writer");
+  assert.equal(truthDelegate.model, "gpt-5.4-mini");
+  assert.equal(truthDelegate.fork_context, false);
+  assert.equal(truthDelegate.waitForCompletion, false);
+  assert.equal(truthDelegate.preferReuseSameTypeInThread, true);
+  assert.equal(truthDelegate.closePolicy, "keep_open_for_reuse");
+
+  const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
+  const memory = refreshStatus.memory as JsonRecord;
+  assert.equal(refreshStatus.ok, true);
+  assert.ok(Number((memory.project as JsonRecord).indexedCount) >= 1);
+  assert.equal((memory.task as JsonRecord | undefined), undefined);
+});
+
 test("cli search rejects task-local scope flags", () => {
   const root = createFixture("search-project-only");
   runClaw(["init", "--name", "Search Project Only"], root);
@@ -1185,8 +1405,8 @@ test("cli hook emits SessionStart additionalContext inside .claw projects", () =
   const additionalContext = String(hookSpecificOutput.additionalContext);
   assert.match(additionalContext, /using-claw-kit/);
   assert.match(additionalContext, /Hook Project|hook-project/i);
-  assert.match(additionalContext, /explicitly authorized to use goal mode and delegate subagents/i);
-  assert.match(additionalContext, /Do not treat missing user authorization as a reason to block normal claw goal-mode entry/i);
+  assert.match(additionalContext, /already authorized this current thread to use goal mode and delegate the subagents required by the claw workflow/i);
+  assert.match(additionalContext, /Do not block normal claw goal-mode entry, truth deposition, or ADR deposition for any permission-related excuse/i);
 });
 
 test("plan write binds owner session key and SessionStart recovers active workflow snapshot", () => {
@@ -1256,8 +1476,8 @@ test("plan write binds owner session key and SessionStart recovers active workfl
   assert.match(additionalContext, /task: demo-task/);
   assert.match(additionalContext, /plan status: process\.active/);
   assert.match(additionalContext, /Treat returned claw workflowGuidance as the only next-step contract\./);
-  assert.match(additionalContext, /already authorized to use goal mode and delegate the claw workflow's required subagents/i);
-  assert.match(additionalContext, /Do not block on extra user authorization for goal mode, truth-writer, or adr-writer/i);
+  assert.match(additionalContext, /already authorized this thread to use goal mode and delegate the claw workflow's required subagents/i);
+  assert.match(additionalContext, /Do not block on permission-related excuses or fresh authorization requests for goal mode, truth-writer, or adr-writer/i);
   assert.match(additionalContext, /Current plan content:/);
   assert.match(additionalContext, /goal: Recover active workflow guidance and plan content/);
   assert.match(additionalContext, /#1 \[pending\] Resume recovered work/);
@@ -1283,4 +1503,5 @@ test("cli --help exits successfully", () => {
   const result = runClawRaw(["--help"], root);
   assert.equal(result.status, 0);
   assert.match(result.stderr, /Usage: bin\.js <command> \[options\]/);
+  assert.match(result.stderr, /direct/);
 });

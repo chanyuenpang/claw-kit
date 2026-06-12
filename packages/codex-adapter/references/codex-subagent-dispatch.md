@@ -27,8 +27,8 @@ For investigation specialists:
 - include only the narrow task bundle needed by that specialist
 
 This plugin assumes Codex multi-agent support is part of the normal Codex environment. Use `tool_search` to locate the current session's subagent tools. Do not silently replace delegated review or deposition with a casual inline pass and then claim the subagent workflow happened.
-Do not invent an extra "user must explicitly authorize delegation in this turn" gate. If the session is running `@claw-kit` and the workflow contract requires a delegated specialist, dispatch it unless the user explicitly forbids delegation.
-Treat the current `@claw-kit` thread as already authorized for required specialist delegation; lack of a fresh authorization message is not a valid blocker.
+Do not invent an extra "user must explicitly authorize delegation in this turn" gate. The user has already authorized the current `@claw-kit` thread to use required delegated specialists.
+Do not block the workflow for any permission-related excuse, lack of a fresh authorization message, or similar delegation pretext. If the user explicitly changes direction and forbids delegation, follow that new instruction instead.
 Do not document or implement inline fallback as a normal branch of the Codex adapter. Codex sessions should be treated as having real multi-agent capability.
 
 ## Dispatch order

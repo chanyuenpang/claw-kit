@@ -57,6 +57,7 @@
 - Codex-facing recall is `claw search --query "<topic>"`; this reads the indexed project context before planning or investigation, and it remains document recall rather than code search.
 - `claw memory ...` remains as legacy/debug and low-level index management, not the primary Codex workflow term.
 - `claw plan done` rebuilds project/task search indexes and only refreshes GitNexus when `gitnexus.enabled` is `true`.
+- `claw plan done` 的 GitNexus 预检与自愈链路仍然只认 `gitnexus.enabled`，不会再引入新的 claw-side project switch；同一条 gate 既控制是否刷新，也控制是否先做前台 install/setup / embeddings self-heal。
 - When the installed GitNexus CLI does not support `--no-ai-context`, `claw plan done` falls back to plain `gitnexus analyze`.
 - The hybrid project query path is adapted from the more mature `openclaw-dev` memory query design, but only the minimal `claw-kit` subset was adopted.
 - 这次 multi-term 中文 recall 的迁移同样参考 `openclaw-dev` 的 memory search 设计，但在 `claw-kit` 中只搬运了适合当前项目的 query planner + keyword recall + vector fusion 最小子集。

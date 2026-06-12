@@ -30,7 +30,7 @@
   "states": {
     "prepare.requirements.withGoal": {
       "stage": "requirements",
-      "summary": "Task scope is bound. Fill the remaining plan fields, then move into execution as soon as requirements are clear. This @claw-kit thread is already authorized to use goal mode and delegated subagents when the workflow requires them.",
+      "summary": "Task scope is bound. Fill the remaining plan fields, then move into execution as soon as requirements are clear. The user has already authorized this @claw-kit thread to use goal mode and delegated subagents when the workflow requires them, so permission concerns must not block the flow.",
       "nextsteps": [
         "1. Set Goal Mode.",
         "2. Fill the missing plan fields.",
@@ -48,7 +48,7 @@
     },
     "prepare.requirements.withoutGoal": {
       "stage": "requirements",
-      "summary": "Task scope is bound. Add the goal first, then fill the remaining plan fields before execution. This @claw-kit thread is already authorized to use goal mode and delegated subagents when the workflow requires them.",
+      "summary": "Task scope is bound. Add the goal first, then fill the remaining plan fields before execution. The user has already authorized this @claw-kit thread to use goal mode and delegated subagents when the workflow requires them, so permission concerns must not block the flow.",
       "nextsteps": [
         "1. Fill `goal.text`.",
         "2. Set Goal Mode.",

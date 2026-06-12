@@ -6,11 +6,11 @@ Accepted
 
 ## Context
 
-Codex 适配器会把完成期知识沉淀委派给 specialist。对 `truth-writer` 和 `adr-writer` 而言，每次都新建并在派发后立即关闭 worker，会带来不必要的上下文抖动，也削弱线程内同类沉淀工作的连续性。
+Codex 适配器会把完成期知识沉淀委派给 specialist。对 `truth-writer` 和 `adr-writer` 而言，每次都新建并在派发后立即关闭 worker，会带来不必要的上下文抖动，也削弱线程内同类沉淀工作的连续性。能复用现有合适的同类型 subagent 时，应优先复用。
 
 ## Decision
 
-优先在当前 Codex 线程内复用已有的同类型 specialist：
+优先在当前 Codex 线程内复用已有的同类型 specialist，而不是先新建：
 
 - `truth-writer` 和 `adr-writer` 在角色仍然匹配时优先复用
 - 只有在线程内没有合适 specialist，或现有 specialist 已明显偏离角色时，才新建实例

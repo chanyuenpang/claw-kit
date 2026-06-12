@@ -9,3 +9,4 @@
 - 如果 `.claw/project.json` 中 `gitnexus.enabled = true`，且问题涉及代码关系或当前实现行为，`researcher` 应先发现并使用 GitNexus 相关能力；不要假设 GitNexus tool 已经可见。
 - `plan-review` 不再是单独的 workflow gate；如存在 review specialist，也不应再把它建模成 planning 外的一道必经关卡。
 - 复用不会放宽 bundle contract：`truth-writer` 接收 completed subtask report，`adr-writer` 接收 completed `plan.json`，`researcher` 接收窄调查 brief 与具体目标。
+- `Truth & ADR` 的精简工作流摘要现在明确要求：writer dispatch 优先复用当前线程里同类型且仍然合适的 specialist；只有没有可复用对象，或现有 worker 已明显偏离角色时，才新建 `truth-writer` / `adr-writer`。相关主路径见 `packages/codex-adapter/skills/using-claw-kit/SKILL.md`。

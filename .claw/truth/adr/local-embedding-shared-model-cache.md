@@ -27,6 +27,7 @@ This work also confirmed several boundaries:
 - `project.json` should primarily express the embedding configuration in use, not the default model file location
 - explicit `memory.embedding.local.modelCacheDir` must remain supported
 - if either the explicit local cache or the global cache already contains the target model, the runtime should reuse it instead of downloading again
+- When GitNexus needs the same model, `claw` may best-effort seed the GitNexus transformers cache from a matching existing claw model cache to avoid duplicate downloads, but that is only a cache-priming shortcut and does not change shared-cache semantics.
 
 这次 `tiny-world` 的修复把一个更窄但更重要的故障类也固定下来：当共享全局模型缓存里的 `Snowflake/snowflake-arctic-embed-m-v2.0` 已经损坏、缺失或不完整时，正确的修复路径不是回退到项目本地 `.claw/models` 作为默认补救方案，而是清理损坏的全局模型目录，重新恢复共享缓存，然后用真实的 search / index refresh 重新验证模型加载与检索链路。
 
@@ -70,6 +71,7 @@ Recommended platform-global cache roots:
 - This change only affects model artifact caching. It does not move sqlite recall data, vector indexes, or remote embedding behavior.
 - For this failure class, repair flows should clear and restore the shared global model directory first, then revalidate with real search / index refresh; project-local fallback is not the default repair path.
 - Project config rewrites are not the canonical remediation for corrupted shared model cache state.
+- Cache priming from an existing claw model cache is opportunistic only; it does not create a new shared-cache contract or alter the user-level shared default.
 
 ## Related Code
 

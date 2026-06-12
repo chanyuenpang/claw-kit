@@ -2,7 +2,29 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
-## [0.1.34] - 2026-06-12
+## [0.1.37] - 2026-06-12
+
+### Changed
+
+- planning now uses an explicit complexity scoring heuristic, including a documented `score < 4` direct path that skips formal planning but still allows a pre-execution `claw search` recall step when project context matters
+- Codex workflow entry now tells agents to use `claw direct` for low-complexity rounds, optionally run `claw search` before execution on that path, and only dispatch `truth-writer` when reusable truth was produced
+- the CLI now exposes `claw direct`, which returns a compact low-complexity closeout contract with a `truth-writer` delegate and reuses the same asynchronous completion refresh path as `claw plan done`
+
+### Fixed
+
+- core and CLI regression coverage now lock the direct no-plan workflow contract, including asynchronous refresh and local help surface coverage
+
+## [0.1.36] - 2026-06-12
+
+### Changed
+
+- `claw plan done` now runs a foreground GitNexus preflight when `gitnexus.enabled = true`, auto-installs and sets up GitNexus when needed, self-heals persisted `embeddings` analyze mode, and best-effort seeds the matching transformers cache before background refresh continues
+- Codex workflow and closeout guidance now explicitly require root-plan closeout checks for writer delegation and task-related doc residue, and the workflow adds a compact truth/ADR contract for delegated writers, main-agent truth curation, and required ADR closeout
+- Codex-side non-`.claw` project bootstrap now has a dedicated `init` skill that treats an explicit `claw context` call as the visible initialization action
+
+### Fixed
+
+- CLI and core regression coverage now lock the stricter permission wording, GitNexus preflight/install failure path, embeddings self-heal path, and closeout-oriented workflow guidance behavior to the current contract
 
 ## [0.1.35] - 2026-06-12
 

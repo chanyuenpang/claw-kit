@@ -45,7 +45,7 @@ The main agent provides only the minimum bundle needed, such as:
 1. Use `claw search --query "<topic>"` to recover relevant `.claw` context first.
 2. For truth lookup, use `claw search` against `.claw/truth/` facts.
 3. For architecture history, use `claw search` against ADR content under `.claw/truth/adr/`.
-4. Treat `claw search` as project-document recall, not code search; it is especially useful before broad research or before plan creation.
+4. Treat `claw search` as project-document recall, not code search; it is especially useful before broad research, after `claw plan write` on planned work, or before execution on low-complexity direct work when prior project context matters.
 5. Read `.claw/project.json`.
 6. Treat `gitnexus.enabled = true` as a direct instruction to use `tool_search` to locate GitNexus capabilities and use them for code investigation.
 7. Use local code inspection only for the exact files or paths needed to answer the question.

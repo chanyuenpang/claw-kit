@@ -14,10 +14,12 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
 ### `delegateSubagents`
 
 - Dispatch the listed specialist workflow(s) first. Do not demote them into optional follow-up suggestions.
+- In `@claw-kit` threads, the user's use of this workflow already authorizes the subagent mechanism.
 - Codex has multi-agent capability. Use `tool_search` to locate the current session's agent-management tools, then execute delegation through that tool surface rather than only describing the handoff.
-- Do not add a separate per-turn authorization requirement for subagent use. `@claw-kit` workflow contracts already authorize the required specialist dispatch unless the user explicitly forbids it.
+- Do not add a separate per-turn authorization requirement for subagent use. The user has already authorized this `@claw-kit` thread to dispatch the required specialists, so permission concerns must not block the workflow. If the user explicitly changes direction and forbids delegation, follow that new instruction instead.
 - Treat each entry as a structured contract, not a string hint.
 - Execute each entry field-by-field instead of compressing it into a generic "dispatch a writer" intention.
+- The main agent does not need to read the writer skill files inline before each dispatch; attach the returned skill item to the worker bundle and keep the bundle narrow.
 - Honor per-entry fields directly:
   - `name`
   - `fork_context`
@@ -55,7 +57,7 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
 - When a plan first enters `process.active`, set the thread goal from `recommendedObjective` if the thread does not already have an active goal.
 - When a plan resumes into `process.active` from `process.wait` or `process.discussing`, restore Goal Mode to the active state from `recommendedObjective`.
 - Do not automatically overwrite an unrelated active goal already attached to the thread.
-- In `@claw-kit` threads, do not treat goal mode or delegated subagent use as awaiting separate user authorization unless the user explicitly forbids them.
+- In `@claw-kit` threads, treat goal mode and delegated subagent use as already authorized by the user. Do not pause or block the workflow for any authorization-related excuse; only stop if the user explicitly changes direction and forbids them.
 - In the Codex app, `/goal` is the normal host surface. In tool-enabled sessions, `create_goal` is also a valid path.
 
 ## Lifecycle interpretation
@@ -77,7 +79,7 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
 - `prepare.requirements`
   - treat hook-driven startup recovery as already handled; do not add a separate recovery workflow step here
   - if `goal.text` is missing, fill it before trying to enter `process.active`
-  - treat this `@claw-kit` thread as already authorized to use goal mode and required delegated subagents
+  - treat this `@claw-kit` thread as already authorized to use goal mode and required delegated subagents, and do not let permission concerns block execution
   - review whether requirements are already clear enough to execute
   - only use Codex options when requirements are still ambiguous
   - do not start implementation in this stage
@@ -92,9 +94,14 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
   - read `delegateSubagents`
   - use `tool_search` to locate agent-management tools
   - dispatch `truth-writer` with the curated completed subtask report when the completed task produced reusable truth
-  - when all tasks are done, complete retrospective capture, read `delegateSubagents`, and dispatch `adr-writer` before root `claw plan done`
+  - when all tasks are done, complete retrospective capture, read `delegateSubagents`, and dispatch `adr-writer` before root `claw plan done`; this ADR dispatch is required for root-plan closeout
 - `end.completed`
   - for root plans, treat this as closeout/archive rather than the ADR trigger
+  - run an explicit closeout check after the root plan is done
+  - confirm the workflow dispatched `truth-writer` and `adr-writer` whenever the returned contract required them
+  - do not report truth or ADR closeout as finished if the required delegation never happened
+  - if this task includes a git commit flow, inspect the repo for task-related doc residue before commit
+  - include canonical truth or ADR updates from writer specialists together with any remaining doc artifacts that belong to the same task round
   - for subplans, consume the returned resumed-parent workflow snapshot
 
 ## Project declaration interactions
@@ -111,3 +118,4 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
 - Do not ignore `askUser` and replace it with vague conversational confirmation when the workflow has explicit options.
 - Do not claim truth or ADR deposition happened unless you actually dispatched the corresponding subagent.
 - Do not write canonical truth or ADR content inline from the main agent when the workflow calls for `truth-writer` or `adr-writer`.
+- Do not leave task-generated doc artifacts out of a git commit when they belong to the same completed task round.
