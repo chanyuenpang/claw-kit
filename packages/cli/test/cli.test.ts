@@ -340,7 +340,11 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   assert.deepEqual(taskDone.nextsteps, [
     "1. Clear thread progress.",
     "2. Read `delegateSubagents`, curate the valuable findings from the completed work into a completed subtask report, then execute the returned `truth-writer` dispatch contract field-by-field. Do not treat it as a suggestion.",
-    "3. Write the retrospective summary, then read `delegateSubagents` again and execute the returned `adr-writer` dispatch contract field-by-field with the completed `plan.json`.",
+    "3. Update both `retrospective` and `keyDecisions`, then read `delegateSubagents` again and execute the returned `adr-writer` dispatch contract field-by-field with the completed `plan.json`.",
+  ]);
+  assert.deepEqual(taskDone.recommendedCommands, [
+    "claw plan edit --task e2e-task --patch <completed-plan.json>",
+    "claw plan done --task e2e-task --summary \"<retrospective summary>\"",
   ]);
   assert.equal(
     taskDone.notes,

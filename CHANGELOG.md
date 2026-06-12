@@ -2,6 +2,16 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.1.38] - 2026-06-12
+
+### Changed
+
+- `process.allTasksDone` guidance now tells agents to update both `retrospective` and `keyDecisions` before ADR closeout, and surfaces a patch-oriented follow-up command for completing the final plan state
+
+### Fixed
+
+- Codex workflow-skill guidance once again preserves the guarded goal-mode contract, the deferred subagent-tool discovery fallback, and the closeout checklist formatting needed for reliable `@claw-kit` execution
+
 ## [0.1.37] - 2026-06-12
 
 ### Changed
@@ -9,6 +19,7 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 - planning now uses an explicit complexity scoring heuristic, including a documented `score < 4` direct path that skips formal planning but still allows a pre-execution `claw search` recall step when project context matters
 - Codex workflow entry now tells agents to use `claw direct` for low-complexity rounds, optionally run `claw search` before execution on that path, and only dispatch `truth-writer` when reusable truth was produced
 - the CLI now exposes `claw direct`, which returns a compact low-complexity closeout contract with a `truth-writer` delegate and reuses the same asynchronous completion refresh path as `claw plan done`
+- `process.allTasksDone` guidance now tells agents to update both `retrospective` and `keyDecisions` before ADR closeout, instead of only writing the retrospective summary
 
 ### Fixed
 

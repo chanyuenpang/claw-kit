@@ -29,6 +29,14 @@
 
 release target 之所以从 registry 上的 `0.1.36` 前推到 `0.1.37`，是因为本地 workspace 已经包含发布就绪但尚未发布的复杂度评分 / `claw direct` 工作流变更。
 
+0.1.38 的稳定发布结果是：
+
+- `@veewo/claw-core@0.1.38` 已成功发布，`npm view @veewo/claw-core version --registry=https://registry.npmjs.org` 返回 `0.1.38`。
+- `@veewo/claw@0.1.38` 已成功发布，`npm view @veewo/claw version --registry=https://registry.npmjs.org` 返回 `0.1.38`。
+- 本机全局 CLI 已用 `npm install -g @veewo/claw@0.1.38` 刷新，`npm list -g @veewo/claw --depth=0` 现在显示 `0.1.38`，`(Get-Command claw).Source` 仍解析到 `C:\Users\chany\AppData\Roaming\npm\claw.ps1`，`claw --help` 在刷新后成功。
+- 本地 Codex plugin cache 已刷新到 `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.38+codex.20260612190753`，并与 `packages/codex-adapter/.codex-plugin/plugin.json` 的版本一致。
+- 当前 workspace/package 版本线已经推进到 `0.1.38`，并且这次发布前的 `npm test` 与 `npm run check` 都在 `2026-06-12` 通过。
+
 ## 相关代码
 
 - `package.json`

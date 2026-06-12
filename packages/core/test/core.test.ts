@@ -629,7 +629,11 @@ test("plan edit can move from requirements to process.active without a separate 
   assert.deepEqual(result.workflowGuidance.nextsteps, [
     "1. Clear thread progress.",
     "2. Read `delegateSubagents`, curate the valuable findings from the completed work into a completed subtask report, then execute the returned `truth-writer` dispatch contract field-by-field. Do not treat it as a suggestion.",
-    "3. Write the retrospective summary, then read `delegateSubagents` again and execute the returned `adr-writer` dispatch contract field-by-field with the completed `plan.json`.",
+    "3. Update both `retrospective` and `keyDecisions`, then read `delegateSubagents` again and execute the returned `adr-writer` dispatch contract field-by-field with the completed `plan.json`.",
+  ]);
+  assert.deepEqual(result.workflowGuidance.recommendedCommands, [
+    "claw plan edit --task demo-task --patch <completed-plan.json>",
+    "claw plan done --task demo-task --summary \"<retrospective summary>\"",
   ]);
 });
 

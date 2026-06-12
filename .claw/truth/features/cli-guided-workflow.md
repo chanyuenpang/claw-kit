@@ -14,6 +14,7 @@
 - `process.allTasksDone` 是 root plan 的 pre-closeout contract：当所有 task 都完成时，`workflowGuidance` 会先要求清理 thread progress、完成 retrospective，然后把 `adr-writer` 作为下一步，再由 root `claw plan done` 负责最终归档和结束状态。
 - 在 Codex adapter 侧，`claw plan done` 之后仍应执行显式 root-plan closeout；只有核验 `workflowGuidance.delegateSubagents` 要求的 `truth-writer` / `adr-writer` 确实已经发生，才能把这一轮宣布为 complete。
 - 如果这一轮带有 git commit flow，closeout 还要检查仓库里的 task-related doc residue，把 canonical truth / ADR 更新和同轮产出的其他 shipped docs 一并收口。
+- `process.allTasksDone` 在 0.1.38 之后明确要求在 ADR closeout 前先更新 `retrospective` 与 `keyDecisions`，`workflowGuidance` 也会提供面向补丁收口的 follow-up 命令来推进最终 plan state。
 - plan 命令不再返回 render blocks，不再提供 `claw plan app` / `claw plan render`。
 - 当所有当前任务完成时，CLI 仍先把可复用知识交给 `truth-writer`，再走 retrospective 与 `claw plan done`；计划完成后再把 `plan.json` 交给 `adr-writer`。
 
