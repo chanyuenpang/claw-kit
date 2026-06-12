@@ -2,48 +2,85 @@
 
 ## 状态
 
-这是 `publish-claw-npm-package` 之后、以及 0.1.37 release closeout 完成后沉淀下来的稳定发布事实。
+这是 `publish-claw-npm-package` 完成后沉淀下来的稳定发布事实。`0.1.34` 这一轮继续沿用同一条双包发布链，只是把版本线推进到了 `0.1.34`，并把这轮围绕 workflow guidance 的 paused / resume 语义一起沉淀进 canonical truth。
 
 ## 结论
 
-`claw-kit` 仍然有两层可发布 npm 包：
+`claw-kit` 当前有两层可发布 npm 包：
 
 - `@veewo/claw-core` 提供核心 `.claw` harness 语义。
 - `@veewo/claw` 提供可发布的 CLI 入口，并依赖 `@veewo/claw-core`。
 
-0.1.37 的稳定发布结果是：
+当前版本线已经同步到 `0.1.34`：
 
-- `@veewo/claw-core@0.1.37` 已成功发布，`npm view @veewo/claw-core version --registry=https://registry.npmjs.org` 返回 `0.1.37`。
-- `@veewo/claw@0.1.37` 已成功发布，`npm view @veewo/claw version --registry=https://registry.npmjs.org` 返回 `0.1.37`，`latest` dist-tag 也解析到 `0.1.37`。
-- 本机全局 CLI 已用 `npm install -g @veewo/claw@0.1.37` 刷新，`npm list -g @veewo/claw --depth=0` 现在显示 `@veewo/claw@0.1.37`。
-- `(Get-Command claw).Source` 仍解析到 `C:\Users\chany\AppData\Roaming\npm\claw.ps1`，`claw --help` 在刷新后成功。
-- 本地 Codex plugin cache 已刷新到 `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.37+codex.20260612174327`，并与 `packages/codex-adapter/.codex-plugin/plugin.json` 的版本一致。
+- 这次 closeout 不是重发旧的 `0.1.33` 包，而是在合并了已经领先于已发布 `0.1.33` artifact 的代码之后，把整条 workspace/package 版本线从 `0.1.33` 统一推进到 `0.1.34`。
 
-当前 workspace/package 版本线已经推进到 `0.1.37`，用于对齐 release target：
+- 根 `package.json` 版本是 `0.1.34`。
+- `packages/core/package.json` 版本是 `0.1.34`。
+- `packages/cli/package.json` 版本是 `0.1.34`。
+- `packages/codex-adapter/package.json` 版本是 `0.1.34`。
+- `packages/openclaw-adapter/package.json` 版本是 `0.1.34`。
+- `package-lock.json` 也已经把 workspace 包版本线同步到 `0.1.34`，包括根包、`@veewo/claw-core`、`@veewo/claw`、`@claw-kit/openclaw-adapter` 和 `@claw-kit/codex-adapter`。
+- `@veewo/claw-core@0.1.34` 与 `@veewo/claw@0.1.34` 都已经成功发布到 npm registry。
+- 通过 `npm view @veewo/claw-core version --registry=https://registry.npmjs.org` 与 `npm view @veewo/claw version --registry=https://registry.npmjs.org` 校验后，两个包当前都解析到 `0.1.34`。
+- 这轮 release 的 durable 语义重点是 workflow guidance 的 `process.wait` / `process.discussing` / resumed active 处理：暂停态要暂停 Goal Mode，恢复时通过 `process.active` 重新进入执行，并由 `process.resumedActive` / `setWhen = on_resume_process_active` 继续接管。
+- `packages/codex-adapter/.codex-plugin/plugin.json` 和本地 Codex plugin cache 也同步到了 `0.1.34+codex.20260612023130`，缓存目录是 `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.34+codex.20260612023130`，并且与仓库 manifest 保持一致。
+- 最终 release commit 已推送到 `origin/main`，提交号是 `5044ffe`。
 
-- 根 `package.json`、`package-lock.json`、`packages/core/package.json`、`packages/cli/package.json`、`packages/openclaw-adapter/package.json` 和 `packages/codex-adapter/package.json` 都对齐到 `0.1.37`。
-- `packages/codex-adapter/.codex-plugin/plugin.json` 的插件版本是 `0.1.37+codex.20260612174327`。
-- `CHANGELOG.md` 追加了 `0.1.37` 条目，说明 planning 现在有复杂度评分、低复杂度 direct path，以及 `claw direct` 的异步 closeout 合同。
-- `npm install -g @veewo/claw@0.1.37` 在版本更新后成功运行，说明 lockfile 与 workspace 版本仍然一致。
-- 这次 0.1.37 closeout 还通过了 `2026-06-12` 的 `npm test` 与 `npm run check`，并把 release commit `ff2b175` 推送到了 `origin/main`。
+当前发布链也形成了一条稳定的 release target 判定规则：
 
-release target 之所以从 registry 上的 `0.1.36` 前推到 `0.1.37`，是因为本地 workspace 已经包含发布就绪但尚未发布的复杂度评分 / `claw direct` 工作流变更。
+- 如果合并后的 `HEAD` 已经领先于 npm registry 里的已发布 artifact，但 workspace 包版本号仍停留在旧值，则下一次发布必须先把整条 workspace/package 版本线整体推进到下一个补丁版本，再进入发布流程。
+- 这次合并后的代码面已经超过已发布 `0.1.33` artifact，而根包、core、cli、Codex adapter、OpenClaw adapter 以及 lockfile 仍都写着 `0.1.33`，因此正确目标版本是 `0.1.34`，而不是重发 `0.1.33`。
 
-0.1.38 的稳定发布结果是：
+发布前的本地验证闸门保持同一条稳定路径：
 
-- `@veewo/claw-core@0.1.38` 已成功发布，`npm view @veewo/claw-core version --registry=https://registry.npmjs.org` 返回 `0.1.38`。
-- `@veewo/claw@0.1.38` 已成功发布，`npm view @veewo/claw version --registry=https://registry.npmjs.org` 返回 `0.1.38`。
-- 本机全局 CLI 已用 `npm install -g @veewo/claw@0.1.38` 刷新，`npm list -g @veewo/claw --depth=0` 现在显示 `0.1.38`，`(Get-Command claw).Source` 仍解析到 `C:\Users\chany\AppData\Roaming\npm\claw.ps1`，`claw --help` 在刷新后成功。
-- 本地 Codex plugin cache 已刷新到 `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.38+codex.20260612190753`，并与 `packages/codex-adapter/.codex-plugin/plugin.json` 的版本一致。
-- 当前 workspace/package 版本线已经推进到 `0.1.38`，并且这次发布前的 `npm test` 与 `npm run check` 都在 `2026-06-12` 通过。
+- `npm test` 必须通过。
+- `npm run check` 必须通过。
+- `npm whoami` 必须返回发布账号 `chanyuenpang`。
+- `npm pack --dry-run` 需要分别在 `packages/core` 和 `packages/cli` 产出 `veewo-claw-core-0.1.34.tgz` 与 `veewo-claw-0.1.34.tgz`，用来证明双包当前都能被正确打包。
+- 这次 release 的实际 preflight 已经跑通 `npm install`、`npm test`、`npm run check`，以及 `packages/core` / `packages/cli` 的 `npm pack --dry-run`。
+
+正式发布后的安装与命令解析验证也已经形成稳定事实：
+
+- 验证是在临时目录里自举 npm CLI 后完成的，不依赖宿主环境预先把 `npm` 放进 `PATH`。
+- 验证路径是：临时安装刚发布的 `@veewo/claw` 到独立 prefix，再在全新的 smoke project 中运行 `claw init`。
+- 发布完成后还需要把本地 CLI 刷新到刚发布的新版本，并确认命令解析继续指向真实全局 shim；当前稳定解析路径是 `C:\nvm4w\nodejs\claw.ps1`。
+- 这条安装验证已经成功，说明已发布的 CLI 包可以在干净环境里完成初始化；当前已验证版本是 `@veewo/claw@0.1.34`。
+
+当前这条发布链还保留一个稳定环境约束：
+
+- 本次受管环境缺少可直接调用的 `npm` CLI `PATH` 入口。
+- 即便如此，真实发布仍可通过 registry API、bundled node，以及基于 tar 的打包流程完成，不需要把发布能力绑定到宿主机上现成的 `npm` 命令。
+
+本地安装和缓存刷新仍然遵循同一条稳定路径：
+
+- `scripts/install-cli.ps1` 是远程 Windows 机器的推荐安装入口，会清理旧的全局 `@veewo/claw` 链接并重新安装当前版本。
+- 本地 Codex 插件缓存版本线需要和 `packages/codex-adapter/.codex-plugin/plugin.json` 保持一致；当前目标版本是 `0.1.34+codex.20260612023130`。
+- 同步本地 Codex 插件缓存时，当前 canonical 目标目录是 `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.34+codex.20260612023130`；同步后还要再次核对缓存目录里的 manifest 与仓库 `packages/codex-adapter/.codex-plugin/plugin.json` 完全一致。
+- 同步时仍应复制 `.codex-plugin`、`hooks`、`references`、`scripts`、`skills` 和 `package.json`，避免缓存里的版本、提示词和钩子滞后。
 
 ## 相关代码
 
-- `package.json`
-- `package-lock.json`
-- `packages/core/package.json`
-- `packages/cli/package.json`
-- `packages/openclaw-adapter/package.json`
-- `packages/codex-adapter/package.json`
-- `packages/codex-adapter/.codex-plugin/plugin.json`
-- `CHANGELOG.md`
+- [package.json](D:/Users/chany/Documents/claw-kit/package.json)
+- [packages/core/package.json](D:/Users/chany/Documents/claw-kit/packages/core/package.json)
+- [packages/cli/package.json](D:/Users/chany/Documents/claw-kit/packages/cli/package.json)
+- [packages/codex-adapter/package.json](D:/Users/chany/Documents/claw-kit/packages/codex-adapter/package.json)
+- [packages/openclaw-adapter/package.json](D:/Users/chany/Documents/claw-kit/packages/openclaw-adapter/package.json)
+- [packages/codex-adapter/.codex-plugin/plugin.json](D:/Users/chany/Documents/claw-kit/packages/codex-adapter/.codex-plugin/plugin.json)
+- [packages/codex-adapter/hooks/hooks.json](D:/Users/chany/Documents/claw-kit/packages/codex-adapter/hooks/hooks.json)
+- [packages/core/src/workflow-guidance.ts](D:/Users/chany/Documents/claw-kit/packages/core/src/workflow-guidance.ts)
+- [packages/core/src/workflow-guidance.config.json](D:/Users/chany/Documents/claw-kit/packages/core/src/workflow-guidance.config.json)
+- [scripts/install-cli.ps1](D:/Users/chany/Documents/claw-kit/scripts/install-cli.ps1)
+- [packages/core/README.md](D:/Users/chany/Documents/claw-kit/packages/core/README.md)
+- [packages/cli/README.md](D:/Users/chany/Documents/claw-kit/packages/cli/README.md)
+- [README.md](D:/Users/chany/Documents/claw-kit/README.md)
+
+## 验证标准
+
+- `npm test`
+- `npm run check`
+- `npm whoami`
+- `npm pack --dry-run` in `packages/core`
+- `npm pack --dry-run` in `packages/cli`
+- `npm view @veewo/claw-core version`
+- `npm view @veewo/claw version`
