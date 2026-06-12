@@ -8,6 +8,9 @@ import { fileURLToPath } from "node:url";
 
 type JsonRecord = Record<string, unknown>;
 const thisDir = path.dirname(fileURLToPath(import.meta.url));
+const cliPackageVersion = String(
+  (JSON.parse(fs.readFileSync(path.resolve(thisDir, "..", "package.json"), "utf-8")) as { version: string }).version,
+);
 
 function createFixture(name: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), `claw-kit-cli-${name}-`));
@@ -1508,4 +1511,20 @@ test("cli --help exits successfully", () => {
   assert.equal(result.status, 0);
   assert.match(result.stderr, /Usage: bin\.js <command> \[options\]/);
   assert.match(result.stderr, /direct/);
+});
+
+test("cli --version exits successfully", () => {
+  const root = createFixture("version-long");
+  const result = runClawRaw(["--version"], root);
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout.trim(), cliPackageVersion);
+  assert.equal(result.stderr.trim(), "");
+});
+
+test("cli -v exits successfully", () => {
+  const root = createFixture("version-short");
+  const result = runClawRaw(["-v"], root);
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout.trim(), cliPackageVersion);
+  assert.equal(result.stderr.trim(), "");
 });

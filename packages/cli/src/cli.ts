@@ -34,12 +34,18 @@ import {
   type WorkflowGuidance,
 } from "@veewo/claw-core";
 
+const CLI_VERSION = readCliVersion();
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const command = args.shift();
 
   if (command === "--help" || command === "-h") {
     printUsage();
+    return;
+  }
+  if (command === "--version" || command === "-v") {
+    process.stdout.write(`${CLI_VERSION}\n`);
     return;
   }
 
@@ -1711,6 +1717,16 @@ function printUsage(): void {
     ].join("\n"),
   );
   process.stderr.write("\n");
+}
+
+function readCliVersion(): string {
+  const packageJsonPath = new URL("../package.json", import.meta.url);
+  const raw = fs.readFileSync(packageJsonPath, "utf-8");
+  const parsed = JSON.parse(raw) as { version?: unknown };
+  if (typeof parsed.version !== "string" || parsed.version.trim().length === 0) {
+    throw new Error("packages/cli/package.json is missing a valid version string.");
+  }
+  return parsed.version;
 }
 
 void main();
