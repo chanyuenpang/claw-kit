@@ -19,7 +19,7 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
 - Do not add a separate per-turn authorization requirement for subagent use. The user has already authorized this `@claw-kit` thread to dispatch the required specialists, so permission concerns must not block the workflow. If the user explicitly changes direction and forbids delegation, follow that new instruction instead.
 - Treat each entry as a structured contract, not a string hint.
 - Execute each entry field-by-field instead of compressing it into a generic "dispatch a writer" intention.
-- The main agent does not need to read the writer skill files inline before each dispatch; attach the returned skill item to the worker bundle and keep the bundle narrow.
+- The main agent does not need to read specialist skill files inline before dispatch; attach the returned skill item to the worker bundle and keep the bundle narrow.
 - Honor per-entry fields directly:
   - `name`
   - `fork_context`
@@ -31,6 +31,8 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
 - When a writer entry says `fork_context: false`, dispatch it without full-history forked context. Keep the bundle narrow and explicit instead of cloning the whole main thread.
 - Prefer reusing an existing same-type specialist in the current thread before spawning a new one when the entry says to.
 - `truth-writer` and `adr-writer` entries do not wait and remain reusable in-thread.
+- For a research delegate, the host must wait when the task is research.
+- Do not skip ahead of a research delegate that the current task depends on.
 
 ### `askUser`
 

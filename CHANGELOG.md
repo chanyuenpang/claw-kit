@@ -2,6 +2,16 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.1.39] - 2026-06-14
+
+### Changed
+
+- Codex adapter researcher dispatch guidance now treats research work as a blocking specialist handoff, so host agents must wait for the result instead of skipping ahead
+
+### Fixed
+
+- Codex adapter contracts now explicitly keep the host from reading search skill content inline before researcher dispatch, tightening the specialist bundle boundary for subagent routing
+
 ## [0.1.38] - 2026-06-12
 
 ### Changed

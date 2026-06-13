@@ -23,6 +23,7 @@ For investigation specialists:
 
 - `agent_type: "explorer"`
 - do not pin a model by default
+- do not read the search skill inline
 - include the corresponding `skill` item explicitly
 - include only the narrow task bundle needed by that specialist
 
@@ -102,7 +103,8 @@ Expected behavior:
 - use `claw search` first for project/truth/ADR recall
 - use GitNexus-oriented capabilities when enabled and materially useful for code investigation
 - return a compact findings bundle with anchors and recommended next step
-- wait exactly when the main agent is blocked on the answer
+- if the task is research, wait for completion
+- do not skip ahead
 
 ## Main-agent responsibilities
 
@@ -110,7 +112,9 @@ Expected behavior:
 - For `truth-writer` and `adr-writer`, default to `worker + gpt-5.4-mini + explicit skill item`.
 - For `truth-writer` and `adr-writer`, honor `fork_context: false` by avoiding full-history forked context and sending only the narrow deposition bundle.
 - For `researcher`, default to `explorer + explicit skill item`.
+- For `researcher`, do not read the search skill inline. Attach the `claw-kit:researcher` skill item and dispatch.
 - Follow `waitForCompletion` directly instead of inferring wait behavior from prose.
+- For research tasks, `waitForCompletion` should block the host. Do not continue past the research gate without the result.
 - Follow `closePolicy` directly. `truth-writer` and `adr-writer` remain open for same-thread reuse.
 - Apply the returned result back into canonical `.claw` state through `claw plan edit`, `claw truth ingest`, or follow-up user confirmation.
 - Only close a deposition specialist when it is no longer useful for later same-type work in the thread.

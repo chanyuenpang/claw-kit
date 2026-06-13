@@ -27,9 +27,11 @@ The main agent:
 2. reuse an existing `researcher` explorer in the current thread when it still fits the same role
 3. dispatch a new `researcher` explorer when no suitable same-type specialist is already active
 4. use `agent_type: "explorer"` for a new researcher
-5. attach this `claw-kit:researcher` skill explicitly in the dispatch bundle
-6. send a narrow investigation brief, not the whole session context
-7. wait exactly when the investigation result is on the immediate critical path
+5. do not read the search skill inline before dispatch
+6. attach the `claw-kit:researcher` skill explicitly in the dispatch bundle
+7. send a narrow investigation brief, not the whole session context
+8. for research tasks, wait for the result
+9. do not skip ahead
 
 ## Investigation inputs
 
