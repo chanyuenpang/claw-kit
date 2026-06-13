@@ -13,13 +13,14 @@
 - In the normal startup prompt, the current `@claw-kit` thread is explicitly pre-authorized for Goal mode and required delegated subagents including `truth-writer` and `adr-writer`, so missing per-turn authorization is not a valid blocker.
 - `claw search` is the Codex-facing recall command; `memory.externalDocPaths` extends project recall sources.
 - `claw search --query` stays compatible, and `claw search index --refresh` is the explicit project index refresh entrypoint that returns `search.index.refresh`.
-- `claw search` is project-scoped document recall for project memory, truth, ADR, and external docs; code investigation still belongs to `researcher` plus GitNexus, not `claw search`.
+- `claw search` is project-scoped document recall for project memory, truth, ADR, and external docs; code investigation still belongs to `researcher` plus GitNexus, not `claw search`, and the host should not pre-read the search skill inline before dispatching `researcher`.
 - `claw search` only indexes configured external memory paths for `.md` files, and `claw search index --refresh` now materializes project-scoped vector data plus `vectorIndex` metadata from `memory.embedding`.
 - `claw init` and `claw context` protocol repair now auto-fill a default local embedding config into older `.claw/project.json` files using `Snowflake/snowflake-arctic-embed-m-v2.0` and `store.vector.enabled = true`, but no longer persist a default `modelCacheDir` into new project config.
 - local embedding cache resolution is now runtime-driven: explicit `modelCacheDir` wins only when that local cache already has the model; otherwise an existing platform-global cache is reused; if neither has the model then downloads go to the explicit local cache when configured, or to the platform-global cache by default; `.claw/models` remains the fallback when the global cache directory is unavailable.
 - In the `claw-kit` repo, `.claw/project.json` no longer carries legacy `memory.embedding.local.modelCacheDir = ".claw/models"`, and the project-local `.claw/models` tree has been removed after the Snowflake models were folded into `C:\Users\chany\AppData\Local\claw\models`.
-- `claw-kit` 0.1.34 已作为 patch release 发布，release closeout 继续要求统一 workspace/package/plugin 版本、按 `@veewo/claw-core` 先于 `@veewo/claw` 的顺序发布、刷新本机全局 `claw` CLI 与本地 Codex plugin cache，并把最终 release commit 推送到 `origin/main`。
-- 这次 0.1.34 release 进一步把 workspace/package/plugin/changelog 版本对齐、先发 `@veewo/claw-core` 再发 `@veewo/claw`、刷新本机全局 `claw` CLI 与本地 Codex plugin cache、并推送 release commit 到 `origin/main` 确认为同一条 closeout 协议。
+- `claw-kit` 0.1.39 已作为 patch release 发布；这轮 closeout 继续要求统一 workspace/package/plugin/changelog 版本、按 `@veewo/claw-core` 先于 `@veewo/claw` 的顺序发布、刷新本机全局 `claw` CLI 与本地 Codex plugin cache，并把最终 release commit 推送到 `origin/main`。
+- 这次 0.1.39 release 进一步确认：release 目标版本要以 npm registry 当下已发布版本为准，在 registry 仍停在 `0.1.38` 时推进到 `0.1.39`；同时 closeout 不只看 plugin manifest/version 对齐，还要核对本地 Codex plugin cache 的哈希与当前适配器产物一致，避免旧 payload 冒充已刷新缓存。
+- 这轮 0.1.39 的收口证据是 registry、全局 `claw` CLI、本地 Codex plugin cache 与 `origin/main` 上的 release commit `05bfd20` 全部对齐到同一轮发布。
 - 这次 release 把 `process.wait` / `process.discussing` / resumed active 语义稳定下来：暂停态要暂停 Goal Mode，恢复后通过 `process.active` 重新进入执行，并由 `process.resumedActive` / `on_resume_process_active` 接管恢复。
 - `claw init` 现在会在项目根目录自动补齐 claw-kit 专用 `.gitignore` 规则块，但 `.gitignore` 变更只属于 `initProject()`；`project-check` / protocol repair 与 `claw context` 不会写 `.gitignore`，重复 init 也不会重复追加同一规则块。对应 canonical ADR 是 `init-project-gitignore-ownership`。
 - `memory.embedding.local.device` is now an explicit project-level local-device selector, and `CLAW_EMBEDDING_LOCAL_DEVICE` / `CLAW_EMBEDDING_DEVICE` provide one-off rescue overrides; both feed `packages/core/src/embedding-local.ts`, which always keeps a `cpu` retry path for GPU-class `dml` / `cuda` devices.
@@ -65,10 +66,11 @@
 - README、`packages/cli/README.md` 与 `packages/core/test/core.test.ts` 已覆盖 incremental refresh 契约。
 - `packages/core/test/core.test.ts` 已新增 query planner 语义和中文多词 project recall 场景覆盖；本轮校验通过 `npm test -- packages/core/test/core.test.ts` 与 `npm run check`。
 - search candidate recall 这一轮的验证证据包括：`packages/core/test/core.test.ts` 50/50 通过、`npm run check` 通过，以及在 `NeonSpark` 的 live search 中，多词中文 query 不再让 `contents.md` 压过聚焦文档， conversational `搜打撤` 查询继续优先命中 system design 类文档。
-- 当前 workspace 版本线是 `0.1.34`：`package.json`、`packages/core/package.json`、`packages/cli/package.json`、`packages/openclaw-adapter/package.json` 和 `packages/codex-adapter/package.json` 都已经对齐到 `0.1.34`，`packages/codex-adapter/.codex-plugin/plugin.json` 当前是 `0.1.34+codex.20260612023130`。
+- 当前 workspace 版本线是 `0.1.39`：`package.json`、`packages/core/package.json`、`packages/cli/package.json`、`packages/openclaw-adapter/package.json` 和 `packages/codex-adapter/package.json` 都已经对齐到 `0.1.39`，`packages/codex-adapter/.codex-plugin/plugin.json` 当前是 `0.1.39+codex.20260613195040`。
 - release sync 现在有一条明确的预发布规则：如果本地已有 release guidance / truth 调整，先单独提交，再合并 `origin/main`；遇到 workflow guidance、CLI tests、Codex adapter docs/skills 或 `.claw/truth/` 冲突时，合并结果要同时保留远端更新和本地已验证的 goal gate / positional-title 行为，然后再跑 `npm test` 与 `npm run check`。
-- `@veewo/claw-core@0.1.34` 与 `@veewo/claw@0.1.34` 已成功发布，`npm view @veewo/claw-core version --registry=https://registry.npmjs.org` 和 `npm view @veewo/claw version --registry=https://registry.npmjs.org` 都返回 `0.1.34`。
-- `scripts/install-cli.ps1` 已在本机刷新全局 CLI，`npm list -g @veewo/claw --depth=0` 现在显示 `0.1.34`，`(Get-Command claw).Source` 指向 `C:\nvm4w\nodejs\claw.ps1`，并且 `claw --help` 运行成功。
-- 本地 Codex plugin cache 已同步到 `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.34+codex.20260612023130`，并与仓库 `packages/codex-adapter/.codex-plugin/plugin.json` 保持一致。
+- `@veewo/claw-core@0.1.39` 与 `@veewo/claw@0.1.39` 已成功发布，`npm view @veewo/claw-core version --registry=https://registry.npmjs.org` 和 `npm view @veewo/claw version --registry=https://registry.npmjs.org` 都返回 `0.1.39`。
+- `scripts/install-cli.ps1` 已在本机刷新全局 CLI，`claw --version` 现在返回 `0.1.39`，`(Get-Command claw).Source` 指向 `C:\nvm4w\nodejs\claw.ps1`。
+- 本地 Codex plugin cache 已同步到 `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.39+codex.20260613195040`，并与仓库 `packages/codex-adapter/.codex-plugin/plugin.json` 保持一致，关键文件 hash 也与仓库副本匹配。
 - canonical `.claw/truth/` markdown 需要保持 UTF-8 BOM；truth ingestion 和 `npm run check` 的 truth encoding audit 都把这当作稳定约束，缺少 BOM 的 truth 文档在 Windows PowerShell 路径上不算完成态。
 - `packages/core/src/memory.ts` 保持严格契约：project memory refresh 如果 embedding 生成失败就必须失败，不能降级为 text-only indexing；project search 继续保持 vector-required 契约，缺少 refreshed vector index 时返回 `MEMORY_VECTOR_INDEX_REQUIRED`。
+
