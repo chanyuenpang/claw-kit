@@ -118,6 +118,10 @@ function normalizeProjectConfig(raw: unknown, projectRoot: string): ProjectConfi
     externalTruthSkill: normalizeOptionalSkill(source?.externalTruthSkill),
     externalAdrSkill: normalizeOptionalSkill(source?.externalAdrSkill),
     contextPaths: normalizeStringArray(source?.contextPaths),
+    workflow: {
+      goalMode: normalizeGoalModeConfig(asObject(source?.workflow)?.goalMode),
+      truthDispatch: normalizeTruthDispatchConfig(asObject(source?.workflow)?.truthDispatch),
+    },
     memory: {
       externalDocPaths: normalizeStringArray(sourceMemory?.externalDocPaths),
       embedding: normalizeMemoryEmbeddingConfig(sourceMemory?.embedding),
@@ -170,6 +174,11 @@ function validateProjectConfig(raw: unknown, issues: ProjectProtocolIssue[]): vo
   requireNullableString(config, "externalTruthSkill", issues);
   requireNullableString(config, "externalAdrSkill", issues);
   requireStringArray(config, "contextPaths", issues);
+  const workflow = requireObject(config, "workflow", issues);
+  if (workflow) {
+    requireNullableGoalModeConfig(workflow, "goalMode", issues, "workflow.goalMode");
+    requireNullableTruthDispatchConfig(workflow, "truthDispatch", issues, "workflow.truthDispatch");
+  }
 
   const memory = requireObject(config, "memory", issues);
   if (memory) {
@@ -308,6 +317,26 @@ function normalizeOptionalSkill(value: unknown): string | null {
   }
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+}
+
+function normalizeGoalModeConfig(value: unknown): { enabled: boolean } | null {
+  const goalMode = asObject(value);
+  if (value === null) {
+    return null;
+  }
+  return {
+    enabled: typeof goalMode?.enabled === "boolean" ? goalMode.enabled : true,
+  };
+}
+
+function normalizeTruthDispatchConfig(value: unknown): { mode: "per_task" | "final_only" } | null {
+  const truthDispatch = asObject(value);
+  if (value === null) {
+    return null;
+  }
+  return {
+    mode: truthDispatch?.mode === "final_only" ? "final_only" : "per_task",
+  };
 }
 
 function normalizeMemoryEmbeddingConfig(value: unknown): MemoryEmbeddingConfig | null {
@@ -494,5 +523,53 @@ function requireNullableEmbeddingConfig(
         }
       }
     }
+  }
+}
+
+function requireNullableGoalModeConfig(
+  source: Record<string, unknown>,
+  key: string,
+  issues: ProjectProtocolIssue[],
+  label = key,
+): void {
+  if (!(key in source)) {
+    issues.push({ path: label, message: "Field is required and must be explicitly present." });
+    return;
+  }
+  const value = source[key];
+  if (value === null) {
+    return;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    issues.push({ path: label, message: "Field must be an object or null." });
+    return;
+  }
+  const goalMode = value as Record<string, unknown>;
+  if ("enabled" in goalMode && typeof goalMode.enabled !== "boolean") {
+    issues.push({ path: `${label}.enabled`, message: "Field must be a boolean when present." });
+  }
+}
+
+function requireNullableTruthDispatchConfig(
+  source: Record<string, unknown>,
+  key: string,
+  issues: ProjectProtocolIssue[],
+  label = key,
+): void {
+  if (!(key in source)) {
+    issues.push({ path: label, message: "Field is required and must be explicitly present." });
+    return;
+  }
+  const value = source[key];
+  if (value === null) {
+    return;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    issues.push({ path: label, message: "Field must be an object or null." });
+    return;
+  }
+  const truthDispatch = value as Record<string, unknown>;
+  if ("mode" in truthDispatch && truthDispatch.mode !== "per_task" && truthDispatch.mode !== "final_only") {
+    issues.push({ path: `${label}.mode`, message: 'Field must be "per_task" or "final_only" when present.' });
   }
 }

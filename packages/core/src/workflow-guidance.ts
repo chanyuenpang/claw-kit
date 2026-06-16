@@ -136,6 +136,14 @@ function buildConfiguredDelegates(
   return keys.map((key) => buildConfiguredDelegate(key, projectConfig));
 }
 
+function isGoalModeEnabled(projectConfig: ProjectConfig | null): boolean {
+  return projectConfig?.workflow?.goalMode?.enabled !== false;
+}
+
+function usesPerTaskTruthDispatch(projectConfig: ProjectConfig | null): boolean {
+  return projectConfig?.workflow?.truthDispatch?.mode !== "final_only";
+}
+
 export function buildDirectWorkflowGuidance(params: {
   projectConfig?: ProjectConfig | null;
 } = {}): WorkflowGuidance {
@@ -174,6 +182,8 @@ export function buildPlanWorkflowGuidance(params: {
     && (previousStatus === "process.wait" || previousStatus === "process.discussing");
   const hasChangedTasks = (changedTaskIds?.length ?? 0) > 0;
   const hasCompletedTasks = (completedTaskIds?.length ?? 0) > 0;
+  const goalModeEnabled = isGoalModeEnabled(projectConfig);
+  const perTaskTruthDispatch = usesPerTaskTruthDispatch(projectConfig);
   const nextTask = nextUnfinishedTask(plan);
   const activeTask = currentActiveTask(plan);
   const shouldReturnNextTask = hasCompletedTasks || justEnteredProcess || (!hasChangedTasks && !activeTask);
@@ -197,14 +207,17 @@ export function buildPlanWorkflowGuidance(params: {
 
   switch (plan.status) {
     case "prepare.requirements": {
-      const template = renderStateTemplate(hasGoal ? "prepare.requirements.withGoal" : "prepare.requirements.withoutGoal", vars);
+      const templateKey = hasGoal
+        ? (goalModeEnabled ? "prepare.requirements.withGoal" : "prepare.requirements.withGoal.noGoalMode")
+        : (goalModeEnabled ? "prepare.requirements.withoutGoal" : "prepare.requirements.withoutGoal.noGoalMode");
+      const template = renderStateTemplate(templateKey, vars);
       return {
         stage: template.stage as WorkflowGuidance["stage"],
         summary: template.summary,
         nextsteps: template.nextsteps,
         ...(template.notes ? { notes: template.notes } : {}),
         ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),
-        ...(template.goalMode && hasGoal ? { goalMode: buildGoalMode(plan.goal.text, template.goalMode) } : {}),
+        ...(template.goalMode && goalModeEnabled && hasGoal ? { goalMode: buildGoalMode(plan.goal.text, template.goalMode) } : {}),
       };
     }
     case "prepare.review": {
@@ -220,7 +233,7 @@ export function buildPlanWorkflowGuidance(params: {
     }
     case "process.wait":
     case "process.discussing": {
-      const template = renderStateTemplate(plan.status, vars);
+      const template = renderStateTemplate(goalModeEnabled ? plan.status : `${plan.status}.noGoalMode`, vars);
       return {
         stage: template.stage as WorkflowGuidance["stage"],
         summary: template.summary,
@@ -245,11 +258,11 @@ export function buildPlanWorkflowGuidance(params: {
       }
 
       const templateKey = hasCompletedTasks
-        ? "process.hasCompletedTasks"
+        ? (perTaskTruthDispatch ? "process.hasCompletedTasks" : "process.hasCompletedTasks.finalOnlyTruth")
         : resumedIntoActive
-          ? "process.resumedActive"
+          ? (goalModeEnabled ? "process.resumedActive" : "process.resumedActive.noGoalMode")
           : justEnteredProcess
-          ? "process.justEntered"
+          ? (goalModeEnabled ? "process.justEntered" : "process.justEntered.noGoalMode")
           : activeTask
             ? "process.activeTask"
             : "process.default";
@@ -270,7 +283,7 @@ export function buildPlanWorkflowGuidance(params: {
             }
           : {}),
         ...(template.notes ? { notes: template.notes } : {}),
-        ...(template.goalMode && (justEnteredProcess || resumedIntoActive) && hasGoal
+        ...(template.goalMode && goalModeEnabled && (justEnteredProcess || resumedIntoActive) && hasGoal
           ? { goalMode: buildGoalMode(plan.goal.text, template.goalMode) }
           : {}),
         ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),

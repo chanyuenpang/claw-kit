@@ -673,6 +673,111 @@ test("cli returns truth-writer contract on completed task before final plan comp
   );
 });
 
+test("cli respects project override toggles for goal mode and final-only truth dispatch", () => {
+  const root = createFixture("cli-project-override-toggles");
+  runClaw(["init", "--name", "CLI Override Toggles"], root);
+
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify(
+      {
+        id: "cli-project-override-toggles",
+        name: "CLI Override Toggles",
+        maxTasksToKeep: 99,
+        externalTruthSkill: "external-truth-writer",
+        externalAdrSkill: "external-adr-writer",
+        contextPaths: [],
+        workflow: {
+          goalMode: {
+            enabled: true,
+          },
+          truthDispatch: {
+            mode: "per_task",
+          },
+        },
+        memory: {
+          externalDocPaths: [],
+          embedding: {
+            provider: "local",
+            model: "Snowflake/snowflake-arctic-embed-xs",
+            store: {
+              vector: {
+                enabled: true,
+              },
+            },
+          },
+        },
+        gitnexus: {
+          enabled: false,
+        },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  fs.writeFileSync(
+    path.join(root, ".claw", "project-override.json"),
+    JSON.stringify(
+      {
+        workflow: {
+          goalMode: {
+            enabled: false,
+          },
+          truthDispatch: {
+            mode: "final_only",
+          },
+        },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+
+  const contentPath = path.join(root, "plan.json");
+  fs.writeFileSync(
+    contentPath,
+    JSON.stringify(
+      {
+        tasks: [
+          { id: 1, title: "First task", status: "pending" },
+          { id: 2, title: "Second task", status: "pending" }
+        ]
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+
+  const writeResult = runClaw(
+    ["plan", "write", "--title", "demo-task", "--goal", "Respect project override toggles"],
+    root,
+  );
+  assert.equal("goalMode" in writeResult, false);
+
+  runClaw(["plan", "edit", "--task", "demo-task", "--patch", contentPath], root);
+  const activateResult = runClaw(["plan", "edit", "--task", "demo-task", "--plan-status", "process.active"], root);
+  assert.equal("goalMode" in activateResult, false);
+
+  const taskDone = runClaw(
+    ["plan", "edit", "--task", "demo-task", "--task-id", "1", "--task-status", "done"],
+    root,
+  );
+  assert.equal("delegateSubagents" in taskDone, false);
+  assert.equal((taskDone.nextsteps as string[]).some((step) => step.includes("truth-writer")), false);
+
+  const allDone = runClaw(
+    ["plan", "edit", "--task", "demo-task", "--task-id", "2", "--task-status", "done"],
+    root,
+  );
+  const truthDelegate = ((allDone.delegateSubagents as JsonRecord[])[0] ?? {});
+  const adrDelegate = ((allDone.delegateSubagents as JsonRecord[])[1] ?? {});
+  assert.equal(truthDelegate.name, "truth-writer");
+  assert.equal(adrDelegate.name, "adr-writer");
+});
+
 test("cli task status changed back to pending does not return nextTask", () => {
   const root = createFixture("cli-pending-no-next-task");
   runClaw(["init", "--name", "Pending No NextTask"], root);
@@ -824,6 +929,14 @@ test("cli init writes maxTasksToKeep into project.json", () => {
   assert.equal(projectConfig.maxTasksToKeep, 12);
   assert.equal(projectConfig.externalTruthSkill, null);
   assert.equal(projectConfig.externalAdrSkill, null);
+  assert.deepEqual(projectConfig.workflow, {
+    goalMode: {
+      enabled: true,
+    },
+    truthDispatch: {
+      mode: "per_task",
+    },
+  });
   assert.equal(
     ((projectConfig.memory as JsonRecord).embedding as JsonRecord).model,
     "Snowflake/snowflake-arctic-embed-m-v2.0",
@@ -841,6 +954,14 @@ test("cli init writes default maxTasksToKeep into project.json", () => {
   assert.equal(projectConfig.maxTasksToKeep, 99);
   assert.equal(projectConfig.externalTruthSkill, null);
   assert.equal(projectConfig.externalAdrSkill, null);
+  assert.deepEqual(projectConfig.workflow, {
+    goalMode: {
+      enabled: true,
+    },
+    truthDispatch: {
+      mode: "per_task",
+    },
+  });
   assert.equal(
     ((projectConfig.memory as JsonRecord).embedding as JsonRecord).model,
     "Snowflake/snowflake-arctic-embed-m-v2.0",
@@ -905,6 +1026,14 @@ test("cli context auto-corrects malformed existing .claw state", () => {
   assert.equal(projectConfig.maxTasksToKeep, 99);
   assert.equal(projectConfig.externalTruthSkill, null);
   assert.equal(projectConfig.externalAdrSkill, null);
+  assert.deepEqual(projectConfig.workflow, {
+    goalMode: {
+      enabled: true,
+    },
+    truthDispatch: {
+      mode: "per_task",
+    },
+  });
   assert.deepEqual(projectConfig.memory, {
     externalDocPaths: [],
     embedding: {
@@ -964,6 +1093,14 @@ test("cli check auto-corrects project.json into explicit protocol fields", () =>
   assert.equal(projectConfig.externalTruthSkill, null);
   assert.equal(projectConfig.externalAdrSkill, null);
   assert.deepEqual(projectConfig.contextPaths, []);
+  assert.deepEqual(projectConfig.workflow, {
+    goalMode: {
+      enabled: true,
+    },
+    truthDispatch: {
+      mode: "per_task",
+    },
+  });
   assert.deepEqual(projectConfig.memory, {
     externalDocPaths: [],
     embedding: {
@@ -1252,6 +1389,17 @@ test("cli direct returns truth-writer guidance and queues completion refresh for
   assert.equal(refreshStatus.ok, true);
   assert.ok(Number((memory.project as JsonRecord).indexedCount) >= 1);
   assert.equal((memory.task as JsonRecord | undefined), undefined);
+});
+
+test("cli init gitignore ignores project-override.json by default", () => {
+  const root = createFixture("cli-init-project-override-gitignore");
+
+  runClaw(["init", "--name", "CLI Override Gitignore"], root);
+
+  assert.equal(
+    fs.readFileSync(path.join(root, ".gitignore"), "utf-8"),
+    "# claw-kit\n.claw/*\n!.claw/project.json\n!.claw/truth/\n!.claw/truth/**\n.claw/project-override.json\n",
+  );
 });
 
 test("cli search rejects task-local scope flags", () => {

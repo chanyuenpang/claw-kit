@@ -2,6 +2,18 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.1.40] - 2026-06-16
+
+### Changed
+
+- project config now supports canonical workflow toggles for `goalMode` and `truthDispatch`, while runtime context resolution deep-merges a local `.claw/project-override.json` overlay over the team-owned `.claw/project.json`
+- `claw init` now ignores `.claw/project-override.json` by default so personal local overrides stay out of version control while the canonical project config remains committed
+
+### Fixed
+
+- workflow guidance now suppresses `goalMode` when `workflow.goalMode.enabled = false`, and suppresses mid-task `truth-writer` delegation when `workflow.truthDispatch.mode = final_only` while still preserving final closeout deposition
+- core and CLI regression coverage now lock the override merge semantics, explicit-`null` override behavior, and the workflow toggle release contract
+
 ## [0.1.39] - 2026-06-14
 
 ### Changed

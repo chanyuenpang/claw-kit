@@ -37,6 +37,7 @@ const CLAW_GITIGNORE_BLOCK = [
   "!.claw/project.json",
   "!.claw/truth/",
   "!.claw/truth/**",
+  ".claw/project-override.json",
 ].join("\n");
 
 export function initProject(input: InitProjectInput): InitProjectResult {
@@ -68,6 +69,14 @@ export function initProject(input: InitProjectInput): InitProjectResult {
     externalTruthSkill: normalizeOptionalSkill(input.externalTruthSkill),
     externalAdrSkill: normalizeOptionalSkill(input.externalAdrSkill),
     contextPaths: [...(input.contextPaths ?? [])],
+    workflow: {
+      goalMode: {
+        enabled: true,
+      },
+      truthDispatch: {
+        mode: "per_task",
+      },
+    },
     memory: {
       externalDocPaths: [...(input.externalDocPaths ?? [])],
       embedding: {

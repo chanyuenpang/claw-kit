@@ -161,7 +161,10 @@ export function resolveTaskName(taskName: string): string {
 
 function readProjectConfig(projectJsonPath: string): ProjectConfig {
   try {
-    return normalizeProjectConfig(readJsonFile<ProjectConfig>(projectJsonPath));
+    const projectConfig = readJsonFile<ProjectConfig>(projectJsonPath);
+    const projectOverridePath = path.join(path.dirname(projectJsonPath), "project-override.json");
+    const projectOverride = fs.existsSync(projectOverridePath) ? readJsonFile<ProjectConfig>(projectOverridePath) : undefined;
+    return normalizeProjectConfig(mergeProjectConfig(projectConfig, projectOverride));
   } catch (error) {
     throw new ClawError("PROJECT_CONFIG_INVALID", "Failed to parse .claw/project.json.", {
       path: projectJsonPath,
@@ -183,6 +186,10 @@ function normalizeProjectConfig(projectConfig: ProjectConfig): ProjectConfig {
     externalTruthSkill: normalizeOptionalSkill(projectConfig.externalTruthSkill),
     externalAdrSkill: normalizeOptionalSkill(projectConfig.externalAdrSkill),
     contextPaths: [...(projectConfig.contextPaths ?? [])],
+    workflow: {
+      goalMode: normalizeGoalModeConfig(projectConfig.workflow?.goalMode),
+      truthDispatch: normalizeTruthDispatchConfig(projectConfig.workflow?.truthDispatch),
+    },
     memory: {
       externalDocPaths: [...(projectConfig.memory?.externalDocPaths ?? [])],
       embedding: normalizeMemoryEmbeddingConfig(projectConfig.memory?.embedding),
@@ -213,6 +220,62 @@ function normalizeOptionalSkill(value: string | null | undefined): string | null
   }
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+}
+
+function normalizeGoalModeConfig(
+  value: { enabled?: boolean } | null | undefined,
+): { enabled: boolean } | null {
+  if (value === null) {
+    return null;
+  }
+  return {
+    enabled: value?.enabled !== false,
+  };
+}
+
+function normalizeTruthDispatchConfig(
+  value: { mode?: "per_task" | "final_only" } | null | undefined,
+): { mode: "per_task" | "final_only" } | null {
+  if (value === null) {
+    return null;
+  }
+  return {
+    mode: value?.mode === "final_only" ? "final_only" : "per_task",
+  };
+}
+
+function mergeProjectConfig(base: unknown, override: unknown): ProjectConfig {
+  return deepMerge(base, override) as ProjectConfig;
+}
+
+function deepMerge(base: unknown, override: unknown): unknown {
+  if (override === undefined) {
+    return cloneValue(base);
+  }
+  if (override === null || typeof override !== "object" || Array.isArray(override)) {
+    return cloneValue(override);
+  }
+  if (!base || typeof base !== "object" || Array.isArray(base)) {
+    return cloneValue(override);
+  }
+
+  const result: Record<string, unknown> = { ...(base as Record<string, unknown>) };
+  for (const [key, value] of Object.entries(override as Record<string, unknown>)) {
+    result[key] = deepMerge((base as Record<string, unknown>)[key], value);
+  }
+  return result;
+}
+
+function cloneValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => cloneValue(item));
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, entryValue]) => [key, cloneValue(entryValue)]),
+    );
+  }
+  return value;
 }
 
 function normalizeMemoryEmbeddingConfig(value: MemoryEmbeddingConfig | null | undefined): MemoryEmbeddingConfig | null {

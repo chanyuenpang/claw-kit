@@ -11,8 +11,10 @@ Accepted working truth for local development on this machine.
   `# claw-kit`
   `.claw/*`
   `!.claw/project.json`
+  `.claw/project-override.json`
   `!.claw/truth/`
   `!.claw/truth/**`
+- `.claw/project.json` remains the canonical repo-committed project contract, while `.claw/project-override.json` is intentionally gitignored for local or checkout-specific runtime overrides.
 - 这条 `.gitignore` 变更被明确限制在 `initProject()`；`project-check` / protocol repair 与 `claw context` 不负责修改 `.gitignore`。
 - 重复执行 `claw init` 不会重复追加同一规则块；已有 `.gitignore` 只会在缺块时补一次。
 - The local CLI command surface includes:
@@ -75,9 +77,15 @@ Accepted working truth for local development on this machine.
 - Normal planned work should bind task scope with `claw plan write` first; if project recall helps, use `claw search --query "<topic>"` afterward.
 - `claw memory ...` remains available, but it is not the recommended Codex workflow concept.
 - Local installation on this machine is currently refreshed through `npm run install:local-cli`.
-- After the repo was updated to `0.1.34`, the repo-supported `npm run install:local-cli` path completed successfully and reinstalled the global CLI as `@veewo/claw@0.1.34`.
+- 在 `@veewo/claw` 刚发布后的短暂窗口里，`npm run install:local-cli` 可能会先撞到 npm registry 传播延迟；当 `npm view @veewo/claw version` 已经返回目标版本后，重试一次安装通常就能收敛到最终本机状态。
+- 当前这台 Windows 机器的已验证刷新结果是全局 `@veewo/claw@0.1.40`。
 - That install script removes prior global installs and links before running `npm install -g @veewo/claw`, so the final global state reflects the package registry install rather than an older link.
+- During that successful refresh, npm could still print a non-fatal cleanup warning like `EPERM ... unlink ... @img\\sharp-win32-x64\\lib\\libvips-cpp-8.17.3.dll` under an old temporary global package directory; treat it as cleanup noise unless the install itself fails.
 - On this machine, `(Get-Command claw).Source` resolves to `C:\Users\chany\AppData\Roaming\npm\claw.ps1`.
+- Post-install verification on this machine should converge on the same tuple: `claw --version = 0.1.40`, `npm list -g @veewo/claw --depth=0 = @veewo/claw@0.1.40`, and `(Get-Command claw).Source = C:\Users\chany\AppData\Roaming\npm\claw.ps1`.
+- Local Codex plugin cache refresh for the matching adapter build currently means syncing `.codex-plugin/`, `hooks/`, `references/`, `scripts/`, `skills/`, and `package.json` from `packages/codex-adapter` into `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.40+codex.20260616130425`.
+- When this cache sync is part of release/install closeout, the durable verification bar is per-file SHA256 parity across the synced payload, not just directory existence.
+- 当前已验证的 closeout 证据是目标缓存目录下 24/24 个同步文件都与仓库副本 SHA256 一致。
 - `claw --help` is a useful post-install smoke check because it confirms the refreshed command surface, including `plan write`, `plan edit`, `plan done`, `search`, and `hook`.
 - The 0.1.37 closeout verification passed with `npm test` and `npm run check` on `2026-06-12`, and the release commit `ff2b175` was pushed to `origin/main`.
 - On this machine, the global wrappers are created under `C:\Users\chany\AppData\Roaming\npm`.

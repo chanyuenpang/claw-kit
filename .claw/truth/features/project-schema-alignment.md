@@ -12,16 +12,21 @@
 ## Current Behavior
 
 - `claw init` writes those fields explicitly when a project is created, so later commands do not need to guess the schema.
+- runtime project resolution now loads canonical `.claw/project.json` first, then deep-merges `.claw/project-override.json` on top when that gitignored override file exists.
+- `project-override.json` is a full project-surface override layer rather than a narrow patch list: it may override any `project.json` field, including nested workflow settings.
+- override merge keeps explicit `null` as a real project-level value; `null` in `.claw/project-override.json` must not be treated as "missing" and must not fall back to team config or built-in inherited values.
 - `contextPaths` is preserved for schema alignment but is not currently consumed by the Codex-first `claw-kit` workflow.
 - `memory.externalDocPaths` drives the project search index and supports both:
   - individual files
   - directory paths like `docs/`
 - External memory paths only index `.md` files from the configured path set.
 - `memory.embedding` now accepts the OpenClaw-compatible subset used by `openclaw-dev`: `provider` (`openai|local`), `model`, `remote.apiKeyEnvVar`, `remote.baseUrl`, `local.modelPath`, `local.modelCacheDir`, `outputDimensionality`, `store.vector.enabled`, and `store.vector.extensionPath`.
+- canonical `.claw/project.json` now also carries project-level workflow defaults for `workflow.goalMode.enabled` and `workflow.truthDispatch.mode`, so host-facing workflow toggles live in the same canonical project schema as the rest of the harness config.
 - `claw init` and protocol normalization now auto-fill a default local embedding config when `memory.embedding` is missing, using `Snowflake/snowflake-arctic-embed-m-v2.0` and `store.vector.enabled = true`; the default cache location is now runtime-resolved instead of being persisted into `project.json`.
 - `packages/core/src/embedding-defaults.ts` now resolves platform-global cache roots (`%LOCALAPPDATA%\\claw\\models` on Windows, `~/Library/Caches/claw/models` on macOS, and `$XDG_CACHE_HOME/claw/models` or `~/.cache/claw/models` on Linux) and the local/global/fallback cache-selection order for embedding models.
 - `packages/core/src/embedding-worker.ts` now resolves cache usage by model id: explicit local cache wins only when that local cache already contains the model; otherwise an existing global cache is reused; if both are missing, downloads go to the explicit local cache when configured, or to the global cache by default.
 - `packages/core/src/project-check.ts` 里的 `ensureProjectProtocol -> normalizeProjectConfig` 是既有项目自动迁移的最佳落点，因为它会在协议修复时回写 `project.json`。
+- `packages/core/src/context.ts` now owns the runtime project-resolution step that combines canonical config with the optional override layer before downstream workflow guidance reads the result.
 - `packages/core/src/init.ts` no longer writes a default `modelCacheDir` into new project config, and `packages/core/src/project-check.ts` removes legacy `.claw/models` during protocol normalization so shared-cache semantics stay implicit while explicit custom paths remain intact.
 - 在当前 `claw-kit` 仓库里，这条迁移已经落地为可见结果：`.claw/project.json` 里不再保留 legacy `memory.embedding.local.modelCacheDir = ".claw/models"`，因此仓库配置本身不再把项目内模型缓存目录当作必需契约；运行时仍可能按 fallback / recovery 语义在 `.claw/models` 下保留或重建本地缓存。
 - `memory.embedding.local.device` 现在是 schema 明确支持的本地设备字段，允许 `dml|cuda|cpu|wasm`；这类显式选择会在 `context.ts`、`project-check.ts` 与 `types.ts` 的协议修复/校验路径里保留下来，而不是被重置掉。
@@ -45,6 +50,7 @@
 - 这意味着 CPU rescue 既可以来自一次性环境覆盖，也可以来自稳定的 per-project local device 配置。
 - `packages/core/src/embedding-worker.ts` is the dedicated worker that builds the embedding outputs.
 - `claw context` / protocol repair therefore upgrades older `.claw/project.json` files in-place instead of leaving them on a no-embedding schema.
+- when workflow defaults are omitted, canonical `project.json` still remains the source of truth for the default `workflow.goalMode.enabled` / `workflow.truthDispatch.mode` values; the optional override file only changes the effective runtime result for the current repo checkout.
 - In the `claw-kit` repo itself, `memory.externalDocPaths` is intentionally empty, so project recall stays on `.claw` memory/truth Markdown and does not pull `docs/` into the search surface.
 - project-level `claw search --query "<topic>"` 除了 query embedding 之外，现在还会先构造 project keyword search plan。
 - 对多词 query，planner 会同时保留整句 multi-term `MATCH` 和逐词 fallback query，而不是只把原始 query 直接喂给一次 FTS。
@@ -72,6 +78,7 @@
 - [packages/core/src/memory.ts](D:/Users/chany/Documents/claw-kit/packages/core/src/memory.ts)
 - [packages/core/src/embedding-worker.ts](D:/Users/chany/Documents/claw-kit/packages/core/src/embedding-worker.ts)
 - [packages/core/src/project-check.ts](D:/Users/chany/Documents/claw-kit/packages/core/src/project-check.ts)
+- [packages/core/src/context.ts](D:/Users/chany/Documents/claw-kit/packages/core/src/context.ts)
 - [packages/cli/src/cli.ts](D:/Users/chany/Documents/claw-kit/packages/cli/src/cli.ts)
 - [packages/core/test/core.test.ts](D:/Users/chany/Documents/claw-kit/packages/core/test/core.test.ts)
 - [packages/cli/README.md](D:/Users/chany/Documents/claw-kit/packages/cli/README.md)

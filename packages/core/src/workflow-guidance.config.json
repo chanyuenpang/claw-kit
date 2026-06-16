@@ -46,6 +46,20 @@
         "allowOverwrite": true
       }
     },
+    "prepare.requirements.withGoal.noGoalMode": {
+      "stage": "requirements",
+      "summary": "Task scope is bound. Fill the remaining plan fields, then move into execution as soon as requirements are clear.",
+      "nextsteps": [
+        "1. Fill the missing plan fields.",
+        "2. Move into `process.active` once requirements are clear."
+      ],
+      "notes": "Fill only the fields still needed to execute, such as `requirements`, `tasks`, `references`, `rules`, and `keyDecisions`. If scope is still unclear, clarify it with the user before switching to `process.active`.",
+      "recommendedCommands": [
+        "{{editBase}} --plan-status process.active",
+        "{{editBase}} --patch <updated-plan.json>",
+        "{{editBase}} --reference-path <path> --reference-why <why>"
+      ]
+    },
     "prepare.requirements.withoutGoal": {
       "stage": "requirements",
       "summary": "Task scope is bound. Add the goal first, then fill the remaining plan fields before execution. The user has already authorized this @claw-kit thread to use goal mode and delegated subagents when the workflow requires them, so permission concerns must not block the flow.",
@@ -54,6 +68,21 @@
         "2. Set Goal Mode.",
         "3. Fill the missing plan fields.",
         "4. Move into `process.active` once requirements are clear."
+      ],
+      "notes": "Fill only the fields still needed to execute, such as `requirements`, `tasks`, `references`, `rules`, and `keyDecisions`. If scope is still unclear, clarify it with the user before switching to `process.active`.",
+      "recommendedCommands": [
+        "{{editBase}} --plan-status process.active",
+        "{{editBase}} --patch <updated-plan.json>",
+        "{{editBase}} --reference-path <path> --reference-why <why>"
+      ]
+    },
+    "prepare.requirements.withoutGoal.noGoalMode": {
+      "stage": "requirements",
+      "summary": "Task scope is bound. Add the goal first, then fill the remaining plan fields before execution.",
+      "nextsteps": [
+        "1. Fill `goal.text`.",
+        "2. Fill the missing plan fields.",
+        "3. Move into `process.active` once requirements are clear."
       ],
       "notes": "Fill only the fields still needed to execute, such as `requirements`, `tasks`, `references`, `rules`, and `keyDecisions`. If scope is still unclear, clarify it with the user before switching to `process.active`.",
       "recommendedCommands": [
@@ -134,6 +163,19 @@
         "truthWriter"
       ]
     },
+    "process.hasCompletedTasks.finalOnlyTruth": {
+      "stage": "{{processStage}}",
+      "summary": "Execution is in progress.",
+      "nextsteps": [
+        "1. Sync the thread progress with our tasks.",
+        "2. Continue with {{nextTaskRef}}."
+      ],
+      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
+      "recommendedCommands": [
+        "{{taskDoneCommand}}",
+        "{{editBase}} --task-id <id> --task-status in_progress"
+      ]
+    },
     "process.justEntered": {
       "stage": "{{processStage}}",
       "summary": "Execution is starting.",
@@ -150,6 +192,19 @@
         "allowOverwrite": true,
         "setWhen": "on_enter_process_active"
       }
+    },
+    "process.justEntered.noGoalMode": {
+      "stage": "{{processStage}}",
+      "summary": "Execution is starting.",
+      "nextsteps": [
+        "Sync the thread progress with our tasks.",
+        "Start with {{nextTaskRef}}."
+      ],
+      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
+      "recommendedCommands": [
+        "{{taskDoneCommand}}",
+        "{{doneBase}} --summary \"<retrospective summary>\""
+      ]
     },
     "process.resumedActive": {
       "stage": "execution",
@@ -169,6 +224,19 @@
         "setWhen": "on_resume_process_active"
       }
     },
+    "process.resumedActive.noGoalMode": {
+      "stage": "execution",
+      "summary": "Execution is resuming.",
+      "nextsteps": [
+        "Sync the thread progress with our tasks.",
+        "Resume with {{nextTaskRef}}."
+      ],
+      "notes": "The plan is moving back from a paused status into active execution.",
+      "recommendedCommands": [
+        "{{taskDoneCommand}}",
+        "{{doneBase}} --summary \"<retrospective summary>\""
+      ]
+    },
     "process.wait": {
       "stage": "paused",
       "summary": "Execution is paused.",
@@ -182,6 +250,17 @@
         "{{editBase}} --plan-status process.active"
       ]
     },
+    "process.wait.noGoalMode": {
+      "stage": "paused",
+      "summary": "Execution is paused.",
+      "nextsteps": [
+        "1. Resume through `process.active` when execution should continue."
+      ],
+      "notes": "Use `process.wait` for a real blocker or a deliberate hold. Do not keep executing while the plan is paused.",
+      "recommendedCommands": [
+        "{{editBase}} --plan-status process.active"
+      ]
+    },
     "process.discussing": {
       "stage": "discussion",
       "summary": "The plan is paused for discussion.",
@@ -189,6 +268,17 @@
         "1. Pause Goal Mode.",
         "2. When resuming the plan, restore Goal Mode to the active state.",
         "3. Resolve the discussion, then resume through `process.active`."
+      ],
+      "notes": "Use `process.discussing` for route discussion or decision-making. Resume execution only after the discussion is settled.",
+      "recommendedCommands": [
+        "{{editBase}} --plan-status process.active"
+      ]
+    },
+    "process.discussing.noGoalMode": {
+      "stage": "discussion",
+      "summary": "The plan is paused for discussion.",
+      "nextsteps": [
+        "1. Resolve the discussion, then resume through `process.active`."
       ],
       "notes": "Use `process.discussing` for route discussion or decision-making. Resume execution only after the discussion is settled.",
       "recommendedCommands": [

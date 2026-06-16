@@ -26,6 +26,14 @@ export type ProjectConfig = {
   externalTruthSkill?: string | null;
   externalAdrSkill?: string | null;
   contextPaths?: string[];
+  workflow?: {
+    goalMode?: {
+      enabled?: boolean;
+    } | null;
+    truthDispatch?: {
+      mode?: "per_task" | "final_only";
+    } | null;
+  };
   memory?: {
     externalDocPaths?: string[];
     embedding?: MemoryEmbeddingConfig | null;

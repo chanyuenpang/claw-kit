@@ -18,6 +18,7 @@ Accepted
 ## Decision
 
 - 仅在 `claw init` / `initProject()` 中检查并追加 claw-kit 专用 `.gitignore` 规则块
+- 专用规则块应继续把 `.claw/project.json` 保持为 canonical committed config，同时默认忽略 `.claw/project-override.json`
 - 如果目标规则块已经存在，重复 init 必须保持 `.gitignore` 稳定，不得再次追加同一块
 - `project-check`、protocol repair 和 `claw context` 不得写入项目根目录 `.gitignore`
 
@@ -25,6 +26,7 @@ Accepted
 
 - `.gitignore` 变更的职责边界清晰，初始化流程拥有唯一写入口
 - 重复 init 不会污染项目根目录，也不会制造重复规则块
+- repo 继续把 `.claw/project.json` 当作团队共享契约，而把 `.claw/project-override.json` 留给本地覆盖用途
 - 后续 protocol/context 修复逻辑可以继续专注于 schema 和上下文恢复，而不需要同步处理 `.gitignore`
 
 ## Related Code

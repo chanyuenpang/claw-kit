@@ -109,7 +109,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
   assert.ok(fs.existsSync(path.join(root, ".claw", "tasks")));
   assert.equal(
     fs.readFileSync(path.join(root, ".gitignore"), "utf-8"),
-    "# claw-kit\n.claw/*\n!.claw/project.json\n!.claw/truth/\n!.claw/truth/**\n",
+    "# claw-kit\n.claw/*\n!.claw/project.json\n!.claw/truth/\n!.claw/truth/**\n.claw/project-override.json\n",
   );
   assert.deepEqual(projectConfig, {
     id: "demo-project",
@@ -118,6 +118,14 @@ test("initProject creates a minimal .claw project scaffold", () => {
     externalTruthSkill: "external-truth-writer",
     externalAdrSkill: "external-adr-writer",
     contextPaths: ["docs/project-guide.md"],
+    workflow: {
+      goalMode: {
+        enabled: true,
+      },
+      truthDispatch: {
+        mode: "per_task",
+      },
+    },
     memory: {
       externalDocPaths: ["docs/", "README.md"],
       embedding: {
@@ -150,7 +158,7 @@ test("initProject appends claw gitignore rules once when project already has a g
   const once = fs.readFileSync(gitignorePath, "utf-8");
   assert.equal(
     once,
-    "node_modules/\n\n# claw-kit\n.claw/*\n!.claw/project.json\n!.claw/truth/\n!.claw/truth/**\n",
+    "node_modules/\n\n# claw-kit\n.claw/*\n!.claw/project.json\n!.claw/truth/\n!.claw/truth/**\n.claw/project-override.json\n",
   );
 
   initProject({
@@ -838,6 +846,182 @@ test("process entry returns the first task and task completion returns truth-wri
   ]);
   assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.skill, "external-truth-writer");
   assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.fork_context, false);
+});
+
+test("resolveContext deep-merges project-override.json and preserves explicit null overrides", () => {
+  const root = createFixture("project-override-merge");
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify(
+      {
+        id: "project-override-merge",
+        name: "Project Override Merge",
+        maxTasksToKeep: 99,
+        externalTruthSkill: "team-truth-writer",
+        externalAdrSkill: "team-adr-writer",
+        contextPaths: ["docs/team.md"],
+        workflow: {
+          goalMode: {
+            enabled: true,
+          },
+          truthDispatch: {
+            mode: "per_task",
+          },
+        },
+        memory: {
+          externalDocPaths: ["docs/"],
+          embedding: {
+            provider: "local",
+            model: "Snowflake/snowflake-arctic-embed-xs",
+            store: {
+              vector: {
+                enabled: true,
+              },
+            },
+          },
+        },
+        gitnexus: {
+          enabled: false,
+        },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  fs.writeFileSync(
+    path.join(root, ".claw", "project-override.json"),
+    JSON.stringify(
+      {
+        externalTruthSkill: null,
+        contextPaths: ["docs/personal.md"],
+        workflow: {
+          goalMode: {
+            enabled: false,
+          },
+        },
+        memory: {
+          embedding: {
+            model: "Snowflake/snowflake-arctic-embed-m-v2.0",
+          },
+        },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+
+  const result = resolveContext(root);
+
+  assert.equal(result.project.projectConfig?.externalTruthSkill, null);
+  assert.equal(result.project.projectConfig?.externalAdrSkill, "team-adr-writer");
+  assert.deepEqual(result.project.projectConfig?.contextPaths, ["docs/personal.md"]);
+  assert.equal(result.project.projectConfig?.workflow?.goalMode?.enabled, false);
+  assert.equal(result.project.projectConfig?.workflow?.truthDispatch?.mode, "per_task");
+  assert.equal(result.project.projectConfig?.memory?.embedding?.model, "Snowflake/snowflake-arctic-embed-m-v2.0");
+  assert.equal(result.project.projectConfig?.memory?.embedding?.store?.vector?.enabled, true);
+});
+
+test("workflow guidance respects disabled goal mode and final-only truth dispatch from effective project config", async () => {
+  const root = createFixture("workflow-guidance-config-toggles");
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify(
+      {
+        id: "workflow-guidance-config-toggles",
+        name: "Workflow Guidance Config Toggles",
+        maxTasksToKeep: 99,
+        externalTruthSkill: "external-truth-writer",
+        externalAdrSkill: "external-adr-writer",
+        contextPaths: [],
+        workflow: {
+          goalMode: {
+            enabled: true,
+          },
+          truthDispatch: {
+            mode: "per_task",
+          },
+        },
+        memory: {
+          externalDocPaths: [],
+          embedding: {
+            provider: "local",
+            model: "Snowflake/snowflake-arctic-embed-xs",
+            store: {
+              vector: {
+                enabled: true,
+              },
+            },
+          },
+        },
+        gitnexus: { enabled: false },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  fs.writeFileSync(
+    path.join(root, ".claw", "project-override.json"),
+    JSON.stringify(
+      {
+        workflow: {
+          goalMode: {
+            enabled: false,
+          },
+          truthDispatch: {
+            mode: "final_only",
+          },
+        },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+
+  const written = await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Respect workflow toggles",
+    content: {
+      title: "Demo task",
+      status: "prepare.requirements",
+      goal: { text: "Respect workflow toggles" },
+      tasks: [
+        { id: 1, title: "First task", status: "pending" },
+        { id: 2, title: "Second task", status: "pending" },
+      ],
+    },
+  });
+  assert.equal(written.workflowGuidance.goalMode, undefined);
+
+  const activated = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    planStatus: "process.active",
+  });
+  assert.equal(activated.workflowGuidance.goalMode, undefined);
+
+  const taskDone = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    taskId: 1,
+    taskStatus: "done",
+  });
+  assert.equal(taskDone.workflowGuidance.delegateSubagents, undefined);
+  assert.equal(taskDone.workflowGuidance.nextsteps.some((step) => step.includes("truth-writer")), false);
+
+  const allDone = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    taskId: 2,
+    taskStatus: "done",
+  });
+  assert.equal(allDone.workflowGuidance.delegateSubagents?.[0]?.name, "truth-writer");
+  assert.equal(allDone.workflowGuidance.delegateSubagents?.[1]?.name, "adr-writer");
 });
 
 test("plan edit appendTasks auto-assigns ids when omitted", async () => {
@@ -2341,6 +2525,20 @@ test("direct workflow guidance uses the configured truth writer contract", () =>
   assert.match(String(guidance.notes), /claw search.*before execution/i);
 });
 
+test("initProject gitignore ignores project-override.json by default", () => {
+  const root = createEmptyFixture("init-project-override-gitignore");
+
+  initProject({
+    cwd: root,
+    projectName: "Override Ignore",
+  });
+
+  assert.equal(
+    fs.readFileSync(path.join(root, ".gitignore"), "utf-8"),
+    "# claw-kit\n.claw/*\n!.claw/project.json\n!.claw/truth/\n!.claw/truth/**\n.claw/project-override.json\n",
+  );
+});
+
 test("truth ingest writes only under .claw/truth", () => {
   const root = createFixture("truth-ingest");
 
@@ -2403,6 +2601,14 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
     externalTruthSkill: string | null;
     externalAdrSkill: string | null;
     contextPaths: string[];
+    workflow: {
+      goalMode: {
+        enabled: boolean;
+      };
+      truthDispatch: {
+        mode: "per_task" | "final_only";
+      };
+    };
     memory: {
       externalDocPaths: string[];
       embedding: {
@@ -2430,6 +2636,14 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
   assert.equal(projectConfig.externalTruthSkill, null);
   assert.equal(projectConfig.externalAdrSkill, null);
   assert.deepEqual(projectConfig.contextPaths, []);
+  assert.deepEqual(projectConfig.workflow, {
+    goalMode: {
+      enabled: true,
+    },
+    truthDispatch: {
+      mode: "per_task",
+    },
+  });
   assert.deepEqual(projectConfig.memory.externalDocPaths, ["docs/"]);
   assert.deepEqual(projectConfig.memory.embedding, {
     provider: "openai",
@@ -2485,6 +2699,14 @@ test("ensureProjectProtocol removes legacy default local modelCacheDir so runtim
 
   const result = ensureProjectProtocol(root);
   const projectConfig = JSON.parse(fs.readFileSync(result.projectJsonPath, "utf-8")) as {
+    workflow: {
+      goalMode: {
+        enabled: boolean;
+      };
+      truthDispatch: {
+        mode: "per_task" | "final_only";
+      };
+    };
     memory: {
       embedding: {
         provider: string;
@@ -2502,6 +2724,14 @@ test("ensureProjectProtocol removes legacy default local modelCacheDir so runtim
   };
 
   assert.equal(result.changed, true);
+  assert.deepEqual(projectConfig.workflow, {
+    goalMode: {
+      enabled: true,
+    },
+    truthDispatch: {
+      mode: "per_task",
+    },
+  });
   assert.deepEqual(projectConfig.memory.embedding, {
     provider: "local",
     model: "Snowflake/snowflake-arctic-embed-m-v2.0",

@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-`release-0-1-18` 这个完成计划把一次正式发布收口成了可重复的发布协议。后续 `release-0-1-25` 又补上了一个更强的环境约束：发布流程不能假定宿主机已经提供可直接调用的 `npm` CLI，但仍然需要完成真实发布并验证最终安装烟测。`sync-latest-remote-and-publish-next-release` 这次完成计划继续把 release closeout 固化为正式协议：本地 release-guidance 工作先落成独立提交，再同步远端 `main`，并以“当前 merged HEAD 是否已经领先于已发布 artifact”来决定真实 release 目标版本。`release-0.1.33` 这次发布把 shared embedding cache / legacy `.claw/models` cleanup 作为正式 patch release 内容，再次验证了这条协议在本机刷新 CLI、同步 Codex plugin cache 和 registry 验证上的闭环。`release-0.1.34` 则再次把 workspace/package/plugin/changelog 版本对齐、双包发布顺序、安装烟测、CLI/plugin cache 刷新和 release commit 推送收口为同一条可复用的 closeout 协议。`release-0.1.39` 继续沿用这条协议，并把 researcher dispatch contract 的 host-light / wait-for-result 约束一并带入 release closeout 验证。六次 release 共同定义了现在的正式发布/安装协议。
+`release-0-1-18` 这个完成计划把一次正式发布收口成了可重复的发布协议。后续 `release-0-1-25` 又补上了一个更强的环境约束：发布流程不能假定宿主机已经提供可直接调用的 `npm` CLI，但仍然需要完成真实发布并验证最终安装烟测。`sync-latest-remote-and-publish-next-release` 这次完成计划继续把 release closeout 固化为正式协议：本地 release-guidance 工作先落成独立提交，再同步远端 `main`，并以“当前 merged HEAD 是否已经领先于已发布 artifact”来决定真实 release 目标版本。`release-0.1.33` 这次发布把 shared embedding cache / legacy `.claw/models` cleanup 作为正式 patch release 内容，再次验证了这条协议在本机刷新 CLI、同步 Codex plugin cache 和 registry 验证上的闭环。`release-0.1.34` 则再次把 workspace/package/plugin/changelog 版本对齐、双包发布顺序、安装烟测、CLI/plugin cache 刷新和 release commit 推送收口为同一条可复用的 closeout 协议。`release-0.1.39` 继续沿用这条协议，并把 researcher dispatch contract 的 host-light / wait-for-result 约束一并带入 release closeout 验证。`release-0.1.40` 又补上了一个更细的 closeout 现实约束：npm registry 传播可能短暂落后于 publish 成功时刻，因此本机 CLI 刷新需要允许“等版本可见后重试一次”，而本地 Codex plugin cache 仍继续用直接文件系统同步和逐文件 hash 校验来闭环。七次 release 共同定义了现在的正式发布/安装协议。
 
 ## Decision
 
@@ -19,10 +19,12 @@ Accepted
 - 发布前必须完成 `npm test`、`npm run check`，以及本地安装脚本验证
 - 双包发布保持固定顺序：先发 `@veewo/claw-core`，再发 `@veewo/claw`
 - 在受管环境里，如果宿主机没有可直接调用的 `npm` CLI，也允许通过 bundled node、tar-based packaging 和 registry API 完成真实 publish
-- Windows 本地安装继续通过 `scripts/install-cli.ps1`，并保持 `npm install -g @veewo/claw` 作为本地 CLI 安装路径
-- 发布完成后仍必须验证 `@veewo/claw` 的安装烟测；当前 `0.1.39` 的基线证据是 `claw --version = 0.1.39`、命令解析到 `C:\nvm4w\nodejs\claw.ps1`，并且本地 Codex plugin cache 已切到 `0.1.39+codex.20260613195040`
+- Windows 本地安装继续通过仓库支持的 `npm run install:local-cli` 路径刷新全局 CLI
+- 如果 publish 刚完成时 `npm view @veewo/claw version` 还没看到新版本，closeout 不把第一次本地安装拿到旧版本视为失败；应在 registry 可见新版本后重跑 `npm run install:local-cli`
+- 发布完成后仍必须验证 `@veewo/claw` 的安装烟测；当前 `0.1.40` 这轮的基线证据是 `npm view @veewo/claw-core version = 0.1.40`、`npm view @veewo/claw version = 0.1.40`、`claw --version = 0.1.40`，以及 `npm list -g @veewo/claw --depth=0` 解析到 `@veewo/claw@0.1.40`
 - 正式 publish 完成后，除了安装烟测，还要刷新并验证本地 CLI 与本地 Codex plugin cache，确保 npm 包与适配器缓存都已经切到新发布版本
-- `0.1.39` release closeout 的 done 条件继续包括本机全局 `claw` CLI 刷新、`packages/codex-adapter` 对应本地 Codex plugin cache 刷新、关键缓存文件与仓库副本 hash 一致，以及最终 release commit `05bfd20` 推送到 `origin/main`
+- `0.1.40` release closeout 的 done 条件继续包括本机全局 `claw` CLI 刷新、`packages/codex-adapter` 对应本地 Codex plugin cache 刷新、关键缓存文件与仓库副本 hash 一致，并把缓存目标版本固定到 `0.1.40+codex.20260616130425`
+- 本地 Codex plugin cache 的稳定刷新语义保持不变：把 `packages/codex-adapter` 下的 `.codex-plugin`、`hooks`、`references`、`scripts`、`skills` 与 `package.json` 直接同步到版本化的 `claw-kit-local` 缓存目录，再做内容一致性复核
 - 如果 release round 同时包含 Codex workflow contract 变更，closeout 应把这些长期规则一并沉淀到 canonical truth；`0.1.39` 的新增规则是 researcher dispatch 前不要由 host 内联读取 search skill，且依赖 research 结果的主流程必须等待 `researcher` 返回
 - 发布完成后删除本机临时 `npm token` 配置
 
@@ -35,8 +37,10 @@ Accepted
 - `@veewo/claw-core` 与 `@veewo/claw` 的先后顺序被固定，避免依赖链倒置
 - 正式发布不再被“PATH 上必须已有 npm CLI”这个宿主前提卡死，release automation 在更受限的 managed environment 里仍然可行
 - Windows 本地安装路径保持可重复执行，不需要依赖真实发布来完成日常使用
+- npm registry 的短暂传播延迟被正式纳入 closeout 协议，因此“publish 已成功但第一次本地安装仍拿到旧版本”不再会被误判成 release 回滚或安装脚本损坏
 - 安装烟测继续作为 release closeout 的必选项，避免 registry 成功但最终 CLI 安装链路失效
 - 本地 CLI 与 Codex plugin cache 都被纳入 release closeout 验证范围，避免 registry 已更新但操作者机器仍停留在旧缓存
+- plugin cache 的 direct filesystem sync 范围被继续固定下来，后续 closeout 可以明确判断“缓存没刷新”与“缓存目录已切换但 payload 不一致”这两类不同故障
 - researcher dispatch contract 进入 release closeout 事实后，未来 release 不会只验证 artifact 版本，还会同时复核与发布一起交付的长期 workflow 规则
 - 发布后清理 token 让本机环境回到更安全的状态
 
@@ -56,17 +60,19 @@ Accepted
 - `packages/codex-adapter/hooks/subagent-contract.test.mjs`
 - `.claw/archive/tasks/release-0-1-18/plan.json`
 - `.claw/archive/tasks/sync-latest-remote-and-publish-next-release/plan.json`
+- `.claw/tasks/release-workflow-toggles-and-refresh-local-plugin/plan.json`
 
 ## Search Terms
 
 - `release-0-1-18`
 - `release-0.1.39`
+- `release-0.1.40`
 - `@veewo/claw-core`
 - `@veewo/claw`
-- `scripts/install-cli.ps1`
+- `npm run install:local-cli`
 - `claw --version`
-- `C:\nvm4w\nodejs\claw.ps1`
+- `0.1.40+codex.20260616130425`
 - `plugin cache refresh`
-- `05bfd20`
+- `registry propagation`
 - `do not read the search skill inline`
 - `wait for the result`
