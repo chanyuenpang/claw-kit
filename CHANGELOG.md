@@ -2,6 +2,17 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.1.41] - 2026-06-19
+
+### Changed
+
+- workflow guidance now returns explicit `goalTool` lifecycle contracts for create, blocked, and complete goal transitions while preserving project-level workflow override gates
+- planning guidance now treats no-file discussion or doc-only work as simple scoring inputs and raises the direct-path cutoff to `score < 6`
+
+### Fixed
+
+- Codex workflow guidance no longer suggests starting Goal mode during `prepare.requirements`, and core/CLI regression coverage now locks the active, paused, resumed, and completed goal-tool contract surfaces
+
 ## [0.1.40] - 2026-06-16
 
 ### Changed
