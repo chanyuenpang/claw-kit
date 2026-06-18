@@ -187,14 +187,13 @@ test("plan write creates task-bound plan and updates activePlan", async () => {
   assert.ok(fs.existsSync(result.planPath));
   assert.equal(result.workflowGuidance.stage, "requirements");
   assert.equal(result.workflowGuidance.delegateSubagents, undefined);
-  assert.ok(result.workflowGuidance.goalMode?.recommendedObjective?.includes("Ship the first plan"));
-  assert.equal(result.workflowGuidance.goalMode?.setWhen, undefined);
+  assert.equal(result.workflowGuidance.goalMode, undefined);
+  assert.equal(result.workflowGuidance.goalTool, undefined);
   assert.ok(result.workflowGuidance.summary.includes("Fill the remaining plan fields"));
   assert.ok(result.workflowGuidance.summary.includes("already authorized this @claw-kit thread to use goal mode and delegated subagents"));
   assert.ok(result.workflowGuidance.summary.includes("permission concerns must not block the flow"));
-  assert.ok(result.workflowGuidance.nextsteps.includes("1. Set Goal Mode."));
-  assert.ok(result.workflowGuidance.nextsteps.includes("2. Fill the missing plan fields."));
-  assert.ok(result.workflowGuidance.nextsteps.includes("3. Move into `process.active` once requirements are clear."));
+  assert.ok(result.workflowGuidance.nextsteps.includes("1. Fill the missing plan fields."));
+  assert.ok(result.workflowGuidance.nextsteps.includes("2. Move into `process.active` once requirements are clear."));
   assert.equal(result.workflowGuidance.askUser, undefined);
   assert.equal(result.plan.title, "Demo task");
   assert.equal(result.plan.status, "prepare.requirements");
@@ -224,9 +223,8 @@ test("plan write guidance leaves requirement judgment to the agent", async () =>
   });
 
   assert.equal(result.workflowGuidance.askUser, undefined);
-  assert.ok(result.workflowGuidance.nextsteps.includes("1. Set Goal Mode."));
-  assert.ok(result.workflowGuidance.nextsteps.includes("2. Fill the missing plan fields."));
-  assert.ok(result.workflowGuidance.nextsteps.includes("3. Move into `process.active` once requirements are clear."));
+  assert.ok(result.workflowGuidance.nextsteps.includes("1. Fill the missing plan fields."));
+  assert.ok(result.workflowGuidance.nextsteps.includes("2. Move into `process.active` once requirements are clear."));
   assert.deepEqual(result.workflowGuidance.recommendedCommands, [
     "claw plan edit --task demo-task --plan-status process.active",
     "claw plan edit --task demo-task --patch <updated-plan.json>",
@@ -336,7 +334,7 @@ test("plan write without goal tells the agent to fill goal first", async () => {
   assert.equal(result.workflowGuidance.goalMode, undefined);
   assert.ok(result.workflowGuidance.summary.includes("Add the goal first"));
   assert.ok(result.workflowGuidance.nextsteps.includes("1. Fill `goal.text`."));
-  assert.ok(result.workflowGuidance.nextsteps.includes("2. Set Goal Mode."));
+  assert.ok(result.workflowGuidance.nextsteps.includes("2. Fill the missing plan fields."));
   assert.deepEqual(result.workflowGuidance.recommendedCommands, [
     "claw plan edit --task Goal-later-task --plan-status process.active",
     "claw plan edit --task Goal-later-task --patch <updated-plan.json>",
@@ -687,13 +685,18 @@ test("plan edit process.wait guidance pauses goal mode and points resume back to
   assert.equal(paused.planStatus, "process.wait");
   assert.equal(paused.workflowGuidance.stage, "paused");
   assert.deepEqual(paused.workflowGuidance.nextsteps, [
-    "1. Pause Goal Mode.",
-    "2. When resuming the plan, restore Goal Mode to the active state.",
+    "1. Use `update_goal(status=\"blocked\")` to end the current active thread goal.",
+    "2. When resuming the plan, restore the active thread goal after re-entering `process.active`.",
     "3. Resume through `process.active` when execution should continue.",
   ]);
   assert.deepEqual(paused.workflowGuidance.recommendedCommands, [
     "claw plan edit --task demo-task --plan-status process.active",
   ]);
+  assert.deepEqual(paused.workflowGuidance.goalTool, {
+    tool: "update_goal",
+    status: "blocked",
+    reason: "Execution is paused in `process.wait`, so the current active thread goal should be ended as blocked until work resumes.",
+  });
   assert.equal(paused.workflowGuidance.goalMode, undefined);
 });
 
@@ -721,13 +724,18 @@ test("plan edit process.discussing guidance pauses goal mode and waits for discu
   assert.equal(discussing.planStatus, "process.discussing");
   assert.equal(discussing.workflowGuidance.stage, "discussion");
   assert.deepEqual(discussing.workflowGuidance.nextsteps, [
-    "1. Pause Goal Mode.",
-    "2. When resuming the plan, restore Goal Mode to the active state.",
+    "1. Use `update_goal(status=\"blocked\")` to end the current active thread goal.",
+    "2. When resuming the plan, restore the active thread goal after re-entering `process.active`.",
     "3. Resolve the discussion, then resume through `process.active`.",
   ]);
   assert.deepEqual(discussing.workflowGuidance.recommendedCommands, [
     "claw plan edit --task demo-task --plan-status process.active",
   ]);
+  assert.deepEqual(discussing.workflowGuidance.goalTool, {
+    tool: "update_goal",
+    status: "blocked",
+    reason: "Execution is paused in `process.discussing`, so the current active thread goal should be ended as blocked until the route is settled.",
+  });
   assert.equal(discussing.workflowGuidance.goalMode, undefined);
 });
 
@@ -756,6 +764,12 @@ test("resuming from process.wait to process.active re-emits goal mode guidance",
   assert.equal(resumed.workflowGuidance.stage, "execution");
   assert.equal(resumed.workflowGuidance.goalMode?.setWhen, "on_resume_process_active");
   assert.ok(resumed.workflowGuidance.goalMode?.recommendedObjective?.includes("Resume execution with goal mode"));
+  assert.deepEqual(resumed.workflowGuidance.goalTool, {
+    tool: "create_goal",
+    objective: "Using claw-kit, update plan, follow returned workflowGuidance，finish your goal：Resume execution with goal mode",
+    ifNoActiveGoal: true,
+    reason: "Execution is resuming from a paused process state, so the thread should restore an active Codex goal for the plan goal.",
+  });
   assert.equal(
     resumed.workflowGuidance.notes,
     "The plan is moving back from a paused status into active execution, so Goal Mode should be restored to the active state before work resumes.",
@@ -766,6 +780,36 @@ test("resuming from process.wait to process.active re-emits goal mode guidance",
     "Resume with task #1.",
   ]);
   assert.ok(resumed.workflowGuidance.nextsteps.includes("Sync the thread progress with our tasks."));
+});
+
+test("end.completed emits complete goal tool guidance", async () => {
+  const root = createFixture("end-completed-goal-tool");
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Finish the plan",
+    content: {
+      title: "Demo task",
+      status: "process.active",
+      goal: { text: "Finish the plan" },
+      tasks: [{ id: 1, title: "Implement work", status: "done" }],
+      retrospective: { summary: "Done." },
+    },
+  });
+
+  const result = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    planStatus: "end.completed",
+  });
+
+  assert.equal(result.workflowGuidance.stage, "done");
+  assert.deepEqual(result.workflowGuidance.goalTool, {
+    tool: "update_goal",
+    status: "complete",
+    reason: "The plan has reached completion, so the active thread goal should be marked complete.",
+  });
 });
 
 test("process entry returns the first task and task completion returns truth-writer contract before plan completion", async () => {

@@ -56,20 +56,29 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
 
 - When present, treat it as a thread-goal recommendation tied to the active plan.
 - Current intended use is `setWhen = on_enter_process_active` for first entry and `setWhen = on_resume_process_active` when execution resumes from `process.wait` or `process.discussing`.
-- When a plan first enters `process.active`, set the thread goal from `recommendedObjective` if the thread does not already have an active goal.
-- When a plan resumes into `process.active` from `process.wait` or `process.discussing`, restore Goal Mode to the active state from `recommendedObjective`.
+- When a plan first enters `process.active`, use `goalTool.tool = create_goal` and `goalMode.recommendedObjective` to create the thread goal if the thread does not already have an active goal.
+- When a plan resumes into `process.active` from `process.wait` or `process.discussing`, use `goalTool.tool = create_goal` and `goalMode.recommendedObjective` to restore the active thread goal.
 - Do not automatically overwrite an unrelated active goal already attached to the thread.
 - In `@claw-kit` threads, treat goal mode and delegated subagent use as already authorized by the user. Do not pause or block the workflow for any authorization-related excuse; only stop if the user explicitly changes direction and forbids them.
 - In the Codex app, `/goal` is the normal host surface. In tool-enabled sessions, `create_goal` is also a valid path.
+
+### `goalTool`
+
+- When present, treat it as the executable Codex goal-tool contract instead of a prose hint.
+- Honor `goalTool.tool` directly.
+- For `goalTool.tool = create_goal`, call `create_goal(objective=goalTool.objective)` only when `ifNoActiveGoal = true` and the thread does not already have an active goal.
+- For `goalTool.tool = update_goal`, call `update_goal(status=goalTool.status)` to end the current active goal with the returned completion state.
+- `process.wait` and `process.discussing` should use `update_goal(status="blocked")` instead of inventing a fake "pause goal mode" operation.
+- `end.completed` should use `update_goal(status="complete")`.
 
 ## Lifecycle interpretation
 
 - canonical chain
   - `prepare.requirements`
-  - enter goal mode
   - check whether requirements are clear
   - ask the user only when requirements are still ambiguous
   - `process.active`
+  - create the thread goal if `goalTool` says to
   - process one task
   - dispatch `truth-writer`
   - process next task
@@ -87,8 +96,13 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
   - do not start implementation in this stage
   - when requirements are clear, move the plan directly to `process.active` before doing any implementation or task execution
 - `process.active` on first entry
+  - read `goalTool`
   - read `goalMode`
-  - create the thread goal from `recommendedObjective` when there is no active thread goal yet
+  - create the thread goal from `goalMode.recommendedObjective` when `goalTool.tool = create_goal` and there is no active thread goal yet
+- `process.wait` or `process.discussing`
+  - read `goalTool`
+  - use `update_goal(status="blocked")`
+  - do not keep executing while the plan is paused
 - `process.*` with task completion but open plan
   - every completed task returns the `truth-writer` delegate contract
   - the main agent decides whether the completed task actually needs truth doc deposition
@@ -98,6 +112,8 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
   - dispatch `truth-writer` with the curated completed subtask report when the completed task produced reusable truth
   - when all tasks are done, complete retrospective capture, read `delegateSubagents`, and dispatch `adr-writer` before root `claw plan done`; this ADR dispatch is required for root-plan closeout
 - `end.completed`
+  - read `goalTool`
+  - use `update_goal(status="complete")`
   - for root plans, treat this as closeout/archive rather than the ADR trigger
   - run an explicit closeout check after the root plan is done
   - confirm the workflow dispatched `truth-writer` and `adr-writer` whenever the returned contract required them

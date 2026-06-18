@@ -58,7 +58,7 @@ When the user uses `@claw-kit`, that already authorizes the subagent mechanism f
 - Treat this `@claw-kit` thread as already authorized by the user to use goal mode and required delegated subagents. Do not block the workflow for any permission-related excuse;
 - Use `claw search` after `claw plan write` to recall relevant knowledges.
 - After every `claw plan write`, `claw plan edit`, or `claw plan done`, follow returned `workflowGuidance` instead of inventing a parallel process.
-- When `workflowGuidance.goalMode` is present, set the thread goal from `workflowGuidance.goalMode.recommendedObjective` if the thread does not already have an active goal.
+- When `workflowGuidance.goalTool` is present, execute the real Codex goal tool contract it returns. Use `create_goal` for active execution entry when no active goal exists, and use `update_goal(status=complete|blocked)` for lifecycle exits that close the current goal.
 - Reuse the existing `truth-writer` when possible; otherwise dispatch a new one.
 - Run ADR deposition from the `all tasks done` guidance before root `claw plan done`.
 - Treat closeout as a required workflow phase after root `claw plan done`, including verification that required writer delegation happened and that task-related doc residue is not left out of the commit.

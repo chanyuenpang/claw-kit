@@ -7,6 +7,7 @@ import type {
   PlanTask,
   PlanStatus,
   WorkflowGuidance,
+  WorkflowGuidanceGoalTool,
   WorkflowGuidanceSubagent,
   WorkflowGuidanceOption,
 } from "./types.js";
@@ -18,6 +19,18 @@ type GoalModeTemplate = {
   setWhen?: "on_enter_process_active" | "on_resume_process_active";
 };
 
+type GoalToolTemplate =
+  | {
+      tool: "create_goal";
+      ifNoActiveGoal: true;
+      reason: string;
+    }
+  | {
+      tool: "update_goal";
+      status: "complete" | "blocked";
+      reason: string;
+    };
+
 type GuidanceStateTemplate = {
   stage: WorkflowGuidance["stage"] | "{{processStage}}";
   summary: string;
@@ -26,6 +39,7 @@ type GuidanceStateTemplate = {
   recommendedCommands?: string[];
   delegateSubagents?: DelegateConfigKey[];
   goalMode?: GoalModeTemplate;
+  goalTool?: GoalToolTemplate;
   askUser?: {
     reason: string;
     useCodexOptions: true;
@@ -75,6 +89,22 @@ function buildGoalMode(planGoal: string, template: GoalModeTemplate): NonNullabl
     recommendedObjective: buildGoalModeObjective(planGoal),
     allowOverwrite: template.allowOverwrite,
     ...(template.setWhen ? { setWhen: template.setWhen } : {}),
+  };
+}
+
+function buildGoalTool(planGoal: string, template: GoalToolTemplate): WorkflowGuidanceGoalTool {
+  if (template.tool === "create_goal") {
+    return {
+      tool: "create_goal",
+      objective: buildGoalModeObjective(planGoal),
+      ifNoActiveGoal: true,
+      reason: template.reason,
+    };
+  }
+  return {
+    tool: "update_goal",
+    status: template.status,
+    reason: template.reason,
   };
 }
 
@@ -156,7 +186,7 @@ export function buildDirectWorkflowGuidance(params: {
       "2. Let the asynchronously queued completion refresh finish. This direct path reuses the same refresh flow as `claw plan done`.",
     ],
     notes:
-      "Tasks with complexity scores below 4 can stay on the direct claw path: run `claw search` before execution when project recall is relevant, solve directly, then dispatch `truth-writer` only when the completed work has reusable truth.",
+      "Tasks with complexity scores below 6 can stay on the direct claw path: run `claw search` before execution when project recall is relevant, solve directly, then dispatch `truth-writer` only when the completed work has reusable truth.",
     delegateSubagents: [truthWriterDelegate(projectConfig)],
   };
 }
@@ -217,7 +247,6 @@ export function buildPlanWorkflowGuidance(params: {
         nextsteps: template.nextsteps,
         ...(template.notes ? { notes: template.notes } : {}),
         ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),
-        ...(template.goalMode && goalModeEnabled && hasGoal ? { goalMode: buildGoalMode(plan.goal.text, template.goalMode) } : {}),
       };
     }
     case "prepare.review": {
@@ -240,6 +269,7 @@ export function buildPlanWorkflowGuidance(params: {
         nextsteps: template.nextsteps,
         ...(template.notes ? { notes: template.notes } : {}),
         ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),
+        ...(template.goalTool && goalModeEnabled && hasGoal ? { goalTool: buildGoalTool(plan.goal.text, template.goalTool) } : {}),
       };
     }
     case "process.active": {
@@ -286,6 +316,9 @@ export function buildPlanWorkflowGuidance(params: {
         ...(template.goalMode && goalModeEnabled && (justEnteredProcess || resumedIntoActive) && hasGoal
           ? { goalMode: buildGoalMode(plan.goal.text, template.goalMode) }
           : {}),
+        ...(template.goalTool && goalModeEnabled && (justEnteredProcess || resumedIntoActive) && hasGoal
+          ? { goalTool: buildGoalTool(plan.goal.text, template.goalTool) }
+          : {}),
         ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),
         ...(hasCompletedTasks && template.delegateSubagents
           ? {
@@ -303,6 +336,7 @@ export function buildPlanWorkflowGuidance(params: {
         summary: template.summary,
         nextsteps: template.nextsteps,
         ...(template.notes ? { notes: template.notes } : {}),
+        ...(template.goalTool && goalModeEnabled && hasGoal ? { goalTool: buildGoalTool(plan.goal.text, template.goalTool) } : {}),
         ...(template.delegateSubagents
           ? { delegateSubagents: buildConfiguredDelegates(template.delegateSubagents, projectConfig) }
           : {}),

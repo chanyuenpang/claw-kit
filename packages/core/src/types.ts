@@ -172,6 +172,19 @@ export type WorkflowGuidanceSubagent = {
   closePolicy: "close_after_result" | "keep_open_for_reuse";
 };
 
+export type WorkflowGuidanceGoalTool =
+  | {
+      tool: "create_goal";
+      objective: string;
+      ifNoActiveGoal: true;
+      reason: string;
+    }
+  | {
+      tool: "update_goal";
+      status: "complete" | "blocked";
+      reason: string;
+    };
+
 export type WorkflowGuidance = {
   stage: "requirements" | "review" | "discussion" | "execution" | "done" | "deposition" | "paused";
   summary: string;
@@ -190,6 +203,7 @@ export type WorkflowGuidance = {
     allowOverwrite: true;
     setWhen?: "on_enter_process_active" | "on_resume_process_active";
   };
+  goalTool?: WorkflowGuidanceGoalTool;
   askUser?: {
     reason: string;
     useCodexOptions: true;

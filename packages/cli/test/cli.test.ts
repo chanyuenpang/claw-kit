@@ -259,8 +259,8 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   assert.equal("taskName" in writeResult, false);
   assert.equal("planFile" in writeResult, false);
   assert.equal(writeResult.planSummary, "e2e-task");
-  assert.match(String((writeResult.goalMode as JsonRecord).recommendedObjective), /Verify the CLI lifecycle/);
-  assert.equal((writeResult.goalMode as JsonRecord).setWhen, undefined);
+  assert.equal(writeResult.goalMode, undefined);
+  assert.equal(writeResult.goalTool, undefined);
   assert.equal("nextAction" in writeResult, false);
   assert.equal("instruction" in writeResult, false);
   assert.equal("askUser" in writeResult, false);
@@ -277,8 +277,11 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
     env,
   );
   const activateGoalMode = activateResult.goalMode as JsonRecord;
+  const activateGoalTool = activateResult.goalTool as JsonRecord;
   assert.match(String(activateGoalMode.recommendedObjective), /Verify the CLI lifecycle/);
   assert.equal(activateGoalMode.setWhen, "on_enter_process_active");
+  assert.equal(activateGoalTool.tool, "create_goal");
+  assert.equal(activateGoalTool.ifNoActiveGoal, true);
 
   const patchPath = path.join(root, "append-tasks.json");
   fs.writeFileSync(
@@ -490,14 +493,20 @@ test("cli plan edit wait and resume surfaces goal mode pause and restart guidanc
   const waitResult = runClaw(["plan", "edit", "--task", "demo-task", "--plan-status", "process.wait"], root);
   assert.equal(waitResult.planStatus, "process.wait");
   assert.deepEqual(waitResult.nextsteps, [
-    "1. Pause Goal Mode.",
-    "2. When resuming the plan, restore Goal Mode to the active state.",
+    "1. Use `update_goal(status=\"blocked\")` to end the current active thread goal.",
+    "2. When resuming the plan, restore the active thread goal after re-entering `process.active`.",
     "3. Resume through `process.active` when execution should continue.",
   ]);
+  assert.deepEqual(waitResult.goalTool, {
+    tool: "update_goal",
+    status: "blocked",
+    reason: "Execution is paused in `process.wait`, so the current active thread goal should be ended as blocked until work resumes.",
+  });
   assert.equal(waitResult.goalMode, undefined);
 
   const resumeResult = runClaw(["plan", "edit", "--task", "demo-task", "--plan-status", "process.active"], root);
   const resumeGoalMode = resumeResult.goalMode as JsonRecord;
+  const resumeGoalTool = resumeResult.goalTool as JsonRecord;
   assert.equal(resumeResult.planStatus, "process.active");
   assert.deepEqual(resumeResult.nextsteps, [
     "Sync the thread progress with our tasks.",
@@ -510,6 +519,8 @@ test("cli plan edit wait and resume surfaces goal mode pause and restart guidanc
   );
   assert.equal(resumeGoalMode.setWhen, "on_resume_process_active");
   assert.match(String(resumeGoalMode.recommendedObjective), /Pause and resume cleanly/);
+  assert.equal(resumeGoalTool.tool, "create_goal");
+  assert.equal(resumeGoalTool.ifNoActiveGoal, true);
 });
 
 test("cli search accepts a positional query for project recall", () => {

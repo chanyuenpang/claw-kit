@@ -32,19 +32,15 @@
       "stage": "requirements",
       "summary": "Task scope is bound. Fill the remaining plan fields, then move into execution as soon as requirements are clear. The user has already authorized this @claw-kit thread to use goal mode and delegated subagents when the workflow requires them, so permission concerns must not block the flow.",
       "nextsteps": [
-        "1. Set Goal Mode.",
-        "2. Fill the missing plan fields.",
-        "3. Move into `process.active` once requirements are clear."
+        "1. Fill the missing plan fields.",
+        "2. Move into `process.active` once requirements are clear."
       ],
       "notes": "Fill only the fields still needed to execute, such as `requirements`, `tasks`, `references`, `rules`, and `keyDecisions`. If scope is still unclear, clarify it with the user before switching to `process.active`.",
       "recommendedCommands": [
         "{{editBase}} --plan-status process.active",
         "{{editBase}} --patch <updated-plan.json>",
         "{{editBase}} --reference-path <path> --reference-why <why>"
-      ],
-      "goalMode": {
-        "allowOverwrite": true
-      }
+      ]
     },
     "prepare.requirements.withGoal.noGoalMode": {
       "stage": "requirements",
@@ -65,9 +61,8 @@
       "summary": "Task scope is bound. Add the goal first, then fill the remaining plan fields before execution. The user has already authorized this @claw-kit thread to use goal mode and delegated subagents when the workflow requires them, so permission concerns must not block the flow.",
       "nextsteps": [
         "1. Fill `goal.text`.",
-        "2. Set Goal Mode.",
-        "3. Fill the missing plan fields.",
-        "4. Move into `process.active` once requirements are clear."
+        "2. Fill the missing plan fields.",
+        "3. Move into `process.active` once requirements are clear."
       ],
       "notes": "Fill only the fields still needed to execute, such as `requirements`, `tasks`, `references`, `rules`, and `keyDecisions`. If scope is still unclear, clarify it with the user before switching to `process.active`.",
       "recommendedCommands": [
@@ -188,6 +183,11 @@
         "{{taskDoneCommand}}",
         "{{doneBase}} --summary \"<retrospective summary>\""
       ],
+      "goalTool": {
+        "tool": "create_goal",
+        "ifNoActiveGoal": true,
+        "reason": "Execution is entering an active process state, so the thread should have an active Codex goal tied to the plan goal."
+      },
       "goalMode": {
         "allowOverwrite": true,
         "setWhen": "on_enter_process_active"
@@ -219,6 +219,11 @@
         "{{taskDoneCommand}}",
         "{{doneBase}} --summary \"<retrospective summary>\""
       ],
+      "goalTool": {
+        "tool": "create_goal",
+        "ifNoActiveGoal": true,
+        "reason": "Execution is resuming from a paused process state, so the thread should restore an active Codex goal for the plan goal."
+      },
       "goalMode": {
         "allowOverwrite": true,
         "setWhen": "on_resume_process_active"
@@ -241,14 +246,19 @@
       "stage": "paused",
       "summary": "Execution is paused.",
       "nextsteps": [
-        "1. Pause Goal Mode.",
-        "2. When resuming the plan, restore Goal Mode to the active state.",
+        "1. Use `update_goal(status=\"blocked\")` to end the current active thread goal.",
+        "2. When resuming the plan, restore the active thread goal after re-entering `process.active`.",
         "3. Resume through `process.active` when execution should continue."
       ],
       "notes": "Use `process.wait` for a real blocker or a deliberate hold. Do not keep executing while the plan is paused.",
       "recommendedCommands": [
         "{{editBase}} --plan-status process.active"
-      ]
+      ],
+      "goalTool": {
+        "tool": "update_goal",
+        "status": "blocked",
+        "reason": "Execution is paused in `process.wait`, so the current active thread goal should be ended as blocked until work resumes."
+      }
     },
     "process.wait.noGoalMode": {
       "stage": "paused",
@@ -265,14 +275,19 @@
       "stage": "discussion",
       "summary": "The plan is paused for discussion.",
       "nextsteps": [
-        "1. Pause Goal Mode.",
-        "2. When resuming the plan, restore Goal Mode to the active state.",
+        "1. Use `update_goal(status=\"blocked\")` to end the current active thread goal.",
+        "2. When resuming the plan, restore the active thread goal after re-entering `process.active`.",
         "3. Resolve the discussion, then resume through `process.active`."
       ],
       "notes": "Use `process.discussing` for route discussion or decision-making. Resume execution only after the discussion is settled.",
       "recommendedCommands": [
         "{{editBase}} --plan-status process.active"
-      ]
+      ],
+      "goalTool": {
+        "tool": "update_goal",
+        "status": "blocked",
+        "reason": "Execution is paused in `process.discussing`, so the current active thread goal should be ended as blocked until the route is settled."
+      }
     },
     "process.discussing.noGoalMode": {
       "stage": "discussion",
@@ -305,6 +320,19 @@
         "{{taskDoneCommand}}"
       ]
     },    
+    "end.completed": {
+      "stage": "done",
+      "summary": "The plan is completed and ready for closeout.",
+      "nextsteps": [
+        "1. Use `update_goal(status=\"complete\")` to close the active thread goal for this plan.",
+        "2. Finish any remaining workflow-guided closeout work such as archive or parent-plan resumption."
+      ],
+      "goalTool": {
+        "tool": "update_goal",
+        "status": "complete",
+        "reason": "The plan has reached completion, so the active thread goal should be marked complete."
+      }
+    },
     "end.closed": {
       "stage": "paused",
       "summary": "The plan is no longer active.",

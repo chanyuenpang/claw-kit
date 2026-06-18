@@ -75,17 +75,17 @@ Use this quick scoring pass before deciding whether the task needs a formal plan
 
 | Dimension | Simple (1) | Medium (2) | Complex (3) |
 | --- | --- | --- | --- |
-| Files/modules touched | 1 file or one tight module | 2-3 files/modules | 4+ files/modules or cross-cutting surface |
+| Files/modules touched | no file changes, or 1 file or one tight module | 2-3 files/modules | 4+ files/modules or cross-cutting surface |
 | Requirement clarity | fully clear | one or two small unknowns | fuzzy, conflicting, or multiple plausible routes |
 | Dependency clarity | isolated | known dependencies | unclear dependencies or integration risk |
-| Workflow shape | tiny patch / direct answer | light implementation with a short verify step | real workflow, staged work, or multi-step closure |
+| Workflow shape | discussion / doc-only work / tiny patch / direct answer | light implementation with a short verify step | real workflow, staged work, or multi-step closure |
 
 Scoring rule:
 
-- score `< 4`: do not create a formal plan
-- score `>= 4`: enter the planning workflow
+- score `< 6`: do not create a formal plan
+- score `>= 6`: enter the planning workflow
 
-For score `< 4`, use the direct claw path:
+For score `< 6`, use the direct claw path:
 
 - if prior project context is likely relevant, run `claw search --query "<topic>"` before execution
 - solve the task directly
@@ -93,7 +93,7 @@ For score `< 4`, use the direct claw path:
 - when the task is done, run `claw direct`
 - dispatch `truth-writer` only if the completed work produced reusable truth
 
-Use formal planning when the score is `>= 4`, or when any of these are clearly true:
+Use formal planning when the score is `>= 6`, or when any of these are clearly true:
 
 - multiple files or modules are involved
 - requirements are still fuzzy
@@ -161,7 +161,7 @@ Simple 1-2 task plans can stay lean. Bigger plans should show explicit decomposi
 14. If `workflowGuidance.askUser` is present, use Codex option-style confirmation to resolve route choices instead of freeform clarification.
 15. Do not start implementation while the plan is still in `prepare.requirements`.
 16. Once the route is confirmed, move the plan to `process.active` before doing any implementation.
-17. When `workflowGuidance.goalMode` is present, create the thread goal from `workflowGuidance.goalMode.recommendedObjective` before continuing if there is no active thread goal yet.
+17. When `workflowGuidance.goalTool` is present, execute the real Codex goal tool it specifies: use `create_goal(objective=workflowGuidance.goalTool.objective)` for active execution entry when no active goal exists, and use `update_goal(status=workflowGuidance.goalTool.status)` for blocked/completed lifecycle exits.
 18. After `plan edit`, read `workflowGuidance` again and execute the returned specialist dispatch contract directly.
 19. For root plans, use the `all tasks done` guidance to update both `retrospective` and `keyDecisions`, then dispatch `adr-writer` before `plan done`. After `plan done`, only continue workflow-guided closeout that still remains, such as subplan parent resumption.
 
@@ -186,7 +186,7 @@ If a task or subtask is primarily investigation:
 - Treat `workflowGuidance` returned by plan commands as the canonical next-step contract once the plan exists.
 - Treat the current `@claw-kit` thread as already authorized by the user to use goal mode and required delegated subagents.
 - Do not block the workflow for any permission-related excuse around goal mode, truth-writer, or adr-writer. Only stop if the user explicitly changes direction and forbids them.
-- When `workflowGuidance.goalMode` is present, set the thread goal before continuing with the rest of the returned next-step contract.
+- When `workflowGuidance.goalTool` is present, execute that tool contract before continuing with the rest of the returned next-step contract.
 - After `plan write`, treat startup recovery as already handled; do not insert a separate visible recovery workflow step here.
 - When requirements are clear and execution begins, move the plan directly into `process.active` before doing any implementation or updating task progress.
 - After each `plan write`, `plan edit`, and `plan done`, consume `workflowGuidance` and surface only the compact `planSummary` when it helps coordination.

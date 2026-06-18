@@ -816,6 +816,7 @@ function compactPlanCommandResult(
         : {}),
       ...(result.workflowGuidance.askUser ? { askUser: result.workflowGuidance.askUser } : {}),
       ...(result.workflowGuidance.goalMode ? { goalMode: result.workflowGuidance.goalMode } : {}),
+      ...(result.workflowGuidance.goalTool ? { goalTool: result.workflowGuidance.goalTool } : {}),
       ...(command === "plan.write" && result.plan ? { plan: result.plan } : {}),
       ...(result.planReview
         ? {

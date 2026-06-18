@@ -2,31 +2,50 @@
 
 - Codex Goal mode is a host-level thread feature, not a `claw-kit` plugin-owned runtime.
 - Official Codex docs describe Goal mode as a persistent thread objective started through `/goal`, with progress controls shown above the composer in the app, and equivalent support in the CLI and IDE surfaces.
-- `claw-kit` 只在 plan 首次进入 `process.active` 后才返回 Goal mode 建议；`plan write` 仍停留在 `prepare.requirements` 时不应返回 `goalMode`。
+- `claw-kit` 只在 plan 首次进入 `process.active` 或从暂停态恢复进入 `process.active` 时返回 Goal lifecycle 合同；`prepare.requirements` 阶段不应提前返回 active goal 建议。
+- `prepare.requirements` 即使已经有 `goal.text`，现在也不再返回“立刻启动 active goal”的推荐；这一阶段只负责补全 requirements 并推进到真正的执行态。
 - canonical `.claw/project.json` now exposes `workflow.goalMode.enabled` as the project-level gate for this behavior.
-- when `workflow.goalMode.enabled = false`, `workflowGuidance` must suppress `goalMode` entirely even if the active plan has a valid `goal.text` and has just entered `process.active`.
-- In `workflowGuidance`, `goalMode` now carries:
+- when `workflow.goalMode.enabled = false`, `workflowGuidance` must suppress both `goalMode` and `goalTool` entirely even if the active plan has a valid `goal.text` and has just entered `process.active`.
+- `workflowGuidance` 现在把 Goal lifecycle 拆成两个互补字段：`goalMode` 负责 host 侧 Goal mode 时机和推荐目标，`goalTool` 负责必须执行的真实 Codex goal tool 合同。
+- 当 plan 首次进入 `process.active` 时，`workflowGuidance.goalMode` 仍携带：
   - `recommendedObjective`
   - `allowOverwrite = true`
   - `setWhen = on_enter_process_active`
   - `ifNoActiveGoal = true`
   - `doNotOverwriteExisting = true`
-  - `supportedSurfaces = [\"/goal\", \"create_goal\"]`
-- The recommended objective is taken directly from canonical `plan.goal.text`.
-- `goalMode` 只有在 `goal.text` 已存在时才成立，因为 harness 本身禁止没有 goal 的 plan 离开 `prepare.requirements`。
-- Active `@claw-kit` threads are still pre-authorized to use Goal mode when the workflow later returns this recommendation, so no extra per-turn authorization gate should block it.
-- The Codex adapter should check whether the current thread already has an active goal before setting one from the active plan.
+  - `supportedSurfaces = ["/goal", "create_goal"]`
+- 同一时刻还会返回 `workflowGuidance.goalTool = { tool: "create_goal", objective: ... }`，并且 objective 直接取自 canonical `plan.goal.text` 派生的 goal 文本。
+- 当 plan 从 `process.wait` 或 `process.discussing` 恢复到 `process.active` 时，`goalMode.setWhen = on_resume_process_active`，同时 `goalTool.tool` 仍是 `create_goal`；恢复语义是“重新创建 active thread goal”，而不是沿用旧的 pause goal mode 想象操作。
+- `process.wait` 与 `process.discussing` 都不再要求 host 发明“pause Goal mode”动作；它们现在明确返回 `goalTool.tool = update_goal` 且 `status = blocked`，用于结束当前 active goal，等待后续恢复。
+- `end.completed` 现在明确返回 `goalTool.tool = update_goal` 且 `status = complete`，用于在 plan 完成时关闭当前 active thread goal。
+- The recommended objective is still derived from canonical `plan.goal.text`.
+- `goalMode` 与 `goalTool` 只有在 `goal.text` 已存在时才成立，因为 harness 本身禁止没有 goal 的 plan 离开 `prepare.requirements`。
+- Active `@claw-kit` threads are still pre-authorized to use Goal mode when the workflow later returns these contracts, so no extra per-turn authorization gate should block it.
+- The Codex adapter should check whether the current thread already has an active goal before executing `create_goal` contracts that are guarded by `ifNoActiveGoal = true`.
 
 ## 真实代码锚点
 
+- `packages/core/src/workflow-guidance.config.json`
+  - `process.active.firstEntry` 与 `process.active.resumedActive` 同时声明 `goalTool.tool = create_goal`
+  - `process.wait` 与 `process.discussing` 声明 `goalTool.tool = update_goal` 且 `status = blocked`
+  - `end.completed` 声明 `goalTool.tool = update_goal` 且 `status = complete`
 - `packages/core/src/workflow-guidance.ts`
-  - `buildGoalMode()` 定义 `allowOverwrite = true`、`setWhen = on_enter_process_active`、`ifNoActiveGoal = true`、`doNotOverwriteExisting = true`、`supportedSurfaces`
-  - `buildPlanWorkflowGuidance()` 只在 `justEnteredProcess && hasGoal && workflow.goalMode.enabled !== false` 时返回 `goalMode`
+  - `buildGoalMode()` 继续定义 `allowOverwrite = true`、`ifNoActiveGoal = true`、`supportedSurfaces`
+  - `buildGoalTool()` 负责把 `create_goal` / `update_goal` 模板实例化成真实 workflowGuidance 合同
+  - `buildPlanWorkflowGuidance()` 只在 `justEnteredProcess` 或 `resumedIntoActive` 时返回 active-entry `goalMode` / `goalTool`，并在 wait/discussing/completed 生命周期返回对应的 `update_goal` 合同；当 `workflow.goalMode.enabled = false` 时继续 suppress 这些合同
 - `packages/core/src/types.ts`
+  - `WorkflowGuidance` 现在把 `goalTool` 作为稳定类型字段暴露给 downstream consumer
   - project workflow schema declares `workflow.goalMode.enabled`
 - `packages/core/src/plan.ts`
   - `validatePlanDocument()` 要求 `goal.text` 缺失时 plan 不能离开 `prepare.requirements`
+- `packages/cli/src/cli.ts`
+  - compact plan result 会把 `workflowGuidance.goalTool` 透传到 CLI JSON
+- `packages/codex-adapter/references/workflow-guidance-consumption.md`
+  - Codex adapter 文档已改成直接消费 `create_goal` / `update_goal`，不再描述虚构的 pause goal mode
+- `packages/codex-adapter/skills/planning/SKILL.md`
+- `packages/codex-adapter/skills/using-claw-kit/SKILL.md`
+  - 两个 skill 都要求 host 执行真实 goal tool 合同，而不是自己发明 lifecycle 操作
+- `packages/core/test/core.test.ts`
 - `packages/cli/test/cli.test.ts`
-  - 覆盖 `plan write` 不返回 `goalMode`
-  - 覆盖首次进入 `process.active` 后才返回 `goalMode`
-  - 覆盖 `workflow.goalMode.enabled = false` 时 suppress `goalMode`
+  - 回归覆盖 requirements 不返回 active-goal 推荐、首次 active / resumed active 返回 `create_goal`、wait/discussing 返回 `update_goal(blocked)`、completed 返回 `update_goal(complete)`
+  - 覆盖 `workflow.goalMode.enabled = false` 时 suppress `goalMode` / `goalTool`
