@@ -12,7 +12,7 @@ Accepted
 
 - prompt 仍然是 Codex 主流程的 correctness surface
 - `SessionStart` hook 现在可以承担 startup recovery enhancement
-- startup 恢复结果统一落在 `startupRecovery` / `session-start-recovery` 命名下
+- startup 恢复结果统一落在 `startupRecovery` 命名下（`session-start-recovery.mjs` 并行实现已清理，canonical SessionStart 入口为 `claw hook SessionStart` CLI 命令）
 - 可见入口不应再把 `bootstrap` 作为单独 workflow skill 暴露给主 agent
 
 ## Decision
@@ -34,13 +34,13 @@ Codex adapter 采用 prompt-driven session entry 加 startup recovery enhancemen
 
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md`
 - `packages/codex-adapter/skills/planning/SKILL.md`
-- `packages/codex-adapter/hooks/session-start-recovery.mjs`
+- `packages/codex-adapter/hooks/hooks.json`
 - `packages/codex-adapter/references/codex-startup-recovery.md`
 
 ## Search Terms
 
 - `startupRecovery`
-- `session-start-recovery`
+- `claw hook SessionStart`
 - `using-claw-kit`
 - `planning`
 - `bootstrap`

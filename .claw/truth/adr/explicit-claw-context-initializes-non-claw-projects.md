@@ -30,7 +30,7 @@ For explicit non-`claw` project initialization in Codex, a visible `claw context
 
 - `packages/codex-adapter/skills/init/SKILL.md`
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md`
-- `packages/codex-adapter/hooks/session-start-recovery.mjs`
+- `packages/codex-adapter/hooks/hooks.json`
 - `packages/core/src/init.ts`
 
 ## Search Terms

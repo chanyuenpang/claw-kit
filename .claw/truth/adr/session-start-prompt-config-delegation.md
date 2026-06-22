@@ -1,4 +1,4 @@
-# ADR: SessionStart prompt 配置化与 plugin 委托架构
+﻿# ADR: SessionStart prompt 配置化与 plugin 委托架构
 
 ## Status
 
@@ -37,7 +37,7 @@ SessionStart prompt 原本硬编码在 `packages/cli/src/cli.ts` 的两个 build
 - Codex 与 OpenCode 可以通过各自的 config 文件发布不同的 SessionStart prompt，互不干扰
 - 所有平台 adapter 统一走 claw hook SessionStart 获取 prompt，消除硬编码分叉风险
 - `summarizeRecoveredPlanContent` 留在 `cli.ts`（纯数据格式化，不属于 prompt 文案），输出作为 `planContentLines: string[]` 参数传入 core builder
-- `codex-adapter/hooks/session-start-recovery.mjs` 是废弃并行实现，文案与 canonical CLI 版本不一致且无 live hook 绑定，后续需清理
+- `codex-adapter/hooks/session-start-recovery.mjs` 是已删除的废弃并行实现（文案曾与 canonical CLI 版本不一致且无 live hook 绑定），现已清理；canonical SessionStart 入口为 `claw hook SessionStart` CLI 命令
 
 ## Related Code
 

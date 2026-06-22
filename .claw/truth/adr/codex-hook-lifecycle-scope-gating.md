@@ -21,7 +21,7 @@ Accepted
 Codex adapter 对 hook 生命周期做 scope gating：
 
 - 只把 `SessionStart` hook 作为启动增强路径
-- `SessionStart` hook 通过 `packages/codex-adapter/hooks/session-start-recovery.mjs` 运行
+- `SessionStart` hook 通过 `claw hook SessionStart` CLI 命令运行（注册于 `packages/codex-adapter/hooks/hooks.json`，实现于 `packages/cli/src/cli.ts`）
 - 启动时先根据 `cwd` 检查是否命中 `.claw` 项目
 - 命中 `.claw` 项目时，执行 `claw context`，把紧凑 project context 和 “使用 [@claw-kit](plugin://claw-kit@claw-kit-local) 推进任务” 的提示写入 `additionalContext`
 - 未命中 `.claw` 项目时，不做任何注入
@@ -36,7 +36,7 @@ Codex adapter 对 hook 生命周期做 scope gating：
 
 ## Related code
 
-- `packages/codex-adapter/hooks/session-start-recovery.mjs`
+- `packages/cli/src/cli.ts`
 - `packages/codex-adapter/hooks/hooks.json`
 - `packages/codex-adapter/.codex-plugin/plugin.json`
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md`

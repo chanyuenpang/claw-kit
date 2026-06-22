@@ -8,7 +8,7 @@ Accepted working truth for the current Codex adapter startup path.
 
 - `@claw-kit` session entry still routes through `claw-kit:using-claw-kit`.
 - `SessionStart` is an enhancement layer for developer-visible startup context, not the source of canonical workflow correctness.
-- The startup hook implementation lives at `packages/codex-adapter/hooks/session-start-recovery.mjs`.
+- The startup hook implementation is the `claw hook SessionStart` CLI command (registered in `packages/codex-adapter/hooks/hooks.json`, implemented in `packages/cli/src/cli.ts`).
 - `claw context` and SessionStart logging now expose startup repair state through `startupRecovery`, not `bootstrap`.
 - The first visible workflow action is to read `planning`; startup recovery is not a separate user-visible first-step workflow.
 - Startup follows one unified flow; it does not branch on `SessionStart.source` such as `compact`.
@@ -30,7 +30,6 @@ Accepted working truth for the current Codex adapter startup path.
 
 ## Related files
 
-- `packages/codex-adapter/hooks/session-start-recovery.mjs`
 - `packages/codex-adapter/hooks/hooks.json`
 - `packages/cli/src/cli.ts`
 - `packages/cli/test/cli.test.ts`

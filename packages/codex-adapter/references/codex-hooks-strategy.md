@@ -31,7 +31,7 @@ The previous local hook lab used:
 
 - `../../scripts/log-hook-event.mjs`
 - `../../references/codex-hook-lab.md`
-- active recovery entry: `../../hooks/session-start-recovery.mjs`
+- active recovery entry: `claw hook SessionStart` (registered in `hooks.json`)
 
 The first question is not "can hooks automate the harness?" but "which events fire at all in this runtime?"
 

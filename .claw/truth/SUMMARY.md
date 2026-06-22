@@ -8,7 +8,7 @@
 - Release verification for this workflow split is anchored by `packages/core/test/core.test.ts` and `packages/cli/test/cli.test.ts`, especially the `plan write binds owner session key and SessionStart recovers active workflow snapshot` case.
 - `planning` is now the single visible planning skill; it absorbs lifecycle and `workflowGuidance` consumption rules that had previously been split across standalone Codex workflow skills.
 - `using-claw-kit` now makes reading `planning` the first visible action, and no longer exposes separate bootstrap, claw-context, or reference-loading steps ahead of the main workflow.
-- Active adapter startup surfaces now use `startupRecovery` naming in `claw context` results, hook logging, and active reference filenames such as `session-start-recovery.mjs` and `codex-startup-recovery.md`.
+- Active adapter startup surfaces now use `startupRecovery` naming in `claw context` results, hook logging, and reference filenames such as `codex-startup-recovery.md`; the canonical SessionStart entry is the `claw hook SessionStart` CLI command.
 - The non-recovered startup prompt is intentionally slim: it should not repeat project-root, protocol-check, or "report recovered state" lines.
 - In the normal startup prompt, the current `@claw-kit` thread is explicitly pre-authorized for Goal mode and required delegated subagents including `truth-writer` and `adr-writer`, so missing per-turn authorization is not a valid blocker.
 - `claw search` is the Codex-facing recall command; `memory.externalDocPaths` extends project recall sources.
@@ -87,5 +87,5 @@
 - core 新增 `buildSessionStartDefaultPrompt` 和 `buildSessionStartRecoveredPrompt` 两个 export 函数（`packages/core/src/workflow-guidance.ts`），封装"从 config 读模板 + `renderTemplateString` 变量替换 + 条件字段渲染"；recovered 分支 4 个必显字段无条件渲染，6 个条件字段（nextSteps/recommendedCommands/notes/delegateSubagents/askUser/goalMode）只在有值时才输出。
 - 两个 config 文件（`core/src/workflow-guidance.config.json` + `opencode-adapter/workflow-guidance.opencode.json`）各新增 sessionStart 节，当前内容完全一致（零行为变更）；后续可在 opencode 版中做平台差异化文案，Codex 版可把 `plugin://claw-kit@claw-kit-local` 改为 `@claw-kit` 提及。
 - `summarizeRecoveredPlanContent` 函数留在 `cli.ts` 中（纯数据格式化，不属于 prompt 文案），输出作为 `planContentLines: string[]` 参数传入 core 的 recovered prompt builder。
-- `codex-adapter/hooks/session-start-recovery.mjs` 是废弃并行实现，文案与 canonical CLI 版本不一致且无 live hook 绑定，后续需清理并修正关联 truth 文档。
+- `codex-adapter/hooks/session-start-recovery.mjs` 是已删除的废弃并行实现（文案曾与 canonical CLI 版本不一致且无 live hook 绑定）；该文件与关联 truth 文档引用现已清理，canonical SessionStart 入口为 `claw hook SessionStart` CLI 命令。
 - SessionStart prompt 配置化与 plugin 委托架构决策见 ADR `session-start-prompt-config-delegation`。
