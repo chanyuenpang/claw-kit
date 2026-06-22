@@ -2,6 +2,22 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.1.42] - 2026-06-22
+
+### Changed
+
+- SessionStart prompt is now driven by the `sessionStart` field in guidance config (`workflow-guidance.config.json` for Codex, `workflow-guidance.opencode.json` for OpenCode), enabling platform-specific prompt text; `buildSessionStartDefaultPrompt` and `buildSessionStartRecoveredPrompt` are exported from core to render templates with variable substitution and conditional snapshot fields
+- Codex sessionStart template uses plain `@claw-kit` mentions instead of OpenCode-specific `plugin://` URL syntax
+- OpenCode plugin now calls `claw hook SessionStart` to get full dynamic context (authorization, anti-blocking clause, workflowGuidance contract) instead of hardcoding a slim static fallback
+- OpenCode plugin re-initializes claw context on `session.compacted` in addition to `session.created`
+
+### Fixed
+
+- `invokeClawSessionStart` now explicitly passes `CLAW_HOST` and `CLAW_GUIDANCE_CONFIG` to the claw subprocess so opencode sessions load the opencode variant config
+- `claw-truth-writer` and `claw-adr-writer` agents now use `zhipu-coding-plan/glm-5-turbo` instead of unavailable `anthropic/claude-haiku-4-5`
+- Removed deprecated `session-start-recovery.mjs` parallel implementation; `hooks.json` already registers the canonical `claw hook SessionStart` CLI command
+- OpenCode plugin installer now creates the plugin shim and registers skills paths in `opencode.json`
+
 ## [0.1.41] - 2026-06-19
 
 ### Changed

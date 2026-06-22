@@ -1,6 +1,6 @@
 {
   "name": "@veewo/claw",
-  "version": "0.1.41",
+  "version": "0.1.42",
   "type": "module",
   "description": "CLI for running the .claw workflow: project planning, recall, truth ingestion, and closeout.",
   "keywords": [
