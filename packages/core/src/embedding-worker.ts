@@ -91,7 +91,12 @@ async function buildLocalOutput(input: WorkerInput): Promise<WorkerOutput> {
     process.env.ORT_LOG_LEVEL = "3";
   }
 
-  const { pipeline, env } = await import("@huggingface/transformers");
+  // Use createRequire from cwd so that transformers (and onnxruntime-node)
+  // resolve from the project's node_modules, not just from claw-core's
+  // global install location.
+  const { createRequire } = await import("node:module");
+  const projectRequire = createRequire(process.cwd() + "/");
+  const { pipeline, env } = projectRequire("@huggingface/transformers") as typeof import("@huggingface/transformers");
   env.allowLocalModels = false;
   const modelId = input.embedding.local?.modelPath?.trim() || input.embedding.model;
   env.cacheDir = resolveLocalEmbeddingCacheDir(modelId, input.embedding.local?.modelCacheDir, {

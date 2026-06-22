@@ -2,6 +2,12 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.1.46] - 2026-06-22
+
+### Fixed
+
+- `embedding-worker.ts` now resolves `@huggingface/transformers` via `createRequire(cwd)` so the global CLI can find the package from the project's `node_modules` without needing it as a hard dependency; combined with the peerDependencies change in 0.1.45, global CLI install stays fast while `claw search` works in any project with transformers installed
+
 ## [0.1.45] - 2026-06-22
 
 ### Fixed
