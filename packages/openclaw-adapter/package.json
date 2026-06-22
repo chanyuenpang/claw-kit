@@ -3,6 +3,21 @@
   "version": "0.1.41",
   "private": true,
   "type": "module",
+  "description": "OpenClaw adapter layer for the claw-kit .claw workflow model.",
+  "keywords": [
+    "claw",
+    ".claw",
+    "openclaw",
+    "agent-workflow",
+    "knowledge-capture",
+    "adapter"
+  ],
+  "homepage": "https://github.com/chanyuenpang/claw-kit",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chanyuenpang/claw-kit.git",
+    "directory": "packages/openclaw-adapter"
+  },
   "types": "./dist/index.d.ts",
   "exports": {
     ".": "./dist/index.js"

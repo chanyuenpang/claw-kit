@@ -1,8 +1,32 @@
 # claw-kit
 
-`claw-kit` is a project-local harness toolkit built around `.claw/`.
+`claw-kit` is an agent-facing, project-level workflow and knowledge capture toolkit.
 
-## Install CLI
+It uses `.claw` as a practical working surface for planning tasks, recalling prior project knowledge, depositing truth and ADR notes, and closing work out cleanly. In other words, the high-level product idea is project workflow plus knowledge capture for agents, and the concrete landing mechanism is the `.claw` framework for planning, truth/ADR, search, and closeout.
+
+## What it helps with
+
+- Project-scoped planning and task lifecycle around `.claw`
+- Truth and ADR deposition so useful knowledge survives across sessions
+- Recall-oriented search over project docs before broader investigation
+- Closeout workflows that keep tasks, notes, and decisions aligned
+- Adapter surfaces that let the same workflow shape land in different agent hosts
+
+## How `.claw` workflow lands in practice
+
+In a typical round, `claw-kit` helps an agent move through a repeatable loop:
+
+`plan` -> `search and recall` -> `execute` -> `deposit truth / ADR` -> `close out`
+
+That workflow is the concrete way `claw-kit` turns project knowledge into something reusable instead of leaving it scattered across transient chats or half-finished tasks.
+
+## Where to start
+
+- Want to use the CLI in a project? Start with the install and setup section below, then read the CLI package guide in [packages/cli/README.md](packages/cli/README.md).
+- Want to understand the integration surfaces? Jump to the package map.
+- Want to configure project behavior? Read the `project.json` guide in [docs/project-json-reference.md](docs/project-json-reference.md).
+
+## Install the CLI
 
 Install the published CLI with:
 
@@ -16,10 +40,10 @@ Or use the one-shot install script:
 .\scripts\install-cli.ps1
 ```
 
-After the CLI is installed, semantic search still needs one-time project setup:
+After the CLI is installed, project search still needs one-time setup inside each target project:
 
-1. Run `claw context` in the target project so `.claw/project.json` is normalized and the default local embedding config is present.
-2. Run one `claw search index --refresh` to create the sqlite index, download or reuse the local embedding model, and build the first batch of vectors.
+1. Run `claw context` so `.claw/project.json` is normalized and the default local embedding config is present.
+2. Run `claw search index --refresh` once so the sqlite recall store, embedding setup, and first vector index are created.
 
 Then use it from any project directory:
 
@@ -28,49 +52,82 @@ claw init --max-tasks-to-keep 20 --external-truth-skill external-truth-writer --
 claw plan write --title "My task" --goal "Define the first task"
 ```
 
-## Published npm packages
+## Install the Codex plugin
 
-- CLI package: `@veewo/claw`
-- Core package: `@veewo/claw-core`
+The Codex plugin is a separate distribution surface from the CLI. The source of truth lives in `packages/codex-adapter`, and this repo now exposes two supported commands:
 
-`project.json` keeps explicit harness settings. External writer overrides are optional and default to the built-in writer skills:
+```powershell
+npm run export:codex-plugin
+npm run install:codex-plugin
+```
+
+What they do:
+
+1. `npm run export:codex-plugin` copies the installable plugin payload into `dist/codex-plugin/claw-kit/<plugin-version>/`.
+2. `npm run install:codex-plugin` copies that same payload shape into the local Codex cache at `%USERPROFILE%\.codex\plugins\cache\claw-kit-local\claw-kit\<plugin-version>\`.
+
+Use `install:codex-plugin` when you want this machine to start using the adapter immediately. Use `export:codex-plugin` when you want a clean versioned bundle that can be attached to a release, copied to another machine, or used by another installer.
+
+## Package map
+
+- `@veewo/claw`
+  - CLI entrypoint for running the `.claw` workflow in a project
+- `@veewo/claw-core`
+  - shared workflow primitives for project config, planning, search, truth ingestion, and retention
+- `@claw-kit/codex-adapter`
+  - Codex-facing adapter assets, hooks, skills, and references for landing the workflow in Codex
+- `@claw-kit/openclaw-adapter`
+  - OpenClaw-facing adapter layer built on the same core workflow model
+
+## `project.json` at a glance
+
+`.claw/project.json` is the canonical team-owned project config for `claw-kit`. It controls the shared workflow surface for things like memory, external docs, writer overrides, workflow toggles, and GitNexus integration.
+
+Use [docs/project-json-reference.md](docs/project-json-reference.md) for the full guide, including:
+
+- canonical `.claw/project.json` versus local `.claw/project-override.json`
+- field-by-field explanations for `memory`, `workflow`, `gitnexus`, and writer overrides
+- copyable examples for local embeddings, external docs, and workflow toggles
+
+The current repo's own canonical config looks like this:
 
 ```json
 {
-  "id": "your-project-id",
-  "name": "Your Project Name",
-  "maxTasksToKeep": 99,
-  "externalTruthSkill": null,
-  "externalAdrSkill": null,
+  "id": "claw-kit",
+  "name": "claw-kit",
+  "maxTasksToKeep": 9,
   "contextPaths": [],
   "memory": {
+    "enabled": true,
     "externalDocPaths": [],
-    "embedding": null
+    "embedding": {
+      "provider": "local",
+      "model": "Snowflake/snowflake-arctic-embed-m-v2.0"
+    }
   },
   "gitnexus": {
     "enabled": false
+  },
+  "externalTruthSkill": null,
+  "externalAdrSkill": null,
+  "workflow": {
+    "goalMode": {
+      "enabled": true
+    },
+    "truthDispatch": {
+      "mode": "per_task"
+    }
   }
 }
 ```
 
-## Core commands
+## Search and recall
 
-- `claw init`
-- `claw context`
-- `claw search`
-- `claw search index --refresh`
-- `claw plan write`
-- `claw plan edit`
-- `claw switch-task`
-- `claw truth ingest`
-
-`claw context` still exists as a CLI command, but Codex startup recovery should recover context through the session hook instead of treating it as a manual post-plan step.
-
-`claw search` is a project-scoped recall command for project documentation surfaces such as `.claw` memory, truth, ADR, and markdown files from `memory.externalDocPaths`. Call it before `claw plan write`, and call it before research-style investigation. Its job is to absorb a natural-language prompt or keyword query against the project's docs, recover prior truth and ADR context, and narrow the search space before you move on to code-location work. It is not the code-search surface; for current implementation or relationship tracing, use a researcher flow with GitNexus-oriented tooling when available.
+`claw search` is a project-scoped recall command for project documentation surfaces such as `.claw` memory, truth, ADR, and markdown files from `memory.externalDocPaths`. Its job is to absorb a natural-language prompt or keyword query against project docs, recover prior truth and ADR context, and narrow the search space before deeper investigation or code-location work.
 
 Configured `memory.externalDocPaths` are treated as markdown-only recall roots: `claw search` indexes `.md` files from those paths rather than arbitrary text or code files.
 
-Project search now expects a refreshed vector index. Configure `memory.embedding` and run `claw search index --refresh` before using `claw search ...` with either `claw search "topic"` or `claw search --query "topic"`.
+Project search expects a refreshed vector index. Configure `memory.embedding` and run `claw search index --refresh` before using either `claw search "topic"` or `claw search --query "topic"`.
 
 Recommended first-time search setup from a project root:
 
@@ -79,21 +136,11 @@ claw context
 claw search index --refresh
 ```
 
-That first refresh is the point where claw creates the project-local sqlite recall store at `.claw/memory.sqlite`, resolves the local embedding model cache, and writes the initial vector index for searchable markdown docs. By default claw now uses a platform-global model cache directory (`%LOCALAPPDATA%\\claw\\models` on Windows, `~/Library/Caches/claw/models` on macOS, and `$XDG_CACHE_HOME/claw/models` or `~/.cache/claw/models` on Linux). Project-local `.claw/models` is now a fallback cache location instead of the default primary cache.
+That first refresh creates the project-local sqlite recall store at `.claw/memory.sqlite`, resolves the local embedding cache, and writes the initial vector index for searchable markdown docs. By default, claw uses a platform-global model cache directory (`%LOCALAPPDATA%\\claw\\models` on Windows, `~/Library/Caches/claw/models` on macOS, and `$XDG_CACHE_HOME/claw/models` or `~/.cache/claw/models` on Linux). Project-local `.claw/models` remains a fallback cache location instead of the default primary cache.
 
-`claw search index --refresh` syncs the current project's recall index incrementally. Unchanged markdown docs keep their existing sqlite rows and embeddings, changed docs are re-embedded, deleted docs are removed, and changing the embedding config triggers a full vector refresh. For large projects, project refresh now defaults to processing at most 100 newly added or changed files per run, so repeated refreshes naturally advance the remaining backlog instead of trying to embed the full corpus in one shot. For local semantic indexing, `provider: "local"` now defaults to `Snowflake/snowflake-arctic-embed-m-v2.0` with 768 dimensions, worker-side batch inference, and Windows DirectML-to-CPU fallback by default. Existing projects that explicitly keep `Snowflake/snowflake-arctic-embed-xs` continue to resolve to 384 dimensions unless they override `outputDimensionality`. `memory.embedding.local.modelCacheDir` is now an explicit override, not the default path contract:
+`claw search index --refresh` incrementally syncs the current project's markdown recall index. Unchanged docs reuse existing sqlite rows and embeddings, changed docs are re-embedded, deleted docs are removed, and embedding config changes trigger a full vector refresh. On large projects, refresh defaults to processing at most 100 newly added or changed files per run so the backlog can advance across multiple refreshes.
 
-```json
-{
-  "memory": {
-    "externalDocPaths": [],
-    "embedding": {
-      "provider": "local",
-      "model": "Snowflake/snowflake-arctic-embed-m-v2.0"
-    }
-  }
-}
-```
+For local semantic indexing, `provider: "local"` defaults to `Snowflake/snowflake-arctic-embed-m-v2.0` with 768 dimensions, worker-side batch inference, and Windows DirectML-to-CPU fallback. Existing projects that explicitly keep `Snowflake/snowflake-arctic-embed-xs` continue to resolve to 384 dimensions unless they override `outputDimensionality`.
 
 If you explicitly set `memory.embedding.local.modelCacheDir`, claw resolves cache usage in this order:
 
@@ -127,7 +174,7 @@ If your environment uses remote embeddings, set `memory.embedding` to an OpenAI-
 
 ## Publish workflow
 
-For a real release, use the full maintainer workflow in [DISTRIBUTION.md](G:/Projects/claw-kit/DISTRIBUTION.md) and the local-copy refresh checks in [docs/2026-06-08-closeout-workflow.md](G:/Projects/claw-kit/docs/2026-06-08-closeout-workflow.md).
+For a real release, use the full maintainer workflow in [DISTRIBUTION.md](DISTRIBUTION.md) and the local-copy refresh checks in [docs/2026-06-08-closeout-workflow.md](docs/2026-06-08-closeout-workflow.md).
 
 Quick artifact dry-run:
 
@@ -151,6 +198,7 @@ Post-publish install verification on Windows:
 
 ```powershell
 npm install -g @veewo/claw
+npm run install:codex-plugin
 npm list -g @veewo/claw --depth=0
 (Get-Command claw).Source
 claw --help

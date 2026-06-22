@@ -2,7 +2,17 @@
   "name": "@veewo/claw",
   "version": "0.1.41",
   "type": "module",
-  "description": "Publishable claw CLI for .claw project startup recovery, planning, search, truth ingestion, and completion refresh.",
+  "description": "CLI for running the .claw workflow: project planning, recall, truth ingestion, and closeout.",
+  "keywords": [
+    "claw",
+    ".claw",
+    "agent-workflow",
+    "knowledge-capture",
+    "project-memory",
+    "truth",
+    "adr",
+    "cli"
+  ],
   "homepage": "https://github.com/chanyuenpang/claw-kit",
   "repository": {
     "type": "git",

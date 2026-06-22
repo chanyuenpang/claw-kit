@@ -2,7 +2,16 @@
   "name": "@veewo/claw-core",
   "version": "0.1.41",
   "type": "module",
-  "description": "Core .claw harness primitives for project context, plan lifecycle, search, truth ingestion, and retention.",
+  "description": "Core workflow primitives for .claw project planning, recall, truth ingestion, and task closeout.",
+  "keywords": [
+    "claw",
+    ".claw",
+    "agent-workflow",
+    "knowledge-capture",
+    "project-memory",
+    "truth",
+    "adr"
+  ],
   "homepage": "https://github.com/chanyuenpang/claw-kit",
   "repository": {
     "type": "git",

@@ -17,6 +17,7 @@ Use this guide when you need to:
 
 - publish `@veewo/claw-core`
 - publish `@veewo/claw`
+- export or install the Codex plugin payload
 - verify the release artifacts before publish
 - prepare release notes or a GitHub release
 
@@ -24,6 +25,10 @@ Current publishable packages:
 
 - `packages/core` -> `@veewo/claw-core`
 - `packages/cli` -> `@veewo/claw`
+
+Codex plugin distribution source:
+
+- `packages/codex-adapter` -> exported or locally installed Codex plugin payload
 
 ## Release Modes
 
@@ -169,12 +174,24 @@ npm install -g @veewo/claw
 After publishing, refresh the maintainer machine as part of release completion:
 
 1. Reinstall the global CLI.
-2. Sync the local Codex plugin cache if `packages/codex-adapter` changed.
+2. Export and/or install the Codex plugin payload if `packages/codex-adapter` changed.
 3. Verify that the local command and plugin cache actually point at the new release.
 
 Use the closeout workflow for the local-copy details:
 
 - [docs/2026-06-08-closeout-workflow.md](G:/Projects/claw-kit/docs/2026-06-08-closeout-workflow.md)
+
+Codex plugin distribution commands:
+
+```powershell
+npm run export:codex-plugin
+npm run install:codex-plugin
+```
+
+Expected output and install locations:
+
+- export bundle: `dist/codex-plugin/claw-kit/<plugin-version>/`
+- local Codex cache install: `C:\Users\<you>\.codex\plugins\cache\claw-kit-local\claw-kit\<plugin-version>\`
 
 ## Post-publish Install Verification
 
@@ -190,7 +207,10 @@ claw --help
 If the release changed the Codex adapter, also verify the plugin cache copy:
 
 ```powershell
+npm run export:codex-plugin
+npm run install:codex-plugin
 Get-Content packages/codex-adapter/.codex-plugin/plugin.json
+Get-ChildItem dist/codex-plugin/claw-kit
 Get-ChildItem C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit
 ```
 
@@ -199,6 +219,7 @@ Expected outcome:
 - the global npm package version matches the published `@veewo/claw` version
 - `claw` resolves from `C:\Users\chany\AppData\Roaming\npm\claw.ps1`
 - `claw --help` succeeds
+- the exported bundle contains the expected manifest version when adapter files changed
 - the local plugin cache contains the expected manifest version when adapter files changed
 
 ## Notes
@@ -206,3 +227,4 @@ Expected outcome:
 - `@veewo/claw` depends on `@veewo/claw-core`, so publish order matters.
 - The local executable name remains `claw`.
 - `scripts/install-cli.ps1` now installs the published npm package directly.
+- `packages/codex-adapter` remains the only source of truth for the Codex plugin payload; exported bundles and local cache installs are derived copies.

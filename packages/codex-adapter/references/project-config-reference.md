@@ -1,186 +1,60 @@
 # Claw Kit Project Config Reference
 
-Use this note when a Codex thread needs to understand or explain the project-level config surfaces that affect `claw-kit` behavior.
+This note is the Codex adapter copy of the canonical project config guide in [docs/project-json-reference.md](../../../docs/project-json-reference.md).
+
+Use it when a Codex thread needs to understand or explain the project-level config surfaces that affect `claw-kit` behavior.
+
+## Core mental model
+
+- `.claw/project.json` is the canonical team-owned declaration surface
+- `.claw/project-override.json` is a local runtime-only overlay
+- effective runtime behavior comes from the merged config
+- project memory, workflow toggles, writer overrides, and GitNexus integration all live on that project config surface
 
 ## Config layers
 
 ### `.claw/project.json`
 
-- This is the canonical team-owned project declaration.
-- `claw init` and protocol repair normalize this file.
-- Commit this file to the repository when the project-level harness behavior should be shared.
+- canonical team-owned project declaration
+- normalized by `claw init` and protocol repair
+- commit this file when the workflow behavior should be shared
 
 ### `.claw/project-override.json`
 
-- This is a local runtime-only override layer.
-- It is gitignored by default.
-- Runtime project resolution deep-merges this file over `.claw/project.json`.
-- It can override any field from `.claw/project.json`.
-- Explicit `null` is a real override value. It does not mean "fall back to the team config."
+- local runtime-only override layer
+- gitignored by default
+- deep-merges over `.claw/project.json`
+- can override any field from `.claw/project.json`
+- explicit `null` is a real override value, not "fall back to team config"
 
-## Effective config
+## Key fields
 
-The effective runtime config is:
-
-`deepMerge(.claw/project.json, .claw/project-override.json)`
-
-Important consequences:
-
-- Local overrides can replace only one nested field without copying the whole object.
-- Arrays are treated as replacement values, not append-only patches.
-- Explicit `null` can deliberately clear an inherited value such as `externalTruthSkill`.
-- Canonical protocol repair does not write local override state back into `.claw/project.json`.
-
-## Canonical project fields
-
-### Identity and retention
-
-- `id`
-  - stable project id
-- `name`
-  - human-readable project name
 - `maxTasksToKeep`
-  - active task retention limit before archival
-
-### External writers
-
+  - active task retention limit
+  - default: `9`
 - `externalTruthSkill`
-  - optional override for the truth writer skill
+  - optional truth-writer override
 - `externalAdrSkill`
-  - optional override for the ADR writer skill
-
-Use `null` when the canonical project should explicitly keep the built-in writer behavior.
-
-### Context and memory
-
-- `contextPaths`
-  - optional project paths for shared context shape alignment
+  - optional ADR-writer override
+- `memory.enabled`
+  - master switch for project memory behavior
 - `memory.externalDocPaths`
-  - markdown-oriented project recall sources for `claw search`
+  - markdown recall roots for `claw search`
 - `memory.embedding`
-  - embedding provider and index behavior for project recall
-
-### GitNexus
-
+  - embedding provider and recall-index behavior
 - `gitnexus.enabled`
-  - enables GitNexus-related completion refresh behavior during closeout
+  - enables GitNexus-related closeout behavior
+- `workflow.goalMode.enabled`
+  - suppresses `goalMode` guidance when set to `false`
+- `workflow.truthDispatch.mode`
+  - `per_task` or `final_only`
 
-## Workflow config
+## Practical guidance
 
-The canonical project schema now includes:
+- Use `.claw/project.json` for shared team workflow behavior.
+- Use `.claw/project-override.json` for personal runtime preferences.
+- Treat explicit `null` as an intentional override, not inheritance.
+- Do not tell users they need to write `store.vector.enabled = true` just to keep default vector indexing behavior.
+- `final_only` suppresses mid-task truth handoff, not closeout truth or ADR deposition.
 
-```json
-{
-  "workflow": {
-    "goalMode": {
-      "enabled": true
-    },
-    "truthDispatch": {
-      "mode": "per_task"
-    }
-  }
-}
-```
-
-### `workflow.goalMode.enabled`
-
-- default: `true`
-- when `true`
-  - `workflowGuidance` may return `goalMode` when the plan enters or resumes `process.active`
-- when `false`
-  - `workflowGuidance` suppresses `goalMode`
-  - the rest of the plan lifecycle still works normally
-
-### `workflow.truthDispatch.mode`
-
-Supported values:
-
-- `per_task`
-  - default behavior
-  - completed tasks may return the mid-task `truth-writer` delegate contract
-- `final_only`
-  - suppresses mid-task `truth-writer` delegation
-  - still allows closeout deposition when all tasks are done
-
-`final_only` is the right setting when the project wants fewer truth handoffs during execution and only wants the durable deposition pass at round closeout.
-
-## Practical examples
-
-### Shared team config
-
-```json
-{
-  "id": "demo-project",
-  "name": "Demo Project",
-  "maxTasksToKeep": 99,
-  "externalTruthSkill": null,
-  "externalAdrSkill": null,
-  "contextPaths": [],
-  "workflow": {
-    "goalMode": {
-      "enabled": true
-    },
-    "truthDispatch": {
-      "mode": "per_task"
-    }
-  },
-  "memory": {
-    "externalDocPaths": [
-      "docs/"
-    ],
-    "embedding": {
-      "provider": "local",
-      "model": "Snowflake/snowflake-arctic-embed-m-v2.0",
-      "store": {
-        "vector": {
-          "enabled": true
-        }
-      }
-    }
-  },
-  "gitnexus": {
-    "enabled": false
-  }
-}
-```
-
-### Local personal override
-
-```json
-{
-  "workflow": {
-    "goalMode": {
-      "enabled": false
-    },
-    "truthDispatch": {
-      "mode": "final_only"
-    }
-  }
-}
-```
-
-### Explicitly clearing an inherited writer override
-
-```json
-{
-  "externalTruthSkill": null
-}
-```
-
-## Guidance impact summary
-
-When explaining runtime behavior in a Codex thread:
-
-- `project.json` is the canonical declaration surface
-- `project-override.json` is local and runtime-only
-- effective behavior comes from the merged config
-- `workflow.goalMode.enabled = false` removes `goalMode` from guidance
-- `workflow.truthDispatch.mode = final_only` removes mid-task truth delegation from guidance
-- closeout truth/ADR deposition still follows the normal root-plan completion contract
-
-## Anti-patterns
-
-- Do not describe `.claw/project-override.json` as a second canonical config file.
-- Do not treat explicit `null` as "unset" or "inherit."
-- Do not tell users that local override changes will be normalized back into `.claw/project.json`.
-- Do not claim `final_only` disables all truth/ADR deposition; it only suppresses the mid-task truth handoff.
+For field explanations and copyable examples, use the full guide in [docs/project-json-reference.md](../../../docs/project-json-reference.md).
