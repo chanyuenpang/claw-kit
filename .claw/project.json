@@ -19,5 +19,13 @@
     "enabled": false
   },
   "externalTruthSkill": null,
-  "externalAdrSkill": null
+  "externalAdrSkill": null,
+  "workflow": {
+    "goalMode": {
+      "enabled": true
+    },
+    "truthDispatch": {
+      "mode": "per_task"
+    }
+  }
 }
