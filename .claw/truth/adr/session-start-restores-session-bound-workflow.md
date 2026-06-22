@@ -50,8 +50,12 @@ Accepted
 - `packages/core/src/context.ts`
 - `packages/core/src/plan.ts`
 - `packages/core/src/types.ts`
-- `packages/codex-adapter/hooks/session-start-recovery.mjs`
+- `packages/core/src/workflow-guidance.ts`
 - `packages/codex-adapter/hooks/hooks.json`
+
+## See Also
+
+- `session-start-prompt-config-delegation` — SessionStart prompt 从 cli.ts 硬编码迁移到 guidance config，OpenCode plugin 委托 claw hook
 
 ## Search Terms
 

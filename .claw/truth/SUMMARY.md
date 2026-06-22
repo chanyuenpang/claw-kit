@@ -83,3 +83,9 @@
 - 本地 Codex plugin cache 已同步到 `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.40+codex.20260616130425`；当前稳定刷新范围包括 `.codex-plugin/`、`hooks/`、`references/`、`scripts/`、`skills/` 与 `package.json`，并且逐文件 SHA256 已与仓库副本匹配，当前校验结果是 24/24 个同步文件一致。
 - canonical `.claw/truth/` markdown 需要保持 UTF-8 BOM；truth ingestion 和 `npm run check` 的 truth encoding audit 都把这当作稳定约束，缺少 BOM 的 truth 文档在 Windows PowerShell 路径上不算完成态。
 - `packages/core/src/memory.ts` 保持严格契约：project memory refresh 如果 embedding 生成失败就必须失败，不能降级为 text-only indexing；project search 继续保持 vector-required 契约，缺少 refreshed vector index 时返回 `MEMORY_VECTOR_INDEX_REQUIRED`。
+- SessionStart prompt 已从 `packages/cli/src/cli.ts` 硬编码迁移到 guidance config 的 `sessionStart` 字段；`GuidanceConfig` 类型新增 optional `sessionStart` 字段（含 `default.lines` + `recovered.header/snapshotHeader/snapshotFields/planContentHeader`），向后兼容，config 缺失 sessionStart 时 fallback 常量与原硬编码文案逐字一致。
+- core 新增 `buildSessionStartDefaultPrompt` 和 `buildSessionStartRecoveredPrompt` 两个 export 函数（`packages/core/src/workflow-guidance.ts`），封装"从 config 读模板 + `renderTemplateString` 变量替换 + 条件字段渲染"；recovered 分支 4 个必显字段无条件渲染，6 个条件字段（nextSteps/recommendedCommands/notes/delegateSubagents/askUser/goalMode）只在有值时才输出。
+- 两个 config 文件（`core/src/workflow-guidance.config.json` + `opencode-adapter/workflow-guidance.opencode.json`）各新增 sessionStart 节，当前内容完全一致（零行为变更）；后续可在 opencode 版中做平台差异化文案，Codex 版可把 `plugin://claw-kit@claw-kit-local` 改为 `@claw-kit` 提及。
+- `summarizeRecoveredPlanContent` 函数留在 `cli.ts` 中（纯数据格式化，不属于 prompt 文案），输出作为 `planContentLines: string[]` 参数传入 core 的 recovered prompt builder。
+- `codex-adapter/hooks/session-start-recovery.mjs` 是废弃并行实现，文案与 canonical CLI 版本不一致且无 live hook 绑定，后续需清理并修正关联 truth 文档。
+- SessionStart prompt 配置化与 plugin 委托架构决策见 ADR `session-start-prompt-config-delegation`。
