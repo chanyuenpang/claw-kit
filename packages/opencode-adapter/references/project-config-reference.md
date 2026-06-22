@@ -1,8 +1,8 @@
 # Claw Kit Project Config Reference
 
-This note is a backup config reference for the Codex adapter. It is not part of the harness contract or required startup flow.
+This note is a backup config reference for the OpenCode adapter. It is not part of the harness contract or required startup flow.
 
-Use it when a Codex thread needs to explain or tune `.claw/project.json` or `.claw/project-override.json`, and fall back to the canonical guide in [docs/project-json-reference.md](../../../docs/project-json-reference.md) when deeper field-by-field detail is needed.
+Use it when an OpenCode thread needs to explain or tune `.claw/project.json` or `.claw/project-override.json`, and fall back to the canonical guide in [docs/project-json-reference.md](../../../docs/project-json-reference.md) when deeper field-by-field detail is needed.
 
 ## Core mental model
 

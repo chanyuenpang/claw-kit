@@ -12,6 +12,8 @@ Accepted
 
 这次新的公开文案回合又把两条边界补得更清楚了：`claw-kit` 的对外叙事要把 GitNexus 写成可选补强而不是必需依赖，并且根 `README.md` 不再承载逐步 publish/release 流程，只保留指向专门 maintainer 文档的入口。
 
+这轮还确认了一个更细的长期边界：adapter `references/` 里可以承接备用配置知识，帮助用户快速查 `.claw/project.json` 与 `.claw/project-override.json` 的用法，但这类说明必须明确自己不是 harness 合同、不是启动流程的一部分，也不能改动任何 `SKILL.md` 或插件行为。
+
 ## Decision
 
 - 恢复被 `restore` / `clean` 清掉的 GitHub-facing 文档时，先抽取本地 session rollout JSONL 和完成计划里的可验证证据，再 replay 精确 patch，最后才做必要的最小重建。
@@ -27,6 +29,7 @@ Accepted
   - canonical + personal config 支持团队协作
 - GitNexus 在公开文案里只能作为 optional integration / complementary capability 出现，不能写成使用 `claw-kit` 的前置依赖。
 - 根 `README.md` 不再承载逐步 publish / release 操作流程，只保留通往专门 maintainer 文档的入口。
+- adapter `references/` 可以保存备用配置说明，例如 `project-config-reference.md`，用来承接 `.claw/project.json` 和 `.claw/project-override.json` 的快捷查阅知识；但这类文档必须保持 `backup reference` 定位，不能变成 harness contract、startup flow 或 plugin 行为的一部分。
 - 公开 markdown 链接必须保持 repo-relative，不得改成本机绝对路径。
 - 需要核对包身份或公开面是否恢复正确时，优先用 `npm pkg get` 和内容检查，而不是重新推断意图。
 
@@ -36,6 +39,7 @@ Accepted
 - GitHub-facing 文档不会混成同一层职责，后续更新更容易定位该改哪里。
 - 公共定位会稳定区分 `claw-kit` 主体能力与 GitNexus 的可选补强角色，避免把依赖关系写反。
 - 根 README 保持轻量，发布/收口步骤统一回流到维护文档，不再和产品定位混写。
+- adapter 的备用配置说明形成了一个稳定的中转层：用户可以先在包内 references 找到简短配置说明，再回到 canonical `docs/project-json-reference.md` 查完整字段。
 - 公开面链接保持可移植，GitHub 展示和本地浏览都会继续工作。
 - 当这类回收发生时，truth/ADR/plan 三者之间的证据链会更容易复核。
 
@@ -49,6 +53,8 @@ Accepted
 - `packages/core/package.json`
 - `packages/codex-adapter/package.json`
 - `packages/openclaw-adapter/package.json`
+- `packages/codex-adapter/references/project-config-reference.md`
+- `packages/opencode-adapter/references/project-config-reference.md`
 - `.claw/truth/features/recovered-docs-and-metadata-round.md`
 - `.claw/tasks/抢救并重建刚才回退的-GitHub-文案与-project.json-说明/plan.json`
 
@@ -60,3 +66,5 @@ Accepted
 - `GitHub-facing docs`
 - `project-json-reference`
 - `package metadata`
+- `project-config-reference`
+- `backup config reference`

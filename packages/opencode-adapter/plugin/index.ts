@@ -1,5 +1,6 @@
 import path from "node:path";
 import { existsSync, readFileSync } from "node:fs";
+import { execSync } from "node:child_process";
 import type { Plugin } from "@opencode-ai/plugin";
 
 /**
@@ -12,33 +13,28 @@ import type { Plugin } from "@opencode-ai/plugin";
  *   4. event(session.idle) — goal continuation: advance agent when plan.status is process.active
  */
 
-// Resolve the adapter directory (where this plugin file lives, after install).
-// The workflow-guidance.opencode.json sits alongside the plugin entry.
 const ADAPTER_DIR = import.meta.dirname ?? path.dirname(new URL("", import.meta.url).pathname);
 const GUIDANCE_CONFIG_PATH = path.join(ADAPTER_DIR, "..", "workflow-guidance.opencode.json");
 
-// Recovered state cache for the current session.
 let recoveredState: string | null = null;
-
-// Session-to-plan binding: which session has an active plan.
 const sessionPlans = new Map<string, { planPath: string; projectDir: string }>();
-
-function getProjectDir(directory: string): string {
-  return directory;
-}
 
 function hasClawProject(dir: string): boolean {
   return existsSync(path.join(dir, ".claw"));
 }
 
-async function runClaw(
-  $: Plugin extends never ? never : Awaited<Parameters<NonNullable<Parameters<Plugin>[0]["$"]>>[0],
-  command: string,
-  cwd: string,
-): Promise<string> {
+function runClaw(command: string, cwd: string): string {
   try {
-    const result = await $({ cmd: [command], cwd }).quiet();
-    return result.stdout.toString();
+    return execSync(command, {
+      cwd,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        CLAW_HOST: "opencode",
+        ...(existsSync(GUIDANCE_CONFIG_PATH) ? { CLAW_GUIDANCE_CONFIG: GUIDANCE_CONFIG_PATH } : {}),
+      },
+      timeout: 30000,
+    }).trim();
   } catch {
     return "";
   }
@@ -59,29 +55,28 @@ function resolveActivePlanPath(projectDir: string): string | null {
   const clawDir = path.join(projectDir, ".claw");
   if (!existsSync(clawDir)) return null;
 
-  // Look for active task directories
   try {
-    const entries = readFileSync(path.join(clawDir, "task-meta.json"), "utf8");
-    const meta = JSON.parse(entries);
-    if (meta.activeTaskName) {
-      return path.join(clawDir, meta.activeTaskName, "plan.json");
+    const metaPath = path.join(clawDir, "task-meta.json");
+    if (existsSync(metaPath)) {
+      const meta = JSON.parse(readFileSync(metaPath, "utf8"));
+      if (meta.activeTaskName) {
+        return path.join(clawDir, meta.activeTaskName, "plan.json");
+      }
     }
   } catch {
-    // task-meta.json may not exist
+    // ignore
   }
 
-  // Fallback: check default plan.json
   const defaultPlan = path.join(clawDir, "plan.json");
   if (existsSync(defaultPlan)) return defaultPlan;
 
   return null;
 }
 
-export const ClawKitPlugin: Plugin = async ({ client, $, directory }) => {
-  const projectDir = getProjectDir(directory);
+export const ClawKitPlugin: Plugin = async ({ client, directory }) => {
+  const projectDir = directory;
 
   return {
-    // (1) Inject environment variables into all shell executions
     "shell.env": async (_input, output) => {
       output.env.CLAW_HOST = "opencode";
       if (existsSync(GUIDANCE_CONFIG_PATH)) {
@@ -89,40 +84,32 @@ export const ClawKitPlugin: Plugin = async ({ client, $, directory }) => {
       }
     },
 
-    // (2) Session start detection + (4) Goal continuation
     event: async ({ event }) => {
-      // Session created: run recovery
       if (event.type === "session.created") {
         const sessionID = (event.properties as { sessionID?: string }).sessionID;
         if (!sessionID || !hasClawProject(projectDir)) return;
 
-        // Run claw context for recovery
-        const contextResult = await runClaw($ as never, "claw context", projectDir);
+        const contextResult = runClaw("claw context", projectDir);
+        if (contextResult) {
+          recoveredState = contextResult;
+        }
 
-        // Detect active plan
         const planPath = resolveActivePlanPath(projectDir);
         if (planPath) {
           sessionPlans.set(sessionID, { planPath, projectDir });
         }
-
-        // Cache recovered state for system.transform
-        if (contextResult) {
-          recoveredState = contextResult;
-        }
       }
 
-      // Session idle: goal continuation
       if (event.type === "session.idle") {
         const sessionID = (event.properties as { sessionID?: string }).sessionID;
         if (!sessionID) return;
 
         const planBinding = sessionPlans.get(sessionID);
-        if (!planBinding) return; // no plan bound to this session
+        if (!planBinding) return;
 
         const status = readPlanStatus(planBinding.planPath);
         if (!status || status !== "process.active") return;
 
-        // Send continuation prompt
         await client.session.promptAsync({
           body: {
             sessionID,
@@ -131,7 +118,7 @@ export const ClawKitPlugin: Plugin = async ({ client, $, directory }) => {
               content: [
                 {
                   type: "text",
-                  text: "当前plan还未执行完毕，需要继续推进。如果连续两轮都没有推进成功，那么把 plan.status 设置为wait",
+                  text: "\u5f53\u524dplan\u8fd8\u672a\u6267\u884c\u5b8c\u6bd5\uff0c\u9700\u8981\u7ee7\u7eed\u63a8\u8fdb\u3002\u5982\u679c\u8fde\u7eed\u4e24\u8f6e\u90fd\u6ca1\u6709\u63a8\u8fdb\u6210\u529f\uff0c\u90a3\u4e48\u628a plan.status \u8bbe\u7f6e\u4e3await",
                 },
               ],
             },
@@ -140,11 +127,10 @@ export const ClawKitPlugin: Plugin = async ({ client, $, directory }) => {
       }
     },
 
-    // (3) Inject recovered state into system prompt
     "experimental.chat.system.transform": async (_input, output) => {
       if (!recoveredState) return;
       output.system.push(
-        `## claw-kit project context\n\nYou are in a claw-kit project. Use the claw-kit workflow:\n- Start with the using-claw-kit skill\n- Use \`claw plan write\` to create task scope\n- Follow returned workflowGuidance\n- Use \`claw search\` for project recall\n\nRecovered context:\n${recoveredState}`,
+        "## claw-kit project context\n\nYou are in a claw-kit project. Use the claw-kit workflow:\n- Start with the using-claw-kit skill\n- Use claw plan write to create task scope\n- Follow returned workflowGuidance\n- Use claw search for project recall\n\nRecovered context:\n" + recoveredState,
       );
     },
   };
