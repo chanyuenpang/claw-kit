@@ -2,6 +2,12 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.1.43] - 2026-06-22
+
+### Fixed
+
+- Fix `@veewo/claw` dependency on `@veewo/claw-core` so the global CLI correctly resolves `buildSessionStartDefaultPrompt` / `buildSessionStartRecoveredPrompt` exports from core
+
 ## [0.1.42] - 2026-06-22
 
 ### Changed
