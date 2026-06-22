@@ -121,6 +121,11 @@ function invokeClawSessionStart(projectDir: string): string | null {
       encoding: "utf8",
       timeout: 10_000,
       stdio: ["pipe", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        CLAW_HOST: "opencode",
+        ...(existsSync(GUIDANCE_CONFIG_PATH) ? { CLAW_GUIDANCE_CONFIG: GUIDANCE_CONFIG_PATH } : {}),
+      },
     });
     if (!stdout.trim()) return null;
     const parsed = JSON.parse(stdout);
