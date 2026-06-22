@@ -28,6 +28,23 @@ SessionStart prompt 原本硬编码在 `packages/cli/src/cli.ts` 的两个 build
 - plugin 在 `session.created` 时调用 `claw hook SessionStart` 获取完整动态 context，存入 `clawSessionContext`
 - `experimental.chat.system.transform` 优先使用 `clawSessionContext`，只有当 claw CLI 不可用时才 fallback 到静态文本
 
+### 3. invokeClawSessionStart 必须显式传递环境变量
+
+plugin 的 `shell.env` hook 注入的环境变量（`CLAW_HOST`、`CLAW_GUIDANCE_CONFIG`）只对后续 agent bash 工具调用生效，不对 plugin 自身的 `execSync` 生效。因此 `invokeClawSessionStart` 的 `execSync` options 必须显式设置：
+
+```
+env: { ...process.env, CLAW_HOST: "opencode", CLAW_GUIDANCE_CONFIG: <opencode config path> }
+```
+
+否则 plugin 调用的 claw hook 会继承默认的 core bundled config，而非 opencode 变体 config。
+
+### 4. 平台 prompt 文案语义隔离
+
+两个平台的 config 使用各自贴合平台语义的引用语法：
+
+- **Codex 版**（core bundled `workflow-guidance.config.json`）：使用 `@claw-kit` 提及，不使用 `plugin://` 语法（该语法对 Codex 无意义）
+- **OpenCode 版**（`workflow-guidance.opencode.json`）：保留 `plugin://claw-kit@claw-kit-local` 语法，体现 plugin 驱动和 skill 加载语境
+
 ## Alternatives
 
 保持 cli.ts 硬编码 + 在 plugin 侧单独维护一份文案：这会导致两份文案长期分叉，且无法按平台差异化。
@@ -38,13 +55,15 @@ SessionStart prompt 原本硬编码在 `packages/cli/src/cli.ts` 的两个 build
 - 所有平台 adapter 统一走 claw hook SessionStart 获取 prompt，消除硬编码分叉风险
 - `summarizeRecoveredPlanContent` 留在 `cli.ts`（纯数据格式化，不属于 prompt 文案），输出作为 `planContentLines: string[]` 参数传入 core builder
 - `codex-adapter/hooks/session-start-recovery.mjs` 是已删除的废弃并行实现（文案曾与 canonical CLI 版本不一致且无 live hook 绑定），现已清理；canonical SessionStart 入口为 `claw hook SessionStart` CLI 命令
+- **三重隔离**保证平台 config 安全独立：环境变量隔离（`CLAW_GUIDANCE_CONFIG` 指向不同文件）、进程隔离（`invokeClawSessionStart` 的 `execSync` 独立子进程）、文件物理隔离（各自维护独立 JSON 文件）。`cli.test.ts` 断言绑定 core bundled config，opencode config 的文案变更对 cli 测试无影响
+- 任何通过 `execSync` 调用 claw CLI 的代码都必须在 options.env 中显式传递所需环境变量，不能依赖外部 hook 注入
 
 ## Related Code
 
 - `packages/core/src/workflow-guidance.ts` — `GuidanceConfig` 类型扩展、两个 builder export 函数、fallback 常量
 - `packages/core/src/workflow-guidance.config.json` — Codex 默认 sessionStart 模板
 - `packages/opencode-adapter/workflow-guidance.opencode.json` — OpenCode 变体 sessionStart 模板
-- `packages/opencode-adapter/plugin/index.ts` — `invokeClawSessionStart()` 函数
+- `packages/opencode-adapter/plugin/index.ts` — `invokeClawSessionStart()` 函数，含显式环境变量传递
 - `packages/cli/src/cli.ts` — 两个 builder 改为调用 core export
 
 ## Search Terms
@@ -54,4 +73,8 @@ SessionStart prompt 原本硬编码在 `packages/cli/src/cli.ts` 的两个 build
 - `buildSessionStartDefaultPrompt`
 - `buildSessionStartRecoveredPrompt`
 - `CLAW_GUIDANCE_CONFIG`
+- `CLAW_HOST`
 - `invokeClawSessionStart`
+- `execSync`
+- `plugin://`
+- `@claw-kit`
