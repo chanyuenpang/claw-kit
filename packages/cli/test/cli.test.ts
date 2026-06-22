@@ -16,14 +16,26 @@ function createFixture(name: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), `claw-kit-cli-${name}-`));
 }
 
+// Host adapter hooks (e.g. the opencode plugin shell.env) can inject CLAW_HOST
+// and CLAW_GUIDANCE_CONFIG into the test runner's environment. When these leak
+// into spawned `claw` processes, they alter workflow guidance behavior (host
+// gating, stale config) and pollute assertions. Strip them by default so tests
+// exercise core's bundled defaults unless a test explicitly opts in via `env`.
+const ISOLATED_ENV_KEYS = ["CLAW_HOST", "CLAW_GUIDANCE_CONFIG"] as const;
+
+function buildSpawnEnv(extra?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  for (const key of ISOLATED_ENV_KEYS) {
+    delete env[key];
+  }
+  return { ...env, ...extra };
+}
+
 function runClaw(args: string[], cwd: string, env?: NodeJS.ProcessEnv): JsonRecord {
   const cliPath = path.resolve(thisDir, "..", "dist", "bin.js");
   const result = spawnSync(process.execPath, [cliPath, ...args], {
     cwd,
-    env: {
-      ...process.env,
-      ...env,
-    },
+    env: buildSpawnEnv(env),
     encoding: "utf-8",
     windowsHide: true,
   });
@@ -39,10 +51,7 @@ function runClawExpectFailure(args: string[], cwd: string, env?: NodeJS.ProcessE
   const cliPath = path.resolve(thisDir, "..", "dist", "bin.js");
   const result = spawnSync(process.execPath, [cliPath, ...args], {
     cwd,
-    env: {
-      ...process.env,
-      ...env,
-    },
+    env: buildSpawnEnv(env),
     encoding: "utf-8",
     windowsHide: true,
   });
@@ -63,10 +72,7 @@ function runClawRaw(args: string[], cwd: string, env?: NodeJS.ProcessEnv): { sta
   const cliPath = path.resolve(thisDir, "..", "dist", "bin.js");
   const result = spawnSync(process.execPath, [cliPath, ...args], {
     cwd,
-    env: {
-      ...process.env,
-      ...env,
-    },
+    env: buildSpawnEnv(env),
     encoding: "utf-8",
     windowsHide: true,
   });
@@ -1686,4 +1692,109 @@ test("cli -v exits successfully", () => {
   assert.equal(result.status, 0);
   assert.equal(result.stdout.trim(), cliPackageVersion);
   assert.equal(result.stderr.trim(), "");
+});
+
+test("cli help prints top-level usage to stderr", () => {
+  const root = createFixture("help-command-top-level");
+  const result = runClawRaw(["help"], root);
+  assert.equal(result.status, 0);
+  assert.match(result.stderr, /Usage: bin\.js <command> \[options\]/);
+  assert.match(result.stderr, /direct/);
+  assert.match(result.stderr, /truth ingest/);
+  assert.equal(result.stdout, "");
+});
+
+test("cli help <command> prints command-specific help", () => {
+  const root = createFixture("help-command-init");
+  const result = runClawRaw(["help", "init"], root);
+  assert.equal(result.status, 0);
+  assert.match(result.stderr, /Usage:\s+bin\.js init \[options\]/);
+  assert.match(result.stderr, /--max-tasks-to-keep/);
+});
+
+test("cli <command> --help matches cli help <command>", () => {
+  const root = createFixture("help-flag-vs-command");
+  const flagResult = runClawRaw(["init", "--help"], root);
+  const commandResult = runClawRaw(["help", "init"], root);
+  assert.equal(flagResult.status, 0);
+  assert.equal(commandResult.status, 0);
+  assert.equal(flagResult.stderr, commandResult.stderr);
+});
+
+test("cli help plan prints subcommand group", () => {
+  const root = createFixture("help-plan-group");
+  const result = runClawRaw(["help", "plan"], root);
+  assert.equal(result.status, 0);
+  assert.match(result.stderr, /plan write/);
+  assert.match(result.stderr, /plan edit/);
+  assert.match(result.stderr, /plan show/);
+  assert.match(result.stderr, /plan done/);
+});
+
+test("cli help plan write and plan write --help are consistent", () => {
+  const root = createFixture("help-plan-write-consistency");
+  const commandResult = runClawRaw(["help", "plan", "write"], root);
+  const flagResult = runClawRaw(["plan", "write", "--help"], root);
+  assert.equal(commandResult.status, 0);
+  assert.equal(flagResult.status, 0);
+  assert.equal(commandResult.stderr, flagResult.stderr);
+  assert.match(commandResult.stderr, /--goal/);
+});
+
+test("cli help search index and search index --help are consistent", () => {
+  const root = createFixture("help-search-index-consistency");
+  const commandResult = runClawRaw(["help", "search", "index"], root);
+  const flagResult = runClawRaw(["search", "index", "--help"], root);
+  assert.equal(commandResult.status, 0);
+  assert.equal(flagResult.status, 0);
+  assert.equal(commandResult.stderr, flagResult.stderr);
+  assert.match(commandResult.stderr, /--refresh/);
+});
+
+test("cli search --help shows search query usage", () => {
+  const root = createFixture("help-search-self");
+  const result = runClawRaw(["search", "--help"], root);
+  assert.equal(result.status, 0);
+  assert.match(result.stderr, /--query/);
+  assert.match(result.stderr, /--limit/);
+});
+
+test("cli plan write --help does not create a task", () => {
+  const root = createFixture("help-plan-write-no-mutation");
+  const result = runClawRaw(["plan", "write", "--help"], root);
+  assert.equal(result.status, 0);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "tasks")), false);
+});
+
+test("cli help <unknown> exits non-zero with a hint", () => {
+  const root = createFixture("help-unknown-topic");
+  const result = runClawRaw(["help", "garbage"], root);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Unknown help topic/);
+  assert.match(result.stderr, /Usage: bin\.js <command> \[options\]/);
+});
+
+test("cli -h aliases to --help", () => {
+  const root = createFixture("help-short-flag");
+  const shortResult = runClawRaw(["-h"], root);
+  const longResult = runClawRaw(["--help"], root);
+  assert.equal(shortResult.status, 0);
+  assert.equal(longResult.status, 0);
+  assert.equal(shortResult.stderr, longResult.stderr);
+});
+
+test("cli help plan edit documents --summary and not the mismatched --change-summary", () => {
+  const root = createFixture("help-plan-edit-summary");
+  const result = runClawRaw(["help", "plan", "edit"], root);
+  assert.equal(result.status, 0);
+  assert.match(result.stderr, /--summary/);
+  assert.doesNotMatch(result.stderr, /--change-summary/);
+});
+
+test("cli help <command> <unknown-subcommand> exits non-zero with a hint", () => {
+  const root = createFixture("help-unknown-subcommand");
+  const result = runClawRaw(["help", "plan", "garbage"], root);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Unknown plan subcommand: garbage/);
+  assert.match(result.stderr, /plan write/);
 });

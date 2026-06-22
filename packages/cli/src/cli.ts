@@ -38,16 +38,237 @@ import {
 
 const CLI_VERSION = readCliVersion();
 
+type HelpOption = { flag: string; detail: string };
+
+type HelpEntry = {
+  usage: string[];
+  description: string;
+  summary?: string;
+  options?: HelpOption[];
+};
+
+type HelpNode = HelpEntry & {
+  subcommands?: Record<string, HelpEntry>;
+};
+
+const TOP_LEVEL_COMMANDS: { name: string; summary: string }[] = [
+  { name: "init [options]", summary: "Initialize and normalize the .claw project surface." },
+  { name: "context [--task <name>]", summary: "Resolve project context, auto-initializing or correcting .claw state." },
+  { name: "check", summary: "Check and auto-correct .claw project protocol fields." },
+  { name: "plan <subcommand> [options]", summary: "Plan lifecycle: write, edit, show, done." },
+  { name: "subplan write [options]", summary: "Write a subplan nested under a parent task item." },
+  { name: "switch-task --from <task> --to <task>", summary: "Switch the active task, carrying inherited context." },
+  { name: "search [<query>] [options]", summary: "Recall project memory, truth, ADR, and declared docs." },
+  { name: "direct", summary: "Low-complexity no-plan closeout flow." },
+  { name: "truth ingest [options]", summary: "Ingest a truth document under .claw/truth." },
+  { name: "hook <event-name>", summary: "Emit host hook output (e.g. SessionStart)." },
+];
+
+const COMMAND_HELP: Record<string, HelpNode> = {
+  init: {
+    usage: ["{script} init [options]"],
+    description:
+      "Initialize and normalize the .claw project surface in the current directory, writing project.json, memory.md, and .gitignore.",
+    options: [
+      { flag: "--id <project-id>", detail: "Project id (derived from --name if omitted)." },
+      { flag: "--name <project-name>", detail: "Human-readable project name." },
+      { flag: "--context-path <file>", detail: "Extra context path to track (repeatable)." },
+      { flag: "--ext-path <path>", detail: "External doc path to index (repeatable)." },
+      { flag: "--external-truth-skill <skill>", detail: "Skill id for external truth-writer dispatch." },
+      { flag: "--external-adr-skill <skill>", detail: "Skill id for external adr-writer dispatch." },
+      { flag: "--gitnexus true|false", detail: "Enable GitNexus integration (default false)." },
+      { flag: "--max-tasks-to-keep <n>", detail: "Max active tasks before archival pruning (default 99)." },
+      { flag: "--force", detail: "Overwrite an existing .claw project." },
+    ],
+  },
+  context: {
+    usage: ["{script} context [--task <name>]"],
+    description:
+      "Resolve and return the current project context, auto-initializing or auto-correcting .claw state when needed. Used by host startup recovery.",
+    options: [
+      { flag: "--task <name>", detail: "Resolve context scoped to a specific task." },
+    ],
+  },
+  check: {
+    usage: ["{script} check"],
+    description:
+      "Check the .claw project protocol and auto-correct any missing or malformed fields in project.json. Returns issues found and the paths that were fixed.",
+  },
+  plan: {
+    usage: ["{script} plan <subcommand> [options]"],
+    description: "Plan lifecycle commands for a task scope.",
+    subcommands: {
+      write: {
+        usage: [
+          "{script} plan write \"<title>\" [--goal <text>]",
+          "{script} plan write --title <text> [--goal <text>]",
+        ],
+        description:
+          "Create the task scope and the initial plan skeleton at prepare.requirements. If --goal is omitted, fill goal.text and the rest of the plan, then switch the plan to process.active.",
+        summary: "Create the task scope and the initial plan skeleton.",
+        options: [
+          { flag: "--title <text>", detail: "Task title (required unless a positional title is given)." },
+          { flag: "--goal <text>", detail: "Optional goal text." },
+        ],
+      },
+      edit: {
+        usage: ["{script} plan edit --task <name> [options]"],
+        description:
+          "Edit an existing plan: update status, append or patch tasks, add references, rules, and key decisions.",
+        summary: "Edit a plan: status, tasks, references, rules, key decisions.",
+        options: [
+          { flag: "--task <name>", detail: "(required) Task name to edit." },
+          { flag: "--plan <relative-path>", detail: "Plan file relative to the task dir (defaults to the active plan)." },
+          { flag: "--plan-status <status>", detail: "Set plan status (e.g. process.active, process.wait)." },
+          { flag: "--task-id <id>", detail: "Target a specific task by id for status updates." },
+          { flag: "--task-status <status>", detail: "Set the task status (e.g. pending, in_progress, done)." },
+          { flag: "--append-tasks <json-file>", detail: "Append tasks from a JSON array file." },
+          { flag: "--patch <json-file>", detail: "Apply a partial plan patch from a JSON file." },
+          { flag: "--rule <text>", detail: "Append a rule (repeatable)." },
+          { flag: "--key-decision <text>", detail: "Append a key decision (repeatable)." },
+          { flag: "--reference-path <path>", detail: "Add a reference (requires --reference-why)." },
+          { flag: "--reference-why <why>", detail: "Why the reference matters (requires --reference-path)." },
+          { flag: "--summary <text>", detail: "Optional change summary." },
+        ],
+      },
+      show: {
+        usage: ["{script} plan show --task <name> [--plan <relative-path>]"],
+        description:
+          "Show the current plan (status, goal, tasks, references) for a task, including archived plans.",
+        summary: "Show the current plan for a task.",
+        options: [
+          { flag: "--task <name>", detail: "(required) Task name to show." },
+          { flag: "--plan <relative-path>", detail: "Plan file relative to the task dir." },
+        ],
+      },
+      done: {
+        usage: ["{script} plan done --task <name> [--summary <text>] [options]"],
+        description:
+          "Close out a plan: write a retrospective, mark status end.completed, archive the task, and queue the async completion refresh (memory reindex + optional gitnexus refresh).",
+        summary: "Close out a plan with a retrospective and queue completion refresh.",
+        options: [
+          { flag: "--task <name>", detail: "(required) Task name to close out." },
+          { flag: "--plan <relative-path>", detail: "Plan file relative to the task dir." },
+          { flag: "--summary <text>", detail: "Retrospective summary (required unless a patch provides retrospective.summary)." },
+          { flag: "--change-summary <text>", detail: "Optional change summary." },
+          { flag: "--patch <json-file>", detail: "Apply a partial plan patch (e.g. with retrospective.summary)." },
+        ],
+      },
+    },
+  },
+  subplan: {
+    usage: ["{script} subplan <subcommand> [options]"],
+    description: "Subplan lifecycle commands nested under a parent task.",
+    subcommands: {
+      write: {
+        usage: ["{script} subplan write --parent <task-name> --task-id <number> --title <text>"],
+        description:
+          "Create a subplan under a parent task's task item. The parent's rootPlan stays stable while the subplan becomes the active plan.",
+        summary: "Create a subplan under a parent task's task item.",
+        options: [
+          { flag: "--parent <task-name>", detail: "(required) Parent task name." },
+          { flag: "--task-id <number>", detail: "(required) Parent task item id to split into a subplan." },
+          { flag: "--title <text>", detail: "(required) Subplan title." },
+        ],
+      },
+    },
+  },
+  "switch-task": {
+    usage: ["{script} switch-task --from <task> --to <task> [options]"],
+    description:
+      "Switch the active task from one to another, carrying inherited context and recording the leave state.",
+    options: [
+      { flag: "--from <task>", detail: "(required) Current task to leave." },
+      { flag: "--to <task>", detail: "(required) Task to switch to." },
+      { flag: "--reason <reason>", detail: "Leave reason (recorded in leave state)." },
+      { flag: "--mode <mode>", detail: "Inheritance mode for context carried over." },
+      { flag: "--history-limit <n>", detail: "Max history items to carry." },
+    ],
+  },
+  search: {
+    usage: ["{script} search [<query>] [--limit <n>]", "{script} search index --refresh"],
+    description:
+      "Project-scoped recall over .claw memory, truth, ADR, and declared markdown docs. Use a positional query or --query. Task-local scope (--task/--scope) is rejected; put task materials in plan.references instead.",
+    options: [
+      { flag: "--query <text>", detail: "Search query (or pass the query positionally)." },
+      { flag: "--limit <n>", detail: "Max number of results." },
+    ],
+    subcommands: {
+      index: {
+        usage: ["{script} search index --refresh"],
+        description:
+          "Build or rebuild the project vector index from markdown memory paths. Required before the first project-scoped search.",
+        summary: "Build or rebuild the project vector index from markdown memory paths.",
+        options: [
+          { flag: "--refresh", detail: "(required) Rebuild the project vector index." },
+        ],
+      },
+    },
+  },
+  direct: {
+    usage: ["{script} direct"],
+    description:
+      "Low-complexity no-plan closeout: optionally run `claw search` before execution, solve directly, optionally dispatch truth-writer, and queue the same async completion refresh path used by plan done. Takes no flags.",
+  },
+  truth: {
+    usage: ["{script} truth <subcommand> [options]"],
+    description: "Truth document ingestion under .claw/truth.",
+    subcommands: {
+      ingest: {
+        usage: [
+          "{script} truth ingest --target <relative-path> (--input <file> | --content <text>) [--append]",
+        ],
+        description: "Ingest a truth document under .claw/truth at the given relative target path.",
+        summary: "Ingest a truth document from a file or inline content.",
+        options: [
+          { flag: "--target <relative-path>", detail: "(required) Path under .claw/truth (e.g. features/foo.md)." },
+          { flag: "--input <file>", detail: "Read content from a file (mutually exclusive with --content)." },
+          { flag: "--content <text>", detail: "Inline content (mutually exclusive with --input)." },
+          { flag: "--append", detail: "Append to an existing truth file instead of overwriting." },
+        ],
+      },
+    },
+  },
+  hook: {
+    usage: ["{script} hook <event-name>"],
+    description:
+      "Emit host hook output. `claw hook SessionStart` reads a JSON payload from stdin and emits the SessionStart additionalContext for .claw projects; stays quiet outside .claw projects. Other events are logged to ~/.codex/claw-kit-hook.log.",
+    options: [
+      { flag: "<event-name>", detail: "(required) Hook event name (e.g. SessionStart)." },
+    ],
+  },
+  "internal-completion-refresh": {
+    usage: ["{script} internal-completion-refresh --cwd <dir> --task <name> --status-file <path>"],
+    description:
+      "Internal: runs the background completion refresh (memory reindex + optional gitnexus refresh) and writes status to --status-file. Spawned detached by plan done / direct; not intended for direct use.",
+    options: [
+      { flag: "--cwd <dir>", detail: "(required) Project root." },
+      { flag: "--task <name>", detail: "(required) Task name." },
+      { flag: "--status-file <path>", detail: "(required) Status file path to update." },
+    ],
+  },
+};
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const command = args.shift();
 
   if (command === "--help" || command === "-h") {
-    printUsage();
+    printTopLevelUsage();
     return;
   }
   if (command === "--version" || command === "-v") {
     process.stdout.write(`${CLI_VERSION}\n`);
+    return;
+  }
+
+  if (
+    command &&
+    command !== "help" &&
+    !command.startsWith("-") &&
+    args.some((a) => a === "--help" || a === "-h")
+  ) {
+    printHelp(resolveHelpTopic(command, args));
     return;
   }
 
@@ -115,11 +336,14 @@ async function main(): Promise<void> {
       case "hook":
         await runHook(args);
         return;
+      case "help":
+        printHelp(args);
+        return;
       case "internal-completion-refresh":
         runInternalCompletionRefresh(args);
         return;
       default:
-        printUsage();
+        printTopLevelUsage();
         process.exitCode = 1;
     }
   } catch (error) {
@@ -1660,36 +1884,144 @@ function handleError(error: unknown): void {
   process.exitCode = 1;
 }
 
-function printUsage(): void {
-  const scriptName = path.basename(process.argv[1] ?? "claw");
-  process.stderr.write(
-    [
-      `Usage: ${scriptName} <command> [options]`,
-      "",
-      "Commands:",
-      "  init [--id <project-id>] [--name <project-name>] [--context-path <file>] [--ext-path <path>]",
-      "       [--external-truth-skill <skill>] [--external-adr-skill <skill>]",
-      "       [--gitnexus true|false] [--max-tasks-to-keep <n>] [--force]",
-      "  context [--task <name>]",
-      "  check",
-      "  plan write \"<title>\" [--goal <text>]",
-      "  plan write --title <text> [--goal <text>]",
-      "             Creates the task scope and initial plan skeleton at prepare.requirements.",
-      "             If goal is omitted, fill goal.text and the rest of the plan, then switch to process.active.",
-      "  subplan write --parent <task-name> --task-id <number> --title <text>",
-      "  plan edit --task <name> [--plan <relative-path>] [--patch <json-file>] [--reference-path <path> --reference-why <why>] [--rule <text>] [--key-decision <text>] [--task-id <id> --task-status <status>] [--plan-status <status>]",
-      "  plan show --task <name> [--plan <relative-path>]",
-      "  plan done --task <name> [--plan <relative-path>] [--summary <text>] [--patch <json-file>]",
-      "  switch-task --from <task> --to <task>",
-      "  direct",
-      "       Low-complexity no-plan closeout: optionally run claw search before execution, solve directly, optionally dispatch truth-writer, and queue the same async completion refresh path used by plan done.",
-      "  search [--query] <text> [--limit <n>]",
-      "  search index --refresh",
-      "  truth ingest --target <relative-path-under-truth> [--input <file> | --content <text>] [--append]",
-      "  hook <event-name>",
-    ].join("\n"),
-  );
+function resolveScriptName(): string {
+  return path.basename(process.argv[1] ?? "claw");
+}
+
+function renderUsage(usage: string[]): string[] {
+  const scriptName = resolveScriptName();
+  return ["Usage:", ...usage.map((line) => `  ${line.replace(/\{script\}/g, scriptName)}`)];
+}
+
+function renderOptions(options: HelpOption[] | undefined): string[] {
+  if (!options || options.length === 0) {
+    return [];
+  }
+  const flagWidth = Math.max(...options.map((o) => o.flag.length));
+  return ["", "Options:", ...options.map((o) => `  ${o.flag.padEnd(flagWidth)}  ${o.detail}`)];
+}
+
+function printTopLevelUsage(): void {
+  const scriptName = resolveScriptName();
+  const nameWidth = Math.max(...TOP_LEVEL_COMMANDS.map((c) => c.name.length));
+  const lines: string[] = [
+    `Usage: ${scriptName} <command> [options]`,
+    "",
+    "claw is the CLI for the .claw workflow: project planning, recall, truth ingestion, and closeout.",
+    "",
+    "Commands:",
+    ...TOP_LEVEL_COMMANDS.map((c) => `  ${c.name.padEnd(nameWidth)}  ${c.summary}`),
+    "",
+    "Global flags:",
+    "  -h, --help     Show help (use `claw help <command>` for command details).",
+    "  -v, --version  Print the CLI version.",
+    "",
+    "Run `claw help <command>` or `claw help <command> <subcommand>` for detailed help.",
+  ];
+  process.stderr.write(lines.join("\n"));
   process.stderr.write("\n");
+}
+
+function printSimpleHelp(label: string, entry: HelpEntry): void {
+  const lines: string[] = [
+    ...renderUsage(entry.usage),
+    "",
+    entry.description,
+    ...renderOptions(entry.options),
+  ];
+  process.stderr.write(lines.join("\n"));
+  process.stderr.write("\n");
+}
+
+function printGroupHelp(label: string, node: HelpNode): void {
+  const lines: string[] = [
+    ...renderUsage(node.usage),
+    "",
+    node.description,
+    ...renderOptions(node.options),
+  ];
+
+  if (node.subcommands) {
+    const subNames = Object.keys(node.subcommands);
+    const labelWidth = Math.max(...subNames.map((n) => `${label} ${n}`.length));
+    lines.push("", "Subcommands:");
+    for (const subName of subNames) {
+      const subEntry = node.subcommands[subName];
+      const summary = subEntry.summary ?? firstSentence(subEntry.description);
+      lines.push(`  ${`${label} ${subName}`.padEnd(labelWidth)}  ${summary}`);
+    }
+    lines.push("", `Run \`claw help ${label} <subcommand>\` for details.`);
+  }
+
+  process.stderr.write(lines.join("\n"));
+  process.stderr.write("\n");
+}
+
+function firstSentence(text: string): string {
+  const match = text.match(/^[^.]*\./);
+  return match ? match[0].trim() : text;
+}
+
+function resolveHelpTopic(command: string, args: string[]): string[] {
+  const topic = [command];
+  const node = COMMAND_HELP[command];
+  if (node?.subcommands) {
+    if (command === "search") {
+      if (args[0] === "index") {
+        topic.push("index");
+      }
+    } else if (args[0] && !args[0].startsWith("-")) {
+      topic.push(args[0]);
+    }
+  }
+  return topic;
+}
+
+function printHelp(topic: string[]): void {
+  if (topic.length === 0) {
+    printTopLevelUsage();
+    return;
+  }
+
+  const [cmd, sub, ...rest] = topic;
+  const node = COMMAND_HELP[cmd];
+  if (!node) {
+    process.stderr.write(`Unknown help topic: ${topic.join(" ")}\n`);
+    printTopLevelUsage();
+    process.exitCode = 1;
+    return;
+  }
+
+  if (sub === undefined) {
+    if (node.subcommands) {
+      printGroupHelp(cmd, node);
+    } else {
+      printSimpleHelp(cmd, node);
+    }
+    return;
+  }
+
+  if (rest.length > 0) {
+    process.stderr.write(`Unknown help topic: ${topic.join(" ")}\n`);
+    printTopLevelUsage();
+    process.exitCode = 1;
+    return;
+  }
+
+  const subEntry = node.subcommands?.[sub];
+  if (subEntry) {
+    printSimpleHelp(`${cmd} ${sub}`, subEntry);
+    return;
+  }
+
+  if (node.subcommands) {
+    process.stderr.write(`Unknown ${cmd} subcommand: ${sub}\n`);
+    printGroupHelp(cmd, node);
+  } else {
+    process.stderr.write(`Unknown help topic: ${topic.join(" ")}\n`);
+    printTopLevelUsage();
+  }
+  process.exitCode = 1;
 }
 
 function readCliVersion(): string {
