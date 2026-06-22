@@ -1,7 +1,7 @@
 {
   "id": "claw-kit",
   "name": "claw-kit",
-  "maxTasksToKeep": 99,
+  "maxTasksToKeep": 9,
   "contextPaths": [],
   "memory": {
     "externalDocPaths": [],
