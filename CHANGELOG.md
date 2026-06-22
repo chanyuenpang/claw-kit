@@ -2,6 +2,18 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.1.45] - 2026-06-22
+
+### Fixed
+
+- `@huggingface/transformers` is now an optional peer dependency instead of `optionalDependencies`; npm will no longer attempt to install it (and its `onnxruntime-node` transitive dep) when installing the CLI globally — hosts that need embedding already provide it
+
+## [0.1.44] - 2026-06-22
+
+### Fixed
+
+- Move `@huggingface/transformers` from `dependencies` to `optionalDependencies` in `@veewo/claw-core` so global CLI installation no longer pulls in `onnxruntime-node` (~100MB); the package is only needed by `claw search index --refresh` and is dynamically imported
+
 ## [0.1.43] - 2026-06-22
 
 ### Fixed
