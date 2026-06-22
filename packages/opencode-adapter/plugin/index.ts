@@ -8,8 +8,10 @@ import type { Plugin } from "@opencode-ai/plugin";
  *
  * Four injection surfaces:
  *   1. shell.env — inject CLAW_HOST + CLAW_GUIDANCE_CONFIG into all shell executions
- *   2. event(session.created) — detect .claw/ project, read active plan state
- *   3. experimental.chat.system.transform — inject recovered state into system prompt
+ *   2. event(session.created) + event(session.compacted) — one-shot init: detect .claw/,
+ *      call claw hook SessionStart. Compaction re-runs because the prior system prompt
+ *      injection is lost when the context window is compressed.
+ *   3. experimental.chat.system.transform — push cached claw context into system prompt
  *   4. event(session.idle) — goal continuation: advance agent when plan.status is process.active
  */
 
@@ -138,6 +140,30 @@ function invokeClawSessionStart(projectDir: string): string | null {
 export const ClawKitPlugin: Plugin = async ({ client, directory }) => {
   const projectDir = directory;
 
+  /**
+   * One-shot initialization: detect .claw/ project, invoke claw hook SessionStart,
+   * read active plan state. Called from session.created and session.compacted.
+   */
+  function initClawContext(): void {
+    if (!hasClawProject(projectDir)) return;
+
+    inClawProject = true;
+    projectInfo = readProjectInfo(projectDir);
+
+    const hookContext = invokeClawSessionStart(projectDir);
+    if (hookContext) {
+      clawSessionContext = hookContext;
+    }
+
+    const planPath = resolveActivePlanPath(projectDir);
+    if (planPath) {
+      const summary = readPlanSummary(planPath);
+      if (summary) {
+        recoveredState = summary;
+      }
+    }
+  }
+
   return {
     // (1) Inject environment variables into all shell executions
     // Agent's bash tool calls to claw CLI will automatically carry these
@@ -148,38 +174,20 @@ export const ClawKitPlugin: Plugin = async ({ client, directory }) => {
       }
     },
 
-    // (2) Session start + (4) Goal continuation
+    // (2) Session start (new + compacted) + (4) Goal continuation
     event: async ({ event }) => {
-      // Session created: detect .claw/ project (unconditional, like Codex SessionStart)
-      // and optionally read active plan state
+      // New session: initialize claw context
       if (event.type === "session.created") {
-        const sessionID = (event.properties as { sessionID?: string }).sessionID;
-        if (!sessionID || !hasClawProject(projectDir)) return;
-
-        // Unconditional: mark that we are in a claw project
-        inClawProject = true;
-        projectInfo = readProjectInfo(projectDir);
-
-        // Invoke claw hook SessionStart to get full dynamic context
-        // (includes authorization, skill loading, workflowGuidance, plan recovery)
-        const hookContext = invokeClawSessionStart(projectDir);
-        if (hookContext) {
-          clawSessionContext = hookContext;
-        }
-
-        // Conditional: if there is an active plan, read its summary
-        // (used as fallback when claw hook is unavailable)
-        const planPath = resolveActivePlanPath(projectDir);
-        if (planPath) {
-          sessionPlans.set(sessionID, { planPath, projectDir });
-          const summary = readPlanSummary(planPath);
-          if (summary) {
-            recoveredState = summary;
-          }
-        }
+        initClawContext();
       }
 
-      // Session idle: goal continuation
+      // Compaction: system prompt injection is lost after context compression,
+      // so re-initialize to re-inject claw context into subsequent prompts
+      if (event.type === "session.compacted") {
+        initClawContext();
+      }
+
+      // Goal continuation
       if (event.type === "session.idle") {
         const sessionID = (event.properties as { sessionID?: string }).sessionID;
         if (!sessionID) return;
