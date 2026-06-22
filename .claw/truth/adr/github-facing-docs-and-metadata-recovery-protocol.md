@@ -1,4 +1,4 @@
-# ADR: GitHub-facing docs and metadata recovery protocol
+﻿# ADR: GitHub-facing docs and metadata recovery protocol
 
 ## Status
 

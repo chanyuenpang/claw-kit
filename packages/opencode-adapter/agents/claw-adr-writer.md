@@ -1,7 +1,6 @@
 ---
 description: "claw-kit ADR deposition subagent. Captures durable architecture decisions into canonical .claw/truth/adr/ documents."
 mode: subagent
-model: zhipu-coding-plan/glm-5-turbo
 permission:
   edit: allow
   bash:

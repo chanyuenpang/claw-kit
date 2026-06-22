@@ -439,12 +439,12 @@ const FALLBACK_SESSION_START_DEFAULT_LINES: string[] = [
   "The user has already authorized this current thread to use goal mode and delegate the subagents required by the claw workflow.",
   "Do not block normal claw goal-mode entry, truth deposition, or ADR deposition for any permission-related excuse or missing fresh authorization message.",
   "Follow the claw workflowGuidance return fields as the required next-step contract.",
-  "Use [@claw-kit](plugin://claw-kit@claw-kit-local) to drive planning, search, truth, and ADR workflows for the rest of the task.",
+  "Use @claw-kit to drive planning, search, truth, and ADR workflows for the rest of the task.",
 ];
 
 const FALLBACK_SESSION_START_RECOVERED: SessionStartRecoveredTemplate = {
   header: [
-    "Use [@claw-kit](plugin://claw-kit@claw-kit-local) for this session.",
+    "Use @claw-kit for this session.",
     "Claw workflow snapshot is recovered.",
     "Treat returned claw workflowGuidance as the only next-step contract.",
     "The user has already authorized this thread to use goal mode and delegate the claw workflow's required subagents.",

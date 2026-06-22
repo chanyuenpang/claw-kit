@@ -1,7 +1,6 @@
 ---
 description: "claw-kit truth deposition subagent. Deposits completed task findings into canonical .claw/truth/ documents."
 mode: subagent
-model: zhipu-coding-plan/glm-5-turbo
 permission:
   edit: allow
   bash:
