@@ -2,6 +2,8 @@
 
 This guide explains the project-level config surfaces that shape `claw-kit` behavior inside a repository.
 
+At a product level, `claw-kit` can be used without GitNexus. The `gitnexus` section below is an optional integration surface, not a required dependency.
+
 ## Config layers
 
 ### `.claw/project.json`
@@ -18,6 +20,8 @@ This guide explains the project-level config surfaces that shape `claw-kit` beha
 - can override any field from `.claw/project.json`
 - explicit `null` is a real override value, not "fall back to team config"
 
+This split is one of the reasons `claw-kit` works well for team collaboration: the repo can keep a shared workflow contract while individual users keep personal runtime preferences out of canonical project config.
+
 The effective runtime config is:
 
 `deepMerge(.claw/project.json, .claw/project-override.json)`
@@ -28,6 +32,8 @@ Important consequences:
 - arrays are replacement values, not append-only patches
 - explicit `null` can intentionally clear inherited values such as `externalTruthSkill`
 - protocol repair does not write local override state back into canonical `project.json`
+
+Together, the canonical config plus local override model gives longer-running project work a stable shared surface without forcing every personal preference into the team-owned file.
 
 ## Canonical fields
 
@@ -68,7 +74,8 @@ Use `null` when the project should explicitly keep the built-in writer behavior.
 ### GitNexus
 
 - `gitnexus.enabled`
-  - enables GitNexus-related closeout and completion-refresh behavior
+  - optional integration switch for GitNexus-related closeout and completion-refresh behavior
+  - default usage of `claw-kit` does not require GitNexus to be enabled
 
 ### Workflow
 
@@ -224,10 +231,14 @@ When explaining project behavior:
 
 - `.claw/project.json` is the canonical declaration surface
 - `.claw/project-override.json` is local and runtime-only
+- the canonical-plus-personal split is part of the collaboration model, not just a schema detail
 - `memory.enabled = false` disables project memory search plus embedding/index refresh
+- `gitnexus.enabled = true` opts a project into GitNexus-related integration behavior, but `claw-kit` still works without it
 - default local embedding configs do not need `store.vector.enabled = true` written explicitly
 - `workflow.goalMode.enabled = false` removes `goalMode` from workflow guidance
 - `workflow.truthDispatch.mode = final_only` removes mid-task truth deposition guidance but not closeout deposition
+
+That same project-level config and plan surface is part of why `claw-kit` works well for longer-running tasks: the workflow, truth, and ADR state live in durable project surfaces instead of only in transient chat history.
 
 ## Anti-patterns
 

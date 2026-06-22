@@ -1,0 +1,25 @@
+{
+  "name": "@claw-kit/opencode-adapter",
+  "version": "0.1.41",
+  "private": true,
+  "type": "module",
+  "description": "OpenCode adapter assets for landing the claw-kit .claw workflow inside OpenCode.",
+  "keywords": [
+    "claw",
+    ".claw",
+    "opencode",
+    "agent-workflow",
+    "knowledge-capture",
+    "adapter"
+  ],
+  "homepage": "https://github.com/chanyuenpang/claw-kit",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chanyuenpang/claw-kit.git",
+    "directory": "packages/opencode-adapter"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit"
+  }
+}

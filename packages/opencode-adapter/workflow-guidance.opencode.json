@@ -1,0 +1,224 @@
+{
+  "goalModeObjective": {
+    "withGoal": "Using claw-kit, update plan, follow returned workflowGuidance，finish your goal：{{planGoal}}",
+    "withoutGoal": "Using claw-kit, update plan, follow returned workflowGuidance，finish your goal."
+  },
+  "delegates": {
+    "truthWriter": {
+      "name": "truth-writer",
+      "fallbackSkill": "claw-kit:truth-writer",
+      "waitForCompletion": false,
+      "inputContract": "curated completed subtask report with valuable findings for truth deposition",
+      "outputContract": "optional telemetry only",
+      "closePolicy": "keep_open_for_reuse"
+    },
+    "adrWriter": {
+      "name": "adr-writer",
+      "fallbackSkill": "claw-kit:adr-writer",
+      "waitForCompletion": false,
+      "inputContract": "plan.json",
+      "outputContract": "optional telemetry only",
+      "closePolicy": "keep_open_for_reuse"
+    }
+  },
+  "states": {
+    "prepare.requirements.withGoal": {
+      "stage": "requirements",
+      "summary": "Task scope is bound. Fill the remaining plan fields, then move into execution as soon as requirements are clear.",
+      "nextsteps": [
+        "1. Fill the missing plan fields.",
+        "2. Move into `process.active` once requirements are clear."
+      ],
+      "notes": "Fill only the fields still needed to execute, such as `requirements`, `tasks`, `references`, `rules`, and `keyDecisions`. If scope is still unclear, clarify it with the user before switching to `process.active`.",
+      "recommendedCommands": [
+        "{{editBase}} --plan-status process.active",
+        "{{editBase}} --patch <updated-plan.json>",
+        "{{editBase}} --reference-path <path> --reference-why <why>"
+      ]
+    },
+    "prepare.requirements.withoutGoal": {
+      "stage": "requirements",
+      "summary": "Task scope is bound. Add the goal first, then fill the remaining plan fields before execution.",
+      "nextsteps": [
+        "1. Fill `goal.text`.",
+        "2. Fill the missing plan fields.",
+        "3. Move into `process.active` once requirements are clear."
+      ],
+      "notes": "Fill only the fields still needed to execute, such as `requirements`, `tasks`, `references`, `rules`, and `keyDecisions`. If scope is still unclear, clarify it with the user before switching to `process.active`.",
+      "recommendedCommands": [
+        "{{editBase}} --plan-status process.active",
+        "{{editBase}} --patch <updated-plan.json>",
+        "{{editBase}} --reference-path <path> --reference-why <why>"
+      ]
+    },
+    "prepare.review": {
+      "stage": "review",
+      "summary": "This plan is in a legacy review stage.",
+      "nextsteps": [
+        "1. Fold the remaining review notes into the plan.",
+        "2. Confirm the route with the user.",
+        "3. Move the plan back into `prepare.requirements` or `process.discussing`."
+      ],
+      "notes": "Do not create a separate review pass. Merge review criteria into planning itself.",
+      "recommendedCommands": [
+        "{{editBase}} --patch <reviewed-plan.json>",
+        "{{editBase}} --plan-status prepare.requirements",
+        "{{editBase}} --plan-status process.discussing"
+      ],
+      "askUser": {
+        "reason": "This legacy review stage should be resolved back into normal planning before execution.",
+        "options": [
+          {
+            "id": "merge-revisions",
+            "label": "Revise plan",
+            "description": "Apply the remaining plan changes directly, then continue with normal planning.",
+            "recommended": true
+          },
+          {
+            "id": "discuss-tradeoff",
+            "label": "Discuss tradeoff",
+            "description": "The review raised a route choice that should be clarified with the user."
+          },
+          {
+            "id": "hold-plan",
+            "label": "Hold execution",
+            "description": "Pause until missing requirements or constraints are clarified."
+          }
+        ]
+      }
+    },
+    "process.allTasksDone": {
+      "stage": "done",
+      "summary": "All plan tasks are done. Clear your tasks list, then execute each returned delegateSubagents entry for truth deposition and ADR closeout.",
+      "nextsteps": [
+        "1. Clear your tasks list with todowrite.",
+        "2. Read `delegateSubagents`, curate the valuable findings from the completed work into a completed subtask report, then dispatch the `truth-writer` subagent. Do not treat it as a suggestion.",
+        "3. Update both `retrospective` and `keyDecisions`, then read `delegateSubagents` again and dispatch the `adr-writer` subagent with the completed `plan.json`."
+      ],
+      "notes": "Truth doc and ADR doc generation are essential claw-kit features. When this state returns `delegateSubagents`, each entry is a required dispatch contract.",
+      "recommendedCommands": [
+        "{{editBase}} --patch <completed-plan.json>",
+        "{{doneBase}} --summary \"<retrospective summary>\""
+      ],
+      "delegateSubagents": [
+        "truthWriter",
+        "adrWriter"
+      ]
+    },
+    "process.hasCompletedTasks": {
+      "stage": "{{processStage}}",
+      "summary": "Execution is in progress.",
+      "nextsteps": [
+        "1. Use todowrite to sync your tasks list.",
+        "2. Read `delegateSubagents`, curate the valuable findings from the completed task into a completed subtask report, then dispatch the `truth-writer` subagent. Do not treat it as a suggestion.",
+        "3. Continue with {{nextTaskRef}}."
+      ],
+      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. When this state returns `delegateSubagents`, each entry is a required dispatch contract.",
+      "recommendedCommands": [
+        "{{taskDoneCommand}}",
+        "{{editBase}} --task-id <id> --task-status in_progress"
+      ],
+      "delegateSubagents": [
+        "truthWriter"
+      ]
+    },
+    "process.hasCompletedTasks.finalOnlyTruth": {
+      "stage": "{{processStage}}",
+      "summary": "Execution is in progress.",
+      "nextsteps": [
+        "1. Use todowrite to sync your tasks list.",
+        "2. Continue with {{nextTaskRef}}."
+      ],
+      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
+      "recommendedCommands": [
+        "{{taskDoneCommand}}",
+        "{{editBase}} --task-id <id> --task-status in_progress"
+      ]
+    },
+    "process.justEntered": {
+      "stage": "{{processStage}}",
+      "summary": "Execution is starting.",
+      "nextsteps": [
+        "Use todowrite to sync your tasks list.",
+        "Start with {{nextTaskRef}}."
+      ],
+      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
+      "recommendedCommands": [
+        "{{taskDoneCommand}}",
+        "{{doneBase}} --summary \"<retrospective summary>\""
+      ]
+    },
+    "process.resumedActive": {
+      "stage": "execution",
+      "summary": "Execution is resuming.",
+      "nextsteps": [
+        "Use todowrite to sync your tasks list.",
+        "Resume with {{nextTaskRef}}."
+      ],
+      "notes": "The plan is moving back from a paused status into active execution.",
+      "recommendedCommands": [
+        "{{taskDoneCommand}}",
+        "{{doneBase}} --summary \"<retrospective summary>\""
+      ]
+    },
+    "process.wait": {
+      "stage": "paused",
+      "summary": "Execution is paused.",
+      "nextsteps": [
+        "1. Resume through `process.active` when execution should continue."
+      ],
+      "notes": "Use `process.wait` for a real blocker or a deliberate hold. Do not keep executing while the plan is paused.",
+      "recommendedCommands": [
+        "{{editBase}} --plan-status process.active"
+      ]
+    },
+    "process.discussing": {
+      "stage": "discussion",
+      "summary": "The plan is paused for discussion.",
+      "nextsteps": [
+        "1. Resolve the discussion, then resume through `process.active`."
+      ],
+      "notes": "Use `process.discussing` for route discussion or decision-making. Resume execution only after the discussion is settled.",
+      "recommendedCommands": [
+        "{{editBase}} --plan-status process.active"
+      ]
+    },
+    "process.activeTask": {
+      "stage": "{{processStage}}",
+      "summary": "Execution is in progress.",
+      "nextsteps": [
+        "Continue the current task."
+      ],
+      "recommendedCommands": [
+        "{{taskDoneCommand}}"
+      ]
+    },
+    "process.default": {
+      "stage": "{{processStage}}",
+      "summary": "Execution is in progress.",
+      "nextsteps": [
+        "Continue with {{nextTaskRef}}."
+      ],
+      "recommendedCommands": [
+        "{{taskDoneCommand}}"
+      ]
+    },
+    "end.completed": {
+      "stage": "done",
+      "summary": "The plan is completed and ready for closeout.",
+      "nextsteps": [
+        "1. Finish any remaining closeout work such as archive or parent-plan resumption."
+      ]
+    },
+    "end.closed": {
+      "stage": "paused",
+      "summary": "The plan is no longer active.",
+      "nextsteps": [
+        "Reopen through `prepare.requirements` before resuming, or leave it as historical context."
+      ],
+      "recommendedCommands": [
+        "{{editBase}} --plan-status prepare.requirements"
+      ]
+    }
+  }
+}

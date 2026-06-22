@@ -12,6 +12,14 @@ It uses `.claw` as a practical working surface for planning tasks, recalling pri
 - Closeout workflows that keep tasks, notes, and decisions aligned
 - Adapter surfaces that let the same workflow shape land in different agent hosts
 
+## Why teams use it
+
+- Plan before execute: the `.claw` plan structure gives agents a durable workflow to return to, which helps complex or longer-running tasks move forward more steadily than loose chat state alone.
+- Flexible by design: `claw-kit` can work alongside other harnesses or external skills instead of assuming a single host or investigation tool.
+- Truth and ADR stay reusable: the workflow maintains truth and ADR as durable project knowledge, then makes that context available again through project recall.
+- Team-friendly config: `.claw/project.json` holds the shared canonical workflow, while `.claw/project-override.json` leaves room for personal runtime preferences.
+- GitNexus can complement that workflow when a task needs deeper code investigation or relationship tracing, but it is optional rather than required.
+
 ## How `.claw` workflow lands in practice
 
 In a typical round, `claw-kit` helps an agent move through a repeatable loop:
@@ -172,36 +180,6 @@ If your environment uses remote embeddings, set `memory.embedding` to an OpenAI-
 }
 ```
 
-## Publish workflow
+## Maintainer docs
 
-For a real release, use the full maintainer workflow in [DISTRIBUTION.md](DISTRIBUTION.md) and the local-copy refresh checks in [docs/2026-06-08-closeout-workflow.md](docs/2026-06-08-closeout-workflow.md).
-
-Quick artifact dry-run:
-
-```powershell
-cd packages\core
-npm pack --dry-run
-cd ..\cli
-npm pack --dry-run
-```
-
-Actual publish order:
-
-```powershell
-cd packages\core
-npm publish --access public
-cd ..\cli
-npm publish --access public
-```
-
-Post-publish install verification on Windows:
-
-```powershell
-npm install -g @veewo/claw
-npm run install:codex-plugin
-npm list -g @veewo/claw --depth=0
-(Get-Command claw).Source
-claw --help
-```
-
-`@veewo/claw` depends on `@veewo/claw-core`, so publish `core` first.
+For release and distribution steps, use the dedicated maintainer docs in [DISTRIBUTION.md](DISTRIBUTION.md) and [docs/2026-06-08-closeout-workflow.md](docs/2026-06-08-closeout-workflow.md).

@@ -134,6 +134,7 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
       planFile,
       plan,
       projectConfig: project.projectConfig,
+      host: input.host,
     }),
     plan,
     planView: buildPlanViewModel({
@@ -314,6 +315,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
       planFile: resultPlanFile,
       plan: resultPlan,
       projectConfig: task.project.projectConfig,
+      host: input.host,
       ...(completionHooks?.subplanClosureCandidate
         ? {}
         : {

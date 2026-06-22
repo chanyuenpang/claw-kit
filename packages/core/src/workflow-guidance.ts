@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import workflowGuidanceConfigJson from "./workflow-guidance.config.json" with { type: "json" };
 import type {
@@ -58,7 +59,20 @@ type GuidanceConfig = {
 
 type TemplateVars = Record<string, string>;
 
-const workflowGuidanceConfig = workflowGuidanceConfigJson as GuidanceConfig;
+function loadGuidanceConfig(): GuidanceConfig {
+  const externalPath = process.env.CLAW_GUIDANCE_CONFIG;
+  if (externalPath) {
+    try {
+      const content = readFileSync(externalPath, "utf8");
+      return JSON.parse(content) as GuidanceConfig;
+    } catch {
+      // If external config fails to load, fall back to bundled config
+    }
+  }
+  return workflowGuidanceConfigJson as GuidanceConfig;
+}
+
+const workflowGuidanceConfig = loadGuidanceConfig();
 
 function truthWriterDelegate(projectConfig: ProjectConfig | null): WorkflowGuidanceSubagent {
   return buildConfiguredDelegate("truthWriter", projectConfig);
@@ -176,6 +190,7 @@ function usesPerTaskTruthDispatch(projectConfig: ProjectConfig | null): boolean 
 
 export function buildDirectWorkflowGuidance(params: {
   projectConfig?: ProjectConfig | null;
+  host?: string;
 } = {}): WorkflowGuidance {
   const { projectConfig = null } = params;
   return {
@@ -200,6 +215,7 @@ export function buildPlanWorkflowGuidance(params: {
   completionHooks?: PlanCompletionHooks;
   changedTaskIds?: number[];
   completedTaskIds?: number[];
+  host?: string;
 }): WorkflowGuidance {
   const { taskName, planFile, plan, projectConfig = null, previousStatus, completionHooks, changedTaskIds, completedTaskIds } = params;
   const scopedPlan = planFile === "plan.json" ? "" : ` --plan ${planFile}`;
@@ -213,6 +229,7 @@ export function buildPlanWorkflowGuidance(params: {
   const hasChangedTasks = (changedTaskIds?.length ?? 0) > 0;
   const hasCompletedTasks = (completedTaskIds?.length ?? 0) > 0;
   const goalModeEnabled = isGoalModeEnabled(projectConfig);
+  const suppressGoalFields = params.host === "opencode";
   const perTaskTruthDispatch = usesPerTaskTruthDispatch(projectConfig);
   const nextTask = nextUnfinishedTask(plan);
   const activeTask = currentActiveTask(plan);
@@ -269,7 +286,7 @@ export function buildPlanWorkflowGuidance(params: {
         nextsteps: template.nextsteps,
         ...(template.notes ? { notes: template.notes } : {}),
         ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),
-        ...(template.goalTool && goalModeEnabled && hasGoal ? { goalTool: buildGoalTool(plan.goal.text, template.goalTool) } : {}),
+        ...(template.goalTool && goalModeEnabled && hasGoal && !suppressGoalFields ? { goalTool: buildGoalTool(plan.goal.text, template.goalTool) } : {}),
       };
     }
     case "process.active": {
@@ -313,10 +330,10 @@ export function buildPlanWorkflowGuidance(params: {
             }
           : {}),
         ...(template.notes ? { notes: template.notes } : {}),
-        ...(template.goalMode && goalModeEnabled && (justEnteredProcess || resumedIntoActive) && hasGoal
+        ...(template.goalMode && goalModeEnabled && (justEnteredProcess || resumedIntoActive) && hasGoal && !suppressGoalFields
           ? { goalMode: buildGoalMode(plan.goal.text, template.goalMode) }
           : {}),
-        ...(template.goalTool && goalModeEnabled && (justEnteredProcess || resumedIntoActive) && hasGoal
+        ...(template.goalTool && goalModeEnabled && (justEnteredProcess || resumedIntoActive) && hasGoal && !suppressGoalFields
           ? { goalTool: buildGoalTool(plan.goal.text, template.goalTool) }
           : {}),
         ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),
@@ -336,7 +353,7 @@ export function buildPlanWorkflowGuidance(params: {
         summary: template.summary,
         nextsteps: template.nextsteps,
         ...(template.notes ? { notes: template.notes } : {}),
-        ...(template.goalTool && goalModeEnabled && hasGoal ? { goalTool: buildGoalTool(plan.goal.text, template.goalTool) } : {}),
+        ...(template.goalTool && goalModeEnabled && hasGoal && !suppressGoalFields ? { goalTool: buildGoalTool(plan.goal.text, template.goalTool) } : {}),
         ...(template.delegateSubagents
           ? { delegateSubagents: buildConfiguredDelegates(template.delegateSubagents, projectConfig) }
           : {}),

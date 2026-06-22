@@ -10,6 +10,8 @@ Accepted
 
 同时，这一轮恢复出的内容本身也确认了一个长期分工：根 `README.md` 负责产品定位与入口，`docs/project-json-reference.md` 负责 canonical `project.json` 说明，包级 `README.md` 负责各包职责，package metadata 负责 GitHub 与 npm 的可见性。
 
+这次新的公开文案回合又把两条边界补得更清楚了：`claw-kit` 的对外叙事要把 GitNexus 写成可选补强而不是必需依赖，并且根 `README.md` 不再承载逐步 publish/release 流程，只保留指向专门 maintainer 文档的入口。
+
 ## Decision
 
 - 恢复被 `restore` / `clean` 清掉的 GitHub-facing 文档时，先抽取本地 session rollout JSONL 和完成计划里的可验证证据，再 replay 精确 patch，最后才做必要的最小重建。
@@ -18,6 +20,13 @@ Accepted
   - `docs/project-json-reference.md` 讲 canonical `.claw/project.json`
   - `packages/cli/README.md` 和 `packages/core/README.md` 讲各包职责
   - `package.json` 元数据只承担 GitHub/npm 可见性与包身份
+- 根 `README.md` 的产品定位需要把这四个稳定优势拆开写清楚，而不是混成一段 GitNexus 说明：
+  - plan before execute
+  - 可与其他 harness / skills 协同
+  - truth / ADR 可复用且可检索
+  - canonical + personal config 支持团队协作
+- GitNexus 在公开文案里只能作为 optional integration / complementary capability 出现，不能写成使用 `claw-kit` 的前置依赖。
+- 根 `README.md` 不再承载逐步 publish / release 操作流程，只保留通往专门 maintainer 文档的入口。
 - 公开 markdown 链接必须保持 repo-relative，不得改成本机绝对路径。
 - 需要核对包身份或公开面是否恢复正确时，优先用 `npm pkg get` 和内容检查，而不是重新推断意图。
 
@@ -25,6 +34,8 @@ Accepted
 
 - 文档误删后的恢复路径变得可重复，减少“看起来像回来了但实际已经漂移”的风险。
 - GitHub-facing 文档不会混成同一层职责，后续更新更容易定位该改哪里。
+- 公共定位会稳定区分 `claw-kit` 主体能力与 GitNexus 的可选补强角色，避免把依赖关系写反。
+- 根 README 保持轻量，发布/收口步骤统一回流到维护文档，不再和产品定位混写。
 - 公开面链接保持可移植，GitHub 展示和本地浏览都会继续工作。
 - 当这类回收发生时，truth/ADR/plan 三者之间的证据链会更容易复核。
 

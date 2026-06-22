@@ -37,11 +37,15 @@ In a typical round, the CLI helps land this loop in a project:
 
 `plan` -> `search and recall` -> `execute` -> `deposit truth / ADR` -> `close out`
 
+That project-level plan structure helps agents carry longer-running work more cleanly than leaving the task in loose chat state alone.
+
 Codex startup workflow should rely on the session hook or startup recovery path instead of treating any extra manual recovery step as required after plan creation.
 
 ## Search and recall
 
 `claw search` is project-scoped recall for project docs: `.claw` memory, truth, ADR, and declared markdown external docs. For normal planned work, call it after `claw plan write` so recall can improve the already-bound task scope; for low-complexity direct work, call it before execution when project context matters; for research-style investigation, call it before the broader investigation step. It is meant to absorb a natural-language prompt or keyword query against project documentation, recover prior truth and ADR context, and narrow the surface before later code-location work. It is not a code-search command.
+
+When a task needs deeper code investigation or relationship tracing, GitNexus can complement this workflow, but it is optional rather than required for using `claw` itself.
 
 Configured `memory.externalDocPaths` only contribute `.md` files to this recall surface.
 
@@ -65,6 +69,10 @@ Without an explicit local cache dir, claw downloads into the platform-global cac
 ## Configuration
 
 For the full `.claw/project.json` guide, see [docs/project-json-reference.md](../../docs/project-json-reference.md).
+
+`claw-kit` also stays usable alongside other harnesses or external skills, so the CLI does not assume a single host or investigation surface.
+
+The config model is team-friendly as well: `.claw/project.json` carries the shared canonical workflow, while `.claw/project-override.json` leaves room for personal runtime preferences.
 
 ## Repository
 

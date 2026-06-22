@@ -163,10 +163,10 @@ export type WorkflowGuidanceSubagentName = "truth-writer" | "adr-writer";
 export type WorkflowGuidanceSubagent = {
   name: WorkflowGuidanceSubagentName;
   skill: string;
-  model: "gpt-5.4-mini";
-  fork_context: false;
+  model?: string;
+  fork_context?: boolean;
   waitForCompletion: boolean;
-  preferReuseSameTypeInThread: true;
+  preferReuseSameTypeInThread?: boolean;
   inputContract: string;
   outputContract: string;
   closePolicy: "close_after_result" | "keep_open_for_reuse";
@@ -206,7 +206,7 @@ export type WorkflowGuidance = {
   goalTool?: WorkflowGuidanceGoalTool;
   askUser?: {
     reason: string;
-    useCodexOptions: true;
+    useCodexOptions?: true;
     options: WorkflowGuidanceOption[];
   };
 };
@@ -456,6 +456,7 @@ export type PlanWriteInput = {
   parentPlanFile?: string;
   reviewer?: PlanReviewer;
   workflowDefinitions?: string;
+  host?: string;
 };
 
 export type PlanWriteResult = {
@@ -496,6 +497,7 @@ export type PlanEditInput = {
   appendTasks?: PlanTask[];
   reviewer?: PlanReviewer;
   workflowDefinitions?: string;
+  host?: string;
 };
 
 export type PlanEditResult = {

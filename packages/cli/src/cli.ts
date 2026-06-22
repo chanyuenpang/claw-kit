@@ -142,6 +142,7 @@ async function runPlan(args: string[]): Promise<void> {
         title,
         goalText: readOptionalFlag(args, "--goal"),
         ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
+        host: process.env.CLAW_HOST ?? undefined,
       });
       assertNoRemainingArgs(args, "plan write");
       printJson(compactPlanCommandResult("plan.write", result));
@@ -169,6 +170,7 @@ async function runPlan(args: string[]): Promise<void> {
         taskId: readOptionalNumber(args, "--task-id"),
         taskStatus: readOptionalFlag(args, "--task-status") as PlanTask["status"] | undefined,
         appendTasks: appendTasksPath ? readJson<PlanTask[]>(appendTasksPath) : undefined,
+        host: process.env.CLAW_HOST ?? undefined,
       });
       printJson(compactPlanCommandResult("plan.edit", result));
       return;
@@ -192,6 +194,7 @@ async function runPlan(args: string[]): Promise<void> {
         changeSummary: readOptionalFlag(args, "--change-summary"),
         patch: mergedPatch,
         planStatus: "end.completed",
+        host: process.env.CLAW_HOST ?? undefined,
       });
       const completionRefresh = queueCompletionRefresh({
         cwd: process.cwd(),
@@ -277,6 +280,7 @@ function runDirect(args: string[]): void {
       "direct",
       buildDirectWorkflowGuidance({
         projectConfig: resolveProjectContext(process.cwd()).projectConfig,
+        host: process.env.CLAW_HOST ?? undefined,
       }),
       completionRefresh,
     ),
