@@ -35,6 +35,7 @@ const DEFAULT_EMBEDDING_TARGET_CHARS =
   DEFAULT_EMBEDDING_TARGET_TOKENS * DEFAULT_EMBEDDING_CHARS_PER_TOKEN;
 const DEFAULT_EMBEDDING_MAX_CHARS =
   DEFAULT_EMBEDDING_MAX_TOKENS * DEFAULT_EMBEDDING_CHARS_PER_TOKEN;
+const DEFAULT_MEMORY_SQLITE_BUSY_TIMEOUT_MS = 5000;
 
 type ProjectDocSearchSignals = {
   matchedTerms: string[];
@@ -54,8 +55,7 @@ export function buildMemoryIndex(input: MemoryIndexInput): MemoryIndexResult {
   const embedding = scope === "project" ? resolveProjectMemoryEmbeddingConfig(project) : undefined;
 
   fs.mkdirSync(path.dirname(storePath), { recursive: true });
-  const db = new DatabaseSync(storePath);
-  try {
+  return withMemoryDatabase(storePath, "index refresh", "write", (db) => {
     prepareSchema(db);
     const syncResult =
       scope === "project"
@@ -92,9 +92,7 @@ export function buildMemoryIndex(input: MemoryIndexInput): MemoryIndexResult {
       sources: sources.map((entry) => entry.sourcePath),
       ...(scope === "project" ? { embedding, vectorIndex: syncResult.vectorIndex } : {}),
     };
-  } finally {
-    db.close();
-  }
+  });
 }
 
 function rebuildTaskMemoryIndex(
@@ -282,8 +280,7 @@ export function searchMemory(input: MemorySearchInput): MemorySearchResult {
     });
   }
 
-  const db = new DatabaseSync(storePath);
-  try {
+  return withMemoryDatabase(storePath, "search", "read", (db) => {
     prepareSchema(db);
     const results =
       scope === "project"
@@ -295,9 +292,7 @@ export function searchMemory(input: MemorySearchInput): MemorySearchResult {
       storePath,
       results,
     };
-  } finally {
-    db.close();
-  }
+  });
 }
 
 export function getMemory(input: MemoryGetInput): MemoryGetResult {
@@ -336,6 +331,66 @@ function getMemoryStorePath(project: ProjectContext, scope: MemoryScope, task?: 
     return path.join(task.taskDir, "memory.sqlite");
   }
   return path.join(project.clawDir, "memory.sqlite");
+}
+
+function withMemoryDatabase<T>(
+  storePath: string,
+  operation: string,
+  access: "read" | "write",
+  callback: (db: DatabaseSync) => T,
+): T {
+  let db: DatabaseSync | null = null;
+  try {
+    db = new DatabaseSync(storePath);
+    configureMemoryDatabase(db, access);
+    return callback(db);
+  } catch (error) {
+    if (isSqliteBusyError(error)) {
+      throw buildMemoryStoreBusyError(storePath, operation, error);
+    }
+    throw error;
+  } finally {
+    db?.close();
+  }
+}
+
+function configureMemoryDatabase(db: DatabaseSync, access: "read" | "write"): void {
+  db.exec(`PRAGMA busy_timeout = ${resolveMemorySqliteBusyTimeoutMs()};`);
+  if (access === "write") {
+    db.exec("PRAGMA journal_mode = WAL;");
+  }
+}
+
+function resolveMemorySqliteBusyTimeoutMs(): number {
+  const raw = process.env.CLAW_MEMORY_SQLITE_BUSY_TIMEOUT_MS;
+  if (!raw) {
+    return DEFAULT_MEMORY_SQLITE_BUSY_TIMEOUT_MS;
+  }
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_MEMORY_SQLITE_BUSY_TIMEOUT_MS;
+}
+
+function isSqliteBusyError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const code = (error as { code?: unknown }).code;
+  return code === "ERR_SQLITE_ERROR"
+    ? /database is (?:locked|busy)|SQLITE_BUSY/i.test(error.message)
+    : /database is (?:locked|busy)|SQLITE_BUSY/i.test(error.message);
+}
+
+function buildMemoryStoreBusyError(storePath: string, operation: string, cause: unknown): ClawError {
+  const causeMessage = cause instanceof Error ? cause.message : String(cause);
+  return new ClawError(
+    "MEMORY_STORE_BUSY",
+    `Memory index store is busy during ${operation}. Another claw search or index refresh is using ${storePath}; retry after that operation finishes.`,
+    {
+      storePath,
+      operation,
+      cause: causeMessage,
+    },
+  );
 }
 
 function collectMemorySources(project: ProjectContext, scope: MemoryScope, task?: TaskContext): MemorySourceEntry[] {

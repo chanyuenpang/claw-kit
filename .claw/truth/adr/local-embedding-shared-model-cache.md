@@ -21,10 +21,18 @@ This ADR now also covers the legacy cache cleanup path:
 - when the target model already exists in the platform-global cache, the global copy is preserved and the duplicate project-local directory is cleaned up
 - the cleanup returns the project to implicit shared-cache semantics instead of reintroducing a project-level default model directory
 
+It also covers the worker-side module-resolution boundary for `@huggingface/transformers`:
+
+- `createRequire(process.cwd() + '/')` was rejected because it reattached runtime dependency ownership to the calling project and conflicted with the self-sufficient local embedding design
+- `packages/core/src/embedding-worker.ts` now resolves the transformers module through `resolveTransformersModule(projectRequire, workerRequire)`
+- resolution first tries the calling project graph and then falls back to `createRequire(import.meta.url)` against the `@veewo/claw-core` install
+- that keeps the runtime dependency ownership with `@veewo/claw-core` while still allowing a project-local override when the project already depends on `@huggingface/transformers`
+
 This work also confirmed several boundaries:
 
 - `.claw/project.json` is repo-scoped project config and must not persist machine-specific absolute cache paths as implicit defaults
 - `project.json` should primarily express the embedding configuration in use, not the default model file location
+- project cwd continues to govern project config and model cache resolution, but not claw-core runtime dependency ownership
 - explicit `memory.embedding.local.modelCacheDir` must remain supported
 - if either the explicit local cache or the global cache already contains the target model, the runtime should reuse it instead of downloading again
 - When GitNexus needs the same model, `claw` may best-effort seed the GitNexus transformers cache from a matching existing claw model cache to avoid duplicate downloads, but that is only a cache-priming shortcut and does not change shared-cache semantics.
@@ -77,6 +85,7 @@ Recommended platform-global cache roots:
 
 - `packages/core/src/embedding-defaults.ts`
 - `packages/core/src/embedding-worker.ts`
+- `packages/core/src/embedding-transformers.ts`
 - `packages/core/src/init.ts`
 - `packages/core/src/project-check.ts`
 - `packages/core/test/core.test.ts`

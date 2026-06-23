@@ -11,6 +11,7 @@ import {
   resolveLocalTokenizerMaxLength,
   runLocalEmbeddingWithFallback,
 } from "./embedding-local.js";
+import { resolveTransformersModule } from "./embedding-transformers.js";
 import type { MemoryEmbeddingConfig } from "./types.js";
 
 type WorkerInput = {
@@ -91,12 +92,12 @@ async function buildLocalOutput(input: WorkerInput): Promise<WorkerOutput> {
     process.env.ORT_LOG_LEVEL = "3";
   }
 
-  // Use createRequire from cwd so that transformers (and onnxruntime-node)
-  // resolve from the project's node_modules, not just from claw-core's
-  // global install location.
+  // Prefer project-local installs when present, then fall back to claw-core's
+  // own runtime dependencies for globally installed CLI usage.
   const { createRequire } = await import("node:module");
   const projectRequire = createRequire(process.cwd() + "/");
-  const { pipeline, env } = projectRequire("@huggingface/transformers") as typeof import("@huggingface/transformers");
+  const workerRequire = createRequire(import.meta.url);
+  const { pipeline, env } = resolveTransformersModule(projectRequire, workerRequire);
   env.allowLocalModels = false;
   const modelId = input.embedding.local?.modelPath?.trim() || input.embedding.model;
   env.cacheDir = resolveLocalEmbeddingCacheDir(modelId, input.embedding.local?.modelCacheDir, {

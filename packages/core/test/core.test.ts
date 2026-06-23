@@ -2259,6 +2259,73 @@ test("project memory refresh surfaces embedding worker timeouts", { concurrency:
   }
 });
 
+test("project search reports a clear error when the memory store is busy", { concurrency: false }, () => {
+  const root = createFixture("memory-store-busy");
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify(
+      {
+        id: "memory-store-busy",
+        name: "Memory Store Busy",
+        maxTasksToKeep: 99,
+        externalTruthSkill: null,
+        externalAdrSkill: null,
+        contextPaths: [],
+        memory: {
+          externalDocPaths: [],
+          embedding: null,
+        },
+        gitnexus: {
+          enabled: false,
+        },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "busy store search target\n", "utf-8");
+  const index = buildMemoryIndex({ cwd: root });
+  const lockDb = new DatabaseSync(index.storePath);
+  const previousBusyTimeout = process.env.CLAW_MEMORY_SQLITE_BUSY_TIMEOUT_MS;
+  process.env.CLAW_MEMORY_SQLITE_BUSY_TIMEOUT_MS = "1";
+
+  try {
+    lockDb.exec("PRAGMA busy_timeout = 0;");
+    lockDb.exec("PRAGMA locking_mode = EXCLUSIVE;");
+    lockDb.exec("BEGIN EXCLUSIVE;");
+
+    assert.throws(
+      () => searchMemory({ cwd: root, query: "busy store" }),
+      (error: unknown) => {
+        const payload = error as {
+          code?: unknown;
+          message?: unknown;
+          details?: Record<string, unknown>;
+        };
+        assert.equal(payload.code, "MEMORY_STORE_BUSY");
+        assert.match(String(payload.message), /Memory index store is busy/);
+        assert.match(String(payload.message), /retry after that operation finishes/);
+        assert.equal(payload.details?.storePath, index.storePath);
+        assert.equal(payload.details?.operation, "search");
+        return true;
+      },
+    );
+  } finally {
+    try {
+      lockDb.exec("ROLLBACK;");
+    } catch {
+      // The assertion path may fail before BEGIN succeeds.
+    }
+    lockDb.close();
+    if (previousBusyTimeout === undefined) {
+      delete process.env.CLAW_MEMORY_SQLITE_BUSY_TIMEOUT_MS;
+    } else {
+      process.env.CLAW_MEMORY_SQLITE_BUSY_TIMEOUT_MS = previousBusyTimeout;
+    }
+  }
+});
+
 test("project memory refresh incrementally reuses unchanged docs and syncs changed or deleted markdown docs", { concurrency: false }, () => {
   const root = createFixture("memory-incremental-refresh");
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
