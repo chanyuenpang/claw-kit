@@ -9,6 +9,7 @@
 - `researcher` 的调查顺序应先 `claw search --query "<topic>"` 检索 `.claw` context、truth 和 ADR；当 canonical `gitnexus = true` 时，再发现并使用 GitNexus 相关能力做代码调查。
 - 对研究型 delegate，host 必须等待结果；当前 task 依赖 research 结论时，不能跳过该 gate 继续执行。
 - 当 guidance 指向 `truth-writer` 时，应在 plan closure 前沉淀 truth；当 completed-plan guidance 指向 `adr-writer` 时，completed `plan.json` 才是 ADR deposition bundle。
+- `workflowGuidance.delegateSubagents` remains a mandatory structured contract when dispatching subagents, but its notes must not be read as "dispatch every returned writer entry unconditionally"; since `0.1.49`, the canonical wording is `When dispatching a subagent, each entry is a required structured contract whose fields must be honored directly.`
 - `process.wait` 和 `process.discussing` 都是暂停型 guidance：adapter 不应把它们当作继续执行的信号，而应把它们理解为先调用 `update_goal(status="blocked")` 结束当前 active goal，等待恢复后再通过 `process.active` 继续。
 - 当 `workflowGuidance` 在从 `process.wait` 或 `process.discussing` 恢复后返回 `goalMode` 时，adapter 应把它当成 `on_resume_process_active` 的重新激活，而不是 `plan write` 阶段的首次 Goal Mode 授权。
 - `prepare.requirements` 阶段如果 `goal.text` 缺失，adapter 应先补 goal，再补其余 plan 字段；如果需求已经完整，补完后应立即把 `plan.status` 切到 `process.active`，而不是继续停留在 requirements。

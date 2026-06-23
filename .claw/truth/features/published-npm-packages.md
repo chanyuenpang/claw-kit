@@ -26,9 +26,11 @@
 - `@veewo/claw-core@0.1.48` and `@veewo/claw@0.1.48` were published on 2026-06-23 and registry metadata now reports `version = latest = 0.1.48` for both packages.
 - For `@veewo/claw@0.1.48`, registry metadata preserved `bin: { "claw": "dist/bin.js" }` and dependency `@veewo/claw-core: "0.1.48"` despite npm publish's auto-correct warning, so closeout should trust post-publish metadata over the warning text.
 - Tarball metadata for `@veewo/claw@0.1.48` is `shasum = 6fcf756e3a85372b0203f0f510466c9615c9da65` and `integrity = sha512-dch0KwjKkLOEZrFwExGwAyKEQEq1udQ6ozh3PW3MPnSoEzw5tyMMuxRkSiriPFW58lHtW2pw2vWQKKz9h1Q+9g==`; `npm pack @veewo/claw@0.1.48` succeeded after the local npm cache was cleared.
+- `@veewo/claw-core@0.1.49` and `@veewo/claw@0.1.49` were published on 2026-06-23 for the workflowGuidance wording patch, and registry metadata reports `latest = 0.1.49` for both packages.
+- For `@veewo/claw@0.1.49`, registry metadata still preserves `bin: { "claw": "dist/bin.js" }` and dependency `@veewo/claw-core: "0.1.49"`; npm tarball retrieval succeeded after clearing the local npm cache.
 - `packages/codex-adapter/.codex-plugin/plugin.json` 和本地 Codex plugin cache 也同步到了 `0.1.40+codex.20260616130425`，并且与仓库 manifest 保持一致。
-- 本机 `claw --version` 当前返回 `0.1.48`。
-- `npm list -g @veewo/claw --depth=0` 当前解析到 `@veewo/claw@0.1.48`。
+- 本机 `claw --version` 当前返回 `0.1.49`。
+- `npm list -g @veewo/claw --depth=0` 当前解析到 `@veewo/claw@0.1.49`。
 
 当前发布链继续保持同一条稳定的 release target 判定规则：
 
@@ -38,6 +40,7 @@
 - After editing package versions and internal dependency pins, regenerate lockfile metadata with `npm install --package-lock-only --ignore-scripts` so `package-lock.json` records the same release line before verification.
 - Release-ready changes should be committed before publish so the registry artifact has a traceable source commit; the 2026-06-23 `0.1.48` source commit is `1e0911c` (`Release claw-kit 0.1.48`), covering config skill work, project config compatibility, task retention, shared skill sync, docs/truth/ADR, package metadata, lockfile, and Codex plugin manifest changes.
 - The 2026-06-23 `0.1.48` release verification matrix included `npm run check`, core tests `78/78`, CLI tests `50/50`, Codex bundle tests `5/5`, OpenCode bundle tests `5/5`, npm pack dry-runs, temp `project.json` compatibility fixtures, registry metadata/tarball checks, global CLI install, and local Codex cache manifest plus `skills/config/SKILL.md` inspection.
+- The 2026-06-23 `0.1.49` source commit is `a593180` (`Release claw-kit 0.1.49`); its release verification matrix included `npm run check`, core tests `78/78`, CLI tests `50/50`, Codex bundle tests `5/5` after serial rerun, OpenCode bundle tests `5/5`, npm pack dry-runs for core and CLI, registry metadata/tarball checks, global CLI install, local Codex cache install, and verification that `dist/workflow-guidance.config.json` plus all-tasks-done `claw plan edit` expose the new delegateSubagents note.
 - 如果 `npm view` 还没看到新版本，就不要把第一次 `npm run install:local-cli` 仍装到旧版本当成 release 失败；正确 closeout 是等 registry 可见后重跑一次本地 CLI 刷新。
 - 如果 `npm view` 已经能看到新版本和 tarball metadata，但 `npm pack` 或安装仍报 `ETARGET`，先执行 `npm cache clean --force` 再重试 tarball retrieval；这类本地 cache / propagation split-brain 不等同于 registry publish 失败。
 - 本地 Codex plugin cache 继续使用直接文件系统同步：把 `packages/codex-adapter` 下的 `.codex-plugin`、`hooks`、`references`、`scripts`、`skills` 与 `package.json` 同步进版本化缓存目录，再核对内容一致性。
@@ -53,13 +56,14 @@
 
 - 发布完成后还需要把本地 CLI 刷新到刚发布的新版本；这轮稳定路径是 `npm run install:local-cli`。
 - 如果 registry 可见性有短暂延迟，本地 CLI 刷新允许在新版本可见后重试一次；这轮第一次安装仍拿到 `0.1.39`，重试后才稳定切到 `0.1.40`。
-- 这条安装验证已经成功，说明已发布的 CLI 包可以在本机继续稳定刷新；当前已验证版本是 `@veewo/claw@0.1.48`。
+- 这条安装验证已经成功，说明已发布的 CLI 包可以在本机继续稳定刷新；当前已验证版本是 `@veewo/claw@0.1.49`。
 
 本地安装和缓存刷新仍然遵循同一条稳定路径：
 
 - `npm run install:local-cli` 是这轮验证过的本机 CLI 刷新入口。
-- 本地 Codex 插件缓存版本线需要和 `packages/codex-adapter/.codex-plugin/plugin.json` 保持一致；当前目标版本是 `0.1.48+codex.20260623165853`。
+- 本地 Codex 插件缓存版本线需要和 `packages/codex-adapter/.codex-plugin/plugin.json` 保持一致；当前目标版本是 `0.1.49+codex.20260623172440`。
 - `0.1.48` closeout verified the cache at `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.48+codex.20260623165853`, including matching manifest version and the generated `skills/config/SKILL.md` entry.
+- `0.1.49` closeout installed the local Codex plugin cache at `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.49+codex.20260623172440`.
 - 同步本地 Codex 插件缓存后，还要再次核对缓存目录里的 manifest 与仓库 `packages/codex-adapter/.codex-plugin/plugin.json` 完全一致。
 - 同步时仍应复制 `.codex-plugin`、`hooks`、`references`、`scripts`、`skills` 和 `package.json`，避免缓存里的版本、提示词和钩子滞后。
 - 如果 release round 明确把关键文件 hash 校验列为 closeout 证据，则本地 plugin cache 与仓库副本应继续保持 hash 一致。

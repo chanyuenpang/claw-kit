@@ -11,7 +11,7 @@ After flattening simple project-level toggles, the old nested examples became a 
 
 Without a dedicated entrypoint, agents may answer configuration questions from scattered docs, guess whether a change is shared or personal, or put local preferences into the committed project config.
 
-The `0.1.48` release closeout made this entrypoint part of the published adapter payload and local Codex plugin cache, so the skill is now a release-facing configuration contract rather than only repository-local guidance.
+The final `0.1.49` release line made this entrypoint part of the published adapter payload and local Codex plugin cache, so the skill is now a release-facing configuration contract rather than only repository-local guidance.
 
 ## Decision
 

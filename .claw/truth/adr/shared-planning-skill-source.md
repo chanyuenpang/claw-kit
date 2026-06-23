@@ -11,7 +11,7 @@ At the same time, both Codex and OpenCode plugin payloads still need physical sk
 
 Maintaining separate copies in adapter directories creates unnecessary drift, especially when only one copy is edited and the other is forgotten.
 
-The `0.1.48` release closeout extended this shared-source rule from `planning` to the user-facing `config` skill and verified that generated Codex/OpenCode adapter payloads stay synchronized from `shared/skills`.
+The final `0.1.49` release line extended this shared-source rule from `planning` to the user-facing `config` skill and verified that generated Codex/OpenCode adapter payloads stay synchronized from `shared/skills`.
 
 ## Decision
 

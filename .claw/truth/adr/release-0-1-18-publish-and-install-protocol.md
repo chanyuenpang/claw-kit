@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-`release-0-1-18` 这个完成计划把一次正式发布收口成了可重复的发布协议。后续 `release-0-1-25` 又补上了一个更强的环境约束：发布流程不能假定宿主机已经提供可直接调用的 `npm` CLI，但仍然需要完成真实发布并验证最终安装烟测。`sync-latest-remote-and-publish-next-release` 这次完成计划继续把 release closeout 固化为正式协议：本地 release-guidance 工作先落成独立提交，再同步远端 `main`，并以“当前 merged HEAD 是否已经领先于已发布 artifact”来决定真实 release 目标版本。`release-0.1.33` 这次发布把 shared embedding cache / legacy `.claw/models` cleanup 作为正式 patch release 内容，再次验证了这条协议在本机刷新 CLI、同步 Codex plugin cache 和 registry 验证上的闭环。`release-0.1.34` 则再次把 workspace/package/plugin/changelog 版本对齐、双包发布顺序、安装烟测、CLI/plugin cache 刷新和 release commit 推送收口为同一条可复用的 closeout 协议。`release-0.1.39` 继续沿用这条协议，并把 researcher dispatch contract 的 host-light / wait-for-result 约束一并带入 release closeout 验证。`release-0.1.40` 又补上了一个更细的 closeout 现实约束：npm registry 传播可能短暂落后于 publish 成功时刻，因此本机 CLI 刷新需要允许“等版本可见后重试一次”，而本地 Codex plugin cache 仍继续用直接文件系统同步和逐文件 hash 校验来闭环。`release-0.1.47` 进一步确认：publish 输出里的 `bin[claw]` 归一化警告不能当作失败判据，真正的收口必须在 publish 后核对 registry metadata，再用本机全局安装解析、`claw --version` 和本地 Codex plugin cache manifest 版本做端到端验证。`release-0.1.48` 又补充了 npm cache / propagation split-brain 处理：metadata 已可见但 tarball retrieval 报 `ETARGET` 时，先清理本地 npm cache 并重试 `npm pack`。这些 release 共同定义了现在的正式发布/安装协议。
+`release-0-1-18` 这个完成计划把一次正式发布收口成了可重复的发布协议。后续 `release-0-1-25` 又补上了一个更强的环境约束：发布流程不能假定宿主机已经提供可直接调用的 `npm` CLI，但仍然需要完成真实发布并验证最终安装烟测。`sync-latest-remote-and-publish-next-release` 这次完成计划继续把 release closeout 固化为正式协议：本地 release-guidance 工作先落成独立提交，再同步远端 `main`，并以“当前 merged HEAD 是否已经领先于已发布 artifact”来决定真实 release 目标版本。`release-0.1.33` 这次发布把 shared embedding cache / legacy `.claw/models` cleanup 作为正式 patch release 内容，再次验证了这条协议在本机刷新 CLI、同步 Codex plugin cache 和 registry 验证上的闭环。`release-0.1.34` 则再次把 workspace/package/plugin/changelog 版本对齐、双包发布顺序、安装烟测、CLI/plugin cache 刷新和 release commit 推送收口为同一条可复用的 closeout 协议。`release-0.1.39` 继续沿用这条协议，并把 researcher dispatch contract 的 host-light / wait-for-result 约束一并带入 release closeout 验证。`release-0.1.40` 又补上了一个更细的 closeout 现实约束：npm registry 传播可能短暂落后于 publish 成功时刻，因此本机 CLI 刷新需要允许“等版本可见后重试一次”，而本地 Codex plugin cache 仍继续用直接文件系统同步和逐文件 hash 校验来闭环。`release-0.1.47` 进一步确认：publish 输出里的 `bin[claw]` 归一化警告不能当作失败判据，真正的收口必须在 publish 后核对 registry metadata，再用本机全局安装解析、`claw --version` 和本地 Codex plugin cache manifest 版本做端到端验证。`release-0.1.48` 补充了 npm cache / propagation split-brain 处理：metadata 已可见但 tarball retrieval 报 `ETARGET` 时，先清理本地 npm cache 并重试 `npm pack`。最终 `release-0.1.49` 才是本轮正式发布状态，因为它包含 `workflowGuidance.delegateSubagents` wording patch，并再次刷新全局 CLI 与本地 Codex plugin cache。这些 release 共同定义了现在的正式发布/安装协议。
 
 ## Decision
 
@@ -29,6 +29,7 @@ Accepted
 - registry verification must cover both metadata and retrieval/install paths: `version` / `dist-tags.latest`, `bin` / `dependencies`, `dist.tarball` / `dist.integrity` / `dist.shasum`, plus an actual `npm pack` or install smoke before treating a publish as fully propagated
 - 如果 `npm view @veewo/claw@<version> dist.tarball dist.integrity dist.shasum --json` 已返回新 tarball metadata，但本机 `npm pack` / install 仍报 `ETARGET`，先运行 `npm cache clean --force` 再重试；不要把本地 cache stale 误判为 publish 回滚
 - 正式 publish 完成后，除了安装烟测，还要刷新并验证本地 CLI 与本地 Codex plugin cache，确保 npm 包与适配器缓存都已经切到新发布版本
+- 如果 release round 包含 `workflowGuidance` wording 或 config 变更，closeout 必须同时验证 source config、built `dist/workflow-guidance.config.json`、installed global CLI guidance output，以及本地 Codex plugin cache payload；`0.1.49` 的关键句是 `When dispatching a subagent, each entry is a required structured contract whose fields must be honored directly.`
 - local runtime refresh verification must include the actual Windows shim path, `claw --version`, `npm list -g @veewo/claw --depth=0`, and a repo-local `claw context` smoke check that proves protocol repair does not rewrite flat config back to legacy nested fields
 - release closeout 的 done 条件继续包括本机全局 `claw` CLI 刷新、`packages/codex-adapter` 对应本地 Codex plugin cache 刷新、关键缓存文件与仓库副本 hash 一致，并把缓存目标版本固定到本次 release 对应的插件 manifest 版本
 - 本地 Codex plugin cache 的稳定刷新语义保持不变：把 `packages/codex-adapter` 下的 `.codex-plugin`、`hooks`、`references`、`scripts`、`skills` 与 `package.json` 直接同步到版本化的 `claw-kit-local` 缓存目录，再做内容一致性复核
@@ -48,6 +49,7 @@ Accepted
 - npm registry 的短暂传播延迟被正式纳入 closeout 协议，因此“publish 已成功但第一次本地安装仍拿到旧版本”不再会被误判成 release 回滚或安装脚本损坏
 - 安装烟测继续作为 release closeout 的必选项，避免 registry 成功但最终 CLI 安装链路失效
 - 本地 CLI 与 Codex plugin cache 都被纳入 release closeout 验证范围，避免 registry 已更新但操作者机器仍停留在旧缓存
+- workflowGuidance wording patch 不能只停在源码层；final release state 以 registry package、global CLI 和 local plugin cache 都暴露同一合同为准
 - plugin cache 的 direct filesystem sync 范围被继续固定下来，后续 closeout 可以明确判断“缓存没刷新”与“缓存目录已切换但 payload 不一致”这两类不同故障
 - researcher dispatch contract 进入 release closeout 事实后，未来 release 不会只验证 artifact 版本，还会同时复核与发布一起交付的长期 workflow 规则
 - 发布后清理 token 让本机环境回到更安全的状态
@@ -77,12 +79,16 @@ Accepted
 - `release-0-1-18`
 - `release-0.1.39`
 - `release-0.1.40`
+- `release-0.1.49`
 - `@veewo/claw-core`
 - `@veewo/claw`
 - `npm run install:local-cli`
 - `claw --version`
 - `0.1.40+codex.20260616130425`
 - `plugin cache refresh`
+- `delegateSubagents`
+- `required structured contract`
+- `workflowGuidance.config.json`
 - `registry propagation`
 - `do not read the search skill inline`
 - `wait for the result`

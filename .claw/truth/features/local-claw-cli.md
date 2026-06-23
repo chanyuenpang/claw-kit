@@ -79,14 +79,15 @@ Accepted working truth for local development on this machine.
 - `claw memory ...` remains available, but it is not the recommended Codex workflow concept.
 - Local installation on this machine is currently refreshed through `npm run install:local-cli`.
 - 在 `@veewo/claw` 刚发布后的短暂窗口里，`npm run install:local-cli` 可能会先撞到 npm registry 传播延迟；当 `npm view @veewo/claw version` 已经返回目标版本后，重试一次安装通常就能收敛到最终本机状态。
-- 当前这台 Windows 机器的已验证刷新结果是全局 `@veewo/claw@0.1.48`。
+- 当前这台 Windows 机器的已验证刷新结果是全局 `@veewo/claw@0.1.49`。
 - That install script removes prior global installs and links before running `npm install -g @veewo/claw`, so the final global state reflects the package registry install rather than an older link.
 - During that successful refresh, npm could still print a non-fatal cleanup warning like `EPERM ... unlink ... @img\\sharp-win32-x64\\lib\\libvips-cpp-8.17.3.dll` under an old temporary global package directory; treat it as cleanup noise unless the install itself fails.
 - On this machine, `(Get-Command claw).Source` resolves to `C:\Users\chany\AppData\Roaming\npm\claw.ps1`.
-- Post-install verification on this machine should converge on the same tuple: `claw --version = 0.1.48`, `npm list -g @veewo/claw --depth=0 = @veewo/claw@0.1.48`, and `(Get-Command claw).Source = C:\Users\chany\AppData\Roaming\npm\claw.ps1`.
+- Post-install verification on this machine should converge on the same tuple: `claw --version = 0.1.49`, `npm list -g @veewo/claw --depth=0 = @veewo/claw@0.1.49`, and `(Get-Command claw).Source = C:\Users\chany\AppData\Roaming\npm\claw.ps1`.
 - The 2026-06-23 `0.1.48` local runtime refresh also verified `claw context` in `G:\Projects\claw-kit`: `protocolCheck.ok = true`, `startupRecovery.fixedPaths = []`, and the effective project config remained on flat canonical fields (`planning`, `goalMode`, `truthDispatch`, `gitnexus`) rather than legacy nested workflow / GitNexus shapes.
 - Local Codex plugin cache refresh for the matching adapter build currently means syncing `.codex-plugin/`, `hooks/`, `references/`, `scripts/`, `skills/`, and `package.json` from `packages/codex-adapter` into the manifest-versioned cache directory.
 - For the `0.1.48` release, the verified local Codex plugin cache directory is `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.48+codex.20260623165853`; its `.codex-plugin/plugin.json` reports the same version and `skills/config/SKILL.md` is present alongside the other adapter skills.
+- For the `0.1.49` guidance wording patch, the verified local Codex plugin cache directory is `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.49+codex.20260623172440`.
 - When this cache sync is part of release/install closeout, the durable verification bar is per-file SHA256 parity across the synced payload, not just directory existence.
 - 当前已验证的 closeout 证据是目标缓存目录下 24/24 个同步文件都与仓库副本 SHA256 一致。
 - `claw --help` is a useful post-install smoke check because it confirms the refreshed command surface, including `plan write`, `plan edit`, `plan done`, `search`, and `hook`.
