@@ -48,6 +48,7 @@
 - 如果 `npm view` 还没看到新版本，就不要把第一次 `npm run install:local-cli` 仍装到旧版本当成 release 失败；正确 closeout 是等 registry 可见后重跑一次本地 CLI 刷新。
 - 如果 `npm view` 已经能看到新版本和 tarball metadata，但 `npm pack` 或安装仍报 `ETARGET`，先执行 `npm cache clean --force` 再重试 tarball retrieval；这类本地 cache / propagation split-brain 不等同于 registry publish 失败。
 - 本地 Codex plugin cache 继续使用直接文件系统同步：把 `packages/codex-adapter` 下的 `.codex-plugin`、`hooks`、`references`、`scripts`、`skills` 与 `package.json` 同步进版本化缓存目录，再核对内容一致性。
+- 这次 `0.1.50` closeout 已完成真实发布与推送闭环：`npm view @veewo/claw-core version` 和 `npm view @veewo/claw version` 都解析到 `0.1.50`，`npm view @veewo/claw dependencies --json` 也确认 `@veewo/claw-core: 0.1.50`；`npm run check` 在修复 `.claw/truth/adr/sqlite-memory-store-concurrency-and-busy-error-semantics.md` 的 UTF-8 BOM 后通过，`npm test` 通过（core `85/85`、CLI `50/50`），`npm pack --dry-run -w @veewo/claw-core` 与 `npm pack --dry-run -w @veewo/claw` 都产出了 `0.1.50` tarball 预览，`claw --version` 最终回到 `0.1.50`，本地 CLI 路径为 `C:\nvm4w\nodejs\claw.ps1`，本地 Codex plugin cache 位于 `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.50+codex.20260623210218`，最终 `HEAD` 与 `origin/main` 都停在 `d3bdb0dcf60440daafae3493a80f4fe377015a04`。
 
 发布前的本地验证闸门保持同一条稳定路径：
 
