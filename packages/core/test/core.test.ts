@@ -748,7 +748,7 @@ test("plan edit can move from requirements to process.active without a separate 
   );
   assert.equal(
     result.workflowGuidance.notes,
-    "Truth doc and ADR doc generation are essential claw-kit features. When this state returns `delegateSubagents`, each entry is a required structured contract whose fields must be honored directly.",
+    "Truth doc and ADR doc generation are essential claw-kit features. When dispatching a subagent, each entry is a required structured contract whose fields must be honored directly.",
   );
   const truthDelegate = result.workflowGuidance.delegateSubagents?.[0];
   const adrDelegate = result.workflowGuidance.delegateSubagents?.[1];
@@ -1026,7 +1026,7 @@ test("process entry returns the first task and task completion returns truth-wri
   assert.equal(taskDone.workflowGuidance.nextTask?.id, 2);
   assert.equal(
     taskDone.workflowGuidance.notes,
-    "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. When this state returns `delegateSubagents`, each entry is a required structured contract whose fields must be honored directly.",
+    "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. When dispatching a subagent, each entry is a required structured contract whose fields must be honored directly.",
   );
   assert.deepEqual(taskDone.workflowGuidance.nextsteps, [
     "1. Sync the thread progress with our tasks.",
@@ -2671,7 +2671,7 @@ test("workflow guidance uses external writer skills from project config", async 
   });
   assert.equal(
     taskDone.workflowGuidance.notes,
-    "Truth doc and ADR doc generation are essential claw-kit features. When this state returns `delegateSubagents`, each entry is a required structured contract whose fields must be honored directly.",
+    "Truth doc and ADR doc generation are essential claw-kit features. When dispatching a subagent, each entry is a required structured contract whose fields must be honored directly.",
   );
   assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.skill, "external-truth-writer");
   assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.model, "gpt-5.4-mini");

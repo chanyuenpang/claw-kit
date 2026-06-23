@@ -336,7 +336,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   ]);
   assert.equal(
     taskDone.notes,
-    "Truth doc and ADR doc generation are essential claw-kit features. When this state returns `delegateSubagents`, each entry is a required structured contract whose fields must be honored directly.",
+    "Truth doc and ADR doc generation are essential claw-kit features. When dispatching a subagent, each entry is a required structured contract whose fields must be honored directly.",
   );
 
   const truthInputPath = path.join(root, "truth-report.md");
@@ -657,7 +657,7 @@ test("cli returns truth-writer contract on completed task before final plan comp
   ]);
   assert.equal(
     taskDone.notes,
-    "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. When this state returns `delegateSubagents`, each entry is a required structured contract whose fields must be honored directly.",
+    "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. When dispatching a subagent, each entry is a required structured contract whose fields must be honored directly.",
   );
   assert.deepEqual(taskDone.nextTask, {
     id: 2,

@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-`release-0-1-18` 这个完成计划把一次正式发布收口成了可重复的发布协议。后续 `release-0-1-25` 又补上了一个更强的环境约束：发布流程不能假定宿主机已经提供可直接调用的 `npm` CLI，但仍然需要完成真实发布并验证最终安装烟测。`sync-latest-remote-and-publish-next-release` 这次完成计划继续把 release closeout 固化为正式协议：本地 release-guidance 工作先落成独立提交，再同步远端 `main`，并以“当前 merged HEAD 是否已经领先于已发布 artifact”来决定真实 release 目标版本。`release-0.1.33` 这次发布把 shared embedding cache / legacy `.claw/models` cleanup 作为正式 patch release 内容，再次验证了这条协议在本机刷新 CLI、同步 Codex plugin cache 和 registry 验证上的闭环。`release-0.1.34` 则再次把 workspace/package/plugin/changelog 版本对齐、双包发布顺序、安装烟测、CLI/plugin cache 刷新和 release commit 推送收口为同一条可复用的 closeout 协议。`release-0.1.39` 继续沿用这条协议，并把 researcher dispatch contract 的 host-light / wait-for-result 约束一并带入 release closeout 验证。`release-0.1.40` 又补上了一个更细的 closeout 现实约束：npm registry 传播可能短暂落后于 publish 成功时刻，因此本机 CLI 刷新需要允许“等版本可见后重试一次”，而本地 Codex plugin cache 仍继续用直接文件系统同步和逐文件 hash 校验来闭环。`release-0.1.47` 进一步确认：publish 输出里的 `bin[claw]` 归一化警告不能当作失败判据，真正的收口必须在 publish 后核对 registry metadata，再用本机全局安装解析、`claw --version` 和本地 Codex plugin cache manifest 版本做端到端验证。七次 release 共同定义了现在的正式发布/安装协议。
+`release-0-1-18` 这个完成计划把一次正式发布收口成了可重复的发布协议。后续 `release-0-1-25` 又补上了一个更强的环境约束：发布流程不能假定宿主机已经提供可直接调用的 `npm` CLI，但仍然需要完成真实发布并验证最终安装烟测。`sync-latest-remote-and-publish-next-release` 这次完成计划继续把 release closeout 固化为正式协议：本地 release-guidance 工作先落成独立提交，再同步远端 `main`，并以“当前 merged HEAD 是否已经领先于已发布 artifact”来决定真实 release 目标版本。`release-0.1.33` 这次发布把 shared embedding cache / legacy `.claw/models` cleanup 作为正式 patch release 内容，再次验证了这条协议在本机刷新 CLI、同步 Codex plugin cache 和 registry 验证上的闭环。`release-0.1.34` 则再次把 workspace/package/plugin/changelog 版本对齐、双包发布顺序、安装烟测、CLI/plugin cache 刷新和 release commit 推送收口为同一条可复用的 closeout 协议。`release-0.1.39` 继续沿用这条协议，并把 researcher dispatch contract 的 host-light / wait-for-result 约束一并带入 release closeout 验证。`release-0.1.40` 又补上了一个更细的 closeout 现实约束：npm registry 传播可能短暂落后于 publish 成功时刻，因此本机 CLI 刷新需要允许“等版本可见后重试一次”，而本地 Codex plugin cache 仍继续用直接文件系统同步和逐文件 hash 校验来闭环。`release-0.1.47` 进一步确认：publish 输出里的 `bin[claw]` 归一化警告不能当作失败判据，真正的收口必须在 publish 后核对 registry metadata，再用本机全局安装解析、`claw --version` 和本地 Codex plugin cache manifest 版本做端到端验证。`release-0.1.48` 又补充了 npm cache / propagation split-brain 处理：metadata 已可见但 tarball retrieval 报 `ETARGET` 时，先清理本地 npm cache 并重试 `npm pack`。这些 release 共同定义了现在的正式发布/安装协议。
 
 ## Decision
 
@@ -18,6 +18,7 @@ Accepted
 - 同步完成后，必须把 merged HEAD 与当前已发布 artifact 基线一起判断；如果 merged HEAD 已经领先于已发布版本，就直接把整条 workspace/package/plugin 版本线推进到下一个正式 release 目标，而不是沿用 merge 前的本地预期版本
 - release version bump must include the complete current packaging surface: root/package-lock metadata, `@veewo/claw-core`, `@veewo/claw`, Codex/OpenClaw/OpenCode adapter package versions, CLI/OpenClaw dependency pins on `@veewo/claw-core`, and the Codex plugin manifest `semver+codex.<timestamp>` version
 - after version edits, run `npm install --package-lock-only --ignore-scripts` or equivalent lockfile regeneration before verification so package-lock metadata matches the target release line
+- before publishing, commit the release-ready source state so registry artifacts can be traced back to one source commit; the commit should include the version bump, generated plugin metadata, release docs/truth/ADR residue, and release-scoped runtime fixes
 - 发布前必须完成 `npm test`、`npm run check`，以及本地安装脚本验证
 - 双包发布保持固定顺序：先发 `@veewo/claw-core`，再发 `@veewo/claw`
 - 在受管环境里，如果宿主机没有可直接调用的 `npm` CLI，也允许通过 bundled node、tar-based packaging 和 registry API 完成真实 publish
@@ -25,9 +26,13 @@ Accepted
 - 如果 publish 刚完成时 `npm view @veewo/claw version` 还没看到新版本，closeout 不把第一次本地安装拿到旧版本视为失败；应在 registry 可见新版本后重跑 `npm run install:local-cli`
 - 发布完成后仍必须验证 `@veewo/claw` 的安装烟测；当前 `0.1.40` 这轮的基线证据是 `npm view @veewo/claw-core version = 0.1.40`、`npm view @veewo/claw version = 0.1.40`、`claw --version = 0.1.40`，以及 `npm list -g @veewo/claw --depth=0` 解析到 `@veewo/claw@0.1.40`
 - publish 输出里出现 `bin[claw]` normalization warning 时，closeout 仍以 `npm view @veewo/claw version`、`npm view @veewo/claw bin --json` 和实际 CLI/安装解析结果为准，不把该 warning 本身当作失败或回滚证据
+- registry verification must cover both metadata and retrieval/install paths: `version` / `dist-tags.latest`, `bin` / `dependencies`, `dist.tarball` / `dist.integrity` / `dist.shasum`, plus an actual `npm pack` or install smoke before treating a publish as fully propagated
+- 如果 `npm view @veewo/claw@<version> dist.tarball dist.integrity dist.shasum --json` 已返回新 tarball metadata，但本机 `npm pack` / install 仍报 `ETARGET`，先运行 `npm cache clean --force` 再重试；不要把本地 cache stale 误判为 publish 回滚
 - 正式 publish 完成后，除了安装烟测，还要刷新并验证本地 CLI 与本地 Codex plugin cache，确保 npm 包与适配器缓存都已经切到新发布版本
+- local runtime refresh verification must include the actual Windows shim path, `claw --version`, `npm list -g @veewo/claw --depth=0`, and a repo-local `claw context` smoke check that proves protocol repair does not rewrite flat config back to legacy nested fields
 - release closeout 的 done 条件继续包括本机全局 `claw` CLI 刷新、`packages/codex-adapter` 对应本地 Codex plugin cache 刷新、关键缓存文件与仓库副本 hash 一致，并把缓存目标版本固定到本次 release 对应的插件 manifest 版本
 - 本地 Codex plugin cache 的稳定刷新语义保持不变：把 `packages/codex-adapter` 下的 `.codex-plugin`、`hooks`、`references`、`scripts`、`skills` 与 `package.json` 直接同步到版本化的 `claw-kit-local` 缓存目录，再做内容一致性复核
+- when adapter skills change, plugin cache verification should inspect both the manifest version and the expected skill files; `0.1.48` specifically required `skills/config/SKILL.md` to be present in the local Codex cache
 - 如果 release round 同时包含 Codex workflow contract 变更，closeout 应把这些长期规则一并沉淀到 canonical truth；`0.1.39` 的新增规则是 researcher dispatch 前不要由 host 内联读取 search skill，且依赖 research 结果的主流程必须等待 `researcher` 返回
 - 发布完成后删除本机临时 `npm token` 配置
 
@@ -65,6 +70,7 @@ Accepted
 - `.claw/archive/tasks/release-0-1-18/plan.json`
 - `.claw/archive/tasks/sync-latest-remote-and-publish-next-release/plan.json`
 - `.claw/tasks/release-workflow-toggles-and-refresh-local-plugin/plan.json`
+- `.claw/tasks/Publish-claw-kit-release-and-refresh-local-Codex-plugin/plan.json`
 
 ## Search Terms
 
@@ -81,3 +87,10 @@ Accepted
 - `do not read the search skill inline`
 - `wait for the result`
 - `bin[claw] normalization warning`
+- `dist-tags.latest`
+- `dist.tarball`
+- `dist.integrity`
+- `dist.shasum`
+- `npm pack`
+- `npm cache clean --force`
+- `ETARGET`

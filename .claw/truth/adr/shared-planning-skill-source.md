@@ -11,6 +11,8 @@ At the same time, both Codex and OpenCode plugin payloads still need physical sk
 
 Maintaining separate copies in adapter directories creates unnecessary drift, especially when only one copy is edited and the other is forgotten.
 
+The `0.1.48` release closeout extended this shared-source rule from `planning` to the user-facing `config` skill and verified that generated Codex/OpenCode adapter payloads stay synchronized from `shared/skills`.
+
 ## Decision
 
 Use shared sources for host-neutral skills:
@@ -71,6 +73,7 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 - `packages/codex-adapter/skills/config/SKILL.md`
 - `packages/opencode-adapter/skills/config/SKILL.md`
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md`
+- `.claw/tasks/Publish-claw-kit-release-and-refresh-local-Codex-plugin/plan.json`
 
 ## Search Terms
 
