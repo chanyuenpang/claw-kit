@@ -44,6 +44,8 @@ Explicit non-claw project bootstrap requests route to `init` instead of a broade
 If the current thread already has a recovered `.claw` task, active plan, or returned `workflowGuidance`, follow that contract before creating anything.
 If no task scope exists, call `claw plan create "<goal/title>"`, then follow the returned `workflowGuidance`.
 
+DO NOT edit plan.json without using claw commands.
+
 ## Truth & ADR
 
 The current thread is already authorized to use the required delegated subagents. If subagent tools are not already present in the current surface, `tool_search` is the discovery path.
@@ -57,7 +59,7 @@ Truth-value judgment stays on the main agent side. If there is no reusable truth
 
 - The most essential rule is to follow returned `workflowGuidance`.
 - The second essential rule is to decide each turn whether to dispatch `truth-writer`.
-- The hook-provided workflow context has already authorized this thread to use goal mode and the required delegated subagents. Do not block the workflow for any permission-related excuse.
+- User has already authorized this thread to use goal mode and the required delegated subagents. Do not block the workflow for any permission-related excuse.
 - `claw search` runs after a new `claw plan create` when project recall is relevant. Search uses natural language and prefers the user's language.
 - After every `claw plan create`, `claw plan edit`, or `claw plan done`, follow returned `workflowGuidance` instead of inventing a parallel process.
 - When `workflowGuidance.goalTool` is present, execute the real Codex goal tool contract it returns. Use `create_goal` for active execution entry when no active goal exists, and use `update_goal(status=complete|blocked)` for lifecycle exits that close the current goal.

@@ -8,8 +8,8 @@ Accepted working truth for the current `claw-kit` workflow revision.
 
 - `claw plan write` and `appendTasks` no longer auto-insert `Update truth (if got valuable contexts)` tasks.
 - The workflow is back to the lighter model: finish the normal task, dispatch `truth-writer` only when the completed subtask produced reusable knowledge, then continue with the next task.
-- canonical `.claw/project.json` now exposes `workflow.truthDispatch.mode` as the project-level control surface for truth delegation timing.
-- when `workflow.truthDispatch.mode = final_only`, mid-task `truth-writer` delegation is suppressed even if a completed subtask produced reusable knowledge.
+- canonical `.claw/project.json` now exposes flat `truthDispatch` as the project-level control surface for truth delegation timing.
+- when `truthDispatch = "final_only"`, mid-task `truth-writer` delegation is suppressed even if a completed subtask produced reusable knowledge.
 - `final_only` does not disable closeout deposition: once the workflow reaches `process.allTasksDone`, closeout truth/ADR deposition is still allowed before retrospective closure.
 - canonical `.claw/truth/` markdown is expected to stay in UTF-8 with BOM for Windows PowerShell compatibility; truth deposition should preserve that encoding instead of rewriting files as plain UTF-8 without BOM.
 - The compact task-completion guidance now says:
@@ -21,7 +21,7 @@ Accepted working truth for the current `claw-kit` workflow revision.
 ## Practical implications
 
 - Future agents should not assume automatic truth follow-up tasks are part of plan creation or task appends.
-- `truth-writer` remains the canonical deposition specialist, but dispatch timing is now additionally gated by `workflow.truthDispatch.mode` instead of being unconditional on every reusable completed subtask.
+- `truth-writer` remains the canonical deposition specialist, but dispatch timing is now additionally gated by flat `truthDispatch` instead of being unconditional on every reusable completed subtask.
 - If a truth doc fails repo encoding audit after merge or manual edits, restore UTF-8 BOM before treating the deposition as complete; `npm run check` enforces this through the truth encoding audit.
 - Plan reading and task completion should follow the lighter chain: normal task -> conditional `truth-writer` -> next task, unless the project explicitly switches truth dispatch to `final_only`.
 

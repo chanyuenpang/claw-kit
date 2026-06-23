@@ -486,20 +486,24 @@ function resolveProjectMemoryEmbeddingConfig(project: ProjectContext): MemoryEmb
   if (!configured) {
     return null;
   }
+  const vectorEnabled = configured.store?.vector?.enabled;
+  const vectorExtensionPath = configured.store?.vector?.extensionPath;
   return {
     provider: configured.provider,
     model: configured.model,
     ...(configured.remote ? { remote: configured.remote } : {}),
     ...(configured.local ? { local: configured.local } : {}),
     ...(configured.outputDimensionality ? { outputDimensionality: configured.outputDimensionality } : {}),
-    store: {
-      vector: {
-        enabled: configured.store?.vector?.enabled ?? true,
-        ...(configured.store?.vector?.extensionPath
-          ? { extensionPath: configured.store.vector.extensionPath }
-          : {}),
-      },
-    },
+    ...(vectorEnabled === false || vectorExtensionPath
+      ? {
+          store: {
+            vector: {
+              ...(vectorEnabled === false ? { enabled: false } : {}),
+              ...(vectorExtensionPath ? { extensionPath: vectorExtensionPath } : {}),
+            },
+          },
+        }
+      : {}),
   };
 }
 

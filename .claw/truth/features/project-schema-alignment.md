@@ -17,7 +17,7 @@
 
 - `claw init` writes those fields explicitly when a project is created, so later commands do not need to guess the schema.
 - runtime project resolution now loads canonical `.claw/project.json` first, then deep-merges `.claw/project-override.json` on top when that gitignored override file exists.
-- `project-override.json` is a full project-surface override layer rather than a narrow patch list: it may override any `project.json` field, including nested workflow settings.
+- `project-override.json` is a full project-surface override layer rather than a narrow patch list: it may override any `project.json` field, but personal overrides should use the same flat canonical workflow fields as `.claw/project.json`.
 - override merge keeps explicit `null` as a real project-level value; `null` in `.claw/project-override.json` must not be treated as "missing" and must not fall back to team config or built-in inherited values.
 - `contextPaths` is preserved for schema alignment but is not currently consumed by the Codex-first `claw-kit` workflow.
 - `memory.externalDocPaths` drives the project search index and supports both:
@@ -27,7 +27,9 @@
 - `memory.embedding` now accepts the OpenClaw-compatible subset used by `openclaw-dev`: `provider` (`openai|local`), `model`, `remote.apiKeyEnvVar`, `remote.baseUrl`, `local.modelPath`, `local.modelCacheDir`, `outputDimensionality`, `store.vector.enabled`, and `store.vector.extensionPath`.
 - canonical `.claw/project.json` now carries simple project-level workflow toggles as flat fields: `planning`, `externalPlanningSkill`, `goalMode`, `truthDispatch`, and `gitnexus`.
 - legacy nested inputs such as `workflow.goalMode.enabled`, `workflow.truthDispatch.mode`, and `gitnexus.enabled` are compatibility inputs for protocol repair; repaired canonical files are flattened instead of preserving those nested containers.
-- `claw init` and protocol normalization now auto-fill a default local embedding config when `memory.embedding` is missing, using `Snowflake/snowflake-arctic-embed-m-v2.0` and `store.vector.enabled = true`; the default cache location is now runtime-resolved instead of being persisted into `project.json`.
+- 2026-06-23 compatibility fixture run validated this repair path against temp copies of four local projects (`claw-kit`, `NeonSpark`, `tiny-world`, and `unity-mcp`) without mutating real project configs: new-shape configs stayed unchanged, while legacy `workflow.goalMode.enabled`, `workflow.truthDispatch.mode`, and object `gitnexus.enabled` repaired into flat `goalMode`, `truthDispatch`, and boolean `gitnexus`.
+- The same fixture run confirmed missing `planning` repairs to `true`, missing `externalPlanningSkill` repairs to `null`, explicit external truth / ADR skill values are preserved, and default `memory.embedding.store.vector.enabled: true` is removed rather than reintroduced.
+- `claw init` and protocol normalization now auto-fill a minimal default local embedding config when `memory.embedding` is missing, using `Snowflake/snowflake-arctic-embed-m-v2.0`; default vector indexing remains runtime-enabled without persisting `store.vector.enabled = true`, `store.vector` is retained only for explicit `enabled: false` or `extensionPath`, and the default cache location is runtime-resolved instead of being persisted into `project.json`.
 - `packages/core/src/embedding-defaults.ts` now resolves platform-global cache roots (`%LOCALAPPDATA%\\claw\\models` on Windows, `~/Library/Caches/claw/models` on macOS, and `$XDG_CACHE_HOME/claw/models` or `~/.cache/claw/models` on Linux) and the local/global/fallback cache-selection order for embedding models.
 - `packages/core/src/embedding-worker.ts` now resolves cache usage by model id: explicit local cache wins only when that local cache already contains the model; otherwise an existing global cache is reused; if both are missing, downloads go to the explicit local cache when configured, or to the global cache by default.
 - `packages/core/src/project-check.ts` 里的 `ensureProjectProtocol -> normalizeProjectConfig` 是既有项目自动迁移的最佳落点，因为它会在协议修复时回写 `project.json`。
@@ -86,6 +88,7 @@
 - [packages/core/src/context.ts](D:/Users/chany/Documents/claw-kit/packages/core/src/context.ts)
 - [packages/cli/src/cli.ts](D:/Users/chany/Documents/claw-kit/packages/cli/src/cli.ts)
 - [packages/core/test/core.test.ts](D:/Users/chany/Documents/claw-kit/packages/core/test/core.test.ts)
+- 2026-06-23 temp compatibility fixture root: `C:\Users\chany\AppData\Local\Temp\claw-project-json-compat-2026-06-23T08-56-50-407Z`; `claw check` and `claw context` exited 0 for all four fixture copies.
 - [packages/cli/README.md](D:/Users/chany/Documents/claw-kit/packages/cli/README.md)
 - [README.md](D:/Users/chany/Documents/claw-kit/README.md)
 - [docs/2026-06-06-project-schema-alignment-execution.md](D:/Users/chany/Documents/claw-kit/docs/2026-06-06-project-schema-alignment-execution.md)

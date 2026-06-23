@@ -1066,11 +1066,6 @@ test("cli context auto-corrects malformed existing .claw state", () => {
     embedding: {
       provider: "local",
       model: "Snowflake/snowflake-arctic-embed-m-v2.0",
-      store: {
-        vector: {
-          enabled: true,
-        },
-      },
     },
   });
 });
@@ -1127,11 +1122,6 @@ test("cli check auto-corrects project.json into explicit protocol fields", () =>
     embedding: {
       provider: "local",
       model: "Snowflake/snowflake-arctic-embed-m-v2.0",
-      store: {
-        vector: {
-          enabled: true,
-        },
-      },
     },
   });
   assert.equal(projectConfig.gitnexus, false);
@@ -1466,11 +1456,6 @@ test("cli search index refresh returns project index metadata and embedding conf
     remote: {
       apiKeyEnvVar: "OPENAI_API_KEY",
     },
-    store: {
-      vector: {
-        enabled: true,
-      },
-    },
   });
 });
 
@@ -1523,11 +1508,6 @@ test("cli search index refresh returns local vector index metadata and only inde
     model: "Snowflake/snowflake-arctic-embed-xs",
     local: {
       modelCacheDir: path.join(root, ".model-cache"),
-    },
-    store: {
-      vector: {
-        enabled: true,
-      },
     },
   });
   assert.deepEqual(result.vectorIndex, {

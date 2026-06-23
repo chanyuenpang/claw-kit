@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { syncPlanningSkill } from "./sync-planning-skill.mjs";
+import { syncSharedSkills } from "./sync-shared-skills.mjs";
 
 export const OPENCODE_PLUGIN_PAYLOAD_PATHS = [
   "plugin",
@@ -86,7 +86,7 @@ async function copyPayloadTree(sourceDir, destinationDir, payloadRelativePaths) 
 }
 
 export async function readOpencodePluginSource({ sourceDir = defaultSourceDir } = {}) {
-  await syncPlanningSkill();
+  await syncSharedSkills();
   const manifestPath = path.join(sourceDir, "package.json");
   const manifest = await readJson(manifestPath);
 

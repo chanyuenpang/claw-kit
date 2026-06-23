@@ -19,6 +19,7 @@ At a product level, `claw-kit` can be used without GitNexus. The `gitnexus` fiel
 - deep-merges over `.claw/project.json`
 - can override any field from `.claw/project.json`
 - explicit `null` is a real override value, not "fall back to team config"
+- should use the same flat canonical field names as `.claw/project.json`
 
 This split is one of the reasons `claw-kit` works well for team collaboration: the repo can keep a shared workflow contract while individual users keep personal runtime preferences out of canonical project config.
 
@@ -28,10 +29,11 @@ The effective runtime config is:
 
 Important consequences:
 
-- local overrides can replace a single nested field without copying the full object
+- local overrides can replace a single field without copying the full object
 - arrays are replacement values, not append-only patches
 - explicit `null` can intentionally clear inherited values such as `externalTruthSkill`
 - protocol repair does not write local override state back into canonical `project.json`
+- legacy nested inputs may be tolerated by repair in `.claw/project.json`, but new override examples should use the flat canonical field shape
 
 Together, the canonical config plus local override model gives longer-running project work a stable shared surface without forcing every personal preference into the team-owned file.
 
@@ -177,7 +179,9 @@ With this config, planning-enabled seed plans still start in `process.discussing
 }
 ```
 
-### Local personal override
+### Personal override file
+
+`.claw/project-override.json`:
 
 ```json
 {
@@ -186,7 +190,30 @@ With this config, planning-enabled seed plans still start in `process.discussing
 }
 ```
 
+### Personal planning override
+
+`.claw/project-override.json`:
+
+```json
+{
+  "planning": true,
+  "externalPlanningSkill": "my-planning-skill"
+}
+```
+
+### Personal GitNexus override
+
+`.claw/project-override.json`:
+
+```json
+{
+  "gitnexus": true
+}
+```
+
 ### Explicit writer override
+
+`.claw/project.json` for a shared team override, or `.claw/project-override.json` for a personal override:
 
 ```json
 {
@@ -196,6 +223,8 @@ With this config, planning-enabled seed plans still start in `process.discussing
 ```
 
 ### Explicitly clear an inherited writer override
+
+`.claw/project-override.json`:
 
 ```json
 {

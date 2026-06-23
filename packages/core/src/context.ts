@@ -329,6 +329,12 @@ function normalizeMemoryEmbeddingConfig(value: MemoryEmbeddingConfig | null | un
     return null;
   }
 
+  const vectorExtensionPath =
+    typeof value.store?.vector?.extensionPath === "string" && value.store.vector.extensionPath.trim()
+      ? value.store.vector.extensionPath.trim()
+      : undefined;
+  const vectorEnabled = value.store?.vector?.enabled;
+
   return {
     provider,
     model,
@@ -365,13 +371,15 @@ function normalizeMemoryEmbeddingConfig(value: MemoryEmbeddingConfig | null | un
     ...(Number.isInteger(value.outputDimensionality) && (value.outputDimensionality as number) > 0
       ? { outputDimensionality: value.outputDimensionality as number }
       : {}),
-    store: {
-      vector: {
-        enabled: value.store?.vector?.enabled ?? true,
-        ...(typeof value.store?.vector?.extensionPath === "string" && value.store.vector.extensionPath.trim()
-          ? { extensionPath: value.store.vector.extensionPath.trim() }
-          : {}),
-      },
-    },
+    ...(vectorEnabled === false || vectorExtensionPath
+      ? {
+          store: {
+            vector: {
+              ...(vectorEnabled === false ? { enabled: false } : {}),
+              ...(vectorExtensionPath ? { extensionPath: vectorExtensionPath } : {}),
+            },
+          },
+        }
+      : {}),
   };
 }

@@ -29,6 +29,8 @@ async function makeFixture() {
   await fs.writeFile(path.join(sourceDir, "references", "note.md"), "# note");
   await fs.writeFile(path.join(sourceDir, "scripts", "helper.mjs"), "export const ok = true;\n");
   await fs.writeFile(path.join(sourceDir, "skills", "SKILL.md"), "# skill");
+  await fs.mkdir(path.join(sourceDir, "skills", "config"), { recursive: true });
+  await fs.writeFile(path.join(sourceDir, "skills", "config", "SKILL.md"), "# config skill");
   await fs.writeFile(path.join(sourceDir, "package.json"), '{"name":"@claw-kit/codex-adapter"}');
 
   return { root, sourceDir };
@@ -58,6 +60,16 @@ test("Codex plugin manifest starts with using-claw-kit instead of pre-reading pl
   assert.match(promptText, /seeded planning task/i);
 });
 
+test("Codex plugin source includes the config skill entrypoint", async () => {
+  const skillPath = new URL("../packages/codex-adapter/skills/config/SKILL.md", import.meta.url);
+  const skillText = await fs.readFile(skillPath, "utf8");
+
+  assert.match(skillText, /name: config/);
+  assert.match(skillText, /team config/i);
+  assert.match(skillText, /personal config/i);
+  assert.match(skillText, /\.claw\/project-override\.json/);
+});
+
 test("exportCodexPluginBundle copies the expected payload into a versioned bundle directory", async () => {
   const { sourceDir, root } = await makeFixture();
   const outDir = path.join(root, "dist", "codex-plugin");
@@ -70,6 +82,7 @@ test("exportCodexPluginBundle copies the expected payload into a versioned bundl
   assert.equal(result.bundleDir, path.join(outDir, "claw-kit", "0.1.41+codex.test"));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, ".codex-plugin", "plugin.json")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "hooks", "hooks.json")));
+  await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "config", "SKILL.md")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "package.json")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "hooks", "session-start-recovery.mjs")));
   await assert.rejects(fs.access(path.join(result.bundleDir, "hooks", "session-start-recovery.test.mjs")));

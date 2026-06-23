@@ -96,11 +96,6 @@ test("initProject creates a minimal .claw project scaffold", () => {
         local?: {
           modelCacheDir?: string;
         };
-        store: {
-          vector: {
-            enabled: boolean;
-          };
-        };
       };
     };
     gitnexus: boolean;
@@ -131,11 +126,6 @@ test("initProject creates a minimal .claw project scaffold", () => {
       embedding: {
         provider: "local",
         model: "Snowflake/snowflake-arctic-embed-m-v2.0",
-        store: {
-          vector: {
-            enabled: true,
-          },
-        },
       },
     },
     gitnexus: true,
@@ -1119,7 +1109,7 @@ test("resolveContext deep-merges project-override.json and preserves explicit nu
   assert.equal(result.project.projectConfig?.goalMode, false);
   assert.equal(result.project.projectConfig?.truthDispatch, "per_task");
   assert.equal(result.project.projectConfig?.memory?.embedding?.model, "Snowflake/snowflake-arctic-embed-m-v2.0");
-  assert.equal(result.project.projectConfig?.memory?.embedding?.store?.vector?.enabled, true);
+  assert.equal(result.project.projectConfig?.memory?.embedding?.store, undefined);
 });
 
 test("workflow guidance respects disabled goal mode and final-only truth dispatch from effective project config", async () => {
@@ -1483,11 +1473,6 @@ test("memory search defaults to project scope and task scope prioritizes active 
       model: "Snowflake/snowflake-arctic-embed-xs",
       local: {
         modelCacheDir: path.join(root, ".model-cache"),
-      },
-      store: {
-        vector: {
-          enabled: true,
-        },
       },
     });
     assert.ok(projectSearch.results.some((item) => item.sourcePath.endsWith(path.join(".claw", "memory.md"))));
@@ -2113,11 +2098,6 @@ test("project memory refresh generates local embedding metadata and vector rows 
       model: "Snowflake/snowflake-arctic-embed-xs",
       local: {
         modelCacheDir: path.join(root, ".model-cache"),
-      },
-      store: {
-        vector: {
-          enabled: true,
-        },
       },
     });
     assert.deepEqual(result.vectorIndex, {
@@ -2811,11 +2791,6 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
         remote: {
           apiKeyEnvVar: string;
         };
-        store: {
-          vector: {
-            enabled: boolean;
-          };
-        };
       } | null;
     };
     gitnexus: boolean;
@@ -2838,11 +2813,6 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
     model: "text-embedding-3-small",
     remote: {
       apiKeyEnvVar: "OPENAI_API_KEY",
-    },
-    store: {
-      vector: {
-        enabled: true,
-      },
     },
   });
   assert.equal(projectConfig.gitnexus, false);
@@ -2896,11 +2866,6 @@ test("ensureProjectProtocol removes legacy default local modelCacheDir so runtim
         local?: {
           modelCacheDir?: string;
         };
-        store: {
-          vector: {
-            enabled: boolean;
-          };
-        };
       };
     };
   };
@@ -2911,11 +2876,6 @@ test("ensureProjectProtocol removes legacy default local modelCacheDir so runtim
   assert.deepEqual(projectConfig.memory.embedding, {
     provider: "local",
     model: "Snowflake/snowflake-arctic-embed-m-v2.0",
-    store: {
-      vector: {
-        enabled: true,
-      },
-    },
   });
 });
 
@@ -2976,6 +2936,59 @@ test("enforceTaskRetention archives completed task and prunes archive by updated
 
   assert.equal(second.archivedCurrentTask, undefined);
   assert.deepEqual(second.prunedArchivedTasks, []);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "archive", "tasks", "newer-task")), true);
+});
+
+test("enforceTaskRetention prunes completed tasks with non-ascii archive names", async () => {
+  const root = createFixture("task-retention-nonascii");
+  initProject({
+    cwd: root,
+    projectName: "Retention Non ASCII Project",
+    maxTasksToKeep: 1,
+    force: true,
+  });
+  await writePlan({
+    cwd: root,
+    taskName: "同步最新远端并刷新本地-Codex-插件与-CLI",
+    title: "Older task",
+    goalText: "Archive older task",
+    content: {
+      title: "Older task",
+      status: "end.completed",
+      goal: { text: "Archive older task" },
+      tasks: [],
+      retrospective: { summary: "Older complete." },
+    },
+  });
+  await writePlan({
+    cwd: root,
+    taskName: "newer-task",
+    title: "Newer task",
+    goalText: "Archive newer task",
+    content: {
+      title: "Newer task",
+      status: "end.completed",
+      goal: { text: "Archive newer task" },
+      tasks: [],
+      retrospective: { summary: "Newer complete." },
+    },
+  });
+
+  const olderMetaPath = path.join(root, ".claw", "tasks", "同步最新远端并刷新本地-Codex-插件与-CLI", "meta.json");
+  const olderMeta = JSON.parse(fs.readFileSync(olderMetaPath, "utf-8")) as { updatedAt: string };
+  olderMeta.updatedAt = "2026-01-01T00:00:00.000Z";
+  fs.writeFileSync(olderMetaPath, `${JSON.stringify(olderMeta, null, 2)}\n`, "utf-8");
+
+  const newerMetaPath = path.join(root, ".claw", "tasks", "newer-task", "meta.json");
+  const newerMeta = JSON.parse(fs.readFileSync(newerMetaPath, "utf-8")) as { updatedAt: string };
+  newerMeta.updatedAt = "2026-02-01T00:00:00.000Z";
+  fs.writeFileSync(newerMetaPath, `${JSON.stringify(newerMeta, null, 2)}\n`, "utf-8");
+
+  const result = enforceTaskRetention(resolveContext(root).project, "newer-task");
+
+  assert.equal(result.archivedCurrentTask?.taskName, "newer-task");
+  assert.equal(result.prunedArchivedTasks[0]?.taskName, "同步最新远端并刷新本地-Codex-插件与-CLI");
+  assert.equal(fs.existsSync(path.join(root, ".claw", "archive", "tasks", "同步最新远端并刷新本地-Codex-插件与-CLI")), false);
   assert.equal(fs.existsSync(path.join(root, ".claw", "archive", "tasks", "newer-task")), true);
 });
 

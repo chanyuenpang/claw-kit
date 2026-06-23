@@ -19,7 +19,7 @@ Accepted
 - `goalMode` 的 canonical 默认值是 `true`。
 - `truthDispatch` 的 canonical 默认值是 `per_task`。
 - 简单 project-level toggles 使用扁平字段；`workflow.goalMode.enabled`、`workflow.truthDispatch.mode`、`gitnexus.enabled` 只作为 legacy compatibility input 被读取和修复。
-- `.claw/project-override.json` 是完整的 personal overlay，可以覆盖 `.claw/project.json` 的任意字段，而不是只服务某个临时特例。
+- `.claw/project-override.json` 是完整的 personal overlay，可以覆盖 `.claw/project.json` 的任意字段，而不是只服务某个临时特例；其中 workflow / GitNexus 类简单开关应使用与 team config 相同的扁平 canonical 字段。
 - runtime project resolution 读取并 deep-merge `.claw/project-override.json` 覆盖 canonical `.claw/project.json`。
 - `.claw/project-override.json` 里的显式 `null` 是真实 override 值，不表示回退到 team config。
 - 只有 runtime project resolution 消费 `.claw/project-override.json`；canonical protocol repair 和 `claw init` 继续只拥有 team-facing `.claw/project.json`。

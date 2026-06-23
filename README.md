@@ -123,6 +123,8 @@ Use `install:opencode-plugin` when you want this machine to start using the adap
 
 `.claw/project.json` is the canonical team-owned workflow config for a project, and `.claw/project-override.json` is the local runtime-only overlay for personal preferences.
 
+When changing claw configuration through the plugin, use the `config` skill first. It asks whether the change is shared team config or personal local config, then routes to `.claw/project.json` or `.claw/project-override.json` with the current flat field shape.
+
 When you need backup detail, start with the adapter reference notes above and use [docs/project-json-reference.md](docs/project-json-reference.md) only for deeper canonical detail:
 
 - shared vs local config boundaries

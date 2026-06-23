@@ -24,7 +24,7 @@ export function enforceTaskRetention(project: ProjectContext, currentTaskName?: 
       .slice(0, overflow);
 
     for (const archivedTask of toPrune) {
-      fs.rmSync(archivedTask.archivedTaskDir, { recursive: true, force: true });
+      removeDirectoryTreeSync(archivedTask.archivedTaskDir);
       prunedArchivedTasks.push(archivedTask);
     }
   }
@@ -127,6 +127,28 @@ function compareArchivedTasksByUpdatedAt(left: ArchivedTaskRecord, right: Archiv
     return leftTime - rightTime;
   }
   return left.taskName.localeCompare(right.taskName);
+}
+
+function removeDirectoryTreeSync(targetDir: string): void {
+  if (!fs.existsSync(targetDir)) {
+    return;
+  }
+
+  const stat = fs.lstatSync(targetDir);
+  if (!stat.isDirectory() || stat.isSymbolicLink()) {
+    fs.unlinkSync(targetDir);
+    return;
+  }
+
+  for (const child of fs.readdirSync(targetDir, { withFileTypes: true })) {
+    const childPath = path.join(targetDir, child.name);
+    if (child.isDirectory() && !child.isSymbolicLink()) {
+      removeDirectoryTreeSync(childPath);
+    } else {
+      fs.unlinkSync(childPath);
+    }
+  }
+  fs.rmdirSync(targetDir);
 }
 
 function uniqueArchiveTaskDir(archiveTasksRoot: string, taskName: string): string {

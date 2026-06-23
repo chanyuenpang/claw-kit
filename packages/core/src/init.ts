@@ -78,11 +78,6 @@ export function initProject(input: InitProjectInput): InitProjectResult {
       embedding: {
         provider: "local",
         model: DEFAULT_LOCAL_EMBEDDING_MODEL,
-        store: {
-          vector: {
-            enabled: true,
-          },
-        },
       },
     },
     goalMode: true,

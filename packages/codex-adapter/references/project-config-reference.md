@@ -4,6 +4,8 @@ This note is a backup config reference for the Codex adapter. It is not part of 
 
 Use it when a Codex thread needs to explain or tune `.claw/project.json` or `.claw/project-override.json`, and fall back to the canonical guide in [docs/project-json-reference.md](../../../docs/project-json-reference.md) when deeper field-by-field detail is needed.
 
+When the user asks to change claw configuration, use the `config` skill as the dedicated entrypoint before recommending edits.
+
 ## Core mental model
 
 - `.claw/project.json` is the canonical team-owned declaration surface
@@ -62,8 +64,10 @@ Use it when a Codex thread needs to explain or tune `.claw/project.json` or `.cl
 
 ## Practical guidance
 
+- Ask whether the change is shared team config or personal local config before editing.
 - Use `.claw/project.json` for shared team workflow behavior.
 - Use `.claw/project-override.json` for personal runtime preferences.
+- Use the flat field names in both files: `planning`, `externalPlanningSkill`, `goalMode`, `truthDispatch`, and `gitnexus`.
 - Treat explicit `null` as an intentional override, not inheritance.
 - Do not tell users they need to write `store.vector.enabled = true` just to keep default vector indexing behavior.
 - `final_only` suppresses mid-task truth handoff, not closeout truth or ADR deposition.

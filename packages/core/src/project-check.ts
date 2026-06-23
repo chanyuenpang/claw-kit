@@ -385,11 +385,6 @@ function normalizeMemoryEmbeddingConfig(value: unknown): MemoryEmbeddingConfig |
     return {
       provider: "local",
       model: DEFAULT_LOCAL_EMBEDDING_MODEL,
-      store: {
-        vector: {
-          enabled: true,
-        },
-      },
     };
   }
 
@@ -397,20 +392,14 @@ function normalizeMemoryEmbeddingConfig(value: unknown): MemoryEmbeddingConfig |
   const local = asObject(embedding.local);
   const store = asObject(embedding.store);
   const vector = asObject(store?.vector);
+  const normalizedStore = normalizeEmbeddingStore(vector);
   const provider = embedding.provider === "local" ? "local" : "openai";
   const model = readNonEmptyString(embedding.model);
   if (!model) {
     return {
       provider: "local",
       model: DEFAULT_LOCAL_EMBEDDING_MODEL,
-      store: {
-        vector: {
-          enabled: typeof vector?.enabled === "boolean" ? vector.enabled : true,
-          ...(readNonEmptyString(vector?.extensionPath)
-            ? { extensionPath: readNonEmptyString(vector?.extensionPath) }
-            : {}),
-        },
-      },
+      ...(normalizedStore ? { store: normalizedStore } : {}),
     };
   }
 
@@ -433,13 +422,20 @@ function normalizeMemoryEmbeddingConfig(value: unknown): MemoryEmbeddingConfig |
     ...(Number.isInteger(embedding.outputDimensionality) && (embedding.outputDimensionality as number) > 0
       ? { outputDimensionality: embedding.outputDimensionality as number }
       : {}),
-    store: {
-      vector: {
-        enabled: typeof vector?.enabled === "boolean" ? vector.enabled : true,
-        ...(readNonEmptyString(vector?.extensionPath)
-          ? { extensionPath: readNonEmptyString(vector?.extensionPath) }
-          : {}),
-      },
+    ...(normalizedStore ? { store: normalizedStore } : {}),
+  };
+}
+
+function normalizeEmbeddingStore(vector: Record<string, unknown> | null): MemoryEmbeddingConfig["store"] | undefined {
+  const vectorEnabled = typeof vector?.enabled === "boolean" ? vector.enabled : undefined;
+  const extensionPath = readNonEmptyString(vector?.extensionPath);
+  if (vectorEnabled !== false && !extensionPath) {
+    return undefined;
+  }
+  return {
+    vector: {
+      ...(vectorEnabled === false ? { enabled: false } : {}),
+      ...(extensionPath ? { extensionPath } : {}),
     },
   };
 }

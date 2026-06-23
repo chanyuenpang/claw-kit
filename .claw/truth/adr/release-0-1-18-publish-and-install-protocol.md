@@ -16,6 +16,8 @@ Accepted
 - 先同步远端 `main`，确认发布基线正确，再执行版本 bump
 - 如果同步 `origin/main` 时在 workflow guidance、CLI tests、Codex adapter docs/skills 或 `.claw/truth/` 上发生冲突，合并结果必须同时保留远端更新和本地已经验证过的行为，再继续 release 流程
 - 同步完成后，必须把 merged HEAD 与当前已发布 artifact 基线一起判断；如果 merged HEAD 已经领先于已发布版本，就直接把整条 workspace/package/plugin 版本线推进到下一个正式 release 目标，而不是沿用 merge 前的本地预期版本
+- release version bump must include the complete current packaging surface: root/package-lock metadata, `@veewo/claw-core`, `@veewo/claw`, Codex/OpenClaw/OpenCode adapter package versions, CLI/OpenClaw dependency pins on `@veewo/claw-core`, and the Codex plugin manifest `semver+codex.<timestamp>` version
+- after version edits, run `npm install --package-lock-only --ignore-scripts` or equivalent lockfile regeneration before verification so package-lock metadata matches the target release line
 - 发布前必须完成 `npm test`、`npm run check`，以及本地安装脚本验证
 - 双包发布保持固定顺序：先发 `@veewo/claw-core`，再发 `@veewo/claw`
 - 在受管环境里，如果宿主机没有可直接调用的 `npm` CLI，也允许通过 bundled node、tar-based packaging 和 registry API 完成真实 publish
@@ -55,6 +57,7 @@ Accepted
 - `packages/cli/package.json`
 - `packages/codex-adapter/package.json`
 - `packages/openclaw-adapter/package.json`
+- `packages/opencode-adapter/package.json`
 - `packages/codex-adapter/.codex-plugin/plugin.json`
 - `packages/codex-adapter/skills/researcher/SKILL.md`
 - `packages/codex-adapter/references/codex-subagent-dispatch.md`

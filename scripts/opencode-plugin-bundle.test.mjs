@@ -34,6 +34,8 @@ async function makeFixture() {
   );
   await fs.writeFile(path.join(sourceDir, "plugin", "index.ts"), "export default {};\n");
   await fs.writeFile(path.join(sourceDir, "skills", "SKILL.md"), "# skill");
+  await fs.mkdir(path.join(sourceDir, "skills", "config"), { recursive: true });
+  await fs.writeFile(path.join(sourceDir, "skills", "config", "SKILL.md"), "# config skill");
   await fs.writeFile(path.join(sourceDir, "agents", "team-coder.md"), "# agent");
   await fs.writeFile(path.join(sourceDir, "references", "note.md"), "# note");
 
@@ -57,6 +59,16 @@ test("readOpencodePluginSource returns manifest metadata and stable payload list
   assert.deepEqual(plugin.payloadRelativePaths, OPENCODE_PLUGIN_PAYLOAD_PATHS);
 });
 
+test("OpenCode plugin source includes the config skill entrypoint", async () => {
+  const skillPath = new URL("../packages/opencode-adapter/skills/config/SKILL.md", import.meta.url);
+  const skillText = await fs.readFile(skillPath, "utf8");
+
+  assert.match(skillText, /name: config/);
+  assert.match(skillText, /team config/i);
+  assert.match(skillText, /personal config/i);
+  assert.match(skillText, /\.claw\/project-override\.json/);
+});
+
 test("exportOpencodePluginBundle copies the expected payload and filters *.test.mjs", async (t) => {
   const { root, sourceDir } = await makeFixture();
   t.after(async () => {
@@ -72,6 +84,7 @@ test("exportOpencodePluginBundle copies the expected payload and filters *.test.
   assert.equal(result.bundleDir, path.join(outDir, "claw-kit", "0.1.41+opencode.test"));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "plugin", "index.ts")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "SKILL.md")));
+  await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "config", "SKILL.md")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "package.json")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "workflow-guidance.opencode.json")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "plugin", "runtime.mjs")));
