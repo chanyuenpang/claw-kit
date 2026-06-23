@@ -27,6 +27,9 @@
 - 这次 0.1.40 release 进一步确认：release 目标版本要以 npm registry 当下已发布版本为准；如果 `@veewo/claw` 刚发布后的本机 CLI 刷新先撞到 registry 传播延迟，可在 `npm view @veewo/claw version` 已返回目标版本后重试一次 `npm run install:local-cli`，不把这类短暂失配误判成发布失败。
 - 这轮 0.1.40 的收口证据是 registry、全局 `claw` CLI 与本地 Codex plugin cache 全部对齐到同一轮发布，其中 plugin manifest / cache 目标版本是 `0.1.40+codex.20260616130425`，缓存目录下 24/24 个同步文件 SHA256 与仓库副本一致。
 - `sync-latest-remote-and-refresh-local-installs` 这条 closeout 协议现在明确要求先 fast-forward/确认 `origin/main`，再刷新全局 `claw` CLI，随后刷新本地 Codex plugin cache，最后做仓库 SHA、CLI 路径、缓存版本和逐文件 hash 的统一复核；在这台 Windows 机器上，`schannel` TLS 失败可用一次性的 `git -c http.sslbackend=openssl ...` 旁路验证，但不改全局 Git 配置。
+- 这条 sync 协议的补充恢复事实是：如果 `github.com` 在这台 Windows 机器上被解析到 `127.0.0.1`，可以用一次性的 `git -c http.curloptResolve=github.com:443:140.82.112.4 ...` 局部覆盖 DNS 后完成 fetch / pull；这比改仓库状态、丢弃本地编辑或修改全局 Git 配置更安全。
+- 这条 sync/install 协议还包括一个 Windows CLI 恢复边界：如果 `scripts/install-cli.ps1` 因超时在卸载旧全局包后、重新安装新版本前中断，机器会短暂失去 `claw` 命令；已验证的恢复路径是直接运行 `npm install -g @veewo/claw`，然后用 `claw --version`、`npm list -g @veewo/claw --depth=0` 和 `Get-Command claw` 复核。
+- 本地 Codex plugin cache 的完成态也要双重验证：先确认 installer 输出的目标缓存路径和版本，再至少核对一个仓库文件与缓存副本的 SHA256 完全一致；单看 installer 成功输出不够。
 - 在这台 Windows 机器上，如果默认 `git fetch origin` 报 `schannel: failed to receive handshake, SSL/TLS connection failed`，应先用 `Test-NetConnection` 验证 443 连通性，再用 `git -c http.sslbackend=openssl ls-remote origin refs/heads/main` 区分 `schannel` 后端问题和真实网络故障。
 - 这次 release 把 `process.wait` / `process.discussing` / resumed active 语义稳定下来：暂停态要暂停 Goal Mode，恢复后通过 `process.active` 重新进入执行，并由 `process.resumedActive` / `on_resume_process_active` 接管恢复。
 - `claw init` 现在会在项目根目录自动补齐 claw-kit 专用 `.gitignore` 规则块，但 `.gitignore` 变更只属于 `initProject()`；`project-check` / protocol repair 与 `claw context` 不会写 `.gitignore`，重复 init 也不会重复追加同一规则块。对应 canonical ADR 是 `init-project-gitignore-ownership`。
