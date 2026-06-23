@@ -17,5 +17,5 @@ const result = await installOpencodePlugin({
 
 console.log(`Installed OpenCode plugin to ${result.pluginDir}`);
 console.log(`Created plugin shim at ${result.shimPath}`);
-console.log(`Updated skills.paths in ${result.configPath}`);
+console.log(`Copied skills to ${result.skillsDir}`);
 console.log(`Installed agent definitions to ${result.agentDir}`);

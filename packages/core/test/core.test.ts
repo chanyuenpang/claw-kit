@@ -198,6 +198,71 @@ test("writePlan seeds a planning-first root plan by default", async () => {
   assert.equal(result.planView.expanded.sections[1]?.id, "tasks");
 });
 
+test("writePlan includes the recommended goal objective in the activation task when goal mode is enabled", async () => {
+  const root = createFixture("plan-write-goalmode-activation-detail");
+
+  const result = await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Ship the first plan",
+  });
+
+  assert.equal(
+    result.plan.tasks[1]?.detail,
+    "After the planning task appends the executable tasks, move the plan into `process.active` and continue execution from the refined task list. If Goal Mode is enabled for this project, start Goal Mode when entering `process.active` and use `Using claw-kit, update plan, follow returned workflowGuidance，finish your goal：Ship the first plan` as the goal objective.",
+  );
+});
+
+test("writePlan keeps the activation task detail plain for opencode host", async () => {
+  const root = createFixture("plan-write-opencode-activation-detail");
+
+  const result = await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Ship the first plan",
+    host: "opencode",
+  });
+
+  assert.equal(
+    result.plan.tasks[1]?.detail,
+    "After the planning task appends the executable tasks, move the plan into `process.active` and continue execution from the refined task list. If Goal Mode is enabled for this project, start Goal Mode when entering `process.active`.",
+  );
+});
+
+test("writePlan keeps the activation task detail plain when goal mode is disabled", async () => {
+  const root = createFixture("plan-write-goalmode-disabled-activation-detail");
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify({
+      id: "plan-write-goalmode-disabled-activation-detail",
+      name: "Plan Write GoalMode Disabled Activation Detail",
+      planning: true,
+      maxTasksToKeep: 99,
+      externalTruthSkill: null,
+      externalAdrSkill: null,
+      contextPaths: [],
+      workflow: { goalMode: { enabled: false }, truthDispatch: { mode: "per_task" } },
+      memory: { externalDocPaths: [], embedding: null },
+      gitnexus: { enabled: false },
+    }, null, 2),
+    "utf-8",
+  );
+
+  const result = await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Ship the first plan",
+  });
+
+  assert.equal(
+    result.plan.tasks[1]?.detail,
+    "After the planning task appends the executable tasks, move the plan into `process.active` and continue execution from the refined task list.",
+  );
+});
+
 test("planning appendTasks preserves the seeded activation task ordering", async () => {
   const root = createFixture("planning-append-preserves-activation");
 

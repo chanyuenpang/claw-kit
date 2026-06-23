@@ -7,6 +7,7 @@
 - canonical `.claw/project.json` now exposes flat `goalMode` as the project-level gate for this behavior.
 - when `goalMode = false`, `workflowGuidance` must suppress both `goalMode` and `goalTool` entirely even if the active plan has a valid `goal.text` and has just entered `process.active`.
 - `workflowGuidance` 现在把 Goal lifecycle 拆成两个互补字段：`goalMode` 负责 host 侧 Goal mode 时机和推荐目标，`goalTool` 负责必须执行的真实 Codex goal tool 合同。
+- `packages/core/src/templates/plans/default.ts` 的 seeded activation task 文案现在也消费同一个 `goalMode` 推荐目标：只要 `goalMode` enabled 且 host 不是显式 `opencode`，就会把 `buildGoalModeObjective(...)` 产出的 recommended objective 追加到 activation task detail；Codex 默认 no-host 路径按 Codex-compatible 处理并拿到这段 objective，显式 `host: "opencode"` 继续保留简洁 activation detail，而 `goalMode = false` 只输出 base detail。
 - 当 plan 首次进入 `process.active` 时，`workflowGuidance.goalMode` 仍携带：
   - `recommendedObjective`
   - `allowOverwrite = true`
@@ -31,6 +32,7 @@
   - `end.completed` 声明 `goalTool.tool = update_goal` 且 `status = complete`
 - `packages/core/src/workflow-guidance.ts`
   - `buildGoalMode()` 继续定义 `allowOverwrite = true`、`ifNoActiveGoal = true`、`supportedSurfaces`
+  - `buildGoalModeObjective()` 负责把 `recommendedObjective` 渲染成可复用的 activation task 文案片段
   - `buildGoalTool()` 负责把 `create_goal` / `update_goal` 模板实例化成真实 workflowGuidance 合同
   - `buildPlanWorkflowGuidance()` 只在 `justEnteredProcess` 或 `resumedIntoActive` 时返回 active-entry `goalMode` / `goalTool`，并在 wait/discussing/completed 生命周期返回对应的 `update_goal` 合同；当 `goalMode = false` 时继续 suppress 这些合同
 - `packages/core/src/types.ts`

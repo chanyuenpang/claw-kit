@@ -123,29 +123,27 @@ test("installOpencodePlugin copies payload, shim, agents and filters *.test.mjs"
   await assert.rejects(fs.access(path.join(result.pluginDir, "plugin", "runtime.test.mjs")));
 });
 
-test("installOpencodePlugin injects skills path into opencode.json idempotently and preserves existing entries", async (t) => {
+test("installOpencodePlugin copies skills into the opencode skills discovery directory idempotently", async (t) => {
   const { root, sourceDir } = await makeFixture();
   t.after(async () => {
     await cleanup(root);
   });
   const installDir = path.join(root, ".config", "opencode");
 
-  await fs.mkdir(installDir, { recursive: true });
-  await fs.writeFile(
-    path.join(installDir, "opencode.json"),
-    JSON.stringify({ skills: { paths: ["some/other/path"] } }, null, 2),
-  );
-
   const result = await installOpencodePlugin({ sourceDir, installDir });
 
-  const config = JSON.parse(await fs.readFile(result.configPath, "utf8"));
-  assert.ok(Array.isArray(config.skills.paths));
-  assert.ok(config.skills.paths.includes("plugins/claw-kit/skills"));
-  assert.ok(config.skills.paths.includes("some/other/path"));
+  // opencode discovers skills only from convention directories (~/.config/opencode/skills).
+  // Each skill subfolder is copied to <installDir>/skills/<name>/SKILL.md.
+  assert.equal(result.skillsDir, path.join(installDir, "skills"));
+  const copiedSkill = await fs.readFile(path.join(result.skillsDir, "config", "SKILL.md"), "utf8");
+  assert.equal(copiedSkill, "# config skill");
 
+  // No opencode.json config injection happens: there is no `skills.paths` option in opencode.
+  await assert.rejects(fs.access(path.join(installDir, "opencode.json")));
+
+  // Idempotent: reinstall overwrites the skill content correctly without duplication.
+  await fs.writeFile(path.join(result.skillsDir, "config", "SKILL.md"), "# stale");
   await installOpencodePlugin({ sourceDir, installDir });
-
-  const config2 = JSON.parse(await fs.readFile(result.configPath, "utf8"));
-  const clawKitEntries = config2.skills.paths.filter((p) => p === "plugins/claw-kit/skills");
-  assert.equal(clawKitEntries.length, 1);
+  const refreshed = await fs.readFile(path.join(result.skillsDir, "config", "SKILL.md"), "utf8");
+  assert.equal(refreshed, "# config skill");
 });

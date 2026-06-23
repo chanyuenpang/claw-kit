@@ -28,7 +28,7 @@ import type {
   TaskContext,
 } from "./types.js";
 import type { PlanEvent } from "./plan-events.js";
-import { buildPlanWorkflowGuidance } from "./workflow-guidance.js";
+import { buildGoalModeObjective, buildPlanWorkflowGuidance } from "./workflow-guidance.js";
 
 const PLAN_STATUSES: PlanStatus[] = [
   "prepare.requirements",
@@ -75,6 +75,7 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
       input.goalText,
       effectiveStatus,
       input.forcePlanning,
+      input.host,
     ),
     effectiveStatus,
   );
@@ -571,6 +572,7 @@ function createSeedPlan(
   goalText?: string,
   status: PlanStatus = "prepare.requirements",
   forcePlanning = false,
+  host?: string,
 ): PlanDocument {
   const template = resolveSeedPlanTemplate(templateName);
   const planningEnabled = forcePlanning || projectConfig?.planning !== false;
@@ -603,15 +605,20 @@ function createSeedPlan(
     };
   }
 
-  const activationDetail = projectConfig?.goalMode === false
-    ? template.activationTask.detail
-    : `${template.activationTask.detail} ${template.activationTask.goalModeDetail}`;
+  const effectiveGoalText = goalText ?? title ?? taskName;
+  const activationDetail = buildActivationTaskDetail({
+    baseDetail: template.activationTask.detail,
+    goalModeDetail: template.activationTask.goalModeDetail,
+    host,
+    goalModeEnabled: projectConfig?.goalMode !== false,
+    planGoal: effectiveGoalText,
+  });
 
   return {
     title: title ?? taskName,
     status: template.planningEnabledStatus ?? status,
     goal: {
-      text: goalText ?? title ?? taskName,
+      text: effectiveGoalText,
     },
     requirements: {
       summary: "",
@@ -639,6 +646,26 @@ function createSeedPlan(
       summary: "",
     },
   };
+}
+
+function buildActivationTaskDetail(params: {
+  baseDetail: string;
+  goalModeDetail: string;
+  host?: string;
+  goalModeEnabled: boolean;
+  planGoal: string;
+}): string {
+  const { baseDetail, goalModeDetail, host, goalModeEnabled, planGoal } = params;
+  if (!goalModeEnabled) {
+    return baseDetail;
+  }
+  if (host === "opencode") {
+    return `${baseDetail} ${goalModeDetail}`;
+  }
+  const normalizedGoalModeDetail = goalModeDetail.endsWith(".")
+    ? goalModeDetail.slice(0, -1)
+    : goalModeDetail;
+  return `${baseDetail} ${normalizedGoalModeDetail} and use \`${buildGoalModeObjective(planGoal)}\` as the goal objective.`;
 }
 
 function deriveTaskName(input: PlanWriteInput): string {

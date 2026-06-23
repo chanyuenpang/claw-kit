@@ -2,6 +2,12 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.1.50] - 2026-06-23
+
+### Fixed
+
+- Default seeded activation tasks now include the Codex Goal Mode recommended objective when `goalMode` is enabled on the default/no-host path, while explicit `host: "opencode"` and disabled Goal Mode keep their existing concise details
+
 ## [0.1.46] - 2026-06-22
 
 ### Fixed

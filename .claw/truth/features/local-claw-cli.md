@@ -90,6 +90,7 @@ Accepted working truth for local development on this machine.
 - Local Codex plugin cache refresh for the matching adapter build currently means syncing `.codex-plugin/`, `hooks/`, `references/`, `scripts/`, `skills/`, and `package.json` from `packages/codex-adapter` into the manifest-versioned cache directory.
 - For the `0.1.48` release, the verified local Codex plugin cache directory is `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.48+codex.20260623165853`; its `.codex-plugin/plugin.json` reports the same version and `skills/config/SKILL.md` is present alongside the other adapter skills.
 - For the `0.1.49` guidance wording patch, the verified local Codex plugin cache directory is `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.49+codex.20260623172440`.
+- For the `0.1.50` metadata bump, the target Codex plugin manifest version is `0.1.50+codex.20260623210218`; the same cache-sync surface still applies, but the refreshed cache path should not be assumed until a follow-up install actually runs.
 - When this cache sync is part of release/install closeout, the durable verification bar is per-file SHA256 parity across the synced payload, not just directory existence.
 - 当前已验证的 closeout 证据是目标缓存目录下 24/24 个同步文件都与仓库副本 SHA256 一致。
 - `claw --help` is a useful post-install smoke check because it confirms the refreshed command surface, including `plan write`, `plan edit`, `plan done`, `search`, and `hook`.

@@ -135,32 +135,33 @@ async function createPluginShim(installDir) {
 }
 
 /**
- * opencode does not auto-discover skills inside plugin subdirectories.
- * We must register the claw-kit skills path in opencode.json so that
- * skills like "using-claw-kit" appear in the available skills list.
+ * opencode discovers skills ONLY from fixed convention directories:
+ *   ~/.config/opencode/skills/<name>/SKILL.md
+ *   .opencode/skills/<name>/SKILL.md
+ *   .claude/skills/<name>/SKILL.md
+ *   ~/.agents/skills/<name>/SKILL.md
+ *
+ * There is NO `skills.paths` config option (it is not part of the opencode schema and
+ * is silently ignored), and the plugin API can register custom `tool`s but NOT skills.
+ * So we copy each skill folder into the global opencode skills directory, mirroring how
+ * agent files are copied into ~/.config/opencode/agent/. The plugin directory keeps its
+ * own skills/ copy as the source asset; this copy is what makes skills discoverable.
  */
-async function ensureSkillsPathInConfig(installDir) {
-  const configPath = path.join(installDir, "opencode.json");
-  const skillsRelativePath = `plugins/${PLUGIN_DIR_NAME}/skills`;
-
-  let config = {};
-  if (await pathExists(configPath)) {
-    try {
-      config = JSON.parse(await fs.readFile(configPath, "utf8"));
-    } catch {
-      console.warn(`Warning: could not parse ${configPath}; skipping skills.paths injection.`);
-      return null;
-    }
+async function installSkillsToDiscoveryDir(installDir, sourceDir) {
+  const skillsDir = path.join(installDir, "skills");
+  const skillsSourceDir = path.join(sourceDir, "skills");
+  if (!(await pathExists(skillsSourceDir))) {
+    return skillsDir;
   }
-
-  if (!config.skills) config.skills = {};
-  if (!Array.isArray(config.skills.paths)) config.skills.paths = [];
-  if (!config.skills.paths.includes(skillsRelativePath)) {
-    config.skills.paths.push(skillsRelativePath);
+  await fs.mkdir(skillsDir, { recursive: true });
+  const entries = await fs.readdir(skillsSourceDir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const sourceSkillPath = path.join(skillsSourceDir, entry.name);
+    const destSkillPath = path.join(skillsDir, entry.name);
+    await copyDirectoryContents(sourceSkillPath, destSkillPath);
   }
-
-  await fs.writeFile(configPath, JSON.stringify(config, null, 2) + "\n", "utf8");
-  return configPath;
+  return skillsDir;
 }
 
 export async function installOpencodePlugin({ sourceDir = defaultSourceDir, installDir = defaultInstallDir } = {}) {
@@ -174,8 +175,9 @@ export async function installOpencodePlugin({ sourceDir = defaultSourceDir, inst
   // opencode only scans *.ts/*.js at the plugins root, not subdirectories.
   const shimPath = await createPluginShim(installDir);
 
-  // Skills path registration: inject into opencode.json so skills are discoverable.
-  const configPath = await ensureSkillsPathInConfig(installDir);
+  // Skills discovery copy: opencode only scans convention directories, so copy each
+  // skill folder into ~/.config/opencode/skills/ so they appear in available skills.
+  const skillsDir = await installSkillsToDiscoveryDir(installDir, sourceDir);
 
   // Agent files: ~/.config/opencode/agent/
   const agentDir = path.join(installDir, "agent");
@@ -190,5 +192,5 @@ export async function installOpencodePlugin({ sourceDir = defaultSourceDir, inst
     }
   }
 
-  return { ...plugin, installDir, pluginDir, shimPath, configPath, agentDir };
+  return { ...plugin, installDir, pluginDir, shimPath, skillsDir, agentDir };
 }

@@ -25,6 +25,7 @@ Default policy:
 - when a plan moves into `process.wait` or `process.discussing`, return `goalTool.tool = update_goal` with `status = "blocked"` instead of inventing a pause-only Goal mode action
 - when a plan reaches `end.completed`, return `goalTool.tool = update_goal` with `status = "complete"` instead of leaving completion to an implied host-side Goal mode gesture
 - if `plan.goal.text` is missing, block the lifecycle from entering `process.active` instead of emitting a premature Goal mode recommendation
+- generated task detail is derived from program state, not inferred from prose: the default Codex/no-host path appends the existing `Using claw-kit, update plan, follow returned workflowGuidance，finish your goal：<planGoal>` objective when `goalMode` is enabled, explicit `host: "opencode"` preserves the older concise Goal Mode detail, and disabled `goalMode` keeps only the base activation detail
 
 ## Consequences
 
@@ -38,11 +39,13 @@ Default policy:
 - paused execution now has a durable, testable closeout rule: use `update_goal(status="blocked")` and stop pretending the thread stays in a special paused-goal runtime mode.
 - completed execution now has a durable, testable closeout rule: use `update_goal(status="complete")` when the root plan reaches `end.completed`.
 - The no-active-goal and no-overwrite semantics remain durable host-side safety rules instead of a best-effort prompt suggestion.
+- The default template activation detail no longer depends on agent-side interpretation of Goal Mode prose, which keeps Codex and opencode output aligned with their respective host contracts.
 
 ## Related Code
 
 - `packages/core/src/workflow-guidance.ts`
 - `packages/core/src/workflow-guidance.config.json`
+- `packages/core/src/templates/plans/default.ts`
 - `packages/core/src/plan.ts`
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md`
 - `packages/codex-adapter/references/workflow-guidance-consumption.md`

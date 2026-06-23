@@ -1,4 +1,4 @@
-# ADR: SQLite memory store 并发与忙碌错误语义
+﻿# ADR: SQLite memory store 并发与忙碌错误语义
 
 ## Status
 

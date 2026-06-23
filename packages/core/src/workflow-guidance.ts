@@ -152,7 +152,7 @@ function buildGoalTool(planGoal: string, template: GoalToolTemplate): WorkflowGu
   };
 }
 
-function buildGoalModeObjective(planGoal: string): string {
+export function buildGoalModeObjective(planGoal: string): string {
   const trimmedGoal = planGoal.trim();
   const template = trimmedGoal
     ? workflowGuidanceConfig.goalModeObjective.withGoal

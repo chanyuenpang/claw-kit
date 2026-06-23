@@ -99,7 +99,7 @@ What they do:
 1. `npm run export:opencode-plugin` copies the installable plugin payload into `dist/opencode-plugin/claw-kit/<plugin-version>/`.
 2. `npm run install:opencode-plugin` copies that same payload into the local OpenCode config at `~/.config/opencode/plugins/claw-kit/`, then:
    - creates a plugin shim at `~/.config/opencode/plugins/claw-kit.ts` so OpenCode can discover the plugin at startup,
-   - injects `plugins/claw-kit/skills` into the `skills.paths` array of `~/.config/opencode/opencode.json` so the adapter skills become available,
+   - copies each skill folder into `~/.config/opencode/skills/` so the adapter skills become available (OpenCode discovers skills only from convention directories, not via a config option),
    - copies the bundled agent definitions into `~/.config/opencode/agent/`.
 
 Restart OpenCode after installing so the new plugin, skills, and agents are picked up.

@@ -31,6 +31,7 @@
 - `packages/codex-adapter/.codex-plugin/plugin.json` 和本地 Codex plugin cache 也同步到了 `0.1.40+codex.20260616130425`，并且与仓库 manifest 保持一致。
 - 本机 `claw --version` 当前返回 `0.1.49`。
 - `npm list -g @veewo/claw --depth=0` 当前解析到 `@veewo/claw@0.1.49`。
+- 这轮 release scope/version audit 把 registry 基线明确锁定在 `0.1.49`，并把下一次 patch target 选为 `0.1.50`；后续 release 决策应继续先读 `npm view @veewo/claw-core version` 和 `npm view @veewo/claw version`，再决定 bump 号，而不要直接沿用本地 workspace 里的旧版本印象。
 
 当前发布链继续保持同一条稳定的 release target 判定规则：
 
@@ -41,6 +42,9 @@
 - Release-ready changes should be committed before publish so the registry artifact has a traceable source commit; the 2026-06-23 `0.1.48` source commit is `1e0911c` (`Release claw-kit 0.1.48`), covering config skill work, project config compatibility, task retention, shared skill sync, docs/truth/ADR, package metadata, lockfile, and Codex plugin manifest changes.
 - The 2026-06-23 `0.1.48` release verification matrix included `npm run check`, core tests `78/78`, CLI tests `50/50`, Codex bundle tests `5/5`, OpenCode bundle tests `5/5`, npm pack dry-runs, temp `project.json` compatibility fixtures, registry metadata/tarball checks, global CLI install, and local Codex cache manifest plus `skills/config/SKILL.md` inspection.
 - The 2026-06-23 `0.1.49` source commit is `a593180` (`Release claw-kit 0.1.49`); its release verification matrix included `npm run check`, core tests `78/78`, CLI tests `50/50`, Codex bundle tests `5/5` after serial rerun, OpenCode bundle tests `5/5`, npm pack dry-runs for core and CLI, registry metadata/tarball checks, global CLI install, local Codex cache install, and verification that `dist/workflow-guidance.config.json` plus all-tasks-done `claw plan edit` expose the new delegateSubagents note.
+- `0.1.50` 这轮版本元数据 bump 已同步覆盖 root `package.json`、`@veewo/claw-core`、`@veewo/claw`、`packages/codex-adapter`、`packages/openclaw-adapter`、`packages/opencode-adapter`、`package-lock.json` 以及 `packages/codex-adapter/.codex-plugin/plugin.json`；其中 CLI 对 `@veewo/claw-core` 的依赖和 `openclaw` adapter 的依赖都已对齐到 `0.1.50`。
+- `packages/codex-adapter/.codex-plugin/plugin.json` 这轮被设为 `0.1.50+codex.20260623210218`，后续本地 Codex plugin cache 也应以这个 manifest 版本为目标值。
+- `npm install --package-lock-only` 在这台 Windows 工作区里曾因超时而中断，但在先前 `npm view` 给出的 0.1.49 registry 基线下，package-lock 已按 workspace 语义重新对齐，最终没有留下任何 `0.1.49` 的包元数据。
 - 如果 `npm view` 还没看到新版本，就不要把第一次 `npm run install:local-cli` 仍装到旧版本当成 release 失败；正确 closeout 是等 registry 可见后重跑一次本地 CLI 刷新。
 - 如果 `npm view` 已经能看到新版本和 tarball metadata，但 `npm pack` 或安装仍报 `ETARGET`，先执行 `npm cache clean --force` 再重试 tarball retrieval；这类本地 cache / propagation split-brain 不等同于 registry publish 失败。
 - 本地 Codex plugin cache 继续使用直接文件系统同步：把 `packages/codex-adapter` 下的 `.codex-plugin`、`hooks`、`references`、`scripts`、`skills` 与 `package.json` 同步进版本化缓存目录，再核对内容一致性。
