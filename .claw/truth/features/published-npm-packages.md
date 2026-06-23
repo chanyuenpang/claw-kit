@@ -22,6 +22,7 @@
 - `package-lock.json` 也已经把 workspace 包版本线同步到 `0.1.40`，包括根包、`@veewo/claw-core`、`@veewo/claw`、`@claw-kit/openclaw-adapter` 和 `@claw-kit/codex-adapter`。
 - `@veewo/claw-core@0.1.40` 与 `@veewo/claw@0.1.40` 都已经成功发布到 npm registry。
 - 通过 `npm view @veewo/claw-core version` 与 `npm view @veewo/claw version` 校验后，两个包当前都解析到 `0.1.40`。
+- `npm publish` 偶尔会吐出 `bin[claw]` 之类的归一化警告，但这不能单独当成最终结论；发布后仍要用 `npm view @veewo/claw bin --json` 再核对 registry 里的 bin 映射，并跑真实的 `claw` 烟测确认命令面可用。
 - `packages/codex-adapter/.codex-plugin/plugin.json` 和本地 Codex plugin cache 也同步到了 `0.1.40+codex.20260616130425`，并且与仓库 manifest 保持一致。
 - 本机 `claw --version` 当前返回 `0.1.40`。
 - `npm list -g @veewo/claw --depth=0` 当前解析到 `@veewo/claw@0.1.40`。

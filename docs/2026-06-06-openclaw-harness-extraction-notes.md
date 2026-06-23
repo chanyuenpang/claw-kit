@@ -320,7 +320,7 @@ Likely weak or host-specific:
 
 Implication:
 
-- Codex is a good first adapter for `plan write`, `memory search`, `truth ingest`
+- Codex is a good first adapter for `plan create`, `memory search`, `truth ingest`
 - Creating a new session can reasonably default to creating and binding a new task
 - Explicit `switch task` should be treated as advanced usage for revisiting an older task, not the default recommended path
 - Codex should not be the design center for automatic restore or plan guard
@@ -361,7 +361,7 @@ Current best-fit direction:
 Reasonable first-class core actions:
 
 - `claw init`
-- `claw plan write`
+- `claw plan create`
 - `claw plan edit`
 - `claw memory index`
 - `claw memory search`

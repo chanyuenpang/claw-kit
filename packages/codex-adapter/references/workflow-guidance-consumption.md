@@ -14,9 +14,9 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
 ### `delegateSubagents`
 
 - Dispatch the listed specialist workflow(s) first. Do not demote them into optional follow-up suggestions.
-- In `@claw-kit` threads, the user's use of this workflow already authorizes the subagent mechanism.
+- In `@claw-kit` threads, the hook-provided workflow context has already authorized the required subagent mechanism for the current thread.
 - Codex has multi-agent capability. Use `tool_search` to locate the current session's agent-management tools, then execute delegation through that tool surface rather than only describing the handoff.
-- Do not add a separate per-turn authorization requirement for subagent use. The user has already authorized this `@claw-kit` thread to dispatch the required specialists, so permission concerns must not block the workflow. If the user explicitly changes direction and forbids delegation, follow that new instruction instead.
+- Do not add a separate per-turn authorization requirement for subagent use. The current `@claw-kit` thread is already authorized by hook context to dispatch the required specialists, so permission concerns must not block the workflow. If the user explicitly changes direction and forbids delegation, follow that new instruction instead.
 - Treat each entry as a structured contract, not a string hint.
 - Execute each entry field-by-field instead of compressing it into a generic "dispatch a writer" intention.
 - The main agent does not need to read specialist skill files inline before dispatch; attach the returned skill item to the worker bundle and keep the bundle narrow.
@@ -59,7 +59,7 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
 - When a plan first enters `process.active`, use `goalTool.tool = create_goal` and `goalMode.recommendedObjective` to create the thread goal if the thread does not already have an active goal.
 - When a plan resumes into `process.active` from `process.wait` or `process.discussing`, use `goalTool.tool = create_goal` and `goalMode.recommendedObjective` to restore the active thread goal.
 - Do not automatically overwrite an unrelated active goal already attached to the thread.
-- In `@claw-kit` threads, treat goal mode and delegated subagent use as already authorized by the user. Do not pause or block the workflow for any authorization-related excuse; only stop if the user explicitly changes direction and forbids them.
+- In `@claw-kit` threads, goal mode and delegated subagent use are already authorized by hook context for the current thread. Do not pause or block the workflow for any authorization-related excuse; only stop if the user explicitly changes direction and forbids them.
 - In the Codex app, `/goal` is the normal host surface. In tool-enabled sessions, `create_goal` is also a valid path.
 
 ### `goalTool`
@@ -74,9 +74,8 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
 ## Lifecycle interpretation
 
 - canonical chain
-  - `prepare.requirements`
-  - check whether requirements are clear
-  - ask the user only when requirements are still ambiguous
+  - `process.discussing` when planning is enabled
+  - use the planning task to refine the request and append executable tasks
   - `process.active`
   - create the thread goal if `goalTool` says to
   - process one task
@@ -87,14 +86,11 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
   - complete retrospective
   - dispatch `adr-writer`
   - `claw plan done`
-- `prepare.requirements`
+- `process.discussing`
   - treat hook-driven startup recovery as already handled; do not add a separate recovery workflow step here
-  - if `goal.text` is missing, fill it before trying to enter `process.active`
-  - treat this `@claw-kit` thread as already authorized to use goal mode and required delegated subagents, and do not let permission concerns block execution
-  - review whether requirements are already clear enough to execute
-  - only use Codex options when requirements are still ambiguous
+  - planning-enabled projects use this stage to refine the request and append executable tasks
   - do not start implementation in this stage
-  - when requirements are clear, move the plan directly to `process.active` before doing any implementation or task execution
+  - move into `process.active` only when the plan is ready for execution
 - `process.active` on first entry
   - read `goalTool`
   - read `goalMode`
@@ -127,7 +123,7 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
 - `.claw/project.json` is the canonical project declaration surface for project-level harness behavior.
 - `contextPaths` may exist for schema alignment with OpenClaw, but current Codex-first flows do not need to consume it.
 - `memory.externalDocPaths` affects what `claw search` indexes as project recall context, including directory paths like `docs/`.
-- `gitnexus.enabled` decides whether `claw plan done` should refresh GitNexus after completion.
+- `gitnexus` decides whether `claw plan done` should refresh GitNexus after completion.
 - A GitNexus CLI without `--no-ai-context` support makes `claw plan done` report a compatibility path to plain `gitnexus analyze`; treat that as successful environment adaptation rather than a workflow failure.
 
 ## Anti-patterns

@@ -27,7 +27,7 @@ The best near-term design is:
 - that core is still centered on `.claw/`, task plans, memory, and truth docs
 - Codex gets a thin plugin adapter, not a new harness model
 - every command should resolve `.claw/` from `cwd` first
-- task scope is established by `plan write`
+- task scope is established by `plan create`
 - `switch-task` remains available, but as advanced revisit behavior
 
 This means we should not invent a Codex-native workflow and only then try to map OpenClaw onto it.
@@ -209,7 +209,7 @@ Codex should only adapt that core into its own workflow model.
 The main flow we are trying to preserve is:
 
 1. project-local `.claw/` is the canonical source of truth
-2. task scope becomes real when `plan write` creates or updates task artifacts
+2. task scope becomes real when `plan create` creates or updates task artifacts
 3. plan operations continue through `activePlan`
 4. memory operations resolve the right project or task index from `.claw/`
 5. truth operations write back into `.claw/truth/`
@@ -242,7 +242,7 @@ The most important Codex-specific behavior is not a new data model.
 It is workflow guidance such as:
 
 - if a session starts in a project with `.claw/`, resolve project context from `cwd`
-- when planning, let `plan write` establish or switch task scope
+- when planning, let `plan create` establish or switch task scope
 - when a task is already explicit, write to that task's current `activePlan`
 - when user asks to revisit a previous task, call `switch-task`
 
@@ -286,7 +286,7 @@ This layer owns the actual semantics of the OpenClaw harness.
 Initial commands:
 
 - `claw init`
-- `claw plan write`
+- `claw plan create`
 - `claw plan edit`
 - `claw plan show`
 - `claw memory edit`
@@ -324,9 +324,9 @@ Recommended first skills:
 - `claw-project-bootstrap`
   - detect `.claw/`
   - explain the current project-level harness context
-  - guide the user into `plan write` when task scope is needed
+  - guide the user into `plan create` when task scope is needed
 - `claw-plan-workflow`
-  - use `plan write` to establish or revisit task scope
+  - use `plan create` to establish or revisit task scope
   - call `claw plan edit` after task scope is explicit
 - `claw-truth-workflow`
   - call `claw truth ingest` when the user explicitly wants to consolidate findings
@@ -343,7 +343,7 @@ The default Codex model should be:
 1. user opens a project in Codex
 2. Codex detects `.claw/`
 3. every `claw` command resolves project context from `cwd`
-4. when the user starts planning work, `plan write` establishes task scope
+4. when the user starts planning work, `plan create` establishes task scope
 5. later plan, memory, and truth operations follow that explicit task scope
 
 This makes Codex simple and predictable without forcing OpenClaw's session-reuse model onto it.
@@ -382,7 +382,7 @@ Task-aware commands can extend that project context with:
 
 It gives us one stable base for the whole harness:
 
-- `plan write` knows where to create or update task scope
+- `plan create` knows where to create or update task scope
 - `memory search` knows which project or task-local index to open
 - `truth ingest` knows where canonical truth docs live
 - host adapters do not need to reinvent project detection logic
@@ -396,7 +396,7 @@ The product itself is still the OpenClaw harness flow above it.
 For Codex MVP:
 
 - do not let project-resolution commands implicitly bind task scope
-- let `plan write` establish task scope like OpenClaw
+- let `plan create` establish task scope like OpenClaw
 - keep session ownership out of the first core contract
 
 ## `switch-task` Recommendation
@@ -510,7 +510,7 @@ Based on the local Codex plugin ecosystem, the first `claw-kit` manifest should 
 Good `defaultPrompt` directions would likely be:
 
 - continue work inside a project that uses `.claw/`
-- use `plan write` when a new task scope needs to be established
+- use `plan create` when a new task scope needs to be established
 - update truth docs from the work completed in this task
 
 ## First Technical Milestone
@@ -519,7 +519,7 @@ The first real milestone should be:
 
 - Codex can enter an existing `.claw/` project
 - resolve project context from `cwd`
-- use `plan write` to establish task scope
+- use `plan create` to establish task scope
 - write or edit the task plan
 - search task or project memory
 - ingest truth updates manually

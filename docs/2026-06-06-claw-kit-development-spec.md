@@ -27,7 +27,7 @@
 - `packages/core`
   - `.claw` path resolution
   - schema and file I/O
-  - `plan write`
+  - `plan create`
   - `plan edit`
   - `switch-task`
   - memory indexing and search
@@ -45,7 +45,7 @@
 ## CLI surface
 
 - `claw context`
-- `claw plan write`
+- `claw plan create`
 - `claw plan edit`
 - `claw switch-task`
 - `claw memory index`
@@ -105,7 +105,7 @@
 
 - Codex is not attach-centric.
 - Codex should resolve `.claw/` from `cwd`.
-- Task scope should be established through `plan write`.
+- Task scope should be established through `plan create`.
 - Hooks are optional enhancements, not correctness dependencies.
 
 ## OpenClaw adapter posture

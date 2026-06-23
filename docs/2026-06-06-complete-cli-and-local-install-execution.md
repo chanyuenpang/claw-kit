@@ -36,7 +36,7 @@ The machine can now use `claw` as a normal shell command for:
 
 - `claw init`
 - `claw context`
-- `claw plan write`
+- `claw plan create`
 - `claw plan edit`
 - `claw switch-task`
 - `claw memory index/search/get`

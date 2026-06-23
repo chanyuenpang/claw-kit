@@ -44,6 +44,20 @@ test("readCodexPluginSource returns manifest metadata and stable payload list", 
   assert.deepEqual(plugin.payloadRelativePaths, CODEX_PLUGIN_PAYLOAD_PATHS);
 });
 
+test("Codex plugin manifest starts with using-claw-kit instead of pre-reading planning", async () => {
+  const manifestPath = new URL("../packages/codex-adapter/.codex-plugin/plugin.json", import.meta.url);
+  const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
+  const promptText = [
+    manifest.interface?.longDescription,
+    ...(manifest.interface?.defaultPrompt ?? []),
+  ].join("\n");
+
+  assert.doesNotMatch(promptText, /first read the planning skill/i);
+  assert.doesNotMatch(promptText, /start by reading the planning skill/i);
+  assert.match(promptText, /When no task scope exists/i);
+  assert.match(promptText, /seeded planning task/i);
+});
+
 test("exportCodexPluginBundle copies the expected payload into a versioned bundle directory", async () => {
   const { sourceDir, root } = await makeFixture();
   const outDir = path.join(root, "dist", "codex-plugin");

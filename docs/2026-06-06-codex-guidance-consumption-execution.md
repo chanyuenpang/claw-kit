@@ -9,7 +9,7 @@ This pass updated the Codex adapter so its startup and workflow skills explicitl
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md`
   - now treats `workflowGuidance` as the primary routing contract when plan command output is available
 - `packages/codex-adapter/skills/planning/SKILL.md`
-  - now requires `plan write -> read workflowGuidance -> refine plan inline -> advance`
+  - now requires `plan create -> read workflowGuidance -> refine plan inline -> advance`
 - `packages/codex-adapter/skills/plan-workflow/SKILL.md`
   - now makes `workflowGuidance` the plan command follow-up contract
 - `packages/codex-adapter/skills/truth-workflow/SKILL.md`

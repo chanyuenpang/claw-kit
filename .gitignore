@@ -15,6 +15,7 @@ Thumbs.db
 # Local reference repos
 /superpowers/
 /gitnexus/
+/.worktrees/
 
 # Node build artifacts
 /node_modules/
@@ -22,3 +23,4 @@ Thumbs.db
 /packages/*/dist/
 /packages/*/dist-test/
 /packages/*/coverage/
+.gitnexus

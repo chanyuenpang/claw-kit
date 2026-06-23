@@ -34,12 +34,13 @@ When `@claw-kit` is used in a real project thread:
   - continue when it auto-initializes `.claw/` or corrects `project.json`
   - report the recovered harness state before normal conversation
 - no task scope:
-  - create or bind one with `claw plan write`
-- task in `prepare.requirements`:
-  - enter goal mode first
-  - check whether requirements are already clear
-  - ask the user only if requirements are still ambiguous
-  - otherwise move directly to `process.active`
+  - create or bind one with `claw plan create`
+- newly created planning-enabled task:
+  - start in `process.discussing`
+  - let task 1 refine the request and append executable tasks
+  - let task 2 bridge into `process.active`
+- task already in `process.discussing`:
+  - continue discussion or planning refinement
 - task in `process.*`:
   - execute against the active plan
 - task near completion:
@@ -51,6 +52,6 @@ When `@claw-kit` is used in a real project thread:
 
 - do not depend on `SessionStart` for correctness
 - do not depend on `PreToolUse` or `PostToolUse`
-- do not invent a second task-binding mechanism outside `plan write`
+- do not invent a second task-binding mechanism outside `plan create`
 - do not branch startup recovery by `SessionStart.source`; use one startup flow and decide only from recoverable workflow or project state
 - do not auto-initialize arbitrary repos in the background without an explicit `@claw-kit` invocation

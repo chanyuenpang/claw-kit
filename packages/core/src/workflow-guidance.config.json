@@ -289,6 +289,17 @@
         "reason": "Execution is paused in `process.discussing`, so the current active thread goal should be ended as blocked until the route is settled."
       }
     },
+    "process.discussing.initial": {
+      "stage": "discussion",
+      "summary": "The plan starts in discussion so the route can be refined before execution.",
+      "nextsteps": [
+        "1. Resolve the discussion, then resume through `process.active`."
+      ],
+      "notes": "Use the seeded planning task to refine the request and append executable tasks before execution begins.",
+      "recommendedCommands": [
+        "{{editBase}} --plan-status process.active"
+      ]
+    },
     "process.discussing.noGoalMode": {
       "stage": "discussion",
       "summary": "The plan is paused for discussion.",

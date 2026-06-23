@@ -2,17 +2,23 @@ import { execSync } from "node:child_process";
 import path from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import type { Plugin } from "@opencode-ai/plugin";
+import type { Part } from "@opencode-ai/sdk";
 
 /**
  * claw-kit OpenCode adapter plugin.
  *
- * Four injection surfaces:
+ * Five injection surfaces:
  *   1. shell.env — inject CLAW_HOST + CLAW_GUIDANCE_CONFIG into all shell executions
  *   2. event(session.created) + event(session.compacted) — one-shot init: detect .claw/,
  *      call claw hook SessionStart. Compaction re-runs because the prior system prompt
  *      injection is lost when the context window is compressed.
- *   3. experimental.chat.system.transform — push cached claw context into system prompt
- *   4. event(session.idle) — goal continuation: advance agent when plan.status is process.active
+ *   3. chat.message — prepend claw context as a synthetic text part to the session's first
+ *      user message. LLMs attend to user messages far more than system prompts, so this is
+ *      the primary injection. Guarded by injectedSessions so it only fires once per session.
+ *   4. experimental.chat.system.transform — push cached claw context into system prompt.
+ *      Retained as a compaction fallback: after context compression the synthetic part may
+ *      be summarized away, so the system prompt re-establishes claw context.
+ *   5. event(session.idle) — goal continuation: advance agent when plan.status is process.active
  */
 
 const ADAPTER_DIR = import.meta.dirname ?? path.dirname(new URL("", import.meta.url).pathname);
@@ -23,6 +29,9 @@ let projectInfo: { projectId: string; projectName: string; clawDir: string } | n
 let recoveredState: string | null = null;
 let clawSessionContext: string | null = null;
 const sessionPlans = new Map<string, { planPath: string; projectDir: string }>();
+// Tracks sessions that already received the claw-context user-message prefix,
+// so chat.message only injects on the first user message of each session.
+const injectedSessions = new Set<string>();
 
 function hasClawProject(dir: string): boolean {
   return existsSync(path.join(dir, ".claw"));
@@ -108,8 +117,6 @@ function readPlanSummary(planPath: string): string | null {
  * Invoke `claw hook SessionStart` to get the full dynamic context that claw CLI
  * generates for this project, including:
  *   - skill loading directive
- *   - pre-authorization for goal mode and subagent delegation
- *   - anti-blocking clause for truth/ADR deposition
  *   - workflowGuidance contract
  *   - active plan recovery (when a plan exists)
  *
@@ -174,7 +181,7 @@ export const ClawKitPlugin: Plugin = async ({ client, directory }) => {
       }
     },
 
-    // (2) Session start (new + compacted) + (4) Goal continuation
+    // (2) Session start (new + compacted) + (5) Goal continuation
     event: async ({ event }) => {
       // New session: initialize claw context
       if (event.type === "session.created") {
@@ -212,13 +219,38 @@ export const ClawKitPlugin: Plugin = async ({ client, directory }) => {
       }
     },
 
-    // (3) Inject recovered state into system prompt
+    // (3) Inject claw context as a synthetic user-message text part (primary injection).
+    // LLMs attend to user messages far more strongly than system prompts, so the claw
+    // workflow context is prepended to the first user message of each session. The
+    // injectedSessions guard ensures this only fires once per session.
+    "chat.message": async (input, output) => {
+      // Skip when there is nothing to inject (non-.claw project, or claw CLI unavailable)
+      if (!inClawProject) return;
+      // Capture into a local const so the narrowing survives the subsequent calls;
+      // module-level `let` narrowing would otherwise be invalidated by injectedSessions use.
+      const context = clawSessionContext;
+      if (!context) return;
+      // First-message guard: inject once per session, never repeat
+      if (injectedSessions.has(input.sessionID)) return;
+      injectedSessions.add(input.sessionID);
+
+      // Prepend claw context as a synthetic text part. opencode auto-fills
+      // id/sessionID/messageID on persistence, so only type/text/synthetic are set;
+      // synthetic:true keeps the UI collapsed while the LLM still sees the text.
+      output.parts.unshift({
+        type: "text",
+        text: context,
+        synthetic: true,
+      } as unknown as Part);
+    },
+
+    // (4) Inject recovered state into system prompt — compaction fallback
     "experimental.chat.system.transform": async (_input, output) => {
       // Unconditional: inject claw workflow context whenever inside a .claw project
       if (!inClawProject) return;
 
-      // Prefer full claw hook SessionStart context (includes authorization,
-      // skill loading, workflowGuidance, and plan recovery)
+      // Prefer full claw hook SessionStart context (includes skill loading,
+      // workflowGuidance, and plan recovery)
       if (clawSessionContext) {
         output.system.push(clawSessionContext);
         return;
@@ -237,7 +269,7 @@ export const ClawKitPlugin: Plugin = async ({ client, directory }) => {
       }
       lines.push("");
       lines.push("Load the using-claw-kit skill as the main workflow skill for this session.");
-      lines.push("Use claw plan write to create task scope when none exists.");
+      lines.push("Use claw plan create to create task scope when none exists.");
       lines.push("Follow the claw workflowGuidance return fields as the required next-step contract.");
       lines.push("Use claw search for project recall.");
       lines.push("");

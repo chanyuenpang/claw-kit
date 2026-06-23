@@ -7,6 +7,7 @@ export * from "./plan-events.js";
 export * from "./project-check.js";
 export * from "./requirements-gate.js";
 export * from "./plan.js";
+export * from "./plan-templates.js";
 export * from "./plan-view.js";
 export * from "./switch-task.js";
 export * from "./task-retention.js";

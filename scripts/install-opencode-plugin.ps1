@@ -3,6 +3,19 @@
 
 $ErrorActionPreference = "Stop"
 
+function Assert-Command {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Name
+  )
+
+  if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
+    throw "Required command not found: $Name"
+  }
+}
+
+Assert-Command -Name "node"
+
 Write-Host "Installing claw-kit OpenCode plugin..." -ForegroundColor Cyan
 
 # Build core and CLI first
@@ -12,7 +25,8 @@ npm run build -w @veewo/claw
 Pop-Location
 
 # Install the plugin
-node "$PSScriptRoot\install-opencode-plugin.mjs"
+$repoRoot = Split-Path -Parent $PSScriptRoot
+node (Join-Path $PSScriptRoot "install-opencode-plugin.mjs") --source-dir (Join-Path $repoRoot "packages\opencode-adapter")
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "claw-kit OpenCode plugin installed successfully." -ForegroundColor Green

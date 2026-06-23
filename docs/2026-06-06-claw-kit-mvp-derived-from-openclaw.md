@@ -40,7 +40,7 @@ Status here:
 
 - partially implemented in `src/context.ts`
 
-### 2. `claw plan write`
+### 2. `claw plan create`
 
 Purpose:
 
@@ -56,7 +56,7 @@ Why it belongs:
 
 What to preserve from OpenClaw:
 
-- task scope is established by `plan_write`
+- task scope is established by `plan_create`
 - root plan defaults to `plan.json`
 - canonical status model
 - structured task context fields in the plan document
@@ -77,7 +77,7 @@ Purpose:
 
 Why it belongs:
 
-- it is the main continuation path after `plan_write`
+- it is the main continuation path after `plan_create`
 - it owns much of the core harness state machine
 
 What to preserve from OpenClaw:
@@ -168,7 +168,7 @@ Current judgment:
 Reason:
 
 - project detection comes from `cwd`
-- task scope comes from `plan_write`
+- task scope comes from `plan_create`
 
 ### `claw switch-task`
 
@@ -180,7 +180,7 @@ Current judgment:
 Reason:
 
 - the user considers it an advanced or rare workflow now
-- the OpenClaw harness itself is already centered more on `plan_write`
+- the OpenClaw harness itself is already centered more on `plan_create`
 
 ### plan guard
 
@@ -196,7 +196,7 @@ Reason:
 ## Recommended Implementation Order
 
 1. strengthen the existing context resolver
-2. implement `claw plan write`
+2. implement `claw plan create`
 3. implement `claw plan edit`
 4. implement `claw memory search`
 5. implement `claw memory index`

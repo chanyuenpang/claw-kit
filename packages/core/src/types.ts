@@ -23,24 +23,18 @@ export type ProjectConfig = {
   id?: string;
   name?: string;
   maxTasksToKeep?: number;
+  planning?: boolean;
+  goalMode?: boolean;
+  truthDispatch?: "per_task" | "final_only";
+  externalPlanningSkill?: string | null;
   externalTruthSkill?: string | null;
   externalAdrSkill?: string | null;
   contextPaths?: string[];
-  workflow?: {
-    goalMode?: {
-      enabled?: boolean;
-    } | null;
-    truthDispatch?: {
-      mode?: "per_task" | "final_only";
-    } | null;
-  };
   memory?: {
     externalDocPaths?: string[];
     embedding?: MemoryEmbeddingConfig | null;
   };
-  gitnexus?: {
-    enabled?: boolean;
-  };
+  gitnexus?: boolean;
 };
 
 export type PlanPhase = "prepare" | "process" | "end";
@@ -446,10 +440,12 @@ export type PlanWriteInput = {
   cwd: string;
   taskName?: string;
   filePath?: string;
+  templateName?: string;
   title?: string;
   description?: string;
   goalText?: string;
   planStatus?: string;
+  forcePlanning?: boolean;
   ownerSessionKey?: string;
   content?: PlanDocument;
   parentTaskId?: number;
@@ -481,7 +477,7 @@ export type SubplanWriteInput = {
   cwd: string;
   parentTaskName: string;
   parentTaskId: number;
-  title: string;
+  templateName?: string;
   ownerSessionKey?: string;
 };
 

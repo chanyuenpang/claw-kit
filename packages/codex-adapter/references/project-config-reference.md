@@ -17,14 +17,12 @@ Use it when a Codex thread needs to explain or tune `.claw/project.json` or `.cl
   - put it in `.claw/project.json`
 - Personal runtime preference
   - put it in `.claw/project-override.json`
-- Turn project memory or recall off
-  - change `memory.enabled`
 - Tune recall or embeddings
   - change `memory.externalDocPaths` or `memory.embedding`
 - Add external truth or ADR writers
   - set `externalTruthSkill` or `externalAdrSkill`
 - Pair the workflow with GitNexus
-  - enable `gitnexus.enabled` only when the project actually wants that integration
+  - set `gitnexus` to `true` only when the project actually wants that integration
 
 ## Config layers
 
@@ -51,17 +49,15 @@ Use it when a Codex thread needs to explain or tune `.claw/project.json` or `.cl
   - optional truth-writer override
 - `externalAdrSkill`
   - optional ADR-writer override
-- `memory.enabled`
-  - master switch for project memory behavior
 - `memory.externalDocPaths`
   - markdown recall roots for `claw search`
 - `memory.embedding`
   - embedding provider and recall-index behavior
-- `gitnexus.enabled`
+- `gitnexus`
   - enables GitNexus-related closeout behavior
-- `workflow.goalMode.enabled`
+- `goalMode`
   - suppresses `goalMode` guidance when set to `false`
-- `workflow.truthDispatch.mode`
+- `truthDispatch`
   - `per_task` or `final_only`
 
 ## Practical guidance

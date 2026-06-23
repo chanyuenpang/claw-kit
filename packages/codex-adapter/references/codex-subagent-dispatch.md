@@ -96,7 +96,7 @@ Send:
 - the `claw-kit:researcher` skill item
 - the exact investigation question
 - any narrow target files, modules, or paths
-- the `gitnexus.enabled` state when that matters
+- the `gitnexus` state when that matters
 
 Expected behavior:
 

@@ -102,34 +102,37 @@ function readRawProjectConfig(projectJsonPath: string): {
 
 function normalizeProjectConfig(raw: unknown, projectRoot: string): ProjectConfig {
   const source = asObject(raw);
-  const { autoAchieveTask: _autoAchieveTask, ...sourceWithoutLegacyAutoAchieve } = source ?? {};
+  const {
+    autoAchieveTask: _autoAchieveTask,
+    workflow: _workflow,
+    gitnexus: _gitnexus,
+    goalMode: _goalMode,
+    truthDispatch: _truthDispatch,
+    ...sourceWithoutLegacy
+  } = source ?? {};
   const sourceMemory = asObject(source?.memory);
-  const sourceGitnexus = asObject(source?.gitnexus);
   const maxTasksToKeep = source?.maxTasksToKeep;
 
   return {
-    ...sourceWithoutLegacyAutoAchieve,
+    ...sourceWithoutLegacy,
     id: deriveProjectId(source, projectRoot),
     name: deriveProjectName(source, projectRoot),
     maxTasksToKeep:
       Number.isInteger(maxTasksToKeep) && (maxTasksToKeep as number) >= 1
         ? (maxTasksToKeep as number)
         : DEFAULT_MAX_TASKS_TO_KEEP,
+    planning: typeof source?.planning === "boolean" ? source.planning : true,
+    goalMode: readBooleanConfig(source, "goalMode", true),
+    truthDispatch: readTruthDispatchConfig(source, "truthDispatch", "per_task"),
+    externalPlanningSkill: normalizeOptionalSkill(source?.externalPlanningSkill),
     externalTruthSkill: normalizeOptionalSkill(source?.externalTruthSkill),
     externalAdrSkill: normalizeOptionalSkill(source?.externalAdrSkill),
     contextPaths: normalizeStringArray(source?.contextPaths),
-    workflow: {
-      goalMode: normalizeGoalModeConfig(asObject(source?.workflow)?.goalMode),
-      truthDispatch: normalizeTruthDispatchConfig(asObject(source?.workflow)?.truthDispatch),
-    },
     memory: {
       externalDocPaths: normalizeStringArray(sourceMemory?.externalDocPaths),
       embedding: normalizeMemoryEmbeddingConfig(sourceMemory?.embedding),
     },
-    gitnexus: {
-      ...sourceGitnexus,
-      enabled: typeof sourceGitnexus?.enabled === "boolean" ? sourceGitnexus.enabled : false,
-    },
+    gitnexus: readBooleanConfig(source, "gitnexus", false),
   };
 }
 
@@ -171,14 +174,14 @@ function validateProjectConfig(raw: unknown, issues: ProjectProtocolIssue[]): vo
   requireString(config, "id", issues);
   requireString(config, "name", issues);
   requireIntegerAtLeast(config, "maxTasksToKeep", 1, issues);
+  requireBoolean(config, "planning", issues);
+  requireBoolean(config, "goalMode", issues);
+  requireTruthDispatchString(config, "truthDispatch", issues);
+  requireNullableString(config, "externalPlanningSkill", issues);
   requireNullableString(config, "externalTruthSkill", issues);
   requireNullableString(config, "externalAdrSkill", issues);
   requireStringArray(config, "contextPaths", issues);
-  const workflow = requireObject(config, "workflow", issues);
-  if (workflow) {
-    requireNullableGoalModeConfig(workflow, "goalMode", issues, "workflow.goalMode");
-    requireNullableTruthDispatchConfig(workflow, "truthDispatch", issues, "workflow.truthDispatch");
-  }
+  requireBoolean(config, "gitnexus", issues);
 
   const memory = requireObject(config, "memory", issues);
   if (memory) {
@@ -186,10 +189,6 @@ function validateProjectConfig(raw: unknown, issues: ProjectProtocolIssue[]): vo
     requireNullableEmbeddingConfig(memory, "embedding", issues, "memory.embedding");
   }
 
-  const gitnexus = requireObject(config, "gitnexus", issues);
-  if (gitnexus) {
-    requireBoolean(gitnexus, "enabled", issues, "gitnexus.enabled");
-  }
 }
 
 function requireString(
@@ -235,6 +234,22 @@ function requireBoolean(
   }
   if (typeof source[key] !== "boolean") {
     issues.push({ path: label, message: "Field must be a boolean." });
+  }
+}
+
+function requireTruthDispatchString(
+  source: Record<string, unknown>,
+  key: string,
+  issues: ProjectProtocolIssue[],
+  label = key,
+): void {
+  if (!(key in source)) {
+    issues.push({ path: label, message: "Field is required and must be explicitly present." });
+    return;
+  }
+  const value = source[key];
+  if (value !== "per_task" && value !== "final_only") {
+    issues.push({ path: label, message: 'Field must be "per_task" or "final_only".' });
   }
 }
 
@@ -319,24 +334,49 @@ function normalizeOptionalSkill(value: unknown): string | null {
   return trimmed ? trimmed : null;
 }
 
-function normalizeGoalModeConfig(value: unknown): { enabled: boolean } | null {
-  const goalMode = asObject(value);
-  if (value === null) {
-    return null;
+function readBooleanConfig(source: Record<string, unknown> | null, key: string, fallback: boolean): boolean {
+  const direct = readBooleanLike(source?.[key]);
+  if (direct !== undefined) {
+    return direct;
   }
-  return {
-    enabled: typeof goalMode?.enabled === "boolean" ? goalMode.enabled : true,
-  };
+  const workflow = asObject(source?.workflow);
+  const workflowValue = readBooleanLike(workflow?.[key]);
+  return workflowValue ?? fallback;
 }
 
-function normalizeTruthDispatchConfig(value: unknown): { mode: "per_task" | "final_only" } | null {
-  const truthDispatch = asObject(value);
-  if (value === null) {
-    return null;
+function readBooleanLike(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") {
+    return value;
   }
-  return {
-    mode: truthDispatch?.mode === "final_only" ? "final_only" : "per_task",
-  };
+  const objectValue = asObject(value);
+  if (typeof objectValue?.enabled === "boolean") {
+    return objectValue.enabled;
+  }
+  return undefined;
+}
+
+function readTruthDispatchConfig(
+  source: Record<string, unknown> | null,
+  key: string,
+  fallback: "per_task" | "final_only",
+): "per_task" | "final_only" {
+  const direct = readTruthDispatchLike(source?.[key]);
+  if (direct) {
+    return direct;
+  }
+  const workflow = asObject(source?.workflow);
+  return readTruthDispatchLike(workflow?.[key]) ?? fallback;
+}
+
+function readTruthDispatchLike(value: unknown): "per_task" | "final_only" | undefined {
+  if (value === "per_task" || value === "final_only") {
+    return value;
+  }
+  const objectValue = asObject(value);
+  if (objectValue?.mode === "per_task" || objectValue?.mode === "final_only") {
+    return objectValue.mode;
+  }
+  return undefined;
 }
 
 function normalizeMemoryEmbeddingConfig(value: unknown): MemoryEmbeddingConfig | null {
@@ -523,53 +563,5 @@ function requireNullableEmbeddingConfig(
         }
       }
     }
-  }
-}
-
-function requireNullableGoalModeConfig(
-  source: Record<string, unknown>,
-  key: string,
-  issues: ProjectProtocolIssue[],
-  label = key,
-): void {
-  if (!(key in source)) {
-    issues.push({ path: label, message: "Field is required and must be explicitly present." });
-    return;
-  }
-  const value = source[key];
-  if (value === null) {
-    return;
-  }
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    issues.push({ path: label, message: "Field must be an object or null." });
-    return;
-  }
-  const goalMode = value as Record<string, unknown>;
-  if ("enabled" in goalMode && typeof goalMode.enabled !== "boolean") {
-    issues.push({ path: `${label}.enabled`, message: "Field must be a boolean when present." });
-  }
-}
-
-function requireNullableTruthDispatchConfig(
-  source: Record<string, unknown>,
-  key: string,
-  issues: ProjectProtocolIssue[],
-  label = key,
-): void {
-  if (!(key in source)) {
-    issues.push({ path: label, message: "Field is required and must be explicitly present." });
-    return;
-  }
-  const value = source[key];
-  if (value === null) {
-    return;
-  }
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    issues.push({ path: label, message: "Field must be an object or null." });
-    return;
-  }
-  const truthDispatch = value as Record<string, unknown>;
-  if ("mode" in truthDispatch && truthDispatch.mode !== "per_task" && truthDispatch.mode !== "final_only") {
-    issues.push({ path: `${label}.mode`, message: 'Field must be "per_task" or "final_only" when present.' });
   }
 }

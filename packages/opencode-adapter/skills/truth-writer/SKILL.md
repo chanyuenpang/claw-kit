@@ -1,8 +1,11 @@
 ---
 name: truth-writer
-description: Use when a completed subtask report should be deposited into canonical .claw truth.
+description: Use when durable findings, completed task reports, or reusable project knowledge should be deposited into a canonical truth corpus.
 ---
-# claw-kit truth writer
+# truth writer
+
+This skill deposits reusable completed-work knowledge into canonical truth.
+In claw-kit projects, the default corpus is `.claw/truth/`.
 
 ## Dispatch model
 

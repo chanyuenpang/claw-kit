@@ -1,11 +1,9 @@
 ---
 name: adr-writer
-description: Use when a completed .claw plan should be deposited into canonical ADR documents.
+description: Use when durable architecture or workflow decisions from completed work should be deposited into canonical ADR documents.
 ---
 
-# claw-kit ADR writer
-
-This skill ports OpenClaw's ADR-agent behavior into Codex.
+# ADR writer
 
 Primary reference:
 
@@ -13,26 +11,14 @@ Primary reference:
 
 ## Purpose
 
-Capture durable architecture decisions from plans or completed work into canonical ADRs under `.claw/truth/adr/`.
+Capture durable architecture decisions from plans or completed work into canonical ADRs.
+In claw-kit projects, canonical ADRs live under `.claw/truth/adr/`.
 
 ## Delegation model
 
-This skill runs as a dedicated ADR deposition subagent.
-
-The main agent must:
-
-1. identify the completed plan to deposit
-2. pass the completed plan file as the deposition bundle
-3. reuse an existing `adr-writer` worker in the current thread when it still fits the same role
-4. dispatch a new `adr-writer` worker when no suitable same-type specialist is already active
-5. use `agent_type: "worker"` with model `gpt-5.4-mini` for a new writer
-6. set `fork_context: false` for a new writer so the dispatch does not clone full thread history
-7. attach this `claw-kit:adr-writer` skill explicitly in the dispatch bundle
-8. do not block the main task lifecycle waiting for a result
-9. treat any returned payload as optional telemetry only
-
-This keeps the main agent focused on primary execution and coordination.
-Canonical ADR updates run through `adr-writer`, not a main-agent inline shortcut.
+This skill is a dedicated decision deposition worker.
+The caller provides a completed plan, decision report, or equivalent context bundle.
+The writer judges whether the material contains durable decisions, then updates canonical ADRs.
 
 ## What counts as ADR-worthy
 
@@ -62,6 +48,7 @@ The plan and its durable decisions are the source:
 
 - Update an existing ADR when the decision already exists.
 - Create a new ADR only for a distinct decision.
+- Use the project's canonical ADR location; use `.claw/truth/adr/` for claw-kit projects.
 - Keep filenames in searchable kebab-case.
 - Follow the local numbering convention when the repository already uses one.
 - Write body text in Chinese when the target repository expects Chinese docs, while preserving exact identifiers and paths.
@@ -80,11 +67,12 @@ Unless the repository already uses a stronger local convention, keep ADRs compac
 
 ## Codex workflow
 
-1. Main agent passes the completed `plan.json`.
-2. The ADR subagent reads existing ADRs first.
-3. The ADR subagent reads durable decisions and retrospective context from the completed plan itself.
-4. The ADR subagent updates an existing ADR when the decision already exists and creates a new ADR when the decision is distinct.
-5. The ADR subagent updates `SUMMARY.md` when the ADR set materially changed.
+1. Receive a completed plan, decision report, or equivalent decision bundle.
+2. Read existing ADRs first.
+3. Extract only durable decisions and their consequences.
+4. Update an existing ADR when the decision already exists.
+5. Create a new ADR only when the decision is distinct.
+6. Update the project truth or ADR index when the ADR set materially changed.
 
 ## Output expectation
 
@@ -97,12 +85,11 @@ Do not send a long decision essay back to the main agent.
 
 ## Timing rule
 
-Use this skill after plan completion in this order:
+Use this skill after completion when:
 
-- `claw plan done` or `claw plan edit --plan-status end.completed` has already succeeded
-- `workflowGuidance.delegateSubagents` has been read
-- `tool_search` has located the current session's agent-management tools
 - the completed plan file is available as the deposition bundle
+- the completed work records durable decisions with consequences
+- ordinary truth deposition is not the better fit
 
 Do not use ADR deposition as the immediate next step for mere task completion while the plan is still open.
 

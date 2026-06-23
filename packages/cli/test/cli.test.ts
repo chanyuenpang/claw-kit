@@ -229,6 +229,8 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
         id: "cli-e2e",
         name: "CLI E2E",
         maxTasksToKeep: 99,
+        planning: false,
+        externalPlanningSkill: null,
         externalTruthSkill: "external-truth-writer",
         externalAdrSkill: "external-adr-writer",
         contextPaths: [],
@@ -256,7 +258,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   });
 
   const writeResult = runClaw(
-    ["plan", "write", "--title", "e2e-task", "--goal", "Verify the CLI lifecycle"],
+    ["plan", "create", "--title", "e2e-task", "--goal", "Verify the CLI lifecycle"],
     root,
     env,
   );
@@ -264,55 +266,29 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   assert.equal("summary" in writeResult, false);
   assert.equal("taskName" in writeResult, false);
   assert.equal("planFile" in writeResult, false);
-  assert.equal(writeResult.planSummary, "e2e-task");
-  assert.equal(writeResult.goalMode, undefined);
-  assert.equal(writeResult.goalTool, undefined);
+  assert.equal(writeResult.planSummary, "0/1 e2e-task");
+  const createGoalMode = writeResult.goalMode as JsonRecord;
+  const createGoalTool = writeResult.goalTool as JsonRecord;
+  assert.match(String(createGoalMode.recommendedObjective), /Verify the CLI lifecycle/);
+  assert.equal(createGoalMode.setWhen, "on_enter_process_active");
+  assert.equal(createGoalTool.tool, "create_goal");
+  assert.equal(createGoalTool.ifNoActiveGoal, true);
   assert.equal("nextAction" in writeResult, false);
   assert.equal("instruction" in writeResult, false);
   assert.equal("askUser" in writeResult, false);
   assert.equal(
     writeResult.notes,
-    "Fill only the fields still needed to execute, such as `requirements`, `tasks`, `references`, `rules`, and `keyDecisions`. If scope is still unclear, clarify it with the user before switching to `process.active`.",
+    "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
   );
   assert.equal((writeResult.plan as JsonRecord).title, "e2e-task");
-  assert.equal((writeResult.plan as JsonRecord).status, "prepare.requirements");
-
-  const activateResult = runClaw(
-    ["plan", "edit", "--task", "e2e-task", "--plan-status", "process.active"],
-    root,
-    env,
-  );
-  const activateGoalMode = activateResult.goalMode as JsonRecord;
-  const activateGoalTool = activateResult.goalTool as JsonRecord;
-  assert.match(String(activateGoalMode.recommendedObjective), /Verify the CLI lifecycle/);
-  assert.equal(activateGoalMode.setWhen, "on_enter_process_active");
-  assert.equal(activateGoalTool.tool, "create_goal");
-  assert.equal(activateGoalTool.ifNoActiveGoal, true);
-
-  const patchPath = path.join(root, "append-tasks.json");
-  fs.writeFileSync(
-    patchPath,
-    JSON.stringify([{ id: 1, title: "Ship verification", status: "pending" }], null, 2),
-    "utf-8",
-  );
-  const appendResult = runClaw(
-    ["plan", "edit", "--task", "e2e-task", "--append-tasks", patchPath],
-    root,
-    env,
-  );
-  assert.equal(appendResult.planSummary, "0/1 e2e-task");
-  assert.deepEqual(appendResult.nextTask, {
-    id: 1,
-    title: "Ship verification",
-    status: "pending",
-  });
+  assert.equal((writeResult.plan as JsonRecord).status, "process.active");
 
   const inProgressPath = path.join(root, "mark-in-progress.json");
   fs.writeFileSync(
     inProgressPath,
     JSON.stringify(
       {
-        tasks: [{ id: 1, title: "Ship verification", status: "in_progress" }],
+        tasks: [{ id: 1, title: "Verify the CLI lifecycle", status: "in_progress" }],
       },
       null,
       2,
@@ -403,39 +379,46 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   assert.match(gitnexusLog, /analyze\r?\n?$/m);
 });
 
-test("cli plan write accepts a positional title and blocks process.active without goal", () => {
+test("cli plan create accepts a positional title and seeds planning discussion by default", () => {
   const root = createFixture("positional-title");
   runClaw(["init", "--name", "Positional Title"], root);
 
-  const writeResult = runClaw(["plan", "write", "这是一个任务标题"], root);
-  assert.equal(writeResult.planSummary, "这是一个任务标题");
+  const writeResult = runClaw(["plan", "create", "这是一个任务标题"], root);
+  assert.equal(writeResult.planSummary, "0/2 这是一个任务标题");
   assert.equal(writeResult.goalMode, undefined);
-  assert.equal(
-    (writeResult.recommendedCommands as string[])[0],
-    "claw plan edit --task 这是一个任务标题 --plan-status process.active",
-  );
-  assert.equal(
-    (writeResult.recommendedCommands as string[])[1],
-    `claw plan edit --task ${String(writeResult.planSummary)} --patch <updated-plan.json>`,
-  );
-  assert.equal(
-    (writeResult.recommendedCommands as string[])[2],
-    `claw plan edit --task ${String(writeResult.planSummary)} --reference-path <path> --reference-why <why>`,
-  );
-  assert.ok((writeResult.nextsteps as string[]).includes("1. Fill `goal.text`."));
+  assert.deepEqual(writeResult.nextsteps, [
+    "1. Resolve the discussion, then resume through `process.active`.",
+  ]);
+  assert.equal("goalTool" in writeResult, false);
+  assert.equal((writeResult.plan as JsonRecord).status, "process.discussing");
+  const plan = writeResult.plan as JsonRecord;
+  const tasks = plan.tasks as JsonRecord[];
+  assert.equal(String((tasks[0] as JsonRecord).title), "Use the planning skill to refine the request and append executable tasks");
+  assert.equal(String((tasks[1] as JsonRecord).title), "Enter process.active");
+});
 
-  const failure = runClawExpectFailure(
-    ["plan", "edit", "--task", "这是一个任务标题", "--plan-status", "process.active"],
-    root,
-  );
-  const error = failure.error as JsonRecord;
-  assert.match(String(error.message), /goal\.text is required before the plan can leave prepare\.requirements/);
+test("cli plan create accepts an explicit template flag", () => {
+  const root = createFixture("template-flag");
+  runClaw(["init", "--name", "Template Alias"], root);
+
+  const result = runClaw(["plan", "create", "Templated task", "--template", "default"], root);
+  const plan = result.plan as JsonRecord;
+  const tasks = plan.tasks as JsonRecord[];
+
+  assert.equal(result.command, "plan.create");
+  assert.equal((plan.status as string), "process.discussing");
+  assert.deepEqual(result.nextsteps, [
+    "1. Resolve the discussion, then resume through `process.active`.",
+  ]);
+  assert.equal("goalTool" in result, false);
+  assert.equal(String((tasks[0] as JsonRecord).title), "Use the planning skill to refine the request and append executable tasks");
+  assert.equal(String((tasks[1] as JsonRecord).title), "Enter process.active");
 });
 
 test("cli plan edit accepts single-reference shortcut flags", () => {
   const root = createFixture("plan-edit-reference-flags");
-  runClaw(["init", "--name", "Reference Flags"], root);
-  runClaw(["plan", "write", "--title", "demo-task", "--goal", "Track one reference"], root);
+  runClaw(["init", "--name", "Reference Flags", "--planning", "false"], root);
+  runClaw(["plan", "create", "--title", "demo-task", "--goal", "Track one reference"], root);
 
   runClaw(
     [
@@ -463,8 +446,8 @@ test("cli plan edit accepts single-reference shortcut flags", () => {
 
 test("cli plan edit rejects partial single-reference shortcut flags", () => {
   const root = createFixture("plan-edit-reference-flags-missing-half");
-  runClaw(["init", "--name", "Reference Flags Missing Half"], root);
-  runClaw(["plan", "write", "--title", "demo-task", "--goal", "Track one reference"], root);
+  runClaw(["init", "--name", "Reference Flags Missing Half", "--planning", "false"], root);
+  runClaw(["plan", "create", "--title", "demo-task", "--goal", "Track one reference"], root);
 
   const result = runClawExpectFailure(
     [
@@ -484,17 +467,16 @@ test("cli plan edit rejects partial single-reference shortcut flags", () => {
 
 test("cli plan edit wait and resume surfaces goal mode pause and restart guidance", () => {
   const root = createFixture("plan-edit-wait-and-resume-guidance");
-  runClaw(["init", "--name", "Wait And Resume Guidance"], root);
-  runClaw(["plan", "write", "--title", "demo-task", "--goal", "Pause and resume cleanly"], root);
+  runClaw(["init", "--name", "Wait And Resume Guidance", "--planning", "false"], root);
+  runClaw(["plan", "create", "--title", "demo-task", "--goal", "Pause and resume cleanly"], root);
 
   const patchPath = path.join(root, "wait-guidance-tasks.json");
   fs.writeFileSync(
     patchPath,
-    JSON.stringify([{ id: 1, title: "Implement work", status: "in_progress" }], null, 2),
+    JSON.stringify({ tasks: [{ id: 1, title: "Implement work", status: "in_progress" }] }, null, 2),
     "utf-8",
   );
-  runClaw(["plan", "edit", "--task", "demo-task", "--append-tasks", patchPath], root);
-  runClaw(["plan", "edit", "--task", "demo-task", "--plan-status", "process.active"], root);
+  runClaw(["plan", "edit", "--task", "demo-task", "--patch", patchPath], root);
 
   const waitResult = runClaw(["plan", "edit", "--task", "demo-task", "--plan-status", "process.wait"], root);
   assert.equal(waitResult.planStatus, "process.wait");
@@ -585,12 +567,11 @@ test("cli search accepts a positional query for project recall", () => {
 
 test("cli plan edit append-tasks auto-assigns ids when omitted", () => {
   const root = createFixture("append-auto-task-ids");
-  runClaw(["init", "--name", "Append Auto Ids"], root);
+  runClaw(["init", "--name", "Append Auto Ids", "--planning", "false"], root);
   runClaw(
-    ["plan", "write", "--title", "demo-task", "--goal", "Verify auto ids"],
+    ["plan", "create", "--title", "demo-task", "--goal", "Verify auto ids"],
     root,
   );
-  runClaw(["plan", "edit", "--task", "demo-task", "--plan-status", "process.active"], root);
 
   const explicitPath = path.join(root, "append-explicit.json");
   fs.writeFileSync(
@@ -608,10 +589,10 @@ test("cli plan edit append-tasks auto-assigns ids when omitted", () => {
   );
   const result = runClaw(["plan", "edit", "--task", "demo-task", "--append-tasks", autoPath], root);
 
-  assert.equal(result.planSummary, "0/2 demo-task");
+  assert.equal(result.planSummary, "0/3 demo-task");
   assert.deepEqual(result.nextTask, {
-    id: 3,
-    title: "Existing numbered task",
+    id: 1,
+    title: "Verify auto ids",
     status: "pending",
   });
 
@@ -622,6 +603,7 @@ test("cli plan edit append-tasks auto-assigns ids when omitted", () => {
     title: String(task.title),
   }));
   assert.deepEqual(tasks, [
+    { id: 1, title: "Verify auto ids" },
     { id: 3, title: "Existing numbered task" },
     { id: 4, title: "Auto numbered task" },
   ]);
@@ -634,6 +616,8 @@ test("cli returns truth-writer contract on completed task before final plan comp
       "init",
       "--name",
       "CLI Truth Contract",
+      "--planning",
+      "false",
       "--external-truth-skill",
       "external-truth-writer",
     ],
@@ -655,7 +639,7 @@ test("cli returns truth-writer contract on completed task before final plan comp
     ),
     "utf-8",
   );
-  runClaw(["plan", "write", "--title", "demo-task", "--goal", "Verify task completion contract"], root);
+  runClaw(["plan", "create", "--title", "demo-task", "--goal", "Verify task completion contract"], root);
   runClaw(["plan", "edit", "--task", "demo-task", "--patch", contentPath], root);
   runClaw(["plan", "edit", "--task", "demo-task", "--plan-status", "process.active"], root);
 
@@ -692,7 +676,7 @@ test("cli returns truth-writer contract on completed task before final plan comp
 
 test("cli respects project override toggles for goal mode and final-only truth dispatch", () => {
   const root = createFixture("cli-project-override-toggles");
-  runClaw(["init", "--name", "CLI Override Toggles"], root);
+  runClaw(["init", "--name", "CLI Override Toggles", "--planning", "false"], root);
 
   fs.writeFileSync(
     path.join(root, ".claw", "project.json"),
@@ -769,7 +753,7 @@ test("cli respects project override toggles for goal mode and final-only truth d
   );
 
   const writeResult = runClaw(
-    ["plan", "write", "--title", "demo-task", "--goal", "Respect project override toggles"],
+    ["plan", "create", "--title", "demo-task", "--goal", "Respect project override toggles"],
     root,
   );
   assert.equal("goalMode" in writeResult, false);
@@ -797,7 +781,7 @@ test("cli respects project override toggles for goal mode and final-only truth d
 
 test("cli task status changed back to pending does not return nextTask", () => {
   const root = createFixture("cli-pending-no-next-task");
-  runClaw(["init", "--name", "Pending No NextTask"], root);
+  runClaw(["init", "--name", "Pending No NextTask", "--planning", "false"], root);
 
   const contentPath = path.join(root, "plan.json");
   fs.writeFileSync(
@@ -814,7 +798,7 @@ test("cli task status changed back to pending does not return nextTask", () => {
     ),
     "utf-8",
   );
-  runClaw(["plan", "write", "--title", "demo-task", "--goal", "Keep pending edits lightweight"], root);
+  runClaw(["plan", "create", "--title", "demo-task", "--goal", "Keep pending edits lightweight"], root);
   runClaw(["plan", "edit", "--task", "demo-task", "--patch", contentPath], root);
   runClaw(["plan", "edit", "--task", "demo-task", "--plan-status", "process.active"], root);
 
@@ -830,10 +814,10 @@ test("cli task status changed back to pending does not return nextTask", () => {
   ]);
 });
 
-test("cli subplan write keeps task rootPlan stable and derives goal from the parent task", () => {
-  const root = createFixture("cli-subplan-write");
-  runClaw(["init", "--name", "Subplan Write"], root);
-  runClaw(["plan", "write", "--title", "demo-task", "--goal", "Parent goal"], root);
+test("cli subplan create keeps task rootPlan stable and derives goal from the parent task", () => {
+  const root = createFixture("cli-subplan-create");
+  runClaw(["init", "--name", "Subplan Write", "--planning", "false"], root);
+  runClaw(["plan", "create", "--title", "demo-task", "--goal", "Parent goal"], root);
 
   const patchPath = path.join(root, "root-tasks.json");
   fs.writeFileSync(
@@ -849,23 +833,67 @@ test("cli subplan write keeps task rootPlan stable and derives goal from the par
   );
   runClaw(["plan", "edit", "--task", "demo-task", "--patch", patchPath], root);
 
-  const result = runClaw(
-    ["subplan", "write", "--parent", "demo-task", "--task-id", "1", "--title", "child-plan"],
-    root,
-  );
+  const result = runClaw(["subplan", "create", "--parent", "demo-task", "--task-id", "1"], root);
 
-  assert.match(String(result.planPath), /tasks[\\/]demo-task[\\/]plans[\\/]child-plan\.json$/);
+  assert.match(String(result.planPath), /tasks[\\/]demo-task[\\/]plans[\\/]Implement-child-work\.json$/);
   const meta = JSON.parse(fs.readFileSync(path.join(root, ".claw", "tasks", "demo-task", "meta.json"), "utf-8")) as JsonRecord;
   const childPlan = JSON.parse(fs.readFileSync(String(result.planPath), "utf-8")) as JsonRecord;
   assert.equal(meta.rootPlan, "plan.json");
-  assert.equal(meta.activePlan, "plans/child-plan.json");
+  assert.equal(meta.activePlan, "plans/Implement-child-work.json");
+  assert.equal(childPlan.title, "Implement child work");
+  assert.equal(childPlan.status, "process.discussing");
+  assert.deepEqual(result.nextsteps, [
+    "1. Resolve the discussion, then resume through `process.active`.",
+  ]);
+  assert.equal("goalTool" in result, false);
   assert.equal(((childPlan.goal as JsonRecord).text), "Implement child work: Split the risky work into a subplan");
+});
+
+test("cli subplan create accepts an explicit template flag", () => {
+  const root = createFixture("cli-subplan-create-template-goal");
+  runClaw(["init", "--name", "Subplan Create Template Goal"], root);
+  runClaw(["plan", "create", "--title", "demo-task", "--goal", "Parent goal"], root);
+
+  const patchPath = path.join(root, "root-tasks.json");
+  fs.writeFileSync(
+    patchPath,
+    JSON.stringify(
+      {
+        tasks: [{ id: 1, title: "Implement child work", status: "pending" }],
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  runClaw(["plan", "edit", "--task", "demo-task", "--patch", patchPath], root);
+
+  const result = runClaw(
+    [
+      "subplan",
+      "create",
+      "--parent",
+      "demo-task",
+      "--task-id",
+      "1",
+      "--template",
+      "default",
+    ],
+    root,
+  );
+
+  const childPlan = JSON.parse(fs.readFileSync(String(result.planPath), "utf-8")) as JsonRecord;
+  assert.equal(result.command, "subplan.create");
+  assert.equal(childPlan.status, "process.discussing");
+  assert.equal(childPlan.title, "Implement child work");
+  assert.equal(((childPlan.goal as JsonRecord).text), "Implement child work");
+  assert.equal((childPlan.tasks as unknown[]).length, 2);
 });
 
 test("cli plan done on a subplan resumes the parent plan instead of archiving the whole task", () => {
   const root = createFixture("cli-subplan-done-resume-parent");
-  runClaw(["init", "--name", "Subplan Done Resume Parent", "--max-tasks-to-keep", "99"], root);
-  runClaw(["plan", "write", "--title", "demo-task", "--goal", "Parent goal"], root);
+  runClaw(["init", "--name", "Subplan Done Resume Parent", "--max-tasks-to-keep", "99", "--planning", "false"], root);
+  runClaw(["plan", "create", "--title", "demo-task", "--goal", "Parent goal"], root);
 
   const rootPatchPath = path.join(root, "root-tasks.json");
   fs.writeFileSync(
@@ -884,7 +912,7 @@ test("cli plan done on a subplan resumes the parent plan instead of archiving th
   );
   runClaw(["plan", "edit", "--task", "demo-task", "--patch", rootPatchPath], root);
   runClaw(["plan", "edit", "--task", "demo-task", "--plan-status", "process.active"], root);
-  runClaw(["subplan", "write", "--parent", "demo-task", "--task-id", "1", "--title", "child-plan"], root);
+  runClaw(["subplan", "create", "--parent", "demo-task", "--task-id", "1"], root);
 
   const childPatchPath = path.join(root, "child-plan.json");
   fs.writeFileSync(
@@ -899,19 +927,19 @@ test("cli plan done on a subplan resumes the parent plan instead of archiving th
     ),
     "utf-8",
   );
-  runClaw(["plan", "edit", "--task", "demo-task", "--plan", "plans/child-plan.json", "--patch", childPatchPath], root);
-  runClaw(["plan", "edit", "--task", "demo-task", "--plan", "plans/child-plan.json", "--plan-status", "process.active"], root);
-  runClaw(["plan", "edit", "--task", "demo-task", "--plan", "plans/child-plan.json", "--task-id", "1", "--task-status", "done"], root);
+  runClaw(["plan", "edit", "--task", "demo-task", "--plan", "plans/Implement-child-work.json", "--patch", childPatchPath], root);
+  runClaw(["plan", "edit", "--task", "demo-task", "--plan", "plans/Implement-child-work.json", "--plan-status", "process.active"], root);
+  runClaw(["plan", "edit", "--task", "demo-task", "--plan", "plans/Implement-child-work.json", "--task-id", "1", "--task-status", "done"], root);
 
   const doneResult = runClaw(
-    ["plan", "done", "--task", "demo-task", "--plan", "plans/child-plan.json", "--summary", "Child complete."],
+    ["plan", "done", "--task", "demo-task", "--plan", "plans/Implement-child-work.json", "--summary", "Child complete."],
     root,
   );
 
   const meta = JSON.parse(fs.readFileSync(path.join(root, ".claw", "tasks", "demo-task", "meta.json"), "utf-8")) as JsonRecord;
   const parentPlan = JSON.parse(fs.readFileSync(path.join(root, ".claw", "tasks", "demo-task", "plan.json"), "utf-8")) as JsonRecord;
   const childPlan = JSON.parse(
-    fs.readFileSync(path.join(root, ".claw", "tasks", "demo-task", "plans", "child-plan.json"), "utf-8"),
+    fs.readFileSync(path.join(root, ".claw", "tasks", "demo-task", "plans", "Implement-child-work.json"), "utf-8"),
   ) as JsonRecord;
 
   assert.equal(doneResult.planStatus, "process.active");
@@ -946,14 +974,8 @@ test("cli init writes maxTasksToKeep into project.json", () => {
   assert.equal(projectConfig.maxTasksToKeep, 12);
   assert.equal(projectConfig.externalTruthSkill, null);
   assert.equal(projectConfig.externalAdrSkill, null);
-  assert.deepEqual(projectConfig.workflow, {
-    goalMode: {
-      enabled: true,
-    },
-    truthDispatch: {
-      mode: "per_task",
-    },
-  });
+  assert.equal(projectConfig.goalMode, true);
+  assert.equal(projectConfig.truthDispatch, "per_task");
   assert.equal(
     ((projectConfig.memory as JsonRecord).embedding as JsonRecord).model,
     "Snowflake/snowflake-arctic-embed-m-v2.0",
@@ -971,14 +993,8 @@ test("cli init writes default maxTasksToKeep into project.json", () => {
   assert.equal(projectConfig.maxTasksToKeep, 99);
   assert.equal(projectConfig.externalTruthSkill, null);
   assert.equal(projectConfig.externalAdrSkill, null);
-  assert.deepEqual(projectConfig.workflow, {
-    goalMode: {
-      enabled: true,
-    },
-    truthDispatch: {
-      mode: "per_task",
-    },
-  });
+  assert.equal(projectConfig.goalMode, true);
+  assert.equal(projectConfig.truthDispatch, "per_task");
   assert.equal(
     ((projectConfig.memory as JsonRecord).embedding as JsonRecord).model,
     "Snowflake/snowflake-arctic-embed-m-v2.0",
@@ -1043,14 +1059,8 @@ test("cli context auto-corrects malformed existing .claw state", () => {
   assert.equal(projectConfig.maxTasksToKeep, 99);
   assert.equal(projectConfig.externalTruthSkill, null);
   assert.equal(projectConfig.externalAdrSkill, null);
-  assert.deepEqual(projectConfig.workflow, {
-    goalMode: {
-      enabled: true,
-    },
-    truthDispatch: {
-      mode: "per_task",
-    },
-  });
+  assert.equal(projectConfig.goalMode, true);
+  assert.equal(projectConfig.truthDispatch, "per_task");
   assert.deepEqual(projectConfig.memory, {
     externalDocPaths: [],
     embedding: {
@@ -1110,14 +1120,8 @@ test("cli check auto-corrects project.json into explicit protocol fields", () =>
   assert.equal(projectConfig.externalTruthSkill, null);
   assert.equal(projectConfig.externalAdrSkill, null);
   assert.deepEqual(projectConfig.contextPaths, []);
-  assert.deepEqual(projectConfig.workflow, {
-    goalMode: {
-      enabled: true,
-    },
-    truthDispatch: {
-      mode: "per_task",
-    },
-  });
+  assert.equal(projectConfig.goalMode, true);
+  assert.equal(projectConfig.truthDispatch, "per_task");
   assert.deepEqual(projectConfig.memory, {
     externalDocPaths: [],
     embedding: {
@@ -1130,27 +1134,14 @@ test("cli check auto-corrects project.json into explicit protocol fields", () =>
       },
     },
   });
-  assert.deepEqual(projectConfig.gitnexus, { enabled: false });
+  assert.equal(projectConfig.gitnexus, false);
 });
 
 test("cli plan done always archives the current completed task", async () => {
   const root = createFixture("plan-done-archive");
   const env = { CLAW_EMBEDDING_MOCK: "1" };
-  runClaw(["init", "--name", "Archive On Complete", "--max-tasks-to-keep", "99"], root, env);
-
-  runClaw(
-    [
-      "plan",
-      "write",
-      "--title",
-      "archive-task",
-      "--goal",
-      "Archive after completion",
-    ],
-    root,
-    env,
-  );
-  runClaw(["plan", "edit", "--task", "archive-task", "--plan-status", "process.active"], root, env);
+  runClaw(["init", "--name", "Archive On Complete", "--max-tasks-to-keep", "99", "--planning", "false"], root, env);
+  runClaw(["plan", "create", "--title", "archive-task", "--goal", "Archive after completion"], root, env);
 
   const doneResult = runClaw(
     ["plan", "done", "--task", "archive-task", "--summary", "Archive this completed task."],
@@ -1170,19 +1161,8 @@ test("cli plan done always archives the current completed task", async () => {
 
 test("cli plan show automatically reads archived tasks when the active task is archived away", () => {
   const root = createFixture("plan-show-archived");
-  runClaw(["init", "--name", "Archived Show", "--max-tasks-to-keep", "99"], root);
-  runClaw(
-    [
-      "plan",
-      "write",
-      "--title",
-      "archived-task",
-      "--goal",
-      "Show archived plan",
-    ],
-    root,
-  );
-  runClaw(["plan", "edit", "--task", "archived-task", "--plan-status", "process.active"], root);
+  runClaw(["init", "--name", "Archived Show", "--max-tasks-to-keep", "99", "--planning", "false"], root);
+  runClaw(["plan", "create", "--title", "archived-task", "--goal", "Show archived plan"], root);
   runClaw(["plan", "done", "--task", "archived-task", "--summary", "Archive this task."], root);
 
   const result = runClaw(["plan", "show", "--task", "archived-task"], root);
@@ -1190,7 +1170,7 @@ test("cli plan show automatically reads archived tasks when the active task is a
   assert.equal(result.archived, true);
   assert.match(String(result.planPath), /archive[\\/]tasks[\\/]archived-task[\\/].*plan\.json$/);
   const planView = result.planView as JsonRecord;
-  assert.equal(String(planView.collapsedSummary), "archived-task");
+  assert.equal(String(planView.collapsedSummary), "0/1 archived-task");
 });
 
 test("cli plan done skips gitnexus refresh when project config disables it", async () => {
@@ -1213,7 +1193,7 @@ test("cli plan done skips gitnexus refresh when project config disables it", asy
     ),
     "utf-8",
   );
-  runClaw(["plan", "write", "--title", "disabled-task", "--goal", "Close without gitnexus"], root, env);
+  runClaw(["plan", "create", "--title", "disabled-task", "--goal", "Close without gitnexus"], root, env);
   runClaw(["plan", "edit", "--task", "disabled-task", "--patch", contentPath], root, env);
   runClaw(["plan", "edit", "--task", "disabled-task", "--plan-status", "process.active"], root, env);
 
@@ -1250,7 +1230,7 @@ test("cli plan done fails before completion refresh when gitnexus auto-install f
     ),
     "utf-8",
   );
-  runClaw(["plan", "write", "--title", "install-task", "--goal", "Catch install failure"], root, env);
+  runClaw(["plan", "create", "--title", "install-task", "--goal", "Catch install failure"], root, env);
   runClaw(["plan", "edit", "--task", "install-task", "--patch", contentPath], root, env);
   runClaw(["plan", "edit", "--task", "install-task", "--plan-status", "process.active"], root, env);
 
@@ -1335,7 +1315,7 @@ test("cli plan done auto-enables gitnexus embeddings and seeds the matching mode
     "utf-8",
   );
 
-  runClaw(["plan", "write", "--title", "preflight-task", "--goal", "Enable GitNexus embeddings"], root, env);
+  runClaw(["plan", "create", "--title", "preflight-task", "--goal", "Enable GitNexus embeddings"], root, env);
   runClaw(["plan", "edit", "--task", "preflight-task", "--patch", contentPath], root, env);
   runClaw(["plan", "edit", "--task", "preflight-task", "--plan-status", "process.active"], root, env);
 
@@ -1386,8 +1366,9 @@ test("cli direct returns truth-writer guidance and queues completion refresh for
   assert.equal("planStatus" in result, false);
   assert.equal("planSummary" in result, false);
   assert.equal("completionRefresh" in result, false);
-  assert.match(String(result.summary), /low-complexity|no formal plan/i);
-  assert.match(String(result.notes), /claw search.*before execution/i);
+  assert.match(String(result.summary), /lean path|without extra decomposition/i);
+  assert.match(String(result.notes), /compatibility surface/i);
+  assert.match(String(result.notes), /claw plan create/i);
   assert.ok(Array.isArray(result.nextsteps));
   assert.equal((result.nextsteps as string[]).some((step) => step.includes("truth-writer")), true);
   assert.equal((result.nextsteps as string[]).some((step) => step.includes("completion refresh")), true);
@@ -1581,7 +1562,7 @@ test("cli hook emits SessionStart additionalContext inside .claw projects", () =
   assert.match(additionalContext, /Do not block normal claw goal-mode entry, truth deposition, or ADR deposition for any permission-related excuse/i);
 });
 
-test("plan write binds owner session key and SessionStart recovers active workflow snapshot", () => {
+test("plan create binds owner session key and SessionStart recovers active workflow snapshot", () => {
   const root = createFixture("hook-active-workflow");
   runClaw(["init", "--name", "Hook Project"], root);
   const env = {
@@ -1591,7 +1572,7 @@ test("plan write binds owner session key and SessionStart recovers active workfl
   runClaw(
     [
       "plan",
-      "write",
+      "create",
       "--title",
       "demo-task",
       "--goal",
@@ -1675,7 +1656,7 @@ test("cli --help exits successfully", () => {
   const result = runClawRaw(["--help"], root);
   assert.equal(result.status, 0);
   assert.match(result.stderr, /Usage: bin\.js <command> \[options\]/);
-  assert.match(result.stderr, /direct/);
+  assert.doesNotMatch(result.stderr, /\bdirect\b/);
 });
 
 test("cli --version exits successfully", () => {
@@ -1699,7 +1680,7 @@ test("cli help prints top-level usage to stderr", () => {
   const result = runClawRaw(["help"], root);
   assert.equal(result.status, 0);
   assert.match(result.stderr, /Usage: bin\.js <command> \[options\]/);
-  assert.match(result.stderr, /direct/);
+  assert.doesNotMatch(result.stderr, /\bdirect\b/);
   assert.match(result.stderr, /truth ingest/);
   assert.equal(result.stdout, "");
 });
@@ -1725,16 +1706,16 @@ test("cli help plan prints subcommand group", () => {
   const root = createFixture("help-plan-group");
   const result = runClawRaw(["help", "plan"], root);
   assert.equal(result.status, 0);
-  assert.match(result.stderr, /plan write/);
+  assert.match(result.stderr, /plan create/);
   assert.match(result.stderr, /plan edit/);
   assert.match(result.stderr, /plan show/);
   assert.match(result.stderr, /plan done/);
 });
 
-test("cli help plan write and plan write --help are consistent", () => {
-  const root = createFixture("help-plan-write-consistency");
-  const commandResult = runClawRaw(["help", "plan", "write"], root);
-  const flagResult = runClawRaw(["plan", "write", "--help"], root);
+test("cli help plan create and plan create --help are consistent", () => {
+  const root = createFixture("help-plan-create-consistency");
+  const commandResult = runClawRaw(["help", "plan", "create"], root);
+  const flagResult = runClawRaw(["plan", "create", "--help"], root);
   assert.equal(commandResult.status, 0);
   assert.equal(flagResult.status, 0);
   assert.equal(commandResult.stderr, flagResult.stderr);
@@ -1759,9 +1740,9 @@ test("cli search --help shows search query usage", () => {
   assert.match(result.stderr, /--limit/);
 });
 
-test("cli plan write --help does not create a task", () => {
-  const root = createFixture("help-plan-write-no-mutation");
-  const result = runClawRaw(["plan", "write", "--help"], root);
+test("cli plan create --help does not create a task", () => {
+  const root = createFixture("help-plan-create-no-mutation");
+  const result = runClawRaw(["plan", "create", "--help"], root);
   assert.equal(result.status, 0);
   assert.equal(fs.existsSync(path.join(root, ".claw", "tasks")), false);
 });
@@ -1796,5 +1777,5 @@ test("cli help <command> <unknown-subcommand> exits non-zero with a hint", () =>
   const result = runClawRaw(["help", "plan", "garbage"], root);
   assert.equal(result.status, 1);
   assert.match(result.stderr, /Unknown plan subcommand: garbage/);
-  assert.match(result.stderr, /plan write/);
+  assert.match(result.stderr, /plan create/);
 });

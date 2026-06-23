@@ -12,7 +12,7 @@ This command is the cross-host handshake between:
 
 It is not responsible for creating or binding task scope by default.
 
-That responsibility should stay with `plan write`, matching current OpenClaw direction.
+That responsibility should stay with `plan create`, matching current OpenClaw direction.
 
 ## Role
 
@@ -82,7 +82,7 @@ No task is implicitly selected.
 
 This default is intentionally aligned with the updated decision:
 
-- task scope should be established by `plan write`
+- task scope should be established by `plan create`
 
 ## Task Resolution Rules
 
@@ -241,7 +241,7 @@ Reason:
 Reason:
 
 - it is ambiguous
-- it conflicts with the updated `plan write`-owns-task-binding decision
+- it conflicts with the updated `plan create`-owns-task-binding decision
 - it is easy to add later if truly needed
 
 ### Decision 3: no task creation in `attach`
@@ -249,7 +249,7 @@ Reason:
 Reason:
 
 - user explicitly asked to follow OpenClaw direction
-- `plan write` should establish task scope
+- `plan create` should establish task scope
 
 ## Compatibility Notes
 
@@ -262,7 +262,7 @@ Reason:
 
 ## Open Questions
 
-1. Should `plan write` create the task before plan creation in one command, or should there be a separate explicit `task create` later?
+1. Should `plan create` create the task before plan creation in one command, or should there be a separate explicit `task create` later?
 2. Should `attach` later support a read-only "suggest current task candidates" mode?
 3. Should project attach also surface truth and memory root paths explicitly in the JSON result?
 
@@ -278,4 +278,4 @@ Implement `claw attach` with these first-version semantics:
 - no metadata writes
 - return structured JSON for adapter consumption
 
-That is enough to support the next step: making `plan write` the true task-scope binding action.
+That is enough to support the next step: making `plan create` the true task-scope binding action.

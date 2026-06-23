@@ -174,29 +174,39 @@ function readProjectConfig(projectJsonPath: string): ProjectConfig {
 }
 
 function normalizeProjectConfig(projectConfig: ProjectConfig): ProjectConfig {
-  const { autoAchieveTask: _autoAchieveTask, ...rest } = projectConfig as ProjectConfig & {
+  const {
+    autoAchieveTask: _autoAchieveTask,
+    workflow: _workflow,
+    gitnexus: _gitnexus,
+    goalMode: _goalMode,
+    truthDispatch: _truthDispatch,
+    ...rest
+  } = projectConfig as ProjectConfig & {
     autoAchieveTask?: unknown;
+    workflow?: unknown;
+    gitnexus?: unknown;
+    goalMode?: unknown;
+    truthDispatch?: unknown;
   };
+  const source = projectConfig as unknown as Record<string, unknown>;
   return {
     ...rest,
     maxTasksToKeep:
       Number.isInteger(projectConfig.maxTasksToKeep) && (projectConfig.maxTasksToKeep as number) >= 1
         ? projectConfig.maxTasksToKeep
         : 99,
+    planning: projectConfig.planning !== false,
+    goalMode: readBooleanConfig(source, "goalMode", true),
+    truthDispatch: readTruthDispatchConfig(source, "truthDispatch", "per_task"),
+    externalPlanningSkill: normalizeOptionalSkill(projectConfig.externalPlanningSkill),
     externalTruthSkill: normalizeOptionalSkill(projectConfig.externalTruthSkill),
     externalAdrSkill: normalizeOptionalSkill(projectConfig.externalAdrSkill),
     contextPaths: [...(projectConfig.contextPaths ?? [])],
-    workflow: {
-      goalMode: normalizeGoalModeConfig(projectConfig.workflow?.goalMode),
-      truthDispatch: normalizeTruthDispatchConfig(projectConfig.workflow?.truthDispatch),
-    },
     memory: {
       externalDocPaths: [...(projectConfig.memory?.externalDocPaths ?? [])],
       embedding: normalizeMemoryEmbeddingConfig(projectConfig.memory?.embedding),
     },
-    gitnexus: {
-      enabled: projectConfig.gitnexus?.enabled ?? false,
-    },
+    gitnexus: readBooleanConfig(source, "gitnexus", false),
   };
 }
 
@@ -222,26 +232,56 @@ function normalizeOptionalSkill(value: string | null | undefined): string | null
   return trimmed ? trimmed : null;
 }
 
-function normalizeGoalModeConfig(
-  value: { enabled?: boolean } | null | undefined,
-): { enabled: boolean } | null {
-  if (value === null) {
-    return null;
+function readBooleanConfig(source: Record<string, unknown> | null, key: string, fallback: boolean): boolean {
+  const direct = readBooleanLike(source?.[key]);
+  if (direct !== undefined) {
+    return direct;
   }
-  return {
-    enabled: value?.enabled !== false,
-  };
+  const workflow = asObject(source?.workflow);
+  const workflowValue = readBooleanLike(workflow?.[key]);
+  return workflowValue ?? fallback;
 }
 
-function normalizeTruthDispatchConfig(
-  value: { mode?: "per_task" | "final_only" } | null | undefined,
-): { mode: "per_task" | "final_only" } | null {
-  if (value === null) {
+function readBooleanLike(value: unknown): boolean | undefined {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  const objectValue = asObject(value);
+  if (typeof objectValue?.enabled === "boolean") {
+    return objectValue.enabled;
+  }
+  return undefined;
+}
+
+function readTruthDispatchConfig(
+  source: Record<string, unknown> | null,
+  key: string,
+  fallback: "per_task" | "final_only",
+): "per_task" | "final_only" {
+  const direct = readTruthDispatchLike(source?.[key]);
+  if (direct) {
+    return direct;
+  }
+  const workflow = asObject(source?.workflow);
+  return readTruthDispatchLike(workflow?.[key]) ?? fallback;
+}
+
+function readTruthDispatchLike(value: unknown): "per_task" | "final_only" | undefined {
+  if (value === "per_task" || value === "final_only") {
+    return value;
+  }
+  const objectValue = asObject(value);
+  if (objectValue?.mode === "per_task" || objectValue?.mode === "final_only") {
+    return objectValue.mode;
+  }
+  return undefined;
+}
+
+function asObject(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
-  return {
-    mode: value?.mode === "final_only" ? "final_only" : "per_task",
-  };
+  return value as Record<string, unknown>;
 }
 
 function mergeProjectConfig(base: unknown, override: unknown): ProjectConfig {

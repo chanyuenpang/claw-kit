@@ -13,7 +13,7 @@ Validate that `claw-kit` can operate against a real existing `.claw` tree derive
 ## Smoke workflow
 
 1. resolve project context from nested `cwd`
-2. create a task-bound root plan with `plan write`
+2. create a task-bound root plan with `plan create`
 3. create a subplan under `plans/` for an existing task scope
 4. exercise the requirements exit review gate with a mock reviewer
 5. move the plan to `end.completed` with a valid `retrospective.summary`
@@ -34,7 +34,7 @@ Validate that `claw-kit` can operate against a real existing `.claw` tree derive
 Validated against a copied `OpenClaw-dev/.claw` tree in a temporary workspace.
 
 - nested `cwd` resolved to the copied project `.claw`
-- root `plan write` created task scope without requiring any migration
+- root `plan create` created task scope without requiring any migration
 - `prepare.requirements -> process.active` with actionable review feedback was rewritten to internal `prepare.review`
 - `prepare.review -> process.active` proceeded without running the same gate twice
 - first `end.completed` emitted:

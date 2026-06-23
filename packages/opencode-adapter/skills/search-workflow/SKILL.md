@@ -14,6 +14,6 @@ description: Use when working with .claw project recall, indexed search, or pre-
 
 - Project-scoped, uses `.claw/memory.sqlite`
 - Documentation recall: memory, truth docs, ADRs
-- Call after `claw plan write` to improve task scope
+- Call after `claw plan create` to improve task scope
 - Not code search — use researcher specialist for code investigation
-- When `gitnexus.enabled = true`, use researcher with GitNexus
+- When `gitnexus = true`, use researcher with GitNexus

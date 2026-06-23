@@ -15,11 +15,15 @@
       }
     }
   },
+  "planning": true,
+  "externalTruthSkill": null,
+  "externalAdrSkill": null,
+  "externalPlanningSkill": null,
+  "goalMode": true,
+  "truthDispatch": "per_task",
   "gitnexus": {
     "enabled": false
   },
-  "externalTruthSkill": null,
-  "externalAdrSkill": null,
   "workflow": {
     "goalMode": {
       "enabled": true

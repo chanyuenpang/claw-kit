@@ -7,7 +7,11 @@
 - `contextPaths`
 - `memory.externalDocPaths`
 - `memory.embedding`
-- `gitnexus.enabled`
+- `planning`
+- `externalPlanningSkill`
+- `goalMode`
+- `truthDispatch`
+- `gitnexus`
 
 ## Current Behavior
 
@@ -21,7 +25,8 @@
   - directory paths like `docs/`
 - External memory paths only index `.md` files from the configured path set.
 - `memory.embedding` now accepts the OpenClaw-compatible subset used by `openclaw-dev`: `provider` (`openai|local`), `model`, `remote.apiKeyEnvVar`, `remote.baseUrl`, `local.modelPath`, `local.modelCacheDir`, `outputDimensionality`, `store.vector.enabled`, and `store.vector.extensionPath`.
-- canonical `.claw/project.json` now also carries project-level workflow defaults for `workflow.goalMode.enabled` and `workflow.truthDispatch.mode`, so host-facing workflow toggles live in the same canonical project schema as the rest of the harness config.
+- canonical `.claw/project.json` now carries simple project-level workflow toggles as flat fields: `planning`, `externalPlanningSkill`, `goalMode`, `truthDispatch`, and `gitnexus`.
+- legacy nested inputs such as `workflow.goalMode.enabled`, `workflow.truthDispatch.mode`, and `gitnexus.enabled` are compatibility inputs for protocol repair; repaired canonical files are flattened instead of preserving those nested containers.
 - `claw init` and protocol normalization now auto-fill a default local embedding config when `memory.embedding` is missing, using `Snowflake/snowflake-arctic-embed-m-v2.0` and `store.vector.enabled = true`; the default cache location is now runtime-resolved instead of being persisted into `project.json`.
 - `packages/core/src/embedding-defaults.ts` now resolves platform-global cache roots (`%LOCALAPPDATA%\\claw\\models` on Windows, `~/Library/Caches/claw/models` on macOS, and `$XDG_CACHE_HOME/claw/models` or `~/.cache/claw/models` on Linux) and the local/global/fallback cache-selection order for embedding models.
 - `packages/core/src/embedding-worker.ts` now resolves cache usage by model id: explicit local cache wins only when that local cache already contains the model; otherwise an existing global cache is reused; if both are missing, downloads go to the explicit local cache when configured, or to the global cache by default.
@@ -50,7 +55,7 @@
 - 这意味着 CPU rescue 既可以来自一次性环境覆盖，也可以来自稳定的 per-project local device 配置。
 - `packages/core/src/embedding-worker.ts` is the dedicated worker that builds the embedding outputs.
 - `claw context` / protocol repair therefore upgrades older `.claw/project.json` files in-place instead of leaving them on a no-embedding schema.
-- when workflow defaults are omitted, canonical `project.json` still remains the source of truth for the default `workflow.goalMode.enabled` / `workflow.truthDispatch.mode` values; the optional override file only changes the effective runtime result for the current repo checkout.
+- when workflow defaults are omitted, canonical `project.json` still remains the source of truth for the default `goalMode` / `truthDispatch` values; the optional override file only changes the effective runtime result for the current repo checkout.
 - In the `claw-kit` repo itself, `memory.externalDocPaths` is intentionally empty, so project recall stays on `.claw` memory/truth Markdown and does not pull `docs/` into the search surface.
 - project-level `claw search --query "<topic>"` 除了 query embedding 之外，现在还会先构造 project keyword search plan。
 - 对多词 query，planner 会同时保留整句 multi-term `MATCH` 和逐词 fallback query，而不是只把原始 query 直接喂给一次 FTS。
@@ -62,8 +67,8 @@
 - Task-scope memory search still uses the existing active-plan-plus-task-memory FTS path and does not participate in the hybrid/vector recall flow.
 - Codex-facing recall is `claw search --query "<topic>"`; this reads the indexed project context before planning or investigation, and it remains document recall rather than code search.
 - `claw memory ...` remains as legacy/debug and low-level index management, not the primary Codex workflow term.
-- `claw plan done` rebuilds project/task search indexes and only refreshes GitNexus when `gitnexus.enabled` is `true`.
-- `claw plan done` 的 GitNexus 预检与自愈链路仍然只认 `gitnexus.enabled`，不会再引入新的 claw-side project switch；同一条 gate 既控制是否刷新，也控制是否先做前台 install/setup / embeddings self-heal。
+- `claw plan done` rebuilds project/task search indexes and only refreshes GitNexus when flat `gitnexus` is `true`.
+- `claw plan done` 的 GitNexus 预检与自愈链路仍然只认 canonical `gitnexus` boolean，不再使用 `gitnexus.enabled` 作为规范字段；同一条 gate 既控制是否刷新，也控制是否先做前台 install/setup / embeddings self-heal。
 - When the installed GitNexus CLI does not support `--no-ai-context`, `claw plan done` falls back to plain `gitnexus analyze`.
 - The hybrid project query path is adapted from the more mature `openclaw-dev` memory query design, but only the minimal `claw-kit` subset was adopted.
 - 这次 multi-term 中文 recall 的迁移同样参考 `openclaw-dev` 的 memory search 设计，但在 `claw-kit` 中只搬运了适合当前项目的 query planner + keyword recall + vector fusion 最小子集。

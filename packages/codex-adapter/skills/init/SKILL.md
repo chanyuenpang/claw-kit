@@ -18,7 +18,7 @@ Do not invent a longer manual bootstrap checklist when this is the actual task.
 2. Run `claw context` from the target project root.
 3. Read the result and report whether startup recovery initialized `.claw/`, corrected project config, or found an already healthy project.
 4. If `claw context` succeeded, treat the project as initialized for Codex-side claw workflow entry.
-5. If the user then wants to do real work in that project, continue with `using-claw-kit` and the normal `claw search -> claw plan write -> workflowGuidance` flow.
+5. If the user then wants to do real work in that project, continue with `using-claw-kit` and the normal `claw search -> claw plan create -> workflowGuidance` flow.
 
 ## What to communicate
 

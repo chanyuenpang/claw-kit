@@ -26,7 +26,7 @@ Align `claw-kit` project declaration handling with the current `OpenClaw` schema
 - `npm run test`
 - Real CLI smoke on a temporary git repo:
   - `claw init --ext-path docs/ --ext-path README.md --gitnexus true`
-  - `claw plan write`
+  - `claw plan create`
   - `claw plan done`
 - Smoke confirmed:
   - `docs/guide.md` is now indexed from `externalDocPaths`

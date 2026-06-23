@@ -19,7 +19,7 @@ When `@claw-kit` is explicitly invoked outside an existing `.claw` project:
 ## Good signs
 
 - the first reply mentions `.claw`, task, or active plan
-- the agent recommends `claw plan write` when no task scope exists
+- the agent recommends `claw plan create` when no task scope exists
 - the agent reports current task state when a task already exists
 - the agent initializes or corrects `.claw` instead of stopping on startup recovery errors
 
@@ -28,4 +28,4 @@ When `@claw-kit` is explicitly invoked outside an existing `.claw` project:
 - generic greeting with no harness state
 - starting normal chat before startup recovery completes
 - saying claw-kit cannot proceed because `.claw` is missing or malformed
-- suggesting an alternate task-binding mechanism unrelated to `plan write`
+- suggesting an alternate task-binding mechanism unrelated to `plan create`

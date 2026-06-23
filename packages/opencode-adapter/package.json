@@ -1,6 +1,6 @@
 {
   "name": "@claw-kit/opencode-adapter",
-  "version": "0.1.46",
+  "version": "0.1.47",
   "private": true,
   "type": "module",
   "description": "OpenCode adapter assets for landing the claw-kit .claw workflow inside OpenCode.",
@@ -19,8 +19,8 @@
     "directory": "packages/opencode-adapter"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "check": "tsc -p tsconfig.json --noEmit"
+    "build": "node ../../scripts/sync-planning-skill.mjs && tsc -p tsconfig.json",
+    "check": "node ../../scripts/sync-planning-skill.mjs && tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
     "@opencode-ai/plugin": "^1.1.51",

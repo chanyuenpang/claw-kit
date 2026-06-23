@@ -211,11 +211,11 @@ function buildConfiguredDelegates(
 }
 
 function isGoalModeEnabled(projectConfig: ProjectConfig | null): boolean {
-  return projectConfig?.workflow?.goalMode?.enabled !== false;
+  return projectConfig?.goalMode !== false;
 }
 
 function usesPerTaskTruthDispatch(projectConfig: ProjectConfig | null): boolean {
-  return projectConfig?.workflow?.truthDispatch?.mode !== "final_only";
+  return projectConfig?.truthDispatch !== "final_only";
 }
 
 export function buildDirectWorkflowGuidance(params: {
@@ -225,13 +225,13 @@ export function buildDirectWorkflowGuidance(params: {
   const { projectConfig = null } = params;
   return {
     stage: "done",
-    summary: "This was a low-complexity task, so no formal plan was needed.",
+    summary: "This task completed through a lean path without extra decomposition.",
     nextsteps: [
       "1. If the completed task produced reusable knowledge, read `delegateSubagents` and execute the returned `truth-writer` dispatch contract field-by-field.",
-      "2. Let the asynchronously queued completion refresh finish. This direct path reuses the same refresh flow as `claw plan done`.",
+      "2. Let the asynchronously queued completion refresh finish. This reuses the same refresh flow as `claw plan done`.",
     ],
     notes:
-      "Tasks with complexity scores below 6 can stay on the direct claw path: run `claw search` before execution when project recall is relevant, solve directly, then dispatch `truth-writer` only when the completed work has reusable truth.",
+      "Use this lean completion path only as a compatibility surface. Normal workflow guidance should stay on `claw plan create`, then let the planning task decide whether more decomposition is needed.",
     delegateSubagents: [truthWriterDelegate(projectConfig)],
   };
 }
@@ -240,6 +240,7 @@ export function buildPlanWorkflowGuidance(params: {
   taskName: string;
   planFile: string;
   plan: PlanDocument;
+  commandSource?: "plan.create" | "subplan.create" | "plan.edit" | "plan.done";
   projectConfig?: ProjectConfig | null;
   previousStatus?: PlanStatus;
   completionHooks?: PlanCompletionHooks;
@@ -247,7 +248,17 @@ export function buildPlanWorkflowGuidance(params: {
   completedTaskIds?: number[];
   host?: string;
 }): WorkflowGuidance {
-  const { taskName, planFile, plan, projectConfig = null, previousStatus, completionHooks, changedTaskIds, completedTaskIds } = params;
+  const {
+    taskName,
+    planFile,
+    plan,
+    commandSource,
+    projectConfig = null,
+    previousStatus,
+    completionHooks,
+    changedTaskIds,
+    completedTaskIds,
+  } = params;
   const scopedPlan = planFile === "plan.json" ? "" : ` --plan ${planFile}`;
   const editBase = `claw plan edit --task ${taskName}${scopedPlan}`;
   const doneBase = `claw plan done --task ${taskName}${scopedPlan}`;
@@ -260,6 +271,7 @@ export function buildPlanWorkflowGuidance(params: {
   const hasCompletedTasks = (completedTaskIds?.length ?? 0) > 0;
   const goalModeEnabled = isGoalModeEnabled(projectConfig);
   const suppressGoalFields = params.host === "opencode";
+  const startedGoalModeThisRound = goalModeEnabled && previousStatus === "process.active";
   const perTaskTruthDispatch = usesPerTaskTruthDispatch(projectConfig);
   const nextTask = nextUnfinishedTask(plan);
   const activeTask = currentActiveTask(plan);
@@ -309,14 +321,22 @@ export function buildPlanWorkflowGuidance(params: {
     }
     case "process.wait":
     case "process.discussing": {
-      const template = renderStateTemplate(goalModeEnabled ? plan.status : `${plan.status}.noGoalMode`, vars);
+      const templateKey = plan.status === "process.discussing" && (commandSource === "plan.create" || commandSource === "subplan.create")
+        ? "process.discussing.initial"
+        : startedGoalModeThisRound
+          ? plan.status
+          : `${plan.status}.noGoalMode`;
+      const template = renderStateTemplate(templateKey, vars);
+      const shouldEmitBlockedGoalTool = startedGoalModeThisRound;
       return {
         stage: template.stage as WorkflowGuidance["stage"],
         summary: template.summary,
         nextsteps: template.nextsteps,
         ...(template.notes ? { notes: template.notes } : {}),
         ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),
-        ...(template.goalTool && goalModeEnabled && hasGoal && !suppressGoalFields ? { goalTool: buildGoalTool(plan.goal.text, template.goalTool) } : {}),
+        ...(template.goalTool && shouldEmitBlockedGoalTool && goalModeEnabled && hasGoal && !suppressGoalFields
+          ? { goalTool: buildGoalTool(plan.goal.text, template.goalTool) }
+          : {}),
       };
     }
     case "process.active": {

@@ -1,6 +1,6 @@
 {
   "name": "claw-kit",
-  "version": "0.1.46+codex.20260622222706",
+  "version": "0.1.47+codex.20260623154422",
   "description": "Thin Codex adapter for claw-kit. Start with using-claw-kit as the single main-agent workflow, then drive .claw plan, search, truth, and ADR workflows through the local claw CLI while consuming compact workflowGuidance and specialist subagent contracts for truth and ADR deposition.",
   "author": {
     "name": "chanyuenpang",
@@ -23,7 +23,7 @@
   "interface": {
     "displayName": "Claw Kit",
     "shortDescription": "Prompt-driven .claw harness with compact workflowGuidance and delegated deposition subagents.",
-    "longDescription": "Use Claw Kit through using-claw-kit as the single main-agent workflow. Start by reading the planning skill, use claw search when useful to recover project context, then bind task scope through plan write and follow compact workflowGuidance from claw plan commands to drive planning, execution, truth, and ADR workflows. Truth deposition and ADR deposition should run as narrow reusable specialist subagents so the main agent stays focused on coordination and execution.",
+    "longDescription": "Use Claw Kit through using-claw-kit as the single main-agent workflow. Continue any recovered .claw task from its returned workflowGuidance; when no task scope exists, bind one through plan create, then let the seeded planning task invoke the configured planning skill. Use claw search when useful to recover project context, and follow compact workflowGuidance from claw plan commands to drive planning, execution, truth, and ADR workflows. Truth deposition and ADR deposition should run as narrow reusable specialist subagents so the main agent stays focused on coordination and execution.",
     "developerName": "chanyuenpang",
     "category": "Developer Tools",
     "capabilities": [
@@ -32,9 +32,9 @@
       "Write"
     ],
     "defaultPrompt": [
-      "Start with using-claw-kit. First read the planning skill, then use the right .claw task and plan flow from returned workflowGuidance.",
-      "Start with using-claw-kit. First read the planning skill, then create a new .claw task, write the initial plan, and follow the returned workflowGuidance.",
-      "Start with using-claw-kit. First read the planning skill, then continue this .claw task, read workflowGuidance from claw plan commands, and route truth or ADR deposition correctly."
+      "Start with using-claw-kit. If a .claw workflow is already recovered, follow its returned workflowGuidance before creating anything.",
+      "Start with using-claw-kit. When no task scope exists, create one with plan create, then follow the returned workflowGuidance.",
+      "Start with using-claw-kit. Let seeded planning tasks invoke the configured planning skill, and route truth or ADR deposition from workflowGuidance."
     ],
     "websiteURL": "https://github.com/chanyuenpang/claw-kit",
     "privacyPolicyURL": "https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement",

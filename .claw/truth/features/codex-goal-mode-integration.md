@@ -4,8 +4,8 @@
 - Official Codex docs describe Goal mode as a persistent thread objective started through `/goal`, with progress controls shown above the composer in the app, and equivalent support in the CLI and IDE surfaces.
 - `claw-kit` 只在 plan 首次进入 `process.active` 或从暂停态恢复进入 `process.active` 时返回 Goal lifecycle 合同；`prepare.requirements` 阶段不应提前返回 active goal 建议。
 - `prepare.requirements` 即使已经有 `goal.text`，现在也不再返回“立刻启动 active goal”的推荐；这一阶段只负责补全 requirements 并推进到真正的执行态。
-- canonical `.claw/project.json` now exposes `workflow.goalMode.enabled` as the project-level gate for this behavior.
-- when `workflow.goalMode.enabled = false`, `workflowGuidance` must suppress both `goalMode` and `goalTool` entirely even if the active plan has a valid `goal.text` and has just entered `process.active`.
+- canonical `.claw/project.json` now exposes flat `goalMode` as the project-level gate for this behavior.
+- when `goalMode = false`, `workflowGuidance` must suppress both `goalMode` and `goalTool` entirely even if the active plan has a valid `goal.text` and has just entered `process.active`.
 - `workflowGuidance` 现在把 Goal lifecycle 拆成两个互补字段：`goalMode` 负责 host 侧 Goal mode 时机和推荐目标，`goalTool` 负责必须执行的真实 Codex goal tool 合同。
 - 当 plan 首次进入 `process.active` 时，`workflowGuidance.goalMode` 仍携带：
   - `recommendedObjective`
@@ -32,10 +32,10 @@
 - `packages/core/src/workflow-guidance.ts`
   - `buildGoalMode()` 继续定义 `allowOverwrite = true`、`ifNoActiveGoal = true`、`supportedSurfaces`
   - `buildGoalTool()` 负责把 `create_goal` / `update_goal` 模板实例化成真实 workflowGuidance 合同
-  - `buildPlanWorkflowGuidance()` 只在 `justEnteredProcess` 或 `resumedIntoActive` 时返回 active-entry `goalMode` / `goalTool`，并在 wait/discussing/completed 生命周期返回对应的 `update_goal` 合同；当 `workflow.goalMode.enabled = false` 时继续 suppress 这些合同
+  - `buildPlanWorkflowGuidance()` 只在 `justEnteredProcess` 或 `resumedIntoActive` 时返回 active-entry `goalMode` / `goalTool`，并在 wait/discussing/completed 生命周期返回对应的 `update_goal` 合同；当 `goalMode = false` 时继续 suppress 这些合同
 - `packages/core/src/types.ts`
   - `WorkflowGuidance` 现在把 `goalTool` 作为稳定类型字段暴露给 downstream consumer
-  - project workflow schema declares `workflow.goalMode.enabled`
+  - project workflow schema declares flat `goalMode`
 - `packages/core/src/plan.ts`
   - `validatePlanDocument()` 要求 `goal.text` 缺失时 plan 不能离开 `prepare.requirements`
 - `packages/cli/src/cli.ts`
@@ -48,4 +48,4 @@
 - `packages/core/test/core.test.ts`
 - `packages/cli/test/cli.test.ts`
   - 回归覆盖 requirements 不返回 active-goal 推荐、首次 active / resumed active 返回 `create_goal`、wait/discussing 返回 `update_goal(blocked)`、completed 返回 `update_goal(complete)`
-  - 覆盖 `workflow.goalMode.enabled = false` 时 suppress `goalMode` / `goalTool`
+  - 覆盖 `goalMode = false` 时 suppress `goalMode` / `goalTool`

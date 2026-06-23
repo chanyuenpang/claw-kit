@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { syncPlanningSkill } from "./sync-planning-skill.mjs";
 
 export const CODEX_PLUGIN_PAYLOAD_PATHS = [
   ".codex-plugin",
@@ -85,6 +86,7 @@ async function copyPayloadTree(sourceDir, destinationDir, payloadRelativePaths) 
 }
 
 export async function readCodexPluginSource({ sourceDir = defaultSourceDir } = {}) {
+  await syncPlanningSkill();
   const manifestPath = path.join(sourceDir, ".codex-plugin", "plugin.json");
   const manifest = await readJson(manifestPath);
 

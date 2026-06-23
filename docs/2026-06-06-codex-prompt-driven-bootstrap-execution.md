@@ -8,7 +8,7 @@ The practical result is:
 
 - `@claw-kit` should point Codex toward `claw-kit:bootstrap`
 - bootstrap hook should recover `.claw` context first
-- task scope should still be established through `claw plan write`
+- task scope should still be established through `claw plan create`
 - plan, memory, truth, and ADR workflows should consume recovered context instead of adding a separate manual `claw context` step
 
 ## What changed

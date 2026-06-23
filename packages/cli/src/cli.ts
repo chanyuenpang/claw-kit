@@ -21,7 +21,7 @@ import {
   resolveContext,
   searchMemory,
   showPlan,
-  writeSubplan,
+  createSubplan,
   switchTask,
   writePlan,
   type InitProjectInput,
@@ -55,11 +55,10 @@ const TOP_LEVEL_COMMANDS: { name: string; summary: string }[] = [
   { name: "init [options]", summary: "Initialize and normalize the .claw project surface." },
   { name: "context [--task <name>]", summary: "Resolve project context, auto-initializing or correcting .claw state." },
   { name: "check", summary: "Check and auto-correct .claw project protocol fields." },
-  { name: "plan <subcommand> [options]", summary: "Plan lifecycle: write, edit, show, done." },
-  { name: "subplan write [options]", summary: "Write a subplan nested under a parent task item." },
+  { name: "plan <subcommand> [options]", summary: "Plan lifecycle: create, edit, show, done." },
+  { name: "subplan create [options]", summary: "Create a subplan nested under a parent task item." },
   { name: "switch-task --from <task> --to <task>", summary: "Switch the active task, carrying inherited context." },
   { name: "search [<query>] [options]", summary: "Recall project memory, truth, ADR, and declared docs." },
-  { name: "direct", summary: "Low-complexity no-plan closeout flow." },
   { name: "truth ingest [options]", summary: "Ingest a truth document under .claw/truth." },
   { name: "hook <event-name>", summary: "Emit host hook output (e.g. SessionStart)." },
 ];
@@ -76,6 +75,8 @@ const COMMAND_HELP: Record<string, HelpNode> = {
       { flag: "--ext-path <path>", detail: "External doc path to index (repeatable)." },
       { flag: "--external-truth-skill <skill>", detail: "Skill id for external truth-writer dispatch." },
       { flag: "--external-adr-skill <skill>", detail: "Skill id for external adr-writer dispatch." },
+      { flag: "--planning true|false", detail: "Enable planning-prefixed seed plans (default true)." },
+      { flag: "--external-planning-skill <skill>", detail: "Skill id for an external planning skill." },
       { flag: "--gitnexus true|false", detail: "Enable GitNexus integration (default false)." },
       { flag: "--max-tasks-to-keep <n>", detail: "Max active tasks before archival pruning (default 99)." },
       { flag: "--force", detail: "Overwrite an existing .claw project." },
@@ -98,17 +99,18 @@ const COMMAND_HELP: Record<string, HelpNode> = {
     usage: ["{script} plan <subcommand> [options]"],
     description: "Plan lifecycle commands for a task scope.",
     subcommands: {
-      write: {
+      create: {
         usage: [
-          "{script} plan write \"<title>\" [--goal <text>]",
-          "{script} plan write --title <text> [--goal <text>]",
+          "{script} plan create \"<title>\" [--goal <text>]",
+          "{script} plan create --title <text> [--goal <text>] [--template <name>]",
         ],
         description:
-          "Create the task scope and the initial plan skeleton at prepare.requirements. If --goal is omitted, fill goal.text and the rest of the plan, then switch the plan to process.active.",
-        summary: "Create the task scope and the initial plan skeleton.",
+          "Create the task scope and initial plan from a template. Defaults to `default`; planning-enabled projects start in process.discussing with planning and activation bridge tasks, while planning-disabled projects start directly in process.active with one executable task.",
+        summary: "Create the task scope and initial plan.",
         options: [
           { flag: "--title <text>", detail: "Task title (required unless a positional title is given)." },
           { flag: "--goal <text>", detail: "Optional goal text." },
+          { flag: "--template <name>", detail: "Optional plan template name (default `default`)." },
         ],
       },
       edit: {
@@ -160,15 +162,15 @@ const COMMAND_HELP: Record<string, HelpNode> = {
     usage: ["{script} subplan <subcommand> [options]"],
     description: "Subplan lifecycle commands nested under a parent task.",
     subcommands: {
-      write: {
-        usage: ["{script} subplan write --parent <task-name> --task-id <number> --title <text>"],
+      create: {
+        usage: ["{script} subplan create --parent <task-name> --task-id <number> [--template <name>]"],
         description:
           "Create a subplan under a parent task's task item. The parent's rootPlan stays stable while the subplan becomes the active plan.",
         summary: "Create a subplan under a parent task's task item.",
         options: [
           { flag: "--parent <task-name>", detail: "(required) Parent task name." },
           { flag: "--task-id <number>", detail: "(required) Parent task item id to split into a subplan." },
-          { flag: "--title <text>", detail: "(required) Subplan title." },
+          { flag: "--template <name>", detail: "Optional plan template name (default `default`)." },
         ],
       },
     },
@@ -204,11 +206,6 @@ const COMMAND_HELP: Record<string, HelpNode> = {
         ],
       },
     },
-  },
-  direct: {
-    usage: ["{script} direct"],
-    description:
-      "Low-complexity no-plan closeout: optionally run `claw search` before execution, solve directly, optionally dispatch truth-writer, and queue the same async completion refresh path used by plan done. Takes no flags.",
   },
   truth: {
     usage: ["{script} truth <subcommand> [options]"],
@@ -282,6 +279,8 @@ async function main(): Promise<void> {
           maxTasksToKeep: readOptionalNumber(args, "--max-tasks-to-keep"),
           externalTruthSkill: readOptionalFlag(args, "--external-truth-skill") ?? null,
           externalAdrSkill: readOptionalFlag(args, "--external-adr-skill") ?? null,
+          planning: readBooleanValueFlag(args, "--planning"),
+          externalPlanningSkill: readOptionalFlag(args, "--external-planning-skill") ?? null,
           contextPaths: readRepeatedFlag(args, "--context-path"),
           externalDocPaths: readRepeatedFlag(args, "--ext-path"),
           gitnexusEnabled: readBooleanValueFlag(args, "--gitnexus") ?? false,
@@ -354,26 +353,29 @@ async function main(): Promise<void> {
 async function runPlan(args: string[]): Promise<void> {
   const subcommand = args.shift();
   switch (subcommand) {
-    case "write": {
+    case "create":
       rejectFlags(args, ["--task", "--plan", "--content", "--status", "--plan-status", "--parent-task-id", "--description"]);
-      const title = readOptionalFlag(args, "--title") ?? readOptionalPositionalArg(args);
+      const explicitTitle = readOptionalFlag(args, "--title");
+      const explicitTemplate = readOptionalFlag(args, "--template");
+      const title = explicitTitle ?? readOptionalPositionalArg(args);
+      const templateName = explicitTemplate;
       if (!title) {
         throw new ClawError(
           "PROJECT_CONFIG_INVALID",
-          "plan write requires a title. Use `claw plan write \"<title>\"` or `claw plan write --title \"<title>\"`.",
+          "plan create requires a title. Use `claw plan create \"<title>\"` or `claw plan create --title \"<title>\"`.",
         );
       }
       const result = await writePlan({
         cwd: process.cwd(),
+        templateName,
         title,
         goalText: readOptionalFlag(args, "--goal"),
         ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
         host: process.env.CLAW_HOST ?? undefined,
       });
-      assertNoRemainingArgs(args, "plan write");
-      printJson(compactPlanCommandResult("plan.write", result));
+      assertNoRemainingArgs(args, "plan create");
+      printJson(compactPlanCommandResult("plan.create", result));
       return;
-    }
     case "edit": {
       const patchPath = readOptionalFlag(args, "--patch");
       const appendTasksPath = readOptionalFlag(args, "--append-tasks");
@@ -429,24 +431,24 @@ async function runPlan(args: string[]): Promise<void> {
       printJson(compactPlanCommandResult("plan.done", result, completionRefresh));
       return;
     }
-      case "show": {
-        const result = showPlan({
-          cwd: process.cwd(),
-          taskName: readRequiredFlag(args, "--task"),
-          planFile: readOptionalFlag(args, "--plan"),
+    case "show": {
+      const result = showPlan({
+        cwd: process.cwd(),
+        taskName: readRequiredFlag(args, "--task"),
+        planFile: readOptionalFlag(args, "--plan"),
       });
       printJson({
         ok: true,
         command: "plan.show",
-          taskName: result.taskName,
-          planFile: result.planFile,
-          planPath: result.planPath,
-          ...(result.archived ? { archived: true } : {}),
-          planStatus: result.plan.status,
-          planView: result.planView,
-        });
-        return;
-      }
+        taskName: result.taskName,
+        planFile: result.planFile,
+        planPath: result.planPath,
+        ...(result.archived ? { archived: true } : {}),
+        planStatus: result.plan.status,
+        planView: result.planView,
+      });
+      return;
+    }
     default:
       throw new ClawError("PROJECT_CONFIG_INVALID", `Unknown plan subcommand "${subcommand ?? ""}".`);
   }
@@ -840,16 +842,16 @@ function tryResolveActiveWorkflowSnapshot(
 async function runSubplan(args: string[]): Promise<void> {
   const subcommand = args.shift();
   switch (subcommand) {
-    case "write": {
-      const result = await writeSubplan({
+    case "create": {
+      const result = await createSubplan({
         cwd: process.cwd(),
         parentTaskName: readRequiredFlag(args, "--parent"),
         parentTaskId: readOptionalNumber(args, "--task-id") ?? failMissingNumericFlag("--task-id"),
-        title: readRequiredFlag(args, "--title"),
+        templateName: readOptionalFlag(args, "--template") ?? undefined,
         ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
       });
-      assertNoRemainingArgs(args, "subplan write");
-      printJson(compactPlanCommandResult("plan.write", result));
+      assertNoRemainingArgs(args, "subplan create");
+      printJson(compactPlanCommandResult("subplan.create", result));
       return;
     }
     default:
@@ -970,7 +972,7 @@ function stripBom(content: string): string {
 }
 
 function compactPlanCommandResult(
-  command: "plan.write" | "plan.edit" | "plan.done",
+  command: "plan.create" | "plan.edit" | "plan.done" | "subplan.create",
   result: {
     taskName: string;
     planFile: string;
@@ -1013,7 +1015,7 @@ function compactPlanCommandResult(
       ...(result.workflowGuidance.askUser ? { askUser: result.workflowGuidance.askUser } : {}),
       ...(result.workflowGuidance.goalMode ? { goalMode: result.workflowGuidance.goalMode } : {}),
       ...(result.workflowGuidance.goalTool ? { goalTool: result.workflowGuidance.goalTool } : {}),
-      ...(command === "plan.write" && result.plan ? { plan: result.plan } : {}),
+      ...((command === "plan.create" || command === "subplan.create") && result.plan ? { plan: result.plan } : {}),
       ...(result.planReview
         ? {
             planReview: {
@@ -1179,7 +1181,7 @@ function queueCompletionRefresh(input: {
   if (includeTaskMemory && !taskRetention.archivedCurrentTask) {
     operations.push("memory.reindex.task");
   }
-  if (project.projectConfig?.gitnexus?.enabled === true) {
+  if (project.projectConfig?.gitnexus === true) {
     operations.push("gitnexus.refresh");
   }
 
@@ -1427,7 +1429,7 @@ function refreshGitNexusIfEnabled(
   cwd: string,
   projectConfig: ProjectConfig | null,
 ): GitNexusRefreshResult {
-  const enabled = projectConfig?.gitnexus?.enabled === true;
+  const enabled = projectConfig?.gitnexus === true;
 
   if (!enabled) {
     return {
@@ -1453,7 +1455,7 @@ function shouldFallbackToPlainAnalyze(result: {
 
 function ensureGitNexusReadyForPlanDone(cwd: string): void {
   const project = resolveProjectContext(cwd);
-  if (project.projectConfig?.gitnexus?.enabled !== true) {
+  if (project.projectConfig?.gitnexus !== true) {
     return;
   }
 

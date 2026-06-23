@@ -1,6 +1,6 @@
 {
   "name": "claw-kit",
-  "version": "0.1.46",
+  "version": "0.1.47",
   "private": true,
   "workspaces": [
     "packages/*"
@@ -15,6 +15,7 @@
     "install:opencode-plugin": "powershell -ExecutionPolicy Bypass -File .\\scripts\\install-opencode-plugin.ps1",
     "repair:truth-encoding": "npm run build -w @veewo/claw-core && node scripts/truth-encoding-audit.mjs --write",
     "test:codex-plugin": "node --test .\\scripts\\codex-plugin-bundle.test.mjs",
+    "test:opencode-plugin": "node --test .\\scripts\\opencode-plugin-bundle.test.mjs",
     "uninstall:local-cli": "npm uninstall -g @veewo/claw",
     "test": "npm run build -w @veewo/claw-core && npm run build -w @veewo/claw && npm run test -w @veewo/claw-core && npm run test -w @veewo/claw",
     "start": "node ./packages/cli/dist/bin.js"

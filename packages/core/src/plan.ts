@@ -9,6 +9,7 @@ import {
   isProcessStatus,
 } from "./requirements-gate.js";
 import { buildPlanViewModel } from "./plan-view.js";
+import { renderSeedTemplateText, resolveSeedPlanTemplate } from "./plan-templates.js";
 import { ensureInsideDir, normalizePlanFile, slugFromFilePath } from "./paths.js";
 import type {
   LegacyPlanStatus,
@@ -66,7 +67,15 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
   const effectiveStatus = normalizePlanStatus(input.planStatus) ?? input.content?.status ?? existingStatus ?? "prepare.requirements";
 
   let plan = normalizePlanDocument(
-    input.content ?? createSeedPlan(taskName, input.title, input.goalText, effectiveStatus),
+    input.content ?? createSeedPlan(
+      project.projectConfig,
+      input.templateName,
+      taskName,
+      input.title,
+      input.goalText,
+      effectiveStatus,
+      input.forcePlanning,
+    ),
     effectiveStatus,
   );
 
@@ -133,6 +142,7 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
       taskName,
       planFile,
       plan,
+      commandSource: input.parentTaskId !== undefined ? "subplan.create" : "plan.create",
       projectConfig: project.projectConfig,
       host: input.host,
     }),
@@ -314,6 +324,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
       taskName: task.taskName,
       planFile: resultPlanFile,
       plan: resultPlan,
+      commandSource: "plan.edit",
       projectConfig: task.project.projectConfig,
       host: input.host,
       ...(completionHooks?.subplanClosureCandidate
@@ -351,7 +362,7 @@ export function showPlan(input: PlanShowInput): PlanShowResult {
   };
 }
 
-export async function writeSubplan(input: SubplanWriteInput): Promise<PlanWriteResult & { events: PlanEvent[] }> {
+export async function createSubplan(input: SubplanWriteInput): Promise<PlanWriteResult & { events: PlanEvent[] }> {
   const parentTask = resolveTaskContext(resolveProjectContext(input.cwd), input.parentTaskName);
   const parentPlanFile = normalizePlanFile(parentTask.meta.rootPlan ?? "plan.json");
   const parentPlanPath = requireInsideTask(parentTask, parentPlanFile);
@@ -369,15 +380,20 @@ export async function writeSubplan(input: SubplanWriteInput): Promise<PlanWriteR
     );
   }
 
-  const derivedPlanFile = normalizePlanFile(`plans/${slugFromFilePath(input.title)}.json`);
-  const goalText = parentPlanTask.detail?.trim() ? `${parentPlanTask.title}: ${parentPlanTask.detail}` : parentPlanTask.title;
+  const subplanTitle = parentPlanTask.title;
+  const derivedPlanFile = normalizePlanFile(`plans/${slugFromFilePath(subplanTitle)}.json`);
+  const derivedGoalText = parentPlanTask.detail?.trim()
+    ? `${parentPlanTask.title}: ${parentPlanTask.detail}`
+    : parentPlanTask.title;
 
   return writePlan({
     cwd: input.cwd,
     taskName: parentTask.taskName,
     filePath: derivedPlanFile,
-    title: input.title,
-    goalText,
+    title: subplanTitle,
+    goalText: derivedGoalText,
+    templateName: input.templateName,
+    forcePlanning: true,
     parentTaskId: input.parentTaskId,
     parentPlanFile,
     ownerSessionKey: input.ownerSessionKey,
@@ -547,19 +563,75 @@ function applyPlanPatch(target: PlanDocument, patch: Partial<PlanDocument>): voi
   }
 }
 
-function createSeedPlan(taskName: string, title?: string, goalText?: string, status: PlanStatus = "prepare.requirements"): PlanDocument {
+function createSeedPlan(
+  projectConfig: TaskContext["project"]["projectConfig"] | null,
+  templateName: string | undefined,
+  taskName: string,
+  title?: string,
+  goalText?: string,
+  status: PlanStatus = "prepare.requirements",
+  forcePlanning = false,
+): PlanDocument {
+  const template = resolveSeedPlanTemplate(templateName);
+  const planningEnabled = forcePlanning || projectConfig?.planning !== false;
+  const planningSkill = projectConfig?.externalPlanningSkill?.trim() || "the built-in planning skill";
+  if (!planningEnabled) {
+    return {
+      title: title ?? taskName,
+      status: template.planningDisabledStatus,
+      goal: {
+        text: goalText ?? title ?? taskName,
+      },
+      requirements: {
+        summary: "",
+        openQuestions: [],
+        acceptanceCriteria: [],
+      },
+      tasks: [
+        {
+          id: 1,
+          title: goalText ?? title ?? taskName,
+          status: "pending",
+        },
+      ],
+      references: [],
+      rules: [],
+      keyDecisions: [],
+      retrospective: {
+        summary: "",
+      },
+    };
+  }
+
+  const activationDetail = projectConfig?.goalMode === false
+    ? template.activationTask.detail
+    : `${template.activationTask.detail} ${template.activationTask.goalModeDetail}`;
+
   return {
     title: title ?? taskName,
-    status,
+    status: template.planningEnabledStatus ?? status,
     goal: {
-      text: goalText ?? "",
+      text: goalText ?? title ?? taskName,
     },
     requirements: {
       summary: "",
       openQuestions: [],
       acceptanceCriteria: [],
     },
-    tasks: [],
+    tasks: [
+      {
+        id: 1,
+        title: template.planningTask.title,
+        detail: renderSeedTemplateText(template.planningTask.detail, { planningSkill }),
+        status: "pending",
+      },
+      {
+        id: 2,
+        title: template.activationTask.title,
+        detail: activationDetail,
+        status: "pending",
+      },
+    ],
     references: [],
     rules: [],
     keyDecisions: [],
@@ -582,7 +654,7 @@ function deriveTaskName(input: PlanWriteInput): string {
       return derived;
     }
   }
-  throw new ClawError("TASK_NAME_INVALID", "plan write requires a title or a filePath that can derive a task name.");
+  throw new ClawError("TASK_NAME_INVALID", "plan create requires a title or a filePath that can derive a task name.");
 }
 
 function derivePlanFile(task: TaskContext, filePath?: string, parentTaskId?: number): string {
@@ -827,4 +899,3 @@ function completeSubplanAndResumeParent(params: {
     plan: parentPlan,
   };
 }
-

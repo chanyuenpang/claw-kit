@@ -13,6 +13,8 @@ export type InitProjectInput = {
   projectId?: string;
   projectName?: string;
   maxTasksToKeep?: number;
+  planning?: boolean;
+  externalPlanningSkill?: string | null;
   externalTruthSkill?: string | null;
   externalAdrSkill?: string | null;
   contextPaths?: string[];
@@ -66,17 +68,11 @@ export function initProject(input: InitProjectInput): InitProjectResult {
     id: projectId,
     name: projectName,
     maxTasksToKeep,
+    planning: input.planning ?? true,
+    externalPlanningSkill: normalizeOptionalSkill(input.externalPlanningSkill),
     externalTruthSkill: normalizeOptionalSkill(input.externalTruthSkill),
     externalAdrSkill: normalizeOptionalSkill(input.externalAdrSkill),
     contextPaths: [...(input.contextPaths ?? [])],
-    workflow: {
-      goalMode: {
-        enabled: true,
-      },
-      truthDispatch: {
-        mode: "per_task",
-      },
-    },
     memory: {
       externalDocPaths: [...(input.externalDocPaths ?? [])],
       embedding: {
@@ -89,9 +85,9 @@ export function initProject(input: InitProjectInput): InitProjectResult {
         },
       },
     },
-    gitnexus: {
-      enabled: input.gitnexusEnabled ?? false,
-    },
+    goalMode: true,
+    truthDispatch: "per_task",
+    gitnexus: input.gitnexusEnabled ?? false,
   };
 
   ensureDir(clawDir, createdPaths);
@@ -102,7 +98,7 @@ export function initProject(input: InitProjectInput): InitProjectResult {
   writeFile(projectJsonPath, `${JSON.stringify(projectConfig, null, 2)}\n`, createdPaths);
   writeFile(
     memoryPath,
-    `# Project Memory\n\n- Project initialized for claw-kit.\n- Use \`claw plan write\` to establish the first task scope.\n`,
+    `# Project Memory\n\n- Project initialized for claw-kit.\n- Use \`claw plan create\` to establish the first task scope.\n`,
     createdPaths,
   );
   writeFile(

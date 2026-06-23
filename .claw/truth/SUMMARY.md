@@ -8,6 +8,7 @@
 - Release verification for this workflow split is anchored by `packages/core/test/core.test.ts` and `packages/cli/test/cli.test.ts`, especially the `plan write binds owner session key and SessionStart recovers active workflow snapshot` case.
 - `planning` is now the single visible planning skill; it absorbs lifecycle and `workflowGuidance` consumption rules that had previously been split across standalone Codex workflow skills.
 - `using-claw-kit` now makes reading `planning` the first visible action, and no longer exposes separate bootstrap, claw-context, or reference-loading steps ahead of the main workflow.
+- `using-claw-kit` 的 visible entry 现在是 router-first：先恢复已有 `.claw` workflowGuidance / active task，再在没有 task scope 时走 `claw plan create`；`direct` 只是隐藏兼容命令，轻量工作继续落到 planning / default plan-create 路径。
 - Active adapter startup surfaces now use `startupRecovery` naming in `claw context` results, hook logging, and reference filenames such as `codex-startup-recovery.md`; the canonical SessionStart entry is the `claw hook SessionStart` CLI command.
 - The non-recovered startup prompt is intentionally slim: it should not repeat project-root, protocol-check, or "report recovered state" lines.
 - In the normal startup prompt, the current `@claw-kit` thread is explicitly pre-authorized for Goal mode and required delegated subagents including `truth-writer` and `adr-writer`, so missing per-turn authorization is not a valid blocker.
@@ -30,7 +31,7 @@
 - 这次 release 把 `process.wait` / `process.discussing` / resumed active 语义稳定下来：暂停态要暂停 Goal Mode，恢复后通过 `process.active` 重新进入执行，并由 `process.resumedActive` / `on_resume_process_active` 接管恢复。
 - `claw init` 现在会在项目根目录自动补齐 claw-kit 专用 `.gitignore` 规则块，但 `.gitignore` 变更只属于 `initProject()`；`project-check` / protocol repair 与 `claw context` 不会写 `.gitignore`，重复 init 也不会重复追加同一规则块。对应 canonical ADR 是 `init-project-gitignore-ownership`。
 - runtime project resolution now deep-merges optional gitignored `.claw/project-override.json` over canonical `.claw/project.json`; override values may target any project field, and explicit `null` remains a real override rather than falling back to inherited config.
-- canonical `.claw/project.json` now carries `workflow.goalMode.enabled` and `workflow.truthDispatch.mode` defaults; setting `workflow.goalMode.enabled = false` suppresses `goalMode`, while `workflow.truthDispatch.mode = final_only` suppresses mid-task `truth-writer` delegation but still permits closeout truth/ADR deposition at `process.allTasksDone`.
+- canonical `.claw/project.json` uses flat project-level workflow toggles: `planning`, `externalPlanningSkill`, `goalMode`, `truthDispatch`, and `gitnexus`; legacy nested inputs such as `workflow.goalMode.enabled`, `workflow.truthDispatch.mode`, and `gitnexus.enabled` are accepted by protocol repair but normalized back to the flat canonical shape.
 - `claw init` 的默认 `.gitignore` 规则块现在继续保留 `!.claw/project.json` 作为 canonical 共享配置，同时默认忽略 `.claw/project-override.json` 这层本地运行时覆盖文件。
 - `memory.embedding.local.device` is now an explicit project-level local-device selector, and `CLAW_EMBEDDING_LOCAL_DEVICE` / `CLAW_EMBEDDING_DEVICE` provide one-off rescue overrides; both feed `packages/core/src/embedding-local.ts`, which always keeps a `cpu` retry path for GPU-class `dml` / `cuda` devices.
 - `claw search index --refresh` is now covered as a bounded 100-file batch process per run, with repeated refreshes automatically advancing the remaining backlog, and `packages/core/src/embedding-local.ts` is also covered for worker-side inference batching order preservation.
@@ -80,6 +81,7 @@
 - `@veewo/claw-core@0.1.40` 与 `@veewo/claw@0.1.40` 已成功发布，`npm view @veewo/claw-core version --registry=https://registry.npmjs.org` 和 `npm view @veewo/claw version --registry=https://registry.npmjs.org` 都返回 `0.1.40`。
 - repo 支持的本机 CLI 刷新路径是 `npm run install:local-cli`；如果刚发布完就刷新，允许因 npm registry 传播延迟重试一次；最终这条路径已成功把全局 CLI 刷新到 `@veewo/claw@0.1.40`。
 - 这轮安装后的稳定验证组是：`claw --version = 0.1.40`、`npm list -g @veewo/claw --depth=0 = @veewo/claw@0.1.40`、`(Get-Command claw).Source = C:\Users\chany\AppData\Roaming\npm\claw.ps1`。
+- `npm publish` 里的 `bin[claw]` 归一化警告不能单独当最终结论；发布后仍要回看 `npm view @veewo/claw bin --json` 和真实 `claw` 烟测，确认 registry/runtime 一致。
 - 本地 Codex plugin cache 已同步到 `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.40+codex.20260616130425`；当前稳定刷新范围包括 `.codex-plugin/`、`hooks/`、`references/`、`scripts/`、`skills/` 与 `package.json`，并且逐文件 SHA256 已与仓库副本匹配，当前校验结果是 24/24 个同步文件一致。
 - canonical `.claw/truth/` markdown 需要保持 UTF-8 BOM；truth ingestion 和 `npm run check` 的 truth encoding audit 都把这当作稳定约束，缺少 BOM 的 truth 文档在 Windows PowerShell 路径上不算完成态。
 - `packages/core/src/memory.ts` 保持严格契约：project memory refresh 如果 embedding 生成失败就必须失败，不能降级为 text-only indexing；project search 继续保持 vector-required 契约，缺少 refreshed vector index 时返回 `MEMORY_VECTOR_INDEX_REQUIRED`。
@@ -91,3 +93,8 @@
 - SessionStart prompt 配置化与 plugin 委托架构决策见 ADR `session-start-prompt-config-delegation`。
 - 平台 prompt 语义隔离的稳定事实：`plugin://claw-kit@claw-kit-local` 是 Codex 专用 markdown 插件链接（Codex 解析 `[@claw-kit](plugin://...)`），opencode 完全不解析 `plugin://` 协议，而是通过 `skill` 工具以裸 skill 名（如 `using-claw-kit`）加载、经 opencode `skills.paths` 注册；因此 Codex sessionStart 用 `@claw-kit` / `claw-kit:using-claw-kit`，opencode sessionStart 用裸 skill 名且不含 `plugin://`，core fallback 常量统一为 `@claw-kit`。详见 `.claw/truth/features/platform-sessionstart-prompt-isolation.md`。ADR `session-start-prompt-config-delegation` 第 4 节原把这套平台归属写反了，代码/配置已按正确归属落地，ADR 第 4 节已修正并附修正记录。
 - opencode subagent agent 定义（truth-writer、adr-writer）不应硬编码 `model:` 字段，应继承主 agent model；canonical ADR 为 `opencode-subagent-agent-model-inheritance`。
+- claw-kit 维护 Codex 和 OpenCode 两条对称的插件安装链路（`*-plugin-bundle.mjs` → `install-*-plugin.mjs` → `install-*-plugin.ps1`），重叠行为（`shouldCopyEntry` 过滤、`Assert-Command` node 预检、`--source-dir` 透传）必须对称，差异只在 host 专属能力。详见 `.claw/truth/features/opencode-plugin-install-pipeline.md`。
+- OpenCode 安装目标为 `~/.config/opencode/plugins/claw-kit/`（固定目录，无版本化），需创建 `claw-kit.ts` shim、向 `opencode.json` 幂等注入 `skills.paths`、拷贝 agent 定义到 `agent/` 目录；安装后需重启 OpenCode。Codex 用版本化目录且不需要 shim / config 注入 / agent 拷贝。
+- 两个插件的测试套件（`test:codex-plugin` 3 测试 + `test:opencode-plugin` 4 测试）均用 `node:test` 内置 runner + 临时目录隔离，零外部依赖。
+- `claw direct` 仍然是低复杂度 round 的隐藏兼容入口，不应被宣传成与 `plan create` 并列的公开 workflow concept；其合同继续保持轻量，并只在确有复用价值时派发 `truth-writer`。
+- `tsc` 不会自动清理已移除模板路径留下的旧输出，因此 `dist` ghost output 必须在 bundle / distribution / closeout 检查里显式判失败，不能只看编译成功。

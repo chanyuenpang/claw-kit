@@ -28,8 +28,18 @@ Then run:
 claw init
 claw search index --refresh
 claw search "existing truth or ADR topic"
-claw plan write --title "My task" --goal "Define the first task"
+claw plan create --title "My task" --goal "Define the first task"
+claw plan create "My templated task" --template default --goal "Route through the default template"
 ```
+
+`claw plan create` defaults to the `default` seed template. You can also select a template explicitly with `claw plan create "<title>" --template <name>` or `claw plan create --template <name> --title "<title>"`.
+
+When `.claw/project.json` has `planning: true`, the default `default` template seeds `process.discussing` with:
+
+1. a planning task that refines the request and appends executable tasks
+2. an activation task that bridges into `process.active`
+
+When `planning: false`, `claw plan create` seeds the smallest executable plan directly in `process.active`.
 
 ## Workflow shape
 

@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { syncPlanningSkill } from "./sync-planning-skill.mjs";
 
 export const OPENCODE_PLUGIN_PAYLOAD_PATHS = [
   "plugin",
@@ -39,16 +40,25 @@ async function assertPayloadExists(sourceDir, relativePath) {
   }
 }
 
+function shouldCopyEntry(sourcePath) {
+  return !sourcePath.endsWith(".test.mjs");
+}
+
 async function copyDirectoryContents(sourceDir, destinationDir) {
   await fs.mkdir(destinationDir, { recursive: true });
   const entries = await fs.readdir(sourceDir, { withFileTypes: true });
   for (const entry of entries) {
     const sourcePath = path.join(sourceDir, entry.name);
+    if (!shouldCopyEntry(sourcePath)) {
+      continue;
+    }
+
     const destinationPath = path.join(destinationDir, entry.name);
     if (entry.isDirectory()) {
       await copyDirectoryContents(sourcePath, destinationPath);
       continue;
     }
+
     await fs.copyFile(sourcePath, destinationPath);
   }
 }
@@ -65,12 +75,18 @@ async function copyPayloadTree(sourceDir, destinationDir, payloadRelativePaths) 
       await copyDirectoryContents(sourcePath, destinationPath);
       continue;
     }
+
+    if (!shouldCopyEntry(sourcePath)) {
+      continue;
+    }
+
     await fs.mkdir(path.dirname(destinationPath), { recursive: true });
     await fs.copyFile(sourcePath, destinationPath);
   }
 }
 
 export async function readOpencodePluginSource({ sourceDir = defaultSourceDir } = {}) {
+  await syncPlanningSkill();
   const manifestPath = path.join(sourceDir, "package.json");
   const manifest = await readJson(manifestPath);
 

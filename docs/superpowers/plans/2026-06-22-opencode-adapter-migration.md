@@ -245,7 +245,6 @@ No `AGENTS.md` required. No user configuration. Fully automatic.
 |  +-- references/              # Slimmed reference docs         |
 |  |   +-- TRUTH-AGENT-SPEC.md  # Reuse from codex-adapter       |
 |  |   +-- ADR-AGENT-SPEC.md    # Reuse from codex-adapter       |
-|  |   +-- workflows.md         # Reuse from codex-adapter       |
 |  |   +-- opencode-dispatch.md # New, replaces 128-line codex   |
 |  |                            #   subagent-dispatch doc        |
 |  +-- workflow-guidance.opencode.json  # OpenCode-specific cfg  |
@@ -275,7 +274,7 @@ No `AGENTS.md` required. No user configuration. Fully automatic.
 }
 ```
 
-Every `claw plan write` / `claw plan edit` / `claw plan done` call by the agent's bash tool automatically carries these environment variables. The CLI routes to OpenCode-specific guidance without any adapter-side text compensation.
+Every `claw plan create` / `claw plan edit` / `claw plan done` call by the agent's bash tool automatically carries these environment variables. The CLI routes to OpenCode-specific guidance without any adapter-side text compensation.
 
 ### (2) event(session.created)
 

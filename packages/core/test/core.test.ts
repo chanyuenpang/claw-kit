@@ -7,6 +7,7 @@ import { DatabaseSync } from "node:sqlite";
 import {
   buildDirectWorkflowGuidance,
   buildMemoryIndex,
+  createSubplan,
   ensureProjectProtocol,
   ensureUtf8Bom,
   editPlan,
@@ -19,6 +20,7 @@ import {
   showPlan,
   switchTask,
   writePlan,
+  type PlanDocument,
 } from "../src/index.js";
 import { readTextFile } from "../src/io.js";
 import {
@@ -84,6 +86,8 @@ test("initProject creates a minimal .claw project scaffold", () => {
     externalTruthSkill: string | null;
     externalAdrSkill: string | null;
     contextPaths: string[];
+    goalMode: boolean;
+    truthDispatch: "per_task" | "final_only";
     memory: {
       externalDocPaths: string[];
       embedding: {
@@ -99,7 +103,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
         };
       };
     };
-    gitnexus: { enabled: boolean };
+    gitnexus: boolean;
   };
 
   assert.equal(result.projectId, "demo-project");
@@ -115,17 +119,13 @@ test("initProject creates a minimal .claw project scaffold", () => {
     id: "demo-project",
     name: "Demo Project",
     maxTasksToKeep: 20,
+    planning: true,
+    externalPlanningSkill: null,
     externalTruthSkill: "external-truth-writer",
     externalAdrSkill: "external-adr-writer",
     contextPaths: ["docs/project-guide.md"],
-    workflow: {
-      goalMode: {
-        enabled: true,
-      },
-      truthDispatch: {
-        mode: "per_task",
-      },
-    },
+    goalMode: true,
+    truthDispatch: "per_task",
     memory: {
       externalDocPaths: ["docs/", "README.md"],
       embedding: {
@@ -138,9 +138,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
         },
       },
     },
-    gitnexus: {
-      enabled: true,
-    },
+    gitnexus: true,
   });
 });
 
@@ -170,7 +168,7 @@ test("initProject appends claw gitignore rules once when project already has a g
   assert.equal(fs.readFileSync(gitignorePath, "utf-8"), once);
 });
 
-test("plan write creates task-bound plan and updates activePlan", async () => {
+test("writePlan seeds a planning-first root plan by default", async () => {
   const root = createFixture("plan-write");
 
   const result = await writePlan({
@@ -185,20 +183,24 @@ test("plan write creates task-bound plan and updates activePlan", async () => {
   assert.equal(meta.activePlan, "plan.json");
   assert.equal(meta.rootPlan, "plan.json");
   assert.ok(fs.existsSync(result.planPath));
-  assert.equal(result.workflowGuidance.stage, "requirements");
+  assert.equal(result.workflowGuidance.stage, "discussion");
   assert.equal(result.workflowGuidance.delegateSubagents, undefined);
   assert.equal(result.workflowGuidance.goalMode, undefined);
+  assert.deepEqual(result.workflowGuidance.nextsteps, [
+    "1. Resolve the discussion, then resume through `process.active`.",
+  ]);
   assert.equal(result.workflowGuidance.goalTool, undefined);
-  assert.ok(result.workflowGuidance.summary.includes("Fill the remaining plan fields"));
-  assert.ok(result.workflowGuidance.summary.includes("already authorized this @claw-kit thread to use goal mode and delegated subagents"));
-  assert.ok(result.workflowGuidance.summary.includes("permission concerns must not block the flow"));
-  assert.ok(result.workflowGuidance.nextsteps.includes("1. Fill the missing plan fields."));
-  assert.ok(result.workflowGuidance.nextsteps.includes("2. Move into `process.active` once requirements are clear."));
+  assert.ok(result.workflowGuidance.summary.includes("discussion"));
   assert.equal(result.workflowGuidance.askUser, undefined);
   assert.equal(result.plan.title, "Demo task");
-  assert.equal(result.plan.status, "prepare.requirements");
+  assert.equal(result.plan.status, "process.discussing");
+  assert.equal(result.plan.goal.text, "Ship the first plan");
+  assert.equal(result.plan.tasks[0]?.title, "Use the planning skill to refine the request and append executable tasks");
+  assert.match(result.plan.tasks[0]?.detail ?? "", /Recommended planning skill: the built-in planning skill\./);
+  assert.doesNotMatch(result.plan.tasks[0]?.detail ?? "", /\btakes\b/);
+  assert.equal(result.plan.tasks[1]?.title, "Enter process.active");
   assert.deepEqual(result.plan.references, []);
-  assert.equal(result.planView.collapsedSummary, "Demo task");
+  assert.equal(result.planView.collapsedSummary, "0/2 Demo task");
   assert.equal(result.planView.goal.defaultCollapsed, true);
   assert.equal(result.planView.renderHints.defaultCollapsed, true);
   assert.equal(result.planView.expanded.sections[0]?.id, "goal");
@@ -206,7 +208,72 @@ test("plan write creates task-bound plan and updates activePlan", async () => {
   assert.equal(result.planView.expanded.sections[1]?.id, "tasks");
 });
 
-test("plan write guidance leaves requirement judgment to the agent", async () => {
+test("planning appendTasks preserves the seeded activation task ordering", async () => {
+  const root = createFixture("planning-append-preserves-activation");
+
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Ship the first plan",
+  });
+
+  const result = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    taskId: 1,
+    taskStatus: "done",
+    appendTasks: [
+      { title: "Implement the change", status: "pending" } as unknown as { id: number; title: string; status: "pending" },
+      { title: "Verify the change", status: "pending" } as unknown as { id: number; title: string; status: "pending" },
+    ],
+  });
+
+  const plan = JSON.parse(
+    fs.readFileSync(path.join(root, ".claw", "tasks", "demo-task", "plan.json"), "utf-8"),
+  ) as PlanDocument;
+
+  assert.deepEqual(
+    plan.tasks.map((task) => ({ id: task.id, title: task.title, status: task.status })),
+    [
+      { id: 1, title: "Use the planning skill to refine the request and append executable tasks", status: "done" },
+      { id: 2, title: "Enter process.active", status: "pending" },
+      { id: 3, title: "Implement the change", status: "pending" },
+      { id: 4, title: "Verify the change", status: "pending" },
+    ],
+  );
+});
+
+test("writePlan uses externalPlanningSkill in the seeded planning task detail", async () => {
+  const root = createFixture("plan-write-external-planning-skill");
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify({
+      id: "plan-write-external-planning-skill",
+      name: "Plan Write External Planning Skill",
+      planning: true,
+      externalPlanningSkill: "team-planner",
+      maxTasksToKeep: 99,
+      externalTruthSkill: null,
+      externalAdrSkill: null,
+      contextPaths: [],
+      workflow: { goalMode: { enabled: true }, truthDispatch: { mode: "per_task" } },
+      memory: { externalDocPaths: [], embedding: null },
+      gitnexus: { enabled: false },
+    }, null, 2),
+    "utf-8",
+  );
+
+  const result = await writePlan({
+    cwd: root,
+    title: "Demo task",
+    goalText: "Use the external planner",
+  });
+
+  assert.ok(result.plan.tasks[0]?.detail?.includes("team-planner"));
+});
+
+test("plan create guidance leaves requirement judgment to the agent", async () => {
   const root = createFixture("plan-write-clear-requirements");
 
   const result = await writePlan({
@@ -242,6 +309,7 @@ test("local embedding cache resolver prefers explicit local cache dir over share
       "Snowflake/snowflake-arctic-embed-m-v2.0",
       path.join("workspace", ".claw", "models"),
       {
+        fallbackCacheDir: path.join("sandbox", ".claw", "models"),
         platform: "win32",
         env: { LOCALAPPDATA: "C:\\Users\\demo\\AppData\\Local" },
         homedir: "C:\\Users\\demo",
@@ -322,7 +390,7 @@ test("local embedding cache resolver downloads into configured local cache when 
   );
 });
 
-test("plan write without goal tells the agent to fill goal first", async () => {
+test("writePlan uses title as the default goal text for planning-enabled seed plans", async () => {
   const root = createFixture("plan-write-no-goal");
 
   const result = await writePlan({
@@ -330,19 +398,13 @@ test("plan write without goal tells the agent to fill goal first", async () => {
     title: "Goal later task",
   });
 
-  assert.equal(result.planStatus, "prepare.requirements");
+  assert.equal(result.planStatus, "process.discussing");
   assert.equal(result.workflowGuidance.goalMode, undefined);
-  assert.ok(result.workflowGuidance.summary.includes("Add the goal first"));
-  assert.ok(result.workflowGuidance.nextsteps.includes("1. Fill `goal.text`."));
-  assert.ok(result.workflowGuidance.nextsteps.includes("2. Fill the missing plan fields."));
-  assert.deepEqual(result.workflowGuidance.recommendedCommands, [
-    "claw plan edit --task Goal-later-task --plan-status process.active",
-    "claw plan edit --task Goal-later-task --patch <updated-plan.json>",
-    "claw plan edit --task Goal-later-task --reference-path <path> --reference-why <why>",
-  ]);
+  assert.equal(result.plan.goal.text, "Goal later task");
+  assert.equal(result.plan.tasks.length, 2);
 });
 
-test("plan write auto-assigns stable integer task ids when omitted", async () => {
+test("plan create auto-assigns stable integer task ids when omitted", async () => {
   const root = createFixture("plan-write-auto-task-ids");
 
   const result = await writePlan({
@@ -371,7 +433,7 @@ test("plan write auto-assigns stable integer task ids when omitted", async () =>
   assert.equal(result.workflowGuidance.askUser, undefined);
 });
 
-test("plan write updates existing task and supports subplan under plans without switching task scope", async () => {
+test("plan create updates existing task and supports subplan under plans without switching task scope", async () => {
   const root = createFixture("subplan-write");
   await writePlan({
     cwd: root,
@@ -418,6 +480,75 @@ test("plan write updates existing task and supports subplan under plans without 
   assert.equal(meta.activePlan, "plans/child-plan.json");
   assert.equal(parentPlan.tasks[0]?.execution?.type, "subplan");
   assert.equal(parentPlan.tasks[0]?.execution?.subplan, "plans/child-plan.json");
+});
+
+test("createSubplan uses the planning-aware default seed shape", async () => {
+  const root = createFixture("subplan-create-planning-seed");
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Ship the parent plan",
+    content: {
+      title: "Demo task",
+      status: "process.active",
+      goal: { text: "Ship the parent plan" },
+      tasks: [
+        {
+          id: 1,
+          title: "Implement child work",
+          detail: "Split this into a subplan",
+          status: "pending",
+        },
+      ],
+    },
+  });
+
+  const result = await createSubplan({
+    cwd: root,
+    parentTaskName: "demo-task",
+    parentTaskId: 1,
+    templateName: "default",
+  });
+
+  assert.equal(result.planFile, "plans/Implement-child-work.json");
+  assert.equal(result.plan.title, "Implement child work");
+  assert.equal(result.plan.status, "process.discussing");
+  assert.equal(result.plan.goal.text, "Implement child work: Split this into a subplan");
+  assert.equal(result.plan.tasks.length, 2);
+  assert.deepEqual(result.workflowGuidance.nextsteps, [
+    "1. Resolve the discussion, then resume through `process.active`.",
+  ]);
+  assert.equal(result.workflowGuidance.goalTool, undefined);
+  assert.match(result.plan.tasks[0]?.detail ?? "", /append executable tasks/i);
+  assert.match(result.plan.tasks[1]?.detail ?? "", /process\.active/);
+});
+
+test("createSubplan always uses planning shape even when project planning is disabled", async () => {
+  const root = createFixture("subplan-create-planning-disabled");
+  initProject({ cwd: root, projectName: "Subplan Planning Disabled", planning: false, force: true });
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Ship the parent plan",
+  });
+
+  const patchPath = path.join(root, ".claw", "tasks", "demo-task", "plan.json");
+  const parentPlan = JSON.parse(fs.readFileSync(patchPath, "utf-8")) as PlanDocument;
+  parentPlan.tasks = [{ id: 1, title: "Implement child work", status: "pending" }];
+  fs.writeFileSync(patchPath, JSON.stringify(parentPlan, null, 2), "utf-8");
+
+  const result = await createSubplan({
+    cwd: root,
+    parentTaskName: "demo-task",
+    parentTaskId: 1,
+    templateName: "default",
+  });
+
+  assert.equal(result.plan.status, "process.discussing");
+  assert.equal(result.plan.goal.text, "Implement child work");
+  assert.deepEqual(result.plan.tasks.map((task) => task.id), [1, 2]);
 });
 
 test("subplan completion resumes the parent plan and marks the parent task done", async () => {
@@ -496,8 +627,25 @@ test("subplan completion resumes the parent plan and marks the parent task done"
   assert.equal(childPlan.status, "end.completed");
 });
 
-test("plan write no longer runs a separate review gate before execution", async () => {
+test("writePlan starts directly in process.active when project planning is disabled", async () => {
   const root = createFixture("plan-write-review");
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify({
+      id: "plan-write-review",
+      name: "Plan Write Review",
+      planning: false,
+      externalPlanningSkill: null,
+      maxTasksToKeep: 99,
+      externalTruthSkill: null,
+      externalAdrSkill: null,
+      contextPaths: [],
+      workflow: { goalMode: { enabled: true }, truthDispatch: { mode: "per_task" } },
+      memory: { externalDocPaths: [], embedding: null },
+      gitnexus: { enabled: false },
+    }, null, 2),
+    "utf-8",
+  );
 
   const result = await writePlan({
     cwd: root,
@@ -509,6 +657,7 @@ test("plan write no longer runs a separate review gate before execution", async 
 
   assert.equal(result.planStatus, "process.active");
   assert.equal(result.planReview, undefined);
+  assert.equal(result.plan.tasks.length, 1);
 });
 
 test("plan edit enforces two-part transition rules", async () => {
@@ -648,6 +797,12 @@ test("plan edit rejects entering process.active without goal text", async () => 
   await writePlan({
     cwd: root,
     title: "Goal later task",
+    content: {
+      title: "Goal later task",
+      status: "prepare.requirements",
+      goal: { text: "" },
+      tasks: [],
+    },
   });
 
   await assert.rejects(
@@ -961,8 +1116,8 @@ test("resolveContext deep-merges project-override.json and preserves explicit nu
   assert.equal(result.project.projectConfig?.externalTruthSkill, null);
   assert.equal(result.project.projectConfig?.externalAdrSkill, "team-adr-writer");
   assert.deepEqual(result.project.projectConfig?.contextPaths, ["docs/personal.md"]);
-  assert.equal(result.project.projectConfig?.workflow?.goalMode?.enabled, false);
-  assert.equal(result.project.projectConfig?.workflow?.truthDispatch?.mode, "per_task");
+  assert.equal(result.project.projectConfig?.goalMode, false);
+  assert.equal(result.project.projectConfig?.truthDispatch, "per_task");
   assert.equal(result.project.projectConfig?.memory?.embedding?.model, "Snowflake/snowflake-arctic-embed-m-v2.0");
   assert.equal(result.project.projectConfig?.memory?.embedding?.store?.vector?.enabled, true);
 });
@@ -2559,14 +2714,15 @@ test("direct workflow guidance uses the configured truth writer contract", () =>
   });
 
   assert.equal(guidance.stage, "done");
-  assert.match(guidance.summary, /low-complexity|no formal plan/i);
+  assert.match(guidance.summary, /lean path|without extra decomposition/i);
   assert.equal(guidance.delegateSubagents?.[0]?.name, "truth-writer");
   assert.equal(guidance.delegateSubagents?.[0]?.skill, "external-truth-writer");
   assert.equal(guidance.delegateSubagents?.[0]?.model, "gpt-5.4-mini");
   assert.equal(guidance.delegateSubagents?.[0]?.fork_context, false);
   assert.equal(guidance.nextsteps.some((step) => step.includes("truth-writer")), true);
   assert.equal(guidance.nextsteps.some((step) => step.includes("completion refresh")), true);
-  assert.match(String(guidance.notes), /claw search.*before execution/i);
+  assert.match(String(guidance.notes), /compatibility surface/i);
+  assert.match(String(guidance.notes), /claw plan create/i);
 });
 
 test("initProject gitignore ignores project-override.json by default", () => {
@@ -2645,14 +2801,8 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
     externalTruthSkill: string | null;
     externalAdrSkill: string | null;
     contextPaths: string[];
-    workflow: {
-      goalMode: {
-        enabled: boolean;
-      };
-      truthDispatch: {
-        mode: "per_task" | "final_only";
-      };
-    };
+    goalMode: boolean;
+    truthDispatch: "per_task" | "final_only";
     memory: {
       externalDocPaths: string[];
       embedding: {
@@ -2668,7 +2818,7 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
         };
       } | null;
     };
-    gitnexus: { enabled: boolean };
+    gitnexus: boolean;
   };
 
   assert.equal(result.ok, true);
@@ -2680,14 +2830,8 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
   assert.equal(projectConfig.externalTruthSkill, null);
   assert.equal(projectConfig.externalAdrSkill, null);
   assert.deepEqual(projectConfig.contextPaths, []);
-  assert.deepEqual(projectConfig.workflow, {
-    goalMode: {
-      enabled: true,
-    },
-    truthDispatch: {
-      mode: "per_task",
-    },
-  });
+  assert.equal(projectConfig.goalMode, true);
+  assert.equal(projectConfig.truthDispatch, "per_task");
   assert.deepEqual(projectConfig.memory.externalDocPaths, ["docs/"]);
   assert.deepEqual(projectConfig.memory.embedding, {
     provider: "openai",
@@ -2701,7 +2845,7 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
       },
     },
   });
-  assert.equal(projectConfig.gitnexus.enabled, false);
+  assert.equal(projectConfig.gitnexus, false);
 });
 
 test("ensureProjectProtocol removes legacy default local modelCacheDir so runtime shared cache becomes implicit", () => {
@@ -2743,14 +2887,8 @@ test("ensureProjectProtocol removes legacy default local modelCacheDir so runtim
 
   const result = ensureProjectProtocol(root);
   const projectConfig = JSON.parse(fs.readFileSync(result.projectJsonPath, "utf-8")) as {
-    workflow: {
-      goalMode: {
-        enabled: boolean;
-      };
-      truthDispatch: {
-        mode: "per_task" | "final_only";
-      };
-    };
+    goalMode: boolean;
+    truthDispatch: "per_task" | "final_only";
     memory: {
       embedding: {
         provider: string;
@@ -2768,14 +2906,8 @@ test("ensureProjectProtocol removes legacy default local modelCacheDir so runtim
   };
 
   assert.equal(result.changed, true);
-  assert.deepEqual(projectConfig.workflow, {
-    goalMode: {
-      enabled: true,
-    },
-    truthDispatch: {
-      mode: "per_task",
-    },
-  });
+  assert.equal(projectConfig.goalMode, true);
+  assert.equal(projectConfig.truthDispatch, "per_task");
   assert.deepEqual(projectConfig.memory.embedding, {
     provider: "local",
     model: "Snowflake/snowflake-arctic-embed-m-v2.0",
@@ -2892,7 +3024,7 @@ test("enforceTaskRetention also archives legacy completed tasks still left in ac
   assert.equal(fs.existsSync(path.join(root, ".claw", "archive", "tasks", "current-completed")), true);
 });
 
-test("concurrent plan writes fail fast with PLAN_WRITE_CONFLICT", async () => {
+test("concurrent plan creates fail fast with PLAN_WRITE_CONFLICT", async () => {
   const root = createFixture("plan-write-conflict");
   await writePlan({
     cwd: root,

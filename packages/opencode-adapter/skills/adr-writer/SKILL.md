@@ -1,8 +1,11 @@
 ---
 name: adr-writer
-description: Use when a completed .claw plan should be deposited into canonical ADR documents.
+description: Use when durable architecture or workflow decisions from completed work should be deposited into canonical ADR documents.
 ---
-# claw-kit ADR writer
+# ADR writer
+
+This skill deposits durable decisions into canonical ADRs.
+In claw-kit projects, the default ADR corpus is `.claw/truth/adr/`.
 
 ## Dispatch model
 
@@ -23,7 +26,7 @@ Skip: temporary status, isolated bugfix steps, duplicated decisions.
 
 ## Timing
 
-After `claw plan done` succeeded and completed plan file is available.
+After completed work or a completed plan is available and the decision has lasting consequences.
 
 ## Boundary
 

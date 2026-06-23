@@ -94,7 +94,7 @@ Codex needs to operate on current task plans using existing OpenClaw semantics:
 
 Minimum commands:
 
-- `claw plan write`
+- `claw plan create`
 - `claw plan edit`
 - `claw plan show`
 
@@ -147,7 +147,7 @@ The smallest credible CLI surface for Codex MVP is:
 
 - `claw init`
 - `claw attach`
-- `claw plan write`
+- `claw plan create`
 - `claw plan edit`
 - `claw plan show`
 - `claw memory edit`
@@ -194,4 +194,4 @@ It should be:
 
 - define the behavior and arguments of `claw attach`
 - define how a Codex session chooses a new task name versus attaches to an existing task
-- define the minimum read or write contract for `plan write`, `memory search`, and `truth ingest`
+- define the minimum read or write contract for `plan create`, `memory search`, and `truth ingest`

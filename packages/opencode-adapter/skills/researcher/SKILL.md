@@ -2,7 +2,7 @@
 name: researcher
 description: Use when an investigation-type task should be delegated to a narrow specialist subagent to recover context, inspect code, and summarize findings.
 ---
-# claw-kit researcher
+# researcher
 
 ## When to use
 
@@ -19,16 +19,16 @@ Dispatch using the `task` tool:
 task(subagent_type="claw-researcher", prompt="<investigation question + target files>")
 ```
 
-Send only the minimum bundle: investigation question, target files/paths, relevant task name, gitnexus state.
+Send only the minimum bundle: investigation question, target files/paths, relevant task name, and available recall or code-indexing tools.
 
 ## Investigation order
 
-1. `claw search --query "<topic>"` to recover .claw context
-2. For truth: `claw search` against `.claw/truth/`
-3. For architecture history: `claw search` against `.claw/truth/adr/`
-4. Read `.claw/project.json`
-5. If `gitnexus.enabled = true`, use GitNexus for code investigation
-6. Local code inspection only for exact files needed
+1. Use project recall first when available; in claw-kit projects, use `claw search --query "<topic>"`
+2. For truth lookup, search the canonical truth corpus
+3. For architecture history, search the canonical ADR corpus
+4. Read project configuration when it may expose indexing, memory, or routing tools
+5. Use configured code-indexing tools before broad manual exploration
+6. Use local code inspection only for exact files needed
 
 ## Boundary
 
