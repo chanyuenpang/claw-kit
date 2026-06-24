@@ -22,6 +22,9 @@
 - `package-lock.json` 也已经把 workspace 包版本线同步到 `0.1.40`，包括根包、`@veewo/claw-core`、`@veewo/claw`、`@claw-kit/openclaw-adapter` 和 `@claw-kit/codex-adapter`。
 - `@veewo/claw-core@0.1.40` 与 `@veewo/claw@0.1.40` 都已经成功发布到 npm registry。
 - 通过 `npm view @veewo/claw-core version` 与 `npm view @veewo/claw version` 校验后，两个包当前都解析到 `0.1.40`。
+- 2026-06-24 的 0.1.52 release round 先把本地 `main` rebase 到 `origin/main`，然后把 root、`packages/core`、`packages/cli`、`packages/openclaw-adapter`、`packages/codex-adapter`、`packages/opencode-adapter` 和 `package-lock.json` 一起推进到 `0.1.52`，并将 `packages/codex-adapter/.codex-plugin/plugin.json` 设为 `0.1.52+codex.20260624215321`。
+- 这轮 0.1.52 发布前的本地闸门仍然是 `npm test`、`npm run check`、`npm pack --dry-run -w @veewo/claw-core` 和 `npm pack --dry-run -w @veewo/claw`；它们都通过后才依次发布 `@veewo/claw-core@0.1.52` 和 `@veewo/claw@0.1.52`。
+- 发布后 `npm view @veewo/claw-core version` 与 `npm view @veewo/claw version` 都返回 `0.1.52`，说明 registry 可见性和发布版本已经对齐。
 - `npm publish` 偶尔会吐出 `bin[claw]` 之类的归一化警告，但这不能单独当成最终结论；发布后仍要用 `npm view @veewo/claw bin --json` 再核对 registry 里的 bin 映射，并跑真实的 `claw` 烟测确认命令面可用。
 - 2026-06-24 的 release audit 重新确认了 npm registry 的 `latest` 仍停留在 `0.1.50`，因此下一次 patch target 变为 `0.1.51`；这一轮 release-surface alignment 继续覆盖 root `package.json`、`packages/core/package.json`、`packages/cli/package.json`、`packages/codex-adapter/package.json`、`packages/openclaw-adapter/package.json`、`packages/opencode-adapter/package.json`、`package-lock.json` 和 `packages/codex-adapter/.codex-plugin/plugin.json`，其中 Codex plugin manifest 目标版本是 `0.1.51+codex.20260624140756`。
 - 0.1.51 release verification passed the full local gate: `npm test` passed with core `85/85` and CLI `50/50`, `npm run check` passed, `npm run test:codex-plugin` passed `5/5`, `npm run test:opencode-plugin` passed `5/5`, `npm pack --dry-run -w @veewo/claw-core` produced `veewo-claw-core-0.1.51.tgz`, and `npm pack --dry-run -w @veewo/claw` produced `veewo-claw-0.1.51.tgz`.
