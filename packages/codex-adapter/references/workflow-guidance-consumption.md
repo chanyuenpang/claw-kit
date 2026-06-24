@@ -106,7 +106,7 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
   - read `delegateSubagents`
   - use `tool_search` to locate agent-management tools
   - dispatch `truth-writer` with the curated completed subtask report when the completed task produced reusable truth
-  - when all tasks are done, complete retrospective capture, read `delegateSubagents`, and dispatch `adr-writer` before root `claw plan done`; this ADR dispatch is required for root-plan closeout
+- when all tasks are done, first write retrospective capture and any durable `keyDecisions` back into the plan, then read `delegateSubagents` and dispatch `adr-writer` with that updated completed `plan.json` before root `claw plan done`; this ADR dispatch is required for root-plan closeout
 - `end.completed`
   - read `goalTool`
   - use `update_goal(status="complete")`

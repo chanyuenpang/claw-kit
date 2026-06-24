@@ -14,6 +14,12 @@ Accepted
 
 这轮还确认了一个更细的长期边界：adapter `references/` 里可以承接备用配置知识，帮助用户快速查 `.claw/project.json` 与 `.claw/project-override.json` 的用法，但这类说明必须明确自己不是 harness 合同、不是启动流程的一部分，也不能改动任何 `SKILL.md` 或插件行为。
 
+这次 GitHub 产品页文案的收口进一步确认：根 `README.md` 的 public positioning 还要明确三件事。
+
+- `claw workflow` 只会在已经初始化过 `.claw` 的项目里自动启用，不是全局默认接管所有仓库
+- planning 可以关闭，也可以接入自定义 planning 能力
+- `claw-kit` 可以嵌入到另一种 harness 或宿主流程里继续承担项目 workflow 角色，而不是绑定单一宿主
+
 ## Decision
 
 - 恢复被 `restore` / `clean` 清掉的 GitHub-facing 文档时，先抽取本地 session rollout JSONL 和完成计划里的可验证证据，再 replay 精确 patch，最后才做必要的最小重建。
@@ -27,6 +33,7 @@ Accepted
   - 可与其他 harness / skills 协同
   - truth / ADR 可复用且可检索
   - canonical + personal config 支持团队协作
+- 根 `README.md` 的公开定位还必须明确：workflow 只在已初始化项目里启用，planning 既可关闭也可替换为自定义 planning 能力，且 `claw-kit` 能嵌入其他 harness / 宿主流程继续工作。
 - GitNexus 在公开文案里只能作为 optional integration / complementary capability 出现，不能写成使用 `claw-kit` 的前置依赖。
 - 根 `README.md` 不再承载逐步 publish / release 操作流程，只保留通往专门 maintainer 文档的入口。
 - adapter `references/` 可以保存备用配置说明，例如 `project-config-reference.md`，用来承接 `.claw/project.json` 和 `.claw/project-override.json` 的快捷查阅知识；但这类文档必须保持 `backup reference` 定位，不能变成 harness contract、startup flow 或 plugin 行为的一部分。
@@ -38,6 +45,7 @@ Accepted
 - 文档误删后的恢复路径变得可重复，减少“看起来像回来了但实际已经漂移”的风险。
 - GitHub-facing 文档不会混成同一层职责，后续更新更容易定位该改哪里。
 - 公共定位会稳定区分 `claw-kit` 主体能力与 GitNexus 的可选补强角色，避免把依赖关系写反。
+- 公共定位会继续把 workflow 激活边界、planning 可配置性和 harness 可嵌入性讲清楚，减少读者把它误解成全局接管层或单一宿主绑定层的风险。
 - 根 README 保持轻量，发布/收口步骤统一回流到维护文档，不再和产品定位混写。
 - adapter 的备用配置说明形成了一个稳定的中转层：用户可以先在包内 references 找到简短配置说明，再回到 canonical `docs/project-json-reference.md` 查完整字段。
 - 公开面链接保持可移植，GitHub 展示和本地浏览都会继续工作。

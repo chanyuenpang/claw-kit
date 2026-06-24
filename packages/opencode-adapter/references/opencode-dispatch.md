@@ -37,7 +37,8 @@ Send: the completed subtask report with valuable findings
 Expected: optional telemetry, do not rely on return value
 
 ### adr-writer
-Send: completed plan path + plan summary
+Send: updated completed plan path + updated completed plan summary
+The completed plan bundle must already include retrospective and any durable `keyDecisions`.
 Expected: optional telemetry, do not rely on return value
 
 ### researcher

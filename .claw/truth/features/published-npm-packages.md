@@ -23,6 +23,7 @@
 - `@veewo/claw-core@0.1.40` 与 `@veewo/claw@0.1.40` 都已经成功发布到 npm registry。
 - 通过 `npm view @veewo/claw-core version` 与 `npm view @veewo/claw version` 校验后，两个包当前都解析到 `0.1.40`。
 - `npm publish` 偶尔会吐出 `bin[claw]` 之类的归一化警告，但这不能单独当成最终结论；发布后仍要用 `npm view @veewo/claw bin --json` 再核对 registry 里的 bin 映射，并跑真实的 `claw` 烟测确认命令面可用。
+- 2026-06-24 的 release audit 重新确认了 npm registry 的 `latest` 仍停留在 `0.1.50`，因此下一次 patch target 变为 `0.1.51`；这一轮 release-surface alignment 继续覆盖 root `package.json`、`packages/core/package.json`、`packages/cli/package.json`、`packages/codex-adapter/package.json`、`packages/openclaw-adapter/package.json`、`packages/opencode-adapter/package.json`、`package-lock.json` 和 `packages/codex-adapter/.codex-plugin/plugin.json`，其中 Codex plugin manifest 目标版本是 `0.1.51+codex.20260624140756`。
 - `@veewo/claw-core@0.1.48` and `@veewo/claw@0.1.48` were published on 2026-06-23 and registry metadata now reports `version = latest = 0.1.48` for both packages.
 - For `@veewo/claw@0.1.48`, registry metadata preserved `bin: { "claw": "dist/bin.js" }` and dependency `@veewo/claw-core: "0.1.48"` despite npm publish's auto-correct warning, so closeout should trust post-publish metadata over the warning text.
 - Tarball metadata for `@veewo/claw@0.1.48` is `shasum = 6fcf756e3a85372b0203f0f510466c9615c9da65` and `integrity = sha512-dch0KwjKkLOEZrFwExGwAyKEQEq1udQ6ozh3PW3MPnSoEzw5tyMMuxRkSiriPFW58lHtW2pw2vWQKKz9h1Q+9g==`; `npm pack @veewo/claw@0.1.48` succeeded after the local npm cache was cleared.

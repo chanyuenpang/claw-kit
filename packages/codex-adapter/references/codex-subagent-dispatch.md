@@ -40,7 +40,7 @@ Honor `workflowGuidance.nextsteps` ordering exactly.
   - run at task-completion time before plan closure
   - keep the specialist open for reuse
 - `adr-writer`
-  - run when `all tasks done` guidance says retrospective is ready for ADR closeout
+  - run only after `all tasks done` guidance has had retrospective and any durable `keyDecisions` written back into the plan
   - keep the specialist open for reuse
 - `researcher`
   - run for investigation-first tasks or bounded analysis subtasks
@@ -81,7 +81,7 @@ Send:
 
 - the skill item named by `delegateSubagents[*].skill`
 - completed plan path
-- completed plan JSON
+- the updated completed plan JSON, including retrospective and any durable `keyDecisions`
 
 Expected behavior:
 

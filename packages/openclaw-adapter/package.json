@@ -1,6 +1,6 @@
 {
   "name": "@claw-kit/openclaw-adapter",
-  "version": "0.1.50",
+  "version": "0.1.51",
   "private": true,
   "type": "module",
   "description": "OpenClaw adapter layer for the claw-kit .claw workflow model.",
@@ -23,7 +23,7 @@
     ".": "./dist/index.js"
   },
   "dependencies": {
-    "@veewo/claw-core": "0.1.50"
+    "@veewo/claw-core": "0.1.51"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

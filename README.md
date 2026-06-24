@@ -2,29 +2,31 @@
 
 `claw-kit` is a project-level workflow and knowledge layer for agentic work.
 
-It gives agents a durable way to plan before they execute, retain reusable project knowledge, and close work out cleanly instead of leaving progress trapped in transient chat state.
+It gives agents a durable way to plan before they execute, retain reusable project knowledge, and close work out cleanly inside initialized `.claw` projects instead of leaving progress trapped in transient chat state.
 
 ## What it gives a project
 
-- Project-scoped planning and task lifecycle around `.claw`
+- Project-scoped planning and task lifecycle around `.claw`, with workflow entry turning on automatically only after a project has been initialized
 - Truth and ADR deposition so useful knowledge survives across sessions
 - Recall-oriented search over project docs before broader investigation
 - Closeout workflows that keep tasks, notes, and decisions aligned
+- Planning surfaces that can stay enabled, be turned off, or be routed through a custom planning skill
 - Adapter surfaces that let the same workflow shape land in different agent hosts
 
 ## Why teams use it
 
+- Project-level instead of always-on: `claw-kit` becomes part of the workflow only after a repository has been initialized for `.claw`, so it can feel seamless inside opted-in projects without trying to take over every repo by default.
 - Plan before execute: the `.claw` plan structure gives agents a durable workflow to return to, which helps complex or longer-running tasks move forward more steadily than loose chat state alone.
-- Flexible by design: `claw-kit` can work alongside other harnesses or external skills instead of assuming a single host or investigation tool.
+- Flexible by design: teams can disable planning, plug in their own planning behavior, or embed `claw-kit` into another harness instead of being locked to a single host or investigation tool.
 - Truth and ADR stay reusable: the workflow maintains truth and ADR as durable project knowledge, then makes that context available again through project recall.
 - Team-friendly config: `.claw/project.json` holds the shared canonical workflow, while `.claw/project-override.json` leaves room for personal runtime preferences.
 - GitNexus can complement that workflow when a task needs deeper code investigation or relationship tracing, but it is optional rather than required.
 
 ## How it fits with other tools
 
-- `claw-kit` owns the project workflow layer: plan, recall, truth/ADR, and closeout.
+- `claw-kit` owns the project workflow layer inside initialized projects: plan, recall, truth/ADR, and closeout.
 - GitNexus is an optional companion for deeper code investigation and relationship tracing.
-- Host adapters bring the same workflow model into environments like Codex and OpenCode.
+- Host adapters bring the same workflow model into environments like Codex and OpenCode, and the workflow can also be embedded into another harness when teams need a custom host shape.
 
 ## Workflow shape
 
