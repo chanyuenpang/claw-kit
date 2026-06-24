@@ -2,6 +2,12 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.1.52] - 2026-06-24
+
+### Fixed
+
+- Codex workflow guidance now names `update_plan` directly when telling the host to sync or clear thread progress, so progress-sync follow-ups are explicit during active execution and closeout
+
 ## [0.1.50] - 2026-06-23
 
 ### Fixed
