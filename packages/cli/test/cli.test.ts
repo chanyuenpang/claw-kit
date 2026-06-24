@@ -326,7 +326,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
     "curated completed subtask report with valuable findings for truth deposition",
   );
   assert.deepEqual(taskDone.nextsteps, [
-    "1. Clear thread progress.",
+    "1. Clear thread progress with `update_plan`.",
     "2. Read `delegateSubagents`, curate the valuable findings from the completed work into a completed subtask report, then execute the returned `truth-writer` dispatch contract field-by-field. Do not treat it as a suggestion.",
     "3. First write both `retrospective` and `keyDecisions` back into the plan, then read `delegateSubagents` again and execute the returned `adr-writer` dispatch contract field-by-field with that updated completed `plan.json`.",
   ]);
@@ -497,7 +497,7 @@ test("cli plan edit wait and resume surfaces goal mode pause and restart guidanc
   const resumeGoalTool = resumeResult.goalTool as JsonRecord;
   assert.equal(resumeResult.planStatus, "process.active");
   assert.deepEqual(resumeResult.nextsteps, [
-    "Sync the thread progress with our tasks.",
+    "Sync thread progress with `update_plan`.",
     "Restore Goal Mode to the active state.",
     "Resume with task #1.",
   ]);
@@ -651,7 +651,7 @@ test("cli returns truth-writer contract on completed task before final plan comp
   assert.equal("stage" in taskDone, false);
   assert.equal("summary" in taskDone, false);
   assert.deepEqual(taskDone.nextsteps, [
-    "1. Sync the thread progress with our tasks.",
+    "1. Sync thread progress with `update_plan`.",
     "2. Read `delegateSubagents`, curate the valuable findings from the completed task into a completed subtask report, then execute the returned `truth-writer` dispatch contract field-by-field. Do not treat it as a suggestion.",
     "3. Continue with task #2.",
   ]);
@@ -945,7 +945,7 @@ test("cli plan done on a subplan resumes the parent plan instead of archiving th
   assert.equal(doneResult.planStatus, "process.active");
   assert.match(String(doneResult.planPath), /tasks[\\/]demo-task[\\/]plan\.json$/);
   assert.deepEqual(doneResult.nextsteps, [
-    "Sync the thread progress with our tasks.",
+    "Sync thread progress with `update_plan`.",
     "Start with task #2.",
   ]);
   assert.deepEqual(doneResult.nextTask, {

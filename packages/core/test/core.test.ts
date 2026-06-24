@@ -788,7 +788,7 @@ test("plan edit can move from requirements to process.active without a separate 
   assert.equal(activated.workflowGuidance.nextTask?.title, "Implement work");
   assert.ok(activated.workflowGuidance.goalMode?.recommendedObjective?.includes("Ship the first plan"));
   assert.equal(activated.workflowGuidance.goalMode?.setWhen, "on_enter_process_active");
-  assert.ok(activated.workflowGuidance.nextsteps.includes("Sync the thread progress with our tasks."));
+  assert.ok(activated.workflowGuidance.nextsteps.includes("Sync thread progress with `update_plan`."));
   assert.ok(activated.workflowGuidance.nextsteps.includes("Start with task #1."));
 
   const result = await editPlan({
@@ -809,7 +809,7 @@ test("plan edit can move from requirements to process.active without a separate 
   assert.ok(result.workflowGuidance.recommendedCommands?.some((command) => command.includes("claw plan done")));
   assert.equal(
     result.workflowGuidance.summary,
-    "All plan tasks are done. Clear thread progress, then execute each returned delegateSubagents entry field-by-field for truth deposition and ADR closeout.",
+    "All plan tasks are done. Clear thread progress with `update_plan`, then execute each returned delegateSubagents entry field-by-field for truth deposition and ADR closeout.",
   );
   assert.equal(
     result.workflowGuidance.notes,
@@ -837,7 +837,7 @@ test("plan edit can move from requirements to process.active without a separate 
   assert.ok(result.workflowGuidance.nextsteps.some((step) => step.includes("truth-writer")));
   assert.ok(result.workflowGuidance.nextsteps.some((step) => step.includes("adr-writer")));
   assert.deepEqual(result.workflowGuidance.nextsteps, [
-    "1. Clear thread progress.",
+    "1. Clear thread progress with `update_plan`.",
     "2. Read `delegateSubagents`, curate the valuable findings from the completed work into a completed subtask report, then execute the returned `truth-writer` dispatch contract field-by-field. Do not treat it as a suggestion.",
     "3. First write both `retrospective` and `keyDecisions` back into the plan, then read `delegateSubagents` again and execute the returned `adr-writer` dispatch contract field-by-field with that updated completed `plan.json`.",
   ]);
@@ -985,11 +985,11 @@ test("resuming from process.wait to process.active re-emits goal mode guidance",
     "The plan is moving back from a paused status into active execution, so Goal Mode should be restored to the active state before work resumes.",
   );
   assert.deepEqual(resumed.workflowGuidance.nextsteps, [
-    "Sync the thread progress with our tasks.",
+    "Sync thread progress with `update_plan`.",
     "Restore Goal Mode to the active state.",
     "Resume with task #1.",
   ]);
-  assert.ok(resumed.workflowGuidance.nextsteps.includes("Sync the thread progress with our tasks."));
+  assert.ok(resumed.workflowGuidance.nextsteps.includes("Sync thread progress with `update_plan`."));
 });
 
 test("end.completed emits complete goal tool guidance", async () => {
@@ -1094,7 +1094,7 @@ test("process entry returns the first task and task completion returns truth-wri
     "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. When dispatching a subagent, each entry is a required structured contract whose fields must be honored directly.",
   );
   assert.deepEqual(taskDone.workflowGuidance.nextsteps, [
-    "1. Sync the thread progress with our tasks.",
+    "1. Sync thread progress with `update_plan`.",
     "2. Read `delegateSubagents`, curate the valuable findings from the completed task into a completed subtask report, then execute the returned `truth-writer` dispatch contract field-by-field. Do not treat it as a suggestion.",
     "3. Continue with task #2.",
   ]);
