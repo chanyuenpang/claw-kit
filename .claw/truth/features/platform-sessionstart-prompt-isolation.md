@@ -16,6 +16,7 @@ Because of the above, the two guidance configs intentionally diverge on referenc
 - **Codex config** (core bundled `packages/core/src/workflow-guidance.config.json`): the default and recovered `sessionStart` prompts reference `claw-kit:using-claw-kit` and `@claw-kit`, with no `plugin://` link in the prompt text.
 - **opencode config** (`packages/opencode-adapter/workflow-guidance.opencode.json`): the default and recovered prompts say "Load the `using-claw-kit` skill" (bare skill name) and "Use the claw-kit plugin", with **no `plugin://` link** anywhere.
 - **core fallback constants** in `packages/core/src/workflow-guidance.ts` are unified to `@claw-kit` / `claw-kit:using-claw-kit`, matching the Codex config verbatim, so a missing `sessionStart` config degrades to Codex conventions rather than emitting a `plugin://` link that opencode cannot resolve.
+- As of the `0.1.53` release line, both startup-copy surfaces also carry the same low-complexity entry semantic: when no task scope is recovered and the request is lightweight, `using-claw-kit` can skip the formal claw workflow before `claw plan create`, rather than forcing search/plan creation first. The host-specific difference is still only the reference syntax and plugin/skill wording.
 
 ## Verification
 
@@ -32,6 +33,7 @@ Because of the above, the two guidance configs intentionally diverge on referenc
 
 - `packages/core/src/workflow-guidance.config.json` — Codex default `sessionStart` template
 - `packages/opencode-adapter/workflow-guidance.opencode.json` — opencode variant `sessionStart` template
+- `packages/codex-adapter/.codex-plugin/plugin.json` — Codex plugin entry copy for the installed startup surface
 - `packages/core/src/workflow-guidance.ts` — fallback constants + `buildSessionStartDefaultPrompt` / `buildSessionStartRecoveredPrompt`
 - `packages/opencode-adapter/plugin/index.ts` — `invokeClawSessionStart()` with explicit `CLAW_HOST` / `CLAW_GUIDANCE_CONFIG` env
 - `packages/opencode-adapter/skills/using-claw-kit/SKILL.md` — opencode skill registration
