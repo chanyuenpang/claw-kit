@@ -1,7 +1,7 @@
 {
   "name": "claw-kit",
-  "version": "0.1.52+codex.20260624215321",
-  "description": "Thin Codex adapter for claw-kit. Start with using-claw-kit as the single main-agent workflow, then drive .claw plan, search, truth, and ADR workflows through the local claw CLI while consuming compact workflowGuidance and specialist subagent contracts for truth and ADR deposition.",
+  "version": "0.1.53+codex.20260626141302",
+  "description": "Thin Codex adapter for claw-kit. Start with using-claw-kit as the single main-agent workflow, let it decide whether low-complexity work should bypass the formal .claw workflow, and otherwise drive .claw plan, search, truth, and ADR workflows through the local claw CLI while consuming compact workflowGuidance and specialist subagent contracts for truth and ADR deposition.",
   "author": {
     "name": "chanyuenpang",
     "url": "https://github.com/chanyuenpang"
@@ -22,8 +22,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Claw Kit",
-    "shortDescription": "Prompt-driven .claw harness with compact workflowGuidance and delegated deposition subagents.",
-    "longDescription": "Use Claw Kit through using-claw-kit as the single main-agent workflow. Continue any recovered .claw task from its returned workflowGuidance; when no task scope exists, bind one through plan create, then let the seeded planning task invoke the configured planning skill. Use claw search when useful to recover project context, and follow compact workflowGuidance from claw plan commands to drive planning, execution, truth, and ADR workflows. Truth deposition and ADR deposition should run as narrow reusable specialist subagents so the main agent stays focused on coordination and execution.",
+    "shortDescription": "Prompt-driven .claw harness with entry-time complexity gating, compact workflowGuidance, and delegated deposition subagents.",
+    "longDescription": "Use Claw Kit through using-claw-kit as the single main-agent workflow. Continue any recovered .claw task from its returned workflowGuidance; when no task scope exists, let using-claw-kit score the request first so low-complexity work can bypass the formal claw workflow, and only create a plan for work that needs the normal .claw lifecycle. Use claw search when useful after plan creation to recover project context, and follow compact workflowGuidance from claw plan commands to drive planning, execution, truth, and ADR workflows. Truth deposition and ADR deposition should run as narrow reusable specialist subagents so the main agent stays focused on coordination and execution.",
     "developerName": "chanyuenpang",
     "category": "Developer Tools",
     "capabilities": [
@@ -33,8 +33,8 @@
     ],
     "defaultPrompt": [
       "Start with using-claw-kit. If a .claw workflow is already recovered, follow its returned workflowGuidance before creating anything.",
-      "Start with using-claw-kit. When no task scope exists, create one with plan create, then follow the returned workflowGuidance.",
-      "Start with using-claw-kit. Let seeded planning tasks invoke the configured planning skill, and route truth or ADR deposition from workflowGuidance."
+      "Start with using-claw-kit. When no task scope exists, score the request first; low-complexity work can skip the formal claw workflow, while higher-complexity work should create a plan and follow the returned workflowGuidance.",
+      "Start with using-claw-kit. Let seeded planning tasks invoke the configured planning skill only after formal claw workflow entry, and route truth or ADR deposition from workflowGuidance."
     ],
     "websiteURL": "https://github.com/chanyuenpang/claw-kit",
     "privacyPolicyURL": "https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement",

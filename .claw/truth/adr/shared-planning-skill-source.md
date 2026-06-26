@@ -37,6 +37,8 @@ Enforce synchronization automatically:
 Keep the shared planning skill host-agnostic:
 
 - it defines plan quality, decomposition, and scope-writing rules
+- it assumes `using-claw-kit` has already decided whether the request belongs in the formal claw workflow
+- it does not own or duplicate the entry-time complexity scoring heuristic
 - it does not define claw-kit runtime flow, status semantics, writer dispatch, goal mode, or closeout policy
 
 Keep the shared config skill host-agnostic:
@@ -54,9 +56,10 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 - There is only one maintained source for each host-neutral shared skill going forward.
 - Exported plugin bundles still retain adapter-local skill files, so no host runtime contract is broken.
 - Host/runtime-specific workflow rules remain separated from generic planning and config guidance.
+- The complexity gate now has a single owner at workflow entry, so low-score tasks do not create drift by entering planning first and bypassing later.
 - Future edits to planning quality or decomposition rules should start from `shared/skills/planning/SKILL.md`.
 - Future edits to config routing or override-format guidance should start from `shared/skills/config/SKILL.md`.
-- Edits to status semantics or workflowGuidance handling should start from `using-claw-kit`.
+- Edits to complexity admission, status semantics, or workflowGuidance handling should start from `using-claw-kit`.
 
 ## Related Code
 
@@ -82,3 +85,5 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 - `shared skill source`
 - `shared planning skill`
 - `shared config skill`
+- `complexity heuristic`
+- `workflow admission`

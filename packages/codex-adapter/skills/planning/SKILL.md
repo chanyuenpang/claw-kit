@@ -55,29 +55,10 @@ Use it when task shape, dependencies, completion criteria, or requirement clarit
   - integration third
   - verification last
 
-## Complexity heuristic
+## Entry assumption
 
-Use this quick scoring pass before deciding whether the task needs a formal plan:
-
-| Dimension | Simple (1) | Medium (2) | Complex (3) |
-| --- | --- | --- | --- |
-| Files/modules touched | no file changes, or 1 file or one tight module | 2-3 files/modules | 4+ files/modules or a cross-cutting surface |
-| Requirement clarity | fully clear / the request itself is an investigation | one or two small unknowns | fuzzy, conflicting, or multiple plausible routes |
-| Dependency clarity | isolated | known dependencies | unclear dependencies or integration risk |
-| Workflow shape | discussion / doc-only work / tiny patch / direct answer | light implementation with a short verify step | real workflow, staged work, or multi-step closure |
-
-Scoring rule:
-
-- score `< 6`: lightweight task
-- score `>= 6`: complex task
-
-For score `< 6`, use a lightweight path:
-
-- tasks do not need further decomposition
-- verification and closure can stay minimal
-- if the request is already clear, append only the minimal executable task or tasks needed
-
-For score `>= 6`, use the standard planning flow below.
+By the time this skill is invoked, `using-claw-kit` has already decided that the request should enter the formal claw planning workflow.
+If a request was low-complexity enough to skip that workflow, it should have bypassed this skill entirely.
 
 ## Required plan shape
 

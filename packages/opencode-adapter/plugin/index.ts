@@ -269,9 +269,10 @@ export const ClawKitPlugin: Plugin = async ({ client, directory }) => {
       }
       lines.push("");
       lines.push("Load the using-claw-kit skill as the main workflow skill for this session.");
-      lines.push("Use claw plan create to create task scope when none exists.");
-      lines.push("Follow the claw workflowGuidance return fields as the required next-step contract.");
-      lines.push("Use claw search for project recall.");
+      lines.push("If no task scope exists yet, let using-claw-kit score the request before entering the formal claw workflow.");
+      lines.push("Low-complexity work can bypass claw plan create, claw search, and workflowGuidance entirely.");
+      lines.push("For higher-complexity work, use claw plan create, then follow the claw workflowGuidance return fields as the required next-step contract.");
+      lines.push("Use claw search for project recall after plan creation when the formal claw workflow is active.");
       lines.push("");
 
       // Conditional: append active plan summary if recovered
