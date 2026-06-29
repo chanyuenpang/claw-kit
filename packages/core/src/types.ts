@@ -29,6 +29,7 @@ export type ProjectConfig = {
   externalPlanningSkill?: string | null;
   externalTruthSkill?: string | null;
   externalAdrSkill?: string | null;
+  defaultPlanTemplate?: string | null;
   contextPaths?: string[];
   memory?: {
     externalDocPaths?: string[];

@@ -67,7 +67,8 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
   const effectiveStatus = normalizePlanStatus(input.planStatus) ?? input.content?.status ?? existingStatus ?? "prepare.requirements";
 
   let plan = normalizePlanDocument(
-    input.content ?? createSeedPlan(
+    input.content ?? await createSeedPlan(
+      project.projectRoot,
       project.projectConfig,
       input.templateName,
       taskName,
@@ -564,7 +565,8 @@ function applyPlanPatch(target: PlanDocument, patch: Partial<PlanDocument>): voi
   }
 }
 
-function createSeedPlan(
+async function createSeedPlan(
+  projectRoot: string,
   projectConfig: TaskContext["project"]["projectConfig"] | null,
   templateName: string | undefined,
   taskName: string,
@@ -573,8 +575,12 @@ function createSeedPlan(
   status: PlanStatus = "prepare.requirements",
   forcePlanning = false,
   host?: string,
-): PlanDocument {
-  const template = resolveSeedPlanTemplate(templateName);
+): Promise<PlanDocument> {
+  const effectiveTemplateName = templateName?.trim() || projectConfig?.defaultPlanTemplate?.trim() || defaultPlanTemplateName();
+  const template = await resolveSeedPlanTemplate({
+    projectRoot,
+    templateName: effectiveTemplateName,
+  });
   const planningEnabled = forcePlanning || projectConfig?.planning !== false;
   const planningSkill = projectConfig?.externalPlanningSkill?.trim() || "the built-in planning skill";
   if (!planningEnabled) {
@@ -646,6 +652,10 @@ function createSeedPlan(
       summary: "",
     },
   };
+}
+
+function defaultPlanTemplateName(): string {
+  return "default";
 }
 
 function buildActivationTaskDetail(params: {

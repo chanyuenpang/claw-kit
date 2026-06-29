@@ -103,18 +103,27 @@ function readRawProjectConfig(projectJsonPath: string): {
 function normalizeProjectConfig(raw: unknown, projectRoot: string): ProjectConfig {
   const source = asObject(raw);
   const {
+    id: _id,
+    name: _name,
+    maxTasksToKeep: _maxTasksToKeep,
+    planning: _planning,
+    externalPlanningSkill: _externalPlanningSkill,
+    externalTruthSkill: _externalTruthSkill,
+    externalAdrSkill: _externalAdrSkill,
+    defaultPlanTemplate: _defaultPlanTemplate,
+    contextPaths: _contextPaths,
+    memory: _memory,
     autoAchieveTask: _autoAchieveTask,
     workflow: _workflow,
     gitnexus: _gitnexus,
     goalMode: _goalMode,
     truthDispatch: _truthDispatch,
-    ...sourceWithoutLegacy
+    ...rest
   } = source ?? {};
   const sourceMemory = asObject(source?.memory);
   const maxTasksToKeep = source?.maxTasksToKeep;
 
   return {
-    ...sourceWithoutLegacy,
     id: deriveProjectId(source, projectRoot),
     name: deriveProjectName(source, projectRoot),
     maxTasksToKeep:
@@ -127,12 +136,14 @@ function normalizeProjectConfig(raw: unknown, projectRoot: string): ProjectConfi
     externalPlanningSkill: normalizeOptionalSkill(source?.externalPlanningSkill),
     externalTruthSkill: normalizeOptionalSkill(source?.externalTruthSkill),
     externalAdrSkill: normalizeOptionalSkill(source?.externalAdrSkill),
+    defaultPlanTemplate: normalizeOptionalTemplateName(source?.defaultPlanTemplate),
     contextPaths: normalizeStringArray(source?.contextPaths),
     memory: {
       externalDocPaths: normalizeStringArray(sourceMemory?.externalDocPaths),
       embedding: normalizeMemoryEmbeddingConfig(sourceMemory?.embedding),
     },
     gitnexus: readBooleanConfig(source, "gitnexus", false),
+    ...rest,
   };
 }
 
@@ -180,6 +191,7 @@ function validateProjectConfig(raw: unknown, issues: ProjectProtocolIssue[]): vo
   requireNullableString(config, "externalPlanningSkill", issues);
   requireNullableString(config, "externalTruthSkill", issues);
   requireNullableString(config, "externalAdrSkill", issues);
+  requireNullableString(config, "defaultPlanTemplate", issues);
   requireStringArray(config, "contextPaths", issues);
   requireBoolean(config, "gitnexus", issues);
 
@@ -327,6 +339,14 @@ function readNonEmptyString(value: unknown): string | undefined {
 }
 
 function normalizeOptionalSkill(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function normalizeOptionalTemplateName(value: unknown): string | null {
   if (typeof value !== "string") {
     return null;
   }

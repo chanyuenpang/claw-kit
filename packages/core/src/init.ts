@@ -69,9 +69,12 @@ export function initProject(input: InitProjectInput): InitProjectResult {
     name: projectName,
     maxTasksToKeep,
     planning: input.planning ?? true,
+    goalMode: true,
+    truthDispatch: "per_task",
     externalPlanningSkill: normalizeOptionalSkill(input.externalPlanningSkill),
     externalTruthSkill: normalizeOptionalSkill(input.externalTruthSkill),
     externalAdrSkill: normalizeOptionalSkill(input.externalAdrSkill),
+    defaultPlanTemplate: null,
     contextPaths: [...(input.contextPaths ?? [])],
     memory: {
       externalDocPaths: [...(input.externalDocPaths ?? [])],
@@ -80,8 +83,6 @@ export function initProject(input: InitProjectInput): InitProjectResult {
         model: DEFAULT_LOCAL_EMBEDDING_MODEL,
       },
     },
-    goalMode: true,
-    truthDispatch: "per_task",
     gitnexus: input.gitnexusEnabled ?? false,
   };
 

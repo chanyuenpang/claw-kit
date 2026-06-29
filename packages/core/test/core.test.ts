@@ -118,6 +118,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
     externalPlanningSkill: null,
     externalTruthSkill: "external-truth-writer",
     externalAdrSkill: "external-adr-writer",
+    defaultPlanTemplate: null,
     contextPaths: ["docs/project-guide.md"],
     goalMode: true,
     truthDispatch: "per_task",
@@ -326,6 +327,95 @@ test("writePlan uses externalPlanningSkill in the seeded planning task detail", 
   });
 
   assert.ok(result.plan.tasks[0]?.detail?.includes("team-planner"));
+});
+
+test("writePlan loads a project JSON template from .claw/templates", async () => {
+  const root = createFixture("plan-template-project-json");
+  initProject({ cwd: root, projectName: "Project Json Template", planning: true, force: true });
+  fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "templates", "team-default.json"),
+    `${JSON.stringify({
+      id: "team-default",
+      aliases: ["team"],
+      planningEnabledStatus: "process.discussing",
+      planningDisabledStatus: "process.active",
+      planningTask: {
+        title: "Draft requirements with the team template",
+        detail: "Use {{planningSkill}} to turn the request into executable tasks.",
+      },
+      activationTask: {
+        title: "Activate the team template plan",
+        detail: "Move this plan into process.active after refinement.",
+        goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode.",
+      },
+    }, null, 2)}\n`,
+    "utf-8",
+  );
+
+  const result = await writePlan({
+    cwd: root,
+    title: "Use project JSON template",
+    templateName: "team-default",
+  });
+
+  assert.equal(result.plan.tasks[0]?.title, "Draft requirements with the team template");
+  assert.equal(result.plan.tasks[1]?.title, "Activate the team template plan");
+});
+
+test("writePlan loads a project JS template from .claw/templates", async () => {
+  const root = createFixture("plan-template-project-js");
+  initProject({ cwd: root, projectName: "Project Js Template", planning: true, force: true });
+  fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "templates", "team-js-template.mjs"),
+    `export default {
+  id: "team-js-template",
+  aliases: ["team-js"],
+  planningEnabledStatus: "process.discussing",
+  planningDisabledStatus: "process.active",
+  planningTask: {
+    title: "Plan with the JS template",
+    detail: "Use {{planningSkill}} to build the plan.",
+  },
+  activationTask: {
+    title: "Activate the JS template",
+    detail: "Move to process.active after planning.",
+    goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode.",
+  },
+};
+`,
+    "utf-8",
+  );
+
+  const result = await writePlan({
+    cwd: root,
+    title: "Use project JS template",
+    templateName: "team-js-template",
+  });
+
+  assert.equal(result.plan.tasks[0]?.title, "Plan with the JS template");
+});
+
+test("writePlan rejects an invalid project template export shape", async () => {
+  const root = createFixture("plan-template-project-invalid");
+  initProject({ cwd: root, projectName: "Invalid Project Template", planning: true, force: true });
+  fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "templates", "broken-template.js"),
+    "module.exports = { nope: true };\n",
+    "utf-8",
+  );
+
+  await assert.rejects(
+    () =>
+      writePlan({
+        cwd: root,
+        title: "Use broken template",
+        templateName: "broken-template",
+      }),
+    /template/i,
+  );
 });
 
 test("plan create guidance leaves requirement judgment to the agent", async () => {
@@ -1175,6 +1265,54 @@ test("resolveContext deep-merges project-override.json and preserves explicit nu
   assert.equal(result.project.projectConfig?.truthDispatch, "per_task");
   assert.equal(result.project.projectConfig?.memory?.embedding?.model, "Snowflake/snowflake-arctic-embed-m-v2.0");
   assert.equal(result.project.projectConfig?.memory?.embedding?.store, undefined);
+});
+
+test("resolveContext deep-merges defaultPlanTemplate from project-override.json", () => {
+  const root = createFixture("project-override-default-template");
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify(
+      {
+        id: "project-override-default-template",
+        name: "Project Override Default Template",
+        maxTasksToKeep: 99,
+        planning: true,
+        goalMode: true,
+        truthDispatch: "per_task",
+        externalPlanningSkill: null,
+        externalTruthSkill: null,
+        externalAdrSkill: null,
+        defaultPlanTemplate: "team-default",
+        contextPaths: [],
+        memory: {
+          externalDocPaths: [],
+          embedding: {
+            provider: "local",
+            model: "Snowflake/snowflake-arctic-embed-m-v2.0",
+          },
+        },
+        gitnexus: false,
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+  fs.writeFileSync(
+    path.join(root, ".claw", "project-override.json"),
+    JSON.stringify(
+      {
+        defaultPlanTemplate: "personal-default",
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+
+  const result = resolveContext(root);
+
+  assert.equal(result.project.projectConfig?.defaultPlanTemplate, "personal-default");
 });
 
 test("workflow guidance respects disabled goal mode and final-only truth dispatch from effective project config", async () => {

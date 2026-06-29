@@ -110,6 +110,7 @@ Legacy nested inputs such as `gitnexus.enabled`, `workflow.goalMode.enabled`, an
   "externalPlanningSkill": null,
   "externalTruthSkill": null,
   "externalAdrSkill": null,
+  "defaultPlanTemplate": null,
   "contextPaths": [],
   "memory": {
     "externalDocPaths": [],
@@ -130,10 +131,53 @@ When `planning = true`, the normal root entry flow is:
 
 `claw plan create` -> `process.discussing` -> task 1 planning -> task 2 activate -> execution
 
-The default template is `default`. The CLI can also select it explicitly:
+The built-in fallback template is `default`. The CLI uses explicit `--template` first, otherwise the merged `defaultPlanTemplate` from `.claw/project.json` plus `.claw/project-override.json`, and only then falls back to `default`.
+
+The CLI can still select the fallback template explicitly:
 
 ```powershell
 claw plan create "My task" --template default --goal "Define the first task"
+```
+
+### Project-owned template directory
+
+Project templates live directly under `.claw/templates` and can use these formats:
+
+- `.claw/templates/<name>.json`
+- `.claw/templates/<name>.js`
+- `.claw/templates/<name>.mjs`
+- `.claw/templates/<name>.cjs`
+
+JavaScript-backed templates should export the same seed template object shape as the built-in template.
+
+### Shared default project template
+
+`.claw/project.json`:
+
+```json
+{
+  "defaultPlanTemplate": "team-default"
+}
+```
+
+`.claw/templates/team-default.js`:
+
+```js
+export default {
+  id: "team-default",
+  aliases: [],
+  planningEnabledStatus: "process.discussing",
+  planningDisabledStatus: "process.active",
+  planningTask: {
+    title: "Use the team planning flow",
+    detail: "Use {{planningSkill}} to refine the request into executable work."
+  },
+  activationTask: {
+    title: "Enter process.active",
+    detail: "After planning, move into process.active and continue execution.",
+    goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode."
+  }
+}
 ```
 
 ### Planning-disabled root plans
@@ -197,7 +241,8 @@ With this config, planning-enabled seed plans still start in `process.discussing
 ```json
 {
   "planning": true,
-  "externalPlanningSkill": "my-planning-skill"
+  "externalPlanningSkill": "my-planning-skill",
+  "defaultPlanTemplate": "my-personal-template"
 }
 ```
 

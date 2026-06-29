@@ -2,6 +2,16 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.1.54] - 2026-06-29
+
+### Added
+
+- Plans can now load project-owned templates from `.claw/templates` using `.json`, `.js`, `.cjs`, or `.mjs` files, making it possible to design reusable plan templates directly inside a project
+
+### Changed
+
+- `defaultPlanTemplate` can now be configured in project config and overrides so `claw plan create` uses a project default when `--template` is omitted, while explicit `--template` still takes precedence
+
 ## [0.1.52] - 2026-06-24
 
 ### Fixed

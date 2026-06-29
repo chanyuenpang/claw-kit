@@ -105,12 +105,12 @@ const COMMAND_HELP: Record<string, HelpNode> = {
           "{script} plan create --title <text> [--goal <text>] [--template <name>]",
         ],
         description:
-          "Create the task scope and initial plan from a template. Defaults to `default`; planning-enabled projects start in process.discussing with planning and activation bridge tasks, while planning-disabled projects start directly in process.active with one executable task.",
+          "Create the task scope and initial plan from a template. Uses explicit `--template` first, otherwise the project's configured `defaultPlanTemplate`, and finally falls back to the built-in `default`; planning-enabled projects start in process.discussing with planning and activation bridge tasks, while planning-disabled projects start directly in process.active with one executable task.",
         summary: "Create the task scope and initial plan.",
         options: [
           { flag: "--title <text>", detail: "Task title (required unless a positional title is given)." },
           { flag: "--goal <text>", detail: "Optional goal text." },
-          { flag: "--template <name>", detail: "Optional plan template name (default `default`)." },
+          { flag: "--template <name>", detail: "Optional plan template name. Overrides the project's configured default template." },
         ],
       },
       edit: {
@@ -165,12 +165,12 @@ const COMMAND_HELP: Record<string, HelpNode> = {
       create: {
         usage: ["{script} subplan create --parent <task-name> --task-id <number> [--template <name>]"],
         description:
-          "Create a subplan under a parent task's task item. The parent's rootPlan stays stable while the subplan becomes the active plan.",
+          "Create a subplan under a parent task's task item. Uses explicit `--template` first, otherwise the project's configured `defaultPlanTemplate`, and finally falls back to the built-in `default`. The parent's rootPlan stays stable while the subplan becomes the active plan.",
         summary: "Create a subplan under a parent task's task item.",
         options: [
           { flag: "--parent <task-name>", detail: "(required) Parent task name." },
           { flag: "--task-id <number>", detail: "(required) Parent task item id to split into a subplan." },
-          { flag: "--template <name>", detail: "Optional plan template name (default `default`)." },
+          { flag: "--template <name>", detail: "Optional plan template name. Overrides the project's configured default template." },
         ],
       },
     },

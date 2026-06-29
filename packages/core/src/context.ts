@@ -201,6 +201,7 @@ function normalizeProjectConfig(projectConfig: ProjectConfig): ProjectConfig {
     externalPlanningSkill: normalizeOptionalSkill(projectConfig.externalPlanningSkill),
     externalTruthSkill: normalizeOptionalSkill(projectConfig.externalTruthSkill),
     externalAdrSkill: normalizeOptionalSkill(projectConfig.externalAdrSkill),
+    defaultPlanTemplate: normalizeOptionalTemplateName(projectConfig.defaultPlanTemplate),
     contextPaths: [...(projectConfig.contextPaths ?? [])],
     memory: {
       externalDocPaths: [...(projectConfig.memory?.externalDocPaths ?? [])],
@@ -225,6 +226,14 @@ function deriveProjectId(projectRoot: string, projectConfig: ProjectConfig | nul
 }
 
 function normalizeOptionalSkill(value: string | null | undefined): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function normalizeOptionalTemplateName(value: string | null | undefined): string | null {
   if (typeof value !== "string") {
     return null;
   }

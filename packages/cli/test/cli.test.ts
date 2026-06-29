@@ -415,6 +415,97 @@ test("cli plan create accepts an explicit template flag", () => {
   assert.equal(String((tasks[1] as JsonRecord).title), "Enter process.active");
 });
 
+test("cli plan create uses project-config defaultPlanTemplate when --template is omitted", () => {
+  const root = createFixture("cli-plan-default-template");
+  runClaw(["init", "--name", "CLI Plan Default Template"], root);
+  fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "templates", "team-default.json"),
+    `${JSON.stringify({
+      id: "team-default",
+      aliases: [],
+      planningEnabledStatus: "process.discussing",
+      planningDisabledStatus: "process.active",
+      planningTask: {
+        title: "Project default planning task",
+        detail: "Use {{planningSkill}} to refine this task.",
+      },
+      activationTask: {
+        title: "Project default activation task",
+        detail: "Move to process.active after planning.",
+        goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode.",
+      },
+    }, null, 2)}\n`,
+    "utf-8",
+  );
+
+  const projectJsonPath = path.join(root, ".claw", "project.json");
+  const projectConfig = JSON.parse(fs.readFileSync(projectJsonPath, "utf-8")) as JsonRecord;
+  projectConfig.defaultPlanTemplate = "team-default";
+  fs.writeFileSync(projectJsonPath, `${JSON.stringify(projectConfig, null, 2)}\n`, "utf-8");
+
+  const result = runClaw(["plan", "create", "Uses configured template"], root);
+  const tasks = (((result.plan as JsonRecord).tasks as JsonRecord[]) ?? []);
+
+  assert.equal(String((tasks[0] as JsonRecord).title), "Project default planning task");
+  assert.equal(String((tasks[1] as JsonRecord).title), "Project default activation task");
+});
+
+test("cli plan create lets explicit --template override defaultPlanTemplate", () => {
+  const root = createFixture("cli-plan-explicit-template-wins");
+  runClaw(["init", "--name", "CLI Plan Explicit Template Wins"], root);
+  fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "templates", "config-default.json"),
+    `${JSON.stringify({
+      id: "config-default",
+      aliases: [],
+      planningEnabledStatus: "process.discussing",
+      planningDisabledStatus: "process.active",
+      planningTask: {
+        title: "Config default planning task",
+        detail: "Use {{planningSkill}} from config.",
+      },
+      activationTask: {
+        title: "Config default activation task",
+        detail: "Move to process.active from config.",
+        goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode.",
+      },
+    }, null, 2)}\n`,
+    "utf-8",
+  );
+  fs.writeFileSync(
+    path.join(root, ".claw", "templates", "explicit.json"),
+    `${JSON.stringify({
+      id: "explicit",
+      aliases: [],
+      planningEnabledStatus: "process.discussing",
+      planningDisabledStatus: "process.active",
+      planningTask: {
+        title: "Explicit planning task",
+        detail: "Use {{planningSkill}} from explicit template.",
+      },
+      activationTask: {
+        title: "Explicit activation task",
+        detail: "Move to process.active from explicit template.",
+        goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode.",
+      },
+    }, null, 2)}\n`,
+    "utf-8",
+  );
+
+  const projectJsonPath = path.join(root, ".claw", "project.json");
+  const projectConfig = JSON.parse(fs.readFileSync(projectJsonPath, "utf-8")) as JsonRecord;
+  projectConfig.defaultPlanTemplate = "config-default";
+  fs.writeFileSync(projectJsonPath, `${JSON.stringify(projectConfig, null, 2)}\n`, "utf-8");
+
+  const result = runClaw(["plan", "create", "Uses explicit template", "--template", "explicit"], root);
+  const tasks = (((result.plan as JsonRecord).tasks as JsonRecord[]) ?? []);
+
+  assert.equal(String((tasks[0] as JsonRecord).title), "Explicit planning task");
+  assert.equal(String((tasks[1] as JsonRecord).title), "Explicit activation task");
+});
+
 test("cli plan edit accepts single-reference shortcut flags", () => {
   const root = createFixture("plan-edit-reference-flags");
   runClaw(["init", "--name", "Reference Flags", "--planning", "false"], root);
