@@ -6,11 +6,11 @@ export const deckContent = {
         id: "hero",
         variant: "hero",
         eyebrow: "claw-kit / workflow layer",
-        title: "Built for agent work that holds up.",
+        title: "Claw Kit, a harness for complex projects and long-running tasks",
         summary:
-          "A project workflow layer for planning, recall, execution, capture, and closeout.",
+          "A workflow layer for agent work that keeps planning, context, execution, and closeout connected across the life of a project.",
         detail:
-          "Project memory, workflow structure, and closeout stay in the work instead of getting lost across chats."
+          "Project memory, workflow structure, and closeout stay in the work instead of getting reset every time a long-running round crosses chat boundaries."
       },
       {
         id: "problem",
@@ -53,8 +53,7 @@ export const deckContent = {
         eyebrow: "core loop",
         title: "Five moves that keep work moving.",
         summary: "Five moves. One continuous round.",
-        detail:
-          "Hover any move to see what is happening in the round.",
+        detail: "",
         steps: [
           {
             label: "Plan",
@@ -82,17 +81,6 @@ export const deckContent = {
             accent: "Closeout"
           }
         ]
-      },
-      {
-        id: "ecosystem",
-        variant: "hosts",
-        eyebrow: "multi-host",
-        title: "One workflow, multiple hosts.",
-        summary:
-          "Switch hosts without starting the workflow over.",
-        detail:
-          "Start in the CLI, then extend into Codex, OpenCode, and OpenClaw.",
-        tags: ["CLI", "Codex", "OpenCode", "OpenClaw"]
       },
       {
         id: "advanced-features",
@@ -123,6 +111,17 @@ export const deckContent = {
         ]
       },
       {
+        id: "ecosystem",
+        variant: "hosts",
+        eyebrow: "multi-host",
+        title: "One workflow, multiple hosts.",
+        summary:
+          "Switch hosts without starting the workflow over.",
+        detail:
+          "Start in the CLI, then extend into Codex, OpenCode, and OpenClaw.",
+        tags: ["CLI", "Codex", "OpenCode", "OpenClaw"]
+      },
+      {
         id: "closing",
         variant: "closing",
         eyebrow: "start here",
@@ -134,7 +133,20 @@ export const deckContent = {
           "Help me install the claw-kit plugin and CLI, project URL: https://github.com/chanyuenpang/claw-kit",
         copyHint: "Click to copy",
         copyFeedback: "Copied",
-        links: ["View docs", "Start with CLI", "Explore hosts"]
+        links: [
+          {
+            label: "Read the docs",
+            href: "https://github.com/chanyuenpang/claw-kit#readme"
+          },
+          {
+            label: "Technical principles",
+            href: "./technical-principles.html"
+          },
+          {
+            label: "Explore hosts",
+            href: "#ecosystem"
+          }
+        ]
       }
     ]
   },
@@ -145,11 +157,11 @@ export const deckContent = {
         id: "hero",
         variant: "hero",
         eyebrow: "claw-kit / workflow layer",
-        title: "让 agent 协作接得住，也跑得远。",
+        title: "Claw Kit，面向复杂项目与长时任务的 harness 方案",
         summary:
-          "把计划、上下文、执行、沉淀和收尾，收进同一条项目工作流。",
+          "面向 agent work 的 workflow layer，让计划、上下文、执行和收尾贯穿整个项目周期。",
         detail:
-          "项目记忆、流程结构和收尾动作，不再散落在一轮轮对话之间。"
+          "项目记忆、流程结构和收尾动作留在工作里，不会因为长时任务跨过几轮对话就重新散掉。"
       },
       {
         id: "problem",
@@ -192,8 +204,7 @@ export const deckContent = {
         eyebrow: "核心循环",
         title: "五步一轮，工作自然往前走。",
         summary: "先定范围，再带着上下文推进。",
-        detail:
-          "把鼠标停在任一步上，就能看到这一轮当前在做什么。",
+        detail: "",
         steps: [
           {
             label: "计划",
@@ -221,17 +232,6 @@ export const deckContent = {
             accent: "Closeout"
           }
         ]
-      },
-      {
-        id: "ecosystem",
-        variant: "hosts",
-        eyebrow: "多宿主",
-        title: "不同平台宿主，同一套工作流。",
-        summary:
-          "宿主可以换，协作方式不用重来。",
-        detail:
-          "可以先从 CLI 起步，再接到 Codex、OpenCode 和 OpenClaw。",
-        tags: ["CLI", "Codex", "OpenCode", "OpenClaw"]
       },
       {
         id: "advanced-features",
@@ -262,6 +262,17 @@ export const deckContent = {
         ]
       },
       {
+        id: "ecosystem",
+        variant: "hosts",
+        eyebrow: "多宿主",
+        title: "不同平台宿主，同一套工作流。",
+        summary:
+          "宿主可以换，协作方式不用重来。",
+        detail:
+          "可以先从 CLI 起步，再接到 Codex、OpenCode 和 OpenClaw。",
+        tags: ["CLI", "Codex", "OpenCode", "OpenClaw"]
+      },
+      {
         id: "closing",
         variant: "closing",
         eyebrow: "从这里开始",
@@ -273,7 +284,20 @@ export const deckContent = {
           "帮我安装 claw-kit 插件和 CLI，项目地址：https://github.com/chanyuenpang/claw-kit",
         copyHint: "点击复制",
         copyFeedback: "文本已复制",
-        links: ["查看文档", "从 CLI 开始", "探索宿主"]
+        links: [
+          {
+            label: "查看文档",
+            href: "https://github.com/chanyuenpang/claw-kit#readme"
+          },
+          {
+            label: "技术原理",
+            href: "./technical-principles.html"
+          },
+          {
+            label: "探索宿主",
+            href: "#ecosystem"
+          }
+        ]
       }
     ]
   }

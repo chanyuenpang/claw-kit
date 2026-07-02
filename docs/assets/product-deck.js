@@ -136,7 +136,15 @@ function renderLinks(links = []) {
 
   return `
     <div class="closing-links">
-      ${links.map((link) => `<span class="closing-link">${escapeHtml(link)}</span>`).join("")}
+      ${links
+        .map((link) => {
+          if (typeof link === "string") {
+            return `<span class="closing-link">${escapeHtml(link)}</span>`;
+          }
+
+          return `<a class="closing-link" href="${escapeHtml(link.href ?? "#")}">${escapeHtml(link.label ?? "")}</a>`;
+        })
+        .join("")}
     </div>
   `;
 }
@@ -346,6 +354,7 @@ function renderSectionBody(section) {
 export function buildSectionMarkup(section, index) {
   return `
     <section
+      id="${escapeHtml(section.id)}"
       class="deck-section deck-section--${escapeHtml(section.variant)} deck-section--${escapeHtml(section.id)}"
       data-section-id="${escapeHtml(section.id)}"
       data-index="${index}"

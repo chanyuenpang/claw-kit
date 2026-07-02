@@ -171,6 +171,7 @@ button {
   min-height: 92vh;
   display: grid;
   align-items: center;
+  outline: none;
   opacity: 0.46;
   transform: translateY(38px);
   transition:
@@ -301,8 +302,9 @@ html:lang(zh-CN) .section-detail p {
 }
 
 html:lang(zh-CN) .deck-section--hero .section-title {
-  max-width: 7.2em;
+  max-width: 8.8em;
   font-size: clamp(2.3rem, 3.2vw, 3.55rem);
+  line-height: 1.18;
 }
 
 html:lang(zh-CN) .deck-section--problem .section-title,
@@ -350,9 +352,11 @@ html:lang(zh-CN) .flow-step h3 {
 
 .deck-section--hero .section-title {
   font-size: clamp(2.55rem, 3.4vw, 3.7rem);
-  max-width: 11.4ch;
-  margin-left: 0;
+  max-width: 16.5ch;
+  margin-inline: auto;
   line-height: 1.02;
+  text-align: center;
+  text-wrap: pretty;
 }
 
 .deck-section--hero .section-summary {
@@ -370,13 +374,13 @@ html:lang(zh-CN) .flow-step h3 {
 
 .hero-copy {
   grid-column: auto;
-  max-width: 46rem;
+  max-width: 54rem;
   margin-top: 0;
   margin-left: 0;
 }
 
 .hero-copy .section-lead {
-  max-width: 41rem;
+  max-width: 48rem;
   margin-inline: auto;
 }
 
@@ -824,6 +828,8 @@ html:lang(zh-CN) .flow-step h3 {
   max-width: 12ch;
   font-size: clamp(2rem, 2.7vw, 2.8rem);
   line-height: 1.02;
+  margin-inline: auto;
+  text-align: center;
 }
 
 .deck-section--workflow .section-summary {
@@ -868,6 +874,10 @@ html:lang(zh-CN) .flow-step h3 {
     radial-gradient(circle at 84% 24%, rgba(166, 116, 255, 0.11), transparent 40%),
     radial-gradient(circle at 22% 74%, rgba(255, 151, 113, 0.1), transparent 34%),
     linear-gradient(135deg, rgba(255, 244, 241, 0.985), rgba(248, 232, 242, 0.97) 54%, rgba(229, 225, 252, 0.95));
+}
+
+.deck-section--ecosystem::before {
+  display: none;
 }
 
 .host-pill,
@@ -922,6 +932,7 @@ html:lang(zh-CN) .flow-step h3 {
   top: 61%;
   height: 1px;
   background: linear-gradient(90deg, transparent, rgba(183, 140, 224, 0.26), transparent);
+  display: none;
 }
 
 .deck-section--ecosystem .section-shell {
@@ -1092,18 +1103,8 @@ html:lang(zh-CN) .flow-step h3 {
   font-size: 1rem;
   font-weight: 600;
   letter-spacing: 0;
-  padding-bottom: 0.35rem;
-}
-
-.closing-link::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 1px;
-  background: currentColor;
-  opacity: 0.34;
+  padding-bottom: 0;
+  text-decoration: none;
 }
 
 .deck-section--advanced-features .section-shell {
@@ -1128,8 +1129,9 @@ html:lang(zh-CN) .flow-step h3 {
 }
 
 .deck-section--ecosystem .section-title {
-  max-width: 9ch;
-  font-size: clamp(2.7rem, 5.5vw, 5rem);
+  max-width: 10.5ch;
+  font-size: clamp(2.35rem, 4.2vw, 3.8rem);
+  line-height: 1.04;
 }
 
 .section-visual {
@@ -1296,6 +1298,7 @@ html:lang(zh-CN) .flow-step h3 {
   width: min(26rem, 44vw);
   height: 10rem;
   pointer-events: none;
+  display: none;
 }
 
 .closing-wave {

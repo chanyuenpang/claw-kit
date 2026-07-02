@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>claw-kit | Technical Principles</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #edf4ff;
+        --panel: rgba(255, 255, 255, 0.78);
+        --text: #0d1f38;
+        --muted: #49627f;
+        --line: rgba(56, 108, 206, 0.16);
+        --accent: #2471ff;
+        --accent-2: #00d9ff;
+        --shadow: 0 24px 64px rgba(10, 31, 66, 0.1);
+        --radius: 28px;
+        --title-font: "Segoe UI Variable Display", "Segoe UI", sans-serif;
+        --body-font: "Segoe UI Variable Text", "Segoe UI", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: var(--body-font);
+        color: var(--text);
+        background:
+          radial-gradient(circle at 12% 18%, rgba(0, 214, 255, 0.08), transparent 34%),
+          radial-gradient(circle at 86% 12%, rgba(36, 113, 255, 0.08), transparent 36%),
+          linear-gradient(180deg, #f2f7ff 0%, #ebf3ff 52%, #eef5ff 100%);
+      }
+
+      a {
+        color: inherit;
+      }
+
+      .page {
+        width: min(940px, calc(100vw - 40px));
+        margin: 0 auto;
+        padding: 32px 0 64px;
+      }
+
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: center;
+        margin-bottom: 44px;
+      }
+
+      .brand,
+      .back-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 16px;
+        border-radius: 999px;
+        border: 1px solid rgba(165, 190, 223, 0.2);
+        text-decoration: none;
+        background: linear-gradient(135deg, rgba(12, 24, 44, 0.84), rgba(47, 74, 118, 0.66));
+        color: #eef6ff;
+        box-shadow: 0 16px 44px rgba(7, 18, 38, 0.18);
+      }
+
+      .brand-mark {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+        box-shadow: 0 0 0 6px rgba(47, 107, 255, 0.14);
+      }
+
+      .brand-text,
+      .back-link {
+        font-weight: 700;
+      }
+
+      .hero {
+        padding: 36px 0 18px;
+      }
+
+      .eyebrow {
+        margin: 0 0 18px;
+        font-size: 0.76rem;
+        letter-spacing: 0.24em;
+        text-transform: uppercase;
+        color: var(--accent);
+      }
+
+      h1 {
+        margin: 0;
+        max-width: 14ch;
+        font-family: var(--title-font);
+        font-size: clamp(2.6rem, 5vw, 4.4rem);
+        line-height: 0.98;
+        letter-spacing: -0.05em;
+        text-wrap: balance;
+      }
+
+      .summary {
+        max-width: 42rem;
+        margin: 22px 0 0;
+        font-size: clamp(1.05rem, 1.5vw, 1.2rem);
+        line-height: 1.72;
+        color: var(--muted);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 20px;
+        margin-top: 34px;
+      }
+
+      .card {
+        padding: 22px 22px 20px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: var(--panel);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(12px);
+      }
+
+      .card h2 {
+        margin: 0;
+        font-size: 1.15rem;
+        line-height: 1.3;
+      }
+
+      .card p {
+        margin: 12px 0 0;
+        color: var(--muted);
+        line-height: 1.72;
+      }
+
+      @media (max-width: 760px) {
+        .page {
+          width: min(100vw - 24px, 940px);
+          padding-top: 20px;
+        }
+
+        .topbar {
+          flex-direction: column;
+          align-items: flex-start;
+          margin-bottom: 28px;
+        }
+
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        h1 {
+          max-width: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header class="topbar">
+        <a class="brand" href="./index.html" aria-label="Back to product deck">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <span class="brand-text">claw-kit</span>
+        </a>
+        <a class="back-link" href="https://github.com/chanyuenpang/claw-kit#readme">GitHub README</a>
+      </header>
+
+      <section class="hero">
+        <p class="eyebrow">technical principles / work in progress</p>
+        <h1>Technical principles are coming next.</h1>
+        <p class="summary">
+          This page is the new landing spot for the deeper explanation layer behind claw-kit.
+          We can use it to explain why the harness is structured around planning, recall,
+          execution, truth writeback, and clean closeout without crowding the product deck.
+        </p>
+      </section>
+
+      <section class="grid" aria-label="Planned content">
+        <article class="card">
+          <h2>Workflow mechanics</h2>
+          <p>How the plan lifecycle, active execution, and closeout guidance cooperate inside a project round.</p>
+        </article>
+        <article class="card">
+          <h2>Memory and truth</h2>
+          <p>How reusable findings move from a live task into project truth instead of disappearing with the chat.</p>
+        </article>
+        <article class="card">
+          <h2>Host integration</h2>
+          <p>How the same workflow survives across CLI, Codex, OpenCode, and OpenClaw without restarting the round.</p>
+        </article>
+        <article class="card">
+          <h2>Why closeout matters</h2>
+          <p>Why claw-kit treats completion, truth writeback, and ADR capture as first-class parts of the work.</p>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>
