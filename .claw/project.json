@@ -2,6 +2,13 @@
   "id": "claw-kit",
   "name": "claw-kit",
   "maxTasksToKeep": 9,
+  "planning": true,
+  "goalMode": true,
+  "truthDispatch": "per_task",
+  "externalPlanningSkill": null,
+  "externalTruthSkill": null,
+  "externalAdrSkill": null,
+  "defaultPlanTemplate": null,
   "contextPaths": [],
   "memory": {
     "externalDocPaths": [],
@@ -10,11 +17,5 @@
       "model": "Snowflake/snowflake-arctic-embed-m-v2.0"
     }
   },
-  "planning": true,
-  "externalTruthSkill": null,
-  "externalAdrSkill": null,
-  "externalPlanningSkill": null,
-  "goalMode": true,
-  "truthDispatch": "per_task",
   "gitnexus": true
 }
