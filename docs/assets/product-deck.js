@@ -141,6 +141,30 @@ function renderLinks(links = []) {
   `;
 }
 
+function renderCopyPrompt(section) {
+  if (!section.copyPrompt) {
+    return "";
+  }
+
+  const feedback = section.copyFeedback ?? "Copied";
+  const hint = section.copyHint ?? "Click to copy";
+  const display = section.copyDisplay ?? section.copyPrompt;
+
+  return `
+    <button
+      type="button"
+      class="copy-prompt"
+      data-copy-text="${escapeHtml(section.copyPrompt)}"
+      data-copy-feedback="${escapeHtml(feedback)}"
+      data-copy-hint="${escapeHtml(hint)}"
+      aria-label="${escapeHtml(section.copyPrompt)}"
+    >
+      <span class="copy-prompt-text">${escapeHtml(display)}</span>
+      <span class="copy-prompt-status">${escapeHtml(hint)}</span>
+    </button>
+  `;
+}
+
 function renderVisual(section) {
   if (section.variant === "hero") {
     return `
@@ -299,11 +323,16 @@ function renderSectionBody(section) {
   }
 
   if (section.variant === "closing") {
+    const detailMarkup = section.detail
+      ? `<div class="section-detail detail-inline"><p>${escapeHtml(section.detail)}</p></div>`
+      : "";
+
     return `
       <div class="closing-layout">
         <div class="closing-copy">
           ${lead}
-          <div class="section-detail detail-inline"><p>${escapeHtml(section.detail)}</p></div>
+          ${detailMarkup}
+          ${renderCopyPrompt(section)}
         </div>
         ${renderVisual(section)}
         ${renderLinks(section.links)}
@@ -430,6 +459,62 @@ function wireFlowInteractions() {
   });
 }
 
+async function copyPromptText(button) {
+  const text = button.dataset.copyText ?? "";
+  if (!text) {
+    return false;
+  }
+
+  if (navigator?.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return true;
+  }
+
+  const tempInput = document.createElement("textarea");
+  tempInput.value = text;
+  tempInput.setAttribute("readonly", "true");
+  tempInput.style.position = "absolute";
+  tempInput.style.left = "-9999px";
+  document.body.append(tempInput);
+  tempInput.select();
+  const copied = document.execCommand("copy");
+  tempInput.remove();
+  return copied;
+}
+
+function wireCopyPrompts() {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  document.querySelectorAll(".copy-prompt").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const status = button.querySelector(".copy-prompt-status");
+      const feedback = button.dataset.copyFeedback ?? "Copied";
+      const hint = button.dataset.copyHint ?? "Click to copy";
+
+      try {
+        const copied = await copyPromptText(button);
+        if (!copied) {
+          return;
+        }
+        button.classList.add("is-copied");
+        if (status) {
+          status.textContent = feedback;
+        }
+        window.setTimeout(() => {
+          button.classList.remove("is-copied");
+          if (status) {
+            status.textContent = hint;
+          }
+        }, 1600);
+      } catch {
+        button.classList.remove("is-copied");
+      }
+    });
+  });
+}
+
 function wireScrollObserver() {
   if (typeof document === "undefined" || typeof IntersectionObserver === "undefined") {
     return;
@@ -479,6 +564,7 @@ function switchLanguage(nextLang) {
   renderDeck(currentLang);
   wireSectionInteractions();
   wireFlowInteractions();
+  wireCopyPrompts();
   wireScrollObserver();
   updateLangToggle();
   if (previouslyActive) {
@@ -501,6 +587,7 @@ export function mountProductDeck() {
   renderDeck(currentLang);
   wireSectionInteractions();
   wireFlowInteractions();
+  wireCopyPrompts();
   wireScrollObserver();
   updateLangToggle();
 

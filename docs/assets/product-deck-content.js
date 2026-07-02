@@ -6,11 +6,11 @@ export const deckContent = {
         id: "hero",
         variant: "hero",
         eyebrow: "claw-kit / workflow layer",
-        title: "Continuity, built for agentic work.",
+        title: "Built for agent work that holds up.",
         summary:
           "A project workflow layer for planning, recall, execution, capture, and closeout.",
         detail:
-          "Project memory, workflow structure, and closeout become part of the working surface itself."
+          "Project memory, workflow structure, and closeout stay in the work instead of getting lost across chats."
       },
       {
         id: "problem",
@@ -18,9 +18,9 @@ export const deckContent = {
         eyebrow: "why it exists",
         title: "Fast agents need memory.",
         summary:
-          "Output is not the hard part. Retaining continuity is.",
+          "Getting output is easy. Holding onto context is harder.",
         detail:
-          "claw-kit keeps work alive beyond the current prompt.",
+          "claw-kit keeps work going beyond the current prompt.",
         bullets: ["Decisions fade", "Context resets", "Momentum breaks"]
       },
       {
@@ -31,7 +31,7 @@ export const deckContent = {
         summary:
           "Progress, findings, and closeout do not disappear when the conversation ends.",
         detail:
-          "Tasks can continue, truth can stay reusable, and finished decisions can return to the repo.",
+          "Tasks keep moving, truth stays reusable, and decisions can go back to the repo.",
         points: [
           {
             label: "Across sessions",
@@ -51,10 +51,10 @@ export const deckContent = {
         id: "workflow",
         variant: "flow",
         eyebrow: "core loop",
-        title: "How the loop keeps moving.",
+        title: "Five moves that keep work moving.",
         summary: "Five moves. One continuous round.",
         detail:
-          "Hover a move to open the round.",
+          "Hover any move to see what is happening in the round.",
         steps: [
           {
             label: "Plan",
@@ -89,9 +89,9 @@ export const deckContent = {
         eyebrow: "multi-host",
         title: "One workflow, multiple hosts.",
         summary:
-          "The host can change. The model stays coherent.",
+          "Switch hosts without starting the workflow over.",
         detail:
-          "Start from the CLI, then extend into Codex, OpenCode, and OpenClaw.",
+          "Start in the CLI, then extend into Codex, OpenCode, and OpenClaw.",
         tags: ["CLI", "Codex", "OpenCode", "OpenClaw"]
       },
       {
@@ -100,25 +100,25 @@ export const deckContent = {
         eyebrow: "advanced features",
         title: "Shared by the team. Tuned by the individual.",
         summary:
-          "Shared rules for the project. Personal control at runtime.",
+          "A shared baseline for the team, with room for each person's way of working.",
         detail:
-          "Composable by design, with a low-interference shape that can adapt to other skills or harnesses.",
+          "Config-driven, highly customizable harnesses that fit the way each person works.",
         features: [
           {
             label: "Team config",
-            text: "Use .claw/project.json for the canonical workflow your team shares."
+            text: "Use .claw/project.json to define the workflow baseline your team shares."
           },
           {
             label: "Personal override",
-            text: "Use .claw/project-override.json for local runtime preferences without changing the team baseline."
+            text: "Use .claw/project-override.json for personal preferences without changing the team baseline."
           },
           {
             label: "Custom templates",
-            text: "Start recurring work from project-defined templates instead of rebuilding the same task shape each time."
+            text: "Turn recurring work into templates instead of rebuilding the same task shape every time."
           },
           {
             label: "Composable skills",
-            text: "Plug in plan skill, writer skill, or a custom harness while keeping the workflow low-interference."
+            text: "Plan skill, writer skill, and custom harnesses all plug in cleanly without getting in each other's way."
           }
         ]
       },
@@ -126,10 +126,14 @@ export const deckContent = {
         id: "closing",
         variant: "closing",
         eyebrow: "start here",
-        title: "Make continuity the default.",
-        summary: "A lighter way to work with agents.",
-        detail:
-          "Start with workflow. Then bring it into the host that fits your team.",
+        title: "Install once. Collaborate seamlessly.",
+        summary: "Automated. No extra prompts. Seamless across the team.",
+        detail: "",
+        copyDisplay: "\"Help me install the claw-kit plugin\"",
+        copyPrompt:
+          "Help me install the claw-kit plugin and CLI, project URL: https://github.com/chanyuenpang/claw-kit",
+        copyHint: "Click to copy",
+        copyFeedback: "Copied",
         links: ["View docs", "Start with CLI", "Explore hosts"]
       }
     ]
@@ -141,11 +145,11 @@ export const deckContent = {
         id: "hero",
         variant: "hero",
         eyebrow: "claw-kit / workflow layer",
-        title: "让 agent 协作真正连续起来。",
+        title: "让 agent 协作接得住，也跑得远。",
         summary:
-          "一层面向项目的 workflow，把计划、回忆、执行、沉淀和收尾串成闭环。",
+          "把计划、上下文、执行、沉淀和收尾，收进同一条项目工作流。",
         detail:
-          "项目记忆、流程结构和收尾动作，不再散在一次次对话里。"
+          "项目记忆、流程结构和收尾动作，不再散落在一轮轮对话之间。"
       },
       {
         id: "problem",
@@ -155,7 +159,7 @@ export const deckContent = {
         summary:
           "难的不是把结果做出来，而是把上下文接住。",
         detail:
-          "claw-kit 让工作在 prompt 之外也能接着成立。",
+          "claw-kit 让工作离开 prompt 也能接着走。",
         bullets: ["决策留不住", "上下文总断", "推进容易散"]
       },
       {
@@ -222,7 +226,7 @@ export const deckContent = {
         id: "ecosystem",
         variant: "hosts",
         eyebrow: "多宿主",
-        title: "同一套工作流，进不同宿主都成立。",
+        title: "不同平台宿主，同一套工作流。",
         summary:
           "宿主可以换，协作方式不用重来。",
         detail:
@@ -235,25 +239,25 @@ export const deckContent = {
         eyebrow: "高级能力",
         title: "团队先对齐，个人再细调。",
         summary:
-          "团队有共识，个人也保留自己的运行习惯。",
+          "团队有统一基线，个人也能保留自己的工作习惯。",
         detail:
-          "模板、skills 和 harness 都能接进来，保持可组合，也尽量低干扰。",
+          "配置驱动，高度可定制的 harness，契合每个人的工作习惯。",
         features: [
           {
             label: "团队配置",
-            text: "用 .claw/project.json 保存团队共用的 workflow 基线。"
+            text: "用 .claw/project.json 固定团队共用的 workflow 基线。"
           },
           {
             label: "个人覆盖",
-            text: "用 .claw/project-override.json 保留自己的本地偏好，不动团队基线。"
+            text: "用 .claw/project-override.json 保留个人偏好，同时不改动团队基线。"
           },
           {
             label: "自定义模板",
-            text: "把高频任务做成项目模板，不用每次都从空白任务重新搭。"
+            text: "把高频任务沉淀成模板，不用每次都从空白重新搭。"
           },
           {
             label: "可组合扩展",
-            text: "plan skill、writer skill 或自定义 harness 都能接进来，而且保持低干扰。"
+            text: "plan skill、writer skill 和自定义 harness 都能灵活接入，彼此不打架。"
           }
         ]
       },
@@ -261,10 +265,14 @@ export const deckContent = {
         id: "closing",
         variant: "closing",
         eyebrow: "从这里开始",
-        title: "把连续性变成默认设置。",
-        summary: "一种更轻、更稳的 agent 协作方式。",
-        detail:
-          "先把 workflow 立住，再把它放进适合你团队的宿主。",
+        title: "一次安装，无缝协作。",
+        summary: "自动化，无需额外 prompt，团队内无缝接入。",
+        detail: "",
+        copyDisplay: "“帮我安装 claw-kit 插件”",
+        copyPrompt:
+          "帮我安装 claw-kit 插件和 CLI，项目地址：https://github.com/chanyuenpang/claw-kit",
+        copyHint: "点击复制",
+        copyFeedback: "文本已复制",
         links: ["查看文档", "从 CLI 开始", "探索宿主"]
       }
     ]

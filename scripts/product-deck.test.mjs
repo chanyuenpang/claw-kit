@@ -11,22 +11,22 @@ test("deck content keeps the same section ids across languages", () => {
   assert.deepEqual(zhIds, enIds);
 });
 
-test("advanced features section contains low-interference and customization messaging", () => {
+test("advanced features section contains customization and extension messaging", () => {
   const enAdvanced = deckContent.en.sections.find((section) => section.id === "advanced-features");
   const zhAdvanced = deckContent.zh.sections.find((section) => section.id === "advanced-features");
 
   assert.ok(enAdvanced);
   assert.ok(zhAdvanced);
-  assert.match(enAdvanced.detail, /composable/i);
+  assert.match(enAdvanced.detail, /config-driven|customizable|harness/i);
   assert.match(
     enAdvanced.features.map((feature) => feature.text).join(" "),
     /project-override\.json/
   );
   assert.match(
     enAdvanced.features.map((feature) => feature.text).join(" "),
-    /writer skill|low-interference|custom harness/i
+    /writer skill|custom harness|harnesses/i
   );
-  assert.match(zhAdvanced.detail, /可组合|低干扰/);
+  assert.match(zhAdvanced.detail, /配置驱动|定制化|harness/);
   assert.match(
     zhAdvanced.features.map((feature) => feature.text).join(" "),
     /project-override\.json/
@@ -60,4 +60,20 @@ test("buildDeckMarkup returns all sections for each language", () => {
 
   assert.equal((enMarkup.match(/class="deck-section /g) ?? []).length, deckContent.en.sections.length);
   assert.equal((zhMarkup.match(/class="deck-section /g) ?? []).length, deckContent.zh.sections.length);
+});
+
+test("closing section renders a copyable install prompt", () => {
+  const closing = deckContent.zh.sections.find((section) => section.id === "closing");
+
+  assert.ok(closing);
+
+  const markup = buildSectionMarkup(closing, 0);
+
+  assert.match(markup, /copy-prompt/);
+  assert.match(markup, /copy-prompt-text">“帮我安装 claw-kit 插件”</);
+  assert.match(
+    markup,
+    /data-copy-text="帮我安装 claw-kit 插件和 CLI，项目地址：https:\/\/github\.com\/chanyuenpang\/claw-kit"/
+  );
+  assert.match(markup, /文本已复制/);
 });

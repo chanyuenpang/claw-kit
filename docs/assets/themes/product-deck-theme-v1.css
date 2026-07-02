@@ -1,18 +1,20 @@
+/* Frozen theme snapshot for the current GitHub Pages product deck visual scheme. */
+
 :root {
-  --bg: #d9e6f5;
-  --bg-soft: #c7d8ec;
-  --bg-accent: #9ec6ee;
-  --bg-deep: #07111f;
-  --panel: rgba(232, 241, 251, 0.74);
-  --panel-strong: rgba(244, 248, 253, 0.88);
-  --text: #081628;
-  --muted: #486682;
-  --line: rgba(35, 82, 186, 0.16);
-  --line-strong: rgba(0, 214, 255, 0.26);
-  --accent: #2471ff;
-  --accent-2: #00d9ff;
-  --accent-3: #74efff;
-  --shadow: 0 30px 96px rgba(8, 30, 73, 0.14);
+  --bg: #f6fbff;
+  --bg-soft: #eef7ff;
+  --bg-accent: #e1f0ff;
+  --bg-deep: #0f172a;
+  --panel: rgba(255, 255, 255, 0.78);
+  --panel-strong: rgba(255, 255, 255, 0.92);
+  --text: #0f172a;
+  --muted: #5b6b84;
+  --line: rgba(59, 130, 246, 0.16);
+  --line-strong: rgba(59, 130, 246, 0.28);
+  --accent: #3b82f6;
+  --accent-2: #2dd4bf;
+  --accent-3: #d9f99d;
+  --shadow: 0 24px 80px rgba(37, 99, 235, 0.12);
   --radius: 32px;
   --content-width: min(1220px, calc(100vw - 48px));
   --transition-slow: 520ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -35,10 +37,10 @@ body {
   color: var(--text);
   font-family: var(--body-font);
   background:
-    radial-gradient(circle at 10% 18%, rgba(0, 214, 255, 0.04), transparent 40%),
-    radial-gradient(circle at 86% 12%, rgba(36, 113, 255, 0.05), transparent 42%),
-    radial-gradient(circle at 52% 84%, rgba(255, 145, 104, 0.03), transparent 38%),
-    linear-gradient(180deg, #eff5ff 0%, #edf4ff 52%, #eff5ff 100%);
+    radial-gradient(circle at 12% 10%, rgba(45, 212, 191, 0.12), transparent 20%),
+    radial-gradient(circle at 78% 18%, rgba(59, 130, 246, 0.14), transparent 24%),
+    radial-gradient(circle at 52% 78%, rgba(217, 249, 157, 0.14), transparent 24%),
+    linear-gradient(180deg, #f8fcff 0%, #eef6ff 52%, #f8fbff 100%);
 }
 
 a {
@@ -73,7 +75,7 @@ button {
   right: -4rem;
   width: 18rem;
   height: 18rem;
-  background: rgba(36, 93, 255, 0.08);
+  background: rgba(59, 130, 246, 0.14);
 }
 
 .page-shell::after {
@@ -81,7 +83,7 @@ button {
   left: -3rem;
   width: 14rem;
   height: 14rem;
-  background: rgba(0, 214, 255, 0.08);
+  background: rgba(45, 212, 191, 0.18);
 }
 
 .topbar {
@@ -96,10 +98,10 @@ button {
 
 .brand,
 .lang-toggle {
-  border: 1px solid rgba(165, 190, 223, 0.18);
-  background: linear-gradient(135deg, rgba(12, 24, 44, 0.82), rgba(47, 74, 118, 0.62));
-  backdrop-filter: blur(22px) saturate(155%);
-  box-shadow: 0 20px 60px rgba(6, 18, 38, 0.24);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.66);
+  backdrop-filter: blur(24px) saturate(135%);
+  box-shadow: 0 12px 48px rgba(59, 130, 246, 0.14);
 }
 
 .brand {
@@ -116,14 +118,13 @@ button {
   height: 10px;
   border-radius: 999px;
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  box-shadow: 0 0 0 6px rgba(47, 107, 255, 0.14);
+  box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.12);
 }
 
 .brand-text {
   font-size: 0.95rem;
   font-weight: 700;
   letter-spacing: 0.01em;
-  color: #eef6ff;
 }
 
 .lang-toggle {
@@ -132,7 +133,7 @@ button {
   gap: 8px;
   padding: 10px 14px;
   border-radius: 999px;
-  color: rgba(219, 233, 252, 0.72);
+  color: var(--muted);
   cursor: pointer;
   transition:
     transform var(--transition-fast),
@@ -143,19 +144,19 @@ button {
 
 .lang-toggle:hover,
 .lang-toggle:focus-visible {
-  color: #f7fbff;
+  color: var(--text);
   transform: translateY(-1px);
-  box-shadow: 0 18px 50px rgba(0, 214, 255, 0.24);
+  box-shadow: 0 18px 50px rgba(59, 130, 246, 0.18);
 }
 
 .lang-toggle[data-lang="en"] .lang-toggle-en,
 .lang-toggle[data-lang="zh"] .lang-toggle-zh {
-  color: #f7fbff;
+  color: var(--text);
   font-weight: 700;
 }
 
 .lang-toggle-divider {
-  color: rgba(215, 228, 244, 0.34);
+  color: rgba(91, 107, 132, 0.55);
 }
 
 .deck {
@@ -176,15 +177,6 @@ button {
   transition:
     opacity var(--transition-slow),
     transform var(--transition-slow);
-}
-
-.deck-section::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), transparent 15%, transparent 85%, rgba(149, 177, 221, 0.06));
 }
 
 .deck-section.is-active,
@@ -255,27 +247,6 @@ button {
   color: #214064;
 }
 
-.deck-section--problem .section-eyebrow,
-.deck-section--continuity .section-eyebrow,
-.deck-section--ecosystem .section-eyebrow,
-.deck-section--advanced-features .section-eyebrow {
-  color: #4b86ff;
-}
-
-.deck-section--problem .section-summary,
-.deck-section--continuity .section-summary,
-.deck-section--ecosystem .section-summary,
-.deck-section--advanced-features .section-summary {
-  color: #56677d;
-}
-
-.deck-section--problem .section-detail p,
-.deck-section--continuity .section-detail p,
-.deck-section--ecosystem .section-detail p,
-.deck-section--advanced-features .section-detail p {
-  color: #2f465f;
-}
-
 html:lang(zh-CN) .section-eyebrow {
   letter-spacing: 0.16em;
 }
@@ -324,10 +295,16 @@ html:lang(zh-CN) .flow-step h3 {
   letter-spacing: -0.01em;
 }
 
+.deck-section.is-active .section-detail,
 .deck-section:focus-within .section-detail,
 .deck-section:hover .section-detail {
   opacity: 1;
   transform: translateY(0);
+}
+
+.detail-inline {
+  opacity: 1;
+  transform: none;
 }
 
 .deck-section--hero {
@@ -342,10 +319,9 @@ html:lang(zh-CN) .flow-step h3 {
 .deck-section--hero {
   align-items: center;
   background:
-    radial-gradient(circle at 18% 34%, rgba(0, 214, 255, 0.12), transparent 38%),
-    radial-gradient(circle at 82% 70%, rgba(36, 113, 255, 0.14), transparent 42%),
-    radial-gradient(circle at 56% 12%, rgba(95, 181, 255, 0.1), transparent 34%),
-    linear-gradient(135deg, rgba(244, 248, 255, 0.99), rgba(227, 238, 255, 0.97) 44%, rgba(209, 226, 255, 0.95));
+    radial-gradient(circle at 18% 24%, rgba(43, 208, 255, 0.18), transparent 26%),
+    radial-gradient(circle at 78% 82%, rgba(59, 130, 246, 0.16), transparent 28%),
+    linear-gradient(180deg, rgba(214, 243, 255, 0.92), rgba(235, 248, 255, 0.52));
 }
 
 .deck-section--hero .section-title {
@@ -402,7 +378,7 @@ html:lang(zh-CN) .flow-step h3 {
 
 .hero-orbit {
   border-radius: 999px;
-  border: 1px solid rgba(111, 181, 255, 0.18);
+  border: 1px solid rgba(59, 130, 246, 0.22);
 }
 
 .hero-orbit-a {
@@ -417,7 +393,7 @@ html:lang(zh-CN) .flow-step h3 {
   bottom: 10%;
   width: min(18vw, 14rem);
   height: min(18vw, 14rem);
-  border-color: rgba(0, 214, 255, 0.26);
+  border-color: rgba(45, 212, 191, 0.32);
 }
 
 .hero-accent {
@@ -427,8 +403,8 @@ html:lang(zh-CN) .flow-step h3 {
   aspect-ratio: 1;
   border-radius: 34% 66% 64% 36% / 38% 36% 64% 62%;
   background:
-    linear-gradient(135deg, rgba(36, 93, 255, 0.3), rgba(0, 214, 255, 0.28));
-  filter: blur(12px);
+    linear-gradient(135deg, rgba(59, 130, 246, 0.16), rgba(45, 212, 191, 0.24));
+  filter: blur(2px);
 }
 
 .split-layout {
@@ -470,9 +446,9 @@ html:lang(zh-CN) .flow-step h3 {
 .deck-section--problem {
   min-height: 80vh;
   background:
-    radial-gradient(circle at 82% 24%, rgba(52, 223, 183, 0.11), transparent 38%),
-    radial-gradient(circle at 14% 84%, rgba(0, 214, 255, 0.11), transparent 40%),
-    linear-gradient(135deg, rgba(244, 251, 250, 0.985), rgba(230, 246, 242, 0.97) 46%, rgba(210, 236, 231, 0.95));
+    radial-gradient(circle at 82% 26%, rgba(251, 191, 36, 0.12), transparent 20%),
+    radial-gradient(circle at 18% 86%, rgba(96, 165, 250, 0.12), transparent 24%),
+    linear-gradient(180deg, rgba(255, 250, 241, 0.94), rgba(226, 238, 255, 0.54));
 }
 
 .deck-section--problem .split-layout {
@@ -520,16 +496,15 @@ html:lang(zh-CN) .flow-step h3 {
 
 .deck-section--continuity {
   background:
-    radial-gradient(circle at 18% 76%, rgba(88, 230, 124, 0.11), transparent 42%),
-    radial-gradient(circle at 82% 18%, rgba(187, 255, 72, 0.1), transparent 38%),
-    linear-gradient(135deg, rgba(248, 252, 239, 0.985), rgba(236, 248, 225, 0.97) 55%, rgba(219, 240, 204, 0.95));
+    radial-gradient(circle at 14% 84%, rgba(45, 212, 191, 0.16), transparent 24%),
+    linear-gradient(180deg, rgba(222, 255, 243, 0.84), rgba(241, 255, 248, 0.4));
 }
 
 .deck-section--workflow {
   background:
-    radial-gradient(circle at 78% 16%, rgba(64, 136, 255, 0.14), transparent 40%),
-    radial-gradient(circle at 14% 86%, rgba(0, 214, 255, 0.13), transparent 42%),
-    linear-gradient(135deg, rgba(244, 248, 255, 0.985), rgba(227, 239, 252, 0.975) 52%, rgba(200, 231, 248, 0.95));
+    radial-gradient(circle at 76% 18%, rgba(167, 139, 250, 0.16), transparent 20%),
+    radial-gradient(circle at 20% 84%, rgba(96, 165, 250, 0.12), transparent 24%),
+    linear-gradient(180deg, rgba(238, 239, 255, 0.94), rgba(234, 245, 255, 0.48));
 }
 
 .deck-section--continuity .section-shell {
@@ -578,7 +553,7 @@ html:lang(zh-CN) .flow-step h3 {
 .feature-card {
   padding: 0 0 1.1rem;
   border: 0;
-  border-bottom: 1px solid rgba(35, 82, 186, 0.16);
+  border-bottom: 1px solid rgba(59, 130, 246, 0.16);
   border-radius: 0;
   background: transparent;
   backdrop-filter: none;
@@ -642,12 +617,12 @@ html:lang(zh-CN) .flow-step h3 {
   width: min(34rem, 100%);
   margin: 0 auto;
   padding: 1.1rem 1.2rem 1.15rem;
-  border: 1px solid rgba(76, 132, 232, 0.14);
+  border: 1px solid rgba(59, 130, 246, 0.08);
   border-radius: 24px;
   background:
-    radial-gradient(circle at top right, rgba(0, 214, 255, 0.08), transparent 42%),
-    rgba(245, 249, 255, 0.76);
-  box-shadow: 0 18px 34px rgba(18, 47, 95, 0.12);
+    radial-gradient(circle at top right, rgba(45, 212, 191, 0.08), transparent 44%),
+    rgba(255, 255, 255, 0.52);
+  box-shadow: 0 12px 30px rgba(59, 130, 246, 0.05);
   text-align: center;
 }
 
@@ -665,13 +640,13 @@ html:lang(zh-CN) .flow-step h3 {
 }
 
 .flow-display-count {
-  color: rgba(58, 87, 129, 0.52);
+  color: rgba(91, 107, 132, 0.62);
   letter-spacing: 0.12em;
 }
 
 .flow-display-text {
   margin: 0.65rem 0 0;
-  color: rgba(30, 58, 96, 0.78);
+  color: #35587f;
   font-size: 1rem;
   line-height: 1.66;
   max-width: none;
@@ -695,11 +670,11 @@ html:lang(zh-CN) .flow-step h3 {
   right: 4%;
   top: 1rem;
   height: 1px;
-  background: linear-gradient(90deg, rgba(0, 214, 255, 0.14), rgba(125, 211, 252, 0.34), rgba(0, 214, 255, 0.14));
+  background: linear-gradient(90deg, rgba(45, 212, 191, 0.18), rgba(125, 211, 252, 0.36), rgba(45, 212, 191, 0.18));
 }
 
 .deck-section--workflow .flow-rail::before {
-  background: linear-gradient(90deg, rgba(74, 149, 255, 0.14), rgba(0, 214, 255, 0.28), rgba(74, 149, 255, 0.14));
+  background: linear-gradient(90deg, rgba(59, 130, 246, 0.16), rgba(45, 212, 191, 0.4), rgba(59, 130, 246, 0.16));
 }
 
 .flow-step {
@@ -733,9 +708,9 @@ html:lang(zh-CN) .flow-step h3 {
   margin-bottom: 0.5rem;
   padding: 0.35rem 0.55rem;
   border-radius: 999px;
-  background: rgba(216, 235, 255, 0.72);
-  border: 1px solid rgba(126, 173, 236, 0.24);
-  color: rgba(26, 61, 110, 0.88);
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.12);
+  color: #2b4b74;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -756,7 +731,7 @@ html:lang(zh-CN) .flow-step h3 {
 }
 
 .deck-section--workflow .flow-step::before {
-  box-shadow: 0 0 0 8px rgba(0, 214, 255, 0.08);
+  box-shadow: 0 0 0 8px rgba(59, 130, 246, 0.08);
 }
 
 .deck-section--workflow .flow-step h3 {
@@ -769,24 +744,24 @@ html:lang(zh-CN) .flow-step h3 {
 }
 
 .deck-section--workflow .flow-step.is-current h3 {
-  color: #0f223f;
+  color: var(--text);
 }
 
 .deck-section--workflow .flow-step.is-current p {
-  color: rgba(36, 71, 116, 0.74);
+  color: #35587f;
 }
 
 .deck-section--workflow .flow-step.is-current .flow-step-accent {
-  background: rgba(0, 214, 255, 0.1);
-  border-color: rgba(120, 182, 255, 0.24);
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.16);
 }
 
 .deck-section--workflow .flow-step:hover,
 .deck-section--workflow .flow-step:focus-visible,
 .deck-section--workflow .flow-step.is-current {
   transform: translateY(-3px);
-  border-color: rgba(120, 182, 255, 0.18);
-  background: rgba(221, 236, 255, 0.48);
+  border-color: rgba(59, 130, 246, 0.12);
+  background: rgba(255, 255, 255, 0.34);
 }
 
 .deck-section--workflow .section-lead {
@@ -803,21 +778,21 @@ html:lang(zh-CN) .flow-step h3 {
 
 .deck-section--workflow .section-eyebrow,
 .deck-section--workflow .flow-step-index {
-  color: #357fff;
+  color: var(--accent);
 }
 
 .deck-section--workflow .section-title,
 .deck-section--workflow .flow-step h3 {
-  color: #0a1830;
+  color: var(--text);
 }
 
 .deck-section--workflow .section-summary,
 .deck-section--workflow .flow-step p {
-  color: rgba(52, 81, 120, 0.78);
+  color: var(--muted);
 }
 
 .deck-section--workflow .section-detail p {
-  color: rgba(52, 81, 120, 0.78);
+  color: #35587f;
 }
 
 .deck-section--workflow .section-title {
@@ -865,9 +840,8 @@ html:lang(zh-CN) .flow-step h3 {
 
 .deck-section--ecosystem {
   background:
-    radial-gradient(circle at 84% 24%, rgba(166, 116, 255, 0.11), transparent 40%),
-    radial-gradient(circle at 22% 74%, rgba(255, 151, 113, 0.1), transparent 34%),
-    linear-gradient(135deg, rgba(255, 244, 241, 0.985), rgba(248, 232, 242, 0.97) 54%, rgba(229, 225, 252, 0.95));
+    radial-gradient(circle at 84% 22%, rgba(196, 181, 253, 0.14), transparent 22%),
+    linear-gradient(180deg, rgba(242, 241, 255, 0.86), rgba(236, 246, 255, 0.38));
 }
 
 .host-pill,
@@ -879,39 +853,10 @@ html:lang(zh-CN) .flow-step h3 {
   border-radius: 0;
   border: 0;
   background: transparent;
-  color: #122b45;
+  color: #1e3a5f;
   font-size: clamp(1.2rem, 2vw, 2rem);
   font-weight: 700;
   letter-spacing: -0.03em;
-}
-
-.deck-section--continuity .section-title,
-.deck-section--continuity .point-card h3 {
-  color: #1f3913;
-}
-
-.deck-section--continuity .section-summary,
-.deck-section--continuity .section-detail p,
-.deck-section--continuity .point-card p {
-  color: rgba(69, 92, 49, 0.82);
-}
-
-.deck-section--continuity .point-card {
-  border-color: rgba(124, 194, 78, 0.18);
-}
-
-.deck-section--ecosystem .section-title,
-.deck-section--ecosystem .host-pill {
-  color: #27183f;
-}
-
-.deck-section--ecosystem .section-summary,
-.deck-section--ecosystem .section-detail p {
-  color: rgba(92, 72, 112, 0.8);
-}
-
-.deck-section--ecosystem .host-pill {
-  border-color: rgba(183, 140, 224, 0.2);
 }
 
 .deck-section--ecosystem .section-shell::after {
@@ -921,7 +866,7 @@ html:lang(zh-CN) .flow-step h3 {
   right: 0;
   top: 61%;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(183, 140, 224, 0.26), transparent);
+  background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.24), transparent);
 }
 
 .deck-section--ecosystem .section-shell {
@@ -950,25 +895,8 @@ html:lang(zh-CN) .flow-step h3 {
 .deck-section--advanced-features {
   min-height: 68vh;
   background:
-    radial-gradient(circle at 78% 24%, rgba(0, 214, 255, 0.12), transparent 40%),
-    radial-gradient(circle at 12% 16%, rgba(36, 113, 255, 0.08), transparent 36%),
-    linear-gradient(135deg, rgba(239, 249, 253, 0.985), rgba(222, 239, 246, 0.965) 56%, rgba(198, 226, 236, 0.945));
-}
-
-.deck-section--problem .section-eyebrow {
-  color: #15bfa0;
-}
-
-.deck-section--continuity .section-eyebrow {
-  color: #5fa400;
-}
-
-.deck-section--ecosystem .section-eyebrow {
-  color: #ff7d5b;
-}
-
-.deck-section--advanced-features .section-eyebrow {
-  color: #0aa9d3;
+    radial-gradient(circle at 76% 26%, rgba(217, 249, 157, 0.18), transparent 22%),
+    linear-gradient(180deg, rgba(248, 255, 221, 0.9), rgba(244, 252, 235, 0.42));
 }
 
 .feature-head {
@@ -1003,9 +931,8 @@ html:lang(zh-CN) .flow-step h3 {
 
 .deck-section--closing {
   background:
-    radial-gradient(circle at 18% 16%, rgba(0, 214, 255, 0.11), transparent 40%),
-    radial-gradient(circle at 82% 72%, rgba(58, 109, 255, 0.13), transparent 42%),
-    linear-gradient(135deg, rgba(242, 247, 255, 0.99), rgba(223, 233, 255, 0.97) 54%, rgba(204, 221, 255, 0.95));
+    radial-gradient(circle at 18% 16%, rgba(45, 212, 191, 0.12), transparent 24%),
+    linear-gradient(180deg, rgba(224, 247, 255, 0.72), rgba(255, 255, 255, 0.48));
 }
 
 .deck-section--closing .section-lead {
@@ -1032,61 +959,6 @@ html:lang(zh-CN) .flow-step h3 {
   margin-inline: auto;
 }
 
-.copy-prompt {
-  width: min(100%, 34rem);
-  display: grid;
-  gap: 0.45rem;
-  text-align: left;
-  padding: 0.9rem 1rem 0.78rem;
-  margin: 0.8rem auto 0;
-  border: 1px solid rgba(27, 72, 153, 0.1);
-  border-radius: 1rem;
-  background: rgba(255, 255, 255, 0.5);
-  box-shadow: 0 10px 24px rgba(61, 103, 174, 0.05);
-  backdrop-filter: blur(10px);
-  cursor: pointer;
-  transition:
-    transform 180ms ease,
-    border-color 180ms ease,
-    box-shadow 180ms ease,
-    background 180ms ease;
-}
-
-.copy-prompt:hover,
-.copy-prompt:focus-visible {
-  transform: translateY(-1px);
-  border-color: rgba(45, 125, 255, 0.18);
-  box-shadow: 0 14px 30px rgba(61, 103, 174, 0.08);
-  background: rgba(255, 255, 255, 0.66);
-  outline: none;
-}
-
-.copy-prompt.is-copied {
-  border-color: rgba(18, 181, 143, 0.2);
-  background: rgba(247, 255, 252, 0.78);
-}
-
-.copy-prompt-text {
-  font-size: clamp(0.98rem, 1.2vw, 1.08rem);
-  line-height: 1.35;
-  font-weight: 600;
-  color: #13284f;
-  word-break: break-word;
-}
-
-.copy-prompt-status {
-  font-size: 0.76rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: #5f86c8;
-  justify-self: end;
-  text-align: right;
-}
-
-.copy-prompt.is-copied .copy-prompt-status {
-  color: #129d7e;
-}
-
 .closing-link {
   position: relative;
   font-size: 1rem;
@@ -1103,7 +975,7 @@ html:lang(zh-CN) .flow-step h3 {
   bottom: 0;
   height: 1px;
   background: currentColor;
-  opacity: 0.34;
+  opacity: 0.28;
 }
 
 .deck-section--advanced-features .section-shell {
@@ -1148,7 +1020,7 @@ html:lang(zh-CN) .flow-step h3 {
   inset: 3rem auto auto 3rem;
   width: 20rem;
   height: 20rem;
-  background: rgba(59, 130, 246, 0.16);
+  background: rgba(59, 130, 246, 0.12);
   filter: blur(24px);
 }
 
@@ -1156,7 +1028,7 @@ html:lang(zh-CN) .flow-step h3 {
   inset: auto auto 3rem 10%;
   width: 16rem;
   height: 16rem;
-  background: rgba(0, 214, 255, 0.18);
+  background: rgba(45, 212, 191, 0.16);
   filter: blur(28px);
 }
 
@@ -1277,7 +1149,7 @@ html:lang(zh-CN) .flow-step h3 {
   right: 1rem;
   width: 6rem;
   height: 6rem;
-  background: rgba(0, 214, 255, 0.1);
+  background: rgba(45, 212, 191, 0.12);
   filter: blur(24px);
 }
 
@@ -1286,7 +1158,7 @@ html:lang(zh-CN) .flow-step h3 {
   left: 0;
   width: 8rem;
   height: 8rem;
-  background: rgba(36, 93, 255, 0.08);
+  background: rgba(217, 249, 157, 0.14);
   filter: blur(26px);
 }
 
@@ -1301,29 +1173,7 @@ html:lang(zh-CN) .flow-step h3 {
 .closing-wave {
   inset: auto 0 0 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(0, 214, 255, 0.42), transparent);
-}
-
-.deck-section--hero .section-eyebrow,
-.deck-section--closing .section-eyebrow {
-  color: #4f89ff;
-}
-
-.deck-section--hero .section-title,
-.deck-section--closing .section-title {
-  color: #10203f;
-}
-
-.deck-section--hero .section-summary,
-.deck-section--closing .section-summary,
-.deck-section--hero .section-detail p,
-.deck-section--closing .section-detail p,
-.deck-section--closing .section-lead {
-  color: rgba(67, 93, 130, 0.82);
-}
-
-.deck-section--closing .closing-link {
-  color: #1b315a;
+  background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.34), transparent);
 }
 
 .deck-section--hero .section-title,
@@ -1387,21 +1237,25 @@ html:lang(zh-CN) .flow-step h3 {
   transition-delay: 140ms;
 }
 
+.impact-stack span,
 .point-card {
   transition:
     transform 520ms cubic-bezier(0.22, 1, 0.36, 1),
     opacity 520ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+.deck-section--continuity:not(.is-active) .impact-stack span,
 .deck-section--continuity:not(.is-active) .point-card {
   opacity: 0.56;
   transform: translateY(12px);
 }
 
+.deck-section--continuity .impact-stack span:nth-child(2),
 .deck-section--continuity .point-card:nth-child(2) {
   transition-delay: 70ms;
 }
 
+.deck-section--continuity .impact-stack span:nth-child(3),
 .deck-section--continuity .point-card:nth-child(3) {
   transition-delay: 140ms;
 }
