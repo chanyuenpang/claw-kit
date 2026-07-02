@@ -4,6 +4,10 @@
 
 It gives agents a durable way to plan before they execute, retain reusable project knowledge, and close work out cleanly inside initialized `.claw` projects instead of leaving progress trapped in transient chat state.
 
+## Product page
+
+The GitHub Pages product deck lives in [docs/index.html](docs/index.html) and is designed as a bilingual, scroll-driven introduction to `claw-kit`.
+
 ## What it gives a project
 
 - Project-scoped planning and task lifecycle around `.claw`, with workflow entry turning on automatically only after a project has been initialized
