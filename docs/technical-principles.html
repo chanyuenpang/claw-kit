@@ -1,23 +1,25 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>claw-kit | Technical Principles</title>
+    <title>claw-kit | 技术原理</title>
     <style>
       :root {
         color-scheme: light;
-        --bg: #edf4ff;
-        --panel: rgba(255, 255, 255, 0.78);
-        --text: #0d1f38;
-        --muted: #49627f;
-        --line: rgba(56, 108, 206, 0.16);
-        --accent: #2471ff;
-        --accent-2: #00d9ff;
-        --shadow: 0 24px 64px rgba(10, 31, 66, 0.1);
-        --radius: 28px;
-        --title-font: "Segoe UI Variable Display", "Segoe UI", sans-serif;
-        --body-font: "Segoe UI Variable Text", "Segoe UI", sans-serif;
+        --bg: #f5f7fb;
+        --text: #10233d;
+        --muted: #50627d;
+        --line: rgba(16, 35, 61, 0.1);
+        --accent: #245dff;
+        --accent-soft: rgba(36, 93, 255, 0.08);
+        --danger: #b75c36;
+        --danger-soft: rgba(183, 92, 54, 0.08);
+        --success: #176347;
+        --success-soft: rgba(23, 99, 71, 0.08);
+        --content-width: 920px;
+        --title-font: "Segoe UI Variable Display", "PingFang SC", "Microsoft YaHei", sans-serif;
+        --body-font: "Segoe UI Variable Text", "PingFang SC", "Microsoft YaHei", sans-serif;
       }
 
       * {
@@ -34,27 +36,28 @@
         font-family: var(--body-font);
         color: var(--text);
         background:
-          radial-gradient(circle at 12% 18%, rgba(0, 214, 255, 0.08), transparent 34%),
-          radial-gradient(circle at 86% 12%, rgba(36, 113, 255, 0.08), transparent 36%),
-          linear-gradient(180deg, #f2f7ff 0%, #ebf3ff 52%, #eef5ff 100%);
+          radial-gradient(circle at top left, rgba(255, 214, 204, 0.42), transparent 28%),
+          radial-gradient(circle at top right, rgba(186, 205, 255, 0.36), transparent 34%),
+          linear-gradient(180deg, #f8fafc 0%, #f3f6fb 46%, #f7f9fc 100%);
       }
 
       a {
         color: inherit;
+        text-decoration: none;
       }
 
       .page {
-        width: min(940px, calc(100vw - 40px));
+        width: min(var(--content-width), calc(100vw - 32px));
         margin: 0 auto;
-        padding: 32px 0 64px;
+        padding: 28px 0 56px;
       }
 
       .topbar {
         display: flex;
         justify-content: space-between;
-        gap: 16px;
         align-items: center;
-        margin-bottom: 44px;
+        gap: 16px;
+        margin-bottom: 30px;
       }
 
       .brand,
@@ -62,21 +65,20 @@
         display: inline-flex;
         align-items: center;
         gap: 10px;
-        padding: 12px 16px;
+        min-height: 44px;
+        padding: 10px 16px;
+        border: 1px solid rgba(16, 35, 61, 0.08);
         border-radius: 999px;
-        border: 1px solid rgba(165, 190, 223, 0.2);
-        text-decoration: none;
-        background: linear-gradient(135deg, rgba(12, 24, 44, 0.84), rgba(47, 74, 118, 0.66));
-        color: #eef6ff;
-        box-shadow: 0 16px 44px rgba(7, 18, 38, 0.18);
+        background: rgba(255, 255, 255, 0.82);
+        box-shadow: 0 10px 26px rgba(16, 35, 61, 0.06);
       }
 
       .brand-mark {
         width: 10px;
         height: 10px;
         border-radius: 999px;
-        background: linear-gradient(135deg, var(--accent), var(--accent-2));
-        box-shadow: 0 0 0 6px rgba(47, 107, 255, 0.14);
+        background: var(--accent);
+        box-shadow: 0 0 0 6px rgba(36, 93, 255, 0.12);
       }
 
       .brand-text,
@@ -85,81 +87,258 @@
       }
 
       .hero {
-        padding: 36px 0 18px;
+        padding: 36px 0 34px;
+        margin-bottom: 10px;
       }
 
       .eyebrow {
-        margin: 0 0 18px;
-        font-size: 0.76rem;
-        letter-spacing: 0.24em;
+        margin: 0 0 14px;
+        font-size: 0.84rem;
+        letter-spacing: 0.14em;
         text-transform: uppercase;
         color: var(--accent);
       }
 
       h1 {
         margin: 0;
-        max-width: 14ch;
+        max-width: 10.6em;
         font-family: var(--title-font);
-        font-size: clamp(2.6rem, 5vw, 4.4rem);
-        line-height: 0.98;
-        letter-spacing: -0.05em;
-        text-wrap: balance;
+        font-size: clamp(2.45rem, 4.8vw, 4rem);
+        line-height: 1.08;
+        letter-spacing: -0.04em;
       }
 
-      .summary {
-        max-width: 42rem;
-        margin: 22px 0 0;
-        font-size: clamp(1.05rem, 1.5vw, 1.2rem);
-        line-height: 1.72;
+      .lede {
+        max-width: 43rem;
+        margin: 18px 0 0;
+        font-size: 1.08rem;
+        line-height: 2.08;
         color: var(--muted);
       }
 
-      .grid {
+      .summary-grid {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 20px;
-        margin-top: 34px;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        margin-bottom: 18px;
+        border-top: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
       }
 
-      .card {
-        padding: 22px 22px 20px;
-        border: 1px solid var(--line);
-        border-radius: var(--radius);
-        background: var(--panel);
-        box-shadow: var(--shadow);
-        backdrop-filter: blur(12px);
+      .summary-card {
+        padding: 22px 22px 22px 0;
       }
 
-      .card h2 {
-        margin: 0;
-        font-size: 1.15rem;
-        line-height: 1.3;
+      .summary-card + .summary-card {
+        border-left: 1px solid var(--line);
       }
 
-      .card p {
-        margin: 12px 0 0;
+      .summary-label {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--accent);
+        font-size: 0.78rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .summary-card h2 {
+        margin: 10px 0 0;
+        font-size: 1.08rem;
+        line-height: 1.44;
+      }
+
+      .summary-card p {
+        margin: 10px 0 0;
         color: var(--muted);
-        line-height: 1.72;
+        line-height: 1.96;
       }
 
-      @media (max-width: 760px) {
+      .article {
+        padding: 8px 0 18px;
+      }
+
+      .section {
+        padding: 28px 0 30px;
+      }
+
+      .section + .section {
+        border-top: 1px solid var(--line);
+      }
+
+      .section-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px 12px;
+        margin-bottom: 14px;
+      }
+
+      .section-tag {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: rgba(16, 35, 61, 0.06);
+        color: rgba(16, 35, 61, 0.72);
+        font-size: 0.78rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .section-header h2 {
+        margin: 0;
+        font-size: 1.56rem;
+        line-height: 1.36;
+      }
+
+      .section-illustration {
+        margin: 0 0 18px;
+      }
+
+      .section-illustration img {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
+      .key-points {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin: 14px 0 16px;
+      }
+
+      .key-point {
+        display: inline-flex;
+        align-items: center;
+        min-height: 34px;
+        padding: 7px 12px;
+        border: 1px solid rgba(36, 93, 255, 0.16);
+        border-radius: 999px;
+        background: rgba(36, 93, 255, 0.06);
+        color: var(--text);
+        font-size: 0.92rem;
+        font-weight: 700;
+      }
+
+      .section p {
+        margin: 0 0 14px;
+        color: var(--muted);
+        line-height: 2.08;
+      }
+
+      .section p:last-child {
+        margin-bottom: 0;
+      }
+
+      .callout {
+        margin: 16px 0;
+        padding: 16px 18px;
+        border-left: 3px solid var(--accent);
+        background: var(--accent-soft);
+        color: var(--text);
+      }
+
+      .callout strong {
+        font-weight: 800;
+      }
+
+      .highlight {
+        display: inline;
+        padding: 0.06em 0.34em;
+        border-radius: 8px;
+        background: rgba(36, 93, 255, 0.1);
+        color: var(--text);
+        font-weight: 700;
+      }
+
+      .compare-table-wrap {
+        margin: 18px 0 20px;
+        overflow-x: auto;
+        border-top: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+      }
+
+      .compare-table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 720px;
+      }
+
+      .compare-table th,
+      .compare-table td {
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+        line-height: 1.86;
+      }
+
+      .compare-table th {
+        background: rgba(36, 93, 255, 0.08);
+        font-size: 0.92rem;
+        font-weight: 800;
+        color: var(--text);
+      }
+
+      .compare-table tbody tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .compare-table td:first-child,
+      .compare-table td:nth-child(2) {
+        white-space: nowrap;
+        font-weight: 700;
+        color: var(--text);
+      }
+
+      code {
+        padding: 0.1em 0.38em;
+        border-radius: 8px;
+        background: rgba(16, 35, 61, 0.06);
+        font-family: "Cascadia Code", "Consolas", monospace;
+        font-size: 0.94em;
+      }
+
+      @media (max-width: 860px) {
+        .summary-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .summary-card + .summary-card {
+          border-left: 0;
+          border-top: 1px solid var(--line);
+        }
+
+      }
+
+      @media (max-width: 700px) {
         .page {
-          width: min(100vw - 24px, 940px);
-          padding-top: 20px;
+          width: min(var(--content-width), calc(100vw - 20px));
+          padding-top: 18px;
+          padding-bottom: 28px;
         }
 
         .topbar {
           flex-direction: column;
           align-items: flex-start;
-          margin-bottom: 28px;
-        }
-
-        .grid {
-          grid-template-columns: 1fr;
         }
 
         h1 {
           max-width: none;
+          font-size: clamp(2rem, 9vw, 3rem);
+        }
+
+        .section {
+          padding-top: 22px;
+          padding-bottom: 24px;
         }
       }
     </style>
@@ -167,7 +346,7 @@
   <body>
     <main class="page">
       <header class="topbar">
-        <a class="brand" href="./index.html" aria-label="Back to product deck">
+        <a class="brand" href="./index.html" aria-label="返回产品页">
           <span class="brand-mark" aria-hidden="true"></span>
           <span class="brand-text">claw-kit</span>
         </a>
@@ -175,33 +354,254 @@
       </header>
 
       <section class="hero">
-        <p class="eyebrow">technical principles / work in progress</p>
-        <h1>Technical principles are coming next.</h1>
-        <p class="summary">
-          This page is the new landing spot for the deeper explanation layer behind claw-kit.
-          We can use it to explain why the harness is structured around planning, recall,
-          execution, truth writeback, and clean closeout without crowding the product deck.
+        <p class="eyebrow">technical principles</p>
+        <h1>Claw-Kit 的技术原理</h1>
+        <p class="lede">
+          Claw-Kit 不是再造一个会写代码的 agent。
+          它更接近一层面向复杂项目、长时任务的 harness。
+          用计划结构、CLI 合同、分段式 guidance 和可沉淀的项目知识，
+          把一次对话里的“会做事”变成一个项目里“能持续推进”。
         </p>
       </section>
 
-      <section class="grid" aria-label="Planned content">
-        <article class="card">
-          <h2>Workflow mechanics</h2>
-          <p>How the plan lifecycle, active execution, and closeout guidance cooperate inside a project round.</p>
+      <section class="summary-grid" aria-label="核心判断">
+        <article class="summary-card">
+          <span class="summary-label">Plan</span>
+          <h2>先把任务颗粒度对齐。再让 agent 执行。</h2>
+          <p>复杂任务先进入 plan。先拆到 agent 真正接得住的尺度。再开始消耗上下文和技能。</p>
         </article>
-        <article class="card">
-          <h2>Memory and truth</h2>
-          <p>How reusable findings move from a live task into project truth instead of disappearing with the chat.</p>
+        <article class="summary-card">
+          <span class="summary-label">CLI</span>
+          <h2>把下一步合同交给程序。不要全靠即时发挥。</h2>
+          <p>插件和 CLI 配合，不是多一层壳。是把关键分流收口到可验证的命令结果里。</p>
         </article>
-        <article class="card">
-          <h2>Host integration</h2>
-          <p>How the same workflow survives across CLI, Codex, OpenCode, and OpenClaw without restarting the round.</p>
-        </article>
-        <article class="card">
-          <h2>Why closeout matters</h2>
-          <p>Why claw-kit treats completion, truth writeback, and ADR capture as first-class parts of the work.</p>
+        <article class="summary-card">
+          <span class="summary-label">Truth</span>
+          <h2>把关键事实和决策写回项目。不要只留在聊天里。</h2>
+          <p>任务推进中的事实、取舍和复盘，需要沉淀成 truth 与 ADR。下一轮才能继续站在同一个项目现实上工作。</p>
         </article>
       </section>
+
+      <article class="article">
+        <section class="section">
+          <div class="section-header">
+            <span class="section-tag">Plan First</span>
+            <h2>1. 为什么需要 plan</h2>
+          </div>
+          <div class="section-illustration">
+            <img src="./assets/technical-principles/plan-compare.png" alt="传统方式与 Claw-Kit 方式在 plan 拆任务上的对比说明图" />
+          </div>
+          <div class="key-points">
+            <span class="key-point">重点：先对齐颗粒度</span>
+            <span class="key-point">重点：减少上下文噪音</span>
+            <span class="key-point">重点：更容易派发 subagent</span>
+          </div>
+          <p>
+            Claw-Kit 把 <code>plan</code> 放在中心。
+            <span class="highlight">不是为了多一道流程。</span>
+            是为了先把任务切到 agent 接得住的尺度。
+          </p>
+          <p>
+            大任务的问题，不是 agent 不会做。
+            是它一次拿到的东西太多。
+            目标、约束、阶段性输出混在一起。
+            最后在长上下文里慢慢失焦。
+          </p>
+          <p>
+            所以高复杂度请求先进入正式的 <code>.claw</code> workflow。
+            先过 complexity gate。
+            再进入 planning。
+            再从 <code>workflowGuidance</code> 接下一步。
+          </p>
+          <p>
+            对开启 planning 的项目，<code>claw plan create</code> 会先落到 <code>process.discussing</code>。
+            把讨论和激活桥准备好。
+            不需要 planning 的项目，才直接进入 <code>process.active</code>。
+          </p>
+          <div class="callout">
+            <strong>关键判断：</strong>
+            <span class="highlight">原子任务不是管理动作。</span>
+            它是让 agent 稳定使用 skill、稳定切换 subagent 的前提。
+          </div>
+        </section>
+
+        <section class="section">
+          <div class="section-header">
+            <span class="section-tag">CLI Contract</span>
+            <h2>2. 为什么需要 cli</h2>
+          </div>
+          <div class="section-illustration">
+            <img src="./assets/technical-principles/cli-compare.png" alt="传统方式与 Claw-Kit 方式在 closeout 编排上的对比说明图" />
+          </div>
+          <div class="key-points">
+            <span class="key-point">重点：减少 agent 过多决策</span>
+            <span class="key-point">重点：程序给下一步合同</span>
+            <span class="key-point">重点：guidance 分阶段返回</span>
+          </div>
+          <p>
+            Claw-Kit 没把插件做成一个自己推演完整流程的黑箱。
+            它明确依赖 CLI。
+            原因很简单。
+          </p>
+          <p>
+            如果每一步都让 agent 自己判断下一步是什么、该不该收尾、该不该刷新知识，
+            工作流最终会越来越依赖即时发挥。
+          </p>
+          <p>
+            所以稳定合同面放在 CLI。
+            无论是 <code>claw plan write</code>、<code>claw plan edit</code> 还是 <code>claw plan done</code>，
+            对外暴露的都不是渲染层，而是紧凑的 <code>workflowGuidance</code> 和 <code>planSummary</code>。
+          </p>
+          <p>
+            如果只靠普通 skill 来约束收尾，agent 往往要自己记住一整串动作。
+            做完任务后，要把讨论沉淀成 ADR。
+            要把有价值的执行内容整理成 truth。
+            还要判断要不要刷新索引、要不要继续派发 writer、要不要切到下一阶段。
+          </p>
+          <p>
+            这些要求单独看都合理。
+            但一旦任务很大、上下文很长、执行步骤很多，
+            注意力就会被冲淡。
+            最后最容易忘掉的，恰恰是这些“收尾但重要”的动作。
+          </p>
+          <div class="callout">
+            <strong>关键判断：</strong>
+            guidance 不是一段更长的提示词。
+            它是 <span class="highlight">按阶段返回的下一步建议</span>。
+            启动阶段提醒 goal mode。
+            完成阶段再判断是否派发 <code>truth-writer</code> 和 <code>adr-writer</code>。
+          </div>
+          <p>
+            Claw-Plan 的做法正好相反。
+            不要求 agent 在脑子里长期背着整套 closeout 清单。
+            做完当前任务后，调用一次 <code>Task Done</code> 就可以。
+          </p>
+          <p>
+            对 agent 来说，这个动作很简单。
+            也很容易执行。
+            但在这个简单动作背后，
+            CLI 会把 closeout、writer 派发、下一步 guidance 和后续刷新逻辑串起来。
+          </p>
+          <p>
+            这就是为什么 Claw-Kit 要把 <span class="highlight">CLI + 分段式 guidance + task 拆分</span> 放在一起做编排。
+            不是为了把流程做复杂。
+            而是为了把真正复杂的部分，从 agent 的即时注意力里拿走。
+          </p>
+          <p>
+            这也是为什么 `using-claw-kit` 在 Codex 里被收敛成唯一可见入口。
+            入口越单一，主流程越不容易漂。
+          </p>
+        </section>
+
+        <section class="section">
+          <div class="section-header">
+            <span class="section-tag">Truth + Recall</span>
+            <h2>3. 为什么需要 truth</h2>
+          </div>
+          <div class="section-illustration">
+            <img src="./assets/technical-principles/truth-compare.png" alt="传统方式与 Claw-Kit 方式在 truth 文档复用上的对比说明图" />
+          </div>
+          <div class="key-points">
+            <span class="key-point">重点：truth 沉淀项目已知事实</span>
+            <span class="key-point">重点：GitNexus 补齐代码结构理解</span>
+            <span class="key-point">重点：两者配合，减少重复调查</span>
+          </div>
+          <p>
+            复杂项目的问题，不只是这次有没有做完。
+            更是下一次还能不能接着做。
+          </p>
+          <p>
+            如果关键决策只留在聊天记录里，
+            agent 即使短时间内很快，
+            项目本身还是会持续失忆。
+          </p>
+          <p>
+            所以文档沉淀被放进 closeout。
+            计划推进中，可以让 subagent 记录关键事实、设计取舍和复盘。
+            完成阶段，再交给 <code>truth-writer</code> 和 <code>adr-writer</code> 写回项目。
+          </p>
+          <p>
+            这样做不是为了把文档越写越多。
+            而是为了先把项目已经确认过的事实留下来。
+            下次遇到同类问题，agent 不需要从零重新调查一遍。
+          </p>
+          <p>
+            但 truth 只能回答“项目已经知道什么”。
+            真正要落到当前代码，还需要一层代码关系理解。
+            这就是 GitNexus 接进来的位置。
+          </p>
+          <p>
+            在 Claw-Kit 里，这两层能力被故意拆开。
+            <code>claw search</code> 优先回收 truth、ADR、memory 和额外声明的文档路径。
+            GitNexus 再补上符号关系、调用链和当前代码结构。
+          </p>
+          <p>
+            所以 <code>claw search</code> 的定义也必须保持清晰。
+            它是项目级文档 recall。
+            不是代码搜索。
+          </p>
+          <p>
+            它优先帮 agent 回到项目已经确认过的事实面，再展开调查。
+            到了需要验证实现细节的时候，再配合 GitNexus 或直接读源码。
+          </p>
+          <p>
+            索引入口固定为 <code>claw search index --refresh</code>。
+            refresh 是显式动作。
+            如果向量索引不存在，搜索会明确返回 <code>MEMORY_VECTOR_INDEX_REQUIRED</code>。
+            不会悄悄退化。
+          </p>
+          <div class="compare-table-wrap">
+            <table class="compare-table" aria-label="claw search、GitNexus 与传统搜索的对比表">
+              <thead>
+                <tr>
+                  <th>对比项</th>
+                  <th>更占优</th>
+                  <th>原因</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>冷启动找方向</td>
+                  <td>claw search + GitNexus</td>
+                  <td>claw search 先恢复已沉淀的 truth / ADR，能快速知道历史决策、系统边界和关键词；GitNexus 再给出代码关系，减少盲搜。</td>
+                </tr>
+                <tr>
+                  <td>精确验证当前代码</td>
+                  <td>传统搜索</td>
+                  <td><code>rg</code> + 读源码直接面对当前 checkout，最适合确认具体实现、硬编码权重、配置字段和测试断言。</td>
+                </tr>
+                <tr>
+                  <td>上下文占用控制</td>
+                  <td>claw search + GitNexus</td>
+                  <td>claw search 返回短 snippet，GitNexus 返回结构化符号关系；传统宽泛 <code>rg</code> 容易一次吐出大量源码、测试和文档。</td>
+                </tr>
+                <tr>
+                  <td>历史与设计理解</td>
+                  <td>claw search + GitNexus</td>
+                  <td>claw search 命中的是工作流沉淀的 truth / ADR，不只是文本匹配；它能解释“为什么这样设计”，而传统搜索通常只能说明“代码现在是什么”。</td>
+                </tr>
+                <tr>
+                  <td>最终可靠答案</td>
+                  <td>组合使用</td>
+                  <td>claw search 提供高可信项目记忆，GitNexus 提供代码图谱，传统搜索提供行级源码证据；三者合用比单一路径更稳。</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="callout">
+            <strong>关键判断：</strong>
+            truth 不是为了替代代码调查。
+            GitNexus 也不是为了替代源码验证。
+            <span class="highlight">一个负责沉淀项目真相，一个负责缩短进入当前代码的路径。</span>
+          </div>
+          <p>
+            当项目显式开启 <code>gitnexus</code> 后，
+            <code>claw plan done</code> 会在 closeout 里刷新它的分析状态。
+            这样下一轮代码调查也能接得住。
+          </p>
+        </section>
+
+      </article>
     </main>
   </body>
 </html>

@@ -1,5 +1,4 @@
 {
-  "version": "0.1.54",
   "id": "claw-kit",
   "name": "claw-kit",
   "maxTasksToKeep": 9,
@@ -12,12 +11,12 @@
   "defaultPlanTemplate": null,
   "contextPaths": [],
   "memory": {
-    "enabled": true,
     "externalDocPaths": [],
     "embedding": {
       "provider": "local",
       "model": "Snowflake/snowflake-arctic-embed-m-v2.0"
     }
   },
-  "gitnexus": true
+  "gitnexus": true,
+  "version": "0.1.54"
 }

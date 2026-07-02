@@ -20,6 +20,8 @@ Accepted
 - 大型项目 refresh 还需要把刷新进度切成可重复推进的批次，而不是一次性吞下整个语料集
 - 这次 retrieval quality 迭代继续复用 `openclaw-dev` 的成熟混排思路，但只吸收适合 `claw-kit` 的那部分：共享的中文/多词 keyword term 入口，以及面向 project-scoped hybrid ranking 的文档级 signals。
 - 下一轮 search-quality 迭代继续参考 `OpenClaw` 的 memory search，但聚焦在 trimmed multi-route candidate recall 和 unified reranking，只迁移能直接提升项目文档 recall 的检索部件。
+- `Compare-traditional-search-vs-claw-search-for-vector-database-search-ranking` 这次 completed plan 进一步确认：当前 project search 质量的主要架构调优面是 `searchProjectMemoryHybrid` / `rerankProjectSearchCandidates` 这一层候选融合与重排链路，而不是单独替换 embedding model。
+- 同一轮比较也把工具边界固定下来：传统 `rg` / 文件检查适合确认源码权重和精确机制，`claw search` 适合回收设计历史与既有 ADR/truth，GitNexus 适合当前代码关系调查但仍需要留意符号排序噪音。
 
 ## Decision
 
@@ -35,6 +37,7 @@ Accepted
 - project-level `claw search --query` 的候选生成不再依赖单一路径；它会在最终排序前汇总多条 recall routes 的候选，而不是只做一次 `FTS` 召回再与向量结果拼接。
 - 这轮 trimmed `OpenClaw` 迁移保留 exact、keyword、semantic 和 document-signal 候选来源，但不引入更大的 session-memory / host abstraction surface。
 - 所有召回路径产出的候选都进入同一轮 unified reranking，保持 exact-match 优势，同时让 conversational Chinese queries 和 mixed multi-term queries 能共享同一套最终排序逻辑。
+- 后续 search-quality 优化优先落在可测量的 rerank tuning、vector scan / candidate performance、chunking / query-intent quality 和 evaluation fixtures；不通过放松 `vector-required` 契约来换取短期召回。
 - 对多词查询，project-level `claw search --query` 同时保留 exact multi-term keyword query，以及逐词 fallback query，而不是只执行一次严格的原始 `FTS MATCH`。
 - 这套 planner 的目标是避免中文多词 recall 过度依赖“同一条记录同时命中所有词”的语义，让检索行为更接近文档 recall / fuzzy retrieval。
 - 如果当前项目缺少 refreshed vector index，project search 返回 `MEMORY_VECTOR_INDEX_REQUIRED`，而不是 silent fallback。
@@ -71,6 +74,8 @@ Accepted
 - refresh failure 会直接暴露 embedding/provider/runtime 问题；调用方必须修复环境或改配置，然后重新执行显式 refresh，而不是依赖 text-only refresh 继续前进。
 - 中文多词检索不再被单次严格 `MATCH` 语义卡住，keyword planner 可以更稳定地为 hybrid fusion 提供候选集。
 - 多条 recall routes 先扩充候选池、再统一重排，减少单一路径偏置，让项目搜索更接近成熟文档 recall 系统的结果质量。
+- 搜索质量问题应优先以 fixture 和排序指标回归来收敛，避免把 embedding provider、代码搜索工具或 recall 入口混成一个不可测的优化面。
+- 日常调查流程可以组合三种搜索能力，但结论需要标明来源：`rg` / 文件读取负责源码真相，`claw search` 负责项目记忆，GitNexus 负责关系线索，三者互补而不是互相替代。
 - `claw-kit` 仍然只迁移最小可维护子集：项目文档候选召回与重排增强进入本地实现，OpenClaw 更广的 memory system 边界继续留在范围外。
 - 既有 `.claw` 项目保持同一套 sqlite backend，不需要引入第二套索引存储。
 - local 默认模型切到 multilingual `Snowflake/snowflake-arctic-embed-m-v2.0` 后，中文 recall 的 baseline 会更好；代价是默认向量维度与本地推理成本上升到 `768` 维级别，因此 refresh/index metadata 必须和模型默认一起保持一致。
@@ -86,6 +91,7 @@ Accepted
 - `packages/core/test/core.test.ts`
 - `packages/cli/test/cli.test.ts`
 - `.claw/project.json`
+- `.claw/archive/tasks/Compare-traditional-search-vs-claw-search-for-vector-database-search-ranking/plan.json`
 - `.claw/archive/tasks/incremental-memory-index-refresh/plan.json`
 - `.claw/archive/tasks/hybrid-vector-project-search/plan.json`
 - `.claw/archive/tasks/multi-term-chinese-search-recall/plan.json`
@@ -111,6 +117,11 @@ Accepted
 - `fuzzy retrieval`
 - `multi-route candidate recall`
 - `unified reranking`
+- `searchProjectMemoryHybrid`
+- `rerankProjectSearchCandidates`
+- `rerank tuning`
+- `candidate performance`
+- `evaluation fixtures`
 - `document-signal candidates`
 - `Snowflake/snowflake-arctic-embed-m-v2.0`
 - `Snowflake/snowflake-arctic-embed-xs`
