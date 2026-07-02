@@ -11,15 +11,10 @@ export type MemoryEmbeddingConfig = {
     device?: "dml" | "cuda" | "cpu" | "wasm";
   };
   outputDimensionality?: number;
-  store?: {
-    vector?: {
-      enabled?: boolean;
-      extensionPath?: string;
-    };
-  };
 };
 
 export type ProjectConfig = {
+  version?: string;
   id?: string;
   name?: string;
   maxTasksToKeep?: number;
@@ -32,6 +27,7 @@ export type ProjectConfig = {
   defaultPlanTemplate?: string | null;
   contextPaths?: string[];
   memory?: {
+    enabled?: boolean;
     externalDocPaths?: string[];
     embedding?: MemoryEmbeddingConfig | null;
   };

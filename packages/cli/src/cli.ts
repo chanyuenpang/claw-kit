@@ -274,6 +274,7 @@ async function main(): Promise<void> {
       case "init":
         const initInput: InitProjectInput = {
           cwd: process.cwd(),
+          version: CLI_VERSION,
           projectId: readOptionalFlag(args, "--id"),
           projectName: readOptionalFlag(args, "--name"),
           maxTasksToKeep: readOptionalNumber(args, "--max-tasks-to-keep"),
@@ -535,11 +536,19 @@ function runContextCommand(
     if (!(error instanceof ClawError) || error.code !== "CLAW_DIR_NOT_FOUND") {
       throw error;
     }
-    initProject({ cwd });
+    initProject({ cwd, version: CLI_VERSION });
     initialized = true;
   }
 
-  const resolved = resolveContext(cwd, taskName);
+  let resolved = resolveContext(cwd, taskName);
+  const versionSync = syncProjectVersionWithCli(cwd, resolved.project);
+  if (versionSync.projectVersionAligned) {
+    corrected = true;
+    if (!fixedPaths.includes("project.json")) {
+      fixedPaths.push("project.json");
+    }
+    resolved = resolveContext(cwd, taskName);
+  }
   const activeWorkflow =
     !taskName && ownerSessionKey
       ? tryResolveActiveWorkflowSnapshot(cwd, ownerSessionKey)
@@ -553,7 +562,109 @@ function runContextCommand(
       initialized,
       corrected,
       fixedPaths,
+      versionSync,
     },
+  };
+}
+
+type ContextVersionSyncResult = {
+  cliVersion: string;
+  projectVersion: string | null;
+  projectVersionAligned: boolean;
+  cliUpdateAttempted: boolean;
+  cliUpdateSucceeded: boolean;
+  cliVersionLagging: boolean;
+  latestPublishedVersion?: string | null;
+  command?: string;
+  exitCode?: number;
+  stdout?: string;
+  stderr?: string;
+  message?: string;
+};
+
+function syncProjectVersionWithCli(cwd: string, project: ReturnType<typeof resolveProjectContext>): ContextVersionSyncResult {
+  const projectVersion = normalizeVersionString(project.projectConfig?.version);
+  if (!projectVersion) {
+    updateProjectJsonVersion(project.projectJsonPath, CLI_VERSION);
+    return {
+      cliVersion: CLI_VERSION,
+      projectVersion: null,
+      projectVersionAligned: true,
+      cliUpdateAttempted: false,
+      cliUpdateSucceeded: false,
+      cliVersionLagging: false,
+    };
+  }
+
+  const comparison = compareSemver(projectVersion, CLI_VERSION);
+  if (comparison < 0) {
+    updateProjectJsonVersion(project.projectJsonPath, CLI_VERSION);
+    return {
+      cliVersion: CLI_VERSION,
+      projectVersion,
+      projectVersionAligned: true,
+      cliUpdateAttempted: false,
+      cliUpdateSucceeded: false,
+      cliVersionLagging: false,
+    };
+  }
+
+  if (comparison === 0) {
+    return {
+      cliVersion: CLI_VERSION,
+      projectVersion,
+      projectVersionAligned: false,
+      cliUpdateAttempted: false,
+      cliUpdateSucceeded: false,
+      cliVersionLagging: false,
+    };
+  }
+
+  const latestPublishedVersion = resolveLatestPublishedClawVersion(cwd);
+  if (latestPublishedVersion && compareSemver(latestPublishedVersion, projectVersion) < 0) {
+    return {
+      cliVersion: CLI_VERSION,
+      projectVersion,
+      projectVersionAligned: false,
+      cliUpdateAttempted: false,
+      cliUpdateSucceeded: false,
+      cliVersionLagging: true,
+      latestPublishedVersion,
+      message: `Project config version ${projectVersion} is newer than CLI ${CLI_VERSION}, and npm latest is only ${latestPublishedVersion}.`,
+    };
+  }
+
+  const command = "npm install -g @veewo/claw@latest";
+  const install = runCommand("npm", ["install", "-g", "@veewo/claw@latest"], cwd);
+  if (commandFailed(install)) {
+    return {
+      cliVersion: CLI_VERSION,
+      projectVersion,
+      projectVersionAligned: false,
+      cliUpdateAttempted: true,
+      cliUpdateSucceeded: false,
+      cliVersionLagging: true,
+      latestPublishedVersion,
+      command,
+      exitCode: install.status ?? 0,
+      stdout: install.stdout ?? "",
+      stderr: install.stderr ?? "",
+      message: `Project config version ${projectVersion} is newer than CLI ${CLI_VERSION}, and automatic CLI update failed.`,
+    };
+  }
+
+  return {
+    cliVersion: CLI_VERSION,
+    projectVersion,
+    projectVersionAligned: false,
+    cliUpdateAttempted: true,
+    cliUpdateSucceeded: true,
+    cliVersionLagging: false,
+    latestPublishedVersion,
+    command,
+    exitCode: install.status ?? 0,
+    stdout: install.stdout ?? "",
+    stderr: install.stderr ?? "",
   };
 }
 
@@ -1725,6 +1836,56 @@ function commandFailed(result: {
     return true;
   }
   return (result.status ?? 0) !== 0;
+}
+
+function resolveLatestPublishedClawVersion(cwd: string): string | null {
+  const result = runCommand("npm", ["view", "@veewo/claw", "version"], cwd);
+  if (commandFailed(result)) {
+    return null;
+  }
+  return normalizeVersionString(result.stdout ?? "");
+}
+
+function updateProjectJsonVersion(projectJsonPath: string, version: string): void {
+  const raw = fs.readFileSync(projectJsonPath, "utf-8");
+  const parsed = JSON.parse(raw) as Record<string, unknown>;
+  parsed.version = version;
+  fs.writeFileSync(projectJsonPath, `${JSON.stringify(parsed, null, 2)}\n`, "utf-8");
+}
+
+function compareSemver(left: string, right: string): number {
+  const leftParts = parseSemver(left);
+  const rightParts = parseSemver(right);
+  if (!leftParts || !rightParts) {
+    return left.localeCompare(right);
+  }
+  for (let index = 0; index < 3; index += 1) {
+    const delta = leftParts[index] - rightParts[index];
+    if (delta !== 0) {
+      return delta;
+    }
+  }
+  return 0;
+}
+
+function parseSemver(version: string): [number, number, number] | null {
+  const match = version.trim().match(/^(\d+)\.(\d+)\.(\d+)/);
+  if (!match) {
+    return null;
+  }
+  return [
+    Number.parseInt(match[1] ?? "", 10),
+    Number.parseInt(match[2] ?? "", 10),
+    Number.parseInt(match[3] ?? "", 10),
+  ];
+}
+
+function normalizeVersionString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
 }
 
 function readOptionalFlag(args: string[], flag: string): string | undefined {

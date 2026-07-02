@@ -99,7 +99,7 @@ test("closing section renders meaningful navigation links", () => {
   );
   assert.match(
     zhMarkup,
-    /<a class="closing-link" href="#ecosystem">探索宿主<\/a>/
+    /<a class="closing-link" href="\.\/config-guide\.html">配置说明<\/a>/
   );
 
   assert.match(
@@ -112,9 +112,8 @@ test("closing section renders meaningful navigation links", () => {
   );
   assert.match(
     enMarkup,
-    /<a class="closing-link" href="#ecosystem">Explore hosts<\/a>/
+    /<a class="closing-link" href="\.\/config-guide\.html">Config guide<\/a>/
   );
-  assert.match(buildDeckMarkup("en"), /<section[\s\S]*id="ecosystem"[\s\S]*data-section-id="ecosystem"/);
 });
 
 test("hero copy positions claw-kit around complex projects and long-running tasks", () => {

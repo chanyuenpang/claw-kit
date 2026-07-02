@@ -194,6 +194,36 @@ process.exit(0);
   return { binDir, logPath };
 }
 
+function createClawUpdateNpmShim(options: {
+  latestVersion: string;
+  failLatestInstall?: boolean;
+}): { binDir: string; logPath: string } {
+  const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-kit-claw-update-npm-"));
+  const logPath = path.join(binDir, "npm.log");
+  const cmdPath = path.join(binDir, "npm.cmd");
+  const jsPath = path.join(binDir, "npm-shim.js");
+  const script = `
+const fs = require("node:fs");
+const args = process.argv.slice(2);
+fs.appendFileSync(${JSON.stringify(logPath)}, \`\${args.join(" ")}\\n\`);
+if (args[0] === "view" && args[1] === "@veewo/claw" && args[2] === "version") {
+  process.stdout.write(${JSON.stringify(options.latestVersion)} + "\\n");
+  process.exit(0);
+}
+if (args[0] === "install" && args[1] === "-g" && args[2] === "@veewo/claw@latest") {
+  if (${options.failLatestInstall === true ? "true" : "false"}) {
+    process.stderr.write("latest install failed\\n");
+    process.exit(1);
+  }
+  process.exit(0);
+}
+process.exit(0);
+`;
+  fs.writeFileSync(jsPath, script, "utf-8");
+  fs.writeFileSync(cmdPath, `@echo off\r\n"${process.execPath}" "${jsPath}" %*\r\n`, "utf-8");
+  return { binDir, logPath };
+}
+
 test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnexus fallback refresh", async () => {
   const root = createFixture("e2e");
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
@@ -226,15 +256,19 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
     path.join(root, ".claw", "project.json"),
     JSON.stringify(
       {
+        version: cliPackageVersion,
         id: "cli-e2e",
         name: "CLI E2E",
         maxTasksToKeep: 99,
         planning: false,
+        goalMode: true,
+        truthDispatch: "per_task",
         externalPlanningSkill: null,
         externalTruthSkill: "external-truth-writer",
         externalAdrSkill: "external-adr-writer",
         contextPaths: [],
         memory: {
+          enabled: true,
           externalDocPaths: ["docs/"],
           embedding: {
             provider: "local",
@@ -244,9 +278,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
             },
           },
         },
-        gitnexus: {
-          enabled: true,
-        },
+        gitnexus: true,
       },
       null,
       2,
@@ -625,11 +657,15 @@ test("cli search accepts a positional query for project recall", () => {
     path.join(root, ".claw", "project.json"),
     JSON.stringify(
       {
+        version: cliPackageVersion,
         id: "search-positional-query",
         name: "Search Positional Query",
         maxTasksToKeep: 99,
+        goalMode: true,
+        truthDispatch: "per_task",
         contextPaths: [],
         memory: {
+          enabled: true,
           externalDocPaths: ["docs/"],
           embedding: {
             provider: "local",
@@ -639,9 +675,7 @@ test("cli search accepts a positional query for project recall", () => {
             },
           },
         },
-        gitnexus: {
-          enabled: false,
-        },
+        gitnexus: false,
       },
       null,
       2,
@@ -773,35 +807,24 @@ test("cli respects project override toggles for goal mode and final-only truth d
     path.join(root, ".claw", "project.json"),
     JSON.stringify(
       {
+        version: cliPackageVersion,
         id: "cli-project-override-toggles",
         name: "CLI Override Toggles",
         maxTasksToKeep: 99,
+        goalMode: true,
+        truthDispatch: "per_task",
         externalTruthSkill: "external-truth-writer",
         externalAdrSkill: "external-adr-writer",
         contextPaths: [],
-        workflow: {
-          goalMode: {
-            enabled: true,
-          },
-          truthDispatch: {
-            mode: "per_task",
-          },
-        },
         memory: {
+          enabled: true,
           externalDocPaths: [],
           embedding: {
             provider: "local",
             model: "Snowflake/snowflake-arctic-embed-xs",
-            store: {
-              vector: {
-                enabled: true,
-              },
-            },
           },
         },
-        gitnexus: {
-          enabled: false,
-        },
+        gitnexus: false,
       },
       null,
       2,
@@ -812,14 +835,8 @@ test("cli respects project override toggles for goal mode and final-only truth d
     path.join(root, ".claw", "project-override.json"),
     JSON.stringify(
       {
-        workflow: {
-          goalMode: {
-            enabled: false,
-          },
-          truthDispatch: {
-            mode: "final_only",
-          },
-        },
+        goalMode: false,
+        truthDispatch: "final_only",
       },
       null,
       2,
@@ -1105,6 +1122,7 @@ test("cli context includes protocolCheck for existing .claw projects", () => {
   assert.equal(result.project !== undefined, true);
   assert.equal(startupRecovery.initialized, false);
   assert.equal(startupRecovery.corrected, false);
+  assert.equal((((result.project as JsonRecord).projectConfig as JsonRecord).version), cliPackageVersion);
   assert.equal(
     ((((result.project as JsonRecord).projectConfig as JsonRecord).memory as JsonRecord).embedding as JsonRecord).model,
     "Snowflake/snowflake-arctic-embed-m-v2.0",
@@ -1123,6 +1141,7 @@ test("cli context auto-initializes when .claw is missing", () => {
   assert.equal(protocolCheck.ok, true);
   assert.equal(fs.existsSync(path.join(root, ".claw", "project.json")), true);
   assert.equal((result.project as JsonRecord).projectRoot, root);
+  assert.equal((((result.project as JsonRecord).projectConfig as JsonRecord).version), cliPackageVersion);
   assert.equal(
     ((((result.project as JsonRecord).projectConfig as JsonRecord).memory as JsonRecord).embedding as JsonRecord).model,
     "Snowflake/snowflake-arctic-embed-m-v2.0",
@@ -1147,18 +1166,90 @@ test("cli context auto-corrects malformed existing .claw state", () => {
   assert.equal(startupRecovery.corrected, true);
   assert.ok(Array.isArray(startupRecovery.fixedPaths));
   assert.equal(protocolCheck.ok, true);
+  assert.equal(projectConfig.version, cliPackageVersion);
   assert.equal(projectConfig.maxTasksToKeep, 99);
   assert.equal(projectConfig.externalTruthSkill, null);
   assert.equal(projectConfig.externalAdrSkill, null);
-  assert.equal(projectConfig.goalMode, true);
-  assert.equal(projectConfig.truthDispatch, "per_task");
   assert.deepEqual(projectConfig.memory, {
+    enabled: true,
     externalDocPaths: [],
     embedding: {
       provider: "local",
       model: "Snowflake/snowflake-arctic-embed-m-v2.0",
     },
   });
+  assert.equal(projectConfig.goalMode, true);
+  assert.equal(projectConfig.truthDispatch, "per_task");
+});
+
+test("cli context aligns project.json version upward to the current CLI version", () => {
+  const root = createFixture("context-version-align");
+  runClaw(["init", "--name", "Context Version Align"], root);
+  const projectJsonPath = path.join(root, ".claw", "project.json");
+  const projectConfig = JSON.parse(fs.readFileSync(projectJsonPath, "utf-8")) as JsonRecord;
+  projectConfig.version = "0.1.1";
+  fs.writeFileSync(projectJsonPath, `${JSON.stringify(projectConfig, null, 2)}\n`, "utf-8");
+
+  const result = runClaw(["context"], root);
+  const startupRecovery = result.startupRecovery as JsonRecord;
+  const versionSync = startupRecovery.versionSync as JsonRecord;
+  const nextProjectConfig = JSON.parse(fs.readFileSync(projectJsonPath, "utf-8")) as JsonRecord;
+
+  assert.equal(startupRecovery.corrected, true);
+  assert.equal(versionSync.projectVersionAligned, true);
+  assert.equal(versionSync.cliVersion, cliPackageVersion);
+  assert.equal(nextProjectConfig.version, cliPackageVersion);
+});
+
+test("cli context reports lagging CLI info when project version is newer than both local CLI and npm latest", () => {
+  const root = createFixture("context-version-lagging");
+  const npmShim = createClawUpdateNpmShim({
+    latestVersion: "0.9.9",
+    failLatestInstall: true,
+  });
+  const env = {
+    PATH: `${npmShim.binDir}${path.delimiter}${process.env.PATH ?? ""}`,
+  };
+  runClaw(["init", "--name", "Context Version Lagging"], root, env);
+  const projectJsonPath = path.join(root, ".claw", "project.json");
+  const projectConfig = JSON.parse(fs.readFileSync(projectJsonPath, "utf-8")) as JsonRecord;
+  projectConfig.version = "9.9.9";
+  fs.writeFileSync(projectJsonPath, `${JSON.stringify(projectConfig, null, 2)}\n`, "utf-8");
+
+  const result = runClaw(["context"], root, env);
+  const startupRecovery = result.startupRecovery as JsonRecord;
+  const versionSync = startupRecovery.versionSync as JsonRecord;
+
+  assert.equal(versionSync.projectVersionAligned, false);
+  assert.equal(versionSync.cliUpdateAttempted, false);
+  assert.equal(versionSync.cliVersionLagging, true);
+  assert.equal(versionSync.latestPublishedVersion, "0.9.9");
+  assert.match(String(versionSync.message), /npm latest is only 0.9.9/);
+});
+
+test("cli context reports lagging CLI info when automatic latest update fails", () => {
+  const root = createFixture("context-version-update-fails");
+  const npmShim = createClawUpdateNpmShim({
+    latestVersion: "99.0.0",
+    failLatestInstall: true,
+  });
+  const env = {
+    PATH: `${npmShim.binDir}${path.delimiter}${process.env.PATH ?? ""}`,
+  };
+  runClaw(["init", "--name", "Context Version Update Fails"], root, env);
+  const projectJsonPath = path.join(root, ".claw", "project.json");
+  const projectConfig = JSON.parse(fs.readFileSync(projectJsonPath, "utf-8")) as JsonRecord;
+  projectConfig.version = "9.9.9";
+  fs.writeFileSync(projectJsonPath, `${JSON.stringify(projectConfig, null, 2)}\n`, "utf-8");
+
+  const result = runClaw(["context"], root, env);
+  const versionSync = ((result.startupRecovery as JsonRecord).versionSync as JsonRecord);
+
+  assert.equal(versionSync.cliUpdateAttempted, true);
+  assert.equal(versionSync.cliUpdateSucceeded, false);
+  assert.equal(versionSync.cliVersionLagging, true);
+  assert.equal(versionSync.command, "npm install -g @veewo/claw@latest");
+  assert.match(String(versionSync.message), /automatic CLI update failed/);
 });
 
 test("context suppresses the node:sqlite ExperimentalWarning banner", () => {
@@ -1200,6 +1291,7 @@ test("cli check auto-corrects project.json into explicit protocol fields", () =>
   assert.equal(result.changed, true);
   assert.ok(Number(result.issueCountBefore) > 0);
   assert.ok((result.fixedPaths as unknown[]).includes("maxTasksToKeep"));
+  assert.equal(projectConfig.version, cliPackageVersion);
   assert.equal(projectConfig.id, "broken-project");
   assert.equal(projectConfig.name, "Broken Project");
   assert.equal(projectConfig.maxTasksToKeep, 99);
@@ -1209,6 +1301,7 @@ test("cli check auto-corrects project.json into explicit protocol fields", () =>
   assert.equal(projectConfig.goalMode, true);
   assert.equal(projectConfig.truthDispatch, "per_task");
   assert.deepEqual(projectConfig.memory, {
+    enabled: true,
     externalDocPaths: [],
     embedding: {
       provider: "local",
@@ -1358,13 +1451,17 @@ test("cli plan done auto-enables gitnexus embeddings and seeds the matching mode
     path.join(root, ".claw", "project.json"),
     JSON.stringify(
       {
+        version: cliPackageVersion,
         id: "gitnexus-embeddings-preflight",
         name: "Gitnexus Embeddings Preflight",
         maxTasksToKeep: 99,
+        goalMode: true,
+        truthDispatch: "per_task",
         externalTruthSkill: null,
         externalAdrSkill: null,
         contextPaths: [],
         memory: {
+          enabled: true,
           externalDocPaths: [],
           embedding: {
             provider: "local",
@@ -1374,9 +1471,7 @@ test("cli plan done auto-enables gitnexus embeddings and seeds the matching mode
             },
           },
         },
-        gitnexus: {
-          enabled: true,
-        },
+        gitnexus: true,
       },
       null,
       2,
@@ -1508,13 +1603,17 @@ test("cli search index refresh returns project index metadata and embedding conf
     path.join(root, ".claw", "project.json"),
     JSON.stringify(
       {
+        version: cliPackageVersion,
         id: "search-index-refresh",
         name: "Search Index Refresh",
         maxTasksToKeep: 99,
+        goalMode: true,
+        truthDispatch: "per_task",
         externalTruthSkill: null,
         externalAdrSkill: null,
         contextPaths: [],
         memory: {
+          enabled: true,
           externalDocPaths: [],
           embedding: {
             provider: "openai",
@@ -1524,9 +1623,7 @@ test("cli search index refresh returns project index metadata and embedding conf
             },
           },
         },
-        gitnexus: {
-          enabled: false,
-        },
+        gitnexus: false,
       },
       null,
       2,
@@ -1558,13 +1655,17 @@ test("cli search index refresh returns local vector index metadata and only inde
     path.join(root, ".claw", "project.json"),
     JSON.stringify(
       {
+        version: cliPackageVersion,
         id: "search-index-refresh-local",
         name: "Search Index Refresh Local",
         maxTasksToKeep: 99,
+        goalMode: true,
+        truthDispatch: "per_task",
         externalTruthSkill: null,
         externalAdrSkill: null,
         contextPaths: [],
         memory: {
+          enabled: true,
           externalDocPaths: ["docs/"],
           embedding: {
             provider: "local",
@@ -1574,9 +1675,7 @@ test("cli search index refresh returns local vector index metadata and only inde
             },
           },
         },
-        gitnexus: {
-          enabled: false,
-        },
+        gitnexus: false,
       },
       null,
       2,

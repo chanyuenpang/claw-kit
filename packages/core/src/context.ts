@@ -5,6 +5,8 @@ import { readJsonFile, withFileLock } from "./io.js";
 import { ensureInsideDir, findProjectRoot, isValidTaskName, normalizePlanFile, normalizeTaskName } from "./paths.js";
 import type { MemoryEmbeddingConfig, ProjectConfig, ProjectContext, ResolvedContext, TaskContext, TaskMeta } from "./types.js";
 
+const CORE_VERSION = readCoreVersion();
+
 export function resolveProjectContext(cwd: string): ProjectContext {
   const projectRoot = findProjectRoot(cwd);
   if (!projectRoot) {
@@ -174,40 +176,28 @@ function readProjectConfig(projectJsonPath: string): ProjectConfig {
 }
 
 function normalizeProjectConfig(projectConfig: ProjectConfig): ProjectConfig {
-  const {
-    autoAchieveTask: _autoAchieveTask,
-    workflow: _workflow,
-    gitnexus: _gitnexus,
-    goalMode: _goalMode,
-    truthDispatch: _truthDispatch,
-    ...rest
-  } = projectConfig as ProjectConfig & {
-    autoAchieveTask?: unknown;
-    workflow?: unknown;
-    gitnexus?: unknown;
-    goalMode?: unknown;
-    truthDispatch?: unknown;
-  };
-  const source = projectConfig as unknown as Record<string, unknown>;
   return {
-    ...rest,
+    version: normalizeVersion(projectConfig.version),
+    id: projectConfig.id,
+    name: projectConfig.name,
     maxTasksToKeep:
       Number.isInteger(projectConfig.maxTasksToKeep) && (projectConfig.maxTasksToKeep as number) >= 1
         ? projectConfig.maxTasksToKeep
         : 99,
     planning: projectConfig.planning !== false,
-    goalMode: readBooleanConfig(source, "goalMode", true),
-    truthDispatch: readTruthDispatchConfig(source, "truthDispatch", "per_task"),
+    goalMode: typeof projectConfig.goalMode === "boolean" ? projectConfig.goalMode : true,
+    truthDispatch: projectConfig.truthDispatch === "final_only" ? "final_only" : "per_task",
     externalPlanningSkill: normalizeOptionalSkill(projectConfig.externalPlanningSkill),
     externalTruthSkill: normalizeOptionalSkill(projectConfig.externalTruthSkill),
     externalAdrSkill: normalizeOptionalSkill(projectConfig.externalAdrSkill),
     defaultPlanTemplate: normalizeOptionalTemplateName(projectConfig.defaultPlanTemplate),
     contextPaths: [...(projectConfig.contextPaths ?? [])],
     memory: {
+      enabled: projectConfig.memory?.enabled !== false,
       externalDocPaths: [...(projectConfig.memory?.externalDocPaths ?? [])],
       embedding: normalizeMemoryEmbeddingConfig(projectConfig.memory?.embedding),
     },
-    gitnexus: readBooleanConfig(source, "gitnexus", false),
+    gitnexus: projectConfig.gitnexus === true,
   };
 }
 
@@ -239,51 +229,6 @@ function normalizeOptionalTemplateName(value: string | null | undefined): string
   }
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
-}
-
-function readBooleanConfig(source: Record<string, unknown> | null, key: string, fallback: boolean): boolean {
-  const direct = readBooleanLike(source?.[key]);
-  if (direct !== undefined) {
-    return direct;
-  }
-  const workflow = asObject(source?.workflow);
-  const workflowValue = readBooleanLike(workflow?.[key]);
-  return workflowValue ?? fallback;
-}
-
-function readBooleanLike(value: unknown): boolean | undefined {
-  if (typeof value === "boolean") {
-    return value;
-  }
-  const objectValue = asObject(value);
-  if (typeof objectValue?.enabled === "boolean") {
-    return objectValue.enabled;
-  }
-  return undefined;
-}
-
-function readTruthDispatchConfig(
-  source: Record<string, unknown> | null,
-  key: string,
-  fallback: "per_task" | "final_only",
-): "per_task" | "final_only" {
-  const direct = readTruthDispatchLike(source?.[key]);
-  if (direct) {
-    return direct;
-  }
-  const workflow = asObject(source?.workflow);
-  return readTruthDispatchLike(workflow?.[key]) ?? fallback;
-}
-
-function readTruthDispatchLike(value: unknown): "per_task" | "final_only" | undefined {
-  if (value === "per_task" || value === "final_only") {
-    return value;
-  }
-  const objectValue = asObject(value);
-  if (objectValue?.mode === "per_task" || objectValue?.mode === "final_only") {
-    return objectValue.mode;
-  }
-  return undefined;
 }
 
 function asObject(value: unknown): Record<string, unknown> | null {
@@ -338,12 +283,6 @@ function normalizeMemoryEmbeddingConfig(value: MemoryEmbeddingConfig | null | un
     return null;
   }
 
-  const vectorExtensionPath =
-    typeof value.store?.vector?.extensionPath === "string" && value.store.vector.extensionPath.trim()
-      ? value.store.vector.extensionPath.trim()
-      : undefined;
-  const vectorEnabled = value.store?.vector?.enabled;
-
   return {
     provider,
     model,
@@ -380,15 +319,23 @@ function normalizeMemoryEmbeddingConfig(value: MemoryEmbeddingConfig | null | un
     ...(Number.isInteger(value.outputDimensionality) && (value.outputDimensionality as number) > 0
       ? { outputDimensionality: value.outputDimensionality as number }
       : {}),
-    ...(vectorEnabled === false || vectorExtensionPath
-      ? {
-          store: {
-            vector: {
-              ...(vectorEnabled === false ? { enabled: false } : {}),
-              ...(vectorExtensionPath ? { extensionPath: vectorExtensionPath } : {}),
-            },
-          },
-        }
-      : {}),
   };
+}
+
+function normalizeVersion(value: string | undefined): string {
+  if (typeof value !== "string") {
+    return CORE_VERSION;
+  }
+  const trimmed = value.trim();
+  return trimmed || CORE_VERSION;
+}
+
+function readCoreVersion(): string {
+  const packageJsonPath = new URL("../../package.json", import.meta.url);
+  const raw = fs.readFileSync(packageJsonPath, "utf-8");
+  const parsed = JSON.parse(raw) as { version?: unknown };
+  if (typeof parsed.version !== "string" || parsed.version.trim().length === 0) {
+    throw new Error("packages/core/package.json is missing a valid version string.");
+  }
+  return parsed.version.trim();
 }

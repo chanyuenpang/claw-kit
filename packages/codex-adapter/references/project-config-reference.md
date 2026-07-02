@@ -20,7 +20,7 @@ When the user asks to change claw configuration, use the `config` skill as the d
 - Personal runtime preference
   - put it in `.claw/project-override.json`
 - Tune recall or embeddings
-  - change `memory.externalDocPaths` or `memory.embedding`
+  - change `memory.enabled`, `memory.externalDocPaths`, or `memory.embedding`
 - Add external truth or ADR writers
   - set `externalTruthSkill` or `externalAdrSkill`
 - Pair the workflow with GitNexus
@@ -44,13 +44,18 @@ When the user asks to change claw configuration, use the `config` skill as the d
 
 ## Key fields
 
+- `version`
+  - expected project protocol version
+  - if the project version is ahead of the current CLI, `claw context` tries to update the CLI and returns lagging info when that fails
 - `maxTasksToKeep`
   - active task retention limit
-  - default: `9`
+  - default: `99`
 - `externalTruthSkill`
   - optional truth-writer override
 - `externalAdrSkill`
   - optional ADR-writer override
+- `memory.enabled`
+  - master switch for project memory, task memory, embedding refresh, and `claw search`
 - `memory.externalDocPaths`
   - markdown recall roots for `claw search`
 - `memory.embedding`
@@ -69,7 +74,7 @@ When the user asks to change claw configuration, use the `config` skill as the d
 - Use `.claw/project-override.json` for personal runtime preferences.
 - Use the flat field names in both files: `planning`, `externalPlanningSkill`, `goalMode`, `truthDispatch`, and `gitnexus`.
 - Treat explicit `null` as an intentional override, not inheritance.
-- Do not tell users they need to write `store.vector.enabled = true` just to keep default vector indexing behavior.
+- `memory.enabled = false` disables project memory, task memory, embedding refresh, and `claw search` together.
 - `final_only` suppresses mid-task truth handoff, not closeout truth or ADR deposition.
 
 ## When to use the canonical guide

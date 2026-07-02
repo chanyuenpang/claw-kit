@@ -38,11 +38,13 @@ It is normalized by `claw init` and protocol repair.
 
 Use it when the team should share the behavior:
 
+- `version`
 - `planning`
 - `externalPlanningSkill`
 - `externalTruthSkill`
 - `externalAdrSkill`
 - `contextPaths`
+- `memory.enabled`
 - `memory.externalDocPaths`
 - `memory.embedding`
 - `goalMode`
@@ -94,6 +96,7 @@ Use the flat canonical fields for simple project-level toggles:
 
 ```json
 {
+  "version": "0.1.54",
   "planning": true,
   "externalPlanningSkill": null,
   "goalMode": true,
@@ -107,6 +110,7 @@ Keep nested shape only where the field actually has substructure:
 ```json
 {
   "memory": {
+    "enabled": true,
     "externalDocPaths": ["docs/"],
     "embedding": {
       "provider": "local",
@@ -116,7 +120,7 @@ Keep nested shape only where the field actually has substructure:
 }
 ```
 
-Legacy nested inputs such as `workflow.goalMode.enabled`, `workflow.truthDispatch.mode`, and `gitnexus.enabled` may be repaired by claw-kit, but they are not the recommended format.
+Do not use older nested forms such as `workflow.goalMode.enabled`, `workflow.truthDispatch.mode`, or `gitnexus.enabled`.
 
 ## Safe editing flow
 
@@ -134,5 +138,4 @@ Legacy nested inputs such as `workflow.goalMode.enabled`, `workflow.truthDispatc
 - Do not commit `.claw/project-override.json`.
 - Do not describe `.claw/project-override.json` as canonical.
 - Do not recommend legacy nested toggle shapes as the normal format.
-- Do not use `memory.enabled`; it is not a canonical field.
 - Do not invent new config fields when an existing canonical field covers the need.

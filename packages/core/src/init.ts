@@ -8,8 +8,11 @@ import { normalizeTaskName } from "./paths.js";
 import { ensureUtf8Bom } from "./text-encoding.js";
 import type { ProjectConfig } from "./types.js";
 
+const CORE_VERSION = readCoreVersion();
+
 export type InitProjectInput = {
   cwd: string;
+  version?: string;
   projectId?: string;
   projectName?: string;
   maxTasksToKeep?: number;
@@ -65,6 +68,7 @@ export function initProject(input: InitProjectInput): InitProjectResult {
   const maxTasksToKeep = input.maxTasksToKeep ?? 99;
   validateMaxTasksToKeep(maxTasksToKeep, projectRoot);
   const projectConfig: ProjectConfig = {
+    version: normalizeVersion(input.version),
     id: projectId,
     name: projectName,
     maxTasksToKeep,
@@ -77,6 +81,7 @@ export function initProject(input: InitProjectInput): InitProjectResult {
     defaultPlanTemplate: null,
     contextPaths: [...(input.contextPaths ?? [])],
     memory: {
+      enabled: true,
       externalDocPaths: [...(input.externalDocPaths ?? [])],
       embedding: {
         provider: "local",
@@ -141,6 +146,24 @@ function normalizeOptionalSkill(value: string | null | undefined): string | null
   }
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+}
+
+function normalizeVersion(value: string | undefined): string | undefined {
+  if (typeof value !== "string") {
+    return CORE_VERSION;
+  }
+  const trimmed = value.trim();
+  return trimmed || CORE_VERSION;
+}
+
+function readCoreVersion(): string {
+  const packageJsonPath = new URL("../../package.json", import.meta.url);
+  const raw = fs.readFileSync(packageJsonPath, "utf-8");
+  const parsed = JSON.parse(raw) as { version?: unknown };
+  if (typeof parsed.version !== "string" || parsed.version.trim().length === 0) {
+    throw new Error("packages/core/package.json is missing a valid version string.");
+  }
+  return parsed.version.trim();
 }
 
 function ensureDir(dirPath: string, createdPaths: string[]): void {

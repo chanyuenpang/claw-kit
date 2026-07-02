@@ -80,6 +80,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
   const projectConfig = JSON.parse(
     fs.readFileSync(path.join(root, ".claw", "project.json"), "utf-8"),
   ) as {
+    version: string;
     id: string;
     name: string;
     maxTasksToKeep: number;
@@ -89,6 +90,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
     goalMode: boolean;
     truthDispatch: "per_task" | "final_only";
     memory: {
+      enabled: boolean;
       externalDocPaths: string[];
       embedding: {
         provider: string;
@@ -111,6 +113,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
     "# claw-kit\n.claw/*\n!.claw/project.json\n!.claw/truth/\n!.claw/truth/**\n.claw/project-override.json\n",
   );
   assert.deepEqual(projectConfig, {
+    version: "0.1.54",
     id: "demo-project",
     name: "Demo Project",
     maxTasksToKeep: 20,
@@ -123,6 +126,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
     goalMode: true,
     truthDispatch: "per_task",
     memory: {
+      enabled: true,
       externalDocPaths: ["docs/", "README.md"],
       embedding: {
         provider: "local",
@@ -237,16 +241,18 @@ test("writePlan keeps the activation task detail plain when goal mode is disable
   fs.writeFileSync(
     path.join(root, ".claw", "project.json"),
     JSON.stringify({
+      version: "0.1.54",
       id: "plan-write-goalmode-disabled-activation-detail",
       name: "Plan Write GoalMode Disabled Activation Detail",
       planning: true,
       maxTasksToKeep: 99,
+      goalMode: false,
+      truthDispatch: "per_task",
       externalTruthSkill: null,
       externalAdrSkill: null,
       contextPaths: [],
-      workflow: { goalMode: { enabled: false }, truthDispatch: { mode: "per_task" } },
-      memory: { externalDocPaths: [], embedding: null },
-      gitnexus: { enabled: false },
+      memory: { enabled: true, externalDocPaths: [], embedding: null },
+      gitnexus: false,
     }, null, 2),
     "utf-8",
   );
@@ -305,17 +311,19 @@ test("writePlan uses externalPlanningSkill in the seeded planning task detail", 
   fs.writeFileSync(
     path.join(root, ".claw", "project.json"),
     JSON.stringify({
+      version: "0.1.54",
       id: "plan-write-external-planning-skill",
       name: "Plan Write External Planning Skill",
       planning: true,
       externalPlanningSkill: "team-planner",
       maxTasksToKeep: 99,
+      goalMode: true,
+      truthDispatch: "per_task",
       externalTruthSkill: null,
       externalAdrSkill: null,
       contextPaths: [],
-      workflow: { goalMode: { enabled: true }, truthDispatch: { mode: "per_task" } },
-      memory: { externalDocPaths: [], embedding: null },
-      gitnexus: { enabled: false },
+      memory: { enabled: true, externalDocPaths: [], embedding: null },
+      gitnexus: false,
     }, null, 2),
     "utf-8",
   );
@@ -777,17 +785,19 @@ test("writePlan starts directly in process.active when project planning is disab
   fs.writeFileSync(
     path.join(root, ".claw", "project.json"),
     JSON.stringify({
+      version: "0.1.54",
       id: "plan-write-review",
       name: "Plan Write Review",
       planning: false,
       externalPlanningSkill: null,
       maxTasksToKeep: 99,
+      goalMode: true,
+      truthDispatch: "per_task",
       externalTruthSkill: null,
       externalAdrSkill: null,
       contextPaths: [],
-      workflow: { goalMode: { enabled: true }, truthDispatch: { mode: "per_task" } },
-      memory: { externalDocPaths: [], embedding: null },
-      gitnexus: { enabled: false },
+      memory: { enabled: true, externalDocPaths: [], embedding: null },
+      gitnexus: false,
     }, null, 2),
     "utf-8",
   );
@@ -1118,13 +1128,17 @@ test("process entry returns the first task and task completion returns truth-wri
     path.join(root, ".claw", "project.json"),
     JSON.stringify(
       {
+        version: "0.1.54",
         id: "process-entry-and-truth-contract",
         name: "Process Entry And Truth Contract",
         maxTasksToKeep: 99,
+        goalMode: true,
+        truthDispatch: "per_task",
         externalTruthSkill: "external-truth-writer",
         externalAdrSkill: null,
         contextPaths: [],
         memory: {
+          enabled: true,
           externalDocPaths: [],
           embedding: {
             provider: "local",
@@ -1132,14 +1146,9 @@ test("process entry returns the first task and task completion returns truth-wri
             local: {
               modelCacheDir: ".claw/models",
             },
-            store: {
-              vector: {
-                enabled: true,
-              },
-            },
           },
         },
-        gitnexus: { enabled: false },
+        gitnexus: false,
       },
       null,
       2,
@@ -1198,35 +1207,24 @@ test("resolveContext deep-merges project-override.json and preserves explicit nu
     path.join(root, ".claw", "project.json"),
     JSON.stringify(
       {
+        version: "0.1.54",
         id: "project-override-merge",
         name: "Project Override Merge",
         maxTasksToKeep: 99,
+        goalMode: true,
+        truthDispatch: "per_task",
         externalTruthSkill: "team-truth-writer",
         externalAdrSkill: "team-adr-writer",
         contextPaths: ["docs/team.md"],
-        workflow: {
-          goalMode: {
-            enabled: true,
-          },
-          truthDispatch: {
-            mode: "per_task",
-          },
-        },
         memory: {
+          enabled: true,
           externalDocPaths: ["docs/"],
           embedding: {
             provider: "local",
             model: "Snowflake/snowflake-arctic-embed-xs",
-            store: {
-              vector: {
-                enabled: true,
-              },
-            },
           },
         },
-        gitnexus: {
-          enabled: false,
-        },
+        gitnexus: false,
       },
       null,
       2,
@@ -1238,12 +1236,8 @@ test("resolveContext deep-merges project-override.json and preserves explicit nu
     JSON.stringify(
       {
         externalTruthSkill: null,
+        goalMode: false,
         contextPaths: ["docs/personal.md"],
-        workflow: {
-          goalMode: {
-            enabled: false,
-          },
-        },
         memory: {
           embedding: {
             model: "Snowflake/snowflake-arctic-embed-m-v2.0",
@@ -1264,7 +1258,6 @@ test("resolveContext deep-merges project-override.json and preserves explicit nu
   assert.equal(result.project.projectConfig?.goalMode, false);
   assert.equal(result.project.projectConfig?.truthDispatch, "per_task");
   assert.equal(result.project.projectConfig?.memory?.embedding?.model, "Snowflake/snowflake-arctic-embed-m-v2.0");
-  assert.equal(result.project.projectConfig?.memory?.embedding?.store, undefined);
 });
 
 test("resolveContext deep-merges defaultPlanTemplate from project-override.json", () => {
@@ -1321,33 +1314,24 @@ test("workflow guidance respects disabled goal mode and final-only truth dispatc
     path.join(root, ".claw", "project.json"),
     JSON.stringify(
       {
+        version: "0.1.54",
         id: "workflow-guidance-config-toggles",
         name: "Workflow Guidance Config Toggles",
         maxTasksToKeep: 99,
+        goalMode: true,
+        truthDispatch: "per_task",
         externalTruthSkill: "external-truth-writer",
         externalAdrSkill: "external-adr-writer",
         contextPaths: [],
-        workflow: {
-          goalMode: {
-            enabled: true,
-          },
-          truthDispatch: {
-            mode: "per_task",
-          },
-        },
         memory: {
+          enabled: true,
           externalDocPaths: [],
           embedding: {
             provider: "local",
             model: "Snowflake/snowflake-arctic-embed-xs",
-            store: {
-              vector: {
-                enabled: true,
-              },
-            },
           },
         },
-        gitnexus: { enabled: false },
+        gitnexus: false,
       },
       null,
       2,
@@ -1358,14 +1342,8 @@ test("workflow guidance respects disabled goal mode and final-only truth dispatc
     path.join(root, ".claw", "project-override.json"),
     JSON.stringify(
       {
-        workflow: {
-          goalMode: {
-            enabled: false,
-          },
-          truthDispatch: {
-            mode: "final_only",
-          },
-        },
+        goalMode: false,
+        truthDispatch: "final_only",
       },
       null,
       2,
@@ -1700,8 +1678,20 @@ test("project search rejects queries when no vector index is available", () => {
     path.join(root, ".claw", "project.json"),
     JSON.stringify(
       {
+        version: "0.1.54",
         id: "memory-search-no-vectors",
+        name: "Memory Search No Vectors",
+        maxTasksToKeep: 99,
+        planning: true,
+        goalMode: true,
+        truthDispatch: "per_task",
+        externalPlanningSkill: null,
+        externalTruthSkill: null,
+        externalAdrSkill: null,
+        defaultPlanTemplate: null,
+        contextPaths: [],
         memory: {
+          enabled: false,
           externalDocPaths: [],
           embedding: {
             provider: "local",
@@ -1709,13 +1699,9 @@ test("project search rejects queries when no vector index is available", () => {
             local: {
               modelCacheDir: ".claw/models",
             },
-            store: {
-              vector: {
-                enabled: false,
-              },
-            },
           },
         },
+        gitnexus: false,
       },
       null,
       2,
@@ -1726,7 +1712,7 @@ test("project search rejects queries when no vector index is available", () => {
 
   assert.throws(
     () => searchMemory({ cwd: root, query: "alpha" }),
-    /requires memory\.embedding|vector index/i,
+    /memory is disabled/i,
   );
 });
 
@@ -2891,13 +2877,17 @@ test("workflow guidance uses external writer skills from project config", async 
     path.join(root, ".claw", "project.json"),
     JSON.stringify(
       {
+        version: "0.1.54",
         id: "external-writer-skill-guidance",
         name: "External Writer Guidance",
         maxTasksToKeep: 99,
+        goalMode: true,
+        truthDispatch: "per_task",
         externalTruthSkill: "external-truth-writer",
         externalAdrSkill: "external-adr-writer",
         contextPaths: [],
         memory: {
+          enabled: true,
           externalDocPaths: [],
           embedding: {
             provider: "local",
@@ -2905,14 +2895,9 @@ test("workflow guidance uses external writer skills from project config", async 
             local: {
               modelCacheDir: ".claw/models",
             },
-            store: {
-              vector: {
-                enabled: true,
-              },
-            },
           },
         },
-        gitnexus: { enabled: false },
+        gitnexus: false,
       },
       null,
       2,
@@ -3027,6 +3012,7 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
         name: "Fix Me",
         maxTasksToKeep: 0,
         memory: {
+          enabled: true,
           externalDocPaths: ["docs/", 123],
           embedding: {
             provider: "openai",
@@ -3045,6 +3031,7 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
 
   const result = ensureProjectProtocol(root);
   const projectConfig = JSON.parse(fs.readFileSync(result.projectJsonPath, "utf-8")) as {
+    version: string;
     id: string;
     name: string;
     maxTasksToKeep: number;
@@ -3054,6 +3041,7 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
     goalMode: boolean;
     truthDispatch: "per_task" | "final_only";
     memory: {
+      enabled: boolean;
       externalDocPaths: string[];
       embedding: {
         provider: string;
@@ -3069,6 +3057,7 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
   assert.equal(result.ok, true);
   assert.equal(result.changed, true);
   assert.ok(result.issueCountBefore > 0);
+  assert.equal(projectConfig.version, "0.1.54");
   assert.equal(projectConfig.id, "fix-me");
   assert.equal(projectConfig.name, "Fix Me");
   assert.equal(projectConfig.maxTasksToKeep, 99);
@@ -3077,6 +3066,7 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
   assert.deepEqual(projectConfig.contextPaths, []);
   assert.equal(projectConfig.goalMode, true);
   assert.equal(projectConfig.truthDispatch, "per_task");
+  assert.equal(projectConfig.memory.enabled, true);
   assert.deepEqual(projectConfig.memory.externalDocPaths, ["docs/"]);
   assert.deepEqual(projectConfig.memory.embedding, {
     provider: "openai",
@@ -3094,13 +3084,17 @@ test("ensureProjectProtocol removes legacy default local modelCacheDir so runtim
     path.join(root, ".claw", "project.json"),
     JSON.stringify(
       {
+        version: "0.1.54",
         id: "legacy-cache",
         name: "Legacy Cache",
         maxTasksToKeep: 99,
+        goalMode: true,
+        truthDispatch: "per_task",
         externalTruthSkill: null,
         externalAdrSkill: null,
         contextPaths: [],
         memory: {
+          enabled: true,
           externalDocPaths: [],
           embedding: {
             provider: "local",
@@ -3108,16 +3102,9 @@ test("ensureProjectProtocol removes legacy default local modelCacheDir so runtim
             local: {
               modelCacheDir: ".claw/models",
             },
-            store: {
-              vector: {
-                enabled: true,
-              },
-            },
           },
         },
-        gitnexus: {
-          enabled: false,
-        },
+        gitnexus: false,
       },
       null,
       2,

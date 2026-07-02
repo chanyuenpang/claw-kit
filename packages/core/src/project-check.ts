@@ -15,6 +15,7 @@ import type {
 } from "./types.js";
 
 const DEFAULT_MAX_TASKS_TO_KEEP = 99;
+const CORE_VERSION = readCoreVersion();
 export function checkProjectProtocol(cwd: string): ProjectProtocolCheckResult {
   const projectRoot = findRequiredProjectRoot(cwd);
   const projectJsonPath = path.join(projectRoot, ".claw", "project.json");
@@ -103,6 +104,7 @@ function readRawProjectConfig(projectJsonPath: string): {
 function normalizeProjectConfig(raw: unknown, projectRoot: string): ProjectConfig {
   const source = asObject(raw);
   const {
+    version: _version,
     id: _id,
     name: _name,
     maxTasksToKeep: _maxTasksToKeep,
@@ -112,18 +114,13 @@ function normalizeProjectConfig(raw: unknown, projectRoot: string): ProjectConfi
     externalAdrSkill: _externalAdrSkill,
     defaultPlanTemplate: _defaultPlanTemplate,
     contextPaths: _contextPaths,
-    memory: _memory,
-    autoAchieveTask: _autoAchieveTask,
-    workflow: _workflow,
-    gitnexus: _gitnexus,
-    goalMode: _goalMode,
-    truthDispatch: _truthDispatch,
-    ...rest
+    memory: _memory
   } = source ?? {};
   const sourceMemory = asObject(source?.memory);
   const maxTasksToKeep = source?.maxTasksToKeep;
 
   return {
+    version: readNonEmptyString(source?.version) ?? CORE_VERSION,
     id: deriveProjectId(source, projectRoot),
     name: deriveProjectName(source, projectRoot),
     maxTasksToKeep:
@@ -131,19 +128,19 @@ function normalizeProjectConfig(raw: unknown, projectRoot: string): ProjectConfi
         ? (maxTasksToKeep as number)
         : DEFAULT_MAX_TASKS_TO_KEEP,
     planning: typeof source?.planning === "boolean" ? source.planning : true,
-    goalMode: readBooleanConfig(source, "goalMode", true),
-    truthDispatch: readTruthDispatchConfig(source, "truthDispatch", "per_task"),
+    goalMode: readBooleanConfig(source?.goalMode, true),
+    truthDispatch: readTruthDispatchConfig(source?.truthDispatch, "per_task"),
     externalPlanningSkill: normalizeOptionalSkill(source?.externalPlanningSkill),
     externalTruthSkill: normalizeOptionalSkill(source?.externalTruthSkill),
     externalAdrSkill: normalizeOptionalSkill(source?.externalAdrSkill),
     defaultPlanTemplate: normalizeOptionalTemplateName(source?.defaultPlanTemplate),
     contextPaths: normalizeStringArray(source?.contextPaths),
     memory: {
+      enabled: typeof sourceMemory?.enabled === "boolean" ? sourceMemory.enabled : true,
       externalDocPaths: normalizeStringArray(sourceMemory?.externalDocPaths),
       embedding: normalizeMemoryEmbeddingConfig(sourceMemory?.embedding),
     },
-    gitnexus: readBooleanConfig(source, "gitnexus", false),
-    ...rest,
+    gitnexus: readBooleanConfig(source?.gitnexus, false),
   };
 }
 
@@ -182,6 +179,7 @@ function validateProjectConfig(raw: unknown, issues: ProjectProtocolIssue[]): vo
   }
 
   const config = raw as Record<string, unknown>;
+  requireString(config, "version", issues);
   requireString(config, "id", issues);
   requireString(config, "name", issues);
   requireIntegerAtLeast(config, "maxTasksToKeep", 1, issues);
@@ -197,6 +195,7 @@ function validateProjectConfig(raw: unknown, issues: ProjectProtocolIssue[]): vo
 
   const memory = requireObject(config, "memory", issues);
   if (memory) {
+    requireBoolean(memory, "enabled", issues, "memory.enabled");
     requireStringArray(memory, "externalDocPaths", issues, "memory.externalDocPaths");
     requireNullableEmbeddingConfig(memory, "embedding", issues, "memory.embedding");
   }
@@ -354,49 +353,18 @@ function normalizeOptionalTemplateName(value: unknown): string | null {
   return trimmed ? trimmed : null;
 }
 
-function readBooleanConfig(source: Record<string, unknown> | null, key: string, fallback: boolean): boolean {
-  const direct = readBooleanLike(source?.[key]);
-  if (direct !== undefined) {
-    return direct;
-  }
-  const workflow = asObject(source?.workflow);
-  const workflowValue = readBooleanLike(workflow?.[key]);
-  return workflowValue ?? fallback;
-}
-
-function readBooleanLike(value: unknown): boolean | undefined {
-  if (typeof value === "boolean") {
-    return value;
-  }
-  const objectValue = asObject(value);
-  if (typeof objectValue?.enabled === "boolean") {
-    return objectValue.enabled;
-  }
-  return undefined;
+function readBooleanConfig(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
 }
 
 function readTruthDispatchConfig(
-  source: Record<string, unknown> | null,
-  key: string,
+  value: unknown,
   fallback: "per_task" | "final_only",
 ): "per_task" | "final_only" {
-  const direct = readTruthDispatchLike(source?.[key]);
-  if (direct) {
-    return direct;
-  }
-  const workflow = asObject(source?.workflow);
-  return readTruthDispatchLike(workflow?.[key]) ?? fallback;
-}
-
-function readTruthDispatchLike(value: unknown): "per_task" | "final_only" | undefined {
   if (value === "per_task" || value === "final_only") {
     return value;
   }
-  const objectValue = asObject(value);
-  if (objectValue?.mode === "per_task" || objectValue?.mode === "final_only") {
-    return objectValue.mode;
-  }
-  return undefined;
+  return fallback;
 }
 
 function normalizeMemoryEmbeddingConfig(value: unknown): MemoryEmbeddingConfig | null {
@@ -410,16 +378,12 @@ function normalizeMemoryEmbeddingConfig(value: unknown): MemoryEmbeddingConfig |
 
   const remote = asObject(embedding.remote);
   const local = asObject(embedding.local);
-  const store = asObject(embedding.store);
-  const vector = asObject(store?.vector);
-  const normalizedStore = normalizeEmbeddingStore(vector);
   const provider = embedding.provider === "local" ? "local" : "openai";
   const model = readNonEmptyString(embedding.model);
   if (!model) {
     return {
       provider: "local",
       model: DEFAULT_LOCAL_EMBEDDING_MODEL,
-      ...(normalizedStore ? { store: normalizedStore } : {}),
     };
   }
 
@@ -442,21 +406,6 @@ function normalizeMemoryEmbeddingConfig(value: unknown): MemoryEmbeddingConfig |
     ...(Number.isInteger(embedding.outputDimensionality) && (embedding.outputDimensionality as number) > 0
       ? { outputDimensionality: embedding.outputDimensionality as number }
       : {}),
-    ...(normalizedStore ? { store: normalizedStore } : {}),
-  };
-}
-
-function normalizeEmbeddingStore(vector: Record<string, unknown> | null): MemoryEmbeddingConfig["store"] | undefined {
-  const vectorEnabled = typeof vector?.enabled === "boolean" ? vector.enabled : undefined;
-  const extensionPath = readNonEmptyString(vector?.extensionPath);
-  if (vectorEnabled !== false && !extensionPath) {
-    return undefined;
-  }
-  return {
-    vector: {
-      ...(vectorEnabled === false ? { enabled: false } : {}),
-      ...(extensionPath ? { extensionPath } : {}),
-    },
   };
 }
 
@@ -555,29 +504,14 @@ function requireNullableEmbeddingConfig(
     }
   }
 
-  const store = embedding.store;
-  if (store !== undefined) {
-    if (!store || typeof store !== "object" || Array.isArray(store)) {
-      issues.push({ path: `${label}.store`, message: "Field must be an object when present." });
-    } else {
-      const storeObject = store as Record<string, unknown>;
-      const vector = storeObject.vector;
-      if (vector !== undefined) {
-        if (!vector || typeof vector !== "object" || Array.isArray(vector)) {
-          issues.push({ path: `${label}.store.vector`, message: "Field must be an object when present." });
-        } else {
-          const vectorObject = vector as Record<string, unknown>;
-          if ("enabled" in vectorObject && typeof vectorObject.enabled !== "boolean") {
-            issues.push({ path: `${label}.store.vector.enabled`, message: "Field must be a boolean when present." });
-          }
-          if ("extensionPath" in vectorObject && typeof vectorObject.extensionPath !== "string") {
-            issues.push({
-              path: `${label}.store.vector.extensionPath`,
-              message: "Field must be a string when present.",
-            });
-          }
-        }
-      }
-    }
+}
+
+function readCoreVersion(): string {
+  const packageJsonPath = new URL("../../package.json", import.meta.url);
+  const raw = fs.readFileSync(packageJsonPath, "utf-8");
+  const parsed = JSON.parse(raw) as { version?: unknown };
+  if (typeof parsed.version !== "string" || parsed.version.trim().length === 0) {
+    throw new Error("packages/core/package.json is missing a valid version string.");
   }
+  return parsed.version.trim();
 }

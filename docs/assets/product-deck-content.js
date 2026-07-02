@@ -143,8 +143,8 @@ export const deckContent = {
             href: "./technical-principles.html"
           },
           {
-            label: "Explore hosts",
-            href: "#ecosystem"
+            label: "Config guide",
+            href: "./config-guide.html"
           }
         ]
       }
@@ -294,8 +294,8 @@ export const deckContent = {
             href: "./technical-principles.html"
           },
           {
-            label: "探索宿主",
-            href: "#ecosystem"
+            label: "配置说明",
+            href: "./config-guide.html"
           }
         ]
       }

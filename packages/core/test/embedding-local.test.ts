@@ -13,11 +13,6 @@ function createEmbedding(local: MemoryEmbeddingConfig["local"] = {}): MemoryEmbe
     provider: "local",
     model: "Snowflake/snowflake-arctic-embed-xs",
     local,
-    store: {
-      vector: {
-        enabled: true,
-      },
-    },
   };
 }
 

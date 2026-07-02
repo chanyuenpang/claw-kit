@@ -50,6 +50,17 @@ type ProjectDocSearchSignals = {
 
 export function buildMemoryIndex(input: MemoryIndexInput): MemoryIndexResult {
   const { scope, project, task } = resolveMemoryScope(input);
+  if (!isProjectMemoryEnabled(project)) {
+    return {
+      scope,
+      storePath: getMemoryStorePath(project, scope, task),
+      indexedCount: 0,
+      processedFileCount: 0,
+      pendingFileCount: 0,
+      sources: [],
+      ...(scope === "project" ? { embedding: null, vectorIndex: null } : {}),
+    };
+  }
   const storePath = getMemoryStorePath(project, scope, task);
   const sources = collectMemorySources(project, scope, task);
   const embedding = scope === "project" ? resolveProjectMemoryEmbeddingConfig(project) : undefined;
@@ -265,6 +276,12 @@ export function searchMemory(input: MemorySearchInput): MemorySearchResult {
     throw new ClawError("MEMORY_QUERY_REQUIRED", "memory search requires a non-empty query.");
   }
   const { scope, project, task } = resolveMemoryScope(input);
+  if (!isProjectMemoryEnabled(project)) {
+    throw new ClawError("MEMORY_DISABLED", "Project memory is disabled by .claw/project.json `memory.enabled = false`.", {
+      scope,
+      projectRoot: project.projectRoot,
+    });
+  }
   const storePath = getMemoryStorePath(project, scope, task);
   if (!fs.existsSync(storePath)) {
     if (scope === "project") {
@@ -298,7 +315,7 @@ export function searchMemory(input: MemorySearchInput): MemorySearchResult {
 export function getMemory(input: MemoryGetInput): MemoryGetResult {
   const { scope, project, task } = resolveMemoryScope(input);
   const storePath = getMemoryStorePath(project, scope, task);
-  const sources = collectMemorySources(project, scope, task);
+  const sources = isProjectMemoryEnabled(project) ? collectMemorySources(project, scope, task) : [];
   return {
     scope,
     storePath,
@@ -537,29 +554,24 @@ function prepareSchema(db: DatabaseSync): void {
 }
 
 function resolveProjectMemoryEmbeddingConfig(project: ProjectContext): MemoryEmbeddingConfig | null {
+  if (!isProjectMemoryEnabled(project)) {
+    return null;
+  }
   const configured = project.projectConfig?.memory?.embedding;
   if (!configured) {
     return null;
   }
-  const vectorEnabled = configured.store?.vector?.enabled;
-  const vectorExtensionPath = configured.store?.vector?.extensionPath;
   return {
     provider: configured.provider,
     model: configured.model,
     ...(configured.remote ? { remote: configured.remote } : {}),
     ...(configured.local ? { local: configured.local } : {}),
     ...(configured.outputDimensionality ? { outputDimensionality: configured.outputDimensionality } : {}),
-    ...(vectorEnabled === false || vectorExtensionPath
-      ? {
-          store: {
-            vector: {
-              ...(vectorEnabled === false ? { enabled: false } : {}),
-              ...(vectorExtensionPath ? { extensionPath: vectorExtensionPath } : {}),
-            },
-          },
-        }
-      : {}),
   };
+}
+
+function isProjectMemoryEnabled(project: ProjectContext): boolean {
+  return project.projectConfig?.memory?.enabled !== false;
 }
 
 function listFiles(rootDir: string, matcher: (filePath: string) => boolean): string[] {
@@ -593,7 +605,7 @@ function indexDocEmbeddings(
   docs: Array<{ docId: number; sourcePath: string; kind: string; content: string }>,
   embedding: MemoryEmbeddingConfig | null,
 ) : void {
-  if (!embedding || embedding.store?.vector?.enabled === false) {
+  if (!embedding) {
     return;
   }
   if (!canBuildProjectVectors(embedding)) {
@@ -683,7 +695,7 @@ function summarizeVectorIndex(
 }
 
 function canBuildProjectVectors(embedding: MemoryEmbeddingConfig | null): boolean {
-  if (!embedding || embedding.store?.vector?.enabled === false) {
+  if (!embedding) {
     return false;
   }
   if (embedding.provider === "openai" && !resolveEmbeddingApiKey(embedding)) {
@@ -892,10 +904,10 @@ function searchProjectMemoryHybrid(
   project: ProjectContext,
 ): MemorySearchResultEntry[] {
   const embedding = resolveProjectMemoryEmbeddingConfig(project);
-  if (!embedding || embedding.store?.vector?.enabled === false) {
+  if (!embedding) {
     throw new ClawError(
       "MEMORY_VECTOR_INDEX_REQUIRED",
-      "Project search requires memory.embedding with vector indexing enabled. Configure .claw/project.json and run `claw search index --refresh` first.",
+      "Project search requires memory.embedding. Configure .claw/project.json and run `claw search index --refresh` first.",
     );
   }
 

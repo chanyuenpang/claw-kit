@@ -41,6 +41,11 @@ Together, the canonical config plus local override model gives longer-running pr
 
 ### Identity and retention
 
+- `version`
+  - expected claw-kit CLI protocol version for this project
+  - when lower than the current CLI, `claw context` aligns the file upward
+  - when higher than the current CLI, `claw context` tries to update the CLI
+  - when that update fails, `claw context` returns CLI lagging information in `startupRecovery.versionSync`
 - `id`
   - stable project id
 - `name`
@@ -72,12 +77,14 @@ Use `null` when the project should explicitly keep the built-in writer behavior.
 
 - `contextPaths`
   - optional project paths kept for shared context shape alignment
+- `memory.enabled`
+  - master switch for project memory, task memory, embedding refresh, and `claw search`
+  - default: `true`
 - `memory.externalDocPaths`
   - markdown-oriented recall sources for `claw search`
 - `memory.embedding`
   - embedding provider and index behavior for project recall
   - the minimal local default only needs `provider` and `model`
-  - `store.vector` only needs to be written when you want to disable vectors or set `extensionPath`
 
 ### GitNexus
 
@@ -95,7 +102,7 @@ Use `null` when the project should explicitly keep the built-in writer behavior.
   - `per_task`: default behavior, allows mid-task truth deposition guidance
   - `final_only`: suppresses mid-task truth deposition while still allowing closeout deposition
 
-Legacy nested inputs such as `gitnexus.enabled`, `workflow.goalMode.enabled`, and `workflow.truthDispatch.mode` are tolerated by protocol repair, but the repaired canonical file is flattened back to the fields above.
+Older nested inputs should be rewritten into the flat fields above during protocol repair; new config should use only the canonical flat shape.
 
 ## Practical examples
 
@@ -103,6 +110,7 @@ Legacy nested inputs such as `gitnexus.enabled`, `workflow.goalMode.enabled`, an
 
 ```json
 {
+  "version": "0.1.54",
   "id": "demo-project",
   "name": "Demo Project",
   "maxTasksToKeep": 99,
@@ -113,6 +121,7 @@ Legacy nested inputs such as `gitnexus.enabled`, `workflow.goalMode.enabled`, an
   "defaultPlanTemplate": null,
   "contextPaths": [],
   "memory": {
+    "enabled": true,
     "externalDocPaths": [],
     "embedding": {
       "provider": "local",
@@ -211,6 +220,7 @@ With this config, planning-enabled seed plans still start in `process.discussing
 ```json
 {
   "memory": {
+    "enabled": true,
     "externalDocPaths": [
       "docs/",
       "architecture/"
@@ -219,6 +229,16 @@ With this config, planning-enabled seed plans still start in `process.discussing
       "provider": "local",
       "model": "Snowflake/snowflake-arctic-embed-m-v2.0"
     }
+  }
+}
+```
+
+### Disable project memory and claw search
+
+```json
+{
+  "memory": {
+    "enabled": false
   }
 }
 ```
@@ -305,6 +325,7 @@ With this config, planning-enabled seed plans still start in `process.discussing
 ## Notes on embeddings and refresh
 
 - `claw search` is recall over project docs, not code search
+- `memory.enabled = false` disables project memory, task memory, embedding refresh, and `claw search`
 - `claw search index --refresh` expects `memory.embedding` to be configured
 - local embedding defaults to `Snowflake/snowflake-arctic-embed-m-v2.0`
 - if `memory.embedding.local.modelCacheDir` is not set, claw prefers the platform-global cache and falls back to `.claw/models` only when needed
@@ -322,7 +343,6 @@ When explaining project behavior:
 - `planning = false` makes `plan create` start directly in `process.active` with a minimal executable plan
 - `externalPlanningSkill` only selects the planning skill name used by task 1; it does not make the skill claw-aware
 - `gitnexus = true` opts a project into GitNexus-related integration behavior, but `claw-kit` still works without it
-- default local embedding configs do not need `store.vector.enabled = true` written explicitly
 - `goalMode = false` removes `goalMode` from workflow guidance
 - `truthDispatch = final_only` removes mid-task truth deposition guidance but not closeout deposition
 
