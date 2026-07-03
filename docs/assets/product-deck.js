@@ -1,10 +1,10 @@
-import { deckContent } from "./product-deck-content.js";
+import { deckContent } from "./product-deck-content.js?v=20260703-pages-refresh";
 import {
   buildLocalizedHref,
   persistPreferredLanguage,
   readStoredLanguage,
   resolveInitialLanguage
-} from "./site-language.js";
+} from "./site-language.js?v=20260703-pages-refresh";
 
 let currentLang = "en";
 let activeSectionId = null;
