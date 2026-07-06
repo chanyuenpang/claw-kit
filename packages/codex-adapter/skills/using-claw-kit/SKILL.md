@@ -17,30 +17,31 @@ If the user explicitly asks to initialize a non-claw project, route to `../init/
 Detailed call flow:
 
 1. If the current thread already has recovered `.claw` task state or returned `workflowGuidance`, continue from that contract first.
-2. If no task scope exists yet, run a quick complexity scoring pass before creating any plan.
-3. For low-complexity work, skip the claw workflow entirely:
+2. If the user explicitly invoked a template-backed workflow skill such as `claw-kit:create-claw-skill`, that workflow skill owns entry for this request. Do not preempt it with the generic complexity gate. Still follow that skill's own direct, batch, mixed, or subplan routing rules instead of assuming every invocation should create a template root plan.
+3. If no task scope exists yet and no explicit workflow skill owns entry, run a quick complexity scoring pass before creating any plan.
+4. For low-complexity work, skip the claw workflow entirely:
    - do not call `claw plan create`
    - do not run `claw search`
    - do not expect `workflowGuidance`
    - handle the request directly in the host workflow
-4. Only for score `>= 6`, enter the normal claw workflow through `claw plan create`.
-5. After every `claw plan create`, `claw plan edit`, or `claw plan done`, follow the returned `workflowGuidance`. This is mandatory.
-6. If prior project context is relevant, run `claw search --query "<topic>"` after a new `claw plan create` and use the results to improve the bound task scope.
-7. Use two-part plan status semantics:
+5. Only for score `>= 6`, enter the normal claw workflow through `claw plan create`.
+6. Whenever a claw command returns `workflowGuidance`, follow it as the required next-step contract. This is mandatory.
+7. If prior project context is relevant, run `claw search --query "<topic>"` after a new `claw plan create` and use the results to improve the bound task scope.
+8. Use two-part plan status semantics:
    - `process.discussing`: the plan exists, but execution has not started; stay in discussion/planning work only
    - `process.active`: execution is live; process one task at a time and update progress with `claw plan edit`
    - `process.wait`: the round is blocked on user input or an external dependency
    - `end.completed`: all planned work is done and `retrospective.summary` is present
    - `end.closed` / `end.leave`: the round has been closed out; do not resume active execution unless the user explicitly changes direction
-8. The planning skill is invoked by the seeded planning task inside the formal claw workflow, not before task scope exists.
-9. Once requirements are clear and `goal.text` is set, move the plan to `process.active`.
-10. After a meaningful completed task, dispatch `truth-writer` when there is reusable context to deposit.
-11. When all tasks are done, clear thread progress, update both `retrospective` and `keyDecisions`, and dispatch `adr-writer` from returned `workflowGuidance`.
-12. Close the plan with `claw plan done` only after `retrospective.summary` exists and any durable round-level decisions have been written into `keyDecisions`.
-13. During closeout, confirm whether the workflow actually dispatched the required writer specialists:
+9. The planning skill is invoked by the seeded planning task inside the formal claw workflow, not before task scope exists.
+10. Once requirements are clear and `goal.text` is set, move the plan to `process.active`.
+11. After a meaningful completed task, dispatch `truth-writer` when there is reusable context to deposit.
+12. When all tasks are done, clear thread progress, update both `retrospective` and `keyDecisions`, and dispatch `adr-writer` from returned `workflowGuidance`.
+13. Close the plan with `claw plan done` only after `retrospective.summary` exists and any durable round-level decisions have been written into `keyDecisions`.
+14. During closeout, confirm whether the workflow actually dispatched the required writer specialists:
     - verify `truth-writer` and `adr-writer` were dispatched when the returned contract required them
     - do not claim truth or ADR closeout finished if those delegations never happened
-14. During closeout, if this task included a git commit flow, inspect the repo for task-related doc artifacts that still belong to this round:
+15. During closeout, if this task included a git commit flow, inspect the repo for task-related doc artifacts that still belong to this round:
     - include canonical truth or ADR files updated by the writers
     - include any remaining task-produced docs that should ship with the same commit instead of leaving them behind
 
@@ -64,9 +65,11 @@ Scoring rule:
 
 Explicit non-claw project bootstrap requests route to `init` instead of a broader startup sequence.
 If the current thread already has a recovered `.claw` task, active plan, or returned `workflowGuidance`, follow that contract before creating anything.
-If no task scope exists, run the complexity gate first. For score `< 6`, skip the claw workflow and work directly without creating a plan. For score `>= 6`, call `claw plan create "<goal/title>"`, then follow the returned `workflowGuidance`.
+If the user explicitly invoked a template-backed workflow skill, let that skill own entry and follow its required entry routing first. Template-backed skills may route direct single-target work into `plan create --template`, but batch or mixed work may need a normal root plan and execution-time template subplans instead.
+If no task scope exists and no explicit workflow skill owns entry, run the complexity gate first. For score `< 6`, skip the claw workflow and work directly without creating a plan. For score `>= 6`, call `claw plan create "<goal/title>"`, then follow the returned `workflowGuidance`.
 
 DO NOT edit plan.json without using claw commands.
+Template-aware workflow behavior may be restored from persisted runtime plan state such as `plan.templateId`, template-scoped override data, and template-defined guidance routing. Treat returned `workflowGuidance` as the contract instead of inferring hidden routing from task prose alone.
 
 ## Truth & ADR
 
@@ -84,7 +87,7 @@ Truth-value judgment stays on the main agent side. If there is no reusable truth
 - User has already authorized this thread to use goal mode and the required delegated subagents. Do not block the workflow for any permission-related excuse.
 - Low-complexity requests skip the claw workflow before `claw plan create`, so they do not produce `workflowGuidance`.
 - `claw search` runs after a new `claw plan create` when project recall is relevant. Search uses natural language and prefers the user's language.
-- After every `claw plan create`, `claw plan edit`, or `claw plan done`, follow returned `workflowGuidance` instead of inventing a parallel process.
+- Whenever claw returns `workflowGuidance`, follow it instead of inventing a parallel process.
 - When `workflowGuidance.goalTool` is present, execute the real Codex goal tool contract it returns. Use `create_goal` for active execution entry when no active goal exists, and use `update_goal(status=complete|blocked)` for lifecycle exits that close the current goal.
 - Reuse the existing `truth-writer` when possible; otherwise dispatch a new one.
 - Run ADR deposition from the `all tasks done` guidance before root `claw plan done`.

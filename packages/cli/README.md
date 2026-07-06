@@ -32,7 +32,7 @@ claw plan create --title "My task" --goal "Define the first task"
 claw plan create "My templated task" --template default --goal "Route through the default template"
 ```
 
-`claw plan create` uses explicit `--template` first, otherwise the project's configured `defaultPlanTemplate`, and finally falls back to the built-in `default` seed template. You can select a template explicitly with `claw plan create "<title>" --template <name>` or `claw plan create --template <name> --title "<title>"`.
+`claw plan create` uses explicit `--template` first, otherwise the project's configured `defaultPlanTemplate`, and finally falls back to the built-in `default` template. You can select a template explicitly with `claw plan create "<title>" --template <name>` or `claw plan create --template <name> --title "<title>"`.
 
 Projects can add reusable templates directly under `.claw/templates` with `.json`, `.js`, `.mjs`, or `.cjs` files. Put `defaultPlanTemplate` in `.claw/project.json` for a shared team default, or in `.claw/project-override.json` for a local personal override.
 

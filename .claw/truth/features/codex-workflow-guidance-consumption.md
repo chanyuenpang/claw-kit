@@ -21,6 +21,7 @@
   - `process.active.firstEntry` 与 `process.active.resumedActive` 使用 `create_goal(objective=goalTool.objective)`
   - `process.wait` 与 `process.discussing` 使用 `update_goal(status="blocked")`
   - `end.completed` 使用 `update_goal(status="complete")`
+- 当 task guidance 走 `guidance.onDone` / `guidance.onDone.choices` 时，host 不能把 `done` 视为无上下文的纯状态切换；如果返回结果要求 `choiceId`，adapter 必须把该值沿着 `claw task done` 或 `claw plan edit --task-choice` 的 route-aware completion path 原样传递，并接受 template-bound 校验失败。
 - CLI compact result 现在会直接暴露 `goalTool`，所以 host 不需要从 prompt 文案里反推 goal lifecycle。
 - `planning` 现在是唯一可见 plan skill，并吸收了原本拆在 standalone workflow skills 中的 lifecycle 与 `workflowGuidance` 消费规则。
 - `packages/codex-adapter/skills/planning/SKILL.md`、`packages/codex-adapter/skills/using-claw-kit/SKILL.md` 与相关 references 都应遵循同一 CLI-driven compact guidance 合同。

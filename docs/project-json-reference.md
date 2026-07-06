@@ -157,7 +157,7 @@ Project templates live directly under `.claw/templates` and can use these format
 - `.claw/templates/<name>.mjs`
 - `.claw/templates/<name>.cjs`
 
-JavaScript-backed templates should export the same seed template object shape as the built-in template.
+JavaScript-backed templates should export the same plan-like template object shape as the built-in template.
 
 ### Shared default project template
 
@@ -174,17 +174,35 @@ JavaScript-backed templates should export the same seed template object shape as
 ```js
 export default {
   id: "team-default",
-  aliases: [],
-  planningEnabledStatus: "process.discussing",
-  planningDisabledStatus: "process.active",
-  planningTask: {
-    title: "Use the team planning flow",
-    detail: "Use {{planningSkill}} to refine the request into executable work."
+  status: "process.discussing",
+  goal: {
+    text: ""
   },
-  activationTask: {
-    title: "Enter process.active",
-    detail: "After planning, move into process.active and continue execution.",
-    goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode."
+  requirements: {
+    summary: "",
+    openQuestions: [],
+    acceptanceCriteria: []
+  },
+  tasks: [
+    {
+      id: 1,
+      title: "Use the team planning flow",
+      detail: "Use {{planningSkill}} to refine the request into executable work.",
+      status: "pending"
+    },
+    {
+      id: 2,
+      title: "Enter process.active",
+      detail: "After planning, move into process.active and continue execution.",
+      goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode.",
+      status: "pending"
+    }
+  ],
+  references: [],
+  rules: [],
+  keyDecisions: [],
+  retrospective: {
+    summary: ""
   }
 }
 ```
@@ -202,7 +220,7 @@ When `planning = false`, the normal root entry flow is:
 
 `claw plan create` -> `process.active`
 
-The seed plan contains one minimal executable task whose title follows the goal/title.
+The runtime plan contains one minimal executable task whose title follows the goal/title.
 
 ### Planning-enabled root plans with an external planning skill
 
@@ -213,7 +231,7 @@ The seed plan contains one minimal executable task whose title follows the goal/
 }
 ```
 
-With this config, planning-enabled seed plans still start in `process.discussing`, but task 1 tells the agent to use `team-planner` to refine the request and append executable tasks.
+With this config, planning-enabled default plans still start in `process.discussing`, but task 1 tells the agent to use `team-planner` to refine the request and append executable tasks.
 
 ### Enable shared docs for recall
 

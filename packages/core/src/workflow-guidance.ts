@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { getTemplateTaskDoneGuidanceRoute, resolveSeedPlanTemplate } from "./plan-templates.js";
 import workflowGuidanceConfigJson from "./workflow-guidance.config.json" with { type: "json" };
 import type {
   PlanCompletionHooks,
@@ -236,23 +237,25 @@ export function buildDirectWorkflowGuidance(params: {
   };
 }
 
-export function buildPlanWorkflowGuidance(params: {
+export async function buildPlanWorkflowGuidance(params: {
   taskName: string;
   planFile: string;
   plan: PlanDocument;
   commandSource?: "plan.create" | "subplan.create" | "plan.edit" | "plan.done";
+  projectRoot?: string;
   projectConfig?: ProjectConfig | null;
   previousStatus?: PlanStatus;
   completionHooks?: PlanCompletionHooks;
   changedTaskIds?: number[];
   completedTaskIds?: number[];
   host?: string;
-}): WorkflowGuidance {
+}): Promise<WorkflowGuidance> {
   const {
     taskName,
     planFile,
     plan,
     commandSource,
+    projectRoot,
     projectConfig = null,
     previousStatus,
     completionHooks,
@@ -342,7 +345,7 @@ export function buildPlanWorkflowGuidance(params: {
     case "process.active": {
       if (allTasksDone) {
         const template = renderStateTemplate("process.allTasksDone", vars);
-        return {
+        const guidance = {
           stage: template.stage as WorkflowGuidance["stage"],
           summary: template.summary,
           nextsteps: template.nextsteps,
@@ -352,6 +355,12 @@ export function buildPlanWorkflowGuidance(params: {
             ? { delegateSubagents: buildConfiguredDelegates(template.delegateSubagents, projectConfig) }
             : {}),
         };
+        return applyTemplateTaskDoneGuidance({
+          projectRoot,
+          plan,
+          completedTaskIds,
+          guidance,
+        });
       }
 
       const templateKey = hasCompletedTasks
@@ -365,7 +374,7 @@ export function buildPlanWorkflowGuidance(params: {
             : "process.default";
       const template = renderStateTemplate(templateKey, vars);
 
-      return {
+      const guidance = {
         stage: template.stage as WorkflowGuidance["stage"],
         summary: template.summary,
         nextsteps: template.nextsteps,
@@ -393,6 +402,12 @@ export function buildPlanWorkflowGuidance(params: {
             }
           : {}),
       };
+      return applyTemplateTaskDoneGuidance({
+        projectRoot,
+        plan,
+        completedTaskIds,
+        guidance,
+      });
     }
     case "end.completed": {
       const template = workflowGuidanceConfig.states["end.completed"]
@@ -421,6 +436,130 @@ export function buildPlanWorkflowGuidance(params: {
       };
     }
   }
+}
+
+async function applyTemplateTaskDoneGuidance(params: {
+  projectRoot?: string;
+  plan: PlanDocument;
+  completedTaskIds?: number[];
+  guidance: WorkflowGuidance;
+}): Promise<WorkflowGuidance> {
+  const { projectRoot, plan, completedTaskIds, guidance } = params;
+  const completedTaskId = completedTaskIds?.[completedTaskIds.length - 1];
+  if (!projectRoot || !plan.templateId?.trim() || completedTaskId === undefined) {
+    return guidance;
+  }
+
+  const completedTask = plan.tasks.find((task) => task.id === completedTaskId);
+  if (!completedTask) {
+    return guidance;
+  }
+
+  const template = await resolveSeedPlanTemplate({
+    projectRoot,
+    templateName: plan.templateId,
+  });
+  const route = getTemplateTaskDoneGuidanceRoute(template, completedTaskId, completedTask.choiceId);
+  if (!route) {
+    return guidance;
+  }
+
+  const merged = route.mergeMode === "replace"
+    ? replaceWorkflowGuidance(guidance, route, plan)
+    : overrideWorkflowGuidance(guidance, route, plan);
+  return route.delegateTruth === false ? suppressTruthDelegate(merged) : merged;
+}
+
+function overrideWorkflowGuidance(
+  guidance: WorkflowGuidance,
+  route: {
+    summary?: string;
+    nextsteps?: string[];
+    notes?: string;
+    recommendedCommands?: string[];
+    nextTaskId?: number;
+  },
+  plan: PlanDocument,
+): WorkflowGuidance {
+  return {
+    ...guidance,
+    ...(route.summary !== undefined ? { summary: route.summary } : {}),
+    ...(route.nextsteps !== undefined
+      ? { nextsteps: normalizeGuidanceSteps(mergeUniqueStrings(guidance.nextsteps, route.nextsteps)) }
+      : {}),
+    ...(route.notes !== undefined ? { notes: route.notes } : {}),
+    ...(route.recommendedCommands !== undefined
+      ? { recommendedCommands: mergeUniqueStrings(guidance.recommendedCommands ?? [], route.recommendedCommands) }
+      : {}),
+    ...(route.nextTaskId !== undefined
+      ? buildNextTaskOverride(plan, route.nextTaskId)
+      : {}),
+  };
+}
+
+function replaceWorkflowGuidance(
+  guidance: WorkflowGuidance,
+  route: {
+    summary?: string;
+    nextsteps?: string[];
+    notes?: string;
+    recommendedCommands?: string[];
+    nextTaskId?: number;
+  },
+  plan: PlanDocument,
+): WorkflowGuidance {
+  const nextTaskOverride = route.nextTaskId !== undefined ? buildNextTaskOverride(plan, route.nextTaskId) : { nextTask: undefined };
+  return {
+    ...guidance,
+    summary: route.summary ?? guidance.summary,
+    nextsteps: normalizeGuidanceSteps(route.nextsteps ?? []),
+    notes: route.notes,
+    recommendedCommands: route.recommendedCommands ? [...route.recommendedCommands] : undefined,
+    ...nextTaskOverride,
+  };
+}
+
+function buildNextTaskOverride(plan: PlanDocument, taskId: number): { nextTask?: WorkflowGuidance["nextTask"] } {
+  const task = plan.tasks.find((item) => item.id === taskId);
+  if (!task) {
+    return { nextTask: undefined };
+  }
+  return {
+    nextTask: {
+      id: task.id,
+      title: task.title,
+      status: task.status,
+      ...(task.detail ? { detail: task.detail } : {}),
+    },
+  };
+}
+
+function suppressTruthDelegate(guidance: WorkflowGuidance): WorkflowGuidance {
+  const delegateSubagents = guidance.delegateSubagents?.filter((delegate) => delegate.name !== "truth-writer");
+  const nextsteps = normalizeGuidanceSteps(
+    guidance.nextsteps.filter((step) => !step.toLowerCase().includes("truth-writer")),
+  );
+  return {
+    ...guidance,
+    nextsteps,
+    ...(delegateSubagents && delegateSubagents.length > 0 ? { delegateSubagents } : { delegateSubagents: undefined }),
+  };
+}
+
+function mergeUniqueStrings(base: string[], extra: string[]): string[] {
+  const merged: string[] = [];
+  const seen = new Set<string>();
+  for (const entry of [...base, ...extra]) {
+    if (!seen.has(entry)) {
+      seen.add(entry);
+      merged.push(entry);
+    }
+  }
+  return merged;
+}
+
+function normalizeGuidanceSteps(steps: string[]): string[] {
+  return steps.map((step, index) => `${index + 1}. ${step.replace(/^\d+\.\s*/, "").trim()}`);
 }
 
 function normalizeWriterSkill(value: string | null | undefined, fallback: string): string {

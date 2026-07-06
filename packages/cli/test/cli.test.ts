@@ -16,6 +16,41 @@ function createFixture(name: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), `claw-kit-cli-${name}-`));
 }
 
+function createPlanLikeTemplate(params: {
+  id: string;
+  configOverride?: Record<string, unknown>;
+  title?: string;
+  status?: string;
+  goalText?: string;
+  tasks: Array<Record<string, unknown>>;
+  references?: Array<{ path: string; why: string }>;
+  rules?: string[];
+  keyDecisions?: string[];
+  retrospectiveSummary?: string;
+}): Record<string, unknown> {
+  return {
+    id: params.id,
+    ...(params.configOverride ? { configOverride: params.configOverride } : {}),
+    ...(params.title ? { title: params.title } : {}),
+    status: params.status ?? "process.discussing",
+    goal: {
+      text: params.goalText ?? "",
+    },
+    requirements: {
+      summary: "",
+      openQuestions: [],
+      acceptanceCriteria: [],
+    },
+    tasks: params.tasks,
+    references: params.references ?? [],
+    rules: params.rules ?? [],
+    keyDecisions: params.keyDecisions ?? [],
+    retrospective: {
+      summary: params.retrospectiveSummary ?? "",
+    },
+  };
+}
+
 // Host adapter hooks (e.g. the opencode plugin shell.env) can inject CLAW_HOST
 // and CLAW_GUIDANCE_CONFIG into the test runner's environment. When these leak
 // into spawned `claw` processes, they alter workflow guidance behavior (host
@@ -320,7 +355,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
     inProgressPath,
     JSON.stringify(
       {
-        tasks: [{ id: 1, title: "Verify the CLI lifecycle", status: "in_progress" }],
+        tasks: [{ id: 3, title: "Verify the CLI lifecycle", status: "in_progress" }],
       },
       null,
       2,
@@ -335,12 +370,12 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   assert.deepEqual(inProgressResult.nextsteps, ["Continue the current task."]);
   assert.equal("nextTask" in inProgressResult, false);
   assert.deepEqual(inProgressResult.recommendedCommands, [
-    "claw plan edit --task e2e-task --task-id 1 --task-status done",
+    "claw plan edit --task e2e-task --task-id 3 --task-status done",
   ]);
   assert.equal("notes" in inProgressResult, false);
 
   const taskDone = runClaw(
-    ["plan", "edit", "--task", "e2e-task", "--task-id", "1", "--task-status", "done"],
+    ["plan", "edit", "--task", "e2e-task", "--task-id", "3", "--task-status", "done"],
     root,
     env,
   );
@@ -453,21 +488,24 @@ test("cli plan create uses project-config defaultPlanTemplate when --template is
   fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
   fs.writeFileSync(
     path.join(root, ".claw", "templates", "team-default.json"),
-    `${JSON.stringify({
+    `${JSON.stringify(createPlanLikeTemplate({
       id: "team-default",
-      aliases: [],
-      planningEnabledStatus: "process.discussing",
-      planningDisabledStatus: "process.active",
-      planningTask: {
-        title: "Project default planning task",
-        detail: "Use {{planningSkill}} to refine this task.",
-      },
-      activationTask: {
-        title: "Project default activation task",
-        detail: "Move to process.active after planning.",
-        goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode.",
-      },
-    }, null, 2)}\n`,
+      tasks: [
+        {
+          id: 1,
+          title: "Project default planning task",
+          detail: "Use {{planningSkill}} to refine this task.",
+          status: "pending",
+        },
+        {
+          id: 2,
+          title: "Project default activation task",
+          detail: "Move to process.active after planning.",
+          goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode.",
+          status: "pending",
+        },
+      ],
+    }), null, 2)}\n`,
     "utf-8",
   );
 
@@ -489,40 +527,46 @@ test("cli plan create lets explicit --template override defaultPlanTemplate", ()
   fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
   fs.writeFileSync(
     path.join(root, ".claw", "templates", "config-default.json"),
-    `${JSON.stringify({
+    `${JSON.stringify(createPlanLikeTemplate({
       id: "config-default",
-      aliases: [],
-      planningEnabledStatus: "process.discussing",
-      planningDisabledStatus: "process.active",
-      planningTask: {
-        title: "Config default planning task",
-        detail: "Use {{planningSkill}} from config.",
-      },
-      activationTask: {
-        title: "Config default activation task",
-        detail: "Move to process.active from config.",
-        goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode.",
-      },
-    }, null, 2)}\n`,
+      tasks: [
+        {
+          id: 1,
+          title: "Config default planning task",
+          detail: "Use {{planningSkill}} from config.",
+          status: "pending",
+        },
+        {
+          id: 2,
+          title: "Config default activation task",
+          detail: "Move to process.active from config.",
+          goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode.",
+          status: "pending",
+        },
+      ],
+    }), null, 2)}\n`,
     "utf-8",
   );
   fs.writeFileSync(
     path.join(root, ".claw", "templates", "explicit.json"),
-    `${JSON.stringify({
+    `${JSON.stringify(createPlanLikeTemplate({
       id: "explicit",
-      aliases: [],
-      planningEnabledStatus: "process.discussing",
-      planningDisabledStatus: "process.active",
-      planningTask: {
-        title: "Explicit planning task",
-        detail: "Use {{planningSkill}} from explicit template.",
-      },
-      activationTask: {
-        title: "Explicit activation task",
-        detail: "Move to process.active from explicit template.",
-        goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode.",
-      },
-    }, null, 2)}\n`,
+      tasks: [
+        {
+          id: 1,
+          title: "Explicit planning task",
+          detail: "Use {{planningSkill}} from explicit template.",
+          status: "pending",
+        },
+        {
+          id: 2,
+          title: "Explicit activation task",
+          detail: "Move to process.active from explicit template.",
+          goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode.",
+          status: "pending",
+        },
+      ],
+    }), null, 2)}\n`,
     "utf-8",
   );
 
@@ -755,8 +799,8 @@ test("cli returns truth-writer contract on completed task before final plan comp
     JSON.stringify(
       {
         tasks: [
-          { id: 1, title: "First task", status: "pending" },
-          { id: 2, title: "Second task", status: "pending" }
+          { id: 3, title: "First task", status: "pending" },
+          { id: 4, title: "Second task", status: "pending" }
         ]
       },
       null,
@@ -769,7 +813,7 @@ test("cli returns truth-writer contract on completed task before final plan comp
   runClaw(["plan", "edit", "--task", "demo-task", "--plan-status", "process.active"], root);
 
   const taskDone = runClaw(
-    ["plan", "edit", "--task", "demo-task", "--task-id", "1", "--task-status", "done"],
+    ["plan", "edit", "--task", "demo-task", "--task-id", "3", "--task-status", "done"],
     root,
   );
 
@@ -778,14 +822,14 @@ test("cli returns truth-writer contract on completed task before final plan comp
   assert.deepEqual(taskDone.nextsteps, [
     "1. Sync thread progress with `update_plan`.",
     "2. Read `delegateSubagents`, curate the valuable findings from the completed task into a completed subtask report, then execute the returned `truth-writer` dispatch contract field-by-field. Do not treat it as a suggestion.",
-    "3. Continue with task #2.",
+    "3. Continue with task #4.",
   ]);
   assert.equal(
     taskDone.notes,
     "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. When dispatching a subagent, each entry is a required structured contract whose fields must be honored directly.",
   );
   assert.deepEqual(taskDone.nextTask, {
-    id: 2,
+    id: 4,
     title: "Second task",
     status: "pending",
   });
@@ -850,8 +894,8 @@ test("cli respects project override toggles for goal mode and final-only truth d
     JSON.stringify(
       {
         tasks: [
-          { id: 1, title: "First task", status: "pending" },
-          { id: 2, title: "Second task", status: "pending" }
+          { id: 3, title: "First task", status: "pending" },
+          { id: 4, title: "Second task", status: "pending" }
         ]
       },
       null,
@@ -871,20 +915,183 @@ test("cli respects project override toggles for goal mode and final-only truth d
   assert.equal("goalMode" in activateResult, false);
 
   const taskDone = runClaw(
-    ["plan", "edit", "--task", "demo-task", "--task-id", "1", "--task-status", "done"],
+    ["plan", "edit", "--task", "demo-task", "--task-id", "3", "--task-status", "done"],
     root,
   );
   assert.equal("delegateSubagents" in taskDone, false);
   assert.equal((taskDone.nextsteps as string[]).some((step) => step.includes("truth-writer")), false);
 
   const allDone = runClaw(
-    ["plan", "edit", "--task", "demo-task", "--task-id", "2", "--task-status", "done"],
+    ["plan", "edit", "--task", "demo-task", "--task-id", "4", "--task-status", "done"],
     root,
   );
   const truthDelegate = ((allDone.delegateSubagents as JsonRecord[])[0] ?? {});
   const adrDelegate = ((allDone.delegateSubagents as JsonRecord[])[1] ?? {});
   assert.equal(truthDelegate.name, "truth-writer");
   assert.equal(adrDelegate.name, "adr-writer");
+});
+
+test("cli task done requires --choice when the template defines guidance.onDone.choices", () => {
+  const root = createFixture("cli-task-done-choice-required");
+  runClaw(["init", "--name", "Task Done Choice Required", "--planning", "false"], root);
+  fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "templates", "choice-required.json"),
+    `${JSON.stringify(createPlanLikeTemplate({
+      id: "choice-required",
+      status: "process.active",
+      tasks: [
+        {
+          id: 1,
+          title: "Choose a route",
+          detail: "Pick the execution route.",
+          status: "pending",
+          guidance: {
+            onDone: {
+              choices: {
+                simple: {
+                  summary: "Simple route",
+                  nextsteps: ["Keep going."],
+                },
+                advanced: {
+                  summary: "Advanced route",
+                  nextsteps: ["Take the advanced branch."],
+                },
+              },
+            },
+          },
+        },
+        {
+          id: 2,
+          title: "Activation task",
+          detail: "Activation detail.",
+          goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode.",
+          status: "pending",
+        },
+      ],
+    }), null, 2)}\n`,
+    "utf-8",
+  );
+
+  runClaw(
+    ["plan", "create", "--title", "demo-task", "--goal", "Require an explicit route choice", "--template", "choice-required"],
+    root,
+  );
+
+  const failure = runClawExpectFailure(["task", "done", "--task", "demo-task", "--id", "1"], root);
+  const error = failure.error as JsonRecord;
+  assert.match(String(error.message), /requires choiceId/i);
+  assert.match(String(error.message), /simple, advanced/i);
+});
+
+test("cli task done persists choiceId for route-aware templates", () => {
+  const root = createFixture("cli-task-done-choice-valid");
+  runClaw(["init", "--name", "Task Done Choice Valid", "--planning", "false"], root);
+  fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "templates", "choice-valid.json"),
+    `${JSON.stringify(createPlanLikeTemplate({
+      id: "choice-valid",
+      status: "process.active",
+      tasks: [
+        {
+          id: 1,
+          title: "Choose a route",
+          detail: "Pick the execution route.",
+          status: "pending",
+          guidance: {
+            onDone: {
+              choices: {
+                simple: {
+                  summary: "Simple route",
+                  nextsteps: ["Keep going."],
+                },
+              },
+            },
+          },
+        },
+        {
+          id: 2,
+          title: "Activation task",
+          detail: "Activation detail.",
+          goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode.",
+          status: "pending",
+        },
+      ],
+    }), null, 2)}\n`,
+    "utf-8",
+  );
+
+  const result = runClaw(
+    ["plan", "create", "--title", "demo-task", "--goal", "Persist the selected route", "--template", "choice-valid"],
+    root,
+  );
+  assert.equal(result.command, "plan.create");
+
+  const taskDone = runClaw(
+    ["task", "done", "--task", "demo-task", "--id", "1", "--choice", "simple"],
+    root,
+  );
+  assert.equal(taskDone.command, "task.done");
+
+  const planPath = path.join(root, ".claw", "tasks", "demo-task", "plan.json");
+  const plan = JSON.parse(fs.readFileSync(planPath, "utf-8")) as JsonRecord;
+  const tasks = (plan.tasks as JsonRecord[]) ?? [];
+  assert.equal(String((tasks[0] as JsonRecord).choiceId), "simple");
+});
+
+test("cli plan edit forwards --task-choice for route-aware templates", () => {
+  const root = createFixture("cli-plan-edit-task-choice");
+  runClaw(["init", "--name", "Plan Edit Task Choice", "--planning", "false"], root);
+  fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "templates", "choice-through-edit.json"),
+    `${JSON.stringify(createPlanLikeTemplate({
+      id: "choice-through-edit",
+      status: "process.active",
+      tasks: [
+        {
+          id: 1,
+          title: "Choose a route",
+          detail: "Pick the execution route.",
+          status: "pending",
+          guidance: {
+            onDone: {
+              choices: {
+                branch_a: {
+                  summary: "Branch A",
+                  nextsteps: ["Continue on branch A."],
+                },
+              },
+            },
+          },
+        },
+        {
+          id: 2,
+          title: "Activation task",
+          detail: "Activation detail.",
+          goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode.",
+          status: "pending",
+        },
+      ],
+    }), null, 2)}\n`,
+    "utf-8",
+  );
+
+  runClaw(
+    ["plan", "create", "--title", "demo-task", "--goal", "Support generic edit routing", "--template", "choice-through-edit"],
+    root,
+  );
+
+  runClaw(
+    ["plan", "edit", "--task", "demo-task", "--task-id", "1", "--task-status", "done", "--task-choice", "branch_a"],
+    root,
+  );
+
+  const planPath = path.join(root, ".claw", "tasks", "demo-task", "plan.json");
+  const plan = JSON.parse(fs.readFileSync(planPath, "utf-8")) as JsonRecord;
+  const tasks = (plan.tasks as JsonRecord[]) ?? [];
+  assert.equal(String((tasks[0] as JsonRecord).choiceId), "branch_a");
 });
 
 test("cli task status changed back to pending does not return nextTask", () => {

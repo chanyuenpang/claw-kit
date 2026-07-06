@@ -34,6 +34,14 @@ export type ProjectConfig = {
   gitnexus?: boolean;
 };
 
+export type TemplateConfigOverride = {
+  goalMode?: boolean;
+  truthDispatch?: "per_task" | "final_only";
+  externalPlanningSkill?: string | null;
+  externalTruthSkill?: string | null;
+  externalAdrSkill?: string | null;
+};
+
 export type PlanPhase = "prepare" | "process" | "end";
 
 export type PlanStatus =
@@ -92,6 +100,7 @@ export type PlanTask = {
   title: string;
   detail?: string;
   status: PlanTaskStatus;
+  choiceId?: string;
   execution?: {
     type?: "default" | "subagent" | "subplan";
     subplan?: string;
@@ -103,6 +112,8 @@ export type PlanTask = {
 
 export type PlanDocument = {
   title: string;
+  templateId?: string;
+  configOverride?: TemplateConfigOverride;
   status: PlanStatus;
   goal: {
     text: string;
@@ -487,6 +498,7 @@ export type PlanEditInput = {
   planStatus?: string;
   taskId?: number;
   taskStatus?: PlanTaskStatus;
+  taskChoiceId?: string;
   appendTasks?: PlanTask[];
   reviewer?: PlanReviewer;
   workflowDefinitions?: string;

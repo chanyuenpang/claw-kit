@@ -43,6 +43,41 @@ function createEmptyFixture(name: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), `claw-kit-${name}-`));
 }
 
+function createPlanLikeTemplate(params: {
+  id: string;
+  configOverride?: Record<string, unknown>;
+  title?: string;
+  status?: PlanDocument["status"];
+  goalText?: string;
+  tasks: Array<Record<string, unknown>>;
+  references?: Array<{ path: string; why: string }>;
+  rules?: string[];
+  keyDecisions?: string[];
+  retrospectiveSummary?: string;
+}): Record<string, unknown> {
+  return {
+    id: params.id,
+    ...(params.configOverride ? { configOverride: params.configOverride } : {}),
+    ...(params.title ? { title: params.title } : {}),
+    status: params.status ?? "process.discussing",
+    goal: {
+      text: params.goalText ?? "",
+    },
+    requirements: {
+      summary: "",
+      openQuestions: [],
+      acceptanceCriteria: [],
+    },
+    tasks: params.tasks,
+    references: params.references ?? [],
+    rules: params.rules ?? [],
+    keyDecisions: params.keyDecisions ?? [],
+    retrospective: {
+      summary: params.retrospectiveSummary ?? "",
+    },
+  };
+}
+
 test("workflow guidance json config is emitted with the build output", () => {
   const distConfigPath = new URL("../src/workflow-guidance.config.json", import.meta.url);
   const sourceConfigPath = new URL("../../src/workflow-guidance.config.json", import.meta.url);
@@ -343,21 +378,24 @@ test("writePlan loads a project JSON template from .claw/templates", async () =>
   fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
   fs.writeFileSync(
     path.join(root, ".claw", "templates", "team-default.json"),
-    `${JSON.stringify({
+    `${JSON.stringify(createPlanLikeTemplate({
       id: "team-default",
-      aliases: ["team"],
-      planningEnabledStatus: "process.discussing",
-      planningDisabledStatus: "process.active",
-      planningTask: {
-        title: "Draft requirements with the team template",
-        detail: "Use {{planningSkill}} to turn the request into executable tasks.",
-      },
-      activationTask: {
-        title: "Activate the team template plan",
-        detail: "Move this plan into process.active after refinement.",
-        goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode.",
-      },
-    }, null, 2)}\n`,
+      tasks: [
+        {
+          id: 1,
+          title: "Draft requirements with the team template",
+          detail: "Use {{planningSkill}} to turn the request into executable tasks.",
+          status: "pending",
+        },
+        {
+          id: 2,
+          title: "Activate the team template plan",
+          detail: "Move this plan into process.active after refinement.",
+          goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode.",
+          status: "pending",
+        },
+      ],
+    }), null, 2)}\n`,
     "utf-8",
   );
 
@@ -367,8 +405,214 @@ test("writePlan loads a project JSON template from .claw/templates", async () =>
     templateName: "team-default",
   });
 
+  assert.equal(result.plan.templateId, "team-default");
   assert.equal(result.plan.tasks[0]?.title, "Draft requirements with the team template");
   assert.equal(result.plan.tasks[1]?.title, "Activate the team template plan");
+});
+
+test("writePlan loads a plan-like project template and strips template-only task fields from runtime plan", async () => {
+  const root = createFixture("planlike-template-project-json");
+  initProject({ cwd: root, projectName: "Planlike Template Project", planning: true, force: true });
+  fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "templates", "planlike-default.json"),
+    `${JSON.stringify({
+      id: "planlike-default",
+      status: "process.discussing",
+      goal: {
+        text: "Compile the workflow",
+      },
+      requirements: {
+        summary: "",
+        openQuestions: [],
+        acceptanceCriteria: [],
+      },
+      tasks: [
+        {
+          id: 1,
+          title: "Plan the conversion",
+          detail: "Use {{planningSkill}} to shape the conversion work.",
+          status: "pending",
+        },
+        {
+          id: 2,
+          title: "Enter process.active",
+          detail: "Move into execution after planning.",
+          goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode when entering process.active.",
+          status: "pending",
+        },
+        {
+          id: 3,
+          title: "Compile the claw route",
+          detail: "Produce the claw entry skill.",
+          status: "pending",
+          guidance: {
+            onDone: {
+              default: {
+                mergeMode: "override",
+                summary: "Template-controlled route complete.",
+              },
+            },
+          },
+        },
+      ],
+      references: [
+        {
+          path: "skills/source-skill.md",
+          why: "source skill"
+        }
+      ],
+      rules: [
+        "Keep template control out of runtime task prose."
+      ],
+      keyDecisions: [],
+      retrospective: {
+        summary: ""
+      }
+    }, null, 2)}\n`,
+    "utf-8",
+  );
+
+  const result = await writePlan({
+    cwd: root,
+    title: "Use planlike template",
+    templateName: "planlike-default",
+  });
+
+  assert.equal(result.plan.templateId, "planlike-default");
+  assert.equal(result.plan.title, "Use planlike template");
+  assert.equal(result.plan.status, "process.discussing");
+  assert.equal(result.plan.goal.text, "Compile the workflow");
+  assert.equal(result.plan.tasks[0]?.detail, "Use the built-in planning skill to shape the conversion work.");
+  assert.match(result.plan.tasks[1]?.detail ?? "", /Goal Mode is enabled/);
+  assert.equal("guidance" in (result.plan.tasks[2] ?? {}), false);
+  assert.equal("goalModeDetail" in (result.plan.tasks[1] ?? {}), false);
+  assert.deepEqual(result.plan.references, [{ path: "skills/source-skill.md", why: "source skill" }]);
+  assert.deepEqual(result.plan.rules, ["Keep template control out of runtime task prose."]);
+});
+
+test("writePlan records template configOverride in the runtime plan", async () => {
+  const root = createFixture("plan-template-config-override");
+  initProject({ cwd: root, projectName: "Project Template Config Override", planning: true, force: true });
+  fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "templates", "team-override.json"),
+    `${JSON.stringify(createPlanLikeTemplate({
+      id: "team-override",
+      configOverride: {
+        goalMode: false,
+        truthDispatch: "final_only",
+      },
+      tasks: [
+        {
+          id: 1,
+          title: "Plan with override",
+          detail: "Use {{planningSkill}} to shape the work.",
+          status: "pending",
+        },
+        {
+          id: 2,
+          title: "Activate with override",
+          detail: "Move to process.active after planning.",
+          goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode.",
+          status: "pending",
+        },
+      ],
+    }), null, 2)}\n`,
+    "utf-8",
+  );
+
+  const result = await writePlan({
+    cwd: root,
+    title: "Use template override",
+    templateName: "team-override",
+  });
+
+  assert.equal(result.plan.templateId, "team-override");
+  assert.deepEqual(result.plan.configOverride, {
+    goalMode: false,
+    truthDispatch: "final_only",
+  });
+});
+
+test("template configOverride goalMode=false suppresses goal-mode activation detail", async () => {
+  const root = createFixture("plan-template-config-override-goalmode");
+  initProject({ cwd: root, projectName: "Project Template Override GoalMode", planning: true, force: true });
+  fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "templates", "goalmode-off.json"),
+    `${JSON.stringify(createPlanLikeTemplate({
+      id: "goalmode-off",
+      configOverride: {
+        goalMode: false,
+      },
+      tasks: [
+        {
+          id: 1,
+          title: "Plan with goal mode disabled",
+          detail: "Use {{planningSkill}} to shape the work.",
+          status: "pending",
+        },
+        {
+          id: 2,
+          title: "Activate with goal mode disabled",
+          detail: "Move to process.active after planning.",
+          goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode.",
+          status: "pending",
+        },
+      ],
+    }), null, 2)}\n`,
+    "utf-8",
+  );
+
+  const result = await writePlan({
+    cwd: root,
+    title: "Use goalmode-off template",
+    templateName: "goalmode-off",
+  });
+
+  assert.equal(result.plan.tasks[1]?.detail, "Move to process.active after planning.");
+});
+
+test("writePlan rejects unsupported template configOverride keys", async () => {
+  const root = createFixture("plan-template-config-override-invalid");
+  initProject({ cwd: root, projectName: "Project Template Invalid Override", planning: true, force: true });
+  fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "templates", "bad-override.json"),
+    `${JSON.stringify(createPlanLikeTemplate({
+      id: "bad-override",
+      configOverride: {
+        contextPaths: ["docs/"],
+      },
+      tasks: [
+        {
+          id: 1,
+          title: "Plan with invalid override",
+          detail: "Use {{planningSkill}} to shape the work.",
+          status: "pending",
+        },
+        {
+          id: 2,
+          title: "Activate with invalid override",
+          detail: "Move to process.active after planning.",
+          goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode.",
+          status: "pending",
+        },
+      ],
+    }), null, 2)}\n`,
+    "utf-8",
+  );
+
+  await assert.rejects(
+    () =>
+      writePlan({
+        cwd: root,
+        title: "Use invalid override",
+        templateName: "bad-override",
+      }),
+    /configOverride|override/i,
+  );
 });
 
 test("writePlan loads a project JS template from .claw/templates", async () => {
@@ -377,22 +621,24 @@ test("writePlan loads a project JS template from .claw/templates", async () => {
   fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
   fs.writeFileSync(
     path.join(root, ".claw", "templates", "team-js-template.mjs"),
-    `export default {
-  id: "team-js-template",
-  aliases: ["team-js"],
-  planningEnabledStatus: "process.discussing",
-  planningDisabledStatus: "process.active",
-  planningTask: {
-    title: "Plan with the JS template",
-    detail: "Use {{planningSkill}} to build the plan.",
-  },
-  activationTask: {
-    title: "Activate the JS template",
-    detail: "Move to process.active after planning.",
-    goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode.",
-  },
-};
-`,
+    `export default ${JSON.stringify(createPlanLikeTemplate({
+      id: "team-js-template",
+      tasks: [
+        {
+          id: 1,
+          title: "Plan with the JS template",
+          detail: "Use {{planningSkill}} to build the plan.",
+          status: "pending",
+        },
+        {
+          id: 2,
+          title: "Activate the JS template",
+          detail: "Move to process.active after planning.",
+          goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode.",
+          status: "pending",
+        },
+      ],
+    }), null, 2)};\n`,
     "utf-8",
   );
 
@@ -402,7 +648,544 @@ test("writePlan loads a project JS template from .claw/templates", async () => {
     templateName: "team-js-template",
   });
 
+  assert.equal(result.plan.templateId, "team-js-template");
   assert.equal(result.plan.tasks[0]?.title, "Plan with the JS template");
+});
+
+test("template configOverride truthDispatch=final_only suppresses mid-task truth guidance", async () => {
+  const root = createFixture("plan-template-config-override-truthdispatch");
+  initProject({ cwd: root, projectName: "Project Template Override TruthDispatch", planning: true, force: true });
+  fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "templates", "final-only.json"),
+    `${JSON.stringify(createPlanLikeTemplate({
+      id: "final-only",
+      configOverride: {
+        truthDispatch: "final_only",
+      },
+      status: "process.active",
+      tasks: [
+        {
+          id: 1,
+          title: "Only task",
+          detail: "Use {{planningSkill}} to shape the work.",
+          status: "pending",
+        },
+        {
+          id: 2,
+          title: "Unused activation",
+          detail: "Unused activation detail.",
+          goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode.",
+          status: "pending",
+        },
+      ],
+    }), null, 2)}\n`,
+    "utf-8",
+  );
+
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Use final-only template override",
+    templateName: "final-only",
+    content: {
+      title: "Demo task",
+      templateId: "final-only",
+      configOverride: {
+        truthDispatch: "final_only",
+      },
+      status: "process.active",
+      goal: { text: "Use final-only template override" },
+      tasks: [
+        { id: 1, title: "Complete the first task", status: "pending" },
+        { id: 2, title: "Leave one task unfinished", status: "pending" },
+      ],
+    },
+  });
+
+  const taskDone = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    taskId: 1,
+    taskStatus: "done",
+  });
+
+  assert.equal(taskDone.workflowGuidance.delegateSubagents, undefined);
+});
+
+test("route-aware task completion requires taskChoiceId when the template defines choices", async () => {
+  const root = createFixture("plan-template-guidance-choice-required");
+  initProject({ cwd: root, projectName: "Project Template Guidance Choice Required", planning: true, force: true });
+  fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "templates", "choice-required.json"),
+    `${JSON.stringify(createPlanLikeTemplate({
+      id: "choice-required",
+      status: "process.active",
+      tasks: [
+        {
+          id: 1,
+          title: "Choose a route",
+          detail: "Pick the execution route.",
+          status: "pending",
+          guidance: {
+            onDone: {
+              choices: {
+                simple: {
+                  summary: "Simple route",
+                  nextsteps: ["Keep going."],
+                },
+              },
+            },
+          },
+        },
+        {
+          id: 2,
+          title: "Activation task",
+          detail: "Activation detail.",
+          goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode.",
+          status: "pending",
+        },
+      ],
+    }), null, 2)}\n`,
+    "utf-8",
+  );
+
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Require a task choice",
+    templateName: "choice-required",
+  });
+
+  await assert.rejects(
+    () =>
+      editPlan({
+        cwd: root,
+        taskName: "demo-task",
+        taskId: 1,
+        taskStatus: "done",
+      }),
+    /choice/i,
+  );
+});
+
+test("plan-like template guidance choices work for downstream task ids beyond the default skeleton", async () => {
+  const root = createFixture("planlike-template-guidance-choice-required");
+  initProject({ cwd: root, projectName: "Planlike Template Guidance Choice Required", planning: true, force: true });
+  fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "templates", "planlike-choice-required.json"),
+    `${JSON.stringify({
+      id: "planlike-choice-required",
+      status: "process.active",
+      goal: {
+        text: "Choose the downstream route",
+      },
+      requirements: {
+        summary: "",
+        openQuestions: [],
+        acceptanceCriteria: [],
+      },
+      tasks: [
+        {
+          id: 3,
+          title: "Choose a route",
+          detail: "Pick the execution route.",
+          status: "pending",
+          guidance: {
+            onDone: {
+              choices: {
+                simple: {
+                  summary: "Simple route",
+                  nextsteps: ["Keep going."],
+                },
+              },
+            },
+          },
+        }
+      ],
+      references: [],
+      rules: [],
+      keyDecisions: [],
+      retrospective: {
+        summary: ""
+      }
+    }, null, 2)}\n`,
+    "utf-8",
+  );
+
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Require a task choice on downstream task id",
+    templateName: "planlike-choice-required",
+  });
+
+  await assert.rejects(
+    () =>
+      editPlan({
+        cwd: root,
+        taskName: "demo-task",
+        taskId: 3,
+        taskStatus: "done",
+      }),
+    /choice/i,
+  );
+});
+
+test("route-aware task completion rejects invalid taskChoiceId", async () => {
+  const root = createFixture("plan-template-guidance-choice-invalid");
+  initProject({ cwd: root, projectName: "Project Template Guidance Choice Invalid", planning: true, force: true });
+  fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "templates", "choice-invalid.json"),
+    `${JSON.stringify(createPlanLikeTemplate({
+      id: "choice-invalid",
+      status: "process.active",
+      tasks: [
+        {
+          id: 1,
+          title: "Choose a route",
+          detail: "Pick the execution route.",
+          status: "pending",
+          guidance: {
+            onDone: {
+              choices: {
+                simple: {
+                  summary: "Simple route",
+                  nextsteps: ["Keep going."],
+                },
+              },
+            },
+          },
+        },
+        {
+          id: 2,
+          title: "Activation task",
+          detail: "Activation detail.",
+          goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode.",
+          status: "pending",
+        },
+      ],
+    }), null, 2)}\n`,
+    "utf-8",
+  );
+
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Reject invalid task choice",
+    templateName: "choice-invalid",
+  });
+
+  await assert.rejects(
+    () =>
+      editPlan({
+        cwd: root,
+        taskName: "demo-task",
+        taskId: 1,
+        taskStatus: "done",
+        taskChoiceId: "wrong",
+      }),
+    /choice/i,
+  );
+});
+
+test("route-aware task completion persists valid taskChoiceId", async () => {
+  const root = createFixture("plan-template-guidance-choice-valid");
+  initProject({ cwd: root, projectName: "Project Template Guidance Choice Valid", planning: true, force: true });
+  fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "templates", "choice-valid.json"),
+    `${JSON.stringify(createPlanLikeTemplate({
+      id: "choice-valid",
+      status: "process.active",
+      tasks: [
+        {
+          id: 1,
+          title: "Choose a route",
+          detail: "Pick the execution route.",
+          status: "pending",
+          guidance: {
+            onDone: {
+              choices: {
+                simple: {
+                  summary: "Simple route",
+                  nextsteps: ["Keep going."],
+                },
+              },
+            },
+          },
+        },
+        {
+          id: 2,
+          title: "Activation task",
+          detail: "Activation detail.",
+          goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode.",
+          status: "pending",
+        },
+      ],
+    }), null, 2)}\n`,
+    "utf-8",
+  );
+
+  const created = await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Persist valid task choice",
+    templateName: "choice-valid",
+  });
+
+  const completed = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    taskId: 1,
+    taskStatus: "done",
+    taskChoiceId: "simple",
+  });
+
+  assert.equal(completed.planPath, created.planPath);
+  const persisted = JSON.parse(fs.readFileSync(created.planPath, "utf-8")) as PlanDocument;
+  assert.equal(persisted.tasks[0]?.choiceId, "simple");
+});
+
+test("default template planning and activation tasks suppress per-task truth dispatch", async () => {
+  const root = createFixture("default-template-suppress-truth");
+  initProject({
+    cwd: root,
+    projectName: "Default Template Suppress Truth",
+    externalTruthSkill: "external-truth-writer",
+    force: true,
+  });
+
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Keep bridge tasks lightweight",
+  });
+
+  await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    appendTasks: [{ id: 3, title: "Real execution task", status: "pending" }],
+  });
+
+  await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    planStatus: "process.active",
+  });
+
+  const planningDone = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    taskId: 1,
+    taskStatus: "done",
+  });
+  assert.equal(planningDone.workflowGuidance.delegateSubagents, undefined);
+  assert.equal(planningDone.workflowGuidance.nextsteps.some((step) => step.includes("truth-writer")), false);
+  assert.equal(planningDone.workflowGuidance.nextTask?.id, 2);
+
+  const activationDone = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    taskId: 2,
+    taskStatus: "done",
+  });
+  assert.equal(activationDone.workflowGuidance.delegateSubagents, undefined);
+  assert.equal(activationDone.workflowGuidance.nextsteps.some((step) => step.includes("truth-writer")), false);
+  assert.equal(activationDone.workflowGuidance.nextTask?.id, 3);
+
+  const realTaskDone = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    taskId: 3,
+    taskStatus: "done",
+  });
+  assert.equal(realTaskDone.workflowGuidance.delegateSubagents?.[0]?.name, "truth-writer");
+  assert.equal(realTaskDone.workflowGuidance.delegateSubagents?.[1]?.name, "adr-writer");
+});
+
+test("template guidance onDone default can override default workflow guidance without choices", async () => {
+  const root = createFixture("template-guidance-override-default");
+  initProject({ cwd: root, projectName: "Template Guidance Override", planning: true, force: true });
+  fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "templates", "override-default.json"),
+    `${JSON.stringify(createPlanLikeTemplate({
+      id: "override-default",
+      status: "process.active",
+      tasks: [
+        {
+          id: 1,
+          title: "Primary task",
+          detail: "Run the main work.",
+          status: "pending",
+          guidance: {
+            onDone: {
+              default: {
+                mergeMode: "override",
+                summary: "Template-adjusted completion guidance",
+                nextsteps: ["Capture the route-specific handoff note."],
+                recommendedCommands: ["claw task done --task demo-task --id 2"],
+                delegateTruth: false,
+              },
+            },
+          },
+        },
+        {
+          id: 2,
+          title: "Second task",
+          detail: "Continue to the next step.",
+          goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode.",
+          status: "pending",
+        },
+      ],
+    }), null, 2)}\n`,
+    "utf-8",
+  );
+
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Override default guidance",
+    templateName: "override-default",
+  });
+
+  const taskDone = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    taskId: 1,
+    taskStatus: "done",
+  });
+
+  assert.equal(taskDone.workflowGuidance.summary, "Template-adjusted completion guidance");
+  assert.equal(taskDone.workflowGuidance.delegateSubagents, undefined);
+  assert.equal(taskDone.workflowGuidance.nextsteps.some((step) => step.includes("truth-writer")), false);
+  assert.equal(taskDone.workflowGuidance.nextsteps.some((step) => step.includes("Capture the route-specific handoff note.")), true);
+  assert.equal(taskDone.workflowGuidance.recommendedCommands?.includes("claw task done --task demo-task --id 2"), true);
+  assert.equal(taskDone.workflowGuidance.nextTask?.id, 2);
+});
+
+test("template guidance onDone default can replace default workflow guidance without choices", async () => {
+  const root = createFixture("template-guidance-replace-default");
+  initProject({ cwd: root, projectName: "Template Guidance Replace", planning: true, force: true });
+  fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "templates", "replace-default.json"),
+    `${JSON.stringify(createPlanLikeTemplate({
+      id: "replace-default",
+      status: "process.active",
+      tasks: [
+        {
+          id: 1,
+          title: "Primary task",
+          detail: "Run the main work.",
+          status: "pending",
+          guidance: {
+            onDone: {
+              default: {
+                mergeMode: "replace",
+                summary: "Use the template-specific done route.",
+                nextsteps: ["Only follow this explicit route."],
+                notes: "Default completion wording is intentionally replaced here.",
+                recommendedCommands: ["claw plan edit --task demo-task --task-id 2 --task-status in_progress"],
+                nextTaskId: 2,
+                delegateTruth: false,
+              },
+            },
+          },
+        },
+        {
+          id: 2,
+          title: "Second task",
+          detail: "Continue to the next step.",
+          goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode.",
+          status: "pending",
+        },
+      ],
+    }), null, 2)}\n`,
+    "utf-8",
+  );
+
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Replace default guidance",
+    templateName: "replace-default",
+  });
+
+  const taskDone = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    taskId: 1,
+    taskStatus: "done",
+  });
+
+  assert.equal(taskDone.workflowGuidance.summary, "Use the template-specific done route.");
+  assert.deepEqual(taskDone.workflowGuidance.nextsteps, ["1. Only follow this explicit route."]);
+  assert.equal(taskDone.workflowGuidance.notes, "Default completion wording is intentionally replaced here.");
+  assert.deepEqual(taskDone.workflowGuidance.recommendedCommands, [
+    "claw plan edit --task demo-task --task-id 2 --task-status in_progress",
+  ]);
+  assert.equal(taskDone.workflowGuidance.delegateSubagents, undefined);
+  assert.equal(taskDone.workflowGuidance.nextTask?.id, 2);
+});
+
+test("writePlan rejects legacy template guidance route mode field in favor of mergeMode", async () => {
+  const root = createFixture("template-guidance-legacy-mode");
+  initProject({ cwd: root, projectName: "Template Guidance Legacy Mode", planning: true, force: true });
+  fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "templates", "legacy-mode.json"),
+    `${JSON.stringify(createPlanLikeTemplate({
+      id: "legacy-mode",
+      status: "process.active",
+      tasks: [
+        {
+          id: 1,
+          title: "Primary task",
+          detail: "Run the main work.",
+          status: "pending",
+          guidance: {
+            onDone: {
+              default: {
+                mode: "override",
+                summary: "This should be rejected.",
+              },
+            },
+          },
+        },
+        {
+          id: 2,
+          title: "Activate",
+          detail: "Move to process.active.",
+          goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode.",
+          status: "pending",
+        },
+      ],
+    }), null, 2)}\n`,
+    "utf-8",
+  );
+
+  await assert.rejects(
+    () =>
+      writePlan({
+        cwd: root,
+        title: "Use invalid legacy route field",
+        templateName: "legacy-mode",
+      }),
+    /Invalid template task|plan-like template|Invalid plan template/i,
+  );
 });
 
 test("writePlan rejects an invalid project template export shape", async () => {
@@ -675,6 +1458,81 @@ test("createSubplan uses the planning-aware default seed shape", async () => {
   assert.equal(result.workflowGuidance.goalTool, undefined);
   assert.match(result.plan.tasks[0]?.detail ?? "", /append executable tasks/i);
   assert.match(result.plan.tasks[1]?.detail ?? "", /process\.active/);
+});
+
+test("createSubplan uses project defaultPlanTemplate when templateName is omitted", async () => {
+  const root = createFixture("subplan-create-project-default-template");
+  initProject({ cwd: root, projectName: "Subplan Project Default Template", planning: true, force: true });
+  fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "templates", "team-subplan-default.json"),
+    `${JSON.stringify(createPlanLikeTemplate({
+      id: "team-subplan-default",
+      configOverride: {
+        goalMode: false,
+        truthDispatch: "final_only",
+      },
+      tasks: [
+        {
+          id: 1,
+          title: "Refine the child workflow",
+          detail: "Use {{planningSkill}} to shape the subplan work.",
+          status: "pending",
+        },
+        {
+          id: 2,
+          title: "Activate the child workflow",
+          detail: "Move to process.active after refinement.",
+          goalModeDetail: "Start Goal Mode for this child plan.",
+          status: "pending",
+        },
+      ],
+      references: [{ path: "docs/subplan-template.md", why: "Subplan template reference" }],
+      rules: ["Follow the project default template for subplans."],
+    }), null, 2)}\n`,
+    "utf-8",
+  );
+  const projectConfigPath = path.join(root, ".claw", "project.json");
+  const projectConfig = JSON.parse(fs.readFileSync(projectConfigPath, "utf-8")) as Record<string, unknown>;
+  projectConfig.defaultPlanTemplate = "team-subplan-default";
+  fs.writeFileSync(projectConfigPath, JSON.stringify(projectConfig, null, 2), "utf-8");
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Ship the parent plan",
+    content: {
+      title: "Demo task",
+      status: "process.active",
+      goal: { text: "Ship the parent plan" },
+      tasks: [
+        {
+          id: 1,
+          title: "Implement child work",
+          detail: "Split this into a subplan",
+          status: "pending",
+        },
+      ],
+    },
+  });
+
+  const result = await createSubplan({
+    cwd: root,
+    parentTaskName: "demo-task",
+    parentTaskId: 1,
+  });
+
+  assert.equal(result.plan.templateId, "team-subplan-default");
+  assert.equal(result.plan.title, "Implement child work");
+  assert.equal(result.plan.goal.text, "Implement child work: Split this into a subplan");
+  assert.deepEqual(result.plan.configOverride, {
+    goalMode: false,
+    truthDispatch: "final_only",
+  });
+  assert.equal(result.plan.tasks[0]?.title, "Refine the child workflow");
+  assert.equal(result.plan.tasks[1]?.detail, "Move to process.active after refinement.");
+  assert.deepEqual(result.plan.references, [{ path: "docs/subplan-template.md", why: "Subplan template reference" }]);
+  assert.deepEqual(result.plan.rules, ["Follow the project default template for subplans."]);
 });
 
 test("createSubplan always uses planning shape even when project planning is disabled", async () => {
