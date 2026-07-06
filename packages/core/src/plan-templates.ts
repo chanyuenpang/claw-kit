@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { ClawError } from "./errors.js";
@@ -40,6 +41,26 @@ export async function resolveSeedPlanTemplate(params: {
   if (projectTemplate) {
     return projectTemplate;
   }
+  const projectSkillTemplate = params.projectRoot ? await loadProjectSkillPlanTemplate(params.projectRoot, normalized) : null;
+  if (projectSkillTemplate) {
+    return projectSkillTemplate;
+  }
+  const projectPackageTemplate = params.projectRoot ? await loadProjectPackagePlanTemplate(params.projectRoot, normalized) : null;
+  if (projectPackageTemplate) {
+    return projectPackageTemplate;
+  }
+  const globalTemplate = await loadGlobalPlanTemplate(normalized);
+  if (globalTemplate) {
+    return globalTemplate;
+  }
+  const globalSkillTemplate = await loadGlobalSkillPlanTemplate(normalized);
+  if (globalSkillTemplate) {
+    return globalSkillTemplate;
+  }
+  const globalPackageTemplate = await loadGlobalPackagePlanTemplate(normalized);
+  if (globalPackageTemplate) {
+    return globalPackageTemplate;
+  }
   const match = PLAN_TEMPLATES.find((template) =>
     template.id.toLowerCase() === normalized,
   );
@@ -77,7 +98,30 @@ export function validatePlanTemplateSource(
 }
 
 async function loadProjectPlanTemplate(projectRoot: string, normalizedTemplateName: string): Promise<ResolvedPlanTemplate | null> {
-  const templatesDir = path.join(projectRoot, ".claw", "templates");
+  return loadPlanTemplateFromDirectory(path.join(projectRoot, ".claw", "templates"), normalizedTemplateName);
+}
+
+async function loadProjectSkillPlanTemplate(projectRoot: string, normalizedTemplateName: string): Promise<ResolvedPlanTemplate | null> {
+  return loadPlanTemplateFromSkillRoots(resolveProjectSkillRoots(projectRoot), normalizedTemplateName);
+}
+
+async function loadProjectPackagePlanTemplate(projectRoot: string, normalizedTemplateName: string): Promise<ResolvedPlanTemplate | null> {
+  return loadPlanTemplateFromTemplateDirs(resolveProjectPackageTemplateDirs(projectRoot), normalizedTemplateName);
+}
+
+async function loadGlobalPlanTemplate(normalizedTemplateName: string): Promise<ResolvedPlanTemplate | null> {
+  return loadPlanTemplateFromDirectory(path.join(os.homedir(), ".claw", "templates"), normalizedTemplateName);
+}
+
+async function loadGlobalSkillPlanTemplate(normalizedTemplateName: string): Promise<ResolvedPlanTemplate | null> {
+  return loadPlanTemplateFromSkillRoots(resolveGlobalSkillRoots(), normalizedTemplateName);
+}
+
+async function loadGlobalPackagePlanTemplate(normalizedTemplateName: string): Promise<ResolvedPlanTemplate | null> {
+  return loadPlanTemplateFromTemplateDirs(resolveGlobalPackageTemplateDirs(), normalizedTemplateName);
+}
+
+async function loadPlanTemplateFromDirectory(templatesDir: string, normalizedTemplateName: string): Promise<ResolvedPlanTemplate | null> {
   if (!fs.existsSync(templatesDir)) {
     return null;
   }
@@ -98,6 +142,170 @@ async function loadProjectPlanTemplate(projectRoot: string, normalizedTemplateNa
     });
   }
   return resolvePlanTemplateFile(path.join(templatesDir, candidateEntries[0]!));
+}
+
+async function loadPlanTemplateFromTemplateDirs(templateDirs: string[], normalizedTemplateName: string): Promise<ResolvedPlanTemplate | null> {
+  const matches: string[] = [];
+  for (const templateDir of templateDirs) {
+    const match = await loadPlanTemplateFromDirectory(templateDir, normalizedTemplateName);
+    if (match?.templatePath) {
+      matches.push(match.templatePath);
+    }
+  }
+  if (matches.length > 1) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", `Multiple package plan templates matched "${normalizedTemplateName}".`, {
+      templateName: normalizedTemplateName,
+      candidatePaths: matches,
+    });
+  }
+  return matches.length === 1 ? resolvePlanTemplateFile(matches[0]!) : null;
+}
+
+async function loadPlanTemplateFromSkillRoots(skillRoots: string[], normalizedTemplateName: string): Promise<ResolvedPlanTemplate | null> {
+  const matches: { path: string; signature: string }[] = [];
+  for (const skillRoot of skillRoots) {
+    for (const templatePath of collectSkillTemplateFiles(skillRoot)) {
+      const template = await resolvePlanTemplateFile(templatePath);
+      if (template.id.toLowerCase() === normalizedTemplateName) {
+        matches.push({ path: templatePath, signature: signatureForTemplateConflict(template) });
+      }
+    }
+  }
+  if (matches.length > 1) {
+    const uniqueSignatures = new Set(matches.map((match) => match.signature));
+    if (uniqueSignatures.size === 1) {
+      return resolvePlanTemplateFile(matches[0]!.path);
+    }
+    throw new ClawError("PROJECT_CONFIG_INVALID", `Multiple skill-local plan templates matched "${normalizedTemplateName}".`, {
+      templateName: normalizedTemplateName,
+      candidatePaths: matches.map((match) => match.path),
+    });
+  }
+  return matches.length === 1 ? resolvePlanTemplateFile(matches[0]!.path) : null;
+}
+
+function signatureForTemplateConflict(template: ResolvedPlanTemplate): string {
+  const { source: _source, templatePath: _templatePath, ...portableTemplate } = template;
+  return JSON.stringify(portableTemplate);
+}
+
+function resolveProjectSkillRoots(projectRoot: string): string[] {
+  const roots = [path.join(projectRoot, "skills")];
+  const packagesDir = path.join(projectRoot, "packages");
+  if (!fs.existsSync(packagesDir)) {
+    return roots;
+  }
+  for (const entry of fs.readdirSync(packagesDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    roots.push(path.join(packagesDir, entry.name, "skills"));
+  }
+  return roots;
+}
+
+function resolveProjectPackageTemplateDirs(projectRoot: string): string[] {
+  const templateDirs: string[] = [];
+  const packagesDir = path.join(projectRoot, "packages");
+  if (!fs.existsSync(packagesDir)) {
+    return templateDirs;
+  }
+  for (const entry of fs.readdirSync(packagesDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    templateDirs.push(path.join(packagesDir, entry.name, "templates"));
+  }
+  return templateDirs;
+}
+
+function resolveGlobalSkillRoots(): string[] {
+  const homeDir = os.homedir();
+  const roots = [
+    path.join(homeDir, ".agents", "skills"),
+    path.join(homeDir, ".codex", "skills"),
+  ];
+  const cacheRoot = path.join(homeDir, ".codex", "plugins", "cache");
+  if (fs.existsSync(cacheRoot)) {
+    for (const vendor of fs.readdirSync(cacheRoot, { withFileTypes: true })) {
+      if (!vendor.isDirectory()) {
+        continue;
+      }
+      const vendorDir = path.join(cacheRoot, vendor.name);
+      for (const plugin of fs.readdirSync(vendorDir, { withFileTypes: true })) {
+        if (!plugin.isDirectory()) {
+          continue;
+        }
+        const pluginDir = path.join(vendorDir, plugin.name);
+        roots.push(path.join(pluginDir, "skills"));
+        for (const version of fs.readdirSync(pluginDir, { withFileTypes: true })) {
+          if (!version.isDirectory()) {
+            continue;
+          }
+          roots.push(path.join(pluginDir, version.name, "skills"));
+        }
+      }
+    }
+  }
+  return roots;
+}
+
+function resolveGlobalPackageTemplateDirs(): string[] {
+  const homeDir = os.homedir();
+  const templateDirs: string[] = [];
+  const cacheRoot = path.join(homeDir, ".codex", "plugins", "cache");
+  if (!fs.existsSync(cacheRoot)) {
+    return templateDirs;
+  }
+  for (const vendor of fs.readdirSync(cacheRoot, { withFileTypes: true })) {
+    if (!vendor.isDirectory()) {
+      continue;
+    }
+    const vendorDir = path.join(cacheRoot, vendor.name);
+    for (const plugin of fs.readdirSync(vendorDir, { withFileTypes: true })) {
+      if (!plugin.isDirectory()) {
+        continue;
+      }
+      const pluginDir = path.join(vendorDir, plugin.name);
+      templateDirs.push(path.join(pluginDir, "templates"));
+      for (const version of fs.readdirSync(pluginDir, { withFileTypes: true })) {
+        if (!version.isDirectory()) {
+          continue;
+        }
+        templateDirs.push(path.join(pluginDir, version.name, "templates"));
+      }
+    }
+  }
+  return templateDirs;
+}
+
+function collectSkillTemplateFiles(skillRoot: string): string[] {
+  if (!fs.existsSync(skillRoot)) {
+    return [];
+  }
+  const templateFiles: string[] = [];
+  for (const entry of fs.readdirSync(skillRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    const skillDir = path.join(skillRoot, entry.name);
+    for (const candidateName of [
+      "TEMPLATE.json",
+      "TEMPLATE.js",
+      "TEMPLATE.mjs",
+      "TEMPLATE.cjs",
+      "CLAW-TEMPLATE.json",
+      "CLAW-TEMPLATE.js",
+      "CLAW-TEMPLATE.mjs",
+      "CLAW-TEMPLATE.cjs",
+    ]) {
+      const candidatePath = path.join(skillDir, candidateName);
+      if (fs.existsSync(candidatePath)) {
+        templateFiles.push(candidatePath);
+      }
+    }
+  }
+  return templateFiles;
 }
 
 function validatePlanLikeTemplate(raw: unknown, templatePath: string): PlanTemplateDocument {

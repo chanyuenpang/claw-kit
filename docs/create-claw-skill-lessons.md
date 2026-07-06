@@ -66,7 +66,8 @@ That makes references especially important because they can point to:
 
 This keeps the runtime template small while still giving authors enough context.
 
-The converted entry should live in the user's specified skill package, and the generated template should live in that workspace's `.claw/templates` directory.
+The converted entry and generated template should live together in the user's specified skill package.
+Use `SKILL.md` for the thin entry and `TEMPLATE.json` for the claw workflow template.
 
 ## Core Experience From This Rollout
 
@@ -103,21 +104,47 @@ Every generated project claw entry skill should classify the request before ente
 - Active parent-plan task: when execution reaches a task whose description asks to use this claw skill, call `claw subplan create --parent <parent-task-name> --task-id <id> --template <template-id>`.
 - Batch or mixed request: first create a normal root claw plan, split the work into one task per target skill or coherent skill-shaped unit, describe the intended conversion in each task, and defer subplan creation until execution reaches the corresponding task.
 
+The batch or mixed route should remain inside every generated claw skill entry.
+It should be a standard reusable block, not a fresh workflow design for each skill.
+When compiling a skill, substitute the generated skill name, template id, and target-work wording into the standard block.
+
 Subplans are execution-time expansions.
 Root planning should describe the skill intent in the task, while the task execution step instantiates the template subplan.
 
 This keeps single-target skill workflows compact and lets batch or mixed workflows use the same skill templates without turning each skill template into its own batch framework.
 It also prevents the agent from replacing the template workflow with one broad conversion script.
 
-For batch conversion, do not use a single script to convert all targets unless the user explicitly chooses to bypass the claw skill workflow.
-The standard claw path is: root task describes target conversion, task execution creates a `create-claw-skill` subplan, and that subplan performs the individual conversion.
+For batch conversion, keep the root route orchestration-oriented.
+The root plan may define target ordering, naming conventions, shared output boundaries, and batch-level risks.
+Reusable helpers are allowed as implementation aids, but they should not replace each target's execution-time subplan, validation, and content coverage check.
+The standard claw path is: root task runs a `create-claw-skill` subplan for one target, and that subplan performs the individual conversion.
+
+Use a clear root task contract.
+The subtask title and detail should carry the subplan requirement directly; do not rely on only the top-level skill instructions to remind the agent.
+
+Recommended title:
+
+`Run a create-claw-skill subplan, convert <skill-name>`
+
+Recommended detail:
+
+`Goal: run a create-claw-skill subplan to convert <source-skill-path> into a claw skill. This subtask is satisfied by creating and completing that target subplan, not by running the claw skill workflow in the root plan. When executing this task, first run claw subplan create --parent <root-task-name> --task-id <id> --template create-claw-skill, then follow the returned workflowGuidance inside that subplan until the subplan completes. The root plan records the subplan result and marks this task done after the subplan result is incorporated. Keep target-specific source analysis, file edits, template validation, and content coverage inside the target subplan.`
+
+For generated skills, use the generic form:
+
+- title: `Run a <generated-skill-name> subplan, complete <target-work>`
+- detail: `Goal: run the <generated-skill-name> subplan to complete <target-work>. This task is satisfied by creating and completing that target subplan. First run claw subplan create --parent <root-task-name> --task-id <id> --template <template-id>, then follow the returned workflowGuidance inside that subplan until it completes. Record the subplan result in the root plan before marking this task done.`
+
+The root plan should not analyze every source skill or write generated outputs for all targets.
+After creating the per-target task list and any necessary batch-level conventions, it should move quickly into execution and let each task's subplan own the actual conversion.
 
 ## Template Availability For Converted Skills
 
 The generated skill entry is only safe if its template can be resolved where the skill will run.
 
-For project-local skills, `.claw/templates/<template-id>.json` is the correct home.
-For distributable plugin or global skill conversions, keep a template source with the plugin package or build surface and ensure installation copies it into the runtime workspace's `.claw/templates` or another supported template registry.
+For claw skills, prefer skill-local `TEMPLATE.json` beside `SKILL.md`.
+The `id` inside `TEMPLATE.json` is still the value used by `claw plan create --template <template-id>`.
+Use skill-local `TEMPLATE.json` for project-level templates that are not owned by one skill package.
 
 Do not convert an installed/global skill so that its entry points at a template that only exists in the development repository.
 

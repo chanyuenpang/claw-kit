@@ -1,0 +1,172 @@
+{
+  "id": "superpowers-finishing-a-development-branch",
+  "configOverride": {
+    "truthDispatch": "final_only"
+  },
+  "title": "finishing-a-development-branch",
+  "status": "process.active",
+  "goal": {
+    "text": "Complete finished development work through the correct integration menu, with test gating, environment detection, and provenance-aware cleanup."
+  },
+  "requirements": {
+    "summary": "Use this only after implementation is complete and you need to decide whether to merge, open a PR, keep the branch, or discard the work.",
+    "openQuestions": [],
+    "acceptanceCriteria": [
+      "Tests are verified before any integration options are offered.",
+      "The workflow distinguishes normal repo or named-branch worktree from detached HEAD.",
+      "The menu preserves the source option families and their safety constraints.",
+      "Cleanup only happens on the source-approved paths and only when worktree ownership allows it."
+    ]
+  },
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Verify tests before offering any completion options",
+      "detail": "Run the relevant test suite before presenting merge, PR, keep, or discard options. If tests fail, stop and report the failures instead of proceeding.\n\nUse [CLAW-KNOWLEDGE.md](/D:/Users/chany/Documents/claw-kit/packages/codex-adapter/skills/finishing-a-development-branch/CLAW-KNOWLEDGE.md) for the required stop conditions.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "choices": {
+            "tests-pass": {
+              "mergeMode": "override",
+              "summary": "Tests passed; it is safe to move into environment detection.",
+              "nextsteps": [
+                "Determine repo and worktree state before presenting choices.",
+                "Do not skip the environment branch."
+              ],
+              "nextTaskId": 2,
+              "delegateTruth": false
+            },
+            "tests-failing-stop": {
+              "mergeMode": "override",
+              "summary": "Closeout is blocked until the failing tests are fixed.",
+              "nextsteps": [
+                "Show the failures clearly.",
+                "Do not offer merge or PR paths yet."
+              ],
+              "nextTaskId": 4,
+              "delegateTruth": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Detect environment and resolve the menu shape",
+      "detail": "Determine whether this is a normal repo, a named-branch worktree, or a detached-HEAD worktree. That decision controls which menu can be shown and whether cleanup is ever allowed.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "choices": {
+            "standard-menu": {
+              "mergeMode": "override",
+              "summary": "Use the four-option source menu.",
+              "nextsteps": [
+                "Resolve the base branch if merge is possible.",
+                "Present the exact standard menu without extra explanation."
+              ],
+              "nextTaskId": 3,
+              "delegateTruth": false
+            },
+            "detached-head-menu": {
+              "mergeMode": "override",
+              "summary": "Use the reduced detached-HEAD menu with no local merge option.",
+              "nextsteps": [
+                "Do not offer local merge.",
+                "Present the exact reduced menu."
+              ],
+              "nextTaskId": 3,
+              "delegateTruth": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Resolve base branch if needed and record the user's option",
+      "detail": "If local merge is available, determine or confirm the base branch. Then present the exact source menu and record the user's selected path.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "choices": {
+            "merge-locally": {
+              "mergeMode": "override",
+              "summary": "The user chose local merge.",
+              "nextsteps": [
+                "Merge first, verify the merged result, then clean up if ownership rules permit."
+              ],
+              "nextTaskId": 4,
+              "delegateTruth": false
+            },
+            "push-and-pr": {
+              "mergeMode": "override",
+              "summary": "The user chose push and PR creation.",
+              "nextsteps": [
+                "Push the branch and create the PR.",
+                "Preserve the worktree for future iteration."
+              ],
+              "nextTaskId": 4,
+              "delegateTruth": false
+            },
+            "keep-as-is": {
+              "mergeMode": "override",
+              "summary": "The user chose to keep the branch as-is.",
+              "nextsteps": [
+                "Report the preserved branch and worktree path.",
+                "Do not clean up the workspace."
+              ],
+              "nextTaskId": 4,
+              "delegateTruth": false
+            },
+            "discard": {
+              "mergeMode": "override",
+              "summary": "The user chose the discard path, which requires explicit confirmation.",
+              "nextsteps": [
+                "Require typed discard confirmation before deleting anything.",
+                "Only then apply cleanup and branch deletion in the correct order."
+              ],
+              "nextTaskId": 4,
+              "delegateTruth": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Execute the selected path with the correct cleanup rules",
+      "detail": "If tests failed, stop and report that closeout cannot continue. Otherwise execute the selected option safely: merge and re-verify before cleanup, push and create PR while preserving the worktree, keep the branch untouched, or require typed `discard` confirmation before destructive cleanup. Only remove worktrees for merge or discard, only from the main repo root, and only when the worktree path proves this workflow owns it.",
+      "status": "pending"
+    }
+  ],
+  "references": [
+    {
+      "path": "packages/codex-adapter/skills/finishing-a-development-branch/CLAW-KNOWLEDGE.md",
+      "why": "Preserves the exact branch families, safety rules, and cleanup ownership checks from the source skill."
+    },
+    {
+      "path": "packages/codex-adapter/skills/finishing-a-development-branch/SUPERPOWERS-FALLBACK.md",
+      "why": "Keeps the full original command examples, menu wording, and cleanup details beside the converted entry."
+    },
+    {
+      "path": "packages/codex-adapter/skills/finishing-a-development-branch/CONTENT-COVERAGE.md",
+      "why": "Maps source information to the converted homes for verification and maintenance."
+    }
+  ],
+  "rules": [
+    "Do not offer integration options before test verification succeeds.",
+    "Do not continue past failing tests; stop and report them.",
+    "Detect environment before presenting the menu, and preserve the exact detached-HEAD restriction.",
+    "Present the exact option families from the source workflow rather than an open-ended question.",
+    "Do not delete work without typed discard confirmation.",
+    "Do not clean up the worktree for PR or keep-as-is paths.",
+    "Do not remove host-owned worktrees or run worktree removal from inside the worktree being removed.",
+    "Re-verify tests on the merged result before branch deletion on the local-merge path."
+  ],
+  "keyDecisions": [],
+  "retrospective": {
+    "summary": ""
+  }
+}

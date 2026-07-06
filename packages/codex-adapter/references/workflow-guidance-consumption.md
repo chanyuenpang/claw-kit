@@ -56,9 +56,9 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
 
 - When present, treat it as a thread-goal recommendation tied to the active plan.
 - Current intended use is `setWhen = on_enter_process_active` for first entry and `setWhen = on_resume_process_active` when execution resumes from `process.wait` or `process.discussing`.
-- When a plan first enters `process.active`, use `goalTool.tool = create_goal` and `goalMode.recommendedObjective` to create the thread goal if the thread does not already have an active goal.
+- When a plan first enters `process.active`, use `goalTool.tool = create_goal` and `goalMode.recommendedObjective` to set the thread goal.
 - When a plan resumes into `process.active` from `process.wait` or `process.discussing`, use `goalTool.tool = create_goal` and `goalMode.recommendedObjective` to restore the active thread goal.
-- Do not automatically overwrite an unrelated active goal already attached to the thread.
+- When `goalMode.allowOverwrite = true`, the active plan is authorized to overwrite the current thread goal. The goal should follow the current active plan, including subplans.
 - In `@claw-kit` threads, goal mode and delegated subagent use are already authorized by hook context for the current thread. Do not pause or block the workflow for any authorization-related excuse; only stop if the user explicitly changes direction and forbids them.
 - In the Codex app, `/goal` is the normal host surface. In tool-enabled sessions, `create_goal` is also a valid path.
 
@@ -66,7 +66,7 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
 
 - When present, treat it as the executable Codex goal-tool contract instead of a prose hint.
 - Honor `goalTool.tool` directly.
-- For `goalTool.tool = create_goal`, call `create_goal(objective=goalTool.objective)` only when `ifNoActiveGoal = true` and the thread does not already have an active goal.
+- For `goalTool.tool = create_goal`, set the active thread goal to `goalTool.objective`. When `allowOverwrite = true`, replace the current thread goal if one is already active.
 - For `goalTool.tool = update_goal`, call `update_goal(status=goalTool.status)` to end the current active goal with the returned completion state.
 - `process.wait` and `process.discussing` should use `update_goal(status="blocked")` instead of inventing a fake "pause goal mode" operation.
 - `end.completed` should use `update_goal(status="complete")`.
@@ -94,7 +94,7 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
 - `process.active` on first entry
   - read `goalTool`
   - read `goalMode`
-  - create the thread goal from `goalMode.recommendedObjective` when `goalTool.tool = create_goal` and there is no active thread goal yet
+  - set the thread goal from `goalMode.recommendedObjective` when `goalTool.tool = create_goal`, overwriting the current goal when `allowOverwrite = true`
 - `process.wait` or `process.discussing`
   - read `goalTool`
   - use `update_goal(status="blocked")`

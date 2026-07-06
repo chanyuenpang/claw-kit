@@ -88,6 +88,6 @@ Truth-value judgment stays on the main agent side. If there is no reusable truth
 - Low-complexity requests skip the claw workflow before `claw plan create`, so they do not produce `workflowGuidance`.
 - `claw search` runs after a new `claw plan create` when project recall is relevant. Search uses natural language and prefers the user's language.
 - Whenever claw returns `workflowGuidance`, follow it instead of inventing a parallel process.
-- When `workflowGuidance.goalTool` is present, execute the real Codex goal tool contract it returns. Use `create_goal` for active execution entry when no active goal exists, and use `update_goal(status=complete|blocked)` for lifecycle exits that close the current goal.
+- When `workflowGuidance.goalTool` is present, execute the real Codex goal tool contract it returns. Use `create_goal` for active execution entry and allow returned goal guidance to overwrite the current thread goal; use `update_goal(status=complete|blocked)` for lifecycle exits that close the current goal.
 - Reuse the existing `truth-writer` when possible; otherwise dispatch a new one.
 - Run ADR deposition from the `all tasks done` guidance before root `claw plan done`.

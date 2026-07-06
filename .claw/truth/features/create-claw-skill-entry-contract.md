@@ -15,7 +15,7 @@ Accepted working truth for the current template-backed skill conversion path.
 - 如果请求已经显式命中了模板化 workflow skill，`packages/codex-adapter/skills/using-claw-kit/SKILL.md` 和 `packages/opencode-adapter/skills/using-claw-kit/SKILL.md` 中的通用 complexity gate 不应抢占入口。
 - 模板里的第 1 个 task 应该只承担快速 route choice；当请求已经足够明确时，应直接选 `simple`、`routing` 或 `idea-first` 之一，不要把 task 1 拉长成设计评审。
 - 入口 skill 的职责是把请求尽快送入 template flow，并保留 non-claw fallback 的可读性；模板本身再负责后续 workflow control、branching 和 config override。
-- 生成出来的 template 仍然落在当前 workspace 的 `.claw/templates/` 目录里；完成后应使用 `claw template validate --template <template-id>` 做真实校验。
+- 生成出来的 template 仍然落在对应 skill package 的 `TEMPLATE.json` 中；完成后应使用 `claw template validate --template <template-id>` 做真实校验。
 
 ## 标准入口路由
 

@@ -1,0 +1,180 @@
+{
+  "id": "superpowers-systematic-debugging",
+  "configOverride": {
+    "truthDispatch": "final_only"
+  },
+  "title": "systematic-debugging",
+  "status": "process.active",
+  "goal": {
+    "text": "Debug technical issues through a root-cause-first four-phase workflow instead of guessing at fixes."
+  },
+  "requirements": {
+    "summary": "Use this before proposing fixes for bugs, test failures, build failures, integration issues, or other unexpected technical behavior.",
+    "openQuestions": [],
+    "acceptanceCriteria": [
+      "No fix is proposed before root cause investigation is completed.",
+      "The workflow preserves Phase 1 through Phase 4 in order.",
+      "Repeated failed fixes route back to investigation or architecture questioning instead of more guesswork.",
+      "Implementation includes a failing test or minimal reproduction and post-fix verification."
+    ]
+  },
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Confirm that this issue must go through systematic debugging",
+      "detail": "Use this for bugs, test failures, build failures, integration issues, performance problems, and other unexpected behavior before any fix is proposed. Commit to the iron law: no fixes without root-cause investigation first.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "choices": {
+            "debug-systematically": {
+              "mergeMode": "override",
+              "summary": "Proceed into the formal root-cause investigation phases.",
+              "nextsteps": [
+                "Do not propose fixes yet.",
+                "Start with evidence gathering and reproducibility."
+              ],
+              "nextTaskId": 2,
+              "delegateTruth": false
+            },
+            "not-a-debugging-issue": {
+              "mergeMode": "override",
+              "summary": "This issue should be routed to a different workflow.",
+              "nextsteps": [
+                "Do not pretend this is systematic debugging if the task is actually something else."
+              ],
+              "nextTaskId": 4,
+              "delegateTruth": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Complete Phase 1 root-cause investigation",
+      "detail": "Read errors carefully, reproduce consistently, check recent changes, instrument multi-component boundaries when needed, and trace the failing data or state back toward its source. Use [root-cause-tracing.md](/D:/Users/chany/Documents/claw-kit/packages/codex-adapter/skills/systematic-debugging/root-cause-tracing.md) when the error is deep in the call stack.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "default": {
+            "mergeMode": "override",
+            "summary": "Root-cause investigation is complete enough to compare against working patterns.",
+            "nextsteps": [
+              "Move into pattern analysis and single-hypothesis testing.",
+              "Still do not implement broad fixes."
+            ],
+            "nextTaskId": 3,
+            "delegateTruth": false
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Complete Phase 2 and Phase 3 before attempting a fix",
+      "detail": "Find working examples, compare against references completely, identify differences, understand dependencies, form a single hypothesis, and test it minimally. If the hypothesis fails, return to investigation instead of stacking more fixes.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "choices": {
+            "hypothesis-confirmed": {
+              "mergeMode": "override",
+              "summary": "A root-cause hypothesis is strong enough to implement and verify a focused fix.",
+              "nextsteps": [
+                "Create the failing test or minimal reproduction before implementing."
+              ],
+              "nextTaskId": 4,
+              "delegateTruth": false
+            },
+            "need-more-investigation": {
+              "mergeMode": "override",
+              "summary": "The hypothesis is not strong enough yet.",
+              "nextsteps": [
+                "Return to investigation with the new evidence.",
+                "Do not stack more fixes."
+              ],
+              "nextTaskId": 2,
+              "delegateTruth": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Implement Phase 4 carefully and stop when the architecture is the real issue",
+      "detail": "Create a failing test or minimal reproduction, implement a single root-cause fix, and verify the result. If the fix fails and you are still under three attempts, return to investigation. If three or more fixes have failed or each fix reveals new coupling elsewhere, stop and question the architecture with the human instead of attempting another blind fix.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "choices": {
+            "fix-verified": {
+              "mergeMode": "override",
+              "summary": "The root-cause fix is verified and the issue is resolved without regressions.",
+              "nextsteps": [],
+              "delegateTruth": false
+            },
+            "return-to-investigation": {
+              "mergeMode": "override",
+              "summary": "The attempted fix did not hold and more evidence is needed.",
+              "nextsteps": [
+                "Return to Phase 1 with the new information."
+              ],
+              "nextTaskId": 2,
+              "delegateTruth": false
+            },
+            "question-architecture": {
+              "mergeMode": "override",
+              "summary": "Repeated failed fixes indicate an architectural problem rather than a normal debugging miss.",
+              "nextsteps": [
+                "Stop trying more fixes.",
+                "Discuss the architecture problem with the human."
+              ],
+              "delegateTruth": false
+            }
+          }
+        }
+      }
+    }
+  ],
+  "references": [
+    {
+      "path": "packages/codex-adapter/skills/systematic-debugging/CLAW-KNOWLEDGE.md",
+      "why": "Preserves the four phases, hard stop rules, architecture-escalation logic, and partner redirection signals from the source skill."
+    },
+    {
+      "path": "packages/codex-adapter/skills/systematic-debugging/SUPERPOWERS-FALLBACK.md",
+      "why": "Keeps the full original multi-layer debugging examples, red-flag explanations, and rationalization table beside the converted entry."
+    },
+    {
+      "path": "packages/codex-adapter/skills/systematic-debugging/CONTENT-COVERAGE.md",
+      "why": "Maps source information to the converted homes for verification and maintenance."
+    },
+    {
+      "path": "packages/codex-adapter/skills/systematic-debugging/root-cause-tracing.md",
+      "why": "Supporting technique explicitly referenced by the source for deep call-stack debugging."
+    },
+    {
+      "path": "packages/codex-adapter/skills/systematic-debugging/defense-in-depth.md",
+      "why": "Supporting technique for post-root-cause hardening preserved from the source skill."
+    },
+    {
+      "path": "packages/codex-adapter/skills/systematic-debugging/condition-based-waiting.md",
+      "why": "Supporting technique for replacing arbitrary timeouts preserved from the source skill."
+    }
+  ],
+  "rules": [
+    "Do not propose or implement fixes before Phase 1 root-cause investigation is complete.",
+    "Do not bundle multiple fixes into one attempt.",
+    "Do not skip the failing test or minimal reproduction before implementation when feasible.",
+    "Do not confuse symptoms with root cause.",
+    "Do not continue guess-and-check debugging after repeated failed fixes without questioning the architecture.",
+    "Use evidence gathering and data-flow tracing for multi-component or deep-stack issues instead of intuition-only debugging.",
+    "Treat red-flag thoughts like 'quick fix for now' or 'just try X' as a signal to stop and return to the process."
+  ],
+  "keyDecisions": [],
+  "retrospective": {
+    "summary": ""
+  }
+}

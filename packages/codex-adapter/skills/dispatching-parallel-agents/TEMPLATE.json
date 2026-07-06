@@ -1,0 +1,116 @@
+{
+  "id": "superpowers-dispatching-parallel-agents",
+  "configOverride": {
+    "truthDispatch": "final_only"
+  },
+  "title": "dispatching-parallel-agents",
+  "status": "process.active",
+  "goal": {
+    "text": "Split genuinely independent work across focused agents while preserving safe scoping and integration review."
+  },
+  "requirements": {
+    "summary": "Use parallel delegation only when multiple tasks are independent enough to benefit from concurrent agents.",
+    "openQuestions": [],
+    "acceptanceCriteria": [
+      "The workflow distinguishes related vs independent domains before dispatching.",
+      "The workflow distinguishes parallel-safe vs sequential-only delegation.",
+      "Each agent prompt is focused, self-contained, and explicit about outputs.",
+      "Returned work is reviewed and integrated before completion is claimed."
+    ]
+  },
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Identify independent domains and choose the dispatch mode",
+      "detail": "Assess the current failures or tasks, group them by domain, and decide whether they should be handled together, sequentially, or in parallel.\n\nUse [CLAW-KNOWLEDGE.md](/D:/Users/chany/Documents/claw-kit/packages/codex-adapter/skills/dispatching-parallel-agents/CLAW-KNOWLEDGE.md) for the canonical branching rules.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "choices": {
+            "parallel": {
+              "mergeMode": "override",
+              "summary": "The domains are independent and safe for parallel dispatch.",
+              "nextsteps": [
+                "Create one focused agent task per domain.",
+                "Keep scopes disjoint before dispatching."
+              ],
+              "nextTaskId": 2,
+              "delegateTruth": false
+            },
+            "sequential": {
+              "mergeMode": "override",
+              "summary": "The domains are distinct but should not run concurrently.",
+              "nextsteps": [
+                "Still split by domain, but do not dispatch them at the same time.",
+                "Preserve the same prompt quality requirements."
+              ],
+              "nextTaskId": 2,
+              "delegateTruth": false
+            },
+            "investigate-together": {
+              "mergeMode": "override",
+              "summary": "The work likely shares a root cause and should be investigated together.",
+              "nextsteps": [
+                "Do not fan out into parallel agents yet.",
+                "Keep the work in one coordinated investigation until the root cause boundary is clearer."
+              ],
+              "nextTaskId": 2,
+              "delegateTruth": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Design focused agent prompts and dispatch safely",
+      "detail": "For each chosen domain, write a narrow, self-contained prompt with context, constraints, and expected output. Then dispatch according to the chosen mode.\n\nDo not use vague or broad prompts such as \"fix everything\".",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "default": {
+            "mergeMode": "override",
+            "summary": "Dispatch phase completed; proceed to review and integration.",
+            "nextsteps": [
+              "Read each summary carefully.",
+              "Check whether any returned changes overlap or conflict before integrating them."
+            ],
+            "nextTaskId": 3,
+            "delegateTruth": false
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Review, integrate, and verify the returned work",
+      "detail": "Review what each agent returned, integrate the non-conflicting work, and run the appropriate verification after integration.\n\nThis step must preserve the source skill's emphasis on conflict checks and full-suite or relevant verification after dispatch.",
+      "status": "pending"
+    }
+  ],
+  "references": [
+    {
+      "path": "packages/codex-adapter/skills/dispatching-parallel-agents/CLAW-KNOWLEDGE.md",
+      "why": "Preserves the decision tree, prompt-shape requirements, and anti-patterns for the converted skill."
+    },
+    {
+      "path": "packages/codex-adapter/skills/dispatching-parallel-agents/SUPERPOWERS-FALLBACK.md",
+      "why": "Keeps the full original superpowers explanations and worked example beside the claw entry."
+    },
+    {
+      "path": "packages/codex-adapter/skills/dispatching-parallel-agents/agents/openai.yaml",
+      "why": "The copied agent descriptor remains part of the converted skill package."
+    }
+  ],
+  "rules": [
+    "Do not dispatch in parallel until independence is established.",
+    "Do not split related failures across multiple agents just because there are several failing tests.",
+    "Each agent prompt must be focused, self-contained, and explicit about expected output.",
+    "Review and integrate returned work before claiming success.",
+    "Use SUPERPOWERS-FALLBACK.md whenever exact source wording or the worked example matters."
+  ],
+  "keyDecisions": [],
+  "retrospective": {
+    "summary": ""
+  }
+}

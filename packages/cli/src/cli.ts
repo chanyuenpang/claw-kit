@@ -1220,6 +1220,10 @@ function compactPlanCommandResult(
       suggestions: string[];
       completionPolicy: string;
     };
+    previousPlanStatus?: string;
+    emittedEvents?: string[];
+    changedTaskIds?: number[];
+    appendedTaskIds?: number[];
   },
   completionRefresh?: CompletionRefreshResult,
   ): Record<string, unknown> {
@@ -1236,6 +1240,10 @@ function compactPlanCommandResult(
       planPath: resolvedPlanPath,
       ...(archivedPlanPath ? { archivedPlanPath } : {}),
       planStatus: result.planStatus,
+      ...(result.previousPlanStatus ? { previousPlanStatus: result.previousPlanStatus } : {}),
+      ...(result.emittedEvents?.length ? { emittedEvents: result.emittedEvents } : {}),
+      ...(result.changedTaskIds?.length ? { changedTaskIds: result.changedTaskIds } : {}),
+      ...(result.appendedTaskIds?.length ? { appendedTaskIds: result.appendedTaskIds } : {}),
       nextsteps: result.workflowGuidance.nextsteps,
       ...(result.workflowGuidance.nextTask ? { nextTask: result.workflowGuidance.nextTask } : {}),
       ...(result.workflowGuidance.delegateSubagents?.length

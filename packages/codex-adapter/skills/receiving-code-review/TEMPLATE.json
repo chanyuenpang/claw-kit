@@ -1,0 +1,162 @@
+{
+  "id": "superpowers-receiving-code-review",
+  "configOverride": {
+    "truthDispatch": "final_only"
+  },
+  "title": "receiving-code-review",
+  "status": "process.active",
+  "goal": {
+    "text": "Handle review feedback with verification-first rigor, explicit clarification gates, and technically grounded response paths."
+  },
+  "requirements": {
+    "summary": "Use this before implementing review feedback, especially when the feedback is unclear, external, or potentially questionable for the current codebase.",
+    "openQuestions": [],
+    "acceptanceCriteria": [
+      "The workflow reads and understands feedback before implementation starts.",
+      "Unclear items stop the workflow until clarification is obtained.",
+      "External or questionable feedback is verified and evaluated before acceptance.",
+      "Implementation happens one item at a time with testing and no performative agreement."
+    ]
+  },
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Read the feedback fully and decide whether clarification is required",
+      "detail": "Read the complete feedback without reacting performatively, restate the request in your own words, and decide whether every item is clear enough to continue.\n\nUse [CLAW-KNOWLEDGE.md](/D:/Users/chany/Documents/claw-kit/packages/codex-adapter/skills/receiving-code-review/CLAW-KNOWLEDGE.md) for the stop rules around unclear items.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "choices": {
+            "all-clear": {
+              "mergeMode": "override",
+              "summary": "The feedback is understood well enough to verify against the codebase.",
+              "nextsteps": [
+                "Move into codebase verification.",
+                "Keep the anti-performative rule active."
+              ],
+              "nextTaskId": 2,
+              "delegateTruth": false
+            },
+            "needs-clarification": {
+              "mergeMode": "override",
+              "summary": "Stop before implementation and ask for clarification on all unclear items.",
+              "nextsteps": [
+                "Do not implement the clear items first.",
+                "Return after the missing context is resolved."
+              ],
+              "nextTaskId": 4,
+              "delegateTruth": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Verify the suggestion against codebase reality and classify the source",
+      "detail": "Check the relevant code, tests, architecture, and usage reality. Decide whether the feedback is trusted partner guidance or external reviewer feedback that needs deeper skepticism, compatibility checks, or YAGNI validation.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "choices": {
+            "trusted-feedback": {
+              "mergeMode": "override",
+              "summary": "The feedback is understood and technically sound for this codebase.",
+              "nextsteps": [
+                "Respond technically or move directly into the fix path.",
+                "Still avoid performative agreement."
+              ],
+              "nextTaskId": 3,
+              "delegateTruth": false
+            },
+            "external-feedback": {
+              "mergeMode": "override",
+              "summary": "The feedback came from an external reviewer and must be checked more skeptically.",
+              "nextsteps": [
+                "Evaluate correctness, compatibility, context, and YAGNI.",
+                "Be ready to push back or escalate if needed."
+              ],
+              "nextTaskId": 3,
+              "delegateTruth": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Choose the response path: implement, push back, or escalate",
+      "detail": "Based on verification, decide whether to acknowledge technically and implement, give reasoned pushback, or stop for partner discussion because the suggestion conflicts with architecture, context, or prior decisions.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "choices": {
+            "acknowledge-and-implement": {
+              "mergeMode": "override",
+              "summary": "The feedback is correct and ready for implementation.",
+              "nextsteps": [
+                "Implement one item at a time.",
+                "Test each fix and verify no regressions."
+              ],
+              "nextTaskId": 4,
+              "delegateTruth": false
+            },
+            "reasoned-pushback": {
+              "mergeMode": "override",
+              "summary": "The suggestion should be challenged with technical reasoning.",
+              "nextsteps": [
+                "Reference the codebase evidence clearly.",
+                "Do not lapse into defensive or emotional language."
+              ],
+              "nextTaskId": 4,
+              "delegateTruth": false
+            },
+            "stop-for-partner-discussion": {
+              "mergeMode": "override",
+              "summary": "The feedback conflicts with broader decisions and needs partner alignment first.",
+              "nextsteps": [
+                "State the conflict precisely.",
+                "Pause implementation until direction is resolved."
+              ],
+              "nextTaskId": 4,
+              "delegateTruth": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Implement carefully or stop cleanly according to the chosen path",
+      "detail": "If clarification is needed, stop and ask before implementing anything. If implementing, do it one review item at a time and test each change. If pushing back, do it with technical reasoning and evidence. If replying on GitHub, reply in the inline review thread rather than a top-level PR comment.",
+      "status": "pending"
+    }
+  ],
+  "references": [
+    {
+      "path": "packages/codex-adapter/skills/receiving-code-review/CLAW-KNOWLEDGE.md",
+      "why": "Preserves the trust model, pushback criteria, anti-performative rules, and YAGNI checks from the source skill."
+    },
+    {
+      "path": "packages/codex-adapter/skills/receiving-code-review/SUPERPOWERS-FALLBACK.md",
+      "why": "Keeps the full original examples, wording nuance, and response-shape guidance beside the converted entry."
+    },
+    {
+      "path": "packages/codex-adapter/skills/receiving-code-review/CONTENT-COVERAGE.md",
+      "why": "Maps source information to the converted homes for verification and maintenance."
+    }
+  ],
+  "rules": [
+    "Do not implement review feedback before it has been understood and verified.",
+    "Do not partially implement multi-item feedback when any item is still unclear.",
+    "Do not use performative agreement phrases such as 'You're absolutely right' or 'Great point'.",
+    "Treat external review feedback as suggestions to evaluate, not orders to obey.",
+    "Push back with technical reasoning when the suggestion is wrong, harmful, YAGNI-heavy, or architecturally inconsistent.",
+    "Implement one review item at a time and test each change.",
+    "If replying on GitHub inline review, reply in the comment thread rather than as a top-level PR comment."
+  ],
+  "keyDecisions": [],
+  "retrospective": {
+    "summary": ""
+  }
+}

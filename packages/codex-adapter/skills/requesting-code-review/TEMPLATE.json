@@ -1,0 +1,160 @@
+{
+  "id": "superpowers-requesting-code-review",
+  "configOverride": {
+    "truthDispatch": "final_only"
+  },
+  "title": "requesting-code-review",
+  "status": "process.active",
+  "goal": {
+    "text": "Request focused code review at the right checkpoint, scope it to the actual diff, and act on feedback by severity before moving on."
+  },
+  "requirements": {
+    "summary": "Use this when work is ready for review and you need to verify it meets requirements before more work compounds or before merge.",
+    "openQuestions": [],
+    "acceptanceCriteria": [
+      "The workflow decides whether review is mandatory or strategically valuable at the current checkpoint.",
+      "The reviewer receives an explicit diff boundary and focused work-product context.",
+      "Returned feedback is handled by severity before forward progress continues.",
+      "Incorrect reviewer feedback can be challenged with evidence instead of being followed blindly."
+    ]
+  },
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Confirm that this checkpoint should trigger review",
+      "detail": "Decide whether review is mandatory here or strongly valuable now: after a subagent-driven task, after a major feature, before merge, when stuck, before refactor, or after a complex bug fix.\n\nUse [CLAW-KNOWLEDGE.md](/D:/Users/chany/Documents/claw-kit/packages/codex-adapter/skills/requesting-code-review/CLAW-KNOWLEDGE.md) for the timing rules.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "choices": {
+            "review-now": {
+              "mergeMode": "override",
+              "summary": "This is a valid checkpoint for code review.",
+              "nextsteps": [
+                "Set the review diff boundary.",
+                "Prepare a focused reviewer prompt."
+              ],
+              "nextTaskId": 2,
+              "delegateTruth": false
+            },
+            "review-not-needed-yet": {
+              "mergeMode": "override",
+              "summary": "This checkpoint does not justify review yet.",
+              "nextsteps": [
+                "Record why review is being deferred.",
+                "Return at the next meaningful checkpoint."
+              ],
+              "nextTaskId": 4,
+              "delegateTruth": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Capture the review boundary and context",
+      "detail": "Determine the correct `BASE_SHA` and `HEAD_SHA`, summarize what changed, and gather the plan or requirements that the reviewer should use as evaluation criteria.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "default": {
+            "mergeMode": "override",
+            "summary": "Review boundary and context are ready for reviewer dispatch.",
+            "nextsteps": [
+              "Use the reviewer asset and pass only focused work-product context.",
+              "Do not leak irrelevant session-history sprawl."
+            ],
+            "nextTaskId": 3,
+            "delegateTruth": false
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Dispatch the reviewer and classify the returned feedback",
+      "detail": "Send the focused reviewer request using the adjacent `code-reviewer.md` asset, then classify the response by severity: critical, important, minor, or incorrect reviewer conclusion.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "choices": {
+            "fix-critical": {
+              "mergeMode": "override",
+              "summary": "Critical issues were found and must be fixed immediately.",
+              "nextsteps": [
+                "Do not proceed until the critical issues are resolved."
+              ],
+              "nextTaskId": 4,
+              "delegateTruth": false
+            },
+            "fix-important": {
+              "mergeMode": "override",
+              "summary": "Important issues were found and should be fixed before proceeding.",
+              "nextsteps": [
+                "Apply the important fixes before resuming later work."
+              ],
+              "nextTaskId": 4,
+              "delegateTruth": false
+            },
+            "note-minor": {
+              "mergeMode": "override",
+              "summary": "Only minor issues were found.",
+              "nextsteps": [
+                "Record the minor issues for later or clean them up now if cheap."
+              ],
+              "nextTaskId": 4,
+              "delegateTruth": false
+            },
+            "push-back": {
+              "mergeMode": "override",
+              "summary": "The reviewer appears to be wrong and needs an evidence-based pushback.",
+              "nextsteps": [
+                "Use code or tests to justify the disagreement."
+              ],
+              "nextTaskId": 4,
+              "delegateTruth": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Act on the review outcome before moving on",
+      "detail": "If review is deferred, record why. If critical or important issues were found, fix them before forward progress continues. If only minor issues exist, note or schedule them appropriately. If the reviewer is wrong, push back with technical reasoning and evidence.",
+      "status": "pending"
+    }
+  ],
+  "references": [
+    {
+      "path": "packages/codex-adapter/skills/requesting-code-review/CLAW-KNOWLEDGE.md",
+      "why": "Preserves review timing, SHA scoping, severity handling, and reviewer-context constraints from the source skill."
+    },
+    {
+      "path": "packages/codex-adapter/skills/requesting-code-review/SUPERPOWERS-FALLBACK.md",
+      "why": "Keeps the full original example review loop and long-form explanation beside the converted entry."
+    },
+    {
+      "path": "packages/codex-adapter/skills/requesting-code-review/CONTENT-COVERAGE.md",
+      "why": "Maps source information to the converted homes for verification and maintenance."
+    },
+    {
+      "path": "packages/codex-adapter/skills/requesting-code-review/code-reviewer.md",
+      "why": "Reviewer prompt asset referenced by the source skill and preserved as part of the converted package."
+    }
+  ],
+  "rules": [
+    "Do not skip review merely because the work looks simple.",
+    "Set an explicit review boundary before dispatching the reviewer.",
+    "Pass focused work-product context to the reviewer instead of broad session history.",
+    "Fix critical issues immediately.",
+    "Do not proceed past important issues that should block forward progress.",
+    "Do not ignore valid technical feedback.",
+    "If the reviewer is wrong, push back with code, tests, or other technical reasoning."
+  ],
+  "keyDecisions": [],
+  "retrospective": {
+    "summary": ""
+  }
+}

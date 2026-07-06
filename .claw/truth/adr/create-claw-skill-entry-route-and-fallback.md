@@ -23,7 +23,7 @@ Accepted
 - 单目标请求的最短路径是 `claw plan create --template <template-id>`。
 - Active parent-plan task 在执行到达时应使用 `claw subplan create --parent <parent-task-name> --task-id <id> --template <template-id>`。
 - Batch 或 mixed request 应先创建正常 root claw plan，再在对应 task execution 时实例化 template subplan。
-- 生成出来的 template 仍然落在当前 workspace 的 `.claw/templates/` 目录里，并要用 `claw template validate --template <template-id>` 做最终校验。
+- 生成出来的 template 仍然落在对应 skill package 的 `TEMPLATE.json` 中，并要用 `claw template validate --template <template-id>` 做最终校验。
 
 ## Consequences
 

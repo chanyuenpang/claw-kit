@@ -178,7 +178,7 @@ export type WorkflowGuidanceGoalTool =
   | {
       tool: "create_goal";
       objective: string;
-      ifNoActiveGoal: true;
+      allowOverwrite: true;
       reason: string;
     }
   | {
@@ -513,6 +513,7 @@ export type PlanEditResult = {
   previousPlanStatus: PlanStatus;
   emittedEvents: string[];
   changedTaskIds: number[];
+  appendedTaskIds: number[];
   planReview?: PlanReviewResult;
   completionHooks?: PlanCompletionHooks;
   workflowGuidance: WorkflowGuidance;

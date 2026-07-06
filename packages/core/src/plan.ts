@@ -175,6 +175,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
   const previousStatus = previous.status;
   const events: PlanEvent[] = [];
   const changedTaskIds: number[] = [];
+  const appendedTaskIds: number[] = [];
   const completedTaskIds: number[] = [];
   const next = structuredClone(previous);
   const requestedStatus = input.planStatus ? normalizePlanStatus(input.planStatus) : undefined;
@@ -204,6 +205,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
       validatePlanTask(taskItem);
       next.tasks.push(taskItem);
       currentIds.add(taskItem.id);
+      appendedTaskIds.push(taskItem.id);
     }
   }
 
@@ -266,6 +268,19 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
   }
 
   withFileLock(planPath, () => {
+    const current = normalizePlanDocument(readJsonFile<PlanDocument>(planPath));
+    if (!plansMatch(current, previous)) {
+      throw new ClawError(
+        "PLAN_STALE_EDIT",
+        `Plan "${planFile}" changed after this edit command read it. Re-run the edit after inspecting the latest plan state.`,
+        {
+          taskName: task.taskName,
+          planFile,
+          planPath,
+          suggestedCommand: `claw plan show --task ${task.taskName}${planFile === "plan.json" ? "" : ` --plan ${planFile}`}`,
+        },
+      );
+    }
     writeJsonFile(planPath, next);
   });
   task.meta.activePlan = planFile;
@@ -334,6 +349,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
     previousPlanStatus: previousStatus,
     emittedEvents: events.map((event) => event.type),
     changedTaskIds,
+    appendedTaskIds,
     ...(completionHooks ? { completionHooks } : {}),
     workflowGuidance: await buildPlanWorkflowGuidance({
       taskName: task.taskName,
@@ -454,6 +470,10 @@ function normalizePlanRequirements(requirements: PlanDocument["requirements"]): 
   };
 }
 
+function plansMatch(left: PlanDocument, right: PlanDocument): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 function normalizePlanTasks(tasks: PlanTask[], startId = 1): PlanTask[] {
   const explicitIds = tasks
     .map((task) => task.id)
@@ -488,6 +508,7 @@ function normalizePlanTask(task: PlanTask, fallbackId?: number): PlanTask {
   const normalizedTask: PlanTask = {
     ...task,
     id: Number.isInteger(task.id) ? task.id : fallbackId ?? task.id,
+    status: task.status ?? "pending",
   };
   validatePlanTask(normalizedTask);
   return normalizedTask;

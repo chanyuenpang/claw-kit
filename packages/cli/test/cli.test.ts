@@ -339,7 +339,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   assert.match(String(createGoalMode.recommendedObjective), /Verify the CLI lifecycle/);
   assert.equal(createGoalMode.setWhen, "on_enter_process_active");
   assert.equal(createGoalTool.tool, "create_goal");
-  assert.equal(createGoalTool.ifNoActiveGoal, true);
+  assert.equal(createGoalTool.allowOverwrite, true);
   assert.equal("nextAction" in writeResult, false);
   assert.equal("instruction" in writeResult, false);
   assert.equal("askUser" in writeResult, false);
@@ -675,7 +675,7 @@ test("cli plan edit wait and resume surfaces goal mode pause and restart guidanc
   assert.equal(resumeGoalMode.setWhen, "on_resume_process_active");
   assert.match(String(resumeGoalMode.recommendedObjective), /Pause and resume cleanly/);
   assert.equal(resumeGoalTool.tool, "create_goal");
-  assert.equal(resumeGoalTool.ifNoActiveGoal, true);
+  assert.equal(resumeGoalTool.allowOverwrite, true);
 });
 
 test("cli search accepts a positional query for project recall", () => {
@@ -753,7 +753,7 @@ test("cli plan edit append-tasks auto-assigns ids when omitted", () => {
   const autoPath = path.join(root, "append-auto.json");
   fs.writeFileSync(
     autoPath,
-    JSON.stringify([{ title: "Auto numbered task", status: "pending" }], null, 2),
+    JSON.stringify([{ title: "Auto numbered task" }], null, 2),
     "utf-8",
   );
   const result = runClaw(["plan", "edit", "--task", "demo-task", "--append-tasks", autoPath], root);
@@ -770,11 +770,12 @@ test("cli plan edit append-tasks auto-assigns ids when omitted", () => {
   const tasks = ((planView.tasks as JsonRecord).items as JsonRecord[]).map((task) => ({
     id: Number(task.id),
     title: String(task.title),
+    status: String(task.status),
   }));
   assert.deepEqual(tasks, [
-    { id: 1, title: "Verify auto ids" },
-    { id: 3, title: "Existing numbered task" },
-    { id: 4, title: "Auto numbered task" },
+    { id: 1, title: "Verify auto ids", status: "pending" },
+    { id: 3, title: "Existing numbered task", status: "pending" },
+    { id: 4, title: "Auto numbered task", status: "pending" },
   ]);
 });
 
@@ -1158,8 +1159,15 @@ test("cli subplan create keeps task rootPlan stable and derives goal from the pa
   assert.equal(childPlan.title, "Implement child work");
   assert.equal(childPlan.status, "process.discussing");
   assert.deepEqual(result.nextsteps, [
+    "Set or overwrite Goal Mode to this subplan objective before doing target work: Using claw-kit, update plan, follow returned workflowGuidance，finish your goal：Implement child work: Split the risky work into a subplan",
     "1. Resolve the discussion, then resume through `process.active`.",
   ]);
+  assert.equal(
+    ((result.goalMode as JsonRecord).recommendedObjective),
+    "Using claw-kit, update plan, follow returned workflowGuidance，finish your goal：Implement child work: Split the risky work into a subplan",
+  );
+  assert.equal(((result.goalMode as JsonRecord).allowOverwrite), true);
+  assert.match(String(result.notes), /parent\/root plan as paused/i);
   assert.equal("goalTool" in result, false);
   assert.equal(((childPlan.goal as JsonRecord).text), "Implement child work: Split the risky work into a subplan");
 });

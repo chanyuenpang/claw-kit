@@ -24,7 +24,7 @@ type GoalModeTemplate = {
 type GoalToolTemplate =
   | {
       tool: "create_goal";
-      ifNoActiveGoal: true;
+      allowOverwrite: true;
       reason: string;
     }
   | {
@@ -142,7 +142,7 @@ function buildGoalTool(planGoal: string, template: GoalToolTemplate): WorkflowGu
     return {
       tool: "create_goal",
       objective: buildGoalModeObjective(planGoal),
-      ifNoActiveGoal: true,
+      allowOverwrite: true,
       reason: template.reason,
     };
   }
@@ -150,6 +150,43 @@ function buildGoalTool(planGoal: string, template: GoalToolTemplate): WorkflowGu
     tool: "update_goal",
     status: template.status,
     reason: template.reason,
+  };
+}
+
+function emphasizeSubplanCreateGuidance(params: {
+  commandSource?: "plan.create" | "subplan.create" | "plan.edit" | "plan.done";
+  plan: PlanDocument;
+  planFile: string;
+  goalModeEnabled: boolean;
+  suppressGoalFields: boolean;
+  guidance: WorkflowGuidance;
+}): WorkflowGuidance {
+  if (
+    params.commandSource !== "subplan.create" ||
+    !params.plan.parentPlan ||
+    !params.goalModeEnabled ||
+    params.suppressGoalFields
+  ) {
+    return params.guidance;
+  }
+
+  const subplanObjective = buildGoalModeObjective(params.plan.goal.text);
+  const subplanNextstep = `Set or overwrite Goal Mode to this subplan objective before doing target work: ${subplanObjective}`;
+  const subplanNote =
+    `Subplan "${params.planFile}" is now the active plan under parent plan "${params.plan.parentPlan}" task #${params.plan.parentTaskId}. ` +
+    "Treat the parent/root plan as paused for this target until the subplan completes.";
+
+  return {
+    ...params.guidance,
+    nextsteps: params.guidance.nextsteps.includes(subplanNextstep)
+      ? params.guidance.nextsteps
+      : [subplanNextstep, ...params.guidance.nextsteps],
+    notes: params.guidance.notes ? `${subplanNote} ${params.guidance.notes}` : subplanNote,
+    goalMode: {
+      ...params.guidance.goalMode,
+      recommendedObjective: subplanObjective,
+      allowOverwrite: true,
+    },
   };
 }
 
@@ -331,16 +368,23 @@ export async function buildPlanWorkflowGuidance(params: {
           : `${plan.status}.noGoalMode`;
       const template = renderStateTemplate(templateKey, vars);
       const shouldEmitBlockedGoalTool = startedGoalModeThisRound;
-      return {
-        stage: template.stage as WorkflowGuidance["stage"],
-        summary: template.summary,
-        nextsteps: template.nextsteps,
-        ...(template.notes ? { notes: template.notes } : {}),
-        ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),
-        ...(template.goalTool && shouldEmitBlockedGoalTool && goalModeEnabled && hasGoal && !suppressGoalFields
-          ? { goalTool: buildGoalTool(plan.goal.text, template.goalTool) }
-          : {}),
-      };
+      return emphasizeSubplanCreateGuidance({
+        commandSource,
+        plan,
+        planFile,
+        goalModeEnabled,
+        suppressGoalFields,
+        guidance: {
+          stage: template.stage as WorkflowGuidance["stage"],
+          summary: template.summary,
+          nextsteps: template.nextsteps,
+          ...(template.notes ? { notes: template.notes } : {}),
+          ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),
+          ...(template.goalTool && shouldEmitBlockedGoalTool && goalModeEnabled && hasGoal && !suppressGoalFields
+            ? { goalTool: buildGoalTool(plan.goal.text, template.goalTool) }
+            : {}),
+        },
+      });
     }
     case "process.active": {
       if (allTasksDone) {
@@ -355,11 +399,18 @@ export async function buildPlanWorkflowGuidance(params: {
             ? { delegateSubagents: buildConfiguredDelegates(template.delegateSubagents, projectConfig) }
             : {}),
         };
-        return applyTemplateTaskDoneGuidance({
-          projectRoot,
+        return emphasizeSubplanCreateGuidance({
+          commandSource,
           plan,
-          completedTaskIds,
-          guidance,
+          planFile,
+        goalModeEnabled,
+        suppressGoalFields,
+        guidance: await applyTemplateTaskDoneGuidance({
+            projectRoot,
+            plan,
+            completedTaskIds,
+            guidance,
+          }),
         });
       }
 
@@ -402,11 +453,18 @@ export async function buildPlanWorkflowGuidance(params: {
             }
           : {}),
       };
-      return applyTemplateTaskDoneGuidance({
-        projectRoot,
+      return emphasizeSubplanCreateGuidance({
+        commandSource,
         plan,
-        completedTaskIds,
-        guidance,
+        planFile,
+        goalModeEnabled,
+        suppressGoalFields,
+        guidance: await applyTemplateTaskDoneGuidance({
+          projectRoot,
+          plan,
+          completedTaskIds,
+          guidance,
+        }),
       });
     }
     case "end.completed": {

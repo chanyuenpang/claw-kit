@@ -410,6 +410,182 @@ test("writePlan loads a project JSON template from .claw/templates", async () =>
   assert.equal(result.plan.tasks[1]?.title, "Activate the team template plan");
 });
 
+test("writePlan loads a global user template when the project does not define one", { concurrency: false }, async () => {
+  const root = createFixture("plan-template-global-json");
+  initProject({ cwd: root, projectName: "Global Template Project", planning: true, force: true });
+  const homeRoot = createEmptyFixture("global-template-home");
+  fs.mkdirSync(path.join(homeRoot, ".claw", "templates"), { recursive: true });
+  fs.writeFileSync(
+    path.join(homeRoot, ".claw", "templates", "global-default.json"),
+    `${JSON.stringify(createPlanLikeTemplate({
+      id: "global-default",
+      tasks: [
+        {
+          id: 1,
+          title: "Use the global template",
+          detail: "Use {{planningSkill}} to prepare the globally installed template.",
+          status: "pending",
+        },
+        {
+          id: 2,
+          title: "Activate the global template",
+          detail: "Move into process.active after the global template planning pass.",
+          status: "pending",
+        },
+      ],
+    }), null, 2)}\n`,
+    "utf-8",
+  );
+
+  const previousHome = process.env.HOME;
+  const previousUserProfile = process.env.USERPROFILE;
+  process.env.HOME = homeRoot;
+  process.env.USERPROFILE = homeRoot;
+
+  try {
+    const result = await writePlan({
+      cwd: root,
+      title: "Use global template",
+      templateName: "global-default",
+    });
+
+    assert.equal(result.plan.templateId, "global-default");
+    assert.equal(result.plan.tasks[0]?.title, "Use the global template");
+    assert.equal(result.plan.tasks[1]?.title, "Activate the global template");
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = previousHome;
+    }
+    if (previousUserProfile === undefined) {
+      delete process.env.USERPROFILE;
+    } else {
+      process.env.USERPROFILE = previousUserProfile;
+    }
+  }
+});
+
+test("writePlan loads a project skill-local template from TEMPLATE.json", async () => {
+  const root = createFixture("plan-template-project-skill-local");
+  initProject({ cwd: root, projectName: "Project Skill Local Template", planning: true, force: true });
+  fs.mkdirSync(path.join(root, "skills", "using-superpowers"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, "skills", "using-superpowers", "TEMPLATE.json"),
+    `${JSON.stringify(createPlanLikeTemplate({
+      id: "superpowers-using-superpowers",
+      tasks: [
+        {
+          id: 1,
+          title: "Use the colocated skill template",
+          detail: "Read the skill-local template instead of .claw/templates.",
+          status: "pending",
+        },
+      ],
+    }), null, 2)}\n`,
+    "utf-8",
+  );
+
+  const result = await writePlan({
+    cwd: root,
+    title: "Use project skill-local template",
+    templateName: "superpowers-using-superpowers",
+  });
+
+  assert.equal(result.plan.templateId, "superpowers-using-superpowers");
+  assert.equal(result.plan.tasks[0]?.title, "Use the colocated skill template");
+});
+
+test("writePlan deduplicates mirrored project skill-local templates with matching content", async () => {
+  const root = createFixture("plan-template-project-skill-local-mirror");
+  initProject({ cwd: root, projectName: "Mirrored Skill Local Template", planning: true, force: true });
+  const templateText = `${JSON.stringify(createPlanLikeTemplate({
+    id: "create-claw-skill",
+    tasks: [
+      {
+        id: 1,
+        title: "Use the mirrored skill template",
+        detail: "Mirror copies from multiple adapters should resolve as one template.",
+        status: "pending",
+      },
+    ],
+  }), null, 2)}\n`;
+  for (const adapterName of ["codex-adapter", "opencode-adapter"]) {
+    const skillDir = path.join(root, "packages", adapterName, "skills", "create-claw-skill");
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.writeFileSync(path.join(skillDir, "TEMPLATE.json"), templateText, "utf-8");
+  }
+
+  const result = await writePlan({
+    cwd: root,
+    title: "Use mirrored skill-local template",
+    templateName: "create-claw-skill",
+  });
+
+  assert.equal(result.plan.templateId, "create-claw-skill");
+  assert.equal(result.plan.tasks[0]?.title, "Use the mirrored skill template");
+});
+
+test("writePlan loads a global skill-local template from the Codex plugin cache", { concurrency: false }, async () => {
+  const root = createFixture("plan-template-global-skill-local");
+  initProject({ cwd: root, projectName: "Global Skill Local Template", planning: true, force: true });
+  const homeRoot = createEmptyFixture("global-skill-template-home");
+  const skillDir = path.join(
+    homeRoot,
+    ".codex",
+    "plugins",
+    "cache",
+    "claw-kit-local",
+    "claw-kit",
+    "0.1.54+codex.test",
+    "skills",
+    "using-superpowers",
+  );
+  fs.mkdirSync(skillDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(skillDir, "TEMPLATE.json"),
+    `${JSON.stringify(createPlanLikeTemplate({
+      id: "superpowers-using-superpowers",
+      tasks: [
+        {
+          id: 1,
+          title: "Use the global skill-local template",
+          detail: "Resolve the template from the installed Codex plugin skill package.",
+          status: "pending",
+        },
+      ],
+    }), null, 2)}\n`,
+    "utf-8",
+  );
+
+  const previousHome = process.env.HOME;
+  const previousUserProfile = process.env.USERPROFILE;
+  process.env.HOME = homeRoot;
+  process.env.USERPROFILE = homeRoot;
+
+  try {
+    const result = await writePlan({
+      cwd: root,
+      title: "Use global skill-local template",
+      templateName: "superpowers-using-superpowers",
+    });
+
+    assert.equal(result.plan.templateId, "superpowers-using-superpowers");
+    assert.equal(result.plan.tasks[0]?.title, "Use the global skill-local template");
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = previousHome;
+    }
+    if (previousUserProfile === undefined) {
+      delete process.env.USERPROFILE;
+    } else {
+      process.env.USERPROFILE = previousUserProfile;
+    }
+  }
+});
+
 test("writePlan loads a plan-like project template and strips template-only task fields from runtime plan", async () => {
   const root = createFixture("planlike-template-project-json");
   initProject({ cwd: root, projectName: "Planlike Template Project", planning: true, force: true });
@@ -1453,8 +1629,15 @@ test("createSubplan uses the planning-aware default seed shape", async () => {
   assert.equal(result.plan.goal.text, "Implement child work: Split this into a subplan");
   assert.equal(result.plan.tasks.length, 2);
   assert.deepEqual(result.workflowGuidance.nextsteps, [
+    "Set or overwrite Goal Mode to this subplan objective before doing target work: Using claw-kit, update plan, follow returned workflowGuidance，finish your goal：Implement child work: Split this into a subplan",
     "1. Resolve the discussion, then resume through `process.active`.",
   ]);
+  assert.equal(
+    result.workflowGuidance.goalMode?.recommendedObjective,
+    "Using claw-kit, update plan, follow returned workflowGuidance，finish your goal：Implement child work: Split this into a subplan",
+  );
+  assert.equal(result.workflowGuidance.goalMode?.allowOverwrite, true);
+  assert.match(result.workflowGuidance.notes ?? "", /parent\/root plan as paused/i);
   assert.equal(result.workflowGuidance.goalTool, undefined);
   assert.match(result.plan.tasks[0]?.detail ?? "", /append executable tasks/i);
   assert.match(result.plan.tasks[1]?.detail ?? "", /process\.active/);
@@ -1533,6 +1716,7 @@ test("createSubplan uses project defaultPlanTemplate when templateName is omitte
   assert.equal(result.plan.tasks[1]?.detail, "Move to process.active after refinement.");
   assert.deepEqual(result.plan.references, [{ path: "docs/subplan-template.md", why: "Subplan template reference" }]);
   assert.deepEqual(result.plan.rules, ["Follow the project default template for subplans."]);
+  assert.equal(result.workflowGuidance.goalMode, undefined);
 });
 
 test("createSubplan always uses planning shape even when project planning is disabled", async () => {
@@ -1935,7 +2119,7 @@ test("resuming from process.wait to process.active re-emits goal mode guidance",
   assert.deepEqual(resumed.workflowGuidance.goalTool, {
     tool: "create_goal",
     objective: "Using claw-kit, update plan, follow returned workflowGuidance，finish your goal：Resume execution with goal mode",
-    ifNoActiveGoal: true,
+    allowOverwrite: true,
     reason: "Execution is resuming from a paused process state, so the thread should restore an active Codex goal for the plan goal.",
   });
   assert.equal(
@@ -2280,6 +2464,70 @@ test("plan edit appendTasks auto-assigns ids when omitted", async () => {
     [
       { id: 3, title: "Existing task" },
       { id: 4, title: "Auto id task" },
+    ],
+  );
+});
+
+test("plan edit appendTasks defaults omitted task status to pending", async () => {
+  const root = createFixture("plan-edit-default-task-status");
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Ship the first plan",
+    content: {
+      title: "Demo task",
+      status: "process.active",
+      goal: { text: "Ship the first plan" },
+      tasks: [],
+    },
+  });
+
+  const result = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    appendTasks: [
+      { title: "Task without status" } as unknown as { id: number; title: string; status: "pending" },
+    ],
+  });
+
+  assert.deepEqual(
+    result.planView.tasks.items.map((task) => ({ id: task.id, title: task.title, status: task.status })),
+    [
+      { id: 1, title: "Task without status", status: "pending" },
+    ],
+  );
+});
+
+test("plan edit patch tasks defaults omitted task status to pending", async () => {
+  const root = createFixture("plan-edit-patch-default-task-status");
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Ship the first plan",
+    content: {
+      title: "Demo task",
+      status: "process.active",
+      goal: { text: "Ship the first plan" },
+      tasks: [],
+    },
+  });
+
+  const result = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    patch: {
+      tasks: [
+        { id: 5, title: "Patched task without status" } as unknown as { id: number; title: string; status: "pending" },
+      ],
+    },
+  });
+
+  assert.deepEqual(
+    result.planView.tasks.items.map((task) => ({ id: task.id, title: task.title, status: task.status })),
+    [
+      { id: 5, title: "Patched task without status", status: "pending" },
     ],
   );
 });

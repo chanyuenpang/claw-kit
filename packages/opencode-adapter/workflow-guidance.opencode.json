@@ -185,7 +185,7 @@
       ],
       "goalTool": {
         "tool": "create_goal",
-        "ifNoActiveGoal": true,
+        "allowOverwrite": true,
         "reason": "Execution is entering an active process state, so the thread should have an active goal tied to the plan goal."
       },
       "goalMode": {
@@ -220,7 +220,7 @@
       ],
       "goalTool": {
         "tool": "create_goal",
-        "ifNoActiveGoal": true,
+        "allowOverwrite": true,
         "reason": "Execution is resuming from a paused process state, so the thread should restore an active goal for the plan goal."
       },
       "goalMode": {

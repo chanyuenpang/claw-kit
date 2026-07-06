@@ -190,9 +190,9 @@ Validation checks:
 - `mergeMode`
 - `configOverride`
 
-## Skill Entry Routing
+## Universal Skill Entry Routing
 
-Generated project claw entry skills should classify the request before entering their template:
+Every template-backed claw skill should classify the request before entering its template:
 
 - No `.claw` workspace: read and follow the adjacent fallback document.
 - Direct single-target request: create a root plan with `claw plan create --template <template-id>`.
@@ -201,14 +201,33 @@ Generated project claw entry skills should classify the request before entering 
 
 Subplans are created when a task is executed.
 Root planning records the intent to use a claw skill; task execution creates the subplan that runs that skill's template.
+Keep batch routes orchestration-oriented.
+The root plan may define target ordering, naming conventions, shared output boundaries, and batch-level risks, but target-specific work should stay inside execution-time template subplans.
 Do not collapse a batch into one broad script that bypasses the template subplans unless the user explicitly asks to bypass claw skill orchestration.
+
+For batch root plans, task titles and descriptions should directly name the subplan entry.
+The subtask goal itself should say it must be advanced as a subplan.
+
+Recommended title:
+
+`Run a <skill-name> subplan, complete <target-work>`
+
+Recommended detail:
+
+`Goal: run the <skill-name> subplan to complete <target-work>. This subtask is satisfied by creating and completing that target subplan, not by running the skill workflow in the root plan. When executing this task, first create the template subplan with claw subplan create --parent <root-task-name> --task-id <id> --template <template-id>, then follow the returned workflowGuidance inside that subplan until it completes. The root plan records the subplan result and marks this task done after the subplan result is incorporated. Keep target-specific source analysis, file edits, validation, and coverage checks inside the target subplan.`
+
+The root plan should not perform target-specific template work, source analysis, or generated output writing for every batch item.
+It should create the task list, define only the necessary batch-level conventions, enter execution, and let each execution-time subplan own its target.
+
+Skill-specific authoring docs may provide a concrete title/detail example, but they should not redefine this routing model unless the skill has a deliberate exception.
 
 ## Template Availability
 
 A generated skill entry that says `claw plan create --template <template-id>` depends on that template being available in the runtime workspace.
 
-For project-local skills, storing the template in `.claw/templates/<template-id>.json` is enough.
-For distributable plugins or global skills, the template must travel with the plugin or be copied into the user's `.claw/templates` by an install/sync step before the entry advertises the claw route.
+For claw skills, store the workflow template beside the skill entry as `TEMPLATE.json`.
+The `id` field inside `TEMPLATE.json` is the template name used by `claw plan create --template <id>`.
+Use skill-local `TEMPLATE.json` for project-level templates that are not owned by one skill package.
 
 Avoid converted skills whose entry points to a template that exists only in the development repository that created it.
 

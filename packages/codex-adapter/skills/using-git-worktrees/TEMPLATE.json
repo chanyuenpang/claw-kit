@@ -1,0 +1,145 @@
+{
+  "id": "superpowers-using-git-worktrees",
+  "configOverride": {
+    "truthDispatch": "final_only"
+  },
+  "title": "using-git-worktrees",
+  "status": "process.active",
+  "goal": {
+    "text": "Ensure work begins in the right isolated workspace by detecting existing isolation first, preferring native tools, and falling back to git safely."
+  },
+  "requirements": {
+    "summary": "Use this when feature or implementation work should happen in an isolated workspace instead of the current checkout.",
+    "openQuestions": [],
+    "acceptanceCriteria": [
+      "The workflow detects existing isolation before attempting creation.",
+      "Native worktree tooling is preferred over manual git fallback.",
+      "Project-local worktree directories are verified ignored before creation.",
+      "Setup and clean-baseline checks happen before claiming the workspace is ready."
+    ]
+  },
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Detect existing isolation before creating anything",
+      "detail": "Check whether the current checkout is already an isolated linked worktree, apply the submodule guard, and determine whether creation should be skipped entirely.\n\nUse [CLAW-KNOWLEDGE.md](/D:/Users/chany/Documents/claw-kit/packages/codex-adapter/skills/using-git-worktrees/CLAW-KNOWLEDGE.md) for the detection and submodule rules.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "choices": {
+            "already-isolated": {
+              "mergeMode": "override",
+              "summary": "An isolated workspace already exists, so creation must be skipped.",
+              "nextsteps": [
+                "Proceed directly to setup and baseline verification."
+              ],
+              "nextTaskId": 4,
+              "delegateTruth": false
+            },
+            "need-isolated-workspace": {
+              "mergeMode": "override",
+              "summary": "This is a normal checkout or submodule context, so isolation creation logic should continue.",
+              "nextsteps": [
+                "Prefer native worktree tooling first."
+              ],
+              "nextTaskId": 2,
+              "delegateTruth": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Prefer native worktree tools, then decide whether git fallback is allowed",
+      "detail": "If a native worktree tool exists, use it and skip manual git worktree creation. Only continue to git fallback when no native tool is available.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "choices": {
+            "native-tool-used": {
+              "mergeMode": "override",
+              "summary": "Native worktree tooling handled isolation.",
+              "nextsteps": [
+                "Proceed to project setup and baseline verification."
+              ],
+              "nextTaskId": 4,
+              "delegateTruth": false
+            },
+            "use-git-fallback": {
+              "mergeMode": "override",
+              "summary": "No native tool is available, so manual git worktree fallback is required.",
+              "nextsteps": [
+                "Resolve directory priority and ignore verification before creation."
+              ],
+              "nextTaskId": 3,
+              "delegateTruth": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Run git worktree fallback safely when needed",
+      "detail": "Choose the directory using source priority rules, verify project-local directories are ignored, and create the git worktree. If creation is blocked by sandbox or permissions, fall back to working in place after setup and baseline checks.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "choices": {
+            "fallback-created": {
+              "mergeMode": "override",
+              "summary": "The fallback worktree was created successfully.",
+              "nextsteps": [
+                "Run project setup and clean-baseline verification."
+              ],
+              "nextTaskId": 4,
+              "delegateTruth": false
+            },
+            "work-in-place-fallback": {
+              "mergeMode": "override",
+              "summary": "Worktree creation was blocked, so work must continue in the current checkout.",
+              "nextsteps": [
+                "Still run setup and baseline verification before proceeding."
+              ],
+              "nextTaskId": 4,
+              "delegateTruth": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Run setup, verify baseline, and stop if the baseline is not clean",
+      "detail": "Run project-appropriate setup commands, then run the clean-baseline test command. If tests pass, report the workspace ready. If tests fail, report the failures and ask whether to proceed or investigate before continuing feature work.",
+      "status": "pending"
+    }
+  ],
+  "references": [
+    {
+      "path": "packages/codex-adapter/skills/using-git-worktrees/CLAW-KNOWLEDGE.md",
+      "why": "Preserves the detection-first workflow, native-tool preference, directory-priority rules, and baseline gating from the source skill."
+    },
+    {
+      "path": "packages/codex-adapter/skills/using-git-worktrees/SUPERPOWERS-FALLBACK.md",
+      "why": "Keeps the full command blocks, quick reference, and longer warning text beside the converted entry."
+    },
+    {
+      "path": "packages/codex-adapter/skills/using-git-worktrees/CONTENT-COVERAGE.md",
+      "why": "Maps source information to the converted homes for verification and maintenance."
+    }
+  ],
+  "rules": [
+    "Do not create a worktree when Step 0 detection shows the workspace is already isolated.",
+    "Do not skip the submodule guard when using git-dir/common-dir detection.",
+    "Do not use manual git worktree commands when native worktree tooling is available.",
+    "Do not create a project-local worktree without verifying the directory is ignored.",
+    "Do not skip setup or baseline test verification.",
+    "Do not proceed past failing baseline tests without asking whether to proceed or investigate."
+  ],
+  "keyDecisions": [],
+  "retrospective": {
+    "summary": ""
+  }
+}
