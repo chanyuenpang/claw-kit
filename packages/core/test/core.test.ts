@@ -33,6 +33,8 @@ import {
   resolveLocalEmbeddingCacheDir,
 } from "../src/embedding-defaults.js";
 
+const packageVersion = "0.1.61";
+
 function createFixture(name: string): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), `claw-kit-${name}-`));
   fs.mkdirSync(path.join(root, ".claw", "truth"), { recursive: true });
@@ -113,7 +115,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
     "# claw-kit\n.claw/*\n!.claw/project.json\n!.claw/truth/\n!.claw/truth/**\n.claw/project-override.json\n",
   );
   assert.deepEqual(projectConfig, {
-    version: "0.1.54",
+    version: packageVersion,
     id: "demo-project",
     name: "Demo Project",
     maxTasksToKeep: 20,
@@ -3057,7 +3059,7 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
   assert.equal(result.ok, true);
   assert.equal(result.changed, true);
   assert.ok(result.issueCountBefore > 0);
-  assert.equal(projectConfig.version, "0.1.54");
+  assert.equal(projectConfig.version, packageVersion);
   assert.equal(projectConfig.id, "fix-me");
   assert.equal(projectConfig.name, "Fix Me");
   assert.equal(projectConfig.maxTasksToKeep, 99);

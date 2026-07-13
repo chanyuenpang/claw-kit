@@ -94,3 +94,11 @@
 - `npm pack @veewo/claw@<version>`
 - `claw --version`
 - `npm list -g @veewo/claw --depth=0`
+
+## 2026-07-13：0.1.61 发布与本地刷新完成态
+
+- `@veewo/claw-core@0.1.61` 与 `@veewo/claw@0.1.61` 已发布；npm registry 的 `latest` 均确认指向 `0.1.61`。
+- Registry metadata 已确认 CLI 的 `bin.claw` 仍映射为 `dist/bin.js`，因此发布后的命令入口合同未漂移。
+- 本机首次全局安装超时时，没有遗留可用的 `claw` shim。恢复时只终止该次孤立的安装进程链，然后直接重新执行全局安装；不需要清理或改写仓库内容。
+- 最终全局 CLI 为 `0.1.61`，实际解析路径是 `C:\Users\chany\AppData\Roaming\npm\claw.ps1`。
+- 本地 Codex plugin cache 已刷新到 `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.61+codex.20260713153132`，cache 内包含由共享源生成的 `skills/config/SKILL.md`。

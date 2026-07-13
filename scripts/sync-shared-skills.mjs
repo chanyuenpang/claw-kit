@@ -6,12 +6,13 @@ const thisDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(thisDir, "..");
 
 const sharedSkills = ["planning", "config"];
+const defaultAdapterDirs = [
+  path.join(repoRoot, "packages", "codex-adapter"),
+  path.join(repoRoot, "packages", "opencode-adapter"),
+];
 
-function targetPathsForSkill(skillName) {
-  return [
-    path.join(repoRoot, "packages", "codex-adapter", "skills", skillName, "SKILL.md"),
-    path.join(repoRoot, "packages", "opencode-adapter", "skills", skillName, "SKILL.md"),
-  ];
+function targetPathsForSkill(skillName, adapterDirs) {
+  return adapterDirs.map((adapterDir) => path.join(adapterDir, "skills", skillName, "SKILL.md"));
 }
 
 function injectBanner(content, skillName) {
@@ -34,12 +35,12 @@ async function writeFileAtomically(targetPath, content) {
   await fs.rename(tempPath, targetPath);
 }
 
-export async function syncSharedSkills() {
+export async function syncSharedSkills({ adapterDirs = defaultAdapterDirs } = {}) {
   const synced = [];
 
   for (const skillName of sharedSkills) {
     const sourcePath = path.join(repoRoot, "shared", "skills", skillName, "SKILL.md");
-    const targetPaths = targetPathsForSkill(skillName);
+    const targetPaths = targetPathsForSkill(skillName, adapterDirs);
     const source = await fs.readFile(sourcePath, "utf8");
     const generated = injectBanner(source, skillName);
 

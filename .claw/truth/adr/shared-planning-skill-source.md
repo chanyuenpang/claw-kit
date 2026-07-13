@@ -13,6 +13,8 @@ Maintaining separate copies in adapter directories creates unnecessary drift, es
 
 The final `0.1.49` release line extended this shared-source rule from `planning` to the user-facing `config` skill and verified that generated Codex/OpenCode adapter payloads stay synchronized from `shared/skills`.
 
+The original synchronization implementation wrote those adapter-local copies into the checkout before bundling or installing. That made a normal local plugin refresh modify tracked source files, despite those files being generated artifacts. The `0.1.61` release replaces that checkout-writing path with temporary staging generation.
+
 ## Decision
 
 Use shared sources for host-neutral skills:
@@ -20,19 +22,20 @@ Use shared sources for host-neutral skills:
 - canonical source: `shared/skills/planning/SKILL.md`
 - canonical source: `shared/skills/config/SKILL.md`
 
-Generate adapter-local copies from those sources:
+Generate adapter-local copies from those sources only in the bundle/install staging directory:
 
 - `packages/codex-adapter/skills/planning/SKILL.md`
 - `packages/opencode-adapter/skills/planning/SKILL.md`
 - `packages/codex-adapter/skills/config/SKILL.md`
 - `packages/opencode-adapter/skills/config/SKILL.md`
 
-Enforce synchronization automatically:
+Enforce synchronization automatically without mutating the checkout:
 
-- `scripts/sync-shared-skills.mjs` writes the generated copies
+- `scripts/sync-shared-skills.mjs` writes generated copies to an explicitly supplied adapter directory
 - `scripts/sync-planning-skill.mjs` remains as a compatibility wrapper
-- Codex and OpenCode bundle export scripts call the sync step before reading plugin payloads
-- adapter `build` / `check` scripts also call the sync step
+- Codex and OpenCode bundle export/install scripts copy the adapter source into a temporary staging directory, then call the sync step there before reading the plugin payload
+- adapter `build` / `check` scripts validate the shared source and bundle result without generating adapter copies in the checkout
+- generated adapter-local `planning` and `config` files are not tracked by Git
 
 Keep the shared planning skill host-agnostic:
 
@@ -55,6 +58,8 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 
 - There is only one maintained source for each host-neutral shared skill going forward.
 - Exported plugin bundles still retain adapter-local skill files, so no host runtime contract is broken.
+- Plugin installation and export no longer leave generated skill changes in a developer checkout.
+- The temporary staging directory is an intentional distribution boundary: it is the only location where adapter-local shared-skill copies are materialized for bundle or install work.
 - Host/runtime-specific workflow rules remain separated from generic planning and config guidance.
 - The complexity gate now has a single owner at workflow entry, so low-score tasks do not create drift by entering planning first and bypassing later.
 - Future edits to planning quality or decomposition rules should start from `shared/skills/planning/SKILL.md`.
@@ -71,12 +76,9 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 - `scripts/opencode-plugin-bundle.mjs`
 - `packages/codex-adapter/package.json`
 - `packages/opencode-adapter/package.json`
-- `packages/codex-adapter/skills/planning/SKILL.md`
-- `packages/opencode-adapter/skills/planning/SKILL.md`
-- `packages/codex-adapter/skills/config/SKILL.md`
-- `packages/opencode-adapter/skills/config/SKILL.md`
+- `.gitignore`
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md`
-- `.claw/tasks/Publish-claw-kit-release-and-refresh-local-Codex-plugin/plan.json`
+- `.claw/tasks/发布共享技能-staging-修复并刷新本地运行时/plan.json`
 
 ## Search Terms
 
@@ -85,5 +87,7 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 - `shared skill source`
 - `shared planning skill`
 - `shared config skill`
+- `shared skill staging`
+- `generated adapter skill`
 - `complexity heuristic`
 - `workflow admission`

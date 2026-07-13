@@ -61,7 +61,7 @@ test("Codex plugin manifest starts with using-claw-kit instead of pre-reading pl
 });
 
 test("Codex plugin source includes the config skill entrypoint", async () => {
-  const skillPath = new URL("../packages/codex-adapter/skills/config/SKILL.md", import.meta.url);
+  const skillPath = new URL("../shared/skills/config/SKILL.md", import.meta.url);
   const skillText = await fs.readFile(skillPath, "utf8");
 
   assert.match(skillText, /name: config/);

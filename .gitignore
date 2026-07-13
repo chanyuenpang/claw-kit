@@ -23,4 +23,9 @@ Thumbs.db
 /packages/*/dist/
 /packages/*/dist-test/
 /packages/*/coverage/
+# Generated from shared/skills during plugin bundling; edit shared sources instead.
+/packages/codex-adapter/skills/config/SKILL.md
+/packages/codex-adapter/skills/planning/SKILL.md
+/packages/opencode-adapter/skills/config/SKILL.md
+/packages/opencode-adapter/skills/planning/SKILL.md
 .gitnexus

@@ -40,3 +40,16 @@
 - `packages/codex-adapter/skills/config/SKILL.md`
 - `packages/opencode-adapter/skills/config/SKILL.md`
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md`
+## 2026-07-13：staging-only 导出与 update skill 审计
+
+- `planning` 与 `config` 的规范源仍然只在 `shared/skills/`；适配器副本不应作为 Git 追踪文件或日常编辑入口。
+- `scripts/codex-plugin-bundle.mjs` 和 `scripts/opencode-plugin-bundle.mjs` 现在应在临时 staging 目录内生成所需的 adapter-local skill 副本，再把最终 payload 写入安装缓存；本地插件安装、adapter `build`、`check` 不应覆写仓库中的 `packages/*-adapter/skills/**/SKILL.md`。
+- 针对 `update` 的仓库、已安装 Codex plugin cache 和用户 skill 目录审计未发现真实 skill；仅存在过时的 runtime update hint。共享技能 staging 改造不是新增用户操作面，因此不应为此创建或发布 `update` skill。
+- 发布版本必须先以 npm registry 的 `latest` 为准，而不是以 workspace 旧版本或 runtime hint 为准。审计时 `@veewo/claw-core` 与 `@veewo/claw` 的 `latest` 都是 `0.1.60`，所以下一轮 patch release 的目标是 `0.1.61`。
+
+## 补充检索词
+
+- `staging-only shared skills`
+- `update skill`
+- `registry latest 0.1.60`
+- `release target 0.1.61`

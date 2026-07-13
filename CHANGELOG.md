@@ -2,6 +2,13 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.1.61] - 2026-07-13
+
+### Fixed
+
+- Codex and OpenCode plugin bundling now materializes shared skills in an isolated staging directory, so exporting or installing a plugin no longer overwrites generated adapter files in the source checkout
+- Generated shared-skill adapter copies are no longer tracked; `shared/skills` remains the only editable source
+
 ## [0.1.54] - 2026-06-29
 
 ### Added

@@ -60,7 +60,7 @@ test("readOpencodePluginSource returns manifest metadata and stable payload list
 });
 
 test("OpenCode plugin source includes the config skill entrypoint", async () => {
-  const skillPath = new URL("../packages/opencode-adapter/skills/config/SKILL.md", import.meta.url);
+  const skillPath = new URL("../shared/skills/config/SKILL.md", import.meta.url);
   const skillText = await fs.readFile(skillPath, "utf8");
 
   assert.match(skillText, /name: config/);
@@ -136,7 +136,7 @@ test("installOpencodePlugin copies skills into the opencode skills discovery dir
   // Each skill subfolder is copied to <installDir>/skills/<name>/SKILL.md.
   assert.equal(result.skillsDir, path.join(installDir, "skills"));
   const copiedSkill = await fs.readFile(path.join(result.skillsDir, "config", "SKILL.md"), "utf8");
-  assert.equal(copiedSkill, "# config skill");
+  assert.match(copiedSkill, /name: config/);
 
   // No opencode.json config injection happens: there is no `skills.paths` option in opencode.
   await assert.rejects(fs.access(path.join(installDir, "opencode.json")));
@@ -145,5 +145,5 @@ test("installOpencodePlugin copies skills into the opencode skills discovery dir
   await fs.writeFile(path.join(result.skillsDir, "config", "SKILL.md"), "# stale");
   await installOpencodePlugin({ sourceDir, installDir });
   const refreshed = await fs.readFile(path.join(result.skillsDir, "config", "SKILL.md"), "utf8");
-  assert.equal(refreshed, "# config skill");
+  assert.match(refreshed, /name: config/);
 });
