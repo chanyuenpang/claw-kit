@@ -17,7 +17,7 @@ The original synchronization implementation wrote those adapter-local copies int
 
 ## Decision
 
-Use shared sources for host-neutral skills:
+Use shared sources for host-neutral skills, including future shared workflow skills that ship additional resources:
 
 - canonical source: `shared/skills/planning/SKILL.md`
 - canonical source: `shared/skills/config/SKILL.md`
@@ -28,6 +28,8 @@ Generate adapter-local copies from those sources only in the bundle/install stag
 - `packages/opencode-adapter/skills/planning/SKILL.md`
 - `packages/codex-adapter/skills/config/SKILL.md`
 - `packages/opencode-adapter/skills/config/SKILL.md`
+
+When a shared skill is materialized into staging, copy its complete directory recursively rather than only `SKILL.md`. This preserves template manifests, fallback guidance, and other adjacent resources required by the skill contract.
 
 Enforce synchronization automatically without mutating the checkout:
 
@@ -60,6 +62,7 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 - Exported plugin bundles still retain adapter-local skill files, so no host runtime contract is broken.
 - Plugin installation and export no longer leave generated skill changes in a developer checkout.
 - The temporary staging directory is an intentional distribution boundary: it is the only location where adapter-local shared-skill copies are materialized for bundle or install work.
+- A shared skill directory is an atomic distribution unit: the generated plugin must retain every required resource beside `SKILL.md`, not only the entry instruction file.
 - Host/runtime-specific workflow rules remain separated from generic planning and config guidance.
 - The complexity gate now has a single owner at workflow entry, so low-score tasks do not create drift by entering planning first and bypassing later.
 - Future edits to planning quality or decomposition rules should start from `shared/skills/planning/SKILL.md`.
@@ -91,3 +94,5 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 - `generated adapter skill`
 - `complexity heuristic`
 - `workflow admission`
+- `recursive shared skill copy`
+- `skill template fallback`

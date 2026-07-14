@@ -135,3 +135,4 @@
 - `docs/technical-principles.html` 的技术原理插图已收敛为 6 组并排对照图；最终图必须用独立 `imagegen` 资产替换内联 `svg.mini-diagram` 占位，并用浏览器实际预览确认新资产生效，而不是依赖 `file://` 旧缓存。
 
 - 从 `0.1.62` 起，npm 发布必须使用 `npm run verify:release` / `npm run publish:release` 的 GitHub-source gate：工作区必须干净、`HEAD` 必须已包含在 `origin/main`，并且实际生成的 Codex bundle 必须包含 `planning`、`config`、`update`、`create-claw-skill` 及所需模板；release commit `472635e` 已推送并标记为 `v0.1.62`，两个 npm 包均已发布到 `0.1.62`。
+- `v0.1.62` GitHub Release 已发布 `claw-kit-codex-plugin-0.1.62.zip`，用于跨电脑安装同一版本的 Codex 插件；安装验收是本地 cache 发现 10 个 skills，且包含 `planning`、`config`、`update`、`create-claw-skill`。

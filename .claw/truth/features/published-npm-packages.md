@@ -125,3 +125,6 @@ release commit `472635e` 已推送至 `origin/main`，tag 为 `v0.1.62`；`@veew
 - `scripts/codex-plugin-bundle.mjs`
 - `package.json` (`verify:release`、`publish:release`)
 - `packages/codex-adapter/.codex-plugin/plugin.json`
+### GitHub Release 插件资产
+
+`v0.1.62` 的 GitHub Release 除 source/tag 外还附带 `claw-kit-codex-plugin-0.1.62.zip`。该 zip 是供其他电脑安装相同 Codex 插件内容的分发资产；安装后应确认本地 cache 中的 skill 数量为 10，并包含发布闸门要求的 `planning`、`config`、`update`、`create-claw-skill`。因此跨电脑更新不能只刷新 npm CLI，必须选择与目标 release tag 对应的 Codex 插件资产。
