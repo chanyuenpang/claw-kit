@@ -133,3 +133,5 @@
 - `claw direct` 仍然是低复杂度 round 的隐藏兼容入口，不应被宣传成与 `plan create` 并列的公开 workflow concept；其合同继续保持轻量，并只在确有复用价值时派发 `truth-writer`。
 - `tsc` 不会自动清理已移除模板路径留下的旧输出，因此 `dist` ghost output 必须在 bundle / distribution / closeout 检查里显式判失败，不能只看编译成功。
 - `docs/technical-principles.html` 的技术原理插图已收敛为 6 组并排对照图；最终图必须用独立 `imagegen` 资产替换内联 `svg.mini-diagram` 占位，并用浏览器实际预览确认新资产生效，而不是依赖 `file://` 旧缓存。
+
+- 从 `0.1.62` 起，npm 发布必须使用 `npm run verify:release` / `npm run publish:release` 的 GitHub-source gate：工作区必须干净、`HEAD` 必须已包含在 `origin/main`，并且实际生成的 Codex bundle 必须包含 `planning`、`config`、`update`、`create-claw-skill` 及所需模板；release commit `472635e` 已推送并标记为 `v0.1.62`，两个 npm 包均已发布到 `0.1.62`。

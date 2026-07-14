@@ -102,3 +102,26 @@
 - 本机首次全局安装超时时，没有遗留可用的 `claw` shim。恢复时只终止该次孤立的安装进程链，然后直接重新执行全局安装；不需要清理或改写仓库内容。
 - 最终全局 CLI 为 `0.1.61`，实际解析路径是 `C:\Users\chany\AppData\Roaming\npm\claw.ps1`。
 - 本地 Codex plugin cache 已刷新到 `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.61+codex.20260713153132`，cache 内包含由共享源生成的 `skills/config/SKILL.md`。
+## 2026-07-14：受 GitHub 提交约束的 0.1.62 发布闸门
+
+### 长期规则
+
+npm registry 发布不能单独证明其他机器可获得相同源代码或 Codex skill。发布必须通过 `npm run verify:release`；真正发布只允许使用 `npm run publish:release`。两者共用 `scripts/publish-release.mjs`，它在执行任何 `npm publish` 前强制检查：
+
+- 根目录、`packages/core`、`packages/cli`、Codex/OpenClaw/OpenCode adapter 的版本与 release version 一致；CLI 对 `@veewo/claw-core` 的依赖和 Codex manifest 的 `<version>+codex.<timestamp>` 也必须对齐。
+- `git status --porcelain` 必须为空，防止未提交的 skill、模板或版本改动进入只有本机可见的发布状态。
+- `HEAD` 必须是 `origin/main` 的祖先；脚本会先 `git fetch origin --prune`，未推送到 GitHub 的 commit 会直接阻止 npm 发布。
+- 在临时目录实际生成 Codex bundle，并验证 `planning`、`config`、`update`、`create-claw-skill` 的 `SKILL.md`，以及后两个 skill 的 `TEMPLATE.json`。因此 staging 必须复制完整 shared skill 目录，而不能只复制入口文件。
+
+`--publish` 通过上述闸门后，按 `@veewo/claw-core`、`@veewo/claw` 的顺序发布。发布后仍应使用 `npm view` 确认 registry 版本及 CLI metadata。
+
+### 已验证基线
+
+release commit `472635e` 已推送至 `origin/main`，tag 为 `v0.1.62`；`@veewo/claw-core@0.1.62` 和 `@veewo/claw@0.1.62` 已发布。该流程修复了此前 npm 包可能领先 GitHub source、导致其他电脑安装旧 Codex 插件并缺失 skill 的发布断链。
+
+### 关联代码
+
+- `scripts/publish-release.mjs`
+- `scripts/codex-plugin-bundle.mjs`
+- `package.json` (`verify:release`、`publish:release`)
+- `packages/codex-adapter/.codex-plugin/plugin.json`
