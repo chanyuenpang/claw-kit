@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const thisDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(thisDir, "..");
 
-const sharedSkills = ["planning", "config"];
+export const SHARED_SKILL_NAMES = ["planning", "config", "update", "create-claw-skill"];
 const defaultAdapterDirs = [
   path.join(repoRoot, "packages", "codex-adapter"),
   path.join(repoRoot, "packages", "opencode-adapter"),
@@ -35,18 +35,39 @@ async function writeFileAtomically(targetPath, content) {
   await fs.rename(tempPath, targetPath);
 }
 
+async function copySkillDirectory(sourceDir, targetDir, skillName) {
+  await fs.rm(targetDir, { recursive: true, force: true });
+  await fs.mkdir(targetDir, { recursive: true });
+
+  async function copyRecursive(currentSourceDir, currentTargetDir) {
+    const entries = await fs.readdir(currentSourceDir, { withFileTypes: true });
+    for (const entry of entries) {
+      const sourcePath = path.join(currentSourceDir, entry.name);
+      const targetPath = path.join(currentTargetDir, entry.name);
+      if (entry.isDirectory()) {
+        await fs.mkdir(targetPath, { recursive: true });
+        await copyRecursive(sourcePath, targetPath);
+      } else if (currentSourceDir === sourceDir && entry.name === "SKILL.md") {
+        await writeFileAtomically(targetPath, injectBanner(await fs.readFile(sourcePath, "utf8"), skillName));
+      } else {
+        await fs.copyFile(sourcePath, targetPath);
+      }
+    }
+  }
+
+  await copyRecursive(sourceDir, targetDir);
+}
+
 export async function syncSharedSkills({ adapterDirs = defaultAdapterDirs } = {}) {
   const synced = [];
 
-  for (const skillName of sharedSkills) {
-    const sourcePath = path.join(repoRoot, "shared", "skills", skillName, "SKILL.md");
+  for (const skillName of SHARED_SKILL_NAMES) {
+    const sourceDir = path.join(repoRoot, "shared", "skills", skillName);
+    const sourcePath = path.join(sourceDir, "SKILL.md");
     const targetPaths = targetPathsForSkill(skillName, adapterDirs);
-    const source = await fs.readFile(sourcePath, "utf8");
-    const generated = injectBanner(source, skillName);
 
     for (const targetPath of targetPaths) {
-      await fs.mkdir(path.dirname(targetPath), { recursive: true });
-      await writeFileAtomically(targetPath, generated);
+      await copySkillDirectory(sourceDir, path.dirname(targetPath), skillName);
     }
 
     synced.push({

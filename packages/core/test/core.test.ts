@@ -33,7 +33,7 @@ import {
   resolveLocalEmbeddingCacheDir,
 } from "../src/embedding-defaults.js";
 
-const packageVersion = "0.1.61";
+const packageVersion = JSON.parse(fs.readFileSync(new URL("../../package.json", import.meta.url), "utf8")).version as string;
 
 function createFixture(name: string): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), `claw-kit-${name}-`));

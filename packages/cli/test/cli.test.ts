@@ -13,7 +13,9 @@ const cliPackageVersion = String(
 );
 
 function createFixture(name: string): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), `claw-kit-cli-${name}-`));
+  // `%TEMP%` can be nested under a real user-level `.claw` project. Keep
+  // fixtures outside that ancestor chain so CLI project discovery is isolated.
+  return fs.mkdtempSync(path.join(path.parse(process.cwd()).root, `claw-kit-cli-${name}-`));
 }
 
 // Host adapter hooks (e.g. the opencode plugin shell.env) can inject CLAW_HOST
