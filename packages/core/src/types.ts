@@ -87,6 +87,24 @@ export type PlanTaskReview = {
   reviewedAt: string;
 };
 
+export type PlanTaskOnDoneGuidance = {
+  mergeMode?: "merge" | "override";
+  summary?: string;
+  nextsteps?: string[];
+  notes?: string;
+  recommendedCommands?: string[];
+  askUser?: WorkflowGuidance["askUser"];
+  nextTaskId?: number;
+  delegateTruth?: boolean;
+};
+
+export type PlanTaskGuidance = {
+  onDone?: {
+    default?: PlanTaskOnDoneGuidance;
+    choices?: Record<string, PlanTaskOnDoneGuidance>;
+  };
+};
+
 export type PlanTask = {
   id: number;
   title: string;
@@ -99,6 +117,7 @@ export type PlanTask = {
   };
   sessionKey?: string;
   review?: string | PlanTaskReview;
+  guidance?: PlanTaskGuidance;
 };
 
 export type PlanDocument = {
@@ -113,6 +132,7 @@ export type PlanDocument = {
   summary?: string;
   leaveReason?: PlanLeaveReason;
   taskType?: string;
+  configOverride?: Partial<ProjectConfig>;
   tasks: PlanTask[];
   keyDecisions?: string[];
   references?: PlanReference[];
@@ -450,6 +470,7 @@ export type PlanWriteInput = {
   reviewer?: PlanReviewer;
   workflowDefinitions?: string;
   host?: string;
+  skillRoots?: string[];
 };
 
 export type PlanWriteResult = {
@@ -476,6 +497,8 @@ export type SubplanWriteInput = {
   parentTaskId: number;
   templateName?: string;
   ownerSessionKey?: string;
+  host?: string;
+  skillRoots?: string[];
 };
 
 export type PlanEditInput = {
@@ -487,6 +510,7 @@ export type PlanEditInput = {
   planStatus?: string;
   taskId?: number;
   taskStatus?: PlanTaskStatus;
+  choiceId?: string;
   appendTasks?: PlanTask[];
   reviewer?: PlanReviewer;
   workflowDefinitions?: string;

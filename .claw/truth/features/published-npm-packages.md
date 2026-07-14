@@ -119,6 +119,10 @@ npm registry 发布不能单独证明其他机器可获得相同源代码或 Cod
 
 release commit `472635e` 已推送至 `origin/main`，tag 为 `v0.1.62`；`@veewo/claw-core@0.1.62` 和 `@veewo/claw@0.1.62` 已发布。该流程修复了此前 npm 包可能领先 GitHub source、导致其他电脑安装旧 Codex 插件并缺失 skill 的发布断链。
 
+本机 closeout 进一步验证：全局 `@veewo/claw@0.1.62` 解析到 `C:\Users\chany\AppData\Roaming\npm\claw.ps1`；Codex cache 为 `0.1.62+codex.20260714120000`，包含 10 个 skills，并携带 `update`、`create-claw-skill` 及其模板；Codex bundle test 通过 6/6。
+
+这组证据证明发布物和本机安装面的版本、文件覆盖完整，但不证明 skill-local 模板已经接入 CLI 的 seed-template resolver。`update` 的 `--template update` 自举缺陷及端到端验收边界见 `.claw/truth/features/shared-planning-skill-source.md`。
+
 ### 关联代码
 
 - `scripts/publish-release.mjs`

@@ -105,7 +105,7 @@ const COMMAND_HELP: Record<string, HelpNode> = {
           "{script} plan create --title <text> [--goal <text>] [--template <name>]",
         ],
         description:
-          "Create the task scope and initial plan from a template. Uses explicit `--template` first, otherwise the project's configured `defaultPlanTemplate`, and finally falls back to the built-in `default`; planning-enabled projects start in process.discussing with planning and activation bridge tasks, while planning-disabled projects start directly in process.active with one executable task.",
+          "Create the task scope and initial plan through the shared template resolver. It supports project/built-in seed templates and installed skill-local full-plan templates; explicit `--template` wins, then the project's `defaultPlanTemplate`, then built-in `default`.",
         summary: "Create the task scope and initial plan.",
         options: [
           { flag: "--title <text>", detail: "Task title (required unless a positional title is given)." },
@@ -124,6 +124,7 @@ const COMMAND_HELP: Record<string, HelpNode> = {
           { flag: "--plan-status <status>", detail: "Set plan status (e.g. process.active, process.wait)." },
           { flag: "--task-id <id>", detail: "Target a specific task by id for status updates." },
           { flag: "--task-status <status>", detail: "Set the task status (e.g. pending, in_progress, done)." },
+          { flag: "--choice-id <id>", detail: "Select a task guidance.onDone choice when marking a task done." },
           { flag: "--append-tasks <json-file>", detail: "Append tasks from a JSON array file." },
           { flag: "--patch <json-file>", detail: "Apply a partial plan patch from a JSON file." },
           { flag: "--rule <text>", detail: "Append a rule (repeatable)." },
@@ -165,7 +166,7 @@ const COMMAND_HELP: Record<string, HelpNode> = {
       create: {
         usage: ["{script} subplan create --parent <task-name> --task-id <number> [--template <name>]"],
         description:
-          "Create a subplan under a parent task's task item. Uses explicit `--template` first, otherwise the project's configured `defaultPlanTemplate`, and finally falls back to the built-in `default`. The parent's rootPlan stays stable while the subplan becomes the active plan.",
+          "Create a subplan through the same template resolver as plan create, then add parent linkage. Supports project/built-in seed templates and installed skill-local full-plan templates.",
         summary: "Create a subplan under a parent task's task item.",
         options: [
           { flag: "--parent <task-name>", detail: "(required) Parent task name." },
@@ -398,6 +399,7 @@ async function runPlan(args: string[]): Promise<void> {
         planStatus: readOptionalFlag(args, "--plan-status"),
         taskId: readOptionalNumber(args, "--task-id"),
         taskStatus: readOptionalFlag(args, "--task-status") as PlanTask["status"] | undefined,
+        choiceId: readOptionalFlag(args, "--choice-id"),
         appendTasks: appendTasksPath ? readJson<PlanTask[]>(appendTasksPath) : undefined,
         host: process.env.CLAW_HOST ?? undefined,
       });
@@ -960,6 +962,7 @@ async function runSubplan(args: string[]): Promise<void> {
         parentTaskId: readOptionalNumber(args, "--task-id") ?? failMissingNumericFlag("--task-id"),
         templateName: readOptionalFlag(args, "--template") ?? undefined,
         ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
+        host: process.env.CLAW_HOST ?? undefined,
       });
       assertNoRemainingArgs(args, "subplan create");
       printJson(compactPlanCommandResult("subplan.create", result));
@@ -1114,6 +1117,7 @@ function compactPlanCommandResult(
       planPath: resolvedPlanPath,
       ...(archivedPlanPath ? { archivedPlanPath } : {}),
       planStatus: result.planStatus,
+      summary: result.workflowGuidance.summary,
       nextsteps: result.workflowGuidance.nextsteps,
       ...(result.workflowGuidance.nextTask ? { nextTask: result.workflowGuidance.nextTask } : {}),
       ...(result.workflowGuidance.delegateSubagents?.length

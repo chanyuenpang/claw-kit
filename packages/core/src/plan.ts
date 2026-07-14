@@ -9,7 +9,7 @@ import {
   isProcessStatus,
 } from "./requirements-gate.js";
 import { buildPlanViewModel } from "./plan-view.js";
-import { renderSeedTemplateText, resolveSeedPlanTemplate } from "./plan-templates.js";
+import { renderSeedTemplateText, resolvePlanTemplate } from "./plan-templates.js";
 import { ensureInsideDir, normalizePlanFile, slugFromFilePath } from "./paths.js";
 import type {
   LegacyPlanStatus,
@@ -28,7 +28,11 @@ import type {
   TaskContext,
 } from "./types.js";
 import type { PlanEvent } from "./plan-events.js";
-import { buildGoalModeObjective, buildPlanWorkflowGuidance } from "./workflow-guidance.js";
+import {
+  buildGoalModeObjective,
+  buildPlanWorkflowGuidance,
+  resolvePlanTaskCompletionGuidance,
+} from "./workflow-guidance.js";
 
 const PLAN_STATUSES: PlanStatus[] = [
   "prepare.requirements",
@@ -67,7 +71,7 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
   const effectiveStatus = normalizePlanStatus(input.planStatus) ?? input.content?.status ?? existingStatus ?? "prepare.requirements";
 
   let plan = normalizePlanDocument(
-    input.content ?? await createSeedPlan(
+    input.content ?? await createPlanFromTemplate(
       project.projectRoot,
       project.projectConfig,
       input.templateName,
@@ -77,6 +81,7 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
       effectiveStatus,
       input.forcePlanning,
       input.host,
+      input.skillRoots,
     ),
     effectiveStatus,
   );
@@ -145,7 +150,7 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
       planFile,
       plan,
       commandSource: input.parentTaskId !== undefined ? "subplan.create" : "plan.create",
-      projectConfig: project.projectConfig,
+      projectConfig: effectivePlanProjectConfig(project.projectConfig, plan),
       host: input.host,
     }),
     plan,
@@ -244,6 +249,8 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
     }
   }
 
+  const taskCompletionGuidance = resolvePlanTaskCompletionGuidance(next, completedTaskIds, input.choiceId);
+
   validatePlanDocument(next);
   if (next.status === "end.completed" && !next.retrospective?.summary?.trim()) {
     throw new ClawError(
@@ -327,7 +334,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
       planFile: resultPlanFile,
       plan: resultPlan,
       commandSource: "plan.edit",
-      projectConfig: task.project.projectConfig,
+      projectConfig: effectivePlanProjectConfig(task.project.projectConfig, resultPlan),
       host: input.host,
       ...(completionHooks?.subplanClosureCandidate
         ? {}
@@ -336,6 +343,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
             completionHooks,
             changedTaskIds,
             completedTaskIds,
+            taskCompletionGuidance,
           }),
     }),
     planView: buildPlanViewModel({
@@ -399,6 +407,8 @@ export async function createSubplan(input: SubplanWriteInput): Promise<PlanWrite
     parentTaskId: input.parentTaskId,
     parentPlanFile,
     ownerSessionKey: input.ownerSessionKey,
+    host: input.host,
+    skillRoots: input.skillRoots,
   });
 }
 
@@ -565,7 +575,7 @@ function applyPlanPatch(target: PlanDocument, patch: Partial<PlanDocument>): voi
   }
 }
 
-async function createSeedPlan(
+async function createPlanFromTemplate(
   projectRoot: string,
   projectConfig: TaskContext["project"]["projectConfig"] | null,
   templateName: string | undefined,
@@ -575,12 +585,27 @@ async function createSeedPlan(
   status: PlanStatus = "prepare.requirements",
   forcePlanning = false,
   host?: string,
+  skillRoots?: string[],
 ): Promise<PlanDocument> {
   const effectiveTemplateName = templateName?.trim() || projectConfig?.defaultPlanTemplate?.trim() || defaultPlanTemplateName();
-  const template = await resolveSeedPlanTemplate({
+  const resolvedTemplate = await resolvePlanTemplate({
     projectRoot,
     templateName: effectiveTemplateName,
+    host,
+    skillRoots,
   });
+  if (resolvedTemplate.kind === "full") {
+    const fullTemplate = structuredClone(resolvedTemplate.template);
+    const { id: _templateId, ...plan } = fullTemplate;
+    return {
+      ...plan,
+      title: title ?? plan.title ?? taskName,
+      goal: {
+        text: goalText ?? plan.goal?.text ?? title ?? taskName,
+      },
+    };
+  }
+  const template = resolvedTemplate.template;
   const planningEnabled = forcePlanning || projectConfig?.planning !== false;
   const planningSkill = projectConfig?.externalPlanningSkill?.trim() || "the built-in planning skill";
   if (!planningEnabled) {
@@ -651,6 +676,19 @@ async function createSeedPlan(
     retrospective: {
       summary: "",
     },
+  };
+}
+
+function effectivePlanProjectConfig(
+  projectConfig: TaskContext["project"]["projectConfig"] | null,
+  plan: PlanDocument,
+): TaskContext["project"]["projectConfig"] | null {
+  if (!plan.configOverride) {
+    return projectConfig;
+  }
+  return {
+    ...(projectConfig ?? {}),
+    ...plan.configOverride,
   };
 }
 

@@ -1,11 +1,13 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import workflowGuidanceConfigJson from "./workflow-guidance.config.json" with { type: "json" };
+import { ClawError } from "./errors.js";
 import type {
   PlanCompletionHooks,
   PlanDocument,
   ProjectConfig,
   PlanTask,
+  PlanTaskOnDoneGuidance,
   PlanStatus,
   WorkflowGuidance,
   WorkflowGuidanceGoalTool,
@@ -246,6 +248,7 @@ export function buildPlanWorkflowGuidance(params: {
   completionHooks?: PlanCompletionHooks;
   changedTaskIds?: number[];
   completedTaskIds?: number[];
+  taskCompletionGuidance?: PlanTaskOnDoneGuidance;
   host?: string;
 }): WorkflowGuidance {
   const {
@@ -258,6 +261,7 @@ export function buildPlanWorkflowGuidance(params: {
     completionHooks,
     changedTaskIds,
     completedTaskIds,
+    taskCompletionGuidance,
   } = params;
   const scopedPlan = planFile === "plan.json" ? "" : ` --plan ${planFile}`;
   const editBase = `claw plan edit --task ${taskName}${scopedPlan}`;
@@ -342,7 +346,7 @@ export function buildPlanWorkflowGuidance(params: {
     case "process.active": {
       if (allTasksDone) {
         const template = renderStateTemplate("process.allTasksDone", vars);
-        return {
+        const guidance: WorkflowGuidance = {
           stage: template.stage as WorkflowGuidance["stage"],
           summary: template.summary,
           nextsteps: template.nextsteps,
@@ -352,6 +356,7 @@ export function buildPlanWorkflowGuidance(params: {
             ? { delegateSubagents: buildConfiguredDelegates(template.delegateSubagents, projectConfig) }
             : {}),
         };
+        return applyPlanTaskCompletionGuidance(guidance, plan, taskCompletionGuidance);
       }
 
       const templateKey = hasCompletedTasks
@@ -365,7 +370,7 @@ export function buildPlanWorkflowGuidance(params: {
             : "process.default";
       const template = renderStateTemplate(templateKey, vars);
 
-      return {
+      const guidance: WorkflowGuidance = {
         stage: template.stage as WorkflowGuidance["stage"],
         summary: template.summary,
         nextsteps: template.nextsteps,
@@ -393,6 +398,7 @@ export function buildPlanWorkflowGuidance(params: {
             }
           : {}),
       };
+      return applyPlanTaskCompletionGuidance(guidance, plan, taskCompletionGuidance);
     }
     case "end.completed": {
       const template = workflowGuidanceConfig.states["end.completed"]
@@ -421,6 +427,114 @@ export function buildPlanWorkflowGuidance(params: {
       };
     }
   }
+}
+
+export function resolvePlanTaskCompletionGuidance(
+  plan: PlanDocument,
+  completedTaskIds: number[] | undefined,
+  choiceId?: string,
+): PlanTaskOnDoneGuidance | undefined {
+  if (!completedTaskIds?.length) {
+    if (choiceId) {
+      throw new ClawError("PROJECT_CONFIG_INVALID", "--choice-id requires a task transition to done.", { choiceId });
+    }
+    return undefined;
+  }
+
+  const completedTask = plan.tasks.find((task) => task.id === completedTaskIds[0]);
+  const onDone = completedTask?.guidance?.onDone;
+  if (!onDone) {
+    if (choiceId) {
+      throw new ClawError("PROJECT_CONFIG_INVALID", `Task ${completedTask?.id ?? completedTaskIds[0]} does not define onDone choices.`, {
+        taskId: completedTask?.id ?? completedTaskIds[0],
+        choiceId,
+      });
+    }
+    return undefined;
+  }
+
+  const choices = onDone.choices ?? {};
+  const choiceIds = Object.keys(choices);
+  if (choiceIds.length > 0) {
+    if (!choiceId) {
+      throw new ClawError("PROJECT_CONFIG_INVALID", `Task ${completedTask.id} requires --choice-id when marking it done.`, {
+        taskId: completedTask.id,
+        availableChoices: choiceIds,
+      });
+    }
+    const selected = choices[choiceId];
+    if (!selected) {
+      throw new ClawError("PROJECT_CONFIG_INVALID", `Unknown choice "${choiceId}" for task ${completedTask.id}.`, {
+        taskId: completedTask.id,
+        choiceId,
+        availableChoices: choiceIds,
+      });
+    }
+    return validatePlanTaskOnDoneGuidance(plan, selected);
+  }
+
+  if (choiceId) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", `Task ${completedTask.id} does not define choice "${choiceId}".`, {
+      taskId: completedTask.id,
+      choiceId,
+    });
+  }
+  return onDone.default ? validatePlanTaskOnDoneGuidance(plan, onDone.default) : undefined;
+}
+
+function validatePlanTaskOnDoneGuidance(
+  plan: PlanDocument,
+  guidance: PlanTaskOnDoneGuidance,
+): PlanTaskOnDoneGuidance {
+  if (guidance.nextTaskId !== undefined && !plan.tasks.some((task) => task.id === guidance.nextTaskId)) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", `Task guidance references missing nextTaskId ${guidance.nextTaskId}.`, {
+      nextTaskId: guidance.nextTaskId,
+    });
+  }
+  return guidance;
+}
+
+function applyPlanTaskCompletionGuidance(
+  base: WorkflowGuidance,
+  plan: PlanDocument,
+  taskGuidance: PlanTaskOnDoneGuidance | undefined,
+): WorkflowGuidance {
+  if (!taskGuidance) {
+    return base;
+  }
+
+  const nextTask = taskGuidance.nextTaskId === undefined
+    ? base.nextTask
+    : plan.tasks.find((task) => task.id === taskGuidance.nextTaskId);
+  if (taskGuidance.nextTaskId !== undefined && !nextTask) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", `Task guidance references missing nextTaskId ${taskGuidance.nextTaskId}.`, {
+      nextTaskId: taskGuidance.nextTaskId,
+    });
+  }
+
+  const foundation: WorkflowGuidance = taskGuidance.mergeMode === "override"
+    ? {
+        stage: base.stage,
+        summary: taskGuidance.summary ?? base.summary,
+        nextsteps: taskGuidance.nextsteps ?? base.nextsteps,
+      }
+    : { ...base };
+  const delegates = taskGuidance.delegateTruth === false
+    ? base.delegateSubagents?.filter((delegate) => delegate.name !== "truth-writer")
+    : base.delegateSubagents;
+
+  return {
+    ...foundation,
+    ...(taskGuidance.summary !== undefined ? { summary: taskGuidance.summary } : {}),
+    ...(taskGuidance.nextsteps !== undefined ? { nextsteps: taskGuidance.nextsteps } : {}),
+    ...(nextTask
+      ? { nextTask: { id: nextTask.id, title: nextTask.title, status: nextTask.status, ...(nextTask.detail ? { detail: nextTask.detail } : {}) } }
+      : {}),
+    ...(taskGuidance.notes !== undefined ? { notes: taskGuidance.notes } : {}),
+    ...(taskGuidance.recommendedCommands !== undefined ? { recommendedCommands: taskGuidance.recommendedCommands } : {}),
+    ...(taskGuidance.askUser !== undefined ? { askUser: taskGuidance.askUser } : {}),
+    ...(delegates?.length ? { delegateSubagents: delegates } : {}),
+  };
 }
 
 function normalizeWriterSkill(value: string | null | undefined, fallback: string): string {

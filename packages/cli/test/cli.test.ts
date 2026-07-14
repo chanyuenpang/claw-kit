@@ -23,7 +23,7 @@ function createFixture(name: string): string {
 // into spawned `claw` processes, they alter workflow guidance behavior (host
 // gating, stale config) and pollute assertions. Strip them by default so tests
 // exercise core's bundled defaults unless a test explicitly opts in via `env`.
-const ISOLATED_ENV_KEYS = ["CLAW_HOST", "CLAW_GUIDANCE_CONFIG"] as const;
+const ISOLATED_ENV_KEYS = ["CLAW_HOST", "CLAW_GUIDANCE_CONFIG", "CLAW_SKILL_ROOTS"] as const;
 
 function buildSpawnEnv(extra?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
@@ -297,7 +297,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
     env,
   );
   assert.equal("stage" in writeResult, false);
-  assert.equal("summary" in writeResult, false);
+  assert.equal(writeResult.summary, "Execution is starting.");
   assert.equal("taskName" in writeResult, false);
   assert.equal("planFile" in writeResult, false);
   assert.equal(writeResult.planSummary, "0/1 e2e-task");
@@ -361,7 +361,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   );
   assert.deepEqual(taskDone.nextsteps, [
     "1. Clear thread progress with `update_plan`.",
-    "2. Read `delegateSubagents`, curate the valuable findings from the completed work into a completed subtask report, then execute the returned `truth-writer` dispatch contract field-by-field. Do not treat it as a suggestion.",
+    "2. Decide whether the completed work contains reusable truth. If it does, curate the valuable findings into a completed subtask report and execute the returned `truth-writer` dispatch contract field-by-field.",
     "3. First write both `retrospective` and `keyDecisions` back into the plan, then read `delegateSubagents` again and execute the returned `adr-writer` dispatch contract field-by-field with that updated completed `plan.json`.",
   ]);
   assert.deepEqual(taskDone.recommendedCommands, [
@@ -370,7 +370,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   ]);
   assert.equal(
     taskDone.notes,
-    "Truth doc and ADR doc generation are essential claw-kit features. When dispatching a subagent, each entry is a required structured contract whose fields must be honored directly.",
+    "Truth deposition is conditional on the main agent's reusable-value judgment; ADR deposition is required for root-plan closeout. Once dispatch is chosen or required, honor every field in that delegate contract.",
   );
 
   const truthInputPath = path.join(root, "truth-report.md");
@@ -776,15 +776,15 @@ test("cli returns truth-writer contract on completed task before final plan comp
   );
 
   assert.equal("stage" in taskDone, false);
-  assert.equal("summary" in taskDone, false);
+  assert.equal(taskDone.summary, "Execution is in progress.");
   assert.deepEqual(taskDone.nextsteps, [
     "1. Sync thread progress with `update_plan`.",
-    "2. Read `delegateSubagents`, curate the valuable findings from the completed task into a completed subtask report, then execute the returned `truth-writer` dispatch contract field-by-field. Do not treat it as a suggestion.",
+    "2. Decide whether the completed task contains reusable truth. If it does, curate the valuable findings into a completed subtask report and execute the returned `truth-writer` dispatch contract field-by-field.",
     "3. Continue with task #2.",
   ]);
   assert.equal(
     taskDone.notes,
-    "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. When dispatching a subagent, each entry is a required structured contract whose fields must be honored directly.",
+    "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. Truth deposition is conditional; when dispatching the writer, honor every field in its delegate contract.",
   );
   assert.deepEqual(taskDone.nextTask, {
     id: 2,
@@ -998,6 +998,66 @@ test("cli subplan create accepts an explicit template flag", () => {
   assert.equal(childPlan.title, "Implement child work");
   assert.equal(((childPlan.goal as JsonRecord).text), "Implement child work");
   assert.equal((childPlan.tasks as unknown[]).length, 2);
+});
+
+test("cli plan and subplan create share installed skill-local full-plan templates", () => {
+  const root = createFixture("cli-shared-skill-full-plan-template");
+  const skillRoot = path.join(root, "installed-skills");
+  const updateSkillDir = path.join(skillRoot, "update");
+  fs.mkdirSync(updateSkillDir, { recursive: true });
+  fs.copyFileSync(
+    path.resolve(thisDir, "..", "..", "..", "shared", "skills", "update", "TEMPLATE.json"),
+    path.join(updateSkillDir, "TEMPLATE.json"),
+  );
+  const env = { CLAW_SKILL_ROOTS: skillRoot };
+
+  runClaw(["init", "--name", "Shared Skill Full Plan Template"], root, env);
+  const rootResult = runClaw(
+    ["plan", "create", "--title", "template-parent", "--goal", "Run the root update", "--template", "update"],
+    root,
+    env,
+  );
+  const rootPlan = JSON.parse(fs.readFileSync(String(rootResult.planPath), "utf-8")) as JsonRecord;
+  assert.equal(rootPlan.status, "process.active");
+  assert.equal(((rootPlan.goal as JsonRecord).text), "Run the root update");
+  assert.equal((rootPlan.tasks as unknown[]).length, 3);
+  assert.equal(((rootPlan.configOverride as JsonRecord).truthDispatch), "final_only");
+
+  const subplanResult = runClaw(
+    ["subplan", "create", "--parent", "template-parent", "--task-id", "1", "--template", "update"],
+    root,
+    env,
+  );
+  const childPlan = JSON.parse(fs.readFileSync(String(subplanResult.planPath), "utf-8")) as JsonRecord;
+  const taskMeta = JSON.parse(
+    fs.readFileSync(path.join(root, ".claw", "tasks", "template-parent", "meta.json"), "utf-8"),
+  ) as JsonRecord;
+  const childPlanFile = String(taskMeta.activePlan);
+  assert.equal(childPlan.status, "process.active");
+  assert.equal(childPlan.parentPlan, "plan.json");
+  assert.equal(childPlan.parentTaskId, 1);
+  assert.equal((childPlan.tasks as unknown[]).length, 3);
+
+  const missingChoice = runClawExpectFailure(
+    [
+      "plan", "edit", "--task", "template-parent", "--plan", childPlanFile,
+      "--task-id", "1", "--task-status", "done",
+    ],
+    root,
+    env,
+  );
+  assert.equal(((missingChoice.error as JsonRecord).code), "PROJECT_CONFIG_INVALID");
+
+  const selected = runClaw(
+    [
+      "plan", "edit", "--task", "template-parent", "--plan", childPlanFile,
+      "--task-id", "1", "--task-status", "done", "--choice-id", "codex",
+    ],
+    root,
+    env,
+  );
+  assert.equal(selected.summary, "The current host route is Codex.");
+  assert.equal(((selected.nextTask as JsonRecord).id), 2);
 });
 
 test("cli plan done on a subplan resumes the parent plan instead of archiving the whole task", () => {
