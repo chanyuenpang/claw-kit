@@ -6,11 +6,19 @@ This reference distills the current OpenClaw truth deposition rules into Codex-f
 
 Turn reports, discoveries, and completed task outcomes into durable canonical truth under `.claw/truth/`.
 
+This reference is the complete execution contract for a subagent explicitly delegated as the truth writer. The main agent decides whether a report may contain reusable truth and delegates the compact finding bundle; the writer makes the final durability judgment and performs deposition.
+
+## Input contract
+
+Accept only a compact completed-task report, investigation report, or equivalent finding bundle. Do not require the main agent to preload or restate these deposition rules.
+
 ## What truth is not
 
 - not a progress log
+- not temporary progress or a one-off status update
 - not a PR summary
 - not a one-off verification report
+- not a speculative conclusion or noisy execution-log dump
 - not a dump of temporary session state
 
 ## What is worth deposition
@@ -29,6 +37,10 @@ Turn reports, discoveries, and completed task outcomes into durable canonical tr
 - `SUMMARY.md` as the canonical truth index
 
 Prefer updating an existing truth doc over creating a new fragmented one.
+
+- read the relevant existing truth docs before writing
+- create a new truth doc only when the topic is genuinely new
+- honor the project's configured canonical truth root; use `.claw/truth/` in claw-kit projects
 
 ## Writing rules
 
@@ -53,3 +65,23 @@ Prefer updating an existing truth doc over creating a new fragmented one.
 ## Summary discipline
 
 Update `SUMMARY.md` when the discoverability of the truth set materially changes.
+
+## Execution workflow
+
+1. Judge whether the input contains reusable durable knowledge.
+2. Read the relevant existing truth documents.
+3. Update an existing document when possible; create one only for a genuinely new durable topic.
+4. In claw-kit projects, write through `claw truth ingest` when available.
+5. Verify that the resulting canonical text follows the routing and writing rules above.
+
+## Timing and boundaries
+
+Run truth deposition at task-completion time when a completed subtask report contains reusable knowledge, or when all current plan tasks are done but the plan has not yet closed. Deposit truth before retrospective closure; do not defer it to the ADR stage.
+
+- architecture decisions that deserve an ADR belong to the ADR writer
+- do not default to a generic project document, report, changelog, or progress log
+- the canonical default output is the project's truth corpus
+
+## Return contract
+
+Return nothing or only a minimal completion payload with optional `status` and `updatedPaths`. The main agent does not rely on a detailed response. Do not send a long write-up, and do not relay or summarize this reference back to the main agent.

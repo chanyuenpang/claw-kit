@@ -86,7 +86,6 @@ async function copyPayloadTree(sourceDir, destinationDir, payloadRelativePaths) 
 }
 
 export async function readCodexPluginSource({ sourceDir = defaultSourceDir } = {}) {
-  await syncSharedSkills();
   const manifestPath = path.join(sourceDir, ".codex-plugin", "plugin.json");
   const manifest = await readJson(manifestPath);
 
@@ -104,28 +103,34 @@ export async function readCodexPluginSource({ sourceDir = defaultSourceDir } = {
   };
 }
 
+async function materializeCodexPluginSource(sourceDir) {
+  const stagingRoot = await fs.mkdtemp(path.join(os.tmpdir(), "claw-kit-codex-plugin-source-"));
+  const stagedSourceDir = path.join(stagingRoot, "codex-adapter");
+  await fs.cp(sourceDir, stagedSourceDir, { recursive: true });
+  await syncSharedSkills({ adapterDirs: [stagedSourceDir] });
+  return { stagedSourceDir, cleanup: () => fs.rm(stagingRoot, { recursive: true, force: true }) };
+}
+
 export async function exportCodexPluginBundle({ sourceDir = defaultSourceDir, outDir = defaultBundleOutDir } = {}) {
-  const plugin = await readCodexPluginSource({ sourceDir });
-  const bundleDir = path.join(outDir, plugin.name, plugin.version);
-
-  await copyPayloadTree(plugin.sourceDir, bundleDir, plugin.payloadRelativePaths);
-
-  return {
-    ...plugin,
-    outDir,
-    bundleDir,
-  };
+  const staged = await materializeCodexPluginSource(sourceDir);
+  try {
+    const plugin = await readCodexPluginSource({ sourceDir: staged.stagedSourceDir });
+    const bundleDir = path.join(outDir, plugin.name, plugin.version);
+    await copyPayloadTree(plugin.sourceDir, bundleDir, plugin.payloadRelativePaths);
+    return { ...plugin, outDir, bundleDir };
+  } finally {
+    await staged.cleanup();
+  }
 }
 
 export async function installCodexPluginBundle({ sourceDir = defaultSourceDir, cacheRoot = defaultCacheRoot } = {}) {
-  const plugin = await readCodexPluginSource({ sourceDir });
-  const installDir = path.join(cacheRoot, plugin.name, plugin.version);
-
-  await copyPayloadTree(plugin.sourceDir, installDir, plugin.payloadRelativePaths);
-
-  return {
-    ...plugin,
-    cacheRoot,
-    installDir,
-  };
+  const staged = await materializeCodexPluginSource(sourceDir);
+  try {
+    const plugin = await readCodexPluginSource({ sourceDir: staged.stagedSourceDir });
+    const installDir = path.join(cacheRoot, plugin.name, plugin.version);
+    await copyPayloadTree(plugin.sourceDir, installDir, plugin.payloadRelativePaths);
+    return { ...plugin, cacheRoot, installDir };
+  } finally {
+    await staged.cleanup();
+  }
 }

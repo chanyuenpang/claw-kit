@@ -62,13 +62,25 @@ test("Codex plugin manifest starts with using-claw-kit instead of pre-reading pl
 });
 
 test("Codex plugin source includes the config skill entrypoint", async () => {
-  const skillPath = new URL("../packages/codex-adapter/skills/config/SKILL.md", import.meta.url);
+  const skillPath = new URL("../shared/skills/config/SKILL.md", import.meta.url);
   const skillText = await fs.readFile(skillPath, "utf8");
 
   assert.match(skillText, /name: config/);
   assert.match(skillText, /team config/i);
   assert.match(skillText, /personal config/i);
   assert.match(skillText, /\.claw\/project-override\.json/);
+});
+
+test("exported Codex plugin contains every shared workflow skill", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "claw-kit-codex-plugin-shared-workflows-"));
+  const outDir = path.join(root, "dist");
+  const result = await exportCodexPluginBundle({ outDir });
+
+  for (const skillName of ["planning", "config", "update", "create-claw-skill"]) {
+    await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", skillName, "SKILL.md")));
+  }
+  await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "update", "TEMPLATE.json")));
+  await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "create-claw-skill", "TEMPLATE.json")));
 });
 
 test("exportCodexPluginBundle copies the expected payload into a versioned bundle directory", async () => {

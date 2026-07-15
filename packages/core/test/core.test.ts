@@ -33,6 +33,8 @@ import {
   resolveLocalEmbeddingCacheDir,
 } from "../src/embedding-defaults.js";
 
+const packageVersion = JSON.parse(fs.readFileSync(new URL("../../package.json", import.meta.url), "utf8")).version as string;
+
 function createFixture(name: string): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), `claw-kit-${name}-`));
   fs.mkdirSync(path.join(root, ".claw", "truth"), { recursive: true });
@@ -148,7 +150,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
     "# claw-kit\n.claw/*\n!.claw/project.json\n!.claw/truth/\n!.claw/truth/**\n.claw/project-override.json\n",
   );
   assert.deepEqual(projectConfig, {
-    version: "0.1.54",
+    version: packageVersion,
     id: "demo-project",
     name: "Demo Project",
     maxTasksToKeep: 20,
@@ -1746,6 +1748,102 @@ test("createSubplan always uses planning shape even when project planning is dis
   assert.deepEqual(result.plan.tasks.map((task) => task.id), [1, 2]);
 });
 
+test("plan and subplan create share full skill-local template resolution and task guidance", async () => {
+  const root = createFixture("shared-full-plan-template-resolution");
+  initProject({ cwd: root, projectName: "Shared Full Template Resolution", planning: true, force: true });
+  const skillRoot = path.join(root, "shared", "skills");
+  const updateSkillDir = path.join(skillRoot, "update");
+  fs.mkdirSync(updateSkillDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(updateSkillDir, "TEMPLATE.json"),
+    JSON.stringify(
+      {
+        id: "update",
+        configOverride: { truthDispatch: "final_only" },
+        title: "update",
+        status: "process.active",
+        goal: { text: "Refresh claw-kit." },
+        requirements: { summary: "", openQuestions: [], acceptanceCriteria: [] },
+        tasks: [
+          {
+            id: 1,
+            title: "Choose host",
+            status: "pending",
+            guidance: {
+              onDone: {
+                choices: {
+                  codex: {
+                    mergeMode: "override",
+                    summary: "The current host route is Codex.",
+                    nextsteps: ["Refresh the CLI, then Codex."],
+                    nextTaskId: 2,
+                    delegateTruth: false,
+                  },
+                },
+              },
+            },
+          },
+          { id: 2, title: "Refresh installs", status: "pending" },
+        ],
+        references: [],
+        rules: [],
+        keyDecisions: [],
+        retrospective: { summary: "" },
+      },
+      null,
+      2,
+    ),
+    "utf-8",
+  );
+
+  const rootResult = await writePlan({
+    cwd: root,
+    title: "Template parent",
+    goalText: "Run the root update workflow",
+    templateName: "update",
+  });
+  assert.equal(rootResult.plan.status, "process.active");
+  assert.equal(rootResult.plan.title, "Template parent");
+  assert.equal(rootResult.plan.goal.text, "Run the root update workflow");
+  assert.deepEqual(rootResult.plan.tasks.map((task) => task.title), ["Choose host", "Refresh installs"]);
+  assert.equal(rootResult.plan.configOverride?.truthDispatch, "final_only");
+
+  const subplanResult = await createSubplan({
+    cwd: root,
+    parentTaskName: rootResult.taskName,
+    parentTaskId: 1,
+    templateName: "update",
+  });
+  assert.equal(subplanResult.plan.status, "process.active");
+  assert.equal(subplanResult.plan.parentPlan, "plan.json");
+  assert.equal(subplanResult.plan.parentTaskId, 1);
+  assert.deepEqual(subplanResult.plan.tasks.map((task) => task.title), ["Choose host", "Refresh installs"]);
+
+  await assert.rejects(
+    () => editPlan({
+      cwd: root,
+      taskName: rootResult.taskName,
+      planFile: subplanResult.planFile,
+      taskId: 1,
+      taskStatus: "done",
+    }),
+    /requires --choice-id/i,
+  );
+
+  const edited = await editPlan({
+    cwd: root,
+    taskName: rootResult.taskName,
+    planFile: subplanResult.planFile,
+    taskId: 1,
+    taskStatus: "done",
+    choiceId: "codex",
+  });
+  assert.equal(edited.workflowGuidance.summary, "The current host route is Codex.");
+  assert.equal(edited.workflowGuidance.nextTask?.id, 2);
+  assert.deepEqual(edited.workflowGuidance.nextsteps, ["Refresh the CLI, then Codex."]);
+  assert.equal(edited.workflowGuidance.delegateSubagents, undefined);
+});
+
 test("subplan completion resumes the parent plan and marks the parent task done", async () => {
   const root = createFixture("subplan-complete-resume-parent");
   await writePlan({
@@ -1951,11 +2049,11 @@ test("plan edit can move from requirements to process.active without a separate 
   assert.ok(result.workflowGuidance.recommendedCommands?.some((command) => command.includes("claw plan done")));
   assert.equal(
     result.workflowGuidance.summary,
-    "All plan tasks are done. Clear thread progress with `update_plan`, then execute each returned delegateSubagents entry field-by-field for truth deposition and ADR closeout.",
+    "All plan tasks are done. Clear thread progress with `update_plan`, conditionally deposit reusable truth, then complete the required ADR closeout.",
   );
   assert.equal(
     result.workflowGuidance.notes,
-    "Truth doc and ADR doc generation are essential claw-kit features. When dispatching a subagent, each entry is a required structured contract whose fields must be honored directly.",
+    "Truth deposition is conditional on the main agent's reusable-value judgment; ADR deposition is required for root-plan closeout. Once dispatch is chosen or required, honor every field in that delegate contract.",
   );
   const truthDelegate = result.workflowGuidance.delegateSubagents?.[0];
   const adrDelegate = result.workflowGuidance.delegateSubagents?.[1];
@@ -1980,7 +2078,7 @@ test("plan edit can move from requirements to process.active without a separate 
   assert.ok(result.workflowGuidance.nextsteps.some((step) => step.includes("adr-writer")));
   assert.deepEqual(result.workflowGuidance.nextsteps, [
     "1. Clear thread progress with `update_plan`.",
-    "2. Read `delegateSubagents`, curate the valuable findings from the completed work into a completed subtask report, then execute the returned `truth-writer` dispatch contract field-by-field. Do not treat it as a suggestion.",
+    "2. Decide whether the completed work contains reusable truth. If it does, curate the valuable findings into a completed subtask report and execute the returned `truth-writer` dispatch contract field-by-field.",
     "3. First write both `retrospective` and `keyDecisions` back into the plan, then read `delegateSubagents` again and execute the returned `adr-writer` dispatch contract field-by-field with that updated completed `plan.json`.",
   ]);
   assert.deepEqual(result.workflowGuidance.recommendedCommands, [
@@ -2232,11 +2330,11 @@ test("process entry returns the first task and task completion returns truth-wri
   assert.equal(taskDone.workflowGuidance.nextTask?.id, 2);
   assert.equal(
     taskDone.workflowGuidance.notes,
-    "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. When dispatching a subagent, each entry is a required structured contract whose fields must be honored directly.",
+    "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. Truth deposition is conditional; when dispatching the writer, honor every field in its delegate contract.",
   );
   assert.deepEqual(taskDone.workflowGuidance.nextsteps, [
     "1. Sync thread progress with `update_plan`.",
-    "2. Read `delegateSubagents`, curate the valuable findings from the completed task into a completed subtask report, then execute the returned `truth-writer` dispatch contract field-by-field. Do not treat it as a suggestion.",
+    "2. Decide whether the completed task contains reusable truth. If it does, curate the valuable findings into a completed subtask report and execute the returned `truth-writer` dispatch contract field-by-field.",
     "3. Continue with task #2.",
   ]);
   assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.skill, "external-truth-writer");
@@ -4032,7 +4130,7 @@ test("workflow guidance uses external writer skills from project config", async 
   });
   assert.equal(
     taskDone.workflowGuidance.notes,
-    "Truth doc and ADR doc generation are essential claw-kit features. When dispatching a subagent, each entry is a required structured contract whose fields must be honored directly.",
+    "Truth deposition is conditional on the main agent's reusable-value judgment; ADR deposition is required for root-plan closeout. Once dispatch is chosen or required, honor every field in that delegate contract.",
   );
   assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.skill, "external-truth-writer");
   assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.model, "gpt-5.4-mini");
@@ -4163,7 +4261,7 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
   assert.equal(result.ok, true);
   assert.equal(result.changed, true);
   assert.ok(result.issueCountBefore > 0);
-  assert.equal(projectConfig.version, "0.1.54");
+  assert.equal(projectConfig.version, packageVersion);
   assert.equal(projectConfig.id, "fix-me");
   assert.equal(projectConfig.name, "Fix Me");
   assert.equal(projectConfig.maxTasksToKeep, 99);

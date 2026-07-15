@@ -76,16 +76,19 @@ Published package mapping:
 4. Run `npm install`.
 5. Run verification commands.
 6. Dry-run package artifacts.
-7. Confirm npm auth.
-8. Publish `@veewo/claw-core` first.
-9. Publish `@veewo/claw` second.
-10. Verify published versions.
-11. Refresh the locally installed CLI and local Codex plugin cache.
-12. Run post-publish install verification.
+7. Create the release commit.
+8. Push the release commit to GitHub and verify `HEAD` is contained in `origin/main`.
+9. Run `npm run verify:release`; it validates the clean tree, version alignment, pushed commit, and exported plugin skills.
+10. Confirm npm auth.
+11. Publish `@veewo/claw-core` first.
+12. Publish `@veewo/claw` second.
+13. Verify published versions and attach the exported Codex plugin bundle to the GitHub release.
+14. Refresh the locally installed CLI and local Codex plugin cache.
+15. Run post-publish installation verification from a clean machine or checkout.
 
 Execution policy by mode:
 
-- `full-publish`: complete all 12 steps.
+- `full-publish`: complete all 15 steps.
 - `prepare-only`: complete through step 6 only.
 - `publish-only`: complete steps 7-12 only.
 
@@ -156,6 +159,15 @@ Verify the registry after publish:
 npm view @veewo/claw-core version --registry=https://registry.npmjs.org
 npm view @veewo/claw version --registry=https://registry.npmjs.org
 ```
+
+The supported guarded entrypoint is:
+
+```powershell
+npm run verify:release
+npm run publish:release
+```
+
+Both commands intentionally fail if the release worktree is dirty or its current commit has not been pushed to GitHub. Do not use direct `npm publish` as a substitute: it can create a registry release with no corresponding GitHub source commit.
 
 ## Remote Install Paths
 

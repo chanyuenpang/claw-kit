@@ -2,7 +2,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { buildCompletionHooks } from "./completion-hooks.js";
 import { ensureTaskMeta, resolveProjectContext, resolveTaskContext, resolveTaskName, saveTaskMeta } from "./context.js";
-import { resolvePlanEffectiveConfig } from "./effective-config.js";
 import { ClawError } from "./errors.js";
 import { readJsonFile, withFileLock, writeJsonFile } from "./io.js";
 import { buildPlanEvent } from "./plan-events.js";
@@ -10,7 +9,7 @@ import {
   isProcessStatus,
 } from "./requirements-gate.js";
 import { buildPlanViewModel } from "./plan-view.js";
-import { getTemplateTaskDoneChoices, renderSeedTemplateText, resolveSeedPlanTemplate } from "./plan-templates.js";
+import { renderSeedTemplateText, resolvePlanTemplate } from "./plan-templates.js";
 import { ensureInsideDir, normalizePlanFile, slugFromFilePath } from "./paths.js";
 import type {
   LegacyPlanStatus,
@@ -29,7 +28,11 @@ import type {
   TaskContext,
 } from "./types.js";
 import type { PlanEvent } from "./plan-events.js";
-import { buildGoalModeObjective, buildPlanWorkflowGuidance } from "./workflow-guidance.js";
+import {
+  buildGoalModeObjective,
+  buildPlanWorkflowGuidance,
+  resolvePlanTaskCompletionGuidance,
+} from "./workflow-guidance.js";
 
 const PLAN_STATUSES: PlanStatus[] = [
   "prepare.requirements",
@@ -68,7 +71,7 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
   const effectiveStatus = normalizePlanStatus(input.planStatus) ?? input.content?.status ?? existingStatus ?? "prepare.requirements";
 
   let plan = normalizePlanDocument(
-    input.content ?? await createSeedPlan(
+    input.content ?? await createPlanFromTemplate(
       project.projectRoot,
       project.projectConfig,
       input.templateName,
@@ -78,6 +81,7 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
       effectiveStatus,
       input.forcePlanning,
       input.host,
+      input.skillRoots,
     ),
     effectiveStatus,
   );
@@ -141,13 +145,12 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
     eventType,
     ...(plan.parentPlan ? { parentPlan: plan.parentPlan } : {}),
     ...(plan.parentTaskId !== undefined ? { parentTaskId: plan.parentTaskId } : {}),
-    workflowGuidance: await buildPlanWorkflowGuidance({
+    workflowGuidance: buildPlanWorkflowGuidance({
       taskName,
       planFile,
       plan,
       commandSource: input.parentTaskId !== undefined ? "subplan.create" : "plan.create",
-      projectRoot: project.projectRoot,
-      projectConfig: resolvePlanEffectiveConfig(project.projectConfig, plan),
+      projectConfig: effectivePlanProjectConfig(project.projectConfig, plan),
       host: input.host,
     }),
     plan,
@@ -175,7 +178,6 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
   const previousStatus = previous.status;
   const events: PlanEvent[] = [];
   const changedTaskIds: number[] = [];
-  const appendedTaskIds: number[] = [];
   const completedTaskIds: number[] = [];
   const next = structuredClone(previous);
   const requestedStatus = input.planStatus ? normalizePlanStatus(input.planStatus) : undefined;
@@ -205,7 +207,6 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
       validatePlanTask(taskItem);
       next.tasks.push(taskItem);
       currentIds.add(taskItem.id);
-      appendedTaskIds.push(taskItem.id);
     }
   }
 
@@ -233,11 +234,6 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
     validatePlanTaskStatus(input.taskStatus);
     const previousTaskStatus = planTask.status;
     planTask.status = input.taskStatus;
-    if (input.taskChoiceId !== undefined) {
-      planTask.choiceId = input.taskChoiceId;
-    } else if (input.taskStatus !== "done") {
-      delete planTask.choiceId;
-    }
     changedTaskIds.push(planTask.id);
     if (previousTaskStatus !== "done" && input.taskStatus === "done") {
       completedTaskIds.push(planTask.id);
@@ -253,11 +249,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
     }
   }
 
-  await validateDoneTransitions({
-    projectRoot: task.project.projectRoot,
-    previousPlan: previous,
-    nextPlan: next,
-  });
+  const taskCompletionGuidance = resolvePlanTaskCompletionGuidance(next, completedTaskIds, input.choiceId);
 
   validatePlanDocument(next);
   if (next.status === "end.completed" && !next.retrospective?.summary?.trim()) {
@@ -268,19 +260,6 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
   }
 
   withFileLock(planPath, () => {
-    const current = normalizePlanDocument(readJsonFile<PlanDocument>(planPath));
-    if (!plansMatch(current, previous)) {
-      throw new ClawError(
-        "PLAN_STALE_EDIT",
-        `Plan "${planFile}" changed after this edit command read it. Re-run the edit after inspecting the latest plan state.`,
-        {
-          taskName: task.taskName,
-          planFile,
-          planPath,
-          suggestedCommand: `claw plan show --task ${task.taskName}${planFile === "plan.json" ? "" : ` --plan ${planFile}`}`,
-        },
-      );
-    }
     writeJsonFile(planPath, next);
   });
   task.meta.activePlan = planFile;
@@ -349,15 +328,13 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
     previousPlanStatus: previousStatus,
     emittedEvents: events.map((event) => event.type),
     changedTaskIds,
-    appendedTaskIds,
     ...(completionHooks ? { completionHooks } : {}),
-    workflowGuidance: await buildPlanWorkflowGuidance({
+    workflowGuidance: buildPlanWorkflowGuidance({
       taskName: task.taskName,
       planFile: resultPlanFile,
       plan: resultPlan,
       commandSource: "plan.edit",
-      projectRoot: task.project.projectRoot,
-      projectConfig: resolvePlanEffectiveConfig(task.project.projectConfig, resultPlan),
+      projectConfig: effectivePlanProjectConfig(task.project.projectConfig, resultPlan),
       host: input.host,
       ...(completionHooks?.subplanClosureCandidate
         ? {}
@@ -366,6 +343,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
             completionHooks,
             changedTaskIds,
             completedTaskIds,
+            taskCompletionGuidance,
           }),
     }),
     planView: buildPlanViewModel({
@@ -429,6 +407,8 @@ export async function createSubplan(input: SubplanWriteInput): Promise<PlanWrite
     parentTaskId: input.parentTaskId,
     parentPlanFile,
     ownerSessionKey: input.ownerSessionKey,
+    host: input.host,
+    skillRoots: input.skillRoots,
   });
 }
 
@@ -470,10 +450,6 @@ function normalizePlanRequirements(requirements: PlanDocument["requirements"]): 
   };
 }
 
-function plansMatch(left: PlanDocument, right: PlanDocument): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-
 function normalizePlanTasks(tasks: PlanTask[], startId = 1): PlanTask[] {
   const explicitIds = tasks
     .map((task) => task.id)
@@ -508,7 +484,6 @@ function normalizePlanTask(task: PlanTask, fallbackId?: number): PlanTask {
   const normalizedTask: PlanTask = {
     ...task,
     id: Number.isInteger(task.id) ? task.id : fallbackId ?? task.id,
-    status: task.status ?? "pending",
   };
   validatePlanTask(normalizedTask);
   return normalizedTask;
@@ -540,14 +515,6 @@ function validatePlanTask(task: PlanTask): void {
     throw new ClawError("PROJECT_CONFIG_INVALID", `Plan task ${task.id} is missing title.`);
   }
   validatePlanTaskStatus(task.status);
-  if (task.choiceId !== undefined) {
-    if (typeof task.choiceId !== "string" || !task.choiceId.trim()) {
-      throw new ClawError("PROJECT_CONFIG_INVALID", `Plan task ${task.id} has an invalid choiceId.`);
-    }
-    if (task.status !== "done") {
-      throw new ClawError("PROJECT_CONFIG_INVALID", `Plan task ${task.id} can only use choiceId when status is done.`);
-    }
-  }
 }
 
 function validatePlanTaskStatus(status: string): void {
@@ -608,7 +575,7 @@ function applyPlanPatch(target: PlanDocument, patch: Partial<PlanDocument>): voi
   }
 }
 
-async function createSeedPlan(
+async function createPlanFromTemplate(
   projectRoot: string,
   projectConfig: TaskContext["project"]["projectConfig"] | null,
   templateName: string | undefined,
@@ -618,23 +585,33 @@ async function createSeedPlan(
   status: PlanStatus = "prepare.requirements",
   forcePlanning = false,
   host?: string,
+  skillRoots?: string[],
 ): Promise<PlanDocument> {
   const effectiveTemplateName = templateName?.trim() || projectConfig?.defaultPlanTemplate?.trim() || defaultPlanTemplateName();
-  const template = await resolveSeedPlanTemplate({
+  const resolvedTemplate = await resolvePlanTemplate({
     projectRoot,
     templateName: effectiveTemplateName,
+    host,
+    skillRoots,
   });
-  const effectiveConfig = resolvePlanEffectiveConfig(projectConfig, {
-    configOverride: template.configOverride,
-  });
-  const planningEnabled = forcePlanning || effectiveConfig?.planning !== false;
-  const planningSkill = effectiveConfig?.externalPlanningSkill?.trim() || "the built-in planning skill";
+  if (resolvedTemplate.kind === "full") {
+    const fullTemplate = structuredClone(resolvedTemplate.template);
+    const { id: _templateId, ...plan } = fullTemplate;
+    return {
+      ...plan,
+      title: title ?? plan.title ?? taskName,
+      goal: {
+        text: goalText ?? plan.goal?.text ?? title ?? taskName,
+      },
+    };
+  }
+  const template = resolvedTemplate.template;
+  const planningEnabled = forcePlanning || projectConfig?.planning !== false;
+  const planningSkill = projectConfig?.externalPlanningSkill?.trim() || "the built-in planning skill";
   if (!planningEnabled) {
     return {
       title: title ?? taskName,
-      templateId: template.id,
-      ...(template.configOverride ? { configOverride: template.configOverride } : {}),
-      status: "process.active",
+      status: template.planningDisabledStatus,
       goal: {
         text: goalText ?? title ?? taskName,
       },
@@ -659,100 +636,60 @@ async function createSeedPlan(
     };
   }
 
-  const effectiveTitle = title ?? template.title ?? taskName;
-  const effectiveGoalText = goalText ?? (template.goal?.text?.trim() || effectiveTitle);
-  const compiledTasks = template.tasks.map((taskItem) => ({
-    id: taskItem.id,
-    title: taskItem.title,
-    ...(taskItem.detail || taskItem.goalModeDetail
-      ? {
-          detail: buildCompiledTaskDetail({
-            baseDetail: taskItem.detail,
-            goalModeDetail: taskItem.goalModeDetail,
-            host,
-            goalModeEnabled: effectiveConfig?.goalMode !== false,
-            planGoal: effectiveGoalText,
-            planningSkill,
-          }),
-        }
-      : {}),
-    status: taskItem.status,
-    ...(taskItem.execution ? { execution: taskItem.execution } : {}),
-    ...(taskItem.sessionKey ? { sessionKey: taskItem.sessionKey } : {}),
-  }));
+  const effectiveGoalText = goalText ?? title ?? taskName;
+  const activationDetail = buildActivationTaskDetail({
+    baseDetail: template.activationTask.detail,
+    goalModeDetail: template.activationTask.goalModeDetail,
+    host,
+    goalModeEnabled: projectConfig?.goalMode !== false,
+    planGoal: effectiveGoalText,
+  });
 
   return {
-    title: effectiveTitle,
-    templateId: template.id,
-    ...(template.configOverride ? { configOverride: template.configOverride } : {}),
-    status: template.status ?? status,
+    title: title ?? taskName,
+    status: template.planningEnabledStatus ?? status,
     goal: {
       text: effectiveGoalText,
     },
-    requirements: template.requirements ?? {
+    requirements: {
       summary: "",
       openQuestions: [],
       acceptanceCriteria: [],
     },
-    tasks: compiledTasks,
-    references: template.references ?? [],
-    rules: template.rules ?? [],
-    keyDecisions: template.keyDecisions ?? [],
-    retrospective: template.retrospective ?? {
+    tasks: [
+      {
+        id: 1,
+        title: template.planningTask.title,
+        detail: renderSeedTemplateText(template.planningTask.detail, { planningSkill }),
+        status: "pending",
+      },
+      {
+        id: 2,
+        title: template.activationTask.title,
+        detail: activationDetail,
+        status: "pending",
+      },
+    ],
+    references: [],
+    rules: [],
+    keyDecisions: [],
+    retrospective: {
       summary: "",
     },
   };
 }
 
-async function validateDoneTransitions(params: {
-  projectRoot: string;
-  previousPlan: PlanDocument;
-  nextPlan: PlanDocument;
-}): Promise<void> {
-  const { projectRoot, previousPlan, nextPlan } = params;
-  if (!nextPlan.templateId?.trim()) {
-    return;
+function effectivePlanProjectConfig(
+  projectConfig: TaskContext["project"]["projectConfig"] | null,
+  plan: PlanDocument,
+): TaskContext["project"]["projectConfig"] | null {
+  if (!plan.configOverride) {
+    return projectConfig;
   }
-
-  const template = await resolveSeedPlanTemplate({
-    projectRoot,
-    templateName: nextPlan.templateId,
-  });
-  const previousTasks = new Map(previousPlan.tasks.map((task) => [task.id, task]));
-
-  for (const task of nextPlan.tasks) {
-    const previousTask = previousTasks.get(task.id);
-    const choices = getTemplateTaskDoneChoices(template, task.id);
-    const availableChoices = choices ? Object.keys(choices) : [];
-    const isDoneTransition = previousTask?.status !== "done" && task.status === "done";
-
-    if (isDoneTransition && choices && !task.choiceId) {
-      throw new ClawError(
-        "PROJECT_CONFIG_INVALID",
-        `Task ${task.id} requires choiceId because this template defines onDone choices. Provide one of: ${availableChoices.join(", ")}.`,
-        {
-          taskId: task.id,
-          availableChoices,
-        },
-      );
-    }
-    if (task.choiceId && !choices) {
-      throw new ClawError("PROJECT_CONFIG_INVALID", `Task ${task.id} does not define onDone choices, so choiceId is not allowed.`, {
-        taskId: task.id,
-      });
-    }
-    if (task.choiceId && choices && !Object.prototype.hasOwnProperty.call(choices, task.choiceId)) {
-      throw new ClawError(
-        "PROJECT_CONFIG_INVALID",
-        `Task ${task.id} has an invalid choiceId "${task.choiceId}". Expected one of: ${availableChoices.join(", ")}.`,
-        {
-          taskId: task.id,
-          choiceId: task.choiceId,
-          availableChoices,
-        },
-      );
-    }
-  }
+  return {
+    ...(projectConfig ?? {}),
+    ...plan.configOverride,
+  };
 }
 
 function defaultPlanTemplateName(): string {
@@ -777,27 +714,6 @@ function buildActivationTaskDetail(params: {
     ? goalModeDetail.slice(0, -1)
     : goalModeDetail;
   return `${baseDetail} ${normalizedGoalModeDetail} and use \`${buildGoalModeObjective(planGoal)}\` as the goal objective.`;
-}
-
-function buildCompiledTaskDetail(params: {
-  baseDetail?: string;
-  goalModeDetail?: string;
-  host?: string;
-  goalModeEnabled: boolean;
-  planGoal: string;
-  planningSkill: string;
-}): string | undefined {
-  const renderedBase = params.baseDetail ? renderSeedTemplateText(params.baseDetail, { planningSkill: params.planningSkill }) : "";
-  if (!params.goalModeDetail) {
-    return renderedBase || undefined;
-  }
-  return buildActivationTaskDetail({
-    baseDetail: renderedBase,
-    goalModeDetail: params.goalModeDetail,
-    host: params.host,
-    goalModeEnabled: params.goalModeEnabled,
-    planGoal: params.planGoal,
-  });
 }
 
 function deriveTaskName(input: PlanWriteInput): string {

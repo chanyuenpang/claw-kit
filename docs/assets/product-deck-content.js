@@ -13,25 +13,14 @@ export const deckContent = {
           "Project memory, workflow structure, and closeout stay in the work instead of getting reset every time a long-running round crosses chat boundaries."
       },
       {
-        id: "problem",
-        variant: "split",
-        eyebrow: "why it exists",
-        title: "Fast agents need memory.",
-        summary:
-          "Getting output is easy. Holding onto context is harder.",
-        detail:
-          "claw-kit keeps work going beyond the current prompt.",
-        bullets: ["Decisions fade", "Context resets", "Momentum breaks"]
-      },
-      {
         id: "continuity",
         variant: "outcomes",
         eyebrow: "continuity",
-        title: "Work survives beyond the session.",
+        title: "Findings stick. Collaboration carries forward.",
         summary:
-          "Progress, findings, and closeout do not disappear when the conversation ends.",
+          "Your findings stay in the project and become task context for the team's next round of development and debugging.",
         detail:
-          "Tasks keep moving, truth stays reusable, and decisions can go back to the repo.",
+          "Work keeps moving, findings get captured, and decisions can go back to the repo.",
         points: [
           {
             label: "Across sessions",
@@ -51,8 +40,8 @@ export const deckContent = {
         id: "workflow",
         variant: "flow",
         eyebrow: "core loop",
-        title: "Five moves that keep work moving.",
-        summary: "Five moves. One continuous round.",
+        title: "Five steps. One round. Work keeps moving.",
+        summary: "Set the scope first, then move forward with context.",
         detail: "",
         steps: [
           {
@@ -86,9 +75,9 @@ export const deckContent = {
         id: "advanced-features",
         variant: "feature-grid",
         eyebrow: "advanced features",
-        title: "Shared by the team. Tuned by the individual.",
+        title: "Align as a team. Fine-tune as an individual.",
         summary:
-          "A shared baseline for the team, with room for each person's way of working.",
+          "The team shares one baseline, while each person keeps their own way of working.",
         detail:
           "Config-driven, highly customizable harnesses that fit the way each person works.",
         features: [
@@ -114,19 +103,19 @@ export const deckContent = {
         id: "ecosystem",
         variant: "hosts",
         eyebrow: "multi-host",
-        title: "One workflow, multiple hosts.",
+        title: "Different hosts. One workflow.",
         summary:
-          "Switch hosts without starting the workflow over.",
+          "Switch hosts without redoing how the team works.",
         detail:
-          "Start in the CLI, then extend into Codex, OpenCode, and OpenClaw.",
+          "Start in the CLI, then continue in Codex, OpenCode, and OpenClaw.",
         tags: ["CLI", "Codex", "OpenCode", "OpenClaw"]
       },
       {
         id: "closing",
         variant: "closing",
         eyebrow: "start here",
-        title: "Install once. Collaborate seamlessly.",
-        summary: "Automated. No extra prompts. Seamless across the team.",
+        title: "Auto-invoked. Install once. Collaborate seamlessly.",
+        summary: "No extra prompts. Seamless across the team.",
         detail: "",
         copyDisplay: "\"Help me install the claw-kit plugin\"",
         copyPrompt:
@@ -164,23 +153,12 @@ export const deckContent = {
           "项目记忆、流程结构和收尾动作留在工作里，不会因为长时任务跨过几轮对话就重新散掉。"
       },
       {
-        id: "problem",
-        variant: "split",
-        eyebrow: "为什么需要它",
-        title: "Agent 可以很快，项目不能总失忆。",
-        summary:
-          "难的不是把结果做出来，而是把上下文接住。",
-        detail:
-          "claw-kit 让工作离开 prompt 也能接着走。",
-        bullets: ["决策留不住", "上下文总断", "推进容易散"]
-      },
-      {
         id: "continuity",
         variant: "outcomes",
         eyebrow: "连续性",
-        title: "会话结束，工作也不用归零。",
+        title: "调查会沉淀，协作能接力。",
         summary:
-          "进展、发现和收尾都能留下来，下一轮可以接着做。",
+          "你的调查结果会留在项目里，成为团队下一轮开发与 debug 的任务上下文。",
         detail:
           "任务能延续，结论能沉淀，做完的决定也能回到仓库。",
         points: [
@@ -276,8 +254,8 @@ export const deckContent = {
         id: "closing",
         variant: "closing",
         eyebrow: "从这里开始",
-        title: "一次安装，无缝协作。",
-        summary: "自动化，无需额外 prompt，团队内无缝接入。",
+        title: "自动调用，一次安装，无缝协作。",
+        summary: "无需额外 prompt，团队内无缝接入。",
         detail: "",
         copyDisplay: "“帮我安装 claw-kit 插件”",
         copyPrompt:

@@ -95,11 +95,11 @@ test("closing section renders meaningful navigation links", () => {
   );
   assert.match(
     zhMarkup,
-    /<a class="closing-link" href="\.\/technical-principles\.html">技术原理<\/a>/
+    /<a class="closing-link" href="\.\/technical-principles\.html\?lang=en">技术原理<\/a>/
   );
   assert.match(
     zhMarkup,
-    /<a class="closing-link" href="\.\/config-guide\.html">配置说明<\/a>/
+    /<a class="closing-link" href="\.\/config-guide\.html\?lang=en">配置说明<\/a>/
   );
 
   assert.match(
@@ -108,11 +108,11 @@ test("closing section renders meaningful navigation links", () => {
   );
   assert.match(
     enMarkup,
-    /<a class="closing-link" href="\.\/technical-principles\.html">Technical principles<\/a>/
+    /<a class="closing-link" href="\.\/technical-principles\.html\?lang=en">Technical principles<\/a>/
   );
   assert.match(
     enMarkup,
-    /<a class="closing-link" href="\.\/config-guide\.html">Config guide<\/a>/
+    /<a class="closing-link" href="\.\/config-guide\.html\?lang=en">Config guide<\/a>/
   );
 });
 

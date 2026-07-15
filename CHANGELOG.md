@@ -2,6 +2,24 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.1.62] - 2026-07-14
+
+### Added
+
+- Added the exported `claw-kit:update` workflow skill and included `create-claw-skill` in the generated Codex and OpenCode adapter skill sets.
+- Added `npm run verify:release` and `npm run publish:release`; they require a clean, version-aligned release commit already pushed to `origin/main` and verify the exported plugin contains every required shared workflow skill.
+
+### Changed
+
+- Shared skills are copied as complete directories when staging an adapter, so template-backed workflows retain their `TEMPLATE.json` and fallback resources in release bundles.
+
+## [0.1.61] - 2026-07-13
+
+### Fixed
+
+- Codex and OpenCode plugin bundling now materializes shared skills in an isolated staging directory, so exporting or installing a plugin no longer overwrites generated adapter files in the source checkout
+- Generated shared-skill adapter copies are no longer tracked; `shared/skills` remains the only editable source
+
 ## [0.1.54] - 2026-06-29
 
 ### Added

@@ -1,8 +1,16 @@
-import { configGuideContent } from "./config-guide-content.js";
+import { configGuideContent } from "./config-guide-content.js?v=20260703-pages-refresh";
+import {
+  buildLocalizedHref,
+  persistPreferredLanguage,
+  readStoredLanguage,
+  resolveInitialLanguage
+} from "./site-language.js?v=20260703-pages-refresh";
 
 let currentLang = "en";
 let guide = null;
 let langToggle = null;
+let brandLink = null;
+const supportedLangs = Object.keys(configGuideContent);
 
 function escapeHtml(value) {
   return String(value)
@@ -147,6 +155,27 @@ function updateLangToggle() {
   langToggle.dataset.lang = currentLang;
 }
 
+function updateBrandLink() {
+  if (!brandLink) {
+    return;
+  }
+
+  brandLink.href = buildLocalizedHref("./index.html", currentLang, supportedLangs);
+}
+
+function getInitialLanguage() {
+  if (typeof window === "undefined") {
+    return "en";
+  }
+
+  return resolveInitialLanguage({
+    search: window.location.search,
+    storageValue: readStoredLanguage(window.localStorage),
+    fallbackLang: "en",
+    supportedLangs
+  });
+}
+
 export function mountConfigGuide() {
   if (typeof document === "undefined") {
     return;
@@ -154,18 +183,23 @@ export function mountConfigGuide() {
 
   guide = document.querySelector("#config-guide");
   langToggle = document.querySelector(".lang-toggle");
+  brandLink = document.querySelector(".brand");
 
-  if (!guide || !langToggle) {
+  if (!guide || !langToggle || !brandLink) {
     return;
   }
 
+  currentLang = getInitialLanguage();
   renderGuide(currentLang);
   updateLangToggle();
+  updateBrandLink();
 
   langToggle.addEventListener("click", () => {
     currentLang = currentLang === "en" ? "zh" : "en";
+    persistPreferredLanguage(window.localStorage, currentLang, supportedLangs);
     renderGuide(currentLang);
     updateLangToggle();
+    updateBrandLink();
   });
 }
 

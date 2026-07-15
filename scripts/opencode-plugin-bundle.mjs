@@ -86,7 +86,6 @@ async function copyPayloadTree(sourceDir, destinationDir, payloadRelativePaths) 
 }
 
 export async function readOpencodePluginSource({ sourceDir = defaultSourceDir } = {}) {
-  await syncSharedSkills();
   const manifestPath = path.join(sourceDir, "package.json");
   const manifest = await readJson(manifestPath);
 
@@ -104,11 +103,24 @@ export async function readOpencodePluginSource({ sourceDir = defaultSourceDir } 
   };
 }
 
+async function materializeOpencodePluginSource(sourceDir) {
+  const stagingRoot = await fs.mkdtemp(path.join(os.tmpdir(), "claw-kit-opencode-plugin-source-"));
+  const stagedSourceDir = path.join(stagingRoot, "opencode-adapter");
+  await fs.cp(sourceDir, stagedSourceDir, { recursive: true });
+  await syncSharedSkills({ adapterDirs: [stagedSourceDir] });
+  return { stagedSourceDir, cleanup: () => fs.rm(stagingRoot, { recursive: true, force: true }) };
+}
+
 export async function exportOpencodePluginBundle({ sourceDir = defaultSourceDir, outDir = defaultBundleOutDir } = {}) {
-  const plugin = await readOpencodePluginSource({ sourceDir });
-  const bundleDir = path.join(outDir, "claw-kit", plugin.version);
-  await copyPayloadTree(plugin.sourceDir, bundleDir, plugin.payloadRelativePaths);
-  return { ...plugin, outDir, bundleDir };
+  const staged = await materializeOpencodePluginSource(sourceDir);
+  try {
+    const plugin = await readOpencodePluginSource({ sourceDir: staged.stagedSourceDir });
+    const bundleDir = path.join(outDir, "claw-kit", plugin.version);
+    await copyPayloadTree(plugin.sourceDir, bundleDir, plugin.payloadRelativePaths);
+    return { ...plugin, outDir, bundleDir };
+  } finally {
+    await staged.cleanup();
+  }
 }
 
 const PLUGIN_DIR_NAME = "claw-kit";
@@ -165,32 +177,37 @@ async function installSkillsToDiscoveryDir(installDir, sourceDir) {
 }
 
 export async function installOpencodePlugin({ sourceDir = defaultSourceDir, installDir = defaultInstallDir } = {}) {
-  const plugin = await readOpencodePluginSource({ sourceDir });
+  const staged = await materializeOpencodePluginSource(sourceDir);
+  try {
+    const plugin = await readOpencodePluginSource({ sourceDir: staged.stagedSourceDir });
 
-  // Plugin directory: ~/.config/opencode/plugins/claw-kit/
-  const pluginDir = path.join(installDir, "plugins", PLUGIN_DIR_NAME);
-  await copyPayloadTree(plugin.sourceDir, pluginDir, plugin.payloadRelativePaths);
+    // Plugin directory: ~/.config/opencode/plugins/claw-kit/
+    const pluginDir = path.join(installDir, "plugins", PLUGIN_DIR_NAME);
+    await copyPayloadTree(plugin.sourceDir, pluginDir, plugin.payloadRelativePaths);
 
   // Plugin shim: ~/.config/opencode/plugins/claw-kit.ts
   // opencode only scans *.ts/*.js at the plugins root, not subdirectories.
-  const shimPath = await createPluginShim(installDir);
+    const shimPath = await createPluginShim(installDir);
 
   // Skills discovery copy: opencode only scans convention directories, so copy each
   // skill folder into ~/.config/opencode/skills/ so they appear in available skills.
-  const skillsDir = await installSkillsToDiscoveryDir(installDir, sourceDir);
+    const skillsDir = await installSkillsToDiscoveryDir(installDir, plugin.sourceDir);
 
   // Agent files: ~/.config/opencode/agent/
-  const agentDir = path.join(installDir, "agent");
-  await fs.mkdir(agentDir, { recursive: true });
-  const agentSourceDir = path.join(sourceDir, "agents");
-  if (await pathExists(agentSourceDir)) {
-    const agentFiles = await fs.readdir(agentSourceDir);
-    for (const file of agentFiles) {
-      if (file.endsWith(".md")) {
-        await fs.copyFile(path.join(agentSourceDir, file), path.join(agentDir, file));
+    const agentDir = path.join(installDir, "agent");
+    await fs.mkdir(agentDir, { recursive: true });
+    const agentSourceDir = path.join(plugin.sourceDir, "agents");
+    if (await pathExists(agentSourceDir)) {
+      const agentFiles = await fs.readdir(agentSourceDir);
+      for (const file of agentFiles) {
+        if (file.endsWith(".md")) {
+          await fs.copyFile(path.join(agentSourceDir, file), path.join(agentDir, file));
+        }
       }
     }
-  }
 
-  return { ...plugin, installDir, pluginDir, shimPath, skillsDir, agentDir };
+    return { ...plugin, installDir, pluginDir, shimPath, skillsDir, agentDir };
+  } finally {
+    await staged.cleanup();
+  }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@claw-kit/codex-adapter",
-  "version": "0.1.55",
+  "version": "0.1.62",
   "private": true,
   "type": "module",
   "description": "Codex adapter assets for landing the claw-kit .claw workflow inside Codex.",
@@ -19,8 +19,8 @@
     "directory": "packages/codex-adapter"
   },
   "scripts": {
-    "build": "node ../../scripts/sync-shared-skills.mjs && node -e \"console.log('codex-adapter has no build step')\"",
-    "check": "node ../../scripts/sync-shared-skills.mjs && node -e \"const fs=require('node:fs'); JSON.parse(fs.readFileSync('.codex-plugin/plugin.json','utf8')); JSON.parse(fs.readFileSync('hooks/hooks.json','utf8')); console.log('plugin manifest and hooks config ok')\"",
+    "build": "node -e \"console.log('codex-adapter has no build step')\"",
+    "check": "node -e \"const fs=require('node:fs'); JSON.parse(fs.readFileSync('.codex-plugin/plugin.json','utf8')); JSON.parse(fs.readFileSync('hooks/hooks.json','utf8')); console.log('plugin manifest and hooks config ok')\"",
     "test": "npm run build -w @veewo/claw-core && npm run build -w @veewo/claw && node --test hooks/*.test.mjs"
   }
 }

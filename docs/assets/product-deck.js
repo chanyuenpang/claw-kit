@@ -1,10 +1,17 @@
-import { deckContent } from "./product-deck-content.js";
+import { deckContent } from "./product-deck-content.js?v=20260703-pages-refresh";
+import {
+  buildLocalizedHref,
+  persistPreferredLanguage,
+  readStoredLanguage,
+  resolveInitialLanguage
+} from "./site-language.js?v=20260703-pages-refresh";
 
 let currentLang = "en";
 let activeSectionId = null;
 let sectionObserver = null;
 let deck = null;
 let langToggle = null;
+const supportedLangs = Object.keys(deckContent);
 
 function escapeHtml(value) {
   return String(value)
@@ -142,7 +149,8 @@ function renderLinks(links = []) {
             return `<span class="closing-link">${escapeHtml(link)}</span>`;
           }
 
-          return `<a class="closing-link" href="${escapeHtml(link.href ?? "#")}">${escapeHtml(link.label ?? "")}</a>`;
+          const href = buildLocalizedHref(link.href ?? "#", currentLang, supportedLangs);
+          return `<a class="closing-link" href="${escapeHtml(href)}">${escapeHtml(link.label ?? "")}</a>`;
         })
         .join("")}
     </div>
@@ -563,12 +571,26 @@ function updateLangToggle() {
   langToggle.dataset.lang = currentLang;
 }
 
+function getInitialLanguage() {
+  if (typeof window === "undefined") {
+    return "en";
+  }
+
+  return resolveInitialLanguage({
+    search: window.location.search,
+    storageValue: readStoredLanguage(window.localStorage),
+    fallbackLang: "en",
+    supportedLangs
+  });
+}
+
 function switchLanguage(nextLang) {
   if (!deck || !langToggle || nextLang === currentLang || !deckContent[nextLang]) {
     return;
   }
 
   currentLang = nextLang;
+  persistPreferredLanguage(window.localStorage, currentLang, supportedLangs);
   const previouslyActive = activeSectionId;
   renderDeck(currentLang);
   wireSectionInteractions();
@@ -593,6 +615,7 @@ export function mountProductDeck() {
     return;
   }
 
+  currentLang = getInitialLanguage();
   renderDeck(currentLang);
   wireSectionInteractions();
   wireFlowInteractions();
