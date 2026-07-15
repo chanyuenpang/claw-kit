@@ -41,4 +41,3 @@ Accepted
 - `packages/opencode-adapter/skills/using-claw-kit/SKILL.md`
 - `packages/core/src/templates/plans/default.ts`
 - `docs/create-claw-skill-lessons.md`
-
