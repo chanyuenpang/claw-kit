@@ -160,3 +160,55 @@ release commit `472635e` 已推送至 `origin/main`，tag 为 `v0.1.62`；`@veew
 发布前必须确认没有任何仍有价值的未提交本地源码内容；发布完成后也必须再次确认工作区没有遗留仍有价值的未提交源码内容。若发现这类内容，先纳入当前 `main` 的可追溯提交并推送，再发布或宣布 closeout；不得用 branch/PR 来替代这一完整性检查。
 
 现有 GitHub-source gate 继续适用：`git status --porcelain` 为空，且 `HEAD` 已包含在 `origin/main`。直接发布政策只改变默认协作路径，不降低 source、版本、bundle、registry 或 CLI 命令面验证要求。
+
+## 2026-07-15：0.1.63 正式发布与双 Codex cache 验收
+
+本节记录当前最新已验证发布完成态，并取代文首较旧的“最新版本为 `0.1.58`”描述。
+
+### 发布结果
+
+- `npm run publish:release` 已按固定顺序正式发布 `@veewo/claw-core@0.1.63` 与 `@veewo/claw@0.1.63`；npm registry 的 `latest` 对两个包均已更新到 `0.1.63`。
+- `npm publish` 将 CLI package 中的 bin 路径从 `./dist/bin.js` 规范化为 `dist/bin.js`。该归一化不是命令入口丢失：发布后的 registry manifest 仍包含 `bin.claw = "dist/bin.js"`。
+- 从 registry 真实执行 `npm install -g @veewo/claw@0.1.63` 后，`claw --version` 返回 `0.1.63`，证明 registry metadata、tarball 与全局 CLI 运行面一致。
+
+### Codex 插件安装面
+
+- 维护者本地开发 cache 已安装到 `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.63+codex.20260715132514`。
+- Codex 官方 marketplace cache 已存在于 `C:\Users\chany\.codex\plugins\cache\claw-kit\claw-kit\0.1.63+codex.20260715132514`。这两个目录代表不同安装入口，但 manifest 版本应保持一致。
+- 从 marketplace cache 实际执行模板验证时，`update/TEMPLATE.json` 与 `create-claw-skill/TEMPLATE.json` 均验证成功，响应中的 `choiceRequiredTasks` 与模板任务约束一致。
+- marketplace cache 同时包含 `planning`、`config`、`update`、`create-claw-skill` 四个共享 skill；`create-claw-skill/scripts/create-claw-skill-stub.mjs` 也存在，证明 marketplace 安装不只复制了 skill 入口和模板，还保留 helper 资源。
+
+### 长期验证规则
+
+- publish 输出中的 `bin[claw]` 路径归一化只能视为 npm metadata 修正，不能单独判定发布失败；必须继续核对 registry manifest 的 `bin.claw`，并通过从 registry 全局安装后的真实 `claw --version` 烟测闭环。
+- Codex release closeout 应区分并按需验证两种 cache：`claw-kit-local` 是维护者开发安装面，`claw-kit` 是官方 marketplace 安装面。远端用户可用性应以 marketplace cache 的实际内容与运行验证为准。
+- marketplace cache 验收不能只统计四个共享 skill 目录；还必须验证 `TEMPLATE.json`、`scripts/create-claw-skill-stub.mjs` 等声明资源，并用 cache 中的真实模板执行 `claw template validate`，检查 `choiceRequiredTasks`。
+- 本轮正式发布完成时，`main` 与 `origin/main` 的 ahead/behind 为 `0/0`，且发布 closeout 工作树干净。该 Git 状态是发布源可追溯性的结束证据；后续 truth deposition 自身产生的文档修改不改变这一已完成发布事实。
+
+### 验证锚点
+
+- `npm view @veewo/claw-core version dist-tags.latest --json`
+- `npm view @veewo/claw version dist-tags.latest bin --json`
+- `npm install -g @veewo/claw@0.1.63`
+- `claw --version`
+- `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.63+codex.20260715132514`
+- `C:\Users\chany\.codex\plugins\cache\claw-kit\claw-kit\0.1.63+codex.20260715132514`
+- `skills/update/TEMPLATE.json`
+- `skills/create-claw-skill/TEMPLATE.json`
+- `skills/create-claw-skill/scripts/create-claw-skill-stub.mjs`
+- `git rev-list --left-right --count main...origin/main`
+- `git status --porcelain`
+
+### 补充检索词
+
+- `0.1.63 publish:release`
+- `bin.claw dist/bin.js`
+- `claw-kit-local marketplace cache`
+- `choiceRequiredTasks marketplace template validate`
+- `main origin/main 0/0 clean`
+
+### GitHub Release 资产
+
+- GitHub Release `v0.1.63` 已创建：`https://github.com/chanyuenpang/claw-kit/releases/tag/v0.1.63`。
+- 已上传跨机器 Codex 插件资产 `claw-kit-codex-plugin-0.1.63.zip`，文件大小为 `45086` bytes，SHA256 为 `cba118e3e7f60c5a930afa9e604c367bbc1e749fb43d2ec9e90fedcd4697a7f5`。
+- 下载或分发该 release asset 时，应同时核对 tag、精确文件名、文件大小与 SHA256；仅看到 release 页面或同名 zip 不足以证明资产未被截断或替换。
