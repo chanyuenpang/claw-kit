@@ -110,28 +110,28 @@ Use `references` for larger explanations, examples, migration notes, and design 
 
 If a template needs a lot of prose to explain how to use it, that prose should usually live in a referenced document, not inside `rules`.
 
-References can point to original source material or to compiled knowledge produced during skill conversion.
+References can point to original source material or to skill-local supplemental files produced during skill conversion.
 
-A compiled knowledge reference is a distilled document created inside or beside the converted skill package.
-Use it when the source skill contains important knowledge that is too verbose for `tasks`, `rules`, or `guidance`, but too important to leave buried only in the fallback.
+Default to keeping supplemental explanation in the converted `SKILL.md` when it helps routing, emphasizes a critical rule, or explains material that does not fit template structure cleanly.
+Create extra reference files only when the source still needs a referenced home that would make `SKILL.md` unwieldy or would be better preserved as a focused helper document.
 
-Good compiled knowledge references include:
+Good skill-local references include:
 
 - tool contracts and required command shapes
-- compact workflow notes extracted from long prose
 - route decision tables
 - safety constraints with examples
 - verification and quality-check guidance
 - companion-file inventories and relative-link notes
+- focused helper docs or prompts copied from the source skill
 
-Prefer storing compiled knowledge in the generated skill package, for example:
+Prefer focused files inside the generated skill package, for example:
 
-- `references/<skill-id>-knowledge.md`
 - `references/<skill-id>-tool-contract.md`
-- `CLAW-KNOWLEDGE.md`
+- `references/<skill-id>-verification.md`
+- `references/<skill-id>-helpers.md`
 
-Then list that file in the generated template `references`.
-This lets the claw skill reference its own distilled knowledge while keeping the runtime plan lightweight.
+Then list those files in the generated template `references`.
+This keeps the claw skill self-contained without inventing an extra default knowledge layer.
 
 ## Skill Information Preservation
 
@@ -142,7 +142,8 @@ Use this split instead:
 - put executable workflow stages into `tasks`
 - put route behavior into `guidance.onDone`
 - put always-on constraints into `rules`
-- put source examples, helper docs, scripts, prompts, long explanations, and distilled knowledge notes into `references`
+- keep route rules, repeated high-signal constraints, and non-template supplement material in `SKILL.md`
+- put source examples, helper docs, scripts, prompts, long explanations, and optional focused reference files into `references`
 - preserve the original or distilled skill text as the adjacent non-claw fallback document
 
 The runtime `plan.json` is not the lossless source of truth for the converted skill.
@@ -162,15 +163,15 @@ Compare the source skill against the converted package and confirm that these so
 - verification commands or quality gates
 - companion files, scripts, examples, and relative links
 
-If a source detail affects execution, it should be represented in the template or rules.
-If it is explanatory but useful during normal claw execution, distill it into a compiled knowledge reference and list that document in `references`.
+If a source detail affects structured execution, it should be represented in the template or rules.
+If it does not fit template structure but still helps normal claw execution, keep it in `SKILL.md` or place it in a focused skill-local reference and list that document in `references`.
 If it is fallback-only, it can remain only in the fallback document.
 If it is neither executable nor explanatory, it should still remain in the fallback so the conversion is not destructive.
 
 The content coverage check should produce a short mapping, even if it is only in the task closeout notes:
 
 - `source item`: the important source skill information
-- `converted home`: `entry`, `template.tasks`, `template.guidance`, `template.rules`, `template.references`, `compiled reference`, or `fallback`
+- `converted home`: `entry`, `template.tasks`, `template.guidance`, `template.rules`, `template.references`, or `fallback`
 - `status`: covered, intentionally fallback-only, or intentionally omitted with a reason
 
 ## Validation

@@ -11,6 +11,9 @@ The plugin works on these rules:
 - skills load reliably
 - plugin command hooks are enhancement only
 - `SessionStart` recovery restores startup harness state before the main workflow starts
+- if `claw context` detects that the project protocol version is ahead of the current CLI, startup recovery must surface `startupRecovery.versionSync` in the prompt
+- if `autoUpdate = true` and a newer published claw-kit exists, startup recovery must route the agent to `claw-kit:update` as the first action before other work
+- if `autoUpdate = false`, startup recovery must keep the version note informational only and must not inject update execution steps
 
 ## Required startup routine
 
@@ -55,3 +58,4 @@ When `@claw-kit` is used in a real project thread:
 - do not invent a second task-binding mechanism outside `plan create`
 - do not branch startup recovery by `SessionStart.source`; use one startup flow and decide only from recoverable workflow or project state
 - do not auto-initialize arbitrary repos in the background without an explicit `@claw-kit` invocation
+- do not treat local Codex plugin cache refresh as part of `claw context`; plugin payload install remains a separate distribution surface

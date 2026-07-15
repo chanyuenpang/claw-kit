@@ -8,6 +8,7 @@
 - `memory.externalDocPaths`
 - `memory.embedding`
 - `planning`
+- `autoUpdate`
 - `externalPlanningSkill`
 - `goalMode`
 - `truthDispatch`
@@ -25,7 +26,8 @@
   - directory paths like `docs/`
 - External memory paths only index `.md` files from the configured path set.
 - `memory.embedding` now accepts the OpenClaw-compatible subset used by `openclaw-dev`: `provider` (`openai|local`), `model`, `remote.apiKeyEnvVar`, `remote.baseUrl`, `local.modelPath`, `local.modelCacheDir`, `outputDimensionality`, `store.vector.enabled`, and `store.vector.extensionPath`.
-- canonical `.claw/project.json` now carries simple project-level workflow toggles as flat fields: `planning`, `externalPlanningSkill`, `goalMode`, `truthDispatch`, and `gitnexus`.
+- canonical `.claw/project.json` now carries simple project-level workflow toggles as flat fields: `planning`, `autoUpdate`, `externalPlanningSkill`, `goalMode`, `truthDispatch`, and `gitnexus`.
+- `autoUpdate` is an explicit project-level boolean gate with default `true`; projects can set it to `false` when version drift should stay informational only.
 - legacy nested inputs such as `workflow.goalMode.enabled`, `workflow.truthDispatch.mode`, and `gitnexus.enabled` are compatibility inputs for protocol repair; repaired canonical files are flattened instead of preserving those nested containers.
 - 2026-06-23 compatibility fixture run validated this repair path against temp copies of four local projects (`claw-kit`, `NeonSpark`, `tiny-world`, and `unity-mcp`) without mutating real project configs: new-shape configs stayed unchanged, while legacy `workflow.goalMode.enabled`, `workflow.truthDispatch.mode`, and object `gitnexus.enabled` repaired into flat `goalMode`, `truthDispatch`, and boolean `gitnexus`.
 - The same fixture run confirmed missing `planning` repairs to `true`, missing `externalPlanningSkill` repairs to `null`, explicit external truth / ADR skill values are preserved, and default `memory.embedding.store.vector.enabled: true` is removed rather than reintroduced.

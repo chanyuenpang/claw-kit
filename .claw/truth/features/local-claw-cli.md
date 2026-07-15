@@ -33,6 +33,14 @@ Accepted working truth for local development on this machine.
 - `claw direct` help now says it can optionally run `claw search` before execution, then solve directly, then optionally dispatch `truth-writer`, and still reuse the asynchronous completion-refresh path from `claw plan done`.
 - Codex-facing recall should use `claw search --query "<topic>"` as project-scoped document recall for project memory, truth, ADR, and external docs; it is not code search.
 - `claw search index --refresh` is the explicit project index refresh entrypoint and returns `search.index.refresh`.
+- Version drift detection remains part of `claw context` / startup recovery, but local upgrade execution is no longer implicit there.
+- `.claw/project.json` now uses explicit `autoUpdate` gating for version drift. The field defaults to `true`, and startup enters the update-first route unless the project has explicitly opted out.
+- When `autoUpdate = false`, startup recovery only reports the lagging-version note; it does not run a local install action.
+- When `autoUpdate = true` and a newer published version exists, startup recovery reports `startupRecovery.versionSync.updateSkill = "claw-kit:update"` and treats that skill as the required first action.
+- Any real update flow must refresh both local runtime surfaces together: the global CLI install and the current host plugin install surface.
+- The converted `shared/skills/update` skill now keeps that contract in the same package: `SKILL.md` is a thin entry, `TEMPLATE.json` carries the ordered update workflow, `non-claw-fallback.md` preserves the original inline update instructions for no-`.claw` workspaces, and `CONTENT-COVERAGE.md` records the source-to-converted mapping.
+- The 0.1.58 release closeout confirmed that version bumps can surface stale protocol-version expectations in `packages/core/test/core.test.ts`; when package versions advance, the `initProject` scaffold and `ensureProjectProtocol` rewrite assertions must be updated in the same change.
+- The preserved update workflow is stable: detect a newer-version context, pick an explicit Codex / OpenCode / conservative host route, refresh the global CLI first, refresh the matching host plugin surface second, then verify both surfaces and report exact per-surface status.
 - `claw search index --refresh` 现在会对当前项目的 markdown recall index 做增量同步，而不是每次都全量重建 sqlite store。
 - 未变更文档会复用既有 sqlite rows 与 embeddings；变更文档只替换自身 `docs` / `docs_fts` / `doc_embeddings` 记录并重算 embeddings；删除文档会被清理。
 - 对于已经存在 `docs` 记录但缺少 `doc_embeddings` 的旧数据，`packages/core/src/memory.ts` 里的 `syncProjectMemoryIndex` 会在 `insertDocs` 后再用 `listDocsMissingEmbeddings(db)` + `indexDocEmbeddings` 补齐向量，避免 refresh 只看见 docs 行就误报完成。
@@ -80,7 +88,9 @@ Accepted working truth for local development on this machine.
 - Normal planned work should bind task scope with `claw plan write` first; if project recall helps, use `claw search --query "<topic>"` afterward.
 - `claw memory ...` remains available, but it is not the recommended Codex workflow concept.
 - Local installation on this machine is currently refreshed through `npm run install:local-cli`.
+- `shared/skills/update/SKILL.md` is now the shared canonical update contract, and shared-skill sync carries `update` into both Codex and OpenCode adapter skill payloads.
 - 在 `@veewo/claw` 刚发布后的短暂窗口里，`npm run install:local-cli` 可能会先撞到 npm registry 传播延迟；当 `npm view @veewo/claw version` 已经返回目标版本后，重试一次安装通常就能收敛到最终本机状态。
+- 在当前这台 Codex host 上，`0.1.59` 的本地 update-first follow-up 已验证闭环：先运行 `npm run install:local-cli` 刷新全局 CLI，再运行 `npm run install:codex-plugin` 刷新本地 Codex plugin surface；完成态证据是 `claw --version = 0.1.59`、`npm list -g @veewo/claw --depth=0 = @veewo/claw@0.1.59`、Codex cache 目录为 `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.59+codex.20260711014244`，且该缓存副本的 `.codex-plugin/plugin.json` `version` 与目录版本一致。
 - 当前这台 Windows 机器的已验证刷新结果是全局 `@veewo/claw@0.1.52`。
 - That install script removes prior global installs and links before running `npm install -g @veewo/claw`, so the final global state reflects the package registry install rather than an older link.
 - During that successful refresh, npm could still print a non-fatal cleanup warning like `EPERM ... unlink ... @img\\sharp-win32-x64\\lib\\libvips-cpp-8.17.3.dll` under an old temporary global package directory; treat it as cleanup noise unless the install itself fails.

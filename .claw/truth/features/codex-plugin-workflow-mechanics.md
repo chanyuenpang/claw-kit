@@ -12,6 +12,7 @@ Accepted working truth for the current Codex adapter workflow surface.
 - `planning` 负责需求澄清、任务拆分和 plan 质量；`using-claw-kit` 负责 claw runtime 路由、复杂度门禁、状态切换、goal mode 和 writer dispatch；两者的职责边界应继续保持分离。
 - `truth-writer`、`adr-writer`、`researcher` 都是可复用的专门角色，不是一次性派发对象；同线程已有合适 specialist 时应优先复用，而不是为了新的沉淀重复创建。
 - `direct` 仍然只是一个隐藏的兼容命令，不应被提升成公开 workflow 概念；轻量请求的默认入口语义是“在 session entry 处直接绕过 claw workflow”，而不是先进入 planning / default plan-create。
+- When retargeting installed converted skill templates between plugin surfaces, clear competing global templates and duplicate cache copies first so skill-local template resolution sees only one matching source.
 
 ## Implications
 

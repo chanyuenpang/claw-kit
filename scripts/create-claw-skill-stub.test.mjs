@@ -40,9 +40,11 @@ test("create-claw-skill stub generator writes standard fill-in surfaces", async 
 
   assert.match(skillText, /Run a demo-skill subplan, complete process demo targets/);
   assert.match(skillText, /claw subplan create --parent <root-task-name> --task-id <id> --template demo-template/);
+  assert.match(skillText, /Optional skill-local references: add files under `references\/` only when the source skill needs extra material/);
   assert.equal(JSON.parse(templateText).id, "demo-template");
   assert.match(coverageText, /Skill-local template: `TEMPLATE\.json` with id `demo-template`/);
   assert.match(coverageText, /standard subplan route for process demo targets/);
+  assert.match(coverageText, /Information that does not fit template structure stays in `SKILL\.md` or optional skill-local references/);
   await assert.doesNotReject(fs.access(path.join(outDir, "DEMO-FALLBACK.md")));
-  await assert.doesNotReject(fs.access(path.join(outDir, "CLAW-KNOWLEDGE.md")));
+  await assert.rejects(fs.access(path.join(outDir, "CLAW-KNOWLEDGE.md")));
 });

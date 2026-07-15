@@ -12,7 +12,6 @@ const outputDir = args["out"];
 const files = {
   "SKILL.md": buildSkillEntry({ skillName, templateId, targetWork, fallbackDoc }),
   "TEMPLATE.json": buildTemplate({ skillName, templateId, targetWork }),
-  "CLAW-KNOWLEDGE.md": buildKnowledge({ skillName, templateId, targetWork }),
   "CONTENT-COVERAGE.md": buildCoverage({ skillName, templateId, targetWork, fallbackDoc }),
   [fallbackDoc]: buildFallback({ skillName }),
 };
@@ -111,9 +110,9 @@ Recommended batch task detail:
 ## References
 
 - Fallback: \`${fallbackDoc}\`
-- Compiled knowledge: \`CLAW-KNOWLEDGE.md\`
 - Content coverage: \`CONTENT-COVERAGE.md\`
 - Template: \`TEMPLATE.json\`
+- Optional skill-local references: add files under \`references/\` only when the source skill needs extra material that does not fit cleanly in \`SKILL.md\` or \`TEMPLATE.json\`
 `;
 }
 
@@ -133,14 +132,14 @@ function buildTemplate({ skillName, templateId, targetWork }) {
       openQuestions: [],
       acceptanceCriteria: [
         "TODO: Replace with the source skill's required outcome.",
-        "The claw entry, template, references, and fallback preserve the source behavior.",
+        "The claw entry, template, optional references, and fallback preserve the source behavior.",
       ],
     },
     tasks: [
       {
         id: 1,
         title: "Confirm route and inputs",
-        detail: "Identify the concrete target, required inputs, and whether the fallback or compiled knowledge reference is needed.",
+        detail: "Identify the concrete target, required inputs, and whether the route rules plus SKILL.md supplement are enough or whether optional skill-local references are needed.",
         status: "pending",
         guidance: {
           onDone: {
@@ -148,7 +147,8 @@ function buildTemplate({ skillName, templateId, targetWork }) {
               mergeMode: "override",
               summary: "Inputs are clear; continue with the core workflow.",
               nextsteps: [
-                "Use CLAW-KNOWLEDGE.md for condensed source behavior.",
+                "Keep route rules and repeated high-signal reminders in SKILL.md.",
+                "Use template tasks, guidance, rules, and references for structured execution information.",
                 "Use the fallback document for full original wording when needed.",
               ],
               nextTaskId: 2,
@@ -160,7 +160,7 @@ function buildTemplate({ skillName, templateId, targetWork }) {
       {
         id: 2,
         title: "Run the core skill workflow",
-        detail: "TODO: Replace with the source skill's core workflow steps. Keep runtime prose lightweight and put detailed knowledge into references.",
+        detail: "TODO: Replace with the source skill's core workflow steps. Keep structured workflow control in the template and keep only non-template supplement material in SKILL.md or optional skill-local references.",
         status: "pending",
         guidance: {
           onDone: {
@@ -169,7 +169,7 @@ function buildTemplate({ skillName, templateId, targetWork }) {
               summary: "Core workflow completed; verify coverage and outcome.",
               nextsteps: [
                 "Check the result against CONTENT-COVERAGE.md.",
-                "Confirm important source behavior was not skipped.",
+                "Confirm important source behavior was not skipped or stranded outside SKILL.md, TEMPLATE.json, optional references, or fallback.",
               ],
               nextTaskId: 3,
               delegateTruth: false,
@@ -186,44 +186,17 @@ function buildTemplate({ skillName, templateId, targetWork }) {
     ],
     references: [
       {
-        path: "CLAW-KNOWLEDGE.md",
-        why: "Condensed source behavior and workflow anchors for normal claw execution.",
-      },
-      {
         path: "CONTENT-COVERAGE.md",
         why: "Maps important source information to the converted claw skill surfaces.",
       },
     ],
     rules: [
       "Follow returned workflowGuidance before advancing.",
-      "Keep runtime tasks lightweight and put detailed source knowledge in references or fallback.",
+      "Keep structured execution information in template tasks, guidance, rules, and references.",
+      "Keep route rules and non-template supplements in SKILL.md, and use skill-local references only when needed.",
       "Do not claim completion until the verification task is done.",
     ],
   }, null, 2)}\n`;
-}
-
-function buildKnowledge({ skillName, templateId, targetWork }) {
-  return `# ${skillName} claw knowledge
-
-## Purpose
-
-TODO: Distill the source skill's purpose.
-
-## Template
-
-- Template id: \`${templateId}\`
-- Target work wording: ${targetWork}
-
-## Core workflow anchors
-
-- TODO: Add source workflow phase 1.
-- TODO: Add source workflow phase 2.
-- TODO: Add source workflow phase 3.
-
-## Tool and reference constraints
-
-- TODO: Add required tools, commands, helper files, or links.
-`;
 }
 
 function buildCoverage({ skillName, templateId, targetWork, fallbackDoc }) {
@@ -238,6 +211,8 @@ function buildCoverage({ skillName, templateId, targetWork, fallbackDoc }) {
 - Ordered workflow steps: TODO.
 - Branch conditions: TODO.
 - Tool constraints and helper files: TODO.
+- Non-template supplement material kept in \`SKILL.md\`: TODO.
+- Optional skill-local references: TODO if the source needs them.
 - Verification gates: TODO.
 - Long-form source wording: \`${fallbackDoc}\`.
 
@@ -247,8 +222,9 @@ function buildCoverage({ skillName, templateId, targetWork, fallbackDoc }) {
 - [ ] Important workflow steps are represented.
 - [ ] Important branch behavior is represented.
 - [ ] Required tools, commands, helper files, and links are represented.
+- [ ] Information that does not fit template structure stays in \`SKILL.md\` or optional skill-local references.
 - [ ] Verification requirements are represented.
-- [ ] Anything too long for the template is preserved in fallback or compiled knowledge.
+- [ ] Anything too long for the template is preserved in \`SKILL.md\`, optional skill-local references, or fallback.
 `;
 }
 

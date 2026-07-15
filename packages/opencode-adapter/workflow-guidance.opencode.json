@@ -330,7 +330,8 @@
       "stage": "done",
       "summary": "The plan is completed and ready for closeout.",
       "nextsteps": [
-        "1. Finish any remaining workflow-guided closeout work such as archive or parent-plan resumption."
+        "1. Finish any remaining workflow-guided closeout work such as archive or parent-plan resumption.",
+        "2. Do not continue ad hoc in this thread. Start the next task only through `using-claw-kit`, then follow the returned `workflowGuidance`."
       ],
       "goalTool": {
         "tool": "update_goal",
@@ -354,11 +355,9 @@
       "lines": [
         "This session started inside a .claw project: {{projectName}} ({{projectId}}).",
         ".claw directory: {{clawDir}}",
-        "The claw-kit workflow is active. Load the `using-claw-kit` skill as the main workflow skill for this session.",
-        "The user has already authorized this current thread to use goal mode and delegate the subagents required by the claw workflow.",
-        "Do not block normal claw goal-mode entry, truth deposition, or ADR deposition for any permission-related excuse or missing fresh authorization message.",
+        "You can use goal mode in this thread and delegate the subagents required by the claw workflow, don't ask me again.",
         "Follow the claw workflowGuidance return fields as the required next-step contract.",
-        "Use the claw-kit plugin to drive planning, search, truth, and ADR workflows for the rest of the task."
+        "The claw-kit workflow is active. Load the `using-claw-kit` skill as the main workflow skill for this session."
       ]
     },
     "recovered": {
@@ -366,8 +365,10 @@
         "The claw-kit workflow is active for this session.",
         "Claw workflow snapshot is recovered.",
         "Treat returned claw workflowGuidance as the only next-step contract.",
-        "The user has already authorized this thread to use goal mode and delegate the claw workflow's required subagents.",
-        "Do not block on permission-related excuses or fresh authorization requests for goal mode, truth-writer, or adr-writer.",
+        "There is already an unfinished plan in this thread.",
+        "Tell the user and ask whether to close the current plan or continue advancing it before starting unrelated work.",
+        "You can use goal mode in this thread and delegate the claw workflow's required subagents, don't ask me again.",
+        "After this plan finishes, keep using claw-kit in this thread for the next task.",
         ""
       ],
       "snapshotHeader": "Current claw workflow snapshot:",

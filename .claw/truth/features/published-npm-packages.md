@@ -2,7 +2,7 @@
 
 ## 状态
 
-这是 `publish-claw-npm-package` 完成后沉淀下来的稳定发布事实。当前最新一轮已验证到 `0.1.53`，并继续沿用同一条双包发布链与本地插件刷新协议。
+这是 `publish-claw-npm-package` 完成后沉淀下来的稳定发布事实。当前最新一轮已验证到 `0.1.58`，并继续沿用同一条双包发布链与本地插件刷新协议；当某一轮发布的目的就是验证 startup `autoUpdate` 路径时，release baseline 也可以先只确认 registry / workspace 基线与下一目标版本，不立即刷新本地 CLI 或本地 Codex plugin cache。
 
 ## 结论
 
@@ -11,13 +11,16 @@
 - `@veewo/claw-core` 提供核心 `.claw` harness 语义。
 - `@veewo/claw` 提供可发布的 CLI 入口，并依赖 `@veewo/claw-core`。
 
-当前版本线已经同步到 `0.1.53`：
+当前版本线已经同步到 `0.1.58`：
 
 - 这次 closeout 把 root、`packages/core`、`packages/cli`、`packages/codex-adapter`、`packages/openclaw-adapter`、`packages/opencode-adapter`、`package-lock.json` 和 `packages/codex-adapter/.codex-plugin/plugin.json` 一起推进到同一轮 release surface，其中 Codex plugin manifest 对齐到 `0.1.53+codex.20260626141302`。
 - `@veewo/claw-core@0.1.53` 与 `@veewo/claw@0.1.53` 都已经成功发布到 npm registry。
 - 通过 `npm view @veewo/claw-core version dist-tags.latest --json` 与 `npm view @veewo/claw version dist-tags.latest bin --json` 校验后，两个包当前都解析到 `0.1.53`，且 `@veewo/claw` registry metadata 继续保留 `bin.claw = "dist/bin.js"`。
 - 0.1.53 release verification passed the full local gate: `npm test` passed with core `85/85` and CLI `50/50`, `npm run check` passed, `npm run test:codex-plugin` passed `5/5`, `npm run test:opencode-plugin` passed `5/5`, `npm pack --dry-run -w @veewo/claw-core` produced `veewo-claw-core-0.1.53.tgz`, and `npm pack --dry-run -w @veewo/claw` produced `veewo-claw-0.1.53.tgz`.
 - `npm run install:codex-plugin` 已把本地 Codex plugin cache 刷新到 `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.53+codex.20260626141302`，安装后的 `.codex-plugin/plugin.json` 与仓库 manifest 版本一致，并携带新的低复杂度 skip-before-plan entry copy。
+- `@veewo/claw-core@0.1.58` 与 `@veewo/claw@0.1.58` 已经成功发布到 npm registry；这轮 closeout 还一起验证了 `npm test`、`npm run check`、`npm whoami` 以及两个 `npm pack --dry-run` 都通过。
+- 0.1.58 release verification 的关键补丁之一是：当 package 版本推进时，`packages/core/test/core.test.ts` 里与协议版本绑定的硬编码期望也要一起更新，否则会先在 `initProject` scaffold 和 `ensureProjectProtocol` rewrite 相关断言上失败。
+- 这轮发布还确认了三条可持续的 release surface 会一起变动：`autoUpdate` 默认仍为 `true`，`SessionStart` 的 prompt / auth wording 与 update-first 顺序会继续围绕 `startupRecovery.versionSync` 收敛，而 `shared/skills/update` 仍保持 template-backed skill package 形态。
 - `npm publish` 偶尔会吐出 `bin[claw]` 之类的归一化警告，但这不能单独当成最终结论；发布后仍要用 `npm view @veewo/claw bin --json` 再核对 registry 里的 bin 映射，并跑真实的 `claw` 烟测确认命令面可用。
 - 2026-06-24 的 release audit 重新确认了 npm registry 的 `latest` 仍停留在 `0.1.50`，因此下一次 patch target 变为 `0.1.51`；这一轮 release-surface alignment 继续覆盖 root `package.json`、`packages/core/package.json`、`packages/cli/package.json`、`packages/codex-adapter/package.json`、`packages/openclaw-adapter/package.json`、`packages/opencode-adapter/package.json`、`package-lock.json` 和 `packages/codex-adapter/.codex-plugin/plugin.json`，其中 Codex plugin manifest 目标版本是 `0.1.51+codex.20260624140756`。
 - 0.1.51 release verification passed the full local gate: `npm test` passed with core `85/85` and CLI `50/50`, `npm run check` passed, `npm run test:codex-plugin` passed `5/5`, `npm run test:opencode-plugin` passed `5/5`, `npm pack --dry-run -w @veewo/claw-core` produced `veewo-claw-core-0.1.51.tgz`, and `npm pack --dry-run -w @veewo/claw` produced `veewo-claw-0.1.51.tgz`.
@@ -25,6 +28,13 @@
 - For `@veewo/claw@0.1.48`, registry metadata preserved `bin: { "claw": "dist/bin.js" }` and dependency `@veewo/claw-core: "0.1.48"` despite npm publish's auto-correct warning, so closeout should trust post-publish metadata over the warning text.
 - Tarball metadata for `@veewo/claw@0.1.48` is `shasum = 6fcf756e3a85372b0203f0f510466c9615c9da65` and `integrity = sha512-dch0KwjKkLOEZrFwExGwAyKEQEq1udQ6ozh3PW3MPnSoEzw5tyMMuxRkSiriPFW58lHtW2pw2vWQKKz9h1Q+9g==`; `npm pack @veewo/claw@0.1.48` succeeded after the local npm cache was cleared.
 - `@veewo/claw-core@0.1.49` and `@veewo/claw@0.1.49` were published on 2026-06-23 for the workflowGuidance wording patch, and registry metadata reports `latest = 0.1.49` for both packages.
+- `@veewo/claw-core@0.1.58` and `@veewo/claw@0.1.58` are now the newest published pair; the 0.1.58 closeout used the same release protocol, but the verification gate specifically caught stale hard-coded protocol-version expectations in `packages/core/test/core.test.ts` before the final pass.
+- 2026-07-11 的 release baseline verification 再次确认 npm registry 当前仍报告 `@veewo/claw-core@0.1.58` 与 `@veewo/claw@0.1.58`，workspace/package surface 也仍停在 `0.1.58`，因此这一轮的 next publish target 应推进到 `0.1.59`，而不是复用本地旧预期。
+- 这轮 baseline 还确认 `.claw/project.json` 必须继续保持 `autoUpdate: true`，这样项目版本推进到新发布版本后，startup recovery 才会把版本漂移稳定路由到 `claw-kit:update`。
+- 如果本轮目标是专门验证自动更新链路，release baseline 可以刻意不刷新本地 CLI 或本地 Codex plugin cache；但前提仍是 npm auth 已可用，并且 registry / workspace 基线、下一目标版本与 `autoUpdate` gate 都已经先被明确核对。
+- `0.1.59` 的 release verification gates 已再次确认当前稳定闸门没有变化：`npm test` 通过，覆盖 `@veewo/claw-core` build/test 与 `@veewo/claw` test suites；`npm run check` 通过，覆盖 core build、CLI typecheck、adapter checks 与 truth encoding audit；`npm run test:codex-plugin` 与 `npm run test:opencode-plugin` 都通过；`npm pack --dry-run -w @veewo/claw-core` 与 `npm pack --dry-run -w @veewo/claw` 也都成功。
+- `0.1.59` 这一轮还确认了 auto-update 验证回合的正式 publish closeout 分流：`npm publish -w @veewo/claw-core` 与 `npm publish -w @veewo/claw` 成功后，只要 `npm view @veewo/claw-core version` 与 `npm view @veewo/claw version` 都已经解析到新版本，就可以把 registry publish 视为完成；此时本地 CLI 仍停在 `0.1.58`、本地 Codex plugin cache 仍停在旧安装面，也不构成这类回合的发布失败。
+- `0.1.59` 的最终 release surface 已对齐到同一版本线：workspace/package surfaces 与 `.claw/project.json` 都推进到 `0.1.59`，并继续保持 `.claw/project.json.autoUpdate = true`，这样“已发布新版本但本地安装面故意滞后”的状态才能稳定留给后续 auto-update 验证。
 - For `@veewo/claw@0.1.49`, registry metadata still preserves `bin: { "claw": "dist/bin.js" }` and dependency `@veewo/claw-core: "0.1.49"`; npm tarball retrieval succeeded after clearing the local npm cache.
 - `packages/codex-adapter/.codex-plugin/plugin.json` 和本地 Codex plugin cache 也同步到了 `0.1.40+codex.20260616130425`，并且与仓库 manifest 保持一致。
 - 本机 `claw --version` 当前返回 `0.1.49`。
@@ -52,6 +62,8 @@
 
 - `npm test` 必须通过。
 - `npm run check` 必须通过。
+- `npm run test:codex-plugin` 与 `npm run test:opencode-plugin` 也属于 release verification 的稳定 gate。
+- `npm pack --dry-run -w @veewo/claw-core` 与 `npm pack --dry-run -w @veewo/claw` 必须都成功，才算两个发布包的 dry-run 打包面通过。
 - `npm view @veewo/claw-core version` 必须返回新版本。
 - `npm view @veewo/claw version` 必须返回新版本。
 
@@ -60,6 +72,7 @@
 - 发布完成后还需要把本地 CLI 刷新到刚发布的新版本；这轮稳定路径是 `npm run install:local-cli`。
 - 如果 registry 可见性有短暂延迟，本地 CLI 刷新允许在新版本可见后重试一次；这轮第一次安装仍拿到 `0.1.39`，重试后才稳定切到 `0.1.40`。
 - 这条安装验证已经成功，说明已发布的 CLI 包可以在本机继续稳定刷新；当前已验证版本是 `@veewo/claw@0.1.49`。
+- 但如果某轮发布的目标就是保留独立的 auto-update 验证窗口，那么 closeout 可以停在“双包 publish 成功 + registry metadata 已解析到新版本”这一层；本地 CLI 与本地 Codex plugin cache 在该回合继续停留旧版本是允许的，不应误判为 publish 未完成。
 
 本地安装和缓存刷新仍然遵循同一条稳定路径：
 

@@ -19,6 +19,7 @@ export type ProjectConfig = {
   name?: string;
   maxTasksToKeep?: number;
   planning?: boolean;
+  autoUpdate?: boolean;
   goalMode?: boolean;
   truthDispatch?: "per_task" | "final_only";
   externalPlanningSkill?: string | null;
@@ -32,6 +33,15 @@ export type ProjectConfig = {
     embedding?: MemoryEmbeddingConfig | null;
   };
   gitnexus?: boolean;
+};
+
+export type TemplateConfigOverride = {
+  autoUpdate?: boolean;
+  goalMode?: boolean;
+  truthDispatch?: "per_task" | "final_only";
+  externalPlanningSkill?: string | null;
+  externalTruthSkill?: string | null;
+  externalAdrSkill?: string | null;
 };
 
 export type PlanPhase = "prepare" | "process" | "end";
@@ -87,29 +97,12 @@ export type PlanTaskReview = {
   reviewedAt: string;
 };
 
-export type PlanTaskOnDoneGuidance = {
-  mergeMode?: "merge" | "override";
-  summary?: string;
-  nextsteps?: string[];
-  notes?: string;
-  recommendedCommands?: string[];
-  askUser?: WorkflowGuidance["askUser"];
-  nextTaskId?: number;
-  delegateTruth?: boolean;
-};
-
-export type PlanTaskGuidance = {
-  onDone?: {
-    default?: PlanTaskOnDoneGuidance;
-    choices?: Record<string, PlanTaskOnDoneGuidance>;
-  };
-};
-
 export type PlanTask = {
   id: number;
   title: string;
   detail?: string;
   status: PlanTaskStatus;
+  choiceId?: string;
   execution?: {
     type?: "default" | "subagent" | "subplan";
     subplan?: string;
@@ -117,11 +110,12 @@ export type PlanTask = {
   };
   sessionKey?: string;
   review?: string | PlanTaskReview;
-  guidance?: PlanTaskGuidance;
 };
 
 export type PlanDocument = {
   title: string;
+  templateId?: string;
+  configOverride?: TemplateConfigOverride;
   status: PlanStatus;
   goal: {
     text: string;
@@ -132,7 +126,6 @@ export type PlanDocument = {
   summary?: string;
   leaveReason?: PlanLeaveReason;
   taskType?: string;
-  configOverride?: Partial<ProjectConfig>;
   tasks: PlanTask[];
   keyDecisions?: string[];
   references?: PlanReference[];
@@ -187,7 +180,7 @@ export type WorkflowGuidanceGoalTool =
   | {
       tool: "create_goal";
       objective: string;
-      ifNoActiveGoal: true;
+      allowOverwrite: true;
       reason: string;
     }
   | {
@@ -470,7 +463,6 @@ export type PlanWriteInput = {
   reviewer?: PlanReviewer;
   workflowDefinitions?: string;
   host?: string;
-  skillRoots?: string[];
 };
 
 export type PlanWriteResult = {
@@ -497,8 +489,6 @@ export type SubplanWriteInput = {
   parentTaskId: number;
   templateName?: string;
   ownerSessionKey?: string;
-  host?: string;
-  skillRoots?: string[];
 };
 
 export type PlanEditInput = {
@@ -510,7 +500,7 @@ export type PlanEditInput = {
   planStatus?: string;
   taskId?: number;
   taskStatus?: PlanTaskStatus;
-  choiceId?: string;
+  taskChoiceId?: string;
   appendTasks?: PlanTask[];
   reviewer?: PlanReviewer;
   workflowDefinitions?: string;
@@ -525,6 +515,7 @@ export type PlanEditResult = {
   previousPlanStatus: PlanStatus;
   emittedEvents: string[];
   changedTaskIds: number[];
+  appendedTaskIds: number[];
   planReview?: PlanReviewResult;
   completionHooks?: PlanCompletionHooks;
   workflowGuidance: WorkflowGuidance;

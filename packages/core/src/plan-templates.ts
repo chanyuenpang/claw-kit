@@ -1,125 +1,127 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 import { ClawError } from "./errors.js";
-import { defaultPlanTemplate, type SeedPlanTemplate } from "./templates/plans/default.js";
-import type { PlanDocument } from "./types.js";
+import {
+  defaultPlanTemplate,
+  type PlanTemplateDocument,
+  type PlanTemplateTask,
+  type TemplateGuidanceRoute,
+  type TemplateTaskGuidance,
+} from "./templates/plans/default.js";
+import type { PlanReference, PlanRequirements, PlanRetrospective, PlanStatus, TemplateConfigOverride } from "./types.js";
 
-const PLAN_TEMPLATES: SeedPlanTemplate[] = [defaultPlanTemplate];
-const PROJECT_TEMPLATE_EXTENSIONS = new Set([".json", ".js", ".mjs", ".cjs"]);
-
-export type FullPlanTemplate = PlanDocument & {
+export type ResolvedPlanTemplate = {
   id: string;
+  configOverride?: TemplateConfigOverride;
+  title?: string;
+  status: PlanStatus;
+  goal?: {
+    text: string;
+  };
+  requirements?: PlanRequirements;
+  tasks: PlanTemplateTask[];
+  references?: PlanReference[];
+  rules?: string[];
+  keyDecisions?: string[];
+  retrospective?: PlanRetrospective;
+  source: "builtin" | "project";
+  templatePath?: string;
 };
 
-export type ResolvedPlanTemplate =
-  | { kind: "seed"; template: SeedPlanTemplate; templatePath?: string }
-  | { kind: "full"; template: FullPlanTemplate; templatePath: string };
-
-export async function resolvePlanTemplate(params: {
-  projectRoot?: string;
-  templateName?: string | null;
-  host?: string;
-  skillRoots?: string[];
-}): Promise<ResolvedPlanTemplate> {
-  const normalized = params.templateName?.trim().toLowerCase() || defaultPlanTemplate.id;
-  const projectCandidate = params.projectRoot
-    ? await loadProjectPlanTemplate(params.projectRoot, normalized)
-    : null;
-  if (projectCandidate) {
-    return projectCandidate;
-  }
-
-  const builtIn = PLAN_TEMPLATES.find((template) =>
-    template.id.toLowerCase() === normalized || template.aliases.some((alias) => alias.toLowerCase() === normalized),
-  );
-  if (builtIn) {
-    return { kind: "seed", template: builtIn };
-  }
-
-  const skillRoots = params.skillRoots ?? resolveHostSkillRoots({
-    projectRoot: params.projectRoot,
-    host: params.host,
-  });
-  const skillCandidate = loadSkillPlanTemplate(skillRoots, normalized);
-  if (skillCandidate) {
-    return skillCandidate;
-  }
-
-  throw new ClawError("PROJECT_CONFIG_INVALID", `Unknown plan template "${params.templateName ?? normalized}".`, {
-    templateName: params.templateName ?? normalized,
-    availableTemplates: [
-      ...PLAN_TEMPLATES.flatMap((template) => [template.id, ...template.aliases]),
-      ...discoverSkillTemplateNames(skillRoots),
-    ],
-  });
-}
+const PLAN_TEMPLATES: ResolvedPlanTemplate[] = [normalizePlanLikeTemplate(defaultPlanTemplate, { source: "builtin" })];
 
 export async function resolveSeedPlanTemplate(params: {
   projectRoot?: string;
   templateName?: string | null;
-}): Promise<SeedPlanTemplate> {
-  const resolved = await resolvePlanTemplate(params);
-  if (resolved.kind !== "seed") {
-    throw new ClawError("PROJECT_CONFIG_INVALID", `Plan template "${params.templateName ?? resolved.template.id}" is a full-plan template, not a seed template.`, {
-      templateName: params.templateName ?? resolved.template.id,
-      templatePath: resolved.templatePath,
+}): Promise<ResolvedPlanTemplate> {
+  const normalized = params.templateName?.trim().toLowerCase() || defaultPlanTemplate.id;
+  const projectTemplate = params.projectRoot ? await loadProjectPlanTemplate(params.projectRoot, normalized) : null;
+  if (projectTemplate) {
+    return projectTemplate;
+  }
+  const projectSkillTemplate = params.projectRoot ? await loadProjectSkillPlanTemplate(params.projectRoot, normalized) : null;
+  if (projectSkillTemplate) {
+    return projectSkillTemplate;
+  }
+  const projectPackageTemplate = params.projectRoot ? await loadProjectPackagePlanTemplate(params.projectRoot, normalized) : null;
+  if (projectPackageTemplate) {
+    return projectPackageTemplate;
+  }
+  const globalTemplate = await loadGlobalPlanTemplate(normalized);
+  if (globalTemplate) {
+    return globalTemplate;
+  }
+  const globalSkillTemplate = await loadGlobalSkillPlanTemplate(normalized);
+  if (globalSkillTemplate) {
+    return globalSkillTemplate;
+  }
+  const globalPackageTemplate = await loadGlobalPackagePlanTemplate(normalized);
+  if (globalPackageTemplate) {
+    return globalPackageTemplate;
+  }
+  const match = PLAN_TEMPLATES.find((template) =>
+    template.id.toLowerCase() === normalized,
+  );
+  if (!match) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", `Unknown plan template "${params.templateName ?? normalized}".`, {
+      templateName: params.templateName ?? normalized,
+      availableTemplates: PLAN_TEMPLATES.map((template) => template.id),
     });
   }
-  return resolved.template;
+  return match;
 }
 
-export function resolveHostSkillRoots(params: {
-  projectRoot?: string;
-  host?: string;
-  homeDir?: string;
-  env?: NodeJS.ProcessEnv;
-} = {}): string[] {
-  const env = params.env ?? process.env;
-  const homeDir = params.homeDir ?? os.homedir();
-  const explicitRoots = (env.CLAW_SKILL_ROOTS ?? "")
-    .split(path.delimiter)
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-  const roots = [...explicitRoots];
-  if (params.projectRoot) {
-    roots.push(path.join(params.projectRoot, "shared", "skills"));
-  }
-  roots.push(...discoverCheckoutSkillRoots());
-  const host = params.host?.trim().toLowerCase();
-
-  if (host === "opencode") {
-    const guidanceConfig = env.CLAW_GUIDANCE_CONFIG?.trim();
-    if (guidanceConfig) {
-      roots.push(path.join(path.dirname(path.resolve(guidanceConfig)), "skills"));
-    }
-    const opencodeHome = path.join(homeDir, ".config", "opencode");
-    roots.push(path.join(opencodeHome, "skills"));
-    roots.push(path.join(opencodeHome, "plugins", "claw-kit", "skills"));
-    if (params.projectRoot) {
-      roots.push(path.join(params.projectRoot, ".opencode", "skills"));
-    }
-    roots.push(path.join(homeDir, ".agents", "skills"));
-    return uniqueExistingDirectories(roots);
-  }
-
-  const codexHome = env.CODEX_HOME?.trim() || path.join(homeDir, ".codex");
-  roots.push(path.join(codexHome, "skills"));
-  roots.push(...discoverCodexPluginSkillRoots(path.join(codexHome, "plugins", "cache")));
-  return uniqueExistingDirectories(roots);
+export async function resolvePlanTemplateFile(templatePath: string): Promise<ResolvedPlanTemplate> {
+  const raw = templatePath.endsWith(".json")
+    ? JSON.parse(fs.readFileSync(templatePath, "utf-8"))
+    : await import(pathToFileURL(templatePath).href).then((module) => module.default ?? module);
+  return validatePlanTemplateSource(raw, templatePath, "project");
 }
 
-function discoverCheckoutSkillRoots(): string[] {
-  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-  return [
-    path.resolve(moduleDir, "..", "..", "..", "shared", "skills"),
-    path.resolve(moduleDir, "..", "..", "..", "..", "shared", "skills"),
-  ];
+export function validatePlanTemplateSource(
+  raw: unknown,
+  templatePath: string,
+  source: "builtin" | "project" = "project",
+): ResolvedPlanTemplate {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", `Invalid plan template at ${templatePath}.`, {
+      templatePath,
+    });
+  }
+
+  return normalizePlanLikeTemplate(validatePlanLikeTemplate(raw, templatePath), {
+    source,
+    templatePath: source === "project" ? templatePath : undefined,
+  });
 }
 
 async function loadProjectPlanTemplate(projectRoot: string, normalizedTemplateName: string): Promise<ResolvedPlanTemplate | null> {
-  const templatesDir = path.join(projectRoot, ".claw", "templates");
+  return loadPlanTemplateFromDirectory(path.join(projectRoot, ".claw", "templates"), normalizedTemplateName);
+}
+
+async function loadProjectSkillPlanTemplate(projectRoot: string, normalizedTemplateName: string): Promise<ResolvedPlanTemplate | null> {
+  return loadPlanTemplateFromSkillRoots(resolveProjectSkillRoots(projectRoot), normalizedTemplateName);
+}
+
+async function loadProjectPackagePlanTemplate(projectRoot: string, normalizedTemplateName: string): Promise<ResolvedPlanTemplate | null> {
+  return loadPlanTemplateFromTemplateDirs(resolveProjectPackageTemplateDirs(projectRoot), normalizedTemplateName);
+}
+
+async function loadGlobalPlanTemplate(normalizedTemplateName: string): Promise<ResolvedPlanTemplate | null> {
+  return loadPlanTemplateFromDirectory(path.join(os.homedir(), ".claw", "templates"), normalizedTemplateName);
+}
+
+async function loadGlobalSkillPlanTemplate(normalizedTemplateName: string): Promise<ResolvedPlanTemplate | null> {
+  return loadPlanTemplateFromSkillRoots(resolveGlobalSkillRoots(), normalizedTemplateName);
+}
+
+async function loadGlobalPackagePlanTemplate(normalizedTemplateName: string): Promise<ResolvedPlanTemplate | null> {
+  return loadPlanTemplateFromTemplateDirs(resolveGlobalPackageTemplateDirs(), normalizedTemplateName);
+}
+
+async function loadPlanTemplateFromDirectory(templatesDir: string, normalizedTemplateName: string): Promise<ResolvedPlanTemplate | null> {
   if (!fs.existsSync(templatesDir)) {
     return null;
   }
@@ -128,7 +130,7 @@ async function loadProjectPlanTemplate(projectRoot: string, normalizedTemplateNa
     .map((entry) => entry.name)
     .filter((entryName) => {
       const parsed = path.parse(entryName);
-      return parsed.name.toLowerCase() === normalizedTemplateName && PROJECT_TEMPLATE_EXTENSIONS.has(parsed.ext.toLowerCase());
+      return parsed.name.toLowerCase() === normalizedTemplateName && [".json", ".js", ".mjs", ".cjs"].includes(parsed.ext.toLowerCase());
     });
   if (candidateEntries.length === 0) {
     return null;
@@ -139,122 +141,576 @@ async function loadProjectPlanTemplate(projectRoot: string, normalizedTemplateNa
       candidatePaths: candidateEntries.map((entryName) => path.join(templatesDir, entryName)),
     });
   }
-  const templatePath = path.join(templatesDir, candidateEntries[0]!);
-  const raw = templatePath.endsWith(".json")
-    ? JSON.parse(fs.readFileSync(templatePath, "utf-8"))
-    : await import(pathToFileURL(templatePath).href).then((module) => module.default ?? module);
-  return classifyPlanTemplate(raw, templatePath);
+  return resolvePlanTemplateFile(path.join(templatesDir, candidateEntries[0]!));
 }
 
-function loadSkillPlanTemplate(skillRoots: string[], normalizedTemplateName: string): ResolvedPlanTemplate | null {
+async function loadPlanTemplateFromTemplateDirs(templateDirs: string[], normalizedTemplateName: string): Promise<ResolvedPlanTemplate | null> {
+  const matches: string[] = [];
+  for (const templateDir of templateDirs) {
+    const match = await loadPlanTemplateFromDirectory(templateDir, normalizedTemplateName);
+    if (match?.templatePath) {
+      matches.push(match.templatePath);
+    }
+  }
+  if (matches.length > 1) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", `Multiple package plan templates matched "${normalizedTemplateName}".`, {
+      templateName: normalizedTemplateName,
+      candidatePaths: matches,
+    });
+  }
+  return matches.length === 1 ? resolvePlanTemplateFile(matches[0]!) : null;
+}
+
+async function loadPlanTemplateFromSkillRoots(skillRoots: string[], normalizedTemplateName: string): Promise<ResolvedPlanTemplate | null> {
+  const matches: { path: string; signature: string }[] = [];
   for (const skillRoot of skillRoots) {
-    const templatePath = path.basename(skillRoot).toLowerCase() === normalizedTemplateName
-      ? path.join(skillRoot, "TEMPLATE.json")
-      : path.join(skillRoot, normalizedTemplateName, "TEMPLATE.json");
-    if (!fs.existsSync(templatePath)) {
+    for (const templatePath of collectSkillTemplateFiles(skillRoot)) {
+      const template = await resolvePlanTemplateFile(templatePath);
+      if (template.id.toLowerCase() === normalizedTemplateName) {
+        matches.push({ path: templatePath, signature: signatureForTemplateConflict(template) });
+      }
+    }
+  }
+  if (matches.length > 1) {
+    const uniqueSignatures = new Set(matches.map((match) => match.signature));
+    if (uniqueSignatures.size === 1) {
+      return resolvePlanTemplateFile(matches[0]!.path);
+    }
+    throw new ClawError("PROJECT_CONFIG_INVALID", `Multiple skill-local plan templates matched "${normalizedTemplateName}".`, {
+      templateName: normalizedTemplateName,
+      candidatePaths: matches.map((match) => match.path),
+    });
+  }
+  return matches.length === 1 ? resolvePlanTemplateFile(matches[0]!.path) : null;
+}
+
+function signatureForTemplateConflict(template: ResolvedPlanTemplate): string {
+  const { source: _source, templatePath: _templatePath, ...portableTemplate } = template;
+  return JSON.stringify(portableTemplate);
+}
+
+function resolveProjectSkillRoots(projectRoot: string): string[] {
+  const roots = [path.join(projectRoot, "skills")];
+  const packagesDir = path.join(projectRoot, "packages");
+  if (!fs.existsSync(packagesDir)) {
+    return roots;
+  }
+  for (const entry of fs.readdirSync(packagesDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) {
       continue;
     }
-    const raw = JSON.parse(fs.readFileSync(templatePath, "utf-8"));
-    const resolved = classifyPlanTemplate(raw, templatePath);
-    if (resolved.kind !== "full") {
-      throw new ClawError("PROJECT_CONFIG_INVALID", `Skill-local plan template at ${templatePath} must use the full-plan template schema.`, {
-        templatePath,
-      });
+    roots.push(path.join(packagesDir, entry.name, "skills"));
+  }
+  return roots;
+}
+
+function resolveProjectPackageTemplateDirs(projectRoot: string): string[] {
+  const templateDirs: string[] = [];
+  const packagesDir = path.join(projectRoot, "packages");
+  if (!fs.existsSync(packagesDir)) {
+    return templateDirs;
+  }
+  for (const entry of fs.readdirSync(packagesDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) {
+      continue;
     }
-    if (resolved.template.id.trim().toLowerCase() !== normalizedTemplateName) {
-      throw new ClawError("PROJECT_CONFIG_INVALID", `Skill-local plan template id does not match "${normalizedTemplateName}".`, {
-        templatePath,
-        templateId: resolved.template.id,
-      });
-    }
-    return resolved;
+    templateDirs.push(path.join(packagesDir, entry.name, "templates"));
   }
-  return null;
+  return templateDirs;
 }
 
-function classifyPlanTemplate(raw: unknown, templatePath: string): ResolvedPlanTemplate {
-  if (isSeedPlanTemplate(raw)) {
-    return { kind: "seed", template: raw, templatePath };
-  }
-  if (isFullPlanTemplate(raw)) {
-    return { kind: "full", template: raw, templatePath };
-  }
-  throw new ClawError("PROJECT_CONFIG_INVALID", `Invalid plan template at ${templatePath}.`, {
-    templatePath,
-  });
-}
-
-function isSeedPlanTemplate(raw: unknown): raw is SeedPlanTemplate {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    return false;
-  }
-  const candidate = raw as Partial<SeedPlanTemplate>;
-  return typeof candidate.id === "string"
-    && Array.isArray(candidate.aliases)
-    && candidate.aliases.every((alias) => typeof alias === "string")
-    && typeof candidate.planningEnabledStatus === "string"
-    && typeof candidate.planningDisabledStatus === "string"
-    && typeof candidate.planningTask?.title === "string"
-    && typeof candidate.planningTask?.detail === "string"
-    && typeof candidate.activationTask?.title === "string"
-    && typeof candidate.activationTask?.detail === "string"
-    && typeof candidate.activationTask?.goalModeDetail === "string";
-}
-
-function isFullPlanTemplate(raw: unknown): raw is FullPlanTemplate {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    return false;
-  }
-  const candidate = raw as Partial<FullPlanTemplate>;
-  return typeof candidate.id === "string"
-    && typeof candidate.title === "string"
-    && typeof candidate.status === "string"
-    && typeof candidate.goal?.text === "string"
-    && Array.isArray(candidate.tasks);
-}
-
-function discoverCodexPluginSkillRoots(cacheRoot: string): string[] {
-  if (!fs.existsSync(cacheRoot)) {
-    return [];
-  }
-  const roots: string[] = [];
-  for (const marketplace of fs.readdirSync(cacheRoot, { withFileTypes: true }).filter((entry) => entry.isDirectory())) {
-    const marketplaceDir = path.join(cacheRoot, marketplace.name);
-    for (const plugin of fs.readdirSync(marketplaceDir, { withFileTypes: true }).filter((entry) => entry.isDirectory())) {
-      if (plugin.name.toLowerCase() !== "claw-kit") {
+function resolveGlobalSkillRoots(): string[] {
+  const homeDir = os.homedir();
+  const roots = [
+    path.join(homeDir, ".agents", "skills"),
+    path.join(homeDir, ".codex", "skills"),
+  ];
+  const cacheRoot = path.join(homeDir, ".codex", "plugins", "cache");
+  if (fs.existsSync(cacheRoot)) {
+    for (const vendor of fs.readdirSync(cacheRoot, { withFileTypes: true })) {
+      if (!vendor.isDirectory()) {
         continue;
       }
-      const pluginDir = path.join(marketplaceDir, plugin.name);
-      const versions = fs.readdirSync(pluginDir, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory())
-        .map((entry) => entry.name)
-        .sort((left, right) => right.localeCompare(left, undefined, { numeric: true, sensitivity: "base" }));
-      for (const version of versions) {
-        roots.push(path.join(pluginDir, version, "skills"));
+      const vendorDir = path.join(cacheRoot, vendor.name);
+      for (const plugin of fs.readdirSync(vendorDir, { withFileTypes: true })) {
+        if (!plugin.isDirectory()) {
+          continue;
+        }
+        const pluginDir = path.join(vendorDir, plugin.name);
+        roots.push(path.join(pluginDir, "skills"));
+        for (const version of fs.readdirSync(pluginDir, { withFileTypes: true })) {
+          if (!version.isDirectory()) {
+            continue;
+          }
+          roots.push(path.join(pluginDir, version.name, "skills"));
+        }
       }
     }
   }
   return roots;
 }
 
-function discoverSkillTemplateNames(skillRoots: string[]): string[] {
-  const names = new Set<string>();
-  for (const skillRoot of skillRoots) {
-    if (!fs.existsSync(skillRoot)) {
+function resolveGlobalPackageTemplateDirs(): string[] {
+  const homeDir = os.homedir();
+  const templateDirs: string[] = [];
+  const cacheRoot = path.join(homeDir, ".codex", "plugins", "cache");
+  if (!fs.existsSync(cacheRoot)) {
+    return templateDirs;
+  }
+  for (const vendor of fs.readdirSync(cacheRoot, { withFileTypes: true })) {
+    if (!vendor.isDirectory()) {
       continue;
     }
-    for (const entry of fs.readdirSync(skillRoot, { withFileTypes: true })) {
-      if (entry.isDirectory() && fs.existsSync(path.join(skillRoot, entry.name, "TEMPLATE.json"))) {
-        names.add(entry.name);
+    const vendorDir = path.join(cacheRoot, vendor.name);
+    for (const plugin of fs.readdirSync(vendorDir, { withFileTypes: true })) {
+      if (!plugin.isDirectory()) {
+        continue;
+      }
+      const pluginDir = path.join(vendorDir, plugin.name);
+      templateDirs.push(path.join(pluginDir, "templates"));
+      for (const version of fs.readdirSync(pluginDir, { withFileTypes: true })) {
+        if (!version.isDirectory()) {
+          continue;
+        }
+        templateDirs.push(path.join(pluginDir, version.name, "templates"));
       }
     }
   }
-  return [...names].sort();
+  return templateDirs;
 }
 
-function uniqueExistingDirectories(candidates: string[]): string[] {
-  return [...new Set(candidates.map((candidate) => path.resolve(candidate)))]
-    .filter((candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isDirectory());
+function collectSkillTemplateFiles(skillRoot: string): string[] {
+  if (!fs.existsSync(skillRoot)) {
+    return [];
+  }
+  const templateFiles: string[] = [];
+  for (const entry of fs.readdirSync(skillRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) {
+      continue;
+    }
+    const skillDir = path.join(skillRoot, entry.name);
+    for (const candidateName of [
+      "TEMPLATE.json",
+      "TEMPLATE.js",
+      "TEMPLATE.mjs",
+      "TEMPLATE.cjs",
+      "CLAW-TEMPLATE.json",
+      "CLAW-TEMPLATE.js",
+      "CLAW-TEMPLATE.mjs",
+      "CLAW-TEMPLATE.cjs",
+    ]) {
+      const candidatePath = path.join(skillDir, candidateName);
+      if (fs.existsSync(candidatePath)) {
+        templateFiles.push(candidatePath);
+      }
+    }
+  }
+  return templateFiles;
+}
+
+function validatePlanLikeTemplate(raw: unknown, templatePath: string): PlanTemplateDocument {
+  const candidate = raw as Record<string, unknown>;
+  const allowedKeys = new Set([
+    "id",
+    "configOverride",
+    "title",
+    "status",
+    "goal",
+    "requirements",
+    "tasks",
+    "references",
+    "rules",
+    "keyDecisions",
+    "retrospective",
+  ]);
+  for (const key of Object.keys(candidate)) {
+    if (!allowedKeys.has(key)) {
+      throw new ClawError("PROJECT_CONFIG_INVALID", `Invalid plan-like template field "${key}" at ${templatePath}.`, {
+        templatePath,
+        field: key,
+      });
+    }
+  }
+
+  if (!isTemplateConfigOverride(candidate.configOverride)) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", `Invalid template configOverride at ${templatePath}.`, {
+      templatePath,
+    });
+  }
+  if (typeof candidate.id !== "string" || typeof candidate.status !== "string") {
+    throw new ClawError("PROJECT_CONFIG_INVALID", `Invalid plan-like template header at ${templatePath}.`, {
+      templatePath,
+    });
+  }
+  if (candidate.title !== undefined && typeof candidate.title !== "string") {
+    throw new ClawError("PROJECT_CONFIG_INVALID", `Invalid template title at ${templatePath}.`, {
+      templatePath,
+    });
+  }
+  if (candidate.goal !== undefined) {
+    if (!candidate.goal || typeof candidate.goal !== "object" || Array.isArray(candidate.goal)) {
+      throw new ClawError("PROJECT_CONFIG_INVALID", `Invalid template goal at ${templatePath}.`, {
+        templatePath,
+      });
+    }
+    const goal = candidate.goal as Record<string, unknown>;
+    if (goal.text !== undefined && typeof goal.text !== "string") {
+      throw new ClawError("PROJECT_CONFIG_INVALID", `Invalid template goal.text at ${templatePath}.`, {
+        templatePath,
+      });
+    }
+  }
+  if (candidate.requirements !== undefined && !isPlanRequirements(candidate.requirements)) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", `Invalid template requirements at ${templatePath}.`, {
+      templatePath,
+    });
+  }
+  if (!Array.isArray(candidate.tasks)) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", `Template tasks must be an array at ${templatePath}.`, {
+      templatePath,
+    });
+  }
+  for (const task of candidate.tasks) {
+    if (!isPlanTemplateTask(task)) {
+      throw new ClawError("PROJECT_CONFIG_INVALID", `Invalid template task at ${templatePath}.`, {
+        templatePath,
+      });
+    }
+  }
+  if (candidate.references !== undefined && !isPlanReferences(candidate.references)) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", `Invalid template references at ${templatePath}.`, {
+      templatePath,
+    });
+  }
+  if (candidate.rules !== undefined && (!Array.isArray(candidate.rules) || candidate.rules.some((item) => typeof item !== "string"))) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", `Invalid template rules at ${templatePath}.`, {
+      templatePath,
+    });
+  }
+  if (
+    candidate.keyDecisions !== undefined
+    && (!Array.isArray(candidate.keyDecisions) || candidate.keyDecisions.some((item) => typeof item !== "string"))
+  ) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", `Invalid template keyDecisions at ${templatePath}.`, {
+      templatePath,
+    });
+  }
+  if (candidate.retrospective !== undefined && !isPlanRetrospective(candidate.retrospective)) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", `Invalid template retrospective at ${templatePath}.`, {
+      templatePath,
+    });
+  }
+
+  return raw as PlanTemplateDocument;
+}
+
+function normalizePlanLikeTemplate(
+  template: PlanTemplateDocument,
+  meta: { source: "builtin" | "project"; templatePath?: string },
+): ResolvedPlanTemplate {
+  return {
+    id: template.id,
+    configOverride: template.configOverride,
+    title: template.title,
+    status: template.status,
+    goal: template.goal,
+    requirements: template.requirements,
+    tasks: template.tasks,
+    references: template.references,
+    rules: template.rules,
+    keyDecisions: template.keyDecisions,
+    retrospective: template.retrospective,
+    source: meta.source,
+    templatePath: meta.templatePath,
+  };
+}
+
+export function getTemplateTaskDoneChoices(template: ResolvedPlanTemplate, taskId: number): Record<string, TemplateGuidanceRoute> | undefined {
+  return getTemplateTaskGuidance(template, taskId)?.onDone?.choices;
+}
+
+export function getTemplateTaskDoneGuidanceRoute(
+  template: ResolvedPlanTemplate,
+  taskId: number,
+  choiceId?: string,
+): TemplateGuidanceRoute | undefined {
+  const onDone = getTemplateTaskGuidance(template, taskId)?.onDone;
+  if (!onDone) {
+    return undefined;
+  }
+  if (choiceId && onDone.choices && Object.prototype.hasOwnProperty.call(onDone.choices, choiceId)) {
+    return onDone.choices[choiceId];
+  }
+  return onDone.default;
+}
+
+export function getTemplateTaskGuidance(template: ResolvedPlanTemplate, taskId: number): TemplateTaskGuidance | undefined {
+  return template.tasks.find((task) => task.id === taskId)?.guidance;
+}
+
+function isPlanRequirements(value: unknown): value is PlanRequirements {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.summary === "string"
+    && Array.isArray(candidate.openQuestions)
+    && candidate.openQuestions.every((item) => typeof item === "string")
+    && Array.isArray(candidate.acceptanceCriteria)
+    && candidate.acceptanceCriteria.every((item) => typeof item === "string");
+}
+
+function isPlanReferences(value: unknown): value is PlanReference[] {
+  if (!Array.isArray(value)) {
+    return false;
+  }
+  return value.every((reference) =>
+    reference
+    && typeof reference === "object"
+    && !Array.isArray(reference)
+    && typeof (reference as Record<string, unknown>).path === "string"
+    && typeof (reference as Record<string, unknown>).why === "string");
+}
+
+function isPlanRetrospective(value: unknown): value is PlanRetrospective {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate.summary !== "string") {
+    return false;
+  }
+  for (const key of ["whatWorked", "issues", "followUps", "knowledgeCandidates"]) {
+    const field = candidate[key];
+    if (field !== undefined && (!Array.isArray(field) || field.some((item) => typeof item !== "string"))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isPlanTemplateTask(value: unknown): value is PlanTemplateTask {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  const allowedKeys = new Set([
+    "id",
+    "title",
+    "detail",
+    "status",
+    "guidance",
+    "goalModeDetail",
+    "execution",
+    "sessionKey",
+  ]);
+  for (const key of Object.keys(candidate)) {
+    if (!allowedKeys.has(key)) {
+      return false;
+    }
+  }
+  if (!Number.isInteger(candidate.id)) {
+    return false;
+  }
+  if (typeof candidate.title !== "string") {
+    return false;
+  }
+  if (candidate.detail !== undefined && typeof candidate.detail !== "string") {
+    return false;
+  }
+  if (
+    candidate.status !== "pending"
+    && candidate.status !== "in_progress"
+    && candidate.status !== "subagent_running"
+    && candidate.status !== "done"
+    && candidate.status !== "blocked"
+  ) {
+    return false;
+  }
+  if (!isTemplateTaskGuidance(candidate.guidance)) {
+    return false;
+  }
+  if (candidate.goalModeDetail !== undefined && typeof candidate.goalModeDetail !== "string") {
+    return false;
+  }
+  if (candidate.execution !== undefined) {
+    if (!candidate.execution || typeof candidate.execution !== "object" || Array.isArray(candidate.execution)) {
+      return false;
+    }
+    const execution = candidate.execution as Record<string, unknown>;
+    if (
+      execution.type !== undefined
+      && execution.type !== "default"
+      && execution.type !== "subagent"
+      && execution.type !== "subplan"
+    ) {
+      return false;
+    }
+    if (execution.subplan !== undefined && typeof execution.subplan !== "string") {
+      return false;
+    }
+    if (execution.planPath !== undefined && typeof execution.planPath !== "string") {
+      return false;
+    }
+  }
+  if (candidate.sessionKey !== undefined && typeof candidate.sessionKey !== "string") {
+    return false;
+  }
+  return true;
+}
+
+function isTemplateConfigOverride(value: unknown): value is TemplateConfigOverride | undefined {
+  if (value === undefined) {
+    return true;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const allowedKeys = new Set([
+    "goalMode",
+    "truthDispatch",
+    "externalPlanningSkill",
+    "externalTruthSkill",
+    "externalAdrSkill",
+  ]);
+  const candidate = value as Record<string, unknown>;
+  for (const key of Object.keys(candidate)) {
+    if (!allowedKeys.has(key)) {
+      return false;
+    }
+  }
+
+  if (candidate.goalMode !== undefined && typeof candidate.goalMode !== "boolean") {
+    return false;
+  }
+  if (candidate.truthDispatch !== undefined && candidate.truthDispatch !== "per_task" && candidate.truthDispatch !== "final_only") {
+    return false;
+  }
+  if (candidate.externalPlanningSkill !== undefined && candidate.externalPlanningSkill !== null && typeof candidate.externalPlanningSkill !== "string") {
+    return false;
+  }
+  if (candidate.externalTruthSkill !== undefined && candidate.externalTruthSkill !== null && typeof candidate.externalTruthSkill !== "string") {
+    return false;
+  }
+  if (candidate.externalAdrSkill !== undefined && candidate.externalAdrSkill !== null && typeof candidate.externalAdrSkill !== "string") {
+    return false;
+  }
+
+  return true;
+}
+
+function isTemplateTaskGuidance(value: unknown): value is TemplateTaskGuidance | undefined {
+  if (value === undefined) {
+    return true;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  const allowedKeys = new Set(["onDone"]);
+  for (const key of Object.keys(candidate)) {
+    if (!allowedKeys.has(key)) {
+      return false;
+    }
+  }
+  if (candidate.onDone === undefined) {
+    return true;
+  }
+  if (!candidate.onDone || typeof candidate.onDone !== "object" || Array.isArray(candidate.onDone)) {
+    return false;
+  }
+  const onDone = candidate.onDone as Record<string, unknown>;
+  const allowedOnDoneKeys = new Set(["default", "choices"]);
+  for (const key of Object.keys(onDone)) {
+    if (!allowedOnDoneKeys.has(key)) {
+      return false;
+    }
+  }
+  if (onDone.default !== undefined && !isTemplateGuidanceRoute(onDone.default)) {
+    return false;
+  }
+  if (onDone.choices !== undefined) {
+    if (!onDone.choices || typeof onDone.choices !== "object" || Array.isArray(onDone.choices)) {
+      return false;
+    }
+    for (const [choiceId, route] of Object.entries(onDone.choices as Record<string, unknown>)) {
+      if (!choiceId.trim() || !isTemplateGuidanceRoute(route)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+function isTemplateGuidanceRoute(value: unknown): value is TemplateGuidanceRoute {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  const allowedKeys = new Set([
+    "mergeMode",
+    "summary",
+    "nextsteps",
+    "notes",
+    "recommendedCommands",
+    "nextTaskId",
+    "label",
+    "delegateTruth",
+  ]);
+  for (const key of Object.keys(candidate)) {
+    if (!allowedKeys.has(key)) {
+      return false;
+    }
+  }
+  if (candidate.mergeMode !== undefined && candidate.mergeMode !== "override" && candidate.mergeMode !== "replace") {
+    return false;
+  }
+  if (candidate.summary !== undefined && typeof candidate.summary !== "string") {
+    return false;
+  }
+  if (candidate.nextsteps !== undefined && (!Array.isArray(candidate.nextsteps) || candidate.nextsteps.some((step) => typeof step !== "string"))) {
+    return false;
+  }
+  if (candidate.notes !== undefined && typeof candidate.notes !== "string") {
+    return false;
+  }
+  if (
+    candidate.recommendedCommands !== undefined &&
+    (!Array.isArray(candidate.recommendedCommands) || candidate.recommendedCommands.some((command) => typeof command !== "string"))
+  ) {
+    return false;
+  }
+  if (candidate.nextTaskId !== undefined && !Number.isInteger(candidate.nextTaskId)) {
+    return false;
+  }
+  if (candidate.label !== undefined && typeof candidate.label !== "string") {
+    return false;
+  }
+  if (candidate.delegateTruth !== undefined && typeof candidate.delegateTruth !== "boolean") {
+    return false;
+  }
+  if (candidate.mergeMode === "replace") {
+    if (typeof candidate.summary !== "string") {
+      return false;
+    }
+    if (!Array.isArray(candidate.nextsteps) || candidate.nextsteps.some((step) => typeof step !== "string")) {
+      return false;
+    }
+  }
+  if (
+    candidate.mergeMode !== "replace"
+    && candidate.summary === undefined
+    && candidate.nextsteps === undefined
+    && candidate.notes === undefined
+    && candidate.recommendedCommands === undefined
+    && candidate.nextTaskId === undefined
+    && candidate.label === undefined
+    && candidate.delegateTruth === undefined
+  ) {
+    return false;
+  }
+  return true;
 }
 
 export function renderSeedTemplateText(

@@ -38,6 +38,7 @@ It is normalized by `claw init` and protocol repair.
 Use it when the team should share the behavior:
 
 - `planning`
+- `autoUpdate`
 - `externalPlanningSkill`
 - `externalTruthSkill`
 - `externalAdrSkill`
@@ -94,6 +95,7 @@ Use the flat canonical fields for simple project-level toggles:
 ```json
 {
   "planning": true,
+  "autoUpdate": true,
   "externalPlanningSkill": null,
   "goalMode": true,
   "truthDispatch": "per_task",

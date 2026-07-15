@@ -106,7 +106,7 @@ Every generated project claw entry skill should classify the request before ente
 
 The batch or mixed route should remain inside every generated claw skill entry.
 It should be a standard reusable block, not a fresh workflow design for each skill.
-When compiling a skill, substitute the generated skill name, template id, and target-work wording into the standard block.
+When generating a claw skill, substitute the generated skill name, template id, and target-work wording into the standard block.
 
 Subplans are execution-time expansions.
 Root planning should describe the skill intent in the task, while the task execution step instantiates the template subplan.
@@ -158,28 +158,30 @@ Treat the fallback as a first-class output beside the claw entry and template.
 When the source skill has companion files, scripts, prompts, or references, preserve the needed files beside the fallback and update relative links so the fallback remains usable when packaged.
 For an existing skill, prefer replacing its `SKILL.md` with the claw entry and moving the original text to a same-directory fallback file such as `non-claw-fallback.md`.
 
-## Compiled Knowledge References
+## SKILL.md Supplements and Optional References
 
-Because plan references are links instead of inline text, `create-claw-skill` can safely produce extra reference documents during compilation.
+Do not assume every converted skill needs a separate knowledge layer.
 
-Use compiled knowledge references for important source knowledge that should be available during normal claw execution but would make the template too noisy.
-This is different from the fallback document:
+Default split:
 
 - the fallback preserves the original or direct non-claw behavior
-- the compiled knowledge reference distills the parts a claw-running agent should consult quickly
+- `SKILL.md` keeps routing rules, non-template supplements, and any repeated high-signal constraints that deserve emphasis
+- the template owns structured workflow control, deliverables, rules, and references
+
+Only create extra reference files when the source still needs a focused referenced home that would make `SKILL.md` unwieldy or is naturally a helper document.
 
 Good candidates include:
 
 - tool contracts and exact command syntax
 - route decision tables
-- examples that clarify how to execute a task
 - safety constraints with concrete cases
 - helper-file inventories
 - verification checklists
+- copied prompts or helper docs that already work well as standalone files
 
-Prefer a small number of focused reference files inside the converted skill package, for example `references/<skill-id>-knowledge.md`, `references/<skill-id>-tool-contract.md`, or `CLAW-KNOWLEDGE.md`.
+Prefer a small number of focused reference files inside the converted skill package, for example `references/<skill-id>-tool-contract.md`, `references/<skill-id>-verification.md`, or `references/<skill-id>-helpers.md`.
 Then add those files to the generated template `references` list with a clear `why`.
-This makes the claw skill self-contained: the entry stays short, the fallback preserves the original behavior, and the template can reference back into the skill package for distilled execution knowledge.
+This keeps the claw skill self-contained without forcing an extra default `CLAW-KNOWLEDGE.md` layer.
 
 ## Content Coverage Check
 
@@ -194,7 +196,6 @@ The check should map important source skill information to a converted home:
 - `template.guidance`
 - `template.rules`
 - `template.references`
-- `compiled reference`
 - `fallback`
 
 Use this coverage pass:
@@ -204,11 +205,13 @@ Use this coverage pass:
 - ordered workflow steps are represented as template tasks or guidance
 - branch conditions are represented as `guidance.onDone.choices` when they affect control flow
 - safety constraints and hard rules are in `rules` or the fallback
+- routing rules and non-template supplements stay in `SKILL.md` when they help readability
 - verification expectations are in task detail, guidance, or the fallback
 - examples and long explanations are in references or the fallback
 - relative links from the original skill still work after the in-place conversion
 
-If a source detail is too verbose for `rules` or task detail but is important for claw execution, distill it into a compiled knowledge reference.
+If a source detail is too verbose for `rules` or task detail but is important for claw execution, first ask whether it belongs directly in `SKILL.md`.
+Only move it into a focused skill-local reference when that is clearly cleaner.
 If a source detail only matters for non-claw fallback behavior, preserve it in the fallback.
 This keeps the plan lightweight without making the conversion lossy.
 

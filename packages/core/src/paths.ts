@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 const WINDOWS_RESERVED_NAMES = new Set([
@@ -28,9 +29,10 @@ const WINDOWS_RESERVED_NAMES = new Set([
 
 export function findProjectRoot(startDir: string): string | null {
   let current = path.resolve(startDir);
+  const tempDir = safeResolveTempDir();
 
   while (true) {
-    if (fs.existsSync(path.join(current, ".claw"))) {
+    if (fs.existsSync(path.join(current, ".claw")) && shouldTreatClawDirAsProjectRoot(current, startDir, tempDir)) {
       return current;
     }
     const parent = path.dirname(current);
@@ -39,6 +41,22 @@ export function findProjectRoot(startDir: string): string | null {
     }
     current = parent;
   }
+}
+
+export function shouldTreatClawDirAsProjectRoot(
+  candidateRoot: string,
+  startDir: string,
+  tempDir = safeResolveTempDir(),
+): boolean {
+  const candidate = path.resolve(candidateRoot);
+  const start = path.resolve(startDir);
+  // Do not let any ancestor `.claw` above the system temp root silently capture
+  // unrelated temp directories. A real temp-root project still works because the
+  // temp root itself remains eligible.
+  if (tempDir && isWithinDir(start, tempDir) && candidate !== tempDir && isWithinDir(tempDir, candidate)) {
+    return false;
+  }
+  return true;
 }
 
 export function normalizeTaskName(input: string): string {
@@ -77,4 +95,16 @@ export function slugFromFilePath(filePath: string): string {
   const normalized = filePath.replace(/\\/g, "/").replace(/\/+$/, "");
   const baseName = path.posix.basename(normalized, path.posix.extname(normalized));
   return normalizeTaskName(baseName);
+}
+
+function isWithinDir(target: string, root: string): boolean {
+  return target === root || target.startsWith(`${root}${path.sep}`);
+}
+
+function safeResolveTempDir(): string | null {
+  try {
+    return path.resolve(os.tmpdir());
+  } catch {
+    return null;
+  }
 }

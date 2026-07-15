@@ -5,6 +5,9 @@
 - planning 现在直接拥有 requirements 到 process 的质量门；`plan-review` 不再是必须单独经过的 workflow gate。
 - `claw-kit` 主线是 CLI-driven `.claw` harness，而不是 Apps SDK / app / widget / chat-rendering surface。
 - `claw plan write`、`claw plan edit`、`claw plan done` 的默认返回值是 compact contract：`ok`、`planStatus`、`workflowGuidance`、`planSummary`，以及可选 `completionRefresh`。
+- `claw plan edit` 现在会先进入共享 ticket queue 再读取 canonical plan；重叠编辑按顺序串行执行，并在各自轮次开始时重新读取最新已提交的 plan，而不是依赖命令启动时的旧快照。
+- `claw plan edit --patch` 现在采用 merge-patch 心智：对象递归合并，`null` 删除对象字段，数组整体替换；不再保留按字段定制覆盖的旧 patch 心智。
+- `patch.tasks` 仍然不能和 `taskId` / `taskStatus` 放在同一个 `claw plan edit` 里；数组整体替换与 task progress 更新属于两种冲突意图，混用会被明确拒绝。
 - `claw plan write` 支持最简 positional title 入口：`claw plan write "<title>" [--goal "<text>"]`，`--goal` 可以省略。
 - `claw plan create` 在启用 planning 时会创建 seeded planning task 和 `Enter process.active` bridge task，并让 plan 先处于 `process.discussing`；planning task 追加 downstream executable tasks 时必须保留这个 bridge task，而不是覆盖它。
 - `packages/core/src/templates/plans/default.ts` 里的 seeded activation task 生成现在会跟随 `goalMode` 与 host 语义：当 `goalMode = true` 且 host 不是显式 `opencode` 时，会把 `buildGoalModeObjective(...)` 产出的 recommended objective 追加到现有 activation task detail；Codex 默认的 no-host 路径按 Codex-compatible 处理并拿到这段 objective，显式 `host: "opencode"` 则保留旧的简洁 activation detail，而 `goalMode = false` 只保留 base detail。
@@ -25,6 +28,7 @@
 ## 真实代码锚点
 
 - 计划生命周期、`goal.text` gate、以及 `process.active` 禁入校验：`packages/core/src/plan.ts`（`writePlan()`、`validatePlanDocument()`、`editPlan()`）
+- `editPlan` 的共享 ticket queue 串行化、merge-patch 合并器，以及 mixed task patch 拒绝：`packages/core/src/io.ts`、`packages/core/src/plan.ts`
 - `prepare.requirements` guidance、`process.wait` / `process.discussing` / `process.resumedActive` 语义，以及推荐命令顺序：`packages/core/src/workflow-guidance.ts`、`packages/core/src/workflow-guidance.config.json`
 - seeded activation task 的 host-sensitive goal objective 拼接：`packages/core/src/templates/plans/default.ts`、`packages/core/src/workflow-guidance.ts`（`buildGoalModeObjective`）
 - seeded planning / activation bridge task template: `packages/core/src/templates/plans/default.ts`
@@ -40,3 +44,4 @@
 - `npm run check -w @claw-kit/codex-adapter`
 - `packages/core/test/core.test.ts` 覆盖 `process.allTasksDone`、`goalMode` 和 `end.completed` 的 compact contract。
 - `packages/cli/test/cli.test.ts` 覆盖 `plan write` 后的 `SessionStart` 恢复、`plan done` 归档、以及 completion refresh 的 release smoke path。
+- `packages/core/test/core.test.ts` 与 `packages/cli/test/cli.test.ts` 覆盖串行化的并发 `plan edit` 行为、merge-patch 的递归合并 / `null` 删除，以及 mixed-parameter 拒绝。

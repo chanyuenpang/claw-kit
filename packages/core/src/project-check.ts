@@ -128,6 +128,7 @@ function normalizeProjectConfig(raw: unknown, projectRoot: string): ProjectConfi
         ? (maxTasksToKeep as number)
         : DEFAULT_MAX_TASKS_TO_KEEP,
     planning: typeof source?.planning === "boolean" ? source.planning : true,
+    autoUpdate: readBooleanConfig(source?.autoUpdate, true),
     goalMode: readBooleanConfig(source?.goalMode, true),
     truthDispatch: readTruthDispatchConfig(source?.truthDispatch, "per_task"),
     externalPlanningSkill: normalizeOptionalSkill(source?.externalPlanningSkill),
@@ -184,6 +185,7 @@ function validateProjectConfig(raw: unknown, issues: ProjectProtocolIssue[]): vo
   requireString(config, "name", issues);
   requireIntegerAtLeast(config, "maxTasksToKeep", 1, issues);
   requireBoolean(config, "planning", issues);
+  requireOptionalBoolean(config, "autoUpdate", issues);
   requireBoolean(config, "goalMode", issues);
   requireTruthDispatchString(config, "truthDispatch", issues);
   requireNullableString(config, "externalPlanningSkill", issues);
@@ -245,6 +247,20 @@ function requireBoolean(
   }
   if (typeof source[key] !== "boolean") {
     issues.push({ path: label, message: "Field must be a boolean." });
+  }
+}
+
+function requireOptionalBoolean(
+  source: Record<string, unknown>,
+  key: string,
+  issues: ProjectProtocolIssue[],
+  label = key,
+): void {
+  if (!(key in source)) {
+    return;
+  }
+  if (typeof source[key] !== "boolean") {
+    issues.push({ path: label, message: "Field must be a boolean when present." });
   }
 }
 

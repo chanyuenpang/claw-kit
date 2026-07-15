@@ -17,8 +17,10 @@ import {
   enforceTaskRetention,
   ingestTruth,
   initProject,
+  resolvePlanTemplateFile,
   resolveProjectContext,
   resolveContext,
+  resolveSeedPlanTemplate,
   searchMemory,
   showPlan,
   createSubplan,
@@ -56,6 +58,8 @@ const TOP_LEVEL_COMMANDS: { name: string; summary: string }[] = [
   { name: "context [--task <name>]", summary: "Resolve project context, auto-initializing or correcting .claw state." },
   { name: "check", summary: "Check and auto-correct .claw project protocol fields." },
   { name: "plan <subcommand> [options]", summary: "Plan lifecycle: create, edit, show, done." },
+  { name: "template <subcommand> [options]", summary: "Plan template helpers such as validation." },
+  { name: "task <subcommand> [options]", summary: "Task lifecycle helpers inside an existing plan." },
   { name: "subplan create [options]", summary: "Create a subplan nested under a parent task item." },
   { name: "switch-task --from <task> --to <task>", summary: "Switch the active task, carrying inherited context." },
   { name: "search [<query>] [options]", summary: "Recall project memory, truth, ADR, and declared docs." },
@@ -75,7 +79,7 @@ const COMMAND_HELP: Record<string, HelpNode> = {
       { flag: "--ext-path <path>", detail: "External doc path to index (repeatable)." },
       { flag: "--external-truth-skill <skill>", detail: "Skill id for external truth-writer dispatch." },
       { flag: "--external-adr-skill <skill>", detail: "Skill id for external adr-writer dispatch." },
-      { flag: "--planning true|false", detail: "Enable planning-prefixed seed plans (default true)." },
+      { flag: "--planning true|false", detail: "Enable planning-aware default template behavior (default true)." },
       { flag: "--external-planning-skill <skill>", detail: "Skill id for an external planning skill." },
       { flag: "--gitnexus true|false", detail: "Enable GitNexus integration (default false)." },
       { flag: "--max-tasks-to-keep <n>", detail: "Max active tasks before archival pruning (default 99)." },
@@ -105,7 +109,7 @@ const COMMAND_HELP: Record<string, HelpNode> = {
           "{script} plan create --title <text> [--goal <text>] [--template <name>]",
         ],
         description:
-          "Create the task scope and initial plan through the shared template resolver. It supports project/built-in seed templates and installed skill-local full-plan templates; explicit `--template` wins, then the project's `defaultPlanTemplate`, then built-in `default`.",
+          "Create the task scope and initial plan from a template. Uses explicit `--template` first, otherwise the project's configured `defaultPlanTemplate`, and finally falls back to the built-in `default`; planning-enabled projects start in process.discussing with the default planning bridge tasks, while planning-disabled projects start directly in process.active with one executable task.",
         summary: "Create the task scope and initial plan.",
         options: [
           { flag: "--title <text>", detail: "Task title (required unless a positional title is given)." },
@@ -116,7 +120,7 @@ const COMMAND_HELP: Record<string, HelpNode> = {
       edit: {
         usage: ["{script} plan edit --task <name> [options]"],
         description:
-          "Edit an existing plan: update status, append or patch tasks, add references, rules, and key decisions.",
+          "Edit an existing plan: update status, append tasks, apply merge-patch updates, add references, rules, and key decisions.",
         summary: "Edit a plan: status, tasks, references, rules, key decisions.",
         options: [
           { flag: "--task <name>", detail: "(required) Task name to edit." },
@@ -124,9 +128,9 @@ const COMMAND_HELP: Record<string, HelpNode> = {
           { flag: "--plan-status <status>", detail: "Set plan status (e.g. process.active, process.wait)." },
           { flag: "--task-id <id>", detail: "Target a specific task by id for status updates." },
           { flag: "--task-status <status>", detail: "Set the task status (e.g. pending, in_progress, done)." },
-          { flag: "--choice-id <id>", detail: "Select a task guidance.onDone choice when marking a task done." },
+          { flag: "--task-choice <choice-id>", detail: "Record the route choice when a task is marked done through a route-aware template." },
           { flag: "--append-tasks <json-file>", detail: "Append tasks from a JSON array file." },
-          { flag: "--patch <json-file>", detail: "Apply a partial plan patch from a JSON file." },
+          { flag: "--patch <json-file>", detail: "Apply a JSON merge-patch object from a file. Objects merge recursively, null deletes fields, arrays replace the whole field." },
           { flag: "--rule <text>", detail: "Append a rule (repeatable)." },
           { flag: "--key-decision <text>", detail: "Append a key decision (repeatable)." },
           { flag: "--reference-path <path>", detail: "Add a reference (requires --reference-why)." },
@@ -154,7 +158,45 @@ const COMMAND_HELP: Record<string, HelpNode> = {
           { flag: "--plan <relative-path>", detail: "Plan file relative to the task dir." },
           { flag: "--summary <text>", detail: "Retrospective summary (required unless a patch provides retrospective.summary)." },
           { flag: "--change-summary <text>", detail: "Optional change summary." },
-          { flag: "--patch <json-file>", detail: "Apply a partial plan patch (e.g. with retrospective.summary)." },
+          { flag: "--patch <json-file>", detail: "Apply a JSON merge-patch object (for example one that sets retrospective.summary)." },
+        ],
+      },
+    },
+  },
+  template: {
+    usage: ["{script} template <subcommand> [options]"],
+    description: "Helpers for inspecting and validating plan templates.",
+    subcommands: {
+      validate: {
+        usage: [
+          "{script} template validate --template <name>",
+          "{script} template validate --file <path>",
+          "{script} template validate <name>",
+        ],
+        description:
+          "Validate a plan-like template and return normalized metadata. Use `--template` to resolve through the current project's template registry, or `--file` to validate a specific template file directly.",
+        summary: "Validate a plan template.",
+        options: [
+          { flag: "--template <name>", detail: "Template id resolved from built-ins plus .claw/templates." },
+          { flag: "--file <path>", detail: "Explicit template file path to validate." },
+        ],
+      },
+    },
+  },
+  task: {
+    usage: ["{script} task <subcommand> [options]"],
+    description: "Task-focused helpers layered on top of plan edits.",
+    subcommands: {
+      done: {
+        usage: ["{script} task done --task <name> --id <number> [--choice <choice-id>] [--plan <relative-path>]"],
+        description:
+          "Mark a task item as done. Route-aware templates may require `--choice`, and the selected choice is persisted as `task.choiceId` in the plan state.",
+        summary: "Mark a task item as done, optionally recording a routing choice.",
+        options: [
+          { flag: "--task <name>", detail: "(required) Task name to edit." },
+          { flag: "--id <number>", detail: "(required) Task item id to mark done." },
+          { flag: "--choice <choice-id>", detail: "Route choice id required by templates that define guidance.onDone.choices." },
+          { flag: "--plan <relative-path>", detail: "Plan file relative to the task dir (defaults to the active plan)." },
         ],
       },
     },
@@ -166,7 +208,7 @@ const COMMAND_HELP: Record<string, HelpNode> = {
       create: {
         usage: ["{script} subplan create --parent <task-name> --task-id <number> [--template <name>]"],
         description:
-          "Create a subplan through the same template resolver as plan create, then add parent linkage. Supports project/built-in seed templates and installed skill-local full-plan templates.",
+          "Create a subplan under a parent task's task item. Uses explicit `--template` first, otherwise the project's configured `defaultPlanTemplate`, and finally falls back to the built-in `default`. The parent's rootPlan stays stable while the subplan becomes the active plan.",
         summary: "Create a subplan under a parent task's task item.",
         options: [
           { flag: "--parent <task-name>", detail: "(required) Parent task name." },
@@ -293,7 +335,7 @@ async function main(): Promise<void> {
         );
         return;
       case "context":
-        printJson(runContextCommand(args));
+        printJson(await runContextCommand(args));
         return;
       case "check":
         const checkResult = ensureProjectProtocol(process.cwd());
@@ -309,6 +351,12 @@ async function main(): Promise<void> {
         return;
       case "plan":
         await runPlan(args);
+        return;
+      case "template":
+        await runTemplate(args);
+        return;
+      case "task":
+        await runTask(args);
         return;
       case "subplan":
         await runSubplan(args);
@@ -399,7 +447,7 @@ async function runPlan(args: string[]): Promise<void> {
         planStatus: readOptionalFlag(args, "--plan-status"),
         taskId: readOptionalNumber(args, "--task-id"),
         taskStatus: readOptionalFlag(args, "--task-status") as PlanTask["status"] | undefined,
-        choiceId: readOptionalFlag(args, "--choice-id"),
+        taskChoiceId: readOptionalFlag(args, "--task-choice"),
         appendTasks: appendTasksPath ? readJson<PlanTask[]>(appendTasksPath) : undefined,
         host: process.env.CLAW_HOST ?? undefined,
       });
@@ -454,6 +502,77 @@ async function runPlan(args: string[]): Promise<void> {
     }
     default:
       throw new ClawError("PROJECT_CONFIG_INVALID", `Unknown plan subcommand "${subcommand ?? ""}".`);
+  }
+}
+
+async function runTemplate(args: string[]): Promise<void> {
+  const subcommand = args.shift();
+  switch (subcommand) {
+    case "validate": {
+      const templateName = readOptionalFlag(args, "--template") ?? readOptionalPositionalArg(args);
+      const templateFile = readOptionalFlag(args, "--file");
+      if (!templateName && !templateFile) {
+        throw new ClawError(
+          "PROJECT_CONFIG_INVALID",
+          "template validate requires either `--template <name>` or `--file <path>`.",
+        );
+      }
+      if (templateName && templateFile) {
+        throw new ClawError(
+          "PROJECT_CONFIG_INVALID",
+          "template validate accepts either `--template` or `--file`, but not both.",
+        );
+      }
+      assertNoRemainingArgs(args, "template validate");
+
+      const project = resolveProjectContext(process.cwd());
+      const template = templateFile
+        ? await resolvePlanTemplateFile(path.resolve(process.cwd(), templateFile))
+        : await resolveSeedPlanTemplate({
+            projectRoot: project.projectRoot,
+            templateName,
+          });
+
+      printJson({
+        command: "template.validate",
+        ok: true,
+        templateId: template.id,
+        source: template.source,
+        ...(template.templatePath ? { templatePath: template.templatePath } : {}),
+        status: template.status,
+        taskCount: template.tasks.length,
+        taskIds: template.tasks.map((task) => task.id),
+        ...(template.configOverride ? { configOverride: template.configOverride } : {}),
+      });
+      return;
+    }
+    default:
+      throw new ClawError("PROJECT_CONFIG_INVALID", `Unknown template subcommand "${subcommand ?? ""}".`, {
+        command: "template",
+        subcommand,
+      });
+  }
+}
+
+async function runTask(args: string[]): Promise<void> {
+  const subcommand = args.shift();
+  switch (subcommand) {
+    case "done": {
+      const result = await editPlan({
+        cwd: process.cwd(),
+        taskName: readRequiredFlag(args, "--task"),
+        planFile: readOptionalFlag(args, "--plan"),
+        taskId: readRequiredNumber(args, "--id"),
+        taskStatus: "done",
+        taskChoiceId: readOptionalFlag(args, "--choice"),
+        host: process.env.CLAW_HOST ?? undefined,
+      });
+      assertNoRemainingArgs(args, "task done");
+      printJson(compactPlanCommandResult("task.done", result));
+      return;
+    }
+    default:
+      throw new ClawError("PROJECT_CONFIG_INVALID", `Unknown task subcommand "${subcommand ?? ""}".`);
   }
 }
 
@@ -520,11 +639,11 @@ function runDirect(args: string[]): void {
 
 type JsonRecord = Record<string, unknown>;
 
-function runContextCommand(
+async function runContextCommand(
   args: string[],
   cwd = process.cwd(),
   ownerSessionKey = resolveOwnerSessionKey(),
-): Record<string, unknown> {
+): Promise<Record<string, unknown>> {
   const taskName = readOptionalFlag(args, "--task");
   let initialized = false;
   let corrected = false;
@@ -553,7 +672,7 @@ function runContextCommand(
   }
   const activeWorkflow =
     !taskName && ownerSessionKey
-      ? tryResolveActiveWorkflowSnapshot(cwd, ownerSessionKey)
+      ? await tryResolveActiveWorkflowSnapshot(cwd, ownerSessionKey)
       : null;
 
   return {
@@ -573,28 +692,27 @@ type ContextVersionSyncResult = {
   cliVersion: string;
   projectVersion: string | null;
   projectVersionAligned: boolean;
-  cliUpdateAttempted: boolean;
-  cliUpdateSucceeded: boolean;
   cliVersionLagging: boolean;
+  updateAvailable: boolean;
+  autoUpdateEnabled: boolean;
+  updateSkill: "claw-kit:update";
   latestPublishedVersion?: string | null;
-  command?: string;
-  exitCode?: number;
-  stdout?: string;
-  stderr?: string;
   message?: string;
 };
 
 function syncProjectVersionWithCli(cwd: string, project: ReturnType<typeof resolveProjectContext>): ContextVersionSyncResult {
   const projectVersion = normalizeVersionString(project.projectConfig?.version);
+  const autoUpdateEnabled = project.projectConfig?.autoUpdate === true;
   if (!projectVersion) {
     updateProjectJsonVersion(project.projectJsonPath, CLI_VERSION);
     return {
       cliVersion: CLI_VERSION,
       projectVersion: null,
       projectVersionAligned: true,
-      cliUpdateAttempted: false,
-      cliUpdateSucceeded: false,
       cliVersionLagging: false,
+      updateAvailable: false,
+      autoUpdateEnabled,
+      updateSkill: "claw-kit:update",
     };
   }
 
@@ -605,9 +723,10 @@ function syncProjectVersionWithCli(cwd: string, project: ReturnType<typeof resol
       cliVersion: CLI_VERSION,
       projectVersion,
       projectVersionAligned: true,
-      cliUpdateAttempted: false,
-      cliUpdateSucceeded: false,
       cliVersionLagging: false,
+      updateAvailable: false,
+      autoUpdateEnabled,
+      updateSkill: "claw-kit:update",
     };
   }
 
@@ -616,42 +735,26 @@ function syncProjectVersionWithCli(cwd: string, project: ReturnType<typeof resol
       cliVersion: CLI_VERSION,
       projectVersion,
       projectVersionAligned: false,
-      cliUpdateAttempted: false,
-      cliUpdateSucceeded: false,
       cliVersionLagging: false,
+      updateAvailable: false,
+      autoUpdateEnabled,
+      updateSkill: "claw-kit:update",
     };
   }
 
   const latestPublishedVersion = resolveLatestPublishedClawVersion(cwd);
+  const updateAvailable = !!latestPublishedVersion && compareSemver(latestPublishedVersion, CLI_VERSION) > 0;
   if (latestPublishedVersion && compareSemver(latestPublishedVersion, projectVersion) < 0) {
     return {
       cliVersion: CLI_VERSION,
       projectVersion,
       projectVersionAligned: false,
-      cliUpdateAttempted: false,
-      cliUpdateSucceeded: false,
       cliVersionLagging: true,
+      updateAvailable,
+      autoUpdateEnabled,
+      updateSkill: "claw-kit:update",
       latestPublishedVersion,
       message: `Project config version ${projectVersion} is newer than CLI ${CLI_VERSION}, and npm latest is only ${latestPublishedVersion}.`,
-    };
-  }
-
-  const command = "npm install -g @veewo/claw@latest";
-  const install = runCommand("npm", ["install", "-g", "@veewo/claw@latest"], cwd);
-  if (commandFailed(install)) {
-    return {
-      cliVersion: CLI_VERSION,
-      projectVersion,
-      projectVersionAligned: false,
-      cliUpdateAttempted: true,
-      cliUpdateSucceeded: false,
-      cliVersionLagging: true,
-      latestPublishedVersion,
-      command,
-      exitCode: install.status ?? 0,
-      stdout: install.stdout ?? "",
-      stderr: install.stderr ?? "",
-      message: `Project config version ${projectVersion} is newer than CLI ${CLI_VERSION}, and automatic CLI update failed.`,
     };
   }
 
@@ -659,14 +762,14 @@ function syncProjectVersionWithCli(cwd: string, project: ReturnType<typeof resol
     cliVersion: CLI_VERSION,
     projectVersion,
     projectVersionAligned: false,
-    cliUpdateAttempted: true,
-    cliUpdateSucceeded: true,
-    cliVersionLagging: false,
+    cliVersionLagging: true,
+    updateAvailable,
+    autoUpdateEnabled,
+    updateSkill: "claw-kit:update",
     latestPublishedVersion,
-    command,
-    exitCode: install.status ?? 0,
-    stdout: install.stdout ?? "",
-    stderr: install.stderr ?? "",
+    message: updateAvailable
+      ? `Published claw-kit ${latestPublishedVersion} is newer than local CLI ${CLI_VERSION}.`
+      : `Project config version ${projectVersion} is newer than CLI ${CLI_VERSION}, but no newer published claw CLI was found.`,
   };
 }
 
@@ -745,7 +848,7 @@ async function runSessionStartHook(): Promise<void> {
   }
 
   try {
-    const context = runContextCommand([], hookCwd, ownerSessionKey);
+    const context = await runContextCommand([], hookCwd, ownerSessionKey);
     const additionalContext = buildSessionStartAdditionalContext(context, hookCwd);
 
     if (!additionalContext) {
@@ -787,9 +890,11 @@ function resolveHookCwd(payload: unknown): string | null {
 
 function containsClawDir(cwd: string): boolean {
   try {
-    let current = path.resolve(cwd);
+    const startDir = path.resolve(cwd);
+    const tempDir = safeResolveTempDir();
+    let current = startDir;
     while (true) {
-      if (fs.existsSync(path.join(current, ".claw"))) {
+      if (fs.existsSync(path.join(current, ".claw")) && shouldTreatHookClawDirAsProjectRoot(current, startDir, tempDir)) {
         return true;
       }
       const parent = path.dirname(current);
@@ -803,10 +908,36 @@ function containsClawDir(cwd: string): boolean {
   }
 }
 
+function shouldTreatHookClawDirAsProjectRoot(
+  candidateRoot: string,
+  startDir: string,
+  tempDir: string | null,
+): boolean {
+  const candidate = path.resolve(candidateRoot);
+  const start = path.resolve(startDir);
+  if (tempDir && isWithinDir(start, tempDir) && candidate !== tempDir && isWithinDir(tempDir, candidate)) {
+    return false;
+  }
+  return true;
+}
+
+function isWithinDir(target: string, root: string): boolean {
+  return target === root || target.startsWith(`${root}${path.sep}`);
+}
+
+function safeResolveTempDir(): string | null {
+  try {
+    return path.resolve(os.tmpdir());
+  } catch {
+    return null;
+  }
+}
+
 function buildSessionStartAdditionalContext(context: Record<string, unknown>, sessionCwd: string): string | null {
+  const versionSyncPrompt = buildVersionSyncPrompt(context);
   const activeWorkflow = context.activeWorkflow as JsonRecord | undefined;
   if (activeWorkflow) {
-    return buildRecoveredWorkflowAdditionalContext(activeWorkflow);
+    return buildRecoveredWorkflowAdditionalContext(activeWorkflow, versionSyncPrompt);
   }
 
   const project = context.project as JsonRecord | undefined;
@@ -823,11 +954,19 @@ function buildSessionStartAdditionalContext(context: Record<string, unknown>, se
   const projectId = typeof project.projectId === "string" ? project.projectId : projectName;
   const clawDir = typeof project.clawDir === "string" ? project.clawDir : path.join(projectRoot, ".claw");
   const protocolOk = (context.protocolCheck as JsonRecord | undefined)?.ok === true ? "ok" : "needs attention";
-
-  return buildSessionStartDefaultPrompt({ projectName, projectId, clawDir, protocolOk });
+  const prompt = buildSessionStartDefaultPrompt({ projectName, projectId, clawDir, protocolOk });
+  if (!versionSyncPrompt) {
+    return prompt;
+  }
+  return versionSyncPrompt.placement === "prefix"
+    ? `${versionSyncPrompt.lines.join("\n")}\n${prompt}`
+    : `${prompt}\n${versionSyncPrompt.lines.join("\n")}`;
 }
 
-function buildRecoveredWorkflowAdditionalContext(activeWorkflow: JsonRecord): string {
+function buildRecoveredWorkflowAdditionalContext(
+  activeWorkflow: JsonRecord,
+  versionSyncPrompt: { placement: "prefix" | "suffix"; lines: string[] } | null,
+): string {
   const taskName = String(activeWorkflow.taskName ?? "");
   const planFile = String(activeWorkflow.planFile ?? "plan.json");
   const planStatus = String(activeWorkflow.planStatus ?? "");
@@ -842,7 +981,7 @@ function buildRecoveredWorkflowAdditionalContext(activeWorkflow: JsonRecord): st
   const goalMode = summarizeGoalMode(workflowGuidance?.goalMode as JsonRecord | undefined);
   const planContentLines = planContent ? summarizeRecoveredPlanContent(planContent) : [];
 
-  return buildSessionStartRecoveredPrompt({
+  const prompt = buildSessionStartRecoveredPrompt({
     taskName,
     planFile,
     planStatus,
@@ -855,6 +994,69 @@ function buildRecoveredWorkflowAdditionalContext(activeWorkflow: JsonRecord): st
     goalMode: goalMode ?? "",
     planContentLines,
   });
+  if (!versionSyncPrompt) {
+    return prompt;
+  }
+  return versionSyncPrompt.placement === "prefix"
+    ? `${versionSyncPrompt.lines.join("\n")}\n${prompt}`
+    : `${prompt}\n${versionSyncPrompt.lines.join("\n")}`;
+}
+
+function buildVersionSyncPrompt(
+  context: Record<string, unknown>,
+): { placement: "prefix" | "suffix"; lines: string[] } | null {
+  const startupRecovery = asJsonRecord(context.startupRecovery);
+  const versionSync = asJsonRecord(startupRecovery?.versionSync);
+  if (!versionSync) {
+    return null;
+  }
+
+  const cliVersion = typeof versionSync.cliVersion === "string" ? versionSync.cliVersion.trim() : "";
+  const projectVersion = typeof versionSync.projectVersion === "string" ? versionSync.projectVersion.trim() : "";
+  const latestPublishedVersion = typeof versionSync.latestPublishedVersion === "string"
+    ? versionSync.latestPublishedVersion.trim()
+    : "";
+  const message = typeof versionSync.message === "string" ? versionSync.message.trim() : "";
+  const autoUpdateEnabled = versionSync.autoUpdateEnabled === true;
+  const updateAvailable = versionSync.updateAvailable === true;
+  const updateSkill = typeof versionSync.updateSkill === "string" ? versionSync.updateSkill.trim() : "claw-kit:update";
+
+  if (versionSync.cliVersionLagging !== true) {
+    return null;
+  }
+
+  if (autoUpdateEnabled && updateAvailable && cliVersion && latestPublishedVersion) {
+    return {
+      placement: "suffix",
+      lines: [
+        `Before anything else, a newer claw-kit version was detected: local CLI ${cliVersion}, published latest ${latestPublishedVersion}.`,
+        `First action: use ${updateSkill} to update the claw-kit CLI and the current host plugin surface before continuing any other work.`,
+      ],
+    };
+  }
+
+  if (message) {
+    return {
+      placement: "suffix",
+      lines: [`Startup note: ${message}`],
+    };
+  }
+  if (cliVersion && projectVersion && latestPublishedVersion) {
+    return {
+      placement: "suffix",
+      lines: [
+        `Startup note: project version ${projectVersion} is newer than CLI ${cliVersion}, and npm latest is ${latestPublishedVersion}.`,
+      ],
+    };
+  }
+  if (cliVersion && projectVersion) {
+    return {
+      placement: "suffix",
+      lines: [`Startup note: project version ${projectVersion} is newer than CLI ${cliVersion}.`],
+    };
+  }
+
+  return null;
 }
 
 function summarizeRecoveredPlanContent(planContent: JsonRecord): string[] {
@@ -909,10 +1111,10 @@ function summarizeRecoveredPlanContent(planContent: JsonRecord): string[] {
   return lines.length > 0 ? lines : ["- plan content present in activeWorkflow.planContent JSON."];
 }
 
-function tryResolveActiveWorkflowSnapshot(
+async function tryResolveActiveWorkflowSnapshot(
   cwd: string,
   ownerSessionKey: string,
-): {
+): Promise<{
   taskName: string;
   planFile: string;
   planPath: string;
@@ -920,7 +1122,7 @@ function tryResolveActiveWorkflowSnapshot(
   planSummary: string;
   planContent: PlanDocument;
   workflowGuidance: WorkflowGuidance;
-} | null {
+} | null> {
   const project = resolveProjectContext(cwd);
   const taskName = findSessionBoundTask(project.tasksDir, ownerSessionKey);
   if (!taskName) {
@@ -940,10 +1142,11 @@ function tryResolveActiveWorkflowSnapshot(
       planStatus: result.plan.status,
       planSummary: result.planView.collapsedSummary,
       planContent: result.plan,
-      workflowGuidance: buildPlanWorkflowGuidance({
+      workflowGuidance: await buildPlanWorkflowGuidance({
         taskName: result.taskName,
         planFile: result.planFile,
         plan: result.plan,
+        projectRoot: project.projectRoot,
         projectConfig: project.projectConfig,
       }),
     };
@@ -962,7 +1165,6 @@ async function runSubplan(args: string[]): Promise<void> {
         parentTaskId: readOptionalNumber(args, "--task-id") ?? failMissingNumericFlag("--task-id"),
         templateName: readOptionalFlag(args, "--template") ?? undefined,
         ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
-        host: process.env.CLAW_HOST ?? undefined,
       });
       assertNoRemainingArgs(args, "subplan create");
       printJson(compactPlanCommandResult("subplan.create", result));
@@ -1086,7 +1288,7 @@ function stripBom(content: string): string {
 }
 
 function compactPlanCommandResult(
-  command: "plan.create" | "plan.edit" | "plan.done" | "subplan.create",
+  command: "plan.create" | "plan.edit" | "plan.done" | "task.done" | "subplan.create",
   result: {
     taskName: string;
     planFile: string;
@@ -1101,6 +1303,10 @@ function compactPlanCommandResult(
       suggestions: string[];
       completionPolicy: string;
     };
+    previousPlanStatus?: string;
+    emittedEvents?: string[];
+    changedTaskIds?: number[];
+    appendedTaskIds?: number[];
   },
   completionRefresh?: CompletionRefreshResult,
   ): Record<string, unknown> {
@@ -1117,7 +1323,10 @@ function compactPlanCommandResult(
       planPath: resolvedPlanPath,
       ...(archivedPlanPath ? { archivedPlanPath } : {}),
       planStatus: result.planStatus,
-      summary: result.workflowGuidance.summary,
+      ...(result.previousPlanStatus ? { previousPlanStatus: result.previousPlanStatus } : {}),
+      ...(result.emittedEvents?.length ? { emittedEvents: result.emittedEvents } : {}),
+      ...(result.changedTaskIds?.length ? { changedTaskIds: result.changedTaskIds } : {}),
+      ...(result.appendedTaskIds?.length ? { appendedTaskIds: result.appendedTaskIds } : {}),
       nextsteps: result.workflowGuidance.nextsteps,
       ...(result.workflowGuidance.nextTask ? { nextTask: result.workflowGuidance.nextTask } : {}),
       ...(result.workflowGuidance.delegateSubagents?.length
@@ -1842,6 +2051,12 @@ function commandFailed(result: {
   return (result.status ?? 0) !== 0;
 }
 
+function asJsonRecord(value: unknown): JsonRecord | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as JsonRecord
+    : undefined;
+}
+
 function resolveLatestPublishedClawVersion(cwd: string): string | null {
   const result = runCommand("npm", ["view", "@veewo/claw", "version"], cwd);
   if (commandFailed(result)) {
@@ -1965,6 +2180,14 @@ function readOptionalNumber(args: string[], flag: string): number | undefined {
   const value = Number(raw);
   if (!Number.isFinite(value)) {
     throw new ClawError("PROJECT_CONFIG_INVALID", `Expected numeric value for ${flag}.`, { flag, value: raw });
+  }
+  return value;
+}
+
+function readRequiredNumber(args: string[], flag: string): number {
+  const value = readOptionalNumber(args, flag);
+  if (value === undefined) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", `Missing required flag ${flag}.`, { flag });
   }
   return value;
 }

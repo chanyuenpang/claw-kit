@@ -46,7 +46,11 @@ When the user asks to change claw configuration, use the `config` skill as the d
 
 - `version`
   - expected project protocol version
-  - if the project version is ahead of the current CLI, `claw context` tries to update the CLI and returns lagging info when that fails
+  - if the project version is ahead of the current CLI, `claw context` returns lagging info in `startupRecovery.versionSync`
+- `autoUpdate`
+  - default: `true`
+  - when `true` and a newer published claw-kit exists, startup recovery tells the agent to make `claw-kit:update` the first action
+  - when `false`, startup recovery only reports the version mismatch and does not instruct the agent to update
 - `maxTasksToKeep`
   - active task retention limit
   - default: `99`
@@ -72,7 +76,7 @@ When the user asks to change claw configuration, use the `config` skill as the d
 - Ask whether the change is shared team config or personal local config before editing.
 - Use `.claw/project.json` for shared team workflow behavior.
 - Use `.claw/project-override.json` for personal runtime preferences.
-- Use the flat field names in both files: `planning`, `externalPlanningSkill`, `goalMode`, `truthDispatch`, and `gitnexus`.
+- Use the flat field names in both files: `planning`, `autoUpdate`, `externalPlanningSkill`, `goalMode`, `truthDispatch`, and `gitnexus`.
 - Treat explicit `null` as an intentional override, not inheritance.
 - `memory.enabled = false` disables project memory, task memory, embedding refresh, and `claw search` together.
 - `final_only` suppresses mid-task truth handoff, not closeout truth or ADR deposition.

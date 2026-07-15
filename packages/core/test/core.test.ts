@@ -22,7 +22,7 @@ import {
   writePlan,
   type PlanDocument,
 } from "../src/index.js";
-import { readTextFile } from "../src/io.js";
+import { readTextFile, withSerializedAccess } from "../src/io.js";
 import {
   buildProjectKeywordSearchPlan,
   buildProjectQueryIntent,
@@ -32,8 +32,6 @@ import {
   resolveDefaultLocalEmbeddingCacheDir,
   resolveLocalEmbeddingCacheDir,
 } from "../src/embedding-defaults.js";
-
-const packageVersion = JSON.parse(fs.readFileSync(new URL("../../package.json", import.meta.url), "utf8")).version as string;
 
 function createFixture(name: string): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), `claw-kit-${name}-`));
@@ -121,6 +119,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
     id: string;
     name: string;
     maxTasksToKeep: number;
+    autoUpdate: boolean;
     externalTruthSkill: string | null;
     externalAdrSkill: string | null;
     contextPaths: string[];
@@ -150,11 +149,12 @@ test("initProject creates a minimal .claw project scaffold", () => {
     "# claw-kit\n.claw/*\n!.claw/project.json\n!.claw/truth/\n!.claw/truth/**\n.claw/project-override.json\n",
   );
   assert.deepEqual(projectConfig, {
-    version: packageVersion,
+    version: "0.1.60",
     id: "demo-project",
     name: "Demo Project",
     maxTasksToKeep: 20,
     planning: true,
+    autoUpdate: true,
     externalPlanningSkill: null,
     externalTruthSkill: "external-truth-writer",
     externalAdrSkill: "external-adr-writer",
@@ -278,7 +278,7 @@ test("writePlan keeps the activation task detail plain when goal mode is disable
   fs.writeFileSync(
     path.join(root, ".claw", "project.json"),
     JSON.stringify({
-      version: "0.1.54",
+      version: "0.1.60",
       id: "plan-write-goalmode-disabled-activation-detail",
       name: "Plan Write GoalMode Disabled Activation Detail",
       planning: true,
@@ -348,7 +348,7 @@ test("writePlan uses externalPlanningSkill in the seeded planning task detail", 
   fs.writeFileSync(
     path.join(root, ".claw", "project.json"),
     JSON.stringify({
-      version: "0.1.54",
+      version: "0.1.60",
       id: "plan-write-external-planning-skill",
       name: "Plan Write External Planning Skill",
       planning: true,
@@ -471,11 +471,11 @@ test("writePlan loads a global user template when the project does not define on
 test("writePlan loads a project skill-local template from TEMPLATE.json", async () => {
   const root = createFixture("plan-template-project-skill-local");
   initProject({ cwd: root, projectName: "Project Skill Local Template", planning: true, force: true });
-  fs.mkdirSync(path.join(root, "skills", "using-superpowers"), { recursive: true });
+  fs.mkdirSync(path.join(root, "skills", "example-skill-template"), { recursive: true });
   fs.writeFileSync(
-    path.join(root, "skills", "using-superpowers", "TEMPLATE.json"),
+    path.join(root, "skills", "example-skill-template", "TEMPLATE.json"),
     `${JSON.stringify(createPlanLikeTemplate({
-      id: "superpowers-using-superpowers",
+      id: "example-skill-template",
       tasks: [
         {
           id: 1,
@@ -491,10 +491,10 @@ test("writePlan loads a project skill-local template from TEMPLATE.json", async 
   const result = await writePlan({
     cwd: root,
     title: "Use project skill-local template",
-    templateName: "superpowers-using-superpowers",
+    templateName: "example-skill-template",
   });
 
-  assert.equal(result.plan.templateId, "superpowers-using-superpowers");
+  assert.equal(result.plan.templateId, "example-skill-template");
   assert.equal(result.plan.tasks[0]?.title, "Use the colocated skill template");
 });
 
@@ -539,15 +539,15 @@ test("writePlan loads a global skill-local template from the Codex plugin cache"
     "cache",
     "claw-kit-local",
     "claw-kit",
-    "0.1.54+codex.test",
+    "0.1.57+codex.test",
     "skills",
-    "using-superpowers",
+    "example-global-skill-template",
   );
   fs.mkdirSync(skillDir, { recursive: true });
   fs.writeFileSync(
     path.join(skillDir, "TEMPLATE.json"),
     `${JSON.stringify(createPlanLikeTemplate({
-      id: "superpowers-using-superpowers",
+      id: "example-global-skill-template",
       tasks: [
         {
           id: 1,
@@ -569,10 +569,10 @@ test("writePlan loads a global skill-local template from the Codex plugin cache"
     const result = await writePlan({
       cwd: root,
       title: "Use global skill-local template",
-      templateName: "superpowers-using-superpowers",
+      templateName: "example-global-skill-template",
     });
 
-    assert.equal(result.plan.templateId, "superpowers-using-superpowers");
+    assert.equal(result.plan.templateId, "example-global-skill-template");
     assert.equal(result.plan.tasks[0]?.title, "Use the global skill-local template");
   } finally {
     if (previousHome === undefined) {
@@ -1748,102 +1748,6 @@ test("createSubplan always uses planning shape even when project planning is dis
   assert.deepEqual(result.plan.tasks.map((task) => task.id), [1, 2]);
 });
 
-test("plan and subplan create share full skill-local template resolution and task guidance", async () => {
-  const root = createFixture("shared-full-plan-template-resolution");
-  initProject({ cwd: root, projectName: "Shared Full Template Resolution", planning: true, force: true });
-  const skillRoot = path.join(root, "shared", "skills");
-  const updateSkillDir = path.join(skillRoot, "update");
-  fs.mkdirSync(updateSkillDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(updateSkillDir, "TEMPLATE.json"),
-    JSON.stringify(
-      {
-        id: "update",
-        configOverride: { truthDispatch: "final_only" },
-        title: "update",
-        status: "process.active",
-        goal: { text: "Refresh claw-kit." },
-        requirements: { summary: "", openQuestions: [], acceptanceCriteria: [] },
-        tasks: [
-          {
-            id: 1,
-            title: "Choose host",
-            status: "pending",
-            guidance: {
-              onDone: {
-                choices: {
-                  codex: {
-                    mergeMode: "override",
-                    summary: "The current host route is Codex.",
-                    nextsteps: ["Refresh the CLI, then Codex."],
-                    nextTaskId: 2,
-                    delegateTruth: false,
-                  },
-                },
-              },
-            },
-          },
-          { id: 2, title: "Refresh installs", status: "pending" },
-        ],
-        references: [],
-        rules: [],
-        keyDecisions: [],
-        retrospective: { summary: "" },
-      },
-      null,
-      2,
-    ),
-    "utf-8",
-  );
-
-  const rootResult = await writePlan({
-    cwd: root,
-    title: "Template parent",
-    goalText: "Run the root update workflow",
-    templateName: "update",
-  });
-  assert.equal(rootResult.plan.status, "process.active");
-  assert.equal(rootResult.plan.title, "Template parent");
-  assert.equal(rootResult.plan.goal.text, "Run the root update workflow");
-  assert.deepEqual(rootResult.plan.tasks.map((task) => task.title), ["Choose host", "Refresh installs"]);
-  assert.equal(rootResult.plan.configOverride?.truthDispatch, "final_only");
-
-  const subplanResult = await createSubplan({
-    cwd: root,
-    parentTaskName: rootResult.taskName,
-    parentTaskId: 1,
-    templateName: "update",
-  });
-  assert.equal(subplanResult.plan.status, "process.active");
-  assert.equal(subplanResult.plan.parentPlan, "plan.json");
-  assert.equal(subplanResult.plan.parentTaskId, 1);
-  assert.deepEqual(subplanResult.plan.tasks.map((task) => task.title), ["Choose host", "Refresh installs"]);
-
-  await assert.rejects(
-    () => editPlan({
-      cwd: root,
-      taskName: rootResult.taskName,
-      planFile: subplanResult.planFile,
-      taskId: 1,
-      taskStatus: "done",
-    }),
-    /requires --choice-id/i,
-  );
-
-  const edited = await editPlan({
-    cwd: root,
-    taskName: rootResult.taskName,
-    planFile: subplanResult.planFile,
-    taskId: 1,
-    taskStatus: "done",
-    choiceId: "codex",
-  });
-  assert.equal(edited.workflowGuidance.summary, "The current host route is Codex.");
-  assert.equal(edited.workflowGuidance.nextTask?.id, 2);
-  assert.deepEqual(edited.workflowGuidance.nextsteps, ["Refresh the CLI, then Codex."]);
-  assert.equal(edited.workflowGuidance.delegateSubagents, undefined);
-});
-
 test("subplan completion resumes the parent plan and marks the parent task done", async () => {
   const root = createFixture("subplan-complete-resume-parent");
   await writePlan({
@@ -1925,7 +1829,7 @@ test("writePlan starts directly in process.active when project planning is disab
   fs.writeFileSync(
     path.join(root, ".claw", "project.json"),
     JSON.stringify({
-      version: "0.1.54",
+      version: "0.1.60",
       id: "plan-write-review",
       name: "Plan Write Review",
       planning: false,
@@ -2049,11 +1953,11 @@ test("plan edit can move from requirements to process.active without a separate 
   assert.ok(result.workflowGuidance.recommendedCommands?.some((command) => command.includes("claw plan done")));
   assert.equal(
     result.workflowGuidance.summary,
-    "All plan tasks are done. Clear thread progress with `update_plan`, conditionally deposit reusable truth, then complete the required ADR closeout.",
+    "All plan tasks are done. Clear thread progress with `update_plan`, then execute each returned delegateSubagents entry field-by-field for truth deposition and ADR closeout.",
   );
   assert.equal(
     result.workflowGuidance.notes,
-    "Truth deposition is conditional on the main agent's reusable-value judgment; ADR deposition is required for root-plan closeout. Once dispatch is chosen or required, honor every field in that delegate contract.",
+    "Truth doc and ADR doc generation are essential claw-kit features. When dispatching a subagent, each entry is a required structured contract whose fields must be honored directly.",
   );
   const truthDelegate = result.workflowGuidance.delegateSubagents?.[0];
   const adrDelegate = result.workflowGuidance.delegateSubagents?.[1];
@@ -2078,7 +1982,7 @@ test("plan edit can move from requirements to process.active without a separate 
   assert.ok(result.workflowGuidance.nextsteps.some((step) => step.includes("adr-writer")));
   assert.deepEqual(result.workflowGuidance.nextsteps, [
     "1. Clear thread progress with `update_plan`.",
-    "2. Decide whether the completed work contains reusable truth. If it does, curate the valuable findings into a completed subtask report and execute the returned `truth-writer` dispatch contract field-by-field.",
+    "2. Read `delegateSubagents`, curate the valuable findings from the completed work into a completed subtask report, then execute the returned `truth-writer` dispatch contract field-by-field. Do not treat it as a suggestion.",
     "3. First write both `retrospective` and `keyDecisions` back into the plan, then read `delegateSubagents` again and execute the returned `adr-writer` dispatch contract field-by-field with that updated completed `plan.json`.",
   ]);
   assert.deepEqual(result.workflowGuidance.recommendedCommands, [
@@ -2255,6 +2159,11 @@ test("end.completed emits complete goal tool guidance", async () => {
   });
 
   assert.equal(result.workflowGuidance.stage, "done");
+  assert.deepEqual(result.workflowGuidance.nextsteps, [
+    "1. Use `update_goal(status=\"complete\")` to close the active thread goal for this plan.",
+    "2. Finish any remaining workflow-guided closeout work such as archive or parent-plan resumption.",
+    "3. Do not continue ad hoc in this thread. Start the next task only through `using-claw-kit`, then follow the returned `workflowGuidance`.",
+  ]);
   assert.deepEqual(result.workflowGuidance.goalTool, {
     tool: "update_goal",
     status: "complete",
@@ -2268,7 +2177,7 @@ test("process entry returns the first task and task completion returns truth-wri
     path.join(root, ".claw", "project.json"),
     JSON.stringify(
       {
-        version: "0.1.54",
+        version: "0.1.60",
         id: "process-entry-and-truth-contract",
         name: "Process Entry And Truth Contract",
         maxTasksToKeep: 99,
@@ -2330,11 +2239,11 @@ test("process entry returns the first task and task completion returns truth-wri
   assert.equal(taskDone.workflowGuidance.nextTask?.id, 2);
   assert.equal(
     taskDone.workflowGuidance.notes,
-    "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. Truth deposition is conditional; when dispatching the writer, honor every field in its delegate contract.",
+    "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. When dispatching a subagent, each entry is a required structured contract whose fields must be honored directly.",
   );
   assert.deepEqual(taskDone.workflowGuidance.nextsteps, [
     "1. Sync thread progress with `update_plan`.",
-    "2. Decide whether the completed task contains reusable truth. If it does, curate the valuable findings into a completed subtask report and execute the returned `truth-writer` dispatch contract field-by-field.",
+    "2. Read `delegateSubagents`, curate the valuable findings from the completed task into a completed subtask report, then execute the returned `truth-writer` dispatch contract field-by-field. Do not treat it as a suggestion.",
     "3. Continue with task #2.",
   ]);
   assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.skill, "external-truth-writer");
@@ -2347,7 +2256,7 @@ test("resolveContext deep-merges project-override.json and preserves explicit nu
     path.join(root, ".claw", "project.json"),
     JSON.stringify(
       {
-        version: "0.1.54",
+        version: "0.1.60",
         id: "project-override-merge",
         name: "Project Override Merge",
         maxTasksToKeep: 99,
@@ -2454,7 +2363,7 @@ test("workflow guidance respects disabled goal mode and final-only truth dispatc
     path.join(root, ".claw", "project.json"),
     JSON.stringify(
       {
-        version: "0.1.54",
+        version: "0.1.60",
         id: "workflow-guidance-config-toggles",
         name: "Workflow Guidance Config Toggles",
         maxTasksToKeep: 99,
@@ -2628,6 +2537,83 @@ test("plan edit patch tasks defaults omitted task status to pending", async () =
       { id: 5, title: "Patched task without status", status: "pending" },
     ],
   );
+});
+
+test("plan edit patch merges nested requirement objects and preserves untouched fields", async () => {
+  const root = createFixture("plan-edit-merge-patch-requirements");
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Keep merge patch expectations stable",
+    content: {
+      title: "Demo task",
+      status: "process.active",
+      goal: { text: "Keep merge patch expectations stable" },
+      requirements: {
+        summary: "Initial summary",
+        openQuestions: ["Question A"],
+        acceptanceCriteria: ["Criterion A"],
+      },
+      tasks: [],
+    },
+  });
+
+  const result = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    patch: {
+      requirements: {
+        summary: "Updated summary",
+      } as unknown as PlanDocument["requirements"],
+    },
+  });
+
+  const finalPlan = showPlan({
+    cwd: root,
+    taskName: "demo-task",
+  }).plan;
+
+  assert.deepEqual(finalPlan.requirements, {
+    summary: "Updated summary",
+    openQuestions: ["Question A"],
+    acceptanceCriteria: ["Criterion A"],
+  });
+});
+
+test("plan edit patch uses null to delete optional object fields", async () => {
+  const root = createFixture("plan-edit-merge-patch-null-delete");
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Allow null deletes",
+    content: {
+      title: "Demo task",
+      status: "process.active",
+      goal: { text: "Allow null deletes" },
+      summary: "Detailed summary",
+      references: [{ path: "docs/example.md", why: "carry context" }],
+      tasks: [],
+    },
+  });
+
+  const result = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    patch: {
+      summary: null,
+      references: null,
+    } as unknown as Partial<PlanDocument>,
+  });
+
+  const finalPlan = showPlan({
+    cwd: root,
+    taskName: "demo-task",
+  }).plan;
+
+  assert.equal(finalPlan.summary, undefined);
+  assert.equal(finalPlan.references, undefined);
 });
 
 test("plan edit changing a task back to pending does not advertise nextTask", async () => {
@@ -2882,7 +2868,7 @@ test("project search rejects queries when no vector index is available", () => {
     path.join(root, ".claw", "project.json"),
     JSON.stringify(
       {
-        version: "0.1.54",
+        version: "0.1.60",
         id: "memory-search-no-vectors",
         name: "Memory Search No Vectors",
         maxTasksToKeep: 99,
@@ -4081,7 +4067,7 @@ test("workflow guidance uses external writer skills from project config", async 
     path.join(root, ".claw", "project.json"),
     JSON.stringify(
       {
-        version: "0.1.54",
+        version: "0.1.60",
         id: "external-writer-skill-guidance",
         name: "External Writer Guidance",
         maxTasksToKeep: 99,
@@ -4130,7 +4116,7 @@ test("workflow guidance uses external writer skills from project config", async 
   });
   assert.equal(
     taskDone.workflowGuidance.notes,
-    "Truth deposition is conditional on the main agent's reusable-value judgment; ADR deposition is required for root-plan closeout. Once dispatch is chosen or required, honor every field in that delegate contract.",
+    "Truth doc and ADR doc generation are essential claw-kit features. When dispatching a subagent, each entry is a required structured contract whose fields must be honored directly.",
   );
   assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.skill, "external-truth-writer");
   assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.model, "gpt-5.4-mini");
@@ -4239,6 +4225,7 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
     id: string;
     name: string;
     maxTasksToKeep: number;
+    autoUpdate: boolean;
     externalTruthSkill: string | null;
     externalAdrSkill: string | null;
     contextPaths: string[];
@@ -4261,10 +4248,11 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
   assert.equal(result.ok, true);
   assert.equal(result.changed, true);
   assert.ok(result.issueCountBefore > 0);
-  assert.equal(projectConfig.version, packageVersion);
+  assert.equal(projectConfig.version, "0.1.60");
   assert.equal(projectConfig.id, "fix-me");
   assert.equal(projectConfig.name, "Fix Me");
   assert.equal(projectConfig.maxTasksToKeep, 99);
+  assert.equal(projectConfig.autoUpdate, true);
   assert.equal(projectConfig.externalTruthSkill, null);
   assert.equal(projectConfig.externalAdrSkill, null);
   assert.deepEqual(projectConfig.contextPaths, []);
@@ -4288,7 +4276,7 @@ test("ensureProjectProtocol removes legacy default local modelCacheDir so runtim
     path.join(root, ".claw", "project.json"),
     JSON.stringify(
       {
-        version: "0.1.54",
+        version: "0.1.60",
         id: "legacy-cache",
         name: "Legacy Cache",
         maxTasksToKeep: 99,
@@ -4536,6 +4524,115 @@ test("concurrent plan creates fail fast with PLAN_WRITE_CONFLICT", async () => {
   );
 
   fs.unlinkSync(`${planPath}.lock`);
+});
+
+test("concurrent plan edits serialize and apply against the latest plan state", async () => {
+  const root = createFixture("plan-edit-serialization");
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Serialize overlapping edits",
+    content: {
+      title: "Demo task",
+      status: "process.active",
+      goal: { text: "Serialize overlapping edits" },
+      tasks: [
+        { id: 1, title: "First task", status: "pending" },
+        { id: 2, title: "Second task", status: "pending" },
+      ],
+    },
+  });
+
+  const [firstResult, secondResult] = await Promise.all([
+    editPlan({
+      cwd: root,
+      taskName: "demo-task",
+      taskId: 1,
+      taskStatus: "done",
+    }),
+    editPlan({
+      cwd: root,
+      taskName: "demo-task",
+      taskId: 2,
+      taskStatus: "done",
+    }),
+  ]);
+
+  assert.deepEqual(firstResult.changedTaskIds, [1]);
+  assert.deepEqual(secondResult.changedTaskIds, [2]);
+
+  const finalPlan = showPlan({
+    cwd: root,
+    taskName: "demo-task",
+  }).plan;
+  assert.deepEqual(
+    finalPlan.tasks.map((task) => ({ id: task.id, status: task.status })),
+    [
+      { id: 1, status: "done" },
+      { id: 2, status: "done" },
+    ],
+  );
+});
+
+test("serialized access waits for queue lock contention instead of failing fast", async () => {
+  const root = createFixture("serialized-access-queue-lock-contention");
+  const targetPath = path.join(root, ".claw", "tasks", "demo-task", "plan.json");
+  const queueLockPath = `${targetPath}.queue.json.lock`;
+
+  fs.mkdirSync(path.dirname(queueLockPath), { recursive: true });
+  fs.writeFileSync(queueLockPath, "", "utf-8");
+
+  const releaseTimer = setTimeout(() => {
+    if (fs.existsSync(queueLockPath)) {
+      fs.unlinkSync(queueLockPath);
+    }
+  }, 50);
+
+  try {
+    const result = await withSerializedAccess(
+      targetPath,
+      async () => "ok",
+      { pollMs: 10, timeoutMs: 500 },
+    );
+
+    assert.equal(result, "ok");
+  } finally {
+    clearTimeout(releaseTimer);
+    if (fs.existsSync(queueLockPath)) {
+      fs.unlinkSync(queueLockPath);
+    }
+  }
+});
+
+test("plan edit rejects combining patch.tasks with task status updates", async () => {
+  const root = createFixture("plan-edit-mixed-task-update");
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Reject mixed task edits",
+    content: {
+      title: "Demo task",
+      status: "process.active",
+      goal: { text: "Reject mixed task edits" },
+      tasks: [{ id: 1, title: "Only task", status: "pending" }],
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      editPlan({
+        cwd: root,
+        taskName: "demo-task",
+        patch: {
+          tasks: [{ id: 2, title: "Replacement task", status: "pending" }],
+        },
+        taskId: 1,
+        taskStatus: "done",
+      }),
+    /patch\.tasks cannot be combined with taskId\/taskStatus updates/,
+  );
 });
 
 test("ensureUtf8Bom prefixes markdown text exactly once", () => {

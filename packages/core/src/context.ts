@@ -185,6 +185,7 @@ function normalizeProjectConfig(projectConfig: ProjectConfig): ProjectConfig {
         ? projectConfig.maxTasksToKeep
         : 99,
     planning: projectConfig.planning !== false,
+    autoUpdate: projectConfig.autoUpdate === true,
     goalMode: typeof projectConfig.goalMode === "boolean" ? projectConfig.goalMode : true,
     truthDispatch: projectConfig.truthDispatch === "final_only" ? "final_only" : "per_task",
     externalPlanningSkill: normalizeOptionalSkill(projectConfig.externalPlanningSkill),

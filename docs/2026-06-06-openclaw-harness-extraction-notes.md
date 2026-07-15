@@ -327,7 +327,7 @@ Implication:
 
 ### OpenCode
 
-From the `superpowers` reference, OpenCode appears to have stronger plugin/hook support than Codex in some areas.
+From the workflow-oriented reference plugin, OpenCode appears to have stronger plugin/hook support than Codex in some areas.
 
 Likely available:
 

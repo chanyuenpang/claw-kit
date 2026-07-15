@@ -44,8 +44,11 @@ Together, the canonical config plus local override model gives longer-running pr
 - `version`
   - expected claw-kit CLI protocol version for this project
   - when lower than the current CLI, `claw context` aligns the file upward
-  - when higher than the current CLI, `claw context` tries to update the CLI
-  - when that update fails, `claw context` returns CLI lagging information in `startupRecovery.versionSync`
+  - when higher than the current CLI, `claw context` reports CLI lagging information in `startupRecovery.versionSync`
+- `autoUpdate`
+  - default: `true`
+  - when `true` and a newer published claw-kit exists, startup recovery tells the agent that the first action must be `claw-kit:update`
+  - when `false`, startup recovery only reports the version mismatch and must not instruct the agent to perform the update
 - `id`
   - stable project id
 - `name`
@@ -90,7 +93,7 @@ Use `null` when the project should explicitly keep the built-in writer behavior.
 
 - `gitnexus`
   - optional integration switch for GitNexus-related closeout and completion-refresh behavior
-  - default: `false`
+  - default: `true`
   - default usage of `claw-kit` does not require GitNexus to be enabled
 
 ### Workflow controls
@@ -115,6 +118,7 @@ Older nested inputs should be rewritten into the flat fields above during protoc
   "name": "Demo Project",
   "maxTasksToKeep": 99,
   "planning": true,
+  "autoUpdate": true,
   "externalPlanningSkill": null,
   "externalTruthSkill": null,
   "externalAdrSkill": null,
@@ -359,6 +363,8 @@ When explaining project behavior:
 - the canonical-plus-personal split is part of the collaboration model, not just a schema detail
 - `planning = true` makes `plan create` start in `process.discussing` with planning and activation bridge tasks
 - `planning = false` makes `plan create` start directly in `process.active` with a minimal executable plan
+- `autoUpdate = true` lets startup recovery route the agent to `claw-kit:update` first when a newer published claw-kit version is available
+- `autoUpdate = false` keeps version drift informational only
 - `externalPlanningSkill` only selects the planning skill name used by task 1; it does not make the skill claw-aware
 - `gitnexus = true` opts a project into GitNexus-related integration behavior, but `claw-kit` still works without it
 - `goalMode = false` removes `goalMode` from workflow guidance

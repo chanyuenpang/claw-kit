@@ -73,6 +73,7 @@ export function initProject(input: InitProjectInput): InitProjectResult {
     name: projectName,
     maxTasksToKeep,
     planning: input.planning ?? true,
+    autoUpdate: true,
     goalMode: true,
     truthDispatch: "per_task",
     externalPlanningSkill: normalizeOptionalSkill(input.externalPlanningSkill),

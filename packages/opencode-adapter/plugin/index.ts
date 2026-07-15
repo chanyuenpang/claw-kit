@@ -211,7 +211,7 @@ export const ClawKitPlugin: Plugin = async ({ client, directory }) => {
             parts: [
               {
                 type: "text",
-                text: "\u5f53\u524dplan\u8fd8\u672a\u6267\u884c\u5b8c\u6bd5\uff0c\u9700\u8981\u7ee7\u7eed\u63a8\u8fdb\u3002\u5982\u679c\u8fde\u7eed\u4e24\u8f6e\u90fd\u6ca1\u6709\u63a8\u8fdb\u6210\u529f\uff0c\u90a3\u4e48\u628a plan.status \u8bbe\u7f6e\u4e3await",
+                text: "There is already an unfinished plan in this thread. Tell the user and ask whether to close the current plan or continue advancing it before starting unrelated work. If the user chooses to continue and you still fail to make progress for two rounds, then set plan.status to wait.",
               },
             ],
           },
@@ -277,6 +277,10 @@ export const ClawKitPlugin: Plugin = async ({ client, directory }) => {
 
       // Conditional: append active plan summary if recovered
       if (recoveredState) {
+        lines.push("There is already an unfinished plan in this thread.");
+        lines.push("Tell the user and ask whether to close the current plan or continue advancing it before starting unrelated work.");
+        lines.push("After this plan finishes, keep using claw-kit in this thread for the next task.");
+        lines.push("");
         lines.push("Active plan:");
         lines.push(recoveredState);
       }

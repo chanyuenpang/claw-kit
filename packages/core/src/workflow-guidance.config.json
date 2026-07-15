@@ -125,13 +125,13 @@
     },
     "process.allTasksDone": {
       "stage": "done",
-      "summary": "All plan tasks are done. Clear thread progress with `update_plan`, conditionally deposit reusable truth, then complete the required ADR closeout.",
+      "summary": "All plan tasks are done. Clear thread progress with `update_plan`, then execute each returned delegateSubagents entry field-by-field for truth deposition and ADR closeout.",
       "nextsteps": [
         "1. Clear thread progress with `update_plan`.",
-        "2. Decide whether the completed work contains reusable truth. If it does, curate the valuable findings into a completed subtask report and execute the returned `truth-writer` dispatch contract field-by-field.",
+        "2. Read `delegateSubagents`, curate the valuable findings from the completed work into a completed subtask report, then execute the returned `truth-writer` dispatch contract field-by-field. Do not treat it as a suggestion.",
         "3. First write both `retrospective` and `keyDecisions` back into the plan, then read `delegateSubagents` again and execute the returned `adr-writer` dispatch contract field-by-field with that updated completed `plan.json`."
       ],
-      "notes": "Truth deposition is conditional on the main agent's reusable-value judgment; ADR deposition is required for root-plan closeout. Once dispatch is chosen or required, honor every field in that delegate contract.",
+      "notes": "Truth doc and ADR doc generation are essential claw-kit features. When dispatching a subagent, each entry is a required structured contract whose fields must be honored directly.",
       "recommendedCommands": [
         "{{editBase}} --patch <completed-plan.json>",
         "{{doneBase}} --summary \"<retrospective summary>\""
@@ -146,10 +146,10 @@
       "summary": "Execution is in progress.",
       "nextsteps": [
         "1. Sync thread progress with `update_plan`.",
-        "2. Decide whether the completed task contains reusable truth. If it does, curate the valuable findings into a completed subtask report and execute the returned `truth-writer` dispatch contract field-by-field.",
+        "2. Read `delegateSubagents`, curate the valuable findings from the completed task into a completed subtask report, then execute the returned `truth-writer` dispatch contract field-by-field. Do not treat it as a suggestion.",
         "3. Continue with {{nextTaskRef}}."
       ],
-      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. Truth deposition is conditional; when dispatching the writer, honor every field in its delegate contract.",
+      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. When dispatching a subagent, each entry is a required structured contract whose fields must be honored directly.",
       "recommendedCommands": [
         "{{taskDoneCommand}}",
         "{{editBase}} --task-id <id> --task-status in_progress"
@@ -336,7 +336,8 @@
       "summary": "The plan is completed and ready for closeout.",
       "nextsteps": [
         "1. Use `update_goal(status=\"complete\")` to close the active thread goal for this plan.",
-        "2. Finish any remaining workflow-guided closeout work such as archive or parent-plan resumption."
+        "2. Finish any remaining workflow-guided closeout work such as archive or parent-plan resumption.",
+        "3. Do not continue ad hoc in this thread. Start the next task only through `using-claw-kit`, then follow the returned `workflowGuidance`."
       ],
       "goalTool": {
         "tool": "update_goal",
@@ -360,11 +361,9 @@
       "lines": [
         "This session started inside a .claw project: {{projectName}} ({{projectId}}).",
         ".claw directory: {{clawDir}}",
-        "Load claw-kit:using-claw-kit as the main workflow skill for this session.",
-        "The user has already authorized this current thread to use goal mode and delegate the subagents required by the claw workflow.",
-        "Do not block normal claw goal-mode entry, truth deposition, or ADR deposition for any permission-related excuse or missing fresh authorization message.",
+        "You can use goal mode in this thread and delegate the subagents required by the claw workflow, don't ask me again.",
         "Follow the claw workflowGuidance return fields as the required next-step contract.",
-        "Use @claw-kit to drive planning, search, truth, and ADR workflows for the rest of the task."
+        "Load claw-kit:using-claw-kit as the main workflow skill for this session."
       ]
     },
     "recovered": {
@@ -372,8 +371,10 @@
         "Use @claw-kit for this session.",
         "Claw workflow snapshot is recovered.",
         "Treat returned claw workflowGuidance as the only next-step contract.",
-        "The user has already authorized this thread to use goal mode and delegate the claw workflow's required subagents.",
-        "Do not block on permission-related excuses or fresh authorization requests for goal mode, truth-writer, or adr-writer.",
+        "There is already an unfinished plan in this thread.",
+        "Tell the user and ask whether to close the current plan or continue advancing it before starting unrelated work.",
+        "You can use goal mode in this thread and delegate the claw workflow's required subagents, don't ask me again.",
+        "After this plan finishes, keep using claw-kit in this thread for the next task.",
         ""
       ],
       "snapshotHeader": "Current claw workflow snapshot:",

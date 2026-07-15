@@ -79,7 +79,7 @@ The current local Codex environment confirms:
 
 Concrete examples from local installed plugins:
 
-- `superpowers` is effectively a `skills` plugin
+- one installed workflow-oriented plugin is effectively a `skills` plugin
 - `github` is a `skills + apps` plugin
 - `google-drive` and `notion` are also `skills + apps` plugins
 - `browser` is a `skills` plugin with a very explicit usage-oriented manifest description
@@ -93,7 +93,7 @@ Looking at local installed plugins, a few patterns stand out:
 
 Example:
 
-- `superpowers`
+- a workflow-oriented reference plugin
 
 Use when:
 
@@ -310,7 +310,7 @@ The plugin should not become the main place where task semantics live.
 
 Recommended first plugin style:
 
-- imitate the `superpowers` shape more than the `github` or `google-drive` shape
+- imitate the workflow-oriented `skills`-only shape more than the `github` or `google-drive` shape
 - start as `skills` only
 - add `apps` only if `claw-kit` later needs an external connected system
 - add `mcpServers` only if CLI-through-shell becomes too weak or too awkward
@@ -564,9 +564,9 @@ Local sources used for this document:
 
 - `C:\Users\chany\.codex\skills\.system\plugin-creator\SKILL.md`
 - `C:\Users\chany\.codex\skills\.system\plugin-creator\references\plugin-json-spec.md`
-- `C:\Users\chany\.codex\plugins\cache\openai-curated\superpowers\e2d08a2e\.codex-plugin\plugin.json`
+- `C:\Users\chany\.codex\plugins\cache\openai-curated\<workflow-plugin>\e2d08a2e\.codex-plugin\plugin.json`
 - `C:\Users\chany\.codex\plugins\cache\openai-curated\github\e2d08a2e\.codex-plugin\plugin.json`
-- `C:\Users\chany\.codex\plugins\cache\openai-curated\superpowers\e2d08a2e\skills\using-superpowers\references\codex-tools.md`
+- `C:\Users\chany\.codex\plugins\cache\openai-curated\<workflow-plugin>\e2d08a2e\skills\<workflow-skill>\references\codex-tools.md`
 
 Recent public Codex hook references used for this document:
 
