@@ -79,7 +79,21 @@ Projects can define reusable templates directly under `.claw/templates` using `.
 
 ## Install the Codex plugin
 
-The Codex plugin is a separate distribution surface from the CLI. The source of truth lives in `packages/codex-adapter`, and this repo now exposes two supported commands:
+The Codex plugin is a separate distribution surface from the CLI. On another machine, add the official repository marketplace first:
+
+```powershell
+codex plugin marketplace add chanyuenpang/claw-kit --ref main
+```
+
+Restart the ChatGPT desktop app, open the plugin directory, choose the **Claw Kit** marketplace, and install **Claw Kit**. Start a new task after installation so Codex discovers the bundled skills. Refresh the Git-backed marketplace later with:
+
+```powershell
+codex plugin marketplace upgrade claw-kit
+```
+
+The repository marketplace at `.agents/plugins/marketplace.json` points to the fully materialized `packages/codex-adapter` tree. Codex can therefore copy every shared skill and resource into its plugin cache without running repository or npm lifecycle scripts.
+
+Maintainers working inside this repository also have two development commands:
 
 ```powershell
 npm run export:codex-plugin
@@ -91,7 +105,9 @@ What they do:
 1. `npm run export:codex-plugin` copies the installable plugin payload into `dist/codex-plugin/claw-kit/<plugin-version>/`.
 2. `npm run install:codex-plugin` copies that same payload shape into the local Codex cache at `%USERPROFILE%\.codex\plugins\cache\claw-kit-local\claw-kit\<plugin-version>\`.
 
-Use `install:codex-plugin` when you want this machine to start using the adapter immediately. Use `export:codex-plugin` when you want a clean versioned bundle that can be attached to a release, copied to another machine, or used by another installer.
+Use `install:codex-plugin` for a direct local development-cache refresh. Use `export:codex-plugin` for a clean versioned release bundle. Remote users should use the marketplace flow above instead of copying files into the cache manually.
+
+Validate a template without creating a plan with `claw template validate --template <id>`. This command resolves templates through the same registry used by `claw plan create` and `claw subplan create`, and reports route-aware tasks that require a choice id.
 
 ## Install the OpenCode plugin
 

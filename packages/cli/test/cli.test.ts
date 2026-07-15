@@ -1298,6 +1298,43 @@ test("cli subplan create accepts an explicit template flag", () => {
   assert.equal((childPlan.tasks as unknown[]).length, 2);
 });
 
+test("cli plan, subplan, and template validate share the skill-local template resolver", () => {
+  const root = createFixture("cli-shared-template-resolver");
+  const skillDir = path.join(root, "packages", "test-adapter", "skills", "update");
+  fs.mkdirSync(skillDir, { recursive: true });
+  fs.copyFileSync(
+    path.resolve(thisDir, "..", "..", "..", "shared", "skills", "update", "TEMPLATE.json"),
+    path.join(skillDir, "TEMPLATE.json"),
+  );
+  runClaw(["init", "--name", "Shared Template Resolver"], root);
+
+  const rootResult = runClaw(
+    ["plan", "create", "--title", "template-parent", "--goal", "Run root update", "--template", "update"],
+    root,
+  );
+  const rootPlan = JSON.parse(fs.readFileSync(String(rootResult.planPath), "utf-8")) as JsonRecord;
+  assert.equal(rootPlan.templateId, "update");
+  assert.equal((rootPlan.tasks as unknown[]).length, 3);
+
+  const childResult = runClaw(
+    ["subplan", "create", "--parent", "template-parent", "--task-id", "1", "--template", "update"],
+    root,
+  );
+  const childPlan = JSON.parse(fs.readFileSync(String(childResult.planPath), "utf-8")) as JsonRecord;
+  assert.equal(childPlan.templateId, "update");
+  assert.equal((childPlan.tasks as unknown[]).length, 3);
+
+  const validation = runClaw(["template", "validate", "--template", "update"], root);
+  assert.equal(validation.command, "template.validate");
+  assert.equal(validation.ok, true);
+  assert.equal(validation.templateId, "update");
+  assert.equal(validation.taskCount, 3);
+  assert.deepEqual(validation.choiceRequiredTasks, [{
+    taskId: 1,
+    choiceIds: ["codex", "opencode", "conservative"],
+  }]);
+});
+
 test("cli plan done on a subplan resumes the parent plan instead of archiving the whole task", () => {
   const root = createFixture("cli-subplan-done-resume-parent");
   runClaw(["init", "--name", "Subplan Done Resume Parent", "--max-tasks-to-keep", "99", "--planning", "false"], root);

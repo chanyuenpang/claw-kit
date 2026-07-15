@@ -191,6 +191,8 @@ Validation checks:
 - `mergeMode`
 - `configOverride`
 
+Named validation uses the same resolver as `claw plan create` and `claw subplan create`. Its output includes `choiceRequiredTasks`, so route-aware template authors can see which tasks require a choice id when they are completed.
+
 ## Universal Skill Entry Routing
 
 Every template-backed claw skill should classify the request before entering its template:

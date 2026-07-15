@@ -27,7 +27,8 @@ Prefer the current host when it is known:
 
 - Codex host:
   - refresh CLI
-  - refresh the local Codex plugin cache
+  - inside a `claw-kit` checkout, use the maintained direct development install when appropriate
+  - on a remote machine, add or upgrade the `chanyuenpang/claw-kit` marketplace and install the plugin through the ChatGPT desktop app
 - OpenCode host:
   - refresh CLI
   - refresh the local OpenCode plugin install surface
@@ -44,6 +45,16 @@ npm run install:codex-plugin
 npm run install:opencode-plugin
 ```
 
+On a remote Codex machine, use the official marketplace lifecycle:
+
+```powershell
+codex plugin marketplace add chanyuenpang/claw-kit --ref main
+codex plugin marketplace upgrade claw-kit
+codex plugin marketplace list
+```
+
+After adding or upgrading the marketplace, restart the ChatGPT desktop app, install or update **Claw Kit** from the plugin directory, and start a new task. Do not manually generate shared skills on the remote machine.
+
 ## Verification
 
 Always verify after updating:
@@ -52,8 +63,10 @@ Always verify after updating:
   - `claw --version`
   - `npm list -g @veewo/claw --depth=0`
 - Codex plugin:
-  - confirm the newest cache directory exists under `%USERPROFILE%\.codex\plugins\cache\claw-kit-local\claw-kit\`
+  - for marketplace installs, confirm the newest cache directory exists under `%USERPROFILE%\.codex\plugins\cache\claw-kit\claw-kit\`
+  - for direct development installs, confirm it exists under `%USERPROFILE%\.codex\plugins\cache\claw-kit-local\claw-kit\`
   - inspect that cache copy's `.codex-plugin/plugin.json`
+  - confirm `skills/planning`, `skills/config`, `skills/update`, and `skills/create-claw-skill` exist in the cache copy
 - OpenCode plugin:
   - confirm the installed plugin files exist under the configured OpenCode plugin path
 
@@ -63,4 +76,4 @@ Always verify after updating:
 - Do not claim success if only the plugin surface updated.
 - Do not silently skip verification.
 - Do not invent a second install path when the maintained repo scripts exist.
-- If you are not inside a `claw-kit` checkout and no supported plugin refresh path is available, say that clearly instead of pretending the plugin was updated.
+- If the Codex marketplace CLI or desktop plugin directory is unavailable, say that clearly instead of pretending the plugin was updated.

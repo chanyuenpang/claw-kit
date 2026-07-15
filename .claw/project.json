@@ -1,9 +1,10 @@
 {
-  "version": "0.1.62",
+  "version": "0.1.63",
   "id": "claw-kit",
   "name": "claw-kit",
   "maxTasksToKeep": 9,
   "planning": true,
+  "autoUpdate": true,
   "goalMode": true,
   "truthDispatch": "per_task",
   "externalPlanningSkill": null,

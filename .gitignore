@@ -10,7 +10,10 @@ Thumbs.db
 !.claw/project.json
 !.claw/truth/
 !.claw/truth/**
-.agents/
+/.agents/*
+!/.agents/plugins/
+/.agents/plugins/*
+!/.agents/plugins/marketplace.json
 
 # Local reference repos
 /superpowers/
@@ -23,9 +26,7 @@ Thumbs.db
 /packages/*/dist/
 /packages/*/dist-test/
 /packages/*/coverage/
-# Generated from shared/skills during plugin bundling; edit shared sources instead.
-/packages/codex-adapter/skills/config/SKILL.md
-/packages/codex-adapter/skills/planning/SKILL.md
+# Generated from shared/skills; edit shared sources and run npm run sync:shared-skills.
 /packages/opencode-adapter/skills/config/SKILL.md
 /packages/opencode-adapter/skills/planning/SKILL.md
 .gitnexus

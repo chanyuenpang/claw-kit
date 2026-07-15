@@ -17,6 +17,7 @@ import {
   enforceTaskRetention,
   ingestTruth,
   initProject,
+  getTemplateTaskDoneChoices,
   resolvePlanTemplateFile,
   resolveProjectContext,
   resolveContext,
@@ -174,10 +175,10 @@ const COMMAND_HELP: Record<string, HelpNode> = {
           "{script} template validate <name>",
         ],
         description:
-          "Validate a plan-like template and return normalized metadata. Use `--template` to resolve through the current project's template registry, or `--file` to validate a specific template file directly.",
+          "Validate through the same template resolver used by plan create and subplan create. Use `--template` for built-in, project, package, or skill-local templates, or `--file` to validate a specific template file directly.",
         summary: "Validate a plan template.",
         options: [
-          { flag: "--template <name>", detail: "Template id resolved from built-ins plus .claw/templates." },
+          { flag: "--template <name>", detail: "Template id resolved from built-ins, project templates, packages, and skill-local templates." },
           { flag: "--file <path>", detail: "Explicit template file path to validate." },
         ],
       },
@@ -532,6 +533,10 @@ async function runTemplate(args: string[]): Promise<void> {
             projectRoot: project.projectRoot,
             templateName,
           });
+      const choiceRequiredTasks = template.tasks.flatMap((task) => {
+        const choiceIds = Object.keys(getTemplateTaskDoneChoices(template, task.id) ?? {});
+        return choiceIds.length > 0 ? [{ taskId: task.id, choiceIds }] : [];
+      });
 
       printJson({
         command: "template.validate",
@@ -542,6 +547,7 @@ async function runTemplate(args: string[]): Promise<void> {
         status: template.status,
         taskCount: template.tasks.length,
         taskIds: template.tasks.map((task) => task.id),
+        choiceRequiredTasks,
         ...(template.configOverride ? { configOverride: template.configOverride } : {}),
       });
       return;

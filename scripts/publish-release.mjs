@@ -4,7 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { exportCodexPluginBundle } from "./codex-plugin-bundle.mjs";
+import { exportCodexPluginBundle, installCodexPluginBundle } from "./codex-plugin-bundle.mjs";
+import { assertSharedSkillsSynced } from "./sync-shared-skills.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publish = process.argv.includes("--publish");
@@ -53,22 +54,55 @@ async function verifyReleaseReadiness() {
   const openclaw = await readJson("packages/openclaw-adapter/package.json");
   const opencode = await readJson("packages/opencode-adapter/package.json");
   const plugin = await readJson("packages/codex-adapter/.codex-plugin/plugin.json");
+  const marketplace = await readJson(".agents/plugins/marketplace.json");
   const version = root.version;
 
   assert([core, cli, codex, openclaw, opencode].every((pkg) => pkg.version === version), `Release versions must all equal ${version}.`);
   assert(cli.dependencies?.["@veewo/claw-core"] === version, "CLI must depend on the same @veewo/claw-core version.");
+  assert(openclaw.dependencies?.["@veewo/claw-core"] === version, "OpenClaw adapter must depend on the same @veewo/claw-core version.");
   assert(plugin.version.startsWith(`${version}+codex.`), "Codex plugin version must use the release version plus a +codex timestamp.");
+  assert(marketplace.plugins?.some((entry) => entry.name === "claw-kit" && entry.source?.path === "./packages/codex-adapter"), "Codex marketplace must point claw-kit at ./packages/codex-adapter.");
+  await assertSharedSkillsSynced({ adapterDirs: [path.join(repoRoot, "packages", "codex-adapter")] });
   assertCleanWorktree("Before publishing");
   assertDirectMainCheckout();
 
   const outDir = await fs.mkdtemp(path.join(os.tmpdir(), "claw-kit-release-plugin-"));
-  const bundle = await exportCodexPluginBundle({ outDir });
-  for (const skillName of requiredSharedSkills) {
-    await fs.access(path.join(bundle.bundleDir, "skills", skillName, "SKILL.md"));
+  try {
+    const bundle = await exportCodexPluginBundle({ outDir });
+    for (const skillName of requiredSharedSkills) {
+      await fs.access(path.join(bundle.bundleDir, "skills", skillName, "SKILL.md"));
+    }
+    await fs.access(path.join(bundle.bundleDir, "skills", "update", "TEMPLATE.json"));
+    await fs.access(path.join(bundle.bundleDir, "skills", "create-claw-skill", "TEMPLATE.json"));
+
+    command("npm", ["run", "build", "-w", "@veewo/claw-core"]);
+    command("npm", ["run", "build", "-w", "@veewo/claw"]);
+    const smokeHome = path.join(outDir, "home");
+    const smokeProject = path.join(outDir, "project");
+    await fs.mkdir(smokeProject, { recursive: true });
+    await installCodexPluginBundle({
+      sourceDir: path.join(repoRoot, "packages", "codex-adapter"),
+      cacheRoot: path.join(smokeHome, ".codex", "plugins", "cache", "claw-kit"),
+    });
+    const cliPath = path.join(repoRoot, "packages", "cli", "dist", "bin.js");
+    const smokeEnv = { ...process.env, HOME: smokeHome, USERPROFILE: smokeHome };
+    execFileSync(process.execPath, [cliPath, "init", "--name", "Release Template Smoke"], {
+      cwd: smokeProject,
+      env: smokeEnv,
+      stdio: "pipe",
+    });
+    for (const templateName of ["update", "create-claw-skill"]) {
+      const output = execFileSync(process.execPath, [cliPath, "template", "validate", "--template", templateName], {
+        cwd: smokeProject,
+        env: smokeEnv,
+        encoding: "utf8",
+      });
+      const validation = JSON.parse(output);
+      assert(validation.ok === true && validation.templateId === templateName, `Bundled template ${templateName} failed isolated CLI validation.`);
+    }
+  } finally {
+    await fs.rm(outDir, { recursive: true, force: true });
   }
-  await fs.access(path.join(bundle.bundleDir, "skills", "update", "TEMPLATE.json"));
-  await fs.access(path.join(bundle.bundleDir, "skills", "create-claw-skill", "TEMPLATE.json"));
-  await fs.rm(outDir, { recursive: true, force: true });
 
   return { version, pluginVersion: plugin.version };
 }

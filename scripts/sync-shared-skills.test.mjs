@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { syncSharedSkills } from "./sync-shared-skills.mjs";
+import { syncSharedSkills, verifySharedSkillsSynced } from "./sync-shared-skills.mjs";
 
 async function makeFixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "claw-kit-sync-shared-skills-"));
@@ -45,4 +45,40 @@ test("syncSharedSkills copies whole skill directories and refreshes top-level SK
     await assert.doesNotReject(fs.access(path.join(skillDir, "scripts", "helper.js")));
     await assert.rejects(fs.access(path.join(skillDir, "stale.txt")));
   }
+
+  assert.deepEqual(
+    await verifySharedSkillsSynced({ repoRoot: root, skillNames: ["demo"] }),
+    { ok: true, problems: [] },
+  );
+});
+
+test("verifySharedSkillsSynced reports a missing materialized skill without rewriting it", async (t) => {
+  const { root, codexSkillDir, opencodeSkillDir } = await makeFixture();
+  t.after(async () => {
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  await fs.rm(codexSkillDir, { recursive: true, force: true });
+  await fs.rm(opencodeSkillDir, { recursive: true, force: true });
+  const result = await verifySharedSkillsSynced({ repoRoot: root, skillNames: ["demo"] });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.problems.length, 2);
+  assert.match(result.problems[0], /incomplete file set/);
+  await assert.rejects(fs.access(codexSkillDir));
+});
+
+test("syncSharedSkills can target an isolated adapter staging directory", async (t) => {
+  const { root } = await makeFixture();
+  const stagedAdapter = path.join(root, "staged-adapter");
+  t.after(async () => {
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  await syncSharedSkills({ repoRoot: root, skillNames: ["demo"], adapterDirs: [stagedAdapter] });
+
+  const stagedSkill = path.join(stagedAdapter, "skills", "demo");
+  await assert.doesNotReject(fs.access(path.join(stagedSkill, "SKILL.md")));
+  await assert.doesNotReject(fs.access(path.join(stagedSkill, "guide.md")));
+  await assert.doesNotReject(fs.access(path.join(stagedSkill, "scripts", "helper.js")));
 });

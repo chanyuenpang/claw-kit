@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   CODEX_PLUGIN_PAYLOAD_PATHS,
@@ -10,6 +11,7 @@ import {
   installCodexPluginBundle,
   readCodexPluginSource,
 } from "./codex-plugin-bundle.mjs";
+import { verifySharedSkillsSynced } from "./sync-shared-skills.mjs";
 
 async function makeFixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "claw-kit-codex-plugin-"));
@@ -81,6 +83,41 @@ test("exported Codex plugin contains every shared workflow skill", async () => {
   }
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "update", "TEMPLATE.json")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "create-claw-skill", "TEMPLATE.json")));
+});
+
+test("repository Codex plugin source is fully materialized from shared skills", async () => {
+  const adapterDir = fileURLToPath(new URL("../packages/codex-adapter", import.meta.url));
+  const result = await verifySharedSkillsSynced({ adapterDirs: [adapterDir] });
+  assert.deepEqual(result, { ok: true, problems: [] });
+});
+
+test("repo marketplace points Codex at the materialized adapter source", async () => {
+  const marketplace = JSON.parse(
+    await fs.readFile(new URL("../.agents/plugins/marketplace.json", import.meta.url), "utf8"),
+  );
+  const plugin = marketplace.plugins.find((entry) => entry.name === "claw-kit");
+
+  assert.equal(marketplace.name, "claw-kit");
+  assert.equal(plugin.source.source, "local");
+  assert.equal(plugin.source.path, "./packages/codex-adapter");
+  assert.equal(plugin.policy.installation, "AVAILABLE");
+  assert.equal(plugin.category, "Developer Tools");
+});
+
+test("official marketplace-style cache copy contains all shared skills and resources", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "claw-kit-codex-marketplace-install-"));
+  const cacheRoot = path.join(root, ".codex", "plugins", "cache", "claw-kit");
+  const sourceDir = fileURLToPath(new URL("../packages/codex-adapter", import.meta.url));
+  const result = await installCodexPluginBundle({ sourceDir, cacheRoot });
+
+  for (const skillName of ["planning", "config", "update", "create-claw-skill"]) {
+    await assert.doesNotReject(fs.access(path.join(result.installDir, "skills", skillName, "SKILL.md")));
+  }
+  await assert.doesNotReject(fs.access(path.join(result.installDir, "skills", "update", "TEMPLATE.json")));
+  await assert.doesNotReject(fs.access(path.join(result.installDir, "skills", "create-claw-skill", "TEMPLATE.json")));
+  await assert.doesNotReject(
+    fs.access(path.join(result.installDir, "skills", "create-claw-skill", "scripts", "create-claw-skill-stub.mjs")),
+  );
 });
 
 test("exportCodexPluginBundle copies the expected payload into a versioned bundle directory", async () => {

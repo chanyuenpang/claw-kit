@@ -28,6 +28,7 @@ Recommended batch task detail:
 
 - This skill is for installation refresh work, not for planning and not for editing project workflow state.
 - A claw-kit update is complete only when both the global CLI and the current host plugin surface were refreshed and verified.
+- On remote Codex machines, use the repository marketplace lifecycle; direct cache installation is a maintainer-development path.
 - Keep route rules and repeated high-signal constraints here. Keep the step-by-step execution contract in `TEMPLATE.json`.
 
 ## References

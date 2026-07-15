@@ -8,8 +8,9 @@
 - Batch/mixed entry: `SKILL.md` includes the standard subplan route for refreshing the published CLI and the current host plugin install surface after a newer version is detected.
 - Ordered workflow steps: `TEMPLATE.json`
 - Branch conditions: `TEMPLATE.json`
-- Tool constraints and helper files: `TEMPLATE.json`, `non-claw-fallback.md`
+- Tool constraints, repository install scripts, and Codex marketplace lifecycle: `TEMPLATE.json`, `non-claw-fallback.md`
 - Non-template supplement material kept in `SKILL.md`: installation-only positioning and the paired-surface completion rule.
+- Remote Codex install and cache verification: `TEMPLATE.json`, `non-claw-fallback.md`
 - Optional skill-local references: none.
 - Verification gates: `TEMPLATE.json`
 - Long-form source wording: `non-claw-fallback.md`

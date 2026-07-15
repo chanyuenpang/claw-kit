@@ -119,3 +119,54 @@
 - `CLAW_SKILL_ROOTS shared/skills`
 - `guidance.onDone choiceId`
 - `workflowGuidance.summary`
+
+## 2026-07-15：官方 Codex marketplace 源物化与模板 resolver 收敛
+
+### 结论
+
+- Codex 官方 Git marketplace 直接缓存仓库 marketplace manifest 中 `source` 指向的插件树；仓库入口是 `.agents/plugins/marketplace.json`，其中 `claw-kit` 使用 `source.source = "local"`、`source.path = "./packages/codex-adapter"`。安装期不依赖 npm lifecycle，也不应要求用户运行仓库脚本补齐插件内容。
+- `shared/skills/` 仍是跨适配器共享内容的规范源；但作为官方 marketplace 安装源的 `packages/codex-adapter/` 必须在 Git 中提交已物化的 `planning`、`config`、`update`、`create-claw-skill` 及各自全部模板、helper 和其他资源。Codex 专属 skills 与这四个共享 skills 共同组成自包含插件树。
+- `scripts/sync-shared-skills.mjs` 现在同时提供 `verifySharedSkillsSynced(...)` 与 `assertSharedSkillsSynced(...)` 只读校验。发布门禁在 marketplace 源缺少共享 skill 或内容漂移时直接失败；`scripts/codex-plugin-bundle.mjs` 导出时不再隐式同步来掩盖源目录缺失。
+- `scripts/codex-plugin-bundle.test.mjs` 的 marketplace-style cache copy 测试从真实 `packages/codex-adapter` 源树复制到临时版本化 cache，并验证四个共享 skills 以及 template / helper 资源齐全。这一验证与 release zip 验证是两个不同发布面。
+- 当前模板统一入口是 `packages/core/src/plan-templates.ts` 的 `resolveSeedPlanTemplate(...)`。`claw plan create`、`claw subplan create` 与 `claw template validate` 都复用该 resolver；此前文档中的 `resolvePlanTemplate(...)` / 分离式解析描述已被这一当前实现取代。
+- `claw template validate` 除模板有效性外，还输出 `choiceRequiredTasks`，用于暴露哪些 task 在完成时要求 `choice-id`。
+- 合并远端后的统一版本线是 `0.1.63`：root、core、CLI、Codex adapter、OpenClaw adapter 与 OpenCode adapter 的 package version 均对齐到 `0.1.63`。
+
+### 长期行为 / 规则
+
+- 官方 marketplace 源必须是已提交、自包含、可直接复制的插件树；不能以“bundle 导出时能够生成完整 payload”替代对 `packages/codex-adapter` 源树完整性的验证。
+- 共享内容的维护入口仍是 `shared/skills/`，但每次共享 skill 或资源变更后，必须同步更新并提交 marketplace 源中的物化副本，再由只读 verify/assert 检查缺失与漂移。
+- release gate 必须同时验证 `.agents/plugins/marketplace.json` 的 source 路由、物化源树与 shared source 一致，以及 bundle / isolated template 可用性；任何一个发布面失败都不能发布。
+- 用户安装与升级 Codex 插件的规范路径是 `codex plugin marketplace add chanyuenpang/claw-kit --ref main` 和 `codex plugin marketplace upgrade claw-kit`，随后在 Codex 插件目录中安装或刷新 Claw Kit。直接写入本机 plugin cache 的安装脚本只用于维护者本地开发，不是远端用户分发入口。
+- plan create、subplan create 与 template validate 的模板语义必须继续由同一个 `resolveSeedPlanTemplate(...)` 决定，避免创建路径与校验路径对同一模板给出不同结论。
+
+### 验证标准
+
+- `.agents/plugins/marketplace.json` 中 `claw-kit` 的 source 精确指向 `./packages/codex-adapter`。
+- `verifySharedSkillsSynced(...)` 对缺失或漂移只报告失败、不改写文件；`assertSharedSkillsSynced(...)` 在 release gate 中把该结果升级为硬失败。
+- marketplace-style cache copy 后，cache 的 `skills/` 同时包含 `planning`、`config`、`update`、`create-claw-skill`，且 `TEMPLATE.json`、helper 与其他声明资源仍在。
+- `claw plan create`、`claw subplan create` 和具名 `claw template validate` 对相同模板走同一 resolver；validate 响应包含 `choiceRequiredTasks`。
+- release version audit 同时核对 root 与所有 adapter/package version 为 `0.1.63`。
+
+### 关联代码
+
+- marketplace 入口：`.agents/plugins/marketplace.json`
+- 共享内容源：`shared/skills/`
+- 已物化 Codex 插件源：`packages/codex-adapter/skills/`
+- 只读同步校验：`scripts/sync-shared-skills.mjs`
+- Codex bundle 导出：`scripts/codex-plugin-bundle.mjs`
+- marketplace cache copy 测试：`scripts/codex-plugin-bundle.test.mjs`
+- release gate：`scripts/publish-release.mjs`
+- 统一模板 resolver：`packages/core/src/plan-templates.ts`
+- plan / subplan 调用：`packages/core/src/plan.ts`
+- CLI validate 与 `choiceRequiredTasks`：`packages/cli/src/cli.ts`
+- 用户安装文档：`README.md`
+
+### 补充检索词
+
+- `marketplace.json packages/codex-adapter`
+- `materialized shared skills`
+- `verifySharedSkillsSynced assertSharedSkillsSynced`
+- `marketplace-style cache copy`
+- `resolveSeedPlanTemplate choiceRequiredTasks`
+- `codex plugin marketplace add upgrade`

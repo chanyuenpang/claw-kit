@@ -95,14 +95,82 @@ async function copySkillDirectory(sourceDir, targetDir, skillName) {
   await copyRecursive(sourceDir, targetDir);
 }
 
-async function syncSharedSkillsImpl({ repoRoot = defaultRepoRoot, skillNames = SHARED_SKILL_NAMES } = {}) {
+async function listFiles(rootDir, currentDir = rootDir) {
+  const files = [];
+  const entries = await fs.readdir(currentDir, { withFileTypes: true });
+  for (const entry of entries) {
+    const entryPath = path.join(currentDir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...await listFiles(rootDir, entryPath));
+    } else {
+      files.push(path.relative(rootDir, entryPath));
+    }
+  }
+  return files.sort();
+}
+
+async function expectedSkillFile(sourceDir, relativePath, skillName) {
+  const content = await fs.readFile(path.join(sourceDir, relativePath), "utf8");
+  return relativePath === "SKILL.md" ? injectBanner(content, skillName) : content;
+}
+
+export async function verifySharedSkillsSynced({
+  repoRoot = defaultRepoRoot,
+  skillNames = SHARED_SKILL_NAMES,
+  adapterDirs = [path.join(repoRoot, "packages", "codex-adapter"), path.join(repoRoot, "packages", "opencode-adapter")],
+} = {}) {
+  const problems = [];
+
+  for (const skillName of skillNames) {
+    const sourceDir = path.join(repoRoot, "shared", "skills", skillName);
+    const expectedFiles = await listFiles(sourceDir);
+    for (const adapterDir of adapterDirs) {
+      const targetDir = path.join(adapterDir, "skills", skillName);
+      let actualFiles = [];
+      try {
+        actualFiles = await listFiles(targetDir);
+      } catch (error) {
+        if (error?.code !== "ENOENT") throw error;
+      }
+      if (JSON.stringify(actualFiles) !== JSON.stringify(expectedFiles)) {
+        problems.push(`${path.relative(repoRoot, targetDir)} has an incomplete file set`);
+        continue;
+      }
+      for (const relativePath of expectedFiles) {
+        const expected = await expectedSkillFile(sourceDir, relativePath, skillName);
+        const actual = await fs.readFile(path.join(targetDir, relativePath), "utf8");
+        if (actual !== expected) {
+          problems.push(`${path.relative(repoRoot, path.join(targetDir, relativePath))} is out of sync`);
+        }
+      }
+    }
+  }
+
+  return { ok: problems.length === 0, problems };
+}
+
+export async function assertSharedSkillsSynced(options = {}) {
+  const result = await verifySharedSkillsSynced(options);
+  if (!result.ok) {
+    throw new Error(`Shared skills are not materialized in the plugin source:\n- ${result.problems.join("\n- ")}\nRun npm run sync:shared-skills, review the generated files, and commit them before release.`);
+  }
+  return result;
+}
+
+async function syncSharedSkillsImpl({
+  repoRoot = defaultRepoRoot,
+  skillNames = SHARED_SKILL_NAMES,
+  adapterDirs,
+} = {}) {
   return withRepoLock(repoRoot, async () => {
     const synced = [];
 
     for (const skillName of skillNames) {
       const sourceDir = path.join(repoRoot, "shared", "skills", skillName);
       const sourcePath = path.join(sourceDir, "SKILL.md");
-      const targetPaths = targetPathsForSkill(repoRoot, skillName);
+      const targetPaths = adapterDirs
+        ? adapterDirs.map((adapterDir) => path.join(adapterDir, "skills", skillName, "SKILL.md"))
+        : targetPathsForSkill(repoRoot, skillName);
 
       for (const targetPath of targetPaths) {
         await copySkillDirectory(sourceDir, path.dirname(targetPath), skillName);

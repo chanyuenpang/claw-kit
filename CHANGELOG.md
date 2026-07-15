@@ -2,6 +2,26 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.1.63] - 2026-07-15
+
+### Added
+
+- Added the repository Codex marketplace at `.agents/plugins/marketplace.json` and documented the official remote install and upgrade flow.
+- Added `claw template validate` for named or file-based templates, including route-choice metadata for tasks that require a choice id.
+- Added plan-like skill-local template workflows, authoring guidance, and the `create-claw-skill` scaffold workflow from the integrated remote development line.
+
+### Changed
+
+- `claw plan create`, `claw subplan create`, and `claw template validate --template` now use the same template resolver and validation path.
+- The committed `packages/codex-adapter` tree now contains every shared skill and resource required by Codex marketplace installation; release export no longer performs a hidden staging-only sync.
+- Release verification now rejects an out-of-sync Codex plugin source and executes bundled template validation from an isolated marketplace-style cache.
+- Direct releases are governed from `main` with exact `origin/main` parity and a clean-worktree requirement.
+
+### Fixed
+
+- Fixed remote Codex installations missing `planning` and `config` because those shared skills previously existed only in temporary export staging.
+- Fixed the 0.1.62 contract gap where `create-claw-skill` referenced `claw template validate` before the published CLI exposed the command.
+
 ## [0.1.62] - 2026-07-14
 
 ### Added

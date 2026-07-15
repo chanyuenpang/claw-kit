@@ -28,7 +28,9 @@ Current publishable packages:
 
 Codex plugin distribution source:
 
-- `packages/codex-adapter` -> exported or locally installed Codex plugin payload
+- `shared/skills` -> editable cross-host shared skill content
+- `packages/codex-adapter` -> fully materialized, committed Codex plugin payload
+- `.agents/plugins/marketplace.json` -> official Codex repository marketplace entry
 
 ## Release Modes
 
@@ -86,21 +88,22 @@ Published package mapping:
 2. Classify all local changes; commit useful release content, remove disposable output, and ignore intentional local-only files. Do not stash changes to bypass this step.
 3. Ensure the checked-out branch is `main` and push the release commit directly to `origin/main`.
 4. Align version files and changelog.
-5. Run `npm install`.
-6. Run verification commands.
-7. Dry-run package artifacts.
-8. Create the release commit and push it directly to GitHub.
-9. Run `npm run verify:release`; it validates the clean tree, version alignment, exact `main`/`origin/main` parity, and exported plugin skills.
-10. Confirm npm auth.
-11. Publish `@veewo/claw-core` first.
-12. Publish `@veewo/claw` second.
-13. Verify the worktree is still clean, then verify published versions and attach the exported Codex plugin bundle to the GitHub release.
-14. Refresh the locally installed CLI and local Codex plugin cache.
-15. Run post-publish installation verification from a clean machine or checkout.
+5. Run `npm run sync:shared-skills`, review the generated adapter files, and include the Codex copies in the release commit.
+6. Run `npm install`.
+7. Run verification commands.
+8. Dry-run package artifacts.
+9. Create the release commit and push it directly to GitHub.
+10. Run `npm run verify:release`; it validates the clean tree, version alignment, exact `main`/`origin/main` parity, marketplace metadata, materialized Codex skills, exported payload, and isolated `claw template validate` execution from a marketplace-style cache.
+11. Confirm npm auth.
+12. Publish `@veewo/claw-core` first.
+13. Publish `@veewo/claw` second.
+14. Verify the worktree is still clean, then verify published versions and attach the exported Codex plugin bundle to the GitHub release.
+15. Refresh the locally installed CLI and maintainer development cache.
+16. Upgrade the Codex marketplace snapshot and verify installation from a clean machine.
 
 Execution policy by mode:
 
-- `full-publish`: complete all 15 steps.
+- `full-publish`: complete all 16 steps.
 - `prepare-only`: complete through step 6 only.
 - `publish-only`: complete steps 7-12 only.
 
@@ -111,6 +114,8 @@ Run these from the repository root unless noted:
 ```powershell
 npm test
 npm run check
+npm run test:codex-plugin
+node --test scripts/sync-shared-skills.test.mjs
 cd packages\core
 npm pack --dry-run
 cd ..\cli
@@ -195,6 +200,21 @@ Direct npm install:
 npm install -g @veewo/claw
 ```
 
+Official Codex plugin install on a remote machine:
+
+```powershell
+codex plugin marketplace add chanyuenpang/claw-kit --ref main
+codex plugin marketplace list
+```
+
+Restart the ChatGPT desktop app, choose the **Claw Kit** marketplace in the plugin directory, install **Claw Kit**, and start a new task. Codex loads the installed copy from:
+
+```text
+%USERPROFILE%\.codex\plugins\cache\claw-kit\claw-kit\<plugin-version>\
+```
+
+Refresh the Git snapshot with `codex plugin marketplace upgrade claw-kit` before installing a newer plugin version. Do not depend on post-install generation: Codex copies the marketplace source into its cache, and npm-backed plugin installation does not run lifecycle scripts.
+
 After publishing, refresh the maintainer machine as part of release completion:
 
 1. Reinstall the global CLI.
@@ -205,7 +225,7 @@ Use the closeout workflow for the local-copy details:
 
 - [docs/2026-06-08-closeout-workflow.md](G:/Projects/claw-kit/docs/2026-06-08-closeout-workflow.md)
 
-Codex plugin distribution commands:
+Maintainer-only Codex plugin development commands:
 
 ```powershell
 npm run export:codex-plugin
@@ -216,6 +236,8 @@ Expected output and install locations:
 
 - export bundle: `dist/codex-plugin/claw-kit/<plugin-version>/`
 - local Codex cache install: `C:\Users\<you>\.codex\plugins\cache\claw-kit-local\claw-kit\<plugin-version>\`
+
+The direct cache install is a repository-development path, not the remote distribution path.
 
 ## Post-publish Install Verification
 
@@ -236,6 +258,8 @@ npm run install:codex-plugin
 Get-Content packages/codex-adapter/.codex-plugin/plugin.json
 Get-ChildItem dist/codex-plugin/claw-kit
 Get-ChildItem C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit
+node packages\cli\dist\bin.js template validate --template update
+node packages\cli\dist\bin.js template validate --template create-claw-skill
 ```
 
 Expected outcome:
@@ -245,10 +269,12 @@ Expected outcome:
 - `claw --help` succeeds
 - the exported bundle contains the expected manifest version when adapter files changed
 - the local plugin cache contains the expected manifest version when adapter files changed
+- the repository marketplace source contains `planning`, `config`, `update`, and `create-claw-skill`, including templates and helper resources
+- both bundled templates pass the real CLI validation command from an isolated cache
 
 ## Notes
 
 - `@veewo/claw` depends on `@veewo/claw-core`, so publish order matters.
 - The local executable name remains `claw`.
 - `scripts/install-cli.ps1` now installs the published npm package directly.
-- `packages/codex-adapter` remains the only source of truth for the Codex plugin payload; exported bundles and local cache installs are derived copies.
+- `shared/skills` is the editable source for cross-host skills. The committed `packages/codex-adapter` tree is the canonical installable Codex plugin source; exports and cache installs are derived from that already-materialized tree.
