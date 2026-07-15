@@ -19,9 +19,10 @@ Accepted
 
 从 `0.1.62` 起，真实 npm 发布还必须通过 `npm run verify:release` / `npm run publish:release` 的来源闸门：
 
-- 工作区必须干净
+- 仓库所有者默认直接在 `main` 上交付和发布；除非明确要求 review，否则不创建 feature branch、PR 或 draft PR
+- 发布前必须位于 `main`，且 `HEAD` 必须与 `origin/main` 精确相等；有用内容须先提交并推送到 `main`
+- 发布前和 npm publish 后工作区都必须干净；不得用 stash 绕过此门禁
 - 所有 release 版本元数据必须对齐
-- `HEAD` 必须已包含在 `origin/main`，以证明 release commit 已先推送到 GitHub
 - 实际生成的 Codex 插件 bundle 必须包含完整共享 workflow skill 目录，包括 `planning`、`config`、`update`、`create-claw-skill` 及其模板或 fallback 资源
 - Codex 插件资产与两个 npm 包必须使用同一 release 版本
 
@@ -33,6 +34,8 @@ Accepted
 - 发布流程需要维护 `@veewo/claw-core` 与 `@veewo/claw` 的先后顺序
 - npm registry 不再是唯一发布事实；可复现 release 必须同时具备 GitHub 已推送的源码提交和同版本 Codex 插件产物。
 - 未提交、未推送或 bundle 内容不完整会在 npm publish 前失败，避免另一台电脑更新后退回旧 skill 集合。
+- 所有者的常规交付路径保持单一且可审计：本地 `main`、`origin/main` 与发布源在开始和结束时没有漂移。
+- 有用的本地改动必须成为仓库历史的一部分；stash 仅可用于非发布同步保护，不能作为发布门禁的绕过方式。
 
 ## Related Code
 
@@ -40,6 +43,7 @@ Accepted
 - `packages/core/package.json`
 - `scripts/verify-release.mjs`
 - `scripts/publish-release.mjs`
+- `AGENTS.md`
 - `scripts/codex-plugin-bundle.mjs`
 - `package.json`
 - `README.md`
