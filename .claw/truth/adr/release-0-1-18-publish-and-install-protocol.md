@@ -62,6 +62,8 @@ Accepted
 - researcher dispatch contract 进入 release closeout 事实后，未来 release 不会只验证 artifact 版本，还会同时复核与发布一起交付的长期 workflow 规则
 - 发布后清理 token 让本机环境回到更安全的状态
 
+`0.1.64` closeout 已完成并验证 npm 双包、GitHub Release、全局 CLI，以及 Codex active marketplace source 与 versioned cache。当前 truth contract 的 `required:false` 仍可能被误读为可随意跳过；后续应改为单字段 truth `{ dispatch: "when_reusable_truth_confirmed" }` 与 ADR `{ dispatch: "required" }`。该 follow-up 尚未实现，不改变 `0.1.64` 已发布事实。
+
 ## Related code
 
 - `DISTRIBUTION.md`
