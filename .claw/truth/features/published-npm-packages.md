@@ -153,3 +153,10 @@ release commit `472635e` 已推送至 `origin/main`，tag 为 `v0.1.62`；`@veew
 一次 divergence audit 的实测基线是：全局 `claw --version` 为 `0.1.62`，而 `claw template validate --help` 返回 `Unknown help topic: template`；同时本地 Codex plugin 的 `create-claw-skill` guidance 已引用 `claw template validate`。因此在合并并发布包含新 skill/template guidance 的版本前，该 guidance 不可被视为可由当前已发布 CLI 执行。
 
 后续 release 验收应在从 registry 安装或全局刷新后的 CLI 上，对每个新增或修改的 skill 所引用的 CLI command/subcommand 运行 `--help`（或等价 focused smoke）。这项命令面 smoke 与 bundle 完整性检查互补：前者验证可执行合同，后者验证文件分发合同。
+## 2026-07-15：仓库所有者的直接发布治理
+
+该仓库的默认 release 路径是直接从当前检出的 `main` 发布：不创建 feature/release branch，也不创建 PR；只有仓库所有者明确要求时才改用 branch/PR 审核路径。此前集成分支直接推送到 `origin/main` 后，GitHub 自动将 draft PR #1 标记为 merged，这个 PR 状态只是该策略的结果，不构成后续发布所需的步骤。
+
+发布前必须确认没有任何仍有价值的未提交本地源码内容；发布完成后也必须再次确认工作区没有遗留仍有价值的未提交源码内容。若发现这类内容，先纳入当前 `main` 的可追溯提交并推送，再发布或宣布 closeout；不得用 branch/PR 来替代这一完整性检查。
+
+现有 GitHub-source gate 继续适用：`git status --porcelain` 为空，且 `HEAD` 已包含在 `origin/main`。直接发布政策只改变默认协作路径，不降低 source、版本、bundle、registry 或 CLI 命令面验证要求。

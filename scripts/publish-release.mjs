@@ -18,6 +18,29 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function assertCleanWorktree(phase) {
+  assert(
+    command("git", ["status", "--porcelain"]) === "",
+    `${phase}: release worktree must be clean. Classify every local change before continuing: commit useful release content to main, remove disposable output, or add intentional local-only artifacts to .gitignore. Do not use a stash to bypass this gate.`,
+  );
+}
+
+function assertDirectMainCheckout() {
+  const branch = command("git", ["branch", "--show-current"]);
+  assert(
+    branch === "main",
+    `Release must run from the repository owner's main branch; current branch is ${branch || "detached HEAD"}. Do not create a branch or pull request unless the owner explicitly requests review.`,
+  );
+
+  command("git", ["fetch", "origin", "--prune"]);
+  const localHead = command("git", ["rev-parse", "HEAD"]);
+  const remoteMain = command("git", ["rev-parse", "origin/main"]);
+  assert(
+    localHead === remoteMain,
+    "main must exactly match origin/main before publishing. Commit and push all useful release content first, then rerun verification.",
+  );
+}
+
 async function readJson(relativePath) {
   return JSON.parse(await fs.readFile(path.join(repoRoot, relativePath), "utf8"));
 }
@@ -35,14 +58,8 @@ async function verifyReleaseReadiness() {
   assert([core, cli, codex, openclaw, opencode].every((pkg) => pkg.version === version), `Release versions must all equal ${version}.`);
   assert(cli.dependencies?.["@veewo/claw-core"] === version, "CLI must depend on the same @veewo/claw-core version.");
   assert(plugin.version.startsWith(`${version}+codex.`), "Codex plugin version must use the release version plus a +codex timestamp.");
-  assert(command("git", ["status", "--porcelain"]) === "", "Release worktree must be clean; commit release changes before publishing.");
-
-  command("git", ["fetch", "origin", "--prune"]);
-  try {
-    execFileSync("git", ["merge-base", "--is-ancestor", "HEAD", "origin/main"], { cwd: repoRoot, stdio: "ignore" });
-  } catch {
-    throw new Error("HEAD is not on origin/main. Push the release commit to GitHub before publishing npm packages.");
-  }
+  assertCleanWorktree("Before publishing");
+  assertDirectMainCheckout();
 
   const outDir = await fs.mkdtemp(path.join(os.tmpdir(), "claw-kit-release-plugin-"));
   const bundle = await exportCodexPluginBundle({ outDir });
@@ -73,4 +90,5 @@ for (const workspace of ["@veewo/claw-core", "@veewo/claw"]) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
+assertCleanWorktree("After publishing");
 console.log(`Published @veewo/claw-core and @veewo/claw ${release.version}.`);

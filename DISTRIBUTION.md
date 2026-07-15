@@ -40,6 +40,18 @@ Default mode is `full-publish` unless a narrower mode is explicitly requested.
 
 If the user does not explicitly narrow the mode, run `full-publish`.
 
+## Repository-owner policy
+
+This repository uses direct maintainer publishing by default:
+
+- work from the checked-out `main` branch;
+- commit the release content and push it directly to `origin/main`;
+- do **not** create a feature branch or pull request unless the repository owner explicitly asks for review;
+- before publishing, classify every local change: useful release content must be committed and pushed, disposable output must be removed, and intentional local-only files must be ignored;
+- do not use `git stash` to make a release gate pass; a release starts and ends with a clean worktree.
+
+`npm run verify:release` and `npm run publish:release` enforce these rules: they require the current branch to be `main`, `HEAD` to equal `origin/main`, and `git status --porcelain` to be empty. The publish command repeats the clean-worktree assertion after npm publishing.
+
 ## Versioning Rules
 
 Keep package versions aligned unless there is a strong reason to split them.
@@ -71,18 +83,18 @@ Published package mapping:
 ## Release Checklist
 
 1. Confirm the target version.
-2. Ensure the working tree is clean enough for a release commit.
-3. Align version files and changelog.
-4. Run `npm install`.
-5. Run verification commands.
-6. Dry-run package artifacts.
-7. Create the release commit.
-8. Push the release commit to GitHub and verify `HEAD` is contained in `origin/main`.
-9. Run `npm run verify:release`; it validates the clean tree, version alignment, pushed commit, and exported plugin skills.
+2. Classify all local changes; commit useful release content, remove disposable output, and ignore intentional local-only files. Do not stash changes to bypass this step.
+3. Ensure the checked-out branch is `main` and push the release commit directly to `origin/main`.
+4. Align version files and changelog.
+5. Run `npm install`.
+6. Run verification commands.
+7. Dry-run package artifacts.
+8. Create the release commit and push it directly to GitHub.
+9. Run `npm run verify:release`; it validates the clean tree, version alignment, exact `main`/`origin/main` parity, and exported plugin skills.
 10. Confirm npm auth.
 11. Publish `@veewo/claw-core` first.
 12. Publish `@veewo/claw` second.
-13. Verify published versions and attach the exported Codex plugin bundle to the GitHub release.
+13. Verify the worktree is still clean, then verify published versions and attach the exported Codex plugin bundle to the GitHub release.
 14. Refresh the locally installed CLI and local Codex plugin cache.
 15. Run post-publish installation verification from a clean machine or checkout.
 
@@ -167,7 +179,7 @@ npm run verify:release
 npm run publish:release
 ```
 
-Both commands intentionally fail if the release worktree is dirty or its current commit has not been pushed to GitHub. Do not use direct `npm publish` as a substitute: it can create a registry release with no corresponding GitHub source commit.
+Both commands intentionally fail if the release worktree is dirty, the current branch is not `main`, or the local and remote `main` commits differ. Do not use direct `npm publish` as a substitute: it can create a registry release with no corresponding GitHub source commit.
 
 ## Remote Install Paths
 
