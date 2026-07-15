@@ -6,13 +6,6 @@ This reference distills the current OpenClaw truth deposition rules into Codex-f
 
 Turn reports, discoveries, and completed task outcomes into durable canonical truth under `.claw/truth/`.
 
-## What truth is not
-
-- not a progress log
-- not a PR summary
-- not a one-off verification report
-- not a dump of temporary session state
-
 ## What is worth deposition
 
 - stable feature behavior
@@ -20,6 +13,8 @@ Turn reports, discoveries, and completed task outcomes into durable canonical tr
 - important debugging or routing knowledge
 - code-location anchors that help future investigation
 - long-lived constraints, pitfalls, and verification rules
+
+Deposit facts that remain useful beyond the current task and are supported by the supplied evidence.
 
 ## Canonical routing
 
@@ -30,6 +25,15 @@ Turn reports, discoveries, and completed task outcomes into durable canonical tr
 
 Prefer updating an existing truth doc over creating a new fragmented one.
 
+## Writer-owned routing
+
+- Canonical truth routing belongs to the writer.
+- The main agent supplies the reusable facts and evidence that must be recorded.
+- Use `claw search` and read only relevant matches.
+- For a new document, check `SUMMARY.md` and exact filename/title collisions before widening the search.
+- When search is unavailable or candidates conflict, widen inspection incrementally until routing is resolved.
+- Update `SUMMARY.md` only when discoverability materially changed.
+
 ## Writing rules
 
 - write body text in Chinese when the repository expects Chinese docs, but treat mojibake as corruption rather than valid prose
@@ -37,8 +41,8 @@ Prefer updating an existing truth doc over creating a new fragmented one.
 - bind conclusions to real code paths whenever possible
 - distinguish primary anchors from related files in prose
 - keep the result in readable markdown rather than machine-oriented JSON
-- never invent code paths or facts
-- do not copy suspicious shell mojibake such as `鐨`, `锛`, or `銆` back into canonical truth; repair or rewrite the sentence first
+- ground every code path and fact in supplied or inspected evidence
+- repair or rewrite suspicious shell mojibake such as `鐨`, `锛`, or `銆` before canonical deposition
 
 ## Useful sections
 

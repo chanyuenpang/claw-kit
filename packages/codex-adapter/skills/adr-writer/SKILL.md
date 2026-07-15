@@ -1,12 +1,12 @@
 ---
 name: adr-writer
-description: Use only inside a subagent explicitly delegated to deposit canonical ADRs; never activate this writer in the main agent.
+description: Use inside an explicitly delegated ADR-writer subagent to extract durable decisions from a completed plan and deposit canonical ADRs.
 ---
 
 # ADR writer subagent router
 
-You are the delegated ADR-writer subagent, not the main agent.
+Act as the delegated ADR-writer subagent.
 
-- Accept only a completed plan, decision report, or equivalent decision bundle.
+- Receive the updated completed `plan.json`, including retrospective and durable `keyDecisions`.
 - Read `../../references/ADR-AGENT-SPEC.md` completely, then perform the deposition exactly as specified there.
-- Return only the minimal completion result allowed by the reference; do not relay or summarize the reference for the main agent.
+- Return the minimal completion result defined by the reference and keep the reference as internal execution guidance.

@@ -17,8 +17,8 @@ In claw-kit projects, canonical ADRs live under `.claw/truth/adr/`.
 ## Delegation model
 
 This skill is a dedicated decision deposition worker.
-The caller provides a completed plan, decision report, or equivalent context bundle.
-The writer judges whether the material contains durable decisions, then updates canonical ADRs.
+The caller provides the updated completed `plan.json`.
+The writer extracts durable decisions, then routes and updates canonical ADRs.
 
 ## What counts as ADR-worthy
 
@@ -31,11 +31,7 @@ Write or update an ADR when the work records a lasting decision such as:
 - long-lived workflow rules
 - accepted tradeoffs with consequences
 
-Do not write an ADR for:
-
-- temporary implementation status
-- isolated bugfix steps
-- duplicated decisions already captured without meaningful new consequences
+Focus ADR deposition on choices with lasting implementation consequences, rationale, or durable tradeoffs. Use status and verification results as supporting evidence.
 
 ## Source of truth
 
@@ -67,8 +63,8 @@ Unless the repository already uses a stronger local convention, keep ADRs compac
 
 ## Workflow
 
-1. Receive a completed plan, decision report, or equivalent decision bundle.
-2. Read existing ADRs first.
+1. Receive the updated completed `plan.json`, including retrospective and durable `keyDecisions`.
+2. Own decision extraction and canonical routing: use `claw search` and read only relevant candidate ADRs.
 3. Extract only durable decisions and their consequences.
 4. Update an existing ADR when the decision already exists.
 5. Create a new ADR only when the decision is distinct.
@@ -81,7 +77,7 @@ The delegated ADR writer can return a minimal completion payload, but the main a
 - optional `status`
 - optional `updatedPaths`
 
-Do not send a long decision essay back to the main agent.
+Keep any response focused on completion telemetry.
 
 ## Timing rule
 
@@ -91,11 +87,10 @@ Use this skill after completion when:
 - the completed work records durable decisions with consequences
 - ordinary truth deposition is not the better fit
 
-Do not use ADR deposition as the immediate next step for mere task completion while the plan is still open.
+Run ADR deposition after plan completion.
 
 ## Boundary
 
-- Do not use ADRs for generic feature truth.
-- Do not copy whole plans into ADRs.
-- Do not write progress logs as decisions.
-- Do not drift into generic docs authoring when the correct output is an ADR.
+- Route generic feature behavior to the truth corpus.
+- Summarize durable decisions and consequences compactly from the completed plan.
+- Keep ADR output focused on architecture, lifecycle, protocol, integration, and workflow decisions.

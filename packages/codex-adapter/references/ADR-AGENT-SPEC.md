@@ -6,11 +6,13 @@ This reference distills the current OpenClaw ADR deposition rules into Codex-fac
 
 Extract durable architecture decisions from plan records and completed work into canonical ADR docs under `.claw/truth/adr/`.
 
-This reference is the complete execution contract for a subagent explicitly delegated as the ADR writer. The main agent supplies a compact decision bundle; the writer judges whether it contains durable decisions and performs deposition.
+This reference is the complete execution contract for a subagent explicitly delegated as the ADR writer. The main agent supplies the updated completed `plan.json`; the writer extracts durable decisions and performs deposition.
 
 ## Input contract
 
-Accept only a completed plan, decision report, or equivalent decision bundle. Do not require the main agent to preload or restate these deposition rules.
+Receive the updated completed `plan.json`, including retrospective and durable `keyDecisions`.
+
+Decision extraction and canonical routing both belong to this writer.
 
 ## ADR-worthy decisions
 
@@ -22,28 +24,31 @@ Accept only a completed plan, decision report, or equivalent decision bundle. Do
 - dependency or technology selections with rationale
 - accepted tradeoffs with durable consequences
 
-## Skip cases
-
-- temporary implementation status
-- generic verification or build results
-- one-off bugfix steps without durable rationale
-- duplicated decisions that add no meaningful new consequences
+Deposit decisions with lasting implementation consequences, explicit rationale, or durable tradeoffs. Treat supporting status and verification results as evidence for those decisions.
 
 ## Source discipline
 
 - completed plans can yield accepted ADRs
 - active plans may yield proposed ADRs only when the durable decision is already explicit, including in `keyDecisions`
-- unfinished tasks are context, not accepted truth
+- use completed tasks as accepted facts and unfinished tasks as contextual evidence
 
 ## Output scope
 
-- write or update only under `adr/*.md`
-- update `SUMMARY.md` only when indexing needs to change
-- do not use ADR deposition for generic feature truth
+- write or update ADRs under `adr/*.md`
+- update `SUMMARY.md` when indexing needs to change
+- route generic feature behavior to the truth corpus
 - honor the project's configured canonical ADR location; use `.claw/truth/adr/` in claw-kit projects
-- read existing ADRs first and update an existing ADR when the decision already exists
-- create a new ADR only for a distinct decision
+- use `claw search` to recall candidate ADRs and read the relevant matches
+- create a new ADR for a distinct decision
 - keep filenames searchable and kebab-case, following the local numbering convention when one exists
+
+## Writer-owned routing
+
+- Use `claw search` as the default router, then read the relevant candidate ADRs.
+- For an existing decision, update the best-matching ADR.
+- For a new decision, inspect `SUMMARY.md` plus exact filename/title collisions before creating the ADR.
+- Update `SUMMARY.md` when discoverability materially changes.
+- When search is unavailable or candidates conflict, widen inspection incrementally until routing and duplication are resolved.
 
 ## ADR shape
 
@@ -63,27 +68,22 @@ Follow a stronger local ADR convention when one exists. Otherwise use:
 - write body text in Chinese when the repository expects Chinese docs, but treat mojibake as corruption rather than valid prose
 - preserve exact code identifiers, paths, config keys, commands, and error text
 - keep ADRs compact and durable
-- do not copy full plans into ADRs
-- do not invent paths, dates, owners, or alternatives
-- do not copy suspicious shell mojibake such as `鐨`, `锛`, or `銆` back into canonical docs; repair or rewrite the sentence first
+- summarize the decision and consequences compactly from the completed plan
+- ground paths, dates, owners, and alternatives in plan or repository evidence
+- repair or rewrite suspicious shell mojibake such as `鐨`, `锛`, or `銆` before canonical deposition
 
 ## Execution workflow
 
-1. Read the existing ADRs.
-2. Extract only durable decisions and their consequences from the supplied bundle.
+1. Extract only durable decisions and their consequences from the completed `plan.json`.
+2. Own canonical routing: run `claw search` and read only relevant candidates.
 3. Update an existing ADR when the decision already exists.
-4. Create a new ADR only when the decision is distinct.
-5. Update the project truth or ADR index only when the ADR set materially changed.
+4. Create a new ADR when the decision is distinct after the bounded duplicate check.
+5. Verify the changed target and update the project truth or ADR index when the ADR set materially changed.
 
 ## Timing and boundaries
 
-Run ADR deposition after completion when the completed plan is available as the deposition bundle, the work records durable decisions with consequences, and ordinary truth deposition is not the better fit. Do not use ADR deposition as the immediate next step for mere task completion while the plan is still open.
-
-- do not use ADRs for generic feature truth
-- do not copy whole plans into ADRs
-- do not write progress logs as decisions
-- do not drift into generic documentation authoring when the correct output is an ADR
+Run ADR deposition after plan completion, using the completed plan as the source bundle. Capture durable architecture, lifecycle, protocol, integration, and workflow decisions with their consequences. Route stable feature behavior and reusable debugging knowledge to truth deposition.
 
 ## Return contract
 
-Return only a minimal completion payload with optional `status` and `updatedPaths`; returning nothing is also acceptable. The main agent does not rely on a detailed response. Do not send a long decision essay, and do not relay or summarize this reference back to the main agent.
+Return a minimal completion payload with optional `status` and `updatedPaths`, or return nothing. Keep the response focused on deposition completion and keep this reference as internal execution guidance.

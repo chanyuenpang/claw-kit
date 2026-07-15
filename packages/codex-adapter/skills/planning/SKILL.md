@@ -7,7 +7,7 @@ description: Use when a planning step needs to refine a user request into clear 
 
 This skill turns the user's request into high-quality plan content.
 It is responsible for requirement refinement, task decomposition, scope boundaries, and task quality.
-It does not explain host runtime flow, lifecycle status transitions, writer delegation, goal mode, or closeout.
+Host runtime flow, lifecycle transitions, writer delegation, goal mode, and closeout remain the responsibility of `using-claw-kit`.
 
 ## When to use
 
@@ -16,19 +16,19 @@ Use it when task shape, dependencies, completion criteria, or requirement clarit
 
 ## Planning principles
 
-- Treat the plan as a decision memo, not a todo list. A good plan should answer:
+- Treat the plan as a decision memo. A good plan should answer:
   - what this round is trying to resolve
   - why the work is split this way
-  - what is explicitly out of scope
+  - where this round's scope ends
   - what must happen first vs later
   - what observable condition means this round is complete
 - Separate implementation, verification, and review only when it is useful for the specific task.
 - Converge on the round goal before listing actions:
   - decide whether this round is research, root-cause confirmation, minimal repair, end-to-end cleanup, or decision preparation
-  - if the one-sentence round goal is still vague, the plan is not ready
+  - continue refinement until the one-sentence round goal is clear
 - Write boundaries before steps:
   - what this round will do
-  - what this round will not do
+  - which items remain outside this round
   - which risks stay contained
   - which follow-ups move to later work or a subplan
 - Prefer atomic tasks:
@@ -39,10 +39,10 @@ Use it when task shape, dependencies, completion criteria, or requirement clarit
   - `2-4` downstream outcome-oriented tasks is the normal budget after any host-seeded bridge or activation tasks
   - exceed that budget only when independently verifiable risk or ownership boundaries require it
   - lifecycle meta tasks do not count as business outcomes and should not trigger extra decomposition
-- Treat workflow stages as optional coverage, not a fixed template:
+- Treat workflow stages as optional coverage selected for the current task:
   - the main agent decides whether verification, review, and closure are needed for the specific task
-  - do not create one task for every possible stage
-- Treat "round complete" as a stage outcome, not "everything is fixed":
+  - combine relevant stages into the smallest useful set of outcome tasks
+- Define "round complete" as a concrete stage outcome:
   - root cause narrowed to one defensible conclusion
   - minimal repair implemented and verified
   - next route clarified without further blind changes
@@ -74,7 +74,7 @@ A solid plan should cover:
 
 - requirements or framing
 - explicit scope and non-goals
-- only the stages relevant to this round, without mechanically expanding them into tasks
+- the stages relevant to this round, combined into outcome tasks where appropriate
 - verification, review, or closure only when the main agent judges that the specific task needs them
 
 ## Quality bar
@@ -103,15 +103,12 @@ A solid plan should cover:
 10. Preserve any existing bridge, activation, or handoff tasks unless the user explicitly asks to replace them.
 11. Write the task title, goal, tasks, and supporting plan text in the user's preferred language unless the repository has an explicit stronger convention.
 
-If a task or subtask is primarily investigation:
+For an investigation-first task, keep investigation separate until its findings establish the implementation route.
 
-- keep it separate from implementation work
-- do not merge investigation and implementation too early into the same task
+## Completion checks
 
-## Guardrails
-
-- Do not start with action sequencing if the round goal and scope boundary are still unclear.
-- Do not jump straight into execution if the plan still lacks a stage needed for the specific task.
-- Do not merge investigation and implementation into one task when the workflow should preserve a separate research phase.
-- Do not write completion as "fix everything" or another non-testable end state.
-- Do not add verification or closure by default; let the main agent decide whether the specific task needs them.
+- Establish the round goal and scope boundary before sequencing actions.
+- Include each stage that the specific task needs before execution begins.
+- Preserve a separate research phase when its findings determine the implementation route.
+- Express completion as an observable, testable outcome.
+- Let the main agent decide whether verification or closure adds value for the specific task.

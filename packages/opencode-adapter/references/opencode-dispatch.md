@@ -25,9 +25,9 @@ The main agent does not need to specify model, permission, or context configurat
 ## Dispatch rules
 
 - Read `delegateSubagents` from `workflowGuidance`
-- Read each entry's `required` and `dispatchCondition` before dispatch
-- Dispatch every `required: true` entry via `task`
-- For `required: false` with `dispatchCondition: main_agent_confirms_reusable_truth`, let the main agent judge truth value and do not dispatch when there is no reusable truth
+- Read each entry's `dispatch` before acting
+- Dispatch every `dispatch: required` entry via `task`
+- For `dispatch: when_reusable_truth_confirmed`, require the main agent to judge truth value and dispatch only after confirmation
 - Send only the narrow task bundle (skill content is already in the agent definition)
 - truth-writer and adr-writer are fire-and-forget — do not block on their results
 - researcher requires waiting for completion when the task depends on the result
@@ -35,11 +35,11 @@ The main agent does not need to specify model, permission, or context configurat
 ## Minimal bundles
 
 ### truth-writer
-Send: the completed subtask report with valuable findings
+Send: the completed subtask report with valuable findings and available evidence anchors. Canonical target routing belongs to the truth writer; do not make the main agent locate a truth file.
 Expected: optional telemetry, do not rely on return value
 
 ### adr-writer
-Send: updated completed plan path + updated completed plan summary
+Send: updated completed plan path + updated completed plan summary. Canonical ADR routing belongs to the ADR writer; do not make the main agent locate or select an ADR file.
 The completed plan bundle must already include retrospective and any durable `keyDecisions`.
 Expected: optional telemetry, do not rely on return value
 

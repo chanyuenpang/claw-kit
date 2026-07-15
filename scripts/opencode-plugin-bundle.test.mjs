@@ -69,6 +69,31 @@ test("OpenCode plugin source includes the config skill entrypoint", async () => 
   assert.match(skillText, /\.claw\/project-override\.json/);
 });
 
+test("OpenCode writer contracts use direct dispatch semantics and writer-owned routing", async () => {
+  const adapterRoot = new URL("../packages/opencode-adapter/", import.meta.url);
+  const guidance = JSON.parse(await fs.readFile(new URL("workflow-guidance.opencode.json", adapterRoot), "utf8"));
+  const truthReference = await fs.readFile(new URL("references/TRUTH-AGENT-SPEC.md", adapterRoot), "utf8");
+  const adrReference = await fs.readFile(new URL("references/ADR-AGENT-SPEC.md", adapterRoot), "utf8");
+  const truthAgent = await fs.readFile(new URL("agents/claw-truth-writer.md", adapterRoot), "utf8");
+  const adrAgent = await fs.readFile(new URL("agents/claw-adr-writer.md", adapterRoot), "utf8");
+
+  assert.equal(guidance.delegates.truthWriter.dispatch, "when_reusable_truth_confirmed");
+  assert.equal(guidance.delegates.adrWriter.dispatch, "required");
+  assert.equal("required" in guidance.delegates.truthWriter, false);
+  assert.equal("dispatchCondition" in guidance.delegates.truthWriter, false);
+
+  for (const text of [truthReference, adrReference, truthAgent, adrAgent]) {
+    assert.match(text, /writer|writer 自己负责/i);
+    assert.match(text, /claw search/);
+    assert.match(text, /widen inspection|扩大检查范围/i);
+  }
+
+  assert.match(truthReference, /canonical truth routing belongs to the writer/i);
+  assert.match(adrReference, /canonical ADR routing belongs to the writer/i);
+  assert.match(guidance.delegates.truthWriter.inputContract, /reusable facts and evidence/i);
+  assert.match(guidance.delegates.adrWriter.inputContract, /completed plan\.json/i);
+});
+
 test("exportOpencodePluginBundle copies the expected payload and filters *.test.mjs", async (t) => {
   const { root, sourceDir } = await makeFixture();
   t.after(async () => {

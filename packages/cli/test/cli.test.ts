@@ -383,8 +383,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   const truthDelegate = ((taskDone.delegateSubagents as JsonRecord[])[0] ?? {});
   assert.equal(truthDelegate.name, "truth-writer");
   assert.equal(truthDelegate.skill, "external-truth-writer");
-  assert.equal(truthDelegate.required, false);
-  assert.equal(truthDelegate.dispatchCondition, "main_agent_confirms_reusable_truth");
+  assert.equal(truthDelegate.dispatch, "when_reusable_truth_confirmed");
   assert.equal(truthDelegate.model, "gpt-5.4-mini");
   assert.equal(truthDelegate.fork_context, false);
   assert.equal(truthDelegate.waitForCompletion, false);
@@ -392,12 +391,12 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   assert.equal(truthDelegate.closePolicy, "keep_open_for_reuse");
   assert.equal(
     truthDelegate.inputContract,
-    "curated completed subtask report with valuable findings for truth deposition",
+    "curated completed subtask report containing the reusable facts and evidence needed for deposition; canonical target routing belongs to the truth writer",
   );
   assert.deepEqual(taskDone.nextsteps, [
     "1. Clear thread progress with `update_plan`.",
-    "2. Evaluate the returned `truth-writer` entry's `dispatchCondition`. Only if the main agent confirms reusable truth, curate the valuable findings and execute that delegate contract field-by-field; otherwise do not dispatch it.",
-    "3. First write both `retrospective` and `keyDecisions` back into the plan, then execute the returned required `adr-writer` contract field-by-field with that updated completed `plan.json`.",
+    "2. Read the returned `truth-writer` entry's `dispatch`. For `when_reusable_truth_confirmed`, the main agent must evaluate reusable truth and dispatch only after confirmation.",
+    "3. First write both `retrospective` and `keyDecisions` back into the plan, then execute the `adr-writer` contract with `dispatch: required` using that updated completed `plan.json`.",
   ]);
   assert.deepEqual(taskDone.recommendedCommands, [
     "claw plan edit --task e2e-task --patch <completed-plan.json>",
@@ -405,7 +404,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   ]);
   assert.equal(
     taskDone.notes,
-    "Truth deposition is conditional on the main agent's reusable-value judgment; ADR deposition is required for root-plan closeout. When a delegate is selected or required, honor every field in its structured contract.",
+    "Truth dispatch requires the main agent's reusable-value confirmation; ADR dispatch is required for root-plan closeout. Honor every field in a dispatched delegate contract.",
   );
 
   const truthInputPath = path.join(root, "truth-report.md");
@@ -913,12 +912,12 @@ test("cli returns truth-writer contract on completed task before final plan comp
   assert.equal("summary" in taskDone, false);
   assert.deepEqual(taskDone.nextsteps, [
     "1. Sync thread progress with `update_plan`.",
-    "2. Evaluate the returned `truth-writer` entry's `dispatchCondition`. Only if the main agent confirms reusable truth, curate the valuable findings and execute that delegate contract field-by-field; otherwise do not dispatch it.",
+    "2. Read the returned `truth-writer` entry's `dispatch`. For `when_reusable_truth_confirmed`, the main agent must evaluate reusable truth and dispatch only after confirmation.",
     "3. Continue with task #4.",
   ]);
   assert.equal(
     taskDone.notes,
-    "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. Truth deposition is conditional; when dispatching the writer, honor every field in its delegate contract.",
+    "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. Evaluate confirmed reusable truth before truth dispatch; when dispatching the writer, honor every field in its delegate contract.",
   );
   assert.deepEqual(taskDone.nextTask, {
     id: 4,
@@ -928,12 +927,11 @@ test("cli returns truth-writer contract on completed task before final plan comp
   const truthDelegate = ((taskDone.delegateSubagents as JsonRecord[])[0] ?? {});
   assert.equal(truthDelegate.name, "truth-writer");
   assert.equal(truthDelegate.skill, "external-truth-writer");
-  assert.equal(truthDelegate.required, false);
-  assert.equal(truthDelegate.dispatchCondition, "main_agent_confirms_reusable_truth");
+  assert.equal(truthDelegate.dispatch, "when_reusable_truth_confirmed");
   assert.equal(truthDelegate.fork_context, false);
   assert.equal(
     truthDelegate.inputContract,
-    "curated completed subtask report with valuable findings for truth deposition",
+    "curated completed subtask report containing the reusable facts and evidence needed for deposition; canonical target routing belongs to the truth writer",
   );
 });
 
@@ -1023,9 +1021,8 @@ test("cli respects project override toggles for goal mode and final-only truth d
   const adrDelegate = ((allDone.delegateSubagents as JsonRecord[])[1] ?? {});
   assert.equal(truthDelegate.name, "truth-writer");
   assert.equal(adrDelegate.name, "adr-writer");
-  assert.equal(truthDelegate.required, false);
-  assert.equal(truthDelegate.dispatchCondition, "main_agent_confirms_reusable_truth");
-  assert.equal(adrDelegate.required, true);
+  assert.equal(truthDelegate.dispatch, "when_reusable_truth_confirmed");
+  assert.equal(adrDelegate.dispatch, "required");
 });
 
 test("cli task done requires --choice when the template defines guidance.onDone.choices", () => {

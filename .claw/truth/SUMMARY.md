@@ -165,3 +165,4 @@
 - canonical ADR: `workflow-cost-optimization-route.md`；该 ADR 接受分阶段优化方向与 A/B 门槛，不表示产品优化已经实现。
 - Codex 开发安装的 active surface 由 marketplace identity/source 决定，不能用 cache 最高版本目录代替；`scripts/install-codex-plugin.*` 现在先校验并刷新 local marketplace source，再从该 source 写 versioned cache，且安装后需重启 Codex、创建新任务。详见 `features/shared-planning-skill-source.md`。
 - Codex update 的完成边界是 active identity/source，不是 cache 最高版本：官方 identity 为 `claw-kit@claw-kit`，marketplace upgrade 后需重新安装/启用并处理 stale same-name identity；验收必须对齐 active identity、source manifest、cache manifest、target version，并在 restart/new task 后确认 loaded locator。详见 `features/shared-planning-skill-source.md`。
+- Skill instructions 默认采用正向操作合同：正文先建立角色、输入、顺序、选择条件和完成标准，反向限制只保留安全、数据保护、授权、职责或协议所需的短边界；既有 skill wording 优先做高频入口和 writer 的小幅定点修正，并保持 Codex、shared 与 OpenCode 行为一致。canonical ADR: `skill-instructions-prefer-positive-operational-contracts.md`。

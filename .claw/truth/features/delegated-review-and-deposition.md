@@ -17,6 +17,15 @@
 - truth 的完整执行与写入规范位于 `packages/codex-adapter/references/TRUTH-AGENT-SPEC.md`；ADR 的完整执行与写入规范位于 `packages/codex-adapter/references/ADR-AGENT-SPEC.md`。原先位于 writer skill 的耐久性判断、canonical routing、写入规则、时序、边界和返回合同已迁入这两份 reference。
 - `truth-writer` 仍由 reusable-truth value gate 控制：只有 completed work 含可复用 truth 时才派发；`adr-writer` 仍是 root-plan closeout 的必需派发步骤。
 
+## Skill 文案写作合同
+
+- claw-kit skill 正文优先使用正向指令，重点说明角色、输入、正确执行顺序、选择条件与完成标准，让 agent 直接获得可执行路径。
+- 反向限制只保留安全、数据破坏、授权或协议歧义等确有价值的硬边界，并保持简短；一般流程偏好应改写为正向行为合同，而不是堆叠禁止句。
+- 本轮遵循“尽量不大改”的范围，只定点修正高频 `planning`、`using-claw-kit` 与 truth / ADR writer 文案；`config`、`init`、`update`、`researcher`、`search` 中必要的安全与职责边界继续保留。
+- truth writer 的输入是 main agent 已筛选出的必要事实与证据；ADR writer 的输入是 completed `plan.json`。两类 writer 都自行负责 canonical routing，主 agent 不预先替 writer 决定落盘文档。
+
+主要证据锚点是 `shared/skills/planning/SKILL.md`、`packages/codex-adapter/skills/using-claw-kit/SKILL.md`、`packages/codex-adapter/skills/truth-writer/SKILL.md`、`packages/codex-adapter/skills/adr-writer/SKILL.md`，以及对应的 OpenCode skills / references。本轮验证通过 Codex bundle `11/11`、OpenCode bundle `6/6`、`npm run check`、frontmatter 解析与 `git diff --check`。
+
 ## workflowGuidance 实现事实
 
 - `packages/core/src/workflow-guidance.config.json` 的 `process.hasCompletedTasks` 已要求主 agent 先判断 completed task 是否包含 reusable truth；仅在判断为 true 时才整理 completed subtask report 并执行 returned `truth-writer` contract。

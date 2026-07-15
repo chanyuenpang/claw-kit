@@ -4,10 +4,10 @@ Use this note when `workflowGuidance.delegateSubagents` is present.
 
 ## Core rule
 
-`delegateSubagents` is not advisory prose. Each entry is a structured dispatch contract, but dispatch itself may be conditional. Read `required` and `dispatchCondition` first.
+`delegateSubagents` is not advisory prose. Each entry is a structured dispatch contract. Read `dispatch` first.
 
-- `required: true` means dispatch is mandatory.
-- `required: false` with `dispatchCondition: main_agent_confirms_reusable_truth` means the main agent first judges truth value and does not dispatch when the completed work has no reusable truth.
+- `dispatch: required` means dispatch is mandatory.
+- `dispatch: when_reusable_truth_confirmed` means the main agent must judge truth value and dispatch only after confirming reusable truth.
 
 Codex has multi-agent capability. Use `tool_search` to locate the current session's agent-management tools, then execute delegation through that surface.
 
@@ -40,7 +40,7 @@ Do not document or implement inline fallback as a normal branch of the Codex ada
 Honor `workflowGuidance.nextsteps` ordering exactly.
 
 - `truth-writer`
-  - evaluate `dispatchCondition` at task-completion time and run only when the main agent confirms reusable truth
+  - for `dispatch: when_reusable_truth_confirmed`, evaluate reusable truth at task-completion time and run only after confirmation
   - keep the specialist open for reuse
 - `adr-writer`
   - run only after `all tasks done` guidance has had retrospective and any durable `keyDecisions` written back into the plan
@@ -72,6 +72,8 @@ Send:
 - the skill item named by `delegateSubagents[*].skill`
 - the completed subagent's task report, or an equivalent completed subtask report
 
+Do not ask the main agent to identify a canonical truth file. Canonical routing belongs to the truth writer, which uses `claw search` and reads only relevant candidates. If the completed report already contains a target path naturally, the writer may treat it as a hint; the main agent must not perform extra routing work to supply one.
+
 Expected behavior:
 
 - fire-and-forget deposition
@@ -85,6 +87,8 @@ Send:
 - the skill item named by `delegateSubagents[*].skill`
 - completed plan path
 - the updated completed plan JSON, including retrospective and any durable `keyDecisions`
+
+Do not ask the main agent to identify or select an ADR file. Canonical ADR routing belongs to the ADR writer, which uses `claw search` and reads only relevant candidates. If the plan already records a target path naturally, the writer may treat it as a hint; the main agent must not inspect the ADR corpus to produce one.
 
 Expected behavior:
 
@@ -112,7 +116,7 @@ Expected behavior:
 ## Main-agent responsibilities
 
 - Reuse or spawn only the specialist needed by current `workflowGuidance`.
-- Evaluate `required` and `dispatchCondition` before dispatch; do not spawn a conditional truth writer merely because its contract is present.
+- Read `dispatch` before acting. `when_reusable_truth_confirmed` requires a main-agent evaluation, not an optional skip and not an automatic spawn.
 - For `truth-writer` and `adr-writer`, default to `worker + gpt-5.4-mini + explicit skill item`.
 - For `truth-writer` and `adr-writer`, honor `fork_context: false` by avoiding full-history forked context and sending only the narrow deposition bundle.
 - For `researcher`, default to `explorer + explicit skill item`.

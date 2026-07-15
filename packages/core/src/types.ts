@@ -163,12 +163,12 @@ export type WorkflowGuidanceOption = {
 };
 
 export type WorkflowGuidanceSubagentName = "truth-writer" | "adr-writer";
+export type WorkflowGuidanceSubagentDispatch = "required" | "when_reusable_truth_confirmed";
 
 export type WorkflowGuidanceSubagent = {
   name: WorkflowGuidanceSubagentName;
   skill: string;
-  required: boolean;
-  dispatchCondition?: "main_agent_confirms_reusable_truth";
+  dispatch: WorkflowGuidanceSubagentDispatch;
   model?: string;
   fork_context?: boolean;
   waitForCompletion: boolean;

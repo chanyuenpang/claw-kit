@@ -27,10 +27,19 @@
 
 ### Truth delegation 条件语义
 
-- `WorkflowGuidanceSubagent` 现在要求显式 `required: boolean`，并支持可选的 `dispatchCondition: "main_agent_confirms_reusable_truth"`；类型锚点是 `packages/core/src/types.ts`。
-- `packages/core/src/workflow-guidance.config.json` 与 OpenCode 变体把 `truth-writer` 配置为 `required: false` 并带上述 condition，而 `adr-writer` 保持 `required: true`。main agent 只有在确认 completed work 含 reusable truth 后才派发 truth writer；没有可复用 truth 时不得仅因 contract 存在而 spawn。
-- Codex / OpenCode guidance 与 dispatch references 已统一这条 required / conditional 解释，避免 `per_task` 把“每 task 判断一次”误读为“每 task 无条件派发”。
-- 以上是当前 source contract；已安装的全局 `0.1.63` 在 release 与 runtime refresh 前仍会返回旧 guidance。判断 live 行为时必须区分工作树 source 与当前 CLI/runtime 版本。
+- workflow delegate output 现在通过 `dispatch` 直接表达 writer 派发语义：`truth-writer` 使用 `dispatch: "when_reusable_truth_confirmed"`，`adr-writer` 使用 `dispatch: "required"`；旧的 `required: false` 与 `dispatchCondition` 字段已经移除。类型与配置锚点分别是 `packages/core/src/types.ts` 和 `packages/core/src/workflow-guidance.config.json`。
+- main agent 只有在确认 completed work 含 reusable truth 后才派发 truth writer；没有可复用 truth 时不得仅因 contract 存在而 spawn。ADR writer 仍属于 required dispatch，其具体执行边界由 ADR writer contract 约束。
+- Codex truth / ADR writer references 已统一这条 dispatch 解释；对应锚点是 `packages/codex-adapter/references/TRUTH-AGENT-SPEC.md` 与 `packages/codex-adapter/references/ADR-AGENT-SPEC.md`，避免 `per_task` 把“每 task 判断一次”误读为“每 task 无条件派发”。
+- 以上是当前未发布的 source contract；已安装的全局 `0.1.64` 仍会返回该版本发布时的旧 guidance。判断 live 行为时必须区分工作树 source 与当前 CLI/runtime 版本。
+
+### Writer target routing 与性能
+
+- Codex `truth-writer` / `adr-writer` router 启动后仍完整读取各自 reference；这部分固定读取成本不是当前主要瓶颈。
+- canonical target routing 属于 writer 自身职责，不应要求 main agent 先理解 truth/ADR 文件布局或选择目标。writer 使用 `claw search` 召回候选 canonical 文档，再只读取相关候选；只有 search 不可用、候选冲突或 canonical routing 仍无法确定时，才回退到 full-corpus inspection。
+- 历史 release closeout 实测中，宽泛 ADR 任务两次分别约 `40-90s` 与 `90s`，且都没有落盘；把输入收敛为唯一 `targetPath` 与两条追加事实后，约 `10s` 完成。该对比说明主要优化点是 target certainty，而不是删除 router/reference 合同。
+- 本轮 fresh-agent 前向验证中，明确 `targetPath` 的 ADR 约 `70s` 落盘，truth 约 `85s` 落盘；两者均正确走定向写入且没有修改索引，但端到端时延没有稳定优于历史样本。当前改动能确认消除了不必要的 corpus 扫描，不能据此宣称 subagent 总耗时已经下降；剩余时延主要位于 writer 启动、模型处理和完整 deposition 合同执行。
+- 两类 dispatch 输入必须保持不同：truth writer 接收 main agent 筛选后的必要事实与证据；ADR writer 只接收补齐 retrospective 与 durable `keyDecisions` 的 completed `plan.json`，由 writer 自己提取决策。两者都不要求 main agent 提供 `targetPath`。
+- writer-owned routing 不得删除完整 reference 阅读、事实核对、目标路径 containment、UTF-8 BOM / encoding 校验，以及新建或路由不确定时必要的去重。
 
 ### 第一阶段优化的已实现行为
 
@@ -38,8 +47,8 @@
 - `process.hasCompletedTasks.finalOnlyTruth` 不再强制 Codex `update_plan`，也不再建议为马上完成的工作写一次独立 `in_progress`；进入 `process.active` 与 `process.allTasksDone` 的 host synchronization 合同保持不变。
 - shared / Codex / OpenCode planning skills 已把 downstream plan 约束为通常 `2-4` 个 outcome-oriented tasks；planning stages 是 coverage checklist，不是必须逐项转成 task 的模板，planning / activation lifecycle meta tasks 不计入业务 outcomes。
 - verification 和 closure 都不是默认阶段，由 main agent 根据具体任务自由判断是否需要。
-- `docs/project-json-reference.md` 与 config guide 已把 `final_only` 记为默认值。实现验证通过 core `114/114`、CLI `63/63`、Codex plugin bundle `11/11`、OpenCode bundle `5/5`，以及包含全部 adapter checks 与 truth encoding audit 的 `npm run check`；mid-task truth CLI 测试显式设置 `per_task`，验证 opt-in 路径仍然成立。
-- 上述 planning 合同同步到 shared / Codex / OpenCode 三份 skill 后，Codex bundle `11/11`、OpenCode bundle `5/5`、两端 adapter check 与 `git diff --check` 均通过。
+- `docs/project-json-reference.md` 与 config guide 已把 `final_only` 记为默认值。当前实现验证通过 core `114/114`、CLI `63/63`、Codex plugin bundle `11/11`、OpenCode bundle `6/6`，以及包含全部 adapter checks 与 truth encoding audit 的 `npm run check`；mid-task truth CLI 测试显式设置 `per_task`，验证 opt-in 路径仍然成立。
+- 上述 workflow 合同同步到 core、Codex 与 OpenCode surface 后，Codex bundle `11/11`、OpenCode bundle `6/6`，且完整 `npm run check` 通过。
 
 ### Search 同步路径与基线
 
@@ -117,6 +126,8 @@
 - `packages/cli/src/cli.ts`
 - `packages/codex-adapter/references/workflow-guidance-consumption.md`
 - `packages/codex-adapter/references/codex-subagent-dispatch.md`
+- `packages/codex-adapter/references/TRUTH-AGENT-SPEC.md`
+- `packages/codex-adapter/references/ADR-AGENT-SPEC.md`
 - `packages/opencode-adapter/references/opencode-dispatch.md`
 
 运行时证据：
