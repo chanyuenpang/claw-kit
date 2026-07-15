@@ -10,6 +10,7 @@ import { assertSharedSkillsSynced } from "./sync-shared-skills.mjs";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publish = process.argv.includes("--publish");
 const requiredSharedSkills = ["planning", "config", "update", "create-claw-skill"];
+const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 
 function command(command, args) {
   return execFileSync(command, args, { cwd: repoRoot, encoding: "utf8" }).trim();
@@ -75,8 +76,8 @@ async function verifyReleaseReadiness() {
     await fs.access(path.join(bundle.bundleDir, "skills", "update", "TEMPLATE.json"));
     await fs.access(path.join(bundle.bundleDir, "skills", "create-claw-skill", "TEMPLATE.json"));
 
-    command("npm", ["run", "build", "-w", "@veewo/claw-core"]);
-    command("npm", ["run", "build", "-w", "@veewo/claw"]);
+    command(npmCommand, ["run", "build", "-w", "@veewo/claw-core"]);
+    command(npmCommand, ["run", "build", "-w", "@veewo/claw"]);
     const smokeHome = path.join(outDir, "home");
     const smokeProject = path.join(outDir, "project");
     await fs.mkdir(smokeProject, { recursive: true });
@@ -116,10 +117,9 @@ if (!publish) {
 }
 
 for (const workspace of ["@veewo/claw-core", "@veewo/claw"]) {
-  const result = spawnSync("npm", ["publish", "--workspace", workspace, "--access", "public"], {
+  const result = spawnSync(npmCommand, ["publish", "--workspace", workspace, "--access", "public"], {
     cwd: repoRoot,
     stdio: "inherit",
-    shell: process.platform === "win32",
   });
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
