@@ -7,6 +7,8 @@
     "truthWriter": {
       "name": "truth-writer",
       "fallbackSkill": "claw-kit:truth-writer",
+      "required": false,
+      "dispatchCondition": "main_agent_confirms_reusable_truth",
       "model": "gpt-5.4-mini",
       "fork_context": false,
       "waitForCompletion": false,
@@ -18,6 +20,7 @@
     "adrWriter": {
       "name": "adr-writer",
       "fallbackSkill": "claw-kit:adr-writer",
+      "required": true,
       "model": "gpt-5.4-mini",
       "fork_context": false,
       "waitForCompletion": false,
@@ -125,13 +128,13 @@
     },
     "process.allTasksDone": {
       "stage": "done",
-      "summary": "All plan tasks are done. Clear thread progress with `update_plan`, then execute each returned delegateSubagents entry field-by-field for truth deposition and ADR closeout.",
+      "summary": "All plan tasks are done. Clear thread progress, conditionally deposit reusable truth, then complete the required ADR closeout.",
       "nextsteps": [
         "1. Clear thread progress with `update_plan`.",
-        "2. Read `delegateSubagents`, curate the valuable findings from the completed work into a completed subtask report, then execute the returned `truth-writer` dispatch contract field-by-field. Do not treat it as a suggestion.",
-        "3. First write both `retrospective` and `keyDecisions` back into the plan, then read `delegateSubagents` again and execute the returned `adr-writer` dispatch contract field-by-field with that updated completed `plan.json`."
+        "2. Evaluate the returned `truth-writer` entry's `dispatchCondition`. Only if the main agent confirms reusable truth, curate the valuable findings and execute that delegate contract field-by-field; otherwise do not dispatch it.",
+        "3. First write both `retrospective` and `keyDecisions` back into the plan, then execute the returned required `adr-writer` contract field-by-field with that updated completed `plan.json`."
       ],
-      "notes": "Truth doc and ADR doc generation are essential claw-kit features. When dispatching a subagent, each entry is a required structured contract whose fields must be honored directly.",
+      "notes": "Truth deposition is conditional on the main agent's reusable-value judgment; ADR deposition is required for root-plan closeout. When a delegate is selected or required, honor every field in its structured contract.",
       "recommendedCommands": [
         "{{editBase}} --patch <completed-plan.json>",
         "{{doneBase}} --summary \"<retrospective summary>\""
@@ -146,10 +149,10 @@
       "summary": "Execution is in progress.",
       "nextsteps": [
         "1. Sync thread progress with `update_plan`.",
-        "2. Read `delegateSubagents`, curate the valuable findings from the completed task into a completed subtask report, then execute the returned `truth-writer` dispatch contract field-by-field. Do not treat it as a suggestion.",
+        "2. Evaluate the returned `truth-writer` entry's `dispatchCondition`. Only if the main agent confirms reusable truth, curate the valuable findings and execute that delegate contract field-by-field; otherwise do not dispatch it.",
         "3. Continue with {{nextTaskRef}}."
       ],
-      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. When dispatching a subagent, each entry is a required structured contract whose fields must be honored directly.",
+      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. Truth deposition is conditional; when dispatching the writer, honor every field in its delegate contract.",
       "recommendedCommands": [
         "{{taskDoneCommand}}",
         "{{editBase}} --task-id <id> --task-status in_progress"
@@ -162,13 +165,11 @@
       "stage": "{{processStage}}",
       "summary": "Execution is in progress.",
       "nextsteps": [
-        "1. Sync thread progress with `update_plan`.",
-        "2. Continue with {{nextTaskRef}}."
+        "Continue with {{nextTaskRef}}."
       ],
-      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
+      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. Sync host thread progress only when a meaningful milestone would otherwise be materially stale; do not mirror every task completion mechanically.",
       "recommendedCommands": [
-        "{{taskDoneCommand}}",
-        "{{editBase}} --task-id <id> --task-status in_progress"
+        "{{taskDoneCommand}}"
       ]
     },
     "process.justEntered": {

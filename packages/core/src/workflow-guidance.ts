@@ -119,6 +119,8 @@ function buildConfiguredDelegate(key: DelegateConfigKey, projectConfig: ProjectC
   return {
     name: config.name,
     skill: normalizeWriterSkill(overrideSkill, config.fallbackSkill),
+    required: config.required,
+    ...(config.dispatchCondition ? { dispatchCondition: config.dispatchCondition } : {}),
     model: config.model,
     fork_context: config.fork_context,
     waitForCompletion: config.waitForCompletion,

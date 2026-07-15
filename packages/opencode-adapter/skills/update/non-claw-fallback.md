@@ -51,9 +51,10 @@ On a remote Codex machine, use the official marketplace lifecycle:
 codex plugin marketplace add chanyuenpang/claw-kit --ref main
 codex plugin marketplace upgrade claw-kit
 codex plugin marketplace list
+codex plugin add claw-kit@claw-kit
 ```
 
-After adding or upgrading the marketplace, restart the ChatGPT desktop app, install or update **Claw Kit** from the plugin directory, and start a new task. Do not manually generate shared skills on the remote machine.
+After adding or upgrading the marketplace, reinstall or enable `claw-kit@claw-kit` with the command above or through the plugin directory. If another enabled same-name identity such as `claw-kit@claw-kit-local` still points at an older source, disable or uninstall that stale identity. Restart the ChatGPT desktop app and start a new task. Do not manually generate shared skills on the remote machine.
 
 ## Verification
 
@@ -63,10 +64,12 @@ Always verify after updating:
   - `claw --version`
   - `npm list -g @veewo/claw --depth=0`
 - Codex plugin:
-  - for marketplace installs, confirm the newest cache directory exists under `%USERPROFILE%\.codex\plugins\cache\claw-kit\claw-kit\`
-  - for direct development installs, confirm it exists under `%USERPROFILE%\.codex\plugins\cache\claw-kit-local\claw-kit\`
-  - inspect that cache copy's `.codex-plugin/plugin.json`
-  - confirm `skills/planning`, `skills/config`, `skills/update`, and `skills/create-claw-skill` exist in the cache copy
+  - for repository marketplace installs, verify `claw-kit@claw-kit` is enabled and inspect its source and cache manifests under `%USERPROFILE%\.codex\plugins\cache\claw-kit\claw-kit\`
+  - for direct development installs, verify `claw-kit@claw-kit-local` is enabled and compare `%USERPROFILE%\.agents\plugins\claw-kit-local\plugins\claw-kit\.codex-plugin\plugin.json` with `%USERPROFILE%\.codex\plugins\cache\claw-kit-local\claw-kit\<version>\.codex-plugin\plugin.json`
+  - require the active identity's source manifest and cache manifest to match the target version
+  - detect another enabled same-name identity that still points at an older source; a newer unused cache directory is not success
+  - confirm `skills/planning`, `skills/config`, `skills/update`, and `skills/create-claw-skill` exist in the active source/cache copy
+  - restart Codex, start a new task, and confirm the loaded skill locator belongs to the expected version
 - OpenCode plugin:
   - confirm the installed plugin files exist under the configured OpenCode plugin path
 
@@ -75,5 +78,7 @@ Always verify after updating:
 - Do not claim success if only the CLI updated.
 - Do not claim success if only the plugin surface updated.
 - Do not silently skip verification.
+- Do not use cache-directory existence as the only Codex plugin verification.
+- Do not leave an older same-name Codex plugin identity enabled and assume the newest cache wins.
 - Do not invent a second install path when the maintained repo scripts exist.
 - If the Codex marketplace CLI or desktop plugin directory is unavailable, say that clearly instead of pretending the plugin was updated.

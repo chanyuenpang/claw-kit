@@ -22,10 +22,7 @@ Use it when task shape, dependencies, completion criteria, or requirement clarit
   - what is explicitly out of scope
   - what must happen first vs later
   - what observable condition means this round is complete
-- Separate responsibilities:
-  - implementation
-  - verification
-  - review
+- Separate implementation, verification, and review only when it is useful for the specific task.
 - Converge on the round goal before listing actions:
   - decide whether this round is research, root-cause confirmation, minimal repair, end-to-end cleanup, or decision preparation
   - if the one-sentence round goal is still vague, the plan is not ready
@@ -38,22 +35,21 @@ Use it when task shape, dependencies, completion criteria, or requirement clarit
   - one task, one clear responsibility
   - independently completable
   - no mixed concerns when the workflow would forbid them
-- Keep stages separable when the task is non-trivial:
-  - research or audit
-  - decision
-  - implementation
-  - verification
-  - closure
+- Start with the smallest handoff-ready task list:
+  - `2-4` downstream outcome-oriented tasks is the normal budget after any host-seeded bridge or activation tasks
+  - exceed that budget only when independently verifiable risk or ownership boundaries require it
+  - lifecycle meta tasks do not count as business outcomes and should not trigger extra decomposition
+- Treat workflow stages as optional coverage, not a fixed template:
+  - the main agent decides whether verification, review, and closure are needed for the specific task
+  - do not create one task for every possible stage
 - Treat "round complete" as a stage outcome, not "everything is fixed":
   - root cause narrowed to one defensible conclusion
   - minimal repair implemented and verified
   - next route clarified without further blind changes
-- Verification must be explicit and separately visible for non-trivial work.
 - Decompose by:
   - shared foundations first
   - core logic second
   - integration third
-  - verification last
 
 ## Entry assumption
 
@@ -78,13 +74,8 @@ A solid plan should cover:
 
 - requirements or framing
 - explicit scope and non-goals
-- keep stages separable:
-  - research or audit
-  - decision
-  - implementation
-  - verification
-  - closure
-- optional review or cleanup when the task warrants it
+- only the stages relevant to this round, without mechanically expanding them into tasks
+- verification, review, or closure only when the main agent judges that the specific task needs them
 
 ## Quality bar
 
@@ -93,8 +84,8 @@ A solid plan should cover:
   - research task -> current-state finding or root-cause evidence
   - decision task -> route selection or constraint clarification
   - implementation task -> concrete change
-  - verification task -> pass/fail evidence
-  - closure task -> retrospective, durable notes, or next-step entry
+  - verification task, if included -> verification evidence
+  - closure task, if included -> completion outcome
 - High-risk facts that affect task shape or delegation should be written down early.
 - A plan should be handoff-ready: another agent should be able to continue from the plan without rereading the whole thread.
 
@@ -104,12 +95,7 @@ A solid plan should cover:
 2. If the current request is not clear enough to execute, first fill the missing requirements, open questions, and acceptance criteria.
 3. Clarify task boundaries before enumerating steps.
 4. Identify affected modules, shared foundations, and any real risk that changes task shape.
-5. Choose the stage pattern that fits this round:
-   - research
-   - decision
-   - implementation
-   - verification
-   - closure
+5. Choose the stages that fit this round. Let the main agent decide whether verification and closure are needed.
 6. Break the work into atomic tasks with visible completion conditions.
 7. Put durable constraints into `rules`.
 8. Put files, evidence, and search anchors into `references`.
@@ -125,7 +111,7 @@ If a task or subtask is primarily investigation:
 ## Guardrails
 
 - Do not start with action sequencing if the round goal and scope boundary are still unclear.
-- Do not jump straight into execution if the plan still lacks key stages.
+- Do not jump straight into execution if the plan still lacks a stage needed for the specific task.
 - Do not merge investigation and implementation into one task when the workflow should preserve a separate research phase.
 - Do not write completion as "fix everything" or another non-testable end state.
-- Do not hide verification inside implementation for work that has real execution risk.
+- Do not add verification or closure by default; let the main agent decide whether the specific task needs them.

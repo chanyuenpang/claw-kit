@@ -17,6 +17,7 @@ const repoRoot = path.resolve(thisDir, "..");
 const defaultSourceDir = path.join(repoRoot, "packages", "codex-adapter");
 const defaultBundleOutDir = path.join(repoRoot, "dist", "codex-plugin");
 const defaultCacheRoot = path.join(os.homedir(), ".codex", "plugins", "cache", "claw-kit-local");
+const defaultDevelopmentMarketplaceRoot = path.join(os.homedir(), ".agents", "plugins", "claw-kit-local");
 
 async function readJson(jsonPath) {
   return JSON.parse(await fs.readFile(jsonPath, "utf8"));
@@ -114,4 +115,62 @@ export async function installCodexPluginBundle({ sourceDir = defaultSourceDir, c
   const installDir = path.join(cacheRoot, plugin.name, plugin.version);
   await copyPayloadTree(plugin.sourceDir, installDir, plugin.payloadRelativePaths);
   return { ...plugin, cacheRoot, installDir };
+}
+
+async function resolveMarketplacePluginSource({ marketplaceRoot, pluginName }) {
+  const marketplacePath = path.join(marketplaceRoot, "marketplace.json");
+  if (!(await pathExists(marketplacePath))) {
+    throw new Error(`Codex development marketplace not found: ${marketplacePath}`);
+  }
+
+  const marketplace = await readJson(marketplacePath);
+  const entry = marketplace.plugins?.find((candidate) => candidate.name === pluginName);
+  if (!entry) {
+    throw new Error(`Codex development marketplace ${marketplace.name ?? marketplacePath} does not expose ${pluginName}.`);
+  }
+  if (entry.source?.source !== "local" || typeof entry.source.path !== "string") {
+    throw new Error(`Codex development marketplace entry for ${pluginName} must use a local source path.`);
+  }
+
+  const marketplaceSourceDir = path.resolve(marketplaceRoot, entry.source.path);
+  const relativeSourcePath = path.relative(marketplaceRoot, marketplaceSourceDir);
+  if (relativeSourcePath.startsWith("..") || path.isAbsolute(relativeSourcePath)) {
+    throw new Error(`Codex development marketplace source escapes its root: ${entry.source.path}`);
+  }
+
+  return {
+    marketplace,
+    marketplacePath,
+    marketplaceSourceDir,
+  };
+}
+
+export async function installCodexPluginDevelopmentSurface({
+  sourceDir = defaultSourceDir,
+  marketplaceRoot = defaultDevelopmentMarketplaceRoot,
+  cacheRoot = defaultCacheRoot,
+} = {}) {
+  const plugin = await readCodexPluginSource({ sourceDir });
+  const marketplace = await resolveMarketplacePluginSource({
+    marketplaceRoot,
+    pluginName: plugin.name,
+  });
+
+  if (path.resolve(plugin.sourceDir) !== path.resolve(marketplace.marketplaceSourceDir)) {
+    await copyPayloadTree(plugin.sourceDir, marketplace.marketplaceSourceDir, plugin.payloadRelativePaths);
+  }
+
+  const cacheInstall = await installCodexPluginBundle({
+    sourceDir: marketplace.marketplaceSourceDir,
+    cacheRoot,
+  });
+
+  return {
+    ...plugin,
+    marketplaceName: marketplace.marketplace.name,
+    marketplacePath: marketplace.marketplacePath,
+    marketplaceSourceDir: marketplace.marketplaceSourceDir,
+    cacheRoot,
+    installDir: cacheInstall.installDir,
+  };
 }

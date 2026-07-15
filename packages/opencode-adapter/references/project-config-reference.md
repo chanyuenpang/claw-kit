@@ -69,7 +69,7 @@ When the user asks to change claw configuration, use the `config` skill as the d
 - `goalMode`
   - suppresses `goalMode` guidance when set to `false`
 - `truthDispatch`
-  - `per_task` or `final_only`
+  - `final_only` by default, or explicit `per_task` opt-in
 
 ## Practical guidance
 

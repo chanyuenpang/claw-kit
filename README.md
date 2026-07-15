@@ -89,7 +89,10 @@ Restart the ChatGPT desktop app, open the plugin directory, choose the **Claw Ki
 
 ```powershell
 codex plugin marketplace upgrade claw-kit
+codex plugin add claw-kit@claw-kit
 ```
+
+An upgrade is complete only when `claw-kit@claw-kit` is the enabled identity and its installed manifest matches the target version. A newer directory under the Codex plugin cache is not sufficient: if an older same-name identity such as `claw-kit@claw-kit-local` remains enabled, Codex can continue loading that older marketplace source.
 
 The repository marketplace at `.agents/plugins/marketplace.json` points to the fully materialized `packages/codex-adapter` tree. Codex can therefore copy every shared skill and resource into its plugin cache without running repository or npm lifecycle scripts.
 
@@ -103,9 +106,9 @@ npm run install:codex-plugin
 What they do:
 
 1. `npm run export:codex-plugin` copies the installable plugin payload into `dist/codex-plugin/claw-kit/<plugin-version>/`.
-2. `npm run install:codex-plugin` copies that same payload shape into the local Codex cache at `%USERPROFILE%\.codex\plugins\cache\claw-kit-local\claw-kit\<plugin-version>\`.
+2. `npm run install:codex-plugin` validates the `claw-kit-local` marketplace entry, refreshes its active source under `%USERPROFILE%\.agents\plugins\claw-kit-local\plugins\claw-kit\`, then installs the same payload into `%USERPROFILE%\.codex\plugins\cache\claw-kit-local\claw-kit\<plugin-version>\`.
 
-Use `install:codex-plugin` for a direct local development-cache refresh. Use `export:codex-plugin` for a clean versioned release bundle. Remote users should use the marketplace flow above instead of copying files into the cache manually.
+Use `install:codex-plugin` for a direct local development source-and-cache refresh. Use `export:codex-plugin` for a clean versioned release bundle. Remote users should use the marketplace flow above instead of copying files into the cache manually.
 
 Validate a template without creating a plan with `claw template validate --template <id>`. This command resolves templates through the same registry used by `claw plan create` and `claw subplan create`, and reports route-aware tasks that require a choice id.
 

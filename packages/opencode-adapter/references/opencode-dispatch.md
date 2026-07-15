@@ -25,7 +25,9 @@ The main agent does not need to specify model, permission, or context configurat
 ## Dispatch rules
 
 - Read `delegateSubagents` from `workflowGuidance`
-- For each entry, dispatch the corresponding subagent via `task`
+- Read each entry's `required` and `dispatchCondition` before dispatch
+- Dispatch every `required: true` entry via `task`
+- For `required: false` with `dispatchCondition: main_agent_confirms_reusable_truth`, let the main agent judge truth value and do not dispatch when there is no reusable truth
 - Send only the narrow task bundle (skill content is already in the agent definition)
 - truth-writer and adr-writer are fire-and-forget — do not block on their results
 - researcher requires waiting for completion when the task depends on the result

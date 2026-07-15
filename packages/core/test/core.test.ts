@@ -161,7 +161,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
     defaultPlanTemplate: null,
     contextPaths: ["docs/project-guide.md"],
     goalMode: true,
-    truthDispatch: "per_task",
+    truthDispatch: "final_only",
     memory: {
       enabled: true,
       externalDocPaths: ["docs/", "README.md"],
@@ -890,6 +890,12 @@ test("template configOverride truthDispatch=final_only suppresses mid-task truth
   });
 
   assert.equal(taskDone.workflowGuidance.delegateSubagents, undefined);
+  assert.deepEqual(taskDone.workflowGuidance.nextsteps, ["Continue with task #2."]);
+  assert.equal(taskDone.workflowGuidance.nextsteps.some((step) => step.includes("update_plan")), false);
+  assert.match(taskDone.workflowGuidance.notes ?? "", /do not mirror every task completion mechanically/);
+  assert.deepEqual(taskDone.workflowGuidance.recommendedCommands, [
+    "claw plan edit --task demo-task --task-id <id> --task-status done",
+  ]);
 });
 
 test("route-aware task completion requires taskChoiceId when the template defines choices", async () => {
@@ -1953,11 +1959,11 @@ test("plan edit can move from requirements to process.active without a separate 
   assert.ok(result.workflowGuidance.recommendedCommands?.some((command) => command.includes("claw plan done")));
   assert.equal(
     result.workflowGuidance.summary,
-    "All plan tasks are done. Clear thread progress with `update_plan`, then execute each returned delegateSubagents entry field-by-field for truth deposition and ADR closeout.",
+    "All plan tasks are done. Clear thread progress, conditionally deposit reusable truth, then complete the required ADR closeout.",
   );
   assert.equal(
     result.workflowGuidance.notes,
-    "Truth doc and ADR doc generation are essential claw-kit features. When dispatching a subagent, each entry is a required structured contract whose fields must be honored directly.",
+    "Truth deposition is conditional on the main agent's reusable-value judgment; ADR deposition is required for root-plan closeout. When a delegate is selected or required, honor every field in its structured contract.",
   );
   const truthDelegate = result.workflowGuidance.delegateSubagents?.[0];
   const adrDelegate = result.workflowGuidance.delegateSubagents?.[1];
@@ -1965,6 +1971,8 @@ test("plan edit can move from requirements to process.active without a separate 
   assert.ok(adrDelegate);
   assert.equal(truthDelegate.name, "truth-writer");
   assert.equal(truthDelegate.skill, "claw-kit:truth-writer");
+  assert.equal(truthDelegate.required, false);
+  assert.equal(truthDelegate.dispatchCondition, "main_agent_confirms_reusable_truth");
   assert.equal(truthDelegate.model, "gpt-5.4-mini");
   assert.equal(truthDelegate.fork_context, false);
   assert.equal(truthDelegate.waitForCompletion, false);
@@ -1976,14 +1984,16 @@ test("plan edit can move from requirements to process.active without a separate 
   );
   assert.equal(adrDelegate.name, "adr-writer");
   assert.equal(adrDelegate.skill, "claw-kit:adr-writer");
+  assert.equal(adrDelegate.required, true);
+  assert.equal(adrDelegate.dispatchCondition, undefined);
   assert.equal(adrDelegate.model, "gpt-5.4-mini");
   assert.equal(adrDelegate.fork_context, false);
   assert.ok(result.workflowGuidance.nextsteps.some((step) => step.includes("truth-writer")));
   assert.ok(result.workflowGuidance.nextsteps.some((step) => step.includes("adr-writer")));
   assert.deepEqual(result.workflowGuidance.nextsteps, [
     "1. Clear thread progress with `update_plan`.",
-    "2. Read `delegateSubagents`, curate the valuable findings from the completed work into a completed subtask report, then execute the returned `truth-writer` dispatch contract field-by-field. Do not treat it as a suggestion.",
-    "3. First write both `retrospective` and `keyDecisions` back into the plan, then read `delegateSubagents` again and execute the returned `adr-writer` dispatch contract field-by-field with that updated completed `plan.json`.",
+    "2. Evaluate the returned `truth-writer` entry's `dispatchCondition`. Only if the main agent confirms reusable truth, curate the valuable findings and execute that delegate contract field-by-field; otherwise do not dispatch it.",
+    "3. First write both `retrospective` and `keyDecisions` back into the plan, then execute the returned required `adr-writer` contract field-by-field with that updated completed `plan.json`.",
   ]);
   assert.deepEqual(result.workflowGuidance.recommendedCommands, [
     "claw plan edit --task demo-task --patch <completed-plan.json>",
@@ -2239,14 +2249,16 @@ test("process entry returns the first task and task completion returns truth-wri
   assert.equal(taskDone.workflowGuidance.nextTask?.id, 2);
   assert.equal(
     taskDone.workflowGuidance.notes,
-    "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. When dispatching a subagent, each entry is a required structured contract whose fields must be honored directly.",
+    "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. Truth deposition is conditional; when dispatching the writer, honor every field in its delegate contract.",
   );
   assert.deepEqual(taskDone.workflowGuidance.nextsteps, [
     "1. Sync thread progress with `update_plan`.",
-    "2. Read `delegateSubagents`, curate the valuable findings from the completed task into a completed subtask report, then execute the returned `truth-writer` dispatch contract field-by-field. Do not treat it as a suggestion.",
+    "2. Evaluate the returned `truth-writer` entry's `dispatchCondition`. Only if the main agent confirms reusable truth, curate the valuable findings and execute that delegate contract field-by-field; otherwise do not dispatch it.",
     "3. Continue with task #2.",
   ]);
   assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.skill, "external-truth-writer");
+  assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.required, false);
+  assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.dispatchCondition, "main_agent_confirms_reusable_truth");
   assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.fork_context, false);
 });
 
@@ -4116,9 +4128,12 @@ test("workflow guidance uses external writer skills from project config", async 
   });
   assert.equal(
     taskDone.workflowGuidance.notes,
-    "Truth doc and ADR doc generation are essential claw-kit features. When dispatching a subagent, each entry is a required structured contract whose fields must be honored directly.",
+    "Truth deposition is conditional on the main agent's reusable-value judgment; ADR deposition is required for root-plan closeout. When a delegate is selected or required, honor every field in its structured contract.",
   );
   assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.skill, "external-truth-writer");
+  assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.required, false);
+  assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.dispatchCondition, "main_agent_confirms_reusable_truth");
+  assert.equal(taskDone.workflowGuidance.delegateSubagents?.[1]?.required, true);
   assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.model, "gpt-5.4-mini");
   assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.fork_context, false);
 
@@ -4142,6 +4157,8 @@ test("direct workflow guidance uses the configured truth writer contract", () =>
   assert.match(guidance.summary, /lean path|without extra decomposition/i);
   assert.equal(guidance.delegateSubagents?.[0]?.name, "truth-writer");
   assert.equal(guidance.delegateSubagents?.[0]?.skill, "external-truth-writer");
+  assert.equal(guidance.delegateSubagents?.[0]?.required, false);
+  assert.equal(guidance.delegateSubagents?.[0]?.dispatchCondition, "main_agent_confirms_reusable_truth");
   assert.equal(guidance.delegateSubagents?.[0]?.model, "gpt-5.4-mini");
   assert.equal(guidance.delegateSubagents?.[0]?.fork_context, false);
   assert.equal(guidance.nextsteps.some((step) => step.includes("truth-writer")), true);
@@ -4257,7 +4274,7 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
   assert.equal(projectConfig.externalAdrSkill, null);
   assert.deepEqual(projectConfig.contextPaths, []);
   assert.equal(projectConfig.goalMode, true);
-  assert.equal(projectConfig.truthDispatch, "per_task");
+  assert.equal(projectConfig.truthDispatch, "final_only");
   assert.equal(projectConfig.memory.enabled, true);
   assert.deepEqual(projectConfig.memory.externalDocPaths, ["docs/"]);
   assert.deepEqual(projectConfig.memory.embedding, {

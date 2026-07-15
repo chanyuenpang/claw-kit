@@ -10,7 +10,7 @@
 - Branch conditions: `TEMPLATE.json`
 - Tool constraints, repository install scripts, and Codex marketplace lifecycle: `TEMPLATE.json`, `non-claw-fallback.md`
 - Non-template supplement material kept in `SKILL.md`: installation-only positioning and the paired-surface completion rule.
-- Remote Codex install and cache verification: `TEMPLATE.json`, `non-claw-fallback.md`
+- Remote Codex install, active identity/source verification, and cache verification: `TEMPLATE.json`, `non-claw-fallback.md`
 - Optional skill-local references: none.
 - Verification gates: `TEMPLATE.json`
 - Long-form source wording: `non-claw-fallback.md`

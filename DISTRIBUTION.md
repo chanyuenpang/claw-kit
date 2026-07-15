@@ -205,6 +205,7 @@ Official Codex plugin install on a remote machine:
 ```powershell
 codex plugin marketplace add chanyuenpang/claw-kit --ref main
 codex plugin marketplace list
+codex plugin add claw-kit@claw-kit
 ```
 
 Restart the ChatGPT desktop app, choose the **Claw Kit** marketplace in the plugin directory, install **Claw Kit**, and start a new task. Codex loads the installed copy from:
@@ -213,7 +214,7 @@ Restart the ChatGPT desktop app, choose the **Claw Kit** marketplace in the plug
 %USERPROFILE%\.codex\plugins\cache\claw-kit\claw-kit\<plugin-version>\
 ```
 
-Refresh the Git snapshot with `codex plugin marketplace upgrade claw-kit` before installing a newer plugin version. Do not depend on post-install generation: Codex copies the marketplace source into its cache, and npm-backed plugin installation does not run lifecycle scripts.
+Refresh the Git snapshot with `codex plugin marketplace upgrade claw-kit`, then reinstall or enable `claw-kit@claw-kit` before testing a newer plugin version. Verify that no older same-name identity such as `claw-kit@claw-kit-local` remains enabled against a stale source. Do not depend on post-install generation: Codex copies the marketplace source into its cache, and npm-backed plugin installation does not run lifecycle scripts.
 
 After publishing, refresh the maintainer machine as part of release completion:
 
@@ -235,9 +236,10 @@ npm run install:codex-plugin
 Expected output and install locations:
 
 - export bundle: `dist/codex-plugin/claw-kit/<plugin-version>/`
+- local marketplace source: `C:\Users\<you>\.agents\plugins\claw-kit-local\plugins\claw-kit\`
 - local Codex cache install: `C:\Users\<you>\.codex\plugins\cache\claw-kit-local\claw-kit\<plugin-version>\`
 
-The direct cache install is a repository-development path, not the remote distribution path.
+The maintained development install refreshes both paths and validates the marketplace entry. A cache-only copy is not a supported success state.
 
 ## Post-publish Install Verification
 
@@ -256,6 +258,7 @@ If the release changed the Codex adapter, also verify the plugin cache copy:
 npm run export:codex-plugin
 npm run install:codex-plugin
 Get-Content packages/codex-adapter/.codex-plugin/plugin.json
+Get-Content C:\Users\chany\.agents\plugins\claw-kit-local\plugins\claw-kit\.codex-plugin\plugin.json
 Get-ChildItem dist/codex-plugin/claw-kit
 Get-ChildItem C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit
 node packages\cli\dist\bin.js template validate --template update
@@ -268,7 +271,9 @@ Expected outcome:
 - `claw` resolves from `C:\Users\chany\AppData\Roaming\npm\claw.ps1`
 - `claw --help` succeeds
 - the exported bundle contains the expected manifest version when adapter files changed
+- the active local marketplace source manifest matches the expected plugin version
 - the local plugin cache contains the expected manifest version when adapter files changed
+- the enabled plugin identity points at the verified source; an unrelated newer cache directory does not count
 - the repository marketplace source contains `planning`, `config`, `update`, and `create-claw-skill`, including templates and helper resources
 - both bundled templates pass the real CLI validation command from an isolated cache
 

@@ -17,6 +17,8 @@ The original synchronization implementation wrote those adapter-local copies int
 
 `0.1.63` 进一步确认：临时 staging 不能作为 Codex Git marketplace 的唯一物化边界。Codex 官方 marketplace 从 Git 仓库复制 `source.path` 指向的插件目录，不会先运行仓库自定义同步脚本；如果 `packages/codex-adapter` 本身缺少 shared skill 或相邻资源，远端安装得到的就是不完整插件。release zip 即使完整，也不能证明 Git marketplace 源完整。
 
+`修复 Codex 插件 active install 与 update 流程` 进一步确认：Codex 实际加载的插件由 active marketplace identity 及其 source 决定，versioned cache 中出现更高版本目录并不代表该版本已经生效。维护者开发安装如果只写 cache、没有刷新 `claw-kit@claw-kit-local` 对应的 local marketplace source，会留下“cache 已更新、active source 仍旧”的静默分叉；第三方更新也可能因为同名旧 identity 仍处于 active 状态而继续加载错误 payload。
+
 随后，`fix-skill-local-subplan-template-resolution` 计划进一步暴露了运行时边界：shared skill 的 `TEMPLATE.json` 是完整 `PlanDocument` 模板，而旧 `.claw/templates` 仍使用 `SeedPlanTemplate`。如果 `claw plan create` 与 `claw subplan create` 分别维护发现、schema 判别和实例化逻辑，同一个 skill-local 模板就会在 root plan 与 subplan 路径上产生不一致行为。
 
 ## Decision
@@ -36,6 +38,13 @@ Codex Git marketplace 的发布源必须是已提交、自包含的 `packages/co
 - `scripts/publish-release.mjs` 通过 `assertSharedSkillsSynced(...)` 只读比较规范源与已物化副本；缺失、文件集合不完整或内容落后时必须失败
 - `scripts/codex-plugin-bundle.mjs` 只能导出和安装当前 `packages/codex-adapter` 内容，不得在临时 staging 中隐式同步 shared skills 来掩盖仓库源缺失
 
+Codex 安装与更新采用 active identity/source 合同：
+
+- 维护者开发安装必须先校验并刷新 `claw-kit@claw-kit-local` 对应的 local marketplace source，再从该 source 写入 versioned cache；cache-only installation 不是受支持的成功态
+- 第三方正式 identity 固定为 `claw-kit@claw-kit`；marketplace upgrade 后必须重新安装或启用该 identity，并检测、处理会抢占加载结果的 stale same-name identity
+- 安装或更新验收必须同时对齐 active identity、marketplace source manifest、cache manifest 与 target version，不能用 cache 目录存在或最高版本目录作为单独成功证据
+- 插件更新只有在 Codex restart 后，由新任务确认 loaded skill locator 时才算运行时生效；既有任务不承担 hot-reload 验证
+
 OpenCode 等不通过 Codex Git marketplace 直接复制仓库插件树的适配器，可以继续在 bundle/install staging 中物化派生副本；这不改变 Codex marketplace 源必须已提交且自包含的约束。
 
 When a shared skill is materialized, copy its complete directory recursively rather than only `SKILL.md`. This preserves template manifests, fallback guidance, and other adjacent resources required by the skill contract.
@@ -51,6 +60,7 @@ When a shared skill is materialized, copy its complete directory recursively rat
 Keep the shared planning skill host-agnostic:
 
 - it defines plan quality, decomposition, and scope-writing rules
+- verification and closure are optional rather than default required stages; the main agent decides whether either belongs in the plan for the specific task
 - it assumes `using-claw-kit` has already decided whether the request belongs in the formal claw workflow
 - it does not own or duplicate the entry-time complexity scoring heuristic
 - it does not define claw-kit runtime flow, status semantics, writer dispatch, goal mode, or closeout policy
@@ -76,11 +86,15 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 
 - There is only one maintained source for each host-neutral shared skill going forward.
 - Codex Git marketplace、release bundle 和维护者本地安装都从同一棵已提交的 `packages/codex-adapter` 读取，不再出现“zip 完整但远端 Git 安装缺 skill”的分叉。
+- 维护者开发安装的完成边界从“versioned cache 已写入”提升为“active local identity/source 与 cache 一致”，避免 Codex 继续加载旧 source。
+- 第三方更新的完成边界固定到 `claw-kit@claw-kit` active identity，并显式暴露 stale same-name identity 冲突。
+- restart/new-task locator check 成为插件运行时生效的最终证据，避免把既有任务中的旧 skill snapshot 误判为更新失败或更新成功。
 - `shared/skills` 保持单一规范维护源，同时 Codex adapter 的派生副本成为需要审查和提交的发布资产。
 - release gate 发现未同步时直接失败；bundle 导出不再通过临时生成制造假阳性。
 - OpenCode 仍可把 temporary staging 作为自身分发边界，而不会弱化 Codex marketplace 的自包含要求。
 - A shared skill directory is an atomic distribution unit: the generated plugin must retain every required resource beside `SKILL.md`, not only the entry instruction file.
 - Host/runtime-specific workflow rules remain separated from generic planning and config guidance.
+- Planning does not create verification or closure tasks merely to satisfy a fixed stage template; those tasks appear only when the main agent chooses to include them for the work at hand.
 - The complexity gate now has a single owner at workflow entry, so low-score tasks do not create drift by entering planning first and bypassing later.
 - Future edits to planning quality or decomposition rules should start from `shared/skills/planning/SKILL.md`.
 - Future edits to config routing or override-format guidance should start from `shared/skills/config/SKILL.md`.
@@ -100,6 +114,8 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 - `scripts/sync-shared-skills.mjs`
 - `scripts/sync-planning-skill.mjs`
 - `scripts/codex-plugin-bundle.mjs`
+- `scripts/install-codex-plugin.mjs`
+- `scripts/install-codex-plugin.ps1`
 - `scripts/publish-release.mjs`
 - `scripts/opencode-plugin-bundle.mjs`
 - `packages/codex-adapter/package.json`
@@ -117,19 +133,32 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 - `packages/core/test/core.test.ts`
 - `packages/cli/test/cli.test.ts`
 - `shared/skills/update/TEMPLATE.json`
+- `shared/skills/update/SKILL.md`
+- `shared/skills/update/non-claw-fallback.md`
+- `.claw/tasks/修复-Codex-插件-active-install-与-update-流程/plan.json`
 - `.claw/tasks/fix-skill-local-subplan-template-resolution/plan.json`
+- `.claw/tasks/让-planning-按复杂度选择验证与-closeout/plan.json`
 - `.claw/tasks/发布共享技能-staging-修复并刷新本地运行时/plan.json`
 - `.claw/archive/tasks/align-codex-plugin-publish-and-remote-install/plan.json`
 
 ## Search Terms
 
 - `planning`
+- `optional verification`
+- `optional closure`
 - `config`
 - `shared skill source`
 - `shared planning skill`
 - `shared config skill`
 - `shared skill staging`
 - `Codex Git marketplace`
+- `claw-kit@claw-kit`
+- `claw-kit@claw-kit-local`
+- `active identity`
+- `marketplace source manifest`
+- `cache-only installation`
+- `loaded skill locator`
+- `Codex restart`
 - `packages/codex-adapter`
 - `assertSharedSkillsSynced`
 - `materialized plugin source`

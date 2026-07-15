@@ -4,7 +4,10 @@ Use this note when `workflowGuidance.delegateSubagents` is present.
 
 ## Core rule
 
-`delegateSubagents` is not advisory prose. Each entry is a structured dispatch contract.
+`delegateSubagents` is not advisory prose. Each entry is a structured dispatch contract, but dispatch itself may be conditional. Read `required` and `dispatchCondition` first.
+
+- `required: true` means dispatch is mandatory.
+- `required: false` with `dispatchCondition: main_agent_confirms_reusable_truth` means the main agent first judges truth value and does not dispatch when the completed work has no reusable truth.
 
 Codex has multi-agent capability. Use `tool_search` to locate the current session's agent-management tools, then execute delegation through that surface.
 
@@ -37,7 +40,7 @@ Do not document or implement inline fallback as a normal branch of the Codex ada
 Honor `workflowGuidance.nextsteps` ordering exactly.
 
 - `truth-writer`
-  - run at task-completion time before plan closure
+  - evaluate `dispatchCondition` at task-completion time and run only when the main agent confirms reusable truth
   - keep the specialist open for reuse
 - `adr-writer`
   - run only after `all tasks done` guidance has had retrospective and any durable `keyDecisions` written back into the plan
@@ -109,6 +112,7 @@ Expected behavior:
 ## Main-agent responsibilities
 
 - Reuse or spawn only the specialist needed by current `workflowGuidance`.
+- Evaluate `required` and `dispatchCondition` before dispatch; do not spawn a conditional truth writer merely because its contract is present.
 - For `truth-writer` and `adr-writer`, default to `worker + gpt-5.4-mini + explicit skill item`.
 - For `truth-writer` and `adr-writer`, honor `fork_context: false` by avoiding full-history forked context and sending only the narrow deposition bundle.
 - For `researcher`, default to `explorer + explicit skill item`.

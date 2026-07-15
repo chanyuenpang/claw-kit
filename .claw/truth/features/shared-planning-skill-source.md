@@ -170,3 +170,113 @@
 - `marketplace-style cache copy`
 - `resolveSeedPlanTemplate choiceRequiredTasks`
 - `codex plugin marketplace add upgrade`
+
+## 2026-07-16：Codex 开发安装同步 marketplace source 与 cache
+
+### 结论
+
+- Codex 的 active plugin 由 marketplace identity 与该 marketplace entry 的 `source` 决定；版本化 cache 中存在更高版本目录，不代表当前任务实际绑定了该目录。
+- 维护者本地开发安装必须同步两层状态：先更新 active local marketplace entry 指向的 source payload，再从该 source 写入 versioned Codex cache。只写 cache 会留下 source/cache 分叉，重启或新任务仍可能加载旧 source 对应的技能。
+- 技能 snapshot 在任务创建时绑定；安装器完成后必须重启 Codex 并创建新任务，不能用当前长线程是否刷新来判断安装是否成功。
+
+### 真实安装链路
+
+- `scripts/install-codex-plugin.ps1` 调用 `scripts/install-codex-plugin.mjs`。
+- `scripts/install-codex-plugin.mjs` 调用 `installCodexPluginDevelopmentSurface(...)`，而不是直接调用只写 cache 的 `installCodexPluginBundle(...)`。
+- `scripts/codex-plugin-bundle.mjs` 的 `installCodexPluginDevelopmentSurface(...)` 先读取 development marketplace 的 `marketplace.json`，按插件名查找 entry，并要求 `entry.source.source === "local"` 且 `entry.source.path` 是字符串。
+- resolver 会把 `entry.source.path` 解析为 marketplace root 内的绝对路径，并拒绝逃逸 marketplace root 的 source。缺少对应 plugin entry、非 local source 或越界路径都属于硬错误。
+- source 校验通过后，安装器先把仓库 `packages/codex-adapter` payload 刷新到 marketplace source；随后 `installCodexPluginBundle(...)` 以该 marketplace source 为输入，将同一 payload 写入 `<cacheRoot>/<plugin-name>/<manifest-version>`。
+- 当调用方显式传入的 `sourceDir` 已经等于 marketplace source 时，可以跳过 source-to-source 复制，但 cache 仍必须从经 marketplace 校验的 source 生成。
+
+### 长期规则与陷阱
+
+- “cache 中最高版本存在”只能证明该目录被写入，不能证明 Codex 的 active marketplace entry 指向它，也不能证明当前任务使用它。
+- 开发安装验收至少要核对 marketplace 名称、`marketplace.json` entry、resolved source path、source manifest/version、cache manifest/version，以及重启后新任务绑定的 skill snapshot。
+- 安装器不得静默猜测不存在的 marketplace entry，也不得把任意 local path 当成 active source；identity/source 校验是避免写对 cache、加载错插件的边界。
+- 远端用户的官方 Git marketplace 安装仍遵循仓库 `.agents/plugins/marketplace.json -> ./packages/codex-adapter` 的发布合同；本节描述的是维护者本机 development marketplace 更新链路，不改变用户分发入口。
+
+### 验证标准
+
+- `scripts/codex-plugin-bundle.test.mjs` 覆盖 source-before-cache：先刷新 marketplace source，再验证 source 与 versioned cache 的 manifest 版本一致，并确认 source 中旧 payload 已被清除。
+- 同一测试文件覆盖缺失 plugin entry 的拒绝路径，防止安装器退化为绕过 marketplace identity 的 cache-only 写入。
+- PowerShell wrapper 的成功提示必须同时表达 marketplace source 与 cache 已更新，并明确重启 Codex、创建新任务的生效边界。
+
+### 关联代码
+
+- development marketplace 解析与安装编排：`scripts/codex-plugin-bundle.mjs`
+- Node CLI wrapper：`scripts/install-codex-plugin.mjs`
+- PowerShell 开发入口：`scripts/install-codex-plugin.ps1`
+- 回归测试：`scripts/codex-plugin-bundle.test.mjs`
+- development marketplace manifest：`C:\Users\chany\.agents\plugins\claw-kit-local\marketplace.json`
+- 仓库插件 payload：`packages/codex-adapter`
+
+### 补充检索词
+
+- `installCodexPluginDevelopmentSurface`
+- `marketplace source before cache`
+- `active plugin identity source`
+- `versioned cache is not active plugin`
+- `restart Codex new task skill snapshot`
+
+## 2026-07-16：Codex update 以 active identity/source 为完成边界
+
+### 结论
+
+- 第三方官方 Codex 安装的规范 identity 是 `claw-kit@claw-kit`；`codex plugin marketplace upgrade claw-kit` 只刷新 marketplace snapshot，不等于该 plugin identity 已重新安装、启用或成为 active surface。
+- marketplace upgrade 后必须重新安装或启用 `claw-kit@claw-kit`，并检测仍启用的旧同名 identity，例如 `claw-kit@claw-kit-local`。旧 identity 指向旧 source 时，即使磁盘上已有更新 cache，Codex 仍可能加载旧技能。
+- cache 目录只是安装 artifact，不是 active plugin 证明。Codex 更新验收必须同时证明 active identity、marketplace source manifest、cache manifest 与 target version 一致，并在 restart/new task 后确认 loaded skill locator 来自预期版本。
+
+### Canonical update skill 合同
+
+- `shared/skills/update/SKILL.md` 保存高信号入口规则：官方 identity、cache 非激活证明、旧同名 identity 检测，以及 CLI/plugin 双 surface 完成边界。
+- `shared/skills/update/TEMPLATE.json` 保存逐步执行合同：升级 marketplace 后重新安装/启用 identity，按官方或 development route 核对 source/cache manifest，清理 stale same-name identity，并在新任务验证 loaded locator。
+- `shared/skills/update/non-claw-fallback.md` 为未进入 claw template 的等价后备流程；`shared/skills/update/CONTENT-COVERAGE.md` 明确 active identity/source verification 属于必须覆盖内容。
+- Codex/OpenCode adapter 中的 `update` 副本由 `sync:shared-skills` 从 `shared/skills/update/` 生成；adapter 副本不是独立编辑入口。
+
+### 官方与开发 identity 边界
+
+- 官方仓库 marketplace 路线使用 `claw-kit@claw-kit`，配套 cache root 是 `%USERPROFILE%\.codex\plugins\cache\claw-kit\claw-kit\`。
+- 维护者 development marketplace 路线使用 `claw-kit@claw-kit-local`，source 位于 `%USERPROFILE%\.agents\plugins\claw-kit-local\plugins\claw-kit\`，配套 cache root 是 `%USERPROFILE%\.codex\plugins\cache\claw-kit-local\claw-kit\`。
+- 两个 identity 可以在磁盘上同时留下 artifacts；验证时必须确认当前应使用的 identity 已启用，并处理指向旧 source 的另一个同名 identity。不能假设版本最高的 cache 自动获胜。
+
+### 验收顺序
+
+1. 确认 target version 与预期 marketplace。
+2. 对官方路线执行 marketplace add/upgrade，再安装或启用 `claw-kit@claw-kit`；对 development 路线执行维护的 source-and-cache installer。
+3. 检查并禁用/卸载仍指向旧 source 的同名 identity。
+4. 比对 active identity 对应的 marketplace source manifest、cache manifest 与 target version，并确认 active source/cache 中包含 `planning`、`config`、`update`、`create-claw-skill` 及声明资源。
+5. 重启 Codex，创建新任务，确认 loaded skill locator 属于预期 identity/version。
+
+任一步缺失都不能仅凭 cache 目录存在报告更新成功。
+
+### 本机 development route 验证基线
+
+- 执行修复后的 `npm run install:codex-plugin` 后，预期 active development identity 仍是 `claw-kit@claw-kit-local`；该身份与官方第三方 `claw-kit@claw-kit` 的用途不可混淆。
+- 仓库 `packages/codex-adapter/.codex-plugin/plugin.json`、development marketplace source manifest 与对应 versioned cache manifest 均为 `0.1.63+codex.20260715132514`。
+- 三处 `skills/using-claw-kit/SKILL.md` 的 SHA256 均为 `614ABD613718EAB598C4535B3BA38829A9FD4F3AC81749F08D61097B715CE268`，证明该次安装的 repo/source/cache payload 一致。
+- 上述文件一致性仍不热替换当前任务绑定的旧 catalog；重启 Codex 并创建新任务、再确认 loaded locator，才是最终加载边界。
+
+### 关联代码与文档
+
+- canonical skill：`shared/skills/update/SKILL.md`
+- canonical template：`shared/skills/update/TEMPLATE.json`
+- fallback：`shared/skills/update/non-claw-fallback.md`
+- coverage contract：`shared/skills/update/CONTENT-COVERAGE.md`
+- shared-copy 生成：`scripts/sync-shared-skills.mjs`、root `package.json` 的 `sync:shared-skills`
+- 用户入口：`README.md`
+- 分发与验收：`DISTRIBUTION.md`
+- template/bundle 回归：`scripts/codex-plugin-bundle.test.mjs`
+
+### 补充检索词
+
+- `claw-kit@claw-kit`
+- `claw-kit@claw-kit-local`
+- `marketplace upgrade reinstall enable`
+- `active identity source cache target version`
+- `restart new task loaded locator`
+
+### 最终验收基线
+
+- 该轮 source-aware installer 与 update identity 合同通过全仓 `npm run check`、core `114/114`、CLI `63/63`、Codex bundle `11/11`、shared sync/bundle 合并 `14/14`、update skill quick validation 与 `git diff --check`。后续修改上述安装链路时，应继续覆盖 core/CLI、bundle、shared-copy 与 update template 四层，而不是只跑单一 installer smoke。
+- 本机清理了 stale `0.1.12` development cache，仅保留 `0.1.63`；这用于消除旧 artifact 干扰，但仍不能替代 active identity/source 与新任务 loaded locator 的验收。
+- 通用 plugin validator 当前会拒绝官方 manifest 已支持且本插件正在使用的既有 `hooks` 字段。该结果属于 validator schema 与官方 manifest surface 的兼容性差异，不应为了让通用 validator 通过而删除 `packages/codex-adapter/.codex-plugin/plugin.json` 的 `hooks`；应以官方 manifest 支持、Codex 实际加载与项目定向测试为准。

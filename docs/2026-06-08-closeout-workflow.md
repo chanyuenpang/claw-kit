@@ -61,11 +61,12 @@ Pass criteria:
 2. `claw` resolves from `C:\Users\chany\AppData\Roaming\npm\claw.ps1`
 3. the command surface is reachable through `claw --help`
 
-### 2.2 Local Codex plugin cache
+### 2.2 Local Codex plugin marketplace source and cache
 
-When `packages/codex-adapter` changes, sync the local Codex plugin cache under:
+When `packages/codex-adapter` changes, run `npm run install:codex-plugin`. The maintained installer validates the `claw-kit-local` marketplace entry and refreshes both:
 
 ```text
+C:\Users\chany\.agents\plugins\claw-kit-local\plugins\claw-kit\
 C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\<plugin-version>\
 ```
 
@@ -80,23 +81,26 @@ At minimum sync:
 
 After sync, confirm:
 
-1. `plugin.json` has the expected version
+1. the active marketplace source and cache `plugin.json` files have the expected version
 2. `hooks.json` matches the current implementation
-3. updated skills and references are present in cache
+3. updated skills and references are present in both the source and cache
+4. `config.toml` enables the identity backed by that source; a newer unrelated cache directory is not proof of activation
 
 Recommended verification commands:
 
 ```powershell
 Get-Content packages/codex-adapter/.codex-plugin/plugin.json
+Get-Content C:\Users\chany\.agents\plugins\claw-kit-local\plugins\claw-kit\.codex-plugin\plugin.json
 Get-Content C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\<plugin-version>\.codex-plugin\plugin.json
 Get-ChildItem C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit
 ```
 
 Pass criteria:
 
-1. repo manifest version and cached manifest version are identical
-2. the expected cache directory exists under `claw-kit-local\claw-kit\<plugin-version>\`
-3. the copied plugin files are readable from the cache path
+1. repo, active marketplace source, and cached manifest versions are identical
+2. the enabled plugin identity points at the verified marketplace source
+3. the expected cache directory exists under `claw-kit-local\claw-kit\<plugin-version>\`
+4. the copied plugin files are readable from both source and cache paths
 
 ## 3. commit + push
 

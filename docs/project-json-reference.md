@@ -102,8 +102,8 @@ Use `null` when the project should explicitly keep the built-in writer behavior.
   - default: `true`
   - when `false`, returned `workflowGuidance` suppresses `goalMode`
 - `truthDispatch`
-  - `per_task`: default behavior, allows mid-task truth deposition guidance
-  - `final_only`: suppresses mid-task truth deposition while still allowing closeout deposition
+  - `final_only`: default behavior, suppresses mid-task truth deposition while still allowing closeout deposition
+  - `per_task`: explicit opt-in for mid-task truth deposition guidance
 
 Older nested inputs should be rewritten into the flat fields above during protocol repair; new config should use only the canonical flat shape.
 
@@ -133,7 +133,7 @@ Older nested inputs should be rewritten into the flat fields above during protoc
     }
   },
   "goalMode": true,
-  "truthDispatch": "per_task",
+  "truthDispatch": "final_only",
   "gitnexus": false
 }
 ```

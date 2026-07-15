@@ -64,8 +64,8 @@ export const configGuideContent = {
         group: "Workflow",
         title: "When truth capture should be prompted",
         summary: 'Allowed values: `per_task` and `final_only`.',
-        detail: '`per_task` is the default and allows truth guidance during a task. `final_only` suppresses mid-task truth guidance but still keeps closeout truth and ADR deposition.',
-        example: `"truthDispatch": "per_task"`
+        detail: '`final_only` is the default and suppresses mid-task truth guidance while keeping closeout truth and ADR deposition. Use `per_task` as an explicit opt-in when intermediate milestones regularly produce reusable truth.',
+        example: `"truthDispatch": "final_only"`
       },
       {
         id: "defaultPlanTemplate",
@@ -201,8 +201,8 @@ export const configGuideContent = {
         group: "工作流",
         title: "什么时候提示 truth 捕获",
         summary: "可选值只有 `per_task` 和 `final_only`。",
-        detail: "`per_task` 是默认值，允许任务进行中出现 truth 沉淀引导；`final_only` 会关闭中途 truth 引导，但保留收尾阶段的 truth 和 ADR 写回。",
-        example: `"truthDispatch": "per_task"`
+        detail: "`final_only` 是默认值，会关闭中途 truth 引导，但保留收尾阶段的 truth 和 ADR 写回；只有经常在中间里程碑产生可复用知识时才显式启用 `per_task`。",
+        example: `"truthDispatch": "final_only"`
       },
       {
         id: "defaultPlanTemplate",
@@ -284,7 +284,7 @@ export const configGuideContent = {
   "version": "0.1.54",
   "planning": true,
   "goalMode": true,
-  "truthDispatch": "per_task",
+  "truthDispatch": "final_only",
   "gitnexus": false
 }`
       },

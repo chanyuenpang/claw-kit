@@ -99,7 +99,7 @@ Use the flat canonical fields for simple project-level toggles:
   "autoUpdate": true,
   "externalPlanningSkill": null,
   "goalMode": true,
-  "truthDispatch": "per_task",
+  "truthDispatch": "final_only",
   "gitnexus": false
 }
 ```

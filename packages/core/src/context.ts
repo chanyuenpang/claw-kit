@@ -187,7 +187,7 @@ function normalizeProjectConfig(projectConfig: ProjectConfig): ProjectConfig {
     planning: projectConfig.planning !== false,
     autoUpdate: projectConfig.autoUpdate === true,
     goalMode: typeof projectConfig.goalMode === "boolean" ? projectConfig.goalMode : true,
-    truthDispatch: projectConfig.truthDispatch === "final_only" ? "final_only" : "per_task",
+    truthDispatch: projectConfig.truthDispatch === "per_task" ? "per_task" : "final_only",
     externalPlanningSkill: normalizeOptionalSkill(projectConfig.externalPlanningSkill),
     externalTruthSkill: normalizeOptionalSkill(projectConfig.externalTruthSkill),
     externalAdrSkill: normalizeOptionalSkill(projectConfig.externalAdrSkill),

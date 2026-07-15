@@ -13,7 +13,9 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
 
 ### `delegateSubagents`
 
-- Dispatch the listed specialist workflow(s) first. Do not demote them into optional follow-up suggestions.
+- Read `required` and `dispatchCondition` before deciding whether to dispatch an entry.
+- Dispatch entries with `required: true` as required workflow steps.
+- For `required: false`, evaluate the returned `dispatchCondition`; `main_agent_confirms_reusable_truth` means the main agent dispatches only after confirming that the completed work contains reusable truth, and otherwise does not dispatch that entry.
 - In `@claw-kit` threads, the hook-provided workflow context has already authorized the required subagent mechanism for the current thread.
 - Codex has multi-agent capability. Use `tool_search` to locate the current session's agent-management tools, then execute delegation through that tool surface rather than only describing the handoff.
 - Do not add a separate per-turn authorization requirement for subagent use. The current `@claw-kit` thread is already authorized by hook context to dispatch the required specialists, so permission concerns must not block the workflow. If the user explicitly changes direction and forbids delegation, follow that new instruction instead.
@@ -22,6 +24,8 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
 - The main agent does not need to read specialist skill files inline before dispatch; attach the returned skill item to the worker bundle and keep the bundle narrow.
 - Honor per-entry fields directly:
   - `name`
+  - `required`
+  - `dispatchCondition`
   - `fork_context`
   - `waitForCompletion`
   - `preferReuseSameTypeInThread`
@@ -79,9 +83,9 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
   - `process.active`
   - create the thread goal if `goalTool` says to
   - process one task
-  - dispatch `truth-writer`
+  - evaluate whether the completed task contains reusable truth and dispatch `truth-writer` only when it does
   - process next task
-  - dispatch `truth-writer`
+  - repeat the truth-value evaluation without treating dispatch as mandatory
   - continue until all tasks are done
   - complete retrospective
   - dispatch `adr-writer`
@@ -101,7 +105,8 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
   - do not keep executing while the plan is paused
 - `process.*` with task completion but open plan
   - every completed task returns the `truth-writer` delegate contract
-  - the main agent decides whether the completed task actually needs truth doc deposition
+  - read `required: false` and `dispatchCondition: main_agent_confirms_reusable_truth`
+  - the main agent decides whether the completed task actually needs truth doc deposition; when it does not, do not dispatch the truth writer
   - the main agent curates the valuable findings into a completed subtask report before dispatch
   - read `delegateSubagents`
   - use `tool_search` to locate agent-management tools
@@ -112,7 +117,7 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
   - use `update_goal(status="complete")`
   - for root plans, treat this as closeout/archive rather than the ADR trigger
   - run an explicit closeout check after the root plan is done
-  - confirm the workflow dispatched `truth-writer` and `adr-writer` whenever the returned contract required them
+  - confirm the workflow dispatched `truth-writer` only when its condition was satisfied, and always dispatched required `adr-writer`
   - do not report truth or ADR closeout as finished if the required delegation never happened
   - if this task includes a git commit flow, inspect the repo for task-related doc residue before commit
   - include canonical truth or ADR updates from writer specialists together with any remaining doc artifacts that belong to the same task round

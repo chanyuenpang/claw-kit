@@ -75,7 +75,7 @@ export function initProject(input: InitProjectInput): InitProjectResult {
     planning: input.planning ?? true,
     autoUpdate: true,
     goalMode: true,
-    truthDispatch: "per_task",
+    truthDispatch: "final_only",
     externalPlanningSkill: normalizeOptionalSkill(input.externalPlanningSkill),
     externalTruthSkill: normalizeOptionalSkill(input.externalTruthSkill),
     externalAdrSkill: normalizeOptionalSkill(input.externalAdrSkill),

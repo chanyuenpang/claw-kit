@@ -130,7 +130,7 @@ function normalizeProjectConfig(raw: unknown, projectRoot: string): ProjectConfi
     planning: typeof source?.planning === "boolean" ? source.planning : true,
     autoUpdate: readBooleanConfig(source?.autoUpdate, true),
     goalMode: readBooleanConfig(source?.goalMode, true),
-    truthDispatch: readTruthDispatchConfig(source?.truthDispatch, "per_task"),
+    truthDispatch: readTruthDispatchConfig(source?.truthDispatch, "final_only"),
     externalPlanningSkill: normalizeOptionalSkill(source?.externalPlanningSkill),
     externalTruthSkill: normalizeOptionalSkill(source?.externalTruthSkill),
     externalAdrSkill: normalizeOptionalSkill(source?.externalAdrSkill),
