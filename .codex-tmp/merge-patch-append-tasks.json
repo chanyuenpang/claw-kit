@@ -1,0 +1,20 @@
+[
+  {
+    "id": 3,
+    "title": "设计 plan edit 的 merge-patch 语义边界",
+    "detail": "把对象递归合并、`null` 删除、数组整体替换，以及 task progress 快捷入口与 patch 的职责边界写清楚。",
+    "status": "pending"
+  },
+  {
+    "id": 4,
+    "title": "实现 merge-patch 版 applyPlanPatch",
+    "detail": "替换当前的定制覆盖式 patch 逻辑，并让 `--patch` 行为与标准 merge-patch 心智对齐。",
+    "status": "pending"
+  },
+  {
+    "id": 5,
+    "title": "更新测试与 CLI 文案",
+    "detail": "补充/修正 core 和 CLI 测试，并同步更新 help、truth、ADR 说明，确保新语义可见且可验证。",
+    "status": "pending"
+  }
+]

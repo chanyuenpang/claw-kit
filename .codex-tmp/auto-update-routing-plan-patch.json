@@ -1,0 +1,80 @@
+{
+  "goal": {
+    "text": "实现基于 autoUpdate 开关的 claw-kit 自动更新路由：版本落后时仅提示，或优先执行更新 CLI 与客户端插件的 update 技能。"
+  },
+  "requirements": {
+    "summary": "当 startup recovery 发现新版本时，需要区分两种行为：如果 `.claw/project.json` 的 `autoUpdate` 为 `true`，prompt 不再只提示版本落后，而是明确把“先更新 claw-kit 插件和 CLI”作为首个执行动作，并通过专门的 update 技能完成；如果没有启用自动更新，则只返回版本落后信息，prompt 不包含执行行为。更新动作需要同时覆盖 CLI 和当前客户端插件安装面。",
+    "openQuestions": [
+      "update 技能采用共享 skill 还是 host-specific adapter skill 来承接？",
+      "客户端插件更新在 Codex / OpenCode 两条适配面上是否需要统一 contract，还是先实现 Codex 这一面？"
+    ],
+    "acceptanceCriteria": [
+      "`.claw/project.json` 与协议校验支持新的 `autoUpdate` 布尔字段，并有明确默认值。",
+      "startup recovery / prompt 在版本落后且 `autoUpdate=false` 时只返回版本落后信息，不包含执行动作。",
+      "startup recovery / prompt 在版本落后且 `autoUpdate=true` 时，首个动作改为执行更新 claw-kit CLI 与客户端插件的 update 技能。",
+      "仓库内存在可被 prompt 调用的 update 技能或等价合同，能同时覆盖 CLI 和客户端插件更新路径。",
+      "至少有针对 prompt 分支和 update 路由的验证。"
+    ]
+  },
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Use the planning skill to refine the request and append executable tasks",
+      "detail": "Use the built-in planning skill to refine the request and append executable tasks into `tasks`. If the current request is still unclear, fill `requirements` first as part of the planning output, then append executable tasks. Keep the pre-seeded activation task and only append downstream work. Recommended planning skill: the built-in planning skill.",
+      "status": "done"
+    },
+    {
+      "id": 2,
+      "title": "Enter process.active",
+      "detail": "After the planning task appends the executable tasks, move the plan into `process.active` and continue execution from the refined task list. If Goal Mode is enabled for this project, start Goal Mode when entering `process.active` and use `Using claw-kit, update plan, follow returned workflowGuidance，finish your goal：排查自动更新功能未生效` as the goal objective.",
+      "status": "done"
+    },
+    {
+      "id": 3,
+      "title": "复盘自动更新设计与触发入口",
+      "detail": "检查 CLI、Codex adapter、安装脚本和分发文档，确认仓库里实际存在的自动更新机制、触发时机、版本来源和成功判定。",
+      "status": "done"
+    },
+    {
+      "id": 4,
+      "title": "用本机状态复现并锁定根因",
+      "detail": "对照 npm registry、当前本地 CLI/插件缓存版本和代码路径，确认是没检测到新版本、检测到了但没执行，还是执行后验证面仍然指向旧副本。",
+      "status": "done"
+    },
+    {
+      "id": 5,
+      "title": "修复自动更新缺口并补验证",
+      "detail": "如果仓库实现存在缺口，做最小修复并补上覆盖该链路的验证；如果不是实现 bug，就把缺失能力或错误假设落成清晰结论。",
+      "status": "done"
+    },
+    {
+      "id": 6,
+      "title": "设计 autoUpdate 协议与 update 技能入口",
+      "detail": "确定 `project.json.autoUpdate` 的字段语义、默认值、host 边界，以及 update 技能如何同时承接 CLI 与客户端插件更新。",
+      "status": "pending"
+    },
+    {
+      "id": 7,
+      "title": "实现版本落后 prompt 分支与 update 路由",
+      "detail": "修改 context / SessionStart / adapter prompt，使 `autoUpdate=false` 时只提示版本落后，`autoUpdate=true` 时把 update 技能作为首个执行动作。",
+      "status": "pending"
+    },
+    {
+      "id": 8,
+      "title": "实现并接入 update 技能",
+      "detail": "补齐可被 prompt 调用的 update 技能或等价 skill contract，确保能同时覆盖 CLI 和客户端插件更新。",
+      "status": "pending"
+    },
+    {
+      "id": 9,
+      "title": "补验证与文档",
+      "detail": "为 `autoUpdate` 分支和 update 路由补测试，并同步更新协议参考和安装说明。",
+      "status": "pending"
+    }
+  ],
+  "rules": [
+    "`autoUpdate=false` 时 prompt 只能提示版本落后，不能包含执行动作。",
+    "`autoUpdate=true` 时更新动作必须同时覆盖 CLI 与当前客户端插件安装面。",
+    "优先复用已有安装脚本和分发路径，不要发明第二套安装实现。"
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "retrospective": {
+    "summary": "Reverted the locally installed brainstorming and dispatching-parallel-agents superpowers skills back to plain markdown skill surfaces. The rollback preserved only the helper files still used by the plain brainstorming skill body, removed claw-only assets from both folders, and left the other installed superpowers skills unchanged."
+  }
+}

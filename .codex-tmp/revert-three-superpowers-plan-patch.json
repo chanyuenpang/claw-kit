@@ -1,0 +1,35 @@
+{
+  "goal": {
+    "text": "Only revert the three low-value compiled skills in the locally installed Codex superpowers plugin to plain markdown skills, without changing the other installed superpowers skills or claw-kit itself."
+  },
+  "requirements": {
+    "summary": "The user wants the local installed Codex superpowers plugin adjusted in place. Only `using-superpowers`, `writing-plans`, and `writing-skills` should be reverted from claw template-backed packages to plain markdown skills. Other installed superpowers skills should remain compiled. Repo-internal claw-kit skill packages are out of scope.",
+    "openQuestions": [],
+    "acceptanceCriteria": [
+      "The three target skills in `C:\\Users\\chany\\.codex\\plugins\\cache\\openai-curated\\superpowers\\d6169bef\\skills` no longer present themselves as claw template-backed entries.",
+      "Each reverted skill keeps a valid plain markdown `SKILL.md` matching the original superpowers fallback content.",
+      "Template-only support files and directories are removed from those three skill folders when they are no longer needed.",
+      "The other installed superpowers skills remain untouched.",
+      "A final filesystem check confirms the post-revert structure of all three target skill folders."
+    ]
+  },
+  "rules": [
+    "Operate only on the installed local Codex superpowers plugin under `C:\\Users\\chany\\.codex\\plugins\\cache\\openai-curated\\superpowers\\d6169bef\\skills`.",
+    "Do not change claw-kit plugin files or reintroduce repo-local superpowers copies.",
+    "Limit the rollback to `using-superpowers`, `writing-plans`, and `writing-skills`."
+  ],
+  "references": [
+    {
+      "path": "C:\\Users\\chany\\.codex\\plugins\\cache\\openai-curated\\superpowers\\d6169bef\\skills\\using-superpowers",
+      "why": "Installed target skill folder to revert in place."
+    },
+    {
+      "path": "C:\\Users\\chany\\.codex\\plugins\\cache\\openai-curated\\superpowers\\d6169bef\\skills\\writing-plans",
+      "why": "Installed target skill folder to revert in place."
+    },
+    {
+      "path": "C:\\Users\\chany\\.codex\\plugins\\cache\\openai-curated\\superpowers\\d6169bef\\skills\\writing-skills",
+      "why": "Installed target skill folder to revert in place."
+    }
+  ]
+}

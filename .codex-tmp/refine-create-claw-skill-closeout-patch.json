@@ -1,0 +1,5 @@
+{
+  "retrospective": {
+    "summary": "Reworked create-claw-skill so the default converted-skill boundary no longer depends on CLAW-KNOWLEDGE.md. The stub, template contract, docs, and test now treat SKILL.md as the home for routing and non-template supplements, keep structured execution data in TEMPLATE.json, and use optional skill-local references only when needed. The local installed superpowers review confirmed that only using-superpowers, writing-plans, and writing-skills match the new plain-skill direction, while the remaining compiled skills still reflect the older boundary."
+  }
+}

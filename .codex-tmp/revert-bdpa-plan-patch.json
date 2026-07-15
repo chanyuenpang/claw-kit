@@ -1,0 +1,31 @@
+{
+  "goal": {
+    "text": "Revert the locally installed Codex superpowers brainstorming and dispatching-parallel-agents skills from compiled claw packages back to plain markdown skills without touching the other installed superpowers skills."
+  },
+  "requirements": {
+    "summary": "Operate only on the installed local Codex superpowers plugin under `C:\\Users\\chany\\.codex\\plugins\\cache\\openai-curated\\superpowers\\d6169bef\\skills`. Revert `brainstorming` and `dispatching-parallel-agents` to plain markdown skill form, preserving any helper files still referenced by the plain skill body.",
+    "openQuestions": [],
+    "acceptanceCriteria": [
+      "The `brainstorming` and `dispatching-parallel-agents` folders no longer present claw template-backed entry surfaces.",
+      "Each reverted skill keeps a valid plain markdown `SKILL.md` based on the original fallback content.",
+      "Claw-only files are removed from those two skill folders when they are no longer needed.",
+      "Helper files still referenced by the plain markdown skill remain present.",
+      "Other installed superpowers skills remain untouched."
+    ]
+  },
+  "rules": [
+    "Operate only on the installed local Codex superpowers plugin path.",
+    "Do not change claw-kit plugin files.",
+    "Limit the rollback to brainstorming and dispatching-parallel-agents."
+  ],
+  "references": [
+    {
+      "path": "C:\\Users\\chany\\.codex\\plugins\\cache\\openai-curated\\superpowers\\d6169bef\\skills\\brainstorming",
+      "why": "Installed target skill folder to revert in place."
+    },
+    {
+      "path": "C:\\Users\\chany\\.codex\\plugins\\cache\\openai-curated\\superpowers\\d6169bef\\skills\\dispatching-parallel-agents",
+      "why": "Installed target skill folder to revert in place."
+    }
+  ]
+}

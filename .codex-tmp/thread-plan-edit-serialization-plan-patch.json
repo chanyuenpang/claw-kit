@@ -1,0 +1,32 @@
+{
+  "requirements": {
+    "summary": "在 CLI/core 层为 `claw plan edit` 引入自动串行化执行路径，让同一 plan 的连续编辑请求不再因为重叠读写而触发 `PLAN_STALE_EDIT` 或 `PLAN_WRITE_CONFLICT`。本轮只要求顺序执行，不要求合并多个编辑请求；每条请求仍然必须保留自己的独立返回结果、workflowGuidance 和错误语义。",
+    "openQuestions": [],
+    "acceptanceCriteria": [
+      "同一 plan 的连续 `claw plan edit` 请求在 CLI/core 层自动顺序执行，而不是依赖调用方手动串行。",
+      "自动串行化不改变单条 edit 的结果合同：每条请求仍返回自己的 workflowGuidance、planSummary 和错误。",
+      "实现不尝试合并多个 edit payload，只保证按提交顺序基于最新状态逐条执行。",
+      "新增或更新测试能覆盖重叠 edit 的串行化行为，并证明不会再因为正常的连续提交而触发 stale/write conflict。"
+    ]
+  },
+  "rules": [
+    "本轮只做自动串行化，不做 edit payload 合并。",
+    "保持 `claw plan edit` 的现有 compact result contract，不要求调用方改协议。",
+    "优先在 CLI/core 层落地，避免把正确性依赖放回 host adapter。"
+  ],
+  "references": [
+    {
+      "path": "packages/core/src/plan.ts",
+      "why": "当前 editPlan 先读后写，并在提交时执行 stale 检查。"
+    },
+    {
+      "path": "packages/core/src/io.ts",
+      "why": "当前 withFileLock 只保护最终写盘，冲突会直接抛出 PLAN_WRITE_CONFLICT。"
+    },
+    {
+      "path": "packages/cli/src/cli.ts",
+      "why": "当前 CLI plan edit 直接调用 editPlan，没有排队层。"
+    }
+  ],
+  "tasks": []
+}

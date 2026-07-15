@@ -1,0 +1,27 @@
+[
+  {
+    "title": "Audit current create-claw-skill boundary and affected surfaces",
+    "detail": "Inspect the stub generator, template contract, and supporting docs to identify every place that still treats compiled knowledge or CLAW-KNOWLEDGE.md as the preferred extra layer.",
+    "status": "pending"
+  },
+  {
+    "title": "Implement the new create-claw-skill boundary",
+    "detail": "Update the stub generator, template guidance, and relevant docs so generated claw skills keep routing and non-template supplement material in SKILL.md, keep structured execution information in TEMPLATE.json, and use optional skill-local references only when needed.",
+    "status": "pending"
+  },
+  {
+    "title": "Review modified local superpowers skills against the new boundary",
+    "detail": "Inspect the locally installed modified superpowers skills one by one, identify where their current compiled surfaces still follow the old boundary, and decide whether each issue is acceptable, should be fixed now, or should remain plain markdown.",
+    "status": "pending"
+  },
+  {
+    "title": "Fix clear superpowers boundary mismatches and verify results",
+    "detail": "Apply any obvious corrections found in the installed local superpowers skills, then run focused verification on the create-claw-skill surfaces and summarize the superpowers review findings with concrete file evidence.",
+    "status": "pending"
+  },
+  {
+    "title": "Close out with durable guidance if warranted",
+    "detail": "Record the new boundary decision, dispatch truth/ADR only if the result is reusable beyond this one plugin cleanup, and finish the claw plan cleanly.",
+    "status": "pending"
+  }
+]

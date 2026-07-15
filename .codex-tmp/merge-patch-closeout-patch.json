@@ -1,0 +1,10 @@
+{
+  "retrospective": {
+    "summary": "把 `claw plan edit --patch` 从旧的定制覆盖式字段更新改成了 merge-patch 心智：对象递归合并、`null` 删除对象字段、数组整体替换。实现上用通用递归 merge 替换了按字段硬编码 patch 逻辑，并保留 `patch.tasks` 与 `taskId/taskStatus` 的冲突保护，因为数组整体替换与单任务进度更新仍是两种冲突意图。core/CLI 测试覆盖了嵌套对象 merge、`null` 删除、数组替换后的 task 默认值规范化，以及 CLI 层的帮助文案和 mixed-parameter 拒绝；同时同步更新了 truth 和 ADR，让 agent 看到 `patch` 时默认期待与真实行为一致。"
+  },
+  "keyDecisions": [
+    "`claw plan edit --patch` 统一采用 merge-patch 心智，而不是继续保留按字段定制覆盖的旧 patch 语义。",
+    "数组字段一律整体替换，不做按元素 merge，也不做按 id 的项目特化 merge。",
+    "`taskId` / `taskStatus` 继续保留为 task progress 的专用快捷入口；如果 `patch.tasks` 与它们同时出现，继续明确拒绝这组冲突意图。"
+  ]
+}

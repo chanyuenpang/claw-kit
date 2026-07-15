@@ -1,0 +1,13 @@
+{
+  "requirements": {
+    "summary": "基于当前 registry 最新版本 0.1.59，发布下一版 claw-kit 0.1.60，并同步把 .claw/project.json 的 version 字段抬到 0.1.60。发布范围包括 root/workspaces/plugin manifest/changelog/project config 的版本面对齐、发布前验证、npm publish、registry 核验与计划收口。",
+    "openQuestions": [],
+    "acceptanceCriteria": [
+      "root package、workspace packages、Codex plugin manifest、.claw/project.json 与 CHANGELOG 的版本面统一到 0.1.60。",
+      "发布前验证通过，包括至少 npm whoami、npm run check、npm test、@veewo/claw-core dry-run 与 @veewo/claw dry-run。",
+      "@veewo/claw-core@0.1.60 与 @veewo/claw@0.1.60 成功发布到 npm registry。",
+      "发布完成后用 npm view 确认 registry 上两个包的最新版本都已经可见为 0.1.60。",
+      "plan retrospective 和 keyDecisions 记录本次发布结果以及 project.json 版本对齐结论。"
+    ]
+  }
+}

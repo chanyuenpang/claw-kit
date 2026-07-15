@@ -1,0 +1,5 @@
+{
+  "retrospective": {
+    "summary": "Reverted only the three low-value compiled skills in the locally installed Codex superpowers plugin back to plain markdown skill surfaces. The rollback preserved support files still referenced by the original skill bodies and left the other installed superpowers skills unchanged."
+  }
+}

@@ -1,0 +1,1 @@
+﻿- `SessionStart` 现在会消费 `startupRecovery.versionSync`：当 `claw context` 因 project `version` 领先而自动更新 CLI 时，若更新后的 entrypoint 已可见就会在同一次恢复链路里重跑 context；若仍不可见，default / recovered startup prompt 也必须明确提示 lagging 或 stale prompt surface。该自动更新只针对 CLI prompt/runtime surface，不会刷新本地 Codex plugin cache payload。

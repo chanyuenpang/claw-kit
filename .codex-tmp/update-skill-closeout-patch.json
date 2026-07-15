@@ -1,0 +1,10 @@
+{
+  "retrospective": {
+    "summary": "Converted the new update skill into a template-backed claw skill package with a thin entry, a skill-local TEMPLATE.json, an adjacent non-claw fallback, and explicit coverage documentation. The generated template now validates by template id and preserves the original update workflow across entry routing, host-specific install steps, verification, and guardrails."
+  },
+  "keyDecisions": [
+    "The update skill now uses a skill-local TEMPLATE.json plus a thin SKILL.md entry instead of keeping all execution guidance inline.",
+    "The original non-claw update instructions are preserved in an adjacent non-claw-fallback.md file rather than being discarded during conversion.",
+    "The converted update workflow keeps host routing explicit with Codex, OpenCode, and conservative fallback branches before install commands run."
+  ]
+}

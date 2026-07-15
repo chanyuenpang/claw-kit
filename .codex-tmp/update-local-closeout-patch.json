@@ -1,0 +1,9 @@
+{
+  "retrospective": {
+    "summary": "Ran the new template-backed update workflow against the local Codex host successfully. The local CLI moved from 0.1.57 to 0.1.58, the global npm install now reports @veewo/claw@0.1.58, and the Codex plugin cache now includes the 0.1.58+codex.20260710043525 install surface with the matching plugin manifest."
+  },
+  "keyDecisions": [
+    "This local refresh used the Codex host route from the update claw skill and verified both the CLI surface and the Codex plugin cache surface.",
+    "The update workflow can resume safely even when the CLI refresh was started just before switching back into the template-backed claw skill flow."
+  ]
+}

@@ -1,0 +1,22 @@
+[
+  {
+    "title": "Audit the three installed skill packages and decide the exact rollback shape",
+    "detail": "Compare each target folder's `SKILL.md` and `SUPERPOWERS-FALLBACK.md`, identify which sibling files are template-only, and confirm the rollback should preserve only plain markdown skill assets.",
+    "status": "pending"
+  },
+  {
+    "title": "Revert the three target installed skills to plain markdown form",
+    "detail": "Replace the compiled claw-entry `SKILL.md` with the original fallback content for `using-superpowers`, `writing-plans`, and `writing-skills`, then remove template-only assets that are no longer part of a plain skill package.",
+    "status": "pending"
+  },
+  {
+    "title": "Verify the installed plugin state after rollback",
+    "detail": "Re-list the three skill folders, inspect the resulting `SKILL.md` headers, and confirm other installed superpowers skill folders remain present and untouched.",
+    "status": "pending"
+  },
+  {
+    "title": "Close out the rollback round",
+    "detail": "Record the outcome, note whether any reusable truth is worth depositing, and finish the claw plan cleanly.",
+    "status": "pending"
+  }
+]

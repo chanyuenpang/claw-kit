@@ -1,0 +1,9 @@
+{
+  "retrospective": {
+    "summary": "0.1.62 从 origin/main 0.1.61 的隔离 worktree 发布；GitHub main、v0.1.62 tag、npm 的 core/CLI 包、Codex 插件 zip 和本机安装验证均已完成。发布守卫现在阻止未提交、未推送或插件技能不完整的 npm 发布。"
+  },
+  "keyDecisions": [
+    "发布守卫在 npm publish 前要求 release commit 已包含在 origin/main，并校验生成的插件包含完整共享 skill 目录。",
+    "Codex 与 OpenCode 适配器继续使用临时 staging 以避免污染源码，但共享 workflow skill 必须递归复制，保留 TEMPLATE.json 和 fallback 文件。"
+  ]
+}

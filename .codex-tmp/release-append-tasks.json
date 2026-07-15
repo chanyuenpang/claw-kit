@@ -1,0 +1,18 @@
+[
+  {
+    "title": "对齐发布版本面到 0.1.58",
+    "detail": "更新 root、packages/core、packages/cli、adapter package、Codex plugin manifest 等版本号，并保持依赖引用一致。"
+  },
+  {
+    "title": "运行发布前验证",
+    "detail": "执行本次发布需要的 build/test/check 和必要的 dry-run，确认工作区处于可发布状态。"
+  },
+  {
+    "title": "发布 npm 包并核验 registry",
+    "detail": "先发布 `@veewo/claw-core`，再发布 `@veewo/claw`，随后用 `npm view` 核验新版本已可见。"
+  },
+  {
+    "title": "整理发布结果并收口",
+    "detail": "把本次发布结果写回 plan 的 retrospective / keyDecisions，准备 truth / ADR closeout。"
+  }
+]

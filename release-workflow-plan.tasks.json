@@ -1,0 +1,26 @@
+[
+  {
+    "id": 3,
+    "title": "审计现有版本、分发入口和脏工作区，确定隔离发布基线",
+    "detail": "确认 origin/main、本地提交、未提交 0.1.60 改动、npm 包与 Codex 插件的实际分发边界；建立仅含发布所需改动的隔离工作树。",
+    "status": "pending"
+  },
+  {
+    "id": 4,
+    "title": "实现强制 GitHub 提交推送与插件内容校验的发布流程",
+    "detail": "更新发布文档、脚本和测试：发布前检查版本一致性、工作区干净、HEAD 已被远端包含；构建插件清单并验证预期 skills。",
+    "status": "pending"
+  },
+  {
+    "id": 5,
+    "title": "构建、验证并创建隔离的新版本 release commit",
+    "detail": "在隔离工作树中完成版本提升、同步共享 skills、运行与变更相称的测试，并创建只包含本次发布范围的提交。",
+    "status": "pending"
+  },
+  {
+    "id": 6,
+    "title": "推送 GitHub、发布 npm 与 Codex 插件产物，并进行干净安装验证",
+    "detail": "先推送 release commit，再发布 @veewo/claw-core 与 @veewo/claw，导出插件包并验证其中含 update、create-claw-skill 等完整 skill 清单；报告每项远端证据。",
+    "status": "pending"
+  }
+]

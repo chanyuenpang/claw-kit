@@ -1,0 +1,10 @@
+{
+  "keyDecisions": [
+    "这次问题不在本地安装脚本本身，而在 `claw context` / `SessionStart` 虽然做了 CLI 版本同步判断，却没有把 `versionSync` 结果带进 startup prompt。",
+    "Codex 插件缓存仍然是独立分发面；`claw context` 负责的是 CLI prompt / startup recovery 刷新，不承担本地 Codex plugin cache 的自动安装语义。",
+    "当 `claw context` 自动更新 CLI 成功时，优先尝试通过当前 entrypoint 重新执行一次 `context`，以便同一轮 startup recovery 直接拿到更新后的 prompt；如果刷新 entrypoint 还不可见，则明确提示当前 prompt 可能仍旧陈旧。"
+  ],
+  "retrospective": {
+    "summary": "这轮排查确认，原设计想解决的是 project protocol 版本超前时的 CLI prompt 刷新，而不是顺手更新本地 Codex 插件缓存。问题根因是 `runContextCommand` 虽然会在 project.version 超前时尝试 `npm install -g @veewo/claw@latest`，但 `SessionStart` 生成 additionalContext 时完全没有消费 `startupRecovery.versionSync`，所以用户既看不到版本落后提示，也拿不到更新成功后的新 prompt。修复后，`claw context` / `SessionStart` 会把版本同步结果写进 startup prompt，并在自动更新成功且新 entrypoint 已可见时立即重跑一次 `context`，把新的 prompt surface 带回同一轮恢复流程；如果 entrypoint 还没切过来，也会明确提示当前 prompt 可能仍是旧的。CLI 定向检查和测试均已通过。"
+  }
+}

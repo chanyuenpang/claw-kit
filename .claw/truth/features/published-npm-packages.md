@@ -145,3 +145,11 @@ release commit `472635e` 已推送至 `origin/main`，tag 为 `v0.1.62`；`@veew
 ### GitHub Release 插件资产
 
 `v0.1.62` 的 GitHub Release 除 source/tag 外还附带 `claw-kit-codex-plugin-0.1.62.zip`。该 zip 是供其他电脑安装相同 Codex 插件内容的分发资产；安装后应确认本地 cache 中的 skill 数量为 10，并包含发布闸门要求的 `planning`、`config`、`update`、`create-claw-skill`。因此跨电脑更新不能只刷新 npm CLI，必须选择与目标 release tag 对应的 Codex 插件资产。
+
+## 2026-07-15：CLI 与 Codex 插件命令面一致性
+
+发布门禁除了校验 GitHub source、npm 版本和 bundle 文件覆盖外，还必须校验 bundle 中 skill 文本引用的 CLI 命令已存在于**同一 release 版本**的已安装 `claw`。插件 cache 可以因本地未发布提交而领先 registry CLI；仅以 cache manifest、skill 数量或 npm version 相同不能证明运行时合同一致。
+
+一次 divergence audit 的实测基线是：全局 `claw --version` 为 `0.1.62`，而 `claw template validate --help` 返回 `Unknown help topic: template`；同时本地 Codex plugin 的 `create-claw-skill` guidance 已引用 `claw template validate`。因此在合并并发布包含新 skill/template guidance 的版本前，该 guidance 不可被视为可由当前已发布 CLI 执行。
+
+后续 release 验收应在从 registry 安装或全局刷新后的 CLI 上，对每个新增或修改的 skill 所引用的 CLI command/subcommand 运行 `--help`（或等价 focused smoke）。这项命令面 smoke 与 bundle 完整性检查互补：前者验证可执行合同，后者验证文件分发合同。

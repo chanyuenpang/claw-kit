@@ -1,0 +1,22 @@
+[
+  {
+    "title": "对齐 0.1.60 版本面并同步 .claw/project.json",
+    "detail": "更新 root、packages/core、packages/cli、adapter package、Codex plugin manifest、CHANGELOG 与 .claw/project.json 的版本号，并保持依赖引用一致。",
+    "status": "pending"
+  },
+  {
+    "title": "运行发布前验证",
+    "detail": "执行 npm whoami、npm run check、npm test，以及 @veewo/claw-core 和 @veewo/claw 的 npm pack --dry-run，确认工作区处于可发布状态。",
+    "status": "pending"
+  },
+  {
+    "title": "发布 npm 包并核验 registry",
+    "detail": "先发布 @veewo/claw-core@0.1.60，再发布 @veewo/claw@0.1.60，随后用 npm view 核验两个新版本已在 registry 可见。",
+    "status": "pending"
+  },
+  {
+    "title": "整理发布结果并收口",
+    "detail": "把本次发布结果写回 retrospective 与 keyDecisions，准备 truth / ADR closeout 并完成 plan done。",
+    "status": "pending"
+  }
+]

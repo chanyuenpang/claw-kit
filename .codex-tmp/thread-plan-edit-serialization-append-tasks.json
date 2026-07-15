@@ -1,0 +1,26 @@
+[
+  {
+    "id": 3,
+    "title": "设计 CLI/core 层的 plan edit 串行化方案",
+    "detail": "确定队列粒度、顺序执行边界、与现有 stale/lock 检查的关系，以及返回结果保持逐条独立的方案。",
+    "status": "pending"
+  },
+  {
+    "id": 4,
+    "title": "实现 plan edit 自动串行化",
+    "detail": "在不改变现有 compact result contract 的前提下，为同一 plan 的 edit 请求增加自动顺序执行能力。",
+    "status": "pending"
+  },
+  {
+    "id": 5,
+    "title": "补充并运行重叠 edit 验证",
+    "detail": "增加测试覆盖重叠 edit 的串行化行为，并运行相关测试确认行为稳定。",
+    "status": "pending"
+  },
+  {
+    "id": 6,
+    "title": "收掉 patch.tasks 与 task-status 组合参数坑",
+    "detail": "为 `patch.tasks` 与 `--task-id/--task-status` 的组合使用增加明确保护或更清晰报错，避免任务先被 patch 替换后再出现误导性的 task not found。",
+    "status": "pending"
+  }
+]

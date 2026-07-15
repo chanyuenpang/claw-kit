@@ -1,0 +1,32 @@
+{
+  "requirements": {
+    "summary": "发布新的 claw-kit 版本，并完成版本对齐、验证、npm 发布与发布后核验。",
+    "openQuestions": [
+      "是否沿用当前标准 full-publish 顺序发布 `@veewo/claw-core` 与 `@veewo/claw`，并同步 adapter/plugin 版本面？"
+    ],
+    "acceptanceCriteria": [
+      "版本号从当前 registry 的 0.1.57 提升到新的发布版本，并在 root/core/cli/adapter/plugin 相关版本面保持一致。",
+      "发布前关键校验通过，至少覆盖本次变更涉及的 build/test/check 面。",
+      "`@veewo/claw-core` 与 `@veewo/claw` 成功发布到 npm registry。",
+      "发布后能从 registry 查询到新的版本号。"
+    ]
+  },
+  "appendTasks": [
+    {
+      "title": "对齐发布版本面到 0.1.58",
+      "detail": "更新 root、packages/core、packages/cli、adapter package、Codex plugin manifest 等版本号，并保持依赖引用一致。"
+    },
+    {
+      "title": "运行发布前验证",
+      "detail": "执行本次发布需要的 build/test/check 和必要的 dry-run，确认工作区处于可发布状态。"
+    },
+    {
+      "title": "发布 npm 包并核验 registry",
+      "detail": "先发布 `@veewo/claw-core`，再发布 `@veewo/claw`，随后用 `npm view` 核验新版本已可见。"
+    },
+    {
+      "title": "整理发布结果并收口",
+      "detail": "把本次发布结果写回 plan 的 retrospective / keyDecisions，准备 truth / ADR closeout。"
+    }
+  ]
+}

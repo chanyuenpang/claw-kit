@@ -1,0 +1,80 @@
+{
+  "id": "update",
+  "configOverride": {
+    "truthDispatch": "final_only"
+  },
+  "title": "update",
+  "status": "process.active",
+  "goal": {
+    "text": "Use update to refresh the published CLI and the current host plugin install surface after a newer version is detected."
+  },
+  "requirements": {
+    "summary": "TODO: Summarize what update should accomplish.",
+    "openQuestions": [],
+    "acceptanceCriteria": [
+      "TODO: Replace with the source skill's required outcome.",
+      "The claw entry, template, optional references, and fallback preserve the source behavior."
+    ]
+  },
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Confirm route and inputs",
+      "detail": "Identify the concrete target, required inputs, and whether the route rules plus SKILL.md supplement are enough or whether optional skill-local references are needed.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "default": {
+            "mergeMode": "override",
+            "summary": "Inputs are clear; continue with the core workflow.",
+            "nextsteps": [
+              "Keep route rules and repeated high-signal reminders in SKILL.md.",
+              "Use template tasks, guidance, rules, and references for structured execution information.",
+              "Use the fallback document for full original wording when needed."
+            ],
+            "nextTaskId": 2,
+            "delegateTruth": false
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Run the core skill workflow",
+      "detail": "TODO: Replace with the source skill's core workflow steps. Keep structured workflow control in the template and keep only non-template supplement material in SKILL.md or optional skill-local references.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "default": {
+            "mergeMode": "override",
+            "summary": "Core workflow completed; verify coverage and outcome.",
+            "nextsteps": [
+              "Check the result against CONTENT-COVERAGE.md.",
+              "Confirm important source behavior was not skipped or stranded outside SKILL.md, TEMPLATE.json, optional references, or fallback."
+            ],
+            "nextTaskId": 3,
+            "delegateTruth": false
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Verify and close out",
+      "detail": "Run the source skill's verification checks, summarize the result, and record any risks or omitted source details.",
+      "status": "pending"
+    }
+  ],
+  "references": [
+    {
+      "path": "CONTENT-COVERAGE.md",
+      "why": "Maps important source information to the converted claw skill surfaces."
+    }
+  ],
+  "rules": [
+    "Follow returned workflowGuidance before advancing.",
+    "Keep structured execution information in template tasks, guidance, rules, and references.",
+    "Keep route rules and non-template supplements in SKILL.md, and use skill-local references only when needed.",
+    "Do not claim completion until the verification task is done."
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "requirements": {
+    "summary": "将 claw-kit 的发布流程改为可复现、可审计的闭环：发布前必须有干净且已提交的 release 版本，必须推送至 GitHub，再发布 npm CLI 和同版本 Codex 插件产物；随后以独立环境验证完整 skill 集合。",
+    "openQuestions": [],
+    "acceptanceCriteria": [
+      "发布文档和自动化检查明确要求 release commit 与 GitHub push，且在未满足时阻止发布。",
+      "新版本包含 update 与 create-claw-skill，并以同一版本标识发布 CLI 与 Codex 插件包。",
+      "GitHub 的目标分支含 release commit，npm registry 含对应 CLI 版本，插件包可由干净 checkout 安装并验证 skill 列表。",
+      "不把当前工作区中无关的既有改动纳入本次 release。"
+    ]
+  },
+  "rules": [
+    "发布不得从包含无关改动的主工作区直接提交；必须隔离 release 范围。",
+    "不得把本机 Codex 缓存安装或 npm CLI 安装当作跨机器发布成功的证据。",
+    "npm publish 前，release commit 必须已推送到 GitHub；插件与 CLI 版本必须可追溯到同一 commit。"
+  ],
+  "references": [
+    {
+      "path": "D:\\Users\\chany\\Documents\\claw-kit\\DISTRIBUTION.md",
+      "why": "现有发布流程与版本规则的权威维护文档。"
+    },
+    {
+      "path": "D:\\Users\\chany\\Documents\\claw-kit\\scripts\\codex-plugin-bundle.mjs",
+      "why": "Codex 插件打包和覆盖安装行为的实现位置。"
+    }
+  ],
+  "keyDecisions": [
+    "将 Git commit 与 GitHub push 设为 npm 发布之前的硬门槛，并要求独立安装验证 Codex 插件 skill 清单。"
+  ]
+}

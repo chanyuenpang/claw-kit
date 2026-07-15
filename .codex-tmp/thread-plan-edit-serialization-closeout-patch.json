@@ -1,0 +1,10 @@
+{
+  "retrospective": {
+    "summary": "在 CLI/core 层为 plan edit 增加了自动串行化入口，让重叠 edit 不再依赖调用方手动串行。实现采用共享 ticket-queue 串行门包裹 `editPlan`，让每个请求轮到自己时再读取最新 canonical plan 并执行；同时补上了 `patch.tasks` 与 `taskId/taskStatus` 混用的显式保护，避免出现误导性的 `Task id not found`。已通过 core 并发编辑测试、core/cli 组合参数报错测试，以及 claw-core/claw 的 TypeScript check。"
+  },
+  "keyDecisions": [
+    "同一 plan 的 `claw plan edit` 自动串行化放在 CLI/core 共享路径，而不是依赖上层 host 或调用方自己协调顺序。",
+    "本轮选择顺序执行而不合并 edit payload：每条请求仍保留自己的独立结果合同，并在轮到自己时基于最新 canonical plan 计算。",
+    "对 `patch.tasks` 与 `taskId/taskStatus` 的组合输入采用显式拒绝，而不是继续允许覆盖式 tasks 替换后再抛出误导性 task-not-found 错误。"
+  ]
+}

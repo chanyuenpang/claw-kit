@@ -1,0 +1,20 @@
+[
+  {
+    "id": 3,
+    "title": "统一 0.1.57 版本面",
+    "detail": "更新 root、core、cli、adapter、plugin manifest、package-lock 和 `.claw/project.json` 等 release 相关版本面，并保持依赖版本一致。",
+    "status": "pending"
+  },
+  {
+    "id": 4,
+    "title": "执行发布前验证与 pack dry-run",
+    "detail": "运行与本轮改动相称的构建/检查/测试，并对 core 与 cli 做 npm pack dry-run。",
+    "status": "pending"
+  },
+  {
+    "id": 5,
+    "title": "发布到 npm 并核对 registry",
+    "detail": "真实发布 `@veewo/claw-core` 和 `@veewo/claw`，然后只核对 registry 最新版本，不刷新本地 CLI 或本地插件缓存。",
+    "status": "pending"
+  }
+]

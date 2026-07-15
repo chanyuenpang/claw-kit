@@ -1,0 +1,44 @@
+{
+  "goal": {
+    "text": "Align create-claw-skill with the new boundary where SKILL.md carries routing and non-template supplements, template-owned structured data stays in the plan/template, and review the modified local superpowers skills against that same standard."
+  },
+  "requirements": {
+    "summary": "Update claw-kit's create-claw-skill implementation and guidance so it no longer treats CLAW-KNOWLEDGE.md as a default extra layer. The generated claw skill should prefer keeping route rules and non-template supplement material in SKILL.md, keep structured workflow and execution data in TEMPLATE.json, and use skill-local references only when needed. Then review the locally modified installed superpowers skills against this new standard and fix any mismatches that are clearly wrong.",
+    "openQuestions": [],
+    "acceptanceCriteria": [
+      "The create-claw-skill stub no longer generates CLAW-KNOWLEDGE.md by default.",
+      "The create-claw-skill template and docs describe the new boundary: SKILL.md for routing and non-template supplements; template for structured rules, references, deliverables, and workflow control.",
+      "Any generated references guidance points to skill-local references rather than a mandatory CLAW-KNOWLEDGE.md layer.",
+      "A review covers the modified local installed superpowers skills and reports findings against the new boundary.",
+      "Any obvious boundary violations in the modified local installed superpowers skills are corrected or explicitly called out."
+    ]
+  },
+  "rules": [
+    "Do not reintroduce CLAW-KNOWLEDGE.md as a default generated artifact.",
+    "Prefer moving structured deliverables, references, rules, and workflow control into TEMPLATE.json or plan-owned surfaces.",
+    "Allow SKILL.md to repeat emphasized constraints when that improves routing clarity or prevents misuse.",
+    "Review the modified local installed superpowers skills against the new boundary rather than against the older compiled-knowledge design."
+  ],
+  "references": [
+    {
+      "path": "shared/skills/create-claw-skill/TEMPLATE.json",
+      "why": "Primary workflow contract to update."
+    },
+    {
+      "path": "shared/skills/create-claw-skill/scripts/create-claw-skill-stub.mjs",
+      "why": "Stub generator currently emits CLAW-KNOWLEDGE.md and old surface guidance."
+    },
+    {
+      "path": "docs/template-authoring-guide.md",
+      "why": "Template authoring guide needs boundary language aligned."
+    },
+    {
+      "path": "docs/create-claw-skill-lessons.md",
+      "why": "Design lessons currently describe compiled knowledge references."
+    },
+    {
+      "path": "C:\\Users\\chany\\.codex\\plugins\\cache\\openai-curated\\superpowers\\d6169bef\\skills",
+      "why": "Installed local superpowers skills to review against the new standard."
+    }
+  ]
+}

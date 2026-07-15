@@ -1,0 +1,36 @@
+{
+  "requirements": {
+    "summary": "把 `claw plan edit --patch` 从当前的定制覆盖式更新收敛成标准化 merge-patch 心智：对象递归合并，`null` 删除对象字段，数组整体替换，不再为 `tasks`、`references`、`rules` 等字段保留隐式特化规则。",
+    "openQuestions": [],
+    "acceptanceCriteria": [
+      "`--patch` 的实现与文档都体现 merge-patch 心智，而不是当前的字段定制覆盖逻辑。",
+      "对象字段支持递归合并，显式 `null` 能删除允许缺省的 plan 字段。",
+      "数组字段按整体替换处理，不引入按元素 merge 或按 id merge 的项目特化语义。",
+      "core/CLI 测试、帮助文案、truth/ADR 文档同步更新，确保 agent 看到 `patch` 时默认期待是正确的。"
+    ]
+  },
+  "rules": [
+    "保持 `taskId` / `taskStatus` 作为 task progress 的专用快捷入口。",
+    "不要给数组字段添加隐式按元素 merge 规则；数组只做整体替换。",
+    "如果某个字段在 runtime plan 中是必填结构，`null` 删除行为必须经过现有 plan 校验兜底。"
+  ],
+  "references": [
+    {
+      "path": "packages/core/src/plan.ts",
+      "why": "当前 applyPlanPatch 是定制字段更新逻辑，需要替换成 merge-patch 语义。"
+    },
+    {
+      "path": "packages/cli/src/cli.ts",
+      "why": "help 和命令入口说明需要与新 patch 语义一致。"
+    },
+    {
+      "path": "packages/core/test/core.test.ts",
+      "why": "需要更新和新增 merge-patch 语义与删除行为的测试。"
+    },
+    {
+      "path": "packages/cli/test/cli.test.ts",
+      "why": "需要补 CLI 层对 patch 语义和帮助文案的断言。"
+    }
+  ],
+  "tasks": []
+}
