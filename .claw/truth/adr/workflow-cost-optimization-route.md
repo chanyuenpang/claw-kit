@@ -36,7 +36,7 @@ Accepted
 - 路由提速不得绕过 deposition 的完整 reference 读取、事实验证、路径 containment、编码检查和有界重复检查。
 - writer-owned routing 已消除可控的 ADR corpus 扫描，但 fresh-agent 定向样本未证明端到端耗时下降，因此不能宣称 writer 整体已经加速；后续性能工作应聚焦 writer 启动与模型处理延迟。
 - FTS-first 快速路径、原子 refine-and-activate、自动状态桥接和常驻 worker 仍只是接受的后续方向，尚未实现。
-- 当前 writer-owned routing 与单一 `dispatch` 合同仍是未发布工作树改动；已安装的全局与本地 `0.1.64` runtime 不包含这些后续变化。
+- `0.1.65` 是单一 `dispatch` 与 writer-owned routing 合同的首个已发布版本；npm、全局 CLI 和 Codex plugin cache 均已刷新到该版本线。
 - 性能结论不能只看单条命令基准；必须同时覆盖交互成本、状态写入、首个有效工作时间和质量回归。
 - 分阶段 A/B 让每项收益可归因，并允许在质量指标回退时停止推进对应路线。
 
@@ -45,6 +45,7 @@ Accepted
 - `.claw/tasks/研究-claw-kit-插件开发耗时与流程优化空间/plan.json`
 - `.claw/tasks/实施-claw-kit-第一阶段流程耗时优化/plan.json`
 - `.claw/tasks/优化-truth-和-ADR-writer-的合同与执行速度/plan.json`
+- `.claw/tasks/按正向指令原则-review-claw-kit-插件-skills/plan.json`
 - `packages/core/src/init.ts`
 - `packages/core/src/context.ts`
 - `packages/core/src/project-check.ts`
@@ -78,3 +79,4 @@ Accepted
 - `time to first effective work`
 - `state writes`
 - `A/B validation`
+- `0.1.65`
