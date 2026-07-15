@@ -13,6 +13,7 @@ Accepted
 采用以下本地 closeout 顺序：
 
 - 如果工作树包含 tracked 修改或未跟踪的计划文件，不能直接 pull 或先清理工作树；先用包含未跟踪文件的具名 stash 完整保护现场，再执行 `git pull --ff-only origin main`。远端同步完成且 `HEAD...origin/main` 已确认对齐后，恢复 stash；只有恢复结果和本地修改都核对无误后才删除该 stash
+- 如果 `git status` 只显示已跟踪文件修改，但 `git hash-object <path>`、index blob 与 `HEAD` blob 完全相同，应先判定为 stale index stat，而不是内容差异；保留现有 blob 后用 `git update-index --add --cacheinfo <mode>,<blob>,<path>` 刷新该 index entry，再复核状态。不得用 checkout、reset 或改写文件内容来清除这种假脏状态。
 - 恢复 stash 时如果 `.claw/truth/SUMMARY.md`、`packages/cli/test/cli.test.ts`、`packages/core/test/core.test.ts` 等本地与远端共同修改的文本出现冲突，必须逐段保留双方仍然有效的语义，并只用 `apply_patch` 编辑冲突文本；不能用整文件 ours/theirs、reset、checkout 或清理命令丢弃用户修改
 - stash 恢复后的最低验证包括：没有未合并路径、保护前的本地修改集合仍然存在、`git diff --check` 通过；验证完成前保留具名 stash 作为恢复保险，不能因为部分文件自动合并成功就提前删除
 - 先把当前 checkout fast-forward 到最新 `origin/main`，或者明确验证它已经是最新；这一步是整个 closeout 的前置条件，不和后面的刷新动作交错执行
