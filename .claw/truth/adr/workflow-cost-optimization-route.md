@@ -14,6 +14,8 @@ Accepted
 
 `0.1.68` 的同机正式闭环复测确认，search 优化已经产生可归因收益，但 plan lifecycle 没有提速：精确 lexical fast path、persistent daemon warm miss 与 query cache hit 均显著快于 `0.1.67` 语义 search 基线，而 `plan show` 基本持平，planning mutations 部分更慢。因此 search 局部提速不能外推为 formal workflow 整体提速。
 
+后续真实端到端冒烟还确认，版本号一致不足以证明线程已进入最新优化路径：线程绑定的 plugin skill snapshot、全局 CLI 实际暴露的命令能力与仓库源码可能分别漂移。若线程仍受旧 snapshot 或旧 CLI contract 约束，即使源码已经包含原子 `claw plan start`，实跑仍可能落入多次 mutation 的 legacy lifecycle。
+
 ## Decision
 
 按以下顺序推进后续优化：
@@ -27,6 +29,7 @@ Accepted
 7. 性能回归必须把 search 路径与 plan lifecycle 分开报告。search 至少分别记录 exact lexical、semantic one-shot、daemon cold、daemon warm 与 query cache hit；workflow 还需单列 plan mutation 与 closeout。在 plan mutation 成本下降前，不以 search 单点收益宣称 formal workflow 整体提速。
 8. search 性能判断以 `route`、`queryEmbedding`、`embeddingRuntime` 与 `durationMs` telemetry 为准。词法路径无需模型、当前 persistent daemon warm 已低于一秒，因此不在 plan create 时无条件预热 embedding。
 9. complexity gate 的 dependency 维度只计算独立风险，不与 files、steps 或 workflow shape 重复计分。completed plan 没有 durable `keyDecisions` 时，ADR writer 立即 no-op，不先扫描 ADR corpus。
+10. workflow 性能复测必须同时记录线程绑定的 plugin skill snapshot、全局 CLI 的实际命令能力与仓库源码状态。版本号只能作为线索；只有三层合同一致且目标命令在真实 CLI surface 可用，才可把样本归入最新优化路径。
 
 复杂任务的计划、验证、完成期 truth/ADR 沉淀和可追溯性继续保留，不以削弱质量门禁换取表面提速。每项实现必须通过按真实任务复杂度分层的 A/B 验证，并共同观察首个有效工作时间、端到端总时长、工具调用数、状态写入次数、收尾时间和质量回归。
 
@@ -55,6 +58,7 @@ Accepted
 - complexity gate 在 `12` 个 low / medium / high 语料上把 legacy low false-positive rate 从 `0.5` 降为 `0`，formal recall 与 overall accuracy 均为 `1`；该结果支持 dependency 独立风险计分，而不是删减 formal workflow 的质量门禁。
 - 无 durable `keyDecisions` 的 ADR no-op 缩短无决策 closeout，但 root-plan `dispatch=required`、有决策时的 writer-owned routing、canonical deposition 与验证合同保持不变。
 - 第二阶段完成后，端到端性能声明仍必须同时覆盖 plan mutation、search、writer 与 completion refresh，不能用任一单条 search benchmark 代表整体 workflow。
+- 复测报告需要显式标注 skill snapshot、CLI capability 与 source revision；任一层漂移时，结果只能描述该组合下的真实路径，不能据源码存在或版本号相同宣称已验证最新合同。
 - `0.1.65` 是单一 `dispatch` 与 writer-owned routing 合同的首个已发布版本；npm、全局 CLI 和 Codex plugin cache 均已刷新到该版本线。
 - 性能结论不能只看单条命令基准；必须同时覆盖交互成本、状态写入、首个有效工作时间和质量回归。
 - 分阶段 A/B 让每项收益可归因，并允许在质量指标回退时停止推进对应路线。
@@ -67,6 +71,7 @@ Accepted
 - `.claw/tasks/按正向指令原则-review-claw-kit-插件-skills/plan.json`
 - `.claw/archive/tasks/验证-0.1.67-最新-claw-流程的效率与流畅度/plan.json`
 - `.claw/tasks/测试-claw-0.1.68-新版流程流畅度与性能/plan.json`
+- `.claw/tasks/测试当前-claw-插件性能与流程效率/plan.json`
 - `.claw/tasks/提速-claw-search-冷启动并验证前台性能/plan.json`
 - `.claw/tasks/实现-claw-search-persistent-embedding-worker/plan.json`
 - `.claw/tasks/实施-claw-kit-第二阶段端到端性能与流程优化/plan.json`
@@ -126,3 +131,4 @@ Accepted
 - `complexity dependency independent risk`
 - `ADR no-op without durable keyDecisions`
 - `end-to-end workflow performance claim`
+- `plugin skill snapshot CLI capability source drift`

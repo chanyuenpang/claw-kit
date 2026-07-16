@@ -66,6 +66,14 @@
 - 正式 lifecycle mutation 实测为：`claw plan create` `403ms`；planning patch `408ms`；planning append `217ms`；planning done `199ms`；activate `415ms`。即使单次 show 较快，正式流程仍包含多个独立 mutation，且 search 仍支付同步 query embedding 的约四秒固定成本。
 - 性能比较必须至少固定 CLI 版本、线程 skill snapshot、机器、query、结果成功性与 cold/warm 条件；同时分别统计失败路径、只读 show、lifecycle mutation 与 search，不能用其中一项替代完整 workflow 成本。
 
+### 0.1.68 名义版本与运行时能力错配（2026-07-17）
+
+- 本轮线程绑定的 plugin skill snapshot 是 `C:\Users\chany\.codex\plugins\cache\claw-kit\claw-kit\0.1.67+codex.20260716054831`；该目录的 `.codex-plugin/plugin.json` 也声明 `version = 0.1.67+codex.20260716054831`。线程实际执行的 skill contract 因而仍属于这个 snapshot，不能用仓库当前 source 或全局包版本替代。
+- 同一时点，`claw --version` 与全局 `@veewo/claw` package 都报告 `0.1.68`，但 `claw help plan start` 返回 `Unknown plan subcommand: start`。对全局安装包检索 `plan.start` / `plan start requires` 等实现锚点也没有发现 `plan.start` command implementation，说明该已安装 runtime 的命令能力与名义版本不能仅凭版本号判定。
+- 当前仓库 source 已在 `packages/cli/src/cli.ts` 与 `packages/core/src/plan.ts` 实现 atomic `plan.start`，对应回归覆盖位于 `packages/cli/test/cli.test.ts` 与 `packages/core/test/core.test.ts`。检查时工作树存在用户持有的未提交变更，因此这些 source 能力不能被直接等同为全局已安装 package 的内容。
+- 这次错配使正式 workflow 性能测试实际走了 legacy `create` / `patch` / `planning-done` / `activate` mutations，而没有走 atomic `plan.start`。该样本只能代表当时真实加载的 CLI package content、capability 与线程 plugin snapshot，不能代表仓库 source 中的 atomic path。
+- 因此，名义版本相等不构成 runtime/source 内容一致性的证据。后续 workflow 性能测试除记录版本字符串外，必须同时记录 CLI package 的实际安装来源与关键 command capability，并记录当前线程绑定的 plugin skill snapshot；涉及新 command 时至少执行一次真实 help 或 smoke probe，确认运行时确实暴露该能力。
+
 ### Search latency 第一阶段优化与验证（2026-07-16）
 
 - `packages/core/src/memory.ts` 已加入保守 lexical fast path。只有同时满足以下条件时才跳过 query embedding：`strongTerms` 非空、没有 weak terms、没有短中文 substring fallback、唯一候选文档完整覆盖全部 strong terms，并且该文档还是文件名/路径的唯一命中或精确短语的唯一命中。任何条件不满足时，都完整回退到既有 hybrid search，不削弱语义召回路径。
