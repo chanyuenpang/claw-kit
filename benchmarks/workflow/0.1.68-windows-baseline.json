@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-07-16T16:37:35.680Z",
+  "machine": {
+    "platform": "win32",
+    "release": "10.0.26200",
+    "arch": "x64",
+    "cpu": "12th Gen Intel(R) Core(TM) i7-12700",
+    "node": "v24.12.0"
+  },
+  "runtime": {
+    "packageVersion": "0.1.68",
+    "mode": "legacy-five-mutation"
+  },
+  "corpus": [
+    { "name": "low", "businessTaskCount": 1 },
+    { "name": "medium", "businessTaskCount": 3 },
+    { "name": "high", "businessTaskCount": 5 }
+  ],
+  "results": [
+    {
+      "case": "low",
+      "businessTaskCount": 1,
+      "managementCommandsBeforeWork": 5,
+      "totalBeforeWorkMs": 961.71,
+      "stageMs": {
+        "create": 207.98,
+        "patch": 195.51,
+        "append": 177.63,
+        "planningDone": 191.91,
+        "activate": 188.68,
+        "show": 140.91
+      },
+      "success": true
+    },
+    {
+      "case": "medium",
+      "businessTaskCount": 3,
+      "managementCommandsBeforeWork": 5,
+      "totalBeforeWorkMs": 923.3,
+      "stageMs": {
+        "create": 170.55,
+        "patch": 186.81,
+        "append": 198.3,
+        "planningDone": 186.61,
+        "activate": 181.03,
+        "show": 135.04
+      },
+      "success": true
+    },
+    {
+      "case": "high",
+      "businessTaskCount": 5,
+      "managementCommandsBeforeWork": 5,
+      "totalBeforeWorkMs": 935.04,
+      "stageMs": {
+        "create": 181.94,
+        "patch": 184.18,
+        "append": 185.42,
+        "planningDone": 194.64,
+        "activate": 188.86,
+        "show": 139.03
+      },
+      "success": true
+    }
+  ],
+  "summary": {
+    "p50BeforeWorkMs": 935.04,
+    "p95BeforeWorkMs": 961.71,
+    "allSuccessful": true
+  }
+}

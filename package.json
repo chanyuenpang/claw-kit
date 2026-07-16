@@ -19,6 +19,7 @@
     "repair:truth-encoding": "npm run build -w @veewo/claw-core && node scripts/truth-encoding-audit.mjs --write",
     "test:codex-plugin": "node --test .\\scripts\\codex-plugin-bundle.test.mjs",
     "test:opencode-plugin": "node --test .\\scripts\\opencode-plugin-bundle.test.mjs",
+    "benchmark:workflow": "node .\\scripts\\workflow-performance-benchmark.mjs",
     "uninstall:local-cli": "npm uninstall -g @veewo/claw",
     "test": "npm run build -w @veewo/claw-core && npm run build -w @veewo/claw && npm run test -w @veewo/claw-core && npm run test -w @veewo/claw",
     "start": "node ./packages/cli/dist/bin.js"
