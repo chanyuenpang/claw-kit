@@ -124,6 +124,8 @@ test("OpenCode writer contracts use direct dispatch semantics and writer-owned r
 
   assert.match(truthSkill, /own canonical routing and deposition/i);
   assert.match(adrSkill, /own decision extraction, canonical routing, and deposition/i);
+  assert.match(adrSkill, /no durable keyDecisions/);
+  assert.match(adrAgent, /no durable keyDecisions/);
   assert.doesNotMatch(adrSkill, /truth corpus|truth deposition/i);
   assert.doesNotMatch(adrAgent, /truth-writer|truth corpus/i);
   assert.doesNotMatch(truthSkill, /adr-writer|route durable architecture decisions/i);

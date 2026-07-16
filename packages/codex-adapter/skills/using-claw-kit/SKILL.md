@@ -49,13 +49,14 @@ Use this quick scoring pass only when there is no recovered task state yet and y
 | --- | --- | --- | --- |
 | Files/modules touched | no file changes, or 1 file or one tight module | 2-3 files/modules | 4+ files/modules or a cross-cutting surface |
 | Requirement clarity | fully clear / the request itself is an investigation | one or two small unknowns | fuzzy, conflicting, or multiple plausible routes |
-| Dependency clarity | isolated | known dependencies | unclear dependencies or integration risk |
+| Distinct dependency risk | none, isolated, or already counted by file/workflow shape (0) | one known integration boundary (1) | unclear external dependency or independent integration risk (2) |
 | Workflow shape | discussion / doc-only work / tiny patch / direct answer | light implementation with a short verify step | real workflow, staged work, or multi-step closure |
 
 Scoring rule:
 
 - score `< 6`: skip the claw workflow and handle the request directly
 - score `>= 6`: use `claw plan create` and continue with the normal claw workflow
+- Count dependency risk only when it is distinct from file count and workflow shape; known dependencies alone add `0`, preventing the same complexity from being counted twice.
 
 ## First action
 

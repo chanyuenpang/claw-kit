@@ -60,11 +60,12 @@ Follow a stronger local ADR convention when one exists. Otherwise use:
 
 ## Workflow
 
-1. Extract durable decisions and their consequences from the completed `plan.json`.
-2. Run `claw search` and read only relevant ADR candidates.
-3. Update the best-matching ADR or create one for a distinct decision.
-4. Verify the target, canonical path containment, encoding, written decisions, and `claw search` discoverability.
+1. Read `keyDecisions` from the completed `plan.json`. When it is absent or empty, return `status: "no-op"` with reason `no durable keyDecisions` immediately; do not run search or inspect the ADR corpus.
+2. Extract the recorded durable decisions and their consequences.
+3. Run `claw search` and read only relevant ADR candidates.
+4. Update the best-matching ADR or create one for a distinct decision.
+5. Verify the target, canonical path containment, encoding, written decisions, and `claw search` discoverability.
 
 ## Return
 
-Return a minimal completion payload with optional `status` and `updatedPaths`, or return nothing.
+Return a minimal completion payload with optional `status`, `reason`, and `updatedPaths`, or return nothing.

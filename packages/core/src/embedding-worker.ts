@@ -21,6 +21,7 @@ type WorkerInput = {
 type WorkerOutput = {
   dimensions: number;
   vectors: number[][];
+  runtime?: "mock" | "persistent_daemon" | "one_shot" | "remote";
 };
 
 async function main(): Promise<void> {
@@ -52,6 +53,7 @@ function buildMockOutput(input: WorkerInput): WorkerOutput {
   return {
     dimensions,
     vectors: input.texts.map((text, textIndex) => buildMockVector(text, dimensions, textIndex)),
+    runtime: "mock",
   };
 }
 
@@ -78,7 +80,7 @@ async function buildLocalOutput(input: WorkerInput): Promise<WorkerOutput> {
       projectCwd: process.cwd(),
     });
     if (persistent) {
-      return persistent;
+      return { ...persistent, runtime: "persistent_daemon" };
     }
   } catch (error) {
     if (error instanceof PersistentEmbeddingModelError) {
@@ -90,7 +92,7 @@ async function buildLocalOutput(input: WorkerInput): Promise<WorkerOutput> {
   const session = await createConfiguredLocalEmbeddingSession(input.embedding, process.cwd());
   try {
     const output = await session.run(input.texts);
-    return { dimensions: output.dimensions, vectors: output.vectors };
+    return { dimensions: output.dimensions, vectors: output.vectors, runtime: "one_shot" };
   } finally {
     await session.dispose();
   }
@@ -136,6 +138,7 @@ async function buildOpenAiOutput(input: WorkerInput): Promise<WorkerOutput> {
   return {
     dimensions,
     vectors,
+    runtime: "remote",
   };
 }
 

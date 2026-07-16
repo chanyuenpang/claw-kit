@@ -205,3 +205,13 @@
 - 原有 `claw plan create`、`claw plan edit` 与 `claw plan done` 保持兼容；`plan start` 是减少 refine/activate 固定管理往返的新增入口，不是破坏旧 lifecycle surface 的替换。
 - 固定 Windows low / medium / high A/B 中，legacy path P50 为 `902.79ms`，atomic path P50 为 `385.06ms`，改善 `57.35%`；把 create-time recall 计入管理动作后，首个业务动作前的管理命令数从 `6` 降到 `3`。这是同一固定 A/B corpus 的配对结果，不覆盖上一节独立 predecessor baseline 的 `935.04ms` 观测值。
 - 本阶段证据是 `benchmarks/workflow/0.1.68-atomic-windows.json`、`docs/workflow-performance-contract.md` 与提交 `3dca2c8`。
+
+### Completion refresh single-flight 与短事务已实现合同
+
+- 提交 `2b397ca` 之后，`.claw/logs/completion-refresh/inflight.lock` 是项目级 completion refresh leader / single-flight 锁。重叠请求不再各自重复刷新，而是合并关联的 status files、operations 与 dirty hash 到当前 leader。
+- leader 在执行期间若观察到 dirty hash 变化，会补跑 refresh cycle，但最多执行 `3` 个 cycles，避免持续变更导致后台任务无限延长。每个状态记录持久化 `dirtyHash`、`refreshCycles` 与 `coalescedCount`，用于区分输入版本、实际循环次数和被合并请求数。
+- project embedding generation 已移出 SQLite `BEGIN` / `COMMIT` 长写事务；耗时的 embedding 先在事务外生成，只有最终 vector insert 使用短事务，从而缩短写锁持有时间。
+- `claw plan done` 的 GitNexus embeddings 预检如果已经执行 analyze，后台 completion refresh 会复用该结果并跳过重复 analyze。GitNexus 返回 busy / locked 时，执行路径按 `100ms`、`250ms` 退避重试，处理瞬时锁竞争。
+- Windows `.cmd` 调用显式使用 `cmd.exe`，不再依赖 `shell: true`；对应回归验证不再产生 Node `DEP0190`。
+- CLI 回归为 `72/72` 通过，其中覆盖 overlapping direct closeout 只执行一次 GitNexus analyze、transient lock retry，以及 preflight analyze dedupe。
+- 本节取代上方旧 baseline 中“当前仍无 single-flight / embedding 位于长写事务 / preflight 与后台可能重复 analyze”的现状描述；那些条目只表示 `2b397ca` 之前的风险基线。P1 中对应候选至此已实现，不应继续当作未完成建议。

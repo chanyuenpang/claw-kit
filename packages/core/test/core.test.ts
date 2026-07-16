@@ -3221,6 +3221,8 @@ test("project search skips the embedding worker for a unique exact filename hit"
 
     const result = searchMemory({ cwd: root, query: "coldstarttarget", limit: 5 });
     assert.equal(path.basename(result.results[0]?.sourcePath ?? ""), "coldstarttarget.md");
+    assert.equal(result.telemetry.route, "lexical_fast_path");
+    assert.equal(result.telemetry.queryEmbedding, "skipped");
   } finally {
     if (previousMockEnv === undefined) {
       delete process.env.CLAW_EMBEDDING_MOCK;
@@ -3260,8 +3262,13 @@ test("project search reuses query embeddings by final embedding text", { concurr
   process.env.CLAW_EMBEDDING_MOCK = "1";
   try {
     const index = buildMemoryIndex({ cwd: root });
-    searchMemory({ cwd: root, query: "之前讨论的那个搜打撤方案" });
-    searchMemory({ cwd: root, query: "之后讨论的搜打撤方案" });
+    const firstSearch = searchMemory({ cwd: root, query: "之前讨论的那个搜打撤方案" });
+    const secondSearch = searchMemory({ cwd: root, query: "之后讨论的搜打撤方案" });
+    assert.equal(firstSearch.telemetry.route, "hybrid");
+    assert.equal(firstSearch.telemetry.queryEmbedding, "generated");
+    assert.equal(firstSearch.telemetry.embeddingRuntime, "mock");
+    assert.equal(secondSearch.telemetry.queryEmbedding, "cache_hit");
+    assert.equal(secondSearch.telemetry.embeddingRuntime, undefined);
 
     const db = new DatabaseSync(index.storePath);
     try {

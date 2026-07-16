@@ -63,6 +63,8 @@ test("writer skills own routing without burdening the main agent", () => {
 
   assert.match(truthSkill, /own canonical routing and deposition/i);
   assert.match(adrSkill, /own decision extraction, canonical routing, and deposition/i);
+  assert.match(adrSkill, /no durable keyDecisions/);
+  assert.match(adrSkill, /do not run search or inspect the ADR corpus/i);
   assert.doesNotMatch(adrSkill, /truth corpus|truth deposition/i);
   assert.doesNotMatch(truthSkill, /adr-writer|route durable architecture decisions/i);
   assert.match(dispatchReference, /canonical ADR routing belongs to the ADR writer/i);

@@ -954,6 +954,9 @@ test("cli search reuses one persistent embedding session across commands", { con
   const second = runClaw(["search", "--query", "second distinct semantic lookup"], root, env);
   assert.ok(Array.isArray(first.results));
   assert.ok(Array.isArray(second.results));
+  assert.equal((first.telemetry as JsonRecord).embeddingRuntime, "persistent_daemon");
+  assert.equal((second.telemetry as JsonRecord).embeddingRuntime, "persistent_daemon");
+  assert.equal((first.telemetry as JsonRecord).queryEmbedding, "generated");
 
   const statePath = path.join(runtimeDir, "state.json");
   await waitForCondition(() => !fs.existsSync(statePath), 4000);

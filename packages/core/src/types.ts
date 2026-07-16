@@ -611,6 +611,12 @@ export type MemorySearchResult = {
   scope: MemoryScope;
   storePath: string;
   results: MemorySearchResultEntry[];
+  telemetry: {
+    route: "task_fts" | "lexical_fast_path" | "hybrid";
+    queryEmbedding: "skipped" | "cache_hit" | "generated";
+    embeddingRuntime?: "mock" | "persistent_daemon" | "one_shot" | "remote";
+    durationMs: number;
+  };
 };
 
 export type MemoryGetInput = {

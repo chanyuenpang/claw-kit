@@ -14,10 +14,11 @@ permission:
 
 ## 工作流程
 
-1. 读取补齐 retrospective 与 durable `keyDecisions` 的 completed `plan.json`；决策提取和 canonical 路由都由你负责
-2. 用 `claw search` 召回候选，只读相关 ADR
-3. 从 plan.json 提取持久决策，优先更新已有 ADR，只有当决策是全新的才创建新 ADR
-4. 验证写入 ADR 可通过 `claw search` 召回
+1. 读取 completed `plan.json` 的 `keyDecisions`；缺失或为空时立即返回 `status: "no-op"` 与 `reason: "no durable keyDecisions"`，不要 search 或扫描 ADR corpus
+2. 从非空 `keyDecisions` 提取持久决策；决策提取和 canonical 路由都由你负责
+3. 用 `claw search` 召回候选，只读相关 ADR
+4. 优先更新已有 ADR，只有当决策是全新的才创建新 ADR
+5. 验证写入 ADR 可通过 `claw search` 召回
 
 搜索不可用、候选冲突或新 ADR 去重仍不明确时，逐步扩大检查范围直到路由和去重结论确定。
 

@@ -286,6 +286,7 @@ function getMetadata(db: DatabaseSync, key: string): string | null {
 }
 
 export function searchMemory(input: MemorySearchInput): MemorySearchResult {
+  const startedAt = performance.now();
   if (!input.query.trim()) {
     throw new ClawError("MEMORY_QUERY_REQUIRED", "memory search requires a non-empty query.");
   }
@@ -313,15 +314,25 @@ export function searchMemory(input: MemorySearchInput): MemorySearchResult {
 
   return withMemoryDatabase(storePath, "search", "read", (db) => {
     prepareSchema(db);
-    const results =
+    const searchResult =
       scope === "project"
         ? searchProjectMemoryHybrid(db, input.query, input.limit ?? 10, project)
-        : searchTaskMemoryFts(db, input.query, input.limit ?? 10);
+        : {
+            results: searchTaskMemoryFts(db, input.query, input.limit ?? 10),
+            telemetry: {
+              route: "task_fts" as const,
+              queryEmbedding: "skipped" as const,
+            },
+          };
 
     return {
       scope,
       storePath,
-      results,
+      results: searchResult.results,
+      telemetry: {
+        ...searchResult.telemetry,
+        durationMs: Number((performance.now() - startedAt).toFixed(2)),
+      },
     };
   });
 }
@@ -829,7 +840,11 @@ function findPreferredChunkBoundary(
 function runEmbeddingWorker(input: {
   embedding: MemoryEmbeddingConfig;
   texts: string[];
-}): { dimensions: number; vectors: number[][] } {
+}): {
+  dimensions: number;
+  vectors: number[][];
+  runtime?: "mock" | "persistent_daemon" | "one_shot" | "remote";
+} {
   const workerPath = fileURLToPath(new URL("./embedding-worker.js", import.meta.url));
   const outputPath = path.join(
     os.tmpdir(),
@@ -868,7 +883,11 @@ function runEmbeddingWorker(input: {
     );
   }
   try {
-    const payload = JSON.parse(stripBom(fs.readFileSync(outputPath, "utf-8"))) as { dimensions: number; vectors: number[][] };
+    const payload = JSON.parse(stripBom(fs.readFileSync(outputPath, "utf-8"))) as {
+      dimensions: number;
+      vectors: number[][];
+      runtime?: "mock" | "persistent_daemon" | "one_shot" | "remote";
+    };
     return payload;
   } finally {
     cleanupTemporaryEmbeddingOutput(outputPath);
@@ -943,7 +962,14 @@ function searchProjectMemoryHybrid(
   query: string,
   limit: number,
   project: ProjectContext,
-): MemorySearchResultEntry[] {
+): {
+  results: MemorySearchResultEntry[];
+  telemetry: {
+    route: "lexical_fast_path" | "hybrid";
+    queryEmbedding: "skipped" | "cache_hit" | "generated";
+    embeddingRuntime?: "mock" | "persistent_daemon" | "one_shot" | "remote";
+  };
+} {
   const embedding = resolveProjectMemoryEmbeddingConfig(project);
   if (!embedding) {
     throw new ClawError(
@@ -989,7 +1015,13 @@ function searchProjectMemoryHybrid(
     limit,
   });
   if (lexicalFastPath) {
-    return lexicalFastPath;
+    return {
+      results: lexicalFastPath,
+      telemetry: {
+        route: "lexical_fast_path",
+        queryEmbedding: "skipped",
+      },
+    };
   }
 
   const queryEmbedding = resolveProjectQueryEmbedding(
@@ -1020,7 +1052,7 @@ function searchProjectMemoryHybrid(
         sourcePath: row.source_path,
         kind: row.kind,
         snippet: buildSnippet(row.chunk_text),
-        similarity: cosineSimilarity(queryEmbedding, parseEmbeddingJson(row.embedding_json)),
+        similarity: cosineSimilarity(queryEmbedding.vector, parseEmbeddingJson(row.embedding_json)),
         exactBoost: signals?.exactBoost ?? 0,
       };
     })
@@ -1098,7 +1130,14 @@ function searchProjectMemoryHybrid(
     });
   });
 
-  return rerankProjectSearchCandidates(Array.from(fused.values()), docSignals, limit);
+  return {
+    results: rerankProjectSearchCandidates(Array.from(fused.values()), docSignals, limit),
+    telemetry: {
+      route: "hybrid",
+      queryEmbedding: queryEmbedding.cacheHit ? "cache_hit" : "generated",
+      ...(queryEmbedding.runtime ? { embeddingRuntime: queryEmbedding.runtime } : {}),
+    },
+  };
 }
 
 function tryProjectLexicalFastPath(input: {
@@ -1176,7 +1215,11 @@ function resolveProjectQueryEmbedding(
   db: DatabaseSync,
   embedding: MemoryEmbeddingConfig,
   queryText: string,
-): number[] {
+): {
+  vector: number[];
+  cacheHit: boolean;
+  runtime?: "mock" | "persistent_daemon" | "one_shot" | "remote";
+} {
   const normalizedQueryText = queryText.trim().replace(/\s+/g, " ");
   const embeddingFingerprint = createHash("sha256")
     .update(JSON.stringify(embedding))
@@ -1198,7 +1241,7 @@ function resolveProjectQueryEmbedding(
   if (cached) {
     const vector = parseEmbeddingJson(cached.embedding_json);
     if (cached.dimensions > 0 && vector.length === cached.dimensions) {
-      return vector;
+      return { vector, cacheHit: true };
     }
     db.prepare("DELETE FROM query_embeddings WHERE cache_key = ?").run(cacheKey);
   }
@@ -1241,7 +1284,7 @@ function resolveProjectQueryEmbedding(
       ")",
     ].join(" "),
   ).run(PROJECT_QUERY_EMBEDDING_CACHE_LIMIT);
-  return vector;
+  return { vector, cacheHit: false, ...(generated.runtime ? { runtime: generated.runtime } : {}) };
 }
 
 function searchProjectMemoryKeywords(

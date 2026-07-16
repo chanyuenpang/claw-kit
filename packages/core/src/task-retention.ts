@@ -73,7 +73,7 @@ function archiveTaskDirectory(
 
   fs.mkdirSync(archiveTasksRoot, { recursive: true });
   const archivedTaskDir = uniqueArchiveTaskDir(archiveTasksRoot, taskName);
-  fs.renameSync(sourceTaskDir, archivedTaskDir);
+  renameDirectoryWithRetry(sourceTaskDir, archivedTaskDir);
   const archivedPlanPath = activePlanPath
     ? path.join(archivedTaskDir, path.relative(sourceTaskDir, activePlanPath))
     : undefined;
@@ -85,6 +85,24 @@ function archiveTaskDirectory(
     ...(archivedPlanPath ? { archivedPlanPath } : {}),
     ...(completedAt ? { completedAt } : {}),
   };
+}
+
+function renameDirectoryWithRetry(sourceDir: string, targetDir: string): void {
+  const retryDelaysMs = [0, 50, 150, 300];
+  for (let attempt = 0; attempt < retryDelaysMs.length; attempt += 1) {
+    try {
+      fs.renameSync(sourceDir, targetDir);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      const retryable = code === "EPERM" || code === "EBUSY" || code === "EACCES";
+      if (!retryable || attempt === retryDelaysMs.length - 1) {
+        throw error;
+      }
+      const delayMs = retryDelaysMs[attempt + 1];
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
+    }
+  }
 }
 
 function listActiveTaskNames(project: ProjectContext): string[] {

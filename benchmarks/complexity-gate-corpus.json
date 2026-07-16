@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "dimensions": {
+    "files": "1=tight surface, 2=two or three modules, 3=cross-cutting",
+    "clarity": "1=clear, 2=minor unknowns, 3=multiple routes",
+    "dependency": "legacy is 1-3; calibrated is 0-2 and counts only distinct integration risk",
+    "workflow": "1=direct, 2=light implementation, 3=staged workflow"
+  },
+  "cases": [
+    { "id": "low-answer", "band": "low", "files": 1, "clarity": 1, "legacyDependency": 1, "calibratedDependency": 0, "workflow": 1, "expectedFormal": false },
+    { "id": "low-single-doc", "band": "low", "files": 1, "clarity": 1, "legacyDependency": 1, "calibratedDependency": 0, "workflow": 2, "expectedFormal": false },
+    { "id": "low-two-docs-known-deps", "band": "low", "files": 2, "clarity": 1, "legacyDependency": 2, "calibratedDependency": 0, "workflow": 1, "expectedFormal": false },
+    { "id": "low-targeted-test-fix", "band": "low", "files": 2, "clarity": 1, "legacyDependency": 2, "calibratedDependency": 0, "workflow": 2, "expectedFormal": false },
+    { "id": "medium-three-module-feature", "band": "medium", "files": 2, "clarity": 2, "legacyDependency": 2, "calibratedDependency": 1, "workflow": 2, "expectedFormal": true },
+    { "id": "medium-integration-repair", "band": "medium", "files": 2, "clarity": 1, "legacyDependency": 2, "calibratedDependency": 1, "workflow": 2, "expectedFormal": true },
+    { "id": "medium-config-migration", "band": "medium", "files": 2, "clarity": 2, "legacyDependency": 1, "calibratedDependency": 0, "workflow": 2, "expectedFormal": true },
+    { "id": "medium-architecture-route", "band": "medium", "files": 1, "clarity": 3, "legacyDependency": 2, "calibratedDependency": 2, "workflow": 3, "expectedFormal": true },
+    { "id": "high-cross-cutting-protocol", "band": "high", "files": 3, "clarity": 3, "legacyDependency": 3, "calibratedDependency": 2, "workflow": 3, "expectedFormal": true },
+    { "id": "high-storage-migration", "band": "high", "files": 3, "clarity": 2, "legacyDependency": 3, "calibratedDependency": 2, "workflow": 3, "expectedFormal": true },
+    { "id": "high-host-adapter-bridge", "band": "high", "files": 3, "clarity": 2, "legacyDependency": 2, "calibratedDependency": 2, "workflow": 3, "expectedFormal": true },
+    { "id": "high-release-closeout", "band": "high", "files": 3, "clarity": 1, "legacyDependency": 3, "calibratedDependency": 2, "workflow": 3, "expectedFormal": true }
+  ]
+}

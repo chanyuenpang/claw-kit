@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "caseCount": 12,
+  "legacy": {
+    "lowFalsePositiveRate": 0.5,
+    "formalRecall": 1.0,
+    "accuracy": 0.8333333333333334
+  },
+  "calibrated": {
+    "lowFalsePositiveRate": 0.0,
+    "formalRecall": 1.0,
+    "accuracy": 1.0
+  },
+  "decision": "Only count dependency risk when it is distinct from file scope and workflow shape; known dependencies alone add zero."
+}

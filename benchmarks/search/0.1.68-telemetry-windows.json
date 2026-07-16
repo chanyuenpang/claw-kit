@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-07-16T17:01:32.635Z",
+  "runtime": {
+    "platform": "win32",
+    "node": "v24.12.0",
+    "cliVersion": "0.1.68"
+  },
+  "exact": {
+    "query": "workflow-cost-and-runtime-path.md",
+    "wallMs": [315.35, 192.56, 313.68, 186.0, 304.77],
+    "route": "lexical_fast_path",
+    "queryEmbedding": "skipped",
+    "resultCount": 10,
+    "stableTopResult": true
+  },
+  "semanticWarm": {
+    "sampleCount": 5,
+    "wallMs": [602.93, 576.7, 580.39, 546.41, 541.21],
+    "route": "hybrid",
+    "queryEmbedding": "generated",
+    "embeddingRuntime": "persistent_daemon",
+    "resultCount": 10
+  },
+  "semanticCache": {
+    "sampleCount": 3,
+    "wallMs": [339.36, 302.29, 332.36],
+    "route": "hybrid",
+    "queryEmbedding": "cache_hit",
+    "resultCount": 10,
+    "stableTopResult": true
+  },
+  "oneShotFallback": {
+    "wallMs": 4392.01,
+    "route": "hybrid",
+    "queryEmbedding": "generated",
+    "embeddingRuntime": "one_shot",
+    "resultCount": 10
+  },
+  "summary": {
+    "exactP95Ms": 315.35,
+    "semanticWarmP95Ms": 602.93,
+    "exactThresholdMs": 500,
+    "semanticWarmThresholdMs": 1000,
+    "exactPass": true,
+    "semanticWarmPass": true,
+    "allSuccessful": true
+  }
+}
