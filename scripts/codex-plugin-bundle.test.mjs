@@ -105,6 +105,17 @@ test("repo marketplace points Codex at the materialized adapter source", async (
   assert.equal(plugin.category, "Developer Tools");
 });
 
+test("release protocol publishes the committed Git marketplace snapshot without a ZIP requirement", async () => {
+  const distribution = await fs.readFile(new URL("../DISTRIBUTION.md", import.meta.url), "utf8");
+  const releaseScript = await fs.readFile(new URL("./publish-release.mjs", import.meta.url), "utf8");
+
+  assert.match(distribution, /committed Git ref containing those paths -> official Codex plugin release artifact/);
+  assert.match(distribution, /create the GitHub release without a plugin ZIP asset/);
+  assert.doesNotMatch(distribution, /attach the exported Codex plugin bundle to the GitHub release/);
+  assert.match(releaseScript, /assertRepositoryMarketplaceSnapshot/);
+  assert.match(releaseScript, /no GitHub Release ZIP is required/);
+});
+
 test("official marketplace-style cache copy contains all shared skills and resources", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "claw-kit-codex-marketplace-install-"));
   const cacheRoot = path.join(root, ".codex", "plugins", "cache", "claw-kit");

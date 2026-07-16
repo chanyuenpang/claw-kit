@@ -48,6 +48,46 @@ function assertDirectMainCheckout() {
   );
 }
 
+function readHeadJson(relativePath) {
+  return JSON.parse(command("git", ["show", `HEAD:${relativePath.replaceAll("\\", "/")}`]));
+}
+
+function assertHeadPathExists(relativePath) {
+  const normalizedPath = relativePath.replaceAll("\\", "/");
+  const result = spawnSync("git", ["cat-file", "-e", `HEAD:${normalizedPath}`], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  assert(result.status === 0, `Committed repository marketplace payload is missing ${normalizedPath}.`);
+}
+
+function assertRepositoryMarketplaceSnapshot({ pluginVersion }) {
+  const marketplace = readHeadJson(".agents/plugins/marketplace.json");
+  const entry = marketplace.plugins?.find((candidate) => candidate.name === "claw-kit");
+  assert(entry?.source?.source === "local", "Committed Codex marketplace entry must use a local repository source.");
+  assert(entry?.source?.path === "./packages/codex-adapter", "Committed Codex marketplace must point claw-kit at ./packages/codex-adapter.");
+
+  const sourceRoot = entry.source.path.replace(/^\.\//, "");
+  const committedManifest = readHeadJson(`${sourceRoot}/.codex-plugin/plugin.json`);
+  assert(committedManifest.version === pluginVersion, "Committed Codex plugin manifest must match the release plugin version.");
+
+  for (const relativePath of [
+    ".codex-plugin/plugin.json",
+    "hooks/hooks.json",
+    "package.json",
+    "skills/using-claw-kit/SKILL.md",
+    "skills/planning/SKILL.md",
+    "skills/config/SKILL.md",
+    "skills/update/SKILL.md",
+    "skills/update/TEMPLATE.json",
+    "skills/create-claw-skill/SKILL.md",
+    "skills/create-claw-skill/TEMPLATE.json",
+    "skills/create-claw-skill/scripts/create-claw-skill-stub.mjs",
+  ]) {
+    assertHeadPathExists(`${sourceRoot}/${relativePath}`);
+  }
+}
+
 async function readJson(relativePath) {
   return JSON.parse(await fs.readFile(path.join(repoRoot, relativePath), "utf8"));
 }
@@ -71,6 +111,7 @@ async function verifyReleaseReadiness() {
   await assertSharedSkillsSynced({ adapterDirs: [path.join(repoRoot, "packages", "codex-adapter")] });
   assertCleanWorktree("Before publishing");
   assertDirectMainCheckout();
+  assertRepositoryMarketplaceSnapshot({ pluginVersion: plugin.version });
 
   const outDir = await fs.mkdtemp(path.join(os.tmpdir(), "claw-kit-release-plugin-"));
   try {
@@ -114,7 +155,8 @@ async function verifyReleaseReadiness() {
 }
 
 const release = await verifyReleaseReadiness();
-console.log(`Release ${release.version} is committed, pushed, version-aligned, and contains all required Codex skills.`);
+console.log(`Release ${release.version} is committed, pushed, version-aligned, and exposes a complete Git marketplace plugin snapshot.`);
+console.log("The committed repository marketplace is the Codex release artifact; no GitHub Release ZIP is required.");
 
 if (!publish) {
   console.log("Dry run complete. Re-run with --publish to publish @veewo/claw-core and @veewo/claw.");

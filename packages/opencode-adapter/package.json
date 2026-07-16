@@ -1,6 +1,6 @@
 {
   "name": "@claw-kit/opencode-adapter",
-  "version": "0.1.66",
+  "version": "0.1.67",
   "private": true,
   "type": "module",
   "description": "OpenCode adapter assets for landing the claw-kit .claw workflow inside OpenCode.",

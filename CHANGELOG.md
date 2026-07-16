@@ -2,6 +2,18 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.1.67] - 2026-07-16
+
+### Changed
+
+- Codex publication now treats the committed Git repository marketplace snapshot as the formal plugin release artifact; GitHub Release ZIP attachments are no longer required.
+- Release verification now checks the committed `HEAD` marketplace manifest and required `packages/codex-adapter` payload paths, preventing a working-tree-only or install-time-generated plugin from passing the release gate.
+- Truth and ADR writer skills are self-contained delegated-subagent contracts, repository locations are recorded as project-relative paths, and canonical discovery is owned by `claw search` instead of a maintained `SUMMARY.md`.
+
+### Fixed
+
+- Removed the release-handbook step that required attaching an exported Codex plugin ZIP even though repository marketplace installation never consumes it.
+
 ## [0.1.63] - 2026-07-15
 
 ### Added

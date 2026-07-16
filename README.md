@@ -96,6 +96,8 @@ An upgrade is complete only when `claw-kit@claw-kit` is the enabled identity and
 
 The repository marketplace at `.agents/plugins/marketplace.json` points to the fully materialized `packages/codex-adapter` tree. Codex can therefore copy every shared skill and resource into its plugin cache without running repository or npm lifecycle scripts.
 
+The committed Git marketplace snapshot is the Codex plugin release artifact. GitHub Release ZIP attachments are not required. Use a full repository checkout; a sparse checkout containing only `.agents/plugins` omits the referenced `packages/codex-adapter` payload.
+
 Maintainers working inside this repository also have two development commands:
 
 ```powershell

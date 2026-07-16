@@ -31,12 +31,15 @@ Codex plugin distribution source:
 - `shared/skills` -> editable cross-host shared skill content
 - `packages/codex-adapter` -> fully materialized, committed Codex plugin payload
 - `.agents/plugins/marketplace.json` -> official Codex repository marketplace entry
+- the committed Git ref containing those paths -> official Codex plugin release artifact
+
+GitHub Release ZIP assets are not part of the supported Codex installation path. `npm run export:codex-plugin` remains a maintainer-only inspection and local-development tool.
 
 ## Release Modes
 
 Default mode is `full-publish` unless a narrower mode is explicitly requested.
 
-- `full-publish`: verify -> publish core -> publish cli -> verify install
+- `full-publish`: verify -> publish core -> publish cli -> create the GitHub release -> verify repository marketplace install
 - `prepare-only`: verify and dry-run package artifacts only
 - `publish-only`: publish already-prepared package versions
 
@@ -97,7 +100,7 @@ Published package mapping:
 11. Confirm npm auth.
 12. Publish `@veewo/claw-core` first.
 13. Publish `@veewo/claw` second.
-14. Verify the worktree is still clean, then verify published versions and attach the exported Codex plugin bundle to the GitHub release.
+14. Verify the worktree is still clean, verify published versions, and create the GitHub release without a plugin ZIP asset. The tagged Git marketplace snapshot is the Codex release artifact.
 15. Refresh the locally installed CLI and maintainer development cache.
 16. Upgrade the Codex marketplace snapshot and verify installation from a clean machine.
 
@@ -208,6 +211,8 @@ codex plugin marketplace list
 codex plugin add claw-kit@claw-kit
 ```
 
+Use the full repository marketplace checkout. A sparse checkout that contains only `.agents/plugins` is incomplete because the marketplace entry resolves `source.path` to `packages/codex-adapter`.
+
 Restart the ChatGPT desktop app, choose the **Claw Kit** marketplace in the plugin directory, install **Claw Kit**, and start a new task. Codex loads the installed copy from:
 
 ```text
@@ -283,3 +288,4 @@ Expected outcome:
 - The local executable name remains `claw`.
 - `scripts/install-cli.ps1` now installs the published npm package directly.
 - `shared/skills` is the editable source for cross-host skills. The committed `packages/codex-adapter` tree is the canonical installable Codex plugin source; exports and cache installs are derived from that already-materialized tree.
+- GitHub Release notes and tags remain useful release records, but the Codex installation flow consumes the Git marketplace snapshot and does not require a ZIP attachment.

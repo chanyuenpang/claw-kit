@@ -280,3 +280,48 @@
 - 该轮 source-aware installer 与 update identity 合同通过全仓 `npm run check`、core `114/114`、CLI `63/63`、Codex bundle `11/11`、shared sync/bundle 合并 `14/14`、update skill quick validation 与 `git diff --check`。后续修改上述安装链路时，应继续覆盖 core/CLI、bundle、shared-copy 与 update template 四层，而不是只跑单一 installer smoke。
 - 本机清理了 stale `0.1.12` development cache，仅保留 `0.1.63`；这用于消除旧 artifact 干扰，但仍不能替代 active identity/source 与新任务 loaded locator 的验收。
 - 通用 plugin validator 当前会拒绝官方 manifest 已支持且本插件正在使用的既有 `hooks` 字段。该结果属于 validator schema 与官方 manifest surface 的兼容性差异，不应为了让通用 validator 通过而删除 `packages/codex-adapter/.codex-plugin/plugin.json` 的 `hooks`；应以官方 manifest 支持、Codex 实际加载与项目定向测试为准。
+
+## 2026-07-16：0.1.66 repository marketplace 与 committed materialization
+
+### 官方 marketplace 命令面
+
+- 当前官方 Codex manual 规定 `codex plugin marketplace add` 可接收 GitHub shorthand、Git URL、SSH URL 或本地 marketplace root。
+- `--ref` 用于固定 Git ref；可重复的 `--sparse` 用于控制 Git-backed marketplace 的 sparse checkout。
+- `codex plugin marketplace list` 用于报告已配置 marketplace snapshot 及其 resolved root，排查安装来源时应以该输出确认实际解析结果。
+
+### claw-kit 的仓库安装合同
+
+- 仓库 marketplace manifest 位于 `.agents/plugins/marketplace.json`。每个 plugin 的 `source.path` 必须以 `./` 开头，并相对于 marketplace root 解析。
+- claw-kit entry 的 `source.path` 是 `./packages/codex-adapter`，因此 repository marketplace 直接安装 Git 中已提交的 Codex adapter payload。
+- `shared/skills/planning/`、`shared/skills/config/`、`shared/skills/update/`、`shared/skills/create-claw-skill/` 是 authoring sources。`scripts/sync-shared-skills.mjs` 将这些目录的完整文件物化到 `packages/codex-adapter/skills/` 与 `packages/opencode-adapter/skills/`；生成的 `SKILL.md` 保留 source banner，adapter 副本不是独立编辑入口。
+- Repository marketplace 安装不依赖 npm lifecycle，也不依赖安装时或 build 时临时生成 shared skills；安装输入是 Git 中已提交且已经物化的 `packages/codex-adapter` 树。
+- GitHub Release ZIP 是同一 adapter payload 的衍生副本，不参与 repository marketplace 安装链路。只有明确要求 offline/manual artifact policy 时，才需要把 ZIP 作为额外必需分发面。
+
+### Sparse checkout 边界
+
+- 只 sparse checkout `.agents/plugins` 不足以安装 claw-kit，因为 manifest 的 `source.path` 指向该目录之外的 `packages/codex-adapter`。
+- 对 claw-kit 应优先使用完整 checkout；若必须 sparse checkout，则至少同时包含 `.agents/plugins` 与 `packages/codex-adapter`，保证 source path 能在 resolved marketplace root 下命中真实插件树。
+
+### 0.1.66 验证基线
+
+- `v0.1.66` Git tree 同时包含 `.agents/plugins/marketplace.json` 与四个 shared skills 在 `packages/codex-adapter/skills/` 下的全部物化文件和资源。
+- `verifySharedSkillsSynced(...)` 返回 `{ok:true,problems:[]}`。
+- `scripts/publish-release.mjs` 在 release 前要求 Codex adapter 物化内容与 shared sources 一致，漂移或缺失会阻止发布。
+- `npm run test:codex-plugin` 通过 `11/11`，覆盖 materialized source、marketplace target、cache copy 与 exported bundle。
+
+### 关联代码
+
+- marketplace manifest：`.agents/plugins/marketplace.json`
+- shared authoring sources：`shared/skills/planning/`、`shared/skills/config/`、`shared/skills/update/`、`shared/skills/create-claw-skill/`
+- materialization：`scripts/sync-shared-skills.mjs`
+- committed Codex marketplace payload：`packages/codex-adapter/`
+- release gate：`scripts/publish-release.mjs`
+- Codex bundle tests：`scripts/codex-plugin-bundle.test.mjs`
+
+### 补充检索词
+
+- `codex plugin marketplace add --ref --sparse`
+- `marketplace list resolved root`
+- `repository marketplace committed materialization`
+- `verifySharedSkillsSynced 0.1.66`
+- `release ZIP derivative payload`
