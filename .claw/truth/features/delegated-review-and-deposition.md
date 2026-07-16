@@ -11,11 +11,20 @@
 
 ## Writer 主从边界
 
-- Codex 的 `truth-writer` 与 `adr-writer` `SKILL.md` 均已压缩为 12 行的 delegated-subagent-only 二级路由；frontmatter 明确禁止 main agent 激活 writer。
-- 主 agent 负责读取并执行 `workflowGuidance`、判断 completed work 是否包含值得沉淀的 reusable truth、优先复用当前线程中合适的同类型 specialist，并在需要新派发时只提供窄输入 bundle。
-- 主 agent 不读取或转述 writer 的完整写作规范；writer skill 只接受窄输入，并要求被派发的 writer subagent 完整读取唯一对应 reference，且不得把 reference 转述回主 agent。
-- truth 的完整执行与写入规范位于 `packages/codex-adapter/references/TRUTH-AGENT-SPEC.md`；ADR 的完整执行与写入规范位于 `packages/codex-adapter/references/ADR-AGENT-SPEC.md`。原先位于 writer skill 的耐久性判断、canonical routing、写入规则、时序、边界和返回合同已迁入这两份 reference。
+- Main agent 只依据 writer skill 的 frontmatter `description` 选择并派发 specialist，不内联读取 writer 正文；被派发的 writer subagent 必须完整读取对应 `SKILL.md` 后执行。
+- Codex 的 `truth-writer` 与 `adr-writer` `SKILL.md` 都是 delegated-subagent-only 的自包含执行合同；完整的 Mission、Input、canonical routing、writing rules、workflow 与 return 均位于各自 `SKILL.md`。
+- Codex 与 OpenCode 的 `TRUTH-AGENT-SPEC.md`、`ADR-AGENT-SPEC.md` 已删除。writer 每次执行都必须完整读取自包含合同，因此二级 reference 不再提供渐进加载价值。
+- writer 正文只采用“已被派发的 subagent”视角，描述自身输入、路由、写入与验证职责；正文不承载 main-agent 职责、caller、派发时机或另一个 writer 的职责。
+- OpenCode writer skills 与 agents 同步采用 subagent 视角，避免在 writer 上下文中重新引入 caller 或 main-agent 叙事。
 - `truth-writer` 仍由 reusable-truth value gate 控制：只有 completed work 含可复用 truth 时才派发；`adr-writer` 仍是 root-plan closeout 的必需派发步骤。
+
+## Search-owned canonical discoverability
+
+- Truth writer 与 ADR writer 不承担任何 `SUMMARY.md` 的创建、维护、分层或覆盖职责。
+- canonical truth / ADR 的召回、候选去重与可发现性统一由 `claw search` 负责；writer 写入后应验证目标可被 `claw search` 发现，而不是维护并行导航清单。
+- `packages/core/src/init.ts` 的初始化只创建 `.claw/truth/` 目录，不创建 `SUMMARY.md`；`packages/core/src/completion-hooks.ts` 的完成提示也不再建议维护 Summary。
+- 当前 corpus 基线为 `0` 个 `SUMMARY.md`、`87` 篇 canonical Markdown。`packages/core/src/memory.ts` 的 `collectProjectMemorySources(...)` 仍排除旧项目遗留的任意 `SUMMARY.md`，防止历史导航内容污染 search，同时继续递归索引 canonical 正文。
+- writer 写入的仓库位置继续统一使用项目根目录相对路径；search-owned discoverability 不改变路径 containment、事实核对或 encoding 验证职责。
 
 ## Skill 文案写作合同
 
@@ -23,8 +32,9 @@
 - 反向限制只保留安全、数据破坏、授权或协议歧义等确有价值的硬边界，并保持简短；一般流程偏好应改写为正向行为合同，而不是堆叠禁止句。
 - 本轮遵循“尽量不大改”的范围，只定点修正高频 `planning`、`using-claw-kit` 与 truth / ADR writer 文案；`config`、`init`、`update`、`researcher`、`search` 中必要的安全与职责边界继续保留。
 - truth writer 的输入是 main agent 已筛选出的必要事实与证据；ADR writer 的输入是 completed `plan.json`。两类 writer 都自行负责 canonical routing，主 agent 不预先替 writer 决定落盘文档。
+- truth writer 与 ADR writer 在 canonical 文档中记录任何仓库位置时，统一使用项目根目录相对路径；该规则覆盖正文、Markdown 链接、证据和 related-code sections，确保项目知识可跨机器与工作目录复用。
 
-主要证据锚点是 `shared/skills/planning/SKILL.md`、`packages/codex-adapter/skills/using-claw-kit/SKILL.md`、`packages/codex-adapter/skills/truth-writer/SKILL.md`、`packages/codex-adapter/skills/adr-writer/SKILL.md`，以及对应的 OpenCode skills / references。本轮验证通过 Codex bundle `11/11`、OpenCode bundle `6/6`、`npm run check`、frontmatter 解析与 `git diff --check`。
+主要证据锚点是 `packages/codex-adapter/skills/truth-writer/SKILL.md`、`packages/codex-adapter/skills/adr-writer/SKILL.md`、`packages/opencode-adapter/skills/truth-writer/SKILL.md`、`packages/opencode-adapter/skills/adr-writer/SKILL.md`、对应 OpenCode writer agents，以及 Codex / OpenCode contract tests。
 
 ## workflowGuidance 实现事实
 
@@ -36,23 +46,31 @@
 ## 关联代码
 
 - 主流程路由：`packages/codex-adapter/skills/using-claw-kit/SKILL.md`
-- truth 二级路由：`packages/codex-adapter/skills/truth-writer/SKILL.md`
-- ADR 二级路由：`packages/codex-adapter/skills/adr-writer/SKILL.md`
-- truth 完整规范：`packages/codex-adapter/references/TRUTH-AGENT-SPEC.md`
-- ADR 完整规范：`packages/codex-adapter/references/ADR-AGENT-SPEC.md`
+- Codex truth 自包含合同：`packages/codex-adapter/skills/truth-writer/SKILL.md`
+- Codex ADR 自包含合同：`packages/codex-adapter/skills/adr-writer/SKILL.md`
 - guidance source：`packages/core/src/workflow-guidance.config.json`
+- OpenCode truth 自包含合同：`packages/opencode-adapter/skills/truth-writer/SKILL.md`
+- OpenCode ADR 自包含合同：`packages/opencode-adapter/skills/adr-writer/SKILL.md`
+- OpenCode writer agents：`packages/opencode-adapter/agents/claw-truth-writer.md`、`packages/opencode-adapter/agents/claw-adr-writer.md`
+- Codex contract tests：`packages/codex-adapter/hooks/subagent-contract.test.mjs`
+- OpenCode contract tests：`scripts/opencode-plugin-bundle.test.mjs`
+- 初始化边界：`packages/core/src/init.ts`
+- completion guidance：`packages/core/src/completion-hooks.ts`
+- search source collection：`packages/core/src/memory.ts`
 
 ## 验证标准
 
-- 两份 writer `SKILL.md` 保持 12 行短路由，frontmatter 含 main-agent 禁用语义，只指向唯一对应 reference。
-- 两份 writer reference 承载完整执行合同，writer 返回仅为 optional minimal telemetry，不向主 agent 转述 reference。
+- Codex 与 OpenCode 的四份 writer `SKILL.md` 必须保留完整的 Mission、Input、canonical routing、writing rules、workflow 与 return，并保持 delegated-subagent-only frontmatter。
+- Writer 合同及 OpenCode agents 必须只使用被派发 subagent 视角；不得恢复 main-agent 职责、caller、派发时机、其他 writer 职责或 `AGENT-SPEC` 二级 reference。
+- Main agent 的调用边界应保持为：按 frontmatter `description` 派发，writer subagent 再完整读取自身 `SKILL.md`。
 - `process.hasCompletedTasks` 与 `process.allTasksDone` 的 summary、nextsteps、notes 都不得恢复无条件 truth dispatch；`process.allTasksDone` 必须继续保留 required ADR closeout。
 - 结构化 delegate 参数与同线程 specialist 复用语义不得因路由精简而漂移。
+- Writer skills / agents 与 contract tests 不得恢复 Summary 职责；`npm run check` 必须继续覆盖该合同。
 
-## 落地验证与已知测试漂移
+## 落地验证
 
-- writer 二级路由定向测试已通过 `1/1`；主锚点是 `packages/codex-adapter/hooks/subagent-contract.test.mjs` 中的 `writer skills stay delegated-subagent-only second-layer routers`，它验证 main-agent 禁用语义、唯一 reference、最多 12 个非空行，以及 reference 文件存在。
-- workflow guidance 的核心与 CLI 行为已分别通过 `@veewo/claw-core` `89/89` 和 `@veewo/claw` CLI `55/55`；这些测试覆盖 conditional truth dispatch、required ADR closeout，以及 returned delegate 的 skill/结构化字段保持。
-- 完整静态与打包验证通过：`npm run check`、Codex plugin bundle `5/5`、OpenCode adapter check 与 OpenCode plugin bundle `5/5`、`git diff --check`。
-- `packages/codex-adapter/hooks/subagent-contract.test.mjs` 的全量 `node --test` 当前另有一个与本轮 writer 边界无关的既有失败：`researcher dispatch contract stays explicit, host-light, and blocking for research work` 仍断言 researcher skill 内含已移除的 search-inline 文案。该失败属于 researcher 测试与现行 skill 的漂移，不能作为 writer 二级路由或 conditional truth dispatch 回归的证据。
-- 修复上述 researcher 断言应作为独立范围处理；writer 边界收口不得顺带恢复已从 researcher skill 移除的旧文案，也不得把这项无关修复混入本轮沉淀。
+- Node YAML frontmatter 等价校验通过，证明 Codex 与 OpenCode writer skill 的 frontmatter 可按同一语义解析。
+- `packages/codex-adapter/hooks/subagent-contract.test.mjs` 的 Codex contract tests `3/3` 通过。
+- `scripts/opencode-plugin-bundle.test.mjs` 覆盖的 OpenCode contract tests `6/6` 通过。
+- `npm run check` 与 `git diff --check` 通过。
+- Python `quick_validate` 未进入校验阶段，仅因当前环境缺少 `PyYAML` 无法启动；这属于验证工具依赖缺失，不是 writer contract 失败。

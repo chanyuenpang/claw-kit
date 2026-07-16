@@ -1,96 +1,70 @@
 ---
 name: adr-writer
-description: Use when durable architecture or workflow decisions from completed work should be deposited into canonical ADR documents.
+description: Use inside an explicitly delegated ADR-writer subagent to extract durable decisions from a completed plan and deposit canonical ADRs.
 ---
 
 # ADR writer
 
-Primary reference:
+Act as the delegated ADR-writer subagent.
 
-- `../../references/ADR-AGENT-SPEC.md`
+## Mission
 
-## Purpose
+Extract durable architecture decisions from the supplied completed `plan.json` and deposit canonical ADRs under `.claw/truth/adr/`.
 
-Capture durable architecture decisions from plans or completed work into canonical ADRs.
-In claw-kit projects, canonical ADRs live under `.claw/truth/adr/`.
+## Input
 
-## Delegation model
+Your input is the updated completed `plan.json`, including retrospective and durable `keyDecisions`.
 
-This skill is a dedicated decision deposition worker.
-The caller provides the updated completed `plan.json`.
-The writer extracts durable decisions, then routes and updates canonical ADRs.
+Own decision extraction, canonical routing, and deposition. Treat completed tasks, retrospective evidence, and recorded key decisions as the source bundle.
 
-## What counts as ADR-worthy
+## ADR-worthy decisions
 
-Write or update an ADR when the work records a lasting decision such as:
-
-- architecture boundaries
-- storage model choices
-- lifecycle or protocol decisions
+- architecture boundaries and ownership
+- data model, storage, queueing, routing, or protocol choices
 - integration patterns
-- long-lived workflow rules
-- accepted tradeoffs with consequences
+- lifecycle or policy decisions with lasting implementation consequences
+- long-lived fix patterns that prevent regressions
+- dependency or technology selections with rationale
+- accepted tradeoffs with durable consequences
 
-Focus ADR deposition on choices with lasting implementation consequences, rationale, or durable tradeoffs. Use status and verification results as supporting evidence.
+Deposit decisions with lasting implementation consequences, explicit rationale, or durable tradeoffs. Use status and verification results as supporting evidence.
 
-## Source of truth
+## Canonical routing
 
-The plan and its durable decisions are the source:
+Use `claw search` as the canonical ADR discovery and routing surface. Read only relevant candidates, update the best-matching ADR when the decision exists, and create an ADR for a distinct decision. Use exact filename and title collision checks before creation. Widen inspection incrementally when search is unavailable or candidates conflict.
 
-- completed plans can yield accepted ADRs
-- active plans yield proposed ADRs when the decision is already explicit and durable
-
-## ADR rules
-
-- Update an existing ADR when the decision already exists.
-- Create a new ADR only for a distinct decision.
-- Use the project's canonical ADR location; use `.claw/truth/adr/` for claw-kit projects.
-- Keep filenames in searchable kebab-case.
-- Follow the local numbering convention when the repository already uses one.
-- Write body text in Chinese when the target repository expects Chinese docs, while preserving exact identifiers and paths.
-- Treat mojibake strings such as `鐨`, `锛`, and `銆` as corruption; repair or rewrite them before writing canonical ADR text.
+Honor the configured canonical ADR location; use `.claw/truth/adr/` in claw-kit projects. Keep filenames searchable and kebab-case, following the local numbering convention when one exists.
 
 ## ADR shape
 
-Unless the repository already uses a stronger local convention, keep ADRs compact and readable:
+Follow a stronger local ADR convention when one exists. Otherwise use:
 
 - title
 - status
 - context
 - decision
-- consequences
+- alternatives considered when evidence exists
 - related code
+- consequences
+- search terms
+
+## Writing rules
+
+- write body text in Chinese when the repository expects Chinese docs
+- preserve exact code identifiers, config keys, commands, and error text
+- record repository locations only as project-relative paths in prose, links, evidence, and related-code sections
+- keep ADRs compact and durable
+- summarize the decision and consequences compactly from the completed plan
+- ground paths, dates, owners, and alternatives in plan or repository evidence
+- repair or rewrite mojibake such as `鐨`, `锛`, or `銆` before deposition
 
 ## Workflow
 
-1. Receive the updated completed `plan.json`, including retrospective and durable `keyDecisions`.
-2. Own decision extraction and canonical routing: use `claw search` and read only relevant candidate ADRs.
-3. Extract only durable decisions and their consequences.
-4. Update an existing ADR when the decision already exists.
-5. Create a new ADR only when the decision is distinct.
-6. Update the project truth or ADR index when the ADR set materially changed.
+1. Extract durable decisions and their consequences from the completed `plan.json`.
+2. Run `claw search` and read only relevant ADR candidates.
+3. Update the best-matching ADR or create one for a distinct decision.
+4. Verify the target, canonical path containment, encoding, written decisions, and `claw search` discoverability.
 
-## Output expectation
+## Return
 
-The delegated ADR writer can return a minimal completion payload, but the main agent does not rely on it:
-
-- optional `status`
-- optional `updatedPaths`
-
-Keep any response focused on completion telemetry.
-
-## Timing rule
-
-Use this skill after completion when:
-
-- the completed plan file is available as the deposition bundle
-- the completed work records durable decisions with consequences
-- ordinary truth deposition is not the better fit
-
-Run ADR deposition after plan completion.
-
-## Boundary
-
-- Route generic feature behavior to the truth corpus.
-- Summarize durable decisions and consequences compactly from the completed plan.
-- Keep ADR output focused on architecture, lifecycle, protocol, integration, and workflow decisions.
+Return a minimal completion payload with optional `status` and `updatedPaths`, or return nothing.

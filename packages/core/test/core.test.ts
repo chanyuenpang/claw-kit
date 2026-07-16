@@ -142,14 +142,15 @@ test("initProject creates a minimal .claw project scaffold", () => {
   assert.equal(result.projectId, "demo-project");
   assert.ok(fs.existsSync(path.join(root, ".claw", "project.json")));
   assert.ok(fs.existsSync(path.join(root, ".claw", "memory.md")));
-  assert.ok(fs.existsSync(path.join(root, ".claw", "truth", "SUMMARY.md")));
+  assert.ok(fs.statSync(path.join(root, ".claw", "truth")).isDirectory());
+  assert.equal(fs.existsSync(path.join(root, ".claw", "truth", "SUMMARY.md")), false);
   assert.ok(fs.existsSync(path.join(root, ".claw", "tasks")));
   assert.equal(
     fs.readFileSync(path.join(root, ".gitignore"), "utf-8"),
     "# claw-kit\n.claw/*\n!.claw/project.json\n!.claw/truth/\n!.claw/truth/**\n.claw/project-override.json\n",
   );
   assert.deepEqual(projectConfig, {
-    version: "0.1.65",
+    version: "0.1.66",
     id: "demo-project",
     name: "Demo Project",
     maxTasksToKeep: 20,
@@ -2818,8 +2819,11 @@ test("memory search defaults to project scope and task scope prioritizes active 
     "utf-8",
   );
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+  fs.mkdirSync(path.join(root, ".claw", "truth", "features"), { recursive: true });
   fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project alpha memory\n", "utf-8");
-  fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "shared beta truth\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "shared.md"), "shared beta truth\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "root navigation\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "features", "SUMMARY.md"), "module navigation\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "guide.md"), "zeta external doc\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "notes.txt"), "legacy txt doc\n", "utf-8");
   await writePlan({
@@ -2860,6 +2864,8 @@ test("memory search defaults to project scope and task scope prioritizes active 
       },
     });
     assert.ok(projectSearch.results.some((item) => item.sourcePath.endsWith(path.join(".claw", "memory.md"))));
+    assert.ok(projectIndex.sources.some((item) => item.endsWith(path.join(".claw", "truth", "shared.md"))));
+    assert.equal(projectIndex.sources.some((item) => path.basename(item).toLowerCase() === "summary.md"), false);
     assert.ok(projectIndex.sources.some((item) => item.endsWith(path.join("docs", "guide.md"))));
     assert.equal(projectIndex.sources.some((item) => item.endsWith(path.join("docs", "notes.txt"))), false);
     assert.ok(externalSearch.results.some((item) => item.sourcePath.endsWith(path.join("docs", "guide.md"))));
@@ -2955,7 +2961,7 @@ test("project search keeps recall for multi-term Chinese queries across differen
   );
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
   fs.writeFileSync(path.join(root, ".claw", "memory.md"), "项目检索记忆\n", "utf-8");
-  fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "共享中文 truth\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "shared.md"), "共享中文 truth\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "sdtz.md"), "这里记录搜打撤模式的说明\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "hjb.md"), "这里记录哈基宝的说明\n", "utf-8");
 
@@ -3104,7 +3110,7 @@ test("project search prioritizes strong-term Chinese docs for conversational que
   );
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
   fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project memory notes\n", "utf-8");
-  fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "shared truth summary\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "shared.md"), "shared truth summary\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "sdtz-guide.md"), "\u641c\u6253\u64a4\u6a21\u5f0f\u8bf4\u660e\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "generic-plan-a.md"), "\u5185\u5b58\u4f18\u5316\u65b9\u6848\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "generic-plan-b.md"), "\u7f51\u7edc\u91cd\u6784\u65b9\u6848\n", "utf-8");
@@ -3151,7 +3157,7 @@ test("project search demotes index-like docs when a focused Chinese doc matches 
   );
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
   fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project memory notes\n", "utf-8");
-  fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "shared truth summary\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "shared.md"), "shared truth summary\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "contents.md"), "\u8fd9\u91cc\u5217\u51fa\u641c\u6253\u64a4\u3001\u6b66\u5668\u3001\u9053\u5177\u3001\u7cfb\u7edf\u3001\u6280\u672f\u5b9e\u73b0\u7d22\u5f15\u3002\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "sdtz-guide.md"), "\u641c\u6253\u64a4\u6a21\u5f0f\u8bf4\u660e\n", "utf-8");
 
@@ -3197,7 +3203,7 @@ test("project search keeps recall for multi-term Chinese queries across differen
   );
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
   fs.writeFileSync(path.join(root, ".claw", "memory.md"), "\u9879\u76ee\u68c0\u7d22\u8bb0\u5fc6\n", "utf-8");
-  fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "\u5171\u4eab\u4e2d\u6587 truth\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "shared.md"), "\u5171\u4eab\u4e2d\u6587 truth\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "sdtz.md"), "\u8fd9\u91cc\u8bb0\u5f55\u641c\u6253\u64a4\u6a21\u5f0f\u7684\u8bf4\u660e\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "hjb.md"), "\u8fd9\u91cc\u8bb0\u5f55\u54c8\u57fa\u5b9d\u7684\u8bf4\u660e\n", "utf-8");
 
@@ -3249,7 +3255,7 @@ test("project search reranks multi-term Chinese queries to cover distinct strong
   );
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
   fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project memory notes\n", "utf-8");
-  fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "shared truth summary\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "shared.md"), "shared truth summary\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "sdtz-guide.md"), "\u641c\u6253\u64a4\u6a21\u5f0f\u8bf4\u660e\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "hjb-guide.md"), "\u54c8\u57fa\u5b9d\u7cfb\u7edf\u8bf4\u660e\n", "utf-8");
   fs.writeFileSync(
@@ -3303,7 +3309,7 @@ test("project search uses substring fallback for short Chinese multi-term querie
   );
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
   fs.writeFileSync(path.join(root, ".claw", "memory.md"), "\u77ed\u8bcd\u4e2d\u6587\u68c0\u7d22\n", "utf-8");
-  fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "\u77ed\u8bcd truth\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "shared.md"), "\u77ed\u8bcd truth\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "sdtz.md"), "\u8fd9\u91cc\u8bb0\u5f55\u641c\u6253\u64a4\u6a21\u5f0f\u7684\u8bf4\u660e\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "hjb.md"), "\u8fd9\u91cc\u8bb0\u5f55\u54c8\u57fa\u5b9d\u89d2\u8272\u7684\u8bf4\u660e\n", "utf-8");
 
@@ -3355,7 +3361,7 @@ test("project search can rescue filename-aligned Chinese plan docs through candi
   );
   fs.mkdirSync(path.join(root, "docs", "plans"), { recursive: true });
   fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project memory notes\n", "utf-8");
-  fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "shared truth summary\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "shared.md"), "shared truth summary\n", "utf-8");
   fs.writeFileSync(
     path.join(root, "docs", "plans", "\u641c\u6253\u64a4\u65b9\u6848.md"),
     "\u7cfb\u7edf\u8bbe\u8ba1\u6458\u8981\n",
@@ -3409,7 +3415,7 @@ test("project search prioritizes exact Chinese document hits over weaker project
   );
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
   fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project memory notes\n", "utf-8");
-  fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "shared truth summary\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "shared.md"), "shared truth summary\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "sdtz-guide.md"), "\u641c\u6253\u64a4\u6a21\u5f0f\u8bf4\u660e\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "hjb-guide.md"), "\u54c8\u57fa\u5b9d\u89d2\u8272\u8bf4\u660e\n", "utf-8");
   fs.writeFileSync(
@@ -3475,7 +3481,7 @@ test("project memory refresh generates local embedding metadata and vector rows 
     "utf-8",
   );
   fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project alpha memory\n", "utf-8");
-  fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "shared beta truth\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "shared.md"), "shared beta truth\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "guide.md"), "gamma markdown doc\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "notes.txt"), "should stay unindexed\n", "utf-8");
 
@@ -3534,6 +3540,7 @@ test("project memory refresh uses 768 dimensions for the default local embedding
   });
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
   fs.writeFileSync(path.join(root, "docs", "guide.md"), "default local embedding doc\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "stable.md"), "stable truth doc\n", "utf-8");
 
   const previousMockEnv = process.env.CLAW_EMBEDDING_MOCK;
   process.env.CLAW_EMBEDDING_MOCK = "1";
@@ -3751,7 +3758,7 @@ test("project memory refresh incrementally reuses unchanged docs and syncs chang
     "utf-8",
   );
   fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project alpha memory\n", "utf-8");
-  fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "shared beta truth\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "shared.md"), "shared beta truth\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "stable.md"), "stable doc stays the same\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "change.md"), "first version paragraph\n\nsecond paragraph\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "remove.md"), "remove me later\n", "utf-8");
@@ -3867,7 +3874,7 @@ test("project memory refresh backfills vectors for existing docs when embeddings
     "utf-8",
   );
   fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project alpha memory\n", "utf-8");
-  fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "shared beta truth\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "shared.md"), "shared beta truth\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "guide.md"), "gamma markdown doc\n", "utf-8");
 
   const previousMockEnv = process.env.CLAW_EMBEDDING_MOCK;
@@ -3958,7 +3965,7 @@ test("project memory refresh defaults to processing changed files in 100-file ba
     "utf-8",
   );
   fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project alpha memory\n", "utf-8");
-  fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "shared beta truth\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "shared.md"), "shared beta truth\n", "utf-8");
   for (let index = 0; index < 101; index += 1) {
     fs.writeFileSync(path.join(root, "docs", `doc-${index.toString().padStart(3, "0")}.md`), `doc ${index}\n`, "utf-8");
   }
@@ -4030,7 +4037,7 @@ test("project memory refresh still batches files after embedding config changes"
 
   writeProjectConfig("Snowflake/snowflake-arctic-embed-xs");
   fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project alpha memory\n", "utf-8");
-  fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "shared beta truth\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "shared.md"), "shared beta truth\n", "utf-8");
   for (let index = 0; index < 101; index += 1) {
     fs.writeFileSync(path.join(root, "docs", `doc-${index.toString().padStart(3, "0")}.md`), `doc ${index}\n`, "utf-8");
   }
@@ -4264,7 +4271,7 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
   assert.equal(result.ok, true);
   assert.equal(result.changed, true);
   assert.ok(result.issueCountBefore > 0);
-  assert.equal(projectConfig.version, "0.1.65");
+  assert.equal(projectConfig.version, "0.1.66");
   assert.equal(projectConfig.id, "fix-me");
   assert.equal(projectConfig.name, "Fix Me");
   assert.equal(projectConfig.maxTasksToKeep, 99);

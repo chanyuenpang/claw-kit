@@ -51,7 +51,7 @@ export function initProject(input: InitProjectInput): InitProjectResult {
   const projectJsonPath = path.join(clawDir, "project.json");
   const gitignorePath = path.join(projectRoot, ".gitignore");
   const memoryPath = path.join(clawDir, "memory.md");
-  const truthSummaryPath = path.join(clawDir, "truth", "SUMMARY.md");
+  const truthDir = path.join(clawDir, "truth");
   const tasksDir = path.join(clawDir, "tasks");
   const knowledgeDir = path.join(clawDir, ".knowledge");
 
@@ -93,7 +93,7 @@ export function initProject(input: InitProjectInput): InitProjectResult {
   };
 
   ensureDir(clawDir, createdPaths);
-  ensureDir(path.dirname(truthSummaryPath), createdPaths);
+  ensureDir(truthDir, createdPaths);
   ensureDir(tasksDir, createdPaths);
   ensureDir(knowledgeDir, createdPaths);
 
@@ -101,11 +101,6 @@ export function initProject(input: InitProjectInput): InitProjectResult {
   writeFile(
     memoryPath,
     `# Project Memory\n\n- Project initialized for claw-kit.\n- Use \`claw plan create\` to establish the first task scope.\n`,
-    createdPaths,
-  );
-  writeFile(
-    truthSummaryPath,
-    `# ${projectName} Truth Summary\n\n- Project initialized for claw-kit.\n- No durable truth has been recorded yet.\n`,
     createdPaths,
   );
   ensureClawGitignoreRules(gitignorePath, createdPaths);

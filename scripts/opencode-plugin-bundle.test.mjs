@@ -72,8 +72,8 @@ test("OpenCode plugin source includes the config skill entrypoint", async () => 
 test("OpenCode writer contracts use direct dispatch semantics and writer-owned routing", async () => {
   const adapterRoot = new URL("../packages/opencode-adapter/", import.meta.url);
   const guidance = JSON.parse(await fs.readFile(new URL("workflow-guidance.opencode.json", adapterRoot), "utf8"));
-  const truthReference = await fs.readFile(new URL("references/TRUTH-AGENT-SPEC.md", adapterRoot), "utf8");
-  const adrReference = await fs.readFile(new URL("references/ADR-AGENT-SPEC.md", adapterRoot), "utf8");
+  const truthSkill = await fs.readFile(new URL("skills/truth-writer/SKILL.md", adapterRoot), "utf8");
+  const adrSkill = await fs.readFile(new URL("skills/adr-writer/SKILL.md", adapterRoot), "utf8");
   const truthAgent = await fs.readFile(new URL("agents/claw-truth-writer.md", adapterRoot), "utf8");
   const adrAgent = await fs.readFile(new URL("agents/claw-adr-writer.md", adapterRoot), "utf8");
 
@@ -82,14 +82,43 @@ test("OpenCode writer contracts use direct dispatch semantics and writer-owned r
   assert.equal("required" in guidance.delegates.truthWriter, false);
   assert.equal("dispatchCondition" in guidance.delegates.truthWriter, false);
 
-  for (const text of [truthReference, adrReference, truthAgent, adrAgent]) {
+  for (const text of [truthSkill, adrSkill, truthAgent, adrAgent]) {
     assert.match(text, /writer|writer 自己负责/i);
     assert.match(text, /claw search/);
     assert.match(text, /widen inspection|扩大检查范围/i);
   }
 
-  assert.match(truthReference, /canonical truth routing belongs to the writer/i);
-  assert.match(adrReference, /canonical ADR routing belongs to the writer/i);
+  for (const text of [truthSkill, adrSkill]) {
+    assert.match(text, /record repository locations only as project-relative paths/i);
+  }
+
+  for (const agent of [truthAgent, adrAgent]) {
+    assert.match(agent, /项目根目录相对路径/);
+  }
+
+  for (const text of [truthSkill, adrSkill, truthAgent, adrAgent]) {
+    assert.doesNotMatch(text, /SUMMARY\.md|Summary discipline|Summary 规则/i);
+  }
+
+  for (const skill of [truthSkill, adrSkill]) {
+    assert.match(skill, /act as the delegated .* subagent/i);
+    assert.match(skill, /## Mission/);
+    assert.match(skill, /## Input/);
+    assert.match(skill, /## Canonical routing/);
+    assert.match(skill, /## Writing rules/);
+    assert.match(skill, /## Workflow/);
+    assert.match(skill, /## Return/);
+    assert.doesNotMatch(skill, /main agent|caller|timing rule|use this skill after|use this skill at/i);
+    assert.doesNotMatch(skill, /AGENT-SPEC|references\//i);
+  }
+
+  assert.match(truthSkill, /own canonical routing and deposition/i);
+  assert.match(adrSkill, /own decision extraction, canonical routing, and deposition/i);
+  assert.doesNotMatch(adrSkill, /truth corpus|truth deposition/i);
+  assert.doesNotMatch(adrAgent, /truth-writer|truth corpus/i);
+  assert.doesNotMatch(truthSkill, /adr-writer|route durable architecture decisions/i);
+  assert.doesNotMatch(truthAgent, /adr-writer|交给 adr/i);
+  assert.match(adrAgent, /记录范围/);
   assert.match(guidance.delegates.truthWriter.inputContract, /reusable facts and evidence/i);
   assert.match(guidance.delegates.adrWriter.inputContract, /completed plan\.json/i);
 });

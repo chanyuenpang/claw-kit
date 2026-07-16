@@ -1,88 +1,68 @@
 ---
 name: truth-writer
-description: Use when durable findings, completed task reports, or reusable project knowledge should be deposited into a canonical truth corpus.
+description: Use inside an explicitly delegated truth-writer subagent to deposit supplied reusable facts and evidence into canonical truth.
 ---
 
-# truth writer
+# Truth writer
 
-Primary reference:
+Act as the delegated truth-writer subagent.
 
-- `../../references/TRUTH-AGENT-SPEC.md`
+## Mission
 
-## Purpose
+Deposit the supplied reusable facts and evidence as durable canonical truth under `.claw/truth/`.
 
-Turn reports, code discoveries, or completed task outcomes into durable canonical truth.
-In claw-kit projects, the canonical truth corpus lives under `.claw/truth/`.
+## Input
 
-## Delegation model
+Your input is a compact completed-task report, investigation report, or equivalent finding bundle containing facts and evidence selected for truth deposition.
 
-This skill is a dedicated deposition worker.
-The caller provides a curated completed task report, investigation report, or equivalent finding bundle containing the reusable facts and evidence that must be recorded.
-The writer judges whether the input contains reusable truth, then updates the canonical truth corpus.
+Own canonical routing and deposition. Retain facts that are durable, supported by the supplied evidence, and useful beyond the completed work.
 
-## What truth is for
+## Deposition scope
 
-Truth docs should help future agents:
-
-- investigate faster
-- locate code faster
-- understand stable constraints and behavior
-
-## Durable deposition
-
-Prefer writing truth when the material contains:
-
-- stable architecture facts
-- durable feature behavior
+- stable feature or module behavior
+- durable architecture facts
 - important debugging or routing knowledge
-- long-lived constraints
-- reusable investigation anchors
+- code-location anchors that help future investigation
+- long-lived constraints, pitfalls, and verification rules
 
-Select facts that remain useful beyond the current task and are supported by the supplied evidence.
+## Canonical routing
 
-## Routing rules
+- `PROJECT-TRUTH.md` for cross-cutting project rules
+- `features/*.md` for stable feature or module behavior
 
-1. Own canonical routing from the supplied facts and evidence.
-2. Use `claw search` and read only relevant candidate truth docs.
-3. Create a new truth doc only when the topic is genuinely new.
-4. Keep the canonical root inside the project's configured truth corpus; use `.claw/truth/` for claw-kit projects.
+Use `claw search` as the canonical discovery and routing surface. Read only relevant candidates, update the best-matching document when one exists, and create a document for a genuinely new durable topic. Use exact filename and title collision checks before creation. Widen inspection incrementally when search is unavailable or candidates conflict.
+
+Honor the configured canonical truth root; use `.claw/truth/` in claw-kit projects.
 
 ## Writing rules
 
-- Bind facts to real code paths whenever possible.
-- Distinguish primary code anchors from related files in the prose.
-- Ground code paths in supplied or inspected evidence.
-- Keep the document in readable markdown.
-- Update `SUMMARY.md` when the truth set materially changes.
-- Write body text in Chinese when the target repository expects Chinese docs, while preserving exact identifiers and paths.
-- Treat mojibake strings such as `鐨`, `锛`, and `銆` as corruption; repair or rewrite them before writing canonical truth text.
+- write body text in Chinese when the repository expects Chinese docs
+- preserve exact code identifiers, config keys, commands, and error text
+- record repository locations only as project-relative paths in prose, links, evidence, and related-code sections
+- bind conclusions to real code paths whenever possible
+- distinguish primary anchors from related files in prose
+- keep the result in readable markdown
+- ground every path and fact in supplied or inspected evidence
+- repair or rewrite mojibake such as `鐨`, `锛`, or `銆` before deposition
+
+## Useful sections
+
+- `## 结论`
+- `## 长期行为 / 规则`
+- `## 关联代码`
+- `## 真实调用链路` or `## 真实渲染链路`
+- `## 已知陷阱`
+- `## 验证标准`
+- `## 关键检索词`
 
 ## Workflow
 
-1. Receive a compact completed-work or investigation report.
-2. Route with `claw search` and read only relevant candidates.
-3. Update an existing truth doc when possible.
-4. Create a new truth doc only for a genuinely new durable topic.
-5. In claw-kit projects, write through `claw truth ingest` when available.
+1. Read the supplied facts and evidence.
+2. Run `claw search` and read only relevant canonical candidates.
+3. Update the best-matching document or create one for a genuinely new topic.
+4. In claw-kit projects, write through `claw truth ingest` when available.
+5. Verify the target, canonical path containment, encoding, written facts, and `claw search` discoverability.
 
-## Output expectation
+## Return
 
-The delegated truth writer can return a minimal completion payload, but the main agent does not rely on it:
-
-- optional `status`
-- optional `updatedPaths`
-
-Returning nothing is also acceptable. Keep any response focused on completion telemetry.
-
-## Timing rule
-
-Use this skill at task-completion time when:
-
-- a subtask has completed and its task report contains reusable knowledge
-- all current plan tasks are done but the plan is not yet closed
-
-Run truth deposition before retrospective closure.
-
-## Boundary
-
-Route durable architecture decisions to `adr-writer`. Write stable feature, debugging, routing, and constraint knowledge into the project's truth corpus.
+Return a minimal completion payload with optional `status` and `updatedPaths`, or return nothing.

@@ -14,11 +14,11 @@ permission:
 
 ## 工作流程
 
-1. 接收 main agent 筛选后的必要事实与证据；canonical 路由由 writer 自己负责
+1. 读取输入中已筛选的必要事实与证据；canonical 路由由你负责
 2. 用 `claw search` 召回候选，只读相关 truth 文档
-3. 判断内容是否值得沉淀（见下方标准）
+3. 保留有证据支持、在当前任务结束后仍有复用价值的事实
 4. 使用 `claw truth ingest` 写入或更新 truth 文档
-5. 当 truth 集合有实质变化时更新 `SUMMARY.md`
+5. 验证写入文档可通过 `claw search` 召回
 
 搜索不可用、候选冲突或新文档路由仍不明确时，逐步扩大检查范围直到路由确定。
 
@@ -36,6 +36,7 @@ permission:
 
 - 优先更新已有文档而非创建新文档
 - 将事实绑定到有证据支持的真实代码路径
+- 仓库位置统一记录为项目根目录相对路径，覆盖正文、链接、证据与 related code
 - 区分主要代码锚点和相关文件
 - 保持可读的 markdown 格式
 - body 文本用中文（当仓库期望中文文档时），但保留精确的标识符、路径、配置键、命令和错误文本
@@ -45,10 +46,8 @@ permission:
 
 - `PROJECT-TRUTH.md` — 跨项目的通用规则
 - `features/*.md` — 稳定的功能或模块行为
-- `SUMMARY.md` — truth 索引
 
-## 路由边界
+## 记录范围
 
-- 将持久架构决策交给 adr-writer
 - 将稳定功能、调试、路由和约束知识写入 truth corpus
 - 写入范围限于 canonical truth 文档

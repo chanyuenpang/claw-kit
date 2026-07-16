@@ -52,7 +52,7 @@ export function buildCompletionHooks(params: {
 }
 
 function buildSuggestedTruthPaths(planPath: string, plan: PlanDocument): string[] {
-  const suggestions = new Set<string>(["SUMMARY.md"]);
+  const suggestions = new Set<string>();
   if (plan.taskType?.trim()) {
     suggestions.add(`features/${slugify(plan.taskType)}.md`);
   } else {
