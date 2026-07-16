@@ -2,7 +2,7 @@
 
 ## 状态
 
-这是 `publish-claw-npm-package` 完成后沉淀下来的稳定发布事实。当前最新一轮已验证到 `0.1.69`，并继续沿用同一条双包发布链与 identity-aware Codex plugin 刷新协议；当某一轮发布的目的就是验证 startup `autoUpdate` 路径时，release baseline 也可以先只确认 registry / workspace 基线与下一目标版本，不立即刷新本地 CLI 或本地 Codex plugin cache。
+这是 `publish-claw-npm-package` 完成后沉淀下来的稳定发布事实。当前最新一轮已验证到 `0.1.71`，并继续沿用同一条双包发布链与 identity-aware Codex plugin 刷新协议；当某一轮发布的目的就是验证 startup `autoUpdate` 路径时，release baseline 也可以先只确认 registry / workspace 基线与下一目标版本，不立即刷新本地 CLI 或本地 Codex plugin cache。
 
 ## 结论
 
@@ -345,3 +345,32 @@ release commit `472635e` 已推送至 `origin/main`，tag 为 `v0.1.62`；`@veew
 - `0.1.70 f0bcc05d runtime boundary`
 - `0.1.70+codex.20260717024830 plan start smoke`
 - `198/198 truth encoding audit`
+
+## 2026-07-17：0.1.71 发布与固定 Codex consumer 安装验证
+
+### 已验证完成态
+
+- Release commit `0415269` 已推送到 `origin/main`；发布 closeout 时 `origin/main...main` 的 ahead/behind 为 `0/0`，证明本地与远端 source 已收敛。
+- npm registry 回读确认 `@veewo/claw-core` 与 `@veewo/claw` 的 `version`、`dist-tags.latest` 均为 `0.1.71`；CLI package 的 bin metadata 为 `{ "claw": "dist/bin.js" }`。
+- 本机全局命令 shim 为 `C:\Users\chany\AppData\Roaming\npm\claw.ps1`，全局 npm package 与真实 CLI 运行面均为 `0.1.71`。
+- direct-development Codex cache 为 `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.71+codex.20260717033049`。cache 已确认包含 `scripts/code-mode-host-action-consumer.mjs`，且 `skills/using-claw-kit/SKILL.md` 包含内嵌固定 `runClawPlanMutation` driver；这证明本轮新增的程序化 consumer 同时进入 versioned plugin payload 与实际 skill 执行合同。
+- `claw context` 同时报告 project / CLI `0.1.71` 且 `updateAvailable = false`。registry 双包、全局 package/shim、Codex cache payload、project/CLI context 和 Git `0/0` 共同构成本轮发布闭环。
+
+### 验证锚点
+
+- `npm view @veewo/claw-core@0.1.71 version dist-tags.latest --json`
+- `npm view @veewo/claw@0.1.71 version dist-tags.latest bin --json`
+- `npm list -g @veewo/claw --depth=0`
+- `Get-Command claw`
+- `claw --version`
+- `claw context`
+- `scripts/code-mode-host-action-consumer.mjs`
+- `skills/using-claw-kit/SKILL.md`
+- `git rev-list --left-right --count origin/main...main`
+
+### 关键检索词
+
+- `0.1.71 0415269 registry latest`
+- `0.1.71+codex.20260717033049 runClawPlanMutation`
+- `code-mode-host-action-consumer plugin cache`
+- `origin/main main 0/0 updateAvailable false`
