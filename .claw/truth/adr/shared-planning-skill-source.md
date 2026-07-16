@@ -25,6 +25,8 @@ The original synchronization implementation wrote those adapter-local copies int
 
 `0.1.68` 本地 update subplan 再次验证这条边界：当前实际 enabled identity 是 `claw-kit@claw-kit`，而 maintained development installer 刷新的是未启用的 `claw-kit@claw-kit-local`。当 Windows Store `codex.exe` 无法执行、`codex plugin list` 不可用时，仍可先从 Codex 配置确认 active identity，再分别核对 official marketplace source manifest 与 official cache manifest；仅刷新 local cache 不能算 active surface 更新成功。
 
+`0.1.69` 将维护者的仓库开发安装路径明确为另一种互斥模式：运行仓库 local installer 时，实际启用的 identity 应切到 `claw-kit@claw-kit-local`，并停用仍指向落后 source/cache 的 `claw-kit@claw-kit`。这不是用开发 cache 替代正式发布验证，而是要求当前 host 的 enabled identity、对应 source 和 versioned cache 始终属于同一安装面。磁盘三方对齐只能证明安装完成；Codex restart 后由新任务报告目标 loaded skill locator，才证明新 payload 已被运行时采用。
+
 随后，`fix-skill-local-subplan-template-resolution` 计划进一步暴露了运行时边界：shared skill 的 `TEMPLATE.json` 是完整 `PlanDocument` 模板，而旧 `.claw/templates` 仍使用 `SeedPlanTemplate`。如果 `claw plan create` 与 `claw subplan create` 分别维护发现、schema 判别和实例化逻辑，同一个 skill-local 模板就会在 root plan 与 subplan 路径上产生不一致行为。
 
 ## Decision
@@ -48,10 +50,10 @@ Codex Git marketplace 的发布源必须是已提交、自包含的 `packages/co
 - `scripts/publish-release.mjs` 通过 `assertSharedSkillsSynced(...)` 只读比较规范源与已物化副本；缺失、文件集合不完整或内容落后时必须失败
 - `scripts/codex-plugin-bundle.mjs` 只能导出和安装当前 `packages/codex-adapter` 内容，不得在临时 staging 中隐式同步 shared skills 来掩盖仓库源缺失
 
-Codex 安装与更新采用 active identity/source 合同：
+Codex 安装与更新采用互斥的 active identity/source 合同：
 
-- 正式 identity 固定为 `claw-kit@claw-kit`；维护者机器也只启用这一 identity，并通过真实 repository marketplace clone/install 验证发布快照
-- `claw-kit@claw-kit-local` 只保留为未启用的开发 source 与 versioned cache，不得与正式 identity 同时抢占运行时加载结果
+- 正式 repository marketplace 安装与发布快照验证使用 `claw-kit@claw-kit`；仓库 local installer 驱动的维护者开发安装使用 `claw-kit@claw-kit-local`
+- 两种 identity 不得同时抢占运行时加载结果；切换到 local 开发安装时必须停用 stale `claw-kit@claw-kit`，切回正式安装时也必须停用 local identity
 - marketplace upgrade 后必须重新安装或启用正式 identity，并检测、处理会抢占加载结果的 stale same-name identity
 - 安装或更新验收必须同时对齐 active identity、marketplace source manifest、cache manifest 与 target version，不能用 cache 目录存在或最高版本目录作为单独成功证据
 - maintained development installer 的 `claw-kit@claw-kit-local` source/cache 与 active official `claw-kit@claw-kit` cache 是两个独立 surface；当 official identity 处于 enabled 状态时，必须通过 repository bundle/install 路径显式物化 matching official cache，不能把 local installer 成功当作 official runtime 已更新
@@ -101,7 +103,7 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 - Codex Git marketplace、release bundle 和维护者本地安装都从同一棵已提交的 `packages/codex-adapter` 读取，不再出现“zip 完整但远端 Git 安装缺 skill”的分叉。
 - 仓库 URL 安装不需要 GitHub Release ZIP，也不依赖目标机器执行仓库构建；发布正确性由 committed plugin tree 与只读 HEAD gate 保证。
 - sparse checkout 的最小边界由 marketplace manifest 和 `source.path` 联合决定，不能把 marketplace metadata 误当作完整 plugin payload。
-- 维护者和第三方使用同一个 `claw-kit@claw-kit` active identity；本地开发 cache 的存在不再构成发布验证证据。
+- 正式发布验收与第三方安装使用 `claw-kit@claw-kit`；维护者在显式仓库开发安装模式下使用 `claw-kit@claw-kit-local`。两者互斥，且未启用 identity 的 cache 不构成当前安装面证据。
 - update 流程必须先识别实际 enabled identity 再选择验证路径；development installer 只刷新 local identity 时，需要额外同步 official cache，直到 active source/cache 与目标版本一致。
 - HEAD gate 可阻止未提交的物化文件、错误 `source.path`、manifest 版本漂移或缺失相邻资源进入正式发布。
 - restart/new-task locator check 成为插件运行时生效的最终证据，避免把既有任务中的旧 skill snapshot 误判为更新失败或更新成功。
@@ -180,6 +182,8 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 - `enabled identity from config`
 - `loaded skill locator`
 - `Codex restart`
+- `exclusive plugin identity`
+- `stale identity disable`
 - `packages/codex-adapter`
 - `assertSharedSkillsSynced`
 - `materialized plugin source`

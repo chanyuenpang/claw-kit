@@ -2,7 +2,7 @@
 
 ## 状态
 
-这是 `publish-claw-npm-package` 完成后沉淀下来的稳定发布事实。当前最新一轮已验证到 `0.1.68`，并继续沿用同一条双包发布链与 identity-aware Codex plugin 刷新协议；当某一轮发布的目的就是验证 startup `autoUpdate` 路径时，release baseline 也可以先只确认 registry / workspace 基线与下一目标版本，不立即刷新本地 CLI 或本地 Codex plugin cache。
+这是 `publish-claw-npm-package` 完成后沉淀下来的稳定发布事实。当前最新一轮已验证到 `0.1.69`，并继续沿用同一条双包发布链与 identity-aware Codex plugin 刷新协议；当某一轮发布的目的就是验证 startup `autoUpdate` 路径时，release baseline 也可以先只确认 registry / workspace 基线与下一目标版本，不立即刷新本地 CLI 或本地 Codex plugin cache。
 
 ## 结论
 
@@ -11,7 +11,7 @@
 - `@veewo/claw-core` 提供核心 `.claw` harness 语义。
 - `@veewo/claw` 提供可发布的 CLI 入口，并依赖 `@veewo/claw-core`。
 
-当前最新发布版本线已经同步到 `0.1.67`；以下历史版本事实保留为发布链证据：
+当前最新发布版本线已经同步到 `0.1.69`；以下历史版本事实保留为发布链证据：
 
 - 这次 closeout 把 root、`packages/core`、`packages/cli`、`packages/codex-adapter`、`packages/openclaw-adapter`、`packages/opencode-adapter`、`package-lock.json` 和 `packages/codex-adapter/.codex-plugin/plugin.json` 一起推进到同一轮 release surface，其中 Codex plugin manifest 对齐到 `0.1.53+codex.20260626141302`。
 - `@veewo/claw-core@0.1.53` 与 `@veewo/claw@0.1.53` 都已经成功发布到 npm registry。
@@ -261,3 +261,43 @@ release commit `472635e` 已推送至 `origin/main`，tag 为 `v0.1.62`；`@veew
 - 当 `codex plugin list` 不可访问时，可用 repository bundle installer 将 repository bundle materialize 到 official `claw-kit@claw-kit` cache；这条恢复路径的验收仍需核对 active identity、official source manifest 与 official cache manifest，而不是只看 installer 成功退出。
 - 本轮 active source 证据是 `origin/main` 的 manifest `0.1.68+codex.20260716225625`，official cache manifest 与其完全同版；official active source/cache 内均已确认存在 `planning`、`config`、`update` 与 `create-claw-skill`。
 - official 与 development 两套 artifact 可以同时存在，但只有启用的 identity 决定当前 Codex 加载面。release/update closeout 应分别报告 global CLI、active identity、active source manifest、active cache manifest 与 required skills presence。
+
+## 2026-07-17：0.1.69 发布与 direct-development 安装面
+
+### 已验证完成态
+
+- Release source commit `cf884c0` 已推送到 `origin/main`；发布 closeout 时 `origin/main...HEAD` 的 ahead/behind 为 `0/0`，工作区为空。
+- npm registry 已确认 `@veewo/claw-core` 与 `@veewo/claw` 的 `version`、`dist-tags.latest` 都是 `0.1.69`；CLI registry metadata 保持 `bin = { "claw": "dist/bin.js" }`。
+- 本机全局 npm 安装解析为 `@veewo/claw@0.1.69`，`claw --version` 返回 `0.1.69`。真实 `claw help plan start` 已暴露原子 plan 命令面，说明当前全局 shim 不只是版本元数据更新，实际命令路由也来自新版本。
+- Codex direct-development source manifest 与 versioned cache manifest 均为 `0.1.69+codex.20260717011110`，两份 manifest 的 SHA256 相同；`planning`、`config`、`update`、`create-claw-skill` 在 source 与 cache 两侧均存在。
+- 当前 Codex 配置已启用 `claw-kit@claw-kit-local`，并停用旧的 `claw-kit@claw-kit`。因此本轮预期加载面从 official identity 切换到 direct-development identity；不能再用旧 official cache 的存在推断 active runtime。
+
+### 加载验证边界
+
+- source/cache manifest、SHA256、skill presence 与 identity 配置只能证明待加载安装面已经一致，不能证明当前长任务已经重新加载该 locator。
+- Codex 必须先重启，并在重启后新建任务，才能验证实际加载 locator；新任务应直接核对运行时暴露的 plugin locator / skill source 是否指向 `claw-kit@claw-kit-local` 的 `0.1.69+codex.20260717011110` cache。
+- 在完成上述重启后新任务验收前，closeout 应明确报告“direct-development 安装面已刷新且配置已切换，但实际 loaded locator 待验证”，不能把 source/cache 文件一致性升级成运行时加载证据。
+
+### 验证锚点
+
+- `npm view @veewo/claw-core@0.1.69 version dist-tags.latest --json`
+- `npm view @veewo/claw@0.1.69 version dist-tags.latest bin --json`
+- `npm list -g @veewo/claw --depth=0`
+- `claw --version`
+- `claw help plan start`
+- `packages/codex-adapter/.codex-plugin/plugin.json`
+- `skills/planning/SKILL.md`
+- `skills/config/SKILL.md`
+- `skills/update/SKILL.md`
+- `skills/create-claw-skill/SKILL.md`
+- `git rev-list --left-right --count origin/main...HEAD`
+- `git status --porcelain`
+
+### 关键检索词
+
+- `0.1.69 cf884c0 direct-development`
+- `claw help plan start atomic commands`
+- `claw-kit@claw-kit-local enabled`
+- `claw-kit@claw-kit disabled`
+- `0.1.69+codex.20260717011110 source cache hash`
+- `restart new task loaded locator`
