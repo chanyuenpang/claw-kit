@@ -192,13 +192,22 @@ function syncProjectMemoryIndex(
       db.exec("DELETE FROM query_embeddings;");
     }
     insertDocs(db, limitedDocsToInsert);
-    if (shouldIndexVectors && embedding) {
-      indexDocEmbeddings(db, listDocsMissingEmbeddings(db), embedding);
-    }
     db.exec("COMMIT");
   } catch (error) {
     db.exec("ROLLBACK");
     throw error;
+  }
+
+  if (shouldIndexVectors && embedding) {
+    const generatedEmbeddings = generateDocEmbeddings(listDocsMissingEmbeddings(db), embedding);
+    db.exec("BEGIN");
+    try {
+      insertDocEmbeddings(db, generatedEmbeddings);
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   if (!shouldIndexVectors || !embedding) {
@@ -616,16 +625,22 @@ function isExternalDocFile(filePath: string): boolean {
   return /\.md$/i.test(filePath);
 }
 
-function indexDocEmbeddings(
-  db: DatabaseSync,
+function generateDocEmbeddings(
   docs: Array<{ docId: number; sourcePath: string; kind: string; content: string }>,
   embedding: MemoryEmbeddingConfig | null,
-) : void {
+): Array<{
+  docId: number;
+  chunkIndex: number;
+  sourcePath: string;
+  kind: string;
+  chunkText: string;
+  vector: number[];
+}> {
   if (!embedding) {
-    return;
+    return [];
   }
   if (!canBuildProjectVectors(embedding)) {
-    return;
+    return [];
   }
 
   const chunks = docs.flatMap((doc) =>
@@ -638,27 +653,37 @@ function indexDocEmbeddings(
     })),
   );
   if (chunks.length === 0) {
-    return;
+    return [];
   }
 
   const output = runEmbeddingWorker({
     embedding,
     texts: chunks.map((chunk) => chunk.chunkText),
   });
+  return chunks.map((chunk, index) => ({
+    ...chunk,
+    vector: output.vectors[index] ?? [],
+  }));
+}
+
+function insertDocEmbeddings(
+  db: DatabaseSync,
+  embeddings: ReturnType<typeof generateDocEmbeddings>,
+): void {
   const insertEmbedding = db.prepare(
     [
-      "INSERT INTO doc_embeddings (doc_id, chunk_index, source_path, kind, chunk_text, embedding_json)",
+      "INSERT OR REPLACE INTO doc_embeddings (doc_id, chunk_index, source_path, kind, chunk_text, embedding_json)",
       "VALUES (?, ?, ?, ?, ?, ?)",
     ].join(" "),
   );
-  chunks.forEach((chunk, index) => {
+  embeddings.forEach((embedding) => {
     insertEmbedding.run(
-      chunk.docId,
-      chunk.chunkIndex,
-      chunk.sourcePath,
-      chunk.kind,
-      chunk.chunkText,
-      JSON.stringify(output.vectors[index] ?? []),
+      embedding.docId,
+      embedding.chunkIndex,
+      embedding.sourcePath,
+      embedding.kind,
+      embedding.chunkText,
+      JSON.stringify(embedding.vector),
     );
   });
 }

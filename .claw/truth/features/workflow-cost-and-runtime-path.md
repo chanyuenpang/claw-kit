@@ -197,3 +197,11 @@
 - 原子 `refine-and-activate` 的验收合同要求：一次序列化写入完成 refine 与 activate；任何验证失败都必须零写入；CLI plan state 始终是 canonical source of truth；host adapter 只单向、幂等地消费 versioned events，不反向拥有或重写 canonical plan state。
 - 主要证据是 `benchmarks/workflow/0.1.68-windows-baseline.json` 与 `docs/workflow-performance-contract.md`，对应提交为 `b1374f8`。
 - 以上只固定 predecessor benchmark 与未来实现必须满足的原子合同；不表示 `refine-and-activate` 已实现，也不据此宣称后续 workflow 已获得性能提升。
+
+### 原子 `claw plan start` 已实现合同与 Windows A/B
+
+- `claw plan start --task <name> --patch <plan-patch.json> --append-tasks <tasks.json>` 已成为正式原子入口：一次序列化 mutation 内完成 plan refine、追加业务 tasks、把两个 default lifecycle bridge tasks 标记为 done，并把 plan 切换到 `process.active`。
+- 原子结果事件使用 `schemaVersion = 1`；一次 mutation 共享单一 `mutationId`，每个事件拥有唯一 `eventId`，并记录 `commandSource`。CLI 同时输出幂等 `hostActions`，供 host adapter 单向同步 `update_plan` 与 Goal Mode；adapter 消费事件，不反向拥有 canonical CLI plan state。
+- 原有 `claw plan create`、`claw plan edit` 与 `claw plan done` 保持兼容；`plan start` 是减少 refine/activate 固定管理往返的新增入口，不是破坏旧 lifecycle surface 的替换。
+- 固定 Windows low / medium / high A/B 中，legacy path P50 为 `902.79ms`，atomic path P50 为 `385.06ms`，改善 `57.35%`；把 create-time recall 计入管理动作后，首个业务动作前的管理命令数从 `6` 降到 `3`。这是同一固定 A/B corpus 的配对结果，不覆盖上一节独立 predecessor baseline 的 `935.04ms` 观测值。
+- 本阶段证据是 `benchmarks/workflow/0.1.68-atomic-windows.json`、`docs/workflow-performance-contract.md` 与提交 `3dca2c8`。

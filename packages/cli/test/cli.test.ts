@@ -150,16 +150,19 @@ async function waitForCondition(predicate: () => boolean, timeoutMs: number): Pr
 }
 
 function getLatestCompletionRefreshStatusFile(root: string): string | null {
+  return getCompletionRefreshStatusFiles(root)[0] ?? null;
+}
+
+function getCompletionRefreshStatusFiles(root: string): string[] {
   const logDir = path.join(root, ".claw", "logs", "completion-refresh");
   if (!fs.existsSync(logDir)) {
-    return null;
+    return [];
   }
-  const entries = fs
+  return fs
     .readdirSync(logDir, { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
     .map((entry) => path.join(logDir, entry.name))
     .sort((left, right) => fs.statSync(right).mtimeMs - fs.statSync(left).mtimeMs);
-  return entries[0] ?? null;
 }
 
 async function waitForLatestCompletionRefreshStatus(root: string, timeoutMs = 15000): Promise<JsonRecord> {
@@ -176,17 +179,28 @@ async function waitForLatestCompletionRefreshStatus(root: string, timeoutMs = 15
   throw new Error(`Timed out waiting for completion refresh status file under ${root}`);
 }
 
-function createGitnexusShim(mode: "fallback" | "primary"): { binDir: string; logPath: string } {
+function createGitnexusShim(mode: "fallback" | "primary" | "lock-once", delayMs = 0): { binDir: string; logPath: string } {
   const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-kit-gitnexus-bin-"));
   const logPath = path.join(binDir, "gitnexus.log");
   const cmdPath = path.join(binDir, "gitnexus.cmd");
-  const jsPath = path.join(binDir, "gitnexus-shim.js");
+const jsPath = path.join(binDir, "gitnexus-shim.js");
+  const lockMarkerPath = path.join(binDir, "lock-once.marker");
   const script = `
 const fs = require("node:fs");
 const path = require("node:path");
 
 const args = process.argv.slice(2);
 fs.appendFileSync(${JSON.stringify(logPath)}, \`\${args.join(" ")}\\n\`);
+
+if (args[0] === "analyze" && ${JSON.stringify(delayMs)} > 0) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ${JSON.stringify(delayMs)});
+}
+
+if (args[0] === "analyze" && ${JSON.stringify(mode)} === "lock-once" && !fs.existsSync(${JSON.stringify(lockMarkerPath)})) {
+  fs.writeFileSync(${JSON.stringify(lockMarkerPath)}, "locked once\\n", "utf8");
+  process.stderr.write("database is locked\\n");
+  process.exit(1);
+}
 
 if (args.includes("--no-ai-context") && ${JSON.stringify(mode)} === "fallback") {
   process.stderr.write("unknown option --no-ai-context\\n");
@@ -455,15 +469,15 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   assert.equal(refreshStatus.ok, true);
   assert.ok(Number((memory.project as JsonRecord).indexedCount) > 0);
   assert.ok(memory.task as JsonRecord | undefined);
-  assert.equal(gitnexus.command, "gitnexus analyze");
-  assert.equal(gitnexus.enabled, true);
+  assert.equal(gitnexus.enabled, false);
+  assert.match(String(gitnexus.reason), /preflight/);
   assert.equal(doneResult.planSummary, "1/1 e2e-task");
 
   const gitnexusLog = fs.readFileSync(shim.logPath, "utf-8");
   assert.match(gitnexusLog, /analyze --embeddings --no-ai-context/);
   assert.match(gitnexusLog, /analyze --embeddings\r?\n?$/m);
-  assert.match(gitnexusLog, /analyze --no-ai-context/);
-  assert.match(gitnexusLog, /analyze\r?\n?$/m);
+  assert.doesNotMatch(gitnexusLog, /^analyze --no-ai-context\r?$/m);
+  assert.doesNotMatch(gitnexusLog, /^analyze\r?$/m);
 });
 
 test("cli plan create accepts a positional title and seeds planning discussion by default", () => {
@@ -2088,11 +2102,12 @@ test("cli plan done auto-enables gitnexus embeddings and seeds the matching mode
 
   const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
   const gitnexus = refreshStatus.gitnexus as JsonRecord;
-  assert.equal(gitnexus.command, "gitnexus analyze --no-ai-context");
+  assert.equal(gitnexus.enabled, false);
+  assert.match(String(gitnexus.reason), /preflight/);
 
   const gitnexusLog = fs.readFileSync(shim.logPath, "utf-8");
   assert.match(gitnexusLog, /analyze --embeddings --no-ai-context/);
-  assert.match(gitnexusLog, /analyze --no-ai-context/);
+  assert.doesNotMatch(gitnexusLog, /^analyze --no-ai-context\r?$/m);
 });
 
 test("cli direct returns truth-writer guidance and queues completion refresh for low-complexity no-plan work", async () => {
@@ -2141,6 +2156,55 @@ test("cli direct returns truth-writer guidance and queues completion refresh for
   assert.equal(refreshStatus.ok, true);
   assert.ok(Number((memory.project as JsonRecord).indexedCount) >= 1);
   assert.equal((memory.task as JsonRecord | undefined), undefined);
+});
+
+test("overlapping direct closeouts coalesce into one completion refresh", async () => {
+  const root = createFixture("direct-single-flight");
+  const shim = createGitnexusShim("primary", 750);
+  const env = {
+    CLAW_EMBEDDING_MOCK: "1",
+    PATH: `${shim.binDir}${path.delimiter}${process.env.PATH ?? ""}`,
+  };
+  runClaw(["init", "--name", "Direct Single Flight", "--gitnexus", "true"], root, env);
+  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "single-flight memory\n", "utf-8");
+
+  runClaw(["direct"], root, env);
+  await waitForCondition(() => getCompletionRefreshStatusFiles(root).length >= 1, 5000);
+  runClaw(["direct"], root, env);
+  await waitForCondition(() => getCompletionRefreshStatusFiles(root).length >= 2, 5000);
+
+  const statuses = await Promise.all(
+    getCompletionRefreshStatusFiles(root).map((statusFile) => waitForCompletionRefreshStatus(statusFile)),
+  );
+  assert.equal(statuses.every((status) => status.ok === true), true);
+  assert.equal(statuses.some((status) => status.coalesced === true), true);
+  assert.equal(Math.max(...statuses.map((status) => Number(status.coalescedCount ?? 0))), 1);
+  const analyzeCalls = fs.readFileSync(shim.logPath, "utf-8")
+    .split(/\r?\n/)
+    .filter((line) => line === "analyze --no-ai-context");
+  assert.equal(analyzeCalls.length, 1);
+});
+
+test("completion refresh retries one transient GitNexus lock without shell warnings", async () => {
+  const root = createFixture("direct-gitnexus-lock-retry");
+  const shim = createGitnexusShim("lock-once");
+  const env = {
+    CLAW_EMBEDDING_MOCK: "1",
+    PATH: `${shim.binDir}${path.delimiter}${process.env.PATH ?? ""}`,
+  };
+  runClaw(["init", "--name", "GitNexus Lock Retry", "--gitnexus", "true"], root, env);
+  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "lock retry memory\n", "utf-8");
+
+  const result = runClawRaw(["direct"], root, env);
+  assert.equal(result.status, 0);
+  assert.doesNotMatch(result.stderr, /DEP0190/);
+  const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
+  assert.equal(refreshStatus.ok, true);
+  assert.equal((refreshStatus.gitnexus as JsonRecord).enabled, true);
+  const analyzeCalls = fs.readFileSync(shim.logPath, "utf-8")
+    .split(/\r?\n/)
+    .filter((line) => line === "analyze --no-ai-context");
+  assert.equal(analyzeCalls.length, 2);
 });
 
 test("cli init gitignore ignores project-override.json by default", () => {

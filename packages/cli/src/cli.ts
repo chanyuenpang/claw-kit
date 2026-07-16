@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import {
   buildDirectWorkflowGuidance,
@@ -514,7 +515,7 @@ async function runPlan(args: string[]): Promise<void> {
           "plan done requires --summary or a patch file containing retrospective.summary.",
         );
       }
-      ensureGitNexusReadyForPlanDone(process.cwd());
+      const gitNexusPreflightAnalyzed = ensureGitNexusReadyForPlanDone(process.cwd());
       const result = await editPlan({
         cwd: process.cwd(),
         taskName: readRequiredFlag(args, "--task"),
@@ -529,6 +530,7 @@ async function runPlan(args: string[]): Promise<void> {
       const completionRefresh = queueCompletionRefresh({
         cwd: process.cwd(),
         taskName: result.taskName,
+        skipGitNexusRefresh: gitNexusPreflightAnalyzed,
       });
       printJson(compactPlanCommandResult("plan.done", result, completionRefresh));
       return;
@@ -1514,6 +1516,9 @@ type CompletionRefreshResult = {
     startedAt: string;
     statusFile: string;
     operations: CompletionRefreshOperation[];
+    coalesced?: boolean;
+    leaderStatusFile?: string;
+    dirtyHash: string;
   };
 };
 
@@ -1526,6 +1531,16 @@ type CompletionRefreshStatus = {
   cwd: string;
   taskName: string;
   operations: CompletionRefreshOperation[];
+} | {
+  ok: true;
+  coalesced: true;
+  queued: true;
+  startedAt: string;
+  cwd: string;
+  taskName: string;
+  operations: CompletionRefreshOperation[];
+  dirtyHash: string;
+  leaderStatusFile: string;
 } | {
   ok: true;
   running: true;
@@ -1544,6 +1559,9 @@ type CompletionRefreshStatus = {
     task?: ReturnType<typeof buildMemoryIndex>;
   };
   gitnexus?: GitNexusRefreshResult;
+  dirtyHash?: string;
+  refreshCycles?: number;
+  coalescedCount?: number;
 } | {
   ok: false;
   startedAt: string;
@@ -1568,12 +1586,24 @@ type GitNexusRefreshResult = {
   reason: string;
 };
 
+type CompletionRefreshFlightState = {
+  schemaVersion: 1;
+  queuedAt: string;
+  leaderStatusFile: string;
+  statusFiles: string[];
+  requestedDirtyHash: string;
+  operations: CompletionRefreshOperation[];
+  pid?: number;
+  startedAt?: string;
+};
+
 function queueCompletionRefresh(input: {
   cwd: string;
   taskName: string;
   includeTaskRetention?: boolean;
   includeTaskMemory?: boolean;
   statusLabel?: string;
+  skipGitNexusRefresh?: boolean;
 }): CompletionRefreshResult {
   const project = resolveProjectContext(input.cwd);
   const includeTaskRetention = input.includeTaskRetention ?? true;
@@ -1591,9 +1621,10 @@ function queueCompletionRefresh(input: {
   if (includeTaskMemory && !taskRetention.archivedCurrentTask) {
     operations.push("memory.reindex.task");
   }
-  if (project.projectConfig?.gitnexus === true) {
+  if (project.projectConfig?.gitnexus === true && !input.skipGitNexusRefresh) {
     operations.push("gitnexus.refresh");
   }
+  const dirtyHash = computeCompletionDirtyHash(input.cwd, input.taskName, operations);
 
   fs.mkdirSync(path.dirname(statusFile), { recursive: true });
   fs.writeFileSync(
@@ -1606,18 +1637,48 @@ function queueCompletionRefresh(input: {
         cwd: input.cwd,
         taskName: input.taskName,
         operations,
+        dirtyHash,
       },
       null,
       2,
     ),
     "utf-8",
   );
-
-  launchCompletionRefreshWorker({
-    cwd: input.cwd,
-    taskName: input.taskName,
+  const flight = claimCompletionRefreshFlight({
+    clawDir: project.clawDir,
     statusFile,
+    dirtyHash,
+    operations,
+    queuedAt: startedAt,
   });
+  if (flight.leader) {
+    launchCompletionRefreshWorker({
+      cwd: input.cwd,
+      taskName: input.taskName,
+      statusFile,
+    });
+  } else {
+    const coalescedStatus = {
+      ok: true,
+      coalesced: true,
+      queued: true,
+      startedAt,
+      cwd: input.cwd,
+      taskName: input.taskName,
+      operations,
+      dirtyHash,
+      leaderStatusFile: flight.leaderStatusFile,
+    } satisfies CompletionRefreshStatus;
+    fs.writeFileSync(statusFile, `${JSON.stringify(coalescedStatus, null, 2)}\n`, "utf-8");
+    const leaderStatus = tryReadCompletionRefreshStatus(flight.leaderStatusFile);
+    if (leaderStatus && "finishedAt" in leaderStatus) {
+      fs.writeFileSync(
+        statusFile,
+        `${JSON.stringify({ ...leaderStatus, coalesced: true, leaderStatusFile: flight.leaderStatusFile }, null, 2)}\n`,
+        "utf-8",
+      );
+    }
+  }
 
   return {
     taskRetention,
@@ -1626,6 +1687,8 @@ function queueCompletionRefresh(input: {
       startedAt,
       statusFile,
       operations,
+      dirtyHash,
+      ...(!flight.leader ? { coalesced: true, leaderStatusFile: flight.leaderStatusFile } : {}),
     },
   };
 }
@@ -1720,10 +1783,17 @@ function runInternalCompletionRefresh(args: string[]): void {
   const statusFile = readRequiredFlag(args, "--status-file");
   const startedAt = new Date().toISOString();
   const queuedStatus = readJson<CompletionRefreshStatus>(statusFile);
-  const operations: CompletionRefreshOperation[] =
+  const flightDir = getCompletionRefreshFlightDir(resolveProjectContext(cwd).clawDir);
+  const initialFlight = readCompletionRefreshFlightState(flightDir);
+  const operations: CompletionRefreshOperation[] = initialFlight?.operations ?? (
     "operations" in queuedStatus && Array.isArray(queuedStatus.operations)
       ? queuedStatus.operations as CompletionRefreshOperation[]
-      : ["memory.reindex.project"];
+      : ["memory.reindex.project"]);
+  updateCompletionRefreshFlightState(flightDir, (state) => ({
+    ...state,
+    pid: process.pid,
+    startedAt,
+  }));
 
   try {
     fs.writeFileSync(
@@ -1742,13 +1812,40 @@ function runInternalCompletionRefresh(args: string[]): void {
       )}\n`,
       "utf-8",
     );
-    const projectMemory = buildMemoryIndex({
-      cwd,
-      scope: "project",
-    });
-  const taskMemory = operations.includes("memory.reindex.task")
-    ? tryBuildTaskMemoryIndex(cwd, taskName)
-    : undefined;
+    let projectMemory: ReturnType<typeof buildMemoryIndex> | undefined;
+    let taskMemory: ReturnType<typeof buildMemoryIndex> | undefined;
+    let gitnexus: GitNexusRefreshResult | undefined;
+    let refreshCycles = 0;
+    let dirtyHash = "";
+    while (refreshCycles < 3) {
+      refreshCycles += 1;
+      dirtyHash = computeCompletionDirtyHash(cwd, taskName, operations);
+      projectMemory = buildMemoryIndex({ cwd, scope: "project" });
+      taskMemory = operations.includes("memory.reindex.task")
+        ? tryBuildTaskMemoryIndex(cwd, taskName)
+        : undefined;
+      gitnexus = operations.includes("gitnexus.refresh")
+        ? refreshGitNexusIfEnabled(cwd, resolveProjectContext(cwd).projectConfig)
+        : {
+            enabled: false,
+            reason: resolveProjectContext(cwd).projectConfig?.gitnexus === true
+              ? "gitnexus refresh was satisfied by plan-done preflight"
+              : "gitnexus is not enabled in .claw/project.json",
+          };
+      const latestFlight = readCompletionRefreshFlightState(flightDir);
+      const latestDirtyHash = computeCompletionDirtyHash(cwd, taskName, latestFlight?.operations ?? operations);
+      if (latestDirtyHash === dirtyHash && latestFlight?.requestedDirtyHash === dirtyHash) {
+        break;
+      }
+      if (latestFlight?.operations) {
+        for (const operation of latestFlight.operations) {
+          if (!operations.includes(operation)) {
+            operations.push(operation);
+          }
+        }
+      }
+    }
+    const finalFlight = readCompletionRefreshFlightState(flightDir);
     const status: CompletionRefreshStatus = {
       ok: true,
       startedAt,
@@ -1756,12 +1853,15 @@ function runInternalCompletionRefresh(args: string[]): void {
       cwd,
       taskName,
       memory: {
-        project: projectMemory,
+        project: projectMemory!,
         ...(taskMemory ? { task: taskMemory } : {}),
       },
-      gitnexus: refreshGitNexusIfEnabled(cwd, resolveProjectContext(cwd).projectConfig),
+      gitnexus,
+      dirtyHash,
+      refreshCycles,
+      coalescedCount: Math.max(0, (finalFlight?.statusFiles.length ?? 1) - 1),
     };
-    fs.writeFileSync(statusFile, `${JSON.stringify(status, null, 2)}\n`, "utf-8");
+    writeCompletionRefreshFinalStatuses(flightDir, statusFile, status);
   } catch (error) {
     const payload: CompletionRefreshStatus = {
       ok: false,
@@ -1780,9 +1880,201 @@ function runInternalCompletionRefresh(args: string[]): void {
             message: error instanceof Error ? error.message : "Unknown completion refresh failure.",
           },
     };
-    fs.writeFileSync(statusFile, `${JSON.stringify(payload, null, 2)}\n`, "utf-8");
+    writeCompletionRefreshFinalStatuses(flightDir, statusFile, payload);
     process.exitCode = 1;
   }
+}
+
+function getCompletionRefreshFlightDir(clawDir: string): string {
+  return path.join(clawDir, "logs", "completion-refresh", "inflight.lock");
+}
+
+function claimCompletionRefreshFlight(input: {
+  clawDir: string;
+  statusFile: string;
+  dirtyHash: string;
+  operations: CompletionRefreshOperation[];
+  queuedAt: string;
+}): { leader: boolean; leaderStatusFile: string } {
+  const flightDir = getCompletionRefreshFlightDir(input.clawDir);
+  try {
+    fs.mkdirSync(flightDir);
+    const state: CompletionRefreshFlightState = {
+      schemaVersion: 1,
+      queuedAt: input.queuedAt,
+      leaderStatusFile: input.statusFile,
+      statusFiles: [input.statusFile],
+      requestedDirtyHash: input.dirtyHash,
+      operations: input.operations,
+    };
+    writeCompletionRefreshFlightState(flightDir, state);
+    return { leader: true, leaderStatusFile: input.statusFile };
+  } catch (error) {
+    if (!isFileAlreadyExistsError(error)) {
+      throw error;
+    }
+  }
+
+  const existing = readCompletionRefreshFlightState(flightDir);
+  if (!existing || isCompletionRefreshFlightStale(existing)) {
+    fs.rmSync(flightDir, { recursive: true, force: true });
+    return claimCompletionRefreshFlight(input);
+  }
+  const updated = updateCompletionRefreshFlightState(flightDir, (state) => ({
+    ...state,
+    statusFiles: Array.from(new Set([...state.statusFiles, input.statusFile])),
+    requestedDirtyHash: input.dirtyHash,
+    operations: Array.from(new Set([...state.operations, ...input.operations])),
+  }));
+  return { leader: false, leaderStatusFile: updated.leaderStatusFile };
+}
+
+function readCompletionRefreshFlightState(flightDir: string): CompletionRefreshFlightState | null {
+  const statePath = path.join(flightDir, "state.json");
+  if (!fs.existsSync(statePath)) {
+    return null;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(statePath, "utf-8")) as CompletionRefreshFlightState;
+  } catch {
+    return null;
+  }
+}
+
+function tryReadCompletionRefreshStatus(statusFile: string): CompletionRefreshStatus | null {
+  if (!fs.existsSync(statusFile)) {
+    return null;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(statusFile, "utf-8")) as CompletionRefreshStatus;
+  } catch {
+    return null;
+  }
+}
+
+function writeCompletionRefreshFlightState(flightDir: string, state: CompletionRefreshFlightState): void {
+  const statePath = path.join(flightDir, "state.json");
+  const tempPath = `${statePath}.${process.pid}.tmp`;
+  fs.writeFileSync(tempPath, `${JSON.stringify(state, null, 2)}\n`, "utf-8");
+  fs.renameSync(tempPath, statePath);
+}
+
+function updateCompletionRefreshFlightState(
+  flightDir: string,
+  update: (state: CompletionRefreshFlightState) => CompletionRefreshFlightState,
+): CompletionRefreshFlightState {
+  const lockPath = path.join(flightDir, "state.write.lock");
+  let lockFd: number | undefined;
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    try {
+      lockFd = fs.openSync(lockPath, "wx");
+      break;
+    } catch (error) {
+      if (!isFileAlreadyExistsError(error)) {
+        throw error;
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
+  }
+  if (lockFd === undefined) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "Timed out updating completion refresh single-flight state.");
+  }
+  try {
+    const current = readCompletionRefreshFlightState(flightDir);
+    if (!current) {
+      throw new ClawError("PROJECT_CONFIG_INVALID", "Completion refresh single-flight state is missing.");
+    }
+    const next = update(current);
+    writeCompletionRefreshFlightState(flightDir, next);
+    return next;
+  } finally {
+    fs.closeSync(lockFd);
+    fs.rmSync(lockPath, { force: true });
+  }
+}
+
+function writeCompletionRefreshFinalStatuses(
+  flightDir: string,
+  leaderStatusFile: string,
+  status: CompletionRefreshStatus,
+): void {
+  const flight = readCompletionRefreshFlightState(flightDir);
+  const statusFiles = flight?.statusFiles ?? [leaderStatusFile];
+  for (const target of statusFiles) {
+    const payload = target === leaderStatusFile
+      ? status
+      : { ...status, coalesced: true, leaderStatusFile };
+    fs.writeFileSync(target, `${JSON.stringify(payload, null, 2)}\n`, "utf-8");
+  }
+  fs.rmSync(flightDir, { recursive: true, force: true });
+}
+
+function isCompletionRefreshFlightStale(state: CompletionRefreshFlightState): boolean {
+  if (state.pid) {
+    try {
+      process.kill(state.pid, 0);
+      return false;
+    } catch {
+      return true;
+    }
+  }
+  return Date.now() - Date.parse(state.queuedAt) > 60_000;
+}
+
+function isFileAlreadyExistsError(error: unknown): boolean {
+  return error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "EEXIST";
+}
+
+function computeCompletionDirtyHash(
+  cwd: string,
+  taskName: string,
+  operations: CompletionRefreshOperation[],
+): string {
+  const hash = createHash("sha256");
+  hash.update(JSON.stringify([...operations].sort()));
+  const project = resolveProjectContext(cwd);
+  const roots = [
+    path.join(project.clawDir, "memory.md"),
+    path.join(project.clawDir, "truth"),
+    path.join(project.tasksDir, taskName),
+  ];
+  const files = roots.flatMap((root) => listCompletionFingerprintFiles(root)).sort();
+  for (const filePath of files) {
+    hash.update(path.relative(cwd, filePath));
+    hash.update(fs.readFileSync(filePath));
+  }
+  const gitStatus = runCommand("git", ["status", "--porcelain=v1", "--untracked-files=no"], cwd);
+  if (!commandFailed(gitStatus)) {
+    hash.update(gitStatus.stdout ?? "");
+    const gitDiff = runCommand("git", ["diff", "--no-ext-diff", "--binary"], cwd);
+    if (!commandFailed(gitDiff)) {
+      hash.update(gitDiff.stdout ?? "");
+    }
+  }
+  return hash.digest("hex");
+}
+
+function listCompletionFingerprintFiles(root: string): string[] {
+  if (!fs.existsSync(root)) {
+    return [];
+  }
+  const stat = fs.statSync(root);
+  if (stat.isFile()) {
+    return /\.(?:md|json)$/i.test(root) ? [root] : [];
+  }
+  const files: string[] = [];
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    if (entry.name === "logs" || entry.name.endsWith(".sqlite")) {
+      continue;
+    }
+    const child = path.join(root, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...listCompletionFingerprintFiles(child));
+    } else if (/\.(?:md|json)$/i.test(entry.name)) {
+      files.push(child);
+    }
+  }
+  return files;
 }
 
 function tryBuildTaskMemoryIndex(cwd: string, taskName: string): ReturnType<typeof buildMemoryIndex> | undefined {
@@ -1831,6 +2123,13 @@ function compactCompletionRefresh(completionRefresh: CompletionRefreshResult): R
       startedAt: completionRefresh.asyncRefresh.startedAt,
       statusFile: completionRefresh.asyncRefresh.statusFile,
       operations: completionRefresh.asyncRefresh.operations,
+      dirtyHash: completionRefresh.asyncRefresh.dirtyHash,
+      ...(completionRefresh.asyncRefresh.coalesced
+        ? {
+            coalesced: true,
+            leaderStatusFile: completionRefresh.asyncRefresh.leaderStatusFile,
+          }
+        : {}),
     },
   };
 }
@@ -1863,15 +2162,15 @@ function shouldFallbackToPlainAnalyze(result: {
   return output.includes("--no-ai-context");
 }
 
-function ensureGitNexusReadyForPlanDone(cwd: string): void {
+function ensureGitNexusReadyForPlanDone(cwd: string): boolean {
   const project = resolveProjectContext(cwd);
   if (project.projectConfig?.gitnexus !== true) {
-    return;
+    return false;
   }
 
   ensureGitNexusInstalled(project.projectRoot);
   seedGitNexusEmbeddingCache(project.projectRoot, project.projectConfig);
-  ensureGitNexusEmbeddingsEnabled(project.projectRoot);
+  return ensureGitNexusEmbeddingsEnabled(project.projectRoot);
 }
 
 function ensureGitNexusInstalled(cwd: string): void {
@@ -1911,11 +2210,12 @@ function ensureGitNexusInstalled(cwd: string): void {
   }
 }
 
-function ensureGitNexusEmbeddingsEnabled(cwd: string): void {
+function ensureGitNexusEmbeddingsEnabled(cwd: string): boolean {
   if (readGitNexusEmbeddingsEnabled(cwd)) {
-    return;
+    return false;
   }
   runGitNexusAnalyze(cwd, { embeddings: true });
+  return true;
 }
 
 function readGitNexusEmbeddingsEnabled(cwd: string): boolean {
@@ -1940,7 +2240,7 @@ function runGitNexusAnalyze(
   } = {},
 ): GitNexusRefreshResult {
   const primaryArgs = ["analyze", ...(options.embeddings ? ["--embeddings"] : []), "--no-ai-context"];
-  const primary = runCommand("gitnexus", primaryArgs, cwd);
+  const primary = runCommandWithLockRetry("gitnexus", primaryArgs, cwd);
   if (primary.error) {
     throw new ClawError("PROJECT_CONFIG_INVALID", "gitnexus analyze failed.", {
       cwd,
@@ -1970,7 +2270,7 @@ function runGitNexusAnalyze(
   }
 
   const fallbackArgs = ["analyze", ...(options.embeddings ? ["--embeddings"] : [])];
-  const fallback = runCommand("gitnexus", fallbackArgs, cwd);
+  const fallback = runCommandWithLockRetry("gitnexus", fallbackArgs, cwd);
   if (commandFailed(fallback)) {
     throw new ClawError("PROJECT_CONFIG_INVALID", "gitnexus analyze fallback failed.", {
       cwd,
@@ -2119,13 +2419,34 @@ function resolveCommandOnPath(command: string): string | null {
 }
 
 function runCommand(command: string, args: string[], cwd: string) {
-  return spawnSync(command, args, {
+  const resolvedCommand = resolveCommandOnPath(command) ?? command;
+  if (process.platform === "win32" && /\.(?:cmd|bat)$/i.test(resolvedCommand)) {
+    return spawnSync(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", resolvedCommand, ...args], {
+      cwd,
+      encoding: "utf-8",
+      windowsHide: true,
+    });
+  }
+  return spawnSync(resolvedCommand, args, {
     cwd,
     encoding: "utf-8",
-    shell: process.platform === "win32",
     windowsHide: true,
   });
 }
+
+function runCommandWithLockRetry(command: string, args: string[], cwd: string) {
+  let result = runCommand(command, args, cwd);
+  for (const delayMs of [100, 250]) {
+    const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    if (!commandFailed(result) || !/(?:database|index|graph)?.{0,20}(?:busy|locked)|(?:busy|locked).{0,20}(?:database|index|graph)?/i.test(output)) {
+      break;
+    }
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
+    result = runCommand(command, args, cwd);
+  }
+  return result;
+}
+
 
 function commandFailed(result: {
   status: number | null;
