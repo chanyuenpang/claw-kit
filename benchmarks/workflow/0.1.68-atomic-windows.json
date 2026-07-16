@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 2,
+  "startedAt": "2026-07-16T16:44:35.148Z",
+  "machine": {
+    "platform": "win32",
+    "release": "10.0.26200",
+    "arch": "x64",
+    "cpu": "12th Gen Intel(R) Core(TM) i7-12700",
+    "node": "v24.12.0"
+  },
+  "runtime": {
+    "packageVersion": "0.1.68",
+    "modes": ["legacy-five-mutation", "atomic-refine-and-activate"]
+  },
+  "results": [
+    { "case": "low", "mode": "legacy", "businessTaskCount": 1, "managementCommandsBeforeWork": 6, "planMutationCommandsBeforeWork": 5, "totalBeforeWorkMs": 907.14, "success": true },
+    { "case": "medium", "mode": "legacy", "businessTaskCount": 3, "managementCommandsBeforeWork": 6, "planMutationCommandsBeforeWork": 5, "totalBeforeWorkMs": 897.87, "success": true },
+    { "case": "high", "mode": "legacy", "businessTaskCount": 5, "managementCommandsBeforeWork": 6, "planMutationCommandsBeforeWork": 5, "totalBeforeWorkMs": 902.79, "success": true },
+    { "case": "low", "mode": "atomic", "businessTaskCount": 1, "managementCommandsBeforeWork": 3, "planMutationCommandsBeforeWork": 2, "totalBeforeWorkMs": 393.52, "success": true },
+    { "case": "medium", "mode": "atomic", "businessTaskCount": 3, "managementCommandsBeforeWork": 3, "planMutationCommandsBeforeWork": 2, "totalBeforeWorkMs": 384.02, "success": true },
+    { "case": "high", "mode": "atomic", "businessTaskCount": 5, "managementCommandsBeforeWork": 3, "planMutationCommandsBeforeWork": 2, "totalBeforeWorkMs": 385.06, "success": true }
+  ],
+  "summary": {
+    "legacyP50BeforeWorkMs": 902.79,
+    "atomicP50BeforeWorkMs": 385.06,
+    "p50ImprovementPercent": 57.35,
+    "legacyP95BeforeWorkMs": 907.14,
+    "atomicP95BeforeWorkMs": 393.52,
+    "allSuccessful": true
+  }
+}

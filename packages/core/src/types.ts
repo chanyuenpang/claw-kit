@@ -504,6 +504,8 @@ export type PlanEditInput = {
   taskStatus?: PlanTaskStatus;
   taskChoiceId?: string;
   appendTasks?: PlanTask[];
+  completeLifecycleBridge?: boolean;
+  commandSource?: "plan.edit" | "plan.start" | "plan.done";
   reviewer?: PlanReviewer;
   workflowDefinitions?: string;
   host?: string;
@@ -522,6 +524,7 @@ export type PlanEditResult = {
   planReview?: PlanReviewResult;
   completionHooks?: PlanCompletionHooks;
   workflowGuidance: WorkflowGuidance;
+  plan: PlanDocument;
   planView: PlanViewModel;
 };
 

@@ -34,6 +34,7 @@ import {
   type LeaveState,
   type MemoryScope,
   type PlanDocument,
+  type PlanEvent,
   type PlanTask,
   type PlanViewModel,
   type ProjectConfig,
@@ -59,7 +60,7 @@ const TOP_LEVEL_COMMANDS: { name: string; summary: string }[] = [
   { name: "init [options]", summary: "Initialize and normalize the .claw project surface." },
   { name: "context [--task <name>]", summary: "Resolve project context, auto-initializing or correcting .claw state." },
   { name: "check", summary: "Check and auto-correct .claw project protocol fields." },
-  { name: "plan <subcommand> [options]", summary: "Plan lifecycle: create, edit, show, done." },
+  { name: "plan <subcommand> [options]", summary: "Plan lifecycle: create, start, edit, show, done." },
   { name: "template <subcommand> [options]", summary: "Plan template helpers such as validation." },
   { name: "task <subcommand> [options]", summary: "Task lifecycle helpers inside an existing plan." },
   { name: "subplan create [options]", summary: "Create a subplan nested under a parent task item." },
@@ -137,6 +138,19 @@ const COMMAND_HELP: Record<string, HelpNode> = {
           { flag: "--key-decision <text>", detail: "Append a key decision (repeatable)." },
           { flag: "--reference-path <path>", detail: "Add a reference (requires --reference-why)." },
           { flag: "--reference-why <why>", detail: "Why the reference matters (requires --reference-path)." },
+          { flag: "--summary <text>", detail: "Optional change summary." },
+        ],
+      },
+      start: {
+        usage: ["{script} plan start --task <name> --patch <json-file> --append-tasks <json-file>"],
+        description:
+          "Atomically apply refined plan content, append business tasks, complete the default planning/activation bridge, and enter process.active in one serialized mutation.",
+        summary: "Atomically refine and activate a default planning plan.",
+        options: [
+          { flag: "--task <name>", detail: "(required) Task name to refine and activate." },
+          { flag: "--plan <relative-path>", detail: "Plan file relative to the task dir (defaults to the active plan)." },
+          { flag: "--patch <json-file>", detail: "Apply a JSON merge-patch containing requirements, rules, references, or decisions." },
+          { flag: "--append-tasks <json-file>", detail: "Append business tasks from a JSON array file." },
           { flag: "--summary <text>", detail: "Optional change summary." },
         ],
       },
@@ -456,10 +470,37 @@ async function runPlan(args: string[]): Promise<void> {
         taskStatus: readOptionalFlag(args, "--task-status") as PlanTask["status"] | undefined,
         taskChoiceId: readOptionalFlag(args, "--task-choice"),
         appendTasks: appendTasksPath ? readJson<PlanTask[]>(appendTasksPath) : undefined,
+        commandSource: "plan.edit",
         host: process.env.CLAW_HOST ?? undefined,
         ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
       });
       printJson(compactPlanCommandResult("plan.edit", result));
+      return;
+    }
+    case "start": {
+      const patchPath = readOptionalFlag(args, "--patch");
+      const appendTasksPath = readOptionalFlag(args, "--append-tasks");
+      if (!patchPath && !appendTasksPath) {
+        throw new ClawError(
+          "PROJECT_CONFIG_INVALID",
+          "plan start requires --patch, --append-tasks, or both.",
+        );
+      }
+      const result = await editPlan({
+        cwd: process.cwd(),
+        taskName: readRequiredFlag(args, "--task"),
+        planFile: readOptionalFlag(args, "--plan"),
+        changeSummary: readOptionalFlag(args, "--summary"),
+        patch: patchPath ? readJson<Partial<PlanDocument>>(patchPath) : undefined,
+        appendTasks: appendTasksPath ? readJson<PlanTask[]>(appendTasksPath) : undefined,
+        planStatus: "process.active",
+        completeLifecycleBridge: true,
+        commandSource: "plan.start",
+        host: process.env.CLAW_HOST ?? undefined,
+        ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
+      });
+      assertNoRemainingArgs(args, "plan start");
+      printJson(compactPlanCommandResult("plan.start", result));
       return;
     }
     case "done": {
@@ -481,6 +522,7 @@ async function runPlan(args: string[]): Promise<void> {
         changeSummary: readOptionalFlag(args, "--change-summary"),
         patch: mergedPatch,
         planStatus: "end.completed",
+        commandSource: "plan.done",
         host: process.env.CLAW_HOST ?? undefined,
         ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
       });
@@ -1283,14 +1325,14 @@ function stripBom(content: string): string {
 }
 
 function compactPlanCommandResult(
-  command: "plan.create" | "plan.edit" | "plan.done" | "task.done" | "subplan.create",
+  command: "plan.create" | "plan.start" | "plan.edit" | "plan.done" | "task.done" | "subplan.create",
   result: {
     taskName: string;
     planFile: string;
     planPath: string;
     planStatus: string;
     workflowGuidance: WorkflowGuidance;
-    plan?: unknown;
+    plan?: PlanDocument;
     planView: PlanViewModel;
     planReview?: {
       score: number;
@@ -1302,6 +1344,7 @@ function compactPlanCommandResult(
     emittedEvents?: string[];
     changedTaskIds?: number[];
     appendedTaskIds?: number[];
+    events?: PlanEvent[];
   },
   completionRefresh?: CompletionRefreshResult,
   ): Record<string, unknown> {
@@ -1311,6 +1354,7 @@ function compactPlanCommandResult(
         ? completionRefresh.taskRetention.archivedCurrentTask.archivedPlanPath
         : undefined;
     const resolvedPlanPath = archivedPlanPath ?? result.planPath;
+    const hostActions = buildHostActions(result);
 
     return {
       ok: true,
@@ -1320,6 +1364,8 @@ function compactPlanCommandResult(
       planStatus: result.planStatus,
       ...(result.previousPlanStatus ? { previousPlanStatus: result.previousPlanStatus } : {}),
       ...(result.emittedEvents?.length ? { emittedEvents: result.emittedEvents } : {}),
+      ...(result.events?.length ? { events: result.events } : {}),
+      ...(hostActions.length ? { hostActions } : {}),
       ...(result.changedTaskIds?.length ? { changedTaskIds: result.changedTaskIds } : {}),
       ...(result.appendedTaskIds?.length ? { appendedTaskIds: result.appendedTaskIds } : {}),
       nextsteps: result.workflowGuidance.nextsteps,
@@ -1347,6 +1393,51 @@ function compactPlanCommandResult(
         : {}),
       planSummary: result.planView.collapsedSummary,
     };
+}
+
+function buildHostActions(result: {
+  planPath: string;
+  planStatus: string;
+  plan?: PlanDocument;
+  planView: PlanViewModel;
+  workflowGuidance: WorkflowGuidance;
+  events?: PlanEvent[];
+}): Array<Record<string, unknown>> {
+  const latestEvent = result.events?.at(-1);
+  if (!latestEvent) {
+    return [];
+  }
+  const actions: Array<Record<string, unknown>> = [];
+  if (result.plan) {
+    let assignedInProgress = false;
+    const plan = result.plan.tasks.map((task) => {
+      let status: "pending" | "in_progress" | "completed" = task.status === "done" ? "completed" : "pending";
+      if (!assignedInProgress && result.planStatus === "process.active" && task.status !== "done") {
+        status = "in_progress";
+        assignedInProgress = true;
+      }
+      return { step: task.title, status };
+    });
+    actions.push({
+      id: `${latestEvent.mutationId}:update_plan`,
+      sourceEventId: latestEvent.eventId,
+      tool: "update_plan",
+      input: {
+        explanation: result.workflowGuidance.summary,
+        plan,
+      },
+    });
+  }
+  if (result.workflowGuidance.goalTool) {
+    const { tool, ...input } = result.workflowGuidance.goalTool;
+    actions.push({
+      id: `${latestEvent.mutationId}:${tool}`,
+      sourceEventId: latestEvent.eventId,
+      tool,
+      input,
+    });
+  }
+  return actions;
 }
 
 function compactDirectCommandResult(

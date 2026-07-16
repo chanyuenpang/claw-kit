@@ -301,7 +301,7 @@
       ],
       "notes": "Use the seeded planning task to refine the request and append executable tasks before execution begins.",
       "recommendedCommands": [
-        "{{editBase}} --plan-status process.active"
+        "{{startBase}} --patch <plan-patch.json> --append-tasks <tasks.json>"
       ]
     },
     "process.discussing.noGoalMode": {

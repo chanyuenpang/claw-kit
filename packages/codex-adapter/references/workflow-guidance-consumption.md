@@ -49,6 +49,14 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
 - Treat them as the authoritative command sequence unless the current harness state makes a specific command invalid.
 - Use a different command only when the current harness state makes the recommended command invalid.
 
+### `events` and `hostActions`
+
+- Treat `events` as an ordered, versioned record of canonical CLI mutations.
+- Consume `hostActions` in order. Execute each action at most once by its `id`.
+- `update_plan` actions contain the concrete host progress payload derived from the committed plan.
+- Goal actions contain the executable `create_goal` or `update_goal` payload derived from `workflowGuidance`.
+- Host action failure does not roll back CLI state. Retry the same action idempotently; never write host state back into the plan.
+
 ### `nextsteps`
 
 - Preserve its ordering.
@@ -78,8 +86,8 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
 
 - canonical chain
   - `process.discussing` when planning is enabled
-  - use the planning task to refine the request and append executable tasks
-  - `process.active`
+  - run one `claw search --query "<topic>"` recall query
+  - use `claw plan start --task <name> --patch <plan-patch.json> --append-tasks <tasks.json>` to refine, append, complete the lifecycle bridge, and enter `process.active` atomically
   - create the thread goal if `goalTool` says to
   - process one task
   - evaluate whether the completed task contains reusable truth and dispatch `truth-writer` only when it does

@@ -53,3 +53,10 @@ Compatibility rules:
 
 Run `npm run benchmark:workflow` after building the CLI to capture the legacy
 baseline. Optimized reports must reuse the same corpus and report both paths.
+
+The first atomic implementation measurement on the fixed Windows machine is
+stored in `benchmarks/workflow/0.1.68-atomic-windows.json`: legacy P50 was
+`902.79ms`, atomic P50 was `385.06ms`, an observed improvement of `57.35%`.
+The formal management-command count, including the one common recall query,
+fell from six to three. These figures are machine-specific and do not replace
+cross-runtime regression tests.

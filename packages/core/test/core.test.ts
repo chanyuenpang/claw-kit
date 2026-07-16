@@ -1375,6 +1375,37 @@ test("writePlan rejects legacy template guidance route mode field in favor of me
   );
 });
 
+test("writePlan rejects unresolved placeholders in template recommended commands", async () => {
+  const root = createFixture("template-guidance-unresolved-command");
+  initProject({ cwd: root, projectName: "Template Placeholder", planning: true, force: true });
+  fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "templates", "unresolved-command.json"),
+    `${JSON.stringify(createPlanLikeTemplate({
+      id: "unresolved-command",
+      status: "process.active",
+      tasks: [{
+        id: 1,
+        title: "Primary task",
+        status: "pending",
+        guidance: {
+          onDone: {
+            default: {
+              recommendedCommands: ["claw plan edit --task {{unknownTask}}"],
+            },
+          },
+        },
+      }],
+    }), null, 2)}\n`,
+    "utf-8",
+  );
+
+  await assert.rejects(
+    () => writePlan({ cwd: root, title: "Reject unresolved command", templateName: "unresolved-command" }),
+    /Invalid template task|plan-like template|Invalid plan template/i,
+  );
+});
+
 test("writePlan rejects an invalid project template export shape", async () => {
   const root = createFixture("plan-template-project-invalid");
   initProject({ cwd: root, projectName: "Invalid Project Template", planning: true, force: true });
@@ -2486,6 +2517,82 @@ test("plan edit appendTasks auto-assigns ids when omitted", async () => {
       { id: 4, title: "Auto id task" },
     ],
   );
+});
+
+test("atomic plan start refines, appends, completes bridge tasks, and emits one mutation stream", async () => {
+  const root = createFixture("plan-start-atomic");
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Start atomically",
+  });
+
+  const result = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    patch: {
+      requirements: {
+        summary: "Refined once",
+        openQuestions: [],
+        acceptanceCriteria: ["Atomic start succeeds"],
+      },
+    },
+    appendTasks: [
+      { title: "Implement outcome", status: "pending" } as unknown as { id: number; title: string; status: "pending" },
+    ],
+    planStatus: "process.active",
+    completeLifecycleBridge: true,
+    commandSource: "plan.start",
+  });
+
+  assert.equal(result.planStatus, "process.active");
+  assert.deepEqual(result.plan.tasks.map((task) => task.status), ["done", "done", "pending"]);
+  assert.deepEqual(result.changedTaskIds, [1, 2]);
+  assert.deepEqual(result.appendedTaskIds, [3]);
+  assert.deepEqual(result.events.map((event) => event.type), [
+    "plan_changed",
+    "plan_task_completed",
+    "plan_task_completed",
+    "plan_activated",
+  ]);
+  assert.equal(new Set(result.events.map((event) => event.mutationId)).size, 1);
+  assert.ok(result.events.every((event) => event.schemaVersion === 1));
+  assert.ok(result.events.every((event) => event.commandSource === "plan.start"));
+  assert.equal(new Set(result.events.map((event) => event.eventId)).size, result.events.length);
+});
+
+test("atomic plan start validation failure leaves the plan unchanged", async () => {
+  const root = createFixture("plan-start-rollback");
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Reject incompatible bridge",
+    content: {
+      title: "Demo task",
+      status: "process.discussing",
+      goal: { text: "Reject incompatible bridge" },
+      tasks: [{ id: 1, title: "Custom planning task", status: "pending" }],
+    },
+  });
+
+  await assert.rejects(
+    editPlan({
+      cwd: root,
+      taskName: "demo-task",
+      appendTasks: [
+        { title: "Must not persist", status: "pending" } as unknown as { id: number; title: string; status: "pending" },
+      ],
+      planStatus: "process.active",
+      completeLifecycleBridge: true,
+      commandSource: "plan.start",
+    }),
+    /both default lifecycle bridge tasks/,
+  );
+  const plan = showPlan({ cwd: root, taskName: "demo-task" }).plan;
+  assert.equal(plan.status, "process.discussing");
+  assert.deepEqual(plan.tasks.map((task) => task.title), ["Custom planning task"]);
 });
 
 test("plan edit appendTasks defaults omitted task status to pending", async () => {

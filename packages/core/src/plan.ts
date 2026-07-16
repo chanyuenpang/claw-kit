@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { buildCompletionHooks } from "./completion-hooks.js";
 import { ensureTaskContext, removeLegacyTaskMeta, resolveProjectContext, resolveTaskContext, resolveTaskName } from "./context.js";
 import { resolvePlanEffectiveConfig } from "./effective-config.js";
@@ -126,7 +127,10 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
   }
 
   const eventType = createdPlan ? "plan_created" : "plan_changed";
+  const mutationId = randomUUID();
   const event = buildPlanEvent(eventType, {
+    mutationId,
+    commandSource: input.parentTaskId !== undefined ? "subplan.create" : "plan.create",
     planPath,
     planTitle: plan.title,
     planStatus: plan.status,
@@ -185,6 +189,8 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
     const previous = normalizePlanDocument(readJsonFile<PlanDocument>(planPath));
     const previousStatus = previous.status;
     const events: PlanEvent[] = [];
+    const mutationId = randomUUID();
+    const commandSource = input.commandSource ?? "plan.edit";
     const changedTaskIds: number[] = [];
     const appendedTaskIds: number[] = [];
     const completedTaskIds: number[] = [];
@@ -263,11 +269,52 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
         completedTaskIds.push(planTask.id);
         events.push(
           buildPlanEvent("plan_task_completed", {
+            mutationId,
+            commandSource,
             planPath,
             planTitle: next.title,
             planStatus: next.status,
             taskId: planTask.id,
             affectedPlanTaskIds: [planTask.id],
+          }),
+        );
+      }
+    }
+
+    if (input.completeLifecycleBridge) {
+      if (requestedStatus !== "process.active") {
+        throw new ClawError(
+          "PROJECT_CONFIG_INVALID",
+          "Completing the lifecycle bridge requires planStatus=process.active.",
+        );
+      }
+      const lifecycleTitles = new Set([
+        "Use the planning skill to refine the request and append executable tasks",
+        "Enter process.active",
+      ]);
+      const lifecycleTasks = next.tasks.filter((taskItem) => lifecycleTitles.has(taskItem.title));
+      if (lifecycleTasks.length !== lifecycleTitles.size) {
+        throw new ClawError(
+          "PROJECT_CONFIG_INVALID",
+          "Atomic plan start is only available when both default lifecycle bridge tasks are present.",
+        );
+      }
+      for (const lifecycleTask of lifecycleTasks) {
+        if (lifecycleTask.status === "done") {
+          continue;
+        }
+        lifecycleTask.status = "done";
+        changedTaskIds.push(lifecycleTask.id);
+        completedTaskIds.push(lifecycleTask.id);
+        events.push(
+          buildPlanEvent("plan_task_completed", {
+            mutationId,
+            commandSource,
+            planPath,
+            planTitle: next.title,
+            planStatus: next.status,
+            taskId: lifecycleTask.id,
+            affectedPlanTaskIds: [lifecycleTask.id],
           }),
         );
       }
@@ -306,6 +353,21 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
     if (previousStatus !== next.status || input.patch || changedTaskIds.length > 0 || input.appendTasks?.length) {
       events.unshift(
         buildPlanEvent("plan_changed", {
+          mutationId,
+          commandSource,
+          planPath,
+          planTitle: next.title,
+          planStatus: next.status,
+          previousStatus,
+          ...(changedTaskIds.length > 0 ? { affectedPlanTaskIds: changedTaskIds } : {}),
+        }),
+      );
+    }
+    if (previousStatus !== "process.active" && next.status === "process.active") {
+      events.push(
+        buildPlanEvent("plan_activated", {
+          mutationId,
+          commandSource,
           planPath,
           planTitle: next.title,
           planStatus: next.status,
@@ -322,6 +384,8 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
     if (completionHooks) {
       events.push(
         buildPlanEvent("plan_completed", {
+          mutationId,
+          commandSource,
           planPath,
           planTitle: next.title,
           planStatus: next.status,
@@ -367,7 +431,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
         taskName: task.taskName,
         planFile: resultPlanFile,
         plan: resultPlan,
-        commandSource: "plan.edit",
+        commandSource,
         projectRoot: task.project.projectRoot,
         projectConfig: resolvePlanEffectiveConfig(task.project.projectConfig, resultPlan),
         host: input.host,
@@ -380,6 +444,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
               completedTaskIds,
             }),
       }),
+      plan: resultPlan,
       planView: buildPlanViewModel({
         taskName: task.taskName,
         planFile: resultPlanFile,

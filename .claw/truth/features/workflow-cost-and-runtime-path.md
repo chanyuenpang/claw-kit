@@ -189,3 +189,11 @@
 - 上述三条语义 search 均 exit `0`、返回 `10` 条结果，top result 均为 `.claw/truth/features/workflow-cost-and-runtime-path.md`。因此本轮收益可以归因到 persistent daemon 的模型 session 复用与 query cache，而不是失败、空结果或 top-result 漂移。
 - 0.1.68 的 durable 判断是：plan lifecycle 未提速，planning mutations 部分更慢；search 路径已有实质提升，但必须区分 exact lexical fast path、禁用 daemon 的 one-shot miss、daemon cold miss、已有 daemon 的 warm miss 与同-query cache hit，不能把任一单点结果外推为统一 search 延迟。
 - 本轮 benchmark 证据归属于 `.claw/tasks/测试-claw-0.1.68-新版流程流畅度与性能/plan.json`；该路径是任务证据，不是运行时实现锚点。
+
+### 固定 Windows benchmark corpus 与原子 refine-and-activate 合同
+
+- `0.1.68 + search guidance` predecessor 的 Windows workflow benchmark 使用固定 low / medium / high corpus，分别包含 `1` / `3` / `5` 个 business tasks；planning 与 activation 等 lifecycle meta work 不计入 business task 数。
+- legacy formal planning path 在首个业务动作前固定执行 `create`、`patch`、`append`、`planning-done`、`activate` 共 `5` 次管理命令。该固定 corpus 在本机 Windows baseline 的首个业务动作前管理耗时为 P50 `935.04ms`、P95 `961.71ms`；这些数值是指定 predecessor、机器与 corpus 的回归基线，不是跨环境常量。
+- 原子 `refine-and-activate` 的验收合同要求：一次序列化写入完成 refine 与 activate；任何验证失败都必须零写入；CLI plan state 始终是 canonical source of truth；host adapter 只单向、幂等地消费 versioned events，不反向拥有或重写 canonical plan state。
+- 主要证据是 `benchmarks/workflow/0.1.68-windows-baseline.json` 与 `docs/workflow-performance-contract.md`，对应提交为 `b1374f8`。
+- 以上只固定 predecessor benchmark 与未来实现必须满足的原子合同；不表示 `refine-and-activate` 已实现，也不据此宣称后续 workflow 已获得性能提升。

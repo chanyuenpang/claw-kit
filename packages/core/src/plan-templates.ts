@@ -677,7 +677,11 @@ function isTemplateGuidanceRoute(value: unknown): value is TemplateGuidanceRoute
   }
   if (
     candidate.recommendedCommands !== undefined &&
-    (!Array.isArray(candidate.recommendedCommands) || candidate.recommendedCommands.some((command) => typeof command !== "string"))
+    (!Array.isArray(candidate.recommendedCommands)
+      || candidate.recommendedCommands.some((command) =>
+        typeof command !== "string"
+        || !command.trim()
+        || /{{\s*[a-zA-Z0-9_]+\s*}}/.test(command)))
   ) {
     return false;
   }

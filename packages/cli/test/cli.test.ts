@@ -478,7 +478,10 @@ test("cli plan create accepts a positional title and seeds planning discussion b
     "2. Resolve the discussion, then resume through `process.active`.",
   ]);
   assert.equal((writeResult.recommendedCommands as string[])[0], 'claw search --query "<topic>"');
-  assert.match((writeResult.recommendedCommands as string[])[1], /--plan-status process\.active$/);
+  assert.equal(
+    (writeResult.recommendedCommands as string[])[1],
+    "claw plan start --task 这是一个任务标题 --patch <plan-patch.json> --append-tasks <tasks.json>",
+  );
   assert.equal("goalTool" in writeResult, false);
   assert.equal((writeResult.plan as JsonRecord).status, "process.discussing");
   const plan = writeResult.plan as JsonRecord;
@@ -634,6 +637,46 @@ test("cli plan edit accepts single-reference shortcut flags", () => {
       why: "flag parsing entrypoint",
     },
   ]);
+});
+
+test("cli plan start performs one atomic activation and returns idempotent host actions", () => {
+  const root = createFixture("plan-start-atomic");
+  runClaw(["init", "--name", "Atomic Start"], root);
+  const created = runClaw(["plan", "create", "atomic-task", "--goal", "Start in one mutation"], root);
+  const taskName = path.basename(path.dirname(String(created.planPath)));
+  const patchPath = path.join(root, "plan-patch.json");
+  const tasksPath = path.join(root, "tasks.json");
+  fs.writeFileSync(patchPath, JSON.stringify({
+    requirements: {
+      summary: "Ready",
+      openQuestions: [],
+      acceptanceCriteria: ["Started"],
+    },
+  }), "utf8");
+  fs.writeFileSync(tasksPath, JSON.stringify([
+    { title: "Implement outcome", status: "pending" },
+  ]), "utf8");
+
+  const result = runClaw([
+    "plan", "start", "--task", taskName, "--patch", patchPath, "--append-tasks", tasksPath,
+  ], root);
+  assert.equal(result.command, "plan.start");
+  assert.equal(result.planStatus, "process.active");
+  assert.deepEqual(result.changedTaskIds, [1, 2]);
+  assert.deepEqual(result.appendedTaskIds, [3]);
+  assert.deepEqual(result.emittedEvents, [
+    "plan_changed",
+    "plan_task_completed",
+    "plan_task_completed",
+    "plan_activated",
+  ]);
+  const events = result.events as JsonRecord[];
+  assert.equal(new Set(events.map((event) => event.mutationId)).size, 1);
+  assert.ok(events.every((event) => event.schemaVersion === 1));
+  const hostActions = result.hostActions as JsonRecord[];
+  assert.deepEqual(hostActions.map((action) => action.tool), ["update_plan", "create_goal"]);
+  assert.equal(new Set(hostActions.map((action) => action.id)).size, hostActions.length);
+  assert.ok(hostActions.every((action) => String(action.sourceEventId).length > 0));
 });
 
 test("cli plan edit rejects partial single-reference shortcut flags", () => {

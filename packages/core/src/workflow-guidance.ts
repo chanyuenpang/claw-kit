@@ -159,7 +159,7 @@ function buildGoalTool(planGoal: string, template: GoalToolTemplate): WorkflowGu
 }
 
 function applyCreateGuidance(params: {
-  commandSource?: "plan.create" | "subplan.create" | "plan.edit" | "plan.done";
+  commandSource?: "plan.create" | "subplan.create" | "plan.edit" | "plan.start" | "plan.done";
   plan: PlanDocument;
   planFile: string;
   goalModeEnabled: boolean;
@@ -231,7 +231,12 @@ function formatTaskRef(task: PlanTask): string {
 }
 
 function renderTemplateString(template: string, vars: TemplateVars): string {
-  return template.replace(/{{\s*([a-zA-Z0-9_]+)\s*}}/g, (_, key: string) => vars[key] ?? "");
+  return template.replace(/{{\s*([a-zA-Z0-9_]+)\s*}}/g, (_, key: string) => {
+    if (!Object.prototype.hasOwnProperty.call(vars, key)) {
+      throw new Error(`Unknown workflow guidance placeholder: ${key}`);
+    }
+    return vars[key];
+  });
 }
 
 function renderTemplateValue<T>(value: T, vars: TemplateVars): T {
@@ -298,7 +303,7 @@ export async function buildPlanWorkflowGuidance(params: {
   taskName: string;
   planFile: string;
   plan: PlanDocument;
-  commandSource?: "plan.create" | "subplan.create" | "plan.edit" | "plan.done";
+  commandSource?: "plan.create" | "subplan.create" | "plan.edit" | "plan.start" | "plan.done";
   projectRoot?: string;
   projectConfig?: ProjectConfig | null;
   previousStatus?: PlanStatus;
@@ -321,6 +326,7 @@ export async function buildPlanWorkflowGuidance(params: {
   } = params;
   const scopedPlan = planFile === "plan.json" ? "" : ` --plan ${planFile}`;
   const editBase = `claw plan edit --task ${taskName}${scopedPlan}`;
+  const startBase = `claw plan start --task ${taskName}${scopedPlan}`;
   const doneBase = `claw plan done --task ${taskName}${scopedPlan}`;
   const hasTasks = plan.tasks.length > 0;
   const allTasksDone = hasTasks && plan.tasks.every((task) => task.status === "done");
@@ -347,6 +353,7 @@ export async function buildPlanWorkflowGuidance(params: {
     : "";
   const vars: TemplateVars = {
     editBase,
+    startBase,
     doneBase,
     nextTaskRef,
     processStage,
@@ -434,12 +441,12 @@ export async function buildPlanWorkflowGuidance(params: {
         });
       }
 
-      const templateKey = hasCompletedTasks
-        ? (perTaskTruthDispatch ? "process.hasCompletedTasks" : "process.hasCompletedTasks.finalOnlyTruth")
-        : resumedIntoActive
+      const templateKey = resumedIntoActive
           ? (goalModeEnabled ? "process.resumedActive" : "process.resumedActive.noGoalMode")
           : justEnteredProcess
           ? (goalModeEnabled ? "process.justEntered" : "process.justEntered.noGoalMode")
+          : hasCompletedTasks
+          ? (perTaskTruthDispatch ? "process.hasCompletedTasks" : "process.hasCompletedTasks.finalOnlyTruth")
           : activeTask
             ? "process.activeTask"
             : "process.default";

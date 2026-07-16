@@ -6,6 +6,8 @@ Use this reference when `workflowGuidance.delegateSubagents` is present.
 
 OpenCode has native subagent support via the `task` tool. No dynamic discovery needed — the tool is always available.
 
+When a claw plan command returns `events` and `hostActions`, consume the actions once by id in output order. CLI plan state is canonical; OpenCode progress is a one-way projection and must not be written back into the plan.
+
 Dispatch shape:
 ```
 task(subagent_type="<agent-name>", prompt="<narrow task bundle>")

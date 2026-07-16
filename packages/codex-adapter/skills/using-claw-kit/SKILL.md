@@ -30,7 +30,7 @@ Detailed call flow:
    - `end.completed`: all planned work is done and `retrospective.summary` is present
    - `end.closed` / `end.leave`: the round has been closed out; resume active execution when the user explicitly changes direction
 9. The planning skill is invoked by the seeded planning task inside the formal claw workflow, not before task scope exists.
-10. Once requirements are clear and `goal.text` is set, move the plan to `process.active`.
+10. Once requirements are clear and `goal.text` is set, prefer the returned atomic `claw plan start --task <name> --patch <plan-patch.json> --append-tasks <tasks.json>` command to complete the planning bridge and enter `process.active` in one mutation.
 11. After a meaningful completed task, dispatch `truth-writer` when there is reusable context to deposit.
 12. When all tasks are done, clear thread progress, update both `retrospective` and `keyDecisions`, and dispatch `adr-writer` asynchronously from returned `workflowGuidance`.
 13. Close the plan with `claw plan done` after the ADR writer has been dispatched; do not wait for it. Delayed archive keeps the completed plan path readable for at least one hour.

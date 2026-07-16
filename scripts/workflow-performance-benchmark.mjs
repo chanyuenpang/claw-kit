@@ -42,7 +42,7 @@ function writeJson(filePath, value) {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
-function runLegacyCase(spec) {
+function runCase(spec, mode) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), `claw-workflow-${spec.name}-`));
   try {
     run(root, ["init", "--name", `Workflow Benchmark ${spec.name}`, "--gitnexus", "false"]);
@@ -64,16 +64,26 @@ function runLegacyCase(spec) {
       detail: "Deterministic benchmark task",
       status: "pending",
     })));
-    const patch = run(root, ["plan", "edit", "--task", taskName, "--patch", patchPath]);
-    const append = run(root, ["plan", "edit", "--task", taskName, "--append-tasks", tasksPath]);
-    const planningDone = run(root, ["plan", "edit", "--task", taskName, "--task-id", "1", "--task-status", "done"]);
-    const activate = run(root, ["plan", "edit", "--task", taskName, "--plan-status", "process.active"]);
+    const lifecycle = mode === "atomic"
+      ? {
+          start: run(root, [
+            "plan", "start", "--task", taskName, "--patch", patchPath, "--append-tasks", tasksPath,
+          ]),
+        }
+      : {
+          patch: run(root, ["plan", "edit", "--task", taskName, "--patch", patchPath]),
+          append: run(root, ["plan", "edit", "--task", taskName, "--append-tasks", tasksPath]),
+          planningDone: run(root, ["plan", "edit", "--task", taskName, "--task-id", "1", "--task-status", "done"]),
+          activate: run(root, ["plan", "edit", "--task", taskName, "--plan-status", "process.active"]),
+        };
     const show = run(root, ["plan", "show", "--task", taskName]);
-    const stages = { create, patch, append, planningDone, activate, show };
+    const stages = { create, ...lifecycle, show };
     return {
       case: spec.name,
+      mode,
       businessTaskCount: spec.businessTaskCount,
-      managementCommandsBeforeWork: 5,
+      managementCommandsBeforeWork: mode === "atomic" ? 3 : 6,
+      planMutationCommandsBeforeWork: mode === "atomic" ? 2 : 5,
       totalBeforeWorkMs: Number(Object.values(stages)
         .filter((stage) => stage !== show)
         .reduce((sum, stage) => sum + stage.durationMs, 0)
@@ -91,10 +101,15 @@ if (!fs.existsSync(cliEntry)) {
 }
 
 const startedAt = new Date().toISOString();
-const results = cases.map(runLegacyCase);
-const totals = results.map((result) => result.totalBeforeWorkMs);
+const legacyResults = cases.map((spec) => runCase(spec, "legacy"));
+const atomicResults = cases.map((spec) => runCase(spec, "atomic"));
+const results = [...legacyResults, ...atomicResults];
+const legacyTotals = legacyResults.map((result) => result.totalBeforeWorkMs);
+const atomicTotals = atomicResults.map((result) => result.totalBeforeWorkMs);
+const legacyP50 = percentile(legacyTotals, 0.5);
+const atomicP50 = percentile(atomicTotals, 0.5);
 const report = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   startedAt,
   machine: {
     platform: process.platform,
@@ -106,13 +121,16 @@ const report = {
   runtime: {
     packageVersion: JSON.parse(fs.readFileSync(path.join(repoRoot, "packages", "cli", "package.json"), "utf8")).version,
     cliEntry,
-    mode: "legacy-five-mutation",
+    modes: ["legacy-five-mutation", "atomic-refine-and-activate"],
   },
   corpus: cases,
   results,
   summary: {
-    p50BeforeWorkMs: percentile(totals, 0.5),
-    p95BeforeWorkMs: percentile(totals, 0.95),
+    legacyP50BeforeWorkMs: legacyP50,
+    atomicP50BeforeWorkMs: atomicP50,
+    p50ImprovementPercent: Number((((legacyP50 - atomicP50) / legacyP50) * 100).toFixed(2)),
+    legacyP95BeforeWorkMs: percentile(legacyTotals, 0.95),
+    atomicP95BeforeWorkMs: percentile(atomicTotals, 0.95),
     allSuccessful: results.every((result) => result.success),
   },
 };
