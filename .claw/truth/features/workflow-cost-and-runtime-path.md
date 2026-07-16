@@ -248,3 +248,25 @@
 - 同一运行时边界下，`npm test` 约 `62747ms`，core `126/126` 与 CLI `72/72` 全部通过；`npm run check` 约 `7904ms` 并完整通过。以上成功性证据与正确 top result 共同约束性能结论，避免把失败或召回漂移误记为提速。
 
 - 综合本轮复杂任务样本，`0.1.69` 的正式流程性能已足够高且主观流畅度明显改善，但仍非无摩擦。剩余主要成本是每个业务 task 的 CLI plan 状态写入（本轮约 `448ms`、`453ms`、`453ms`、`592ms`）与 host `update_plan` 双写、逐任务 truth 价值判断，以及异步 writer / completion-refresh 的可观察性。低复杂度任务应继续由 complexity gate 绕过 formal flow；后续优化应针对这些固定协调成本，不能以削弱计划、验证或质量门禁换取速度。
+
+### 0.1.70 workflow、search 分路复测与 context 诊断陷阱（2026-07-17）
+
+- 在同一 `0.1.70` 运行时边界下，`claw plan start` wall time 为 `480.5ms`；`claw plan show` 为 cold `357.8ms`，随后 warm `152.4ms` / `156.1ms` / `152.2ms` / `152.2ms`。plan 读写性能必须继续区分 cold / warm，不能把首轮初始化成本混入 warm 均值。
+- 精确文件名 lexical search 三次 wall time 为 `186.2ms` / `320.9ms` / `176.2ms`，engine `durationMs` 为 `33.93ms` / `33.43ms` / `32.64ms`；三次均为 `route = lexical_fast_path`、`queryEmbedding = skipped`，top result 正确。
+- 一条全新语义 search 为 wall `405.7ms`、engine `255.55ms`，telemetry 为 `route = hybrid`、`queryEmbedding = generated`、`embeddingRuntime = persistent_daemon`，top result 正确。同一语义 query 重复执行为 wall `196.6ms`、engine `39.05ms`、`queryEmbedding = cache_hit`，top result 仍正确。
+- 初始宽泛中文语义 query 为 wall `3.205s`、engine `2.829s`，telemetry 仍为 `persistent_daemon`；结合随后 fresh semantic warm query 降到 wall `405.7ms`，该首轮样本很可能包含 daemon cold-start 成本。这是基于相邻 telemetry 的推断，不应升级为没有进程级证据的确定结论。
+- 性能报告必须按 `lexical_fast_path`、semantic daemon cold / warm miss、query cache hit 分组，并分别报告 wall 与 engine `durationMs`；不得把不同 route、cold / warm 或 cache 状态混成单一 search 均值。
+
+#### `projectVersionAligned` 诊断语义 bug
+
+- `claw context` 在 project version 与 CLI version 都为 `0.1.70` 时仍返回 `projectVersionAligned: false`。这不是实际 runtime drift，而是 diagnostic / contract semantic bug。
+- primary code anchor 是 `packages/cli/src/cli.ts` 的 `syncProjectVersionWithCli`：version comparison `=== 0` 的相等分支硬编码返回 `projectVersionAligned: false`。调查时应先核对双侧真实版本，再解释该字段，不能把这个 false 单独当成漂移证据。
+- 本轮只沉淀诊断事实，没有获得 source fix 授权；因此该 bug 仍是已知陷阱，不应写成已修复行为。
+
+#### 验证锚点与检索词
+
+- `packages/cli/src/cli.ts`
+- `syncProjectVersionWithCli comparison === 0 projectVersionAligned false`
+- `0.1.70 lexical_fast_path 33.93ms`
+- `persistent_daemon 255.55ms cache_hit 39.05ms`
+- `cold warm cache route separated`

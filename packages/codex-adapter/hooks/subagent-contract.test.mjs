@@ -75,18 +75,26 @@ test("writer skills own routing without burdening the main agent", () => {
   assert.doesNotMatch(dispatchReference, /required: false|dispatchCondition/);
 });
 
-test("Codex plan commands consume schema-compatible host actions in one code-mode call", () => {
+test("Codex plan commands use only the bundled code-mode consumer", () => {
   const mainRouter = readPluginFile(path.join("skills", "using-claw-kit", "SKILL.md"));
   const workflowReference = readPluginFile(path.join("references", "workflow-guidance-consumption.md"));
 
-  assert.match(mainRouter, /same code-mode call/i);
-  assert.match(mainRouter, /schema-compatible `hostActions`/i);
-  assert.match(mainRouter, /do not manually carry `update_plan` payloads into a second call/i);
+  assert.match(mainRouter, /code-mode-host-action-consumer\.mjs/i);
+  assert.match(mainRouter, /async function runClawPlanMutation/i);
+  assert.match(mainRouter, /change only `command`, `workdir`, and `timeout_ms`/i);
+  assert.match(mainRouter, /update_plan: \(input\) => tools\.update_plan\(input\)/i);
+  assert.match(mainRouter, /create_goal: \(input\) => tools\.create_goal\(input\)/i);
+  assert.match(mainRouter, /update_goal: \(input\) => tools\.update_goal\(input\)/i);
+  assert.match(mainRouter, /must not interpret `hostActions`/i);
+  assert.match(mainRouter, /no direct-call or split-call fallback path/i);
+  assert.match(mainRouter, /`hostActions` is the only Codex host-execution source/i);
 
   assert.match(workflowReference, /code-mode consumption is the adapter execution method/i);
-  assert.match(workflowReference, /same code-mode call/i);
-  assert.match(workflowReference, /pass only `input` to the matching real host tool/i);
+  assert.match(workflowReference, /code-mode-host-action-consumer\.mjs/i);
+  assert.match(workflowReference, /Codex has no separate host-call fallback/i);
+  assert.match(workflowReference, /passes only `input` to the matching real host tool/i);
   assert.match(workflowReference, /`create_goal\.input` contains only `objective`/i);
   assert.match(workflowReference, /`update_goal\.input` contains only `status`/i);
-  assert.match(workflowReference, /skip an unknown or incompatible action/i);
+  assert.match(workflowReference, /fail closed/i);
+  assert.match(workflowReference, /Codex must not execute or interpret `goalTool`/i);
 });

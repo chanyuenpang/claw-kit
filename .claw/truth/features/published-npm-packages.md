@@ -332,3 +332,16 @@ release commit `472635e` 已推送至 `origin/main`，tag 为 `v0.1.62`；`@veew
 - `0.1.70+codex.20260717024830 same-call hostActions`
 - `npm bin normalization warning registry bin`
 - `verify:release protocol ok updateAvailable false`
+
+## 2026-07-17：0.1.70 当前运行时边界与质量复验
+
+- 本轮复验时，npm registry 的 `@veewo/claw` / `@veewo/claw-core`、全局 CLI 与全局安装包、仓库 `packages/cli` / `packages/core`、`.claw/project.json` 均对齐到 `0.1.70`；仓库位于 `main`，HEAD 为 `f0bcc05d9757162e907a3fb1c8ce66fd998b0716`。
+- 当前线程实际绑定的 plugin snapshot 为 `0.1.70+codex.20260717024830`；全局命令 shim 为 `C:\\Users\\chany\\AppData\\Roaming\\npm\\claw.ps1`。真实 `claw plan start --help` 与原子命令 smoke 均成功，因此这次边界确认同时覆盖版本字符串、安装来源、线程 snapshot 与关键 capability，而不是只比较 package version。
+- `npm test` 通过 core `126/126`、CLI `72/72`，合计 `198/198`，wall time `63.923s`；`npm run check` 通过全部 adapters 与 truth encoding audit，wall time `9.003s`。
+- 后续复验 `0.1.70` 时，最低证据仍应同时覆盖 registry 双包、全局包与 shim、仓库双包、`.claw/project.json`、线程 plugin snapshot、仓库 HEAD，以及新增命令的真实 help / smoke。
+
+### 关键检索词
+
+- `0.1.70 f0bcc05d runtime boundary`
+- `0.1.70+codex.20260717024830 plan start smoke`
+- `198/198 truth encoding audit`

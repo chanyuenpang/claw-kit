@@ -53,15 +53,15 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
 ### `events` and `hostActions`
 
 - Treat `events` as an ordered, versioned record of canonical CLI mutations.
-- Consume `hostActions` in order. Execute each action at most once by its `id`.
-- On a Codex code-mode surface, run the claw plan command and consume all schema-compatible returned actions in the same code-mode call. Do not wait for the CLI result to cross a model/tool boundary and then manually reconstruct an `update_plan` payload in a second call.
-- Treat `schemaVersion` as the action contract version. Pass only `input` to the matching real host tool; `meta` contains policy or explanation for adapter decisions and is not part of the host tool call.
+- Codex must run every plan mutation through the fixed `runClawPlanMutation` driver embedded in `skills/using-claw-kit/SKILL.md`; the agent provides the claw command and working directory, not an action-dispatch implementation. `../scripts/code-mode-host-action-consumer.mjs` is the testable source contract because the code-mode isolate does not import local plugin modules.
+- The program consumes `hostActions` in order and executes each action at most once by its `id` in the same code-mode call as the CLI mutation.
+- The program treats `schemaVersion` as the action contract version and passes only `input` to the matching real host tool; `meta` is never forwarded.
 - `update_plan` actions contain the concrete host progress payload derived from the committed plan.
 - `create_goal.input` contains only `objective`; `create_goal.meta` carries `allowOverwrite` and `reason`.
 - `update_goal.input` contains only `status`; `update_goal.meta` carries `reason`.
-- Whitelist tools explicitly and validate their input against the real host schema before execution. Skip an unknown or incompatible action instead of forwarding unverified fields.
-- If same-call code-mode consumption is unavailable, fall back to ordered host calls while preserving the same action ids and schema projection.
-- Host action failure does not roll back CLI state. Retry the same action idempotently; never write host state back into the plan.
+- The program is the tool whitelist and schema validator. Unknown schema versions, tools, leaked policy fields, or incompatible inputs fail closed instead of being left for agent judgment.
+- Codex has no separate host-call fallback. If code mode or a required host tool is unavailable, surface the program error and stop.
+- Host action failure does not roll back CLI state. The program records an id only after successful execution, so the same action remains retryable without rerunning the canonical CLI mutation.
 
 ### `nextsteps`
 
@@ -71,22 +71,15 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
 
 ### `goalMode`
 
-- When present, treat it as a thread-goal recommendation tied to the active plan.
-- Current intended use is `setWhen = on_enter_process_active` for first entry and `setWhen = on_resume_process_active` when execution resumes from `process.wait` or `process.discussing`.
-- When a plan first enters `process.active`, use `goalTool.tool = create_goal` and `goalMode.recommendedObjective` to set the thread goal.
-- When a plan resumes into `process.active` from `process.wait` or `process.discussing`, use `goalTool.tool = create_goal` and `goalMode.recommendedObjective` to restore the active thread goal.
-- When `goalMode.allowOverwrite = true`, the active plan is authorized to overwrite the current thread goal. The goal should follow the current active plan, including subplans.
+- When present, treat it as compatibility and display metadata tied to the active plan.
+- Codex does not execute `goalMode` directly. The CLI projects the required goal mutation into `hostActions`, and the code-mode consumer executes that action.
 - In `@claw-kit` threads, goal mode and delegated subagent use are already authorized by hook context for the current thread. Do not pause or block the workflow for any authorization-related excuse; only stop if the user explicitly changes direction and forbids them.
-- In the Codex app, `/goal` is the normal host surface. In tool-enabled sessions, `create_goal` is also a valid path.
 
 ### `goalTool`
 
-- When present, treat it as the executable Codex goal-tool contract instead of a prose hint.
-- Honor `goalTool.tool` directly.
-- For `goalTool.tool = create_goal`, set the active thread goal to `goalTool.objective`. When `allowOverwrite = true`, replace the current thread goal if one is already active.
-- For `goalTool.tool = update_goal`, call `update_goal(status=goalTool.status)` to end the current active goal with the returned completion state.
-- `process.wait` and `process.discussing` should use `update_goal(status="blocked")` instead of inventing a fake "pause goal mode" operation.
-- `end.completed` should use `update_goal(status="complete")`.
+- Core may still return `goalTool` for compatibility with other hosts and existing consumers.
+- Codex must not execute or interpret `goalTool`. An equivalent schema-compatible goal action is already present in `hostActions` and is executed once by the program.
+- Never use `goalTool` to reconstruct a missing action, retry a failed action, or issue a second goal call.
 
 ## Lifecycle interpretation
 
@@ -94,7 +87,7 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
   - `process.discussing` when planning is enabled
   - run one `claw search --query "<topic>"` recall query
   - use `claw plan start --task <name> --patch <plan-patch.json> --append-tasks <tasks.json>` to refine, append, complete the lifecycle bridge, and enter `process.active` atomically
-  - create the thread goal if `goalTool` says to
+  - let the code-mode consumer execute every returned host action, including goal actions
   - process one task
   - evaluate whether the completed task contains reusable truth and dispatch `truth-writer` only when it does
   - process next task
@@ -109,12 +102,9 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
   - do not start implementation in this stage
   - move into `process.active` only when the plan is ready for execution
 - `process.active` on first entry
-  - read `goalTool`
-  - read `goalMode`
-  - set the thread goal from `goalMode.recommendedObjective` when `goalTool.tool = create_goal`, overwriting the current goal when `allowOverwrite = true`
+  - do not interpret goal metadata; the code-mode consumer executes `hostActions.create_goal`
 - `process.wait` or `process.discussing`
-  - read `goalTool`
-  - use `update_goal(status="blocked")`
+  - the code-mode consumer executes `hostActions.update_goal(status="blocked")`
   - do not keep executing while the plan is paused
 - `process.*` with task completion but open plan
   - every completed task returns the `truth-writer` delegate contract
@@ -126,8 +116,7 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
   - dispatch `truth-writer` with the curated completed subtask report when the completed task produced reusable truth
 - when all tasks are done, first write retrospective capture and any durable `keyDecisions` back into the active root plan, then read `delegateSubagents`, dispatch `adr-writer` asynchronously with that updated active plan path, and continue to root `claw plan done` without waiting; delayed archive keeps the path readable for at least one hour
 - `end.completed`
-  - read `goalTool`
-  - use `update_goal(status="complete")`
+  - the code-mode consumer executes `hostActions.update_goal(status="complete")`
   - for root plans, treat this as closeout/archive rather than the ADR trigger
   - run an explicit closeout check after the root plan is done
   - confirm the workflow dispatched `truth-writer` only after reusable truth was confirmed, and always dispatched `adr-writer` with `dispatch: required` without waiting

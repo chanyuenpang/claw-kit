@@ -18,6 +18,8 @@ Accepted
 
 `0.1.69` 的真实端到端复测确认 registry、全局 CLI、仓库源码、项目配置与线程 plugin snapshot 处于同一版本线。热态 `plan show` 约 143–149ms，lexical search 墙钟约 173–186ms，persistent-daemon 语义 search 约 402–405ms，query cache hit 约 205ms；core 126/126、CLI 72/72 与完整 check 均通过。相较 `0.1.67` 约 4.35s 的语义 search 基线，search 已数量级提速，但长计划的主要剩余摩擦转为 CLI plan 与 host progress 双写、逐任务 truth 判断，以及 writer/completion refresh 异步状态协调。
 
+`0.1.70` 的同机正式验收进一步确认版本线、关键 capability 与质量门禁一致，atomic workflow 可用，测试 `198/198` 与完整 check 均通过。热态 plan/search 已处于亚秒级，首次 daemon 冷启动约 3.2s；复杂任务 formal workflow 的整体性能已经足够高，但结论仍须按 plan lifecycle、lexical、daemon cold/warm、query cache hit、writer 与 completion refresh 分层。验收同时发现 equal-version 分支把 `projectVersionAligned` 返回为 `false` 的诊断合同缺陷；这不代表实际版本漂移，也不应阻断已由多层版本与 capability 证据证明的工作流验收。
+
 ## Decision
 
 按以下顺序推进后续优化：
@@ -34,6 +36,7 @@ Accepted
 10. workflow 性能复测必须同时记录线程绑定的 plugin skill snapshot、全局 CLI 的实际命令能力与仓库源码状态。版本号只能作为线索；只有三层合同一致且目标命令在真实 CLI surface 可用，才可把样本归入最新优化路径。
 11. complexity gate 继续作为 formal workflow 的入口边界：低复杂度请求直接绕过 formal flow；复杂任务保留 planning、Goal Mode、truth/ADR deposition 与验证门禁，不用删减质量合同换取表面流畅度。
 12. 下一阶段优先自动消费幂等 `hostActions`、减少 CLI plan state 与 host progress 的重复写入，并增强 writer 与 completion refresh 的状态可观察性；CLI plan state 仍是 canonical source，不引入 host 侧反向所有权。
+13. `projectVersionAligned` 的诊断不变量是：项目版本与运行时版本相等时必须返回 `true`。equal-version 分支返回 `false` 应作为独立诊断合同缺陷修复，不能被解释为真实版本漂移，也不能覆盖 registry、CLI capability、source、project protocol 与 thread snapshot 的一致性证据。
 
 复杂任务的计划、验证、完成期 truth/ADR 沉淀和可追溯性继续保留，不以削弱质量门禁换取表面提速。每项实现必须通过按真实任务复杂度分层的 A/B 验证，并共同观察首个有效工作时间、端到端总时长、工具调用数、状态写入次数、收尾时间和质量回归。
 
@@ -65,6 +68,8 @@ Accepted
 - 复测报告需要显式标注 skill snapshot、CLI capability 与 source revision；任一层漂移时，结果只能描述该组合下的真实路径，不能据源码存在或版本号相同宣称已验证最新合同。
 - `0.1.65` 是单一 `dispatch` 与 writer-owned routing 合同的首个已发布版本；npm、全局 CLI 和 Codex plugin cache 均已刷新到该版本线。
 - `0.1.69` 同版本线复测进一步证明 route 分层仍是性能结论的必要前提：lexical、persistent daemon 与 cache hit 均处于亚秒级，但它们不能替代 plan lifecycle、writer 和 completion refresh 的端到端证据。
+- `0.1.70` 验收在 atomic workflow、`198/198` 测试与完整 check 全部成功的前提下，确认复杂任务 formal workflow 的性能已足够高；首次 daemon 冷启动约 3.2s 仍应与热态和 cache hit 分开报告，不能用单点 search 提速外推整体性能。
+- `projectVersionAligned` 的 equal-version 误报被隔离为诊断合同缺陷；修复该字段时必须保持 CLI plan canonical state、单向 host synchronization 与现有多层版本/capability 验证边界。
 - complex workflow 的质量门禁继续保留，low-complexity 请求则由 complexity gate 避免无效管理成本；后续效率收益应来自 host action 自动桥接、减少双写和提高异步 closeout 可观察性。
 - 性能结论不能只看单条命令基准；必须同时覆盖交互成本、状态写入、首个有效工作时间和质量回归。
 - 分阶段 A/B 让每项收益可归因，并允许在质量指标回退时停止推进对应路线。
@@ -79,6 +84,7 @@ Accepted
 - `.claw/tasks/测试-claw-0.1.68-新版流程流畅度与性能/plan.json`
 - `.claw/tasks/测试当前-claw-插件性能与流程效率/plan.json`
 - `.claw/tasks/评测-claw-kit-0.1.69-的性能、流程流畅度与执行效率/plan.json`
+- `.claw/tasks/验收-claw-kit-0.1.70-的性能、流程流畅度与效率/plan.json`
 - `.claw/tasks/提速-claw-search-冷启动并验证前台性能/plan.json`
 - `.claw/tasks/实现-claw-search-persistent-embedding-worker/plan.json`
 - `.claw/tasks/实施-claw-kit-第二阶段端到端性能与流程优化/plan.json`
@@ -139,3 +145,6 @@ Accepted
 - `ADR no-op without durable keyDecisions`
 - `end-to-end workflow performance claim`
 - `plugin skill snapshot CLI capability source drift`
+- `0.1.70 workflow acceptance`
+- `projectVersionAligned equal-version false`
+- `equal-version diagnostic contract`

@@ -100,6 +100,7 @@ test("exported Codex plugin contains every shared workflow skill", async () => {
   }
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "update", "TEMPLATE.json")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "create-claw-skill", "TEMPLATE.json")));
+  await assert.doesNotReject(fs.access(path.join(result.bundleDir, "scripts", "code-mode-host-action-consumer.mjs")));
 });
 
 test("repository Codex plugin source is fully materialized from shared skills", async () => {

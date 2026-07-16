@@ -71,3 +71,51 @@
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md` 与 `packages/codex-adapter/references/workflow-guidance-consumption.md` 现在要求：在 Codex code-mode surface 上，每次 claw plan mutation 应在同一个 code-mode call 内执行 CLI 并消费 schema-compatible `hostActions`；消费时保持返回顺序与 action id，只有自动消费不可用时才退回分离调用。
 - 自动 consumer 只转发已知且 schema-compatible 的 action；未知或不兼容 action 必须跳过，不能直接透传。`recommendedCommands` 继续只承载命令，不得把 host tool action 混入该字段或从命令文本反推工具调用。
 - 定向验证中 Codex adapter tests `4/4` 通过；重建 CLI dist 后 CLI tests `72/72` 通过。首次 CLI test 使用了 stale dist，两个新增 schema assertion 失败；重建 CLI 即通过且不需要修改 source。涉及 dist-backed CLI 行为的测试失败时，应先确认构建产物是否同步，再判断 source contract 是否有缺陷。
+
+## Codex 原生工具边界与固定 code-mode consumer
+
+### 公开能力边界
+
+- 官方 Codex manual 暴露的插件扩展面包括 skills、hooks 与 MCP；这些扩展面可以提供提示合同、生命周期触发和外部工具，但没有公开接口让插件代码或 `claw` CLI 子进程直接调用 Codex 原生 host tools。
+- `update_plan`、`create_goal`、`update_goal` 的真实执行面是 code mode 中的 `tools` namespace。CLI 负责提交 canonical plan mutation 并输出结构化意图，不能越过 host 边界自行执行这些工具。
+- 因此，Codex adapter 的最小可靠执行边界是：在单次 code-mode 调用内，由固定程序运行一个 claw plan mutation、解析 CLI JSON，并调用允许的原生 host tools。不能把 CLI 子进程直调 host tool 作为可实现路径。
+
+### Codex-only 执行合同
+
+- 对 Codex adapter，`hostActions` 是 host tool 执行的唯一来源。固定 consumer 必须按返回顺序处理 action，以 `id` 去重，校验 `schemaVersion`，仅白名单允许 `update_plan`、`create_goal`、`update_goal`，并只把 action 的 `input` 投影给对应真实工具。
+- `workflowGuidance.goalTool` 继续由 core 输出，以兼容其他 host 及非 Codex 消费面；Codex Agent 不得在 `hostActions` 与 `goalTool` 之间二次判断，也不得把 `goalTool` 作为另一条执行入口。
+- Agent 的职责只到提供并触发 canonical claw plan mutation。action 选择、顺序、去重、schema 校验、工具白名单和 input 投影属于固定 consumer，不属于 Agent 的自由判断。
+- consumer 遇到未知 action、未知 schema version 或不兼容 input 时必须拒绝执行；不得从 `recommendedCommands`、prompt 文案或 `goalTool` 反推并补做 host tool 调用。
+
+### 代码锚点与验证标准
+
+- 主入口合同：`packages/codex-adapter/skills/using-claw-kit/SKILL.md`
+- 详细消费合同：`packages/codex-adapter/references/workflow-guidance-consumption.md`
+- canonical CLI action 生成：`packages/cli/src/cli.ts`
+- 决策与实施计划：`.claw/tasks/让-Codex-插件只走程序化-code-mode-consumer/plan.json`
+- 验证必须覆盖 `update_plan`、`create_goal`、`update_goal`，以及顺序、`id` 去重、schema 拒绝、未知 action 拒绝和无 Agent fallback；同时确认 OpenCode 与 CLI canonical mutation 语义不因 Codex-only consumer 改动而改变。
+
+### 关键检索词
+
+- `Codex code-mode consumer`
+- `hostActions unique execution source`
+- `goalTool compatibility boundary`
+- `tools.update_plan create_goal update_goal`
+
+### 已实现的固定 consumer
+
+- `packages/codex-adapter/scripts/code-mode-host-action-consumer.mjs` 是可复用、可测试的 source contract：它从 shell 输出提取首个完整 JSON 对象，要求 mutation result 成功，并按 CLI 返回顺序消费 `hostActions`。
+- consumer 只接受 `schemaVersion = 1`，以 action `id` 做至多一次去重，只允许 `update_plan`、`create_goal`、`update_goal`，并分别校验和投影真实 host tool 接受的 `input` 字段。
+- action 只有在对应 host tool 成功返回后才会写入 consumed-id 集合；调用失败不会把该 `id` 标记为已消费，因此可以用同一 action id 安全重试。CLI mutation 已经提交，host tool 失败不回滚 canonical plan state。
+
+### code-mode isolate driver
+
+- Codex code-mode isolate 不能直接 `import` 本地插件模块，因此 `packages/codex-adapter/skills/using-claw-kit/SKILL.md` 内嵌固定的 `runClawPlanMutation` driver；bundled script 是其可测试源合同，内嵌 driver 是实际 Codex 执行面。
+- Agent 每次只修改 `command`、`workdir` 与可选 `timeout_ms`，不得改写 JSON 提取、schema 校验、action 顺序、id 去重、input 投影或 tool dispatch 分支。
+- Codex 只消费 `hostActions`。不得执行 `workflowGuidance.goalTool`，也没有 split-call、direct-call 或 Agent 手写 action branch fallback；code mode 或必要 host tool 不可用时，固定程序直接报错并停止。
+
+### 已验证证据
+
+- `packages/codex-adapter/hooks/code-mode-host-action-consumer.test.mjs` 使用 `node:vm` 隔离提取并执行 skill 中实际嵌入的 `runClawPlanMutation`，证明测试覆盖的不是仅供参考的外部模块。
+- 定向 Codex consumer / contract tests 为 `11/11` 通过，Codex bundle tests 为 `13/13` 通过。
+- 完整回归为 core `126/126`、CLI `72/72`，且 `npm run check` 通过。

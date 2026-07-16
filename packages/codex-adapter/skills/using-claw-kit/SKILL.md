@@ -22,7 +22,7 @@ Detailed call flow:
 4. For low-complexity work, handle the request directly in the host workflow; claw planning, search, and `workflowGuidance` remain inactive.
 5. Only for score `>= 6`, enter the normal claw workflow through `claw plan create`.
 6. Whenever a claw command returns `workflowGuidance`, follow it as the required next-step contract. This is mandatory.
-7. On Codex code-mode surfaces, execute a claw plan command and consume its returned schema-compatible `hostActions` in the same code-mode call. Preserve action order and `id`, pass only `input` fields accepted by the real host tool, and use a separate host call only when same-call consumption is unavailable.
+7. Codex plan mutations use only the fixed code-mode driver below. In one code-mode call, give `runClawPlanMutation` the claw command and working directory; the driver owns JSON parsing, schema validation, action order, idempotency, input projection, and tool dispatch. The agent must not interpret `hostActions`, execute `goalTool`, or fall back to separate host calls. The bundled `../../scripts/code-mode-host-action-consumer.mjs` is the testable source contract for this driver.
 8. If prior project context is relevant, run `claw search --query "<topic>"` after a new `claw plan create` and use the results to improve the bound task scope.
 9. Use two-part plan status semantics:
    - `process.discussing`: the plan exists, but execution has not started; stay in discussion/planning work only
@@ -41,6 +41,57 @@ Detailed call flow:
 16. During closeout, if this task included a git commit flow, inspect the repo for task-related doc artifacts that still belong to this round:
     - include canonical truth or ADR files updated by the writers
     - include any remaining task-produced docs that should ship with the same commit instead of leaving them behind
+
+## Codex code-mode driver
+
+Use this fixed program for every claw plan mutation. Change only `command`, `workdir`, and `timeout_ms`.
+
+```javascript
+async function runClawPlanMutation({ command, workdir, timeout_ms = 30000 }) {
+  const raw = await tools.shell_command({ command, workdir, timeout_ms });
+  const outputText = typeof raw === "string" ? raw : (raw.output ?? raw.stdout ?? raw.text ?? "");
+  const start = outputText.indexOf("{");
+  let depth = 0, quoted = false, escaped = false, end = -1;
+  for (let index = start; index >= 0 && index < outputText.length; index += 1) {
+    const character = outputText[index];
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === '"') quoted = false;
+    } else if (character === '"') quoted = true;
+    else if (character === "{") depth += 1;
+    else if (character === "}" && --depth === 0) { end = index + 1; break; }
+  }
+  if (start < 0 || end < 0) throw new Error("claw returned no complete JSON result");
+  const result = JSON.parse(outputText.slice(start, end));
+  if (result.ok !== true) throw new Error(`claw mutation failed: ${result.command ?? "unknown"}`);
+  const handlers = {
+    update_plan: (input) => tools.update_plan(input),
+    create_goal: (input) => tools.create_goal(input),
+    update_goal: (input) => tools.update_goal(input),
+  };
+  const allowedInput = {
+    update_plan: new Set(["explanation", "plan"]),
+    create_goal: new Set(["objective"]),
+    update_goal: new Set(["status"]),
+  };
+  const consumed = new Set();
+  for (const action of result.hostActions ?? []) {
+    const handler = handlers[action?.tool];
+    if (action?.schemaVersion !== 1 || typeof action.id !== "string" || !handler) {
+      throw new Error(`unsupported Codex hostAction: ${action?.id ?? "unknown"}`);
+    }
+    if (consumed.has(action.id)) continue;
+    if (!action.input || Object.keys(action.input).some((key) => !allowedInput[action.tool].has(key))) {
+      throw new Error(`invalid Codex hostAction input: ${action.id}`);
+    }
+    await handler(action.input);
+    consumed.add(action.id);
+  }
+  text(raw);
+  return result;
+}
+```
 
 ## Complexity gate
 
@@ -86,7 +137,8 @@ Truth-value judgment stays on the main agent side. If there is no reusable truth
 - Low-complexity requests skip the claw workflow before `claw plan create`, so they do not produce `workflowGuidance`.
 - `claw search` runs after a new `claw plan create` when project recall is relevant. Search uses natural language and prefers the user's language.
 - Whenever claw returns `workflowGuidance`, use it as the single next-step process.
-- On Codex code-mode surfaces, keep each claw plan mutation and its schema-compatible `hostActions` consumption in one code-mode call; do not manually carry `update_plan` payloads into a second call when same-call consumption is available.
-- When `workflowGuidance.goalTool` is present, execute the real Codex goal tool contract it returns. Use `create_goal` for active execution entry and allow returned goal guidance to overwrite the current thread goal; use `update_goal(status=complete|blocked)` for lifecycle exits that close the current goal.
+- On Codex, every claw plan mutation must run through the bundled code-mode consumer. The agent supplies only the command and working directory; it must not hand-write action branches or manually carry any host payload into another call.
+- `hostActions` is the only Codex host-execution source. `workflowGuidance.goalTool` is compatibility metadata for other consumers and must never trigger a second Codex goal call.
+- If code mode or a required Codex host tool is unavailable, stop with the program error. Codex has no direct-call or split-call fallback path.
 - Reuse the existing `truth-writer` when possible; otherwise dispatch a new one.
 - Dispatch ADR deposition from the `all tasks done` guidance before root `claw plan done`, but do not wait for completion.
