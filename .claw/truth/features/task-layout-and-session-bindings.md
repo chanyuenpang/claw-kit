@@ -28,3 +28,8 @@
 ## 关键检索词
 
 `sessionKey`、`planPath`、`session bindings`、`active workflow lookup`、`flat subplan`、`parentPlan`、`completedAt`、`delayed archive`、`archive pruning`、`task-layout-v2.complete`、`meta.json migration`
+
+## Windows task retention 有界重试
+
+- Windows 归档目录 rename 遇到 `EPERM`、`EBUSY` 或 `EACCES` 时，task retention 会按 `50ms`、`150ms`、`300ms` 做有界重试；仅处理这些常见瞬时文件占用错误，不把永久失败变成无限重试。
+- 本阶段提交 `14cdbdb` 的 CLI 回归为 `72/72` 通过，覆盖更新后的 retention 行为。

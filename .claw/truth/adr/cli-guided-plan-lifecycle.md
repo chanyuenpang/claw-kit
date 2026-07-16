@@ -24,6 +24,10 @@ Accepted
 - root plan 的 required ADR closeout 保持异步：先把 retrospective 与 durable `keyDecisions` 持久化到 active `plan.json`，再以 `waitForCompletion=false` dispatch `adr-writer`；foreground plan closeout 不等待 ADR deposition
 - `truth-writer` 与 `adr-writer` 都不阻塞 foreground closeout；ADR 的 required 含义是必须派发，不是必须等待完成
 - `end.completed` 写入稳定的 `completedAt`，但 `claw plan done` 保留当前 task directory 与原 `planPath`，不在本次命令中立即移动计划
+- `claw plan start --task <name> --patch <plan-patch.json> --append-tasks <tasks.json>` 是原子 refine-and-activate 入口：在一次序列化 mutation 中补齐计划、追加业务 tasks、完成两个 lifecycle bridge tasks，并进入 `process.active`
+- 原子结果使用 `schemaVersion = 1` 的 plan events；一次 mutation 共享 `mutationId`，每个事件有唯一 `eventId` 并记录 `commandSource`
+- CLI plan state 继续是 canonical source；CLI 输出幂等 `hostActions`，Codex/OpenCode adapters 只做单向消费以同步 host progress 与 Goal Mode，不把 host 状态反向写成第二份所有权
+- 既有 `claw plan create`、`claw plan edit` 与 `claw plan done` 保持兼容；`plan start` 是新增的短路径，不替换显式恢复和 legacy lifecycle surface
 
 ## Consequences
 
@@ -42,6 +46,8 @@ Accepted
 - 真正的回退来自 task 建立与推进被拆散到多个可见 surface：如果 startup recovery 先占据入口，而 `process.active` 又不够突出，`plan write` 就不再像唯一 task-scope 入口，主 agent 也更容易遗漏“计划后立即切到 active 执行”这一动作
 - 因而这份 ADR 的 durable 含义不是单独继续压缩 `plan write`，而是保持 `plan write -> process.active` 作为最显眼、最连续的主流程链路，避免被并列 surface 稀释
 - 由于 planning contract 已合并，active skill surface 应避免再保留 `plan-workflow`、`plan-review` 一类独立可见入口来分散主线
+- 固定 Windows low / medium / high 配对 A/B 中，legacy path P50 为 `902.79ms`，atomic path P50 为 `385.06ms`，改善 `57.35%`；计入 create-time recall 后，首个业务动作前的管理命令从 `6` 降到 `3`
+- versioned events 与幂等 `hostActions` 让 adapter 自动同步不需要双向协调，也保留手动 CLI 与旧入口的恢复能力
 
 ## Related Code
 
@@ -53,6 +59,9 @@ Accepted
 - `packages/core/src/workflow-guidance.config.json`
 - `.claw/tasks/实现-claw-search-persistent-embedding-worker/plan.json`
 - `.claw/tasks/用不可变-snapshot-修复-ADR-异步归档竞态/plan.json`
+- `.claw/tasks/实施-claw-kit-第二阶段端到端性能与流程优化/plan.json`
+- `benchmarks/workflow/0.1.68-atomic-windows.json`
+- `docs/workflow-performance-contract.md`
 
 ## Search Terms
 
@@ -70,3 +79,10 @@ Accepted
 - `asynchronous ADR closeout`
 - `completedAt`
 - `delayed archive`
+- `claw plan start`
+- `schemaVersion = 1`
+- `mutationId`
+- `eventId`
+- `commandSource`
+- `hostActions`
+- `CLI plan state canonical`

@@ -215,3 +215,9 @@
 - Windows `.cmd` 调用显式使用 `cmd.exe`，不再依赖 `shell: true`；对应回归验证不再产生 Node `DEP0190`。
 - CLI 回归为 `72/72` 通过，其中覆盖 overlapping direct closeout 只执行一次 GitNexus analyze、transient lock retry，以及 preflight analyze dedupe。
 - 本节取代上方旧 baseline 中“当前仍无 single-flight / embedding 位于长写事务 / preflight 与后台可能重复 analyze”的现状描述；那些条目只表示 `2b397ca` 之前的风险基线。P1 中对应候选至此已实现，不应继续当作未完成建议。
+### Search telemetry、P95 与复杂度门控校准
+
+- search 结果现在稳定暴露 `route`、`queryEmbedding`、`embeddingRuntime` 与 `durationMs` telemetry，使 lexical fast path、persistent daemon、cache 与 one-shot fallback 可按真实 route 分组测量，不能再只用总 wall time 猜测执行路径。
+- 当前固定测量中，精确词法查询 P95 为 `315.35ms`，persistent daemon 语义查询 P95 为 `602.93ms`；one-shot fallback 为 `4392.01ms` 且成功返回。基于这组成功性和分路延迟，本阶段没有启用 plan-create embedding 预热，避免为每次 formal planning 无条件增加后台或前台初始化成本。
+- complexity gate 已用 `12` 个 low / medium / high 语料校准：legacy low false-positive rate 从 `0.5` 降为 `0`，formal recall 为 `1`，accuracy 为 `1`。dependency 维度只计算独立风险，不再与 files 或 workflow shape 对同一复杂性重复计权。
+- 本阶段证据提交为 `14cdbdb`；后续性能判断应继续按新增 telemetry route 和 runtime 分类，而不是把 lexical、daemon 与 one-shot 样本混成单一 search 均值。

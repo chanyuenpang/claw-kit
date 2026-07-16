@@ -74,3 +74,9 @@
 - `scripts/opencode-plugin-bundle.test.mjs` 覆盖的 OpenCode contract tests `6/6` 通过。
 - `npm run check` 与 `git diff --check` 通过。
 - Python `quick_validate` 未进入校验阶段，仅因当前环境缺少 `PyYAML` 无法启动；这属于验证工具依赖缺失，不是 writer contract 失败。
+
+## ADR writer 的无决策快速 no-op
+
+- `adr-writer` 收到的 completed plan 若缺少 `keyDecisions`，或 `keyDecisions` 存在但为空，应立即返回 no-op；这条快速路径不运行 `claw search`，也不扫描 canonical ADR corpus。
+- required ADR dispatch 与 writer no-op 不冲突：主流程仍可按 closeout contract 派发 writer，但没有 durable decision 时，writer 以输入边界直接结束，不为形式完整性制造 ADR，也不支付无意义的 routing/corpus 成本。
+- 该行为的证据提交为 `14cdbdb`。
