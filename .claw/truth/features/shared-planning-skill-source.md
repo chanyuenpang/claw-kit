@@ -242,7 +242,7 @@
 ### 验收顺序
 
 1. 确认 target version 与预期 marketplace。
-2. 对官方路线执行 marketplace add/upgrade，再安装或启用 `claw-kit@claw-kit`；对 development 路线执行维护的 source-and-cache installer。
+2. 对官方路线执行 marketplace add/upgrade，再安装或启用 `claw-kit@claw-kit`；当 `codex plugin list` 不可访问时，可由 repository bundle installer materialize official cache。对 development 路线执行维护的 source-and-cache installer。
 3. 检查并禁用/卸载仍指向旧 source 的同名 identity。
 4. 比对 active identity 对应的 marketplace source manifest、cache manifest 与 target version，并确认 active source/cache 中包含 `planning`、`config`、`update`、`create-claw-skill` 及声明资源。
 5. 重启 Codex，创建新任务，确认 loaded skill locator 属于预期 identity/version。
@@ -251,7 +251,7 @@
 
 ### 本机 development route 验证基线
 
-- 执行修复后的 `npm run install:codex-plugin` 后，预期 active development identity 仍是 `claw-kit@claw-kit-local`；该身份与官方第三方 `claw-kit@claw-kit` 的用途不可混淆。
+- `npm run install:codex-plugin` 只刷新 development local source 与 versioned cache，不决定当前 active identity。当前本机 active identity 可以继续是 official `claw-kit@claw-kit`，同时 `claw-kit@claw-kit-local` 保持未启用；该状态不能仅凭 cache 目录推断。
 - 仓库 `packages/codex-adapter/.codex-plugin/plugin.json`、development marketplace source manifest 与对应 versioned cache manifest 均为 `0.1.63+codex.20260715132514`。
 - 三处 `skills/using-claw-kit/SKILL.md` 的 SHA256 均为 `614ABD613718EAB598C4535B3BA38829A9FD4F3AC81749F08D61097B715CE268`，证明该次安装的 repo/source/cache payload 一致。
 - 上述文件一致性仍不热替换当前任务绑定的旧 catalog；重启 Codex 并创建新任务、再确认 loaded locator，才是最终加载边界。

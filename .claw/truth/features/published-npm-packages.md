@@ -2,7 +2,7 @@
 
 ## 状态
 
-这是 `publish-claw-npm-package` 完成后沉淀下来的稳定发布事实。当前最新一轮已验证到 `0.1.67`，并继续沿用同一条双包发布链与本地插件刷新协议；当某一轮发布的目的就是验证 startup `autoUpdate` 路径时，release baseline 也可以先只确认 registry / workspace 基线与下一目标版本，不立即刷新本地 CLI 或本地 Codex plugin cache。
+这是 `publish-claw-npm-package` 完成后沉淀下来的稳定发布事实。当前最新一轮已验证到 `0.1.68`，并继续沿用同一条双包发布链与 identity-aware Codex plugin 刷新协议；当某一轮发布的目的就是验证 startup `autoUpdate` 路径时，release baseline 也可以先只确认 registry / workspace 基线与下一目标版本，不立即刷新本地 CLI 或本地 Codex plugin cache。
 
 ## 结论
 
@@ -252,3 +252,12 @@ release commit `472635e` 已推送至 `origin/main`，tag 为 `v0.1.62`；`@veew
 - Active official identity 是 `claw-kit@claw-kit`，已安装并启用到 `0.1.67+codex.20260716054831`；Git marketplace snapshot manifest 与 official cache manifest 均匹配该版本。
 - 旧的 `claw-kit@claw-kit-local` identity 已移除且不再安装。其 development source / cache 仅刷新到 `0.1.67` 供维护者检查，没有重新启用该 identity。
 - OpenCode 已安装 adapter 版本为 `0.1.67`。
+
+## 2026-07-16：0.1.68 official identity 与本机安装面
+
+- Release commit 是 `6decd9a`，已位于 `origin/main`；npm registry 的 `latest` 已验证为 `@veewo/claw-core@0.1.68` 与 `@veewo/claw@0.1.68`，本机全局 `claw` 也已验证为 `0.1.68`。
+- 当前真正启用的 Codex identity 是 `claw-kit@claw-kit`；`claw-kit@claw-kit-local` 没有启用。判断 active runtime 必须看 identity 状态，不能因为 development source/cache 存在就推断 local identity 正在生效。
+- 维护命令 `npm run install:codex-plugin` 负责刷新 development local source 与 versioned cache；它不会自动把 active official identity 切换成 local identity，也不能单独证明当前运行的是刚刷新的 payload。
+- 当 `codex plugin list` 不可访问时，可用 repository bundle installer 将 repository bundle materialize 到 official `claw-kit@claw-kit` cache；这条恢复路径的验收仍需核对 active identity、official source manifest 与 official cache manifest，而不是只看 installer 成功退出。
+- 本轮 active source 证据是 `origin/main` 的 manifest `0.1.68+codex.20260716225625`，official cache manifest 与其完全同版；official active source/cache 内均已确认存在 `planning`、`config`、`update` 与 `create-claw-skill`。
+- official 与 development 两套 artifact 可以同时存在，但只有启用的 identity 决定当前 Codex 加载面。release/update closeout 应分别报告 global CLI、active identity、active source manifest、active cache manifest 与 required skills presence。
