@@ -10,6 +10,8 @@ Codex plugin hooks 不是 `claw-kit` 的可靠基础，因此适配器依赖 pro
 
 早期实现把 writer 的 `SKILL.md` 作为短路由，把完整执行规范放在 `TRUTH-AGENT-SPEC.md` 与 `ADR-AGENT-SPEC.md`。但 reference 对已派发 writer 是无条件必读内容，不具备按需披露价值；合同拆成两份文件反而增加加载步骤、同步面和遗漏风险。writer 仍需要在缺少主线程完整上下文时，仅凭窄输入独立完成 canonical deposition。
 
+同一套早期流程还维护 `.claw/truth/SUMMARY.md` 作为人工索引，并允许 canonical 文档记录机器绝对路径。人工 Summary 与可重建搜索索引形成双重发现机制，容易漂移；绝对路径则把 durable knowledge 绑定到单台机器和特定 checkout。
+
 ## Decision
 
 把完成期沉淀固定为 delegated specialist workflow：
@@ -20,6 +22,8 @@ Codex plugin hooks 不是 `claw-kit` 的可靠基础，因此适配器依赖 pro
 - frontmatter `name` 与 `description` 服务技能识别和派发；正文只面向已派发 writer，不承载 main agent 视角、caller、派发时机或另一个 writer 的职责
 - 删除 Codex 与 OpenCode 下无条件必读的 `TRUTH-AGENT-SPEC.md` 与 `ADR-AGENT-SPEC.md`，不再维护二级 reference 跳转
 - OpenCode 的 writer agent 定义与两份自包含 skill 保持相同的 subagent 视角
+- Truth 与 ADR corpus 不再创建或维护 `SUMMARY.md`；canonical discovery、duplicate check 与 routing 统一通过 `claw search` 完成，必要时用 `claw search index --refresh` 重建索引
+- writer 在 canonical 文档的正文、链接、证据和 Related Code 中记录仓库位置时，只使用项目根目录相对路径
 - 主 agent 只消费 `workflowGuidance` 派送契约、优先复用同类型 specialist、准备紧凑 bundle，并消费 canonical truth/ADR 结果；不读取或转述 writer 的完整执行规范
 - `truth-writer` 仅在主 agent 判断 completed work 含 reusable truth 时派发；`adr-writer` 继续作为 root-plan closeout 的必需派发步骤
 - 一旦选择 truth 派发或进入 required ADR closeout，`model`、`fork_context`、`waitForCompletion`、`preferReuseSameTypeInThread` 及 input/output contract 等结构化字段必须逐项遵守
@@ -30,6 +34,8 @@ Codex plugin hooks 不是 `claw-kit` 的可靠基础，因此适配器依赖 pro
 - 保留短 `SKILL.md` 加无条件必读 reference：拒绝，因为没有减少 writer 实际加载内容，却扩大了合同同步面并引入跳转遗漏风险。
 - 在 writer 正文保留 caller、派发时机和跨 writer 分工：拒绝，因为这些属于派发端 workflow 合同，不属于已派发 specialist 的执行上下文。
 - 让 Codex 与 OpenCode 维护不同 writer 合同：拒绝，因为同一 deposition 语义会随 host 漂移。
+- 继续人工维护 `SUMMARY.md`：拒绝，因为它与 `claw search` 索引重复，并要求 writer 同步维护第二份可发现性状态。
+- 在 canonical 文档保留本机绝对路径：拒绝，因为路径无法跨 checkout、用户和 host 复用。
 - 对所有 completed work 无条件派发 `truth-writer`：拒绝，因为 truth deposition 必须保留 reusable-value gate；required 语义只适用于 root-plan 的 ADR closeout。
 
 ## Consequences
@@ -39,6 +45,8 @@ Codex plugin hooks 不是 `claw-kit` 的可靠基础，因此适配器依赖 pro
 - truth 的价值判断与实际沉淀职责分离：main agent 决定是否值得派发，writer 决定如何写入 canonical truth
 - writer 的识别元数据与执行正文位于同一文件，但职责明确分层；合同测试应防止 reference 跳转和 main-agent 视角回流
 - Codex/OpenCode 的 writer 合同拥有更小的文件同步面，移除 reference 后不得重新引入运行时引用
+- canonical corpus 不再承担人工 Summary 的创建和同步成本；搜索索引成为唯一可重建的召回面
+- canonical 文档中的仓库位置可跨机器和 checkout 使用，但 writer 必须以项目根为基准规范化路径
 - 完成语义继续与 OpenClaw 风格的 truth/ADR 沉淀对齐
 - planning 质量规则停留在核心 planning flow 中，而不是再拆成一个独立 review specialist
 
@@ -46,6 +54,9 @@ Codex plugin hooks 不是 `claw-kit` 的可靠基础，因此适配器依赖 pro
 
 - `.claw/truth/`
 - `.claw/truth/adr/`
+- `packages/core/src/init.ts`
+- `packages/core/src/memory.ts`
+- `packages/core/test/core.test.ts`
 - `packages/core/src/workflow-guidance.config.json`
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md`
 - `packages/codex-adapter/skills/truth-writer/SKILL.md`
@@ -71,3 +82,6 @@ Codex plugin hooks 不是 `claw-kit` 的可靠基础，因此适配器依赖 pro
 - `root-plan closeout`
 - `durable decisions`
 - `canonical truth`
+- `SUMMARY.md removal`
+- `claw search index --refresh`
+- `project-relative paths`

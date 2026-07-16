@@ -2,7 +2,7 @@
 
 ## 状态
 
-这是 `publish-claw-npm-package` 完成后沉淀下来的稳定发布事实。当前最新一轮已验证到 `0.1.65`，并继续沿用同一条双包发布链与本地插件刷新协议；当某一轮发布的目的就是验证 startup `autoUpdate` 路径时，release baseline 也可以先只确认 registry / workspace 基线与下一目标版本，不立即刷新本地 CLI 或本地 Codex plugin cache。
+这是 `publish-claw-npm-package` 完成后沉淀下来的稳定发布事实。当前最新一轮已验证到 `0.1.66`，并继续沿用同一条双包发布链与本地插件刷新协议；当某一轮发布的目的就是验证 startup `autoUpdate` 路径时，release baseline 也可以先只确认 registry / workspace 基线与下一目标版本，不立即刷新本地 CLI 或本地 Codex plugin cache。
 
 ## 结论
 
@@ -11,7 +11,7 @@
 - `@veewo/claw-core` 提供核心 `.claw` harness 语义。
 - `@veewo/claw` 提供可发布的 CLI 入口，并依赖 `@veewo/claw-core`。
 
-当前最新发布版本线已经同步到 `0.1.65`；以下历史版本事实保留为发布链证据：
+当前最新发布版本线已经同步到 `0.1.66`；以下历史版本事实保留为发布链证据：
 
 - 这次 closeout 把 root、`packages/core`、`packages/cli`、`packages/codex-adapter`、`packages/openclaw-adapter`、`packages/opencode-adapter`、`package-lock.json` 和 `packages/codex-adapter/.codex-plugin/plugin.json` 一起推进到同一轮 release surface，其中 Codex plugin manifest 对齐到 `0.1.53+codex.20260626141302`。
 - `@veewo/claw-core@0.1.53` 与 `@veewo/claw@0.1.53` 都已经成功发布到 npm registry。
@@ -231,3 +231,13 @@ release commit `472635e` 已推送至 `origin/main`，tag 为 `v0.1.62`；`@veew
 - 全局 npm 已安装 `@veewo/claw@0.1.65`，shim 为 `C:\Users\chany\AppData\Roaming\npm\claw.ps1`，`claw -v` 输出 `0.1.65`。
 - Codex development cache 位于 `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.65+codex.20260716022702`，其中 manifest version 与该 cache 目录版本匹配。
 - GitHub Release [`v0.1.65`](https://github.com/chanyuenpang/claw-kit/releases/tag/v0.1.65) 已创建并上传 `claw-kit-codex-plugin-0.1.65.zip`；资产大小为 `46439` bytes，SHA256 为 `1e5238cc50a0703ce80879ec1c3fb9f1d48af425ba908696c5bddcea08ec46f3`。
+
+## 2026-07-16：0.1.66 发布与自包含 writer 合同 closeout
+
+- `0.1.66` 的 source commit 是 `f62de32b8005229c3341b5584c56866d134ba233`；fetch 后本地 `main`、`origin/main` 与 `git ls-remote` 均匹配该提交。
+- npm registry 已确认 `@veewo/claw-core` 与 `@veewo/claw` 的 `latest` 都是 `0.1.66`。在全新隔离目录执行 `npm install @veewo/claw@0.1.66` 后生成了 `claw`、`claw.cmd`、`claw.ps1` 三种 shim，registry metadata 保持 `bin = { "claw": "dist/bin.js" }`。
+- GitHub Release [`v0.1.66`](https://github.com/chanyuenpang/claw-kit/releases/tag/v0.1.66) 已发布，状态为非 draft、非 prerelease。
+- GitHub Release `v0.1.66` 已附带跨机器 Codex 插件资产 [`claw-kit-codex-plugin-0.1.66.zip`](https://github.com/chanyuenpang/claw-kit/releases/download/v0.1.66/claw-kit-codex-plugin-0.1.66.zip)；文件大小为 `44517` bytes，SHA256 为 `cda2337ba9e6edaf30835cf05e922128263007f10993465be88f0e5141323770`。
+- 本机全局 `claw -v` 返回 `0.1.66`；Codex development cache 版本为 `0.1.66+codex.20260716052528`，OpenCode 已安装 adapter package 版本为 `0.1.66`。
+- Release verification 已通过完整 core / CLI tests、`npm run check`、Codex bundle `11/11`、OpenCode bundle `6/6`、`git diff --check`，以及 `npm run verify:release` 的隔离安装与模板验证。
+- 本轮发布的长期内容包括：Truth / ADR writer skills 成为自包含单文件 subagent contracts；writer 记录仓库位置时统一使用项目根相对路径；Summary 创建与维护职责已移除，遗留 `SUMMARY.md` 继续被 search indexing 排除。详细合同见 `.claw/truth/features/delegated-review-and-deposition.md`。
