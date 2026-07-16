@@ -10,6 +10,8 @@ Accepted
 
 针对 `hostActions.update_plan` 的 8 个 A/B 配对样本进一步验证了消费边界：CLI 与 host tool 分两次 Agent 调用的方案 A 中位数为 5577ms，需要 8 次调用和 4 次人工 payload 搬运；在同一次 code-mode 调用内运行 CLI 并消费 action 的方案 B 中位数为 765ms，需要 4 次调用且零搬运。两组均 4/4 成功，因此性能与执行负担差异来自调用编排，而不是 mutation 或 host 同步可靠性差异。
 
+`0.1.70` 将该实验证据固化为正式 Codex adapter 合同，并完成 `hostActions` action schema、Goal 参数投影、同调用消费 guidance 与 legacy lifecycle 回归。完整测试、check、bundle、pack 和 release dry-run 均通过；npm、`origin/main`、全局 CLI 与本地 Codex plugin cache 已刷新并验证在同一版本线。
+
 ## Decision
 
 把规划质量规则并入核心 planning 语义，并让对外 workflow contract 保持紧凑、render-first：
@@ -31,8 +33,10 @@ Accepted
 - CLI plan state 继续是 canonical source；CLI 输出幂等 `hostActions`，Codex/OpenCode adapters 只做单向消费以同步 host progress 与 Goal Mode，不把 host 状态反向写成第二份所有权
 - schema 兼容的 `update_plan` host action 默认在现有单次 code-mode 调用内自动消费，不再要求 Agent 把 CLI payload 搬运到第二次 host tool 调用
 - 自动 consumer 是 code-mode 调用中的固定胶水逻辑，不生成或维护独立脚本文件；consumer 只按 tool 白名单向 host schema 投影参数
-- 当前自动消费证据只覆盖 `update_plan`；`create_goal` 与 `update_goal` 在返回策略字段和真实 host schema 对齐之前，不纳入同一默认路径
-- CLI mutation 成功后若 host action 消费失败，只重试对应 host action，不回滚 canonical CLI plan state
+- `recommendedCommands` 只表达可执行的 CLI 命令；code-mode 同调用消费是 adapter 执行合同，不伪装成 CLI command
+- 所有 `hostActions` 固定使用 `schemaVersion = 1`；`create_goal` 与 `update_goal` 的真实 host tool 参数只放在 `input`，`allowOverwrite`、`reason` 等策略信息放在 `meta`
+- consumer 按 CLI 返回顺序和 action id 至多消费一次；CLI mutation 成功后若 host action 失败，只重试对应 action，不回滚 canonical CLI plan state
+- 同调用消费不可用时回退到分离 host tool 调用；正确性不依赖 `PostToolUse` hook，只有重复胶水成本值得额外 runtime 复杂度时才考虑增加 runtime consumer
 - 既有 `claw plan create`、`claw plan edit` 与 `claw plan done` 保持兼容；`plan start` 是新增的短路径，不替换显式恢复和 legacy lifecycle surface
 
 ## Consequences
@@ -57,6 +61,9 @@ Accepted
 - `update_plan` 的单次 code-mode consumer 把配对样本的中位耗时从 5577ms 降至 765ms，并消除人工 payload 搬运；这支持把自动消费设为默认编排，而不是改变 CLI mutation 语义
 - tool 白名单和参数投影限制自动化边界，避免把 CLI 返回中的策略或说明字段未经验证地传给 host tool
 - host 同步失败与 canonical plan mutation 解耦后，恢复动作只需重放幂等 host action，不会因 host surface 瞬时失败撤销已经提交的计划状态
+- `schemaVersion = 1` 与 `input`/`meta` 分离让 adapter 可以验证真实 host 参数，同时保留 overwrite/reason 等策略说明而不污染 tool schema
+- action id、返回顺序与至多一次语义给自动和分离消费路径提供同一恢复边界；fallback 不改变 CLI plan 的 canonical ownership
+- guidance-first 的实现先兑现已测收益且不依赖 hook 时序；是否增加 runtime consumer 成为可独立评估的成本决策，而不是当前正确性前提
 
 ## Related Code
 
@@ -65,11 +72,15 @@ Accepted
 - `packages/core/src/plan-view.ts`
 - `packages/cli/src/cli.ts`
 - `packages/codex-adapter/skills/planning/SKILL.md`
+- `packages/codex-adapter/skills/using-claw-kit/SKILL.md`
+- `packages/codex-adapter/references/workflow-guidance-consumption.md`
+- `packages/codex-adapter/hooks/subagent-contract.test.mjs`
 - `packages/core/src/workflow-guidance.config.json`
 - `.claw/tasks/实现-claw-search-persistent-embedding-worker/plan.json`
 - `.claw/tasks/用不可变-snapshot-修复-ADR-异步归档竞态/plan.json`
 - `.claw/tasks/实施-claw-kit-第二阶段端到端性能与流程优化/plan.json`
 - `.claw/tasks/A-B-测试-hostActions-分步消费与-code-mode-自动消费/plan.json`
+- `.claw/tasks/优化-hostActions-单调用-code-mode-消费并发布新版本/plan.json`
 - `benchmarks/workflow/0.1.68-atomic-windows.json`
 - `docs/workflow-performance-contract.md`
 
@@ -100,3 +111,10 @@ Accepted
 - `code-mode hostActions consumption`
 - `tool allowlist parameter projection`
 - `host action retry without CLI rollback`
+- `hostActions schemaVersion 1`
+- `Goal action input meta projection`
+- `recommendedCommands CLI semantics`
+- `ordered at-most-once action id consumption`
+- `same-call fallback separated host tool call`
+- `PostToolUse not required`
+- `0.1.70`

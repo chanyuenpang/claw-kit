@@ -301,3 +301,34 @@ release commit `472635e` 已推送至 `origin/main`，tag 为 `v0.1.62`；`@veew
 - `claw-kit@claw-kit disabled`
 - `0.1.69+codex.20260717011110 source cache hash`
 - `restart new task loaded locator`
+
+## 2026-07-17：0.1.70 发布与本机安装验证
+
+### 已验证完成态
+
+- Release commit `5fe06e2b9eff5e0437551b112ad4a812423a5a34` 同时位于本地 `main` 与 `origin/main`。
+- npm registry 已确认 `@veewo/claw-core` 与 `@veewo/claw` 的 `version`、`dist-tags.latest` 均为 `0.1.70`。npm publish 虽输出 bin normalization warning，但 registry 最终元数据仍是 `{ "claw": "dist/bin.js" }`；发布判断应以 registry 回读为准，而不是仅凭 warning 推断 bin 损坏。
+- release 验证通过 core `126/126`、CLI `72/72`、Codex bundle `13/13`、OpenCode bundle `7/7`、完整 `npm run check`、truth encoding audit、core / CLI `npm pack --dry-run`，以及仓库 `npm run verify:release`。
+- 本机 `Get-Command claw` 解析到 `C:\Users\chany\AppData\Roaming\npm\claw.ps1`；`claw --version` 与全局 npm list 均确认 `0.1.70`。
+- Codex plugin cache 安装在 `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.70+codex.20260717024830`；cache 内的 `using-claw-kit` 已包含 claw plan mutation 与 schema-compatible `hostActions` 在同一个 code-mode call 中消费的合同。
+- `claw context` 同时报告 project / CLI `0.1.70`、protocol check `ok`、`updateAvailable = false`。这与 registry、全局 shim、plugin cache 和 source commit 证据共同构成本轮本地发布收敛证明。
+
+### 验证锚点
+
+- `npm view @veewo/claw-core@0.1.70 version dist-tags.latest --json`
+- `npm view @veewo/claw@0.1.70 version dist-tags.latest bin --json`
+- `npm list -g @veewo/claw --depth=0`
+- `Get-Command claw`
+- `claw --version`
+- `claw context`
+- `npm run verify:release`
+- `packages/codex-adapter/skills/using-claw-kit/SKILL.md`
+- `git rev-parse main`
+- `git rev-parse origin/main`
+
+### 关键检索词
+
+- `0.1.70 5fe06e2b release registry latest`
+- `0.1.70+codex.20260717024830 same-call hostActions`
+- `npm bin normalization warning registry bin`
+- `verify:release protocol ok updateAvailable false`
