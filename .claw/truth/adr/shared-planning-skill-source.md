@@ -19,6 +19,8 @@ The original synchronization implementation wrote those adapter-local copies int
 
 `研究 Codex 仓库安装与 claw-kit 插件物化规则` 进一步固定了分发边界：Git-backed marketplace 跟踪仓库 ref 对应的快照，从 marketplace manifest 解析相对 `source.path`，安装期间不执行仓库的 npm lifecycle 或自定义 build。只要已提交的 `packages/codex-adapter` 通过同步一致性 release gate，GitHub Release ZIP 就只是同一 payload 的可选快照，不是仓库 URL 安装的依赖。
 
+`0.1.67` 将这个边界提升为正式发布协议：Codex 发布物就是通过 committed HEAD gate 的 Git repository marketplace 快照，GitHub Release 不再上传插件 ZIP。维护者运行时也统一启用正式 identity `claw-kit@claw-kit`；`claw-kit@claw-kit-local` 只保留为未启用的开发 source/cache，避免本机验证绕过正式 repository marketplace。
+
 `修复 Codex 插件 active install 与 update 流程` 进一步确认：Codex 实际加载的插件由 active marketplace identity 及其 source 决定，versioned cache 中出现更高版本目录并不代表该版本已经生效。维护者开发安装如果只写 cache、没有刷新 `claw-kit@claw-kit-local` 对应的 local marketplace source，会留下“cache 已更新、active source 仍旧”的静默分叉；第三方更新也可能因为同名旧 identity 仍处于 active 状态而继续加载错误 payload。
 
 随后，`fix-skill-local-subplan-template-resolution` 计划进一步暴露了运行时边界：shared skill 的 `TEMPLATE.json` 是完整 `PlanDocument` 模板，而旧 `.claw/templates` 仍使用 `SeedPlanTemplate`。如果 `claw plan create` 与 `claw subplan create` 分别维护发现、schema 判别和实例化逻辑，同一个 skill-local 模板就会在 root plan 与 subplan 路径上产生不一致行为。
@@ -35,18 +37,20 @@ Use shared sources for host-neutral skills, including future shared workflow ski
 Codex Git marketplace 的发布源必须是已提交、自包含的 `packages/codex-adapter` 插件树：
 
 - `.agents/plugins/marketplace.json` 的 `source.path` 固定指向 `./packages/codex-adapter`
-- 远程安装继续以 Git-backed repository marketplace 为正式安装面；GitHub Release ZIP 可以提供固定快照，但不是必需安装面
+- 远程安装以通过 committed HEAD gate 的 Git-backed repository marketplace 快照为正式发布物；GitHub Release 不上传插件 ZIP
 - marketplace 安装不得依赖 `npm install`、npm lifecycle、build 或同步脚本在目标机器上补全 payload
 - Git checkout / sparse checkout 必须同时包含 marketplace manifest 及其 `source.path` 指向的 `packages/codex-adapter`；只取 `.agents/plugins` 的 sparse checkout 不构成完整安装源
 - `packages/codex-adapter/skills/planning/`、`config/`、`update/`、`create-claw-skill/` 必须在提交中包含完整目录及全部相邻资源
 - `shared/skills` 仍是规范维护源；维护者通过显式 `npm run sync:shared-skills` 更新派生副本，审查后连同源文件一起提交
+- release gate 必须从 committed HEAD 读取并核对 marketplace `source.path`、plugin manifest 版本以及必需的 materialized skill/resource 路径；工作区里尚未提交的生成结果不能让 gate 通过
 - `scripts/publish-release.mjs` 通过 `assertSharedSkillsSynced(...)` 只读比较规范源与已物化副本；缺失、文件集合不完整或内容落后时必须失败
 - `scripts/codex-plugin-bundle.mjs` 只能导出和安装当前 `packages/codex-adapter` 内容，不得在临时 staging 中隐式同步 shared skills 来掩盖仓库源缺失
 
 Codex 安装与更新采用 active identity/source 合同：
 
-- 维护者开发安装必须先校验并刷新 `claw-kit@claw-kit-local` 对应的 local marketplace source，再从该 source 写入 versioned cache；cache-only installation 不是受支持的成功态
-- 第三方正式 identity 固定为 `claw-kit@claw-kit`；marketplace upgrade 后必须重新安装或启用该 identity，并检测、处理会抢占加载结果的 stale same-name identity
+- 正式 identity 固定为 `claw-kit@claw-kit`；维护者机器也只启用这一 identity，并通过真实 repository marketplace clone/install 验证发布快照
+- `claw-kit@claw-kit-local` 只保留为未启用的开发 source 与 versioned cache，不得与正式 identity 同时抢占运行时加载结果
+- marketplace upgrade 后必须重新安装或启用正式 identity，并检测、处理会抢占加载结果的 stale same-name identity
 - 安装或更新验收必须同时对齐 active identity、marketplace source manifest、cache manifest 与 target version，不能用 cache 目录存在或最高版本目录作为单独成功证据
 - 插件更新只有在 Codex restart 后，由新任务确认 loaded skill locator 时才算运行时生效；既有任务不承担 hot-reload 验证
 
@@ -91,10 +95,10 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 
 - There is only one maintained source for each host-neutral shared skill going forward.
 - Codex Git marketplace、release bundle 和维护者本地安装都从同一棵已提交的 `packages/codex-adapter` 读取，不再出现“zip 完整但远端 Git 安装缺 skill”的分叉。
-- 仓库 URL 安装不需要等待 GitHub Release ZIP，也不依赖目标机器执行仓库构建；发布正确性由已提交 plugin tree 与只读同步 gate 保证。
+- 仓库 URL 安装不需要 GitHub Release ZIP，也不依赖目标机器执行仓库构建；发布正确性由 committed plugin tree 与只读 HEAD gate 保证。
 - sparse checkout 的最小边界由 marketplace manifest 和 `source.path` 联合决定，不能把 marketplace metadata 误当作完整 plugin payload。
-- 维护者开发安装的完成边界从“versioned cache 已写入”提升为“active local identity/source 与 cache 一致”，避免 Codex 继续加载旧 source。
-- 第三方更新的完成边界固定到 `claw-kit@claw-kit` active identity，并显式暴露 stale same-name identity 冲突。
+- 维护者和第三方使用同一个 `claw-kit@claw-kit` active identity；本地开发 cache 的存在不再构成发布验证证据。
+- HEAD gate 可阻止未提交的物化文件、错误 `source.path`、manifest 版本漂移或缺失相邻资源进入正式发布。
 - restart/new-task locator check 成为插件运行时生效的最终证据，避免把既有任务中的旧 skill snapshot 误判为更新失败或更新成功。
 - `shared/skills` 保持单一规范维护源，同时 Codex adapter 的派生副本成为需要审查和提交的发布资产。
 - release gate 发现未同步时直接失败；bundle 导出不再通过临时生成制造假阳性。
@@ -113,6 +117,7 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 
 ## Related Code
 
+- `DISTRIBUTION.md`
 - `shared/skills/planning/SKILL.md`
 - `shared/skills/config/SKILL.md`
 - `shared/skills/update/`
@@ -170,10 +175,13 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 - `assertSharedSkillsSynced`
 - `materialized plugin source`
 - `GitHub Release ZIP optional`
+- `GitHub Release without assets`
+- `committed HEAD gate`
 - `repository marketplace ref`
 - `source.path`
 - `sparse checkout`
 - `no npm lifecycle`
+- `only enabled identity`
 - `generated adapter skill`
 - `complexity heuristic`
 - `workflow admission`

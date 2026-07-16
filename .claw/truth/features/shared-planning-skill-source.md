@@ -325,3 +325,38 @@
 - `repository marketplace committed materialization`
 - `verifySharedSkillsSynced 0.1.66`
 - `release ZIP derivative payload`
+
+## 2026-07-16：0.1.67 asset-free marketplace 发布合同
+
+### 结论
+
+- `scripts/publish-release.mjs` 现在直接验证 committed `HEAD` 中的 `.agents/plugins/marketplace.json`、`packages/codex-adapter/.codex-plugin/plugin.json` 以及必需的 adapter skill / resource paths。通过验证的 committed repository marketplace snapshot 就是 Codex release artifact，不要求附加 GitHub Release ZIP。
+- `DISTRIBUTION.md`、`README.md`、`CHANGELOG.md` 与 Codex bundle contract tests 共同定义这条 asset-free Git marketplace release protocol；发布验收不应再把 ZIP asset 数量或 ZIP 上传作为成功条件。
+- Repository URL 安装会执行真实 Git clone。`0.1.67` 的完整 Git marketplace clone 在当前仓库上约耗时四分钟，因此安装时间不能被误判为 metadata-only manifest fetch。
+- Metadata-only sparse checkout 仍无效：`.agents/plugins/marketplace.json` 的 `source.path` 指向 `packages/codex-adapter`。完整 checkout 是默认安全路径；使用 sparse checkout 时必须同时覆盖 marketplace manifest 与 adapter source tree。
+
+### 验证标准
+
+- Release source commit 必须先位于 `origin/main`，再运行 `npm run verify:release` / publish 流程。
+- Release gate 必须从 committed `HEAD` 验证 marketplace manifest、plugin manifest 和 adapter resources，而不是依赖工作树临时生成物。
+- Codex bundle contract tests 必须覆盖 repository marketplace target 与 committed materialization；`0.1.67` 基线为 `12/12`。
+- 真实用户路径至少验证 `codex plugin marketplace add chanyuenpang/claw-kit --ref main` 与 `codex plugin add claw-kit@claw-kit`，并核对 active identity 的 marketplace snapshot manifest 与 official cache manifest 版本一致。
+
+### 关联代码与文档
+
+- repository marketplace：`.agents/plugins/marketplace.json`
+- committed plugin manifest：`packages/codex-adapter/.codex-plugin/plugin.json`
+- committed adapter payload：`packages/codex-adapter/`
+- release gate：`scripts/publish-release.mjs`
+- bundle contract tests：`scripts/codex-plugin-bundle.test.mjs`
+- distribution contract：`DISTRIBUTION.md`
+- user installation contract：`README.md`
+- release history：`CHANGELOG.md`
+
+### 补充检索词
+
+- `0.1.67 asset-free Git marketplace`
+- `committed HEAD marketplace snapshot`
+- `GitHub Release zero assets`
+- `repository clone four minutes`
+- `claw-kit@claw-kit official identity`

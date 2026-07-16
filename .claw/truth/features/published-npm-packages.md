@@ -2,7 +2,7 @@
 
 ## 状态
 
-这是 `publish-claw-npm-package` 完成后沉淀下来的稳定发布事实。当前最新一轮已验证到 `0.1.66`，并继续沿用同一条双包发布链与本地插件刷新协议；当某一轮发布的目的就是验证 startup `autoUpdate` 路径时，release baseline 也可以先只确认 registry / workspace 基线与下一目标版本，不立即刷新本地 CLI 或本地 Codex plugin cache。
+这是 `publish-claw-npm-package` 完成后沉淀下来的稳定发布事实。当前最新一轮已验证到 `0.1.67`，并继续沿用同一条双包发布链与本地插件刷新协议；当某一轮发布的目的就是验证 startup `autoUpdate` 路径时，release baseline 也可以先只确认 registry / workspace 基线与下一目标版本，不立即刷新本地 CLI 或本地 Codex plugin cache。
 
 ## 结论
 
@@ -11,7 +11,7 @@
 - `@veewo/claw-core` 提供核心 `.claw` harness 语义。
 - `@veewo/claw` 提供可发布的 CLI 入口，并依赖 `@veewo/claw-core`。
 
-当前最新发布版本线已经同步到 `0.1.66`；以下历史版本事实保留为发布链证据：
+当前最新发布版本线已经同步到 `0.1.67`；以下历史版本事实保留为发布链证据：
 
 - 这次 closeout 把 root、`packages/core`、`packages/cli`、`packages/codex-adapter`、`packages/openclaw-adapter`、`packages/opencode-adapter`、`package-lock.json` 和 `packages/codex-adapter/.codex-plugin/plugin.json` 一起推进到同一轮 release surface，其中 Codex plugin manifest 对齐到 `0.1.53+codex.20260626141302`。
 - `@veewo/claw-core@0.1.53` 与 `@veewo/claw@0.1.53` 都已经成功发布到 npm registry。
@@ -241,3 +241,14 @@ release commit `472635e` 已推送至 `origin/main`，tag 为 `v0.1.62`；`@veew
 - 本机全局 `claw -v` 返回 `0.1.66`；Codex development cache 版本为 `0.1.66+codex.20260716052528`，OpenCode 已安装 adapter package 版本为 `0.1.66`。
 - Release verification 已通过完整 core / CLI tests、`npm run check`、Codex bundle `11/11`、OpenCode bundle `6/6`、`git diff --check`，以及 `npm run verify:release` 的隔离安装与模板验证。
 - 本轮发布的长期内容包括：Truth / ADR writer skills 成为自包含单文件 subagent contracts；writer 记录仓库位置时统一使用项目根相对路径；Summary 创建与维护职责已移除，遗留 `SUMMARY.md` 继续被 search indexing 排除。详细合同见 `.claw/truth/features/delegated-review-and-deposition.md`。
+
+## 2026-07-16：0.1.67 asset-free Git marketplace release
+
+- Release source commit 是 `ce64583fbb9f3308c8a03eb0330c0d3225313da6`；该提交位于 `main`，并在 publish 前推送到 `origin/main`。
+- Release verification 通过完整 core / CLI tests、`npm run check`、Codex bundle `12/12`、OpenCode bundle `6/6`、shared skill sync tests `3/3`、core / CLI 两个 npm pack dry-run，以及受 source gate 保护的 `npm run verify:release`。
+- npm registry 的 `latest` 已确认是 `@veewo/claw-core@0.1.67` 与 `@veewo/claw@0.1.67`；本机全局 `claw -v` 返回 `0.1.67`。
+- GitHub Release [`v0.1.67`](https://github.com/chanyuenpang/claw-kit/releases/tag/v0.1.67) 已发布，状态为非 draft、非 prerelease，并且精确包含 `0` 个 assets。
+- 真实 Codex repository flow 已通过：`codex plugin marketplace add chanyuenpang/claw-kit --ref main`，随后执行 `codex plugin add claw-kit@claw-kit`。
+- Active official identity 是 `claw-kit@claw-kit`，已安装并启用到 `0.1.67+codex.20260716054831`；Git marketplace snapshot manifest 与 official cache manifest 均匹配该版本。
+- 旧的 `claw-kit@claw-kit-local` identity 已移除且不再安装。其 development source / cache 仅刷新到 `0.1.67` 供维护者检查，没有重新启用该 identity。
+- OpenCode 已安装 adapter 版本为 `0.1.67`。
