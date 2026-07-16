@@ -177,3 +177,15 @@
 ## 关键检索词
 
 `workflow cost`、`contract drift`、`skill snapshot`、`plan mutation`、`meta task`、`per_task`、`truth-writer`、`query embedding`、`query_embeddings`、`lexical fast path`、`strongTerms`、`persistent embedding worker`、`CLAW_EMBEDDING_PERSISTENT_WORKER`、`session LRU`、`idle TTL`、`completion refresh`、`single-flight`、`SQLite transaction`、`GitNexus analyze`、`complexity gate`
+
+### 0.1.68 新版流程性能复测（2026-07-17）
+
+- 本轮运行时边界为同一台机器上的全局 CLI `0.1.68`，当前线程绑定的 plugin skill snapshot 也为 `0.1.68`；对照组是同机 `0.1.67` canonical benchmark，版本判断继续同时记录 CLI 与线程 snapshot。
+- lifecycle mutation 实测为：`claw plan create` `587ms`、planning patch `524ms`、planning append tasks `437ms`、planning task done `397ms`、activate `406ms`。对照 `0.1.67` 的 `403ms` / `408ms` / `217ms` / `199ms` / `415ms`，整体没有提速，planning mutation 中 create、patch、append 与 done 反而更慢；activate 基本持平。
+- `claw plan show` 为 cold `392ms`，warm `154ms` / `152ms`。warm 均值 `153ms`，与 `0.1.67` 的 `161ms` / `145ms` / `148ms`（均值约 `151ms`）基本持平；不能据此宣称 plan lifecycle 提速。
+- 精确路径 query `workflow-cost-and-runtime-path.md` 为 cold `295ms`，warm `172ms` / `175ms`；三次均 exit `0`、返回 `10` 条结果，top result 均为 `.claw/truth/features/workflow-cost-and-runtime-path.md`。相对 `0.1.67` 约 `4.35s` 的语义 search 均值，这条 strict lexical fast path 约改善 `96%`。
+- 显式设置 `CLAW_EMBEDDING_PERSISTENT_WORKER=0` 后，全新语义 one-shot cache miss 为 `4161ms`；它仍接近 `0.1.67` 的约 `4349ms` 均值，说明禁用 daemon 后首次语义 miss 仍支付约四秒的模型初始化与推理成本。
+- 使用隔离 runtime directory 的真正 daemon cold miss 为 `2958ms`，相对同轮 one-shot `4161ms` 快约 `29%`；已有 daemon 的另一条全新语义 cache miss 为 `536ms`，相对 `0.1.67` 语义 search 均值约改善 `87.1%`；同 query 的 query-cache hit 为 `401ms`。
+- 上述三条语义 search 均 exit `0`、返回 `10` 条结果，top result 均为 `.claw/truth/features/workflow-cost-and-runtime-path.md`。因此本轮收益可以归因到 persistent daemon 的模型 session 复用与 query cache，而不是失败、空结果或 top-result 漂移。
+- 0.1.68 的 durable 判断是：plan lifecycle 未提速，planning mutations 部分更慢；search 路径已有实质提升，但必须区分 exact lexical fast path、禁用 daemon 的 one-shot miss、daemon cold miss、已有 daemon 的 warm miss 与同-query cache hit，不能把任一单点结果外推为统一 search 延迟。
+- 本轮 benchmark 证据归属于 `.claw/tasks/测试-claw-0.1.68-新版流程流畅度与性能/plan.json`；该路径是任务证据，不是运行时实现锚点。

@@ -22,7 +22,7 @@ test("persistent embedding daemon reuses one session across independent workers"
     ...process.env,
     CLAW_EMBEDDING_DAEMON_RUNTIME_DIR: runtimeDir,
     CLAW_EMBEDDING_DAEMON_TEST_MOCK: "1",
-    CLAW_EMBEDDING_DAEMON_IDLE_TTL_MS: "250",
+    CLAW_EMBEDDING_DAEMON_IDLE_TTL_MS: "1000",
     CLAW_EMBEDDING_DAEMON_EVENT_LOG: eventLog,
   };
 

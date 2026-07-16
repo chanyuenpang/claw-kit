@@ -304,6 +304,11 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (command === "search" && args.length === 1 && args[0] === "help") {
+    printHelp(["search"]);
+    return;
+  }
+
   if (
     command &&
     command !== "help" &&
@@ -2143,7 +2148,11 @@ function readRequiredSearchQuery(args: string[]): string {
   }
 
   if (args.length === 0) {
-    throw new ClawError("PROJECT_CONFIG_INVALID", "Missing required flag --query.", { flag: "--query" });
+    throw new ClawError(
+      "PROJECT_CONFIG_INVALID",
+      'Missing search query. Use: `claw search --query "<topic>"`.',
+      { flag: "--query", recommendedCommand: 'claw search --query "<topic>"' },
+    );
   }
 
   const positionalQuery = args.join(" ").trim();
@@ -2302,18 +2311,26 @@ function printTopLevelUsage(): void {
   process.stderr.write("\n");
 }
 
-function printSimpleHelp(label: string, entry: HelpEntry): void {
+function printSimpleHelp(
+  label: string,
+  entry: HelpEntry,
+  output: NodeJS.WritableStream = process.stderr,
+): void {
   const lines: string[] = [
     ...renderUsage(entry.usage),
     "",
     entry.description,
     ...renderOptions(entry.options),
   ];
-  process.stderr.write(lines.join("\n"));
-  process.stderr.write("\n");
+  output.write(lines.join("\n"));
+  output.write("\n");
 }
 
-function printGroupHelp(label: string, node: HelpNode): void {
+function printGroupHelp(
+  label: string,
+  node: HelpNode,
+  output: NodeJS.WritableStream = process.stderr,
+): void {
   const lines: string[] = [
     ...renderUsage(node.usage),
     "",
@@ -2333,8 +2350,8 @@ function printGroupHelp(label: string, node: HelpNode): void {
     lines.push("", `Run \`claw help ${label} <subcommand>\` for details.`);
   }
 
-  process.stderr.write(lines.join("\n"));
-  process.stderr.write("\n");
+  output.write(lines.join("\n"));
+  output.write("\n");
 }
 
 function firstSentence(text: string): string {
@@ -2372,11 +2389,13 @@ function printHelp(topic: string[]): void {
     return;
   }
 
+  const successOutput = cmd === "search" ? process.stdout : process.stderr;
+
   if (sub === undefined) {
     if (node.subcommands) {
-      printGroupHelp(cmd, node);
+      printGroupHelp(cmd, node, successOutput);
     } else {
-      printSimpleHelp(cmd, node);
+      printSimpleHelp(cmd, node, successOutput);
     }
     return;
   }
@@ -2390,7 +2409,7 @@ function printHelp(topic: string[]): void {
 
   const subEntry = node.subcommands?.[sub];
   if (subEntry) {
-    printSimpleHelp(`${cmd} ${sub}`, subEntry);
+    printSimpleHelp(`${cmd} ${sub}`, subEntry, successOutput);
     return;
   }
 

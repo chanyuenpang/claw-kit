@@ -121,3 +121,12 @@ Accepted working truth for local development on this machine.
 - The hybrid project search contract is influenced by `openclaw-dev`, but only the smallest subset needed for `claw-kit` was brought over.
 - incremental refresh 的 sync 语义同样参考 `openclaw-dev`，但这里只保留了适合 `claw-kit` 的裁剪式 sqlite 增量行为。
 - README、`packages/cli/README.md` 与 `packages/core/test/core.test.ts` 已说明并覆盖这套 refresh 合同。
+
+### `claw search` help 输出与 alias 合同
+
+- `packages/cli/src/cli.ts` 现在统一处理 search help surface：有效的 `claw search --help` 与 `claw help search` 都以 exit `0` 把 usage 写到 stdout，适合 shell capture、host adapter 和测试直接读取；不再出现“命令成功但 stdout 为空、usage 只在 stderr”的旧行为。
+- 精确位置参数形式 `claw search help` 是 non-mutating help alias，不再把字面量 `help` 当作真实 recall query，因此不会触发 project search、query embedding、index mutation 或其他 search 副作用。
+- 显式 query 仍拥有优先且无歧义的语义：`claw search --query help` 继续搜索真实 query `help`，不能被 help alias 分支吞掉。
+- search 子命令路由必须保持 `index` 与 help 的一致性：`claw search index ...` 继续进入索引管理路径，而三个 help 入口只展示 usage；后续扩展 positional alias 时，应继续先区分明确的 `--query`、`index` 和精确 `help`，避免把普通 query 或管理命令误分类。
+- 主实现锚点是 `packages/cli/src/cli.ts`；回归锚点是 `packages/cli/test/cli.test.ts`，覆盖 search index/help 路由一致性、stdout 输出、`claw search help` alias 的 non-mutating 行为，以及显式 `--query help` 不受影响。
+- 本次源码验证 CLI 测试为 `69/69` 通过。该行为属于当前仓库 source contract；判断已安装 CLI 时仍应先核对其版本或刷新状态，不能仅凭源码推断旧全局 runtime 已具备相同行为。

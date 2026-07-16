@@ -41,3 +41,18 @@
 - `packages/opencode-adapter/plugin/index.ts`
 - `packages/core/test/core.test.ts`
 - `packages/cli/test/cli.test.ts`
+
+## Plan create 的 project recall 合同
+
+- template create、root plan create 与 subplan create 现在共享同一 create-time recall guidance：首条 `recommendedCommand` 是 `claw search --query "<topic>"`，`nextStep` 只写 `Run one project recall query.`。这一步是一次项目知识召回，用于在 planning 前恢复 `.claw` context、truth 和 ADR，不是代码调查。
+- create-time project recall 由主流程直接执行，不触发 `researcher`。只有 task 本身进入真正的 investigation / research 流程时，才按 task shape 派发 researcher；不能因为 create guidance 推荐了一次 `claw search` 就额外 spawn researcher。
+- researcher 内部仍以 recall-first 为窄合同，但文案保持为简洁单行：`Use project recall first when available: claw search --query "<topic>".`。这条指令属于已经发生的 research dispatch 内部顺序，不应反向扩张成“每次 project recall 都需要 researcher”。
+- 裸 `claw search` 缺少 query 时，CLI 错误提示也直接给出同一标准格式 `claw search --query "<topic>"`，使 create guidance、researcher skill 和错误修复建议保持一致，避免继续传播裸命令或其他参数形态。
+- create guidance 的配置源是 `packages/core/src/workflow-guidance.config.json` 中的 `planCreateRecall`，`packages/core/src/workflow-guidance.ts` 的 `applyCreateGuidance` 负责把它应用到 template/root/subplan create 结果；CLI 错误提示锚点是 `packages/cli/src/cli.ts`。
+- adapter 的 research 内部文案锚点分别是 `packages/codex-adapter/skills/researcher/SKILL.md` 与 `packages/opencode-adapter/skills/researcher/SKILL.md`。三类 surface 必须保持命令格式和“recall 不等于 research dispatch”的边界一致。
+- 本次源码回归验证为 CLI `69/69`、core `123/123` 通过。
+
+### 最终 smoke 与回归证据
+
+- 源码 CLI smoke 已同时锁定用户面输出与 create guidance 去重：`claw search --help`、`claw help search`、`claw search help` 均 exit `0`、usage 只写 stdout 且 stderr 为空；裸 `claw search` exit `1` 并直接提示 `claw search --query "<topic>"`；discussion 与 active 两类 create guidance 都恰好只包含一条 search `recommendedCommand`，不会重复推荐 recall。
+- 最终验证通过 CLI `69/69`、core `123/123`、Codex bundle `13/13`、OpenCode bundle `7/7`，并通过完整 `npm run check`。这组证据共同覆盖 CLI help/error surface、core create guidance 和两个 host adapter bundle 的合同一致性。

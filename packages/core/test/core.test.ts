@@ -220,8 +220,10 @@ test("writePlan seeds a planning-first root plan by default", async () => {
   assert.equal(result.workflowGuidance.delegateSubagents, undefined);
   assert.equal(result.workflowGuidance.goalMode, undefined);
   assert.deepEqual(result.workflowGuidance.nextsteps, [
-    "1. Resolve the discussion, then resume through `process.active`.",
+    "1. Run one project recall query.",
+    "2. Resolve the discussion, then resume through `process.active`.",
   ]);
+  assert.equal(result.workflowGuidance.recommendedCommands?.[0], 'claw search --query "<topic>"');
   assert.equal(result.workflowGuidance.goalTool, undefined);
   assert.ok(result.workflowGuidance.summary.includes("discussion"));
   assert.equal(result.workflowGuidance.askUser, undefined);
@@ -1636,8 +1638,10 @@ test("createSubplan uses the planning-aware default seed shape", async () => {
   assert.equal(result.plan.tasks.length, 2);
   assert.deepEqual(result.workflowGuidance.nextsteps, [
     "Set or overwrite Goal Mode to this subplan objective before doing target work: Using claw-kit, update plan, follow returned workflowGuidance，finish your goal：Implement child work: Split this into a subplan",
-    "1. Resolve the discussion, then resume through `process.active`.",
+    "1. Run one project recall query.",
+    "2. Resolve the discussion, then resume through `process.active`.",
   ]);
+  assert.equal(result.workflowGuidance.recommendedCommands?.[0], 'claw search --query "<topic>"');
   assert.equal(
     result.workflowGuidance.goalMode?.recommendedObjective,
     "Using claw-kit, update plan, follow returned workflowGuidance，finish your goal：Implement child work: Split this into a subplan",

@@ -69,6 +69,14 @@ test("OpenCode plugin source includes the config skill entrypoint", async () => 
   assert.match(skillText, /\.claw\/project-override\.json/);
 });
 
+test("OpenCode researcher includes the search query syntax", async () => {
+  const skill = await fs.readFile(
+    new URL("../packages/opencode-adapter/skills/researcher/SKILL.md", import.meta.url),
+    "utf8",
+  );
+  assert.match(skill, /claw search --query "<topic>"/);
+});
+
 test("OpenCode writer contracts use direct dispatch semantics and writer-owned routing", async () => {
   const adapterRoot = new URL("../packages/opencode-adapter/", import.meta.url);
   const guidance = JSON.parse(await fs.readFile(new URL("workflow-guidance.opencode.json", adapterRoot), "utf8"));

@@ -474,8 +474,11 @@ test("cli plan create accepts a positional title and seeds planning discussion b
   assert.equal(writeResult.planSummary, "0/2 这是一个任务标题");
   assert.equal(writeResult.goalMode, undefined);
   assert.deepEqual(writeResult.nextsteps, [
-    "1. Resolve the discussion, then resume through `process.active`.",
+    "1. Run one project recall query.",
+    "2. Resolve the discussion, then resume through `process.active`.",
   ]);
+  assert.equal((writeResult.recommendedCommands as string[])[0], 'claw search --query "<topic>"');
+  assert.match((writeResult.recommendedCommands as string[])[1], /--plan-status process\.active$/);
   assert.equal("goalTool" in writeResult, false);
   assert.equal((writeResult.plan as JsonRecord).status, "process.discussing");
   const plan = writeResult.plan as JsonRecord;
@@ -495,8 +498,10 @@ test("cli plan create accepts an explicit template flag", () => {
   assert.equal(result.command, "plan.create");
   assert.equal((plan.status as string), "process.discussing");
   assert.deepEqual(result.nextsteps, [
-    "1. Resolve the discussion, then resume through `process.active`.",
+    "1. Run one project recall query.",
+    "2. Resolve the discussion, then resume through `process.active`.",
   ]);
+  assert.equal((result.recommendedCommands as string[])[0], 'claw search --query "<topic>"');
   assert.equal("goalTool" in result, false);
   assert.equal(String((tasks[0] as JsonRecord).title), "Use the planning skill to refine the request and append executable tasks");
   assert.equal(String((tasks[1] as JsonRecord).title), "Enter process.active");
@@ -837,6 +842,17 @@ test("cli search accepts a positional query for project recall", () => {
   assert.equal(searchResult.command, "search");
   assert.equal(searchResult.scope, "project");
   assert.ok(Array.isArray(searchResult.results));
+});
+
+test("cli search without a query returns a directly executable command hint", () => {
+  const root = createFixture("search-missing-query-guidance");
+  const result = runClawExpectFailure(["search"], root);
+  const payload = result.error as JsonRecord;
+  const details = payload.details as JsonRecord;
+
+  assert.equal(payload.code, "PROJECT_CONFIG_INVALID");
+  assert.match(String(payload.message), /claw search --query "<topic>"/);
+  assert.equal(details.recommendedCommand, 'claw search --query "<topic>"');
 });
 
 test("cli search reuses one persistent embedding session across commands", { concurrency: false }, async () => {
@@ -1331,8 +1347,10 @@ test("cli subplan create keeps task rootPlan stable and derives goal from the pa
   assert.equal(childPlan.status, "process.discussing");
   assert.deepEqual(result.nextsteps, [
     "Set or overwrite Goal Mode to this subplan objective before doing target work: Using claw-kit, update plan, follow returned workflowGuidance，finish your goal：Implement child work: Split the risky work into a subplan",
-    "1. Resolve the discussion, then resume through `process.active`.",
+    "1. Run one project recall query.",
+    "2. Resolve the discussion, then resume through `process.active`.",
   ]);
+  assert.equal((result.recommendedCommands as string[])[0], 'claw search --query "<topic>"');
   assert.equal(
     ((result.goalMode as JsonRecord).recommendedObjective),
     "Using claw-kit, update plan, follow returned workflowGuidance，finish your goal：Implement child work: Split the risky work into a subplan",
@@ -2416,16 +2434,40 @@ test("cli help search index and search index --help are consistent", () => {
   const flagResult = runClawRaw(["search", "index", "--help"], root);
   assert.equal(commandResult.status, 0);
   assert.equal(flagResult.status, 0);
-  assert.equal(commandResult.stderr, flagResult.stderr);
-  assert.match(commandResult.stderr, /--refresh/);
+  assert.equal(commandResult.stdout, flagResult.stdout);
+  assert.equal(commandResult.stderr, "");
+  assert.equal(flagResult.stderr, "");
+  assert.match(commandResult.stdout, /--refresh/);
 });
 
 test("cli search --help shows search query usage", () => {
   const root = createFixture("help-search-self");
   const result = runClawRaw(["search", "--help"], root);
   assert.equal(result.status, 0);
-  assert.match(result.stderr, /--query/);
-  assert.match(result.stderr, /--limit/);
+  assert.equal(result.stderr, "");
+  assert.match(result.stdout, /--query/);
+  assert.match(result.stdout, /--limit/);
+});
+
+test("cli help search and search --help return the same stdout usage", () => {
+  const root = createFixture("help-search-consistency");
+  const commandResult = runClawRaw(["help", "search"], root);
+  const flagResult = runClawRaw(["search", "--help"], root);
+  assert.equal(commandResult.status, 0);
+  assert.equal(flagResult.status, 0);
+  assert.equal(commandResult.stderr, "");
+  assert.equal(flagResult.stderr, "");
+  assert.equal(commandResult.stdout, flagResult.stdout);
+});
+
+test("cli search help is a non-mutating alias for search --help", () => {
+  const root = createFixture("help-search-positional-alias");
+  const aliasResult = runClawRaw(["search", "help"], root);
+  const flagResult = runClawRaw(["search", "--help"], root);
+  assert.equal(aliasResult.status, 0);
+  assert.equal(aliasResult.stderr, "");
+  assert.equal(aliasResult.stdout, flagResult.stdout);
+  assert.equal(fs.existsSync(path.join(root, ".claw")), false);
 });
 
 test("cli plan create --help does not create a task", () => {

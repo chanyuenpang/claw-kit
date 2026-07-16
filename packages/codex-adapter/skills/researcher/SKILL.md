@@ -43,7 +43,7 @@ The main agent provides only the minimum bundle needed, such as:
 
 ## Recommended investigation order
 
-1. Use project recall first when available.
+1. Use project recall first when available: `claw search --query "<topic>"`.
 2. For truth lookup, search the project's canonical truth corpus.
 3. For architecture history, search the project's ADR corpus.
 4. Read project configuration when it may expose indexing, memory, or routing tools.

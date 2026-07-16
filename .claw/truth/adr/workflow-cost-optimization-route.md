@@ -12,6 +12,8 @@ Accepted
 
 `0.1.67` 的正式无代码闭环复测进一步确认：lifecycle 延迟基本持平，三次 `claw search` 均值约 4.35s，相对 `0.1.63` 旧三次均值慢约 3.6%，因此当前不能宣称 workflow 性能提升。`workflowGuidance`、Goal Mode 与 writer dispatch 的可审计闭环均正常，但 task-id 恢复、多次 plan mutation、同步 query embedding 和 closeout 链路仍是可观察摩擦。
 
+`0.1.68` 的同机正式闭环复测确认，search 优化已经产生可归因收益，但 plan lifecycle 没有提速：精确 lexical fast path、persistent daemon warm miss 与 query cache hit 均显著快于 `0.1.67` 语义 search 基线，而 `plan show` 基本持平，planning mutations 部分更慢。因此 search 局部提速不能外推为 formal workflow 整体提速。
+
 ## Decision
 
 按以下顺序推进后续优化：
@@ -22,6 +24,7 @@ Accepted
 4. `claw search` 第一阶段前台提速采用保守 lexical fast path 与有界 query embedding cache，不在同步 search API 上强行引入常驻 daemon。fast path 只接受 `strongTerms` 完整覆盖并且唯一文件名/路径或唯一精确短语命中的结果；任何不确定性继续回退既有 hybrid search。query cache 存放于项目 `memory.sqlite`，cache key 由版本、完整 embedding config fingerprint 与最终 worker query text 组成，最多保留 128 条，并在 embedding config vector reset 时清空。
 5. local embedding 的跨 CLI 复用采用独立的 loopback TCP daemon：以随机 token 认证、原子 state discovery、startup locking、embedding configuration fingerprint、有界 session LRU 和 idle TTL 管理生命周期。local provider 优先尝试 persistent daemon；daemon 启动或 transport 失败时回退既有 one-shot worker，但 model inference error 保持权威，不通过第二次模型加载重试。remote provider 继续使用 one-shot 路径。
 6. 最后处理 host/runtime 架构成本：由 adapter 自动桥接 CLI plan 事件到 host progress/Goal Mode。
+7. 性能回归必须把 search 路径与 plan lifecycle 分开报告。search 至少分别记录 exact lexical、semantic one-shot、daemon cold、daemon warm 与 query cache hit；workflow 还需单列 plan mutation 与 closeout。在 plan mutation 成本下降前，不以 search 单点收益宣称 formal workflow 整体提速。
 
 复杂任务的计划、验证、完成期 truth/ADR 沉淀和可追溯性继续保留，不以削弱质量门禁换取表面提速。每项实现必须通过按真实任务复杂度分层的 A/B 验证，并共同观察首个有效工作时间、端到端总时长、工具调用数、状态写入次数、收尾时间和质量回归。
 
@@ -39,6 +42,8 @@ Accepted
 - 路由提速不得绕过 deposition 的完整 reference 读取、事实验证、路径 containment、编码检查和有界重复检查。
 - writer-owned routing 已消除可控的 ADR corpus 扫描，但 fresh-agent 定向样本未证明端到端耗时下降，因此不能宣称 writer 整体已经加速；后续性能工作应聚焦 writer 启动与模型处理延迟。
 - `0.1.67` 的端到端复测仍未证明 workflow 提速；下一轮优化应继续优先降低 `claw search` 的同步 embedding 延迟与首个业务动作前的 lifecycle mutation，而不是移除 `workflowGuidance`、Goal Mode 或 writer dispatch 的审计合同。
+- `0.1.68` 复测中，精确路径 search 为 cold `295ms`、warm `172ms` / `175ms`；semantic one-shot miss 为 `4161ms`，daemon cold miss 为 `2958ms`，daemon warm miss 为 `536ms`，同 query cache hit 为 `401ms`。这些成功样本均返回稳定 top result，证明 fast path、daemon session 复用与 query cache 的局部收益，但不代表统一 search 延迟。
+- 同轮 `plan show` warm 均值约 `153ms`，与 `0.1.67` 约 `151ms` 基本持平；create、planning patch、append 与 done mutations 分别为 `587ms`、`524ms`、`437ms`、`397ms`，未证明 plan lifecycle 提速。后续 formal workflow 性能声明必须同时包含 plan mutation 与 closeout 证据。
 - 保守 lexical fast path 与配置感知的 SQLite query embedding cache 已落地：源码 CLI 实测精确路径 cold 345ms、warm 157/160ms；全新语义查询首次 5064ms、第二次 cache hit 188ms，且 top result 保持一致。core 118/118、CLI 63/63、完整 `npm test` 与 `npm run check` 均通过。
 - 严格唯一性门槛把 lexical 提速限制在可证明安全的查询上；模糊查询继续承担首次 embedding 成本并保留现有 semantic hybrid recall。cache 的完整配置指纹、版本和 128 条上限避免跨配置误用与无界增长。
 - persistent local-embedding worker 已在现有同步调用边界内落地；真实两个不同、未命中 query cache 的语义查询复用同一 daemon session，从 3078ms cold 降至 452ms warm。core 121/121、CLI 64/64、plugin contract 19/19 与 `npm run check` 均通过。
@@ -55,6 +60,7 @@ Accepted
 - `.claw/tasks/优化-truth-和-ADR-writer-的合同与执行速度/plan.json`
 - `.claw/tasks/按正向指令原则-review-claw-kit-插件-skills/plan.json`
 - `.claw/archive/tasks/验证-0.1.67-最新-claw-流程的效率与流畅度/plan.json`
+- `.claw/tasks/测试-claw-0.1.68-新版流程流畅度与性能/plan.json`
 - `.claw/tasks/提速-claw-search-冷启动并验证前台性能/plan.json`
 - `.claw/tasks/实现-claw-search-persistent-embedding-worker/plan.json`
 - `packages/core/src/init.ts`
@@ -92,6 +98,9 @@ Accepted
 - `A/B validation`
 - `0.1.65`
 - `0.1.67 workflow benchmark`
+- `0.1.68 workflow benchmark`
+- `plan lifecycle versus search performance`
+- `semantic one-shot daemon cold daemon warm query cache hit`
 - `synchronous query embedding latency`
 - `lexical fast path`
 - `query embedding cache`

@@ -3,6 +3,10 @@
     "withGoal": "Using claw-kit, update plan, follow returned workflowGuidance，finish your goal：{{planGoal}}",
     "withoutGoal": "Using claw-kit, update plan, follow returned workflowGuidance，finish your goal."
   },
+  "planCreateRecall": {
+    "nextstep": "Run one project recall query.",
+    "recommendedCommand": "claw search --query \"<topic>\""
+  },
   "delegates": {
     "truthWriter": {
       "name": "truth-writer",

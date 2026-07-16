@@ -19,6 +19,7 @@ test("researcher dispatch contract stays explicit, host-light, and blocking for 
   assert.match(researcherSkill, /attach this researcher skill explicitly/i);
   assert.match(researcherSkill, /for research tasks, wait for the result/i);
   assert.match(researcherSkill, /do not skip ahead/i);
+  assert.match(researcherSkill, /claw search --query "<topic>"/);
 
   assert.match(dispatchReference, /do not read (?:the )?search skill inline/i);
   assert.match(dispatchReference, /attach (?:the )?`claw-kit:researcher` skill item/i);

@@ -83,6 +83,10 @@ type GuidanceConfig = {
     withGoal: string;
     withoutGoal: string;
   };
+  planCreateRecall?: {
+    nextstep: string;
+    recommendedCommand: string;
+  };
   delegates: Record<DelegateConfigKey, Omit<WorkflowGuidanceSubagent, "skill"> & { fallbackSkill: string }>;
   states: Record<string, GuidanceStateTemplate>;
   sessionStart?: SessionStartTemplate;
@@ -154,7 +158,7 @@ function buildGoalTool(planGoal: string, template: GoalToolTemplate): WorkflowGu
   };
 }
 
-function emphasizeSubplanCreateGuidance(params: {
+function applyCreateGuidance(params: {
   commandSource?: "plan.create" | "subplan.create" | "plan.edit" | "plan.done";
   plan: PlanDocument;
   planFile: string;
@@ -162,13 +166,28 @@ function emphasizeSubplanCreateGuidance(params: {
   suppressGoalFields: boolean;
   guidance: WorkflowGuidance;
 }): WorkflowGuidance {
+  const recall = workflowGuidanceConfig.planCreateRecall ?? {
+    nextstep: "Run one project recall query.",
+    recommendedCommand: 'claw search --query "<topic>"',
+  };
+  const guidance = params.commandSource === "plan.create" || params.commandSource === "subplan.create"
+    ? {
+        ...params.guidance,
+        nextsteps: normalizeGuidanceSteps(mergeUniqueStrings([recall.nextstep], params.guidance.nextsteps)),
+        recommendedCommands: mergeUniqueStrings(
+          [recall.recommendedCommand],
+          params.guidance.recommendedCommands ?? [],
+        ),
+      }
+    : params.guidance;
+
   if (
     params.commandSource !== "subplan.create" ||
     !params.plan.parentPlan ||
     !params.goalModeEnabled ||
     params.suppressGoalFields
   ) {
-    return params.guidance;
+    return guidance;
   }
 
   const subplanObjective = buildGoalModeObjective(params.plan.goal.text);
@@ -178,13 +197,13 @@ function emphasizeSubplanCreateGuidance(params: {
     "Treat the parent/root plan as paused for this target until the subplan completes.";
 
   return {
-    ...params.guidance,
-    nextsteps: params.guidance.nextsteps.includes(subplanNextstep)
-      ? params.guidance.nextsteps
-      : [subplanNextstep, ...params.guidance.nextsteps],
-    notes: params.guidance.notes ? `${subplanNote} ${params.guidance.notes}` : subplanNote,
+    ...guidance,
+    nextsteps: guidance.nextsteps.includes(subplanNextstep)
+      ? guidance.nextsteps
+      : [subplanNextstep, ...guidance.nextsteps],
+    notes: guidance.notes ? `${subplanNote} ${guidance.notes}` : subplanNote,
     goalMode: {
-      ...params.guidance.goalMode,
+      ...guidance.goalMode,
       recommendedObjective: subplanObjective,
       allowOverwrite: true,
     },
@@ -369,7 +388,7 @@ export async function buildPlanWorkflowGuidance(params: {
           : `${plan.status}.noGoalMode`;
       const template = renderStateTemplate(templateKey, vars);
       const shouldEmitBlockedGoalTool = startedGoalModeThisRound;
-      return emphasizeSubplanCreateGuidance({
+      return applyCreateGuidance({
         commandSource,
         plan,
         planFile,
@@ -400,7 +419,7 @@ export async function buildPlanWorkflowGuidance(params: {
             ? { delegateSubagents: buildConfiguredDelegates(template.delegateSubagents, projectConfig) }
             : {}),
         };
-        return emphasizeSubplanCreateGuidance({
+        return applyCreateGuidance({
           commandSource,
           plan,
           planFile,
@@ -454,7 +473,7 @@ export async function buildPlanWorkflowGuidance(params: {
             }
           : {}),
       };
-      return emphasizeSubplanCreateGuidance({
+      return applyCreateGuidance({
         commandSource,
         plan,
         planFile,
