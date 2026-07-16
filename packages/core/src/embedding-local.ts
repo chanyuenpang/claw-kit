@@ -26,6 +26,15 @@ type RunLocalEmbeddingOptions = {
   createExtractor: (device: LocalExecutionDevice) => Promise<LocalExtractor>;
 };
 
+export type LocalEmbeddingSession = {
+  readonly dimensions: number;
+  readonly device: LocalExecutionDevice;
+  run: (texts: string[]) => Promise<LocalEmbeddingResult>;
+  dispose: () => Promise<void>;
+};
+
+type CreateLocalEmbeddingSessionOptions = Omit<RunLocalEmbeddingOptions, "texts">;
+
 const DEFAULT_LOCAL_EMBEDDING_BATCH_SIZE = 4;
 
 function parsePositiveInteger(value: unknown): number | null {
@@ -94,46 +103,87 @@ export function buildLocalDeviceAttemptOrder(requestedDevice: LocalExecutionDevi
 export async function runLocalEmbeddingWithFallback(
   options: RunLocalEmbeddingOptions,
 ): Promise<LocalEmbeddingResult> {
-  const devicesToTry = buildLocalDeviceAttemptOrder(options.requestedDevice);
-  let lastError: unknown = null;
+  const session = await createLocalEmbeddingSession(options);
+  try {
+    return await session.run(options.texts);
+  } finally {
+    await session.dispose();
+  }
+}
 
-  for (const device of devicesToTry) {
-    let extractor: LocalExtractor | null = null;
-    try {
-      extractor = await options.createExtractor(device);
-      const vectors: number[][] = [];
-      for (let index = 0; index < options.texts.length; index += DEFAULT_LOCAL_EMBEDDING_BATCH_SIZE) {
-        const batch = options.texts.slice(index, index + DEFAULT_LOCAL_EMBEDDING_BATCH_SIZE);
-        const result = await extractor(batch, {
-          pooling: "mean",
-          normalize: true,
-        });
-        const rawData = Array.from(result.data as ArrayLike<number>);
-        const inferredDimensions = batch.length > 0 ? Math.floor(rawData.length / batch.length) : 0;
-        const dimensions = options.dimensions > 0 ? options.dimensions : inferredDimensions;
-        vectors.push(...batch.map((_, textIndex) => {
-          const start = textIndex * inferredDimensions;
-          const end = start + Math.min(dimensions, inferredDimensions);
-          const vector = rawData.slice(start, end);
-          if (vector.length < dimensions) {
-            vector.push(...Array.from({ length: dimensions - vector.length }, () => 0));
-          }
-          return vector;
-        }));
-      }
-      return {
-        dimensions: options.dimensions,
-        vectors,
-        device,
-      };
-    } catch (error) {
-      lastError = error;
-    } finally {
-      if (extractor?.dispose) {
-        await extractor.dispose();
+export async function createLocalEmbeddingSession(
+  options: CreateLocalEmbeddingSessionOptions,
+): Promise<LocalEmbeddingSession> {
+  const devicesToTry = buildLocalDeviceAttemptOrder(options.requestedDevice);
+  let deviceIndex = 0;
+  let activeDevice = devicesToTry[0] ?? options.requestedDevice;
+  let extractor: LocalExtractor | null = null;
+  let disposed = false;
+
+  const disposeExtractor = async (): Promise<void> => {
+    const current = extractor;
+    extractor = null;
+    if (current?.dispose) {
+      await current.dispose();
+    }
+  };
+
+  const run = async (texts: string[]): Promise<LocalEmbeddingResult> => {
+    let lastError: unknown = null;
+    while (deviceIndex < devicesToTry.length) {
+      const device = devicesToTry[deviceIndex] ?? options.requestedDevice;
+      try {
+        if (disposed) {
+          throw new Error("Local embedding session has been disposed.");
+        }
+        extractor ??= await options.createExtractor(device);
+        activeDevice = device;
+        const vectors: number[][] = [];
+        for (let index = 0; index < texts.length; index += DEFAULT_LOCAL_EMBEDDING_BATCH_SIZE) {
+          const batch = texts.slice(index, index + DEFAULT_LOCAL_EMBEDDING_BATCH_SIZE);
+          const result = await extractor(batch, {
+            pooling: "mean",
+            normalize: true,
+          });
+          const rawData = Array.from(result.data as ArrayLike<number>);
+          const inferredDimensions = batch.length > 0 ? Math.floor(rawData.length / batch.length) : 0;
+          const dimensions = options.dimensions > 0 ? options.dimensions : inferredDimensions;
+          vectors.push(...batch.map((_, textIndex) => {
+            const start = textIndex * inferredDimensions;
+            const end = start + Math.min(dimensions, inferredDimensions);
+            const vector = rawData.slice(start, end);
+            if (vector.length < dimensions) {
+              vector.push(...Array.from({ length: dimensions - vector.length }, () => 0));
+            }
+            return vector;
+          }));
+        }
+        return {
+          dimensions: options.dimensions,
+          vectors,
+          device,
+        };
+      } catch (error) {
+        lastError = error;
+        await disposeExtractor();
+        deviceIndex += 1;
       }
     }
-  }
+    throw lastError instanceof Error ? lastError : new Error("Unable to initialize local embedding model.");
+  };
 
-  throw lastError instanceof Error ? lastError : new Error("Unable to initialize local embedding model.");
+  return {
+    dimensions: options.dimensions,
+    get device() {
+      return activeDevice;
+    },
+    run,
+    dispose: async () => {
+      if (disposed) {
+        return;
+      }
+      disposed = true;
+      await disposeExtractor();
+    },
+  };
 }

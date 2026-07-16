@@ -117,6 +117,7 @@ export type PlanDocument = {
   templateId?: string;
   configOverride?: TemplateConfigOverride;
   status: PlanStatus;
+  completedAt?: string;
   goal: {
     text: string;
   };
@@ -437,10 +438,10 @@ export type TaskContext = {
   project: ProjectContext;
   taskName: string;
   taskDir: string;
-  metaPath: string;
-  meta: TaskMeta;
   activePlan: string;
   activePlanPath: string;
+  legacyMetaPath?: string;
+  legacyMeta?: TaskMeta;
 };
 
 export type ResolvedContext = {
@@ -470,7 +471,6 @@ export type PlanWriteInput = {
 export type PlanWriteResult = {
   taskName: string;
   taskDir: string;
-  metaPath: string;
   planPath: string;
   planFile: string;
   planStatus: PlanStatus;
@@ -507,6 +507,7 @@ export type PlanEditInput = {
   reviewer?: PlanReviewer;
   workflowDefinitions?: string;
   host?: string;
+  ownerSessionKey?: string;
 };
 
 export type PlanEditResult = {
@@ -551,8 +552,8 @@ export type SwitchTaskInput = {
 export type SwitchTaskResult = {
   fromTask: string;
   toTask: string;
-  sourceMetaPath: string;
-  targetMetaPath: string;
+  sourcePlanPath: string;
+  targetPlanPath?: string;
   leaveState: LeaveState;
 };
 
@@ -665,7 +666,7 @@ export type ArchivedTaskRecord = {
   sourceTaskDir: string;
   archivedTaskDir: string;
   archivedPlanPath?: string;
-  updatedAt?: string;
+  completedAt?: string;
 };
 
 export type TaskRetentionResult = {

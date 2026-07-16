@@ -36,6 +36,8 @@ const DEFAULT_EMBEDDING_TARGET_CHARS =
 const DEFAULT_EMBEDDING_MAX_CHARS =
   DEFAULT_EMBEDDING_MAX_TOKENS * DEFAULT_EMBEDDING_CHARS_PER_TOKEN;
 const DEFAULT_MEMORY_SQLITE_BUSY_TIMEOUT_MS = 5000;
+const PROJECT_QUERY_EMBEDDING_CACHE_LIMIT = 128;
+const PROJECT_QUERY_EMBEDDING_CACHE_VERSION = "v1";
 
 type ProjectDocSearchSignals = {
   matchedTerms: string[];
@@ -45,6 +47,8 @@ type ProjectDocSearchSignals = {
   strongMatchedTermCount: number;
   fileNameHits: number;
   pathHits: number;
+  phraseMatch: boolean;
+  strongCoverageRatio: number;
   exactBoost: number;
 };
 
@@ -185,6 +189,7 @@ function syncProjectMemoryIndex(
     deleteDocsById(db, docsToDelete.map((doc) => doc.id));
     if (requiresVectorReset) {
       db.exec("DELETE FROM doc_embeddings;");
+      db.exec("DELETE FROM query_embeddings;");
     }
     insertDocs(db, limitedDocsToInsert);
     if (shouldIndexVectors && embedding) {
@@ -547,6 +552,14 @@ function prepareSchema(db: DatabaseSync): void {
       "  chunk_text TEXT NOT NULL,",
       "  embedding_json TEXT NOT NULL,",
       "  PRIMARY KEY (doc_id, chunk_index)",
+      ");",
+      "CREATE TABLE IF NOT EXISTS query_embeddings (",
+      "  cache_key TEXT PRIMARY KEY,",
+      "  embedding_fingerprint TEXT NOT NULL,",
+      "  query_text TEXT NOT NULL,",
+      "  dimensions INTEGER NOT NULL,",
+      "  embedding_json TEXT NOT NULL,",
+      "  created_at INTEGER NOT NULL",
       ");",
     ].join("\n"),
   );
@@ -925,14 +938,6 @@ function searchProjectMemoryHybrid(
   }
 
   const queryIntent = buildProjectQueryIntent(query);
-  const queryEmbedding = runEmbeddingWorker({
-    embedding,
-    texts: [queryIntent.embeddingText || query],
-  }).vectors[0];
-  if (!queryEmbedding?.length) {
-    throw new ClawError("MEMORY_VECTOR_INDEX_REQUIRED", "Unable to generate a query embedding for project search.");
-  }
-
   const candidateLimit = Math.max(limit * PROJECT_SEARCH_CANDIDATE_MULTIPLIER, 40);
   const projectDocs = db
     .prepare("SELECT source_path, kind, content FROM docs")
@@ -950,6 +955,23 @@ function searchProjectMemoryHybrid(
   );
   const ftsRows = searchProjectMemoryKeywords(db, query, candidateLimit);
   const signalRows = searchProjectMemorySignals(projectDocs, docSignals, candidateLimit);
+  const lexicalFastPath = tryProjectLexicalFastPath({
+    query,
+    queryIntent,
+    docSignals,
+    ftsRows,
+    signalRows,
+    limit,
+  });
+  if (lexicalFastPath) {
+    return lexicalFastPath;
+  }
+
+  const queryEmbedding = resolveProjectQueryEmbedding(
+    db,
+    embedding,
+    queryIntent.embeddingText || query,
+  );
 
   const vectorRows = db
     .prepare(
@@ -1052,6 +1074,149 @@ function searchProjectMemoryHybrid(
   });
 
   return rerankProjectSearchCandidates(Array.from(fused.values()), docSignals, limit);
+}
+
+function tryProjectLexicalFastPath(input: {
+  query: string;
+  queryIntent: ReturnType<typeof buildProjectQueryIntent>;
+  docSignals: Map<string, ProjectDocSearchSignals>;
+  ftsRows: Array<{ source_path: string; kind: string; snippet: string; score: number }>;
+  signalRows: Array<{ source_path: string; kind: string; snippet: string; score: number }>;
+  limit: number;
+}): MemorySearchResultEntry[] | null {
+  const { queryIntent } = input;
+  const primaryKeywordStep = buildProjectKeywordSearchPlan(input.query)[0];
+  if (
+    queryIntent.strongTerms.length === 0
+    || queryIntent.weakTerms.length > 0
+    || !primaryKeywordStep
+    || primaryKeywordStep.substringTerms.length > 0
+  ) {
+    return null;
+  }
+
+  const fullCoverage = Array.from(input.docSignals.entries()).filter(([, signals]) =>
+    signals.strongCoverageRatio === 1,
+  );
+  const pathMatches = fullCoverage.filter(([, signals]) =>
+    signals.fileNameHits >= queryIntent.strongTerms.length
+    || signals.pathHits >= queryIntent.strongTerms.length,
+  );
+  const phraseMatches = fullCoverage.filter(([, signals]) => signals.phraseMatch);
+  const confidentSourcePath = pathMatches.length === 1
+    ? pathMatches[0]?.[0]
+    : phraseMatches.length === 1
+      ? phraseMatches[0]?.[0]
+      : null;
+  if (!confidentSourcePath) {
+    return null;
+  }
+
+  const candidates = new Map<
+    string,
+    MemorySearchResultEntry & { textRank?: number; signalRank?: number }
+  >();
+  input.ftsRows.forEach((row, index) => {
+    candidates.set(row.source_path, {
+      sourcePath: row.source_path,
+      kind: row.kind,
+      snippet: row.snippet,
+      score: reciprocalRankScore(index + 1, 0.85) + (input.docSignals.get(row.source_path)?.exactBoost ?? 0),
+      textRank: index + 1,
+    });
+  });
+  input.signalRows.forEach((row, index) => {
+    const existing = candidates.get(row.source_path);
+    candidates.set(row.source_path, {
+      sourcePath: row.source_path,
+      kind: existing?.kind ?? row.kind,
+      snippet: existing?.snippet || row.snippet,
+      score: (existing?.score ?? 0)
+        + reciprocalRankScore(index + 1, 0.15)
+        + (existing ? 0 : (input.docSignals.get(row.source_path)?.exactBoost ?? 0)),
+      textRank: existing?.textRank,
+      signalRank: index + 1,
+    });
+  });
+
+  const confidentCandidate = candidates.get(confidentSourcePath);
+  if (!confidentCandidate) {
+    return null;
+  }
+  confidentCandidate.score += 0.1;
+  return rerankProjectSearchCandidates(Array.from(candidates.values()), input.docSignals, input.limit);
+}
+
+function resolveProjectQueryEmbedding(
+  db: DatabaseSync,
+  embedding: MemoryEmbeddingConfig,
+  queryText: string,
+): number[] {
+  const normalizedQueryText = queryText.trim().replace(/\s+/g, " ");
+  const embeddingFingerprint = createHash("sha256")
+    .update(JSON.stringify(embedding))
+    .digest("hex");
+  const cacheKey = createHash("sha256")
+    .update(`${PROJECT_QUERY_EMBEDDING_CACHE_VERSION}\0${embeddingFingerprint}\0${normalizedQueryText}`)
+    .digest("hex");
+  const cached = db
+    .prepare(
+      [
+        "SELECT dimensions, embedding_json",
+        "FROM query_embeddings",
+        "WHERE cache_key = ? AND embedding_fingerprint = ? AND query_text = ?",
+      ].join(" "),
+    )
+    .get(cacheKey, embeddingFingerprint, normalizedQueryText) as
+      | { dimensions: number; embedding_json: string }
+      | undefined;
+  if (cached) {
+    const vector = parseEmbeddingJson(cached.embedding_json);
+    if (cached.dimensions > 0 && vector.length === cached.dimensions) {
+      return vector;
+    }
+    db.prepare("DELETE FROM query_embeddings WHERE cache_key = ?").run(cacheKey);
+  }
+
+  const generated = runEmbeddingWorker({
+    embedding,
+    texts: [normalizedQueryText],
+  });
+  const vector = generated.vectors[0];
+  if (!vector?.length) {
+    throw new ClawError("MEMORY_VECTOR_INDEX_REQUIRED", "Unable to generate a query embedding for project search.");
+  }
+  db.prepare(
+    [
+      "INSERT INTO query_embeddings",
+      "  (cache_key, embedding_fingerprint, query_text, dimensions, embedding_json, created_at)",
+      "VALUES (?, ?, ?, ?, ?, ?)",
+      "ON CONFLICT(cache_key) DO UPDATE SET",
+      "  embedding_fingerprint = excluded.embedding_fingerprint,",
+      "  query_text = excluded.query_text,",
+      "  dimensions = excluded.dimensions,",
+      "  embedding_json = excluded.embedding_json,",
+      "  created_at = excluded.created_at",
+    ].join(" "),
+  ).run(
+    cacheKey,
+    embeddingFingerprint,
+    normalizedQueryText,
+    vector.length,
+    JSON.stringify(vector),
+    Date.now(),
+  );
+  db.prepare(
+    [
+      "DELETE FROM query_embeddings",
+      "WHERE cache_key IN (",
+      "  SELECT cache_key FROM query_embeddings",
+      "  ORDER BY created_at DESC, rowid DESC",
+      "  LIMIT -1 OFFSET ?",
+      ")",
+    ].join(" "),
+  ).run(PROJECT_QUERY_EMBEDDING_CACHE_LIMIT);
+  return vector;
 }
 
 function searchProjectMemoryKeywords(
@@ -1372,6 +1537,8 @@ function buildProjectSearchSignals(input: {
     strongMatchedTermCount: strongMatchedTerms.size,
     fileNameHits,
     pathHits,
+    phraseMatch,
+    strongCoverageRatio,
     exactBoost:
       strongMatchedTerms.size * 0.016
       + weakMatchedTerms.size * 0.004

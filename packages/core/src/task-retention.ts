@@ -1,16 +1,22 @@
 import fs from "node:fs";
 import path from "node:path";
 import { readJsonFile } from "./io.js";
-import type { ArchivedTaskRecord, PlanDocument, ProjectContext, TaskMeta, TaskRetentionResult } from "./types.js";
+import type { ArchivedTaskRecord, PlanDocument, ProjectContext, TaskRetentionResult } from "./types.js";
 
-export function enforceTaskRetention(project: ProjectContext, currentTaskName?: string): TaskRetentionResult {
+export const COMPLETED_TASK_ARCHIVE_DELAY_MS = 60 * 60 * 1000;
+
+export function enforceTaskRetention(
+  project: ProjectContext,
+  currentTaskName?: string,
+  nowMs = Date.now(),
+): TaskRetentionResult {
   const maxTasksToKeep = project.projectConfig?.maxTasksToKeep ?? 99;
   const archiveTasksRoot = path.join(project.clawDir, "archive", "tasks");
   const prunedArchivedTasks: ArchivedTaskRecord[] = [];
   let archivedCurrentTask: ArchivedTaskRecord | undefined;
 
   for (const taskName of listActiveTaskNames(project)) {
-    const archivedTask = archiveTaskDirectory(project, taskName, archiveTasksRoot);
+    const archivedTask = archiveTaskDirectory(project, taskName, archiveTasksRoot, nowMs);
     if (archivedTask && taskName === currentTaskName) {
       archivedCurrentTask = archivedTask;
     }
@@ -20,7 +26,7 @@ export function enforceTaskRetention(project: ProjectContext, currentTaskName?: 
   if (archivedTasks.length > maxTasksToKeep) {
     const overflow = archivedTasks.length - maxTasksToKeep;
     const toPrune = archivedTasks
-      .sort(compareArchivedTasksByUpdatedAt)
+      .sort(compareArchivedTasksByCompletedAt)
       .slice(0, overflow);
 
     for (const archivedTask of toPrune) {
@@ -41,38 +47,43 @@ function archiveTaskDirectory(
   project: ProjectContext,
   taskName: string,
   archiveTasksRoot: string,
+  nowMs: number,
 ): ArchivedTaskRecord | undefined {
   const sourceTaskDir = path.join(project.tasksDir, taskName);
   if (!fs.existsSync(sourceTaskDir) || !fs.statSync(sourceTaskDir).isDirectory()) {
     return undefined;
   }
 
-  const metaPath = path.join(sourceTaskDir, "meta.json");
-  if (!fs.existsSync(metaPath)) {
+  const rootPlanPath = path.join(sourceTaskDir, "plan.json");
+  const legacyMetaPath = path.join(sourceTaskDir, "meta.json");
+  const legacyMeta = fs.existsSync(legacyMetaPath) ? readJsonFile<{ activePlan?: string }>(legacyMetaPath) : undefined;
+  const activePlanPath = fs.existsSync(rootPlanPath)
+    ? rootPlanPath
+    : typeof legacyMeta?.activePlan === "string"
+      ? path.join(sourceTaskDir, legacyMeta.activePlan)
+      : undefined;
+  if (!activePlanPath || !fs.existsSync(activePlanPath)) {
     return undefined;
   }
-  const meta = readJsonFile<TaskMeta>(metaPath);
-  const activePlanPath = typeof meta.activePlan === "string" ? path.join(sourceTaskDir, meta.activePlan) : undefined;
-  const planStatus = activePlanPath && fs.existsSync(activePlanPath)
-    ? readJsonFile<PlanDocument>(activePlanPath).status
-    : undefined;
-
-  if (meta.status !== "completed" && planStatus !== "end.completed") {
+  const completedAt = readJsonFile<PlanDocument>(activePlanPath).completedAt;
+  const completedAtMs = typeof completedAt === "string" ? Date.parse(completedAt) : Number.NaN;
+  if (!Number.isFinite(completedAtMs) || nowMs - completedAtMs < COMPLETED_TASK_ARCHIVE_DELAY_MS) {
     return undefined;
   }
 
   fs.mkdirSync(archiveTasksRoot, { recursive: true });
   const archivedTaskDir = uniqueArchiveTaskDir(archiveTasksRoot, taskName);
   fs.renameSync(sourceTaskDir, archivedTaskDir);
-  const archivedPlanPath =
-    typeof meta.activePlan === "string" ? path.join(archivedTaskDir, meta.activePlan) : undefined;
+  const archivedPlanPath = activePlanPath
+    ? path.join(archivedTaskDir, path.relative(sourceTaskDir, activePlanPath))
+    : undefined;
 
   return {
     taskName,
     sourceTaskDir,
     archivedTaskDir,
     ...(archivedPlanPath ? { archivedPlanPath } : {}),
-    ...(meta.updatedAt ? { updatedAt: meta.updatedAt } : {}),
+    ...(completedAt ? { completedAt } : {}),
   };
 }
 
@@ -97,16 +108,23 @@ function listArchivedTasks(archiveTasksRoot: string): ArchivedTaskRecord[] {
       continue;
     }
     const archivedTaskDir = path.join(archiveTasksRoot, child.name);
-    const metaPath = path.join(archivedTaskDir, "meta.json");
-    let updatedAt: string | undefined;
+    const rootPlanPath = path.join(archivedTaskDir, "plan.json");
+    let completedAt: string | undefined;
     let taskName = child.name;
     let archivedPlanPath: string | undefined;
-    if (fs.existsSync(metaPath)) {
-      const meta = readJsonFile<TaskMeta>(metaPath);
-      updatedAt = meta.updatedAt;
-      taskName = typeof meta.name === "string" && meta.name.trim() ? meta.name : child.name;
-      if (typeof meta.activePlan === "string" && meta.activePlan.trim()) {
-        archivedPlanPath = path.join(archivedTaskDir, meta.activePlan);
+    if (fs.existsSync(rootPlanPath)) {
+      const plan = readJsonFile<PlanDocument>(rootPlanPath);
+      completedAt = plan.completedAt;
+      archivedPlanPath = rootPlanPath;
+    } else {
+      const metaPath = path.join(archivedTaskDir, "meta.json");
+      if (fs.existsSync(metaPath)) {
+        const meta = readJsonFile<{ name?: string; activePlan?: string; updatedAt?: string }>(metaPath);
+        completedAt = meta.updatedAt;
+        taskName = typeof meta.name === "string" && meta.name.trim() ? meta.name : child.name;
+        if (typeof meta.activePlan === "string" && meta.activePlan.trim()) {
+          archivedPlanPath = path.join(archivedTaskDir, meta.activePlan);
+        }
       }
     }
     entries.push({
@@ -114,15 +132,15 @@ function listArchivedTasks(archiveTasksRoot: string): ArchivedTaskRecord[] {
       sourceTaskDir: "",
       archivedTaskDir,
       ...(archivedPlanPath ? { archivedPlanPath } : {}),
-      ...(updatedAt ? { updatedAt } : {}),
+      ...(completedAt ? { completedAt } : {}),
     });
   }
   return entries;
 }
 
-function compareArchivedTasksByUpdatedAt(left: ArchivedTaskRecord, right: ArchivedTaskRecord): number {
-  const leftTime = left.updatedAt ? Date.parse(left.updatedAt) : Number.NEGATIVE_INFINITY;
-  const rightTime = right.updatedAt ? Date.parse(right.updatedAt) : Number.NEGATIVE_INFINITY;
+function compareArchivedTasksByCompletedAt(left: ArchivedTaskRecord, right: ArchivedTaskRecord): number {
+  const leftTime = left.completedAt ? Date.parse(left.completedAt) : Number.NEGATIVE_INFINITY;
+  const rightTime = right.completedAt ? Date.parse(right.completedAt) : Number.NEGATIVE_INFINITY;
   if (leftTime !== rightTime) {
     return leftTime - rightTime;
   }

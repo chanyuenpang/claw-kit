@@ -56,6 +56,43 @@
 - 根因位于 `packages/core/src/memory.ts`：每次 hybrid project search 都会在 FTS ranking 前调用 `runEmbeddingWorker`；该函数通过 `spawnSync` 启动独立的 `embedding-worker.js` 进程，所以每条 CLI query 都会重新支付进程与模型初始化成本。
 - 当前仓库、当前机器上的三次实测耗时约为 `4.075s`、`4.199s`、`4.316s`；2026-07-16 对同一 ready index 的追加测量为 `3.954s`、`3.963s`。这些数字是 `0.1.63` 环境基线，不应当作跨机器固定常量。
 
+### 0.1.67 正式流程性能复测（2026-07-16）
+
+- 本轮运行时边界为全局 CLI `0.1.67`，当前线程绑定的 plugin skill snapshot 也为 `0.1.67`。版本判断必须同时记录 CLI 与线程 snapshot，避免把旧 snapshot 行为混入新版本样本。
+- 无 `--task` 参数执行 `claw plan show`，约 `400ms` 后才返回 `Missing required flag --task`。这说明参数缺失的失败路径仍会支付可见的 CLI 固定成本，不能把失败前耗时误算为有效 plan 读取性能。
+- 指定 `--task` 后，`claw plan show` 三次分别为 `161ms`、`145ms`、`148ms`，均值约 `151ms`。与 `0.1.63` 的 cold `265ms`、warm `143ms` / `143ms` 相比，`0.1.67` 的有效 show 路径基本持平，未出现量级变化。
+- 首次中文 recall search 为 `4528ms`。同一英文 query 连续三次分别为 `4315ms`、`4635ms`、`4097ms`，每次均成功返回 `10` 条结果；三次均值约 `4349ms`。
+- `0.1.63` 的同口径 search 三次基线为 `4075ms`、`4199ms`、`4316ms`，均值约 `4197ms`；另有追加样本 `3954ms`、`3963ms`。`0.1.67` 英文同 query 三次均值相对旧三次均值慢约 `3.6%`，在当前样本下只能判断为未改善，不能宣称 search 提速。
+- 正式 lifecycle mutation 实测为：`claw plan create` `403ms`；planning patch `408ms`；planning append `217ms`；planning done `199ms`；activate `415ms`。即使单次 show 较快，正式流程仍包含多个独立 mutation，且 search 仍支付同步 query embedding 的约四秒固定成本。
+- 性能比较必须至少固定 CLI 版本、线程 skill snapshot、机器、query、结果成功性与 cold/warm 条件；同时分别统计失败路径、只读 show、lifecycle mutation 与 search，不能用其中一项替代完整 workflow 成本。
+
+### Search latency 第一阶段优化与验证（2026-07-16）
+
+- `packages/core/src/memory.ts` 已加入保守 lexical fast path。只有同时满足以下条件时才跳过 query embedding：`strongTerms` 非空、没有 weak terms、没有短中文 substring fallback、唯一候选文档完整覆盖全部 strong terms，并且该文档还是文件名/路径的唯一命中或精确短语的唯一命中。任何条件不满足时，都完整回退到既有 hybrid search，不削弱语义召回路径。
+- SQLite 新增 `query_embeddings` 表用于复用 query embedding。cache key 由版本 `v1`、embedding config 的 SHA-256 fingerprint 与最终传给 worker 的 query text 共同确定；不同原始 query 如果归一到同一最终 worker query text，可以共享同一缓存项。
+- cache hit 只读、不回写；cache miss 才插入，并按 `created_at`、`rowid` 将表裁剪到最多 `128` 条。embedding config 变化触发 vector reset 时会同时清空 `query_embeddings`，避免跨配置复用不兼容向量。
+- 第一阶段明确没有实现 persistent embedding worker；当时确认同步 search API 下必须额外解决 daemon 生命周期、并发、故障恢复与退出治理。后续实现已在下方单列，并通过 thin client 保持外层同步 API。
+- core 为这两条优化路径新增的 `4` 个回归测试均通过：唯一文件名 lexical fast path 在 worker timeout 设为 `1ms` 且没有 mock 时仍成功；两个不同会话 query 映射到同一 `embeddingText` 时只产生 `1` 条 cache；写入第 `129` 条后保持 `128` 条并淘汰最旧记录；embedding config 变化后旧 cache 被清空，且新 fingerprint 与旧值不同。最终 core 测试总数为 `118/118`。
+- 性能结论应区分快速路径命中率与 hybrid fallback 延迟：lexical fast path 能消除满足严格唯一性条件的 embedding 固定成本，query cache 能消除重复最终 worker query 的推理成本，但不代表所有 search 都会避开同步 embedding。
+
+#### 源码 CLI benchmark
+
+- 精确路径 query `workflow-cost-and-runtime-path.md` 连续三次为 `345ms`、`157ms`、`160ms`；每次 top result 都是 `.claw/truth/features/workflow-cost-and-runtime-path.md`，且均返回 `10` 条结果。后两次 warm 均值约 `159ms`，相对优化前约 `4.35s` 的 search 基线降低约 `96%`。
+- 全新语义 query `semantic cache benchmark persistent worker fallback july optimization` 首次 cache miss 为 `5064ms`，第二次 cache hit 为 `188ms`；两次 top result 都是 `.claw/truth/adr/local-embedding-shared-model-cache.md`，且均返回 `10` 条结果。cache hit 相对旧约 `4.35s` 基线同样降低约 `96%`。
+- 这组 benchmark 分别验证了两条优化路径：精确路径可走严格 lexical fast path；首次未缓存语义 query 仍支付完整 hybrid embedding 成本，而相同最终 worker query 的后续调用可命中 persistent SQLite query cache。
+- 百分比只描述当前机器、当前源码 CLI 和这两类 query 的观测结果，不应外推为所有 search 的统一加速比；尤其首次全新语义 query 的 `5064ms` 仍说明 hybrid miss 路径没有消除 embedding 固定成本。
+- 第一阶段最终验证为 core `118/118`、CLI `63/63`，并且 `npm test` 与 `npm run check` 均通过。
+
+#### Persistent local embedding worker（2026-07-16）
+
+- local embedding 新增 daemon + thin client。`packages/core/src/memory.ts` 的同步 search 调用仍通过 `spawnSync` 启动 `embedding-worker`，但 local worker 不再必然自行加载模型，而是连接绑定在 `127.0.0.1`、使用 token authentication 的 daemon；因此外层同步 API 无需 async 化，也能跨查询复用模型 session。
+- daemon transport 或 startup 失败时，thin client 回退到既有 one-shot local embedding；daemon 已返回的模型/推理错误不再重复执行 one-shot，避免同一模型错误被双重支付或掩盖。`CLAW_EMBEDDING_PERSISTENT_WORKER=0` 是显式 kill switch，可强制恢复 one-shot 行为。
+- runtime endpoint 按 user、install、Node runtime 与 protocol version 隔离，并有显式 runtime directory 的测试覆盖；这防止不同安装、Node 或协议实例误连同一 daemon。
+- daemon 生命周期与并发边界包括 startup lock、state 原子写入、`120s` idle TTL，以及默认容量为 `1` 的 session LRU。session fingerprint 包含 `projectCwd`、Transformers module path、model、cache directory、dimension、device、dtype 与 tokenizer policy；任一会影响加载或输出的条件变化时，都不会误复用旧 session。
+- remote embedding provider 继续走 one-shot worker，不进入 local daemon。`packages/core/src/embedding-local.ts` 新增可复用 session surface；原有 wrapper 仍保持 create-run-dispose，兼容需要一次性生命周期的调用方。
+- 真实源码 CLI benchmark 使用两个不同且未缓存的语义 query：首次为 `3078ms`，第二次为 `452ms`；两次由同一 daemon PID 处理，daemon 内保持 `1` 个 session，并在 `120s` idle TTL 后正常退出。该样本证明收益来自模型 session 复用，而不是 query cache 命中。
+- 当前验证为 core `121/121`、CLI `64/64`，且完整 `npm run check` 通过。
+
 ### Completion refresh 路径与基线
 
 - `claw plan done` 会启动后台 completion refresh，并串行刷新 project memory、task memory 与 GitNexus；状态证据位于 `.claw/logs/completion-refresh/`。
@@ -81,7 +118,8 @@
 
 ### P2：Search latency
 
-- 在保持召回契约的前提下评估 adaptive FTS-first / lexical-first 快速路径，或使用常驻 embedding worker，重点降低 cold/warm query latency，而不是只优化单次模型推理。
+- 已实现严格唯一性门禁下的 lexical fast path、配置感知的 query embedding cache，以及保持外层同步 API 的 persistent local embedding daemon；remote provider 与禁用/故障回退路径继续使用 one-shot worker。
+- 后续应以 fast-path 命中率、cache 命中率、daemon session reuse 命中率和 hybrid fallback P95 分别评估收益，并持续验证 endpoint 隔离、idle TTL 与 one-shot fallback 的可靠性。
 
 ### P3：复杂度门禁与无决策收口
 
@@ -138,4 +176,4 @@
 
 ## 关键检索词
 
-`workflow cost`、`contract drift`、`skill snapshot`、`plan mutation`、`meta task`、`per_task`、`truth-writer`、`query embedding`、`completion refresh`、`single-flight`、`SQLite transaction`、`GitNexus analyze`、`complexity gate`
+`workflow cost`、`contract drift`、`skill snapshot`、`plan mutation`、`meta task`、`per_task`、`truth-writer`、`query embedding`、`query_embeddings`、`lexical fast path`、`strongTerms`、`persistent embedding worker`、`CLAW_EMBEDDING_PERSISTENT_WORKER`、`session LRU`、`idle TTL`、`completion refresh`、`single-flight`、`SQLite transaction`、`GitNexus analyze`、`complexity gate`

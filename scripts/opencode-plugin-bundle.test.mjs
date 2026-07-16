@@ -79,6 +79,8 @@ test("OpenCode writer contracts use direct dispatch semantics and writer-owned r
 
   assert.equal(guidance.delegates.truthWriter.dispatch, "when_reusable_truth_confirmed");
   assert.equal(guidance.delegates.adrWriter.dispatch, "required");
+  assert.equal(guidance.delegates.truthWriter.waitForCompletion, false);
+  assert.equal(guidance.delegates.adrWriter.waitForCompletion, false);
   assert.equal("required" in guidance.delegates.truthWriter, false);
   assert.equal("dispatchCondition" in guidance.delegates.truthWriter, false);
 
@@ -120,7 +122,8 @@ test("OpenCode writer contracts use direct dispatch semantics and writer-owned r
   assert.doesNotMatch(truthAgent, /adr-writer|交给 adr/i);
   assert.match(adrAgent, /记录范围/);
   assert.match(guidance.delegates.truthWriter.inputContract, /reusable facts and evidence/i);
-  assert.match(guidance.delegates.adrWriter.inputContract, /completed plan\.json/i);
+  assert.match(guidance.delegates.adrWriter.inputContract, /active root plan\.json path/i);
+  assert.match(guidance.delegates.adrWriter.inputContract, /retains this path for at least one hour/i);
 });
 
 test("exportOpencodePluginBundle copies the expected payload and filters *.test.mjs", async (t) => {

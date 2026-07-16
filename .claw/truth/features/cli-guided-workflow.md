@@ -21,9 +21,17 @@
 - `process.wait` 和 `process.discussing` 是 canonical 的暂停 / 讨论态，不是执行态；`process.wait` 适用于真实阻塞或刻意暂停，`process.discussing` 适用于路线讨论或决策讨论，二者都会暂停 Goal Mode，并且都只提示恢复时回到 `process.active`。
 - 当 `plan.status` 从 `process.wait` 或 `process.discussing` 恢复到 `process.active` 时，`packages/core/src/workflow-guidance.ts` 会把这次进入识别为 `process.resumedActive`，并让 `goalMode.setWhen = on_resume_process_active`，而不是把它当成普通的首次进入执行态。
 - 在 release flow 实跑中，task 2 的 `Enter process.active` bridge 行为已被验证：`claw plan create` 返回 `process.discussing`，完成 planning task 后通过 `claw plan edit --plan-status process.active` 进入执行态，并在没有 active thread goal 时消费 `goalTool.tool = create_goal` 合同。
-- `process.allTasksDone` 是 root plan 的 pre-closeout contract：当所有 task 都完成时，`workflowGuidance` 会先要求清理 thread progress、完成 retrospective，然后把 `adr-writer` 作为下一步，再由 root `claw plan done` 负责最终归档和结束状态。
+- `process.allTasksDone` 是 root plan 的 pre-closeout contract：当所有 task 都完成时，`workflowGuidance` 会先要求清理 thread progress、完成 retrospective，并以 `waitForCompletion = false` 派发 `adr-writer`；root `claw plan done` 随后记录完成态与 `completedAt`，但不会立即归档 task。
 - plan 命令不再返回 render blocks，不再提供 `claw plan app` / `claw plan render`。
-- 当所有当前任务完成时，CLI 仍先把可复用知识交给 `truth-writer`，再走 retrospective 与 `claw plan done`；计划完成后再把 `plan.json` 交给 `adr-writer`。
+- 当所有当前任务完成时，CLI 仍先把可复用知识交给 `truth-writer`，再走 retrospective、异步 `adr-writer` 与 `claw plan done`；completed plan 会在当前 task path 保留至少一小时，之后才由 retention 归档。
+
+## 延迟归档与 retention contract
+
+- plan completion 现在把 `completedAt` 写入 canonical `plan.json`。它是 task lifecycle 的唯一时间戳，同时驱动 delayed archive eligibility 与 archive pruning。
+- `claw plan done` 完成 root plan 时保留当前 task path，不再立即把 task 移入 archive。completed plan 因此仍可从原 task 路径读取，给异步 closeout consumer 留出稳定窗口。
+- `packages/core/src/task-retention.ts` 只在 `completedAt` 距当前时间至少一小时时归档 task；归档资格不再检查 plan `status`、是否为 current task，或 receipt 是否存在。缺少 `completedAt` 或尚未满一小时的 task 不会被这条 retention 路径归档。
+- `adr-writer` 的 delegate contract 继续保持 `waitForCompletion = false`。plan completion 不等待 writer 返回；一小时延迟归档保证 writer 即使异步执行，也能从原 task path 读取 completed plan。
+- lifecycle 主锚点是 `packages/core/src/plan.ts`，retention 资格与移动逻辑位于 `packages/core/src/task-retention.ts`，writer 等待语义来自 `packages/core/src/workflow-guidance.config.json`；对应 core/CLI tests 覆盖 `completedAt`、当前路径保留、延迟归档和 delegate contract。
 
 ## 真实代码锚点
 

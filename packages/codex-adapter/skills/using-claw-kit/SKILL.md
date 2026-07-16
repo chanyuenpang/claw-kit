@@ -32,11 +32,11 @@ Detailed call flow:
 9. The planning skill is invoked by the seeded planning task inside the formal claw workflow, not before task scope exists.
 10. Once requirements are clear and `goal.text` is set, move the plan to `process.active`.
 11. After a meaningful completed task, dispatch `truth-writer` when there is reusable context to deposit.
-12. When all tasks are done, clear thread progress, update both `retrospective` and `keyDecisions`, and dispatch `adr-writer` from returned `workflowGuidance`.
-13. Close the plan with `claw plan done` only after `retrospective.summary` exists and any durable round-level decisions have been written into `keyDecisions`.
+12. When all tasks are done, clear thread progress, update both `retrospective` and `keyDecisions`, and dispatch `adr-writer` asynchronously from returned `workflowGuidance`.
+13. Close the plan with `claw plan done` after the ADR writer has been dispatched; do not wait for it. Delayed archive keeps the completed plan path readable for at least one hour.
 14. During closeout, confirm whether the workflow actually dispatched the required writer specialists:
     - verify `truth-writer` and `adr-writer` were dispatched when the returned contract required them
-    - report truth or ADR closeout as complete after the required delegations have occurred
+    - report truth or ADR closeout as dispatched after each required delegation has occurred; do not imply asynchronous writer completion without evidence
 15. During closeout, if this task included a git commit flow, inspect the repo for task-related doc artifacts that still belong to this round:
     - include canonical truth or ADR files updated by the writers
     - include any remaining task-produced docs that should ship with the same commit instead of leaving them behind
@@ -74,7 +74,7 @@ Writer dispatch reuses an existing suitable same-type subagent before spawning a
 Attach the returned writer skill when spawning the worker; the writer skill remains inside the delegated subagent context.
 Truth-value judgment stays on the main agent side. If there is no reusable truth, no writer is dispatched.
 `truth-writer` dispatch happens only when the completed work has reusable truth.
-`adr-writer` is a required closeout step for root-plan completion.
+`adr-writer` is a required, asynchronous closeout step for root-plan completion.
 
 ## Non-negotiable rules
 
@@ -86,4 +86,4 @@ Truth-value judgment stays on the main agent side. If there is no reusable truth
 - Whenever claw returns `workflowGuidance`, use it as the single next-step process.
 - When `workflowGuidance.goalTool` is present, execute the real Codex goal tool contract it returns. Use `create_goal` for active execution entry and allow returned goal guidance to overwrite the current thread goal; use `update_goal(status=complete|blocked)` for lifecycle exits that close the current goal.
 - Reuse the existing `truth-writer` when possible; otherwise dispatch a new one.
-- Run ADR deposition from the `all tasks done` guidance before root `claw plan done`.
+- Dispatch ADR deposition from the `all tasks done` guidance before root `claw plan done`, but do not wait for completion.

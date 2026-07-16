@@ -64,6 +64,22 @@ test("Codex plugin manifest starts with using-claw-kit instead of pre-reading pl
   assert.match(promptText, /seeded planning task/i);
 });
 
+test("Codex closeout contract keeps ADR deposition asynchronous through delayed archive", async () => {
+  const skill = await fs.readFile(
+    new URL("../packages/codex-adapter/skills/using-claw-kit/SKILL.md", import.meta.url),
+    "utf8",
+  );
+  const reference = await fs.readFile(
+    new URL("../packages/codex-adapter/references/workflow-guidance-consumption.md", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(skill, /do not wait for it/i);
+  assert.match(skill, /Delayed archive keeps the completed plan path readable for at least one hour/i);
+  assert.match(reference, /remain non-blocking/i);
+  assert.match(reference, /keeps the completed active plan path readable for at least one hour/i);
+});
+
 test("Codex plugin source includes the config skill entrypoint", async () => {
   const skillPath = new URL("../shared/skills/config/SKILL.md", import.meta.url);
   const skillText = await fs.readFile(skillPath, "utf8");

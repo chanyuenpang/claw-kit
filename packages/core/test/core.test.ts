@@ -16,6 +16,8 @@ import {
   ingestTruth,
   initProject,
   resolveContext,
+  resolveProjectContext,
+  resolveSessionBoundPlan,
   searchMemory,
   showPlan,
   switchTask,
@@ -150,7 +152,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
     "# claw-kit\n.claw/*\n!.claw/project.json\n!.claw/truth/\n!.claw/truth/**\n.claw/project-override.json\n",
   );
   assert.deepEqual(projectConfig, {
-    version: "0.1.67",
+    version: "0.1.68",
     id: "demo-project",
     name: "Demo Project",
     maxTasksToKeep: 20,
@@ -211,10 +213,8 @@ test("writePlan seeds a planning-first root plan by default", async () => {
     goalText: "Ship the first plan",
   });
 
-  const meta = JSON.parse(fs.readFileSync(result.metaPath, "utf-8")) as { activePlan: string; rootPlan: string };
   assert.equal(result.planFile, "plan.json");
-  assert.equal(meta.activePlan, "plan.json");
-  assert.equal(meta.rootPlan, "plan.json");
+  assert.equal(fs.existsSync(path.join(result.taskDir, "meta.json")), false);
   assert.ok(fs.existsSync(result.planPath));
   assert.equal(result.workflowGuidance.stage, "discussion");
   assert.equal(result.workflowGuidance.delegateSubagents, undefined);
@@ -1554,7 +1554,7 @@ test("plan create auto-assigns stable integer task ids when omitted", async () =
   assert.equal(result.workflowGuidance.askUser, undefined);
 });
 
-test("plan create updates existing task and supports subplan under plans without switching task scope", async () => {
+test("plan create updates existing task and stores subplans flat without task metadata", async () => {
   const root = createFixture("subplan-write");
   await writePlan({
     cwd: root,
@@ -1590,17 +1590,14 @@ test("plan create updates existing task and supports subplan under plans without
     },
   });
 
-  const meta = JSON.parse(
-    fs.readFileSync(path.join(root, ".claw", "tasks", "demo-task", "meta.json"), "utf-8"),
-  ) as { activePlan: string };
   const parentPlan = JSON.parse(
     fs.readFileSync(path.join(root, ".claw", "tasks", "demo-task", "plan.json"), "utf-8"),
   ) as { tasks: Array<{ title?: string; execution?: { type?: string; subplan?: string } }> };
 
-  assert.equal(result.planFile, "plans/child-plan.json");
-  assert.equal(meta.activePlan, "plans/child-plan.json");
+  assert.equal(result.planFile, "child-plan.json");
+  assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "demo-task", "meta.json")), false);
   assert.equal(parentPlan.tasks[0]?.execution?.type, "subplan");
-  assert.equal(parentPlan.tasks[0]?.execution?.subplan, "plans/child-plan.json");
+  assert.equal(parentPlan.tasks[0]?.execution?.subplan, "child-plan.json");
 });
 
 test("createSubplan uses the planning-aware default seed shape", async () => {
@@ -1632,7 +1629,7 @@ test("createSubplan uses the planning-aware default seed shape", async () => {
     templateName: "default",
   });
 
-  assert.equal(result.planFile, "plans/Implement-child-work.json");
+  assert.equal(result.planFile, "Implement-child-work.json");
   assert.equal(result.plan.title, "Implement child work");
   assert.equal(result.plan.status, "process.discussing");
   assert.equal(result.plan.goal.text, "Implement child work: Split this into a subplan");
@@ -1800,21 +1797,18 @@ test("subplan completion resumes the parent plan and marks the parent task done"
   const result = await editPlan({
     cwd: root,
     taskName: "demo-task",
-    planFile: "plans/child-plan.json",
+    planFile: "child-plan.json",
     planStatus: "end.completed",
     patch: {
       retrospective: { summary: "Child complete." },
     },
   });
 
-  const meta = JSON.parse(
-    fs.readFileSync(path.join(root, ".claw", "tasks", "demo-task", "meta.json"), "utf-8"),
-  ) as { activePlan: string; status: string };
   const parentPlan = JSON.parse(
     fs.readFileSync(path.join(root, ".claw", "tasks", "demo-task", "plan.json"), "utf-8"),
   ) as { status: string; tasks: Array<{ id: number; status: string }> };
   const childPlan = JSON.parse(
-    fs.readFileSync(path.join(root, ".claw", "tasks", "demo-task", "plans", "child-plan.json"), "utf-8"),
+    fs.readFileSync(path.join(root, ".claw", "tasks", "demo-task", "child-plan.json"), "utf-8"),
   ) as { status: string };
 
   assert.equal(result.planFile, "plan.json");
@@ -1823,8 +1817,7 @@ test("subplan completion resumes the parent plan and marks the parent task done"
   assert.equal(result.workflowGuidance.nextTask?.id, 2);
   assert.equal(result.workflowGuidance.nextTask?.title, "Resume parent work");
   assert.equal(result.workflowGuidance.delegateSubagents, undefined);
-  assert.equal(meta.activePlan, "plan.json");
-  assert.equal(meta.status, "active");
+  assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "demo-task", "meta.json")), false);
   assert.equal(parentPlan.status, "process.active");
   assert.equal(parentPlan.tasks[0]?.status, "done");
   assert.equal(parentPlan.tasks[1]?.status, "pending");
@@ -1964,7 +1957,7 @@ test("plan edit can move from requirements to process.active without a separate 
   );
   assert.equal(
     result.workflowGuidance.notes,
-    "Truth dispatch requires the main agent's reusable-value confirmation; ADR dispatch is required for root-plan closeout. Honor every field in a dispatched delegate contract.",
+    "Truth dispatch requires the main agent's reusable-value confirmation; ADR dispatch is required but remains asynchronous for root-plan closeout. Root `claw plan done` records completedAt and keeps the plan path readable for at least one hour. Honor every field in a dispatched delegate contract.",
   );
   const truthDelegate = result.workflowGuidance.delegateSubagents?.[0];
   const adrDelegate = result.workflowGuidance.delegateSubagents?.[1];
@@ -1985,9 +1978,10 @@ test("plan edit can move from requirements to process.active without a separate 
   assert.equal(adrDelegate.name, "adr-writer");
   assert.equal(adrDelegate.skill, "claw-kit:adr-writer");
   assert.equal(adrDelegate.dispatch, "required");
+  assert.equal(adrDelegate.waitForCompletion, false);
   assert.equal(
     adrDelegate.inputContract,
-    "updated completed plan.json containing retrospective and durable keyDecisions; decision extraction and canonical target routing belong to the ADR writer",
+    "updated active root plan.json path after retrospective and durable keyDecisions are persisted; plan done retains this path for at least one hour so the ADR writer can continue asynchronously; decision extraction and canonical target routing belong to the ADR writer",
   );
   assert.equal(adrDelegate.model, "gpt-5.4-mini");
   assert.equal(adrDelegate.fork_context, false);
@@ -1996,7 +1990,7 @@ test("plan edit can move from requirements to process.active without a separate 
   assert.deepEqual(result.workflowGuidance.nextsteps, [
     "1. Clear thread progress with `update_plan`.",
     "2. Read the returned `truth-writer` entry's `dispatch`. For `when_reusable_truth_confirmed`, the main agent must evaluate reusable truth and dispatch only after confirmation.",
-    "3. First write both `retrospective` and `keyDecisions` back into the plan, then execute the `adr-writer` contract with `dispatch: required` using that updated completed `plan.json`.",
+    "3. First write both `retrospective` and `keyDecisions` back into the plan, then execute the `adr-writer` contract with `dispatch: required` using that updated active root `plan.json` path. Do not wait for the writer before running `claw plan done`; delayed archive keeps the path readable for at least one hour.",
   ]);
   assert.deepEqual(result.workflowGuidance.recommendedCommands, [
     "claw plan edit --task demo-task --patch <completed-plan.json>",
@@ -2172,6 +2166,7 @@ test("end.completed emits complete goal tool guidance", async () => {
   });
 
   assert.equal(result.workflowGuidance.stage, "done");
+  assert.match(showPlan({ cwd: root, taskName: "demo-task" }).plan.completedAt ?? "", /^\d{4}-\d{2}-\d{2}T/);
   assert.deepEqual(result.workflowGuidance.nextsteps, [
     "1. Use `update_goal(status=\"complete\")` to close the active thread goal for this plan.",
     "2. Finish any remaining workflow-guided closeout work such as archive or parent-plan resumption.",
@@ -2754,6 +2749,7 @@ test("plan show falls back to archived tasks when the active task no longer exis
     content: {
       title: "Archived task",
       status: "end.completed",
+      completedAt: "2020-01-01T00:00:00.000Z",
       goal: { text: "Show archived plan" },
       tasks: [{ id: 1, title: "Done task", status: "done" }],
       retrospective: { summary: "Archived." },
@@ -2761,7 +2757,7 @@ test("plan show falls back to archived tasks when the active task no longer exis
   });
 
   const project = resolveContext(root).project;
-  enforceTaskRetention(project, "archived-task");
+  enforceTaskRetention(project, "archived-task", Date.parse("2020-01-01T01:00:00.000Z"));
 
   const result = showPlan({
     cwd: root,
@@ -2774,7 +2770,7 @@ test("plan show falls back to archived tasks when the active task no longer exis
   assert.equal(result.planView.collapsedSummary, "1/1 Archived task");
 });
 
-test("switch-task writes lineage metadata without session runtime", async () => {
+test("switch-task returns transient lineage without writing task metadata", async () => {
   const root = createFixture("switch-task");
   await writePlan({ cwd: root, taskName: "source-task", title: "Source", goalText: "Source goal" });
   await writePlan({ cwd: root, taskName: "target-task", title: "Target", goalText: "Target goal" });
@@ -2785,14 +2781,11 @@ test("switch-task writes lineage metadata without session runtime", async () => 
     toTask: "target-task",
   });
 
-  const sourceMeta = JSON.parse(fs.readFileSync(result.sourceMetaPath, "utf-8")) as { leaveState: { toTask: string } };
-  const targetMeta = JSON.parse(fs.readFileSync(result.targetMetaPath, "utf-8")) as {
-    previousTask: { task: string };
-    inheritedFrom: { task: string };
-  };
-  assert.equal(sourceMeta.leaveState.toTask, "target-task");
-  assert.equal(targetMeta.previousTask.task, "source-task");
-  assert.equal(targetMeta.inheritedFrom.task, "source-task");
+  assert.equal(result.leaveState.toTask, "target-task");
+  assert.match(result.sourcePlanPath, /source-task[\\/]plan\.json$/);
+  assert.match(result.targetPlanPath ?? "", /target-task[\\/]plan\.json$/);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "source-task", "meta.json")), false);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "target-task", "meta.json")), false);
 });
 
 test("memory search defaults to project scope and task scope prioritizes active plan structured memory", async () => {
@@ -3083,6 +3076,230 @@ test("project query intent uses strong terms for conversational Chinese embeddin
       embeddingText: "\u641c\u6253\u64a4",
     },
   );
+});
+
+test("project search skips the embedding worker for a unique exact filename hit", { concurrency: false }, () => {
+  const root = createFixture("memory-search-lexical-fast-path");
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify({
+      id: "memory-search-lexical-fast-path",
+      memory: {
+        externalDocPaths: ["docs/"],
+        embedding: {
+          provider: "local",
+          model: "Snowflake/snowflake-arctic-embed-xs",
+          local: { modelCacheDir: path.join(root, ".model-cache") },
+        },
+      },
+    }, null, 2),
+    "utf-8",
+  );
+  fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project notes\n", "utf-8");
+  fs.writeFileSync(path.join(root, "docs", "coldstarttarget.md"), "focused implementation notes\n", "utf-8");
+  fs.writeFileSync(path.join(root, "docs", "other.md"), "unrelated notes\n", "utf-8");
+
+  const previousMockEnv = process.env.CLAW_EMBEDDING_MOCK;
+  const previousTimeoutEnv = process.env.CLAW_EMBEDDING_WORKER_TIMEOUT_MS;
+  process.env.CLAW_EMBEDDING_MOCK = "1";
+  try {
+    buildMemoryIndex({ cwd: root });
+    delete process.env.CLAW_EMBEDDING_MOCK;
+    process.env.CLAW_EMBEDDING_WORKER_TIMEOUT_MS = "1";
+
+    const result = searchMemory({ cwd: root, query: "coldstarttarget", limit: 5 });
+    assert.equal(path.basename(result.results[0]?.sourcePath ?? ""), "coldstarttarget.md");
+  } finally {
+    if (previousMockEnv === undefined) {
+      delete process.env.CLAW_EMBEDDING_MOCK;
+    } else {
+      process.env.CLAW_EMBEDDING_MOCK = previousMockEnv;
+    }
+    if (previousTimeoutEnv === undefined) {
+      delete process.env.CLAW_EMBEDDING_WORKER_TIMEOUT_MS;
+    } else {
+      process.env.CLAW_EMBEDDING_WORKER_TIMEOUT_MS = previousTimeoutEnv;
+    }
+  }
+});
+
+test("project search reuses query embeddings by final embedding text", { concurrency: false }, () => {
+  const root = createFixture("memory-search-query-cache");
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify({
+      id: "memory-search-query-cache",
+      memory: {
+        externalDocPaths: ["docs/"],
+        embedding: {
+          provider: "local",
+          model: "Snowflake/snowflake-arctic-embed-xs",
+          local: { modelCacheDir: path.join(root, ".model-cache") },
+        },
+      },
+    }, null, 2),
+    "utf-8",
+  );
+  fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project notes\n", "utf-8");
+  fs.writeFileSync(path.join(root, "docs", "sdtz.md"), "这里记录搜打撤模式说明\n", "utf-8");
+
+  const previousMockEnv = process.env.CLAW_EMBEDDING_MOCK;
+  process.env.CLAW_EMBEDDING_MOCK = "1";
+  try {
+    const index = buildMemoryIndex({ cwd: root });
+    searchMemory({ cwd: root, query: "之前讨论的那个搜打撤方案" });
+    searchMemory({ cwd: root, query: "之后讨论的搜打撤方案" });
+
+    const db = new DatabaseSync(index.storePath);
+    try {
+      const rows = db
+        .prepare("SELECT query_text, dimensions FROM query_embeddings")
+        .all() as Array<{ query_text: string; dimensions: number }>;
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0]?.query_text, "搜打撤");
+      assert.ok((rows[0]?.dimensions ?? 0) > 0);
+    } finally {
+      db.close();
+    }
+  } finally {
+    if (previousMockEnv === undefined) {
+      delete process.env.CLAW_EMBEDDING_MOCK;
+    } else {
+      process.env.CLAW_EMBEDDING_MOCK = previousMockEnv;
+    }
+  }
+});
+
+test("project query embedding cache resets when embedding config changes", { concurrency: false }, () => {
+  const root = createFixture("memory-search-query-cache-config-reset");
+  const projectPath = path.join(root, ".claw", "project.json");
+  const writeProjectConfig = (model: string): void => {
+    fs.writeFileSync(
+      projectPath,
+      JSON.stringify({
+        id: "memory-search-query-cache-config-reset",
+        memory: {
+          externalDocPaths: ["docs/"],
+          embedding: {
+            provider: "local",
+            model,
+            local: { modelCacheDir: path.join(root, ".model-cache") },
+          },
+        },
+      }, null, 2),
+      "utf-8",
+    );
+  };
+  writeProjectConfig("Snowflake/snowflake-arctic-embed-xs");
+  fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project notes\n", "utf-8");
+  fs.writeFileSync(path.join(root, "docs", "guide.md"), "semantic fallback target\n", "utf-8");
+
+  const previousMockEnv = process.env.CLAW_EMBEDDING_MOCK;
+  process.env.CLAW_EMBEDDING_MOCK = "1";
+  try {
+    const index = buildMemoryIndex({ cwd: root });
+    searchMemory({ cwd: root, query: "please recall the semantic fallback target we discussed" });
+    const firstDb = new DatabaseSync(index.storePath);
+    let firstFingerprint = "";
+    try {
+      const row = firstDb
+        .prepare("SELECT embedding_fingerprint FROM query_embeddings")
+        .get() as { embedding_fingerprint: string };
+      firstFingerprint = row.embedding_fingerprint;
+    } finally {
+      firstDb.close();
+    }
+
+    writeProjectConfig("Snowflake/snowflake-arctic-embed-xs-v2");
+    buildMemoryIndex({ cwd: root });
+    const resetDb = new DatabaseSync(index.storePath);
+    try {
+      const row = resetDb.prepare("SELECT COUNT(*) AS count FROM query_embeddings").get() as { count: number };
+      assert.equal(row.count, 0);
+    } finally {
+      resetDb.close();
+    }
+
+    searchMemory({ cwd: root, query: "please recall the semantic fallback target we discussed" });
+    const secondDb = new DatabaseSync(index.storePath);
+    try {
+      const rows = secondDb
+        .prepare("SELECT embedding_fingerprint FROM query_embeddings")
+        .all() as Array<{ embedding_fingerprint: string }>;
+      assert.equal(rows.length, 1);
+      assert.notEqual(rows[0]?.embedding_fingerprint, firstFingerprint);
+    } finally {
+      secondDb.close();
+    }
+  } finally {
+    if (previousMockEnv === undefined) {
+      delete process.env.CLAW_EMBEDDING_MOCK;
+    } else {
+      process.env.CLAW_EMBEDDING_MOCK = previousMockEnv;
+    }
+  }
+});
+
+test("project query embedding cache remains bounded to 128 rows", { concurrency: false }, () => {
+  const root = createFixture("memory-search-query-cache-limit");
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify({
+      id: "memory-search-query-cache-limit",
+      memory: {
+        externalDocPaths: ["docs/"],
+        embedding: {
+          provider: "local",
+          model: "Snowflake/snowflake-arctic-embed-xs",
+          local: { modelCacheDir: path.join(root, ".model-cache") },
+        },
+      },
+    }, null, 2),
+    "utf-8",
+  );
+  fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project notes\n", "utf-8");
+  fs.writeFileSync(path.join(root, "docs", "guide.md"), "semantic fallback target\n", "utf-8");
+
+  const previousMockEnv = process.env.CLAW_EMBEDDING_MOCK;
+  process.env.CLAW_EMBEDDING_MOCK = "1";
+  try {
+    const index = buildMemoryIndex({ cwd: root });
+    const db = new DatabaseSync(index.storePath);
+    try {
+      const insert = db.prepare(
+        "INSERT INTO query_embeddings (cache_key, embedding_fingerprint, query_text, dimensions, embedding_json, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+      );
+      for (let indexValue = 0; indexValue < 128; indexValue += 1) {
+        insert.run(`seed-${indexValue}`, "seed", `seed-${indexValue}`, 1, "[1]", indexValue);
+      }
+    } finally {
+      db.close();
+    }
+
+    searchMemory({ cwd: root, query: "please recall the semantic fallback target we discussed" });
+
+    const verifyDb = new DatabaseSync(index.storePath);
+    try {
+      const row = verifyDb.prepare("SELECT COUNT(*) AS count FROM query_embeddings").get() as { count: number };
+      assert.equal(row.count, 128);
+      const oldest = verifyDb
+        .prepare("SELECT COUNT(*) AS count FROM query_embeddings WHERE cache_key = ?")
+        .get("seed-0") as { count: number };
+      assert.equal(oldest.count, 0);
+    } finally {
+      verifyDb.close();
+    }
+  } finally {
+    if (previousMockEnv === undefined) {
+      delete process.env.CLAW_EMBEDDING_MOCK;
+    } else {
+      process.env.CLAW_EMBEDDING_MOCK = previousMockEnv;
+    }
+  }
 });
 
 test("project search prioritizes strong-term Chinese docs for conversational queries over generic plan docs", { concurrency: false }, () => {
@@ -4136,7 +4353,7 @@ test("workflow guidance uses external writer skills from project config", async 
   });
   assert.equal(
     taskDone.workflowGuidance.notes,
-    "Truth dispatch requires the main agent's reusable-value confirmation; ADR dispatch is required for root-plan closeout. Honor every field in a dispatched delegate contract.",
+    "Truth dispatch requires the main agent's reusable-value confirmation; ADR dispatch is required but remains asynchronous for root-plan closeout. Root `claw plan done` records completedAt and keeps the plan path readable for at least one hour. Honor every field in a dispatched delegate contract.",
   );
   assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.skill, "external-truth-writer");
   assert.equal(taskDone.workflowGuidance.delegateSubagents?.[0]?.dispatch, "when_reusable_truth_confirmed");
@@ -4271,7 +4488,7 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
   assert.equal(result.ok, true);
   assert.equal(result.changed, true);
   assert.ok(result.issueCountBefore > 0);
-  assert.equal(projectConfig.version, "0.1.67");
+  assert.equal(projectConfig.version, "0.1.68");
   assert.equal(projectConfig.id, "fix-me");
   assert.equal(projectConfig.name, "Fix Me");
   assert.equal(projectConfig.maxTasksToKeep, 99);
@@ -4351,7 +4568,84 @@ test("ensureProjectProtocol removes legacy default local modelCacheDir so runtim
   });
 });
 
-test("enforceTaskRetention archives completed task and prunes archive by updatedAt", async () => {
+test("ensureProjectProtocol migrates legacy task metadata and flattens subplans into session-bound plan paths", () => {
+  const root = createFixture("legacy-task-layout-migration");
+  const taskDir = path.join(root, ".claw", "tasks", "demo-task");
+  const plansDir = path.join(taskDir, "plans");
+  fs.mkdirSync(plansDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(taskDir, "plan.json"),
+    JSON.stringify({
+      title: "Parent",
+      status: "process.active",
+      goal: { text: "Parent goal" },
+      tasks: [{ id: 1, title: "Child", status: "in_progress", execution: { type: "subplan", subplan: "plans/child.json", planPath: "plans/child.json" } }],
+    }),
+    "utf-8",
+  );
+  fs.writeFileSync(
+    path.join(plansDir, "child.json"),
+    JSON.stringify({
+      title: "Child",
+      status: "process.active",
+      parentPlan: "plan.json",
+      parentTaskId: 1,
+      goal: { text: "Child goal" },
+      tasks: [],
+    }),
+    "utf-8",
+  );
+  fs.writeFileSync(
+    path.join(taskDir, "meta.json"),
+    JSON.stringify({
+      name: "demo-task",
+      projectId: "demo",
+      description: "",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-02T00:00:00.000Z",
+      subagents: [],
+      activePlan: "plans/child.json",
+      ownerSessionKey: "thread-demo",
+    }),
+    "utf-8",
+  );
+
+  const result = ensureProjectProtocol(root);
+  const project = resolveProjectContext(root);
+  const parent = JSON.parse(fs.readFileSync(path.join(taskDir, "plan.json"), "utf-8")) as PlanDocument;
+
+  assert.equal(result.changed, true);
+  assert.equal(fs.existsSync(path.join(taskDir, "meta.json")), false);
+  assert.equal(fs.existsSync(plansDir), false);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "runtime", "task-layout-v2.complete")), true);
+  assert.equal(fs.existsSync(path.join(taskDir, "child.json")), true);
+  assert.equal(parent.tasks[0]?.execution?.subplan, "child.json");
+  assert.equal(parent.tasks[0]?.execution?.planPath, "child.json");
+  assert.equal(resolveSessionBoundPlan(project, "thread-demo"), path.join(taskDir, "child.json"));
+  assert.equal(
+    (JSON.parse(fs.readFileSync(path.join(root, ".claw", "runtime", "session-bindings.json"), "utf-8")) as { bindings: Record<string, string> }).bindings["thread-demo"],
+    "tasks/demo-task/child.json",
+  );
+  assert.equal(ensureProjectProtocol(root).changed, false);
+});
+
+test("ensureProjectProtocol rejects a flat subplan name collision instead of overwriting", () => {
+  const root = createFixture("legacy-task-layout-collision");
+  const taskDir = path.join(root, ".claw", "tasks", "demo-task");
+  const plansDir = path.join(taskDir, "plans");
+  fs.mkdirSync(plansDir, { recursive: true });
+  fs.writeFileSync(path.join(taskDir, "plan.json"), JSON.stringify({ title: "Parent", status: "process.active", goal: { text: "Parent" }, tasks: [] }), "utf-8");
+  fs.writeFileSync(path.join(taskDir, "child.json"), JSON.stringify({ title: "Existing", status: "process.active", goal: { text: "Existing" }, tasks: [] }), "utf-8");
+  fs.writeFileSync(path.join(plansDir, "child.json"), JSON.stringify({ title: "Legacy", status: "process.active", goal: { text: "Legacy" }, tasks: [] }), "utf-8");
+
+  assert.throws(
+    () => ensureProjectProtocol(root),
+    (error: unknown) => Boolean(error && typeof error === "object" && "code" in error && error.code === "PLAN_ALREADY_EXISTS"),
+  );
+  assert.equal(JSON.parse(fs.readFileSync(path.join(taskDir, "child.json"), "utf-8")).title, "Existing");
+});
+
+test("enforceTaskRetention archives completed task and prunes archive by completedAt", async () => {
   const root = createFixture("task-retention");
   initProject({
     cwd: root,
@@ -4367,6 +4661,7 @@ test("enforceTaskRetention archives completed task and prunes archive by updated
     content: {
       title: "Older task",
       status: "end.completed",
+      completedAt: "2026-01-01T00:00:00.000Z",
       goal: { text: "Archive older task" },
       tasks: [],
       retrospective: { summary: "Older complete." },
@@ -4380,31 +4675,23 @@ test("enforceTaskRetention archives completed task and prunes archive by updated
     content: {
       title: "Newer task",
       status: "end.completed",
+      completedAt: "2026-02-01T00:00:00.000Z",
       goal: { text: "Archive newer task" },
       tasks: [],
       retrospective: { summary: "Newer complete." },
     },
   });
 
-  const olderMetaPath = path.join(root, ".claw", "tasks", "older-task", "meta.json");
-  const olderMeta = JSON.parse(fs.readFileSync(olderMetaPath, "utf-8")) as { updatedAt: string };
-  olderMeta.updatedAt = "2026-01-01T00:00:00.000Z";
-  fs.writeFileSync(olderMetaPath, `${JSON.stringify(olderMeta, null, 2)}\n`, "utf-8");
-
-  const newerMetaPath = path.join(root, ".claw", "tasks", "newer-task", "meta.json");
-  const newerMeta = JSON.parse(fs.readFileSync(newerMetaPath, "utf-8")) as { updatedAt: string };
-  newerMeta.updatedAt = "2026-02-01T00:00:00.000Z";
-  fs.writeFileSync(newerMetaPath, `${JSON.stringify(newerMeta, null, 2)}\n`, "utf-8");
-
   const project = resolveContext(root).project;
-  const first = enforceTaskRetention(project, "older-task");
+  const nowMs = Date.parse("2026-03-01T00:00:00.000Z");
+  const first = enforceTaskRetention(project, "older-task", nowMs);
 
   assert.equal(first.archivedCurrentTask?.taskName, "older-task");
   assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "older-task")), false);
   assert.equal(first.prunedArchivedTasks[0]?.taskName, "older-task");
   assert.equal(fs.existsSync(first.archivedCurrentTask?.archivedTaskDir ?? ""), false);
 
-  const second = enforceTaskRetention(project, "newer-task");
+  const second = enforceTaskRetention(project, "newer-task", nowMs);
 
   assert.equal(second.archivedCurrentTask, undefined);
   assert.deepEqual(second.prunedArchivedTasks, []);
@@ -4427,6 +4714,7 @@ test("enforceTaskRetention prunes completed tasks with non-ascii archive names",
     content: {
       title: "Older task",
       status: "end.completed",
+      completedAt: "2026-01-01T00:00:00.000Z",
       goal: { text: "Archive older task" },
       tasks: [],
       retrospective: { summary: "Older complete." },
@@ -4440,23 +4728,18 @@ test("enforceTaskRetention prunes completed tasks with non-ascii archive names",
     content: {
       title: "Newer task",
       status: "end.completed",
+      completedAt: "2026-02-01T00:00:00.000Z",
       goal: { text: "Archive newer task" },
       tasks: [],
       retrospective: { summary: "Newer complete." },
     },
   });
 
-  const olderMetaPath = path.join(root, ".claw", "tasks", "同步最新远端并刷新本地-Codex-插件与-CLI", "meta.json");
-  const olderMeta = JSON.parse(fs.readFileSync(olderMetaPath, "utf-8")) as { updatedAt: string };
-  olderMeta.updatedAt = "2026-01-01T00:00:00.000Z";
-  fs.writeFileSync(olderMetaPath, `${JSON.stringify(olderMeta, null, 2)}\n`, "utf-8");
-
-  const newerMetaPath = path.join(root, ".claw", "tasks", "newer-task", "meta.json");
-  const newerMeta = JSON.parse(fs.readFileSync(newerMetaPath, "utf-8")) as { updatedAt: string };
-  newerMeta.updatedAt = "2026-02-01T00:00:00.000Z";
-  fs.writeFileSync(newerMetaPath, `${JSON.stringify(newerMeta, null, 2)}\n`, "utf-8");
-
-  const result = enforceTaskRetention(resolveContext(root).project, "newer-task");
+  const result = enforceTaskRetention(
+    resolveContext(root).project,
+    "newer-task",
+    Date.parse("2026-03-01T00:00:00.000Z"),
+  );
 
   assert.equal(result.archivedCurrentTask?.taskName, "newer-task");
   assert.equal(result.prunedArchivedTasks[0]?.taskName, "同步最新远端并刷新本地-Codex-插件与-CLI");
@@ -4464,7 +4747,7 @@ test("enforceTaskRetention prunes completed tasks with non-ascii archive names",
   assert.equal(fs.existsSync(path.join(root, ".claw", "archive", "tasks", "newer-task")), true);
 });
 
-test("enforceTaskRetention also archives legacy completed tasks still left in active tasks", async () => {
+test("enforceTaskRetention uses only completedAt age for active task archive eligibility", async () => {
   const root = createFixture("task-retention-legacy-completed");
   initProject({
     cwd: root,
@@ -4479,10 +4762,10 @@ test("enforceTaskRetention also archives legacy completed tasks still left in ac
     goalText: "Archive legacy completed task",
     content: {
       title: "Legacy completed",
-      status: "end.completed",
+      status: "process.active",
+      completedAt: "2026-01-01T00:00:00.000Z",
       goal: { text: "Archive legacy completed task" },
       tasks: [],
-      retrospective: { summary: "Legacy complete." },
     },
   });
   await writePlan({
@@ -4493,20 +4776,40 @@ test("enforceTaskRetention also archives legacy completed tasks still left in ac
     content: {
       title: "Current completed",
       status: "end.completed",
+      completedAt: "2026-03-01T00:00:00.000Z",
       goal: { text: "Archive current completed task" },
       tasks: [],
       retrospective: { summary: "Current complete." },
     },
   });
+  await writePlan({
+    cwd: root,
+    taskName: "missing-completed-at",
+    title: "Missing completedAt",
+    goalText: "Remain unarchived without completedAt",
+    content: {
+      title: "Missing completedAt",
+      status: "end.completed",
+      goal: { text: "Remain unarchived without completedAt" },
+      tasks: [],
+      retrospective: { summary: "Complete without timestamp." },
+    },
+  });
 
   const project = resolveContext(root).project;
-  const result = enforceTaskRetention(project, "current-completed");
+  const result = enforceTaskRetention(project, "current-completed", Date.parse("2026-03-01T00:59:59.999Z"));
 
-  assert.equal(result.archivedCurrentTask?.taskName, "current-completed");
+  assert.equal(result.archivedCurrentTask, undefined);
   assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "legacy-completed")), false);
-  assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "current-completed")), false);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "current-completed")), true);
   assert.equal(fs.existsSync(path.join(root, ".claw", "archive", "tasks", "legacy-completed")), true);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "archive", "tasks", "current-completed")), false);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "missing-completed-at")), true);
+
+  const boundary = enforceTaskRetention(project, "current-completed", Date.parse("2026-03-01T01:00:00.000Z"));
+  assert.equal(boundary.archivedCurrentTask?.taskName, "current-completed");
   assert.equal(fs.existsSync(path.join(root, ".claw", "archive", "tasks", "current-completed")), true);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "missing-completed-at")), true);
 });
 
 test("concurrent plan creates fail fast with PLAN_WRITE_CONFLICT", async () => {

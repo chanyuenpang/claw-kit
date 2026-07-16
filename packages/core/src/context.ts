@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { ClawError } from "./errors.js";
-import { readJsonFile, withFileLock } from "./io.js";
+import { readJsonFile } from "./io.js";
 import { ensureInsideDir, findProjectRoot, isValidTaskName, normalizePlanFile, normalizeTaskName } from "./paths.js";
+import { resolveSessionBoundPlan } from "./session-bindings.js";
 import type { MemoryEmbeddingConfig, ProjectConfig, ProjectContext, ResolvedContext, TaskContext, TaskMeta } from "./types.js";
 
 const CORE_VERSION = readCoreVersion();
@@ -30,19 +31,25 @@ export function resolveProjectContext(cwd: string): ProjectContext {
   };
 }
 
-export function resolveTaskContext(project: ProjectContext, taskName: string): TaskContext {
+export function resolveTaskContext(project: ProjectContext, taskName: string, ownerSessionKey?: string): TaskContext {
   const resolvedTaskName = resolveTaskName(taskName);
   const taskDir = path.join(project.tasksDir, resolvedTaskName);
   const metaPath = path.join(taskDir, "meta.json");
-  if (!fs.existsSync(metaPath)) {
+  const rootPlanPath = path.join(taskDir, "plan.json");
+  const legacyMeta = fs.existsSync(metaPath) ? readJsonFile<TaskMeta>(metaPath) : undefined;
+  if (!fs.existsSync(rootPlanPath) && !legacyMeta) {
     throw new ClawError("TASK_NOT_FOUND", `Task "${resolvedTaskName}" does not exist.`, { taskName: resolvedTaskName });
   }
 
-  const meta = readJsonFile<TaskMeta>(metaPath);
-  if (!meta.rootPlan) {
-    meta.rootPlan = "plan.json";
-  }
-  const activePlan = normalizePlanFile(typeof meta.activePlan === "string" ? meta.activePlan : "plan.json");
+  const boundPlanPath = resolveSessionBoundPlan(project, ownerSessionKey);
+  const boundPlanInsideTask = boundPlanPath ? path.relative(taskDir, boundPlanPath) : undefined;
+  const activePlan = normalizePlanFile(
+    boundPlanInsideTask && !boundPlanInsideTask.startsWith("..") && !path.isAbsolute(boundPlanInsideTask)
+      ? boundPlanInsideTask
+      : typeof legacyMeta?.activePlan === "string"
+        ? legacyMeta.activePlan
+        : "plan.json",
+  );
   const activePlanPath = ensureInsideDir(taskDir, activePlan);
   if (!activePlanPath) {
     throw new ClawError("ACTIVE_PLAN_INVALID", `Task "${resolvedTaskName}" has an invalid activePlan.`, {
@@ -61,10 +68,9 @@ export function resolveTaskContext(project: ProjectContext, taskName: string): T
     project,
     taskName: resolvedTaskName,
     taskDir,
-    metaPath,
-    meta,
     activePlan,
     activePlanPath,
+    ...(legacyMeta ? { legacyMetaPath: metaPath, legacyMeta } : {}),
   };
 }
 
@@ -76,81 +82,30 @@ export function resolveContext(cwd: string, taskName?: string): ResolvedContext 
   };
 }
 
-export function ensureTaskMeta(
+export function ensureTaskContext(
   project: ProjectContext,
   taskName: string,
-  description?: string,
-  ownerSessionKey?: string,
 ): TaskContext {
   const resolvedTaskName = resolveTaskName(taskName);
   const taskDir = path.join(project.tasksDir, resolvedTaskName);
   const metaPath = path.join(taskDir, "meta.json");
-  const now = new Date().toISOString();
-  let meta: TaskMeta;
-  const createdTask = !fs.existsSync(metaPath);
-
-  if (!createdTask) {
-    meta = readJsonFile<TaskMeta>(metaPath);
-    meta.updatedAt = now;
-    if (description && !meta.description) {
-      meta.description = description;
-    }
-    if (ownerSessionKey?.trim()) {
-      const normalizedOwnerSessionKey = ownerSessionKey.trim();
-      if (meta.ownerSessionKey !== normalizedOwnerSessionKey) {
-        meta.ownerSessionKey = normalizedOwnerSessionKey;
-        meta.boundAt = now;
-      } else if (!meta.boundAt) {
-        meta.boundAt = now;
-      }
-    }
-  } else {
-    meta = {
-      name: resolvedTaskName,
-      description: description ?? "",
-      projectId: project.projectId,
-      createdAt: now,
-      updatedAt: now,
-      subagents: [],
-      status: "active",
-      rootPlan: "plan.json",
-      activePlan: "plan.json",
-      ...(ownerSessionKey?.trim()
-        ? {
-            ownerSessionKey: ownerSessionKey.trim(),
-            boundAt: now,
-          }
-        : {}),
-    };
-  }
-
   fs.mkdirSync(taskDir, { recursive: true });
-  withFileLock(metaPath, () => {
-    fs.writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`, "utf-8");
-  });
-
-  const task = {
+  const legacyMeta = fs.existsSync(metaPath) ? readJsonFile<TaskMeta>(metaPath) : undefined;
+  const activePlan = normalizePlanFile(typeof legacyMeta?.activePlan === "string" ? legacyMeta.activePlan : "plan.json");
+  return {
     project,
     taskName: resolvedTaskName,
     taskDir,
-    metaPath,
-    meta,
-    activePlan: normalizePlanFile(meta.activePlan),
-    activePlanPath: path.join(taskDir, normalizePlanFile(meta.activePlan)),
+    activePlan,
+    activePlanPath: path.join(taskDir, activePlan),
+    ...(legacyMeta ? { legacyMetaPath: metaPath, legacyMeta } : {}),
   };
-
-  if (createdTask) {
-    task.meta.createdAt = now;
-  }
-
-  return task;
 }
 
-export function saveTaskMeta(task: TaskContext): void {
-  task.meta.updatedAt = new Date().toISOString();
-  withFileLock(task.metaPath, () => {
-    fs.writeFileSync(task.metaPath, `${JSON.stringify(task.meta, null, 2)}\n`, "utf-8");
-  });
+export function removeLegacyTaskMeta(task: TaskContext): void {
+  if (task.legacyMetaPath && fs.existsSync(task.legacyMetaPath)) {
+    fs.unlinkSync(task.legacyMetaPath);
+  }
 }
 
 export function resolveTaskName(taskName: string): string {

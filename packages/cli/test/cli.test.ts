@@ -138,6 +138,17 @@ async function waitForCompletionRefreshStatus(statusFile: string, timeoutMs = 15
   throw new Error(`Timed out waiting for completion refresh status file: ${statusFile}`);
 }
 
+async function waitForCondition(predicate: () => boolean, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`Timed out waiting for condition after ${timeoutMs}ms.`);
+}
+
 function getLatestCompletionRefreshStatusFile(root: string): string | null {
   const logDir = path.join(root, ".claw", "logs", "completion-refresh");
   if (!fs.existsSync(logDir)) {
@@ -381,6 +392,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   );
   assert.equal("stage" in taskDone, false);
   const truthDelegate = ((taskDone.delegateSubagents as JsonRecord[])[0] ?? {});
+  const adrDelegate = ((taskDone.delegateSubagents as JsonRecord[])[1] ?? {});
   assert.equal(truthDelegate.name, "truth-writer");
   assert.equal(truthDelegate.skill, "external-truth-writer");
   assert.equal(truthDelegate.dispatch, "when_reusable_truth_confirmed");
@@ -393,10 +405,17 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
     truthDelegate.inputContract,
     "curated completed subtask report containing the reusable facts and evidence needed for deposition; canonical target routing belongs to the truth writer",
   );
+  assert.equal(adrDelegate.name, "adr-writer");
+  assert.equal(adrDelegate.dispatch, "required");
+  assert.equal(adrDelegate.waitForCompletion, false);
+  assert.equal(
+    adrDelegate.inputContract,
+    "updated active root plan.json path after retrospective and durable keyDecisions are persisted; plan done retains this path for at least one hour so the ADR writer can continue asynchronously; decision extraction and canonical target routing belong to the ADR writer",
+  );
   assert.deepEqual(taskDone.nextsteps, [
     "1. Clear thread progress with `update_plan`.",
     "2. Read the returned `truth-writer` entry's `dispatch`. For `when_reusable_truth_confirmed`, the main agent must evaluate reusable truth and dispatch only after confirmation.",
-    "3. First write both `retrospective` and `keyDecisions` back into the plan, then execute the `adr-writer` contract with `dispatch: required` using that updated completed `plan.json`.",
+    "3. First write both `retrospective` and `keyDecisions` back into the plan, then execute the `adr-writer` contract with `dispatch: required` using that updated active root `plan.json` path. Do not wait for the writer before running `claw plan done`; delayed archive keeps the path readable for at least one hour.",
   ]);
   assert.deepEqual(taskDone.recommendedCommands, [
     "claw plan edit --task e2e-task --patch <completed-plan.json>",
@@ -404,7 +423,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   ]);
   assert.equal(
     taskDone.notes,
-    "Truth dispatch requires the main agent's reusable-value confirmation; ADR dispatch is required for root-plan closeout. Honor every field in a dispatched delegate contract.",
+    "Truth dispatch requires the main agent's reusable-value confirmation; ADR dispatch is required but remains asynchronous for root-plan closeout. Root `claw plan done` records completedAt and keeps the plan path readable for at least one hour. Honor every field in a dispatched delegate contract.",
   );
 
   const truthInputPath = path.join(root, "truth-report.md");
@@ -435,7 +454,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   const gitnexus = refreshStatus.gitnexus as JsonRecord;
   assert.equal(refreshStatus.ok, true);
   assert.ok(Number((memory.project as JsonRecord).indexedCount) > 0);
-  assert.equal((memory.task as JsonRecord | undefined), undefined);
+  assert.ok(memory.task as JsonRecord | undefined);
   assert.equal(gitnexus.command, "gitnexus analyze");
   assert.equal(gitnexus.enabled, true);
   assert.equal(doneResult.planSummary, "1/1 e2e-task");
@@ -820,6 +839,61 @@ test("cli search accepts a positional query for project recall", () => {
   assert.ok(Array.isArray(searchResult.results));
 });
 
+test("cli search reuses one persistent embedding session across commands", { concurrency: false }, async () => {
+  const root = createFixture("search-persistent-worker");
+  const runtimeDir = path.join(root, "daemon-runtime");
+  const eventLog = path.join(runtimeDir, "events.jsonl");
+  const env = {
+    CLAW_EMBEDDING_DAEMON_RUNTIME_DIR: runtimeDir,
+    CLAW_EMBEDDING_DAEMON_TEST_MOCK: "1",
+    CLAW_EMBEDDING_DAEMON_IDLE_TTL_MS: "1000",
+    CLAW_EMBEDDING_DAEMON_EVENT_LOG: eventLog,
+  };
+  runClaw(["init", "--name", "Search Persistent Worker", "--ext-path", "docs/"], root, env);
+  fs.mkdirSync(path.join(root, "docs"), { recursive: true });
+  fs.writeFileSync(path.join(root, "docs", "guide.md"), "persistent worker reference document\n", "utf-8");
+  fs.writeFileSync(
+    path.join(root, ".claw", "project.json"),
+    JSON.stringify({
+      version: cliPackageVersion,
+      id: "search-persistent-worker",
+      name: "Search Persistent Worker",
+      maxTasksToKeep: 99,
+      goalMode: true,
+      truthDispatch: "per_task",
+      contextPaths: [],
+      memory: {
+        enabled: true,
+        externalDocPaths: ["docs/"],
+        embedding: {
+          provider: "local",
+          model: "Snowflake/snowflake-arctic-embed-xs",
+          local: { modelCacheDir: path.join(root, ".model-cache"), device: "cpu" },
+        },
+      },
+      gitnexus: false,
+    }, null, 2),
+    "utf-8",
+  );
+
+  runClaw(["search", "index", "--refresh"], root, env);
+  const first = runClaw(["search", "--query", "first unrelated semantic lookup"], root, env);
+  const second = runClaw(["search", "--query", "second distinct semantic lookup"], root, env);
+  assert.ok(Array.isArray(first.results));
+  assert.ok(Array.isArray(second.results));
+
+  const statePath = path.join(runtimeDir, "state.json");
+  await waitForCondition(() => !fs.existsSync(statePath), 4000);
+  const events = fs.readFileSync(eventLog, "utf-8")
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as { event: string; pid: number });
+  assert.equal(events.filter((event) => event.event === "daemon.started").length, 1);
+  assert.equal(events.filter((event) => event.event === "session.created").length, 1);
+  assert.equal(events.filter((event) => event.event === "request.completed").length, 3);
+  assert.equal(new Set(events.map((event) => event.pid)).size, 1);
+});
+
 test("cli plan edit append-tasks auto-assigns ids when omitted", () => {
   const root = createFixture("append-auto-task-ids");
   runClaw(["init", "--name", "Append Auto Ids", "--planning", "false"], root);
@@ -1023,6 +1097,7 @@ test("cli respects project override toggles for goal mode and final-only truth d
   assert.equal(adrDelegate.name, "adr-writer");
   assert.equal(truthDelegate.dispatch, "when_reusable_truth_confirmed");
   assert.equal(adrDelegate.dispatch, "required");
+  assert.equal(adrDelegate.waitForCompletion, false);
 });
 
 test("cli task done requires --choice when the template defines guidance.onDone.choices", () => {
@@ -1225,8 +1300,9 @@ test("cli task status changed back to pending does not return nextTask", () => {
 
 test("cli subplan create keeps task rootPlan stable and derives goal from the parent task", () => {
   const root = createFixture("cli-subplan-create");
-  runClaw(["init", "--name", "Subplan Write", "--planning", "false"], root);
-  runClaw(["plan", "create", "--title", "demo-task", "--goal", "Parent goal"], root);
+  const env = { CODEX_THREAD_ID: "thread-subplan-create" };
+  runClaw(["init", "--name", "Subplan Write", "--planning", "false"], root, env);
+  runClaw(["plan", "create", "--title", "demo-task", "--goal", "Parent goal"], root, env);
 
   const patchPath = path.join(root, "root-tasks.json");
   fs.writeFileSync(
@@ -1240,15 +1316,17 @@ test("cli subplan create keeps task rootPlan stable and derives goal from the pa
     ),
     "utf-8",
   );
-  runClaw(["plan", "edit", "--task", "demo-task", "--patch", patchPath], root);
+  runClaw(["plan", "edit", "--task", "demo-task", "--patch", patchPath], root, env);
 
-  const result = runClaw(["subplan", "create", "--parent", "demo-task", "--task-id", "1"], root);
+  const result = runClaw(["subplan", "create", "--parent", "demo-task", "--task-id", "1"], root, env);
 
-  assert.match(String(result.planPath), /tasks[\\/]demo-task[\\/]plans[\\/]Implement-child-work\.json$/);
-  const meta = JSON.parse(fs.readFileSync(path.join(root, ".claw", "tasks", "demo-task", "meta.json"), "utf-8")) as JsonRecord;
+  assert.match(String(result.planPath), /tasks[\\/]demo-task[\\/]Implement-child-work\.json$/);
+  const registry = JSON.parse(
+    fs.readFileSync(path.join(root, ".claw", "runtime", "session-bindings.json"), "utf-8"),
+  ) as { bindings: Record<string, string> };
   const childPlan = JSON.parse(fs.readFileSync(String(result.planPath), "utf-8")) as JsonRecord;
-  assert.equal(meta.rootPlan, "plan.json");
-  assert.equal(meta.activePlan, "plans/Implement-child-work.json");
+  assert.equal(registry.bindings["thread-subplan-create"], "tasks/demo-task/Implement-child-work.json");
+  assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "demo-task", "meta.json")), false);
   assert.equal(childPlan.title, "Implement child work");
   assert.equal(childPlan.status, "process.discussing");
   assert.deepEqual(result.nextsteps, [
@@ -1345,8 +1423,9 @@ test("cli plan, subplan, and template validate share the skill-local template re
 
 test("cli plan done on a subplan resumes the parent plan instead of archiving the whole task", () => {
   const root = createFixture("cli-subplan-done-resume-parent");
-  runClaw(["init", "--name", "Subplan Done Resume Parent", "--max-tasks-to-keep", "99", "--planning", "false"], root);
-  runClaw(["plan", "create", "--title", "demo-task", "--goal", "Parent goal"], root);
+  const env = { CODEX_THREAD_ID: "thread-subplan-done" };
+  runClaw(["init", "--name", "Subplan Done Resume Parent", "--max-tasks-to-keep", "99", "--planning", "false"], root, env);
+  runClaw(["plan", "create", "--title", "demo-task", "--goal", "Parent goal"], root, env);
 
   const rootPatchPath = path.join(root, "root-tasks.json");
   fs.writeFileSync(
@@ -1363,9 +1442,9 @@ test("cli plan done on a subplan resumes the parent plan instead of archiving th
     ),
     "utf-8",
   );
-  runClaw(["plan", "edit", "--task", "demo-task", "--patch", rootPatchPath], root);
-  runClaw(["plan", "edit", "--task", "demo-task", "--plan-status", "process.active"], root);
-  runClaw(["subplan", "create", "--parent", "demo-task", "--task-id", "1"], root);
+  runClaw(["plan", "edit", "--task", "demo-task", "--patch", rootPatchPath], root, env);
+  runClaw(["plan", "edit", "--task", "demo-task", "--plan-status", "process.active"], root, env);
+  runClaw(["subplan", "create", "--parent", "demo-task", "--task-id", "1"], root, env);
 
   const childPatchPath = path.join(root, "child-plan.json");
   fs.writeFileSync(
@@ -1380,19 +1459,22 @@ test("cli plan done on a subplan resumes the parent plan instead of archiving th
     ),
     "utf-8",
   );
-  runClaw(["plan", "edit", "--task", "demo-task", "--plan", "plans/Implement-child-work.json", "--patch", childPatchPath], root);
-  runClaw(["plan", "edit", "--task", "demo-task", "--plan", "plans/Implement-child-work.json", "--plan-status", "process.active"], root);
-  runClaw(["plan", "edit", "--task", "demo-task", "--plan", "plans/Implement-child-work.json", "--task-id", "1", "--task-status", "done"], root);
+  runClaw(["plan", "edit", "--task", "demo-task", "--plan", "Implement-child-work.json", "--patch", childPatchPath], root, env);
+  runClaw(["plan", "edit", "--task", "demo-task", "--plan", "Implement-child-work.json", "--plan-status", "process.active"], root, env);
+  runClaw(["plan", "edit", "--task", "demo-task", "--plan", "Implement-child-work.json", "--task-id", "1", "--task-status", "done"], root, env);
 
   const doneResult = runClaw(
-    ["plan", "done", "--task", "demo-task", "--plan", "plans/Implement-child-work.json", "--summary", "Child complete."],
+    ["plan", "done", "--task", "demo-task", "--plan", "Implement-child-work.json", "--summary", "Child complete."],
     root,
+    env,
   );
 
-  const meta = JSON.parse(fs.readFileSync(path.join(root, ".claw", "tasks", "demo-task", "meta.json"), "utf-8")) as JsonRecord;
+  const registry = JSON.parse(
+    fs.readFileSync(path.join(root, ".claw", "runtime", "session-bindings.json"), "utf-8"),
+  ) as { bindings: Record<string, string> };
   const parentPlan = JSON.parse(fs.readFileSync(path.join(root, ".claw", "tasks", "demo-task", "plan.json"), "utf-8")) as JsonRecord;
   const childPlan = JSON.parse(
-    fs.readFileSync(path.join(root, ".claw", "tasks", "demo-task", "plans", "Implement-child-work.json"), "utf-8"),
+    fs.readFileSync(path.join(root, ".claw", "tasks", "demo-task", "Implement-child-work.json"), "utf-8"),
   ) as JsonRecord;
 
   assert.equal(doneResult.planStatus, "process.active");
@@ -1408,8 +1490,7 @@ test("cli plan done on a subplan resumes the parent plan instead of archiving th
   });
   assert.equal((doneResult.goalMode as JsonRecord).setWhen, "on_enter_process_active");
   assert.equal("archivedPlanPath" in doneResult, false);
-  assert.equal(meta.activePlan, "plan.json");
-  assert.equal(meta.status, "active");
+  assert.equal(registry.bindings["thread-subplan-done"], "tasks/demo-task/plan.json");
   assert.equal(((parentPlan.tasks as JsonRecord[])[0] as JsonRecord).status, "done");
   assert.equal(((parentPlan.tasks as JsonRecord[])[1] as JsonRecord).status, "pending");
   assert.equal(childPlan.status, "end.completed");
@@ -1712,29 +1793,43 @@ test("cli check auto-corrects project.json into explicit protocol fields", () =>
   assert.equal(projectConfig.gitnexus, false);
 });
 
-test("cli plan done always archives the current completed task", async () => {
+test("cli plan done records completedAt and retains the current task path", async () => {
   const root = createFixture("plan-done-archive");
-  const env = { CLAW_EMBEDDING_MOCK: "1" };
+  const env = { CLAW_EMBEDDING_MOCK: "1", CODEX_THREAD_ID: "thread-root-done" };
   runClaw(["init", "--name", "Archive On Complete", "--max-tasks-to-keep", "99", "--planning", "false"], root, env);
   runClaw(["plan", "create", "--title", "archive-task", "--goal", "Archive after completion"], root, env);
 
   const doneResult = runClaw(
-    ["plan", "done", "--task", "archive-task", "--summary", "Archive this completed task."],
+    ["plan", "done", "--task", "archive-task", "--summary", "Complete this task without immediate archival."],
     root,
     env,
   );
 
   assert.equal("completionRefresh" in doneResult, false);
-  assert.match(String(doneResult.planPath), /archive[\\/]tasks[\\/]archive-task[\\/].*plan\.json$/);
-  assert.equal(String(doneResult.archivedPlanPath), String(doneResult.planPath));
+  assert.match(String(doneResult.planPath), /\.claw[\\/]tasks[\\/]archive-task[\\/].*plan\.json$/);
+  assert.equal("archivedPlanPath" in doneResult, false);
+  const completedPlan = JSON.parse(fs.readFileSync(String(doneResult.planPath), "utf-8")) as JsonRecord;
+  assert.match(String(completedPlan.completedAt), /^\d{4}-\d{2}-\d{2}T/);
   const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
   const memory = refreshStatus.memory as JsonRecord;
-  assert.equal((memory.task as JsonRecord | undefined), undefined);
-  assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "archive-task")), false);
-  assert.equal(fs.existsSync(path.join(root, ".claw", "archive", "tasks", "archive-task")), true);
+  assert.ok(memory.task as JsonRecord | undefined);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "archive-task")), true);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "archive", "tasks", "archive-task")), false);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "runtime", "session-bindings.json")), false);
+  assert.equal("activeWorkflow" in runClaw(["context"], root, env), false);
 });
 
-test("cli plan show automatically reads archived tasks when the active task is archived away", () => {
+test("claw context does not discover an unfinished plan without a session binding", () => {
+  const root = createFixture("context-binding-only");
+  runClaw(["init", "--name", "Binding Only", "--planning", "false"], root);
+  runClaw(["plan", "create", "--title", "unbound-task", "--goal", "Stay unbound"], root);
+
+  const context = runClaw(["context"], root, { CODEX_THREAD_ID: "different-thread" });
+
+  assert.equal("activeWorkflow" in context, false);
+});
+
+test("cli plan show reads a completed task during the delayed archive window", () => {
   const root = createFixture("plan-show-archived");
   runClaw(["init", "--name", "Archived Show", "--max-tasks-to-keep", "99", "--planning", "false"], root);
   runClaw(["plan", "create", "--title", "archived-task", "--goal", "Show archived plan"], root);
@@ -1742,10 +1837,31 @@ test("cli plan show automatically reads archived tasks when the active task is a
 
   const result = runClaw(["plan", "show", "--task", "archived-task"], root);
 
-  assert.equal(result.archived, true);
-  assert.match(String(result.planPath), /archive[\\/]tasks[\\/]archived-task[\\/].*plan\.json$/);
+  assert.equal("archived" in result, false);
+  assert.match(String(result.planPath), /\.claw[\\/]tasks[\\/]archived-task[\\/].*plan\.json$/);
   const planView = result.planView as JsonRecord;
   assert.equal(String(planView.collapsedSummary), "0/1 archived-task");
+});
+
+test("cli plan done sweeps another task only when completedAt is older than one hour", () => {
+  const root = createFixture("plan-done-delayed-archive-sweep");
+  const env = { CLAW_EMBEDDING_MOCK: "1" };
+  runClaw(["init", "--name", "Delayed Archive Sweep", "--max-tasks-to-keep", "99", "--planning", "false"], root, env);
+  runClaw(["plan", "create", "--title", "older-task", "--goal", "Older task"], root, env);
+  runClaw(["plan", "done", "--task", "older-task", "--summary", "Older complete."], root, env);
+
+  const olderPlanPath = path.join(root, ".claw", "tasks", "older-task", "plan.json");
+  const olderPlan = JSON.parse(fs.readFileSync(olderPlanPath, "utf-8")) as JsonRecord;
+  olderPlan.completedAt = "2020-01-01T00:00:00.000Z";
+  fs.writeFileSync(olderPlanPath, `${JSON.stringify(olderPlan, null, 2)}\n`, "utf-8");
+
+  runClaw(["plan", "create", "--title", "fresh-task", "--goal", "Fresh task"], root, env);
+  runClaw(["plan", "done", "--task", "fresh-task", "--summary", "Fresh complete."], root, env);
+
+  assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "older-task")), false);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "archive", "tasks", "older-task")), true);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "fresh-task")), true);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "archive", "tasks", "fresh-task")), false);
 });
 
 test("cli plan done skips gitnexus refresh when project config disables it", async () => {
@@ -2177,11 +2293,10 @@ test("plan create binds owner session key and SessionStart recovers active workf
   runClaw(["plan", "edit", "--task", "demo-task", "--patch", "updated-plan.json"], root, env);
   runClaw(["plan", "edit", "--task", "demo-task", "--plan-status", "process.active"], root, env);
 
-  const meta = JSON.parse(
-    fs.readFileSync(path.join(root, ".claw", "tasks", "demo-task", "meta.json"), "utf-8"),
-  ) as { ownerSessionKey?: string; boundAt?: string };
-  assert.equal(meta.ownerSessionKey, "thread-demo");
-  assert.ok(meta.boundAt);
+  const registry = JSON.parse(
+    fs.readFileSync(path.join(root, ".claw", "runtime", "session-bindings.json"), "utf-8"),
+  ) as { bindings: Record<string, string> };
+  assert.equal(registry.bindings["thread-demo"], "tasks/demo-task/plan.json");
 
   const context = runClaw(["context"], root, env);
   const activeWorkflow = context.activeWorkflow as JsonRecord;

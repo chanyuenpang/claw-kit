@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { buildCompletionHooks } from "./completion-hooks.js";
-import { ensureTaskMeta, resolveProjectContext, resolveTaskContext, resolveTaskName, saveTaskMeta } from "./context.js";
+import { ensureTaskContext, removeLegacyTaskMeta, resolveProjectContext, resolveTaskContext, resolveTaskName } from "./context.js";
 import { resolvePlanEffectiveConfig } from "./effective-config.js";
 import { ClawError } from "./errors.js";
 import { readJsonFile, withFileLock, withSerializedAccess, writeJsonFile } from "./io.js";
@@ -12,6 +12,7 @@ import {
 import { buildPlanViewModel } from "./plan-view.js";
 import { getTemplateTaskDoneChoices, renderSeedTemplateText, resolveSeedPlanTemplate } from "./plan-templates.js";
 import { ensureInsideDir, normalizePlanFile, slugFromFilePath } from "./paths.js";
+import { bindSessionToPlan, unbindSession } from "./session-bindings.js";
 import type {
   LegacyPlanStatus,
   PlanDocument,
@@ -58,11 +59,18 @@ const PLAN_TASK_STATUSES: PlanTaskStatus[] = ["pending", "in_progress", "subagen
 export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult & { events: PlanEvent[] }> {
   const project = resolveProjectContext(input.cwd);
   const taskName = deriveTaskName(input);
-  const createdTask = !fs.existsSync(path.join(project.tasksDir, taskName, "meta.json"));
-  const task = ensureTaskMeta(project, taskName, input.description, input.ownerSessionKey);
+  const createdTask = !fs.existsSync(path.join(project.tasksDir, taskName, "plan.json"));
+  const task = ensureTaskContext(project, taskName);
   const planFile = derivePlanFile(task, input.filePath, input.parentTaskId);
   const planPath = requireInsideTask(task, planFile);
   const createdPlan = !fs.existsSync(planPath);
+  if (input.parentTaskId !== undefined && !createdPlan) {
+    throw new ClawError("PLAN_ALREADY_EXISTS", `Subplan "${planFile}" already exists for task "${taskName}".`, {
+      taskName,
+      planFile,
+      planPath,
+    });
+  }
   const existing = createdPlan ? undefined : readJsonFile<PlanDocument>(planPath);
   const existingStatus = existing ? normalizePlanDocument(existing).status : undefined;
   const effectiveStatus = normalizePlanStatus(input.planStatus) ?? input.content?.status ?? existingStatus ?? "prepare.requirements";
@@ -112,14 +120,10 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
     writeJsonFile(planPath, plan);
   });
 
-  task.meta.activePlan = planFile;
-  task.meta.rootPlan = task.meta.rootPlan ?? "plan.json";
-  task.meta.rules = plan.rules;
-  task.meta.status = taskMetaStatusForPlanStatus(plan.status);
-  if (plan.taskType) {
-    task.meta.taskType = plan.taskType;
+  bindSessionToPlan(project, input.ownerSessionKey, planPath);
+  if (input.ownerSessionKey) {
+    removeLegacyTaskMeta(task);
   }
-  saveTaskMeta(task);
 
   const eventType = createdPlan ? "plan_created" : "plan_changed";
   const event = buildPlanEvent(eventType, {
@@ -132,7 +136,6 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
   return {
     taskName,
     taskDir: task.taskDir,
-    metaPath: task.metaPath,
     planPath,
     planFile,
     planStatus: plan.status,
@@ -161,7 +164,7 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
 }
 
 export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & { events: PlanEvent[] }> {
-  const task = resolveTaskContext(resolveProjectContext(input.cwd), input.taskName);
+  const task = resolveTaskContext(resolveProjectContext(input.cwd), input.taskName, input.ownerSessionKey);
   const planFile = normalizePlanFile(input.planFile ?? task.activePlan);
   const planPath = requireInsideTask(task, planFile);
   if (!fs.existsSync(planPath)) {
@@ -198,6 +201,12 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
 
     if (input.patch) {
       applyPlanPatch(next, input.patch);
+    }
+
+    if (previousStatus !== "end.completed" && next.status === "end.completed") {
+      next.completedAt = new Date().toISOString();
+    } else if (previousStatus === "end.completed" && next.status !== "end.completed") {
+      delete next.completedAt;
     }
 
     if (input.appendTasks?.length) {
@@ -294,14 +303,6 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
       }
       writeJsonFile(planPath, next);
     });
-    task.meta.activePlan = planFile;
-    task.meta.rules = next.rules;
-    task.meta.status = taskMetaStatusForPlanStatus(next.status);
-    if (next.taskType !== undefined) {
-      task.meta.taskType = next.taskType;
-    }
-    saveTaskMeta(task);
-
     if (previousStatus !== next.status || input.patch || changedTaskIds.length > 0 || input.appendTasks?.length) {
       events.unshift(
         buildPlanEvent("plan_changed", {
@@ -341,15 +342,15 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
       resultPlanFile = resumedParent.planFile;
       resultPlanPath = resumedParent.planPath;
       resultPlan = resumedParent.plan;
-      task.meta.activePlan = resumedParent.planFile;
-      task.meta.rules = resumedParent.plan.rules;
-      task.meta.status = taskMetaStatusForPlanStatus(resumedParent.plan.status);
-      if (resumedParent.plan.taskType !== undefined) {
-        task.meta.taskType = resumedParent.plan.taskType;
-      } else {
-        delete task.meta.taskType;
-      }
-      saveTaskMeta(task);
+    }
+
+    if (resultPlan.status.startsWith("end.")) {
+      unbindSession(task.project, input.ownerSessionKey);
+    } else {
+      bindSessionToPlan(task.project, input.ownerSessionKey, resultPlanPath);
+    }
+    if (input.ownerSessionKey) {
+      removeLegacyTaskMeta(task);
     }
 
     return {
@@ -407,8 +408,8 @@ export function showPlan(input: PlanShowInput): PlanShowResult {
 }
 
 export async function createSubplan(input: SubplanWriteInput): Promise<PlanWriteResult & { events: PlanEvent[] }> {
-  const parentTask = resolveTaskContext(resolveProjectContext(input.cwd), input.parentTaskName);
-  const parentPlanFile = normalizePlanFile(parentTask.meta.rootPlan ?? "plan.json");
+  const parentTask = resolveTaskContext(resolveProjectContext(input.cwd), input.parentTaskName, input.ownerSessionKey);
+  const parentPlanFile = parentTask.activePlan;
   const parentPlanPath = requireInsideTask(parentTask, parentPlanFile);
   const parentPlan = normalizePlanDocument(readJsonFile<PlanDocument>(parentPlanPath));
   const parentPlanTask = parentPlan.tasks.find((task) => task.id === input.parentTaskId);
@@ -425,7 +426,7 @@ export async function createSubplan(input: SubplanWriteInput): Promise<PlanWrite
   }
 
   const subplanTitle = parentPlanTask.title;
-  const derivedPlanFile = normalizePlanFile(`plans/${slugFromFilePath(subplanTitle)}.json`);
+  const derivedPlanFile = normalizePlanFile(`${slugFromFilePath(subplanTitle)}.json`);
   const derivedGoalText = parentPlanTask.detail?.trim()
     ? `${parentPlanTask.title}: ${parentPlanTask.detail}`
     : parentPlanTask.title;
@@ -822,7 +823,7 @@ function derivePlanFile(task: TaskContext, filePath?: string, parentTaskId?: num
   const normalized = normalizePlanFile(filePath);
   if (parentTaskId !== undefined) {
     const baseName = path.posix.basename(normalized);
-    return normalizePlanFile(`plans/${baseName}`);
+    return normalizePlanFile(baseName);
   }
   if (normalized === "plan.json") {
     return normalized;
@@ -873,12 +874,13 @@ function resolveShowPlanTarget(input: PlanShowInput): {
 
   const archivedTaskDir = path.join(project.clawDir, "archive", "tasks", input.taskName);
   const archivedMetaPath = path.join(archivedTaskDir, "meta.json");
-  if (!fs.existsSync(archivedMetaPath)) {
+  const archivedRootPlanPath = path.join(archivedTaskDir, "plan.json");
+  if (!fs.existsSync(archivedRootPlanPath) && !fs.existsSync(archivedMetaPath)) {
     throw new ClawError("TASK_NOT_FOUND", `Task "${input.taskName}" does not exist.`, { taskName: input.taskName });
   }
 
-  const archivedMeta = readJsonFile<TaskContext["meta"]>(archivedMetaPath);
-  const planFile = normalizePlanFile(input.planFile ?? archivedMeta.activePlan ?? "plan.json");
+  const archivedMeta = fs.existsSync(archivedMetaPath) ? readJsonFile<{ activePlan?: string }>(archivedMetaPath) : undefined;
+  const planFile = normalizePlanFile(input.planFile ?? archivedMeta?.activePlan ?? "plan.json");
   const planPath = ensureInsideDir(archivedTaskDir, planFile);
   if (!planPath) {
     throw new ClawError("ACTIVE_PLAN_INVALID", `Plan file "${planFile}" escapes the archived task directory.`, {

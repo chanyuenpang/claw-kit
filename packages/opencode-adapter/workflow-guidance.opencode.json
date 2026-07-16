@@ -24,7 +24,7 @@
       "fork_context": false,
       "waitForCompletion": false,
       "preferReuseSameTypeInThread": true,
-      "inputContract": "updated completed plan.json containing retrospective and durable keyDecisions; decision extraction and canonical target routing belong to the ADR writer",
+      "inputContract": "updated active root plan.json path after retrospective and durable keyDecisions are persisted; plan done retains this path for at least one hour so the ADR writer can continue asynchronously; decision extraction and canonical target routing belong to the ADR writer",
       "outputContract": "optional telemetry only",
       "closePolicy": "keep_open_for_reuse"
     }
@@ -131,9 +131,9 @@
       "nextsteps": [
         "1. Clear your tasks list with todowrite.",
         "2. Read the returned `truth-writer` entry's `dispatch`. For `when_reusable_truth_confirmed`, the main agent must evaluate reusable truth and dispatch only after confirmation.",
-        "3. First write both `retrospective` and `keyDecisions` back into the plan, then execute the `adr-writer` contract with `dispatch: required` using that updated completed `plan.json`."
+        "3. First write both `retrospective` and `keyDecisions` back into the plan, then execute the `adr-writer` contract with `dispatch: required` using that updated active root `plan.json` path. Do not wait for the writer before running `claw plan done`; delayed archive keeps the path readable for at least one hour."
       ],
-      "notes": "Truth dispatch requires the main agent's reusable-value confirmation; ADR dispatch is required for root-plan closeout. Honor every field in a dispatched delegate contract.",
+      "notes": "Truth dispatch requires the main agent's reusable-value confirmation; ADR dispatch is required but remains asynchronous for root-plan closeout. Root `claw plan done` records completedAt and keeps the plan path readable for at least one hour. Honor every field in a dispatched delegate contract.",
       "recommendedCommands": [
         "{{editBase}} --patch <completed-plan.json>",
         "{{doneBase}} --summary \"<retrospective summary>\""

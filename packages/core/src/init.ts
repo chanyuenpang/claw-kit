@@ -6,6 +6,7 @@ import {
 import { ClawError } from "./errors.js";
 import { normalizeTaskName } from "./paths.js";
 import { ensureUtf8Bom } from "./text-encoding.js";
+import { markTaskLayoutMigrationComplete } from "./task-layout-migration.js";
 import type { ProjectConfig } from "./types.js";
 
 const CORE_VERSION = readCoreVersion();
@@ -96,6 +97,8 @@ export function initProject(input: InitProjectInput): InitProjectResult {
   ensureDir(truthDir, createdPaths);
   ensureDir(tasksDir, createdPaths);
   ensureDir(knowledgeDir, createdPaths);
+  const taskLayoutMarkerPath = markTaskLayoutMigrationComplete(clawDir);
+  createdPaths.push(taskLayoutMarkerPath);
 
   writeFile(projectJsonPath, `${JSON.stringify(projectConfig, null, 2)}\n`, createdPaths);
   writeFile(

@@ -20,12 +20,14 @@ import {
   getTemplateTaskDoneChoices,
   resolvePlanTemplateFile,
   resolveProjectContext,
+  resolveSessionBoundPlan,
   resolveContext,
   resolveSeedPlanTemplate,
   searchMemory,
   showPlan,
   createSubplan,
   switchTask,
+  unbindSession,
   writePlan,
   type InitProjectInput,
   type InheritedFrom,
@@ -35,7 +37,6 @@ import {
   type PlanTask,
   type PlanViewModel,
   type ProjectConfig,
-  type TaskMeta,
   type WorkflowGuidance,
 } from "@veewo/claw-core";
 
@@ -152,7 +153,7 @@ const COMMAND_HELP: Record<string, HelpNode> = {
       done: {
         usage: ["{script} plan done --task <name> [--summary <text>] [options]"],
         description:
-          "Close out a plan: write a retrospective, mark status end.completed, archive the task, and queue the async completion refresh (memory reindex + optional gitnexus refresh).",
+          "Close out a plan: write a retrospective, mark status end.completed with completedAt, retain it for at least one hour, sweep older completed tasks into the archive, and queue the async completion refresh.",
         summary: "Close out a plan with a retrospective and queue completion refresh.",
         options: [
           { flag: "--task <name>", detail: "(required) Task name to close out." },
@@ -209,7 +210,7 @@ const COMMAND_HELP: Record<string, HelpNode> = {
       create: {
         usage: ["{script} subplan create --parent <task-name> --task-id <number> [--template <name>]"],
         description:
-          "Create a subplan under a parent task's task item. Uses explicit `--template` first, otherwise the project's configured `defaultPlanTemplate`, and finally falls back to the built-in `default`. The parent's rootPlan stays stable while the subplan becomes the active plan.",
+          "Create a flat subplan file under the task directory. Uses explicit `--template` first, otherwise the project's configured `defaultPlanTemplate`, and finally falls back to the built-in `default`. The current session binding switches to the subplan and returns to its parent when the subplan ends.",
         summary: "Create a subplan under a parent task's task item.",
         options: [
           { flag: "--parent <task-name>", detail: "(required) Parent task name." },
@@ -451,6 +452,7 @@ async function runPlan(args: string[]): Promise<void> {
         taskChoiceId: readOptionalFlag(args, "--task-choice"),
         appendTasks: appendTasksPath ? readJson<PlanTask[]>(appendTasksPath) : undefined,
         host: process.env.CLAW_HOST ?? undefined,
+        ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
       });
       printJson(compactPlanCommandResult("plan.edit", result));
       return;
@@ -475,6 +477,7 @@ async function runPlan(args: string[]): Promise<void> {
         patch: mergedPatch,
         planStatus: "end.completed",
         host: process.env.CLAW_HOST ?? undefined,
+        ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
       });
       const completionRefresh = queueCompletionRefresh({
         cwd: process.cwd(),
@@ -572,6 +575,7 @@ async function runTask(args: string[]): Promise<void> {
         taskStatus: "done",
         taskChoiceId: readOptionalFlag(args, "--choice"),
         host: process.env.CLAW_HOST ?? undefined,
+        ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
       });
       assertNoRemainingArgs(args, "task done");
       printJson(compactPlanCommandResult("task.done", result));
@@ -1130,16 +1134,29 @@ async function tryResolveActiveWorkflowSnapshot(
   workflowGuidance: WorkflowGuidance;
 } | null> {
   const project = resolveProjectContext(cwd);
-  const taskName = findSessionBoundTask(project.tasksDir, ownerSessionKey);
-  if (!taskName) {
+  const planPath = resolveSessionBoundPlan(project, ownerSessionKey);
+  if (!planPath) {
     return null;
   }
 
   try {
+    const relativePlanPath = path.relative(project.tasksDir, planPath);
+    const segments = relativePlanPath.split(path.sep);
+    const taskName = segments.shift();
+    const planFile = segments.join("/");
+    if (!taskName || !planFile) {
+      unbindSession(project, ownerSessionKey);
+      return null;
+    }
     const result = showPlan({
       cwd,
       taskName,
+      planFile,
     });
+    if (result.plan.status.startsWith("end.")) {
+      unbindSession(project, ownerSessionKey);
+      return null;
+    }
 
     return {
       taskName: result.taskName,
@@ -1157,6 +1174,7 @@ async function tryResolveActiveWorkflowSnapshot(
       }),
     };
   } catch {
+    unbindSession(project, ownerSessionKey);
     return null;
   }
 }
@@ -1179,40 +1197,6 @@ async function runSubplan(args: string[]): Promise<void> {
     default:
       throw new ClawError("PROJECT_CONFIG_INVALID", `Unknown subplan subcommand "${subcommand ?? ""}".`);
   }
-}
-
-function findSessionBoundTask(tasksDir: string, ownerSessionKey: string): string | null {
-  if (!fs.existsSync(tasksDir)) {
-    return null;
-  }
-
-  const candidates = fs
-    .readdirSync(tasksDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => {
-      const metaPath = path.join(tasksDir, entry.name, "meta.json");
-      if (!fs.existsSync(metaPath)) {
-        return null;
-      }
-
-      try {
-        const meta = JSON.parse(stripBom(fs.readFileSync(metaPath, "utf-8"))) as TaskMeta;
-        if (meta.ownerSessionKey !== ownerSessionKey) {
-          return null;
-        }
-
-        return {
-          taskName: entry.name,
-          sortKey: meta.boundAt ?? meta.updatedAt ?? meta.createdAt ?? "",
-        };
-      } catch {
-        return null;
-      }
-    })
-    .filter((candidate): candidate is { taskName: string; sortKey: string } => candidate !== null)
-    .sort((left, right) => right.sortKey.localeCompare(left.sortKey));
-
-  return candidates[0]?.taskName ?? null;
 }
 
 function resolveOwnerSessionKey(payload?: unknown): string | null {

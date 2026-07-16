@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildLocalDeviceAttemptOrder,
+  createLocalEmbeddingSession,
   resolveLocalExecutionDevice,
   resolveLocalTokenizerMaxLength,
   runLocalEmbeddingWithFallback,
@@ -138,4 +139,34 @@ test("runLocalEmbeddingWithFallback splits large text sets into bounded batches"
   assert.deepEqual(result.vectors[31], [4, 104]);
   assert.deepEqual(result.vectors[32], [1, 101]);
   assert.deepEqual(result.vectors[34], [3, 103]);
+});
+
+test("createLocalEmbeddingSession reuses one extractor across multiple runs", async () => {
+  let createCount = 0;
+  let disposeCount = 0;
+  const session = await createLocalEmbeddingSession({
+    dimensions: 2,
+    requestedDevice: "cpu",
+    createExtractor: async () => {
+      createCount += 1;
+      const extractor = (async (input: string[] | string) => {
+        const texts = Array.isArray(input) ? input : [input];
+        return { data: texts.flatMap((text) => [text.length, text.length + 1]) };
+      }) as Awaited<ReturnType<Parameters<typeof createLocalEmbeddingSession>[0]["createExtractor"]>>;
+      extractor.dispose = async () => {
+        disposeCount += 1;
+      };
+      return extractor;
+    },
+  });
+
+  const first = await session.run(["a"]);
+  const second = await session.run(["bb"]);
+  await session.dispose();
+  await session.dispose();
+
+  assert.equal(createCount, 1);
+  assert.equal(disposeCount, 1);
+  assert.deepEqual(first.vectors, [[1, 2]]);
+  assert.deepEqual(second.vectors, [[2, 3]]);
 });

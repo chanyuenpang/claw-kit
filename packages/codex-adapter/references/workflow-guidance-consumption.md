@@ -33,7 +33,7 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
   - `closePolicy`
 - When a writer entry says `fork_context: false`, dispatch it without full-history forked context. Keep the bundle narrow and explicit instead of cloning the whole main thread.
 - Prefer reusing an existing same-type specialist in the current thread before spawning a new one when the entry says to.
-- `truth-writer` and `adr-writer` entries do not wait and remain reusable in-thread.
+- `truth-writer` and root-plan `adr-writer` remain non-blocking and reusable in-thread. `claw plan done` keeps the completed active plan path readable for at least one hour so ADR deposition can finish asynchronously.
 - For a research delegate, the host must wait when the task is research.
 - Do not skip ahead of a research delegate that the current task depends on.
 
@@ -110,14 +110,14 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
   - read `delegateSubagents`
   - use `tool_search` to locate agent-management tools
   - dispatch `truth-writer` with the curated completed subtask report when the completed task produced reusable truth
-- when all tasks are done, first write retrospective capture and any durable `keyDecisions` back into the plan, then read `delegateSubagents` and dispatch `adr-writer` with that updated completed `plan.json` before root `claw plan done`; this ADR dispatch is required for root-plan closeout
+- when all tasks are done, first write retrospective capture and any durable `keyDecisions` back into the active root plan, then read `delegateSubagents`, dispatch `adr-writer` asynchronously with that updated active plan path, and continue to root `claw plan done` without waiting; delayed archive keeps the path readable for at least one hour
 - `end.completed`
   - read `goalTool`
   - use `update_goal(status="complete")`
   - for root plans, treat this as closeout/archive rather than the ADR trigger
   - run an explicit closeout check after the root plan is done
-  - confirm the workflow dispatched `truth-writer` only after reusable truth was confirmed, and always dispatched `adr-writer` with `dispatch: required`
-  - do not report truth or ADR closeout as finished if the required delegation never happened
+  - confirm the workflow dispatched `truth-writer` only after reusable truth was confirmed, and always dispatched `adr-writer` with `dispatch: required` without waiting
+  - distinguish asynchronous writer dispatch from confirmed deposition completion in closeout reporting
   - if this task includes a git commit flow, inspect the repo for task-related doc residue before commit
   - include canonical truth or ADR updates from writer specialists together with any remaining doc artifacts that belong to the same task round
   - for subplans, consume the returned resumed-parent workflow snapshot

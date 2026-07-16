@@ -1,17 +1,15 @@
 import fs from "node:fs";
-import { execFileSync } from "node:child_process";
-import path from "node:path";
 import {
   DEFAULT_LOCAL_EMBEDDING_DIMENSIONS,
-  resolveDefaultLocalEmbeddingDimensions,
-  resolveLocalEmbeddingCacheDir,
 } from "./embedding-defaults.js";
 import {
-  resolveLocalExecutionDevice,
-  resolveLocalTokenizerMaxLength,
-  runLocalEmbeddingWithFallback,
-} from "./embedding-local.js";
-import { resolveTransformersModule } from "./embedding-transformers.js";
+  PersistentEmbeddingModelError,
+  requestPersistentEmbedding,
+} from "./embedding-daemon-protocol.js";
+import {
+  createConfiguredLocalEmbeddingSession,
+  resolveEmbeddingDimensions,
+} from "./embedding-local-runtime.js";
 import type { MemoryEmbeddingConfig } from "./types.js";
 
 type WorkerInput = {
@@ -23,21 +21,6 @@ type WorkerInput = {
 type WorkerOutput = {
   dimensions: number;
   vectors: number[][];
-};
-
-const DEFAULT_EMBEDDING_MAX_TOKENS = 2048;
-
-type LocalPipelineExtractor = {
-  (input: string[] | string, options: { pooling: "mean"; normalize: true }): Promise<{ data: ArrayLike<number> }>;
-  dispose?: () => Promise<void> | void;
-  tokenizer?: {
-    model_max_length?: number;
-  };
-  model?: {
-    config?: {
-      max_position_embeddings?: number;
-    };
-  };
 };
 
 async function main(): Promise<void> {
@@ -88,54 +71,29 @@ async function buildLocalOutput(input: WorkerInput): Promise<WorkerOutput> {
     };
   }
 
-  if (!process.env.ORT_LOG_LEVEL) {
-    process.env.ORT_LOG_LEVEL = "3";
+  try {
+    const persistent = await requestPersistentEmbedding({
+      embedding: input.embedding,
+      texts: input.texts,
+      projectCwd: process.cwd(),
+    });
+    if (persistent) {
+      return persistent;
+    }
+  } catch (error) {
+    if (error instanceof PersistentEmbeddingModelError) {
+      throw error;
+    }
+    // Transport and startup failures fall back to the original one-shot path.
   }
 
-  // Prefer project-local installs when present, then fall back to claw-core's
-  // own runtime dependencies for globally installed CLI usage.
-  const { createRequire } = await import("node:module");
-  const projectRequire = createRequire(process.cwd() + "/");
-  const workerRequire = createRequire(import.meta.url);
-  const { pipeline, env } = resolveTransformersModule(projectRequire, workerRequire);
-  env.allowLocalModels = false;
-  const modelId = input.embedding.local?.modelPath?.trim() || input.embedding.model;
-  env.cacheDir = resolveLocalEmbeddingCacheDir(modelId, input.embedding.local?.modelCacheDir, {
-    cwd: process.cwd(),
-  });
-  const requestedDevice = resolveLocalExecutionDevice(input.embedding, {
-    cudaAvailable: isCudaAvailable(),
-  });
-  const output = await runLocalEmbeddingWithFallback({
-    texts: input.texts,
-    dimensions: resolveDimensions(input.embedding, DEFAULT_LOCAL_EMBEDDING_DIMENSIONS),
-    requestedDevice,
-    createExtractor: async (device) => {
-      const extractor = await (pipeline as unknown as (
-        task: "feature-extraction",
-        model: string,
-        options: Record<string, unknown>,
-      ) => Promise<LocalPipelineExtractor>)("feature-extraction", modelId, {
-        device,
-        dtype: "fp32",
-        session_options: { logSeverityLevel: 3 },
-      });
-      const safeTokenizerMaxLength = resolveLocalTokenizerMaxLength(
-        extractor.tokenizer?.model_max_length,
-        extractor.model?.config?.max_position_embeddings,
-        DEFAULT_EMBEDDING_MAX_TOKENS,
-      );
-      if (safeTokenizerMaxLength !== null && extractor.tokenizer) {
-        extractor.tokenizer.model_max_length = safeTokenizerMaxLength;
-      }
-      return extractor;
-    },
-  });
-
-  return {
-    dimensions: output.dimensions,
-    vectors: output.vectors,
-  };
+  const session = await createConfiguredLocalEmbeddingSession(input.embedding, process.cwd());
+  try {
+    const output = await session.run(input.texts);
+    return { dimensions: output.dimensions, vectors: output.vectors };
+  } finally {
+    await session.dispose();
+  }
 }
 
 async function buildOpenAiOutput(input: WorkerInput): Promise<WorkerOutput> {
@@ -191,43 +149,8 @@ function resolveOpenAiBaseUrl(embedding: MemoryEmbeddingConfig): string {
     : `${configured.replace(/\/+$/, "")}/embeddings`;
 }
 
-function isCudaAvailable(): boolean {
-  try {
-    const out = execFileSync("ldconfig", ["-p"], { timeout: 3000, encoding: "utf-8" });
-    if (out.includes("libcublasLt.so.12")) {
-      return true;
-    }
-  } catch {
-    // Ignore.
-  }
-
-  for (const envVar of ["CUDA_PATH", "LD_LIBRARY_PATH"]) {
-    const value = process.env[envVar];
-    if (!value) {
-      continue;
-    }
-    for (const candidate of value.split(":").filter(Boolean)) {
-      if (
-        fs.existsSync(path.join(candidate, "lib64", "libcublasLt.so.12")) ||
-        fs.existsSync(path.join(candidate, "lib", "libcublasLt.so.12")) ||
-        fs.existsSync(path.join(candidate, "libcublasLt.so.12"))
-      ) {
-        return true;
-      }
-    }
-  }
-
-  return false;
-}
-
 function resolveDimensions(embedding: MemoryEmbeddingConfig, fallback: number): number {
-  if (typeof embedding.outputDimensionality === "number" && embedding.outputDimensionality > 0) {
-    return embedding.outputDimensionality;
-  }
-  if (embedding.provider === "local") {
-    return resolveDefaultLocalEmbeddingDimensions(embedding.model);
-  }
-  return fallback > 0 ? fallback : 1536;
+  return resolveEmbeddingDimensions(embedding, fallback);
 }
 
 main().catch((error) => {

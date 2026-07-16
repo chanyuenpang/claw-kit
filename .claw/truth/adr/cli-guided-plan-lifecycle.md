@@ -21,7 +21,9 @@ Accepted
 - 执行中的知识沉淀继续委派给 `truth-writer`
 - `process.allTasksDone` 是 root plan 的 ADR 沉淀边界：在这里读取 `delegateSubagents`，写完 retrospective 后再把完成态 `plan.json` 交给 `adr-writer`
 - `process.allTasksDone` 只有在 retrospective 和 `keyDecisions` 都已更新后，才允许进入 ADR deposition 和 plan completion
-- `end.completed` 只承担 root plan 的 closeout/archive 语义；它不再是 ADR dispatch trigger
+- root plan 的 required ADR closeout 保持异步：先把 retrospective 与 durable `keyDecisions` 持久化到 active `plan.json`，再以 `waitForCompletion=false` dispatch `adr-writer`；foreground plan closeout 不等待 ADR deposition
+- `truth-writer` 与 `adr-writer` 都不阻塞 foreground closeout；ADR 的 required 含义是必须派发，不是必须等待完成
+- `end.completed` 写入稳定的 `completedAt`，但 `claw plan done` 保留当前 task directory 与原 `planPath`，不在本次命令中立即移动计划
 
 ## Consequences
 
@@ -34,6 +36,8 @@ Accepted
 - `truth-writer` 与 `adr-writer` 仍保留为完成期 specialist，而不是把 ADR 写作提前到计划仍开放时处理
 - root plan 的 ADR 派发位置固定在 `process.allTasksDone`，因此 `claw plan done` 只做 closeout/archive，不再和 ADR dispatch 竞争同一个职责
 - root plan closeout 需要先补齐 retrospective 和 `keyDecisions`，再进入 ADR deposition 和完成态收口
+- `adr-writer` 可以与 `claw plan done` 并发；completed plan 在原 task 路径至少保留一小时，使异步 writer 不需要等待 foreground，也不需要切换到 archive 路径补救
+- ADR deposition 失败不会阻塞本次 plan closeout；required dispatch 与异步完成语义保持分离
 - 历史版本实跑对比说明，workflow feel 的主要回退点并不是 `plan write` 本身必然更重；新版 `plan write` 反而已经比部分旧版更窄、更干净
 - 真正的回退来自 task 建立与推进被拆散到多个可见 surface：如果 startup recovery 先占据入口，而 `process.active` 又不够突出，`plan write` 就不再像唯一 task-scope 入口，主 agent 也更容易遗漏“计划后立即切到 active 执行”这一动作
 - 因而这份 ADR 的 durable 含义不是单独继续压缩 `plan write`，而是保持 `plan write -> process.active` 作为最显眼、最连续的主流程链路，避免被并列 surface 稀释
@@ -46,6 +50,9 @@ Accepted
 - `packages/core/src/plan-view.ts`
 - `packages/cli/src/cli.ts`
 - `packages/codex-adapter/skills/planning/SKILL.md`
+- `packages/core/src/workflow-guidance.config.json`
+- `.claw/tasks/实现-claw-search-persistent-embedding-worker/plan.json`
+- `.claw/tasks/用不可变-snapshot-修复-ADR-异步归档竞态/plan.json`
 
 ## Search Terms
 
@@ -58,3 +65,8 @@ Accepted
 - `plan done`
 - `render-first`
 - `planning`
+- `required ADR writer`
+- `waitForCompletion=false`
+- `asynchronous ADR closeout`
+- `completedAt`
+- `delayed archive`

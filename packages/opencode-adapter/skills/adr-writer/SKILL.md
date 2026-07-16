@@ -13,7 +13,7 @@ Extract durable architecture decisions from the supplied completed `plan.json` a
 
 ## Input
 
-Your input is the updated completed `plan.json`, including retrospective and durable `keyDecisions`.
+Your input is the updated active root `plan.json` path after retrospective and durable `keyDecisions` have been persisted. The host does not wait for you before running `claw plan done`; delayed archive keeps that path readable for at least one hour.
 
 Own decision extraction, canonical routing, and deposition. Treat completed tasks, retrospective evidence, and recorded key decisions as the source bundle.
 

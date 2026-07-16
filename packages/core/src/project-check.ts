@@ -5,7 +5,9 @@ import {
   DEFAULT_LOCAL_EMBEDDING_MODEL,
 } from "./embedding-defaults.js";
 import { ClawError } from "./errors.js";
+import { resolveProjectContext } from "./context.js";
 import { findProjectRoot, normalizeTaskName } from "./paths.js";
+import { migrateLegacyTaskLayout } from "./task-layout-migration.js";
 import type {
   MemoryEmbeddingConfig,
   ProjectConfig,
@@ -50,14 +52,16 @@ export function ensureProjectProtocol(cwd: string): ProjectProtocolEnsureResult 
     fs.writeFileSync(projectJsonPath, normalizedText, "utf-8");
   }
 
+  const taskLayoutMigration = migrateLegacyTaskLayout(resolveProjectContext(projectRoot));
+
   return {
     ok: true,
-    changed,
+    changed: changed || taskLayoutMigration.changed,
     projectRoot,
     projectJsonPath,
     issueCountBefore: issues.length,
     issueCountAfter: 0,
-    fixedPaths: collectFixedPaths(issues, changed),
+    fixedPaths: [...new Set([...collectFixedPaths(issues, changed), ...taskLayoutMigration.fixedPaths])],
     issuesBefore: issues,
     issuesAfter: [],
     projectConfig: normalized,

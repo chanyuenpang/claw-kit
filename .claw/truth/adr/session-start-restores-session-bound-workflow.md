@@ -27,11 +27,12 @@ Accepted
 
 ## Decision
 
-统一使用一条 `SessionStart` 恢复流来承接 `.claw` 项目的 startup recovery，并把 session 绑定信息落到 task metadata：
+统一使用一条 `SessionStart` 恢复流来承接 `.claw` 项目的 startup recovery，并通过 project-level session registry 直接绑定计划：
 
-- `plan write` 记录当前 host 的 `ownerSessionKey`
+- session registry 直接把当前 host 的 `sessionKey` 映射到 `.claw`-relative `planPath`
 - `SessionStart` 不再按 hook source 区分 `startup`、`resume`、`compact` 的恢复逻辑
-- `SessionStart` 启动时尝试从 `.claw` 中恢复与当前 `ownerSessionKey` 绑定的 active workflow
+- `SessionStart` 启动时只读取当前 `sessionKey` 的 direct plan binding，不扫描 task directories 推断 active workflow
+- subplan create 把 binding 切到 child，subplan done 切回 `parentPlan`，root plan done 删除 binding
 - 恢复成功时，只注入最小 workflow snapshot 和基于当前 canonical state 重算得到的 `workflowGuidance`
 - 恢复成功时，额外把当前 plan content 放进 recovered JSON / additional prompt surface，但仍然保持最小化，不重复 project root、`.claw` 路径或 raw 计划历史
 - `SessionStart` 生成 additional prompt surface 时，必须消费 `startupRecovery.versionSync`，把 CLI 版本落后、是否存在已发布更新、`autoUpdate` 是否开启，以及下一步应否先执行更新 contract 明确写进 startup 提示
@@ -52,6 +53,7 @@ Accepted
 - recovered workflow 不再只是被动回显状态；它现在明确阻止 agent 跳过 unfinished plan 决策门，先做 continue-or-close 的用户确认，再决定是否允许切到不相关的新任务
 - startup recovery 继续保持为 enhancement，而不是替代 `plan write`、`plan edit`、`plan done` 和 truth/ADR deposition 的 correctness 机制
 - workflow 恢复与 `workflowGuidance` contract 保持一致，减少 adapter 在 compact 后自行发明下一步的空间
+- direct `sessionKey -> planPath` binding 让恢复目标确定化；没有 binding 时不会从其他 task directory 猜测计划
 - 没有 active workflow 时，系统仍然退回现有 `using-claw-kit` 入口，不增加新的恢复文案分支
 - 默认 startup prompt 现在也成为 adapter contract 的一部分：它负责声明 thread-local authorization，减少 Goal mode 与 delegated specialists 的误阻塞
 - project protocol 版本超前时，用户现在可以在同一轮 startup recovery 中明确看到 version-sync 结果；恢复流不会静默改写本地安装，而是把“仅提示版本落后”与“先执行 `claw-kit:update`”这两种分支稳定地绑定到 `autoUpdate` gate
@@ -88,7 +90,8 @@ Accepted
 
 ## Search Terms
 
-- `ownerSessionKey`
+- `sessionKey -> planPath`
+- `direct plan binding`
 - `SessionStart`
 - `compact`
 - `unfinished plan`
