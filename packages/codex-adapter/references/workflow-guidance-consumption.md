@@ -48,13 +48,19 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
 - Use these commands as the default follow-up CLI actions.
 - Treat them as the authoritative command sequence unless the current harness state makes a specific command invalid.
 - Use a different command only when the current harness state makes the recommended command invalid.
+- Keep this field command-only. Code-mode consumption is the adapter execution method for a recommended command, not a replacement command string.
 
 ### `events` and `hostActions`
 
 - Treat `events` as an ordered, versioned record of canonical CLI mutations.
 - Consume `hostActions` in order. Execute each action at most once by its `id`.
+- On a Codex code-mode surface, run the claw plan command and consume all schema-compatible returned actions in the same code-mode call. Do not wait for the CLI result to cross a model/tool boundary and then manually reconstruct an `update_plan` payload in a second call.
+- Treat `schemaVersion` as the action contract version. Pass only `input` to the matching real host tool; `meta` contains policy or explanation for adapter decisions and is not part of the host tool call.
 - `update_plan` actions contain the concrete host progress payload derived from the committed plan.
-- Goal actions contain the executable `create_goal` or `update_goal` payload derived from `workflowGuidance`.
+- `create_goal.input` contains only `objective`; `create_goal.meta` carries `allowOverwrite` and `reason`.
+- `update_goal.input` contains only `status`; `update_goal.meta` carries `reason`.
+- Whitelist tools explicitly and validate their input against the real host schema before execution. Skip an unknown or incompatible action instead of forwarding unverified fields.
+- If same-call code-mode consumption is unavailable, fall back to ordered host calls while preserving the same action ids and schema projection.
 - Host action failure does not roll back CLI state. Retry the same action idempotently; never write host state back into the plan.
 
 ### `nextsteps`

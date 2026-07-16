@@ -689,8 +689,12 @@ test("cli plan start performs one atomic activation and returns idempotent host 
   assert.ok(events.every((event) => event.schemaVersion === 1));
   const hostActions = result.hostActions as JsonRecord[];
   assert.deepEqual(hostActions.map((action) => action.tool), ["update_plan", "create_goal"]);
+  assert.ok(hostActions.every((action) => action.schemaVersion === 1));
   assert.equal(new Set(hostActions.map((action) => action.id)).size, hostActions.length);
   assert.ok(hostActions.every((action) => String(action.sourceEventId).length > 0));
+  assert.deepEqual(Object.keys(hostActions[0].input as JsonRecord).sort(), ["explanation", "plan"]);
+  assert.deepEqual(Object.keys(hostActions[1].input as JsonRecord), ["objective"]);
+  assert.deepEqual(Object.keys(hostActions[1].meta as JsonRecord).sort(), ["allowOverwrite", "reason"]);
 });
 
 test("cli plan edit rejects partial single-reference shortcut flags", () => {
@@ -824,6 +828,10 @@ test("cli plan edit wait and resume surfaces goal mode pause and restart guidanc
     status: "blocked",
     reason: "Execution is paused in `process.wait`, so the current active thread goal should be ended as blocked until work resumes.",
   });
+  const waitGoalAction = (waitResult.hostActions as JsonRecord[]).find((action) => action.tool === "update_goal") as JsonRecord;
+  assert.equal(waitGoalAction.schemaVersion, 1);
+  assert.deepEqual(waitGoalAction.input, { status: "blocked" });
+  assert.deepEqual(Object.keys(waitGoalAction.meta as JsonRecord), ["reason"]);
   assert.equal(waitResult.goalMode, undefined);
 
   const resumeResult = runClaw(["plan", "edit", "--task", "demo-task", "--plan-status", "process.active"], root);

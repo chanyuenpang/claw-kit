@@ -56,3 +56,18 @@
 
 - 源码 CLI smoke 已同时锁定用户面输出与 create guidance 去重：`claw search --help`、`claw help search`、`claw search help` 均 exit `0`、usage 只写 stdout 且 stderr 为空；裸 `claw search` exit `1` 并直接提示 `claw search --query "<topic>"`；discussion 与 active 两类 create guidance 都恰好只包含一条 search `recommendedCommand`，不会重复推荐 recall。
 - 最终验证通过 CLI `69/69`、core `123/123`、Codex bundle `13/13`、OpenCode bundle `7/7`，并通过完整 `npm run check`。这组证据共同覆盖 CLI help/error surface、core create guidance 和两个 host adapter bundle 的合同一致性。
+
+## `hostActions.update_plan` code-mode 自动消费 A/B
+
+- 受控实验位于 `.claw/tasks/A-B-测试-hostActions-分步消费与-code-mode-自动消费/plan.json`。实验顺序固定为 A-B-B-A-A-B-B-A，每个 variant `4` 个样本，并对同一个 task #3 执行可逆的 pending / done 状态切换。
+- Variant A 在一个 code-mode call 中执行 CLI mutation，再由 main agent 手动把返回的 `update_plan` payload 转抄到第二个 code-mode call。四次 `totalMs` 为 `5467`、`5686`、`5822`、`5172`，median `5577ms`、mean `5537ms`；`4/4` 成功，共 `8` 次 exec call 与 `4` 次人工 payload transfer。
+- Variant B 在一个 code-mode call 中执行 CLI，解析 `Output:` marker 后的 JSON，只允许 `hostActions.tool === "update_plan"`，再调用 `tools.update_plan(action.input)`。四次 `totalMs` 为 `734`、`791`、`761`、`769`，median `765ms`、mean `764ms`；`4/4` 成功，共 `4` 次 exec call，且没有人工 payload transfer。
+- 在当前 Codex code-mode surface 上，对 schema-compatible `update_plan` 使用单调用自动 consumer，比两调用手工 handoff 更容易且明显更快；它消除了 main agent 跨 model/tool boundary 复制 payload 的负担，并把每次 mutation 的 host 同步收敛到同一次 code-mode 调用。
+- 该结论只覆盖 `update_plan`。goal actions 仍需要显式 schema projection，因为 CLI 返回的 policy 字段不一定与真实 host goal tool schema 匹配；不得把 `update_plan` 的白名单直通方式无条件推广到 `create_goal` / `update_goal`。
+
+### Host action schema 与同调用消费合同
+
+- `packages/cli/src/cli.ts` 的 `buildHostActions` 现在为每个 host action 固定输出 `schemaVersion: 1`。`update_plan.input` 保持 `{ explanation, plan }`；`create_goal.input` 只投影为 `{ objective }`，其 `{ allowOverwrite, reason }` 放入 `meta`；`update_goal.input` 只投影为 `{ status }`，其 `{ reason }` 放入 `meta`。因此 `input` 是真实 host tool 的 schema-compatible payload，policy / 解释字段不再混入工具参数。
+- `packages/codex-adapter/skills/using-claw-kit/SKILL.md` 与 `packages/codex-adapter/references/workflow-guidance-consumption.md` 现在要求：在 Codex code-mode surface 上，每次 claw plan mutation 应在同一个 code-mode call 内执行 CLI 并消费 schema-compatible `hostActions`；消费时保持返回顺序与 action id，只有自动消费不可用时才退回分离调用。
+- 自动 consumer 只转发已知且 schema-compatible 的 action；未知或不兼容 action 必须跳过，不能直接透传。`recommendedCommands` 继续只承载命令，不得把 host tool action 混入该字段或从命令文本反推工具调用。
+- 定向验证中 Codex adapter tests `4/4` 通过；重建 CLI dist 后 CLI tests `72/72` 通过。首次 CLI test 使用了 stale dist，两个新增 schema assertion 失败；重建 CLI 即通过且不需要修改 source。涉及 dist-backed CLI 行为的测试失败时，应先确认构建产物是否同步，再判断 source contract 是否有缺陷。

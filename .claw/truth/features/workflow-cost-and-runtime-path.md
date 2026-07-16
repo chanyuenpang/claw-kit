@@ -229,3 +229,22 @@
 - 当前固定测量中，精确词法查询 P95 为 `315.35ms`，persistent daemon 语义查询 P95 为 `602.93ms`；one-shot fallback 为 `4392.01ms` 且成功返回。基于这组成功性和分路延迟，本阶段没有启用 plan-create embedding 预热，避免为每次 formal planning 无条件增加后台或前台初始化成本。
 - complexity gate 已用 `12` 个 low / medium / high 语料校准：legacy low false-positive rate 从 `0.5` 降为 `0`，formal recall 为 `1`，accuracy 为 `1`。dependency 维度只计算独立风险，不再与 files 或 workflow shape 对同一复杂性重复计权。
 - 本阶段证据提交为 `14cdbdb`；后续性能判断应继续按新增 telemetry route 和 runtime 分类，而不是把 lexical、daemon 与 one-shot 样本混成单一 search 均值。
+
+### 0.1.69 运行时边界与原子命令实证（2026-07-17）
+
+- npm registry 的 `version` / `latest`、全局安装的 `@veewo/claw`、`claw --version`、仓库 `packages/cli/package.json` 与 `packages/core/package.json`、`.claw/project.json` 均为 `0.1.69`；全局命令实际解析到 `C:\Users\chany\AppData\Roaming\npm\claw.ps1`。
+- `packages/codex-adapter/.codex-plugin/plugin.json` 与本轮线程实际绑定的 plugin cache snapshot 均为 `0.1.69+codex.20260717011110`；核验时仓库 HEAD 为 `6c37ea4ede15b3ebf7e3565097574a2ffa2b2e6d`。
+- 真实 `claw plan start --help` 已暴露原子命令，本轮 smoke 也实际成功执行。结合 registry、全局 CLI、仓库 source、project protocol 与线程 snapshot 的一致性，本轮性能样本可以归入同一条 `0.1.69` 版本线；该归类来自多层内容与关键 capability 的实证，不是仅凭版本字符串推断。
+- `claw check` 返回 `ok`、`changed = false`、`issueCountBefore = 0`；`claw context` 返回 `protocolCheck = ok`、`updateAvailable = false`。这两项共同证明项目协议健康且当时没有待升级版本，但不能替代关键命令的 help / smoke probe。
+- 后续 benchmark 的版本边界仍应同时记录 registry / installed CLI、命令 shim、仓库 source 与 HEAD、`.claw/project.json`、线程绑定 plugin snapshot，并对被测新增命令执行真实 help 或 smoke。只有这些层和 capability 一致，才能把样本归属于同一发布路径。
+
+#### 0.1.69 同机 workflow 与 search benchmark
+
+- `claw plan create` 墙钟为 `407ms`；原子 `claw plan start` 为 `473ms`，且在这一次 mutation 内完成 plan patch、追加 `4` 个业务任务、完成两个 lifecycle bridge tasks，并进入 `process.active`。两者承担的工作范围不同，不能仅用 `407ms` 与 `473ms` 的单点差值判断原子路径是否退化。
+- `claw plan show` 五次墙钟为 `366ms`、`143ms`、`146ms`、`149ms`、`147ms`，表现为首冷后热；四次热态均值约 `146ms`。这与 `0.1.67` 的热态均值约 `151ms` 基本持平，不能宣称 show 路径有量级提升。
+- 精确文件名 query `workflow-cost-and-runtime-path.md` 三次墙钟为 `173ms`、`175ms`、`186ms`，telemetry `durationMs` 分别为 `30.47ms`、`30.18ms`、`30.27ms`；三次均为 `route = lexical_fast_path`、`queryEmbedding = skipped`，且 top result 正确。
+- 两条全新语义 query 墙钟为 `405ms`、`402ms`，telemetry `durationMs` 为 `253.29ms`、`244.61ms`；两次均为 `route = hybrid`、`queryEmbedding = generated`、`embeddingRuntime = persistent_daemon`，且 top result 正确。相较本文记录的 `0.1.67` 语义 search 约 `4.35s` 同机基线，`0.1.69` daemon 语义墙钟约 `0.40s`，属于数量级改善。
+- 重复第二条语义 query 的墙钟为 `205ms`，telemetry `durationMs = 46.92ms`、`queryEmbedding = cache_hit`，top result 仍正确。该样本应与 persistent-daemon 全新 query 分开统计，不能把 cache hit 当作 daemon miss 延迟。
+- 同一运行时边界下，`npm test` 约 `62747ms`，core `126/126` 与 CLI `72/72` 全部通过；`npm run check` 约 `7904ms` 并完整通过。以上成功性证据与正确 top result 共同约束性能结论，避免把失败或召回漂移误记为提速。
+
+- 综合本轮复杂任务样本，`0.1.69` 的正式流程性能已足够高且主观流畅度明显改善，但仍非无摩擦。剩余主要成本是每个业务 task 的 CLI plan 状态写入（本轮约 `448ms`、`453ms`、`453ms`、`592ms`）与 host `update_plan` 双写、逐任务 truth 价值判断，以及异步 writer / completion-refresh 的可观察性。低复杂度任务应继续由 complexity gate 绕过 formal flow；后续优化应针对这些固定协调成本，不能以削弱计划、验证或质量门禁换取速度。

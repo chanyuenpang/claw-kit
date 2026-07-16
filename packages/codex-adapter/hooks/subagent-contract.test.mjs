@@ -74,3 +74,19 @@ test("writer skills own routing without burdening the main agent", () => {
   assert.match(dispatchReference, /dispatch: required/);
   assert.doesNotMatch(dispatchReference, /required: false|dispatchCondition/);
 });
+
+test("Codex plan commands consume schema-compatible host actions in one code-mode call", () => {
+  const mainRouter = readPluginFile(path.join("skills", "using-claw-kit", "SKILL.md"));
+  const workflowReference = readPluginFile(path.join("references", "workflow-guidance-consumption.md"));
+
+  assert.match(mainRouter, /same code-mode call/i);
+  assert.match(mainRouter, /schema-compatible `hostActions`/i);
+  assert.match(mainRouter, /do not manually carry `update_plan` payloads into a second call/i);
+
+  assert.match(workflowReference, /code-mode consumption is the adapter execution method/i);
+  assert.match(workflowReference, /same code-mode call/i);
+  assert.match(workflowReference, /pass only `input` to the matching real host tool/i);
+  assert.match(workflowReference, /`create_goal\.input` contains only `objective`/i);
+  assert.match(workflowReference, /`update_goal\.input` contains only `status`/i);
+  assert.match(workflowReference, /skip an unknown or incompatible action/i);
+});

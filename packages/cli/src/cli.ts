@@ -1421,6 +1421,7 @@ function buildHostActions(result: {
       return { step: task.title, status };
     });
     actions.push({
+      schemaVersion: 1,
       id: `${latestEvent.mutationId}:update_plan`,
       sourceEventId: latestEvent.eventId,
       tool: "update_plan",
@@ -1431,13 +1432,35 @@ function buildHostActions(result: {
     });
   }
   if (result.workflowGuidance.goalTool) {
-    const { tool, ...input } = result.workflowGuidance.goalTool;
-    actions.push({
-      id: `${latestEvent.mutationId}:${tool}`,
-      sourceEventId: latestEvent.eventId,
-      tool,
-      input,
-    });
+    const goalTool = result.workflowGuidance.goalTool;
+    if (goalTool.tool === "create_goal") {
+      actions.push({
+        schemaVersion: 1,
+        id: `${latestEvent.mutationId}:create_goal`,
+        sourceEventId: latestEvent.eventId,
+        tool: "create_goal",
+        input: {
+          objective: goalTool.objective,
+        },
+        meta: {
+          allowOverwrite: goalTool.allowOverwrite,
+          reason: goalTool.reason,
+        },
+      });
+    } else {
+      actions.push({
+        schemaVersion: 1,
+        id: `${latestEvent.mutationId}:update_goal`,
+        sourceEventId: latestEvent.eventId,
+        tool: "update_goal",
+        input: {
+          status: goalTool.status,
+        },
+        meta: {
+          reason: goalTool.reason,
+        },
+      });
+    }
   }
   return actions;
 }

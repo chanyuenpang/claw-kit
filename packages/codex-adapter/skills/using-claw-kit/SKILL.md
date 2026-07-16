@@ -22,22 +22,23 @@ Detailed call flow:
 4. For low-complexity work, handle the request directly in the host workflow; claw planning, search, and `workflowGuidance` remain inactive.
 5. Only for score `>= 6`, enter the normal claw workflow through `claw plan create`.
 6. Whenever a claw command returns `workflowGuidance`, follow it as the required next-step contract. This is mandatory.
-7. If prior project context is relevant, run `claw search --query "<topic>"` after a new `claw plan create` and use the results to improve the bound task scope.
-8. Use two-part plan status semantics:
+7. On Codex code-mode surfaces, execute a claw plan command and consume its returned schema-compatible `hostActions` in the same code-mode call. Preserve action order and `id`, pass only `input` fields accepted by the real host tool, and use a separate host call only when same-call consumption is unavailable.
+8. If prior project context is relevant, run `claw search --query "<topic>"` after a new `claw plan create` and use the results to improve the bound task scope.
+9. Use two-part plan status semantics:
    - `process.discussing`: the plan exists, but execution has not started; stay in discussion/planning work only
    - `process.active`: execution is live; process one task at a time and update progress with `claw plan edit`
    - `process.wait`: the round is blocked on user input or an external dependency
    - `end.completed`: all planned work is done and `retrospective.summary` is present
    - `end.closed` / `end.leave`: the round has been closed out; resume active execution when the user explicitly changes direction
-9. The planning skill is invoked by the seeded planning task inside the formal claw workflow, not before task scope exists.
-10. Once requirements are clear and `goal.text` is set, prefer the returned atomic `claw plan start --task <name> --patch <plan-patch.json> --append-tasks <tasks.json>` command to complete the planning bridge and enter `process.active` in one mutation.
-11. After a meaningful completed task, dispatch `truth-writer` when there is reusable context to deposit.
-12. When all tasks are done, clear thread progress, update both `retrospective` and `keyDecisions`, and dispatch `adr-writer` asynchronously from returned `workflowGuidance`.
-13. Close the plan with `claw plan done` after the ADR writer has been dispatched; do not wait for it. Delayed archive keeps the completed plan path readable for at least one hour.
-14. During closeout, confirm whether the workflow actually dispatched the required writer specialists:
+10. The planning skill is invoked by the seeded planning task inside the formal claw workflow, not before task scope exists.
+11. Once requirements are clear and `goal.text` is set, prefer the returned atomic `claw plan start --task <name> --patch <plan-patch.json> --append-tasks <tasks.json>` command to complete the planning bridge and enter `process.active` in one mutation.
+12. After a meaningful completed task, dispatch `truth-writer` when there is reusable context to deposit.
+13. When all tasks are done, clear thread progress, update both `retrospective` and `keyDecisions`, and dispatch `adr-writer` asynchronously from returned `workflowGuidance`.
+14. Close the plan with `claw plan done` after the ADR writer has been dispatched; do not wait for it. Delayed archive keeps the completed plan path readable for at least one hour.
+15. During closeout, confirm whether the workflow actually dispatched the required writer specialists:
     - verify `truth-writer` and `adr-writer` were dispatched when the returned contract required them
     - report truth or ADR closeout as dispatched after each required delegation has occurred; do not imply asynchronous writer completion without evidence
-15. During closeout, if this task included a git commit flow, inspect the repo for task-related doc artifacts that still belong to this round:
+16. During closeout, if this task included a git commit flow, inspect the repo for task-related doc artifacts that still belong to this round:
     - include canonical truth or ADR files updated by the writers
     - include any remaining task-produced docs that should ship with the same commit instead of leaving them behind
 
@@ -85,6 +86,7 @@ Truth-value judgment stays on the main agent side. If there is no reusable truth
 - Low-complexity requests skip the claw workflow before `claw plan create`, so they do not produce `workflowGuidance`.
 - `claw search` runs after a new `claw plan create` when project recall is relevant. Search uses natural language and prefers the user's language.
 - Whenever claw returns `workflowGuidance`, use it as the single next-step process.
+- On Codex code-mode surfaces, keep each claw plan mutation and its schema-compatible `hostActions` consumption in one code-mode call; do not manually carry `update_plan` payloads into a second call when same-call consumption is available.
 - When `workflowGuidance.goalTool` is present, execute the real Codex goal tool contract it returns. Use `create_goal` for active execution entry and allow returned goal guidance to overwrite the current thread goal; use `update_goal(status=complete|blocked)` for lifecycle exits that close the current goal.
 - Reuse the existing `truth-writer` when possible; otherwise dispatch a new one.
 - Dispatch ADR deposition from the `all tasks done` guidance before root `claw plan done`, but do not wait for completion.
