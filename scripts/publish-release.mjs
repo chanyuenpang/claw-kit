@@ -9,7 +9,7 @@ import { assertSharedSkillsSynced } from "./sync-shared-skills.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publish = process.argv.includes("--publish");
-const requiredSharedSkills = ["planning", "config", "update", "create-claw-skill"];
+const requiredSharedSkills = ["planning", "config", "update", "create-claw-skill", "knowledge-writer"];
 const npmExecPath = process.env.npm_execpath;
 
 function command(command, args) {

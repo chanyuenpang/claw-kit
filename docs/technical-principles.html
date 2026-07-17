@@ -399,17 +399,17 @@
           <p>
             Claw-Kit 把 <code>plan</code> 放在中心。
             <span class="highlight">不是为了多一道流程。</span>
-            是为了先把任务切到 agent 接得住的尺度。
+            是为了在任务预期会产生可复用知识时，给讨论、决策和执行提供一个可沉淀的容器。
           </p>
           <p>
-            大任务的问题，不是 agent 不会做。
-            是它一次拿到的东西太多。
-            目标、约束、阶段性输出混在一起。
-            最后在长上下文里慢慢失焦。
+            因此，知识沉淀预期和执行就绪度要分开判断。
+            预期会形成可复用事实、决策、约束或模式时，就进入 claw workflow；
+            但后续子任务还不明确，或仍需用户反复补充、逐步决策、共同创作时，plan 必须停留在 <code>process.discussing</code>。
+            只有子任务明确且用户可以脱手时，才进入 <code>process.active</code> 和 Goal Mode。
           </p>
           <p>
-            所以高复杂度请求先进入正式的 <code>.claw</code> workflow。
-            先过 complexity gate。
+            所以有知识沉淀预期的请求先进入正式的 <code>.claw</code> workflow。
+            先过 knowledge-and-readiness gate。
             再进入 planning。
             再从 <code>workflowGuidance</code> 接下一步。
           </p>
@@ -469,7 +469,7 @@
             guidance 不是一段更长的提示词。
             它是 <span class="highlight">按阶段返回的下一步建议</span>。
             启动阶段提醒 goal mode。
-            完成阶段再判断是否派发 <code>truth-writer</code> 和 <code>adr-writer</code>。
+            完成阶段由统一的 <code>knowledge-writer</code> 一次判断是否沉淀 truth、ADR、两者或都不沉淀。
           </div>
           <p>
             Claw-Plan 的做法正好相反。
@@ -518,7 +518,7 @@
           <p>
             所以文档沉淀被放进 closeout。
             计划推进中，可以让 subagent 记录关键事实、设计取舍和复盘。
-            完成阶段，再交给 <code>truth-writer</code> 和 <code>adr-writer</code> 写回项目。
+            完成阶段，再交给统一的 <code>knowledge-writer</code> 写回项目。
           </p>
           <p>
             这样做不是为了把文档越写越多。

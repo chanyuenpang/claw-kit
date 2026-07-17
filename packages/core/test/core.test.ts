@@ -301,7 +301,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
     "# claw-kit\n.claw/*\n!.claw/project.json\n!.claw/truth/\n!.claw/truth/**\n.claw/project-override.json\n",
   );
   assert.deepEqual(projectConfig, {
-    version: "0.1.77",
+    version: "0.1.78",
     id: "demo-project",
     name: "Demo Project",
     maxTasksToKeep: 20,
@@ -368,7 +368,6 @@ test("writePlan seeds a planning-first root plan by default", async () => {
   assert.equal(fs.existsSync(path.join(result.taskDir, "meta.json")), false);
   assert.ok(fs.existsSync(result.planPath));
   assert.equal(result.workflowGuidance.stage, "discussion");
-  assert.equal(result.workflowGuidance.delegateSubagents, undefined);
   assert.equal(result.workflowGuidance.goalMode, undefined);
   assert.deepEqual(result.workflowGuidance.nextsteps, [
     "1. Resolve the discussion, then resume through `process.active`.",
@@ -990,7 +989,7 @@ test("writePlan loads a project JS template from .claw/templates", async () => {
   assert.equal(result.plan.tasks[0]?.title, "Plan with the JS template");
 });
 
-test("completed task guidance leaves knowledge deposition to auto-doc", async () => {
+test("completed task guidance stays focused on the next lifecycle action", async () => {
   const root = createFixture("plan-template-auto-doc-guidance");
   initProject({ cwd: root, projectName: "Project Template Auto Doc", planning: true, force: true });
   fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
@@ -1043,7 +1042,6 @@ test("completed task guidance leaves knowledge deposition to auto-doc", async ()
     taskStatus: "done",
   });
 
-  assert.equal(taskDone.workflowGuidance.delegateSubagents, undefined);
   assert.deepEqual(taskDone.workflowGuidance.nextsteps, [
     "1. Sync thread progress with `update_plan`.",
     "2. Continue with task #2.",
@@ -1295,11 +1293,11 @@ test("route-aware task completion persists valid taskChoiceId", async () => {
   assert.equal(persisted.tasks[0]?.choiceId, "simple");
 });
 
-test("default template never returns main-agent deposition dispatch", async () => {
-  const root = createFixture("default-template-suppress-truth");
+test("default template returns only current lifecycle guidance", async () => {
+  const root = createFixture("default-template-lifecycle-guidance");
   initProject({
     cwd: root,
-    projectName: "Default Template Suppress Truth",
+    projectName: "Default Template Lifecycle Guidance",
     externalWriterSkill: "external-knowledge-writer",
     force: true,
   });
@@ -1329,8 +1327,6 @@ test("default template never returns main-agent deposition dispatch", async () =
     taskId: 1,
     taskStatus: "done",
   });
-  assert.equal(planningDone.workflowGuidance.delegateSubagents, undefined);
-  assert.equal(planningDone.workflowGuidance.nextsteps.some((step) => step.includes("truth-writer")), false);
   assert.equal(planningDone.workflowGuidance.nextTask?.id, 2);
 
   const activationDone = await editPlan({
@@ -1339,8 +1335,6 @@ test("default template never returns main-agent deposition dispatch", async () =
     taskId: 2,
     taskStatus: "done",
   });
-  assert.equal(activationDone.workflowGuidance.delegateSubagents, undefined);
-  assert.equal(activationDone.workflowGuidance.nextsteps.some((step) => step.includes("truth-writer")), false);
   assert.equal(activationDone.workflowGuidance.nextTask?.id, 3);
 
   const realTaskDone = await editPlan({
@@ -1349,8 +1343,8 @@ test("default template never returns main-agent deposition dispatch", async () =
     taskId: 3,
     taskStatus: "done",
   });
-  assert.equal(realTaskDone.workflowGuidance.delegateSubagents, undefined);
-  assert.equal(realTaskDone.workflowGuidance.nextsteps.some((step) => step.includes("writer")), false);
+  assert.equal(realTaskDone.workflowGuidance.stage, "done");
+  assert.equal(realTaskDone.workflowGuidance.recommendedCommands?.some((step) => step.includes("claw plan done")), true);
 });
 
 test("template guidance onDone default can override default workflow guidance without choices", async () => {
@@ -1375,7 +1369,6 @@ test("template guidance onDone default can override default workflow guidance wi
                 summary: "Template-adjusted completion guidance",
                 nextsteps: ["Capture the route-specific handoff note."],
                 recommendedCommands: ["claw task done --task demo-task --id 2"],
-                delegateTruth: false,
               },
             },
           },
@@ -1408,8 +1401,6 @@ test("template guidance onDone default can override default workflow guidance wi
   });
 
   assert.equal(taskDone.workflowGuidance.summary, "Template-adjusted completion guidance");
-  assert.equal(taskDone.workflowGuidance.delegateSubagents, undefined);
-  assert.equal(taskDone.workflowGuidance.nextsteps.some((step) => step.includes("truth-writer")), false);
   assert.equal(taskDone.workflowGuidance.nextsteps.some((step) => step.includes("Capture the route-specific handoff note.")), true);
   assert.equal(taskDone.workflowGuidance.recommendedCommands?.includes("claw task done --task demo-task --id 2"), true);
   assert.equal(taskDone.workflowGuidance.nextTask?.id, 2);
@@ -1439,7 +1430,6 @@ test("template guidance onDone default can replace default workflow guidance wit
                 notes: "Default completion wording is intentionally replaced here.",
                 recommendedCommands: ["claw task edit --id 2 --status in_progress"],
                 nextTaskId: 2,
-                delegateTruth: false,
               },
             },
           },
@@ -1477,7 +1467,6 @@ test("template guidance onDone default can replace default workflow guidance wit
   assert.deepEqual(taskDone.workflowGuidance.recommendedCommands, [
     "claw task edit --id 2 --status in_progress",
   ]);
-  assert.equal(taskDone.workflowGuidance.delegateSubagents, undefined);
   assert.equal(taskDone.workflowGuidance.nextTask?.id, 2);
 });
 
@@ -2000,7 +1989,6 @@ test("subplan completion resumes the parent plan and marks the parent task done"
   assert.equal(result.workflowGuidance.stage, "execution");
   assert.equal(result.workflowGuidance.nextTask?.id, 2);
   assert.equal(result.workflowGuidance.nextTask?.title, "Resume parent work");
-  assert.equal(result.workflowGuidance.delegateSubagents, undefined);
   assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "demo-task", "meta.json")), false);
   assert.equal(parentPlan.status, "process.active");
   assert.equal(parentPlan.tasks[0]?.status, "done");
@@ -2141,13 +2129,12 @@ test("plan edit can move from requirements to process.active without a separate 
   );
   assert.equal(
     result.workflowGuidance.notes,
-    "Do not dispatch truth or ADR writers from the main agent. Knowledge deposition is a fail-open sidecar owned by the Stop hook and isolated Codex SDK worker; hook failure must not change plan completion or subplan resume.",
+    "Background maintenance is fail-open and requires no main-agent action; it must not change plan completion or subplan resume.",
   );
-  assert.equal(result.workflowGuidance.delegateSubagents, undefined);
   assert.deepEqual(result.workflowGuidance.nextsteps, [
     "1. Clear thread progress with `update_plan`.",
     "2. Run `claw plan done --retrospective` once. Add `--key-decision` only for real durable decisions not already recorded.",
-    "3. Plan completion and parent-plan resume remain canonical; the independent Stop hook captures the final turn and queues report-based knowledge closeout.",
+    "3. Stop after the canonical plan transition; no separate closeout action is required from the main agent.",
   ]);
   assert.deepEqual(result.workflowGuidance.recommendedCommands, [
     "claw plan done --retrospective \"<summary>\" [--key-decision \"<durable decision>\"]",
@@ -2335,7 +2322,7 @@ test("end.completed emits complete goal tool guidance", async () => {
   });
 });
 
-test("process entry returns the first task and task completion leaves deposition to the hook", async () => {
+test("process entry returns the first task and task completion returns the next lifecycle action", async () => {
   const root = createFixture("process-entry-and-truth-contract");
   fs.writeFileSync(
     path.join(root, ".claw", "project.json"),
@@ -2395,7 +2382,6 @@ test("process entry returns the first task and task completion leaves deposition
     planStatus: "process.active",
   });
   assert.equal(activated.workflowGuidance.nextTask?.id, 1);
-  assert.equal(activated.workflowGuidance.delegateSubagents, undefined);
 
   const taskDone = await editPlan({
     cwd: root,
@@ -2407,13 +2393,12 @@ test("process entry returns the first task and task completion leaves deposition
   assert.equal(taskDone.workflowGuidance.nextTask?.id, 2);
   assert.equal(
     taskDone.workflowGuidance.notes,
-    "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. Turn reports are collected automatically; the main agent does not curate or dispatch truth deposition.",
+    "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
   );
   assert.deepEqual(taskDone.workflowGuidance.nextsteps, [
     "1. Sync thread progress with `update_plan`.",
     "2. Continue with task #2.",
   ]);
-  assert.equal(taskDone.workflowGuidance.delegateSubagents, undefined);
 });
 
 test("resolveContext deep-merges project-override.json and preserves explicit null overrides", () => {
@@ -2617,7 +2602,6 @@ test("workflow guidance respects disabled goal mode and final-only truth dispatc
     taskId: 1,
     taskStatus: "done",
   });
-  assert.equal(taskDone.workflowGuidance.delegateSubagents, undefined);
   assert.equal(taskDone.workflowGuidance.nextsteps.some((step) => step.includes("truth-writer")), false);
 
   const allDone = await editPlan({
@@ -2626,7 +2610,6 @@ test("workflow guidance respects disabled goal mode and final-only truth dispatc
     taskId: 2,
     taskStatus: "done",
   });
-  assert.equal(allDone.workflowGuidance.delegateSubagents, undefined);
 });
 
 test("plan edit appendTasks auto-assigns ids when omitted", async () => {
@@ -4610,9 +4593,8 @@ test("Codex workflow guidance ignores legacy external writer routing", async () 
   });
   assert.equal(
     taskDone.workflowGuidance.notes,
-    "Do not dispatch truth or ADR writers from the main agent. Knowledge deposition is a fail-open sidecar owned by the Stop hook and isolated Codex SDK worker; hook failure must not change plan completion or subplan resume.",
+    "Background maintenance is fail-open and requires no main-agent action; it must not change plan completion or subplan resume.",
   );
-  assert.equal(taskDone.workflowGuidance.delegateSubagents, undefined);
 
   const completed = await editPlan({
     cwd: root,
@@ -4620,10 +4602,9 @@ test("Codex workflow guidance ignores legacy external writer routing", async () 
     planStatus: "end.completed",
     updates: { retrospectiveSummary: "Done." },
   });
-  assert.equal(completed.workflowGuidance.delegateSubagents, undefined);
 });
 
-test("direct workflow guidance queues refresh without deposition dispatch", () => {
+test("direct workflow guidance queues refresh without extra agent workflow", () => {
   const guidance = buildDirectWorkflowGuidance({
     projectConfig: {
       knowledgeWriter: { externalSkill: "external-knowledge-writer" },
@@ -4632,8 +4613,6 @@ test("direct workflow guidance queues refresh without deposition dispatch", () =
 
   assert.equal(guidance.stage, "done");
   assert.match(guidance.summary, /lean path|without extra decomposition/i);
-  assert.equal(guidance.delegateSubagents, undefined);
-  assert.equal(guidance.nextsteps.some((step) => step.includes("truth-writer")), false);
   assert.equal(guidance.nextsteps.some((step) => step.includes("completion refresh")), true);
   assert.match(String(guidance.notes), /compatibility surface/i);
   assert.match(String(guidance.notes), /claw plan create/i);
@@ -4739,7 +4718,7 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
   assert.equal(result.ok, true);
   assert.equal(result.changed, true);
   assert.ok(result.issueCountBefore > 0);
-  assert.equal(projectConfig.version, "0.1.77");
+  assert.equal(projectConfig.version, "0.1.78");
   assert.equal(projectConfig.id, "fix-me");
   assert.equal(projectConfig.name, "Fix Me");
   assert.equal(projectConfig.maxTasksToKeep, 99);

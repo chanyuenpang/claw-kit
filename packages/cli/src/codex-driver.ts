@@ -103,7 +103,6 @@ async function codexDriverRunner(
     "stage",
     "planSummary",
     "nextTask",
-    "delegateSubagents",
     "recommendedCommands",
     "askUser",
     "plan",

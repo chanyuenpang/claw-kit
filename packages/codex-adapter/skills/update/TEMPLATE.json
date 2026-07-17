@@ -35,8 +35,7 @@
                 "Update the global CLI first.",
                 "Then refresh Codex from the published repository marketplace and enable only claw-kit@claw-kit."
               ],
-              "nextTaskId": 2,
-              "delegateTruth": false
+              "nextTaskId": 2
             },
             "opencode": {
               "mergeMode": "override",
@@ -45,8 +44,7 @@
                 "Update the global CLI first.",
                 "Then refresh the local OpenCode plugin install surface."
               ],
-              "nextTaskId": 2,
-              "delegateTruth": false
+              "nextTaskId": 2
             },
             "conservative": {
               "mergeMode": "override",
@@ -55,8 +53,7 @@
                 "Inspect the available repo scripts before choosing the plugin refresh command.",
                 "If no supported plugin refresh path is available, stop and report that clearly instead of pretending the plugin updated."
               ],
-              "nextTaskId": 2,
-              "delegateTruth": false
+              "nextTaskId": 2
             }
           }
         }
@@ -77,8 +74,7 @@
               "Verify the matching plugin surface with host-specific checks.",
               "Report exact success or failure per surface."
             ],
-            "nextTaskId": 3,
-            "delegateTruth": false
+            "nextTaskId": 3
           }
         }
       }

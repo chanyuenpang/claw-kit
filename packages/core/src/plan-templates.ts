@@ -733,6 +733,8 @@ function isTemplateGuidanceRoute(value: unknown): value is TemplateGuidanceRoute
     "recommendedCommands",
     "nextTaskId",
     "label",
+    // Compatibility only: older installed plugin caches may still carry this
+    // inert route metadata. Current templates and workflow guidance do not use it.
     "delegateTruth",
   ]);
   for (const key of Object.keys(candidate)) {

@@ -124,9 +124,7 @@ Keep nested shape only where the field actually has substructure:
 }
 ```
 
-`knowledgeWriter.externalSkill = null` uses the built-in `claw-kit:knowledge-writer`. `model = null` uses the Codex SDK default model. `reasoningEffort` accepts `minimal`, `low`, `medium`, `high`, or `xhigh`.
-
-Legacy `externalTruthSkill` and `externalAdrSkill` values are migrated into `knowledgeWriter.externalSkill` when they agree or only one is configured. Conflicting legacy writers fall back to the built-in combined writer. Removed `truthDispatch` values are discarded by protocol repair.
+`knowledgeWriter.externalSkill = null` uses the built-in `claw-kit:knowledge-writer`. `model = null` uses the host default model. `reasoningEffort` accepts `minimal`, `low`, `medium`, `high`, or `xhigh`.
 
 ## Safe editing flow
 

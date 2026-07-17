@@ -1,23 +1,30 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 4,
   "dimensions": {
     "files": "1=tight surface, 2=two or three modules, 3=cross-cutting",
     "clarity": "1=clear, 2=minor unknowns, 3=multiple routes",
     "dependency": "legacy is 1-3; calibrated is 0-2 and counts only distinct integration risk",
-    "workflow": "1=direct, 2=light implementation, 3=staged workflow"
+    "workflow": "1=direct, 2=light implementation, 3=staged workflow",
+    "expectedKnowledgeDeposition": "true when the task is expected to produce reusable facts, decisions, constraints, patterns, or project context",
+    "nextTasksExplicit": "true when the next executable subtasks are clear enough to start",
+    "canProceedWithoutUser": "true when execution can continue without repeated user input, material choices, step review, or co-creation",
+    "expectedState": "direct, discussing, or active"
   },
   "cases": [
-    { "id": "low-answer", "band": "low", "files": 1, "clarity": 1, "legacyDependency": 1, "calibratedDependency": 0, "workflow": 1, "expectedFormal": false },
-    { "id": "low-single-doc", "band": "low", "files": 1, "clarity": 1, "legacyDependency": 1, "calibratedDependency": 0, "workflow": 2, "expectedFormal": false },
-    { "id": "low-two-docs-known-deps", "band": "low", "files": 2, "clarity": 1, "legacyDependency": 2, "calibratedDependency": 0, "workflow": 1, "expectedFormal": false },
-    { "id": "low-targeted-test-fix", "band": "low", "files": 2, "clarity": 1, "legacyDependency": 2, "calibratedDependency": 0, "workflow": 2, "expectedFormal": false },
-    { "id": "medium-three-module-feature", "band": "medium", "files": 2, "clarity": 2, "legacyDependency": 2, "calibratedDependency": 1, "workflow": 2, "expectedFormal": true },
-    { "id": "medium-integration-repair", "band": "medium", "files": 2, "clarity": 1, "legacyDependency": 2, "calibratedDependency": 1, "workflow": 2, "expectedFormal": true },
-    { "id": "medium-config-migration", "band": "medium", "files": 2, "clarity": 2, "legacyDependency": 1, "calibratedDependency": 0, "workflow": 2, "expectedFormal": true },
-    { "id": "medium-architecture-route", "band": "medium", "files": 1, "clarity": 3, "legacyDependency": 2, "calibratedDependency": 2, "workflow": 3, "expectedFormal": true },
-    { "id": "high-cross-cutting-protocol", "band": "high", "files": 3, "clarity": 3, "legacyDependency": 3, "calibratedDependency": 2, "workflow": 3, "expectedFormal": true },
-    { "id": "high-storage-migration", "band": "high", "files": 3, "clarity": 2, "legacyDependency": 3, "calibratedDependency": 2, "workflow": 3, "expectedFormal": true },
-    { "id": "high-host-adapter-bridge", "band": "high", "files": 3, "clarity": 2, "legacyDependency": 2, "calibratedDependency": 2, "workflow": 3, "expectedFormal": true },
-    { "id": "high-release-closeout", "band": "high", "files": 3, "clarity": 1, "legacyDependency": 3, "calibratedDependency": 2, "workflow": 3, "expectedFormal": true }
+    { "id": "low-answer", "band": "low", "files": 1, "clarity": 1, "legacyDependency": 1, "calibratedDependency": 0, "workflow": 1, "expectedKnowledgeDeposition": false, "nextTasksExplicit": false, "canProceedWithoutUser": false, "expectedState": "direct" },
+    { "id": "low-single-doc", "band": "low", "files": 1, "clarity": 1, "legacyDependency": 1, "calibratedDependency": 0, "workflow": 2, "expectedKnowledgeDeposition": false, "nextTasksExplicit": true, "canProceedWithoutUser": true, "expectedState": "direct" },
+    { "id": "low-two-docs-known-deps", "band": "low", "files": 2, "clarity": 1, "legacyDependency": 2, "calibratedDependency": 0, "workflow": 1, "expectedKnowledgeDeposition": false, "nextTasksExplicit": true, "canProceedWithoutUser": true, "expectedState": "direct" },
+    { "id": "low-targeted-test-fix", "band": "low", "files": 2, "clarity": 1, "legacyDependency": 2, "calibratedDependency": 0, "workflow": 2, "expectedKnowledgeDeposition": false, "nextTasksExplicit": true, "canProceedWithoutUser": true, "expectedState": "direct" },
+    { "id": "interactive-architecture", "band": "interactive", "files": 1, "clarity": 3, "legacyDependency": 2, "calibratedDependency": 2, "workflow": 3, "expectedKnowledgeDeposition": true, "nextTasksExplicit": false, "canProceedWithoutUser": false, "expectedState": "discussing" },
+    { "id": "interactive-content-co-creation", "band": "interactive", "files": 2, "clarity": 3, "legacyDependency": 2, "calibratedDependency": 1, "workflow": 3, "expectedKnowledgeDeposition": true, "nextTasksExplicit": true, "canProceedWithoutUser": false, "expectedState": "discussing" },
+    { "id": "discussing-unclear-autonomous-research", "band": "interactive", "files": 1, "clarity": 3, "legacyDependency": 1, "calibratedDependency": 0, "workflow": 2, "expectedKnowledgeDeposition": true, "nextTasksExplicit": false, "canProceedWithoutUser": true, "expectedState": "discussing" },
+    { "id": "medium-three-module-feature", "band": "medium", "files": 2, "clarity": 2, "legacyDependency": 2, "calibratedDependency": 1, "workflow": 2, "expectedKnowledgeDeposition": true, "nextTasksExplicit": true, "canProceedWithoutUser": true, "expectedState": "active" },
+    { "id": "medium-integration-repair", "band": "medium", "files": 2, "clarity": 1, "legacyDependency": 2, "calibratedDependency": 1, "workflow": 2, "expectedKnowledgeDeposition": true, "nextTasksExplicit": true, "canProceedWithoutUser": true, "expectedState": "active" },
+    { "id": "medium-config-migration", "band": "medium", "files": 2, "clarity": 2, "legacyDependency": 1, "calibratedDependency": 0, "workflow": 2, "expectedKnowledgeDeposition": true, "nextTasksExplicit": true, "canProceedWithoutUser": true, "expectedState": "active" },
+    { "id": "medium-architecture-route", "band": "medium", "files": 1, "clarity": 3, "legacyDependency": 2, "calibratedDependency": 2, "workflow": 3, "expectedKnowledgeDeposition": true, "nextTasksExplicit": true, "canProceedWithoutUser": true, "expectedState": "active" },
+    { "id": "high-cross-cutting-protocol", "band": "high", "files": 3, "clarity": 3, "legacyDependency": 3, "calibratedDependency": 2, "workflow": 3, "expectedKnowledgeDeposition": true, "nextTasksExplicit": true, "canProceedWithoutUser": true, "expectedState": "active" },
+    { "id": "high-storage-migration", "band": "high", "files": 3, "clarity": 2, "legacyDependency": 3, "calibratedDependency": 2, "workflow": 3, "expectedKnowledgeDeposition": true, "nextTasksExplicit": true, "canProceedWithoutUser": true, "expectedState": "active" },
+    { "id": "high-host-adapter-bridge", "band": "high", "files": 3, "clarity": 2, "legacyDependency": 2, "calibratedDependency": 2, "workflow": 3, "expectedKnowledgeDeposition": true, "nextTasksExplicit": true, "canProceedWithoutUser": true, "expectedState": "active" },
+    { "id": "high-release-closeout", "band": "high", "files": 3, "clarity": 1, "legacyDependency": 3, "calibratedDependency": 2, "workflow": 3, "expectedKnowledgeDeposition": true, "nextTasksExplicit": true, "canProceedWithoutUser": true, "expectedState": "active" }
   ]
 }

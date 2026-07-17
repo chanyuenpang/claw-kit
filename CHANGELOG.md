@@ -2,6 +2,104 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.1.78] - 2026-07-18
+
+### Added
+
+- OpenCode lifecycle integration now captures session reports and runs host-native combined knowledge closeout, with dedicated startup, guidance, update, hook, and subagent references
+
+### Changed
+
+- `using-claw-kit` is now a compact guidance-first contract: expected reusable knowledge controls plan entry, `process.discussing` remains a stable planning state, and activation requires explicit tasks that can proceed without heavy user participation
+- Complexity calibration now distinguishes `direct`, `process.discussing`, and `process.active`, preventing plans that still need intensive user input from entering Goal Mode prematurely
+- Codex and OpenCode closeout now use one host-owned knowledge writer instead of separate main-agent truth and ADR dispatch flows, and retired workflow surfaces were removed
+- CLI workflow guidance was simplified around canonical two-part plan states, exact returned commands, and host-owned closeout
+
+### Fixed
+
+- Plan lifecycle documentation and regression tests now identify successful completion as canonical `end.completed`; guidance-stage `done` and task status `done` are no longer presented as plan statuses
+
+## [0.1.77] - 2026-07-17
+
+### Fixed
+
+- Codex updates now require the GitHub marketplace source, preventing stale local marketplace installations from satisfying the update gate; `DISTRIBUTION.md` and the closeout workflow docs were updated to match the marketplace-required flow
+
+## [0.1.76] - 2026-07-17
+
+### Changed
+
+- Codex plan mutations now use explicit command fields instead of merge-patch semantics, replacing the previous patch-based `plan-edit` contract
+- Codex adapter now owns its versioned SDK runtime, async writer dispatch preserves the model contract, and Codex runtime repair requires explicit user consent
+- Codex recall now routes through `claw search` instead of a maintained index surface
+
+### Added
+
+- ADRs recorded for the consolidated goal-routing release: Codex goal-mode thread contract, fixed code-mode host-action consumer, and goal status routing
+
+## [0.1.75] - 2026-07-17
+
+### Fixed
+
+- Codex goals are now routed based on plan status so the host receives the correct goal transition for each plan lifecycle state
+
+## [0.1.74] - 2026-07-17
+
+### Fixed
+
+- Codex goal actions are now dispatched exactly once per transition instead of emitting duplicate host actions
+
+## [0.1.73] - 2026-07-17
+
+### Fixed
+
+- Simplified Codex goal reset and set logic to reduce transitional state churn
+
+## [0.1.72] - 2026-07-17
+
+### Fixed
+
+- Codex goal updates are now idempotent, preventing repeated goal mutations on retries or replays
+
+## [0.1.71] - 2026-07-17
+
+### Added
+
+- Codex code-mode host-action consumer is now enforced, so plan mutations in code-mode go through a fixed consumer contract instead of ad-hoc dispatch
+
+## [0.1.70] - 2026-07-17
+
+### Changed
+
+- Host actions are now consumed in a single code-mode call, reducing redundant host round-trips during plan mutations and execution
+
+## [0.1.69] - 2026-07-17
+
+### Added
+
+- Workflow performance baseline and benchmark scripts (`npm run benchmark:workflow`, `benchmark:complexity`, `benchmark:search`) for measuring end-to-end workflow cost
+
+### Changed
+
+- `claw plan start` now atomically refines and activates a discussing plan in one mutation, appending executable tasks and moving to `process.active` without separate `plan edit` + `plan activate` steps
+- Completion refresh work is coalesced to reduce redundant state writes during closeout
+- Workflow telemetry and long-tail gates added so slow or stalled workflow paths surface explicitly
+
+### Fixed
+
+- `claw search` recall guidance streamlined to reduce noise during planning
+
+## [0.1.68] - 2026-07-16
+
+### Added
+
+- ADRs recorded: `task-plan-storage-and-session-binding`, `task-retention-pruning-uses-explicit-recursion`
+
+### Changed
+
+- Task plan storage and session bindings restructured to support the new task layout; session-start now restores the session-bound workflow
+- Task retention pruning now uses explicit recursion
+
 ## [0.1.67] - 2026-07-16
 
 ### Changed

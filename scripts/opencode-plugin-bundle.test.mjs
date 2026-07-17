@@ -10,6 +10,7 @@ import {
   installOpencodePlugin,
   readOpencodePluginSource,
 } from "./opencode-plugin-bundle.mjs";
+import { verifySharedSkillsSynced } from "./sync-shared-skills.mjs";
 
 async function makeFixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "claw-kit-opencode-plugin-"));
@@ -69,6 +70,36 @@ test("OpenCode plugin source includes the config skill entrypoint", async () => 
   assert.match(skillText, /\.claw\/project-override\.json/);
 });
 
+test("OpenCode entry keeps knowledge routing separate from active readiness", async () => {
+  const adapterRoot = new URL("../packages/opencode-adapter/", import.meta.url);
+  const skill = await fs.readFile(new URL("skills/using-claw-kit/SKILL.md", adapterRoot), "utf8");
+  const sessionEntry = await fs.readFile(new URL("references/opencode-session-entry.md", adapterRoot), "utf8");
+  const contract = `${skill}\n${sessionEntry}`;
+
+  assert.match(contract, /reusable project knowledge/i);
+  assert.match(contract, /process\.discussing/i);
+  assert.match(contract, /downstream tasks are explicit/i);
+  assert.match(contract, /handoff-ready|hand off execution/i);
+  assert.match(skill, /stable cross-turn state/i);
+  assert.match(skill, /convert it to `(?:process\.)?wait`/i);
+});
+
+test("OpenCode entry stays compact and guidance-led", async () => {
+  const skill = await fs.readFile(
+    new URL("../packages/opencode-adapter/skills/using-claw-kit/SKILL.md", import.meta.url),
+    "utf8",
+  );
+  const lineCount = skill.trimEnd().split(/\r?\n/).length;
+
+  assert.ok(lineCount >= 20 && lineCount <= 40, `expected 20-40 lines, received ${lineCount}`);
+  assert.match(skill, /workflowGuidance` is the only next-step contract/i);
+  for (const state of ["process.discussing", "process.active", "process.wait", "end.completed"]) {
+    assert.match(skill, new RegExp(state.replace(".", "\\."), "i"));
+  }
+  assert.doesNotMatch(skill, /^\s*-\s*`?done`?:/im);
+  assert.doesNotMatch(skill, /Core execution chain|Detailed call flow|## First action|claw plan start|claw task done|claw plan done/i);
+});
+
 test("OpenCode researcher includes the search query syntax", async () => {
   const skill = await fs.readFile(
     new URL("../packages/opencode-adapter/skills/researcher/SKILL.md", import.meta.url),
@@ -77,63 +108,34 @@ test("OpenCode researcher includes the search query syntax", async () => {
   assert.match(skill, /claw search --query "<topic>"/);
 });
 
-test("OpenCode writer contracts use direct dispatch semantics and writer-owned routing", async () => {
+test("OpenCode main-agent guidance leaves automatic closeout to the host", async () => {
   const adapterRoot = new URL("../packages/opencode-adapter/", import.meta.url);
   const guidance = JSON.parse(await fs.readFile(new URL("workflow-guidance.opencode.json", adapterRoot), "utf8"));
-  const truthSkill = await fs.readFile(new URL("skills/truth-writer/SKILL.md", adapterRoot), "utf8");
-  const adrSkill = await fs.readFile(new URL("skills/adr-writer/SKILL.md", adapterRoot), "utf8");
-  const truthAgent = await fs.readFile(new URL("agents/claw-truth-writer.md", adapterRoot), "utf8");
-  const adrAgent = await fs.readFile(new URL("agents/claw-adr-writer.md", adapterRoot), "utf8");
+  const skill = await fs.readFile(new URL("skills/knowledge-writer/SKILL.md", adapterRoot), "utf8");
+  const agent = await fs.readFile(new URL("agents/claw-knowledge-writer.md", adapterRoot), "utf8");
+  const allDone = guidance.states["process.allTasksDone"];
 
-  assert.equal(guidance.delegates.truthWriter.dispatch, "when_reusable_truth_confirmed");
-  assert.equal(guidance.delegates.adrWriter.dispatch, "required");
-  assert.equal(guidance.delegates.truthWriter.waitForCompletion, false);
-  assert.equal(guidance.delegates.adrWriter.waitForCompletion, false);
-  assert.equal("required" in guidance.delegates.truthWriter, false);
-  assert.equal("dispatchCondition" in guidance.delegates.truthWriter, false);
+  assert.equal("delegates" in guidance, false);
+  assert.equal("delegateSubagents" in allDone, false);
+  assert.match(allDone.notes, /requires no main-agent action/i);
+  assert.doesNotMatch(JSON.stringify(allDone), /truth-writer|adr-writer|knowledge-writer|subagent|deposition/i);
 
-  for (const text of [truthSkill, adrSkill, truthAgent, adrAgent]) {
-    assert.match(text, /writer|writer 自己负责/i);
-    assert.match(text, /claw search/);
-    assert.match(text, /widen inspection|扩大检查范围/i);
-  }
+  assert.match(agent, /claw-kit:knowledge-writer/i);
+  assert.match(skill, /both, or neither/i);
+  assert.match(skill, /claw search/i);
 
-  for (const text of [truthSkill, adrSkill]) {
-    assert.match(text, /record repository locations only as project-relative paths/i);
-  }
+  await assert.rejects(fs.access(new URL("skills/truth-writer/SKILL.md", adapterRoot)));
+  await assert.rejects(fs.access(new URL("skills/adr-writer/SKILL.md", adapterRoot)));
+  await assert.rejects(fs.access(new URL("skills/search-workflow/SKILL.md", adapterRoot)));
+  await assert.rejects(fs.access(new URL("skills/init/SKILL.md", adapterRoot)));
+  await assert.rejects(fs.access(new URL("agents/claw-truth-writer.md", adapterRoot)));
+  await assert.rejects(fs.access(new URL("agents/claw-adr-writer.md", adapterRoot)));
+});
 
-  for (const agent of [truthAgent, adrAgent]) {
-    assert.match(agent, /项目根目录相对路径/);
-  }
-
-  for (const text of [truthSkill, adrSkill, truthAgent, adrAgent]) {
-    assert.doesNotMatch(text, /SUMMARY\.md|Summary discipline|Summary 规则/i);
-  }
-
-  for (const skill of [truthSkill, adrSkill]) {
-    assert.match(skill, /act as the delegated .* subagent/i);
-    assert.match(skill, /## Mission/);
-    assert.match(skill, /## Input/);
-    assert.match(skill, /## Canonical routing/);
-    assert.match(skill, /## Writing rules/);
-    assert.match(skill, /## Workflow/);
-    assert.match(skill, /## Return/);
-    assert.doesNotMatch(skill, /main agent|caller|timing rule|use this skill after|use this skill at/i);
-    assert.doesNotMatch(skill, /AGENT-SPEC|references\//i);
-  }
-
-  assert.match(truthSkill, /own canonical routing and deposition/i);
-  assert.match(adrSkill, /own decision extraction, canonical routing, and deposition/i);
-  assert.match(adrSkill, /no durable keyDecisions/);
-  assert.match(adrAgent, /no durable keyDecisions/);
-  assert.doesNotMatch(adrSkill, /truth corpus|truth deposition/i);
-  assert.doesNotMatch(adrAgent, /truth-writer|truth corpus/i);
-  assert.doesNotMatch(truthSkill, /adr-writer|route durable architecture decisions/i);
-  assert.doesNotMatch(truthAgent, /adr-writer|交给 adr/i);
-  assert.match(adrAgent, /记录范围/);
-  assert.match(guidance.delegates.truthWriter.inputContract, /reusable facts and evidence/i);
-  assert.match(guidance.delegates.adrWriter.inputContract, /active root plan\.json path/i);
-  assert.match(guidance.delegates.adrWriter.inputContract, /retains this path for at least one hour/i);
+test("repository OpenCode plugin source is fully materialized from shared skills", async () => {
+  const adapterDir = path.resolve("packages", "opencode-adapter");
+  const result = await verifySharedSkillsSynced({ adapterDirs: [adapterDir] });
+  assert.deepEqual(result, { ok: true, problems: [] });
 });
 
 test("exportOpencodePluginBundle copies the expected payload and filters *.test.mjs", async (t) => {

@@ -2,7 +2,6 @@
 name: knowledge-writer
 description: Evaluate a completed claw plan and its adjacent turn report, then deposit verified reusable knowledge and durable architectural decisions in one pass.
 ---
-<!-- AUTO-GENERATED from shared/skills/knowledge-writer/SKILL.md. Edit the shared source instead. -->
 
 # knowledge-writer
 

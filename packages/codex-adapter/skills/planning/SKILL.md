@@ -7,7 +7,7 @@ description: Use when a planning step needs to refine a user request into clear 
 
 This skill turns the user's request into high-quality plan content.
 It is responsible for requirement refinement, task decomposition, scope boundaries, and task quality.
-Host runtime flow, lifecycle transitions, writer delegation, goal mode, and closeout remain the responsibility of `using-claw-kit`.
+Host runtime flow, lifecycle transitions, goal mode, and closeout remain the responsibility of `using-claw-kit`.
 
 ## When to use
 
@@ -54,7 +54,7 @@ Use it when task shape, dependencies, completion criteria, or requirement clarit
 ## Entry assumption
 
 By the time this skill is invoked, `using-claw-kit` has already decided that the request should enter the formal claw planning workflow.
-If a request was low-complexity enough to skip that workflow, it should have bypassed this skill entirely.
+If a request had no expected reusable project knowledge and therefore skipped that workflow, it should have bypassed this skill entirely.
 
 ## Required plan shape
 

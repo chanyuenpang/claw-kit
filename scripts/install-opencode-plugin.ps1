@@ -24,6 +24,13 @@ npm run build -w @veewo/claw-core
 npm run build -w @veewo/claw
 Pop-Location
 
+# Reinstall the global claw CLI binary so plugin↔CLI contract changes take effect
+# (the global claw.cmd is a COPY, not a symlink — building alone doesn't update it)
+Write-Host "Reinstalling global claw CLI..." -ForegroundColor Cyan
+Push-Location $PSScriptRoot\..\packages\cli
+npm install -g .
+Pop-Location
+
 # Install the plugin
 $repoRoot = Split-Path -Parent $PSScriptRoot
 node (Join-Path $PSScriptRoot "install-opencode-plugin.mjs") --source-dir (Join-Path $repoRoot "packages\opencode-adapter")

@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { parseOpencodeRunOutput } from "../dist/opencode-runner.js";
 
 type JsonRecord = Record<string, unknown>;
 const thisDir = path.dirname(fileURLToPath(import.meta.url));
@@ -426,19 +427,18 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
     env,
   );
   assert.equal("stage" in taskDone, false);
-  assert.equal("delegateSubagents" in taskDone, false);
   assert.equal((taskDone.nextsteps as string[]).some((step) => step.includes("writer")), false);
   assert.deepEqual(taskDone.nextsteps, [
     "1. Clear thread progress with `update_plan`.",
     "2. Run `claw plan done --retrospective` once. Add `--key-decision` only for real durable decisions not already recorded.",
-    "3. Plan completion and parent-plan resume remain canonical; the independent Stop hook captures the final turn and queues report-based knowledge closeout.",
+    "3. Stop after the canonical plan transition; no separate closeout action is required from the main agent.",
   ]);
   assert.deepEqual(taskDone.recommendedCommands, [
     "claw plan done --retrospective \"<summary>\" [--key-decision \"<durable decision>\"]",
   ]);
   assert.equal(
     taskDone.notes,
-    "Do not dispatch truth or ADR writers from the main agent. Knowledge deposition is a fail-open sidecar owned by the Stop hook and isolated Codex SDK worker; hook failure must not change plan completion or subplan resume.",
+    "Background maintenance is fail-open and requires no main-agent action; it must not change plan completion or subplan resume.",
   );
 
   const truthInputPath = path.join(root, "truth-report.md");
@@ -462,7 +462,6 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
     root,
     env,
   );
-  assert.equal("delegateSubagents" in doneResult, false);
   assert.equal("completionRefresh" in doneResult, false);
   const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
   const memory = refreshStatus.memory as JsonRecord;
@@ -1267,14 +1266,13 @@ test("cli leaves completed-task deposition to automatic turn reporting", () => {
   ]);
   assert.equal(
     taskDone.notes,
-    "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. Turn reports are collected automatically; the main agent does not curate or dispatch truth deposition.",
+    "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
   );
   assert.deepEqual(taskDone.nextTask, {
     id: 2,
     title: "Second task",
     status: "pending",
   });
-  assert.equal("delegateSubagents" in taskDone, false);
 });
 
 test("cli respects project override toggles for goal mode and final-only truth dispatch", () => {
@@ -1337,14 +1335,12 @@ test("cli respects project override toggles for goal mode and final-only truth d
     ["task", "done", "--task-name", "demo-task", "--id", "1"],
     root,
   );
-  assert.equal("delegateSubagents" in taskDone, false);
   assert.equal((taskDone.nextsteps as string[]).some((step) => step.includes("truth-writer")), false);
 
   const allDone = runClaw(
     ["task", "done", "--task-name", "demo-task", "--id", "2"],
     root,
   );
-  assert.equal("delegateSubagents" in allDone, false);
 });
 
 test("cli task done requires --choice when the template defines guidance.onDone.choices", () => {
@@ -2332,7 +2328,6 @@ test("cli direct queues completion refresh without main-agent deposition guidanc
   assert.equal((result.nextsteps as string[]).some((step) => step.includes("truth-writer")), false);
   assert.equal((result.nextsteps as string[]).some((step) => step.includes("completion refresh")), true);
 
-  assert.equal("delegateSubagents" in result, false);
 
   const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
   const memory = refreshStatus.memory as JsonRecord;
@@ -2553,7 +2548,7 @@ test("cli hook emits SessionStart additionalContext inside .claw projects", () =
   const additionalContext = String(hookSpecificOutput.additionalContext);
   assert.match(additionalContext, /using-claw-kit/);
   assert.match(additionalContext, /Hook Project|hook-project/i);
-  assert.match(additionalContext, /You can use goal mode in this thread and delegate the subagents required by the claw workflow, don't ask me again/i);
+  assert.match(additionalContext, /You can use goal mode in this thread when required by the claw workflow; don't ask me again/i);
   assert.match(additionalContext, /Load claw-kit:using-claw-kit as the main workflow skill for this session\./i);
   assert.match(additionalContext, /When useful, use `claw search` to narrow the document search scope.*default search/i);
 });
@@ -2637,7 +2632,7 @@ test("plan create binds owner session key and SessionStart recovers active workf
   assert.match(additionalContext, /Treat returned claw workflowGuidance as the only next-step contract\./);
   assert.match(additionalContext, /There is already an unfinished plan in this thread\./);
   assert.match(additionalContext, /Tell the user and ask whether to close the current plan or continue advancing it before starting unrelated work\./);
-  assert.match(additionalContext, /You can use goal mode in this thread and delegate the claw workflow's required subagents, don't ask me again/i);
+  assert.match(additionalContext, /You can use goal mode in this thread when required by the claw workflow; don't ask me again/i);
   assert.match(additionalContext, /After this plan finishes, keep using claw-kit in this thread for the next task\./);
   assert.match(additionalContext, /Current plan content:/);
   assert.match(additionalContext, /goal: Recover active workflow guidance and plan content/);
@@ -2798,6 +2793,98 @@ test("Stop hook skips knowledge finalizer child threads to prevent recursion", (
   }, env);
   assert.equal(sessionStart.status, 0);
   assert.equal(sessionStart.stdout.trim(), "");
+});
+
+test("parseOpencodeRunOutput reconstructs final assistant text from NDJSON", () => {
+  const ndjson = [
+    JSON.stringify({ type: "session.created", properties: { sessionID: "sess-abc" } }),
+    JSON.stringify({ type: "message.updated", properties: { info: { id: "msg-user", role: "user" } } }),
+    JSON.stringify({ type: "message.updated", properties: { info: { id: "msg-asst", role: "assistant" } } }),
+    JSON.stringify({ type: "message.part.updated", properties: { part: { messageID: "msg-user", type: "text", text: "ignored user text" } } }),
+    JSON.stringify({ type: "message.part.updated", properties: { part: { messageID: "msg-asst", type: "text", text: "Deposited truth and ADRs." } } }),
+    JSON.stringify({ type: "session.idle", properties: {} }),
+  ].join("\n");
+  const result = parseOpencodeRunOutput(ndjson);
+  assert.equal(result.finalResponse, "Deposited truth and ADRs.");
+  assert.equal(result.threadId, "sess-abc");
+});
+
+test("parseOpencodeRunOutput handles empty and malformed output gracefully", () => {
+  assert.equal(parseOpencodeRunOutput("").finalResponse, "");
+  assert.equal(parseOpencodeRunOutput("not json\n{broken").finalResponse, "");
+});
+
+test("opencode Stop hook captures inline message payload and writes host to job", () => {
+  const root = createFixture("hook-stop-opencode-message");
+  const sessionId = "thread-opencode-message";
+  const env = { CLAW_HOST: "opencode", CODEX_THREAD_ID: sessionId, CLAW_KNOWLEDGE_FINALIZER_DISABLE_LAUNCH: "1" };
+  runClaw(["init", "--name", "OpenCode Message", "--planning", "false"], root, env);
+  runClaw(["plan", "create", "--title", "demo-task", "--goal", "Capture inline message"], root, env);
+  runClaw(["task", "done", "--id", "1"], root, env);
+  runClaw(["plan", "done", "--retrospective", "Done."], root, env);
+
+  const stop = runClawHook("auto-doc", root, {
+    session_id: sessionId,
+    turn_id: "turn-opencode-message",
+    message: "Inline opencode turn report message.",
+    cwd: root,
+  }, env);
+  assert.equal(stop.status, 0);
+  assert.equal(stop.stdout.trim(), "");
+  const reportPath = path.join(root, ".claw", "tasks", "demo-task", "plan.report");
+  const entry = JSON.parse(fs.readFileSync(reportPath, "utf-8").trim()) as { message: string; turnId: string };
+  assert.equal(entry.message, "Inline opencode turn report message.");
+  assert.equal(entry.turnId, "turn-opencode-message");
+
+  const jobsDir = path.join(root, ".claw", "runtime", "knowledge-finalization", "jobs");
+  const jobFiles = fs.readdirSync(jobsDir).filter((name) => name.endsWith(".json"));
+  assert.equal(jobFiles.length, 1);
+  const job = JSON.parse(fs.readFileSync(path.join(jobsDir, jobFiles[0]!), "utf-8")) as JsonRecord;
+  assert.equal(job.host, "opencode");
+  assert.equal(job.status, "queued");
+});
+
+test("opencode host finalization routes through opencode runner, not Codex SDK", () => {
+  const root = createFixture("hook-stop-opencode-routing");
+  const sessionId = "thread-opencode-routing";
+  const env = { CLAW_HOST: "opencode", CODEX_THREAD_ID: sessionId, CLAW_KNOWLEDGE_FINALIZER_DISABLE_LAUNCH: "1" };
+  runClaw(["init", "--name", "OpenCode Routing", "--planning", "false"], root, env);
+  const projectJsonPath = path.join(root, ".claw", "project.json");
+  const projectConfig = JSON.parse(fs.readFileSync(projectJsonPath, "utf-8")) as JsonRecord;
+  projectConfig.knowledgeWriter = {
+    externalSkill: "custom-knowledge-writer",
+    model: "gpt-test-writer",
+    reasoningEffort: "high",
+  };
+  fs.writeFileSync(projectJsonPath, `${JSON.stringify(projectConfig, null, 2)}\n`, "utf-8");
+  runClaw(["plan", "create", "--title", "demo-task", "--goal", "Route via opencode run"], root, env);
+  runClaw(["task", "done", "--id", "1"], root, env);
+  runClaw(["plan", "done", "--retrospective", "Completed."], root, env);
+
+  const stop = runClawHook("auto-doc", root, {
+    session_id: sessionId,
+    turn_id: "turn-opencode-routing",
+    message: "Ready for deposition.",
+    cwd: root,
+  }, env);
+  assert.equal(stop.status, 0);
+  const jobsDir = path.join(root, ".claw", "runtime", "knowledge-finalization", "jobs");
+  const jobFiles = fs.readdirSync(jobsDir).filter((name) => name.endsWith(".json"));
+  assert.equal(jobFiles.length, 1);
+  const jobPath = path.join(jobsDir, jobFiles[0]!);
+  const job = JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord;
+  assert.equal(job.host, "opencode");
+
+  const missingBinary = path.join(root, "missing-opencode.exe");
+  const finalize = runClawRaw(["internal-knowledge-finalize", "--job", jobPath], root, {
+    ...env,
+    CLAW_OPENCODE_PATH_OVERRIDE: missingBinary,
+    CLAW_KNOWLEDGE_FINALIZER_DISABLE_RETRY: "1",
+  });
+  assert.equal(finalize.status, 0);
+  const failedJob = JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord;
+  assert.equal(failedJob.status, "failed");
+  assert.match(String((failedJob.error as JsonRecord).message), /opencode runner|ENOENT|spawn/i);
 });
 
 test("cli hook stays quiet outside .claw projects", () => {

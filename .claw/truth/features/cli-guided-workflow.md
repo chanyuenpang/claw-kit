@@ -12,7 +12,9 @@
 - mutation chain 会先完成整条命令的语法校验：语法错误时零提交；进入语义执行后则逐步持久化，首个语义失败会停止后续 operation，但保留此前成功步骤，并返回包含失败 operation 与剩余数量的结构化 partial 结果。
 - chain 的 `workflowGuidance`、completed-task 事件、session binding、completion hooks、plan mirror 与 Goal action 只按 mutation 前后的初始和最终 plan 状态归约一次；中间 lifecycle 状态不触发 side effect。合法的 `process.active -> process.wait -> process.active` 等同命令状态链因此不会产生虚假的 Goal 操作。
 - `claw plan write` 支持最简 positional title 入口：`claw plan write "<title>" [--goal "<text>"]`，`--goal` 可以省略。
+- 是否创建 plan 由请求是否预期产生可复用事实、决策、约束、模式或项目上下文决定，而不是按文件数、步骤数或其他维度加总复杂度。
 - `claw plan create` 在启用 planning 时会创建 seeded planning task 和 `Enter process.active` bridge task，并让 plan 先处于 `process.discussing`；planning task 追加 downstream executable tasks 时必须保留这个 bridge task，而不是覆盖它。
+- `process.discussing` 是可以跨轮次稳定停留的有效状态；plan 已存在不会自动把它升级到 `process.active`。只有后续可执行子任务明确且用户可以脱手推进时，才进入 `process.active`。
 - `packages/core/src/templates/plans/default.ts` 里的 seeded activation task 生成现在会跟随 `goalMode` 与 host 语义：当 `goalMode = true` 且 host 不是显式 `opencode` 时，会把 `buildGoalModeObjective(...)` 产出的 recommended objective 追加到现有 activation task detail；Codex 默认的 no-host 路径按 Codex-compatible 处理并拿到这段 objective，显式 `host: "opencode"` 则保留旧的简洁 activation detail，而 `goalMode = false` 只保留 base detail。
 - `claw plan create` 的 seed plan 现在还会持久化 `plan.templateId` 和模板专属的 `plan.configOverride`，所以后续 `plan edit` / `plan done` 可以重新解析原始 template 并复用同一套 template guidance。
 - template guidance 现在以 task skeleton 的 `guidance.onDone` 为准；如果模板定义了 `guidance.onDone.choices`，任何进入 `done` 的路径都必须带上匹配的 `choiceId`，否则会触发带 choice 列表的定向错误。

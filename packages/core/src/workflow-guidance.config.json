@@ -6,38 +6,10 @@
   "planCreateRecall": {
     "recommendedCommand": "claw search --query \"<topic>\""
   },
-  "delegates": {
-    "truthWriter": {
-      "name": "truth-writer",
-      "fallbackSkill": "claw-kit:truth-writer",
-      "dispatch": "when_reusable_truth_confirmed",
-      "model": "gpt-5.6-terra",
-      "reasoning_effort": "medium",
-      "fork_context": false,
-      "waitForCompletion": false,
-      "preferReuseSameTypeInThread": true,
-      "inputContract": "curated completed subtask report containing the reusable facts and evidence needed for deposition; canonical target routing belongs to the truth writer",
-      "outputContract": "optional telemetry only",
-      "closePolicy": "keep_open_for_reuse"
-    },
-    "adrWriter": {
-      "name": "adr-writer",
-      "fallbackSkill": "claw-kit:adr-writer",
-      "dispatch": "required",
-      "model": "gpt-5.6-terra",
-      "reasoning_effort": "medium",
-      "fork_context": false,
-      "waitForCompletion": false,
-      "preferReuseSameTypeInThread": true,
-      "inputContract": "updated active root plan.json path after retrospective and durable keyDecisions are persisted; plan done retains this path for at least one hour so the ADR writer can continue asynchronously; decision extraction and canonical target routing belong to the ADR writer",
-      "outputContract": "optional telemetry only",
-      "closePolicy": "keep_open_for_reuse"
-    }
-  },
   "states": {
     "prepare.requirements.withGoal": {
       "stage": "requirements",
-      "summary": "Task scope is bound. Fill the remaining plan fields, then move into execution as soon as requirements are clear. The user has already authorized this @claw-kit thread to use goal mode and delegated subagents when the workflow requires them, so permission concerns must not block the flow.",
+      "summary": "Task scope is bound. Fill the remaining plan fields, then move into execution as soon as requirements are clear. The user has already authorized this @claw-kit thread to use goal mode when the workflow requires it, so permission concerns must not block the flow.",
       "nextsteps": [
         "1. Fill the missing plan fields.",
         "2. Move into `process.active` once requirements are clear."
@@ -65,7 +37,7 @@
     },
     "prepare.requirements.withoutGoal": {
       "stage": "requirements",
-      "summary": "Task scope is bound. Add the goal first, then fill the remaining plan fields before execution. The user has already authorized this @claw-kit thread to use goal mode and delegated subagents when the workflow requires them, so permission concerns must not block the flow.",
+      "summary": "Task scope is bound. Add the goal first, then fill the remaining plan fields before execution. The user has already authorized this @claw-kit thread to use goal mode when the workflow requires it, so permission concerns must not block the flow.",
       "nextsteps": [
         "1. Fill `goal.text`.",
         "2. Fill the missing plan fields.",
@@ -136,9 +108,9 @@
       "nextsteps": [
         "1. Clear thread progress with `update_plan`.",
         "2. Run `claw plan done --retrospective` once. Add `--key-decision` only for real durable decisions not already recorded.",
-        "3. Plan completion and parent-plan resume remain canonical; the independent Stop hook captures the final turn and queues report-based knowledge closeout."
+        "3. Stop after the canonical plan transition; no separate closeout action is required from the main agent."
       ],
-      "notes": "Do not dispatch truth or ADR writers from the main agent. Knowledge deposition is a fail-open sidecar owned by the Stop hook and isolated Codex SDK worker; hook failure must not change plan completion or subplan resume.",
+      "notes": "Background maintenance is fail-open and requires no main-agent action; it must not change plan completion or subplan resume.",
       "recommendedCommands": [
         "{{doneBase}} --retrospective \"<summary>\" [--key-decision \"<durable decision>\"]"
       ]
@@ -150,7 +122,7 @@
         "1. Sync thread progress with `update_plan`.",
         "2. Continue with {{nextTaskRef}}."
       ],
-      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. Turn reports are collected automatically; the main agent does not curate or dispatch truth deposition.",
+      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
       "recommendedCommands": [
         "{{taskDoneCommand}}",
         "claw task edit --id <id> --status in_progress"
@@ -346,7 +318,7 @@
       "lines": [
         "This session started inside a .claw project: {{projectName}} ({{projectId}}).",
         ".claw directory: {{clawDir}}",
-        "You can use goal mode in this thread and delegate the subagents required by the claw workflow, don't ask me again.",
+        "You can use goal mode in this thread when required by the claw workflow; don't ask me again.",
         "Follow the claw workflowGuidance return fields as the required next-step contract.",
         "Load claw-kit:using-claw-kit as the main workflow skill for this session."
       ]
@@ -358,7 +330,7 @@
         "Treat returned claw workflowGuidance as the only next-step contract.",
         "There is already an unfinished plan in this thread.",
         "Tell the user and ask whether to close the current plan or continue advancing it before starting unrelated work.",
-        "You can use goal mode in this thread and delegate the claw workflow's required subagents, don't ask me again.",
+        "You can use goal mode in this thread when required by the claw workflow; don't ask me again.",
         "After this plan finishes, keep using claw-kit in this thread for the next task.",
         ""
       ],
@@ -371,7 +343,6 @@
         "nextSteps": "- next steps: {{nextSteps}}",
         "recommendedCommands": "- recommended commands: {{recommendedCommands}}",
         "notes": "- notes: {{notes}}",
-        "delegateSubagents": "- delegate subagents: {{delegateSubagents}}",
         "askUser": "- ask user: {{askUser}}",
         "goalMode": "- goal mode: {{goalMode}}"
       },

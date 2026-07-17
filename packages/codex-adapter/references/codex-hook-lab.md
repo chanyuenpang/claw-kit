@@ -73,5 +73,4 @@ Hooks are considered usable only if:
 ## Non-goals
 
 - no task binding through hooks in this phase
-- no mandatory truth deposition through hooks in this phase
 - no plan guard automation through hooks in this phase

@@ -53,9 +53,14 @@ Mode, canonical truth/ADR routing, and compatibility commands.
 - Same-type writer reuse remains the default dispatch contract.
 - ADR writer checks `keyDecisions` first. An absent or empty list returns the
   explicit `no durable keyDecisions` no-op before search or corpus inspection.
-- The calibrated 12-case low/medium/high corpus counts dependency risk only when
-  distinct from file scope and workflow shape. Low-case false positives fell
-  from `50%` to `0%`; formal-case recall remained `100%`.
+- The 15-case corpus separates expected knowledge value from execution readiness.
+  Work expected to produce reusable project knowledge creates a plan, but the plan
+  remains in `process.discussing` until downstream tasks are explicit and execution
+  can continue without repeated user input, material choices, step review, or
+  co-creation. Only then does it enter `process.active`.
+- The three-state lifecycle gate kept direct false positives and premature Goal
+  Mode activation at `0%`, retained `100%` formal-plan recall, and reached `100%`
+  state accuracy across `direct`, `discussing`, and `active` cases.
 
 ## Evidence
 

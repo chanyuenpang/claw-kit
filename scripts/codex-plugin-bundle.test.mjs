@@ -50,7 +50,7 @@ test("readCodexPluginSource returns manifest metadata and stable payload list", 
   assert.deepEqual(plugin.payloadRelativePaths, CODEX_PLUGIN_PAYLOAD_PATHS);
 });
 
-test("Codex plugin manifest starts with using-claw-kit instead of pre-reading planning", async () => {
+test("Codex plugin manifest starts with the guidance contract instead of a static workflow", async () => {
   const manifestPath = new URL("../packages/codex-adapter/.codex-plugin/plugin.json", import.meta.url);
   const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
   const promptText = [
@@ -61,23 +61,62 @@ test("Codex plugin manifest starts with using-claw-kit instead of pre-reading pl
   assert.doesNotMatch(promptText, /first read the planning skill/i);
   assert.doesNotMatch(promptText, /start by reading the planning skill/i);
   assert.match(promptText, /When no task scope exists/i);
-  assert.match(promptText, /seeded planning task/i);
+  assert.match(promptText, /workflowGuidance/i);
+  assert.match(promptText, /code-mode driver/i);
+  assert.doesNotMatch(promptText, /seeded planning task|claw plan start|claw task done|claw plan done/i);
 });
 
-test("Codex closeout contract keeps combined knowledge deposition asynchronous and fail-open", async () => {
+test("Codex entry keeps knowledge routing separate from Goal Mode readiness", async () => {
+  const adapterRoot = new URL("../packages/codex-adapter/", import.meta.url);
+  const skill = await fs.readFile(new URL("skills/using-claw-kit/SKILL.md", adapterRoot), "utf8");
+  const manifest = await fs.readFile(new URL(".codex-plugin/plugin.json", adapterRoot), "utf8");
+  const contract = `${skill}\n${manifest}`;
+
+  assert.match(contract, /reusable project knowledge/i);
+  assert.match(contract, /process\.discussing/i);
+  assert.match(contract, /downstream tasks are explicit/i);
+  assert.match(contract, /handoff-ready|hand off execution/i);
+  assert.match(skill, /stable cross-turn state/i);
+  assert.match(skill, /convert it to `(?:process\.)?wait`/i);
+});
+
+test("Codex entry stays compact without dropping guidance, lifecycle, or the mutation bridge", async () => {
   const skill = await fs.readFile(
     new URL("../packages/codex-adapter/skills/using-claw-kit/SKILL.md", import.meta.url),
     "utf8",
   );
-  const reference = await fs.readFile(
-    new URL("../packages/codex-adapter/references/workflow-guidance-consumption.md", import.meta.url),
+  const lineCount = skill.trimEnd().split(/\r?\n/).length;
+
+  assert.ok(lineCount >= 50 && lineCount <= 65, `expected 50-65 lines, received ${lineCount}`);
+  assert.match(skill, /workflowGuidance` is the only next-step contract/i);
+  for (const state of ["process.discussing", "process.active", "process.wait", "end.completed"]) {
+    assert.match(skill, new RegExp(state.replace(".", "\\."), "i"));
+  }
+  assert.doesNotMatch(skill, /^\s*-\s*`?done`?:/im);
+  assert.match(skill, /```javascript[\s\S]*runClawPlanMutation[\s\S]*```/i);
+  assert.doesNotMatch(skill, /Core execution chain|Detailed call flow|## First action|claw plan start|claw task done|claw plan done/i);
+});
+
+test("Codex main-agent bundle excludes retired workflow skills and closeout routing language", async () => {
+  const adapterRoot = new URL("../packages/codex-adapter/", import.meta.url);
+  const skill = await fs.readFile(
+    new URL("skills/using-claw-kit/SKILL.md", adapterRoot),
     "utf8",
   );
+  const reference = await fs.readFile(
+    new URL("references/workflow-guidance-consumption.md", adapterRoot),
+    "utf8",
+  );
+  const manifest = await fs.readFile(new URL(".codex-plugin/plugin.json", adapterRoot), "utf8");
+  const forbidden = /truth-writer|adr-writer|knowledge-writer|writer delegation|deposition|delegated subagents?|dispatch[^\n]*subagent/i;
 
-  assert.match(skill, /do not wait for deposition/i);
-  assert.match(skill, /combined `knowledge-writer` through the Codex SDK/i);
-  assert.match(reference, /Hook, report, launcher, SDK, or writer failures never block or alter plan completion/i);
-  assert.match(reference, /Do not dispatch `truth-writer`, `adr-writer`, or `knowledge-writer` from the main agent/i);
+  assert.doesNotMatch(skill, forbidden);
+  assert.doesNotMatch(reference, forbidden);
+  assert.doesNotMatch(manifest, forbidden);
+  await assert.rejects(fs.access(new URL("skills/truth-writer/SKILL.md", adapterRoot)));
+  await assert.rejects(fs.access(new URL("skills/adr-writer/SKILL.md", adapterRoot)));
+  await assert.rejects(fs.access(new URL("skills/search-workflow/SKILL.md", adapterRoot)));
+  await assert.rejects(fs.access(new URL("skills/init/SKILL.md", adapterRoot)));
 });
 
 test("Codex plugin source includes the config skill entrypoint", async () => {
@@ -95,9 +134,10 @@ test("exported Codex plugin contains every shared workflow skill", async () => {
   const outDir = path.join(root, "dist");
   const result = await exportCodexPluginBundle({ outDir });
 
-  for (const skillName of ["planning", "config", "update", "create-claw-skill"]) {
+  for (const skillName of ["planning", "config", "update", "create-claw-skill", "knowledge-writer"]) {
     await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", skillName, "SKILL.md")));
   }
+  await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "knowledge-writer", "agents", "openai.yaml")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "update", "TEMPLATE.json")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "create-claw-skill", "TEMPLATE.json")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "scripts", "code-mode-host-action-consumer.mjs")));

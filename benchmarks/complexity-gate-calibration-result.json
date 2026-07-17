@@ -1,15 +1,35 @@
 {
-  "schemaVersion": 1,
-  "caseCount": 12,
+  "schemaVersion": 4,
+  "caseCount": 15,
   "legacy": {
-    "lowFalsePositiveRate": 0.5,
+    "directFalsePositiveRate": 0.5,
     "formalRecall": 1.0,
-    "accuracy": 0.8333333333333334
+    "prematureActivationRate": 1.0,
+    "stateAccuracy": 0.6666666666666666
   },
-  "calibrated": {
-    "lowFalsePositiveRate": 0.0,
+  "calibratedScore": {
+    "directFalsePositiveRate": 0.0,
     "formalRecall": 1.0,
-    "accuracy": 1.0
+    "prematureActivationRate": 1.0,
+    "stateAccuracy": 0.8
   },
-  "decision": "Only count dependency risk when it is distinct from file scope and workflow shape; known dependencies alone add zero."
+  "knowledgeOnly": {
+    "directFalsePositiveRate": 0.0,
+    "formalRecall": 1.0,
+    "prematureActivationRate": 1.0,
+    "stateAccuracy": 0.8
+  },
+  "knowledgeAndHandoff": {
+    "directFalsePositiveRate": 0.0,
+    "formalRecall": 1.0,
+    "prematureActivationRate": 0.3333333333333333,
+    "stateAccuracy": 0.9333333333333333
+  },
+  "lifecycle": {
+    "directFalsePositiveRate": 0.0,
+    "formalRecall": 1.0,
+    "prematureActivationRate": 0.0,
+    "stateAccuracy": 1.0
+  },
+  "decision": "Expected reusable knowledge decides whether to create a plan. Explicit downstream tasks and the ability to proceed without repeated user involvement jointly decide whether a discussing plan enters active Goal Mode."
 }

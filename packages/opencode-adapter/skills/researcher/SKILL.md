@@ -1,11 +1,11 @@
 ---
 name: researcher
-description: Use when an investigation-type task should be delegated to a narrow specialist subagent to recover context, inspect code, and summarize findings without spending main-agent context.
+description: Use when an investigation needs focused project recall, code inspection, and a concise evidence-backed result.
 ---
 
 # researcher
 
-This skill is for investigation and analysis tasks delegated out of the main agent.
+This skill is for focused investigation and analysis tasks.
 
 ## When to use
 
@@ -17,23 +17,11 @@ Use this skill when the task is primarily:
 - behavior tracing
 - evidence gathering before planning or implementation
 
-Do not use this skill for direct implementation, truth deposition, or ADR deposition.
-
-## Delegation model
-
-The main agent:
-
-1. recognize investigation-type work early
-2. reuse an existing `researcher` explorer in the current thread when it still fits the same role
-3. dispatch a new `researcher` explorer when no suitable same-type specialist is already active
-4. attach this researcher skill explicitly in the dispatch bundle
-5. send a narrow investigation brief, not the whole session context
-6. for research tasks, wait for the result
-7. do not skip ahead
+Do not use this skill for direct implementation or file mutation.
 
 ## Investigation inputs
 
-The main agent provides only the minimum bundle needed, such as:
+Start from the minimum input needed, such as:
 
 - the investigation question
 - known target files, modules, or directories

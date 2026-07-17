@@ -58,7 +58,7 @@ When memory embedding or GitNexus is enabled, `claw context` adds optional `sear
   - active task retention limit
   - default: `99`
 - `knowledgeWriter.externalSkill`
-  - optional combined truth-and-ADR writer override; `null` uses the built-in writer
+  - optional background finalizer skill override; `null` uses `claw-kit:knowledge-writer`
 - `memory.enabled`
   - master switch for project memory, task memory, embedding refresh, and `claw search`
 - `memory.externalDocPaths`
@@ -81,9 +81,7 @@ When memory embedding or GitNexus is enabled, `claw context` adds optional `sear
 - Use `.claw/project-override.json` for personal runtime preferences.
 - Use the canonical field names in both files: `planning`, `autoUpdate`, `externalPlanningSkill`, `goalMode`, `knowledgeWriter`, and `gitnexus`.
 - Treat explicit `null` as an intentional override, not inheritance.
-- Legacy `externalTruthSkill` / `externalAdrSkill` values migrate into `knowledgeWriter.externalSkill`; conflicting values safely use the built-in writer.
 - `memory.enabled = false` disables project memory, task memory, embedding refresh, and `claw search` together.
-- `truthDispatch`, `per_task`, and `final_only` are removed from the shared project schema.
 
 ## When to use the canonical guide
 

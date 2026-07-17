@@ -6,38 +6,10 @@
   "planCreateRecall": {
     "recommendedCommand": "claw search --query \"<topic>\""
   },
-  "delegates": {
-    "truthWriter": {
-      "name": "truth-writer",
-      "fallbackSkill": "claw-kit:truth-writer",
-      "dispatch": "when_reusable_truth_confirmed",
-      "model": "gpt-5.6-terra",
-      "reasoning_effort": "medium",
-      "fork_context": false,
-      "waitForCompletion": false,
-      "preferReuseSameTypeInThread": true,
-      "inputContract": "curated completed subtask report containing the reusable facts and evidence needed for deposition; canonical target routing belongs to the truth writer",
-      "outputContract": "optional telemetry only",
-      "closePolicy": "keep_open_for_reuse"
-    },
-    "adrWriter": {
-      "name": "adr-writer",
-      "fallbackSkill": "claw-kit:adr-writer",
-      "dispatch": "required",
-      "model": "gpt-5.6-terra",
-      "reasoning_effort": "medium",
-      "fork_context": false,
-      "waitForCompletion": false,
-      "preferReuseSameTypeInThread": true,
-      "inputContract": "updated active root plan.json path after retrospective and durable keyDecisions are persisted; plan done retains this path for at least one hour so the ADR writer can continue asynchronously; decision extraction and canonical target routing belong to the ADR writer",
-      "outputContract": "optional telemetry only",
-      "closePolicy": "keep_open_for_reuse"
-    }
-  },
   "states": {
     "prepare.requirements.withGoal": {
       "stage": "requirements",
-      "summary": "Task scope is bound. Fill the remaining plan fields, then move into execution as soon as requirements are clear. The user has already authorized this claw-kit thread to use goal mode and delegated subagents when the workflow requires them, so permission concerns must not block the flow.",
+      "summary": "Task scope is bound. Fill the remaining plan fields, then move into execution as soon as requirements are clear. The user has already authorized this claw-kit thread to use goal mode when the workflow requires it, so permission concerns must not block the flow.",
       "nextsteps": [
         "1. Fill the missing plan fields.",
         "2. Move into `process.active` once requirements are clear."
@@ -65,7 +37,7 @@
     },
     "prepare.requirements.withoutGoal": {
       "stage": "requirements",
-      "summary": "Task scope is bound. Add the goal first, then fill the remaining plan fields before execution. The user has already authorized this claw-kit thread to use goal mode and delegated subagents when the workflow requires them, so permission concerns must not block the flow.",
+      "summary": "Task scope is bound. Add the goal first, then fill the remaining plan fields before execution. The user has already authorized this claw-kit thread to use goal mode when the workflow requires it, so permission concerns must not block the flow.",
       "nextsteps": [
         "1. Fill `goal.text`.",
         "2. Fill the missing plan fields.",
@@ -132,19 +104,16 @@
     },
     "process.allTasksDone": {
       "stage": "done",
-      "summary": "All plan tasks are done. Clear your tasks list, deposit confirmed reusable truth when present, then complete the required ADR closeout.",
+      "summary": "All plan tasks are done. Finish the plan record, then complete the canonical plan lifecycle.",
       "nextsteps": [
         "1. Clear your tasks list with todowrite.",
-        "2. Read the returned `truth-writer` entry's `dispatch`. For `when_reusable_truth_confirmed`, the main agent must evaluate reusable truth and dispatch only after confirmation.",
-        "3. First write both `retrospective` and `keyDecisions` back into the plan, then execute the `adr-writer` contract with `dispatch: required` using that updated active root `plan.json` path. Do not wait for the writer before running `claw plan done`; delayed archive keeps the path readable for at least one hour."
+        "2. Write both `retrospective` and `keyDecisions` back into the plan.",
+        "3. Run `claw plan done --retrospective` once. Add `--key-decision` only for real durable decisions not already recorded.",
+        "4. Stop after the canonical plan transition; no separate closeout action is required from the main agent."
       ],
-      "notes": "Truth dispatch requires the main agent's reusable-value confirmation; ADR dispatch is required but remains asynchronous for root-plan closeout. Root `claw plan done` records completedAt and keeps the plan path readable for at least one hour. Honor every field in a dispatched delegate contract.",
+      "notes": "Background maintenance is fail-open and requires no main-agent action; it must not change plan completion or subplan resume.",
       "recommendedCommands": [
         "{{doneBase}} --retrospective \"<summary>\" [--key-decision \"<durable decision>\"]"
-      ],
-      "delegateSubagents": [
-        "truthWriter",
-        "adrWriter"
       ]
     },
     "process.hasCompletedTasks": {
@@ -152,16 +121,12 @@
       "summary": "Execution is in progress.",
       "nextsteps": [
         "1. Use todowrite to sync your tasks list.",
-        "2. Read the returned `truth-writer` entry's `dispatch`. For `when_reusable_truth_confirmed`, the main agent must evaluate reusable truth and dispatch only after confirmation.",
-        "3. Continue with {{nextTaskRef}}."
+        "2. Continue with {{nextTaskRef}}."
       ],
-      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. Evaluate confirmed reusable truth before truth dispatch; when dispatching the writer, honor every field in its delegate contract.",
+      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
       "recommendedCommands": [
         "{{taskDoneCommand}}",
         "claw task edit --id <id> --status in_progress"
-      ],
-      "delegateSubagents": [
-        "truthWriter"
       ]
     },
     "process.justEntered": {
@@ -348,7 +313,7 @@
       "lines": [
         "This session started inside a .claw project: {{projectName}} ({{projectId}}).",
         ".claw directory: {{clawDir}}",
-        "You can use goal mode in this thread and delegate the subagents required by the claw workflow, don't ask me again.",
+        "You can use goal mode in this thread when required by the claw workflow; don't ask me again.",
         "Follow the claw workflowGuidance return fields as the required next-step contract.",
         "The claw-kit workflow is active. Load the `using-claw-kit` skill as the main workflow skill for this session."
       ]
@@ -360,7 +325,7 @@
         "Treat returned claw workflowGuidance as the only next-step contract.",
         "There is already an unfinished plan in this thread.",
         "Tell the user and ask whether to close the current plan or continue advancing it before starting unrelated work.",
-        "You can use goal mode in this thread and delegate the claw workflow's required subagents, don't ask me again.",
+        "You can use goal mode in this thread when required by the claw workflow; don't ask me again.",
         "After this plan finishes, keep using claw-kit in this thread for the next task.",
         ""
       ],
@@ -373,7 +338,6 @@
         "nextSteps": "- next steps: {{nextSteps}}",
         "recommendedCommands": "- recommended commands: {{recommendedCommands}}",
         "notes": "- notes: {{notes}}",
-        "delegateSubagents": "- delegate subagents: {{delegateSubagents}}",
         "askUser": "- ask user: {{askUser}}",
         "goalMode": "- goal mode: {{goalMode}}"
       },

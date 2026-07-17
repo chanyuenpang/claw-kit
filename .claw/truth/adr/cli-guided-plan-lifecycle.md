@@ -14,6 +14,8 @@ Accepted
 
 `0.1.75` 的验收证据显示，短 code-mode bootstrap 与缓存复用没有引入额外命令重试；普通 task mutation、`plan.wait`、`plan.resume` 均保持精简返回，且不携带 `hostActions`、`goalTool`、`nextsteps`、`notes`、`protocol` 噪声字段。
 
+入口门禁继续暴露出另一个生命周期问题：按文件数、步骤数等维度加总复杂度，会漏掉规模小但会产生长期可复用知识的请求，也会把仍需与用户讨论路线的任务过早推进到 Goal Mode。plan 的创建价值与 active 执行的可脱手性是两个不同判断，不能因为 plan 已经存在就合并为一次激活决定。
+
 本轮 plan/task mutation 批处理实现还需要解决一个生命周期一致性问题：如果把同一命令中的每个 operation 当成独立 mutation，合法的中间状态会过早生成 guidance、Goal action、session binding 或 completion hooks；如果整批只在末尾提交，又无法满足语义错误时保留此前成功操作的需求。
 
 ## Decision
@@ -26,6 +28,9 @@ Accepted
 - `claw plan write`、`claw plan edit`、`claw plan done` 的结果只保留成功信息、下一步、委派 specialist，以及可见计划渲染
 - `prepare.requirements` 的 guidance 先要求补齐 `goal.text` 与计划字段，再根据需求是否清晰决定是否切到 `process.active`；不再把 goal mode 作为这个阶段的第一动作
 - `process.active` 成为由 `goal.text` 驱动的显式执行门：`plan.goal.text` 未填写时，计划不能离开 `prepare.requirements`
+- 是否创建 plan 由请求是否预期产生可复用事实、决策、约束、模式或项目上下文决定，而不是由文件数、步骤数或其他维度加总决定
+- `process.discussing` 是允许跨轮次停留的稳定状态；plan 存在本身不触发 Goal Mode，也不要求自动进入 `process.active`
+- 只有后续可执行子任务已经明确，并且用户可以脱手让 agent 继续推进时，plan 才从 `process.discussing` 进入 `process.active`
 - 执行中的知识沉淀继续委派给 `truth-writer`
 - `process.allTasksDone` 是 root plan 的 ADR 沉淀边界：在这里读取 `delegateSubagents`，写完 retrospective 后再把完成态 `plan.json` 交给 `adr-writer`
 - `process.allTasksDone` 只有在 retrospective 和 `keyDecisions` 都已更新后，才允许进入 ADR deposition 和 plan completion
@@ -50,7 +55,7 @@ Accepted
 
 - Codex agent 可以直接从 CLI 结果拿到紧凑且顺序正确的下一步契约
 - agent 被允许用最小参数先绑定任务，不必因为初始命令缺少完整 `goal` 而卡在 `plan write` 入口
-- `prepare.requirements -> process.active` 的推进条件更明确：需求完整时应立即激活，需求不完整时才继续澄清
+- `prepare.requirements -> process.active` 的推进条件分成两层：知识沉淀预期只决定是否建立 plan；子任务明确度与用户可脱手性共同决定是否激活，未满足时可继续稳定停留在 `process.discussing`
 - 对外 plan-write / plan-status 合同更稳定，像 `release-0-1-25` 这样的版本发布可以把这组行为当作 release-worthy surface change
 - 规划语义与展示语义保持一致，计划编辑后无需额外拼装另一套状态
 - 生命周期门禁从文案建议上升为实际约束，避免无目标 active plan 进入执行态
@@ -101,6 +106,9 @@ Accepted
 - `plan write`
 - `prepare.requirements`
 - `process.active`
+- `process.discussing`
+- `knowledge deposition expectation`
+- `handoff-ready activation gate`
 - `goal.text`
 - `plan edit`
 - `plan done`

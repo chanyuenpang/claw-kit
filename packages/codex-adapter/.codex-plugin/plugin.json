@@ -1,7 +1,7 @@
 {
   "name": "claw-kit",
-  "version": "0.1.77+codex.20260717202054",
-  "description": "Thin Codex adapter for claw-kit with fixed code-mode plan and Goal synchronization, per-plan turn reports, and SDK-owned truth and ADR closeout.",
+  "version": "0.1.78+codex.20260718010200",
+  "description": "Thin Codex adapter for claw-kit with fixed code-mode plan and Goal synchronization.",
   "author": {
     "name": "chanyuenpang",
     "url": "https://github.com/chanyuenpang"
@@ -22,7 +22,7 @@
   "interface": {
     "displayName": "Claw Kit",
     "shortDescription": "Prompt-driven .claw harness with compact workflowGuidance and hook-collected plan reports.",
-    "longDescription": "Use Claw Kit through using-claw-kit as the single main-agent workflow. Continue recovered .claw state from returned workflowGuidance and use the complexity gate before creating new plans. On Codex, every plan mutation runs through the fixed code-mode driver, while canonical plan and session-binding transitions remain independent from hooks. Stop hooks collect one final assistant message per turn into the current plan or subplan report. A detached Codex SDK worker evaluates the completed plan and report together, deposits verified truth and ADR when warranted, and then requests recall indexing without burdening or blocking the main agent.",
+    "longDescription": "Use using-claw-kit as the main-agent guidance and lifecycle contract. Follow recovered workflowGuidance as the only next-step contract, create a plan when reusable project knowledge is expected, and keep it discussing until downstream tasks are explicit and handoff-ready. On Codex, every plan mutation runs through the fixed code-mode driver.",
     "developerName": "chanyuenpang",
     "category": "Developer Tools",
     "capabilities": [
@@ -32,8 +32,7 @@
     ],
     "defaultPrompt": [
       "Start with using-claw-kit. If a .claw workflow is already recovered, follow its returned workflowGuidance before creating anything.",
-      "Start with using-claw-kit. When no task scope exists, score the request first; low-complexity work can skip the formal claw workflow, while higher-complexity work should create a plan and follow the returned workflowGuidance.",
-      "Start with using-claw-kit. Let seeded planning tasks invoke the configured planning skill only after formal claw workflow entry; truth and ADR deposition is owned by the Stop hook and SDK closeout worker.",
+      "Start with using-claw-kit. When no task scope exists, create a plan if reusable project knowledge is expected; otherwise work directly. A created plan may remain in process.discussing, and enters process.active only when downstream tasks are explicit and the user can hand off execution.",
       "Start with using-claw-kit. On Codex, run every claw plan mutation only through its fixed code-mode driver; the program consumes hostActions and the agent must not execute goalTool or split host calls."
     ],
     "websiteURL": "https://github.com/chanyuenpang/claw-kit",

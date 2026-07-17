@@ -145,7 +145,7 @@ test("runCodexPlanMutation keeps CLI mutation and direct host dispatch in one pr
 
 test("the embedded bootstrap caches the CLI driver and dispatches native host actions", async () => {
   const skill = await fs.readFile(path.resolve(hooksDir, "..", "skills", "using-claw-kit", "SKILL.md"), "utf8");
-  const match = skill.match(/```javascript\n([\s\S]*?)\n```/);
+  const match = skill.match(/```javascript\r?\n([\s\S]*?)\r?\n```/);
   assert.ok(match, "using-claw-kit must embed the short code-mode bootstrap");
 
   const calls = [];

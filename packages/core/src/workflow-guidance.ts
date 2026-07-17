@@ -10,11 +10,8 @@ import type {
   PlanStatus,
   WorkflowGuidance,
   WorkflowGuidanceGoalTool,
-  WorkflowGuidanceSubagent,
   WorkflowGuidanceOption,
 } from "./types.js";
-
-type DelegateConfigKey = "truthWriter" | "adrWriter";
 
 type GoalModeTemplate = {
   allowOverwrite: true;
@@ -39,7 +36,6 @@ type GuidanceStateTemplate = {
   nextsteps: string[];
   notes?: string;
   recommendedCommands?: string[];
-  delegateSubagents?: DelegateConfigKey[];
   goalMode?: GoalModeTemplate;
   goalTool?: GoalToolTemplate;
   askUser?: {
@@ -61,7 +57,6 @@ type SessionStartRecoveredSnapshotFields = {
   nextSteps?: string;
   recommendedCommands?: string;
   notes?: string;
-  delegateSubagents?: string;
   askUser?: string;
   goalMode?: string;
 };
@@ -86,7 +81,6 @@ type GuidanceConfig = {
   planCreateRecall?: {
     recommendedCommand: string;
   };
-  delegates: Record<DelegateConfigKey, Omit<WorkflowGuidanceSubagent, "skill"> & { fallbackSkill: string }>;
   states: Record<string, GuidanceStateTemplate>;
   sessionStart?: SessionStartTemplate;
 };
@@ -107,32 +101,6 @@ function loadGuidanceConfig(): GuidanceConfig {
 }
 
 const workflowGuidanceConfig = loadGuidanceConfig();
-
-function truthWriterDelegate(projectConfig: ProjectConfig | null): WorkflowGuidanceSubagent {
-  return buildConfiguredDelegate("truthWriter", projectConfig);
-}
-
-function adrWriterDelegate(projectConfig: ProjectConfig | null): WorkflowGuidanceSubagent {
-  return buildConfiguredDelegate("adrWriter", projectConfig);
-}
-
-function buildConfiguredDelegate(key: DelegateConfigKey, projectConfig: ProjectConfig | null): WorkflowGuidanceSubagent {
-  const config = workflowGuidanceConfig.delegates[key];
-  const overrideSkill = projectConfig?.knowledgeWriter?.externalSkill;
-  return {
-    name: config.name,
-    skill: normalizeWriterSkill(overrideSkill, config.fallbackSkill),
-    dispatch: config.dispatch,
-    model: config.model,
-    reasoning_effort: config.reasoning_effort,
-    fork_context: config.fork_context,
-    waitForCompletion: config.waitForCompletion,
-    preferReuseSameTypeInThread: config.preferReuseSameTypeInThread,
-    inputContract: config.inputContract,
-    outputContract: config.outputContract,
-    closePolicy: config.closePolicy,
-  };
-}
 
 function buildGoalMode(planGoal: string, template: GoalModeTemplate): NonNullable<WorkflowGuidance["goalMode"]> {
   return {
@@ -259,16 +227,6 @@ function renderStateTemplate(key: string, vars: TemplateVars): GuidanceStateTemp
     throw new Error(`Unknown workflow guidance template: ${key}`);
   }
   return renderTemplateValue(template, vars);
-}
-
-function buildConfiguredDelegates(
-  keys: DelegateConfigKey[] | undefined,
-  projectConfig: ProjectConfig | null,
-): WorkflowGuidanceSubagent[] | undefined {
-  if (!keys?.length) {
-    return undefined;
-  }
-  return keys.map((key) => buildConfiguredDelegate(key, projectConfig));
 }
 
 function isGoalModeEnabled(projectConfig: ProjectConfig | null): boolean {
@@ -416,9 +374,6 @@ export async function buildPlanWorkflowGuidance(params: {
           nextsteps: template.nextsteps,
           ...(template.notes ? { notes: template.notes } : {}),
           ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),
-          ...(template.delegateSubagents
-            ? { delegateSubagents: buildConfiguredDelegates(template.delegateSubagents, projectConfig) }
-            : {}),
         };
         return applyCreateGuidance({
           commandSource,
@@ -468,11 +423,6 @@ export async function buildPlanWorkflowGuidance(params: {
           ? { goalTool: buildGoalTool(plan.goal.text, template.goalTool) }
           : {}),
         ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),
-        ...(hasCompletedTasks && template.delegateSubagents
-          ? {
-              delegateSubagents: buildConfiguredDelegates(template.delegateSubagents, projectConfig),
-            }
-          : {}),
       };
       return applyCreateGuidance({
         commandSource,
@@ -499,9 +449,6 @@ export async function buildPlanWorkflowGuidance(params: {
         ...(template.notes ? { notes: template.notes } : {}),
         ...(template.goalTool && goalModeEnabled && previousStatus === "process.active" && hasGoal && !suppressGoalFields
           ? { goalTool: buildGoalTool(plan.goal.text, template.goalTool) }
-          : {}),
-        ...(template.delegateSubagents
-          ? { delegateSubagents: buildConfiguredDelegates(template.delegateSubagents, projectConfig) }
           : {}),
         ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),
       };
@@ -548,7 +495,7 @@ async function applyTemplateTaskDoneGuidance(params: {
   const merged = route.mergeMode === "replace"
     ? replaceWorkflowGuidance(guidance, route, plan)
     : overrideWorkflowGuidance(guidance, route, plan);
-  return route.delegateTruth === false ? suppressTruthDelegate(merged) : merged;
+  return merged;
 }
 
 function overrideWorkflowGuidance(
@@ -615,18 +562,6 @@ function buildNextTaskOverride(plan: PlanDocument, taskId: number): { nextTask?:
   };
 }
 
-function suppressTruthDelegate(guidance: WorkflowGuidance): WorkflowGuidance {
-  const delegateSubagents = guidance.delegateSubagents?.filter((delegate) => delegate.name !== "truth-writer");
-  const nextsteps = normalizeGuidanceSteps(
-    guidance.nextsteps.filter((step) => !step.toLowerCase().includes("truth-writer")),
-  );
-  return {
-    ...guidance,
-    nextsteps,
-    ...(delegateSubagents && delegateSubagents.length > 0 ? { delegateSubagents } : { delegateSubagents: undefined }),
-  };
-}
-
 function mergeUniqueStrings(base: string[], extra: string[]): string[] {
   const merged: string[] = [];
   const seen = new Set<string>();
@@ -643,14 +578,6 @@ function normalizeGuidanceSteps(steps: string[]): string[] {
   return steps.map((step, index) => `${index + 1}. ${step.replace(/^\d+\.\s*/, "").trim()}`);
 }
 
-function normalizeWriterSkill(value: string | null | undefined, fallback: string): string {
-  if (typeof value !== "string") {
-    return fallback;
-  }
-  const trimmed = value.trim();
-  return trimmed || fallback;
-}
-
 export interface SessionStartDefaultParams {
   projectName: string;
   projectId: string;
@@ -665,7 +592,6 @@ export interface SessionStartRecoveredParams {
   planSummary: string;
   nextsteps: string[];
   recommendedCommands: string[];
-  delegateSubagents: string[];
   notes: string;
   askUser: string;
   goalMode: string;
@@ -675,7 +601,7 @@ export interface SessionStartRecoveredParams {
 const FALLBACK_SESSION_START_DEFAULT_LINES: string[] = [
   "This session started inside a .claw project: {{projectName}} ({{projectId}}).",
   ".claw directory: {{clawDir}}",
-  "You can use goal mode in this thread and delegate the subagents required by the claw workflow, don't ask me again.",
+  "You can use goal mode in this thread when required by the claw workflow; don't ask me again.",
   "Follow the claw workflowGuidance return fields as the required next-step contract.",
   "Load claw-kit:using-claw-kit as the main workflow skill for this session.",
 ];
@@ -687,7 +613,7 @@ const FALLBACK_SESSION_START_RECOVERED: SessionStartRecoveredTemplate = {
     "Treat returned claw workflowGuidance as the only next-step contract.",
     "There is already an unfinished plan in this thread.",
     "Tell the user and ask whether to close the current plan or continue advancing it before starting unrelated work.",
-    "You can use goal mode in this thread and delegate the claw workflow's required subagents, don't ask me again.",
+    "You can use goal mode in this thread when required by the claw workflow; don't ask me again.",
     "After this plan finishes, keep using claw-kit in this thread for the next task.",
     "",
   ],
@@ -700,7 +626,6 @@ const FALLBACK_SESSION_START_RECOVERED: SessionStartRecoveredTemplate = {
     nextSteps: "- next steps: {{nextSteps}}",
     recommendedCommands: "- recommended commands: {{recommendedCommands}}",
     notes: "- notes: {{notes}}",
-    delegateSubagents: "- delegate subagents: {{delegateSubagents}}",
     askUser: "- ask user: {{askUser}}",
     goalMode: "- goal mode: {{goalMode}}",
   },
@@ -746,11 +671,6 @@ export function buildSessionStartRecoveredPrompt(params: SessionStartRecoveredPa
   }
   if (fields.notes && params.notes) {
     lines.push(renderTemplateString(fields.notes, { ...baseVars, notes: params.notes }));
-  }
-  if (fields.delegateSubagents && params.delegateSubagents.length > 0) {
-    lines.push(
-      renderTemplateString(fields.delegateSubagents, { ...baseVars, delegateSubagents: params.delegateSubagents.join(", ") }),
-    );
   }
   if (fields.askUser && params.askUser) {
     lines.push(renderTemplateString(fields.askUser, { ...baseVars, askUser: params.askUser }));

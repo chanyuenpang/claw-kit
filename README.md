@@ -68,7 +68,7 @@ After the CLI is installed, project search still needs one-time setup inside eac
 Then use it from any project directory:
 
 ```powershell
-claw init --max-tasks-to-keep 20 --planning true --external-planning-skill team-planning-skill --external-truth-skill external-truth-writer --external-adr-skill external-adr-writer
+claw init --max-tasks-to-keep 20 --planning true --external-planning-skill team-planning-skill --external-writer-skill external-knowledge-writer
 claw plan create --title "My task" --goal "Define the first task"
 claw plan create "My templated task" --template default --goal "Use the default template"
 ```

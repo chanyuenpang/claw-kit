@@ -54,6 +54,7 @@ import {
 import { buildCodexDriverEnvelope } from "./codex-driver.js";
 import { checkCodexRuntime, resolveCodexSdkEntryPath } from "./codex-runtime.js";
 import { extractLatestFinalAssistantMessage } from "./codex-transcript.js";
+import { runOpencodeKnowledgeWriter } from "./opencode-runner.js";
 
 const CLI_VERSION = readCliVersion();
 
@@ -403,7 +404,7 @@ const COMMAND_HELP: Record<string, HelpNode> = {
   },
   "internal-knowledge-finalize": {
     usage: ["{script} internal-knowledge-finalize --job <path>"],
-    description: "Internal: runs one queued knowledge deposition job through the Codex SDK.",
+    description: "Internal: runs one queued knowledge deposition job through the host-aware finalization runner (Codex SDK for codex host, opencode run for opencode host).",
     options: [{ flag: "--job <path>", detail: "(required) Finalization job JSON path." }],
   },
 };
@@ -1231,12 +1232,15 @@ async function runStopHook(): Promise<void> {
   const sessionId = resolveOwnerSessionKey(payload);
   const turnId = readHookString(payload, "turn_id");
   const transcriptPath = readHookString(payload, "transcript_path");
-  if (!hookCwd || !sessionId || !turnId || !transcriptPath || !containsClawDir(hookCwd)) {
+  const payloadMessage = readHookString(payload, "message");
+  if (!hookCwd || !sessionId || !turnId || !containsClawDir(hookCwd)) {
     return;
   }
   try {
     const project = resolveProjectContext(hookCwd);
-    const message = extractLatestFinalAssistantMessage(transcriptPath);
+    // Codex passes a transcript_path; opencode and other hosts without a file
+    // transcript pass the final assistant message inline. Either source is valid.
+    const message = payloadMessage ?? (transcriptPath ? extractLatestFinalAssistantMessage(transcriptPath) : null);
     if (!message) {
       return;
     }
@@ -1245,6 +1249,7 @@ async function runStopHook(): Promise<void> {
       sessionId,
       turnId,
       message,
+      host: process.env.CLAW_HOST,
     });
     if (result.ok && result.jobPath && process.env.CLAW_KNOWLEDGE_FINALIZER_DISABLE_LAUNCH !== "1") {
       launchKnowledgeFinalizationWorker(result.jobPath, project.projectRoot);
@@ -1261,33 +1266,7 @@ async function runInternalKnowledgeFinalize(args: string[]): Promise<void> {
     return;
   }
   try {
-    const sdk = await import(pathToFileURL(resolveCodexSdkEntryPath()).href) as {
-      Codex: new (options?: { env?: Record<string, string>; codexPathOverride?: string }) => {
-        startThread(options: Record<string, unknown>): {
-          id: string | null;
-          run(prompt: string): Promise<{ finalResponse: string }>;
-        };
-      };
-    };
-    const Codex = sdk.Codex;
-    const codex = new Codex({
-      env: knowledgeFinalizerEnvironment(),
-      ...(process.env.CLAW_CODEX_PATH_OVERRIDE
-        ? { codexPathOverride: process.env.CLAW_CODEX_PATH_OVERRIDE }
-        : {}),
-    });
-    const writer = running.writer ?? { model: null, reasoningEffort: "medium" as const };
-    const thread = codex.startThread({
-      workingDirectory: running.projectRoot,
-      sandboxMode: "workspace-write",
-      approvalPolicy: "never",
-      networkAccessEnabled: false,
-      ...(writer.model ? { model: writer.model } : {}),
-      ...(writer.reasoningEffort
-        ? { modelReasoningEffort: writer.reasoningEffort }
-        : {}),
-    });
-    const turn = await thread.run(buildKnowledgeWriterPrompt(running));
+    const run = await runKnowledgeWriterForJob(running);
     const project = resolveProjectContext(running.projectRoot);
     const truthEncoding = normalizeTruthMarkdownEncoding(project);
     queueCompletionRefresh({
@@ -1302,8 +1281,8 @@ async function runInternalKnowledgeFinalize(args: string[]): Promise<void> {
       ...running,
       status: "succeeded",
       finishedAt: new Date().toISOString(),
-      ...(thread.id ? { sdkThreadId: thread.id } : {}),
-      finalResponse: turn.finalResponse,
+      ...(run.threadId ? { sdkThreadId: run.threadId } : {}),
+      finalResponse: run.finalResponse,
       truthEncoding,
     });
     tryCleanupKnowledgeFinalizationReport(project, running.reportPath);
@@ -1319,6 +1298,65 @@ async function runInternalKnowledgeFinalize(args: string[]): Promise<void> {
       launchKnowledgeFinalizationWorker(jobPath, failed.projectRoot);
     }
   }
+}
+
+type KnowledgeWriterRunResult = {
+  finalResponse: string;
+  threadId?: string;
+};
+
+/**
+ * Pick the host-aware finalization runner. The opencode host never assumes a Codex SDK
+ * runtime is installed and runs the writer through `opencode run`; the Codex host and
+ * legacy jobs without a host field keep using the versioned Codex SDK runtime.
+ */
+async function runKnowledgeWriterForJob(running: KnowledgeFinalizationJob): Promise<KnowledgeWriterRunResult> {
+  if (running.host === "opencode") {
+    const result = runOpencodeKnowledgeWriter({
+      prompt: buildKnowledgeWriterPrompt(running),
+      projectRoot: running.projectRoot,
+      writer: running.writer ?? null,
+    });
+    return {
+      finalResponse: result.finalResponse,
+      ...(result.threadId ? { threadId: result.threadId } : {}),
+    };
+  }
+  return runCodexSdkWriter(running);
+}
+
+async function runCodexSdkWriter(running: KnowledgeFinalizationJob): Promise<KnowledgeWriterRunResult> {
+  const sdk = await import(pathToFileURL(resolveCodexSdkEntryPath()).href) as {
+    Codex: new (options?: { env?: Record<string, string>; codexPathOverride?: string }) => {
+      startThread(options: Record<string, unknown>): {
+        id: string | null;
+        run(prompt: string): Promise<{ finalResponse: string }>;
+      };
+    };
+  };
+  const Codex = sdk.Codex;
+  const codex = new Codex({
+    env: knowledgeFinalizerEnvironment(),
+    ...(process.env.CLAW_CODEX_PATH_OVERRIDE
+      ? { codexPathOverride: process.env.CLAW_CODEX_PATH_OVERRIDE }
+      : {}),
+  });
+  const writer = running.writer ?? { model: null, reasoningEffort: "medium" as const };
+  const thread = codex.startThread({
+    workingDirectory: running.projectRoot,
+    sandboxMode: "workspace-write",
+    approvalPolicy: "never",
+    networkAccessEnabled: false,
+    ...(writer.model ? { model: writer.model } : {}),
+    ...(writer.reasoningEffort
+      ? { modelReasoningEffort: writer.reasoningEffort }
+      : {}),
+  });
+  const turn = await thread.run(buildKnowledgeWriterPrompt(running));
+  return {
+    finalResponse: turn.finalResponse,
+    ...(thread.id ? { threadId: thread.id } : {}),
+  };
 }
 
 function knowledgeFinalizerEnvironment(): Record<string, string> {
@@ -1548,7 +1586,6 @@ function buildRecoveredWorkflowAdditionalContext(
   const workflowGuidance = activeWorkflow.workflowGuidance as JsonRecord | undefined;
   const nextsteps = toStringList(workflowGuidance?.nextsteps);
   const recommendedCommands = toStringList(workflowGuidance?.recommendedCommands);
-  const delegateSubagents = toDelegateNames(workflowGuidance?.delegateSubagents);
   const notes = typeof workflowGuidance?.notes === "string" ? workflowGuidance.notes.trim() : "";
   const askUser = summarizeAskUser(workflowGuidance?.askUser as JsonRecord | undefined);
   const goalMode = summarizeGoalMode(workflowGuidance?.goalMode as JsonRecord | undefined);
@@ -1561,7 +1598,6 @@ function buildRecoveredWorkflowAdditionalContext(
     planSummary,
     nextsteps,
     recommendedCommands,
-    delegateSubagents,
     notes,
     askUser: askUser ?? "",
     goalMode: goalMode ?? "",
@@ -1791,17 +1827,6 @@ function toStringList(value: unknown): string[] {
     : [];
 }
 
-function toDelegateNames(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value
-    .map((entry) => (entry && typeof entry === "object" && typeof (entry as { name?: unknown }).name === "string"
-      ? (entry as { name: string }).name.trim()
-      : ""))
-    .filter((entry): entry is string => Boolean(entry));
-}
-
 function summarizeAskUser(value: JsonRecord | undefined): string | null {
   if (!value || typeof value.reason !== "string" || !value.reason.trim()) {
     return null;
@@ -1893,9 +1918,6 @@ function compactPlanCommandResult(
       ...(codexResult ? { stage: result.workflowGuidance.stage } : {}),
       ...(!codexResult ? { nextsteps: result.workflowGuidance.nextsteps } : {}),
       ...(result.workflowGuidance.nextTask ? { nextTask: result.workflowGuidance.nextTask } : {}),
-      ...(result.workflowGuidance.delegateSubagents?.length
-        ? { delegateSubagents: result.workflowGuidance.delegateSubagents }
-        : {}),
       ...(result.workflowGuidance.notes?.trim() && !codexResult
         ? { notes: result.workflowGuidance.notes }
         : {}),
@@ -2009,9 +2031,6 @@ function compactDirectCommandResult(
     command,
     summary: workflowGuidance.summary,
     nextsteps: workflowGuidance.nextsteps,
-    ...(workflowGuidance.delegateSubagents?.length
-      ? { delegateSubagents: workflowGuidance.delegateSubagents }
-      : {}),
     ...(workflowGuidance.notes?.trim() ? { notes: workflowGuidance.notes } : {}),
     ...(workflowGuidance.recommendedCommands?.length
       ? { recommendedCommands: workflowGuidance.recommendedCommands }

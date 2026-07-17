@@ -30,6 +30,11 @@ export type KnowledgeFinalizationJob = {
   taskName: string;
   /** Optional only for jobs queued by versions released before writer config was snapshotted. */
   writer?: KnowledgeWriterConfig;
+  /**
+   * Host that queued the job, so the finalization worker can pick the correct runner.
+   * Older jobs queued without this field fall back to the Codex SDK runner.
+   */
+  host?: string | null;
   planPath: string;
   reportPath: string;
   status: "queued" | "running" | "succeeded" | "failed";
@@ -152,6 +157,7 @@ export function tryCaptureKnowledgeStop(input: {
   sessionId?: string;
   turnId?: string;
   message?: string;
+  host?: string;
 }): KnowledgeStopResult {
   const sessionId = input.sessionId?.trim();
   const turnId = input.turnId?.trim();
@@ -201,6 +207,7 @@ export function tryCaptureKnowledgeStop(input: {
               model: input.project.projectConfig?.knowledgeWriter?.model ?? null,
               reasoningEffort: input.project.projectConfig?.knowledgeWriter?.reasoningEffort ?? "medium",
             },
+            host: input.host?.trim() ? input.host.trim() : null,
             planPath: resolveProjectRelativePlanPath(input.project, registry.pendingTurnOwner.planPath),
             reportPath,
             status: "queued",

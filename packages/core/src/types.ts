@@ -167,23 +167,6 @@ export type WorkflowGuidanceOption = {
   recommended?: boolean;
 };
 
-export type WorkflowGuidanceSubagentName = "truth-writer" | "adr-writer";
-export type WorkflowGuidanceSubagentDispatch = "required" | "when_reusable_truth_confirmed";
-
-export type WorkflowGuidanceSubagent = {
-  name: WorkflowGuidanceSubagentName;
-  skill: string;
-  dispatch: WorkflowGuidanceSubagentDispatch;
-  model?: string;
-  reasoning_effort?: "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
-  fork_context?: boolean;
-  waitForCompletion: boolean;
-  preferReuseSameTypeInThread?: boolean;
-  inputContract: string;
-  outputContract: string;
-  closePolicy: "close_after_result" | "keep_open_for_reuse";
-};
-
 export type WorkflowGuidanceGoalTool =
   | {
       tool: "create_goal";
@@ -209,7 +192,6 @@ export type WorkflowGuidance = {
   };
   notes?: string;
   recommendedCommands?: string[];
-  delegateSubagents?: WorkflowGuidanceSubagent[];
   goalMode?: {
     recommendedObjective: string;
     allowOverwrite: true;

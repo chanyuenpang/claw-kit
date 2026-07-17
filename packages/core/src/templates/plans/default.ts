@@ -15,7 +15,6 @@ export type TemplateGuidanceRoute = {
   recommendedCommands?: string[];
   nextTaskId?: number;
   label?: string;
-  delegateTruth?: boolean;
 };
 
 export type TemplateTaskGuidance = {
@@ -78,7 +77,6 @@ export const defaultPlanTemplate: PlanTemplateDocument = {
         onDone: {
           default: {
             mergeMode: "override",
-            delegateTruth: false,
           },
         },
       },
@@ -95,7 +93,6 @@ export const defaultPlanTemplate: PlanTemplateDocument = {
         onDone: {
           default: {
             mergeMode: "override",
-            delegateTruth: false,
           },
         },
       },

@@ -38,8 +38,7 @@
                 "Keep the new template compact and mostly linear.",
                 "Convert the specified skill entry in place and keep the source text as the adjacent fallback document."
               ],
-              "nextTaskId": 2,
-              "delegateTruth": false
+              "nextTaskId": 2
             },
             "routing": {
               "mergeMode": "override",
@@ -48,8 +47,7 @@
                 "Add explicit `guidance.onDone` routes to the generated template where the workflow really branches.",
                 "Convert the specified skill entry in place and keep the source text as the adjacent fallback document."
               ],
-              "nextTaskId": 2,
-              "delegateTruth": false
+              "nextTaskId": 2
             },
             "idea-first": {
               "mergeMode": "override",
@@ -58,8 +56,7 @@
                 "First distill the user idea into a concise fallback document in the target skill package.",
                 "Then create the claw entry and template around that fallback."
               ],
-              "nextTaskId": 2,
-              "delegateTruth": false
+              "nextTaskId": 2
             }
           }
         }
@@ -81,8 +78,7 @@
               "Keep the original or distilled skill text readable as the adjacent fallback document.",
               "If the source still needs extra material beyond `SKILL.md`, add focused skill-local references and list them in template.references."
             ],
-            "nextTaskId": 3,
-            "delegateTruth": false
+            "nextTaskId": 3
           }
         }
       }
@@ -106,8 +102,7 @@
               "Run `claw template validate --template <template-id>` against the generated template.",
               "Then run a content coverage check that maps source information to entry, template, references, or fallback."
             ],
-            "nextTaskId": 4,
-            "delegateTruth": false
+            "nextTaskId": 4
           }
         }
       }
