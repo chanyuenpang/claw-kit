@@ -1435,26 +1435,26 @@ function buildHostActions(result: {
     const goalTool = result.workflowGuidance.goalTool;
     if (goalTool.tool === "create_goal") {
       actions.push({
-        schemaVersion: 1,
-        id: `${latestEvent.mutationId}:create_goal`,
+        schemaVersion: 2,
+        id: `${latestEvent.mutationId}:ensure_goal`,
         sourceEventId: latestEvent.eventId,
-        tool: "create_goal",
+        tool: "ensure_goal",
         input: {
+          targetStatus: "active",
           objective: goalTool.objective,
         },
         meta: {
-          allowOverwrite: goalTool.allowOverwrite,
           reason: goalTool.reason,
         },
       });
     } else {
       actions.push({
-        schemaVersion: 1,
-        id: `${latestEvent.mutationId}:update_goal`,
+        schemaVersion: 2,
+        id: `${latestEvent.mutationId}:ensure_goal`,
         sourceEventId: latestEvent.eventId,
-        tool: "update_goal",
+        tool: "ensure_goal",
         input: {
-          status: goalTool.status,
+          targetStatus: goalTool.status,
         },
         meta: {
           reason: goalTool.reason,

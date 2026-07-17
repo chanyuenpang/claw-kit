@@ -67,9 +67,9 @@
 
 ### Host action schema 与同调用消费合同
 
-- `packages/cli/src/cli.ts` 的 `buildHostActions` 现在为每个 host action 固定输出 `schemaVersion: 1`。`update_plan.input` 保持 `{ explanation, plan }`；`create_goal.input` 只投影为 `{ objective }`，其 `{ allowOverwrite, reason }` 放入 `meta`；`update_goal.input` 只投影为 `{ status }`，其 `{ reason }` 放入 `meta`。因此 `input` 是真实 host tool 的 schema-compatible payload，policy / 解释字段不再混入工具参数。
-- `packages/codex-adapter/skills/using-claw-kit/SKILL.md` 与 `packages/codex-adapter/references/workflow-guidance-consumption.md` 现在要求：在 Codex code-mode surface 上，每次 claw plan mutation 应在同一个 code-mode call 内执行 CLI 并消费 schema-compatible `hostActions`；消费时保持返回顺序与 action id，只有自动消费不可用时才退回分离调用。
-- 自动 consumer 只转发已知且 schema-compatible 的 action；未知或不兼容 action 必须跳过，不能直接透传。`recommendedCommands` 继续只承载命令，不得把 host tool action 混入该字段或从命令文本反推工具调用。
+- `packages/cli/src/cli.ts` 的 `buildHostActions` 按 action 类型输出版本化合同：`update_plan` 保持 schema v1；Codex Goal 操作统一升级为 schema v2 `ensure_goal` target-state declaration。active input 固定为 `{ targetStatus: "active", objective }`，blocked / complete input 固定为 `{ targetStatus }`；解释字段继续留在 `meta`，不进入 host tool input。
+- `packages/codex-adapter/skills/using-claw-kit/SKILL.md` 与 `packages/codex-adapter/references/workflow-guidance-consumption.md` 现在要求：在 Codex code-mode surface 上，每次 claw plan mutation 应在同一个 code-mode call 内执行 CLI 并消费 schema-compatible `hostActions`；消费时保持返回顺序与 action id。没有 direct-call、split-call 或 Agent 手写 Goal action fallback，固定程序或必需 host tool 不可用时直接停止。
+- 自动 consumer 只执行已知且 schema-compatible 的 action；未知 schema、未知 action、不兼容 input 或非预期 host error 都必须 fail closed。`recommendedCommands` 继续只承载命令，不得把 host tool action 混入该字段或从命令文本反推工具调用。
 - 定向验证中 Codex adapter tests `4/4` 通过；重建 CLI dist 后 CLI tests `72/72` 通过。首次 CLI test 使用了 stale dist，两个新增 schema assertion 失败；重建 CLI 即通过且不需要修改 source。涉及 dist-backed CLI 行为的测试失败时，应先确认构建产物是否同步，再判断 source contract 是否有缺陷。
 
 ## Codex 原生工具边界与固定 code-mode consumer
@@ -82,9 +82,9 @@
 
 ### Codex-only 执行合同
 
-- 对 Codex adapter，`hostActions` 是 host tool 执行的唯一来源。固定 consumer 必须按返回顺序处理 action，以 `id` 去重，校验 `schemaVersion`，仅白名单允许 `update_plan`、`create_goal`、`update_goal`，并只把 action 的 `input` 投影给对应真实工具。
+- 对 Codex adapter，`hostActions` 是 host tool 执行的唯一来源。固定 consumer 必须按返回顺序处理 action，以 `id` 去重，校验 `schemaVersion`，仅白名单允许 schema v1 `update_plan` 与 schema v2 `ensure_goal`，再由固定程序把 target state 收敛到真实 `create_goal` / `update_goal` 调用。
 - `workflowGuidance.goalTool` 继续由 core 输出，以兼容其他 host 及非 Codex 消费面；Codex Agent 不得在 `hostActions` 与 `goalTool` 之间二次判断，也不得把 `goalTool` 作为另一条执行入口。
-- Agent 的职责只到提供并触发 canonical claw plan mutation。action 选择、顺序、去重、schema 校验、工具白名单和 input 投影属于固定 consumer，不属于 Agent 的自由判断。
+- Agent 的职责只到提供并触发 canonical claw plan mutation。action 选择、顺序、去重、schema 校验、工具白名单、Goal 收敛和 input 投影属于固定 consumer；Agent 不读取或判断线程原有 Goal 状态。
 - consumer 遇到未知 action、未知 schema version 或不兼容 input 时必须拒绝执行；不得从 `recommendedCommands`、prompt 文案或 `goalTool` 反推并补做 host tool 调用。
 
 ### 代码锚点与验证标准
@@ -105,7 +105,9 @@
 ### 已实现的固定 consumer
 
 - `packages/codex-adapter/scripts/code-mode-host-action-consumer.mjs` 是可复用、可测试的 source contract：它从 shell 输出提取首个完整 JSON 对象，要求 mutation result 成功，并按 CLI 返回顺序消费 `hostActions`。
-- consumer 只接受 `schemaVersion = 1`，以 action `id` 做至多一次去重，只允许 `update_plan`、`create_goal`、`update_goal`，并分别校验和投影真实 host tool 接受的 `input` 字段。
+- consumer 接受 schema v1 `update_plan` 与 schema v2 `ensure_goal`，以 action `id` 做至多一次去重，并严格校验各 action 的 input 字段。`ensure_goal` 是目标状态合同，不是 Codex 原生工具名。
+- 对 `targetStatus = "active"`，consumer 先尝试 `create_goal({ objective })`；只有命中精确的 unfinished-goal conflict 时，才以 `update_goal({ status: "complete" })` 结束旧 Goal 并重新创建目标 Goal，全程不预检旧状态。
+- 对 `targetStatus = "blocked"` 或 `"complete"`，consumer 直接调用 `update_goal({ status: targetStatus })`；只有明确的 no-active / no-unfinished-goal error 会被视为目标状态已经满足，其他错误原样抛出并 fail closed。
 - action 只有在对应 host tool 成功返回后才会写入 consumed-id 集合；调用失败不会把该 `id` 标记为已消费，因此可以用同一 action id 安全重试。CLI mutation 已经提交，host tool 失败不回滚 canonical plan state。
 
 ### code-mode isolate driver
@@ -117,5 +119,7 @@
 ### 已验证证据
 
 - `packages/codex-adapter/hooks/code-mode-host-action-consumer.test.mjs` 使用 `node:vm` 隔离提取并执行 skill 中实际嵌入的 `runClawPlanMutation`，证明测试覆盖的不是仅供参考的外部模块。
+- `packages/codex-adapter/hooks/code-mode-host-action-consumer.test.mjs` 覆盖 active replacement、blocked / complete no-goal 幂等、非预期错误 fail closed、schema/input 拒绝与失败后可重试；`packages/codex-adapter/hooks/subagent-contract.test.mjs` 锁定 skill/reference 的 schema v2 `ensure_goal`、target-state 与 Agent 不检查旧 Goal 状态合同。
+- `packages/cli/test/cli.test.ts` 锁定 CLI 在 active、blocked 与 complete 生命周期输出 schema v2 `ensure_goal` 及对应的精确 input shape。
 - 定向 Codex consumer / contract tests 为 `11/11` 通过，Codex bundle tests 为 `13/13` 通过。
 - 完整回归为 core `126/126`、CLI `72/72`，且 `npm run check` 通过。

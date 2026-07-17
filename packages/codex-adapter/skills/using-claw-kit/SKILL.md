@@ -65,27 +65,45 @@ async function runClawPlanMutation({ command, workdir, timeout_ms = 30000 }) {
   if (start < 0 || end < 0) throw new Error("claw returned no complete JSON result");
   const result = JSON.parse(outputText.slice(start, end));
   if (result.ok !== true) throw new Error(`claw mutation failed: ${result.command ?? "unknown"}`);
-  const handlers = {
-    update_plan: (input) => tools.update_plan(input),
-    create_goal: (input) => tools.create_goal(input),
-    update_goal: (input) => tools.update_goal(input),
-  };
   const allowedInput = {
     update_plan: new Set(["explanation", "plan"]),
-    create_goal: new Set(["objective"]),
-    update_goal: new Set(["status"]),
+    ensure_goal: new Set(["targetStatus", "objective"]),
+  };
+  const ensureGoal = async ({ targetStatus, objective }) => {
+    const message = (error) => typeof error?.message === "string" ? error.message : String(error);
+    const unfinished = (error) => /cannot create a new goal because this thread has an unfinished goal/i.test(message(error));
+    const noGoal = (error) => /(no|does not have an?) (active|unfinished) goal|has no (active|unfinished) goal/i.test(message(error));
+    if (targetStatus !== "active") {
+      try { await tools.update_goal({ status: targetStatus }); }
+      catch (error) { if (!noGoal(error)) throw error; }
+      return;
+    }
+    try { await tools.create_goal({ objective }); return; }
+    catch (error) { if (!unfinished(error)) throw error; }
+    try { await tools.update_goal({ status: "complete" }); }
+    catch (error) { if (!noGoal(error)) throw error; }
+    await tools.create_goal({ objective });
   };
   const consumed = new Set();
   for (const action of result.hostActions ?? []) {
-    const handler = handlers[action?.tool];
-    if (action?.schemaVersion !== 1 || typeof action.id !== "string" || !handler) {
+    const supported = (action?.tool === "update_plan" && action.schemaVersion === 1)
+      || (action?.tool === "ensure_goal" && action.schemaVersion === 2);
+    if (!supported || typeof action.id !== "string") {
       throw new Error(`unsupported Codex hostAction: ${action?.id ?? "unknown"}`);
     }
     if (consumed.has(action.id)) continue;
     if (!action.input || Object.keys(action.input).some((key) => !allowedInput[action.tool].has(key))) {
       throw new Error(`invalid Codex hostAction input: ${action.id}`);
     }
-    await handler(action.input);
+    if (action.tool === "ensure_goal") {
+      const validTarget = ["active", "blocked", "complete"].includes(action.input.targetStatus);
+      const validObjective = action.input.targetStatus === "active"
+        ? typeof action.input.objective === "string" && action.input.objective.length > 0
+        : action.input.objective === undefined;
+      if (!validTarget || !validObjective) throw new Error(`invalid Codex hostAction input: ${action.id}`);
+    }
+    if (action.tool === "ensure_goal") await ensureGoal(action.input);
+    else await tools.update_plan(action.input);
     consumed.add(action.id);
   }
   text(raw);

@@ -1,6 +1,6 @@
 {
   "name": "claw-kit",
-  "version": "0.1.71",
+  "version": "0.1.72",
   "private": true,
   "workspaces": [
     "packages/*"
