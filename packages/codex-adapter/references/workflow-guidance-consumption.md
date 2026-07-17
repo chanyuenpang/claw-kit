@@ -57,10 +57,9 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
 - The program consumes `hostActions` in order and executes each action at most once by its `id` in the same code-mode call as the CLI mutation.
 - The program treats `schemaVersion` as the action contract version and consumes only validated `input`; `meta` is never forwarded.
 - `update_plan` actions contain the concrete host progress payload derived from the committed plan.
-- Codex Goal actions use schema v2 `ensure_goal`: active input contains `targetStatus` plus `objective`, while blocked/complete input contains only `targetStatus`.
-- `ensure_goal` is a target-state declaration, not a native host tool name. The fixed program owns convergence through native `create_goal` and `update_goal` calls without asking the Agent to inspect prior Goal state.
-- For an active target, an unfinished-goal conflict is resolved by completing the old Goal and creating the requested Goal. For blocked/complete targets, the absence of an unfinished Goal already satisfies the terminal target.
-- Only the exact expected state-conflict errors are compensable; every other host error fails closed.
+- Codex Goal actions use schema v2 `ensure_goal`; every input contains both `targetStatus` and `objective`.
+- `ensure_goal` is a target-state declaration, not a native host tool name. The fixed program never reads current Goal state or parses host error wording: it attempts one best-effort `update_goal(status="complete")` cleanup, creates the requested Goal, then applies `blocked` or `complete` when that terminal status was requested.
+- Cleanup failure is intentionally ignored because there may be no unfinished Goal. Failures while creating the requested Goal or applying its terminal status are returned unchanged for Agent-level success/failure handling.
 - The program is the tool whitelist and schema validator. Unknown schema versions, tools, leaked policy fields, or incompatible inputs fail closed instead of being left for agent judgment.
 - Codex has no separate host-call fallback. If code mode or a required host tool is unavailable, surface the program error and stop.
 - Host action failure does not roll back CLI state. The program records an id only after successful execution, so the same action remains retryable without rerunning the canonical CLI mutation.
@@ -104,9 +103,9 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
   - do not start implementation in this stage
   - move into `process.active` only when the plan is ready for execution
 - `process.active` on first entry
-  - do not interpret goal metadata; the code-mode consumer converges `hostActions.ensure_goal(targetStatus="active")`
+  - do not interpret goal metadata; the code-mode consumer executes the fixed reset/set sequence for `hostActions.ensure_goal(targetStatus="active")`
 - `process.wait` or `process.discussing`
-  - the code-mode consumer converges `hostActions.ensure_goal(targetStatus="blocked")`
+  - the code-mode consumer executes the fixed reset/set sequence for `hostActions.ensure_goal(targetStatus="blocked")`
   - do not keep executing while the plan is paused
 - `process.*` with task completion but open plan
   - every completed task returns the `truth-writer` delegate contract
@@ -118,7 +117,7 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
   - dispatch `truth-writer` with the curated completed subtask report when the completed task produced reusable truth
 - when all tasks are done, first write retrospective capture and any durable `keyDecisions` back into the active root plan, then read `delegateSubagents`, dispatch `adr-writer` asynchronously with that updated active plan path, and continue to root `claw plan done` without waiting; delayed archive keeps the path readable for at least one hour
 - `end.completed`
-  - the code-mode consumer converges `hostActions.ensure_goal(targetStatus="complete")`
+  - the code-mode consumer executes the fixed reset/set sequence for `hostActions.ensure_goal(targetStatus="complete")`
   - for root plans, treat this as closeout/archive rather than the ADR trigger
   - run an explicit closeout check after the root plan is done
   - confirm the workflow dispatched `truth-writer` only after reusable truth was confirmed, and always dispatched `adr-writer` with `dispatch: required` without waiting

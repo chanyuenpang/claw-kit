@@ -85,6 +85,7 @@ test("Codex plan commands use only the bundled code-mode consumer", () => {
   assert.match(mainRouter, /ensure_goal: new Set\(\["targetStatus", "objective"\]\)/i);
   assert.match(mainRouter, /await tools\.create_goal\(\{ objective \}\)/i);
   assert.match(mainRouter, /await tools\.update_goal\(\{ status: "complete" \}\)/i);
+  assert.match(mainRouter, /catch \{\}/i);
   assert.match(mainRouter, /must not interpret `hostActions`/i);
   assert.match(mainRouter, /no direct-call or split-call fallback path/i);
   assert.match(mainRouter, /`hostActions` is the only Codex host-execution source/i);
@@ -94,7 +95,8 @@ test("Codex plan commands use only the bundled code-mode consumer", () => {
   assert.match(workflowReference, /Codex has no separate host-call fallback/i);
   assert.match(workflowReference, /schema v2 `ensure_goal`/i);
   assert.match(workflowReference, /target-state declaration/i);
-  assert.match(workflowReference, /without asking the Agent to inspect prior Goal state/i);
+  assert.match(workflowReference, /never reads current Goal state or parses host error wording/i);
+  assert.match(workflowReference, /best-effort/i);
   assert.match(workflowReference, /fail closed/i);
   assert.match(workflowReference, /Codex must not execute or interpret `goalTool`/i);
 });

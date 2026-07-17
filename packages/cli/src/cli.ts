@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import {
   buildDirectWorkflowGuidance,
+  buildGoalModeObjective,
   checkProjectProtocol,
   ClawError,
   buildPlanWorkflowGuidance,
@@ -1455,6 +1456,7 @@ function buildHostActions(result: {
         tool: "ensure_goal",
         input: {
           targetStatus: goalTool.status,
+          objective: buildGoalModeObjective(result.plan?.goal.text ?? ""),
         },
         meta: {
           reason: goalTool.reason,

@@ -1,6 +1,6 @@
 {
   "name": "claw-kit",
-  "version": "0.1.72+codex.20260717024800",
+  "version": "0.1.73+codex.20260717111519",
   "description": "Thin Codex adapter for claw-kit. Start with using-claw-kit as the single main-agent workflow, let it decide whether low-complexity work should bypass the formal .claw workflow, and otherwise drive .claw plan, search, truth, and ADR workflows through the local claw CLI while consuming compact workflowGuidance and specialist subagent contracts for truth and ADR deposition.",
   "author": {
     "name": "chanyuenpang",
@@ -23,7 +23,7 @@
   "interface": {
     "displayName": "Claw Kit",
     "shortDescription": "Prompt-driven .claw harness with entry-time complexity gating, compact workflowGuidance, and delegated deposition subagents.",
-    "longDescription": "Use Claw Kit through using-claw-kit as the single main-agent workflow. Continue any recovered .claw task from its returned workflowGuidance; when no task scope exists, let using-claw-kit score the request first so low-complexity work can bypass the formal claw workflow, and only create a plan for work that needs the normal .claw lifecycle. On Codex, every claw plan mutation runs through the fixed code-mode driver, which consumes hostActions programmatically, converges Goal target state through schema-v2 ensure_goal actions, and never asks the Agent to inspect prior Goal state or execute goalTool. Use claw search when useful after plan creation to recover project context. Truth deposition and ADR deposition should run as narrow reusable specialist subagents so the main agent stays focused on coordination and execution.",
+    "longDescription": "Use Claw Kit through using-claw-kit as the single main-agent workflow. Continue any recovered .claw task from its returned workflowGuidance; when no task scope exists, let using-claw-kit score the request first so low-complexity work can bypass the formal claw workflow, and only create a plan for work that needs the normal .claw lifecycle. On Codex, every claw plan mutation runs through the fixed code-mode driver, which consumes hostActions programmatically and handles schema-v2 ensure_goal through one deterministic reset/set sequence without reading current Goal state, parsing host error wording, or asking the Agent to execute goalTool. Use claw search when useful after plan creation to recover project context. Truth deposition and ADR deposition should run as narrow reusable specialist subagents so the main agent stays focused on coordination and execution.",
     "developerName": "chanyuenpang",
     "category": "Developer Tools",
     "capabilities": [

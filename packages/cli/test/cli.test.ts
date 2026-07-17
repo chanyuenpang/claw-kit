@@ -833,7 +833,10 @@ test("cli plan edit wait and resume surfaces goal mode pause and restart guidanc
   });
   const waitGoalAction = (waitResult.hostActions as JsonRecord[]).find((action) => action.tool === "ensure_goal") as JsonRecord;
   assert.equal(waitGoalAction.schemaVersion, 2);
-  assert.deepEqual(waitGoalAction.input, { targetStatus: "blocked" });
+  assert.deepEqual(waitGoalAction.input, {
+    targetStatus: "blocked",
+    objective: "Using claw-kit, update plan, follow returned workflowGuidance，finish your goal：Pause and resume cleanly",
+  });
   assert.deepEqual(Object.keys(waitGoalAction.meta as JsonRecord), ["reason"]);
   assert.equal(waitResult.goalMode, undefined);
 
@@ -1905,7 +1908,10 @@ test("cli plan done records completedAt and retains the current task path", asyn
   assert.equal("archivedPlanPath" in doneResult, false);
   const doneGoalAction = (doneResult.hostActions as JsonRecord[]).find((action) => action.tool === "ensure_goal") as JsonRecord;
   assert.equal(doneGoalAction.schemaVersion, 2);
-  assert.deepEqual(doneGoalAction.input, { targetStatus: "complete" });
+  assert.deepEqual(doneGoalAction.input, {
+    targetStatus: "complete",
+    objective: "Using claw-kit, update plan, follow returned workflowGuidance，finish your goal：Archive after completion",
+  });
   const completedPlan = JSON.parse(fs.readFileSync(String(doneResult.planPath), "utf-8")) as JsonRecord;
   assert.match(String(completedPlan.completedAt), /^\d{4}-\d{2}-\d{2}T/);
   const refreshStatus = await waitForLatestCompletionRefreshStatus(root);

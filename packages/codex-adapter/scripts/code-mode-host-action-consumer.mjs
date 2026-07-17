@@ -102,12 +102,8 @@ function validateActionInput(action) {
   if (!GOAL_TARGET_STATUSES.has(input.targetStatus)) {
     throw new TypeError("ensure_goal.input.targetStatus must be active, complete, or blocked");
   }
-  if (input.targetStatus === "active") {
-    if (typeof input.objective !== "string" || input.objective.length === 0) {
-      throw new TypeError("ensure_goal.input.objective must be a non-empty string for active target status");
-    }
-  } else if (input.objective !== undefined) {
-    throw new TypeError("ensure_goal.input.objective is only supported for active target status");
+  if (typeof input.objective !== "string" || input.objective.length === 0) {
+    throw new TypeError("ensure_goal.input.objective must be a non-empty string");
   }
   return input;
 }
@@ -115,50 +111,22 @@ function validateActionInput(action) {
 async function ensureGoalTarget({ input, hostTools }) {
   const createGoal = hostTools.create_goal;
   const updateGoal = hostTools.update_goal;
-
-  if (input.targetStatus !== "active") {
-    if (typeof updateGoal !== "function") {
-      throw new Error("Codex host tool is unavailable: update_goal");
-    }
-    try {
-      await updateGoal({ status: input.targetStatus });
-    } catch (error) {
-      if (!isNoUnfinishedGoalError(error)) throw error;
-    }
-    return;
-  }
-
   if (typeof createGoal !== "function") {
     throw new Error("Codex host tool is unavailable: create_goal");
   }
-  try {
-    await createGoal({ objective: input.objective });
-    return;
-  } catch (error) {
-    if (!isUnfinishedGoalConflict(error)) throw error;
-  }
-
   if (typeof updateGoal !== "function") {
     throw new Error("Codex host tool is unavailable: update_goal");
   }
+
   try {
     await updateGoal({ status: "complete" });
-  } catch (error) {
-    if (!isNoUnfinishedGoalError(error)) throw error;
+  } catch {
+    // Cleanup is intentionally best-effort: there may be no unfinished Goal.
   }
   await createGoal({ objective: input.objective });
-}
-
-function isUnfinishedGoalConflict(error) {
-  return /cannot create a new goal because this thread has an unfinished goal/i.test(errorMessage(error));
-}
-
-function isNoUnfinishedGoalError(error) {
-  return /(no|does not have an?) (active|unfinished) goal|has no (active|unfinished) goal/i.test(errorMessage(error));
-}
-
-function errorMessage(error) {
-  return typeof error?.message === "string" ? error.message : String(error);
+  if (input.targetStatus !== "active") {
+    await updateGoal({ status: input.targetStatus });
+  }
 }
 
 function assertOnlyKeys(value, allowedKeys, label) {

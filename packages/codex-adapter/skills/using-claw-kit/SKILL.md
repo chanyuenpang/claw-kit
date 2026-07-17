@@ -70,19 +70,10 @@ async function runClawPlanMutation({ command, workdir, timeout_ms = 30000 }) {
     ensure_goal: new Set(["targetStatus", "objective"]),
   };
   const ensureGoal = async ({ targetStatus, objective }) => {
-    const message = (error) => typeof error?.message === "string" ? error.message : String(error);
-    const unfinished = (error) => /cannot create a new goal because this thread has an unfinished goal/i.test(message(error));
-    const noGoal = (error) => /(no|does not have an?) (active|unfinished) goal|has no (active|unfinished) goal/i.test(message(error));
-    if (targetStatus !== "active") {
-      try { await tools.update_goal({ status: targetStatus }); }
-      catch (error) { if (!noGoal(error)) throw error; }
-      return;
-    }
-    try { await tools.create_goal({ objective }); return; }
-    catch (error) { if (!unfinished(error)) throw error; }
     try { await tools.update_goal({ status: "complete" }); }
-    catch (error) { if (!noGoal(error)) throw error; }
+    catch {}
     await tools.create_goal({ objective });
+    if (targetStatus !== "active") await tools.update_goal({ status: targetStatus });
   };
   const consumed = new Set();
   for (const action of result.hostActions ?? []) {
@@ -97,9 +88,7 @@ async function runClawPlanMutation({ command, workdir, timeout_ms = 30000 }) {
     }
     if (action.tool === "ensure_goal") {
       const validTarget = ["active", "blocked", "complete"].includes(action.input.targetStatus);
-      const validObjective = action.input.targetStatus === "active"
-        ? typeof action.input.objective === "string" && action.input.objective.length > 0
-        : action.input.objective === undefined;
+      const validObjective = typeof action.input.objective === "string" && action.input.objective.length > 0;
       if (!validTarget || !validObjective) throw new Error(`invalid Codex hostAction input: ${action.id}`);
     }
     if (action.tool === "ensure_goal") await ensureGoal(action.input);
