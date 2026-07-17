@@ -10,7 +10,7 @@
 - 对研究型 delegate，host 必须等待结果；当前 task 依赖 research 结论时，不能跳过该 gate 继续执行。
 - 当 guidance 指向 `truth-writer` 时，应在 plan closure 前沉淀 truth；当 completed-plan guidance 指向 `adr-writer` 时，completed `plan.json` 才是 ADR deposition bundle。
 - `workflowGuidance.delegateSubagents` remains a mandatory structured contract when dispatching subagents, but its notes must not be read as "dispatch every returned writer entry unconditionally"; since `0.1.49`, the canonical wording is `When dispatching a subagent, each entry is a required structured contract whose fields must be honored directly.`
-- `process.wait` 和 `process.discussing` 都是暂停型 guidance：adapter 不应把它们当作继续执行的信号，而应把它们理解为先调用 `update_goal(status="blocked")` 结束当前 active goal，等待恢复后再通过 `process.active` 继续。
+- `process.wait` 和 `process.discussing` 都是暂停型 guidance：cross-host `workflowGuidance.goalTool` 继续描述 `update_goal(status="blocked")`；Codex adapter 不直接执行该 compatibility metadata，而是消费 CLI `buildHostActions` 按 committed `planStatus` 投影出的 schema-v1 `update_goal(status="complete")`，真正结束当前 Codex active Goal，再等待后续独立 mutation 恢复到 `process.active`。
 - 当 `workflowGuidance` 在从 `process.wait` 或 `process.discussing` 恢复后返回 `goalMode` 时，adapter 应把它当成 `on_resume_process_active` 的重新激活，而不是 `plan write` 阶段的首次 Goal Mode 授权。
 - `prepare.requirements` 阶段如果 `goal.text` 缺失，adapter 应先补 goal，再补其余 plan 字段；如果需求已经完整，补完后应立即把 `plan.status` 切到 `process.active`，而不是继续停留在 requirements。
 - 启用 planning 的 `claw plan create` 会先返回 `process.discussing`，并预置 planning task 与 `Enter process.active` bridge task；adapter append downstream tasks 时必须保留 task 2，让它继续承担从 planning 输出进入 `process.active` 的桥接职责。
@@ -19,7 +19,7 @@
 - adapter 必须把“没有 `goal.text` 就不能进入 `process.active`”视为 harness hard gate，而不是可由 prompt 规避的建议。
 - `goalTool` 是 real-tool lifecycle 合同，不是冗余提示：
   - `process.active.firstEntry` 与 `process.active.resumedActive` 使用 `create_goal(objective=goalTool.objective)`
-  - `process.wait` 与 `process.discussing` 使用 `update_goal(status="blocked")`
+  - `process.wait` 与 `process.discussing` 的 compatibility `goalTool` 使用 `update_goal(status="blocked")`；Codex hostActions 使用 `update_goal(status="complete")`
   - `end.completed` 使用 `update_goal(status="complete")`
 - 已恢复 session 的未完成 plan 现在是显式用户面 gate：当 `SessionStart` / recovered `workflowGuidance` 发现当前线程已有 unfinished plan 时，adapter 必须先告诉用户“线程里已经有未完成计划”，并询问是关闭当前 plan 还是继续推进它，然后才能开始无关的新工作；这条恢复期 gate 同时落在 `packages/core/src/workflow-guidance.config.json`、`packages/core/src/workflow-guidance.ts` 的 fallback recovered prompt、`packages/opencode-adapter/workflow-guidance.opencode.json`，以及 `packages/opencode-adapter/plugin/index.ts` 的 recovered prompt fallback / idle continuation 注入上。
 - `end.completed` closeout 现在明确保留同线程 claw continuity：plan 完成后除了收尾当前 closeout，下一项工作仍应留在同一个 `claw-kit` 线程里，并重新经 `using-claw-kit` 路由回正式 workflow，而不是把 completed-plan closeout 当成退出 claw-kit 的边界。
@@ -63,11 +63,11 @@
 - Variant A 在一个 code-mode call 中执行 CLI mutation，再由 main agent 手动把返回的 `update_plan` payload 转抄到第二个 code-mode call。四次 `totalMs` 为 `5467`、`5686`、`5822`、`5172`，median `5577ms`、mean `5537ms`；`4/4` 成功，共 `8` 次 exec call 与 `4` 次人工 payload transfer。
 - Variant B 在一个 code-mode call 中执行 CLI，解析 `Output:` marker 后的 JSON，只允许 `hostActions.tool === "update_plan"`，再调用 `tools.update_plan(action.input)`。四次 `totalMs` 为 `734`、`791`、`761`、`769`，median `765ms`、mean `764ms`；`4/4` 成功，共 `4` 次 exec call，且没有人工 payload transfer。
 - 在当前 Codex code-mode surface 上，对 schema-compatible `update_plan` 使用单调用自动 consumer，比两调用手工 handoff 更容易且明显更快；它消除了 main agent 跨 model/tool boundary 复制 payload 的负担，并把每次 mutation 的 host 同步收敛到同一次 code-mode 调用。
-- 该结论只覆盖 `update_plan`。goal actions 仍需要显式 schema projection，因为 CLI 返回的 policy 字段不一定与真实 host goal tool schema 匹配；不得把 `update_plan` 的白名单直通方式无条件推广到 `create_goal` / `update_goal`。
+- 该 A/B 当时只覆盖 `update_plan`；0.1.75 已在真实 Host 验证 native schema-v1 `create_goal` / `update_goal` 的固定消费路径，最终合同见下文。
 
 ### Host action schema 与同调用消费合同
 
-- `packages/cli/src/cli.ts` 的 `buildHostActions` 按 action 类型输出版本化合同：`update_plan` 保持 schema v1；Codex Goal 操作统一升级为 schema v2 `ensure_goal` target-state declaration。active input 固定为 `{ targetStatus: "active", objective }`，blocked / complete input 固定为 `{ targetStatus }`；解释字段继续留在 `meta`，不进入 host tool input。
+- `packages/cli/src/cli.ts` 的 `buildHostActions` 为 `update_plan`、`create_goal`、`update_goal` 输出 native schema-v1 action。它保留 `workflowGuidance.goalTool` 作为 cross-host compatibility metadata，但根据 committed plan status 投影 Codex action：进入或恢复 `process.active` 输出 `create_goal({ objective })`，wait / discussing 把 compatibility `blocked` 投影为 `update_goal({ status: "complete" })`，completed 同样输出 `complete`，普通 active progress 不输出 Goal action；解释字段继续留在 `meta`，不进入 host tool input。
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md` 与 `packages/codex-adapter/references/workflow-guidance-consumption.md` 现在要求：在 Codex code-mode surface 上，每次 claw plan mutation 应在同一个 code-mode call 内执行 CLI 并消费 schema-compatible `hostActions`；消费时保持返回顺序与 action id。没有 direct-call、split-call 或 Agent 手写 Goal action fallback，固定程序或必需 host tool 不可用时直接停止。
 - 自动 consumer 只执行已知且 schema-compatible 的 action；未知 schema、未知 action、不兼容 input 或非预期 host error 都必须 fail closed。`recommendedCommands` 继续只承载命令，不得把 host tool action 混入该字段或从命令文本反推工具调用。
 - 定向验证中 Codex adapter tests `4/4` 通过；重建 CLI dist 后 CLI tests `72/72` 通过。首次 CLI test 使用了 stale dist，两个新增 schema assertion 失败；重建 CLI 即通过且不需要修改 source。涉及 dist-backed CLI 行为的测试失败时，应先确认构建产物是否同步，再判断 source contract 是否有缺陷。
@@ -82,7 +82,7 @@
 
 ### Codex-only 执行合同
 
-- 对 Codex adapter，`hostActions` 是 host tool 执行的唯一来源。固定 consumer 必须按返回顺序处理 action，以 `id` 去重，校验 `schemaVersion`，仅白名单允许 schema v1 `update_plan` 与 schema v2 `ensure_goal`，再由固定程序把 target state 收敛到真实 `create_goal` / `update_goal` 调用。
+- 对 Codex adapter，`hostActions` 是 host tool 执行的唯一来源。固定 consumer 必须按返回顺序处理 action，以 `id` 去重，校验 `schemaVersion`，并仅白名单允许 schema v1 `update_plan`、`create_goal` 与 `update_goal`。
 - `workflowGuidance.goalTool` 继续由 core 输出，以兼容其他 host 及非 Codex 消费面；Codex Agent 不得在 `hostActions` 与 `goalTool` 之间二次判断，也不得把 `goalTool` 作为另一条执行入口。
 - Agent 的职责只到提供并触发 canonical claw plan mutation。action 选择、顺序、去重、schema 校验、工具白名单、Goal 收敛和 input 投影属于固定 consumer；Agent 不读取或判断线程原有 Goal 状态。
 - consumer 遇到未知 action、未知 schema version 或不兼容 input 时必须拒绝执行；不得从 `recommendedCommands`、prompt 文案或 `goalTool` 反推并补做 host tool 调用。
@@ -105,9 +105,9 @@
 ### 已实现的固定 consumer
 
 - `packages/codex-adapter/scripts/code-mode-host-action-consumer.mjs` 是可复用、可测试的 source contract：它从 shell 输出提取首个完整 JSON 对象，要求 mutation result 成功，并按 CLI 返回顺序消费 `hostActions`。
-- consumer 接受 schema v1 `update_plan` 与 schema v2 `ensure_goal`，以 action `id` 做至多一次去重，并严格校验各 action 的 input 字段。`ensure_goal` 是目标状态合同，不是 Codex 原生工具名。
-- 对 `targetStatus = "active"`，consumer 先尝试 `create_goal({ objective })`；只有命中精确的 unfinished-goal conflict 时，才以 `update_goal({ status: "complete" })` 结束旧 Goal 并重新创建目标 Goal，全程不预检旧状态。
-- 对 `targetStatus = "blocked"` 或 `"complete"`，consumer 直接调用 `update_goal({ status: targetStatus })`；只有明确的 no-active / no-unfinished-goal error 会被视为目标状态已经满足，其他错误原样抛出并 fail closed。
+- consumer 接受 schema v1 `update_plan`、`create_goal` 与 `update_goal`，以 action `id` 做至多一次去重，并严格校验各 action 的 input 字段后直接调用同名原生 host tool。
+- consumer 不预检线程 Goal 状态，也不解析 Goal tool error 来决定补偿动作。状态为 `blocked` 的 Goal 在真实 Host 中仍是 unfinished；CLI 因此在进入暂停态时先输出 `update_goal({ status: "complete" })`，后续独立 mutation 恢复到 active 时才输出 `create_goal({ objective })`。
+- complete 与 create 不能合并到同一个 code-mode call：Codex 在 call 结束时结算 completion，会清除同一 call 中刚创建的新 Goal。fixed consumer 只执行当前 mutation 返回的 native action，不在一次调用内自行完成旧 Goal 后重建。
 - action 只有在对应 host tool 成功返回后才会写入 consumed-id 集合；调用失败不会把该 `id` 标记为已消费，因此可以用同一 action id 安全重试。CLI mutation 已经提交，host tool 失败不回滚 canonical plan state。
 
 ### code-mode isolate driver
@@ -119,7 +119,6 @@
 ### 已验证证据
 
 - `packages/codex-adapter/hooks/code-mode-host-action-consumer.test.mjs` 使用 `node:vm` 隔离提取并执行 skill 中实际嵌入的 `runClawPlanMutation`，证明测试覆盖的不是仅供参考的外部模块。
-- `packages/codex-adapter/hooks/code-mode-host-action-consumer.test.mjs` 覆盖 active replacement、blocked / complete no-goal 幂等、非预期错误 fail closed、schema/input 拒绝与失败后可重试；`packages/codex-adapter/hooks/subagent-contract.test.mjs` 锁定 skill/reference 的 schema v2 `ensure_goal`、target-state 与 Agent 不检查旧 Goal 状态合同。
-- `packages/cli/test/cli.test.ts` 锁定 CLI 在 active、blocked 与 complete 生命周期输出 schema v2 `ensure_goal` 及对应的精确 input shape。
-- 定向 Codex consumer / contract tests 为 `11/11` 通过，Codex bundle tests 为 `13/13` 通过。
-- 完整回归为 core `126/126`、CLI `72/72`，且 `npm run check` 通过。
+- 真实 unpublished-build Host 验证为：active → wait 输出 `update_goal complete`，下一次独立 `get_goal` 返回 `null`；wait → active 输出 `create_goal`，下一次独立 `get_goal` 返回 active Goal。
+- core tests 继续覆盖 wait/discussing 的 cross-host `workflowGuidance.goalTool.status = blocked`；CLI tests 同时覆盖该 compatibility metadata 保持 blocked，以及 Codex schema-v1 `hostActions.update_goal.input.status = complete` 的投影。完整测试通过，且发布后的 `0.1.75` registry、全局 CLI、Codex plugin source / cache 均已验证。
+- skill/reference 固定 contract 要求 Agent 只触发 consumer，不检查 Goal state、不解析 Goal error，也不手写替代 action。
