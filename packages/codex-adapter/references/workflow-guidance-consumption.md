@@ -60,6 +60,8 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
 - Codex Goal actions use schema v1 native `create_goal` or `update_goal` payloads projected directly from `workflowGuidance.goalTool`.
 - The fixed program calls each returned native Goal action exactly once. It does not inspect current Goal state, parse host error wording, or run cleanup/compensation sequences.
 - Native Goal tool success or failure is returned unchanged. The Agent evaluates the outcome but does not invent another host call inside the consumer.
+- The CLI routes Codex Goal actions from the committed plan status: entering `process.wait` or `process.discussing` emits native `update_goal(status="complete")`; entering or resuming `process.active` emits native `create_goal`; `end.completed` emits native `update_goal(status="complete")`; ordinary active progress emits no Goal action.
+- This status router closes the current execution segment before a pause. A later resume can therefore create the next active Goal in its normal single code-mode call. The program never inspects current Goal state or host error wording.
 - The program is the tool whitelist and schema validator. Unknown schema versions, tools, leaked policy fields, or incompatible inputs fail closed instead of being left for agent judgment.
 - Codex has no separate host-call fallback. If code mode or a required host tool is unavailable, surface the program error and stop.
 - Host action failure does not roll back CLI state. The program records an id only after successful execution, so the same action remains retryable without rerunning the canonical CLI mutation.
@@ -105,7 +107,7 @@ Do not invent an alternative next-step sequence when `workflowGuidance`, `nextst
 - `process.active` on first entry
   - do not interpret goal metadata; the code-mode consumer calls the returned native `create_goal` action once
 - `process.wait` or `process.discussing`
-  - the code-mode consumer calls the returned native `update_goal(status="blocked")` action once
+  - the CLI's plan-status router emits native `update_goal(status="complete")`, and the code-mode consumer calls it once
   - do not keep executing while the plan is paused
 - `process.*` with task completion but open plan
   - every completed task returns the `truth-writer` delegate contract

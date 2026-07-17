@@ -94,6 +94,9 @@ test("Codex plan commands use only the bundled code-mode consumer", () => {
   assert.match(workflowReference, /schema v1 native `create_goal` or `update_goal`/i);
   assert.match(workflowReference, /exactly once/i);
   assert.match(workflowReference, /does not inspect current Goal state, parse host error wording/i);
+  assert.match(workflowReference, /routes Codex Goal actions from the committed plan status/i);
+  assert.match(workflowReference, /ordinary active progress emits no Goal action/i);
+  assert.match(workflowReference, /resume can therefore create the next active Goal in its normal single code-mode call/i);
   assert.match(workflowReference, /fail closed/i);
   assert.match(workflowReference, /Codex must not execute or interpret `goalTool`/i);
 });

@@ -1448,13 +1448,16 @@ function buildHostActions(result: {
         },
       });
     } else {
+      const codexStatus = result.planStatus === "process.wait" || result.planStatus === "process.discussing"
+        ? "complete"
+        : goalTool.status;
       actions.push({
         schemaVersion: 1,
         id: `${latestEvent.mutationId}:update_goal`,
         sourceEventId: latestEvent.eventId,
         tool: "update_goal",
         input: {
-          status: goalTool.status,
+          status: codexStatus,
         },
         meta: {
           reason: goalTool.reason,

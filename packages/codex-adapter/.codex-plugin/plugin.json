@@ -1,6 +1,6 @@
 {
   "name": "claw-kit",
-  "version": "0.1.74+codex.20260717033839",
+  "version": "0.1.75+codex.20260717034602",
   "description": "Thin Codex adapter for claw-kit with fixed code-mode plan and Goal synchronization, compact workflowGuidance, project recall, and delegated truth and ADR deposition.",
   "author": {
     "name": "chanyuenpang",

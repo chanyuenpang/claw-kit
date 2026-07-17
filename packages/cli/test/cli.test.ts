@@ -805,7 +805,7 @@ test("cli plan edit patch follows merge-patch semantics for nested objects and n
   assert.equal(plan.references, undefined);
 });
 
-test("cli plan edit wait and resume surfaces goal mode pause and restart guidance", () => {
+test("cli routes Codex Goal actions by paused and resumed plan status", () => {
   const root = createFixture("plan-edit-wait-and-resume-guidance");
   runClaw(["init", "--name", "Wait And Resume Guidance", "--planning", "false"], root);
   runClaw(["plan", "create", "--title", "demo-task", "--goal", "Pause and resume cleanly"], root);
@@ -832,7 +832,7 @@ test("cli plan edit wait and resume surfaces goal mode pause and restart guidanc
   });
   const waitGoalAction = (waitResult.hostActions as JsonRecord[]).find((action) => action.tool === "update_goal") as JsonRecord;
   assert.equal(waitGoalAction.schemaVersion, 1);
-  assert.deepEqual(waitGoalAction.input, { status: "blocked" });
+  assert.deepEqual(waitGoalAction.input, { status: "complete" });
   assert.deepEqual(Object.keys(waitGoalAction.meta as JsonRecord), ["reason"]);
   assert.equal(waitResult.goalMode, undefined);
 
@@ -858,6 +858,16 @@ test("cli plan edit wait and resume surfaces goal mode pause and restart guidanc
   assert.deepEqual(resumeGoalAction.input, {
     objective: resumeGoalTool.objective,
   });
+
+  const discussingResult = runClaw(
+    ["plan", "edit", "--task", "demo-task", "--plan-status", "process.discussing"],
+    root,
+  );
+  const discussingGoalAction = (discussingResult.hostActions as JsonRecord[]).find(
+    (action) => action.tool === "update_goal",
+  ) as JsonRecord;
+  assert.equal(discussingResult.planStatus, "process.discussing");
+  assert.deepEqual(discussingGoalAction.input, { status: "complete" });
 });
 
 test("cli search accepts a positional query for project recall", () => {

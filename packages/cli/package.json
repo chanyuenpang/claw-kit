@@ -1,6 +1,6 @@
 {
   "name": "@veewo/claw",
-  "version": "0.1.74",
+  "version": "0.1.75",
   "type": "module",
   "description": "CLI for running the .claw workflow: project planning, recall, truth ingestion, and closeout.",
   "keywords": [
@@ -31,7 +31,7 @@
     "claw": "./dist/bin.js"
   },
   "dependencies": {
-    "@veewo/claw-core": "0.1.74"
+    "@veewo/claw-core": "0.1.75"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
