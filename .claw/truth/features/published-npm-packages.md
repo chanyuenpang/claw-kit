@@ -2,7 +2,7 @@
 
 ## 状态
 
-这是 `publish-claw-npm-package` 完成后沉淀下来的稳定发布事实。当前最新一轮已验证到 `0.1.71`，并继续沿用同一条双包发布链与 identity-aware Codex plugin 刷新协议；当某一轮发布的目的就是验证 startup `autoUpdate` 路径时，release baseline 也可以先只确认 registry / workspace 基线与下一目标版本，不立即刷新本地 CLI 或本地 Codex plugin cache。
+这是 `publish-claw-npm-package` 完成后沉淀下来的稳定发布事实。当前最新一轮已验证到 `0.1.72`，并继续沿用同一条双包发布链与 identity-aware Codex plugin 刷新协议；当某一轮发布的目的就是验证 startup `autoUpdate` 路径时，release baseline 也可以先只确认 registry / workspace 基线与下一目标版本，不立即刷新本地 CLI 或本地 Codex plugin cache。
 
 ## 结论
 
@@ -11,7 +11,7 @@
 - `@veewo/claw-core` 提供核心 `.claw` harness 语义。
 - `@veewo/claw` 提供可发布的 CLI 入口，并依赖 `@veewo/claw-core`。
 
-当前最新发布版本线已经同步到 `0.1.69`；以下历史版本事实保留为发布链证据：
+当前最新发布版本线已经同步到 `0.1.72`；以下历史版本事实保留为发布链证据：
 
 - 这次 closeout 把 root、`packages/core`、`packages/cli`、`packages/codex-adapter`、`packages/openclaw-adapter`、`packages/opencode-adapter`、`package-lock.json` 和 `packages/codex-adapter/.codex-plugin/plugin.json` 一起推进到同一轮 release surface，其中 Codex plugin manifest 对齐到 `0.1.53+codex.20260626141302`。
 - `@veewo/claw-core@0.1.53` 与 `@veewo/claw@0.1.53` 都已经成功发布到 npm registry。
@@ -374,3 +374,32 @@ release commit `472635e` 已推送至 `origin/main`，tag 为 `v0.1.62`；`@veew
 - `0.1.71+codex.20260717033049 runClawPlanMutation`
 - `code-mode-host-action-consumer plugin cache`
 - `origin/main main 0/0 updateAvailable false`
+
+## 2026-07-17：0.1.72 `ensure_goal` target-state 发布闭环
+
+### 已验证完成态
+
+- Release commit `9e34285` 已推送到 `origin/main`。发布 closeout 时本地 `main` 与 `origin/main` 的 ahead/behind 为 `0/0`，且 `git status --porcelain` 为空；source、远端与工作树已经完整收敛。
+- npm registry 回读确认 `@veewo/claw-core` 与 `@veewo/claw` 的 `version`、`dist-tags.latest` 均为 `0.1.72`；CLI registry metadata 继续保留 `bin = { "claw": "dist/bin.js" }`。
+- 本机全局 npm package 与真实 `claw --version` 均为 `0.1.72`，证明 registry artifact、全局安装面与 CLI 运行面一致。
+- 当前启用的 Codex identity 是 `claw-kit@claw-kit-local`。development source manifest 与 versioned cache manifest 均为 `0.1.72+codex.20260717024800`；两侧 payload 都包含 `scripts/code-mode-host-action-consumer.mjs`、`skills/using-claw-kit/SKILL.md` 中的固定 driver，以及本轮关键 skills。
+- 本轮 cache/source 验收不仅比较 manifest：固定 consumer 与 driver 已包含 schema v2 `ensure_goal` target-state 合同，证明 active identity 对应的安装面实际携带本轮 Codex Goal 收敛实现。
+
+### 验证锚点
+
+- `npm view @veewo/claw-core@0.1.72 version dist-tags.latest --json`
+- `npm view @veewo/claw@0.1.72 version dist-tags.latest bin --json`
+- `npm list -g @veewo/claw --depth=0`
+- `claw --version`
+- `packages/codex-adapter/.codex-plugin/plugin.json`
+- `packages/codex-adapter/scripts/code-mode-host-action-consumer.mjs`
+- `packages/codex-adapter/skills/using-claw-kit/SKILL.md`
+- `git rev-list --left-right --count main...origin/main`
+- `git status --porcelain`
+
+### 关键检索词
+
+- `0.1.72 9e34285 registry latest`
+- `0.1.72+codex.20260717024800 claw-kit-local`
+- `ensure_goal consumer driver source cache`
+- `main origin/main 0/0 clean`
