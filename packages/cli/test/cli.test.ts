@@ -688,16 +688,15 @@ test("cli plan start performs one atomic activation and returns idempotent host 
   assert.equal(new Set(events.map((event) => event.mutationId)).size, 1);
   assert.ok(events.every((event) => event.schemaVersion === 1));
   const hostActions = result.hostActions as JsonRecord[];
-  assert.deepEqual(hostActions.map((action) => action.tool), ["update_plan", "ensure_goal"]);
-  assert.deepEqual(hostActions.map((action) => action.schemaVersion), [1, 2]);
+  assert.deepEqual(hostActions.map((action) => action.tool), ["update_plan", "create_goal"]);
+  assert.deepEqual(hostActions.map((action) => action.schemaVersion), [1, 1]);
   assert.equal(new Set(hostActions.map((action) => action.id)).size, hostActions.length);
   assert.ok(hostActions.every((action) => String(action.sourceEventId).length > 0));
   assert.deepEqual(Object.keys(hostActions[0].input as JsonRecord).sort(), ["explanation", "plan"]);
   assert.deepEqual(hostActions[1].input, {
-    targetStatus: "active",
     objective: (result.goalTool as JsonRecord).objective,
   });
-  assert.deepEqual(Object.keys(hostActions[1].meta as JsonRecord), ["reason"]);
+  assert.deepEqual(Object.keys(hostActions[1].meta as JsonRecord), ["allowOverwrite", "reason"]);
 });
 
 test("cli plan edit rejects partial single-reference shortcut flags", () => {
@@ -831,12 +830,9 @@ test("cli plan edit wait and resume surfaces goal mode pause and restart guidanc
     status: "blocked",
     reason: "Execution is paused in `process.wait`, so the current active thread goal should be ended as blocked until work resumes.",
   });
-  const waitGoalAction = (waitResult.hostActions as JsonRecord[]).find((action) => action.tool === "ensure_goal") as JsonRecord;
-  assert.equal(waitGoalAction.schemaVersion, 2);
-  assert.deepEqual(waitGoalAction.input, {
-    targetStatus: "blocked",
-    objective: "Using claw-kit, update plan, follow returned workflowGuidance，finish your goal：Pause and resume cleanly",
-  });
+  const waitGoalAction = (waitResult.hostActions as JsonRecord[]).find((action) => action.tool === "update_goal") as JsonRecord;
+  assert.equal(waitGoalAction.schemaVersion, 1);
+  assert.deepEqual(waitGoalAction.input, { status: "blocked" });
   assert.deepEqual(Object.keys(waitGoalAction.meta as JsonRecord), ["reason"]);
   assert.equal(waitResult.goalMode, undefined);
 
@@ -857,10 +853,9 @@ test("cli plan edit wait and resume surfaces goal mode pause and restart guidanc
   assert.match(String(resumeGoalMode.recommendedObjective), /Pause and resume cleanly/);
   assert.equal(resumeGoalTool.tool, "create_goal");
   assert.equal(resumeGoalTool.allowOverwrite, true);
-  const resumeGoalAction = (resumeResult.hostActions as JsonRecord[]).find((action) => action.tool === "ensure_goal") as JsonRecord;
-  assert.equal(resumeGoalAction.schemaVersion, 2);
+  const resumeGoalAction = (resumeResult.hostActions as JsonRecord[]).find((action) => action.tool === "create_goal") as JsonRecord;
+  assert.equal(resumeGoalAction.schemaVersion, 1);
   assert.deepEqual(resumeGoalAction.input, {
-    targetStatus: "active",
     objective: resumeGoalTool.objective,
   });
 });
@@ -1906,12 +1901,9 @@ test("cli plan done records completedAt and retains the current task path", asyn
   assert.equal("completionRefresh" in doneResult, false);
   assert.match(String(doneResult.planPath), /\.claw[\\/]tasks[\\/]archive-task[\\/].*plan\.json$/);
   assert.equal("archivedPlanPath" in doneResult, false);
-  const doneGoalAction = (doneResult.hostActions as JsonRecord[]).find((action) => action.tool === "ensure_goal") as JsonRecord;
-  assert.equal(doneGoalAction.schemaVersion, 2);
-  assert.deepEqual(doneGoalAction.input, {
-    targetStatus: "complete",
-    objective: "Using claw-kit, update plan, follow returned workflowGuidance，finish your goal：Archive after completion",
-  });
+  const doneGoalAction = (doneResult.hostActions as JsonRecord[]).find((action) => action.tool === "update_goal") as JsonRecord;
+  assert.equal(doneGoalAction.schemaVersion, 1);
+  assert.deepEqual(doneGoalAction.input, { status: "complete" });
   const completedPlan = JSON.parse(fs.readFileSync(String(doneResult.planPath), "utf-8")) as JsonRecord;
   assert.match(String(completedPlan.completedAt), /^\d{4}-\d{2}-\d{2}T/);
   const refreshStatus = await waitForLatestCompletionRefreshStatus(root);

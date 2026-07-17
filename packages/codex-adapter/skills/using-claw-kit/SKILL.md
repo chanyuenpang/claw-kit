@@ -65,34 +65,27 @@ async function runClawPlanMutation({ command, workdir, timeout_ms = 30000 }) {
   if (start < 0 || end < 0) throw new Error("claw returned no complete JSON result");
   const result = JSON.parse(outputText.slice(start, end));
   if (result.ok !== true) throw new Error(`claw mutation failed: ${result.command ?? "unknown"}`);
+  const handlers = {
+    update_plan: (input) => tools.update_plan(input),
+    create_goal: (input) => tools.create_goal(input),
+    update_goal: (input) => tools.update_goal(input),
+  };
   const allowedInput = {
     update_plan: new Set(["explanation", "plan"]),
-    ensure_goal: new Set(["targetStatus", "objective"]),
-  };
-  const ensureGoal = async ({ targetStatus, objective }) => {
-    try { await tools.update_goal({ status: "complete" }); }
-    catch {}
-    await tools.create_goal({ objective });
-    if (targetStatus !== "active") await tools.update_goal({ status: targetStatus });
+    create_goal: new Set(["objective"]),
+    update_goal: new Set(["status"]),
   };
   const consumed = new Set();
   for (const action of result.hostActions ?? []) {
-    const supported = (action?.tool === "update_plan" && action.schemaVersion === 1)
-      || (action?.tool === "ensure_goal" && action.schemaVersion === 2);
-    if (!supported || typeof action.id !== "string") {
+    const handler = handlers[action?.tool];
+    if (action?.schemaVersion !== 1 || typeof action.id !== "string" || !handler) {
       throw new Error(`unsupported Codex hostAction: ${action?.id ?? "unknown"}`);
     }
     if (consumed.has(action.id)) continue;
     if (!action.input || Object.keys(action.input).some((key) => !allowedInput[action.tool].has(key))) {
       throw new Error(`invalid Codex hostAction input: ${action.id}`);
     }
-    if (action.tool === "ensure_goal") {
-      const validTarget = ["active", "blocked", "complete"].includes(action.input.targetStatus);
-      const validObjective = typeof action.input.objective === "string" && action.input.objective.length > 0;
-      if (!validTarget || !validObjective) throw new Error(`invalid Codex hostAction input: ${action.id}`);
-    }
-    if (action.tool === "ensure_goal") await ensureGoal(action.input);
-    else await tools.update_plan(action.input);
+    await handler(action.input);
     consumed.add(action.id);
   }
   text(raw);

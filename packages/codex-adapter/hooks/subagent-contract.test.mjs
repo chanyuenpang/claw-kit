@@ -82,10 +82,8 @@ test("Codex plan commands use only the bundled code-mode consumer", () => {
   assert.match(mainRouter, /code-mode-host-action-consumer\.mjs/i);
   assert.match(mainRouter, /async function runClawPlanMutation/i);
   assert.match(mainRouter, /change only `command`, `workdir`, and `timeout_ms`/i);
-  assert.match(mainRouter, /ensure_goal: new Set\(\["targetStatus", "objective"\]\)/i);
-  assert.match(mainRouter, /await tools\.create_goal\(\{ objective \}\)/i);
-  assert.match(mainRouter, /await tools\.update_goal\(\{ status: "complete" \}\)/i);
-  assert.match(mainRouter, /catch \{\}/i);
+  assert.match(mainRouter, /create_goal: new Set\(\["objective"\]\)/i);
+  assert.match(mainRouter, /update_goal: new Set\(\["status"\]\)/i);
   assert.match(mainRouter, /must not interpret `hostActions`/i);
   assert.match(mainRouter, /no direct-call or split-call fallback path/i);
   assert.match(mainRouter, /`hostActions` is the only Codex host-execution source/i);
@@ -93,10 +91,9 @@ test("Codex plan commands use only the bundled code-mode consumer", () => {
   assert.match(workflowReference, /code-mode consumption is the adapter execution method/i);
   assert.match(workflowReference, /code-mode-host-action-consumer\.mjs/i);
   assert.match(workflowReference, /Codex has no separate host-call fallback/i);
-  assert.match(workflowReference, /schema v2 `ensure_goal`/i);
-  assert.match(workflowReference, /target-state declaration/i);
-  assert.match(workflowReference, /never reads current Goal state or parses host error wording/i);
-  assert.match(workflowReference, /best-effort/i);
+  assert.match(workflowReference, /schema v1 native `create_goal` or `update_goal`/i);
+  assert.match(workflowReference, /exactly once/i);
+  assert.match(workflowReference, /does not inspect current Goal state, parse host error wording/i);
   assert.match(workflowReference, /fail closed/i);
   assert.match(workflowReference, /Codex must not execute or interpret `goalTool`/i);
 });

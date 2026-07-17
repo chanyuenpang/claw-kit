@@ -7,7 +7,6 @@ import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import {
   buildDirectWorkflowGuidance,
-  buildGoalModeObjective,
   checkProjectProtocol,
   ClawError,
   buildPlanWorkflowGuidance,
@@ -1436,27 +1435,26 @@ function buildHostActions(result: {
     const goalTool = result.workflowGuidance.goalTool;
     if (goalTool.tool === "create_goal") {
       actions.push({
-        schemaVersion: 2,
-        id: `${latestEvent.mutationId}:ensure_goal`,
+        schemaVersion: 1,
+        id: `${latestEvent.mutationId}:create_goal`,
         sourceEventId: latestEvent.eventId,
-        tool: "ensure_goal",
+        tool: "create_goal",
         input: {
-          targetStatus: "active",
           objective: goalTool.objective,
         },
         meta: {
+          allowOverwrite: goalTool.allowOverwrite,
           reason: goalTool.reason,
         },
       });
     } else {
       actions.push({
-        schemaVersion: 2,
-        id: `${latestEvent.mutationId}:ensure_goal`,
+        schemaVersion: 1,
+        id: `${latestEvent.mutationId}:update_goal`,
         sourceEventId: latestEvent.eventId,
-        tool: "ensure_goal",
+        tool: "update_goal",
         input: {
-          targetStatus: goalTool.status,
-          objective: buildGoalModeObjective(result.plan?.goal.text ?? ""),
+          status: goalTool.status,
         },
         meta: {
           reason: goalTool.reason,

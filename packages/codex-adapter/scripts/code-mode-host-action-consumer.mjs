@@ -1,5 +1,6 @@
+const SUPPORTED_SCHEMA_VERSION = 1;
 const PLAN_STATUSES = new Set(["pending", "in_progress", "completed"]);
-const GOAL_TARGET_STATUSES = new Set(["active", "complete", "blocked"]);
+const GOAL_STATUSES = new Set(["complete", "blocked"]);
 
 export function parseClawCommandResult(rawResult) {
   const text = normalizeCommandResult(rawResult);
@@ -24,15 +25,11 @@ export async function consumeCodexHostActions({ result, hostTools, consumedIds =
     }
 
     const input = validateActionInput(action);
-    if (action.tool === "ensure_goal") {
-      await ensureGoalTarget({ input, hostTools });
-    } else {
-      const hostTool = hostTools.update_plan;
-      if (typeof hostTool !== "function") {
-        throw new Error("Codex host tool is unavailable: update_plan");
-      }
-      await hostTool(input);
+    const hostTool = hostTools[action.tool];
+    if (typeof hostTool !== "function") {
+      throw new Error(`Codex host tool is unavailable: ${action.tool}`);
     }
+    await hostTool(input);
     consumedIds.add(action.id);
     consumedActionIds.push(action.id);
   }
@@ -65,12 +62,10 @@ function validateActionEnvelope(action) {
   if (typeof action.id !== "string" || action.id.length === 0) {
     throw new TypeError("hostAction.id must be a non-empty string");
   }
-  const supported = (action.tool === "update_plan" && action.schemaVersion === 1)
-    || (action.tool === "ensure_goal" && action.schemaVersion === 2);
-  if (!supported) {
-    if (["update_plan", "ensure_goal"].includes(action.tool)) {
-      throw new Error(`Unsupported hostAction schemaVersion: ${String(action.schemaVersion)}`);
-    }
+  if (action.schemaVersion !== SUPPORTED_SCHEMA_VERSION) {
+    throw new Error(`Unsupported hostAction schemaVersion: ${String(action.schemaVersion)}`);
+  }
+  if (!["update_plan", "create_goal", "update_goal"].includes(action.tool)) {
     throw new Error(`Unsupported Codex hostAction tool: ${String(action.tool)}`);
   }
 }
@@ -98,35 +93,18 @@ function validateActionInput(action) {
     return input;
   }
 
-  assertOnlyKeys(input, ["targetStatus", "objective"], action.tool);
-  if (!GOAL_TARGET_STATUSES.has(input.targetStatus)) {
-    throw new TypeError("ensure_goal.input.targetStatus must be active, complete, or blocked");
+  if (action.tool === "create_goal") {
+    assertOnlyKeys(input, ["objective"], action.tool);
+    if (typeof input.objective !== "string" || input.objective.length === 0) {
+      throw new TypeError("create_goal.input.objective must be a non-empty string");
+    }
+    return input;
   }
-  if (typeof input.objective !== "string" || input.objective.length === 0) {
-    throw new TypeError("ensure_goal.input.objective must be a non-empty string");
+  assertOnlyKeys(input, ["status"], action.tool);
+  if (!GOAL_STATUSES.has(input.status)) {
+    throw new TypeError("update_goal.input.status must be complete or blocked");
   }
   return input;
-}
-
-async function ensureGoalTarget({ input, hostTools }) {
-  const createGoal = hostTools.create_goal;
-  const updateGoal = hostTools.update_goal;
-  if (typeof createGoal !== "function") {
-    throw new Error("Codex host tool is unavailable: create_goal");
-  }
-  if (typeof updateGoal !== "function") {
-    throw new Error("Codex host tool is unavailable: update_goal");
-  }
-
-  try {
-    await updateGoal({ status: "complete" });
-  } catch {
-    // Cleanup is intentionally best-effort: there may be no unfinished Goal.
-  }
-  await createGoal({ objective: input.objective });
-  if (input.targetStatus !== "active") {
-    await updateGoal({ status: input.targetStatus });
-  }
 }
 
 function assertOnlyKeys(value, allowedKeys, label) {

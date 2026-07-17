@@ -22,17 +22,17 @@ function makeActions() {
       input: { explanation: "sync", plan: [{ step: "work", status: "in_progress" }] },
     },
     {
-      schemaVersion: 2,
-      id: "mutation:ensure_goal:active",
-      tool: "ensure_goal",
-      input: { targetStatus: "active", objective: "finish work" },
+      schemaVersion: 1,
+      id: "mutation:create_goal",
+      tool: "create_goal",
+      input: { objective: "finish work" },
       meta: { reason: "start" },
     },
     {
-      schemaVersion: 2,
-      id: "mutation:ensure_goal:complete",
-      tool: "ensure_goal",
-      input: { targetStatus: "complete", objective: "finish work" },
+      schemaVersion: 1,
+      id: "mutation:update_goal",
+      tool: "update_goal",
+      input: { status: "complete" },
       meta: { reason: "finish" },
     },
   ];
@@ -43,7 +43,7 @@ test("parseClawCommandResult extracts the first complete CLI JSON object", () =>
   assert.deepEqual(parsed, { ok: true, command: "plan.edit" });
 });
 
-test("program resets and sets each requested Goal without inspecting current state", async () => {
+test("program dispatches each native plan and Goal action exactly once", async () => {
   const calls = [];
   const result = { hostActions: makeActions(), goalTool: { tool: "create_goal", objective: "must not execute" } };
   const hostTools = {
@@ -56,51 +56,24 @@ test("program resets and sets each requested Goal without inspecting current sta
 
   assert.deepEqual(calls, [
     ["update_plan", result.hostActions[0].input],
-    ["update_goal", { status: "complete" }],
-    ["create_goal", { objective: "finish work" }],
-    ["update_goal", { status: "complete" }],
     ["create_goal", { objective: "finish work" }],
     ["update_goal", { status: "complete" }],
   ]);
   assert.deepEqual(consumption.consumedActionIds, result.hostActions.map((action) => action.id));
 });
 
-test("cleanup is best-effort and does not depend on host error wording", async () => {
-  const calls = [];
-  await consumeCodexHostActions({
-    result: { hostActions: [makeActions()[1]] },
-    hostTools: {
-      update_goal: async (input) => { calls.push(["update_goal", input]); throw new Error("arbitrary future Codex wording"); },
-      create_goal: async (input) => calls.push(["create_goal", input]),
-    },
-  });
-  assert.deepEqual(calls, [
-    ["update_goal", { status: "complete" }],
-    ["create_goal", { objective: "finish work" }],
-  ]);
-});
-
-test("failures while setting the requested Goal propagate unchanged", async () => {
+test("native Goal tool failures propagate unchanged for Agent-level outcome handling", async () => {
   await assert.rejects(
     consumeCodexHostActions({
       result: { hostActions: [makeActions()[1]] },
-      hostTools: {
-        update_goal: async () => {},
-        create_goal: async () => { throw new Error("permission denied"); },
-      },
+      hostTools: { create_goal: async () => { throw new Error("permission denied"); } },
     }),
     /permission denied/,
   );
   await assert.rejects(
     consumeCodexHostActions({
       result: { hostActions: [makeActions()[2]] },
-      hostTools: {
-        create_goal: async () => {},
-        update_goal: (() => {
-          let calls = 0;
-          return async () => { calls += 1; if (calls === 2) throw new Error("transport failed"); };
-        })(),
-      },
+      hostTools: { update_goal: async () => { throw new Error("transport failed"); } },
     }),
     /transport failed/,
   );
@@ -119,7 +92,7 @@ test("program consumes an action id at most once", async () => {
   assert.deepEqual([...consumedIds], [action.id]);
 });
 
-test("program rejects unsupported schema, tools, and invalid target inputs", async () => {
+test("program rejects unsupported schema, tools, and invalid native Goal inputs", async () => {
   await assert.rejects(
     consumeCodexHostActions({ result: { hostActions: [{ ...makeActions()[0], schemaVersion: 2 }] }, hostTools: { update_plan: async () => {} } }),
     /Unsupported hostAction schemaVersion/,
@@ -130,7 +103,7 @@ test("program rejects unsupported schema, tools, and invalid target inputs", asy
   );
   await assert.rejects(
     consumeCodexHostActions({
-      result: { hostActions: [{ ...makeActions()[1], input: { targetStatus: "active", objective: "work", priorStatus: "blocked" } }] },
+      result: { hostActions: [{ ...makeActions()[1], input: { objective: "work", priorStatus: "blocked" } }] },
       hostTools: {},
     }),
     /unsupported input fields: priorStatus/,
@@ -140,18 +113,18 @@ test("program rejects unsupported schema, tools, and invalid target inputs", asy
       result: { hostActions: [{ ...makeActions()[1], input: {} }] },
       hostTools: {},
     }),
-    /targetStatus must be active, complete, or blocked/,
+    /objective must be a non-empty string/,
   );
   await assert.rejects(
     consumeCodexHostActions({
-      result: { hostActions: [{ ...makeActions()[2], input: { targetStatus: "complete" } }] },
+      result: { hostActions: [{ ...makeActions()[2], input: { status: "active" } }] },
       hostTools: {},
     }),
-    /objective must be a non-empty string/,
+    /status must be complete or blocked/,
   );
 });
 
-test("runCodexPlanMutation keeps CLI mutation and deterministic Goal reset/set in one program", async () => {
+test("runCodexPlanMutation keeps CLI mutation and direct host dispatch in one program", async () => {
   const calls = [];
   const result = { ok: true, command: "plan.done", hostActions: makeActions() };
   const run = await runCodexPlanMutation({
@@ -165,12 +138,12 @@ test("runCodexPlanMutation keeps CLI mutation and deterministic Goal reset/set i
   });
 
   assert.deepEqual(calls.map((call) => call[0] === "command" ? call[0] : call[1]), [
-    "command", "update_plan", "update_goal", "create_goal", "update_goal", "create_goal", "update_goal",
+    "command", "update_plan", "create_goal", "update_goal",
   ]);
   assert.equal(run.result.command, "plan.done");
 });
 
-test("the embedded driver performs the fixed Goal reset/set sequence", async () => {
+test("the embedded driver dispatches each native host action exactly once", async () => {
   const skill = await fs.readFile(path.resolve(hooksDir, "..", "skills", "using-claw-kit", "SKILL.md"), "utf8");
   const match = skill.match(/```javascript\n([\s\S]*?)\n```/);
   assert.ok(match, "using-claw-kit must embed the fixed code-mode driver");
@@ -193,6 +166,6 @@ test("the embedded driver performs the fixed Goal reset/set sequence", async () 
 
   assert.equal(actual.command, "plan.start");
   assert.deepEqual(calls.map(([name]) => name), [
-    "command", "update_plan", "update_goal", "create_goal", "update_goal", "create_goal", "update_goal", "text",
+    "command", "update_plan", "create_goal", "update_goal", "text",
   ]);
 });
