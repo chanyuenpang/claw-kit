@@ -221,17 +221,17 @@ Restart the ChatGPT desktop app, choose the **Claw Kit** marketplace in the plug
 
 Refresh the Git snapshot with `codex plugin marketplace upgrade claw-kit`, then reinstall or enable `claw-kit@claw-kit` before testing a newer plugin version. Verify that no older same-name identity such as `claw-kit@claw-kit-local` remains enabled against a stale source. Do not depend on post-install generation: Codex copies the marketplace source into its cache, and npm-backed plugin installation does not run lifecycle scripts.
 
-After publishing, refresh the maintainer machine as part of release completion:
+After publishing and verifying registry/GitHub state, invoke the update skill to refresh the maintainer machine:
 
 1. Reinstall the global CLI.
-2. Export and/or install the Codex plugin payload if `packages/codex-adapter` changed.
-3. Verify that the local command and plugin cache actually point at the new release.
+2. Install the Codex plugin from the published GitHub marketplace snapshot.
+3. Verify that `claw-kit@claw-kit` is enabled, `claw-kit@claw-kit-local` is disabled, and the official cache points at the new release.
 
 Use the closeout workflow for the local-copy details:
 
 - [docs/2026-06-08-closeout-workflow.md](G:/Projects/claw-kit/docs/2026-06-08-closeout-workflow.md)
 
-Maintainer-only Codex plugin development commands:
+Maintainer Codex plugin commands:
 
 ```powershell
 npm run export:codex-plugin
@@ -241,10 +241,10 @@ npm run install:codex-plugin
 Expected output and install locations:
 
 - export bundle: `dist/codex-plugin/claw-kit/<plugin-version>/`
-- local marketplace source: `C:\Users\<you>\.agents\plugins\claw-kit-local\plugins\claw-kit\`
-- local Codex cache install: `C:\Users\<you>\.codex\plugins\cache\claw-kit-local\claw-kit\<plugin-version>\`
+- published marketplace: `https://github.com/chanyuenpang/claw-kit.git` at `main`
+- official Codex cache install: `C:\Users\<you>\.codex\plugins\cache\claw-kit\claw-kit\<plugin-version>\`
 
-The maintained development install refreshes both paths and validates the marketplace entry. A cache-only copy is not a supported success state.
+The maintained installer clones the published repository, writes only the official cache, enables `claw-kit@claw-kit`, and disables `claw-kit@claw-kit-local`. It must run after publication, never before it.
 
 ## Post-publish Install Verification
 
@@ -263,9 +263,8 @@ If the release changed the Codex adapter, also verify the plugin cache copy:
 npm run export:codex-plugin
 npm run install:codex-plugin
 Get-Content packages/codex-adapter/.codex-plugin/plugin.json
-Get-Content C:\Users\chany\.agents\plugins\claw-kit-local\plugins\claw-kit\.codex-plugin\plugin.json
 Get-ChildItem dist/codex-plugin/claw-kit
-Get-ChildItem C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit
+Get-ChildItem C:\Users\chany\.codex\plugins\cache\claw-kit\claw-kit
 node packages\cli\dist\bin.js template validate --template update
 node packages\cli\dist\bin.js template validate --template create-claw-skill
 ```
@@ -276,9 +275,9 @@ Expected outcome:
 - `claw` resolves from `C:\Users\chany\AppData\Roaming\npm\claw.ps1`
 - `claw --help` succeeds
 - the exported bundle contains the expected manifest version when adapter files changed
-- the active local marketplace source manifest matches the expected plugin version
-- the local plugin cache contains the expected manifest version when adapter files changed
-- the enabled plugin identity points at the verified source; an unrelated newer cache directory does not count
+- the official Git marketplace revision contains the expected plugin version
+- the official plugin cache contains the expected manifest version when adapter files changed
+- `claw-kit@claw-kit` is enabled and `claw-kit@claw-kit-local` is disabled
 - the repository marketplace source contains `planning`, `config`, `update`, and `create-claw-skill`, including templates and helper resources
 - both bundled templates pass the real CLI validation command from an isolated cache
 
@@ -287,5 +286,5 @@ Expected outcome:
 - `@veewo/claw` depends on `@veewo/claw-core`, so publish order matters.
 - The local executable name remains `claw`.
 - `scripts/install-cli.ps1` now installs the published npm package directly.
-- `shared/skills` is the editable source for cross-host skills. The committed `packages/codex-adapter` tree is the canonical installable Codex plugin source; exports and cache installs are derived from that already-materialized tree.
+- `shared/skills` is the editable source for cross-host skills. The committed and published `packages/codex-adapter` tree is the canonical installable Codex plugin source; local unpublished payloads are not installable.
 - GitHub Release notes and tags remain useful release records, but the Codex installation flow consumes the Git marketplace snapshot and does not require a ZIP attachment.

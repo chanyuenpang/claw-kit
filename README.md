@@ -100,7 +100,7 @@ The repository marketplace at `.agents/plugins/marketplace.json` points to the f
 
 The committed Git marketplace snapshot is the Codex plugin release artifact. GitHub Release ZIP attachments are not required. Use a full repository checkout; a sparse checkout containing only `.agents/plugins` omits the referenced `packages/codex-adapter` payload.
 
-Maintainers working inside this repository also have two development commands:
+Maintainers working inside this repository have two Codex commands:
 
 ```powershell
 npm run export:codex-plugin
@@ -110,9 +110,9 @@ npm run install:codex-plugin
 What they do:
 
 1. `npm run export:codex-plugin` copies the installable plugin payload into `dist/codex-plugin/claw-kit/<plugin-version>/`.
-2. `npm run install:codex-plugin` validates the `claw-kit-local` marketplace entry, refreshes its active source under `%USERPROFILE%\.agents\plugins\claw-kit-local\plugins\claw-kit\`, then installs the same payload into `%USERPROFILE%\.codex\plugins\cache\claw-kit-local\claw-kit\<plugin-version>\`.
+2. `npm run install:codex-plugin` clones the published GitHub `main` marketplace, installs that payload into `%USERPROFILE%\.codex\plugins\cache\claw-kit\claw-kit\<plugin-version>\`, enables `claw-kit@claw-kit`, and disables `claw-kit@claw-kit-local`.
 
-Use `install:codex-plugin` for a direct local development source-and-cache refresh. Use `export:codex-plugin` for a clean versioned release bundle. Remote users should use the marketplace flow above instead of copying files into the cache manually.
+Release the new version before running `install:codex-plugin`; it deliberately refuses to install unpublished workspace content. Local marketplace installation is not a supported verification or update path.
 
 Validate a template without creating a plan with `claw template validate --template <id>`. This command resolves templates through the same registry used by `claw plan create` and `claw subplan create`, and reports route-aware tasks that require a choice id.
 

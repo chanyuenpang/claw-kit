@@ -161,6 +161,15 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 - `.claw/tasks/发布共享技能-staging-修复并刷新本地运行时/plan.json`
 - `.claw/archive/tasks/align-codex-plugin-publish-and-remote-install/plan.json`
 
+## 2026-07-17 superseding decision: official GitHub identity only
+
+The previous dual-surface maintainer model is superseded. Release and update workflows must no longer install or validate `claw-kit@claw-kit-local` as an active surface.
+
+- Publish and verify the new GitHub/npm version before invoking the update skill.
+- Use the published `chanyuenpang/claw-kit` repository marketplace for maintainer and third-party Codex updates alike.
+- Enable only `claw-kit@claw-kit`; explicitly disable `claw-kit@claw-kit-local`.
+- Treat unpublished workspace payloads and local marketplace caches as invalid release evidence.
+
 ## Search Terms
 
 - `planning`

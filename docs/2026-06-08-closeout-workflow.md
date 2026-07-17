@@ -61,13 +61,12 @@ Pass criteria:
 2. `claw` resolves from `C:\Users\chany\AppData\Roaming\npm\claw.ps1`
 3. the command surface is reachable through `claw --help`
 
-### 2.2 Local Codex plugin marketplace source and cache
+### 2.2 Published Codex marketplace and official cache
 
-When `packages/codex-adapter` changes, run `npm run install:codex-plugin`. The maintained installer validates the `claw-kit-local` marketplace entry and refreshes both:
+When `packages/codex-adapter` changes, publish and verify the new release first. Then invoke the update skill; its maintained installer clones the published GitHub marketplace and refreshes:
 
 ```text
-C:\Users\chany\.agents\plugins\claw-kit-local\plugins\claw-kit\
-C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\<plugin-version>\
+C:\Users\chany\.codex\plugins\cache\claw-kit\claw-kit\<plugin-version>\
 ```
 
 At minimum sync:
@@ -79,28 +78,27 @@ At minimum sync:
 5. `skills/`
 6. `package.json`
 
-After sync, confirm:
+After update, confirm:
 
-1. the active marketplace source and cache `plugin.json` files have the expected version
+1. the published Git marketplace and cache `plugin.json` have the expected version
 2. `hooks.json` matches the current implementation
-3. updated skills and references are present in both the source and cache
-4. `config.toml` enables the identity backed by that source; a newer unrelated cache directory is not proof of activation
+3. updated skills and references are present in the official cache
+4. `config.toml` enables `claw-kit@claw-kit` and disables `claw-kit@claw-kit-local`
 
 Recommended verification commands:
 
 ```powershell
 Get-Content packages/codex-adapter/.codex-plugin/plugin.json
-Get-Content C:\Users\chany\.agents\plugins\claw-kit-local\plugins\claw-kit\.codex-plugin\plugin.json
-Get-Content C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\<plugin-version>\.codex-plugin\plugin.json
-Get-ChildItem C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit
+Get-Content C:\Users\chany\.codex\plugins\cache\claw-kit\claw-kit\<plugin-version>\.codex-plugin\plugin.json
+Get-ChildItem C:\Users\chany\.codex\plugins\cache\claw-kit\claw-kit
 ```
 
 Pass criteria:
 
-1. repo, active marketplace source, and cached manifest versions are identical
-2. the enabled plugin identity points at the verified marketplace source
-3. the expected cache directory exists under `claw-kit-local\claw-kit\<plugin-version>\`
-4. the copied plugin files are readable from both source and cache paths
+1. published repository and cached manifest versions are identical
+2. the enabled plugin identity is `claw-kit@claw-kit`
+3. `claw-kit@claw-kit-local` is disabled
+4. the expected cache directory exists under `claw-kit\claw-kit\<plugin-version>\`
 
 ## 3. commit + push
 

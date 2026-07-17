@@ -2,7 +2,7 @@
 
 ## 状态
 
-这是 `publish-claw-npm-package` 完成后沉淀下来的稳定发布事实。当前最新一轮已验证到 `0.1.72`，并继续沿用同一条双包发布链与 identity-aware Codex plugin 刷新协议；当某一轮发布的目的就是验证 startup `autoUpdate` 路径时，release baseline 也可以先只确认 registry / workspace 基线与下一目标版本，不立即刷新本地 CLI 或本地 Codex plugin cache。
+这是 `publish-claw-npm-package` 完成后沉淀下来的稳定发布事实。当前最新一轮已验证到 `0.1.76`，并继续沿用同一条双包发布链与 identity-aware Codex plugin 刷新协议；当某一轮发布的目的就是验证 startup `autoUpdate` 路径时，release baseline 也可以先只确认 registry / workspace 基线与下一目标版本，不立即刷新本地 CLI 或本地 Codex plugin cache。
 
 ## 结论
 
@@ -11,7 +11,7 @@
 - `@veewo/claw-core` 提供核心 `.claw` harness 语义。
 - `@veewo/claw` 提供可发布的 CLI 入口，并依赖 `@veewo/claw-core`。
 
-当前最新发布版本线已经同步到 `0.1.72`；以下历史版本事实保留为发布链证据：
+当前最新发布版本线已经同步到 `0.1.76`；以下历史版本事实保留为发布链证据：
 
 - 这次 closeout 把 root、`packages/core`、`packages/cli`、`packages/codex-adapter`、`packages/openclaw-adapter`、`packages/opencode-adapter`、`package-lock.json` 和 `packages/codex-adapter/.codex-plugin/plugin.json` 一起推进到同一轮 release surface，其中 Codex plugin manifest 对齐到 `0.1.53+codex.20260626141302`。
 - `@veewo/claw-core@0.1.53` 与 `@veewo/claw@0.1.53` 都已经成功发布到 npm registry。
@@ -403,3 +403,36 @@ release commit `472635e` 已推送至 `origin/main`，tag 为 `v0.1.62`；`@veew
 - `0.1.72+codex.20260717024800 claw-kit-local`
 - `ensure_goal consumer driver source cache`
 - `main origin/main 0/0 clean`
+
+## 2026-07-17：0.1.76 发布与 SDK-owned knowledge closeout 安装验证
+
+### 已验证完成态
+
+- Release commit `10881b9` 已推送到 `origin/main`；发布 closeout 时本地 `main` 与 `origin/main` 完全一致，且工作区干净。
+- npm registry 已确认 `@veewo/claw-core@0.1.76` 与 `@veewo/claw@0.1.76` 发布完成；CLI registry metadata 继续保留 `bin.claw = "dist/bin.js"`。
+- 本机全局 CLI shim 为 `C:\Users\chany\AppData\Roaming\npm\claw.ps1`，真实 CLI 版本为 `0.1.76`。
+- 当前启用的 Codex identity 是 `claw-kit@claw-kit-local`；本机 Codex plugin cache 已刷新到 `0.1.76+codex.20260717200812`，其 SDK runtime 版本为 `0.144.5`。Codex 需要重启并新建任务后才会加载这份新插件版本。
+- 本轮完整验证通过 core `132/132`、CLI `90/90`、Codex bundle `13/13`、OpenCode bundle `7/7`，合计 `242/242`；完成计划为 `6/6`、状态 `end.completed`。
+
+### 验证锚点
+
+- `npm view @veewo/claw-core@0.1.76 version dist-tags.latest --json`
+- `npm view @veewo/claw@0.1.76 version dist-tags.latest bin --json`
+- `C:\Users\chany\AppData\Roaming\npm\claw.ps1`
+- `packages/codex-adapter/.codex-plugin/plugin.json`
+- `git rev-list --left-right --count main...origin/main`
+- `git status --porcelain`
+
+### 关键检索词
+
+- `0.1.76 10881b9 registry latest`
+- `0.1.76+codex.20260717200812 claw-kit-local`
+- `Codex SDK runtime 0.144.5 knowledge closeout`
+- `core 132 CLI 90 Codex 13 OpenCode 7`
+
+## 2026-07-17：发布后才运行 update skill，Codex 只允许 GitHub identity
+
+- 项目发布流程必须先完成版本发布并验证 GitHub/npm，再调用 update skill 更新本机安装面；禁止用未发布的工作区内容提前刷新插件。
+- Codex 唯一受支持的 identity 是 `claw-kit@claw-kit`。`claw-kit@claw-kit-local` 必须保持 disabled，不能再作为开发、发布或更新成功路径。
+- `npm run install:codex-plugin` 改为克隆已发布的 GitHub `main` marketplace，将 payload 写入 official cache `~/.codex/plugins/cache/claw-kit/claw-kit/<version>`，启用 official identity 并禁用 local identity。
+- release 脚本在 npm publish 成功后明确提示下一步调用 update skill，从而把“发布”和“安装更新”固定为有序的两个阶段。

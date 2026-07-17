@@ -174,3 +174,4 @@ for (const workspace of ["@veewo/claw-core", "@veewo/claw"]) {
 
 assertCleanWorktree("After publishing");
 console.log(`Published @veewo/claw-core and @veewo/claw ${release.version}.`);
+console.log("Next: invoke the claw-kit update skill to refresh the global CLI and the official GitHub marketplace plugin. Do not install from local workspace content.");

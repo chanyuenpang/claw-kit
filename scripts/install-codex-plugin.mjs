@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { installCodexPluginDevelopmentSurface } from "./codex-plugin-bundle.mjs";
+import { activateOfficialCodexPluginIdentity, installCodexPluginBundle } from "./codex-plugin-bundle.mjs";
 
 function readOption(name) {
   const index = process.argv.indexOf(name);
@@ -12,13 +12,19 @@ function readOption(name) {
 
 const sourceDirOption = readOption("--source-dir");
 const cacheRootOption = readOption("--cache-root");
-const marketplaceRootOption = readOption("--marketplace-root");
+const configPathOption = readOption("--config-path");
 
-const result = await installCodexPluginDevelopmentSurface({
+if (!sourceDirOption) {
+  throw new Error("--source-dir must point at packages/codex-adapter from a freshly cloned GitHub marketplace checkout.");
+}
+
+const result = await installCodexPluginBundle({
   sourceDir: sourceDirOption ? path.resolve(process.cwd(), sourceDirOption) : undefined,
   cacheRoot: cacheRootOption ? path.resolve(process.cwd(), cacheRootOption) : undefined,
-  marketplaceRoot: marketplaceRootOption ? path.resolve(process.cwd(), marketplaceRootOption) : undefined,
+});
+const identity = await activateOfficialCodexPluginIdentity({
+  configPath: configPathOption ? path.resolve(process.cwd(), configPathOption) : undefined,
 });
 
-console.log(`Updated Codex marketplace source at ${result.marketplaceSourceDir}`);
-console.log(`Installed Codex plugin cache at ${result.installDir}`);
+console.log(`Installed GitHub marketplace plugin cache at ${result.installDir}`);
+console.log(`Enabled ${identity.enabledIdentity} and disabled ${identity.disabledIdentity}.`);

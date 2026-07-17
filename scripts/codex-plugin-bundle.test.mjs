@@ -7,9 +7,9 @@ import { fileURLToPath } from "node:url";
 
 import {
   CODEX_PLUGIN_PAYLOAD_PATHS,
+  activateOfficialCodexPluginIdentity,
   exportCodexPluginBundle,
   installCodexPluginBundle,
-  installCodexPluginDevelopmentSurface,
   readCodexPluginSource,
 } from "./codex-plugin-bundle.mjs";
 import { verifySharedSkillsSynced } from "./sync-shared-skills.mjs";
@@ -131,6 +131,21 @@ test("release protocol publishes the committed Git marketplace snapshot without 
   assert.doesNotMatch(distribution, /attach the exported Codex plugin bundle to the GitHub release/);
   assert.match(releaseScript, /assertRepositoryMarketplaceSnapshot/);
   assert.match(releaseScript, /no GitHub Release ZIP is required/);
+  assert.match(releaseScript, /Next: invoke the claw-kit update skill/);
+});
+
+test("update contract publishes first and supports only the official Codex identity", async () => {
+  const skill = await fs.readFile(new URL("../shared/skills/update/SKILL.md", import.meta.url), "utf8");
+  const template = await fs.readFile(new URL("../shared/skills/update/TEMPLATE.json", import.meta.url), "utf8");
+  const fallback = await fs.readFile(new URL("../shared/skills/update/non-claw-fallback.md", import.meta.url), "utf8");
+  const installer = await fs.readFile(new URL("./install-codex-plugin.ps1", import.meta.url), "utf8");
+  const combined = [skill, template, fallback, installer].join("\n");
+
+  assert.match(combined, /publish and verify/i);
+  assert.match(combined, /claw-kit@claw-kit/);
+  assert.doesNotMatch(combined, /direct development install/i);
+  assert.doesNotMatch(combined, /cache\\claw-kit-local/i);
+  assert.match(installer, /github\.com\/chanyuenpang\/claw-kit\.git/i);
 });
 
 test("official marketplace-style cache copy contains all shared skills and resources", async () => {
@@ -205,60 +220,26 @@ test("installCodexPluginBundle copies a payload source into the versioned Codex 
   }
 });
 
-test("installCodexPluginDevelopmentSurface refreshes the active marketplace source before its cache", async () => {
-  const { sourceDir, root } = await makeFixture();
-  const marketplaceRoot = path.join(root, ".agents", "plugins", "claw-kit-local");
-  const marketplaceSourceDir = path.join(marketplaceRoot, "plugins", "claw-kit");
-  const cacheRoot = path.join(root, ".codex", "plugins", "cache", "claw-kit-local");
+test("official installer enables the GitHub identity and disables the local identity", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "claw-kit-codex-identity-"));
+  const configPath = path.join(root, "config.toml");
+  await fs.writeFile(configPath, [
+    "[marketplaces.claw-kit]",
+    'source_type = "git"',
+    'source = "https://github.com/chanyuenpang/claw-kit.git"',
+    "",
+    '[plugins."claw-kit@claw-kit"]',
+    "enabled = false",
+    "",
+    '[plugins."claw-kit@claw-kit-local"]',
+    "enabled = true",
+    "",
+  ].join("\n"));
 
-  await fs.mkdir(marketplaceRoot, { recursive: true });
-  await fs.writeFile(
-    path.join(marketplaceRoot, "marketplace.json"),
-    JSON.stringify({
-      name: "claw-kit-local",
-      plugins: [
-        {
-          name: "claw-kit",
-          source: { source: "local", path: "./plugins/claw-kit" },
-        },
-      ],
-    }, null, 2),
-  );
-  await fs.mkdir(path.join(marketplaceSourceDir, "skills"), { recursive: true });
-  await fs.writeFile(path.join(marketplaceSourceDir, "skills", "stale.md"), "stale");
+  const result = await activateOfficialCodexPluginIdentity({ configPath });
+  const config = await fs.readFile(configPath, "utf8");
 
-  const result = await installCodexPluginDevelopmentSurface({
-    sourceDir,
-    marketplaceRoot,
-    cacheRoot,
-  });
-
-  assert.equal(result.marketplaceName, "claw-kit-local");
-  assert.equal(result.marketplaceSourceDir, marketplaceSourceDir);
-  assert.equal(result.installDir, path.join(cacheRoot, "claw-kit", "0.1.41+codex.test"));
-  assert.equal(
-    JSON.parse(await fs.readFile(path.join(marketplaceSourceDir, ".codex-plugin", "plugin.json"), "utf8")).version,
-    "0.1.41+codex.test",
-  );
-  assert.equal(
-    JSON.parse(await fs.readFile(path.join(result.installDir, ".codex-plugin", "plugin.json"), "utf8")).version,
-    "0.1.41+codex.test",
-  );
-  await assert.rejects(fs.access(path.join(marketplaceSourceDir, "skills", "stale.md")));
-});
-
-test("installCodexPluginDevelopmentSurface rejects a marketplace that does not expose the plugin", async () => {
-  const { sourceDir, root } = await makeFixture();
-  const marketplaceRoot = path.join(root, ".agents", "plugins", "claw-kit-local");
-
-  await fs.mkdir(marketplaceRoot, { recursive: true });
-  await fs.writeFile(
-    path.join(marketplaceRoot, "marketplace.json"),
-    JSON.stringify({ name: "claw-kit-local", plugins: [] }, null, 2),
-  );
-
-  await assert.rejects(
-    installCodexPluginDevelopmentSurface({ sourceDir, marketplaceRoot }),
-    /does not expose claw-kit/,
-  );
+  assert.equal(result.enabledIdentity, "claw-kit@claw-kit");
+  assert.match(config, /\[plugins\."claw-kit@claw-kit"\]\nenabled = true/);
+  assert.match(config, /\[plugins\."claw-kit@claw-kit-local"\]\nenabled = false/);
 });

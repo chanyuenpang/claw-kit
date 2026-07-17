@@ -16,8 +16,8 @@ const thisDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(thisDir, "..");
 const defaultSourceDir = path.join(repoRoot, "packages", "codex-adapter");
 const defaultBundleOutDir = path.join(repoRoot, "dist", "codex-plugin");
-const defaultCacheRoot = path.join(os.homedir(), ".codex", "plugins", "cache", "claw-kit-local");
-const defaultDevelopmentMarketplaceRoot = path.join(os.homedir(), ".agents", "plugins", "claw-kit-local");
+const defaultCacheRoot = path.join(os.homedir(), ".codex", "plugins", "cache", "claw-kit");
+const defaultCodexConfigPath = path.join(os.homedir(), ".codex", "config.toml");
 
 async function readJson(jsonPath) {
   return JSON.parse(await fs.readFile(jsonPath, "utf8"));
@@ -117,60 +117,27 @@ export async function installCodexPluginBundle({ sourceDir = defaultSourceDir, c
   return { ...plugin, cacheRoot, installDir };
 }
 
-async function resolveMarketplacePluginSource({ marketplaceRoot, pluginName }) {
-  const marketplacePath = path.join(marketplaceRoot, "marketplace.json");
-  if (!(await pathExists(marketplacePath))) {
-    throw new Error(`Codex development marketplace not found: ${marketplacePath}`);
+function setPluginEnabled(configText, identity, enabled) {
+  const escapedIdentity = identity.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const sectionPattern = new RegExp(`(^\\[plugins\\."${escapedIdentity}"\\]\\s*$)([\\s\\S]*?)(?=^\\[|\\s*$)`, "m");
+  const match = configText.match(sectionPattern);
+  if (!match) {
+    return `${configText.trimEnd()}\n\n[plugins."${identity}"]\nenabled = ${enabled}\n`;
   }
-
-  const marketplace = await readJson(marketplacePath);
-  const entry = marketplace.plugins?.find((candidate) => candidate.name === pluginName);
-  if (!entry) {
-    throw new Error(`Codex development marketplace ${marketplace.name ?? marketplacePath} does not expose ${pluginName}.`);
-  }
-  if (entry.source?.source !== "local" || typeof entry.source.path !== "string") {
-    throw new Error(`Codex development marketplace entry for ${pluginName} must use a local source path.`);
-  }
-
-  const marketplaceSourceDir = path.resolve(marketplaceRoot, entry.source.path);
-  const relativeSourcePath = path.relative(marketplaceRoot, marketplaceSourceDir);
-  if (relativeSourcePath.startsWith("..") || path.isAbsolute(relativeSourcePath)) {
-    throw new Error(`Codex development marketplace source escapes its root: ${entry.source.path}`);
-  }
-
-  return {
-    marketplace,
-    marketplacePath,
-    marketplaceSourceDir,
-  };
+  const body = match[2];
+  const nextBody = /^enabled\s*=.*$/m.test(body)
+    ? body.replace(/^enabled\s*=.*$/m, `enabled = ${enabled}`)
+    : `${body.trimEnd()}\nenabled = ${enabled}\n\n`;
+  return configText.replace(sectionPattern, `${match[1]}${nextBody}`);
 }
 
-export async function installCodexPluginDevelopmentSurface({
-  sourceDir = defaultSourceDir,
-  marketplaceRoot = defaultDevelopmentMarketplaceRoot,
-  cacheRoot = defaultCacheRoot,
-} = {}) {
-  const plugin = await readCodexPluginSource({ sourceDir });
-  const marketplace = await resolveMarketplacePluginSource({
-    marketplaceRoot,
-    pluginName: plugin.name,
-  });
-
-  if (path.resolve(plugin.sourceDir) !== path.resolve(marketplace.marketplaceSourceDir)) {
-    await copyPayloadTree(plugin.sourceDir, marketplace.marketplaceSourceDir, plugin.payloadRelativePaths);
+export async function activateOfficialCodexPluginIdentity({ configPath = defaultCodexConfigPath } = {}) {
+  let configText = await fs.readFile(configPath, "utf8");
+  if (!/^\[marketplaces\.claw-kit\]$/m.test(configText)) {
+    throw new Error("The official claw-kit Git marketplace is not registered in Codex. Add chanyuenpang/claw-kit before installing the plugin.");
   }
-
-  const cacheInstall = await installCodexPluginBundle({
-    sourceDir: marketplace.marketplaceSourceDir,
-    cacheRoot,
-  });
-
-  return {
-    ...plugin,
-    marketplaceName: marketplace.marketplace.name,
-    marketplacePath: marketplace.marketplacePath,
-    marketplaceSourceDir: marketplace.marketplaceSourceDir,
-    cacheRoot,
-    installDir: cacheInstall.installDir,
-  };
+  configText = setPluginEnabled(configText, "claw-kit@claw-kit", true);
+  configText = setPluginEnabled(configText, "claw-kit@claw-kit-local", false);
+  await fs.writeFile(configPath, configText, "utf8");
+  return { configPath, enabledIdentity: "claw-kit@claw-kit", disabledIdentity: "claw-kit@claw-kit-local" };
 }

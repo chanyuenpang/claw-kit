@@ -28,7 +28,7 @@ When `@claw-kit` is used in a real project thread:
 ## Default routing
 
 - session-bound active workflow recovered:
-  - use `[@claw-kit](plugin://claw-kit@claw-kit-local)`
+  - use `[@claw-kit](plugin://claw-kit@claw-kit)`
   - treat the recovered `workflowGuidance` as the only next-step contract
   - include current plan content in the recovered JSON/additional prompt surface so the resumed agent can continue without reopening the plan first
   - do not repeat static project metadata such as project root or `.claw` path

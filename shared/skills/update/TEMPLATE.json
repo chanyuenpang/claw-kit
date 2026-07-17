@@ -33,7 +33,7 @@
               "summary": "The current host route is Codex.",
               "nextsteps": [
                 "Update the global CLI first.",
-                "Then refresh Codex through the maintained direct development install or the official repository marketplace, depending on whether this is a repository checkout or a remote machine."
+                "Then refresh Codex from the published repository marketplace and enable only claw-kit@claw-kit."
               ],
               "nextTaskId": 2,
               "delegateTruth": false
@@ -65,7 +65,7 @@
     {
       "id": 2,
       "title": "Refresh the CLI first, then refresh the matching host plugin surface",
-      "detail": "Update the global `@veewo/claw` CLI first, then refresh the plugin surface that matches the chosen host route. Inside the `claw-kit` repository, prefer the maintained scripts: `npm run install:local-cli`, `npm run install:codex-plugin`, and `npm run install:opencode-plugin`; the Codex development installer must refresh both the `claw-kit-local` marketplace source and its versioned cache. On a remote Codex machine, use `codex plugin marketplace add chanyuenpang/claw-kit --ref main` for first setup or `codex plugin marketplace upgrade claw-kit` for refresh, then reinstall or enable `claw-kit@claw-kit` through the Codex plugin command/UI. If another enabled same-name identity such as `claw-kit@claw-kit-local` points at an older source, disable or uninstall that stale identity before success. Do not treat a one-surface refresh as complete, and do not invent a replacement install path when a supported path exists.",
+      "detail": "Update the global `@veewo/claw` CLI first, then refresh the plugin surface that matches the chosen host route. A release workflow must publish and verify the target version before this update task begins. For Codex, use the published `chanyuenpang/claw-kit` repository marketplace on every machine: inside this repository run `npm run install:local-cli` and then `npm run install:codex-plugin`; the Codex installer clones the published GitHub `main` snapshot, writes the official `claw-kit` cache, enables `claw-kit@claw-kit`, and disables `claw-kit@claw-kit-local`. The equivalent host lifecycle is `codex plugin marketplace add chanyuenpang/claw-kit --ref main` for first setup or `codex plugin marketplace upgrade claw-kit` for refresh, followed by reinstalling or enabling `claw-kit@claw-kit`. Never update Codex from unpublished workspace files or treat a local marketplace as a supported path. Do not treat a one-surface refresh as complete.",
       "status": "pending",
       "guidance": {
         "onDone": {
@@ -86,7 +86,7 @@
     {
       "id": 3,
       "title": "Verify both surfaces and report exact status",
-      "detail": "Always verify after the refresh. For the CLI, run `claw --version` and `npm list -g @veewo/claw --depth=0`. For a Codex repository marketplace install, verify `claw-kit@claw-kit` is enabled, confirm its source manifest version, then inspect the matching cache under `%USERPROFILE%\\.codex\\plugins\\cache\\claw-kit\\claw-kit\\`. For a direct development install, verify `claw-kit@claw-kit-local` is enabled, inspect `%USERPROFILE%\\.agents\\plugins\\claw-kit-local\\plugins\\claw-kit\\.codex-plugin\\plugin.json`, then inspect the matching cache under `%USERPROFILE%\\.codex\\plugins\\cache\\claw-kit-local\\claw-kit\\`. The source and cache manifest versions must equal the target version. Check for another enabled same-name plugin identity that points at an older source; a newer unused cache directory is not success. Confirm `skills/planning`, `skills/config`, `skills/update`, and `skills/create-claw-skill` exist in the active source/cache copy. Restart Codex and start a new task before validating the loaded skill locator. For OpenCode, confirm the installed plugin files exist under the configured OpenCode plugin path. Do not claim success if only one surface updated, and do not silently skip verification.",
+      "detail": "Always verify after the refresh. For the CLI, run `claw --version` and `npm list -g @veewo/claw --depth=0`. For Codex, verify `claw-kit@claw-kit` is enabled, verify `claw-kit@claw-kit-local` is disabled, confirm the published Git marketplace revision, and inspect the matching cache under `%USERPROFILE%\\.codex\\plugins\\cache\\claw-kit\\claw-kit\\`. The official source and cache manifest versions must equal the published target version. Confirm `skills/planning`, `skills/config`, `skills/update`, and `skills/create-claw-skill` exist in the official cache. Restart Codex and start a new task before validating the loaded skill locator. For OpenCode, confirm the installed plugin files exist under the configured OpenCode plugin path. Do not claim success if only one surface updated, and do not silently skip verification.",
       "status": "pending"
     }
   ],
@@ -101,9 +101,9 @@
     "This skill is for installation refresh work, not for planning or editing project workflow state.",
     "A claw-kit update is complete only when both the global CLI and the current host plugin surface were refreshed and verified.",
     "Prefer the current host route when it is known; otherwise choose a supported plugin refresh path conservatively.",
-    "Inside the `claw-kit` repository, prefer the maintained install scripts instead of inventing replacement install commands.",
-    "On remote Codex machines, use the repository marketplace; do not depend on install-time shared-skill generation.",
-    "For third-party Codex installs, the expected active identity is claw-kit@claw-kit; detect enabled stale same-name identities.",
+    "During release closeout, publish and verify the target version before invoking this update workflow.",
+    "On Codex, always use the published repository marketplace; local marketplace installation is unsupported.",
+    "The expected active identity is claw-kit@claw-kit; claw-kit@claw-kit-local must be disabled.",
     "A cache directory is only an artifact. Verify active identity, marketplace source manifest, and cache manifest together.",
     "Do not claim success if only one install surface updated.",
     "Do not silently skip verification."
