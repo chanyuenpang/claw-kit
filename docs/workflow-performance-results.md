@@ -10,11 +10,12 @@ Mode, canonical truth/ADR routing, and compatibility commands.
 
 - The predecessor path used five plan mutations before business work. With the
   required recall query, this was six management commands.
-- `claw plan start --task <name> --patch <plan-patch.json> --append-tasks
-  <tasks.json>` reduces the plan lifecycle to create plus one atomic start. With
+- `claw plan start --requirements <text> --acceptance <criterion> --add-task
+  <title> --detail <text>` reduces the plan lifecycle to create plus one atomic start. With
   recall, the formal flow uses three management commands.
-- The paired low/medium/high corpus measured legacy P50 `902.79ms` and atomic
-  P50 `385.06ms`, an observed `57.35%` improvement.
+- The 2026-07-17 explicit-command corpus measured sequential P50 `1602.15ms`
+  and atomic P50 `463.76ms`, an observed `71.05%` improvement. Every low,
+  medium, and high case completed successfully without temporary JSON inputs.
 - CLI events are versioned and share one mutation id. `hostActions` are
   idempotent, one-way projections for progress and Goal Mode; the CLI plan stays
   canonical.

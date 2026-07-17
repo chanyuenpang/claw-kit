@@ -31,7 +31,7 @@ Important consequences:
 
 - local overrides can replace a single field without copying the full object
 - arrays are replacement values, not append-only patches
-- explicit `null` can intentionally clear inherited values such as `externalTruthSkill`
+- explicit `null` can intentionally clear inherited values such as `knowledgeWriter.externalSkill`
 - protocol repair does not write local override state back into canonical `project.json`
 - legacy nested inputs may be tolerated by repair in `.claw/project.json`, but new override examples should use the flat canonical field shape
 
@@ -67,14 +67,11 @@ Together, the canonical config plus local override model gives longer-running pr
   - optional planning skill name for task 1 in planning-enabled seed plans
   - use `null` to keep the host-default built-in planning skill surface
 
-### External writers
+### Knowledge writer
 
-- `externalTruthSkill`
-  - optional override for the truth writer skill
-- `externalAdrSkill`
-  - optional override for the ADR writer skill
-
-Use `null` when the project should explicitly keep the built-in writer behavior.
+- `knowledgeWriter.externalSkill`
+  - optional override for the combined truth-and-ADR writer skill
+  - use `null` for the built-in `claw-kit:knowledge-writer`
 
 ### Context and memory
 
@@ -101,9 +98,12 @@ Use `null` when the project should explicitly keep the built-in writer behavior.
 - `goalMode`
   - default: `true`
   - when `false`, returned `workflowGuidance` suppresses `goalMode`
-- `truthDispatch`
-  - `final_only`: default behavior, suppresses mid-task truth deposition while still allowing closeout deposition
-  - `per_task`: explicit opt-in for mid-task truth deposition guidance
+- `knowledgeWriter`
+  - `externalSkill`: optional combined writer skill override; `null` uses `claw-kit:knowledge-writer`
+  - `model`: optional Codex model override for the asynchronous auto-doc writer; `null` uses the SDK default
+  - `reasoningEffort`: writer reasoning depth; one of `minimal`, `low`, `medium`, `high`, or `xhigh`
+
+The removed `truthDispatch` timing switch is discarded during protocol repair. Auto-doc captures every eligible turn report and judges durable truth and ADR content only when a plan closes.
 
 Older nested inputs should be rewritten into the flat fields above during protocol repair; new config should use only the canonical flat shape.
 
@@ -120,8 +120,6 @@ Older nested inputs should be rewritten into the flat fields above during protoc
   "planning": true,
   "autoUpdate": true,
   "externalPlanningSkill": null,
-  "externalTruthSkill": null,
-  "externalAdrSkill": null,
   "defaultPlanTemplate": null,
   "contextPaths": [],
   "memory": {
@@ -133,7 +131,11 @@ Older nested inputs should be rewritten into the flat fields above during protoc
     }
   },
   "goalMode": true,
-  "truthDispatch": "final_only",
+  "knowledgeWriter": {
+    "externalSkill": null,
+    "model": null,
+    "reasoningEffort": "medium"
+  },
   "gitnexus": false
 }
 ```
@@ -272,7 +274,11 @@ With this config, planning-enabled default plans still start in `process.discuss
 ```json
 {
   "goalMode": false,
-  "truthDispatch": "final_only"
+  "knowledgeWriter": {
+    "externalSkill": null,
+    "model": "gpt-5.6-sol",
+    "reasoningEffort": "high"
+  }
 }
 ```
 
@@ -304,8 +310,9 @@ With this config, planning-enabled default plans still start in `process.discuss
 
 ```json
 {
-  "externalTruthSkill": "external-truth-writer",
-  "externalAdrSkill": "external-adr-writer"
+  "knowledgeWriter": {
+    "externalSkill": "external-knowledge-writer"
+  }
 }
 ```
 
@@ -315,7 +322,9 @@ With this config, planning-enabled default plans still start in `process.discuss
 
 ```json
 {
-  "externalTruthSkill": null
+  "knowledgeWriter": {
+    "externalSkill": null
+  }
 }
 ```
 
@@ -368,7 +377,7 @@ When explaining project behavior:
 - `externalPlanningSkill` only selects the planning skill name used by task 1; it does not make the skill claw-aware
 - `gitnexus = true` opts a project into GitNexus-related integration behavior, but `claw-kit` still works without it
 - `goalMode = false` removes `goalMode` from workflow guidance
-- `truthDispatch = final_only` removes mid-task truth deposition guidance but not closeout deposition
+- `knowledgeWriter` selects the external skill, Codex model, and reasoning depth used by asynchronous auto-doc closeout
 
 That same project-level config and plan surface is part of why `claw-kit` works well for longer-running tasks: the workflow, truth, and ADR state live in durable project surfaces instead of only in transient chat history.
 
@@ -377,4 +386,4 @@ That same project-level config and plan surface is part of why `claw-kit` works 
 - Do not describe `.claw/project-override.json` as a second canonical config file.
 - Do not treat explicit `null` as "unset" or "inherit."
 - Do not claim local override changes will be normalized back into `.claw/project.json`.
-- Do not claim `final_only` disables all truth or ADR deposition.
+- Do not reintroduce per-task versus final-only dispatch timing; report capture and closeout judgment are separate stages.

@@ -23,9 +23,9 @@ Use this skill when the user asks to search project context, recall prior `.claw
 - `claw search` is the recommended recall command.
 - `claw search` is project-scoped and uses the project-level `.claw/memory.sqlite`.
 - `claw search` is for documentation-style recall: project memory, truth docs, ADRs, and declared external markdown docs.
-- For normal planned work, call `claw search` after `claw plan create` so recall improves the already-bound task scope.
-- For lighter-weight planned work, call `claw search` before execution when project context is likely relevant.
-- Call `claw search` before research work.
+- For normal planned work, use `claw search` after `claw plan create` only when recall would materially improve the already-bound task scope.
+- For lighter-weight planned work, use `claw search` before execution only when project context is relevant.
+- Before research work, use `claw search` when documentation-style recall would help; it is not a mandatory template step.
 - Use `claw search` to absorb a natural-language prompt or keyword query against project docs, recover truth/ADR context, and narrow the surface before later code-location work.
 - Do not treat `claw search` as a code-search surface. For current code relationships or implementation tracing, use a researcher specialist and GitNexus-oriented capabilities when available.
 - The searchable project recall surface includes `.claw/truth/`, including ADR content under `.claw/truth/adr/`.

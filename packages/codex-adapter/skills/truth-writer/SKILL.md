@@ -42,6 +42,8 @@ Honor the configured canonical truth root; use `.claw/truth/` in claw-kit projec
 - bind conclusions to real code paths whenever possible
 - distinguish primary anchors from related files in prose
 - keep the result in readable markdown
+- write canonical markdown as UTF-8 with BOM; plain UTF-8 without BOM is not complete
+- preserve an existing BOM when updating a document
 - ground every path and fact in supplied or inspected evidence
 - repair or rewrite mojibake such as `鐨`, `锛`, or `銆` before deposition
 
@@ -60,8 +62,9 @@ Honor the configured canonical truth root; use `.claw/truth/` in claw-kit projec
 1. Read the supplied facts and evidence.
 2. Run `claw search` and read only relevant canonical candidates.
 3. Update the best-matching document or create one for a genuinely new topic.
-4. In claw-kit projects, write through `claw truth ingest` when available.
-5. Verify the target, canonical path containment, encoding, written facts, and `claw search` discoverability.
+4. In claw-kit projects, write through `claw truth ingest` so the canonical file is normalized to UTF-8 with BOM. For an edited target, it is valid to ingest that same file back into its canonical relative target.
+5. Verify that the written file starts with the UTF-8 BOM bytes `EF BB BF`, contains no mojibake, and remains inside the canonical truth root. Repair the encoding before reporting completion.
+6. Verify the written facts and `claw search` discoverability.
 
 ## Return
 

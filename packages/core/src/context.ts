@@ -4,7 +4,7 @@ import { ClawError } from "./errors.js";
 import { readJsonFile } from "./io.js";
 import { ensureInsideDir, findProjectRoot, isValidTaskName, normalizePlanFile, normalizeTaskName } from "./paths.js";
 import { resolveSessionBoundPlan } from "./session-bindings.js";
-import type { MemoryEmbeddingConfig, ProjectConfig, ProjectContext, ResolvedContext, TaskContext, TaskMeta } from "./types.js";
+import type { KnowledgeWriterReasoningEffort, MemoryEmbeddingConfig, ProjectConfig, ProjectContext, ResolvedContext, TaskContext, TaskMeta } from "./types.js";
 
 const CORE_VERSION = readCoreVersion();
 
@@ -121,7 +121,10 @@ function readProjectConfig(projectJsonPath: string): ProjectConfig {
     const projectConfig = readJsonFile<ProjectConfig>(projectJsonPath);
     const projectOverridePath = path.join(path.dirname(projectJsonPath), "project-override.json");
     const projectOverride = fs.existsSync(projectOverridePath) ? readJsonFile<ProjectConfig>(projectOverridePath) : undefined;
-    return normalizeProjectConfig(mergeProjectConfig(projectConfig, projectOverride));
+    return normalizeProjectConfig(mergeProjectConfig(
+      migrateLegacyWriterConfigLayer(projectConfig),
+      migrateLegacyWriterConfigLayer(projectOverride),
+    ));
   } catch (error) {
     throw new ClawError("PROJECT_CONFIG_INVALID", "Failed to parse .claw/project.json.", {
       path: projectJsonPath,
@@ -130,7 +133,36 @@ function readProjectConfig(projectJsonPath: string): ProjectConfig {
   }
 }
 
+function migrateLegacyWriterConfigLayer(config: ProjectConfig | undefined): ProjectConfig | undefined {
+  if (!config) {
+    return undefined;
+  }
+  const source = config as ProjectConfig & {
+    externalTruthSkill?: string | null;
+    externalAdrSkill?: string | null;
+  };
+  const hasLegacy = Object.prototype.hasOwnProperty.call(source, "externalTruthSkill")
+    || Object.prototype.hasOwnProperty.call(source, "externalAdrSkill");
+  const hasCanonical = source.knowledgeWriter
+    && Object.prototype.hasOwnProperty.call(source.knowledgeWriter, "externalSkill");
+  if (!hasLegacy || hasCanonical) {
+    return config;
+  }
+  const { externalTruthSkill: _truth, externalAdrSkill: _adr, ...rest } = source;
+  return {
+    ...rest,
+    knowledgeWriter: {
+      ...(source.knowledgeWriter ?? {}),
+      externalSkill: resolveExternalWriterSkill(source),
+    },
+  };
+}
+
 function normalizeProjectConfig(projectConfig: ProjectConfig): ProjectConfig {
+  const legacyConfig = projectConfig as ProjectConfig & {
+    externalTruthSkill?: string | null;
+    externalAdrSkill?: string | null;
+  };
   return {
     version: normalizeVersion(projectConfig.version),
     id: projectConfig.id,
@@ -142,10 +174,14 @@ function normalizeProjectConfig(projectConfig: ProjectConfig): ProjectConfig {
     planning: projectConfig.planning !== false,
     autoUpdate: projectConfig.autoUpdate === true,
     goalMode: typeof projectConfig.goalMode === "boolean" ? projectConfig.goalMode : true,
-    truthDispatch: projectConfig.truthDispatch === "per_task" ? "per_task" : "final_only",
+    knowledgeWriter: {
+      externalSkill: resolveExternalWriterSkill(legacyConfig),
+      model: normalizeOptionalSkill(projectConfig.knowledgeWriter?.model),
+      reasoningEffort: normalizeKnowledgeWriterReasoningEffort(
+        projectConfig.knowledgeWriter?.reasoningEffort,
+      ),
+    },
     externalPlanningSkill: normalizeOptionalSkill(projectConfig.externalPlanningSkill),
-    externalTruthSkill: normalizeOptionalSkill(projectConfig.externalTruthSkill),
-    externalAdrSkill: normalizeOptionalSkill(projectConfig.externalAdrSkill),
     defaultPlanTemplate: normalizeOptionalTemplateName(projectConfig.defaultPlanTemplate),
     contextPaths: [...(projectConfig.contextPaths ?? [])],
     memory: {
@@ -155,6 +191,32 @@ function normalizeProjectConfig(projectConfig: ProjectConfig): ProjectConfig {
     },
     gitnexus: projectConfig.gitnexus === true,
   };
+}
+
+function resolveExternalWriterSkill(
+  projectConfig: ProjectConfig & {
+    externalTruthSkill?: string | null;
+    externalAdrSkill?: string | null;
+  },
+): string | null {
+  if (
+    projectConfig.knowledgeWriter
+    && Object.prototype.hasOwnProperty.call(projectConfig.knowledgeWriter, "externalSkill")
+  ) {
+    return normalizeOptionalSkill(projectConfig.knowledgeWriter.externalSkill);
+  }
+  const truthSkill = normalizeOptionalSkill(projectConfig.externalTruthSkill);
+  const adrSkill = normalizeOptionalSkill(projectConfig.externalAdrSkill);
+  if (truthSkill && adrSkill && truthSkill !== adrSkill) {
+    return null;
+  }
+  return truthSkill ?? adrSkill;
+}
+
+function normalizeKnowledgeWriterReasoningEffort(value: unknown): KnowledgeWriterReasoningEffort {
+  return value === "minimal" || value === "low" || value === "high" || value === "xhigh"
+    ? value
+    : "medium";
 }
 
 function deriveProjectId(projectRoot: string, projectConfig: ProjectConfig | null): string {

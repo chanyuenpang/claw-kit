@@ -22,7 +22,7 @@ Accepted
 - `guidance.onDone.default` 与 `guidance.onDone.choices.<choiceId>` 都可以修改返回的 workflow guidance，并通过 `mergeMode: "override" | "replace"` 声明是叠加默认 guidance 还是完整替换
 - route guidance 可以通过 `delegateTruth: false` 局部关闭默认的 per-task truth delegation
 - `guidance.onDone.choices` 是 route-aware completion 的唯一权威来源；当模板定义了 choices 时，任何进入 `done` 的写路径都必须提供有效 `choiceId`
-- `claw task done` 和 `claw plan edit --task-choice` 共享同一套 done-transition 校验
+- `claw task done --choice` 和 `claw task edit --status done --choice` 共享同一套 done-transition 校验
 - template-only guidance 不进入 agent-facing runtime task content，避免把模板内部路由细节泄漏到通用任务文本里
 - 模板级 `configOverride` 只应从 template 载入并写入 runtime plan，不应通过 plan 创建输入注入
 
@@ -52,5 +52,5 @@ Accepted
 - `choiceId`
 - `mergeMode`
 - `claw task done`
-- `claw plan edit --task-choice`
+- `claw task edit --choice`
 - `route-aware completion`

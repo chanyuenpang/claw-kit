@@ -54,6 +54,8 @@ Follow a stronger local ADR convention when one exists. Otherwise use:
 - preserve exact code identifiers, config keys, commands, and error text
 - record repository locations only as project-relative paths in prose, links, evidence, and related-code sections
 - keep ADRs compact and durable
+- write canonical markdown as UTF-8 with BOM; plain UTF-8 without BOM is not complete
+- preserve an existing BOM when updating an ADR
 - summarize the decision and consequences compactly from the completed plan
 - ground paths, dates, owners, and alternatives in plan or repository evidence
 - repair or rewrite mojibake such as `鐨`, `锛`, or `銆` before deposition
@@ -64,7 +66,9 @@ Follow a stronger local ADR convention when one exists. Otherwise use:
 2. Extract the recorded durable decisions and their consequences.
 3. Run `claw search` and read only relevant ADR candidates.
 4. Update the best-matching ADR or create one for a distinct decision.
-5. Verify the target, canonical path containment, encoding, written decisions, and `claw search` discoverability.
+5. In claw-kit projects, normalize every updated ADR through `claw truth ingest --target adr/<file>.md --input <canonical-file>` so the canonical file is UTF-8 with BOM.
+6. Verify that each written ADR starts with the UTF-8 BOM bytes `EF BB BF`, contains no mojibake, and remains inside the canonical ADR root. Repair the encoding before reporting completion.
+7. Verify the written decisions and `claw search` discoverability.
 
 ## Return
 

@@ -410,7 +410,7 @@ function normalizePlanLikeTemplate(
 ): ResolvedPlanTemplate {
   return {
     id: template.id,
-    configOverride: template.configOverride,
+    configOverride: normalizeTemplateConfigOverride(template.configOverride),
     title: template.title,
     status: template.status,
     goal: template.goal,
@@ -569,8 +569,11 @@ function isTemplateConfigOverride(value: unknown): value is TemplateConfigOverri
 
   const allowedKeys = new Set([
     "goalMode",
+    // Accepted only so older installed templates remain loadable; normalization discards it.
     "truthDispatch",
+    "knowledgeWriter",
     "externalPlanningSkill",
+    // Accepted only so older installed templates remain loadable; normalization migrates them.
     "externalTruthSkill",
     "externalAdrSkill",
   ]);
@@ -584,10 +587,17 @@ function isTemplateConfigOverride(value: unknown): value is TemplateConfigOverri
   if (candidate.goalMode !== undefined && typeof candidate.goalMode !== "boolean") {
     return false;
   }
-  if (candidate.truthDispatch !== undefined && candidate.truthDispatch !== "per_task" && candidate.truthDispatch !== "final_only") {
+  if (
+    candidate.truthDispatch !== undefined
+    && candidate.truthDispatch !== "per_task"
+    && candidate.truthDispatch !== "final_only"
+  ) {
     return false;
   }
   if (candidate.externalPlanningSkill !== undefined && candidate.externalPlanningSkill !== null && typeof candidate.externalPlanningSkill !== "string") {
+    return false;
+  }
+  if (candidate.knowledgeWriter !== undefined && !isTemplateKnowledgeWriterConfig(candidate.knowledgeWriter)) {
     return false;
   }
   if (candidate.externalTruthSkill !== undefined && candidate.externalTruthSkill !== null && typeof candidate.externalTruthSkill !== "string") {
@@ -598,6 +608,73 @@ function isTemplateConfigOverride(value: unknown): value is TemplateConfigOverri
   }
 
   return true;
+}
+
+function normalizeTemplateConfigOverride(value: unknown): TemplateConfigOverride | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const candidate = value as Record<string, unknown>;
+  const normalized: TemplateConfigOverride = {};
+  if (typeof candidate.goalMode === "boolean") {
+    normalized.goalMode = candidate.goalMode;
+  }
+  if (candidate.externalPlanningSkill === null || typeof candidate.externalPlanningSkill === "string") {
+    normalized.externalPlanningSkill = candidate.externalPlanningSkill;
+  }
+  const writer = candidate.knowledgeWriter && typeof candidate.knowledgeWriter === "object"
+    ? candidate.knowledgeWriter as Record<string, unknown>
+    : null;
+  const hasCanonicalExternalSkill = writer
+    ? Object.prototype.hasOwnProperty.call(writer, "externalSkill")
+    : false;
+  const truthSkill = normalizeTemplateSkill(candidate.externalTruthSkill);
+  const adrSkill = normalizeTemplateSkill(candidate.externalAdrSkill);
+  const migratedExternalSkill = truthSkill && adrSkill && truthSkill !== adrSkill
+    ? null
+    : truthSkill ?? adrSkill;
+  const normalizedWriter = {
+    ...(hasCanonicalExternalSkill
+      ? { externalSkill: normalizeTemplateSkill(writer?.externalSkill) }
+      : (candidate.externalTruthSkill !== undefined || candidate.externalAdrSkill !== undefined)
+        ? { externalSkill: migratedExternalSkill }
+        : {}),
+    ...(writer && Object.prototype.hasOwnProperty.call(writer, "model")
+      ? { model: normalizeTemplateSkill(writer.model) }
+      : {}),
+    ...(writer && isKnowledgeWriterReasoningEffort(writer.reasoningEffort)
+      ? { reasoningEffort: writer.reasoningEffort }
+      : {}),
+  };
+  if (Object.keys(normalizedWriter).length > 0) {
+    normalized.knowledgeWriter = normalizedWriter;
+  }
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+function isTemplateKnowledgeWriterConfig(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  if (Object.keys(candidate).some((key) => !["externalSkill", "model", "reasoningEffort"].includes(key))) {
+    return false;
+  }
+  for (const key of ["externalSkill", "model"]) {
+    const field = candidate[key];
+    if (field !== undefined && field !== null && typeof field !== "string") {
+      return false;
+    }
+  }
+  return candidate.reasoningEffort === undefined || isKnowledgeWriterReasoningEffort(candidate.reasoningEffort);
+}
+
+function isKnowledgeWriterReasoningEffort(value: unknown): value is "minimal" | "low" | "medium" | "high" | "xhigh" {
+  return value === "minimal" || value === "low" || value === "medium" || value === "high" || value === "xhigh";
+}
+
+function normalizeTemplateSkill(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 function isTemplateTaskGuidance(value: unknown): value is TemplateTaskGuidance | undefined {

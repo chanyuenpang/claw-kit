@@ -6,9 +6,22 @@
         "hooks": [
           {
             "type": "command",
-            "command": "claw hook SessionStart",
-            "commandWindows": "claw hook SessionStart",
-            "statusMessage": "Loading .claw session context"
+            "command": "claw hook auto-claw --host codex",
+            "commandWindows": "claw hook auto-claw --host codex",
+            "statusMessage": "auto-claw: loading plan context"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claw hook auto-doc --host codex",
+            "commandWindows": "claw hook auto-doc --host codex",
+            "timeout": 30,
+            "statusMessage": "auto-doc: capturing plan report"
           }
         ]
       }

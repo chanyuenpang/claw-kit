@@ -1,10 +1,9 @@
 {
   "goalModeObjective": {
-    "withGoal": "Using claw-kit, update plan, follow returned workflowGuidance，finish your goal：{{planGoal}}",
-    "withoutGoal": "Using claw-kit, update plan, follow returned workflowGuidance，finish your goal."
+    "withGoal": "Using claw-kit, update the plan, follow the returned workflowGuidance, and finish your goal: {{planGoal}}",
+    "withoutGoal": "Using claw-kit, update the plan, follow the returned workflowGuidance, and finish your goal."
   },
   "planCreateRecall": {
-    "nextstep": "Run one project recall query.",
     "recommendedCommand": "claw search --query \"<topic>\""
   },
   "delegates": {
@@ -12,7 +11,8 @@
       "name": "truth-writer",
       "fallbackSkill": "claw-kit:truth-writer",
       "dispatch": "when_reusable_truth_confirmed",
-      "model": "gpt-5.4-mini",
+      "model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
       "fork_context": false,
       "waitForCompletion": false,
       "preferReuseSameTypeInThread": true,
@@ -24,7 +24,8 @@
       "name": "adr-writer",
       "fallbackSkill": "claw-kit:adr-writer",
       "dispatch": "required",
-      "model": "gpt-5.4-mini",
+      "model": "gpt-5.6-terra",
+      "reasoning_effort": "medium",
       "fork_context": false,
       "waitForCompletion": false,
       "preferReuseSameTypeInThread": true,
@@ -43,9 +44,9 @@
       ],
       "notes": "Fill only the fields still needed to execute, such as `requirements`, `tasks`, `references`, `rules`, and `keyDecisions`. If scope is still unclear, clarify it with the user before switching to `process.active`.",
       "recommendedCommands": [
-        "{{editBase}} --plan-status process.active",
-        "{{editBase}} --patch <updated-plan.json>",
-        "{{editBase}} --reference-path <path> --reference-why <why>"
+        "{{editBase}} --status process.active",
+        "{{editBase}} --requirements \"<summary>\" --acceptance \"<criterion>\"",
+        "{{editBase}} --reference <path> --why \"<reason>\""
       ]
     },
     "prepare.requirements.withGoal.noGoalMode": {
@@ -57,9 +58,9 @@
       ],
       "notes": "Fill only the fields still needed to execute, such as `requirements`, `tasks`, `references`, `rules`, and `keyDecisions`. If scope is still unclear, clarify it with the user before switching to `process.active`.",
       "recommendedCommands": [
-        "{{editBase}} --plan-status process.active",
-        "{{editBase}} --patch <updated-plan.json>",
-        "{{editBase}} --reference-path <path> --reference-why <why>"
+        "{{editBase}} --status process.active",
+        "{{editBase}} --requirements \"<summary>\" --acceptance \"<criterion>\"",
+        "{{editBase}} --reference <path> --why \"<reason>\""
       ]
     },
     "prepare.requirements.withoutGoal": {
@@ -72,9 +73,9 @@
       ],
       "notes": "Fill only the fields still needed to execute, such as `requirements`, `tasks`, `references`, `rules`, and `keyDecisions`. If scope is still unclear, clarify it with the user before switching to `process.active`.",
       "recommendedCommands": [
-        "{{editBase}} --plan-status process.active",
-        "{{editBase}} --patch <updated-plan.json>",
-        "{{editBase}} --reference-path <path> --reference-why <why>"
+        "{{editBase}} --status process.active",
+        "{{editBase}} --goal \"<goal>\" --requirements \"<summary>\" --acceptance \"<criterion>\"",
+        "{{editBase}} --reference <path> --why \"<reason>\""
       ]
     },
     "prepare.requirements.withoutGoal.noGoalMode": {
@@ -87,9 +88,9 @@
       ],
       "notes": "Fill only the fields still needed to execute, such as `requirements`, `tasks`, `references`, `rules`, and `keyDecisions`. If scope is still unclear, clarify it with the user before switching to `process.active`.",
       "recommendedCommands": [
-        "{{editBase}} --plan-status process.active",
-        "{{editBase}} --patch <updated-plan.json>",
-        "{{editBase}} --reference-path <path> --reference-why <why>"
+        "{{editBase}} --status process.active",
+        "{{editBase}} --goal \"<goal>\" --requirements \"<summary>\" --acceptance \"<criterion>\"",
+        "{{editBase}} --reference <path> --why \"<reason>\""
       ]
     },
     "prepare.review": {
@@ -102,9 +103,9 @@
       ],
       "notes": "Do not create a separate review pass. Merge review criteria into planning itself.",
       "recommendedCommands": [
-        "{{editBase}} --patch <reviewed-plan.json>",
-        "{{editBase}} --plan-status prepare.requirements",
-        "{{editBase}} --plan-status process.discussing"
+        "{{editBase}} --requirements \"<revised summary>\" --key-decision \"<confirmed decision>\"",
+        "{{editBase}} --status prepare.requirements",
+        "{{editBase}} --status process.discussing"
       ],
       "askUser": {
         "reason": "This legacy review stage should be resolved back into normal planning before execution.",
@@ -139,8 +140,7 @@
       ],
       "notes": "Truth dispatch requires the main agent's reusable-value confirmation; ADR dispatch is required but remains asynchronous for root-plan closeout. Root `claw plan done` records completedAt and keeps the plan path readable for at least one hour. Honor every field in a dispatched delegate contract.",
       "recommendedCommands": [
-        "{{editBase}} --patch <completed-plan.json>",
-        "{{doneBase}} --summary \"<retrospective summary>\""
+        "{{doneBase}} --retrospective \"<summary>\" [--key-decision \"<durable decision>\"]"
       ],
       "delegateSubagents": [
         "truthWriter",
@@ -158,23 +158,10 @@
       "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. Evaluate confirmed reusable truth before truth dispatch; when dispatching the writer, honor every field in its delegate contract.",
       "recommendedCommands": [
         "{{taskDoneCommand}}",
-        "{{editBase}} --task-id <id> --task-status in_progress"
+        "claw task edit --id <id> --status in_progress"
       ],
       "delegateSubagents": [
         "truthWriter"
-      ]
-    },
-    "process.hasCompletedTasks.finalOnlyTruth": {
-      "stage": "{{processStage}}",
-      "summary": "Execution is in progress.",
-      "nextsteps": [
-        "1. Use todowrite to sync your tasks list.",
-        "2. Continue with {{nextTaskRef}}."
-      ],
-      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
-      "recommendedCommands": [
-        "{{taskDoneCommand}}",
-        "{{editBase}} --task-id <id> --task-status in_progress"
       ]
     },
     "process.justEntered": {
@@ -187,7 +174,7 @@
       "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
       "recommendedCommands": [
         "{{taskDoneCommand}}",
-        "{{doneBase}} --summary \"<retrospective summary>\""
+        "{{doneBase}} --retrospective \"<summary>\""
       ],
       "goalTool": {
         "tool": "create_goal",
@@ -209,7 +196,7 @@
       "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
       "recommendedCommands": [
         "{{taskDoneCommand}}",
-        "{{doneBase}} --summary \"<retrospective summary>\""
+        "{{doneBase}} --retrospective \"<summary>\""
       ]
     },
     "process.resumedActive": {
@@ -222,7 +209,7 @@
       "notes": "The plan is moving back from a paused status into active execution.",
       "recommendedCommands": [
         "{{taskDoneCommand}}",
-        "{{doneBase}} --summary \"<retrospective summary>\""
+        "{{doneBase}} --retrospective \"<summary>\""
       ],
       "goalTool": {
         "tool": "create_goal",
@@ -244,7 +231,7 @@
       "notes": "The plan is moving back from a paused status into active execution.",
       "recommendedCommands": [
         "{{taskDoneCommand}}",
-        "{{doneBase}} --summary \"<retrospective summary>\""
+        "{{doneBase}} --retrospective \"<summary>\""
       ]
     },
     "process.wait": {
@@ -255,7 +242,7 @@
       ],
       "notes": "Use `process.wait` for a real blocker or a deliberate hold. Do not keep executing while the plan is paused.",
       "recommendedCommands": [
-        "{{editBase}} --plan-status process.active"
+        "{{editBase}} --status process.active"
       ],
       "goalTool": {
         "tool": "update_goal",
@@ -271,7 +258,7 @@
       ],
       "notes": "Use `process.wait` for a real blocker or a deliberate hold. Do not keep executing while the plan is paused.",
       "recommendedCommands": [
-        "{{editBase}} --plan-status process.active"
+        "{{editBase}} --status process.active"
       ]
     },
     "process.discussing": {
@@ -282,7 +269,7 @@
       ],
       "notes": "Use `process.discussing` for route discussion or decision-making. Resume execution only after the discussion is settled.",
       "recommendedCommands": [
-        "{{editBase}} --plan-status process.active"
+        "{{editBase}} --status process.active"
       ],
       "goalTool": {
         "tool": "update_goal",
@@ -298,7 +285,7 @@
       ],
       "notes": "Use the seeded planning task to refine the request and append executable tasks before execution begins.",
       "recommendedCommands": [
-        "{{startBase}} --patch <plan-patch.json> --append-tasks <tasks.json>"
+        "{{startBase}} --requirements \"<summary>\" --acceptance \"<criterion>\" --add-task \"<title>\" --detail \"<detail>\""
       ]
     },
     "process.discussing.noGoalMode": {
@@ -309,7 +296,7 @@
       ],
       "notes": "Use `process.discussing` for route discussion or decision-making. Resume execution only after the discussion is settled.",
       "recommendedCommands": [
-        "{{editBase}} --plan-status process.active"
+        "{{editBase}} --status process.active"
       ]
     },
     "process.activeTask": {
@@ -352,7 +339,7 @@
         "Reopen through `prepare.requirements` before resuming, or leave it as historical context."
       ],
       "recommendedCommands": [
-        "{{editBase}} --plan-status prepare.requirements"
+        "{{editBase}} --status prepare.requirements"
       ]
     }
   },

@@ -70,9 +70,9 @@ export const defaultPlanTemplate: PlanTemplateDocument = {
   tasks: [
     {
       id: 1,
-      title: "Use the planning skill to refine the request and append executable tasks",
+      title: "Analyze the request and fill executable tasks with the planning skill",
       detail:
-        "Use {{planningSkill}} to refine the request and append executable tasks into `tasks`. If the current request is still unclear, fill `requirements` first as part of the planning output, then append executable tasks. Keep the pre-seeded activation task and only append downstream work. Recommended planning skill: {{planningSkill}}.",
+        "Analyze the request and use {{planningSkill}} to plan and fill executable tasks in `tasks`. If the request is still unclear, fill `requirements` first, then append the smallest handoff-ready downstream task list. Keep the pre-seeded activation task. Planning skill: {{planningSkill}}.",
       status: "pending",
       guidance: {
         onDone: {

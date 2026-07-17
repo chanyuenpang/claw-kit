@@ -12,7 +12,7 @@
 - 如果 template 定义了 `guidance.onDone.choices`，那么 task 完成时必须提供 `choiceId`，否则会失败并给出带可选 choice 列表的定向错误。
 - 如果 task 提供了 `choiceId`，但绑定 template 没有 `onDone` choices，则该值会被拒绝。
 - `choiceId` 如果不在允许列表中，也会被拒绝，并返回可接受的 choice ids。
-- CLI 现在同时支持 route-aware completion surfaces：`claw task done --task <name> --id <number> [--choice <choice-id>]`，以及通用 edit 路径里的 `--task-choice`；两者都会在同一套校验下持久化 `task.choiceId`。
+- CLI 现在同时支持 route-aware completion surfaces：`claw task done --id <number> [--choice <choice-id>]`，以及 `claw task edit --id <number> --status done --choice <choice-id>`；两者都会在同一套校验下持久化 `task.choiceId`。
 
 ## 真实代码锚点
 

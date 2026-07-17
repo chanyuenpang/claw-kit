@@ -55,7 +55,7 @@ Prefer reusing an existing same-type subagent when it is still suitable for the 
 
 ## Custom skills
 
-When `project.json` has `externalTruthSkill` or `externalAdrSkill`, the TS plugin dynamically registers agents with the custom skill. The dispatch mechanism is the same — the agent type name stays `claw-truth-writer` / `claw-adr-writer`, but the skill content is replaced.
+When `project.json` has `knowledgeWriter.externalSkill`, the TS plugin uses that combined writer override for writer routing. Legacy `externalTruthSkill` and `externalAdrSkill` fields are normalized into the combined field before runtime guidance is built.
 
 ## Anti-patterns
 

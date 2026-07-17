@@ -1,0 +1,4 @@
+interface:
+  display_name: "Claw Knowledge Writer"
+  short_description: "Deposit truth and ADR from a completed plan report"
+  default_prompt: "Use $knowledge-writer to process the supplied completed plan and adjacent report, deposit verified truth and ADR, then refresh project recall."

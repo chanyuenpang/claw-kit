@@ -10,5 +10,13 @@ export function resolvePlanEffectiveConfig(
   return {
     ...(projectConfig ?? {}),
     ...(plan.configOverride ?? {}),
+    ...((projectConfig?.knowledgeWriter || plan.configOverride?.knowledgeWriter)
+      ? {
+          knowledgeWriter: {
+            ...(projectConfig?.knowledgeWriter ?? {}),
+            ...(plan.configOverride?.knowledgeWriter ?? {}),
+          },
+        }
+      : {}),
   };
 }

@@ -8,6 +8,8 @@ Accepted
 
 Codex 的 claw plan mutation 会同时产生 CLI JSON 和需要调用原生 host tools 的 `hostActions`。如果让 Agent 在 `hostActions`、`workflowGuidance.goalTool` 和分离 host 调用之间自行选择，action 顺序、幂等性、字段投影和 Goal Mode 调用次数都会依赖临场判断。
 
+`0.1.75` 的真实验收进一步确认，普通 `plan.edit`、`wait`、`resume` mutation 返回保持精简：未出现 `hostActions`、`goalTool`、`nextsteps`、`notes` 或 `protocol` 噪声字段；driver cold/warm 两次获取保持 `driverVersion=3`、`cacheKey=claw-kit:codex-driver:v3:s1` 与同一 SHA，未发生命令重试。
+
 公开的 Codex 插件接口不能让 CLI 子进程直接调用 `update_plan`、`create_goal` 或 `update_goal`；这些原生 host tools 只能从 code-mode 的 `tools` namespace 调用。同时，code-mode isolate 不能直接 import 本地插件模块。
 
 真实 Host lifecycle 验收推翻了 `schema-v2 ensure_goal` 方案：依赖当前 Goal 状态或 host error text 做补偿会把宿主内部状态重新泄漏给 consumer；在同一个 code-mode call 中先 complete 再 create 也不可行，因为 Codex 在调用结束时结算 complete，并会清掉同调用中新建的 Goal。`0.1.75` 因此改为由 CLI 按 mutation 提交后的 plan 状态投影 schema-v1 原生 Goal actions，并以跨调用 lifecycle 验证其行为。
@@ -20,6 +22,7 @@ Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode c
 - consumer 解析 CLI JSON，并按返回顺序消费 `hostActions`；每个 action 按 `id` 至多成功执行一次。
 - `hostActions` 是 Codex 唯一的 host 执行源。`workflowGuidance.goalTool` 继续作为 core 和其他 host 的兼容合同存在，但 Codex 不解释、不执行，也不据此补建或重试 action。
 - consumer 只白名单调用 `update_plan`、`create_goal` 和 `update_goal`，且只把经过验证的 `input` 投影给 host tool；`meta` 等策略字段不得透传。
+- driver contract 的缓存身份由 `driverVersion=3`、`cacheKey=claw-kit:codex-driver:v3:s1` 与同一 SHA 共同确认；后续调用复用同一 contract，不以重复获取或命令重试作为正常路径。
 - Goal action 继续使用 schema-v1 原生命令，不引入 `ensure_goal` pseudo-action，也不匹配 host error text 或读取当前 Goal 状态。
 - CLI 只按 mutation 提交后的 plan 状态路由 Goal action：`process.wait` / `process.discussing` 发出 `update_goal(status="complete")`，进入或恢复 `process.active` 发出 `create_goal`，`end.completed` 发出 `update_goal(status="complete")`。
 - consumer 逐条执行 CLI 返回的 action；不能在同一个 code-mode call 中合并 complete→create，resume 的 `create_goal` 必须位于后续 mutation call。
@@ -46,6 +49,7 @@ Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode c
 - `packages/cli/src/cli.ts`
 - `packages/cli/test/cli.test.ts`
 - `.claw/tasks/实现-Goal-目标状态幂等保证并发布-0.1.72/plan.json`
+- `.claw/tasks/验收-0.1.75-短Bootstrap-20260717T1255/plan.json`
 
 ## Consequences
 
@@ -74,3 +78,15 @@ Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode c
 - `fail closed`
 - `direct-call fallback`
 - `split-call fallback`
+- `driverVersion=3`
+- `claw-kit:codex-driver:v3:s1`
+- `short code-mode bootstrap`
+- `minimal mutation response`
+
+## 2026-07-17 实测补充
+
+来自 `.claw/tasks/降低-Codex-workflow-心智压力并改用-Luna-writer/plan.json` 的持久化决策：
+
+- 短 code-mode bootstrap 使用 CLI 发出的 versioned driver；driver v3 以 `claw-kit:codex-driver:v3:s1` 缓存身份复用。
+- 干净 Luna 线程验收中，普通 mutation、`plan.wait`、`plan.resume` 均保持精简输出，未出现 `goalTool`、`goalMode`、`events`、`nextsteps`、`notes` 或 `protocol` 噪声。
+- `plan.wait` 与 `plan.resume` 通过跨调用 Goal lifecycle 验证：前者自动关闭 Goal，后者自动重建 Goal。

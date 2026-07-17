@@ -41,7 +41,14 @@
 - `packages/core/src/workflow-guidance.config.json` 的 `process.hasCompletedTasks` 已要求主 agent 先判断 completed task 是否包含 reusable truth；仅在判断为 true 时才整理 completed subtask report 并执行 returned `truth-writer` contract。
 - `process.allTasksDone` 同样把 truth deposition 定义为条件步骤，同时继续要求先写回 `retrospective` 与 `keyDecisions`，再执行 returned `adr-writer` contract 完成 root-plan closeout。
 - `delegateSubagents` 仍可返回 truth contract；“返回 contract”不等于“必须 dispatch”。一旦主 agent 选择 truth dispatch，或进入 required ADR closeout，就必须逐字段遵守对应结构化 contract。
-- writer delegate 的 `model`、`fork_context`、`waitForCompletion`、`preferReuseSameTypeInThread`、input/output contract 与 keep-open reuse 策略保持不变；本轮只收紧激活边界和职责分层。
+- `packages/core/src/workflow-guidance.config.json` 为 `truth-writer` 和 `adr-writer` 都定义 `model: "gpt-5.6-terra"` 与 `reasoning_effort: "medium"`。`WorkflowGuidanceSubagent` 显式暴露 `reasoning_effort`，`buildConfiguredDelegate(...)` 将该字段逐一传入 returned delegate；调用方派发时必须遵守它。
+- writer delegate 的 `model`、`reasoning_effort`、`fork_context`、`waitForCompletion`、`preferReuseSameTypeInThread`、input/output contract 与 keep-open reuse 策略都是结构化 contract 的组成部分。
+
+## Codex writer 编码与验证合同
+
+- Codex `truth-writer` 与 `adr-writer` 的 canonical Markdown 必须为 UTF-8 with BOM；plain UTF-8 without BOM 不构成完整写入。更新既有文件时保留 BOM，并通过 `claw truth ingest` 归一化；truth 可将同一 canonical 文件回灌到其相对 target，ADR 使用 `adr/<file>.md` target。
+- 写入后必须验证开头字节为 `EF BB BF`，修复或重写常见中文 mojibake，并验证目标仍位于 canonical truth / ADR root 内；随后核对写入事实以及 `claw search` discoverability。
+- 本合同的实现锚点是 `packages/codex-adapter/skills/truth-writer/SKILL.md`、`packages/codex-adapter/skills/adr-writer/SKILL.md`、`packages/core/src/types.ts` 与 `packages/core/src/workflow-guidance.ts`。
 
 ## 关联代码
 
@@ -61,6 +68,7 @@
 ## 验证标准
 
 - Codex 与 OpenCode 的四份 writer `SKILL.md` 必须保留完整的 Mission、Input、canonical routing、writing rules、workflow 与 return，并保持 delegated-subagent-only frontmatter。
+- Codex writer 还必须把 UTF-8 BOM、`claw truth ingest`、`EF BB BF`、canonical root containment、mojibake 修复和 `claw search` discoverability 作为可执行完成条件；plain UTF-8 without BOM 必须判为未完成。
 - Writer 合同及 OpenCode agents 必须只使用被派发 subagent 视角；不得恢复 main-agent 职责、caller、派发时机、其他 writer 职责或 `AGENT-SPEC` 二级 reference。
 - Main agent 的调用边界应保持为：按 frontmatter `description` 派发，writer subagent 再完整读取自身 `SKILL.md`。
 - `process.hasCompletedTasks` 与 `process.allTasksDone` 的 summary、nextsteps、notes 都不得恢复无条件 truth dispatch；`process.allTasksDone` 必须继续保留 required ADR closeout。
@@ -73,6 +81,7 @@
 - `packages/codex-adapter/hooks/subagent-contract.test.mjs` 的 Codex contract tests `3/3` 通过。
 - `scripts/opencode-plugin-bundle.test.mjs` 覆盖的 OpenCode contract tests `6/6` 通过。
 - `npm run check` 与 `git diff --check` 通过。
+- 当前编码与 delegation 合同验证通过：core tests `126/126`、CLI tests `77/77`、Codex subagent contract tests `4/4`，以及包含 truth encoding audit 的 `npm run check`。
 - Python `quick_validate` 未进入校验阶段，仅因当前环境缺少 `PyYAML` 无法启动；这属于验证工具依赖缺失，不是 writer contract 失败。
 
 ## ADR writer 的无决策快速 no-op

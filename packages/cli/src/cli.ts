@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import {
@@ -28,6 +29,12 @@ import {
   showPlan,
   createSubplan,
   switchTask,
+  tryCaptureKnowledgeStop,
+  claimKnowledgeFinalizationJob,
+  listRetryableKnowledgeFinalizationJobs,
+  normalizeTruthMarkdownEncoding,
+  tryCleanupKnowledgeFinalizationReport,
+  writeKnowledgeFinalizationJob,
   unbindSession,
   writePlan,
   type InitProjectInput,
@@ -36,11 +43,17 @@ import {
   type MemoryScope,
   type PlanDocument,
   type PlanEvent,
+  type PlanFieldUpdates,
+  type PlanMutationOperation,
   type PlanTask,
   type PlanViewModel,
   type ProjectConfig,
   type WorkflowGuidance,
+  type KnowledgeFinalizationJob,
 } from "@veewo/claw-core";
+import { buildCodexDriverEnvelope } from "./codex-driver.js";
+import { checkCodexRuntime, resolveCodexSdkEntryPath } from "./codex-runtime.js";
+import { extractLatestFinalAssistantMessage } from "./codex-transcript.js";
 
 const CLI_VERSION = readCliVersion();
 
@@ -61,7 +74,8 @@ const TOP_LEVEL_COMMANDS: { name: string; summary: string }[] = [
   { name: "init [options]", summary: "Initialize and normalize the .claw project surface." },
   { name: "context [--task <name>]", summary: "Resolve project context, auto-initializing or correcting .claw state." },
   { name: "check", summary: "Check and auto-correct .claw project protocol fields." },
-  { name: "plan <subcommand> [options]", summary: "Plan lifecycle: create, start, edit, show, done." },
+  { name: "plan <subcommand> [options]", summary: "Plan lifecycle: create, start, edit, remove, wait, resume, show, done." },
+  { name: "codex driver", summary: "Return the versioned code-mode driver used by the Codex adapter." },
   { name: "template <subcommand> [options]", summary: "Plan template helpers such as validation." },
   { name: "task <subcommand> [options]", summary: "Task lifecycle helpers inside an existing plan." },
   { name: "subplan create [options]", summary: "Create a subplan nested under a parent task item." },
@@ -81,8 +95,7 @@ const COMMAND_HELP: Record<string, HelpNode> = {
       { flag: "--name <project-name>", detail: "Human-readable project name." },
       { flag: "--context-path <file>", detail: "Extra context path to track (repeatable)." },
       { flag: "--ext-path <path>", detail: "External doc path to index (repeatable)." },
-      { flag: "--external-truth-skill <skill>", detail: "Skill id for external truth-writer dispatch." },
-      { flag: "--external-adr-skill <skill>", detail: "Skill id for external adr-writer dispatch." },
+      { flag: "--external-writer-skill <skill>", detail: "Skill id for the combined knowledge writer." },
       { flag: "--planning true|false", detail: "Enable planning-aware default template behavior (default true)." },
       { flag: "--external-planning-skill <skill>", detail: "Skill id for an external planning skill." },
       { flag: "--gitnexus true|false", detail: "Enable GitNexus integration (default false)." },
@@ -122,61 +135,110 @@ const COMMAND_HELP: Record<string, HelpNode> = {
         ],
       },
       edit: {
-        usage: ["{script} plan edit --task <name> [options]"],
-        description:
-          "Edit an existing plan: update status, append tasks, apply merge-patch updates, add references, rules, and key decisions.",
-        summary: "Edit a plan: status, tasks, references, rules, key decisions.",
+        usage: ["{script} plan edit [options]"],
+        description: "Apply plan field and status edits in argument order to the session-bound current plan.",
+        summary: "Edit plan fields in an ordered chain; repeat collection options to append multiple values.",
         options: [
-          { flag: "--task <name>", detail: "(required) Task name to edit." },
-          { flag: "--plan <relative-path>", detail: "Plan file relative to the task dir (defaults to the active plan)." },
-          { flag: "--plan-status <status>", detail: "Set plan status (e.g. process.active, process.wait)." },
-          { flag: "--task-id <id>", detail: "Target a specific task by id for status updates." },
-          { flag: "--task-status <status>", detail: "Set the task status (e.g. pending, in_progress, done)." },
-          { flag: "--task-choice <choice-id>", detail: "Record the route choice when a task is marked done through a route-aware template." },
-          { flag: "--append-tasks <json-file>", detail: "Append tasks from a JSON array file." },
-          { flag: "--patch <json-file>", detail: "Apply a JSON merge-patch object from a file. Objects merge recursively, null deletes fields, arrays replace the whole field." },
+          { flag: "--status <status>", detail: "Advanced: set the plan status directly." },
+          { flag: "--goal <text>", detail: "Set goal.text." },
+          { flag: "--requirements <text>", detail: "Set the requirements summary." },
+          { flag: "--question <text>", detail: "Add an open question (repeatable)." },
+          { flag: "--acceptance <text>", detail: "Add an acceptance criterion (repeatable)." },
+          { flag: "--summary <text>", detail: "Set the plan summary." },
           { flag: "--rule <text>", detail: "Append a rule (repeatable)." },
           { flag: "--key-decision <text>", detail: "Append a key decision (repeatable)." },
-          { flag: "--reference-path <path>", detail: "Add a reference (requires --reference-why)." },
-          { flag: "--reference-why <why>", detail: "Why the reference matters (requires --reference-path)." },
-          { flag: "--summary <text>", detail: "Optional change summary." },
+          { flag: "--reference <path>", detail: "Add a reference; follow it immediately with --why (repeatable)." },
+          { flag: "--why <text>", detail: "Explain the immediately preceding --reference." },
+          { flag: "--task-name <name>", detail: "Advanced: override the session-bound task scope." },
+          { flag: "--plan-file <relative-path>", detail: "Advanced: override the session-bound plan file." },
+        ],
+      },
+      remove: {
+        usage: ["{script} plan remove [options]"],
+        description: "Remove exact values from array fields on the session-bound current plan.",
+        summary: "Remove questions, acceptance criteria, rules, decisions, or references.",
+        options: [
+          { flag: "--question <text>", detail: "Remove an open question by exact text (repeatable)." },
+          { flag: "--acceptance <text>", detail: "Remove an acceptance criterion by exact text (repeatable)." },
+          { flag: "--rule <text>", detail: "Remove a rule by exact text (repeatable)." },
+          { flag: "--key-decision <text>", detail: "Remove a key decision by exact text (repeatable)." },
+          { flag: "--reference <path>", detail: "Remove references matching a path (repeatable)." },
+          { flag: "--task-name <name>", detail: "Advanced: override the session-bound task scope." },
+          { flag: "--plan-file <relative-path>", detail: "Advanced: override the session-bound plan file." },
+        ],
+      },
+      wait: {
+        usage: ["{script} plan wait"],
+        description: "Pause active execution by moving the plan to process.wait.",
+        summary: "Pause active execution.",
+        options: [
+          { flag: "--task-name <name>", detail: "Advanced: override the session-bound task scope." },
+          { flag: "--plan-file <relative-path>", detail: "Advanced: override the session-bound plan file." },
+        ],
+      },
+      resume: {
+        usage: ["{script} plan resume"],
+        description: "Resume paused execution by moving the plan to process.active.",
+        summary: "Resume paused execution.",
+        options: [
+          { flag: "--task-name <name>", detail: "Advanced: override the session-bound task scope." },
+          { flag: "--plan-file <relative-path>", detail: "Advanced: override the session-bound plan file." },
         ],
       },
       start: {
-        usage: ["{script} plan start --task <name> --patch <json-file> --append-tasks <json-file>"],
+        usage: ["{script} plan start --requirements <text> --add-task <title> [--detail <text>] [options]"],
         description:
           "Atomically apply refined plan content, append business tasks, complete the default planning/activation bridge, and enter process.active in one serialized mutation.",
         summary: "Atomically refine and activate a default planning plan.",
         options: [
-          { flag: "--task <name>", detail: "(required) Task name to refine and activate." },
-          { flag: "--plan <relative-path>", detail: "Plan file relative to the task dir (defaults to the active plan)." },
-          { flag: "--patch <json-file>", detail: "Apply a JSON merge-patch containing requirements, rules, references, or decisions." },
-          { flag: "--append-tasks <json-file>", detail: "Append business tasks from a JSON array file." },
-          { flag: "--summary <text>", detail: "Optional change summary." },
+          { flag: "--goal <text>", detail: "Set goal.text." },
+          { flag: "--requirements <text>", detail: "Set the requirements summary." },
+          { flag: "--question <text>", detail: "Add an open question (repeatable)." },
+          { flag: "--acceptance <text>", detail: "Add an acceptance criterion (repeatable)." },
+          { flag: "--add-task <title>", detail: "Add a business task; optionally follow it immediately with --detail (repeatable)." },
+          { flag: "--detail <text>", detail: "Describe the immediately preceding --add-task." },
+          { flag: "--rule <text>", detail: "Append a rule (repeatable)." },
+          { flag: "--key-decision <text>", detail: "Append a key decision (repeatable)." },
+          { flag: "--reference <path>", detail: "Add a reference; follow it immediately with --why (repeatable)." },
+          { flag: "--why <text>", detail: "Explain the immediately preceding --reference." },
+          { flag: "--task-name <name>", detail: "Advanced: override the session-bound task scope." },
+          { flag: "--plan-file <relative-path>", detail: "Advanced: override the session-bound plan file." },
         ],
       },
       show: {
-        usage: ["{script} plan show --task <name> [--plan <relative-path>]"],
-        description:
-          "Show the current plan (status, goal, tasks, references) for a task, including archived plans.",
+        usage: ["{script} plan show"],
+        description: "Show the session-bound current plan, including archived plans through an explicit override.",
         summary: "Show the current plan for a task.",
         options: [
-          { flag: "--task <name>", detail: "(required) Task name to show." },
-          { flag: "--plan <relative-path>", detail: "Plan file relative to the task dir." },
+          { flag: "--task-name <name>", detail: "Advanced: override the session-bound task scope." },
+          { flag: "--plan-file <relative-path>", detail: "Advanced: override the session-bound plan file." },
         ],
       },
       done: {
-        usage: ["{script} plan done --task <name> [--summary <text>] [options]"],
+        usage: ["{script} plan done --retrospective <text> [options]"],
         description:
           "Close out a plan: write a retrospective, mark status end.completed with completedAt, retain it for at least one hour, sweep older completed tasks into the archive, and queue the async completion refresh.",
         summary: "Close out a plan with a retrospective and queue completion refresh.",
         options: [
-          { flag: "--task <name>", detail: "(required) Task name to close out." },
-          { flag: "--plan <relative-path>", detail: "Plan file relative to the task dir." },
-          { flag: "--summary <text>", detail: "Retrospective summary (required unless a patch provides retrospective.summary)." },
-          { flag: "--change-summary <text>", detail: "Optional change summary." },
-          { flag: "--patch <json-file>", detail: "Apply a JSON merge-patch object (for example one that sets retrospective.summary)." },
+          { flag: "--retrospective <text>", detail: "Retrospective summary (required)." },
+          { flag: "--key-decision <text>", detail: "Append a durable key decision when one exists (repeatable)." },
+          { flag: "--what-worked <text>", detail: "Append a retrospective success (repeatable)." },
+          { flag: "--issue <text>", detail: "Append a retrospective issue (repeatable)." },
+          { flag: "--follow-up <text>", detail: "Append a retrospective follow-up (repeatable)." },
+          { flag: "--task-name <name>", detail: "Advanced: override the session-bound task scope." },
+          { flag: "--plan-file <relative-path>", detail: "Advanced: override the session-bound plan file." },
         ],
+      },
+    },
+  },
+  codex: {
+    usage: ["{script} codex <subcommand>"],
+    description: "Codex adapter runtime helpers.",
+    subcommands: {
+      driver: {
+        usage: ["{script} codex driver"],
+        description: "Return the versioned JavaScript driver source used by the short code-mode bootstrap.",
+        summary: "Return the versioned code-mode driver source.",
       },
     },
   },
@@ -202,18 +264,53 @@ const COMMAND_HELP: Record<string, HelpNode> = {
   },
   task: {
     usage: ["{script} task <subcommand> [options]"],
-    description: "Task-focused helpers layered on top of plan edits.",
+    description: "Add, edit, remove, or complete task items on the session-bound current plan.",
     subcommands: {
-      done: {
-        usage: ["{script} task done --task <name> --id <number> [--choice <choice-id>] [--plan <relative-path>]"],
-        description:
-          "Mark a task item as done. Route-aware templates may require `--choice`, and the selected choice is persisted as `task.choiceId` in the plan state.",
-        summary: "Mark a task item as done, optionally recording a routing choice.",
+      add: {
+        usage: ["{script} task add --title <text> [--detail <text>] [--title <text> [--detail <text>] ...]"],
+        description: "Add one or more pending task items to the current plan in argument order.",
+        summary: "Add task items with repeated --title groups.",
         options: [
-          { flag: "--task <name>", detail: "(required) Task name to edit." },
+          { flag: "--title <text>", detail: "Task title (required)." },
+          { flag: "--detail <text>", detail: "Optional task detail." },
+          { flag: "--task-name <name>", detail: "Advanced: override the session-bound task scope." },
+          { flag: "--plan-file <relative-path>", detail: "Advanced: override the session-bound plan file." },
+        ],
+      },
+      edit: {
+        usage: ["{script} task edit --id <number> [options] [--id <number> [options] ...]"],
+        description: "Update one or more task items on the current plan in argument order.",
+        summary: "Edit task items with repeated --id groups.",
+        options: [
+          { flag: "--id <number>", detail: "Task item id (required)." },
+          { flag: "--title <text>", detail: "Set the task title." },
+          { flag: "--detail <text>", detail: "Set the task detail." },
+          { flag: "--status <status>", detail: "Set pending, in_progress, subagent_running, done, or blocked." },
+          { flag: "--choice <choice-id>", detail: "Record a route choice when status becomes done." },
+          { flag: "--task-name <name>", detail: "Advanced: override the session-bound task scope." },
+          { flag: "--plan-file <relative-path>", detail: "Advanced: override the session-bound plan file." },
+        ],
+      },
+      remove: {
+        usage: ["{script} task remove --id <number> [--id <number> ...]"],
+        description: "Remove one or more task items from the current plan in argument order.",
+        summary: "Remove task items with repeated --id values.",
+        options: [
+          { flag: "--id <number>", detail: "Task item id (required)." },
+          { flag: "--task-name <name>", detail: "Advanced: override the session-bound task scope." },
+          { flag: "--plan-file <relative-path>", detail: "Advanced: override the session-bound plan file." },
+        ],
+      },
+      done: {
+        usage: ["{script} task done --id <number> [--choice <choice-id>] [--id <number> [--choice <choice-id>] ...]"],
+        description:
+          "Mark one or more task items as done in argument order. Route-aware templates may require `--choice`, and each selected choice is persisted as `task.choiceId` in the plan state.",
+        summary: "Complete task items with repeated --id groups, optionally recording routing choices.",
+        options: [
           { flag: "--id <number>", detail: "(required) Task item id to mark done." },
           { flag: "--choice <choice-id>", detail: "Route choice id required by templates that define guidance.onDone.choices." },
-          { flag: "--plan <relative-path>", detail: "Plan file relative to the task dir (defaults to the active plan)." },
+          { flag: "--task-name <name>", detail: "Advanced: override the session-bound task scope." },
+          { flag: "--plan-file <relative-path>", detail: "Advanced: override the session-bound plan file." },
         ],
       },
     },
@@ -289,9 +386,9 @@ const COMMAND_HELP: Record<string, HelpNode> = {
   hook: {
     usage: ["{script} hook <event-name>"],
     description:
-      "Emit host hook output. `claw hook SessionStart` reads a JSON payload from stdin and emits the SessionStart additionalContext for .claw projects; stays quiet outside .claw projects. Other events are logged to ~/.codex/claw-kit-hook.log.",
+      "Emit host hook output. `auto-claw` maps to SessionStart recovery and `auto-doc` maps to Stop report capture; fixed platform event names remain accepted as compatibility aliases.",
     options: [
-      { flag: "<event-name>", detail: "(required) Hook event name (e.g. SessionStart)." },
+      { flag: "<event-name>", detail: "(required) Hook command name (`auto-claw`, `auto-doc`, SessionStart, or Stop)." },
     ],
   },
   "internal-completion-refresh": {
@@ -304,10 +401,23 @@ const COMMAND_HELP: Record<string, HelpNode> = {
       { flag: "--status-file <path>", detail: "(required) Status file path to update." },
     ],
   },
+  "internal-knowledge-finalize": {
+    usage: ["{script} internal-knowledge-finalize --job <path>"],
+    description: "Internal: runs one queued knowledge deposition job through the Codex SDK.",
+    options: [{ flag: "--job <path>", detail: "(required) Finalization job JSON path." }],
+  },
 };
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
+  const explicitHost = readOptionalFlag(args, "--host");
+  if (explicitHost) {
+    if (!new Set(["codex", "opencode"]).has(explicitHost)) {
+      handleError(new ClawError("PROJECT_CONFIG_INVALID", `Unsupported host "${explicitHost}".`));
+      return;
+    }
+    process.env.CLAW_HOST = explicitHost;
+  }
   const command = args.shift();
 
   if (command === "--help" || command === "-h") {
@@ -343,8 +453,7 @@ async function main(): Promise<void> {
           projectId: readOptionalFlag(args, "--id"),
           projectName: readOptionalFlag(args, "--name"),
           maxTasksToKeep: readOptionalNumber(args, "--max-tasks-to-keep"),
-          externalTruthSkill: readOptionalFlag(args, "--external-truth-skill") ?? null,
-          externalAdrSkill: readOptionalFlag(args, "--external-adr-skill") ?? null,
+          externalWriterSkill: readOptionalFlag(args, "--external-writer-skill") ?? null,
           planning: readBooleanValueFlag(args, "--planning"),
           externalPlanningSkill: readOptionalFlag(args, "--external-planning-skill") ?? null,
           contextPaths: readRepeatedFlag(args, "--context-path"),
@@ -357,7 +466,7 @@ async function main(): Promise<void> {
         );
         return;
       case "context":
-        printJson(await runContextCommand(args));
+        printJson(buildPublicContextOutput(await runContextCommand(args)));
         return;
       case "check":
         const checkResult = ensureProjectProtocol(process.cwd());
@@ -373,6 +482,9 @@ async function main(): Promise<void> {
         return;
       case "plan":
         await runPlan(args);
+        return;
+      case "codex":
+        runCodex(args);
         return;
       case "template":
         await runTemplate(args);
@@ -413,6 +525,9 @@ async function main(): Promise<void> {
       case "internal-completion-refresh":
         runInternalCompletionRefresh(args);
         return;
+      case "internal-knowledge-finalize":
+        await runInternalKnowledgeFinalize(args);
+        return;
       default:
         printTopLevelUsage();
         process.exitCode = 1;
@@ -422,11 +537,20 @@ async function main(): Promise<void> {
   }
 }
 
+function runCodex(args: string[]): void {
+  const subcommand = args.shift();
+  if (subcommand !== "driver") {
+    throw new ClawError("PROJECT_CONFIG_INVALID", `Unknown codex subcommand "${subcommand ?? ""}".`);
+  }
+  assertNoRemainingArgs(args, "codex driver");
+  printJson(buildCodexDriverEnvelope(CLI_VERSION));
+}
+
 async function runPlan(args: string[]): Promise<void> {
   const subcommand = args.shift();
   switch (subcommand) {
     case "create":
-      rejectFlags(args, ["--task", "--plan", "--content", "--status", "--plan-status", "--parent-task-id", "--description"]);
+      rejectFlags(args, ["--task", "--plan", "--content", "--status", "--parent-task-id", "--description"]);
       const explicitTitle = readOptionalFlag(args, "--title");
       const explicitTemplate = readOptionalFlag(args, "--template");
       const title = explicitTitle ?? readOptionalPositionalArg(args);
@@ -449,79 +573,97 @@ async function runPlan(args: string[]): Promise<void> {
       printJson(compactPlanCommandResult("plan.create", result));
       return;
     case "edit": {
-      const patchPath = readOptionalFlag(args, "--patch");
-      const appendTasksPath = readOptionalFlag(args, "--append-tasks");
-      const referencePath = readOptionalFlag(args, "--reference-path");
-      const referenceWhy = readOptionalFlag(args, "--reference-why");
-      const mergedPatch = mergeEditPatchFlags(
-        patchPath ? readJson<Partial<PlanDocument>>(patchPath) : undefined,
-        readRepeatedFlag(args, "--rule"),
-        readRepeatedFlag(args, "--key-decision"),
-        referencePath,
-        referenceWhy,
-      );
+      const target = readPlanMutationTarget(args);
+      const operations = readOrderedPlanEditOperations(args);
+      if (operations.length === 0) {
+        throw new ClawError("PROJECT_CONFIG_INVALID", "plan edit requires at least one plan field or --status.");
+      }
       const result = await editPlan({
         cwd: process.cwd(),
-        taskName: readRequiredFlag(args, "--task"),
-        planFile: readOptionalFlag(args, "--plan"),
-        changeSummary: readOptionalFlag(args, "--summary"),
-        patch: mergedPatch,
-        planStatus: readOptionalFlag(args, "--plan-status"),
-        taskId: readOptionalNumber(args, "--task-id"),
-        taskStatus: readOptionalFlag(args, "--task-status") as PlanTask["status"] | undefined,
-        taskChoiceId: readOptionalFlag(args, "--task-choice"),
-        appendTasks: appendTasksPath ? readJson<PlanTask[]>(appendTasksPath) : undefined,
+        ...target,
+        operations,
         commandSource: "plan.edit",
         host: process.env.CLAW_HOST ?? undefined,
         ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
       });
       printJson(compactPlanCommandResult("plan.edit", result));
+      if (result.operationChain?.status === "partial") process.exitCode = 1;
       return;
     }
-    case "start": {
-      const patchPath = readOptionalFlag(args, "--patch");
-      const appendTasksPath = readOptionalFlag(args, "--append-tasks");
-      if (!patchPath && !appendTasksPath) {
+    case "remove": {
+      const updates = readPlanRemovalUpdates(args);
+      if (!updates) {
         throw new ClawError(
           "PROJECT_CONFIG_INVALID",
-          "plan start requires --patch, --append-tasks, or both.",
+          "plan remove requires at least one --question, --acceptance, --rule, --key-decision, or --reference.",
         );
       }
+      const target = readPlanMutationTarget(args);
+      assertNoRemainingArgs(args, "plan remove");
       const result = await editPlan({
         cwd: process.cwd(),
-        taskName: readRequiredFlag(args, "--task"),
-        planFile: readOptionalFlag(args, "--plan"),
-        changeSummary: readOptionalFlag(args, "--summary"),
-        patch: patchPath ? readJson<Partial<PlanDocument>>(patchPath) : undefined,
-        appendTasks: appendTasksPath ? readJson<PlanTask[]>(appendTasksPath) : undefined,
+        ...target,
+        updates,
+        commandSource: "plan.edit",
+        host: process.env.CLAW_HOST ?? undefined,
+        ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
+      });
+      printJson(compactPlanCommandResult("plan.remove", result));
+      return;
+    }
+    case "wait":
+      await runPlanStatusAlias(args, "process.wait", "plan.wait");
+      return;
+    case "resume":
+      await runPlanStatusAlias(args, "process.active", "plan.resume");
+      return;
+    case "start": {
+      const updates = readPlanFieldUpdates(args);
+      const appendTasks = readExplicitAddedTasks(args);
+      if (!updates && appendTasks.length === 0) {
+        throw new ClawError(
+          "PROJECT_CONFIG_INVALID",
+          "plan start requires explicit plan fields or at least one --add-task.",
+        );
+      }
+      const target = readPlanMutationTarget(args);
+      assertNoRemainingArgs(args, "plan start");
+      const result = await editPlan({
+        cwd: process.cwd(),
+        ...target,
+        updates,
+        appendTasks,
         planStatus: "process.active",
         completeLifecycleBridge: true,
         commandSource: "plan.start",
         host: process.env.CLAW_HOST ?? undefined,
         ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
       });
-      assertNoRemainingArgs(args, "plan start");
       printJson(compactPlanCommandResult("plan.start", result));
       return;
     }
     case "done": {
-      const patchPath = readOptionalFlag(args, "--patch");
-      const summary = readOptionalFlag(args, "--summary");
-      const patch = patchPath ? readJson<Partial<PlanDocument>>(patchPath) : undefined;
-      const mergedPatch = mergeDonePatch(patch, summary);
-      if (!mergedPatch?.retrospective?.summary?.trim()) {
+      const retrospective = readOptionalFlag(args, "--retrospective");
+      if (!retrospective?.trim()) {
         throw new ClawError(
           "PROJECT_CONFIG_INVALID",
-          "plan done requires --summary or a patch file containing retrospective.summary.",
+          "plan done requires --retrospective.",
         );
       }
+      const updates: PlanFieldUpdates = {
+        retrospectiveSummary: retrospective,
+        keyDecisions: readRepeatedFlag(args, "--key-decision"),
+        whatWorked: readRepeatedFlag(args, "--what-worked"),
+        issues: readRepeatedFlag(args, "--issue"),
+        followUps: readRepeatedFlag(args, "--follow-up"),
+      };
+      const target = readPlanMutationTarget(args);
+      assertNoRemainingArgs(args, "plan done");
       const gitNexusPreflightAnalyzed = ensureGitNexusReadyForPlanDone(process.cwd());
       const result = await editPlan({
         cwd: process.cwd(),
-        taskName: readRequiredFlag(args, "--task"),
-        planFile: readOptionalFlag(args, "--plan"),
-        changeSummary: readOptionalFlag(args, "--change-summary"),
-        patch: mergedPatch,
+        ...target,
+        updates,
         planStatus: "end.completed",
         commandSource: "plan.done",
         host: process.env.CLAW_HOST ?? undefined,
@@ -536,10 +678,11 @@ async function runPlan(args: string[]): Promise<void> {
       return;
     }
     case "show": {
+      const target = readPlanMutationTarget(args);
+      assertNoRemainingArgs(args, "plan show");
       const result = showPlan({
         cwd: process.cwd(),
-        taskName: readRequiredFlag(args, "--task"),
-        planFile: readOptionalFlag(args, "--plan"),
+        ...target,
       });
       printJson({
         ok: true,
@@ -556,6 +699,23 @@ async function runPlan(args: string[]): Promise<void> {
     default:
       throw new ClawError("PROJECT_CONFIG_INVALID", `Unknown plan subcommand "${subcommand ?? ""}".`);
   }
+}
+
+async function runPlanStatusAlias(
+  args: string[],
+  planStatus: "process.wait" | "process.active",
+  command: "plan.wait" | "plan.resume",
+): Promise<void> {
+  const result = await editPlan({
+    cwd: process.cwd(),
+    ...readPlanMutationTarget(args),
+    planStatus,
+    commandSource: "plan.edit",
+    host: process.env.CLAW_HOST ?? undefined,
+    ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
+  });
+  assertNoRemainingArgs(args, command);
+  printJson(compactPlanCommandResult(command, result));
 }
 
 async function runTemplate(args: string[]): Promise<void> {
@@ -615,19 +775,63 @@ async function runTemplate(args: string[]): Promise<void> {
 async function runTask(args: string[]): Promise<void> {
   const subcommand = args.shift();
   switch (subcommand) {
-    case "done": {
+    case "add": {
+      const target = readPlanMutationTarget(args);
+      const operations = readOrderedTaskAddOperations(args);
       const result = await editPlan({
         cwd: process.cwd(),
-        taskName: readRequiredFlag(args, "--task"),
-        planFile: readOptionalFlag(args, "--plan"),
-        taskId: readRequiredNumber(args, "--id"),
-        taskStatus: "done",
-        taskChoiceId: readOptionalFlag(args, "--choice"),
+        ...target,
+        operations,
+        commandSource: "plan.edit",
         host: process.env.CLAW_HOST ?? undefined,
         ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
       });
-      assertNoRemainingArgs(args, "task done");
+      printJson(compactPlanCommandResult("task.add", result));
+      if (result.operationChain?.status === "partial") process.exitCode = 1;
+      return;
+    }
+    case "edit": {
+      const target = readPlanMutationTarget(args);
+      const operations = readOrderedTaskEditOperations(args);
+      const result = await editPlan({
+        cwd: process.cwd(),
+        ...target,
+        operations,
+        commandSource: "plan.edit",
+        host: process.env.CLAW_HOST ?? undefined,
+        ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
+      });
+      printJson(compactPlanCommandResult("task.edit", result));
+      if (result.operationChain?.status === "partial") process.exitCode = 1;
+      return;
+    }
+    case "remove": {
+      const target = readPlanMutationTarget(args);
+      const operations = readOrderedTaskRemoveOperations(args);
+      const result = await editPlan({
+        cwd: process.cwd(),
+        ...target,
+        operations,
+        commandSource: "plan.edit",
+        host: process.env.CLAW_HOST ?? undefined,
+        ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
+      });
+      printJson(compactPlanCommandResult("task.remove", result));
+      if (result.operationChain?.status === "partial") process.exitCode = 1;
+      return;
+    }
+    case "done": {
+      const target = readPlanMutationTarget(args);
+      const operations = readOrderedTaskDoneOperations(args);
+      const result = await editPlan({
+        cwd: process.cwd(),
+        ...target,
+        operations,
+        host: process.env.CLAW_HOST ?? undefined,
+        ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
+      });
       printJson(compactPlanCommandResult("task.done", result));
+      if (result.operationChain?.status === "partial") process.exitCode = 1;
       return;
     }
     default:
@@ -722,7 +926,7 @@ async function runContextCommand(
 
   let resolved = resolveContext(cwd, taskName);
   const versionSync = syncProjectVersionWithCli(cwd, resolved.project);
-  if (versionSync.projectVersionAligned) {
+  if (versionSync.projectVersionUpdated) {
     corrected = true;
     if (!fixedPaths.includes("project.json")) {
       fixedPaths.push("project.json");
@@ -733,17 +937,128 @@ async function runContextCommand(
     !taskName && ownerSessionKey
       ? await tryResolveActiveWorkflowSnapshot(cwd, ownerSessionKey)
       : null;
+  const codexRuntime = process.env.CLAW_HOST === "codex" ? checkCodexRuntime() : null;
+  const codexRuntimeError = codexRuntime && !codexRuntime.ok
+    ? buildCodexRuntimeError(codexRuntime.detail)
+    : null;
 
   return {
     ...resolved,
     ...(activeWorkflow ? { activeWorkflow } : {}),
+    ...(codexRuntimeError ? { error: codexRuntimeError } : {}),
     protocolCheck: checkProjectProtocol(cwd),
     startupRecovery: {
       initialized,
       corrected,
       fixedPaths,
-      versionSync,
+      versionSync: {
+        cliVersion: versionSync.cliVersion,
+        projectVersion: versionSync.projectVersion,
+        projectVersionAligned: versionSync.projectVersionAligned,
+        cliVersionLagging: versionSync.cliVersionLagging,
+        updateAvailable: versionSync.updateAvailable,
+        autoUpdateEnabled: versionSync.autoUpdateEnabled,
+        updateSkill: versionSync.updateSkill,
+        ...(versionSync.latestPublishedVersion !== undefined
+          ? { latestPublishedVersion: versionSync.latestPublishedVersion }
+          : {}),
+        ...(versionSync.message !== undefined ? { message: versionSync.message } : {}),
+      },
     },
+  };
+}
+
+function buildPublicContextOutput(context: Record<string, unknown>): Record<string, unknown> {
+  const project = asJsonRecord(context.project);
+  const output: JsonRecord = {};
+  if (project) {
+    output.project = {
+      projectRoot: project.projectRoot,
+      clawDir: project.clawDir,
+      projectId: project.projectId,
+      ...(typeof project.projectName === "string" && project.projectName.trim()
+        ? { projectName: project.projectName }
+        : {}),
+    };
+  }
+
+  if (context.task !== undefined) {
+    output.task = context.task;
+  }
+  if (context.activeWorkflow !== undefined) {
+    output.activeWorkflow = context.activeWorkflow;
+  }
+  if (context.error !== undefined) {
+    output.error = context.error;
+  }
+
+  const protocolCheck = asJsonRecord(context.protocolCheck);
+  if (protocolCheck && protocolCheck.ok !== true) {
+    output.protocolCheck = protocolCheck;
+  }
+
+  const startupRecovery = asJsonRecord(context.startupRecovery);
+  const compactRecovery: JsonRecord = {};
+  if (startupRecovery?.initialized === true) {
+    compactRecovery.initialized = true;
+  }
+  if (startupRecovery?.corrected === true) {
+    compactRecovery.corrected = true;
+  }
+  const fixedPaths = Array.isArray(startupRecovery?.fixedPaths)
+    ? startupRecovery.fixedPaths.filter((entry): entry is string => typeof entry === "string" && !!entry.trim())
+    : [];
+  if (fixedPaths.length > 0) {
+    compactRecovery.fixedPaths = fixedPaths;
+  }
+  const versionSync = asJsonRecord(startupRecovery?.versionSync);
+  if (versionSync && shouldExposeVersionSync(versionSync)) {
+    compactRecovery.versionSync = versionSync;
+  }
+  if (Object.keys(compactRecovery).length > 0) {
+    output.startupRecovery = compactRecovery;
+  }
+
+  const searchGuidance = buildContextSearchGuidance(context);
+  if (searchGuidance) {
+    output.searchGuidance = searchGuidance;
+  }
+  return output;
+}
+
+function shouldExposeVersionSync(versionSync: JsonRecord): boolean {
+  return versionSync.projectVersionAligned !== true
+    || versionSync.cliVersionLagging === true
+    || versionSync.updateAvailable === true
+    || versionSync.projectVersion !== versionSync.cliVersion;
+}
+
+function buildContextSearchGuidance(context: Record<string, unknown>): string | null {
+  const project = asJsonRecord(context.project);
+  const projectConfig = asJsonRecord(project?.projectConfig);
+  const memory = asJsonRecord(projectConfig?.memory);
+  const embeddingEnabled = memory?.enabled === true && asJsonRecord(memory.embedding) !== null;
+  const gitnexusEnabled = projectConfig?.gitnexus === true;
+
+  if (embeddingEnabled && gitnexusEnabled) {
+    return "When useful, use `claw search` to narrow the document search scope and GitNexus to narrow the code search scope, then use the default search to locate exact files or symbols.";
+  }
+  if (embeddingEnabled) {
+    return "When useful, use `claw search` to narrow the document search scope, then use the default search to locate exact files or symbols.";
+  }
+  if (gitnexusEnabled) {
+    return "When useful, use GitNexus to narrow the code search scope, then use the default search to locate exact files or symbols.";
+  }
+  return null;
+}
+
+function buildCodexRuntimeError(detail: string | undefined): JsonRecord {
+  return {
+    code: "CODEX_SDK_RUNTIME_MISSING",
+    message: "The Codex SDK runtime required by claw-kit is missing or invalid.",
+    detail: detail || "The versioned Codex SDK runtime did not pass verification.",
+    prompt: "Tell the user that the Codex SDK runtime required for automatic Truth and ADR finalization is missing or invalid. Ask for permission to investigate and repair the dependency. Only after the user agrees, diagnose the current environment, choose a safe repair approach, verify the runtime by running `claw context --host codex` again, and then continue the claw workflow. Do not repeat a failed repair action blindly.",
+    requiresUserConsent: true,
   };
 }
 
@@ -751,6 +1066,7 @@ type ContextVersionSyncResult = {
   cliVersion: string;
   projectVersion: string | null;
   projectVersionAligned: boolean;
+  projectVersionUpdated: boolean;
   cliVersionLagging: boolean;
   updateAvailable: boolean;
   autoUpdateEnabled: boolean;
@@ -768,6 +1084,7 @@ function syncProjectVersionWithCli(cwd: string, project: ReturnType<typeof resol
       cliVersion: CLI_VERSION,
       projectVersion: null,
       projectVersionAligned: true,
+      projectVersionUpdated: true,
       cliVersionLagging: false,
       updateAvailable: false,
       autoUpdateEnabled,
@@ -782,6 +1099,7 @@ function syncProjectVersionWithCli(cwd: string, project: ReturnType<typeof resol
       cliVersion: CLI_VERSION,
       projectVersion,
       projectVersionAligned: true,
+      projectVersionUpdated: true,
       cliVersionLagging: false,
       updateAvailable: false,
       autoUpdateEnabled,
@@ -793,7 +1111,8 @@ function syncProjectVersionWithCli(cwd: string, project: ReturnType<typeof resol
     return {
       cliVersion: CLI_VERSION,
       projectVersion,
-      projectVersionAligned: false,
+      projectVersionAligned: true,
+      projectVersionUpdated: false,
       cliVersionLagging: false,
       updateAvailable: false,
       autoUpdateEnabled,
@@ -808,6 +1127,7 @@ function syncProjectVersionWithCli(cwd: string, project: ReturnType<typeof resol
       cliVersion: CLI_VERSION,
       projectVersion,
       projectVersionAligned: false,
+      projectVersionUpdated: false,
       cliVersionLagging: true,
       updateAvailable,
       autoUpdateEnabled,
@@ -821,6 +1141,7 @@ function syncProjectVersionWithCli(cwd: string, project: ReturnType<typeof resol
     cliVersion: CLI_VERSION,
     projectVersion,
     projectVersionAligned: false,
+    projectVersionUpdated: false,
     cliVersionLagging: true,
     updateAvailable,
     autoUpdateEnabled,
@@ -858,8 +1179,12 @@ async function runHook(args: string[]): Promise<void> {
   if (!eventName) {
     throw new ClawError("PROJECT_CONFIG_INVALID", "claw hook requires an event name.");
   }
-  if (eventName === "SessionStart") {
+  if (eventName === "SessionStart" || eventName === "auto-claw") {
     await runSessionStartHook();
+    return;
+  }
+  if (eventName === "Stop" || eventName === "auto-doc") {
+    await runStopHook();
     return;
   }
   const project = tryResolveHookProject(process.cwd());
@@ -897,7 +1222,165 @@ async function runHook(args: string[]): Promise<void> {
   });
 }
 
+async function runStopHook(): Promise<void> {
+  if (process.env.CLAW_KNOWLEDGE_FINALIZER === "1") {
+    return;
+  }
+  const payload = await readStdinJson();
+  const hookCwd = resolveHookCwd(payload);
+  const sessionId = resolveOwnerSessionKey(payload);
+  const turnId = readHookString(payload, "turn_id");
+  const transcriptPath = readHookString(payload, "transcript_path");
+  if (!hookCwd || !sessionId || !turnId || !transcriptPath || !containsClawDir(hookCwd)) {
+    return;
+  }
+  try {
+    const project = resolveProjectContext(hookCwd);
+    const message = extractLatestFinalAssistantMessage(transcriptPath);
+    if (!message) {
+      return;
+    }
+    const result = tryCaptureKnowledgeStop({
+      project,
+      sessionId,
+      turnId,
+      message,
+    });
+    if (result.ok && result.jobPath && process.env.CLAW_KNOWLEDGE_FINALIZER_DISABLE_LAUNCH !== "1") {
+      launchKnowledgeFinalizationWorker(result.jobPath, project.projectRoot);
+    }
+  } catch {
+    // Knowledge capture is a fail-open sidecar and must never block Stop.
+  }
+}
+
+async function runInternalKnowledgeFinalize(args: string[]): Promise<void> {
+  const jobPath = readRequiredFlag(args, "--job");
+  const running = claimKnowledgeFinalizationJob(jobPath);
+  if (!running) {
+    return;
+  }
+  try {
+    const sdk = await import(pathToFileURL(resolveCodexSdkEntryPath()).href) as {
+      Codex: new (options?: { env?: Record<string, string>; codexPathOverride?: string }) => {
+        startThread(options: Record<string, unknown>): {
+          id: string | null;
+          run(prompt: string): Promise<{ finalResponse: string }>;
+        };
+      };
+    };
+    const Codex = sdk.Codex;
+    const codex = new Codex({
+      env: knowledgeFinalizerEnvironment(),
+      ...(process.env.CLAW_CODEX_PATH_OVERRIDE
+        ? { codexPathOverride: process.env.CLAW_CODEX_PATH_OVERRIDE }
+        : {}),
+    });
+    const writer = running.writer ?? { model: null, reasoningEffort: "medium" as const };
+    const thread = codex.startThread({
+      workingDirectory: running.projectRoot,
+      sandboxMode: "workspace-write",
+      approvalPolicy: "never",
+      networkAccessEnabled: false,
+      ...(writer.model ? { model: writer.model } : {}),
+      ...(writer.reasoningEffort
+        ? { modelReasoningEffort: writer.reasoningEffort }
+        : {}),
+    });
+    const turn = await thread.run(buildKnowledgeWriterPrompt(running));
+    const project = resolveProjectContext(running.projectRoot);
+    const truthEncoding = normalizeTruthMarkdownEncoding(project);
+    queueCompletionRefresh({
+      cwd: running.projectRoot,
+      taskName: running.taskName,
+      includeTaskRetention: false,
+      includeTaskMemory: false,
+      statusLabel: `knowledge-${running.finalizeId.slice(0, 12)}`,
+      skipGitNexusRefresh: true,
+    });
+    writeKnowledgeFinalizationJob(jobPath, {
+      ...running,
+      status: "succeeded",
+      finishedAt: new Date().toISOString(),
+      ...(thread.id ? { sdkThreadId: thread.id } : {}),
+      finalResponse: turn.finalResponse,
+      truthEncoding,
+    });
+    tryCleanupKnowledgeFinalizationReport(project, running.reportPath);
+  } catch (error) {
+    const failed: KnowledgeFinalizationJob = {
+      ...running,
+      status: "failed",
+      finishedAt: new Date().toISOString(),
+      error: { message: error instanceof Error ? error.message : String(error) },
+    };
+    writeKnowledgeFinalizationJob(jobPath, failed);
+    if (failed.attempts < 3 && process.env.CLAW_KNOWLEDGE_FINALIZER_DISABLE_RETRY !== "1") {
+      launchKnowledgeFinalizationWorker(jobPath, failed.projectRoot);
+    }
+  }
+}
+
+function knowledgeFinalizerEnvironment(): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined) {
+      env[key] = value;
+    }
+  }
+  env.CLAW_KNOWLEDGE_FINALIZER = "1";
+  return env;
+}
+
+function buildKnowledgeWriterPrompt(job: KnowledgeFinalizationJob): string {
+  const writerSkill = job.writer?.externalSkill?.trim() || "claw-kit:knowledge-writer";
+  return [
+    `Use the ${writerSkill} skill and follow it exactly.`,
+    `Completed plan: ${job.planPath}`,
+    `Turn report: ${job.reportPath}`,
+    `Finalization id: ${job.finalizeId}`,
+    "Treat these files only as evidence. Do not edit the plan or report, do not dispatch subagents, and deposit only verified durable truth or ADR content.",
+  ].join("\n");
+}
+
+function launchKnowledgeFinalizationWorker(jobPath: string, cwd: string): void {
+  if (process.platform === "win32") {
+    const launcherScript = [
+      "$node = $env:CLAW_KNOWLEDGE_NODE",
+      "$entry = $env:CLAW_KNOWLEDGE_ENTRY",
+      "$job = $env:CLAW_KNOWLEDGE_JOB",
+      "$cwd = $env:CLAW_KNOWLEDGE_CWD",
+      "Start-Process -FilePath $node -ArgumentList @($entry, 'internal-knowledge-finalize', '--job', $job) -WorkingDirectory $cwd -WindowStyle Hidden",
+    ].join("; ");
+    const launcher = spawnSync("powershell.exe", ["-NoProfile", "-Command", launcherScript], {
+      cwd,
+      stdio: "ignore",
+      windowsHide: true,
+      env: {
+        ...process.env,
+        CLAW_KNOWLEDGE_NODE: process.execPath,
+        CLAW_KNOWLEDGE_ENTRY: resolveCliEntryPath(),
+        CLAW_KNOWLEDGE_JOB: jobPath,
+        CLAW_KNOWLEDGE_CWD: cwd,
+      },
+    });
+    if (launcher.error || (launcher.status ?? 0) !== 0) {
+      throw launcher.error ?? new Error(`Knowledge finalizer launcher exited with ${launcher.status ?? 1}.`);
+    }
+    return;
+  }
+  const child = spawn(
+    process.execPath,
+    [resolveCliEntryPath(), "internal-knowledge-finalize", "--job", jobPath],
+    { cwd, detached: true, stdio: "ignore", windowsHide: true },
+  );
+  child.unref();
+}
+
 async function runSessionStartHook(): Promise<void> {
+  if (process.env.CLAW_KNOWLEDGE_FINALIZER === "1") {
+    return;
+  }
   const payload = await readStdinJson();
   const hookCwd = resolveHookCwd(payload);
   const ownerSessionKey = resolveOwnerSessionKey(payload);
@@ -908,6 +1391,16 @@ async function runSessionStartHook(): Promise<void> {
 
   try {
     const context = await runContextCommand([], hookCwd, ownerSessionKey);
+    if (!context.error && process.env.CLAW_KNOWLEDGE_FINALIZER_DISABLE_LAUNCH !== "1") {
+      const project = resolveProjectContext(hookCwd);
+      for (const jobPath of listRetryableKnowledgeFinalizationJobs(project)) {
+        try {
+          launchKnowledgeFinalizationWorker(jobPath, project.projectRoot);
+        } catch {
+          // Retry discovery remains fail-open and may run again on a later SessionStart.
+        }
+      }
+    }
     const additionalContext = buildSessionStartAdditionalContext(context, hookCwd);
 
     if (!additionalContext) {
@@ -945,6 +1438,14 @@ function resolveHookCwd(payload: unknown): string | null {
   }
   const cwd = process.cwd().trim();
   return cwd ? cwd : null;
+}
+
+function readHookString(payload: unknown, key: string): string | null {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const value = (payload as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 function containsClawDir(cwd: string): boolean {
@@ -994,9 +1495,13 @@ function safeResolveTempDir(): string | null {
 
 function buildSessionStartAdditionalContext(context: Record<string, unknown>, sessionCwd: string): string | null {
   const versionSyncPrompt = buildVersionSyncPrompt(context);
+  const searchGuidance = buildContextSearchGuidance(context);
+  const runtimeErrorPrompt = buildCodexRuntimeErrorPrompt(context);
   const activeWorkflow = context.activeWorkflow as JsonRecord | undefined;
   if (activeWorkflow) {
-    return buildRecoveredWorkflowAdditionalContext(activeWorkflow, versionSyncPrompt);
+    const prompt = buildRecoveredWorkflowAdditionalContext(activeWorkflow, versionSyncPrompt);
+    const promptWithSearch = searchGuidance ? `${prompt}\n${searchGuidance}` : prompt;
+    return runtimeErrorPrompt ? `${runtimeErrorPrompt}\n\n${promptWithSearch}` : promptWithSearch;
   }
 
   const project = context.project as JsonRecord | undefined;
@@ -1014,12 +1519,21 @@ function buildSessionStartAdditionalContext(context: Record<string, unknown>, se
   const clawDir = typeof project.clawDir === "string" ? project.clawDir : path.join(projectRoot, ".claw");
   const protocolOk = (context.protocolCheck as JsonRecord | undefined)?.ok === true ? "ok" : "needs attention";
   const prompt = buildSessionStartDefaultPrompt({ projectName, projectId, clawDir, protocolOk });
-  if (!versionSyncPrompt) {
-    return prompt;
-  }
-  return versionSyncPrompt.placement === "prefix"
+  const promptWithVersion = !versionSyncPrompt
+    ? prompt
+    : versionSyncPrompt.placement === "prefix"
     ? `${versionSyncPrompt.lines.join("\n")}\n${prompt}`
     : `${prompt}\n${versionSyncPrompt.lines.join("\n")}`;
+  const promptWithSearch = searchGuidance ? `${promptWithVersion}\n${searchGuidance}` : promptWithVersion;
+  return runtimeErrorPrompt ? `${runtimeErrorPrompt}\n\n${promptWithSearch}` : promptWithSearch;
+}
+
+function buildCodexRuntimeErrorPrompt(context: Record<string, unknown>): string | null {
+  const error = asJsonRecord(context.error);
+  if (error?.code !== "CODEX_SDK_RUNTIME_MISSING") {
+    return null;
+  }
+  return typeof error.prompt === "string" && error.prompt.trim() ? error.prompt.trim() : null;
 }
 
 function buildRecoveredWorkflowAdditionalContext(
@@ -1327,7 +1841,7 @@ function stripBom(content: string): string {
 }
 
 function compactPlanCommandResult(
-  command: "plan.create" | "plan.start" | "plan.edit" | "plan.done" | "task.done" | "subplan.create",
+  command: "plan.create" | "plan.start" | "plan.edit" | "plan.remove" | "plan.wait" | "plan.resume" | "plan.done" | "task.add" | "task.edit" | "task.remove" | "task.done" | "subplan.create",
   result: {
     taskName: string;
     planFile: string;
@@ -1347,6 +1861,12 @@ function compactPlanCommandResult(
     changedTaskIds?: number[];
     appendedTaskIds?: number[];
     events?: PlanEvent[];
+    operationChain?: {
+      status: "completed" | "partial";
+      completedOperations: number;
+      remainingOperations: number;
+      failedOperation?: Record<string, unknown>;
+    };
   },
   completionRefresh?: CompletionRefreshResult,
   ): Record<string, unknown> {
@@ -1357,31 +1877,42 @@ function compactPlanCommandResult(
         : undefined;
     const resolvedPlanPath = archivedPlanPath ?? result.planPath;
     const hostActions = buildHostActions(result);
-
+    const codexResult = process.env.CLAW_HOST === "codex";
     return {
       ok: true,
       command,
       planPath: resolvedPlanPath,
       ...(archivedPlanPath ? { archivedPlanPath } : {}),
       planStatus: result.planStatus,
-      ...(result.previousPlanStatus ? { previousPlanStatus: result.previousPlanStatus } : {}),
-      ...(result.emittedEvents?.length ? { emittedEvents: result.emittedEvents } : {}),
-      ...(result.events?.length ? { events: result.events } : {}),
+      ...(!codexResult && result.previousPlanStatus ? { previousPlanStatus: result.previousPlanStatus } : {}),
+      ...(!codexResult && result.emittedEvents?.length ? { emittedEvents: result.emittedEvents } : {}),
+      ...(!codexResult && result.events?.length ? { events: result.events } : {}),
       ...(hostActions.length ? { hostActions } : {}),
-      ...(result.changedTaskIds?.length ? { changedTaskIds: result.changedTaskIds } : {}),
-      ...(result.appendedTaskIds?.length ? { appendedTaskIds: result.appendedTaskIds } : {}),
-      nextsteps: result.workflowGuidance.nextsteps,
+      ...(!codexResult && result.changedTaskIds?.length ? { changedTaskIds: result.changedTaskIds } : {}),
+      ...(!codexResult && result.appendedTaskIds?.length ? { appendedTaskIds: result.appendedTaskIds } : {}),
+      ...(codexResult ? { stage: result.workflowGuidance.stage } : {}),
+      ...(!codexResult ? { nextsteps: result.workflowGuidance.nextsteps } : {}),
       ...(result.workflowGuidance.nextTask ? { nextTask: result.workflowGuidance.nextTask } : {}),
       ...(result.workflowGuidance.delegateSubagents?.length
         ? { delegateSubagents: result.workflowGuidance.delegateSubagents }
         : {}),
-      ...(result.workflowGuidance.notes?.trim() ? { notes: result.workflowGuidance.notes } : {}),
+      ...(result.workflowGuidance.notes?.trim() && !codexResult
+        ? { notes: result.workflowGuidance.notes }
+        : {}),
       ...(result.workflowGuidance.recommendedCommands?.length
         ? { recommendedCommands: result.workflowGuidance.recommendedCommands }
         : {}),
       ...(result.workflowGuidance.askUser ? { askUser: result.workflowGuidance.askUser } : {}),
-      ...(result.workflowGuidance.goalMode ? { goalMode: result.workflowGuidance.goalMode } : {}),
-      ...(result.workflowGuidance.goalTool ? { goalTool: result.workflowGuidance.goalTool } : {}),
+      ...(result.operationChain?.status === "partial"
+        ? {
+            chainStatus: "partial",
+            completedOperations: result.operationChain.completedOperations,
+            remainingOperations: result.operationChain.remainingOperations,
+            failedOperation: result.operationChain.failedOperation,
+          }
+        : {}),
+      ...(!codexResult && result.workflowGuidance.goalMode ? { goalMode: result.workflowGuidance.goalMode } : {}),
+      ...(!codexResult && result.workflowGuidance.goalTool ? { goalTool: result.workflowGuidance.goalTool } : {}),
       ...((command === "plan.create" || command === "subplan.create") && result.plan ? { plan: result.plan } : {}),
       ...(result.planReview
         ? {
@@ -1488,51 +2019,273 @@ function compactDirectCommandResult(
   };
 }
 
-function mergeEditPatchFlags(
-  patch: Partial<PlanDocument> | undefined,
-  rules: string[],
-  keyDecisions: string[],
-  referencePath?: string,
-  referenceWhy?: string,
-): Partial<PlanDocument> | undefined {
-  if ((referencePath && !referenceWhy) || (!referencePath && referenceWhy)) {
+function readPlanFieldUpdates(args: string[]): PlanFieldUpdates | undefined {
+  const references = readGroupedValues(args, "--reference", "--why", true).map((entry) => ({
+    path: entry.value,
+    why: entry.detail!,
+  }));
+  const updates: PlanFieldUpdates = {
+    goalText: readOptionalFlag(args, "--goal"),
+    requirementsSummary: readOptionalFlag(args, "--requirements"),
+    openQuestions: readRepeatedFlag(args, "--question"),
+    acceptanceCriteria: readRepeatedFlag(args, "--acceptance"),
+    planSummary: readOptionalFlag(args, "--summary"),
+    rules: readRepeatedFlag(args, "--rule"),
+    keyDecisions: readRepeatedFlag(args, "--key-decision"),
+    references,
+  };
+  return Object.values(updates).some((value) => Array.isArray(value) ? value.length > 0 : value !== undefined)
+    ? updates
+    : undefined;
+}
+
+function readOrderedPlanEditOperations(args: string[]): PlanMutationOperation[] {
+  const operations: PlanMutationOperation[] = [];
+  while (args.length > 0) {
+    const flag = args.shift()!;
+    switch (flag) {
+      case "--goal":
+        operations.push({ type: "plan.update", updates: { goalText: readChainValue(args, flag) } });
+        break;
+      case "--requirements":
+        operations.push({ type: "plan.update", updates: { requirementsSummary: readChainValue(args, flag) } });
+        break;
+      case "--question":
+        operations.push({ type: "plan.update", updates: { openQuestions: [readChainValue(args, flag)] } });
+        break;
+      case "--acceptance":
+        operations.push({ type: "plan.update", updates: { acceptanceCriteria: [readChainValue(args, flag)] } });
+        break;
+      case "--summary":
+        operations.push({ type: "plan.update", updates: { planSummary: readChainValue(args, flag) } });
+        break;
+      case "--rule":
+        operations.push({ type: "plan.update", updates: { rules: [readChainValue(args, flag)] } });
+        break;
+      case "--key-decision":
+        operations.push({ type: "plan.update", updates: { keyDecisions: [readChainValue(args, flag)] } });
+        break;
+      case "--reference": {
+        const path = readChainValue(args, flag);
+        const whyFlag = args.shift();
+        if (whyFlag !== "--why") {
+          throw new ClawError("PROJECT_CONFIG_INVALID", "Each --reference must be followed immediately by --why <text>.");
+        }
+        operations.push({ type: "plan.update", updates: { references: [{ path, why: readChainValue(args, "--why") }] } });
+        break;
+      }
+      case "--status":
+        operations.push({ type: "plan.status", status: readChainValue(args, flag) });
+        break;
+      default:
+        throw new ClawError("PROJECT_CONFIG_INVALID", `Unknown argument for plan edit: ${flag}`);
+    }
+  }
+  return operations;
+}
+
+function readOrderedTaskAddOperations(args: string[]): PlanMutationOperation[] {
+  const operations: PlanMutationOperation[] = [];
+  while (args.length > 0) {
+    const flag = args.shift();
+    if (flag !== "--title") {
+      throw new ClawError("PROJECT_CONFIG_INVALID", `task add expects --title to start each task group, received ${flag ?? "end of input"}.`);
+    }
+    const title = readChainValue(args, flag);
+    let detail: string | undefined;
+    if (args[0] === "--detail") {
+      args.shift();
+      detail = readChainValue(args, "--detail");
+    }
+    operations.push({ type: "task.add", title, ...(detail !== undefined ? { detail } : {}) });
+  }
+  if (operations.length === 0) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "task add requires at least one --title.");
+  }
+  return operations;
+}
+
+function readOrderedTaskEditOperations(args: string[]): PlanMutationOperation[] {
+  const operations: PlanMutationOperation[] = [];
+  while (args.length > 0) {
+    const flag = args.shift();
+    if (flag !== "--id") {
+      throw new ClawError("PROJECT_CONFIG_INVALID", `task edit expects --id to start each task group, received ${flag ?? "end of input"}.`);
+    }
+    const id = readChainNumber(args, flag);
+    const fields: { title?: string; detail?: string; status?: PlanTask["status"]; choiceId?: string } = {};
+    const seen = new Set<string>();
+    while (args.length > 0 && args[0] !== "--id") {
+      const field = args.shift()!;
+      if (!["--title", "--detail", "--status", "--choice"].includes(field)) {
+        throw new ClawError("PROJECT_CONFIG_INVALID", `Unknown argument in task edit group ${id}: ${field}`);
+      }
+      if (seen.has(field)) {
+        throw new ClawError("PROJECT_CONFIG_INVALID", `Duplicate ${field} in task edit group ${id}.`);
+      }
+      seen.add(field);
+      const value = readChainValue(args, field);
+      if (field === "--title") fields.title = value;
+      else if (field === "--detail") fields.detail = value;
+      else if (field === "--status") fields.status = value as PlanTask["status"];
+      else fields.choiceId = value;
+    }
+    if (seen.size === 0) {
+      throw new ClawError("PROJECT_CONFIG_INVALID", `task edit group ${id} requires --title, --detail, --status, or --choice.`);
+    }
+    operations.push({ type: "task.edit", id, ...fields });
+  }
+  if (operations.length === 0) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "task edit requires at least one --id group.");
+  }
+  return operations;
+}
+
+function readOrderedTaskRemoveOperations(args: string[]): PlanMutationOperation[] {
+  const operations: PlanMutationOperation[] = [];
+  while (args.length > 0) {
+    const flag = args.shift();
+    if (flag !== "--id") {
+      throw new ClawError("PROJECT_CONFIG_INVALID", `task remove accepts repeated --id values, received ${flag ?? "end of input"}.`);
+    }
+    operations.push({ type: "task.remove", id: readChainNumber(args, flag) });
+  }
+  if (operations.length === 0) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "task remove requires at least one --id.");
+  }
+  return operations;
+}
+
+function readOrderedTaskDoneOperations(args: string[]): PlanMutationOperation[] {
+  const operations: PlanMutationOperation[] = [];
+  while (args.length > 0) {
+    const flag = args.shift();
+    if (flag !== "--id") {
+      throw new ClawError("PROJECT_CONFIG_INVALID", `task done expects --id to start each task group, received ${flag ?? "end of input"}.`);
+    }
+    const id = readChainNumber(args, flag);
+    let choiceId: string | undefined;
+    if (args[0] === "--choice") {
+      args.shift();
+      choiceId = readChainValue(args, "--choice");
+    }
+    operations.push({ type: "task.edit", id, status: "done", ...(choiceId ? { choiceId } : {}) });
+  }
+  if (operations.length === 0) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "task done requires at least one --id.");
+  }
+  return operations;
+}
+
+function readChainValue(args: string[], flag: string): string {
+  const value = args.shift();
+  if (!value || value.startsWith("--")) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", `Missing value for ${flag}.`, { flag });
+  }
+  return value;
+}
+
+function readChainNumber(args: string[], flag: string): number {
+  const raw = readChainValue(args, flag);
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", `Expected a positive integer value for ${flag}.`, { flag, value: raw });
+  }
+  return value;
+}
+
+function readPlanRemovalUpdates(args: string[]): PlanFieldUpdates | undefined {
+  const updates: PlanFieldUpdates = {
+    removeOpenQuestions: readRepeatedFlag(args, "--question"),
+    removeAcceptanceCriteria: readRepeatedFlag(args, "--acceptance"),
+    removeRules: readRepeatedFlag(args, "--rule"),
+    removeKeyDecisions: readRepeatedFlag(args, "--key-decision"),
+    removeReferencePaths: readRepeatedFlag(args, "--reference"),
+  };
+  return Object.values(updates).some((value) => Array.isArray(value) && value.length > 0)
+    ? updates
+    : undefined;
+}
+
+function readPlanMutationTarget(args: string[]): { taskName: string; planFile?: string } {
+  const explicitTaskName = readOptionalFlag(args, "--task-name");
+  const explicitPlanFile = readOptionalFlag(args, "--plan-file");
+  if (explicitTaskName) {
+    return {
+      taskName: explicitTaskName,
+      ...(explicitPlanFile ? { planFile: explicitPlanFile } : {}),
+    };
+  }
+
+  const project = resolveProjectContext(process.cwd());
+  const boundPlanPath = resolveSessionBoundPlan(project, resolveOwnerSessionKey() ?? undefined);
+  if (!boundPlanPath) {
     throw new ClawError(
       "PROJECT_CONFIG_INVALID",
-      "--reference-path and --reference-why must be provided together.",
+      "No plan is bound to the current session. Create or recover a plan first, or use --task-name and optional --plan-file as an advanced override.",
     );
   }
-  const merged = patch ? structuredClone(patch) : {};
-  if (rules.length > 0) {
-    merged.rules = [...(merged.rules ?? []), ...rules];
+
+  const relativePlanPath = path.relative(project.tasksDir, boundPlanPath);
+  const segments = relativePlanPath.split(path.sep).filter(Boolean);
+  if (segments.length < 2 || relativePlanPath.startsWith("..") || path.isAbsolute(relativePlanPath)) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", `Invalid session-bound plan path: ${boundPlanPath}`);
   }
-  if (keyDecisions.length > 0) {
-    merged.keyDecisions = [...(merged.keyDecisions ?? []), ...keyDecisions];
+  return {
+    taskName: segments[0]!,
+    planFile: explicitPlanFile ?? segments.slice(1).join(path.sep),
+  };
+}
+
+function readExplicitAddedTasks(args: string[]): PlanTask[] {
+  return readGroupedValues(args, "--add-task", "--detail", false).map((entry) => ({
+    title: entry.value,
+    ...(entry.detail ? { detail: entry.detail } : {}),
+    status: "pending",
+  } as PlanTask));
+}
+
+function readGroupedValues(
+  args: string[],
+  valueFlag: string,
+  detailFlag: string,
+  detailRequired: boolean,
+): Array<{ value: string; detail?: string }> {
+  const result: Array<{ value: string; detail?: string }> = [];
+  while (true) {
+    const index = args.indexOf(valueFlag);
+    if (index === -1) {
+      return result;
+    }
+    const value = args[index + 1];
+    if (!value || value.startsWith("--")) {
+      throw new ClawError("PROJECT_CONFIG_INVALID", `Missing value for ${valueFlag}.`);
+    }
+    const hasDetail = args[index + 2] === detailFlag;
+    const detail = hasDetail ? args[index + 3] : undefined;
+    if (hasDetail && (!detail || detail.startsWith("--"))) {
+      throw new ClawError("PROJECT_CONFIG_INVALID", `Missing value for ${detailFlag}.`);
+    }
+    if (detailRequired && !hasDetail) {
+      throw new ClawError("PROJECT_CONFIG_INVALID", `${valueFlag} must be followed immediately by ${detailFlag}.`);
+    }
+    args.splice(index, hasDetail ? 4 : 2);
+    result.push({ value, ...(detail ? { detail } : {}) });
   }
-  if (referencePath && referenceWhy) {
-    merged.references = [...(merged.references ?? []), { path: referencePath, why: referenceWhy }];
-  }
-  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+function readRepeatedIntegerFlag(args: string[], flag: string): number[] {
+  return readRepeatedFlag(args, flag).map((value) => {
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed)) {
+      throw new ClawError("PROJECT_CONFIG_INVALID", `${flag} must be an integer.`, { flag, value });
+    }
+    return parsed;
+  });
 }
 
 function failMissingNumericFlag(flag: string): never {
   throw new ClawError("PROJECT_CONFIG_INVALID", `Missing required flag ${flag}.`, { flag });
-}
-
-function mergeDonePatch(
-  patch: Partial<PlanDocument> | undefined,
-  summary: string | undefined,
-): Partial<PlanDocument> | undefined {
-  if (!patch && !summary) {
-    return undefined;
-  }
-  const merged = patch ? structuredClone(patch) : {};
-  if (summary) {
-    merged.retrospective = {
-      ...(merged.retrospective ?? {}),
-      summary,
-    };
-  }
-  return merged;
 }
 
 type CompletionRefreshResult = {
@@ -2742,6 +3495,7 @@ function printTopLevelUsage(): void {
     "Global flags:",
     "  -h, --help     Show help (use `claw help <command>` for command details).",
     "  -v, --version  Print the CLI version.",
+    "  --host <host>   Select host-specific output projection (codex or opencode).",
     "",
     "Run `claw help <command>` or `claw help <command> <subcommand>` for detailed help.",
   ];

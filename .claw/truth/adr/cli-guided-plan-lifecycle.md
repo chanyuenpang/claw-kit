@@ -12,6 +12,10 @@ Accepted
 
 `0.1.70` 将该实验证据固化为正式 Codex adapter 合同，并完成 `hostActions` action schema、Goal 参数投影、同调用消费 guidance 与 legacy lifecycle 回归。完整测试、check、bundle、pack 和 release dry-run 均通过；npm、`origin/main`、全局 CLI 与本地 Codex plugin cache 已刷新并验证在同一版本线。
 
+`0.1.75` 的验收证据显示，短 code-mode bootstrap 与缓存复用没有引入额外命令重试；普通 task mutation、`plan.wait`、`plan.resume` 均保持精简返回，且不携带 `hostActions`、`goalTool`、`nextsteps`、`notes`、`protocol` 噪声字段。
+
+本轮 plan/task mutation 批处理实现还需要解决一个生命周期一致性问题：如果把同一命令中的每个 operation 当成独立 mutation，合法的中间状态会过早生成 guidance、Goal action、session binding 或 completion hooks；如果整批只在末尾提交，又无法满足语义错误时保留此前成功操作的需求。
+
 ## Decision
 
 把规划质量规则并入核心 planning 语义，并让对外 workflow contract 保持紧凑、render-first：
@@ -28,7 +32,7 @@ Accepted
 - root plan 的 required ADR closeout 保持异步：先把 retrospective 与 durable `keyDecisions` 持久化到 active `plan.json`，再以 `waitForCompletion=false` dispatch `adr-writer`；foreground plan closeout 不等待 ADR deposition
 - `truth-writer` 与 `adr-writer` 都不阻塞 foreground closeout；ADR 的 required 含义是必须派发，不是必须等待完成
 - `end.completed` 写入稳定的 `completedAt`，但 `claw plan done` 保留当前 task directory 与原 `planPath`，不在本次命令中立即移动计划
-- `claw plan start --task <name> --patch <plan-patch.json> --append-tasks <tasks.json>` 是原子 refine-and-activate 入口：在一次序列化 mutation 中补齐计划、追加业务 tasks、完成两个 lifecycle bridge tasks，并进入 `process.active`
+- `claw plan start --requirements <text> --acceptance <criterion> --add-task <title> --detail <text>` 是原子 refine-and-activate 入口：它默认作用于 session-bound 当前 plan/subplan，在一次序列化 mutation 中补齐计划、追加业务 tasks、完成两个 lifecycle bridge tasks，并进入 `process.active`
 - 原子结果使用 `schemaVersion = 1` 的 plan events；一次 mutation 共享 `mutationId`，每个事件有唯一 `eventId` 并记录 `commandSource`
 - CLI plan state 继续是 canonical source；CLI 输出幂等 `hostActions`，Codex/OpenCode adapters 只做单向消费以同步 host progress 与 Goal Mode，不把 host 状态反向写成第二份所有权
 - schema 兼容的 `update_plan` host action 默认在现有单次 code-mode 调用内自动消费，不再要求 Agent 把 CLI payload 搬运到第二次 host tool 调用
@@ -38,6 +42,9 @@ Accepted
 - consumer 按 CLI 返回顺序和 action id 至多消费一次；CLI mutation 成功后若 host action 失败，只重试对应 action，不回滚 canonical CLI plan state
 - 同调用消费不可用时回退到分离 host tool 调用；正确性不依赖 `PostToolUse` hook，只有重复胶水成本值得额外 runtime 复杂度时才考虑增加 runtime consumer
 - 既有 `claw plan create`、`claw plan edit` 与 `claw plan done` 保持兼容；`plan start` 是新增的短路径，不替换显式恢复和 legacy lifecycle surface
+- plan/task 批处理采用按 argv 从左到右的 mutation chain：整条 chain 先做语法预校验，语法错误零提交；语义执行逐步持久化，在首个失败处停止，并保留此前成功 operation。
+- chain 中间步骤不生成 lifecycle side effect；`workflowGuidance`、completed-task 事件、session binding、completion hooks、plan mirror 与 Goal action 仅根据 chain 初始和最终 plan 状态归约一次。
+- `claw plan edit` 继续只拥有 plan 字段与状态，集合删除不进入该命令；task mutation 继续隔离在 `claw task add/edit/remove/done`，避免 plan 与 task ownership 因批处理耦合。
 
 ## Consequences
 
@@ -64,6 +71,9 @@ Accepted
 - `schemaVersion = 1` 与 `input`/`meta` 分离让 adapter 可以验证真实 host 参数，同时保留 overwrite/reason 等策略说明而不污染 tool schema
 - action id、返回顺序与至多一次语义给自动和分离消费路径提供同一恢复边界；fallback 不改变 CLI plan 的 canonical ownership
 - guidance-first 的实现先兑现已测收益且不依赖 hook 时序；是否增加 runtime consumer 成为可独立评估的成本决策，而不是当前正确性前提
+- `0.1.75` 的 cold/warm driver 结果为同一 `driverVersion=3`、`cacheKey=claw-kit:codex-driver:v3:s1` 与 SHA，支持把短 bootstrap 的缓存身份作为可回归合同，而不是每次重新获取。
+- 语法预校验与逐步语义提交兼顾了零提交的输入错误边界和可恢复的部分成功语义；调用方可从结构化 partial 结果定位失败 operation，而不需要猜测哪些前置步骤已落盘。
+- 初始到最终状态的净归约避免合法中间状态产生虚假的 Goal 或 completion 操作，同时保持最终 plan mirror 与 canonical plan 一致。
 
 ## Related Code
 
@@ -78,6 +88,7 @@ Accepted
 - `packages/core/src/workflow-guidance.config.json`
 - `.claw/tasks/实现-claw-search-persistent-embedding-worker/plan.json`
 - `.claw/tasks/用不可变-snapshot-修复-ADR-异步归档竞态/plan.json`
+- `.claw/tasks/验收-0.1.75-短Bootstrap-20260717T1255/plan.json`
 - `.claw/tasks/实施-claw-kit-第二阶段端到端性能与流程优化/plan.json`
 - `.claw/tasks/A-B-测试-hostActions-分步消费与-code-mode-自动消费/plan.json`
 - `.claw/tasks/优化-hostActions-单调用-code-mode-消费并发布新版本/plan.json`
@@ -118,3 +129,10 @@ Accepted
 - `same-call fallback separated host tool call`
 - `PostToolUse not required`
 - `0.1.70`
+- `0.1.75`
+- `short code-mode bootstrap`
+- `minimal mutation response`
+- `ordered mutation chain`
+- `syntax pre-validation`
+- `partial semantic failure`
+- `initial-to-final lifecycle reduction`

@@ -1,8 +1,5 @@
 {
   "id": "update",
-  "configOverride": {
-    "truthDispatch": "final_only"
-  },
   "title": "update",
   "status": "process.active",
   "goal": {

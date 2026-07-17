@@ -6,6 +6,7 @@ import { ensureTaskContext, removeLegacyTaskMeta, resolveProjectContext, resolve
 import { resolvePlanEffectiveConfig } from "./effective-config.js";
 import { ClawError } from "./errors.js";
 import { readJsonFile, withFileLock, withSerializedAccess, writeJsonFile } from "./io.js";
+import { tryCompleteKnowledgePlan, tryRegisterKnowledgePlan } from "./knowledge-sidecar.js";
 import { buildPlanEvent } from "./plan-events.js";
 import {
   isProcessStatus,
@@ -23,6 +24,8 @@ import type {
   PlanShowInput,
   PlanShowResult,
   PlanStatus,
+  PlanMutationOperation,
+  PlanMutationChainResult,
   PlanTask,
   PlanTaskStatus,
   SubplanWriteInput,
@@ -122,6 +125,11 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
   });
 
   bindSessionToPlan(project, input.ownerSessionKey, planPath);
+  tryRegisterKnowledgePlan({
+    project,
+    sessionId: input.ownerSessionKey,
+    planPath,
+  });
   if (input.ownerSessionKey) {
     removeLegacyTaskMeta(task);
   }
@@ -178,13 +186,6 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
     });
   }
 
-  if (input.patch?.tasks !== undefined && (input.taskId !== undefined || input.taskStatus !== undefined)) {
-    throw new ClawError(
-      "PROJECT_CONFIG_INVALID",
-      "patch.tasks cannot be combined with taskId/taskStatus updates in the same plan edit. Update tasks and task progress in separate commands.",
-    );
-  }
-
   return withSerializedAccess(planPath, async () => {
     const previous = normalizePlanDocument(readJsonFile<PlanDocument>(planPath));
     const previousStatus = previous.status;
@@ -194,9 +195,51 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
     const changedTaskIds: number[] = [];
     const appendedTaskIds: number[] = [];
     const completedTaskIds: number[] = [];
-    const next = structuredClone(previous);
+    let next = structuredClone(previous);
     const requestedStatus = input.planStatus ? normalizePlanStatus(input.planStatus) : undefined;
+    let operationChain: PlanMutationChainResult | undefined;
 
+    if (input.operations) {
+      const chain = await applyPlanMutationOperations({
+        projectRoot: task.project.projectRoot,
+        initialPlan: previous,
+        operations: input.operations,
+      });
+      next = chain.plan;
+      operationChain = chain.result;
+      const previousTasks = new Map(previous.tasks.map((item) => [item.id, item]));
+      const nextTasks = new Map(next.tasks.map((item) => [item.id, item]));
+      for (const [id, taskItem] of nextTasks) {
+        const prior = previousTasks.get(id);
+        if (!prior) {
+          appendedTaskIds.push(id);
+          changedTaskIds.push(id);
+        } else if (JSON.stringify(prior) !== JSON.stringify(taskItem)) {
+          changedTaskIds.push(id);
+          if (prior.status !== "done" && taskItem.status === "done") {
+            completedTaskIds.push(id);
+          }
+        }
+      }
+      for (const id of previousTasks.keys()) {
+        if (!nextTasks.has(id)) {
+          changedTaskIds.push(id);
+        }
+      }
+      for (const taskId of completedTaskIds) {
+        events.push(
+          buildPlanEvent("plan_task_completed", {
+            mutationId,
+            commandSource,
+            planPath,
+            planTitle: next.title,
+            planStatus: next.status,
+            taskId,
+            affectedPlanTaskIds: [taskId],
+          }),
+        );
+      }
+    } else {
     if (requestedStatus) {
       const validation = canSetPlanStatus(previousStatus, requestedStatus);
       if (!validation.ok) {
@@ -205,8 +248,8 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
       next.status = requestedStatus;
     }
 
-    if (input.patch) {
-      applyPlanPatch(next, input.patch);
+    if (input.updates) {
+      applyPlanFieldUpdates(next, input.updates);
     }
 
     if (previousStatus !== "end.completed" && next.status === "end.completed") {
@@ -216,7 +259,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
     }
 
     if (input.appendTasks?.length) {
-      if (isEnd(previous.status) && !requestedStatus && input.patch?.status === undefined) {
+      if (isEnd(previous.status) && !requestedStatus) {
         next.status = "prepare.requirements";
       }
       const currentIds = new Set(next.tasks.map((taskItem) => taskItem.id));
@@ -232,23 +275,42 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
       }
     }
 
+    if (input.removeTaskIds?.length) {
+      const removeIds = new Set(input.removeTaskIds);
+      for (const taskId of removeIds) {
+        if (!next.tasks.some((taskItem) => taskItem.id === taskId)) {
+          throw new ClawError("PROJECT_CONFIG_INVALID", `Task id ${taskId} was not found in this plan.`);
+        }
+        if (input.taskId === taskId) {
+          throw new ClawError("PROJECT_CONFIG_INVALID", `Task id ${taskId} cannot be updated and removed in the same plan edit.`);
+        }
+        changedTaskIds.push(taskId);
+      }
+      next.tasks = next.tasks.filter((taskItem) => !removeIds.has(taskItem.id));
+    }
+
     next.requirements = normalizePlanRequirements(next.requirements);
     next.tasks = normalizePlanTasks(Array.isArray(next.tasks) ? next.tasks : []);
 
-    if (input.taskId !== undefined || input.taskStatus !== undefined) {
-      if (input.taskId === undefined || input.taskStatus === undefined) {
+    const hasTaskMutation = input.taskId !== undefined
+      || input.taskStatus !== undefined
+      || input.taskChoiceId !== undefined
+      || input.taskTitle !== undefined
+      || input.taskDetail !== undefined;
+    if (hasTaskMutation) {
+      if (input.taskId === undefined) {
         throw new ClawError(
           "PROJECT_CONFIG_INVALID",
-          "taskId and taskStatus must be provided together when updating a plan task status.",
+          "taskId is required when updating a plan task.",
         );
       }
-      if (!isProcess(next.status)) {
+      if (input.taskStatus !== undefined && !isProcess(next.status)) {
         throw new ClawError(
           "TASK_STATUS_FORBIDDEN_IN_NON_ACTIVE_PLAN",
           "Task progress can only be updated while plan.status is process.*. If requirements are already confirmed, move the plan to process.active first.",
           {
             planStatus: next.status,
-            suggestedCommand: `claw plan edit --task ${task.taskName}${planFile === "plan.json" ? "" : ` --plan ${planFile}`} --plan-status process.active`,
+            suggestedCommand: "claw plan resume",
           },
         );
       }
@@ -256,16 +318,27 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
       if (!planTask) {
         throw new ClawError("PROJECT_CONFIG_INVALID", `Task id ${input.taskId} was not found in this plan.`);
       }
-      validatePlanTaskStatus(input.taskStatus);
       const previousTaskStatus = planTask.status;
-      planTask.status = input.taskStatus;
-      if (input.taskChoiceId !== undefined) {
-        planTask.choiceId = input.taskChoiceId;
-      } else if (input.taskStatus !== "done") {
-        delete planTask.choiceId;
+      if (input.taskTitle !== undefined) {
+        planTask.title = input.taskTitle;
       }
+      if (input.taskDetail !== undefined) {
+        planTask.detail = input.taskDetail;
+      }
+      if (input.taskStatus !== undefined) {
+        validatePlanTaskStatus(input.taskStatus);
+        planTask.status = input.taskStatus;
+        if (input.taskChoiceId !== undefined) {
+          planTask.choiceId = input.taskChoiceId;
+        } else if (input.taskStatus !== "done") {
+          delete planTask.choiceId;
+        }
+      } else if (input.taskChoiceId !== undefined) {
+        throw new ClawError("PROJECT_CONFIG_INVALID", "taskChoiceId requires taskStatus=done in the same plan edit.");
+      }
+      validatePlanTask(planTask);
       changedTaskIds.push(planTask.id);
-      if (previousTaskStatus !== "done" && input.taskStatus === "done") {
+      if (previousTaskStatus !== "done" && planTask.status === "done") {
         completedTaskIds.push(planTask.id);
         events.push(
           buildPlanEvent("plan_task_completed", {
@@ -289,7 +362,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
         );
       }
       const lifecycleTitles = new Set([
-        "Use the planning skill to refine the request and append executable tasks",
+        "Analyze the request and fill executable tasks with the planning skill",
         "Enter process.active",
       ]);
       const lifecycleTasks = next.tasks.filter((taskItem) => lifecycleTitles.has(taskItem.title));
@@ -319,6 +392,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
         );
       }
     }
+    }
 
     await validateDoneTransitions({
       projectRoot: task.project.projectRoot,
@@ -344,13 +418,13 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
             taskName: task.taskName,
             planFile,
             planPath,
-            suggestedCommand: `claw plan show --task ${task.taskName}${planFile === "plan.json" ? "" : ` --plan ${planFile}`}`,
+            suggestedCommand: `claw plan show --task-name ${task.taskName}${planFile === "plan.json" ? "" : ` --plan-file ${planFile}`}`,
           },
         );
       }
       writeJsonFile(planPath, next);
     });
-    if (previousStatus !== next.status || input.patch || changedTaskIds.length > 0 || input.appendTasks?.length) {
+    if (previousStatus !== next.status || input.updates || changedTaskIds.length > 0 || input.appendTasks?.length || input.removeTaskIds?.length || (operationChain?.completedOperations ?? 0) > 0) {
       events.unshift(
         buildPlanEvent("plan_changed", {
           mutationId,
@@ -413,6 +487,21 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
     } else {
       bindSessionToPlan(task.project, input.ownerSessionKey, resultPlanPath);
     }
+    if (completionHooks) {
+      tryCompleteKnowledgePlan({
+        project: task.project,
+        sessionId: input.ownerSessionKey,
+        completedPlanPath: planPath,
+        ...(completionHooks.subplanClosureCandidate ? { resumedPlanPath: resultPlanPath } : {}),
+        completedAt: next.completedAt,
+      });
+    } else if (!resultPlan.status.startsWith("end.")) {
+      tryRegisterKnowledgePlan({
+        project: task.project,
+        sessionId: input.ownerSessionKey,
+        planPath: resultPlanPath,
+      });
+    }
     if (input.ownerSessionKey) {
       removeLegacyTaskMeta(task);
     }
@@ -441,6 +530,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
               previousStatus,
               completionHooks,
               changedTaskIds,
+              appendedTaskIds,
               completedTaskIds,
             }),
       }),
@@ -451,6 +541,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
         plan: resultPlan,
       }),
       events,
+      ...(operationChain ? { operationChain } : {}),
     };
   });
 }
@@ -637,43 +728,230 @@ function validatePlanTaskStatus(status: string): void {
   }
 }
 
-const DELETE_PATCH_VALUE = Symbol("delete-plan-patch-value");
+async function applyPlanMutationOperations(input: {
+  projectRoot: string;
+  initialPlan: PlanDocument;
+  operations: PlanMutationOperation[];
+}): Promise<{ plan: PlanDocument; result: PlanMutationChainResult }> {
+  let current = structuredClone(input.initialPlan);
+  let completedOperations = 0;
+  let failedOperation: PlanMutationChainResult["failedOperation"];
 
-function isPlainPatchObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function mergePlanPatchValue(current: unknown, patch: unknown): unknown {
-  if (patch === null) {
-    return DELETE_PATCH_VALUE;
-  }
-  if (Array.isArray(patch)) {
-    return structuredClone(patch);
-  }
-  if (isPlainPatchObject(patch)) {
-    const base = isPlainPatchObject(current) ? structuredClone(current) : {};
-    for (const [key, value] of Object.entries(patch)) {
-      const merged = mergePlanPatchValue(base[key], value);
-      if (merged === DELETE_PATCH_VALUE) {
-        delete base[key];
-      } else {
-        base[key] = merged;
+  for (let index = 0; index < input.operations.length; index += 1) {
+    const operation = input.operations[index]!;
+    const candidate = structuredClone(current);
+    try {
+      switch (operation.type) {
+        case "plan.update":
+          applyPlanFieldUpdates(candidate, operation.updates);
+          break;
+        case "plan.status": {
+          const status = normalizePlanStatus(operation.status);
+          if (!status) {
+            throw new ClawError("PROJECT_CONFIG_INVALID", `Unsupported plan status "${operation.status}".`);
+          }
+          const validation = canSetPlanStatus(current.status, status);
+          if (!validation.ok) {
+            throw new ClawError(validation.code, validation.error);
+          }
+          candidate.status = status;
+          if (current.status !== "end.completed" && status === "end.completed") {
+            candidate.completedAt = new Date().toISOString();
+          } else if (current.status === "end.completed" && status !== "end.completed") {
+            delete candidate.completedAt;
+          }
+          break;
+        }
+        case "task.add": {
+          if (isEnd(current.status)) {
+            candidate.status = "prepare.requirements";
+            delete candidate.completedAt;
+          }
+          const [task] = normalizePlanTasks([{
+            title: operation.title,
+            ...(operation.detail !== undefined ? { detail: operation.detail } : {}),
+            status: "pending",
+          } as PlanTask], nextAvailableTaskId(candidate.tasks));
+          validatePlanTask(task!);
+          candidate.tasks.push(task!);
+          break;
+        }
+        case "task.edit": {
+          if (operation.status !== undefined && !isProcess(candidate.status)) {
+            throw new ClawError(
+              "TASK_STATUS_FORBIDDEN_IN_NON_ACTIVE_PLAN",
+              "Task progress can only be updated while plan.status is process.*. If requirements are already confirmed, move the plan to process.active first.",
+              { planStatus: candidate.status, suggestedCommand: "claw plan resume" },
+            );
+          }
+          const task = candidate.tasks.find((item) => item.id === operation.id);
+          if (!task) {
+            throw new ClawError("PROJECT_CONFIG_INVALID", `Task id ${operation.id} was not found in this plan.`);
+          }
+          if (operation.title !== undefined) task.title = operation.title;
+          if (operation.detail !== undefined) task.detail = operation.detail;
+          if (operation.status !== undefined) {
+            validatePlanTaskStatus(operation.status);
+            task.status = operation.status;
+            if (operation.choiceId !== undefined) {
+              task.choiceId = operation.choiceId;
+            } else if (operation.status !== "done") {
+              delete task.choiceId;
+            }
+          } else if (operation.choiceId !== undefined) {
+            throw new ClawError("PROJECT_CONFIG_INVALID", "taskChoiceId requires taskStatus=done in the same task edit group.");
+          }
+          validatePlanTask(task);
+          break;
+        }
+        case "task.remove": {
+          const taskIndex = candidate.tasks.findIndex((item) => item.id === operation.id);
+          if (taskIndex < 0) {
+            throw new ClawError("PROJECT_CONFIG_INVALID", `Task id ${operation.id} was not found in this plan.`);
+          }
+          candidate.tasks.splice(taskIndex, 1);
+          break;
+        }
       }
+      candidate.requirements = normalizePlanRequirements(candidate.requirements);
+      candidate.tasks = normalizePlanTasks(candidate.tasks);
+      await validateDoneTransitions({
+        projectRoot: input.projectRoot,
+        previousPlan: current,
+        nextPlan: candidate,
+      });
+      validatePlanDocument(candidate);
+      if (candidate.status === "end.completed" && !candidate.retrospective?.summary?.trim()) {
+        throw new ClawError("RETROSPECTIVE_REQUIRED", "end.completed requires retrospective.summary before the plan can be completed.");
+      }
+      current = candidate;
+      completedOperations += 1;
+    } catch (error) {
+      const clawError = error instanceof ClawError
+        ? error
+        : new ClawError("PROJECT_CONFIG_INVALID", error instanceof Error ? error.message : String(error));
+      failedOperation = {
+        index,
+        type: operation.type,
+        error: {
+          code: clawError.code,
+          message: clawError.message,
+          ...(clawError.details ? { details: clawError.details } : {}),
+        },
+      };
+      break;
     }
-    return base;
   }
-  return patch;
+
+  return {
+    plan: current,
+    result: {
+      status: failedOperation ? "partial" : "completed",
+      completedOperations,
+      remainingOperations: input.operations.length - completedOperations - (failedOperation ? 1 : 0),
+      ...(failedOperation ? { failedOperation } : {}),
+    },
+  };
 }
 
-function applyPlanPatch(target: PlanDocument, patch: Partial<PlanDocument>): void {
-  const merged = mergePlanPatchValue(target, patch);
-  if (!isPlainPatchObject(merged)) {
-    throw new ClawError("PROJECT_CONFIG_INVALID", "Plan patch must be a JSON object.");
+function applyPlanFieldUpdates(target: PlanDocument, updates: NonNullable<PlanEditInput["updates"]>): void {
+  if (updates.goalText !== undefined) {
+    target.goal.text = updates.goalText;
   }
-  for (const key of Object.keys(target)) {
-    delete (target as Record<string, unknown>)[key];
+  if (
+    updates.requirementsSummary !== undefined
+    || updates.openQuestions?.length
+    || updates.removeOpenQuestions?.length
+    || updates.acceptanceCriteria?.length
+    || updates.removeAcceptanceCriteria?.length
+  ) {
+    target.requirements = normalizePlanRequirements(target.requirements);
+    if (updates.requirementsSummary !== undefined) {
+      target.requirements.summary = updates.requirementsSummary;
+    }
+    if (updates.openQuestions?.length) {
+      target.requirements.openQuestions.push(...updates.openQuestions);
+    }
+    if (updates.removeOpenQuestions?.length) {
+      target.requirements.openQuestions = removeRequiredStrings(
+        target.requirements.openQuestions,
+        updates.removeOpenQuestions,
+        "open question",
+      );
+    }
+    if (updates.acceptanceCriteria?.length) {
+      target.requirements.acceptanceCriteria.push(...updates.acceptanceCriteria);
+    }
+    if (updates.removeAcceptanceCriteria?.length) {
+      target.requirements.acceptanceCriteria = removeRequiredStrings(
+        target.requirements.acceptanceCriteria,
+        updates.removeAcceptanceCriteria,
+        "acceptance criterion",
+      );
+    }
   }
-  Object.assign(target as Record<string, unknown>, merged);
+  if (updates.planSummary !== undefined) {
+    target.summary = updates.planSummary;
+  }
+  if (updates.rules?.length) {
+    target.rules = [...(target.rules ?? []), ...updates.rules];
+  }
+  if (updates.removeRules?.length) {
+    target.rules = removeRequiredStrings(target.rules ?? [], updates.removeRules, "rule");
+  }
+  if (updates.keyDecisions?.length) {
+    target.keyDecisions = [...(target.keyDecisions ?? []), ...updates.keyDecisions];
+  }
+  if (updates.removeKeyDecisions?.length) {
+    target.keyDecisions = removeRequiredStrings(target.keyDecisions ?? [], updates.removeKeyDecisions, "key decision");
+  }
+  if (updates.references?.length) {
+    target.references = [...(target.references ?? []), ...updates.references];
+  }
+  if (updates.removeReferencePaths?.length) {
+    const currentReferences = target.references ?? [];
+    const retainedPaths = removeRequiredStrings(
+      currentReferences.map((item) => item.path),
+      updates.removeReferencePaths,
+      "reference path",
+    );
+    const retained = new Set(retainedPaths);
+    target.references = currentReferences.filter((item) => retained.has(item.path));
+  }
+  if (
+    updates.retrospectiveSummary !== undefined
+    || updates.whatWorked?.length
+    || updates.issues?.length
+    || updates.followUps?.length
+  ) {
+    target.retrospective = target.retrospective ?? { summary: "" };
+    if (updates.retrospectiveSummary !== undefined) {
+      target.retrospective.summary = updates.retrospectiveSummary;
+    }
+    if (updates.whatWorked?.length) {
+      target.retrospective.whatWorked = [...(target.retrospective.whatWorked ?? []), ...updates.whatWorked];
+    }
+    if (updates.issues?.length) {
+      target.retrospective.issues = [...(target.retrospective.issues ?? []), ...updates.issues];
+    }
+    if (updates.followUps?.length) {
+      target.retrospective.followUps = [...(target.retrospective.followUps ?? []), ...updates.followUps];
+    }
+  }
+}
+
+function removeRequiredStrings(current: string[], requested: string[], label: string): string[] {
+  const requestedValues = [...new Set(requested)];
+  const missing = requestedValues.filter((value) => !current.includes(value));
+  if (missing.length > 0) {
+    throw new ClawError(
+      "PROJECT_CONFIG_INVALID",
+      `Cannot remove ${label}; exact value not found: ${missing.map((value) => JSON.stringify(value)).join(", ")}.`,
+      { label, missing },
+    );
+  }
+  const removed = new Set(requestedValues);
+  return current.filter((value) => !removed.has(value));
 }
 
 async function createSeedPlan(

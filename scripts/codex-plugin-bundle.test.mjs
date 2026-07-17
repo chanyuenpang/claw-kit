@@ -64,7 +64,7 @@ test("Codex plugin manifest starts with using-claw-kit instead of pre-reading pl
   assert.match(promptText, /seeded planning task/i);
 });
 
-test("Codex closeout contract keeps ADR deposition asynchronous through delayed archive", async () => {
+test("Codex closeout contract keeps combined knowledge deposition asynchronous and fail-open", async () => {
   const skill = await fs.readFile(
     new URL("../packages/codex-adapter/skills/using-claw-kit/SKILL.md", import.meta.url),
     "utf8",
@@ -74,10 +74,10 @@ test("Codex closeout contract keeps ADR deposition asynchronous through delayed 
     "utf8",
   );
 
-  assert.match(skill, /do not wait for it/i);
-  assert.match(skill, /Delayed archive keeps the completed plan path readable for at least one hour/i);
-  assert.match(reference, /remain non-blocking/i);
-  assert.match(reference, /keeps the completed active plan path readable for at least one hour/i);
+  assert.match(skill, /do not wait for deposition/i);
+  assert.match(skill, /combined `knowledge-writer` through the Codex SDK/i);
+  assert.match(reference, /Hook, report, launcher, SDK, or writer failures never block or alter plan completion/i);
+  assert.match(reference, /Do not dispatch `truth-writer`, `adr-writer`, or `knowledge-writer` from the main agent/i);
 });
 
 test("Codex plugin source includes the config skill entrypoint", async () => {

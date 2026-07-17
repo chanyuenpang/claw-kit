@@ -58,7 +58,7 @@ When a template task defines `guidance.onDone.choices`, completing that task is 
 The caller must provide a route choice:
 
 - `claw task done --task <task> --id <id> --choice <choiceId>`
-- or `claw plan edit --task <task> --task-id <id> --task-status done --task-choice <choiceId>`
+- or `claw task edit --id <id> --status done --choice <choiceId>`
 
 The selected route is persisted into runtime state as `task.choiceId`.
 
@@ -93,7 +93,6 @@ It should not be injected ad hoc by `plan create`.
 Use it when a specific template needs to override project behavior for the lifetime of that runtime plan, for example:
 
 - `goalMode`
-- `truthDispatch`
 - external planning/truth/ADR skills
 
 ## References vs Rules

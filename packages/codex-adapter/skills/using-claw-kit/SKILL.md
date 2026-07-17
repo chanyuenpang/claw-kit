@@ -1,6 +1,6 @@
 ---
 name: using-claw-kit
-description: Use first whenever the @claw-kit plugin is invoked in a Codex thread; this is the main-agent workflow contract for plan, search, truth, ADR, and hook-aware startup.
+description: Use first whenever the @claw-kit plugin is invoked in a Codex thread; this is the main-agent workflow contract for plan, search, hook-aware reporting, and SDK-owned knowledge closeout.
 ---
 # using-claw-kit
 
@@ -22,74 +22,49 @@ Detailed call flow:
 4. For low-complexity work, handle the request directly in the host workflow; claw planning, search, and `workflowGuidance` remain inactive.
 5. Only for score `>= 6`, enter the normal claw workflow through `claw plan create`.
 6. Whenever a claw command returns `workflowGuidance`, follow it as the required next-step contract. This is mandatory.
-7. Codex plan mutations use only the fixed code-mode driver below. In one code-mode call, give `runClawPlanMutation` the claw command and working directory; the driver owns JSON parsing, schema validation, action order, idempotency, input projection, and tool dispatch. The agent must not interpret `hostActions`, execute `goalTool`, or fall back to separate host calls. The bundled `../../scripts/code-mode-host-action-consumer.mjs` is the testable source contract for this driver.
-8. If prior project context is relevant, run `claw search --query "<topic>"` after a new `claw plan create` and use the results to improve the bound task scope.
+7. Codex plan mutations use only the short code-mode bootstrap below. In one code-mode call, give `runClawPlanMutation` the claw command and working directory; the cached CLI driver owns JSON parsing, schema validation, action order, idempotency, input projection, and tool dispatch. The agent must not interpret `hostActions` or fall back to separate host calls. After dispatch, the driver returns only the structured fields useful to the next reasoning stage: stage/progress, next task, exact commands, delegation, user input, create-time plan/review, and closeout status when present. Protocol fields, consumed `hostActions`, `goalTool`, prose `nextsteps`, and generic notes are not agent-visible. The bundled `../../scripts/code-mode-host-action-consumer.mjs` is the testable source contract.
+8. Use the search guidance returned by `claw context` when recall would help. `claw plan create` may expose `claw search --query "<topic>"` as an optional recommended command, but search is not a mandatory planning step.
 9. Use two-part plan status semantics:
    - `process.discussing`: the plan exists, but execution has not started; stay in discussion/planning work only
-   - `process.active`: execution is live; process one task at a time and update progress with `claw plan edit`
-   - `process.wait`: the round is blocked on user input or an external dependency
+   - `process.active`: execution is live; process one task at a time and update progress with `claw task edit` or `claw task done`
+   - `process.wait`: the round is blocked on user input or an external dependency; enter with `claw plan wait` and return with `claw plan resume`
    - `end.completed`: all planned work is done and `retrospective.summary` is present
    - `end.closed` / `end.leave`: the round has been closed out; resume active execution when the user explicitly changes direction
 10. The planning skill is invoked by the seeded planning task inside the formal claw workflow, not before task scope exists.
-11. Once requirements are clear and `goal.text` is set, prefer the returned atomic `claw plan start --task <name> --patch <plan-patch.json> --append-tasks <tasks.json>` command to complete the planning bridge and enter `process.active` in one mutation.
-12. After a meaningful completed task, dispatch `truth-writer` when there is reusable context to deposit.
-13. When all tasks are done, clear thread progress, update both `retrospective` and `keyDecisions`, and dispatch `adr-writer` asynchronously from returned `workflowGuidance`.
-14. Close the plan with `claw plan done` after the ADR writer has been dispatched; do not wait for it. Delayed archive keeps the completed plan path readable for at least one hour.
-15. During closeout, confirm whether the workflow actually dispatched the required writer specialists:
-    - verify `truth-writer` and `adr-writer` were dispatched when the returned contract required them
-    - report truth or ADR closeout as dispatched after each required delegation has occurred; do not imply asynchronous writer completion without evidence
+11. Once requirements are clear and `goal.text` is set, prefer the returned atomic `claw plan start` command with intuitive explicit flags such as `--requirements`, repeated `--acceptance`, and repeated `--add-task "<title>" --detail "<detail>"` groups to complete the planning bridge and enter `process.active` in one mutation. Generic patch files are not part of the plan contract.
+12. When several same-type plan or task mutations are already known, repeat the existing option or `--id` group in one command. Arguments execute from left to right and stop at the first semantic failure; follow only the final returned guidance.
+12. Every Stop hook appends the turn's final assistant message to the report owned by the current plan or subplan. The main agent does not curate, dual-write, or dispatch this report.
+13. When all tasks are done, clear thread progress and update both `retrospective` and `keyDecisions`.
+14. Close the plan with `claw plan done`. This canonical operation must immediately resume the parent plan for a subplan or unbind a completed root plan, regardless of hook health.
+15. The independent Stop hook gives the completion turn to the just-completed plan, then queues the combined `knowledge-writer` through the Codex SDK. Do not dispatch truth or ADR writers from the main thread and do not wait for deposition.
 16. During closeout, if this task included a git commit flow, inspect the repo for task-related doc artifacts that still belong to this round:
     - include canonical truth or ADR files updated by the writers
     - include any remaining task-produced docs that should ship with the same commit instead of leaving them behind
 
 ## Codex code-mode driver
 
-Use this fixed program for every claw plan mutation. Change only `command`, `workdir`, and `timeout_ms`.
+Use this short bootstrap for every claw plan mutation. Change only `command`, `workdir`, and `timeout_ms`. It loads the versioned driver from the CLI once per code-mode session, stores the serializable envelope, and reuses it on later mutations. The evaluated driver still owns CLI execution and every returned host action in the same code-mode call.
 
 ```javascript
 async function runClawPlanMutation({ command, workdir, timeout_ms = 30000 }) {
-  const raw = await tools.shell_command({ command, workdir, timeout_ms });
-  const outputText = typeof raw === "string" ? raw : (raw.output ?? raw.stdout ?? raw.text ?? "");
-  const start = outputText.indexOf("{");
-  let depth = 0, quoted = false, escaped = false, end = -1;
-  for (let index = start; index >= 0 && index < outputText.length; index += 1) {
-    const character = outputText[index];
-    if (quoted) {
-      if (escaped) escaped = false;
-      else if (character === "\\") escaped = true;
-      else if (character === '"') quoted = false;
-    } else if (character === '"') quoted = true;
-    else if (character === "{") depth += 1;
-    else if (character === "}" && --depth === 0) { end = index + 1; break; }
-  }
-  if (start < 0 || end < 0) throw new Error("claw returned no complete JSON result");
-  const result = JSON.parse(outputText.slice(start, end));
-  if (result.ok !== true) throw new Error(`claw mutation failed: ${result.command ?? "unknown"}`);
-  const handlers = {
-    update_plan: (input) => tools.update_plan(input),
-    create_goal: (input) => tools.create_goal(input),
-    update_goal: (input) => tools.update_goal(input),
-  };
-  const allowedInput = {
-    update_plan: new Set(["explanation", "plan"]),
-    create_goal: new Set(["objective"]),
-    update_goal: new Set(["status"]),
-  };
-  const consumed = new Set();
-  for (const action of result.hostActions ?? []) {
-    const handler = handlers[action?.tool];
-    if (action?.schemaVersion !== 1 || typeof action.id !== "string" || !handler) {
-      throw new Error(`unsupported Codex hostAction: ${action?.id ?? "unknown"}`);
+  const cacheKey = "claw-kit:codex-driver:v3:s1";
+  let envelope = load(cacheKey);
+  if (!envelope) {
+    const raw = await tools.shell_command({ command: "claw codex driver", workdir, timeout_ms });
+    const output = typeof raw === "string" ? raw : (raw.output ?? raw.stdout ?? raw.text ?? "");
+    const start = output.indexOf("{");
+    const end = output.lastIndexOf("}") + 1;
+    if (start < 0 || end <= start) throw new Error("claw returned no driver envelope");
+    envelope = JSON.parse(output.slice(start, end));
+    if (envelope?.cacheKey !== cacheKey || envelope?.driverVersion !== 3
+      || envelope?.hostActionSchemaVersion !== 1 || typeof envelope?.source !== "string") {
+      throw new Error("incompatible claw Codex driver envelope");
     }
-    if (consumed.has(action.id)) continue;
-    if (!action.input || Object.keys(action.input).some((key) => !allowedInput[action.tool].has(key))) {
-      throw new Error(`invalid Codex hostAction input: ${action.id}`);
-    }
-    await handler(action.input);
-    consumed.add(action.id);
+    store(cacheKey, envelope);
   }
-  text(raw);
-  return result;
+  const runner = (0, eval)(`(${envelope.source})`);
+  if (typeof runner !== "function") throw new Error("invalid claw Codex driver source");
+  return runner({ command, workdir, timeout_ms }, { tools, text });
 }
 ```
 
@@ -120,25 +95,22 @@ If no task scope exists and no explicit workflow skill owns entry, run the compl
 Edit `plan.json` through claw commands.
 Template-aware workflow behavior may be restored from persisted runtime plan state such as `plan.templateId`, template-scoped override data, and template-defined guidance routing. Treat returned `workflowGuidance` as the contract instead of inferring hidden routing from task prose alone.
 
-## Truth & ADR
+## Report and knowledge closeout
 
-The current thread is already authorized to use the required delegated subagents. If subagent tools are not already present in the current surface, `tool_search` is the discovery path.
-Writer dispatch reuses an existing suitable same-type subagent before spawning a new one.
-Attach the returned writer skill when spawning the worker; the writer skill remains inside the delegated subagent context.
-Truth-value judgment stays on the main agent side. If there is no reusable truth, no writer is dispatched.
-`truth-writer` dispatch happens only when the completed work has reusable truth.
-`adr-writer` is a required, asynchronous closeout step for root-plan completion.
+Plan create and subplan create register one current report owner for the session. A subplan owns only its own turns; completing it restores the parent as the next turn's owner. `plan done` records a pending completion owner without delaying or replacing the canonical plan transition. The Stop hook writes exactly one report, preferring that pending completed plan for the completion turn.
+
+The Codex SDK worker receives only the completed plan path, its adjacent report, and a finalization id. Its combined `knowledge-writer` independently decides whether truth, ADR, both, or neither deserve deposition, then the host requests project recall indexing. SDK or hook failure is fail-open and must never alter plan/session state.
 
 ## Non-negotiable rules
 
 - The most essential rule is to follow returned `workflowGuidance`.
-- The second essential rule is to decide each turn whether to dispatch `truth-writer`.
-- User authorization already covers goal mode and the required delegated subagents for this thread.
+- The second essential rule is to keep canonical plan transitions independent from hook/report/SDK closeout.
+- User authorization already covers goal mode and any non-deposition delegated subagents required by returned workflow guidance.
 - Low-complexity requests skip the claw workflow before `claw plan create`, so they do not produce `workflowGuidance`.
-- `claw search` runs after a new `claw plan create` when project recall is relevant. Search uses natural language and prefers the user's language.
+- Treat `claw search` from context or plan recommendations as optional project recall. Use it when relevant, with natural language in the user's preferred language; do not make it a mandatory template step.
 - Whenever claw returns `workflowGuidance`, use it as the single next-step process.
 - On Codex, every claw plan mutation must run through the bundled code-mode consumer. The agent supplies only the command and working directory; it must not hand-write action branches or manually carry any host payload into another call.
-- `hostActions` is the only Codex host-execution source. `workflowGuidance.goalTool` is compatibility metadata for other consumers and must never trigger a second Codex goal call.
+- `hostActions` is the only Codex host-execution source inside the fixed driver. After successful dispatch, it is removed from the agent-visible result. Codex compact results do not return `workflowGuidance.goalTool`; non-Codex compatibility metadata must never be reconstructed or trigger a second Codex goal call.
 - If code mode or a required Codex host tool is unavailable, stop with the program error. Codex has no direct-call or split-call fallback path.
-- Reuse the existing `truth-writer` when possible; otherwise dispatch a new one.
-- Dispatch ADR deposition from the `all tasks done` guidance before root `claw plan done`, but do not wait for completion.
+- Keep claw-generated guidance, return metadata, and host prompt text in English. Preserve user-supplied titles, goals, requirements, and repository document language as provided.
+- Never dispatch `truth-writer`, `adr-writer`, or `knowledge-writer` from the main agent. The Stop hook and SDK worker own deposition.

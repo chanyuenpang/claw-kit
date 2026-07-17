@@ -10,7 +10,7 @@ import type { Part } from "@opencode-ai/sdk";
  * Five injection surfaces:
  *   1. shell.env — inject CLAW_HOST + CLAW_GUIDANCE_CONFIG into all shell executions
  *   2. event(session.created) + event(session.compacted) — one-shot init: detect .claw/,
- *      call claw hook SessionStart. Compaction re-runs because the prior system prompt
+ *      call claw hook auto-claw. Compaction re-runs because the prior system prompt
  *      injection is lost when the context window is compressed.
  *   3. chat.message — prepend claw context as a synthetic text part to the session's first
  *      user message. LLMs attend to user messages far more than system prompts, so this is
@@ -114,7 +114,7 @@ function readPlanSummary(planPath: string): string | null {
 }
 
 /**
- * Invoke `claw hook SessionStart` to get the full dynamic context that claw CLI
+ * Invoke `claw hook auto-claw` to get the full dynamic context that claw CLI
  * generates for this project, including:
  *   - skill loading directive
  *   - workflowGuidance contract
@@ -125,7 +125,7 @@ function readPlanSummary(planPath: string): string | null {
  */
 function invokeClawSessionStart(projectDir: string): string | null {
   try {
-    const stdout = execSync("claw hook SessionStart", {
+    const stdout = execSync("claw hook auto-claw", {
       cwd: projectDir,
       encoding: "utf8",
       timeout: 10_000,
@@ -148,7 +148,7 @@ export const ClawKitPlugin: Plugin = async ({ client, directory }) => {
   const projectDir = directory;
 
   /**
-   * One-shot initialization: detect .claw/ project, invoke claw hook SessionStart,
+   * One-shot initialization: detect .claw/ project, invoke claw hook auto-claw,
    * read active plan state. Called from session.created and session.compacted.
    */
   function initClawContext(): void {
@@ -249,14 +249,14 @@ export const ClawKitPlugin: Plugin = async ({ client, directory }) => {
       // Unconditional: inject claw workflow context whenever inside a .claw project
       if (!inClawProject) return;
 
-      // Prefer full claw hook SessionStart context (includes skill loading,
+      // Prefer full claw hook auto-claw context (includes skill loading,
       // workflowGuidance, and plan recovery)
       if (clawSessionContext) {
         output.system.push(clawSessionContext);
         return;
       }
 
-      // Fallback: static text when claw hook SessionStart was unavailable
+      // Fallback: static text when claw hook auto-claw was unavailable
       const info = projectInfo;
       const lines: string[] = [];
       lines.push("## claw-kit project context");

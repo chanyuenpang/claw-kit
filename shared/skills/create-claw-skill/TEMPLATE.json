@@ -1,8 +1,5 @@
 {
   "id": "create-claw-skill",
-  "configOverride": {
-    "truthDispatch": "final_only"
-  },
   "title": "create-claw-skill",
   "status": "process.active",
   "goal": {

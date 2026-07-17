@@ -34,6 +34,10 @@ Accepted working truth for local development on this machine.
 - Codex-facing recall should use `claw search --query "<topic>"` as project-scoped document recall for project memory, truth, ADR, and external docs; it is not code search.
 - `claw search index --refresh` is the explicit project index refresh entrypoint and returns `search.index.refresh`.
 - Version drift detection remains part of `claw context` / startup recovery, but local upgrade execution is no longer implicit there.
+- `claw context` 的公开输出现在是最小恢复投影：始终保留 `project` 身份与关键路径；`activeWorkflow` 仅在当前 session 有显式绑定时返回；修正记录、协议诊断与版本诊断仅在实际修正、异常、落后或可更新时返回，健康版本不再输出版本信息。
+- SessionStart、协议修复与更新判断继续消费内部完整 context；公开投影精简不等于删除内部字段或削弱恢复能力。
+- `searchGuidance` 只按 effective config 中可用的 embedding 与 GitNexus 组合生成，不在每次 context 调用时做运行时健康探测：embedding 提示用 `claw search` 缩小文档范围，GitNexus 提示缩小代码范围，两者都有时同时给出两条路径，两者都未启用时省略该字段。
+- 默认 plan/template create 的首个 planning task 只要求分析需求并调用配置的 planning skill 填充可执行 tasks；`claw search` 不再进入该 task 或强制 `nextsteps`，只保留为可选 `recommendedCommands`。
 - `.claw/project.json` now uses explicit `autoUpdate` gating for version drift. The field defaults to `true`, and startup enters the update-first route unless the project has explicitly opted out.
 - When `autoUpdate = false`, startup recovery only reports the lagging-version note; it does not run a local install action.
 - When `autoUpdate = true` and a newer published version exists, startup recovery reports `startupRecovery.versionSync.updateSkill = "claw-kit:update"` and treats that skill as the required first action.

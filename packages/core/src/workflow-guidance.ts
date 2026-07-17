@@ -84,7 +84,6 @@ type GuidanceConfig = {
     withoutGoal: string;
   };
   planCreateRecall?: {
-    nextstep: string;
     recommendedCommand: string;
   };
   delegates: Record<DelegateConfigKey, Omit<WorkflowGuidanceSubagent, "skill"> & { fallbackSkill: string }>;
@@ -119,12 +118,13 @@ function adrWriterDelegate(projectConfig: ProjectConfig | null): WorkflowGuidanc
 
 function buildConfiguredDelegate(key: DelegateConfigKey, projectConfig: ProjectConfig | null): WorkflowGuidanceSubagent {
   const config = workflowGuidanceConfig.delegates[key];
-  const overrideSkill = key === "truthWriter" ? projectConfig?.externalTruthSkill : projectConfig?.externalAdrSkill;
+  const overrideSkill = projectConfig?.knowledgeWriter?.externalSkill;
   return {
     name: config.name,
     skill: normalizeWriterSkill(overrideSkill, config.fallbackSkill),
     dispatch: config.dispatch,
     model: config.model,
+    reasoning_effort: config.reasoning_effort,
     fork_context: config.fork_context,
     waitForCompletion: config.waitForCompletion,
     preferReuseSameTypeInThread: config.preferReuseSameTypeInThread,
@@ -167,13 +167,11 @@ function applyCreateGuidance(params: {
   guidance: WorkflowGuidance;
 }): WorkflowGuidance {
   const recall = workflowGuidanceConfig.planCreateRecall ?? {
-    nextstep: "Run one project recall query.",
     recommendedCommand: 'claw search --query "<topic>"',
   };
   const guidance = params.commandSource === "plan.create" || params.commandSource === "subplan.create"
-    ? {
+      ? {
         ...params.guidance,
-        nextsteps: normalizeGuidanceSteps(mergeUniqueStrings([recall.nextstep], params.guidance.nextsteps)),
         recommendedCommands: mergeUniqueStrings(
           [recall.recommendedCommand],
           params.guidance.recommendedCommands ?? [],
@@ -277,25 +275,18 @@ function isGoalModeEnabled(projectConfig: ProjectConfig | null): boolean {
   return projectConfig?.goalMode !== false;
 }
 
-function usesPerTaskTruthDispatch(projectConfig: ProjectConfig | null): boolean {
-  return projectConfig?.truthDispatch !== "final_only";
-}
-
 export function buildDirectWorkflowGuidance(params: {
   projectConfig?: ProjectConfig | null;
   host?: string;
 } = {}): WorkflowGuidance {
-  const { projectConfig = null } = params;
   return {
     stage: "done",
     summary: "This task completed through a lean path without extra decomposition.",
     nextsteps: [
-      "1. If the completed task produced reusable knowledge, read `delegateSubagents` and execute the returned `truth-writer` dispatch contract field-by-field.",
-      "2. Let the asynchronously queued completion refresh finish. This reuses the same refresh flow as `claw plan done`.",
+      "Let the asynchronously queued completion refresh finish. This reuses the same refresh flow as `claw plan done`.",
     ],
     notes:
       "Use this lean completion path only as a compatibility surface. Normal workflow guidance should stay on `claw plan create`, then let the planning task decide whether more decomposition is needed.",
-    delegateSubagents: [truthWriterDelegate(projectConfig)],
   };
 }
 
@@ -309,6 +300,7 @@ export async function buildPlanWorkflowGuidance(params: {
   previousStatus?: PlanStatus;
   completionHooks?: PlanCompletionHooks;
   changedTaskIds?: number[];
+  appendedTaskIds?: number[];
   completedTaskIds?: number[];
   host?: string;
 }): Promise<WorkflowGuidance> {
@@ -322,38 +314,40 @@ export async function buildPlanWorkflowGuidance(params: {
     previousStatus,
     completionHooks,
     changedTaskIds,
+    appendedTaskIds,
     completedTaskIds,
   } = params;
-  const scopedPlan = planFile === "plan.json" ? "" : ` --plan ${planFile}`;
-  const editBase = `claw plan edit --task ${taskName}${scopedPlan}`;
-  const startBase = `claw plan start --task ${taskName}${scopedPlan}`;
-  const doneBase = `claw plan done --task ${taskName}${scopedPlan}`;
+  const editBase = "claw plan edit";
+  const startBase = "claw plan start";
+  const resumeBase = "claw plan resume";
+  const doneBase = "claw plan done";
   const hasTasks = plan.tasks.length > 0;
   const allTasksDone = hasTasks && plan.tasks.every((task) => task.status === "done");
   const justEnteredProcess = plan.status.startsWith("process.") && (!previousStatus || previousStatus.startsWith("prepare."));
   const resumedIntoActive = plan.status === "process.active"
     && (previousStatus === "process.wait" || previousStatus === "process.discussing");
   const hasChangedTasks = (changedTaskIds?.length ?? 0) > 0;
+  const hasAppendedTasks = (appendedTaskIds?.length ?? 0) > 0;
   const hasCompletedTasks = (completedTaskIds?.length ?? 0) > 0;
   const goalModeEnabled = isGoalModeEnabled(projectConfig);
   const suppressGoalFields = params.host === "opencode";
   const startedGoalModeThisRound = goalModeEnabled && previousStatus === "process.active";
-  const perTaskTruthDispatch = usesPerTaskTruthDispatch(projectConfig);
   const nextTask = nextUnfinishedTask(plan);
   const activeTask = currentActiveTask(plan);
-  const shouldReturnNextTask = hasCompletedTasks || justEnteredProcess || (!hasChangedTasks && !activeTask);
+  const shouldReturnNextTask = hasCompletedTasks || hasAppendedTasks || justEnteredProcess || (!hasChangedTasks && !activeTask);
   const hasGoal = typeof plan.goal.text === "string" && plan.goal.text.trim().length > 0;
   const nextTaskRef = nextTask ? formatTaskRef(nextTask) : "the next task";
   const processStage = plan.status === "process.discussing" ? "discussion" : "execution";
   const taskDoneCommand = activeTask && !hasCompletedTasks && !justEnteredProcess
-    ? `${editBase} --task-id ${activeTask.id} --task-status done`
-    : `${editBase} --task-id <id> --task-status done`;
+    ? `claw task done --id ${activeTask.id}`
+    : "claw task done --id <id>";
   const suggestedTruthTargetsNote = completionHooks?.truthCandidate.suggestedTruthPaths.length
     ? `Suggested truth targets: ${completionHooks.truthCandidate.suggestedTruthPaths.join(", ")}`
     : "";
   const vars: TemplateVars = {
     editBase,
     startBase,
+    resumeBase,
     doneBase,
     nextTaskRef,
     processStage,
@@ -446,7 +440,7 @@ export async function buildPlanWorkflowGuidance(params: {
           : justEnteredProcess
           ? (goalModeEnabled ? "process.justEntered" : "process.justEntered.noGoalMode")
           : hasCompletedTasks
-          ? (perTaskTruthDispatch ? "process.hasCompletedTasks" : "process.hasCompletedTasks.finalOnlyTruth")
+          ? "process.hasCompletedTasks"
           : activeTask
             ? "process.activeTask"
             : "process.default";
@@ -503,7 +497,9 @@ export async function buildPlanWorkflowGuidance(params: {
         summary: template.summary,
         nextsteps: template.nextsteps,
         ...(template.notes ? { notes: template.notes } : {}),
-        ...(template.goalTool && goalModeEnabled && hasGoal && !suppressGoalFields ? { goalTool: buildGoalTool(plan.goal.text, template.goalTool) } : {}),
+        ...(template.goalTool && goalModeEnabled && previousStatus === "process.active" && hasGoal && !suppressGoalFields
+          ? { goalTool: buildGoalTool(plan.goal.text, template.goalTool) }
+          : {}),
         ...(template.delegateSubagents
           ? { delegateSubagents: buildConfiguredDelegates(template.delegateSubagents, projectConfig) }
           : {}),

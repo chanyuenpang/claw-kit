@@ -208,7 +208,7 @@
 
 ### 原子 `claw plan start` 已实现合同与 Windows A/B
 
-- `claw plan start --task <name> --patch <plan-patch.json> --append-tasks <tasks.json>` 已成为正式原子入口：一次序列化 mutation 内完成 plan refine、追加业务 tasks、把两个 default lifecycle bridge tasks 标记为 done，并把 plan 切换到 `process.active`。
+- `claw plan start --requirements <text> --acceptance <criterion> --add-task <title> --detail <text>` 已成为正式原子入口：它默认读取 session binding，在一次序列化 mutation 内完成 plan refine、追加业务 tasks、把两个 default lifecycle bridge tasks 标记为 done，并把 plan 切换到 `process.active`。
 - 原子结果事件使用 `schemaVersion = 1`；一次 mutation 共享单一 `mutationId`，每个事件拥有唯一 `eventId`，并记录 `commandSource`。CLI 同时输出幂等 `hostActions`，供 host adapter 单向同步 `update_plan` 与 Goal Mode；adapter 消费事件，不反向拥有 canonical CLI plan state。
 - 原有 `claw plan create`、`claw plan edit` 与 `claw plan done` 保持兼容；`plan start` 是减少 refine/activate 固定管理往返的新增入口，不是破坏旧 lifecycle surface 的替换。
 - 固定 Windows low / medium / high A/B 中，legacy path P50 为 `902.79ms`，atomic path P50 为 `385.06ms`，改善 `57.35%`；把 create-time recall 计入管理动作后，首个业务动作前的管理命令数从 `6` 降到 `3`。这是同一固定 A/B corpus 的配对结果，不覆盖上一节独立 predecessor baseline 的 `935.04ms` 观测值。
@@ -270,3 +270,38 @@
 - `0.1.70 lexical_fast_path 33.93ms`
 - `persistent_daemon 255.55ms cache_hit 39.05ms`
 - `cold warm cache route separated`
+
+### 0.1.75 真实 host-action、性能分路与 CLI 退出码陷阱（2026-07-17）
+
+- 真实版本线已核对：全局 `claw` CLI 为 `0.1.75`，`packages/cli/package.json` 与 `packages/core/package.json` 均为 `0.1.75`；本线程绑定的 plugin snapshot `plugin.json` 为 `0.1.75+codex.20260717034602`。性能样本因此属于该已核验的 CLI/source/thread-snapshot 组合，而非仅按仓库版本字符串归类。
+- 在真实 Codex host-action consumer 中，原子 `claw plan start` 墙钟约 `776ms`。单次调用完成 plan patch、追加 `3` 个 business tasks、完成 `2` 个 lifecycle bridge tasks、进入 `process.active`，并消费 `update_plan` 与 `create_goal`；首个 business action 前仍保持 `create`、`search`、`start` 三命令路径。该样本是完整 host-action 消费路径，不能与仅 CLI mutation 的较低耗时样本混作同一指标。
+- `claw plan show` 五次墙钟为 `340ms`、`126ms`、`126ms`、`127ms`、`138ms`；热态范围为 `126–138ms`。报告 plan read 时必须分离首轮与热态，不应将 `340ms` 纳入热态结论。
+- exact filename lexical search 墙钟 `174ms`，telemetry 为 `route = lexical_fast_path`、`queryEmbedding = skipped`、`durationMs = 29.15ms`。一条新的 semantic query 墙钟 `388ms`，为 `route = hybrid`、`queryEmbedding = generated`、`embeddingRuntime = persistent_daemon`、`durationMs = 246.3ms`；重复同一 query 的 cache hit 墙钟 `180ms`，`queryEmbedding = cache_hit`、`durationMs = 37.75ms`。三种样本必须分别统计，cache hit 不能充当 semantic miss 延迟。
+- 本线程首个自然语言召回墙钟 `3187ms`，telemetry `durationMs = 2838.29ms` 且使用 `persistent_daemon`。它属于该线程的 cold layer，不能与后续 persistent-daemon warm semantic 样本合并为统一 search 均值。
+- `claw plan list` 不是有效子命令，但会输出结构化 `PROJECT_CONFIG_INVALID`，同时进程 exit code 仍为 `0`。脚本化调用不能只依赖 exit code 判断 `plan` 子命令是否成功；必须同时检查命令合法性和结构化错误 payload。
+
+#### 本轮验证锚点与检索词
+
+- `.claw/truth/adr/workflow-cost-optimization-route.md`
+- `0.1.75 host-action consumer plan start 776ms`
+- `plan show warm 126ms 138ms`
+- `lexical_fast_path skipped 29.15ms`
+- `persistent_daemon generated 246.3ms cache_hit 37.75ms`
+- `persistent daemon cold natural language 2838.29ms`
+- `claw plan list PROJECT_CONFIG_INVALID exit 0`
+### 0.1.75 质量门禁与 writer 模型合同校正（2026-07-17）
+
+- 完整 `npm test` 成功，墙钟 `60175ms`：core `126/126`、CLI `72/72`，合计 `198/198`。`npm run check` 成功，墙钟 `7270ms`，覆盖全部 adapter TypeScript / manifest 检查与 truth encoding audit。
+- 该组质量门禁未发现 atomic `claw plan start`、idempotent `hostActions`、persistent daemon、query cache、Goal Mode 或 writer contract 回归。性能结论只能与这组通过的质量门禁一起解释，不能将低延迟样本与未验证功能路径混同。
+- 当前 truth-writer 与 adr-writer workflow 合同统一指定 `model=gpt-5.6-luna`；`gpt-5.4-mini` → `gpt-5.6-terra` fallback 只属于过期历史样本，不是当前合同，也不应作为当前 writer 路由建议。
+- 干净 Luna 父线程已真实接受 truth-writer 与 adr-writer 的 Luna dispatch；该事实证明当前线程 surface 可接受 `gpt-5.6-luna`，但不同父线程的 model override surface 可能不同，因此“dispatch 被接受”与“writer 已完成沉淀”必须分开记录。
+- 当前验证应保留原始 host 能力错误，不自行将 Luna 替换为其他模型；若另一个父线程不接受该 model，应记录合同与宿主 surface 漂移，不能把 fallback 叙述回写成当前 workflow contract。
+
+#### 本轮验证锚点与检索词
+
+- `npm test core 126/126 CLI 72/72 198/198 60175ms`
+- `npm run check 7270ms adapter TypeScript manifest truth encoding audit`
+- `truth-writer model=gpt-5.6-luna`
+- `adr-writer model=gpt-5.6-luna`
+- `clean Luna parent thread writer dispatch accepted`
+- `parent thread model override surface`

@@ -1,15 +1,17 @@
 {
-  "version": "0.1.75",
+  "version": "0.1.76",
   "id": "claw-kit",
   "name": "claw-kit",
   "maxTasksToKeep": 9,
   "planning": true,
   "autoUpdate": true,
   "goalMode": true,
-  "truthDispatch": "per_task",
+  "knowledgeWriter": {
+    "externalSkill": null,
+    "model": null,
+    "reasoningEffort": "medium"
+  },
   "externalPlanningSkill": null,
-  "externalTruthSkill": null,
-  "externalAdrSkill": null,
   "defaultPlanTemplate": null,
   "contextPaths": [],
   "memory": {

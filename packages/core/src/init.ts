@@ -19,8 +19,7 @@ export type InitProjectInput = {
   maxTasksToKeep?: number;
   planning?: boolean;
   externalPlanningSkill?: string | null;
-  externalTruthSkill?: string | null;
-  externalAdrSkill?: string | null;
+  externalWriterSkill?: string | null;
   contextPaths?: string[];
   externalDocPaths?: string[];
   gitnexusEnabled?: boolean;
@@ -76,10 +75,12 @@ export function initProject(input: InitProjectInput): InitProjectResult {
     planning: input.planning ?? true,
     autoUpdate: true,
     goalMode: true,
-    truthDispatch: "final_only",
+    knowledgeWriter: {
+      externalSkill: normalizeOptionalSkill(input.externalWriterSkill),
+      model: null,
+      reasoningEffort: "medium",
+    },
     externalPlanningSkill: normalizeOptionalSkill(input.externalPlanningSkill),
-    externalTruthSkill: normalizeOptionalSkill(input.externalTruthSkill),
-    externalAdrSkill: normalizeOptionalSkill(input.externalAdrSkill),
     defaultPlanTemplate: null,
     contextPaths: [...(input.contextPaths ?? [])],
     memory: {

@@ -22,15 +22,16 @@ Detailed call flow:
 4. For low-complexity work, handle the request directly in the host workflow; claw planning, search, and `workflowGuidance` remain inactive.
 5. Only for score `>= 6`, enter the normal claw workflow through `claw plan create`.
 6. Whenever a claw command returns `workflowGuidance`, follow it as the required next-step contract. This is mandatory.
-7. If prior project context is relevant, run `claw search --query "<topic>"` after a new `claw plan create` and use the results to improve the bound task scope.
+7. Use the search guidance returned by `claw context` when recall would help. `claw plan create` may expose `claw search --query "<topic>"` as an optional recommended command, but search is not a mandatory planning step.
 8. Use two-part plan status semantics:
    - `process.discussing`: the plan exists, but execution has not started; stay in discussion/planning work only
-   - `process.active`: execution is live; process one task at a time and update progress with `claw plan edit`
+   - `process.active`: execution is live; process one task at a time and update progress with `claw task edit` or `claw task done`
    - `process.wait`: the round is blocked on user input or an external dependency
    - `end.completed`: all planned work is done and `retrospective.summary` is present
    - `end.closed` / `end.leave`: the round has been closed out; resume active execution when the user explicitly changes direction
 9. The planning skill is invoked by the seeded planning task inside the formal claw workflow, not before task scope exists.
-10. Once requirements are clear and `goal.text` is set, prefer the returned atomic `claw plan start --task <name> --patch <plan-patch.json> --append-tasks <tasks.json>` command to complete the planning bridge and enter `process.active` in one mutation.
+10. Once requirements are clear and `goal.text` is set, prefer the returned atomic `claw plan start` command with intuitive explicit flags such as `--requirements`, repeated `--acceptance`, and repeated `--add-task "<title>" --detail "<detail>"` groups to complete the planning bridge and enter `process.active` in one mutation. Generic patch files are not part of the plan contract.
+11. When several same-type plan or task mutations are already known, repeat the existing option or `--id` group in one command. Arguments execute from left to right and stop at the first semantic failure; follow only the final returned guidance.
 11. After a meaningful completed task, dispatch `truth-writer` when there is reusable context to deposit.
 12. When all tasks are done, clear your tasks list with todowrite, update both `retrospective` and `keyDecisions`, and dispatch `adr-writer` asynchronously from returned `workflowGuidance`.
 13. Close the plan with `claw plan done` after the ADR writer has been dispatched; do not wait for it. Delayed archive keeps the completed plan path readable for at least one hour.
@@ -87,7 +88,8 @@ Truth-value judgment stays on the main agent side. If there is no reusable truth
 - The second essential rule is to decide each turn whether to dispatch `truth-writer`.
 - User authorization already covers goal mode and the required delegated subagents for this thread.
 - Low-complexity requests skip the claw workflow before `claw plan create`, so they do not produce `workflowGuidance`.
-- `claw search` runs after a new `claw plan create` when project recall is relevant. Search uses natural language and prefers the user's language.
+- Treat `claw search` from context or plan recommendations as optional project recall. Use it when relevant, with natural language in the user's preferred language; do not make it a mandatory template step.
 - Whenever claw returns `workflowGuidance`, use it as the single next-step process.
+- Keep claw-generated guidance, return metadata, and host prompt text in English. Preserve user-supplied titles, goals, requirements, and repository document language as provided.
 - Reuse the existing `truth-writer` when possible; otherwise dispatch a new one.
 - Dispatch ADR deposition from the `all tasks done` guidance before root `claw plan done`, but do not wait for completion.

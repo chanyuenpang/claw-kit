@@ -11,6 +11,8 @@ As the workflow guidance matured, a second risk appeared: adapter instructions w
 
 0.1.71 发布后的恢复验收进一步复现了一个边界缺陷：plan 从 `process.wait` 回到 `process.active` 时，先前标记为 `blocked` 的 Goal 仍会被视为 unfinished，直接重放 `create_goal` 因而失败。后续真实 Host 验收又证明，同一个 code-mode call 内 complete→create 会在调用结束结算 complete 时清掉新 Goal。因此恢复桥接既不能依赖 Agent 或错误文本判断状态，也不能把关闭旧 Goal 与创建新 Goal 合并进同一调用。
 
+`0.1.75` 验收再次以真实 `plan.wait` → Goal 自动关闭、`plan.resume` → Goal 自动重建的链路确认该合同；这是本轮唯一观察到的 Goal 状态切换链路。
+
 ## Decision
 
 Treat Goal mode as a thread-level Codex feature. `claw-kit` supplies the plan-derived objective and the calling policy, but it does not claim ownership of host-level goal runtime behavior.
@@ -43,6 +45,7 @@ Default policy:
 - Goal 恢复成为 plan-status router 的程序合同；Agent 不再承担 Goal 状态探测、错误文本匹配、历史判断或状态重放责任。
 - 发布前必须用未发布的本地构建做真实 Host wait→active lifecycle 验收，确认 wait 后 Goal 为空、resume 后新 Goal 跨调用保持 active。
 - The default template activation detail no longer depends on agent-side interpretation of Goal Mode prose, which keeps Codex and opencode output aligned with their respective host contracts.
+- `plan.wait` 与 `plan.resume` 的真实验收结果支持把“先关闭、跨调用再重建”作为当前实现的可回归验证样本。
 
 ## Related Code
 
@@ -54,3 +57,16 @@ Default policy:
 - `packages/codex-adapter/references/workflow-guidance-consumption.md`
 - `packages/codex-adapter/scripts/code-mode-host-action-consumer.mjs`
 - `.claw/tasks/实现-Goal-目标状态幂等保证并发布-0.1.72/plan.json`
+- `.claw/tasks/验收-0.1.75-短Bootstrap-20260717T1255/plan.json`
+
+## Search Terms
+
+- `plan.wait`
+- `plan.resume`
+- `Goal auto-close`
+- `Goal rebuild`
+- `wait resume lifecycle acceptance`
+
+## 2026-07-17 实测补充
+
+指定完成 plan 的真实验收记录确认：`plan.wait` 返回 `update_goal(status="complete")`，后续 `plan.resume` 返回 `create_goal`；两步分属不同 mutation call，未要求 Agent 读取 Goal 状态或解释 `goalTool`。

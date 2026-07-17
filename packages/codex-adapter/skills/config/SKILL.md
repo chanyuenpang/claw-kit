@@ -41,13 +41,13 @@ Use it when the team should share the behavior:
 - `planning`
 - `autoUpdate`
 - `externalPlanningSkill`
-- `externalTruthSkill`
-- `externalAdrSkill`
 - `contextPaths`
 - `memory.externalDocPaths`
 - `memory.embedding`
 - `goalMode`
-- `truthDispatch`
+- `knowledgeWriter.externalSkill`
+- `knowledgeWriter.model`
+- `knowledgeWriter.reasoningEffort`
 - `gitnexus`
 
 ### Personal config
@@ -63,8 +63,11 @@ Example personal override:
 ```json
 {
   "goalMode": false,
-  "truthDispatch": "final_only",
-  "externalTruthSkill": null
+  "knowledgeWriter": {
+    "externalSkill": "my-knowledge-writer",
+    "model": "gpt-5.6-terra",
+    "reasoningEffort": "high"
+  }
 }
 ```
 
@@ -99,7 +102,6 @@ Use the flat canonical fields for simple project-level toggles:
   "autoUpdate": true,
   "externalPlanningSkill": null,
   "goalMode": true,
-  "truthDispatch": "final_only",
   "gitnexus": false
 }
 ```
@@ -108,6 +110,11 @@ Keep nested shape only where the field actually has substructure:
 
 ```json
 {
+  "knowledgeWriter": {
+    "externalSkill": null,
+    "model": null,
+    "reasoningEffort": "medium"
+  },
   "memory": {
     "externalDocPaths": ["docs/"],
     "embedding": {
@@ -118,7 +125,9 @@ Keep nested shape only where the field actually has substructure:
 }
 ```
 
-Legacy nested inputs such as `workflow.goalMode.enabled`, `workflow.truthDispatch.mode`, and `gitnexus.enabled` may be repaired by claw-kit, but they are not the recommended format.
+`knowledgeWriter.externalSkill = null` uses the built-in `claw-kit:knowledge-writer`. `model = null` uses the Codex SDK default model. `reasoningEffort` accepts `minimal`, `low`, `medium`, `high`, or `xhigh`.
+
+Legacy `externalTruthSkill` and `externalAdrSkill` values are migrated into `knowledgeWriter.externalSkill` when they agree or only one is configured. Conflicting legacy writers fall back to the built-in combined writer. Removed `truthDispatch` values are discarded by protocol repair.
 
 ## Safe editing flow
 

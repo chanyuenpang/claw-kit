@@ -25,7 +25,7 @@ function run(cwd, args) {
     env: {
       ...process.env,
       CLAW_HOST: "benchmark",
-      CLAW_OWNER_SESSION_KEY: `workflow-benchmark-${process.pid}`,
+      CODEX_THREAD_ID: `workflow-benchmark-${process.pid}`,
     },
   });
   const durationMs = Number((performance.now() - startedAt).toFixed(2));
@@ -38,10 +38,6 @@ function run(cwd, args) {
   };
 }
 
-function writeJson(filePath, value) {
-  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-}
-
 function runCase(spec, mode) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), `claw-workflow-${spec.name}-`));
   try {
@@ -49,41 +45,42 @@ function runCase(spec, mode) {
     const title = `benchmark-${spec.name}-${Date.now()}`;
     const create = run(root, ["plan", "create", title, "--goal", `Benchmark ${spec.name} workflow`]);
     const taskName = path.basename(path.dirname(create.output.planPath));
-    const patchPath = path.join(root, "plan-patch.json");
-    const tasksPath = path.join(root, "tasks.json");
-    writeJson(patchPath, {
-      requirements: {
-        summary: `Fixed ${spec.name} benchmark corpus`,
-        openQuestions: [],
-        acceptanceCriteria: ["All benchmark tasks complete"],
-      },
-      rules: ["Keep benchmark inputs deterministic"],
-    });
-    writeJson(tasksPath, Array.from({ length: spec.businessTaskCount }, (_, index) => ({
+    const businessTasks = Array.from({ length: spec.businessTaskCount }, (_, index) => ({
       title: `${spec.name} outcome ${index + 1}`,
       detail: "Deterministic benchmark task",
-      status: "pending",
-    })));
+    }));
     const lifecycle = mode === "atomic"
       ? {
           start: run(root, [
-            "plan", "start", "--task", taskName, "--patch", patchPath, "--append-tasks", tasksPath,
+            "plan", "start",
+            "--requirements", `Fixed ${spec.name} benchmark corpus`,
+            "--acceptance", "All benchmark tasks complete",
+            "--rule", "Keep benchmark inputs deterministic",
+            ...businessTasks.flatMap((task) => ["--add-task", task.title, "--detail", task.detail]),
           ]),
         }
       : {
-          patch: run(root, ["plan", "edit", "--task", taskName, "--patch", patchPath]),
-          append: run(root, ["plan", "edit", "--task", taskName, "--append-tasks", tasksPath]),
-          planningDone: run(root, ["plan", "edit", "--task", taskName, "--task-id", "1", "--task-status", "done"]),
-          activate: run(root, ["plan", "edit", "--task", taskName, "--plan-status", "process.active"]),
+          planEdit: run(root, [
+            "plan", "edit",
+            "--requirements", `Fixed ${spec.name} benchmark corpus`,
+            "--acceptance", "All benchmark tasks complete",
+            "--rule", "Keep benchmark inputs deterministic",
+          ]),
+          ...Object.fromEntries(businessTasks.map((task, index) => [
+            `taskAdd${index + 1}`,
+            run(root, ["task", "add", "--title", task.title, "--detail", task.detail]),
+          ])),
+          planningDone: run(root, ["task", "done", "--id", "1"]),
+          activate: run(root, ["plan", "edit", "--status", "process.active"]),
         };
-    const show = run(root, ["plan", "show", "--task", taskName]);
+    const show = run(root, ["plan", "show"]);
     const stages = { create, ...lifecycle, show };
     return {
       case: spec.name,
       mode,
       businessTaskCount: spec.businessTaskCount,
-      managementCommandsBeforeWork: mode === "atomic" ? 3 : 6,
-      planMutationCommandsBeforeWork: mode === "atomic" ? 2 : 5,
+      managementCommandsBeforeWork: mode === "atomic" ? 3 : 5 + spec.businessTaskCount,
+      planMutationCommandsBeforeWork: mode === "atomic" ? 2 : 4 + spec.businessTaskCount,
       totalBeforeWorkMs: Number(Object.values(stages)
         .filter((stage) => stage !== show)
         .reduce((sum, stage) => sum + stage.durationMs, 0)
@@ -101,15 +98,15 @@ if (!fs.existsSync(cliEntry)) {
 }
 
 const startedAt = new Date().toISOString();
-const legacyResults = cases.map((spec) => runCase(spec, "legacy"));
+const sequentialResults = cases.map((spec) => runCase(spec, "sequential"));
 const atomicResults = cases.map((spec) => runCase(spec, "atomic"));
-const results = [...legacyResults, ...atomicResults];
-const legacyTotals = legacyResults.map((result) => result.totalBeforeWorkMs);
+const results = [...sequentialResults, ...atomicResults];
+const sequentialTotals = sequentialResults.map((result) => result.totalBeforeWorkMs);
 const atomicTotals = atomicResults.map((result) => result.totalBeforeWorkMs);
-const legacyP50 = percentile(legacyTotals, 0.5);
+const sequentialP50 = percentile(sequentialTotals, 0.5);
 const atomicP50 = percentile(atomicTotals, 0.5);
 const report = {
-  schemaVersion: 2,
+  schemaVersion: 3,
   startedAt,
   machine: {
     platform: process.platform,
@@ -121,15 +118,15 @@ const report = {
   runtime: {
     packageVersion: JSON.parse(fs.readFileSync(path.join(repoRoot, "packages", "cli", "package.json"), "utf8")).version,
     cliEntry,
-    modes: ["legacy-five-mutation", "atomic-refine-and-activate"],
+    modes: ["sequential-explicit", "atomic-explicit-start"],
   },
   corpus: cases,
   results,
   summary: {
-    legacyP50BeforeWorkMs: legacyP50,
+    sequentialP50BeforeWorkMs: sequentialP50,
     atomicP50BeforeWorkMs: atomicP50,
-    p50ImprovementPercent: Number((((legacyP50 - atomicP50) / legacyP50) * 100).toFixed(2)),
-    legacyP95BeforeWorkMs: percentile(legacyTotals, 0.95),
+    p50ImprovementPercent: Number((((sequentialP50 - atomicP50) / sequentialP50) * 100).toFixed(2)),
+    sequentialP95BeforeWorkMs: percentile(sequentialTotals, 0.95),
     atomicP95BeforeWorkMs: percentile(atomicTotals, 0.95),
     allSuccessful: results.every((result) => result.success),
   },

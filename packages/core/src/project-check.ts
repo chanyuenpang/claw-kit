@@ -9,6 +9,7 @@ import { resolveProjectContext } from "./context.js";
 import { findProjectRoot, normalizeTaskName } from "./paths.js";
 import { migrateLegacyTaskLayout } from "./task-layout-migration.js";
 import type {
+  KnowledgeWriterReasoningEffort,
   MemoryEmbeddingConfig,
   ProjectConfig,
   ProjectProtocolCheckResult,
@@ -113,6 +114,7 @@ function normalizeProjectConfig(raw: unknown, projectRoot: string): ProjectConfi
     name: _name,
     maxTasksToKeep: _maxTasksToKeep,
     planning: _planning,
+    knowledgeWriter: _knowledgeWriter,
     externalPlanningSkill: _externalPlanningSkill,
     externalTruthSkill: _externalTruthSkill,
     externalAdrSkill: _externalAdrSkill,
@@ -121,6 +123,7 @@ function normalizeProjectConfig(raw: unknown, projectRoot: string): ProjectConfi
     memory: _memory
   } = source ?? {};
   const sourceMemory = asObject(source?.memory);
+  const sourceKnowledgeWriter = asObject(source?.knowledgeWriter);
   const maxTasksToKeep = source?.maxTasksToKeep;
 
   return {
@@ -134,10 +137,15 @@ function normalizeProjectConfig(raw: unknown, projectRoot: string): ProjectConfi
     planning: typeof source?.planning === "boolean" ? source.planning : true,
     autoUpdate: readBooleanConfig(source?.autoUpdate, true),
     goalMode: readBooleanConfig(source?.goalMode, true),
-    truthDispatch: readTruthDispatchConfig(source?.truthDispatch, "final_only"),
+    knowledgeWriter: {
+      externalSkill: resolveExternalWriterSkill(source, sourceKnowledgeWriter),
+      model: normalizeOptionalSkill(sourceKnowledgeWriter?.model),
+      reasoningEffort: readKnowledgeWriterReasoningEffort(
+        sourceKnowledgeWriter?.reasoningEffort,
+        "medium",
+      ),
+    },
     externalPlanningSkill: normalizeOptionalSkill(source?.externalPlanningSkill),
-    externalTruthSkill: normalizeOptionalSkill(source?.externalTruthSkill),
-    externalAdrSkill: normalizeOptionalSkill(source?.externalAdrSkill),
     defaultPlanTemplate: normalizeOptionalTemplateName(source?.defaultPlanTemplate),
     contextPaths: normalizeStringArray(source?.contextPaths),
     memory: {
@@ -191,10 +199,18 @@ function validateProjectConfig(raw: unknown, issues: ProjectProtocolIssue[]): vo
   requireBoolean(config, "planning", issues);
   requireOptionalBoolean(config, "autoUpdate", issues);
   requireBoolean(config, "goalMode", issues);
-  requireTruthDispatchString(config, "truthDispatch", issues);
+  const knowledgeWriter = requireObject(config, "knowledgeWriter", issues);
+  if (knowledgeWriter) {
+    requireNullableString(knowledgeWriter, "externalSkill", issues, "knowledgeWriter.externalSkill");
+    requireNullableString(knowledgeWriter, "model", issues, "knowledgeWriter.model");
+    requireKnowledgeWriterReasoningEffort(
+      knowledgeWriter,
+      "reasoningEffort",
+      issues,
+      "knowledgeWriter.reasoningEffort",
+    );
+  }
   requireNullableString(config, "externalPlanningSkill", issues);
-  requireNullableString(config, "externalTruthSkill", issues);
-  requireNullableString(config, "externalAdrSkill", issues);
   requireNullableString(config, "defaultPlanTemplate", issues);
   requireStringArray(config, "contextPaths", issues);
   requireBoolean(config, "gitnexus", issues);
@@ -206,6 +222,21 @@ function validateProjectConfig(raw: unknown, issues: ProjectProtocolIssue[]): vo
     requireNullableEmbeddingConfig(memory, "embedding", issues, "memory.embedding");
   }
 
+}
+
+function resolveExternalWriterSkill(
+  source: Record<string, unknown> | null,
+  knowledgeWriter: Record<string, unknown> | null,
+): string | null {
+  if (knowledgeWriter && Object.prototype.hasOwnProperty.call(knowledgeWriter, "externalSkill")) {
+    return normalizeOptionalSkill(knowledgeWriter.externalSkill);
+  }
+  const truthSkill = normalizeOptionalSkill(source?.externalTruthSkill);
+  const adrSkill = normalizeOptionalSkill(source?.externalAdrSkill);
+  if (truthSkill && adrSkill && truthSkill !== adrSkill) {
+    return null;
+  }
+  return truthSkill ?? adrSkill;
 }
 
 function requireString(
@@ -268,7 +299,7 @@ function requireOptionalBoolean(
   }
 }
 
-function requireTruthDispatchString(
+function requireKnowledgeWriterReasoningEffort(
   source: Record<string, unknown>,
   key: string,
   issues: ProjectProtocolIssue[],
@@ -279,8 +310,8 @@ function requireTruthDispatchString(
     return;
   }
   const value = source[key];
-  if (value !== "per_task" && value !== "final_only") {
-    issues.push({ path: label, message: 'Field must be "per_task" or "final_only".' });
+  if (value !== "minimal" && value !== "low" && value !== "medium" && value !== "high" && value !== "xhigh") {
+    issues.push({ path: label, message: 'Field must be "minimal", "low", "medium", "high", or "xhigh".' });
   }
 }
 
@@ -377,11 +408,11 @@ function readBooleanConfig(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
 
-function readTruthDispatchConfig(
+function readKnowledgeWriterReasoningEffort(
   value: unknown,
-  fallback: "per_task" | "final_only",
-): "per_task" | "final_only" {
-  if (value === "per_task" || value === "final_only") {
+  fallback: KnowledgeWriterReasoningEffort,
+): KnowledgeWriterReasoningEffort {
+  if (value === "minimal" || value === "low" || value === "medium" || value === "high" || value === "xhigh") {
     return value;
   }
   return fallback;

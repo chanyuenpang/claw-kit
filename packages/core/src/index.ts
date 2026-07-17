@@ -2,6 +2,7 @@ export * from "./context.js";
 export * from "./completion-hooks.js";
 export * from "./errors.js";
 export * from "./init.js";
+export * from "./knowledge-sidecar.js";
 export * from "./memory.js";
 export * from "./plan-events.js";
 export * from "./project-check.js";

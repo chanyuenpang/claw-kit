@@ -1,6 +1,6 @@
 {
   "name": "@claw-kit/codex-adapter",
-  "version": "0.1.75",
+  "version": "0.1.76",
   "private": true,
   "type": "module",
   "description": "Codex adapter assets for landing the claw-kit .claw workflow inside Codex.",
@@ -17,6 +17,17 @@
     "type": "git",
     "url": "https://github.com/chanyuenpang/claw-kit.git",
     "directory": "packages/codex-adapter"
+  },
+  "dependencies": {
+    "@openai/codex-sdk": "0.144.5"
+  },
+  "optionalDependencies": {
+    "@openai/codex-darwin-arm64": "npm:@openai/codex@0.144.5-darwin-arm64",
+    "@openai/codex-darwin-x64": "npm:@openai/codex@0.144.5-darwin-x64",
+    "@openai/codex-linux-arm64": "npm:@openai/codex@0.144.5-linux-arm64",
+    "@openai/codex-linux-x64": "npm:@openai/codex@0.144.5-linux-x64",
+    "@openai/codex-win32-arm64": "npm:@openai/codex@0.144.5-win32-arm64",
+    "@openai/codex-win32-x64": "npm:@openai/codex@0.144.5-win32-x64"
   },
   "scripts": {
     "build": "node -e \"console.log('codex-adapter has no build step')\"",

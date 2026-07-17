@@ -13,6 +13,14 @@ export type MemoryEmbeddingConfig = {
   outputDimensionality?: number;
 };
 
+export type KnowledgeWriterReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
+
+export type KnowledgeWriterConfig = {
+  externalSkill?: string | null;
+  model?: string | null;
+  reasoningEffort?: KnowledgeWriterReasoningEffort;
+};
+
 export type ProjectConfig = {
   version?: string;
   id?: string;
@@ -21,10 +29,8 @@ export type ProjectConfig = {
   planning?: boolean;
   autoUpdate?: boolean;
   goalMode?: boolean;
-  truthDispatch?: "per_task" | "final_only";
+  knowledgeWriter?: KnowledgeWriterConfig;
   externalPlanningSkill?: string | null;
-  externalTruthSkill?: string | null;
-  externalAdrSkill?: string | null;
   defaultPlanTemplate?: string | null;
   contextPaths?: string[];
   memory?: {
@@ -38,10 +44,8 @@ export type ProjectConfig = {
 export type TemplateConfigOverride = {
   autoUpdate?: boolean;
   goalMode?: boolean;
-  truthDispatch?: "per_task" | "final_only";
+  knowledgeWriter?: KnowledgeWriterConfig;
   externalPlanningSkill?: string | null;
-  externalTruthSkill?: string | null;
-  externalAdrSkill?: string | null;
 };
 
 export type PlanPhase = "prepare" | "process" | "end";
@@ -171,6 +175,7 @@ export type WorkflowGuidanceSubagent = {
   skill: string;
   dispatch: WorkflowGuidanceSubagentDispatch;
   model?: string;
+  reasoning_effort?: "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
   fork_context?: boolean;
   waitForCompletion: boolean;
   preferReuseSameTypeInThread?: boolean;
@@ -498,11 +503,14 @@ export type PlanEditInput = {
   taskName: string;
   planFile?: string;
   changeSummary?: string;
-  patch?: Partial<PlanDocument>;
+  updates?: PlanFieldUpdates;
   planStatus?: string;
   taskId?: number;
   taskStatus?: PlanTaskStatus;
   taskChoiceId?: string;
+  taskTitle?: string;
+  taskDetail?: string;
+  removeTaskIds?: number[];
   appendTasks?: PlanTask[];
   completeLifecycleBridge?: boolean;
   commandSource?: "plan.edit" | "plan.start" | "plan.done";
@@ -510,6 +518,56 @@ export type PlanEditInput = {
   workflowDefinitions?: string;
   host?: string;
   ownerSessionKey?: string;
+  operations?: PlanMutationOperation[];
+};
+
+export type PlanMutationOperation =
+  | { type: "plan.update"; updates: PlanFieldUpdates }
+  | { type: "plan.status"; status: string }
+  | { type: "task.add"; title: string; detail?: string }
+  | {
+      type: "task.edit";
+      id: number;
+      title?: string;
+      detail?: string;
+      status?: PlanTaskStatus;
+      choiceId?: string;
+    }
+  | { type: "task.remove"; id: number };
+
+export type PlanMutationChainResult = {
+  status: "completed" | "partial";
+  completedOperations: number;
+  remainingOperations: number;
+  failedOperation?: {
+    index: number;
+    type: PlanMutationOperation["type"];
+    error: {
+      code: string;
+      message: string;
+      details?: Record<string, unknown>;
+    };
+  };
+};
+
+export type PlanFieldUpdates = {
+  goalText?: string;
+  requirementsSummary?: string;
+  openQuestions?: string[];
+  removeOpenQuestions?: string[];
+  acceptanceCriteria?: string[];
+  removeAcceptanceCriteria?: string[];
+  planSummary?: string;
+  rules?: string[];
+  removeRules?: string[];
+  keyDecisions?: string[];
+  removeKeyDecisions?: string[];
+  references?: PlanReference[];
+  removeReferencePaths?: string[];
+  retrospectiveSummary?: string;
+  whatWorked?: string[];
+  issues?: string[];
+  followUps?: string[];
 };
 
 export type PlanEditResult = {
@@ -526,6 +584,7 @@ export type PlanEditResult = {
   workflowGuidance: WorkflowGuidance;
   plan: PlanDocument;
   planView: PlanViewModel;
+  operationChain?: PlanMutationChainResult;
 };
 
 export type PlanShowInput = {

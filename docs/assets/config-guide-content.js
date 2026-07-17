@@ -60,12 +60,12 @@ export const configGuideContent = {
         example: `"goalMode": true`
       },
       {
-        id: "truthDispatch",
+        id: "knowledgeWriter",
         group: "Workflow",
-        title: "When truth capture should be prompted",
-        summary: 'Allowed values: `per_task` and `final_only`.',
-        detail: '`final_only` is the default and suppresses mid-task truth guidance while keeping closeout truth and ADR deposition. Use `per_task` as an explicit opt-in when intermediate milestones regularly produce reusable truth.',
-        example: `"truthDispatch": "final_only"`
+        title: "Auto-doc writer model and reasoning",
+        summary: "Configures the Codex SDK writer used after a plan closes.",
+        detail: "Set model to null to use the SDK default. reasoningEffort accepts minimal, low, medium, high, or xhigh. Turn report capture is always enabled for the active plan.",
+        example: `"knowledgeWriter": { "externalSkill": null, "model": null, "reasoningEffort": "medium" }`
       },
       {
         id: "defaultPlanTemplate",
@@ -92,20 +92,12 @@ export const configGuideContent = {
         example: `"externalPlanningSkill": "team-planner"`
       },
       {
-        id: "externalTruthSkill",
+        id: "knowledgeWriter.externalSkill",
         group: "Extension",
-        title: "Project-selected truth writer",
-        summary: "Overrides the built-in truth writer when the project has its own capture surface.",
-        detail: "Keep it null for the default behavior; change it only when the team maintains a real alternative writer workflow.",
-        example: `"externalTruthSkill": "external-truth-writer"`
-      },
-      {
-        id: "externalAdrSkill",
-        group: "Extension",
-        title: "Project-selected ADR writer",
-        summary: "Overrides the built-in ADR writer when architecture decisions should flow through a custom surface.",
-        detail: "This is most useful for teams that already maintain a project-specific ADR process.",
-        example: `"externalAdrSkill": "external-adr-writer"`
+        title: "Project-selected knowledge writer",
+        summary: "Overrides the built-in combined truth-and-ADR writer.",
+        detail: "Keep it null for claw-kit:knowledge-writer; set it only when the team maintains one writer that can judge and deposit both truth and ADR content.",
+        example: `"knowledgeWriter": { "externalSkill": "external-knowledge-writer" }`
       },
       {
         id: "memory.enabled",
@@ -197,12 +189,12 @@ export const configGuideContent = {
         example: `"goalMode": true`
       },
       {
-        id: "truthDispatch",
+        id: "knowledgeWriter",
         group: "工作流",
-        title: "什么时候提示 truth 捕获",
-        summary: "可选值只有 `per_task` 和 `final_only`。",
-        detail: "`final_only` 是默认值，会关闭中途 truth 引导，但保留收尾阶段的 truth 和 ADR 写回；只有经常在中间里程碑产生可复用知识时才显式启用 `per_task`。",
-        example: `"truthDispatch": "final_only"`
+        title: "auto-doc writer 的模型与思考深度",
+        summary: "配置 plan closeout 后由 Codex SDK 启动的知识 writer。",
+        detail: "model 为 null 时使用 SDK 默认模型；reasoningEffort 可选 minimal、low、medium、high 或 xhigh。当前 plan 的逐回合 report 捕获始终启用。",
+        example: `"knowledgeWriter": { "externalSkill": null, "model": null, "reasoningEffort": "medium" }`
       },
       {
         id: "defaultPlanTemplate",
@@ -229,20 +221,12 @@ export const configGuideContent = {
         example: `"externalPlanningSkill": "team-planner"`
       },
       {
-        id: "externalTruthSkill",
+        id: "knowledgeWriter.externalSkill",
         group: "扩展",
-        title: "项目指定的 truth writer",
-        summary: "当项目有自己的 truth 写回流程时，用它覆盖内建 truth writer。",
-        detail: "如果没有明确替代流程，就保持 null 继续使用默认行为。",
-        example: `"externalTruthSkill": "external-truth-writer"`
-      },
-      {
-        id: "externalAdrSkill",
-        group: "扩展",
-        title: "项目指定的 ADR writer",
-        summary: "当架构决策要走自定义写回流程时，用它覆盖内建 ADR writer。",
-        detail: "这通常只对已经有项目级 ADR 流程的团队有意义。",
-        example: `"externalAdrSkill": "external-adr-writer"`
+        title: "项目指定的 knowledge writer",
+        summary: "覆盖内建的 truth 与 ADR 合并 writer。",
+        detail: "保持 null 时使用 claw-kit:knowledge-writer；只有项目维护了能同时判断并沉淀 truth 与 ADR 的 writer 时才设置。",
+        example: `"knowledgeWriter": { "externalSkill": "external-knowledge-writer" }`
       },
       {
         id: "memory.enabled",
@@ -284,7 +268,7 @@ export const configGuideContent = {
   "version": "0.1.54",
   "planning": true,
   "goalMode": true,
-  "truthDispatch": "final_only",
+  "knowledgeWriter": { "externalSkill": null, "model": null, "reasoningEffort": "medium" },
   "gitnexus": false
 }`
       },
@@ -292,7 +276,7 @@ export const configGuideContent = {
         title: "个人覆盖配置",
         body: `{
   "goalMode": false,
-  "truthDispatch": "final_only",
+  "knowledgeWriter": { "externalSkill": null, "model": "gpt-5.6-sol", "reasoningEffort": "high" },
   "defaultPlanTemplate": "my-personal-template"
 }`
       },

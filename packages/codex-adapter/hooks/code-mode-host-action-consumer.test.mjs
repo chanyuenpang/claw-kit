@@ -45,7 +45,7 @@ test("parseClawCommandResult extracts the first complete CLI JSON object", () =>
 
 test("program dispatches each native plan and Goal action exactly once", async () => {
   const calls = [];
-  const result = { hostActions: makeActions(), goalTool: { tool: "create_goal", objective: "must not execute" } };
+  const result = { hostActions: makeActions() };
   const hostTools = {
     update_plan: async (input) => calls.push(["update_plan", input]),
     create_goal: async (input) => calls.push(["create_goal", input]),
@@ -128,7 +128,7 @@ test("runCodexPlanMutation keeps CLI mutation and direct host dispatch in one pr
   const calls = [];
   const result = { ok: true, command: "plan.done", hostActions: makeActions() };
   const run = await runCodexPlanMutation({
-    command: "claw plan done --task example --summary done",
+    command: "claw plan done --retrospective done",
     runCommand: async (command) => { calls.push(["command", command]); return JSON.stringify(result); },
     hostTools: {
       update_plan: async () => calls.push(["host", "update_plan"]),
@@ -143,29 +143,56 @@ test("runCodexPlanMutation keeps CLI mutation and direct host dispatch in one pr
   assert.equal(run.result.command, "plan.done");
 });
 
-test("the embedded driver dispatches each native host action exactly once", async () => {
+test("the embedded bootstrap caches the CLI driver and dispatches native host actions", async () => {
   const skill = await fs.readFile(path.resolve(hooksDir, "..", "skills", "using-claw-kit", "SKILL.md"), "utf8");
   const match = skill.match(/```javascript\n([\s\S]*?)\n```/);
-  assert.ok(match, "using-claw-kit must embed the fixed code-mode driver");
+  assert.ok(match, "using-claw-kit must embed the short code-mode bootstrap");
 
   const calls = [];
-  const result = { ok: true, command: "plan.start", hostActions: makeActions() };
+  const result = { ok: true, command: "plan.start", stage: "execution", planSummary: "1/2 example", hostActions: makeActions() };
+  const driverSource = `async ({ command, workdir, timeout_ms }, { tools, text }) => {
+    const raw = await tools.shell_command({ command: command + " --host codex", workdir, timeout_ms });
+    const parsed = JSON.parse(raw);
+    for (const action of parsed.hostActions ?? []) await tools[action.tool](action.input);
+    const visible = { stage: parsed.stage, planSummary: parsed.planSummary };
+    text(JSON.stringify(visible));
+    return visible;
+  }`;
+  const cache = new Map();
   const context = vm.createContext({
     tools: {
-      shell_command: async (options) => { calls.push(["command", options]); return `Exit code: 0\nOutput:\n${JSON.stringify(result)}`; },
+      shell_command: async (options) => {
+        calls.push(["command", options]);
+        if (options.command === "claw codex driver") {
+          return JSON.stringify({
+            ok: true,
+            cacheKey: "claw-kit:codex-driver:v3:s1",
+            driverVersion: 3,
+            hostActionSchemaVersion: 1,
+            source: driverSource,
+          });
+        }
+        return JSON.stringify(result);
+      },
       update_plan: async (input) => calls.push(["update_plan", input]),
       create_goal: async (input) => calls.push(["create_goal", input]),
       update_goal: async (input) => calls.push(["update_goal", input]),
     },
     text: (value) => calls.push(["text", value]),
-    Set, JSON, Error, Object, String,
+    load: (key) => cache.get(key),
+    store: (key, value) => cache.set(key, value),
+    Set, JSON, Error, Object, String, Map, eval,
   });
   const runClawPlanMutation = vm.runInContext(`${match[1]}\nrunClawPlanMutation`, context);
 
-  const actual = await runClawPlanMutation({ command: "claw plan start --task example", workdir: "G:\\example" });
+  const actual = await runClawPlanMutation({ command: "claw plan start --requirements ready", workdir: "G:\\example" });
+  await runClawPlanMutation({ command: "claw plan edit --summary example", workdir: "G:\\example" });
 
-  assert.equal(actual.command, "plan.start");
+  assert.deepEqual(actual, { stage: "execution", planSummary: "1/2 example" });
+  assert.equal("hostActions" in actual, false);
   assert.deepEqual(calls.map(([name]) => name), [
+    "command", "command", "update_plan", "create_goal", "update_goal", "text",
     "command", "update_plan", "create_goal", "update_goal", "text",
   ]);
+  assert.equal(calls.filter(([name, input]) => name === "command" && input.command === "claw codex driver").length, 1);
 });

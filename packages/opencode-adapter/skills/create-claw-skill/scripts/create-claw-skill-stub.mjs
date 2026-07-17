@@ -119,9 +119,6 @@ Recommended batch task detail:
 function buildTemplate({ skillName, templateId, targetWork }) {
   return `${JSON.stringify({
     id: templateId,
-    configOverride: {
-      truthDispatch: "final_only",
-    },
     title: skillName,
     status: "process.active",
     goal: {
