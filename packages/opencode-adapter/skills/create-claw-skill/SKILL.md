@@ -5,24 +5,15 @@ description: Use when a user wants to convert a specified text skill or skill id
 <!-- AUTO-GENERATED from shared/skills/create-claw-skill/SKILL.md. Edit the shared source instead. -->
 # create-claw-skill
 
-This skill converts a specified text skill or user idea into a claw-template-backed skill.
+Convert a specified text skill or user idea into a template-backed claw skill. Keep this entry thin; the template owns conversion and validation.
 
-Keep this entry thin. The claw template owns the workflow, tool usage, validation, content coverage, and generated-skill routing rules.
+## Route By Task Ownership
 
-## Entry Routing
+- If this skill fully owns the whole current task, use `claw plan create --template create-claw-skill --title "<skill-name>"`.
+- If this skill fully owns one stage of a broader plan, use `claw subplan create --parent <parent-task-name> --task-id <id> --template create-claw-skill`. A batch is a common example: the broader plan contains repeated conversion stages, and each stage invokes this skill once as a subplan.
+- If this skill only contributes instructions inside a stage that mixes multiple skills, do not create its template plan. Read `FALLBACK.md` and apply the relevant guidance inside the owning workflow.
+- If the claw CLI or template is unavailable, read `FALLBACK.md` and run the direct workflow.
 
-Before entering the template, classify the request shape:
+After plan or subplan creation, follow the returned `workflowGuidance`.
 
-- Direct single-target request: use `claw plan create --template create-claw-skill --title "<source-skill-or-target-skill-name>"`.
-- Active parent-plan task: use `claw subplan create --parent <parent-task-name> --task-id <id> --template create-claw-skill` when execution reaches a task that explicitly asks to use `create-claw-skill`.
-- Batch or mixed request: create a normal root claw plan first, split the work into one task per target conversion or coherent skill-shaped unit, and create the `create-claw-skill` subplan only when execution reaches each target task.
-
-For batch or mixed root plans, target task titles should use this shape:
-
-`Run a create-claw-skill subplan, convert <skill-name>`
-
-Target task details should make the subplan requirement part of the task goal:
-
-`Goal: run a create-claw-skill subplan to convert <source-skill-path> into a claw skill. This subtask is satisfied by creating and completing that target subplan, not by running the claw skill workflow in the root plan. When executing this task, first run claw subplan create --parent <root-task-name> --task-id <id> --template create-claw-skill, then follow the returned workflowGuidance inside that subplan until the subplan completes.`
-
-After `claw plan create` or `claw subplan create` returns, follow the returned `workflowGuidance` as the execution contract.
+Fallback: `FALLBACK.md`.

@@ -7,13 +7,12 @@ const skillName = requireArg(args, "skill-name");
 const templateId = args["template-id"] ?? skillName;
 const targetWork = args["target-work"] ?? `complete <target-work> with ${skillName}`;
 const fallbackDoc = args["fallback-doc"] ?? "FALLBACK.md";
-const scope = readScope(args.scope);
 const outputDir = args["out"];
 
 const files = {
-  "SKILL.md": buildSkillEntry({ skillName, templateId, targetWork, fallbackDoc, scope }),
-  "TEMPLATE.json": buildTemplate({ skillName, templateId, targetWork, scope }),
-  "CONTENT-COVERAGE.md": buildCoverage({ skillName, templateId, targetWork, fallbackDoc, scope }),
+  "SKILL.md": buildSkillEntry({ skillName, templateId, fallbackDoc }),
+  "TEMPLATE.json": buildTemplate({ skillName, templateId, targetWork }),
+  "CONTENT-COVERAGE.md": buildCoverage({ skillName, templateId, targetWork, fallbackDoc }),
   [fallbackDoc]: buildFallback({ skillName }),
 };
 
@@ -40,12 +39,16 @@ if (outputDir) {
 
 function parseArgs(argv) {
   const parsed = {};
+  const allowed = new Set(["help", "skill-name", "template-id", "target-work", "fallback-doc", "out"]);
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
     if (!token.startsWith("--")) {
       throw new Error(`Unexpected positional argument: ${token}`);
     }
     const key = token.slice(2);
+    if (!allowed.has(key)) {
+      throw new Error(`Unknown option: --${key}`);
+    }
     if (key === "help") {
       parsed.help = true;
       continue;
@@ -75,23 +78,13 @@ node scripts/create-claw-skill-stub.mjs --skill-name <name> [options]
 
 Options:
   --template-id <id>       Template id advertised by the skill entry. Defaults to skill name.
-  --target-work <text>     Batch/mixed target-work wording.
-  --fallback-doc <file>    Adjacent fallback document. Defaults to FALLBACK.md.
-  --scope <scope>          Template creation scope. Supported value: session.
+  --target-work <text>     Template goal wording. Defaults from skill name.
+  --fallback-doc <file>    Adjacent plan-independent fallback. Defaults to FALLBACK.md.
   --out <dir>              Write generated files into this directory. Omit to print to stdout.
 `);
 }
 
-function readScope(value) {
-  if (value === undefined || value === "project") return undefined;
-  if (value === "session") return value;
-  throw new Error(`Unsupported --scope value: ${value}. Expected session or project.`);
-}
-
-function buildSkillEntry({ skillName, templateId, targetWork, fallbackDoc, scope }) {
-  const availability = scope === "session"
-    ? `## Session-scoped entry\n\nThis template declares \`scope: "session"\`, so direct entry works without a project \`.claw\` directory. Use \`${fallbackDoc}\` only when the claw CLI or this template is unavailable.`
-    : `## No-.claw Fallback\n\nIf the current workspace does not contain a \`.claw\` directory, read \`${fallbackDoc}\` directly and follow the fallback instructions.`;
+function buildSkillEntry({ skillName, templateId, fallbackDoc }) {
   return `---
 name: ${skillName}
 description: TODO: describe when to use this claw skill.
@@ -100,21 +93,14 @@ description: TODO: describe when to use this claw skill.
 
 TODO: Replace this sentence with the skill's concise purpose.
 
-${availability}
+## Route By Task Ownership
 
-## Entry Routing
+- Whole task: when this skill fully owns the current task, use \`claw plan create --template ${templateId} --title "${skillName}"\`.
+- Independent stage: when this skill fully owns one stage of a broader plan, use \`claw subplan create --parent <parent-task-name> --task-id <id> --template ${templateId}\`. A batch is a repeated-stage case: invoke this skill once as a subplan for each stage.
+- Mixed stage: when this skill only contributes part of a stage that mixes multiple skills, do not create its template plan. Read \`${fallbackDoc}\` and apply the relevant fallback guidance inside the owning workflow.
+- Unavailable claw tooling: when the claw CLI or this template is unavailable, read \`${fallbackDoc}\` and run the direct workflow.
 
-- Direct single-target request: use \`claw plan create --template ${templateId} --title "${skillName}"\`.
-- Active parent-plan task: use \`claw subplan create --parent <parent-task-name> --task-id <id> --template ${templateId}\` when execution reaches a task that explicitly asks to use this skill.
-- Batch or mixed request: create a normal root claw plan first. Split the work into one task per target or coherent skill-shaped unit. Each target task should run this skill as an execution-time subplan, not perform the target work directly from the root plan.
-
-Recommended batch task title:
-
-\`Run a ${skillName} subplan, complete ${targetWork}\`
-
-Recommended batch task detail:
-
-\`Goal: run the ${skillName} subplan to complete ${targetWork}. This task is satisfied by creating and completing that target subplan. First run claw subplan create --parent <root-task-name> --task-id <id> --template ${templateId}, then follow the returned workflowGuidance inside that subplan until it completes. Record the subplan result in the root plan before marking this task done.\`
+After plan or subplan creation, follow the returned \`workflowGuidance\`.
 
 ## References
 
@@ -125,10 +111,9 @@ Recommended batch task detail:
 `;
 }
 
-function buildTemplate({ skillName, templateId, targetWork, scope }) {
+function buildTemplate({ skillName, templateId, targetWork }) {
   return `${JSON.stringify({
     id: templateId,
-    ...(scope ? { scope } : {}),
     title: skillName,
     status: "process.active",
     goal: {
@@ -145,8 +130,8 @@ function buildTemplate({ skillName, templateId, targetWork, scope }) {
     tasks: [
       {
         id: 1,
-        title: "Confirm route and inputs",
-        detail: "Identify the concrete target, required inputs, and whether the route rules plus SKILL.md supplement are enough or whether optional skill-local references are needed.",
+        title: "Inspect inputs and define the workflow",
+        detail: "Identify the concrete target, required inputs, ordered workflow, constraints, real control-flow branches, and verification. Do not ask for a route choice when source evidence can determine the shape.",
         status: "pending",
         guidance: {
           onDone: {
@@ -154,9 +139,9 @@ function buildTemplate({ skillName, templateId, targetWork, scope }) {
               mergeMode: "override",
               summary: "Inputs are clear; continue with the core workflow.",
               nextsteps: [
-                "Keep route rules and repeated high-signal reminders in SKILL.md.",
+                "Keep task-ownership routing and repeated high-signal reminders in SKILL.md.",
                 "Use template tasks, guidance, rules, and references for structured execution information.",
-                "Use the fallback document for full original wording when needed.",
+                "Use the fallback document for full plan-independent behavior when needed.",
               ],
               nextTaskId: 2,
             },
@@ -198,29 +183,32 @@ function buildTemplate({ skillName, templateId, targetWork, scope }) {
     rules: [
       "Follow returned workflowGuidance before advancing.",
       "Keep structured execution information in template tasks, guidance, rules, and references.",
-      "Keep route rules and non-template supplements in SKILL.md, and use skill-local references only when needed.",
+      "Keep task-ownership routing and non-template supplements in SKILL.md, and use skill-local references only when needed.",
+      "Use choices only when the selected value changes the immediate downstream task or route.",
       "Do not claim completion until the verification task is done.",
     ],
   }, null, 2)}\n`;
 }
 
-function buildCoverage({ skillName, templateId, targetWork, fallbackDoc, scope }) {
+function buildCoverage({ skillName, templateId, targetWork, fallbackDoc }) {
   return `# ${skillName} content coverage
 
 ## Source to converted-home mapping
 
-- Trigger and routing rules: TODO.
-- Direct entry: \`SKILL.md\` routes to \`claw plan create --template ${templateId}\`.
+- Trigger and task-ownership routing rules: TODO.
+- Whole-task entry: \`SKILL.md\` routes to \`claw plan create --template ${templateId}\`.
+- Stage entry: \`SKILL.md\` routes an independently owned stage, including each batch stage, to a subplan.
+- Mixed-stage entry: \`SKILL.md\` routes partial capability use to the fallback without creating this template.
+- Unavailable-tooling entry: \`SKILL.md\` routes to the same fallback when the claw CLI or template is unavailable.
 - Skill-local template: \`TEMPLATE.json\` with id \`${templateId}\`.
-- Creation scope: ${scope === "session" ? "`TEMPLATE.json` declares `scope: \"session\"`; direct entry works without `.claw`." : "project-backed by default; no top-level scope is emitted."}
-- Batch/mixed entry: \`SKILL.md\` includes the standard subplan route for ${targetWork}.
+- Intended work: ${targetWork}.
 - Ordered workflow steps: TODO.
 - Branch conditions: TODO.
 - Tool constraints and helper files: TODO.
 - Non-template supplement material kept in \`SKILL.md\`: TODO.
 - Optional skill-local references: TODO if the source needs them.
 - Verification gates: TODO.
-- Long-form source wording: \`${fallbackDoc}\`.
+- Plan-independent fallback behavior: \`${fallbackDoc}\`.
 
 ## Coverage checklist
 
@@ -230,13 +218,13 @@ function buildCoverage({ skillName, templateId, targetWork, fallbackDoc, scope }
 - [ ] Required tools, commands, helper files, and links are represented.
 - [ ] Information that does not fit template structure stays in \`SKILL.md\` or optional skill-local references.
 - [ ] Verification requirements are represented.
-- [ ] Anything too long for the template is preserved in \`SKILL.md\`, optional skill-local references, or fallback.
+- [ ] Anything too long for the template is preserved in \`SKILL.md\`, optional skill-local references, or the fallback document.
 `;
 }
 
 function buildFallback({ skillName }) {
   return `# ${skillName} fallback
 
-TODO: Preserve the original skill text or a direct non-claw version of the skill here.
+TODO: Preserve the original skill text or a direct, plan-independent version here. Use this fallback when the skill contributes only part of a mixed stage, or when the claw CLI/template is unavailable.
 `;
 }

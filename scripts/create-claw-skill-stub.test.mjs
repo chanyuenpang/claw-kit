@@ -22,14 +22,6 @@ test("create-claw-skill stub generator writes standard fill-in surfaces", async 
       "shared/skills/create-claw-skill/scripts/create-claw-skill-stub.mjs",
       "--skill-name",
       "demo-skill",
-      "--template-id",
-      "demo-template",
-      "--target-work",
-      "process demo targets",
-      "--fallback-doc",
-      "DEMO-FALLBACK.md",
-      "--scope",
-      "session",
       "--out",
       outDir,
     ],
@@ -40,15 +32,39 @@ test("create-claw-skill stub generator writes standard fill-in surfaces", async 
   const templateText = await fs.readFile(path.join(outDir, "TEMPLATE.json"), "utf8");
   const coverageText = await fs.readFile(path.join(outDir, "CONTENT-COVERAGE.md"), "utf8");
 
-  assert.match(skillText, /Run a demo-skill subplan, complete process demo targets/);
-  assert.match(skillText, /claw subplan create --parent <root-task-name> --task-id <id> --template demo-template/);
+  assert.match(skillText, /Whole task:[\s\S]*claw plan create --template demo-skill/);
+  assert.match(skillText, /Independent stage:[\s\S]*claw subplan create --parent <parent-task-name> --task-id <id> --template demo-skill/);
+  assert.match(skillText, /batch is a repeated-stage case/i);
+  assert.match(skillText, /Mixed stage:[\s\S]*Read `FALLBACK\.md`/);
+  assert.doesNotMatch(skillText, /Recommended batch task|Batch or mixed request/);
+  assert.doesNotMatch(skillText, /session scope|--scope session|no project context/i);
   assert.match(skillText, /Optional skill-local references: add files under `references\/` only when the source skill needs extra material/);
-  assert.equal(JSON.parse(templateText).id, "demo-template");
-  assert.equal(JSON.parse(templateText).scope, "session");
-  assert.match(skillText, /direct entry works without a project `.claw` directory/i);
-  assert.match(coverageText, /Skill-local template: `TEMPLATE\.json` with id `demo-template`/);
-  assert.match(coverageText, /standard subplan route for process demo targets/);
+  const template = JSON.parse(templateText);
+  assert.equal(template.id, "demo-skill");
+  assert.equal("scope" in template, false);
+  assert.equal(template.tasks.length, 3);
+  assert.doesNotMatch(templateText, /"choices"/);
+  assert.match(coverageText, /Skill-local template: `TEMPLATE\.json` with id `demo-skill`/);
+  assert.match(coverageText, /Mixed-stage entry:[\s\S]*fallback/);
+  assert.match(coverageText, /Unavailable-tooling entry:[\s\S]*same fallback/);
   assert.match(coverageText, /Information that does not fit template structure stays in `SKILL\.md` or optional skill-local references/);
-  await assert.doesNotReject(fs.access(path.join(outDir, "DEMO-FALLBACK.md")));
+  await assert.doesNotReject(fs.access(path.join(outDir, "FALLBACK.md")));
   await assert.rejects(fs.access(path.join(outDir, "CLAW-KNOWLEDGE.md")));
+});
+
+test("create-claw-skill stub generator does not expose manual scope routing", async () => {
+  await assert.rejects(
+    execFileAsync(
+      process.execPath,
+      [
+        "shared/skills/create-claw-skill/scripts/create-claw-skill-stub.mjs",
+        "--skill-name",
+        "demo-skill",
+        "--scope",
+        "session",
+      ],
+      { cwd: repoRoot },
+    ),
+    /Unknown option: --scope/,
+  );
 });

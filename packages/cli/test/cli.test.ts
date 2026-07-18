@@ -799,15 +799,14 @@ test("session scope runs outside a project, recovers across cwd, and cleans with
   assert.equal(fs.existsSync(path.join(secondCwd, ".claw")), false);
 });
 
-test("a session-scoped skill template selects session storage without an explicit scope flag", () => {
-  const cwd = createFixture("template-session-scope-cwd");
-  const homeRoot = createFixture("template-session-scope-home");
-  const runtimeDir = createFixture("template-session-scope-runtime");
+test("an explicit template selects session storage automatically outside a claw project", () => {
+  const cwd = createFixture("template-auto-session-cwd");
+  const homeRoot = createFixture("template-auto-session-home");
+  const runtimeDir = createFixture("template-auto-session-runtime");
   const skillDir = path.join(homeRoot, ".codex", "skills", "session-harness");
   fs.mkdirSync(skillDir, { recursive: true });
   fs.writeFileSync(path.join(skillDir, "TEMPLATE.json"), `${JSON.stringify(createPlanLikeTemplate({
     id: "session-harness",
-    scope: "session",
     status: "process.active",
     tasks: [{ id: 1, title: "Run session work", status: "pending" }],
   }), null, 2)}\n`, "utf-8");
@@ -826,6 +825,32 @@ test("a session-scoped skill template selects session storage without an explici
   assert.equal(createdPlan.templateId, "session-harness");
   assert.match(String(created.planPath), new RegExp(runtimeDir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.equal(fs.existsSync(path.join(cwd, ".claw")), false);
+});
+
+test("an explicit template remains project-scoped inside a claw project", () => {
+  const cwd = createFixture("template-project-scope-cwd");
+  const homeRoot = createFixture("template-project-scope-home");
+  const runtimeDir = createFixture("template-project-scope-runtime");
+  const skillDir = path.join(homeRoot, ".codex", "skills", "project-harness");
+  fs.mkdirSync(skillDir, { recursive: true });
+  fs.writeFileSync(path.join(skillDir, "TEMPLATE.json"), `${JSON.stringify(createPlanLikeTemplate({
+    id: "project-harness",
+    status: "process.active",
+    tasks: [{ id: 1, title: "Run project work", status: "pending" }],
+  }), null, 2)}\n`, "utf-8");
+  runClaw(["init", "--name", "Template project scope"], cwd);
+
+  const env = {
+    HOME: homeRoot,
+    USERPROFILE: homeRoot,
+    CODEX_THREAD_ID: "thread-template-project-scope",
+    CLAW_SESSION_RUNTIME_DIR: runtimeDir,
+  };
+  const created = runClaw(["plan", "create", "Project template harness", "--template", "project-harness"], cwd, env);
+
+  assert.match(String(created.planPath), new RegExp(path.join(cwd, ".claw").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.equal(fs.existsSync(runtimeDir), true);
+  assert.equal(fs.readdirSync(runtimeDir).length, 0);
 });
 
 test("explicit session scope overrides an initialized project and remains isolated by session id", () => {
@@ -1788,39 +1813,36 @@ test("cli subplan create accepts an explicit template flag", () => {
 
 test("cli plan, subplan, and template validate share the skill-local template resolver", () => {
   const root = createFixture("cli-shared-template-resolver");
-  const skillDir = path.join(root, "packages", "test-adapter", "skills", "update");
+  const skillDir = path.join(root, "packages", "test-adapter", "skills", "create-claw-skill");
   fs.mkdirSync(skillDir, { recursive: true });
   fs.copyFileSync(
-    path.resolve(thisDir, "..", "..", "..", "shared", "skills", "update", "TEMPLATE.json"),
+    path.resolve(thisDir, "..", "..", "..", "shared", "skills", "create-claw-skill", "TEMPLATE.json"),
     path.join(skillDir, "TEMPLATE.json"),
   );
   runClaw(["init", "--name", "Shared Template Resolver"], root);
 
   const rootResult = runClaw(
-    ["plan", "create", "--title", "template-parent", "--goal", "Run root update", "--template", "update"],
+    ["plan", "create", "--title", "template-parent", "--goal", "Convert a root skill", "--template", "create-claw-skill"],
     root,
   );
   const rootPlan = JSON.parse(fs.readFileSync(String(rootResult.planPath), "utf-8")) as JsonRecord;
-  assert.equal(rootPlan.templateId, "update");
+  assert.equal(rootPlan.templateId, "create-claw-skill");
   assert.equal((rootPlan.tasks as unknown[]).length, 3);
 
   const childResult = runClaw(
-    ["subplan", "create", "--parent", "template-parent", "--task-id", "1", "--template", "update"],
+    ["subplan", "create", "--parent", "template-parent", "--task-id", "1", "--template", "create-claw-skill"],
     root,
   );
   const childPlan = JSON.parse(fs.readFileSync(String(childResult.planPath), "utf-8")) as JsonRecord;
-  assert.equal(childPlan.templateId, "update");
+  assert.equal(childPlan.templateId, "create-claw-skill");
   assert.equal((childPlan.tasks as unknown[]).length, 3);
 
-  const validation = runClaw(["template", "validate", "--template", "update"], root);
+  const validation = runClaw(["template", "validate", "--template", "create-claw-skill"], root);
   assert.equal(validation.command, "template.validate");
   assert.equal(validation.ok, true);
-  assert.equal(validation.templateId, "update");
+  assert.equal(validation.templateId, "create-claw-skill");
   assert.equal(validation.taskCount, 3);
-  assert.deepEqual(validation.choiceRequiredTasks, [{
-    taskId: 1,
-    choiceIds: ["codex", "opencode", "conservative"],
-  }]);
+  assert.deepEqual(validation.choiceRequiredTasks, []);
 });
 
 test("cli plan done on a subplan resumes the parent plan instead of archiving the whole task", () => {

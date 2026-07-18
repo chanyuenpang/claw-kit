@@ -22,7 +22,7 @@
   - `process.wait` 与 `process.discussing` 的 compatibility `goalTool` 使用 `update_goal(status="blocked")`；Codex hostActions 使用 `update_goal(status="complete")`
   - `end.completed` 使用 `update_goal(status="complete")`
 - 已恢复 session 的未完成 plan 现在是显式用户面 gate：当 `SessionStart` / recovered `workflowGuidance` 发现当前线程已有 unfinished plan 时，adapter 必须先告诉用户“线程里已经有未完成计划”，并询问是关闭当前 plan 还是继续推进它，然后才能开始无关的新工作；这条恢复期 gate 同时落在 `packages/core/src/workflow-guidance.config.json`、`packages/core/src/workflow-guidance.ts` 的 fallback recovered prompt、`packages/opencode-adapter/workflow-guidance.opencode.json`，以及 `packages/opencode-adapter/plugin/index.ts` 的 recovered prompt fallback / idle continuation 注入上。
-- `end.completed` closeout 现在明确保留同线程 claw continuity：plan 完成后除了收尾当前 closeout，下一项工作仍应留在同一个 `claw-kit` 线程里，并重新经 `using-claw-kit` 路由回正式 workflow，而不是把 completed-plan closeout 当成退出 claw-kit 的边界。
+- `end.completed` closeout 现在明确保留同线程 claw continuity：plan 完成后除了收尾当前 closeout，下一项工作仍应留在同一个 `claw-kit` 线程里，并重新经 `using-claw-kit` 做 project-plan/direct-work 判断，而不是把 completed-plan closeout 当成退出 claw-kit 的边界。
 - 当 task guidance 走 `guidance.onDone` / `guidance.onDone.choices` 时，host 不能把 `done` 视为无上下文的纯状态切换；如果返回结果要求 `choiceId`，adapter 必须把该值沿着 `claw task done --choice` 或 `claw task edit --status done --choice` 的 route-aware completion path 原样传递，并接受 template-bound 校验失败。
 - CLI compact result 现在会直接暴露 `goalTool`，所以 host 不需要从 prompt 文案里反推 goal lifecycle。
 - `planning` 现在是唯一可见 plan skill，并吸收了原本拆在 standalone workflow skills 中的 lifecycle 与 `workflowGuidance` 消费规则。

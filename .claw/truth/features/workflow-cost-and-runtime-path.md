@@ -6,14 +6,14 @@
 - lifecycle 元状态与业务进度必须分开理解：planning 与 `Enter process.active` 用于建立/切换执行状态，不应计入业务 task 数，也不应独立触发 truth deposition。
 - `truthDispatch = "final_only" | "per_task"` 与按 task 派发 writer 是 `0.1.65` 及更早性能样本的版本化输入，不是当前 project schema 或 lifecycle owner。
 - 当前项目配置使用 `knowledgeWriter = { externalSkill: null, model: null, reasoningEffort: "medium" }`；正式 workflow 协调 `.claw` plan state、Codex Goal/progress actions，以及完成后的一次 combined writer job。
-- 优化时应先修复合同一致性与条件语义，再降低 plan mutation 和后台 refresh 成本；complexity gate 应在最后用真实 task outcome 校准。
+- 优化时应先修复合同一致性与条件语义，再降低 plan mutation 和后台 refresh 成本；入口 admission 的当前所有权与规则见 `using-claw-kit-session-entry.md`。
 
 ## 已验证的执行事实
 
 ### 版本与合同漂移
 
 - 2026-07-16 审计时，仓库 source、`.claw/project.json` 与全局 CLI 均为 `0.1.63`；但长线程可以继续绑定旧的 plugin skill snapshot，例如 `0.1.12+codex.*`。
-- 旧 snapshot 的入口合同是 `plan write` 且在 planning 前执行 `claw search`；当前 source 合同是先经过 complexity gate，需要正式流程时执行 `plan create`，再在相应阶段执行 search。线程绑定旧 snapshot 时，会出现已移除/变更命令继续被推荐，或低复杂度请求误入 formal flow。
+- 旧 snapshot 的入口合同是 `plan write` 且在 planning 前执行 `claw search`；当前 source 合同按是否预期产生可复用项目知识选择 project plan 或 direct work，需要正式流程时执行 `plan create`，再在相应阶段按需 search。线程绑定旧 snapshot 时，可能继续推荐已移除或已变更的命令与入口规则。
 - 主要合同锚点是 `packages/codex-adapter/skills/using-claw-kit/SKILL.md` 与 `shared/skills/planning/SKILL.md`；判断运行时行为时必须同时核对当前 CLI 版本和线程实际绑定的 skill snapshot，不能只看仓库 source。
 
 ### Plan lifecycle mutation 成本
@@ -127,13 +127,15 @@
 - 已实现严格唯一性门禁下的 lexical fast path、配置感知的 query embedding cache，以及保持外层同步 API 的 persistent local embedding daemon；remote provider 与禁用/故障回退路径继续使用 one-shot worker。
 - 后续应以 fast-path 命中率、cache 命中率、daemon session reuse 命中率和 hybrid fallback P95 分别评估收益，并持续验证 endpoint 隔离、idle TTL 与 one-shot fallback 的可靠性。
 
-### P3：复杂度门禁与无决策收口
+### Historical P3：复杂度门禁与无决策收口
+
+以下内容是旧 complexity-score 路径的优化候选与版本化性能背景，不再定义当前入口 admission；当前规则由 `using-claw-kit-session-entry.md` 拥有。
 
 - verification 和 closure 阶段由 main agent 根据具体任务决定，不应机械固定为必经阶段。
 - 默认 truth dispatch 已从 `per_task` 收敛为 `final_only`；显式 `per_task` 继续支持，且当前项目的 opt-in `per_task` 配置事实不变。
 - 当前 complexity 四维加总中，files、dependencies 与 workflow shape 可能对同一复杂性重复计权；长期应以风险触发器或真实 task outcome 校准替代纯提示词总分。
 - ADR 在 completed plan 没有 `keyDecisions` 时应允许 no-op，避免为“无决策”生成形式化沉淀。
-- 这些优化候选不应削弱 complexity gate、任务所需的 verification、作为唯一 next-step contract 的 `workflowGuidance`，或可审计的 ADR 语义。
+- 这些历史优化候选不应被提升为当前入口规则；当前 project-plan 流程仍须保留任务所需的 verification、作为唯一 next-step contract 的 `workflowGuidance`，以及可审计的 ADR 语义。
 
 ## 衡量指标
 
@@ -245,7 +247,7 @@
 - 重复第二条语义 query 的墙钟为 `205ms`，telemetry `durationMs = 46.92ms`、`queryEmbedding = cache_hit`，top result 仍正确。该样本应与 persistent-daemon 全新 query 分开统计，不能把 cache hit 当作 daemon miss 延迟。
 - 同一运行时边界下，`npm test` 约 `62747ms`，core `126/126` 与 CLI `72/72` 全部通过；`npm run check` 约 `7904ms` 并完整通过。以上成功性证据与正确 top result 共同约束性能结论，避免把失败或召回漂移误记为提速。
 
-- 综合本轮复杂任务样本，`0.1.69` 的正式流程性能已足够高且主观流畅度明显改善，但仍非无摩擦。剩余主要成本是每个业务 task 的 CLI plan 状态写入（本轮约 `448ms`、`453ms`、`453ms`、`592ms`）与 host `update_plan` 双写、逐任务 truth 价值判断，以及异步 writer / completion-refresh 的可观察性。低复杂度任务应继续由 complexity gate 绕过 formal flow；后续优化应针对这些固定协调成本，不能以削弱计划、验证或质量门禁换取速度。
+- 综合本轮复杂任务样本，`0.1.69` 的正式流程性能已足够高且主观流畅度明显改善，但仍非无摩擦。剩余主要成本是每个业务 task 的 CLI plan 状态写入（本轮约 `448ms`、`453ms`、`453ms`、`592ms`）与 host `update_plan` 双写、逐任务 truth 价值判断，以及异步 writer / completion-refresh 的可观察性。该版本的 complexity-gate 结论只保留为历史性能证据；当前是否进入 formal flow 由 `using-claw-kit-session-entry.md` 的 reusable-project-knowledge 判断拥有。后续优化应针对这些固定协调成本，不能以削弱计划、验证或质量门禁换取速度。
 
 ### 0.1.70 workflow、search 分路复测与 context 诊断陷阱（2026-07-17）
 

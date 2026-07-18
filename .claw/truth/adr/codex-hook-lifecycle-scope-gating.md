@@ -34,7 +34,7 @@ Codex adapter 对 hook 生命周期做 scope gating：
 - Codex session start 获得 attach-free startup recovery enhancement，同时不要求 hook 接管主流程
 - hook 实现保持 scope-gated：SessionStart 只恢复，Stop 只捕获和排队，复杂 writer 工作在 detached finalizer 中完成
 - 非 `.claw` 项目不会被误注入 `claw-kit` 上下文
-- 即使 hook 不工作，主 agent 仍可通过 `using-claw-kit` 和 `claw context` 恢复流程
+- hook 是 startup 恢复与 prompt 注入的唯一当前 owner；foreground 的正向 session-entry 合同由 `using-claw-kit-session-entry.md` 独立拥有
 
 ## Related code
 

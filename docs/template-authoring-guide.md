@@ -46,6 +46,13 @@ Creation scope is resolved before the plan store exists, so it is a top-level te
 
 Omit `scope` for ordinary project-backed templates. `"session"` is currently the only accepted declared value.
 
+The CLI also fills scope from the creation context:
+
+- `claw plan create "<title>"` keeps the ordinary behavior and initializes `.claw` when needed.
+- `claw plan create "<title>" --template <id>` automatically uses session scope when `cwd` is outside a `.claw` project.
+- The same explicit template command remains project-scoped when `cwd` is inside a `.claw` project.
+- Explicit `--scope session` and a template-declared `scope: "session"` still force session scope.
+
 ## Task Rules
 
 Task ids are numeric and should stay numeric.
@@ -73,6 +80,25 @@ The selected route is persisted into runtime state as `task.choiceId`.
 
 If a task defines `choices` and no `choiceId` is provided, completion fails and the CLI returns the available choices.
 This protects downstream guidance from guessing the route after the task is already marked done.
+
+Do not rely on the word `choices` alone to teach route semantics. Include at least one concrete example whose options lead to different immediate tasks:
+
+```json
+{
+  "id": 1,
+  "title": "Choose the delivery route",
+  "guidance": {
+    "onDone": {
+      "choices": {
+        "apply": { "nextTaskId": 2, "summary": "Apply the change." },
+        "report": { "nextTaskId": 3, "summary": "Produce a report only." }
+      }
+    }
+  }
+}
+```
+
+This is a real choice because `apply` and `report` change the immediate control flow. By contrast, options such as `simple`, `routing`, and `idea-first` are not choices when they all continue to task 2 and only change advice. Infer that conversion shape from the source, record it in the task result, and use `guidance.onDone.default` instead.
 
 ## Guidance Merge Rules
 
@@ -112,7 +138,7 @@ Examples:
 
 - keep task ids numeric
 - keep workflow control in the template
-- preserve non-claw fallback directly
+- preserve the adjacent fallback directly
 
 Use `references` for larger explanations, examples, migration notes, and design rationale.
 
@@ -152,7 +178,7 @@ Use this split instead:
 - put always-on constraints into `rules`
 - keep route rules, repeated high-signal constraints, and non-template supplement material in `SKILL.md`
 - put source examples, helper docs, scripts, prompts, long explanations, and optional focused reference files into `references`
-- preserve the original or distilled skill text as the adjacent non-claw fallback document
+- preserve the original or distilled skill text as the adjacent fallback document
 
 The runtime `plan.json` is not the lossless source of truth for the converted skill.
 The lossless package is the combination of the claw entry, the template, its references, and the adjacent fallback document.
@@ -174,7 +200,7 @@ Compare the source skill against the converted package and confirm that these so
 If a source detail affects structured execution, it should be represented in the template or rules.
 If it does not fit template structure but still helps normal claw execution, keep it in `SKILL.md` or place it in a focused skill-local reference and list that document in `references`.
 If it is fallback-only, it can remain only in the fallback document.
-If it is neither executable nor explanatory, it should still remain in the fallback so the conversion is not destructive.
+If it is neither executable nor explanatory, it should still remain there so the conversion is not destructive.
 
 The content coverage check should produce a short mapping, even if it is only in the task closeout notes:
 
@@ -201,36 +227,19 @@ Validation checks:
 
 Named validation uses the same resolver as `claw plan create` and `claw subplan create`. Its output includes `choiceRequiredTasks`, so route-aware template authors can see which tasks require a choice id when they are completed.
 
-## Universal Skill Entry Routing
+## Skill Entry Routing By Task Ownership
 
-Every template-backed claw skill should classify the request before entering its template:
+Route a template-backed claw skill by what it completely owns:
 
-- No `.claw` workspace: read and follow the adjacent fallback document.
-- Direct single-target request: create a root plan with `claw plan create --template <template-id>`.
-- Active parent-plan task: create a subplan with `claw subplan create --parent <parent-task-name> --task-id <id> --template <template-id>` when execution reaches the task.
-- Batch or mixed request: create a normal root plan first, split work into one task per target skill or coherent skill-shaped unit, describe the intended skill/template in each task, and instantiate template subplans during task execution.
+- Whole task: if the skill fully carries the current task from inputs through verification, create a root plan with `claw plan create --template <template-id>`.
+- Independent stage: if the skill fully carries one stage of a broader plan, create a subplan with `claw subplan create --parent <parent-task-name> --task-id <id> --template <template-id>` when that stage starts.
+- Mixed stage: if the skill only contributes some instructions inside a stage that mixes multiple skills, do not create its template plan. Apply its adjacent fallback inside the owning workflow.
 
-Subplans are created when a task is executed.
-Root planning records the intent to use a claw skill; task execution creates the subplan that runs that skill's template.
-Keep batch routes orchestration-oriented.
-The root plan may define target ordering, naming conventions, shared output boundaries, and batch-level risks, but target-specific work should stay inside execution-time template subplans.
-Do not collapse a batch into one broad script that bypasses the template subplans unless the user explicitly asks to bypass claw skill orchestration.
+Batch is not a fourth route. Treat a batch as a broader plan containing repeated stages; each stage that is fully owned by the skill invokes one subplan. The parent plan owns ordering and shared constraints, while each subplan owns its stage from inputs through verification.
 
-For batch root plans, task titles and descriptions should directly name the subplan entry.
-The subtask goal itself should say it must be advanced as a subplan.
+Outside a `.claw` project, use the same explicit template command. The CLI automatically selects session scope, so generated entries do not need a separate no-context command or a fallback-only route.
 
-Recommended title:
-
-`Run a <skill-name> subplan, complete <target-work>`
-
-Recommended detail:
-
-`Goal: run the <skill-name> subplan to complete <target-work>. This subtask is satisfied by creating and completing that target subplan, not by running the skill workflow in the root plan. When executing this task, first create the template subplan with claw subplan create --parent <root-task-name> --task-id <id> --template <template-id>, then follow the returned workflowGuidance inside that subplan until it completes. The root plan records the subplan result and marks this task done after the subplan result is incorporated. Keep target-specific source analysis, file edits, validation, and coverage checks inside the target subplan.`
-
-The root plan should not perform target-specific template work, source analysis, or generated output writing for every batch item.
-It should create the task list, define only the necessary batch-level conventions, enter execution, and let each execution-time subplan own its target.
-
-Skill-specific authoring docs may provide a concrete title/detail example, but they should not redefine this routing model unless the skill has a deliberate exception.
+Call something an independent stage only when the skill can produce a coherent stage result. If several skills must interleave inside the same stage, keep one owning workflow and consume the others through their fallbacks. The same fallback must also remain directly executable when the claw CLI or template is unavailable.
 
 ## Template Availability
 

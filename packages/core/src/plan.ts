@@ -72,7 +72,10 @@ async function resolveTemplateCreationScope(
     projectRoot,
     templateName,
   });
-  return template.scope;
+  if (template.scope === "session") {
+    return "session";
+  }
+  return projectRoot ? undefined : "session";
 }
 
 export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult & { events: PlanEvent[] }> {

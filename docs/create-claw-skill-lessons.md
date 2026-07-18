@@ -92,51 +92,28 @@ The CLI rejects a done transition without that value and returns the allowed cho
 - route into `claw plan create --template create-claw-skill`
 - use the template to control branch restoration and workflow guidance
 - keep the original or distilled skill text as an adjacent fallback document
-- validate the generated template with `claw template validate --template <template-id>`
-- include the standard claw skill entry routing section in generated claw entry skills
+- validate the development-source template with `claw template validate --file <skill-dir>/TEMPLATE.json`
+- include task-ownership routing in generated claw entry skills
 
-## Standard Entry Routing
+## Task-ownership Routing
 
-Every generated project claw entry skill should classify the request before entering its template:
+Every generated claw skill should ask what the skill completely owns:
 
-- No `.claw` workspace: read and follow the adjacent fallback document.
-- Direct single-target request: call `claw plan create --template <template-id> --title "<target>"`.
-- Active parent-plan task: when execution reaches a task whose description asks to use this claw skill, call `claw subplan create --parent <parent-task-name> --task-id <id> --template <template-id>`.
-- Batch or mixed request: first create a normal root claw plan, split the work into one task per target skill or coherent skill-shaped unit, describe the intended conversion in each task, and defer subplan creation until execution reaches the corresponding task.
+- Whole task: use `claw plan create --template <template-id>` when the skill owns the task from inputs through verification.
+- Independent stage: use `claw subplan create --parent <parent-task-name> --task-id <id> --template <template-id>` when the skill owns one complete stage of a broader plan.
+- Mixed stage: use the adjacent fallback when the skill only contributes part of a stage whose owning workflow mixes multiple skills.
 
-The batch or mixed route should remain inside every generated claw skill entry.
-It should be a standard reusable block, not a fresh workflow design for each skill.
-When generating a claw skill, substitute the generated skill name, template id, and target-work wording into the standard block.
+Batch belongs to the independent-stage route, not to a separate batch route. A batch is a broader plan with repeated stages; each stage calls the skill once as a subplan. The parent owns ordering and shared constraints, and each subplan owns one stage's complete result.
 
-Subplans are execution-time expansions.
-Root planning should describe the skill intent in the task, while the task execution step instantiates the template subplan.
+Mixed-skill work is different. If multiple skills must interleave inside the same stage and the current skill cannot produce a coherent stage result by itself, do not create a subplan for it. Keep one stage owner and consume the current skill's fallback there.
 
-This keeps single-target skill workflows compact and lets batch or mixed workflows use the same skill templates without turning each skill template into its own batch framework.
-It also prevents the agent from replacing the template workflow with one broad conversion script.
+No-context execution does not need a separate entry route. When `cwd` has no `.claw`, `claw plan create --template <template-id>` automatically selects session scope. Plain `claw plan create "<title>"` retains its existing behavior and initializes `.claw`; the automatic session behavior applies only when a template is explicitly selected.
 
-For batch conversion, keep the root route orchestration-oriented.
-The root plan may define target ordering, naming conventions, shared output boundaries, and batch-level risks.
-Reusable helpers are allowed as implementation aids, but they should not replace each target's execution-time subplan, validation, and content coverage check.
-The standard claw path is: root task runs a `create-claw-skill` subplan for one target, and that subplan performs the individual conversion.
+## Choices Need Observable Control Flow
 
-Use a clear root task contract.
-The subtask title and detail should carry the subplan requirement directly; do not rely on only the top-level skill instructions to remind the agent.
+Do not add choices only to label conversion styles. A valid choice changes the immediate downstream route, such as `apply -> task 2` and `report -> task 3`. This gives the Agent enough structure to persist `choiceId` and continue correctly.
 
-Recommended title:
-
-`Run a create-claw-skill subplan, convert <skill-name>`
-
-Recommended detail:
-
-`Goal: run a create-claw-skill subplan to convert <source-skill-path> into a claw skill. This subtask is satisfied by creating and completing that target subplan, not by running the claw skill workflow in the root plan. When executing this task, first run claw subplan create --parent <root-task-name> --task-id <id> --template create-claw-skill, then follow the returned workflowGuidance inside that subplan until the subplan completes. The root plan records the subplan result and marks this task done after the subplan result is incorporated. Keep target-specific source analysis, file edits, template validation, and content coverage inside the target subplan.`
-
-For generated skills, use the generic form:
-
-- title: `Run a <generated-skill-name> subplan, complete <target-work>`
-- detail: `Goal: run the <generated-skill-name> subplan to complete <target-work>. This task is satisfied by creating and completing that target subplan. First run claw subplan create --parent <root-task-name> --task-id <id> --template <template-id>, then follow the returned workflowGuidance inside that subplan until it completes. Record the subplan result in the root plan before marking this task done.`
-
-The root plan should not analyze every source skill or write generated outputs for all targets.
-After creating the per-target task list and any necessary batch-level conventions, it should move quickly into execution and let each task's subplan own the actual conversion.
+If `simple`, `routing`, and `idea-first` all continue to task 2 and only alter prose advice, they are not real choices. Infer the shape from the source, record it in the task result, and use default guidance. Keep one concrete positive example and this counterexample in the authoring guide; schema names alone are not enough to teach reliable routing.
 
 ## Template Availability For Converted Skills
 
@@ -148,14 +125,14 @@ Use skill-local `TEMPLATE.json` for project-level templates that are not owned b
 
 Do not convert an installed/global skill so that its entry points at a template that only exists in the development repository.
 
-## Fallback Skill Document
+## Fallback Document
 
-The fallback document should be the original skill text whenever possible.
+The fallback should be the original skill text whenever possible.
 
 If the source is only a user idea, first distill it into a concise direct skill document, then use that document as the fallback.
-Treat the fallback as a first-class output beside the claw entry and template.
+Treat it as a first-class output beside the claw entry and template. It is the normal input when the skill contributes only part of a mixed stage, and the complete direct workflow when the claw CLI or template is unavailable.
 
-When the source skill has companion files, scripts, prompts, or references, preserve the needed files beside the fallback and update relative links so the fallback remains usable when packaged.
+When the source skill has companion files, scripts, prompts, or references, preserve the needed files beside the fallback and update relative links so it remains usable when packaged.
 For an existing skill, prefer replacing its `SKILL.md` with the claw entry and moving the original text to a same-directory fallback file such as `non-claw-fallback.md`.
 
 ## SKILL.md Supplements and Optional References
@@ -164,7 +141,7 @@ Do not assume every converted skill needs a separate knowledge layer.
 
 Default split:
 
-- the fallback preserves the original or direct non-claw behavior
+- the fallback preserves the original or direct plan-independent behavior
 - `SKILL.md` keeps routing rules, non-template supplements, and any repeated high-signal constraints that deserve emphasis
 - the template owns structured workflow control, deliverables, rules, and references
 
@@ -212,7 +189,7 @@ Use this coverage pass:
 
 If a source detail is too verbose for `rules` or task detail but is important for claw execution, first ask whether it belongs directly in `SKILL.md`.
 Only move it into a focused skill-local reference when that is clearly cleaner.
-If a source detail only matters for non-claw fallback behavior, preserve it in the fallback.
+If a source detail only matters for direct fallback behavior, preserve it in the fallback document.
 This keeps the plan lightweight without making the conversion lossy.
 
 If a source detail is intentionally omitted, record why.

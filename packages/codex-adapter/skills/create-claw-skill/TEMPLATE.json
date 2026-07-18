@@ -3,81 +3,52 @@
   "title": "create-claw-skill",
   "status": "process.active",
   "goal": {
-    "text": "Convert a specified text skill or user idea into a claw-template-backed skill in the same skill package, with an adjacent fallback document."
+    "text": "Convert a text skill or skill idea into a self-contained, template-backed claw skill."
   },
   "requirements": {
-    "summary": "Translate an existing text skill or user idea into a claw skill in the target skill package. The visible entry should route through `claw plan create --template <template-id>`, the template should own workflow guidance, and the original or distilled skill text should remain available as an adjacent fallback document.",
+    "summary": "Preserve the source behavior across a concise claw entry, skill-local TEMPLATE.json, adjacent fallback document, and optional focused references.",
     "openQuestions": [],
     "acceptanceCriteria": [
-      "The specified skill package's visible entry clearly routes to `claw plan create --template <template-id>`.",
-      "The resulting template uses plan-like task skeletons plus `guidance.onDone`.",
-      "Any route-heavy behavior is restored through template guidance and explicit `choiceId`.",
-      "The original or distilled skill text is preserved as an adjacent fallback document in the same skill package.",
-      "The converted package preserves source behavior across the claw entry, template, optional skill-local references, and fallback document.",
-      "Important source knowledge that does not fit template structure stays in SKILL.md as a supplement or in optional skill-local references listed in template.references.",
-      "The generated claw entry includes the standard entry routing section for no-`.claw` fallback, direct, execution-time subplan, and batch-or-mixed root-plan usage.",
-      "Batch or mixed callers split work into execution-time subplans instead of replacing the skill workflow with one broad conversion script.",
-      "The generated entry only advertises `claw plan create --template <template-id>` when that template will be resolvable from the skill package or another supported runtime template registry.",
-      "The generated template passes `claw template validate --template <template-id>` before completion.",
-      "When projectless execution is required, the generated template declares top-level `scope: \"session\"` and its entry does not treat a missing `.claw` directory as fallback-only.",
-      "A content coverage check maps important source skill information to its converted home before completion."
+      "The generated entry routes by whole-task, independent-stage, and mixed-stage ownership semantics without exposing storage scope.",
+      "The generated template owns the structured workflow and contains choices only for real downstream branches.",
+      "The adjacent fallback document preserves direct skill behavior for mixed-stage use and unavailable claw tooling.",
+      "The source template passes file-based validation and the converted package passes content coverage checks.",
+      "The generated skill package is self-contained and its template id matches the entry."
     ]
   },
   "tasks": [
     {
       "id": 1,
-      "title": "Choose the wrapping route immediately after entry",
-      "detail": "Make a quick route choice based on whether the source is an existing skill or mainly a user idea, record that choice, and continue into the selected wrapping path.",
+      "title": "Inspect the source and choose the conversion shape",
+      "detail": "Read the source skill or distill the user idea. Identify its trigger, ordered workflow, tools, constraints, real control-flow branches, verification, and companion files. Decide the conversion shape from evidence without asking the user to choose a template style.",
       "status": "pending",
       "guidance": {
         "onDone": {
-          "choices": {
-            "simple": {
-              "mergeMode": "override",
-              "summary": "Route chosen: continue with the lightweight wrapping path.",
-              "nextsteps": [
-                "Keep the new template compact and mostly linear.",
-                "Convert the specified skill entry in place and keep the source text as the adjacent fallback document."
-              ],
-              "nextTaskId": 2
-            },
-            "routing": {
-              "mergeMode": "override",
-              "summary": "Route chosen: continue with the route-aware wrapping path.",
-              "nextsteps": [
-                "Add explicit `guidance.onDone` routes to the generated template where the workflow really branches.",
-                "Convert the specified skill entry in place and keep the source text as the adjacent fallback document."
-              ],
-              "nextTaskId": 2
-            },
-            "idea-first": {
-              "mergeMode": "override",
-              "summary": "Route chosen: distill the idea first, then wrap it as a claw skill.",
-              "nextsteps": [
-                "First distill the user idea into a concise fallback document in the target skill package.",
-                "Then create the claw entry and template around that fallback."
-              ],
-              "nextTaskId": 2
-            }
+          "default": {
+            "mergeMode": "override",
+            "summary": "The source behavior and conversion shape are clear; generate the package.",
+            "nextsteps": [
+              "Use choices only when the selected value changes the immediate downstream task or route.",
+              "Keep long-form direct behavior in the adjacent fallback document."
+            ],
+            "nextTaskId": 2
           }
         }
       }
     },
     {
       "id": 2,
-      "title": "Draft the template-owned workflow skeleton",
-      "detail": "Use the stub generator as the preferred starting point when scaffolding or regenerating a target claw skill package: `node <create-claw-skill-dir>/scripts/create-claw-skill-stub.mjs --skill-name <skill-name> --template-id <template-id> --target-work \"<target-work>\" --fallback-doc <fallback-doc> [--scope session] --out <target-skill-package>`. Use `--scope session` only for an ephemeral projectless harness that must not deposit project knowledge; otherwise omit it. The scaffold writes the workflow template as skill-local `TEMPLATE.json`; keep the template id inside that file aligned with the generated entry route. Then fill in the generated TODOs from the source skill. The generated scaffold is not completed work: revise the plan-like template skeleton, decide which tasks need `guidance.onDone.default` or `guidance.onDone.choices`, preserve execution-critical source behavior in template guidance or rules, keep route rules and non-template supplements in `SKILL.md`, and add optional skill-local references only when the source material truly needs them.",
+      "title": "Generate and complete the claw skill package",
+      "detail": "Start with `node <create-claw-skill-dir>/scripts/create-claw-skill-stub.mjs --skill-name <skill-name> --out <target-skill-package>`. Add optional flags only when defaults do not fit. Replace generated TODOs, preserve companion files and links, and keep the entry focused on task-ownership routing while TEMPLATE.json owns execution.",
       "status": "pending",
       "guidance": {
         "onDone": {
           "default": {
             "mergeMode": "override",
-              "summary": "The template skeleton is ready; continue with the user-facing skill surfaces.",
-              "nextsteps": [
-              "If a new scaffold is useful, start from `scripts/create-claw-skill-stub.mjs` rather than hand-writing the entry/template/fallback shape from scratch.",
-              "Wire the target skill entry to `claw plan create --template <template-id>`.",
-              "Keep the original or distilled skill text readable as the adjacent fallback document.",
-              "If the source still needs extra material beyond `SKILL.md`, add focused skill-local references and list them in template.references."
+            "summary": "The converted package is ready for structural and coverage validation.",
+            "nextsteps": [
+              "Validate the development-source TEMPLATE.json by file path.",
+              "Compare source behavior with its converted homes before closing out."
             ],
             "nextTaskId": 3
           }
@@ -86,74 +57,32 @@
     },
     {
       "id": 3,
-      "title": "Convert the target skill entry and preserve its fallback document",
-      "detail": "Convert the specified skill package into a claw skill package whose visible entry keeps the standard entry routing section plus any non-template supplement material that should remain readable in `SKILL.md`, preserve or derive the fallback document beside it, add focused skill-local references only when they are still needed, and keep bundled helper files or references usable from that package. Keep generated `SKILL.md` clear rather than artificially thin: route rules, repeated high-signal constraints, and material that does not fit template structure may stay there, while execution rules, deliverables, references, verification gates, and detailed workflow control should live in the generated template, guidance, rules, references, or fallback.",
-      "status": "pending",
-      "guidance": {
-        "onDone": {
-          "default": {
-            "mergeMode": "override",
-            "summary": "Skill surfaces are in place; finish by verifying the routing contract.",
-            "nextsteps": [
-              "Verify that the target skill entry points at the intended template id.",
-              "Verify that the target skill entry explains no-`.claw` fallback, direct plan entry, execution-time subplan entry, and root-plan orchestration for batch or mixed requests.",
-              "Verify that the adjacent fallback document still reflects the original skill behavior.",
-              "Verify that any optional skill-local references live in or beside the converted skill package and are listed in the generated template references with clear reasons.",
-              "Verify that required source-tool usage is represented in the generated template, not only in the visible `SKILL.md`.",
-              "Run `claw template validate --template <template-id>` against the generated template.",
-              "Then run a content coverage check that maps source information to entry, template, references, or fallback."
-            ],
-            "nextTaskId": 4
-          }
-        }
-      }
-    },
-    {
-      "id": 4,
-      "title": "Validate template and run the content coverage check",
-      "detail": "First run `claw template validate --template <template-id>` and check that route-aware tasks require `choiceId` when defined. Then run a content coverage check: compare the source skill against the converted package and map important source information to its converted home (`entry`, `template.tasks`, `template.guidance`, `template.rules`, `template.references`, or `fallback`). Treat tool usage as template-owned execution information unless it is only a trigger/routing hint. Cover trigger rules, tools, workflow steps, branches, constraints, verification gates, examples, scripts, links, and any optional skill-local references. If any important source detail is omitted, record why.",
+      "title": "Validate structure and content coverage",
+      "detail": "Run `claw template validate --file <target-skill-package>/TEMPLATE.json`, validate the skill package structure, and map important source behavior to entry, template tasks/guidance/rules/references, or the fallback document. Use named `--template <id>` validation only after the skill is materialized in a supported runtime registry.",
       "status": "pending"
     }
   ],
   "references": [
     {
+      "path": "FALLBACK.md",
+      "why": "Plan-independent conversion workflow for mixed-stage use or unavailable claw tooling."
+    },
+    {
       "path": "docs/template-authoring-guide.md",
-      "why": "Canonical guide for the plan-like template format, guidance.onDone, choiceId, configOverride, and template validation."
+      "why": "Canonical template, ownership routing, choice, and validation guidance."
     },
     {
       "path": "docs/create-claw-skill-lessons.md",
-      "why": "Design lessons for keeping create-claw-skill lightweight while moving explanation and rationale into referenced docs."
+      "why": "Conversion and content-preservation lessons."
     }
   ],
   "rules": [
-    "Keep task ids numeric.",
-    "Keep workflow control in the template.",
-    "Let `plan.configOverride` come only from the template.",
-    "Use top-level template `scope: \"session\"`, not configOverride, when plan creation must use the ephemeral session store.",
-    "Convert the specified skill entry in place and preserve the original text as an adjacent fallback document.",
-    "Use optional skill-local references only when source material still needs a referenced home beyond SKILL.md and the fallback document.",
-    "Use `scripts/create-claw-skill-stub.mjs` as the preferred starting scaffold for generated claw skill surfaces; it writes the generated workflow template as skill-local `TEMPLATE.json`.",
-    "For generated claw skills, prefer skill-local `TEMPLATE.json` over project skill-local `TEMPLATE.json` so the skill package carries its own workflow.",
-    "Keep generated `SKILL.md` focused on route rules, readable non-template supplements, and repeated high-signal constraints; move structured execution data into the generated claw template and its references.",
-    "Required tool usage from the source skill must be represented in the generated template, guidance, rules, references, or fallback; do not leave it only in the visible skill entry.",
-    "Run a content coverage check after template validation and before claiming the conversion complete.",
-    "For batch or mixed requests, split work into one root-plan task per target skill or coherent skill-shaped unit and create `create-claw-skill` subplans at task execution time.",
-    "Keep batch routes orchestration-oriented: the root plan may define target ordering, naming conventions, shared output boundaries, and batch-level risks.",
-    "Batch root task titles should look like `Run a create-claw-skill subplan, convert <skill-name>`.",
-    "Batch root task details should begin with a goal like `Goal: run a create-claw-skill subplan to convert <source-skill-path> into a claw skill.`",
-    "Batch root task details should state that the subtask is satisfied by creating and completing that target subplan, not by running the claw skill workflow in the root plan.",
-    "Batch root task details should require `claw subplan create --parent <root-task-name> --task-id <id> --template create-claw-skill` before editing the target.",
-    "For subplan-owned subtasks, the root plan records the subplan result and marks the parent task done after incorporating that result.",
-    "The root plan should not perform per-target source analysis, file edits, template validation, or content coverage checks; each target subplan owns those actions.",
-    "Reusable helpers are allowed as implementation aids, but they must not replace each target's subplan, validation, and content coverage check.",
-    "Do not replace execution-time subplans with one broad conversion script unless the user explicitly asks to bypass the claw skill workflow.",
-    "Every generated claw skill entry should include the standard batch or mixed request route block; substitute skill name, template id, and target-work wording instead of redesigning batch routing per skill.",
-    "Generated skill batch task titles should use the generic shape `Run a <generated-skill-name> subplan, complete <target-work>`.",
-    "Generated skill batch task details should say the task is satisfied by creating and completing that target subplan, then recording the subplan result in the root plan.",
-    "Do not leave a converted global or plugin skill pointing at a template that exists only in the development repository.",
-    "Generated claw entry skills include the standard entry routing section.",
-    "Generated project-scoped claw entry skills route to the adjacent fallback document when the current workspace has no `.claw` directory; session-scoped entries remain directly runnable there.",
-    "Validate generated templates with `claw template validate --template <template-id>`."
+    "Keep task ids numeric and workflow control in the template.",
+    "Route by whether the skill owns the whole task, one independent stage, or only part of a mixed stage.",
+    "Treat each batch item as a stage-level subplan when the skill owns that stage.",
+    "Let explicit template creation choose its runtime storage automatically.",
+    "Preserve direct behavior in the adjacent fallback document and use focused references only when needed.",
+    "Do not claim completion before file-based template validation and content coverage pass."
   ],
   "keyDecisions": [],
   "retrospective": {

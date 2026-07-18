@@ -23,7 +23,7 @@ For explicit non-`claw` project initialization in Codex, a visible `claw context
 
 - The `init` skill can stay compact and point directly at the real initialization action
 - Codex can report the concrete startup recovery result instead of describing a generic bootstrap process
-- Users who want to do real work after initialization can continue with `using-claw-kit` and the normal `claw plan write -> claw search (when useful) -> workflowGuidance` flow
+- Users who want to do real work after initialization can continue through `using-claw-kit`; when reusable project knowledge is expected, the normal planned flow is `claw plan create -> workflowGuidance`. Project recall remains owned by task-specific guidance rather than this initialization ADR.
 - Non-`claw` project initialization remains distinct from the normal planning and closeout lifecycle
 
 ## Related Code

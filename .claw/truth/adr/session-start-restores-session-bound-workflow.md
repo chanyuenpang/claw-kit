@@ -38,7 +38,7 @@ Accepted
 - `SessionStart` 生成 additional prompt surface 时，必须消费 `startupRecovery.versionSync`，把 CLI 版本落后、是否存在已发布更新、`autoUpdate` 是否开启，以及下一步应否先执行更新 contract 明确写进 startup 提示
 - `runContextCommand` 保留版本漂移检测和 `startupRecovery.versionSync` 计算，但不再因为检测到版本落后就隐式执行本地升级；startup recovery 只负责把该结果 surface 给 prompt
 - `project.json.autoUpdate` 是显式布尔 gate，默认 `true`；项目若不希望 startup 触发 update-first 路由，需要显式把它设为 `false`
-- `claw-kit:update` 表示一个共享更新 contract：同一动作同时负责更新全局 CLI 与当前 host plugin 安装面，而不是把这两类升级分摊到 `patch`、`context` 或其他恢复语义里
+- `claw-kit:update` 表示一个跨 host 一致的更新结果合同：同一动作同时负责更新全局 CLI 与当前 host plugin 安装面；具体步骤由已加载 adapter 的专属 `update` skill 拥有，不在 workflow 内再次选择平台
 - 恢复成功且线程里已经存在 unfinished plan 时，startup contract 必须显式告诉 agent 当前线程已有未完成计划，并要求先向用户确认是关闭当前 plan 还是继续推进它，再开始不相关的新工作
 - 注入内容只包含继续执行所需的最小 contract，不重复 project root、`.claw` 路径或 raw `plan.json`
 - 如果没有可恢复的 active workflow，则保持精简版 startup 提示：保留 `.claw` 项目识别、`using-claw-kit` 入口、当前 thread 对 Goal mode / required delegated subagents 的显式授权，以及 “follow workflowGuidance” 合同
@@ -62,7 +62,7 @@ Accepted
 - 因此较早版本也不应被概括成“普遍更轻”；durable 结论是 startup surface 必须收敛到恢复当前 workflow contract，而不能扩张成另一个显式 workflow 起点
 - active adapter surface 现已统一采用 `startupRecovery` 命名；这类恢复结果属于 hook/runtime 侧状态，而不是用户面前的另一条 workflow skill
 - `autoUpdate` 让项目拥有显式的升级策略开关：默认项目会在检测到可用发布更新时进入 update-first 路由，而选择退出的项目可以显式设为 `false`，把版本漂移保留为纯提示
-- CLI 与当前 host plugin surface 的更新合同被统一到 `claw-kit:update`，adapter 文案和共享技能只需要维护一条“先更新再继续”的路由，而不必分别解释多个安装面
+- CLI 与当前 host plugin surface 的更新结果合同被统一到 `claw-kit:update`；Codex 与 OpenCode 各自在 adapter-owned skill 中维护自己的安装与验证细节，而 startup 只需要表达“先更新再继续”的入口
 - 本地 plugin surface 是否真的升级，仍需沿用独立的 distribution/install 验证路径；startup recovery 只决定是否先路由到 `claw-kit:update`，不把安装成功与恢复成功混成同一个判断
 
 ## Related Code
@@ -75,7 +75,6 @@ Accepted
 - `packages/core/src/plan.ts`
 - `packages/core/src/types.ts`
 - `packages/core/src/workflow-guidance.ts`
-- `shared/skills/update/SKILL.md`
 - `packages/opencode-adapter/workflow-guidance.opencode.json`
 - `packages/opencode-adapter/plugin/index.ts`
 - `packages/opencode-adapter/references/project-config-reference.md`

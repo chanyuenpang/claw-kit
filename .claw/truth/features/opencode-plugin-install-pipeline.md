@@ -59,6 +59,8 @@ Both use `fs.mkdtemp` for temp-directory isolation. The opencode tests cover: re
 
 `packages/opencode-adapter/agents/claw-knowledge-writer.md` is the only shipped writer agent for the OpenCode host. It is a `mode: primary` entry (launched directly by the host-aware finalizer via `opencode run`, not dispatched as a main-agent subagent; contrast `claw-researcher.md`, which remains `mode: subagent`) whose body instructs the worker to load only the combined `claw-kit:knowledge-writer` skill, to not load `using-claw-kit` (the writer's own session-scoped template is a self-contained claw harness), to create that template plan before reading inputs, and to not dispatch another writer or split the pass. The host-aware finalizer requires this writer's session-scoped plan to reach `end.completed` with every template task `done` before finalization succeeds. The retired `claw-truth-writer.md` and `claw-adr-writer.md` agent entries are intentionally absent from `packages/opencode-adapter/agents/`.
 
+Real-runner verification via `opencode run` must confirm end-to-end that the writer's session-scoped plan reaches `end.completed` with every template task `done`, that the worker loaded only `claw-kit:knowledge-writer` and did not load `using-claw-kit`, and that no recursive finalization job is queued from the worker's own session; the unit-test coverage above does not substitute for this real-runner check.
+
 ## Related files
 
 ### OpenCode chain
@@ -88,3 +90,5 @@ Both use `fs.mkdtemp` for temp-directory isolation. The opencode tests cover: re
 - `OPENCODE_PLUGIN_PAYLOAD_PATHS`
 - `claw-knowledge-writer.md`
 - `end.completed`
+- `opencode run`
+- `real-runner verification`

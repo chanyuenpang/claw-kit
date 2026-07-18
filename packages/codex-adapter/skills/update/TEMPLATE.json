@@ -3,76 +3,38 @@
   "title": "update",
   "status": "process.active",
   "goal": {
-    "text": "Refresh the published claw-kit CLI and the current host plugin install surface after a newer version is detected."
+    "text": "Refresh the published claw-kit CLI and official Codex plugin installation."
   },
   "requirements": {
-    "summary": "Refresh claw-kit installation surfaces in a controlled order: confirm the host route, update the global CLI first, update the matching host plugin surface second, then verify both surfaces and report exact status.",
+    "summary": "Refresh the global CLI first, refresh Codex from the official GitHub marketplace second, then verify both installed surfaces and report exact status.",
     "openQuestions": [],
     "acceptanceCriteria": [
-      "The workflow refreshes both the global `@veewo/claw` CLI and the current host plugin surface instead of only one surface.",
-      "The workflow keeps the host route explicit for Codex, OpenCode, or a conservative fallback when the host is unclear.",
-      "When inside the `claw-kit` repository, the workflow prefers the maintained install scripts instead of inventing replacement commands.",
-      "On a remote Codex machine, the workflow uses the repository marketplace and verifies the cached plugin contains every shared skill.",
-      "Codex verification proves that the expected marketplace identity is enabled and that its source manifest and installed cache manifest match the target version.",
-      "The workflow detects an enabled stale same-name plugin identity instead of treating a newer unused cache directory as success.",
-      "Verification explicitly checks the CLI and the chosen plugin surface before success is reported.",
-      "The result reports exact success or failure for each refreshed surface."
+      "The published global `@veewo/claw` CLI and official Codex plugin are both refreshed.",
+      "Codex uses the `chanyuenpang/claw-kit` repository marketplace and only `claw-kit@claw-kit` remains enabled.",
+      "CLI, marketplace source, enabled identity, source manifest, and cache manifest are verified against the target version.",
+      "The result reports exact success or failure for each surface."
     ]
   },
   "tasks": [
     {
       "id": 1,
-      "title": "Confirm the newer-version context and choose the host route",
-      "detail": "Tell the user a newer claw-kit version was detected and that you are refreshing the local install surfaces. Confirm whether the current route is Codex, OpenCode, or a conservative fallback because the host is unclear. Keep the route decision explicit before making install changes.",
-      "status": "pending",
-      "guidance": {
-        "onDone": {
-          "choices": {
-            "codex": {
-              "mergeMode": "override",
-              "summary": "The current host route is Codex.",
-              "nextsteps": [
-                "Update the global CLI first.",
-                "Then refresh Codex from the published repository marketplace and enable only claw-kit@claw-kit."
-              ],
-              "nextTaskId": 2
-            },
-            "opencode": {
-              "mergeMode": "override",
-              "summary": "The current host route is OpenCode.",
-              "nextsteps": [
-                "Update the global CLI first.",
-                "Then refresh the local OpenCode plugin install surface."
-              ],
-              "nextTaskId": 2
-            },
-            "conservative": {
-              "mergeMode": "override",
-              "summary": "The host route is unclear, so the workflow should choose a supported plugin refresh path conservatively.",
-              "nextsteps": [
-                "Inspect the available repo scripts before choosing the plugin refresh command.",
-                "If no supported plugin refresh path is available, stop and report that clearly instead of pretending the plugin updated."
-              ],
-              "nextTaskId": 2
-            }
-          }
-        }
-      }
+      "title": "Confirm the published target version and official Codex source",
+      "detail": "Tell the user a newer claw-kit version was detected. Confirm the target version is published and available from the official package and `chanyuenpang/claw-kit` GitHub marketplace before changing local installs. A release workflow must publish and verify first.",
+      "status": "pending"
     },
     {
       "id": 2,
-      "title": "Refresh the CLI first, then refresh the matching host plugin surface",
-      "detail": "Update the global `@veewo/claw` CLI first, then refresh the plugin surface that matches the chosen host route. A release workflow must publish and verify the target version before this update task begins. For Codex, use the published `chanyuenpang/claw-kit` repository marketplace on every machine: inside this repository run `npm run install:local-cli` and then `npm run install:codex-plugin`; the Codex installer clones the published GitHub `main` snapshot, writes the official `claw-kit` cache, enables `claw-kit@claw-kit`, and disables `claw-kit@claw-kit-local`. The equivalent host lifecycle is `codex plugin marketplace add chanyuenpang/claw-kit --ref main` for first setup or `codex plugin marketplace upgrade claw-kit` for refresh, followed by reinstalling or enabling `claw-kit@claw-kit`. Never update Codex from unpublished workspace files or treat a local marketplace as a supported path. Do not treat a one-surface refresh as complete.",
+      "title": "Refresh the CLI and official Codex plugin",
+      "detail": "Refresh the global CLI first. Inside this repository use `npm run install:local-cli`, then `npm run install:codex-plugin`; the Codex installer reads the published GitHub `main` marketplace snapshot. On another Codex machine, add `chanyuenpang/claw-kit --ref main` for first setup or upgrade the `claw-kit` marketplace, then install or enable `claw-kit@claw-kit`. Disable `claw-kit@claw-kit-local`. Do not install from unpublished workspace files or a local marketplace.",
       "status": "pending",
       "guidance": {
         "onDone": {
           "default": {
             "mergeMode": "override",
-            "summary": "The requested install surfaces were refreshed; verify each surface before claiming success.",
+            "summary": "The CLI and Codex plugin refresh commands completed; verify both installed surfaces.",
             "nextsteps": [
-              "Verify the CLI with `claw --version` and `npm list -g @veewo/claw --depth=0`.",
-              "Verify the matching plugin surface with host-specific checks.",
-              "Report exact success or failure per surface."
+              "Verify the global CLI version.",
+              "Verify the official Codex marketplace source, enabled identity, and matching manifests."
             ],
             "nextTaskId": 3
           }
@@ -81,27 +43,22 @@
     },
     {
       "id": 3,
-      "title": "Verify both surfaces and report exact status",
-      "detail": "Always verify after the refresh. For the CLI, run `claw --version` and `npm list -g @veewo/claw --depth=0`. For Codex, verify `claw-kit@claw-kit` is enabled, verify `claw-kit@claw-kit-local` is disabled, confirm the published Git marketplace revision, and inspect the matching cache under `%USERPROFILE%\\.codex\\plugins\\cache\\claw-kit\\claw-kit\\`. The official source and cache manifest versions must equal the published target version. Confirm `skills/planning`, `skills/config`, `skills/update`, `skills/create-claw-skill`, and `skills/knowledge-writer` exist, and retired `skills/truth-writer` and `skills/adr-writer` are absent, in the official cache. Restart Codex and start a new task before validating the loaded skill locator. For OpenCode, confirm the installed plugin files exist under the configured OpenCode plugin path and the retired global `skills/truth-writer` and `skills/adr-writer` directories are absent. Do not claim success if only one surface updated, and do not silently skip verification.",
+      "title": "Verify the CLI and Codex plugin",
+      "detail": "Run `claw --version` and `npm list -g @veewo/claw --depth=0`. Verify `claw-kit@claw-kit` is enabled, `claw-kit@claw-kit-local` is disabled, and the official marketplace source manifest plus matching cache manifest equal the published target version. Confirm the active cache contains planning, config, update, create-claw-skill, and knowledge-writer, with retired truth-writer and adr-writer absent. Restart Codex and start a new task before validating the loaded skill version. Report exact success or failure for both surfaces.",
       "status": "pending"
     }
   ],
   "references": [
     {
       "path": "CONTENT-COVERAGE.md",
-      "why": "Maps important source information to the converted claw skill surfaces."
+      "why": "Maps Codex update requirements to this skill package."
     }
   ],
   "rules": [
     "Follow returned workflowGuidance before advancing.",
-    "This skill is for installation refresh work, not for planning or editing project workflow state.",
-    "A claw-kit update is complete only when both the global CLI and the current host plugin surface were refreshed and verified.",
-    "Prefer the current host route when it is known; otherwise choose a supported plugin refresh path conservatively.",
-    "During release closeout, publish and verify the target version before invoking this update workflow.",
-    "On Codex, always use the published repository marketplace; local marketplace installation is unsupported.",
-    "The expected active identity is claw-kit@claw-kit; claw-kit@claw-kit-local must be disabled.",
-    "A cache directory is only an artifact. Verify active identity, marketplace source manifest, and cache manifest together.",
-    "Do not claim success if only one install surface updated.",
-    "Do not silently skip verification."
+    "Do not route or ask about another host; this is the Codex update workflow.",
+    "Publish and verify the target version before release-time installation refresh.",
+    "Use only the official GitHub marketplace and claw-kit@claw-kit identity.",
+    "Do not claim success unless both CLI and Codex plugin verification pass."
   ]
 }

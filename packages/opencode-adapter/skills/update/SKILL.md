@@ -1,42 +1,32 @@
 ---
 name: update
-description: Use when claw-kit needs to refresh the published CLI and the current host plugin install surface after a newer version is detected.
+description: Use when a newer claw-kit version is detected in OpenCode or the user asks to refresh the published claw CLI and installed OpenCode plugin surfaces.
 ---
-<!-- AUTO-GENERATED from shared/skills/update/SKILL.md. Edit the shared source instead. -->
 # update
 
-Use this skill when startup recovery or the user explicitly wants to update claw-kit itself.
+Use this skill to refresh claw-kit on the OpenCode host. The loaded adapter already determines the platform; do not ask the user to choose a host route.
 
-## No-.claw Fallback
+## No-.claw fallback
 
-If the current workspace does not contain a `.claw` directory, read `non-claw-fallback.md` directly and follow the fallback instructions.
+If the workspace has no `.claw` directory, read `non-claw-fallback.md` and follow the OpenCode update instructions directly.
 
-## Entry Routing
+## Entry routing
 
-- Direct single-target request: use `claw plan create --template update --title "update"`.
-- Active parent-plan task: use `claw subplan create --parent <parent-task-name> --task-id <id> --template update` when execution reaches a task that explicitly asks to use this skill.
-- Batch or mixed request: create a normal root claw plan first. Split the work into one task per target or coherent skill-shaped unit. Each target task should run this skill as an execution-time subplan, not perform the target work directly from the root plan.
+- Direct request: run `claw plan create --template update --title "update"`.
+- Active parent task: run `claw subplan create --parent <parent-task-name> --task-id <id> --template update`.
+- Batch request: create one root task per target and run this template as the update task's subplan.
 
-Recommended batch task title:
+## Contract
 
-`Run a update subplan, complete refresh the published CLI and the current host plugin install surface after a newer version is detected`
-
-Recommended batch task detail:
-
-`Goal: run the update subplan to complete refresh the published CLI and the current host plugin install surface after a newer version is detected. This task is satisfied by creating and completing that target subplan. First run claw subplan create --parent <root-task-name> --task-id <id> --template update, then follow the returned workflowGuidance inside that subplan until it completes. Record the subplan result in the root plan before marking this task done.`
-
-## High-Signal Reminders
-
-- This skill is for installation refresh work, not for planning and not for editing project workflow state.
-- A claw-kit update is complete only when both the global CLI and the current host plugin surface were refreshed and verified.
-- On every Codex machine, use the published repository marketplace lifecycle. Local marketplace installation is unsupported.
-- During a release, publish and verify the new version first; only then invoke this skill to refresh local install surfaces from the published artifacts.
-- A newer versioned cache directory is not proof that Codex activated it. Verify the enabled plugin identity and the marketplace source that produced the cache.
-- The only supported Codex identity is `claw-kit@claw-kit`. Disable any stale `claw-kit@claw-kit-local` identity before reporting success.
-- Keep route rules and repeated high-signal constraints here. Keep the step-by-step execution contract in `TEMPLATE.json`.
+- Refresh the global CLI and installed OpenCode plugin surfaces together.
+- Inside the claw-kit repository, use `npm run install:opencode-plugin`; it rebuilds and reinstalls the CLI before deploying the plugin, skills, agents, and shim.
+- Verify the global CLI, plugin payload, discovery copies, agent definitions, workflow guidance, and restart boundary.
+- Do not edit installed OpenCode copies directly or claim success from only one refreshed surface.
+- During release closeout, publish and verify the target version before invoking this skill.
+- Keep execution details in `TEMPLATE.json`; use `non-claw-fallback.md` only outside the claw harness.
 
 ## References
 
 - Fallback: `non-claw-fallback.md`
-- Content coverage: `CONTENT-COVERAGE.md`
+- Coverage: `CONTENT-COVERAGE.md`
 - Template: `TEMPLATE.json`

@@ -82,6 +82,7 @@ function assertRepositoryMarketplaceSnapshot({ pluginVersion }) {
     "skills/update/TEMPLATE.json",
     "skills/create-claw-skill/SKILL.md",
     "skills/create-claw-skill/TEMPLATE.json",
+    "skills/create-claw-skill/FALLBACK.md",
     "skills/create-claw-skill/scripts/create-claw-skill-stub.mjs",
     "skills/knowledge-writer/SKILL.md",
     "skills/knowledge-writer/TEMPLATE.json",
@@ -125,6 +126,7 @@ async function verifyReleaseReadiness() {
     }
     await fs.access(path.join(bundle.bundleDir, "skills", "update", "TEMPLATE.json"));
     await fs.access(path.join(bundle.bundleDir, "skills", "create-claw-skill", "TEMPLATE.json"));
+    await fs.access(path.join(bundle.bundleDir, "skills", "create-claw-skill", "FALLBACK.md"));
     await fs.access(path.join(bundle.bundleDir, "skills", "knowledge-writer", "TEMPLATE.json"));
     await fs.access(path.join(bundle.bundleDir, "skills", "knowledge-writer", "non-claw-fallback.md"));
 

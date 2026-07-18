@@ -7,7 +7,7 @@ Use this note when claw-kit needs to refresh the OpenCode plugin install surface
 `npm run install:opencode-plugin` (inside the claw-kit repo) performs a full deploy via `scripts/install-opencode-plugin.ps1` → `scripts/install-opencode-plugin.mjs` → `installOpencodePlugin()`:
 
 1. **Builds** core (`@veewo/claw-core`) and CLI (`@veewo/claw`) from source.
-2. **Stages** the adapter source with `syncSharedSkills` — overwrites shared skill SKILL.md files (`planning`, `config`, `update`, `create-claw-skill`, `knowledge-writer`) from `shared/skills/`.
+2. **Stages** the adapter source with `syncSharedSkills` — overwrites shared skill packages (`planning`, `config`, `create-claw-skill`, `knowledge-writer`) from `shared/skills/`. The OpenCode `update` skill remains adapter-owned because its workflow is host-specific.
 3. **Copies plugin payload** to `~/.config/opencode/plugins/claw-kit/`:
    - `plugin/` — the TypeScript plugin entry
    - `skills/` — all skill folders (shared + adapter-local)
@@ -68,6 +68,6 @@ opencode loads plugins at startup. After updating the plugin, **restart opencode
 ## Guardrails
 
 - Do not edit files under `~/.config/opencode/plugins/claw-kit/` directly — they are overwritten on the next install. Edit the source in `packages/opencode-adapter/` and re-run the install script.
-- Do not edit shared skill SKILL.md files in the adapter — they are overwritten by `syncSharedSkills`. Edit `shared/skills/<name>/SKILL.md` instead.
+- Do not edit shared-generated skill packages in the adapter — they are overwritten by `syncSharedSkills`. Edit `shared/skills/<name>/` instead. The adapter-owned `skills/update/` package is the exception and should be edited in place.
 - Do not skip the build step. The plugin references `@veewo/claw-core` and `@veewo/claw` at runtime via the global CLI; a stale build causes runtime errors.
 - A single-surface refresh (CLI only or plugin only) is not a complete update. Always refresh both.

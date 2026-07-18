@@ -28,7 +28,7 @@ Accepted
 - `claw plan write`、`claw plan edit`、`claw plan done` 的结果只保留成功信息、下一步、委派 specialist，以及可见计划渲染
 - `prepare.requirements` 的 guidance 先要求补齐 `goal.text` 与计划字段，再根据需求是否清晰决定是否切到 `process.active`；不再把 goal mode 作为这个阶段的第一动作
 - `process.active` 成为由 `goal.text` 驱动的显式执行门：`plan.goal.text` 未填写时，计划不能离开 `prepare.requirements`
-- 是否创建 plan 由请求是否预期产生可复用事实、决策、约束、模式或项目上下文决定，而不是由文件数、步骤数或其他维度加总决定
+- 是否创建 plan 的入口决策由 `using-claw-kit-session-entry.md` 拥有；本 ADR 只消费其 project-plan 结果，并规定后续 `process.discussing` / `process.active` 生命周期
 - `process.discussing` 是允许跨轮次停留的稳定状态；plan 存在本身不触发 Goal Mode，也不要求自动进入 `process.active`
 - 只有后续可执行子任务已经明确，并且用户可以脱手让 agent 继续推进时，plan 才从 `process.discussing` 进入 `process.active`
 - foreground lifecycle 不再派发 knowledge writer；`process.allTasksDone` 只要求在 `plan done` 前持久化 retrospective 与 durable `keyDecisions`
@@ -63,7 +63,7 @@ Accepted
 - knowledge deposition 失败不会阻塞本次 plan closeout；job queueing 与异步完成语义保持分离
 - 历史版本实跑对比说明，workflow feel 的主要回退点并不是 `plan write` 本身必然更重；新版 `plan write` 反而已经比部分旧版更窄、更干净
 - 真正的回退来自 task 建立与推进被拆散到多个可见 surface：如果 startup recovery 先占据入口，而 `process.active` 又不够突出，`plan write` 就不再像唯一 task-scope 入口，主 agent 也更容易遗漏“计划后立即切到 active 执行”这一动作
-- 因而这份 ADR 的 durable 含义不是单独继续压缩 `plan write`，而是保持 `plan write -> process.active` 作为最显眼、最连续的主流程链路，避免被并列 surface 稀释
+- 因而这份 ADR 的 durable 含义不是单独继续压缩 legacy `plan write`，而是保持 `plan create -> process.discussing -> process.active` 作为最显眼、最连续的 project-plan 生命周期，避免被并列 surface 稀释
 - 由于 planning contract 已合并，active skill surface 应避免再保留 `plan-workflow`、`plan-review` 一类独立可见入口来分散主线
 - 固定 Windows low / medium / high 配对 A/B 中，legacy path P50 为 `902.79ms`，atomic path P50 为 `385.06ms`，改善 `57.35%`；计入 create-time recall 后，首个业务动作前的管理命令从 `6` 降到 `3`
 - versioned events 与幂等 `hostActions` 让 Codex adapter 自动同步不需要双向协调，也保留手动 CLI 与旧入口的恢复能力

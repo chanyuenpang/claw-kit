@@ -34,9 +34,9 @@ Accepted
 6. host/runtime 架构成本通过原子 `claw plan start` 与 versioned plan events 收敛：CLI plan state 保持 canonical，adapter 仅消费幂等 `hostActions`，单向同步 host progress 与 Goal Mode。
 7. 性能回归必须把 search 路径与 plan lifecycle 分开报告。search 至少分别记录 exact lexical、semantic one-shot、daemon cold、daemon warm 与 query cache hit；workflow 还需单列 plan mutation 与 closeout。在 plan mutation 成本下降前，不以 search 单点收益宣称 formal workflow 整体提速。
 8. search 性能判断以 `route`、`queryEmbedding`、`embeddingRuntime` 与 `durationMs` telemetry 为准。词法路径无需模型、当前 persistent daemon warm 已低于一秒，因此不在 plan create 时无条件预热 embedding。
-9. complexity gate 的 dependency 维度只计算独立风险，不与 files、steps 或 workflow shape 重复计分。completed plan 没有 durable `keyDecisions` 时，ADR writer 立即 no-op，不先扫描 ADR corpus。
+9. `0.1.69` 的 complexity-gate dependency 校准只作为版本化性能证据保留；当前 project-plan admission 由 `using-claw-kit-session-entry.md` 的 reusable-project-knowledge 判断拥有。combined writer 是否写 ADR 由 freshness-qualified evidence 决定，而不是由旧的独立 ADR phase shortcut 决定。
 10. workflow 性能复测必须同时记录线程绑定的 plugin skill snapshot、全局 CLI 的实际命令能力与仓库源码状态。版本号只能作为线索；只有三层合同一致且目标命令在真实 CLI surface 可用，才可把样本归入最新优化路径。
-11. complexity gate 继续作为 formal workflow 的入口边界：低复杂度请求直接绕过 formal flow；复杂任务保留 planning、Goal Mode、truth/ADR deposition 与验证门禁，不用删减质量合同换取表面流畅度。
+11. formal workflow 的当前入口边界是是否预期产生可复用项目知识；进入 project plan 后继续保留 planning、Goal Mode、Truth/ADR deposition 与验证门禁，不用删减质量合同换取表面流畅度。
 12. 下一阶段优先让 Codex 自动消费幂等 `hostActions`、减少 CLI plan state 与 host progress 的重复写入，并增强 writer 与 completion refresh 的状态可观察性；CLI plan state 仍是 canonical source，不引入 host 侧反向所有权。
 13. `projectVersionAligned` 的诊断不变量是：项目版本与运行时版本相等时必须返回 `true`。equal-version 分支返回 `false` 应作为独立诊断合同缺陷修复，不能被解释为真实版本漂移，也不能覆盖 registry、CLI capability、source、project protocol 与 thread snapshot 的一致性证据。
 14. 后续验收和性能结论继续按 plan lifecycle、lexical search、daemon cold/warm、query cache、writer 与质量门禁分层；不得以任一 search 样本替代整体 workflow 结论。下一轮优化优先降低 cold search 延迟，修正错误命令的 exit-code 合同，并使 `workflowGuidance` writer model 与宿主模型能力清单一致。
@@ -75,7 +75,7 @@ Accepted
 - `0.1.75` 复测证明当前流程的主要体验收益来自 atomic `plan start` 与 Codex `hostActions` 自动桥接，热态表现相对 `0.1.70` 持平到小幅提升；这不能表述为新的数量级 CLI 提速。
 - cold search、错误命令 exit-code 语义与 writer model capability 对齐是独立的后续质量和效率工作项，不能由热态成功样本掩盖。
 - `projectVersionAligned` 的 equal-version 误报被隔离为诊断合同缺陷；修复该字段时必须保持 CLI plan canonical state、单向 host synchronization 与现有多层版本/capability 验证边界。
-- complex workflow 的质量门禁继续保留，low-complexity 请求则由 complexity gate 避免无效管理成本；后续效率收益应来自 Codex host action 自动桥接、减少双写和提高异步 closeout 可观察性。
+- project-plan workflow 的质量门禁继续保留；未预期产生可复用项目知识的请求由默认入口直接工作。后续效率收益应来自 Codex host action 自动桥接、减少双写和提高异步 closeout 可观察性。
 - 性能结论不能只看单条命令基准；必须同时覆盖交互成本、状态写入、首个有效工作时间和质量回归。
 - 分阶段 A/B 让每项收益可归因，并允许在质量指标回退时停止推进对应路线。
 

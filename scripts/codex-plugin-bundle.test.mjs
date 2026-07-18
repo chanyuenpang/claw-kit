@@ -78,6 +78,7 @@ test("Codex entry keeps knowledge routing separate from Goal Mode readiness", as
   assert.match(contract, /handoff-ready|hand off execution/i);
   assert.match(skill, /stable cross-turn state/i);
   assert.match(skill, /convert it to `(?:process\.)?wait`/i);
+  assert.doesNotMatch(skill, /--scope session|session scope|projectless harness/i);
 });
 
 test("Codex entry stays compact without dropping guidance, lifecycle, or the mutation bridge", async () => {
@@ -88,13 +89,21 @@ test("Codex entry stays compact without dropping guidance, lifecycle, or the mut
   const lineCount = skill.trimEnd().split(/\r?\n/).length;
 
   assert.ok(lineCount >= 50 && lineCount <= 65, `expected 50-65 lines, received ${lineCount}`);
-  assert.match(skill, /workflowGuidance` is the only next-step contract/i);
+  assert.match(skill, /## First Action/i);
+  assert.match(skill, /skip this skill and work directly/i);
+  assert.match(skill, /claw plan create "<title>"/i);
+  assert.match(skill, /claw plan create --template <template-id> --title "<title>"/i);
+  assert.match(skill, /Follow the returned `workflowGuidance` as the only next-step execution contract/i);
+  assert.equal((skill.match(/workflowGuidance/g) ?? []).length, 1);
+  assert.doesNotMatch(skill, /current prompt contains/i);
+  assert.match(skill, /Keep claw harness mechanics out of normal thread replies/i);
+  assert.doesNotMatch(skill, /recovered plan|recovered `workflowGuidance`|If a recovered|workflow recovery|claw context|claw search/i);
   for (const state of ["process.discussing", "process.active", "process.wait", "end.completed"]) {
     assert.match(skill, new RegExp(state.replace(".", "\\."), "i"));
   }
   assert.doesNotMatch(skill, /^\s*-\s*`?done`?:/im);
   assert.match(skill, /```javascript[\s\S]*runClawPlanMutation[\s\S]*```/i);
-  assert.doesNotMatch(skill, /Core execution chain|Detailed call flow|## First action|claw plan start|claw task done|claw plan done/i);
+  assert.doesNotMatch(skill, /Core execution chain|Detailed call flow|claw plan start|claw task done|claw plan done/i);
 });
 
 test("Codex main-agent bundle excludes retired workflow skills and closeout routing language", async () => {
@@ -160,6 +169,7 @@ test("exported Codex plugin contains every shared workflow skill", async () => {
   await assert.rejects(fs.access(path.join(result.bundleDir, "skills", "adr-writer", "SKILL.md")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "update", "TEMPLATE.json")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "create-claw-skill", "TEMPLATE.json")));
+  await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "create-claw-skill", "FALLBACK.md")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "scripts", "code-mode-host-action-consumer.mjs")));
 });
 
@@ -194,10 +204,10 @@ test("release protocol publishes the committed Git marketplace snapshot without 
   assert.match(releaseScript, /Next: invoke the claw-kit update skill/);
 });
 
-test("update contract publishes first and supports only the official Codex identity", async () => {
-  const skill = await fs.readFile(new URL("../shared/skills/update/SKILL.md", import.meta.url), "utf8");
-  const template = await fs.readFile(new URL("../shared/skills/update/TEMPLATE.json", import.meta.url), "utf8");
-  const fallback = await fs.readFile(new URL("../shared/skills/update/non-claw-fallback.md", import.meta.url), "utf8");
+test("Codex update contract is platform-specific and supports only the official identity", async () => {
+  const skill = await fs.readFile(new URL("../packages/codex-adapter/skills/update/SKILL.md", import.meta.url), "utf8");
+  const template = await fs.readFile(new URL("../packages/codex-adapter/skills/update/TEMPLATE.json", import.meta.url), "utf8");
+  const fallback = await fs.readFile(new URL("../packages/codex-adapter/skills/update/non-claw-fallback.md", import.meta.url), "utf8");
   const installer = await fs.readFile(new URL("./install-codex-plugin.ps1", import.meta.url), "utf8");
   const combined = [skill, template, fallback, installer].join("\n");
 
@@ -205,6 +215,7 @@ test("update contract publishes first and supports only the official Codex ident
   assert.match(combined, /claw-kit@claw-kit/);
   assert.doesNotMatch(combined, /direct development install/i);
   assert.doesNotMatch(combined, /cache\\claw-kit-local/i);
+  assert.doesNotMatch(combined, /OpenCode|conservative fallback|choose (?:the )?host route|"choices"/i);
   assert.match(installer, /github\.com\/chanyuenpang\/claw-kit\.git/i);
 });
 
@@ -219,6 +230,7 @@ test("official marketplace-style cache copy contains all shared skills and resou
   }
   await assert.doesNotReject(fs.access(path.join(result.installDir, "skills", "update", "TEMPLATE.json")));
   await assert.doesNotReject(fs.access(path.join(result.installDir, "skills", "create-claw-skill", "TEMPLATE.json")));
+  await assert.doesNotReject(fs.access(path.join(result.installDir, "skills", "create-claw-skill", "FALLBACK.md")));
   await assert.doesNotReject(
     fs.access(path.join(result.installDir, "skills", "create-claw-skill", "scripts", "create-claw-skill-stub.mjs")),
   );

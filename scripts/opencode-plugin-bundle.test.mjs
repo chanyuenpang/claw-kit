@@ -82,6 +82,7 @@ test("OpenCode entry keeps knowledge routing separate from active readiness", as
   assert.match(contract, /handoff-ready|hand off execution/i);
   assert.match(skill, /stable cross-turn state/i);
   assert.match(skill, /convert it to `(?:process\.)?wait`/i);
+  assert.doesNotMatch(skill, /--scope session|session scope|projectless harness/i);
 });
 
 test("OpenCode entry stays compact and guidance-led", async () => {
@@ -92,12 +93,20 @@ test("OpenCode entry stays compact and guidance-led", async () => {
   const lineCount = skill.trimEnd().split(/\r?\n/).length;
 
   assert.ok(lineCount >= 20 && lineCount <= 40, `expected 20-40 lines, received ${lineCount}`);
-  assert.match(skill, /workflowGuidance` is the only next-step contract/i);
+  assert.match(skill, /## First Action/i);
+  assert.match(skill, /skip this skill and work directly/i);
+  assert.match(skill, /claw plan create "<title>"/i);
+  assert.match(skill, /claw plan create --template <template-id> --title "<title>"/i);
+  assert.match(skill, /Follow the returned `workflowGuidance` as the only next-step execution contract/i);
+  assert.equal((skill.match(/workflowGuidance/g) ?? []).length, 1);
+  assert.doesNotMatch(skill, /current prompt contains/i);
+  assert.match(skill, /Keep claw harness mechanics out of normal thread replies/i);
+  assert.doesNotMatch(skill, /recovered plan|recovered `workflowGuidance`|If a recovered|workflow recovery|claw context|claw search/i);
   for (const state of ["process.discussing", "process.active", "process.wait", "end.completed"]) {
     assert.match(skill, new RegExp(state.replace(".", "\\."), "i"));
   }
   assert.doesNotMatch(skill, /^\s*-\s*`?done`?:/im);
-  assert.doesNotMatch(skill, /Core execution chain|Detailed call flow|## First action|claw plan start|claw task done|claw plan done/i);
+  assert.doesNotMatch(skill, /Core execution chain|Detailed call flow|claw plan start|claw task done|claw plan done/i);
 });
 
 test("OpenCode researcher includes the search query syntax", async () => {
@@ -138,6 +147,19 @@ test("OpenCode main-agent guidance leaves automatic closeout to the host", async
   await assert.rejects(fs.access(new URL("skills/init/SKILL.md", adapterRoot)));
   await assert.rejects(fs.access(new URL("agents/claw-truth-writer.md", adapterRoot)));
   await assert.rejects(fs.access(new URL("agents/claw-adr-writer.md", adapterRoot)));
+});
+
+test("OpenCode update contract is platform-specific", async () => {
+  const skillRoot = new URL("../packages/opencode-adapter/skills/update/", import.meta.url);
+  const skill = await fs.readFile(new URL("SKILL.md", skillRoot), "utf8");
+  const template = await fs.readFile(new URL("TEMPLATE.json", skillRoot), "utf8");
+  const fallback = await fs.readFile(new URL("non-claw-fallback.md", skillRoot), "utf8");
+  const combined = [skill, template, fallback].join("\n");
+
+  assert.match(combined, /install:opencode-plugin/i);
+  assert.match(combined, /global CLI/i);
+  assert.match(combined, /restart OpenCode/i);
+  assert.doesNotMatch(combined, /Codex|claw-kit@claw-kit|conservative fallback|choose (?:the )?host route|"choices"/i);
 });
 
 test("repository OpenCode plugin source is fully materialized from shared skills", async () => {

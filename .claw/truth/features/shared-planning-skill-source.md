@@ -17,18 +17,18 @@
 - `packages/codex-adapter/package.json` 与 `packages/opencode-adapter/package.json` 的 `build` / `check` 也会先执行共享同步脚本，避免仓库中的副本与共享源漂移。
 - `scripts/sync-shared-skills.mjs` 只会把生成 banner 注入到顶层 `SKILL.md`，不会污染 shared skill tree 里的其他 markdown 或 bundled helper scripts。
 - `scripts/sync-shared-skills.mjs` 现在用 repo lock 保护共享 skill 同步，`scripts/sync-shared-skills.test.mjs` 则覆盖了同步结果、生成 banner 和 Windows 并发打包场景，避免 `codex-plugin-bundle` 与 `opencode-plugin-bundle` 测试在同一工作区里互相抢写。
-- 共享后的 `planning` skill 保持宿主无关：它只描述如何产出高质量 plan 内容，不承担 claw-kit runtime、复杂度评分门禁、status 语义、writer dispatch、goal mode 或 closeout 规则。
+- 共享后的 `planning` skill 保持宿主无关：它只描述如何产出高质量 plan 内容，不承担 claw-kit runtime、project-plan admission、status 语义、writer dispatch、goal mode 或 closeout 规则。
 - 共享后的 `config` skill 保持宿主无关：它只描述配置入口、team-vs-personal scope 判断、canonical field shape 和 override 格式，不承担 claw-kit lifecycle 或 writer dispatch。
-- 共享后的 `create-claw-skill` skill 保持宿主无关：它只负责把既有 skill 或用户想法转换成 claw-template-backed skill，不承担 claw-kit runtime、复杂度评分门禁、status 语义、writer dispatch、goal mode 或 closeout 规则。
+- 共享后的 `create-claw-skill` skill 保持宿主无关：它只负责把既有 skill 或用户想法转换成 claw-template-backed skill，不承担 claw-kit runtime、project-plan admission、status 语义、writer dispatch、goal mode 或 closeout 规则。
 - 为了避免把试验性产物误固化成长期合同，`brainstorming` 和 `systematic-debugging` 这类在创建 `create-claw-skill` 过程中生成的测试 skill 树不应作为正式 shared skills/templates 保留在仓库里；它们不属于 `scripts/sync-shared-skills.mjs` 的默认维护列表，除非未来被明确重新晋升。
-- claw-kit 专属运行时语义继续保留在 `packages/codex-adapter/skills/using-claw-kit/SKILL.md` 中，而不是重新回流到通用 shared skills；本轮已验证复杂度评分表与低分绕过规则都属于这个入口 skill，而不是 `shared/skills/planning/SKILL.md`。
+- claw-kit 专属运行时语义继续保留在两个 adapter 的 `using-claw-kit/SKILL.md` 中，而不是重新回流到通用 shared skills；project-plan versus direct-work 的入口判断属于这个入口 skill，而不是 `shared/skills/planning/SKILL.md`。
 
 ## 影响
 
 - 以后修改 planning skill 时，只需要编辑 `shared/skills/planning/SKILL.md`，不应再分别修改 codex 和 opencode 两份副本。
 - 以后修改 config skill 时，只需要编辑 `shared/skills/config/SKILL.md`，不应再分别修改 codex 和 opencode 两份副本。
 - 以后修改 create-claw-skill skill 时，只需要编辑 `shared/skills/create-claw-skill/SKILL.md`，不应再分别修改 codex 和 opencode 两份副本。
-- planning 文案可以继续朝“通用 plan skill”演化，而宿主差异与 claw-kit 专属合同应继续收敛到 `using-claw-kit` 或其他宿主级入口技能中；如果未来再调整复杂度门禁或低复杂度绕过语义，应先改入口 skill，再同步生成副本，而不是把门禁写回 shared planning 源。
+- planning 文案可以继续朝“通用 plan skill”演化，而宿主差异与 claw-kit 专属合同应继续收敛到 `using-claw-kit` 或其他宿主级入口技能中；如果未来再调整 project-plan admission 或 direct-work 语义，应同时修改两个 host-specific 入口 skill，而不是把入口规则写回 shared planning 源。
 - config 文案提供明确配置入口：先判断 shared team config 还是 personal local override，再使用当前扁平 canonical field shape。
 - create-claw-skill 文案继续承担模板化转换入口：如果未来要调整转换流程或 fallback 语义，先改 shared source，再让 sync 脚本和插件 bundle 传播到适配器目录。
 - 生成型测试 skill 默认不进入 shared sync 列表；如果未来要重新引入 `brainstorming` 或 `systematic-debugging`，应先明确它们是否要晋升为正式 shared skills/templates，再决定是否纳入同步。
@@ -57,7 +57,7 @@
 
 - `planning` 与 `config` 的规范源仍然只在 `shared/skills/`；适配器副本不应作为 Git 追踪文件或日常编辑入口。
 - `scripts/codex-plugin-bundle.mjs` 和 `scripts/opencode-plugin-bundle.mjs` 现在应在临时 staging 目录内生成所需的 adapter-local skill 副本，再把最终 payload 写入安装缓存；本地插件安装、adapter `build`、`check` 不应覆写仓库中的 `packages/*-adapter/skills/**/SKILL.md`。
-- 当时针对 `update` 的仓库、已安装 Codex plugin cache 和用户 skill 目录审计未发现真实 skill；该历史结论已被 `0.1.62` 后续发布取代。当前规范源是 `shared/skills/update/`，Codex bundle 和已安装 cache 都会携带 `SKILL.md`、`TEMPLATE.json` 与相关资源。
+- 当时针对 `update` 的仓库、已安装 Codex plugin cache 和用户 skill 目录审计未发现真实 skill；该历史结论先被 `0.1.62` 的 shared package 发布取代，又在 2026-07-18 被 host-specific ownership 取代。当前规范源分别位于两个 adapter，见 `.claw/truth/features/host-specific-update-skills.md`。
 - 发布版本必须先以 npm registry 的 `latest` 为准，而不是以 workspace 旧版本或 runtime hint 为准。审计时 `@veewo/claw-core` 与 `@veewo/claw` 的 `latest` 都是 `0.1.60`，所以下一轮 patch release 的目标是 `0.1.61`。
 
 ## 补充检索词
@@ -80,7 +80,7 @@
 - full template 的 `configOverride` 会进入 `effectivePlanProjectConfig(...)`，从而影响运行时 `workflowGuidance`；不能把它当作仅用于生成静态 JSON 的元数据。
 - full template task 的 `guidance.onDone` 会参与任务完成时的 guidance 合并；若 task 定义 choices，CLI `plan edit --choice-id <id>` 会选择对应分支，所选分支的 `summary` 等字段进入运行时响应。
 - CLI compact plan response 必须保留 `workflowGuidance.summary`，并继续以顶层 `summary` 返回；不能只保留 `nextsteps`、`recommendedCommands` 或折叠后的 `planSummary`。
-- `shared/skills/update/TEMPLATE.json` 是 full `PlanDocument` template；它不需要被改写成 legacy `SeedPlanTemplate`，也不应为 `plan create` 与 `subplan create` 分别建立专用 resolver。
+- 当时的 `shared/skills/update/TEMPLATE.json` 是 full `PlanDocument` template；当前两个 adapter-owned `update/TEMPLATE.json` 仍沿用同一 full-template resolver，不需要降格为 legacy `SeedPlanTemplate`。
 
 ### 真实调用链路
 
@@ -94,13 +94,13 @@
 - CLI 测试：56/56 通过。
 - Codex bundle 测试：6/6 通过。
 - OpenCode bundle 测试：5/5 通过。
-- 隔离 live smoke 使用本地构建 CLI 与 canonical `shared/skills/update/TEMPLATE.json`：`plan create --template update` 与 `subplan create --template update` 均生成 `process.active`、3 tasks 的 plan；child 明确记录 `parentPlan = plan.json`、`parentTaskId = 1`。
-- 同一 smoke 中，`plan edit ... --choice-id codex` 返回 `summary = The current host route is Codex.` 和 `nextTask = 2`，证明 full template 的 task `guidance.onDone`、choice 分支和 compact summary 都进入真实运行时响应。
+- 该轮隔离 live smoke 使用当时的 canonical `shared/skills/update/TEMPLATE.json`：`plan create --template update` 与 `subplan create --template update` 均生成 `process.active`、3 tasks 的 plan；child 明确记录 `parentPlan = plan.json`、`parentTaskId = 1`。
+- 同一历史 smoke 中，`plan edit ... --choice-id codex` 返回 `summary = The current host route is Codex.` 和 `nextTask = 2`。当前 host-specific templates 已删除该 platform choice；这条记录只证明 full-template choice 语义在当时进入真实运行时响应。
 
 ### 关联代码
 
-- `shared/skills/update/SKILL.md`
-- `shared/skills/update/TEMPLATE.json`
+- `shared/skills/update/SKILL.md`（该轮历史路径，现已删除）
+- `shared/skills/update/TEMPLATE.json`（该轮历史路径，现已删除）
 - `packages/core/src/plan.ts`
 - `packages/core/src/plan-templates.ts`
 - `packages/core/src/workflow-guidance.ts`
@@ -125,10 +125,11 @@
 ### 结论
 
 - Codex 官方 Git marketplace 直接缓存仓库 marketplace manifest 中 `source` 指向的插件树；仓库入口是 `.agents/plugins/marketplace.json`，其中 `claw-kit` 使用 `source.source = "local"`、`source.path = "./packages/codex-adapter"`。安装期不依赖 npm lifecycle，也不应要求用户运行仓库脚本补齐插件内容。
-- `shared/skills/` 仍是跨适配器共享内容的规范源；但作为官方 marketplace 安装源的 `packages/codex-adapter/` 必须在 Git 中提交已物化的 `planning`、`config`、`update`、`create-claw-skill` 及各自全部模板、helper 和其他资源。Codex 专属 skills 与这四个共享 skills 共同组成自包含插件树。
+- `shared/skills/` 仍是跨适配器共享内容的规范源；但作为官方 marketplace 安装源的 `packages/codex-adapter/` 必须在 Git 中提交已物化的 shared skills，并直接提交 adapter-owned `update` 及其全部模板、helper 和其他资源。两类 skills 共同组成自包含插件树。
 - `scripts/sync-shared-skills.mjs` 现在同时提供 `verifySharedSkillsSynced(...)` 与 `assertSharedSkillsSynced(...)` 只读校验。发布门禁在 marketplace 源缺少共享 skill 或内容漂移时直接失败；`scripts/codex-plugin-bundle.mjs` 导出时不再隐式同步来掩盖源目录缺失。
-- `scripts/codex-plugin-bundle.test.mjs` 的 marketplace-style cache copy 测试从真实 `packages/codex-adapter` 源树复制到临时版本化 cache，并验证四个共享 skills 以及 template / helper 资源齐全。这一验证与 release zip 验证是两个不同发布面。
+- `scripts/codex-plugin-bundle.test.mjs` 的 marketplace-style cache copy 测试从真实 `packages/codex-adapter` 源树复制到临时版本化 cache，并验证 shared-materialized skills、adapter-owned `update` 以及 template / helper 资源齐全。这一验证与 release zip 验证是两个不同发布面。
 - 当前模板统一入口是 `packages/core/src/plan-templates.ts` 的 `resolveSeedPlanTemplate(...)`。`claw plan create`、`claw subplan create` 与 `claw template validate` 都复用该 resolver；此前文档中的 `resolvePlanTemplate(...)` / 分离式解析描述已被这一当前实现取代。
+- `packages/core/src/plan.ts` 的创建 scope 解析会把无 `.claw` cwd 下的显式 `claw plan create --template <id>` 自动放入 session scope；同一命令在已有项目内保持 project scope。普通不带显式 template 的 `claw plan create "<title>"` 仍走项目初始化，不受此自动规则影响。
 - `claw template validate` 除模板有效性外，还输出 `choiceRequiredTasks`，用于暴露哪些 task 在完成时要求 `choice-id`。
 - 合并远端后的统一版本线是 `0.1.63`：root、core、CLI、Codex adapter、OpenClaw adapter 与 OpenCode adapter 的 package version 均对齐到 `0.1.63`。
 
@@ -139,6 +140,7 @@
 - release gate 必须同时验证 `.agents/plugins/marketplace.json` 的 source 路由、物化源树与 shared source 一致，以及 bundle / isolated template 可用性；任何一个发布面失败都不能发布。
 - 用户安装与升级 Codex 插件的规范路径是 `codex plugin marketplace add chanyuenpang/claw-kit --ref main` 和 `codex plugin marketplace upgrade claw-kit`，随后在 Codex 插件目录中安装或刷新 Claw Kit。直接写入本机 plugin cache 的安装脚本只用于维护者本地开发，不是远端用户分发入口。
 - plan create、subplan create 与 template validate 的模板语义必须继续由同一个 `resolveSeedPlanTemplate(...)` 决定，避免创建路径与校验路径对同一模板给出不同结论。
+- 自动 session scope 只由“无 project root + 显式 template”触发；skill entry 不应重复暴露存储 scope，显式 `--scope session` 与 template 自带 `scope: "session"` 仍保留强制覆盖能力。
 
 ### 验证标准
 
@@ -226,12 +228,10 @@
 - marketplace upgrade 后必须重新安装或启用 `claw-kit@claw-kit`，并检测仍启用的旧同名 identity，例如 `claw-kit@claw-kit-local`。旧 identity 指向旧 source 时，即使磁盘上已有更新 cache，Codex 仍可能加载旧技能。
 - cache 目录只是安装 artifact，不是 active plugin 证明。Codex 更新验收必须同时证明 active identity、marketplace source manifest、cache manifest 与 target version 一致，并在 restart/new task 后确认 loaded skill locator 来自预期版本。
 
-### Canonical update skill 合同
+### 当时的 shared update skill 合同（已被 host-specific ownership 取代）
 
-- `shared/skills/update/SKILL.md` 保存高信号入口规则：官方 identity、cache 非激活证明、旧同名 identity 检测，以及 CLI/plugin 双 surface 完成边界。
-- `shared/skills/update/TEMPLATE.json` 保存逐步执行合同：升级 marketplace 后重新安装/启用 identity，按官方或 development route 核对 source/cache manifest，清理 stale same-name identity，并在新任务验证 loaded locator。
-- `shared/skills/update/non-claw-fallback.md` 为未进入 claw template 的等价后备流程；`shared/skills/update/CONTENT-COVERAGE.md` 明确 active identity/source verification 属于必须覆盖内容。
-- Codex/OpenCode adapter 中的 `update` 副本由 `sync:shared-skills` 从 `shared/skills/update/` 生成；adapter 副本不是独立编辑入口。
+- `shared/skills/update/` 在该轮保存统一入口、模板、fallback 与 coverage；这些路径是 2026-07-16 的历史证据，不再是当前维护面。
+- 2026-07-18 起，Codex/OpenCode adapter 各自独立拥有 `update` package，shared sync 不再生成它们；当前合同见 `.claw/truth/features/host-specific-update-skills.md`。
 
 ### 官方与开发 identity 边界
 
@@ -256,13 +256,13 @@
 - 三处 `skills/using-claw-kit/SKILL.md` 的 SHA256 均为 `614ABD613718EAB598C4535B3BA38829A9FD4F3AC81749F08D61097B715CE268`，证明该次安装的 repo/source/cache payload 一致。
 - 上述文件一致性仍不热替换当前任务绑定的旧 catalog；重启 Codex 并创建新任务、再确认 loaded locator，才是最终加载边界。
 
-### 关联代码与文档
+### 该轮历史关联代码与文档
 
-- canonical skill：`shared/skills/update/SKILL.md`
-- canonical template：`shared/skills/update/TEMPLATE.json`
-- fallback：`shared/skills/update/non-claw-fallback.md`
-- coverage contract：`shared/skills/update/CONTENT-COVERAGE.md`
-- shared-copy 生成：`scripts/sync-shared-skills.mjs`、root `package.json` 的 `sync:shared-skills`
+- 当时的 canonical skill：`shared/skills/update/SKILL.md`（已删除）
+- 当时的 canonical template：`shared/skills/update/TEMPLATE.json`（已删除）
+- 当时的 fallback：`shared/skills/update/non-claw-fallback.md`（已删除）
+- 当时的 coverage contract：`shared/skills/update/CONTENT-COVERAGE.md`（已删除）
+- 当时的 shared-copy 生成：`scripts/sync-shared-skills.mjs`、root `package.json` 的 `sync:shared-skills`
 - 用户入口：`README.md`
 - 分发与验收：`DISTRIBUTION.md`
 - template/bundle 回归：`scripts/codex-plugin-bundle.test.mjs`
@@ -293,7 +293,7 @@
 
 - 仓库 marketplace manifest 位于 `.agents/plugins/marketplace.json`。每个 plugin 的 `source.path` 必须以 `./` 开头，并相对于 marketplace root 解析。
 - claw-kit entry 的 `source.path` 是 `./packages/codex-adapter`，因此 repository marketplace 直接安装 Git 中已提交的 Codex adapter payload。
-- `shared/skills/planning/`、`shared/skills/config/`、`shared/skills/update/`、`shared/skills/create-claw-skill/` 是 authoring sources。`scripts/sync-shared-skills.mjs` 将这些目录的完整文件物化到 `packages/codex-adapter/skills/` 与 `packages/opencode-adapter/skills/`；生成的 `SKILL.md` 保留 source banner，adapter 副本不是独立编辑入口。
+- `shared/skills/planning/`、`shared/skills/config/`、`shared/skills/create-claw-skill/` 与 `shared/skills/knowledge-writer/` 是当前 authoring sources。`scripts/sync-shared-skills.mjs` 将这些目录的完整文件物化到两个 adapter；`update` 是明确的 adapter-owned exception，不带 shared source banner。
 - Repository marketplace 安装不依赖 npm lifecycle，也不依赖安装时或 build 时临时生成 shared skills；安装输入是 Git 中已提交且已经物化的 `packages/codex-adapter` 树。
 - GitHub Release ZIP 是同一 adapter payload 的衍生副本，不参与 repository marketplace 安装链路。只有明确要求 offline/manual artifact policy 时，才需要把 ZIP 作为额外必需分发面。
 
@@ -312,7 +312,8 @@
 ### 关联代码
 
 - marketplace manifest：`.agents/plugins/marketplace.json`
-- shared authoring sources：`shared/skills/planning/`、`shared/skills/config/`、`shared/skills/update/`、`shared/skills/create-claw-skill/`
+- shared authoring sources：`shared/skills/planning/`、`shared/skills/config/`、`shared/skills/create-claw-skill/`、`shared/skills/knowledge-writer/`
+- host-specific update sources：`packages/codex-adapter/skills/update/`、`packages/opencode-adapter/skills/update/`
 - materialization：`scripts/sync-shared-skills.mjs`
 - committed Codex marketplace payload：`packages/codex-adapter/`
 - release gate：`scripts/publish-release.mjs`

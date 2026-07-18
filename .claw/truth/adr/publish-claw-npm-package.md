@@ -23,7 +23,7 @@ Accepted
 - 发布前必须位于 `main`，且 `HEAD` 必须与 `origin/main` 精确相等；有用内容须先提交并推送到 `main`
 - 发布前和 npm publish 后工作区都必须干净；不得用 stash 绕过此门禁
 - 所有 release 版本元数据必须对齐
-- 实际生成的 Codex 插件 bundle 必须包含完整共享 workflow skill 目录，包括 `planning`、`config`、`update`、`create-claw-skill` 及其模板或 fallback 资源
+- 实际生成的 Codex 插件 bundle 必须同时包含完整的 shared-materialized workflow skills 和 adapter-owned `update` package；各自声明的模板、fallback 与相邻资源都不能缺失
 - Codex 插件资产与两个 npm 包必须使用同一 release 版本
 
 ## Consequences

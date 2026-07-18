@@ -28,8 +28,8 @@ Accepted working truth for local development on this machine.
   - `claw switch-task`
   - `claw memory index/search/get` for legacy/debug and low-level index management
   - `claw truth ingest`
-- Normal planned work should bind task scope with `claw plan write` first; when project context recall is useful, run `claw search --query "<topic>"` after `plan write`.
-- Low-complexity direct work with complexity score below `4` still skips formal planning, but it may run `claw search --query "<topic>"` before execution when prior project context matters.
+- Normal planned work should enter through `claw plan create`; when project context recall is useful, run `claw search --query "<topic>"` after task scope exists.
+- Direct work selected by the current `using-claw-kit` entry skips formal planning. Any later `claw search --query "<topic>"` belongs to task-specific recall rather than the entry route. The entry no longer uses a numeric complexity threshold.
 - `claw direct` is a hidden compatibility command, not a current writer-dispatch surface. Direct work may use project recall, but canonical knowledge finalization belongs to completed project plans and the hook-owned `knowledge-writer` job.
 - Codex-facing recall should use `claw search --query "<topic>"` as project-scoped document recall for project memory, truth, ADR, and external docs; it is not code search.
 - `claw search index --refresh` is the explicit project index refresh entrypoint and returns `search.index.refresh`.
@@ -42,9 +42,9 @@ Accepted working truth for local development on this machine.
 - When `autoUpdate = false`, startup recovery only reports the lagging-version note; it does not run a local install action.
 - When `autoUpdate = true` and a newer published version exists, startup recovery reports `startupRecovery.versionSync.updateSkill = "claw-kit:update"` and treats that skill as the required first action.
 - Any real update flow must refresh both local runtime surfaces together: the global CLI install and the current host plugin install surface.
-- The converted `shared/skills/update` skill now keeps that contract in the same package: `SKILL.md` is a thin entry, `TEMPLATE.json` carries the ordered update workflow, `non-claw-fallback.md` preserves the original inline update instructions for no-`.claw` workspaces, and `CONTENT-COVERAGE.md` records the source-to-converted mapping.
+- Each host now keeps that contract in its adapter-owned `skills/update/` package: `SKILL.md` is the entry, `TEMPLATE.json` carries the ordered host-specific workflow, `non-claw-fallback.md` covers no-`.claw` workspaces, and `CONTENT-COVERAGE.md` records the package mapping. See `.claw/truth/features/host-specific-update-skills.md`.
 - The 0.1.58 release closeout confirmed that version bumps can surface stale protocol-version expectations in `packages/core/test/core.test.ts`; when package versions advance, the `initProject` scaffold and `ensureProjectProtocol` rewrite assertions must be updated in the same change.
-- The preserved update workflow is stable: detect a newer-version context, pick an explicit Codex / OpenCode / conservative host route, refresh the global CLI first, refresh the matching host plugin surface second, then verify both surfaces and report exact per-surface status.
+- The update workflow is stable: the loaded adapter selects its own implementation without a platform-choice task, then refreshes and verifies the global CLI together with that host's plugin surfaces and reports exact per-surface status.
 - `claw search index --refresh` 现在会对当前项目的 markdown recall index 做增量同步，而不是每次都全量重建 sqlite store。
 - 未变更文档会复用既有 sqlite rows 与 embeddings；变更文档只替换自身 `docs` / `docs_fts` / `doc_embeddings` 记录并重算 embeddings；删除文档会被清理。
 - 对于已经存在 `docs` 记录但缺少 `doc_embeddings` 的旧数据，`packages/core/src/memory.ts` 里的 `syncProjectMemoryIndex` 会在 `insertDocs` 后再用 `listDocsMissingEmbeddings(db)` + `indexDocEmbeddings` 补齐向量，避免 refresh 只看见 docs 行就误报完成。
@@ -89,10 +89,10 @@ Accepted working truth for local development on this machine.
 - Project-level `claw search --query` now generates a real query embedding and uses a trimmed hybrid recall that fuses vector and FTS results.
 - Project-level `claw search --query` now fails with `MEMORY_VECTOR_INDEX_REQUIRED` when the refreshed vector index is missing, instead of silently degrading to non-vector search.
 - Task-scope memory search still keeps the previous FTS and task-memory behavior.
-- Normal planned work should bind task scope with `claw plan write` first; if project recall helps, use `claw search --query "<topic>"` afterward.
+- Normal planned work should enter through `claw plan create`; if project recall helps, use `claw search --query "<topic>"` after task scope exists.
 - `claw memory ...` remains available, but it is not the recommended Codex workflow concept.
 - Local installation on this machine is currently refreshed through `npm run install:local-cli`.
-- `shared/skills/update/SKILL.md` is now the shared canonical update contract, and shared-skill sync carries `update` into both Codex and OpenCode adapter skill payloads.
+- `update` is intentionally excluded from shared-skill synchronization. Codex and OpenCode independently maintain their same-named adapter packages; `.claw/truth/features/host-specific-update-skills.md` is the current owner of that contract.
 - 在 `@veewo/claw` 刚发布后的短暂窗口里，`npm run install:local-cli` 可能会先撞到 npm registry 传播延迟；当 `npm view @veewo/claw version` 已经返回目标版本后，重试一次安装通常就能收敛到最终本机状态。
 - 在当前这台 Codex host 上，`0.1.59` 的本地 update-first follow-up 已验证闭环：先运行 `npm run install:local-cli` 刷新全局 CLI，再运行 `npm run install:codex-plugin` 刷新本地 Codex plugin surface；完成态证据是 `claw --version = 0.1.59`、`npm list -g @veewo/claw --depth=0 = @veewo/claw@0.1.59`、Codex cache 目录为 `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.59+codex.20260711014244`，且该缓存副本的 `.codex-plugin/plugin.json` `version` 与目录版本一致。
 - 当前这台 Windows 机器的已验证刷新结果是全局 `@veewo/claw@0.1.52`。

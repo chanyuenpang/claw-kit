@@ -4,7 +4,11 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { syncSharedSkills, verifySharedSkillsSynced } from "./sync-shared-skills.mjs";
+import { SHARED_SKILL_NAMES, syncSharedSkills, verifySharedSkillsSynced } from "./sync-shared-skills.mjs";
+
+test("platform-specific update skills are not shared-generated", () => {
+  assert.equal(SHARED_SKILL_NAMES.includes("update"), false);
+});
 
 async function makeFixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "claw-kit-sync-shared-skills-"));

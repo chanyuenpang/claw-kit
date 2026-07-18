@@ -20,7 +20,7 @@
 - `npm run install:codex-plugin` 已把本地 Codex plugin cache 刷新到 `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.53+codex.20260626141302`，安装后的 `.codex-plugin/plugin.json` 与仓库 manifest 版本一致，并携带新的低复杂度 skip-before-plan entry copy。
 - `@veewo/claw-core@0.1.58` 与 `@veewo/claw@0.1.58` 已经成功发布到 npm registry；这轮 closeout 还一起验证了 `npm test`、`npm run check`、`npm whoami` 以及两个 `npm pack --dry-run` 都通过。
 - 0.1.58 release verification 的关键补丁之一是：当 package 版本推进时，`packages/core/test/core.test.ts` 里与协议版本绑定的硬编码期望也要一起更新，否则会先在 `initProject` scaffold 和 `ensureProjectProtocol` rewrite 相关断言上失败。
-- 这轮发布还确认了三条可持续的 release surface 会一起变动：`autoUpdate` 默认仍为 `true`，`SessionStart` 的 prompt / auth wording 与 update-first 顺序会继续围绕 `startupRecovery.versionSync` 收敛，而 `shared/skills/update` 仍保持 template-backed skill package 形态。
+- 这轮发布还确认了三条可持续的 release surface 会一起变动：`autoUpdate` 默认仍为 `true`，`SessionStart` 的 prompt / auth wording 与 update-first 顺序会继续围绕 `startupRecovery.versionSync` 收敛，而 `update` 继续保持 template-backed skill package 形态。其当前源码所有权已拆分到两个 adapter，见 `.claw/truth/features/host-specific-update-skills.md`。
 - `npm publish` 偶尔会吐出 `bin[claw]` 之类的归一化警告，但这不能单独当成最终结论；发布后仍要用 `npm view @veewo/claw bin --json` 再核对 registry 里的 bin 映射，并跑真实的 `claw` 烟测确认命令面可用。
 - 2026-06-24 的 release audit 重新确认了 npm registry 的 `latest` 仍停留在 `0.1.50`，因此下一次 patch target 变为 `0.1.51`；这一轮 release-surface alignment 继续覆盖 root `package.json`、`packages/core/package.json`、`packages/cli/package.json`、`packages/codex-adapter/package.json`、`packages/openclaw-adapter/package.json`、`packages/opencode-adapter/package.json`、`package-lock.json` 和 `packages/codex-adapter/.codex-plugin/plugin.json`，其中 Codex plugin manifest 目标版本是 `0.1.51+codex.20260624140756`。
 - 0.1.51 release verification passed the full local gate: `npm test` passed with core `85/85` and CLI `50/50`, `npm run check` passed, `npm run test:codex-plugin` passed `5/5`, `npm run test:opencode-plugin` passed `5/5`, `npm pack --dry-run -w @veewo/claw-core` produced `veewo-claw-core-0.1.51.tgz`, and `npm pack --dry-run -w @veewo/claw` produced `veewo-claw-0.1.51.tgz`.
@@ -124,7 +124,7 @@ npm registry 发布不能单独证明其他机器可获得相同源代码或 Cod
 - 根目录、`packages/core`、`packages/cli`、Codex/OpenClaw/OpenCode adapter 的版本与 release version 一致；CLI 对 `@veewo/claw-core` 的依赖和 Codex manifest 的 `<version>+codex.<timestamp>` 也必须对齐。
 - `git status --porcelain` 必须为空，防止未提交的 skill、模板或版本改动进入只有本机可见的发布状态。
 - `HEAD` 必须是 `origin/main` 的祖先；脚本会先 `git fetch origin --prune`，未推送到 GitHub 的 commit 会直接阻止 npm 发布。
-- 在临时目录实际生成 Codex bundle，并验证 `planning`、`config`、`update`、`create-claw-skill` 的 `SKILL.md`，以及后两个 skill 的 `TEMPLATE.json`。因此 staging 必须复制完整 shared skill 目录，而不能只复制入口文件。
+- 在临时目录实际生成 Codex bundle，并验证 shared-materialized skills 与 adapter-owned `update` 都保留完整入口和声明资源。`update` 不再来自 shared staging；其 Codex package 必须直接随已提交的 adapter payload 进入 bundle。
 
 `--publish` 通过上述闸门后，按 `@veewo/claw-core`、`@veewo/claw` 的顺序发布。发布后仍应使用 `npm view` 确认 registry 版本及 CLI metadata。
 
@@ -176,13 +176,13 @@ release commit `472635e` 已推送至 `origin/main`，tag 为 `v0.1.62`；`@veew
 - 维护者本地开发 cache 已安装到 `C:\Users\chany\.codex\plugins\cache\claw-kit-local\claw-kit\0.1.63+codex.20260715132514`。
 - Codex 官方 marketplace cache 已存在于 `C:\Users\chany\.codex\plugins\cache\claw-kit\claw-kit\0.1.63+codex.20260715132514`。这两个目录代表不同安装入口，但 manifest 版本应保持一致。
 - 从 marketplace cache 实际执行模板验证时，`update/TEMPLATE.json` 与 `create-claw-skill/TEMPLATE.json` 均验证成功，响应中的 `choiceRequiredTasks` 与模板任务约束一致。
-- marketplace cache 同时包含 `planning`、`config`、`update`、`create-claw-skill` 四个共享 skill；`create-claw-skill/scripts/create-claw-skill-stub.mjs` 也存在，证明 marketplace 安装不只复制了 skill 入口和模板，还保留 helper 资源。
+- 该轮 marketplace cache 同时包含 `planning`、`config`、`update`、`create-claw-skill`；在 `0.1.63` 时四者仍按 shared skill 统计。当前 `update` 已改为 adapter-owned package，但该历史 cache 证据仍证明 marketplace 安装保留了模板与 helper 资源。
 
 ### 长期验证规则
 
 - publish 输出中的 `bin[claw]` 路径归一化只能视为 npm metadata 修正，不能单独判定发布失败；必须继续核对 registry manifest 的 `bin.claw`，并通过从 registry 全局安装后的真实 `claw --version` 烟测闭环。
 - Codex release closeout 应区分并按需验证两种 cache：`claw-kit-local` 是维护者开发安装面，`claw-kit` 是官方 marketplace 安装面。远端用户可用性应以 marketplace cache 的实际内容与运行验证为准。
-- marketplace cache 验收不能只统计四个共享 skill 目录；还必须验证 `TEMPLATE.json`、`scripts/create-claw-skill-stub.mjs` 等声明资源，并用 cache 中的真实模板执行 `claw template validate`，检查 `choiceRequiredTasks`。
+- marketplace cache 验收不能只统计 skill 目录；还必须分别验证 shared-materialized skills 与 adapter-owned `update` 的 `TEMPLATE.json`、helper 等声明资源，并用 cache 中的真实模板执行 `claw template validate`，检查 `choiceRequiredTasks`。
 - 本轮正式发布完成时，`main` 与 `origin/main` 的 ahead/behind 为 `0/0`，且发布 closeout 工作树干净。该 Git 状态是发布源可追溯性的结束证据；后续 truth deposition 自身产生的文档修改不改变这一已完成发布事实。
 
 ### 验证锚点

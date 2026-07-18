@@ -139,13 +139,13 @@ const COMMAND_HELP: Record<string, HelpNode> = {
           "{script} plan create --title <text> [--goal <text>] [--template <name>] [--scope session]",
         ],
         description:
-          "Create the task scope and initial plan from a template. Uses explicit `--template` first, otherwise the project's configured `defaultPlanTemplate`, and finally falls back to the built-in `default`; planning-enabled projects start in process.discussing with the default planning bridge tasks, while planning-disabled projects start directly in process.active with one executable task.",
+          "Create the task scope and initial plan from a template. Outside a .claw project, explicit `--template` automatically uses session scope while plain plan creation keeps the project-initializing behavior. Template resolution uses explicit `--template` first, otherwise the project's configured `defaultPlanTemplate`, and finally the built-in `default`; planning-enabled projects start in process.discussing with the default planning bridge tasks, while planning-disabled projects start directly in process.active with one executable task.",
         summary: "Create the task scope and initial plan.",
         options: [
           { flag: "--title <text>", detail: "Task title (required unless a positional title is given)." },
           { flag: "--goal <text>", detail: "Optional goal text." },
           { flag: "--scope session", detail: "Use ephemeral per-session storage and disable project knowledge side effects." },
-          { flag: "--template <name>", detail: "Optional plan template name. Overrides the project's configured default template." },
+          { flag: "--template <name>", detail: "Optional plan template name. Overrides the project default and auto-selects session scope when no .claw project exists." },
         ],
       },
       edit: {

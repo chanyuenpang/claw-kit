@@ -2,6 +2,20 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## Unreleased
+
+## [0.1.82] - 2026-07-19
+
+### Changed
+
+- The `using-claw-kit` entry contract now uses a simpler binary route: create a project plan when reusable project knowledge is expected, otherwise work directly; session scope remains an explicit CLI capability instead of a default entry route
+- Codex and OpenCode now ship independently maintained `update` skills, so each workflow refreshes its own host without an in-plan platform choice
+- Template-backed claw skills now route by whole-task, independent-stage, or mixed-stage ownership; batch work is modeled as repeated stage subplans, while mixed-stage use and unavailable claw tooling share one complete adjacent fallback
+- Explicit `plan create --template` automatically uses session storage outside a `.claw` project, while plain `plan create` keeps its project-initializing behavior and skill entries no longer expose session-scope routing
+- `create-claw-skill` now uses a compact three-task conversion template, a minimal generator command, file-based source validation, and concrete positive and negative choice examples
+- `using-claw-kit` now keeps recovery and search routing out of the default entry contract and focuses only on consuming current `workflowGuidance`
+- `using-claw-kit` now exits immediately for work that needs no reusable project knowledge; otherwise its minimal First Action selects default or template-backed plan creation, treats returned `workflowGuidance` as the only next-step execution contract, and keeps harness mechanics out of normal thread replies
+
 ## [0.1.78] - 2026-07-18
 
 ### Added
