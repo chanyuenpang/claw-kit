@@ -2,7 +2,7 @@
 
 ## 状态
 
-这是 `publish-claw-npm-package` 完成后沉淀下来的稳定发布事实。当前最新一轮已验证到 `0.1.80`，并继续沿用同一条双包发布链与 official GitHub marketplace Codex plugin 刷新协议；当某一轮发布的目的就是验证 startup `autoUpdate` 路径时，release baseline 也可以先只确认 registry / workspace 基线与下一目标版本，不立即刷新本地 CLI 或本地 Codex plugin cache。
+这是 `publish-claw-npm-package` 完成后沉淀下来的稳定发布事实。当前最新一轮已验证到 `0.1.81`，并继续沿用同一条双包发布链与 official GitHub marketplace Codex plugin 刷新协议；当某一轮发布的目的就是验证 startup `autoUpdate` 路径时，release baseline 也可以先只确认 registry / workspace 基线与下一目标版本，不立即刷新本地 CLI 或本地 Codex plugin cache。
 
 ## 结论
 
@@ -11,7 +11,7 @@
 - `@veewo/claw-core` 提供核心 `.claw` harness 语义。
 - `@veewo/claw` 提供可发布的 CLI 入口，并依赖 `@veewo/claw-core`。
 
-当前最新发布版本线已经同步到 `0.1.80`；以下历史版本事实保留为发布链证据：
+当前最新发布版本线已经同步到 `0.1.81`；以下历史版本事实保留为发布链证据：
 
 - 这次 closeout 把 root、`packages/core`、`packages/cli`、`packages/codex-adapter`、`packages/openclaw-adapter`、`packages/opencode-adapter`、`package-lock.json` 和 `packages/codex-adapter/.codex-plugin/plugin.json` 一起推进到同一轮 release surface，其中 Codex plugin manifest 对齐到 `0.1.53+codex.20260626141302`。
 - `@veewo/claw-core@0.1.53` 与 `@veewo/claw@0.1.53` 都已经成功发布到 npm registry。
@@ -445,3 +445,11 @@ release commit `472635e` 已推送至 `origin/main`，tag 为 `v0.1.62`；`@veew
 - 刷新后的新任务从正式 versioned cache 加载 `knowledge-writer`，自动创建用户级 `scope: session` plan，完成四阶段 route，保持 Truth/ADR 修改 `0/0` 的 evidence-backed no-op，并且没有递归触发 knowledge finalization。
 - 真实安装还暴露并修复了重复安装时向 `config.toml` 写入重复 `enabled` 键的幂等性缺陷；修复及回归测试包含在同一 `0.1.80` 发布边界。
 - 官方 marketplace full clone 在 Windows GitHub pack transfer 上停滞时，已验证的局部恢复是 fast-forward 现有 clean official checkout 后重新执行 plugin add；完成判定仍要求 source revision、identity、cache manifest、skill contents 与新任务 loaded locator 一起对齐，不能把该恢复手段升级为无条件跳过 clean/source 检查的通用捷径。
+
+## 2026-07-18：0.1.81 OpenCode knowledge finalization 加固发布
+
+- Release commit `3602fef404623d9af33dd326f5a3109e3e9c0228` 已直接推送到 `origin/main`；发布前 `npm run verify:release` 证明 committed Git marketplace snapshot、版本对齐和隔离 template smoke 均通过。
+- npm registry 回读确认 `@veewo/claw-core@0.1.81` 与 `@veewo/claw@0.1.81` 的 `dist-tags.latest` 均为 `0.1.81`；CLI metadata 保留 `bin.claw = "dist/bin.js"` 并固定依赖 `@veewo/claw-core: 0.1.81`。两包 shasum 分别为 `649b61c14d75a0c8e86121e216e0ac6efd435bb1` 与 `76cca43cfcf8d7f6376e01239c8fa088fc9993b9`。
+- 本轮完整验证通过 core `133/133`、CLI `109/109`、Codex bundle `17/17`、OpenCode bundle `10/10`，并通过 TypeScript、manifest、Truth encoding 与 diff checks。
+- 全局 CLI 已刷新到 `0.1.81`。official GitHub marketplace checkout 与 `origin/main` 同为 `3602fef404623d9af33dd326f5a3109e3e9c0228`；唯一启用的 claw-kit identity 是 `claw-kit@claw-kit`，source/cache manifest 均为 `0.1.81+codex.20260718214738`，knowledge-writer skill hash 一致，所需 shared skills 齐全且 retired `truth-writer` / `adr-writer` 不存在。
+- OpenCode finalizer 的硬完成条件现在要求独立 session 中的 `knowledge-writer` plan 达到 `end.completed` 且所有 template tasks 为 `done`；runner 会移除父 Codex session identity，并从真实 OpenCode CLI NDJSON 顶层事件恢复 child `sessionID`。OpenCode writer agent 是 `mode: primary` 的自包含入口，只加载 `claw-kit:knowledge-writer`。
