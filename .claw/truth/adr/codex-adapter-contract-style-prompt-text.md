@@ -23,7 +23,7 @@ Codex adapter prompt 采用 contract-style wording：
 - 对 workflow、delegation、goal、truth、ADR、planning 的执行动作使用直接合同语气
 - 明确写出 `Codex has multi-agent capability.`
 - 当需要定位 agent-management 工具时，直接要求使用 `tool_search`
-- 对进入 `process.active`、truth deposition、ADR deposition、researcher delegation 等步骤写出明确触发条件和动作
+- 对进入 `process.active`、researcher delegation 与 foreground/sidecar ownership boundary 写出明确触发条件和动作；main-agent prompt 不重新派发 Truth/ADR writer
 - 只在真实边界描述中保留事实性限定，而不是把执行合同写成建议
 
 ## Consequences
@@ -38,7 +38,6 @@ Codex adapter prompt 采用 contract-style wording：
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md`
 - `packages/codex-adapter/skills/planning/SKILL.md`
 - `packages/codex-adapter/skills/researcher/SKILL.md`
-- `packages/codex-adapter/skills/truth-writer/SKILL.md`
-- `packages/codex-adapter/skills/adr-writer/SKILL.md`
+- `packages/codex-adapter/skills/knowledge-writer/`
 - `packages/codex-adapter/references/workflow-guidance-consumption.md`
 - `packages/codex-adapter/references/codex-subagent-dispatch.md`

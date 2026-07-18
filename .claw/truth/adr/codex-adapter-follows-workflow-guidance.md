@@ -8,14 +8,14 @@ Accepted
 
 `claw-kit` CLI 已经从计划命令返回结构化 `workflowGuidance`，但 Codex 适配器如果继续依赖宽泛提示词启发式，仍可能引入过时的独立 `plan-review` 循环、错过编辑后的即时 render，或在完成计划前后错误安排沉淀步骤。
 
-`0.1.49` 曾通过 `delegateSubagents` 表达 knowledge writer dispatch；该部分现已由 `hook-owned-two-phase-knowledge-finalization.md` 取代。`workflowGuidance` 仍是 foreground plan 的 mandatory next-step contract，但不再拥有 Truth/ADR writer 派发。
+`0.1.49` 曾通过 `delegateSubagents` 表达 knowledge writer dispatch；该部分现已由 `hook-owned-two-phase-knowledge-finalization.md` 中记录的 hook-owned consistency-aware finalization 取代。`workflowGuidance` 仍是 foreground plan 的 mandatory next-step contract，但不再拥有 Truth/ADR writer 派发。
 
 ## Decision
 
 让 Codex 适配器把 `workflowGuidance` 作为主要路由契约，并跟随合并后的 planning flow：
 
 - 显式消费 `askUser`、`recommendedCommands`、`nextStep` 与 host-specific progress actions；仅在当前 task 明确需要 researcher 等执行型 specialist 时消费对应 delegation
-- knowledge writer 不属于 main-agent delegation surface；foreground 只完成 plan lifecycle，Stop/session-idle sidecar 独立排队两阶段 finalization
+- knowledge writer 不属于 main-agent delegation surface；foreground 只完成 plan lifecycle，Stop/session-idle sidecar 独立排队一次 consistency-aware finalization pass
 - 不再假定存在独立的 `plan-review` 生命周期关口
 - 不再保留 standalone `bootstrap` 或 `plan-workflow` 作为与 `planning` 并列的可见主流程 surface
 - 在 `plan write`、`plan edit`、`plan done` 后直接使用返回的可见 plan render 更新聊天状态

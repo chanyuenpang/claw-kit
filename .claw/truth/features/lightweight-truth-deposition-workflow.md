@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted working truth for the current `claw-kit` workflow revision.
+Superseded.
+
+The no-auto-inserted-task history and encoding rule remain useful evidence, but `truthDispatch`, mid-task `truth-writer` delegation, and the separate closeout Truth/ADR route are not current lifecycle claims. Current ownership is in `codex-knowledge-capture-boundary.md` and `.claw/truth/adr/hook-owned-two-phase-knowledge-finalization.md`: completed project plans use one hook-owned consistency-aware `knowledge-writer` pass.
 
 ## Core facts
 

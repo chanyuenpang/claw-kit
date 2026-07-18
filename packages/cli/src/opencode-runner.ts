@@ -14,6 +14,19 @@ export function resolveOpencodeBinary(): string {
   return process.env.CLAW_OPENCODE_PATH_OVERRIDE ?? "opencode";
 }
 
+export function opencodeKnowledgeFinalizerEnvironment(
+  source: Record<string, string | undefined> = withoutInvocationHost(),
+): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (value !== undefined) env[key] = value;
+  }
+  env.CLAW_KNOWLEDGE_FINALIZER = "1";
+  delete env.CODEX_THREAD_ID;
+  delete env.CODEX_SESSION_ID;
+  return env;
+}
+
 /**
  * Finalization runner for the opencode host. The opencode adapter cannot assume a
  * Codex SDK runtime is installed locally, so deposition runs through `opencode run`
@@ -40,13 +53,20 @@ export function runOpencodeKnowledgeWriter(input: {
   }
   args.push(input.prompt);
 
+  const env = opencodeKnowledgeFinalizerEnvironment();
+  // A detached opencode run owns a new host session. Never let the parent
+  // Codex/OpenCode session identity bind the writer's session-scoped harness;
+  // the OpenCode plugin injects the child session id for its own shell calls.
+  delete env.CODEX_THREAD_ID;
+  delete env.CODEX_SESSION_ID;
+
   let result: SpawnSyncReturns<string>;
   try {
     result = spawnSync(binary, args, {
       cwd: input.projectRoot,
       encoding: "utf8",
       maxBuffer: 1024 * 1024 * 64,
-      env: { ...withoutInvocationHost(), CLAW_KNOWLEDGE_FINALIZER: "1" },
+      env,
     });
   } catch (error) {
     throw new Error(`Failed to launch opencode runner: ${error instanceof Error ? error.message : String(error)}`);
@@ -64,6 +84,8 @@ export function runOpencodeKnowledgeWriter(input: {
 
 type ParsedEvent = {
   type?: string;
+  sessionID?: string;
+  part?: { messageID?: string; type?: string; text?: string };
   properties?: {
     info?: { id?: string; role?: string };
     sessionID?: string;
@@ -79,6 +101,7 @@ type ParsedEvent = {
 export function parseOpencodeRunOutput(stdout: string): OpencodeRunnerResult {
   const messageRoles = new Map<string, string>();
   const messageTexts = new Map<string, string[]>();
+  const cliTexts: string[] = [];
   let threadId: string | undefined;
 
   for (const line of stdout.split(/\r?\n/)) {
@@ -96,7 +119,12 @@ export function parseOpencodeRunOutput(stdout: string): OpencodeRunnerResult {
     const type = event.type ?? "";
     const properties = event.properties ?? {};
 
-    if (type === "session.created" && properties.sessionID) {
+    if (event.sessionID) {
+      threadId = event.sessionID;
+    }
+    // Current opencode NDJSON does not always emit session.created. Message
+    // events still carry the same top-level sessionID, so accept either shape.
+    if (properties.sessionID) {
       threadId = properties.sessionID;
     }
 
@@ -111,6 +139,10 @@ export function parseOpencodeRunOutput(stdout: string): OpencodeRunnerResult {
         bucket.push(part.text);
         messageTexts.set(part.messageID, bucket);
       }
+    }
+
+    if (type === "text" && event.part?.type === "text" && typeof event.part.text === "string") {
+      cliTexts.push(event.part.text);
     }
   }
 
@@ -127,6 +159,9 @@ export function parseOpencodeRunOutput(stdout: string): OpencodeRunnerResult {
     if (texts && texts.length > 0) {
       finalResponse = texts.join("\n").trim();
     }
+  }
+  if (!finalResponse && cliTexts.length > 0) {
+    finalResponse = cliTexts.join("\n").trim();
   }
 
   return {

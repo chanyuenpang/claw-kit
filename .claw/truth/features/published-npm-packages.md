@@ -2,7 +2,7 @@
 
 ## 状态
 
-这是 `publish-claw-npm-package` 完成后沉淀下来的稳定发布事实。当前最新一轮已验证到 `0.1.76`，并继续沿用同一条双包发布链与 identity-aware Codex plugin 刷新协议；当某一轮发布的目的就是验证 startup `autoUpdate` 路径时，release baseline 也可以先只确认 registry / workspace 基线与下一目标版本，不立即刷新本地 CLI 或本地 Codex plugin cache。
+这是 `publish-claw-npm-package` 完成后沉淀下来的稳定发布事实。当前最新一轮已验证到 `0.1.80`，并继续沿用同一条双包发布链与 official GitHub marketplace Codex plugin 刷新协议；当某一轮发布的目的就是验证 startup `autoUpdate` 路径时，release baseline 也可以先只确认 registry / workspace 基线与下一目标版本，不立即刷新本地 CLI 或本地 Codex plugin cache。
 
 ## 结论
 
@@ -11,7 +11,7 @@
 - `@veewo/claw-core` 提供核心 `.claw` harness 语义。
 - `@veewo/claw` 提供可发布的 CLI 入口，并依赖 `@veewo/claw-core`。
 
-当前最新发布版本线已经同步到 `0.1.76`；以下历史版本事实保留为发布链证据：
+当前最新发布版本线已经同步到 `0.1.80`；以下历史版本事实保留为发布链证据：
 
 - 这次 closeout 把 root、`packages/core`、`packages/cli`、`packages/codex-adapter`、`packages/openclaw-adapter`、`packages/opencode-adapter`、`package-lock.json` 和 `packages/codex-adapter/.codex-plugin/plugin.json` 一起推进到同一轮 release surface，其中 Codex plugin manifest 对齐到 `0.1.53+codex.20260626141302`。
 - `@veewo/claw-core@0.1.53` 与 `@veewo/claw@0.1.53` 都已经成功发布到 npm registry。
@@ -436,3 +436,12 @@ release commit `472635e` 已推送至 `origin/main`，tag 为 `v0.1.62`；`@veew
 - Codex 唯一受支持的 identity 是 `claw-kit@claw-kit`。`claw-kit@claw-kit-local` 必须保持 disabled，不能再作为开发、发布或更新成功路径。
 - `npm run install:codex-plugin` 改为克隆已发布的 GitHub `main` marketplace，将 payload 写入 official cache `~/.codex/plugins/cache/claw-kit/claw-kit/<version>`，启用 official identity 并禁用 local identity。
 - release 脚本在 npm publish 成功后明确提示下一步调用 update skill，从而把“发布”和“安装更新”固定为有序的两个阶段。
+
+## 2026-07-18：0.1.80 session-scoped knowledge-writer 发布与真实 worker 验收
+
+- Release commit `33b78e795fde1d06f334402ad4b3c3c5c03de737` 已推送到 `origin/main`；该 release closeout 边界内 `main = origin/main` 且工作树干净。其后的本地修改属于更新的工作树状态，不能反向改写这条历史 release 证据。
+- npm registry 已确认 `@veewo/claw-core@0.1.80` 与 `@veewo/claw@0.1.80`；发布包中的 `@veewo/claw` 依赖固定为 `@veewo/claw-core: 0.1.80`。
+- 全局 CLI 已刷新到 `0.1.80`；official Codex identity `claw-kit@claw-kit` 已安装并启用 `0.1.80+codex.20260718175907`。
+- 刷新后的新任务从正式 versioned cache 加载 `knowledge-writer`，自动创建用户级 `scope: session` plan，完成四阶段 route，保持 Truth/ADR 修改 `0/0` 的 evidence-backed no-op，并且没有递归触发 knowledge finalization。
+- 真实安装还暴露并修复了重复安装时向 `config.toml` 写入重复 `enabled` 键的幂等性缺陷；修复及回归测试包含在同一 `0.1.80` 发布边界。
+- 官方 marketplace full clone 在 Windows GitHub pack transfer 上停滞时，已验证的局部恢复是 fast-forward 现有 clean official checkout 后重新执行 plugin add；完成判定仍要求 source revision、identity、cache manifest、skill contents 与新任务 loaded locator 一起对齐，不能把该恢复手段升级为无条件跳过 clean/source 检查的通用捷径。

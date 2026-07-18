@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-opencode 适配器的 subagent agent 定义（当前为 `claw-knowledge-writer` 与 `claw-researcher`）不得在 frontmatter 固定运行模型。硬编码会绕过用户选择和 knowledge job 的显式 writer config，导致：
+opencode 适配器的 subagent agent 定义（当前为 `claw-researcher`）不得在 frontmatter 固定运行模型。`claw-knowledge-writer` 现为 `mode: primary`（由 host-aware finalizer 经 `opencode run` 直接启动，见 `hook-owned-two-phase-knowledge-finalization.md`），不再属于 subagent；但它同样不在 frontmatter 硬编码 `model:`，其运行模型由 finalizer job 快照与 runner 决定。硬编码会绕过用户选择和 knowledge job 的显式 writer config，导致：
 
 1. **模型分叉**：subagent 与主 agent 运行在不同模型上，行为和质量不可预期。
 2. **配置漂移**：每新增一个 subagent 都要单独维护 `model:`，且容易与主 agent 的实际模型脱节。

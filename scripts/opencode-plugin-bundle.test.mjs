@@ -121,7 +121,12 @@ test("OpenCode main-agent guidance leaves automatic closeout to the host", async
   assert.doesNotMatch(JSON.stringify(allDone), /truth-writer|adr-writer|knowledge-writer|subagent|deposition/i);
 
   assert.match(agent, /claw-kit:knowledge-writer/i);
-  assert.match(agent, /Do not dispatch another writer or split the pass/i);
+  assert.match(agent, /mode: primary/i);
+  assert.match(agent, /Do not load `using-claw-kit`/i);
+  assert.match(agent, /self-contained claw harness/i);
+  assert.match(agent, /claw plan create --template knowledge-writer/i);
+  assert.match(agent, /through 4\/4/i);
+  assert.match(agent, /Do not\s+dispatch another writer or split the pass/i);
   assert.match(knowledgeSkill, /knowledge-base steward/i);
   assert.match(knowledgeSkill, /Truth and ADR are one knowledge system/i);
   assert.match(knowledgeSkill, /one current owner/i);
@@ -203,6 +208,8 @@ test("installOpencodePlugin copies skills into the opencode skills discovery dir
   const installDir = path.join(root, ".config", "opencode");
   const retiredTruthDir = path.join(installDir, "skills", "truth-writer");
   const retiredAdrDir = path.join(installDir, "skills", "adr-writer");
+  await fs.mkdir(path.join(sourceDir, "skills", "truth-writer", "agents"), { recursive: true });
+  await fs.mkdir(path.join(sourceDir, "skills", "adr-writer", "agents"), { recursive: true });
   await fs.mkdir(retiredTruthDir, { recursive: true });
   await fs.mkdir(retiredAdrDir, { recursive: true });
   await fs.writeFile(path.join(retiredTruthDir, "SKILL.md"), "# retired truth writer");

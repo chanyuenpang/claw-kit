@@ -6,12 +6,14 @@ Accepted
 
 ## Context
 
-`claw-kit` now treats `planning` and `config` as generic host-neutral skills rather than host-specific claw runtime surfaces.
+`claw-kit` now treats `planning`, `config`, `update`, `create-claw-skill`, and `knowledge-writer` as shared skill packages rather than adapter-local authoring surfaces.
 At the same time, both Codex and OpenCode plugin payloads still need physical skill files inside their own adapter directories so local skill loading and exported bundles continue to work.
 
 Maintaining separate copies in adapter directories creates unnecessary drift, especially when only one copy is edited and the other is forgotten.
 
 The final `0.1.49` release line extended this shared-source rule from `planning` to the user-facing `config` skill and verified that generated Codex/OpenCode adapter payloads stay synchronized from `shared/skills`.
+
+`0.1.80` added the combined `knowledge-writer` package to that distribution contract. Its adjacent `TEMPLATE.json`, `non-claw-fallback.md`, and coverage metadata are part of the skill: the top-level `scope: "session"` is required so the finalizer can use the claw harness without starting another project knowledge-deposition cycle.
 
 The original synchronization implementation wrote those adapter-local copies into the checkout before bundling or installing. That made a normal local plugin refresh modify tracked source files, despite those files being generated artifacts. The `0.1.61` release therefore moved generation into temporary staging.
 
@@ -37,6 +39,7 @@ Use shared sources for host-neutral skills, including future shared workflow ski
 - canonical source: `shared/skills/config/SKILL.md`
 - canonical source: `shared/skills/update/`
 - canonical source: `shared/skills/create-claw-skill/`
+- canonical source: `shared/skills/knowledge-writer/`
 
 Codex Git marketplace 的发布源必须是已提交、自包含的 `packages/codex-adapter` 插件树：
 
@@ -44,7 +47,7 @@ Codex Git marketplace 的发布源必须是已提交、自包含的 `packages/co
 - 远程安装以通过 committed HEAD gate 的 Git-backed repository marketplace 快照为正式发布物；GitHub Release 不上传插件 ZIP
 - marketplace 安装不得依赖 `npm install`、npm lifecycle、build 或同步脚本在目标机器上补全 payload
 - Git checkout / sparse checkout 必须同时包含 marketplace manifest 及其 `source.path` 指向的 `packages/codex-adapter`；只取 `.agents/plugins` 的 sparse checkout 不构成完整安装源
-- `packages/codex-adapter/skills/planning/`、`config/`、`update/`、`create-claw-skill/` 必须在提交中包含完整目录及全部相邻资源
+- `packages/codex-adapter/skills/planning/`、`config/`、`update/`、`create-claw-skill/`、`knowledge-writer/` 必须在提交中包含完整目录及全部相邻资源
 - `shared/skills` 仍是规范维护源；维护者通过显式 `npm run sync:shared-skills` 更新派生副本，审查后连同源文件一起提交
 - release gate 必须从 committed HEAD 读取并核对 marketplace `source.path`、plugin manifest 版本以及必需的 materialized skill/resource 路径；工作区里尚未提交的生成结果不能让 gate 通过
 - `scripts/publish-release.mjs` 通过 `assertSharedSkillsSynced(...)` 只读比较规范源与已物化副本；缺失、文件集合不完整或内容落后时必须失败
@@ -111,6 +114,7 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 - release gate 发现未同步时直接失败；bundle 导出不再通过临时生成制造假阳性。
 - OpenCode 仍可把 temporary staging 作为自身分发边界，而不会弱化 Codex marketplace 的自包含要求。
 - A shared skill directory is an atomic distribution unit: the generated plugin must retain every required resource beside `SKILL.md`, not only the entry instruction file.
+- Session-scoped workflow metadata is part of the distributed skill contract: stripping or rewriting `knowledge-writer/TEMPLATE.json` would reintroduce project finalization recursion or make projectless entry fail.
 - Host/runtime-specific workflow rules remain separated from generic planning and config guidance.
 - Planning does not create verification or closure tasks merely to satisfy a fixed stage template; those tasks appear only when the main agent chooses to include them for the work at hand.
 - The complexity gate now has a single owner at workflow entry, so low-score tasks do not create drift by entering planning first and bypassing later.
@@ -129,6 +133,7 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 - `shared/skills/config/SKILL.md`
 - `shared/skills/update/`
 - `shared/skills/create-claw-skill/`
+- `shared/skills/knowledge-writer/`
 - `.agents/plugins/marketplace.json`
 - `scripts/sync-shared-skills.mjs`
 - `scripts/sync-planning-skill.mjs`

@@ -26,7 +26,7 @@ Because of the above, the two guidance configs intentionally diverge on referenc
 
 ## Known correction point
 
-- ADR `session-start-prompt-config-delegation` section 4 ("平台 prompt 文案语义隔离") originally described the platform assignment **inverted**: it claimed `plugin://` was meaningless to Codex and should be kept by opencode. The verified reality is the opposite — `plugin://` is a Codex markdown-link construct and opencode cannot parse it. The code/config are already correct as described above; the ADR section 4 descriptive text is the remaining item to reconcile (ADR body edits are owned by adr-writer).
+- ADR `session-start-prompt-config-delegation` section 4 ("平台 prompt 文案语义隔离") originally described the platform assignment **inverted**: it claimed `plugin://` was meaningless to Codex and should be kept by opencode. The verified reality is the opposite — `plugin://` is a Codex markdown-link construct and opencode cannot parse it. The code/config are already correct as described above; any remaining ADR reconciliation belongs to the combined `knowledge-writer` stewardship pass, not a separate ADR writer.
 - The prior inversion had caused the opencode variant sessionStart to carry Codex-only `plugin://` syntax, which broke direct claw-workflow entry in an opencode session.
 
 ## Related files

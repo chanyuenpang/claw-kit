@@ -1390,6 +1390,7 @@ async function runKnowledgeWriterForJob(running: KnowledgeFinalizationJob): Prom
       projectRoot: running.projectRoot,
       writer: running.writer ?? null,
     });
+    assertCompletedKnowledgeWriterSession(result.threadId ?? null);
     return {
       finalResponse: result.finalResponse,
       ...(result.threadId ? { threadId: result.threadId } : {}),
@@ -1420,7 +1421,7 @@ async function runCodexSdkWriter(running: KnowledgeFinalizationJob): Promise<Kno
   const writer = running.writer ?? { model: null, reasoningEffort: "medium" as const };
   const thread = codex.startThread({
     workingDirectory: running.projectRoot,
-    sandboxMode: "workspace-write",
+    sandboxMode: process.platform === "win32" ? "danger-full-access" : "workspace-write",
     approvalPolicy: "never",
     networkAccessEnabled: false,
     ...(writer.model ? { model: writer.model } : {}),
@@ -1429,10 +1430,43 @@ async function runCodexSdkWriter(running: KnowledgeFinalizationJob): Promise<Kno
       : {}),
   });
   const turn = await thread.run(buildKnowledgeWriterPrompt(running));
+  assertCompletedKnowledgeWriterSession(thread.id);
   return {
     finalResponse: turn.finalResponse,
     ...(thread.id ? { threadId: thread.id } : {}),
   };
+}
+
+function assertCompletedKnowledgeWriterSession(threadId: string | null): void {
+  if (!threadId) {
+    throw new Error("Knowledge writer returned no host session id.");
+  }
+  const sessionProject = resolveSessionWorkflowContext(threadId);
+  if (!sessionProject || !fs.existsSync(sessionProject.tasksDir)) {
+    throw new Error("Knowledge writer did not create its required session workflow.");
+  }
+  const completed = fs.readdirSync(sessionProject.tasksDir, { withFileTypes: true }).some((entry) => {
+    if (!entry.isDirectory()) {
+      return false;
+    }
+    const planPath = path.join(sessionProject.tasksDir, entry.name, "plan.json");
+    if (!fs.existsSync(planPath)) {
+      return false;
+    }
+    try {
+      const plan = JSON.parse(fs.readFileSync(planPath, "utf8")) as Partial<PlanDocument>;
+      return plan.templateId === "knowledge-writer"
+        && plan.status === "end.completed"
+        && Array.isArray(plan.tasks)
+        && plan.tasks.length > 0
+        && plan.tasks.every((task) => task.status === "done");
+    } catch {
+      return false;
+    }
+  });
+  if (!completed) {
+    throw new Error("Knowledge writer did not complete its required session workflow.");
+  }
 }
 
 function knowledgeFinalizerEnvironment(): Record<string, string> {

@@ -30,7 +30,7 @@ Accepted working truth for local development on this machine.
   - `claw truth ingest`
 - Normal planned work should bind task scope with `claw plan write` first; when project context recall is useful, run `claw search --query "<topic>"` after `plan write`.
 - Low-complexity direct work with complexity score below `4` still skips formal planning, but it may run `claw search --query "<topic>"` before execution when prior project context matters.
-- `claw direct` help now says it can optionally run `claw search` before execution, then solve directly, then optionally dispatch `truth-writer`, and still reuse the asynchronous completion-refresh path from `claw plan done`.
+- `claw direct` is a hidden compatibility command, not a current writer-dispatch surface. Direct work may use project recall, but canonical knowledge finalization belongs to completed project plans and the hook-owned `knowledge-writer` job.
 - Codex-facing recall should use `claw search --query "<topic>"` as project-scoped document recall for project memory, truth, ADR, and external docs; it is not code search.
 - `claw search index --refresh` is the explicit project index refresh entrypoint and returns `search.index.refresh`.
 - Version drift detection remains part of `claw context` / startup recovery, but local upgrade execution is no longer implicit there.

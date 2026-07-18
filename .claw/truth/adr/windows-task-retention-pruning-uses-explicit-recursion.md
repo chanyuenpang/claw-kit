@@ -8,7 +8,7 @@ Accepted
 
 `claw-kit` 的 task retention 会把完成任务归档到 `.claw/archive/tasks/`，并按 `maxTasksToKeep` 清理最旧的 archived task。
 
-异步两阶段 knowledge finalizer 要求 completed plan 在 foreground `claw plan done` 返回后继续保持原路径可读；立即移动当前 task directory 会让 Stop 之后排队的 writer 首次读取与归档发生竞态。
+异步 knowledge finalizer 要求 completed plan 在 foreground `claw plan done` 返回后继续保持原路径可读；立即移动当前 task directory 会让 Stop 之后排队的 combined writer 首次读取与归档发生竞态。
 
 在 Windows closeout 中，包含非 ASCII 名称的 archived task directory 不能依赖 `fs.rmSync(..., { recursive: true })` 作为唯一删除路径；这个路径可能失败或提前终止，导致 release closeout 后仍留下应该被 pruning 的历史任务目录。
 
@@ -28,7 +28,7 @@ Accepted
 - Windows release closeout 不会因为非 ASCII archived task directory 而留下 stale task residue。
 - `maxTasksToKeep` 的语义对 ASCII 与非 ASCII task names 保持一致。
 - Task retention 的删除行为更显式，后续排查 archive residue 时可以直接查看递归 unlink/rmdir 路径。
-- foreground closeout 不必等待异步 knowledge finalization，同时两个 focused writer 在一小时窗口内仍可从原 `planPath` 读取 completed plan。
+- foreground closeout 不必等待异步 knowledge finalization，同时 combined writer 在一小时窗口内仍可从原 `planPath` 读取 completed plan。
 - 归档时机由计划数据中的 `completedAt` 决定，不依赖易漂移的文件时间或额外 receipt 状态；代价是刚完成的 task 会在 active tasks 目录保留到后续 retention sweep。
 
 ## Related Code

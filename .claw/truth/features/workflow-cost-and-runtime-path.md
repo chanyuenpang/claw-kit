@@ -2,11 +2,10 @@
 
 ## 结论
 
-- 正式 claw workflow 的主要成本不只来自业务执行，还来自合同版本漂移、plan lifecycle mutation、writer 派发、query embedding、completion refresh 与 GitNexus 分析。
+- 正式 claw workflow 的主要成本不只来自业务执行，还来自合同版本漂移、plan lifecycle mutation、hook-owned writer execution、query embedding、completion refresh 与 GitNexus 分析。
 - lifecycle 元状态与业务进度必须分开理解：planning 与 `Enter process.active` 用于建立/切换执行状态，不应计入业务 task 数，也不应独立触发 truth deposition。
-- `truthDispatch = "per_task"` 应解释为“每个已完成业务 task 都评估是否产生 reusable truth”，而不是“每个 task 无条件派发 writer”。
-- 新项目与省略配置的默认值已经是 `truthDispatch = "final_only"`；`per_task` 仍是显式 opt-in，适合长计划或高学习密度计划。
-- 当前项目配置为 `goalMode = true`、`truthDispatch = "per_task"`；正式 workflow 因而同时协调 `.claw` plan state、Codex `update_plan`、线程 Goal Mode 与按业务 task 评估后的 writer 派发。这些 surface 都属于真实生命周期成本。
+- `truthDispatch = "final_only" | "per_task"` 与按 task 派发 writer 是 `0.1.65` 及更早性能样本的版本化输入，不是当前 project schema 或 lifecycle owner。
+- 当前项目配置使用 `knowledgeWriter = { externalSkill: null, model: null, reasoningEffort: "medium" }`；正式 workflow 协调 `.claw` plan state、Codex Goal/progress actions，以及完成后的一次 combined writer job。
 - 优化时应先修复合同一致性与条件语义，再降低 plan mutation 和后台 refresh 成本；complexity gate 应在最后用真实 task outcome 校准。
 
 ## 已验证的执行事实
@@ -27,18 +26,17 @@
 
 ### Truth delegation 条件语义
 
-- workflow delegate output 现在通过 `dispatch` 直接表达 writer 派发语义：`truth-writer` 使用 `dispatch: "when_reusable_truth_confirmed"`，`adr-writer` 使用 `dispatch: "required"`；旧的 `required: false` 与 `dispatchCondition` 字段已经移除。类型与配置锚点分别是 `packages/core/src/types.ts` 和 `packages/core/src/workflow-guidance.config.json`。
-- main agent 只有在确认 completed work 含 reusable truth 后才派发 truth writer；没有可复用 truth 时不得仅因 contract 存在而 spawn。ADR writer 仍属于 required dispatch，其具体执行边界由 ADR writer contract 约束。
-- Codex truth / ADR writer references 已统一这条 dispatch 解释；对应锚点是 `packages/codex-adapter/references/TRUTH-AGENT-SPEC.md` 与 `packages/codex-adapter/references/ADR-AGENT-SPEC.md`，避免 `per_task` 把“每 task 判断一次”误读为“每 task 无条件派发”。
-- 以上是当前未发布的 source contract；已安装的全局 `0.1.64` 仍会返回该版本发布时的旧 guidance。判断 live 行为时必须区分工作树 source 与当前 CLI/runtime 版本。
+- Historical `0.1.65` workflow delegate output used `dispatch` for separate writer semantics. Current finalization has no foreground writer delegate output; the Stop/session-idle job runs one combined `knowledge-writer` pass.
+- `0.1.65` 的 main-agent truth value gate、required ADR dispatch 与 phase-specific references 仅保留为历史成本证据。当前 value/routing judgment 由 combined `knowledge-writer` 在 trusted evidence freshness check 后完成。
+- 判断 live 行为时必须区分历史 benchmark 的 installed CLI/skill snapshot 与当前 `0.1.80` combined writer contract。
 
 ### Writer target routing 与性能
 
-- Codex `truth-writer` / `adr-writer` router 启动后仍完整读取各自 reference；这部分固定读取成本不是当前主要瓶颈。
+- Combined `knowledge-writer` 启动后完整读取 skill-local workflow references，并对候选 owner 做 focused 与 exhaustive search；这部分 stewardship 成本不能通过恢复两个窄 phase 来规避。
 - canonical target routing 属于 writer 自身职责，不应要求 main agent 先理解 truth/ADR 文件布局或选择目标。writer 使用 `claw search` 召回候选 canonical 文档，再只读取相关候选；只有 search 不可用、候选冲突或 canonical routing 仍无法确定时，才回退到 full-corpus inspection。
 - 历史 release closeout 实测中，宽泛 ADR 任务两次分别约 `40-90s` 与 `90s`，且都没有落盘；把输入收敛为唯一 `targetPath` 与两条追加事实后，约 `10s` 完成。该对比说明主要优化点是 target certainty，而不是删除 router/reference 合同。
 - 本轮 fresh-agent 前向验证中，明确 `targetPath` 的 ADR 约 `70s` 落盘，truth 约 `85s` 落盘；两者均正确走定向写入且没有修改索引，但端到端时延没有稳定优于历史样本。当前改动能确认消除了不必要的 corpus 扫描，不能据此宣称 subagent 总耗时已经下降；剩余时延主要位于 writer 启动、模型处理和完整 deposition 合同执行。
-- 两类 dispatch 输入必须保持不同：truth writer 接收 main agent 筛选后的必要事实与证据；ADR writer 只接收补齐 retrospective 与 durable `keyDecisions` 的 completed `plan.json`，由 writer 自己提取决策。两者都不要求 main agent 提供 `targetPath`。
+- 当前 combined writer 接收 completed `plan.json`、相邻 trusted report 与 finalization id；main agent 不筛选两类 phase input，也不提供 `targetPath`。
 - writer-owned routing 不得删除完整 reference 阅读、事实核对、目标路径 containment、UTF-8 BOM / encoding 校验，以及新建或路由不确定时必要的去重。
 
 ### 第一阶段优化的已实现行为
@@ -293,8 +291,8 @@
 
 - 完整 `npm test` 成功，墙钟 `60175ms`：core `126/126`、CLI `72/72`，合计 `198/198`。`npm run check` 成功，墙钟 `7270ms`，覆盖全部 adapter TypeScript / manifest 检查与 truth encoding audit。
 - 该组质量门禁未发现 atomic `claw plan start`、idempotent `hostActions`、persistent daemon、query cache、Goal Mode 或 writer contract 回归。性能结论只能与这组通过的质量门禁一起解释，不能将低延迟样本与未验证功能路径混同。
-- 当前 truth-writer 与 adr-writer workflow 合同统一指定 `model=gpt-5.6-luna`；`gpt-5.4-mini` → `gpt-5.6-terra` fallback 只属于过期历史样本，不是当前合同，也不应作为当前 writer 路由建议。
-- 干净 Luna 父线程已真实接受 truth-writer 与 adr-writer 的 Luna dispatch；该事实证明当前线程 surface 可接受 `gpt-5.6-luna`，但不同父线程的 model override surface 可能不同，因此“dispatch 被接受”与“writer 已完成沉淀”必须分开记录。
+- `truth-writer` / `adr-writer` 的 Luna dispatch 只属于历史性能样本，不是当前 routing 建议。当前 `knowledgeWriter.model = null` 使用 host default；显式 model 与 reasoning effort 在 job 创建时快照。
+- 历史父线程接受 writer dispatch 只能证明当时的 model override surface。当前完成证据必须来自 host-aware combined runner 与 job state，不能用旧 dispatch acceptance 代替 writer completion。
 - 当前验证应保留原始 host 能力错误，不自行将 Luna 替换为其他模型；若另一个父线程不接受该 model，应记录合同与宿主 surface 漂移，不能把 fallback 叙述回写成当前 workflow contract。
 
 #### 本轮验证锚点与检索词

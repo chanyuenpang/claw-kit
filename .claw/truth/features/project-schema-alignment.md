@@ -11,7 +11,7 @@
 - `autoUpdate`
 - `externalPlanningSkill`
 - `goalMode`
-- `truthDispatch`
+- `knowledgeWriter`
 - `gitnexus`
 
 ## Current Behavior
@@ -26,11 +26,11 @@
   - directory paths like `docs/`
 - External memory paths only index `.md` files from the configured path set.
 - `memory.embedding` now accepts the OpenClaw-compatible subset used by `openclaw-dev`: `provider` (`openai|local`), `model`, `remote.apiKeyEnvVar`, `remote.baseUrl`, `local.modelPath`, `local.modelCacheDir`, `outputDimensionality`, `store.vector.enabled`, and `store.vector.extensionPath`.
-- canonical `.claw/project.json` now carries simple project-level workflow toggles as flat fields: `planning`, `autoUpdate`, `externalPlanningSkill`, `goalMode`, `truthDispatch`, and `gitnexus`.
+- canonical `.claw/project.json` carries simple project-level workflow toggles as flat fields: `planning`, `autoUpdate`, `externalPlanningSkill`, `goalMode`, and `gitnexus`; combined writer configuration is owned by the nested `knowledgeWriter` object.
 - `autoUpdate` is an explicit project-level boolean gate with default `true`; projects can set it to `false` when version drift should stay informational only.
 - legacy nested inputs such as `workflow.goalMode.enabled`, `workflow.truthDispatch.mode`, and `gitnexus.enabled` are compatibility inputs for protocol repair; repaired canonical files are flattened instead of preserving those nested containers.
-- 2026-06-23 compatibility fixture run validated this repair path against temp copies of four local projects (`claw-kit`, `NeonSpark`, `tiny-world`, and `unity-mcp`) without mutating real project configs: new-shape configs stayed unchanged, while legacy `workflow.goalMode.enabled`, `workflow.truthDispatch.mode`, and object `gitnexus.enabled` repaired into flat `goalMode`, `truthDispatch`, and boolean `gitnexus`.
-- The same fixture run confirmed missing `planning` repairs to `true`, missing `externalPlanningSkill` repairs to `null`, explicit external truth / ADR skill values are preserved, and default `memory.embedding.store.vector.enabled: true` is removed rather than reintroduced.
+- The 2026-06-23 compatibility fixture run remains historical evidence for flattening legacy `workflow.goalMode.enabled`, `workflow.truthDispatch.mode`, and object `gitnexus.enabled`; current repair no longer promotes `truthDispatch` into canonical project output.
+- Current repair fills `planning`, `externalPlanningSkill`, and the canonical `knowledgeWriter` object; legacy external truth / ADR skill values are accepted only as migration input for `knowledgeWriter.externalSkill`.
 - `claw init` and protocol normalization now auto-fill a minimal default local embedding config when `memory.embedding` is missing, using `Snowflake/snowflake-arctic-embed-m-v2.0`; default vector indexing remains runtime-enabled without persisting `store.vector.enabled = true`, `store.vector` is retained only for explicit `enabled: false` or `extensionPath`, and the default cache location is runtime-resolved instead of being persisted into `project.json`.
 - `packages/core/src/embedding-defaults.ts` now resolves platform-global cache roots (`%LOCALAPPDATA%\\claw\\models` on Windows, `~/Library/Caches/claw/models` on macOS, and `$XDG_CACHE_HOME/claw/models` or `~/.cache/claw/models` on Linux) and the local/global/fallback cache-selection order for embedding models.
 - `packages/core/src/embedding-worker.ts` now resolves cache usage by model id: explicit local cache wins only when that local cache already contains the model; otherwise an existing global cache is reused; if both are missing, downloads go to the explicit local cache when configured, or to the global cache by default.
@@ -59,7 +59,7 @@
 - 这意味着 CPU rescue 既可以来自一次性环境覆盖，也可以来自稳定的 per-project local device 配置。
 - `packages/core/src/embedding-worker.ts` is the dedicated worker that builds the embedding outputs.
 - `claw context` / protocol repair therefore upgrades older `.claw/project.json` files in-place instead of leaving them on a no-embedding schema.
-- when workflow defaults are omitted, canonical `project.json` still remains the source of truth for the default `goalMode` / `truthDispatch` values; the optional override file only changes the effective runtime result for the current repo checkout.
+- when workflow defaults are omitted, canonical `project.json` remains the source of truth for `goalMode` and the `knowledgeWriter` configuration; the optional override file only changes the effective runtime result for the current repo checkout.
 - In the `claw-kit` repo itself, `memory.externalDocPaths` is intentionally empty, so project recall stays on `.claw` memory/truth Markdown and does not pull `docs/` into the search surface.
 - project-level `claw search --query "<topic>"` 除了 query embedding 之外，现在还会先构造 project keyword search plan。
 - 对多词 query，planner 会同时保留整句 multi-term `MATCH` 和逐词 fallback query，而不是只把原始 query 直接喂给一次 FTS。

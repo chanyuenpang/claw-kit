@@ -6,17 +6,17 @@ Accepted
 
 ## Context
 
-`claw-kit` separates canonical deposition into sequential `truth-writer` and `adr-writer` phases owned by the background finalization job. Projects still need one stable configuration surface to replace the built-in skill and select worker capability without restoring the retired main-agent `delegateSubagents` dispatch contract.
+`claw-kit` runs one consistency-aware knowledge stewardship pass owned by the background finalization job. Projects still need one stable configuration surface to replace the built-in skill and select worker capability without restoring the retired main-agent `delegateSubagents` dispatch contract.
 
 ## Decision
 
 Use one project-level object:
 
-- `knowledgeWriter.externalSkill`: `null` selects the built-in focused skills; a non-null skill id is invoked for both phase-specific prompts.
+- `knowledgeWriter.externalSkill`: `null` selects the built-in `claw-kit:knowledge-writer`; a non-null skill id replaces that combined pass.
 - `knowledgeWriter.model`: `null` uses the host runner default; a value is snapshotted into each finalization job.
 - `knowledgeWriter.reasoningEffort`: selects the supported worker effort and defaults to `medium`.
 
-The Stop/session-idle hook snapshots this effective configuration into `KnowledgeFinalizationJob.writer`. The host-aware finalizer, not `workflowGuidance` or the main agent, applies it independently to the Truth and ADR phases. Each prompt still declares its phase scope, completed plan, adjacent report, and finalization id; claw-kit does not define external document roots or subdirectory structure.
+The Stop/session-idle hook snapshots this effective configuration into `KnowledgeFinalizationJob.writer`. The host-aware finalizer, not `workflowGuidance` or the main agent, applies it to one combined prompt carrying the completed plan, adjacent report, finalization id, and one-owner stewardship contract; claw-kit does not define external document roots or subdirectory structure.
 
 Legacy `externalTruthSkill` and `externalAdrSkill` may be normalized only as backward-compatible input. They are not current project schema owners and cannot create separate phase dispatch policies.
 
@@ -25,7 +25,7 @@ Legacy `externalTruthSkill` and `externalAdrSkill` may be normalized only as bac
 - Projects can replace writer capability without changing foreground plan workflow or creating separate host dispatch rules.
 - Job snapshots make retries reproducible even if project configuration changes after Stop.
 - `model = null` keeps host defaults available; explicit model and reasoning effort are preserved by the selected runner.
-- Default built-in behavior remains the ordered `claw-kit:truth-writer` then `claw-kit:adr-writer` path.
+- Default built-in behavior is one `claw-kit:knowledge-writer` pass that reconciles Truth and ADR together.
 
 ## Related Code
 

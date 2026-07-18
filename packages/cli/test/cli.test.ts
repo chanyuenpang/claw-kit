@@ -6,7 +6,7 @@ import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { shouldRunKnowledgeHook } from "../dist/knowledge-hook-preflight.js";
-import { parseOpencodeRunOutput } from "../dist/opencode-runner.js";
+import { opencodeKnowledgeFinalizerEnvironment, parseOpencodeRunOutput } from "../dist/opencode-runner.js";
 import { resolveInvocationHost, withoutInvocationHost } from "../dist/invocation-host.js";
 import { CODEX_SDK_VERSION } from "../dist/codex-runtime.js";
 
@@ -62,7 +62,12 @@ function createPlanLikeTemplate(params: {
 // into spawned `claw` processes, they alter workflow guidance behavior (host
 // gating, stale config) and pollute assertions. Strip them by default so tests
 // exercise core's bundled defaults unless a test explicitly opts in via `env`.
-const ISOLATED_ENV_KEYS = ["CLAW_HOST", "CLAW_GUIDANCE_CONFIG"] as const;
+const ISOLATED_ENV_KEYS = [
+  "CLAW_HOST",
+  "CLAW_GUIDANCE_CONFIG",
+  "CODEX_THREAD_ID",
+  "CODEX_SESSION_ID",
+] as const;
 
 function buildSpawnEnv(extra?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
@@ -3042,8 +3047,8 @@ test("Stop hook skips knowledge finalizer child threads to prevent recursion", (
 test("parseOpencodeRunOutput reconstructs final assistant text from NDJSON", () => {
   const ndjson = [
     JSON.stringify({ type: "session.created", properties: { sessionID: "sess-abc" } }),
-    JSON.stringify({ type: "message.updated", properties: { info: { id: "msg-user", role: "user" } } }),
-    JSON.stringify({ type: "message.updated", properties: { info: { id: "msg-asst", role: "assistant" } } }),
+    JSON.stringify({ type: "message.updated", properties: { sessionID: "sess-abc", info: { id: "msg-user", role: "user" } } }),
+    JSON.stringify({ type: "message.updated", properties: { sessionID: "sess-abc", info: { id: "msg-asst", role: "assistant" } } }),
     JSON.stringify({ type: "message.part.updated", properties: { part: { messageID: "msg-user", type: "text", text: "ignored user text" } } }),
     JSON.stringify({ type: "message.part.updated", properties: { part: { messageID: "msg-asst", type: "text", text: "Deposited truth and ADRs." } } }),
     JSON.stringify({ type: "session.idle", properties: {} }),
@@ -3056,6 +3061,41 @@ test("parseOpencodeRunOutput reconstructs final assistant text from NDJSON", () 
 test("parseOpencodeRunOutput handles empty and malformed output gracefully", () => {
   assert.equal(parseOpencodeRunOutput("").finalResponse, "");
   assert.equal(parseOpencodeRunOutput("not json\n{broken").finalResponse, "");
+});
+
+test("parseOpencodeRunOutput recovers the session id when session.created is absent", () => {
+  const ndjson = [
+    JSON.stringify({ type: "message.updated", properties: { sessionID: "sess-message", info: { id: "msg-asst", role: "assistant" } } }),
+    JSON.stringify({ type: "message.part.updated", properties: { sessionID: "sess-message", part: { messageID: "msg-asst", type: "text", text: "Completed." } } }),
+  ].join("\n");
+  assert.deepEqual(parseOpencodeRunOutput(ndjson), {
+    finalResponse: "Completed.",
+    threadId: "sess-message",
+  });
+});
+
+test("parseOpencodeRunOutput supports opencode CLI top-level JSON events", () => {
+  const ndjson = [
+    JSON.stringify({ type: "step_start", sessionID: "sess-cli", part: { type: "step-start" } }),
+    JSON.stringify({ type: "text", sessionID: "sess-cli", part: { messageID: "msg-cli", type: "text", text: "CLI completed." } }),
+    JSON.stringify({ type: "step_finish", sessionID: "sess-cli", part: { type: "step-finish" } }),
+  ].join("\n");
+  assert.deepEqual(parseOpencodeRunOutput(ndjson), {
+    finalResponse: "CLI completed.",
+    threadId: "sess-cli",
+  });
+});
+
+test("opencode finalizer environment drops the parent platform session identity", () => {
+  const env = opencodeKnowledgeFinalizerEnvironment({
+    CODEX_THREAD_ID: "parent-codex-thread",
+    CODEX_SESSION_ID: "parent-opencode-session",
+    PATH: "preserved",
+  });
+  assert.equal(env.CODEX_THREAD_ID, undefined);
+  assert.equal(env.CODEX_SESSION_ID, undefined);
+  assert.equal(env.CLAW_KNOWLEDGE_FINALIZER, "1");
+  assert.equal(env.PATH, "preserved");
 });
 
 test("knowledge finalization runs one consistency-aware combined writer pass and accepts no-op output", () => {
@@ -3076,9 +3116,11 @@ test("knowledge finalization runs one consistency-aware combined writer pass and
   fs.mkdirSync(path.join(sdkRoot, "dist"), { recursive: true });
   fs.writeFileSync(path.join(sdkRoot, "package.json"), JSON.stringify({ type: "module" }), "utf-8");
   const promptLog = path.join(root, "writer-prompts.log");
+  const optionsLog = path.join(root, "writer-options.json");
+  const sessionRuntimeDir = path.join(root, "session-runtime");
   fs.writeFileSync(
     path.join(sdkRoot, "dist", "index.js"),
-    `import fs from "node:fs";\nexport class Codex { startThread() { return { id: "thread-knowledge", run: async (prompt) => { fs.appendFileSync(${JSON.stringify(promptLog)}, prompt + "\\n---PASS---\\n"); return { finalResponse: "Knowledge no-op." }; } }; } }\n`,
+    `import fs from "node:fs";\nimport path from "node:path";\nimport { createHash } from "node:crypto";\nexport class Codex { startThread(options) { fs.writeFileSync(${JSON.stringify(optionsLog)}, JSON.stringify(options)); return { id: "thread-knowledge", run: async (prompt) => { fs.appendFileSync(${JSON.stringify(promptLog)}, prompt + "\\n---PASS---\\n"); const digest = createHash("sha256").update("thread-knowledge").digest("hex"); const workflowDir = path.join(process.env.CLAW_SESSION_RUNTIME_DIR, digest); const taskDir = path.join(workflowDir, "tasks", "knowledge-writer"); fs.mkdirSync(taskDir, { recursive: true }); fs.writeFileSync(path.join(workflowDir, "session.json"), JSON.stringify({ version: 1, scope: "session", originCwd: ${JSON.stringify(root)}, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })); fs.writeFileSync(path.join(taskDir, "plan.json"), JSON.stringify({ title: "knowledge-writer", templateId: "knowledge-writer", status: "end.completed", tasks: [{ id: 1, status: "done" }] })); return { finalResponse: "Knowledge no-op." }; } }; } }\n`,
     "utf-8",
   );
 
@@ -3102,6 +3144,7 @@ test("knowledge finalization runs one consistency-aware combined writer pass and
   const finalized = runClawRaw(["internal-knowledge-finalize", "--job", jobPath], root, {
     HOME: home,
     USERPROFILE: home,
+    CLAW_SESSION_RUNTIME_DIR: sessionRuntimeDir,
     CLAW_KNOWLEDGE_FINALIZER_DISABLE_RETRY: "1",
   });
   assert.equal(finalized.status, 0);
@@ -3116,7 +3159,63 @@ test("knowledge finalization runs one consistency-aware combined writer pass and
   assert.match(prompts[0]!, /claw-kit:knowledge-writer/);
   assert.match(prompts[0]!, /knowledge-base steward/i);
   assert.match(prompts[0]!, /one current owner/i);
+  assert.doesNotMatch(prompts[0]!, /using-claw-kit/i);
+  const writerOptions = JSON.parse(fs.readFileSync(optionsLog, "utf-8")) as JsonRecord;
+  assert.equal(writerOptions.sandboxMode, process.platform === "win32" ? "danger-full-access" : "workspace-write");
   assert.equal(fs.existsSync(reportPath), false);
+});
+
+test("knowledge finalization fails and retains its report when the SDK writer does not complete a session workflow", () => {
+  const root = createFixture("knowledge-writer-incomplete-session");
+  const home = path.join(root, "home");
+  const taskDir = path.join(root, ".claw", "tasks", "incomplete-session-task");
+  runClaw(["init", "--name", "Knowledge Writer Incomplete Session"], root, { HOME: home, USERPROFILE: home });
+  fs.mkdirSync(taskDir, { recursive: true });
+  const planPath = path.join(taskDir, "plan.json");
+  const reportPath = path.join(taskDir, "plan.report");
+  fs.writeFileSync(planPath, JSON.stringify({ title: "Incomplete session", status: "end.completed" }), "utf-8");
+  fs.writeFileSync(reportPath, "{}\n", "utf-8");
+
+  const sdkRoot = path.join(
+    home, ".claw-kit", "codex-runtime", CODEX_SDK_VERSION,
+    "node_modules", "@openai", "codex-sdk",
+  );
+  fs.mkdirSync(path.join(sdkRoot, "dist"), { recursive: true });
+  fs.writeFileSync(path.join(sdkRoot, "package.json"), JSON.stringify({ type: "module" }), "utf-8");
+  fs.writeFileSync(
+    path.join(sdkRoot, "dist", "index.js"),
+    `export class Codex { startThread() { return { id: "thread-incomplete", run: async () => ({ finalResponse: "Could not read the inputs." }) }; } }\n`,
+    "utf-8",
+  );
+
+  const jobsDir = path.join(root, ".claw", "runtime", "knowledge-finalization", "jobs");
+  fs.mkdirSync(jobsDir, { recursive: true });
+  const jobPath = path.join(jobsDir, "incomplete-session.json");
+  fs.writeFileSync(jobPath, JSON.stringify({
+    schemaVersion: 1,
+    finalizeId: "incomplete-session",
+    sessionId: "thread-incomplete-owner",
+    projectRoot: root,
+    taskName: "incomplete-session-task",
+    host: "codex",
+    planPath,
+    reportPath,
+    status: "queued",
+    attempts: 0,
+    queuedAt: new Date().toISOString(),
+  }), "utf-8");
+
+  const finalized = runClawRaw(["internal-knowledge-finalize", "--job", jobPath], root, {
+    HOME: home,
+    USERPROFILE: home,
+    CLAW_SESSION_RUNTIME_DIR: path.join(root, "session-runtime"),
+    CLAW_KNOWLEDGE_FINALIZER_DISABLE_RETRY: "1",
+  });
+  assert.equal(finalized.status, 0);
+  const job = JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord;
+  assert.equal(job.status, "failed");
+  assert.match(String((job.error as JsonRecord).message), /did not create its required session workflow/i);
+  assert.equal(fs.existsSync(reportPath), true);
 });
 
 test("opencode Stop hook captures inline message payload and writes host to job", () => {

@@ -30,7 +30,7 @@ template create guidance 可以在自己的 recall 步骤中提示同一条 quer
 ## Consequences
 
 - 主 agent 可以把上下文预算保留给任务协调、用户对齐和最终决策，而不是承担全部调查阅读。
-- `researcher` 与 `truth-writer`、`adr-writer` 一样成为明确 specialist，但职责限定为调查与报告，不直接替代 writer 沉淀职责。
+- `researcher` 仍是明确的调查 specialist，但职责限定为调查与报告，不替代 hook-owned `knowledge-writer` 的 canonical stewardship。
 - `claw search` 成为 researcher 的默认 recall 起点，保持与 Codex-facing recall 决策一致；但这一步属于 `researcher` 自己的工作，而不是 host 先内联读完再派发。
 - template recall 保持为一次直接 search；只有任务确实需要调查结果时才进入 researcher dispatch 与阻塞式 research gate。
 - research gate 变成真正的阻塞点：依赖调查结果的主流程不能在没有 researcher 返回的情况下继续推进。

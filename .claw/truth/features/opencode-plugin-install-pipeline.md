@@ -20,14 +20,17 @@ Overlapping behaviors (test-file filtering, `node` preflight, `--source-dir` pas
 
 `installOpencodePlugin()` in `scripts/opencode-plugin-bundle.mjs` performs these steps:
 
-1. **Copy plugin payload** to `~/.config/opencode/plugins/claw-kit/` (fixed directory, no version subdirectory).
+1. **Copy plugin payload** to `~/.config/opencode/plugins/claw-kit/` (fixed directory, no version subdirectory). The plugin directory keeps its own `skills/` and `agents/` copies as source assets.
 2. **Create plugin shim** at `~/.config/opencode/plugins/claw-kit.ts` — opencode only scans `*.ts`/`*.js` at the plugins root, so this shim re-exports the actual plugin:
    ```ts
    export { default, ClawKitPlugin } from "./claw-kit/plugin/index.ts";
    ```
-3. **Inject `skills.paths`** into `~/.config/opencode/opencode.json` — appends `plugins/claw-kit/skills` so opencode discovers skills like `using-claw-kit`. **Idempotent**: duplicate installs do not duplicate the entry, and existing paths are preserved.
-4. **Copy agent definitions** (`*.md` from `packages/opencode-adapter/agents/`) to `~/.config/opencode/agent/`.
-5. After install, **opencode must be restarted** for the plugin to take effect.
+3. **Copy skills into the opencode discovery directory** at `~/.config/opencode/skills/<name>/SKILL.md`. The plugin API can register custom `tool`s but not skills, so claw-kit's installer mirrors each skill folder into the global conventional directory that opencode scans for skills. The copy is idempotent: reinstall overwrites stale skill content without duplicating entries.
+4. **Remove retired focused-writer discovery directories** `~/.config/opencode/skills/truth-writer/` and `~/.config/opencode/skills/adr-writer/` before copying skills, even when a residual source checkout still contains empty generated directories. Only `knowledge-writer` remains as the discoverable writer skill.
+5. **Copy agent definitions** (`*.md` from `packages/opencode-adapter/agents/`) to `~/.config/opencode/agent/`. Only `claw-knowledge-writer.md` and `claw-researcher.md` are present; retired `claw-truth-writer.md` and `claw-adr-writer.md` are not shipped.
+6. After install, **opencode must be restarted** for the plugin to take effect.
+
+No `opencode.json` is created or modified by claw-kit's installer, and no `skills.paths` entry is injected; skill discovery is achieved entirely by copying skill folders into `~/.config/opencode/skills/`.
 
 ## Codex vs OpenCode differences
 
@@ -35,7 +38,7 @@ Overlapping behaviors (test-file filtering, `node` preflight, `--source-dir` pas
 |---|---|---|
 | Install directory | `~/.codex/plugins/cache/claw-kit-local/claw-kit/<version>/` (versioned) | `~/.config/opencode/plugins/claw-kit/` (fixed, no version) |
 | Shim file | Not needed | `~/.config/opencode/plugins/claw-kit.ts` required |
-| Config injection | Not needed | `skills.paths` in `opencode.json` required |
+| Skills discovery | Hook-driven via plugin manifest | Copy each skill into `~/.config/opencode/skills/<name>/` (convention dir) |
 | Agent copy | Not needed | `~/.config/opencode/agent/*.md` required |
 | Host-specific payload | `hooks/`, `.codex-plugin/` | `workflow-guidance.opencode.json` |
 
@@ -47,18 +50,23 @@ Both `codex-plugin-bundle.mjs` and `opencode-plugin-bundle.mjs` export a `should
 
 Both plugins have dedicated test suites using `node:test` + `node:assert/strict` with zero external dependencies:
 
-- `test:codex-plugin` — `scripts/codex-plugin-bundle.test.mjs` (3 tests)
-- `test:opencode-plugin` — `scripts/opencode-plugin-bundle.test.mjs` (4 tests)
+- `test:codex-plugin` — `scripts/codex-plugin-bundle.test.mjs`
+- `test:opencode-plugin` — `scripts/opencode-plugin-bundle.test.mjs` (10 tests)
 
-Both use `fs.mkdtemp` for temp-directory isolation. The opencode tests cover: read source metadata, export+filter, install e2e (payload + shim + agents + filter), and `skills.paths` idempotent injection with existing-entry preservation.
+Both use `fs.mkdtemp` for temp-directory isolation. The opencode tests cover: read source metadata; config skill entrypoint; `using-claw-kit` session-entry contracts (knowledge routing, compact guidance, state vocabulary); researcher search-query syntax; main-agent guidance leaving closeout to the host (the `claw-knowledge-writer.md` agent loads only `claw-kit:knowledge-writer`, does not load `using-claw-kit`, and retired writer skills/agents are absent); shared-skills sync; export+filter; install e2e (payload + shim + agents + filter); and idempotent skills discovery copy that removes retired `truth-writer`/`adr-writer` directories without creating `opencode.json`.
+
+## OpenCode finalizer agent entry
+
+`packages/opencode-adapter/agents/claw-knowledge-writer.md` is the only shipped writer agent for the OpenCode host. It is a `mode: primary` entry (launched directly by the host-aware finalizer via `opencode run`, not dispatched as a main-agent subagent; contrast `claw-researcher.md`, which remains `mode: subagent`) whose body instructs the worker to load only the combined `claw-kit:knowledge-writer` skill, to not load `using-claw-kit` (the writer's own session-scoped template is a self-contained claw harness), to create that template plan before reading inputs, and to not dispatch another writer or split the pass. The host-aware finalizer requires this writer's session-scoped plan to reach `end.completed` with every template task `done` before finalization succeeds. The retired `claw-truth-writer.md` and `claw-adr-writer.md` agent entries are intentionally absent from `packages/opencode-adapter/agents/`.
 
 ## Related files
 
 ### OpenCode chain
-- `scripts/opencode-plugin-bundle.mjs` — core logic: `readOpencodePluginSource`, `exportOpencodePluginBundle`, `installOpencodePlugin`, `shouldCopyEntry`
+- `scripts/opencode-plugin-bundle.mjs` — core logic: `readOpencodePluginSource`, `exportOpencodePluginBundle`, `installOpencodePlugin`, `installSkillsToDiscoveryDir`, `shouldCopyEntry`
 - `scripts/install-opencode-plugin.mjs` — thin CLI wrapper with `--source-dir` / `--install-dir`
 - `scripts/install-opencode-plugin.ps1` — PowerShell entrypoint with `Assert-Command -Name "node"` preflight
-- `scripts/opencode-plugin-bundle.test.mjs` — 4 unit tests
+- `scripts/opencode-plugin-bundle.test.mjs` — 10 unit tests
+- `packages/opencode-adapter/agents/claw-knowledge-writer.md` — finalizer agent entry that loads only `claw-kit:knowledge-writer`
 - `packages/opencode-adapter/` — adapter source (plugin, skills, agents, references)
 
 ### Codex chain (symmetric counterpart)
@@ -71,9 +79,12 @@ Both use `fs.mkdtemp` for temp-directory isolation. The opencode tests cover: re
 ## Search terms
 
 - `installOpencodePlugin`
+- `installSkillsToDiscoveryDir`
 - `shouldCopyEntry`
 - `claw-kit.ts` shim
-- `skills.paths`
-- `opencode.json`
+- `~/.config/opencode/skills`
+- `opencode.json` (not injected)
 - `Assert-Command`
 - `OPENCODE_PLUGIN_PAYLOAD_PATHS`
+- `claw-knowledge-writer.md`
+- `end.completed`

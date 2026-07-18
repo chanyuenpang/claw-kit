@@ -32,7 +32,7 @@ Accepted
 - `process.discussing` 是允许跨轮次停留的稳定状态；plan 存在本身不触发 Goal Mode，也不要求自动进入 `process.active`
 - 只有后续可执行子任务已经明确，并且用户可以脱手让 agent 继续推进时，plan 才从 `process.discussing` 进入 `process.active`
 - foreground lifecycle 不再派发 knowledge writer；`process.allTasksDone` 只要求在 `plan done` 前持久化 retrospective 与 durable `keyDecisions`
-- plan completion 登记 pending turn owner，下一次 Stop/session-idle 才由 `hook-owned-two-phase-knowledge-finalization.md` 所定义的 sidecar 捕获 report 并异步排队 Truth、ADR 两个 focused phases
+- plan completion 登记 pending turn owner，下一次 Stop/session-idle 才由 `hook-owned-two-phase-knowledge-finalization.md` 所定义的 sidecar 捕获 report 并异步排队一次 combined `knowledge-writer` pass
 - knowledge finalization 不阻塞 foreground closeout；它的失败、重试和完成状态不改变 canonical plan completion
 - `end.completed` 写入稳定的 `completedAt`，但 `claw plan done` 保留当前 task directory 与原 `planPath`，不在本次命令中立即移动计划
 - `claw plan start --requirements <text> --acceptance <criterion> --add-task <title> --detail <text>` 是原子 refine-and-activate 入口：它默认作用于 session-bound 当前 plan/subplan，在一次序列化 mutation 中补齐计划、追加业务 tasks、完成两个 lifecycle bridge tasks，并进入 `process.active`
@@ -57,7 +57,7 @@ Accepted
 - 对外 plan-write / plan-status 合同更稳定，像 `release-0-1-25` 这样的版本发布可以把这组行为当作 release-worthy surface change
 - 规划语义与展示语义保持一致，计划编辑后无需额外拼装另一套状态
 - 生命周期门禁从文案建议上升为实际约束，避免无目标 active plan 进入执行态
-- `truth-writer` 与 `adr-writer` 保留为 finalizer-owned focused phases，不作为 main-agent specialist 或 `workflowGuidance` delegation
+- finalizer-owned `knowledge-writer` 以一次 combined pass 维护 Truth 与 ADR，不作为 main-agent specialist 或 `workflowGuidance` delegation
 - root plan closeout 需要先补齐 retrospective 和 `keyDecisions`；`claw plan done` 只提交 completion state、binding transition 与 completion refresh，不等待 knowledge job
 - completed plan 在原 task 路径至少保留一小时，使 Stop 之后排队的异步 finalizer 不需要切换到 archive 路径补救
 - knowledge deposition 失败不会阻塞本次 plan closeout；job queueing 与异步完成语义保持分离

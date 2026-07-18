@@ -1,6 +1,10 @@
 ﻿# Delegated review and deposition
 
-- Codex adapter 的 canonical deposition specialists 是 `truth-writer` 与 `adr-writer`；主代理应把可复用知识或 completed `plan.json` 以紧凑 bundle 交给它们，而不是在主上下文里展开成泛化文档。
+## Status
+
+Superseded for current knowledge deposition by `.claw/truth/adr/hook-owned-two-phase-knowledge-finalization.md`. 下文的 `truth-writer` / `adr-writer`、value gate、required dispatch 与 specialist reuse 只保留为历史合同；当前 owner 是一次 consistency-aware `knowledge-writer` pass。
+
+- 历史 Codex adapter 的 canonical deposition specialists 是 `truth-writer` 与 `adr-writer`；主代理曾把可复用知识或 completed `plan.json` 以紧凑 bundle 交给它们。
 - `researcher` 是 investigation-first specialist：调查、分析、证据收集类 task 优先交给它，以避免主 agent 为前置调查消耗过多 context。
 - `researcher` 默认使用 `worker` + `gpt-5.4-mini` + 显式 `claw-kit:researcher` skill item；同线程已有合适 researcher 时优先复用。
 - `researcher` 应先用 `claw search` 检索 `.claw` context、truth、ADR；若 `.claw/project.json` 中 canonical `gitnexus = true`，应发现并使用 GitNexus 相关能力辅助代码调查。

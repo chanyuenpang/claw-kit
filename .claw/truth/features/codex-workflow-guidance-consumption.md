@@ -8,8 +8,8 @@
 - host 在 researcher dispatch 前不应内联读取 search skill；`claw search` 的 recall 步骤属于 researcher 自己的窄调查流程。
 - `researcher` 的调查顺序应先 `claw search --query "<topic>"` 检索 `.claw` context、truth 和 ADR；当 canonical `gitnexus = true` 时，再发现并使用 GitNexus 相关能力做代码调查。
 - 对研究型 delegate，host 必须等待结果；当前 task 依赖 research 结论时，不能跳过该 gate 继续执行。
-- 当 guidance 指向 `truth-writer` 时，应在 plan closure 前沉淀 truth；当 completed-plan guidance 指向 `adr-writer` 时，completed `plan.json` 才是 ADR deposition bundle。
-- `workflowGuidance.delegateSubagents` remains a mandatory structured contract when dispatching subagents, but its notes must not be read as "dispatch every returned writer entry unconditionally"; since `0.1.49`, the canonical wording is `When dispatching a subagent, each entry is a required structured contract whose fields must be honored directly.`
+- `workflowGuidance` 不再派发 Truth/ADR writer。completed plan、相邻 report 与 job snapshot 由 Stop/session-idle sidecar 交给一次 combined `knowledge-writer` pass；main agent 不在 closure 前另行沉淀。
+- `workflowGuidance.delegateSubagents` 的历史 writer entries 已退出当前 lifecycle；该字段若用于其他 specialist，仍按 returned structured contract 消费，不能据此恢复 main-agent writer dispatch。
 - `process.wait` 和 `process.discussing` 都是暂停型 guidance：cross-host `workflowGuidance.goalTool` 继续描述 `update_goal(status="blocked")`；Codex adapter 不直接执行该 compatibility metadata，而是消费 CLI `buildHostActions` 按 committed `planStatus` 投影出的 schema-v1 `update_goal(status="complete")`，真正结束当前 Codex active Goal，再等待后续独立 mutation 恢复到 `process.active`。
 - 当 `workflowGuidance` 在从 `process.wait` 或 `process.discussing` 恢复后返回 `goalMode` 时，adapter 应把它当成 `on_resume_process_active` 的重新激活，而不是 `plan write` 阶段的首次 Goal Mode 授权。
 - `prepare.requirements` 阶段如果 `goal.text` 缺失，adapter 应先补 goal，再补其余 plan 字段；如果需求已经完整，补完后应立即把 `plan.status` 切到 `process.active`，而不是继续停留在 requirements。

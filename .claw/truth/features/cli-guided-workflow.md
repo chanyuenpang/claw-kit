@@ -18,25 +18,25 @@
 - `packages/core/src/templates/plans/default.ts` 里的 seeded activation task 生成现在会跟随 `goalMode` 与 host 语义：当 `goalMode = true` 且 host 不是显式 `opencode` 时，会把 `buildGoalModeObjective(...)` 产出的 recommended objective 追加到现有 activation task detail；Codex 默认的 no-host 路径按 Codex-compatible 处理并拿到这段 objective，显式 `host: "opencode"` 则保留旧的简洁 activation detail，而 `goalMode = false` 只保留 base detail。
 - `claw plan create` 的 seed plan 现在还会持久化 `plan.templateId` 和模板专属的 `plan.configOverride`，所以后续 `plan edit` / `plan done` 可以重新解析原始 template 并复用同一套 template guidance。
 - template guidance 现在以 task skeleton 的 `guidance.onDone` 为准；如果模板定义了 `guidance.onDone.choices`，任何进入 `done` 的路径都必须带上匹配的 `choiceId`，否则会触发带 choice 列表的定向错误。
-- `guidance.onDone.default` 即使没有 choices 也可以影响默认 workflow guidance；模板路由对象统一使用 `mergeMode: "override" | "replace"`，并允许用 `delegateTruth: false` 局部关闭默认 per-task truth delegation。
+- `guidance.onDone.default` 即使没有 choices 也可以影响默认 workflow guidance；模板路由对象统一使用 `mergeMode: "override" | "replace"`。`delegateTruth` 只作为旧 template cache 的 inert compatibility metadata 被接受，不再控制当前 writer 路由。
 - `claw task done --id <number> [--choice <choice-id>]` 和 `claw task edit --id <number> --status done --choice <choice-id>` 属于同一条 route-aware completion contract，会把 `task.choiceId` 一起写入并接受 template-bound 校验。
-- `plan.configOverride` 是 template-only 的 runtime overlay，会通过同一条 effective-config path 影响 `goalMode`、`truthDispatch` 和外部 planning / writer skill routing；它不是独立的用户级 plan patch 入口。
+- `plan.configOverride` 是 template-only 的 runtime overlay，会通过同一条 effective-config path 影响 `autoUpdate`、`goalMode`、`knowledgeWriter` 与 `externalPlanningSkill`；它不是独立的用户级 plan patch 入口。
 - `plan write` 落在 `prepare.requirements` 且缺少 `goal.text` 时，`workflowGuidance` 的第一优先动作是先补 `goal.text`，再补 `requirements`、`tasks`、`references`、`rules`、`keyDecisions`，需求足够清楚后立刻切到 `process.active`。
 - `goal.text` 是离开 `prepare.requirements` 的硬门；没有 goal 时，任何把 plan 切到 `process.active` 的尝试都应直接失败。
 - `process.wait` 和 `process.discussing` 是 canonical 的暂停 / 讨论态，不是执行态；`process.wait` 适用于真实阻塞或刻意暂停，`process.discussing` 适用于路线讨论或决策讨论，二者都会暂停 Goal Mode，并且都只提示恢复时回到 `process.active`。
 - 当 `plan.status` 从 `process.wait` 或 `process.discussing` 恢复到 `process.active` 时，`packages/core/src/workflow-guidance.ts` 会把这次进入识别为 `process.resumedActive`，并让 `goalMode.setWhen = on_resume_process_active`，而不是把它当成普通的首次进入执行态。
 - 在 release flow 实跑中，task 2 的 `Enter process.active` bridge 行为已被验证：`claw plan create` 返回 `process.discussing`，完成 planning task 后通过 `claw plan start ...` 原子进入执行态；恢复场景也可通过高级 `claw plan edit --status process.active` 进入执行态。
-- `process.allTasksDone` 是 root plan 的 pre-closeout contract：当所有 task 都完成时，`workflowGuidance` 会先要求清理 thread progress、完成 retrospective，并以 `waitForCompletion = false` 派发 `adr-writer`；root `claw plan done` 随后记录完成态与 `completedAt`，但不会立即归档 task。
+- `process.allTasksDone` 是 root plan 的 pre-closeout contract：当所有 task 都完成时，`workflowGuidance` 要求清理 thread progress 并完成 retrospective；root `claw plan done` 随后记录完成态与 `completedAt`，但不会立即归档 task，也不会从 foreground 派发 writer。
 - plan 命令不再返回 render blocks，不再提供 `claw plan app` / `claw plan render`。
-- 当所有当前任务完成时，CLI 仍先把可复用知识交给 `truth-writer`，再走 retrospective、异步 `adr-writer` 与 `claw plan done`；completed plan 会在当前 task path 保留至少一小时，之后才由 retention 归档。
+- 当所有当前任务完成时，foreground 只完成 retrospective 与 `claw plan done`；Stop/session-idle sidecar 随后从 completed plan 和相邻 report 排队一次异步 `knowledge-writer` pass。completed plan 会在当前 task path 保留至少一小时，之后才由 retention 归档。
 
 ## 延迟归档与 retention contract
 
 - plan completion 现在把 `completedAt` 写入 canonical `plan.json`。它是 task lifecycle 的唯一时间戳，同时驱动 delayed archive eligibility 与 archive pruning。
 - `claw plan done` 完成 root plan 时保留当前 task path，不再立即把 task 移入 archive。completed plan 因此仍可从原 task 路径读取，给异步 closeout consumer 留出稳定窗口。
 - `packages/core/src/task-retention.ts` 只在 `completedAt` 距当前时间至少一小时时归档 task；归档资格不再检查 plan `status`、是否为 current task，或 receipt 是否存在。缺少 `completedAt` 或尚未满一小时的 task 不会被这条 retention 路径归档。
-- `adr-writer` 的 delegate contract 继续保持 `waitForCompletion = false`。plan completion 不等待 writer 返回；一小时延迟归档保证 writer 即使异步执行，也能从原 task path 读取 completed plan。
-- lifecycle 主锚点是 `packages/core/src/plan.ts`，retention 资格与移动逻辑位于 `packages/core/src/task-retention.ts`，writer 等待语义来自 `packages/core/src/workflow-guidance.config.json`；对应 core/CLI tests 覆盖 `completedAt`、当前路径保留、延迟归档和 delegate contract。
+- plan completion 不等待 hook-owned `knowledge-writer` 返回；一小时延迟归档保证异步 finalizer 能从原 task path 读取 completed plan。
+- lifecycle 主锚点是 `packages/core/src/plan.ts`，retention 资格与移动逻辑位于 `packages/core/src/task-retention.ts`，job/writer orchestration 位于 `packages/core/src/knowledge-sidecar.ts` 与 `packages/cli/src/cli.ts`；对应 core/CLI tests 覆盖 `completedAt`、当前路径保留和延迟归档。
 
 ## 真实代码锚点
 

@@ -27,8 +27,8 @@ Accepted
 按以下顺序推进后续优化：
 
 1. 第一阶段对 planning 预算和状态同步的优化继续有效；当时的 `truthDispatch=final_only` / `per_task` 配置与 main-agent writer dispatch 仅作为版本化性能证据保留，不再是 current project schema 或 lifecycle owner。
-2. 当前 writer orchestration 由 `hook-owned-two-phase-knowledge-finalization.md` 拥有：Stop/session-idle 创建 job，finalizer 固定按 Truth 后 ADR 的顺序运行；main agent 不执行 reusable-truth gate 或 required ADR dispatch。
-3. Writer deposition 保持 writer-owned routing：main agent 不负责选择 canonical 文件；focused writer 使用 `claw search` 和完整候选 disposition 选择 owner，并在必要时做受控全量 fallback。输入统一来自 completed plan 与相邻可信 report；该路径不削弱完整候选阅读、事实核验、路径 containment、编码正确性和 one-owner consistency。
+2. 当前 writer orchestration 由 `hook-owned-two-phase-knowledge-finalization.md` 拥有：Stop/session-idle 创建 job，finalizer 运行一次 consistency-aware `knowledge-writer` pass；main agent 不执行 reusable-truth gate 或 required ADR dispatch。
+3. Writer deposition 保持 writer-owned routing：main agent 不负责选择 canonical 文件；combined writer 使用 `claw search` 和完整候选 disposition 选择 owner，并在必要时做受控全量 fallback。输入统一来自 completed plan 与相邻可信 report；该路径不削弱完整候选阅读、freshness qualification、路径 containment、编码正确性和跨 Truth/ADR one-owner consistency。
 4. `claw search` 第一阶段前台提速采用保守 lexical fast path 与有界 query embedding cache，不在同步 search API 上强行引入常驻 daemon。fast path 只接受 `strongTerms` 完整覆盖并且唯一文件名/路径或唯一精确短语命中的结果；任何不确定性继续回退既有 hybrid search。query cache 存放于项目 `memory.sqlite`，cache key 由版本、完整 embedding config fingerprint 与最终 worker query text 组成，最多保留 128 条，并在 embedding config vector reset 时清空。
 5. local embedding 的跨 CLI 复用采用独立的 loopback TCP daemon：以随机 token 认证、原子 state discovery、startup locking、embedding configuration fingerprint、有界 session LRU 和 idle TTL 管理生命周期。local provider 优先尝试 persistent daemon；daemon 启动或 transport 失败时回退既有 one-shot worker，但 model inference error 保持权威，不通过第二次模型加载重试。remote provider 继续使用 one-shot 路径。
 6. host/runtime 架构成本通过原子 `claw plan start` 与 versioned plan events 收敛：CLI plan state 保持 canonical，adapter 仅消费幂等 `hostActions`，单向同步 host progress 与 Goal Mode。
@@ -66,10 +66,10 @@ Accepted
 - 原子 refine-and-activate 与自动状态桥接已经落地；固定 Windows A/B 把首个业务动作前的管理命令从 `6` 降至 `3`，atomic path P50 相对 legacy path 改善 `57.35%`。
 - search telemetry 已能区分 lexical fast path、persistent daemon、cache 与 one-shot fallback；固定样本的 lexical P95 为 `315.35ms`、daemon semantic P95 为 `602.93ms`，而成功的 one-shot fallback 为 `4392.01ms`，因此保持按 route 报告并拒绝无条件 plan-create 预热。
 - complexity gate 在 `12` 个 low / medium / high 语料上把 legacy low false-positive rate 从 `0.5` 降为 `0`，formal recall 与 overall accuracy 均为 `1`；该结果支持 dependency 独立风险计分，而不是删减 formal workflow 的质量门禁。
-- 无 durable `keyDecisions` 的 ADR phase no-op 缩短无决策 finalization；有决策时的 writer-owned routing、canonical deposition 与验证合同保持不变。
+- Combined writer 按 freshness-qualified evidence 选择 Truth-only、ADR-only、both 或 no-op；`keyDecisions` 为空不再通过独立 ADR phase shortcut 改变 orchestration。
 - 第二阶段完成后，端到端性能声明仍必须同时覆盖 plan mutation、search、writer 与 completion refresh，不能用任一单条 search benchmark 代表整体 workflow。
 - 复测报告需要显式标注 skill snapshot、CLI capability 与 source revision；任一层漂移时，结果只能描述该组合下的真实路径，不能据源码存在或版本号相同宣称已验证最新合同。
-- `0.1.65` 的单一 `dispatch` 是历史性能基线；其中 writer-owned routing 被保留，而 main-agent dispatch 已由 hook-owned two-phase finalization 取代。
+- `0.1.65` 的单一 `dispatch` 是历史性能基线；其中 writer-owned routing 被保留，而 main-agent dispatch 先由 hook-owned two-phase finalization 取代，`0.1.80` 又把两个 focused phases 合并为一次 consistency-aware pass。
 - `0.1.69` 同版本线复测进一步证明 route 分层仍是性能结论的必要前提：lexical、persistent daemon 与 cache hit 均处于亚秒级，但它们不能替代 plan lifecycle、writer 和 completion refresh 的端到端证据。
 - `0.1.70` 验收在 atomic workflow、`198/198` 测试与完整 check 全部成功的前提下，确认复杂任务 formal workflow 的性能已足够高；首次 daemon 冷启动约 3.2s 仍应与热态和 cache hit 分开报告，不能用单点 search 提速外推整体性能。
 - `0.1.75` 复测证明当前流程的主要体验收益来自 atomic `plan start` 与 Codex `hostActions` 自动桥接，热态表现相对 `0.1.70` 持平到小幅提升；这不能表述为新的数量级 CLI 提速。
@@ -102,8 +102,7 @@ Accepted
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md`
 - `packages/codex-adapter/skills/planning/SKILL.md`
 - `packages/core/src/knowledge-sidecar.ts`
-- `shared/skills/truth-writer/SKILL.md`
-- `shared/skills/adr-writer/SKILL.md`
+- `shared/skills/knowledge-writer/`
 - `packages/codex-adapter/references/workflow-guidance-consumption.md`
 - `shared/skills/planning/SKILL.md`
 - `packages/opencode-adapter/workflow-guidance.opencode.json`

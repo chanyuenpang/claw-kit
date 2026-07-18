@@ -1,6 +1,10 @@
 ﻿# Codex subagent reuse
 
-- Codex adapter 可以在同一线程复用同类型 specialist，避免为每次沉淀重新创建短命子代理。
+## Status
+
+Partially superseded. 本文关于 `truth-writer` / `adr-writer` 的复用与 main-thread dispatch 仅是历史证据；当前沉淀由 hook-owned combined `knowledge-writer` pass 管理。`researcher` 的调查复用规则仍属本文范围。
+
+- Codex adapter 可以在同一线程复用同类型 specialist，避免为每次调查重新创建短命子代理。
 - `truth-writer` 与 `adr-writer` 在 dispatch 后应保持打开，供同线程后续复用，而不是立刻关闭。
 - 调查、分析、证据收集类 task 应优先委派给 `researcher` specialist，以节省主 agent context。
 - `researcher` 默认 dispatch 合同是 `explorer` + 显式附加 `claw-kit:researcher` skill item，而不是 host 先内联读取 search skill。
