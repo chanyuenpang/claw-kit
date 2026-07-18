@@ -130,6 +130,17 @@ Use it when a specific template needs to override project behavior for the lifet
 - `goalMode`
 - external planning/truth/ADR skills
 
+## Project Values In Guidance
+
+Template `guidance` strings may reference effective `project.json` values by key path:
+
+- `{{externalPlanningSkill}}`
+- `{{maxTasksToKeep}}`
+- `{{memory.embedding.model}}`
+- custom variables declared under `project.json.var`, such as `{{var.releaseChannel}}`
+
+Custom variables must stay inside the explicit `var` namespace so protocol repair can continue removing unknown or retired top-level configuration fields. Nested objects use dot paths. String, number, and boolean leaves render as text. Unknown paths, null values, arrays, and objects are rejected instead of being silently stringified. Project overrides and template `configOverride` participate in the effective values used for rendering. Runtime guidance variables remain available and take precedence over a same-named project key.
+
 ## References vs Rules
 
 Use `rules` only for short, durable principles that should always apply during execution.
@@ -231,8 +242,8 @@ Named validation uses the same resolver as `claw plan create` and `claw subplan 
 
 Route a template-backed claw skill by what it completely owns:
 
-- Whole task: if the skill fully carries the current task from inputs through verification, create a root plan with `claw plan create --template <template-id>`.
-- Independent stage: if the skill fully carries one stage of a broader plan, create a subplan with `claw subplan create --parent <parent-task-name> --task-id <id> --template <template-id>` when that stage starts.
+- Whole task: if the skill fully carries the current task from inputs through verification, resolve the directory containing its loaded `SKILL.md` and create a root plan with `claw plan create --template-file "<skill-dir>/TEMPLATE.json"`.
+- Independent stage: if the skill fully carries one stage of a broader plan, create a subplan with `claw subplan create --parent <parent-task-name> --task-id <id> --template-file "<skill-dir>/TEMPLATE.json"` when that stage starts.
 - Mixed stage: if the skill only contributes some instructions inside a stage that mixes multiple skills, do not create its template plan. Apply its adjacent fallback inside the owning workflow.
 
 Batch is not a fourth route. Treat a batch as a broader plan containing repeated stages; each stage that is fully owned by the skill invokes one subplan. The parent plan owns ordering and shared constraints, while each subplan owns its stage from inputs through verification.
@@ -243,10 +254,10 @@ Call something an independent stage only when the skill can produce a coherent s
 
 ## Template Availability
 
-A generated skill entry that says `claw plan create --template <template-id>` depends on that template being available in the runtime workspace.
+A generated skill entry should pass its adjacent `TEMPLATE.json` through `--template-file`, so the loaded skill owns the exact template source even when another skill or cached version uses the same template id.
 
 For claw skills, store the workflow template beside the skill entry as `TEMPLATE.json`.
-The `id` field inside `TEMPLATE.json` is the template name used by `claw plan create --template <id>`.
+The `id` field remains the runtime template identity and supports compatibility lookup through `--template <id>` when no exact skill source is available.
 Use skill-local `TEMPLATE.json` for project-level templates that are not owned by one skill package.
 
 Avoid converted skills whose entry points to a template that exists only in the development repository that created it.

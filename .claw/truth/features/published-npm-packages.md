@@ -453,3 +453,11 @@ release commit `472635e` 已推送至 `origin/main`，tag 为 `v0.1.62`；`@veew
 - 本轮完整验证通过 core `133/133`、CLI `109/109`、Codex bundle `17/17`、OpenCode bundle `10/10`，并通过 TypeScript、manifest、Truth encoding 与 diff checks。
 - 全局 CLI 已刷新到 `0.1.81`。安装验证边界内 official GitHub marketplace checkout 与 release payload revision 均为 `3602fef404623d9af33dd326f5a3109e3e9c0228`；后续纯 Truth closeout commit 不改变该插件 payload。唯一启用的 claw-kit identity 是 `claw-kit@claw-kit`，source/cache manifest 均为 `0.1.81+codex.20260718214738`，knowledge-writer skill hash 一致，所需 shared skills 齐全且 retired `truth-writer` / `adr-writer` 不存在。
 - OpenCode finalizer 的硬完成条件现在要求独立 session 中的 `knowledge-writer` plan 达到 `end.completed` 且所有 template tasks 为 `done`；runner 会移除父 Codex session identity，并从真实 OpenCode CLI NDJSON 顶层事件恢复 child `sessionID`。OpenCode writer agent 是 `mode: primary` 的自包含入口，只加载 `claw-kit:knowledge-writer`。
+
+## 2026-07-19：0.1.82 host-owned workflow skill 发布
+
+- Release commit `6c68605a6afb1787c10bede6adf4c168c0a5100a` 已直接推送到 `origin/main`；完成边界内本地 `main`、`origin/main` 与工作树完全收敛。
+- npm registry 已确认 `@veewo/claw-core@0.1.82` 与 `@veewo/claw@0.1.82` 发布完成；GitHub Release `v0.1.82` 已发布。
+- 本机全局 CLI 已刷新到 `0.1.82`；唯一启用的 Codex identity 是 `claw-kit@claw-kit`，official source/cache manifest 均为 `0.1.82+codex.20260719000436`，`claw-kit@claw-kit-local` 保持 disabled。
+- 本轮长期交付包括：Codex 与 OpenCode 各自拥有独立 `update` skill package；`create-claw-skill` 按 whole-task、independent-stage 与 mixed-stage ownership 路由，并依赖 core 的显式-template session-scope 自动选择；`using-claw-kit` 创建 plan 后只跟随 CLI 返回的 `workflowGuidance`。
+- 完整验证、专项回归、两个 npm pack dry-run 与 release dry-run 均通过。仓库根目录直接解析裸 `--template update` 时可能同时发现 Codex/OpenCode 两个同名 template 并报告歧义；后续精确文件入口使已加载的 host skill 可以直接选择相邻 `TEMPLATE.json`，无需共享平台选择 workflow。

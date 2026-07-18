@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { ClawError } from "./errors.js";
 import { getTemplateTaskDoneGuidanceRoute, resolveSeedPlanTemplate } from "./plan-templates.js";
 import workflowGuidanceConfigJson from "./workflow-guidance.config.json" with { type: "json" };
 import type {
@@ -197,12 +198,41 @@ function formatTaskRef(task: PlanTask): string {
 }
 
 function renderTemplateString(template: string, vars: TemplateVars): string {
-  return template.replace(/{{\s*([a-zA-Z0-9_]+)\s*}}/g, (_, key: string) => {
+  return template.replace(/{{\s*([a-zA-Z0-9_.]+)\s*}}/g, (_, key: string) => {
     if (!Object.prototype.hasOwnProperty.call(vars, key)) {
-      throw new Error(`Unknown workflow guidance placeholder: ${key}`);
+      throw new ClawError("PROJECT_CONFIG_INVALID", `Unknown workflow guidance placeholder: ${key}`, {
+        placeholder: key,
+      });
     }
     return vars[key];
   });
+}
+
+function buildProjectConfigTemplateVars(projectConfig: ProjectConfig | null): TemplateVars {
+  const vars: TemplateVars = {};
+  const visit = (value: unknown, keyPath: string): void => {
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      vars[keyPath] = String(value);
+      return;
+    }
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return;
+    }
+    for (const [key, nestedValue] of Object.entries(value as Record<string, unknown>)) {
+      visit(nestedValue, keyPath ? `${keyPath}.${key}` : key);
+    }
+  };
+  if (projectConfig) {
+    visit(projectConfig, "");
+  }
+  return vars;
+}
+
+function buildWorkflowTemplateVars(projectConfig: ProjectConfig | null): TemplateVars {
+  return {
+    ...buildProjectConfigTemplateVars(projectConfig),
+    planningSkill: projectConfig?.externalPlanningSkill?.trim() || "the built-in planning skill",
+  };
 }
 
 function renderTemplateValue<T>(value: T, vars: TemplateVars): T {
@@ -303,6 +333,7 @@ export async function buildPlanWorkflowGuidance(params: {
     ? `Suggested truth targets: ${completionHooks.truthCandidate.suggestedTruthPaths.join(", ")}`
     : "";
   const vars: TemplateVars = {
+    ...buildWorkflowTemplateVars(projectConfig),
     editBase,
     startBase,
     resumeBase,
@@ -383,6 +414,7 @@ export async function buildPlanWorkflowGuidance(params: {
         suppressGoalFields,
         guidance: await applyTemplateTaskDoneGuidance({
             projectRoot,
+            projectConfig,
             plan,
             completedTaskIds,
             guidance,
@@ -432,6 +464,7 @@ export async function buildPlanWorkflowGuidance(params: {
         suppressGoalFields,
         guidance: await applyTemplateTaskDoneGuidance({
           projectRoot,
+          projectConfig,
           plan,
           completedTaskIds,
           guidance,
@@ -468,11 +501,12 @@ export async function buildPlanWorkflowGuidance(params: {
 
 async function applyTemplateTaskDoneGuidance(params: {
   projectRoot?: string;
+  projectConfig?: ProjectConfig | null;
   plan: PlanDocument;
   completedTaskIds?: number[];
   guidance: WorkflowGuidance;
 }): Promise<WorkflowGuidance> {
-  const { projectRoot, plan, completedTaskIds, guidance } = params;
+  const { projectRoot, projectConfig = null, plan, completedTaskIds, guidance } = params;
   const completedTaskId = completedTaskIds?.[completedTaskIds.length - 1];
   if (!projectRoot || !plan.templateId?.trim() || completedTaskId === undefined) {
     return guidance;
@@ -486,15 +520,17 @@ async function applyTemplateTaskDoneGuidance(params: {
   const template = await resolveSeedPlanTemplate({
     projectRoot,
     templateName: plan.templateId,
+    templateFile: plan.templateFile,
   });
   const route = getTemplateTaskDoneGuidanceRoute(template, completedTaskId, completedTask.choiceId);
   if (!route) {
     return guidance;
   }
+  const renderedRoute = renderTemplateValue(route, buildWorkflowTemplateVars(projectConfig));
 
-  const merged = route.mergeMode === "replace"
-    ? replaceWorkflowGuidance(guidance, route, plan)
-    : overrideWorkflowGuidance(guidance, route, plan);
+  const merged = renderedRoute.mergeMode === "replace"
+    ? replaceWorkflowGuidance(guidance, renderedRoute, plan)
+    : overrideWorkflowGuidance(guidance, renderedRoute, plan);
   return merged;
 }
 

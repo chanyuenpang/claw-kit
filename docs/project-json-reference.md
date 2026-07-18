@@ -103,6 +103,14 @@ Together, the canonical config plus local override model gives longer-running pr
   - `model`: optional Codex model override for the asynchronous auto-doc writer; `null` uses the SDK default
   - `reasoningEffort`: writer reasoning depth; one of `minimal`, `low`, `medium`, `high`, or `xhigh`
 
+### Template variables
+
+- `var`
+  - optional object for project-defined template guidance variables
+  - reference values with the `var.*` namespace, for example `{{var.releaseChannel}}`
+  - nested string, number, and boolean leaves can be rendered by template guidance
+  - use this namespace instead of adding unknown top-level fields; protocol repair removes unknown or retired top-level configuration keys
+
 The removed `truthDispatch` timing switch is discarded during protocol repair. Auto-doc captures every eligible turn report and judges durable truth and ADR content only when a plan closes.
 
 Older nested inputs should be rewritten into the flat fields above during protocol repair; new config should use only the canonical flat shape.

@@ -39,6 +39,7 @@ export type ProjectConfig = {
     embedding?: MemoryEmbeddingConfig | null;
   };
   gitnexus?: boolean;
+  var?: Record<string, unknown>;
 };
 
 export type TemplateConfigOverride = {
@@ -119,6 +120,7 @@ export type PlanTask = {
 export type PlanDocument = {
   title: string;
   templateId?: string;
+  templateFile?: string;
   configOverride?: TemplateConfigOverride;
   status: PlanStatus;
   completedAt?: string;
@@ -443,6 +445,7 @@ export type PlanWriteInput = {
   taskName?: string;
   filePath?: string;
   templateName?: string;
+  templateFile?: string;
   title?: string;
   description?: string;
   goalText?: string;
@@ -479,6 +482,7 @@ export type SubplanWriteInput = {
   parentTaskName: string;
   parentTaskId: number;
   templateName?: string;
+  templateFile?: string;
   ownerSessionKey?: string;
   host?: string;
 };

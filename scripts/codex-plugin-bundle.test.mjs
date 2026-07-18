@@ -92,7 +92,7 @@ test("Codex entry stays compact without dropping guidance, lifecycle, or the mut
   assert.match(skill, /## First Action/i);
   assert.match(skill, /skip this skill and work directly/i);
   assert.match(skill, /claw plan create "<title>"/i);
-  assert.match(skill, /claw plan create --template <template-id> --title "<title>"/i);
+  assert.match(skill, /follow that skill's entry route so it supplies its adjacent template file/i);
   assert.match(skill, /Follow the returned `workflowGuidance` as the only next-step execution contract/i);
   assert.equal((skill.match(/workflowGuidance/g) ?? []).length, 1);
   assert.doesNotMatch(skill, /current prompt contains/i);

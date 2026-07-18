@@ -33,7 +33,7 @@ Default policy:
 - when a later mutation resumes execution into `process.active`, emit `create_goal`; never combine the preceding complete and the new create in one code-mode call
 - when a plan reaches `end.completed`, return `goalTool.tool = update_goal` with `status = "complete"` instead of leaving completion to an implied host-side Goal mode gesture
 - if `plan.goal.text` is missing, block the lifecycle from entering `process.active` instead of emitting a premature Goal mode recommendation
-- generated task detail is derived from program state, not inferred from prose: the default Codex/no-host path appends the existing `Using claw-kit, update plan, follow returned workflowGuidance，finish your goal：<planGoal>` objective when `goalMode` is enabled, explicit `host: "opencode"` preserves the older concise Goal Mode detail, and disabled `goalMode` keeps only the base activation detail
+- generated task detail is derived from program state, not inferred from prose: the default Codex/no-host path appends `Follow the claw workflow guidance and finish your goal: <planGoal>` when `goalMode` is enabled, explicit `host: "opencode"` preserves its host-specific activation detail, and disabled `goalMode` keeps only the base activation detail
 
 ## Consequences
 

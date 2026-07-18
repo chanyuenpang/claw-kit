@@ -16,7 +16,8 @@ Accepted
 
 ## Decision
 
-- runtime plan 必须持久化 `plan.templateId`
+- runtime plan 必须持久化 `plan.templateId`；通过精确文件创建时还必须持久化 `plan.templateFile`，使后续 done validation 与 guidance 始终返回同一个 template 文件
+- skill-backed workflow 使用相邻 `TEMPLATE.json` 的 `--template-file` 入口；`--template <id>` 继续作为兼容的 id discovery，不能作为同名跨 adapter template 的权威来源
 - runtime plan 必须持久化模板作用域内的 `plan.configOverride`
 - 模板专属 guidance 继续由模板定义，尤其是 `guidance.onDone` 和 `guidance.onDone.choices`
 - `guidance.onDone.default` 与 `guidance.onDone.choices.<choiceId>` 都可以修改返回的 workflow guidance，并通过 `mergeMode: "override" | "replace"` 声明是叠加默认 guidance 还是完整替换
@@ -26,10 +27,11 @@ Accepted
 - `claw task done --choice` 和 `claw task edit --status done --choice` 共享同一套 done-transition 校验
 - template-only guidance 不进入 agent-facing runtime task content，避免把模板内部路由细节泄漏到通用任务文本里
 - 模板级 `configOverride` 只应从 template 载入并写入 runtime plan，不应通过 plan 创建输入注入
+- template guidance 可以按 canonical key 或嵌套点路径渲染 effective project config 的标量叶子值；自定义变量只允许放入 `var` 命名空间并通过 `var.*` 引用，避免削弱 protocol repair 对未知或废弃顶层字段的清理。runtime 内建变量在同名冲突时优先
 
 ## Consequences
 
-- 运行时 plan 可以在没有 sidecar 状态的情况下重新解析模板路由和模板级覆盖
+- 运行时 plan 可以在没有 sidecar 状态的情况下重新解析同一个模板文件、模板路由和模板级覆盖
 - `goalMode` 与 `knowledgeWriter` 等 current effective behavior 可以通过 `configOverride` 在统一 runtime contract 下覆盖；旧 `truthDispatch` 只属于兼容输入
 - 路由完成的校验面收敛为一条规则，`choiceId` 不会因为入口不同而产生分叉
 - 模板文案和任务执行文案保持分离，agent 看到的是可执行计划，而不是模板内部实现痕迹
@@ -50,6 +52,9 @@ Accepted
 ## Search Terms
 
 - `templateId`
+- `templateFile`
+- `--template-file`
+- `project config placeholders`
 - `configOverride`
 - `guidance.onDone`
 - `choiceId`

@@ -114,16 +114,22 @@ function normalizeProjectConfig(raw: unknown, projectRoot: string): ProjectConfi
     name: _name,
     maxTasksToKeep: _maxTasksToKeep,
     planning: _planning,
+    autoUpdate: _autoUpdate,
+    goalMode: _goalMode,
     knowledgeWriter: _knowledgeWriter,
     externalPlanningSkill: _externalPlanningSkill,
     externalTruthSkill: _externalTruthSkill,
     externalAdrSkill: _externalAdrSkill,
+    truthDispatch: _truthDispatch,
     defaultPlanTemplate: _defaultPlanTemplate,
     contextPaths: _contextPaths,
-    memory: _memory
+    memory: _memory,
+    gitnexus: _gitnexus,
+    var: _var
   } = source ?? {};
   const sourceMemory = asObject(source?.memory);
   const sourceKnowledgeWriter = asObject(source?.knowledgeWriter);
+  const sourceVar = asObject(source?.var);
   const maxTasksToKeep = source?.maxTasksToKeep;
 
   return {
@@ -154,6 +160,7 @@ function normalizeProjectConfig(raw: unknown, projectRoot: string): ProjectConfi
       embedding: normalizeMemoryEmbeddingConfig(sourceMemory?.embedding),
     },
     gitnexus: readBooleanConfig(source?.gitnexus, false),
+    ...(sourceVar ? { var: sourceVar } : {}),
   };
 }
 
@@ -214,6 +221,9 @@ function validateProjectConfig(raw: unknown, issues: ProjectProtocolIssue[]): vo
   requireNullableString(config, "defaultPlanTemplate", issues);
   requireStringArray(config, "contextPaths", issues);
   requireBoolean(config, "gitnexus", issues);
+  if ("var" in config && !asObject(config.var)) {
+    issues.push({ path: "var", message: "Field must be an object when present." });
+  }
 
   const memory = requireObject(config, "memory", issues);
   if (memory) {

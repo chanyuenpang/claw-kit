@@ -13,6 +13,7 @@ The former shared `shared/skills/update/` package encoded those differences as a
 ## Decision
 
 - Keep the public skill name and template id `update` in both adapters, but make the loaded adapter the sole platform selector.
+- Scope that shared id to compatibility discovery. A loaded adapter skill must route through its own adjacent `TEMPLATE.json` with `--template-file`; a combined repository-root resolver may still reject bare `--template update` as ambiguous without requiring a cross-host route.
 - Codex independently owns `packages/codex-adapter/skills/update/`; OpenCode independently owns `packages/opencode-adapter/skills/update/`.
 - Each adapter owns its complete update package: entry skill, three-task template, no-`.claw` fallback, and coverage contract.
 - Remove `update` from `SHARED_SKILL_NAMES` and delete `shared/skills/update/`. Shared-skill synchronization must never generate or overwrite either adapter's update package.
@@ -29,7 +30,7 @@ The former shared `shared/skills/update/` package encoded those differences as a
 ## Consequences
 
 - Maintainers edit the Codex and OpenCode update packages independently and must review both when changing the common update outcome.
-- The same `claw plan create --template update` entry resolves to different host-owned content without adding a user-visible routing step.
+- The host-specific skill selects its exact adjacent file without a user-visible routing step. A bare id lookup remains available for compatibility where it is unambiguous, but it is not the authoritative update entry.
 - Codex can enforce official marketplace identity/source/cache evidence without carrying OpenCode deployment details; OpenCode can enforce its full installed-surface verification without carrying Codex identity rules.
 - Shared-skill synchronization remains the canonical materializer only for the skills listed in `SHARED_SKILL_NAMES`; `update` is an explicit adapter-owned exception.
 - The canonical current behavior is documented in `.claw/truth/features/host-specific-update-skills.md`. Older shared-update records remain historical evidence only.
@@ -52,3 +53,4 @@ The former shared `shared/skills/update/` package encoded those differences as a
 - `remove update from shared sync`
 - `no platform choice`
 - `Codex OpenCode update split`
+- `repository-root update template ambiguity`

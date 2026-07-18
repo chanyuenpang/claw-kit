@@ -1,7 +1,7 @@
 {
   "goalModeObjective": {
-    "withGoal": "Using claw-kit, update the plan, follow the returned workflowGuidance, and finish your goal: {{planGoal}}",
-    "withoutGoal": "Using claw-kit, update the plan, follow the returned workflowGuidance, and finish your goal."
+    "withGoal": "Follow the claw workflow guidance and finish your goal: {{planGoal}}",
+    "withoutGoal": "Follow the claw workflow guidance and finish your goal."
   },
   "planCreateRecall": {
     "recommendedCommand": "claw search --query \"<topic>\""

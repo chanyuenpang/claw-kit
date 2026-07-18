@@ -95,8 +95,10 @@ TODO: Replace this sentence with the skill's concise purpose.
 
 ## Route By Task Ownership
 
-- Whole task: when this skill fully owns the current task, use \`claw plan create --template ${templateId} --title "${skillName}"\`.
-- Independent stage: when this skill fully owns one stage of a broader plan, use \`claw subplan create --parent <parent-task-name> --task-id <id> --template ${templateId}\`. A batch is a repeated-stage case: invoke this skill once as a subplan for each stage.
+Resolve \`<skill-dir>\` as the directory containing this loaded \`SKILL.md\`.
+
+- Whole task: when this skill fully owns the current task, use \`claw plan create --template-file "<skill-dir>/TEMPLATE.json" --title "${skillName}"\`.
+- Independent stage: when this skill fully owns one stage of a broader plan, use \`claw subplan create --parent <parent-task-name> --task-id <id> --template-file "<skill-dir>/TEMPLATE.json"\`. A batch is a repeated-stage case: invoke this skill once as a subplan for each stage.
 - Mixed stage: when this skill only contributes part of a stage that mixes multiple skills, do not create its template plan. Read \`${fallbackDoc}\` and apply the relevant fallback guidance inside the owning workflow.
 - Unavailable claw tooling: when the claw CLI or this template is unavailable, read \`${fallbackDoc}\` and run the direct workflow.
 
@@ -196,7 +198,7 @@ function buildCoverage({ skillName, templateId, targetWork, fallbackDoc }) {
 ## Source to converted-home mapping
 
 - Trigger and task-ownership routing rules: TODO.
-- Whole-task entry: \`SKILL.md\` routes to \`claw plan create --template ${templateId}\`.
+- Whole-task entry: \`SKILL.md\` routes to the adjacent \`TEMPLATE.json\` through \`--template-file\`.
 - Stage entry: \`SKILL.md\` routes an independently owned stage, including each batch stage, to a subplan.
 - Mixed-stage entry: \`SKILL.md\` routes partial capability use to the fallback without creating this template.
 - Unavailable-tooling entry: \`SKILL.md\` routes to the same fallback when the claw CLI or template is unavailable.

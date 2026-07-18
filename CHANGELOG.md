@@ -4,6 +4,18 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## Unreleased
 
+## [0.1.83] - 2026-07-19
+
+### Added
+
+- `plan create` and `subplan create` accept an exact `--template-file` source, persist it for later task guidance, and keep `--template` as the compatibility id resolver
+- Template guidance can interpolate effective `project.json` values by key path, with custom variables declared under the explicit `var.*` namespace
+
+### Changed
+
+- Template-backed skills and the `create-claw-skill` generator now route through their adjacent `TEMPLATE.json`, avoiding collisions across hosts, plugins, and cached versions
+- Goal Mode objectives now use the concise grammatical form `Follow the claw workflow guidance and finish your goal: <goal>`
+
 ## [0.1.82] - 2026-07-19
 
 ### Changed

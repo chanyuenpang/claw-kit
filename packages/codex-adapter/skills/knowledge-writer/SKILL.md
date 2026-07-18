@@ -16,8 +16,10 @@ The template declares `scope: "session"`, so direct entry works without a projec
 
 ## Entry routing
 
-- Direct single-plan finalization: use `claw plan create --template knowledge-writer --title "knowledge-writer"`, then follow returned `workflowGuidance`.
-- Active parent-plan task: use `claw subplan create --parent <parent-task-name> --task-id <id> --template knowledge-writer`; the subplan inherits its parent's scope.
+Resolve `<skill-dir>` as the directory containing this loaded `SKILL.md`.
+
+- Direct single-plan finalization: use `claw plan create --template-file "<skill-dir>/TEMPLATE.json" --title "knowledge-writer"`, then follow returned `workflowGuidance`.
+- Active parent-plan task: use `claw subplan create --parent <parent-task-name> --task-id <id> --template-file "<skill-dir>/TEMPLATE.json"`; the subplan inherits its parent's scope.
 - Batch or mixed request: create a normal root claw plan first, with one task per completed plan or coherent knowledge unit. Each target task must create and complete a `knowledge-writer` subplan instead of depositing knowledge directly from the root plan.
 
 Recommended batch task title:
@@ -26,7 +28,7 @@ Recommended batch task title:
 
 Recommended batch task detail:
 
-`Goal: run the knowledge-writer subplan for <completed-plan> and its adjacent report. This task is satisfied by creating and completing that subplan. First run claw subplan create --parent <root-task-name> --task-id <id> --template knowledge-writer, then follow the returned workflowGuidance until it completes. Record the deposition or no-op result in the root plan before marking this task done.`
+`Goal: run the knowledge-writer subplan for <completed-plan> and its adjacent report. This task is satisfied by creating and completing that subplan. First resolve the loaded knowledge-writer skill directory and run claw subplan create --parent <root-task-name> --task-id <id> --template-file "<skill-dir>/TEMPLATE.json", then follow the returned workflowGuidance until it completes. Record the deposition or no-op result in the root plan before marking this task done.`
 
 ## Non-negotiable stewardship rules
 

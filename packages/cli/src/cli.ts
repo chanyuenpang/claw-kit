@@ -136,7 +136,7 @@ const COMMAND_HELP: Record<string, HelpNode> = {
       create: {
         usage: [
           "{script} plan create \"<title>\" [--goal <text>] [--scope session]",
-          "{script} plan create --title <text> [--goal <text>] [--template <name>] [--scope session]",
+          "{script} plan create --title <text> [--goal <text>] [--template <name> | --template-file <path>] [--scope session]",
         ],
         description:
           "Create the task scope and initial plan from a template. Outside a .claw project, explicit `--template` automatically uses session scope while plain plan creation keeps the project-initializing behavior. Template resolution uses explicit `--template` first, otherwise the project's configured `defaultPlanTemplate`, and finally the built-in `default`; planning-enabled projects start in process.discussing with the default planning bridge tasks, while planning-disabled projects start directly in process.active with one executable task.",
@@ -146,6 +146,7 @@ const COMMAND_HELP: Record<string, HelpNode> = {
           { flag: "--goal <text>", detail: "Optional goal text." },
           { flag: "--scope session", detail: "Use ephemeral per-session storage and disable project knowledge side effects." },
           { flag: "--template <name>", detail: "Optional plan template name. Overrides the project default and auto-selects session scope when no .claw project exists." },
+          { flag: "--template-file <path>", detail: "Exact plan template file. Mutually exclusive with --template and auto-selects session scope when no .claw project exists." },
         ],
       },
       edit: {
@@ -334,7 +335,7 @@ const COMMAND_HELP: Record<string, HelpNode> = {
     description: "Subplan lifecycle commands nested under a parent task.",
     subcommands: {
       create: {
-        usage: ["{script} subplan create --parent <task-name> --task-id <number> [--template <name>]"],
+        usage: ["{script} subplan create --parent <task-name> --task-id <number> [--template <name> | --template-file <path>]"],
         description:
           "Create a flat subplan file under the task directory. Uses explicit `--template` first, otherwise the project's configured `defaultPlanTemplate`, and finally falls back to the built-in `default`. The current session binding switches to the subplan and returns to its parent when the subplan ends.",
         summary: "Create a subplan under a parent task's task item.",
@@ -342,6 +343,7 @@ const COMMAND_HELP: Record<string, HelpNode> = {
           { flag: "--parent <task-name>", detail: "(required) Parent task name." },
           { flag: "--task-id <number>", detail: "(required) Parent task item id to split into a subplan." },
           { flag: "--template <name>", detail: "Optional plan template name. Overrides the project's configured default template." },
+          { flag: "--template-file <path>", detail: "Exact plan template file. Mutually exclusive with --template." },
         ],
       },
     },
@@ -593,6 +595,10 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
       rejectFlags(args, ["--task", "--plan", "--content", "--status", "--parent-task-id", "--description"]);
       const explicitTitle = readOptionalFlag(args, "--title");
       const explicitTemplate = readOptionalFlag(args, "--template");
+      const explicitTemplateFile = readOptionalFlag(args, "--template-file");
+      if (explicitTemplate && explicitTemplateFile) {
+        throw new ClawError("PROJECT_CONFIG_INVALID", "--template and --template-file are mutually exclusive.");
+      }
       const scope = readWorkflowScope(args);
       const title = explicitTitle ?? readOptionalPositionalArg(args);
       const templateName = explicitTemplate;
@@ -606,6 +612,7 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
         cwd: process.cwd(),
         scope,
         templateName,
+        templateFile: explicitTemplateFile ? path.resolve(process.cwd(), explicitTemplateFile) : undefined,
         title,
         goalText: readOptionalFlag(args, "--goal"),
         ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
@@ -1905,11 +1912,17 @@ async function runSubplan(args: string[], effectiveHost: ClawHost | undefined): 
   const subcommand = args.shift();
   switch (subcommand) {
     case "create": {
+      const templateName = readOptionalFlag(args, "--template") ?? undefined;
+      const templateFile = readOptionalFlag(args, "--template-file");
+      if (templateName && templateFile) {
+        throw new ClawError("PROJECT_CONFIG_INVALID", "--template and --template-file are mutually exclusive.");
+      }
       const result = await createSubplan({
         cwd: process.cwd(),
         parentTaskName: readRequiredFlag(args, "--parent"),
         parentTaskId: readOptionalNumber(args, "--task-id") ?? failMissingNumericFlag("--task-id"),
-        templateName: readOptionalFlag(args, "--template") ?? undefined,
+        templateName,
+        templateFile: templateFile ? path.resolve(process.cwd(), templateFile) : undefined,
         ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
         host: effectiveHost,
       });

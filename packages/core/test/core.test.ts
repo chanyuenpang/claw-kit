@@ -303,7 +303,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
     "# claw-kit\n.claw/*\n!.claw/project.json\n!.claw/truth/\n!.claw/truth/**\n.claw/project-override.json\n",
   );
   assert.deepEqual(projectConfig, {
-    version: "0.1.82",
+    version: "0.1.83",
     id: "demo-project",
     name: "Demo Project",
     maxTasksToKeep: 20,
@@ -414,7 +414,7 @@ test("writePlan includes the recommended goal objective in the activation task w
 
   assert.equal(
     result.plan.tasks[1]?.detail,
-    "After the planning task appends the executable tasks, move the plan into `process.active` and continue execution from the refined task list. If Goal Mode is enabled for this project, start Goal Mode when entering `process.active` and use `Using claw-kit, update the plan, follow the returned workflowGuidance, and finish your goal: Ship the first plan` as the goal objective.",
+    "After the planning task appends the executable tasks, move the plan into `process.active` and continue execution from the refined task list. If Goal Mode is enabled for this project, start Goal Mode when entering `process.active` and use `Follow the claw workflow guidance and finish your goal: Ship the first plan` as the goal objective.",
   );
 });
 
@@ -1430,6 +1430,76 @@ test("template guidance onDone default can override default workflow guidance wi
   assert.equal(taskDone.workflowGuidance.nextTask?.id, 2);
 });
 
+test("template guidance can render effective project config values", async () => {
+  const root = createFixture("template-guidance-project-values");
+  initProject({ cwd: root, projectName: "Template Project Values", planning: true, force: true });
+  const projectJsonPath = path.join(root, ".claw", "project.json");
+  const projectConfig = JSON.parse(fs.readFileSync(projectJsonPath, "utf-8")) as Record<string, unknown>;
+  fs.writeFileSync(
+    projectJsonPath,
+    `${JSON.stringify({
+      ...projectConfig,
+      maxTasksToKeep: 7,
+      externalPlanningSkill: "team-planner",
+      gitnexus: false,
+      var: {
+        releaseChannel: "stable",
+      },
+    }, null, 2)}\n`,
+    "utf-8",
+  );
+  fs.writeFileSync(
+    path.join(root, ".claw", "project-override.json"),
+    `${JSON.stringify({ var: { releaseChannel: "canary" } }, null, 2)}\n`,
+    "utf-8",
+  );
+  fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "templates", "project-values.json"),
+    `${JSON.stringify(createPlanLikeTemplate({
+      id: "project-values",
+      status: "process.active",
+      tasks: [
+        {
+          id: 1,
+          title: "Render project values",
+          status: "pending",
+          guidance: {
+            onDone: {
+              default: {
+                mergeMode: "override",
+                summary: "Use {{externalPlanningSkill}} for {{name}} on {{var.releaseChannel}}.",
+                nextsteps: ["Retain {{maxTasksToKeep}} tasks."],
+                notes: "GitNexus enabled: {{gitnexus}}.",
+              },
+            },
+          },
+        },
+        { id: 2, title: "Continue", status: "pending" },
+      ],
+    }), null, 2)}\n`,
+    "utf-8",
+  );
+
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Render project values",
+    templateName: "project-values",
+  });
+  const taskDone = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    taskId: 1,
+    taskStatus: "done",
+  });
+
+  assert.equal(taskDone.workflowGuidance.summary, "Use team-planner for Template Project Values on canary.");
+  assert.equal(taskDone.workflowGuidance.nextsteps.some((step) => step.includes("Retain 7 tasks.")), true);
+  assert.equal(taskDone.workflowGuidance.notes, "GitNexus enabled: false.");
+});
+
 test("template guidance onDone default can replace default workflow guidance without choices", async () => {
   const root = createFixture("template-guidance-replace-default");
   initProject({ cwd: root, projectName: "Template Guidance Replace", planning: true, force: true });
@@ -1834,13 +1904,13 @@ test("createSubplan uses the planning-aware default seed shape", async () => {
   assert.equal(result.plan.goal.text, "Implement child work: Split this into a subplan");
   assert.equal(result.plan.tasks.length, 2);
   assert.deepEqual(result.workflowGuidance.nextsteps, [
-    "Set or overwrite Goal Mode to this subplan objective before doing target work: Using claw-kit, update the plan, follow the returned workflowGuidance, and finish your goal: Implement child work: Split this into a subplan",
+    "Set or overwrite Goal Mode to this subplan objective before doing target work: Follow the claw workflow guidance and finish your goal: Implement child work: Split this into a subplan",
     "1. Resolve the discussion, then resume through `process.active`.",
   ]);
   assert.equal(result.workflowGuidance.recommendedCommands?.[0], 'claw search --query "<topic>"');
   assert.equal(
     result.workflowGuidance.goalMode?.recommendedObjective,
-    "Using claw-kit, update the plan, follow the returned workflowGuidance, and finish your goal: Implement child work: Split this into a subplan",
+    "Follow the claw workflow guidance and finish your goal: Implement child work: Split this into a subplan",
   );
   assert.equal(result.workflowGuidance.goalMode?.allowOverwrite, true);
   assert.match(result.workflowGuidance.notes ?? "", /parent\/root plan as paused/i);
@@ -2294,7 +2364,7 @@ test("resuming from process.wait to process.active re-emits goal mode guidance",
   assert.ok(resumed.workflowGuidance.goalMode?.recommendedObjective?.includes("Resume execution with goal mode"));
   assert.deepEqual(resumed.workflowGuidance.goalTool, {
     tool: "create_goal",
-    objective: "Using claw-kit, update the plan, follow the returned workflowGuidance, and finish your goal: Resume execution with goal mode",
+    objective: "Follow the claw workflow guidance and finish your goal: Resume execution with goal mode",
     allowOverwrite: true,
     reason: "Execution is resuming from a paused process state, so the thread should restore an active Codex goal for the plan goal.",
   });
@@ -4692,6 +4762,10 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
       {
         id: "Fix Me",
         name: "Fix Me",
+        releaseChannel: "discard-this-top-level-field",
+        var: {
+          releaseChannel: "canary",
+        },
         maxTasksToKeep: 0,
         memory: {
           enabled: true,
@@ -4716,6 +4790,9 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
     version: string;
     id: string;
     name: string;
+    var: {
+      releaseChannel: string;
+    };
     maxTasksToKeep: number;
     autoUpdate: boolean;
     contextPaths: string[];
@@ -4742,9 +4819,11 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
   assert.equal(result.ok, true);
   assert.equal(result.changed, true);
   assert.ok(result.issueCountBefore > 0);
-  assert.equal(projectConfig.version, "0.1.82");
+  assert.equal(projectConfig.version, "0.1.83");
   assert.equal(projectConfig.id, "fix-me");
   assert.equal(projectConfig.name, "Fix Me");
+  assert.equal("releaseChannel" in projectConfig, false);
+  assert.equal(projectConfig.var.releaseChannel, "canary");
   assert.equal(projectConfig.maxTasksToKeep, 99);
   assert.equal(projectConfig.autoUpdate, true);
   assert.deepEqual(projectConfig.contextPaths, []);

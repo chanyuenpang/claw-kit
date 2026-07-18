@@ -64,13 +64,15 @@ const PLAN_TASK_STATUSES: PlanTaskStatus[] = ["pending", "in_progress", "subagen
 async function resolveTemplateCreationScope(
   projectRoot: string | undefined,
   templateName: string | undefined,
+  templateFile: string | undefined,
 ): Promise<"session" | undefined> {
-  if (!templateName?.trim()) {
+  if (!templateName?.trim() && !templateFile?.trim()) {
     return undefined;
   }
   const template = await resolveSeedPlanTemplate({
     projectRoot,
     templateName,
+    templateFile,
   });
   if (template.scope === "session") {
     return "session";
@@ -79,8 +81,15 @@ async function resolveTemplateCreationScope(
 }
 
 export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult & { events: PlanEvent[] }> {
+  if (input.templateName?.trim() && input.templateFile?.trim()) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "templateName and templateFile are mutually exclusive.", {
+      templateName: input.templateName,
+      templateFile: input.templateFile,
+    });
+  }
   const templateProjectRoot = findProjectRoot(input.cwd) ?? undefined;
-  const scope = input.scope ?? await resolveTemplateCreationScope(templateProjectRoot, input.templateName);
+  const templateFile = input.templateFile ? path.resolve(input.cwd, input.templateFile) : undefined;
+  const scope = input.scope ?? await resolveTemplateCreationScope(templateProjectRoot, input.templateName, templateFile);
   const project = resolveWorkflowProjectContext(input.cwd, input.ownerSessionKey, scope);
   const taskName = deriveTaskName(input);
   const createdTask = !fs.existsSync(path.join(project.tasksDir, taskName, "plan.json"));
@@ -104,6 +113,7 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
       project.projectRoot,
       project.projectConfig,
       input.templateName,
+      templateFile,
       taskName,
       input.title,
       input.goalText,
@@ -625,6 +635,7 @@ export async function createSubplan(input: SubplanWriteInput): Promise<PlanWrite
     title: subplanTitle,
     goalText: derivedGoalText,
     templateName: input.templateName,
+    templateFile: input.templateFile,
     forcePlanning: true,
     parentTaskId: input.parentTaskId,
     parentPlanFile,
@@ -991,6 +1002,7 @@ async function createSeedPlan(
   projectRoot: string,
   projectConfig: TaskContext["project"]["projectConfig"] | null,
   templateName: string | undefined,
+  templateFile: string | undefined,
   taskName: string,
   title?: string,
   goalText?: string,
@@ -999,10 +1011,13 @@ async function createSeedPlan(
   host?: string,
   templateProjectRoot?: string,
 ): Promise<PlanDocument> {
-  const effectiveTemplateName = templateName?.trim() || projectConfig?.defaultPlanTemplate?.trim() || defaultPlanTemplateName();
+  const effectiveTemplateName = templateFile
+    ? undefined
+    : templateName?.trim() || projectConfig?.defaultPlanTemplate?.trim() || defaultPlanTemplateName();
   const template = await resolveSeedPlanTemplate({
     projectRoot: templateProjectRoot ?? projectRoot,
     templateName: effectiveTemplateName,
+    templateFile,
   });
   const effectiveConfig = resolvePlanEffectiveConfig(projectConfig, {
     configOverride: template.configOverride,
@@ -1013,6 +1028,7 @@ async function createSeedPlan(
     return {
       title: title ?? taskName,
       templateId: template.id,
+      ...(template.templatePath ? { templateFile: template.templatePath } : {}),
       ...(template.configOverride ? { configOverride: template.configOverride } : {}),
       status: "process.active",
       goal: {
@@ -1064,6 +1080,7 @@ async function createSeedPlan(
   return {
     title: effectiveTitle,
     templateId: template.id,
+    ...(template.templatePath ? { templateFile: template.templatePath } : {}),
     ...(template.configOverride ? { configOverride: template.configOverride } : {}),
     status: template.status ?? status,
     goal: {
@@ -1097,6 +1114,7 @@ async function validateDoneTransitions(params: {
   const template = await resolveSeedPlanTemplate({
     projectRoot,
     templateName: nextPlan.templateId,
+    templateFile: nextPlan.templateFile,
   });
   const previousTasks = new Map(previousPlan.tasks.map((task) => [task.id, task]));
 

@@ -89,7 +89,7 @@ The CLI rejects a done transition without that value and returns the allowed cho
 `create-claw-skill` should:
 
 - start from a short claw entry skill
-- route into `claw plan create --template create-claw-skill`
+- route into the adjacent `TEMPLATE.json` through `claw plan create --template-file`
 - use the template to control branch restoration and workflow guidance
 - keep the original or distilled skill text as an adjacent fallback document
 - validate the development-source template with `claw template validate --file <skill-dir>/TEMPLATE.json`
@@ -99,15 +99,15 @@ The CLI rejects a done transition without that value and returns the allowed cho
 
 Every generated claw skill should ask what the skill completely owns:
 
-- Whole task: use `claw plan create --template <template-id>` when the skill owns the task from inputs through verification.
-- Independent stage: use `claw subplan create --parent <parent-task-name> --task-id <id> --template <template-id>` when the skill owns one complete stage of a broader plan.
+- Whole task: resolve the loaded skill directory and use `claw plan create --template-file "<skill-dir>/TEMPLATE.json"` when the skill owns the task from inputs through verification.
+- Independent stage: use `claw subplan create --parent <parent-task-name> --task-id <id> --template-file "<skill-dir>/TEMPLATE.json"` when the skill owns one complete stage of a broader plan.
 - Mixed stage: use the adjacent fallback when the skill only contributes part of a stage whose owning workflow mixes multiple skills.
 
 Batch belongs to the independent-stage route, not to a separate batch route. A batch is a broader plan with repeated stages; each stage calls the skill once as a subplan. The parent owns ordering and shared constraints, and each subplan owns one stage's complete result.
 
 Mixed-skill work is different. If multiple skills must interleave inside the same stage and the current skill cannot produce a coherent stage result by itself, do not create a subplan for it. Keep one stage owner and consume the current skill's fallback there.
 
-No-context execution does not need a separate entry route. When `cwd` has no `.claw`, `claw plan create --template <template-id>` automatically selects session scope. Plain `claw plan create "<title>"` retains its existing behavior and initializes `.claw`; the automatic session behavior applies only when a template is explicitly selected.
+No-context execution does not need a separate entry route. When `cwd` has no `.claw`, explicit `--template-file` or compatibility `--template` plan creation automatically selects session scope. Plain `claw plan create "<title>"` retains its existing behavior and initializes `.claw`.
 
 ## Choices Need Observable Control Flow
 
@@ -120,7 +120,7 @@ If `simple`, `routing`, and `idea-first` all continue to task 2 and only alter p
 The generated skill entry is only safe if its template can be resolved where the skill will run.
 
 For claw skills, prefer skill-local `TEMPLATE.json` beside `SKILL.md`.
-The `id` inside `TEMPLATE.json` is still the value used by `claw plan create --template <template-id>`.
+Generated entries pass that adjacent file through `--template-file`; its `id` remains available for compatibility lookup through `--template <template-id>`.
 Use skill-local `TEMPLATE.json` for project-level templates that are not owned by one skill package.
 
 Do not convert an installed/global skill so that its entry points at a template that only exists in the development repository.

@@ -36,7 +36,11 @@ const PLAN_TEMPLATES: ResolvedPlanTemplate[] = [normalizePlanLikeTemplate(defaul
 export async function resolveSeedPlanTemplate(params: {
   projectRoot?: string;
   templateName?: string | null;
+  templateFile?: string | null;
 }): Promise<ResolvedPlanTemplate> {
+  if (params.templateFile?.trim()) {
+    return resolvePlanTemplateFile(params.templateFile);
+  }
   const normalized = params.templateName?.trim().toLowerCase() || defaultPlanTemplate.id;
   const projectTemplate = params.projectRoot ? await loadProjectPlanTemplate(params.projectRoot, normalized) : null;
   if (projectTemplate) {

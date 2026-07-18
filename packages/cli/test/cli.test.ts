@@ -1765,13 +1765,13 @@ test("cli subplan create keeps task rootPlan stable and derives goal from the pa
   assert.equal(childPlan.title, "Implement child work");
   assert.equal(childPlan.status, "process.discussing");
   assert.deepEqual(result.nextsteps, [
-    "Set or overwrite Goal Mode to this subplan objective before doing target work: Using claw-kit, update the plan, follow the returned workflowGuidance, and finish your goal: Implement child work: Split the risky work into a subplan",
+    "Set or overwrite Goal Mode to this subplan objective before doing target work: Follow the claw workflow guidance and finish your goal: Implement child work: Split the risky work into a subplan",
     "1. Resolve the discussion, then resume through `process.active`.",
   ]);
   assert.equal((result.recommendedCommands as string[])[0], 'claw search --query "<topic>"');
   assert.equal(
     ((result.goalMode as JsonRecord).recommendedObjective),
-    "Using claw-kit, update the plan, follow the returned workflowGuidance, and finish your goal: Implement child work: Split the risky work into a subplan",
+    "Follow the claw workflow guidance and finish your goal: Implement child work: Split the risky work into a subplan",
   );
   assert.equal(((result.goalMode as JsonRecord).allowOverwrite), true);
   assert.match(String(result.notes), /parent\/root plan as paused/i);
@@ -1843,6 +1843,78 @@ test("cli plan, subplan, and template validate share the skill-local template re
   assert.equal(validation.templateId, "create-claw-skill");
   assert.equal(validation.taskCount, 3);
   assert.deepEqual(validation.choiceRequiredTasks, []);
+});
+
+test("cli plan and subplan create can select an exact template file when skill ids conflict", () => {
+  const root = createFixture("cli-exact-template-file");
+  const codexTemplatePath = path.join(root, "packages", "codex-adapter", "skills", "update", "TEMPLATE.json");
+  const opencodeTemplatePath = path.join(root, "packages", "opencode-adapter", "skills", "update", "TEMPLATE.json");
+  for (const [templatePath, taskTitle] of [
+    [codexTemplatePath, "Refresh Codex"],
+    [opencodeTemplatePath, "Refresh OpenCode"],
+  ] as const) {
+    fs.mkdirSync(path.dirname(templatePath), { recursive: true });
+    fs.writeFileSync(
+      templatePath,
+      `${JSON.stringify(createPlanLikeTemplate({
+        id: "update",
+        tasks: [{ id: 1, title: taskTitle, status: "pending" }],
+      }), null, 2)}\n`,
+      "utf-8",
+    );
+  }
+  runClaw(["init", "--name", "Exact Template File"], root);
+
+  const rootResult = runClaw(
+    ["plan", "create", "--title", "codex-update", "--template-file", codexTemplatePath],
+    root,
+  );
+  const rootPlan = JSON.parse(fs.readFileSync(String(rootResult.planPath), "utf-8")) as JsonRecord;
+  assert.equal(((rootPlan.tasks as JsonRecord[])[0]?.title), "Refresh Codex");
+  assert.equal(rootPlan.templateFile, codexTemplatePath);
+
+  const childResult = runClaw(
+    ["subplan", "create", "--parent", "codex-update", "--task-id", "1", "--template-file", opencodeTemplatePath],
+    root,
+  );
+  const childPlan = JSON.parse(fs.readFileSync(String(childResult.planPath), "utf-8")) as JsonRecord;
+  assert.equal(((childPlan.tasks as JsonRecord[])[0]?.title), "Refresh OpenCode");
+  assert.equal(childPlan.templateFile, opencodeTemplatePath);
+});
+
+test("cli plan create rejects template name and exact template file together", () => {
+  const root = createFixture("cli-template-file-conflict");
+  runClaw(["init", "--name", "Template File Conflict"], root);
+
+  const failure = runClawExpectFailure(
+    ["plan", "create", "--title", "conflict", "--template", "default", "--template-file", "TEMPLATE.json"],
+    root,
+  );
+  assert.match(String((failure.error as JsonRecord).message), /mutually exclusive/i);
+});
+
+test("cli plan create with an exact template file auto-selects session scope outside a claw project", () => {
+  const root = createFixture("cli-template-file-session-scope");
+  const templatePath = path.join(root, "example-skill", "TEMPLATE.json");
+  fs.mkdirSync(path.dirname(templatePath), { recursive: true });
+  fs.writeFileSync(
+    templatePath,
+    `${JSON.stringify(createPlanLikeTemplate({
+      id: "example-session-template",
+      tasks: [{ id: 1, title: "Run session work", status: "pending" }],
+    }), null, 2)}\n`,
+    "utf-8",
+  );
+
+  const result = runClaw(
+    ["plan", "create", "--title", "session-template", "--template-file", templatePath],
+    root,
+    { CODEX_THREAD_ID: "thread-template-file-session" },
+  );
+
+  assert.equal(result.command, "plan.create");
+  assert.equal(fs.existsSync(path.join(root, ".claw")), false);
+  assert.match(String(result.planPath), /\.claw[\\/]runtime[\\/]sessions[\\/]/);
 });
 
 test("cli plan done on a subplan resumes the parent plan instead of archiving the whole task", () => {

@@ -11,6 +11,7 @@ Accepted working truth for the current Codex and OpenCode update surfaces.
 - `scripts/sync-shared-skills.mjs` deliberately excludes `update` from `SHARED_SKILL_NAMES`. `shared/skills/update/` no longer exists, and shared-skill synchronization must not overwrite either adapter-owned implementation.
 - Both implementations keep the same high-level update unit: confirm the published target, refresh the global CLI together with the current host plugin, verify both surfaces, and report exact per-surface success or failure.
 - Both `TEMPLATE.json` files are fixed three-task `process.active` plans. Neither template has a host-selection task or `guidance.onDone.choices` for platform routing.
+- Each loaded host-specific update skill resolves its own directory and invokes the adjacent `TEMPLATE.json` through `--template-file`. Repository-root discovery may still reject the compatibility lookup `claw plan create --template update` as ambiguous, but the normal skill entry no longer depends on that combined-root lookup and must not restore a shared platform router.
 
 ## Codex contract
 
@@ -44,6 +45,7 @@ Accepted working truth for the current Codex and OpenCode update surfaces.
 
 - `platform-specific update skills`
 - `adapter-owned update`
+- `ambiguous update template at repository root`
 - `no host route choice`
 - `SHARED_SKILL_NAMES excludes update`
 - `Codex update official marketplace`

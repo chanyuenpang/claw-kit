@@ -96,7 +96,7 @@ test("OpenCode entry stays compact and guidance-led", async () => {
   assert.match(skill, /## First Action/i);
   assert.match(skill, /skip this skill and work directly/i);
   assert.match(skill, /claw plan create "<title>"/i);
-  assert.match(skill, /claw plan create --template <template-id> --title "<title>"/i);
+  assert.match(skill, /follow that skill's entry route so it supplies its adjacent template file/i);
   assert.match(skill, /Follow the returned `workflowGuidance` as the only next-step execution contract/i);
   assert.equal((skill.match(/workflowGuidance/g) ?? []).length, 1);
   assert.doesNotMatch(skill, /current prompt contains/i);
@@ -133,7 +133,7 @@ test("OpenCode main-agent guidance leaves automatic closeout to the host", async
   assert.match(agent, /mode: primary/i);
   assert.match(agent, /Do not load `using-claw-kit`/i);
   assert.match(agent, /self-contained claw harness/i);
-  assert.match(agent, /claw plan create --template knowledge-writer/i);
+  assert.match(agent, /claw plan create --template-file "<skill-dir>\/TEMPLATE\.json"/i);
   assert.match(agent, /through 4\/4/i);
   assert.match(agent, /Do not\s+dispatch another writer or split the pass/i);
   assert.match(knowledgeSkill, /knowledge-base steward/i);

@@ -9,7 +9,7 @@ If the request is not expected to produce reusable project knowledge, skip this 
 ## First Action
 
 1. By default, run `claw plan create "<title>"`.
-2. If a template-backed workflow skill fully owns the request, select it at creation instead: `claw plan create --template <template-id> --title "<title>"`.
+2. If a template-backed workflow skill fully owns the request, follow that skill's entry route so it supplies its adjacent template file.
 3. Follow the returned `workflowGuidance` as the only next-step execution contract.
 
 ## Lifecycle semantics

@@ -8,8 +8,10 @@ Convert a specified text skill or user idea into a template-backed claw skill. K
 
 ## Route By Task Ownership
 
-- If this skill fully owns the whole current task, use `claw plan create --template create-claw-skill --title "<skill-name>"`.
-- If this skill fully owns one stage of a broader plan, use `claw subplan create --parent <parent-task-name> --task-id <id> --template create-claw-skill`. A batch is a common example: the broader plan contains repeated conversion stages, and each stage invokes this skill once as a subplan.
+Resolve `<skill-dir>` as the directory containing this loaded `SKILL.md`.
+
+- If this skill fully owns the whole current task, use `claw plan create --template-file "<skill-dir>/TEMPLATE.json" --title "<skill-name>"`.
+- If this skill fully owns one stage of a broader plan, use `claw subplan create --parent <parent-task-name> --task-id <id> --template-file "<skill-dir>/TEMPLATE.json"`. A batch is a common example: the broader plan contains repeated conversion stages, and each stage invokes this skill once as a subplan.
 - If this skill only contributes instructions inside a stage that mixes multiple skills, do not create its template plan. Read `FALLBACK.md` and apply the relevant guidance inside the owning workflow.
 - If the claw CLI or template is unavailable, read `FALLBACK.md` and run the direct workflow.
 

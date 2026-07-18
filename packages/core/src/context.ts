@@ -163,6 +163,7 @@ function normalizeProjectConfig(projectConfig: ProjectConfig): ProjectConfig {
   const legacyConfig = projectConfig as ProjectConfig & {
     externalTruthSkill?: string | null;
     externalAdrSkill?: string | null;
+    truthDispatch?: unknown;
   };
   return {
     version: normalizeVersion(projectConfig.version),
@@ -191,6 +192,9 @@ function normalizeProjectConfig(projectConfig: ProjectConfig): ProjectConfig {
       embedding: normalizeMemoryEmbeddingConfig(projectConfig.memory?.embedding),
     },
     gitnexus: projectConfig.gitnexus === true,
+    ...(projectConfig.var && typeof projectConfig.var === "object" && !Array.isArray(projectConfig.var)
+      ? { var: projectConfig.var }
+      : {}),
   };
 }
 

@@ -32,8 +32,9 @@ test("create-claw-skill stub generator writes standard fill-in surfaces", async 
   const templateText = await fs.readFile(path.join(outDir, "TEMPLATE.json"), "utf8");
   const coverageText = await fs.readFile(path.join(outDir, "CONTENT-COVERAGE.md"), "utf8");
 
-  assert.match(skillText, /Whole task:[\s\S]*claw plan create --template demo-skill/);
-  assert.match(skillText, /Independent stage:[\s\S]*claw subplan create --parent <parent-task-name> --task-id <id> --template demo-skill/);
+  assert.match(skillText, /Resolve `<skill-dir>` as the directory containing this loaded `SKILL\.md`/);
+  assert.match(skillText, /Whole task:[\s\S]*claw plan create --template-file "<skill-dir>\/TEMPLATE\.json"/);
+  assert.match(skillText, /Independent stage:[\s\S]*claw subplan create --parent <parent-task-name> --task-id <id> --template-file "<skill-dir>\/TEMPLATE\.json"/);
   assert.match(skillText, /batch is a repeated-stage case/i);
   assert.match(skillText, /Mixed stage:[\s\S]*Read `FALLBACK\.md`/);
   assert.doesNotMatch(skillText, /Recommended batch task|Batch or mixed request/);
