@@ -303,3 +303,32 @@ test("official installer enables the GitHub identity and disables the local iden
   assert.match(config, /\[plugins\."claw-kit@claw-kit"\]\nenabled = true/);
   assert.match(config, /\[plugins\."claw-kit@claw-kit-local"\]\nenabled = false/);
 });
+
+test("official installer updates plugin identity sections idempotently", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "claw-kit-codex-identity-idempotent-"));
+  const configPath = path.join(root, "config.toml");
+  await fs.writeFile(configPath, [
+    '[plugins."claw-kit@claw-kit-local"]',
+    "enabled = true",
+    "",
+    '[plugins."unrelated@marketplace"]',
+    "enabled = true",
+    "",
+    '[plugins."claw-kit@claw-kit"]',
+    "enabled = false",
+    "",
+    "[marketplaces.claw-kit]",
+    'source_type = "git"',
+    'source = "https://github.com/chanyuenpang/claw-kit.git"',
+    "",
+  ].join("\n"));
+
+  await activateOfficialCodexPluginIdentity({ configPath });
+  await activateOfficialCodexPluginIdentity({ configPath });
+  const config = await fs.readFile(configPath, "utf8");
+
+  assert.equal((config.match(/\[plugins\."claw-kit@claw-kit"\]/g) ?? []).length, 1);
+  assert.equal((config.match(/\[plugins\."claw-kit@claw-kit-local"\]/g) ?? []).length, 1);
+  assert.equal((config.match(/^enabled = true$/gm) ?? []).length, 2);
+  assert.equal((config.match(/^enabled = false$/gm) ?? []).length, 1);
+});

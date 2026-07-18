@@ -119,7 +119,10 @@ export async function installCodexPluginBundle({ sourceDir = defaultSourceDir, c
 
 function setPluginEnabled(configText, identity, enabled) {
   const escapedIdentity = identity.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const sectionPattern = new RegExp(`(^\\[plugins\\."${escapedIdentity}"\\]\\s*$)([\\s\\S]*?)(?=^\\[|\\s*$)`, "m");
+  const sectionPattern = new RegExp(
+    `(^\\[plugins\\."${escapedIdentity}"\\][\\t ]*(?:\\r?\\n|$))([\\s\\S]*?)(?=^\\[|(?![\\s\\S]))`,
+    "m",
+  );
   const match = configText.match(sectionPattern);
   if (!match) {
     return `${configText.trimEnd()}\n\n[plugins."${identity}"]\nenabled = ${enabled}\n`;
