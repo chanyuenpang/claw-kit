@@ -31,16 +31,14 @@ Accepted
 - 是否创建 plan 由请求是否预期产生可复用事实、决策、约束、模式或项目上下文决定，而不是由文件数、步骤数或其他维度加总决定
 - `process.discussing` 是允许跨轮次停留的稳定状态；plan 存在本身不触发 Goal Mode，也不要求自动进入 `process.active`
 - 只有后续可执行子任务已经明确，并且用户可以脱手让 agent 继续推进时，plan 才从 `process.discussing` 进入 `process.active`
-- 执行中的知识沉淀继续委派给 `truth-writer`
-- `process.allTasksDone` 是 root plan 的 ADR 沉淀边界：在这里读取 `delegateSubagents`，写完 retrospective 后再把完成态 `plan.json` 交给 `adr-writer`
-- `process.allTasksDone` 只有在 retrospective 和 `keyDecisions` 都已更新后，才允许进入 ADR deposition 和 plan completion
-- root plan 的 required ADR closeout 保持异步：先把 retrospective 与 durable `keyDecisions` 持久化到 active `plan.json`，再以 `waitForCompletion=false` dispatch `adr-writer`；foreground plan closeout 不等待 ADR deposition
-- `truth-writer` 与 `adr-writer` 都不阻塞 foreground closeout；ADR 的 required 含义是必须派发，不是必须等待完成
+- foreground lifecycle 不再派发 knowledge writer；`process.allTasksDone` 只要求在 `plan done` 前持久化 retrospective 与 durable `keyDecisions`
+- plan completion 登记 pending turn owner，下一次 Stop/session-idle 才由 `hook-owned-two-phase-knowledge-finalization.md` 所定义的 sidecar 捕获 report 并异步排队 Truth、ADR 两个 focused phases
+- knowledge finalization 不阻塞 foreground closeout；它的失败、重试和完成状态不改变 canonical plan completion
 - `end.completed` 写入稳定的 `completedAt`，但 `claw plan done` 保留当前 task directory 与原 `planPath`，不在本次命令中立即移动计划
 - `claw plan start --requirements <text> --acceptance <criterion> --add-task <title> --detail <text>` 是原子 refine-and-activate 入口：它默认作用于 session-bound 当前 plan/subplan，在一次序列化 mutation 中补齐计划、追加业务 tasks、完成两个 lifecycle bridge tasks，并进入 `process.active`
 - 原子结果使用 `schemaVersion = 1` 的 plan events；一次 mutation 共享 `mutationId`，每个事件有唯一 `eventId` 并记录 `commandSource`
-- CLI plan state 继续是 canonical source；CLI 输出幂等 `hostActions`，Codex/OpenCode adapters 只做单向消费以同步 host progress 与 Goal Mode，不把 host 状态反向写成第二份所有权
-- schema 兼容的 `update_plan` host action 默认在现有单次 code-mode 调用内自动消费，不再要求 Agent 把 CLI payload 搬运到第二次 host tool 调用
+- CLI plan state 继续是 canonical source；Codex adapter 单向消费幂等 `hostActions` 以同步 host progress 与 Goal Mode，OpenCode 直接消费其 host-specific guidance；invocation host 的解析、投影与 worker 路由见 `invocation-host-handling.md`，不把 host 状态反向写成第二份所有权
+- schema 兼容的 Codex `update_plan` host action 默认在现有单次 code-mode 调用内自动消费，不再要求 Agent 把 CLI payload 搬运到第二次 host tool 调用
 - 自动 consumer 是 code-mode 调用中的固定胶水逻辑，不生成或维护独立脚本文件；consumer 只按 tool 白名单向 host schema 投影参数
 - `recommendedCommands` 只表达可执行的 CLI 命令；code-mode 同调用消费是 adapter 执行合同，不伪装成 CLI command
 - 所有 `hostActions` 固定使用 `schemaVersion = 1`；`create_goal` 与 `update_goal` 的真实 host tool 参数只放在 `input`，`allowOverwrite`、`reason` 等策略信息放在 `meta`
@@ -59,17 +57,16 @@ Accepted
 - 对外 plan-write / plan-status 合同更稳定，像 `release-0-1-25` 这样的版本发布可以把这组行为当作 release-worthy surface change
 - 规划语义与展示语义保持一致，计划编辑后无需额外拼装另一套状态
 - 生命周期门禁从文案建议上升为实际约束，避免无目标 active plan 进入执行态
-- `truth-writer` 与 `adr-writer` 仍保留为完成期 specialist，而不是把 ADR 写作提前到计划仍开放时处理
-- root plan 的 ADR 派发位置固定在 `process.allTasksDone`，因此 `claw plan done` 只做 closeout/archive，不再和 ADR dispatch 竞争同一个职责
-- root plan closeout 需要先补齐 retrospective 和 `keyDecisions`，再进入 ADR deposition 和完成态收口
-- `adr-writer` 可以与 `claw plan done` 并发；completed plan 在原 task 路径至少保留一小时，使异步 writer 不需要等待 foreground，也不需要切换到 archive 路径补救
-- ADR deposition 失败不会阻塞本次 plan closeout；required dispatch 与异步完成语义保持分离
+- `truth-writer` 与 `adr-writer` 保留为 finalizer-owned focused phases，不作为 main-agent specialist 或 `workflowGuidance` delegation
+- root plan closeout 需要先补齐 retrospective 和 `keyDecisions`；`claw plan done` 只提交 completion state、binding transition 与 completion refresh，不等待 knowledge job
+- completed plan 在原 task 路径至少保留一小时，使 Stop 之后排队的异步 finalizer 不需要切换到 archive 路径补救
+- knowledge deposition 失败不会阻塞本次 plan closeout；job queueing 与异步完成语义保持分离
 - 历史版本实跑对比说明，workflow feel 的主要回退点并不是 `plan write` 本身必然更重；新版 `plan write` 反而已经比部分旧版更窄、更干净
 - 真正的回退来自 task 建立与推进被拆散到多个可见 surface：如果 startup recovery 先占据入口，而 `process.active` 又不够突出，`plan write` 就不再像唯一 task-scope 入口，主 agent 也更容易遗漏“计划后立即切到 active 执行”这一动作
 - 因而这份 ADR 的 durable 含义不是单独继续压缩 `plan write`，而是保持 `plan write -> process.active` 作为最显眼、最连续的主流程链路，避免被并列 surface 稀释
 - 由于 planning contract 已合并，active skill surface 应避免再保留 `plan-workflow`、`plan-review` 一类独立可见入口来分散主线
 - 固定 Windows low / medium / high 配对 A/B 中，legacy path P50 为 `902.79ms`，atomic path P50 为 `385.06ms`，改善 `57.35%`；计入 create-time recall 后，首个业务动作前的管理命令从 `6` 降到 `3`
-- versioned events 与幂等 `hostActions` 让 adapter 自动同步不需要双向协调，也保留手动 CLI 与旧入口的恢复能力
+- versioned events 与幂等 `hostActions` 让 Codex adapter 自动同步不需要双向协调，也保留手动 CLI 与旧入口的恢复能力
 - `update_plan` 的单次 code-mode consumer 把配对样本的中位耗时从 5577ms 降至 765ms，并消除人工 payload 搬运；这支持把自动消费设为默认编排，而不是改变 CLI mutation 语义
 - tool 白名单和参数投影限制自动化边界，避免把 CLI 返回中的策略或说明字段未经验证地传给 host tool
 - host 同步失败与 canonical plan mutation 解耦后，恢复动作只需重放幂等 host action，不会因 host surface 瞬时失败撤销已经提交的计划状态

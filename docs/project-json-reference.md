@@ -70,8 +70,8 @@ Together, the canonical config plus local override model gives longer-running pr
 ### Knowledge writer
 
 - `knowledgeWriter.externalSkill`
-  - optional override for the combined truth-and-ADR writer skill
-  - use `null` for the built-in `claw-kit:knowledge-writer`
+  - optional skill override used by the combined knowledge-writer pass
+  - use `null` for the built-in consistency-aware `claw-kit:knowledge-writer`
 
 ### Context and memory
 
@@ -99,7 +99,7 @@ Together, the canonical config plus local override model gives longer-running pr
   - default: `true`
   - when `false`, returned `workflowGuidance` suppresses `goalMode`
 - `knowledgeWriter`
-  - `externalSkill`: optional combined writer skill override; `null` uses `claw-kit:knowledge-writer`
+  - `externalSkill`: optional skill override for the combined finalizer prompt; `null` uses `claw-kit:knowledge-writer`
   - `model`: optional Codex model override for the asynchronous auto-doc writer; `null` uses the SDK default
   - `reasoningEffort`: writer reasoning depth; one of `minimal`, `low`, `medium`, `high`, or `xhigh`
 

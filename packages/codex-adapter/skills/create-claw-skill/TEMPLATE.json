@@ -19,6 +19,7 @@
       "Batch or mixed callers split work into execution-time subplans instead of replacing the skill workflow with one broad conversion script.",
       "The generated entry only advertises `claw plan create --template <template-id>` when that template will be resolvable from the skill package or another supported runtime template registry.",
       "The generated template passes `claw template validate --template <template-id>` before completion.",
+      "When projectless execution is required, the generated template declares top-level `scope: \"session\"` and its entry does not treat a missing `.claw` directory as fallback-only.",
       "A content coverage check maps important source skill information to its converted home before completion."
     ]
   },
@@ -65,7 +66,7 @@
     {
       "id": 2,
       "title": "Draft the template-owned workflow skeleton",
-      "detail": "Use the stub generator as the preferred starting point when scaffolding or regenerating a target claw skill package: `node <create-claw-skill-dir>/scripts/create-claw-skill-stub.mjs --skill-name <skill-name> --template-id <template-id> --target-work \"<target-work>\" --fallback-doc <fallback-doc> --out <target-skill-package>`. The scaffold writes the workflow template as skill-local `TEMPLATE.json`; keep the template id inside that file aligned with the generated entry route. Then fill in the generated TODOs from the source skill. The generated scaffold is not completed work: revise the plan-like template skeleton, decide which tasks need `guidance.onDone.default` or `guidance.onDone.choices`, preserve execution-critical source behavior in template guidance or rules, keep route rules and non-template supplements in `SKILL.md`, and add optional skill-local references only when the source material truly needs them.",
+      "detail": "Use the stub generator as the preferred starting point when scaffolding or regenerating a target claw skill package: `node <create-claw-skill-dir>/scripts/create-claw-skill-stub.mjs --skill-name <skill-name> --template-id <template-id> --target-work \"<target-work>\" --fallback-doc <fallback-doc> [--scope session] --out <target-skill-package>`. Use `--scope session` only for an ephemeral projectless harness that must not deposit project knowledge; otherwise omit it. The scaffold writes the workflow template as skill-local `TEMPLATE.json`; keep the template id inside that file aligned with the generated entry route. Then fill in the generated TODOs from the source skill. The generated scaffold is not completed work: revise the plan-like template skeleton, decide which tasks need `guidance.onDone.default` or `guidance.onDone.choices`, preserve execution-critical source behavior in template guidance or rules, keep route rules and non-template supplements in `SKILL.md`, and add optional skill-local references only when the source material truly needs them.",
       "status": "pending",
       "guidance": {
         "onDone": {
@@ -128,6 +129,7 @@
     "Keep task ids numeric.",
     "Keep workflow control in the template.",
     "Let `plan.configOverride` come only from the template.",
+    "Use top-level template `scope: \"session\"`, not configOverride, when plan creation must use the ephemeral session store.",
     "Convert the specified skill entry in place and preserve the original text as an adjacent fallback document.",
     "Use optional skill-local references only when source material still needs a referenced home beyond SKILL.md and the fallback document.",
     "Use `scripts/create-claw-skill-stub.mjs` as the preferred starting scaffold for generated claw skill surfaces; it writes the generated workflow template as skill-local `TEMPLATE.json`.",
@@ -150,7 +152,7 @@
     "Generated skill batch task details should say the task is satisfied by creating and completing that target subplan, then recording the subplan result in the root plan.",
     "Do not leave a converted global or plugin skill pointing at a template that exists only in the development repository.",
     "Generated claw entry skills include the standard entry routing section.",
-    "Generated project claw entry skills route to the adjacent fallback document when the current workspace has no `.claw` directory.",
+    "Generated project-scoped claw entry skills route to the adjacent fallback document when the current workspace has no `.claw` directory; session-scoped entries remain directly runnable there.",
     "Validate generated templates with `claw template validate --template <template-id>`."
   ],
   "keyDecisions": [],

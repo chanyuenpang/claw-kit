@@ -1,5 +1,6 @@
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import type { KnowledgeWriterConfig } from "@veewo/claw-core";
+import { withoutInvocationHost } from "./invocation-host.js";
 
 export type OpencodeRunnerResult = {
   finalResponse: string;
@@ -45,7 +46,7 @@ export function runOpencodeKnowledgeWriter(input: {
       cwd: input.projectRoot,
       encoding: "utf8",
       maxBuffer: 1024 * 1024 * 64,
-      env: { ...process.env, CLAW_KNOWLEDGE_FINALIZER: "1" },
+      env: { ...withoutInvocationHost(), CLAW_KNOWLEDGE_FINALIZER: "1" },
     });
   } catch (error) {
     throw new Error(`Failed to launch opencode runner: ${error instanceof Error ? error.message : String(error)}`);

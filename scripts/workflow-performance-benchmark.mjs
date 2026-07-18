@@ -24,7 +24,6 @@ function run(cwd, args) {
     encoding: "utf8",
     env: {
       ...process.env,
-      CLAW_HOST: "benchmark",
       CODEX_THREAD_ID: `workflow-benchmark-${process.pid}`,
     },
   });

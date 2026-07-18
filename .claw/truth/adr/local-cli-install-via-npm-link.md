@@ -1,5 +1,9 @@
 ﻿# ADR: Use npm link for the first local claw install path
 
+## Status
+
+Accepted
+
 ## Context
 
 The immediate goal was to make `claw` usable on the local machine during active development, without waiting for packaging or publication work.

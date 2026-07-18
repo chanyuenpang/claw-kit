@@ -30,7 +30,7 @@ SessionStart prompt 原本硬编码在 `packages/cli/src/cli.ts` 的两个 build
 
 ### 3. invokeClawSessionStart 必须显式传递环境变量
 
-plugin 的 `shell.env` hook 注入的环境变量（`CLAW_HOST`、`CLAW_GUIDANCE_CONFIG`）只对后续 agent bash 工具调用生效，不对 plugin 自身的 `execSync` 生效。因此 `invokeClawSessionStart` 的 `execSync` options 必须显式设置：
+plugin 的 `shell.env` hook 注入的环境变量（`CLAW_HOST`、`CLAW_GUIDANCE_CONFIG`）只对后续 agent bash 工具调用生效，不对 plugin 自身的 `execSync` 生效。`CLAW_HOST` 的输入验证、优先级与 invocation-scoped 生命周期由 `invocation-host-handling.md` 拥有；`invokeClawSessionStart` 只需把 OpenCode 选择的输入与配置显式传递给 CLI：
 
 ```
 env: { ...process.env, CLAW_HOST: "opencode", CLAW_GUIDANCE_CONFIG: <opencode config path> }

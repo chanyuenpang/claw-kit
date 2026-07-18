@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted
+Superseded
+
+Superseded by `hook-owned-two-phase-knowledge-finalization.md`. Knowledge writers now run as fresh host-aware finalizer phases and are not main-thread reusable specialists.
 
 ## Context
 

@@ -6,7 +6,7 @@ Use this note when `workflowGuidance.delegateSubagents` is present.
 
 Each entry is a structured dispatch contract. Honor `dispatch`, model, reasoning effort, `fork_context`, wait behavior, input/output contracts, reuse preference, and close policy. Use the opencode task subagent surface and send only the narrow bundle required by the specialist.
 
-opencode knowledge deposition is not a delegated main-agent responsibility. Never dispatch `truth-writer`, `adr-writer`, or `knowledge-writer` from this surface. The independent `session.idle` hook and the host-aware finalization worker own report-based truth and ADR closeout.
+opencode knowledge deposition is not a delegated main-agent responsibility. Never dispatch `knowledge-writer` from this surface. The independent `session.idle` hook and the host-aware combined finalization worker own report-based Truth and ADR closeout.
 
 ## Research and review specialists
 

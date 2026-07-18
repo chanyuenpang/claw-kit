@@ -28,6 +28,8 @@ test("create-claw-skill stub generator writes standard fill-in surfaces", async 
       "process demo targets",
       "--fallback-doc",
       "DEMO-FALLBACK.md",
+      "--scope",
+      "session",
       "--out",
       outDir,
     ],
@@ -42,6 +44,8 @@ test("create-claw-skill stub generator writes standard fill-in surfaces", async 
   assert.match(skillText, /claw subplan create --parent <root-task-name> --task-id <id> --template demo-template/);
   assert.match(skillText, /Optional skill-local references: add files under `references\/` only when the source skill needs extra material/);
   assert.equal(JSON.parse(templateText).id, "demo-template");
+  assert.equal(JSON.parse(templateText).scope, "session");
+  assert.match(skillText, /direct entry works without a project `.claw` directory/i);
   assert.match(coverageText, /Skill-local template: `TEMPLATE\.json` with id `demo-template`/);
   assert.match(coverageText, /standard subplan route for process demo targets/);
   assert.match(coverageText, /Information that does not fit template structure stays in `SKILL\.md` or optional skill-local references/);

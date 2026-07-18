@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { buildCompletionHooks } from "./completion-hooks.js";
-import { ensureTaskContext, removeLegacyTaskMeta, resolveProjectContext, resolveTaskContext, resolveTaskName } from "./context.js";
+import { ensureTaskContext, removeLegacyTaskMeta, resolveTaskContext, resolveTaskName } from "./context.js";
 import { resolvePlanEffectiveConfig } from "./effective-config.js";
 import { ClawError } from "./errors.js";
 import { readJsonFile, withFileLock, withSerializedAccess, writeJsonFile } from "./io.js";
@@ -13,8 +13,9 @@ import {
 } from "./requirements-gate.js";
 import { buildPlanViewModel } from "./plan-view.js";
 import { getTemplateTaskDoneChoices, renderSeedTemplateText, resolveSeedPlanTemplate } from "./plan-templates.js";
-import { ensureInsideDir, normalizePlanFile, slugFromFilePath } from "./paths.js";
+import { ensureInsideDir, findProjectRoot, normalizePlanFile, slugFromFilePath } from "./paths.js";
 import { bindSessionToPlan, unbindSession } from "./session-bindings.js";
+import { resolveWorkflowProjectContext } from "./session-workflows.js";
 import type {
   LegacyPlanStatus,
   PlanDocument,
@@ -60,8 +61,24 @@ const LEGACY_PLAN_STATUS_MAP: Record<LegacyPlanStatus, PlanStatus> = {
 
 const PLAN_TASK_STATUSES: PlanTaskStatus[] = ["pending", "in_progress", "subagent_running", "done", "blocked"];
 
+async function resolveTemplateCreationScope(
+  projectRoot: string | undefined,
+  templateName: string | undefined,
+): Promise<"session" | undefined> {
+  if (!templateName?.trim()) {
+    return undefined;
+  }
+  const template = await resolveSeedPlanTemplate({
+    projectRoot,
+    templateName,
+  });
+  return template.scope;
+}
+
 export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult & { events: PlanEvent[] }> {
-  const project = resolveProjectContext(input.cwd);
+  const templateProjectRoot = findProjectRoot(input.cwd) ?? undefined;
+  const scope = input.scope ?? await resolveTemplateCreationScope(templateProjectRoot, input.templateName);
+  const project = resolveWorkflowProjectContext(input.cwd, input.ownerSessionKey, scope);
   const taskName = deriveTaskName(input);
   const createdTask = !fs.existsSync(path.join(project.tasksDir, taskName, "plan.json"));
   const task = ensureTaskContext(project, taskName);
@@ -90,6 +107,7 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
       effectiveStatus,
       input.forcePlanning,
       input.host,
+      templateProjectRoot,
     ),
     effectiveStatus,
   );
@@ -125,11 +143,13 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
   });
 
   bindSessionToPlan(project, input.ownerSessionKey, planPath);
-  tryRegisterKnowledgePlan({
-    project,
-    sessionId: input.ownerSessionKey,
-    planPath,
-  });
+  if (project.scope === "project") {
+    tryRegisterKnowledgePlan({
+      project,
+      sessionId: input.ownerSessionKey,
+      planPath,
+    });
+  }
   if (input.ownerSessionKey) {
     removeLegacyTaskMeta(task);
   }
@@ -176,7 +196,11 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
 }
 
 export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & { events: PlanEvent[] }> {
-  const task = resolveTaskContext(resolveProjectContext(input.cwd), input.taskName, input.ownerSessionKey);
+  const task = resolveTaskContext(
+    resolveWorkflowProjectContext(input.cwd, input.ownerSessionKey),
+    input.taskName,
+    input.ownerSessionKey,
+  );
   const planFile = normalizePlanFile(input.planFile ?? task.activePlan);
   const planPath = requireInsideTask(task, planFile);
   if (!fs.existsSync(planPath)) {
@@ -487,7 +511,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
     } else {
       bindSessionToPlan(task.project, input.ownerSessionKey, resultPlanPath);
     }
-    if (completionHooks) {
+    if (completionHooks && task.project.scope === "project") {
       tryCompleteKnowledgePlan({
         project: task.project,
         sessionId: input.ownerSessionKey,
@@ -495,7 +519,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
         ...(completionHooks.subplanClosureCandidate ? { resumedPlanPath: resultPlanPath } : {}),
         completedAt: next.completedAt,
       });
-    } else if (!resultPlan.status.startsWith("end.")) {
+    } else if (!resultPlan.status.startsWith("end.") && task.project.scope === "project") {
       tryRegisterKnowledgePlan({
         project: task.project,
         sessionId: input.ownerSessionKey,
@@ -564,7 +588,11 @@ export function showPlan(input: PlanShowInput): PlanShowResult {
 }
 
 export async function createSubplan(input: SubplanWriteInput): Promise<PlanWriteResult & { events: PlanEvent[] }> {
-  const parentTask = resolveTaskContext(resolveProjectContext(input.cwd), input.parentTaskName, input.ownerSessionKey);
+  const parentTask = resolveTaskContext(
+    resolveWorkflowProjectContext(input.cwd, input.ownerSessionKey),
+    input.parentTaskName,
+    input.ownerSessionKey,
+  );
   const parentPlanFile = parentTask.activePlan;
   const parentPlanPath = requireInsideTask(parentTask, parentPlanFile);
   const parentPlan = normalizePlanDocument(readJsonFile<PlanDocument>(parentPlanPath));
@@ -598,6 +626,8 @@ export async function createSubplan(input: SubplanWriteInput): Promise<PlanWrite
     parentTaskId: input.parentTaskId,
     parentPlanFile,
     ownerSessionKey: input.ownerSessionKey,
+    scope: parentTask.project.scope,
+    host: input.host,
   });
 }
 
@@ -964,10 +994,11 @@ async function createSeedPlan(
   status: PlanStatus = "prepare.requirements",
   forcePlanning = false,
   host?: string,
+  templateProjectRoot?: string,
 ): Promise<PlanDocument> {
   const effectiveTemplateName = templateName?.trim() || projectConfig?.defaultPlanTemplate?.trim() || defaultPlanTemplateName();
   const template = await resolveSeedPlanTemplate({
-    projectRoot,
+    projectRoot: templateProjectRoot ?? projectRoot,
     templateName: effectiveTemplateName,
   });
   const effectiveConfig = resolvePlanEffectiveConfig(projectConfig, {
@@ -1192,7 +1223,7 @@ function resolveShowPlanTarget(input: PlanShowInput): {
   planPath: string;
   archived: boolean;
 } {
-  const project = resolveProjectContext(input.cwd);
+  const project = resolveWorkflowProjectContext(input.cwd, input.ownerSessionKey);
   try {
     const task = resolveTaskContext(project, input.taskName);
     const planFile = normalizePlanFile(input.planFile ?? task.activePlan);
@@ -1215,6 +1246,9 @@ function resolveShowPlanTarget(input: PlanShowInput): {
     }
   }
 
+  if (project.scope === "session") {
+    throw new ClawError("TASK_NOT_FOUND", `Task "${input.taskName}" does not exist.`, { taskName: input.taskName });
+  }
   const archivedTaskDir = path.join(project.clawDir, "archive", "tasks", input.taskName);
   const archivedMetaPath = path.join(archivedTaskDir, "meta.json");
   const archivedRootPlanPath = path.join(archivedTaskDir, "plan.json");

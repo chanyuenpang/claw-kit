@@ -8,7 +8,7 @@ Accepted
 
 `Compare-Codex-traditional-search-vs-claw-search-for-opencode-subplan-support` 计划澄清了本次判断对象：权威目标是本地 `claw-kit` 的 opencode plugin / adapter，而不是 upstream `anomalyco/opencode`。
 
-本地证据显示，subplan 能力已经在共享 core plan lifecycle 中实现：`packages/core/src/plan.ts` 负责 `createSubplan`、父任务 `execution.type = "subplan"` 标记、子计划 `parentPlan` / `parentTaskId` 关联，以及 `completeSubplanAndResumeParent` 返回父计划继续执行。CLI 通过 `claw subplan create` 暴露这条能力。opencode adapter 通过 host wiring 注入 `CLAW_HOST = "opencode"` 和 `CLAW_GUIDANCE_CONFIG`，并消费同一套 `claw hook SessionStart` / `workflowGuidance` 合同，而不是维护一套独立的 opencode-only subplan engine。
+本地证据显示，subplan 能力已经在共享 core plan lifecycle 中实现：`packages/core/src/plan.ts` 负责 `createSubplan`、父任务 `execution.type = "subplan"` 标记、子计划 `parentPlan` / `parentTaskId` 关联，以及 `completeSubplanAndResumeParent` 返回父计划继续执行。CLI 通过 `claw subplan create` 暴露这条能力。opencode adapter 通过 host wiring 选择 OpenCode 输入并注入 `CLAW_GUIDANCE_CONFIG`，再消费同一套 `claw hook SessionStart` / `workflowGuidance` 合同，而不是维护一套独立的 opencode-only subplan engine；`CLAW_HOST` 的输入合同见 `invocation-host-handling.md`。
 
 ## Decision
 
@@ -16,7 +16,7 @@ opencode 的 subplan 行为归属于共享 `@veewo/claw-core` plan lifecycle：
 
 - subplan 创建、父子计划关系、完成后恢复父计划都由 `packages/core/src/plan.ts` 统一实现。
 - CLI / host adapter 只负责暴露、调用和注入宿主语义；不得在 `packages/opencode-adapter` 中复制一套平行的 subplan 状态机。
-- opencode 专属差异应继续通过 host wiring 表达，例如 `CLAW_HOST = "opencode"`、`CLAW_GUIDANCE_CONFIG`、session context 注入和 OpenCode plugin hook，而不是改变 subplan lifecycle 的 ownership。
+- opencode 专属差异应继续通过 host wiring 表达，例如 `CLAW_HOST = "opencode"`、`CLAW_GUIDANCE_CONFIG`、session context 注入和 OpenCode plugin hook，而不是改变 subplan lifecycle 的 ownership；`CLAW_HOST` 的 invocation 输入合同由 `invocation-host-handling.md` 单独拥有。
 
 ## Alternatives
 

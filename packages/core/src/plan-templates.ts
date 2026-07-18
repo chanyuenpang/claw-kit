@@ -14,6 +14,7 @@ import type { PlanReference, PlanRequirements, PlanRetrospective, PlanStatus, Te
 
 export type ResolvedPlanTemplate = {
   id: string;
+  scope?: "session";
   configOverride?: TemplateConfigOverride;
   title?: string;
   status: PlanStatus;
@@ -312,6 +313,7 @@ function validatePlanLikeTemplate(raw: unknown, templatePath: string): PlanTempl
   const candidate = raw as Record<string, unknown>;
   const allowedKeys = new Set([
     "id",
+    "scope",
     "configOverride",
     "title",
     "status",
@@ -335,6 +337,12 @@ function validatePlanLikeTemplate(raw: unknown, templatePath: string): PlanTempl
   if (!isTemplateConfigOverride(candidate.configOverride)) {
     throw new ClawError("PROJECT_CONFIG_INVALID", `Invalid template configOverride at ${templatePath}.`, {
       templatePath,
+    });
+  }
+  if (candidate.scope !== undefined && candidate.scope !== "session") {
+    throw new ClawError("PROJECT_CONFIG_INVALID", `Invalid template scope at ${templatePath}; expected "session".`, {
+      templatePath,
+      scope: candidate.scope,
     });
   }
   if (typeof candidate.id !== "string" || typeof candidate.status !== "string") {
@@ -410,6 +418,7 @@ function normalizePlanLikeTemplate(
 ): ResolvedPlanTemplate {
   return {
     id: template.id,
+    scope: template.scope,
     configOverride: normalizeTemplateConfigOverride(template.configOverride),
     title: template.title,
     status: template.status,

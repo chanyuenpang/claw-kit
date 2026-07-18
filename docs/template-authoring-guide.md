@@ -21,6 +21,7 @@ A template should look close to a normal `plan.json`.
 Top-level fields:
 
 - `id`
+- `scope`
 - `configOverride`
 - `title`
 - `status`
@@ -36,6 +37,14 @@ Important difference:
 
 - template tasks may include template-only fields like `guidance`
 - runtime tasks should not persist template-only guidance fields
+
+## Creation Scope
+
+Set top-level `scope` to `"session"` when the template is an ephemeral workflow harness that must run without a project `.claw` directory and must not trigger project knowledge deposition.
+
+Creation scope is resolved before the plan store exists, so it is a top-level template field rather than part of `configOverride`. When `claw plan create --template <id>` selects such a template, claw automatically uses the current platform session store. An explicit `--scope session` remains supported and takes precedence. Subplans inherit their parent plan's scope instead of switching stores from their own template declaration.
+
+Omit `scope` for ordinary project-backed templates. `"session"` is currently the only accepted declared value.
 
 ## Task Rules
 

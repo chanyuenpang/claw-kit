@@ -1,6 +1,6 @@
 {
   "name": "@veewo/claw-core",
-  "version": "0.1.78",
+  "version": "0.1.79",
   "type": "module",
   "description": "Core workflow primitives for .claw project planning, recall, truth ingestion, and task closeout.",
   "keywords": [
@@ -39,6 +39,6 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && node ./scripts/copy-workflow-guidance-config.mjs",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test dist/test/**/*.test.js"
+    "test": "node --import ./dist/test/setup-env.js --test dist/test/**/*.test.js"
   }
 }

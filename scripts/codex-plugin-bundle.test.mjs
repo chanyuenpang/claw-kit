@@ -113,10 +113,28 @@ test("Codex main-agent bundle excludes retired workflow skills and closeout rout
   assert.doesNotMatch(skill, forbidden);
   assert.doesNotMatch(reference, forbidden);
   assert.doesNotMatch(manifest, forbidden);
+  await assert.doesNotReject(fs.access(new URL("skills/knowledge-writer/SKILL.md", adapterRoot)));
   await assert.rejects(fs.access(new URL("skills/truth-writer/SKILL.md", adapterRoot)));
   await assert.rejects(fs.access(new URL("skills/adr-writer/SKILL.md", adapterRoot)));
   await assert.rejects(fs.access(new URL("skills/search-workflow/SKILL.md", adapterRoot)));
   await assert.rejects(fs.access(new URL("skills/init/SKILL.md", adapterRoot)));
+});
+
+test("combined knowledge writer enforces trusted evidence and cross-document ownership", async () => {
+  const skill = await fs.readFile(new URL("../shared/skills/knowledge-writer/SKILL.md", import.meta.url), "utf8");
+  assert.match(skill, /knowledge-base steward/i);
+  assert.match(skill, /completed `plan\.json`/i);
+  assert.match(skill, /trusted verified evidence/i);
+  assert.match(skill, /Truth and ADR are one knowledge system/i);
+  assert.match(skill, /one current owner/i);
+  assert.match(skill, /open every plausible candidate/i);
+  assert.match(skill, /exhaustive text search/i);
+  assert.match(skill, /Do not report completion while/i);
+  assert.match(skill, /Re-run focused and exhaustive searches/i);
+  assert.match(skill, /Trusted evidence is authoritative for what was verified at its own point in time/i);
+  assert.match(skill, /read-only check of its implementation anchors/i);
+  assert.match(skill, /Current implementation outranks older report wording/i);
+  assert.match(skill, /incomplete, superseded, or conflicts with newer implementation/i);
 });
 
 test("Codex plugin source includes the config skill entrypoint", async () => {
@@ -138,6 +156,8 @@ test("exported Codex plugin contains every shared workflow skill", async () => {
     await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", skillName, "SKILL.md")));
   }
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "knowledge-writer", "agents", "openai.yaml")));
+  await assert.rejects(fs.access(path.join(result.bundleDir, "skills", "truth-writer", "SKILL.md")));
+  await assert.rejects(fs.access(path.join(result.bundleDir, "skills", "adr-writer", "SKILL.md")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "update", "TEMPLATE.json")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "create-claw-skill", "TEMPLATE.json")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "scripts", "code-mode-host-action-consumer.mjs")));

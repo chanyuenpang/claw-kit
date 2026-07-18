@@ -8,6 +8,7 @@ export * from "./plan-events.js";
 export * from "./project-check.js";
 export * from "./requirements-gate.js";
 export * from "./session-bindings.js";
+export * from "./session-workflows.js";
 export * from "./task-layout-migration.js";
 export * from "./plan.js";
 export * from "./plan-templates.js";

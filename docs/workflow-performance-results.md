@@ -16,9 +16,13 @@ Mode, canonical truth/ADR routing, and compatibility commands.
 - The 2026-07-17 explicit-command corpus measured sequential P50 `1602.15ms`
   and atomic P50 `463.76ms`, an observed `71.05%` improvement. Every low,
   medium, and high case completed successfully without temporary JSON inputs.
-- CLI events are versioned and share one mutation id. `hostActions` are
-  idempotent, one-way projections for progress and Goal Mode; the CLI plan stays
-  canonical.
+- Internal CLI events are versioned and share one mutation id. Default command
+  responses omit the raw event array. Codex-only `hostActions` are idempotent,
+  one-way projections for progress and Goal Mode; host-neutral and OpenCode
+  responses contain guidance fields without Codex actions.
+- `--host` and `CLAW_HOST` now resolve once per invocation. Unsupported values
+  and flag/environment conflicts fail before mutation, while detached workers
+  drop the foreground variable and finalization routes from `job.host`.
 
 ## Completion path
 
@@ -32,6 +36,24 @@ Mode, canonical truth/ADR routing, and compatibility commands.
   bounded retry.
 - Windows `.cmd` execution uses explicit `cmd.exe`; no `shell:true` argument
   path remains and the regression test observes no `DEP0190`.
+
+## Turn-report hook path
+
+- `auto-doc` now checks only the per-session knowledge registry in the
+  lightweight CLI entry, and only when `.claw` exists directly under hook
+  `cwd`. It neither reads the task-binding registry nor inherits a parent
+  directory's project context.
+  A missing `cwd/.claw` exits before hook stdin is read; with neither session
+  signal, it exits before importing the main CLI or reading the transcript.
+- A same-machine 25-run A/B on 2026-07-18 measured the unbound preflight at
+  `98.9ms` median / `113.8ms` P95, versus `181.2ms` median / `232.2ms` P95 when
+  directly loading the full CLI path, a `45.4%` median reduction. These are
+  machine-specific process timings, not cross-runtime constants.
+- Bound active-plan capture, completed-plan finalization, duplicate Stop,
+  finalizer recursion protection, and OpenCode inline-message routing remain in
+  the CLI regression suite.
+- Knowledge registries remain host-free. The native Stop hook records its host
+  only on the queued finalization job, avoiding stale per-session host state.
 
 ## Search path
 

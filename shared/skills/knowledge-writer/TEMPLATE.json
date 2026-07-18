@@ -1,0 +1,128 @@
+{
+  "id": "knowledge-writer",
+  "scope": "session",
+  "title": "knowledge-writer",
+  "status": "process.active",
+  "goal": {
+    "text": "Maintain canonical Truth and ADR knowledge from the supplied completed claw plan and adjacent report."
+  },
+  "requirements": {
+    "summary": "Use the trusted completed plan and every valid adjacent report entry as evidence, then leave the relevant Truth and ADR corpus accurate, coherent, and singly owned.",
+    "openQuestions": [],
+    "acceptanceCriteria": [
+      "Durable reusable facts and decisions are deposited in their existing canonical owners, or intentionally omitted with a no-op reason.",
+      "Each material current fact or decision has one owner and related Truth and ADR claims are consistent.",
+      "The supplied plan and report remain unchanged and no nested writer or recall refresh is dispatched.",
+      "Current-state claims pass a read-only freshness check against plan completion state, implementation anchors, and relevant later working-tree changes.",
+      "Focused and exhaustive post-write searches find no unresolved competing current claim."
+    ]
+  },
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Read trusted evidence and locate canonical owners",
+      "detail": "Read the supplied plan.json and every valid entry in its adjacent report. Treat them as trusted verified evidence for the revision or worktree state they describe, without rerunning implementation tests. First confirm the plan is end.completed with no unfinished task. For any proposed current-behavior claim, perform a read-only freshness check of its implementation anchors and relevant later or overlapping working-tree diff, then classify the evidence as current, historical, superseded, or unresolved. Incomplete or unresolved input must take the no-op route unless the caller explicitly identifies a controlled historical test. Use claw search to discover existing Truth and ADR owners, open every plausible candidate, and use exhaustive text search when top-k recall could hide a competing current claim. Do not modify the inputs or lifecycle state.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "default": {
+            "mergeMode": "override",
+            "summary": "Evidence and plausible owners are understood; choose the deposition route.",
+            "nextsteps": [
+              "Classify only durable reusable facts and decisions supported by the trusted evidence.",
+              "Do not promote older verified evidence to current behavior when newer implementation supersedes it.",
+              "Choose Truth only, ADR only, both, or no-op; unchanged knowledge is a valid no-op."
+            ],
+            "nextTaskId": 2
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Choose the deposition route",
+      "detail": "Decide whether freshness-qualified evidence requires Truth only, ADR only, both, or neither. Truth owns stable current behavior, constraints, pitfalls, code anchors, and verification rules. ADR owns durable decisions, rationale, alternatives, tradeoffs, ownership, and consequences. Superseded evidence may be preserved only as explicitly historical or version-bound. Do not deposit temporary progress, speculation, narration, unchanged facts, incomplete-plan claims, or unresolved freshness conflicts.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "choices": {
+            "truth": {
+              "mergeMode": "override",
+              "summary": "Route selected: maintain Truth only.",
+              "nextsteps": ["Update the canonical Truth owner and keep related ADR claims consistent."],
+              "nextTaskId": 3
+            },
+            "adr": {
+              "mergeMode": "override",
+              "summary": "Route selected: maintain ADR only.",
+              "nextsteps": ["Update the canonical ADR owner and keep related Truth claims consistent."],
+              "nextTaskId": 3
+            },
+            "both": {
+              "mergeMode": "override",
+              "summary": "Route selected: maintain both Truth and ADR.",
+              "nextsteps": ["Maintain both surfaces as one knowledge system with one current owner per material claim."],
+              "nextTaskId": 3
+            },
+            "noop": {
+              "mergeMode": "override",
+              "summary": "Route selected: no canonical write is warranted.",
+              "nextsteps": ["Record the evidence-backed no-op reason, then run the consistency review without changing canonical documents."],
+              "nextTaskId": 3
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Maintain the canonical knowledge owners",
+      "detail": "Apply the selected route using only freshness-qualified evidence. Update the document that already owns the topic; create a new document only for a genuinely new durable topic after filename and title collision checks. Maintain one current owner for each material claim. Narrow competing documents to references, historical/version-bound evidence, or non-overlapping scope. Preserve unrelated user edits and repository conventions. Follow non-claw-fallback.md for writing quality and exact constraints. For the no-op route, make no canonical edit and retain the reason for closeout.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "default": {
+            "mergeMode": "override",
+            "summary": "The selected deposition route is complete; verify the corpus as a whole.",
+            "nextsteps": [
+              "Review related Truth and ADR documents together, not as independent outputs.",
+              "Re-run focused and exhaustive searches for competing owners and contradictory current claims."
+            ],
+            "nextTaskId": 4
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Run the cross-document consistency review",
+      "detail": "Review every related Truth and ADR document together. Re-run focused claw search and exhaustive text search, and recheck current implementation anchors for every material current-behavior claim. Every plausible hit must be the selected owner, an explicit reference, historical/version-bound evidence, or a narrowed non-overlapping claim. Resolve material contradictions, stale promotions, or ownerless current claims; repair mojibake and preserve valid Markdown encoding. Do not launch another writer or recall refresh. Return only a brief completion note with changed paths or the no-op reason; response format is not part of the contract.",
+      "status": "pending"
+    }
+  ],
+  "references": [
+    {
+      "path": "non-claw-fallback.md",
+      "why": "Preserves the full direct writer contract and detailed quality constraints."
+    },
+    {
+      "path": "CONTENT-COVERAGE.md",
+      "why": "Maps the original knowledge-writer contract to the converted claw skill surfaces."
+    }
+  ],
+  "rules": [
+    "Treat the completed plan and every valid adjacent report entry as trusted verified evidence.",
+    "Trusted evidence is time-bounded; current implementation outranks older report wording for current-state claims.",
+    "A read-only implementation freshness check is required and is not repeated implementation verification.",
+    "Incomplete plans and unresolved freshness conflicts must not produce current canonical claims.",
+    "Do not modify the supplied plan or report, alter its lifecycle, repeat implementation verification, dispatch another writer, or refresh recall.",
+    "Maintain one current owner for each material fact or decision across Truth and ADR.",
+    "Use claw search plus exhaustive text search when top-k recall could hide another current claim.",
+    "Preserve exact identifiers, config keys, commands, error text, unrelated user edits, repository conventions, and valid Markdown encoding.",
+    "Do not claim completion while a material current claim is inconsistent or ownerless."
+  ],
+  "keyDecisions": [],
+  "retrospective": {
+    "summary": ""
+  }
+}

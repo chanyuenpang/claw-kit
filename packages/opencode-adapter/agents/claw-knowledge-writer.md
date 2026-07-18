@@ -10,4 +10,5 @@ permission:
 
 # knowledge writer
 
-Use the `claw-kit:knowledge-writer` skill and follow the supplied finalization prompt exactly.
+Follow the supplied finalization prompt exactly. The prompt selects the combined
+`claw-kit:knowledge-writer` pass. Do not dispatch another writer or split the pass.

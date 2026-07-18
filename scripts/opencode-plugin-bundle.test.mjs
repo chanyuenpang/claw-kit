@@ -111,7 +111,7 @@ test("OpenCode researcher includes the search query syntax", async () => {
 test("OpenCode main-agent guidance leaves automatic closeout to the host", async () => {
   const adapterRoot = new URL("../packages/opencode-adapter/", import.meta.url);
   const guidance = JSON.parse(await fs.readFile(new URL("workflow-guidance.opencode.json", adapterRoot), "utf8"));
-  const skill = await fs.readFile(new URL("skills/knowledge-writer/SKILL.md", adapterRoot), "utf8");
+  const knowledgeSkill = await fs.readFile(new URL("skills/knowledge-writer/SKILL.md", adapterRoot), "utf8");
   const agent = await fs.readFile(new URL("agents/claw-knowledge-writer.md", adapterRoot), "utf8");
   const allDone = guidance.states["process.allTasksDone"];
 
@@ -121,8 +121,11 @@ test("OpenCode main-agent guidance leaves automatic closeout to the host", async
   assert.doesNotMatch(JSON.stringify(allDone), /truth-writer|adr-writer|knowledge-writer|subagent|deposition/i);
 
   assert.match(agent, /claw-kit:knowledge-writer/i);
-  assert.match(skill, /both, or neither/i);
-  assert.match(skill, /claw search/i);
+  assert.match(agent, /Do not dispatch another writer or split the pass/i);
+  assert.match(knowledgeSkill, /knowledge-base steward/i);
+  assert.match(knowledgeSkill, /Truth and ADR are one knowledge system/i);
+  assert.match(knowledgeSkill, /one current owner/i);
+  assert.match(knowledgeSkill, /exhaustive text search/i);
 
   await assert.rejects(fs.access(new URL("skills/truth-writer/SKILL.md", adapterRoot)));
   await assert.rejects(fs.access(new URL("skills/adr-writer/SKILL.md", adapterRoot)));
@@ -198,6 +201,12 @@ test("installOpencodePlugin copies skills into the opencode skills discovery dir
     await cleanup(root);
   });
   const installDir = path.join(root, ".config", "opencode");
+  const retiredTruthDir = path.join(installDir, "skills", "truth-writer");
+  const retiredAdrDir = path.join(installDir, "skills", "adr-writer");
+  await fs.mkdir(retiredTruthDir, { recursive: true });
+  await fs.mkdir(retiredAdrDir, { recursive: true });
+  await fs.writeFile(path.join(retiredTruthDir, "SKILL.md"), "# retired truth writer");
+  await fs.writeFile(path.join(retiredAdrDir, "SKILL.md"), "# retired adr writer");
 
   const result = await installOpencodePlugin({ sourceDir, installDir });
 
@@ -206,6 +215,9 @@ test("installOpencodePlugin copies skills into the opencode skills discovery dir
   assert.equal(result.skillsDir, path.join(installDir, "skills"));
   const copiedSkill = await fs.readFile(path.join(result.skillsDir, "config", "SKILL.md"), "utf8");
   assert.match(copiedSkill, /name: config/);
+  await assert.doesNotReject(fs.access(path.join(result.skillsDir, "knowledge-writer", "SKILL.md")));
+  await assert.rejects(fs.access(retiredTruthDir));
+  await assert.rejects(fs.access(retiredAdrDir));
 
   // No opencode.json config injection happens: there is no `skills.paths` option in opencode.
   await assert.rejects(fs.access(path.join(installDir, "opencode.json")));

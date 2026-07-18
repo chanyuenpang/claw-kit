@@ -1,4 +1,4 @@
 interface:
-  display_name: "Claw Knowledge Writer"
-  short_description: "Deposit durable knowledge from completed work"
-  default_prompt: "Use $knowledge-writer to process the supplied completed plan and adjacent report, then return the changed canonical paths."
+  display_name: "Knowledge Writer"
+  short_description: "Maintain consistent canonical Truth and ADR knowledge."
+  default_prompt: "Use $knowledge-writer to maintain the project knowledge base from the trusted completed plan and report, preserving one current owner across related Truth and ADR documents."

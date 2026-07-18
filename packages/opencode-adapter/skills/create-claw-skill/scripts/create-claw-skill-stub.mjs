@@ -7,12 +7,13 @@ const skillName = requireArg(args, "skill-name");
 const templateId = args["template-id"] ?? skillName;
 const targetWork = args["target-work"] ?? `complete <target-work> with ${skillName}`;
 const fallbackDoc = args["fallback-doc"] ?? "FALLBACK.md";
+const scope = readScope(args.scope);
 const outputDir = args["out"];
 
 const files = {
-  "SKILL.md": buildSkillEntry({ skillName, templateId, targetWork, fallbackDoc }),
-  "TEMPLATE.json": buildTemplate({ skillName, templateId, targetWork }),
-  "CONTENT-COVERAGE.md": buildCoverage({ skillName, templateId, targetWork, fallbackDoc }),
+  "SKILL.md": buildSkillEntry({ skillName, templateId, targetWork, fallbackDoc, scope }),
+  "TEMPLATE.json": buildTemplate({ skillName, templateId, targetWork, scope }),
+  "CONTENT-COVERAGE.md": buildCoverage({ skillName, templateId, targetWork, fallbackDoc, scope }),
   [fallbackDoc]: buildFallback({ skillName }),
 };
 
@@ -76,11 +77,21 @@ Options:
   --template-id <id>       Template id advertised by the skill entry. Defaults to skill name.
   --target-work <text>     Batch/mixed target-work wording.
   --fallback-doc <file>    Adjacent fallback document. Defaults to FALLBACK.md.
+  --scope <scope>          Template creation scope. Supported value: session.
   --out <dir>              Write generated files into this directory. Omit to print to stdout.
 `);
 }
 
-function buildSkillEntry({ skillName, templateId, targetWork, fallbackDoc }) {
+function readScope(value) {
+  if (value === undefined || value === "project") return undefined;
+  if (value === "session") return value;
+  throw new Error(`Unsupported --scope value: ${value}. Expected session or project.`);
+}
+
+function buildSkillEntry({ skillName, templateId, targetWork, fallbackDoc, scope }) {
+  const availability = scope === "session"
+    ? `## Session-scoped entry\n\nThis template declares \`scope: "session"\`, so direct entry works without a project \`.claw\` directory. Use \`${fallbackDoc}\` only when the claw CLI or this template is unavailable.`
+    : `## No-.claw Fallback\n\nIf the current workspace does not contain a \`.claw\` directory, read \`${fallbackDoc}\` directly and follow the fallback instructions.`;
   return `---
 name: ${skillName}
 description: TODO: describe when to use this claw skill.
@@ -89,9 +100,7 @@ description: TODO: describe when to use this claw skill.
 
 TODO: Replace this sentence with the skill's concise purpose.
 
-## No-.claw Fallback
-
-If the current workspace does not contain a \`.claw\` directory, read \`${fallbackDoc}\` directly and follow the fallback instructions.
+${availability}
 
 ## Entry Routing
 
@@ -116,9 +125,10 @@ Recommended batch task detail:
 `;
 }
 
-function buildTemplate({ skillName, templateId, targetWork }) {
+function buildTemplate({ skillName, templateId, targetWork, scope }) {
   return `${JSON.stringify({
     id: templateId,
+    ...(scope ? { scope } : {}),
     title: skillName,
     status: "process.active",
     goal: {
@@ -194,7 +204,7 @@ function buildTemplate({ skillName, templateId, targetWork }) {
   }, null, 2)}\n`;
 }
 
-function buildCoverage({ skillName, templateId, targetWork, fallbackDoc }) {
+function buildCoverage({ skillName, templateId, targetWork, fallbackDoc, scope }) {
   return `# ${skillName} content coverage
 
 ## Source to converted-home mapping
@@ -202,6 +212,7 @@ function buildCoverage({ skillName, templateId, targetWork, fallbackDoc }) {
 - Trigger and routing rules: TODO.
 - Direct entry: \`SKILL.md\` routes to \`claw plan create --template ${templateId}\`.
 - Skill-local template: \`TEMPLATE.json\` with id \`${templateId}\`.
+- Creation scope: ${scope === "session" ? "`TEMPLATE.json` declares `scope: \"session\"`; direct entry works without `.claw`." : "project-backed by default; no top-level scope is emitted."}
 - Batch/mixed entry: \`SKILL.md\` includes the standard subplan route for ${targetWork}.
 - Ordered workflow steps: TODO.
 - Branch conditions: TODO.

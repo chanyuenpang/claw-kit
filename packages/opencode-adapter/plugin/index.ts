@@ -21,8 +21,7 @@ import type { Part } from "@opencode-ai/sdk";
  *   5. event(message.updated) + event(message.part.updated) — track the latest assistant
  *      text per session so session.idle can hand the turn's final assistant message to claw.
  *   6. event(session.idle) — turn report capture: call claw hook auto-doc with the turn's
- *      final assistant message (fail-open knowledge sidecar), then goal continuation that
- *      advances the agent when plan.status is process.active.
+ *      final assistant message (fail-open knowledge sidecar).
  */
 
 const ADAPTER_DIR = import.meta.dirname ?? path.dirname(new URL("", import.meta.url).pathname);
@@ -32,7 +31,6 @@ let inClawProject = false;
 let projectInfo: { projectId: string; projectName: string; clawDir: string } | null = null;
 let recoveredState: string | null = null;
 let clawSessionContext: string | null = null;
-const sessionPlans = new Map<string, { planPath: string; projectDir: string }>();
 // Tracks sessions that already received the claw-context user-message prefix,
 // so chat.message only injects on the first user message of each session.
 const injectedSessions = new Set<string>();
@@ -67,17 +65,6 @@ function readProjectInfo(projectDir: string): { projectId: string; projectName: 
     projectName: path.basename(projectDir),
     clawDir,
   };
-}
-
-function readPlanStatus(planPath: string): string | null {
-  try {
-    if (!existsSync(planPath)) return null;
-    const content = readFileSync(planPath, "utf8");
-    const plan = JSON.parse(content);
-    return plan.status ?? null;
-  } catch {
-    return null;
-  }
 }
 
 function resolveActivePlanPath(projectDir: string): string | null {
@@ -181,7 +168,7 @@ function invokeClawAutoDoc(
   }
 }
 
-export const ClawKitPlugin: Plugin = async ({ client, directory }) => {
+export const ClawKitPlugin: Plugin = async ({ directory }) => {
   const projectDir = directory;
 
   /**
@@ -268,14 +255,13 @@ export const ClawKitPlugin: Plugin = async ({ client, directory }) => {
         }
       }
 
-      // Goal continuation + turn report capture
+      // Turn report capture
       if (event.type === "session.idle") {
         const sessionID = (event.properties as { sessionID?: string }).sessionID;
         if (sessionID) {
-          // (a) Turn report capture: hand the turn's final assistant message to
+          // Turn report capture: hand the turn's final assistant message to
           // claw so it appends one fail-open knowledge report entry (and queues
-          // finalization when a plan just completed). Runs before goal
-          // continuation so the report belongs to the just-finished turn.
+          // finalization when a plan just completed).
           const assistantMessageId = lastAssistantMessageBySession.get(sessionID);
           const message = assistantMessageId ? assistantTextByMessage.get(assistantMessageId) : undefined;
           if (assistantMessageId && message) {
@@ -287,25 +273,6 @@ export const ClawKitPlugin: Plugin = async ({ client, directory }) => {
             });
             assistantTextByMessage.delete(assistantMessageId);
             lastAssistantMessageBySession.delete(sessionID);
-          }
-
-          // (b) Goal continuation: nudge the agent when an active plan is bound.
-          const planBinding = sessionPlans.get(sessionID);
-          if (planBinding) {
-            const status = readPlanStatus(planBinding.planPath);
-            if (status === "process.active") {
-              await client.session.promptAsync({
-                path: { id: sessionID },
-                body: {
-                  parts: [
-                    {
-                      type: "text",
-                      text: "There is already an unfinished plan in this thread. Tell the user and ask whether to close the current plan or continue advancing it before starting unrelated work. If the user chooses to continue and you still fail to make progress for two rounds, then set plan.status to wait.",
-                    },
-                  ],
-                },
-              });
-            }
           }
         }
       }

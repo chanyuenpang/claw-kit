@@ -19,16 +19,15 @@ Accepted
 
 - 把项目级 workflow 行为纳入 canonical `.claw/project.json` schema。
 - `goalMode` 的 canonical 默认值是 `true`。
-- `truthDispatch` 的 canonical 默认值是 `per_task`。
-- 简单 project-level toggles 使用扁平字段；`workflow.goalMode.enabled`、`workflow.truthDispatch.mode`、`gitnexus.enabled` 只作为 legacy compatibility input 被读取和修复。
-- project config repair 必须在保留旧项目语义的前提下，把 legacy `workflow.*` 与 `gitnexus.enabled` shape 规范化为扁平 canonical fields：`planning`、`externalPlanningSkill`、`goalMode`、`truthDispatch`、`gitnexus`。
+- 简单 project-level toggles 使用扁平字段；旧的 nested `workflow.*`、`workflow.truthDispatch.mode` 与 `gitnexus.enabled` 只属于 legacy compatibility input。
+- project config repair 必须把 legacy shape 规范化为当前 canonical fields：`planning`、`externalPlanningSkill`、`goalMode`、`knowledgeWriter` 与 `gitnexus`。`truthDispatch` 不再是 current project schema owner。
 - `.claw/project-override.json` 是完整的 personal overlay，可以覆盖 `.claw/project.json` 的任意字段，而不是只服务某个临时特例；其中 workflow / GitNexus 类简单开关应使用与 team config 相同的扁平 canonical 字段。
 - runtime project resolution 读取并 deep-merge `.claw/project-override.json` 覆盖 canonical `.claw/project.json`。
 - `.claw/project-override.json` 里的显式 `null` 是真实 override 值，不表示回退到 team config。
 - 只有 runtime project resolution 消费 `.claw/project-override.json`；canonical protocol repair 和 `claw init` 继续只拥有 team-facing `.claw/project.json`。
 - default vector indexing 可以保持 runtime-enabled，但 protocol repair 不能仅因默认值就把 `memory.embedding.store.vector.enabled = true` 写回 `.claw/project.json`；`store.vector` 只在显式 `enabled: false` 或 `extensionPath` 有意义时保留。
 - 当 effective config 设置 `goalMode=false` 时，workflow guidance 不再返回 `goalMode`。
-- 当 effective config 设置 `truthDispatch=final_only` 时，workflow guidance 不再返回 mid-task `truth-writer` delegation，但完成期沉淀仍然保留。
+- Knowledge finalization 不由 project-level `truthDispatch` 或 workflow guidance delegation 控制；current writer configuration 由 `knowledgeWriter` object 和 hook-owned finalization job 快照拥有。
 
 ## Consequences
 
@@ -38,7 +37,7 @@ Accepted
 - 显式 `null` override 让 personal overlay 可以真正移除有效配置值，而不是被错误地解释为“未设置”。
 - `claw init`、protocol repair 与 team-facing config normalization 不会把个人覆盖重新物化回 canonical 文件，也不会接管本地 overlay 生命周期。
 - legacy-shape projects can be repaired without losing explicit behavior, while future diffs stop reintroducing nested workflow/GitNexus config or default-only vector store noise.
-- workflow guidance 的 `goalMode` 与 `truth-writer` delegation 现在都受 effective project config 控制，同时仍与既有完成期沉淀流程兼容。
+- workflow guidance 的 `goalMode` 受 effective project config 控制；knowledge writer 配置经 effective config 解析后在 job 创建时快照，不回流为 main-agent delegation。
 
 ## Related Code
 

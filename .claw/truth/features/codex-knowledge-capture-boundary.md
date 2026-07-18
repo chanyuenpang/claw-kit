@@ -9,11 +9,11 @@
 ## 长期行为 / 规则
 
 - 每次 Codex `Stop` 最多写一份 report。若当前 turn 有 pending completed plan，则该已完成计划拥有最终 report；否则写入当前 active plan。完成切换的 transition turn 不得同时写入两份 report。
-- Codex SDK 只异步消费完成的 `plan.json`、其相邻 report 与 finalize id，借此决定并沉淀 truth / ADR，然后请求 recall indexing。
+- Knowledge finalization worker 只异步消费完成的 `plan.json`、其相邻 report、finalize id 与 job host。它先运行 focused `truth-writer`，再在同一项目状态上运行 focused `adr-writer`；两阶段都完成后才请求 recall indexing。
 - SDK writer 成功返回后，detached worker 递归检查 `.claw/truth/**/*.md`，并幂等补齐 UTF-8 BOM；这是确定性 worker 后处理，不得交给 LLM writer prompt。
 - finalization 成功路径的顺序是 writer 完成、Truth/ADR 编码归一化、启动 completion recall refresh、持久化 `succeeded` job，最后尝试清理本 job 的临时 report。writer、编码归一化或 refresh 启动失败会进入原有重试路径并保留 report。
 - report 清理只接受 `.claw/tasks` 内的路径，并在文件锁下执行。它发生在 `succeeded` 状态持久化之后，是仅尝试一次的 best-effort cleanup；删除失败不改写 job、不重试，也不重新运行 writer。
-- 主 agent 不再判断或派发 knowledge writer；SDK 的异步知识采集不能反向接管 plan lifecycle 或 session binding。
+- 主 agent 不再判断或派发 knowledge writer；两个 focused writer 的返回文本不参与控制流，异步知识采集也不能反向接管 plan lifecycle 或 session binding。
 - 前台 plan mutation 成功后，hook、report 或 SDK 的错误只能作为可观察的附加失败，不能回滚、阻塞或重写 canonical plan state。
 - Codex host 的 SessionStart hook 显式调用 `claw context --host codex`。该 context 路径只检查 `%USERPROFILE%\.claw-kit\codex-runtime\<version>` 下用户级、版本化 SDK runtime 是否可用，不安装、不修复、不自动重试；非 Codex host 不承担这项检测。
 - `@claw-kit/codex-adapter` 拥有 Codex SDK 依赖，通用 `@veewo/claw` CLI 不静态依赖 SDK。knowledge worker 从 context 已准备的 runtime 动态加载 SDK。
@@ -28,7 +28,8 @@
 - `packages/core/src/knowledge-sidecar.ts`：Truth/ADR Markdown 编码归一化、report 路径 containment 与 best-effort cleanup。
 - `packages/cli/src/cli.ts`：Codex-facing CLI lifecycle 与 hook entry。
 - `packages/codex-adapter/hooks/hooks.json`：SessionStart / Stop hook surface。
-- `packages/codex-adapter/skills/knowledge-writer/`：完成计划 report 的异步知识沉淀入口。
+- `shared/skills/truth-writer/` 与 `shared/skills/adr-writer/`：两阶段异步沉淀的规范 skill 源。
+- `packages/codex-adapter/skills/truth-writer/` 与 `packages/codex-adapter/skills/adr-writer/`：Codex plugin 中物化的 focused writer 入口。
 
 ## 已知陷阱
 
@@ -41,7 +42,7 @@
 - 人为让 hook、report 或 SDK 路径失败后，plan create/edit/done、subplan parent resume 和 binding 仍按 canonical lifecycle 完成。
 - 创建 root plan 和 subplan 时，各自只有由 `.json` 派生的相邻 `.report` 路径。
 - 完成 transition 的 Stop 只产生一份、且属于 pending completed plan 的 report；普通 Stop 只属于 active plan。
-- SDK 输入只接受 completed `plan.json`、相邻 report 和 finalize id，并在沉淀后请求 indexing。
+- worker 输入只接受 completed `plan.json`、相邻 report、finalize id 与 job host；必须按 Truth 后 ADR 的顺序完成两阶段，再请求 indexing。
 - knowledge finalization 回归应覆盖无 BOM Markdown 的自动修复、重复运行幂等、编码归一化先于 refresh，以及成功 job 持久化后的 report 清理。
 - report cleanup 回归应确认 `.claw/tasks` 内的 report 可删除，越界路径被拒绝且原文件保留；cleanup 失败不得触发 finalization 重试。
 - runtime 回归需要同时覆盖健康 context 静默、缺失时的英文 consent-required error、无固定 repair command、SessionStart 授权 prompt 前置、adapter 依赖归属和 hook 的 Codex host 标记。
@@ -54,7 +55,9 @@
 - `pending turn owner`
 - `plan report`
 - `finalize id`
-- `knowledge-writer`
+- `truth-writer`
+- `adr-writer`
+- `two-phase knowledge finalization`
 - `asynchronous truth ADR indexing`
 - `CODEX_SDK_RUNTIME_MISSING`
 - `requiresUserConsent`

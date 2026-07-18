@@ -19,10 +19,10 @@ content, append business tasks, complete explicitly named lifecycle tasks, and
 enter `process.active`. The entire mutation is serialized against the current
 plan and is written once. Validation failure writes nothing.
 
-The command result must emit ordered, versioned plan events. Events describe
-canonical CLI state only; they never read host state or wait for host tools.
-Adapters consume the event stream in one direction and may derive host progress
-and Goal Mode actions from it.
+Each mutation must produce ordered, versioned plan events internally. Events
+describe canonical CLI state only; they never read host state or wait for host
+tools. The CLI derives host progress and Goal Mode actions before projecting the
+public result; default command responses do not expose the raw `events` array.
 
 Required event fields:
 
@@ -37,10 +37,40 @@ Compatibility rules:
 - Existing `plan create`, `plan edit`, and `plan done` remain supported.
 - The optimized mutation uses the same plan validation, workflow guidance, file
   lock, session binding, and template route checks as existing edits.
-- Old event consumers may continue reading the existing fields.
+- Codex consumers use `hostActions`; host-neutral and OpenCode consumers use the
+  projected guidance fields. No public consumer reads raw events.
 - Host actions are derived output. The plan file remains the canonical state.
 - A host action failure does not roll back a committed CLI mutation; repeating
   consumption must be idempotent by event id.
+
+## Turn-report hook fast path
+
+`claw hook auto-doc` is registered at turn scope, so its no-work path must be
+decided before the main CLI module is loaded. The lightweight entry may inspect
+only the hook payload, the `.claw` directory directly under hook `cwd`, the
+hashed per-session knowledge registry, and no compatibility fallback. It must
+not read the canonical task-binding registry or walk parent directories to
+inherit another working directory's project context. The process checks its
+actual `cwd/.claw` before reading hook stdin, because `.claw` is initialized at
+a deterministic level.
+
+If the session knowledge registry has neither an active nor pending target, the
+command exits successfully without loading the main CLI, reading the transcript,
+parsing project configuration, launching a worker, or mutating `.claw`. A
+pending completed-plan owner remains a valid target after the canonical task
+binding has been removed, so final-turn capture is preserved.
+
+## Invocation host boundary
+
+Host identity is invocation-scoped. The CLI resolves `--host` and `CLAW_HOST`
+once, accepts only `codex` or `opencode`, and rejects conflicting sources before
+any project mutation. It does not copy the result back into `process.env`.
+
+Only Codex results may contain `hostActions`. Session bindings and knowledge
+registries do not persist host identity. Turn-end hooks write their native host
+directly into a newly queued finalization job, and detached finalization or
+completion workers start without inheriting the foreground `CLAW_HOST`; writer
+routing uses the job's host snapshot.
 
 ## Phase gates
 
@@ -50,6 +80,8 @@ Compatibility rules:
   legacy corpus without reducing validation or traceability.
 - Core, CLI, Codex/OpenCode adapter, bundle, and encoding checks remain green.
 - Search and closeout measurements are reported separately from plan mutation.
+- The unbound `auto-doc` path must remain covered independently from bound and
+  completed-plan report capture.
 
 Run `npm run benchmark:workflow` after building the CLI to capture the legacy
 baseline. Optimized reports must reuse the same corpus and report both paths.

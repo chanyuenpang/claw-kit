@@ -12,6 +12,8 @@ export type KnowledgeReportTarget = {
   completedAt?: string;
 };
 
+export type KnowledgeFinalizationHost = "codex" | "opencode";
+
 export type KnowledgeSessionRegistry = {
   schemaVersion: 1;
   sessionId: string;
@@ -34,7 +36,7 @@ export type KnowledgeFinalizationJob = {
    * Host that queued the job, so the finalization worker can pick the correct runner.
    * Older jobs queued without this field fall back to the Codex SDK runner.
    */
-  host?: string | null;
+  host?: KnowledgeFinalizationHost | null;
   planPath: string;
   reportPath: string;
   status: "queued" | "running" | "succeeded" | "failed";
@@ -42,6 +44,11 @@ export type KnowledgeFinalizationJob = {
   queuedAt: string;
   startedAt?: string;
   finishedAt?: string;
+  truthThreadId?: string;
+  adrThreadId?: string;
+  truthResponse?: string;
+  adrResponse?: string;
+  /** Legacy aggregate fields retained for job observability and older readers. */
   sdkThreadId?: string;
   finalResponse?: string;
   truthEncoding?: {
@@ -157,7 +164,7 @@ export function tryCaptureKnowledgeStop(input: {
   sessionId?: string;
   turnId?: string;
   message?: string;
-  host?: string;
+  host?: KnowledgeFinalizationHost;
 }): KnowledgeStopResult {
   const sessionId = input.sessionId?.trim();
   const turnId = input.turnId?.trim();
@@ -207,7 +214,7 @@ export function tryCaptureKnowledgeStop(input: {
               model: input.project.projectConfig?.knowledgeWriter?.model ?? null,
               reasoningEffort: input.project.projectConfig?.knowledgeWriter?.reasoningEffort ?? "medium",
             },
-            host: input.host?.trim() ? input.host.trim() : null,
+            host: input.host ?? null,
             planPath: resolveProjectRelativePlanPath(input.project, registry.pendingTurnOwner.planPath),
             reportPath,
             status: "queued",

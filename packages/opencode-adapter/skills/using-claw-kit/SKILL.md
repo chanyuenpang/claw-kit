@@ -10,7 +10,8 @@ Use this skill to enter or resume `.claw` work and consume CLI `workflowGuidance
 
 - Returned or recovered `workflowGuidance` is the only next-step contract. Follow its stage, user-input request, and exact recommended commands instead of reconstructing a default workflow from this skill.
 - If a recovered plan or guidance exists, continue it before creating anything. If an explicitly invoked template-backed workflow skill owns entry, let that skill route the request.
-- With no task scope, create a plan when reusable project knowledge is expected; otherwise work directly. A new plan starts in `process.discussing`.
+- With no task scope, create a project plan when reusable project knowledge is expected. If the work benefits from the full plan/Goal/skill harness but must not deposit project knowledge (including work outside a `.claw` cwd), use `claw plan create "<title>" --scope session`; use direct work only when the harness itself adds no value. A new plan starts in `process.discussing`.
+- Session scope is explicit and ephemeral: it recovers by platform session id across cwd changes, never persists host, and skips project Truth/ADR, memory, GitNexus, and retention side effects. Use `claw session clean` when the session workflow should be removed immediately.
 - Use `claw search` only when returned guidance recommends recall or project context would materially help.
 
 ## Lifecycle semantics

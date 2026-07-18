@@ -9,10 +9,10 @@ Knowledge capture uses a per-session registry / outbox separated from the foregr
 ## Long-term rules
 
 - Each opencode turn writes at most one report on `session.idle`. If the current turn has a pending completed plan, that completed plan owns the final report; otherwise the current active plan owns it. A completion transition turn never writes two reports.
-- The finalization worker only consumes the completed `plan.json`, its adjacent report, and a finalize id, then decides and deposits truth / ADR, and requests recall indexing.
+- The finalization worker only consumes the completed `plan.json`, its adjacent report, and a finalize id. It runs one consistency-aware knowledge-steward pass across Truth and ADR, then requests recall indexing after it succeeds.
 - On opencode the worker runs through `opencode run --agent claw-knowledge-writer` inside the user's own opencode environment. It never assumes a Codex SDK runtime is installed locally; the opencode host must not require codex-runtime consent.
 - The job's `host` field selects the runner: `opencode` → `opencode run`; anything else (including legacy jobs without the field) → Codex SDK.
-- Writer success path order: writer completes, Truth/ADR encoding normalization, completion recall refresh, `succeeded` job persisted, then best-effort cleanup of the temporary report. Writer, encoding, or refresh failures enter the existing retry path and keep the report.
+- Success path order: Truth writer completes, ADR writer completes, Truth/ADR encoding normalization, completion recall refresh, `succeeded` job persisted, then best-effort cleanup of the temporary report. Either writer, encoding, or refresh failure enters the existing retry path and keeps the report.
 - Report cleanup only accepts paths under `.claw/tasks` and runs under file lock. It happens after `succeeded` is persisted and is a one-attempt best-effort cleanup; deletion failure does not rewrite the job, retry, or rerun the writer.
 - The main agent no longer judges or dispatches the knowledge writer; async knowledge capture must not take over plan lifecycle or session binding.
 - After a foreground plan mutation succeeds, plugin, report, or worker errors are observable side failures only; they cannot roll back, block, or rewrite canonical plan state.
@@ -23,7 +23,7 @@ Knowledge capture uses a per-session registry / outbox separated from the foregr
 - `packages/core/src/session-bindings.ts`: explicit `sessionKey -> planPath` binding and parent resume.
 - `packages/core/src/context.ts`: recovers the current workflow only through session binding.
 - `packages/core/src/knowledge-sidecar.ts`: Truth/ADR Markdown encoding normalization, report path containment, best-effort cleanup, and the `host` field on finalization jobs.
-- `packages/cli/src/cli.ts`: host-aware finalization runner (`runKnowledgeWriterForJob`) and the `runStopHook` message-payload path.
+- `packages/cli/src/cli.ts`: host-aware combined finalization runner (`runKnowledgeWriterForJob`) and the `runStopHook` message-payload path.
 - `packages/cli/src/opencode-runner.ts`: `opencode run` finalization runner and NDJSON parser.
 - `packages/opencode-adapter/plugin/index.ts`: `session.idle` report capture and `message.*` tracking.
 

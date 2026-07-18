@@ -1,5 +1,9 @@
 ﻿# Codex Goal mode is a thread-level contract
 
+## Status
+
+Accepted
+
 ## Context
 
 `claw-kit` needed a way to align active plan execution with Codex Goal mode. The main risk was pretending the plugin could toggle Goal mode through a private host automation path when the documented host surfaces are `/goal` in the app, CLI, and IDE, plus thread goal tools when the environment exposes them.

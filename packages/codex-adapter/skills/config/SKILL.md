@@ -64,7 +64,7 @@ Example personal override:
 {
   "goalMode": false,
   "knowledgeWriter": {
-    "externalSkill": "my-knowledge-writer",
+    "externalSkill": "my-two-pass-knowledge-writer",
     "model": "gpt-5.6-terra",
     "reasoningEffort": "high"
   }
@@ -125,7 +125,7 @@ Keep nested shape only where the field actually has substructure:
 }
 ```
 
-`knowledgeWriter.externalSkill = null` uses the built-in `claw-kit:knowledge-writer`. `model = null` uses the host default model. `reasoningEffort` accepts `minimal`, `low`, `medium`, `high`, or `xhigh`.
+`knowledgeWriter.externalSkill = null` runs the built-in `claw-kit:knowledge-writer` in one consistency-aware pass. A non-null value overrides that writer skill. `model = null` uses the host default model. `reasoningEffort` accepts `minimal`, `low`, `medium`, `high`, or `xhigh`.
 
 ## Safe editing flow
 

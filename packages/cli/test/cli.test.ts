@@ -3,9 +3,12 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { shouldRunKnowledgeHook } from "../dist/knowledge-hook-preflight.js";
 import { parseOpencodeRunOutput } from "../dist/opencode-runner.js";
+import { resolveInvocationHost, withoutInvocationHost } from "../dist/invocation-host.js";
+import { CODEX_SDK_VERSION } from "../dist/codex-runtime.js";
 
 type JsonRecord = Record<string, unknown>;
 const thisDir = path.dirname(fileURLToPath(import.meta.url));
@@ -19,6 +22,7 @@ function createFixture(name: string): string {
 
 function createPlanLikeTemplate(params: {
   id: string;
+  scope?: "session";
   configOverride?: Record<string, unknown>;
   title?: string;
   status?: string;
@@ -31,6 +35,7 @@ function createPlanLikeTemplate(params: {
 }): Record<string, unknown> {
   return {
     id: params.id,
+    ...(params.scope ? { scope: params.scope } : {}),
     ...(params.configOverride ? { configOverride: params.configOverride } : {}),
     ...(params.title ? { title: params.title } : {}),
     status: params.status ?? "process.discussing",
@@ -651,7 +656,7 @@ test("cli plan edit accepts single-reference shortcut flags", () => {
   ]);
 });
 
-test("cli plan start performs one atomic activation and returns idempotent host actions", () => {
+test("cli plan start performs one atomic activation without returning raw events", () => {
   const root = createFixture("plan-start-atomic");
   runClaw(["init", "--name", "Atomic Start"], root);
   const created = runClaw(["plan", "create", "atomic-task", "--goal", "Start in one mutation"], root);
@@ -667,25 +672,9 @@ test("cli plan start performs one atomic activation and returns idempotent host 
   assert.equal(result.planStatus, "process.active");
   assert.deepEqual(result.changedTaskIds, [1, 2]);
   assert.deepEqual(result.appendedTaskIds, [3]);
-  assert.deepEqual(result.emittedEvents, [
-    "plan_changed",
-    "plan_task_completed",
-    "plan_task_completed",
-    "plan_activated",
-  ]);
-  const events = result.events as JsonRecord[];
-  assert.equal(new Set(events.map((event) => event.mutationId)).size, 1);
-  assert.ok(events.every((event) => event.schemaVersion === 1));
-  const hostActions = result.hostActions as JsonRecord[];
-  assert.deepEqual(hostActions.map((action) => action.tool), ["update_plan", "create_goal"]);
-  assert.deepEqual(hostActions.map((action) => action.schemaVersion), [1, 1]);
-  assert.equal(new Set(hostActions.map((action) => action.id)).size, hostActions.length);
-  assert.ok(hostActions.every((action) => String(action.sourceEventId).length > 0));
-  assert.deepEqual(Object.keys(hostActions[0].input as JsonRecord).sort(), ["explanation", "plan"]);
-  assert.deepEqual(hostActions[1].input, {
-    objective: (result.goalTool as JsonRecord).objective,
-  });
-  assert.deepEqual(Object.keys(hostActions[1].meta as JsonRecord), ["allowOverwrite", "reason"]);
+  assert.equal("emittedEvents" in result, false);
+  assert.equal("events" in result, false);
+  assert.equal("hostActions" in result, false);
 });
 
 test("cli codex driver returns an executable versioned source envelope", async () => {
@@ -766,6 +755,209 @@ test("Codex plan results keep only stage-relevant fields and hostActions", () =>
   assert.equal("nextsteps" in result, false);
   assert.equal("notes" in result, false);
   assert.ok(Array.isArray(result.recommendedCommands));
+});
+
+test("session scope runs outside a project, recovers across cwd, and cleans without project side effects", () => {
+  const firstCwd = createFixture("session-scope-first");
+  const secondCwd = createFixture("session-scope-second");
+  const runtimeDir = createFixture("session-scope-runtime");
+  const env = {
+    CODEX_THREAD_ID: "thread-session-scope",
+    CLAW_SESSION_RUNTIME_DIR: runtimeDir,
+  };
+
+  const created = runClaw(["plan", "create", "Session harness", "--scope", "session"], firstCwd, env);
+  assert.equal(created.ok, true);
+  assert.match(String(created.planPath), new RegExp(runtimeDir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.equal(fs.existsSync(path.join(firstCwd, ".claw")), false);
+
+  const context = runClaw(["context"], secondCwd, env);
+  assert.equal((context.project as JsonRecord).scope, "session");
+  assert.equal((context.activeWorkflow as JsonRecord).planPath, created.planPath);
+  assert.equal(fs.existsSync(path.join(secondCwd, ".claw")), false);
+
+  const shown = runClaw(["plan", "show"], secondCwd, env);
+  assert.equal(shown.planPath, created.planPath);
+  const sessionStart = runClawHook("SessionStart", secondCwd, {
+    cwd: secondCwd,
+    session_id: env.CODEX_THREAD_ID,
+  }, env);
+  assert.equal(sessionStart.status, 0);
+  assert.match(sessionStart.stdout, /Session harness/);
+  const sessionRoot = path.dirname(path.dirname(path.dirname(String(created.planPath))));
+  assert.equal(fs.existsSync(path.join(sessionRoot, "runtime", "knowledge-sessions")), false);
+  assert.equal(fs.existsSync(path.join(sessionRoot, "truth")), false);
+
+  const cleaned = runClaw(["session", "clean"], secondCwd, env);
+  assert.equal(cleaned.removed, true);
+  assert.equal(fs.existsSync(sessionRoot), false);
+  assert.equal(fs.existsSync(path.join(secondCwd, ".claw")), false);
+});
+
+test("a session-scoped skill template selects session storage without an explicit scope flag", () => {
+  const cwd = createFixture("template-session-scope-cwd");
+  const homeRoot = createFixture("template-session-scope-home");
+  const runtimeDir = createFixture("template-session-scope-runtime");
+  const skillDir = path.join(homeRoot, ".codex", "skills", "session-harness");
+  fs.mkdirSync(skillDir, { recursive: true });
+  fs.writeFileSync(path.join(skillDir, "TEMPLATE.json"), `${JSON.stringify(createPlanLikeTemplate({
+    id: "session-harness",
+    scope: "session",
+    status: "process.active",
+    tasks: [{ id: 1, title: "Run session work", status: "pending" }],
+  }), null, 2)}\n`, "utf-8");
+
+  const env = {
+    HOME: homeRoot,
+    USERPROFILE: homeRoot,
+    CODEX_THREAD_ID: "thread-template-session-scope",
+    CLAW_SESSION_RUNTIME_DIR: runtimeDir,
+  };
+  const created = runClaw(["plan", "create", "Session template harness", "--template", "session-harness"], cwd, env);
+  const context = runClaw(["context"], cwd, env);
+  const createdPlan = JSON.parse(fs.readFileSync(String(created.planPath), "utf-8")) as JsonRecord;
+
+  assert.equal((context.project as JsonRecord).scope, "session");
+  assert.equal(createdPlan.templateId, "session-harness");
+  assert.match(String(created.planPath), new RegExp(runtimeDir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.equal(fs.existsSync(path.join(cwd, ".claw")), false);
+});
+
+test("explicit session scope overrides an initialized project and remains isolated by session id", () => {
+  const root = createFixture("session-scope-project-override");
+  const runtimeDir = createFixture("session-scope-project-runtime");
+  runClaw(["init", "--name", "Project scope"], root);
+  const projectTasksBefore = fs.readdirSync(path.join(root, ".claw", "tasks"));
+  const env = { CODEX_THREAD_ID: "thread-session-project", CLAW_SESSION_RUNTIME_DIR: runtimeDir };
+
+  const created = runClaw(["plan", "create", "Ephemeral override", "--scope", "session"], root, env);
+  assert.match(String(created.planPath), new RegExp(runtimeDir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.deepEqual(fs.readdirSync(path.join(root, ".claw", "tasks")), projectTasksBefore);
+
+  const otherSession = runClawExpectFailure(
+    ["plan", "show"],
+    root,
+    { CODEX_THREAD_ID: "thread-session-other", CLAW_SESSION_RUNTIME_DIR: runtimeDir },
+  );
+  assert.equal((otherSession.error as JsonRecord).code, "PROJECT_CONFIG_INVALID");
+
+  runClaw(["session", "clean"], root, env);
+});
+
+test("session plan completion keeps Goal actions but queues no knowledge or project refresh work", () => {
+  const root = createFixture("session-scope-completion");
+  const runtimeDir = createFixture("session-scope-completion-runtime");
+  const env = { CODEX_THREAD_ID: "thread-session-completion", CLAW_SESSION_RUNTIME_DIR: runtimeDir };
+  const created = runClaw(
+    ["plan", "create", "Session completion", "--scope", "session", "--host", "codex"],
+    root,
+    env,
+  );
+  const planPath = String(created.planPath);
+  const activated = runClaw(["plan", "edit", "--status", "process.active", "--host", "codex"], root, env);
+  const activationActions = activated.hostActions as Array<JsonRecord>;
+  assert.ok(activationActions.some((action) => action.tool === "create_goal"));
+
+  const plan = JSON.parse(fs.readFileSync(planPath, "utf-8")) as { tasks: Array<{ id: number }> };
+  for (const task of plan.tasks) {
+    runClaw(["task", "done", "--id", String(task.id), "--host", "codex"], root, env);
+  }
+  const completed = runClaw(
+    ["plan", "done", "--retrospective", "Session workflow completed.", "--host", "codex"],
+    root,
+    env,
+  );
+  assert.equal(completed.planStatus, "end.completed");
+  const completionActions = completed.hostActions as Array<JsonRecord>;
+  assert.ok(completionActions.some((action) => action.tool === "update_goal"));
+
+  const sessionRoot = path.dirname(path.dirname(path.dirname(planPath)));
+  assert.equal(fs.existsSync(path.join(sessionRoot, "runtime", "knowledge-sessions")), false);
+  assert.equal(fs.existsSync(path.join(sessionRoot, "runtime", "completion-refresh")), false);
+  assert.equal(fs.existsSync(path.join(root, ".claw")), false);
+  assert.equal(fs.existsSync(planPath), true);
+  runClaw(["session", "clean"], root, env);
+});
+
+test("session scope supports subplans and expired-state cleanup", () => {
+  const root = createFixture("session-scope-subplan");
+  const otherCwd = createFixture("session-scope-subplan-other");
+  const runtimeDir = createFixture("session-scope-subplan-runtime");
+  const env = { CODEX_THREAD_ID: "thread-session-subplan", CLAW_SESSION_RUNTIME_DIR: runtimeDir };
+  const created = runClaw(["plan", "create", "Session subplan", "--scope", "session"], root, env);
+  const planPath = String(created.planPath);
+  const plan = JSON.parse(fs.readFileSync(planPath, "utf-8")) as { tasks: Array<{ id: number }> };
+  const taskName = path.basename(path.dirname(planPath));
+  const subplan = runClaw(
+    ["subplan", "create", "--parent", taskName, "--task-id", String(plan.tasks[0]!.id)],
+    otherCwd,
+    env,
+  );
+  assert.equal(subplan.ok, true);
+  assert.equal(path.dirname(String(subplan.planPath)), path.dirname(planPath));
+  assert.equal(fs.existsSync(path.join(otherCwd, ".claw")), false);
+  runClaw(["session", "clean"], otherCwd, env);
+
+  const staleDir = path.join(runtimeDir, "stale-session");
+  fs.mkdirSync(staleDir, { recursive: true });
+  fs.writeFileSync(path.join(staleDir, "session.json"), JSON.stringify({
+    version: 1,
+    scope: "session",
+    originCwd: root,
+    createdAt: "2000-01-01T00:00:00.000Z",
+    updatedAt: "2000-01-01T00:00:00.000Z",
+  }));
+  const swept = runClaw(["session", "clean", "--expired"], root, { CLAW_SESSION_RUNTIME_DIR: runtimeDir });
+  assert.equal(swept.removedCount, 1);
+  assert.equal(fs.existsSync(staleDir), false);
+});
+
+test("host-neutral and opencode plan results never expose Codex hostActions", () => {
+  const neutralRoot = createFixture("neutral-no-host-actions");
+  runClaw(["init", "--name", "Neutral Host", "--planning", "false"], neutralRoot);
+  const neutral = runClaw(
+    ["plan", "create", "--title", "neutral-task", "--goal", "Stay host neutral"],
+    neutralRoot,
+  );
+  assert.equal("hostActions" in neutral, false);
+
+  const opencodeRoot = createFixture("opencode-no-host-actions");
+  runClaw(["init", "--name", "OpenCode Host", "--planning", "false"], opencodeRoot);
+  const opencode = runClaw(
+    ["plan", "create", "--title", "opencode-task", "--goal", "Use OpenCode", "--host", "opencode"],
+    opencodeRoot,
+  );
+  assert.equal("hostActions" in opencode, false);
+  assert.ok(Array.isArray(opencode.nextsteps));
+});
+
+test("invocation host rejects invalid and conflicting sources before project mutation", () => {
+  const invalidRoot = createFixture("invalid-host");
+  const invalid = runClawExpectFailure(["init", "--name", "Must Not Initialize"], invalidRoot, {
+    CLAW_HOST: "third-party",
+  });
+  assert.match(String((invalid.error as JsonRecord).message), /Unsupported CLAW_HOST value/);
+  assert.equal(fs.existsSync(path.join(invalidRoot, ".claw")), false);
+
+  const conflictRoot = createFixture("conflicting-host");
+  const conflict = runClawExpectFailure(
+    ["init", "--name", "Must Not Initialize", "--host", "codex"],
+    conflictRoot,
+    { CLAW_HOST: "opencode" },
+  );
+  assert.match(String((conflict.error as JsonRecord).message), /Conflicting host sources/);
+  assert.equal(fs.existsSync(path.join(conflictRoot, ".claw")), false);
+
+  assert.equal(resolveInvocationHost("codex", "codex"), "codex");
+});
+
+test("background worker environments drop the foreground invocation host", () => {
+  const source = { PATH: "test-path", CLAW_HOST: "codex", CLAW_GUIDANCE_CONFIG: "guide.json" };
+  const workerEnv = withoutInvocationHost(source);
+  assert.equal(workerEnv.CLAW_HOST, undefined);
+  assert.equal(workerEnv.PATH, "test-path");
+  assert.equal(workerEnv.CLAW_GUIDANCE_CONFIG, "guide.json");
+  assert.equal(source.CLAW_HOST, "codex");
 });
 
 test("Codex wait and resume results omit compatibility guidance already handled by hostActions", () => {
@@ -896,7 +1088,7 @@ test("cli plan edit executes repeated options in order and emits only net Goal g
   ], root);
 
   assert.equal(result.planStatus, "process.active");
-  assert.deepEqual((result.hostActions as JsonRecord[]).map((action) => action.tool), ["update_plan"]);
+  assert.equal("hostActions" in result, false);
   const plan = JSON.parse(fs.readFileSync(path.join(root, ".claw", "tasks", "demo-task", "plan.json"), "utf-8")) as JsonRecord;
   assert.deepEqual((plan.requirements as JsonRecord).acceptanceCriteria, ["First criterion", "Second criterion"]);
 
@@ -907,7 +1099,7 @@ test("cli plan edit executes repeated options in order and emits only net Goal g
     "--status", "process.wait",
   ], root);
   assert.equal(inactiveRoundTrip.planStatus, "process.wait");
-  assert.deepEqual((inactiveRoundTrip.hostActions as JsonRecord[]).map((action) => action.tool), ["update_plan"]);
+  assert.equal("hostActions" in inactiveRoundTrip, false);
 });
 
 test("cli task commands accept repeated groups without cross-command edit syntax", () => {
@@ -997,12 +1189,12 @@ test("cli task edit computes task completion guidance from the initial and final
 
   assert.equal(result.planStatus, "process.active");
   assert.equal("nextTask" in result, true);
-  assert.deepEqual((result.hostActions as JsonRecord[]).map((action) => action.tool), ["update_plan"]);
+  assert.equal("hostActions" in result, false);
   const plan = JSON.parse(fs.readFileSync(path.join(root, ".claw", "tasks", "demo-task", "plan.json"), "utf-8")) as JsonRecord;
   assert.equal((plan.tasks as JsonRecord[])[0].status, "pending");
 });
 
-test("cli routes Codex Goal actions by paused and resumed plan status", () => {
+test("cli routes host-neutral Goal guidance by paused and resumed plan status", () => {
   const root = createFixture("plan-edit-wait-and-resume-guidance");
   runClaw(["init", "--name", "Wait And Resume Guidance", "--planning", "false"], root);
   runClaw(["plan", "create", "--title", "demo-task", "--goal", "Pause and resume cleanly"], root);
@@ -1031,10 +1223,7 @@ test("cli routes Codex Goal actions by paused and resumed plan status", () => {
     status: "blocked",
     reason: "Execution is paused in `process.wait`, so the current active thread goal should be ended as blocked until work resumes.",
   });
-  const waitGoalAction = (waitResult.hostActions as JsonRecord[]).find((action) => action.tool === "update_goal") as JsonRecord;
-  assert.equal(waitGoalAction.schemaVersion, 1);
-  assert.deepEqual(waitGoalAction.input, { status: "complete" });
-  assert.deepEqual(Object.keys(waitGoalAction.meta as JsonRecord), ["reason"]);
+  assert.equal("hostActions" in waitResult, false);
   assert.equal(waitResult.goalMode, undefined);
 
   const resumeResult = runClaw(["plan", "resume", "--task-name", "demo-task"], root);
@@ -1055,21 +1244,14 @@ test("cli routes Codex Goal actions by paused and resumed plan status", () => {
   assert.match(String(resumeGoalMode.recommendedObjective), /Pause and resume cleanly/);
   assert.equal(resumeGoalTool.tool, "create_goal");
   assert.equal(resumeGoalTool.allowOverwrite, true);
-  const resumeGoalAction = (resumeResult.hostActions as JsonRecord[]).find((action) => action.tool === "create_goal") as JsonRecord;
-  assert.equal(resumeGoalAction.schemaVersion, 1);
-  assert.deepEqual(resumeGoalAction.input, {
-    objective: resumeGoalTool.objective,
-  });
+  assert.equal("hostActions" in resumeResult, false);
 
   const discussingResult = runClaw(
     ["plan", "edit", "--task-name", "demo-task", "--status", "process.discussing"],
     root,
   );
-  const discussingGoalAction = (discussingResult.hostActions as JsonRecord[]).find(
-    (action) => action.tool === "update_goal",
-  ) as JsonRecord;
   assert.equal(discussingResult.planStatus, "process.discussing");
-  assert.deepEqual(discussingGoalAction.input, { status: "complete" });
+  assert.equal("hostActions" in discussingResult, false);
 });
 
 test("cli search accepts a positional query for project recall", () => {
@@ -1746,13 +1928,16 @@ test("cli context returns only minimum healthy project context and optional sear
   const result = runClaw(["context"], root);
   const project = result.project as JsonRecord;
 
-  assert.deepEqual(Object.keys(result).sort(), ["project", "searchGuidance"]);
+  assert.deepEqual(Object.keys(result).sort(), ["project", "searchGuidance", "session"]);
   assert.deepEqual(Object.keys(project).sort(), ["clawDir", "projectId", "projectName", "projectRoot"]);
   assert.equal(project.projectRoot, root);
   assert.equal(project.projectName, "Context Check");
   assert.match(String(result.searchGuidance), /claw search/);
   assert.doesNotMatch(String(result.searchGuidance), /GitNexus/);
   assert.doesNotMatch(String(result.searchGuidance), /[\p{Script=Han}，：。；（）]/u);
+  const session = result.session as JsonRecord;
+  assert.equal(session.boundPlan, false);
+  assert.match(String(session.note), /No plan is bound/);
 });
 
 test("cli context omits healthy matching version information", () => {
@@ -1773,7 +1958,7 @@ test("Codex context keeps a healthy SDK runtime out of the minimal output", () =
     CLAW_CODEX_RUNTIME_MOCK: "healthy",
   });
   assert.equal("error" in result, false);
-  assert.deepEqual(Object.keys(result).sort(), ["project", "searchGuidance"]);
+  assert.deepEqual(Object.keys(result).sort(), ["project", "searchGuidance", "session"]);
 });
 
 test("Codex context returns an English consent error without repairing a missing runtime", () => {
@@ -2062,9 +2247,7 @@ test("cli plan done records completedAt and retains the current task path", asyn
   assert.equal("completionRefresh" in doneResult, false);
   assert.match(String(doneResult.planPath), /\.claw[\\/]tasks[\\/]archive-task[\\/].*plan\.json$/);
   assert.equal("archivedPlanPath" in doneResult, false);
-  const doneGoalAction = (doneResult.hostActions as JsonRecord[]).find((action) => action.tool === "update_goal") as JsonRecord;
-  assert.equal(doneGoalAction.schemaVersion, 1);
-  assert.deepEqual(doneGoalAction.input, { status: "complete" });
+  assert.equal("hostActions" in doneResult, false);
   const completedPlan = JSON.parse(fs.readFileSync(String(doneResult.planPath), "utf-8")) as JsonRecord;
   assert.match(String(completedPlan.completedAt), /^\d{4}-\d{2}-\d{2}T/);
   const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
@@ -2084,6 +2267,9 @@ test("claw context does not discover an unfinished plan without a session bindin
   const context = runClaw(["context"], root, { CODEX_THREAD_ID: "different-thread" });
 
   assert.equal("activeWorkflow" in context, false);
+  const session = context.session as JsonRecord;
+  assert.equal(session.boundPlan, false);
+  assert.match(String(session.note), /No plan is bound/);
 });
 
 test("cli plan show reads a completed task during the delayed archive window", () => {
@@ -2640,6 +2826,64 @@ test("plan create binds owner session key and SessionStart recovers active workf
   assert.match(additionalContext, /packages\/cli\/src\/cli\.ts :: SessionStart recovery output/);
 });
 
+test("knowledge hook preflight depends only on a valid session knowledge target", () => {
+  const root = createFixture("hook-knowledge-preflight");
+  const sessionId = "thread-knowledge-preflight";
+  runClaw(["init", "--name", "Hook Knowledge Preflight"], root);
+  const rawInput = JSON.stringify({
+    session_id: sessionId,
+    turn_id: "turn-preflight",
+    transcript_path: path.join(root, "missing-transcript.jsonl"),
+    cwd: root,
+  });
+
+  assert.equal(shouldRunKnowledgeHook(rawInput, root, {}), false);
+
+  const env = { CODEX_THREAD_ID: sessionId };
+  runClaw(["plan", "create", "--title", "demo-task", "--goal", "Exercise hook preflight"], root, env);
+  assert.equal(shouldRunKnowledgeHook(rawInput, root, {}), true);
+
+  const nestedCwd = path.join(root, "packages", "nested");
+  fs.mkdirSync(nestedCwd, { recursive: true });
+  assert.equal(shouldRunKnowledgeHook(JSON.stringify({
+    session_id: sessionId,
+    turn_id: "turn-nested-preflight",
+    cwd: nestedCwd,
+  }), nestedCwd, {}), false);
+
+  const knowledgeSessionsDir = path.join(root, ".claw", "runtime", "knowledge-sessions");
+  for (const entry of fs.readdirSync(knowledgeSessionsDir)) {
+    fs.unlinkSync(path.join(knowledgeSessionsDir, entry));
+  }
+  assert.equal(fs.existsSync(path.join(root, ".claw", "runtime", "session-bindings.json")), true);
+  assert.equal(shouldRunKnowledgeHook(rawInput, root, {}), false);
+});
+
+test("knowledge hook exits before reading stdin when cwd has no direct .claw directory", async () => {
+  const root = createFixture("hook-preflight-no-claw");
+  const cliPath = path.resolve(thisDir, "..", "dist", "bin.js");
+  const child = spawn(process.execPath, [cliPath, "hook", "auto-doc", "--host", "codex"], {
+    cwd: root,
+    env: buildSpawnEnv(),
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true,
+  });
+
+  const exitCode = await new Promise<number | null>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      child.kill();
+      reject(new Error("knowledge hook waited for stdin without cwd/.claw"));
+    }, 2_000);
+    child.once("error", reject);
+    child.once("exit", (code) => {
+      clearTimeout(timeout);
+      resolve(code);
+    });
+  });
+
+  assert.equal(exitCode, 0);
+});
+
 test("Stop hook captures the latest final assistant message into exactly one active plan report", () => {
   const root = createFixture("hook-stop-report");
   runClaw(["init", "--name", "Hook Stop Project"], root);
@@ -2814,12 +3058,78 @@ test("parseOpencodeRunOutput handles empty and malformed output gracefully", () 
   assert.equal(parseOpencodeRunOutput("not json\n{broken").finalResponse, "");
 });
 
+test("knowledge finalization runs one consistency-aware combined writer pass and accepts no-op output", () => {
+  const root = createFixture("knowledge-writer-no-op");
+  const home = path.join(root, "home");
+  const taskDir = path.join(root, ".claw", "tasks", "no-op-task");
+  runClaw(["init", "--name", "Knowledge Writer No-op"], root, { HOME: home, USERPROFILE: home });
+  fs.mkdirSync(taskDir, { recursive: true });
+  const planPath = path.join(taskDir, "plan.json");
+  const reportPath = path.join(taskDir, "plan.report");
+  fs.writeFileSync(planPath, JSON.stringify({ title: "No-op", status: "end.completed" }), "utf-8");
+  fs.writeFileSync(reportPath, "{}\n", "utf-8");
+
+  const sdkRoot = path.join(
+    home, ".claw-kit", "codex-runtime", CODEX_SDK_VERSION,
+    "node_modules", "@openai", "codex-sdk",
+  );
+  fs.mkdirSync(path.join(sdkRoot, "dist"), { recursive: true });
+  fs.writeFileSync(path.join(sdkRoot, "package.json"), JSON.stringify({ type: "module" }), "utf-8");
+  const promptLog = path.join(root, "writer-prompts.log");
+  fs.writeFileSync(
+    path.join(sdkRoot, "dist", "index.js"),
+    `import fs from "node:fs";\nexport class Codex { startThread() { return { id: "thread-knowledge", run: async (prompt) => { fs.appendFileSync(${JSON.stringify(promptLog)}, prompt + "\\n---PASS---\\n"); return { finalResponse: "Knowledge no-op." }; } }; } }\n`,
+    "utf-8",
+  );
+
+  const jobsDir = path.join(root, ".claw", "runtime", "knowledge-finalization", "jobs");
+  fs.mkdirSync(jobsDir, { recursive: true });
+  const jobPath = path.join(jobsDir, "no-op.json");
+  fs.writeFileSync(jobPath, JSON.stringify({
+    schemaVersion: 1,
+    finalizeId: "no-op",
+    sessionId: "thread-no-op",
+    projectRoot: root,
+    taskName: "no-op-task",
+    host: "codex",
+    planPath,
+    reportPath,
+    status: "queued",
+    attempts: 0,
+    queuedAt: new Date().toISOString(),
+  }), "utf-8");
+
+  const finalized = runClawRaw(["internal-knowledge-finalize", "--job", jobPath], root, {
+    HOME: home,
+    USERPROFILE: home,
+    CLAW_KNOWLEDGE_FINALIZER_DISABLE_RETRY: "1",
+  });
+  assert.equal(finalized.status, 0);
+  const job = JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord;
+  assert.equal(job.status, "succeeded");
+  assert.equal(job.sdkThreadId, "thread-knowledge");
+  assert.equal(job.truthThreadId, undefined);
+  assert.equal(job.adrThreadId, undefined);
+  assert.equal(job.finalResponse, "Knowledge no-op.");
+  const prompts = fs.readFileSync(promptLog, "utf-8").split("---PASS---").filter((item) => item.trim());
+  assert.equal(prompts.length, 1);
+  assert.match(prompts[0]!, /claw-kit:knowledge-writer/);
+  assert.match(prompts[0]!, /knowledge-base steward/i);
+  assert.match(prompts[0]!, /one current owner/i);
+  assert.equal(fs.existsSync(reportPath), false);
+});
+
 test("opencode Stop hook captures inline message payload and writes host to job", () => {
   const root = createFixture("hook-stop-opencode-message");
   const sessionId = "thread-opencode-message";
   const env = { CLAW_HOST: "opencode", CODEX_THREAD_ID: sessionId, CLAW_KNOWLEDGE_FINALIZER_DISABLE_LAUNCH: "1" };
   runClaw(["init", "--name", "OpenCode Message", "--planning", "false"], root, env);
   runClaw(["plan", "create", "--title", "demo-task", "--goal", "Capture inline message"], root, env);
+  const registriesDir = path.join(root, ".claw", "runtime", "knowledge-sessions");
+  const registryFiles = fs.readdirSync(registriesDir).filter((name) => name.endsWith(".json"));
+  assert.equal(registryFiles.length, 1);
+  const registry = JSON.parse(fs.readFileSync(path.join(registriesDir, registryFiles[0]!), "utf-8")) as JsonRecord;
+  assert.equal("host" in registry, false);
   runClaw(["task", "done", "--id", "1"], root, env);
   runClaw(["plan", "done", "--retrospective", "Done."], root, env);
 

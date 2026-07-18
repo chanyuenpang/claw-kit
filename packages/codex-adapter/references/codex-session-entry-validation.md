@@ -19,7 +19,7 @@ When `@claw-kit` is explicitly invoked outside an existing `.claw` project:
 ## Good signs
 
 - the first reply mentions `.claw`, task, or active plan
-- the first reply explicitly says a request with no expected reusable project knowledge will bypass `claw plan create`
+- the first reply distinguishes direct work from `--scope session`: no reusable project knowledge bypasses project deposition, but work that benefits from the plan/Goal/skill harness should use session scope
 - the agent recommends `claw plan create` when reusable project knowledge is expected and no task scope exists
 - the agent allows a created plan to remain in `process.discussing` until downstream tasks are explicit and handoff-ready
 - the agent reports current task state when a task already exists

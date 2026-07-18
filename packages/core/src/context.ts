@@ -20,6 +20,7 @@ export function resolveProjectContext(cwd: string): ProjectContext {
   const projectId = deriveProjectId(projectRoot, projectConfig);
 
   return {
+    scope: "project",
     projectRoot,
     clawDir,
     projectJsonPath,

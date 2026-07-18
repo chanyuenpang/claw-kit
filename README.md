@@ -71,11 +71,14 @@ Then use it from any project directory:
 claw init --max-tasks-to-keep 20 --planning true --external-planning-skill team-planning-skill --external-writer-skill external-knowledge-writer
 claw plan create --title "My task" --goal "Define the first task"
 claw plan create "My templated task" --template default --goal "Use the default template"
+claw plan create "Ephemeral harness" --scope session --goal "Run the full workflow without project deposition"
 ```
 
 `claw plan create` now routes through seed-plan templates. Explicit `--template` wins first; otherwise claw uses `defaultPlanTemplate` from `.claw/project.json` or `.claw/project-override.json`, then falls back to the built-in `default` template. Planning-enabled projects start in `process.discussing` with a planning task plus an activation bridge task; planning-disabled projects start directly in `process.active`. The planning task analyzes the request and uses the configured planning skill to fill executable tasks. `claw search --query "<topic>"` remains an optional recommended command, not a mandatory planning step.
 
 `claw context` emits only the minimum public recovery surface: project identity and paths, an active workflow when one exists, recovery or version diagnostics only when action is needed, and optional search guidance derived from enabled embedding and GitNexus capabilities. The internal SessionStart path retains the full resolved context needed for recovery and protocol handling. Claw-generated guidance, return metadata, and host prompt text use English; user-supplied plan content and repository document language are preserved.
+
+Use `claw plan create "<title>" --scope session` when the work needs the full plan, task, subplan, SessionStart recovery, and host Goal workflow but must not create or depend on a project `.claw` directory. Session scope is keyed by the platform session id, follows the session across cwd changes, and deliberately skips Truth/ADR capture, memory refresh, GitNexus, and project task retention. Completed state is retained for seven days by default; `claw session clean` removes the current session immediately and `claw session clean --expired` performs an explicit TTL sweep. Session state does not persist invocation host metadata.
 
 Projects can define reusable templates directly under `.claw/templates` using `.json`, `.js`, `.mjs`, or `.cjs` files. Use `.claw/project.json` for a shared team `defaultPlanTemplate`, or `.claw/project-override.json` for a personal runtime override.
 

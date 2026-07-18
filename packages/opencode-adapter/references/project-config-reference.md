@@ -21,7 +21,7 @@ When the user asks to change claw configuration, use the `config` skill as the d
   - put it in `.claw/project-override.json`
 - Tune recall or embeddings
   - change `memory.enabled`, `memory.externalDocPaths`, or `memory.embedding`
-- Add an external combined knowledge writer
+- Add one external skill override for the combined knowledge-writer pass
   - set `knowledgeWriter.externalSkill`
 - Pair the workflow with GitNexus
   - set `gitnexus` to `true` only when the project actually wants that integration
@@ -58,7 +58,7 @@ When memory embedding or GitNexus is enabled, `claw context` adds optional `sear
   - active task retention limit
   - default: `99`
 - `knowledgeWriter.externalSkill`
-  - optional background finalizer skill override; `null` uses `claw-kit:knowledge-writer`
+  - optional background finalizer skill override; `null` runs one consistency-aware `claw-kit:knowledge-writer` pass
 - `memory.enabled`
   - master switch for project memory, task memory, embedding refresh, and `claw search`
 - `memory.externalDocPaths`

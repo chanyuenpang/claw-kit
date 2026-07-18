@@ -14,7 +14,7 @@ Accepted
 - `claw direct` 保持为隐藏兼容命令，不作为公开的 workflow concept 宣传
 - 低复杂度 round 仍然可以走 `direct`，但对外文案与技能说明继续把它视为兼容路径，而不是新的主流程
 - `claw direct` 的可见合同继续保持轻量：跳过正式 claw workflow，不要求 `workflowGuidance`，也不把 `claw search` 当作这条兼容路径的默认前置动作
-- `claw direct` 只在确实产生可复用知识时派发 `truth-writer`
+- `claw direct` 不建立 formal plan、knowledge registry 或 writer job；如需 durable deposition，应进入 project-scoped plan lifecycle
 
 ## Consequences
 

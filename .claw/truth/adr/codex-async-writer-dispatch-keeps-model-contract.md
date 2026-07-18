@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted
+Superseded
+
+Superseded by `hook-owned-two-phase-knowledge-finalization.md`. Model preservation remains current through the job snapshot and host-aware runner; main-agent `workflowGuidance` dispatch and `agent_id` reuse are historical.
 
 ## Context
 

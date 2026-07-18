@@ -20,7 +20,7 @@ Accepted
 - runtime plan 必须持久化模板作用域内的 `plan.configOverride`
 - 模板专属 guidance 继续由模板定义，尤其是 `guidance.onDone` 和 `guidance.onDone.choices`
 - `guidance.onDone.default` 与 `guidance.onDone.choices.<choiceId>` 都可以修改返回的 workflow guidance，并通过 `mergeMode: "override" | "replace"` 声明是叠加默认 guidance 还是完整替换
-- route guidance 可以通过 `delegateTruth: false` 局部关闭默认的 per-task truth delegation
+- `delegateTruth` 只作为旧 template cache 的 inert compatibility metadata 被接受；current template guidance 不拥有 knowledge writer delegation
 - `guidance.onDone.choices` 是 route-aware completion 的唯一权威来源；当模板定义了 choices 时，任何进入 `done` 的写路径都必须提供有效 `choiceId`
 - `claw task done --choice` 和 `claw task edit --status done --choice` 共享同一套 done-transition 校验
 - template-only guidance 不进入 agent-facing runtime task content，避免把模板内部路由细节泄漏到通用任务文本里
@@ -29,7 +29,7 @@ Accepted
 ## Consequences
 
 - 运行时 plan 可以在没有 sidecar 状态的情况下重新解析模板路由和模板级覆盖
-- `goalMode`、`truthDispatch` 等 effective behavior 可以在统一的 runtime contract 下被模板覆盖，而不是散落在多个入口里
+- `goalMode` 与 `knowledgeWriter` 等 current effective behavior 可以通过 `configOverride` 在统一 runtime contract 下覆盖；旧 `truthDispatch` 只属于兼容输入
 - 路由完成的校验面收敛为一条规则，`choiceId` 不会因为入口不同而产生分叉
 - 模板文案和任务执行文案保持分离，agent 看到的是可执行计划，而不是模板内部实现痕迹
 - 后续新增 route-aware template 时，可以复用同一条 completion contract，而不用重新发明一套 done validation

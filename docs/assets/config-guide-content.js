@@ -95,8 +95,8 @@ export const configGuideContent = {
         id: "knowledgeWriter.externalSkill",
         group: "Extension",
         title: "Project-selected knowledge writer",
-        summary: "Overrides the built-in combined truth-and-ADR writer.",
-        detail: "Keep it null for claw-kit:knowledge-writer; set it only when the team maintains one writer that can judge and deposit both truth and ADR content.",
+        summary: "Overrides the skill used by the combined knowledge-writer pass.",
+        detail: "Keep it null to run the built-in consistency-aware claw-kit:knowledge-writer; a non-null value overrides that single finalizer prompt.",
         example: `"knowledgeWriter": { "externalSkill": "external-knowledge-writer" }`
       },
       {
@@ -224,8 +224,8 @@ export const configGuideContent = {
         id: "knowledgeWriter.externalSkill",
         group: "扩展",
         title: "项目指定的 knowledge writer",
-        summary: "覆盖内建的 truth 与 ADR 合并 writer。",
-        detail: "保持 null 时使用 claw-kit:knowledge-writer；只有项目维护了能同时判断并沉淀 truth 与 ADR 的 writer 时才设置。",
+        summary: "覆盖两个聚焦 writer 阶段所使用的 skill。",
+        detail: "保持 null 时运行内置的一致性感知 claw-kit:knowledge-writer；非 null 值会覆盖这一轮 finalizer prompt。",
         example: `"knowledgeWriter": { "externalSkill": "external-knowledge-writer" }`
       },
       {

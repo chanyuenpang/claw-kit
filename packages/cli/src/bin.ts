@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { shouldLoadCliForInvocation } from "./knowledge-hook-preflight.js";
+
 const originalEmitWarning = process.emitWarning.bind(process);
 
 process.emitWarning = ((warning: unknown, ...args: unknown[]) => {
@@ -9,7 +11,14 @@ process.emitWarning = ((warning: unknown, ...args: unknown[]) => {
   return originalEmitWarning(warning as never, ...(args as []));
 }) as typeof process.emitWarning;
 
-void import("./cli.js");
+void main();
+
+async function main(): Promise<void> {
+  if (!await shouldLoadCliForInvocation(process.argv.slice(2), process.cwd(), process.env)) {
+    return;
+  }
+  await import("./cli.js");
+}
 
 function shouldSuppressSqliteExperimentalWarning(warning: unknown, args: unknown[]): boolean {
   const message =

@@ -14,7 +14,7 @@ The opencode adapter plugin (`packages/opencode-adapter/plugin/index.ts`) establ
 
 - session-bound active workflow recovered: treat the recovered `workflowGuidance` as the only next-step contract; the recovered payload includes current plan content so the resumed agent can continue without reopening the plan.
 - no recovered harness state yet: run `claw context` from the current working directory to recover startup state.
-- no task scope: create or bind one with `claw plan create` when reusable project knowledge is expected; otherwise work directly.
+- no task scope: create or bind a project plan when reusable project knowledge is expected; use `claw plan create "<title>" --scope session` when the plan/skill harness is useful but project deposition is not; otherwise work directly.
 - newly created planning-enabled task: starts in `process.discussing` and may remain there across turns; bridge into `process.active` only after downstream tasks are explicit and the user can hand off execution.
 
 ## Non-goals

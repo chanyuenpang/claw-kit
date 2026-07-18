@@ -411,6 +411,7 @@ export type TaskMeta = {
 };
 
 export type ProjectContext = {
+  scope?: "project" | "session";
   projectRoot: string;
   clawDir: string;
   projectJsonPath: string;
@@ -438,6 +439,7 @@ export type ResolvedContext = {
 
 export type PlanWriteInput = {
   cwd: string;
+  scope?: "project" | "session";
   taskName?: string;
   filePath?: string;
   templateName?: string;
@@ -478,6 +480,7 @@ export type SubplanWriteInput = {
   parentTaskId: number;
   templateName?: string;
   ownerSessionKey?: string;
+  host?: string;
 };
 
 export type PlanEditInput = {
@@ -573,6 +576,7 @@ export type PlanShowInput = {
   cwd: string;
   taskName: string;
   planFile?: string;
+  ownerSessionKey?: string;
 };
 
 export type PlanShowResult = {

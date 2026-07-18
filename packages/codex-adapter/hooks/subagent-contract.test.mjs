@@ -53,14 +53,14 @@ test("main-agent Codex surfaces contain no writer or subagent-dispatch workflow"
   assert.match(researcherSkill, /claw search --query "<topic>"/);
 });
 
-test("background finalizer owns the combined knowledge contract", () => {
+test("background finalizer owns one combined knowledge stewardship contract", () => {
   const knowledgeSkill = readPluginFile(path.join("skills", "knowledge-writer", "SKILL.md"));
   const configSkill = readPluginFile(path.join("skills", "config", "SKILL.md"));
 
-  assert.match(knowledgeSkill, /main task agent does not invoke it/i);
-  assert.match(knowledgeSkill, /truth only, ADR only, both, or neither/i);
-  assert.match(knowledgeSkill, /Do not modify either file/i);
-  assert.match(knowledgeSkill, /Do not launch another writer or refresh process/i);
+  assert.match(knowledgeSkill, /knowledge-base steward/i);
+  assert.match(knowledgeSkill, /Truth and ADR are one knowledge system/i);
+  assert.match(knowledgeSkill, /one current owner/i);
+  assert.match(knowledgeSkill, /dispatch another writer/i);
   assert.match(configSkill, /knowledgeWriter\.externalSkill/);
   assert.match(configSkill, /built-in `claw-kit:knowledge-writer`/i);
 });
@@ -69,17 +69,15 @@ test("Codex plan commands use only the bundled code-mode consumer", () => {
   const mainRouter = readPluginFile(path.join("skills", "using-claw-kit", "SKILL.md"));
   const workflowReference = readPluginFile(path.join("references", "workflow-guidance-consumption.md"));
 
-  assert.match(mainRouter, /code-mode-host-action-consumer\.mjs/i);
+  assert.match(mainRouter, /cached CLI driver/i);
   assert.match(mainRouter, /async function runClawPlanMutation/i);
   assert.match(mainRouter, /change only `command`, `workdir`, and `timeout_ms`/i);
   assert.match(mainRouter, /claw codex driver/i);
   assert.match(mainRouter, /load\(cacheKey\)/i);
   assert.match(mainRouter, /store\(cacheKey, envelope\)/i);
   assert.match(mainRouter, /eval/i);
-  assert.match(mainRouter, /must not interpret `hostActions`/i);
-  assert.match(mainRouter, /no direct-call or split-call fallback path/i);
-  assert.match(mainRouter, /`hostActions` is the only Codex host-execution source/i);
-
+  assert.match(mainRouter, /Never run a plan mutation outside the code-mode bridge/i);
+  assert.match(mainRouter, /no direct-call fallback/i);
   assert.match(workflowReference, /code-mode consumption is the adapter execution method/i);
   assert.match(workflowReference, /code-mode-host-action-consumer\.mjs/i);
   assert.match(workflowReference, /Codex has no separate host-call fallback/i);

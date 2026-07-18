@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted
+Superseded
+
+Superseded by `hook-owned-two-phase-knowledge-finalization.md`. The specialist writing rules and historical rationale below remain evidence, but main-agent dispatch, reusable-truth gating, and required ADR closeout are no longer current lifecycle contracts.
 
 ## Context
 

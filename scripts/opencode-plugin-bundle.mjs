@@ -166,6 +166,11 @@ async function installSkillsToDiscoveryDir(installDir, sourceDir) {
     return skillsDir;
   }
   await fs.mkdir(skillsDir, { recursive: true });
+  // The former combined writer was installed into opencode's global discovery
+  // directory. Remove that exact retired skill so an upgrade cannot expose both
+  // the old combined contract and the new focused two-pass contracts.
+  await fs.rm(path.join(skillsDir, "truth-writer"), { recursive: true, force: true });
+  await fs.rm(path.join(skillsDir, "adr-writer"), { recursive: true, force: true });
   const entries = await fs.readdir(skillsSourceDir, { withFileTypes: true });
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;

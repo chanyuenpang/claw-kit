@@ -41,6 +41,7 @@ export type PlanTemplateTask = {
 
 export type PlanTemplateDocument = {
   id: string;
+  scope?: "session";
   configOverride?: TemplateConfigOverride;
   title?: string;
   status: PlanStatus;

@@ -67,7 +67,7 @@ Always verify after updating:
   - verify `claw-kit@claw-kit-local` is disabled
   - require the active identity's source manifest and cache manifest to match the target version
   - detect another enabled same-name identity that still points at an older source; a newer unused cache directory is not success
-  - confirm `skills/planning`, `skills/config`, `skills/update`, and `skills/create-claw-skill` exist in the active source/cache copy
+  - confirm `skills/planning`, `skills/config`, `skills/update`, `skills/create-claw-skill`, and `skills/knowledge-writer` exist, and retired `skills/truth-writer` and `skills/adr-writer` are absent, in the active source/cache copy
   - restart Codex, start a new task, and confirm the loaded skill locator belongs to the expected version
 - OpenCode plugin:
   - confirm the installed plugin files exist under the configured OpenCode plugin path

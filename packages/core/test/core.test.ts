@@ -59,6 +59,7 @@ function createEmptyFixture(name: string): string {
 
 function createPlanLikeTemplate(params: {
   id: string;
+  scope?: "session";
   configOverride?: Record<string, unknown>;
   title?: string;
   status?: PlanDocument["status"];
@@ -71,6 +72,7 @@ function createPlanLikeTemplate(params: {
 }): Record<string, unknown> {
   return {
     id: params.id,
+    ...(params.scope ? { scope: params.scope } : {}),
     ...(params.configOverride ? { configOverride: params.configOverride } : {}),
     ...(params.title ? { title: params.title } : {}),
     status: params.status ?? "process.discussing",
@@ -949,6 +951,28 @@ test("writePlan rejects unsupported template configOverride keys", async () => {
         templateName: "bad-override",
       }),
     /configOverride|override/i,
+  );
+});
+
+test("writePlan rejects unsupported template creation scopes", async () => {
+  const root = createFixture("plan-template-invalid-scope");
+  initProject({ cwd: root, projectName: "Invalid Template Scope", planning: true, force: true });
+  fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "templates", "bad-scope.json"),
+    `${JSON.stringify({
+      ...createPlanLikeTemplate({
+        id: "bad-scope",
+        tasks: [{ id: 1, title: "Invalid scope", status: "pending" }],
+      }),
+      scope: "project",
+    }, null, 2)}\n`,
+    "utf-8",
+  );
+
+  await assert.rejects(
+    () => writePlan({ cwd: root, title: "Use invalid scope", templateName: "bad-scope" }),
+    /template scope|session/i,
   );
 });
 

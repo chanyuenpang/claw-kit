@@ -6,42 +6,35 @@ Accepted
 
 ## Context
 
-`claw-kit` already separates canonical deposition into `truth-writer` and `adr-writer`.
-Projects still need a way to replace those built-in writers without forcing claw-kit to own external document roots or routing rules.
+`claw-kit` separates canonical deposition into sequential `truth-writer` and `adr-writer` phases owned by the background finalization job. Projects still need one stable configuration surface to replace the built-in skill and select worker capability without restoring the retired main-agent `delegateSubagents` dispatch contract.
 
 ## Decision
 
-Use only two explicit project-level override fields:
+Use one project-level object:
 
-- `externalTruthSkill`
-- `externalAdrSkill`
+- `knowledgeWriter.externalSkill`: `null` selects the built-in focused skills; a non-null skill id is invoked for both phase-specific prompts.
+- `knowledgeWriter.model`: `null` uses the host runner default; a value is snapshotted into each finalization job.
+- `knowledgeWriter.reasoningEffort`: selects the supported worker effort and defaults to `medium`.
 
-Keep writer routing minimal:
+The Stop/session-idle hook snapshots this effective configuration into `KnowledgeFinalizationJob.writer`. The host-aware finalizer, not `workflowGuidance` or the main agent, applies it independently to the Truth and ADR phases. Each prompt still declares its phase scope, completed plan, adjacent report, and finalization id; claw-kit does not define external document roots or subdirectory structure.
 
-- `workflowGuidance.delegateSubagents` carries explicit `skill`、`model` 和 `fork_context` 字段
-- since `0.1.49`, the guidance note defines each dispatched entry as a required structured contract: `When dispatching a subagent, each entry is a required structured contract whose fields must be honored directly.`
-- this dispatch-time contract means selected subagent entries must honor `skill`、`model`、`fork_context` and related fields directly, while optional truth suggestions still remain subject to the main agent's reusable-truth value check
-- default built-in skills stay `claw-kit:truth-writer` and `claw-kit:adr-writer`
-- external overrides switch routing to bare skill names such as `external-truth-writer` and `external-adr-writer`
-- writer deposition 默认使用 `fork_context: false`，只发送窄 bundle，而不是复制整段主线程历史
-- claw-kit does not define external document roots or subdirectory structure
+Legacy `externalTruthSkill` and `externalAdrSkill` may be normalized only as backward-compatible input. They are not current project schema owners and cannot create separate phase dispatch policies.
 
 ## Consequences
 
-- Projects can replace truth and ADR writers without changing the main claw-kit workflow.
-- Writer routing stays explicit and machine-readable in `delegateSubagents`.
-- `delegateSubagents` wording no longer encourages over-dispatch; it preserves machine-readable routing without weakening `workflowGuidance` as the mandatory contract.
-- writer specialist 默认保持非全量上下文 fork，减少沉淀型 worker 的上下文膨胀和宿主差异影响。
-- Default built-in writer behavior still works unchanged when no external override is configured.
+- Projects can replace writer capability without changing foreground plan workflow or creating separate host dispatch rules.
+- Job snapshots make retries reproducible even if project configuration changes after Stop.
+- `model = null` keeps host defaults available; explicit model and reasoning effort are preserved by the selected runner.
+- Default built-in behavior remains the ordered `claw-kit:truth-writer` then `claw-kit:adr-writer` path.
 
 ## Related Code
 
 - `.claw/project.json`
+- `packages/core/src/types.ts`
 - `packages/core/src/init.ts`
 - `packages/core/src/context.ts`
 - `packages/core/src/project-check.ts`
-- `packages/core/src/workflow-guidance.ts`
-- `packages/core/src/workflow-guidance.config.json`
+- `packages/core/src/knowledge-sidecar.ts`
 - `packages/cli/src/cli.ts`
 - `packages/core/test/core.test.ts`
 - `packages/cli/test/cli.test.ts`

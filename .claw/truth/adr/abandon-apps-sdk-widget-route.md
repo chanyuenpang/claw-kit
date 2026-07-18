@@ -20,13 +20,13 @@ Accepted
 - plan 命令同时提供 `planSummary`，用于主线程快速理解当前计划状态
 - 不再保留 deprecated app/widget compatibility commands
 - 不再把 Apps SDK widget envelope 或 chat renderer 作为计划展示契约
-- `truth-writer` 与 `adr-writer` 继续通过子代理沉淀 truth/ADR
+- Truth 与 ADR 继续由 host-aware background finalizer 的两个 focused phases 沉淀，不引入 Apps SDK surface
 
 ## Consequences
 
 - 项目架构重新收敛到 CLI/core 和 `.claw` canonical state，减少 Apps SDK host boundary 带来的维护面。
 - Codex adapter 继续消费 CLI 返回的 compact `workflowGuidance` 与 `planSummary`，而不是维护独立 app/widget 渲染路径。
-- 完成期知识沉淀仍保持 specialist 化，主线程只传递 completed `plan.json` bundle，不把 writer 流程内联为普通聊天输出。
+- 完成期知识沉淀仍保持 focused writer 边界，但 main thread 不派发 writer；Stop/session-idle sidecar 以 completed `plan.json` 和相邻 report 创建 job，不把 writer 流程内联为普通聊天输出。
 - 未来如需 UI surface，需要作为新的显式架构决策重新提出；旧的 `claw plan app` 与 Apps SDK widget contract 不再是兼容目标。
 
 ## Related Code

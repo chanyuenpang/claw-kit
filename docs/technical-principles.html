@@ -469,7 +469,7 @@
             guidance 不是一段更长的提示词。
             它是 <span class="highlight">按阶段返回的下一步建议</span>。
             启动阶段提醒 goal mode。
-            完成阶段由统一的 <code>knowledge-writer</code> 一次判断是否沉淀 truth、ADR、两者或都不沉淀。
+            完成阶段由一个 <code>knowledge-writer</code> 同时维护 Truth 与 ADR，并在同一轮中复核跨文档一致性和唯一 owner。
           </div>
           <p>
             Claw-Plan 的做法正好相反。
@@ -518,7 +518,7 @@
           <p>
             所以文档沉淀被放进 closeout。
             计划推进中，可以让 subagent 记录关键事实、设计取舍和复盘。
-            完成阶段，再交给统一的 <code>knowledge-writer</code> 写回项目。
+            完成阶段，再交给一个 <code>knowledge-writer</code> 统一维护项目 Truth 与 ADR。
           </p>
           <p>
             这样做不是为了把文档越写越多。

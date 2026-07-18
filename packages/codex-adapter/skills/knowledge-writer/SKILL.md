@@ -1,28 +1,44 @@
 ---
 name: knowledge-writer
-description: Evaluate a completed claw plan and its adjacent turn report, then deposit verified reusable knowledge and durable architectural decisions in one pass.
+description: Evaluate a completed claw plan and its adjacent turn report, then maintain canonical Truth and ADR knowledge in one consistency-aware pass.
 ---
 <!-- AUTO-GENERATED from shared/skills/knowledge-writer/SKILL.md. Edit the shared source instead. -->
 
-# knowledge-writer
+# Knowledge writer
 
-Treat the supplied completed plan, adjacent report, and finalization id as evidence.
+Use this skill as the knowledge-base steward after a claw plan completes. Read the supplied completed `plan.json` and every valid adjacent report entry as trusted verified evidence. Maintain one current owner for each material fact or decision across Truth and ADR; do not merely append a summary.
 
-## Input contract
+Trusted evidence is authoritative for what was verified at its own point in time, not automatically for the current worktree. Before writing a current-behavior claim, confirm the plan is actually completed and perform a read-only check of its implementation anchors and relevant later working-tree diff. This freshness check is not repeated implementation verification. If the input is incomplete, superseded, or conflicts with newer implementation in a way that cannot be resolved, choose no-op or preserve it only as explicitly historical evidence.
 
-- Read the completed `plan.json` or subplan JSON, including tasks, retrospective, and key decisions.
-- Read every valid JSONL entry in the adjacent `.report`; ignore malformed lines and repeated turn ids.
-- Do not modify either input or alter plan lifecycle state.
+## Session-scoped entry
 
-## Workflow
+The template declares `scope: "session"`, so direct entry works without a project `.claw` directory and does not trigger another knowledge-deposition cycle. Use `non-claw-fallback.md` only when the claw CLI or this template is unavailable.
 
-1. Use `claw search` to locate existing canonical documents and update the document that already owns the topic.
-2. Deposit only facts supported by the supplied evidence and likely to help future work. Exclude temporary progress, speculation, conversational summaries, and unchanged facts.
-3. Record an architectural decision only when the evidence establishes durable context, a decision, rationale, and consequences.
-4. It is valid to write reusable facts only, architectural decisions only, both, or neither.
-5. Preserve repository conventions, project-relative links, unrelated content, and valid encoding.
-6. Verify changed canonical documents through `claw search`.
+## Entry routing
 
-## Return contract
+- Direct single-plan finalization: use `claw plan create --template knowledge-writer --title "knowledge-writer"`, then follow returned `workflowGuidance`.
+- Active parent-plan task: use `claw subplan create --parent <parent-task-name> --task-id <id> --template knowledge-writer`; the subplan inherits its parent's scope.
+- Batch or mixed request: create a normal root claw plan first, with one task per completed plan or coherent knowledge unit. Each target task must create and complete a `knowledge-writer` subplan instead of depositing knowledge directly from the root plan.
 
-Return concise status and changed canonical paths, or state that no durable knowledge was found.
+Recommended batch task title:
+
+`Run a knowledge-writer subplan, maintain knowledge for <completed-plan>`
+
+Recommended batch task detail:
+
+`Goal: run the knowledge-writer subplan for <completed-plan> and its adjacent report. This task is satisfied by creating and completing that subplan. First run claw subplan create --parent <root-task-name> --task-id <id> --template knowledge-writer, then follow the returned workflowGuidance until it completes. Record the deposition or no-op result in the root plan before marking this task done.`
+
+## Non-negotiable stewardship rules
+
+- Truth and ADR are one knowledge system; leave all related current claims coherent.
+- Use `claw search`, open every plausible candidate owner, and use exhaustive text search when top-k recall could hide a competing claim.
+- Update the existing owner; create a document only for a genuinely new durable topic after filename and title collision checks.
+- Preserve unrelated user edits. Never modify the supplied plan/report, alter its lifecycle, dispatch another writer, or refresh recall yourself.
+- Re-run focused and exhaustive searches after writing. Do not report completion while a material current claim remains inconsistent or ownerless.
+- Current implementation outranks older report wording for current-state Truth; the report remains trusted historical evidence for the revision it describes.
+
+## References
+
+- Full direct workflow and fallback: `non-claw-fallback.md`
+- Content coverage: `CONTENT-COVERAGE.md`
+- Workflow template: `TEMPLATE.json`

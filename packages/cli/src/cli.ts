@@ -22,6 +22,10 @@ import {
   getTemplateTaskDoneChoices,
   resolvePlanTemplateFile,
   resolveProjectContext,
+  resolveWorkflowProjectContext,
+  resolveSessionWorkflowContext,
+  deleteSessionWorkflow,
+  sweepExpiredSessionWorkflows,
   resolveSessionBoundPlan,
   resolveContext,
   resolveSeedPlanTemplate,
@@ -48,12 +52,15 @@ import {
   type PlanTask,
   type PlanViewModel,
   type ProjectConfig,
+  type ProjectContext,
   type WorkflowGuidance,
   type KnowledgeFinalizationJob,
 } from "@veewo/claw-core";
 import { buildCodexDriverEnvelope } from "./codex-driver.js";
 import { checkCodexRuntime, resolveCodexSdkEntryPath } from "./codex-runtime.js";
 import { extractLatestFinalAssistantMessage } from "./codex-transcript.js";
+import { consumeBufferedHookInput } from "./knowledge-hook-preflight.js";
+import { resolveInvocationHost, withoutInvocationHost, type ClawHost } from "./invocation-host.js";
 import { runOpencodeKnowledgeWriter } from "./opencode-runner.js";
 
 const CLI_VERSION = readCliVersion();
@@ -74,6 +81,7 @@ type HelpNode = HelpEntry & {
 const TOP_LEVEL_COMMANDS: { name: string; summary: string }[] = [
   { name: "init [options]", summary: "Initialize and normalize the .claw project surface." },
   { name: "context [--task <name>]", summary: "Resolve project context, auto-initializing or correcting .claw state." },
+  { name: "session clean [--expired]", summary: "Remove current or expired session workflow state." },
   { name: "check", summary: "Check and auto-correct .claw project protocol fields." },
   { name: "plan <subcommand> [options]", summary: "Plan lifecycle: create, start, edit, remove, wait, resume, show, done." },
   { name: "codex driver", summary: "Return the versioned code-mode driver used by the Codex adapter." },
@@ -96,7 +104,7 @@ const COMMAND_HELP: Record<string, HelpNode> = {
       { flag: "--name <project-name>", detail: "Human-readable project name." },
       { flag: "--context-path <file>", detail: "Extra context path to track (repeatable)." },
       { flag: "--ext-path <path>", detail: "External doc path to index (repeatable)." },
-      { flag: "--external-writer-skill <skill>", detail: "Skill id for the combined knowledge writer." },
+      { flag: "--external-writer-skill <skill>", detail: "Skill id override for the combined knowledge-writer pass." },
       { flag: "--planning true|false", detail: "Enable planning-aware default template behavior (default true)." },
       { flag: "--external-planning-skill <skill>", detail: "Skill id for an external planning skill." },
       { flag: "--gitnexus true|false", detail: "Enable GitNexus integration (default false)." },
@@ -112,6 +120,10 @@ const COMMAND_HELP: Record<string, HelpNode> = {
       { flag: "--task <name>", detail: "Resolve context scoped to a specific task." },
     ],
   },
+  session: {
+    usage: ["{script} session clean", "{script} session clean --expired"],
+    description: "Clean ephemeral session-scoped workflow state without touching a project .claw directory.",
+  },
   check: {
     usage: ["{script} check"],
     description:
@@ -123,8 +135,8 @@ const COMMAND_HELP: Record<string, HelpNode> = {
     subcommands: {
       create: {
         usage: [
-          "{script} plan create \"<title>\" [--goal <text>]",
-          "{script} plan create --title <text> [--goal <text>] [--template <name>]",
+          "{script} plan create \"<title>\" [--goal <text>] [--scope session]",
+          "{script} plan create --title <text> [--goal <text>] [--template <name>] [--scope session]",
         ],
         description:
           "Create the task scope and initial plan from a template. Uses explicit `--template` first, otherwise the project's configured `defaultPlanTemplate`, and finally falls back to the built-in `default`; planning-enabled projects start in process.discussing with the default planning bridge tasks, while planning-disabled projects start directly in process.active with one executable task.",
@@ -132,6 +144,7 @@ const COMMAND_HELP: Record<string, HelpNode> = {
         options: [
           { flag: "--title <text>", detail: "Task title (required unless a positional title is given)." },
           { flag: "--goal <text>", detail: "Optional goal text." },
+          { flag: "--scope session", detail: "Use ephemeral per-session storage and disable project knowledge side effects." },
           { flag: "--template <name>", detail: "Optional plan template name. Overrides the project's configured default template." },
         ],
       },
@@ -412,12 +425,12 @@ const COMMAND_HELP: Record<string, HelpNode> = {
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const explicitHost = readOptionalFlag(args, "--host");
-  if (explicitHost) {
-    if (!new Set(["codex", "opencode"]).has(explicitHost)) {
-      handleError(new ClawError("PROJECT_CONFIG_INVALID", `Unsupported host "${explicitHost}".`));
-      return;
-    }
-    process.env.CLAW_HOST = explicitHost;
+  let effectiveHost: ClawHost | undefined;
+  try {
+    effectiveHost = resolveInvocationHost(explicitHost, process.env.CLAW_HOST);
+  } catch (error) {
+    handleError(error);
+    return;
   }
   const command = args.shift();
 
@@ -467,7 +480,10 @@ async function main(): Promise<void> {
         );
         return;
       case "context":
-        printJson(buildPublicContextOutput(await runContextCommand(args)));
+        printJson(buildPublicContextOutput(await runContextCommand(args, process.cwd(), resolveOwnerSessionKey(), effectiveHost)));
+        return;
+      case "session":
+        runSession(args);
         return;
       case "check":
         const checkResult = ensureProjectProtocol(process.cwd());
@@ -482,7 +498,7 @@ async function main(): Promise<void> {
         });
         return;
       case "plan":
-        await runPlan(args);
+        await runPlan(args, effectiveHost);
         return;
       case "codex":
         runCodex(args);
@@ -491,10 +507,10 @@ async function main(): Promise<void> {
         await runTemplate(args);
         return;
       case "task":
-        await runTask(args);
+        await runTask(args, effectiveHost);
         return;
       case "subplan":
-        await runSubplan(args);
+        await runSubplan(args, effectiveHost);
         return;
       case "switch-task":
         printJson(
@@ -512,13 +528,13 @@ async function main(): Promise<void> {
         runSearch(args);
         return;
       case "direct":
-        runDirect(args);
+        runDirect(args, effectiveHost);
         return;
       case "truth":
         runTruth(args);
         return;
       case "hook":
-        await runHook(args);
+        await runHook(args, effectiveHost);
         return;
       case "help":
         printHelp(args);
@@ -547,13 +563,37 @@ function runCodex(args: string[]): void {
   printJson(buildCodexDriverEnvelope(CLI_VERSION));
 }
 
-async function runPlan(args: string[]): Promise<void> {
+function runSession(args: string[]): void {
+  const subcommand = args.shift();
+  if (subcommand !== "clean") {
+    throw new ClawError("PROJECT_CONFIG_INVALID", `Unknown session subcommand "${subcommand ?? ""}".`);
+  }
+  const expired = readBooleanFlag(args, "--expired");
+  assertNoRemainingArgs(args, "session clean");
+  if (expired) {
+    const removed = sweepExpiredSessionWorkflows();
+    printJson({ ok: true, command: "session.clean", expired: true, removedCount: removed.length, removed });
+    return;
+  }
+  const ownerSessionKey = resolveOwnerSessionKey();
+  if (!ownerSessionKey) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "session clean requires a platform session id.");
+  }
+  printJson({
+    ok: true,
+    command: "session.clean",
+    removed: deleteSessionWorkflow(ownerSessionKey),
+  });
+}
+
+async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Promise<void> {
   const subcommand = args.shift();
   switch (subcommand) {
     case "create":
       rejectFlags(args, ["--task", "--plan", "--content", "--status", "--parent-task-id", "--description"]);
       const explicitTitle = readOptionalFlag(args, "--title");
       const explicitTemplate = readOptionalFlag(args, "--template");
+      const scope = readWorkflowScope(args);
       const title = explicitTitle ?? readOptionalPositionalArg(args);
       const templateName = explicitTemplate;
       if (!title) {
@@ -564,14 +604,15 @@ async function runPlan(args: string[]): Promise<void> {
       }
       const result = await writePlan({
         cwd: process.cwd(),
+        scope,
         templateName,
         title,
         goalText: readOptionalFlag(args, "--goal"),
         ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
-        host: process.env.CLAW_HOST ?? undefined,
+        host: effectiveHost,
       });
       assertNoRemainingArgs(args, "plan create");
-      printJson(compactPlanCommandResult("plan.create", result));
+      printJson(compactPlanCommandResult("plan.create", result, effectiveHost));
       return;
     case "edit": {
       const target = readPlanMutationTarget(args);
@@ -584,10 +625,10 @@ async function runPlan(args: string[]): Promise<void> {
         ...target,
         operations,
         commandSource: "plan.edit",
-        host: process.env.CLAW_HOST ?? undefined,
+        host: effectiveHost,
         ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
       });
-      printJson(compactPlanCommandResult("plan.edit", result));
+      printJson(compactPlanCommandResult("plan.edit", result, effectiveHost));
       if (result.operationChain?.status === "partial") process.exitCode = 1;
       return;
     }
@@ -606,17 +647,17 @@ async function runPlan(args: string[]): Promise<void> {
         ...target,
         updates,
         commandSource: "plan.edit",
-        host: process.env.CLAW_HOST ?? undefined,
+        host: effectiveHost,
         ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
       });
-      printJson(compactPlanCommandResult("plan.remove", result));
+      printJson(compactPlanCommandResult("plan.remove", result, effectiveHost));
       return;
     }
     case "wait":
-      await runPlanStatusAlias(args, "process.wait", "plan.wait");
+      await runPlanStatusAlias(args, "process.wait", "plan.wait", effectiveHost);
       return;
     case "resume":
-      await runPlanStatusAlias(args, "process.active", "plan.resume");
+      await runPlanStatusAlias(args, "process.active", "plan.resume", effectiveHost);
       return;
     case "start": {
       const updates = readPlanFieldUpdates(args);
@@ -637,10 +678,10 @@ async function runPlan(args: string[]): Promise<void> {
         planStatus: "process.active",
         completeLifecycleBridge: true,
         commandSource: "plan.start",
-        host: process.env.CLAW_HOST ?? undefined,
+        host: effectiveHost,
         ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
       });
-      printJson(compactPlanCommandResult("plan.start", result));
+      printJson(compactPlanCommandResult("plan.start", result, effectiveHost));
       return;
     }
     case "done": {
@@ -660,22 +701,28 @@ async function runPlan(args: string[]): Promise<void> {
       };
       const target = readPlanMutationTarget(args);
       assertNoRemainingArgs(args, "plan done");
-      const gitNexusPreflightAnalyzed = ensureGitNexusReadyForPlanDone(process.cwd());
+      const ownerSessionKey = resolveOwnerSessionKey() ?? undefined;
+      const workflowProject = resolveWorkflowProjectContext(process.cwd(), ownerSessionKey);
+      const gitNexusPreflightAnalyzed = workflowProject.scope === "project"
+        ? ensureGitNexusReadyForPlanDone(process.cwd())
+        : false;
       const result = await editPlan({
         cwd: process.cwd(),
         ...target,
         updates,
         planStatus: "end.completed",
         commandSource: "plan.done",
-        host: process.env.CLAW_HOST ?? undefined,
-        ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
+        host: effectiveHost,
+        ownerSessionKey,
       });
-      const completionRefresh = queueCompletionRefresh({
-        cwd: process.cwd(),
-        taskName: result.taskName,
-        skipGitNexusRefresh: gitNexusPreflightAnalyzed,
-      });
-      printJson(compactPlanCommandResult("plan.done", result, completionRefresh));
+      const completionRefresh = workflowProject.scope === "project"
+        ? queueCompletionRefresh({
+            cwd: process.cwd(),
+            taskName: result.taskName,
+            skipGitNexusRefresh: gitNexusPreflightAnalyzed,
+          })
+        : undefined;
+      printJson(compactPlanCommandResult("plan.done", result, effectiveHost, completionRefresh));
       return;
     }
     case "show": {
@@ -684,6 +731,7 @@ async function runPlan(args: string[]): Promise<void> {
       const result = showPlan({
         cwd: process.cwd(),
         ...target,
+        ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
       });
       printJson({
         ok: true,
@@ -706,17 +754,18 @@ async function runPlanStatusAlias(
   args: string[],
   planStatus: "process.wait" | "process.active",
   command: "plan.wait" | "plan.resume",
+  effectiveHost: ClawHost | undefined,
 ): Promise<void> {
   const result = await editPlan({
     cwd: process.cwd(),
     ...readPlanMutationTarget(args),
     planStatus,
     commandSource: "plan.edit",
-    host: process.env.CLAW_HOST ?? undefined,
+    host: effectiveHost,
     ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
   });
   assertNoRemainingArgs(args, command);
-  printJson(compactPlanCommandResult(command, result));
+  printJson(compactPlanCommandResult(command, result, effectiveHost));
 }
 
 async function runTemplate(args: string[]): Promise<void> {
@@ -755,6 +804,7 @@ async function runTemplate(args: string[]): Promise<void> {
         command: "template.validate",
         ok: true,
         templateId: template.id,
+        ...(template.scope ? { scope: template.scope } : {}),
         source: template.source,
         ...(template.templatePath ? { templatePath: template.templatePath } : {}),
         status: template.status,
@@ -773,7 +823,7 @@ async function runTemplate(args: string[]): Promise<void> {
   }
 }
 
-async function runTask(args: string[]): Promise<void> {
+async function runTask(args: string[], effectiveHost: ClawHost | undefined): Promise<void> {
   const subcommand = args.shift();
   switch (subcommand) {
     case "add": {
@@ -784,10 +834,10 @@ async function runTask(args: string[]): Promise<void> {
         ...target,
         operations,
         commandSource: "plan.edit",
-        host: process.env.CLAW_HOST ?? undefined,
+        host: effectiveHost,
         ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
       });
-      printJson(compactPlanCommandResult("task.add", result));
+      printJson(compactPlanCommandResult("task.add", result, effectiveHost));
       if (result.operationChain?.status === "partial") process.exitCode = 1;
       return;
     }
@@ -799,10 +849,10 @@ async function runTask(args: string[]): Promise<void> {
         ...target,
         operations,
         commandSource: "plan.edit",
-        host: process.env.CLAW_HOST ?? undefined,
+        host: effectiveHost,
         ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
       });
-      printJson(compactPlanCommandResult("task.edit", result));
+      printJson(compactPlanCommandResult("task.edit", result, effectiveHost));
       if (result.operationChain?.status === "partial") process.exitCode = 1;
       return;
     }
@@ -814,10 +864,10 @@ async function runTask(args: string[]): Promise<void> {
         ...target,
         operations,
         commandSource: "plan.edit",
-        host: process.env.CLAW_HOST ?? undefined,
+        host: effectiveHost,
         ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
       });
-      printJson(compactPlanCommandResult("task.remove", result));
+      printJson(compactPlanCommandResult("task.remove", result, effectiveHost));
       if (result.operationChain?.status === "partial") process.exitCode = 1;
       return;
     }
@@ -828,10 +878,10 @@ async function runTask(args: string[]): Promise<void> {
         cwd: process.cwd(),
         ...target,
         operations,
-        host: process.env.CLAW_HOST ?? undefined,
+        host: effectiveHost,
         ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
       });
-      printJson(compactPlanCommandResult("task.done", result));
+      printJson(compactPlanCommandResult("task.done", result, effectiveHost));
       if (result.operationChain?.status === "partial") process.exitCode = 1;
       return;
     }
@@ -880,7 +930,7 @@ function runSearch(args: string[]): void {
   });
 }
 
-function runDirect(args: string[]): void {
+function runDirect(args: string[], effectiveHost: ClawHost | undefined): void {
   assertNoRemainingArgs(args, "direct");
   const completionRefresh = queueCompletionRefresh({
     cwd: process.cwd(),
@@ -894,7 +944,7 @@ function runDirect(args: string[]): void {
       "direct",
       buildDirectWorkflowGuidance({
         projectConfig: resolveProjectContext(process.cwd()).projectConfig,
-        host: process.env.CLAW_HOST ?? undefined,
+        host: effectiveHost,
       }),
       completionRefresh,
     ),
@@ -907,11 +957,28 @@ async function runContextCommand(
   args: string[],
   cwd = process.cwd(),
   ownerSessionKey = resolveOwnerSessionKey(),
+  effectiveHost?: ClawHost,
 ): Promise<Record<string, unknown>> {
   const taskName = readOptionalFlag(args, "--task");
   let initialized = false;
   let corrected = false;
   let fixedPaths: string[] = [];
+
+  const sessionProject = resolveSessionWorkflowContext(ownerSessionKey ?? undefined);
+  if (sessionProject) {
+    const activeWorkflow = !taskName && ownerSessionKey
+      ? await tryResolveActiveWorkflowSnapshot(cwd, ownerSessionKey, effectiveHost)
+      : null;
+    const codexRuntime = effectiveHost === "codex" ? checkCodexRuntime() : null;
+    const codexRuntimeError = codexRuntime && !codexRuntime.ok
+      ? buildCodexRuntimeError(codexRuntime.detail)
+      : null;
+    return {
+      project: sessionProject,
+      ...(activeWorkflow ? { activeWorkflow } : {}),
+      ...(codexRuntimeError ? { error: codexRuntimeError } : {}),
+    };
+  }
 
   try {
     const ensureResult = ensureProjectProtocol(cwd);
@@ -936,9 +1003,9 @@ async function runContextCommand(
   }
   const activeWorkflow =
     !taskName && ownerSessionKey
-      ? await tryResolveActiveWorkflowSnapshot(cwd, ownerSessionKey)
+      ? await tryResolveActiveWorkflowSnapshot(cwd, ownerSessionKey, effectiveHost)
       : null;
-  const codexRuntime = process.env.CLAW_HOST === "codex" ? checkCodexRuntime() : null;
+  const codexRuntime = effectiveHost === "codex" ? checkCodexRuntime() : null;
   const codexRuntimeError = codexRuntime && !codexRuntime.ok
     ? buildCodexRuntimeError(codexRuntime.detail)
     : null;
@@ -974,6 +1041,7 @@ function buildPublicContextOutput(context: Record<string, unknown>): Record<stri
   const output: JsonRecord = {};
   if (project) {
     output.project = {
+      ...(project.scope === "session" ? { scope: "session" } : {}),
       projectRoot: project.projectRoot,
       clawDir: project.clawDir,
       projectId: project.projectId,
@@ -988,6 +1056,11 @@ function buildPublicContextOutput(context: Record<string, unknown>): Record<stri
   }
   if (context.activeWorkflow !== undefined) {
     output.activeWorkflow = context.activeWorkflow;
+  } else {
+    output.session = {
+      boundPlan: false,
+      note: "No plan is bound to this session yet. Ask the user for the task scope, or run `claw plan create` when ready to start one.",
+    };
   }
   if (context.error !== undefined) {
     output.error = context.error;
@@ -1175,17 +1248,17 @@ function runTruth(args: string[]): void {
   }
 }
 
-async function runHook(args: string[]): Promise<void> {
+async function runHook(args: string[], effectiveHost: ClawHost | undefined): Promise<void> {
   const eventName = args.shift();
   if (!eventName) {
     throw new ClawError("PROJECT_CONFIG_INVALID", "claw hook requires an event name.");
   }
   if (eventName === "SessionStart" || eventName === "auto-claw") {
-    await runSessionStartHook();
+    await runSessionStartHook(effectiveHost);
     return;
   }
   if (eventName === "Stop" || eventName === "auto-doc") {
-    await runStopHook();
+    await runStopHook(effectiveHost);
     return;
   }
   const project = tryResolveHookProject(process.cwd());
@@ -1223,7 +1296,7 @@ async function runHook(args: string[]): Promise<void> {
   });
 }
 
-async function runStopHook(): Promise<void> {
+async function runStopHook(effectiveHost: ClawHost | undefined): Promise<void> {
   if (process.env.CLAW_KNOWLEDGE_FINALIZER === "1") {
     return;
   }
@@ -1249,7 +1322,7 @@ async function runStopHook(): Promise<void> {
       sessionId,
       turnId,
       message,
-      host: process.env.CLAW_HOST,
+      host: effectiveHost,
     });
     if (result.ok && result.jobPath && process.env.CLAW_KNOWLEDGE_FINALIZER_DISABLE_LAUNCH !== "1") {
       launchKnowledgeFinalizationWorker(result.jobPath, project.projectRoot);
@@ -1266,8 +1339,8 @@ async function runInternalKnowledgeFinalize(args: string[]): Promise<void> {
     return;
   }
   try {
-    const run = await runKnowledgeWriterForJob(running);
     const project = resolveProjectContext(running.projectRoot);
+    const writerRun = await runKnowledgeWriterForJob(running);
     const truthEncoding = normalizeTruthMarkdownEncoding(project);
     queueCompletionRefresh({
       cwd: running.projectRoot,
@@ -1281,8 +1354,8 @@ async function runInternalKnowledgeFinalize(args: string[]): Promise<void> {
       ...running,
       status: "succeeded",
       finishedAt: new Date().toISOString(),
-      ...(run.threadId ? { sdkThreadId: run.threadId } : {}),
-      finalResponse: run.finalResponse,
+      ...(writerRun.threadId ? { sdkThreadId: writerRun.threadId } : {}),
+      finalResponse: writerRun.finalResponse,
       truthEncoding,
     });
     tryCleanupKnowledgeFinalizationReport(project, running.reportPath);
@@ -1321,6 +1394,9 @@ async function runKnowledgeWriterForJob(running: KnowledgeFinalizationJob): Prom
       finalResponse: result.finalResponse,
       ...(result.threadId ? { threadId: result.threadId } : {}),
     };
+  }
+  if (running.host !== undefined && running.host !== null && running.host !== "codex") {
+    throw new Error(`Unsupported knowledge finalization job host "${String(running.host)}".`);
   }
   return runCodexSdkWriter(running);
 }
@@ -1361,7 +1437,7 @@ async function runCodexSdkWriter(running: KnowledgeFinalizationJob): Promise<Kno
 
 function knowledgeFinalizerEnvironment(): Record<string, string> {
   const env: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
+  for (const [key, value] of Object.entries(withoutInvocationHost())) {
     if (value !== undefined) {
       env[key] = value;
     }
@@ -1374,10 +1450,11 @@ function buildKnowledgeWriterPrompt(job: KnowledgeFinalizationJob): string {
   const writerSkill = job.writer?.externalSkill?.trim() || "claw-kit:knowledge-writer";
   return [
     `Use the ${writerSkill} skill and follow it exactly.`,
+    "Act as the knowledge-base steward: maintain Truth and ADR together, preserve one current owner, and reconcile related current claims before completion.",
     `Completed plan: ${job.planPath}`,
     `Turn report: ${job.reportPath}`,
     `Finalization id: ${job.finalizeId}`,
-    "Treat these files only as evidence. Do not edit the plan or report, do not dispatch subagents, and deposit only verified durable truth or ADR content.",
+    "Treat the completed plan and report as verified evidence. Do not edit either input, do not dispatch subagents, and do not repeat implementation or test verification.",
   ].join("\n");
 }
 
@@ -1395,7 +1472,7 @@ function launchKnowledgeFinalizationWorker(jobPath: string, cwd: string): void {
       stdio: "ignore",
       windowsHide: true,
       env: {
-        ...process.env,
+        ...withoutInvocationHost(),
         CLAW_KNOWLEDGE_NODE: process.execPath,
         CLAW_KNOWLEDGE_ENTRY: resolveCliEntryPath(),
         CLAW_KNOWLEDGE_JOB: jobPath,
@@ -1410,12 +1487,12 @@ function launchKnowledgeFinalizationWorker(jobPath: string, cwd: string): void {
   const child = spawn(
     process.execPath,
     [resolveCliEntryPath(), "internal-knowledge-finalize", "--job", jobPath],
-    { cwd, detached: true, stdio: "ignore", windowsHide: true },
+    { cwd, detached: true, stdio: "ignore", windowsHide: true, env: withoutInvocationHost() },
   );
   child.unref();
 }
 
-async function runSessionStartHook(): Promise<void> {
+async function runSessionStartHook(effectiveHost: ClawHost | undefined): Promise<void> {
   if (process.env.CLAW_KNOWLEDGE_FINALIZER === "1") {
     return;
   }
@@ -1423,13 +1500,22 @@ async function runSessionStartHook(): Promise<void> {
   const hookCwd = resolveHookCwd(payload);
   const ownerSessionKey = resolveOwnerSessionKey(payload);
 
-  if (!hookCwd || !containsClawDir(hookCwd)) {
+  if (!hookCwd) {
+    return;
+  }
+  const sessionProject = resolveSessionWorkflowContext(ownerSessionKey ?? undefined);
+  if (!containsClawDir(hookCwd) && !sessionProject) {
     return;
   }
 
   try {
-    const context = await runContextCommand([], hookCwd, ownerSessionKey);
-    if (!context.error && process.env.CLAW_KNOWLEDGE_FINALIZER_DISABLE_LAUNCH !== "1") {
+    const context = await runContextCommand([], hookCwd, ownerSessionKey, effectiveHost);
+    const contextProject = asJsonRecord(context.project);
+    if (
+      contextProject?.scope !== "session"
+      && !context.error
+      && process.env.CLAW_KNOWLEDGE_FINALIZER_DISABLE_LAUNCH !== "1"
+    ) {
       const project = resolveProjectContext(hookCwd);
       for (const jobPath of listRetryableKnowledgeFinalizationJobs(project)) {
         try {
@@ -1723,6 +1809,7 @@ function summarizeRecoveredPlanContent(planContent: JsonRecord): string[] {
 async function tryResolveActiveWorkflowSnapshot(
   cwd: string,
   ownerSessionKey: string,
+  effectiveHost: ClawHost | undefined,
 ): Promise<{
   taskName: string;
   planFile: string;
@@ -1732,7 +1819,7 @@ async function tryResolveActiveWorkflowSnapshot(
   planContent: PlanDocument;
   workflowGuidance: WorkflowGuidance;
 } | null> {
-  const project = resolveProjectContext(cwd);
+  const project = resolveWorkflowProjectContext(cwd, ownerSessionKey);
   const planPath = resolveSessionBoundPlan(project, ownerSessionKey);
   if (!planPath) {
     return null;
@@ -1751,6 +1838,7 @@ async function tryResolveActiveWorkflowSnapshot(
       cwd,
       taskName,
       planFile,
+      ownerSessionKey,
     });
     if (result.plan.status.startsWith("end.")) {
       unbindSession(project, ownerSessionKey);
@@ -1770,6 +1858,7 @@ async function tryResolveActiveWorkflowSnapshot(
         plan: result.plan,
         projectRoot: project.projectRoot,
         projectConfig: project.projectConfig,
+        host: effectiveHost,
       }),
     };
   } catch {
@@ -1778,7 +1867,7 @@ async function tryResolveActiveWorkflowSnapshot(
   }
 }
 
-async function runSubplan(args: string[]): Promise<void> {
+async function runSubplan(args: string[], effectiveHost: ClawHost | undefined): Promise<void> {
   const subcommand = args.shift();
   switch (subcommand) {
     case "create": {
@@ -1788,9 +1877,10 @@ async function runSubplan(args: string[]): Promise<void> {
         parentTaskId: readOptionalNumber(args, "--task-id") ?? failMissingNumericFlag("--task-id"),
         templateName: readOptionalFlag(args, "--template") ?? undefined,
         ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
+        host: effectiveHost,
       });
       assertNoRemainingArgs(args, "subplan create");
-      printJson(compactPlanCommandResult("subplan.create", result));
+      printJson(compactPlanCommandResult("subplan.create", result, effectiveHost));
       return;
     }
     default:
@@ -1842,11 +1932,14 @@ function summarizeGoalMode(value: JsonRecord | undefined): string | null {
 }
 
 async function readStdinJson(): Promise<unknown> {
+  const bufferedInput = consumeBufferedHookInput();
   const chunks: string[] = [];
-  for await (const chunk of process.stdin) {
-    chunks.push(typeof chunk === "string" ? chunk : chunk.toString("utf8"));
+  if (bufferedInput === null) {
+    for await (const chunk of process.stdin) {
+      chunks.push(typeof chunk === "string" ? chunk : chunk.toString("utf8"));
+    }
   }
-  const raw = chunks.join("").trim();
+  const raw = (bufferedInput ?? chunks.join("")).trim();
   if (!raw) {
     return null;
   }
@@ -1882,7 +1975,6 @@ function compactPlanCommandResult(
       completionPolicy: string;
     };
     previousPlanStatus?: string;
-    emittedEvents?: string[];
     changedTaskIds?: number[];
     appendedTaskIds?: number[];
     events?: PlanEvent[];
@@ -1893,6 +1985,7 @@ function compactPlanCommandResult(
       failedOperation?: Record<string, unknown>;
     };
   },
+  effectiveHost: ClawHost | undefined,
   completionRefresh?: CompletionRefreshResult,
   ): Record<string, unknown> {
     const archivedPlanPath =
@@ -1901,8 +1994,8 @@ function compactPlanCommandResult(
         ? completionRefresh.taskRetention.archivedCurrentTask.archivedPlanPath
         : undefined;
     const resolvedPlanPath = archivedPlanPath ?? result.planPath;
-    const hostActions = buildHostActions(result);
-    const codexResult = process.env.CLAW_HOST === "codex";
+    const codexResult = effectiveHost === "codex";
+    const hostActions = codexResult ? buildHostActions(result) : [];
     return {
       ok: true,
       command,
@@ -1910,8 +2003,6 @@ function compactPlanCommandResult(
       ...(archivedPlanPath ? { archivedPlanPath } : {}),
       planStatus: result.planStatus,
       ...(!codexResult && result.previousPlanStatus ? { previousPlanStatus: result.previousPlanStatus } : {}),
-      ...(!codexResult && result.emittedEvents?.length ? { emittedEvents: result.emittedEvents } : {}),
-      ...(!codexResult && result.events?.length ? { events: result.events } : {}),
       ...(hostActions.length ? { hostActions } : {}),
       ...(!codexResult && result.changedTaskIds?.length ? { changedTaskIds: result.changedTaskIds } : {}),
       ...(!codexResult && result.appendedTaskIds?.length ? { appendedTaskIds: result.appendedTaskIds } : {}),
@@ -2236,7 +2327,7 @@ function readPlanMutationTarget(args: string[]): { taskName: string; planFile?: 
     };
   }
 
-  const project = resolveProjectContext(process.cwd());
+  const project = resolveWorkflowProjectContext(process.cwd(), resolveOwnerSessionKey() ?? undefined);
   const boundPlanPath = resolveSessionBoundPlan(project, resolveOwnerSessionKey() ?? undefined);
   if (!boundPlanPath) {
     throw new ClawError(
@@ -2521,7 +2612,7 @@ function launchCompletionRefreshWorker(input: {
         stdio: "ignore",
         windowsHide: true,
         env: {
-          ...process.env,
+          ...withoutInvocationHost(),
           CLAW_COMPLETION_NODE: process.execPath,
           CLAW_COMPLETION_ENTRY: resolveCliEntryPath(),
           CLAW_COMPLETION_CWD: input.cwd,
@@ -2570,6 +2661,7 @@ function launchCompletionRefreshWorker(input: {
       detached: true,
       stdio: "ignore",
       windowsHide: true,
+      env: withoutInvocationHost(),
     },
   );
   child.unref();
@@ -3310,6 +3402,19 @@ function normalizeVersionString(value: unknown): string | null {
   }
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+}
+
+function readWorkflowScope(args: string[]): "session" | undefined {
+  const value = readOptionalFlag(args, "--scope");
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === "session") {
+    return "session";
+  }
+  throw new ClawError("PROJECT_CONFIG_INVALID", "--scope currently accepts only session; omit it for project scope.", {
+    scope: value,
+  });
 }
 
 function readOptionalFlag(args: string[], flag: string): string | undefined {

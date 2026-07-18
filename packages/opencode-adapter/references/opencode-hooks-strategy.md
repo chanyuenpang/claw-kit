@@ -13,7 +13,6 @@ The core workflow works without the plugin. The plugin is an enhancement layer f
 
 - one-shot startup recovery nudges on new and compacted sessions
 - one report append when each main-agent turn goes idle
-- goal continuation when a session-bound plan is still `process.active`
 
 ## Why this matters
 
@@ -23,8 +22,15 @@ Current active use:
 
 - `session.created` / `session.compacted` call the opencode-host recovery entry through `claw hook auto-claw`. Compaction re-runs because the prior system prompt injection is lost when the context window is compressed.
 - The plugin tracks `message.updated` (role `assistant`) and `message.part.updated` (type `text`) to cache the latest assistant message text per session.
-- `session.idle` hands the cached final assistant message to `claw hook auto-doc --host opencode` via stdin (`{ cwd, session_id, turn_id, message }`). claw appends one idempotent report entry, and when a plan just completed it queues the host-aware finalization worker.
-- The only claw-kit runtime gate is that `cwd` resolves into a `.claw` project.
+- `session.idle` hands the cached final assistant message to `claw hook auto-doc --host opencode` via stdin (`{ cwd, session_id, turn_id, message }`). Before loading the main CLI, `auto-doc` exits unless the session knowledge registry contains an active or pending target. Otherwise claw appends one idempotent report entry, and when a plan just completed it queues the host-aware finalization worker.
+- The session knowledge registry stays host-free. `session.idle` writes `opencode`
+  directly into the queued finalization job; the detached worker selects
+  `opencode run` from `job.host` and does not inherit the foreground
+  `CLAW_HOST`.
+- OpenCode receives projected `nextTask`/`nextsteps` guidance directly. The CLI
+  constructs `hostActions` only for Codex, so the plugin has no output-stripping
+  compatibility layer.
+- Startup recovery requires `cwd` to resolve into a `.claw` project. Turn-report capture requires `.claw` directly under hook `cwd` plus a valid session knowledge target; it neither reads task bindings nor inherits a parent directory's `.claw`.
 - When that gate is met, the entry gathers current project startup state and injects developer-visible startup guidance.
 
 ## Decision rule

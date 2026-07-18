@@ -9,12 +9,14 @@ type SessionBindingRegistry = {
   bindings: Record<string, string>;
 };
 
+const SESSION_SCOPE_BINDING_KEY = "$session";
+
 export function sessionBindingRegistryPath(project: ProjectContext): string {
   return path.join(project.clawDir, "runtime", "session-bindings.json");
 }
 
 export function bindSessionToPlan(project: ProjectContext, sessionKey: string | undefined, planPath: string): void {
-  const normalizedKey = sessionKey?.trim();
+  const normalizedKey = bindingKey(project, sessionKey);
   if (!normalizedKey) {
     return;
   }
@@ -25,7 +27,7 @@ export function bindSessionToPlan(project: ProjectContext, sessionKey: string | 
 }
 
 export function unbindSession(project: ProjectContext, sessionKey: string | undefined): void {
-  const normalizedKey = sessionKey?.trim();
+  const normalizedKey = bindingKey(project, sessionKey);
   if (!normalizedKey) {
     return;
   }
@@ -35,7 +37,7 @@ export function unbindSession(project: ProjectContext, sessionKey: string | unde
 }
 
 export function resolveSessionBoundPlan(project: ProjectContext, sessionKey: string | undefined): string | null {
-  const normalizedKey = sessionKey?.trim();
+  const normalizedKey = bindingKey(project, sessionKey);
   if (!normalizedKey) {
     return null;
   }
@@ -52,6 +54,13 @@ export function resolveSessionBoundPlan(project: ProjectContext, sessionKey: str
     return null;
   }
   return planPath;
+}
+
+function bindingKey(project: ProjectContext, sessionKey: string | undefined): string | undefined {
+  if (project.scope === "session") {
+    return sessionKey?.trim() ? SESSION_SCOPE_BINDING_KEY : undefined;
+  }
+  return sessionKey?.trim() || undefined;
 }
 
 function toBoundPlanPath(project: ProjectContext, planPath: string): string {

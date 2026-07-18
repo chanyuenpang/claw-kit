@@ -21,7 +21,7 @@ Accepted
 
 同时，startup 恢复只在能够确认当前 session 对应的 active workflow 时才应该注入最小 workflow contract；否则应保持现有 startup 行为不变，避免创造额外 recover prompt 干扰 `using-claw-kit` 的默认入口。
 
-随着 Goal mode 与 delegated specialists 真正进入日常执行流，默认 startup prompt 还需要承担一个额外约束：它既要保持最小化，避免重复低价值状态信息，也要明确声明当前 thread 已授权使用 Goal mode、`truth-writer` 与 `adr-writer`，防止 agent 误把“等待用户再次授权”当成合法分支。
+随着 Goal mode 与 delegated execution specialists 进入日常执行流，默认 startup prompt 需要保持最小化并恢复当前 plan contract。Knowledge writers 不属于 startup 授权或 main-agent delegation surface；它们由 hook-owned finalizer 独立运行。
 
 围绕 project protocol 版本超前的 startup recovery 还确认了另一组长期约束：`runContextCommand` 仍然负责检测版本漂移并生成 `startupRecovery.versionSync`，但恢复流本身不再隐式执行本地升级；是否把更新动作提升为 startup 的第一步，改由 `project.json.autoUpdate` 和已发布新版本共同决定。同时，CLI 与当前 host plugin 安装面的更新要保持为同一个显式 contract，而不是把分发更新塞回 `context` 或 `patch` 语义。
 
