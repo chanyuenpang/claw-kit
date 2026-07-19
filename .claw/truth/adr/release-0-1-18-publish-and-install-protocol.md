@@ -10,6 +10,8 @@ Accepted
 
 ## Decision
 
+本文拥有仓库级 release / install 顺序、来源闸门、direct-`main` 交付与 closeout 条件。`@veewo/claw-core`、`@veewo/claw` 的包身份、依赖关系及 core-before-CLI 顺序由 `.claw/truth/adr/publish-claw-npm-package.md` 拥有；本文引用该顺序作为 release protocol 的前置决策，不另设 competing owner。
+
 采用以下发布与安装顺序：
 
 - 如果本地已经有尚未推送的 release guidance / truth 变更，先单独提交，再同步远端 `main`，避免把预发布文档调整和远端 release 基线混在同一个未提交工作区里

@@ -176,6 +176,9 @@ The previous dual-surface maintainer model is superseded. Release and update wor
 - Use the published `chanyuenpang/claw-kit` repository marketplace for maintainer and third-party Codex updates alike.
 - Enable only `claw-kit@claw-kit`; explicitly disable `claw-kit@claw-kit-local`.
 - Treat unpublished workspace payloads and local marketplace caches as invalid release evidence.
+- Keep the official Git checkout/marketplace path as the default transport. If Git transport itself stalls, an official GitHub branch archive may substitute only as a transport recovery: verify the archive's plugin manifest against the already-published target, then install that verified payload through the maintained official cache/identity installer and retain the normal source/cache manifest comparison.
+
+This recovery is intentionally narrower than accepting an arbitrary directory. The rejected alternatives are using unpublished workspace files, switching to a local marketplace, or treating an unverified archive/cache directory as activation evidence. The trust boundary remains the published GitHub source plus target manifest, enabled official identity, and matching source/cache payload; the mere presence of `.git` metadata is not the trust boundary. Current operational behavior is owned by `.claw/truth/features/host-specific-update-skills.md`.
 
 ## Search Terms
 

@@ -2108,18 +2108,34 @@ function compactPlanCommandResult(
     const resolvedPlanPath = archivedPlanPath ?? result.planPath;
     const codexResult = effectiveHost === "codex";
     const hostActions = codexResult ? buildHostActions(result) : [];
+    const planSummary = result.planView.collapsedSummary;
+    const achievement = command === "plan.done" && result.planStatus === "end.completed" && result.plan
+      ? {
+          status: result.planStatus,
+          title: result.plan.title,
+          planSummary,
+          completedTasks: result.plan.tasks.filter((task) => task.status === "done").length,
+          totalTasks: result.plan.tasks.length,
+          completedAt: result.plan.completedAt,
+          retrospectiveSaved: Boolean(result.plan.retrospective?.summary?.trim()),
+          keyDecisionsSaved: result.plan.keyDecisions?.length ?? 0,
+        }
+      : undefined;
     return {
       ok: true,
       command,
       planPath: resolvedPlanPath,
       ...(archivedPlanPath ? { archivedPlanPath } : {}),
       planStatus: result.planStatus,
+      ...(achievement ? { achievement } : {}),
       ...(!codexResult && result.previousPlanStatus ? { previousPlanStatus: result.previousPlanStatus } : {}),
       ...(hostActions.length ? { hostActions } : {}),
       ...(!codexResult && result.changedTaskIds?.length ? { changedTaskIds: result.changedTaskIds } : {}),
       ...(!codexResult && result.appendedTaskIds?.length ? { appendedTaskIds: result.appendedTaskIds } : {}),
       ...(codexResult ? { stage: result.workflowGuidance.stage } : {}),
-      ...(!codexResult ? { nextsteps: result.workflowGuidance.nextsteps } : {}),
+      ...(!codexResult || command === "plan.done"
+        ? { nextsteps: result.workflowGuidance.nextsteps }
+        : {}),
       ...(result.workflowGuidance.nextTask ? { nextTask: result.workflowGuidance.nextTask } : {}),
       ...(result.workflowGuidance.notes?.trim() && !codexResult
         ? { notes: result.workflowGuidance.notes }
@@ -2149,7 +2165,7 @@ function compactPlanCommandResult(
             },
           }
         : {}),
-      planSummary: result.planView.collapsedSummary,
+      planSummary,
     };
 }
 

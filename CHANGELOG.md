@@ -4,6 +4,17 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## Unreleased
 
+## [0.1.85] - 2026-07-19
+
+### Changed
+
+- `claw plan done` now returns a structured completion achievement, the canonical plan path, and guidance for continuing to use claw in the same thread
+- The Codex code-mode driver advances to cache version 4 and preserves terminal completion evidence without expanding non-terminal mutation output
+
+### Fixed
+
+- Root and session completion no longer require a follow-up `plan show` read to verify the persisted result, while completed subplans still resume their parent without emitting a misleading terminal achievement
+
 ## [0.1.84] - 2026-07-19
 
 ### Added

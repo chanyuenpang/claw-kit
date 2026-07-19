@@ -485,6 +485,15 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   assert.equal(gitnexus.enabled, false);
   assert.match(String(gitnexus.reason), /preflight/);
   assert.equal(doneResult.planSummary, "1/1 e2e-task");
+  const achievement = doneResult.achievement as JsonRecord;
+  assert.equal(achievement.status, "end.completed");
+  assert.equal(achievement.title, "e2e-task");
+  assert.equal(achievement.planSummary, "1/1 e2e-task");
+  assert.equal(achievement.completedTasks, 1);
+  assert.equal(achievement.totalTasks, 1);
+  assert.equal(achievement.retrospectiveSaved, true);
+  assert.equal(achievement.keyDecisionsSaved, 0);
+  assert.match(String(achievement.completedAt), /^\d{4}-\d{2}-\d{2}T/);
 
   const gitnexusLog = fs.readFileSync(shim.logPath, "utf-8");
   assert.match(gitnexusLog, /analyze --embeddings --no-ai-context/);
@@ -691,9 +700,9 @@ test("cli codex driver returns an executable versioned source envelope", async (
   const root = createFixture("codex-driver-envelope");
   const envelope = runClaw(["codex", "driver"], root);
   assert.equal(envelope.command, "codex.driver");
-  assert.equal(envelope.driverVersion, 3);
+  assert.equal(envelope.driverVersion, 4);
   assert.equal(envelope.hostActionSchemaVersion, 1);
-  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v3:s1");
+  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v4:s1");
   assert.match(String(envelope.sha256), /^[a-f0-9]{64}$/);
 
   const runner = (0, eval)(`(${String(envelope.source)})`) as (
@@ -703,9 +712,21 @@ test("cli codex driver returns an executable versioned source envelope", async (
   const calls: Array<[string, unknown]> = [];
   const mutationResult = {
     ok: true,
-    command: "plan.resume",
-    stage: "execution",
-    planSummary: "1/2 demo",
+    command: "plan.done",
+    stage: "done",
+    planSummary: "2/2 Demo",
+    planPath: "G:\\example\\.claw\\tasks\\demo\\plan.json",
+    nextsteps: ["Start the next task through using-claw-kit."],
+    achievement: {
+      status: "end.completed",
+      title: "Demo",
+      planSummary: "2/2 Demo",
+      completedTasks: 2,
+      totalTasks: 2,
+      completedAt: "2026-07-19T00:00:00.000Z",
+      retrospectiveSaved: true,
+      keyDecisionsSaved: 1,
+    },
     hostActions: [
       {
         schemaVersion: 1,
@@ -737,7 +758,13 @@ test("cli codex driver returns an executable versioned source envelope", async (
     },
   );
 
-  assert.deepEqual(actual, { stage: "execution", planSummary: "1/2 demo" });
+  assert.deepEqual(actual, {
+    stage: "done",
+    planSummary: "2/2 Demo",
+    planPath: "G:\\example\\.claw\\tasks\\demo\\plan.json",
+    nextsteps: ["Start the next task through using-claw-kit."],
+    achievement: mutationResult.achievement,
+  });
   assert.equal("hostActions" in actual, false);
   assert.equal("command" in actual, false);
   assert.match(String((calls[0][1] as JsonRecord).command), /--host codex$/);
@@ -903,6 +930,9 @@ test("session plan completion keeps Goal actions but queues no knowledge or proj
     env,
   );
   assert.equal(completed.planStatus, "end.completed");
+  assert.equal(completed.planPath, planPath);
+  assert.equal((completed.achievement as JsonRecord).status, "end.completed");
+  assert.equal((completed.nextsteps as string[]).some((step) => step.includes("using-claw-kit")), true);
   const completionActions = completed.hostActions as Array<JsonRecord>;
   assert.ok(completionActions.some((action) => action.tool === "update_goal"));
 
@@ -2002,6 +2032,7 @@ test("cli plan done on a subplan resumes the parent plan instead of archiving th
   ) as JsonRecord;
 
   assert.equal(doneResult.planStatus, "process.active");
+  assert.equal("achievement" in doneResult, false);
   assert.match(String(doneResult.planPath), /tasks[\\/]demo-task[\\/]plan\.json$/);
   assert.deepEqual(doneResult.nextsteps, [
     "Sync thread progress with `update_plan`.",

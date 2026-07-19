@@ -326,3 +326,20 @@
 - `knowledge status retry explain`
 - `search cold 15 16 seconds warm 1 second`
 - `SessionStart runContextCommand detached local embedding warmup`
+
+### 0.1.84 CLI 与 0.1.83 plugin snapshot 混合态流程评估（2026-07-19）
+
+- 本轮真实运行边界是全局 CLI 与仓库 source 均为 `0.1.84`，但当前 Codex 线程加载的 plugin snapshot 仍是 `0.1.83+codex.20260719013549`。因此结果只证明这组混合合同下的真实路径，不能表述为纯 `0.1.84` plugin 端到端验收；版本复测必须同时报告全局 CLI、仓库 source / project protocol 与线程实际加载的 plugin snapshot。该决策的 canonical owner 仍是 `.claw/truth/adr/workflow-cost-optimization-route.md`。
+- 该混合态完整跑通 `process.discussing -> process.active -> end.completed`，`3/3` tasks 完成且 Goal 已清空。每次 `workflowGuidance` 都给出单一明确的下一任务和允许命令，计划计数、状态切换与 closeout 没有悬空；本轮体验快照评分为整体顺滑度 `8/10`、用户心智成本 `3/10`、主代理 / 维护者心智成本 `6/10`，这些评分是该版本组合与当次任务的历史观测，不是跨版本 SLA。
+- root plan 完成后会按 `task-layout-and-session-bindings.md` 解除当前 session binding。本轮随后裸跑 `claw plan show` 观测到结构化 `PROJECT_CONFIG_INVALID`；这不表示 completed plan 丢失，delayed archive window 内仍可用显式 `--task-name` 读取原路径。诊断时应区分“完成态计划仍存在”与“当前 session 已无绑定”，避免把无 binding 的裸命令错误误判为 lifecycle completion 失败。
+- 固定 code-mode driver 让 canonical mutation 与 host action 顺序保持程序化，但调用方仍需复制并遵守严格 bridge 样板；本轮将这部分评为主要维护侧心智成本。该样板的当前程序合同与单一 owner 是 `.claw/truth/adr/codex-plan-mutations-use-fixed-code-mode-consumer.md`，本节只保留混合版本运行体验，不另立并行决策。
+- 本轮没有修改产品代码；评估开始前已有的 `6` 个未提交文件保持原有归属，不能作为本次流程验证产物。
+
+#### 本轮证据与检索词
+
+- `.claw/tasks/评估最新版-claw-kit-任务流程与心智成本/plan.json`
+- `.claw/tasks/评估最新版-claw-kit-任务流程与心智成本/plan.report`
+- `0.1.84 CLI 0.1.83 plugin snapshot mixed contract`
+- `process.discussing process.active end.completed 3/3`
+- `root completion unbind plan show PROJECT_CONFIG_INVALID explicit task-name`
+- `workflowGuidance clear next task driver bridge mental cost`
