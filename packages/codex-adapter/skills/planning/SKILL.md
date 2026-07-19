@@ -36,8 +36,10 @@ Use it when task shape, dependencies, completion criteria, or requirement clarit
   - independently completable
   - no mixed concerns when the workflow would forbid them
 - Start with the smallest handoff-ready task list:
-  - `2-4` downstream outcome-oriented tasks is the normal budget after any host-seeded bridge or activation tasks
-  - exceed that budget only when independently verifiable risk or ownership boundaries require it
+  - `1-3` outcome-oriented tasks is the normal budget for one coherent round
+  - prefer one downstream task for one coherent deliverable, including its proportionate implementation, documentation, verification, and review
+  - split only at a real independent deliverable, ownership boundary, blocker boundary, durable decision point, or materially different risk surface
+  - do not create separate tasks merely for individual files, commands, code edits, documentation edits, tests, builds, checks, or diff review
   - lifecycle meta tasks do not count as business outcomes and should not trigger extra decomposition
 - Treat workflow stages as optional coverage selected for the current task:
   - the main agent decides whether verification, review, and closure are needed for the specific task
@@ -66,7 +68,7 @@ A task plan should capture:
 - `references`
 - `keyDecisions` when real decisions already exist
 
-If the host has already seeded bridge or activation tasks, keep them in place and append downstream executable work after them.
+Planning is ready to hand off when the user has finished the current discussion, the requested outcome and constraints are clear enough to execute, material open questions are resolved, and the smallest outcome-oriented task list is ready. A draft alone does not meet this bar.
 
 ## Recommended workflow coverage
 
@@ -92,7 +94,7 @@ A solid plan should cover:
 ## How to write
 
 1. Compress the round goal into one sentence.
-2. If the current request is not clear enough to execute, first fill the missing requirements, open questions, and acceptance criteria.
+2. Continue user discussion until the requested outcome and constraints are clear enough to execute and material open questions are resolved; a draft alone is not completion.
 3. Clarify task boundaries before enumerating steps.
 4. Identify affected modules, shared foundations, and any real risk that changes task shape.
 5. Choose the stages that fit this round. Let the main agent decide whether verification and closure are needed.
@@ -100,7 +102,7 @@ A solid plan should cover:
 7. Put durable constraints into `rules`.
 8. Put files, evidence, and search anchors into `references`.
 9. Put durable architecture or workflow outcomes into `keyDecisions` only when real decisions already exist.
-10. Preserve any existing bridge, activation, or handoff tasks unless the user explicitly asks to replace them.
+10. Preserve existing host-owned tasks instead of rewriting them as planning activities.
 11. Write the task title, goal, tasks, and supporting plan text in the user's preferred language unless the repository has an explicit stronger convention.
 
 For an investigation-first task, keep investigation separate until its findings establish the implementation route.

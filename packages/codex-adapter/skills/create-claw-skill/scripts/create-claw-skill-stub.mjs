@@ -98,7 +98,7 @@ TODO: Replace this sentence with the skill's concise purpose.
 Resolve \`<skill-dir>\` as the directory containing this loaded \`SKILL.md\`.
 
 - Whole task: when this skill fully owns the current task, use \`claw plan create --template-file "<skill-dir>/TEMPLATE.json" --title "${skillName}"\`.
-- Independent stage: when this skill fully owns one stage of a broader plan, use \`claw subplan create --parent <parent-task-name> --task-id <id> --template-file "<skill-dir>/TEMPLATE.json"\`. A batch is a repeated-stage case: invoke this skill once as a subplan for each stage.
+- Independent stage: when this skill fully owns one stage of a broader plan, use \`claw subplan create --parent <parent-task-name> --task-id <id> --template-file "<skill-dir>/TEMPLATE.json"\`. On hosts with Goal Mode, consume the returned goal handoff so the active parent goal completes before the child plan creates its own goal; never overwrite the parent goal. A batch is a repeated-stage case: invoke this skill once as a subplan for each stage.
 - Mixed stage: when this skill only contributes part of a stage that mixes multiple skills, do not create its template plan. Read \`${fallbackDoc}\` and apply the relevant fallback guidance inside the owning workflow.
 - Unavailable claw tooling: when the claw CLI or this template is unavailable, read \`${fallbackDoc}\` and run the direct workflow.
 
@@ -184,9 +184,11 @@ function buildTemplate({ skillName, templateId, targetWork }) {
     ],
     rules: [
       "Follow returned workflowGuidance before advancing.",
+      "This executable template starts in process.active and does not need guidance.onPlanStart; add it only when a real discussion task deliberately bundles delivery into execution through the optional claw plan start shorthand.",
       "Keep structured execution information in template tasks, guidance, rules, and references.",
       "Keep task-ownership routing and non-template supplements in SKILL.md, and use skill-local references only when needed.",
       "Use choices only when the selected value changes the immediate downstream task or route.",
+      "When choices exist, completionChoices is the only valid-id list and recommendedCommands contains one claw task done --id <id> --choice <choice> template; do not repeat ids in nextsteps, and keep choiceId only as the persisted plan field.",
       "Do not claim completion until the verification task is done.",
     ],
   }, null, 2)}\n`;
@@ -204,6 +206,7 @@ function buildCoverage({ skillName, templateId, targetWork, fallbackDoc }) {
 - Unavailable-tooling entry: \`SKILL.md\` routes to the same fallback when the claw CLI or template is unavailable.
 - Skill-local template: \`TEMPLATE.json\` with id \`${templateId}\`.
 - Intended work: ${targetWork}.
+- Lifecycle handoff: TODO; keep the default active start, or document why a real discussion delivery task adopts optional \`guidance.onPlanStart\`.
 - Ordered workflow steps: TODO.
 - Branch conditions: TODO.
 - Tool constraints and helper files: TODO.

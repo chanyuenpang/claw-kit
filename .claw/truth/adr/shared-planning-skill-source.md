@@ -100,7 +100,7 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 - 无 project root 时，显式 `claw plan create --template <id>` 自动使用 session scope；同一显式 template 在已有 `.claw` 项目内保持 project scope，普通不带显式 template 的 plan create 继续初始化项目。skill entry 不重复拥有这项 storage routing。
 - `resolveSeedPlanTemplate(...)` 同时兼容 legacy `SeedPlanTemplate` 与 skill-local full `PlanDocument`；不得把 full template 强制降格为旧 seed schema，也不得为 create、subplan 或 validate 复制平行 resolver。
 - root plan 与 subplan 的差异发生在统一模板实例化之后。subplan 只追加 `parentPlan`、`parentTaskId`，并更新父任务 execution linkage；模板内容及其运行时语义保持不变。
-- full template 的 `configOverride`、task `guidance.onDone` 与 `choiceId` 是运行时合同。choice 分支由 `claw plan edit --choice-id` 显式选择，CLI compact response 必须保留 `workflowGuidance.summary`。
+- full template 的 `configOverride`、task `guidance.onDone` 与 `choiceId` 是运行时合同。choice 分支由 `claw task done --id <id> --choice <choice-id>` 或 `claw task edit --id <id> --status done --choice <choice-id>` 显式选择，CLI compact response 必须保留 `workflowGuidance.summary`；旧 `claw plan edit --choice-id` 不是 current surface。
 
 ## Consequences
 

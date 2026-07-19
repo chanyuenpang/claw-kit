@@ -9,6 +9,8 @@ import type { KnowledgeWriterConfig, ProjectContext } from "./types.js";
 export type KnowledgeReportTarget = {
   planPath: string;
   reportPath: string;
+  endedAt?: string;
+  /** Legacy field retained for registries written before every end.* boundary was eligible. */
   completedAt?: string;
 };
 
@@ -68,6 +70,23 @@ export type KnowledgeReportEntry = {
   message: string;
 };
 
+export type KnowledgeFinalizationReportEntry = {
+  schemaVersion: 1;
+  entryType: "knowledge_finalization";
+  finalizeId: string;
+  taskName: string;
+  recordedAt: string;
+  status: "succeeded";
+  result: string;
+  attempts: number;
+  host?: KnowledgeFinalizationHost | null;
+  threadId?: string;
+  truthEncoding?: {
+    checkedFiles: number;
+    updatedFiles: number;
+  };
+};
+
 export type KnowledgeSidecarResult = {
   ok: boolean;
   error?: string;
@@ -118,22 +137,22 @@ export function tryRegisterKnowledgePlan(input: {
   }
 }
 
-export function tryCompleteKnowledgePlan(input: {
+export function tryEndKnowledgePlan(input: {
   project: ProjectContext;
   sessionId?: string;
-  completedPlanPath: string;
+  endedPlanPath: string;
   resumedPlanPath?: string;
-  completedAt?: string;
+  endedAt: string;
 }): KnowledgeSidecarResult {
   const sessionId = input.sessionId?.trim();
   if (!sessionId) {
     return { ok: true };
   }
   try {
-    const completedPlanPath = toProjectRelativePlanPath(input.project, input.completedPlanPath);
+    const endedPlanPath = toProjectRelativePlanPath(input.project, input.endedPlanPath);
     const reportPath = toProjectRelativeReportPath(
       input.project,
-      deriveKnowledgeReportPath(input.completedPlanPath),
+      deriveKnowledgeReportPath(input.endedPlanPath),
     );
     const resumedPlanPath = input.resumedPlanPath
       ? toProjectRelativePlanPath(input.project, input.resumedPlanPath)
@@ -147,9 +166,9 @@ export function tryCompleteKnowledgePlan(input: {
         ? { activePlanPath: resumedPlanPath, activeReportPath: resumedReportPath }
         : { activePlanPath: undefined, activeReportPath: undefined }),
       pendingTurnOwner: {
-        planPath: completedPlanPath,
+        planPath: endedPlanPath,
         reportPath,
-        ...(input.completedAt ? { completedAt: input.completedAt } : {}),
+        endedAt: input.endedAt,
       },
       updatedAt: new Date().toISOString(),
     }));
@@ -157,6 +176,23 @@ export function tryCompleteKnowledgePlan(input: {
   } catch (error) {
     return { ok: false, error: errorMessage(error) };
   }
+}
+
+/** @deprecated Use tryEndKnowledgePlan for lifecycle-neutral end.* finalization. */
+export function tryCompleteKnowledgePlan(input: {
+  project: ProjectContext;
+  sessionId?: string;
+  completedPlanPath: string;
+  resumedPlanPath?: string;
+  completedAt?: string;
+}): KnowledgeSidecarResult {
+  return tryEndKnowledgePlan({
+    project: input.project,
+    sessionId: input.sessionId,
+    endedPlanPath: input.completedPlanPath,
+    resumedPlanPath: input.resumedPlanPath,
+    endedAt: input.completedAt ?? new Date().toISOString(),
+  });
 }
 
 export function tryCaptureKnowledgeStop(input: {
@@ -199,7 +235,7 @@ export function tryCaptureKnowledgeStop(input: {
       let finalizeId: string | undefined;
       if (registry.pendingTurnOwner) {
         finalizeId = createHash("sha256")
-          .update(`${sessionId}\n${registry.pendingTurnOwner.planPath}\n${registry.pendingTurnOwner.completedAt ?? ""}`)
+          .update(`${sessionId}\n${registry.pendingTurnOwner.planPath}\n${registry.pendingTurnOwner.endedAt ?? registry.pendingTurnOwner.completedAt ?? ""}`)
           .digest("hex");
         jobPath = knowledgeFinalizationJobPath(input.project, finalizeId);
         if (!fs.existsSync(jobPath)) {
@@ -320,25 +356,38 @@ export function normalizeTruthMarkdownEncoding(project: ProjectContext): {
   return { checkedFiles, updatedFiles };
 }
 
-export function tryCleanupKnowledgeFinalizationReport(
+export function recordKnowledgeFinalizationResult(
   project: ProjectContext,
   reportPath: string,
-): boolean {
-  try {
-    const relative = path.relative(project.tasksDir, path.resolve(reportPath));
-    const resolved = ensureInsideDir(project.tasksDir, relative);
-    if (!resolved || resolved !== path.resolve(reportPath)) {
-      return false;
-    }
-    return withFileLock(resolved, () => {
-      if (fs.existsSync(resolved)) {
-        fs.unlinkSync(resolved);
-      }
-      return true;
-    });
-  } catch {
-    return false;
+  entry: KnowledgeFinalizationReportEntry,
+): { written: boolean; duplicate: boolean } {
+  const relative = path.relative(project.tasksDir, path.resolve(reportPath));
+  const resolved = ensureInsideDir(project.tasksDir, relative);
+  if (!resolved || resolved !== path.resolve(reportPath)) {
+    throw new Error(`Knowledge report path must stay inside ${project.tasksDir}: ${reportPath}`);
   }
+  return withFileLock(resolved, () => {
+    if (fs.existsSync(resolved)) {
+      const duplicate = fs.readFileSync(resolved, "utf-8")
+        .split(/\r?\n/)
+        .filter(Boolean)
+        .some((line) => {
+          try {
+            const existing = JSON.parse(line) as Partial<KnowledgeFinalizationReportEntry>;
+            return existing.entryType === "knowledge_finalization"
+              && existing.finalizeId === entry.finalizeId;
+          } catch {
+            return false;
+          }
+        });
+      if (duplicate) {
+        return { written: false, duplicate: true };
+      }
+    }
+    fs.mkdirSync(path.dirname(resolved), { recursive: true });
+    fs.appendFileSync(resolved, `${JSON.stringify(entry)}\n`, "utf-8");
+    return { written: true, duplicate: false };
+  });
 }
 
 export function writeKnowledgeFinalizationJob(jobPath: string, job: KnowledgeFinalizationJob): void {

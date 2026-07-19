@@ -59,11 +59,16 @@ Task ids are numeric and should stay numeric.
 
 Supported task-level control fields:
 
+- `guidance.onPlanStart`
 - `guidance.onDone.default`
 - `guidance.onDone.choices`
 - `goalModeDetail`
 
 Use `guidance.onDone.default` when a task completion should alter the default returned workflow guidance without introducing a branch.
+
+`claw plan start` is a globally available shorthand for recording refined requirements/tasks and applying any internal transition declared by the current template task. It is optional: the same workflow can be expressed with ordinary plan and task mutations.
+
+Use `guidance.onPlanStart` only when a real discussion task should recommend that shorthand and deliberately bundle its delivery with internal changes. The default planning task uses `{ "completeTask": true, "status": "process.active" }`. Executable templates should normally start in `process.active` and omit `onPlanStart`; its absence hides the recommendation but does not remove the global CLI command.
 
 Use `guidance.onDone.choices.<choiceId>` when task completion is a real route-selection event.
 
@@ -76,9 +81,9 @@ The caller must provide a route choice:
 - `claw task done --task <task> --id <id> --choice <choiceId>`
 - or `claw task edit --id <id> --status done --choice <choiceId>`
 
-The selected route is persisted into runtime state as `task.choiceId`.
+The selected route is persisted into runtime state as `task.choiceId`; `choiceId` is not a CLI parameter name.
 
-If a task defines `choices` and no `choiceId` is provided, completion fails and the CLI returns the available choices.
+Before completion, returned `workflowGuidance` must expose valid ids once in `nextTask.completionChoices` and recommend one `claw task done --id <id> --choice <choice>` command template. Do not repeat ids in `nextsteps` or emit one command per route. If `--choice` is omitted, completion fails with the available ids and correct CLI syntax.
 This protects downstream guidance from guessing the route after the task is already marked done.
 
 Do not rely on the word `choices` alone to teach route semantics. Include at least one concrete example whose options lead to different immediate tasks:
@@ -243,7 +248,7 @@ Named validation uses the same resolver as `claw plan create` and `claw subplan 
 Route a template-backed claw skill by what it completely owns:
 
 - Whole task: if the skill fully carries the current task from inputs through verification, resolve the directory containing its loaded `SKILL.md` and create a root plan with `claw plan create --template-file "<skill-dir>/TEMPLATE.json"`.
-- Independent stage: if the skill fully carries one stage of a broader plan, create a subplan with `claw subplan create --parent <parent-task-name> --task-id <id> --template-file "<skill-dir>/TEMPLATE.json"` when that stage starts.
+- Independent stage: if the skill fully carries one stage of a broader plan, create a subplan with `claw subplan create --parent <parent-task-name> --task-id <id> --template-file "<skill-dir>/TEMPLATE.json"` when that stage starts. On hosts with Goal Mode, consume the returned goal handoff: complete the active parent goal before creating the child-plan goal, never overwrite it.
 - Mixed stage: if the skill only contributes some instructions inside a stage that mixes multiple skills, do not create its template plan. Apply its adjacent fallback inside the owning workflow.
 
 Batch is not a fourth route. Treat a batch as a broader plan containing repeated stages; each stage that is fully owned by the skill invokes one subplan. The parent plan owns ordering and shared constraints, while each subplan owns its stage from inputs through verification.

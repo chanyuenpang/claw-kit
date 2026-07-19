@@ -3,6 +3,7 @@ import path from "node:path";
 import { ClawError } from "./errors.js";
 import { readJsonFile } from "./io.js";
 import { ensureInsideDir, findProjectRoot, isValidTaskName, normalizePlanFile, normalizeTaskName } from "./paths.js";
+import { DEFAULT_MAX_TASKS_TO_KEEP } from "./project-defaults.js";
 import { resolveSessionBoundPlan } from "./session-bindings.js";
 import type { KnowledgeWriterReasoningEffort, MemoryEmbeddingConfig, ProjectConfig, ProjectContext, ResolvedContext, TaskContext, TaskMeta } from "./types.js";
 
@@ -172,7 +173,7 @@ function normalizeProjectConfig(projectConfig: ProjectConfig): ProjectConfig {
     maxTasksToKeep:
       Number.isInteger(projectConfig.maxTasksToKeep) && (projectConfig.maxTasksToKeep as number) >= 1
         ? projectConfig.maxTasksToKeep
-        : 99,
+        : DEFAULT_MAX_TASKS_TO_KEEP,
     planning: projectConfig.planning !== false,
     autoUpdate: projectConfig.autoUpdate === true,
     goalMode: typeof projectConfig.goalMode === "boolean" ? projectConfig.goalMode : true,

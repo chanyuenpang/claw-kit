@@ -6,13 +6,13 @@ import { ensureTaskContext, removeLegacyTaskMeta, resolveTaskContext, resolveTas
 import { resolvePlanEffectiveConfig } from "./effective-config.js";
 import { ClawError } from "./errors.js";
 import { readJsonFile, withFileLock, withSerializedAccess, writeJsonFile } from "./io.js";
-import { tryCompleteKnowledgePlan, tryRegisterKnowledgePlan } from "./knowledge-sidecar.js";
+import { tryEndKnowledgePlan, tryRegisterKnowledgePlan } from "./knowledge-sidecar.js";
 import { buildPlanEvent } from "./plan-events.js";
 import {
   isProcessStatus,
 } from "./requirements-gate.js";
 import { buildPlanViewModel } from "./plan-view.js";
-import { getTemplateTaskDoneChoices, renderSeedTemplateText, resolveSeedPlanTemplate } from "./plan-templates.js";
+import { getTemplateTaskDoneChoices, getTemplateTaskPlanStartGuidance, renderSeedTemplateText, resolveSeedPlanTemplate } from "./plan-templates.js";
 import { ensureInsideDir, findProjectRoot, normalizePlanFile, slugFromFilePath } from "./paths.js";
 import { bindSessionToPlan, unbindSession } from "./session-bindings.js";
 import { resolveWorkflowProjectContext } from "./session-workflows.js";
@@ -391,31 +391,26 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
       }
     }
 
-    if (input.completeLifecycleBridge) {
-      if (requestedStatus !== "process.active") {
-        throw new ClawError(
-          "PROJECT_CONFIG_INVALID",
-          "Completing the lifecycle bridge requires planStatus=process.active.",
-        );
-      }
-      const lifecycleTitles = new Set([
-        "Analyze the request and fill executable tasks with the planning skill",
-        "Enter process.active",
-      ]);
-      const lifecycleTasks = next.tasks.filter((taskItem) => lifecycleTitles.has(taskItem.title));
-      if (lifecycleTasks.length !== lifecycleTitles.size) {
-        throw new ClawError(
-          "PROJECT_CONFIG_INVALID",
-          "Atomic plan start is only available when both default lifecycle bridge tasks are present.",
-        );
-      }
-      for (const lifecycleTask of lifecycleTasks) {
-        if (lifecycleTask.status === "done") {
-          continue;
-        }
-        lifecycleTask.status = "done";
-        changedTaskIds.push(lifecycleTask.id);
-        completedTaskIds.push(lifecycleTask.id);
+    if (input.applyPlanStartGuidance) {
+      const currentTask = previous.tasks.find((taskItem) => taskItem.status === "in_progress")
+        ?? previous.tasks.find((taskItem) => taskItem.status === "pending");
+      const startGuidance = currentTask && previous.templateId
+        ? getTemplateTaskPlanStartGuidance(
+            await resolveSeedPlanTemplate({
+              projectRoot: task.project.projectRoot,
+              templateName: previous.templateId,
+              templateFile: previous.templateFile,
+            }),
+            currentTask.id,
+          )
+        : undefined;
+      const taskToComplete = startGuidance?.completeTask
+        ? next.tasks.find((taskItem) => taskItem.id === currentTask?.id)
+        : undefined;
+      if (taskToComplete && taskToComplete.status !== "done") {
+        taskToComplete.status = "done";
+        changedTaskIds.push(taskToComplete.id);
+        completedTaskIds.push(taskToComplete.id);
         events.push(
           buildPlanEvent("plan_task_completed", {
             mutationId,
@@ -423,10 +418,17 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
             planPath,
             planTitle: next.title,
             planStatus: next.status,
-            taskId: lifecycleTask.id,
-            affectedPlanTaskIds: [lifecycleTask.id],
+            taskId: taskToComplete.id,
+            affectedPlanTaskIds: [taskToComplete.id],
           }),
         );
+      }
+      if (startGuidance?.status) {
+        const validation = canSetPlanStatus(previousStatus, startGuidance.status);
+        if (!validation.ok) {
+          throw new ClawError(validation.code, validation.error);
+        }
+        next.status = startGuidance.status;
       }
     }
     }
@@ -488,6 +490,8 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
       );
     }
 
+    const enteredEndState = !previousStatus.startsWith("end.") && next.status.startsWith("end.");
+    const endedAt = enteredEndState ? next.completedAt ?? new Date().toISOString() : undefined;
     const completionHooks =
       previousStatus !== "end.completed" && next.status === "end.completed"
         ? buildCompletionHooks({ task, planPath, plan: next })
@@ -524,13 +528,13 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
     } else {
       bindSessionToPlan(task.project, input.ownerSessionKey, resultPlanPath);
     }
-    if (completionHooks && task.project.scope === "project") {
-      tryCompleteKnowledgePlan({
+    if (enteredEndState && endedAt && task.project.scope === "project") {
+      tryEndKnowledgePlan({
         project: task.project,
         sessionId: input.ownerSessionKey,
-        completedPlanPath: planPath,
-        ...(completionHooks.subplanClosureCandidate ? { resumedPlanPath: resultPlanPath } : {}),
-        completedAt: next.completedAt,
+        endedPlanPath: planPath,
+        ...(completionHooks?.subplanClosureCandidate ? { resumedPlanPath: resultPlanPath } : {}),
+        endedAt,
       });
     } else if (!resultPlan.status.startsWith("end.") && task.project.scope === "project") {
       tryRegisterKnowledgePlan({
@@ -1023,7 +1027,7 @@ async function createSeedPlan(
     configOverride: template.configOverride,
   });
   const planningEnabled = forcePlanning || effectiveConfig?.planning !== false;
-  const planningSkill = effectiveConfig?.externalPlanningSkill?.trim() || "the built-in planning skill";
+  const planningSkill = effectiveConfig?.externalPlanningSkill?.trim() || "claw-kit:planning";
   if (!planningEnabled) {
     return {
       title: title ?? taskName,
@@ -1127,7 +1131,7 @@ async function validateDoneTransitions(params: {
     if (isDoneTransition && choices && !task.choiceId) {
       throw new ClawError(
         "PROJECT_CONFIG_INVALID",
-        `Task ${task.id} requires choiceId because this template defines onDone choices. Provide one of: ${availableChoices.join(", ")}.`,
+        `Task ${task.id} requires --choice because this template defines onDone choices. Run claw task done --id ${task.id} --choice <choice>, using one of: ${availableChoices.join(", ")}.`,
         {
           taskId: task.id,
           availableChoices,
@@ -1135,14 +1139,14 @@ async function validateDoneTransitions(params: {
       );
     }
     if (task.choiceId && !choices) {
-      throw new ClawError("PROJECT_CONFIG_INVALID", `Task ${task.id} does not define onDone choices, so choiceId is not allowed.`, {
+      throw new ClawError("PROJECT_CONFIG_INVALID", `Task ${task.id} does not define onDone choices, so --choice is not allowed.`, {
         taskId: task.id,
       });
     }
     if (task.choiceId && choices && !Object.prototype.hasOwnProperty.call(choices, task.choiceId)) {
       throw new ClawError(
         "PROJECT_CONFIG_INVALID",
-        `Task ${task.id} has an invalid choiceId "${task.choiceId}". Expected one of: ${availableChoices.join(", ")}.`,
+        `Task ${task.id} received invalid --choice "${task.choiceId}". Expected one of: ${availableChoices.join(", ")}.`,
         {
           taskId: task.id,
           choiceId: task.choiceId,

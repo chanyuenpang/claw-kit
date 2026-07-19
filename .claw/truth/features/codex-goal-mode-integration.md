@@ -7,7 +7,7 @@
 - canonical `.claw/project.json` now exposes flat `goalMode` as the project-level gate for this behavior.
 - when `goalMode = false`, `workflowGuidance` must suppress both `goalMode` and `goalTool` entirely even if the active plan has a valid `goal.text` and has just entered `process.active`.
 - `workflowGuidance` 现在把 Goal lifecycle 拆成两个互补字段：`goalMode` 负责 host 侧 Goal mode 时机和推荐目标，`goalTool` 负责必须执行的真实 Codex goal tool 合同。
-- `packages/core/src/templates/plans/default.ts` 的 seeded activation task 文案现在也消费同一个 `goalMode` 推荐目标：只要 `goalMode` enabled 且 host 不是显式 `opencode`，就会把 `buildGoalModeObjective(...)` 产出的 recommended objective 追加到 activation task detail；Codex 默认 no-host 路径按 Codex-compatible 处理并拿到这段 objective，显式 `host: "opencode"` 继续保留简洁 activation detail，而 `goalMode = false` 只输出 base detail。
+- `packages/core/src/templates/plans/default.ts` 的单一 seeded planning bridge 文案也消费同一个 `goalMode` 推荐目标：只要 `goalMode` enabled 且 host 不是显式 `opencode`，就会把 `buildGoalModeObjective(...)` 产出的 recommended objective 追加到 bridge detail，并明确只有 bridge 原子进入 `process.active` 后才启动 Goal Mode；Codex 默认 no-host 路径按 Codex-compatible 处理，显式 `host: "opencode"` 保留不含 Codex objective 的 detail，而 `goalMode = false` 只输出 base detail。默认 bridge 与 legacy 双任务兼容的完整生命周期事实由 `cli-guided-workflow.md` 拥有。
 - 当 plan 首次进入 `process.active` 时，`workflowGuidance.goalMode` 仍携带：
   - `recommendedObjective`
   - `allowOverwrite = true`
@@ -31,6 +31,13 @@
 - unpublished-build live evidence 为：active → wait mutation 返回 `update_goal complete`，下一次独立 `get_goal` 返回 `null`；wait → active mutation返回 `create_goal`，下一次独立 `get_goal` 返回 active Goal。这证明完成与重建必须跨独立 code-mode calls 结算，不能合并为同一次调用。
 - 完整测试通过，且 `0.1.75` 的 registry、全局 CLI、Codex plugin source / cache 都已验证；本节记录的是发布前真实 Host 验收后形成的最终生命周期合同。
 
+## 0.1.83 knowledge-writer harness 历史边界与当前修复
+
+- `0.1.83` 的版本化实测曾确认：父 plan 已占用 thread Goal 时，`subplan.create` 的 canonical mutation 先成功落盘，随后同一次 driver 调用尝试 `create_goal` 才被 Host 拒绝。该结果仍是“host-action 失败不代表 plan mutation 回滚、不得盲目重放”的历史证据。
+- 当前 `applyCreateGuidance()` 把 `subplan.create` 投影成 parent-goal handoff：返回 `update_goal(status="complete")`，保留 child objective 供后续使用；`buildHostActions()` 按 `update_goal` → `update_plan` 排序消费，不在同一 mutation 内创建 child Goal。
+- child plan 后续进入或恢复 `process.active` 时，才由独立 mutation 返回 `create_goal`。因此 parent close 与 child create 跨 Host 结算边界，不覆盖仍活跃的父 Goal，也不会在同一 call 内把新 Goal 一并清除。
+- 对应决策 owner 是 `.claw/truth/adr/codex-goal-mode-thread-contract.md`。
+
 ## 真实代码锚点
 
 - `packages/core/src/workflow-guidance.config.json`
@@ -39,7 +46,7 @@
   - `end.completed` 声明 `goalTool.tool = update_goal` 且 `status = complete`
 - `packages/core/src/workflow-guidance.ts`
   - `buildGoalMode()` 继续定义 `allowOverwrite = true`、`ifNoActiveGoal = true`、`supportedSurfaces`
-  - `buildGoalModeObjective()` 负责把 `recommendedObjective` 渲染成可复用的 activation task 文案片段
+  - `buildGoalModeObjective()` 负责把 `recommendedObjective` 渲染成可复用的 planning-bridge 文案片段
   - `buildGoalTool()` 负责把 `create_goal` / `update_goal` 模板实例化成真实 workflowGuidance 合同
   - `buildPlanWorkflowGuidance()` 只在 `justEnteredProcess` 或 `resumedIntoActive` 时返回 active-entry `goalMode` / `goalTool`；wait/discussing 返回 compatibility `update_goal(blocked)`，completed 返回 `update_goal(complete)`；当 `goalMode = false` 时继续 suppress 这些合同
 - `packages/core/src/types.ts`
@@ -50,6 +57,7 @@
 - `packages/cli/src/cli.ts`
   - compact plan result 会把 `workflowGuidance.goalTool` 原样透传到 CLI JSON
   - `buildHostActions()` 根据 committed `planStatus` 把 wait/discussing 的 Codex native action 投影为 schema-v1 `update_goal({ status: "complete" })`，不改写 compatibility `goalTool.status = blocked`
+  - `subplan.create` 的 Codex hostActions 固定先执行 `update_goal(complete)`、再执行 `update_plan`，且本次 handoff 不生成 `create_goal`
 - `packages/codex-adapter/references/workflow-guidance-consumption.md`
   - Codex adapter 文档已改成直接消费 `create_goal` / `update_goal`，不再描述虚构的 pause goal mode
 - `packages/codex-adapter/skills/planning/SKILL.md`

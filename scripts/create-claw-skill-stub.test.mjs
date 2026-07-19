@@ -35,6 +35,7 @@ test("create-claw-skill stub generator writes standard fill-in surfaces", async 
   assert.match(skillText, /Resolve `<skill-dir>` as the directory containing this loaded `SKILL\.md`/);
   assert.match(skillText, /Whole task:[\s\S]*claw plan create --template-file "<skill-dir>\/TEMPLATE\.json"/);
   assert.match(skillText, /Independent stage:[\s\S]*claw subplan create --parent <parent-task-name> --task-id <id> --template-file "<skill-dir>\/TEMPLATE\.json"/);
+  assert.match(skillText, /active parent goal completes before the child plan creates its own goal/i);
   assert.match(skillText, /batch is a repeated-stage case/i);
   assert.match(skillText, /Mixed stage:[\s\S]*Read `FALLBACK\.md`/);
   assert.doesNotMatch(skillText, /Recommended batch task|Batch or mixed request/);
@@ -43,12 +44,17 @@ test("create-claw-skill stub generator writes standard fill-in surfaces", async 
   const template = JSON.parse(templateText);
   assert.equal(template.id, "demo-skill");
   assert.equal("scope" in template, false);
+  assert.equal(template.status, "process.active");
   assert.equal(template.tasks.length, 3);
+  assert.equal(template.tasks.some((task) => task.guidance?.onPlanStart), false);
   assert.doesNotMatch(templateText, /"choices"/);
+  assert.match(template.rules.join("\n"), /optional claw plan start shorthand/i);
+  assert.match(template.rules.join("\n"), /completionChoices[\s\S]*one claw task done[\s\S]*do not repeat ids in nextsteps/i);
   assert.match(coverageText, /Skill-local template: `TEMPLATE\.json` with id `demo-skill`/);
   assert.match(coverageText, /Mixed-stage entry:[\s\S]*fallback/);
   assert.match(coverageText, /Unavailable-tooling entry:[\s\S]*same fallback/);
   assert.match(coverageText, /Information that does not fit template structure stays in `SKILL\.md` or optional skill-local references/);
+  assert.match(coverageText, /Lifecycle handoff:[\s\S]*guidance\.onPlanStart/);
   await assert.doesNotReject(fs.access(path.join(outDir, "FALLBACK.md")));
   await assert.rejects(fs.access(path.join(outDir, "CLAW-KNOWLEDGE.md")));
 });

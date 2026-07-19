@@ -65,10 +65,11 @@ Mode, canonical truth/ADR routing, and compatibility commands.
   `602.93ms`, below the `1s` gate.
 - Query-cache samples were `302.29-339.36ms`. The forced one-shot fallback
   remained functional at `4392.01ms`.
-- Plan-create prewarming is not enabled. The measured daemon warm path already
-  passes the target, while automatic prewarm would load a model for workflows
-  that may only use lexical recall. Telemetry now provides evidence to revisit
-  this if the workload mix changes.
+- SessionStart/context recovery now launches local persistent-embedding warmup
+  as detached, fail-open latency work when project memory and its vector index
+  are available. Context does not await model loading, remote and disabled
+  providers are skipped, and warmup never falls back to a discarded one-shot
+  model session or writes a query-cache entry.
 
 ## Writer and complexity path
 

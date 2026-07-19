@@ -442,6 +442,13 @@ export function getTemplateTaskDoneChoices(template: ResolvedPlanTemplate, taskI
   return getTemplateTaskGuidance(template, taskId)?.onDone?.choices;
 }
 
+export function getTemplateTaskPlanStartGuidance(
+  template: ResolvedPlanTemplate,
+  taskId: number,
+): TemplateTaskGuidance["onPlanStart"] {
+  return getTemplateTaskGuidance(template, taskId)?.onPlanStart;
+}
+
 export function getTemplateTaskDoneGuidanceRoute(
   template: ResolvedPlanTemplate,
   taskId: number,
@@ -698,9 +705,22 @@ function isTemplateTaskGuidance(value: unknown): value is TemplateTaskGuidance |
     return false;
   }
   const candidate = value as Record<string, unknown>;
-  const allowedKeys = new Set(["onDone"]);
+  const allowedKeys = new Set(["onPlanStart", "onDone"]);
   for (const key of Object.keys(candidate)) {
     if (!allowedKeys.has(key)) {
+      return false;
+    }
+  }
+  if (candidate.onPlanStart !== undefined) {
+    if (!candidate.onPlanStart || typeof candidate.onPlanStart !== "object" || Array.isArray(candidate.onPlanStart)) {
+      return false;
+    }
+    const onPlanStart = candidate.onPlanStart as Record<string, unknown>;
+    const allowedOnPlanStartKeys = new Set(["completeTask", "status"]);
+    if (Object.keys(onPlanStart).some((key) => !allowedOnPlanStartKeys.has(key))) {
+      return false;
+    }
+    if (onPlanStart.completeTask !== true || onPlanStart.status !== "process.active") {
       return false;
     }
   }

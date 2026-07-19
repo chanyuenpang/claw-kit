@@ -5,6 +5,7 @@ import {
 } from "./embedding-defaults.js";
 import { ClawError } from "./errors.js";
 import { normalizeTaskName } from "./paths.js";
+import { DEFAULT_MAX_TASKS_TO_KEEP } from "./project-defaults.js";
 import { ensureUtf8Bom } from "./text-encoding.js";
 import { markTaskLayoutMigrationComplete } from "./task-layout-migration.js";
 import type { ProjectConfig } from "./types.js";
@@ -65,7 +66,7 @@ export function initProject(input: InitProjectInput): InitProjectResult {
 
   const projectName = input.projectName?.trim() || path.basename(projectRoot);
   const projectId = normalizeProjectId(input.projectId ?? projectName, projectRoot);
-  const maxTasksToKeep = input.maxTasksToKeep ?? 99;
+  const maxTasksToKeep = input.maxTasksToKeep ?? DEFAULT_MAX_TASKS_TO_KEEP;
   validateMaxTasksToKeep(maxTasksToKeep, projectRoot);
   const projectConfig: ProjectConfig = {
     version: normalizeVersion(input.version),

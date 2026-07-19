@@ -14,10 +14,11 @@ work: create, patch, append tasks, complete planning, and activate.
 
 ## Atomic refine-and-activate contract
 
-The optimized path will expose one plan mutation that can apply planning
-content, append business tasks, complete explicitly named lifecycle tasks, and
-enter `process.active`. The entire mutation is serialized against the current
-plan and is written once. Validation failure writes nothing.
+The optimized path exposes one plan mutation that applies planning content,
+appends outcome tasks, and executes the current template task's declarative
+`guidance.onPlanStart` actions. The default template uses those internal actions
+to complete its planning task and enter `process.active`. The entire mutation is
+serialized against the current plan and is written once.
 
 Each mutation must produce ordered, versioned plan events internally. Events
 describe canonical CLI state only; they never read host state or wait for host
@@ -57,7 +58,7 @@ a deterministic level.
 If the session knowledge registry has neither an active nor pending target, the
 command exits successfully without loading the main CLI, reading the transcript,
 parsing project configuration, launching a worker, or mutating `.claw`. A
-pending completed-plan owner remains a valid target after the canonical task
+pending ended-plan owner remains a valid target after the canonical task
 binding has been removed, so final-turn capture is preserved.
 
 ## Invocation host boundary
@@ -71,6 +72,16 @@ registries do not persist host identity. Turn-end hooks write their native host
 directly into a newly queued finalization job, and detached finalization or
 completion workers start without inheriting the foreground `CLAW_HOST`; writer
 routing uses the job's host snapshot.
+
+## Observable knowledge closeout
+
+After a knowledge-writer pass succeeds, the worker appends one idempotent
+`knowledge_finalization` JSONL entry to the adjacent report. The entry exposes
+the finalize id, completion time, successful result, attempt count, writer
+thread when available, host, and encoding summary. The report is not deleted
+by finalization: it moves with the completed task into `.claw/archive/tasks`
+and is removed only when archive retention prunes that task. The default
+`maxTasksToKeep` archive limit is `9`.
 
 ## Phase gates
 

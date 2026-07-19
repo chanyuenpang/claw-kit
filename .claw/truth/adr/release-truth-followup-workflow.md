@@ -14,7 +14,7 @@ The release locks in these rules:
 
 - `claw plan write` and `appendTasks` do not auto-insert truth follow-up tasks.
 - completion guidance stays lightweight and points to the next task through `nextTask` and `nextStep`.
-- reusable Truth and ADR deposition does not run through plan-task injection or main-agent guidance; the hook-owned finalizer supplies the completed plan and report to its two focused phases.
+- reusable Truth and ADR deposition does not run through plan-task injection or main-agent guidance; the hook-owned finalizer supplies the completed plan and report to one consistency-aware pass, whose current orchestration is owned by `hook-owned-two-phase-knowledge-finalization.md`.
 
 ## Consequences
 

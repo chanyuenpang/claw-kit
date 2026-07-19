@@ -138,6 +138,11 @@ test("OpenCode main-agent guidance leaves automatic closeout to the host", async
   assert.match(agent, /Do not\s+dispatch another writer or split the pass/i);
   assert.match(knowledgeSkill, /knowledge-base steward/i);
   assert.match(knowledgeSkill, /Truth and ADR are one knowledge system/i);
+  assert.match(knowledgeSkill, /maintain Truth first, then maintain ADR/i);
+  assert.match(knowledgeSkill, /regardless of filename, record shape, field names, or serialization format/i);
+  assert.match(knowledgeSkill, /retrospective lessons, key decisions/i);
+  assert.match(knowledgeSkill, /task status is present/i);
+  assert.match(knowledgeSkill, /task titles and descriptions are not themselves an execution log/i);
   assert.match(knowledgeSkill, /one current owner/i);
   assert.match(knowledgeSkill, /exhaustive text search/i);
 

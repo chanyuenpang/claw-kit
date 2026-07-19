@@ -15,7 +15,7 @@ If the workspace has no `.claw` directory, read `non-claw-fallback.md` and follo
 Resolve `<skill-dir>` as the directory containing this loaded `SKILL.md`.
 
 - Direct request: run `claw plan create --template-file "<skill-dir>/TEMPLATE.json" --title "update"`.
-- Active parent task: run `claw subplan create --parent <parent-task-name> --task-id <id> --template-file "<skill-dir>/TEMPLATE.json"`.
+- Active parent task: run `claw subplan create --parent <parent-task-name> --task-id <id> --template-file "<skill-dir>/TEMPLATE.json"` and consume its goal handoff so the active parent goal completes before the update subplan creates its own goal.
 - Batch request: create one root task per target and run this template as the update task's subplan.
 
 ## Contract

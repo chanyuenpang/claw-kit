@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { readJsonFile } from "./io.js";
+import { DEFAULT_MAX_TASKS_TO_KEEP } from "./project-defaults.js";
 import type { ArchivedTaskRecord, PlanDocument, ProjectContext, TaskRetentionResult } from "./types.js";
 
 export const COMPLETED_TASK_ARCHIVE_DELAY_MS = 60 * 60 * 1000;
@@ -10,7 +11,7 @@ export function enforceTaskRetention(
   currentTaskName?: string,
   nowMs = Date.now(),
 ): TaskRetentionResult {
-  const maxTasksToKeep = project.projectConfig?.maxTasksToKeep ?? 99;
+  const maxTasksToKeep = project.projectConfig?.maxTasksToKeep ?? DEFAULT_MAX_TASKS_TO_KEEP;
   const archiveTasksRoot = path.join(project.clawDir, "archive", "tasks");
   const prunedArchivedTasks: ArchivedTaskRecord[] = [];
   let archivedCurrentTask: ArchivedTaskRecord | undefined;

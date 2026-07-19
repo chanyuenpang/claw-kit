@@ -22,7 +22,7 @@ Accepted
 
 - 在 Codex 的 `@claw-kit` 或 OpenCode 的 claw-kit plugin 被调用时首先判断请求是否预期产生可复用项目知识；否则第一句就跳过该 skill 并直接工作
 - 对其余请求执行最小 `First Action`：默认运行 `claw plan create "<title>"`
-- template-backed workflow skill 完整承载请求时，不先创建默认 plan，而是在创建时改走 `claw plan create --template <template-id> --title "<title>"`
+- template-backed workflow skill 完整承载请求时，不先创建默认 plan，而是跟随该 skill 自己的 entry route；已加载 skill 负责解析自身目录并通过相邻 `TEMPLATE.json` 的 `--template-file` 入口提供精确来源。裸 `--template <id>` 只保留为兼容发现面，精确来源的通用决策由 `.claw/truth/adr/template-guidance-routing-and-config-override.md` 拥有
 - `First Action` 在创建 plan 后只保留一句正向指令：`Follow the workflowGuidance returned by the CLI.`；入口文本不解释 prompt guidance、“唯一 next-step contract”或 guidance 来源竞争
 - 默认入口不展开 recovery、context、search 或完整 lifecycle 命令链；新 plan 从 `process.discussing` 开始，再由 seeded planning task 与返回的 `workflowGuidance` 继续主流程
 - 不再按文件数、步骤数、复杂度分数或 session harness 价值决定默认入口，也不从入口 skill 推荐 `--scope session`

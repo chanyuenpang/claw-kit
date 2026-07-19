@@ -191,6 +191,7 @@ export type WorkflowGuidance = {
     title: string;
     status: PlanTaskStatus;
     detail?: string;
+    completionChoices?: string[];
   };
   notes?: string;
   recommendedCommands?: string[];
@@ -501,7 +502,7 @@ export type PlanEditInput = {
   taskDetail?: string;
   removeTaskIds?: number[];
   appendTasks?: PlanTask[];
-  completeLifecycleBridge?: boolean;
+  applyPlanStartGuidance?: boolean;
   commandSource?: "plan.edit" | "plan.start" | "plan.done";
   reviewer?: PlanReviewer;
   workflowDefinitions?: string;

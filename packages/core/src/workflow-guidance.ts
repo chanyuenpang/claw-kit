@@ -1,7 +1,12 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { ClawError } from "./errors.js";
-import { getTemplateTaskDoneGuidanceRoute, resolveSeedPlanTemplate } from "./plan-templates.js";
+import {
+  getTemplateTaskDoneChoices,
+  getTemplateTaskDoneGuidanceRoute,
+  getTemplateTaskPlanStartGuidance,
+  resolveSeedPlanTemplate,
+} from "./plan-templates.js";
 import workflowGuidanceConfigJson from "./workflow-guidance.config.json" with { type: "json" };
 import type {
   PlanCompletionHooks,
@@ -158,10 +163,10 @@ function applyCreateGuidance(params: {
   }
 
   const subplanObjective = buildGoalModeObjective(params.plan.goal.text);
-  const subplanNextstep = `Set or overwrite Goal Mode to this subplan objective before doing target work: ${subplanObjective}`;
+  const subplanNextstep = `After the parent goal is completed by this subplan handoff, start the subplan goal before doing target work: ${subplanObjective}`;
   const subplanNote =
     `Subplan "${params.planFile}" is now the active plan under parent plan "${params.plan.parentPlan}" task #${params.plan.parentTaskId}. ` +
-    "Treat the parent/root plan as paused for this target until the subplan completes.";
+    "The handoff completes the current parent goal first; treat the parent/root plan as paused until the subplan completes.";
 
   return {
     ...guidance,
@@ -169,6 +174,11 @@ function applyCreateGuidance(params: {
       ? guidance.nextsteps
       : [subplanNextstep, ...guidance.nextsteps],
     notes: guidance.notes ? `${subplanNote} ${guidance.notes}` : subplanNote,
+    goalTool: {
+      tool: "update_goal",
+      status: "complete",
+      reason: "Subplan creation must complete the active parent goal before the child plan creates its own goal.",
+    },
     goalMode: {
       ...guidance.goalMode,
       recommendedObjective: subplanObjective,
@@ -231,7 +241,7 @@ function buildProjectConfigTemplateVars(projectConfig: ProjectConfig | null): Te
 function buildWorkflowTemplateVars(projectConfig: ProjectConfig | null): TemplateVars {
   return {
     ...buildProjectConfigTemplateVars(projectConfig),
-    planningSkill: projectConfig?.externalPlanningSkill?.trim() || "the built-in planning skill",
+    planningSkill: projectConfig?.externalPlanningSkill?.trim() || "claw-kit:planning",
   };
 }
 
@@ -371,8 +381,32 @@ export async function buildPlanWorkflowGuidance(params: {
     }
     case "process.wait":
     case "process.discussing": {
-      const templateKey = plan.status === "process.discussing" && (commandSource === "plan.create" || commandSource === "subplan.create")
-        ? "process.discussing.initial"
+      if (plan.status === "process.discussing" && allTasksDone) {
+        const template = renderStateTemplate("process.allTasksDone", vars);
+        return applyCreateGuidance({
+          commandSource,
+          plan,
+          planFile,
+          goalModeEnabled,
+          suppressGoalFields,
+          guidance: {
+            stage: template.stage as WorkflowGuidance["stage"],
+            summary: template.summary,
+            nextsteps: template.nextsteps,
+            ...(template.notes ? { notes: template.notes } : {}),
+            ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),
+          },
+        });
+      }
+      const isInitialDiscussion = plan.status === "process.discussing"
+        && (commandSource === "plan.create" || commandSource === "subplan.create");
+      const recommendsPlanStart = isInitialDiscussion
+        ? await currentTemplateTaskRecommendsPlanStart({ projectRoot, plan })
+        : false;
+      const templateKey = isInitialDiscussion
+        ? recommendsPlanStart
+          ? "process.discussing.initial"
+          : "process.discussing.initial.noPlanStart"
         : startedGoalModeThisRound
           ? plan.status
           : `${plan.status}.noGoalMode`;
@@ -499,6 +533,23 @@ export async function buildPlanWorkflowGuidance(params: {
   }
 }
 
+async function currentTemplateTaskRecommendsPlanStart(params: {
+  projectRoot?: string;
+  plan: PlanDocument;
+}): Promise<boolean> {
+  const { projectRoot, plan } = params;
+  const task = currentActiveTask(plan) ?? nextUnfinishedTask(plan);
+  if (!projectRoot || !plan.templateId?.trim() || !task) {
+    return false;
+  }
+  const template = await resolveSeedPlanTemplate({
+    projectRoot,
+    templateName: plan.templateId,
+    templateFile: plan.templateFile,
+  });
+  return getTemplateTaskPlanStartGuidance(template, task.id) !== undefined;
+}
+
 async function applyTemplateTaskDoneGuidance(params: {
   projectRoot?: string;
   projectConfig?: ProjectConfig | null;
@@ -508,12 +559,7 @@ async function applyTemplateTaskDoneGuidance(params: {
 }): Promise<WorkflowGuidance> {
   const { projectRoot, projectConfig = null, plan, completedTaskIds, guidance } = params;
   const completedTaskId = completedTaskIds?.[completedTaskIds.length - 1];
-  if (!projectRoot || !plan.templateId?.trim() || completedTaskId === undefined) {
-    return guidance;
-  }
-
-  const completedTask = plan.tasks.find((task) => task.id === completedTaskId);
-  if (!completedTask) {
+  if (!projectRoot || !plan.templateId?.trim()) {
     return guidance;
   }
 
@@ -522,16 +568,47 @@ async function applyTemplateTaskDoneGuidance(params: {
     templateName: plan.templateId,
     templateFile: plan.templateFile,
   });
-  const route = getTemplateTaskDoneGuidanceRoute(template, completedTaskId, completedTask.choiceId);
-  if (!route) {
-    return guidance;
+  let mergedGuidance = guidance;
+  const completedTask = completedTaskId === undefined
+    ? undefined
+    : plan.tasks.find((task) => task.id === completedTaskId);
+  if (completedTask) {
+    const route = getTemplateTaskDoneGuidanceRoute(template, completedTask.id, completedTask.choiceId);
+    if (route) {
+      const renderedRoute = renderTemplateValue(route, buildWorkflowTemplateVars(projectConfig));
+      mergedGuidance = renderedRoute.mergeMode === "replace"
+        ? replaceWorkflowGuidance(guidance, renderedRoute, plan)
+        : overrideWorkflowGuidance(guidance, renderedRoute, plan);
+    }
   }
-  const renderedRoute = renderTemplateValue(route, buildWorkflowTemplateVars(projectConfig));
 
-  const merged = renderedRoute.mergeMode === "replace"
-    ? replaceWorkflowGuidance(guidance, renderedRoute, plan)
-    : overrideWorkflowGuidance(guidance, renderedRoute, plan);
-  return merged;
+  const choiceTask = mergedGuidance.nextTask
+    ? plan.tasks.find((task) => task.id === mergedGuidance.nextTask?.id)
+    : currentActiveTask(plan) ?? nextUnfinishedTask(plan);
+  if (!choiceTask) {
+    return mergedGuidance;
+  }
+  const choiceIds = Object.keys(getTemplateTaskDoneChoices(template, choiceTask.id) ?? {});
+  if (choiceIds.length === 0) {
+    return mergedGuidance;
+  }
+
+  const choiceStep = `Select one completion choice before completing task #${choiceTask.id}.`;
+  const retainedCommands = (mergedGuidance.recommendedCommands ?? [])
+    .filter((command) => !/^claw task done\b/.test(command));
+  const choiceCommand = `claw task done --id ${choiceTask.id} --choice <choice>`;
+  return {
+    ...mergedGuidance,
+    nextsteps: mergeUniqueStrings([choiceStep], mergedGuidance.nextsteps),
+    nextTask: {
+      id: choiceTask.id,
+      title: choiceTask.title,
+      status: choiceTask.status,
+      ...(choiceTask.detail ? { detail: choiceTask.detail } : {}),
+      completionChoices: choiceIds,
+    },
+    recommendedCommands: mergeUniqueStrings(retainedCommands, [choiceCommand]),
+  };
 }
 
 function overrideWorkflowGuidance(

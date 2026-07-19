@@ -70,7 +70,10 @@ const ISOLATED_ENV_KEYS = [
 ] as const;
 
 function buildSpawnEnv(extra?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env };
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    CLAW_EMBEDDING_WARMUP_DISABLE_LAUNCH: "1",
+  };
   for (const key of ISOLATED_ENV_KEYS) {
     delete env[key];
   }
@@ -495,10 +498,11 @@ test("cli plan create accepts a positional title and seeds planning discussion b
   runClaw(["init", "--name", "Positional Title"], root);
 
   const writeResult = runClaw(["plan", "create", "这是一个任务标题"], root);
-  assert.equal(writeResult.planSummary, "0/2 这是一个任务标题");
+  assert.equal(writeResult.planSummary, "0/1 这是一个任务标题");
   assert.equal(writeResult.goalMode, undefined);
   assert.deepEqual(writeResult.nextsteps, [
-    "1. Resolve the discussion, then resume through `process.active`.",
+    "1. Use claw-kit:planning until the discussion is finished and the outcome, constraints, and material open questions are clear.",
+    "2. If execution remains, record the smallest outcome-oriented task list with the recommended command. If planning resolves the request, complete task #1 and close the plan.",
   ]);
   assert.equal((writeResult.recommendedCommands as string[])[0], 'claw search --query "<topic>"');
   assert.equal(
@@ -509,8 +513,8 @@ test("cli plan create accepts a positional title and seeds planning discussion b
   assert.equal((writeResult.plan as JsonRecord).status, "process.discussing");
   const plan = writeResult.plan as JsonRecord;
   const tasks = plan.tasks as JsonRecord[];
-  assert.equal(String((tasks[0] as JsonRecord).title), "Analyze the request and fill executable tasks with the planning skill");
-  assert.equal(String((tasks[1] as JsonRecord).title), "Enter process.active");
+  assert.equal(String((tasks[0] as JsonRecord).title), "Discuss and finalize requirements with the configured planning skill");
+  assert.equal(tasks.length, 1);
 });
 
 test("cli plan create accepts an explicit template flag", () => {
@@ -524,12 +528,13 @@ test("cli plan create accepts an explicit template flag", () => {
   assert.equal(result.command, "plan.create");
   assert.equal((plan.status as string), "process.discussing");
   assert.deepEqual(result.nextsteps, [
-    "1. Resolve the discussion, then resume through `process.active`.",
+    "1. Use claw-kit:planning until the discussion is finished and the outcome, constraints, and material open questions are clear.",
+    "2. If execution remains, record the smallest outcome-oriented task list with the recommended command. If planning resolves the request, complete task #1 and close the plan.",
   ]);
   assert.equal((result.recommendedCommands as string[])[0], 'claw search --query "<topic>"');
   assert.equal("goalTool" in result, false);
-  assert.equal(String((tasks[0] as JsonRecord).title), "Analyze the request and fill executable tasks with the planning skill");
-  assert.equal(String((tasks[1] as JsonRecord).title), "Enter process.active");
+  assert.equal(String((tasks[0] as JsonRecord).title), "Discuss and finalize requirements with the configured planning skill");
+  assert.equal(tasks.length, 1);
 });
 
 test("cli plan create uses project-config defaultPlanTemplate when --template is omitted", () => {
@@ -675,8 +680,8 @@ test("cli plan start performs one atomic activation without returning raw events
   ], root);
   assert.equal(result.command, "plan.start");
   assert.equal(result.planStatus, "process.active");
-  assert.deepEqual(result.changedTaskIds, [1, 2]);
-  assert.deepEqual(result.appendedTaskIds, [3]);
+  assert.deepEqual(result.changedTaskIds, [1]);
+  assert.deepEqual(result.appendedTaskIds, [2]);
   assert.equal("emittedEvents" in result, false);
   assert.equal("events" in result, false);
   assert.equal("hostActions" in result, false);
@@ -1597,17 +1602,28 @@ test("cli task done requires --choice when the template defines guidance.onDone.
     "utf-8",
   );
 
-  runClaw(
+  const created = runClaw(
     ["plan", "create", "--title", "demo-task", "--goal", "Require an explicit route choice", "--template", "choice-required"],
     root,
   );
+  assert.deepEqual((created.nextTask as JsonRecord).completionChoices, ["simple", "advanced"]);
+  assert.equal(
+    (created.recommendedCommands as string[]).filter((command) => command.includes("claw task done")).length,
+    1,
+  );
+  assert.equal(
+    (created.recommendedCommands as string[]).includes("claw task done --id 1 --choice <choice>"),
+    true,
+  );
+  assert.equal((created.nextsteps as string[]).some((step) => /simple|advanced/.test(step)), false);
 
   const raw = runClawRaw(["task", "done", "--task-name", "demo-task", "--id", "1"], root);
   assert.equal(raw.status, 1);
   const failure = JSON.parse(raw.stdout) as JsonRecord;
   assert.equal(failure.chainStatus, "partial");
   const error = ((failure.failedOperation as JsonRecord).error) as JsonRecord;
-  assert.match(String(error.message), /requires choiceId/i);
+  assert.match(String(error.message), /requires --choice/i);
+  assert.match(String(error.message), /claw task done --id 1 --choice <choice>/i);
   assert.match(String(error.message), /simple, advanced/i);
 });
 
@@ -1654,6 +1670,15 @@ test("cli task done persists choiceId for route-aware templates", () => {
     root,
   );
   assert.equal(result.command, "plan.create");
+  assert.deepEqual((result.nextTask as JsonRecord).completionChoices, ["simple"]);
+  assert.equal(
+    (result.recommendedCommands as string[]).includes("claw task done --id 1 --choice <choice>"),
+    true,
+  );
+  assert.equal(
+    (result.recommendedCommands as string[]).includes("claw task done --id <id>"),
+    false,
+  );
 
   const taskDone = runClaw(
     ["task", "done", "--task-name", "demo-task", "--id", "1", "--choice", "simple"],
@@ -1765,8 +1790,9 @@ test("cli subplan create keeps task rootPlan stable and derives goal from the pa
   assert.equal(childPlan.title, "Implement child work");
   assert.equal(childPlan.status, "process.discussing");
   assert.deepEqual(result.nextsteps, [
-    "Set or overwrite Goal Mode to this subplan objective before doing target work: Follow the claw workflow guidance and finish your goal: Implement child work: Split the risky work into a subplan",
-    "1. Resolve the discussion, then resume through `process.active`.",
+    "After the parent goal is completed by this subplan handoff, start the subplan goal before doing target work: Follow the claw workflow guidance and finish your goal: Implement child work: Split the risky work into a subplan",
+    "1. Use claw-kit:planning until the discussion is finished and the outcome, constraints, and material open questions are clear.",
+    "2. If execution remains, record the smallest outcome-oriented task list with the recommended command. If planning resolves the request, complete task #1 and close the plan.",
   ]);
   assert.equal((result.recommendedCommands as string[])[0], 'claw search --query "<topic>"');
   assert.equal(
@@ -1774,8 +1800,12 @@ test("cli subplan create keeps task rootPlan stable and derives goal from the pa
     "Follow the claw workflow guidance and finish your goal: Implement child work: Split the risky work into a subplan",
   );
   assert.equal(((result.goalMode as JsonRecord).allowOverwrite), true);
-  assert.match(String(result.notes), /parent\/root plan as paused/i);
-  assert.equal("goalTool" in result, false);
+  assert.match(String(result.notes), /completes the current parent goal first/i);
+  assert.deepEqual(result.goalTool, {
+    tool: "update_goal",
+    status: "complete",
+    reason: "Subplan creation must complete the active parent goal before the child plan creates its own goal.",
+  });
   assert.equal(((childPlan.goal as JsonRecord).text), "Implement child work: Split the risky work into a subplan");
 });
 
@@ -1808,7 +1838,26 @@ test("cli subplan create accepts an explicit template flag", () => {
   assert.equal(childPlan.status, "process.discussing");
   assert.equal(childPlan.title, "Implement child work");
   assert.equal(((childPlan.goal as JsonRecord).text), "Implement child work: Execute child work");
-  assert.equal((childPlan.tasks as unknown[]).length, 2);
+  assert.equal((childPlan.tasks as unknown[]).length, 1);
+});
+
+test("Codex subplan create completes the parent goal before any child goal is created", () => {
+  const root = createFixture("cli-subplan-create-goal-handoff");
+  const env = { CODEX_THREAD_ID: "thread-subplan-goal-handoff" };
+  runClaw(["init", "--name", "Subplan Goal Handoff", "--planning", "false"], root, env);
+  runClaw(["plan", "create", "--title", "demo-task", "--goal", "Parent goal"], root, env);
+  runClaw([
+    "task", "edit", "--id", "1",
+    "--title", "Implement child work", "--detail", "Split the risky work into a subplan",
+  ], root, env);
+
+  const result = runClaw([
+    "subplan", "create", "--parent", "demo-task", "--task-id", "1", "--host", "codex",
+  ], root, env);
+  const actions = result.hostActions as JsonRecord[];
+  assert.deepEqual(actions.map((action) => action.tool), ["update_goal", "update_plan"]);
+  assert.equal(((actions[0]?.input as JsonRecord).status), "complete");
+  assert.equal(actions.some((action) => action.tool === "create_goal"), false);
 });
 
 test("cli plan, subplan, and template validate share the skill-local template resolver", () => {
@@ -1936,7 +1985,7 @@ test("cli plan done on a subplan resumes the parent plan instead of archiving th
     "--requirements", "Child scope ready",
     "--add-task", "Finish child",
   ], root, env);
-  runClaw(["task", "done", "--id", "3"], root, env);
+  runClaw(["task", "done", "--id", "2"], root, env);
 
   const doneResult = runClaw(
     ["plan", "done", "--retrospective", "Child complete."],
@@ -2011,7 +2060,7 @@ test("cli init writes default maxTasksToKeep into project.json", () => {
   const projectConfig = JSON.parse(
     fs.readFileSync(path.join(root, ".claw", "project.json"), "utf-8"),
   ) as JsonRecord;
-  assert.equal(projectConfig.maxTasksToKeep, 99);
+  assert.equal(projectConfig.maxTasksToKeep, 9);
   assert.equal(projectConfig.goalMode, true);
   assert.deepEqual(projectConfig.knowledgeWriter, { externalSkill: null, model: null, reasoningEffort: "medium" });
   assert.equal(
@@ -2135,7 +2184,7 @@ test("cli context auto-corrects malformed existing .claw state", () => {
   assert.ok(Array.isArray(startupRecovery.fixedPaths));
   assert.equal("protocolCheck" in result, false);
   assert.equal(projectConfig.version, cliPackageVersion);
-  assert.equal(projectConfig.maxTasksToKeep, 99);
+  assert.equal(projectConfig.maxTasksToKeep, 9);
   assert.equal(projectConfig.autoUpdate, true);
   assert.deepEqual(projectConfig.memory, {
     enabled: true,
@@ -2316,7 +2365,7 @@ test("cli check auto-corrects project.json into explicit protocol fields", () =>
   assert.equal(projectConfig.version, cliPackageVersion);
   assert.equal(projectConfig.id, "broken-project");
   assert.equal(projectConfig.name, "Broken Project");
-  assert.equal(projectConfig.maxTasksToKeep, 99);
+  assert.equal(projectConfig.maxTasksToKeep, 9);
   assert.deepEqual(projectConfig.contextPaths, []);
   assert.equal(projectConfig.goalMode, true);
   assert.deepEqual(projectConfig.knowledgeWriter, { externalSkill: null, model: null, reasoningEffort: "medium" });
@@ -3033,7 +3082,47 @@ test("Stop hook captures the latest final assistant message into exactly one act
   assert.equal(duplicate.status, 0);
   const duplicateEntries = fs.readFileSync(reportPath, "utf-8").trim().split(/\r?\n/);
   assert.equal(duplicateEntries.length, 1);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "runtime", "knowledge-finalization", "jobs")), false);
 });
+
+for (const endStatus of ["end.leave", "end.closed"] as const) {
+  test(`${endStatus} Stop queues conclusion-based knowledge finalization`, () => {
+    const root = createFixture(`hook-stop-${endStatus.replace(".", "-")}`);
+    const sessionId = `thread-${endStatus}`;
+    const env = {
+      CODEX_THREAD_ID: sessionId,
+      CLAW_KNOWLEDGE_FINALIZER_DISABLE_LAUNCH: "1",
+    };
+    runClaw(["init", "--name", `Hook ${endStatus}`, "--planning", "false"], root, env);
+    runClaw(["plan", "create", "--title", "demo-task", "--goal", "Capture end-state conclusions"], root, env);
+    runClaw(["plan", "edit", "--status", endStatus], root, env);
+
+    const transcriptPath = path.join(root, `thread-${endStatus}.jsonl`);
+    fs.writeFileSync(transcriptPath, JSON.stringify({
+      type: "response_item",
+      payload: {
+        type: "message",
+        role: "assistant",
+        phase: "final_answer",
+        content: [{ type: "output_text", text: `Conclusion recorded at ${endStatus}.` }],
+      },
+    }), "utf-8");
+    const stop = runClawHook("auto-doc", root, {
+      session_id: sessionId,
+      turn_id: `turn-${endStatus}`,
+      transcript_path: transcriptPath,
+      cwd: root,
+    }, env);
+
+    assert.equal(stop.status, 0);
+    const jobsDir = path.join(root, ".claw", "runtime", "knowledge-finalization", "jobs");
+    const jobFiles = fs.readdirSync(jobsDir).filter((name) => name.endsWith(".json"));
+    assert.equal(jobFiles.length, 1);
+    const queued = JSON.parse(fs.readFileSync(path.join(jobsDir, jobFiles[0]!), "utf-8")) as JsonRecord;
+    assert.equal(queued.status, "queued");
+    assert.equal(queued.planPath, path.join(root, ".claw", "tasks", "demo-task", "plan.json"));
+  });
+}
 
 test("completed-plan Stop owns the final turn and queues a retryable SDK job", () => {
   const root = createFixture("hook-stop-closeout");
@@ -3253,10 +3342,35 @@ test("knowledge finalization runs one consistency-aware combined writer pass and
   assert.match(prompts[0]!, /claw-kit:knowledge-writer/);
   assert.match(prompts[0]!, /knowledge-base steward/i);
   assert.match(prompts[0]!, /one current owner/i);
+  assert.match(prompts[0]!, /interpret all supplied materials by their content/i);
+  assert.doesNotMatch(prompts[0]!, /entryType|knowledge_finalization/);
   assert.doesNotMatch(prompts[0]!, /using-claw-kit/i);
   const writerOptions = JSON.parse(fs.readFileSync(optionsLog, "utf-8")) as JsonRecord;
   assert.equal(writerOptions.sandboxMode, process.platform === "win32" ? "danger-full-access" : "workspace-write");
-  assert.equal(fs.existsSync(reportPath), false);
+  assert.equal(fs.existsSync(reportPath), true);
+  const reportEntries = fs.readFileSync(reportPath, "utf-8").trim().split(/\r?\n/).map((line) => JSON.parse(line) as JsonRecord);
+  assert.equal(reportEntries.length, 2);
+  assert.deepEqual(reportEntries[1], {
+    schemaVersion: 1,
+    entryType: "knowledge_finalization",
+    finalizeId: "no-op",
+    taskName: "no-op-task",
+    recordedAt: job.finishedAt,
+    status: "succeeded",
+    result: "Knowledge no-op.",
+    attempts: 1,
+    host: "codex",
+    threadId: "thread-knowledge",
+    truthEncoding: job.truthEncoding,
+  });
+  const repeated = runClawRaw(["internal-knowledge-finalize", "--job", jobPath], root, {
+    HOME: home,
+    USERPROFILE: home,
+    CLAW_SESSION_RUNTIME_DIR: sessionRuntimeDir,
+    CLAW_KNOWLEDGE_FINALIZER_DISABLE_RETRY: "1",
+  });
+  assert.equal(repeated.status, 0);
+  assert.equal(fs.readFileSync(reportPath, "utf-8").trim().split(/\r?\n/).length, 2);
 });
 
 test("knowledge finalization fails and retains its report when the SDK writer does not complete a session workflow", () => {

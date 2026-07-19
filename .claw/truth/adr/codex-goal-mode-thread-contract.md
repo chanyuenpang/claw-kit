@@ -31,6 +31,7 @@ Default policy:
 - use `setWhen = on_enter_process_active` so `plan write` / `prepare.requirements` guidance does not claim Goal mode ownership before execution actually starts
 - when a plan moves into `process.wait` or `process.discussing`, Codex host projection emits `update_goal(status="complete")` so the old Goal is no longer unfinished
 - when a later mutation resumes execution into `process.active`, emit `create_goal`; never combine the preceding complete and the new create in one code-mode call
+- treat `claw subplan create` as an atomic parent-to-child Goal handoff: emit `update_goal(status="complete")` before `update_plan`, do not emit child `create_goal` in that mutation, and let the child plan create its Goal only when a later mutation enters or resumes its `process.active`
 - when a plan reaches `end.completed`, return `goalTool.tool = update_goal` with `status = "complete"` instead of leaving completion to an implied host-side Goal mode gesture
 - if `plan.goal.text` is missing, block the lifecycle from entering `process.active` instead of emitting a premature Goal mode recommendation
 - generated task detail is derived from program state, not inferred from prose: the default Codex/no-host path appends `Follow the claw workflow guidance and finish your goal: <planGoal>` when `goalMode` is enabled, explicit `host: "opencode"` preserves its host-specific activation detail, and disabled `goalMode` keeps only the base activation detail
@@ -44,6 +45,7 @@ Default policy:
 - Goal mode no longer competes with requirements collection; agents finish filling `goal.text`, `requirements`, `tasks`, and related fields before active execution begins.
 - `goalMode` emission becomes a one-time activation boundary on first `process.active` entry, instead of a repeated `plan write` side effect.
 - resumed active execution gets a new Goal in the resume mutation call, so a wait/discussion pause does not strand the thread in a half-restored state.
+- subplan creation no longer overwrites an unfinished parent Goal or relies on a failing `create_goal` as control flow; the parent close and child create settle in separate host calls.
 - paused execution now has a durable, testable closeout rule: Codex projection uses `update_goal(status="complete")`, allowing the later cross-call `create_goal` to survive host settlement.
 - completed execution now has a durable, testable closeout rule: use `update_goal(status="complete")` when the root plan reaches `end.completed`.
 - Goal 恢复成为 plan-status router 的程序合同；Agent 不再承担 Goal 状态探测、错误文本匹配、历史判断或状态重放责任。
@@ -57,6 +59,7 @@ Default policy:
 - `packages/core/src/workflow-guidance.config.json`
 - `packages/core/src/templates/plans/default.ts`
 - `packages/core/src/plan.ts`
+- `packages/cli/src/cli.ts`
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md`
 - `packages/codex-adapter/references/workflow-guidance-consumption.md`
 - `packages/codex-adapter/scripts/code-mode-host-action-consumer.mjs`

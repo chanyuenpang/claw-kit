@@ -20,7 +20,7 @@ Accepted
 - plan 命令同时提供 `planSummary`，用于主线程快速理解当前计划状态
 - 不再保留 deprecated app/widget compatibility commands
 - 不再把 Apps SDK widget envelope 或 chat renderer 作为计划展示契约
-- Truth 与 ADR 继续由 host-aware background finalizer 的两个 focused phases 沉淀，不引入 Apps SDK surface
+- Truth 与 ADR 继续由 host-aware background finalizer 的一次 consistency-aware pass 共同维护；pass 内固定按 Truth → ADR 顺序评估，不引入 Apps SDK surface。具体 orchestration 由 `hook-owned-two-phase-knowledge-finalization.md` 拥有。
 
 ## Consequences
 

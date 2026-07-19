@@ -131,19 +131,30 @@ test("Codex main-agent bundle excludes retired workflow skills and closeout rout
 
 test("combined knowledge writer enforces trusted evidence and cross-document ownership", async () => {
   const skill = await fs.readFile(new URL("../shared/skills/knowledge-writer/SKILL.md", import.meta.url), "utf8");
+  const template = JSON.parse(await fs.readFile(new URL("../shared/skills/knowledge-writer/TEMPLATE.json", import.meta.url), "utf8"));
   assert.match(skill, /knowledge-base steward/i);
-  assert.match(skill, /completed `plan\.json`/i);
-  assert.match(skill, /trusted verified evidence/i);
+  assert.match(skill, /regardless of filename, record shape, field names, or serialization format/i);
+  assert.match(skill, /retrospective lessons, key decisions/i);
+  assert.match(skill, /task status is present/i);
+  assert.match(skill, /task titles and descriptions are not themselves an execution log/i);
   assert.match(skill, /Truth and ADR are one knowledge system/i);
+  assert.match(skill, /maintain Truth first, then maintain ADR/i);
   assert.match(skill, /one current owner/i);
   assert.match(skill, /open every plausible candidate/i);
   assert.match(skill, /exhaustive text search/i);
   assert.match(skill, /Do not report completion while/i);
   assert.match(skill, /Re-run focused and exhaustive searches/i);
-  assert.match(skill, /Trusted evidence is authoritative for what was verified at its own point in time/i);
+  assert.match(skill, /Trusted conclusion evidence is authoritative for what was concluded at its own point in time/i);
   assert.match(skill, /read-only check of its implementation anchors/i);
-  assert.match(skill, /Current implementation outranks older report wording/i);
-  assert.match(skill, /incomplete, superseded, or conflicts with newer implementation/i);
+  assert.match(skill, /Current implementation outranks older source wording/i);
+  assert.match(skill, /adds no durable reusable knowledge/i);
+  assert.deepEqual(template.tasks.map((task) => task.title), [
+    "Read conclusion evidence and locate canonical owners",
+    "Maintain canonical Truth",
+    "Maintain canonical ADRs",
+    "Run the cross-document consistency review",
+  ]);
+  assert.equal(template.tasks.some((task) => task.guidance?.onDone?.choices), false);
 });
 
 test("Codex plugin source includes the config skill entrypoint", async () => {

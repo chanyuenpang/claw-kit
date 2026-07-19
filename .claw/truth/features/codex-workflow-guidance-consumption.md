@@ -13,7 +13,7 @@
 - `process.wait` 和 `process.discussing` 都是暂停型 guidance：cross-host `workflowGuidance.goalTool` 继续描述 `update_goal(status="blocked")`；Codex adapter 不直接执行该 compatibility metadata，而是消费 CLI `buildHostActions` 按 committed `planStatus` 投影出的 schema-v1 `update_goal(status="complete")`，真正结束当前 Codex active Goal，再等待后续独立 mutation 恢复到 `process.active`。
 - 当 `workflowGuidance` 在从 `process.wait` 或 `process.discussing` 恢复后返回 `goalMode` 时，adapter 应把它当成 `on_resume_process_active` 的重新激活，而不是 `plan write` 阶段的首次 Goal Mode 授权。
 - `prepare.requirements` 阶段如果 `goal.text` 缺失，adapter 应先补 goal，再补其余 plan 字段；如果需求已经完整，补完后应立即把 `plan.status` 切到 `process.active`，而不是继续停留在 requirements。
-- 启用 planning 的 `claw plan create` 会先返回 `process.discussing`，并预置 planning task 与 `Enter process.active` bridge task；adapter append downstream tasks 时必须保留 task 2，让它继续承担从 planning 输出进入 `process.active` 的桥接职责。
+- 启用 planning 的 `claw plan create` 会先返回 `process.discussing`，并只预置一个同时承担讨论完成门与 activation 边界的 planning bridge；adapter append downstream tasks 时必须保留该 current template task。`claw plan start` 提交 planning 结果后应用它的 `guidance.onPlanStart`，不从 task 标题、语言或数量推断 lifecycle。
 - `prepare.requirements` 不再返回 active goal 推荐；只有真正进入 `process.active` 后，host 才根据返回的 `goalTool` / `goalMode` 创建 thread goal。
 - adapter 不应在 `plan write` 时启动 thread goal；只有 plan 首次进入 `process.active`，并且 `workflowGuidance.goalTool.tool = create_goal` 且 `goalMode.setWhen = on_enter_process_active` 时，才应消费 active-entry goal 合同。
 - adapter 必须把“没有 `goal.text` 就不能进入 `process.active`”视为 harness hard gate，而不是可由 prompt 规避的建议。
@@ -25,7 +25,7 @@
 - `end.completed` closeout 现在明确保留同线程 claw continuity：plan 完成后除了收尾当前 closeout，下一项工作仍应留在同一个 `claw-kit` 线程里，并重新经 `using-claw-kit` 做 project-plan/direct-work 判断，而不是把 completed-plan closeout 当成退出 claw-kit 的边界。
 - 当 task guidance 走 `guidance.onDone` / `guidance.onDone.choices` 时，host 不能把 `done` 视为无上下文的纯状态切换；如果返回结果要求 `choiceId`，adapter 必须把该值沿着 `claw task done --choice` 或 `claw task edit --status done --choice` 的 route-aware completion path 原样传递，并接受 template-bound 校验失败。
 - CLI compact result 现在会直接暴露 `goalTool`，所以 host 不需要从 prompt 文案里反推 goal lifecycle。
-- `planning` 现在是唯一可见 plan skill，并吸收了原本拆在 standalone workflow skills 中的 lifecycle 与 `workflowGuidance` 消费规则。
+- `planning` 现在是唯一可见 plan-content skill，但只负责 requirements refinement 与 outcome-task quality；lifecycle 与 `workflowGuidance` 消费仍由 `using-claw-kit`、template metadata 和 CLI/adapter contract 拥有。详细 lifecycle owner 是 `.claw/truth/features/cli-guided-workflow.md`，本文只拥有 Codex consumption 边界。
 - `packages/codex-adapter/skills/planning/SKILL.md`、`packages/codex-adapter/skills/using-claw-kit/SKILL.md` 与相关 references 都应遵循同一 CLI-driven compact guidance 合同。
 
 ## 真实代码锚点
@@ -79,6 +79,9 @@
 - 官方 Codex manual 暴露的插件扩展面包括 skills、hooks 与 MCP；这些扩展面可以提供提示合同、生命周期触发和外部工具，但没有公开接口让插件代码或 `claw` CLI 子进程直接调用 Codex 原生 host tools。
 - `update_plan`、`create_goal`、`update_goal` 的真实执行面是 code mode 中的 `tools` namespace。CLI 负责提交 canonical plan mutation 并输出结构化意图，不能越过 host 边界自行执行这些工具。
 - 因此，Codex adapter 的最小可靠执行边界是：在单次 code-mode 调用内，由固定程序运行一个 claw plan mutation、解析 CLI JSON，并调用允许的原生 host tools。不能把 CLI 子进程直调 host tool 作为可实现路径。
+- 截至 `2026-07-19` 的公开 app-server 协议，原生客户端可以通过 `thread/goal/set`、`thread/goal/get`、`thread/goal/clear` 修改它所连接线程的 Goal，也可以通过 `mcpServer/tool/call` 调用线程配置的 MCP tool；这要求连接承载目标 UI thread 的同一 app-server 实例、完成初始化并持有 thread identity，不是普通 `claw` CLI 或 plugin wrapper 可继承的宿主权限。
+- 同一公开协议的 plan surface 只有服务端发给客户端的 `turn/plan/updated` notification，没有客户端可调用的 `turn/plan/set`。因此 app-server Goal/MCP API 不能替代 `update_plan`；dynamic tools 的方向是模型调用客户端提供的工具，hooks 也只能观察、阻止或改写已有 function tool call，二者都不能由 CLI 主动发起 Codex 内建 `update_plan`。
+- app-server 只作为未来原生 Codex integration 的独立路线：只有 claw 能可靠连接当前 UI 使用的实例并遵守版本化协议时，才可考虑直接承接已公开的 Goal 能力；自行启动另一个 app-server 不等价，也不改变当前 `update_plan` 必须经过 agent/code-mode tool-call boundary 的合同。
 
 ### Codex-only 执行合同
 

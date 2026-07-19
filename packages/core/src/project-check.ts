@@ -7,6 +7,7 @@ import {
 import { ClawError } from "./errors.js";
 import { resolveProjectContext } from "./context.js";
 import { findProjectRoot, normalizeTaskName } from "./paths.js";
+import { DEFAULT_MAX_TASKS_TO_KEEP } from "./project-defaults.js";
 import { migrateLegacyTaskLayout } from "./task-layout-migration.js";
 import type {
   KnowledgeWriterReasoningEffort,
@@ -17,7 +18,6 @@ import type {
   ProjectProtocolIssue,
 } from "./types.js";
 
-const DEFAULT_MAX_TASKS_TO_KEEP = 99;
 const CORE_VERSION = readCoreVersion();
 export function checkProjectProtocol(cwd: string): ProjectProtocolCheckResult {
   const projectRoot = findRequiredProjectRoot(cwd);

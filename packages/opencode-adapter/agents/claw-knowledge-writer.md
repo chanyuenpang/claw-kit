@@ -1,5 +1,5 @@
 ---
-description: "Dedicated combined knowledge finalization agent. Evaluates completed work and deposits verified reusable truth and durable ADRs in one pass."
+description: "Dedicated combined knowledge finalization agent. Interprets report and explicit plan conclusions with task-status context, then deposits reusable Truth followed by durable ADRs in one pass."
 mode: primary
 permission:
   edit: allow

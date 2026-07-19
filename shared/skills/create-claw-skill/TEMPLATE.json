@@ -10,7 +10,9 @@
     "openQuestions": [],
     "acceptanceCriteria": [
       "The generated entry routes by whole-task, independent-stage, and mixed-stage ownership semantics without exposing storage scope.",
-      "The generated template owns the structured workflow and contains choices only for real downstream branches.",
+      "Independent-stage entries preserve the Goal handoff: complete the active parent goal before the child plan creates its own goal.",
+      "The generated template owns the structured workflow and contains choices only for real downstream branches; choice-aware guidance exposes valid ids once and one executable --choice command template.",
+      "The template deliberately chooses whether a discussion delivery task adopts optional guidance.onPlanStart; executable templates start active without it by default.",
       "The adjacent fallback document preserves direct skill behavior for mixed-stage use and unavailable claw tooling.",
       "The source template passes file-based validation and the converted package passes content coverage checks.",
       "The generated skill package is self-contained and its template id matches the entry."
@@ -20,7 +22,7 @@
     {
       "id": 1,
       "title": "Inspect the source and choose the conversion shape",
-      "detail": "Read the source skill or distill the user idea. Identify its trigger, ordered workflow, tools, constraints, real control-flow branches, verification, and companion files. Decide the conversion shape from evidence without asking the user to choose a template style.",
+      "detail": "Read the source skill or distill the user idea. Identify its trigger, ordered workflow, tools, constraints, real control-flow branches, verification, lifecycle handoff, and companion files. Decide the conversion shape from evidence without asking the user to choose a template style. Treat claw plan start as optional global syntax sugar: adopt guidance.onPlanStart only for a genuine discussion-to-execution delivery point; otherwise start executable work in process.active.",
       "status": "pending",
       "guidance": {
         "onDone": {
@@ -29,6 +31,8 @@
             "summary": "The source behavior and conversion shape are clear; generate the package.",
             "nextsteps": [
               "Use choices only when the selected value changes the immediate downstream task or route.",
+              "Use guidance.onPlanStart only when the current discussion task deliberately owns the transition into execution; do not add it as lifecycle boilerplate.",
+              "For every choice task, verify completionChoices is the single valid-id source and guidance returns one claw task done --id <id> --choice <choice> command template.",
               "Keep long-form direct behavior in the adjacent fallback document."
             ],
             "nextTaskId": 2
@@ -58,7 +62,7 @@
     {
       "id": 3,
       "title": "Validate structure and content coverage",
-      "detail": "Run `claw template validate --file <target-skill-package>/TEMPLATE.json`, validate the skill package structure, and map important source behavior to entry, template tasks/guidance/rules/references, or the fallback document. Use named `--template <id>` validation only after the skill is materialized in a supported runtime registry.",
+      "detail": "Run `claw template validate --file <target-skill-package>/TEMPLATE.json`, validate the skill package structure, and map important source behavior to entry, template tasks/guidance/rules/references, or the fallback document. For every task listed in choiceRequiredTasks, exercise its live workflow guidance and confirm completionChoices contains the valid ids while recommendedCommands contains exactly one claw task done --id <id> --choice <choice> template and nextsteps does not repeat the ids. Use named `--template <id>` validation only after the skill is materialized in a supported runtime registry.",
       "status": "pending"
     }
   ],
@@ -80,8 +84,11 @@
     "Keep task ids numeric and workflow control in the template.",
     "Route by whether the skill owns the whole task, one independent stage, or only part of a mixed stage.",
     "Treat each batch item as a stage-level subplan when the skill owns that stage.",
+    "On Goal Mode hosts, every subplan entry must consume the returned handoff that completes the parent goal before creating the child goal.",
     "Let explicit template creation choose its runtime storage automatically.",
     "Preserve direct behavior in the adjacent fallback document and use focused references only when needed.",
+    "Every guidance.onDone.choices task must expose valid ids once in completionChoices and one real --choice CLI command template without repeating ids in nextsteps.",
+    "Treat claw plan start as optional global syntax sugar: templates opt into recommending it through the current task's guidance.onPlanStart, while ordinary plan and task mutations remain valid.",
     "Do not claim completion before file-based template validation and content coverage pass."
   ],
   "keyDecisions": [],

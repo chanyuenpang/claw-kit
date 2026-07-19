@@ -54,8 +54,8 @@ Together, the canonical config plus local override model gives longer-running pr
 - `name`
   - human-readable project name
 - `maxTasksToKeep`
-  - active task retention limit before archival
-  - default: `99`
+  - archived task retention limit before oldest-archive pruning
+  - default: `9`
 
 ### Planning
 
@@ -65,7 +65,7 @@ Together, the canonical config plus local override model gives longer-running pr
   - when `false`, `claw plan create` seeds the smallest executable root plan in `process.active`
 - `externalPlanningSkill`
   - optional planning skill name for task 1 in planning-enabled seed plans
-  - use `null` to keep the host-default built-in planning skill surface
+  - use `null` to fall back to `claw-kit:planning`
 
 ### Knowledge writer
 
@@ -124,7 +124,7 @@ Older nested inputs should be rewritten into the flat fields above during protoc
   "version": "0.1.54",
   "id": "demo-project",
   "name": "Demo Project",
-  "maxTasksToKeep": 99,
+  "maxTasksToKeep": 9,
   "planning": true,
   "autoUpdate": true,
   "externalPlanningSkill": null,
@@ -152,7 +152,7 @@ Older nested inputs should be rewritten into the flat fields above during protoc
 
 When `planning = true`, the normal root entry flow is:
 
-`claw plan create` -> `process.discussing` -> task 1 planning -> task 2 activate -> execution
+`claw plan create` -> `process.discussing` -> task 1 planning -> execution or closeout
 
 The built-in fallback template is `default`. The CLI uses explicit `--template` first, otherwise the merged `defaultPlanTemplate` from `.claw/project.json` plus `.claw/project-override.json`, and only then falls back to `default`.
 
@@ -201,14 +201,7 @@ export default {
     {
       id: 1,
       title: "Use the team planning flow",
-      detail: "Use {{planningSkill}} to refine the request into executable work.",
-      status: "pending"
-    },
-    {
-      id: 2,
-      title: "Enter process.active",
-      detail: "After planning, move into process.active and continue execution.",
-      goalModeDetail: "If Goal Mode is enabled for this project, start Goal Mode.",
+      detail: "Use {{planningSkill}} until the discussion is complete and the smallest outcome-oriented task list is clear.",
       status: "pending"
     }
   ],
@@ -378,7 +371,7 @@ When explaining project behavior:
 - `.claw/project.json` is the canonical declaration surface
 - `.claw/project-override.json` is local and runtime-only
 - the canonical-plus-personal split is part of the collaboration model, not just a schema detail
-- `planning = true` makes `plan create` start in `process.discussing` with planning and activation bridge tasks
+- `planning = true` makes `plan create` start in `process.discussing` with one planning task; it either starts the resulting execution tasks or closes when planning itself resolves the request
 - `planning = false` makes `plan create` start directly in `process.active` with a minimal executable plan
 - `autoUpdate = true` lets startup recovery route the agent to `claw-kit:update` first when a newer published claw-kit version is available
 - `autoUpdate = false` keeps version drift informational only

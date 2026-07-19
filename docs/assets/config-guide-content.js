@@ -38,10 +38,10 @@ export const configGuideContent = {
       {
         id: "maxTasksToKeep",
         group: "Retention",
-        title: "How much active task history stays nearby",
-        summary: "Controls how many recent tasks claw-kit keeps before older work gets archived.",
-        detail: "Teams raise or lower this when they want more or less visible short-term history in the working set.",
-        example: `"maxTasksToKeep": 20`
+        title: "How much archived task history is retained",
+        summary: "Controls how many archived task directories claw-kit retains before pruning the oldest.",
+        detail: "The default is 9. Reports move with archived tasks and are removed only when their archived task is pruned.",
+        example: `"maxTasksToKeep": 9`
       },
       {
         id: "planning",
@@ -167,10 +167,10 @@ export const configGuideContent = {
       {
         id: "maxTasksToKeep",
         group: "保留",
-        title: "附近保留多少活跃任务历史",
-        summary: "控制 claw-kit 在更早任务归档前，先保留多少最近任务。",
-        detail: "团队会在想保留更多或更少短期历史时调整这个值。",
-        example: `"maxTasksToKeep": 20`
+        title: "保留多少条归档任务历史",
+        summary: "控制 claw-kit 在清理最旧归档前保留多少个归档任务目录。",
+        detail: "默认值为 9。report 会随任务一起归档，仅在对应归档任务因超出上限被清理时删除。",
+        example: `"maxTasksToKeep": 9`
       },
       {
         id: "planning",

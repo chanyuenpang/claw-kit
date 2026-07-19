@@ -31,11 +31,14 @@ Accepted
 - 是否创建 plan 的入口决策由 `using-claw-kit-session-entry.md` 拥有；本 ADR 只消费其 project-plan 结果，并规定后续 `process.discussing` / `process.active` 生命周期
 - `process.discussing` 是允许跨轮次停留的稳定状态；plan 存在本身不触发 Goal Mode，也不要求自动进入 `process.active`
 - 只有后续可执行子任务已经明确，并且用户可以脱手让 agent 继续推进时，plan 才从 `process.discussing` 进入 `process.active`
+- default plan 用一个 planning bridge 同时承载用户讨论完成门、requirements readiness、最小 downstream task shaping 与 activation 边界；完成 draft 不足以关闭该 task，只有当前讨论结束、目标与约束清晰、material open questions 已解决且 downstream plan 可执行时，才调用 `plan start`
+- plan-start state change 由 current template task 的 `guidance.onPlanStart` 声明；default template 声明 `completeTask: true` 与 `status: "process.active"`，`plan start` 只提交 refined fields、追加 outcome tasks 并应用这项声明，不检查 task title、语言、bridge 数量或 legacy plan shape
+- planning bridge 展示的 skill 名称必须来自 project config 与 template `configOverride` 合并后的 effective `externalPlanningSkill`；未设置时固定回退到 `claw-kit:planning`，不再使用含糊的 built-in skill 文案
 - foreground lifecycle 不再派发 knowledge writer；`process.allTasksDone` 只要求在 `plan done` 前持久化 retrospective 与 durable `keyDecisions`
 - plan completion 登记 pending turn owner，下一次 Stop/session-idle 才由 `hook-owned-two-phase-knowledge-finalization.md` 所定义的 sidecar 捕获 report 并异步排队一次 combined `knowledge-writer` pass
 - knowledge finalization 不阻塞 foreground closeout；它的失败、重试和完成状态不改变 canonical plan completion
 - `end.completed` 写入稳定的 `completedAt`，但 `claw plan done` 保留当前 task directory 与原 `planPath`，不在本次命令中立即移动计划
-- `claw plan start --requirements <text> --acceptance <criterion> --add-task <title> --detail <text>` 是原子 refine-and-activate 入口：它默认作用于 session-bound 当前 plan/subplan，在一次序列化 mutation 中补齐计划、追加业务 tasks、完成两个 lifecycle bridge tasks，并进入 `process.active`
+- `claw plan start --requirements <text> --acceptance <criterion> --add-task <title> --detail <text>` 是原子 planning-result commit 入口：它默认作用于 session-bound 当前 plan/subplan，在一次序列化 mutation 中补齐计划、追加业务 tasks，并按 current task 的 template `guidance.onPlanStart` 完成 task 与状态转换；既有双 lifecycle-task plan 只保留为历史证据，不再由标题/shape heuristic 识别
 - 原子结果使用 `schemaVersion = 1` 的 plan events；一次 mutation 共享 `mutationId`，每个事件有唯一 `eventId` 并记录 `commandSource`
 - CLI plan state 继续是 canonical source；Codex adapter 单向消费幂等 `hostActions` 以同步 host progress 与 Goal Mode，OpenCode 直接消费其 host-specific guidance；invocation host 的解析、投影与 worker 路由见 `invocation-host-handling.md`，不把 host 状态反向写成第二份所有权
 - schema 兼容的 Codex `update_plan` host action 默认在现有单次 code-mode 调用内自动消费，不再要求 Agent 把 CLI payload 搬运到第二次 host tool 调用
@@ -43,7 +46,7 @@ Accepted
 - `recommendedCommands` 只表达可执行的 CLI 命令；code-mode 同调用消费是 adapter 执行合同，不伪装成 CLI command
 - 所有 `hostActions` 固定使用 `schemaVersion = 1`；`create_goal` 与 `update_goal` 的真实 host tool 参数只放在 `input`，`allowOverwrite`、`reason` 等策略信息放在 `meta`
 - consumer 按 CLI 返回顺序和 action id 至多消费一次；CLI mutation 成功后若 host action 失败，只重试对应 action，不回滚 canonical CLI plan state
-- 同调用消费不可用时回退到分离 host tool 调用；正确性不依赖 `PostToolUse` hook，只有重复胶水成本值得额外 runtime 复杂度时才考虑增加 runtime consumer
+- 历史设计曾允许同调用消费不可用时退回分离 host tool 调用；当前 Codex 合同已由 `codex-plan-mutations-use-fixed-code-mode-consumer.md` 收敛为 fail closed，不再提供 direct-call 或 split-call fallback。正确性仍不依赖 `PostToolUse` hook。
 - 既有 `claw plan create`、`claw plan edit` 与 `claw plan done` 保持兼容；`plan start` 是新增的短路径，不替换显式恢复和 legacy lifecycle surface
 - plan/task 批处理采用按 argv 从左到右的 mutation chain：整条 chain 先做语法预校验，语法错误零提交；语义执行逐步持久化，在首个失败处停止，并保留此前成功 operation。
 - chain 中间步骤不生成 lifecycle side effect；`workflowGuidance`、completed-task 事件、session binding、completion hooks、plan mirror 与 Goal action 仅根据 chain 初始和最终 plan 状态归约一次。
@@ -54,6 +57,7 @@ Accepted
 - Codex agent 可以直接从 CLI 结果拿到紧凑且顺序正确的下一步契约
 - agent 被允许用最小参数先绑定任务，不必因为初始命令缺少完整 `goal` 而卡在 `plan write` 入口
 - `prepare.requirements -> process.active` 的推进条件分成两层：知识沉淀预期只决定是否建立 plan；子任务明确度与用户可脱手性共同决定是否激活，未满足时可继续稳定停留在 `process.discussing`
+- 单一 bridge 删除了独立 activation meta-task，却没有放松 activation gate：讨论完成与执行 readiness 仍是进入 `process.active` 的同一个明确边界；旧双任务 plan 若要恢复必须走显式 lifecycle mutation，不能依赖 `plan start` 猜测其结构
 - 对外 plan-write / plan-status 合同更稳定，像 `release-0-1-25` 这样的版本发布可以把这组行为当作 release-worthy surface change
 - 规划语义与展示语义保持一致，计划编辑后无需额外拼装另一套状态
 - 生命周期门禁从文案建议上升为实际约束，避免无目标 active plan 进入执行态
@@ -71,7 +75,7 @@ Accepted
 - tool 白名单和参数投影限制自动化边界，避免把 CLI 返回中的策略或说明字段未经验证地传给 host tool
 - host 同步失败与 canonical plan mutation 解耦后，恢复动作只需重放幂等 host action，不会因 host surface 瞬时失败撤销已经提交的计划状态
 - `schemaVersion = 1` 与 `input`/`meta` 分离让 adapter 可以验证真实 host 参数，同时保留 overwrite/reason 等策略说明而不污染 tool schema
-- action id、返回顺序与至多一次语义给自动和分离消费路径提供同一恢复边界；fallback 不改变 CLI plan 的 canonical ownership
+- action id、返回顺序与至多一次语义仍定义 host-action 恢复边界；历史分离消费路径已被后续固定 consumer 决策取代，CLI plan 的 canonical ownership 不变
 - guidance-first 的实现先兑现已测收益且不依赖 hook 时序；是否增加 runtime consumer 成为可独立评估的成本决策，而不是当前正确性前提
 - `0.1.75` 的 cold/warm driver 结果为同一 `driverVersion=3`、`cacheKey=claw-kit:codex-driver:v3:s1` 与 SHA，支持把短 bootstrap 的缓存身份作为可回归合同，而不是每次重新获取。
 - 语法预校验与逐步语义提交兼顾了零提交的输入错误边界和可恢复的部分成功语义；调用方可从结构化 partial 结果定位失败 operation，而不需要猜测哪些前置步骤已落盘。
@@ -131,7 +135,7 @@ Accepted
 - `Goal action input meta projection`
 - `recommendedCommands CLI semantics`
 - `ordered at-most-once action id consumption`
-- `same-call fallback separated host tool call`
+- `historical split-call fallback superseded by fixed code-mode consumer`
 - `PostToolUse not required`
 - `0.1.70`
 - `0.1.75`

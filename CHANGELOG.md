@@ -4,6 +4,26 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## Unreleased
 
+## [0.1.84] - 2026-07-19
+
+### Added
+
+- Completed knowledge finalization now records an observable writer result in the retained task report, and task retention defaults to nine completed reports before pruning
+- Project context recovery can warm the configured local embedding session without issuing a search query
+
+### Changed
+
+- Knowledge writing now consumes completed plan and report content in one sequential Truth/ADR pass without input-format routing
+- The default planning template uses one outcome-oriented discussion task, resolves the configured planning skill with a built-in fallback, and avoids lifecycle-driven task fragmentation
+- `claw plan start` remains optional global syntax sugar; templates declare `guidance.onPlanStart` only when a discussion task deliberately bundles delivery into execution
+- `create-claw-skill` now teaches template authors when to adopt or omit `guidance.onPlanStart`, while generated executable templates continue to start directly in `process.active`
+- Repository testing guidance now applies TDD only when stable regression protection justifies its implementation and maintenance cost
+
+### Fixed
+
+- Choice-aware task guidance exposes valid ids once and recommends the real `--choice` CLI syntax
+- Subplan guidance completes an active parent goal before creating the child goal, preventing Goal Mode conflicts
+
 ## [0.1.83] - 2026-07-19
 
 ### Added

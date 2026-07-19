@@ -18,11 +18,13 @@ The skill also exposed storage concerns that belong to core plan creation. A tem
   - use the adjacent fallback directly when the skill contributes only part of a mixed stage and cannot independently own that stage's result.
 - Treat batch work as repeated independently owned stages. The root plan owns batch ordering and shared constraints; each stage invokes the skill once as a subplan.
 - Do not classify batch as mixed work. “Mixed” means multiple skills must interleave within one stage under a different owning workflow.
+- Apply the canonical exact-source routing decision to this skill: resolve the loaded `SKILL.md` directory and pass its adjacent `TEMPLATE.json` through `--template-file` for both root-plan and subplan entry. The `create-claw-skill` template id remains a compatibility discovery key, not the authoritative loaded-skill source.
 - Keep `create-claw-skill` entry routing free of storage scope. Explicit template creation outside a `.claw` project relies on the core resolver's automatic session scope; plain plan creation keeps project initialization semantics.
 - Preserve direct, plan-independent behavior in an adjacent fallback document. For `create-claw-skill` itself and generated packages by default, that document is `FALLBACK.md`; `--fallback-doc` may configure another adjacent filename.
 - Keep the visible entry thin and let `TEMPLATE.json` own conversion tasks, guidance, rules, references, and verification.
 - Use `guidance.onDone.choices` only for a real route-selection event whose selected value changes the immediate downstream task or route. If all options continue to the same task and only alter advice, infer the shape from evidence and use default guidance.
 - Validate a template under development with `claw template validate --file <skill-dir>/TEMPLATE.json`; reserve named `--template <id>` validation for a template already materialized in a supported registry.
+- Generated packages must inherit the canonical route-aware completion contract from `template-guidance-routing-and-config-override.md`: real choices are discoverable only through `completionChoices`, guidance provides one parameterized `--choice <choice>` command template without repeating ids in `nextsteps`, and internal `choiceId` terminology is not presented as a CLI flag. This ADR does not create a second owner for the general choice semantics.
 
 ## Consequences
 
@@ -31,6 +33,8 @@ The skill also exposed storage concerns that belong to core plan creation. A tem
 - A skill that cannot independently finish a stage no longer creates a misleading subplan merely because it was explicitly invoked.
 - The template no longer requires a `choiceId` for `simple`, `routing`, or `idea-first` labels that all enter the same execution task.
 - Generator and authoring guidance can present the short `--skill-name` plus `--out` path and omit manual scope routing.
+- Generated entries select the exact adjacent template even when another installed skill or cached version reuses the same template id.
+- Generated route-aware templates remain directly operable from compact guidance instead of requiring callers to inspect template JSON or translate `choiceId` into CLI syntax.
 - Storage-scope semantics remain owned by the shared plan/template resolver contract, and general choice semantics remain owned by the template-guidance contract.
 
 ## Related Code

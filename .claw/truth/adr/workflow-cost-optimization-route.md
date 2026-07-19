@@ -22,24 +22,31 @@ Accepted
 
 `0.1.75` 的正式验收确认流程体验相较旧路径明显更连贯，热态性能相对 `0.1.70` 持平到小幅提升。可归因的主要改善是 atomic `plan start` 与 Codex `hostActions` 自动桥接减少了交互和状态搬运，并非新的数量级 CLI 提速；`198/198` 与完整 check 均通过。仍需分别观察 cold search、错误命令的 exit-code 语义，以及 `workflowGuidance` writer model 与宿主模型能力清单的对齐。
 
+2026-07-19 的当前 checkout 摩擦审计没有发现 P0 问题，并把后续重心从继续增加流程调整为部分成功后的恢复、已完成成果的最终沉淀与后台任务可观察性。随后实现已让所有从非终态进入 `end.*` 的转换统一登记 finalization，并让 `process.*` 只累计 report；当前触发与 writer evidence 决策由 `hook-owned-two-phase-knowledge-finalization.md` 唯一拥有。
+
+同日对比例化 TDD 决策的复核纠正了 owner：这不是应传播给插件使用方其他项目的 host-neutral planning policy，而是 `claw-kit` 仓库本地开发规则。规则已从 `shared/skills/planning/SKILL.md` 及 Codex/OpenCode 物化副本移除，并迁移到根 `AGENTS.md`。当前行为与分发边界由 `.claw/truth/features/shared-planning-skill-source.md` 拥有；本 ADR 只拥有迁移决策、理由和取舍。
+
 ## Decision
 
 按以下顺序推进后续优化：
 
 1. 第一阶段对 planning 预算和状态同步的优化继续有效；当时的 `truthDispatch=final_only` / `per_task` 配置与 main-agent writer dispatch 仅作为版本化性能证据保留，不再是 current project schema 或 lifecycle owner。
 2. 当前 writer orchestration 由 `hook-owned-two-phase-knowledge-finalization.md` 拥有：Stop/session-idle 创建 job，finalizer 运行一次 consistency-aware `knowledge-writer` pass；main agent 不执行 reusable-truth gate 或 required ADR dispatch。
-3. Writer deposition 保持 writer-owned routing：main agent 不负责选择 canonical 文件；combined writer 使用 `claw search` 和完整候选 disposition 选择 owner，并在必要时做受控全量 fallback。输入统一来自 completed plan 与相邻可信 report；该路径不削弱完整候选阅读、freshness qualification、路径 containment、编码正确性和跨 Truth/ADR one-owner consistency。
+3. Writer deposition 保持 writer-owned routing：main agent 不负责选择 canonical 文件；combined writer 使用 `claw search` 和完整候选 disposition 选择 owner，并在必要时做受控全量 fallback。沉淀证据来自相邻可信 report 的结论以及 source plan 的 retrospective、`keyDecisions` 和其他明确结论；task status 只解释 scope。该路径不削弱完整候选阅读、freshness qualification、路径 containment、编码正确性和跨 Truth/ADR one-owner consistency。
 4. `claw search` 第一阶段前台提速采用保守 lexical fast path 与有界 query embedding cache，不在同步 search API 上强行引入常驻 daemon。fast path 只接受 `strongTerms` 完整覆盖并且唯一文件名/路径或唯一精确短语命中的结果；任何不确定性继续回退既有 hybrid search。query cache 存放于项目 `memory.sqlite`，cache key 由版本、完整 embedding config fingerprint 与最终 worker query text 组成，最多保留 128 条，并在 embedding config vector reset 时清空。
 5. local embedding 的跨 CLI 复用采用独立的 loopback TCP daemon：以随机 token 认证、原子 state discovery、startup locking、embedding configuration fingerprint、有界 session LRU 和 idle TTL 管理生命周期。local provider 优先尝试 persistent daemon；daemon 启动或 transport 失败时回退既有 one-shot worker，但 model inference error 保持权威，不通过第二次模型加载重试。remote provider 继续使用 one-shot 路径。
 6. host/runtime 架构成本通过原子 `claw plan start` 与 versioned plan events 收敛：CLI plan state 保持 canonical，adapter 仅消费幂等 `hostActions`，单向同步 host progress 与 Goal Mode。
 7. 性能回归必须把 search 路径与 plan lifecycle 分开报告。search 至少分别记录 exact lexical、semantic one-shot、daemon cold、daemon warm 与 query cache hit；workflow 还需单列 plan mutation 与 closeout。在 plan mutation 成本下降前，不以 search 单点收益宣称 formal workflow 整体提速。
 8. search 性能判断以 `route`、`queryEmbedding`、`embeddingRuntime` 与 `durationMs` telemetry 为准。词法路径无需模型、当前 persistent daemon warm 已低于一秒，因此不在 plan create 时无条件预热 embedding。
-9. `0.1.69` 的 complexity-gate dependency 校准只作为版本化性能证据保留；当前 project-plan admission 由 `using-claw-kit-session-entry.md` 的 reusable-project-knowledge 判断拥有。combined writer 是否写 ADR 由 freshness-qualified evidence 决定，而不是由旧的独立 ADR phase shortcut 决定。
+8.1. local persistent embedding 的 cold-start 优化放在 SessionStart 的 `runContextCommand` 恢复链路，而不是执行期手动 `claw context` 或 plan-create 前台路径：仅当 memory 已启用、provider 为 local、persistent worker 未禁用且 vector index 可用时，detached、fail-open 地发送一条不写 query cache 的内部文本请求，并且不等待、不延迟 context 返回。只启动 daemon 或发送空文本数组不能预热惰性创建的 extractor；remote provider、禁用状态、索引不可用和预热失败都保持原有 cold-start fallback。
+9. `0.1.69` 的 complexity-gate dependency 校准只作为版本化性能证据保留；当前 project-plan admission 由 `using-claw-kit-session-entry.md` 的 reusable-project-knowledge 判断拥有。combined writer 固定先评估 Truth、再评估 ADR；每一阶段可以基于 freshness-qualified evidence 不编辑，但不再由旧的独立 ADR phase shortcut 或 Truth/ADR route task 决定 orchestration。
 10. workflow 性能复测必须同时记录线程绑定的 plugin skill snapshot、全局 CLI 的实际命令能力与仓库源码状态。版本号只能作为线索；只有三层合同一致且目标命令在真实 CLI surface 可用，才可把样本归入最新优化路径。
 11. formal workflow 的当前入口边界是是否预期产生可复用项目知识；进入 project plan 后继续保留 planning、Goal Mode、Truth/ADR deposition 与验证门禁，不用删减质量合同换取表面流畅度。
-12. 下一阶段优先让 Codex 自动消费幂等 `hostActions`、减少 CLI plan state 与 host progress 的重复写入，并增强 writer 与 completion refresh 的状态可观察性；CLI plan state 仍是 canonical source，不引入 host 侧反向所有权。
+12. `hostActions` 自动消费已经落地；当前 P1 是让 canonical mutation 已成功、后续 host action 失败的部分成功状态可恢复。driver 应返回结构化 mutation identity、持久化状态与 action 完成情况，并提供幂等 reconcile/recover，而不是让 agent 根据泛化错误猜测或重放 mutation。CLI plan state 仍是 canonical source，不引入 host 侧反向所有权。
 13. `projectVersionAligned` 的诊断不变量是：项目版本与运行时版本相等时必须返回 `true`。equal-version 分支返回 `false` 应作为独立诊断合同缺陷修复，不能被解释为真实版本漂移，也不能覆盖 registry、CLI capability、source、project protocol 与 thread snapshot 的一致性证据。
-14. 后续验收和性能结论继续按 plan lifecycle、lexical search、daemon cold/warm、query cache、writer 与质量门禁分层；不得以任一 search 样本替代整体 workflow 结论。下一轮优化优先降低 cold search 延迟，修正错误命令的 exit-code 合同，并使 `workflowGuidance` writer model 与宿主模型能力清单一致。
+14. 后续验收和性能结论继续按 plan lifecycle、lexical search、daemon cold/warm、query cache、writer 与质量门禁分层；不得以任一 search 样本替代整体 workflow 结论。2026-07-19 已完成所有 `end.*` 统一 finalization、conclusion-aware writer evidence 与 SessionStart/context local persistent embedding 异步预热；mutation/host-action recover、knowledge status/retry/explain、统一 doctor 与 deposition manifest 仍是独立后续项。显式 `--template-file` 已解决 template identity，执行期手动 context 样本也不足以支持 compact-context 产品项，因此两者不再占当前优化排序。
+15. 采用与风险、稳定性和成本成比例的 TDD policy，并由仓库根 `AGENTS.md` 承载，仅约束 `claw-kit` 自身开发。`shared/skills/planning/SKILL.md` 及其 Codex/OpenCode 物化副本不得包含该仓库政策。自动化测试优先保护稳定、高风险、容易回归的协议、已复现缺陷和关键兼容边界；纯文档、高频变化或合同未稳定的区域先使用轻量验证，测试实现及维护成本高于现实回归防护价值时不机械套用 TDD。ADR 负责保存稳定决策与取舍，行为测试负责必要的可执行回归，两者互补而不互相替代。
+16. planning task granularity 的当前决策是通常 `1-3` 个 downstream outcome tasks，并优先让一个 coherent deliverable 留在一个 task 内；只有独立 deliverable、ownership、blocker、durable decision 或 materially different risk surface 才拆分。文件、命令、实现、文档、测试、build、check 与 review 是交付覆盖面，不自动升级为独立 task。单一 planning bridge 与 activation gate 的生命周期决策由 `cli-guided-plan-lifecycle.md` 拥有，本 ADR 只拥有这项减少管理任务膨胀的颗粒度取舍。
 
 复杂任务的计划、验证、完成期 truth/ADR 沉淀和可追溯性继续保留，不以削弱质量门禁换取表面提速。每项实现必须通过按真实任务复杂度分层的 A/B 验证，并共同观察首个有效工作时间、端到端总时长、工具调用数、状态写入次数、收尾时间和质量回归。
 
@@ -48,11 +55,13 @@ Accepted
 - 直接取消正式 planning、验证或 canonical deposition：拒绝，因为这会用治理质量换取时长，无法满足复杂任务的可追溯性要求。
 - 先微调单次 `plan show` 性能：暂不优先，因为热态耗时相对较低，固定管理动作和 search runtime 启动成本的预期收益更高。
 - 一次性同时重构 plan、search 与 host bridge：拒绝，因为难以归因收益与质量回归；应按优先级分阶段验证。
+- 对所有开发与文档改动统一强制 TDD：拒绝，因为低风险、不可执行或高波动内容的测试维护成本可能超过现实回归防护价值，并会固化尚未稳定的合同。
+- 完全不为文档或设计决策留下可验证证据：拒绝；这些改动仍应按比例使用审阅、链接/结构检查或示例，稳定决策则由 ADR 保存以防止意图回退。
 
 ## Consequences
 
 - 第一阶段减少 planning 膨胀和逐任务状态同步的结果继续有效；当时的 `per_task` 与 main-agent writer dispatch 结论已经被 hook-owned finalization 取代。
-- Knowledge value extraction 与 deposition 由两个 focused phases 完成；main agent 不拥有 truth dispatch gate 或 ADR required-dispatch contract。
+- Knowledge value extraction 与 deposition 由一次 consistency-aware pass 完成，并在 pass 内固定按 Truth → ADR 顺序评估；main agent 不拥有 truth dispatch gate、route choice 或 ADR required-dispatch contract。
 - writer-owned routing 成为强制边界：main agent 无需理解 canonical 文件布局；writer 依赖 `claw search` 做候选召回、完整读取和明确 disposition，同时保留必要时的受控全量 fallback。
 - 路由提速不得绕过 deposition 的完整 reference 读取、事实验证、路径 containment、编码检查和有界重复检查。
 - writer-owned routing 已消除可控的 ADR corpus 扫描，但 fresh-agent 定向样本未证明端到端耗时下降，因此不能宣称 writer 整体已经加速；后续性能工作应聚焦 writer 启动与模型处理延迟。
@@ -63,19 +72,22 @@ Accepted
 - 严格唯一性门槛把 lexical 提速限制在可证明安全的查询上；模糊查询继续承担首次 embedding 成本并保留现有 semantic hybrid recall。cache 的完整配置指纹、版本和 128 条上限避免跨配置误用与无界增长。
 - persistent local-embedding worker 已在现有同步调用边界内落地；真实两个不同、未命中 query cache 的语义查询复用同一 daemon session，从 3078ms cold 降至 452ms warm。core 121/121、CLI 64/64、plugin contract 19/19 与 `npm run check` 均通过。
 - daemon 是可选性能层而不是可用性单点：random-token loopback endpoint、配置指纹、启动锁、LRU 与 idle TTL 约束复用边界；startup/transport failure 安全回退 one-shot worker，而 inference failure 不重复加载模型，避免掩盖真实模型错误。
+- SessionStart/context 预热只缩短符合门禁的 local persistent embedding 首次语义查询，不改变 search correctness 或 query cache；detached、fail-open 与 daemon `120s` idle TTL 使它不阻塞恢复，也不把模型变成长驻资源。
 - 原子 refine-and-activate 与自动状态桥接已经落地；固定 Windows A/B 把首个业务动作前的管理命令从 `6` 降至 `3`，atomic path P50 相对 legacy path 改善 `57.35%`。
+- 当前默认 skeleton 进一步把 planning 与 activation 收敛为一个 readiness bridge，并把 downstream 预算从 `2-4` 收紧到 `1-3`；旧双任务 skeleton 和既有 A/B 数字继续作为明确的版本化兼容/性能证据，不能描述当前默认 task shape。
 - search telemetry 已能区分 lexical fast path、persistent daemon、cache 与 one-shot fallback；固定样本的 lexical P95 为 `315.35ms`、daemon semantic P95 为 `602.93ms`，而成功的 one-shot fallback 为 `4392.01ms`，因此保持按 route 报告并拒绝无条件 plan-create 预热。
 - complexity gate 在 `12` 个 low / medium / high 语料上把 legacy low false-positive rate 从 `0.5` 降为 `0`，formal recall 与 overall accuracy 均为 `1`；该结果支持 dependency 独立风险计分，而不是删减 formal workflow 的质量门禁。
-- Combined writer 按 freshness-qualified evidence 选择 Truth-only、ADR-only、both 或 no-op；`keyDecisions` 为空不再通过独立 ADR phase shortcut 改变 orchestration。
+- Combined writer 固定先评估 Truth、再评估 ADR；任一阶段都可以基于 freshness-qualified evidence 不编辑，但不存在 Truth-only、ADR-only、both 或 no-op route task，`keyDecisions` 为空也不通过独立 ADR phase shortcut 改变 orchestration。
 - 第二阶段完成后，端到端性能声明仍必须同时覆盖 plan mutation、search、writer 与 completion refresh，不能用任一单条 search benchmark 代表整体 workflow。
 - 复测报告需要显式标注 skill snapshot、CLI capability 与 source revision；任一层漂移时，结果只能描述该组合下的真实路径，不能据源码存在或版本号相同宣称已验证最新合同。
 - `0.1.65` 的单一 `dispatch` 是历史性能基线；其中 writer-owned routing 被保留，而 main-agent dispatch 先由 hook-owned two-phase finalization 取代，`0.1.80` 又把两个 focused phases 合并为一次 consistency-aware pass。
 - `0.1.69` 同版本线复测进一步证明 route 分层仍是性能结论的必要前提：lexical、persistent daemon 与 cache hit 均处于亚秒级，但它们不能替代 plan lifecycle、writer 和 completion refresh 的端到端证据。
 - `0.1.70` 验收在 atomic workflow、`198/198` 测试与完整 check 全部成功的前提下，确认复杂任务 formal workflow 的性能已足够高；首次 daemon 冷启动约 3.2s 仍应与热态和 cache hit 分开报告，不能用单点 search 提速外推整体性能。
 - `0.1.75` 复测证明当前流程的主要体验收益来自 atomic `plan start` 与 Codex `hostActions` 自动桥接，热态表现相对 `0.1.70` 持平到小幅提升；这不能表述为新的数量级 CLI 提速。
-- cold search、错误命令 exit-code 语义与 writer model capability 对齐是独立的后续质量和效率工作项，不能由热态成功样本掩盖。
+- cold search、错误命令 exit-code 语义与 writer model capability 对齐仍是独立质量和效率工作项，但 2026-07-19 审计已将 recoverability、all-`end.*` deposition 与 knowledge job observability 排在其前面；cold search 的下一项限定为 SessionStart/context 条件预热，不扩展为执行期 context 或无条件 plan-create 预热。
 - `projectVersionAligned` 的 equal-version 误报被隔离为诊断合同缺陷；修复该字段时必须保持 CLI plan canonical state、单向 host synchronization 与现有多层版本/capability 验证边界。
-- project-plan workflow 的质量门禁继续保留；未预期产生可复用项目知识的请求由默认入口直接工作。后续效率收益应来自 Codex host action 自动桥接、减少双写和提高异步 closeout 可观察性。
+- project-plan workflow 的质量门禁继续保留；未预期产生可复用项目知识的请求由默认入口直接工作。后续效率收益应来自 host-action 部分成功恢复、减少双写和提高异步 closeout 可观察性，而不是再次实现已经存在的自动桥接。
+- `claw-kit` 仓库内的 planning 按根 `AGENTS.md` 决定测试投入；shared planning skill 不再传播该仓库政策。这样既保留高风险稳定行为的回归保护，也避免为纯文档或未稳定合同制造脆弱、昂贵的细粒度测试，并避免约束插件使用方的其他项目。
 - 性能结论不能只看单条命令基准；必须同时覆盖交互成本、状态写入、首个有效工作时间和质量回归。
 - 分阶段 A/B 让每项收益可归因，并允许在质量指标回退时停止推进对应路线。
 

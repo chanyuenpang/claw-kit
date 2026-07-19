@@ -18,6 +18,10 @@ export type TemplateGuidanceRoute = {
 };
 
 export type TemplateTaskGuidance = {
+  onPlanStart?: {
+    completeTask: true;
+    status: "process.active";
+  };
   onDone?: {
     default?: TemplateGuidanceRoute;
     choices?: Record<string, TemplateGuidanceRoute>;
@@ -70,31 +74,14 @@ export const defaultPlanTemplate: PlanTemplateDocument = {
   tasks: [
     {
       id: 1,
-      title: "Analyze the request and fill executable tasks with the planning skill",
+      title: "Discuss and finalize requirements with the configured planning skill",
       detail:
-        "Analyze the request and use {{planningSkill}} to plan and fill executable tasks in `tasks`. If the request is still unclear, fill `requirements` first, then append the smallest handoff-ready downstream task list. Keep the pre-seeded activation task. Planning skill: {{planningSkill}}.",
+        "Use {{planningSkill}} to finish discussing the request with the user and prepare the smallest outcome-oriented task list. Complete this task only when the outcome and constraints are clear, material open questions are resolved, and the user has finished the discussion; a draft is not completion.",
       status: "pending",
       guidance: {
-        onDone: {
-          default: {
-            mergeMode: "override",
-          },
-        },
-      },
-    },
-    {
-      id: 2,
-      title: "Enter process.active",
-      detail:
-        "After the planning task appends the executable tasks, move the plan into `process.active` and continue execution from the refined task list.",
-      goalModeDetail:
-        "If Goal Mode is enabled for this project, start Goal Mode when entering `process.active`.",
-      status: "pending",
-      guidance: {
-        onDone: {
-          default: {
-            mergeMode: "override",
-          },
+        onPlanStart: {
+          completeTask: true,
+          status: "process.active",
         },
       },
     },

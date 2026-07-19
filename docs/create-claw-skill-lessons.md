@@ -81,8 +81,8 @@ That means:
 - fallback behavior should be preserved directly in the converted skill package
 - generated templates should be validated with the real CLI before the conversion is considered complete
 
-If a template task defines `guidance.onDone.choices`, completion must record the selected `choiceId`.
-The CLI rejects a done transition without that value and returns the allowed choices, which protects downstream guidance from guessing the wrong route.
+If a template task defines `guidance.onDone.choices`, completion must receive `--choice <choice>` and persist it as `task.choiceId`.
+Returned guidance must expose the allowed ids once in `nextTask.completionChoices` and one `claw task done --id <id> --choice <choice>` command template. Do not repeat ids in `nextsteps` or emit one command per route. The CLI rejects a done transition without `--choice` using that same syntax, which protects downstream guidance from guessing the wrong route.
 
 ## Recommended Shape For create-claw-skill
 
@@ -95,12 +95,14 @@ The CLI rejects a done transition without that value and returns the allowed cho
 - validate the development-source template with `claw template validate --file <skill-dir>/TEMPLATE.json`
 - include task-ownership routing in generated claw entry skills
 
+Lifecycle is also a template-author decision. `claw plan start` remains global optional syntax sugar; use `guidance.onPlanStart` only when a genuine discussion task owns the handoff into execution. Do not add it to every generated workflow. The generated executable stub starts in `process.active`, so it omits this guidance by default.
+
 ## Task-ownership Routing
 
 Every generated claw skill should ask what the skill completely owns:
 
 - Whole task: resolve the loaded skill directory and use `claw plan create --template-file "<skill-dir>/TEMPLATE.json"` when the skill owns the task from inputs through verification.
-- Independent stage: use `claw subplan create --parent <parent-task-name> --task-id <id> --template-file "<skill-dir>/TEMPLATE.json"` when the skill owns one complete stage of a broader plan.
+- Independent stage: use `claw subplan create --parent <parent-task-name> --task-id <id> --template-file "<skill-dir>/TEMPLATE.json"` when the skill owns one complete stage of a broader plan. On hosts with Goal Mode, consume the returned goal handoff so the active parent goal completes before the child plan creates its own goal; never overwrite the active parent goal.
 - Mixed stage: use the adjacent fallback when the skill only contributes part of a stage whose owning workflow mixes multiple skills.
 
 Batch belongs to the independent-stage route, not to a separate batch route. A batch is a broader plan with repeated stages; each stage calls the skill once as a subplan. The parent owns ordering and shared constraints, and each subplan owns one stage's complete result.

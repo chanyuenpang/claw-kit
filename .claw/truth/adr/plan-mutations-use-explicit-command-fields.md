@@ -18,7 +18,7 @@ session binding 已能稳定标识同一 thread 当前拥有的 root plan 或 su
 - task item 使用独立的 `claw task add/edit/remove/done` 命令。
 - 所有 mutation 默认作用于 session-bound 当前 plan/subplan；`--task-name` 与 `--plan-file` 仅作为无 binding 时的高级覆盖。
 - `--summary` 只表示 `plan.summary`；完成说明使用 `claw plan done --retrospective`；mutation audit 不要求 agent 提供。
-- `claw plan start` 用显式 plan 字段和重复的 `--add-task <title> --detail <text>` 分组原子完成 refine-and-activate。
+- `claw plan start` 用显式 plan 字段和重复的 `--add-task <title> --detail <text>` 分组原子提交 planning 结果，再应用 current template task 的 `guidance.onPlanStart`；具体 activation transition 由 `cli-guided-plan-lifecycle.md` 拥有。
 
 ## Consequences
 

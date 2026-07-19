@@ -461,3 +461,12 @@ release commit `472635e` 已推送至 `origin/main`，tag 为 `v0.1.62`；`@veew
 - 本机全局 CLI 已刷新到 `0.1.82`；唯一启用的 Codex identity 是 `claw-kit@claw-kit`，official source/cache manifest 均为 `0.1.82+codex.20260719000436`，`claw-kit@claw-kit-local` 保持 disabled。
 - 本轮长期交付包括：Codex 与 OpenCode 各自拥有独立 `update` skill package；`create-claw-skill` 按 whole-task、independent-stage 与 mixed-stage ownership 路由，并依赖 core 的显式-template session-scope 自动选择；`using-claw-kit` 创建 plan 后只跟随 CLI 返回的 `workflowGuidance`。
 - 完整验证、专项回归、两个 npm pack dry-run 与 release dry-run 均通过。仓库根目录直接解析裸 `--template update` 时可能同时发现 Codex/OpenCode 两个同名 template 并报告歧义；后续精确文件入口使已加载的 host skill 可以直接选择相邻 `TEMPLATE.json`，无需共享平台选择 workflow。
+
+## 2026-07-19：0.1.83 精确 skill 模板来源发布
+
+- Release commit `49f2c2f` 已直接推送到 `origin/main`；本轮 knowledge closeout 的只读新鲜度检查确认本地 `main`、`origin/main` 仍指向该提交且没有更晚或重叠的工作树差异。
+- npm registry 在发布完成边界确认 `@veewo/claw-core@0.1.83` 与 `@veewo/claw@0.1.83`；GitHub Release `v0.1.83` 已发布，全局 CLI 已刷新到 `0.1.83`。
+- official Codex source/cache 在完成边界均为 `0.1.83+codex.20260719013549`；唯一启用的 identity 是 `claw-kit@claw-kit`，`claw-kit@claw-kit-local` 保持 disabled。运行时采用新 skill 仍以重启 Codex 后创建新任务为边界。
+- `plan create` 与 `subplan create` 新增互斥于 `--template` 的 `--template-file` 精确来源，并把解析出的 `templateFile` 持久化到 plan；裸 template id 发现和 session-scope 自动逻辑保持兼容。template-backed skills 与 `create-claw-skill` generator 解析当前已加载 `SKILL.md` 的目录并传入相邻 `TEMPLATE.json`，不再依赖同名模板的全局扫描顺序。
+- template guidance 可以直接引用 effective project config 的 canonical 标量叶子；自定义变量由 `project.json.var` 命名空间拥有，例如 `{{var.releaseChannel}}`，标准字段仍直接使用 `{{externalPlanningSkill}}`。
+- 完成报告记录的验证结果为 core `134/134`、CLI `113/113`、插件专项 `34/34`；这些是 `0.1.83` 发布完成边界的版本化证据，不替代后续版本的当前验证。

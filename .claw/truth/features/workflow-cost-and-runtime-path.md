@@ -3,7 +3,7 @@
 ## 结论
 
 - 正式 claw workflow 的主要成本不只来自业务执行，还来自合同版本漂移、plan lifecycle mutation、hook-owned writer execution、query embedding、completion refresh 与 GitNexus 分析。
-- lifecycle 元状态与业务进度必须分开理解：planning 与 `Enter process.active` 用于建立/切换执行状态，不应计入业务 task 数，也不应独立触发 truth deposition。
+- lifecycle 元状态与业务进度必须分开理解：当前单一 planning bridge 用于完成讨论并切换执行状态，不计入 downstream 业务 task 数，也不应独立触发 truth deposition；旧版独立 `Enter process.active` 只属于版本化 benchmark 与历史 plan evidence。
 - `truthDispatch = "final_only" | "per_task"` 与按 task 派发 writer 是 `0.1.65` 及更早性能样本的版本化输入，不是当前 project schema 或 lifecycle owner。
 - 当前项目配置使用 `knowledgeWriter = { externalSkill: null, model: null, reasoningEffort: "medium" }`；正式 workflow 协调 `.claw` plan state、Codex Goal/progress actions，以及完成后的一次 combined writer job。
 - 优化时应先修复合同一致性与条件语义，再降低 plan mutation 和后台 refresh 成本；入口 admission 的当前所有权与规则见 `using-claw-kit-session-entry.md`。
@@ -18,8 +18,8 @@
 
 ### Plan lifecycle mutation 成本
 
-- 默认 `claw plan create` 会固定种入 planning task 与 `Enter process.active` bridge task，模板锚点是 `packages/core/src/templates/plans/default.ts`。
-- 这两个默认 meta task 会在 substantive execution 前形成可见 lifecycle work；它们用于计划细化和进入 `process.active`，不应被误计为业务进度。
+- 默认 `claw plan create` 当前只种入一个 planning bridge；它在 substantive execution 前完成讨论、计划细化与 activation readiness，并由原子 `claw plan start` 完成后进入 `process.active`。当前 lifecycle 合同的详细 owner 是 `cli-guided-workflow.md`。
+- 旧 planning + `Enter process.active` 双 meta-task skeleton 只作为历史 plan shape；current `plan start` 不再按标题、语言或 task 数识别它，不能继续把它描述为默认创建行为或隐式兼容路径。
 - 当前 `claw plan edit` 不允许在一次 edit 中同时提交 `patch.tasks` 与 `taskId` / `taskStatus`；对应校验与序列化路径在 `packages/core/src/plan.ts`。
 - 因此 formal flow 在首个业务动作前需要分别完成 plan hydration、planning task 状态更新和 activation；对于 `N` 个业务 task，执行期还至少需要 `N` 次 done 状态更新。首个业务动作前的 plan mutation 数和业务 task 数应分别统计。
 - 2026-07-16 在当前仓库、当前机器上的 `claw plan show` 实测为 cold `265ms`，随后 warm `143ms` / `143ms`。这些数字用于区分 plan-state CLI 固定开销与 search/model 初始化开销，不是跨机器常量。
@@ -27,7 +27,7 @@
 ### Truth delegation 条件语义
 
 - Historical `0.1.65` workflow delegate output used `dispatch` for separate writer semantics. Current finalization has no foreground writer delegate output; the Stop/session-idle job runs one combined `knowledge-writer` pass.
-- `0.1.65` 的 main-agent truth value gate、required ADR dispatch 与 phase-specific references 仅保留为历史成本证据。当前 value/routing judgment 由 combined `knowledge-writer` 在 trusted evidence freshness check 后完成。
+- `0.1.65` 的 main-agent truth value gate、required ADR dispatch 与 phase-specific references 仅保留为历史成本证据。当前 combined `knowledge-writer` 在 trusted evidence freshness check 后固定先评估 Truth、再评估 ADR；各阶段可以 evidence-backed no-edit，但没有 Truth/ADR/both/noop route task。
 - 判断 live 行为时必须区分历史 benchmark 的 installed CLI/skill snapshot 与当前 `0.1.80` combined writer contract。
 
 ### Writer target routing 与性能
@@ -36,14 +36,14 @@
 - canonical target routing 属于 writer 自身职责，不应要求 main agent 先理解 truth/ADR 文件布局或选择目标。writer 使用 `claw search` 召回候选 canonical 文档，再只读取相关候选；只有 search 不可用、候选冲突或 canonical routing 仍无法确定时，才回退到 full-corpus inspection。
 - 历史 release closeout 实测中，宽泛 ADR 任务两次分别约 `40-90s` 与 `90s`，且都没有落盘；把输入收敛为唯一 `targetPath` 与两条追加事实后，约 `10s` 完成。该对比说明主要优化点是 target certainty，而不是删除 router/reference 合同。
 - 本轮 fresh-agent 前向验证中，明确 `targetPath` 的 ADR 约 `70s` 落盘，truth 约 `85s` 落盘；两者均正确走定向写入且没有修改索引，但端到端时延没有稳定优于历史样本。当前改动能确认消除了不必要的 corpus 扫描，不能据此宣称 subagent 总耗时已经下降；剩余时延主要位于 writer 启动、模型处理和完整 deposition 合同执行。
-- 当前 combined writer 接收 completed `plan.json`、相邻 trusted report 与 finalization id；main agent 不筛选两类 phase input，也不提供 `targetPath`。
+- 当前 combined writer 接收 source `plan.json`、相邻 trusted report 与 finalization id，以 report 结论和 plan 的 retrospective、`keyDecisions` 等明确结论为证据；task status 只用于解释 scope，main agent 不筛选 phase input，也不提供 `targetPath`。自动 lifecycle 在计划从非终态进入任一 `end.*` 时登记一次，`process.*` 只累计 report；当前 owner 是 `hook-owned-two-phase-knowledge-finalization.md`。
 - writer-owned routing 不得删除完整 reference 阅读、事实核对、目标路径 containment、UTF-8 BOM / encoding 校验，以及新建或路由不确定时必要的去重。
 
 ### 第一阶段优化的已实现行为
 
 - `packages/core/src/init.ts`、`packages/core/src/context.ts` 与 `packages/core/src/project-check.ts` 已将新建、初始化和省略的 `truthDispatch` 统一规范化为 `final_only`；显式 `per_task` 保持兼容，CLI 的 per-task contract 测试也必须显式 opt-in。
 - `process.hasCompletedTasks.finalOnlyTruth` 不再强制 Codex `update_plan`，也不再建议为马上完成的工作写一次独立 `in_progress`；进入 `process.active` 与 `process.allTasksDone` 的 host synchronization 合同保持不变。
-- shared / Codex / OpenCode planning skills 已把 downstream plan 约束为通常 `2-4` 个 outcome-oriented tasks；planning stages 是 coverage checklist，不是必须逐项转成 task 的模板，planning / activation lifecycle meta tasks 不计入业务 outcomes。
+- shared / Codex / OpenCode planning skills 当前把 downstream plan 约束为通常 `1-3` 个 outcome-oriented tasks：一个 coherent deliverable 优先只用一个 task，只有独立 deliverable、ownership、blocker、durable decision 或 materially different risk surface 才拆分；文件、命令、代码、文档、测试、build、check 或 diff review 本身不构成拆 task 的理由。planning stages 是 coverage checklist，planning bridge 不计入业务 outcomes。
 - verification 和 closure 都不是默认阶段，由 main agent 根据具体任务自由判断是否需要。
 - `docs/project-json-reference.md` 与 config guide 已把 `final_only` 记为默认值。当前实现验证通过 core `114/114`、CLI `63/63`、Codex plugin bundle `11/11`、OpenCode bundle `6/6`，以及包含全部 adapter checks 与 truth encoding audit 的 `npm run check`；mid-task truth CLI 测试显式设置 `per_task`，验证 opt-in 路径仍然成立。
 - 上述 workflow 合同同步到 core、Codex 与 OpenCode surface 后，Codex bundle `11/11`、OpenCode bundle `6/6`，且完整 `npm run check` 通过。
@@ -116,8 +116,8 @@
 ### P1：Plan mutation 与 completion refresh
 
 - 研究原子的 plan-refine-and-activate 能力，或等价地减少默认 meta task 和首个业务动作前的 lifecycle mutation。
-- 支持 batch task-status 更新，并让 planning / activation meta task 不计入业务进度指标。
-- 计划结构已经收敛为通常 `2-4` 个 outcome-oriented tasks，planning stages 作为 coverage checklist；final-only truth 路径也不再为马上完成的工作建议独立 `in_progress` write。
+- 支持 batch task-status 更新，并让当前 planning bridge（以及 legacy plan 中的独立 activation task）不计入业务进度指标。
+- 计划结构已经进一步收敛为通常 `1-3` 个 outcome-oriented tasks，并优先用一个 task 包含 coherent deliverable 的比例化实现、文档、验证与 review；planning stages 仍只是 coverage checklist，final-only truth 路径也不再为马上完成的工作建议独立 `in_progress` write。
 - final-only truth 路径已经移除逐 task 的机械 `update_plan` 要求；在自动桥接完成前，其他阶段仍只应在 host 可见进度确实需要更新时写入。
 - 研究把 CLI lifecycle progress 自动桥接到 host state，减少 `.claw` plan、Codex `update_plan` 与 Goal Mode 之间的重复手动协调。
 - completion refresh 增加 single-flight / coalescing 与 dirty hash；把 embedding 移出 SQLite 长 write transaction；对 plan-done 前后的 GitNexus analyze 做去重。
@@ -134,7 +134,7 @@
 - verification 和 closure 阶段由 main agent 根据具体任务决定，不应机械固定为必经阶段。
 - 默认 truth dispatch 已从 `per_task` 收敛为 `final_only`；显式 `per_task` 继续支持，且当前项目的 opt-in `per_task` 配置事实不变。
 - 当前 complexity 四维加总中，files、dependencies 与 workflow shape 可能对同一复杂性重复计权；长期应以风险触发器或真实 task outcome 校准替代纯提示词总分。
-- ADR 在 completed plan 没有 `keyDecisions` 时应允许 no-op，避免为“无决策”生成形式化沉淀。
+- ADR 在 report 与 plan 明确结论都没有 durable decision 时应允许 no-edit，避免为“无决策”生成形式化沉淀。
 - 这些历史优化候选不应被提升为当前入口规则；当前 project-plan 流程仍须保留任务所需的 verification、作为唯一 next-step contract 的 `workflowGuidance`，以及可审计的 ADR 语义。
 
 ## 衡量指标
@@ -208,7 +208,7 @@
 
 ### 原子 `claw plan start` 已实现合同与 Windows A/B
 
-- `claw plan start --requirements <text> --acceptance <criterion> --add-task <title> --detail <text>` 已成为正式原子入口：它默认读取 session binding，在一次序列化 mutation 内完成 plan refine、追加业务 tasks、把两个 default lifecycle bridge tasks 标记为 done，并把 plan 切换到 `process.active`。
+- `claw plan start --requirements <text> --acceptance <criterion> --add-task <title> --detail <text>` 已成为正式原子入口：它默认读取 session binding，在一次序列化 mutation 内提交 plan refine 结果、追加业务 tasks，并应用 current template task 的 `guidance.onPlanStart`；default template 的声明会完成当前单一 planning bridge 并切换到 `process.active`，旧双 lifecycle-task plan 不再走 shape heuristic。
 - 原子结果事件使用 `schemaVersion = 1`；一次 mutation 共享单一 `mutationId`，每个事件拥有唯一 `eventId`，并记录 `commandSource`。CLI 同时输出幂等 `hostActions`，供 host adapter 单向同步 `update_plan` 与 Goal Mode；adapter 消费事件，不反向拥有 canonical CLI plan state。
 - 原有 `claw plan create`、`claw plan edit` 与 `claw plan done` 保持兼容；`plan start` 是减少 refine/activate 固定管理往返的新增入口，不是破坏旧 lifecycle surface 的替换。
 - 固定 Windows low / medium / high A/B 中，legacy path P50 为 `902.79ms`，atomic path P50 为 `385.06ms`，改善 `57.35%`；把 create-time recall 计入管理动作后，首个业务动作前的管理命令数从 `6` 降到 `3`。这是同一固定 A/B corpus 的配对结果，不覆盖上一节独立 predecessor baseline 的 `935.04ms` 观测值。
@@ -305,3 +305,24 @@
 - `adr-writer model=gpt-5.6-luna`
 - `clean Luna parent thread writer dispatch accepted`
 - `parent thread model override surface`
+
+### 2026-07-19 当前 checkout 使用摩擦审计
+
+- 当前 Codex driver 在 CLI mutation 已持久化、后续 native host action 失败时仍可能只向调用方抛出泛化错误。`packages/cli/src/codex-driver.ts` 会在 mutation 结果成功后逐个消费 `hostActions`，但公开失败面没有同时返回 mutation identity、canonical 持久化状态与已完成/未完成 action；因此恢复前必须先检查 plan / Goal 状态，不得盲目重放 mutation。
+- Knowledge writer 以 report 结论和 plan 的 retrospective、`keyDecisions` 等明确结论为证据，task status 只解释 completed、pending 与 blocked scope；task 标题和描述不是执行证明。`packages/core/src/plan.ts` 已在从非终态进入任一 `end.*` 时登记一次 finalization，所有 `process.*` 只累计 report；`end.completed` 专属 completion hooks 继续独立拥有完成事件与 subplan resume。
+- 本轮检查到 `34` 个 knowledge jobs，其中 `1` 个失败并达到 `3` 次重试；顶层 CLI 尚无 `claw knowledge status`、`retry` 或 `explain` 入口。这个计数是 2026-07-19 审计快照，不是长期常量；稳定的当前约束是失败 job 的 foreground 可观察性和恢复入口不足。
+- 首次自然语言 `claw search` 约 `15–16s`、daemon 热身后同类查询约 `1s` 的同机样本只支持 cold/warm 分层，不构成跨机器 SLA。`claw context` 是 startup、resume、clear、compact 等 SessionStart hook 路径调用的计划恢复入口；执行期手动调用得到的长度和耗时样本不构成 compact-context 产品问题，也不应进入 agent 常规 guidance。
+- 当前 context 恢复链路在项目解析后，对已启用且 vector index 可用的 local persistent provider 启动 detached、fail-open、非缓存内部文本预热；context 不等待子进程，失败不影响恢复。预热使用 persistent daemon，不回退到加载后立即丢弃的 one-shot session，也不写 query cache；daemon 的 startup lock、session fingerprint 复用与 `120s` idle TTL 继续约束并发和资源占用。
+- 精确 `--template-file` 已提供 template identity，不再把同名缓存模板冲突列为当前优化项。Codex compact projection 过滤顶层长字段仍是独立现状；可执行信息继续进入结构化 `nextTask`、`completionChoices` 和唯一 command template。
+
+#### 审计锚点与检索词
+
+- `packages/cli/src/codex-driver.ts`
+- `packages/cli/src/cli.ts`
+- `packages/core/src/plan.ts`
+- `packages/core/src/plan-templates.ts`
+- `mutation persisted host action failed recover`
+- `all end states conclusion evidence finalization trigger`
+- `knowledge status retry explain`
+- `search cold 15 16 seconds warm 1 second`
+- `SessionStart runContextCommand detached local embedding warmup`

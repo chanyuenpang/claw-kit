@@ -7,6 +7,7 @@ import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { resolveProjectContext, resolveTaskContext } from "./context.js";
 import { resolveDefaultLocalEmbeddingDimensions } from "./embedding-defaults.js";
+import { requestPersistentEmbedding } from "./embedding-daemon-protocol.js";
 import { ClawError } from "./errors.js";
 import { readJsonFile, readTextFile } from "./io.js";
 import { buildProjectKeywordSearchPlan, buildProjectQueryIntent } from "./memory-query.js";
@@ -50,6 +51,13 @@ type ProjectDocSearchSignals = {
   phraseMatch: boolean;
   strongCoverageRatio: number;
   exactBoost: number;
+};
+
+export type ProjectEmbeddingWarmupResult = {
+  warmed: boolean;
+  reason: "warmed" | "disabled" | "non_local" | "index_unavailable" | "persistent_worker_disabled" | "failed";
+  runtime?: "mock" | "persistent_daemon" | "one_shot" | "remote";
+  error?: string;
 };
 
 export function buildMemoryIndex(input: MemoryIndexInput): MemoryIndexResult {
@@ -608,6 +616,63 @@ function resolveProjectMemoryEmbeddingConfig(project: ProjectContext): MemoryEmb
 
 function isProjectMemoryEnabled(project: ProjectContext): boolean {
   return project.projectConfig?.memory?.enabled !== false;
+}
+
+export async function warmProjectMemoryEmbedding(input: { cwd: string }): Promise<ProjectEmbeddingWarmupResult> {
+  const project = resolveProjectContext(input.cwd);
+  const embedding = resolveProjectMemoryEmbeddingConfig(project);
+  if (!embedding) {
+    return { warmed: false, reason: "disabled" };
+  }
+  if (embedding.provider !== "local") {
+    return { warmed: false, reason: "non_local" };
+  }
+  if (process.env.CLAW_EMBEDDING_PERSISTENT_WORKER === "0") {
+    return { warmed: false, reason: "persistent_worker_disabled" };
+  }
+  const storePath = path.join(project.clawDir, "memory.sqlite");
+  if (!hasProjectVectorIndex(storePath)) {
+    return { warmed: false, reason: "index_unavailable" };
+  }
+  try {
+    const output = await requestPersistentEmbedding({
+      embedding,
+      texts: ["claw context embedding warmup"],
+      projectCwd: project.projectRoot,
+    });
+    if (!output) {
+      return { warmed: false, reason: "failed" };
+    }
+    return {
+      warmed: true,
+      reason: "warmed",
+      runtime: "persistent_daemon",
+    };
+  } catch (error) {
+    return {
+      warmed: false,
+      reason: "failed",
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function hasProjectVectorIndex(storePath: string): boolean {
+  if (!fs.existsSync(storePath)) {
+    return false;
+  }
+  let db: DatabaseSync | null = null;
+  try {
+    db = new DatabaseSync(storePath, { readOnly: true });
+    return Boolean(
+      db.prepare("SELECT value FROM index_metadata WHERE key = ?")
+        .get("vector_index"),
+    );
+  } catch {
+    return false;
+  } finally {
+    db?.close();
+  }
 }
 
 function listFiles(rootDir: string, matcher: (filePath: string) => boolean): string[] {

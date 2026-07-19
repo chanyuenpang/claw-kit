@@ -55,8 +55,8 @@ When the user asks to change claw configuration, use the `config` skill as the d
 
 When memory embedding or GitNexus is enabled, `claw context` adds optional `searchGuidance`: use `claw search` to narrow document context and GitNexus to narrow code context as available, then use the default search for exact locations. The field is omitted when neither capability is enabled.
 - `maxTasksToKeep`
-  - active task retention limit
-  - default: `99`
+  - archived task retention limit before oldest-archive pruning
+  - default: `9`
 - `knowledgeWriter.externalSkill`
   - optional background finalizer skill override; `null` runs one consistency-aware `claw-kit:knowledge-writer` pass
 - `memory.enabled`

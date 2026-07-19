@@ -6,7 +6,7 @@ Accepted working truth for the current Codex adapter workflow surface.
 
 ## Core facts
 
-- `using-claw-kit` 的可见入口合同是 positive 且 entry-owned：第一句先让不预期产生可复用项目知识的请求跳过该 skill 并直接工作；其余请求进入 `First Action`，默认运行 `claw plan create "<title>"`，只有 template-backed workflow skill 完整承载请求时才在创建时改走 `claw plan create --template <template-id> --title "<title>"`。
+- `using-claw-kit` 的可见入口合同是 positive 且 entry-owned：第一句先让不预期产生可复用项目知识的请求跳过该 skill 并直接工作；其余请求进入 `First Action`，默认运行 `claw plan create "<title>"`。只有 template-backed workflow skill 完整承载请求时，才改为跟随该 skill 自己的 entry route，由已加载 skill 解析其目录并通过 `--template-file "<skill-dir>/TEMPLATE.json"` 提供精确模板来源；裸 `--template <id>` 只属于兼容发现面，通用所有权见 `.claw/truth/features/template-guidance-routing.md`。
 - Codex 与 OpenCode 的最小 `First Action` 在创建 plan 后都只保留一句 `Follow the workflowGuidance returned by the CLI.`。入口文本不解释 prompt guidance、“唯一 next-step contract”或 guidance 来源竞争，也不在入口重建 recovery、context、search 或后续 lifecycle 路由；新 plan 从 `process.discussing` 开始。
 - `planning` 仍然是可见的 plan-entry skill，但它是由 `claw plan create` 之后种下的 planning task 调起的，不应该被插件 manifest 或 startup prompt 预读成前置工作流步骤。
 - 不预期产生可复用知识的请求在 `using-claw-kit` 入口处直接工作；入口 skill 不为已删除的 route 增加反向提示，也不复制 SessionStart、recall 或具体任务合同。

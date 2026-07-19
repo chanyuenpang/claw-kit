@@ -21,7 +21,7 @@ import {
   claimKnowledgeFinalizationJob,
   listRetryableKnowledgeFinalizationJobs,
   normalizeTruthMarkdownEncoding,
-  tryCleanupKnowledgeFinalizationReport,
+  recordKnowledgeFinalizationResult,
   readKnowledgeFinalizationJob,
   writeKnowledgeFinalizationJob,
   resolveContext,
@@ -33,6 +33,7 @@ import {
   tryCaptureKnowledgeStop,
   tryCompleteKnowledgePlan,
   tryRegisterKnowledgePlan,
+  warmProjectMemoryEmbedding,
   writePlan,
   type PlanDocument,
 } from "../src/index.js";
@@ -212,7 +213,7 @@ test("knowledge sidecar failures stay fail-open for plan lifecycle callers", () 
   assert.match(result.error ?? "", /must stay inside/);
 });
 
-test("knowledge finalization post-processing normalizes truth encoding and best-effort cleans reports", () => {
+test("knowledge finalization post-processing normalizes truth encoding and records an observable result", () => {
   const root = createEmptyFixture("knowledge-finalization-post-processing");
   initProject({ cwd: root, projectName: "Knowledge Finalization Post Processing" });
   const project = resolveProjectContext(root);
@@ -236,18 +237,48 @@ test("knowledge finalization post-processing normalizes truth encoding and best-
   const taskDir = path.join(project.tasksDir, "demo-task");
   const reportPath = path.join(taskDir, "plan.report");
   fs.mkdirSync(taskDir, { recursive: true });
-  fs.writeFileSync(reportPath, "report evidence", "utf-8");
-  assert.equal(tryCleanupKnowledgeFinalizationReport(project, reportPath), true);
-  assert.equal(fs.existsSync(reportPath), false);
+  fs.writeFileSync(reportPath, `${JSON.stringify({ turnId: "turn-1", report: "report evidence" })}\n`, "utf-8");
+  const entry = {
+    schemaVersion: 1 as const,
+    entryType: "knowledge_finalization" as const,
+    finalizeId: "finalize-1",
+    taskName: "demo-task",
+    recordedAt: "2026-07-19T00:00:00.000Z",
+    status: "succeeded" as const,
+    result: "Truth and ADR are current.",
+    attempts: 1,
+    threadId: "thread-knowledge",
+    truthEncoding: { checkedFiles: 2, updatedFiles: 1 },
+  };
+  assert.deepEqual(recordKnowledgeFinalizationResult(project, reportPath, entry), {
+    written: true,
+    duplicate: false,
+  });
+  assert.deepEqual(recordKnowledgeFinalizationResult(project, reportPath, entry), {
+    written: false,
+    duplicate: true,
+  });
+  const reportEntries = fs.readFileSync(reportPath, "utf-8").trim().split(/\r?\n/).map((line) => JSON.parse(line));
+  assert.equal(reportEntries.length, 2);
+  assert.deepEqual(reportEntries[1], entry);
 });
 
-test("best-effort report cleanup refuses paths outside the task directory", () => {
-  const root = createEmptyFixture("knowledge-report-cleanup-failure");
-  initProject({ cwd: root, projectName: "Knowledge Report Cleanup Failure" });
+test("knowledge finalization result refuses report paths outside the task directory", () => {
+  const root = createEmptyFixture("knowledge-report-result-containment");
+  initProject({ cwd: root, projectName: "Knowledge Report Result Containment" });
   const project = resolveProjectContext(root);
   const outsideReportPath = path.join(root, "outside.report");
   fs.writeFileSync(outsideReportPath, "preserve", "utf-8");
-  assert.equal(tryCleanupKnowledgeFinalizationReport(project, outsideReportPath), false);
+  assert.throws(() => recordKnowledgeFinalizationResult(project, outsideReportPath, {
+    schemaVersion: 1,
+    entryType: "knowledge_finalization",
+    finalizeId: "outside",
+    taskName: "outside",
+    recordedAt: "2026-07-19T00:00:00.000Z",
+    status: "succeeded",
+    result: "Must not be written.",
+    attempts: 1,
+  }), /must stay inside/i);
   assert.equal(fs.existsSync(outsideReportPath), true);
 });
 
@@ -303,7 +334,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
     "# claw-kit\n.claw/*\n!.claw/project.json\n!.claw/truth/\n!.claw/truth/**\n.claw/project-override.json\n",
   );
   assert.deepEqual(projectConfig, {
-    version: "0.1.83",
+    version: "0.1.84",
     id: "demo-project",
     name: "Demo Project",
     maxTasksToKeep: 20,
@@ -372,19 +403,26 @@ test("writePlan seeds a planning-first root plan by default", async () => {
   assert.equal(result.workflowGuidance.stage, "discussion");
   assert.equal(result.workflowGuidance.goalMode, undefined);
   assert.deepEqual(result.workflowGuidance.nextsteps, [
-    "1. Resolve the discussion, then resume through `process.active`.",
+    "1. Use claw-kit:planning until the discussion is finished and the outcome, constraints, and material open questions are clear.",
+    "2. If execution remains, record the smallest outcome-oriented task list with the recommended command. If planning resolves the request, complete task #1 and close the plan.",
   ]);
   assert.equal(result.workflowGuidance.recommendedCommands?.[0], 'claw search --query "<topic>"');
+  assert.equal(
+    result.workflowGuidance.recommendedCommands?.some((command) => command.startsWith("claw plan start")),
+    true,
+  );
   assert.equal(result.workflowGuidance.goalTool, undefined);
   assert.ok(result.workflowGuidance.summary.includes("discussion"));
   assert.equal(result.workflowGuidance.askUser, undefined);
   assert.equal(result.plan.title, "Demo task");
   assert.equal(result.plan.status, "process.discussing");
   assert.equal(result.plan.goal.text, "Ship the first plan");
-  assert.equal(result.plan.tasks[0]?.title, "Analyze the request and fill executable tasks with the planning skill");
-  assert.match(result.plan.tasks[0]?.detail ?? "", /Planning skill: the built-in planning skill\./);
+  assert.equal(result.plan.tasks[0]?.title, "Discuss and finalize requirements with the configured planning skill");
+  assert.match(result.plan.tasks[0]?.detail ?? "", /^Use claw-kit:planning/);
+  assert.match(result.plan.tasks[0]?.detail ?? "", /a draft is not completion\./);
+  assert.doesNotMatch(result.plan.tasks[0]?.detail ?? "", /process\.active|Goal Mode|Planning skill:/);
   assert.doesNotMatch(result.plan.tasks[0]?.detail ?? "", /\btakes\b/);
-  assert.equal(result.plan.tasks[1]?.title, "Enter process.active");
+  assert.equal(result.plan.tasks.length, 1);
   assert.doesNotMatch(
     [
       ...(result.workflowGuidance.nextsteps ?? []),
@@ -394,7 +432,7 @@ test("writePlan seeds a planning-first root plan by default", async () => {
     /[\p{Script=Han}，：。；（）]/u,
   );
   assert.deepEqual(result.plan.references, []);
-  assert.equal(result.planView.collapsedSummary, "0/2 Demo task");
+  assert.equal(result.planView.collapsedSummary, "0/1 Demo task");
   assert.equal(result.planView.goal.defaultCollapsed, true);
   assert.equal(result.planView.renderHints.defaultCollapsed, true);
   assert.equal(result.planView.expanded.sections[0]?.id, "goal");
@@ -402,8 +440,8 @@ test("writePlan seeds a planning-first root plan by default", async () => {
   assert.equal(result.planView.expanded.sections[1]?.id, "tasks");
 });
 
-test("writePlan includes the recommended goal objective in the activation task when goal mode is enabled", async () => {
-  const root = createFixture("plan-write-goalmode-activation-detail");
+test("writePlan keeps the default planning task focused on planning content", async () => {
+  const root = createFixture("plan-write-focused-planning-detail");
 
   const result = await writePlan({
     cwd: root,
@@ -413,63 +451,34 @@ test("writePlan includes the recommended goal objective in the activation task w
   });
 
   assert.equal(
-    result.plan.tasks[1]?.detail,
-    "After the planning task appends the executable tasks, move the plan into `process.active` and continue execution from the refined task list. If Goal Mode is enabled for this project, start Goal Mode when entering `process.active` and use `Follow the claw workflow guidance and finish your goal: Ship the first plan` as the goal objective.",
+    result.plan.tasks[0]?.detail,
+    "Use claw-kit:planning to finish discussing the request with the user and prepare the smallest outcome-oriented task list. Complete this task only when the outcome and constraints are clear, material open questions are resolved, and the user has finished the discussion; a draft is not completion.",
   );
 });
 
-test("writePlan keeps the activation task detail plain for opencode host", async () => {
-  const root = createFixture("plan-write-opencode-activation-detail");
-
-  const result = await writePlan({
+test("completing a planning-only default plan routes directly to closeout", async () => {
+  const root = createFixture("planning-only-closeout");
+  await writePlan({
     cwd: root,
     taskName: "demo-task",
     title: "Demo task",
-    goalText: "Ship the first plan",
-    host: "opencode",
+    goalText: "Resolve the request through planning",
   });
 
-  assert.equal(
-    result.plan.tasks[1]?.detail,
-    "After the planning task appends the executable tasks, move the plan into `process.active` and continue execution from the refined task list. If Goal Mode is enabled for this project, start Goal Mode when entering `process.active`.",
-  );
-});
-
-test("writePlan keeps the activation task detail plain when goal mode is disabled", async () => {
-  const root = createFixture("plan-write-goalmode-disabled-activation-detail");
-  fs.writeFileSync(
-    path.join(root, ".claw", "project.json"),
-    JSON.stringify({
-      version: "0.1.60",
-      id: "plan-write-goalmode-disabled-activation-detail",
-      name: "Plan Write GoalMode Disabled Activation Detail",
-      planning: true,
-      maxTasksToKeep: 99,
-      goalMode: false,
-      truthDispatch: "per_task",
-      externalTruthSkill: null,
-      externalAdrSkill: null,
-      contextPaths: [],
-      memory: { enabled: true, externalDocPaths: [], embedding: null },
-      gitnexus: false,
-    }, null, 2),
-    "utf-8",
-  );
-
-  const result = await writePlan({
+  const result = await editPlan({
     cwd: root,
     taskName: "demo-task",
-    title: "Demo task",
-    goalText: "Ship the first plan",
+    taskId: 1,
+    taskStatus: "done",
   });
 
-  assert.equal(
-    result.plan.tasks[1]?.detail,
-    "After the planning task appends the executable tasks, move the plan into `process.active` and continue execution from the refined task list.",
-  );
+  assert.equal(result.planStatus, "process.discussing");
+  assert.equal(result.workflowGuidance.stage, "done");
+  assert.equal(result.workflowGuidance.recommendedCommands?.some((command) => command.includes("claw plan done")), true);
+  assert.equal(result.workflowGuidance.recommendedCommands?.some((command) => command.includes("claw plan resume")), false);
 });
 
-test("planning appendTasks preserves the seeded activation task ordering", async () => {
+test("planning appendTasks preserves the seeded planning task ordering", async () => {
   const root = createFixture("planning-append-preserves-activation");
 
   await writePlan({
@@ -497,10 +506,9 @@ test("planning appendTasks preserves the seeded activation task ordering", async
   assert.deepEqual(
     plan.tasks.map((task) => ({ id: task.id, title: task.title, status: task.status })),
     [
-      { id: 1, title: "Analyze the request and fill executable tasks with the planning skill", status: "done" },
-      { id: 2, title: "Enter process.active", status: "pending" },
-      { id: 3, title: "Implement the change", status: "pending" },
-      { id: 4, title: "Verify the change", status: "pending" },
+      { id: 1, title: "Discuss and finalize requirements with the configured planning skill", status: "done" },
+      { id: 2, title: "Implement the change", status: "pending" },
+      { id: 3, title: "Verify the change", status: "pending" },
     ],
   );
 });
@@ -572,6 +580,36 @@ test("writePlan loads a project JSON template from .claw/templates", async () =>
   assert.equal(result.plan.templateId, "team-default");
   assert.equal(result.plan.tasks[0]?.title, "Draft requirements with the team template");
   assert.equal(result.plan.tasks[1]?.title, "Activate the team template plan");
+});
+
+test("initial discussion recommends plan start only when the current template task adopts it", async () => {
+  const root = createFixture("plan-template-without-plan-start");
+  initProject({ cwd: root, projectName: "Template Without Plan Start", planning: true, force: true });
+  fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
+  fs.writeFileSync(
+    path.join(root, ".claw", "templates", "manual-delivery.json"),
+    `${JSON.stringify(createPlanLikeTemplate({
+      id: "manual-delivery",
+      tasks: [{
+        id: 1,
+        title: "Discuss and deliver through ordinary task guidance",
+        status: "pending",
+      }],
+    }), null, 2)}\n`,
+    "utf-8",
+  );
+
+  const result = await writePlan({
+    cwd: root,
+    title: "Use ordinary delivery",
+    templateName: "manual-delivery",
+  });
+
+  assert.equal(
+    result.workflowGuidance.recommendedCommands?.some((command) => command.startsWith("claw plan start")) ?? false,
+    false,
+  );
+  assert.match(result.workflowGuidance.notes ?? "", /optional syntax sugar/i);
 });
 
 test("writePlan loads a global user template when the project does not define one", { concurrency: false }, async () => {
@@ -823,7 +861,7 @@ test("writePlan loads a plan-like project template and strips template-only task
   assert.equal(result.plan.title, "Use planlike template");
   assert.equal(result.plan.status, "process.discussing");
   assert.equal(result.plan.goal.text, "Compile the workflow");
-  assert.equal(result.plan.tasks[0]?.detail, "Use the built-in planning skill to shape the conversion work.");
+  assert.equal(result.plan.tasks[0]?.detail, "Use claw-kit:planning to shape the conversion work.");
   assert.match(result.plan.tasks[1]?.detail ?? "", /Goal Mode is enabled/);
   assert.equal("guidance" in (result.plan.tasks[2] ?? {}), false);
   assert.equal("goalModeDetail" in (result.plan.tasks[1] ?? {}), false);
@@ -952,6 +990,59 @@ test("writePlan rejects unsupported template configOverride keys", async () => {
       }),
     /configOverride|override/i,
   );
+});
+
+test("project embedding warmup loads the persistent local session without writing a query cache entry", async () => {
+  const root = createEmptyFixture("embedding-warmup");
+  initProject({ cwd: root, projectName: "Embedding Warmup" });
+  const storePath = path.join(root, ".claw", "memory.sqlite");
+  const db = new DatabaseSync(storePath);
+  db.exec("CREATE TABLE index_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+  db.prepare("INSERT INTO index_metadata (key, value) VALUES (?, ?)")
+    .run("vector_index", JSON.stringify({ enabled: true }));
+  db.close();
+
+  const runtimeDir = path.join(root, "daemon-runtime");
+  const eventLog = path.join(root, "daemon-events.jsonl");
+  const previous = {
+    runtimeDir: process.env.CLAW_EMBEDDING_DAEMON_RUNTIME_DIR,
+    mock: process.env.CLAW_EMBEDDING_DAEMON_TEST_MOCK,
+    idleTtl: process.env.CLAW_EMBEDDING_DAEMON_IDLE_TTL_MS,
+    eventLog: process.env.CLAW_EMBEDDING_DAEMON_EVENT_LOG,
+  };
+  process.env.CLAW_EMBEDDING_DAEMON_RUNTIME_DIR = runtimeDir;
+  process.env.CLAW_EMBEDDING_DAEMON_TEST_MOCK = "1";
+  process.env.CLAW_EMBEDDING_DAEMON_IDLE_TTL_MS = "100";
+  process.env.CLAW_EMBEDDING_DAEMON_EVENT_LOG = eventLog;
+  try {
+    const result = await warmProjectMemoryEmbedding({ cwd: root });
+    assert.equal(result.warmed, true);
+    assert.equal(result.reason, "warmed");
+    assert.equal(result.runtime, "persistent_daemon");
+    const events = fs.readFileSync(eventLog, "utf-8").trim().split(/\r?\n/)
+      .map((line) => JSON.parse(line) as { event: string });
+    assert.equal(events.some((event) => event.event === "session.created"), true);
+    assert.equal(events.some((event) => event.event === "request.completed"), true);
+
+    const verifyDb = new DatabaseSync(storePath, { readOnly: true });
+    const queryCacheTable = verifyDb.prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'query_embeddings'",
+    ).get();
+    verifyDb.close();
+    assert.equal(queryCacheTable, undefined);
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      const envKey = {
+        runtimeDir: "CLAW_EMBEDDING_DAEMON_RUNTIME_DIR",
+        mock: "CLAW_EMBEDDING_DAEMON_TEST_MOCK",
+        idleTtl: "CLAW_EMBEDDING_DAEMON_IDLE_TTL_MS",
+        eventLog: "CLAW_EMBEDDING_DAEMON_EVENT_LOG",
+      }[key]!;
+      if (value === undefined) delete process.env[envKey];
+      else process.env[envKey] = value;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
 });
 
 test("writePlan rejects unsupported template creation scopes", async () => {
@@ -1303,6 +1394,17 @@ test("route-aware task completion persists valid taskChoiceId", async () => {
     goalText: "Persist valid task choice",
     templateName: "choice-valid",
   });
+  assert.deepEqual(created.workflowGuidance.nextTask?.completionChoices, ["simple"]);
+  assert.equal(
+    created.workflowGuidance.recommendedCommands?.includes("claw task done --id 1 --choice <choice>"),
+    true,
+  );
+  assert.equal(
+    created.workflowGuidance.recommendedCommands?.some((command) => command === "claw task done --id <id>"),
+    false,
+  );
+  assert.match(created.workflowGuidance.nextsteps[0] ?? "", /select one completion choice/i);
+  assert.doesNotMatch(created.workflowGuidance.nextsteps[0] ?? "", /simple/i);
 
   const completed = await editPlan({
     cwd: root,
@@ -1330,13 +1432,13 @@ test("default template returns only current lifecycle guidance", async () => {
     cwd: root,
     taskName: "demo-task",
     title: "Demo task",
-    goalText: "Keep bridge tasks lightweight",
+    goalText: "Keep the planning task lightweight",
   });
 
   await editPlan({
     cwd: root,
     taskName: "demo-task",
-    appendTasks: [{ id: 3, title: "Real execution task", status: "pending" }],
+    appendTasks: [{ id: 2, title: "Real execution task", status: "pending" }],
   });
 
   await editPlan({
@@ -1353,18 +1455,10 @@ test("default template returns only current lifecycle guidance", async () => {
   });
   assert.equal(planningDone.workflowGuidance.nextTask?.id, 2);
 
-  const activationDone = await editPlan({
-    cwd: root,
-    taskName: "demo-task",
-    taskId: 2,
-    taskStatus: "done",
-  });
-  assert.equal(activationDone.workflowGuidance.nextTask?.id, 3);
-
   const realTaskDone = await editPlan({
     cwd: root,
     taskName: "demo-task",
-    taskId: 3,
+    taskId: 2,
     taskStatus: "done",
   });
   assert.equal(realTaskDone.workflowGuidance.stage, "done");
@@ -1791,7 +1885,7 @@ test("writePlan uses title as the default goal text for planning-enabled seed pl
   assert.equal(result.planStatus, "process.discussing");
   assert.equal(result.workflowGuidance.goalMode, undefined);
   assert.equal(result.plan.goal.text, "Goal later task");
-  assert.equal(result.plan.tasks.length, 2);
+  assert.equal(result.plan.tasks.length, 1);
 });
 
 test("plan create auto-assigns stable integer task ids when omitted", async () => {
@@ -1902,10 +1996,11 @@ test("createSubplan uses the planning-aware default seed shape", async () => {
   assert.equal(result.plan.title, "Implement child work");
   assert.equal(result.plan.status, "process.discussing");
   assert.equal(result.plan.goal.text, "Implement child work: Split this into a subplan");
-  assert.equal(result.plan.tasks.length, 2);
+  assert.equal(result.plan.tasks.length, 1);
   assert.deepEqual(result.workflowGuidance.nextsteps, [
-    "Set or overwrite Goal Mode to this subplan objective before doing target work: Follow the claw workflow guidance and finish your goal: Implement child work: Split this into a subplan",
-    "1. Resolve the discussion, then resume through `process.active`.",
+    "After the parent goal is completed by this subplan handoff, start the subplan goal before doing target work: Follow the claw workflow guidance and finish your goal: Implement child work: Split this into a subplan",
+    "1. Use claw-kit:planning until the discussion is finished and the outcome, constraints, and material open questions are clear.",
+    "2. If execution remains, record the smallest outcome-oriented task list with the recommended command. If planning resolves the request, complete task #1 and close the plan.",
   ]);
   assert.equal(result.workflowGuidance.recommendedCommands?.[0], 'claw search --query "<topic>"');
   assert.equal(
@@ -1913,10 +2008,13 @@ test("createSubplan uses the planning-aware default seed shape", async () => {
     "Follow the claw workflow guidance and finish your goal: Implement child work: Split this into a subplan",
   );
   assert.equal(result.workflowGuidance.goalMode?.allowOverwrite, true);
-  assert.match(result.workflowGuidance.notes ?? "", /parent\/root plan as paused/i);
-  assert.equal(result.workflowGuidance.goalTool, undefined);
-  assert.match(result.plan.tasks[0]?.detail ?? "", /plan and fill executable tasks/i);
-  assert.match(result.plan.tasks[1]?.detail ?? "", /process\.active/);
+  assert.match(result.workflowGuidance.notes ?? "", /completes the current parent goal first/i);
+  assert.deepEqual(result.workflowGuidance.goalTool, {
+    tool: "update_goal",
+    status: "complete",
+    reason: "Subplan creation must complete the active parent goal before the child plan creates its own goal.",
+  });
+  assert.match(result.plan.tasks[0]?.detail ?? "", /use claw-kit:planning/i);
 });
 
 test("createSubplan uses project defaultPlanTemplate when templateName is omitted", async () => {
@@ -2018,7 +2116,7 @@ test("createSubplan always uses planning shape even when project planning is dis
 
   assert.equal(result.plan.status, "process.discussing");
   assert.equal(result.plan.goal.text, "Implement child work");
-  assert.deepEqual(result.plan.tasks.map((task) => task.id), [1, 2]);
+  assert.deepEqual(result.plan.tasks.map((task) => task.id), [1]);
 });
 
 test("subplan completion resumes the parent plan and marks the parent task done", async () => {
@@ -2738,13 +2836,19 @@ test("plan edit appendTasks auto-assigns ids when omitted", async () => {
   );
 });
 
-test("atomic plan start refines, appends, completes bridge tasks, and emits one mutation stream", async () => {
+test("atomic plan start refines, appends, completes the initial task, and emits one mutation stream", async () => {
   const root = createFixture("plan-start-atomic");
   await writePlan({
     cwd: root,
     taskName: "demo-task",
     title: "Demo task",
     goalText: "Start atomically",
+  });
+  await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    taskId: 1,
+    taskTitle: "讨论并明确需求",
   });
 
   const result = await editPlan({
@@ -2757,18 +2861,16 @@ test("atomic plan start refines, appends, completes bridge tasks, and emits one 
     appendTasks: [
       { title: "Implement outcome", status: "pending" } as unknown as { id: number; title: string; status: "pending" },
     ],
-    planStatus: "process.active",
-    completeLifecycleBridge: true,
+    applyPlanStartGuidance: true,
     commandSource: "plan.start",
   });
 
   assert.equal(result.planStatus, "process.active");
-  assert.deepEqual(result.plan.tasks.map((task) => task.status), ["done", "done", "pending"]);
-  assert.deepEqual(result.changedTaskIds, [1, 2]);
-  assert.deepEqual(result.appendedTaskIds, [3]);
+  assert.deepEqual(result.plan.tasks.map((task) => task.status), ["done", "pending"]);
+  assert.deepEqual(result.changedTaskIds, [1]);
+  assert.deepEqual(result.appendedTaskIds, [2]);
   assert.deepEqual(result.events.map((event) => event.type), [
     "plan_changed",
-    "plan_task_completed",
     "plan_task_completed",
     "plan_activated",
   ]);
@@ -2776,39 +2878,6 @@ test("atomic plan start refines, appends, completes bridge tasks, and emits one 
   assert.ok(result.events.every((event) => event.schemaVersion === 1));
   assert.ok(result.events.every((event) => event.commandSource === "plan.start"));
   assert.equal(new Set(result.events.map((event) => event.eventId)).size, result.events.length);
-});
-
-test("atomic plan start validation failure leaves the plan unchanged", async () => {
-  const root = createFixture("plan-start-rollback");
-  await writePlan({
-    cwd: root,
-    taskName: "demo-task",
-    title: "Demo task",
-    goalText: "Reject incompatible bridge",
-    content: {
-      title: "Demo task",
-      status: "process.discussing",
-      goal: { text: "Reject incompatible bridge" },
-      tasks: [{ id: 1, title: "Custom planning task", status: "pending" }],
-    },
-  });
-
-  await assert.rejects(
-    editPlan({
-      cwd: root,
-      taskName: "demo-task",
-      appendTasks: [
-        { title: "Must not persist", status: "pending" } as unknown as { id: number; title: string; status: "pending" },
-      ],
-      planStatus: "process.active",
-      completeLifecycleBridge: true,
-      commandSource: "plan.start",
-    }),
-    /both default lifecycle bridge tasks/,
-  );
-  const plan = showPlan({ cwd: root, taskName: "demo-task" }).plan;
-  assert.equal(plan.status, "process.discussing");
-  assert.deepEqual(plan.tasks.map((task) => task.title), ["Custom planning task"]);
 });
 
 test("plan edit appendTasks defaults omitted task status to pending", async () => {
@@ -4819,12 +4888,12 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
   assert.equal(result.ok, true);
   assert.equal(result.changed, true);
   assert.ok(result.issueCountBefore > 0);
-  assert.equal(projectConfig.version, "0.1.83");
+  assert.equal(projectConfig.version, "0.1.84");
   assert.equal(projectConfig.id, "fix-me");
   assert.equal(projectConfig.name, "Fix Me");
   assert.equal("releaseChannel" in projectConfig, false);
   assert.equal(projectConfig.var.releaseChannel, "canary");
-  assert.equal(projectConfig.maxTasksToKeep, 99);
+  assert.equal(projectConfig.maxTasksToKeep, 9);
   assert.equal(projectConfig.autoUpdate, true);
   assert.deepEqual(projectConfig.contextPaths, []);
   assert.equal(projectConfig.goalMode, true);
@@ -5052,6 +5121,11 @@ test("enforceTaskRetention archives completed task and prunes archive by complet
       retrospective: { summary: "Older complete." },
     },
   });
+  fs.writeFileSync(
+    path.join(root, ".claw", "tasks", "older-task", "plan.report"),
+    `${JSON.stringify({ entryType: "knowledge_finalization", result: "Older result" })}\n`,
+    "utf-8",
+  );
   await writePlan({
     cwd: root,
     taskName: "newer-task",
@@ -5066,6 +5140,11 @@ test("enforceTaskRetention archives completed task and prunes archive by complet
       retrospective: { summary: "Newer complete." },
     },
   });
+  fs.writeFileSync(
+    path.join(root, ".claw", "tasks", "newer-task", "plan.report"),
+    `${JSON.stringify({ entryType: "knowledge_finalization", result: "Newer result" })}\n`,
+    "utf-8",
+  );
 
   const project = resolveContext(root).project;
   const nowMs = Date.parse("2026-03-01T00:00:00.000Z");
@@ -5075,6 +5154,9 @@ test("enforceTaskRetention archives completed task and prunes archive by complet
   assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "older-task")), false);
   assert.equal(first.prunedArchivedTasks[0]?.taskName, "older-task");
   assert.equal(fs.existsSync(first.archivedCurrentTask?.archivedTaskDir ?? ""), false);
+  const retainedReportPath = path.join(root, ".claw", "archive", "tasks", "newer-task", "plan.report");
+  assert.equal(fs.existsSync(retainedReportPath), true);
+  assert.match(fs.readFileSync(retainedReportPath, "utf-8"), /Newer result/);
 
   const second = enforceTaskRetention(project, "newer-task", nowMs);
 

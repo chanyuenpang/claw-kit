@@ -39,10 +39,7 @@ claw plan create "Ephemeral harness" --scope session --goal "Use plan and Goal w
 
 Projects can add reusable templates directly under `.claw/templates` with `.json`, `.js`, `.mjs`, or `.cjs` files. Put `defaultPlanTemplate` in `.claw/project.json` for a shared team default, or in `.claw/project-override.json` for a local personal override.
 
-When `.claw/project.json` has `planning: true`, the default `default` template seeds `process.discussing` with:
-
-1. a planning task that refines the request and appends executable tasks
-2. an activation task that bridges into `process.active`
+When `.claw/project.json` has `planning: true`, the default `default` template seeds one planning task in `process.discussing`. It loads the effective `externalPlanningSkill`, falling back to `claw-kit:planning`, and stays open until the discussion is finished and the smallest outcome-oriented task list is clear. Use `plan start` when execution tasks remain; when planning itself resolves the request, complete task 1 and close the plan.
 
 When `planning: false`, `claw plan create` seeds the smallest executable plan directly in `process.active`.
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Historical. The referenced standalone skill package is no longer present in the current adapter; its named-template commands below describe the historical registry-backed route, not the current loaded-skill entry contract.
 
 ## Context
 

@@ -18,6 +18,9 @@
 - `scripts/sync-shared-skills.mjs` 只会把生成 banner 注入到顶层 `SKILL.md`，不会污染 shared skill tree 里的其他 markdown 或 bundled helper scripts。
 - `scripts/sync-shared-skills.mjs` 现在用 repo lock 保护共享 skill 同步，`scripts/sync-shared-skills.test.mjs` 则覆盖了同步结果、生成 banner 和 Windows 并发打包场景，避免 `codex-plugin-bundle` 与 `opencode-plugin-bundle` 测试在同一工作区里互相抢写。
 - 共享后的 `planning` skill 保持宿主无关：它只描述如何产出高质量 plan 内容，不承担 claw-kit runtime、project-plan admission、status 语义、writer dispatch、goal mode 或 closeout 规则。
+- `planning` 不承载 `claw-kit` 仓库专属的比例化 TDD 政策；`shared/skills/planning/SKILL.md` 及 Codex/OpenCode 物化副本都不应包含该规则，避免把仓库开发约束传播给插件使用方的其他项目。
+- 当前仓库开发测试政策由根目录 `AGENTS.md` 承载：只有预期回归保护值得编写、运行和维护成本，且行为足够稳定时才使用 TDD；纯文档或其他不可执行变更、高频变化或合同未稳定的区域优先使用审阅、结构检查、smoke、探针或定向手工验证；高风险稳定行为、已复现缺陷、关键边界和兼容合同优先使用针对性自动化测试。
+- ADR 保存稳定决策、理由和取舍，防止未来修改静默逆转设计意图；它与行为回归测试互补，但不会机械触发文档测试，也不能替代高风险运行时行为所需的测试。上述当前 owner 边界由本文拥有，迁移到仓库 `AGENTS.md` 的决策及其取舍由 `.claw/truth/adr/workflow-cost-optimization-route.md` 拥有。
 - 共享后的 `config` skill 保持宿主无关：它只描述配置入口、team-vs-personal scope 判断、canonical field shape 和 override 格式，不承担 claw-kit lifecycle 或 writer dispatch。
 - 共享后的 `create-claw-skill` skill 保持宿主无关：它只负责把既有 skill 或用户想法转换成 claw-template-backed skill，不承担 claw-kit runtime、project-plan admission、status 语义、writer dispatch、goal mode 或 closeout 规则。
 - 为了避免把试验性产物误固化成长期合同，`brainstorming` 和 `systematic-debugging` 这类在创建 `create-claw-skill` 过程中生成的测试 skill 树不应作为正式 shared skills/templates 保留在仓库里；它们不属于 `scripts/sync-shared-skills.mjs` 的默认维护列表，除非未来被明确重新晋升。
@@ -29,6 +32,7 @@
 - 以后修改 config skill 时，只需要编辑 `shared/skills/config/SKILL.md`，不应再分别修改 codex 和 opencode 两份副本。
 - 以后修改 create-claw-skill skill 时，只需要编辑 `shared/skills/create-claw-skill/SKILL.md`，不应再分别修改 codex 和 opencode 两份副本。
 - planning 文案可以继续朝“通用 plan skill”演化，而宿主差异与 claw-kit 专属合同应继续收敛到 `using-claw-kit` 或其他宿主级入口技能中；如果未来再调整 project-plan admission 或 direct-work 语义，应同时修改两个 host-specific 入口 skill，而不是把入口规则写回 shared planning 源。
+- shared planning 不应重新加入仓库专属的 TDD admission policy；在本仓库内规划开发工作时由根 `AGENTS.md` 提供比例化测试约束，插件使用方的其他项目不会从 shared planning skill 继承该政策。
 - config 文案提供明确配置入口：先判断 shared team config 还是 personal local override，再使用当前扁平 canonical field shape。
 - create-claw-skill 文案继续承担模板化转换入口：如果未来要调整转换流程或 fallback 语义，先改 shared source，再让 sync 脚本和插件 bundle 传播到适配器目录。
 - 生成型测试 skill 默认不进入 shared sync 列表；如果未来要重新引入 `brainstorming` 或 `systematic-debugging`，应先明确它们是否要晋升为正式 shared skills/templates，再决定是否纳入同步。
@@ -78,7 +82,7 @@
 ### 长期行为 / 规则
 
 - full template 的 `configOverride` 会进入 `effectivePlanProjectConfig(...)`，从而影响运行时 `workflowGuidance`；不能把它当作仅用于生成静态 JSON 的元数据。
-- full template task 的 `guidance.onDone` 会参与任务完成时的 guidance 合并；若 task 定义 choices，CLI `plan edit --choice-id <id>` 会选择对应分支，所选分支的 `summary` 等字段进入运行时响应。
+- full template task 的 `guidance.onDone` 会参与任务完成时的 guidance 合并；若 task 定义 choices，当前 CLI 由 `claw task done --id <id> --choice <choice-id>` 或 `claw task edit --id <id> --status done --choice <choice-id>` 选择对应分支，所选分支的 `summary` 等字段进入运行时响应。旧 `plan edit --choice-id` 只保留在下方明确标注的历史 smoke 中。
 - CLI compact plan response 必须保留 `workflowGuidance.summary`，并继续以顶层 `summary` 返回；不能只保留 `nextsteps`、`recommendedCommands` 或折叠后的 `planSummary`。
 - 当时的 `shared/skills/update/TEMPLATE.json` 是 full `PlanDocument` template；当前两个 adapter-owned `update/TEMPLATE.json` 仍沿用同一 full-template resolver，不需要降格为 legacy `SeedPlanTemplate`。
 

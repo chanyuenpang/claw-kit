@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import {
   buildDirectWorkflowGuidance,
+  DEFAULT_MAX_TASKS_TO_KEEP,
   checkProjectProtocol,
   ClawError,
   buildPlanWorkflowGuidance,
@@ -30,6 +31,7 @@ import {
   resolveContext,
   resolveSeedPlanTemplate,
   searchMemory,
+  warmProjectMemoryEmbedding,
   showPlan,
   createSubplan,
   switchTask,
@@ -37,7 +39,7 @@ import {
   claimKnowledgeFinalizationJob,
   listRetryableKnowledgeFinalizationJobs,
   normalizeTruthMarkdownEncoding,
-  tryCleanupKnowledgeFinalizationReport,
+  recordKnowledgeFinalizationResult,
   writeKnowledgeFinalizationJob,
   unbindSession,
   writePlan,
@@ -108,7 +110,7 @@ const COMMAND_HELP: Record<string, HelpNode> = {
       { flag: "--planning true|false", detail: "Enable planning-aware default template behavior (default true)." },
       { flag: "--external-planning-skill <skill>", detail: "Skill id for an external planning skill." },
       { flag: "--gitnexus true|false", detail: "Enable GitNexus integration (default false)." },
-      { flag: "--max-tasks-to-keep <n>", detail: "Max active tasks before archival pruning (default 99)." },
+      { flag: "--max-tasks-to-keep <n>", detail: `Max archived tasks to retain (default ${DEFAULT_MAX_TASKS_TO_KEEP}).` },
       { flag: "--force", detail: "Overwrite an existing .claw project." },
     ],
   },
@@ -139,7 +141,7 @@ const COMMAND_HELP: Record<string, HelpNode> = {
           "{script} plan create --title <text> [--goal <text>] [--template <name> | --template-file <path>] [--scope session]",
         ],
         description:
-          "Create the task scope and initial plan from a template. Outside a .claw project, explicit `--template` automatically uses session scope while plain plan creation keeps the project-initializing behavior. Template resolution uses explicit `--template` first, otherwise the project's configured `defaultPlanTemplate`, and finally the built-in `default`; planning-enabled projects start in process.discussing with the default planning bridge tasks, while planning-disabled projects start directly in process.active with one executable task.",
+          "Create the task scope and initial plan from a template. Outside a .claw project, explicit `--template` automatically uses session scope while plain plan creation keeps the project-initializing behavior. Template resolution uses explicit `--template` first, otherwise the project's configured `defaultPlanTemplate`, and finally the built-in `default`; planning-enabled projects start in process.discussing with one default planning task, while planning-disabled projects start directly in process.active with one executable task.",
         summary: "Create the task scope and initial plan.",
         options: [
           { flag: "--title <text>", detail: "Task title (required unless a positional title is given)." },
@@ -203,8 +205,8 @@ const COMMAND_HELP: Record<string, HelpNode> = {
       start: {
         usage: ["{script} plan start --requirements <text> --add-task <title> [--detail <text>] [options]"],
         description:
-          "Atomically apply refined plan content, append business tasks, complete the default planning/activation bridge, and enter process.active in one serialized mutation.",
-        summary: "Atomically refine and activate a default planning plan.",
+          "Atomically apply refined plan content, append outcome tasks, and execute the current template task's plan-start guidance in one serialized mutation.",
+        summary: "Atomically commit the planning result.",
         options: [
           { flag: "--goal <text>", detail: "Set goal.text." },
           { flag: "--requirements <text>", detail: "Set the requirements summary." },
@@ -422,6 +424,11 @@ const COMMAND_HELP: Record<string, HelpNode> = {
     description: "Internal: runs one queued knowledge deposition job through the host-aware finalization runner (Codex SDK for codex host, opencode run for opencode host).",
     options: [{ flag: "--job <path>", detail: "(required) Finalization job JSON path." }],
   },
+  "internal-embedding-warmup": {
+    usage: ["{script} internal-embedding-warmup --cwd <dir>"],
+    description: "Internal: warms the configured local persistent embedding session after context recovery without delaying SessionStart.",
+    options: [{ flag: "--cwd <dir>", detail: "(required) Project root." }],
+  },
 };
 
 async function main(): Promise<void> {
@@ -546,6 +553,9 @@ async function main(): Promise<void> {
         return;
       case "internal-knowledge-finalize":
         await runInternalKnowledgeFinalize(args);
+        return;
+      case "internal-embedding-warmup":
+        await runInternalEmbeddingWarmup(args);
         return;
       default:
         printTopLevelUsage();
@@ -682,8 +692,7 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
         ...target,
         updates,
         appendTasks,
-        planStatus: "process.active",
-        completeLifecycleBridge: true,
+        applyPlanStartGuidance: true,
         commandSource: "plan.start",
         host: effectiveHost,
         ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
@@ -1017,6 +1026,8 @@ async function runContextCommand(
     ? buildCodexRuntimeError(codexRuntime.detail)
     : null;
 
+  launchProjectEmbeddingWarmup(resolved.project);
+
   return {
     ...resolved,
     ...(activeWorkflow ? { activeWorkflow } : {}),
@@ -1041,6 +1052,36 @@ async function runContextCommand(
       },
     },
   };
+}
+
+function launchProjectEmbeddingWarmup(project: ProjectContext): void {
+  const memory = project.projectConfig?.memory;
+  if (
+    process.env.CLAW_EMBEDDING_WARMUP_DISABLE_LAUNCH === "1"
+    || process.env.CLAW_KNOWLEDGE_FINALIZER === "1"
+    || memory?.enabled === false
+    || memory?.embedding?.provider !== "local"
+    || process.env.CLAW_EMBEDDING_PERSISTENT_WORKER === "0"
+    || !fs.existsSync(path.join(project.clawDir, "memory.sqlite"))
+  ) {
+    return;
+  }
+  try {
+    const child = spawn(
+      process.execPath,
+      [resolveCliEntryPath(), "internal-embedding-warmup", "--cwd", project.projectRoot],
+      {
+        cwd: project.projectRoot,
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+        env: withoutInvocationHost(),
+      },
+    );
+    child.unref();
+  } catch {
+    // Context recovery is authoritative; embedding warmup is fail-open latency work.
+  }
 }
 
 function buildPublicContextOutput(context: Record<string, unknown>): Record<string, unknown> {
@@ -1339,6 +1380,16 @@ async function runStopHook(effectiveHost: ClawHost | undefined): Promise<void> {
   }
 }
 
+async function runInternalEmbeddingWarmup(args: string[]): Promise<void> {
+  const cwd = readRequiredFlag(args, "--cwd");
+  assertNoRemainingArgs(args, "internal-embedding-warmup");
+  printJson({
+    command: "internal-embedding-warmup",
+    ok: true,
+    ...await warmProjectMemoryEmbedding({ cwd }),
+  });
+}
+
 async function runInternalKnowledgeFinalize(args: string[]): Promise<void> {
   const jobPath = readRequiredFlag(args, "--job");
   const running = claimKnowledgeFinalizationJob(jobPath);
@@ -1357,15 +1408,28 @@ async function runInternalKnowledgeFinalize(args: string[]): Promise<void> {
       statusLabel: `knowledge-${running.finalizeId.slice(0, 12)}`,
       skipGitNexusRefresh: true,
     });
+    const finishedAt = new Date().toISOString();
+    recordKnowledgeFinalizationResult(project, running.reportPath, {
+      schemaVersion: 1,
+      entryType: "knowledge_finalization",
+      finalizeId: running.finalizeId,
+      taskName: running.taskName,
+      recordedAt: finishedAt,
+      status: "succeeded",
+      result: writerRun.finalResponse,
+      attempts: running.attempts,
+      ...(running.host !== undefined ? { host: running.host } : {}),
+      ...(writerRun.threadId ? { threadId: writerRun.threadId } : {}),
+      truthEncoding,
+    });
     writeKnowledgeFinalizationJob(jobPath, {
       ...running,
       status: "succeeded",
-      finishedAt: new Date().toISOString(),
+      finishedAt,
       ...(writerRun.threadId ? { sdkThreadId: writerRun.threadId } : {}),
       finalResponse: writerRun.finalResponse,
       truthEncoding,
     });
-    tryCleanupKnowledgeFinalizationReport(project, running.reportPath);
   } catch (error) {
     const failed: KnowledgeFinalizationJob = {
       ...running,
@@ -1492,10 +1556,11 @@ function buildKnowledgeWriterPrompt(job: KnowledgeFinalizationJob): string {
   return [
     `Use the ${writerSkill} skill and follow it exactly.`,
     "Act as the knowledge-base steward: maintain Truth and ADR together, preserve one current owner, and reconcile related current claims before completion.",
-    `Completed plan: ${job.planPath}`,
-    `Turn report: ${job.reportPath}`,
+    "Primary closeout materials:",
+    `- ${job.planPath}`,
+    `- ${job.reportPath}`,
     `Finalization id: ${job.finalizeId}`,
-    "Treat the completed plan and report as verified evidence. Do not edit either input, do not dispatch subagents, and do not repeat implementation or test verification.",
+    "Interpret all supplied materials by their content, not by a fixed filename, field, record shape, or serialization format. Extract conclusion-bearing evidence wherever it appears. Use task status when present to interpret completed, pending, and blocked scope, but do not treat task titles or descriptions as an execution log or promote requirements and intentions into results. Do not edit source inputs, dispatch subagents, or repeat implementation or test verification.",
   ].join("\n");
 }
 
@@ -2101,6 +2166,26 @@ function buildHostActions(result: {
     return [];
   }
   const actions: Array<Record<string, unknown>> = [];
+  const goalTool = result.workflowGuidance.goalTool;
+  const isSubplanGoalHandoff = Boolean(
+    result.plan?.parentPlan
+    && goalTool?.tool === "update_goal"
+    && goalTool.status === "complete",
+  );
+  if (isSubplanGoalHandoff && goalTool?.tool === "update_goal") {
+    actions.push({
+      schemaVersion: 1,
+      id: `${latestEvent.mutationId}:update_goal`,
+      sourceEventId: latestEvent.eventId,
+      tool: "update_goal",
+      input: {
+        status: "complete",
+      },
+      meta: {
+        reason: goalTool.reason,
+      },
+    });
+  }
   if (result.plan) {
     let assignedInProgress = false;
     const plan = result.plan.tasks.map((task) => {
@@ -2122,8 +2207,7 @@ function buildHostActions(result: {
       },
     });
   }
-  if (result.workflowGuidance.goalTool) {
-    const goalTool = result.workflowGuidance.goalTool;
+  if (goalTool && !isSubplanGoalHandoff) {
     if (goalTool.tool === "create_goal") {
       actions.push({
         schemaVersion: 1,
@@ -2548,7 +2632,7 @@ function queueCompletionRefresh(input: {
     ? enforceTaskRetention(project, input.taskName)
     : {
         enabled: false,
-        maxTasksToKeep: project.projectConfig?.maxTasksToKeep ?? 99,
+        maxTasksToKeep: project.projectConfig?.maxTasksToKeep ?? DEFAULT_MAX_TASKS_TO_KEEP,
         prunedArchivedTasks: [],
       };
   const startedAt = new Date().toISOString();
