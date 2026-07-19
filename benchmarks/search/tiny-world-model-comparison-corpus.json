@@ -1,0 +1,270 @@
+{
+  "schemaVersion": 1,
+  "description": "Human-labeled tiny-world Chinese semantic search corpus. Labels were selected from the frozen 850-document claw SQLite snapshot; lexical filename controls are excluded from quality metrics.",
+  "queries": [
+    {
+      "id": "currency-runtime-source-split",
+      "language": "zh",
+      "category": "architecture",
+      "critical": true,
+      "query": "货币配置的 JSON 资产和游戏运行时读取之间现在怎样分工，HUD 最终从哪里拿货币单位",
+      "relevant": [".claw/truth/features/currency-system-and-hud-display.md"]
+    },
+    {
+      "id": "combat-event-unlock-chain",
+      "language": "zh",
+      "category": "runtime",
+      "critical": true,
+      "query": "一个战斗事件从线索解锁到地图容器认领，再到玩家按键进入战斗，要经过哪些系统",
+      "relevant": [".claw/truth/features/combat-event-content-chain.md"]
+    },
+    {
+      "id": "dialogue-runtime-stack",
+      "language": "zh",
+      "category": "runtime",
+      "critical": true,
+      "query": "对话界面的层级、输入阻断、移动锁定和销毁现在由谁统一管理",
+      "relevant": [".claw/truth/features/dialogue-runtime-push-pop.md"]
+    },
+    {
+      "id": "inventory-context-commands",
+      "language": "zh",
+      "category": "runtime",
+      "critical": false,
+      "query": "背包右键菜单怎样统一支持消耗品使用、书籍阅读以及法宝装备，而不在面板里按类型硬编码",
+      "relevant": [".claw/truth/features/inventory-context-menu-commands.md"]
+    },
+    {
+      "id": "saveable-freed-instance",
+      "language": "zh",
+      "category": "architecture",
+      "critical": true,
+      "query": "自动存档时注册表里残留已经释放的节点为什么会崩溃，旧实例退出又怎样避免误删新实例",
+      "relevant": [".claw/truth/adr/save-manager-saveable-lifecycle-guard.md", ".claw/truth/features/save-manager-freed-saveable-registry-guard.md"]
+    },
+    {
+      "id": "world-map-runtime-wrapper",
+      "language": "zh",
+      "category": "runtime",
+      "critical": false,
+      "query": "大地图为什么用新的 screen 包装旧面板，而不是直接重写原来的地图业务组件",
+      "relevant": [".claw/truth/features/world-map-ui-runtime-screen.md"]
+    },
+    {
+      "id": "reference-field-selector",
+      "language": "zh",
+      "category": "architecture",
+      "critical": true,
+      "query": "资源字段引用其他配置时，为什么不能继续让策划手填字符串或逗号数组，统一选择器要描述哪些维度",
+      "relevant": [".claw/truth/features/reference-id-selector-editor.md"]
+    },
+    {
+      "id": "json-id-version-transition",
+      "language": "zh",
+      "category": "architecture",
+      "critical": true,
+      "query": "全资产 JSON 化以后，各类资源的 ID、结构版本、数据版本以及旧 tres 过渡状态如何统一",
+      "relevant": [".claw/truth/adr/asset-json-spec-domain-slug-id-dual-version-tres-transition.md"]
+    },
+    {
+      "id": "gdscript-tab-guard",
+      "language": "zh",
+      "category": "architecture",
+      "critical": false,
+      "query": "GDScript 混用空格和制表符会引发级联解析失败，仓库采用什么规范和自动防护",
+      "relevant": [".claw/truth/adr/gdscript-tab-indentation-and-script-guardrails.md", ".claw/truth/features/gdscript-tab-indentation-guardrails.md"]
+    },
+    {
+      "id": "mcp-readiness-levels",
+      "language": "zh",
+      "category": "testing",
+      "critical": true,
+      "query": "怎样区分 Godot 编辑器已附着、桥接已连接、动作可调用以及世界真正可测试，而不是只看 connected",
+      "relevant": [".claw/truth/features/godot-mcp-ready-contract.md"]
+    },
+    {
+      "id": "e2e-five-layer-foundation",
+      "language": "zh",
+      "category": "testing",
+      "critical": false,
+      "query": "万宝阁测试沉淀出的可复用 E2E 基础设施由前置、探针、见证、模板和主流程哪几层组成",
+      "relevant": [".claw/truth/features/e2e-infrastructure-p1-foundation-sample.md"]
+    },
+    {
+      "id": "outskirt-brawl-closeout",
+      "language": "zh",
+      "category": "testing",
+      "critical": true,
+      "query": "凡人界前期据点斗殴主线以什么证据算完成，Quest HUD 需要覆盖哪些状态",
+      "relevant": [".claw/truth/adr/outskirt-brawl-mainline-slice-closeout-and-validation-matrix.md", ".claw/truth/features/outskirt-brawl-and-quest-hud-validation-matrix-2026-06-19.md"]
+    },
+    {
+      "id": "condition-clue-scope",
+      "language": "zh",
+      "category": "architecture",
+      "critical": true,
+      "query": "多个 NPC 或据点监听同类统计事件时，条件线索如何限制在自己的 Content 上并按需注册监听器",
+      "relevant": [".claw/truth/adr/condition-clue-scoped-watcher-lazy-registration.md"]
+    },
+    {
+      "id": "trade-cancel-semantics",
+      "language": "zh",
+      "category": "testing",
+      "critical": true,
+      "query": "交易物品在双方栏位之间移过去又移回来但没有确认时，为什么只算取消且不能产生差价损耗",
+      "relevant": [".claw/truth/features/wanbao-actions-only-trade-e2e-testing.md"]
+    },
+    {
+      "id": "experience-refining-loop",
+      "language": "zh",
+      "category": "architecture",
+      "critical": true,
+      "query": "角色成长为什么要以经验、炼气等级和属性点形成统一闭环，而不是继续依赖角色专用升级组件",
+      "relevant": [".claw/truth/adr/experience-refining-growth-loop-formal-boundary.md", ".claw/truth/features/experience-refining-growth-loop-design-canonical.md"]
+    },
+    {
+      "id": "interactable-action-count",
+      "language": "zh",
+      "category": "runtime",
+      "critical": false,
+      "query": "交互物没有行为、只有一个行为和有多个行为时，按键提示与直接执行或弹菜单的规则分别是什么",
+      "relevant": [".claw/truth/features/interactable-menu-prompt-rules.md"]
+    },
+    {
+      "id": "combat-faction-selection",
+      "language": "zh",
+      "category": "runtime",
+      "critical": true,
+      "query": "三方战斗为什么先进入战斗场景再让玩家动态选边，选边失败时应该怎样处理",
+      "relevant": [".claw/truth/features/battle-event-dynamic-faction-selection.md"]
+    },
+    {
+      "id": "quest-scoped-fategraph",
+      "language": "zh",
+      "category": "architecture",
+      "critical": true,
+      "query": "任务子图为何不再维护独立 Quest 图语言，而是直接编辑限定作用域的真实 Fate 资源",
+      "relevant": [".claw/truth/adr/quest-asset-subgraph-resource-model-and-validation.md", ".claw/truth/features/quest-asset-subgraph-resource-model-and-validation.md"]
+    },
+    {
+      "id": "ui-focus-restore",
+      "language": "zh",
+      "category": "runtime",
+      "critical": false,
+      "query": "打开新的 screen、modal 或 dialogue 后再关闭，UI 焦点如何恢复到上一层正确控件",
+      "relevant": [".claw/truth/features/ui-runtime-focus-management.md"]
+    },
+    {
+      "id": "time-rule-lifecycle",
+      "language": "zh",
+      "category": "design",
+      "critical": false,
+      "query": "游戏模式启用时光规则后，怎样监听年份变化并影响所有实体的寿命，移除规则时又如何清理",
+      "relevant": ["docs/05-rules-规则系统/时光系统.md"]
+    },
+    {
+      "id": "xiaoya-drug-market-thief",
+      "language": "zh",
+      "category": "content",
+      "critical": true,
+      "query": "小芽追查被调换的白术时为什么必须替那只偷药的猫找出真正偷钱的人，章节有哪些可玩环节",
+      "relevant": ["docs/15-content-design-内容设计/角色-小芽/第四章-药市怪盗.md"]
+    },
+    {
+      "id": "ancient-soul-cat-role",
+      "language": "zh",
+      "category": "content",
+      "critical": true,
+      "query": "那只被当成灵宠的黑猫真实定位是什么，它怎样作为战斗伙伴和成熟引导者陪伴小芽而不替她成长",
+      "relevant": ["docs/15-content-design-内容设计/角色-小芽/小芽伙伴-夺舍古魂猫设定基线.md"]
+    },
+    {
+      "id": "mortal-items-ranged-weapons",
+      "language": "zh",
+      "category": "content",
+      "critical": false,
+      "query": "凡人界有哪些适合猎户使用的弓类远程武器，它们的品质和特点在哪里定义",
+      "relevant": ["docs/12-world-世界设定/凡人界/凡人界物品名单.md"]
+    },
+    {
+      "id": "ui-runtime-migration-decision",
+      "language": "zh",
+      "category": "design",
+      "critical": true,
+      "query": "项目为什么决定建设负责路由、栈、输入、焦点和暂停的新 UI 运行时，而不再给旧面板管理器打补丁",
+      "relevant": ["docs/技术方案/UI框架重构方案.md"]
+    },
+    {
+      "id": "behavior-json-executable-chain",
+      "language": "zh",
+      "category": "design",
+      "critical": true,
+      "query": "当前行为资产从业务 JSON 的 executables 字段到编译产物和执行后端的唯一主链是什么",
+      "relevant": ["docs/技术方案/行为资产管线与执行编排层重构方案-2026-06实体类JSON主链补齐修正.md"]
+    },
+    {
+      "id": "test-layer-selection",
+      "language": "zh",
+      "category": "testing",
+      "critical": true,
+      "query": "验证剧情或数据资产时为什么不应该默认直接跑完整玩家 E2E，应怎样选择更轻的测试层级",
+      "relevant": ["docs/14-mcp-game-automation-MCP游戏自动化/规则-测试分层决策.md"]
+    },
+    {
+      "id": "gameplay-actions-only",
+      "language": "zh",
+      "category": "testing",
+      "critical": true,
+      "query": "编写真实玩家流程脚本时为什么优先使用 actions，并且失败时必须暴露诊断而不能只报超时",
+      "relevant": ["docs/14-mcp-game-automation-MCP游戏自动化/规则-gameplay脚本编写.md"]
+    },
+    {
+      "id": "asset-source-output-boundary",
+      "language": "zh",
+      "category": "design",
+      "critical": true,
+      "query": "资源系统里哪些 JSON 目录允许人工编辑，编译生成目录为什么禁止手改，旧 data 目录处于什么地位",
+      "relevant": ["docs/开发规范/M0-源码层与产物层边界说明书.md"]
+    },
+    {
+      "id": "xiaoya-questcontent-admission",
+      "language": "zh",
+      "category": "content",
+      "critical": true,
+      "query": "小芽的章节为什么不能只靠对白和跑腿成为正式任务，每段内容需要具备哪些现实困难、玩法和代价",
+      "relevant": [".claw/truth/features/xiaoya-character-creation-and-questcontent-contract.md"]
+    },
+    {
+      "id": "embedding-cache-recovery",
+      "language": "zh",
+      "category": "architecture",
+      "critical": false,
+      "query": "本地向量模型缓存为什么应当由多个项目共享，项目配置中又不应该保存哪类机器私有设备设置",
+      "relevant": [".claw/truth/features/shared-embedding-cache-recovery.md"]
+    },
+    {
+      "id": "lexical-combat-file",
+      "language": "control",
+      "category": "lexical_control",
+      "critical": false,
+      "query": "combat-event-content-chain.md",
+      "relevant": [".claw/truth/features/combat-event-content-chain.md"]
+    },
+    {
+      "id": "lexical-xiaoya-file",
+      "language": "control",
+      "category": "lexical_control",
+      "critical": false,
+      "query": "第四章-药市怪盗.md",
+      "relevant": ["docs/15-content-design-内容设计/角色-小芽/第四章-药市怪盗.md"]
+    },
+    {
+      "id": "lexical-test-file",
+      "language": "control",
+      "category": "lexical_control",
+      "critical": false,
+      "query": "规则-gameplay脚本编写.md",
+      "relevant": ["docs/14-mcp-game-automation-MCP游戏自动化/规则-gameplay脚本编写.md"]
+    }
+  ]
+}

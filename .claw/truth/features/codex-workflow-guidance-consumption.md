@@ -1,13 +1,11 @@
 ﻿# Codex workflowGuidance consumption
 
-- Codex adapter 应把 `workflowGuidance` 视为主合同，但 planning 自身现在负责计划质量，不再把 standalone `plan-review` 当成进入下一阶段的必经门。
-- 当 `claw` 计划命令返回结果时，adapter 应优先消费 compact 字段：`planStatus`、`workflowGuidance`、`planSummary`，以及需要时的 `completionRefresh`。
+- Codex adapter 应把 CLI 从 `workflowGuidance` 投影出的 stage-relevant contract 视为主合同，但 planning 自身现在负责计划质量，不再把 standalone `plan-review` 当成进入下一阶段的必经门。
+- 每次 claw plan mutation 都由固定 v4 code-mode driver 先消费 `hostActions`，再只向 Agent 返回当前阶段所需的 compact 字段，例如 `stage`、`planSummary`、`nextTask`、`recommendedCommands`、`askUser` 与需要时的 `completionRefresh`。root `plan.done` 额外暴露 `planPath`、final `nextsteps` 与 `achievement`；普通 mutation 和 subplan parent-resume 不制造 terminal completion signal。
+- 当前 `packages/codex-adapter/skills/using-claw-kit/SKILL.md` 的 cold path 获取并校验完整 driver envelope，再以 `claw-kit:codex-driver:v4:s1` 缓存该 envelope；同线程后续 mutation 可跳过 `claw codex driver` 获取，但仍通过同一个完整 `runClawPlanMutation` wrapper 调用已缓存 `source`。只缓存 `source` 并使用 4–6 行 hot path 是已评估的后续压缩方向，不是当前实现。
 - `planSummary` 是聊天协作中可展示的紧凑计划状态；adapter 不应期待 render blocks、widget envelope、`claw plan app` 或 `claw plan render`。
-- investigation-first 是 Codex workflow 的主流程规则：当 task 主要是调查、分析或证据收集，而不是直接实现时，应优先派发 `researcher` specialist。
-- `researcher` 可由 task shape 触发，不必等待 `workflowGuidance.delegateSubagents` 明确列出；派发时使用 `explorer` + 显式 `claw-kit:researcher` skill item，并优先复用同线程已有 researcher。
-- host 在 researcher dispatch 前不应内联读取 search skill；`claw search` 的 recall 步骤属于 researcher 自己的窄调查流程。
-- `researcher` 的调查顺序应先 `claw search --query "<topic>"` 检索 `.claw` context、truth 和 ADR；当 canonical `gitnexus = true` 时，再发现并使用 GitNexus 相关能力做代码调查。
-- 对研究型 delegate，host 必须等待结果；当前 task 依赖 research 结论时，不能跳过该 gate 继续执行。
+- code-investigation-first 可由 task shape 触发，不必等待 `workflowGuidance.delegateSubagents` 明确列出；普通项目 recall、Truth/ADR lookup 与历史上下文查询不是 researcher dispatch trigger。这只定义 guidance 的触发边界，不在本文重复拥有 researcher 的 agent type、派发、复用、等待或调查顺序。
+- researcher 的当前代码调查派发、相关同线程复用、窄 brief、阻塞等待与非递归合同统一由 `.claw/truth/features/codex-subagent-reuse.md` 拥有。
 - `workflowGuidance` 不再派发 Truth/ADR writer。completed plan、相邻 report 与 job snapshot 由 Stop/session-idle sidecar 交给一次 combined `knowledge-writer` pass；main agent 不在 closure 前另行沉淀。
 - `workflowGuidance.delegateSubagents` 的历史 writer entries 已退出当前 lifecycle；该字段若用于其他 specialist，仍按 returned structured contract 消费，不能据此恢复 main-agent writer dispatch。
 - `process.wait` 和 `process.discussing` 都是暂停型 guidance：cross-host `workflowGuidance.goalTool` 继续描述 `update_goal(status="blocked")`；Codex adapter 不直接执行该 compatibility metadata，而是消费 CLI `buildHostActions` 按 committed `planStatus` 投影出的 schema-v1 `update_goal(status="complete")`，真正结束当前 Codex active Goal，再等待后续独立 mutation 恢复到 `process.active`。
@@ -24,7 +22,7 @@
 - 已恢复 session 的未完成 plan 现在是显式用户面 gate：当 `SessionStart` / recovered `workflowGuidance` 发现当前线程已有 unfinished plan 时，adapter 必须先告诉用户“线程里已经有未完成计划”，并询问是关闭当前 plan 还是继续推进它，然后才能开始无关的新工作；这条恢复期 gate 同时落在 `packages/core/src/workflow-guidance.config.json`、`packages/core/src/workflow-guidance.ts` 的 fallback recovered prompt、`packages/opencode-adapter/workflow-guidance.opencode.json`，以及 `packages/opencode-adapter/plugin/index.ts` 的 recovered prompt fallback / idle continuation 注入上。
 - `end.completed` closeout 现在明确保留同线程 claw continuity：plan 完成后除了收尾当前 closeout，下一项工作仍应留在同一个 `claw-kit` 线程里，并重新经 `using-claw-kit` 做 project-plan/direct-work 判断，而不是把 completed-plan closeout 当成退出 claw-kit 的边界。
 - 当 task guidance 走 `guidance.onDone` / `guidance.onDone.choices` 时，host 不能把 `done` 视为无上下文的纯状态切换；如果返回结果要求 `choiceId`，adapter 必须把该值沿着 `claw task done --choice` 或 `claw task edit --status done --choice` 的 route-aware completion path 原样传递，并接受 template-bound 校验失败。
-- CLI compact result 现在会直接暴露 `goalTool`，所以 host 不需要从 prompt 文案里反推 goal lifecycle。
+- core/CLI 仍生成 `goalTool` compatibility metadata 与 Codex `hostActions`，但 Codex Agent 不直接接收或执行 `goalTool`；固定 driver 在返回 stage-relevant result 前消费允许的 native host actions，所以 host 不需要从 prompt 文案反推 goal lifecycle。
 - `planning` 现在是唯一可见 plan-content skill，但只负责 requirements refinement 与 outcome-task quality；lifecycle 与 `workflowGuidance` 消费仍由 `using-claw-kit`、template metadata 和 CLI/adapter contract 拥有。详细 lifecycle owner 是 `.claw/truth/features/cli-guided-workflow.md`，本文只拥有 Codex consumption 边界。
 - `packages/codex-adapter/skills/planning/SKILL.md`、`packages/codex-adapter/skills/using-claw-kit/SKILL.md` 与相关 references 都应遵循同一 CLI-driven compact guidance 合同。
 
@@ -44,12 +42,11 @@
 
 ## Plan create 的 project recall 合同
 
-- template create、root plan create 与 subplan create 现在共享同一 create-time recall guidance：首条 `recommendedCommand` 是 `claw search --query "<topic>"`，`nextStep` 只写 `Run one project recall query.`。这一步是一次项目知识召回，用于在 planning 前恢复 `.claw` context、truth 和 ADR，不是代码调查。
-- create-time project recall 由主流程直接执行，不触发 `researcher`。只有 task 本身进入真正的 investigation / research 流程时，才按 task shape 派发 researcher；不能因为 create guidance 推荐了一次 `claw search` 就额外 spawn researcher。
-- researcher 内部仍以 recall-first 为窄合同，但文案保持为简洁单行：`Use project recall first when available: claw search --query "<topic>".`。这条指令属于已经发生的 research dispatch 内部顺序，不应反向扩张成“每次 project recall 都需要 researcher”。
-- 裸 `claw search` 缺少 query 时，CLI 错误提示也直接给出同一标准格式 `claw search --query "<topic>"`，使 create guidance、researcher skill 和错误修复建议保持一致，避免继续传播裸命令或其他参数形态。
+- template create、root plan create 与 subplan create 现在共享同一 create-time recall guidance：`applyCreateGuidance` 把 `claw search --query "<topic>"` 放到 `recommendedCommands` 首位，但不新增或强制 recall `nextstep`。这是 planning 前可选的项目知识召回能力，用于恢复 `.claw` context、truth 和 ADR，不是代码调查。
+- create-time project recall 由主流程直接执行，不触发 `researcher`。只有 task 本身进入代码调查时，才按 task shape 派发 researcher；不能因为 create guidance 推荐了一次 `claw search` 就额外 spawn researcher。
+- Codex researcher skill 不再把 project recall、Truth/ADR lookup 或历史上下文查询描述成 dispatch trigger；它只以代码调查作为触发边界。已派发 researcher 内部以 `claw search` 开始的调查顺序由 `.claw/truth/features/codex-subagent-reuse.md` 唯一拥有。裸 `claw search` 缺少 query 时，CLI 错误提示仍直接给出标准格式 `claw search --query "<topic>"`，但普通 recall 命令由主流程直接消费。
 - create guidance 的配置源是 `packages/core/src/workflow-guidance.config.json` 中的 `planCreateRecall`，`packages/core/src/workflow-guidance.ts` 的 `applyCreateGuidance` 负责把它应用到 template/root/subplan create 结果；CLI 错误提示锚点是 `packages/cli/src/cli.ts`。
-- adapter 的 research 内部文案锚点分别是 `packages/codex-adapter/skills/researcher/SKILL.md` 与 `packages/opencode-adapter/skills/researcher/SKILL.md`。三类 surface 必须保持命令格式和“recall 不等于 research dispatch”的边界一致。
+- Codex research 文案锚点是 `packages/codex-adapter/skills/researcher/SKILL.md`；当前收窄结论不改变 OpenCode researcher surface。
 - 本次源码回归验证为 CLI `69/69`、core `123/123` 通过。
 
 ### 最终 smoke 与回归证据

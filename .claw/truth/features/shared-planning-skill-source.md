@@ -18,8 +18,13 @@
 - `scripts/sync-shared-skills.mjs` 只会把生成 banner 注入到顶层 `SKILL.md`，不会污染 shared skill tree 里的其他 markdown 或 bundled helper scripts。
 - `scripts/sync-shared-skills.mjs` 现在用 repo lock 保护共享 skill 同步，`scripts/sync-shared-skills.test.mjs` 则覆盖了同步结果、生成 banner 和 Windows 并发打包场景，避免 `codex-plugin-bundle` 与 `opencode-plugin-bundle` 测试在同一工作区里互相抢写。
 - 共享后的 `planning` skill 保持宿主无关：它只描述如何产出高质量 plan 内容，不承担 claw-kit runtime、project-plan admission、status 语义、writer dispatch、goal mode 或 closeout 规则。
+- `planning` 不以预设 task 数量作为拆分目标。当前拆分边界是可验收的进度检查点：检查点完成后，后续工作应能继续执行，或该阶段能被独立重试；文件、命令、文档、测试、构建、检查和 review 默认保留在同一 task 内，除非它们本身形成有意义的检查点。
+- 当现有证据不足以可靠确定后续步骤时，`planning` 只规划到决定路线的检查点，并在该检查点完成后用其证据进行第二次规划、追加下一批可执行 tasks；不得为了让初始计划显得完整而虚构推测性的后续 tasks。
+- `planning` handoff 要求与用户讨论并确认当前阶段的 requirements 和 proposed solution；若实施路线依赖尚未取得的证据，就把决定路线的检查点及其后续 planning task 作为当前阶段 solution，而不是猜测下游实现方案。
+- `planning` 的文案所有权已收敛：`Planning principles` 只承载规划过程与任务拆分规则；`Quality bar` 单独拥有“好计划需要传达什么”的标准，包括当前阶段目标与决策逻辑、拆分理由与先后顺序、范围与非目标、受控风险与延后事项、可观察的 task/round 完成条件以及可交接性。不得再在开头用独立 `A good plan should answer` 清单重复这些标准。
+- `planning` 不定义强制的实施后 `user-review` task、同一 plan 的跨轮反馈循环或独立 review lifecycle。若可预见任务会反复修改，当前 `How to write` 规则会询问用户是否要在 closeout 前增加一个最终 `manual-review` task，并且只在用户明确请求时追加；这是 opt-in 的 task-shape guidance，不是默认 lifecycle stage。执行前的当前阶段 solution discussion 仍由 default planning bridge 与 shared planning 合同共同承担。
 - `planning` 不承载 `claw-kit` 仓库专属的比例化 TDD 政策；`shared/skills/planning/SKILL.md` 及 Codex/OpenCode 物化副本都不应包含该规则，避免把仓库开发约束传播给插件使用方的其他项目。
-- 当前仓库开发测试政策由根目录 `AGENTS.md` 承载：只有预期回归保护值得编写、运行和维护成本，且行为足够稳定时才使用 TDD；纯文档或其他不可执行变更、高频变化或合同未稳定的区域优先使用审阅、结构检查、smoke、探针或定向手工验证；高风险稳定行为、已复现缺陷、关键边界和兼容合同优先使用针对性自动化测试。
+- 当前仓库比例化验证与测试政策由根目录 `AGENTS.md` 承载：验证不应重于其保护的执行，只有明确且现实的高成本回归风险才能证明额外成本合理；成本判断覆盖选择、编写、运行、排障和维护 checks 的总成本。低风险改动使用最轻可信验证；纯文档或其他不可执行变更、高频变化或合同未稳定的区域优先使用审阅、结构检查、smoke、探针或定向手工验证；高风险稳定行为、已复现缺陷、关键边界和兼容合同优先使用针对性自动化测试。
 - ADR 保存稳定决策、理由和取舍，防止未来修改静默逆转设计意图；它与行为回归测试互补，但不会机械触发文档测试，也不能替代高风险运行时行为所需的测试。上述当前 owner 边界由本文拥有，迁移到仓库 `AGENTS.md` 的决策及其取舍由 `.claw/truth/adr/workflow-cost-optimization-route.md` 拥有。
 - 共享后的 `config` skill 保持宿主无关：它只描述配置入口、team-vs-personal scope 判断、canonical field shape 和 override 格式，不承担 claw-kit lifecycle 或 writer dispatch。
 - 共享后的 `create-claw-skill` skill 保持宿主无关：它只负责把既有 skill 或用户想法转换成 claw-template-backed skill，不承担 claw-kit runtime、project-plan admission、status 语义、writer dispatch、goal mode 或 closeout 规则。
@@ -32,6 +37,12 @@
 - 以后修改 config skill 时，只需要编辑 `shared/skills/config/SKILL.md`，不应再分别修改 codex 和 opencode 两份副本。
 - 以后修改 create-claw-skill skill 时，只需要编辑 `shared/skills/create-claw-skill/SKILL.md`，不应再分别修改 codex 和 opencode 两份副本。
 - planning 文案可以继续朝“通用 plan skill”演化，而宿主差异与 claw-kit 专属合同应继续收敛到 `using-claw-kit` 或其他宿主级入口技能中；如果未来再调整 project-plan admission 或 direct-work 语义，应同时修改两个 host-specific 入口 skill，而不是把入口规则写回 shared planning 源。
+- planning 的任务质量检查应审阅检查点是否可验收、是否支持后续继续或独立重试，以及证据依赖的后续阶段是否被延迟到第二次规划；不应以 task 数量是否落在某个范围内作为质量标准。
+- 2026-07-19 的只读质量 review 在当时的 planning 文案中发现四项缺口：三处强制确认 `proposed solution` 与证据依赖的阶段性规划冲突；复杂前向场景仍在 planning task 之后预建实现、Windows 验证和文档 tasks；简单 CLI 错误消息场景把没有独立检查点价值的包级验证拆开；`## When to use` 与多个质量章节存在重复。该 review 同时确认结构与分发同步健康，这些结论只描述 review 当时的源码和场景结果。
+- 当前 working tree 已用更晚的 shared planning 文案取代上述 skill 内缺口：handoff 要求讨论并确认当前阶段 requirements 与 proposed solution；若实施路线依赖证据，则确认决定路线的 checkpoint 及其后续 planning task 作为当前阶段 solution，不猜测最终实现方案。planning task 是初始 task list 的末端边界，依赖未知证据的 implementation、validation、documentation 或 closure tasks 必须等它运行后再追加；支持性 validation 默认留在同一 outcome task，只有形成独立 gate、ownership、retry 或 materially different risk 价值时才拆分；可预见反复修改时只询问是否增加 final `manual-review` task，并且只在用户请求时增加；trigger 已收敛进 frontmatter，重复章节已合并。三份当前 shared/Codex/OpenCode 文件的文本合同一致。
+- `packages/core/src/templates/plans/default.ts` 与 `packages/core/src/workflow-guidance.config.json` 现在也要求在准备 task list 前讨论并确认 requirements 与 proposed solution。该 lifecycle bridge 的当前实现由 `.claw/truth/features/cli-guided-workflow.md` 拥有；本文拥有 evidence-dependent checkpoint route 如何满足 proposed-solution handoff 的 shared planning 质量合同。
+- 本次 knowledge pass 只做了实现锚点与后续 diff 的只读 freshness check，没有重跑前向场景；因此可以确认当前文本合同已覆盖 review 建议，但不能把旧场景结果提升为对新文案行为效果的重新验证。
+- `Add optional manual review planning guidance` 的 completed closeout 记录了 planning-only 定向同步、精确文本检查与 diff 检查通过，并明确没有运行完整测试套件；本次 freshness check 只确认 `shared/skills/planning/SKILL.md` 及 Codex/OpenCode 物化副本当前都包含同一句 opt-in 规则，不把该结果扩大为未执行的全量验证。
 - shared planning 不应重新加入仓库专属的 TDD admission policy；在本仓库内规划开发工作时由根 `AGENTS.md` 提供比例化测试约束，插件使用方的其他项目不会从 shared planning skill 继承该政策。
 - config 文案提供明确配置入口：先判断 shared team config 还是 personal local override，再使用当前扁平 canonical field shape。
 - create-claw-skill 文案继续承担模板化转换入口：如果未来要调整转换流程或 fallback 语义，先改 shared source，再让 sync 脚本和插件 bundle 传播到适配器目录。
@@ -57,6 +68,16 @@
 - `packages/codex-adapter/skills/create-claw-skill/SKILL.md`
 - `packages/opencode-adapter/skills/create-claw-skill/SKILL.md`
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md`
+- `.claw/tasks/优化-planning-skill-的任务拆分与二次规划规则/plan.json`
+- `.claw/tasks/优化-planning-skill-的任务拆分与二次规划规则/plan.report`
+- `.claw/tasks/Review-planning-skill-quality/plan.json`
+- `.claw/tasks/Review-planning-skill-quality/plan.report`
+- `.claw/tasks/Apply-planning-skill-review-improvements/plan.json`
+- `.claw/tasks/Apply-planning-skill-review-improvements/plan.report`
+- `.claw/tasks/Merge-planning-quality-guidance/plan.json`
+- `.claw/tasks/Merge-planning-quality-guidance/plan.report`
+- `.claw/tasks/Add-optional-manual-review-planning-guidance/plan.json`
+- `.claw/tasks/Add-optional-manual-review-planning-guidance/plan.report`
 ## 2026-07-13：staging-only 导出与 update skill 审计
 
 - `planning` 与 `config` 的规范源仍然只在 `shared/skills/`；适配器副本不应作为 Git 追踪文件或日常编辑入口。

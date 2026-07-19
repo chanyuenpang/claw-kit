@@ -16,7 +16,7 @@ Accepted working truth for the current Codex adapter prompt surface.
 ## Workflow implications
 
 - `using-claw-kit` 的当前入口路由由 `using-claw-kit-session-entry.md` 与 `codex-plugin-workflow-mechanics.md` 拥有；本文件不再重复其 prompt guidance 检查、next-step 来源优先级或具体入口句子。
-- 调查型 task 使用 researcher specialist；完成期 Truth/ADR 由 hook-owned `knowledge-writer` 处理，不属于 main-agent specialist dispatch。
+- 代码调查与项目 recall 之间的 researcher 路由边界由 `.claw/truth/features/codex-subagent-reuse.md` 拥有，本文不重复其触发、派发或复用合同。完成期 Truth/ADR 由 hook-owned `knowledge-writer` 处理，不属于 main-agent specialist dispatch。
 - task 相关 supporting docs 放在 `plan.references`，而不是依赖 task-local search。
 - `claw search` 负责 project-scope recall；GitNexus 调查入口通过 `tool_search` 定位对应工具。
 

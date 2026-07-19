@@ -31,7 +31,7 @@
 - legacy nested inputs such as `workflow.goalMode.enabled`, `workflow.truthDispatch.mode`, and `gitnexus.enabled` are compatibility inputs for protocol repair; repaired canonical files are flattened instead of preserving those nested containers.
 - The 2026-06-23 compatibility fixture run remains historical evidence for flattening legacy `workflow.goalMode.enabled`, `workflow.truthDispatch.mode`, and object `gitnexus.enabled`; current repair no longer promotes `truthDispatch` into canonical project output.
 - Current repair fills `planning`, `externalPlanningSkill`, and the canonical `knowledgeWriter` object; legacy external truth / ADR skill values are accepted only as migration input for `knowledgeWriter.externalSkill`.
-- `claw init` and protocol normalization now auto-fill a minimal default local embedding config when `memory.embedding` is missing, using `Snowflake/snowflake-arctic-embed-m-v2.0`; default vector indexing remains runtime-enabled without persisting `store.vector.enabled = true`, `store.vector` is retained only for explicit `enabled: false` or `extensionPath`, and the default cache location is runtime-resolved instead of being persisted into `project.json`.
+- `claw init` and protocol normalization now auto-fill a minimal default local embedding config when `memory.embedding` is missing, using `jinaai/jina-embeddings-v2-base-zh`; default vector indexing remains runtime-enabled without persisting `store.vector.enabled = true`, `store.vector` is retained only for explicit `enabled: false` or `extensionPath`, and the default cache location is runtime-resolved instead of being persisted into `project.json`.
 - `packages/core/src/embedding-defaults.ts` now resolves platform-global cache roots (`%LOCALAPPDATA%\\claw\\models` on Windows, `~/Library/Caches/claw/models` on macOS, and `$XDG_CACHE_HOME/claw/models` or `~/.cache/claw/models` on Linux) and the local/global/fallback cache-selection order for embedding models.
 - `packages/core/src/embedding-worker.ts` now resolves cache usage by model id: explicit local cache wins only when that local cache already contains the model; otherwise an existing global cache is reused; if both are missing, downloads go to the explicit local cache when configured, or to the global cache by default.
 - `packages/core/src/project-check.ts` 里的 `ensureProjectProtocol -> normalizeProjectConfig` 是既有项目自动迁移的最佳落点，因为它会在协议修复时回写 `project.json`。
@@ -48,11 +48,11 @@
 - 当 `memory.embedding` 配置变化触发向量 reset 时，refresh 仍保留 bounded batching 合同：`packages/core/src/memory.ts` 中控制文件限流的 `canLimitFiles` 只取决于 `maxFiles > 0`，不会因为 `requiresVectorReset` 而关闭默认的 100 文件节流。
 - 因此，embedding 配置切换后的 project refresh 仍可能暂时只包含当前批次的 docs / vectors；后续 refresh 会继续补完剩余文件，而不是一次性整库重建。
 - `claw search index --refresh` 现在生成并同步 project-scoped vectors from `memory.embedding` and stores `vectorIndex` metadata in sqlite alongside the embeddings.
-- The local embedding provider follows the GitNexus-style setup: default model `Snowflake/snowflake-arctic-embed-m-v2.0`, model-derived default dimensions, and a Windows DirectML-first path that falls back to CPU when DirectML fails.
-- The active project config in `.claw/project.json` points local embedding at `Snowflake/snowflake-arctic-embed-m-v2.0` without pinning an explicit `modelCacheDir`; cache resolution is runtime-driven between local fallback and shared machine-global surfaces.
+- The local embedding provider follows the GitNexus-style setup: default model `jinaai/jina-embeddings-v2-base-zh`, model-derived default dimensions, and a Windows DirectML-first path that falls back to CPU when DirectML fails.
+- The active project config in `.claw/project.json` explicitly points local embedding at `jinaai/jina-embeddings-v2-base-zh` with `outputDimensionality: 768` and without pinning a `modelCacheDir`; cache resolution is runtime-driven between local fallback and shared machine-global surfaces.
 - 默认 local 维度不再对所有模型一律硬编码成 `384`。当前契约是：
-- `Snowflake/snowflake-arctic-embed-m-v2.0` 默认 `768` 维
-- 显式旧模型 `Snowflake/snowflake-arctic-embed-xs` 继续默认 `384` 维
+- 默认 `jinaai/jina-embeddings-v2-base-zh` 与显式 `Snowflake/snowflake-arctic-embed-m-v2.0` 都解析为 `768` 维
+- 显式 `Snowflake/snowflake-arctic-embed-xs` 继续默认 `384` 维
 - 如果 `.claw/project.json` 显式提供 `memory.embedding.outputDimensionality`，它仍然优先覆盖模型推导出的默认维度
 - 这套按模型解析默认维度的逻辑由 `packages/core/src/embedding-defaults.ts` 统一提供，并同时被 `packages/core/src/init.ts`、`packages/core/src/project-check.ts`、`packages/core/src/embedding-worker.ts` 和 `packages/core/src/memory.ts` 复用，避免 `claw init`、协议修复、worker 输出和 `vectorIndex` metadata 之间出现维度漂移。
 - 本地设备选择现在通过 `packages/core/src/embedding-local.ts` 统一收敛：环境变量 `CLAW_EMBEDDING_LOCAL_DEVICE` / `CLAW_EMBEDDING_DEVICE` 优先于 `.claw/project.json` 的 `memory.embedding.local.device`，再退回平台默认；GPU 类设备 `dml` / `cuda` 都会带着 `cpu` 的重试序列，保证首轮真实推理失败后还能触发 CPU rescue。
@@ -73,12 +73,12 @@
 - `claw memory ...` remains as legacy/debug and low-level index management, not the primary Codex workflow term.
 - `claw plan done` rebuilds project/task search indexes and only refreshes GitNexus when flat `gitnexus` is `true`.
 - `claw plan done` 的 GitNexus 预检与自愈链路仍然只认 canonical `gitnexus` boolean，不再使用 `gitnexus.enabled` 作为规范字段；同一条 gate 既控制是否刷新，也控制是否先做前台 install/setup / embeddings self-heal。
-- When the installed GitNexus CLI does not support `--no-ai-context`, `claw plan done` falls back to plain `gitnexus analyze`.
+- 本文只拥有 canonical `gitnexus` schema gate；GitNexus analyze 的 `--no-ai-context` fallback、Windows access-violation force rebuild 与错误边界由 `local-claw-cli.md` 统一拥有。
 - The hybrid project query path is adapted from the more mature `openclaw-dev` memory query design, but only the minimal `claw-kit` subset was adopted.
 - 这次 multi-term 中文 recall 的迁移同样参考 `openclaw-dev` 的 memory search 设计，但在 `claw-kit` 中只搬运了适合当前项目的 query planner + keyword recall + vector fusion 最小子集。
 - incremental refresh 的存在不改变 project search 的可用性契约：project recall 依然要求 vector index，不能回退成纯 FTS fallback。
 - 这套 refresh 语义参考的是 `openclaw-dev` 对已有 sqlite 的 incremental bootstrap / sync 思路，但 `claw-kit` 只搬运了适合当前项目的最小 sqlite 增量迁移子集。
-- For the local ONNX cache, re-downloading the active `Snowflake/snowflake-arctic-embed-m-v2.0` artifact after deleting only that versioned cache directory should preserve the SHA256 if the upstream payload is unchanged; a different timestamp alone is not evidence of a different artifact.
+- For a local ONNX cache, re-downloading a model artifact after deleting only that versioned cache directory should preserve the SHA256 if the upstream payload is unchanged; a different timestamp alone is not evidence of a different artifact. Current cache ownership and readiness rules are maintained by `../adr/local-embedding-shared-model-cache.md` and `../adr/refresh-local-embedding-onnx-cache.md`.
 
 ## Evidence
 

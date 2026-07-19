@@ -39,6 +39,7 @@ const DEFAULT_EMBEDDING_MAX_CHARS =
 const DEFAULT_MEMORY_SQLITE_BUSY_TIMEOUT_MS = 5000;
 const PROJECT_QUERY_EMBEDDING_CACHE_LIMIT = 128;
 const PROJECT_QUERY_EMBEDDING_CACHE_VERSION = "v1";
+const PROJECT_EMBEDDING_CHUNKING_VERSION = "token-aware-v1";
 
 type ProjectDocSearchSignals = {
   matchedTerms: string[];
@@ -97,8 +98,10 @@ export function buildMemoryIndex(input: MemoryIndexInput): MemoryIndexResult {
     upsertMetadata(db, "indexed_at", new Date().toISOString());
     if (embedding) {
       upsertMetadata(db, "embedding_config", JSON.stringify(embedding));
+      upsertMetadata(db, "embedding_chunking_version", PROJECT_EMBEDDING_CHUNKING_VERSION);
     } else {
       deleteMetadata(db, "embedding_config");
+      deleteMetadata(db, "embedding_chunking_version");
     }
     if (syncResult.vectorIndex) {
       upsertMetadata(db, "vector_index", JSON.stringify(syncResult.vectorIndex));
@@ -156,8 +159,12 @@ function syncProjectMemoryIndex(
 } {
   const currentEmbeddingConfig = embedding ? JSON.stringify(embedding) : null;
   const storedEmbeddingConfig = getMetadata(db, "embedding_config");
+  const storedChunkingVersion = getMetadata(db, "embedding_chunking_version");
   const shouldIndexVectors = canBuildProjectVectors(embedding);
-  const requiresVectorReset = storedEmbeddingConfig !== currentEmbeddingConfig || !shouldIndexVectors;
+  const requiresVectorReset =
+    storedEmbeddingConfig !== currentEmbeddingConfig
+    || storedChunkingVersion !== PROJECT_EMBEDDING_CHUNKING_VERSION
+    || !shouldIndexVectors;
   const nextSources = sources.map((source) => ({
     ...source,
     contentHash: hashMemoryContent(source.content),
@@ -735,11 +742,32 @@ function generateDocEmbeddings(
   const output = runEmbeddingWorker({
     embedding,
     texts: chunks.map((chunk) => chunk.chunkText),
+    splitIntoTokenWindows: embedding.provider === "local",
   });
-  return chunks.map((chunk, index) => ({
-    ...chunk,
-    vector: output.vectors[index] ?? [],
+  const segments = output.segments ?? chunks.map((chunk, sourceTextIndex) => ({
+    sourceTextIndex,
+    text: chunk.chunkText,
   }));
+  if (output.vectors.length !== segments.length) {
+    throw new Error(
+      `Embedding worker returned ${output.vectors.length} vectors for ${segments.length} text segments.`,
+    );
+  }
+  const nextChunkIndexByDoc = new Map<number, number>();
+  return segments.map((segment, index) => {
+    const source = chunks[segment.sourceTextIndex];
+    if (!source) {
+      throw new Error(`Embedding worker returned an invalid source text index: ${segment.sourceTextIndex}`);
+    }
+    const chunkIndex = nextChunkIndexByDoc.get(source.docId) ?? 0;
+    nextChunkIndexByDoc.set(source.docId, chunkIndex + 1);
+    return {
+      ...source,
+      chunkIndex,
+      chunkText: segment.text,
+      vector: output.vectors[index] ?? [],
+    };
+  });
 }
 
 function insertDocEmbeddings(
@@ -905,9 +933,11 @@ function findPreferredChunkBoundary(
 function runEmbeddingWorker(input: {
   embedding: MemoryEmbeddingConfig;
   texts: string[];
+  splitIntoTokenWindows?: boolean;
 }): {
   dimensions: number;
   vectors: number[][];
+  segments?: Array<{ sourceTextIndex: number; text: string }>;
   runtime?: "mock" | "persistent_daemon" | "one_shot" | "remote";
 } {
   const workerPath = fileURLToPath(new URL("./embedding-worker.js", import.meta.url));
@@ -951,6 +981,7 @@ function runEmbeddingWorker(input: {
     const payload = JSON.parse(stripBom(fs.readFileSync(outputPath, "utf-8"))) as {
       dimensions: number;
       vectors: number[][];
+      segments?: Array<{ sourceTextIndex: number; text: string }>;
       runtime?: "mock" | "persistent_daemon" | "one_shot" | "remote";
     };
     return payload;
@@ -962,10 +993,10 @@ function runEmbeddingWorker(input: {
 function resolveEmbeddingWorkerTimeoutMs(): number {
   const raw = process.env.CLAW_EMBEDDING_WORKER_TIMEOUT_MS?.trim();
   if (!raw) {
-    return 30 * 60 * 1000;
+    return 2 * 60 * 60 * 1000;
   }
   const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 30 * 60 * 1000;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 2 * 60 * 60 * 1000;
 }
 
 function stripBom(content: string): string {

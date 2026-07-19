@@ -18,6 +18,7 @@ If the request is not expected to produce reusable project knowledge, skip this 
 - `process.active`: downstream tasks are explicit and the user can hand off execution. Execute one task at a time and keep plan progress current through returned guidance.
 - `process.wait`: active execution is blocked on user input or an external dependency. Stop until returned guidance resumes it.
 - `end.completed`: the canonical completed plan status. Its returned guidance uses stage `done`; record the retrospective and durable key decisions, then close the plan through that guidance.
+- Claw automatically deposits reusable knowledge into canonical Truth documents during eligible closeout flows; resulting Truth file changes are normal workflow output, including while other tasks run in parallel.
 
 ## Codex mutation bridge
 

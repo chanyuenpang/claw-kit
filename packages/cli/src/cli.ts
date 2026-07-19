@@ -3199,6 +3199,12 @@ function shouldFallbackToPlainAnalyze(result: {
   return output.includes("--no-ai-context");
 }
 
+function isWindowsAccessViolation(result: { status: number | null }): boolean {
+  return process.platform === "win32"
+    && result.status !== null
+    && (result.status >>> 0) === 0xc0000005;
+}
+
 function ensureGitNexusReadyForPlanDone(cwd: string): boolean {
   const project = resolveProjectContext(cwd);
   if (project.projectConfig?.gitnexus !== true) {
@@ -3276,8 +3282,12 @@ function runGitNexusAnalyze(
     embeddings?: boolean;
   } = {},
 ): GitNexusRefreshResult {
-  const primaryArgs = ["analyze", ...(options.embeddings ? ["--embeddings"] : []), "--no-ai-context"];
-  const primary = runCommandWithLockRetry("gitnexus", primaryArgs, cwd);
+  let primaryArgs = ["analyze", ...(options.embeddings ? ["--embeddings"] : []), "--no-ai-context"];
+  let primary = runCommandWithLockRetry("gitnexus", primaryArgs, cwd);
+  if (isWindowsAccessViolation(primary)) {
+    primaryArgs = ["analyze", "--force", ...(options.embeddings ? ["--embeddings"] : []), "--no-ai-context"];
+    primary = runCommandWithLockRetry("gitnexus", primaryArgs, cwd);
+  }
   if (primary.error) {
     throw new ClawError("PROJECT_CONFIG_INVALID", "gitnexus analyze failed.", {
       cwd,
@@ -3306,7 +3316,11 @@ function runGitNexusAnalyze(
     });
   }
 
-  const fallbackArgs = ["analyze", ...(options.embeddings ? ["--embeddings"] : [])];
+  const fallbackArgs = [
+    "analyze",
+    ...(primaryArgs.includes("--force") ? ["--force"] : []),
+    ...(options.embeddings ? ["--embeddings"] : []),
+  ];
   const fallback = runCommandWithLockRetry("gitnexus", fallbackArgs, cwd);
   if (commandFailed(fallback)) {
     throw new ClawError("PROJECT_CONFIG_INVALID", "gitnexus analyze fallback failed.", {

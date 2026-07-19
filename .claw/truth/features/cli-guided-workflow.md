@@ -2,9 +2,11 @@
 
 ## 结论
 
-- planning 只拥有 requirements refinement、scope 与 outcome-task quality；default template 与 `plan start` 拥有从讨论态进入执行态的 lifecycle bridge，`plan-review` 不再是必须单独经过的 workflow gate。
+- planning 拥有 requirements / proposed-solution refinement、scope 与 task quality；default template 与 `plan start` 拥有从讨论态进入执行态的 lifecycle bridge，`plan-review` 不再是必须单独经过的 workflow gate。
 - `claw-kit` 主线是 CLI-driven `.claw` harness，而不是 Apps SDK / app / widget / chat-rendering surface。
-- `claw plan write`、`claw plan edit`、`claw plan done` 的默认返回值是 compact contract：`ok`、`planStatus`、`workflowGuidance`、`planSummary`，以及可选 `completionRefresh`。
+- `claw plan write`、`claw plan edit`、`claw plan done` 共享 compact result core：`ok`、`planPath`、`planStatus`、紧凑 guidance 字段、`planSummary`，以及适用时的 `completionRefresh`。
+- root `claw plan done` 进入 `end.completed` 时额外返回 `achievement`、完成后的 canonical `planPath` 与本线程继续使用 claw 的 `nextsteps`。`achievement` 汇总 title、task counts、`completedAt`、retrospective 与 key-decision 保存状态；它是 foreground lifecycle completion signal，不代表异步 knowledge finalization 已完成。
+- subplan `plan done` 恢复 parent 时，结果状态和 `planPath` 属于恢复后的 parent，且不得返回 terminal `achievement`；只有真正完成 root plan 的 `plan.done` 才暴露该字段。
 - `claw plan edit` 现在会先进入共享 ticket queue 再读取 canonical plan；重叠编辑按顺序串行执行，并在各自轮次开始时重新读取最新已提交的 plan，而不是依赖命令启动时的旧快照。
 - plan mutation 不再接受通用 JSON patch 或临时文件。`claw plan edit` 只编辑 plan 字段，数组字段通过可重复的同名参数追加；`claw plan remove` 用同一字段名删除精确值。
 - task item 统一走 `claw task add/edit/remove/done`，不再把 task 的增删改和 plan 字段编辑混在一个命令中。
@@ -13,8 +15,9 @@
 - chain 的 `workflowGuidance`、completed-task 事件、session binding、completion hooks、plan mirror 与 Goal action 只按 mutation 前后的初始和最终 plan 状态归约一次；中间 lifecycle 状态不触发 side effect。合法的 `process.active -> process.wait -> process.active` 等同命令状态链因此不会产生虚假的 Goal 操作。
 - `claw plan write` 支持最简 positional title 入口：`claw plan write "<title>" [--goal "<text>"]`，`--goal` 可以省略。
 - 是否创建 plan 由请求是否预期产生可复用事实、决策、约束、模式或项目上下文决定，而不是按文件数、步骤数或其他维度加总复杂度。
-- `claw plan create` 在启用 planning 时只创建一个 `Discuss and finalize requirements with the configured planning skill` bridge task，并让 plan 先处于 `process.discussing`；该 task 同时拥有需求讨论完成门和 activation 边界，planning skill 追加 downstream executable tasks 时必须保留它，而不是覆盖它。default template 通过 task `guidance.onPlanStart` 声明“完成当前 task 并进入 `process.active`”；`claw plan start` 在同一次原子 mutation 中提交 planning 结果并应用这项声明，不再需要独立的 `Enter process.active` task。
-- bridge detail 与 task-completion guidance 使用 effective config 解析后的 `externalPlanningSkill`；该 effective config 包含 template `configOverride`，空值或未配置时明确回退到 `claw-kit:planning`，agent 不需要猜测 planning skill。
+- `claw plan create` 在启用 planning 时只创建一个 `Complete planning with the configured planning skill` bridge task，并让 plan 先处于 `process.discussing`；该 task 同时承担 planning readiness 与 activation 边界，任务如何划分继续由 planning skill 独立拥有。default template 通过 task `guidance.onPlanStart` 声明“完成当前 task 并进入 `process.active`”；`claw plan start` 在同一次原子 mutation 中提交 planning 结果并应用这项声明，不再需要独立的 `Enter process.active` task。
+- bridge detail 与 initial discussion guidance 要求与用户讨论并确认当前阶段的 requirements 和 proposed solution，再准备 task list；具体 task shape 继续由 planning skill 独立拥有。
+- initial discussion guidance 使用 effective config 解析后的 `externalPlanningSkill`；该 effective config 包含 template `configOverride`，空值或未配置时明确回退到 `claw-kit:planning`，agent 不需要猜测 planning skill。bridge title/detail 只描述 planning outcome 和讨论内容，不再重复 skill 路由。
 - `process.discussing` 是可以跨轮次稳定停留的有效状态；plan 已存在不会自动把它升级到 `process.active`。只有后续可执行子任务明确且用户可以脱手推进时，才进入 `process.active`。
 - `plan start` 不读取 task title、语言、bridge 数量或 legacy skeleton 来推断 lifecycle。它定位当前 pending/in-progress task，按 plan 持久化的 `templateId` / `templateFile` 解析同一 template，并只执行该 task 的 `guidance.onPlanStart`；Goal Mode 仍由进入 `process.active` 后的 host action 投影拥有，不写入 planning skill 或 bridge detail。
 - `claw plan create` 的 seed plan 现在还会持久化 `plan.templateId` 和模板专属的 `plan.configOverride`，所以后续 `plan edit` / `plan done` 可以重新解析原始 template 并复用同一套 template guidance。
@@ -54,6 +57,7 @@
 - single planning bridge 与 `guidance.onPlanStart` 声明：`packages/core/src/templates/plans/default.ts`
 - template-driven plan start、effective planning-skill fallback 与 current-task selection：`packages/core/src/plan.ts`、`packages/core/src/plan-templates.ts`
 - CLI 的 positional title 入口、帮助文案与紧凑输出：`packages/cli/src/cli.ts`
+- Codex driver 对 `plan.done` 终结字段的可见性过滤：`packages/cli/src/codex-driver.ts`
 - 结果类型：`packages/core/src/types.ts`
 
 ## 验证基线

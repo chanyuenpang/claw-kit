@@ -31,13 +31,16 @@ Accepted
 - 是否创建 plan 的入口决策由 `using-claw-kit-session-entry.md` 拥有；本 ADR 只消费其 project-plan 结果，并规定后续 `process.discussing` / `process.active` 生命周期
 - `process.discussing` 是允许跨轮次停留的稳定状态；plan 存在本身不触发 Goal Mode，也不要求自动进入 `process.active`
 - 只有后续可执行子任务已经明确，并且用户可以脱手让 agent 继续推进时，plan 才从 `process.discussing` 进入 `process.active`
-- default plan 用一个 planning bridge 同时承载用户讨论完成门、requirements readiness、最小 downstream task shaping 与 activation 边界；完成 draft 不足以关闭该 task，只有当前讨论结束、目标与约束清晰、material open questions 已解决且 downstream plan 可执行时，才调用 `plan start`
+- default plan 用一个 planning bridge 同时承载 planning readiness 与 activation 边界；它要求与用户讨论并确认当前阶段的 requirements 和 proposed solution，再准备 task list。具体 task shape 由 planning skill 单独拥有，template 不重复规定；完成 draft 不足以关闭该 task，当前阶段 material open questions 解决后才调用 `plan start`
+- shared planning skill 不新增强制的实施后 `user-review` task、同一 plan 的跨轮反馈循环或独立 review lifecycle；若工作可预见会反复修改，planning 可以询问用户是否要在 closeout 前增加 final `manual-review` task，但只在用户明确请求时加入。这是用户选择的 task-shape 扩展，不是默认 lifecycle stage；问题仍是执行前过早越过 solution discussion，而该门禁已经由 default planning bridge 与 shared planning 合同拥有。当前规则文案与实现锚点由 `.claw/truth/features/shared-planning-skill-source.md` 维护
 - plan-start state change 由 current template task 的 `guidance.onPlanStart` 声明；default template 声明 `completeTask: true` 与 `status: "process.active"`，`plan start` 只提交 refined fields、追加 outcome tasks 并应用这项声明，不检查 task title、语言、bridge 数量或 legacy plan shape
-- planning bridge 展示的 skill 名称必须来自 project config 与 template `configOverride` 合并后的 effective `externalPlanningSkill`；未设置时固定回退到 `claw-kit:planning`，不再使用含糊的 built-in skill 文案
+- initial discussion guidance 展示的 skill 名称必须来自 project config 与 template `configOverride` 合并后的 effective `externalPlanningSkill`；未设置时固定回退到 `claw-kit:planning`。planning bridge 的 title/detail 不再重复这项路由信息
 - foreground lifecycle 不再派发 knowledge writer；`process.allTasksDone` 只要求在 `plan done` 前持久化 retrospective 与 durable `keyDecisions`
 - plan completion 登记 pending turn owner，下一次 Stop/session-idle 才由 `hook-owned-two-phase-knowledge-finalization.md` 所定义的 sidecar 捕获 report 并异步排队一次 combined `knowledge-writer` pass
 - knowledge finalization 不阻塞 foreground closeout；它的失败、重试和完成状态不改变 canonical plan completion
 - `end.completed` 写入稳定的 `completedAt`，但 `claw plan done` 保留当前 task directory 与原 `planPath`，不在本次命令中立即移动计划
+- root `plan.done` 的 foreground completion contract 显式返回 `achievement`、完成后的 canonical `planPath` 与继续使用 claw 的 `nextsteps`，让调用方无需从 session binding 或 raw plan 重新推断完成结果。`achievement` 只证明 canonical root plan 已进入 `end.completed`；它不替代异步 knowledge-finalization 状态。
+- subplan 完成并恢复 parent 时复用同一 `plan.done` 命令，但返回 parent 的 status、`planPath` 与 next task，且不返回 terminal `achievement`。这样 child closeout 不会被误呈现为整个 workflow 的终结成就。
 - `claw plan start --requirements <text> --acceptance <criterion> --add-task <title> --detail <text>` 是原子 planning-result commit 入口：它默认作用于 session-bound 当前 plan/subplan，在一次序列化 mutation 中补齐计划、追加业务 tasks，并按 current task 的 template `guidance.onPlanStart` 完成 task 与状态转换；既有双 lifecycle-task plan 只保留为历史证据，不再由标题/shape heuristic 识别
 - 原子结果使用 `schemaVersion = 1` 的 plan events；一次 mutation 共享 `mutationId`，每个事件有唯一 `eventId` 并记录 `commandSource`
 - CLI plan state 继续是 canonical source；Codex adapter 单向消费幂等 `hostActions` 以同步 host progress 与 Goal Mode，OpenCode 直接消费其 host-specific guidance；invocation host 的解析、投影与 worker 路由见 `invocation-host-handling.md`，不把 host 状态反向写成第二份所有权
@@ -61,8 +64,11 @@ Accepted
 - 对外 plan-write / plan-status 合同更稳定，像 `release-0-1-25` 这样的版本发布可以把这组行为当作 release-worthy surface change
 - 规划语义与展示语义保持一致，计划编辑后无需额外拼装另一套状态
 - 生命周期门禁从文案建议上升为实际约束，避免无目标 active plan 进入执行态
+- host lifecycle bridge 与 shared planning skill 都要求在进入执行前讨论并确认当前阶段的 requirements 与 proposed solution；当下游路线依赖未知证据时，shared planning 进一步把 decisive checkpoint 及其后续 planning task 定义为当前阶段方案。bridge 拥有 activation gate，task shape 与 staged-planning 决策仍由 `shared-planning-skill-source.md` 拥有
+- 不引入 mandatory post-implementation review loop，避免用一套新的 lifecycle 机制重复解决执行前 solution discussion 已拥有的问题；可预见反复修改时的 final `manual-review` 只有用户选择后才成为普通 plan task，未选择时不会出现，后续用户反馈仍按实际目标和现有 plan mutation surface 处理，而不是由 planning skill 预置固定反馈流程
 - finalizer-owned `knowledge-writer` 以一次 combined pass 维护 Truth 与 ADR，不作为 main-agent specialist 或 `workflowGuidance` delegation
 - root plan closeout 需要先补齐 retrospective 和 `keyDecisions`；`claw plan done` 只提交 completion state、binding transition 与 completion refresh，不等待 knowledge job
+- root completion signal 与 subplan parent-resume signal 保持可判别：调用方只在收到 root-only `achievement` 时展示终结结果，subplan resume 继续按 parent progress 处理
 - completed plan 在原 task 路径至少保留一小时，使 Stop 之后排队的异步 finalizer 不需要切换到 archive 路径补救
 - knowledge deposition 失败不会阻塞本次 plan closeout；job queueing 与异步完成语义保持分离
 - 历史版本实跑对比说明，workflow feel 的主要回退点并不是 `plan write` 本身必然更重；新版 `plan write` 反而已经比部分旧版更窄、更干净
@@ -88,6 +94,8 @@ Accepted
 - `packages/core/src/plan-view.ts`
 - `packages/cli/src/cli.ts`
 - `packages/codex-adapter/skills/planning/SKILL.md`
+- `shared/skills/planning/SKILL.md`
+- `packages/opencode-adapter/skills/planning/SKILL.md`
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md`
 - `packages/codex-adapter/references/workflow-guidance-consumption.md`
 - `packages/codex-adapter/hooks/subagent-contract.test.mjs`
@@ -98,6 +106,8 @@ Accepted
 - `.claw/tasks/实施-claw-kit-第二阶段端到端性能与流程优化/plan.json`
 - `.claw/tasks/A-B-测试-hostActions-分步消费与-code-mode-自动消费/plan.json`
 - `.claw/tasks/优化-hostActions-单调用-code-mode-消费并发布新版本/plan.json`
+- `.claw/tasks/Add-optional-manual-review-planning-guidance/plan.json`
+- `.claw/tasks/Add-optional-manual-review-planning-guidance/plan.report`
 - `benchmarks/workflow/0.1.68-atomic-windows.json`
 - `docs/workflow-performance-contract.md`
 
@@ -145,3 +155,5 @@ Accepted
 - `syntax pre-validation`
 - `partial semantic failure`
 - `initial-to-final lifecycle reduction`
+- `optional manual-review task`
+- `user-selected review before closeout`

@@ -39,18 +39,38 @@ test("Codex adapter owns the SDK and matching direct platform packages", () => {
   }
 });
 
-test("main-agent Codex surfaces contain no writer or subagent-dispatch workflow", () => {
+test("main-agent Codex surfaces contain no writer-delegation workflow", () => {
   const mainRouter = readPluginFile(path.join("skills", "using-claw-kit", "SKILL.md"));
   const planningSkill = readPluginFile(path.join("skills", "planning", "SKILL.md"));
-  const researcherSkill = readPluginFile(path.join("skills", "researcher", "SKILL.md"));
   const workflowReference = readPluginFile(path.join("references", "workflow-guidance-consumption.md"));
   const pluginManifest = readPluginFile(path.join(".codex-plugin", "plugin.json"));
-  const forbidden = /truth-writer|adr-writer|knowledge-writer|writer delegation|deposition|delegated subagents?|dispatch[^\n]*subagent/i;
+  const forbidden = /truth-writer|adr-writer|knowledge-writer|writer delegation|deposition/i;
 
-  for (const surface of [mainRouter, planningSkill, researcherSkill, workflowReference, pluginManifest]) {
+  for (const surface of [mainRouter, planningSkill, workflowReference, pluginManifest]) {
     assert.doesNotMatch(surface, forbidden);
   }
-  assert.match(researcherSkill, /claw search --query "<topic>"/);
+});
+
+test("researcher is code-only, dispatches narrow subagents, and reuses related researchers", () => {
+  const researcherSkill = readPluginFile(path.join("skills", "researcher", "SKILL.md"));
+  const description = researcherSkill.match(/^description: (.+)$/m)?.[1] ?? "";
+
+  assert.match(description, /code investigation/i);
+  assert.doesNotMatch(description, /project recall|truth\/ADR|document search/i);
+  assert.match(researcherSkill, /Main agent:[^\n]*consume the `delegateSubagents` contract[^\n]*before continuing/i);
+  assert.match(researcherSkill, /Assigned researcher:[^\n]*skip the delegation contract[^\n]*execute the investigation order[^\n]*`outputContract`/i);
+  assert.match(researcherSkill, /1\. Use `claw search --query "<topic>"`/i);
+  assert.match(researcherSkill, /delegateSubagents:/);
+  assert.match(researcherSkill, /skill: claw-kit:researcher/);
+  assert.match(researcherSkill, /worker: readonly/);
+  assert.match(researcherSkill, /fork_context: false/);
+  assert.match(researcherSkill, /waitForCompletion: true/);
+  assert.match(researcherSkill, /preferReuseSameTypeInThread: true/);
+  assert.match(researcherSkill, /inputContract:[\s\S]*question: concrete code question/);
+  assert.match(researcherSkill, /outputContract:[\s\S]*exact code anchors/);
+  assert.match(researcherSkill, /closePolicy: keep_open_for_reuse/);
+  assert.match(researcherSkill, /anchor the findings in code or code-index evidence/i);
+  assert.doesNotMatch(researcherSkill, /## Boundary/);
 });
 
 test("background finalizer owns one combined knowledge stewardship contract", () => {

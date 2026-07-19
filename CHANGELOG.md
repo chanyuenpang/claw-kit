@@ -4,6 +4,23 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## Unreleased
 
+## [0.1.86] - 2026-07-20
+
+### Added
+
+- Tokenizer-aware local embedding chunking with versioned index invalidation, reproducible search-model benchmarks, labeled corpora, and retained Windows result evidence
+
+### Changed
+
+- Jina v2 Base Chinese is now the default 768-dimensional local embedding model, with Snowflake models retained as explicit alternatives and longer first-download request timeouts
+- Planning now uses evidence-backed progress checkpoints and follow-up planning tasks, while the default planning bridge discusses requirements and the proposed solution before preparing the task list
+- The Codex researcher contract now delegates focused code-only investigation with explicit host routing, compact evidence output, and same-thread reuse
+- Repository verification policy now states that testing must not outweigh the work it protects unless a concrete, realistically costly regression risk justifies the additional cost
+
+### Fixed
+
+- Windows GitNexus refresh retries an access-violation failure once with a forced rebuild, and persistent embedding timeouts remain terminal instead of starting a competing model load
+
 ## [0.1.85] - 2026-07-19
 
 ### Changed

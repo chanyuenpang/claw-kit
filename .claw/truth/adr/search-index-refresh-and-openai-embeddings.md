@@ -22,6 +22,11 @@ Accepted
 - 下一轮 search-quality 迭代继续参考 `OpenClaw` 的 memory search，但聚焦在 trimmed multi-route candidate recall 和 unified reranking，只迁移能直接提升项目文档 recall 的检索部件。
 - `Compare-traditional-search-vs-claw-search-for-vector-database-search-ranking` 这次 completed plan 进一步确认：当前 project search 质量的主要架构调优面是 `searchProjectMemoryHybrid` / `rerankProjectSearchCandidates` 这一层候选融合与重排链路，而不是单独替换 embedding model。
 - 同一轮比较也把工具边界固定下来：传统 `rg` / 文件检查适合确认源码权重和精确机制，`claw search` 适合回收设计历史与既有 ADR/truth，GitNexus 适合当前代码关系调查但仍需要留意符号排序噪音。
+- `0.1.85` 的两轮端到端 A/B 进一步校准了模型取舍：`Snowflake/snowflake-arctic-embed-xs` 虽显著降低模型缓存、冷启动和进程内存，但在完整 `claw search` hybrid 路径上没有通过预设的中文 Recall@5、MRR@10 和关键漏召回门禁。版本化指标、实验边界和可重跑资产由 `../features/project-search-candidate-recall.md` 统一拥有。
+- 后续小模型预筛选确认，候选不能只按参数量或模型卡排名：当前 runtime 固定 mean pooling、统一 query/document 输入，且未知模型默认按 `384` 维解析。候选事实、兼容性分类与时间边界由 `../features/project-search-candidate-recall.md` 统一拥有；本 ADR 只拥有测试优先级和 adapter 投资决策。
+- 同一套完整 `claw search` 门禁随后确认 `jinaai/jina-embeddings-v2-base-zh` 在两次隔离 Jina 对照中通过相对 Recall、相对 MRR 和关键漏召回门禁，同时显著降低缓存与查询内存；第二次完整 refresh 在略有变化的语料快照上仍复现全部 `27` 条目标文档排名和 Top-1 路径。版本化指标由 `../features/project-search-candidate-recall.md` 统一拥有；其后的默认切换 closeout 又关闭了首次下载 readiness gate。
+- Qwen 复核补齐了原候选说明的覆盖缺口，但也确认 `Qwen3-Embedding-0.6B` 不能直接进入现有 FP32 ONNX mean-pooling 链路。版本化模型事实与当前兼容性差距由 `../features/project-search-candidate-recall.md` 统一拥有；本 ADR 只决定它的候选层级和适配门槛。
+- Jina 默认 rollout 随后暴露出 document chunking 与 tokenizer 上限不一致：旧的三字符约等于一 token 估算会把大量超过 `512` Jina tokens 的 chunk 交给 feature-extraction pipeline 截断。tokenizer-aware 修正及同一组 `27` 条真实查询的 A/B 证明完整语义覆盖改善 Top-1 与 MRR、保持 Recall@5 和关键漏召回，但增加 vectors、refresh 时间和 warm-query 成本；精确版本化指标由 `../features/project-search-candidate-recall.md` 统一拥有。
 
 ## Decision
 
@@ -43,9 +48,20 @@ Accepted
 - 如果当前项目缺少 refreshed vector index，project search 返回 `MEMORY_VECTOR_INDEX_REQUIRED`，而不是 silent fallback。
 - project-level `claw search --query` 不负责在缺少 index 时隐式触发一次 refresh；项目搜索必须先有显式的 `claw search index --refresh` 结果。
 - project memory refresh 从 `.claw/project.json` 读取 embedding 配置，同时支持 OpenAI embeddings 和 GitNexus-inspired local embedding provider。
-- 当选择 local provider 时，默认模型与运行策略固定为 `Snowflake/snowflake-arctic-embed-m-v2.0`、Windows `DirectML` 优先且回退到 CPU。
+- 当选择 local provider 时，默认模型与运行策略固定为 `jinaai/jina-embeddings-v2-base-zh`、`768` 维、Windows `DirectML` 优先且回退到 CPU。
+- `Snowflake/snowflake-arctic-embed-m-v2.0` 保留为显式的 `768` 维高资源替代方案，不再是 shipped default；既有显式配置继续保持兼容，不因默认切换被静默改写。
+- `Snowflake/snowflake-arctic-embed-xs` 只保留为用户显式选择的低资源或偏英文 fallback，并必须伴随中文语义召回风险说明；它的 `384` 维兼容语义不等于默认推荐。
+- `jinaai/jina-embeddings-v2-base-zh` 以显式 `768` 维连续通过两次完整对照并复现全部查询排名，再通过首次下载 timeout/fallback 修复关闭 rollout gate 后，取代 `m-v2.0` 成为 shipped default；后续不再把它描述为候选或待 rollout 状态。
+- 首次下载 readiness 的当前决策、timeout 分类与串行恢复约束只由 `refresh-local-embedding-onnx-cache.md` 拥有；本 ADR 只以该 gate 已关闭为模型选择前提。
+- `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` 和 `shibing624/text2vec-base-chinese` 暂不进入下一轮完整对照；只有 Jina 的运维 readiness 或资源收益不能成立时，才恢复这些候选的测试优先级。
+- `intfloat/multilingual-e5-small` 必须等 runtime 支持 query/document 非对称前缀后再测，`thenlper/gte-small-zh` 必须等 runtime 支持 CLS pooling 且有经过验证的 ONNX package 后再测；在这些合同缺失时直接替换模型名不能形成公平结论。
+- 将 `Qwen3-Embedding-0.6B` 加入 adapter-first candidate set，而不是 zero-change small-model set；只有在 runtime 支持 last-token pooling、query instruction template、left padding / EOS、正确的 MRL 截断后归一化，并具备经过验证的 ONNX 或替代量化 runtime 后，才运行完整 `claw search` 对照。
+- 后续默认路线继续以 Jina 平衡中文 recall、CPU、内存与下载体积；只有目标转为追求更高的中文/多语言检索上限并接受更大的适配与资源成本时，才优先投入 Qwen 实验。
+- local document indexing 采用实际模型 tokenizer 的二阶段分块：`chunkMarkdownContent(...)` 保留段落/字符级初分块，worker 再把每个输入拆成 `min(1024, floor(tokenizerMaxTokens * 0.875))` 的 token windows，并使用最多 `64` tokens overlap。Jina 因此使用 `448` token windows；普通 query embedding 明确不进入 document splitting，避免每次查询重复加载 tokenizer 或改变 query 向量语义。
+- project index metadata 使用 `embedding_chunking_version = token-aware-v1` 作为一次性失效边界。stored version 缺失或不匹配时，refresh 重置旧 document vectors 与 query-embedding cache，再按既有每轮最多 `100` 文件的 bounded batching 重建；不能把旧 heuristic 索引静默当作与新分块兼容。
+- 拒绝继续依赖字符/token 比例并接受 tokenizer truncation，因为旧路径的速度优势有一部分来自丢弃超限文档内容，不能代表完整语义覆盖下的真实 Jina 性能。也不把 tokenizer-aware splitting 扩到 remote provider 或普通 query 路径，因为本轮证据只支持 local document indexing 的模型感知边界。
 - local provider 的默认维度改为 model-aware contract，而不是“local 一律固定同一个维度”：
-- 默认 `Snowflake/snowflake-arctic-embed-m-v2.0` 解析为 `768` 维
+- 默认 `jinaai/jina-embeddings-v2-base-zh` 与显式 `Snowflake/snowflake-arctic-embed-m-v2.0` 都解析为 `768` 维
 - 显式 legacy `Snowflake/snowflake-arctic-embed-xs` 继续默认解析为 `384` 维，保持兼容
 - 显式 `memory.embedding.outputDimensionality` 继续是最高优先级 override
 - local provider 的设备选择与 fallback 现在由 `packages/core/src/embedding-local.ts` 统一执行：`CLAW_EMBEDDING_LOCAL_DEVICE` / `CLAW_EMBEDDING_DEVICE` 优先于 `.claw/project.json` 的 `memory.embedding.local.device`，再退回平台默认；`dml` / `cuda` 都会在首轮真实推理失败后重试 `cpu`。
@@ -69,7 +85,7 @@ Accepted
 - 历史旧数据如果只剩 `docs` row 但缺少 `doc_embeddings`，refresh 也会把它们纳入补写范围，避免向量索引因为旧记录漏扫而不完整。
 - `claw search` 的 recall 面继续保持项目级文档语义，不会因为外部路径或 `FTS` 回退而漂移成通用代码搜索。
 - 旧项目在第一次运行 `claw context`、`claw check` 或其他协议修复入口后，会被自动提升到可索引的默认 local embedding schema，不需要手工补 `memory.embedding`。
-- 新项目与被 protocol auto-repair 修复的旧项目都会默认切到 `Snowflake/snowflake-arctic-embed-m-v2.0`；但已经显式写入 legacy `Snowflake/snowflake-arctic-embed-xs` 或显式 `outputDimensionality` 的项目不会被偷偷改写掉它们的兼容语义。
+- 新项目与缺少 `memory.embedding`、由 protocol auto-repair 补齐的旧项目都会采用 Jina `768` 维默认值；已经显式写入 `m-v2.0`、`xs` 或显式 `outputDimensionality` 的项目不会被偷偷改写掉它们的兼容语义。
 - 查询阶段与索引阶段共享同一套 vector contract，缺少 refreshed vectors 会显式失败，而不是悄悄降级成较弱的文本检索。
 - refresh failure 会直接暴露 embedding/provider/runtime 问题；调用方必须修复环境或改配置，然后重新执行显式 refresh，而不是依赖 text-only refresh 继续前进。
 - 中文多词检索不再被单次严格 `MATCH` 语义卡住，keyword planner 可以更稳定地为 hybrid fusion 提供候选集。
@@ -78,17 +94,25 @@ Accepted
 - 日常调查流程可以组合三种搜索能力，但结论需要标明来源：`rg` / 文件读取负责源码真相，`claw search` 负责项目记忆，GitNexus 负责关系线索，三者互补而不是互相替代。
 - `claw-kit` 仍然只迁移最小可维护子集：项目文档候选召回与重排增强进入本地实现，OpenClaw 更广的 memory system 边界继续留在范围外。
 - 既有 `.claw` 项目保持同一套 sqlite backend，不需要引入第二套索引存储。
-- local 默认模型切到 multilingual `Snowflake/snowflake-arctic-embed-m-v2.0` 后，中文 recall 的 baseline 会更好；代价是默认向量维度与本地推理成本上升到 `768` 维级别，因此 refresh/index metadata 必须和模型默认一起保持一致。
+- Jina 默认路径保持 `768` 维和现有 mean-pooling runtime，同时在版本化对照中降低了相对 `m-v2.0` 的缓存、查询内存与冷启动成本且通过中文质量门禁；refresh/index metadata 必须和 effective model/default 一起保持一致。
+- tokenizer-aware local document windows 消除了 Jina `512` token 上限上的语义截断，并改善版本化 Top-1 / MRR；代价是更多 stored vectors、更长的 full refresh 与更高的 warm-query cost。容量和性能规划必须按修正后的完整语义覆盖测量，不能继续沿用截断索引的历史速度作为当前基线。
+- 默认切换无需扩大 adapter surface；E5 与 GTE 的潜力仍不能在当前合同下公平比较。
+- Qwen 不改变 shipped default；它把可配置 pooling、query/document 非对称输入、padding/EOS、MRL normalization 和 alternate runtime 明确为一组独立 adapter 投资，避免把 Qwen 特例硬编码进统一输入链路。
+- 如果 Jina 后续不能满足运维或质量目标，再恢复其他直接候选；如果目标转向更高质量上限，再单独评估 Qwen adapter 投资。
 
 ## Related Code
 
 - `packages/core/src/memory.ts`
 - `packages/core/src/embedding-worker.ts`
+- `packages/core/src/embedding-token-chunker.ts`
 - `packages/core/src/embedding-local.ts`
+- `packages/core/src/embedding-local-runtime.ts`
+- `packages/core/src/embedding-defaults.ts`
 - `packages/core/src/context.ts`
 - `packages/core/src/project-check.ts`
 - `packages/cli/src/cli.ts`
 - `packages/core/test/core.test.ts`
+- `packages/core/test/embedding-token-chunker.test.ts`
 - `packages/cli/test/cli.test.ts`
 - `.claw/project.json`
 - `.claw/archive/tasks/Compare-traditional-search-vs-claw-search-for-vector-database-search-ranking/plan.json`
@@ -98,6 +122,10 @@ Accepted
 - `.claw/archive/tasks/embedding-refresh-cpu-fallback/plan.json`
 - `.claw/archive/tasks/embedding-refresh-batching/plan.json`
 - `.claw/archive/tasks/Improve-search-candidate-recall-with-OpenClaw-reference/plan.json`
+- `docs/search-model-comparison-results.md`
+- `benchmarks/search/model-comparison-corpus.json`
+- `scripts/search-model-comparison-benchmark.mjs`
+- `benchmarks/search/0.1.85-jina-token-aware-chunking-windows.json`
 
 ## Search Terms
 
@@ -125,6 +153,20 @@ Accepted
 - `document-signal candidates`
 - `Snowflake/snowflake-arctic-embed-m-v2.0`
 - `Snowflake/snowflake-arctic-embed-xs`
+- `jinaai/jina-embeddings-v2-base-zh`
+- `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`
+- `shibing624/text2vec-base-chinese`
+- `intfloat/multilingual-e5-small`
+- `thenlper/gte-small-zh`
+- `Qwen3-Embedding-0.6B`
+- `last-token pooling`
+- `MRL truncation normalization`
+- `token-aware-v1`
+- `embedding_chunking_version`
+- `448 token windows`
+- `64 token overlap`
+- `query: passage: asymmetric prefixes`
+- `CLS pooling`
 - `768 dimensions`
 - `outputDimensionality override`
 - `DirectML`

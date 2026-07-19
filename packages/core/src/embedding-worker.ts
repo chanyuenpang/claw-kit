@@ -1,6 +1,9 @@
 import fs from "node:fs";
+import { createRequire } from "node:module";
+import path from "node:path";
 import {
   DEFAULT_LOCAL_EMBEDDING_DIMENSIONS,
+  resolveLocalEmbeddingCacheDir,
 } from "./embedding-defaults.js";
 import {
   PersistentEmbeddingModelError,
@@ -10,19 +13,28 @@ import {
   createConfiguredLocalEmbeddingSession,
   resolveEmbeddingDimensions,
 } from "./embedding-local-runtime.js";
+import { resolveLocalTokenizerMaxLength } from "./embedding-local.js";
+import { splitTextsIntoTokenWindows, type EmbeddingTextSegment } from "./embedding-token-chunker.js";
+import { resolveTransformersModule } from "./embedding-transformers.js";
 import type { MemoryEmbeddingConfig } from "./types.js";
 
 type WorkerInput = {
   embedding: MemoryEmbeddingConfig;
   texts: string[];
+  splitIntoTokenWindows?: boolean;
   outputPath?: string;
 };
 
 type WorkerOutput = {
   dimensions: number;
   vectors: number[][];
+  segments?: EmbeddingTextSegment[];
   runtime?: "mock" | "persistent_daemon" | "one_shot" | "remote";
 };
+
+const DEFAULT_LOCAL_CHUNK_TARGET_TOKENS = 1024;
+const DEFAULT_LOCAL_CHUNK_OVERLAP_TOKENS = 64;
+const DEFAULT_LOCAL_TOKENIZER_MAX_TOKENS = 2048;
 
 async function main(): Promise<void> {
   const raw = fs.readFileSync(0, "utf-8").trim();
@@ -73,14 +85,18 @@ async function buildLocalOutput(input: WorkerInput): Promise<WorkerOutput> {
     };
   }
 
+  const segments = input.splitIntoTokenWindows
+    ? await splitLocalEmbeddingTexts(input)
+    : input.texts.map((text, sourceTextIndex) => ({ sourceTextIndex, text }));
+  const texts = segments.map((segment) => segment.text);
   try {
     const persistent = await requestPersistentEmbedding({
       embedding: input.embedding,
-      texts: input.texts,
+      texts,
       projectCwd: process.cwd(),
     });
     if (persistent) {
-      return { ...persistent, runtime: "persistent_daemon" };
+      return { ...persistent, segments, runtime: "persistent_daemon" };
     }
   } catch (error) {
     if (error instanceof PersistentEmbeddingModelError) {
@@ -91,11 +107,41 @@ async function buildLocalOutput(input: WorkerInput): Promise<WorkerOutput> {
 
   const session = await createConfiguredLocalEmbeddingSession(input.embedding, process.cwd());
   try {
-    const output = await session.run(input.texts);
-    return { dimensions: output.dimensions, vectors: output.vectors, runtime: "one_shot" };
+    const output = await session.run(texts);
+    return { dimensions: output.dimensions, vectors: output.vectors, segments, runtime: "one_shot" };
   } finally {
     await session.dispose();
   }
+}
+
+async function splitLocalEmbeddingTexts(input: WorkerInput): Promise<EmbeddingTextSegment[]> {
+  const projectRequire = createRequire(path.join(process.cwd(), "package.json"));
+  const workerRequire = createRequire(import.meta.url);
+  const { AutoTokenizer, env } = resolveTransformersModule(projectRequire, workerRequire);
+  env.allowLocalModels = false;
+  const modelId = input.embedding.local?.modelPath?.trim() || input.embedding.model;
+  env.cacheDir = resolveLocalEmbeddingCacheDir(modelId, input.embedding.local?.modelCacheDir, {
+    cwd: process.cwd(),
+  });
+  const tokenizer = await AutoTokenizer.from_pretrained(modelId);
+  const tokenizerMaxTokens = resolveLocalTokenizerMaxLength(
+    tokenizer.model_max_length,
+    null,
+    DEFAULT_LOCAL_TOKENIZER_MAX_TOKENS,
+  ) ?? DEFAULT_LOCAL_TOKENIZER_MAX_TOKENS;
+  const targetTokens = Math.max(
+    1,
+    Math.min(DEFAULT_LOCAL_CHUNK_TARGET_TOKENS, Math.floor(tokenizerMaxTokens * 0.875)),
+  );
+  const overlapTokens = Math.min(
+    DEFAULT_LOCAL_CHUNK_OVERLAP_TOKENS,
+    Math.max(0, targetTokens - 1),
+  );
+  return splitTextsIntoTokenWindows(
+    input.texts,
+    (text) => tokenizer(text, { truncation: false }).input_ids.data.length,
+    { targetTokens, overlapTokens },
+  );
 }
 
 async function buildOpenAiOutput(input: WorkerInput): Promise<WorkerOutput> {

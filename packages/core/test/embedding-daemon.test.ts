@@ -2,13 +2,57 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { readEmbeddingDaemonState } from "../src/embedding-daemon-protocol.js";
+import {
+  PersistentEmbeddingRequestTimeoutError,
+  readEmbeddingDaemonState,
+  sendEmbeddingDaemonRequest,
+  type EmbeddingDaemonState,
+} from "../src/embedding-daemon-protocol.js";
 import type { MemoryEmbeddingConfig } from "../src/types.js";
 
 const workerPath = fileURLToPath(new URL("../src/embedding-worker.js", import.meta.url));
+
+test("an in-flight daemon timeout is terminal and cannot fall back onto a partially written cache", async () => {
+  const server = net.createServer((socket) => {
+    socket.resume();
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const state: EmbeddingDaemonState = {
+    protocolVersion: 1,
+    instanceId: "timeout-test",
+    pid: process.pid,
+    port: address.port,
+    token: "timeout-token",
+    startedAt: new Date().toISOString(),
+  };
+
+  try {
+    await assert.rejects(
+      sendEmbeddingDaemonRequest(
+        state,
+        {
+          embedding: {
+            provider: "local",
+            model: "jinaai/jina-embeddings-v2-base-zh",
+            outputDimensionality: 768,
+          },
+          texts: ["first model download"],
+          projectCwd: process.cwd(),
+        },
+        { CLAW_EMBEDDING_DAEMON_REQUEST_TIMEOUT_MS: "20" },
+      ),
+      PersistentEmbeddingRequestTimeoutError,
+    );
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
 
 test("persistent embedding daemon reuses one session across independent workers", { concurrency: false }, async () => {
   const runtimeDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-embedding-daemon-test-"));

@@ -1,5 +1,5 @@
 {
-  "version": "0.1.85",
+  "version": "0.1.86",
   "id": "claw-kit",
   "name": "claw-kit",
   "maxTasksToKeep": 9,
@@ -19,7 +19,8 @@
     "externalDocPaths": [],
     "embedding": {
       "provider": "local",
-      "model": "Snowflake/snowflake-arctic-embed-m-v2.0"
+      "model": "jinaai/jina-embeddings-v2-base-zh",
+      "outputDimensionality": 768
     }
   },
   "gitnexus": true

@@ -43,7 +43,7 @@
 
 - `packages/core/src/init.ts`、`packages/core/src/context.ts` 与 `packages/core/src/project-check.ts` 已将新建、初始化和省略的 `truthDispatch` 统一规范化为 `final_only`；显式 `per_task` 保持兼容，CLI 的 per-task contract 测试也必须显式 opt-in。
 - `process.hasCompletedTasks.finalOnlyTruth` 不再强制 Codex `update_plan`，也不再建议为马上完成的工作写一次独立 `in_progress`；进入 `process.active` 与 `process.allTasksDone` 的 host synchronization 合同保持不变。
-- shared / Codex / OpenCode planning skills 当前把 downstream plan 约束为通常 `1-3` 个 outcome-oriented tasks：一个 coherent deliverable 优先只用一个 task，只有独立 deliverable、ownership、blocker、durable decision 或 materially different risk surface 才拆分；文件、命令、代码、文档、测试、build、check 或 diff review 本身不构成拆 task 的理由。planning stages 是 coverage checklist，planning bridge 不计入业务 outcomes。
+- 该阶段的 shared / Codex / OpenCode planning skills 曾把 downstream plan 约束为通常 `1-3` 个 outcome-oriented tasks，并要求 coherent deliverable 的支持性工作尽量留在同一 task；这是当时减少管理膨胀的版本化证据，不再描述当前 task shape。当前 planning 拆分规则由 `.claw/truth/features/shared-planning-skill-source.md` 唯一拥有。
 - verification 和 closure 都不是默认阶段，由 main agent 根据具体任务自由判断是否需要。
 - `docs/project-json-reference.md` 与 config guide 已把 `final_only` 记为默认值。当前实现验证通过 core `114/114`、CLI `63/63`、Codex plugin bundle `11/11`、OpenCode bundle `6/6`，以及包含全部 adapter checks 与 truth encoding audit 的 `npm run check`；mid-task truth CLI 测试显式设置 `per_task`，验证 opt-in 路径仍然成立。
 - 上述 workflow 合同同步到 core、Codex 与 OpenCode surface 后，Codex bundle `11/11`、OpenCode bundle `6/6`，且完整 `npm run check` 通过。
@@ -93,18 +93,19 @@
 
 - local embedding 新增 daemon + thin client。`packages/core/src/memory.ts` 的同步 search 调用仍通过 `spawnSync` 启动 `embedding-worker`，但 local worker 不再必然自行加载模型，而是连接绑定在 `127.0.0.1`、使用 token authentication 的 daemon；因此外层同步 API 无需 async 化，也能跨查询复用模型 session。
 - daemon transport 或 startup 失败时，thin client 回退到既有 one-shot local embedding；daemon 已返回的模型/推理错误不再重复执行 one-shot，避免同一模型错误被双重支付或掩盖。`CLAW_EMBEDDING_PERSISTENT_WORKER=0` 是显式 kill switch，可强制恢复 one-shot 行为。
+- persistent daemon request timeout 也属于 terminal `PersistentEmbeddingModelError`，因为 daemon 超时后模型下载或推理可能仍在继续；客户端不得并发回退 one-shot 去争用同一份未完成缓存。默认 daemon request timeout 与外层 embedding worker timeout 现均为两小时，仍可分别通过 `CLAW_EMBEDDING_DAEMON_REQUEST_TIMEOUT_MS` 与 `CLAW_EMBEDDING_WORKER_TIMEOUT_MS` 显式覆盖。
 - runtime endpoint 按 user、install、Node runtime 与 protocol version 隔离，并有显式 runtime directory 的测试覆盖；这防止不同安装、Node 或协议实例误连同一 daemon。
 - daemon 生命周期与并发边界包括 startup lock、state 原子写入、`120s` idle TTL，以及默认容量为 `1` 的 session LRU。session fingerprint 包含 `projectCwd`、Transformers module path、model、cache directory、dimension、device、dtype 与 tokenizer policy；任一会影响加载或输出的条件变化时，都不会误复用旧 session。
 - remote embedding provider 继续走 one-shot worker，不进入 local daemon。`packages/core/src/embedding-local.ts` 新增可复用 session surface；原有 wrapper 仍保持 create-run-dispose，兼容需要一次性生命周期的调用方。
 - 真实源码 CLI benchmark 使用两个不同且未缓存的语义 query：首次为 `3078ms`，第二次为 `452ms`；两次由同一 daemon PID 处理，daemon 内保持 `1` 个 session，并在 `120s` idle TTL 后正常退出。该样本证明收益来自模型 session 复用，而不是 query cache 命中。
 - 当前验证为 core `121/121`、CLI `64/64`，且完整 `npm run check` 通过。
 
-### Completion refresh 路径与基线
+### Completion refresh 历史路径与基线（`2b397ca` 之前）
 
 - `claw plan done` 会启动后台 completion refresh，并串行刷新 project memory、task memory 与 GitNexus；状态证据位于 `.claw/logs/completion-refresh/`。
 - 对历史 `61` 个成功日志的统计是 median `6.62s`、P90 `54.8s`、max `354.86s`。该分布适合作为回归基线，不能替代新版本/新机器复测。
-- `packages/core/src/memory.ts` 当前在 SQLite write transaction 内执行 memory embedding，慢 embedding 可能长时间持有写锁；refresh 尚无 single-flight / coalescing，重叠请求可能重复工作并提高 busy/locked 风险。
-- GitNexus-enabled 的首次或漂移环境会在 `plan done` 前同步执行 install/setup/enable embeddings，后台 refresh 随后再次 analyze；如果没有 dirty-state 或分析结果去重，会存在双重分析风险。CLI 路由锚点是 `packages/cli/src/cli.ts`。
+- 在 `2b397ca` 之前，`packages/core/src/memory.ts` 曾在 SQLite write transaction 内执行 memory embedding，慢 embedding 会长时间持有写锁；当时 refresh 也尚无 single-flight / coalescing，重叠请求可能重复工作并提高 busy/locked 风险。
+- 同一历史基线下，GitNexus-enabled 的首次或漂移环境会在 `plan done` 前同步执行 install/setup/enable embeddings，后台 refresh 随后再次 analyze；当时缺少 dirty-state 与分析结果去重，因此存在双重分析风险。CLI 路由锚点是 `packages/cli/src/cli.ts`。
 
 ## 审计判断与优化顺序
 
@@ -117,10 +118,10 @@
 
 - 研究原子的 plan-refine-and-activate 能力，或等价地减少默认 meta task 和首个业务动作前的 lifecycle mutation。
 - 支持 batch task-status 更新，并让当前 planning bridge（以及 legacy plan 中的独立 activation task）不计入业务进度指标。
-- 计划结构已经进一步收敛为通常 `1-3` 个 outcome-oriented tasks，并优先用一个 task 包含 coherent deliverable 的比例化实现、文档、验证与 review；planning stages 仍只是 coverage checklist，final-only truth 路径也不再为马上完成的工作建议独立 `in_progress` write。
+- 当时的计划结构曾收敛为通常 `1-3` 个 outcome-oriented tasks，并优先用一个 task 包含 coherent deliverable 的比例化实现、文档、验证与 review；该数字预算已被后续 checkpoint-based 规则取代。当前 task shape 见 `.claw/truth/features/shared-planning-skill-source.md`；本节只保留历史性能路线证据。
 - final-only truth 路径已经移除逐 task 的机械 `update_plan` 要求；在自动桥接完成前，其他阶段仍只应在 host 可见进度确实需要更新时写入。
 - 研究把 CLI lifecycle progress 自动桥接到 host state，减少 `.claw` plan、Codex `update_plan` 与 Goal Mode 之间的重复手动协调。
-- completion refresh 增加 single-flight / coalescing 与 dirty hash；把 embedding 移出 SQLite 长 write transaction；对 plan-done 前后的 GitNexus analyze 做去重。
+- 该候选已由 `2b397ca` 实现：completion refresh 增加 single-flight / coalescing 与 dirty hash，embedding 移出 SQLite 长 write transaction，plan-done 前后的 GitNexus analyze 也完成去重；当前合同由下方“Completion refresh single-flight 与短事务已实现合同”小节拥有。
 
 ### P2：Search latency
 
@@ -217,6 +218,7 @@
 ### Completion refresh single-flight 与短事务已实现合同
 
 - 提交 `2b397ca` 之后，`.claw/logs/completion-refresh/inflight.lock` 是项目级 completion refresh leader / single-flight 锁。重叠请求不再各自重复刷新，而是合并关联的 status files、operations 与 dirty hash 到当前 leader。
+- 这个 single-flight 不只是性能优化，也是 GitNexus 索引完整性边界：2026-07-06 的历史日志把至少 `14` 次重叠 completion refresh 与同一 `.gitnexus/lbug` 上的 shadow/WAL identity mismatch、锁失败、allocation failure 和最终 `0xC0000005` 串成一条高置信度破坏链；guard 在 2026-07-17 才加入，所以不能把事故发生时的旧路径误写成已经受保护。
 - leader 在执行期间若观察到 dirty hash 变化，会补跑 refresh cycle，但最多执行 `3` 个 cycles，避免持续变更导致后台任务无限延长。每个状态记录持久化 `dirtyHash`、`refreshCycles` 与 `coalescedCount`，用于区分输入版本、实际循环次数和被合并请求数。
 - project embedding generation 已移出 SQLite `BEGIN` / `COMMIT` 长写事务；耗时的 embedding 先在事务外生成，只有最终 vector insert 使用短事务，从而缩短写锁持有时间。
 - `claw plan done` 的 GitNexus embeddings 预检如果已经执行 analyze，后台 completion refresh 会复用该结果并跳过重复 analyze。GitNexus 返回 busy / locked 时，执行路径按 `100ms`、`250ms` 退避重试，处理瞬时锁竞争。
@@ -343,3 +345,36 @@
 - `process.discussing process.active end.completed 3/3`
 - `root completion unbind plan show PROJECT_CONFIG_INVALID explicit task-name`
 - `workflowGuidance clear next task driver bridge mental cost`
+
+### 0.1.85 同版本线日常使用体验评估（2026-07-19）
+
+- 本轮真实运行边界为全局 CLI、仓库 CLI/core 与当前线程 installed plugin snapshot 同属 `0.1.85`；报告还确认 installed `using-claw-kit` 与仓库源规范化后内容一致，原始 hash 差异仅来自换行符。该边界避免了上一轮 `0.1.84 CLI + 0.1.83 plugin snapshot` 混合合同，结论可以归属于 `0.1.85` 同版本线，但评分和耗时仍只是同机、当次只读任务的历史观测，不是跨环境 SLA。
+- `plan create -> planning -> process.active -> Goal -> task done -> retrospective -> end.completed` 完整链路顺利跑通，最终 Goal 自动关闭。报告据此把 `0.1.85` 评为“可以日常使用”：可用性 `9/10`、流畅性 `8/10`、实用性 `8.5/10`、心智压力 `4/10`（越低越好）。日常操作主要关注 driver 返回的 `stage`、`nextTask` 与 `recommendedCommands`，计划、任务、Goal 和回顾在该样本中保持同步。
+- 普通状态转换约 `1-2s`，本轮 `claw search` 约 `0.65s`；host-action/driver 定向测试 `7/7`、CLI driver/wait-resume/Goal 路由测试 `5/5`。这些是 supplied closeout 在其 revision 上已经验证的版本化证据，不代表本次 knowledge pass 重新执行了测试。
+- 主要剩余摩擦是必须复制较长的固定 code-mode bridge、PowerShell/`rg` 转义注意力，以及异步 Truth 写入来源与完成提示不够清晰。固定 bridge 的程序合同仍由 `../adr/codex-plan-mutations-use-fixed-code-mode-consumer.md` 唯一拥有；knowledge job 的 current lifecycle 与可观察性边界仍由 `codex-knowledge-capture-boundary.md` 和 `../adr/hook-owned-two-phase-knowledge-finalization.md` 拥有。本节只保留体验证据，不把报告中的优化建议提升为已采纳决策。
+- 评估开始时工作树已有 `8` 个 Truth/ADR 修改，结束时显示 `9` 个；新增显示文件的时间早于本轮 `plan done`，无法可靠归因于本轮完成钩子，因此没有撤销。相比此前记录过的 Goal/host-action 同步风险，本轮没有复现；这只证明该样本成功，不能把历史风险写成已永久消除。
+
+#### 本轮证据与检索词
+
+- `.claw/tasks/评估新版-claw-kit-的实际使用体验/plan.json`
+- `.claw/tasks/评估新版-claw-kit-的实际使用体验/plan.report`
+- `0.1.85 CLI source installed plugin aligned`
+- `plan create planning process.active Goal task done retrospective end.completed`
+- `availability 9 flow 8 utility 8.5 mental pressure 4`
+- `driver host-action 7/7 lifecycle 5/5`
+- `fixed code-mode bridge PowerShell escaping async Truth attribution`
+
+### Bridge 压缩与并行工作树风险校准（2026-07-19）
+
+- 当前约 20 行、1083 字符的 bridge 样板主要承担首次 driver bootstrap、版本/schema 校验、缓存与 runner 调用；`hostActions` 白名单、input 校验、按 action id 去重消费和 stage-relevant 输出过滤已由 CLI driver 程序化承担。该结论描述的是本轮源码与 installed skill 的只读核对，不表示下面的 hot-path 压缩已经实现；当前消费行为的 owner 是 `codex-workflow-guidance-consumption.md`，设计取舍的 owner 是 `../adr/codex-plan-mutations-use-fixed-code-mode-consumer.md`。
+- dirty worktree 或新增修改文件本身不是 claw 心智成本。只读调查只需记录一次初始基线；普通实现只持续关注当前任务写集，来源明确且路径不重叠的并行变化不需要反复提醒。
+- 只有新变化与当前写集重叠、归属不明可能被覆盖、会改变当前验证结论，或任务进入 commit/push/release 的全量 clean-worktree gate 时，认知与协调成本才显著上升。release gate 的具体归属分类与清理规则继续由 `../adr/release-0-1-18-publish-and-install-protocol.md` 统一拥有，本文不重复定义。
+- 本轮只读调查期间 modified file count 从 `9` 增至 `10`，但没有影响分析；该样本把常见非重叠并行开发下的 claw 额外心智压力校准为约 `2/10`，写集冲突或交付阶段为 `6–8/10`。这些评分是当次工作树的历史观测，不是跨仓库 SLA。
+
+#### 本轮证据与检索词
+
+- `.claw/tasks/评估-bridge-压缩与并行工作树心智成本/plan.json`
+- `.claw/tasks/评估-bridge-压缩与并行工作树心智成本/plan.report`
+- `bridge cold path hot path cache source`
+- `parallel worktree write set overlap clean-worktree gate`
+- `mental pressure 2/10 6-8/10`

@@ -17,7 +17,8 @@ Accepted working truth for the current Codex and OpenCode update surfaces.
 
 - Refresh the published global CLI first, then refresh the official Codex plugin from the `chanyuenpang/claw-kit` GitHub marketplace.
 - Only `claw-kit@claw-kit` may be enabled; `claw-kit@claw-kit-local` must be disabled. Unpublished workspace files and local marketplaces are not valid update sources.
-- If the Git clone transport stalls, a GitHub-published branch archive such as the official `main.zip` snapshot is an acceptable source-transport recovery only after its plugin manifest is verified against the published target. The verified snapshot may then be passed to the maintained cache/identity installer; this does not authorize workspace payloads, local marketplaces, or skipping source/cache manifest comparison.
+- If a full Git clone stalls during `index-pack` and an existing clean official checkout already points at the same GitHub origin, prefer a filtered shallow fetch such as `--depth=1 --filter=blob:none` to fast-forward that checkout. Treat the recovery as complete only when marketplace HEAD, source manifest, cache manifest, appserver identity, and source/cache payload comparison all agree with the published target; `.git` metadata or a successful fetch alone is insufficient.
+- If the official Git checkout still cannot be recovered, a GitHub-published branch archive such as the official `main.zip` snapshot remains an acceptable source-transport fallback only after its plugin manifest is verified against the published target. The verified snapshot may then be passed to the maintained cache/identity installer; neither recovery authorizes workspace payloads, local marketplaces, or skipping source/cache manifest and payload comparison.
 - Cache presence alone is not activation proof. Verification covers the published CLI version, official marketplace source, enabled identity, matching source/cache manifests, required skills, and the restart/new-task loaded-skill boundary.
 
 ## OpenCode contract
@@ -50,4 +51,6 @@ Accepted working truth for the current Codex and OpenCode update surfaces.
 - `no host route choice`
 - `SHARED_SKILL_NAMES excludes update`
 - `Codex update official marketplace`
+- `filtered shallow fetch`
+- `index-pack stall recovery`
 - `OpenCode update maintained installer`

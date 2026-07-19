@@ -1,0 +1,1976 @@
+{
+  "schemaVersion": 2,
+  "startedAt": "2026-07-19T10:30:27.337Z",
+  "finishedAt": "2026-07-19T10:36:32.182Z",
+  "runtime": {
+    "platform": "win32",
+    "arch": "x64",
+    "node": "v22.22.0",
+    "cliVersion": "0.1.85",
+    "cpu": "AMD Ryzen 7 7840U w/ Radeon 780M Graphics      ",
+    "logicalCpuCount": 16,
+    "totalMemoryBytes": 61979709440
+  },
+  "isolation": {
+    "worktree": "D:\\Users\\chany\\Documents\\claw-kit-search-jina-eval",
+    "device": "cpu",
+    "sourceProjectIndexUntouched": true,
+    "baselineDatabaseCopiedWithVacuumInto": true,
+    "smallModelAppliedThroughProjectConfigAndClawSearchRefresh": true,
+    "allRetrievalExecutedThroughClawSearch": true,
+    "separateQueryDaemonRuntimePerModel": true
+  },
+  "corpus": {
+    "docCount": 100,
+    "vectorCount": 214,
+    "vectorDocCount": 100,
+    "bytes": 630585,
+    "sha256": "07cf14f717554ddf01d289cf747bfe599dd5aa83c07123303e35e498c4135994",
+    "metadata": {
+      "embedding_config": "{\"provider\":\"local\",\"model\":\"Snowflake/snowflake-arctic-embed-m-v2.0\"}",
+      "indexed_at": "2026-07-19T10:13:41.247Z",
+      "scope": "project",
+      "vector_index": "{\"enabled\":true,\"provider\":\"local\",\"model\":\"Snowflake/snowflake-arctic-embed-m-v2.0\",\"dimensions\":768,\"chunkCount\":214}"
+    },
+    "queryCount": 27,
+    "qualityQueryCount": 24,
+    "lexicalControlCount": 3
+  },
+  "thresholds": {
+    "recallAt5RelativeFloor": 0.95,
+    "mrrAt10RelativeFloor": 0.9,
+    "maxCriticalMissesAt5": 0
+  },
+  "stores": {
+    "largeBefore": {
+      "docs": 100,
+      "vectors": 214,
+      "vectorDocs": 100,
+      "metadata": {
+        "embedding_config": "{\"provider\":\"local\",\"model\":\"Snowflake/snowflake-arctic-embed-m-v2.0\"}",
+        "indexed_at": "2026-07-19T10:13:41.247Z",
+        "scope": "project",
+        "vector_index": "{\"enabled\":true,\"provider\":\"local\",\"model\":\"Snowflake/snowflake-arctic-embed-m-v2.0\",\"dimensions\":768,\"chunkCount\":214}"
+      }
+    },
+    "smallAfter": {
+      "docs": 100,
+      "vectors": 214,
+      "vectorDocs": 100,
+      "metadata": {
+        "embedding_config": "{\"provider\":\"local\",\"model\":\"jinaai/jina-embeddings-v2-base-zh\",\"outputDimensionality\":768}",
+        "indexed_at": "2026-07-19T10:36:18.733Z",
+        "scope": "project",
+        "vector_index": "{\"enabled\":true,\"provider\":\"local\",\"model\":\"jinaai/jina-embeddings-v2-base-zh\",\"dimensions\":768,\"chunkCount\":214}"
+      }
+    }
+  },
+  "models": {
+    "large": {
+      "model": "Snowflake/snowflake-arctic-embed-m-v2.0",
+      "expectedDimensions": 768,
+      "modelCacheBytes": 1243185233,
+      "coldProbe": {
+        "wallMs": 4626.94,
+        "telemetry": {
+          "route": "hybrid",
+          "queryEmbedding": "generated",
+          "embeddingRuntime": "persistent_daemon",
+          "durationMs": 4433.53
+        },
+        "topPath": "adr/workflow-cost-optimization-route.md"
+      },
+      "quality": {
+        "count": 24,
+        "top1Accuracy": 0.5,
+        "recallAt5": 0.875,
+        "mrrAt10": 0.6333,
+        "wallMs": {
+          "median": 613.88,
+          "p95": 1291.47
+        },
+        "engineMs": {
+          "median": 398.66,
+          "p95": 785.84
+        },
+        "routes": {
+          "hybrid": 24
+        }
+      },
+      "byLanguage": {
+        "zh": {
+          "count": 15,
+          "top1Accuracy": 0.4667,
+          "recallAt5": 0.8,
+          "mrrAt10": 0.58,
+          "wallMs": {
+            "median": 1006.43,
+            "p95": 1305.56
+          },
+          "engineMs": {
+            "median": 571.21,
+            "p95": 818.34
+          },
+          "routes": {
+            "hybrid": 15
+          }
+        },
+        "en": {
+          "count": 5,
+          "top1Accuracy": 0.4,
+          "recallAt5": 1,
+          "mrrAt10": 0.6333,
+          "wallMs": {
+            "median": 602.5,
+            "p95": 996.05
+          },
+          "engineMs": {
+            "median": 398.66,
+            "p95": 785.84
+          },
+          "routes": {
+            "hybrid": 5
+          }
+        },
+        "mixed": {
+          "count": 4,
+          "top1Accuracy": 0.75,
+          "recallAt5": 1,
+          "mrrAt10": 0.8333,
+          "wallMs": {
+            "median": 411.29,
+            "p95": 543.84
+          },
+          "engineMs": {
+            "median": 259.81,
+            "p95": 340.62
+          },
+          "routes": {
+            "hybrid": 4
+          }
+        }
+      },
+      "lexicalControl": {
+        "count": 3,
+        "top1Accuracy": 1,
+        "recallAt5": 1,
+        "mrrAt10": 1,
+        "wallMs": {
+          "median": 211.9,
+          "p95": 213.94
+        },
+        "engineMs": {
+          "median": 65.84,
+          "p95": 65.86
+        },
+        "routes": {
+          "lexical_fast_path": 3
+        }
+      },
+      "criticalMissesAt5": [
+        {
+          "id": "zh-knowledge-finalization",
+          "rank": 6,
+          "topPaths": [
+            "adr/workflow-cost-optimization-route.md",
+            "features/codex-knowledge-capture-boundary.md",
+            "adr/cli-guided-plan-lifecycle.md",
+            "features/task-layout-and-session-bindings.md",
+            "adr/shared-planning-skill-source.md"
+          ]
+        }
+      ],
+      "cacheProbe": {
+        "wallMs": 210.45,
+        "telemetry": {
+          "route": "hybrid",
+          "queryEmbedding": "cache_hit",
+          "durationMs": 64.1
+        }
+      },
+      "daemonProcess": {
+        "Id": 29704,
+        "WorkingSet64": 3278884864,
+        "PeakWorkingSet64": 3278884864,
+        "PrivateMemorySize64": 3675906048,
+        "CPU": 42.078125
+      },
+      "queries": [
+        {
+          "id": "zh-cache-location",
+          "language": "zh",
+          "category": "semantic",
+          "critical": true,
+          "query": "多个项目重复下载同一个本地向量模型时，缓存应该放在哪里",
+          "relevant": [
+            "adr/local-embedding-shared-model-cache.md"
+          ],
+          "rank": 4,
+          "topPaths": [
+            "adr/github-facing-docs-and-metadata-recovery-protocol.md",
+            "features/project-schema-alignment.md",
+            "adr/search-index-refresh-and-openai-embeddings.md",
+            "adr/local-embedding-shared-model-cache.md",
+            "adr/shared-planning-skill-source.md",
+            "adr/workflow-cost-optimization-route.md",
+            "features/published-npm-packages.md",
+            "adr/release-0-1-18-publish-and-install-protocol.md",
+            "features/workflow-cost-and-runtime-path.md",
+            "features/local-claw-cli.md"
+          ],
+          "wallMs": 1142.17,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 673.7
+          }
+        },
+        {
+          "id": "zh-windows-background-launch",
+          "language": "zh",
+          "category": "semantic",
+          "critical": true,
+          "query": "Windows 后台完成任务为什么要通过 PowerShell 启动器，而不是直接 detached unref",
+          "relevant": [
+            "adr/windows-async-completion-refresh-launcher.md"
+          ],
+          "rank": 1,
+          "topPaths": [
+            "adr/windows-async-completion-refresh-launcher.md",
+            "features/local-claw-cli.md",
+            "features/workflow-cost-and-runtime-path.md",
+            "adr/windows-task-retention-pruning-uses-explicit-recursion.md",
+            "adr/github-windows-install-script.md",
+            "features/shared-planning-skill-source.md",
+            "adr/workflow-cost-optimization-route.md",
+            "adr/release-0-1-18-publish-and-install-protocol.md",
+            "adr/sync-latest-remote-and-refresh-local-installs.md",
+            "adr/invocation-host-handling.md"
+          ],
+          "wallMs": 1278.39,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 818.34
+          }
+        },
+        {
+          "id": "zh-runtime-consent",
+          "language": "zh",
+          "category": "semantic",
+          "critical": true,
+          "query": "运行环境缺失或损坏时，为什么必须先征得用户同意再进行修复",
+          "relevant": [
+            "adr/codex-runtime-repair-requires-user-consent.md"
+          ],
+          "rank": 1,
+          "topPaths": [
+            "adr/codex-runtime-repair-requires-user-consent.md",
+            "adr/session-start-restores-session-bound-workflow.md",
+            "adr/skill-instructions-prefer-positive-operational-contracts.md",
+            "adr/workflow-cost-optimization-route.md",
+            "adr/codex-adapter-owns-versioned-sdk-runtime.md",
+            "adr/plan-edit-serialization-and-mixed-task-patch-guard.md",
+            "adr/cli-guided-plan-lifecycle.md",
+            "features/task-layout-and-session-bindings.md",
+            "adr/template-guidance-routing-and-config-override.md",
+            "adr/shared-planning-skill-source.md"
+          ],
+          "wallMs": 1305.56,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 778.82
+          }
+        },
+        {
+          "id": "zh-knowledge-finalization",
+          "language": "zh",
+          "category": "semantic",
+          "critical": true,
+          "query": "计划结束后，事实文档和架构决定如何在同一个一致性流程里完成沉淀",
+          "relevant": [
+            "adr/hook-owned-two-phase-knowledge-finalization.md"
+          ],
+          "rank": 6,
+          "topPaths": [
+            "adr/workflow-cost-optimization-route.md",
+            "features/codex-knowledge-capture-boundary.md",
+            "adr/cli-guided-plan-lifecycle.md",
+            "features/task-layout-and-session-bindings.md",
+            "adr/shared-planning-skill-source.md",
+            "adr/hook-owned-two-phase-knowledge-finalization.md",
+            "features/recovered-docs-and-metadata-round.md",
+            "features/published-npm-packages.md",
+            "adr/task-plan-storage-and-session-binding.md",
+            "adr/search-index-refresh-and-openai-embeddings.md"
+          ],
+          "wallMs": 1169.5,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 703.59
+          }
+        },
+        {
+          "id": "zh-personal-overlay",
+          "language": "zh",
+          "category": "semantic",
+          "critical": true,
+          "query": "个人设置怎样覆盖团队配置，同时又不会被写回共享的项目配置文件",
+          "relevant": [
+            "adr/project-override-overlays-canonical-project-config.md"
+          ],
+          "rank": 3,
+          "topPaths": [
+            "adr/init-project-gitignore-ownership.md",
+            "adr/github-facing-docs-and-metadata-recovery-protocol.md",
+            "adr/project-override-overlays-canonical-project-config.md",
+            "features/gitnexus-positioning-and-readme-cleanup.md",
+            "adr/github-pages-config-guide-zero-build-layered-doc-surface.md",
+            "adr/github-windows-install-script.md",
+            "adr/task-plan-storage-and-session-binding.md",
+            "adr/shared-planning-skill-source.md",
+            "adr/session-start-restores-session-bound-workflow.md",
+            "features/delegated-review-and-deposition.md"
+          ],
+          "wallMs": 1291.47,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 771.96
+          }
+        },
+        {
+          "id": "zh-nonascii-retention",
+          "language": "zh",
+          "category": "semantic",
+          "critical": true,
+          "query": "Windows 下带中文名称的历史任务目录，应该怎样可靠地递归清理",
+          "relevant": [
+            "adr/windows-task-retention-pruning-uses-explicit-recursion.md"
+          ],
+          "rank": 1,
+          "topPaths": [
+            "adr/windows-task-retention-pruning-uses-explicit-recursion.md",
+            "adr/windows-async-completion-refresh-launcher.md",
+            "adr/github-windows-install-script.md",
+            "features/task-layout-and-session-bindings.md",
+            "adr/workflow-cost-optimization-route.md",
+            "adr/release-0-1-18-publish-and-install-protocol.md",
+            "features/local-claw-cli.md",
+            "adr/sync-latest-remote-and-refresh-local-installs.md",
+            "adr/cli-guided-plan-lifecycle.md",
+            "features/published-npm-packages.md"
+          ],
+          "wallMs": 1048.59,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 571.21
+          }
+        },
+        {
+          "id": "zh-doc-recovery",
+          "language": "zh",
+          "category": "semantic",
+          "critical": false,
+          "query": "公开说明和包元数据被误删以后，应当按照什么证据顺序恢复",
+          "relevant": [
+            "adr/github-facing-docs-and-metadata-recovery-protocol.md"
+          ],
+          "rank": 1,
+          "topPaths": [
+            "adr/github-facing-docs-and-metadata-recovery-protocol.md",
+            "features/published-npm-packages.md",
+            "features/recovered-docs-and-metadata-round.md",
+            "features/search-recall-copy-and-adapter-config-notes.md",
+            "adr/github-pages-product-deck-hero-positioning-and-brand-link.md",
+            "adr/codex-runtime-repair-requires-user-consent.md",
+            "features/gitnexus-positioning-and-readme-cleanup.md",
+            "features/codex-knowledge-capture-boundary.md",
+            "adr/codex-recall-uses-claw-search.md",
+            "adr/verification-before-completion-compact-wrapper-and-runtime-synced-template.md"
+          ],
+          "wallMs": 1062.79,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 641.31
+          }
+        },
+        {
+          "id": "zh-illustration-format",
+          "language": "zh",
+          "category": "semantic",
+          "critical": false,
+          "query": "技术原理页面为什么要使用六组中文左右对照图片，而不是继续放内联占位图",
+          "relevant": [
+            "features/technical-principles-illustration-assets.md"
+          ],
+          "rank": 1,
+          "topPaths": [
+            "features/technical-principles-illustration-assets.md",
+            "adr/github-pages-product-deck-hero-positioning-and-brand-link.md",
+            "features/published-npm-packages.md",
+            "features/github-pages-product-deck-shell.md",
+            "features/github-pages-config-guide-secondary-page.md",
+            "adr/github-pages-config-guide-zero-build-layered-doc-surface.md",
+            "adr/skill-instructions-prefer-positive-operational-contracts.md",
+            "adr/release-0-1-18-publish-and-install-protocol.md",
+            "adr/workflow-cost-optimization-route.md",
+            "features/gitnexus-positioning-and-readme-cleanup.md"
+          ],
+          "wallMs": 906.66,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 538.17
+          }
+        },
+        {
+          "id": "zh-multiroute-ranking",
+          "language": "zh",
+          "category": "semantic",
+          "critical": true,
+          "query": "搜索怎样把关键词候选、文档信号和向量结果合并后统一排序",
+          "relevant": [
+            "features/project-search-candidate-recall.md"
+          ],
+          "rank": 1,
+          "topPaths": [
+            "features/project-search-candidate-recall.md",
+            "features/published-npm-packages.md",
+            "adr/workflow-cost-optimization-route.md",
+            "adr/codex-recall-uses-claw-search.md",
+            "features/technical-principles-illustration-assets.md",
+            "adr/investigation-tasks-use-researcher-specialist.md",
+            "features/local-claw-cli.md",
+            "adr/search-index-refresh-and-openai-embeddings.md",
+            "features/workflow-cost-and-runtime-path.md",
+            "features/cli-guided-workflow.md"
+          ],
+          "wallMs": 1006.43,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 587.78
+          }
+        },
+        {
+          "id": "zh-opencode-install",
+          "language": "zh",
+          "category": "semantic",
+          "critical": false,
+          "query": "另一个代码宿主安装插件时，为什么既需要入口转接文件，又要把技能复制到全局发现目录",
+          "relevant": [
+            "features/opencode-plugin-install-pipeline.md"
+          ],
+          "rank": null,
+          "topPaths": [
+            "adr/opencode-subplan-uses-shared-core-lifecycle.md",
+            "adr/investigation-tasks-use-researcher-specialist.md",
+            "adr/shared-planning-skill-source.md",
+            "features/shared-planning-skill-source.md",
+            "adr/task-plan-storage-and-session-binding.md",
+            "adr/template-guidance-routing-and-config-override.md",
+            "features/writing-plans-conversion-contract.md",
+            "features/codex-plugin-workflow-mechanics.md",
+            "features/verification-before-completion-conversion-contract.md",
+            "adr/github-pages-config-guide-zero-build-layered-doc-surface.md"
+          ],
+          "wallMs": 631.99,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 342.37
+          }
+        },
+        {
+          "id": "zh-widget-status",
+          "language": "zh",
+          "category": "semantic",
+          "critical": true,
+          "query": "早期那个用网页小组件展示计划的方案现在还是主线能力吗",
+          "relevant": [
+            "features/apps-sdk-plan-widget-server.md",
+            "adr/abandon-apps-sdk-widget-route.md"
+          ],
+          "rank": 4,
+          "topPaths": [
+            "adr/cli-guided-plan-lifecycle.md",
+            "adr/delegated-review-and-deposition.md",
+            "adr/hook-owned-two-phase-knowledge-finalization.md",
+            "features/apps-sdk-plan-widget-server.md",
+            "adr/apps-sdk-plan-widget-surface.md",
+            "features/codex-session-entry-hardening.md",
+            "adr/prompt-driven-codex-bootstrap.md",
+            "adr/using-claw-kit-session-entry.md",
+            "features/plan-view-contract.md",
+            "features/cli-guided-workflow.md"
+          ],
+          "wallMs": 525.08,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 341.8
+          }
+        },
+        {
+          "id": "zh-dist-residue",
+          "language": "zh",
+          "category": "semantic",
+          "critical": false,
+          "query": "编译成功以后，怎样防止已经删除的模板仍以过期文件留在发行目录",
+          "relevant": [
+            "adr/dist-ghost-output-checks-for-removed-template-paths.md"
+          ],
+          "rank": 1,
+          "topPaths": [
+            "adr/dist-ghost-output-checks-for-removed-template-paths.md",
+            "features/technical-principles-illustration-assets.md",
+            "adr/windows-task-retention-pruning-uses-explicit-recursion.md",
+            "features/task-layout-and-session-bindings.md",
+            "features/codex-knowledge-capture-boundary.md",
+            "adr/shared-planning-skill-source.md",
+            "adr/cli-guided-plan-lifecycle.md",
+            "adr/release-0-1-18-publish-and-install-protocol.md",
+            "adr/workflow-cost-optimization-route.md",
+            "features/recovered-docs-and-metadata-round.md"
+          ],
+          "wallMs": 566.52,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 339.26
+          }
+        },
+        {
+          "id": "zh-host-scope",
+          "language": "zh",
+          "category": "semantic",
+          "critical": true,
+          "query": "宿主身份为什么只应该在单次命令调用内生效，不能保存到会话绑定中",
+          "relevant": [
+            "adr/invocation-host-handling.md"
+          ],
+          "rank": 2,
+          "topPaths": [
+            "adr/template-guidance-routing-and-config-override.md",
+            "adr/invocation-host-handling.md",
+            "features/invocation-host-handling.md",
+            "adr/session-start-restores-session-bound-workflow.md",
+            "features/codex-plugin-workflow-mechanics.md",
+            "adr/task-plan-storage-and-session-binding.md",
+            "features/task-layout-and-session-bindings.md",
+            "features/external-writer-skill-config.md",
+            "adr/github-facing-docs-and-metadata-recovery-protocol.md",
+            "adr/workflow-cost-optimization-route.md"
+          ],
+          "wallMs": 576.2,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 359.14
+          }
+        },
+        {
+          "id": "zh-nonclaw-init",
+          "language": "zh",
+          "category": "semantic",
+          "critical": false,
+          "query": "一个还没有初始化的项目，要用哪个显式动作让 Codex 进入 claw 工作流",
+          "relevant": [
+            "adr/explicit-claw-context-initializes-non-claw-projects.md"
+          ],
+          "rank": null,
+          "topPaths": [
+            "adr/codex-recall-uses-claw-search.md",
+            "adr/prompt-driven-codex-bootstrap.md",
+            "features/codex-plugin-workflow-mechanics.md",
+            "features/codex-workflow-guidance-consumption.md",
+            "features/local-claw-cli.md",
+            "features/create-claw-skill-entry-contract.md",
+            "adr/codex-plan-mutations-use-fixed-code-mode-consumer.md",
+            "features/delegated-review-and-deposition.md",
+            "adr/shared-planning-skill-source.md",
+            "adr/workflow-cost-optimization-route.md"
+          ],
+          "wallMs": 638.29,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 420.97
+          }
+        },
+        {
+          "id": "zh-superseded-writer-reuse",
+          "language": "zh",
+          "category": "semantic",
+          "critical": false,
+          "query": "旧的事实写手和决策写手复用策略，后来为什么不再是当前合同",
+          "relevant": [
+            "adr/codex-subagent-reuse-policy.md",
+            "adr/hook-owned-two-phase-knowledge-finalization.md"
+          ],
+          "rank": 5,
+          "topPaths": [
+            "features/published-npm-packages.md",
+            "features/delegated-review-and-deposition.md",
+            "adr/session-start-restores-session-bound-workflow.md",
+            "adr/cli-guided-plan-lifecycle.md",
+            "adr/codex-subagent-reuse-policy.md",
+            "adr/codex-plan-mutations-use-fixed-code-mode-consumer.md",
+            "adr/search-index-refresh-and-openai-embeddings.md",
+            "adr/sqlite-memory-store-concurrency-and-busy-error-semantics.md",
+            "features/shared-planning-skill-source.md",
+            "adr/skill-instructions-prefer-positive-operational-contracts.md"
+          ],
+          "wallMs": 509.54,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 312.28
+          }
+        },
+        {
+          "id": "en-cache-location",
+          "language": "en",
+          "category": "semantic",
+          "critical": false,
+          "query": "Where should local embedding weights be cached to avoid duplicate gigabyte copies in every project?",
+          "relevant": [
+            "adr/local-embedding-shared-model-cache.md"
+          ],
+          "rank": 1,
+          "topPaths": [
+            "adr/local-embedding-shared-model-cache.md",
+            "features/project-schema-alignment.md",
+            "adr/refresh-local-embedding-onnx-cache.md",
+            "adr/project-json-drives-memory-and-gitnexus.md",
+            "adr/shared-planning-skill-source.md",
+            "features/local-claw-cli.md",
+            "adr/search-index-refresh-and-openai-embeddings.md",
+            "adr/project-override-overlays-canonical-project-config.md",
+            "features/project-search-candidate-recall.md",
+            "adr/workflow-cost-optimization-route.md"
+          ],
+          "wallMs": 602.5,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 398.66
+          }
+        },
+        {
+          "id": "en-refresh-locking",
+          "language": "en",
+          "category": "semantic",
+          "critical": false,
+          "query": "How does completion refresh avoid long SQLite write locks and overlapping background workers?",
+          "relevant": [
+            "adr/windows-async-completion-refresh-launcher.md"
+          ],
+          "rank": 2,
+          "topPaths": [
+            "adr/project-json-drives-memory-and-gitnexus.md",
+            "adr/windows-async-completion-refresh-launcher.md",
+            "features/cli-guided-workflow.md",
+            "features/local-claw-cli.md",
+            "features/workflow-cost-and-runtime-path.md",
+            "adr/local-embedding-shared-model-cache.md",
+            "adr/codex-async-writer-dispatch-keeps-model-contract.md",
+            "adr/external-writer-skill-config.md",
+            "adr/workflow-cost-optimization-route.md",
+            "adr/sqlite-memory-store-concurrency-and-busy-error-semantics.md"
+          ],
+          "wallMs": 560.1,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 356.85
+          }
+        },
+        {
+          "id": "en-finalizer-recursion",
+          "language": "en",
+          "category": "semantic",
+          "critical": false,
+          "query": "What prevents a detached knowledge finalizer from recursively scheduling another finalization job?",
+          "relevant": [
+            "adr/hook-owned-two-phase-knowledge-finalization.md"
+          ],
+          "rank": 1,
+          "topPaths": [
+            "adr/hook-owned-two-phase-knowledge-finalization.md",
+            "adr/shared-planning-skill-source.md",
+            "features/codex-knowledge-capture-boundary.md",
+            "adr/codex-hook-lifecycle-scope-gating.md",
+            "adr/workflow-cost-optimization-route.md",
+            "features/opencode-plugin-install-pipeline.md",
+            "adr/external-writer-skill-config.md",
+            "adr/codex-async-writer-dispatch-keeps-model-contract.md",
+            "adr/release-truth-followup-workflow.md",
+            "adr/invocation-host-handling.md"
+          ],
+          "wallMs": 613.88,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 404.66
+          }
+        },
+        {
+          "id": "en-chinese-query-planner",
+          "language": "en",
+          "category": "semantic",
+          "critical": false,
+          "query": "How does the query planner keep multi-term Chinese recall while demoting generic index documents?",
+          "relevant": [
+            "features/project-search-candidate-recall.md"
+          ],
+          "rank": 3,
+          "topPaths": [
+            "adr/search-index-refresh-and-openai-embeddings.md",
+            "features/project-schema-alignment.md",
+            "features/project-search-candidate-recall.md",
+            "adr/shared-planning-skill-source.md",
+            "features/local-claw-cli.md",
+            "adr/codex-recall-uses-claw-search.md",
+            "adr/local-embedding-shared-model-cache.md",
+            "adr/codex-async-writer-dispatch-keeps-model-contract.md",
+            "adr/workflow-cost-optimization-route.md",
+            "features/codex-workflow-guidance-consumption.md"
+          ],
+          "wallMs": 567.71,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 371.55
+          }
+        },
+        {
+          "id": "en-host-actions",
+          "language": "en",
+          "category": "semantic",
+          "critical": false,
+          "query": "Which invocation host is allowed to receive host actions, and why is the value not persisted?",
+          "relevant": [
+            "adr/invocation-host-handling.md"
+          ],
+          "rank": 3,
+          "topPaths": [
+            "features/workflow-cost-and-runtime-path.md",
+            "adr/host-specific-update-skill-ownership.md",
+            "adr/invocation-host-handling.md",
+            "features/invocation-host-handling.md",
+            "adr/config-skill-entrypoint.md",
+            "adr/cli-guided-plan-lifecycle.md",
+            "features/host-specific-update-skills.md",
+            "adr/codex-async-writer-dispatch-keeps-model-contract.md",
+            "adr/codex-plan-mutations-use-fixed-code-mode-consumer.md",
+            "features/codex-workflow-guidance-consumption.md"
+          ],
+          "wallMs": 996.05,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 785.84
+          }
+        },
+        {
+          "id": "mixed-null-overlay",
+          "language": "mixed",
+          "category": "realistic",
+          "critical": false,
+          "query": "project-override.json 里的 null override 是回退到 team config 吗",
+          "relevant": [
+            "adr/project-override-overlays-canonical-project-config.md"
+          ],
+          "rank": 1,
+          "topPaths": [
+            "adr/project-override-overlays-canonical-project-config.md",
+            "features/project-schema-alignment.md",
+            "adr/local-embedding-shared-model-cache.md",
+            "adr/github-pages-config-guide-zero-build-layered-doc-surface.md",
+            "adr/template-guidance-routing-and-config-override.md",
+            "adr/config-skill-entrypoint.md",
+            "features/config-skill-entrypoint.md",
+            "adr/project-json-drives-memory-and-gitnexus.md",
+            "features/github-pages-product-deck-shell.md",
+            "features/shared-planning-skill-source.md"
+          ],
+          "wallMs": 543.84,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 340.62
+          }
+        },
+        {
+          "id": "mixed-cache-telemetry",
+          "language": "mixed",
+          "category": "realistic",
+          "critical": true,
+          "query": "queryEmbedding=cache_hit 的延迟可以代表 semantic miss 性能吗",
+          "relevant": [
+            "features/workflow-cost-and-runtime-path.md",
+            "adr/workflow-cost-optimization-route.md"
+          ],
+          "rank": 1,
+          "topPaths": [
+            "features/workflow-cost-and-runtime-path.md",
+            "adr/workflow-cost-optimization-route.md",
+            "adr/sqlite-memory-store-concurrency-and-busy-error-semantics.md",
+            "features/published-npm-packages.md",
+            "adr/shared-planning-skill-source.md",
+            "adr/search-index-refresh-and-openai-embeddings.md",
+            "features/project-search-candidate-recall.md",
+            "features/local-claw-cli.md",
+            "adr/cli-guided-plan-lifecycle.md",
+            "features/cli-guided-workflow.md"
+          ],
+          "wallMs": 411.29,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 259.81
+          }
+        },
+        {
+          "id": "mixed-writer-agent-role",
+          "language": "mixed",
+          "category": "realistic",
+          "critical": false,
+          "query": "OpenCode 的 claw-knowledge-writer 属于 main agent 派发的 subagent 吗",
+          "relevant": [
+            "adr/hook-owned-two-phase-knowledge-finalization.md"
+          ],
+          "rank": 3,
+          "topPaths": [
+            "features/delegated-review-and-deposition.md",
+            "adr/opencode-subagent-agent-model-inheritance.md",
+            "adr/hook-owned-two-phase-knowledge-finalization.md",
+            "adr/codex-subagent-reuse-policy.md",
+            "features/codex-subagent-reuse.md",
+            "features/opencode-plugin-install-pipeline.md",
+            "features/local-claw-cli.md",
+            "adr/delegated-review-and-deposition.md",
+            "features/published-npm-packages.md",
+            "adr/session-start-restores-session-bound-workflow.md"
+          ],
+          "wallMs": 483.45,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 330.2
+          }
+        },
+        {
+          "id": "mixed-dist-ghost",
+          "language": "mixed",
+          "category": "realistic",
+          "critical": false,
+          "query": "dist ghost output 为什么在 tsc 成功后仍然需要额外检查",
+          "relevant": [
+            "adr/dist-ghost-output-checks-for-removed-template-paths.md"
+          ],
+          "rank": 1,
+          "topPaths": [
+            "adr/dist-ghost-output-checks-for-removed-template-paths.md",
+            "adr/release-0-1-18-publish-and-install-protocol.md",
+            "features/codex-workflow-guidance-consumption.md",
+            "features/codex-knowledge-capture-boundary.md",
+            "features/workflow-cost-and-runtime-path.md",
+            "features/published-npm-packages.md",
+            "adr/codex-goal-mode-thread-contract.md",
+            "features/delegated-review-and-deposition.md",
+            "features/verification-before-completion-conversion-contract.md",
+            "features/plan-view-contract.md"
+          ],
+          "wallMs": 400.95,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 252.96
+          }
+        },
+        {
+          "id": "lexical-search-doc",
+          "language": "control",
+          "category": "lexical_control",
+          "critical": false,
+          "query": "project-search-candidate-recall.md",
+          "relevant": [
+            "features/project-search-candidate-recall.md"
+          ],
+          "rank": 1,
+          "topPaths": [
+            "features/project-search-candidate-recall.md",
+            "adr/search-index-refresh-and-openai-embeddings.md",
+            "features/search-recall-copy-and-adapter-config-notes.md",
+            "features/project-schema-alignment.md",
+            "adr/codex-recall-uses-claw-search.md",
+            "adr/investigation-tasks-use-researcher-specialist.md",
+            "adr/explicit-claw-context-initializes-non-claw-projects.md",
+            "adr/workflow-cost-optimization-route.md",
+            "adr/project-override-overlays-canonical-project-config.md",
+            "adr/using-claw-kit-session-entry.md"
+          ],
+          "wallMs": 211.9,
+          "telemetry": {
+            "route": "lexical_fast_path",
+            "queryEmbedding": "skipped",
+            "durationMs": 65.84
+          }
+        },
+        {
+          "id": "lexical-runtime-doc",
+          "language": "control",
+          "category": "lexical_control",
+          "critical": false,
+          "query": "codex-runtime-repair-requires-user-consent.md",
+          "relevant": [
+            "adr/codex-runtime-repair-requires-user-consent.md"
+          ],
+          "rank": 1,
+          "topPaths": [
+            "adr/codex-runtime-repair-requires-user-consent.md",
+            "adr/codex-adapter-owns-versioned-sdk-runtime.md",
+            "features/codex-knowledge-capture-boundary.md",
+            "features/workflow-cost-and-runtime-path.md",
+            "features/project-schema-alignment.md",
+            "features/codex-session-entry-hardening.md",
+            "adr/codex-async-writer-dispatch-keeps-model-contract.md",
+            "adr/prompt-driven-codex-bootstrap.md",
+            "adr/verification-before-completion-compact-wrapper-and-runtime-synced-template.md",
+            "adr/using-superpowers-wrapper-entry-and-runtime-synced-template.md"
+          ],
+          "wallMs": 213.94,
+          "telemetry": {
+            "route": "lexical_fast_path",
+            "queryEmbedding": "skipped",
+            "durationMs": 65.86
+          }
+        },
+        {
+          "id": "lexical-install-doc",
+          "language": "control",
+          "category": "lexical_control",
+          "critical": false,
+          "query": "opencode-plugin-install-pipeline.md",
+          "relevant": [
+            "features/opencode-plugin-install-pipeline.md"
+          ],
+          "rank": 1,
+          "topPaths": [
+            "features/opencode-plugin-install-pipeline.md",
+            "adr/release-0-1-18-publish-and-install-protocol.md",
+            "features/codex-plugin-workflow-mechanics.md",
+            "adr/sync-latest-remote-and-refresh-local-installs.md",
+            "adr/opencode-subplan-uses-shared-core-lifecycle.md",
+            "features/opencode-subplan-support.md",
+            "features/local-claw-cli.md",
+            "adr/shared-planning-skill-source.md",
+            "features/published-npm-packages.md",
+            "features/shared-planning-skill-source.md"
+          ],
+          "wallMs": 209.62,
+          "telemetry": {
+            "route": "lexical_fast_path",
+            "queryEmbedding": "skipped",
+            "durationMs": 58.84
+          }
+        }
+      ]
+    },
+    "small": {
+      "model": "jinaai/jina-embeddings-v2-base-zh",
+      "expectedDimensions": 768,
+      "modelCacheBytes": 643246279,
+      "coldProbe": {
+        "wallMs": 1611.68,
+        "telemetry": {
+          "route": "hybrid",
+          "queryEmbedding": "generated",
+          "embeddingRuntime": "persistent_daemon",
+          "durationMs": 1454.11
+        },
+        "topPath": "features/systematic-debugging-shared-skill-source.md"
+      },
+      "quality": {
+        "count": 24,
+        "top1Accuracy": 0.5,
+        "recallAt5": 0.9167,
+        "mrrAt10": 0.6632,
+        "wallMs": {
+          "median": 410.76,
+          "p95": 543.52
+        },
+        "engineMs": {
+          "median": 247.86,
+          "p95": 331.99
+        },
+        "routes": {
+          "hybrid": 24
+        }
+      },
+      "byLanguage": {
+        "zh": {
+          "count": 15,
+          "top1Accuracy": 0.4667,
+          "recallAt5": 0.8667,
+          "mrrAt10": 0.6333,
+          "wallMs": {
+            "median": 383.44,
+            "p95": 543.52
+          },
+          "engineMs": {
+            "median": 228.84,
+            "p95": 331.99
+          },
+          "routes": {
+            "hybrid": 15
+          }
+        },
+        "en": {
+          "count": 5,
+          "top1Accuracy": 0.4,
+          "recallAt5": 1,
+          "mrrAt10": 0.6167,
+          "wallMs": {
+            "median": 416.82,
+            "p95": 426.22
+          },
+          "engineMs": {
+            "median": 255.71,
+            "p95": 269.58
+          },
+          "routes": {
+            "hybrid": 5
+          }
+        },
+        "mixed": {
+          "count": 4,
+          "top1Accuracy": 0.75,
+          "recallAt5": 1,
+          "mrrAt10": 0.8333,
+          "wallMs": {
+            "median": 450.47,
+            "p95": 573.67
+          },
+          "engineMs": {
+            "median": 288.95,
+            "p95": 378.6
+          },
+          "routes": {
+            "hybrid": 4
+          }
+        }
+      },
+      "lexicalControl": {
+        "count": 3,
+        "top1Accuracy": 1,
+        "recallAt5": 1,
+        "mrrAt10": 1,
+        "wallMs": {
+          "median": 232.88,
+          "p95": 235.92
+        },
+        "engineMs": {
+          "median": 71.19,
+          "p95": 71.21
+        },
+        "routes": {
+          "lexical_fast_path": 3
+        }
+      },
+      "criticalMissesAt5": [],
+      "cacheProbe": {
+        "wallMs": 215.72,
+        "telemetry": {
+          "route": "hybrid",
+          "queryEmbedding": "cache_hit",
+          "durationMs": 64.76
+        }
+      },
+      "daemonProcess": {
+        "Id": 18692,
+        "WorkingSet64": 1908273152,
+        "PeakWorkingSet64": 1908273152,
+        "PrivateMemorySize64": 2352525312,
+        "CPU": 12.390625
+      },
+      "queries": [
+        {
+          "id": "zh-cache-location",
+          "language": "zh",
+          "category": "semantic",
+          "critical": true,
+          "query": "多个项目重复下载同一个本地向量模型时，缓存应该放在哪里",
+          "relevant": [
+            "adr/local-embedding-shared-model-cache.md"
+          ],
+          "rank": 2,
+          "topPaths": [
+            "adr/github-facing-docs-and-metadata-recovery-protocol.md",
+            "adr/local-embedding-shared-model-cache.md",
+            "features/project-schema-alignment.md",
+            "features/local-claw-cli.md",
+            "adr/project-json-drives-memory-and-gitnexus.md",
+            "features/codex-workflow-guidance-consumption.md",
+            "adr/shared-planning-skill-source.md",
+            "adr/task-plan-storage-and-session-binding.md",
+            "features/project-search-candidate-recall.md",
+            "adr/config-skill-entrypoint.md"
+          ],
+          "wallMs": 474.78,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 296.28
+          }
+        },
+        {
+          "id": "zh-windows-background-launch",
+          "language": "zh",
+          "category": "semantic",
+          "critical": true,
+          "query": "Windows 后台完成任务为什么要通过 PowerShell 启动器，而不是直接 detached unref",
+          "relevant": [
+            "adr/windows-async-completion-refresh-launcher.md"
+          ],
+          "rank": 1,
+          "topPaths": [
+            "adr/windows-async-completion-refresh-launcher.md",
+            "features/local-claw-cli.md",
+            "features/workflow-cost-and-runtime-path.md",
+            "adr/windows-task-retention-pruning-uses-explicit-recursion.md",
+            "adr/github-windows-install-script.md",
+            "features/shared-planning-skill-source.md",
+            "adr/workflow-cost-optimization-route.md",
+            "adr/sync-latest-remote-and-refresh-local-installs.md",
+            "features/invocation-host-handling.md",
+            "adr/invocation-host-handling.md"
+          ],
+          "wallMs": 543.52,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 331.99
+          }
+        },
+        {
+          "id": "zh-runtime-consent",
+          "language": "zh",
+          "category": "semantic",
+          "critical": true,
+          "query": "运行环境缺失或损坏时，为什么必须先征得用户同意再进行修复",
+          "relevant": [
+            "adr/codex-runtime-repair-requires-user-consent.md"
+          ],
+          "rank": 1,
+          "topPaths": [
+            "adr/codex-runtime-repair-requires-user-consent.md",
+            "adr/dist-ghost-output-checks-for-removed-template-paths.md",
+            "adr/workflow-cost-optimization-route.md",
+            "adr/release-0-1-18-publish-and-install-protocol.md",
+            "features/systematic-debugging-shared-skill-source.md",
+            "adr/local-embedding-shared-model-cache.md",
+            "adr/codex-subagent-reuse-policy.md",
+            "adr/invocation-host-handling.md",
+            "features/project-schema-alignment.md",
+            "adr/codex-adapter-follows-workflow-guidance.md"
+          ],
+          "wallMs": 406.62,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 232.64
+          }
+        },
+        {
+          "id": "zh-knowledge-finalization",
+          "language": "zh",
+          "category": "semantic",
+          "critical": true,
+          "query": "计划结束后，事实文档和架构决定如何在同一个一致性流程里完成沉淀",
+          "relevant": [
+            "adr/hook-owned-two-phase-knowledge-finalization.md"
+          ],
+          "rank": 2,
+          "topPaths": [
+            "adr/workflow-cost-optimization-route.md",
+            "adr/hook-owned-two-phase-knowledge-finalization.md",
+            "adr/cli-guided-plan-lifecycle.md",
+            "adr/release-truth-followup-workflow.md",
+            "adr/task-plan-storage-and-session-binding.md",
+            "features/lightweight-truth-deposition-workflow.md",
+            "features/codex-knowledge-capture-boundary.md",
+            "adr/template-guidance-routing-and-config-override.md",
+            "features/writing-plans-conversion-contract.md",
+            "features/verification-before-completion-conversion-contract.md"
+          ],
+          "wallMs": 378.61,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 217.95
+          }
+        },
+        {
+          "id": "zh-personal-overlay",
+          "language": "zh",
+          "category": "semantic",
+          "critical": true,
+          "query": "个人设置怎样覆盖团队配置，同时又不会被写回共享的项目配置文件",
+          "relevant": [
+            "adr/project-override-overlays-canonical-project-config.md"
+          ],
+          "rank": 2,
+          "topPaths": [
+            "features/codex-knowledge-capture-boundary.md",
+            "adr/project-override-overlays-canonical-project-config.md",
+            "features/shared-planning-skill-source.md",
+            "features/opencode-subplan-support.md",
+            "adr/task-plan-storage-and-session-binding.md",
+            "adr/github-pages-config-guide-zero-build-layered-doc-surface.md",
+            "adr/cli-guided-plan-lifecycle.md",
+            "adr/codex-plan-mutations-use-fixed-code-mode-consumer.md",
+            "adr/shared-planning-skill-source.md",
+            "adr/writing-plans-route-aware-wrapper-and-review-prompt.md"
+          ],
+          "wallMs": 472.23,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 315.08
+          }
+        },
+        {
+          "id": "zh-nonascii-retention",
+          "language": "zh",
+          "category": "semantic",
+          "critical": true,
+          "query": "Windows 下带中文名称的历史任务目录，应该怎样可靠地递归清理",
+          "relevant": [
+            "adr/windows-task-retention-pruning-uses-explicit-recursion.md"
+          ],
+          "rank": 1,
+          "topPaths": [
+            "adr/windows-task-retention-pruning-uses-explicit-recursion.md",
+            "adr/windows-async-completion-refresh-launcher.md",
+            "adr/github-windows-install-script.md",
+            "features/local-claw-cli.md",
+            "features/task-layout-and-session-bindings.md",
+            "adr/sync-latest-remote-and-refresh-local-installs.md",
+            "adr/workflow-cost-optimization-route.md",
+            "features/project-schema-alignment.md",
+            "features/shared-planning-skill-source.md",
+            "adr/search-index-refresh-and-openai-embeddings.md"
+          ],
+          "wallMs": 381.73,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 228.44
+          }
+        },
+        {
+          "id": "zh-doc-recovery",
+          "language": "zh",
+          "category": "semantic",
+          "critical": false,
+          "query": "公开说明和包元数据被误删以后，应当按照什么证据顺序恢复",
+          "relevant": [
+            "adr/github-facing-docs-and-metadata-recovery-protocol.md"
+          ],
+          "rank": 1,
+          "topPaths": [
+            "adr/github-facing-docs-and-metadata-recovery-protocol.md",
+            "features/published-npm-packages.md",
+            "adr/codex-runtime-repair-requires-user-consent.md",
+            "features/recovered-docs-and-metadata-round.md",
+            "adr/codex-adapter-owns-versioned-sdk-runtime.md",
+            "features/search-recall-copy-and-adapter-config-notes.md",
+            "adr/codex-recall-uses-claw-search.md",
+            "features/workflow-cost-and-runtime-path.md",
+            "features/codex-knowledge-capture-boundary.md",
+            "adr/verification-before-completion-compact-wrapper-and-runtime-synced-template.md"
+          ],
+          "wallMs": 382.3,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 231.43
+          }
+        },
+        {
+          "id": "zh-illustration-format",
+          "language": "zh",
+          "category": "semantic",
+          "critical": false,
+          "query": "技术原理页面为什么要使用六组中文左右对照图片，而不是继续放内联占位图",
+          "relevant": [
+            "features/technical-principles-illustration-assets.md"
+          ],
+          "rank": 1,
+          "topPaths": [
+            "features/technical-principles-illustration-assets.md",
+            "features/github-pages-config-guide-secondary-page.md",
+            "adr/github-pages-config-guide-zero-build-layered-doc-surface.md",
+            "adr/github-pages-product-deck-hero-positioning-and-brand-link.md",
+            "features/github-pages-product-deck-shell.md",
+            "features/codex-knowledge-capture-boundary.md",
+            "features/systematic-debugging-shared-skill-source.md",
+            "features/project-search-candidate-recall.md",
+            "adr/claw-direct-hidden-compatibility-surface.md",
+            "adr/workflow-cost-optimization-route.md"
+          ],
+          "wallMs": 382.57,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 226.46
+          }
+        },
+        {
+          "id": "zh-multiroute-ranking",
+          "language": "zh",
+          "category": "semantic",
+          "critical": true,
+          "query": "搜索怎样把关键词候选、文档信号和向量结果合并后统一排序",
+          "relevant": [
+            "features/project-search-candidate-recall.md"
+          ],
+          "rank": 1,
+          "topPaths": [
+            "features/project-search-candidate-recall.md",
+            "adr/search-index-refresh-and-openai-embeddings.md",
+            "adr/codex-recall-uses-claw-search.md",
+            "features/workflow-cost-and-runtime-path.md",
+            "adr/workflow-cost-optimization-route.md",
+            "features/search-recall-copy-and-adapter-config-notes.md",
+            "adr/hook-owned-two-phase-knowledge-finalization.md",
+            "adr/investigation-tasks-use-researcher-specialist.md",
+            "adr/release-0-1-18-publish-and-install-protocol.md",
+            "adr/sqlite-memory-store-concurrency-and-busy-error-semantics.md"
+          ],
+          "wallMs": 381.84,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 213.21
+          }
+        },
+        {
+          "id": "zh-opencode-install",
+          "language": "zh",
+          "category": "semantic",
+          "critical": false,
+          "query": "另一个代码宿主安装插件时，为什么既需要入口转接文件，又要把技能复制到全局发现目录",
+          "relevant": [
+            "features/opencode-plugin-install-pipeline.md"
+          ],
+          "rank": null,
+          "topPaths": [
+            "adr/shared-planning-skill-source.md",
+            "features/published-npm-packages.md",
+            "features/shared-planning-skill-source.md",
+            "features/codex-workflow-guidance-consumption.md",
+            "features/codex-plugin-workflow-mechanics.md",
+            "adr/opencode-subplan-uses-shared-core-lifecycle.md",
+            "features/writing-plans-conversion-contract.md",
+            "features/verification-before-completion-conversion-contract.md",
+            "adr/project-override-overlays-canonical-project-config.md",
+            "adr/using-claw-kit-session-entry.md"
+          ],
+          "wallMs": 383.44,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 228.84
+          }
+        },
+        {
+          "id": "zh-widget-status",
+          "language": "zh",
+          "category": "semantic",
+          "critical": true,
+          "query": "早期那个用网页小组件展示计划的方案现在还是主线能力吗",
+          "relevant": [
+            "features/apps-sdk-plan-widget-server.md",
+            "adr/abandon-apps-sdk-widget-route.md"
+          ],
+          "rank": 4,
+          "topPaths": [
+            "adr/cli-guided-plan-lifecycle.md",
+            "adr/hook-owned-two-phase-knowledge-finalization.md",
+            "adr/delegated-review-and-deposition.md",
+            "features/apps-sdk-plan-widget-server.md",
+            "features/codex-session-entry-hardening.md",
+            "adr/apps-sdk-plan-widget-surface.md",
+            "features/plan-view-contract.md",
+            "adr/task-plan-storage-and-session-binding.md",
+            "features/cli-guided-workflow.md",
+            "features/codex-plugin-workflow-mechanics.md"
+          ],
+          "wallMs": 388.59,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 223.74
+          }
+        },
+        {
+          "id": "zh-dist-residue",
+          "language": "zh",
+          "category": "semantic",
+          "critical": false,
+          "query": "编译成功以后，怎样防止已经删除的模板仍以过期文件留在发行目录",
+          "relevant": [
+            "adr/dist-ghost-output-checks-for-removed-template-paths.md"
+          ],
+          "rank": 1,
+          "topPaths": [
+            "adr/dist-ghost-output-checks-for-removed-template-paths.md",
+            "features/systematic-debugging-shared-skill-source.md",
+            "adr/task-plan-storage-and-session-binding.md",
+            "adr/shared-planning-skill-source.md",
+            "features/published-npm-packages.md",
+            "adr/windows-task-retention-pruning-uses-explicit-recursion.md",
+            "adr/template-guidance-routing-and-config-override.md",
+            "adr/writing-plans-route-aware-wrapper-and-review-prompt.md",
+            "features/shared-planning-skill-source.md",
+            "adr/workflow-cost-optimization-route.md"
+          ],
+          "wallMs": 376.76,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 219.4
+          }
+        },
+        {
+          "id": "zh-host-scope",
+          "language": "zh",
+          "category": "semantic",
+          "critical": true,
+          "query": "宿主身份为什么只应该在单次命令调用内生效，不能保存到会话绑定中",
+          "relevant": [
+            "adr/invocation-host-handling.md"
+          ],
+          "rank": 2,
+          "topPaths": [
+            "adr/template-guidance-routing-and-config-override.md",
+            "adr/invocation-host-handling.md",
+            "features/invocation-host-handling.md",
+            "features/shared-planning-skill-source.md",
+            "adr/task-plan-storage-and-session-binding.md",
+            "adr/plan-edit-serialization-and-mixed-task-patch-guard.md",
+            "adr/verification-before-completion-compact-wrapper-and-runtime-synced-template.md",
+            "adr/using-superpowers-wrapper-entry-and-runtime-synced-template.md",
+            "features/create-claw-skill-entry-contract.md",
+            "adr/session-start-restores-session-bound-workflow.md"
+          ],
+          "wallMs": 410.76,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 240.66
+          }
+        },
+        {
+          "id": "zh-nonclaw-init",
+          "language": "zh",
+          "category": "semantic",
+          "critical": false,
+          "query": "一个还没有初始化的项目，要用哪个显式动作让 Codex 进入 claw 工作流",
+          "relevant": [
+            "adr/explicit-claw-context-initializes-non-claw-projects.md"
+          ],
+          "rank": null,
+          "topPaths": [
+            "adr/codex-recall-uses-claw-search.md",
+            "adr/prompt-driven-codex-bootstrap.md",
+            "features/codex-workflow-guidance-consumption.md",
+            "features/codex-plugin-workflow-mechanics.md",
+            "features/create-claw-skill-entry-contract.md",
+            "features/local-claw-cli.md",
+            "adr/codex-plan-mutations-use-fixed-code-mode-consumer.md",
+            "features/shared-planning-skill-source.md",
+            "features/workflow-cost-and-runtime-path.md",
+            "adr/shared-planning-skill-source.md"
+          ],
+          "wallMs": 441.09,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 279.49
+          }
+        },
+        {
+          "id": "zh-superseded-writer-reuse",
+          "language": "zh",
+          "category": "semantic",
+          "critical": false,
+          "query": "旧的事实写手和决策写手复用策略，后来为什么不再是当前合同",
+          "relevant": [
+            "adr/codex-subagent-reuse-policy.md",
+            "adr/hook-owned-two-phase-knowledge-finalization.md"
+          ],
+          "rank": 4,
+          "topPaths": [
+            "features/published-npm-packages.md",
+            "adr/cli-guided-plan-lifecycle.md",
+            "features/delegated-review-and-deposition.md",
+            "adr/codex-subagent-reuse-policy.md",
+            "adr/session-start-restores-session-bound-workflow.md",
+            "adr/search-index-refresh-and-openai-embeddings.md",
+            "adr/codex-plan-mutations-use-fixed-code-mode-consumer.md",
+            "adr/sqlite-memory-store-concurrency-and-busy-error-semantics.md",
+            "features/shared-planning-skill-source.md",
+            "adr/create-claw-skill-entry-route-and-fallback.md"
+          ],
+          "wallMs": 377.77,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 220.16
+          }
+        },
+        {
+          "id": "en-cache-location",
+          "language": "en",
+          "category": "semantic",
+          "critical": false,
+          "query": "Where should local embedding weights be cached to avoid duplicate gigabyte copies in every project?",
+          "relevant": [
+            "adr/local-embedding-shared-model-cache.md"
+          ],
+          "rank": 1,
+          "topPaths": [
+            "adr/local-embedding-shared-model-cache.md",
+            "features/project-schema-alignment.md",
+            "adr/refresh-local-embedding-onnx-cache.md",
+            "adr/project-json-drives-memory-and-gitnexus.md",
+            "adr/shared-planning-skill-source.md",
+            "adr/search-index-refresh-and-openai-embeddings.md",
+            "features/local-claw-cli.md",
+            "features/project-search-candidate-recall.md",
+            "adr/project-override-overlays-canonical-project-config.md",
+            "adr/workflow-cost-optimization-route.md"
+          ],
+          "wallMs": 425.4,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 262.3
+          }
+        },
+        {
+          "id": "en-refresh-locking",
+          "language": "en",
+          "category": "semantic",
+          "critical": false,
+          "query": "How does completion refresh avoid long SQLite write locks and overlapping background workers?",
+          "relevant": [
+            "adr/windows-async-completion-refresh-launcher.md"
+          ],
+          "rank": 2,
+          "topPaths": [
+            "adr/project-json-drives-memory-and-gitnexus.md",
+            "adr/windows-async-completion-refresh-launcher.md",
+            "features/cli-guided-workflow.md",
+            "features/local-claw-cli.md",
+            "features/workflow-cost-and-runtime-path.md",
+            "adr/local-embedding-shared-model-cache.md",
+            "adr/external-writer-skill-config.md",
+            "adr/codex-async-writer-dispatch-keeps-model-contract.md",
+            "adr/workflow-cost-optimization-route.md",
+            "adr/sqlite-memory-store-concurrency-and-busy-error-semantics.md"
+          ],
+          "wallMs": 410.9,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 254.93
+          }
+        },
+        {
+          "id": "en-finalizer-recursion",
+          "language": "en",
+          "category": "semantic",
+          "critical": false,
+          "query": "What prevents a detached knowledge finalizer from recursively scheduling another finalization job?",
+          "relevant": [
+            "adr/hook-owned-two-phase-knowledge-finalization.md"
+          ],
+          "rank": 1,
+          "topPaths": [
+            "adr/hook-owned-two-phase-knowledge-finalization.md",
+            "adr/shared-planning-skill-source.md",
+            "features/codex-knowledge-capture-boundary.md",
+            "adr/workflow-cost-optimization-route.md",
+            "adr/codex-hook-lifecycle-scope-gating.md",
+            "features/opencode-plugin-install-pipeline.md",
+            "adr/release-truth-followup-workflow.md",
+            "adr/external-writer-skill-config.md",
+            "features/cli-guided-workflow.md",
+            "adr/codex-async-writer-dispatch-keeps-model-contract.md"
+          ],
+          "wallMs": 416.82,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 255.71
+          }
+        },
+        {
+          "id": "en-chinese-query-planner",
+          "language": "en",
+          "category": "semantic",
+          "critical": false,
+          "query": "How does the query planner keep multi-term Chinese recall while demoting generic index documents?",
+          "relevant": [
+            "features/project-search-candidate-recall.md"
+          ],
+          "rank": 3,
+          "topPaths": [
+            "adr/search-index-refresh-and-openai-embeddings.md",
+            "features/project-schema-alignment.md",
+            "features/project-search-candidate-recall.md",
+            "adr/shared-planning-skill-source.md",
+            "adr/codex-recall-uses-claw-search.md",
+            "features/local-claw-cli.md",
+            "adr/local-embedding-shared-model-cache.md",
+            "adr/codex-async-writer-dispatch-keeps-model-contract.md",
+            "adr/workflow-cost-optimization-route.md",
+            "features/workflow-cost-and-runtime-path.md"
+          ],
+          "wallMs": 426.22,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 269.58
+          }
+        },
+        {
+          "id": "en-host-actions",
+          "language": "en",
+          "category": "semantic",
+          "critical": false,
+          "query": "Which invocation host is allowed to receive host actions, and why is the value not persisted?",
+          "relevant": [
+            "adr/invocation-host-handling.md"
+          ],
+          "rank": 4,
+          "topPaths": [
+            "features/workflow-cost-and-runtime-path.md",
+            "adr/host-specific-update-skill-ownership.md",
+            "features/invocation-host-handling.md",
+            "adr/invocation-host-handling.md",
+            "adr/config-skill-entrypoint.md",
+            "adr/cli-guided-plan-lifecycle.md",
+            "features/host-specific-update-skills.md",
+            "features/codex-session-entry-hardening.md",
+            "features/project-schema-alignment.md",
+            "features/codex-workflow-guidance-consumption.md"
+          ],
+          "wallMs": 407.36,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 250.57
+          }
+        },
+        {
+          "id": "mixed-null-overlay",
+          "language": "mixed",
+          "category": "realistic",
+          "critical": false,
+          "query": "project-override.json 里的 null override 是回退到 team config 吗",
+          "relevant": [
+            "adr/project-override-overlays-canonical-project-config.md"
+          ],
+          "rank": 1,
+          "topPaths": [
+            "adr/project-override-overlays-canonical-project-config.md",
+            "features/project-schema-alignment.md",
+            "adr/local-embedding-shared-model-cache.md",
+            "adr/github-pages-config-guide-zero-build-layered-doc-surface.md",
+            "adr/template-guidance-routing-and-config-override.md",
+            "adr/config-skill-entrypoint.md",
+            "features/config-skill-entrypoint.md",
+            "adr/project-json-drives-memory-and-gitnexus.md",
+            "features/shared-planning-skill-source.md",
+            "features/github-pages-product-deck-shell.md"
+          ],
+          "wallMs": 450.47,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 288.95
+          }
+        },
+        {
+          "id": "mixed-cache-telemetry",
+          "language": "mixed",
+          "category": "realistic",
+          "critical": true,
+          "query": "queryEmbedding=cache_hit 的延迟可以代表 semantic miss 性能吗",
+          "relevant": [
+            "features/workflow-cost-and-runtime-path.md",
+            "adr/workflow-cost-optimization-route.md"
+          ],
+          "rank": 1,
+          "topPaths": [
+            "features/workflow-cost-and-runtime-path.md",
+            "adr/workflow-cost-optimization-route.md",
+            "adr/sqlite-memory-store-concurrency-and-busy-error-semantics.md",
+            "features/published-npm-packages.md",
+            "adr/shared-planning-skill-source.md",
+            "features/project-search-candidate-recall.md",
+            "features/local-claw-cli.md",
+            "adr/search-index-refresh-and-openai-embeddings.md",
+            "features/shared-planning-skill-source.md",
+            "adr/cli-guided-plan-lifecycle.md"
+          ],
+          "wallMs": 466.13,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 291.27
+          }
+        },
+        {
+          "id": "mixed-writer-agent-role",
+          "language": "mixed",
+          "category": "realistic",
+          "critical": false,
+          "query": "OpenCode 的 claw-knowledge-writer 属于 main agent 派发的 subagent 吗",
+          "relevant": [
+            "adr/hook-owned-two-phase-knowledge-finalization.md"
+          ],
+          "rank": 3,
+          "topPaths": [
+            "features/delegated-review-and-deposition.md",
+            "adr/opencode-subagent-agent-model-inheritance.md",
+            "adr/hook-owned-two-phase-knowledge-finalization.md",
+            "features/codex-subagent-reuse.md",
+            "adr/codex-subagent-reuse-policy.md",
+            "features/opencode-plugin-install-pipeline.md",
+            "adr/delegated-review-and-deposition.md",
+            "features/local-claw-cli.md",
+            "features/codex-workflow-guidance-consumption.md",
+            "features/published-npm-packages.md"
+          ],
+          "wallMs": 573.67,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 378.6
+          }
+        },
+        {
+          "id": "mixed-dist-ghost",
+          "language": "mixed",
+          "category": "realistic",
+          "critical": false,
+          "query": "dist ghost output 为什么在 tsc 成功后仍然需要额外检查",
+          "relevant": [
+            "adr/dist-ghost-output-checks-for-removed-template-paths.md"
+          ],
+          "rank": 1,
+          "topPaths": [
+            "adr/dist-ghost-output-checks-for-removed-template-paths.md",
+            "adr/release-0-1-18-publish-and-install-protocol.md",
+            "features/codex-workflow-guidance-consumption.md",
+            "features/published-npm-packages.md",
+            "features/verification-before-completion-conversion-contract.md",
+            "features/workflow-cost-and-runtime-path.md",
+            "features/delegated-review-and-deposition.md",
+            "features/codex-knowledge-capture-boundary.md",
+            "features/project-schema-alignment.md",
+            "adr/project-json-drives-memory-and-gitnexus.md"
+          ],
+          "wallMs": 430.02,
+          "telemetry": {
+            "route": "hybrid",
+            "queryEmbedding": "generated",
+            "embeddingRuntime": "persistent_daemon",
+            "durationMs": 247.86
+          }
+        },
+        {
+          "id": "lexical-search-doc",
+          "language": "control",
+          "category": "lexical_control",
+          "critical": false,
+          "query": "project-search-candidate-recall.md",
+          "relevant": [
+            "features/project-search-candidate-recall.md"
+          ],
+          "rank": 1,
+          "topPaths": [
+            "features/project-search-candidate-recall.md",
+            "adr/search-index-refresh-and-openai-embeddings.md",
+            "features/search-recall-copy-and-adapter-config-notes.md",
+            "features/project-schema-alignment.md",
+            "adr/codex-recall-uses-claw-search.md",
+            "adr/explicit-claw-context-initializes-non-claw-projects.md",
+            "adr/investigation-tasks-use-researcher-specialist.md",
+            "adr/workflow-cost-optimization-route.md",
+            "adr/project-override-overlays-canonical-project-config.md",
+            "adr/init-project-gitignore-ownership.md"
+          ],
+          "wallMs": 235.92,
+          "telemetry": {
+            "route": "lexical_fast_path",
+            "queryEmbedding": "skipped",
+            "durationMs": 71.19
+          }
+        },
+        {
+          "id": "lexical-runtime-doc",
+          "language": "control",
+          "category": "lexical_control",
+          "critical": false,
+          "query": "codex-runtime-repair-requires-user-consent.md",
+          "relevant": [
+            "adr/codex-runtime-repair-requires-user-consent.md"
+          ],
+          "rank": 1,
+          "topPaths": [
+            "adr/codex-runtime-repair-requires-user-consent.md",
+            "adr/codex-adapter-owns-versioned-sdk-runtime.md",
+            "features/codex-knowledge-capture-boundary.md",
+            "features/workflow-cost-and-runtime-path.md",
+            "features/project-schema-alignment.md",
+            "features/codex-session-entry-hardening.md",
+            "adr/codex-async-writer-dispatch-keeps-model-contract.md",
+            "adr/prompt-driven-codex-bootstrap.md",
+            "adr/verification-before-completion-compact-wrapper-and-runtime-synced-template.md",
+            "adr/using-superpowers-wrapper-entry-and-runtime-synced-template.md"
+          ],
+          "wallMs": 232.88,
+          "telemetry": {
+            "route": "lexical_fast_path",
+            "queryEmbedding": "skipped",
+            "durationMs": 71.21
+          }
+        },
+        {
+          "id": "lexical-install-doc",
+          "language": "control",
+          "category": "lexical_control",
+          "critical": false,
+          "query": "opencode-plugin-install-pipeline.md",
+          "relevant": [
+            "features/opencode-plugin-install-pipeline.md"
+          ],
+          "rank": 1,
+          "topPaths": [
+            "features/opencode-plugin-install-pipeline.md",
+            "adr/release-0-1-18-publish-and-install-protocol.md",
+            "features/codex-plugin-workflow-mechanics.md",
+            "adr/sync-latest-remote-and-refresh-local-installs.md",
+            "adr/opencode-subplan-uses-shared-core-lifecycle.md",
+            "features/opencode-subplan-support.md",
+            "features/local-claw-cli.md",
+            "adr/shared-planning-skill-source.md",
+            "features/published-npm-packages.md",
+            "features/shared-planning-skill-source.md"
+          ],
+          "wallMs": 205.06,
+          "telemetry": {
+            "route": "lexical_fast_path",
+            "queryEmbedding": "skipped",
+            "durationMs": 54.4
+          }
+        }
+      ],
+      "index": {
+        "refreshCount": 1,
+        "wallMs": 325925.05,
+        "indexedCount": 100,
+        "processedFileCount": 100,
+        "pendingFileCount": 0,
+        "vectorIndex": {
+          "enabled": true,
+          "provider": "local",
+          "model": "jinaai/jina-embeddings-v2-base-zh",
+          "dimensions": 768,
+          "chunkCount": 214
+        },
+        "sourceCount": 100,
+        "daemonProcess": null
+      }
+    }
+  },
+  "comparison": {
+    "qualityGate": {
+      "recallAt5Ratio": 1.0477,
+      "mrrAt10Ratio": 1.0472,
+      "smallCriticalMissCount": 0,
+      "recallAt5Pass": true,
+      "mrrAt10Pass": true,
+      "criticalMissPass": true,
+      "pass": true
+    },
+    "smallToLarge": {
+      "modelCacheSizeRatio": 0.5174,
+      "coldQueryWallTimeRatio": 0.3483,
+      "warmQualityMedianWallTimeRatio": 0.6691,
+      "daemonWorkingSetRatio": 0.582
+    },
+    "verdict": "small_model_meets_quality_gate"
+  }
+}

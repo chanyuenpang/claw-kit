@@ -6,57 +6,66 @@ Accepted
 
 ## Context
 
-完成的 `investigation-subagent-workflow` plan 确认：调查型 task 往往需要读取 truth、ADR、历史计划和代码上下文。如果这些检索与分析都在主 agent 中完成，会消耗宿主 context，并让主线程偏离协调和决策职责。
+`0.1.39` established a host-light, result-blocking researcher dispatch rule. The later completed `Optimize researcher skill for subagent delegation` plan added mandatory same-thread reuse for related investigations and a non-recursive researcher boundary.
 
-`claw-kit` 已经有 delegated writer 模式和 `claw search` 作为 Codex-facing recall 入口。调查型 task 需要同样明确的 specialist contract，并且需要区分项目上下文 recall 与更深的代码调查。`0.1.39` release 进一步把这条合同收紧成宿主轻量、结果阻塞的 researcher dispatch 规则。
+The completed `Restrict researcher to code investigation` plan narrowed the role again. Treating project recall, Truth/ADR lookup, and historical-context queries as researcher triggers made a document lookup pay subagent routing and context costs even though `claw search` already provides the direct Codex-facing recall surface. The stable specialist boundary is code investigation: source inspection, symbol or dependency tracing, code architecture analysis, current implementation behavior tracing, and code-evidence gathering before planning or implementation.
+
+Once that role and reuse policy stabilized, repeating main-agent dispatch, input, output, wait, and reuse rules as prose created another drift surface. The delegation contract belongs to the researcher skill that triggers it; it does not need a new core/CLI guidance route. However, leaving the two execution roles implicit in YAML made the host and an assigned researcher infer different entry behavior from the same contract.
 
 ## Decision
 
-Codex 中的调查型 task 优先委派给 `researcher` specialist，以节省主 agent 的宿主 context。
+Codex `researcher` is reserved for code investigation. Ordinary project recall, canonical Truth/ADR lookup, and historical-context queries remain direct main-agent `claw search` work and do not dispatch a researcher.
 
-默认派发合同为：
+Narrowing the discovery metadata to code investigation does not remove project-context recall from an already dispatched investigation. The ordered execution contract, including its first `claw search` step before code-index and exact-source inspection, remains solely owned by `.claw/truth/features/codex-subagent-reuse.md`.
 
-- `agent_type: "explorer"`
-- dispatch bundle 显式包含 `claw-kit:researcher` skill item
-- reuse-first，当前线程内已有匹配 `researcher` 时优先复用
-- host 在 dispatch 前不要内联读取 search skill；直接附加 `claw-kit:researcher` skill item 并派发
-- 仅发送窄调查 brief，不复制整个主线程上下文
-- 当当前 task 本质上依赖 research 结果时，host 必须等待 `researcher` 返回结果，不能跳过 research gate 继续向前执行
+Related code investigations reuse a suitable researcher already available in the same thread. The current executable dispatch, reuse, narrow-context, wait, non-recursion, and output contract has one Truth owner: `.claw/truth/features/codex-subagent-reuse.md`. This ADR owns the role-boundary decision and rationale rather than duplicating that operational contract.
 
-`researcher` 的默认调查顺序是先运行 `claw search --query "<topic>"`，检索 truth、ADR 和项目上下文。若 `.claw/project.json` 中 canonical `gitnexus = true`，`researcher` 应发现并使用 GitNexus 相关能力辅助代码调查。
+Keep the detailed delegation contract once as structured skill-local `delegateSubagents` YAML prompt metadata in `packages/codex-adapter/skills/researcher/SKILL.md`, but precede it with a minimal two-role `Host routing` entry point: the main agent consumes the contract and completes delegation before continuing; an assigned researcher skips delegation, executes the investigation order, and returns `outputContract`. Keep reuse, waiting, input/output, and close policy in YAML rather than duplicating them as prose. Do not extend the typed runtime `workflowGuidance` schema or its generation/injection path for this skill-local contract.
 
-template create guidance 可以在自己的 recall 步骤中提示同一条 query 语法，但该步骤不是 research gate，不得仅因 template recall 而派发或暗示 `researcher`。两条流程共享 CLI 语法，不共享生命周期语义。
+Express the researcher's mutation boundary once in that structured contract as `worker: readonly`. A separate `Boundary` section that restates non-mutation rules is unnecessary because it gives the same role constraint a second owner and weakens the compact positive operational contract.
+
+## Alternatives Considered
+
+- Keep all project investigation and recall under researcher: rejected because document recall is already a direct project capability and does not require a code-investigation subagent.
+- Let the main agent perform full code investigation inline: rejected because source and relationship tracing can consume the coordination context and produce large intermediate output.
+- Create a new researcher for every code question: rejected because related follow-ups benefit from the existing focused code context; reuse remains mandatory while the role is still suitable.
+- Let a researcher recursively dispatch another researcher: rejected because recursive dispatch obscures ownership and expands the wait chain.
+- Leave host and assigned-researcher entry behavior implicit in the YAML contract: rejected because each role otherwise has to infer whether it should consume or execute the contract.
+- Keep the same dispatch contract as repeated prose: rejected because field ownership is harder to review and equivalent rules can drift apart.
+- Retain a separate `Boundary` section alongside `worker: readonly`: rejected because the four negative rules duplicate the structured role constraint instead of adding a distinct safety or authorization boundary.
+- Add researcher dispatch fields to typed runtime `workflowGuidance`: rejected because the researcher skill already owns this prompt-time route and no CLI-generated delegation path is required.
 
 ## Consequences
 
-- 主 agent 可以把上下文预算保留给任务协调、用户对齐和最终决策，而不是承担全部调查阅读。
-- `researcher` 仍是明确的调查 specialist，但职责限定为调查与报告，不替代 hook-owned `knowledge-writer` 的 canonical stewardship。
-- `claw search` 成为 researcher 的默认 recall 起点，保持与 Codex-facing recall 决策一致；但这一步属于 `researcher` 自己的工作，而不是 host 先内联读完再派发。
-- template recall 保持为一次直接 search；只有任务确实需要调查结果时才进入 researcher dispatch 与阻塞式 research gate。
-- research gate 变成真正的阻塞点：依赖调查结果的主流程不能在没有 researcher 返回的情况下继续推进。
-- GitNexus 能力只在项目显式启用 canonical `gitnexus = true` 时进入调查路径，避免对未启用项目产生额外依赖或噪音。
+- Researcher discovery and prompt wording only advertise code investigation, so ordinary recall does not become a subagent gate.
+- The main agent can recover project memory, Truth, ADR, and historical context directly through the recall surface owned by `codex-recall-uses-claw-search.md`.
+- Code investigation retains narrow dispatch, same-thread reuse, blocking consumption when the result is required, and non-recursive ownership through the single current Truth owner.
+- The researcher skill exposes one compact, testable contract surface with explicit host and worker entry behavior while core/CLI `workflowGuidance` runtime generation remains unchanged.
+- Contract consumers can determine the researcher's read-only role from `worker: readonly`; wording review no longer has to reconcile a second `Boundary` section.
+- Hook-owned `knowledge-writer` remains the canonical Truth/ADR steward; researcher does not mutate canonical knowledge.
 
 ## Related Code
 
 - `packages/codex-adapter/skills/researcher/SKILL.md`
-- `packages/codex-adapter/references/codex-subagent-dispatch.md`
-- `packages/codex-adapter/references/workflow-guidance-consumption.md`
 - `packages/codex-adapter/hooks/subagent-contract.test.mjs`
-- `.claw/tasks/investigation-subagent-workflow/plan.json`
-- `.claw/tasks/修复-search-首次响应并优化-guidance-参数提示/plan.json`
+- `.claw/truth/features/codex-subagent-reuse.md`
+- `.claw/truth/adr/codex-recall-uses-claw-search.md`
 
 ## Search Terms
 
 - `researcher`
-- `agent_type: "explorer"`
-- `claw-kit:researcher`
-- `do not read the search skill inline`
-- `waitForCompletion`
-- `do not skip ahead`
+- `code investigation`
+- `source inspection`
+- `symbol tracing`
+- `dependency tracing`
+- `related researcher reuse`
+- `skill-local delegateSubagents`
+- `Host routing`
+- `Assigned researcher`
+- `prompt metadata`
+- `worker: readonly`
+- `Boundary section`
+- `typed workflowGuidance`
+- `project recall`
+- `Truth/ADR lookup`
 - `claw search`
-- `claw search --query "<topic>"`
-- `template recall is not researcher dispatch`
-- `gitnexus`
-- `GitNexus`
-- `truth`
-- `ADR`

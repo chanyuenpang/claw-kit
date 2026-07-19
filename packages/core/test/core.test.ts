@@ -334,7 +334,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
     "# claw-kit\n.claw/*\n!.claw/project.json\n!.claw/truth/\n!.claw/truth/**\n.claw/project-override.json\n",
   );
   assert.deepEqual(projectConfig, {
-    version: "0.1.84",
+    version: "0.1.86",
     id: "demo-project",
     name: "Demo Project",
     maxTasksToKeep: 20,
@@ -354,7 +354,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
       externalDocPaths: ["docs/", "README.md"],
       embedding: {
         provider: "local",
-        model: "Snowflake/snowflake-arctic-embed-m-v2.0",
+        model: "jinaai/jina-embeddings-v2-base-zh",
       },
     },
     gitnexus: true,
@@ -403,8 +403,8 @@ test("writePlan seeds a planning-first root plan by default", async () => {
   assert.equal(result.workflowGuidance.stage, "discussion");
   assert.equal(result.workflowGuidance.goalMode, undefined);
   assert.deepEqual(result.workflowGuidance.nextsteps, [
-    "1. Use claw-kit:planning until the discussion is finished and the outcome, constraints, and material open questions are clear.",
-    "2. If execution remains, record the smallest outcome-oriented task list with the recommended command. If planning resolves the request, complete task #1 and close the plan.",
+    "1. Use claw-kit:planning to discuss and confirm the requirements and proposed solution with the user.",
+    "2. If execution remains, record the task list with the recommended command. If planning resolves the request, complete task #1 and close the plan.",
   ]);
   assert.equal(result.workflowGuidance.recommendedCommands?.[0], 'claw search --query "<topic>"');
   assert.equal(
@@ -417,9 +417,9 @@ test("writePlan seeds a planning-first root plan by default", async () => {
   assert.equal(result.plan.title, "Demo task");
   assert.equal(result.plan.status, "process.discussing");
   assert.equal(result.plan.goal.text, "Ship the first plan");
-  assert.equal(result.plan.tasks[0]?.title, "Discuss and finalize requirements with the configured planning skill");
-  assert.match(result.plan.tasks[0]?.detail ?? "", /^Use claw-kit:planning/);
-  assert.match(result.plan.tasks[0]?.detail ?? "", /a draft is not completion\./);
+  assert.equal(result.plan.tasks[0]?.title, "Complete planning with the configured planning skill");
+  assert.match(result.plan.tasks[0]?.detail ?? "", /^Discuss and confirm the requirements and proposed solution/);
+  assert.match(result.plan.tasks[0]?.detail ?? "", /then prepare the task list\.$/);
   assert.doesNotMatch(result.plan.tasks[0]?.detail ?? "", /process\.active|Goal Mode|Planning skill:/);
   assert.doesNotMatch(result.plan.tasks[0]?.detail ?? "", /\btakes\b/);
   assert.equal(result.plan.tasks.length, 1);
@@ -452,7 +452,7 @@ test("writePlan keeps the default planning task focused on planning content", as
 
   assert.equal(
     result.plan.tasks[0]?.detail,
-    "Use claw-kit:planning to finish discussing the request with the user and prepare the smallest outcome-oriented task list. Complete this task only when the outcome and constraints are clear, material open questions are resolved, and the user has finished the discussion; a draft is not completion.",
+    "Discuss and confirm the requirements and proposed solution with the user, then prepare the task list.",
   );
 });
 
@@ -506,14 +506,14 @@ test("planning appendTasks preserves the seeded planning task ordering", async (
   assert.deepEqual(
     plan.tasks.map((task) => ({ id: task.id, title: task.title, status: task.status })),
     [
-      { id: 1, title: "Discuss and finalize requirements with the configured planning skill", status: "done" },
+      { id: 1, title: "Complete planning with the configured planning skill", status: "done" },
       { id: 2, title: "Implement the change", status: "pending" },
       { id: 3, title: "Verify the change", status: "pending" },
     ],
   );
 });
 
-test("writePlan uses externalPlanningSkill in the seeded planning task detail", async () => {
+test("writePlan uses externalPlanningSkill in the initial discussion guidance", async () => {
   const root = createFixture("plan-write-external-planning-skill");
   fs.writeFileSync(
     path.join(root, ".claw", "project.json"),
@@ -541,7 +541,7 @@ test("writePlan uses externalPlanningSkill in the seeded planning task detail", 
     goalText: "Use the external planner",
   });
 
-  assert.ok(result.plan.tasks[0]?.detail?.includes("team-planner"));
+  assert.match(result.workflowGuidance.nextsteps[0] ?? "", /^1\. Use team-planner /);
 });
 
 test("writePlan loads a project JSON template from .claw/templates", async () => {
@@ -1999,8 +1999,8 @@ test("createSubplan uses the planning-aware default seed shape", async () => {
   assert.equal(result.plan.tasks.length, 1);
   assert.deepEqual(result.workflowGuidance.nextsteps, [
     "After the parent goal is completed by this subplan handoff, start the subplan goal before doing target work: Follow the claw workflow guidance and finish your goal: Implement child work: Split this into a subplan",
-    "1. Use claw-kit:planning until the discussion is finished and the outcome, constraints, and material open questions are clear.",
-    "2. If execution remains, record the smallest outcome-oriented task list with the recommended command. If planning resolves the request, complete task #1 and close the plan.",
+    "1. Use claw-kit:planning to discuss and confirm the requirements and proposed solution with the user.",
+    "2. If execution remains, record the task list with the recommended command. If planning resolves the request, complete task #1 and close the plan.",
   ]);
   assert.equal(result.workflowGuidance.recommendedCommands?.[0], 'claw search --query "<topic>"');
   assert.equal(
@@ -2014,7 +2014,7 @@ test("createSubplan uses the planning-aware default seed shape", async () => {
     status: "complete",
     reason: "Subplan creation must complete the active parent goal before the child plan creates its own goal.",
   });
-  assert.match(result.plan.tasks[0]?.detail ?? "", /use claw-kit:planning/i);
+  assert.match(result.workflowGuidance.nextsteps[1] ?? "", /^1\. Use claw-kit:planning /);
 });
 
 test("createSubplan uses project defaultPlanTemplate when templateName is omitted", async () => {
@@ -4169,10 +4169,10 @@ test("project memory refresh uses 768 dimensions for the default local embedding
     const result = buildMemoryIndex({ cwd: root });
 
     assert.ok(result.embedding);
-    assert.equal(result.embedding.model, "Snowflake/snowflake-arctic-embed-m-v2.0");
+    assert.equal(result.embedding.model, "jinaai/jina-embeddings-v2-base-zh");
     assert.equal(result.vectorIndex?.enabled, true);
     assert.equal(result.vectorIndex?.provider, "local");
-    assert.equal(result.vectorIndex?.model, "Snowflake/snowflake-arctic-embed-m-v2.0");
+    assert.equal(result.vectorIndex?.model, "jinaai/jina-embeddings-v2-base-zh");
     assert.equal(result.vectorIndex?.dimensions, 768);
     assert.ok(Number(result.vectorIndex?.chunkCount) >= 3);
   } finally {
@@ -4888,7 +4888,7 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
   assert.equal(result.ok, true);
   assert.equal(result.changed, true);
   assert.ok(result.issueCountBefore > 0);
-  assert.equal(projectConfig.version, "0.1.84");
+  assert.equal(projectConfig.version, "0.1.86");
   assert.equal(projectConfig.id, "fix-me");
   assert.equal(projectConfig.name, "Fix Me");
   assert.equal("releaseChannel" in projectConfig, false);

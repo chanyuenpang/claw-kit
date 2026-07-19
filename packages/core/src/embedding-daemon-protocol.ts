@@ -58,10 +58,17 @@ export class PersistentEmbeddingModelError extends Error {
   }
 }
 
+export class PersistentEmbeddingRequestTimeoutError extends PersistentEmbeddingModelError {
+  constructor(timeoutMs: number) {
+    super(`Persistent embedding daemon request timed out after ${timeoutMs}ms while work may still be in progress.`);
+    this.name = "PersistentEmbeddingRequestTimeoutError";
+  }
+}
+
 const STATE_FILE_NAME = "state.json";
 const START_LOCK_FILE_NAME = "startup.lock";
 const DEFAULT_START_TIMEOUT_MS = 5000;
-const DEFAULT_REQUEST_TIMEOUT_MS = 120000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 
 export function resolveEmbeddingDaemonRuntimeDir(env: NodeJS.ProcessEnv = process.env): string {
   const explicit = env.CLAW_EMBEDDING_DAEMON_RUNTIME_DIR?.trim();
@@ -195,7 +202,7 @@ export function removeStateIfOwned(runtimeDir: string, instanceId: string): void
   }
 }
 
-async function sendEmbeddingDaemonRequest(
+export async function sendEmbeddingDaemonRequest(
   state: EmbeddingDaemonState,
   input: EmbeddingDaemonWorkerInput,
   env: NodeJS.ProcessEnv,
@@ -213,7 +220,7 @@ async function sendEmbeddingDaemonRequest(
     let payload = "";
     const timer = setTimeout(() => {
       socket.destroy();
-      reject(new Error("Persistent embedding daemon request timed out."));
+      reject(new PersistentEmbeddingRequestTimeoutError(timeoutMs));
     }, timeoutMs);
     socket.setEncoding("utf-8");
     socket.on("connect", () => {

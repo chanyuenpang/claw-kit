@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-export const DEFAULT_LOCAL_EMBEDDING_MODEL = "Snowflake/snowflake-arctic-embed-m-v2.0";
+export const DEFAULT_LOCAL_EMBEDDING_MODEL = "jinaai/jina-embeddings-v2-base-zh";
 export const DEFAULT_LOCAL_EMBEDDING_CACHE_DIR = ".claw/models";
 export const DEFAULT_LOCAL_EMBEDDING_DIMENSIONS = 768;
 export const LEGACY_LOCAL_EMBEDDING_DIMENSIONS = 384;
@@ -18,7 +18,11 @@ type LocalEmbeddingCacheOptions = {
 
 export function resolveDefaultLocalEmbeddingDimensions(model: string | null | undefined): number {
   const normalized = model?.trim();
-  if (!normalized || normalized === DEFAULT_LOCAL_EMBEDDING_MODEL) {
+  if (
+    !normalized
+    || normalized === DEFAULT_LOCAL_EMBEDDING_MODEL
+    || normalized === "Snowflake/snowflake-arctic-embed-m-v2.0"
+  ) {
     return DEFAULT_LOCAL_EMBEDDING_DIMENSIONS;
   }
   if (normalized === "Snowflake/snowflake-arctic-embed-xs") {

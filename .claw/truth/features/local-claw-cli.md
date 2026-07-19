@@ -52,15 +52,14 @@ Accepted working truth for local development on this machine.
 - 即使 `memory.embedding` 配置变化触发向量重建，`packages/core/src/memory.ts` 的 `syncProjectMemoryIndex()` 仍然保持单次 bounded batching：默认每轮最多处理 100 个文件，不会因为 reset 路径而绕过限流整库重建。
 - 这意味着 embedding 配置变化后的重建过程中，单次 refresh 可能暂时只保留当前批次写入的 docs/vector 状态；后续 refresh 会继续补完剩余文件，而不是在一次模型切换后直接处理整个项目。
 - `claw search index --refresh` now builds project-scoped vector data from `memory.embedding` and records `vectorIndex` metadata in the project index.
-- When `memory.embedding.provider` is `local`, the CLI follows the GitNexus-style embedding setup with default model `Snowflake/snowflake-arctic-embed-m-v2.0`, model-derived default dimensions, and Windows DirectML-to-CPU fallback.
-- 默认 local 维度现在按模型决定：`Snowflake/snowflake-arctic-embed-m-v2.0` 默认 `768`，显式旧模型 `Snowflake/snowflake-arctic-embed-xs` 继续默认 `384`；显式 `memory.embedding.outputDimensionality` 仍然优先覆盖默认值。
+- local embedding 的当前默认模型、model-derived dimensions 与项目配置契约由 `project-schema-alignment.md` 唯一拥有；CLI 的 init、protocol repair、worker 和 index metadata 路径共同消费该契约，不在本文重复维护具体默认模型。
 - 本地 embedding 的救援路径现在有两个显式控制面：`.claw/project.json` 的 `memory.embedding.local.device` 和 shell 覆盖 `CLAW_EMBEDDING_LOCAL_DEVICE`，前者适合稳定的 per-project 配置，后者适合一次性 CPU rescue refresh。
-- 真实验证表明，`CLAW_EMBEDDING_LOCAL_DEVICE=cpu; claw search index --refresh` 可以完成 local rescue refresh，并产出 project-scoped vector metadata；默认模型路径的 `dimensions` 现在是 `768`，而显式旧模型 `Snowflake/snowflake-arctic-embed-xs` 仍然保持 `384`。
+- 真实验证表明，`CLAW_EMBEDDING_LOCAL_DEVICE=cpu; claw search index --refresh` 可以完成 local rescue refresh，并产出与 effective embedding config 一致的 project-scoped vector metadata。
 - `packages/core/src/memory.ts` 统一给 project/task memory connections 设置 `PRAGMA busy_timeout`，并只在 write/index-refresh 连接上启用 `PRAGMA journal_mode = WAL`；当同一个 `.claw/memory.sqlite` 真被别的 claw search 或 index refresh 占住时，`database is locked` / `SQLITE_BUSY` 会被转换成 `MEMORY_STORE_BUSY`，错误细节里带 `storePath`、`operation` 和原始 cause，便于 caller 直接重试。
 - 这条并发语义不是“search 不能并行”，而是“共享同一 store 时，冲突的一次操作要返回可操作的 busy 错误”；正常的独立搜索和刷新流程仍然可以并行，只是同库锁竞争会被显式暴露。
-- For the active local model cache, deleting only `.claw/models/Snowflake/snowflake-arctic-embed-m-v2.0` and rerunning a real `claw search --query "<topic>"` path recreates the ONNX payload at the same SHA256, so a timestamp change alone does not imply a different model artifact.
-- Running `claw search --query ...` and `claw search index --refresh` in parallel immediately after that deletion can hit `Load model ... system error number 13`; the stable recovery path is to rerun `claw search index --refresh` serially with `CLAW_EMBEDDING_LOCAL_DEVICE=cpu`.
-- A successful serial rescue refresh for `Snowflake/snowflake-arctic-embed-m-v2.0` returns `search.index.refresh` with `processedFileCount: 3`, `pendingFileCount: 0`, `vectorIndex.dimensions: 768`, and `vectorIndex.chunkCount: 509`.
+- 当前 cache 位置和复用顺序由 `../adr/local-embedding-shared-model-cache.md` 唯一拥有；默认使用平台级共享缓存，project-local `.claw/models` 只在共享目录不可用时作为 fallback。
+- 首次下载或 cache rehydration 的 ready 判定、`system error number 13` 归因和稳定恢复约束由 `../adr/refresh-local-embedding-onnx-cache.md` 唯一拥有；目录存在、时间戳变化或仍在增长的 ONNX payload 都不能单独证明模型已经可加载。
+- 历史 `m-v2.0` 串行 rescue run 曾返回 `search.index.refresh` 的 `processedFileCount: 3`、`pendingFileCount: 0`、`vectorIndex.dimensions: 768` 和 `vectorIndex.chunkCount: 509`；这些是该次恢复记录，不是所有项目的当前固定值。
 - `packages/core/test/core.test.ts` 锁定了默认 refresh 的文件批次节流：每次 refresh 最多处理 100 个新增或变更文件，后续重复 refresh 会自动继续消化剩余 backlog，而不会卡在单次调用边界。
 - `packages/core/test/core.test.ts` 现在额外覆盖 embedding 配置变化后的 batching 契约：完成一次 103 文件索引后切换 embedding model，reset 后第一轮 refresh 仍只处理 100 个文件，第二轮再补完剩余 3 个。
 - `packages/core/test/core.test.ts` 现在覆盖了 `.gitignore` 注入的三条 init 语义：新项目生成规则块、已有 `.gitignore` 只追加一次、重复 init 不重复追加。
@@ -68,7 +67,7 @@ Accepted working truth for local development on this machine.
 - `packages/core/src/embedding-local.ts` 现在在单个 worker/model session 内按固定批次推进本地推理，而不是把完整文本集一次性塞给单个 ONNX 调用；这个默认 batch size 由 `DEFAULT_LOCAL_EMBEDDING_BATCH_SIZE` 控制，属于内部实现细节，不暴露成用户配置面，而 `packages/core/src/memory.ts` 的 `DEFAULT_PROJECT_REFRESH_FILE_LIMIT = 100` 仍然是单独的 per-refresh 文件上限。
 - `packages/core/src/embedding-worker.ts` 改为把 embedding 结果写入临时文件，只通过 stdout 返回轻量元数据，从而避开巨型 JSON IPC；`packages/core/src/memory.ts` 负责读取该临时文件并清理它。
 - `packages/core/src/memory.ts` 的 project refresh 现在走单事务路径：先同步 docs，再插入本轮限流后的文档，随后执行 `indexDocEmbeddings(...)`，最后才 `COMMIT`；只要 embedding 失败，整次 refresh 就会 `ROLLBACK`，不会留下半写状态。
-- `indexDocEmbeddings(...)` 会先用 `chunkMarkdownContent(content)` 把文档拆成段落 chunk，再把每个 chunk 原文送进 embedding worker；当前路径没有额外的 token-length cap。
+- local document indexing 的 tokenizer-aware window、`embedding_chunking_version`、代码锚点和版本化 A/B 结果由 `project-search-candidate-recall.md` 唯一拥有；本文不再维护旧的“文档 chunk 没有 token-length cap”描述。
 - `packages/core/src/embedding-local.ts` 只负责每 4 条文本一批地喂给 extractor，不会在调用前额外做 truncation 或 `max_length` 截断。
 - `packages/core/src/embedding-worker.ts` 现在在执行 embedding batch 前先通过 `resolveLocalTokenizerMaxLength(...)` 把 tokenizer 的 `max_length` clamp 到模型真实 positional limit；对 `Snowflake/snowflake-arctic-embed-m-v2.0`，即使 tokenizer 暴露 `model_max_length = 32768`，安全运行上限也应视为 `8192`。
 - 这次可复现的 refresh 停滞根因是 local ONNX embedding failure，而不是缺源或 refresh no-op；失败复现批次里 `.claw/truth/SUMMARY.md` 的 chunk 3 被分词到 `19339` tokens，并在 `Snowflake` local model 里触发了 `SkipLayerNormalization`。
@@ -80,6 +79,14 @@ Accepted working truth for local development on this machine.
 - 当 canonical `gitnexus = true` 时，`claw plan done` 会先在前台跑 GitNexus 预检；如果 CLI 不存在，会先尝试 `npm install -g @veewo/gitnexus`，再执行 `gitnexus setup --cli-spec @veewo/gitnexus`，安装或 setup 失败会直接阻断 completion refresh。
 - 如果 GitNexus 已安装但 embeddings 还没有持久化到 GitNexus 自己的 analyze 配置里，`claw plan done` 会前台补跑 `gitnexus analyze --embeddings`，并尽量从匹配的 claw 模型缓存预热 GitNexus transformers cache，避免第二次下载。
 - 背景 completion refresh 仍然保留现有的 `gitnexus analyze --no-ai-context` 路径；当已安装的 GitNexus CLI 不支持该参数时，会回退到普通 `gitnexus analyze`。
+- 本文是 GitNexus analyze 运行时恢复行为的当前 Truth owner：在 Windows 上，只有 analyze 子进程以无符号退出状态 `0xC0000005`（access violation）结束时，`runGitNexusAnalyze()` 才会追加 `--force` 重建并重试一次；重试仍保留 `--embeddings` 与 `--no-ai-context` / plain-analyze fallback 语义，其他失败继续走既有错误路径。
+- 2026-07-19 的 `@veewo/gitnexus@1.5.9` 故障实例把该签名定位到既有 `.gitnexus/lbug` LadybugDB 索引损坏：fresh indexing 成功，force rebuild 后 `status`、`query`、`context` 恢复。该实例是版本化诊断证据，不表示所有 `0xC0000005` 都必然由同一种损坏造成。
+- 对该旧索引的只读回溯进一步把损坏原因收窄为高置信度的同库并发写入：2026-07-06 17:27:51–17:29:10 至少有 `14` 次 completion refresh 重叠启动 GitNexus analyze，历史日志依次留下 orphan `lbug.shadow`、`lbug.wal` Database ID mismatch、`lbug` lock failure、`bad allocation`，最后出现同一 `3221225477 / 0xC0000005`。结合 GitNexus force rebuild 会替换 LadybugDB 文件，这条链足以把重叠 analyze 判为约 `90–95%` 置信度的原因；旧文件已重建，因此不能再声称有逐字节法证。
+- 2026-07-19 在 GitNexus `nantas-dev` 基线 `12b3c35851336f80b5faee780014f9d18c677742` 上的后续调查直接复现了两个 CLI 进程争用同一 LadybugDB：旧实现只有进程内锁，两个进程会交错删除、创建和写入 `lbug`、`lbug.wal` 与 `lbug.lock`，删除失败会被吞掉，非 `already exists` 的 schema 错误也会被降级。当前检查到的修复分支提交 `afac14783c87c442fe4637635100976e99e1bc58` 已把这条链改为覆盖整个 metadata-check/rebuild 生命周期的 per-repository `analyze.lock`：owner 使用 PID、token 与原子目录操作，存活 owner 不会被抢占，只有 dead PID 或超过保护期的 ownerless lock 可回收；LadybugDB artifact 删除、非 `already exists` schema 错误和 analyze 主路径 close 失败都会向上失败。
+- 上述 GitNexus 修复是已检查的 fix-branch 行为，不等于当前已发布的 `@veewo/gitnexus@1.5.9` 已经包含它。claw-kit 的 completion-refresh project single-flight 仍是独立的调用侧完整性边界，精确 `0xC0000005` 的一次性 `--force` 恢复也暂时保留；只有在包含该修复的 GitNexus 发布并经过长期验证后，才适合重新评估是否删除调用侧恢复。
+- 同一历史环境能成功创建 fresh index，且损坏发生时 GitNexus 模型未发生切换，因此该实例不支持“模型变化”“`@veewo/gitnexus@1.5.9` / Node 普遍不兼容”或“只是索引陈旧”作为原因。这里排除的是该版本化事故的替代解释，不是对所有未来故障的全局保证。
+- 该次重建后的另一次 refresh 在 index 与 `meta.json` 已成功写入、`status` / `query` 仍健康后才以 `0xC0000374` 退出；它更符合原生退出清理阶段的 heap-corruption 假失败，而不是索引再次损坏。后续调查的 `24` 次最小 close/exit 探针和 `6` 次真实串行 analyze 都退出 `0`，Windows Application Error 也没有对应事件，因此这个根因仍未确认，不能据此猜测性修改 close 策略或增加重试。当前 `runGitNexusAnalyze()` 不会对这个不同签名自动 `--force`，诊断时应先区分已写入后的退出失败与不可读索引。
+- claw project memory 与 GitNexus 各自拥有 embedding model；claw 只在 model id 匹配时 best-effort 预热 GitNexus cache，不会用 `memory.embedding.model` 改写 GitNexus 的模型选择。
 - `packages/cli/test/cli.test.ts` 新增了 `plan done` 的三类回归覆盖：安装失败必须先于 completion refresh 暴露、embeddings 自愈和 cache seeding、以及 `--no-ai-context` fallback。
 - 在 NeonSpark 的真实重测里，最初失败点先从 DirectML gating 收敛到过大的 embedding 输入张量（`33737 x 512`，请求分配约 `26.5 GB`），随后又暴露出 stdout 巨型 vector JSON；最终通过临时文件回传结果把这条链路打通。
 - 该重测最后确认 `claw search index --refresh` 可以在大项目上成功完成，并产出 `indexedCount: 698` 与 `vectorIndex.chunkCount: 33737`。
@@ -121,7 +128,7 @@ Accepted working truth for local development on this machine.
 - 在 Windows 上，`claw plan done` 的 stdout JSON 契约和异步 completion refresh 现在可以同时成立；调用方不需要在“及时拿到 JSON”和“后台继续索引”之间二选一。
 - New projects do not need manual `.claw` scaffolding before they can enter the harness flow.
 - Workflow docs and skills should say `claw search`, not OpenClaw-style "memory search", when explaining recall to Codex agents.
-- Code investigation should still go through `researcher` plus GitNexus, not `claw search`.
+- Code investigation should still be dispatched through `researcher`; within that dispatched workflow, `claw search` restores relevant project context before GitNexus or another code index and exact source inspection. Ordinary project recall remains direct main-agent `claw search` work and does not dispatch a researcher. The operational sequence is owned by `codex-subagent-reuse.md`.
 - The hybrid project search contract is influenced by `openclaw-dev`, but only the smallest subset needed for `claw-kit` was brought over.
 - incremental refresh 的 sync 语义同样参考 `openclaw-dev`，但这里只保留了适合 `claw-kit` 的裁剪式 sqlite 增量行为。
 - README、`packages/cli/README.md` 与 `packages/core/test/core.test.ts` 已说明并覆盖这套 refresh 合同。

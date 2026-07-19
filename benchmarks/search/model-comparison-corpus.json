@@ -1,0 +1,227 @@
+{
+  "schemaVersion": 1,
+  "description": "Human-labeled claw-kit project-document queries for comparing local embedding models. Quality gates exclude lexical controls and are reported separately by language.",
+  "qualityGate": {
+    "recallAt5RelativeFloor": 0.95,
+    "mrrAt10RelativeFloor": 0.9,
+    "maxCriticalMissesAt5": 0
+  },
+  "queries": [
+    {
+      "id": "zh-cache-location",
+      "language": "zh",
+      "category": "semantic",
+      "critical": true,
+      "query": "多个项目重复下载同一个本地向量模型时，缓存应该放在哪里",
+      "relevant": ["adr/local-embedding-shared-model-cache.md"]
+    },
+    {
+      "id": "zh-windows-background-launch",
+      "language": "zh",
+      "category": "semantic",
+      "critical": true,
+      "query": "Windows 后台完成任务为什么要通过 PowerShell 启动器，而不是直接 detached unref",
+      "relevant": ["adr/windows-async-completion-refresh-launcher.md"]
+    },
+    {
+      "id": "zh-runtime-consent",
+      "language": "zh",
+      "category": "semantic",
+      "critical": true,
+      "query": "运行环境缺失或损坏时，为什么必须先征得用户同意再进行修复",
+      "relevant": ["adr/codex-runtime-repair-requires-user-consent.md"]
+    },
+    {
+      "id": "zh-knowledge-finalization",
+      "language": "zh",
+      "category": "semantic",
+      "critical": true,
+      "query": "计划结束后，事实文档和架构决定如何在同一个一致性流程里完成沉淀",
+      "relevant": ["adr/hook-owned-two-phase-knowledge-finalization.md"]
+    },
+    {
+      "id": "zh-personal-overlay",
+      "language": "zh",
+      "category": "semantic",
+      "critical": true,
+      "query": "个人设置怎样覆盖团队配置，同时又不会被写回共享的项目配置文件",
+      "relevant": ["adr/project-override-overlays-canonical-project-config.md"]
+    },
+    {
+      "id": "zh-nonascii-retention",
+      "language": "zh",
+      "category": "semantic",
+      "critical": true,
+      "query": "Windows 下带中文名称的历史任务目录，应该怎样可靠地递归清理",
+      "relevant": ["adr/windows-task-retention-pruning-uses-explicit-recursion.md"]
+    },
+    {
+      "id": "zh-doc-recovery",
+      "language": "zh",
+      "category": "semantic",
+      "critical": false,
+      "query": "公开说明和包元数据被误删以后，应当按照什么证据顺序恢复",
+      "relevant": ["adr/github-facing-docs-and-metadata-recovery-protocol.md"]
+    },
+    {
+      "id": "zh-illustration-format",
+      "language": "zh",
+      "category": "semantic",
+      "critical": false,
+      "query": "技术原理页面为什么要使用六组中文左右对照图片，而不是继续放内联占位图",
+      "relevant": ["features/technical-principles-illustration-assets.md"]
+    },
+    {
+      "id": "zh-multiroute-ranking",
+      "language": "zh",
+      "category": "semantic",
+      "critical": true,
+      "query": "搜索怎样把关键词候选、文档信号和向量结果合并后统一排序",
+      "relevant": ["features/project-search-candidate-recall.md"]
+    },
+    {
+      "id": "zh-opencode-install",
+      "language": "zh",
+      "category": "semantic",
+      "critical": false,
+      "query": "另一个代码宿主安装插件时，为什么既需要入口转接文件，又要把技能复制到全局发现目录",
+      "relevant": ["features/opencode-plugin-install-pipeline.md"]
+    },
+    {
+      "id": "zh-widget-status",
+      "language": "zh",
+      "category": "semantic",
+      "critical": true,
+      "query": "早期那个用网页小组件展示计划的方案现在还是主线能力吗",
+      "relevant": ["features/apps-sdk-plan-widget-server.md", "adr/abandon-apps-sdk-widget-route.md"]
+    },
+    {
+      "id": "zh-dist-residue",
+      "language": "zh",
+      "category": "semantic",
+      "critical": false,
+      "query": "编译成功以后，怎样防止已经删除的模板仍以过期文件留在发行目录",
+      "relevant": ["adr/dist-ghost-output-checks-for-removed-template-paths.md"]
+    },
+    {
+      "id": "zh-host-scope",
+      "language": "zh",
+      "category": "semantic",
+      "critical": true,
+      "query": "宿主身份为什么只应该在单次命令调用内生效，不能保存到会话绑定中",
+      "relevant": ["adr/invocation-host-handling.md"]
+    },
+    {
+      "id": "zh-nonclaw-init",
+      "language": "zh",
+      "category": "semantic",
+      "critical": false,
+      "query": "一个还没有初始化的项目，要用哪个显式动作让 Codex 进入 claw 工作流",
+      "relevant": ["adr/explicit-claw-context-initializes-non-claw-projects.md"]
+    },
+    {
+      "id": "zh-superseded-writer-reuse",
+      "language": "zh",
+      "category": "semantic",
+      "critical": false,
+      "query": "旧的事实写手和决策写手复用策略，后来为什么不再是当前合同",
+      "relevant": ["adr/codex-subagent-reuse-policy.md", "adr/hook-owned-two-phase-knowledge-finalization.md"]
+    },
+    {
+      "id": "en-cache-location",
+      "language": "en",
+      "category": "semantic",
+      "critical": false,
+      "query": "Where should local embedding weights be cached to avoid duplicate gigabyte copies in every project?",
+      "relevant": ["adr/local-embedding-shared-model-cache.md"]
+    },
+    {
+      "id": "en-refresh-locking",
+      "language": "en",
+      "category": "semantic",
+      "critical": false,
+      "query": "How does completion refresh avoid long SQLite write locks and overlapping background workers?",
+      "relevant": ["adr/windows-async-completion-refresh-launcher.md"]
+    },
+    {
+      "id": "en-finalizer-recursion",
+      "language": "en",
+      "category": "semantic",
+      "critical": false,
+      "query": "What prevents a detached knowledge finalizer from recursively scheduling another finalization job?",
+      "relevant": ["adr/hook-owned-two-phase-knowledge-finalization.md"]
+    },
+    {
+      "id": "en-chinese-query-planner",
+      "language": "en",
+      "category": "semantic",
+      "critical": false,
+      "query": "How does the query planner keep multi-term Chinese recall while demoting generic index documents?",
+      "relevant": ["features/project-search-candidate-recall.md"]
+    },
+    {
+      "id": "en-host-actions",
+      "language": "en",
+      "category": "semantic",
+      "critical": false,
+      "query": "Which invocation host is allowed to receive host actions, and why is the value not persisted?",
+      "relevant": ["adr/invocation-host-handling.md"]
+    },
+    {
+      "id": "mixed-null-overlay",
+      "language": "mixed",
+      "category": "realistic",
+      "critical": false,
+      "query": "project-override.json 里的 null override 是回退到 team config 吗",
+      "relevant": ["adr/project-override-overlays-canonical-project-config.md"]
+    },
+    {
+      "id": "mixed-cache-telemetry",
+      "language": "mixed",
+      "category": "realistic",
+      "critical": true,
+      "query": "queryEmbedding=cache_hit 的延迟可以代表 semantic miss 性能吗",
+      "relevant": ["features/workflow-cost-and-runtime-path.md", "adr/workflow-cost-optimization-route.md"]
+    },
+    {
+      "id": "mixed-writer-agent-role",
+      "language": "mixed",
+      "category": "realistic",
+      "critical": false,
+      "query": "OpenCode 的 claw-knowledge-writer 属于 main agent 派发的 subagent 吗",
+      "relevant": ["adr/hook-owned-two-phase-knowledge-finalization.md"]
+    },
+    {
+      "id": "mixed-dist-ghost",
+      "language": "mixed",
+      "category": "realistic",
+      "critical": false,
+      "query": "dist ghost output 为什么在 tsc 成功后仍然需要额外检查",
+      "relevant": ["adr/dist-ghost-output-checks-for-removed-template-paths.md"]
+    },
+    {
+      "id": "lexical-search-doc",
+      "language": "control",
+      "category": "lexical_control",
+      "critical": false,
+      "query": "project-search-candidate-recall.md",
+      "relevant": ["features/project-search-candidate-recall.md"]
+    },
+    {
+      "id": "lexical-runtime-doc",
+      "language": "control",
+      "category": "lexical_control",
+      "critical": false,
+      "query": "codex-runtime-repair-requires-user-consent.md",
+      "relevant": ["adr/codex-runtime-repair-requires-user-consent.md"]
+    },
+    {
+      "id": "lexical-install-doc",
+      "language": "control",
+      "category": "lexical_control",
+      "critical": false,
+      "query": "opencode-plugin-install-pipeline.md",
+      "relevant": ["features/opencode-plugin-install-pipeline.md"]
+    }
+  ]
+}

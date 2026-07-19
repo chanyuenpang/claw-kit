@@ -248,12 +248,12 @@
     },
     "process.discussing.initial": {
       "stage": "discussion",
-      "summary": "The plan starts in discussion and must remain there until the user has finished the discussion and the requirements are execution-ready.",
+      "summary": "The plan starts in discussion while the requirements and proposed solution are discussed and confirmed with the user.",
       "nextsteps": [
-        "1. Use {{planningSkill}} until the discussion is finished and the outcome, constraints, and material open questions are clear.",
-        "2. If execution remains, record the smallest outcome-oriented task list with the recommended command. If planning resolves the request, complete task #1 and close the plan."
+        "1. Use {{planningSkill}} to discuss and confirm the requirements and proposed solution with the user.",
+        "2. If execution remains, record the task list with the recommended command. If planning resolves the request, complete task #1 and close the plan."
       ],
-      "notes": "A draft is not completion. Do not split one coherent outcome into separate implementation, documentation, test, build, or review tasks.",
+      "notes": "A draft is not completion.",
       "recommendedCommands": [
         "{{startBase}} --requirements \"<summary>\" --acceptance \"<criterion>\" --add-task \"<title>\" --detail \"<detail>\"",
         "claw task done --id 1"

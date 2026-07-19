@@ -22,7 +22,7 @@ Codex-facing recall 的推荐命令统一为：
 claw search --query "<topic>"
 ```
 
-root、template 与 subplan create 不再把 direct query 放入默认 planning bridge 或强制 `nextsteps`。`claw search` 仍可出现在 `recommendedCommands`，但它只表示可选的项目文档召回能力；planning bridge 的讨论完成、effective skill fallback 与 activation 语义由 `cli-guided-plan-lifecycle.md` 决定，本 ADR 不重复拥有。显式 search skill、researcher 与 knowledge writer 仍可按各自合同使用 `claw search`，需要代码调查时继续走 researcher / GitNexus 边界。
+root、template 与 subplan create 不再把 direct query 放入默认 planning bridge 或强制 `nextsteps`。`claw search` 仍可出现在 `recommendedCommands`，但它只表示可选的项目文档召回能力；planning bridge 的讨论完成、effective skill fallback 与 activation 语义由 `cli-guided-plan-lifecycle.md` 决定，本 ADR 不重复拥有。普通项目 recall、canonical Truth/ADR lookup 与历史上下文查询由主 agent 直接运行 `claw search`，不会派发 researcher；代码调查的角色边界由 `investigation-tasks-use-researcher-specialist.md` 决定，当前执行合同由 `../features/codex-subagent-reuse.md` 拥有。
 
 公开 `claw context` 只投影恢复当前工作所需的最小信息：始终保留项目身份与关键路径，按存在性返回 active workflow，并只在实际修正、协议/版本异常、落后或可更新时返回诊断。内部 SessionStart 继续使用完整 context，不因公开字段精简而丢失恢复、修复或更新判断能力。
 

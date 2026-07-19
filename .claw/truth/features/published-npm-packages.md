@@ -382,7 +382,7 @@ release commit `472635e` 已推送至 `origin/main`，tag 为 `v0.1.62`；`@veew
 - Release commit `9e34285` 已推送到 `origin/main`。发布 closeout 时本地 `main` 与 `origin/main` 的 ahead/behind 为 `0/0`，且 `git status --porcelain` 为空；source、远端与工作树已经完整收敛。
 - npm registry 回读确认 `@veewo/claw-core` 与 `@veewo/claw` 的 `version`、`dist-tags.latest` 均为 `0.1.72`；CLI registry metadata 继续保留 `bin = { "claw": "dist/bin.js" }`。
 - 本机全局 npm package 与真实 `claw --version` 均为 `0.1.72`，证明 registry artifact、全局安装面与 CLI 运行面一致。
-- 当前启用的 Codex identity 是 `claw-kit@claw-kit-local`。development source manifest 与 versioned cache manifest 均为 `0.1.72+codex.20260717024800`；两侧 payload 都包含 `scripts/code-mode-host-action-consumer.mjs`、`skills/using-claw-kit/SKILL.md` 中的固定 driver，以及本轮关键 skills。
+- 该 `0.1.72` 发布回合当时启用的 Codex identity 是 `claw-kit@claw-kit-local`。development source manifest 与 versioned cache manifest 均为 `0.1.72+codex.20260717024800`；两侧 payload 都包含 `scripts/code-mode-host-action-consumer.mjs`、`skills/using-claw-kit/SKILL.md` 中的固定 driver，以及本轮关键 skills。
 - 本轮 cache/source 验收不仅比较 manifest：固定 consumer 与 driver 已包含 schema v2 `ensure_goal` target-state 合同，证明 active identity 对应的安装面实际携带本轮 Codex Goal 收敛实现。
 
 ### 验证锚点
@@ -483,3 +483,11 @@ release commit `472635e` 已推送至 `origin/main`，tag 为 `v0.1.62`；`@veew
 - 发布后的独立 update workflow 已把全局 `@veewo/claw` CLI 刷新到 `0.1.84`，并把官方 Codex plugin 刷新到 `0.1.84+codex.20260719151633`；唯一启用的 identity 是 `claw-kit@claw-kit`，`claw-kit@claw-kit-local` 保持 disabled。
 - 该完成边界内，GitHub source manifest 与 official cache manifest hash 一致；active cache 包含 `planning`、`config`、`update`、`create-claw-skill` 和 `knowledge-writer`，已退休的 `truth-writer`、`adr-writer` 不存在。
 - 当时 Git clone 通道持续停滞，因此安装使用了经目标版本校验的 GitHub 官方 `main.zip` 快照，再交给维护的 cache/identity installer；没有使用开发工作区内容。这个版本化结果不改变 `.claw/truth/features/host-specific-update-skills.md` 所拥有的当前恢复边界，也不证明完成 update 的旧任务已经热加载新 skill；运行时采用仍以重启 Codex 后新建任务为界。
+
+## 2026-07-19：0.1.85 发布与 official source recovery 完成态
+
+- Release commit `b594d4aa34c98e34402eb6c7c1c7f875ab25f562` 已推送到 `origin/main`，tag 为 `v0.1.85`；该完成边界内 `main = origin/main` 且工作树干净。npm registry 已确认 `@veewo/claw-core@0.1.85` 与 `@veewo/claw@0.1.85`。
+- 本机全局 CLI 已刷新到 `0.1.85`；Codex appserver 识别 `claw-kit@claw-kit` 的 `0.1.85+codex.20260719162741` 为 installed/enabled，`claw-kit@claw-kit-local` 保持 disabled。
+- official marketplace full clone 两次停在 `index-pack` 后，对同一官方 GitHub origin 的现有 checkout 使用 HTTP/1.1 filtered shallow fetch，成功把 marketplace `main` 恢复到 `b594d4aa34c98e34402eb6c7c1c7f875ab25f562`。随后从该实际 source 重装 versioned cache；source/cache 各 28 个文件，raw tree SHA-256 均为 `69439b64710267adb9c18c5f79dae716c61d75869ce09126515ce4b3624b6186`，零差异。
+- active cache 包含 `planning`、`config`、`update`、`create-claw-skill` 与 `knowledge-writer`，已退休的 `truth-writer`、`adr-writer` 不存在。`config.toml` 的旧 `last_revision` 提示字段没有被超时的 appserver 写回，因此它不是完成判据；marketplace HEAD、appserver identity、manifest 与 source/cache payload 一致性共同构成这次版本化完成证据。
+- 完成报告记录完整测试、Codex adapter `12/12`、Codex bundle `17/17`、OpenCode bundle `11/11` 和 release verifier 通过；这些是 `0.1.85` 完成边界的版本化证据。运行时采用新 skill 仍以重启 Codex 后新建任务为界。

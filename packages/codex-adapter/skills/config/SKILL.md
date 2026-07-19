@@ -119,11 +119,17 @@ Keep nested shape only where the field actually has substructure:
     "externalDocPaths": ["docs/"],
     "embedding": {
       "provider": "local",
-      "model": "Snowflake/snowflake-arctic-embed-m-v2.0"
+      "model": "jinaai/jina-embeddings-v2-base-zh",
+      "outputDimensionality": 768
     }
   }
 }
 ```
+
+The default local model is `jinaai/jina-embeddings-v2-base-zh` at 768 dimensions. Two supported Snowflake alternatives are:
+
+- `Snowflake/snowflake-arctic-embed-m-v2.0` at 768 dimensions for projects that accept higher model, CPU, and memory cost.
+- `Snowflake/snowflake-arctic-embed-xs` at 384 dimensions for explicit low-resource or English-oriented use. It is not recommended for Chinese-heavy recall because the claw search comparison found substantial Chinese semantic-recall regressions.
 
 `knowledgeWriter.externalSkill = null` runs the built-in `claw-kit:knowledge-writer` in one consistency-aware pass. A non-null value overrides that writer skill. `model = null` uses the host default model. `reasoningEffort` accepts `minimal`, `low`, `medium`, `high`, or `xhigh`.
 

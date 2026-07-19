@@ -74,9 +74,9 @@ export const defaultPlanTemplate: PlanTemplateDocument = {
   tasks: [
     {
       id: 1,
-      title: "Discuss and finalize requirements with the configured planning skill",
+      title: "Complete planning with the configured planning skill",
       detail:
-        "Use {{planningSkill}} to finish discussing the request with the user and prepare the smallest outcome-oriented task list. Complete this task only when the outcome and constraints are clear, material open questions are resolved, and the user has finished the discussion; a draft is not completion.",
+        "Discuss and confirm the requirements and proposed solution with the user, then prepare the task list.",
       status: "pending",
       guidance: {
         onPlanStart: {

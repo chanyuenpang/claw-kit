@@ -10,6 +10,7 @@
 
 - 每次 Codex `Stop` 最多写一份 report。若当前 turn 有 pending ended plan，则该终态计划拥有最终 report；否则写入当前 active plan。终态切换的 transition turn 不得同时写入两份 report。
 - Knowledge finalization worker 只异步消费进入 `end.*` 的 source `plan.json`、其相邻 report、finalize id 与 job host。它运行一次 consistency-aware `knowledge-writer`，在同一 pass 中共同维护 Truth 和 ADR、收敛每条 material current claim 的唯一 owner；该 pass 完成后才请求 recall indexing。
+- Codex 与 OpenCode 的 `using-claw-kit` 入口都明确告知 agent：eligible closeout 会自动把可复用知识沉淀进 canonical Truth。由该流程产生的 Truth 文件修改属于正常 workflow output，包括其他任务并行运行期间；仅观察到这类修改本身不构成写集冲突或异常沉淀的证据。
 - 内置 `knowledge-writer` 通过 top-level `scope: "session"` template 进入四任务 claw workflow。它把 report 结论以及 plan 的 retrospective、`keyDecisions` 和其他明确结论字段作为沉淀证据；task status 只解释 completed、pending 与 blocked scope，task 标题、描述、requirements 与 intentions 不能被提升为执行结果。writer 固定先维护 Truth、再维护 ADR，不设置 `truth` / `adr` / `both` / `noop` route task。direct entry 不依赖项目 `.claw`，session plan 写入用户级 runtime，不触发项目 Truth/ADR capture，因此不会为外层 finalization 再排队递归 job。
 - SDK writer 成功返回后，detached worker 递归检查 `.claw/truth/**/*.md`，并幂等补齐 UTF-8 BOM；这是确定性 worker 后处理，不得交给 LLM writer prompt。
 - finalization 成功路径的顺序是 writer 完成、Truth/ADR 编码归一化、启动 completion recall refresh、向相邻 report 写入 `knowledge_finalization` 结果，再持久化 `succeeded` job。writer、编码归一化、refresh 或结果持久化失败会进入原有重试路径。
@@ -30,6 +31,7 @@
 - `packages/core/src/knowledge-sidecar.ts`：Truth/ADR Markdown 编码归一化、report 路径 containment 与幂等 finalization-result 写入。
 - `packages/cli/src/cli.ts`：Codex-facing CLI lifecycle 与 hook entry。
 - `packages/codex-adapter/hooks/hooks.json`：SessionStart / Stop hook surface。
+- `packages/codex-adapter/skills/using-claw-kit/SKILL.md` 与 `packages/opencode-adapter/skills/using-claw-kit/SKILL.md`：自动沉淀及正常 Truth workflow output 的入口提示。
 - `shared/skills/knowledge-writer/`：combined stewardship workflow、session template 与 fallback 的规范 skill 源。
 - `packages/codex-adapter/skills/knowledge-writer/`：Codex Git marketplace 中物化的完整 writer skill package。
 

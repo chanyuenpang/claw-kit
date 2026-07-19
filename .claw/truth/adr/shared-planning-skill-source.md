@@ -31,6 +31,10 @@ The original synchronization implementation wrote those adapter-local copies int
 
 随后，`fix-skill-local-subplan-template-resolution` 计划进一步暴露了运行时边界：shared skill 的 `TEMPLATE.json` 是完整 `PlanDocument` 模板，而旧 `.claw/templates` 仍使用 `SeedPlanTemplate`。如果 `claw plan create` 与 `claw subplan create` 分别维护发现、schema 判别和实例化逻辑，同一个 skill-local 模板就会在 root plan 与 subplan 路径上产生不一致行为。
 
+`优化 planning skill 的任务拆分与二次规划规则` 进一步确认，固定的 `1-3` task budget 会把计划质量错误地代理为数量控制，并诱导规划者在证据不足时提前填满后续步骤。可复用的边界不是 task 数量，而是一个阶段是否有可验收结果，并让后续工作能够继续或独立重试；当检查点本身决定下游路线时，一次性写完整计划反而会把猜测固化为任务。
+
+2026-07-19 的 planning skill 质量 review 表明，当时的文案尚未可靠落实这项已接受决策：三处 `proposed solution` 确认要求会阻碍证据依赖的阶段性规划；复杂前向场景仍在 planning checkpoint 之后预建推测性执行 tasks；简单场景仍会把没有独立检查点价值的验证拆开。更晚的 current working-tree shared skill 文案已按同一既有决策收敛 solution gate、checkpoint 末端边界与 supporting-work 拆分规则，并把重复 trigger/质量说明合并：当前阶段仍须确认 requirements 与 proposed solution，但在证据不足时由 decisive checkpoint 及其后续 planning task 充当该阶段 solution，而不是虚构最终实现。该 review 没有形成新的架构决策。default template 与 initial guidance 已对齐当前阶段 solution-discussion gate；是否建立实施后 review lifecycle 的决策由 `cli-guided-plan-lifecycle.md` 拥有，shared skill 的 task-shape 状态和未重复运行的行为验证边界由 `.claw/truth/features/shared-planning-skill-source.md` 维护。
+
 ## Decision
 
 Use shared sources for host-neutral skills, including future shared workflow skills that ship additional resources:
@@ -79,6 +83,10 @@ When a shared skill is materialized, copy its complete directory recursively rat
 Keep the shared planning skill host-agnostic:
 
 - it defines plan quality, decomposition, and scope-writing rules
+- keep operational planning behavior in `Planning principles`, and keep every criterion about what a good plan communicates in one `Quality bar`; do not duplicate that contract in a separate opening checklist
+- choose verifiable progress checkpoints over a predefined task-count budget; split when the checkpoint leaves later work able to continue or the stage able to retry independently
+- when current evidence cannot determine downstream execution reliably, end the initial plan at the decisive checkpoint and make an evidence-based second planning pass after it completes instead of inventing speculative tasks
+- require the current-stage requirements and proposed solution to be discussed and confirmed; when downstream implementation depends on missing evidence, the decisive checkpoint and follow-up planning task are the current-stage solution
 - verification and closure are optional rather than default required stages; the main agent decides whether either belongs in the plan for the specific task
 - it assumes `using-claw-kit` has already decided whether the request belongs in the formal claw workflow
 - it does not own or duplicate the entry-time complexity scoring heuristic
@@ -118,6 +126,10 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 - A shared skill directory is an atomic distribution unit: the generated plugin must retain every required resource beside `SKILL.md`, not only the entry instruction file.
 - Session-scoped workflow metadata is part of the distributed skill contract: stripping or rewriting `knowledge-writer/TEMPLATE.json` would reintroduce project finalization recursion or make projectless entry fail.
 - Host/runtime-specific workflow rules remain separated from generic planning and config guidance.
+- A single `Quality bar` makes the plan's goal, decision logic, decomposition rationale, sequencing, scope, risks, observable completion, and handoff criteria reviewable in one place; the rejected alternative is an opening `A good plan should answer` checklist that repeats the same contract and lets the two sections drift.
+- Planning quality is reviewed against checkpoint value and evidence sufficiency, so coherent supporting edits and checks stay together unless they create an independently useful boundary; task count is allowed to vary with the work.
+- A second planning pass after a decisive checkpoint is an intentional staged-planning outcome, not evidence that the initial plan was incomplete; the rejected alternative is speculative up-front decomposition beyond current evidence.
+- 如果 skill 或 host bridge 文案未稳定实现上述 staged-planning 决策，应把它记录为实现/指令缺口，而不是弱化 ADR：初始 task list 的 planning checkpoint 之后不应预建依赖未知证据的执行 tasks；证据不足时仍需确认当前阶段 solution，但该 solution 是 decisive checkpoint route，而不是推测性的最终实现。当前 shared skill 与 host bridge 已在 solution-discussion gate 上对齐，task shape 与 evidence-dependent route 继续由 shared-planning Truth owner 维护。
 - Planning does not create verification or closure tasks merely to satisfy a fixed stage template; those tasks appear only when the main agent chooses to include them for the work at hand.
 - Project-plan admission has a single owner in the `using-claw-kit` entry contract, so planning never decides retroactively whether the request should have entered the formal workflow.
 - Future edits to planning quality or decomposition rules should start from `shared/skills/planning/SKILL.md`.
@@ -136,6 +148,8 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 - `shared/skills/config/SKILL.md`
 - `shared/skills/create-claw-skill/`
 - `shared/skills/knowledge-writer/`
+- `.claw/tasks/Merge-planning-quality-guidance/plan.json`
+- `.claw/tasks/Merge-planning-quality-guidance/plan.report`
 - `.agents/plugins/marketplace.json`
 - `scripts/sync-shared-skills.mjs`
 - `scripts/sync-planning-skill.mjs`
@@ -165,6 +179,12 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 - `.claw/tasks/发布新版本并更新本地安装/Run-a-update-subplan,-complete-refresh-the-published-CLI-and-the-current-host-plugin-install-surface-after-a-newer-version-is-detected.json`
 - `.claw/tasks/fix-skill-local-subplan-template-resolution/plan.json`
 - `.claw/tasks/让-planning-按复杂度选择验证与-closeout/plan.json`
+- `.claw/tasks/优化-planning-skill-的任务拆分与二次规划规则/plan.json`
+- `.claw/tasks/优化-planning-skill-的任务拆分与二次规划规则/plan.report`
+- `.claw/tasks/Review-planning-skill-quality/plan.json`
+- `.claw/tasks/Review-planning-skill-quality/plan.report`
+- `.claw/tasks/Apply-planning-skill-review-improvements/plan.json`
+- `.claw/tasks/Apply-planning-skill-review-improvements/plan.report`
 - `.claw/tasks/发布共享技能-staging-修复并刷新本地运行时/plan.json`
 - `.claw/archive/tasks/align-codex-plugin-publish-and-remote-install/plan.json`
 
@@ -176,7 +196,8 @@ The previous dual-surface maintainer model is superseded. Release and update wor
 - Use the published `chanyuenpang/claw-kit` repository marketplace for maintainer and third-party Codex updates alike.
 - Enable only `claw-kit@claw-kit`; explicitly disable `claw-kit@claw-kit-local`.
 - Treat unpublished workspace payloads and local marketplace caches as invalid release evidence.
-- Keep the official Git checkout/marketplace path as the default transport. If Git transport itself stalls, an official GitHub branch archive may substitute only as a transport recovery: verify the archive's plugin manifest against the already-published target, then install that verified payload through the maintained official cache/identity installer and retain the normal source/cache manifest comparison.
+- Keep the official Git checkout/marketplace path as the default transport. If a full clone stalls during `index-pack` and a clean checkout from the same official GitHub origin already exists, prefer a filtered shallow fetch (`--depth=1 --filter=blob:none`) that preserves the official checkout identity while reducing pack transfer. Accept it only after marketplace HEAD, source/cache manifests, enabled appserver identity, and source/cache payload comparison all converge on the published target.
+- If that checkout cannot be recovered, an official GitHub branch archive may substitute only as a narrower transport fallback: verify the archive's plugin manifest against the already-published target, then install that verified payload through the maintained official cache/identity installer and retain the same identity, manifest, and payload comparisons.
 
 This recovery is intentionally narrower than accepting an arbitrary directory. The rejected alternatives are using unpublished workspace files, switching to a local marketplace, or treating an unverified archive/cache directory as activation evidence. The trust boundary remains the published GitHub source plus target manifest, enabled official identity, and matching source/cache payload; the mere presence of `.git` metadata is not the trust boundary. Current operational behavior is owned by `.claw/truth/features/host-specific-update-skills.md`.
 
@@ -210,12 +231,20 @@ This recovery is intentionally narrower than accepting an arbitrary directory. T
 - `GitHub Release without assets`
 - `committed HEAD gate`
 - `repository marketplace ref`
+- `filtered shallow fetch`
+- `index-pack recovery`
 - `source.path`
 - `sparse checkout`
 - `no npm lifecycle`
 - `only enabled identity`
 - `generated adapter skill`
 - `complexity heuristic`
+- `verifiable progress checkpoint`
+- `predefined task count`
+- `second planning pass`
+- `proposed solution confirmation`
+- `planning checkpoint terminal boundary`
+- `verification task over-splitting`
 - `workflow admission`
 - `recursive shared skill copy`
 - `skill template fallback`

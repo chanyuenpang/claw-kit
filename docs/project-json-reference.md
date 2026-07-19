@@ -135,7 +135,8 @@ Older nested inputs should be rewritten into the flat fields above during protoc
     "externalDocPaths": [],
     "embedding": {
       "provider": "local",
-      "model": "Snowflake/snowflake-arctic-embed-m-v2.0"
+      "model": "jinaai/jina-embeddings-v2-base-zh",
+      "outputDimensionality": 768
     }
   },
   "goalMode": true,
@@ -201,7 +202,7 @@ export default {
     {
       id: 1,
       title: "Use the team planning flow",
-      detail: "Use {{planningSkill}} until the discussion is complete and the smallest outcome-oriented task list is clear.",
+      detail: "Discuss and confirm the requirements and proposed solution with the user, then prepare the task list.",
       status: "pending"
     }
   ],
@@ -238,7 +239,7 @@ The runtime plan contains one minimal executable task whose title follows the go
 }
 ```
 
-With this config, planning-enabled default plans still start in `process.discussing`, but task 1 tells the agent to use `team-planner` to refine the request and append executable tasks.
+With this config, planning-enabled default plans still start in `process.discussing`, but task 1 tells the agent to use `team-planner` to discuss and confirm the requirements and proposed solution before preparing the task list.
 
 ### Enable shared docs for recall
 
@@ -252,7 +253,8 @@ With this config, planning-enabled default plans still start in `process.discuss
     ],
     "embedding": {
       "provider": "local",
-      "model": "Snowflake/snowflake-arctic-embed-m-v2.0"
+      "model": "jinaai/jina-embeddings-v2-base-zh",
+      "outputDimensionality": 768
     }
   }
 }
@@ -359,7 +361,9 @@ With this config, planning-enabled default plans still start in `process.discuss
 - `claw search` is recall over project docs, not code search
 - `memory.enabled = false` disables project memory, task memory, embedding refresh, and `claw search`
 - `claw search index --refresh` expects `memory.embedding` to be configured
-- local embedding defaults to `Snowflake/snowflake-arctic-embed-m-v2.0`
+- local embedding defaults to `jinaai/jina-embeddings-v2-base-zh` at 768 dimensions
+- `Snowflake/snowflake-arctic-embed-m-v2.0` remains a 768-dimensional higher-resource alternative
+- `Snowflake/snowflake-arctic-embed-xs` remains a 384-dimensional low-resource or English-oriented alternative, but is not recommended for Chinese-heavy recall because it regressed substantially on the claw search Chinese comparison corpus
 - if `memory.embedding.local.modelCacheDir` is not set, claw prefers the platform-global cache and falls back to `.claw/models` only when needed
 - `memory.embedding.local.device` can be used to force `cpu`, `dml`, `cuda`, or `wasm`
 - explicit `memory.embedding.outputDimensionality` overrides model-derived defaults
@@ -375,7 +379,7 @@ When explaining project behavior:
 - `planning = false` makes `plan create` start directly in `process.active` with a minimal executable plan
 - `autoUpdate = true` lets startup recovery route the agent to `claw-kit:update` first when a newer published claw-kit version is available
 - `autoUpdate = false` keeps version drift informational only
-- `externalPlanningSkill` only selects the planning skill name used by task 1; it does not make the skill claw-aware
+- `externalPlanningSkill` only selects the planning skill name used by the initial discussion guidance; it does not make the skill claw-aware
 - `gitnexus = true` opts a project into GitNexus-related integration behavior, but `claw-kit` still works without it
 - `goalMode = false` removes `goalMode` from workflow guidance
 - `knowledgeWriter` selects the external skill, Codex model, and reasoning depth used by asynchronous auto-doc closeout

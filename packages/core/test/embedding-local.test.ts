@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  DEFAULT_LOCAL_EMBEDDING_DIMENSIONS,
+  DEFAULT_LOCAL_EMBEDDING_MODEL,
+  resolveDefaultLocalEmbeddingDimensions,
+} from "../src/embedding-defaults.js";
+import {
   buildLocalDeviceAttemptOrder,
   createLocalEmbeddingSession,
   resolveLocalExecutionDevice,
@@ -16,6 +21,14 @@ function createEmbedding(local: MemoryEmbeddingConfig["local"] = {}): MemoryEmbe
     local,
   };
 }
+
+test("default local embedding uses Jina at 768 dimensions while preserving Snowflake alternatives", () => {
+  assert.equal(DEFAULT_LOCAL_EMBEDDING_MODEL, "jinaai/jina-embeddings-v2-base-zh");
+  assert.equal(DEFAULT_LOCAL_EMBEDDING_DIMENSIONS, 768);
+  assert.equal(resolveDefaultLocalEmbeddingDimensions("jinaai/jina-embeddings-v2-base-zh"), 768);
+  assert.equal(resolveDefaultLocalEmbeddingDimensions("Snowflake/snowflake-arctic-embed-m-v2.0"), 768);
+  assert.equal(resolveDefaultLocalEmbeddingDimensions("Snowflake/snowflake-arctic-embed-xs"), 384);
+});
 
 test("resolveLocalExecutionDevice prefers environment override over config and platform defaults", () => {
   const fromEnv = resolveLocalExecutionDevice(

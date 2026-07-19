@@ -214,7 +214,7 @@ async function waitForLatestCompletionRefreshStatus(root: string, timeoutMs = 15
   throw new Error(`Timed out waiting for completion refresh status file under ${root}`);
 }
 
-function createGitnexusShim(mode: "fallback" | "primary" | "lock-once", delayMs = 0): { binDir: string; logPath: string } {
+function createGitnexusShim(mode: "fallback" | "primary" | "lock-once" | "access-violation-once", delayMs = 0): { binDir: string; logPath: string } {
   const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-kit-gitnexus-bin-"));
   const logPath = path.join(binDir, "gitnexus.log");
   const cmdPath = path.join(binDir, "gitnexus.cmd");
@@ -235,6 +235,10 @@ if (args[0] === "analyze" && ${JSON.stringify(mode)} === "lock-once" && !fs.exis
   fs.writeFileSync(${JSON.stringify(lockMarkerPath)}, "locked once\\n", "utf8");
   process.stderr.write("database is locked\\n");
   process.exit(1);
+}
+
+if (args[0] === "analyze" && ${JSON.stringify(mode)} === "access-violation-once" && !args.includes("--force")) {
+  process.exit(0xc0000005);
 }
 
 if (args.includes("--no-ai-context") && ${JSON.stringify(mode)} === "fallback") {
@@ -510,8 +514,8 @@ test("cli plan create accepts a positional title and seeds planning discussion b
   assert.equal(writeResult.planSummary, "0/1 这是一个任务标题");
   assert.equal(writeResult.goalMode, undefined);
   assert.deepEqual(writeResult.nextsteps, [
-    "1. Use claw-kit:planning until the discussion is finished and the outcome, constraints, and material open questions are clear.",
-    "2. If execution remains, record the smallest outcome-oriented task list with the recommended command. If planning resolves the request, complete task #1 and close the plan.",
+    "1. Use claw-kit:planning to discuss and confirm the requirements and proposed solution with the user.",
+    "2. If execution remains, record the task list with the recommended command. If planning resolves the request, complete task #1 and close the plan.",
   ]);
   assert.equal((writeResult.recommendedCommands as string[])[0], 'claw search --query "<topic>"');
   assert.equal(
@@ -522,7 +526,7 @@ test("cli plan create accepts a positional title and seeds planning discussion b
   assert.equal((writeResult.plan as JsonRecord).status, "process.discussing");
   const plan = writeResult.plan as JsonRecord;
   const tasks = plan.tasks as JsonRecord[];
-  assert.equal(String((tasks[0] as JsonRecord).title), "Discuss and finalize requirements with the configured planning skill");
+  assert.equal(String((tasks[0] as JsonRecord).title), "Complete planning with the configured planning skill");
   assert.equal(tasks.length, 1);
 });
 
@@ -537,12 +541,12 @@ test("cli plan create accepts an explicit template flag", () => {
   assert.equal(result.command, "plan.create");
   assert.equal((plan.status as string), "process.discussing");
   assert.deepEqual(result.nextsteps, [
-    "1. Use claw-kit:planning until the discussion is finished and the outcome, constraints, and material open questions are clear.",
-    "2. If execution remains, record the smallest outcome-oriented task list with the recommended command. If planning resolves the request, complete task #1 and close the plan.",
+    "1. Use claw-kit:planning to discuss and confirm the requirements and proposed solution with the user.",
+    "2. If execution remains, record the task list with the recommended command. If planning resolves the request, complete task #1 and close the plan.",
   ]);
   assert.equal((result.recommendedCommands as string[])[0], 'claw search --query "<topic>"');
   assert.equal("goalTool" in result, false);
-  assert.equal(String((tasks[0] as JsonRecord).title), "Discuss and finalize requirements with the configured planning skill");
+  assert.equal(String((tasks[0] as JsonRecord).title), "Complete planning with the configured planning skill");
   assert.equal(tasks.length, 1);
 });
 
@@ -1821,8 +1825,8 @@ test("cli subplan create keeps task rootPlan stable and derives goal from the pa
   assert.equal(childPlan.status, "process.discussing");
   assert.deepEqual(result.nextsteps, [
     "After the parent goal is completed by this subplan handoff, start the subplan goal before doing target work: Follow the claw workflow guidance and finish your goal: Implement child work: Split the risky work into a subplan",
-    "1. Use claw-kit:planning until the discussion is finished and the outcome, constraints, and material open questions are clear.",
-    "2. If execution remains, record the smallest outcome-oriented task list with the recommended command. If planning resolves the request, complete task #1 and close the plan.",
+    "1. Use claw-kit:planning to discuss and confirm the requirements and proposed solution with the user.",
+    "2. If execution remains, record the task list with the recommended command. If planning resolves the request, complete task #1 and close the plan.",
   ]);
   assert.equal((result.recommendedCommands as string[])[0], 'claw search --query "<topic>"');
   assert.equal(
@@ -2079,7 +2083,7 @@ test("cli init writes maxTasksToKeep into project.json", () => {
   assert.equal("truthDispatch" in projectConfig, false);
   assert.equal(
     ((projectConfig.memory as JsonRecord).embedding as JsonRecord).model,
-    "Snowflake/snowflake-arctic-embed-m-v2.0",
+    "jinaai/jina-embeddings-v2-base-zh",
   );
 });
 
@@ -2096,7 +2100,7 @@ test("cli init writes default maxTasksToKeep into project.json", () => {
   assert.deepEqual(projectConfig.knowledgeWriter, { externalSkill: null, model: null, reasoningEffort: "medium" });
   assert.equal(
     ((projectConfig.memory as JsonRecord).embedding as JsonRecord).model,
-    "Snowflake/snowflake-arctic-embed-m-v2.0",
+    "jinaai/jina-embeddings-v2-base-zh",
   );
 });
 
@@ -2222,7 +2226,7 @@ test("cli context auto-corrects malformed existing .claw state", () => {
     externalDocPaths: [],
     embedding: {
       provider: "local",
-      model: "Snowflake/snowflake-arctic-embed-m-v2.0",
+      model: "jinaai/jina-embeddings-v2-base-zh",
     },
   });
   assert.equal(projectConfig.goalMode, true);
@@ -2405,7 +2409,7 @@ test("cli check auto-corrects project.json into explicit protocol fields", () =>
     externalDocPaths: [],
     embedding: {
       provider: "local",
-      model: "Snowflake/snowflake-arctic-embed-m-v2.0",
+      model: "jinaai/jina-embeddings-v2-base-zh",
     },
   });
   assert.equal(projectConfig.gitnexus, false);
@@ -2748,6 +2752,30 @@ test("completion refresh retries one transient GitNexus lock without shell warni
     .split(/\r?\n/)
     .filter((line) => line === "analyze --no-ai-context");
   assert.equal(analyzeCalls.length, 2);
+});
+
+test("completion refresh rebuilds once after a Windows GitNexus access violation", { skip: process.platform !== "win32" }, async () => {
+  const root = createFixture("direct-gitnexus-access-violation");
+  const shim = createGitnexusShim("access-violation-once");
+  const env = {
+    CLAW_EMBEDDING_MOCK: "1",
+    PATH: `${shim.binDir}${path.delimiter}${process.env.PATH ?? ""}`,
+  };
+  runClaw(["init", "--name", "GitNexus Access Violation", "--gitnexus", "true"], root, env);
+  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "access violation recovery\n", "utf-8");
+
+  const result = runClawRaw(["direct"], root, env);
+  assert.equal(result.status, 0);
+  const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
+  assert.equal(refreshStatus.ok, true);
+  assert.equal((refreshStatus.gitnexus as JsonRecord).enabled, true);
+  const analyzeCalls = fs.readFileSync(shim.logPath, "utf-8")
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith("analyze "));
+  assert.deepEqual(analyzeCalls, [
+    "analyze --no-ai-context",
+    "analyze --force --no-ai-context",
+  ]);
 });
 
 test("cli init gitignore ignores project-override.json by default", () => {

@@ -120,8 +120,8 @@ export const configGuideContent = {
         group: "Memory",
         title: "How embedding-backed recall is configured",
         summary: "Defines the embedding provider and model used when memory indexing is enabled.",
-        detail: "Most projects stay on the local default unless they need a different provider, model, or runtime device setup.",
-        example: `"memory": { "embedding": { "provider": "local", "model": "Snowflake/snowflake-arctic-embed-m-v2.0" } }`
+        detail: "The local default is jinaai/jina-embeddings-v2-base-zh at 768 dimensions. Snowflake/snowflake-arctic-embed-m-v2.0 remains a higher-resource 768-dimensional alternative. Snowflake/snowflake-arctic-embed-xs is a 384-dimensional low-resource or English-oriented alternative, but it is not recommended for Chinese-heavy recall.",
+        example: `"memory": { "embedding": { "provider": "local", "model": "jinaai/jina-embeddings-v2-base-zh", "outputDimensionality": 768 } }`
       },
       {
         id: "gitnexus",
@@ -249,8 +249,8 @@ export const configGuideContent = {
         group: "记忆",
         title: "embedding 配置怎么写",
         summary: "定义 memory 开启时使用的 embedding provider 和 model。",
-        detail: "大多数项目保持本地默认即可，只有在 provider、model 或运行设备确实要调整时才需要改。",
-        example: `"memory": { "embedding": { "provider": "local", "model": "Snowflake/snowflake-arctic-embed-m-v2.0" } }`
+        detail: "本地默认模型是 768 维的 jinaai/jina-embeddings-v2-base-zh。Snowflake/snowflake-arctic-embed-m-v2.0 是资源占用更高的 768 维候选；Snowflake/snowflake-arctic-embed-xs 是面向低资源或英文场景的 384 维候选，但中文语义召回明显退化，不建议用于中文为主的项目。",
+        example: `"memory": { "embedding": { "provider": "local", "model": "jinaai/jina-embeddings-v2-base-zh", "outputDimensionality": 768 } }`
       },
       {
         id: "gitnexus",
@@ -288,7 +288,8 @@ export const configGuideContent = {
     "externalDocPaths": ["docs/", "architecture/"],
     "embedding": {
       "provider": "local",
-      "model": "Snowflake/snowflake-arctic-embed-m-v2.0"
+      "model": "jinaai/jina-embeddings-v2-base-zh",
+      "outputDimensionality": 768
     }
   }
 }`

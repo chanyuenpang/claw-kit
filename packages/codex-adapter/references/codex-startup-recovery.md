@@ -40,7 +40,7 @@ When `@claw-kit` is used in a real project thread:
   - create or bind one with `claw plan create`
 - newly created planning-enabled task:
   - start in `process.discussing`
-  - let task 1 refine the request into the smallest outcome-oriented task list
+  - let task 1 discuss and confirm the requirements and proposed solution with the user, then prepare the task list
   - commit the planning result through the task's template guidance when execution remains, or close the plan when planning resolves the request
 - task already in `process.discussing`:
   - continue discussion or planning refinement
