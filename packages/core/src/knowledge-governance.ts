@@ -28,6 +28,15 @@ export function snapshotKnowledgeMarkdown(truthDir: string): KnowledgeMarkdownSn
   return snapshot;
 }
 
+export function changedKnowledgeMarkdownPaths(
+  before: KnowledgeMarkdownSnapshot,
+  after: KnowledgeMarkdownSnapshot,
+): string[] {
+  return [...new Set([...Object.keys(before), ...Object.keys(after)])]
+    .filter((relativePath) => before[relativePath] !== after[relativePath])
+    .sort((left, right) => left.localeCompare(right));
+}
+
 export function governChangedKnowledgeMarkdown(input: {
   truthDir: string;
   before: KnowledgeMarkdownSnapshot;

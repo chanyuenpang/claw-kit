@@ -9,6 +9,7 @@ import {
 } from "../src/knowledge-document.js";
 import {
   governChangedKnowledgeMarkdown,
+  changedKnowledgeMarkdownPaths,
   snapshotKnowledgeMarkdown,
 } from "../src/knowledge-governance.js";
 
@@ -130,6 +131,13 @@ test("governChangedKnowledgeMarkdown trims only files changed after the snapshot
   assert.equal(result.removedSections, 2);
   assert.equal(analyzeKnowledgeDocument(fs.readFileSync(changedPath, "utf-8")).evolutionSections.length, 2);
   assert.equal(analyzeKnowledgeDocument(fs.readFileSync(unchangedPath, "utf-8")).evolutionSections.length, 4);
+});
+
+test("changedKnowledgeMarkdownPaths reports additions, edits, and deletions", () => {
+  assert.deepEqual(changedKnowledgeMarkdownPaths(
+    { "deleted.md": "old", "edited.md": "old", "same.md": "same" },
+    { "added.md": "new", "edited.md": "new", "same.md": "same" },
+  ), ["added.md", "deleted.md", "edited.md"]);
 });
 
 function buildDocument(historyCount: number): string {

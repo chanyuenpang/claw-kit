@@ -37,6 +37,7 @@ import {
   switchTask,
   tryCaptureKnowledgeStop,
   claimKnowledgeFinalizationJob,
+  changedKnowledgeMarkdownPaths,
   listRetryableKnowledgeFinalizationJobs,
   governChangedKnowledgeMarkdown,
   normalizeTruthMarkdownEncoding,
@@ -69,6 +70,7 @@ import {
 import { consumeBufferedHookInput } from "./knowledge-hook-preflight.js";
 import { resolveInvocationHost, withoutInvocationHost, type ClawHost } from "./invocation-host.js";
 import { runOpencodeKnowledgeWriter } from "./opencode-runner.js";
+import { captureKnowledgeGitState, commitKnowledgeDocumentation } from "./knowledge-git-commit.js";
 
 const CLI_VERSION = readCliVersion();
 
@@ -1408,11 +1410,10 @@ async function runInternalKnowledgeFinalize(args: string[]): Promise<void> {
   try {
     const project = resolveProjectContext(running.projectRoot);
     const useBuiltInAutomation = usesBuiltInKnowledgeWriter(running);
-    const knowledgeBefore = useBuiltInAutomation
-      ? snapshotKnowledgeMarkdown(project.truthDir)
-      : null;
+    const knowledgeBefore = snapshotKnowledgeMarkdown(project.truthDir);
+    const knowledgeGitState = captureKnowledgeGitState(running.projectRoot, project.truthDir);
     const writerRun = await runKnowledgeWriterForJob(running);
-    const knowledgeGovernance = useBuiltInAutomation && knowledgeBefore
+    const knowledgeGovernance = useBuiltInAutomation
       ? governChangedKnowledgeMarkdown({
           truthDir: project.truthDir,
           before: knowledgeBefore,
@@ -1420,6 +1421,10 @@ async function runInternalKnowledgeFinalize(args: string[]): Promise<void> {
         })
       : undefined;
     const truthEncoding = normalizeTruthMarkdownEncoding(project);
+    const changedKnowledgePaths = changedKnowledgeMarkdownPaths(
+      knowledgeBefore,
+      snapshotKnowledgeMarkdown(project.truthDir),
+    );
     queueCompletionRefresh({
       cwd: running.projectRoot,
       taskName: running.taskName,
@@ -1451,6 +1456,12 @@ async function runInternalKnowledgeFinalize(args: string[]): Promise<void> {
       finalResponse: writerRun.finalResponse,
       ...(knowledgeGovernance ? { knowledgeGovernance } : {}),
       truthEncoding,
+    });
+    commitKnowledgeDocumentation({
+      state: knowledgeGitState,
+      truthDir: project.truthDir,
+      changedPaths: changedKnowledgePaths,
+      message: running.taskName,
     });
   } catch (error) {
     const failed: KnowledgeFinalizationJob = {

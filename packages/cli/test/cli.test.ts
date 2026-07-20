@@ -134,6 +134,18 @@ function runClawRaw(args: string[], cwd: string, env?: NodeJS.ProcessEnv): { sta
   };
 }
 
+function runGit(args: string[], cwd: string): string {
+  const result = spawnSync("git", args, {
+    cwd,
+    encoding: "utf-8",
+    windowsHide: true,
+  });
+  if (result.status !== 0) {
+    throw new Error(`git ${args.join(" ")} failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+  }
+  return result.stdout;
+}
+
 function runClawHook(
   eventName: string,
   cwd: string,
@@ -3629,6 +3641,12 @@ test("knowledge finalization honors a custom writer without applying built-in go
     queuedAt: new Date().toISOString(),
   }), "utf-8");
 
+  runGit(["init"], root);
+  runGit(["config", "user.name", "Claw Test"], root);
+  runGit(["config", "user.email", "claw@example.test"], root);
+  runGit(["add", "."], root);
+  runGit(["commit", "-m", "baseline"], root);
+
   const finalized = runClawRaw(["internal-knowledge-finalize", "--job", jobPath], root, {
     HOME: home,
     USERPROFILE: home,
@@ -3643,6 +3661,11 @@ test("knowledge finalization honors a custom writer without applying built-in go
   assert.equal(job.adrThreadId, undefined);
   assert.equal(job.finalResponse, "Custom knowledge updated.");
   assert.equal(job.knowledgeGovernance, undefined);
+  assert.equal(runGit(["log", "-1", "--pretty=%B"], root).trim(), "no-op-task");
+  assert.equal(
+    runGit(["show", "--format=", "--name-only", "HEAD"], root).trim(),
+    ".claw/truth/features/custom-writer.md",
+  );
   const knowledge = fs.readFileSync(knowledgePath, "utf-8");
   assert.match(knowledge, /First state/u);
   assert.match(knowledge, /Second state/u);
