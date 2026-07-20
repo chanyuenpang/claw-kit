@@ -18,7 +18,8 @@
 - 内置 `knowledge-writer` 通过 top-level `scope: "session"` template 进入六任务 claw workflow，依次完成材料结论提取、证据新鲜度判断、canonical owner 搜索、Truth 维护、ADR 维护和跨文档一致性审查。writer 按内容解释所有提供的材料，不把 plan、report、closeout 命名或任何固定字段、记录形状、序列化格式当作输入 schema；source `plan.json`、相邻 report 与 finalize id 只是当前 finalizer 提供的具体 runtime inputs。task status 只解释 completed、pending 与 blocked scope，task 标题、描述、requirements 与 intentions 不能被提升为执行结果。writer 固定先维护 Truth、再维护 ADR，不设置 `truth` / `adr` / `both` / `noop` route task。direct entry 不依赖项目 `.claw`，session plan 写入用户级 runtime，不触发项目 Truth/ADR capture，因此不会为外层 finalization 再排队递归 job。
 - 内置 `knowledge-writer` 是 explicit-invocation-only skill：其共享与 Codex/OpenCode 物化入口都要求调用方明确提供 materials，不能因为普通任务看似可能产生知识而隐式触发。host-aware finalizer 通过专用 worker prompt 明确调用该 skill；foreground `using-claw-kit` 只说明自动沉淀边界，不加载或派发 writer。当前 entry 的薄路由、template-owned execution 与不暴露 storage scope 是 `create-claw-skill-entry-contract.md` 所定义通用转换合同在该 package 上的应用；共享源和物化分发 ownership 由 `shared-planning-skill-source.md` 持有。
 - 内置 SDK writer 成功返回后，detached worker 先治理该 pass 改动的 canonical Markdown，再递归检查 `.claw/truth/**/*.md` 并幂等补齐 UTF-8 BOM；dated-section trimming 是仅用于内置 writer 的确定性后处理。外部 skill 不建立治理快照或执行 dated trimming，但仍经过通用编码归一化与后续 finalization lifecycle。
-- finalization 成功路径的顺序是 writer 完成、changed-document evolution governance、Truth/ADR 编码归一化、启动 completion recall refresh、向相邻 report 写入 `knowledge_finalization` 结果，再持久化 `succeeded` job。writer、governance、编码归一化、refresh 或结果持久化失败会进入原有重试路径。
+- finalization 成功路径的顺序是 writer 完成、changed-document evolution governance、Truth/ADR 编码归一化、启动 completion recall refresh、向相邻 report 写入 `knowledge_finalization` 结果、持久化 `succeeded` job，最后尝试 Git commit。commit 只包含 writer 开始前干净且本轮发生净变化的 `.claw/truth/**/*.md` 路径，message 精确使用 source `taskName`；Git 不可用、没有合格变化或 commit 失败都 fail-open，保留文档改动且不改变已经持久化的 finalizer 成功状态。
+- 自动 knowledge commit 使用从 `HEAD` 初始化的独立临时 index，并以 `--no-verify` 禁用 hooks；它不消费用户真实 index 中的无关 staged content，commit 后也只刷新本次拥有的路径。writer 开始前已有修改的 Truth 路径保持未提交。这个 ownership 边界按路径工作：若同一条原先干净的文档在 writer 运行期间被其他进程并发修改，finalizer 无法可靠区分并发内容与 writer 内容。
 - report result writer 只接受 `.claw/tasks` 内的路径，并在文件锁下按 `finalizeId` 幂等写入。成功记录包含 result、recorded time、attempts、host、可用时的 writer thread，以及 Truth encoding 统计；重试命中已有同 id 结果时不得重复追加。
 - finalizer 不主动删除 report。report 随整个 task directory 归档，并只在 task retention 裁剪对应 archived task 时删除；这一 retention 生命周期及默认值由 `task-layout-and-session-bindings.md` 记录，决策理由由 `../adr/hook-owned-two-phase-knowledge-finalization.md` 拥有。
 - 主 agent 不再判断或派发 knowledge writer；combined writer 的返回文本不控制 fixed Truth→ADR deposition sequence，异步知识采集也不能反向接管 plan lifecycle 或 session binding。
@@ -37,6 +38,7 @@
 - `packages/cli/src/codex-transcript.ts`：按 turn 识别既有的成功 `task.done` 返回，并恢复最近的前置结论。
 - `packages/cli/src/cli.ts`：Codex-facing CLI lifecycle 与 hook entry；在 Codex `Stop` 时把 transcript conclusions 交给 sidecar。
 - `packages/core/src/knowledge-governance.ts`：本轮 changed canonical files 的 dated-section governance 与裁剪报告。
+- `packages/cli/src/knowledge-git-commit.ts`：finalizer 前置 Git dirtiness 快照、独立临时 index、path-limited commit 与 fail-open Git 结果。
 - `packages/codex-adapter/hooks/hooks.json`：SessionStart / Stop hook surface。
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md` 与 `packages/opencode-adapter/skills/using-claw-kit/SKILL.md`：自动沉淀及正常 Truth workflow output 的入口提示。
 - `shared/skills/knowledge-writer/`：combined stewardship workflow、session template 与 fallback 的规范 skill 源。
@@ -48,6 +50,7 @@
 - 不能根据目录扫描或 hook event 推断 active plan；无 session binding 时必须保持无恢复状态。
 - report 写入时不可把 pending ended plan 和已经恢复的 parent plan 都当成同一 turn 的 owner，否则会产生双写和不确定的 closeout 证据。
 - 异步 writer 的完成状态与前台 `claw plan done` 成功是两件事；不得把后者表述为已完成 truth / ADR 沉淀。
+- 自动 commit 的隔离粒度是 writer 开始前的路径 dirtiness，不是行级 ownership；不得把同一干净文档上的并发写入表述为可分离内容。
 
 ## 验证标准
 
@@ -59,6 +62,7 @@
 - 内置 real-worker 验收必须确认已安装 skill locator、自动 `scope: session`、六任务 guidance-backed 固定顺序 completion、Truth/ADR 协同审查、项目 canonical 输出边界，以及没有递归 finalization。外部 writer 验收改为确认动态 skill prompt、无内置治理注入、无治理快照或 dated trimming，并接受任意达到 `end.completed` 且 tasks 非空并全部完成的 session workflow；不完整 workflow 仍失败。
 - 分发面检查应确认共享 entry 与 Codex/OpenCode 物化 entry 都保留 explicit-invocation-only description，物化副本除生成标记外与共享源一致；OpenCode worker prompt 必须明确加载 `claw-kit:knowledge-writer` 并传入 supplied materials，而不是依赖隐式 skill discovery。
 - knowledge finalization 回归应覆盖 changed-file governance、无 BOM Markdown 的自动修复、重复运行幂等、governance 与编码归一化先于 refresh、result 先于 `succeeded` job 持久化，以及 report 保留。
+- Git commit 回归应覆盖 exact source task message、仅提交 writer 前干净的净变化 Markdown、保留既有 dirty Truth 与无关 staged content、无变化 no-op、commit 失败后文档与成功 finalizer 状态保持，以及 custom writer 同样经过通用 commit lifecycle。
 - report result 回归应确认 `.claw/tasks` 内的 write、同 `finalizeId` 去重和原始 turn entry 保留；越界路径必须被拒绝，result 写回失败必须进入重试且不得伪造成功 job。
 - runtime 回归需要同时覆盖健康 context 静默、缺失时的英文 consent-required error、无固定 repair command、SessionStart 授权 prompt 前置、adapter 依赖归属和 hook 的 Codex host 标记。
 - sidecar 重试应能让先前因 runtime 发现失败的 finalization job 成功；使用同一 context runtime 再次执行时不得重复沉淀已有 truth / ADR。
