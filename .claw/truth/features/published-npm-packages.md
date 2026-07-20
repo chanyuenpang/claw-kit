@@ -6,7 +6,7 @@
 ## 当前行为
 
 - `claw-kit` 发布两个 npm 包：`@veewo/claw-core` 提供核心 `.claw` harness 语义，`@veewo/claw` 提供 `claw` CLI 并精确依赖同版本的 `@veewo/claw-core`。
-- 当前最新已验证发布版本线为 `0.1.87`。release commit `aaa00adf6dbb86b79e1055bdea0320de011f0009` 同时是本地 `main`、`origin/main` 与 tag `v0.1.87`；Codex marketplace manifest 为 `0.1.87+codex.20260720175041`。
+- 当前最新已验证发布版本线为 `0.1.88`。release commit `3ff4bbf08cb4668fc75ae2176146cab5c4a38d20` 同时是本地 `main`、`origin/main` 与 annotated tag `v0.1.88` 的 peeled commit；Codex marketplace manifest 为 `0.1.88+codex.20260720112619`。
 - release version bump 覆盖 root、lockfile、core、CLI、Codex/OpenClaw/OpenCode adapters、内部 `@veewo/claw-core` 依赖和 Codex plugin manifest。root `package.json.version` 同时是全部 plugin `TEMPLATE.json` 与 built-in default template 的版本权威。
 - 模板版本维护顺序固定为 `npm run sync:template-versions`、`npm run sync:shared-skills`、`npm run check:template-versions`。`npm run verify:release` 与 `npm run publish:release` 复用只读版本断言，禁止发布时隐式修复 stale template。
 - owner 直接从 `main` 交付。发布前必须提交并推送有价值内容，使本地 `main` 精确等于 `origin/main` 且 `git status --porcelain` 为空；不得用 stash、临时分支或 PR 绕过门禁。
@@ -43,14 +43,6 @@
 
 <!-- state: history -->
 ## 演进记录
-
-<!-- dated: 2026-07-19 -->
-### 0.1.84 发布完成态
-
-- Release commit `ac308e5870fde61b6147d0ceb35f4f12439bd534` 已直接推送到 `origin/main`，tag 为 `v0.1.84`；发布完成边界内本地 `main`、`origin/main` 与工作树完全收敛。
-- npm registry 已确认 `@veewo/claw-core@0.1.84` 与 `@veewo/claw@0.1.84` 发布完成；CLI、core、Codex/OpenClaw/OpenCode adapter package surfaces 均对齐到 `0.1.84`，Codex plugin manifest 为 `0.1.84+codex.20260719151633`。
-- 完成报告记录的验证结果为 core `134/134`、CLI `116/116`、Codex `17/17`、OpenCode `11/11`。这些是 `0.1.84` 发布完成边界的版本化证据，不替代后续版本的当前验证。
-- npm 的 moderate audit 提示与 package field normalization warning 未阻止本轮发布；当前协议仍以 release gate、registry 回读、Git/source/tag 收敛和插件产物验证作为完成判据。
 
 <!-- dated: 2026-07-19 -->
 ### 0.1.84 本机 update 完成态
@@ -94,3 +86,13 @@
 - 完成报告记录 core `148/148`、CLI `120/120`、仓库脚本 `59/59`，并通过类型检查、bundle、pack dry-run 与 release dry-run。这些数字只属于该 revision 的版本化证据，不替代未来版本的风险比例化验证。
 - 新增 template version 协议在未发布 CLI 与待发布 workspace template 之间形成自举阻塞时，本轮临时将全局 `claw` link 到已构建的 `0.1.87` workspace CLI/core；registry 可见后已恢复正式 npm 安装，`claw --version = 0.1.87`。该开发期恢复手段不授权从 workspace 安装 Codex plugin。
 - 本轮只验证 committed GitHub marketplace payload，没有直接刷新本机 Codex plugin cache；这保持 release 与后续独立用户端 `update` workflow 的完成边界分离。
+
+<!-- dated: 2026-07-20 -->
+### 0.1.88 发布与维护者 update 完成态
+
+- Release commit `3ff4bbf08cb4668fc75ae2176146cab5c4a38d20` 已直接推送到 `origin/main` 并标记为 annotated tag `v0.1.88`；该完成边界内本地 `main`、`origin/main` 与 tag peeled commit 一致，工作树干净，并已创建对应 GitHub Release。
+- npm registry 完成报告确认 `@veewo/claw-core@0.1.88` 与 `@veewo/claw@0.1.88` 已发布并通过真实 retrieval smoke；committed Codex marketplace manifest 为 `0.1.88+codex.20260720112619`，且发布插件包含 `release-claw-kit` template。
+- 该 release 的版本化验证记录为 core `148/148`、CLI `122/122`，并通过 `npm run check`、9 个 plugin template 加 built-in default 的版本检查、shared-skill 同步检查、Codex bundle `18/18`、OpenCode bundle `11/11`、双包 `npm pack --dry-run`、guarded release verifier 与 `git diff --check`。这些结果只证明该 revision 的发布候选，不把完整矩阵提升为未来每轮的固定要求。
+- 发布后的维护者 update 已从 published npm 和 official GitHub marketplace 刷新全局 CLI 与 Codex plugin：`claw --version = 0.1.88`，只启用 `claw-kit@claw-kit`，禁用 `claw-kit@claw-kit-local`，official marketplace source 与 active cache manifest 均为 `0.1.88+codex.20260720112619`，且 37 个交付文件逐一内容一致。
+- Codex marketplace upgrade 在 Windows Git transport 下停滞后，对同一 clean official checkout 使用 Git OpenSSL transport 做 direct `ff-only` 更新，使 source manifest 与 cache manifest 收敛；这是一条版本化恢复证据，不把特定 transport 方案提升为所有 update 的默认路径，也不授权使用 workspace payload。
+- 当前完成报告明确没有声称旧任务已热加载 `0.1.88` skill。只有重启 Codex 并创建新任务后确认 loaded skill locator，才能完成运行时采用边界；安装面一致不能替代该证据。

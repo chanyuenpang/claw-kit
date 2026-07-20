@@ -22,7 +22,7 @@ Codex-facing recall 的推荐命令统一为：
 claw search --query "<topic>"
 ```
 
-root、template 与 subplan create 不再把 direct query 放入默认 planning bridge 或强制 `nextsteps`。`claw search` 仍可出现在 `recommendedCommands`，但它只表示可选的项目文档召回能力；planning bridge 的讨论完成、effective skill fallback 与 activation 语义由 `cli-guided-plan-lifecycle.md` 决定，本 ADR 不重复拥有。普通项目 recall、canonical Truth/ADR lookup 与历史上下文查询由主 agent 直接运行 `claw search`，不会派发 researcher；代码调查的角色边界由 `investigation-tasks-use-researcher-specialist.md` 决定，当前执行合同由 `../features/codex-subagent-reuse.md` 拥有。
+root、template 与 subplan create 不再把 direct query 放入默认 planning bridge 或强制 `nextsteps`。`claw search` 仍可出现在 `commandHints`，但它只表示可选的项目文档召回能力；planning bridge 的讨论完成、effective skill fallback 与 activation 语义由 `cli-guided-plan-lifecycle.md` 决定，本 ADR 不重复拥有。普通项目 recall、canonical Truth/ADR lookup 与历史上下文查询由主 agent 直接运行 `claw search`，不会派发 researcher；代码调查的角色边界由 `investigation-tasks-use-researcher-specialist.md` 决定，当前执行合同由 `../features/codex-subagent-reuse.md` 拥有。
 
 公开 `claw context` 只投影恢复当前工作所需的最小信息：始终保留项目身份与关键路径，按存在性返回 active workflow，并只在实际修正、协议/版本异常、落后或可更新时返回诊断。内部 SessionStart 继续使用完整 context，不因公开字段精简而丢失恢复、修复或更新判断能力。
 
@@ -39,7 +39,7 @@ search CLI 的帮助与错误流合同为：
 ## Consequences
 
 - Codex agent 面向用户和技能文档时使用更清晰的 `claw search` 术语，避免把 recall 流程暴露成 OpenClaw memory 细节。
-- template create 不再为所有计划强制支付 recall 成本；需要项目知识时，agent 仍可从 `recommendedCommands`、`searchGuidance` 或显式 search skill 进入直接 query，并保持 recall 与 research 的职责边界。
+- template create 不再为所有计划强制支付 recall 成本；需要项目知识时，agent 仍可从 `commandHints`、`searchGuidance` 或显式 search skill 进入直接 query，并保持 recall 与 research 的职责边界。
 - 公开 context 更稳定、更小；内部完整对象继续支撑 SessionStart、协议修复与版本更新判断，调用方不需要在最小输出和恢复能力之间二选一。
 - search 提示由 effective config 决定而非即时健康探测，因此 context 保持轻量；索引或运行时故障只在真正调用对应能力时报告。
 - 成功 help 与参数错误使用不同输出流；脚本可从 stdout 消费 usage，并从 stderr 识别缺参失败。
@@ -67,7 +67,7 @@ search CLI 的帮助与错误流合同为：
 - `search help stdout`
 - `missing query stderr`
 - `template recall`
-- `optional recommendedCommands`
+- `optional commandHints`
 - `searchGuidance`
 - `effective config`
 - `minimal public context`

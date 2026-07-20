@@ -1,5 +1,6 @@
 ﻿# CLI-guided workflow
 
+<!-- state: current -->
 ## 结论
 
 - planning 拥有 requirements / proposed-solution refinement、scope 与 task quality；default template 与 `plan start` 拥有从讨论态进入执行态的 lifecycle bridge，`plan-review` 不再是必须单独经过的 workflow gate。
@@ -16,10 +17,10 @@
 - chain 的 `workflowGuidance`、completed-task 事件、session binding、completion hooks、plan mirror 与 Goal action 只按 mutation 前后的初始和最终 plan 状态归约一次；中间 lifecycle 状态不触发 side effect。合法的 `process.active -> process.wait -> process.active` 等同命令状态链因此不会产生虚假的 Goal 操作。
 - `claw plan write` 支持最简 positional title 入口：`claw plan write "<title>" [--goal "<text>"]`，`--goal` 可以省略。
 - 是否创建 plan 由请求是否预期产生可复用事实、决策、约束、模式或项目上下文决定，而不是按文件数、步骤数或其他维度加总复杂度。
-- `claw plan create` 在启用 planning 时只创建一个 `Complete planning with the configured planning skill` bridge task，并让 plan 先处于 `process.discussing`；该 task 同时承担 planning readiness 与 activation 边界，任务如何划分继续由 planning skill 独立拥有。default template 通过 task `guidance.onPlanStart` 声明“完成当前 task 并进入 `process.active`”；`claw plan start` 在同一次原子 mutation 中提交 planning 结果并应用这项声明，不再需要独立的 `Enter process.active` task。
-- bridge detail 与 initial discussion guidance 要求与用户讨论并确认当前阶段的 requirements 和 proposed solution，再准备 task list；具体 task shape 继续由 planning skill 独立拥有。
-- initial discussion guidance 使用 effective config 解析后的 `externalPlanningSkill`；该 effective config 包含 template `configOverride`，空值或未配置时明确回退到 `claw-kit:planning`，agent 不需要猜测 planning skill。bridge title/detail 只描述 planning outcome 和讨论内容，不再重复 skill 路由。
-- `process.discussing` 是可以跨轮次稳定停留的有效状态；plan 已存在不会自动把它升级到 `process.active`。只有后续可执行子任务明确且用户可以脱手推进时，才进入 `process.active`。
+- `claw plan create` 在启用 planning 时只创建一个 planning bridge task，并让 plan 先处于 `process.discussing`；该 task 同时承担 planning readiness 与 activation 边界，任务如何划分继续由 planning skill 独立拥有。default template 通过 task `guidance.onPlanStart` 声明“完成当前 task 并进入 `process.active`”；`claw plan start` 在同一次原子 mutation 中提交 planning 结果并应用这项声明，不再需要独立的 `Enter process.active` task。
+- Default Task 1 先区分用户是在要求执行还是进行开放讨论，再调用 effective planning skill 澄清 requirements 并准备 task list。采用 solution 前必须让用户看到其中与决策相关的内容；只有它引入 meaningful choice 时才等待用户回应，不能把复杂度或 task 数量机械转换成确认门。
+- effective planning skill 来自 project config 与 template `configOverride` 合并后的 `externalPlanningSkill`，空值或未配置时回退到 `claw-kit:planning`。`{{planningSkill}}` 同时渲染进 bridge title 与 detail，因此默认值和 override 都会直接显示实际 skill 名称。
+- `process.discussing` 表示执行已暂停、当前工作转为用户讨论。它既可作为 plan 初始状态，也可从 `process.active` 重新进入，并且可以跨轮次稳定停留；plan 已存在或方案已可执行都不会自动要求推进 lifecycle，讨论解决后才恢复到 `process.active`。
 - `plan start` 不读取 task title、语言、bridge 数量或 legacy skeleton 来推断 lifecycle。它定位当前 pending/in-progress task，按 plan 持久化的 `templateId` / `templateFile` 解析同一 template，并只执行该 task 的 `guidance.onPlanStart`；Goal Mode 仍由进入 `process.active` 后的 host action 投影拥有，不写入 planning skill 或 bridge detail。
 - `claw plan create` 的 seed plan 现在还会持久化 `plan.templateId` 和模板专属的 `plan.configOverride`，所以后续 `plan edit` / `plan done` 可以重新解析原始 template 并复用同一套 template guidance。
 - template guidance 现在以 task skeleton 的 `guidance.onDone` 为准；如果模板定义了 `guidance.onDone.choices`，任何进入 `done` 的路径都必须带上匹配的 `choiceId`，否则会触发带 choice 列表的定向错误。
@@ -40,7 +41,7 @@
 ## Route-aware compact guidance
 
 - `0.1.83` 的 live harness 曾暴露出可操作性缺口：task 尚未完成时，compact guidance 只给通用 `claw task done --id <id>`，没有暴露 choices 或真实 `--choice` 命令；省略 route 的错误也曾使用内部字段名 `choiceId`。这是历史证据，不是当前行为。
-- 当前只要 next task 定义 `guidance.onDone.choices`，`workflowGuidance.nextTask.completionChoices` 就作为唯一结构化值来源列出全部 choice id；`recommendedCommands` 只保留一条参数化的 `claw task done --id <id> --choice <choice>` 命令模板，并移除会失败的无 choice 通用 done 命令；`nextsteps` 只要求选择，不重复枚举合法值。
+- 当前只要 next task 定义 `guidance.onDone.choices`，`workflowGuidance.nextTask.completionChoices` 就作为唯一结构化值来源列出全部 choice id；`commandHints` 只保留一条参数化的 `claw task done --id <id> --choice <choice>` 命令模板，并移除会失败的无 choice 通用 done 命令；`nextsteps` 只要求选择，不重复枚举合法值。`commandHints` 只是未来 mutation 的语法与检索辅助，不定义当前下一步，也不要求立即执行。
 - 缺少必选 route 时，`PROJECT_CONFIG_INVALID` 错误使用公开 CLI 语法 `requires --choice`，同时给出 exact recovery command 与 available choices；`choiceId` 只保留为 `task` 的持久化字段名。
 - 规范完成入口仍是 `claw task done --id <number> --choice <choice-id>` 或等价的 `claw task edit --id <number> --status done --choice <choice-id>`。
 
@@ -56,7 +57,7 @@
 
 - 计划生命周期、`goal.text` gate、以及 `process.active` 禁入校验：`packages/core/src/plan.ts`（`writePlan()`、`validatePlanDocument()`、`editPlan()`）
 - `editPlan` 的共享 ticket queue 串行化、显式字段更新与 plan/task mutation 分层：`packages/core/src/io.ts`、`packages/core/src/plan.ts`
-- `prepare.requirements` guidance、`process.wait` / `process.discussing` / `process.resumedActive` 语义，以及推荐命令顺序：`packages/core/src/workflow-guidance.ts`、`packages/core/src/workflow-guidance.config.json`
+- `prepare.requirements` guidance、`process.wait` / `process.discussing` / `process.resumedActive` 语义，以及 command hint 顺序：`packages/core/src/workflow-guidance.ts`、`packages/core/src/workflow-guidance.config.json`
 - single planning bridge 与 `guidance.onPlanStart` 声明：`packages/core/src/templates/plans/default.ts`
 - template-driven plan start、effective planning-skill fallback 与 current-task selection：`packages/core/src/plan.ts`、`packages/core/src/plan-templates.ts`
 - CLI 的 positional title 入口、帮助文案与紧凑输出：`packages/cli/src/cli.ts`

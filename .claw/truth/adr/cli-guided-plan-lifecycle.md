@@ -16,6 +16,8 @@ Accepted
 
 入口门禁继续暴露出另一个生命周期问题：按文件数、步骤数等维度加总复杂度，会漏掉规模小但会产生长期可复用知识的请求，也会把仍需与用户讨论路线的任务过早推进到 Goal Mode。plan 的创建价值与 active 执行的可脱手性是两个不同判断，不能因为 plan 已经存在就合并为一次激活决定。
 
+2026-07-20 的 Default Task 1 讨论进一步明确：复杂度不是可靠的确认门。真正需要保护的是用户是否已看到 decision-relevant content，以及方案是否引入需要用户决定的 meaningful choice。
+
 本轮 plan/task mutation 批处理实现还需要解决一个生命周期一致性问题：如果把同一命令中的每个 operation 当成独立 mutation，合法的中间状态会过早生成 guidance、Goal action、session binding 或 completion hooks；如果整批只在末尾提交，又无法满足语义错误时保留此前成功操作的需求。
 
 ## Decision
@@ -29,12 +31,12 @@ Accepted
 - `prepare.requirements` 的 guidance 先要求补齐 `goal.text` 与计划字段，再根据需求是否清晰决定是否切到 `process.active`；不再把 goal mode 作为这个阶段的第一动作
 - `process.active` 成为由 `goal.text` 驱动的显式执行门：`plan.goal.text` 未填写时，计划不能离开 `prepare.requirements`
 - 是否创建 plan 的入口决策由 `using-claw-kit-session-entry.md` 拥有；本 ADR 只消费其 project-plan 结果，并规定后续 `process.discussing` / `process.active` 生命周期
-- `process.discussing` 是允许跨轮次停留的稳定状态；plan 存在本身不触发 Goal Mode，也不要求自动进入 `process.active`
-- 只有后续可执行子任务已经明确，并且用户可以脱手让 agent 继续推进时，plan 才从 `process.discussing` 进入 `process.active`
-- default plan 用一个 planning bridge 同时承载 planning readiness 与 activation 边界；它要求与用户讨论并确认当前阶段的 requirements 和 proposed solution，再准备 task list。具体 task shape 由 planning skill 单独拥有，template 不重复规定；完成 draft 不足以关闭该 task，当前阶段 material open questions 解决后才调用 `plan start`
+- `process.discussing` 表示执行暂停并转入用户讨论，是允许跨轮次停留的稳定状态；它既可作为 plan 初始状态，也可从 `process.active` 重新进入。plan 存在、方案已可执行或当前轮次返回了 command hints，都不要求自动推进到 `process.active`
+- discussion 的继续条件不是复杂度或 task 数量，而是仍有需要用户决定的 meaningful choice。用户已经指定 solution，或既有 workflow / 可用证据已把路线充分确定时，可以直接规划和执行；agent 自己刚提出且涉及用户取舍的候选不能在同一轮自动升级为共同决定
+- default plan 用一个 planning bridge 同时承载 planning readiness 与 activation 边界；Task 1 先区分 action instruction 与 open-ended discussion，再用 effective planning skill 澄清 requirements 并准备 task list。采用 solution 前必须让用户看到 decision-relevant content；只有它引入 meaningful choice 时才等待回应。具体 task shape 由 planning skill 单独拥有，template 不重复规定；当前阶段 material open questions 解决后才调用 `plan start`
 - shared planning skill 不新增强制的实施后 `user-review` task、同一 plan 的跨轮反馈循环或独立 review lifecycle；若工作可预见会反复修改，planning 可以询问用户是否要在 closeout 前增加 final `manual-review` task，但只在用户明确请求时加入。这是用户选择的 task-shape 扩展，不是默认 lifecycle stage；问题仍是执行前过早越过 solution discussion，而该门禁已经由 default planning bridge 与 shared planning 合同拥有。当前规则文案与实现锚点由 `.claw/truth/features/shared-planning-skill-source.md` 维护
 - plan-start state change 由 current template task 的 `guidance.onPlanStart` 声明；default template 声明 `completeTask: true` 与 `status: "process.active"`，`plan start` 只提交 refined fields、追加 outcome tasks 并应用这项声明，不检查 task title、语言、bridge 数量或 legacy plan shape
-- initial discussion guidance 展示的 skill 名称必须来自 project config 与 template `configOverride` 合并后的 effective `externalPlanningSkill`；未设置时固定回退到 `claw-kit:planning`。planning bridge 的 title/detail 不再重复这项路由信息
+- planning bridge 展示的 skill 名称必须来自 project config 与 template `configOverride` 合并后的 effective `externalPlanningSkill`；未设置时固定回退到 `claw-kit:planning`。`{{planningSkill}}` 同时渲染进 title 与 detail，不能只渲染 detail 或硬编码默认 skill
 - foreground lifecycle 不再派发 knowledge writer；`process.allTasksDone` 只要求在 `plan done` 前持久化 retrospective 与 durable `keyDecisions`
 - plan completion 登记 pending turn owner，下一次 Stop/session-idle 才由 `hook-owned-two-phase-knowledge-finalization.md` 所定义的 sidecar 捕获 report 并异步排队一次 combined `knowledge-writer` pass
 - knowledge finalization 不阻塞 foreground closeout；它的失败、重试和完成状态不改变 canonical plan completion
@@ -48,7 +50,7 @@ Accepted
 - Codex `update_plan` 只在 mutation 前后的完整 host plan 投影发生变化时生成；metadata-only、detail-only 或其他不改变投影的 mutation 不重复同步。只要 action 被生成，`input.plan` 仍必须是完整 plan 数组，不改成增量 patch
 - Codex create 类 compact response 只在 discussion 阶段返回完整 `plan`，并在返回完整 plan 时省略重复的 `planSummary`；其他阶段只返回紧凑摘要。该字段裁剪不改变 canonical plan 或非 Codex surface
 - 自动 consumer 是 code-mode 调用中的固定程序；内嵌 driver 是 Codex 实际执行面，独立 bundled consumer 是可测试 source contract。具体实现与二者一致性由 `codex-plan-mutations-use-fixed-code-mode-consumer.md` 唯一拥有
-- `recommendedCommands` 只表达可执行的 CLI 命令；code-mode 同调用消费是 adapter 执行合同，不伪装成 CLI command
+- workflow guidance 字段原子迁移为 `commandHints`，不接受 legacy `recommendedCommands` alias，也不双写或提供 fallback。`commandHints` 只用于降低未来 CLI mutation 的语法记忆与检索成本，不定义当前下一步，也不要求立即执行；stage 与 current task 拥有当前工作语义，code-mode 同调用消费则是独立的 adapter 执行合同
 - 所有 `hostActions` 固定使用 `schemaVersion = 1`；action envelope 的最小字段与 Codex-only consumer 边界由 `codex-plan-mutations-use-fixed-code-mode-consumer.md` 唯一拥有，本 ADR 不再为 `meta` 或事件字段建立第二份合同
 - consumer 按 CLI 返回顺序和 action id 至多消费一次；CLI mutation 成功后若 host action 失败，只重试对应 action，不回滚 canonical CLI plan state
 - 历史设计曾允许同调用消费不可用时退回分离 host tool 调用；当前 Codex 合同已由 `codex-plan-mutations-use-fixed-code-mode-consumer.md` 收敛为 fail closed，不再提供 direct-call 或 split-call fallback。正确性仍不依赖 `PostToolUse` hook。
@@ -61,12 +63,12 @@ Accepted
 
 - Codex agent 可以直接从 CLI 结果拿到紧凑且顺序正确的下一步契约
 - agent 被允许用最小参数先绑定任务，不必因为初始命令缺少完整 `goal` 而卡在 `plan write` 入口
-- `prepare.requirements -> process.active` 的推进条件分成两层：知识沉淀预期只决定是否建立 plan；子任务明确度与用户可脱手性共同决定是否激活，未满足时可继续稳定停留在 `process.discussing`
-- 单一 bridge 删除了独立 activation meta-task，却没有放松 activation gate：讨论完成与执行 readiness 仍是进入 `process.active` 的同一个明确边界；旧双任务 plan 若要恢复必须走显式 lifecycle mutation，不能依赖 `plan start` 猜测其结构
+- `prepare.requirements -> process.active` 的推进条件分成两层：知识沉淀预期只决定是否建立 plan；当前阶段路线与 task list 足够明确且没有 user-owned meaningful choice 时才激活，未满足时可继续稳定停留在 `process.discussing`
+- 单一 bridge 删除了独立 activation meta-task，却没有放松 activation gate：用户必须先看到 decision-relevant solution content，meaningful choice 必须解决，但已由用户、workflow 或证据充分确定的路线不再经历冗余确认；旧双任务 plan 若要恢复必须走显式 lifecycle mutation，不能依赖 `plan start` 猜测其结构
 - 对外 plan-write / plan-status 合同更稳定，像 `release-0-1-25` 这样的版本发布可以把这组行为当作 release-worthy surface change
 - 规划语义与展示语义保持一致，计划编辑后无需额外拼装另一套状态
 - 生命周期门禁从文案建议上升为实际约束，避免无目标 active plan 进入执行态
-- host lifecycle bridge 与 shared planning skill 都要求在进入执行前讨论并确认当前阶段的 requirements 与 proposed solution；当下游路线依赖未知证据时，shared planning 进一步把 decisive checkpoint 及其后续 planning task 定义为当前阶段方案。bridge 拥有 activation gate，task shape 与 staged-planning 决策仍由 `shared-planning-skill-source.md` 拥有
+- host lifecycle bridge 与 shared planning skill 都要求在采用另一条 solution 前披露 decision-relevant content，并只对 meaningful choice 等待用户回应；当下游路线依赖未知证据时，shared planning 进一步把 decisive checkpoint 及其后续 planning task 定义为当前阶段方案。bridge 拥有 activation gate，task shape 与 staged-planning 决策仍由 `shared-planning-skill-source.md` 拥有
 - 不引入 mandatory post-implementation review loop，避免用一套新的 lifecycle 机制重复解决执行前 solution discussion 已拥有的问题；可预见反复修改时的 final `manual-review` 只有用户选择后才成为普通 plan task，未选择时不会出现，后续用户反馈仍按实际目标和现有 plan mutation surface 处理，而不是由 planning skill 预置固定反馈流程
 - finalizer-owned `knowledge-writer` 以一次 combined pass 维护 Truth 与 ADR，不作为 main-agent specialist 或 `workflowGuidance` delegation
 - root plan closeout 需要先补齐 retrospective 和 `keyDecisions`；`claw plan done` 只提交 completion state、binding transition 与 completion refresh，不等待 knowledge job
@@ -91,6 +93,15 @@ Accepted
 - 语法预校验与逐步语义提交兼顾了零提交的输入错误边界和可恢复的部分成功语义；调用方可从结构化 partial 结果定位失败 operation，而不需要猜测哪些前置步骤已落盘。
 - 初始到最终状态的净归约避免合法中间状态产生虚假的 Goal 或 completion 操作，同时保持最终 plan mirror 与 canonical plan 一致。
 
+<!-- state: history -->
+## Evolution history
+
+<!-- dated: 2026-07-20 -->
+### Replaced blanket solution confirmation with a meaningful-choice gate
+
+早期合同把 planning bridge 描述成一律“讨论并确认 requirements 与 proposed solution”，并把 `recommendedCommands` 命令列表放在当前 guidance 旁边，容易把复杂工作变成审批仪式。新合同保留 solution disclosure，但只在存在 meaningful choice 时等待用户；`commandHints` 与 stage/current task 的职责分离，并明确不触发 lifecycle 自动推进。
+
+<!-- state: current -->
 ## Related Code
 
 - `packages/core/src/plan.ts`
@@ -147,7 +158,8 @@ Accepted
 - `minimal hostAction envelope`
 - `full projected plan change`
 - `discussion full plan without duplicate planSummary`
-- `recommendedCommands CLI semantics`
+- `commandHints CLI semantics`
+- `legacy recommendedCommands`
 - `ordered at-most-once action id consumption`
 - `historical split-call fallback superseded by fixed code-mode consumer`
 - `PostToolUse not required`

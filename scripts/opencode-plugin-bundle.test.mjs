@@ -97,8 +97,8 @@ test("OpenCode entry stays compact and guidance-led", async () => {
   assert.match(skill, /skip this skill and work directly/i);
   assert.match(skill, /claw plan create "<title>"/i);
   assert.match(skill, /follow that skill's entry route so it supplies its adjacent template file/i);
-  assert.match(skill, /Follow the returned `workflowGuidance` as the only next-step execution contract/i);
   assert.equal((skill.match(/workflowGuidance/g) ?? []).length, 1);
+  assert.match(skill, /`commandHints`/);
   assert.doesNotMatch(skill, /current prompt contains/i);
   assert.match(skill, /Keep claw harness mechanics out of normal thread replies/i);
   assert.doesNotMatch(skill, /recovered plan|recovered `workflowGuidance`|If a recovered|workflow recovery|claw context|claw search/i);

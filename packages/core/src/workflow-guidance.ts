@@ -41,7 +41,7 @@ type GuidanceStateTemplate = {
   summary: string;
   nextsteps: string[];
   notes?: string;
-  recommendedCommands?: string[];
+  commandHints?: string[];
   goalMode?: GoalModeTemplate;
   goalTool?: GoalToolTemplate;
   askUser?: {
@@ -61,7 +61,7 @@ type SessionStartRecoveredSnapshotFields = {
   planStatus: string;
   planSummary: string;
   nextSteps?: string;
-  recommendedCommands?: string;
+  commandHints?: string;
   notes?: string;
   askUser?: string;
   goalMode?: string;
@@ -146,9 +146,9 @@ function applyCreateGuidance(params: {
   const guidance = params.commandSource === "plan.create" || params.commandSource === "subplan.create"
       ? {
         ...params.guidance,
-        recommendedCommands: mergeUniqueStrings(
+        commandHints: mergeUniqueStrings(
           [recall.recommendedCommand],
-          params.guidance.recommendedCommands ?? [],
+          params.guidance.commandHints ?? [],
         ),
       }
     : params.guidance;
@@ -365,7 +365,7 @@ export async function buildPlanWorkflowGuidance(params: {
         summary: template.summary,
         nextsteps: template.nextsteps,
         ...(template.notes ? { notes: template.notes } : {}),
-        ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),
+        ...(template.commandHints ? { commandHints: template.commandHints } : {}),
       };
     }
     case "prepare.review": {
@@ -375,7 +375,7 @@ export async function buildPlanWorkflowGuidance(params: {
         summary: template.summary,
         nextsteps: template.nextsteps,
         ...(template.notes ? { notes: template.notes } : {}),
-        ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),
+        ...(template.commandHints ? { commandHints: template.commandHints } : {}),
         ...(template.askUser ? { askUser: template.askUser } : {}),
       };
     }
@@ -394,7 +394,7 @@ export async function buildPlanWorkflowGuidance(params: {
             summary: template.summary,
             nextsteps: template.nextsteps,
             ...(template.notes ? { notes: template.notes } : {}),
-            ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),
+            ...(template.commandHints ? { commandHints: template.commandHints } : {}),
           },
         });
       }
@@ -423,7 +423,7 @@ export async function buildPlanWorkflowGuidance(params: {
           summary: template.summary,
           nextsteps: template.nextsteps,
           ...(template.notes ? { notes: template.notes } : {}),
-          ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),
+          ...(template.commandHints ? { commandHints: template.commandHints } : {}),
           ...(template.goalTool && shouldEmitBlockedGoalTool && goalModeEnabled && hasGoal && !suppressGoalFields
             ? { goalTool: buildGoalTool(plan.goal.text, template.goalTool) }
             : {}),
@@ -438,7 +438,7 @@ export async function buildPlanWorkflowGuidance(params: {
           summary: template.summary,
           nextsteps: template.nextsteps,
           ...(template.notes ? { notes: template.notes } : {}),
-          ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),
+          ...(template.commandHints ? { commandHints: template.commandHints } : {}),
         };
         return applyCreateGuidance({
           commandSource,
@@ -488,7 +488,7 @@ export async function buildPlanWorkflowGuidance(params: {
         ...(template.goalTool && goalModeEnabled && (justEnteredProcess || resumedIntoActive) && hasGoal && !suppressGoalFields
           ? { goalTool: buildGoalTool(plan.goal.text, template.goalTool) }
           : {}),
-        ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),
+        ...(template.commandHints ? { commandHints: template.commandHints } : {}),
       };
       return applyCreateGuidance({
         commandSource,
@@ -517,7 +517,7 @@ export async function buildPlanWorkflowGuidance(params: {
         ...(template.goalTool && goalModeEnabled && previousStatus === "process.active" && hasGoal && !suppressGoalFields
           ? { goalTool: buildGoalTool(plan.goal.text, template.goalTool) }
           : {}),
-        ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),
+        ...(template.commandHints ? { commandHints: template.commandHints } : {}),
       };
     }
     case "end.closed":
@@ -527,7 +527,7 @@ export async function buildPlanWorkflowGuidance(params: {
         stage: template.stage as WorkflowGuidance["stage"],
         summary: template.summary,
         nextsteps: template.nextsteps,
-        ...(template.recommendedCommands ? { recommendedCommands: template.recommendedCommands } : {}),
+        ...(template.commandHints ? { commandHints: template.commandHints } : {}),
       };
     }
   }
@@ -594,7 +594,7 @@ async function applyTemplateTaskDoneGuidance(params: {
   }
 
   const choiceStep = `Select one completion choice before completing task #${choiceTask.id}.`;
-  const retainedCommands = (mergedGuidance.recommendedCommands ?? [])
+  const retainedCommands = (mergedGuidance.commandHints ?? [])
     .filter((command) => !/^claw task done\b/.test(command));
   const choiceCommand = `claw task done --id ${choiceTask.id} --choice <choice>`;
   return {
@@ -607,7 +607,7 @@ async function applyTemplateTaskDoneGuidance(params: {
       ...(choiceTask.detail ? { detail: choiceTask.detail } : {}),
       completionChoices: choiceIds,
     },
-    recommendedCommands: mergeUniqueStrings(retainedCommands, [choiceCommand]),
+    commandHints: mergeUniqueStrings(retainedCommands, [choiceCommand]),
   };
 }
 
@@ -617,7 +617,7 @@ function overrideWorkflowGuidance(
     summary?: string;
     nextsteps?: string[];
     notes?: string;
-    recommendedCommands?: string[];
+    commandHints?: string[];
     nextTaskId?: number;
   },
   plan: PlanDocument,
@@ -629,8 +629,8 @@ function overrideWorkflowGuidance(
       ? { nextsteps: normalizeGuidanceSteps(mergeUniqueStrings(guidance.nextsteps, route.nextsteps)) }
       : {}),
     ...(route.notes !== undefined ? { notes: route.notes } : {}),
-    ...(route.recommendedCommands !== undefined
-      ? { recommendedCommands: mergeUniqueStrings(guidance.recommendedCommands ?? [], route.recommendedCommands) }
+    ...(route.commandHints !== undefined
+      ? { commandHints: mergeUniqueStrings(guidance.commandHints ?? [], route.commandHints) }
       : {}),
     ...(route.nextTaskId !== undefined
       ? buildNextTaskOverride(plan, route.nextTaskId)
@@ -644,7 +644,7 @@ function replaceWorkflowGuidance(
     summary?: string;
     nextsteps?: string[];
     notes?: string;
-    recommendedCommands?: string[];
+    commandHints?: string[];
     nextTaskId?: number;
   },
   plan: PlanDocument,
@@ -655,7 +655,7 @@ function replaceWorkflowGuidance(
     summary: route.summary ?? guidance.summary,
     nextsteps: normalizeGuidanceSteps(route.nextsteps ?? []),
     notes: route.notes,
-    recommendedCommands: route.recommendedCommands ? [...route.recommendedCommands] : undefined,
+    commandHints: route.commandHints ? [...route.commandHints] : undefined,
     ...nextTaskOverride,
   };
 }
@@ -704,7 +704,7 @@ export interface SessionStartRecoveredParams {
   planStatus: string;
   planSummary: string;
   nextsteps: string[];
-  recommendedCommands: string[];
+  commandHints: string[];
   notes: string;
   askUser: string;
   goalMode: string;
@@ -737,7 +737,7 @@ const FALLBACK_SESSION_START_RECOVERED: SessionStartRecoveredTemplate = {
     planStatus: "- plan status: {{planStatus}}",
     planSummary: "- plan summary: {{planSummary}}",
     nextSteps: "- next steps: {{nextSteps}}",
-    recommendedCommands: "- recommended commands: {{recommendedCommands}}",
+    commandHints: "- command hints: {{commandHints}}",
     notes: "- notes: {{notes}}",
     askUser: "- ask user: {{askUser}}",
     goalMode: "- goal mode: {{goalMode}}",
@@ -777,9 +777,9 @@ export function buildSessionStartRecoveredPrompt(params: SessionStartRecoveredPa
   if (fields.nextSteps && params.nextsteps.length > 0) {
     lines.push(renderTemplateString(fields.nextSteps, { ...baseVars, nextSteps: params.nextsteps.join(" | ") }));
   }
-  if (fields.recommendedCommands && params.recommendedCommands.length > 0) {
+  if (fields.commandHints && params.commandHints.length > 0) {
     lines.push(
-      renderTemplateString(fields.recommendedCommands, { ...baseVars, recommendedCommands: params.recommendedCommands.join(" | ") }),
+      renderTemplateString(fields.commandHints, { ...baseVars, commandHints: params.commandHints.join(" | ") }),
     );
   }
   if (fields.notes && params.notes) {

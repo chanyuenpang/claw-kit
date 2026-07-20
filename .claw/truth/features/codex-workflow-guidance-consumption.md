@@ -4,20 +4,20 @@
 ## 当前行为
 
 - Codex adapter 应把 CLI 从 `workflowGuidance` 投影出的 stage-relevant contract 视为主合同，但 planning 自身现在负责计划质量，不再把 standalone `plan-review` 当成进入下一阶段的必经门。
-- 每次 claw plan mutation 都由固定 v5 code-mode driver 先消费 `hostActions`，再只向 Agent 返回当前阶段所需的 compact 字段，例如 `stage`、`planSummary`、`nextTask`、`recommendedCommands`、`askUser` 与需要时的 `completionRefresh`。root `plan.done` 额外暴露 `planPath`、final `nextsteps` 与 `achievement`；普通 mutation 和 subplan parent-resume 不制造 terminal completion signal。
+- 每次 claw plan mutation 都由固定 v6 code-mode driver 先消费 `hostActions`，再只向 Agent 返回当前阶段所需的 compact 字段，例如 `stage`、`planSummary`、`nextTask`、`commandHints`、`askUser` 与需要时的 `completionRefresh`。root `plan.done` 额外暴露 `planPath`、final `nextsteps` 与 `achievement`；普通 mutation 和 subplan parent-resume 不制造 terminal completion signal。
 - `packages/cli/src/cli.ts` 的 `buildHostActions()` 继续生成 native schema-v1 `update_plan`、`create_goal` 与 `update_goal`，但每个 action envelope 只保留 `schemaVersion`、用于至多一次消费的 `id`、`tool` 与真实 host `input`；Codex consumer 不读取的 `sourceEventId`、`meta.reason` 与 `meta.allowOverwrite` 不再输出。
 - `update_plan` 只在 mutation 前后的完整 Codex plan 投影实际变化时生成；metadata-only `plan.edit`、detail-only `task.edit` 与不改变任务投影的普通 `plan.done` 不重复同步。只要生成 `update_plan`，`input.plan` 仍是完整数组，而不是增量 patch。
 - Codex create 类 compact response 只在 `workflowGuidance.stage === "discussion"` 时返回完整 `plan`；返回完整 plan 时省略重复的 `planSummary`，其他阶段只保留紧凑摘要。该裁剪只影响 Codex 可见响应，不改变 canonical plan、非 Codex 输出或 host action 语义。
-- 当前 `packages/codex-adapter/skills/using-claw-kit/SKILL.md` 的 cold path 获取并校验完整 driver envelope，再以 `claw-kit:codex-driver:v5:s1` 缓存该 envelope；同线程后续 mutation 可跳过 `claw codex driver` 获取，但仍通过同一个完整 `runClawPlanMutation` wrapper 调用已缓存 `source`。只缓存 `source` 并使用 4–6 行 hot path 是已评估的后续压缩方向，不是当前实现。
+- 当前 `packages/codex-adapter/skills/using-claw-kit/SKILL.md` 的 cold path 获取并校验完整 driver envelope，再以 `claw-kit:codex-driver:v6:s1` 缓存该 envelope；同线程后续 mutation 可跳过 `claw codex driver` 获取，但仍通过同一个完整 `runClawPlanMutation` wrapper 调用已缓存 `source`。只缓存 `source` 并使用 4–6 行 hot path 是已评估的后续压缩方向，不是当前实现。
 - `planSummary` 是聊天协作中可展示的紧凑计划状态；adapter 不应期待 render blocks、widget envelope、`claw plan app` 或 `claw plan render`。
 - code-investigation-first 可由 task shape 触发，不必等待 `workflowGuidance.delegateSubagents` 明确列出；普通项目 recall、Truth/ADR lookup 与历史上下文查询不是 researcher dispatch trigger。这只定义 guidance 的触发边界，不在本文重复拥有 researcher 的 agent type、派发、复用、等待或调查顺序。
 - researcher 的当前代码调查派发、相关同线程复用、窄 brief、阻塞等待与非递归合同统一由 `.claw/truth/features/codex-subagent-reuse.md` 拥有。
 - `workflowGuidance` 不再派发 Truth/ADR writer。completed plan、相邻 report 与 job snapshot 由 Stop/session-idle sidecar 交给一次 combined `knowledge-writer` pass；main agent 不在 closure 前另行沉淀。
 - `workflowGuidance.delegateSubagents` 的历史 writer entries 已退出当前 lifecycle；该字段若用于其他 specialist，仍按 returned structured contract 消费，不能据此恢复 main-agent writer dispatch。
-- `process.wait` 和 `process.discussing` 都是暂停型 guidance：cross-host `workflowGuidance.goalTool` 继续描述 `update_goal(status="blocked")`；Codex adapter 不直接执行该 compatibility metadata，而是消费 CLI `buildHostActions` 按 committed `planStatus` 投影出的 schema-v1 `update_goal(status="complete")`，目标是在后续独立 mutation 恢复到 `process.active` 前结束当前 Goal。修复前的 `0.1.86` installed Host 偏差及当前 v5 Goal-action 幂等行为由 `codex-goal-mode-integration.md` 拥有。
+- `process.wait` 和 `process.discussing` 都是暂停型 guidance：cross-host `workflowGuidance.goalTool` 继续描述 `update_goal(status="blocked")`；Codex adapter 不直接执行该 compatibility metadata，而是消费 CLI `buildHostActions` 按 committed `planStatus` 投影出的 schema-v1 `update_goal(status="complete")`，目标是在后续独立 mutation 恢复到 `process.active` 前结束当前 Goal。修复前的 `0.1.86` installed Host 偏差及当前 v6 Goal-action 幂等行为由 `codex-goal-mode-integration.md` 拥有。
 - 当 `workflowGuidance` 在从 `process.wait` 或 `process.discussing` 恢复后返回 `goalMode` 时，adapter 应把它当成 `on_resume_process_active` 的重新激活，而不是 `plan write` 阶段的首次 Goal Mode 授权。
 - `prepare.requirements` 阶段如果 `goal.text` 缺失，adapter 应先补 goal，再补其余 plan 字段；如果需求已经完整，补完后应立即把 `plan.status` 切到 `process.active`，而不是继续停留在 requirements。
-- 启用 planning 的 `claw plan create` 会先返回 `process.discussing`，并只预置一个同时承担讨论完成门与 activation 边界的 planning bridge；adapter append downstream tasks 时必须保留该 current template task。`claw plan start` 提交 planning 结果后应用它的 `guidance.onPlanStart`，不从 task 标题、语言或数量推断 lifecycle。
+- 启用 planning 的 `claw plan create` 会先返回 `process.discussing`，并只预置一个同时承担讨论完成门与 activation 边界的 planning bridge；adapter append downstream tasks 时必须保留该 current template task。该 task 的 title 与 detail 都显示 effective planning skill，先区分执行指令与开放讨论，并只在 solution 引入 meaningful choice 时等待用户回应。`claw plan start` 提交 planning 结果后应用它的 `guidance.onPlanStart`，不从 task 标题、语言或数量推断 lifecycle。
 - `prepare.requirements` 不再返回 active goal 推荐；只有真正进入 `process.active` 后，host 才根据返回的 `goalTool` / `goalMode` 创建 thread goal。
 - adapter 不应在 `plan write` 时启动 thread goal；只有 plan 首次进入 `process.active`，并且 `workflowGuidance.goalTool.tool = create_goal` 且 `goalMode.setWhen = on_enter_process_active` 时，才应消费 active-entry goal 合同。
 - adapter 必须把“没有 `goal.text` 就不能进入 `process.active`”视为 harness hard gate，而不是可由 prompt 规避的建议。
@@ -48,7 +48,7 @@
 
 ## Plan create 的 project recall 合同
 
-- template create、root plan create 与 subplan create 现在共享同一 create-time recall guidance：`applyCreateGuidance` 把 `claw search --query "<topic>"` 放到 `recommendedCommands` 首位，但不新增或强制 recall `nextstep`。这是 planning 前可选的项目知识召回能力，用于恢复 `.claw` context、truth 和 ADR，不是代码调查。
+- template create、root plan create 与 subplan create 现在共享同一 create-time recall guidance：`applyCreateGuidance` 把 `claw search --query "<topic>"` 放到 `commandHints` 首位，但不新增或强制 recall `nextstep`。这是 planning 前可选的项目知识召回能力，用于恢复 `.claw` context、truth 和 ADR，不是代码调查。
 - create-time project recall 由主流程直接执行，不触发 `researcher`。只有 task 本身进入代码调查时，才按 task shape 派发 researcher；不能因为 create guidance 推荐了一次 `claw search` 就额外 spawn researcher。
 - Codex researcher skill 不再把 project recall、Truth/ADR lookup 或历史上下文查询描述成 dispatch trigger；它只以代码调查作为触发边界。已派发 researcher 内部以 `claw search` 开始的调查顺序由 `.claw/truth/features/codex-subagent-reuse.md` 唯一拥有。裸 `claw search` 缺少 query 时，CLI 错误提示仍直接给出标准格式 `claw search --query "<topic>"`，但普通 recall 命令由主流程直接消费。
 - create guidance 的配置源是 `packages/core/src/workflow-guidance.config.json` 中的 `planCreateRecall`，`packages/core/src/workflow-guidance.ts` 的 `applyCreateGuidance` 负责把它应用到 template/root/subplan create 结果；CLI 错误提示锚点是 `packages/cli/src/cli.ts`。
@@ -96,7 +96,7 @@
 - 对 Codex adapter，`hostActions` 是 host tool 执行的唯一来源。固定 consumer 必须按返回顺序处理 action，以 `id` 去重，校验 `schemaVersion`，并仅白名单允许 schema v1 `update_plan`、`create_goal` 与 `update_goal`。
 - `workflowGuidance.goalTool` 继续由 core 输出，以兼容其他 host 及非 Codex 消费面；Codex Agent 不得在 `hostActions` 与 `goalTool` 之间二次判断，也不得把 `goalTool` 作为另一条执行入口。
 - Agent 的职责只到提供并触发 canonical claw plan mutation。action 选择、顺序、去重、schema 校验、工具白名单、Goal 收敛和 input 投影属于固定 consumer；Agent 不读取或判断线程原有 Goal 状态。
-- consumer 遇到未知 action、未知 schema version 或不兼容 input 时必须拒绝执行；不得从 `recommendedCommands`、prompt 文案或 `goalTool` 反推并补做 host tool 调用。
+- consumer 遇到未知 action、未知 schema version 或不兼容 input 时必须拒绝执行；不得从 `commandHints`、prompt 文案或 `goalTool` 反推并补做 host tool 调用。
 
 ### 代码锚点与验证标准
 

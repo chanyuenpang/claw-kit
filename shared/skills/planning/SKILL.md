@@ -53,7 +53,7 @@ A task plan should capture:
 - ordered tasks with visible completion conditions
 - `rules`, `references`, and `keyDecisions` when they add durable execution context
 
-Planning is ready to hand off when the requirements and proposed solution for the current stage have been discussed and confirmed with the user, material open questions for that stage are resolved, and its task list is ready. When an implementation route depends on evidence, confirm the decisive checkpoint and its follow-up planning task as the current-stage solution instead of inventing a downstream implementation solution. A draft alone does not meet this bar.
+Planning is ready to hand off when the requirements and solution for the current stage are clear, material open questions for that stage are resolved, and its task list is ready. A user-specified solution or a route sufficiently determined by an established workflow or available evidence can proceed without a redundant confirmation step. Before adopting another solution, ensure the user has seen its decision-relevant content; if it introduces a meaningful choice, wait for the user's response. When an implementation route depends on evidence, use the decisive checkpoint and its follow-up planning task as the current-stage solution instead of inventing a downstream implementation solution.
 
 ## Quality bar
 
@@ -68,7 +68,7 @@ Planning is ready to hand off when the requirements and proposed solution for th
 ## How to write
 
 1. Compress the round goal into one sentence.
-2. Discuss and confirm the requirements and proposed solution for the current stage with the user; when the implementation route depends on evidence, confirm the checkpoint route rather than a speculative implementation solution.
+2. Determine whether the user already specified the solution or an established workflow or available evidence makes the route sufficiently clear. Otherwise disclose its decision-relevant content, and wait for the user when it introduces a meaningful choice. When the implementation route depends on evidence, use the checkpoint route rather than a speculative implementation solution.
 3. Clarify task boundaries before enumerating steps.
 4. Identify affected modules, shared foundations, and any real risk that changes task shape.
 5. Break reliably known work into meaningful progress checkpoints with visible completion conditions.

@@ -12,7 +12,7 @@ export type TemplateGuidanceRoute = {
   summary?: string;
   nextsteps?: string[];
   notes?: string;
-  recommendedCommands?: string[];
+  commandHints?: string[];
   nextTaskId?: number;
   label?: string;
 };
@@ -63,7 +63,7 @@ export type PlanTemplateDocument = {
 
 export const defaultPlanTemplate: PlanTemplateDocument = {
   id: "default",
-  version: "0.1.88",
+  version: "0.1.89",
   status: "process.discussing",
   goal: {
     text: "",
@@ -76,9 +76,9 @@ export const defaultPlanTemplate: PlanTemplateDocument = {
   tasks: [
     {
       id: 1,
-      title: "Complete planning with the configured planning skill",
+      title: "Complete planning with {{planningSkill}}",
       detail:
-        "Discuss and confirm the requirements and proposed solution with the user, then prepare the task list.",
+        "1. Determine whether the user's wording is an instruction to act or an open-ended discussion. 2. Use {{planningSkill}} to clarify the requirements and prepare the task list. 3. Before adopting the solution, ensure the user has seen its decision-relevant content; if it introduces a meaningful choice, wait for the user's response.",
       status: "pending",
       guidance: {
         onPlanStart: {

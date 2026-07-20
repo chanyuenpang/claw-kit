@@ -120,7 +120,7 @@ async function codexDriverRunner(
     "stage",
     "planSummary",
     "nextTask",
-    "recommendedCommands",
+    "commandHints",
     "askUser",
     "plan",
     "planReview",

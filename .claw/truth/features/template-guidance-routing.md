@@ -1,5 +1,6 @@
 ﻿# Template Guidance Routing
 
+<!-- state: current -->
 ## 结论
 
 - seed plan 现在会持久化 `plan.templateId`、可选的精确 `plan.templateFile` 和模板专属的 `plan.configOverride`，因此 runtime 可以从 plan 状态重新解析出最初的 template。skill-backed 入口应使用相邻 `TEMPLATE.json` 的精确文件路径；裸 `--template <id>` 仅保留为兼容查找面。
@@ -16,7 +17,7 @@
 - 如果 task 提供了 `choiceId`，但绑定 template 没有 `onDone` choices，则该值会被拒绝。
 - `choiceId` 如果不在允许列表中，也会被拒绝，并返回可接受的 choice ids。
 - CLI 现在同时支持 route-aware completion surfaces：`claw task done --id <number> [--choice <choice-id>]`，以及 `claw task edit --id <number> --status done --choice <choice-id>`；两者都会在同一套校验下持久化 `task.choiceId`。
-- 当 next task 定义 choices 时，agent-facing `workflowGuidance.nextTask.completionChoices` 是合法 choice ids 的唯一结构化值来源；`recommendedCommands` 只给一条参数化的 `claw task done --id <id> --choice <choice>` 模板，`nextsteps` 不重复枚举 ids，并删除缺少 choice 的通用 done 命令。缺少 route 的错误仍使用公开 `--choice` 语法并列出合法值；compact CLI surface 的当前事实由 `.claw/truth/features/cli-guided-workflow.md` 详细拥有。
+- 当 next task 定义 choices 时，agent-facing `workflowGuidance.nextTask.completionChoices` 是合法 choice ids 的唯一结构化值来源；`commandHints` 只给一条参数化的 `claw task done --id <id> --choice <choice>` 模板，`nextsteps` 不重复枚举 ids，并删除缺少 choice 的通用 done 命令。缺少 route 的错误仍使用公开 `--choice` 语法并列出合法值；compact CLI surface 的当前事实由 `.claw/truth/features/cli-guided-workflow.md` 详细拥有。
 
 ## 真实代码锚点
 

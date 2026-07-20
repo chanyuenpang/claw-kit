@@ -27,7 +27,7 @@ Accepted
 - `delegateTruth` 只作为旧 template cache 的 inert compatibility metadata 被接受；current template guidance 不拥有 knowledge writer delegation
 - `guidance.onDone.choices` 是 route-aware completion 的唯一权威来源；当模板定义了 choices 时，任何进入 `done` 的写路径都必须提供有效 `choiceId`
 - `claw task done --choice` 和 `claw task edit --status done --choice` 共享同一套 done-transition 校验
-- route-aware guidance 必须把允许值只暴露在 `nextTask.completionChoices` 这一结构化值来源中；`recommendedCommands` 只生成一条参数化的 `claw task done --id <id> --choice <choice>` 模板，`nextsteps` 只要求选择而不重复枚举允许值，并且不得返回必然失败的无 choice done 命令
+- route-aware guidance 必须把允许值只暴露在 `nextTask.completionChoices` 这一结构化值来源中；`commandHints` 只生成一条参数化的 `claw task done --id <id> --choice <choice>` 模板，`nextsteps` 只要求选择而不重复枚举允许值，并且不得返回必然失败的无 choice done 命令
 - 面向调用者的缺失 choice 错误使用 CLI flag `--choice` 与可执行 recovery command；`choiceId` 只作为 plan 中的持久化字段名
 - template-only guidance 不进入 agent-facing runtime task content，避免把模板内部路由细节泄漏到通用任务文本里
 - `guidance.onPlanStart` 与 `guidance.onDone` 都属于 template-owned declarative metadata；前者拥有 plan-start transition，后者拥有 task-done routing，二者不能互相替代

@@ -4,6 +4,18 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## Unreleased
 
+## [0.1.89] - 2026-07-20
+
+### Changed
+
+- Default planning now distinguishes action instructions from open-ended discussion, names the configured planning skill in Task 1, and pauses only when an undisclosed solution introduces a meaningful user choice
+- Workflow guidance renames `recommendedCommands` to `commandHints` as a breaking contract cleanup, with no legacy aliases, dual writes, or fallback compatibility
+- Codex and OpenCode entry guidance defines `process.discussing` as a stable execution pause that can be entered initially or resumed from `process.active`
+
+### Fixed
+
+- Command lookup hints no longer read like required lifecycle actions, reducing accidental advancement beyond the current stage and task
+
 ## [0.1.88] - 2026-07-20
 
 ### Added

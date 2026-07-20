@@ -195,7 +195,7 @@ export type WorkflowGuidance = {
     completionChoices?: string[];
   };
   notes?: string;
-  recommendedCommands?: string[];
+  commandHints?: string[];
   goalMode?: {
     recommendedObjective: string;
     allowOverwrite: true;

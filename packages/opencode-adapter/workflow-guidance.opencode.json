@@ -15,7 +15,7 @@
         "2. Move into `process.active` once requirements are clear."
       ],
       "notes": "Fill only the fields still needed to execute, such as `requirements`, `tasks`, `references`, `rules`, and `keyDecisions`. If scope is still unclear, clarify it with the user before switching to `process.active`.",
-      "recommendedCommands": [
+      "commandHints": [
         "{{editBase}} --status process.active",
         "{{editBase}} --requirements \"<summary>\" --acceptance \"<criterion>\"",
         "{{editBase}} --reference <path> --why \"<reason>\""
@@ -29,7 +29,7 @@
         "2. Move into `process.active` once requirements are clear."
       ],
       "notes": "Fill only the fields still needed to execute, such as `requirements`, `tasks`, `references`, `rules`, and `keyDecisions`. If scope is still unclear, clarify it with the user before switching to `process.active`.",
-      "recommendedCommands": [
+      "commandHints": [
         "{{editBase}} --status process.active",
         "{{editBase}} --requirements \"<summary>\" --acceptance \"<criterion>\"",
         "{{editBase}} --reference <path> --why \"<reason>\""
@@ -44,7 +44,7 @@
         "3. Move into `process.active` once requirements are clear."
       ],
       "notes": "Fill only the fields still needed to execute, such as `requirements`, `tasks`, `references`, `rules`, and `keyDecisions`. If scope is still unclear, clarify it with the user before switching to `process.active`.",
-      "recommendedCommands": [
+      "commandHints": [
         "{{editBase}} --status process.active",
         "{{editBase}} --goal \"<goal>\" --requirements \"<summary>\" --acceptance \"<criterion>\"",
         "{{editBase}} --reference <path> --why \"<reason>\""
@@ -59,7 +59,7 @@
         "3. Move into `process.active` once requirements are clear."
       ],
       "notes": "Fill only the fields still needed to execute, such as `requirements`, `tasks`, `references`, `rules`, and `keyDecisions`. If scope is still unclear, clarify it with the user before switching to `process.active`.",
-      "recommendedCommands": [
+      "commandHints": [
         "{{editBase}} --status process.active",
         "{{editBase}} --goal \"<goal>\" --requirements \"<summary>\" --acceptance \"<criterion>\"",
         "{{editBase}} --reference <path> --why \"<reason>\""
@@ -74,7 +74,7 @@
         "3. Move the plan back into `prepare.requirements` or `process.discussing`."
       ],
       "notes": "Do not create a separate review pass. Merge review criteria into planning itself.",
-      "recommendedCommands": [
+      "commandHints": [
         "{{editBase}} --requirements \"<revised summary>\" --key-decision \"<confirmed decision>\"",
         "{{editBase}} --status prepare.requirements",
         "{{editBase}} --status process.discussing"
@@ -112,7 +112,7 @@
         "4. Stop after the canonical plan transition; no separate closeout action is required from the main agent."
       ],
       "notes": "Background maintenance is fail-open and requires no main-agent action; it must not change plan completion or subplan resume.",
-      "recommendedCommands": [
+      "commandHints": [
         "{{doneBase}} --retrospective \"<summary>\" [--key-decision \"<durable decision>\"]"
       ]
     },
@@ -124,7 +124,7 @@
         "2. Continue with {{nextTaskRef}}."
       ],
       "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
-      "recommendedCommands": [
+      "commandHints": [
         "{{taskDoneCommand}}",
         "claw task edit --id <id> --status in_progress"
       ]
@@ -137,7 +137,7 @@
         "Start with {{nextTaskRef}}."
       ],
       "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
-      "recommendedCommands": [
+      "commandHints": [
         "{{taskDoneCommand}}",
         "{{doneBase}} --retrospective \"<summary>\""
       ],
@@ -159,7 +159,7 @@
         "Start with {{nextTaskRef}}."
       ],
       "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
-      "recommendedCommands": [
+      "commandHints": [
         "{{taskDoneCommand}}",
         "{{doneBase}} --retrospective \"<summary>\""
       ]
@@ -172,7 +172,7 @@
         "Resume with {{nextTaskRef}}."
       ],
       "notes": "The plan is moving back from a paused status into active execution.",
-      "recommendedCommands": [
+      "commandHints": [
         "{{taskDoneCommand}}",
         "{{doneBase}} --retrospective \"<summary>\""
       ],
@@ -194,7 +194,7 @@
         "Resume with {{nextTaskRef}}."
       ],
       "notes": "The plan is moving back from a paused status into active execution.",
-      "recommendedCommands": [
+      "commandHints": [
         "{{taskDoneCommand}}",
         "{{doneBase}} --retrospective \"<summary>\""
       ]
@@ -206,7 +206,7 @@
         "1. Resume through `process.active` when execution should continue."
       ],
       "notes": "Use `process.wait` for a real blocker or a deliberate hold. Do not keep executing while the plan is paused.",
-      "recommendedCommands": [
+      "commandHints": [
         "{{editBase}} --status process.active"
       ],
       "goalTool": {
@@ -222,7 +222,7 @@
         "1. Resume through `process.active` when execution should continue."
       ],
       "notes": "Use `process.wait` for a real blocker or a deliberate hold. Do not keep executing while the plan is paused.",
-      "recommendedCommands": [
+      "commandHints": [
         "{{editBase}} --status process.active"
       ]
     },
@@ -233,7 +233,7 @@
         "1. Resolve the discussion, then resume through `process.active`."
       ],
       "notes": "Use `process.discussing` for route discussion or decision-making. Resume execution only after the discussion is settled.",
-      "recommendedCommands": [
+      "commandHints": [
         "{{editBase}} --status process.active"
       ],
       "goalTool": {
@@ -247,10 +247,10 @@
       "summary": "The plan starts in discussion while the requirements and proposed solution are discussed and confirmed with the user.",
       "nextsteps": [
         "1. Use {{planningSkill}} to discuss and confirm the requirements and proposed solution with the user.",
-        "2. If execution remains, record the task list with the recommended command. If planning resolves the request, complete task #1 and close the plan."
+        "2. If execution remains, record the task list with the relevant command hint. If planning resolves the request, complete task #1 and close the plan."
       ],
       "notes": "A draft is not completion.",
-      "recommendedCommands": [
+      "commandHints": [
         "{{startBase}} --requirements \"<summary>\" --acceptance \"<criterion>\" --add-task \"<title>\" --detail \"<detail>\"",
         "claw task done --id 1"
       ]
@@ -271,7 +271,7 @@
         "1. Resolve the discussion, then resume through `process.active`."
       ],
       "notes": "Use `process.discussing` for route discussion or decision-making. Resume execution only after the discussion is settled.",
-      "recommendedCommands": [
+      "commandHints": [
         "{{editBase}} --status process.active"
       ]
     },
@@ -281,7 +281,7 @@
       "nextsteps": [
         "Continue the current task."
       ],
-      "recommendedCommands": [
+      "commandHints": [
         "{{taskDoneCommand}}"
       ]
     },
@@ -291,7 +291,7 @@
       "nextsteps": [
         "Continue with {{nextTaskRef}}."
       ],
-      "recommendedCommands": [
+      "commandHints": [
         "{{taskDoneCommand}}"
       ]
     },
@@ -314,7 +314,7 @@
       "nextsteps": [
         "Reopen through `prepare.requirements` before resuming, or leave it as historical context."
       ],
-      "recommendedCommands": [
+      "commandHints": [
         "{{editBase}} --status prepare.requirements"
       ]
     }
@@ -347,7 +347,7 @@
         "planStatus": "- plan status: {{planStatus}}",
         "planSummary": "- plan summary: {{planSummary}}",
         "nextSteps": "- next steps: {{nextSteps}}",
-        "recommendedCommands": "- recommended commands: {{recommendedCommands}}",
+        "commandHints": "- command hints: {{commandHints}}",
         "notes": "- notes: {{notes}}",
         "askUser": "- ask user: {{askUser}}",
         "goalMode": "- goal mode: {{goalMode}}"

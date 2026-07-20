@@ -824,7 +824,7 @@ function isTemplateGuidanceRoute(value: unknown): value is TemplateGuidanceRoute
     "summary",
     "nextsteps",
     "notes",
-    "recommendedCommands",
+    "commandHints",
     "nextTaskId",
     "label",
     // Compatibility only: older installed plugin caches may still carry this
@@ -849,9 +849,9 @@ function isTemplateGuidanceRoute(value: unknown): value is TemplateGuidanceRoute
     return false;
   }
   if (
-    candidate.recommendedCommands !== undefined &&
-    (!Array.isArray(candidate.recommendedCommands)
-      || candidate.recommendedCommands.some((command) =>
+    candidate.commandHints !== undefined &&
+    (!Array.isArray(candidate.commandHints)
+      || candidate.commandHints.some((command) =>
         typeof command !== "string"
         || !command.trim()
         || /{{\s*[a-zA-Z0-9_]+\s*}}/.test(command)))
@@ -880,7 +880,7 @@ function isTemplateGuidanceRoute(value: unknown): value is TemplateGuidanceRoute
     && candidate.summary === undefined
     && candidate.nextsteps === undefined
     && candidate.notes === undefined
-    && candidate.recommendedCommands === undefined
+    && candidate.commandHints === undefined
     && candidate.nextTaskId === undefined
     && candidate.label === undefined
     && candidate.delegateTruth === undefined

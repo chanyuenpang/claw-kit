@@ -192,7 +192,7 @@ function buildTemplate({ skillName, templateId, targetWork, templateVersion }) {
       "Keep structured execution information in template tasks, guidance, rules, and references.",
       "Keep task-ownership routing and non-template supplements in SKILL.md, and use skill-local references only when needed.",
       "Use choices only when the selected value changes the immediate downstream task or route.",
-      "When choices exist, completionChoices is the only valid-id list and recommendedCommands contains one claw task done --id <id> --choice <choice> template; do not repeat ids in nextsteps, and keep choiceId only as the persisted plan field.",
+      "When choices exist, completionChoices is the only valid-id list and commandHints contains one claw task done --id <id> --choice <choice> template; do not repeat ids in nextsteps, and keep choiceId only as the persisted plan field.",
       "Do not claim completion until the verification task is done.",
     ],
   }, null, 2)}\n`;

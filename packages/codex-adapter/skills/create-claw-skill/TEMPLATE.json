@@ -1,6 +1,6 @@
 {
   "id": "create-claw-skill",
-  "version": "0.1.88",
+  "version": "0.1.89",
   "title": "create-claw-skill",
   "status": "process.active",
   "goal": {
@@ -64,7 +64,7 @@
     {
       "id": 3,
       "title": "Validate structure and content coverage",
-      "detail": "Run `claw template validate --file <target-skill-package>/TEMPLATE.json` and confirm the returned version equals the current CLI version. Validate the skill package structure, and map important source behavior to entry, template tasks/guidance/rules/references, or the fallback document. For every task listed in choiceRequiredTasks, exercise its live workflow guidance and confirm completionChoices contains the valid ids while recommendedCommands contains exactly one claw task done --id <id> --choice <choice> template and nextsteps does not repeat the ids. Use named `--template <id>` validation only after the skill is materialized in a supported runtime registry.",
+      "detail": "Run `claw template validate --file <target-skill-package>/TEMPLATE.json` and confirm the returned version equals the current CLI version. Validate the skill package structure, and map important source behavior to entry, template tasks/guidance/rules/references, or the fallback document. For every task listed in choiceRequiredTasks, exercise its live workflow guidance and confirm completionChoices contains the valid ids while commandHints contains exactly one claw task done --id <id> --choice <choice> template and nextsteps does not repeat the ids. Use named `--template <id>` validation only after the skill is materialized in a supported runtime registry.",
       "status": "pending"
     }
   ],

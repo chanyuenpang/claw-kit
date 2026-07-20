@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-`claw-kit` 已经把 Codex 启动恢复责任收敛到 `SessionStart`，并要求 agent 在后续流程中以 `workflowGuidance` 作为唯一 next-step contract。
+`claw-kit` 已经把 Codex 启动恢复责任收敛到 `SessionStart`，并要求 agent 在后续流程中以 `workflowGuidance` 作为唯一 lifecycle contract：stage 与 current task 决定当前工作，`commandHints` 只提供命令查找辅助。
 
 这带来两个新的恢复约束：
 
@@ -41,7 +41,7 @@ Accepted
 - `claw-kit:update` 表示一个跨 host 一致的更新结果合同：同一动作同时负责更新全局 CLI 与当前 host plugin 安装面；具体步骤由已加载 adapter 的专属 `update` skill 拥有，不在 workflow 内再次选择平台
 - 恢复成功且线程里已经存在 unfinished plan 时，startup contract 必须显式告诉 agent 当前线程已有未完成计划，并要求先向用户确认是关闭当前 plan 还是继续推进它，再开始不相关的新工作
 - 注入内容只包含继续执行所需的最小 contract，不重复 project root、`.claw` 路径或 raw `plan.json`
-- 如果没有可恢复的 active workflow，则保持精简版 startup 提示：保留 `.claw` 项目识别、`using-claw-kit` 入口、当前 thread 对 Goal mode / required delegated subagents 的显式授权，以及 “follow workflowGuidance” 合同
+- 如果没有可恢复的 active workflow，则保持精简版 startup 提示：保留 `.claw` 项目识别、`using-claw-kit` 入口、当前 thread 对 Goal mode / required delegated subagents 的显式授权，以及按 stage/current task 消费 `workflowGuidance` lifecycle contract 的要求
 - 默认 startup prompt 不再重复 project root、protocol check、或要求 agent 先 “report recovered harness state”
 - 当恢复出的 root plan 最终走到 `end.completed` 时，closeout guidance 还要继续提醒同一线程中的下一项工作重新从 `using-claw-kit` 进入，而不是把 claw workflow 视为只对当前 round 生效的一次性前缀
 - 本地 Codex plugin cache 刷新继续保持为独立分发/安装面；`claw context` 的 automatic startup recovery 只负责 CLI prompt surface 与 session 恢复合同，不承担 plugin cache 自动安装语义
@@ -52,7 +52,7 @@ Accepted
 - resumed agent 可以直接看到当前 plan content，因此恢复后的第一轮更像“继续执行”而不是“重新发现计划”
 - recovered workflow 不再只是被动回显状态；它现在明确阻止 agent 跳过 unfinished plan 决策门，先做 continue-or-close 的用户确认，再决定是否允许切到不相关的新任务
 - startup recovery 继续保持为 enhancement，而不是替代 `plan write`、`plan edit`、`plan done` 和 truth/ADR deposition 的 correctness 机制
-- workflow 恢复与 `workflowGuidance` contract 保持一致，减少 adapter 在 compact 后自行发明下一步的空间
+- workflow 恢复与 `workflowGuidance` lifecycle contract 保持一致，减少 adapter 在 compact 后自行发明下一步或把 `commandHints` 误当作必须立即执行动作的空间
 - direct `sessionKey -> planPath` binding 让恢复目标确定化；没有 binding 时不会从其他 task directory 猜测计划
 - 没有 active workflow 时，系统仍然退回现有 `using-claw-kit` 入口，不增加新的恢复文案分支
 - 默认 startup prompt 现在也成为 adapter contract 的一部分：它负责声明 thread-local authorization，减少 Goal mode 与 delegated specialists 的误阻塞

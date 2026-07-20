@@ -410,13 +410,9 @@ test("writePlan seeds a planning-first root plan by default", async () => {
   assert.ok(fs.existsSync(result.planPath));
   assert.equal(result.workflowGuidance.stage, "discussion");
   assert.equal(result.workflowGuidance.goalMode, undefined);
-  assert.deepEqual(result.workflowGuidance.nextsteps, [
-    "1. Use claw-kit:planning to discuss and confirm the requirements and proposed solution with the user.",
-    "2. If execution remains, record the task list with the recommended command. If planning resolves the request, complete task #1 and close the plan.",
-  ]);
-  assert.equal(result.workflowGuidance.recommendedCommands?.[0], 'claw search --query "<topic>"');
+  assert.equal(result.workflowGuidance.commandHints?.[0], 'claw search --query "<topic>"');
   assert.equal(
-    result.workflowGuidance.recommendedCommands?.some((command) => command.startsWith("claw plan start")),
+    result.workflowGuidance.commandHints?.some((command) => command.startsWith("claw plan start")),
     true,
   );
   assert.equal(result.workflowGuidance.goalTool, undefined);
@@ -425,16 +421,12 @@ test("writePlan seeds a planning-first root plan by default", async () => {
   assert.equal(result.plan.title, "Demo task");
   assert.equal(result.plan.status, "process.discussing");
   assert.equal(result.plan.goal.text, "Ship the first plan");
-  assert.equal(result.plan.tasks[0]?.title, "Complete planning with the configured planning skill");
-  assert.match(result.plan.tasks[0]?.detail ?? "", /^Discuss and confirm the requirements and proposed solution/);
-  assert.match(result.plan.tasks[0]?.detail ?? "", /then prepare the task list\.$/);
-  assert.doesNotMatch(result.plan.tasks[0]?.detail ?? "", /process\.active|Goal Mode|Planning skill:/);
-  assert.doesNotMatch(result.plan.tasks[0]?.detail ?? "", /\btakes\b/);
+  assert.equal(result.plan.tasks[0]?.title, "Complete planning with claw-kit:planning");
   assert.equal(result.plan.tasks.length, 1);
   assert.doesNotMatch(
     [
       ...(result.workflowGuidance.nextsteps ?? []),
-      ...(result.workflowGuidance.recommendedCommands ?? []),
+      ...(result.workflowGuidance.commandHints ?? []),
       ...result.plan.tasks.flatMap((task) => [task.title, task.detail ?? ""]),
     ].join("\n"),
     /[\p{Script=Han}，：。；（）]/u,
@@ -446,22 +438,6 @@ test("writePlan seeds a planning-first root plan by default", async () => {
   assert.equal(result.planView.expanded.sections[0]?.id, "goal");
   assert.equal(result.planView.expanded.sections[0]?.defaultExpanded, false);
   assert.equal(result.planView.expanded.sections[1]?.id, "tasks");
-});
-
-test("writePlan keeps the default planning task focused on planning content", async () => {
-  const root = createFixture("plan-write-focused-planning-detail");
-
-  const result = await writePlan({
-    cwd: root,
-    taskName: "demo-task",
-    title: "Demo task",
-    goalText: "Ship the first plan",
-  });
-
-  assert.equal(
-    result.plan.tasks[0]?.detail,
-    "Discuss and confirm the requirements and proposed solution with the user, then prepare the task list.",
-  );
 });
 
 test("completing a planning-only default plan routes directly to closeout", async () => {
@@ -482,8 +458,8 @@ test("completing a planning-only default plan routes directly to closeout", asyn
 
   assert.equal(result.planStatus, "process.discussing");
   assert.equal(result.workflowGuidance.stage, "done");
-  assert.equal(result.workflowGuidance.recommendedCommands?.some((command) => command.includes("claw plan done")), true);
-  assert.equal(result.workflowGuidance.recommendedCommands?.some((command) => command.includes("claw plan resume")), false);
+  assert.equal(result.workflowGuidance.commandHints?.some((command) => command.includes("claw plan done")), true);
+  assert.equal(result.workflowGuidance.commandHints?.some((command) => command.includes("claw plan resume")), false);
 });
 
 test("planning appendTasks preserves the seeded planning task ordering", async () => {
@@ -514,7 +490,7 @@ test("planning appendTasks preserves the seeded planning task ordering", async (
   assert.deepEqual(
     plan.tasks.map((task) => ({ id: task.id, title: task.title, status: task.status })),
     [
-      { id: 1, title: "Complete planning with the configured planning skill", status: "done" },
+      { id: 1, title: "Complete planning with claw-kit:planning", status: "done" },
       { id: 2, title: "Implement the change", status: "pending" },
       { id: 3, title: "Verify the change", status: "pending" },
     ],
@@ -550,6 +526,8 @@ test("writePlan uses externalPlanningSkill in the initial discussion guidance", 
   });
 
   assert.match(result.workflowGuidance.nextsteps[0] ?? "", /^1\. Use team-planner /);
+  assert.equal(result.plan.tasks[0]?.title, "Complete planning with team-planner");
+  assert.match(result.plan.tasks[0]?.detail ?? "", /Use team-planner to clarify the requirements/);
 });
 
 test("writePlan loads a project JSON template from .claw/templates", async () => {
@@ -614,7 +592,7 @@ test("initial discussion recommends plan start only when the current template ta
   });
 
   assert.equal(
-    result.workflowGuidance.recommendedCommands?.some((command) => command.startsWith("claw plan start")) ?? false,
+    result.workflowGuidance.commandHints?.some((command) => command.startsWith("claw plan start")) ?? false,
     false,
   );
   assert.match(result.workflowGuidance.notes ?? "", /optional syntax sugar/i);
@@ -1170,7 +1148,7 @@ test("completed task guidance stays focused on the next lifecycle action", async
     "1. Sync thread progress with `update_plan`.",
     "2. Continue with task #2.",
   ]);
-  assert.deepEqual(taskDone.workflowGuidance.recommendedCommands, [
+  assert.deepEqual(taskDone.workflowGuidance.commandHints, [
     "claw task done --id <id>",
     "claw task edit --id <id> --status in_progress",
   ]);
@@ -1406,11 +1384,11 @@ test("route-aware task completion persists valid taskChoiceId", async () => {
   });
   assert.deepEqual(created.workflowGuidance.nextTask?.completionChoices, ["simple"]);
   assert.equal(
-    created.workflowGuidance.recommendedCommands?.includes("claw task done --id 1 --choice <choice>"),
+    created.workflowGuidance.commandHints?.includes("claw task done --id 1 --choice <choice>"),
     true,
   );
   assert.equal(
-    created.workflowGuidance.recommendedCommands?.some((command) => command === "claw task done --id <id>"),
+    created.workflowGuidance.commandHints?.some((command) => command === "claw task done --id <id>"),
     false,
   );
   assert.match(created.workflowGuidance.nextsteps[0] ?? "", /select one completion choice/i);
@@ -1472,7 +1450,7 @@ test("default template returns only current lifecycle guidance", async () => {
     taskStatus: "done",
   });
   assert.equal(realTaskDone.workflowGuidance.stage, "done");
-  assert.equal(realTaskDone.workflowGuidance.recommendedCommands?.some((step) => step.includes("claw plan done")), true);
+  assert.equal(realTaskDone.workflowGuidance.commandHints?.some((step) => step.includes("claw plan done")), true);
 });
 
 test("template guidance onDone default can override default workflow guidance without choices", async () => {
@@ -1496,7 +1474,7 @@ test("template guidance onDone default can override default workflow guidance wi
                 mergeMode: "override",
                 summary: "Template-adjusted completion guidance",
                 nextsteps: ["Capture the route-specific handoff note."],
-                recommendedCommands: ["claw task done --task demo-task --id 2"],
+                commandHints: ["claw task done --task demo-task --id 2"],
               },
             },
           },
@@ -1530,7 +1508,7 @@ test("template guidance onDone default can override default workflow guidance wi
 
   assert.equal(taskDone.workflowGuidance.summary, "Template-adjusted completion guidance");
   assert.equal(taskDone.workflowGuidance.nextsteps.some((step) => step.includes("Capture the route-specific handoff note.")), true);
-  assert.equal(taskDone.workflowGuidance.recommendedCommands?.includes("claw task done --task demo-task --id 2"), true);
+  assert.equal(taskDone.workflowGuidance.commandHints?.includes("claw task done --task demo-task --id 2"), true);
   assert.equal(taskDone.workflowGuidance.nextTask?.id, 2);
 });
 
@@ -1626,7 +1604,7 @@ test("template guidance onDone default can replace default workflow guidance wit
                 summary: "Use the template-specific done route.",
                 nextsteps: ["Only follow this explicit route."],
                 notes: "Default completion wording is intentionally replaced here.",
-                recommendedCommands: ["claw task edit --id 2 --status in_progress"],
+                commandHints: ["claw task edit --id 2 --status in_progress"],
                 nextTaskId: 2,
               },
             },
@@ -1662,7 +1640,7 @@ test("template guidance onDone default can replace default workflow guidance wit
   assert.equal(taskDone.workflowGuidance.summary, "Use the template-specific done route.");
   assert.deepEqual(taskDone.workflowGuidance.nextsteps, ["1. Only follow this explicit route."]);
   assert.equal(taskDone.workflowGuidance.notes, "Default completion wording is intentionally replaced here.");
-  assert.deepEqual(taskDone.workflowGuidance.recommendedCommands, [
+  assert.deepEqual(taskDone.workflowGuidance.commandHints, [
     "claw task edit --id 2 --status in_progress",
   ]);
   assert.equal(taskDone.workflowGuidance.nextTask?.id, 2);
@@ -1715,7 +1693,7 @@ test("writePlan rejects legacy template guidance route mode field in favor of me
   );
 });
 
-test("writePlan rejects unresolved placeholders in template recommended commands", async () => {
+test("writePlan rejects unresolved placeholders in template command hints", async () => {
   const root = createFixture("template-guidance-unresolved-command");
   initProject({ cwd: root, projectName: "Template Placeholder", planning: true, force: true });
   fs.mkdirSync(path.join(root, ".claw", "templates"), { recursive: true });
@@ -1731,7 +1709,7 @@ test("writePlan rejects unresolved placeholders in template recommended commands
         guidance: {
           onDone: {
             default: {
-              recommendedCommands: ["claw plan edit --summary {{unknownSummary}}"],
+              commandHints: ["claw plan edit --summary {{unknownSummary}}"],
             },
           },
         },
@@ -1786,7 +1764,7 @@ test("plan create guidance leaves requirement judgment to the agent", async () =
   assert.equal(result.workflowGuidance.askUser, undefined);
   assert.ok(result.workflowGuidance.nextsteps.includes("1. Fill the missing plan fields."));
   assert.ok(result.workflowGuidance.nextsteps.includes("2. Move into `process.active` once requirements are clear."));
-  assert.deepEqual(result.workflowGuidance.recommendedCommands, [
+  assert.deepEqual(result.workflowGuidance.commandHints, [
     "claw plan edit --status process.active",
     "claw plan edit --requirements \"<summary>\" --acceptance \"<criterion>\"",
     "claw plan edit --reference <path> --why \"<reason>\"",
@@ -2007,12 +1985,8 @@ test("createSubplan uses the planning-aware default seed shape", async () => {
   assert.equal(result.plan.status, "process.discussing");
   assert.equal(result.plan.goal.text, "Implement child work: Split this into a subplan");
   assert.equal(result.plan.tasks.length, 1);
-  assert.deepEqual(result.workflowGuidance.nextsteps, [
-    "After the parent goal is completed by this subplan handoff, start the subplan goal before doing target work: Follow the claw workflow guidance and finish your goal: Implement child work: Split this into a subplan",
-    "1. Use claw-kit:planning to discuss and confirm the requirements and proposed solution with the user.",
-    "2. If execution remains, record the task list with the recommended command. If planning resolves the request, complete task #1 and close the plan.",
-  ]);
-  assert.equal(result.workflowGuidance.recommendedCommands?.[0], 'claw search --query "<topic>"');
+  assert.match(result.workflowGuidance.nextsteps[0] ?? "", /^After the parent goal is completed by this subplan handoff,/);
+  assert.equal(result.workflowGuidance.commandHints?.[0], 'claw search --query "<topic>"');
   assert.equal(
     result.workflowGuidance.goalMode?.recommendedObjective,
     "Follow the claw workflow guidance and finish your goal: Implement child work: Split this into a subplan",
@@ -2324,7 +2298,7 @@ test("plan edit can move from requirements to process.active without a separate 
   );
 
   assert.equal(result.workflowGuidance.stage, "done");
-  assert.ok(result.workflowGuidance.recommendedCommands?.some((command) => command.includes("claw plan done")));
+  assert.ok(result.workflowGuidance.commandHints?.some((command) => command.includes("claw plan done")));
   assert.equal(
     result.workflowGuidance.summary,
     "All plan tasks are done. Finish the plan record, then complete the canonical plan lifecycle.",
@@ -2338,7 +2312,7 @@ test("plan edit can move from requirements to process.active without a separate 
     "2. Run `claw plan done --retrospective` once. Add `--key-decision` only for real durable decisions not already recorded.",
     "3. Stop after the canonical plan transition; no separate closeout action is required from the main agent.",
   ]);
-  assert.deepEqual(result.workflowGuidance.recommendedCommands, [
+  assert.deepEqual(result.workflowGuidance.commandHints, [
     "claw plan done --retrospective \"<summary>\" [--key-decision \"<durable decision>\"]",
   ]);
 });
@@ -2395,7 +2369,7 @@ test("plan edit process.wait guidance pauses goal mode and points resume back to
     "2. When resuming the plan, restore the active thread goal after re-entering `process.active`.",
     "3. Resume through `process.active` when execution should continue.",
   ]);
-  assert.deepEqual(paused.workflowGuidance.recommendedCommands, [
+  assert.deepEqual(paused.workflowGuidance.commandHints, [
     "claw plan resume",
   ]);
   assert.deepEqual(paused.workflowGuidance.goalTool, {
@@ -2434,7 +2408,7 @@ test("plan edit process.discussing guidance pauses goal mode and waits for discu
     "2. When resuming the plan, restore the active thread goal after re-entering `process.active`.",
     "3. Resolve the discussion, then resume through `process.active`.",
   ]);
-  assert.deepEqual(discussing.workflowGuidance.recommendedCommands, [
+  assert.deepEqual(discussing.workflowGuidance.commandHints, [
     "claw plan resume",
   ]);
   assert.deepEqual(discussing.workflowGuidance.goalTool, {
@@ -3059,7 +3033,7 @@ test("plan edit changing a task back to pending does not advertise nextTask", as
 
   assert.deepEqual(result.workflowGuidance.nextsteps, ["Continue with task #1."]);
   assert.equal(result.workflowGuidance.nextTask, undefined);
-  assert.deepEqual(result.workflowGuidance.recommendedCommands, [
+  assert.deepEqual(result.workflowGuidance.commandHints, [
     "claw task done --id <id>",
   ]);
 });

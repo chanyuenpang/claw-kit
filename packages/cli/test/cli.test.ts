@@ -434,7 +434,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   );
   assert.deepEqual(inProgressResult.nextsteps, ["Continue the current task."]);
   assert.equal("nextTask" in inProgressResult, false);
-  assert.deepEqual(inProgressResult.recommendedCommands, [
+  assert.deepEqual(inProgressResult.commandHints, [
     "claw task done --id 1",
   ]);
   assert.equal("notes" in inProgressResult, false);
@@ -451,7 +451,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
     "2. Run `claw plan done --retrospective` once. Add `--key-decision` only for real durable decisions not already recorded.",
     "3. Stop after the canonical plan transition; no separate closeout action is required from the main agent.",
   ]);
-  assert.deepEqual(taskDone.recommendedCommands, [
+  assert.deepEqual(taskDone.commandHints, [
     "claw plan done --retrospective \"<summary>\" [--key-decision \"<durable decision>\"]",
   ]);
   assert.equal(
@@ -514,20 +514,16 @@ test("cli plan create accepts a positional title and seeds planning discussion b
   const writeResult = runClaw(["plan", "create", "这是一个任务标题"], root);
   assert.equal(writeResult.planSummary, "0/1 这是一个任务标题");
   assert.equal(writeResult.goalMode, undefined);
-  assert.deepEqual(writeResult.nextsteps, [
-    "1. Use claw-kit:planning to discuss and confirm the requirements and proposed solution with the user.",
-    "2. If execution remains, record the task list with the recommended command. If planning resolves the request, complete task #1 and close the plan.",
-  ]);
-  assert.equal((writeResult.recommendedCommands as string[])[0], 'claw search --query "<topic>"');
+  assert.equal((writeResult.commandHints as string[])[0], 'claw search --query "<topic>"');
   assert.equal(
-    (writeResult.recommendedCommands as string[])[1],
+    (writeResult.commandHints as string[])[1],
     "claw plan start --requirements \"<summary>\" --acceptance \"<criterion>\" --add-task \"<title>\" --detail \"<detail>\"",
   );
   assert.equal("goalTool" in writeResult, false);
   assert.equal((writeResult.plan as JsonRecord).status, "process.discussing");
   const plan = writeResult.plan as JsonRecord;
   const tasks = plan.tasks as JsonRecord[];
-  assert.equal(String((tasks[0] as JsonRecord).title), "Complete planning with the configured planning skill");
+  assert.equal(String((tasks[0] as JsonRecord).title), "Complete planning with claw-kit:planning");
   assert.equal(tasks.length, 1);
 });
 
@@ -541,13 +537,9 @@ test("cli plan create accepts an explicit template flag", () => {
 
   assert.equal(result.command, "plan.create");
   assert.equal((plan.status as string), "process.discussing");
-  assert.deepEqual(result.nextsteps, [
-    "1. Use claw-kit:planning to discuss and confirm the requirements and proposed solution with the user.",
-    "2. If execution remains, record the task list with the recommended command. If planning resolves the request, complete task #1 and close the plan.",
-  ]);
-  assert.equal((result.recommendedCommands as string[])[0], 'claw search --query "<topic>"');
+  assert.equal((result.commandHints as string[])[0], 'claw search --query "<topic>"');
   assert.equal("goalTool" in result, false);
-  assert.equal(String((tasks[0] as JsonRecord).title), "Complete planning with the configured planning skill");
+  assert.equal(String((tasks[0] as JsonRecord).title), "Complete planning with claw-kit:planning");
   assert.equal(tasks.length, 1);
 });
 
@@ -863,7 +855,7 @@ test("Codex plan results keep only stage-relevant fields and hostActions", () =>
   assert.equal(result.planSummary, "0/1 demo-task");
   assert.equal("nextsteps" in result, false);
   assert.equal("notes" in result, false);
-  assert.ok(Array.isArray(result.recommendedCommands));
+  assert.ok(Array.isArray(result.commandHints));
 });
 
 test("session scope runs outside a project, recovers across cwd, and cleans without project side effects", () => {
@@ -1109,7 +1101,7 @@ test("Codex wait and resume results omit compatibility guidance already handled 
   assert.equal("goalMode" in waitResult, false);
   assert.equal("goalTool" in waitResult, false);
   assert.equal("nextsteps" in waitResult, false);
-  assert.deepEqual(waitResult.recommendedCommands, ["claw plan resume"]);
+  assert.deepEqual(waitResult.commandHints, ["claw plan resume"]);
   assert.deepEqual((waitResult.hostActions as JsonRecord[]).map((action) => action.tool), ["update_plan", "update_goal"]);
   assert.ok(Array.isArray((((waitResult.hostActions as JsonRecord[])[0]!.input as JsonRecord).plan)));
 
@@ -1738,11 +1730,11 @@ test("cli task done requires --choice when the template defines guidance.onDone.
   );
   assert.deepEqual((created.nextTask as JsonRecord).completionChoices, ["simple", "advanced"]);
   assert.equal(
-    (created.recommendedCommands as string[]).filter((command) => command.includes("claw task done")).length,
+    (created.commandHints as string[]).filter((command) => command.includes("claw task done")).length,
     1,
   );
   assert.equal(
-    (created.recommendedCommands as string[]).includes("claw task done --id 1 --choice <choice>"),
+    (created.commandHints as string[]).includes("claw task done --id 1 --choice <choice>"),
     true,
   );
   assert.equal((created.nextsteps as string[]).some((step) => /simple|advanced/.test(step)), false);
@@ -1802,11 +1794,11 @@ test("cli task done persists choiceId for route-aware templates", () => {
   assert.equal(result.command, "plan.create");
   assert.deepEqual((result.nextTask as JsonRecord).completionChoices, ["simple"]);
   assert.equal(
-    (result.recommendedCommands as string[]).includes("claw task done --id 1 --choice <choice>"),
+    (result.commandHints as string[]).includes("claw task done --id 1 --choice <choice>"),
     true,
   );
   assert.equal(
-    (result.recommendedCommands as string[]).includes("claw task done --id <id>"),
+    (result.commandHints as string[]).includes("claw task done --id <id>"),
     false,
   );
 
@@ -1892,7 +1884,7 @@ test("cli task status changed back to pending does not return nextTask", () => {
 
   assert.deepEqual(result.nextsteps, ["Continue with task #1."]);
   assert.equal("nextTask" in result, false);
-  assert.deepEqual(result.recommendedCommands, [
+  assert.deepEqual(result.commandHints, [
     "claw task done --id <id>",
   ]);
 });
@@ -1919,12 +1911,8 @@ test("cli subplan create keeps task rootPlan stable and derives goal from the pa
   assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "demo-task", "meta.json")), false);
   assert.equal(childPlan.title, "Implement child work");
   assert.equal(childPlan.status, "process.discussing");
-  assert.deepEqual(result.nextsteps, [
-    "After the parent goal is completed by this subplan handoff, start the subplan goal before doing target work: Follow the claw workflow guidance and finish your goal: Implement child work: Split the risky work into a subplan",
-    "1. Use claw-kit:planning to discuss and confirm the requirements and proposed solution with the user.",
-    "2. If execution remains, record the task list with the recommended command. If planning resolves the request, complete task #1 and close the plan.",
-  ]);
-  assert.equal((result.recommendedCommands as string[])[0], 'claw search --query "<topic>"');
+  assert.match(String((result.nextsteps as string[])[0] ?? ""), /^After the parent goal is completed by this subplan handoff,/);
+  assert.equal((result.commandHints as string[])[0], 'claw search --query "<topic>"');
   assert.equal(
     ((result.goalMode as JsonRecord).recommendedObjective),
     "Follow the claw workflow guidance and finish your goal: Implement child work: Split the risky work into a subplan",

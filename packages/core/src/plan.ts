@@ -1065,7 +1065,7 @@ async function createSeedPlan(
   const effectiveGoalText = goalText ?? (template.goal?.text?.trim() || effectiveTitle);
   const compiledTasks = template.tasks.map((taskItem) => ({
     id: taskItem.id,
-    title: taskItem.title,
+    title: renderSeedTemplateText(taskItem.title, { planningSkill }),
     ...(taskItem.detail || taskItem.goalModeDetail
       ? {
           detail: buildCompiledTaskDetail({

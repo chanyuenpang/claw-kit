@@ -12,9 +12,9 @@ Treat returned `workflowGuidance` as the primary next-step contract. Unlike Code
 
 Use the supplied choices and ordering when the workflow needs a route decision.
 
-### `recommendedCommands`
+### `commandHints`
 
-Use these commands as the authoritative next mutations unless current canonical state makes one invalid. On opencode the agent runs them directly via the bash tool.
+Use these commands only as syntax and lookup aids for possible future mutations. They do not define the current next step or require immediate execution. On opencode the agent runs a selected command directly via the bash tool.
 
 ## Lifecycle interpretation
 

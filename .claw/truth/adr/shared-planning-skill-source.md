@@ -33,7 +33,7 @@ The original synchronization implementation wrote those adapter-local copies int
 
 `优化 planning skill 的任务拆分与二次规划规则` 进一步确认，固定的 `1-3` task budget 会把计划质量错误地代理为数量控制，并诱导规划者在证据不足时提前填满后续步骤。可复用的边界不是 task 数量，而是一个阶段是否有可验收结果，并让后续工作能够继续或独立重试；当检查点本身决定下游路线时，一次性写完整计划反而会把猜测固化为任务。
 
-2026-07-19 的 planning skill 质量 review 表明，当时的文案尚未可靠落实这项已接受决策：三处 `proposed solution` 确认要求会阻碍证据依赖的阶段性规划；复杂前向场景仍在 planning checkpoint 之后预建推测性执行 tasks；简单场景仍会把没有独立检查点价值的验证拆开。更晚的 current working-tree shared skill 文案已按同一既有决策收敛 solution gate、checkpoint 末端边界与 supporting-work 拆分规则，并把重复 trigger/质量说明合并：当前阶段仍须确认 requirements 与 proposed solution，但在证据不足时由 decisive checkpoint 及其后续 planning task 充当该阶段 solution，而不是虚构最终实现。该 review 没有形成新的架构决策。default template 与 initial guidance 已对齐当前阶段 solution-discussion gate；是否建立实施后 review lifecycle 的决策由 `cli-guided-plan-lifecycle.md` 拥有，shared skill 的 task-shape 状态和未重复运行的行为验证边界由 `.claw/truth/features/shared-planning-skill-source.md` 维护。
+2026-07-19 的 planning skill 质量 review 表明，当时的文案尚未可靠落实这项已接受决策：三处 `proposed solution` 确认要求会阻碍证据依赖的阶段性规划；复杂前向场景仍在 planning checkpoint 之后预建推测性执行 tasks；简单场景仍会把没有独立检查点价值的验证拆开。更晚的 current working-tree shared skill 文案已按同一既有决策收敛 solution gate、checkpoint 末端边界与 supporting-work 拆分规则，并把重复 trigger/质量说明合并：用户已指定 solution，或既有 workflow / 证据充分确定路线时可直接继续；否则先披露 decision-relevant content，并只在 meaningful choice 时等待回应。证据不足时由 decisive checkpoint 及其后续 planning task 充当该阶段 solution，而不是虚构最终实现。该 review 没有形成新的架构决策。default template 已对齐同一 solution gate；是否建立实施后 review lifecycle 的决策由 `cli-guided-plan-lifecycle.md` 拥有，shared skill 的 task-shape 状态和未重复运行的行为验证边界由 `.claw/truth/features/shared-planning-skill-source.md` 维护。
 
 ## Decision
 
@@ -58,7 +58,11 @@ Codex Git marketplace 的发布源必须是已提交、自包含的 `packages/co
 - `scripts/publish-release.mjs` 通过 `assertSharedSkillsSynced(...)` 只读比较规范源与已物化副本；缺失、文件集合不完整或内容落后时必须失败
 - `scripts/codex-plugin-bundle.mjs` 只能导出和安装当前 `packages/codex-adapter` 内容，不得在临时 staging 中隐式同步 shared skills 来掩盖仓库源缺失
 
-### 0.1.69 历史 active identity/source 合同（已被下文 official-only 决策取代）
+<!-- state: history -->
+## Evolution history
+
+<!-- dated: 2026-07-16 -->
+### 0.1.69 active identity/source contract superseded by official-only delivery
 
 以下双 identity 切换规则只保留为 `0.1.69` 的版本化背景，不是当前安装或更新路线；当前行为由本文末尾的 official-only superseding decision 与 `.claw/truth/features/host-specific-update-skills.md` 共同约束。
 
@@ -69,6 +73,9 @@ Codex Git marketplace 的发布源必须是已提交、自包含的 `packages/co
 - maintained development installer 的 `claw-kit@claw-kit-local` source/cache 与 active official `claw-kit@claw-kit` cache 是两个独立 surface；当 official identity 处于 enabled 状态时，必须通过 repository bundle/install 路径显式物化 matching official cache，不能把 local installer 成功当作 official runtime 已更新
 - `codex plugin list` 不可用时，允许从 Codex 配置确认 enabled identity，但成功判定仍必须落到该 identity 对应的 source manifest、cache manifest 与 target version 三方一致
 - 插件更新只有在 Codex restart 后，由新任务确认 loaded skill locator 时才算运行时生效；既有任务不承担 hot-reload 验证
+
+<!-- state: current -->
+## Decision continuation
 
 OpenCode 等不通过 Codex Git marketplace 直接复制仓库插件树的适配器，可以继续在 bundle/install staging 中物化派生副本；这不改变 Codex marketplace 源必须已提交且自包含的约束。
 
@@ -90,7 +97,7 @@ Keep the shared planning skill host-agnostic:
 - keep operational planning behavior in `Planning principles`, and keep every criterion about what a good plan communicates in one `Quality bar`; do not duplicate that contract in a separate opening checklist
 - choose verifiable progress checkpoints over a predefined task-count budget; split when the checkpoint leaves later work able to continue or the stage able to retry independently
 - when current evidence cannot determine downstream execution reliably, end the initial plan at the decisive checkpoint and make an evidence-based second planning pass after it completes instead of inventing speculative tasks
-- require the current-stage requirements and proposed solution to be discussed and confirmed; when downstream implementation depends on missing evidence, the decisive checkpoint and follow-up planning task are the current-stage solution
+- allow a user-specified solution or a route sufficiently determined by an established workflow or available evidence to proceed without redundant confirmation; before adopting another solution, expose its decision-relevant content and wait only when it introduces a meaningful choice. When downstream implementation depends on missing evidence, the decisive checkpoint and follow-up planning task are the current-stage solution
 - verification and closure are optional rather than default required stages; the main agent decides whether either belongs in the plan for the specific task
 - it assumes `using-claw-kit` has already decided whether the request belongs in the formal claw workflow
 - it does not own or duplicate the entry-time complexity scoring heuristic
@@ -133,7 +140,7 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 - A single `Quality bar` makes the plan's goal, decision logic, decomposition rationale, sequencing, scope, risks, observable completion, and handoff criteria reviewable in one place; the rejected alternative is an opening `A good plan should answer` checklist that repeats the same contract and lets the two sections drift.
 - Planning quality is reviewed against checkpoint value and evidence sufficiency, so coherent supporting edits and checks stay together unless they create an independently useful boundary; task count is allowed to vary with the work.
 - A second planning pass after a decisive checkpoint is an intentional staged-planning outcome, not evidence that the initial plan was incomplete; the rejected alternative is speculative up-front decomposition beyond current evidence.
-- 如果 skill 或 host bridge 文案未稳定实现上述 staged-planning 决策，应把它记录为实现/指令缺口，而不是弱化 ADR：初始 task list 的 planning checkpoint 之后不应预建依赖未知证据的执行 tasks；证据不足时仍需确认当前阶段 solution，但该 solution 是 decisive checkpoint route，而不是推测性的最终实现。当前 shared skill 与 host bridge 已在 solution-discussion gate 上对齐，task shape 与 evidence-dependent route 继续由 shared-planning Truth owner 维护。
+- 如果 skill 或 host bridge 文案未稳定实现上述 staged-planning 决策，应把它记录为实现/指令缺口，而不是弱化 ADR：初始 task list 的 planning checkpoint 之后不应预建依赖未知证据的执行 tasks；证据不足时仍需披露当前阶段 solution，而 meaningful choice 才要求等待用户，该 solution 是 decisive checkpoint route 而不是推测性的最终实现。当前 shared skill 与 host bridge 已在 solution gate 上对齐，task shape 与 evidence-dependent route 继续由 shared-planning Truth owner 维护。
 - Planning does not create verification or closure tasks merely to satisfy a fixed stage template; those tasks appear only when the main agent chooses to include them for the work at hand.
 - Project-plan admission has a single owner in the `using-claw-kit` entry contract, so planning never decides retroactively whether the request should have entered the formal workflow.
 - Future edits to planning quality or decomposition rules should start from `shared/skills/planning/SKILL.md`.

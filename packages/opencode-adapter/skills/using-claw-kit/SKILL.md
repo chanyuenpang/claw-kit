@@ -10,11 +10,11 @@ If the request is not expected to produce reusable project knowledge, skip this 
 
 1. By default, run `claw plan create "<title>"`.
 2. If a template-backed workflow skill fully owns the request, follow that skill's entry route so it supplies its adjacent template file.
-3. Follow the returned `workflowGuidance` as the only next-step execution contract.
+3. Follow the returned `workflowGuidance` as the only lifecycle contract. Use its stage and current task to determine the current work; `commandHints` are command lookup aids, not required next mutations.
 
 ## Lifecycle semantics
 
-- `process.discussing`: a stable cross-turn state for planning and user collaboration. Do not implement, enter Goal Mode, convert it to `wait`, or close it merely because discussion continues.
+- `process.discussing`: execution is paused for user discussion. It is a stable cross-turn state that can start a plan or be re-entered from `process.active`; do not implement, enter Goal Mode, convert it to `wait`, or close it before the discussion is settled.
 - `process.active`: downstream tasks are explicit and the user can hand off execution. Execute one task at a time and keep plan progress current through returned guidance.
 - `process.wait`: active execution is blocked on user input or an external dependency. Stop until returned guidance resumes it.
 - `end.completed`: the canonical completed plan status. Its returned guidance uses stage `done`; record the retrospective and durable key decisions, then close the plan through that guidance.

@@ -12,9 +12,9 @@ Treat returned `workflowGuidance` as the only next-step contract. Codex plan mut
 
 Use the supplied choices and ordering when the workflow needs a route decision.
 
-### `recommendedCommands`
+### `commandHints`
 
-Use these commands as the authoritative next mutations unless current canonical state makes one invalid. Keep command execution inside the fixed code-mode driver.
+Use these commands only as syntax and lookup aids for possible future mutations. They do not define the current next step or require immediate execution. Keep any command execution inside the fixed code-mode driver.
 
 ### stage-minimal results and `hostActions`
 

@@ -1807,7 +1807,7 @@ function buildRecoveredWorkflowAdditionalContext(
   const planContent = activeWorkflow.planContent as JsonRecord | undefined;
   const workflowGuidance = activeWorkflow.workflowGuidance as JsonRecord | undefined;
   const nextsteps = toStringList(workflowGuidance?.nextsteps);
-  const recommendedCommands = toStringList(workflowGuidance?.recommendedCommands);
+  const commandHints = toStringList(workflowGuidance?.commandHints);
   const notes = typeof workflowGuidance?.notes === "string" ? workflowGuidance.notes.trim() : "";
   const askUser = summarizeAskUser(workflowGuidance?.askUser as JsonRecord | undefined);
   const goalMode = summarizeGoalMode(workflowGuidance?.goalMode as JsonRecord | undefined);
@@ -1819,7 +1819,7 @@ function buildRecoveredWorkflowAdditionalContext(
     planStatus,
     planSummary,
     nextsteps,
-    recommendedCommands,
+    commandHints,
     notes,
     askUser: askUser ?? "",
     goalMode: goalMode ?? "",
@@ -2176,8 +2176,8 @@ function compactPlanCommandResult(
       ...(result.workflowGuidance.notes?.trim() && !codexResult
         ? { notes: result.workflowGuidance.notes }
         : {}),
-      ...(result.workflowGuidance.recommendedCommands?.length
-        ? { recommendedCommands: result.workflowGuidance.recommendedCommands }
+      ...(result.workflowGuidance.commandHints?.length
+        ? { commandHints: result.workflowGuidance.commandHints }
         : {}),
       ...(result.workflowGuidance.askUser ? { askUser: result.workflowGuidance.askUser } : {}),
       ...(result.operationChain?.status === "partial"
@@ -2310,8 +2310,8 @@ function compactDirectCommandResult(
     summary: workflowGuidance.summary,
     nextsteps: workflowGuidance.nextsteps,
     ...(workflowGuidance.notes?.trim() ? { notes: workflowGuidance.notes } : {}),
-    ...(workflowGuidance.recommendedCommands?.length
-      ? { recommendedCommands: workflowGuidance.recommendedCommands }
+    ...(workflowGuidance.commandHints?.length
+      ? { commandHints: workflowGuidance.commandHints }
       : {}),
   };
 }

@@ -23,7 +23,7 @@ Accepted
 - 在 Codex 的 `@claw-kit` 或 OpenCode 的 claw-kit plugin 被调用时首先判断请求是否预期产生可复用项目知识；否则第一句就跳过该 skill 并直接工作
 - 对其余请求执行最小 `First Action`：默认运行 `claw plan create "<title>"`
 - template-backed workflow skill 完整承载请求时，不先创建默认 plan，而是跟随该 skill 自己的 entry route；已加载 skill 负责解析自身目录并通过相邻 `TEMPLATE.json` 的 `--template-file` 入口提供精确来源。裸 `--template <id>` 只保留为兼容发现面，精确来源的通用决策由 `.claw/truth/adr/template-guidance-routing-and-config-override.md` 拥有
-- `First Action` 在创建 plan 后只保留一句正向指令：`Follow the workflowGuidance returned by the CLI.`；入口文本不解释 prompt guidance、“唯一 next-step contract”或 guidance 来源竞争
+- `First Action` 在创建 plan 后把返回的 `workflowGuidance` 作为唯一 lifecycle contract，并要求用 stage 与 current task 判断当前工作；`commandHints` 只是 command lookup aids，不是 required next mutations。入口文本不解释 prompt guidance 来源竞争，也不复制完整下游 lifecycle
 - 默认入口不展开 recovery、context、search 或完整 lifecycle 命令链；新 plan 从 `process.discussing` 开始，再由 seeded planning task 与返回的 `workflowGuidance` 继续主流程
 - 不再按文件数、步骤数、复杂度分数或 session harness 价值决定默认入口，也不从入口 skill 推荐 `--scope session`
 - 删除旧入口行为时，不在 skill 内增加对应的反向规则；hook/runtime recovery、recall 与具体任务路由由各自 owner 维护
@@ -33,7 +33,7 @@ Accepted
 
 - 插件的默认入口收敛为三条明确结果：无需沉淀时直接工作；其余请求默认创建 project plan；完整 template owner 存在时直接创建 template plan
 - 默认入口只陈述 agent 当下需要执行的正向合同，不再用 recovery、`claw context` 或 `claw search` 的反向提示强化已删除路径
-- 最小 `First Action` 让 agent 读完入口即可开始，同时避免 prompt-guidance 判断让入口再次拥有下游 lifecycle、恢复或 recall 的职责
+- 最小 `First Action` 让 agent 读完入口即可开始，同时把“当前工作语义”与“未来命令提示”分开，避免命令列表制造立即推进 lifecycle 的压力，也避免入口重新拥有恢复或 recall 职责
 - project-plan admission 的所有权固定在 `using-claw-kit` 入口层；`planning` 只负责 plan 创建后的需求澄清、任务拆分和质量门
 - 显式 session scope 仍是 CLI/template 能力，但不再属于 `using-claw-kit` 的默认入口合同
 - SessionStart/hook 恢复、project recall 和 template-owned entry 保持各自的独立 owner；默认入口不复制这些合同
