@@ -48,11 +48,9 @@ The skill also exposed storage concerns that belong to core plan creation. A tem
 ## Evolution history
 
 <!-- dated: 2026-07-20 -->
-### Use a matching CLI only to finish an already-created older plan
+### Update-plan recovery moved to update ownership
 
-The `0.1.87` installation-update closeout encountered an already-created `0.1.86` update plan whose template contract could not be mutated by CLI `0.1.87`. For that existing plan only, the workflow temporarily used the matching published `0.1.86` CLI to perform its remaining canonical plan mutations, then restored CLI `0.1.87` after the plan reached completion.
-
-This is a compatibility recovery for preserving an in-flight historical plan, not an alternative template-upgrade route. New or maintained skill packages still follow the current decision above: inspect and optimize the package through `create-claw-skill` before advancing its template version. Keeping the older CLI active, editing the source plan inputs, or treating a field-only version bump as remediation remain rejected alternatives.
+The `0.1.87` installation-update closeout supplied the first recorded evidence that an already-created plan can require the published CLI matching its retained template to finish. The current decision, constraints, and consequences now belong to `host-specific-update-skill-ownership.md`; this checkpoint remains only to explain why that update-specific recovery surfaced while the `create-claw-skill` template-version gate was being established. New or maintained skill packages still require package inspection before their template version advances.
 
 ## Related Code
 
