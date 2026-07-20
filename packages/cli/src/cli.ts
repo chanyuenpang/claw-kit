@@ -2150,6 +2150,13 @@ function compactPlanCommandResult(
     const resolvedPlanPath = archivedPlanPath ?? result.planPath;
     const codexResult = effectiveHost === "codex";
     const hostActions = codexResult ? buildHostActions(result) : [];
+    const nextsteps = codexResult
+      && command === "plan.done"
+      && result.planStatus === "end.completed"
+      && result.workflowGuidance.goalTool?.tool === "update_goal"
+      && result.workflowGuidance.goalTool.status === "complete"
+        ? result.workflowGuidance.nextsteps.slice(1)
+        : result.workflowGuidance.nextsteps;
     const planSummary = result.planView.collapsedSummary;
     const includePlan = Boolean(
       (command === "plan.create" || command === "subplan.create")
@@ -2181,7 +2188,7 @@ function compactPlanCommandResult(
       ...(!codexResult && result.appendedTaskIds?.length ? { appendedTaskIds: result.appendedTaskIds } : {}),
       ...(codexResult ? { stage: result.workflowGuidance.stage } : {}),
       ...(!codexResult || command === "plan.done"
-        ? { nextsteps: result.workflowGuidance.nextsteps }
+        ? { nextsteps }
         : {}),
       ...(result.workflowGuidance.nextTask ? { nextTask: result.workflowGuidance.nextTask } : {}),
       ...(result.workflowGuidance.notes?.trim() && !codexResult

@@ -1009,6 +1009,7 @@ test("session plan completion keeps Goal actions but queues no knowledge or proj
   assert.equal(completed.planPath, planPath);
   assert.equal((completed.achievement as JsonRecord).status, "end.completed");
   assert.equal((completed.nextsteps as string[]).some((step) => step.includes("using-claw-kit")), true);
+  assert.equal((completed.nextsteps as string[]).some((step) => step.includes("update_goal")), false);
   const completionActions = completed.hostActions as Array<JsonRecord>;
   assert.deepEqual(completionActions.map((action) => action.tool), ["update_goal"]);
 
@@ -2579,6 +2580,7 @@ test("cli plan done records completedAt and retains the current task path", asyn
   assert.match(String(doneResult.planPath), /\.claw[\\/]tasks[\\/]archive-task[\\/].*plan\.json$/);
   assert.equal("archivedPlanPath" in doneResult, false);
   assert.equal("hostActions" in doneResult, false);
+  assert.equal((doneResult.nextsteps as string[]).some((step) => step.includes("update_goal")), true);
   const completedPlan = JSON.parse(fs.readFileSync(String(doneResult.planPath), "utf-8")) as JsonRecord;
   assert.match(String(completedPlan.completedAt), /^\d{4}-\d{2}-\d{2}T/);
   const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
