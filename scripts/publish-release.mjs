@@ -10,7 +10,7 @@ import { assertTemplateVersionsAligned } from "./update-template-versions.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publish = process.argv.includes("--publish");
-const requiredSharedSkills = ["planning", "config", "update", "create-claw-skill", "knowledge-writer"];
+const requiredPluginSkills = ["planning", "config", "update", "create-claw-skill", "release-claw-kit", "knowledge-writer"];
 const npmExecPath = process.env.npm_execpath;
 
 function command(command, args) {
@@ -88,6 +88,11 @@ function assertRepositoryMarketplaceSnapshot({ pluginVersion }) {
     "skills/create-claw-skill/references/template-authoring.md",
     "skills/create-claw-skill/references/template-upgrade.md",
     "skills/create-claw-skill/scripts/create-claw-skill-stub.mjs",
+    "skills/release-claw-kit/SKILL.md",
+    "skills/release-claw-kit/TEMPLATE.json",
+    "skills/release-claw-kit/FALLBACK.md",
+    "skills/release-claw-kit/CONTENT-COVERAGE.md",
+    "skills/release-claw-kit/references/release-protocol.md",
     "skills/knowledge-writer/SKILL.md",
     "skills/knowledge-writer/TEMPLATE.json",
     "skills/knowledge-writer/non-claw-fallback.md",
@@ -126,12 +131,14 @@ async function verifyReleaseReadiness() {
   const outDir = await fs.mkdtemp(path.join(os.tmpdir(), "claw-kit-release-plugin-"));
   try {
     const bundle = await exportCodexPluginBundle({ outDir });
-    for (const skillName of requiredSharedSkills) {
+    for (const skillName of requiredPluginSkills) {
       await fs.access(path.join(bundle.bundleDir, "skills", skillName, "SKILL.md"));
     }
     await fs.access(path.join(bundle.bundleDir, "skills", "update", "TEMPLATE.json"));
     await fs.access(path.join(bundle.bundleDir, "skills", "create-claw-skill", "TEMPLATE.json"));
     await fs.access(path.join(bundle.bundleDir, "skills", "create-claw-skill", "FALLBACK.md"));
+    await fs.access(path.join(bundle.bundleDir, "skills", "release-claw-kit", "TEMPLATE.json"));
+    await fs.access(path.join(bundle.bundleDir, "skills", "release-claw-kit", "references", "release-protocol.md"));
     await fs.access(path.join(bundle.bundleDir, "skills", "knowledge-writer", "TEMPLATE.json"));
     await fs.access(path.join(bundle.bundleDir, "skills", "knowledge-writer", "non-claw-fallback.md"));
 
@@ -151,7 +158,7 @@ async function verifyReleaseReadiness() {
       env: smokeEnv,
       stdio: "pipe",
     });
-    for (const templateName of ["update", "create-claw-skill", "knowledge-writer"]) {
+    for (const templateName of ["update", "create-claw-skill", "release-claw-kit", "knowledge-writer"]) {
       const output = execFileSync(process.execPath, [cliPath, "template", "validate", "--template", templateName], {
         cwd: smokeProject,
         env: smokeEnv,

@@ -45,6 +45,16 @@ Default mode is `full-publish` unless a narrower mode is explicitly requested.
 
 If the user does not explicitly narrow the mode, run `full-publish`.
 
+## Template-driven maintainer release
+
+The supported maintainer orchestration entrypoint is the Codex-owned `release-claw-kit` template:
+
+```powershell
+claw plan create --template release-claw-kit --title release-claw-kit
+```
+
+Follow its returned `workflowGuidance` through preparation, direct-main delivery, guarded publish, release evidence, and the subsequent published-source Codex update. The template sequences the release and update workflows for convenience, but preserves their separate completion boundaries: GitHub/npm/plugin artifact evidence completes the release before local CLI and Codex installation evidence begins.
+
 ## Repository-owner policy
 
 This repository uses direct maintainer publishing by default:

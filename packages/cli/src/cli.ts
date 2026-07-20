@@ -62,7 +62,10 @@ import {
 } from "@veewo/claw-core";
 import { buildCodexDriverEnvelope } from "./codex-driver.js";
 import { checkCodexRuntime, resolveCodexSdkEntryPath } from "./codex-runtime.js";
-import { extractLatestFinalAssistantMessage } from "./codex-transcript.js";
+import {
+  extractLatestFinalAssistantMessage,
+  extractTaskDoneConclusions,
+} from "./codex-transcript.js";
 import { consumeBufferedHookInput } from "./knowledge-hook-preflight.js";
 import { resolveInvocationHost, withoutInvocationHost, type ClawHost } from "./invocation-host.js";
 import { runOpencodeKnowledgeWriter } from "./opencode-runner.js";
@@ -1364,7 +1367,9 @@ async function runStopHook(effectiveHost: ClawHost | undefined): Promise<void> {
     const project = resolveProjectContext(hookCwd);
     // Codex passes a transcript_path; opencode and other hosts without a file
     // transcript pass the final assistant message inline. Either source is valid.
-    const message = payloadMessage ?? (transcriptPath ? extractLatestFinalAssistantMessage(transcriptPath) : null);
+    const message = payloadMessage ?? (
+      transcriptPath ? extractLatestFinalAssistantMessage(transcriptPath, turnId) : null
+    );
     if (!message) {
       return;
     }
@@ -1374,6 +1379,7 @@ async function runStopHook(effectiveHost: ClawHost | undefined): Promise<void> {
       turnId,
       message,
       host: effectiveHost,
+      taskConclusions: transcriptPath ? extractTaskDoneConclusions(transcriptPath, turnId) : [],
     });
     if (result.ok && result.jobPath && process.env.CLAW_KNOWLEDGE_FINALIZER_DISABLE_LAUNCH !== "1") {
       launchKnowledgeFinalizationWorker(result.jobPath, project.projectRoot);
@@ -2113,6 +2119,7 @@ function compactPlanCommandResult(
     previousPlanStatus?: string;
     changedTaskIds?: number[];
     appendedTaskIds?: number[];
+    completedTaskIds?: number[];
     events?: PlanEvent[];
     operationChain?: {
       status: "completed" | "partial";
@@ -2133,6 +2140,11 @@ function compactPlanCommandResult(
     const codexResult = effectiveHost === "codex";
     const hostActions = codexResult ? buildHostActions(result) : [];
     const planSummary = result.planView.collapsedSummary;
+    const includePlan = Boolean(
+      (command === "plan.create" || command === "subplan.create")
+      && result.plan
+      && (!codexResult || result.workflowGuidance.stage === "discussion"),
+    );
     const achievement = command === "plan.done" && result.planStatus === "end.completed" && result.plan
       ? {
           status: result.planStatus,
@@ -2178,7 +2190,7 @@ function compactPlanCommandResult(
         : {}),
       ...(!codexResult && result.workflowGuidance.goalMode ? { goalMode: result.workflowGuidance.goalMode } : {}),
       ...(!codexResult && result.workflowGuidance.goalTool ? { goalTool: result.workflowGuidance.goalTool } : {}),
-      ...((command === "plan.create" || command === "subplan.create") && result.plan ? { plan: result.plan } : {}),
+      ...(includePlan && result.plan ? { plan: result.plan } : {}),
       ...(result.planReview
         ? {
             planReview: {
@@ -2189,13 +2201,14 @@ function compactPlanCommandResult(
             },
           }
         : {}),
-      planSummary,
+      ...(!codexResult || !includePlan ? { planSummary } : {}),
     };
 }
 
 function buildHostActions(result: {
   planPath: string;
   planStatus: string;
+  previousPlan?: PlanDocument;
   plan?: PlanDocument;
   planView: PlanViewModel;
   workflowGuidance: WorkflowGuidance;
@@ -2216,30 +2229,17 @@ function buildHostActions(result: {
     actions.push({
       schemaVersion: 1,
       id: `${latestEvent.mutationId}:update_goal`,
-      sourceEventId: latestEvent.eventId,
       tool: "update_goal",
       input: {
         status: "complete",
       },
-      meta: {
-        reason: goalTool.reason,
-      },
     });
   }
-  if (result.plan) {
-    let assignedInProgress = false;
-    const plan = result.plan.tasks.map((task) => {
-      let status: "pending" | "in_progress" | "completed" = task.status === "done" ? "completed" : "pending";
-      if (!assignedInProgress && result.planStatus === "process.active" && task.status !== "done") {
-        status = "in_progress";
-        assignedInProgress = true;
-      }
-      return { step: task.title, status };
-    });
+  if (result.plan && codexPlanProjectionChanged(result.previousPlan, result.plan, result.planStatus)) {
+    const plan = buildCodexPlanProjection(result.plan, result.planStatus);
     actions.push({
       schemaVersion: 1,
       id: `${latestEvent.mutationId}:update_plan`,
-      sourceEventId: latestEvent.eventId,
       tool: "update_plan",
       input: {
         explanation: result.workflowGuidance.summary,
@@ -2252,14 +2252,9 @@ function buildHostActions(result: {
       actions.push({
         schemaVersion: 1,
         id: `${latestEvent.mutationId}:create_goal`,
-        sourceEventId: latestEvent.eventId,
         tool: "create_goal",
         input: {
           objective: goalTool.objective,
-        },
-        meta: {
-          allowOverwrite: goalTool.allowOverwrite,
-          reason: goalTool.reason,
         },
       });
     } else {
@@ -2269,18 +2264,39 @@ function buildHostActions(result: {
       actions.push({
         schemaVersion: 1,
         id: `${latestEvent.mutationId}:update_goal`,
-        sourceEventId: latestEvent.eventId,
         tool: "update_goal",
         input: {
           status: codexStatus,
-        },
-        meta: {
-          reason: goalTool.reason,
         },
       });
     }
   }
   return actions;
+}
+
+function codexPlanProjectionChanged(
+  previousPlan: PlanDocument | undefined,
+  plan: PlanDocument,
+  planStatus: string,
+): boolean {
+  if (!previousPlan) return true;
+  return JSON.stringify(buildCodexPlanProjection(previousPlan, previousPlan.status))
+    !== JSON.stringify(buildCodexPlanProjection(plan, planStatus));
+}
+
+function buildCodexPlanProjection(
+  plan: PlanDocument,
+  planStatus: string,
+): Array<{ step: string; status: "pending" | "in_progress" | "completed" }> {
+  let assignedInProgress = false;
+  return plan.tasks.map((task) => {
+    let status: "pending" | "in_progress" | "completed" = task.status === "done" ? "completed" : "pending";
+    if (!assignedInProgress && planStatus === "process.active" && task.status !== "done") {
+      status = "in_progress";
+      assignedInProgress = true;
+    }
+    return { step: task.title, status };
+  });
 }
 
 function compactDirectCommandResult(

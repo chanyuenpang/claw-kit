@@ -556,6 +556,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
       emittedEvents: events.map((event) => event.type),
       changedTaskIds,
       appendedTaskIds,
+      completedTaskIds,
       ...(completionHooks ? { completionHooks } : {}),
       workflowGuidance: await buildPlanWorkflowGuidance({
         taskName: task.taskName,
@@ -575,6 +576,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
               completedTaskIds,
             }),
       }),
+      previousPlan: previous,
       plan: resultPlan,
       planView: buildPlanViewModel({
         taskName: task.taskName,

@@ -44,6 +44,16 @@ The skill also exposed storage concerns that belong to core plan creation. A tem
 - Generated route-aware templates remain directly operable from compact guidance instead of requiring callers to inspect template JSON or translate `choiceId` into CLI syntax.
 - Storage-scope semantics remain owned by the shared plan/template resolver contract, and general choice semantics remain owned by the template-guidance contract.
 
+<!-- state: history -->
+## Evolution history
+
+<!-- dated: 2026-07-20 -->
+### Use a matching CLI only to finish an already-created older plan
+
+The `0.1.87` installation-update closeout encountered an already-created `0.1.86` update plan whose template contract could not be mutated by CLI `0.1.87`. For that existing plan only, the workflow temporarily used the matching published `0.1.86` CLI to perform its remaining canonical plan mutations, then restored CLI `0.1.87` after the plan reached completion.
+
+This is a compatibility recovery for preserving an in-flight historical plan, not an alternative template-upgrade route. New or maintained skill packages still follow the current decision above: inspect and optimize the package through `create-claw-skill` before advancing its template version. Keeping the older CLI active, editing the source plan inputs, or treating a field-only version bump as remediation remain rejected alternatives.
+
 ## Related Code
 
 - `shared/skills/create-claw-skill/SKILL.md`

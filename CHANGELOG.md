@@ -4,6 +4,23 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## Unreleased
 
+## [0.1.88] - 2026-07-20
+
+### Added
+
+- A Codex-owned `release-claw-kit` template that sequences direct-main release preparation, guarded publishing, artifact verification, and the separate published-source maintainer update
+- Current-turn task completion conclusion capture for Stop reports, using successful existing `task.done` results without a dedicated marker or plan/task identity payload
+
+### Changed
+
+- Codex host actions use a smaller schema-v1 envelope, emit `update_plan` only when the projected host plan changes, and avoid duplicate full-plan summaries during discussion
+- The versioned Codex driver now preserves the existing `ok` and `command` fields for successful `task.done` results so Stop can recover all qualifying conclusions from that turn
+
+### Fixed
+
+- A single Stop no longer misses earlier successful `task.done` conclusions from the same agent turn, while replay remains idempotent and capture stays fail-open
+- Goal host actions re-check already-satisfied live Goal state without exposing internal policy metadata to the agent
+
 ## [0.1.87] - 2026-07-20
 
 ### Added

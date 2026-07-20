@@ -705,9 +705,9 @@ test("cli codex driver returns an executable versioned source envelope", async (
   const root = createFixture("codex-driver-envelope");
   const envelope = runClaw(["codex", "driver"], root);
   assert.equal(envelope.command, "codex.driver");
-  assert.equal(envelope.driverVersion, 5);
+  assert.equal(envelope.driverVersion, 6);
   assert.equal(envelope.hostActionSchemaVersion, 1);
-  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v5:s1");
+  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v6:s1");
   assert.match(String(envelope.sha256), /^[a-f0-9]{64}$/);
 
   const runner = (0, eval)(`(${String(envelope.source)})`) as (
@@ -779,6 +779,17 @@ test("cli codex driver returns an executable versioned source envelope", async (
   assert.match(String((calls[0][1] as JsonRecord).command), /--host codex$/);
   assert.deepEqual(calls.map(([name]) => name), ["shell_command", "update_plan", "get_goal", "create_goal", "text"]);
   assert.equal("hostActions" in JSON.parse(String(calls.at(-1)?.[1])), false);
+
+  const taskDoneActual = await runner(
+    { command: "claw task done --id 1", workdir: root },
+    {
+      tools: {
+        shell_command: async () => JSON.stringify({ ok: true, command: "task.done" }),
+      },
+      text: () => {},
+    },
+  );
+  assert.deepEqual(taskDoneActual, { ok: true, command: "task.done" });
 });
 
 test("Codex driver reuses an active Goal on resume and skips closing an already closed Goal", async () => {
@@ -844,7 +855,12 @@ test("Codex plan results keep only stage-relevant fields and hostActions", () =>
   assert.equal("events" in result, false);
   assert.equal("changedTaskIds" in result, false);
   assert.equal("appendedTaskIds" in result, false);
-  assert.deepEqual((result.hostActions as JsonRecord[]).map((action) => action.tool), ["update_plan", "create_goal"]);
+  const actions = result.hostActions as JsonRecord[];
+  assert.deepEqual(actions.map((action) => action.tool), ["update_plan", "create_goal"]);
+  assert.deepEqual(Object.keys(actions[0]!).sort(), ["id", "input", "schemaVersion", "tool"]);
+  assert.deepEqual(Object.keys(actions[1]!).sort(), ["id", "input", "schemaVersion", "tool"]);
+  assert.equal("plan" in result, false);
+  assert.equal(result.planSummary, "0/1 demo-task");
   assert.equal("nextsteps" in result, false);
   assert.equal("notes" in result, false);
   assert.ok(Array.isArray(result.recommendedCommands));
@@ -990,7 +1006,7 @@ test("session plan completion keeps Goal actions but queues no knowledge or proj
   assert.equal((completed.achievement as JsonRecord).status, "end.completed");
   assert.equal((completed.nextsteps as string[]).some((step) => step.includes("using-claw-kit")), true);
   const completionActions = completed.hostActions as Array<JsonRecord>;
-  assert.ok(completionActions.some((action) => action.tool === "update_goal"));
+  assert.deepEqual(completionActions.map((action) => action.tool), ["update_goal"]);
 
   const sessionRoot = path.dirname(path.dirname(path.dirname(planPath)));
   assert.equal(fs.existsSync(path.join(sessionRoot, "runtime", "knowledge-sessions")), false);
@@ -1095,6 +1111,7 @@ test("Codex wait and resume results omit compatibility guidance already handled 
   assert.equal("nextsteps" in waitResult, false);
   assert.deepEqual(waitResult.recommendedCommands, ["claw plan resume"]);
   assert.deepEqual((waitResult.hostActions as JsonRecord[]).map((action) => action.tool), ["update_plan", "update_goal"]);
+  assert.ok(Array.isArray((((waitResult.hostActions as JsonRecord[])[0]!.input as JsonRecord).plan)));
 
   const resumeResult = runClaw(["plan", "resume", "--task-name", "demo-task", "--host", "codex"], root);
   assert.equal(resumeResult.command, "plan.resume");
@@ -1104,6 +1121,31 @@ test("Codex wait and resume results omit compatibility guidance already handled 
   assert.equal("goalTool" in resumeResult, false);
   assert.equal("nextsteps" in resumeResult, false);
   assert.deepEqual((resumeResult.hostActions as JsonRecord[]).map((action) => action.tool), ["update_plan", "create_goal"]);
+});
+
+test("Codex emits update_plan only when the projected host plan changes", () => {
+  const root = createFixture("codex-projected-plan-change");
+  runClaw(["init", "--name", "Codex Projection", "--planning", "false"], root);
+  runClaw(["plan", "create", "--title", "demo-task", "--goal", "Track projection"], root);
+
+  const metadataOnly = runClaw([
+    "plan", "edit", "--task-name", "demo-task", "--summary", "Document context", "--host", "codex",
+  ], root);
+  assert.equal("hostActions" in metadataOnly, false);
+
+  const detailOnly = runClaw([
+    "task", "edit", "--task-name", "demo-task", "--id", "1", "--detail", "More detail", "--host", "codex",
+  ], root);
+  assert.equal("hostActions" in detailOnly, false);
+
+  const titleChanged = runClaw([
+    "task", "edit", "--task-name", "demo-task", "--id", "1", "--title", "Renamed work", "--host", "codex",
+  ], root);
+  const actions = titleChanged.hostActions as JsonRecord[];
+  assert.deepEqual(actions.map((action) => action.tool), ["update_plan"]);
+  assert.deepEqual(((actions[0]!.input as JsonRecord).plan), [
+    { step: "Renamed work", status: "in_progress" },
+  ]);
 });
 
 test("cli plan edit rejects partial single-reference shortcut flags", () => {
@@ -1576,6 +1618,8 @@ test("cli leaves completed-task deposition to automatic turn reporting", () => {
     title: "Second task",
     status: "pending",
   });
+  assert.equal(taskDone.command, "task.done");
+  assert.equal("taskDone" in taskDone, false);
 });
 
 test("cli respects project override toggles for goal mode and final-only truth dispatch", () => {
@@ -1942,6 +1986,12 @@ test("Codex subplan create completes the parent goal before any child goal is cr
   ], root, env);
   const actions = result.hostActions as JsonRecord[];
   assert.deepEqual(actions.map((action) => action.tool), ["update_goal", "update_plan"]);
+  assert.equal("planSummary" in result, false);
+  assert.equal("plan" in result, true);
+  assert.deepEqual(actions.map((action) => Object.keys(action).sort()), [
+    ["id", "input", "schemaVersion", "tool"],
+    ["id", "input", "schemaVersion", "tool"],
+  ]);
   assert.equal(((actions[0]?.input as JsonRecord).status), "complete");
   assert.equal(actions.some((action) => action.tool === "create_goal"), false);
 });
@@ -3240,6 +3290,100 @@ test("Stop hook captures the latest final assistant message into exactly one act
   const duplicateEntries = fs.readFileSync(reportPath, "utf-8").trim().split(/\r?\n/);
   assert.equal(duplicateEntries.length, 1);
   assert.equal(fs.existsSync(path.join(root, ".claw", "runtime", "knowledge-finalization", "jobs")), false);
+});
+
+test("one Stop recovers successful task-done conclusions only from its current turn", () => {
+  const root = createFixture("hook-stop-task-done-history");
+  runClaw(["init", "--name", "Hook Task History"], root);
+  const sessionId = "thread-task-history";
+  const env = { CODEX_THREAD_ID: sessionId };
+  runClaw(["plan", "create", "--title", "demo-task", "--goal", "Capture task conclusions"], root, env);
+  const transcriptPath = path.join(root, "thread-history.jsonl");
+  const message = (turnId: string, text: string, phase = "commentary") => JSON.stringify({
+    type: "response_item",
+    payload: {
+      type: "message",
+      role: "assistant",
+      phase,
+      content: [{ type: "output_text", text }],
+      internal_chat_message_metadata_passthrough: { turn_id: turnId },
+    },
+  });
+  const turnContext = (turnId: string) => JSON.stringify({
+    type: "turn_context",
+    payload: { turn_id: turnId },
+  });
+  const checkpoint = (
+    turnId: string,
+    outputKind: "array" | "string" = "array",
+  ) => JSON.stringify({
+    type: "response_item",
+    payload: {
+      type: outputKind === "array" ? "custom_tool_call_output" : "function_call_output",
+      call_id: `call-${turnId}`,
+      output: outputKind === "array" ? [{
+        type: "input_text",
+        text: `Script completed\n${JSON.stringify({ ok: true, command: "task.done" })}`,
+      }] : `Script completed\n${JSON.stringify({ ok: true, command: "task.done" })}`,
+      internal_chat_message_metadata_passthrough: { turn_id: turnId },
+    },
+  });
+  fs.writeFileSync(
+    transcriptPath,
+    [
+      turnContext("turn-previous"),
+      message("turn-previous", "Previous turn conclusion."),
+      checkpoint("turn-previous"),
+      turnContext("turn-work"),
+      checkpoint("turn-work"),
+      message("turn-work", "Task one conclusion."),
+      JSON.stringify({
+        type: "response_item",
+        payload: {
+          type: "function_call_output",
+          output: "failed: claw task done --id 1; command text alone is not a successful result",
+          internal_chat_message_metadata_passthrough: { turn_id: "turn-work" },
+        },
+      }),
+      checkpoint("turn-work"),
+      checkpoint("turn-work", "string"),
+      turnContext("turn-work"),
+      message("turn-work", "Task two and three conclusion."),
+      checkpoint("turn-work", "string"),
+      message("turn-other", "Unrelated turn conclusion."),
+      checkpoint("turn-other"),
+      message("turn-work", "Final report message.", "final_answer"),
+    ].join("\n"),
+    "utf-8",
+  );
+
+  const payload = {
+    session_id: sessionId,
+    turn_id: "turn-work",
+    transcript_path: transcriptPath,
+    cwd: root,
+    hook_event_name: "Stop",
+  };
+  assert.equal(runClawHook("auto-doc", root, payload, env).status, 0);
+
+  const reportPath = path.join(root, ".claw", "tasks", "demo-task", "plan.report");
+  const entries = fs.readFileSync(reportPath, "utf-8").trim().split(/\r?\n/).map((line) => JSON.parse(line) as JsonRecord);
+  assert.deepEqual(entries.map((entry) => entry.entryType ?? "turn_report"), [
+    "task_conclusion",
+    "task_conclusion",
+    "turn_report",
+  ]);
+  assert.deepEqual(entries.slice(0, 2).map((entry) => ({
+    turnId: entry.turnId,
+    message: entry.message,
+  })), [
+    { turnId: "turn-work", message: "Task one conclusion." },
+    { turnId: "turn-work", message: "Task two and three conclusion." },
+  ]);
+  assert.equal(entries[2]!.message, "Final report message.");
+
+  assert.equal(runClawHook("auto-doc", root, payload, env).status, 0);
+  assert.equal(fs.readFileSync(reportPath, "utf-8").trim().split(/\r?\n/).length, 3);
 });
 
 for (const endStatus of ["end.leave", "end.closed"] as const) {

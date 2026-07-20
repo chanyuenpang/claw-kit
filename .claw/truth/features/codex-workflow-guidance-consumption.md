@@ -1,7 +1,13 @@
 ﻿# Codex workflowGuidance consumption
 
+<!-- state: current -->
+## 当前行为
+
 - Codex adapter 应把 CLI 从 `workflowGuidance` 投影出的 stage-relevant contract 视为主合同，但 planning 自身现在负责计划质量，不再把 standalone `plan-review` 当成进入下一阶段的必经门。
 - 每次 claw plan mutation 都由固定 v5 code-mode driver 先消费 `hostActions`，再只向 Agent 返回当前阶段所需的 compact 字段，例如 `stage`、`planSummary`、`nextTask`、`recommendedCommands`、`askUser` 与需要时的 `completionRefresh`。root `plan.done` 额外暴露 `planPath`、final `nextsteps` 与 `achievement`；普通 mutation 和 subplan parent-resume 不制造 terminal completion signal。
+- `packages/cli/src/cli.ts` 的 `buildHostActions()` 继续生成 native schema-v1 `update_plan`、`create_goal` 与 `update_goal`，但每个 action envelope 只保留 `schemaVersion`、用于至多一次消费的 `id`、`tool` 与真实 host `input`；Codex consumer 不读取的 `sourceEventId`、`meta.reason` 与 `meta.allowOverwrite` 不再输出。
+- `update_plan` 只在 mutation 前后的完整 Codex plan 投影实际变化时生成；metadata-only `plan.edit`、detail-only `task.edit` 与不改变任务投影的普通 `plan.done` 不重复同步。只要生成 `update_plan`，`input.plan` 仍是完整数组，而不是增量 patch。
+- Codex create 类 compact response 只在 `workflowGuidance.stage === "discussion"` 时返回完整 `plan`；返回完整 plan 时省略重复的 `planSummary`，其他阶段只保留紧凑摘要。该裁剪只影响 Codex 可见响应，不改变 canonical plan、非 Codex 输出或 host action 语义。
 - 当前 `packages/codex-adapter/skills/using-claw-kit/SKILL.md` 的 cold path 获取并校验完整 driver envelope，再以 `claw-kit:codex-driver:v5:s1` 缓存该 envelope；同线程后续 mutation 可跳过 `claw codex driver` 获取，但仍通过同一个完整 `runClawPlanMutation` wrapper 调用已缓存 `source`。只缓存 `source` 并使用 4–6 行 hot path 是已评估的后续压缩方向，不是当前实现。
 - `planSummary` 是聊天协作中可展示的紧凑计划状态；adapter 不应期待 render blocks、widget envelope、`claw plan app` 或 `claw plan render`。
 - code-investigation-first 可由 task shape 触发，不必等待 `workflowGuidance.delegateSubagents` 明确列出；普通项目 recall、Truth/ADR lookup 与历史上下文查询不是 researcher dispatch trigger。这只定义 guidance 的触发边界，不在本文重复拥有 researcher 的 agent type、派发、复用、等待或调查顺序。
@@ -54,7 +60,11 @@
 - 源码 CLI smoke 已同时锁定用户面输出与 create guidance 去重：`claw search --help`、`claw help search`、`claw search help` 均 exit `0`、usage 只写 stdout 且 stderr 为空；裸 `claw search` exit `1` 并直接提示 `claw search --query "<topic>"`；discussion 与 active 两类 create guidance 都恰好只包含一条 search `recommendedCommand`，不会重复推荐 recall。
 - 最终验证通过 CLI `69/69`、core `123/123`、Codex bundle `13/13`、OpenCode bundle `7/7`，并通过完整 `npm run check`。这组证据共同覆盖 CLI help/error surface、core create guidance 和两个 host adapter bundle 的合同一致性。
 
-## `hostActions.update_plan` code-mode 自动消费 A/B
+<!-- state: history -->
+## 演化历史
+
+<!-- dated: 2026-07-17 -->
+### `hostActions.update_plan` code-mode 自动消费 A/B
 
 - 受控实验位于 `.claw/tasks/A-B-测试-hostActions-分步消费与-code-mode-自动消费/plan.json`。实验顺序固定为 A-B-B-A-A-B-B-A，每个 variant `4` 个样本，并对同一个 task #3 执行可逆的 pending / done 状态切换。
 - Variant A 在一个 code-mode call 中执行 CLI mutation，再由 main agent 手动把返回的 `update_plan` payload 转抄到第二个 code-mode call。四次 `totalMs` 为 `5467`、`5686`、`5822`、`5172`，median `5577ms`、mean `5537ms`；`4/4` 成功，共 `8` 次 exec call 与 `4` 次人工 payload transfer。
@@ -69,6 +79,7 @@
 - 自动 consumer 只执行已知且 schema-compatible 的 action；未知 schema、未知 action、不兼容 input 或非预期 host error 都必须 fail closed。`recommendedCommands` 继续只承载命令，不得把 host tool action 混入该字段或从命令文本反推工具调用。
 - 定向验证中 Codex adapter tests `4/4` 通过；重建 CLI dist 后 CLI tests `72/72` 通过。首次 CLI test 使用了 stale dist，两个新增 schema assertion 失败；重建 CLI 即通过且不需要修改 source。涉及 dist-backed CLI 行为的测试失败时，应先确认构建产物是否同步，再判断 source contract 是否有缺陷。
 
+<!-- state: current -->
 ## Codex 原生工具边界与固定 code-mode consumer
 
 ### 公开能力边界
@@ -106,9 +117,9 @@
 
 - `packages/codex-adapter/scripts/code-mode-host-action-consumer.mjs` 是可复用、可测试的 source contract：它从 shell 输出提取首个完整 JSON 对象，要求 mutation result 成功，并按 CLI 返回顺序消费 `hostActions`。
 - consumer 接受 schema v1 `update_plan`、`create_goal` 与 `update_goal`，以 action `id` 做至多一次去重，并严格校验各 action 的 input 字段后直接调用同名原生 host tool。
-- consumer 不预检线程 Goal 状态，也不解析 Goal tool error 来决定补偿动作。状态为 `blocked` 的 Goal 在真实 Host 中仍是 unfinished；CLI 因此在进入暂停态时先输出 `update_goal({ status: "complete" })`，后续独立 mutation 恢复到 active 时才输出 `create_goal({ objective })`。
+- fixed driver/consumer 不把 Goal 状态交给 Agent，也不解析 Goal tool error 来决定补偿动作；它只在每个真实 `create_goal` / `update_goal` 紧前方读取一次 Goal snapshot。目标状态已经满足时跳过 host mutation 并把 action id 记为已消费；否则执行 CLI 已投影的 action。状态为 `blocked` 的 Goal 在真实 Host 中仍是 unfinished，因此 CLI 在进入暂停态时先输出 `update_goal({ status: "complete" })`，后续独立 mutation 恢复到 active 时才输出 `create_goal({ objective })`。
 - complete 与 create 不能合并到同一个 code-mode call：Codex 在 call 结束时结算 completion，会清除同一 call 中刚创建的新 Goal。fixed consumer 只执行当前 mutation 返回的 native action，不在一次调用内自行完成旧 Goal 后重建。
-- action 只有在对应 host tool 成功返回后才会写入 consumed-id 集合；调用失败不会把该 `id` 标记为已消费，因此可以用同一 action id 安全重试。CLI mutation 已经提交，host tool 失败不回滚 canonical plan state。
+- action 只有在对应 host tool 成功返回，或程序确认目标状态已经满足时，才会写入 consumed-id 集合；调用失败不会把该 `id` 标记为已消费。CLI mutation 已经提交，host tool 失败不回滚 canonical plan state。
 
 ### code-mode isolate driver
 

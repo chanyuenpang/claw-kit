@@ -66,9 +66,15 @@ export type KnowledgeFinalizationJob = {
 
 export type KnowledgeReportEntry = {
   schemaVersion: 1;
+  entryType?: "task_conclusion";
   sessionId: string;
   turnId: string;
   capturedAt: string;
+  message: string;
+};
+
+export type KnowledgeTaskConclusion = {
+  turnId: string;
   message: string;
 };
 
@@ -204,6 +210,7 @@ export function tryCaptureKnowledgeStop(input: {
   turnId?: string;
   message?: string;
   host?: KnowledgeFinalizationHost;
+  taskConclusions?: KnowledgeTaskConclusion[];
 }): KnowledgeStopResult {
   const sessionId = input.sessionId?.trim();
   const turnId = input.turnId?.trim();
@@ -227,11 +234,25 @@ export function tryCaptureKnowledgeStop(input: {
         return { ok: true, captured: false };
       }
       const reportPath = resolveProjectRelativeReportPath(input.project, target.reportPath);
+      const capturedAt = new Date().toISOString();
+      for (const conclusion of input.taskConclusions ?? []) {
+        if (conclusion.turnId !== turnId) {
+          continue;
+        }
+        appendKnowledgeReportEntry(reportPath, {
+          schemaVersion: 1,
+          entryType: "task_conclusion",
+          sessionId,
+          turnId: conclusion.turnId,
+          capturedAt,
+          message: conclusion.message,
+        });
+      }
       const duplicate = appendKnowledgeReportEntry(reportPath, {
         schemaVersion: 1,
         sessionId,
         turnId,
-        capturedAt: new Date().toISOString(),
+        capturedAt,
         message,
       });
       let jobPath: string | undefined;
@@ -435,7 +456,14 @@ function appendKnowledgeReportEntry(reportPath: string, entry: KnowledgeReportEn
         .some((line) => {
           try {
             const existing = JSON.parse(line) as Partial<KnowledgeReportEntry>;
-            return existing.sessionId === entry.sessionId && existing.turnId === entry.turnId;
+            if (existing.sessionId !== entry.sessionId || existing.turnId !== entry.turnId) {
+              return false;
+            }
+            if (existing.entryType !== entry.entryType) {
+              return false;
+            }
+            return entry.entryType !== "task_conclusion"
+              || existing.message === entry.message;
           } catch {
             return false;
           }

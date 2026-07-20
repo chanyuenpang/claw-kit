@@ -27,7 +27,8 @@ Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode c
 - Agent 只向 `runClawPlanMutation` 提供 claw command、working directory 和 timeout，不解释或手写 action dispatch。
 - consumer 解析 CLI JSON，并按返回顺序消费 `hostActions`；每个 action 按 `id` 至多成功执行一次。
 - `hostActions` 是 Codex 唯一的 host 执行源。`workflowGuidance.goalTool` 继续作为 core 和其他 host 的兼容合同存在，但 Codex 不解释、不执行，也不据此补建或重试 action。
-- consumer 只白名单调用 `update_plan`、`create_goal` 和 `update_goal`，且只把经过验证的 `input` 投影给 host tool；`meta` 等策略字段不得透传。
+- schema v1 action envelope 只保留 `schemaVersion`、作为至多一次消费键的 `id`、`tool` 与真实 host `input`。`sourceEventId`、`meta.reason` 与 `meta.allowOverwrite` 没有 Codex consumer，因此不再输出；不为这次兼容精简引入 schema v2。
+- consumer 只白名单调用 `update_plan`、`create_goal` 和 `update_goal`，且只把经过验证的 `input` 投影给 host tool。action envelope 的最小字段不改变工具白名单、顺序、幂等或 fail-closed 边界。
 - consumer 语义变更必须同时 bump versioned driver/cache identity，避免同线程继续复用旧 source；本次 Goal-action 幂等变更以 v5 bump 落地。当前具体 identity 由 `../features/codex-workflow-guidance-consumption.md` 唯一拥有。
 - bridge 的安全压缩路线是 cold path 保留完整 bootstrap 和兼容性校验；校验成功后只缓存已验证的 `source`，让同线程后续 mutation 通过约 4–6 行 hot path `eval` 并调用 runner。当前 skill 仍缓存完整 envelope 并复用同一个 wrapper，这项压缩尚未实现。
 - hot path 发现缓存缺失或版本不兼容时，只能重新进入完整 bootstrap，或以 `bootstrap required` 一类明确错误 fail closed；不能运行未验证 source、手工解释 `hostActions`，也不能把 CLI mutation 与 native host action 改成两个调用。
@@ -67,6 +68,7 @@ Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode c
 
 - Codex 的计划镜像和 Goal Mode 生命周期由 CLI 投影的同一组 `hostActions` 驱动，避免 `goalTool` 造成第二次调用。
 - action 的 schema、顺序、幂等性、input 边界和 tool 白名单成为可测试的程序合同，不再依赖 Agent 判断。
+- schema-v1 envelope 删除无人消费的事件与策略 metadata，保留 `id` 的至多一次语义和原生 host `input`；兼容精简不需要新增 schema 版本，也不改变 consumer 实现边界。
 - Goal action 的目标状态幂等性由固定程序拥有：active Goal 可被 resume 复用，已关闭或不存在的 Goal 不会被 completion 再次关闭；两种跳过都保留 action-id 至多一次语义。
 - plan-status router 消除 Goal 桥接对 Agent 所见历史状态、错误文本和补偿判断的依赖；source 与 versioned cache 中的 consumer/driver 必须保持该合同一致。
 - app-server 的 Goal/MCP 能力不改变当前 owner：在公开协议出现客户端 plan setter、或 claw 成为连接当前 UI thread 的原生客户端之前，`update_plan` 继续由 agent 触发的固定 code-mode consumer 执行。
@@ -105,7 +107,11 @@ Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode c
 - `bootstrap required`
 - `minimal mutation response`
 
-## 2026-07-17 实测补充
+<!-- state: history -->
+## 演化历史
+
+<!-- dated: 2026-07-17 -->
+### 短 bootstrap 与跨调用 Goal lifecycle 实测
 
 来自 `.claw/tasks/降低-Codex-workflow-心智压力并改用-Luna-writer/plan.json` 的持久化决策：
 

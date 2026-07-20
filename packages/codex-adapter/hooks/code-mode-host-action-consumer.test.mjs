@@ -26,14 +26,12 @@ function makeActions() {
       id: "mutation:create_goal",
       tool: "create_goal",
       input: { objective: "finish work" },
-      meta: { reason: "start" },
     },
     {
       schemaVersion: 1,
       id: "mutation:update_goal",
       tool: "update_goal",
       input: { status: "complete" },
-      meta: { reason: "finish" },
     },
   ];
 }
@@ -203,8 +201,8 @@ test("the embedded bootstrap caches the CLI driver and dispatches native host ac
         if (options.command === "claw codex driver") {
           return JSON.stringify({
             ok: true,
-            cacheKey: "claw-kit:codex-driver:v5:s1",
-            driverVersion: 5,
+            cacheKey: "claw-kit:codex-driver:v6:s1",
+            driverVersion: 6,
             hostActionSchemaVersion: 1,
             source: driverSource,
           });

@@ -10,6 +10,9 @@
 ## 长期行为 / 规则
 
 - 每次 Codex `Stop` 最多写一份 report。若当前 turn 有 pending ended plan，则该终态计划拥有最终 report；否则写入当前 active plan。终态切换的 transition turn 不得同时写入两份 report。
+- 成功的 `task.done` compact response 已有 `ok: true` 与 `command: "task.done"`，不再增加专用 marker、plan 或 task identity。Codex driver 只在该成功返回中保留这两个既有字段，因此 transcript 中的 direct / deferred tool output 都可识别完成边界；失败输出或命令文本中的相似字样不构成成功结果。
+- Codex `Stop` 从 transcript 尾部定位当前 Stop turn 的边界，只读取该轮的完整记录而不扫描更早轮次。每个成功 `task.done` 返回关联同 turn 内位于它之前且距离最近的 assistant message；没有可靠前置结论时跳过。sidecar 把所有合格结论作为 `entryType: "task_conclusion"` 追加到 Stop registry 当前拥有的相邻 report，再追加本 turn 的最终 report entry，不按 plan 或 task identity 过滤。
+- report 追加按 `sessionId`、`turnId`、entry type 与 message 幂等去重。因此同一 turn 可以保留不同结论，也可以同时保留最终 turn report；相同信息是否来自一个或多个 task 不影响 writer 消费。
 - Knowledge finalization worker 只异步消费进入 `end.*` 的 source `plan.json`、其相邻 report、finalize id 与 job host。它动态运行 job 配置的 writer skill；未配置 `externalSkill` 时才选择 consistency-aware `claw-kit:knowledge-writer`，由该内置 pass 共同维护 Truth 和 ADR、收敛每条 material current claim 的唯一 owner。外部 skill 的 prompt 与治理边界由 `external-writer-skill-config.md` 唯一拥有；writer 完成后才请求 recall indexing。
 - Codex 与 OpenCode 的 `using-claw-kit` 入口都明确告知 agent：eligible closeout 会自动把可复用知识沉淀进 canonical Truth。由该流程产生的 Truth 文件修改属于正常 workflow output，包括其他任务并行运行期间；仅观察到这类修改本身不构成写集冲突或异常沉淀的证据。
 - 内置 `knowledge-writer` 通过 top-level `scope: "session"` template 进入六任务 claw workflow，依次完成材料结论提取、证据新鲜度判断、canonical owner 搜索、Truth 维护、ADR 维护和跨文档一致性审查。writer 按内容解释所有提供的材料，不把 plan、report、closeout 命名或任何固定字段、记录形状、序列化格式当作输入 schema；source `plan.json`、相邻 report 与 finalize id 只是当前 finalizer 提供的具体 runtime inputs。task status 只解释 completed、pending 与 blocked scope，task 标题、描述、requirements 与 intentions 不能被提升为执行结果。writer 固定先维护 Truth、再维护 ADR，不设置 `truth` / `adr` / `both` / `noop` route task。direct entry 不依赖项目 `.claw`，session plan 写入用户级 runtime，不触发项目 Truth/ADR capture，因此不会为外层 finalization 再排队递归 job。
@@ -31,8 +34,9 @@
 - `packages/core/src/session-bindings.ts`：`sessionKey -> planPath` 的显式绑定及 parent 恢复。
 - `packages/core/src/context.ts`：只通过 session binding 恢复当前 workflow。
 - `packages/core/src/knowledge-sidecar.ts`：writer config snapshot、Truth/ADR Markdown 编码归一化、report 路径 containment 与幂等 finalization-result 写入。
+- `packages/cli/src/codex-transcript.ts`：按 turn 识别既有的成功 `task.done` 返回，并恢复最近的前置结论。
+- `packages/cli/src/cli.ts`：Codex-facing CLI lifecycle 与 hook entry；在 Codex `Stop` 时把 transcript conclusions 交给 sidecar。
 - `packages/core/src/knowledge-governance.ts`：本轮 changed canonical files 的 dated-section governance 与裁剪报告。
-- `packages/cli/src/cli.ts`：Codex-facing CLI lifecycle 与 hook entry。
 - `packages/codex-adapter/hooks/hooks.json`：SessionStart / Stop hook surface。
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md` 与 `packages/opencode-adapter/skills/using-claw-kit/SKILL.md`：自动沉淀及正常 Truth workflow output 的入口提示。
 - `shared/skills/knowledge-writer/`：combined stewardship workflow、session template 与 fallback 的规范 skill 源。
@@ -50,6 +54,7 @@
 - 人为让 hook、report 或 SDK 路径失败后，plan create/edit/done、subplan parent resume 和 binding 仍按 canonical lifecycle 完成。
 - 创建 root plan 和 subplan 时，各自只有由 `.json` 派生的相邻 `.report` 路径。
 - 终态 transition 的 Stop 只产生一份、且属于 pending ended plan 的 report；普通 Stop 只属于 active plan。
+- transcript capture 回归应覆盖 direct / deferred 成功输出、失败调用与文本伪阳性、同 turn 多次成功返回、最近前置 assistant conclusion，以及同一 Stop 重放的 report 幂等性。
 - worker 输入只接受进入 `end.*` 的 source `plan.json`、相邻 report、finalize id 与 job host；必须完成一次 consistency-aware `knowledge-writer` pass，再请求 indexing。
 - 内置 real-worker 验收必须确认已安装 skill locator、自动 `scope: session`、六任务 guidance-backed 固定顺序 completion、Truth/ADR 协同审查、项目 canonical 输出边界，以及没有递归 finalization。外部 writer 验收改为确认动态 skill prompt、无内置治理注入、无治理快照或 dated trimming，并接受任意达到 `end.completed` 且 tasks 非空并全部完成的 session workflow；不完整 workflow 仍失败。
 - 分发面检查应确认共享 entry 与 Codex/OpenCode 物化 entry 都保留 explicit-invocation-only description，物化副本除生成标记外与共享源一致；OpenCode worker prompt 必须明确加载 `claw-kit:knowledge-writer` 并传入 supplied materials，而不是依赖隐式 skill discovery。
@@ -87,3 +92,6 @@
 - `asynchronous truth ADR indexing`
 - `CODEX_SDK_RUNTIME_MISSING`
 - `requiresUserConsent`
+- `command: task.done`
+- `entryType: task_conclusion`
+- `extractTaskDoneConclusions`

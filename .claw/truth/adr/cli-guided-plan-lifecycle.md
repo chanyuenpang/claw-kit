@@ -45,9 +45,11 @@ Accepted
 - 原子结果使用 `schemaVersion = 1` 的 plan events；一次 mutation 共享 `mutationId`，每个事件有唯一 `eventId` 并记录 `commandSource`
 - CLI plan state 继续是 canonical source；Codex adapter 单向消费幂等 `hostActions` 以同步 host progress 与 Goal Mode，OpenCode 直接消费其 host-specific guidance；invocation host 的解析、投影与 worker 路由见 `invocation-host-handling.md`，不把 host 状态反向写成第二份所有权
 - schema 兼容的 Codex `update_plan` host action 默认在现有单次 code-mode 调用内自动消费，不再要求 Agent 把 CLI payload 搬运到第二次 host tool 调用
-- 自动 consumer 是 code-mode 调用中的固定胶水逻辑，不生成或维护独立脚本文件；consumer 只按 tool 白名单向 host schema 投影参数
+- Codex `update_plan` 只在 mutation 前后的完整 host plan 投影发生变化时生成；metadata-only、detail-only 或其他不改变投影的 mutation 不重复同步。只要 action 被生成，`input.plan` 仍必须是完整 plan 数组，不改成增量 patch
+- Codex create 类 compact response 只在 discussion 阶段返回完整 `plan`，并在返回完整 plan 时省略重复的 `planSummary`；其他阶段只返回紧凑摘要。该字段裁剪不改变 canonical plan 或非 Codex surface
+- 自动 consumer 是 code-mode 调用中的固定程序；内嵌 driver 是 Codex 实际执行面，独立 bundled consumer 是可测试 source contract。具体实现与二者一致性由 `codex-plan-mutations-use-fixed-code-mode-consumer.md` 唯一拥有
 - `recommendedCommands` 只表达可执行的 CLI 命令；code-mode 同调用消费是 adapter 执行合同，不伪装成 CLI command
-- 所有 `hostActions` 固定使用 `schemaVersion = 1`；`create_goal` 与 `update_goal` 的真实 host tool 参数只放在 `input`，`allowOverwrite`、`reason` 等策略信息放在 `meta`
+- 所有 `hostActions` 固定使用 `schemaVersion = 1`；action envelope 的最小字段与 Codex-only consumer 边界由 `codex-plan-mutations-use-fixed-code-mode-consumer.md` 唯一拥有，本 ADR 不再为 `meta` 或事件字段建立第二份合同
 - consumer 按 CLI 返回顺序和 action id 至多消费一次；CLI mutation 成功后若 host action 失败，只重试对应 action，不回滚 canonical CLI plan state
 - 历史设计曾允许同调用消费不可用时退回分离 host tool 调用；当前 Codex 合同已由 `codex-plan-mutations-use-fixed-code-mode-consumer.md` 收敛为 fail closed，不再提供 direct-call 或 split-call fallback。正确性仍不依赖 `PostToolUse` hook。
 - 既有 `claw plan create`、`claw plan edit` 与 `claw plan done` 保持兼容；`plan start` 是新增的短路径，不替换显式恢复和 legacy lifecycle surface
@@ -80,9 +82,11 @@ Accepted
 - `update_plan` 的单次 code-mode consumer 把配对样本的中位耗时从 5577ms 降至 765ms，并消除人工 payload 搬运；这支持把自动消费设为默认编排，而不是改变 CLI mutation 语义
 - tool 白名单和参数投影限制自动化边界，避免把 CLI 返回中的策略或说明字段未经验证地传给 host tool
 - host 同步失败与 canonical plan mutation 解耦后，恢复动作只需重放幂等 host action，不会因 host surface 瞬时失败撤销已经提交的计划状态
-- `schemaVersion = 1` 与 `input`/`meta` 分离让 adapter 可以验证真实 host 参数，同时保留 overwrite/reason 等策略说明而不污染 tool schema
+- `schemaVersion = 1` 保持兼容，最小 action envelope 让 adapter 只验证和消费真实 host 参数；无人消费的事件与策略 metadata 不再形成第二份响应负担
+- 以完整投影的净变化作为 `update_plan` 门禁，减少 metadata-only、detail-only 与普通完成 mutation 的 host 双写；完整数组合同仍保证 Codex plan mirror 不依赖增量 patch 合并语义
+- discussion 阶段的完整 plan 与其他阶段的紧凑 `planSummary` 形成互斥投影，避免 Codex create response 同时携带两份等价计划状态
 - action id、返回顺序与至多一次语义仍定义 host-action 恢复边界；历史分离消费路径已被后续固定 consumer 决策取代，CLI plan 的 canonical ownership 不变
-- guidance-first 的实现先兑现已测收益且不依赖 hook 时序；是否增加 runtime consumer 成为可独立评估的成本决策，而不是当前正确性前提
+- 固定 runtime consumer 已成为当前正确性边界；它不依赖 hook 时序，并由内嵌 driver 与 bundled source contract 的一致性测试保护
 - `0.1.75` 的 cold/warm driver 结果为同一 `driverVersion=3`、`cacheKey=claw-kit:codex-driver:v3:s1` 与 SHA，支持把短 bootstrap 的缓存身份作为可回归合同，而不是每次重新获取。
 - 语法预校验与逐步语义提交兼顾了零提交的输入错误边界和可恢复的部分成功语义；调用方可从结构化 partial 结果定位失败 operation，而不需要猜测哪些前置步骤已落盘。
 - 初始到最终状态的净归约避免合法中间状态产生虚假的 Goal 或 completion 操作，同时保持最终 plan mirror 与 canonical plan 一致。
@@ -140,7 +144,9 @@ Accepted
 - `tool allowlist parameter projection`
 - `host action retry without CLI rollback`
 - `hostActions schemaVersion 1`
-- `Goal action input meta projection`
+- `minimal hostAction envelope`
+- `full projected plan change`
+- `discussion full plan without duplicate planSummary`
 - `recommendedCommands CLI semantics`
 - `ordered at-most-once action id consumption`
 - `historical split-call fallback superseded by fixed code-mode consumer`

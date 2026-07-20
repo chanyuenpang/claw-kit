@@ -181,7 +181,7 @@ test("exported Codex plugin contains every shared workflow skill", async () => {
   const outDir = path.join(root, "dist");
   const result = await exportCodexPluginBundle({ outDir });
 
-  for (const skillName of ["planning", "config", "update", "create-claw-skill", "knowledge-writer"]) {
+  for (const skillName of ["planning", "config", "update", "create-claw-skill", "release-claw-kit", "knowledge-writer"]) {
     await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", skillName, "SKILL.md")));
   }
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "knowledge-writer", "agents", "openai.yaml")));
@@ -190,6 +190,8 @@ test("exported Codex plugin contains every shared workflow skill", async () => {
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "update", "TEMPLATE.json")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "create-claw-skill", "TEMPLATE.json")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "create-claw-skill", "FALLBACK.md")));
+  await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "release-claw-kit", "TEMPLATE.json")));
+  await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "release-claw-kit", "references", "release-protocol.md")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "scripts", "code-mode-host-action-consumer.mjs")));
 });
 
@@ -221,7 +223,7 @@ test("release protocol publishes the committed Git marketplace snapshot without 
   assert.doesNotMatch(distribution, /attach the exported Codex plugin bundle to the GitHub release/);
   assert.match(releaseScript, /assertRepositoryMarketplaceSnapshot/);
   assert.match(releaseScript, /assertTemplateVersionsAligned/);
-  assert.match(releaseScript, /"update", "create-claw-skill", "knowledge-writer"/);
+  assert.match(releaseScript, /"update", "create-claw-skill", "release-claw-kit", "knowledge-writer"/);
   assert.match(releaseScript, /no GitHub Release ZIP is required/);
   assert.match(releaseScript, /Next: invoke the claw-kit update skill/);
 });
@@ -241,18 +243,40 @@ test("Codex update contract is platform-specific and supports only the official 
   assert.match(installer, /github\.com\/chanyuenpang\/claw-kit\.git/i);
 });
 
+test("Codex release template sequences guarded publishing before published-source update", async () => {
+  const skillRoot = new URL("../packages/codex-adapter/skills/release-claw-kit/", import.meta.url);
+  const skill = await fs.readFile(new URL("SKILL.md", skillRoot), "utf8");
+  const template = JSON.parse(await fs.readFile(new URL("TEMPLATE.json", skillRoot), "utf8"));
+  const fallback = await fs.readFile(new URL("FALLBACK.md", skillRoot), "utf8");
+  const protocol = await fs.readFile(new URL("references/release-protocol.md", skillRoot), "utf8");
+  const combined = `${skill}\n${JSON.stringify(template)}\n${fallback}\n${protocol}`;
+
+  assert.equal(template.id, "release-claw-kit");
+  assert.equal(template.status, "process.active");
+  assert.equal(template.tasks.at(-1).id, 8);
+  assert.match(combined, /npm run verify:release/);
+  assert.match(combined, /npm run publish:release/);
+  assert.match(combined, /@veewo\/claw-core before @veewo\/claw/i);
+  assert.match(combined, /local main exactly equals origin\/main/i);
+  assert.match(combined, /separate completion boundaries/i);
+  assert.match(combined, /claw-kit@claw-kit/);
+  assert.match(combined, /unpublished workspace/i);
+  assert.doesNotMatch(JSON.stringify(template), /"choices"/);
+});
+
 test("official marketplace-style cache copy contains all shared skills and resources", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "claw-kit-codex-marketplace-install-"));
   const cacheRoot = path.join(root, ".codex", "plugins", "cache", "claw-kit");
   const sourceDir = fileURLToPath(new URL("../packages/codex-adapter", import.meta.url));
   const result = await installCodexPluginBundle({ sourceDir, cacheRoot });
 
-  for (const skillName of ["planning", "config", "update", "create-claw-skill"]) {
+  for (const skillName of ["planning", "config", "update", "create-claw-skill", "release-claw-kit"]) {
     await assert.doesNotReject(fs.access(path.join(result.installDir, "skills", skillName, "SKILL.md")));
   }
   await assert.doesNotReject(fs.access(path.join(result.installDir, "skills", "update", "TEMPLATE.json")));
   await assert.doesNotReject(fs.access(path.join(result.installDir, "skills", "create-claw-skill", "TEMPLATE.json")));
   await assert.doesNotReject(fs.access(path.join(result.installDir, "skills", "create-claw-skill", "FALLBACK.md")));
+  await assert.doesNotReject(fs.access(path.join(result.installDir, "skills", "release-claw-kit", "TEMPLATE.json")));
   await assert.doesNotReject(
     fs.access(path.join(result.installDir, "skills", "create-claw-skill", "scripts", "create-claw-skill-stub.mjs")),
   );

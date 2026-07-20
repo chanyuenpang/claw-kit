@@ -1,0 +1,182 @@
+{
+  "id": "release-claw-kit",
+  "version": "0.1.88",
+  "title": "release-claw-kit",
+  "status": "process.active",
+  "goal": {
+    "text": "Publish a verified claw-kit release, then refresh and verify the maintainer Codex installation from the published sources."
+  },
+  "requirements": {
+    "summary": "Prepare and directly deliver the release from main, pass the guarded release gates, verify GitHub, npm, and the committed plugin payload, then run the separate published-source update phase inside the same plan.",
+    "openQuestions": [],
+    "acceptanceCriteria": [
+      "Every local change is classified and the release source is committed on main and pushed so local main exactly equals origin/main before publishing.",
+      "The version, dependency pins, lockfile, plugin manifest, templates, materialized shared skills, and changelog form one reviewed release baseline.",
+      "The guarded verifier passes before @veewo/claw-core and @veewo/claw are published in that order.",
+      "GitHub source and tag, npm metadata and retrieval, the committed Codex marketplace payload, and a clean worktree are verified for the target version.",
+      "Only after release completion, the global CLI and official claw-kit@claw-kit Codex installation are refreshed from published sources and verified exactly."
+    ]
+  },
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Establish the release target and baseline",
+      "detail": "Read repository AGENTS.md, DISTRIBUTION.md, package manifests, the release ADR, current git status/branch/remotes, origin/main, tags, and npm latest versions. Default to a full patch release plus maintainer Codex refresh unless the user explicitly requests another semver or a narrower mode. If the root version already exceeds both published packages, preserve that prepared target; otherwise derive the next requested version from the highest confirmed repository/registry baseline. Classify every local change as release content, disposable output, or intentional local-only state. Do not stash, discard user work, create a branch, or publish from an unexamined worktree.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "default": {
+            "mergeMode": "override",
+            "summary": "The target version, release mode, branch baseline, and every local change are classified.",
+            "nextsteps": [
+              "Prepare one coherent release baseline for the confirmed target.",
+              "Keep disposable output out and preserve intentional user work."
+            ],
+            "nextTaskId": 2
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Prepare the aligned release source",
+      "detail": "Update the root, core, CLI, Codex/OpenClaw/OpenCode adapter versions; align CLI and OpenClaw @veewo/claw-core dependency pins; assign the Codex plugin semver+codex.<UTC timestamp> version; update CHANGELOG.md; and regenerate package-lock metadata. Run npm run sync:template-versions before npm run sync:shared-skills, then npm run check:template-versions. Review all generated adapter copies and the complete diff. Keep the release verifier side-effect free: all source and generated changes must be visible and reviewed before commit.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "default": {
+            "mergeMode": "override",
+            "summary": "The target release surface is aligned and generated copies are reviewed.",
+            "nextsteps": [
+              "Choose verification proportional to the concrete release diff.",
+              "Do not advance with stale template versions or unsynchronized shared skills."
+            ],
+            "nextTaskId": 3
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Verify the release candidate proportionally",
+      "detail": "Run git diff --check and the focused checks justified by the changed surfaces. Run npm run check:template-versions and the shared-skill synchronization test whenever templates or shared skills are involved. Run npm run check and targeted plugin bundle tests when their protected contracts changed. Use npm pack --dry-run for both publishable packages when package contents or dependency metadata are at risk. Expand to npm test only when the realistic regression risk justifies it. Fix failures and rerun the affected checks; record exact commands and results.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "default": {
+            "mergeMode": "override",
+            "summary": "The release candidate passed a risk-proportionate pre-push verification set.",
+            "nextsteps": [
+              "Commit the complete reviewed release baseline directly on main.",
+              "Push it before invoking the guarded release verifier."
+            ],
+            "nextTaskId": 4
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Commit and push the release baseline",
+      "detail": "Confirm the checked-out branch is main. Commit all intended release content together with no disposable artifacts, then push directly to origin/main. Verify git status --porcelain is empty and local HEAD exactly equals origin/main. Do not create a feature branch or pull request unless the user explicitly requested one, and do not tag or publish before this exact-source gate passes.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "default": {
+            "mergeMode": "override",
+            "summary": "The clean release baseline is committed and local main equals origin/main.",
+            "nextsteps": [
+              "Run the repository's guarded dry-run verifier.",
+              "Publish only from the exact verified commit."
+            ],
+            "nextTaskId": 5
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Run guarded verification and publish",
+      "detail": "Run npm run verify:release and stop on any failure. Confirm npm identity/permission without exposing credentials. Create and push the intended v<version> tag only for the exact verified release commit, then run npm run publish:release; the guarded script publishes @veewo/claw-core before @veewo/claw. Create the GitHub Release from that tag with concise changelog-derived notes and no plugin ZIP asset. Never substitute direct npm publish to bypass a gate. If a package version already exists, inspect registry state before retrying and never republish or move an existing tag blindly.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "default": {
+            "mergeMode": "override",
+            "summary": "The guarded publish command completed from the verified Git source commit.",
+            "nextsteps": [
+              "Prove GitHub, npm, committed plugin payload, and clean-worktree release evidence.",
+              "Do not begin local update until registry propagation is sufficient for retrieval."
+            ],
+            "nextTaskId": 6
+          }
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Verify the released artifacts",
+      "detail": "Verify origin/main and the pushed v<version> tag resolve to the release commit. Verify both npm packages expose the target version and dist-tags.latest; inspect CLI bin/dependencies and dist.tarball/dist.integrity/dist.shasum; perform an actual npm pack or isolated retrieval/install smoke. Verify the committed Codex marketplace plugin manifest and required skill payload at the same Git commit. Confirm the repository remains clean and local main still equals origin/main. Treat registry propagation delay as pending, not rollback; use the recovery guidance before retrying stale local retrieval.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "default": {
+            "mergeMode": "override",
+            "summary": "The release is complete across GitHub, npm, the committed Codex payload, and the local repository gate.",
+            "nextsteps": [
+              "Begin the independent update boundary using only the published CLI and official GitHub marketplace.",
+              "Keep release evidence distinct from maintainer-machine installation evidence."
+            ],
+            "nextTaskId": 7
+          }
+        }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Refresh the maintainer Codex installation",
+      "detail": "After the release is fully verified, apply the claw-kit:update workflow as an independently owned update stage. Refresh the global CLI from the published npm package first, then upgrade/install the official chanyuenpang/claw-kit GitHub marketplace source and enable only claw-kit@claw-kit. Disable any claw-kit@claw-kit-local identity. Do not install the CLI or plugin from unpublished workspace files, even though this plan is running inside the repository.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "default": {
+            "mergeMode": "override",
+            "summary": "Published-source CLI and official Codex plugin refresh commands completed.",
+            "nextsteps": [
+              "Verify the runtime, marketplace identity, source manifest, and active cache exactly.",
+              "Restart Codex and use a new task for loaded-skill verification."
+            ],
+            "nextTaskId": 8
+          }
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Verify installation and close out",
+      "detail": "Verify the Windows claw shim path, claw --version, npm list -g @veewo/claw --depth=0, and a repo-local claw context smoke that proves current flat project config is not rewritten to legacy nested fields. Verify the official marketplace origin, enabled claw-kit@claw-kit identity, source and active cache plugin versions, matching manifest hashes, and expected skill payload including release-claw-kit. Confirm local identity is disabled/absent. Restart Codex and start a new task before claiming the newly loaded skill version. Report the target version, release commit/tag, exact GitHub/npm/plugin evidence, checks run, and any unverified restart-dependent state.",
+      "status": "pending"
+    }
+  ],
+  "references": [
+    {
+      "path": "references/release-protocol.md",
+      "why": "Provides exact command groups, completion boundaries, and failure recovery for the claw-kit release."
+    },
+    {
+      "path": "CONTENT-COVERAGE.md",
+      "why": "Maps the existing release and update contracts to this template-backed skill."
+    }
+  ],
+  "rules": [
+    "Follow returned workflowGuidance before advancing.",
+    "Honor repository AGENTS.md and preserve user-owned changes; never use stash or destructive cleanup to manufacture a clean release gate.",
+    "Default to full publish plus maintainer Codex refresh, but honor an explicitly requested semver or narrower mode.",
+    "Release preparation may mutate source; npm run verify:release and npm run publish:release must remain side-effect free except for the intended registry publish.",
+    "Do not publish until the release commit is pushed and clean local main exactly equals origin/main.",
+    "Publish @veewo/claw-core before @veewo/claw and never bypass the guarded entrypoints.",
+    "The artifact release and the maintainer installation refresh are separate completion boundaries even though this template sequences both.",
+    "Never install from unpublished workspace content during the update phase; use the published npm package and official GitHub marketplace.",
+    "Do not claim completion until both release evidence and installation evidence pass, except for an explicitly narrowed release mode."
+  ]
+}

@@ -570,9 +570,11 @@ export type PlanEditResult = {
   emittedEvents: string[];
   changedTaskIds: number[];
   appendedTaskIds: number[];
+  completedTaskIds: number[];
   planReview?: PlanReviewResult;
   completionHooks?: PlanCompletionHooks;
   workflowGuidance: WorkflowGuidance;
+  previousPlan: PlanDocument;
   plan: PlanDocument;
   planView: PlanViewModel;
   operationChain?: PlanMutationChainResult;
