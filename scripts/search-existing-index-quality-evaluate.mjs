@@ -4,8 +4,8 @@ import { performance } from "node:perf_hooks";
 import { spawnSync } from "node:child_process";
 
 const repoRoot = path.resolve(import.meta.dirname, "..");
-const cliEntry = path.join(repoRoot, "packages", "cli", "dist", "bin.js");
-const corpusPath = path.join(repoRoot, "benchmarks", "search", "tiny-world-model-comparison-corpus.json");
+const cliEntry = path.resolve(repoRoot, flag("--cli-entry") ?? path.join("packages", "cli", "dist", "bin.js"));
+const corpusPath = path.resolve(repoRoot, flag("--corpus") ?? path.join("benchmarks", "search", "tiny-world-model-comparison-corpus.json"));
 
 function flag(name) {
   const index = process.argv.indexOf(name);

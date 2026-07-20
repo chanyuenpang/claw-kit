@@ -3,7 +3,10 @@ import path from "node:path";
 import { ClawError } from "./errors.js";
 import { readJsonFile } from "./io.js";
 import { ensureInsideDir, findProjectRoot, isValidTaskName, normalizePlanFile, normalizeTaskName } from "./paths.js";
-import { DEFAULT_MAX_TASKS_TO_KEEP } from "./project-defaults.js";
+import {
+  DEFAULT_KNOWLEDGE_DATED_SECTIONS_TO_KEEP,
+  DEFAULT_MAX_TASKS_TO_KEEP,
+} from "./project-defaults.js";
 import { resolveSessionBoundPlan } from "./session-bindings.js";
 import type { KnowledgeWriterReasoningEffort, MemoryEmbeddingConfig, ProjectConfig, ProjectContext, ResolvedContext, TaskContext, TaskMeta } from "./types.js";
 
@@ -183,6 +186,10 @@ function normalizeProjectConfig(projectConfig: ProjectConfig): ProjectConfig {
       reasoningEffort: normalizeKnowledgeWriterReasoningEffort(
         projectConfig.knowledgeWriter?.reasoningEffort,
       ),
+      datedSectionsToKeep: normalizeNonNegativeInteger(
+        projectConfig.knowledgeWriter?.datedSectionsToKeep,
+        DEFAULT_KNOWLEDGE_DATED_SECTIONS_TO_KEEP,
+      ),
     },
     externalPlanningSkill: normalizeOptionalSkill(projectConfig.externalPlanningSkill),
     defaultPlanTemplate: normalizeOptionalTemplateName(projectConfig.defaultPlanTemplate),
@@ -197,6 +204,10 @@ function normalizeProjectConfig(projectConfig: ProjectConfig): ProjectConfig {
       ? { var: projectConfig.var }
       : {}),
   };
+}
+
+function normalizeNonNegativeInteger(value: unknown, fallback: number): number {
+  return Number.isInteger(value) && (value as number) >= 0 ? value as number : fallback;
 }
 
 function resolveExternalWriterSkill(

@@ -23,12 +23,17 @@ Keep these files aligned for a release:
 4. [packages/cli/package.json](/D:/Users/chany/Documents/claw-kit/packages/cli/package.json)
 5. [packages/codex-adapter/package.json](/D:/Users/chany/Documents/claw-kit/packages/codex-adapter/package.json)
 6. [packages/openclaw-adapter/package.json](/D:/Users/chany/Documents/claw-kit/packages/openclaw-adapter/package.json)
-7. [packages/codex-adapter/.codex-plugin/plugin.json](/D:/Users/chany/Documents/claw-kit/packages/codex-adapter/.codex-plugin/plugin.json)
+7. [packages/opencode-adapter/package.json](/D:/Users/chany/Documents/claw-kit/packages/opencode-adapter/package.json)
+8. [packages/codex-adapter/.codex-plugin/plugin.json](/D:/Users/chany/Documents/claw-kit/packages/codex-adapter/.codex-plugin/plugin.json)
+9. [packages/core/src/templates/plans/default.ts](/D:/Users/chany/Documents/claw-kit/packages/core/src/templates/plans/default.ts)
+10. Every plugin `TEMPLATE.json` under `shared/skills`, `packages/codex-adapter/skills`, and `packages/opencode-adapter/skills`
 
 Rules:
 
 - Keep workspace package versions aligned unless there is a strong reason not to.
 - Use `semver+codex.<timestamp>` for the plugin manifest version.
+- After changing the root package version, run `npm run sync:template-versions`. It updates plugin template versions and the built-in default template from `package.json.version`.
+- Run `npm run sync:shared-skills` after template-version synchronization, then run `npm run check:template-versions`. Never publish by editing only a subset of materialized template copies.
 - Run `npm install` after editing package versions so `package-lock.json` stays consistent.
 
 ## 2. Update the locally installed copy
@@ -132,15 +137,18 @@ Requirements:
 1. Finish the feature or fix
 2. Run verification
 3. Update version numbers
-4. Run `npm install`
-5. Run `npm run build`
-6. Update the locally installed CLI
-7. Update the local Codex plugin cache if needed
-8. Check canonical `.claw` changes
-9. Confirm writer delegation and remaining task doc artifacts
-10. Verify local CLI and plugin cache versions
-11. `git commit`
-12. `git push`
+4. Run `npm run sync:template-versions`
+5. Run `npm run sync:shared-skills`
+6. Run `npm run check:template-versions`
+7. Run `npm install`
+8. Run `npm run build`
+9. Update the locally installed CLI
+10. Update the local Codex plugin cache if needed
+11. Check canonical `.claw` changes
+12. Confirm writer delegation and remaining task doc artifacts
+13. Verify local CLI and plugin cache versions
+14. `git commit`
+15. `git push`
 
 ## Notes
 

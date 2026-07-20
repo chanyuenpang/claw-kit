@@ -45,11 +45,13 @@ test("parseClawCommandResult extracts the first complete CLI JSON object", () =>
 
 test("program dispatches each native plan and Goal action exactly once", async () => {
   const calls = [];
+  let goalStatus = "complete";
   const result = { hostActions: makeActions() };
   const hostTools = {
     update_plan: async (input) => calls.push(["update_plan", input]),
-    create_goal: async (input) => calls.push(["create_goal", input]),
-    update_goal: async (input) => calls.push(["update_goal", input]),
+    get_goal: async () => ({ goal: { status: goalStatus } }),
+    create_goal: async (input) => { calls.push(["create_goal", input]); goalStatus = "active"; },
+    update_goal: async (input) => { calls.push(["update_goal", input]); goalStatus = "complete"; },
   };
 
   const consumption = await consumeCodexHostActions({ result, hostTools });
@@ -66,17 +68,50 @@ test("native Goal tool failures propagate unchanged for Agent-level outcome hand
   await assert.rejects(
     consumeCodexHostActions({
       result: { hostActions: [makeActions()[1]] },
-      hostTools: { create_goal: async () => { throw new Error("permission denied"); } },
+      hostTools: {
+        get_goal: async () => ({ goal: null }),
+        create_goal: async () => { throw new Error("permission denied"); },
+      },
     }),
     /permission denied/,
   );
   await assert.rejects(
     consumeCodexHostActions({
       result: { hostActions: [makeActions()[2]] },
-      hostTools: { update_goal: async () => { throw new Error("transport failed"); } },
+      hostTools: {
+        get_goal: async () => ({ goal: { status: "active" } }),
+        update_goal: async () => { throw new Error("transport failed"); },
+      },
     }),
     /transport failed/,
   );
+});
+
+test("Goal actions reuse an active Goal and do not close an already closed Goal", async () => {
+  const calls = [];
+  const consumedIds = new Set();
+  const hostTools = {
+    get_goal: async () => ({ goal: { status: "active" } }),
+    create_goal: async () => calls.push("create_goal"),
+    update_goal: async () => calls.push("update_goal"),
+  };
+
+  const resume = await consumeCodexHostActions({
+    result: { hostActions: [makeActions()[1]] },
+    hostTools,
+    consumedIds,
+  });
+  assert.deepEqual(calls, []);
+  assert.deepEqual(resume.consumedActionIds, ["mutation:create_goal"]);
+
+  hostTools.get_goal = async () => ({ goal: { status: "complete" } });
+  const done = await consumeCodexHostActions({
+    result: { hostActions: [makeActions()[2]] },
+    hostTools,
+    consumedIds,
+  });
+  assert.deepEqual(calls, []);
+  assert.deepEqual(done.consumedActionIds, ["mutation:update_goal"]);
 });
 
 test("program consumes an action id at most once", async () => {
@@ -126,14 +161,16 @@ test("program rejects unsupported schema, tools, and invalid native Goal inputs"
 
 test("runCodexPlanMutation keeps CLI mutation and direct host dispatch in one program", async () => {
   const calls = [];
+  let goalStatus = "complete";
   const result = { ok: true, command: "plan.done", hostActions: makeActions() };
   const run = await runCodexPlanMutation({
     command: "claw plan done --retrospective done",
     runCommand: async (command) => { calls.push(["command", command]); return JSON.stringify(result); },
     hostTools: {
       update_plan: async () => calls.push(["host", "update_plan"]),
-      create_goal: async () => calls.push(["host", "create_goal"]),
-      update_goal: async () => calls.push(["host", "update_goal"]),
+      get_goal: async () => ({ goal: { status: goalStatus } }),
+      create_goal: async () => { calls.push(["host", "create_goal"]); goalStatus = "active"; },
+      update_goal: async () => { calls.push(["host", "update_goal"]); goalStatus = "complete"; },
     },
   });
 
@@ -166,8 +203,8 @@ test("the embedded bootstrap caches the CLI driver and dispatches native host ac
         if (options.command === "claw codex driver") {
           return JSON.stringify({
             ok: true,
-            cacheKey: "claw-kit:codex-driver:v4:s1",
-            driverVersion: 4,
+            cacheKey: "claw-kit:codex-driver:v5:s1",
+            driverVersion: 5,
             hostActionSchemaVersion: 1,
             source: driverSource,
           });

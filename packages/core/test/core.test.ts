@@ -41,12 +41,17 @@ import { readTextFile, withSerializedAccess } from "../src/io.js";
 import {
   buildProjectKeywordSearchPlan,
   buildProjectQueryIntent,
+  extractProjectEntityPhrases,
   extractProjectKeywordTerms,
 } from "../src/memory-query.js";
 import {
   resolveDefaultLocalEmbeddingCacheDir,
   resolveLocalEmbeddingCacheDir,
 } from "../src/embedding-defaults.js";
+
+const corePackageVersion = String(
+  (JSON.parse(fs.readFileSync(new URL("../../package.json", import.meta.url), "utf-8")) as { version: string }).version,
+);
 
 function createFixture(name: string): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), `claw-kit-${name}-`));
@@ -73,6 +78,7 @@ function createPlanLikeTemplate(params: {
 }): Record<string, unknown> {
   return {
     id: params.id,
+    version: corePackageVersion,
     ...(params.scope ? { scope: params.scope } : {}),
     ...(params.configOverride ? { configOverride: params.configOverride } : {}),
     ...(params.title ? { title: params.title } : {}),
@@ -308,6 +314,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
       externalSkill: string | null;
       model: string | null;
       reasoningEffort: string;
+      datedSectionsToKeep: number;
     };
     memory: {
       enabled: boolean;
@@ -334,7 +341,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
     "# claw-kit\n.claw/*\n!.claw/project.json\n!.claw/truth/\n!.claw/truth/**\n.claw/project-override.json\n",
   );
   assert.deepEqual(projectConfig, {
-    version: "0.1.86",
+    version: corePackageVersion,
     id: "demo-project",
     name: "Demo Project",
     maxTasksToKeep: 20,
@@ -348,6 +355,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
       externalSkill: "external-knowledge-writer",
       model: null,
       reasoningEffort: "medium",
+      datedSectionsToKeep: 6,
     },
     memory: {
       enabled: true,
@@ -796,6 +804,7 @@ test("writePlan loads a plan-like project template and strips template-only task
     path.join(root, ".claw", "templates", "planlike-default.json"),
     `${JSON.stringify({
       id: "planlike-default",
+      version: corePackageVersion,
       status: "process.discussing",
       goal: {
         text: "Compile the workflow",
@@ -1233,6 +1242,7 @@ test("plan-like template guidance choices work for downstream task ids beyond th
     path.join(root, ".claw", "templates", "planlike-choice-required.json"),
     `${JSON.stringify({
       id: "planlike-choice-required",
+      version: corePackageVersion,
       status: "process.active",
       goal: {
         text: "Choose the downstream route",
@@ -2654,6 +2664,7 @@ test("resolveContext deep-merges project-override.json and preserves explicit nu
     externalSkill: null,
     model: "gpt-team-writer",
     reasoningEffort: "high",
+    datedSectionsToKeep: 6,
   });
   assert.equal(result.project.projectConfig?.memory?.embedding?.model, "Snowflake/snowflake-arctic-embed-m-v2.0");
 });
@@ -3469,8 +3480,28 @@ test("project query intent uses strong terms for conversational Chinese embeddin
       terms: ["\u8ba8\u8bba", "\u641c\u6253\u64a4", "\u65b9\u6848"],
       strongTerms: ["\u641c\u6253\u64a4"],
       weakTerms: ["\u8ba8\u8bba", "\u65b9\u6848"],
-      embeddingText: "\u641c\u6253\u64a4",
+      entityPhrases: [],
+      embeddingText: "\u4e4b\u524d\u8ba8\u8bba\u7684\u90a3\u4e2a\u641c\u6253\u64a4\u65b9\u6848",
     },
+  );
+});
+
+test("project query intent isolates an explicitly requested document subject from conversational framing", () => {
+  const query = "要查凡人界NPC与机缘链设定的正式说明，应以哪份文档为准，里面定义了哪些职责和使用规则";
+  assert.deepEqual(extractProjectEntityPhrases(query), ["凡人界NPC与机缘链设定"]);
+  assert.deepEqual(buildProjectQueryIntent(query), {
+    terms: ["凡人界NPC与机缘链设定"],
+    strongTerms: ["凡人界NPC与机缘链设定"],
+    weakTerms: [],
+    entityPhrases: ["凡人界NPC与机缘链设定"],
+    embeddingText: query,
+  });
+});
+
+test("project query intent recognizes locate framing without depending on the document language", () => {
+  assert.deepEqual(
+    extractProjectEntityPhrases("请定位E2E测试流程优化方案在当前项目中的真实做法、上下游关系和验证口径"),
+    ["E2E测试流程优化方案"],
   );
 });
 
@@ -3494,6 +3525,7 @@ test("project search skips the embedding worker for a unique exact filename hit"
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
   fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project notes\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "coldstarttarget.md"), "focused implementation notes\n", "utf-8");
+  fs.writeFileSync(path.join(root, "docs", "\u89c4\u5219-gameplay\u811a\u672c\u7f16\u5199.md"), "actions only flow\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "other.md"), "unrelated notes\n", "utf-8");
 
   const previousMockEnv = process.env.CLAW_EMBEDDING_MOCK;
@@ -3508,6 +3540,11 @@ test("project search skips the embedding worker for a unique exact filename hit"
     assert.equal(path.basename(result.results[0]?.sourcePath ?? ""), "coldstarttarget.md");
     assert.equal(result.telemetry.route, "lexical_fast_path");
     assert.equal(result.telemetry.queryEmbedding, "skipped");
+
+    const mixedNameResult = searchMemory({ cwd: root, query: "\u89c4\u5219-gameplay\u811a\u672c\u7f16\u5199.md", limit: 5 });
+    assert.equal(path.basename(mixedNameResult.results[0]?.sourcePath ?? ""), "\u89c4\u5219-gameplay\u811a\u672c\u7f16\u5199.md");
+    assert.equal(mixedNameResult.telemetry.route, "lexical_fast_path");
+    assert.equal(mixedNameResult.telemetry.queryEmbedding, "skipped");
   } finally {
     if (previousMockEnv === undefined) {
       delete process.env.CLAW_EMBEDDING_MOCK;
@@ -3522,7 +3559,7 @@ test("project search skips the embedding worker for a unique exact filename hit"
   }
 });
 
-test("project search reuses query embeddings by final embedding text", { concurrency: false }, () => {
+test("project search caches embeddings by the original semantic query text", { concurrency: false }, () => {
   const root = createFixture("memory-search-query-cache");
   fs.writeFileSync(
     path.join(root, ".claw", "project.json"),
@@ -3548,21 +3585,26 @@ test("project search reuses query embeddings by final embedding text", { concurr
   try {
     const index = buildMemoryIndex({ cwd: root });
     const firstSearch = searchMemory({ cwd: root, query: "之前讨论的那个搜打撤方案" });
-    const secondSearch = searchMemory({ cwd: root, query: "之后讨论的搜打撤方案" });
+    const secondSearch = searchMemory({ cwd: root, query: "之前讨论的那个搜打撤方案" });
+    const paraphrasedSearch = searchMemory({ cwd: root, query: "之后讨论的搜打撤方案" });
     assert.equal(firstSearch.telemetry.route, "hybrid");
     assert.equal(firstSearch.telemetry.queryEmbedding, "generated");
     assert.equal(firstSearch.telemetry.embeddingRuntime, "mock");
     assert.equal(secondSearch.telemetry.queryEmbedding, "cache_hit");
     assert.equal(secondSearch.telemetry.embeddingRuntime, undefined);
+    assert.equal(paraphrasedSearch.telemetry.queryEmbedding, "generated");
 
     const db = new DatabaseSync(index.storePath);
     try {
       const rows = db
         .prepare("SELECT query_text, dimensions FROM query_embeddings")
         .all() as Array<{ query_text: string; dimensions: number }>;
-      assert.equal(rows.length, 1);
-      assert.equal(rows[0]?.query_text, "搜打撤");
-      assert.ok((rows[0]?.dimensions ?? 0) > 0);
+      assert.equal(rows.length, 2);
+      assert.deepEqual(
+        rows.map((row) => row.query_text).sort(),
+        ["之前讨论的那个搜打撤方案", "之后讨论的搜打撤方案"].sort(),
+      );
+      assert.ok(rows.every((row) => row.dimensions > 0));
     } finally {
       db.close();
     }
@@ -4232,6 +4274,91 @@ test("project memory refresh splits oversized markdown paragraphs into multiple 
   }
 });
 
+test("project memory keeps heading context on knowledge chunks and selects temporal state before document collapse", { concurrency: false }, () => {
+  const root = createEmptyFixture("memory-temporal-knowledge-chunks");
+  initProject({
+    cwd: root,
+    projectName: "Memory Temporal Knowledge Chunks",
+    externalDocPaths: [],
+  });
+  const sourcePath = path.join(root, ".claw", "truth", "features", "temporalwidget.md");
+  fs.mkdirSync(path.dirname(sourcePath), { recursive: true });
+  fs.writeFileSync(sourcePath, [
+    "# Temporalwidget",
+    "",
+    "<!-- state: current -->",
+    "## Current behavior",
+    "",
+    "Temporalwidget current rules and behavior.",
+    "",
+    "<!-- state: history -->",
+    "## Evolution",
+    "",
+    "<!-- dated: 2026-07-20 -->",
+    "### Previous behavior",
+    "",
+    "Temporalwidget historical rules and rationale.",
+    "",
+  ].join("\n"), "utf-8");
+
+  const previousMockEnv = process.env.CLAW_EMBEDDING_MOCK;
+  process.env.CLAW_EMBEDDING_MOCK = "1";
+  try {
+    const index = buildMemoryIndex({ cwd: root });
+    const db = new DatabaseSync(index.storePath);
+    try {
+      const rows = db.prepare([
+        "SELECT chunk_text, heading_path, document_kind, document_state, chunk_state, dated, embedding_json",
+        "FROM doc_embeddings WHERE source_path = ? ORDER BY chunk_index ASC",
+      ].join(" ")).all(sourcePath) as Array<{
+        chunk_text: string;
+        heading_path: string;
+        document_kind: string;
+        document_state: string | null;
+        chunk_state: string | null;
+        dated: string | null;
+        embedding_json: string;
+      }>;
+      assert.ok(rows.some((row) => row.chunk_state === "current"));
+      assert.ok(rows.some((row) => row.chunk_state === "historical" && row.dated === "2026-07-20"));
+      assert.ok(rows.filter((row) => row.chunk_state === "historical").every((row) =>
+        row.chunk_text.includes("Heading: Temporalwidget > Evolution"),
+      ));
+      assert.ok(rows.every((row) => !row.chunk_text.includes("claw:")));
+      assert.ok(rows.every((row) => row.document_kind === "truth" && row.document_state === "current"));
+
+      const sharedVector = rows.find((row) => row.chunk_state === "current")?.embedding_json;
+      assert.ok(sharedVector);
+      db.prepare("UPDATE doc_embeddings SET embedding_json = ? WHERE source_path = ?")
+        .run(sharedVector, sourcePath);
+    } finally {
+      db.close();
+    }
+
+    const currentResult = searchMemory({
+      cwd: root,
+      scope: "project",
+      query: "temporalwidget 当前规则",
+      limit: 10,
+    }).results.find((entry) => entry.sourcePath === sourcePath);
+    const historicalResult = searchMemory({
+      cwd: root,
+      scope: "project",
+      query: "temporalwidget 为什么 2026-07-20 的历史规则",
+      limit: 10,
+    }).results.find((entry) => entry.sourcePath === sourcePath);
+    assert.equal(currentResult?.state, "current");
+    assert.equal(historicalResult?.state, "historical");
+    assert.equal(historicalResult?.dated, "2026-07-20");
+  } finally {
+    if (previousMockEnv === undefined) {
+      delete process.env.CLAW_EMBEDDING_MOCK;
+    } else {
+      process.env.CLAW_EMBEDDING_MOCK = previousMockEnv;
+    }
+  }
+});
+
 test("project memory refresh surfaces embedding worker timeouts", { concurrency: false }, () => {
   const root = createEmptyFixture("memory-embedding-timeout");
   initProject({
@@ -4870,6 +4997,7 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
       externalSkill: string | null;
       model: string | null;
       reasoningEffort: string;
+      datedSectionsToKeep: number;
     };
     memory: {
       enabled: boolean;
@@ -4888,7 +5016,7 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
   assert.equal(result.ok, true);
   assert.equal(result.changed, true);
   assert.ok(result.issueCountBefore > 0);
-  assert.equal(projectConfig.version, "0.1.86");
+  assert.equal(projectConfig.version, corePackageVersion);
   assert.equal(projectConfig.id, "fix-me");
   assert.equal(projectConfig.name, "Fix Me");
   assert.equal("releaseChannel" in projectConfig, false);
@@ -4901,6 +5029,7 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
     externalSkill: null,
     model: null,
     reasoningEffort: "medium",
+    datedSectionsToKeep: 6,
   });
   assert.equal("truthDispatch" in projectConfig, false);
   assert.equal(projectConfig.memory.enabled, true);
@@ -4956,6 +5085,7 @@ test("ensureProjectProtocol removes legacy default local modelCacheDir so runtim
       externalSkill: string | null;
       model: string | null;
       reasoningEffort: string;
+      datedSectionsToKeep: number;
     };
     memory: {
       embedding: {
@@ -4974,6 +5104,7 @@ test("ensureProjectProtocol removes legacy default local modelCacheDir so runtim
     externalSkill: null,
     model: null,
     reasoningEffort: "medium",
+    datedSectionsToKeep: 6,
   });
   assert.deepEqual(projectConfig.memory.embedding, {
     provider: "local",

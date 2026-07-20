@@ -1,5 +1,6 @@
 {
   "id": "update",
+  "version": "0.1.87",
   "title": "update",
   "status": "process.active",
   "goal": {
@@ -49,6 +50,10 @@
     }
   ],
   "references": [
+    {
+      "path": "non-claw-fallback.md",
+      "why": "Preserves the direct OpenCode update workflow when the claw template cannot run."
+    },
     {
       "path": "CONTENT-COVERAGE.md",
       "why": "Maps OpenCode update requirements to this skill package."

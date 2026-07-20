@@ -35,3 +35,16 @@ test("token-aware embedding chunking leaves short inputs unchanged and maps sour
     { sourceTextIndex: 1, text: "second input" },
   ]);
 });
+
+test("token-aware embedding chunking repeats heading context on every window", () => {
+  const prefix = "[knowledge:doc=truth state=historical]\nHeading: Topic > Evolution";
+  const segments = splitTextsIntoTokenWindows(
+    ["历史正文".repeat(200)],
+    countCodePointTokens,
+    { targetTokens: 160, overlapTokens: 16, prefixes: [prefix] },
+  );
+
+  assert.ok(segments.length > 1);
+  assert.ok(segments.every((segment) => segment.text.startsWith(`${prefix}\n\n`)));
+  assert.ok(segments.every((segment) => countCodePointTokens(segment.text) <= 160));
+});

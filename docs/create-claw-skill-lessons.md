@@ -11,6 +11,7 @@ The settled version uses this shape:
 
 - the authoring surface is a plan-like template
 - workflow control lives in the template
+- every template declares the claw CLI version that last validated it
 - runtime plans persist only the lightweight execution state
 - route recovery depends on `templateId`, numeric `task.id`, and optional `task.choiceId`
 
@@ -38,6 +39,8 @@ For `create-claw-skill`, good long-lived rules include:
 - let template own config override
 - preserve the original skill text as an adjacent fallback document
 - validate the generated template with `claw template validate --template <template-id>`
+- treat a missing or older template `version` as a package review and optimization trigger, not a mechanical version bump
+- keep the user-facing route concise: `Template out of date. Use claw-kit:create-claw-skill to upgrade template.`; put the detailed checklist in `references/template-upgrade.md`
 
 ## What Belongs In references
 
@@ -80,6 +83,7 @@ That means:
 - runtime guidance should be reconstructed from the template
 - fallback behavior should be preserved directly in the converted skill package
 - generated templates should be validated with the real CLI before the conversion is considered complete
+- only set `TEMPLATE.json.version` to the current CLI version after that inspection, optimization, and validation pass
 
 If a template task defines `guidance.onDone.choices`, completion must receive `--choice <choice>` and persist it as `task.choiceId`.
 Returned guidance must expose the allowed ids once in `nextTask.completionChoices` and one `claw task done --id <id> --choice <choice>` command template. Do not repeat ids in `nextsteps` or emit one command per route. The CLI rejects a done transition without `--choice` using that same syntax, which protects downstream guidance from guessing the wrong route.

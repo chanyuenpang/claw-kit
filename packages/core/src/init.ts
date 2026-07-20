@@ -5,7 +5,10 @@ import {
 } from "./embedding-defaults.js";
 import { ClawError } from "./errors.js";
 import { normalizeTaskName } from "./paths.js";
-import { DEFAULT_MAX_TASKS_TO_KEEP } from "./project-defaults.js";
+import {
+  DEFAULT_KNOWLEDGE_DATED_SECTIONS_TO_KEEP,
+  DEFAULT_MAX_TASKS_TO_KEEP,
+} from "./project-defaults.js";
 import { ensureUtf8Bom } from "./text-encoding.js";
 import { markTaskLayoutMigrationComplete } from "./task-layout-migration.js";
 import type { ProjectConfig } from "./types.js";
@@ -80,6 +83,7 @@ export function initProject(input: InitProjectInput): InitProjectResult {
       externalSkill: normalizeOptionalSkill(input.externalWriterSkill),
       model: null,
       reasoningEffort: "medium",
+      datedSectionsToKeep: DEFAULT_KNOWLEDGE_DATED_SECTIONS_TO_KEEP,
     },
     externalPlanningSkill: normalizeOptionalSkill(input.externalPlanningSkill),
     defaultPlanTemplate: null,

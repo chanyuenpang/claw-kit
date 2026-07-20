@@ -10,6 +10,7 @@ import { resolveDefaultLocalEmbeddingDimensions } from "./embedding-defaults.js"
 import { requestPersistentEmbedding } from "./embedding-daemon-protocol.js";
 import { ClawError } from "./errors.js";
 import { readJsonFile, readTextFile } from "./io.js";
+import { analyzeKnowledgeDocument, type KnowledgeState } from "./knowledge-document.js";
 import { buildProjectKeywordSearchPlan, buildProjectQueryIntent } from "./memory-query.js";
 import type {
   MemoryEmbeddingConfig,
@@ -39,7 +40,19 @@ const DEFAULT_EMBEDDING_MAX_CHARS =
 const DEFAULT_MEMORY_SQLITE_BUSY_TIMEOUT_MS = 5000;
 const PROJECT_QUERY_EMBEDDING_CACHE_LIMIT = 128;
 const PROJECT_QUERY_EMBEDDING_CACHE_VERSION = "v1";
-const PROJECT_EMBEDDING_CHUNKING_VERSION = "token-aware-v1";
+const PROJECT_EMBEDDING_CHUNKING_VERSION = "generic-knowledge-markers-v3";
+
+type KnowledgeDocumentSearchKind = "truth" | "adr" | "other";
+
+type MarkdownEmbeddingChunk = {
+  bodyText: string;
+  contextPrefix: string;
+  headingPath: string;
+  documentKind: KnowledgeDocumentSearchKind;
+  documentState: KnowledgeState | null;
+  state: KnowledgeState | null;
+  dated: string | null;
+};
 
 type ProjectDocSearchSignals = {
   matchedTerms: string[];
@@ -51,6 +64,10 @@ type ProjectDocSearchSignals = {
   pathHits: number;
   phraseMatch: boolean;
   strongCoverageRatio: number;
+  titleMatchScore: number;
+  entityTitleScore: number;
+  documentTypeScore: number;
+  genericPenalty: number;
   exactBoost: number;
 };
 
@@ -585,6 +602,11 @@ function prepareSchema(db: DatabaseSync): void {
       "  source_path TEXT NOT NULL,",
       "  kind TEXT NOT NULL,",
       "  chunk_text TEXT NOT NULL,",
+      "  heading_path TEXT NOT NULL DEFAULT '',",
+      "  document_kind TEXT NOT NULL DEFAULT 'other',",
+      "  document_state TEXT,",
+      "  chunk_state TEXT,",
+      "  dated TEXT,",
       "  embedding_json TEXT NOT NULL,",
       "  PRIMARY KEY (doc_id, chunk_index)",
       ");",
@@ -601,6 +623,19 @@ function prepareSchema(db: DatabaseSync): void {
   const docsColumns = db.prepare("PRAGMA table_info(docs)").all() as Array<{ name: string }>;
   if (!docsColumns.some((column) => column.name === "content_hash")) {
     db.exec("ALTER TABLE docs ADD COLUMN content_hash TEXT;");
+  }
+  const embeddingColumns = db.prepare("PRAGMA table_info(doc_embeddings)").all() as Array<{ name: string }>;
+  const embeddingMigrations = [
+    ["heading_path", "TEXT NOT NULL DEFAULT ''"],
+    ["document_kind", "TEXT NOT NULL DEFAULT 'other'"],
+    ["document_state", "TEXT"],
+    ["chunk_state", "TEXT"],
+    ["dated", "TEXT"],
+  ] as const;
+  for (const [name, declaration] of embeddingMigrations) {
+    if (!embeddingColumns.some((column) => column.name === name)) {
+      db.exec(`ALTER TABLE doc_embeddings ADD COLUMN ${name} ${declaration};`);
+    }
   }
 }
 
@@ -717,6 +752,11 @@ function generateDocEmbeddings(
   sourcePath: string;
   kind: string;
   chunkText: string;
+  headingPath: string;
+  documentKind: KnowledgeDocumentSearchKind;
+  documentState: KnowledgeState | null;
+  state: KnowledgeState | null;
+  dated: string | null;
   vector: number[];
 }> {
   if (!embedding) {
@@ -727,12 +767,12 @@ function generateDocEmbeddings(
   }
 
   const chunks = docs.flatMap((doc) =>
-    chunkMarkdownContent(doc.content).map((chunkText, chunkIndex) => ({
+    chunkMarkdownContent(doc.content, doc.sourcePath, doc.kind).map((chunk, chunkIndex) => ({
       docId: doc.docId,
       chunkIndex,
       sourcePath: doc.sourcePath,
       kind: doc.kind,
-      chunkText,
+      ...chunk,
     })),
   );
   if (chunks.length === 0) {
@@ -741,12 +781,17 @@ function generateDocEmbeddings(
 
   const output = runEmbeddingWorker({
     embedding,
-    texts: chunks.map((chunk) => chunk.chunkText),
+    texts: chunks.map((chunk) => embedding.provider === "local"
+      ? chunk.bodyText
+      : joinChunkContext(chunk.contextPrefix, chunk.bodyText)),
+    ...(embedding.provider === "local"
+      ? { textPrefixes: chunks.map((chunk) => chunk.contextPrefix) }
+      : {}),
     splitIntoTokenWindows: embedding.provider === "local",
   });
   const segments = output.segments ?? chunks.map((chunk, sourceTextIndex) => ({
     sourceTextIndex,
-    text: chunk.chunkText,
+    text: joinChunkContext(chunk.contextPrefix, chunk.bodyText),
   }));
   if (output.vectors.length !== segments.length) {
     throw new Error(
@@ -776,8 +821,8 @@ function insertDocEmbeddings(
 ): void {
   const insertEmbedding = db.prepare(
     [
-      "INSERT OR REPLACE INTO doc_embeddings (doc_id, chunk_index, source_path, kind, chunk_text, embedding_json)",
-      "VALUES (?, ?, ?, ?, ?, ?)",
+      "INSERT OR REPLACE INTO doc_embeddings (doc_id, chunk_index, source_path, kind, chunk_text, heading_path, document_kind, document_state, chunk_state, dated, embedding_json)",
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     ].join(" "),
   );
   embeddings.forEach((embedding) => {
@@ -787,6 +832,11 @@ function insertDocEmbeddings(
       embedding.sourcePath,
       embedding.kind,
       embedding.chunkText,
+      embedding.headingPath,
+      embedding.documentKind,
+      embedding.documentState,
+      embedding.state,
+      embedding.dated,
       JSON.stringify(embedding.vector),
     );
   });
@@ -853,35 +903,171 @@ function hashMemoryContent(content: string): string {
   return createHash("sha256").update(content, "utf8").digest("hex");
 }
 
-function chunkMarkdownContent(content: string): string[] {
-  const paragraphChunks = content
-    .split(/\r?\n\s*\r?\n/g)
-    .map((chunk) => chunk.trim())
-    .filter((chunk) => chunk.length > 0)
-    .flatMap((chunk) => splitOversizedMarkdownChunk(chunk));
+function chunkMarkdownContent(
+  content: string,
+  sourcePath: string,
+  sourceKind: string,
+): MarkdownEmbeddingChunk[] {
+  const isCanonicalKnowledge = sourceKind === "truth_doc";
+  const analysis = isCanonicalKnowledge ? analyzeKnowledgeDocument(content, sourcePath) : null;
+  const documentKind: KnowledgeDocumentSearchKind = analysis?.kind ?? "other";
+  const documentState = analysis?.state ?? null;
+  const headingStack: Array<{
+    level: number;
+    text: string;
+    state: KnowledgeState | null;
+    dated: string | null;
+  }> = [];
+  let inFence = false;
+  let pendingSectionState: KnowledgeState | null = null;
+  let pendingDate: string | null = null;
 
-  const mergedChunks: string[] = [];
-  let current = "";
-  for (const chunk of paragraphChunks) {
-    if (!current) {
-      current = chunk;
+  const paragraphs = content
+    .split(/\r?\n\s*\r?\n/gu)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+  const pieces: MarkdownEmbeddingChunk[] = [];
+  for (const paragraph of paragraphs) {
+    const bodyLines: string[] = [];
+    for (const line of paragraph.split(/\r?\n/gu)) {
+      if (/^\s*(```|~~~)/u.test(line)) {
+        inFence = !inFence;
+        bodyLines.push(line);
+        continue;
+      }
+      if (inFence) {
+        bodyLines.push(line);
+        continue;
+      }
+      const sectionState = parseKnowledgeStateComment(line);
+      if (sectionState) {
+        pendingSectionState = sectionState;
+        pendingDate = null;
+        continue;
+      }
+      const dated = parseKnowledgeDatedComment(line);
+      if (dated) {
+        pendingDate = dated;
+        continue;
+      }
+      if (isKnowledgeDocumentStateComment(line)) {
+        continue;
+      }
+      bodyLines.push(line);
+      const heading = /^(#{1,6})\s+(.+?)\s*$/u.exec(line.trim());
+      if (!heading) {
+        continue;
+      }
+      const level = heading[1].length;
+      const replaceFrom = headingStack.findIndex((entry) => entry.level >= level);
+      if (replaceFrom >= 0) {
+        headingStack.splice(replaceFrom);
+      }
+      const headingText = heading[2].trim();
+      headingStack.push({
+        level,
+        text: headingText,
+        state: pendingSectionState,
+        dated: pendingDate,
+      });
+      pendingSectionState = null;
+      pendingDate = null;
+    }
+
+    const bodyParagraph = bodyLines.join("\n").trim();
+    if (!bodyParagraph) {
       continue;
     }
-    if ((`${current}\n\n${chunk}`).length <= DEFAULT_EMBEDDING_TARGET_CHARS) {
-      current = `${current}\n\n${chunk}`;
-      continue;
+    const headingPath = headingStack.map((entry) => entry.text).join(" > ");
+    const state = [...headingStack].reverse().find((entry) => entry.state)?.state
+      ?? documentState;
+    const dated = [...headingStack].reverse().find((entry) => entry.dated)?.dated ?? null;
+    const contextPrefix = buildChunkContextPrefix({
+      headingPath,
+      documentKind,
+      documentState,
+      state,
+      dated,
+    });
+    const contextSeparatorLength = contextPrefix ? 2 : 0;
+    const maxBodyChars = Math.max(256, DEFAULT_EMBEDDING_MAX_CHARS - contextPrefix.length - contextSeparatorLength);
+    const targetBodyChars = Math.max(128, DEFAULT_EMBEDDING_TARGET_CHARS - contextPrefix.length - contextSeparatorLength);
+    for (const bodyText of splitOversizedMarkdownChunk(bodyParagraph, maxBodyChars, targetBodyChars)) {
+      pieces.push({
+        bodyText,
+        contextPrefix,
+        headingPath,
+        documentKind,
+        documentState,
+        state,
+        dated,
+      });
     }
-    mergedChunks.push(current);
-    current = chunk;
   }
-  if (current) {
-    mergedChunks.push(current);
+
+  const merged: MarkdownEmbeddingChunk[] = [];
+  for (const piece of pieces) {
+    const previous = merged[merged.length - 1];
+    if (previous
+      && sameChunkContext(previous, piece)
+      && joinChunkContext(previous.contextPrefix, `${previous.bodyText}\n\n${piece.bodyText}`).length
+        <= DEFAULT_EMBEDDING_TARGET_CHARS) {
+      previous.bodyText = `${previous.bodyText}\n\n${piece.bodyText}`;
+    } else {
+      merged.push({ ...piece });
+    }
   }
-  return mergedChunks;
+  return merged;
 }
 
-function splitOversizedMarkdownChunk(chunk: string): string[] {
-  if (chunk.length <= DEFAULT_EMBEDDING_MAX_CHARS) {
+function parseKnowledgeStateComment(line: string): KnowledgeState | null {
+  const match = /^\s*<!--\s*state:\s*(current|accepted|history|historical|superseded)\s*-->\s*$/iu.exec(line);
+  const value = match?.[1].toLowerCase();
+  if (value === "history" || value === "historical") {
+    return "historical";
+  }
+  return value === "current" || value === "accepted" || value === "superseded" ? value : null;
+}
+
+function parseKnowledgeDatedComment(line: string): string | null {
+  return /^\s*<!--\s*dated:\s*(\d{4}-\d{2}-\d{2})\s*-->\s*$/iu.exec(line)?.[1] ?? null;
+}
+
+function isKnowledgeDocumentStateComment(line: string): boolean {
+  return /^\s*<!--\s*document-state:\s*(?:current|accepted|history|historical|superseded)\s*-->\s*$/iu.test(line);
+}
+
+function buildChunkContextPrefix(input: Omit<MarkdownEmbeddingChunk, "bodyText" | "contextPrefix">): string {
+  const parts: string[] = [];
+  if (input.documentKind !== "other") {
+    parts.push(
+      `[knowledge:doc=${input.documentKind} doc_state=${input.documentState ?? "unknown"} state=${input.state ?? "unknown"}${input.dated ? ` dated=${input.dated}` : ""}]`,
+    );
+  }
+  if (input.headingPath) {
+    parts.push(`Heading: ${input.headingPath}`);
+  }
+  return parts.join("\n");
+}
+
+function joinChunkContext(prefix: string, body: string): string {
+  return prefix ? `${prefix}\n\n${body}` : body;
+}
+
+function sameChunkContext(left: MarkdownEmbeddingChunk, right: MarkdownEmbeddingChunk): boolean {
+  return left.contextPrefix === right.contextPrefix
+    && left.documentKind === right.documentKind
+    && left.documentState === right.documentState
+    && left.state === right.state
+    && left.dated === right.dated;
+}
+
+function splitOversizedMarkdownChunk(
+  chunk: string,
+  maxChars = DEFAULT_EMBEDDING_MAX_CHARS,
+  targetChars = DEFAULT_EMBEDDING_TARGET_CHARS,
+): string[] {
+  if (chunk.length <= maxChars) {
     return [chunk];
   }
 
@@ -889,7 +1075,7 @@ function splitOversizedMarkdownChunk(chunk: string): string[] {
   let start = 0;
   while (start < chunk.length) {
     const remaining = chunk.length - start;
-    if (remaining <= DEFAULT_EMBEDDING_MAX_CHARS) {
+    if (remaining <= maxChars) {
       pieces.push(chunk.slice(start).trim());
       break;
     }
@@ -897,8 +1083,9 @@ function splitOversizedMarkdownChunk(chunk: string): string[] {
     const preferredSplit = findPreferredChunkBoundary(
       chunk,
       start,
-      Math.min(start + DEFAULT_EMBEDDING_TARGET_CHARS, chunk.length),
-      Math.min(start + DEFAULT_EMBEDDING_MAX_CHARS, chunk.length),
+      Math.min(start + targetChars, chunk.length),
+      Math.min(start + maxChars, chunk.length),
+      targetChars,
     );
     pieces.push(chunk.slice(start, preferredSplit).trim());
     start = preferredSplit;
@@ -915,8 +1102,9 @@ function findPreferredChunkBoundary(
   start: number,
   preferredEnd: number,
   hardEnd: number,
+  targetChars = DEFAULT_EMBEDDING_TARGET_CHARS,
 ): number {
-  const lowerBound = Math.max(start + Math.floor(DEFAULT_EMBEDDING_TARGET_CHARS / 2), start + 1);
+  const lowerBound = Math.max(start + Math.floor(targetChars / 2), start + 1);
   for (let index = preferredEnd; index >= lowerBound; index -= 1) {
     const current = text[index];
     const previous = text[index - 1];
@@ -933,6 +1121,7 @@ function findPreferredChunkBoundary(
 function runEmbeddingWorker(input: {
   embedding: MemoryEmbeddingConfig;
   texts: string[];
+  textPrefixes?: string[];
   splitIntoTokenWindows?: boolean;
 }): {
   dimensions: number;
@@ -1085,6 +1274,7 @@ function searchProjectMemoryHybrid(
   }
 
   const queryIntent = buildProjectQueryIntent(query);
+  const temporalIntent = detectTemporalQueryIntent(query);
   const candidateLimit = Math.max(limit * PROJECT_SEARCH_CANDIDATE_MULTIPLIER, 40);
   const projectDocs = db
     .prepare("SELECT source_path, kind, content FROM docs")
@@ -1129,11 +1319,21 @@ function searchProjectMemoryHybrid(
   const vectorRows = db
     .prepare(
       [
-        "SELECT source_path, kind, chunk_text, embedding_json",
+        "SELECT source_path, kind, chunk_text, heading_path, document_kind, document_state, chunk_state, dated, embedding_json",
         "FROM doc_embeddings",
       ].join(" "),
     )
-    .all() as Array<{ source_path: string; kind: string; chunk_text: string; embedding_json: string }>;
+    .all() as Array<{
+      source_path: string;
+      kind: string;
+      chunk_text: string;
+      heading_path: string;
+      document_kind: KnowledgeDocumentSearchKind;
+      document_state: KnowledgeState | null;
+      chunk_state: KnowledgeState | null;
+      dated: string | null;
+      embedding_json: string;
+    }>;
   if (vectorRows.length === 0) {
     throw new ClawError(
       "MEMORY_VECTOR_INDEX_REQUIRED",
@@ -1150,23 +1350,51 @@ function searchProjectMemoryHybrid(
         snippet: buildSnippet(row.chunk_text),
         similarity: cosineSimilarity(queryEmbedding.vector, parseEmbeddingJson(row.embedding_json)),
         exactBoost: signals?.exactBoost ?? 0,
+        temporalBoost: calculateTemporalChunkBoost({
+          intent: temporalIntent,
+          documentState: row.document_state,
+          state: row.chunk_state,
+          dated: row.dated,
+        }),
+        documentKind: row.document_kind,
+        documentState: row.document_state,
+        state: row.chunk_state,
+        dated: row.dated,
+        headingPath: row.heading_path,
       };
     })
     .filter((row) => Number.isFinite(row.similarity))
     .sort((left, right) => {
-      const leftScore = left.similarity + left.exactBoost;
-      const rightScore = right.similarity + right.exactBoost;
+      const leftScore = left.similarity + left.exactBoost + left.temporalBoost;
+      const rightScore = right.similarity + right.exactBoost + right.temporalBoost;
       return rightScore - leftScore;
     });
 
-  const bestVectorBySource = new Map<string, { kind: string; snippet: string; similarity: number }>();
+  const bestVectorBySource = new Map<string, {
+    kind: string;
+    snippet: string;
+    similarity: number;
+    vectorScore: number;
+    documentKind: KnowledgeDocumentSearchKind;
+    documentState: KnowledgeState | null;
+    state: KnowledgeState | null;
+    dated: string | null;
+    headingPath: string;
+  }>();
   for (const row of rankedVectors) {
     const existing = bestVectorBySource.get(row.sourcePath);
-    if (!existing || row.similarity > existing.similarity) {
+    const vectorScore = row.similarity + row.temporalBoost;
+    if (!existing || vectorScore > existing.vectorScore) {
       bestVectorBySource.set(row.sourcePath, {
         kind: row.kind,
         snippet: row.snippet,
         similarity: row.similarity,
+        vectorScore,
+        documentKind: row.documentKind,
+        documentState: row.documentState,
+        state: row.state,
+        dated: row.dated,
+        headingPath: row.headingPath,
       });
     }
   }
@@ -1181,8 +1409,8 @@ function searchProjectMemoryHybrid(
   >();
   Array.from(bestVectorBySource.entries())
     .sort((left, right) => {
-      const leftScore = left[1].similarity + (docSignals.get(left[0])?.exactBoost ?? 0);
-      const rightScore = right[1].similarity + (docSignals.get(right[0])?.exactBoost ?? 0);
+      const leftScore = left[1].vectorScore + (docSignals.get(left[0])?.exactBoost ?? 0);
+      const rightScore = right[1].vectorScore + (docSignals.get(right[0])?.exactBoost ?? 0);
       return rightScore - leftScore;
     })
     .slice(0, candidateLimit)
@@ -1192,15 +1420,20 @@ function searchProjectMemoryHybrid(
         sourcePath,
         kind: row.kind,
         snippet: row.snippet,
-        score: reciprocalRankScore(index + 1, 0.6) + (signals?.exactBoost ?? 0),
+        score: reciprocalRankScore(index + 1, 0.5) + (signals?.exactBoost ?? 0),
         vectorRank: index + 1,
+        documentKind: row.documentKind,
+        documentState: row.documentState,
+        state: row.state,
+        dated: row.dated,
+        headingPath: row.headingPath,
       });
     });
 
   ftsRows.forEach((row, index) => {
     const existing = fused.get(row.source_path);
     const signals = docSignals.get(row.source_path);
-    const nextScore = (existing?.score ?? 0) + reciprocalRankScore(index + 1, 0.25);
+    const nextScore = (existing?.score ?? 0) + reciprocalRankScore(index + 1, 0.3);
     fused.set(row.source_path, {
       sourcePath: row.source_path,
       kind: existing?.kind ?? row.kind,
@@ -1208,13 +1441,14 @@ function searchProjectMemoryHybrid(
       score: nextScore + (existing ? 0 : (signals?.exactBoost ?? 0)),
       vectorRank: existing?.vectorRank,
       textRank: index + 1,
+      ...(existing ? pickTemporalResultMetadata(existing) : {}),
     });
   });
 
   signalRows.forEach((row, index) => {
     const existing = fused.get(row.source_path);
     const signals = docSignals.get(row.source_path);
-    const nextScore = (existing?.score ?? 0) + reciprocalRankScore(index + 1, 0.15);
+    const nextScore = (existing?.score ?? 0) + reciprocalRankScore(index + 1, 0.2);
     fused.set(row.source_path, {
       sourcePath: row.source_path,
       kind: existing?.kind ?? row.kind,
@@ -1223,6 +1457,7 @@ function searchProjectMemoryHybrid(
       vectorRank: existing?.vectorRank,
       textRank: existing?.textRank,
       signalRank: index + 1,
+      ...(existing ? pickTemporalResultMetadata(existing) : {}),
     });
   });
 
@@ -1246,11 +1481,23 @@ function tryProjectLexicalFastPath(input: {
 }): MemorySearchResultEntry[] | null {
   const { queryIntent } = input;
   const primaryKeywordStep = buildProjectKeywordSearchPlan(input.query)[0];
+  const normalizedFileQuery = path.basename(input.query.trim()).toLowerCase();
+  const normalizedFileStem = path.parse(normalizedFileQuery).name;
+  const explicitFileMatches = /\.[a-z0-9]{1,8}$/iu.test(normalizedFileQuery)
+    ? Array.from(input.docSignals.keys()).filter((sourcePath) => {
+        const candidateName = path.basename(sourcePath).toLowerCase();
+        return candidateName === normalizedFileQuery
+          || path.parse(candidateName).name === normalizedFileStem;
+      })
+    : [];
   if (
-    queryIntent.strongTerms.length === 0
-    || queryIntent.weakTerms.length > 0
-    || !primaryKeywordStep
-    || primaryKeywordStep.substringTerms.length > 0
+    explicitFileMatches.length !== 1
+    && (
+      queryIntent.strongTerms.length === 0
+      || queryIntent.weakTerms.length > 0
+      || !primaryKeywordStep
+      || primaryKeywordStep.substringTerms.length > 0
+    )
   ) {
     return null;
   }
@@ -1263,11 +1510,13 @@ function tryProjectLexicalFastPath(input: {
     || signals.pathHits >= queryIntent.strongTerms.length,
   );
   const phraseMatches = fullCoverage.filter(([, signals]) => signals.phraseMatch);
-  const confidentSourcePath = pathMatches.length === 1
-    ? pathMatches[0]?.[0]
-    : phraseMatches.length === 1
-      ? phraseMatches[0]?.[0]
-      : null;
+  const confidentSourcePath = explicitFileMatches.length === 1
+    ? explicitFileMatches[0]
+    : pathMatches.length === 1
+      ? pathMatches[0]?.[0]
+      : phraseMatches.length === 1
+        ? phraseMatches[0]?.[0]
+        : null;
   if (!confidentSourcePath) {
     return null;
   }
@@ -1575,6 +1824,58 @@ function escapeLikePattern(term: string): string {
   return term.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
 }
 
+type TemporalQueryIntent = {
+  mode: "neutral" | "current" | "historical";
+  date: string | null;
+};
+
+function detectTemporalQueryIntent(query: string): TemporalQueryIntent {
+  const normalized = query.trim().toLowerCase();
+  const date = /\b(\d{4}-\d{2}-\d{2})\b/u.exec(normalized)?.[1] ?? null;
+  const historical = /(?:\bwhy\b|\brationale\b|\bhistor(?:y|ical)\b|\bprevious(?:ly)?\b|\bpast\b|\bformerly\b|\brollback\b|\brevert(?:ed)?\b|\bused to\b|为什么|原因|历史|过去|之前|曾经|当时|回退|回滚|反复|演化|旧方案)/iu.test(normalized);
+  if (historical || date) {
+    return { mode: "historical", date };
+  }
+  const current = /(?:\bcurrent(?:ly)?\b|\bnow\b|\bpresent\b|\bfinal\b|\blatest\b|\bas of today\b|当前|现在|目前|最终|现行|如今|为准|怎么工作|如何工作)/iu.test(normalized);
+  return { mode: current ? "current" : "neutral", date };
+}
+
+function calculateTemporalChunkBoost(input: {
+  intent: TemporalQueryIntent;
+  documentState: KnowledgeState | null;
+  state: KnowledgeState | null;
+  dated: string | null;
+}): number {
+  const effectiveState = input.state ?? input.documentState;
+  let score = 0;
+  if (input.intent.mode === "current") {
+    if (effectiveState === "current" || effectiveState === "accepted") score += 0.035;
+    else if (effectiveState === "historical") score -= 0.025;
+    else if (effectiveState === "superseded") score -= 0.04;
+  } else if (input.intent.mode === "historical") {
+    if (effectiveState === "historical") score += 0.035;
+    else if (effectiveState === "superseded") score += 0.02;
+  } else if (effectiveState === "current" || effectiveState === "accepted") {
+    score += 0.012;
+  } else if (effectiveState === "superseded") {
+    score -= 0.025;
+  }
+  if (input.intent.date && input.dated === input.intent.date) {
+    score += 0.05;
+  }
+  return score;
+}
+
+function pickTemporalResultMetadata(entry: MemorySearchResultEntry): Partial<MemorySearchResultEntry> {
+  return {
+    ...(entry.documentKind !== undefined ? { documentKind: entry.documentKind } : {}),
+    ...(entry.documentState !== undefined ? { documentState: entry.documentState } : {}),
+    ...(entry.state !== undefined ? { state: entry.state } : {}),
+    ...(entry.dated !== undefined ? { dated: entry.dated } : {}),
+    ...(entry.headingPath !== undefined ? { headingPath: entry.headingPath } : {}),
+  };
+}
+
 function rerankProjectSearchCandidates(
   candidates: Array<
     MemorySearchResultEntry & {
@@ -1604,8 +1905,8 @@ function rerankProjectSearchCandidates(
       const uncoveredTerms = (signals?.matchedTerms ?? []).filter((term) => !coveredTerms.has(term));
       const adjustedScore =
         candidate.score
-        + uncoveredStrongTerms.length * 0.045
-        + uncoveredTerms.length * 0.01
+        + uncoveredStrongTerms.length * 0.015
+        + uncoveredTerms.length * 0.003
         + Math.max(routeCount - 1, 0) * 0.003;
 
       if (adjustedScore > bestScore) {
@@ -1643,7 +1944,29 @@ function rerankProjectSearchCandidates(
       kind: next.kind,
       snippet: next.snippet,
       score: next.score,
-    });
+      ...pickTemporalResultMetadata(next),
+      ...(process.env.CLAW_SEARCH_RANKING_DIAGNOSTICS === "1"
+        ? {
+            _ranking: {
+              vectorRank: next.vectorRank ?? null,
+              textRank: next.textRank ?? null,
+              signalRank: next.signalRank ?? null,
+              baseLexicalBoost:
+                (nextSignals?.exactBoost ?? 0)
+                - (nextSignals?.titleMatchScore ?? 0)
+                - (nextSignals?.entityTitleScore ?? 0)
+                - (nextSignals?.documentTypeScore ?? 0)
+                + (nextSignals?.genericPenalty ?? 0),
+              titleMatchScore: nextSignals?.titleMatchScore ?? 0,
+              entityTitleScore: nextSignals?.entityTitleScore ?? 0,
+              documentTypeScore: nextSignals?.documentTypeScore ?? 0,
+              genericPenalty: nextSignals?.genericPenalty ?? 0,
+              matchedTerms: nextSignals?.matchedTerms ?? [],
+              strongMatchedTerms: nextSignals?.strongMatchedTerms ?? [],
+            },
+          }
+        : {}),
+    } as MemorySearchResultEntry);
   }
 
   return selected;
@@ -1657,12 +1980,14 @@ function buildProjectSearchSignals(input: {
     terms: string[];
     strongTerms: string[];
     weakTerms: string[];
+    entityPhrases: string[];
   };
 }): ProjectDocSearchSignals {
   const normalizedQuery = input.query.trim();
   const normalizedContent = input.content.toLowerCase();
   const normalizedPath = input.sourcePath.toLowerCase();
   const fileName = path.basename(input.sourcePath).toLowerCase();
+  const title = extractDocumentTitle(input.content, fileName);
   const lowerTerms = input.queryIntent.terms.map((term) => term.toLowerCase());
   const lowerStrongTerms = input.queryIntent.strongTerms.map((term) => term.toLowerCase());
   const lowerWeakTerms = input.queryIntent.weakTerms.map((term) => term.toLowerCase());
@@ -1685,13 +2010,11 @@ function buildProjectSearchSignals(input: {
   const phraseMatch = normalizedQuery.length > 0
     && (normalizedContent.includes(normalizedQuery.toLowerCase()) || normalizedPath.includes(normalizedQuery.toLowerCase()));
   const weakOnlyPenalty = strongMatchedTerms.size === 0 && weakMatchedTerms.size > 0 ? 0.012 : 0;
-  const missingStrongPenalty =
-    lowerStrongTerms.length > 0 && strongMatchedTerms.size === 0
-      ? 0.035
-      : lowerStrongTerms.length > 1 && strongMatchedTerms.size === 1
-        ? 0.01
-        : 0;
   const indexFilePenalty = isIndexLikeDocName(fileName) ? 0.06 : 0;
+  const titleMatchScore = calculateTitleMatchScore(normalizedQuery, title);
+  const entityTitleScore = calculateEntityTitleScore(input.queryIntent.entityPhrases, title);
+  const documentTypeScore = calculateDocumentTypeScore(normalizedQuery, input.sourcePath, title);
+  const genericPenalty = calculateGenericDocumentPenalty(normalizedQuery, input.sourcePath, fileName, title);
 
   return {
     matchedTerms: Array.from(matchedTerms),
@@ -1703,6 +2026,10 @@ function buildProjectSearchSignals(input: {
     pathHits,
     phraseMatch,
     strongCoverageRatio,
+    titleMatchScore,
+    entityTitleScore,
+    documentTypeScore,
+    genericPenalty,
     exactBoost:
       strongMatchedTerms.size * 0.016
       + weakMatchedTerms.size * 0.004
@@ -1712,14 +2039,124 @@ function buildProjectSearchSignals(input: {
       + fileNameHits * 0.025
       + pathHits * 0.01
       + (phraseMatch ? 0.018 : 0)
+      + titleMatchScore
+      + entityTitleScore
+      + documentTypeScore
       - weakOnlyPenalty
-      - missingStrongPenalty
-      - indexFilePenalty,
+      - indexFilePenalty
+      - genericPenalty,
   };
 }
 
+function calculateEntityTitleScore(entityPhrases: string[], title: string): number {
+  const normalizedTitle = normalizeComparableTitle(title);
+  let score = 0;
+  for (const phrase of entityPhrases) {
+    const normalizedPhrase = normalizeComparableTitle(phrase);
+    if (normalizedPhrase.length < 3) {
+      continue;
+    }
+    if (normalizedPhrase === normalizedTitle) {
+      score = Math.max(score, 0.14);
+    } else if (normalizedTitle.includes(normalizedPhrase) || normalizedPhrase.includes(normalizedTitle)) {
+      score = Math.max(score, 0.09);
+    }
+  }
+  return score;
+}
+
+function normalizeComparableTitle(value: string): string {
+  return value.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
 function isIndexLikeDocName(fileName: string): boolean {
-  return fileName === "contents.md" || fileName === "summary.md" || fileName === "index.md" || fileName === "readme.md";
+  return fileName === "contents.md"
+    || fileName === "summary.md"
+    || fileName === "index.md"
+    || fileName === "readme.md"
+    || fileName === "project-truth.md";
+}
+
+function extractDocumentTitle(content: string, fileName: string): string {
+  const heading = content
+    .split(/\r?\n/u, 40)
+    .find((line) => /^#{1,3}\s+\S/u.test(line.trim()));
+  return (heading?.replace(/^#{1,3}\s+/u, "") ?? path.parse(fileName).name).trim().toLowerCase();
+}
+
+function calculateTitleMatchScore(query: string, title: string): number {
+  const queryFeatures = buildTitleLexicalFeatures(query);
+  const titleFeatures = buildTitleLexicalFeatures(title);
+  if (queryFeatures.size === 0 || titleFeatures.size === 0) {
+    return 0;
+  }
+  let matched = 0;
+  for (const feature of titleFeatures) {
+    if (queryFeatures.has(feature)) {
+      matched += 1;
+    }
+  }
+  if (matched < 2) {
+    return 0;
+  }
+  const titleCoverage = matched / titleFeatures.size;
+  return Math.min(0.075, matched * 0.006 + titleCoverage * 0.035);
+}
+
+function buildTitleLexicalFeatures(value: string): Set<string> {
+  const features = new Set<string>();
+  for (const asciiWord of value.toLowerCase().match(/[a-z][a-z0-9_-]{2,}/gu) ?? []) {
+    features.add(`a:${asciiWord}`);
+  }
+  for (const sequence of value.match(/[\u4e00-\u9fff]+/gu) ?? []) {
+    const characters = Array.from(sequence);
+    for (let size = 2; size <= 3; size += 1) {
+      for (let index = 0; index <= characters.length - size; index += 1) {
+        features.add(`c:${characters.slice(index, index + size).join("")}`);
+      }
+    }
+  }
+  return features;
+}
+
+function calculateDocumentTypeScore(query: string, sourcePath: string, title: string): number {
+  const normalizedPath = sourcePath.replaceAll("\\", "/").toLowerCase();
+  let score = 0;
+  if (/(?:必须|不应该|优先|规则)/u.test(query) && /(?:规则|规范|指南)/u.test(title)) {
+    score += 0.025;
+  }
+  if (/(?:有哪些|哪些|名单|清单|在哪里定义|哪里定义)/u.test(query) && /(?:名单|清单|目录|索引)/u.test(title)) {
+    score += 0.025;
+  }
+  if (/(?:章节|第[一二三四五六七八九十百]+章)/u.test(query) && /第[一二三四五六七八九十百]+章/u.test(title)) {
+    score += 0.025;
+  }
+  if (/(?:边界|允许|禁止|分工)/u.test(query) && /(?:边界|规范|规则|分工)/u.test(title)) {
+    score += 0.02;
+  }
+  if (/(?:为什么|为何|决定|取舍)/u.test(query) && /(?:adr|方案|决策|裁定)/iu.test(title)) {
+    score += 0.012;
+  }
+  if (/(?:现在|当前|最终|由谁|运行时)/u.test(query) && normalizedPath.includes("/.claw/truth/")) {
+    score += 0.006;
+  }
+  return Math.min(score, 0.04);
+}
+
+function calculateGenericDocumentPenalty(query: string, sourcePath: string, fileName: string, title: string): number {
+  const normalizedPath = sourcePath.replaceAll("\\", "/").toLowerCase();
+  const explicitlyRequestsPlanning = /(?:计划|规划|路线|规格|实施方案|复盘)/u.test(query);
+  const planningLikePath = /\/(?:plans?|specs?|development-plans|[^/]*开发[^/]*计划)(?:\/|$)/iu.test(normalizedPath);
+  if (planningLikePath && !explicitlyRequestsPlanning) {
+    return 0.04;
+  }
+  if (/第[一二三四五六七八九十百]+章/u.test(title) && !/(?:章节|第[一二三四五六七八九十百]+章)/u.test(query)) {
+    return 0.025;
+  }
+  if (/(?:总纲|索引|总览)/u.test(title) && !/(?:总纲|索引|总览|整体|全部)/u.test(query)) {
+    return 0.035;
+  }
+  return isIndexLikeDocName(fileName) ? 0.01 : 0;
 }
 
 function reciprocalRankScore(rank: number, weight: number): number {

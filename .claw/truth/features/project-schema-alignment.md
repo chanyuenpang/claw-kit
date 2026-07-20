@@ -61,12 +61,8 @@
 - `claw context` / protocol repair therefore upgrades older `.claw/project.json` files in-place instead of leaving them on a no-embedding schema.
 - when workflow defaults are omitted, canonical `project.json` remains the source of truth for `goalMode` and the `knowledgeWriter` configuration; the optional override file only changes the effective runtime result for the current repo checkout.
 - In the `claw-kit` repo itself, `memory.externalDocPaths` is intentionally empty, so project recall stays on `.claw` memory/truth Markdown and does not pull `docs/` into the search surface.
-- project-level `claw search --query "<topic>"` 除了 query embedding 之外，现在还会先构造 project keyword search plan。
-- 对多词 query，planner 会同时保留整句 multi-term `MATCH` 和逐词 fallback query，而不是只把原始 query 直接喂给一次 FTS。
-- 这条 planner 对中文多词查询同样有效；例如 `搜打撤 哈基宝` 会展开为 exact multi-term query 加单词级 fallback，从而避免 recall 过度依赖“所有词必须同条命中”。
-- project-level hybrid search 会先汇总这些 keyword candidates，再与现有 vector recall 融合，因此提升的是 recall 质量，而不是放弃 vector-required contract。
-- `packages/core/src/memory-query.ts` 新增 `extractProjectKeywordTerms()`，让 project search 的 query-term 抽取和 keyword planner 共享同一套中文/多词入口。
-- `packages/core/src/memory.ts` 的 project-scoped hybrid search 现在加入 document-level ranking signals，包括 `query term coverage`、`matched-character density / content focus`、`path / filename hits` 和 `exact phrase boost`，用来提高中文精确命中文档的前排优先级，避免 `.claw` memory / truth 或泛噪声文档抢位。
+- project-level `claw search --query "<topic>"` 会在 vector-required contract 内组合 query embedding、keyword plan 和 document signals；本文只确认这些能力消费 canonical project embedding schema。
+- query parsing、三路融合、rerank 常量、lexical fast path 边界与版本化质量结果由 `project-search-candidate-recall.md` 唯一拥有；本 schema 文档不重复维护排序规则。
 - Project-level search requires vector indexing to be configured and refreshed; missing `memory.embedding`, missing `vector_index` metadata, or missing stored vectors now fail with `MEMORY_VECTOR_INDEX_REQUIRED` instead of silently degrading.
 - Task-scope memory search still uses the existing active-plan-plus-task-memory FTS path and does not participate in the hybrid/vector recall flow.
 - Codex-facing recall is `claw search --query "<topic>"`; this reads the indexed project context before planning or investigation, and it remains document recall rather than code search.
@@ -74,8 +70,7 @@
 - `claw plan done` rebuilds project/task search indexes and only refreshes GitNexus when flat `gitnexus` is `true`.
 - `claw plan done` 的 GitNexus 预检与自愈链路仍然只认 canonical `gitnexus` boolean，不再使用 `gitnexus.enabled` 作为规范字段；同一条 gate 既控制是否刷新，也控制是否先做前台 install/setup / embeddings self-heal。
 - 本文只拥有 canonical `gitnexus` schema gate；GitNexus analyze 的 `--no-ai-context` fallback、Windows access-violation force rebuild 与错误边界由 `local-claw-cli.md` 统一拥有。
-- The hybrid project query path is adapted from the more mature `openclaw-dev` memory query design, but only the minimal `claw-kit` subset was adopted.
-- 这次 multi-term 中文 recall 的迁移同样参考 `openclaw-dev` 的 memory search 设计，但在 `claw-kit` 中只搬运了适合当前项目的 query planner + keyword recall + vector fusion 最小子集。
+- The hybrid project query path is adapted from the more mature `openclaw-dev` memory query design, but its current behavior and migration scope are maintained by `project-search-candidate-recall.md`.
 - incremental refresh 的存在不改变 project search 的可用性契约：project recall 依然要求 vector index，不能回退成纯 FTS fallback。
 - 这套 refresh 语义参考的是 `openclaw-dev` 对已有 sqlite 的 incremental bootstrap / sync 思路，但 `claw-kit` 只搬运了适合当前项目的最小 sqlite 增量迁移子集。
 - For a local ONNX cache, re-downloading a model artifact after deleting only that versioned cache directory should preserve the SHA256 if the upstream payload is unchanged; a different timestamp alone is not evidence of a different artifact. Current cache ownership and readiness rules are maintained by `../adr/local-embedding-shared-model-cache.md` and `../adr/refresh-local-embedding-onnx-cache.md`.

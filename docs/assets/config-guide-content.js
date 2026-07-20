@@ -64,8 +64,8 @@ export const configGuideContent = {
         group: "Workflow",
         title: "Auto-doc writer model and reasoning",
         summary: "Configures the Codex SDK writer used after a plan closes.",
-        detail: "Set model to null to use the SDK default. reasoningEffort accepts minimal, low, medium, high, or xhigh. Turn report capture is always enabled for the active plan.",
-        example: `"knowledgeWriter": { "externalSkill": null, "model": null, "reasoningEffort": "medium" }`
+        detail: "Set model to null to use the SDK default. reasoningEffort accepts minimal, low, medium, high, or xhigh. datedSectionsToKeep caps only complete dated evolution sections in documents changed by the built-in writer; the default is 6.",
+        example: `"knowledgeWriter": { "externalSkill": null, "model": null, "reasoningEffort": "medium", "datedSectionsToKeep": 6 }`
       },
       {
         id: "defaultPlanTemplate",
@@ -193,8 +193,8 @@ export const configGuideContent = {
         group: "工作流",
         title: "auto-doc writer 的模型与思考深度",
         summary: "配置 plan closeout 后由 Codex SDK 启动的知识 writer。",
-        detail: "model 为 null 时使用 SDK 默认模型；reasoningEffort 可选 minimal、low、medium、high 或 xhigh。当前 plan 的逐回合 report 捕获始终启用。",
-        example: `"knowledgeWriter": { "externalSkill": null, "model": null, "reasoningEffort": "medium" }`
+        detail: "model 为 null 时使用 SDK 默认模型；reasoningEffort 可选 minimal、low、medium、high 或 xhigh。datedSectionsToKeep 只限制内置 writer 本次改动文档中的完整 dated 演化区块数量，默认值为 6。",
+        example: `"knowledgeWriter": { "externalSkill": null, "model": null, "reasoningEffort": "medium", "datedSectionsToKeep": 6 }`
       },
       {
         id: "defaultPlanTemplate",

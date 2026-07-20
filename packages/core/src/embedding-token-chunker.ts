@@ -6,6 +6,7 @@ export type EmbeddingTextSegment = {
 export type TokenWindowOptions = {
   targetTokens: number;
   overlapTokens: number;
+  prefixes?: string[];
 };
 
 export function splitTextsIntoTokenWindows(
@@ -15,10 +16,17 @@ export function splitTextsIntoTokenWindows(
 ): EmbeddingTextSegment[] {
   const targetTokens = Math.max(1, Math.floor(options.targetTokens));
   const overlapTokens = Math.max(0, Math.min(Math.floor(options.overlapTokens), targetTokens - 1));
-  return texts.flatMap((text, sourceTextIndex) =>
-    splitTextIntoTokenWindows(text, countTokens, targetTokens, overlapTokens)
-      .map((segment) => ({ sourceTextIndex, text: segment })),
-  );
+  return texts.flatMap((text, sourceTextIndex) => {
+    const prefix = options.prefixes?.[sourceTextIndex]?.trim() ?? "";
+    const prefixTokens = prefix ? countTokens(`${prefix}\n\n`) : 0;
+    const bodyTargetTokens = Math.max(1, targetTokens - prefixTokens);
+    const bodyOverlapTokens = Math.min(overlapTokens, bodyTargetTokens - 1);
+    return splitTextIntoTokenWindows(text, countTokens, bodyTargetTokens, bodyOverlapTokens)
+      .map((segment) => ({
+        sourceTextIndex,
+        text: prefix ? `${prefix}\n\n${segment}` : segment,
+      }));
+  });
 }
 
 function splitTextIntoTokenWindows(

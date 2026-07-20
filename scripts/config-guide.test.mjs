@@ -21,12 +21,11 @@ test("config guide content model covers every supported project.json field", asy
     "maxTasksToKeep",
     "planning",
     "goalMode",
-    "truthDispatch",
+    "knowledgeWriter",
     "defaultPlanTemplate",
     "contextPaths",
     "externalPlanningSkill",
-    "externalTruthSkill",
-    "externalAdrSkill",
+    "knowledgeWriter.externalSkill",
     "memory.enabled",
     "memory.externalDocPaths",
     "memory.embedding",
@@ -46,17 +45,16 @@ test("config guide content model covers every supported project.json field", asy
   const zhEmbedding = configGuideContent.zh.fieldCards.find((card) => card.id === "memory.embedding");
   const zhMemoryEnabled = configGuideContent.zh.fieldCards.find((card) => card.id === "memory.enabled");
   const zhVersion = configGuideContent.zh.fieldCards.find((card) => card.id === "version");
-  const zhTruthDispatch = configGuideContent.zh.fieldCards.find((card) => card.id === "truthDispatch");
+  const zhKnowledgeWriter = configGuideContent.zh.fieldCards.find((card) => card.id === "knowledgeWriter");
   const zhContextPaths = configGuideContent.zh.fieldCards.find((card) => card.id === "contextPaths");
   assert.match(zhVersion.detail, /claw context/);
   assert.match(zhMemoryEnabled.summary, /memory/);
   assert.match(zhMemoryEnabled.detail, /claw search/);
   assert.match(zhExternalDocPaths.example, /^"memory": \{ "externalDocPaths":/);
   assert.match(zhEmbedding.example, /^"memory": \{ "embedding":/);
-  assert.match(zhTruthDispatch.summary, /per_task/);
-  assert.match(zhTruthDispatch.summary, /final_only/);
-  assert.match(zhTruthDispatch.detail, /per_task/);
-  assert.match(zhTruthDispatch.detail, /final_only/);
+  assert.match(zhKnowledgeWriter.summary, /知识 writer/);
+  assert.match(zhKnowledgeWriter.detail, /datedSectionsToKeep/);
+  assert.match(zhKnowledgeWriter.example, /"datedSectionsToKeep": 6/);
   assert.match(zhContextPaths.summary, /OpenClaw/);
   assert.match(zhContextPaths.summary, /agents\.md/);
   assert.match(zhContextPaths.example, /agents\.md/);

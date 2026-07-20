@@ -1,13 +1,14 @@
 {
   "id": "knowledge-writer",
+  "version": "0.1.87",
   "scope": "session",
   "title": "knowledge-writer",
   "status": "process.active",
   "goal": {
-    "text": "Maintain canonical Truth and then ADR knowledge from conclusion-bearing content in all supplied closeout materials."
+    "text": "Maintain canonical Truth and then ADR knowledge from conclusion-bearing content in all supplied materials."
   },
   "requirements": {
-    "summary": "Interpret supplied closeout materials by content rather than fixed structure, use task status as context without treating task lists as execution logs, then maintain Truth followed by ADR.",
+    "summary": "Interpret all supplied materials by content rather than fixed structure, use task status as context without treating task lists as execution logs, then maintain Truth followed by ADR.",
     "openQuestions": [],
     "acceptanceCriteria": [
       "Every conclusion-bearing input is evaluated for durable reusable facts and decisions regardless of its container or format.",
@@ -15,7 +16,8 @@
       "Requirements and intentions are never promoted into completed results merely because they appear in the plan.",
       "Truth is maintained before ADR without a deposition routing or choice task.",
       "Each material current fact or decision has one owner and related Truth and ADR claims are consistent.",
-      "Supplied source materials remain unchanged and no nested writer or recall refresh is dispatched.",
+      "Every Truth or ADR owner written by this pass is inspected and repaired to the machine-stable state and dated evolution format while untouched documents remain unmigrated.",
+      "Supplied materials remain unchanged.",
       "Current-state claims pass a read-only freshness check against implementation anchors and relevant later working-tree changes.",
       "Focused and exhaustive post-write searches find no unresolved competing current claim."
     ]
@@ -23,18 +25,18 @@
   "tasks": [
     {
       "id": 1,
-      "title": "Read conclusion evidence and locate canonical owners",
-      "detail": "Read every supplied closeout material completely. Discover evidence from content and semantics without requiring a particular filename, field, record shape, or serialization format; plans and reports are current input forms, not a closed schema. Extract executed conclusions, verified findings, retrospective lessons, key decisions, and other explicit outcomes wherever they appear. When task status is present, use it to understand completed, pending, and blocked scope, but do not treat task titles or descriptions as an execution log or promote requirements and intentions into results. For each proposed current-behavior claim, perform a read-only freshness check of its implementation anchors and relevant later or overlapping working-tree diff, then classify the evidence as current, historical, superseded, or unresolved. Use claw search to discover existing Truth and ADR owners, open every plausible candidate, and use exhaustive text search when top-k recall could hide a competing current claim. Do not modify source inputs or lifecycle state.",
+      "title": "Read all supplied materials and extract conclusions",
+      "detail": "Read every supplied material completely without requiring a particular filename, field, record shape, or serialization format. Extract executed conclusions, verified findings, retrospective lessons, key decisions, and other explicit outcomes wherever they appear. Record the material location and exact identifiers supporting each candidate. When task status is present, use it to understand completed, pending, and blocked scope, but do not treat task titles or descriptions as an execution log or promote requirements and intentions into results. Do not modify supplied materials.",
       "status": "pending",
       "guidance": {
         "onDone": {
           "default": {
             "mergeMode": "override",
-            "summary": "Executed evidence and plausible owners are understood; maintain Truth first.",
+            "summary": "All supplied materials are read and conclusion-bearing candidates are extracted; qualify their authority next.",
             "nextsteps": [
-              "Use only durable reusable facts supported by conclusion-bearing input content.",
-              "Use task status as interpretation context and do not promote requirements, task descriptions, or superseded evidence to current behavior.",
-              "Proceed to the Truth pass without selecting a deposition route."
+              "Keep each candidate traceable to its material location and exact wording or identifiers.",
+              "Discard narration, speculation, requirements, and task descriptions that do not state an outcome.",
+              "Do not search for owners yet; first determine which candidates are eligible and whether they describe current or historical knowledge."
             ],
             "nextTaskId": 2
           }
@@ -43,17 +45,18 @@
     },
     {
       "id": 2,
-      "title": "Maintain canonical Truth",
-      "detail": "Using freshness-qualified conclusion content from all supplied materials, update stable current behavior, constraints, pitfalls, code anchors, and verification rules in their canonical Truth owners. Update an existing owner whenever one exists; create a document only for a genuinely new durable topic after filename and title collision checks. Maintain one current owner per material fact and narrow competing documents to references, historical or version-bound evidence, or non-overlapping scope. If there is no eligible new or changed Truth, make no Truth edit and retain the evidence-backed reason. Preserve unrelated user edits and repository conventions.",
+      "title": "Qualify evidence and resolve freshness",
+      "detail": "Classify every extracted candidate as durable or temporary and as current, historical, superseded, or unresolved. For each proposed current-behavior claim, perform a read-only freshness check of its implementation anchors and relevant later or overlapping working-tree diff. Current implementation outranks older material wording for current state. Exclude unresolved conflicts and candidates that add no durable reusable knowledge, retaining an evidence-backed no-write reason. Do not repeat implementation or test verification.",
       "status": "pending",
       "guidance": {
         "onDone": {
           "default": {
             "mergeMode": "override",
-            "summary": "The Truth pass is complete; maintain ADR from the same evidence and resulting Truth state.",
+            "summary": "Eligible evidence is freshness-qualified and time-scoped; locate its canonical owners next.",
             "nextsteps": [
-              "Evaluate durable decisions, rationale, alternatives, tradeoffs, ownership, and consequences.",
-              "Keep ADR claims consistent with the canonical Truth owners just reviewed."
+              "Carry forward only durable candidates with resolved authority.",
+              "Keep historical conclusions available when they remain useful, but never promote them silently to current state.",
+              "Search broadly enough to find competing owners before editing any canonical document."
             ],
             "nextTaskId": 3
           }
@@ -62,17 +65,18 @@
     },
     {
       "id": 3,
-      "title": "Maintain canonical ADRs",
-      "detail": "Using the same freshness-qualified conclusion content and the resulting Truth state, update durable decisions, context, rationale, alternatives, tradeoffs, ownership, and consequences in their canonical ADR owners. Update an existing owner whenever one exists; create a document only for a genuinely new durable decision after filename and title collision checks. Do not manufacture an ADR when the eligible evidence contains no durable decision; retain that as the no-edit reason and continue. Keep current decision claims aligned with Truth and preserve unrelated user edits and repository conventions.",
+      "title": "Locate canonical Truth and ADR owners",
+      "detail": "Use claw search to discover existing Truth and ADR owners for every eligible candidate, open every plausible result, and use exhaustive text search for distinguishing identifiers when top-k recall could hide a competing current claim. Select the existing owner whenever one exists. Create a new-owner proposal only for a genuinely new durable topic after filename and title collision checks. Identify overlaps that must be narrowed to references, historical or version-bound evidence, or non-overlapping scope. For every owner selected for writing, inspect its conformance to knowledge-format.md and include any required format repair in the owner map.",
       "status": "pending",
       "guidance": {
         "onDone": {
           "default": {
             "mergeMode": "override",
-            "summary": "The ordered Truth and ADR passes are complete; verify the corpus as a whole.",
+            "summary": "Canonical owners and competing claims are mapped; maintain Truth first.",
             "nextsteps": [
-              "Review related Truth and ADR documents together, not as independent outputs.",
-              "Re-run focused and exhaustive searches for competing owners and contradictory current claims."
+              "Update existing owners instead of appending parallel summaries.",
+              "Create a document only when the owner search proves the topic is genuinely new.",
+              "Resolve current factual ownership in Truth before maintaining decisions in ADR, and repair each written owner's format in the same edit."
             ],
             "nextTaskId": 4
           }
@@ -81,9 +85,61 @@
     },
     {
       "id": 4,
+      "title": "Maintain canonical Truth",
+      "detail": "Using the qualified evidence and owner map, update stable current behavior, constraints, pitfalls, code anchors, and verification rules in canonical Truth owners. Before writing an owner, inspect its conformance to knowledge-format.md and repair any nonconforming structure in the same edit. Apply this to every written owner without mass-rewriting untouched documents. Add dated evolution only when a former fact remains useful for rollback, compatibility, feature repetition, incident reasoning, or understanding a meaningful transition. Maintain one current owner per material fact. When there is no eligible new or changed Truth, make no edit and retain the evidence-backed reason. Preserve unrelated user edits and repository conventions.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "default": {
+            "mergeMode": "override",
+            "summary": "The Truth pass is complete; maintain ADR from the same evidence and resulting Truth state.",
+            "nextsteps": [
+              "Evaluate only durable decisions, rationale, alternatives, tradeoffs, ownership, and consequences.",
+              "Keep ADR current claims aligned with the Truth owners just established.",
+              "A valid Truth no-edit outcome does not require manufacturing content before the ADR pass; every Truth owner actually written must now conform to knowledge-format.md."
+            ],
+            "nextTaskId": 5
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Maintain canonical ADRs",
+      "detail": "Using the same qualified evidence and resulting Truth state, update durable decisions, context, rationale, alternatives, tradeoffs, ownership, and consequences in canonical ADR owners. Before writing an owner, inspect its conformance to knowledge-format.md and repair any nonconforming structure in the same edit. Apply this to every written owner without mass-rewriting untouched documents. Keep the document state accepted, superseded, or historical as appropriate, and retain dated decision evolution only when the former decision remains useful. Do not manufacture an ADR when the evidence contains no durable decision; retain that as the no-edit reason. Preserve unrelated user edits and repository conventions.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "default": {
+            "mergeMode": "override",
+            "summary": "The ordered Truth and ADR passes are complete; verify the corpus as one knowledge system.",
+            "nextsteps": [
+              "Review related Truth and ADR documents together rather than as independent outputs.",
+              "Re-run focused and exhaustive searches for competing owners and contradictory current claims.",
+              "Treat a justified ADR no-edit outcome as complete; every ADR owner actually written must now conform to knowledge-format.md."
+            ],
+            "nextTaskId": 6
+          }
+        }
+      }
+    },
+    {
+      "id": 6,
       "title": "Run the cross-document consistency review",
-      "detail": "Review every related Truth and ADR document together. Re-run focused claw search and exhaustive text search, and recheck current implementation anchors for every material current-behavior claim. Every plausible hit must be the selected owner, an explicit reference, historical or version-bound evidence, or a narrowed non-overlapping claim. Resolve material contradictions, stale promotions, or ownerless current claims; repair mojibake and preserve valid Markdown encoding. Do not launch another writer or recall refresh. Return only a brief completion note with changed paths or the no-edit reasons; response format is not part of the contract.",
-      "status": "pending"
+      "detail": "Review every related Truth and ADR document together. Re-run focused claw search and exhaustive text search, recheck current implementation anchors for every material current-behavior claim, and verify that every written owner conforms to knowledge-format.md. Every plausible hit must be the selected owner, an explicit reference, historical or version-bound evidence, or a narrowed non-overlapping claim. Resolve material contradictions, stale promotions, ownerless current claims, or remaining format mismatches; repair mojibake and preserve valid Markdown encoding. Return only a brief completion note with changed paths or the no-edit reasons; response format is not part of the contract.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "default": {
+            "mergeMode": "override",
+            "summary": "Material processing and the ordered Truth/ADR consistency review are complete.",
+            "nextsteps": [
+              "Report only changed canonical paths and evidence-backed no-edit reasons.",
+              "Preserve exact identifiers, repository conventions, and valid Markdown encoding."
+            ]
+          }
+        }
+      }
     }
   ],
   "references": [
@@ -94,6 +150,10 @@
     {
       "path": "CONTENT-COVERAGE.md",
       "why": "Maps the knowledge-writer contract to the converted claw skill surfaces."
+    },
+    {
+      "path": "knowledge-format.md",
+      "why": "Defines machine-stable state metadata and dated evolution units."
     }
   ],
   "rules": [
@@ -104,9 +164,10 @@
     "Trusted evidence is time-bounded; current implementation outranks older report wording for current-state claims.",
     "A read-only implementation freshness check is required and is not repeated implementation verification.",
     "No durable supplied conclusion, unresolved freshness conflicts, and unchanged durable knowledge are valid no-edit outcomes.",
-    "Do not modify supplied source materials, alter their lifecycle, repeat implementation verification, dispatch another writer, or refresh recall.",
+    "Do not modify supplied materials or repeat implementation verification.",
     "Maintain one current owner for each material fact or decision across Truth and ADR.",
     "Use claw search plus exhaustive text search when top-k recall could hide another current claim.",
+    "Use knowledge-format.md for every new or existing Truth or ADR owner written by this pass; repair nonconforming format in the same edit and do not migrate untouched documents.",
     "Preserve exact identifiers, config keys, commands, error text, unrelated user edits, repository conventions, and valid Markdown encoding.",
     "Do not claim completion while a material current claim is inconsistent or ownerless."
   ],

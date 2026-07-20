@@ -5,7 +5,7 @@
 - 正式 claw workflow 的主要成本不只来自业务执行，还来自合同版本漂移、plan lifecycle mutation、hook-owned writer execution、query embedding、completion refresh 与 GitNexus 分析。
 - lifecycle 元状态与业务进度必须分开理解：当前单一 planning bridge 用于完成讨论并切换执行状态，不计入 downstream 业务 task 数，也不应独立触发 truth deposition；旧版独立 `Enter process.active` 只属于版本化 benchmark 与历史 plan evidence。
 - `truthDispatch = "final_only" | "per_task"` 与按 task 派发 writer 是 `0.1.65` 及更早性能样本的版本化输入，不是当前 project schema 或 lifecycle owner。
-- 当前项目配置使用 `knowledgeWriter = { externalSkill: null, model: null, reasoningEffort: "medium" }`；正式 workflow 协调 `.claw` plan state、Codex Goal/progress actions，以及完成后的一次 combined writer job。
+- 当前项目配置使用 `knowledgeWriter = { externalSkill: null, model: null, reasoningEffort: "medium", datedSectionsToKeep: 6 }`；正式 workflow 协调 `.claw` plan state、Codex Goal/progress actions，以及完成后的一次 combined writer job。retention 的字段语义由 `truth-and-adr-corpus-semantics.md` 唯一拥有。
 - 优化时应先修复合同一致性与条件语义，再降低 plan mutation 和后台 refresh 成本；入口 admission 的当前所有权与规则见 `using-claw-kit-session-entry.md`。
 
 ## 已验证的执行事实
@@ -36,7 +36,7 @@
 - canonical target routing 属于 writer 自身职责，不应要求 main agent 先理解 truth/ADR 文件布局或选择目标。writer 使用 `claw search` 召回候选 canonical 文档，再只读取相关候选；只有 search 不可用、候选冲突或 canonical routing 仍无法确定时，才回退到 full-corpus inspection。
 - 历史 release closeout 实测中，宽泛 ADR 任务两次分别约 `40-90s` 与 `90s`，且都没有落盘；把输入收敛为唯一 `targetPath` 与两条追加事实后，约 `10s` 完成。该对比说明主要优化点是 target certainty，而不是删除 router/reference 合同。
 - 本轮 fresh-agent 前向验证中，明确 `targetPath` 的 ADR 约 `70s` 落盘，truth 约 `85s` 落盘；两者均正确走定向写入且没有修改索引，但端到端时延没有稳定优于历史样本。当前改动能确认消除了不必要的 corpus 扫描，不能据此宣称 subagent 总耗时已经下降；剩余时延主要位于 writer 启动、模型处理和完整 deposition 合同执行。
-- 当前 combined writer 接收 source `plan.json`、相邻 trusted report 与 finalization id，以 report 结论和 plan 的 retrospective、`keyDecisions` 等明确结论为证据；task status 只用于解释 scope，main agent 不筛选 phase input，也不提供 `targetPath`。自动 lifecycle 在计划从非终态进入任一 `end.*` 时登记一次，`process.*` 只累计 report；当前 owner 是 `hook-owned-two-phase-knowledge-finalization.md`。
+- 当前 finalizer invocation 提供 source `plan.json`、相邻 trusted report 与 finalization id；这些是具体 runtime materials，不定义 combined writer 的语义输入 schema。writer 的通用材料解释与阶段合同由 `codex-knowledge-capture-boundary.md` 拥有，自动 lifecycle 与 job orchestration 由 `../adr/hook-owned-two-phase-knowledge-finalization.md` 拥有；本审计不再重复声明其 current evidence contract。
 - writer-owned routing 不得删除完整 reference 阅读、事实核对、目标路径 containment、UTF-8 BOM / encoding 校验，以及新建或路由不确定时必要的去重。
 
 ### 第一阶段优化的已实现行为
@@ -75,10 +75,10 @@
 ### Search latency 第一阶段优化与验证（2026-07-16）
 
 - `packages/core/src/memory.ts` 已加入保守 lexical fast path。只有同时满足以下条件时才跳过 query embedding：`strongTerms` 非空、没有 weak terms、没有短中文 substring fallback、唯一候选文档完整覆盖全部 strong terms，并且该文档还是文件名/路径的唯一命中或精确短语的唯一命中。任何条件不满足时，都完整回退到既有 hybrid search，不削弱语义召回路径。
-- SQLite 新增 `query_embeddings` 表用于复用 query embedding。cache key 由版本 `v1`、embedding config 的 SHA-256 fingerprint 与最终传给 worker 的 query text 共同确定；不同原始 query 如果归一到同一最终 worker query text，可以共享同一缓存项。
+- SQLite 新增 `query_embeddings` 表用于复用 query embedding。cache key 由版本 `v1`、embedding config 的 SHA-256 fingerprint 与最终传给 worker 的 query text 共同确定。`0.1.86` 排序决策把该 worker text 改为原始语义查询，因此只有相同原始 query 才共享缓存；该语义决策由 `project-search-candidate-recall.md` 与其 ADR owner 维护。
 - cache hit 只读、不回写；cache miss 才插入，并按 `created_at`、`rowid` 将表裁剪到最多 `128` 条。embedding config 变化触发 vector reset 时会同时清空 `query_embeddings`，避免跨配置复用不兼容向量。
 - 第一阶段明确没有实现 persistent embedding worker；当时确认同步 search API 下必须额外解决 daemon 生命周期、并发、故障恢复与退出治理。后续实现已在下方单列，并通过 thin client 保持外层同步 API。
-- core 为这两条优化路径新增的 `4` 个回归测试均通过：唯一文件名 lexical fast path 在 worker timeout 设为 `1ms` 且没有 mock 时仍成功；两个不同会话 query 映射到同一 `embeddingText` 时只产生 `1` 条 cache；写入第 `129` 条后保持 `128` 条并淘汰最旧记录；embedding config 变化后旧 cache 被清空，且新 fingerprint 与旧值不同。最终 core 测试总数为 `118/118`。
+- 在 `2026-07-16` 的旧 worker-text 语义下，core 为这两条优化路径新增的 `4` 个回归测试均通过，其中两个不同会话 query 当时会归一到同一 `embeddingText` 并只产生 `1` 条 cache；这是被 `0.1.86` 原始语义查询决策取代的版本化证据。`128` 条上限、淘汰和 embedding config reset 清理仍是当前 cache 合同。
 - 性能结论应区分快速路径命中率与 hybrid fallback 延迟：lexical fast path 能消除满足严格唯一性条件的 embedding 固定成本，query cache 能消除重复最终 worker query 的推理成本，但不代表所有 search 都会避开同步 embedding。
 
 #### 源码 CLI benchmark
@@ -356,8 +356,6 @@
 
 #### 本轮证据与检索词
 
-- `.claw/tasks/评估新版-claw-kit-的实际使用体验/plan.json`
-- `.claw/tasks/评估新版-claw-kit-的实际使用体验/plan.report`
 - `0.1.85 CLI source installed plugin aligned`
 - `plan create planning process.active Goal task done retrospective end.completed`
 - `availability 9 flow 8 utility 8.5 mental pressure 4`
@@ -373,8 +371,36 @@
 
 #### 本轮证据与检索词
 
-- `.claw/tasks/评估-bridge-压缩与并行工作树心智成本/plan.json`
-- `.claw/tasks/评估-bridge-压缩与并行工作树心智成本/plan.report`
 - `bridge cold path hot path cache source`
 - `parallel worktree write set overlap clean-worktree gate`
 - `mental pressure 2/10 6-8/10`
+
+### 0.1.86 发布安装同版本线与选择性 workflow 评估（2026-07-20）
+
+- 本轮真实运行边界为全局 `@veewo/claw@0.1.86`、官方 enabled plugin `claw-kit@claw-kit`、marketplace revision `2f7481c915381ea9d34902bf8a7a39df66466cde` 与当前任务实际加载的 `0.1.86+codex.20260720013140` installed skill 同线；runtime locator 的版本化完成证据由 `published-npm-packages.md` 拥有。
+- 三类真实流程分别确认：单句文本修正直接工作且未创建 `.claw` / plan / Goal / Truth；模糊的团队共享配置请求创建 plan 后稳定停在 `process.discussing`，没有过早执行；中等评估任务完整经历 `process.discussing -> process.active -> end.completed`，`6/6` tasks 完成，`9/9` canonical plan mutations 成功且没有重放或补偿 mutation。这是 `0.1.86` 当次流程证据，不把所有请求强制纳入 formal workflow；入口决策仍由 `../adr/using-claw-kit-session-entry.md` 唯一拥有。
+- 同机样本中常见 `task done` 往返约 `3.7-5.2s`、`plan start` 约 `5.6s`、root `plan done` 约 `7.0s`；评分为运行正确性与稳定性 `8/10`、流畅度和响应成本 `6/10`、用户与 agent 心智压力 `6/10`、真实项目实用价值 `8/10`。这些耗时与评分是该任务、该宿主和该版本的历史观测，不是跨环境 SLA，也不能由单一 search 或 mutation 样本外推整体 workflow 性能。
+- root closeout 复现了 terminal `nextsteps` 重复已经由 fixed driver 消费的 `update_goal(status="complete")`，手动照做后得到 `cannot update goal because this thread has no goal`；当前缺陷与实现锚点由 `cli-guided-workflow.md` 唯一拥有，本节只保留它对 `0.1.86` 体验评分的版本化影响。
+- 本轮没有覆盖 Codex 重启恢复、`wait/resume`、subplan、并行计划、网络中断恢复或完整性能基准；这些未验证项不能从三类样本的成功结果推断。
+
+#### 本轮证据与检索词
+
+- `0.1.86 CLI official plugin loaded skill aligned`
+- `direct work process.discussing process.active end.completed 6/6 9/9`
+- `task done 3.7 5.2 seconds plan start 5.6 seconds plan done 7.0 seconds`
+- `runtime correctness 8 flow 6 mental pressure 6 utility 8`
+- `plan done duplicate update_goal no goal`
+
+### 0.1.86 同版本线 wait/resume 体验补充（2026-07-20）
+
+- 另一轮独立评估同样确认全局 CLI、checkout、official enabled plugin、marketplace revision、source/cache manifest 与 loaded skill locator 都属于 `0.1.86` / `0.1.86+codex.20260720013140` 同版本线；安装完成事实仍由 `published-npm-packages.md` 唯一拥有。
+- 该样本的正式计划经历 `process.discussing -> process.active -> process.wait -> process.active -> end.completed`，`4/4` tasks 完成。create/start/task/wait 与 canonical closeout 均可用，但 resume 在 canonical 恢复后遇到 unfinished Goal，root completion 又暴露空 Goal 上的重复 close 指示；这是修复前的版本化体验记录，Goal-action 当前行为由 `codex-goal-mode-integration.md` 拥有，terminal compact-result 行为由 `cli-guided-workflow.md` 拥有。本文只记录它们对当次体验评分的影响。
+- 同机耗时为 cold `plan create` 约 `9.8s`、`plan start` `3.5s`、`task edit/done` `2.3-4.5s`、`plan wait` `3.7s`、`plan resume` `2.2s`、`plan done` `4.5s`；评分为运行正确性/稳定性 `6/10`、流畅度 `6/10`、用户与 agent 心智压力 `5/10`、实际项目价值 `8/10`，综合约 `6.5/10`。这些是该 Host 与该轮任务的版本化观测，不与上一样本互相平均，也不是跨环境 SLA。
+- 本轮没有独立验证简单请求 direct-work 路由、Codex 重启恢复、subplan、并行计划、网络中断恢复、npm registry/tarball 一致性或 post-turn finalizer 结果；它只支持“插件保持 enabled，formal plan 选择性用于可复用、跨轮恢复或多阶段任务”的既有入口决策，不把改进建议提升为已采纳行为。
+
+#### 本轮证据与检索词
+
+- `0.1.86 installed wait resume unfinished goal canonical mutation persisted`
+- `process.discussing process.active process.wait process.active end.completed 4/4`
+- `plan create 9.8 start 3.5 task 2.3 4.5 wait 3.7 resume 2.2 done 4.5 seconds`
+- `runtime correctness 6 flow 6 mental pressure 5 utility 8 overall 6.5`

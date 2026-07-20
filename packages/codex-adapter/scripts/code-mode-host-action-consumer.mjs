@@ -25,6 +25,19 @@ export async function consumeCodexHostActions({ result, hostTools, consumedIds =
     }
 
     const input = validateActionInput(action);
+    if (action.tool === "create_goal" || action.tool === "update_goal") {
+      const getGoal = hostTools.get_goal;
+      if (typeof getGoal !== "function") {
+        throw new Error("Codex host tool is unavailable: get_goal");
+      }
+      const snapshot = await getGoal({});
+      const activeGoal = snapshot?.goal?.status === "active";
+      if ((action.tool === "create_goal" && activeGoal) || (action.tool === "update_goal" && !activeGoal)) {
+        consumedIds.add(action.id);
+        consumedActionIds.push(action.id);
+        continue;
+      }
+    }
     const hostTool = hostTools[action.tool];
     if (typeof hostTool !== "function") {
       throw new Error(`Codex host tool is unavailable: ${action.tool}`);

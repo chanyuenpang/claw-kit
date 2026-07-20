@@ -14,6 +14,7 @@ import type { PlanReference, PlanRequirements, PlanRetrospective, PlanStatus, Te
 
 export type ResolvedPlanTemplate = {
   id: string;
+  version: string;
   scope?: "session";
   configOverride?: TemplateConfigOverride;
   title?: string;
@@ -32,6 +33,8 @@ export type ResolvedPlanTemplate = {
 };
 
 const PLAN_TEMPLATES: ResolvedPlanTemplate[] = [normalizePlanLikeTemplate(defaultPlanTemplate, { source: "builtin" })];
+const CURRENT_TEMPLATE_VERSION = defaultPlanTemplate.version;
+const CREATE_CLAW_SKILL = "claw-kit:create-claw-skill";
 
 export async function resolveSeedPlanTemplate(params: {
   projectRoot?: string;
@@ -79,10 +82,14 @@ export async function resolveSeedPlanTemplate(params: {
 }
 
 export async function resolvePlanTemplateFile(templatePath: string): Promise<ResolvedPlanTemplate> {
-  const raw = templatePath.endsWith(".json")
-    ? JSON.parse(fs.readFileSync(templatePath, "utf-8"))
-    : await import(pathToFileURL(templatePath).href).then((module) => module.default ?? module);
+  const raw = await loadPlanTemplateSource(templatePath);
   return validatePlanTemplateSource(raw, templatePath, "project");
+}
+
+async function loadPlanTemplateSource(templatePath: string): Promise<unknown> {
+  return templatePath.endsWith(".json")
+    ? JSON.parse(fs.readFileSync(templatePath, "utf-8"))
+    : import(pathToFileURL(templatePath).href).then((module) => module.default ?? module);
 }
 
 export function validatePlanTemplateSource(
@@ -167,26 +174,30 @@ async function loadPlanTemplateFromTemplateDirs(templateDirs: string[], normaliz
 }
 
 async function loadPlanTemplateFromSkillRoots(skillRoots: string[], normalizedTemplateName: string): Promise<ResolvedPlanTemplate | null> {
-  const matches: { path: string; signature: string }[] = [];
+  const matches: { path: string; signature: string; template: ResolvedPlanTemplate }[] = [];
   for (const skillRoot of skillRoots) {
     for (const templatePath of collectSkillTemplateFiles(skillRoot)) {
-      const template = await resolvePlanTemplateFile(templatePath);
-      if (template.id.toLowerCase() === normalizedTemplateName) {
-        matches.push({ path: templatePath, signature: signatureForTemplateConflict(template) });
+      const raw = await loadPlanTemplateSource(templatePath);
+      const rawId = raw && typeof raw === "object" && !Array.isArray(raw)
+        ? (raw as Record<string, unknown>).id
+        : undefined;
+      if (typeof rawId === "string" && rawId.toLowerCase() === normalizedTemplateName) {
+        const template = validatePlanTemplateSource(raw, templatePath, "project");
+        matches.push({ path: templatePath, signature: signatureForTemplateConflict(template), template });
       }
     }
   }
   if (matches.length > 1) {
     const uniqueSignatures = new Set(matches.map((match) => match.signature));
     if (uniqueSignatures.size === 1) {
-      return resolvePlanTemplateFile(matches[0]!.path);
+      return matches[0]!.template;
     }
     throw new ClawError("PROJECT_CONFIG_INVALID", `Multiple skill-local plan templates matched "${normalizedTemplateName}".`, {
       templateName: normalizedTemplateName,
       candidatePaths: matches.map((match) => match.path),
     });
   }
-  return matches.length === 1 ? resolvePlanTemplateFile(matches[0]!.path) : null;
+  return matches.length === 1 ? matches[0]!.template : null;
 }
 
 function signatureForTemplateConflict(template: ResolvedPlanTemplate): string {
@@ -317,6 +328,7 @@ function validatePlanLikeTemplate(raw: unknown, templatePath: string): PlanTempl
   const candidate = raw as Record<string, unknown>;
   const allowedKeys = new Set([
     "id",
+    "version",
     "scope",
     "configOverride",
     "title",
@@ -354,6 +366,7 @@ function validatePlanLikeTemplate(raw: unknown, templatePath: string): PlanTempl
       templatePath,
     });
   }
+  assertCompatibleTemplateVersion(candidate.version, templatePath);
   if (candidate.title !== undefined && typeof candidate.title !== "string") {
     throw new ClawError("PROJECT_CONFIG_INVALID", `Invalid template title at ${templatePath}.`, {
       templatePath,
@@ -416,12 +429,55 @@ function validatePlanLikeTemplate(raw: unknown, templatePath: string): PlanTempl
   return raw as PlanTemplateDocument;
 }
 
+function assertCompatibleTemplateVersion(value: unknown, templatePath: string): asserts value is string {
+  const templateVersion = typeof value === "string" ? value.trim() : "";
+  const parsedTemplateVersion = parseTemplateSemver(templateVersion);
+  const currentVersion = parseTemplateSemver(CURRENT_TEMPLATE_VERSION);
+  if (parsedTemplateVersion && currentVersion && compareTemplateSemver(parsedTemplateVersion, currentVersion) >= 0) {
+    return;
+  }
+
+  const reason = !templateVersion
+    ? "missing_version"
+    : !parsedTemplateVersion
+      ? "invalid_version"
+      : "older_version";
+  throw new ClawError(
+    "PROJECT_CONFIG_INVALID",
+    `Template out of date. Use ${CREATE_CLAW_SKILL} to upgrade template.`,
+    {
+      templatePath,
+      reason,
+      templateVersion: templateVersion || null,
+      cliVersion: CURRENT_TEMPLATE_VERSION,
+      requiredSkill: CREATE_CLAW_SKILL,
+      prompt: `Use ${CREATE_CLAW_SKILL} to upgrade the template at ${templatePath}. Inspect and optimize the skill package before setting version to ${CURRENT_TEMPLATE_VERSION}.`,
+    },
+  );
+}
+
+function parseTemplateSemver(value: string): [number, number, number] | null {
+  const match = value.match(/^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/u);
+  return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
+}
+
+function compareTemplateSemver(left: [number, number, number], right: [number, number, number]): number {
+  for (let index = 0; index < left.length; index += 1) {
+    const delta = left[index]! - right[index]!;
+    if (delta !== 0) {
+      return delta;
+    }
+  }
+  return 0;
+}
+
 function normalizePlanLikeTemplate(
   template: PlanTemplateDocument,
   meta: { source: "builtin" | "project"; templatePath?: string },
 ): ResolvedPlanTemplate {
   return {
     id: template.id,
+    version: template.version,
     scope: template.scope,
     configOverride: normalizeTemplateConfigOverride(template.configOverride),
     title: template.title,
@@ -665,6 +721,9 @@ function normalizeTemplateConfigOverride(value: unknown): TemplateConfigOverride
     ...(writer && isKnowledgeWriterReasoningEffort(writer.reasoningEffort)
       ? { reasoningEffort: writer.reasoningEffort }
       : {}),
+    ...(writer && Number.isInteger(writer.datedSectionsToKeep) && (writer.datedSectionsToKeep as number) >= 0
+      ? { datedSectionsToKeep: writer.datedSectionsToKeep as number }
+      : {}),
   };
   if (Object.keys(normalizedWriter).length > 0) {
     normalized.knowledgeWriter = normalizedWriter;
@@ -677,7 +736,7 @@ function isTemplateKnowledgeWriterConfig(value: unknown): boolean {
     return false;
   }
   const candidate = value as Record<string, unknown>;
-  if (Object.keys(candidate).some((key) => !["externalSkill", "model", "reasoningEffort"].includes(key))) {
+  if (Object.keys(candidate).some((key) => !["externalSkill", "model", "reasoningEffort", "datedSectionsToKeep"].includes(key))) {
     return false;
   }
   for (const key of ["externalSkill", "model"]) {
@@ -686,7 +745,9 @@ function isTemplateKnowledgeWriterConfig(value: unknown): boolean {
       return false;
     }
   }
-  return candidate.reasoningEffort === undefined || isKnowledgeWriterReasoningEffort(candidate.reasoningEffort);
+  return (candidate.reasoningEffort === undefined || isKnowledgeWriterReasoningEffort(candidate.reasoningEffort))
+    && (candidate.datedSectionsToKeep === undefined
+      || (Number.isInteger(candidate.datedSectionsToKeep) && (candidate.datedSectionsToKeep as number) >= 0));
 }
 
 function isKnowledgeWriterReasoningEffort(value: unknown): value is "minimal" | "low" | "medium" | "high" | "xhigh" {

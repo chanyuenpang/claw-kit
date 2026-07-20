@@ -102,6 +102,9 @@ Together, the canonical config plus local override model gives longer-running pr
   - `externalSkill`: optional skill override for the combined finalizer prompt; `null` uses `claw-kit:knowledge-writer`
   - `model`: optional Codex model override for the asynchronous auto-doc writer; `null` uses the SDK default
   - `reasoningEffort`: writer reasoning depth; one of `minimal`, `low`, `medium`, `high`, or `xhigh`
+  - `datedSectionsToKeep`: maximum complete dated evolution sections retained in each Truth or ADR document changed by the built-in writer; default `6`
+
+The retention limit counts only level-three evolution sections preceded by `<!-- dated: YYYY-MM-DD -->` beneath a section marked `<!-- state: history -->`. It does not impose line, paragraph, character, or age limits. When the count is exceeded, the finalizer removes the earliest complete sections by document order and does not create a separate evidence archive.
 
 ### Template variables
 
@@ -143,7 +146,8 @@ Older nested inputs should be rewritten into the flat fields above during protoc
   "knowledgeWriter": {
     "externalSkill": null,
     "model": null,
-    "reasoningEffort": "medium"
+    "reasoningEffort": "medium",
+    "datedSectionsToKeep": 6
   },
   "gitnexus": false
 }

@@ -1,9 +1,5 @@
 ﻿# ADR: Search index refresh and embedding providers
 
-## Status
-
-Accepted
-
 ## Context
 
 现有 ADR 已经确认 `claw search` 是 Codex-facing 的文档 recall 入口，`.claw/project.json` 是 project memory 配置的 canonical 来源。后续几轮 completed plan 进一步把 project memory refresh 的长期契约补充完整了，尤其是这次 embedding 失败即 refresh 失败的约束：
@@ -27,6 +23,7 @@ Accepted
 - 同一套完整 `claw search` 门禁随后确认 `jinaai/jina-embeddings-v2-base-zh` 在两次隔离 Jina 对照中通过相对 Recall、相对 MRR 和关键漏召回门禁，同时显著降低缓存与查询内存；第二次完整 refresh 在略有变化的语料快照上仍复现全部 `27` 条目标文档排名和 Top-1 路径。版本化指标由 `../features/project-search-candidate-recall.md` 统一拥有；其后的默认切换 closeout 又关闭了首次下载 readiness gate。
 - Qwen 复核补齐了原候选说明的覆盖缺口，但也确认 `Qwen3-Embedding-0.6B` 不能直接进入现有 FP32 ONNX mean-pooling 链路。版本化模型事实与当前兼容性差距由 `../features/project-search-candidate-recall.md` 统一拥有；本 ADR 只决定它的候选层级和适配门槛。
 - Jina 默认 rollout 随后暴露出 document chunking 与 tokenizer 上限不一致：旧的三字符约等于一 token 估算会把大量超过 `512` Jina tokens 的 chunk 交给 feature-extraction pipeline 截断。tokenizer-aware 修正及同一组 `27` 条真实查询的 A/B 证明完整语义覆盖改善 Top-1 与 MRR、保持 Recall@5 和关键漏召回，但增加 vectors、refresh 时间和 warm-query 成本；精确版本化指标由 `../features/project-search-candidate-recall.md` 统一拥有。
+- `0.1.86` tiny-world 五轮混合排序 closeout 在不更换 Jina 或改写索引内容语义的前提下，确认优化面应留在 query understanding、vector/keyword/document-signal fusion 与 final rerank。版本化语料、指标、失败轮次和 latency caveat 由 `../features/project-search-candidate-recall.md` 唯一拥有；本 ADR 只维护被保留的排序决策和下一步路线。
 
 ## Decision
 
@@ -45,6 +42,12 @@ Accepted
 - 后续 search-quality 优化优先落在可测量的 rerank tuning、vector scan / candidate performance、chunking / query-intent quality 和 evaluation fixtures；不通过放松 `vector-required` 契约来换取短期召回。
 - 对多词查询，project-level `claw search --query` 同时保留 exact multi-term keyword query，以及逐词 fallback query，而不是只执行一次严格的原始 `FTS MATCH`。
 - 这套 planner 的目标是避免中文多词 recall 过度依赖“同一条记录同时命中所有词”的语义，让检索行为更接近文档 recall / fuzzy retrieval。
+- 语义 query embedding 必须使用原始查询文本；关键词提取、弱词处理和实体清洗只服务 lexical recall，不能用清洗后的词串替换 Jina 的句法与实体上下文。
+- project hybrid fusion 的默认 RRF 权重采用 vector `0.50`、keyword `0.30`、document signal `0.20`。更低的 vector 权重在同口径版本化实验中降低 Recall@5，因此不保留。
+- final rerank 保留标题、路径、文档类型与 query-aware generic-document 信号，并降低 uncovered-term diversity bonus；plan、index-like、chapter 和 overview 文档只在相应 query intent 下获得降权，不能用无条件领域特例替代可解释的通用信号。
+- lexical fast path 的性能决策与唯一性门禁继续由 `workflow-cost-optimization-route.md` 唯一拥有；本轮排序决策只确认这些门禁不得为了 latency 绕过完整 hybrid 语义召回契约。
+- 固定标量权重手调已经进入边际收益区：更激进的标题权重和继续降低 vector 权重都出现 recall 回退。下一次显著质量投资应使用标注驱动的 learned reranker 或 cross-encoder stage，而不是继续叠加领域特例。
+- 同日后续 `120` 条 development split 的结果在 supplied closeout 中仍处于暂停、holdout 未解封状态；在 holdout 泛化与剩余任务完成前，它只能作为 provisional experiment，不改变上述已完成五轮 closeout 的当前决策。
 - 如果当前项目缺少 refreshed vector index，project search 返回 `MEMORY_VECTOR_INDEX_REQUIRED`，而不是 silent fallback。
 - project-level `claw search --query` 不负责在缺少 index 时隐式触发一次 refresh；项目搜索必须先有显式的 `claw search index --refresh` 结果。
 - project memory refresh 从 `.claw/project.json` 读取 embedding 配置，同时支持 OpenAI embeddings 和 GitNexus-inspired local embedding provider。
@@ -58,7 +61,8 @@ Accepted
 - 将 `Qwen3-Embedding-0.6B` 加入 adapter-first candidate set，而不是 zero-change small-model set；只有在 runtime 支持 last-token pooling、query instruction template、left padding / EOS、正确的 MRL 截断后归一化，并具备经过验证的 ONNX 或替代量化 runtime 后，才运行完整 `claw search` 对照。
 - 后续默认路线继续以 Jina 平衡中文 recall、CPU、内存与下载体积；只有目标转为追求更高的中文/多语言检索上限并接受更大的适配与资源成本时，才优先投入 Qwen 实验。
 - local document indexing 采用实际模型 tokenizer 的二阶段分块：`chunkMarkdownContent(...)` 保留段落/字符级初分块，worker 再把每个输入拆成 `min(1024, floor(tokenizerMaxTokens * 0.875))` 的 token windows，并使用最多 `64` tokens overlap。Jina 因此使用 `448` token windows；普通 query embedding 明确不进入 document splitting，避免每次查询重复加载 tokenizer 或改变 query 向量语义。
-- project index metadata 使用 `embedding_chunking_version = token-aware-v1` 作为一次性失效边界。stored version 缺失或不匹配时，refresh 重置旧 document vectors 与 query-embedding cache，再按既有每轮最多 `100` 文件的 bounded batching 重建；不能把旧 heuristic 索引静默当作与新分块兼容。
+- project index metadata 使用 `embedding_chunking_version = generic-knowledge-markers-v3` 作为当前一次性失效边界。stored version 缺失或不匹配时，refresh 重置旧 document vectors 与 query-embedding cache，再按既有每轮最多 `100` 文件的 bounded batching 重建；不能把旧 token-only、visible-marker 或 heuristic 索引静默当作与新分块兼容。
+- Canonical Truth/ADR chunk 从 path-inferred document kind 与 generic hidden comments 读取 document/section state、dated checkpoint 和 heading breadcrumb；长 section 的每个 token window 重复通用 `[knowledge:...]` context prefix 与 breadcrumb。Temporal intent 在 per-document chunk collapse 前做 soft ranking：当前查询偏向 current/accepted，历史、原因、回退或指定日期查询提升对应 historical/superseded/dated chunk，但任何状态都不在 recall 前被硬过滤。Corpus grammar 与 bounded evolution 的决策由 `bounded-truth-and-adr-evolution-governance.md` 拥有。
 - 拒绝继续依赖字符/token 比例并接受 tokenizer truncation，因为旧路径的速度优势有一部分来自丢弃超限文档内容，不能代表完整语义覆盖下的真实 Jina 性能。也不把 tokenizer-aware splitting 扩到 remote provider 或普通 query 路径，因为本轮证据只支持 local document indexing 的模型感知边界。
 - local provider 的默认维度改为 model-aware contract，而不是“local 一律固定同一个维度”：
 - 默认 `jinaai/jina-embeddings-v2-base-zh` 与显式 `Snowflake/snowflake-arctic-embed-m-v2.0` 都解析为 `768` 维
@@ -90,6 +94,9 @@ Accepted
 - refresh failure 会直接暴露 embedding/provider/runtime 问题；调用方必须修复环境或改配置，然后重新执行显式 refresh，而不是依赖 text-only refresh 继续前进。
 - 中文多词检索不再被单次严格 `MATCH` 语义卡住，keyword planner 可以更稳定地为 hybrid fusion 提供候选集。
 - 多条 recall routes 先扩充候选池、再统一重排，减少单一路径偏置，让项目搜索更接近成熟文档 recall 系统的结果质量。
+- Heading/state/date context 成为 chunk-level ranking input；采用 `generic-knowledge-markers-v3` 后，既有项目必须显式 refresh 一次，才能让旧 vectors 获得 path inference、generic hidden markers 与 neutral context prefix 的语义。
+- lexical recall 与 semantic embedding 现在明确分工：前者可以清洗和拆词，后者保留完整原句；调整一侧时必须分别检查词法控制与语义质量，不能用单一聚合分数掩盖路线回退。
+- `0.50/0.30/0.20` 和降低后的 diversity bonus 是当前稳定默认，不是跨语料最优性的声明。未来若引入 learned reranking，必须以版本化标注集和独立 holdout 取代继续手调这些常量。
 - 搜索质量问题应优先以 fixture 和排序指标回归来收敛，避免把 embedding provider、代码搜索工具或 recall 入口混成一个不可测的优化面。
 - 日常调查流程可以组合三种搜索能力，但结论需要标明来源：`rg` / 文件读取负责源码真相，`claw search` 负责项目记忆，GitNexus 负责关系线索，三者互补而不是互相替代。
 - `claw-kit` 仍然只迁移最小可维护子集：项目文档候选召回与重排增强进入本地实现，OpenClaw 更广的 memory system 边界继续留在范围外。
@@ -103,6 +110,7 @@ Accepted
 ## Related Code
 
 - `packages/core/src/memory.ts`
+- `packages/core/src/memory-query.ts`
 - `packages/core/src/embedding-worker.ts`
 - `packages/core/src/embedding-token-chunker.ts`
 - `packages/core/src/embedding-local.ts`
@@ -126,6 +134,8 @@ Accepted
 - `benchmarks/search/model-comparison-corpus.json`
 - `scripts/search-model-comparison-benchmark.mjs`
 - `benchmarks/search/0.1.85-jina-token-aware-chunking-windows.json`
+- `benchmarks/search/0.1.86-tiny-world-hybrid-ranking-summary-windows.json`
+- `benchmarks/search/0.1.86-tiny-world-hybrid-final-windows.json`
 
 ## Search Terms
 
@@ -145,6 +155,10 @@ Accepted
 - `fuzzy retrieval`
 - `multi-route candidate recall`
 - `unified reranking`
+- `original semantic query`
+- `vector 0.50 keyword 0.30 signal 0.20`
+- `learned reranker`
+- `cross-encoder`
 - `searchProjectMemoryHybrid`
 - `rerankProjectSearchCandidates`
 - `rerank tuning`
@@ -162,6 +176,8 @@ Accepted
 - `last-token pooling`
 - `MRL truncation normalization`
 - `token-aware-v1`
+- `generic-knowledge-markers-v3`
+- `temporal chunk ranking`
 - `embedding_chunking_version`
 - `448 token windows`
 - `64 token overlap`

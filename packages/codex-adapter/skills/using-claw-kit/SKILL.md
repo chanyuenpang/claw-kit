@@ -26,7 +26,7 @@ For every claw plan mutation, call the function below in code mode and change on
 
 ```javascript
 async function runClawPlanMutation({ command, workdir, timeout_ms = 30000 }) {
-  const cacheKey = "claw-kit:codex-driver:v4:s1";
+  const cacheKey = "claw-kit:codex-driver:v5:s1";
   let envelope = load(cacheKey);
   if (!envelope) {
     const raw = await tools.shell_command({ command: "claw codex driver", workdir, timeout_ms });
@@ -35,7 +35,7 @@ async function runClawPlanMutation({ command, workdir, timeout_ms = 30000 }) {
     const end = output.lastIndexOf("}") + 1;
     if (start < 0 || end <= start) throw new Error("claw returned no driver envelope");
     envelope = JSON.parse(output.slice(start, end));
-    if (envelope?.cacheKey !== cacheKey || envelope?.driverVersion !== 4
+    if (envelope?.cacheKey !== cacheKey || envelope?.driverVersion !== 5
       || envelope?.hostActionSchemaVersion !== 1 || typeof envelope?.source !== "string") {
       throw new Error("incompatible claw Codex driver envelope");
     }
@@ -51,6 +51,7 @@ async function runClawPlanMutation({ command, workdir, timeout_ms = 30000 }) {
 
 - Treat `claw subplan create` as an atomic Goal handoff: its returned host actions must complete the active parent goal before any child-plan goal is created. Never overwrite a still-active parent goal with the subplan objective.
 - Never run a plan mutation outside the code-mode bridge, split its host calls, reconstruct `hostActions` or `goalTool`, or repeat a canonical transition as compensation.
+- Goal-state inspection belongs only to the fixed driver or bundled consumer program; the agent must never call `get_goal` separately.
 - Edit canonical plan state only through claw commands supplied or permitted by returned guidance.
 - If code mode, the driver, or a required host tool is unavailable, stop with the program error; there is no direct-call fallback.
 - Keep claw harness mechanics out of normal thread replies unless the user asks about them or they are necessary to explain a blocker or result.

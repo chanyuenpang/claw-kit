@@ -132,28 +132,37 @@ test("Codex main-agent bundle excludes retired workflow skills and closeout rout
 test("combined knowledge writer enforces trusted evidence and cross-document ownership", async () => {
   const skill = await fs.readFile(new URL("../shared/skills/knowledge-writer/SKILL.md", import.meta.url), "utf8");
   const template = JSON.parse(await fs.readFile(new URL("../shared/skills/knowledge-writer/TEMPLATE.json", import.meta.url), "utf8"));
-  assert.match(skill, /knowledge-base steward/i);
-  assert.match(skill, /regardless of filename, record shape, field names, or serialization format/i);
-  assert.match(skill, /retrospective lessons, key decisions/i);
-  assert.match(skill, /task status is present/i);
-  assert.match(skill, /task titles and descriptions are not themselves an execution log/i);
-  assert.match(skill, /Truth and ADR are one knowledge system/i);
-  assert.match(skill, /maintain Truth first, then maintain ADR/i);
-  assert.match(skill, /one current owner/i);
-  assert.match(skill, /open every plausible candidate/i);
-  assert.match(skill, /exhaustive text search/i);
-  assert.match(skill, /Do not report completion while/i);
-  assert.match(skill, /Re-run focused and exhaustive searches/i);
-  assert.match(skill, /Trusted conclusion evidence is authoritative for what was concluded at its own point in time/i);
-  assert.match(skill, /read-only check of its implementation anchors/i);
-  assert.match(skill, /Current implementation outranks older source wording/i);
-  assert.match(skill, /adds no durable reusable knowledge/i);
+  const fallback = await fs.readFile(new URL("../shared/skills/knowledge-writer/non-claw-fallback.md", import.meta.url), "utf8");
+  const contract = `${JSON.stringify(template)}\n${fallback}`;
+  assert.doesNotMatch(skill, /end\.\*|session-scoped|parent-plan|source plan/i);
+  assert.match(skill, /Use only when explicitly invoked with supplied materials; do not trigger this skill implicitly/i);
+  assert.match(skill, /plan create --template-file/i);
+  assert.match(contract, /knowledge-base steward/i);
+  assert.match(contract, /filename, field, record shape, or serialization format/i);
+  assert.match(contract, /retrospective lessons, key decisions/i);
+  assert.match(contract, /task status is present/i);
+  assert.match(contract, /task titles or descriptions as an execution log/i);
+  assert.match(contract, /Truth and ADR are one knowledge system/i);
+  assert.match(contract, /Maintain Truth first and ADR second|Truth is maintained before ADR/i);
+  assert.match(contract, /one current owner/i);
+  assert.match(contract, /open every plausible/i);
+  assert.match(contract, /exhaustive text search/i);
+  assert.match(contract, /Do not report completion while/i);
+  assert.match(contract, /Re-run focused and exhaustive searches/i);
+  assert.match(contract, /Trusted means the evidence was verified at the revision or worktree state it describes/i);
+  assert.match(contract, /read-only freshness check/i);
+  assert.match(contract, /Current implementation outranks older material wording/i);
+  assert.match(contract, /add(?:s)? no durable reusable knowledge/i);
+  assert.match(contract, /repair nonconforming structure in the same edit/i);
   assert.deepEqual(template.tasks.map((task) => task.title), [
-    "Read conclusion evidence and locate canonical owners",
+    "Read all supplied materials and extract conclusions",
+    "Qualify evidence and resolve freshness",
+    "Locate canonical Truth and ADR owners",
     "Maintain canonical Truth",
     "Maintain canonical ADRs",
     "Run the cross-document consistency review",
   ]);
+  assert.equal(template.tasks.every((task) => task.guidance?.onDone?.default), true);
   assert.equal(template.tasks.some((task) => task.guidance?.onDone?.choices), false);
 });
 
@@ -211,6 +220,8 @@ test("release protocol publishes the committed Git marketplace snapshot without 
   assert.match(distribution, /create the GitHub release without a plugin ZIP asset/);
   assert.doesNotMatch(distribution, /attach the exported Codex plugin bundle to the GitHub release/);
   assert.match(releaseScript, /assertRepositoryMarketplaceSnapshot/);
+  assert.match(releaseScript, /assertTemplateVersionsAligned/);
+  assert.match(releaseScript, /"update", "create-claw-skill", "knowledge-writer"/);
   assert.match(releaseScript, /no GitHub Release ZIP is required/);
   assert.match(releaseScript, /Next: invoke the claw-kit update skill/);
 });

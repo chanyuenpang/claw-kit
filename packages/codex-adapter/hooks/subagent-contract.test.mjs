@@ -75,12 +75,15 @@ test("researcher is code-only, dispatches narrow subagents, and reuses related r
 
 test("background finalizer owns one combined knowledge stewardship contract", () => {
   const knowledgeSkill = readPluginFile(path.join("skills", "knowledge-writer", "SKILL.md"));
+  const knowledgeTemplate = readPluginFile(path.join("skills", "knowledge-writer", "TEMPLATE.json"));
+  const knowledgeFallback = readPluginFile(path.join("skills", "knowledge-writer", "non-claw-fallback.md"));
   const configSkill = readPluginFile(path.join("skills", "config", "SKILL.md"));
+  const knowledgeContract = `${knowledgeTemplate}\n${knowledgeFallback}`;
 
-  assert.match(knowledgeSkill, /knowledge-base steward/i);
-  assert.match(knowledgeSkill, /Truth and ADR are one knowledge system/i);
-  assert.match(knowledgeSkill, /one current owner/i);
-  assert.match(knowledgeSkill, /dispatch another writer/i);
+  assert.match(knowledgeSkill, /Use only when explicitly invoked/i);
+  assert.match(knowledgeContract, /knowledge-base steward/i);
+  assert.match(knowledgeContract, /Truth and ADR are one knowledge system/i);
+  assert.match(knowledgeContract, /one current owner/i);
   assert.match(configSkill, /knowledgeWriter\.externalSkill/);
   assert.match(configSkill, /built-in `claw-kit:knowledge-writer`/i);
 });
@@ -97,13 +100,18 @@ test("Codex plan commands use only the bundled code-mode consumer", () => {
   assert.match(mainRouter, /store\(cacheKey, envelope\)/i);
   assert.match(mainRouter, /eval/i);
   assert.match(mainRouter, /Never run a plan mutation outside the code-mode bridge/i);
+  assert.match(mainRouter, /agent must never call `get_goal` separately/i);
   assert.match(mainRouter, /no direct-call fallback/i);
   assert.match(workflowReference, /code-mode consumption is the adapter execution method/i);
   assert.match(workflowReference, /code-mode-host-action-consumer\.mjs/i);
   assert.match(workflowReference, /Codex has no separate host-call fallback/i);
   assert.match(workflowReference, /schema v1 native `create_goal` or `update_goal`/i);
   assert.match(workflowReference, /exactly once/i);
-  assert.match(workflowReference, /does not inspect current Goal state, parse host error wording/i);
+  assert.match(workflowReference, /inspects `get_goal`/i);
+  assert.match(workflowReference, /resume reuses an existing active Goal/i);
+  assert.match(workflowReference, /completion skips `update_goal` when no active Goal remains/i);
+  assert.match(workflowReference, /agent must never inspect Goal state through a separate `get_goal` call/i);
+  assert.match(workflowReference, /do not parse host error wording/i);
   assert.match(workflowReference, /routes Codex Goal actions from the committed plan status/i);
   assert.match(workflowReference, /ordinary active progress emits no Goal action/i);
   assert.match(workflowReference, /resume can therefore create the next active Goal in its normal single code-mode call/i);

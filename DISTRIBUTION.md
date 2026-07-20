@@ -70,13 +70,17 @@ Update these files together for a release:
 5. `packages/codex-adapter/package.json`
 6. `packages/openclaw-adapter/package.json`
 7. `packages/codex-adapter/.codex-plugin/plugin.json`
-8. `CHANGELOG.md`
+8. `packages/core/src/templates/plans/default.ts`
+9. every plugin `TEMPLATE.json` under `shared/skills`, `packages/codex-adapter/skills`, and `packages/opencode-adapter/skills`
+10. `CHANGELOG.md`
 
 Version rules:
 
 - Keep `packages/core` and `packages/cli` on the same release version unless there is a deliberate split.
 - Keep adapter package versions aligned with the release unless there is a deliberate reason not to.
 - Use `semver+codex.<timestamp>` for `packages/codex-adapter/.codex-plugin/plugin.json`.
+- After changing root `package.json.version`, run `npm run sync:template-versions`. This updates every plugin template plus the built-in default template to the CLI release version.
+- Run `npm run sync:shared-skills` after template synchronization, then require `npm run check:template-versions` to pass. Do not bump only one adapter copy.
 - Run `npm install` after editing version files so `package-lock.json` stays consistent.
 
 Published package mapping:
@@ -90,13 +94,13 @@ Published package mapping:
 1. Confirm the target version.
 2. Classify all local changes; commit useful release content, remove disposable output, and ignore intentional local-only files. Do not stash changes to bypass this step.
 3. Ensure the checked-out branch is `main` and push the release commit directly to `origin/main`.
-4. Align version files and changelog.
-5. Run `npm run sync:shared-skills`, review the generated adapter files, and include the Codex copies in the release commit.
+4. Align package versions and changelog, then run `npm run sync:template-versions`.
+5. Run `npm run sync:shared-skills`, followed by `npm run check:template-versions`; review the generated adapter files and include them in the release commit.
 6. Run `npm install`.
 7. Run verification commands.
 8. Dry-run package artifacts.
 9. Create the release commit and push it directly to GitHub.
-10. Run `npm run verify:release`; it validates the clean tree, version alignment, exact `main`/`origin/main` parity, marketplace metadata, materialized Codex skills, exported payload, and isolated `claw template validate` execution from a marketplace-style cache.
+10. Run `npm run verify:release`; it validates the clean tree, package and template version alignment, exact `main`/`origin/main` parity, marketplace metadata, materialized Codex skills, exported payload, and isolated `claw template validate` execution from a marketplace-style cache.
 11. Confirm npm auth.
 12. Publish `@veewo/claw-core` first.
 13. Publish `@veewo/claw` second.
@@ -117,6 +121,7 @@ Run these from the repository root unless noted:
 ```powershell
 npm test
 npm run check
+npm run check:template-versions
 npm run test:codex-plugin
 node --test scripts/sync-shared-skills.test.mjs
 cd packages\core
@@ -134,6 +139,7 @@ Recommended extra release checks:
 node -p "require('./packages/core/package.json').version"
 node -p "require('./packages/cli/package.json').version"
 node -p "require('./packages/codex-adapter/.codex-plugin/plugin.json').version"
+npm run check:template-versions
 rg -n "\"version\":|@veewo/claw|@veewo/claw-core" package.json package-lock.json CHANGELOG.md packages -g "!**/node_modules/**"
 ```
 
@@ -142,6 +148,7 @@ Expected outcome:
 - tests and checks pass
 - both `npm pack --dry-run` commands succeed
 - release versions are aligned where expected
+- every plugin template and the built-in default template match the CLI release version
 - no unexpected dirty changes remain before publish
 
 ## Auth and Permission Checks

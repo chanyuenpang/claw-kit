@@ -68,16 +68,6 @@
 - `packages/codex-adapter/skills/create-claw-skill/SKILL.md`
 - `packages/opencode-adapter/skills/create-claw-skill/SKILL.md`
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md`
-- `.claw/tasks/优化-planning-skill-的任务拆分与二次规划规则/plan.json`
-- `.claw/tasks/优化-planning-skill-的任务拆分与二次规划规则/plan.report`
-- `.claw/tasks/Review-planning-skill-quality/plan.json`
-- `.claw/tasks/Review-planning-skill-quality/plan.report`
-- `.claw/tasks/Apply-planning-skill-review-improvements/plan.json`
-- `.claw/tasks/Apply-planning-skill-review-improvements/plan.report`
-- `.claw/tasks/Merge-planning-quality-guidance/plan.json`
-- `.claw/tasks/Merge-planning-quality-guidance/plan.report`
-- `.claw/tasks/Add-optional-manual-review-planning-guidance/plan.json`
-- `.claw/tasks/Add-optional-manual-review-planning-guidance/plan.report`
 ## 2026-07-13：staging-only 导出与 update skill 审计
 
 - `planning` 与 `config` 的规范源仍然只在 `shared/skills/`；适配器副本不应作为 Git 追踪文件或日常编辑入口。

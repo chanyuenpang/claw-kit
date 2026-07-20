@@ -6,7 +6,7 @@ Accepted working truth for how the two supported hosts resolve the claw-kit Sess
 
 ## Core platform semantics
 
-- `plugin://claw-kit@claw-kit-local` is a **Codex-specific** markdown plugin link. Codex resolves `[@claw-kit](plugin://claw-kit@claw-kit-local)` as a reference to the locally installed claw-kit plugin (see `packages/codex-adapter/references/codex-hooks-strategy.md` and `packages/codex-adapter/references/codex-startup-recovery.md`).
+- `plugin://claw-kit@claw-kit` is a **Codex-specific** markdown plugin link. Codex resolves `[@claw-kit](plugin://claw-kit@claw-kit)` as a reference to the official installed claw-kit plugin (see `packages/codex-adapter/references/codex-hooks-strategy.md` and `packages/codex-adapter/references/codex-startup-recovery.md`). `claw-kit@claw-kit-local` is superseded and must not be used as the current reference target.
 - **opencode does NOT parse the `plugin://` protocol at all.** opencode loads skills through the `skill` tool using a bare skill name (e.g. `using-claw-kit`), with skills registered via opencode's `skills.paths` config. The shipped opencode skills live under `packages/opencode-adapter/skills/` (e.g. `packages/opencode-adapter/skills/using-claw-kit/SKILL.md`).
 
 ## Resulting SessionStart prompt differentiation
@@ -41,7 +41,7 @@ Because of the above, the two guidance configs intentionally diverge on referenc
 
 ## Search terms
 
-- `plugin://claw-kit@claw-kit-local`
+- `plugin://claw-kit@claw-kit`
 - `using-claw-kit`
 - `sessionStart`
 - `CLAW_GUIDANCE_CONFIG`

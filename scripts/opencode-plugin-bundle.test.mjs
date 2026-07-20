@@ -121,6 +121,8 @@ test("OpenCode main-agent guidance leaves automatic closeout to the host", async
   const adapterRoot = new URL("../packages/opencode-adapter/", import.meta.url);
   const guidance = JSON.parse(await fs.readFile(new URL("workflow-guidance.opencode.json", adapterRoot), "utf8"));
   const knowledgeSkill = await fs.readFile(new URL("skills/knowledge-writer/SKILL.md", adapterRoot), "utf8");
+  const knowledgeTemplate = JSON.parse(await fs.readFile(new URL("skills/knowledge-writer/TEMPLATE.json", adapterRoot), "utf8"));
+  const knowledgeFallback = await fs.readFile(new URL("skills/knowledge-writer/non-claw-fallback.md", adapterRoot), "utf8");
   const agent = await fs.readFile(new URL("agents/claw-knowledge-writer.md", adapterRoot), "utf8");
   const allDone = guidance.states["process.allTasksDone"];
 
@@ -131,20 +133,19 @@ test("OpenCode main-agent guidance leaves automatic closeout to the host", async
 
   assert.match(agent, /claw-kit:knowledge-writer/i);
   assert.match(agent, /mode: primary/i);
-  assert.match(agent, /Do not load `using-claw-kit`/i);
-  assert.match(agent, /self-contained claw harness/i);
-  assert.match(agent, /claw plan create --template-file "<skill-dir>\/TEMPLATE\.json"/i);
-  assert.match(agent, /through 4\/4/i);
-  assert.match(agent, /Do not\s+dispatch another writer or split the pass/i);
-  assert.match(knowledgeSkill, /knowledge-base steward/i);
-  assert.match(knowledgeSkill, /Truth and ADR are one knowledge system/i);
-  assert.match(knowledgeSkill, /maintain Truth first, then maintain ADR/i);
-  assert.match(knowledgeSkill, /regardless of filename, record shape, field names, or serialization format/i);
-  assert.match(knowledgeSkill, /retrospective lessons, key decisions/i);
-  assert.match(knowledgeSkill, /task status is present/i);
-  assert.match(knowledgeSkill, /task titles and descriptions are not themselves an execution log/i);
-  assert.match(knowledgeSkill, /one current owner/i);
-  assert.match(knowledgeSkill, /exhaustive text search/i);
+  assert.match(agent, /explicitly supplied materials/i);
+  assert.doesNotMatch(agent, /session-scoped|through \d+\/\d+|supplied plan|report conclusions/i);
+  assert.match(knowledgeSkill, /Use only when explicitly invoked/i);
+  const knowledgeContract = `${JSON.stringify(knowledgeTemplate)}\n${knowledgeFallback}`;
+  assert.match(knowledgeContract, /knowledge-base steward/i);
+  assert.match(knowledgeContract, /Truth and ADR are one knowledge system/i);
+  assert.match(knowledgeContract, /Maintain Truth first and ADR second|Truth is maintained before ADR/i);
+  assert.match(knowledgeContract, /filename, field, record shape, or serialization format/i);
+  assert.match(knowledgeContract, /retrospective lessons, key decisions/i);
+  assert.match(knowledgeContract, /task status is present/i);
+  assert.match(knowledgeContract, /task titles or descriptions as an execution log/i);
+  assert.match(knowledgeContract, /one current owner/i);
+  assert.match(knowledgeContract, /exhaustive text search/i);
 
   await assert.rejects(fs.access(new URL("skills/truth-writer/SKILL.md", adapterRoot)));
   await assert.rejects(fs.access(new URL("skills/adr-writer/SKILL.md", adapterRoot)));

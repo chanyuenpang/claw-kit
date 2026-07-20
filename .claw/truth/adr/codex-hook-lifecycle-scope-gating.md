@@ -23,7 +23,7 @@ Codex adapter 对 hook 生命周期做 scope gating：
 - `SessionStart` 只作为启动恢复增强路径；`Stop` 只作为 knowledge capture/finalization sidecar
 - `SessionStart` hook 通过 `claw hook SessionStart` CLI 命令运行（注册于 `packages/codex-adapter/hooks/hooks.json`，实现于 `packages/cli/src/cli.ts`）
 - 启动时先根据 `cwd` 检查是否命中 `.claw` 项目
-- 命中 `.claw` 项目时，执行 `claw context`，把紧凑 project context 和 “使用 [@claw-kit](plugin://claw-kit@claw-kit-local) 推进任务” 的提示写入 `additionalContext`
+- 命中 `.claw` 项目时，执行 `claw context`，把紧凑 project context 和 “使用 [@claw-kit](plugin://claw-kit@claw-kit) 推进任务” 的提示写入 `additionalContext`
 - 未命中 `.claw` 项目时，不做任何注入
 - `Stop` 在 CLI 加载前还必须确认当前 session knowledge registry 存在 active 或 pending target；没有 target 时快速退出
 - `Stop` 的 report/job 失败保持 fail-open，writer orchestration 由 `hook-owned-two-phase-knowledge-finalization.md` 单独拥有

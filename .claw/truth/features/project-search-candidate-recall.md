@@ -11,9 +11,13 @@
 - project search 会先生成 widened candidate pool，而不是只依赖一次 FTS `MATCH` 加向量排序。
 - keyword route 会保留 multi-term exact query，并为拆出的 term 增加 fallback query，避免候选集过早收缩。
 - 这套 `query planner` 对中文多词查询同样生效，例如 `搜打撤 哈基宝` 会同时走 exact multi-term route 与逐词 fallback route。
+- query embedding 保留用户输入的原始查询文本；关键词清洗只服务于 lexical route，不能用清洗后的强词串替代 Jina 所需的句法与实体上下文。
 - project search 额外加入了 `document-signal` candidate route，用文档内容、文件名和路径信号把可能相关的主题文档先纳入候选。
-- 最终排序改成 coverage-aware rerank，会同时考虑 `strong term coverage`、`filename/path` 命中、多 route 同时命中的候选，并对 `contents.md`、`summary.md`、`index.md`、`README.md` 这类 index-like 文档做更强降权。
+- 当前三路 RRF 融合权重为 vector `0.50`、keyword `0.30`、document signal `0.20`；继续降低 vector 权重会损害版本化 tiny-world 查询集的 Recall@5。
+- 最终排序改成 coverage-aware rerank，会同时考虑 `strong term coverage`、`filename/path`、标题、文档类型、多 route 命中与 matched-character density，并对 plan、index-like、chapter 和 overview 文档施加 query-aware 降权。
+- 唯一显式文件名查询可以走 lexical fast path；不满足唯一性和置信门禁的查询仍走完整 hybrid 路径。该性能路径与具体门禁由 `../adr/workflow-cost-optimization-route.md` 唯一拥有，本文只记录它与排序链路的边界。
 - 这让聚焦主题的文档更容易排在泛索引文档前面，也让不同强词分散在不同文档里的多词查询，仍能在顶部结果里保留覆盖面。
+- Canonical Truth/ADR chunk 消费 path-inferred document kind、generic hidden state/date markers 与 heading breadcrumb，并在 per-document collapse 前做 temporal soft ranking；不在 recall 前硬过滤 historical 或 superseded。当前 grammar 与 index compatibility version 分别由 `truth-and-adr-corpus-semantics.md` 和 `../adr/search-index-refresh-and-openai-embeddings.md` 唯一拥有，本文不重复具体 marker 或 version。
 
 ## OpenClaw 参考范围
 
@@ -23,10 +27,11 @@
 
 ## 真实代码锚点
 
-- 主实现入口：`packages/core/src/memory.ts`
-- 关键行为包括 `searchProjectMemoryHybrid`、`searchProjectMemoryKeywords`、`searchProjectMemorySignals`、`rerankProjectSearchCandidates`、`buildProjectSearchSignals` 和 `isIndexLikeDocName`。
+- 主实现入口：`packages/core/src/memory.ts` 与 `packages/core/src/memory-query.ts`
+- 关键行为包括 `buildProjectQueryIntent`、`searchProjectMemoryHybrid`、`searchProjectMemoryKeywords`、`searchProjectMemorySignals`、`tryProjectLexicalFastPath`、`rerankProjectSearchCandidates` 和 `buildProjectSearchSignals`。
 
-## 验证标准
+<!-- state: history -->
+## 版本化验证历史
 
 - `packages/core/test/core.test.ts` 针对这轮 candidate recall 与 rerank 行为通过 `50/50`。
 - `npm run check` 已通过。
@@ -84,6 +89,15 @@
 - 修正后的 full refresh 用时 `344.53 s`、CPU time `2,610.20 s`（平均约 `7.58` 个逻辑核心）、峰值 working set `2.10 GB`。这些指标只属于该机器、语料和 `0.1.85` working revision，不是跨环境 SLA；原始证据在 `benchmarks/search/0.1.85-jina-token-aware-chunking-windows.json`，实验汇总在 `docs/search-model-comparison-results.md`。
 - 当前分块行为锚点是 `packages/core/src/embedding-token-chunker.ts`、`packages/core/src/embedding-worker.ts` 与 `packages/core/src/memory.ts`；是否采用该策略、失效语义与取舍由 `../adr/search-index-refresh-and-openai-embeddings.md` 唯一拥有。
 
+### 0.1.86 tiny-world 混合排序五轮收口
+
+- 这轮在冻结的 tiny-world Jina 索引上使用 `850` 篇文档、`7,131` 个向量、`30` 条质量查询和 `3` 条 lexical controls，保留 embedding 模型与索引内容语义不变，只调整 query understanding、候选融合与 rerank。
+- 选定版本相对 `0.1.85` 基线将 Top-1 从 `0.3333` 提升到 `0.3667`、Recall@5 从 `0.6000` 提升到 `0.7667`、Recall@10 从 `0.6667` 提升到 `0.8667`、MRR@10 从 `0.4489` 提升到 `0.5415`，关键 Top-5 漏召回从 `10` 降到 `5`；`3` 条 lexical controls 保持 Top-1 全中。
+- 五轮中保留了原始语义查询、标题/路径/文档类型信号、plan/index/chapter/overview 降权、显式文件名快速路由、`0.50/0.30/0.20` 三路融合，以及降低后的 uncovered-term diversity bonus；更激进的标题权重和更低 vector 权重因 Recall 回退被撤销。
+- 这些指标只属于 `benchmarks/search/0.1.86-tiny-world-hybrid-ranking-summary-windows.json` 描述的冻结语料、机器与 working revision，不是跨项目 SLA；该轮与另一项 tiny-world Jina refresh 共享 CPU，因此详细报告中的 wall-time 不能和无争用的 `0.1.85` latency 基线直接比较。
+- 同日后续 `120` 条 development split 实验曾在尚未解封 holdout 时报告 Top-1 `0.7917`、Recall@5 `0.9333`、MRR@10 `0.8465`，但 supplied closeout 明确把该流程标为暂停且未完成；这些数值只能作为 provisional development evidence，不能替代已完成五轮的同口径指标，也不能证明 holdout 泛化。
+- 聚焦测试 `17/17` 与 core 测试 `138/138` 是该 completed closeout revision 的版本化验证结果。当前测试数量会随测试集演进，不应作为永久 suite-size 合同。
+
 ## 适用提醒
 
 - 这轮提升的是 recall 质量，不是搜索产品边界的变化。
@@ -97,11 +111,11 @@
 - project-level search 的主入口仍在 `packages/core/src/memory.ts`：`buildMemoryIndex` 收集 `.claw/memory.md`、`.claw/truth/**/*.md`、`.claw/.knowledge` 下的 `md` / `txt` / `json`，以及 `memory.externalDocPaths` 配置的 markdown 文件；sqlite 存储仍是 `.claw/memory.sqlite` 的 `docs`、`docs_fts`、`doc_embeddings` 与 `index_metadata.vector_index`。
 - `buildMemoryIndex` / project sync 使用 `docs.content_hash` 做增量同步；embedding 配置变更会 reset vector rows 和 `vector_index` metadata；markdown 先按段落和目标长度 chunk，再写入 `doc_embeddings`。
 - `searchMemory({ scope: "project" })` 仍要求 refreshed vector index，并调 `searchProjectMemoryHybrid`；缺少 `memory.embedding`、`vector_index` metadata 或 stored vectors 时返回 `MEMORY_VECTOR_INDEX_REQUIRED`。
-- query intent 来自 `packages/core/src/memory-query.ts` 的 `buildProjectQueryIntent` / `extractProjectKeywordTerms`；query embedding 优先使用 strong query terms 组成的 `embeddingText`。
+- query intent 来自 `packages/core/src/memory-query.ts` 的 `buildProjectQueryIntent` / `extractProjectKeywordTerms`；lexical terms 可以被清洗，但 query embedding 使用原始语义查询文本。
 - `searchProjectMemoryHybrid` 汇总三条候选路线：`doc_embeddings` 上的 vector cosine similarity、`docs_fts` 的 keyword/BM25 route（含 substring fallback），以及 `searchProjectMemorySignals` 的 document-signal route。
-- fusion 使用 `reciprocalRankScore(rank, weight)`，当前权重是 vector `0.6`、keyword `0.25`、signal `0.15`；每条 route 的首入候选还会带入 `exactBoost`。
-- final rerank 会为尚未覆盖的 strong terms 加 `0.045`、普通 terms 加 `0.01`，并给多 route 命中的候选加 `0.003 * (routeCount - 1)`；分数相同再按 `strongMatchedTermCount`、`matchedTermCount`、`exactBoost` 打破平局。
-- `buildProjectSearchSignals` 的 `exactBoost` 同时吸收 strong/weak term hit、term coverage、strong coverage、matched-character density、filename/path hit、phrase match，并扣除 weak-only、missing-strong 与 index-like doc (`contents.md` / `summary.md` / `index.md` / `README.md`) penalty。
+- fusion 使用 `reciprocalRankScore(rank, weight)`，当前权重是 vector `0.50`、keyword `0.30`、signal `0.20`；每条 route 的首入候选还会带入 `exactBoost`。
+- final rerank 会为尚未覆盖的 strong terms 加 `0.015`、普通 terms 加 `0.003`，并给多 route 命中的候选加 `0.003 * (routeCount - 1)`；分数相同再按 `strongMatchedTermCount`、`matchedTermCount`、`exactBoost` 打破平局。
+- `buildProjectSearchSignals` 的 `exactBoost` 同时吸收 strong/weak term hit、term coverage、strong coverage、matched-character density、filename/path hit、phrase match、title match 与 document-type match，并扣除 weak-only、index-like 与 query-aware generic-document penalty。
 - CLI surface 仍在 `packages/cli/src/cli.ts` 的 `runSearch`：`claw search index --refresh` 调 project-scope `buildMemoryIndex`，`claw search` 调 project-scope `searchMemory`。
 - `packages/core/test/core.test.ts` 覆盖 vector-required 行为、中文 query intent、strong-term 优先、多词 recall、coverage-aware rerank、filename rescue，以及 vector row metadata。
 

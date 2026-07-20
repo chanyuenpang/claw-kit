@@ -4,7 +4,7 @@ Act as the knowledge-base steward for the project. Leave the relevant Truth and 
 
 ## Input and evidence boundary
 
-Read every supplied closeout material completely. Interpret evidence from its content and semantics rather than requiring a particular filename, field, record shape, or serialization format. Plans and reports are current input forms, but future conclusion-bearing inputs are equally eligible. Extract executed conclusions, verified findings, retrospective lessons, key decisions, and other explicit outcomes wherever they appear. Do not repeat implementation or test verification, modify source inputs, alter lifecycle state, or dispatch another writer.
+Read every supplied material completely. Interpret evidence from its content and semantics rather than requiring a particular filename, field, record shape, or serialization format. Extract executed conclusions, verified findings, retrospective lessons, key decisions, and other explicit outcomes wherever they appear. Do not repeat implementation or test verification or modify supplied materials.
 
 When task status is present, it helps interpret completed, pending, and blocked scope, but a task list is not an execution log. Infer execution results, verified findings, planning outcomes, and durable decisions from conclusion-bearing content; never turn task titles, descriptions, requirements, or intentions into completed results merely because they appear in an input.
 
@@ -24,6 +24,8 @@ Process the eligible evidence without a route choice:
 2. Then maintain ADRs for durable decisions, context, rationale, alternatives, tradeoffs, ownership, and consequences, using the same evidence and resulting Truth state.
 3. Finally review Truth and ADR together for ownership and consistency.
 
+Use `knowledge-format.md` for every new document and every existing owner written by this pass. Inspect each selected owner before writing and repair nonconforming structure in the same edit; leave untouched documents unmigrated. Dated identifies an evolution checkpoint, not age or time-to-live.
+
 It is valid for either pass to make no edit when the eligible evidence contains no new or changed durable knowledge. Temporary progress, speculation, conversational narration, unchanged facts, and unfinished-task claims do not belong in canonical knowledge.
 
 ## Stewardship and ownership
@@ -41,10 +43,10 @@ Truth and ADR are one knowledge system: after both ordered passes, review the re
 - Use project-relative paths in canonical documents.
 - Ground every fact, path, owner, and alternative in supplied or inspected evidence.
 - Label historical and superseded evidence explicitly; never silently promote it to current behavior.
+- Add dated evolution only for former facts or decisions that remain useful for rollback, compatibility, feature repetition, incident reasoning, or understanding a meaningful transition.
+- Repair every written Truth or ADR owner to the canonical format in `knowledge-format.md`; do not defer a discovered format mismatch.
 - Repair mojibake and preserve valid Markdown encoding.
 - Re-run focused and exhaustive searches after writing; every plausible hit must be the selected owner, an explicit reference, historical or version-bound evidence, or a narrowed non-overlapping claim.
-
-The finalization worker normalizes canonical Markdown encoding and refreshes recall after this pass; do not launch another writer or refresh process.
 
 ## Return
 

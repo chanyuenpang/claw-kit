@@ -58,7 +58,9 @@ Codex Git marketplace 的发布源必须是已提交、自包含的 `packages/co
 - `scripts/publish-release.mjs` 通过 `assertSharedSkillsSynced(...)` 只读比较规范源与已物化副本；缺失、文件集合不完整或内容落后时必须失败
 - `scripts/codex-plugin-bundle.mjs` 只能导出和安装当前 `packages/codex-adapter` 内容，不得在临时 staging 中隐式同步 shared skills 来掩盖仓库源缺失
 
-Codex 安装与更新采用互斥的 active identity/source 合同：
+### 0.1.69 历史 active identity/source 合同（已被下文 official-only 决策取代）
+
+以下双 identity 切换规则只保留为 `0.1.69` 的版本化背景，不是当前安装或更新路线；当前行为由本文末尾的 official-only superseding decision 与 `.claw/truth/features/host-specific-update-skills.md` 共同约束。
 
 - 正式 repository marketplace 安装与发布快照验证使用 `claw-kit@claw-kit`；仓库 local installer 驱动的维护者开发安装使用 `claw-kit@claw-kit-local`
 - 两种 identity 不得同时抢占运行时加载结果；切换到 local 开发安装时必须停用 stale `claw-kit@claw-kit`，切回正式安装时也必须停用 local identity
@@ -71,6 +73,8 @@ Codex 安装与更新采用互斥的 active identity/source 合同：
 OpenCode 等不通过 Codex Git marketplace 直接复制仓库插件树的适配器，可以继续在 bundle/install staging 中物化派生副本；这不改变 Codex marketplace 源必须已提交且自包含的约束。
 
 When a shared skill is materialized, copy its complete directory recursively rather than only `SKILL.md`. This preserves template manifests, fallback guidance, and other adjacent resources required by the skill contract.
+
+For every installed templated skill, each declared `TEMPLATE.json.references` target must resolve inside that skill package. Repository-only authoring documents may remain as supplemental maintainer guidance, but an installed workflow must not require them to execute or interpret its contract.
 
 同步实现继续复用同一套显式工具，但生成动作与 release gate 分离：
 
@@ -116,8 +120,8 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 - Codex Git marketplace、release bundle 和维护者本地安装都从同一棵已提交的 `packages/codex-adapter` 读取，不再出现“zip 完整但远端 Git 安装缺 skill”的分叉。
 - 仓库 URL 安装不需要 GitHub Release ZIP，也不依赖目标机器执行仓库构建；发布正确性由 committed plugin tree 与只读 HEAD gate 保证。
 - sparse checkout 的最小边界由 marketplace manifest 和 `source.path` 联合决定，不能把 marketplace metadata 误当作完整 plugin payload。
-- 正式发布验收与第三方安装使用 `claw-kit@claw-kit`；维护者在显式仓库开发安装模式下使用 `claw-kit@claw-kit-local`。两者互斥，且未启用 identity 的 cache 不构成当前安装面证据。
-- update 流程必须先识别实际 enabled identity 再选择验证路径；development installer 只刷新 local identity 时，需要额外同步 official cache，直到 active source/cache 与目标版本一致。
+- `0.1.69` 的历史结果曾让正式发布验收与第三方安装使用 `claw-kit@claw-kit`、显式仓库开发安装使用 `claw-kit@claw-kit-local`；该双 identity 维护者模式现已被 official-only 决策取代，未启用 identity 的 cache 仍不构成当前安装面证据。
+- `0.1.69` 的 update 流程曾先识别 enabled identity 再选择验证路径；当前 update 不再选择 local route，只验证 official source/cache 与目标版本一致。
 - HEAD gate 可阻止未提交的物化文件、错误 `source.path`、manifest 版本漂移或缺失相邻资源进入正式发布。
 - restart/new-task locator check 成为插件运行时生效的最终证据，避免把既有任务中的旧 skill snapshot 误判为更新失败或更新成功。
 - `shared/skills` 保持 host-neutral shared packages 的单一规范维护源，同时 Codex adapter 的派生副本成为需要审查和提交的发布资产；adapter-owned `update` 不属于该派生集合。
@@ -148,8 +152,6 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 - `shared/skills/config/SKILL.md`
 - `shared/skills/create-claw-skill/`
 - `shared/skills/knowledge-writer/`
-- `.claw/tasks/Merge-planning-quality-guidance/plan.json`
-- `.claw/tasks/Merge-planning-quality-guidance/plan.report`
 - `.agents/plugins/marketplace.json`
 - `scripts/sync-shared-skills.mjs`
 - `scripts/sync-planning-skill.mjs`
@@ -179,12 +181,6 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 - `.claw/tasks/发布新版本并更新本地安装/Run-a-update-subplan,-complete-refresh-the-published-CLI-and-the-current-host-plugin-install-surface-after-a-newer-version-is-detected.json`
 - `.claw/tasks/fix-skill-local-subplan-template-resolution/plan.json`
 - `.claw/tasks/让-planning-按复杂度选择验证与-closeout/plan.json`
-- `.claw/tasks/优化-planning-skill-的任务拆分与二次规划规则/plan.json`
-- `.claw/tasks/优化-planning-skill-的任务拆分与二次规划规则/plan.report`
-- `.claw/tasks/Review-planning-skill-quality/plan.json`
-- `.claw/tasks/Review-planning-skill-quality/plan.report`
-- `.claw/tasks/Apply-planning-skill-review-improvements/plan.json`
-- `.claw/tasks/Apply-planning-skill-review-improvements/plan.report`
 - `.claw/tasks/发布共享技能-staging-修复并刷新本地运行时/plan.json`
 - `.claw/archive/tasks/align-codex-plugin-publish-and-remote-install/plan.json`
 

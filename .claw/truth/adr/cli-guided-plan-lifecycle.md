@@ -106,8 +106,6 @@ Accepted
 - `.claw/tasks/实施-claw-kit-第二阶段端到端性能与流程优化/plan.json`
 - `.claw/tasks/A-B-测试-hostActions-分步消费与-code-mode-自动消费/plan.json`
 - `.claw/tasks/优化-hostActions-单调用-code-mode-消费并发布新版本/plan.json`
-- `.claw/tasks/Add-optional-manual-review-planning-guidance/plan.json`
-- `.claw/tasks/Add-optional-manual-review-planning-guidance/plan.report`
 - `benchmarks/workflow/0.1.68-atomic-windows.json`
 - `docs/workflow-performance-contract.md`
 

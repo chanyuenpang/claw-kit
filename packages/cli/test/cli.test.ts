@@ -35,6 +35,7 @@ function createPlanLikeTemplate(params: {
 }): Record<string, unknown> {
   return {
     id: params.id,
+    version: cliPackageVersion,
     ...(params.scope ? { scope: params.scope } : {}),
     ...(params.configOverride ? { configOverride: params.configOverride } : {}),
     ...(params.title ? { title: params.title } : {}),
@@ -704,9 +705,9 @@ test("cli codex driver returns an executable versioned source envelope", async (
   const root = createFixture("codex-driver-envelope");
   const envelope = runClaw(["codex", "driver"], root);
   assert.equal(envelope.command, "codex.driver");
-  assert.equal(envelope.driverVersion, 4);
+  assert.equal(envelope.driverVersion, 5);
   assert.equal(envelope.hostActionSchemaVersion, 1);
-  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v4:s1");
+  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v5:s1");
   assert.match(String(envelope.sha256), /^[a-f0-9]{64}$/);
 
   const runner = (0, eval)(`(${String(envelope.source)})`) as (
@@ -755,6 +756,10 @@ test("cli codex driver returns an executable versioned source envelope", async (
           return JSON.stringify(mutationResult);
         },
         update_plan: async (input: unknown) => calls.push(["update_plan", input]),
+        get_goal: async (input: unknown) => {
+          calls.push(["get_goal", input]);
+          return { goal: null };
+        },
         create_goal: async (input: unknown) => calls.push(["create_goal", input]),
         update_goal: async (input: unknown) => calls.push(["update_goal", input]),
       },
@@ -772,8 +777,55 @@ test("cli codex driver returns an executable versioned source envelope", async (
   assert.equal("hostActions" in actual, false);
   assert.equal("command" in actual, false);
   assert.match(String((calls[0][1] as JsonRecord).command), /--host codex$/);
-  assert.deepEqual(calls.map(([name]) => name), ["shell_command", "update_plan", "create_goal", "text"]);
+  assert.deepEqual(calls.map(([name]) => name), ["shell_command", "update_plan", "get_goal", "create_goal", "text"]);
   assert.equal("hostActions" in JSON.parse(String(calls.at(-1)?.[1])), false);
+});
+
+test("Codex driver reuses an active Goal on resume and skips closing an already closed Goal", async () => {
+  const root = createFixture("codex-driver-goal-idempotency");
+  const envelope = runClaw(["codex", "driver"], root);
+  const runner = (0, eval)(`(${String(envelope.source)})`) as (
+    input: Record<string, unknown>,
+    runtime: Record<string, unknown>,
+  ) => Promise<JsonRecord>;
+  const calls: string[] = [];
+  let commandResult: JsonRecord = {
+    ok: true,
+    command: "plan.resume",
+    stage: "execution",
+    hostActions: [{
+      schemaVersion: 1,
+      id: "resume:create_goal",
+      tool: "create_goal",
+      input: { objective: "resume work" },
+    }],
+  };
+  let goalStatus = "active";
+  const tools = {
+    shell_command: async () => JSON.stringify(commandResult),
+    update_plan: async () => calls.push("update_plan"),
+    get_goal: async () => ({ goal: { status: goalStatus } }),
+    create_goal: async () => calls.push("create_goal"),
+    update_goal: async () => calls.push("update_goal"),
+  };
+
+  await runner({ command: "claw plan resume", workdir: root }, { tools, text: () => {} });
+  assert.deepEqual(calls, []);
+
+  commandResult = {
+    ok: true,
+    command: "plan.done",
+    stage: "done",
+    hostActions: [{
+      schemaVersion: 1,
+      id: "done:update_goal",
+      tool: "update_goal",
+      input: { status: "complete" },
+    }],
+  };
+  goalStatus = "complete";
+  await runner({ command: "claw plan done --retrospective done", workdir: root }, { tools, text: () => {} });
+  assert.deepEqual(calls, []);
 });
 
 test("Codex plan results keep only stage-relevant fields and hostActions", () => {
@@ -1924,8 +1976,38 @@ test("cli plan, subplan, and template validate share the skill-local template re
   assert.equal(validation.command, "template.validate");
   assert.equal(validation.ok, true);
   assert.equal(validation.templateId, "create-claw-skill");
+  assert.equal(validation.version, cliPackageVersion);
   assert.equal(validation.taskCount, 3);
   assert.deepEqual(validation.choiceRequiredTasks, []);
+});
+
+test("template validation routes missing and older versions through create-claw-skill", () => {
+  const root = createFixture("template-version-upgrade-route");
+  runClaw(["init", "--name", "Template Version Upgrade Route"], root);
+
+  for (const [name, version] of [["missing", undefined], ["older", "0.1.85"]] as const) {
+    const template = createPlanLikeTemplate({
+      id: `${name}-version`,
+      tasks: [{ id: 1, title: "Run work", status: "pending" }],
+    });
+    if (version === undefined) {
+      delete template.version;
+    } else {
+      template.version = version;
+    }
+    const templatePath = path.join(root, `${name}.json`);
+    fs.writeFileSync(templatePath, `${JSON.stringify(template, null, 2)}\n`, "utf-8");
+
+    const failure = runClawExpectFailure(["template", "validate", "--file", templatePath], root);
+    const error = failure.error as JsonRecord;
+    const details = error.details as JsonRecord;
+    assert.equal(error.message, "Template out of date. Use claw-kit:create-claw-skill to upgrade template.");
+    assert.equal(details.requiredSkill, "claw-kit:create-claw-skill");
+    assert.equal(details.reason, version === undefined ? "missing_version" : "older_version");
+    assert.equal(details.cliVersion, cliPackageVersion);
+    assert.equal(details.templateVersion, version ?? null);
+    assert.match(String(details.prompt), /upgrade the template[\s\S]*inspect and optimize/i);
+  }
 });
 
 test("cli plan and subplan create can select an exact template file when skill ids conflict", () => {
@@ -2079,6 +2161,7 @@ test("cli init writes maxTasksToKeep into project.json", () => {
     externalSkill: "team-knowledge-writer",
     model: null,
     reasoningEffort: "medium",
+    datedSectionsToKeep: 6,
   });
   assert.equal("truthDispatch" in projectConfig, false);
   assert.equal(
@@ -2097,7 +2180,12 @@ test("cli init writes default maxTasksToKeep into project.json", () => {
   ) as JsonRecord;
   assert.equal(projectConfig.maxTasksToKeep, 9);
   assert.equal(projectConfig.goalMode, true);
-  assert.deepEqual(projectConfig.knowledgeWriter, { externalSkill: null, model: null, reasoningEffort: "medium" });
+  assert.deepEqual(projectConfig.knowledgeWriter, {
+    externalSkill: null,
+    model: null,
+    reasoningEffort: "medium",
+    datedSectionsToKeep: 6,
+  });
   assert.equal(
     ((projectConfig.memory as JsonRecord).embedding as JsonRecord).model,
     "jinaai/jina-embeddings-v2-base-zh",
@@ -2230,7 +2318,12 @@ test("cli context auto-corrects malformed existing .claw state", () => {
     },
   });
   assert.equal(projectConfig.goalMode, true);
-  assert.deepEqual(projectConfig.knowledgeWriter, { externalSkill: null, model: null, reasoningEffort: "medium" });
+  assert.deepEqual(projectConfig.knowledgeWriter, {
+    externalSkill: null,
+    model: null,
+    reasoningEffort: "medium",
+    datedSectionsToKeep: 6,
+  });
 });
 
 test("cli context aligns project.json version upward to the current CLI version", () => {
@@ -2403,7 +2496,12 @@ test("cli check auto-corrects project.json into explicit protocol fields", () =>
   assert.equal(projectConfig.maxTasksToKeep, 9);
   assert.deepEqual(projectConfig.contextPaths, []);
   assert.equal(projectConfig.goalMode, true);
-  assert.deepEqual(projectConfig.knowledgeWriter, { externalSkill: null, model: null, reasoningEffort: "medium" });
+  assert.deepEqual(projectConfig.knowledgeWriter, {
+    externalSkill: null,
+    model: null,
+    reasoningEffort: "medium",
+    datedSectionsToKeep: 6,
+  });
   assert.deepEqual(projectConfig.memory, {
     enabled: true,
     externalDocPaths: [],
@@ -3233,6 +3331,7 @@ test("completed-plan Stop owns the final turn and queues a retryable SDK job", (
     externalSkill: "custom-knowledge-writer",
     model: "gpt-test-writer",
     reasoningEffort: "high",
+    datedSectionsToKeep: 6,
   });
   assert.equal(queued.planPath, path.join(root, ".claw", "tasks", "demo-task", "plan.json"));
   assert.equal(queued.reportPath, reportPath);
@@ -3340,7 +3439,7 @@ test("opencode finalizer environment drops the parent platform session identity"
   assert.equal(env.PATH, "preserved");
 });
 
-test("knowledge finalization runs one consistency-aware combined writer pass and accepts no-op output", () => {
+test("knowledge finalization honors a custom writer without applying built-in governance", () => {
   const root = createFixture("knowledge-writer-no-op");
   const home = path.join(root, "home");
   const taskDir = path.join(root, ".claw", "tasks", "no-op-task");
@@ -3360,9 +3459,18 @@ test("knowledge finalization runs one consistency-aware combined writer pass and
   const promptLog = path.join(root, "writer-prompts.log");
   const optionsLog = path.join(root, "writer-options.json");
   const sessionRuntimeDir = path.join(root, "session-runtime");
+  const knowledgePath = path.join(root, ".claw", "truth", "features", "custom-writer.md");
+  const customKnowledge = [
+    "# Custom writer", "",
+    "<!-- state: history -->", "## Evolution", "",
+    "<!-- dated: 2026-07-20 -->", "### First", "", "First state.", "",
+    "<!-- dated: 2026-07-20 -->", "### Second", "", "Second state.", "",
+    "<!-- dated: 2026-07-20 -->", "### Third", "", "Third state.", "",
+    "<!-- dated: 2026-07-20 -->", "### Fourth", "", "Fourth state.", "",
+  ].join("\n");
   fs.writeFileSync(
     path.join(sdkRoot, "dist", "index.js"),
-    `import fs from "node:fs";\nimport path from "node:path";\nimport { createHash } from "node:crypto";\nexport class Codex { startThread(options) { fs.writeFileSync(${JSON.stringify(optionsLog)}, JSON.stringify(options)); return { id: "thread-knowledge", run: async (prompt) => { fs.appendFileSync(${JSON.stringify(promptLog)}, prompt + "\\n---PASS---\\n"); const digest = createHash("sha256").update("thread-knowledge").digest("hex"); const workflowDir = path.join(process.env.CLAW_SESSION_RUNTIME_DIR, digest); const taskDir = path.join(workflowDir, "tasks", "knowledge-writer"); fs.mkdirSync(taskDir, { recursive: true }); fs.writeFileSync(path.join(workflowDir, "session.json"), JSON.stringify({ version: 1, scope: "session", originCwd: ${JSON.stringify(root)}, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })); fs.writeFileSync(path.join(taskDir, "plan.json"), JSON.stringify({ title: "knowledge-writer", templateId: "knowledge-writer", status: "end.completed", tasks: [{ id: 1, status: "done" }] })); return { finalResponse: "Knowledge no-op." }; } }; } }\n`,
+    `import fs from "node:fs";\nimport path from "node:path";\nimport { createHash } from "node:crypto";\nexport class Codex { startThread(options) { fs.writeFileSync(${JSON.stringify(optionsLog)}, JSON.stringify(options)); return { id: "thread-knowledge", run: async (prompt) => { fs.appendFileSync(${JSON.stringify(promptLog)}, prompt + "\\n---PASS---\\n"); fs.mkdirSync(path.dirname(${JSON.stringify(knowledgePath)}), { recursive: true }); fs.writeFileSync(${JSON.stringify(knowledgePath)}, ${JSON.stringify(customKnowledge)}, "utf-8"); const digest = createHash("sha256").update("thread-knowledge").digest("hex"); const workflowDir = path.join(process.env.CLAW_SESSION_RUNTIME_DIR, digest); const taskDir = path.join(workflowDir, "tasks", "custom-writer-run"); fs.mkdirSync(taskDir, { recursive: true }); fs.writeFileSync(path.join(workflowDir, "session.json"), JSON.stringify({ version: 1, scope: "session", originCwd: ${JSON.stringify(root)}, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })); fs.writeFileSync(path.join(taskDir, "plan.json"), JSON.stringify({ title: "custom writer", status: "end.completed", tasks: [{ id: 1, status: "done" }] })); return { finalResponse: "Custom knowledge updated." }; } }; } }\n`,
     "utf-8",
   );
 
@@ -3378,6 +3486,12 @@ test("knowledge finalization runs one consistency-aware combined writer pass and
     host: "codex",
     planPath,
     reportPath,
+    writer: {
+      externalSkill: "team:custom-knowledge-writer",
+      model: null,
+      reasoningEffort: "medium",
+      datedSectionsToKeep: 2,
+    },
     status: "queued",
     attempts: 0,
     queuedAt: new Date().toISOString(),
@@ -3395,12 +3509,18 @@ test("knowledge finalization runs one consistency-aware combined writer pass and
   assert.equal(job.sdkThreadId, "thread-knowledge");
   assert.equal(job.truthThreadId, undefined);
   assert.equal(job.adrThreadId, undefined);
-  assert.equal(job.finalResponse, "Knowledge no-op.");
+  assert.equal(job.finalResponse, "Custom knowledge updated.");
+  assert.equal(job.knowledgeGovernance, undefined);
+  const knowledge = fs.readFileSync(knowledgePath, "utf-8");
+  assert.match(knowledge, /First state/u);
+  assert.match(knowledge, /Second state/u);
+  assert.match(knowledge, /Third state/u);
+  assert.match(knowledge, /Fourth state/u);
   const prompts = fs.readFileSync(promptLog, "utf-8").split("---PASS---").filter((item) => item.trim());
   assert.equal(prompts.length, 1);
-  assert.match(prompts[0]!, /claw-kit:knowledge-writer/);
-  assert.match(prompts[0]!, /knowledge-base steward/i);
-  assert.match(prompts[0]!, /one current owner/i);
+  assert.match(prompts[0]!, /Use the team:custom-knowledge-writer skill and follow it exactly\./);
+  assert.doesNotMatch(prompts[0]!, /Use the claw-kit:knowledge-writer skill/);
+  assert.doesNotMatch(prompts[0]!, /one current owner|Evolution retention|dated:/i);
   assert.match(prompts[0]!, /interpret all supplied materials by their content/i);
   assert.doesNotMatch(prompts[0]!, /entryType|knowledge_finalization/);
   assert.doesNotMatch(prompts[0]!, /using-claw-kit/i);
@@ -3416,7 +3536,7 @@ test("knowledge finalization runs one consistency-aware combined writer pass and
     taskName: "no-op-task",
     recordedAt: job.finishedAt,
     status: "succeeded",
-    result: "Knowledge no-op.",
+    result: "Custom knowledge updated.",
     attempts: 1,
     host: "codex",
     threadId: "thread-knowledge",
@@ -3430,6 +3550,88 @@ test("knowledge finalization runs one consistency-aware combined writer pass and
   });
   assert.equal(repeated.status, 0);
   assert.equal(fs.readFileSync(reportPath, "utf-8").trim().split(/\r?\n/).length, 2);
+});
+
+test("knowledge finalization deterministically trims excess dated evolution written by the writer", () => {
+  const root = createFixture("knowledge-writer-retention");
+  const home = path.join(root, "home");
+  const taskDir = path.join(root, ".claw", "tasks", "retention-task");
+  runClaw(["init", "--name", "Knowledge Writer Retention"], root, { HOME: home, USERPROFILE: home });
+  fs.mkdirSync(taskDir, { recursive: true });
+  const planPath = path.join(taskDir, "plan.json");
+  const reportPath = path.join(taskDir, "plan.report");
+  fs.writeFileSync(planPath, JSON.stringify({ title: "Retention", status: "end.completed" }), "utf-8");
+  fs.writeFileSync(reportPath, "{}\n", "utf-8");
+
+  const sdkRoot = path.join(
+    home, ".claw-kit", "codex-runtime", CODEX_SDK_VERSION,
+    "node_modules", "@openai", "codex-sdk",
+  );
+  fs.mkdirSync(path.join(sdkRoot, "dist"), { recursive: true });
+  fs.writeFileSync(path.join(sdkRoot, "package.json"), JSON.stringify({ type: "module" }), "utf-8");
+  const knowledgePath = path.join(root, ".claw", "truth", "features", "evolving.md");
+  const writtenKnowledge = [
+    "# Evolving", "",
+    "<!-- state: current -->", "## Current", "", "Current behavior remains intact.", "",
+    "<!-- state: history -->", "## Evolution", "",
+    "<!-- dated: 2026-07-20 -->", "### First", "", "First historical state.", "",
+    "<!-- dated: 2026-07-20 -->", "### Second", "", "Second historical state.", "",
+    "<!-- dated: 2026-07-20 -->", "### Third", "", "Third historical state.", "",
+    "<!-- dated: 2026-07-20 -->", "### Fourth", "", "Fourth historical state.", "",
+  ].join("\n");
+  fs.writeFileSync(
+    path.join(sdkRoot, "dist", "index.js"),
+    `import fs from "node:fs";\nimport path from "node:path";\nimport { createHash } from "node:crypto";\nexport class Codex { startThread() { return { id: "thread-retention", run: async () => { fs.mkdirSync(path.dirname(${JSON.stringify(knowledgePath)}), { recursive: true }); fs.writeFileSync(${JSON.stringify(knowledgePath)}, ${JSON.stringify(writtenKnowledge)}, "utf-8"); const digest = createHash("sha256").update("thread-retention").digest("hex"); const workflowDir = path.join(process.env.CLAW_SESSION_RUNTIME_DIR, digest); const workflowTaskDir = path.join(workflowDir, "tasks", "knowledge-writer"); fs.mkdirSync(workflowTaskDir, { recursive: true }); fs.writeFileSync(path.join(workflowDir, "session.json"), JSON.stringify({ version: 1, scope: "session", originCwd: ${JSON.stringify(root)}, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })); fs.writeFileSync(path.join(workflowTaskDir, "plan.json"), JSON.stringify({ title: "knowledge-writer", templateId: "knowledge-writer", status: "end.completed", tasks: [{ id: 1, status: "done" }] })); return { finalResponse: "Knowledge updated." }; } }; } }\n`,
+    "utf-8",
+  );
+
+  const jobsDir = path.join(root, ".claw", "runtime", "knowledge-finalization", "jobs");
+  fs.mkdirSync(jobsDir, { recursive: true });
+  const jobPath = path.join(jobsDir, "retention.json");
+  fs.writeFileSync(jobPath, JSON.stringify({
+    schemaVersion: 1,
+    finalizeId: "retention",
+    sessionId: "thread-retention-owner",
+    projectRoot: root,
+    taskName: "retention-task",
+    host: "codex",
+    planPath,
+    reportPath,
+    writer: { datedSectionsToKeep: 2 },
+    status: "queued",
+    attempts: 0,
+    queuedAt: new Date().toISOString(),
+  }), "utf-8");
+
+  const finalized = runClawRaw(["internal-knowledge-finalize", "--job", jobPath], root, {
+    HOME: home,
+    USERPROFILE: home,
+    CLAW_SESSION_RUNTIME_DIR: path.join(root, "session-runtime"),
+    CLAW_KNOWLEDGE_FINALIZER_DISABLE_RETRY: "1",
+  });
+  assert.equal(finalized.status, 0);
+  const content = fs.readFileSync(knowledgePath, "utf-8");
+  assert.match(content, /Current behavior remains intact/u);
+  assert.doesNotMatch(content, /First historical state/u);
+  assert.doesNotMatch(content, /Second historical state/u);
+  assert.match(content, /Third historical state/u);
+  assert.match(content, /Fourth historical state/u);
+
+  const job = JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord;
+  assert.deepEqual(job.knowledgeGovernance, {
+    changedFiles: 1,
+    compactedFiles: 1,
+    removedSections: 2,
+    files: [{
+      path: "features/evolving.md",
+      datedSectionCountBefore: 4,
+      datedSectionCountAfter: 2,
+      removedSections: [
+        { date: "2026-07-20", heading: "### First" },
+        { date: "2026-07-20", heading: "### Second" },
+      ],
+    }],
+  });
 });
 
 test("knowledge finalization fails and retains its report when the SDK writer does not complete a session workflow", () => {

@@ -24,6 +24,9 @@ The skill also exposed storage concerns that belong to core plan creation. A tem
 - Keep the visible entry thin and let `TEMPLATE.json` own conversion tasks, guidance, rules, references, and verification.
 - Use `guidance.onDone.choices` only for a real route-selection event whose selected value changes the immediate downstream task or route. If all options continue to the same task and only alter advice, infer the shape from evidence and use default guidance.
 - Validate a template under development with `claw template validate --file <skill-dir>/TEMPLATE.json`; reserve named `--template <id>` validation for a template already materialized in a supported registry.
+- Make top-level `TEMPLATE.json.version` a compatibility gate tied to the current CLI template contract. The exact current rejection behavior and diagnostics are owned by `.claw/truth/features/create-claw-skill-entry-contract.md`; the decision here is that remediation requires a full package inspection and optimization before advancing the version, not a field-only bump.
+- Keep the primary compatibility error concise and actionable while retaining troubleshooting data in structured details. The exact current message and detail values remain owned by `.claw/truth/features/create-claw-skill-entry-contract.md`; the `create-claw-skill` package owns the upgrade procedure through its entry and adjacent `references/template-upgrade.md`, instead of expanding the runtime error into the procedure itself.
+- Have `create-claw-skill` generated templates inherit the current claw package semver, and expose the normalized version in successful `claw template validate` output so authoring and validation share an observable contract.
 - Generated packages must inherit the canonical route-aware completion contract from `template-guidance-routing-and-config-override.md`: real choices are discoverable only through `completionChoices`, guidance provides one parameterized `--choice <choice>` command template without repeating ids in `nextsteps`, and internal `choiceId` terminology is not presented as a CLI flag. This ADR does not create a second owner for the general choice semantics.
 
 ## Consequences
@@ -34,6 +37,10 @@ The skill also exposed storage concerns that belong to core plan creation. A tem
 - The template no longer requires a `choiceId` for `simple`, `routing`, or `idea-first` labels that all enter the same execution task.
 - Generator and authoring guidance can present the short `--skill-name` plus `--out` path and omit manual scope routing.
 - Generated entries select the exact adjacent template even when another installed skill or cached version reuses the same template id.
+- Stale unrelated cached templates no longer block a different selected template, while an explicitly selected stale template cannot silently run against a newer CLI contract.
+- Template upgrades cost a deliberate package review, but avoid falsely blessing stale workflow, guidance, or validation semantics through a mechanical version edit.
+- Callers receive a short recovery route at the failure boundary, while machine-readable diagnostics and the maintained skill-local checklist preserve the detail needed for troubleshooting and migration.
+- New generated packages and file-based validation surface the same version contract, making compatibility drift visible before materialization into a runtime registry.
 - Generated route-aware templates remain directly operable from compact guidance instead of requiring callers to inspect template JSON or translate `choiceId` into CLI syntax.
 - Storage-scope semantics remain owned by the shared plan/template resolver contract, and general choice semantics remain owned by the template-guidance contract.
 
@@ -46,6 +53,9 @@ The skill also exposed storage concerns that belong to core plan creation. A tem
 - `packages/codex-adapter/skills/create-claw-skill/`
 - `packages/opencode-adapter/skills/create-claw-skill/`
 - `packages/core/src/plan.ts`
+- `packages/core/src/plan-templates.ts`
+- `packages/core/src/templates/plans/default.ts`
+- `packages/cli/src/cli.ts`
 - `docs/create-claw-skill-lessons.md`
 - `docs/template-authoring-guide.md`
 
@@ -58,3 +68,6 @@ The skill also exposed storage concerns that belong to core plan creation. A tem
 - `mixed stage`
 - `plan-independent fallback`
 - `batch repeated stages`
+- `template version compatibility`
+- `requiredSkill`
+- `stale template`

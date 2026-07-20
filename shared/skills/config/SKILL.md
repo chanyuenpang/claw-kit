@@ -47,6 +47,7 @@ Use it when the team should share the behavior:
 - `knowledgeWriter.externalSkill`
 - `knowledgeWriter.model`
 - `knowledgeWriter.reasoningEffort`
+- `knowledgeWriter.datedSectionsToKeep`
 - `gitnexus`
 
 ### Personal config
@@ -112,7 +113,8 @@ Keep nested shape only where the field actually has substructure:
   "knowledgeWriter": {
     "externalSkill": null,
     "model": null,
-    "reasoningEffort": "medium"
+    "reasoningEffort": "medium",
+    "datedSectionsToKeep": 6
   },
   "memory": {
     "externalDocPaths": ["docs/"],
@@ -130,7 +132,7 @@ The default local model is `jinaai/jina-embeddings-v2-base-zh` at 768 dimensions
 - `Snowflake/snowflake-arctic-embed-m-v2.0` at 768 dimensions for projects that accept higher model, CPU, and memory cost.
 - `Snowflake/snowflake-arctic-embed-xs` at 384 dimensions for explicit low-resource or English-oriented use. It is not recommended for Chinese-heavy recall because the claw search comparison found substantial Chinese semantic-recall regressions.
 
-`knowledgeWriter.externalSkill = null` runs the built-in `claw-kit:knowledge-writer` in one consistency-aware pass. A non-null value overrides that writer skill. `model = null` uses the host default model. `reasoningEffort` accepts `minimal`, `low`, `medium`, `high`, or `xhigh`.
+`knowledgeWriter.externalSkill = null` runs the built-in `claw-kit:knowledge-writer` in one consistency-aware pass. A non-null value overrides that writer skill. `model = null` uses the host default model. `reasoningEffort` accepts `minimal`, `low`, `medium`, `high`, or `xhigh`. `datedSectionsToKeep` is a non-negative integer; it caps only complete evolution sections marked by `<!-- dated: YYYY-MM-DD -->` in each canonical document changed by the built-in writer. It does not limit current prose by length or age.
 
 ## Safe editing flow
 

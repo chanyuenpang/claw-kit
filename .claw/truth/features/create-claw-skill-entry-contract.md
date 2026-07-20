@@ -23,17 +23,32 @@ Accepted working truth for the current template-backed skill conversion path.
 - `create-claw-skill` 的模板、fallback、generator stub 与 authoring docs 都要求：只有真实 downstream 分支才生成 `guidance.onDone.choices`；一旦生成 choices，就遵循 canonical route-aware contract，以 `completionChoices` 作为唯一合法值列表、只提供一条参数化的 `claw task done --id <id> --choice <choice>` 命令模板，并让 `nextsteps` 不重复枚举 ids。该 skill 不另建平行 choice 合同。
 - `create-claw-skill` 还要求作者显式判断 lifecycle handoff：只有真实 discussion task 需要把 refinement delivery 与进入执行态绑定时才添加 `guidance.onPlanStart`；普通 executable template 默认从 `process.active` 开始并省略它。`claw plan start` 的全局可用性、推荐门与 transition 语义由 `.claw/truth/features/template-guidance-routing.md` 统一拥有，本文件只拥有该转换 skill 的 authoring 应用。
 - 相邻 `FALLBACK.md` 保存 plan-independent 的直接转换行为，既用于 mixed stage 的局部能力消费，也用于 CLI/template 不可用时的 direct workflow。完成计划中的 “raw skill” 是这一职责的历史命名；当前 package 与 generator 使用 fallback 命名。
+- 生成或升级后的 templated skill 必须是自包含分发单元：`TEMPLATE.json.references` 只能指向 skill package 内可解析的相邻资源。当前 `create-claw-skill` 把运行时 authoring 合同放在 `references/template-authoring.md`，并用 `CONTENT-COVERAGE.md` 映射 entry、template、fallback、references 与 generator；仓库级 `docs/template-authoring-guide.md` 和 `docs/create-claw-skill-lessons.md` 只保留维护者补充说明，不是安装包运行时依赖。跨适配器完整目录物化与发布门禁由 `.claw/truth/features/shared-planning-skill-source.md` 统一拥有。
 - generator 的标准最短入口是 `node <create-claw-skill-dir>/scripts/create-claw-skill-stub.mjs --skill-name <skill-name> --out <target-skill-package>`；`--template-id`、`--target-work`、`--fallback-doc` 只在默认值不适用时添加，`--scope` 不是合法选项。
+- `TEMPLATE.json` 顶层 `version` 是必需的兼容性字段。当前 resolver 以 built-in default template 的版本作为 CLI template contract 版本；缺失、无法解析为 semver、或低于该版本的已选模板会以 `PROJECT_CONFIG_INVALID` 拒绝加载，主错误固定为 `Template out of date. Use claw-kit:create-claw-skill to upgrade template.`，并在错误 details 中返回 `requiredSkill: "claw-kit:create-claw-skill"`、模板版本、CLI 版本、`missing_version` / `invalid_version` / `older_version` 原因与完整检查提示。升级路径必须先用 `create-claw-skill` 检查并优化整个 skill package，不能只机械修改版本字段。
+- skill-root 具名发现先读取候选的 raw `id`，只对匹配当前请求 id 的模板执行完整 schema/version 校验；因此一个无关 skill 的旧缓存不会阻断 `default` 或其他已选模板。显式 `--template-file` 与 project/package template 路径仍会校验实际加载的目标文件。
+- `claw template validate` 的成功 JSON 返回规范化后的 `version`。stub generator 会沿自身目录向上读取最近的 `package.json` 或 `.codex-plugin/plugin.json`，抽取当前 semver 写入新 `TEMPLATE.json`；如果找不到版本则直接失败，而不是生成无版本模板。
 - 源码开发态必须用 `claw template validate --file <target-skill-package>/TEMPLATE.json` 验证正在编辑的文件；只有 skill 已物化到受支持 registry 后，才用 `--template <id>` 做具名验证。
 - 对已有 skill，转换必须保留原始或等价的直接行为、必要 companion files 与相对链接；`SKILL.md` 只保留 ownership routing 和必要的非 template 补充，template 拥有 tasks、guidance、rules、references 与 verification gates。
+
+## 版本化完成证据
+
+- 2026-07-20 的 `0.1.86` closeout 在其记录的 worktree 上验证了 CLI template tests `14/14`、core template tests `22/22`、stub generator tests `2/2`、仓库内八份模板 `8/8`、全部 template references 可解析、Codex bundle `17/17`、OpenCode bundle `11/11`、shared-skill synchronization 与 `git diff --check`。该结果是当时 revision 的完成证据；本次知识维护只读确认了当前实现锚点、八份模板版本和 reference resolution，没有重跑这些测试。
 
 ## 相关锚点
 
 - `shared/skills/create-claw-skill/SKILL.md`
 - `shared/skills/create-claw-skill/TEMPLATE.json`
 - `shared/skills/create-claw-skill/FALLBACK.md`
+- `shared/skills/create-claw-skill/CONTENT-COVERAGE.md`
+- `shared/skills/create-claw-skill/references/template-authoring.md`
 - `shared/skills/create-claw-skill/scripts/create-claw-skill-stub.mjs`
 - `docs/create-claw-skill-lessons.md`
 - `docs/template-authoring-guide.md`
 - `packages/core/src/plan.ts`
 - `packages/core/src/plan-templates.ts`
+- `packages/core/src/templates/plans/default.ts`
+- `packages/cli/src/cli.ts`
+- `packages/core/test/core.test.ts`
+- `packages/cli/test/cli.test.ts`
+- `scripts/create-claw-skill-stub.test.mjs`

@@ -8,6 +8,7 @@ export type ProjectQueryIntent = {
   terms: string[];
   strongTerms: string[];
   weakTerms: string[];
+  entityPhrases: string[];
   embeddingText: string;
 };
 
@@ -241,7 +242,8 @@ const WEAK_CONVERSATIONAL_KEYWORDS = new Set([
 ]);
 
 export function buildProjectKeywordSearchPlan(raw: string): ProjectKeywordSearchPlanEntry[] {
-  const terms = extractProjectKeywordTerms(raw);
+  const entityPhrases = extractProjectEntityPhrases(raw);
+  const terms = extractProjectKeywordTerms(entityPhrases.length > 0 ? entityPhrases.join(" ") : raw);
   if (terms.length === 0) {
     return [];
   }
@@ -309,17 +311,38 @@ function normalizeProjectKeywordTerm(term: string): string {
 }
 
 export function buildProjectQueryIntent(raw: string): ProjectQueryIntent {
-  const terms = extractProjectKeywordTerms(raw);
+  const entityPhrases = extractProjectEntityPhrases(raw);
+  const terms = extractProjectKeywordTerms(entityPhrases.length > 0 ? entityPhrases.join(" ") : raw);
   const strongTerms = terms.filter((term) => !isWeakStandaloneKeyword(term));
   const weakTerms = terms.filter((term) => isWeakStandaloneKeyword(term));
-  const embeddingTerms = strongTerms.length > 0 ? strongTerms : terms;
 
   return {
     terms,
     strongTerms,
     weakTerms,
-    embeddingText: embeddingTerms.join(" ").trim() || raw.trim(),
+    entityPhrases,
+    // Sentence embedding models need the original syntax and entity context.
+    // Keyword cleanup is intentionally reserved for lexical retrieval because
+    // splitting Chinese prose can remove meaningful characters (for example,
+    // `事件` becoming `件` when the stop word `事` is stripped).
+    embeddingText: raw.trim(),
   };
+}
+
+export function extractProjectEntityPhrases(raw: string): string[] {
+  const phrases: string[] = [];
+  for (const match of raw.matchAll(/["“「『]([^"”」』]{2,100})["”」』]/gu)) {
+    phrases.push(match[1]?.trim() ?? "");
+  }
+  const lookupPatterns = [
+    /(?:请)?(?:帮我)?(?:要)?(?:查找?|查询|定位|看看|了解)\s*([^，。！？；]{2,100}?)(?=(?:的)?(?:正式说明|文档|资料|在(?:当前)?项目中|在哪里|怎么|如何|$))/gu,
+  ];
+  for (const pattern of lookupPatterns) {
+    for (const match of raw.matchAll(pattern)) {
+      phrases.push(match[1]?.trim() ?? "");
+    }
+  }
+  return Array.from(new Set(phrases.filter((phrase) => phrase.length > 0)));
 }
 
 function splitKeywordTerms(terms: string[]): {

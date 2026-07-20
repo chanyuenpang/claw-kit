@@ -4,6 +4,25 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## Unreleased
 
+## [0.1.87] - 2026-07-20
+
+### Added
+
+- Versioned claw skill templates that route missing or outdated template contracts through `create-claw-skill`, plus release-time template alignment checks
+- Structured Truth/ADR document semantics, bounded dated-history governance, and corpus auditing utilities for large project knowledge bases
+- Search ranking diagnostics, candidate snapshots, comparison tooling, and large-corpus generation support
+
+### Changed
+
+- Knowledge retrieval preserves original semantic query text, tracks document and chunk state, and applies temporal selection before document collapse
+- `create-claw-skill` and `knowledge-writer` now ship self-contained coverage, reference, and knowledge-format guidance across Codex and OpenCode bundles
+- Release verification validates all bundled workflow templates and the expanded plugin payload
+
+### Fixed
+
+- Codex Goal host actions re-check live Goal state before mutation so already-satisfied completion and resume transitions are consumed idempotently
+- CLI and OpenClaw release dependencies now stay aligned with the matching `@veewo/claw-core` version
+
 ## [0.1.86] - 2026-07-20
 
 ### Added

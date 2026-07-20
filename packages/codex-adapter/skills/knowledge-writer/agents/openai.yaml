@@ -1,4 +1,4 @@
 interface:
   display_name: "Knowledge Writer"
   short_description: "Maintain consistent canonical Truth and ADR knowledge."
-  default_prompt: "Use $knowledge-writer to interpret report conclusions and explicit plan conclusions with task-status context, then maintain canonical Truth followed by ADR while preserving one current owner."
+  default_prompt: "Use $knowledge-writer with the explicitly supplied materials to maintain canonical Truth followed by ADR in one consistency-aware pass."

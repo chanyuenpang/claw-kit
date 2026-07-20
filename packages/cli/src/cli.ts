@@ -38,8 +38,10 @@ import {
   tryCaptureKnowledgeStop,
   claimKnowledgeFinalizationJob,
   listRetryableKnowledgeFinalizationJobs,
+  governChangedKnowledgeMarkdown,
   normalizeTruthMarkdownEncoding,
   recordKnowledgeFinalizationResult,
+  snapshotKnowledgeMarkdown,
   writeKnowledgeFinalizationJob,
   unbindSession,
   writePlan,
@@ -820,6 +822,7 @@ async function runTemplate(args: string[]): Promise<void> {
         command: "template.validate",
         ok: true,
         templateId: template.id,
+        version: template.version,
         ...(template.scope ? { scope: template.scope } : {}),
         source: template.source,
         ...(template.templatePath ? { templatePath: template.templatePath } : {}),
@@ -1398,7 +1401,18 @@ async function runInternalKnowledgeFinalize(args: string[]): Promise<void> {
   }
   try {
     const project = resolveProjectContext(running.projectRoot);
+    const useBuiltInAutomation = usesBuiltInKnowledgeWriter(running);
+    const knowledgeBefore = useBuiltInAutomation
+      ? snapshotKnowledgeMarkdown(project.truthDir)
+      : null;
     const writerRun = await runKnowledgeWriterForJob(running);
+    const knowledgeGovernance = useBuiltInAutomation && knowledgeBefore
+      ? governChangedKnowledgeMarkdown({
+          truthDir: project.truthDir,
+          before: knowledgeBefore,
+          datedSectionsToKeep: running.writer?.datedSectionsToKeep ?? 6,
+        })
+      : undefined;
     const truthEncoding = normalizeTruthMarkdownEncoding(project);
     queueCompletionRefresh({
       cwd: running.projectRoot,
@@ -1420,6 +1434,7 @@ async function runInternalKnowledgeFinalize(args: string[]): Promise<void> {
       attempts: running.attempts,
       ...(running.host !== undefined ? { host: running.host } : {}),
       ...(writerRun.threadId ? { threadId: writerRun.threadId } : {}),
+      ...(knowledgeGovernance ? { knowledgeGovernance } : {}),
       truthEncoding,
     });
     writeKnowledgeFinalizationJob(jobPath, {
@@ -1428,6 +1443,7 @@ async function runInternalKnowledgeFinalize(args: string[]): Promise<void> {
       finishedAt,
       ...(writerRun.threadId ? { sdkThreadId: writerRun.threadId } : {}),
       finalResponse: writerRun.finalResponse,
+      ...(knowledgeGovernance ? { knowledgeGovernance } : {}),
       truthEncoding,
     });
   } catch (error) {
@@ -1448,6 +1464,8 @@ type KnowledgeWriterRunResult = {
   finalResponse: string;
   threadId?: string;
 };
+
+const BUILT_IN_KNOWLEDGE_WRITER_SKILL = "claw-kit:knowledge-writer";
 
 /**
  * Pick the host-aware finalization runner. The opencode host never assumes a Codex SDK
@@ -1526,8 +1544,7 @@ function assertCompletedKnowledgeWriterSession(threadId: string | null): void {
     }
     try {
       const plan = JSON.parse(fs.readFileSync(planPath, "utf8")) as Partial<PlanDocument>;
-      return plan.templateId === "knowledge-writer"
-        && plan.status === "end.completed"
+      return plan.status === "end.completed"
         && Array.isArray(plan.tasks)
         && plan.tasks.length > 0
         && plan.tasks.every((task) => task.status === "done");
@@ -1552,16 +1569,23 @@ function knowledgeFinalizerEnvironment(): Record<string, string> {
 }
 
 function buildKnowledgeWriterPrompt(job: KnowledgeFinalizationJob): string {
-  const writerSkill = job.writer?.externalSkill?.trim() || "claw-kit:knowledge-writer";
+  const writerSkill = resolveKnowledgeWriterSkill(job);
   return [
     `Use the ${writerSkill} skill and follow it exactly.`,
-    "Act as the knowledge-base steward: maintain Truth and ADR together, preserve one current owner, and reconcile related current claims before completion.",
-    "Primary closeout materials:",
+    "Supplied materials:",
     `- ${job.planPath}`,
     `- ${job.reportPath}`,
     `Finalization id: ${job.finalizeId}`,
     "Interpret all supplied materials by their content, not by a fixed filename, field, record shape, or serialization format. Extract conclusion-bearing evidence wherever it appears. Use task status when present to interpret completed, pending, and blocked scope, but do not treat task titles or descriptions as an execution log or promote requirements and intentions into results. Do not edit source inputs, dispatch subagents, or repeat implementation or test verification.",
   ].join("\n");
+}
+
+function resolveKnowledgeWriterSkill(job: KnowledgeFinalizationJob): string {
+  return job.writer?.externalSkill?.trim() || BUILT_IN_KNOWLEDGE_WRITER_SKILL;
+}
+
+function usesBuiltInKnowledgeWriter(job: KnowledgeFinalizationJob): boolean {
+  return resolveKnowledgeWriterSkill(job) === BUILT_IN_KNOWLEDGE_WRITER_SKILL;
 }
 
 function launchKnowledgeFinalizationWorker(jobPath: string, cwd: string): void {

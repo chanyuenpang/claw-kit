@@ -6,6 +6,7 @@
 - `claw-kit` 主线是 CLI-driven `.claw` harness，而不是 Apps SDK / app / widget / chat-rendering surface。
 - `claw plan write`、`claw plan edit`、`claw plan done` 共享 compact result core：`ok`、`planPath`、`planStatus`、紧凑 guidance 字段、`planSummary`，以及适用时的 `completionRefresh`。
 - root `claw plan done` 进入 `end.completed` 时额外返回 `achievement`、完成后的 canonical `planPath` 与本线程继续使用 claw 的 `nextsteps`。`achievement` 汇总 title、task counts、`completedAt`、retrospective 与 key-decision 保存状态；它是 foreground lifecycle completion signal，不代表异步 knowledge finalization 已完成。
+- 当前 Codex root `plan.done` completion projection 存在一个已复现的 compact-result 缺陷：fixed driver 已按 `hostActions` 成功执行 `update_goal(status="complete")`，但仍把 `end.completed` guidance 的第一条 `Use update_goal(status="complete")` 原样暴露在 `nextsteps`。再次照做会重复已经消费的 native action，并在 Goal 已关闭时得到 `cannot update goal because this thread has no goal`。这不改变 `hostActions` 是 Codex 唯一 host 执行源且每个 action 只消费一次的合同；在 projection 修正前，返回的这条重复 Goal 指示不是待执行 action。实现锚点是 `packages/core/src/workflow-guidance.config.json` 的 `end.completed.nextsteps`、`packages/cli/src/cli.ts` 的 root `plan.done` nextsteps projection，以及 `packages/cli/src/codex-driver.ts` 的 terminal-field filter。
 - subplan `plan done` 恢复 parent 时，结果状态和 `planPath` 属于恢复后的 parent，且不得返回 terminal `achievement`；只有真正完成 root plan 的 `plan.done` 才暴露该字段。
 - `claw plan edit` 现在会先进入共享 ticket queue 再读取 canonical plan；重叠编辑按顺序串行执行，并在各自轮次开始时重新读取最新已提交的 plan，而不是依赖命令启动时的旧快照。
 - plan mutation 不再接受通用 JSON patch 或临时文件。`claw plan edit` 只编辑 plan 字段，数组字段通过可重复的同名参数追加；`claw plan remove` 用同一字段名删除精确值。
@@ -32,6 +33,8 @@
 - 旧版 release flow 中 task 2 `Enter process.active` 的实跑只作为版本化证据保留，不再是 `plan start` 的 current compatibility shape。当前 `claw plan start ...` 只应用当前 template task 的 `guidance.onPlanStart`；没有该声明的旧 plan 不会通过标题或任务数量被隐式识别。恢复场景仍可通过高级 `claw plan edit --status process.active` 显式进入执行态。
 - `process.allTasksDone` 是 root plan 的 pre-closeout contract：当所有 task 都完成时，`workflowGuidance` 要求清理 thread progress 并完成 retrospective；root `claw plan done` 随后记录完成态与 `completedAt`，但不会立即归档 task，也不会从 foreground 派发 writer。
 - plan 命令不再返回 render blocks，不再提供 `claw plan app` / `claw plan render`。
+- 当前 plan 读取命令是 `claw plan show`；`claw plan view --json` 不是 alias，会以 unknown subcommand 失败。诊断与文档应使用 `plan show`，不能从内部 `PlanViewModel` 名称反推公开 CLI 命令。
+- 当前 `claw plan wait` 只接受 plan target override，不接受 `--reason`；暂停原因不会由该 alias 写入 canonical plan。为 `plan view` 增加 alias 或让 wait 记录 reason 都只是 `0.1.86` 评估提出的改进建议，尚未成为已采纳合同。
 - 当所有当前任务完成时，foreground 只完成 retrospective 与 `claw plan done`；Stop/session-idle sidecar 随后从 completed plan 和相邻 report 排队一次异步 `knowledge-writer` pass。completed plan 会在当前 task path 保留至少一小时，之后才由 retention 归档。
 
 ## Route-aware compact guidance

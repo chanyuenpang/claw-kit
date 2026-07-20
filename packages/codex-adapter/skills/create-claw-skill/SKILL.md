@@ -18,8 +18,22 @@ Resolve `<skill-dir>` as the directory containing this loaded `SKILL.md`.
 
 After plan or subplan creation, follow the returned `workflowGuidance`.
 
+## Upgrade Existing Template
+
+When claw reports `Template out of date`, use this skill to upgrade the selected skill package:
+
+1. Inspect `SKILL.md`, `TEMPLATE.json`, fallback content, and references against the current contract.
+2. Optimize outdated workflow structure or guidance; do not only bump `version`.
+3. Set `TEMPLATE.json.version` to the current CLI version after the review.
+4. Run `claw template validate --file "<skill-dir>/TEMPLATE.json"`.
+
+See `references/template-upgrade.md` for the upgrade checklist.
+
 ## Template Lifecycle Choice
 
 Treat `claw plan start` as optional global syntax sugar. Add `guidance.onPlanStart` to a task only when that task's completed discussion should deliberately bundle plan refinement with its declared internal transition, such as completing the task and entering `process.active`. Otherwise omit it and express delivery with ordinary task guidance and plan/task mutations. An executable template should normally start in `process.active` and need no `onPlanStart`.
 
 Fallback: `FALLBACK.md`.
+Template upgrade: `references/template-upgrade.md`.
+Template authoring contract: `references/template-authoring.md`.
+Content coverage: `CONTENT-COVERAGE.md`.

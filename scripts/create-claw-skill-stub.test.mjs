@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const repoVersion = JSON.parse(await fs.readFile(path.join(repoRoot, "package.json"), "utf8")).version;
 
 test("create-claw-skill stub generator writes standard fill-in surfaces", async (t) => {
   const outDir = await fs.mkdtemp(path.join(os.tmpdir(), "claw-skill-stub-test-"));
@@ -43,6 +44,7 @@ test("create-claw-skill stub generator writes standard fill-in surfaces", async 
   assert.match(skillText, /Optional skill-local references: add files under `references\/` only when the source skill needs extra material/);
   const template = JSON.parse(templateText);
   assert.equal(template.id, "demo-skill");
+  assert.equal(template.version, repoVersion);
   assert.equal("scope" in template, false);
   assert.equal(template.status, "process.active");
   assert.equal(template.tasks.length, 3);
@@ -50,6 +52,7 @@ test("create-claw-skill stub generator writes standard fill-in surfaces", async 
   assert.doesNotMatch(templateText, /"choices"/);
   assert.match(template.rules.join("\n"), /optional claw plan start shorthand/i);
   assert.match(template.rules.join("\n"), /completionChoices[\s\S]*one claw task done[\s\S]*do not repeat ids in nextsteps/i);
+  assert.match(template.rules.join("\n"), /version equal to the current claw CLI version/i);
   assert.match(coverageText, /Skill-local template: `TEMPLATE\.json` with id `demo-skill`/);
   assert.match(coverageText, /Mixed-stage entry:[\s\S]*fallback/);
   assert.match(coverageText, /Unavailable-tooling entry:[\s\S]*same fallback/);

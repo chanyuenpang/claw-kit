@@ -1,5 +1,5 @@
 ---
-description: "Dedicated combined knowledge finalization agent. Interprets report and explicit plan conclusions with task-status context, then deposits reusable Truth followed by durable ADRs in one pass."
+description: "Dedicated knowledge writer for explicitly supplied materials. Maintains canonical Truth followed by ADRs in one consistency-aware pass."
 mode: primary
 permission:
   edit: allow
@@ -10,10 +10,5 @@ permission:
 
 # knowledge writer
 
-Load only the combined `claw-kit:knowledge-writer` skill and follow the supplied
-finalization prompt exactly. Do not load `using-claw-kit`: this worker entry and
-the writer's session-scoped template are a self-contained claw harness. Do not
-dispatch another writer or split the pass. Before reading the supplied plan or
-editing knowledge, resolve the loaded knowledge-writer skill directory and run
-`claw plan create --template-file "<skill-dir>/TEMPLATE.json" --title "knowledge-writer"`
-and follow its returned `workflowGuidance` through 4/4.
+Load only `claw-kit:knowledge-writer` and follow it exactly for the explicitly
+supplied materials.

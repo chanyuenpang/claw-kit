@@ -21,6 +21,7 @@ import type { MemoryEmbeddingConfig } from "./types.js";
 type WorkerInput = {
   embedding: MemoryEmbeddingConfig;
   texts: string[];
+  textPrefixes?: string[];
   splitIntoTokenWindows?: boolean;
   outputPath?: string;
 };
@@ -140,7 +141,7 @@ async function splitLocalEmbeddingTexts(input: WorkerInput): Promise<EmbeddingTe
   return splitTextsIntoTokenWindows(
     input.texts,
     (text) => tokenizer(text, { truncation: false }).input_ids.data.length,
-    { targetTokens, overlapTokens },
+    { targetTokens, overlapTokens, prefixes: input.textPrefixes },
   );
 }
 

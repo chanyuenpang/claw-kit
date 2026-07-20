@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import { exportCodexPluginBundle, installCodexPluginBundle } from "./codex-plugin-bundle.mjs";
 import { assertSharedSkillsSynced } from "./sync-shared-skills.mjs";
+import { assertTemplateVersionsAligned } from "./update-template-versions.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publish = process.argv.includes("--publish");
@@ -83,6 +84,9 @@ function assertRepositoryMarketplaceSnapshot({ pluginVersion }) {
     "skills/create-claw-skill/SKILL.md",
     "skills/create-claw-skill/TEMPLATE.json",
     "skills/create-claw-skill/FALLBACK.md",
+    "skills/create-claw-skill/CONTENT-COVERAGE.md",
+    "skills/create-claw-skill/references/template-authoring.md",
+    "skills/create-claw-skill/references/template-upgrade.md",
     "skills/create-claw-skill/scripts/create-claw-skill-stub.mjs",
     "skills/knowledge-writer/SKILL.md",
     "skills/knowledge-writer/TEMPLATE.json",
@@ -113,6 +117,7 @@ async function verifyReleaseReadiness() {
   assert(openclaw.dependencies?.["@veewo/claw-core"] === version, "OpenClaw adapter must depend on the same @veewo/claw-core version.");
   assert(plugin.version.startsWith(`${version}+codex.`), "Codex plugin version must use the release version plus a +codex timestamp.");
   assert(marketplace.plugins?.some((entry) => entry.name === "claw-kit" && entry.source?.path === "./packages/codex-adapter"), "Codex marketplace must point claw-kit at ./packages/codex-adapter.");
+  await assertTemplateVersionsAligned({ repoRoot, expectedVersion: version });
   await assertSharedSkillsSynced({ adapterDirs: [path.join(repoRoot, "packages", "codex-adapter")] });
   assertCleanWorktree("Before publishing");
   assertDirectMainCheckout();
@@ -146,7 +151,7 @@ async function verifyReleaseReadiness() {
       env: smokeEnv,
       stdio: "pipe",
     });
-    for (const templateName of ["update", "create-claw-skill"]) {
+    for (const templateName of ["update", "create-claw-skill", "knowledge-writer"]) {
       const output = execFileSync(process.execPath, [cliPath, "template", "validate", "--template", templateName], {
         cwd: smokeProject,
         env: smokeEnv,

@@ -1,5 +1,6 @@
 {
   "id": "create-claw-skill",
+  "version": "0.1.87",
   "title": "create-claw-skill",
   "status": "process.active",
   "goal": {
@@ -14,6 +15,7 @@
       "The generated template owns the structured workflow and contains choices only for real downstream branches; choice-aware guidance exposes valid ids once and one executable --choice command template.",
       "The template deliberately chooses whether a discussion delivery task adopts optional guidance.onPlanStart; executable templates start active without it by default.",
       "The adjacent fallback document preserves direct skill behavior for mixed-stage use and unavailable claw tooling.",
+      "The generated TEMPLATE.json declares the current claw CLI version; a missing or older version triggers this skill for inspection and optimization before the version is advanced.",
       "The source template passes file-based validation and the converted package passes content coverage checks.",
       "The generated skill package is self-contained and its template id matches the entry."
     ]
@@ -22,7 +24,7 @@
     {
       "id": 1,
       "title": "Inspect the source and choose the conversion shape",
-      "detail": "Read the source skill or distill the user idea. Identify its trigger, ordered workflow, tools, constraints, real control-flow branches, verification, lifecycle handoff, and companion files. Decide the conversion shape from evidence without asking the user to choose a template style. Treat claw plan start as optional global syntax sugar: adopt guidance.onPlanStart only for a genuine discussion-to-execution delivery point; otherwise start executable work in process.active.",
+      "detail": "Read the source skill or distill the user idea. Identify its trigger, ordered workflow, tools, constraints, real control-flow branches, verification, lifecycle handoff, and companion files. For an existing TEMPLATE.json, inspect its version first: a missing or older version means the full skill package must be reviewed and optimized against the current CLI contract, not merely version-bumped. Decide the conversion shape from evidence without asking the user to choose a template style. Treat claw plan start as optional global syntax sugar: adopt guidance.onPlanStart only for a genuine discussion-to-execution delivery point; otherwise start executable work in process.active.",
       "status": "pending",
       "guidance": {
         "onDone": {
@@ -43,7 +45,7 @@
     {
       "id": 2,
       "title": "Generate and complete the claw skill package",
-      "detail": "Start with `node <create-claw-skill-dir>/scripts/create-claw-skill-stub.mjs --skill-name <skill-name> --out <target-skill-package>`. Add optional flags only when defaults do not fit. Replace generated TODOs, preserve companion files and links, and keep the entry focused on task-ownership routing while TEMPLATE.json owns execution.",
+      "detail": "Start with `node <create-claw-skill-dir>/scripts/create-claw-skill-stub.mjs --skill-name <skill-name> --out <target-skill-package>`. Add optional flags only when defaults do not fit. Replace generated TODOs, preserve companion files and links, and keep the entry focused on task-ownership routing while TEMPLATE.json owns execution. The stub writes the current CLI version. For an existing package, set its template version to the current CLI version only after the inspection and optimization pass is complete.",
       "status": "pending",
       "guidance": {
         "onDone": {
@@ -62,7 +64,7 @@
     {
       "id": 3,
       "title": "Validate structure and content coverage",
-      "detail": "Run `claw template validate --file <target-skill-package>/TEMPLATE.json`, validate the skill package structure, and map important source behavior to entry, template tasks/guidance/rules/references, or the fallback document. For every task listed in choiceRequiredTasks, exercise its live workflow guidance and confirm completionChoices contains the valid ids while recommendedCommands contains exactly one claw task done --id <id> --choice <choice> template and nextsteps does not repeat the ids. Use named `--template <id>` validation only after the skill is materialized in a supported runtime registry.",
+      "detail": "Run `claw template validate --file <target-skill-package>/TEMPLATE.json` and confirm the returned version equals the current CLI version. Validate the skill package structure, and map important source behavior to entry, template tasks/guidance/rules/references, or the fallback document. For every task listed in choiceRequiredTasks, exercise its live workflow guidance and confirm completionChoices contains the valid ids while recommendedCommands contains exactly one claw task done --id <id> --choice <choice> template and nextsteps does not repeat the ids. Use named `--template <id>` validation only after the skill is materialized in a supported runtime registry.",
       "status": "pending"
     }
   ],
@@ -72,12 +74,16 @@
       "why": "Plan-independent conversion workflow for mixed-stage use or unavailable claw tooling."
     },
     {
-      "path": "docs/template-authoring-guide.md",
-      "why": "Canonical template, ownership routing, choice, and validation guidance."
+      "path": "references/template-authoring.md",
+      "why": "Self-contained template, ownership routing, lifecycle, choice, and validation guidance."
     },
     {
-      "path": "docs/create-claw-skill-lessons.md",
-      "why": "Conversion and content-preservation lessons."
+      "path": "CONTENT-COVERAGE.md",
+      "why": "Maps the create-claw-skill contract to its entry, template, fallback, references, and generator."
+    },
+    {
+      "path": "references/template-upgrade.md",
+      "why": "Short checklist for upgrading a template rejected as out of date."
     }
   ],
   "rules": [
@@ -87,6 +93,7 @@
     "On Goal Mode hosts, every subplan entry must consume the returned handoff that completes the parent goal before creating the child goal.",
     "Let explicit template creation choose its runtime storage automatically.",
     "Preserve direct behavior in the adjacent fallback document and use focused references only when needed.",
+    "Every TEMPLATE.json declares the current CLI version; missing, invalid, or older versions route through this skill for a real inspection and optimization pass before advancing the field.",
     "Every guidance.onDone.choices task must expose valid ids once in completionChoices and one real --choice CLI command template without repeating ids in nextsteps.",
     "Treat claw plan start as optional global syntax sugar: templates opt into recommending it through the current task's guidance.onPlanStart, while ordinary plan and task mutations remain valid.",
     "Do not claim completion before file-based template validation and content coverage pass."

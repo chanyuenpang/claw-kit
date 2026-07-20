@@ -4,6 +4,7 @@ import path from "node:path";
 import { readJsonFile, withFileLock, writeJsonFile } from "./io.js";
 import { ensureInsideDir } from "./paths.js";
 import { ensureUtf8Bom, hasUtf8BomPrefix } from "./text-encoding.js";
+import type { KnowledgeGovernanceResult } from "./knowledge-governance.js";
 import type { KnowledgeWriterConfig, ProjectContext } from "./types.js";
 
 export type KnowledgeReportTarget = {
@@ -57,6 +58,7 @@ export type KnowledgeFinalizationJob = {
     checkedFiles: number;
     updatedFiles: number;
   };
+  knowledgeGovernance?: KnowledgeGovernanceResult;
   error?: {
     message: string;
   };
@@ -85,6 +87,7 @@ export type KnowledgeFinalizationReportEntry = {
     checkedFiles: number;
     updatedFiles: number;
   };
+  knowledgeGovernance?: KnowledgeGovernanceResult;
 };
 
 export type KnowledgeSidecarResult = {
@@ -249,6 +252,8 @@ export function tryCaptureKnowledgeStop(input: {
               externalSkill: input.project.projectConfig?.knowledgeWriter?.externalSkill ?? null,
               model: input.project.projectConfig?.knowledgeWriter?.model ?? null,
               reasoningEffort: input.project.projectConfig?.knowledgeWriter?.reasoningEffort ?? "medium",
+              datedSectionsToKeep:
+                input.project.projectConfig?.knowledgeWriter?.datedSectionsToKeep ?? 6,
             },
             host: input.host ?? null,
             planPath: resolveProjectRelativePlanPath(input.project, registry.pendingTurnOwner.planPath),

@@ -1,6 +1,6 @@
 {
   "name": "claw-kit",
-  "version": "0.1.86",
+  "version": "0.1.87",
   "private": true,
   "workspaces": [
     "packages/*"
@@ -15,6 +15,8 @@
     "install:opencode-plugin": "powershell -ExecutionPolicy Bypass -File .\\scripts\\install-opencode-plugin.ps1",
     "publish:release": "node .\\scripts\\publish-release.mjs --publish",
     "sync:shared-skills": "node .\\scripts\\sync-shared-skills.mjs",
+    "sync:template-versions": "node .\\scripts\\update-template-versions.mjs",
+    "check:template-versions": "node .\\scripts\\update-template-versions.mjs --check",
     "verify:release": "node .\\scripts\\publish-release.mjs",
     "repair:truth-encoding": "npm run build -w @veewo/claw-core && node scripts/truth-encoding-audit.mjs --write",
     "test:codex-plugin": "node --test .\\scripts\\codex-plugin-bundle.test.mjs",

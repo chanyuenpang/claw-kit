@@ -7,7 +7,10 @@ import {
 import { ClawError } from "./errors.js";
 import { resolveProjectContext } from "./context.js";
 import { findProjectRoot, normalizeTaskName } from "./paths.js";
-import { DEFAULT_MAX_TASKS_TO_KEEP } from "./project-defaults.js";
+import {
+  DEFAULT_KNOWLEDGE_DATED_SECTIONS_TO_KEEP,
+  DEFAULT_MAX_TASKS_TO_KEEP,
+} from "./project-defaults.js";
 import { migrateLegacyTaskLayout } from "./task-layout-migration.js";
 import type {
   KnowledgeWriterReasoningEffort,
@@ -150,6 +153,11 @@ function normalizeProjectConfig(raw: unknown, projectRoot: string): ProjectConfi
         sourceKnowledgeWriter?.reasoningEffort,
         "medium",
       ),
+      datedSectionsToKeep: readIntegerAtLeast(
+        sourceKnowledgeWriter?.datedSectionsToKeep,
+        0,
+        DEFAULT_KNOWLEDGE_DATED_SECTIONS_TO_KEEP,
+      ),
     },
     externalPlanningSkill: normalizeOptionalSkill(source?.externalPlanningSkill),
     defaultPlanTemplate: normalizeOptionalTemplateName(source?.defaultPlanTemplate),
@@ -215,6 +223,13 @@ function validateProjectConfig(raw: unknown, issues: ProjectProtocolIssue[]): vo
       "reasoningEffort",
       issues,
       "knowledgeWriter.reasoningEffort",
+    );
+    requireIntegerAtLeast(
+      knowledgeWriter,
+      "datedSectionsToKeep",
+      0,
+      issues,
+      "knowledgeWriter.datedSectionsToKeep",
     );
   }
   requireNullableString(config, "externalPlanningSkill", issues);
@@ -416,6 +431,10 @@ function normalizeOptionalTemplateName(value: unknown): string | null {
 
 function readBooleanConfig(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
+}
+
+function readIntegerAtLeast(value: unknown, minimum: number, fallback: number): number {
+  return Number.isInteger(value) && (value as number) >= minimum ? value as number : fallback;
 }
 
 function readKnowledgeWriterReasoningEffort(

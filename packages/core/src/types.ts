@@ -19,6 +19,7 @@ export type KnowledgeWriterConfig = {
   externalSkill?: string | null;
   model?: string | null;
   reasoningEffort?: KnowledgeWriterReasoningEffort;
+  datedSectionsToKeep?: number;
 };
 
 export type ProjectConfig = {
@@ -638,6 +639,11 @@ export type MemorySearchResultEntry = {
   kind: string;
   snippet: string;
   score: number;
+  documentKind?: "truth" | "adr" | "other";
+  documentState?: "current" | "accepted" | "historical" | "superseded" | null;
+  state?: "current" | "accepted" | "historical" | "superseded" | null;
+  dated?: string | null;
+  headingPath?: string;
 };
 
 export type MemoryIndexResult = {

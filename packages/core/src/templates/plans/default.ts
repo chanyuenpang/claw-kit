@@ -45,6 +45,7 @@ export type PlanTemplateTask = {
 
 export type PlanTemplateDocument = {
   id: string;
+  version: string;
   scope?: "session";
   configOverride?: TemplateConfigOverride;
   title?: string;
@@ -62,6 +63,7 @@ export type PlanTemplateDocument = {
 
 export const defaultPlanTemplate: PlanTemplateDocument = {
   id: "default",
+  version: "0.1.87",
   status: "process.discussing",
   goal: {
     text: "",

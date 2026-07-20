@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-export const CODEX_DRIVER_VERSION = 4;
+export const CODEX_DRIVER_VERSION = 5;
 export const CODEX_HOST_ACTION_SCHEMA_VERSION = 1;
 export const CODEX_DRIVER_CACHE_KEY =
   `claw-kit:codex-driver:v${CODEX_DRIVER_VERSION}:s${CODEX_HOST_ACTION_SCHEMA_VERSION}`;
@@ -95,6 +95,23 @@ async function codexDriverRunner(
     }
     if (Object.keys(input).some((key) => !allowedInput[tool].has(key))) {
       throw new Error(`invalid Codex hostAction input: ${id}`);
+    }
+    if (tool === "create_goal" || tool === "update_goal") {
+      if (typeof tools.get_goal !== "function") {
+        throw new Error("Codex host tool is unavailable: get_goal");
+      }
+      const snapshot = await tools.get_goal({});
+      const goal = snapshot && typeof snapshot === "object" && !Array.isArray(snapshot)
+        ? (snapshot as Record<string, unknown>).goal
+        : undefined;
+      const activeGoal = Boolean(
+        goal && typeof goal === "object" && !Array.isArray(goal)
+        && (goal as Record<string, unknown>).status === "active",
+      );
+      if ((tool === "create_goal" && activeGoal) || (tool === "update_goal" && !activeGoal)) {
+        consumed.add(id);
+        continue;
+      }
     }
     await handler(input as Record<string, unknown>);
     consumed.add(id);
