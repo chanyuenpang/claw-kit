@@ -1,6 +1,6 @@
 {
   "id": "update",
-  "version": "0.1.89",
+  "version": "0.1.90",
   "title": "update",
   "status": "process.active",
   "goal": {
@@ -20,13 +20,13 @@
     {
       "id": 1,
       "title": "Confirm the published target version and official Codex source",
-      "detail": "Tell the user a newer claw-kit version was detected. Confirm the target version is published and available from the official package and `chanyuenpang/claw-kit` GitHub marketplace before changing local installs. A release workflow must publish and verify first.",
+      "detail": "Tell the user a newer claw-kit version was detected. Record the starting CLI version. Confirm the target version is published and available from the official package and `chanyuenpang/claw-kit` GitHub marketplace before changing local installs. A release workflow must publish and verify first.",
       "status": "pending"
     },
     {
       "id": 2,
       "title": "Refresh the CLI and official Codex plugin",
-      "detail": "Refresh the global CLI first. Inside this repository use `npm run install:local-cli`, then `npm run install:codex-plugin`; the Codex installer reads the published GitHub `main` marketplace snapshot. On another Codex machine, add `chanyuenpang/claw-kit --ref main` for first setup or upgrade the `claw-kit` marketplace, then install or enable `claw-kit@claw-kit`. Disable `claw-kit@claw-kit-local`. Do not install from unpublished workspace files or a local marketplace.",
+      "detail": "Refresh the global CLI first. Inside this repository use `npm run install:local-cli`, then `npm run install:codex-plugin`; the Codex installer reads the published GitHub `main` marketplace snapshot. On another Codex machine, add `chanyuenpang/claw-kit --ref main` for first setup or upgrade the `claw-kit` marketplace, then install or enable `claw-kit@claw-kit`. Disable `claw-kit@claw-kit-local`. If the refreshed CLI rejects a remaining mutation because this existing plan references an older installed template, use the fixed Codex driver with the matching published CLI only for the remaining mutations; do not rewrite or upgrade the old template. Do not install from unpublished workspace files or a local marketplace.",
       "status": "pending",
       "guidance": {
         "onDone": {
@@ -64,6 +64,7 @@
     "Do not route or ask about another host; this is the Codex update workflow.",
     "Publish and verify the target version before release-time installation refresh.",
     "Use only the official GitHub marketplace and claw-kit@claw-kit identity.",
-    "Do not claim success unless both CLI and Codex plugin verification pass."
+    "Do not claim success unless both CLI and Codex plugin verification pass.",
+    "For an existing-plan template-version handoff, use only the matching published CLI for remaining plan mutations, then verify the global CLI still resolves to the target version."
   ]
 }

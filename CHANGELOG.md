@@ -4,6 +4,12 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## Unreleased
 
+## [0.1.90] - 2026-07-20
+
+### Fixed
+
+- The Codex update workflow now preserves an already-created plan across a CLI/template version handoff by using the matching published CLI only for its remaining plan mutations
+
 ## [0.1.89] - 2026-07-20
 
 ### Changed
