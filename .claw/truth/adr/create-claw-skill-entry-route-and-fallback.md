@@ -10,6 +10,8 @@ The earlier entry contract classified invocation shapes: direct single target, a
 
 The skill also exposed storage concerns that belong to core plan creation. A template-backed skill should express what result it owns; it should not make callers choose project/session storage or treat the absence of `.claw` as a separate skill route. The completed plan called the plan-independent document “raw skill”; the later current implementation retained that role but standardized its package name as `FALLBACK.md`.
 
+The generated plan also needs to adapt to the user's actual requirements without invalidating template-owned guidance. Deleting or renumbering tasks can break `nextTaskId` and other id-based transitions, while forcing requirements that substantially rewrite the template workflow into that plan makes the template cease to be a reliable execution contract.
+
 ## Decision
 
 - Route a template-backed skill by task ownership:
@@ -21,6 +23,9 @@ The skill also exposed storage concerns that belong to core plan creation. A tem
 - Apply the canonical exact-source routing decision to this skill: resolve the loaded `SKILL.md` directory and pass its adjacent `TEMPLATE.json` through `--template-file` for both root-plan and subplan entry. The `create-claw-skill` template id remains a compatibility discovery key, not the authoritative loaded-skill source.
 - Keep `create-claw-skill` entry routing free of storage scope. Explicit template creation outside a `.claw` project relies on the core resolver's automatic session scope; plain plan creation keeps project initialization semantics.
 - Preserve direct, plan-independent behavior in an adjacent fallback document. For `create-claw-skill` itself and generated packages by default, that document is `FALLBACK.md`; `--fallback-doc` may configure another adjacent filename.
+- Before source inspection or implementation, have the generated plan confirm the user's requirements and adapt its task descriptions to the requested scope.
+- Preserve every template sub-task and task id during plan adaptation. When work is not applicable, retain the task and mark it as removed from scope in its description instead of deleting or renumbering it.
+- If the user's requirements would substantially change this skill's template workflow, do not create its plan or subplan. Route directly to the adjacent fallback workflow before template instantiation.
 - Keep the visible entry thin and let `TEMPLATE.json` own conversion tasks, guidance, rules, references, and verification.
 - Use `guidance.onDone.choices` only for a real route-selection event whose selected value changes the immediate downstream task or route. If all options continue to the same task and only alter advice, infer the shape from evidence and use default guidance.
 - Validate a template under development with `claw template validate --file <skill-dir>/TEMPLATE.json`; reserve named `--template <id>` validation for a template already materialized in a supported registry.
@@ -43,6 +48,8 @@ The skill also exposed storage concerns that belong to core plan creation. A tem
 - New generated packages and file-based validation surface the same version contract, making compatibility drift visible before materialization into a runtime registry.
 - Generated route-aware templates remain directly operable from compact guidance instead of requiring callers to inspect template JSON or translate `choiceId` into CLI syntax.
 - Storage-scope semantics remain owned by the shared plan/template resolver contract, and general choice semantics remain owned by the template-guidance contract.
+- Narrow requirement-driven changes can tailor a generated plan without breaking its id-based guidance, at the cost of retaining explicitly excluded tasks as visible placeholders.
+- Broad workflow changes avoid distorting the template contract, at the cost of giving up structured plan lifecycle for that invocation and using the maintained direct fallback instead.
 
 <!-- state: history -->
 ## Evolution history
@@ -51,6 +58,11 @@ The skill also exposed storage concerns that belong to core plan creation. A tem
 ### Update-plan recovery moved to update ownership
 
 The `0.1.87` installation-update closeout supplied the first recorded evidence that an already-created plan can require the published CLI matching its retained template to finish. The current decision, constraints, and consequences now belong to `host-specific-update-skill-ownership.md`; this checkpoint remains only to explain why that update-specific recovery surfaced while the `create-claw-skill` template-version gate was being established. New or maintained skill packages still require package inspection before their template version advances.
+
+<!-- dated: 2026-07-20 -->
+### Requirement-driven plan adaptation gained a fallback boundary
+
+The earlier three-task template assumed its generated plan already matched the requested scope. The completed adaptation-routing change added a leading requirement-confirmation task, preserved template task ids during narrow adaptation, and made broad workflow changes route to `FALLBACK.md` before plan or subplan creation.
 
 ## Related Code
 
@@ -76,6 +88,9 @@ The `0.1.87` installation-update closeout supplied the first recorded evidence t
 - `mixed stage`
 - `plan-independent fallback`
 - `batch repeated stages`
+- `requirement-driven plan adaptation`
+- `preserve task ids`
+- `broad workflow change fallback`
 - `template version compatibility`
 - `requiredSkill`
 - `stale template`

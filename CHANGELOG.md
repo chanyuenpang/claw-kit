@@ -4,6 +4,21 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## Unreleased
 
+## [0.1.91] - 2026-07-21
+
+### Added
+
+- Knowledge finalization now commits only finalizer-owned Truth/ADR changes through an isolated Git index while preserving pre-existing dirty files and staged entries
+
+### Changed
+
+- `create-claw-skill` now confirms user requirements before conversion, adapts task descriptions without deleting sub-tasks or changing guidance-sensitive task ids, and routes broad workflow changes to its fallback
+- Active claw plans are explicitly treated as adaptable task containers that may add sub-tasks when later user requirements expand the work
+
+### Fixed
+
+- Codex plan closeout no longer repeats an already-consumed Goal completion instruction in the compact result
+
 ## [0.1.90] - 2026-07-20
 
 ### Fixed

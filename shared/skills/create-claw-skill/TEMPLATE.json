@@ -1,6 +1,6 @@
 {
   "id": "create-claw-skill",
-  "version": "0.1.90",
+  "version": "0.1.91",
   "title": "create-claw-skill",
   "status": "process.active",
   "goal": {
@@ -23,6 +23,25 @@
   "tasks": [
     {
       "id": 1,
+      "title": "Confirm the user requirements and adapt the plan",
+      "detail": "Confirm the user's requirements for the target skill and compare them with this generated plan before implementation. Adjust the plan to match the requested scope and workflow. Do not delete any sub-task or change any task id because template guidance depends on those ids. When a task is not applicable, keep it and change its description to mark it as removed from scope instead of deleting it.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "default": {
+            "mergeMode": "override",
+            "summary": "The user requirements are confirmed and the plan reflects the requested scope without breaking template guidance.",
+            "nextsteps": [
+              "Inspect the source or skill idea using the adapted task descriptions.",
+              "Preserve every sub-task id even when its description marks it as removed from scope."
+            ],
+            "nextTaskId": 2
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
       "title": "Inspect the source and choose the conversion shape",
       "detail": "Read the source skill or distill the user idea. Identify its trigger, ordered workflow, tools, constraints, real control-flow branches, verification, lifecycle handoff, and companion files. For an existing TEMPLATE.json, inspect its version first: a missing or older version means the full skill package must be reviewed and optimized against the current CLI contract, not merely version-bumped. Decide the conversion shape from evidence without asking the user to choose a template style. Treat claw plan start as optional global syntax sugar: adopt guidance.onPlanStart only for a genuine discussion-to-execution delivery point; otherwise start executable work in process.active.",
       "status": "pending",
@@ -37,13 +56,13 @@
               "For every choice task, verify completionChoices is the single valid-id source and guidance returns one claw task done --id <id> --choice <choice> command template.",
               "Keep long-form direct behavior in the adjacent fallback document."
             ],
-            "nextTaskId": 2
+            "nextTaskId": 3
           }
         }
       }
     },
     {
-      "id": 2,
+      "id": 3,
       "title": "Generate and complete the claw skill package",
       "detail": "Start with `node <create-claw-skill-dir>/scripts/create-claw-skill-stub.mjs --skill-name <skill-name> --out <target-skill-package>`. Add optional flags only when defaults do not fit. Replace generated TODOs, preserve companion files and links, and keep the entry focused on task-ownership routing while TEMPLATE.json owns execution. The stub writes the current CLI version. For an existing package, set its template version to the current CLI version only after the inspection and optimization pass is complete.",
       "status": "pending",
@@ -56,13 +75,13 @@
               "Validate the development-source TEMPLATE.json by file path.",
               "Compare source behavior with its converted homes before closing out."
             ],
-            "nextTaskId": 3
+            "nextTaskId": 4
           }
         }
       }
     },
     {
-      "id": 3,
+      "id": 4,
       "title": "Validate structure and content coverage",
       "detail": "Run `claw template validate --file <target-skill-package>/TEMPLATE.json` and confirm the returned version equals the current CLI version. Validate the skill package structure, and map important source behavior to entry, template tasks/guidance/rules/references, or the fallback document. For every task listed in choiceRequiredTasks, exercise its live workflow guidance and confirm completionChoices contains the valid ids while commandHints contains exactly one claw task done --id <id> --choice <choice> template and nextsteps does not repeat the ids. Use named `--template <id>` validation only after the skill is materialized in a supported runtime registry.",
       "status": "pending"
@@ -88,6 +107,7 @@
   ],
   "rules": [
     "Keep task ids numeric and workflow control in the template.",
+    "Adapt the generated plan to confirmed user requirements without deleting sub-tasks or changing task ids; mark excluded work in the task description instead.",
     "Route by whether the skill owns the whole task, one independent stage, or only part of a mixed stage.",
     "Treat each batch item as a stage-level subplan when the skill owns that stage.",
     "On Goal Mode hosts, every subplan entry must consume the returned handoff that completes the parent goal before creating the child goal.",

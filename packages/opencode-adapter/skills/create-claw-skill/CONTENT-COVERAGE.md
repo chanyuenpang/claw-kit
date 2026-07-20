@@ -1,7 +1,7 @@
 # create-claw-skill content coverage
 
-- Trigger, ownership routing, upgrade entry, and companion-file links: `SKILL.md`.
-- Structured conversion and upgrade workflow: `TEMPLATE.json` tasks, guidance, acceptance criteria, and rules.
+- Trigger, ownership routing, broad-change fallback, upgrade entry, and companion-file links: `SKILL.md`.
+- User-requirement plan adaptation and structured conversion and upgrade workflow: `TEMPLATE.json` tasks, guidance, acceptance criteria, and rules.
 - Plan-independent conversion behavior: `FALLBACK.md`.
 - Current authoring, lifecycle, routing, choice, and validation contract: `references/template-authoring.md`.
 - Out-of-date template upgrade checklist: `references/template-upgrade.md`.
@@ -10,6 +10,7 @@
 ## Coverage result
 
 - [x] Whole-task, independent-stage, batch-stage, and mixed-stage routes are represented.
+- [x] Broad user-driven changes route to fallback, while template plans preserve sub-task ids during narrower adaptations.
 - [x] Goal handoff and optional `guidance.onPlanStart` semantics are represented.
 - [x] Choice guidance and file-based validation requirements are represented.
 - [x] Missing or stale versions route through inspection and optimization before upgrade.

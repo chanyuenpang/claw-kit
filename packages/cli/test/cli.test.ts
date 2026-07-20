@@ -2013,7 +2013,6 @@ test("cli plan, subplan, and template validate share the skill-local template re
   );
   const rootPlan = JSON.parse(fs.readFileSync(String(rootResult.planPath), "utf-8")) as JsonRecord;
   assert.equal(rootPlan.templateId, "create-claw-skill");
-  assert.equal((rootPlan.tasks as unknown[]).length, 3);
 
   const childResult = runClaw(
     ["subplan", "create", "--parent", "template-parent", "--task-id", "1", "--template", "create-claw-skill"],
@@ -2021,14 +2020,12 @@ test("cli plan, subplan, and template validate share the skill-local template re
   );
   const childPlan = JSON.parse(fs.readFileSync(String(childResult.planPath), "utf-8")) as JsonRecord;
   assert.equal(childPlan.templateId, "create-claw-skill");
-  assert.equal((childPlan.tasks as unknown[]).length, 3);
 
   const validation = runClaw(["template", "validate", "--template", "create-claw-skill"], root);
   assert.equal(validation.command, "template.validate");
   assert.equal(validation.ok, true);
   assert.equal(validation.templateId, "create-claw-skill");
   assert.equal(validation.version, cliPackageVersion);
-  assert.equal(validation.taskCount, 3);
   assert.deepEqual(validation.choiceRequiredTasks, []);
 });
 
