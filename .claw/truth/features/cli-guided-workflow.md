@@ -7,7 +7,7 @@
 - `claw-kit` 主线是 CLI-driven `.claw` harness，而不是 Apps SDK / app / widget / chat-rendering surface。
 - `claw plan write`、`claw plan edit`、`claw plan done` 共享 compact result core：`ok`、`planPath`、`planStatus`、紧凑 guidance 字段、`planSummary`，以及适用时的 `completionRefresh`。
 - root `claw plan done` 进入 `end.completed` 时额外返回 `achievement`、完成后的 canonical `planPath` 与本线程继续使用 claw 的 `nextsteps`。`achievement` 汇总 title、task counts、`completedAt`、retrospective 与 key-decision 保存状态；它是 foreground lifecycle completion signal，不代表异步 knowledge finalization 已完成。
-- 当前 Codex root `plan.done` completion projection 存在一个已复现的 compact-result 缺陷：fixed driver 已按 `hostActions` 成功执行 `update_goal(status="complete")`，但仍把 `end.completed` guidance 的第一条 `Use update_goal(status="complete")` 原样暴露在 `nextsteps`。再次照做会重复已经消费的 native action，并在 Goal 已关闭时得到 `cannot update goal because this thread has no goal`。这不改变 `hostActions` 是 Codex 唯一 host 执行源且每个 action 只消费一次的合同；在 projection 修正前，返回的这条重复 Goal 指示不是待执行 action。实现锚点是 `packages/core/src/workflow-guidance.config.json` 的 `end.completed.nextsteps`、`packages/cli/src/cli.ts` 的 root `plan.done` nextsteps projection，以及 `packages/cli/src/codex-driver.ts` 的 terminal-field filter。
+- 当前 Codex root `plan.done` completion projection 在 `end.completed` guidance 声明 `update_goal(status="complete")` 时，会从 compact result 的 `nextsteps` 中移除这条已由 fixed driver 按结构化 `hostActions` 消费的 Goal close 指示，同时保留其余 closeout guidance。canonical core guidance、schema-v1 Goal `hostActions` 与非 Codex terminal result 均保持不变；Goal 状态检查、no-op 幂等与真实失败传播仍只属于 fixed driver / bundled consumer，Agent 不单独调用 `get_goal` 或重复 Goal mutation。实现锚点是 `packages/core/src/workflow-guidance.config.json` 的 host-neutral `end.completed` guidance、`packages/cli/src/cli.ts` 的 root Codex `plan.done` nextsteps projection，以及 `packages/cli/src/codex-driver.ts` 的 terminal-field filter。
 - subplan `plan done` 恢复 parent 时，结果状态和 `planPath` 属于恢复后的 parent，且不得返回 terminal `achievement`；只有真正完成 root plan 的 `plan.done` 才暴露该字段。
 - `claw plan edit` 现在会先进入共享 ticket queue 再读取 canonical plan；重叠编辑按顺序串行执行，并在各自轮次开始时重新读取最新已提交的 plan，而不是依赖命令启动时的旧快照。
 - plan mutation 不再接受通用 JSON patch 或临时文件。`claw plan edit` 只编辑 plan 字段，数组字段通过可重复的同名参数追加；`claw plan remove` 用同一字段名删除精确值。
@@ -74,3 +74,11 @@
 - `packages/core/test/core.test.ts` 覆盖 `process.allTasksDone`、`goalMode` 和 `end.completed` 的 compact contract。
 - `packages/cli/test/cli.test.ts` 覆盖 `plan write` 后的 `SessionStart` 恢复、`plan done` 归档、以及 completion refresh 的 release smoke path。
 - `packages/core/test/core.test.ts` 与 `packages/cli/test/cli.test.ts` 覆盖串行化的并发 mutation、显式字段追加/删除、task item 增删改，以及旧通用输入被拒绝。
+
+<!-- state: history -->
+## 演化历史
+
+<!-- dated: 2026-07-20 -->
+### Root Codex closeout 不再返回已消费的 Goal 指示
+
+修复前，fixed driver 已成功消费 root `end.completed` 的 `update_goal(status="complete")` host action，但 compact result 仍原样返回同一条 Goal close `nextstep`；重复执行会在 Goal 已关闭时得到 `cannot update goal because this thread has no goal`。任务 `Remove-consumed-Goal-action-from-Codex-closeout-result` 将修复限定在 Codex compact-result projection，保留 host-neutral guidance、非 Codex 结果、结构化 host action、父子 plan handoff 与 fixed-driver 幂等边界。聚焦 projection、consumer、adapter 与 TypeScript 检查通过；完整 CLI suite 在两分钟边界内未完成，因此该次完整套件结果保持未确认而不是失败。
