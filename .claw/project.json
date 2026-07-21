@@ -8,7 +8,7 @@
   "autoCommitKnowledge": true,
   "goalMode": true,
   "knowledgeWriter": {
-    "externalSkill": null,
+    "externalSkills": [],
     "model": null,
     "reasoningEffort": "medium",
     "datedSectionsToKeep": 6
