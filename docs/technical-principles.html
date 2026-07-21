@@ -453,6 +453,12 @@
             对外暴露的都不是渲染层，而是紧凑的 <code>workflowGuidance</code> 和 <code>planSummary</code>。
           </p>
           <p>
+            这份合同还必须跨版本保持连续。
+            一个计划启动后，会继续使用启动时记录的模板契约；即使已安装的模板版本后来升级，
+            task completion 和 plan editing 也不会被新的模板规则悄悄改写。
+            新模板只决定新计划如何开始，不会改变正在执行的计划。
+          </p>
+          <p>
             如果只靠普通 skill 来约束收尾，agent 往往要自己记住一整串动作。
             做完任务后，要把讨论沉淀成 ADR。
             要把有价值的执行内容整理成 truth。
@@ -519,6 +525,12 @@
             所以文档沉淀被放进 closeout。
             计划推进中，可以让 subagent 记录关键事实、设计取舍和复盘。
             完成阶段，再交给一个 <code>knowledge-writer</code> 统一维护项目 Truth 与 ADR。
+          </p>
+          <p>
+            写入知识与提交 Git 是两个不同边界。
+            默认情况下，成功完成 Truth 与 ADR finalization 后会自动提交这些文档；
+            团队也可以把 <code>autoCommitKnowledge</code> 设为 <code>false</code>，
+            让治理、结果记录和索引刷新照常完成，同时把文档改动留在工作区交给维护者审阅后提交。
           </p>
           <p>
             这样做不是为了把文档越写越多。

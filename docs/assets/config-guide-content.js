@@ -33,7 +33,7 @@ export const configGuideContent = {
         title: "Project protocol version",
         summary: "Declares which claw-kit CLI version this project expects.",
         detail: "If the project version is lower than the current CLI, `claw context` aligns the file upward. If it is higher, `claw context` tries to update the CLI and returns CLI lagging information when that update cannot be completed.",
-        example: `"version": "0.1.54"`
+        example: `"version": "0.1.92"`
       },
       {
         id: "maxTasksToKeep",
@@ -58,6 +58,14 @@ export const configGuideContent = {
         summary: "Controls whether goal-oriented execution guidance appears when the host supports it.",
         detail: "Teams usually keep this enabled unless they want a simpler host interaction contract.",
         example: `"goalMode": true`
+      },
+      {
+        id: "autoCommitKnowledge",
+        group: "Workflow",
+        title: "Whether finalized knowledge is committed automatically",
+        summary: "Controls the Git commit step after successful Truth and ADR finalization.",
+        detail: "The default is true. When false, finalization still writes and governs the knowledge documents, records success, and queues index refresh, but leaves those document changes uncommitted in the working tree.",
+        example: `"autoCommitKnowledge": false`
       },
       {
         id: "knowledgeWriter",
@@ -162,7 +170,7 @@ export const configGuideContent = {
         title: "项目协议版本",
         summary: "声明这个项目希望和哪一版 claw-kit CLI 对齐。",
         detail: "如果项目版本低于当前 CLI，`claw context` 会把 project.json 自动对齐到当前 CLI 版本；如果项目版本更高，`claw context` 会尝试更新 CLI，更新失败时会返回 CLI 版本落后信息。",
-        example: `"version": "0.1.54"`
+        example: `"version": "0.1.92"`
       },
       {
         id: "maxTasksToKeep",
@@ -187,6 +195,14 @@ export const configGuideContent = {
         summary: "控制支持该能力的宿主是否收到目标导向的执行引导。",
         detail: "大多数团队会保留开启，除非想把宿主侧的交互约束压得更简单。",
         example: `"goalMode": true`
+      },
+      {
+        id: "autoCommitKnowledge",
+        group: "工作流",
+        title: "是否自动提交完成沉淀的知识文档",
+        summary: "控制 Truth 与 ADR 成功完成沉淀后是否自动创建 Git 提交。",
+        detail: "默认值为 true。设为 false 时，finalization 仍会写入并治理知识文档、记录成功结果并排队刷新索引，只是把文档改动保留在工作区，不自动提交。",
+        example: `"autoCommitKnowledge": false`
       },
       {
         id: "knowledgeWriter",
@@ -265,9 +281,10 @@ export const configGuideContent = {
       {
         title: "最小共享配置",
         body: `{
-  "version": "0.1.54",
+  "version": "0.1.92",
   "planning": true,
   "goalMode": true,
+  "autoCommitKnowledge": true,
   "knowledgeWriter": { "externalSkill": null, "model": null, "reasoningEffort": "medium" },
   "gitnexus": false
 }`
