@@ -39,16 +39,6 @@
 - live `NeonSpark` 检索验证表明，多词中文检索不再把 `contents.md` 排在更聚焦的主题文档前面，conversational `搜打撤` 查询仍会优先命中 system design 类文档。
 
 <!-- dated: 2026-07-19 -->
-### 2026-07-19 小型中文/多语言候选预筛选（实验前历史状态）
-
-- 在该预筛选时点，这轮只根据 local ONNX runtime 约束与官方模型资料筛选候选，没有下载候选模型、修改默认配置或重建现有索引；当时的候选质量尚未验证，后续仍必须沿用完整 `claw search` 中文查询集，而不是以模型卡指标或 raw embedding 脚本代替。
-- 当前实现锚点 `packages/core/src/embedding-local-runtime.ts` 仍固定 `feature-extraction`、FP32、mean pooling、归一化和查询/文档共用同一种输入；`packages/core/src/embedding-defaults.ts` 只识别默认 `m-v2.0 = 768` 与 legacy `xs = 384`，其他未知 local model 会回落到 `384` 维，除非显式设置 `memory.embedding.outputDimensionality`。
-- 在该预筛选时点，可直接进入既有链路 smoke test 的候选是 `jinaai/jina-embeddings-v2-base-zh`、`sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` 和 `shibing624/text2vec-base-chinese`。研究记录将 Jina 列为中英双语、`161M` 参数、`8192` token、`768` 维、mean pooling，官方提供 Transformers.js 用法；MiniLM 列为 `50` 种语言、`128` token、`384` 维、mean pooling；text2vec 列为中文、mean pooling、`768` 维。Jina 与 text2vec 都需要显式声明输出维度。
-- 需要 adapter 后才适合公平测试的候选是 `intfloat/multilingual-e5-small` 与 `thenlper/gte-small-zh`：E5 要求非对称 `query: ` / `passage: ` 前缀；GTE 使用 CLS pooling、`512` 维，并且还需要经过验证的 ONNX package。当前 runtime 不支持这些模型合同。
-- `google/embeddinggemma-300m` 在该研究时点约 `1.2 GB` 且需要非对称提示词，对缩小当前约 `1.24 GB` 缓存的目标收益不足；`jinaai/jina-embeddings-v5-text-nano-retrieval` 需要 last-token pooling 和提示词，且模型卡许可为 `CC BY-NC 4.0`，因此两者未进入当前通用默认候选。
-- 上述模型能力、体积与许可是 `2026-07-19` 研究材料的版本化预筛选证据，不是当前运行时兼容性或搜索质量的实测结果。候选测试顺序、默认模型不变和 adapter 投资顺序由 `../adr/search-index-refresh-and-openai-embeddings.md` 唯一拥有。
-
-<!-- dated: 2026-07-19 -->
 ### 2026-07-19 Qwen embedding 适配性复核
 
 - 这次复核只检查官方模型资料与当前代码，没有下载模型、修改配置或重建索引。结论是：此前未在候选说明中提到 Qwen 属于覆盖不完整，但没有把它列入可直接测试的小模型前三名符合当时的资源与 runtime 约束。
