@@ -1,5 +1,6 @@
 ﻿# Project Search Candidate Recall
 
+<!-- state: current -->
 ## 结论
 
 - `claw-kit` 的 project-level `claw search --query` 已从单次 keyword/vector 合并，演进为裁剪版 OpenClaw 风格的 multi-route candidate recall。
@@ -37,14 +38,7 @@
 - `npm run check` 已通过。
 - live `NeonSpark` 检索验证表明，多词中文检索不再把 `contents.md` 排在更聚焦的主题文档前面，conversational `搜打撤` 查询仍会优先命中 system design 类文档。
 
-### 0.1.85 local embedding 对照基线
-
-- local embedding 模型的项目检索质量必须通过完整 `claw search` 路径评估，而不是用 raw embedding cosine、lexical fast path 或 cache hit 代替语义检索结论。完整路径包括中文 query planner、keyword fallback、document-signal candidate route、vector recall 和 unified rerank。
-- `0.1.85` Windows/CPU 基线在隔离 worktree 中对同一份 `100` 文档、`214` chunks 语料运行两轮 `Snowflake/snowflake-arctic-embed-m-v2.0` 与 `Snowflake/snowflake-arctic-embed-xs` A/B；两轮逐 query rank 完全一致，全部 `24` 条质量查询均走 `hybrid` route，另有 `3` 条 exact-filename lexical controls 单独统计。
-- 在该版本化基线中，`xs` 的中文 Recall@5 从 `0.7333` 降至 `0.3333`，中文 MRR@10 从 `0.5762` 降至 `0.3557`，并产生 `7` 条关键中文 Top-5 漏召回，因此没有通过预设的相对 Recall@5 `95%`、相对 MRR@10 `90%`、关键漏召回 `0` 条质量门禁。
-- 同一基线中，`xs` 的英文与中英混合结果接近持平，模型缓存从约 `1.24 GB` 降至 `91 MB`，query daemon working set 从约 `3.28 GB` 降至 `228 MB`，冷查询从约 `5.15 s` 降至 `0.88 s`；但端到端热查询中位数只改善约 `11%–20%`。这些数值是该语料、机器与 `0.1.85` revision 的历史观测，不是跨环境 SLA。
-- 可重跑资产由 `scripts/search-model-comparison-benchmark.mjs`、`benchmarks/search/model-comparison-corpus.json`、两份 `benchmarks/search/0.1.85-model-comparison-windows*.json` 原始结果和 `docs/search-model-comparison-results.md` 组成。默认模型与 fallback policy 的当前决策只由 `../adr/search-index-refresh-and-openai-embeddings.md` 拥有，本节只维护评估方法和版本化结果。
-
+<!-- dated: 2026-07-19 -->
 ### 2026-07-19 小型中文/多语言候选预筛选（实验前历史状态）
 
 - 在该预筛选时点，这轮只根据 local ONNX runtime 约束与官方模型资料筛选候选，没有下载候选模型、修改默认配置或重建现有索引；当时的候选质量尚未验证，后续仍必须沿用完整 `claw search` 中文查询集，而不是以模型卡指标或 raw embedding 脚本代替。
@@ -54,6 +48,7 @@
 - `google/embeddinggemma-300m` 在该研究时点约 `1.2 GB` 且需要非对称提示词，对缩小当前约 `1.24 GB` 缓存的目标收益不足；`jinaai/jina-embeddings-v5-text-nano-retrieval` 需要 last-token pooling 和提示词，且模型卡许可为 `CC BY-NC 4.0`，因此两者未进入当前通用默认候选。
 - 上述模型能力、体积与许可是 `2026-07-19` 研究材料的版本化预筛选证据，不是当前运行时兼容性或搜索质量的实测结果。候选测试顺序、默认模型不变和 adapter 投资顺序由 `../adr/search-index-refresh-and-openai-embeddings.md` 唯一拥有。
 
+<!-- dated: 2026-07-19 -->
 ### 2026-07-19 Qwen embedding 适配性复核
 
 - 这次复核只检查官方模型资料与当前代码，没有下载模型、修改配置或重建索引。结论是：此前未在候选说明中提到 Qwen 属于覆盖不完整，但没有把它列入可直接测试的小模型前三名符合当时的资源与 runtime 约束。
@@ -62,6 +57,7 @@
 - 当前 runtime 还会让 extractor 先归一化完整向量，再按 `outputDimensionality` 截断；公平使用 Qwen MRL 需要截断后重新归一化。未知 local model 仍默认解析为 `384` 维，因此 Qwen 还必须显式声明 `1024` 维或经过验证的 MRL 目标维度。
 - 这些是 `2026-07-19` 官方资料与代码锚点共同限定的兼容性结论，不是 Qwen 在 `claw search` 上的质量实测。当前事实锚点是 `packages/core/src/embedding-local-runtime.ts`、`packages/core/src/embedding-local.ts` 与 `packages/core/src/embedding-defaults.ts`；候选优先级和 adapter 投资决策仍只由 `../adr/search-index-refresh-and-openai-embeddings.md` 拥有。
 
+<!-- dated: 2026-07-19 -->
 ### 0.1.85 Jina 中文候选完整实验与复跑
 
 - 后续隔离 Windows/CPU 实验用真实 `claw search` 完整执行同一组 `24` 条质量查询和 `3` 条 lexical controls，并在一份 `100` 文档、`214` chunks 快照上把 `jinaai/jina-embeddings-v2-base-zh` 显式配置为 `768` 维。首次完整 refresh 用时 `325.9 s`，终态为 `pendingFileCount=0`、`vectorIndex.dimensions=768`、`vectorIndex.chunkCount=214`。
@@ -73,12 +69,14 @@
 - 两轮结果把 Jina 从“仅预筛选、质量未知”推进为质量与重复性均已通过完整门禁的 leading smaller-default candidate；这是默认切换前的版本化阶段，不再代表当前 shipped-default 状态。
 - 版本化证据保存在 `benchmarks/search/0.1.85-model-comparison-jina-v2-base-zh-windows.json` 与 `benchmarks/search/0.1.85-model-comparison-jina-v2-base-zh-windows-run2.json`，实验方法和对照汇总保存在 `docs/search-model-comparison-results.md`，可重跑入口为 `scripts/search-model-comparison-benchmark.mjs`。
 
+<!-- dated: 2026-07-19 -->
 ### 2026-07-19 Jina 默认 rollout closeout
 
 - 在上述两轮质量门禁之后，默认切换 closeout 将 `packages/core/src/embedding-defaults.ts` 的 local default 改为 `jinaai/jina-embeddings-v2-base-zh`，默认输出维度保持 `768`；当前默认配置事实由 `project-schema-alignment.md` 唯一拥有，本节只记录 rollout 结果。
 - 该 closeout 使用操作系统级缓存 `C:\Users\chany\AppData\Local\claw\models\jinaai\jina-embeddings-v2-base-zh`，记录到 `643,246,279` 字节与 ONNX SHA-256 `4B0E9FA6E5C77CFF56E0C9C673BA1AAD61E793E592FDD4B05690B68826B7D3A2`；这是这台 Windows 机器在该时点的版本化证据，不是跨机器固定路径或永久上游摘要。
 - closeout 时 `claw-kit`、`Mission-Control`、`Nocturnel`、`OpenClaw-dev`、`OpenClaw-dev-field-support-clean`、`super-json-editor` 与 `tiny-world` 七个主项目均完成 Jina `768` 维索引，`pendingFileCount = 0`，未发现重复的项目级 Jina cache；七个项目随后都通过真实中文 `claw search` 的 hybrid / persistent-daemon 路径。release、snapshot 与模型评估 worktree 明确不在迁移范围内。
 
+<!-- dated: 2026-07-19 -->
 ### 2026-07-19 tokenizer-aware 文档分块修正
 
 - local document indexing 现在先保留 `chunkMarkdownContent(...)` 的段落/字符级初分块，再由 `packages/core/src/embedding-worker.ts` 使用实际模型 tokenizer 把每个输入拆成 token windows；普通 query embedding 不进入这条 document-only 分块路径。
@@ -89,6 +87,7 @@
 - 修正后的 full refresh 用时 `344.53 s`、CPU time `2,610.20 s`（平均约 `7.58` 个逻辑核心）、峰值 working set `2.10 GB`。这些指标只属于该机器、语料和 `0.1.85` working revision，不是跨环境 SLA；原始证据在 `benchmarks/search/0.1.85-jina-token-aware-chunking-windows.json`，实验汇总在 `docs/search-model-comparison-results.md`。
 - 当前分块行为锚点是 `packages/core/src/embedding-token-chunker.ts`、`packages/core/src/embedding-worker.ts` 与 `packages/core/src/memory.ts`；是否采用该策略、失效语义与取舍由 `../adr/search-index-refresh-and-openai-embeddings.md` 唯一拥有。
 
+<!-- dated: 2026-07-20 -->
 ### 0.1.86 tiny-world 混合排序五轮收口
 
 - 这轮在冻结的 tiny-world Jina 索引上使用 `850` 篇文档、`7,131` 个向量、`30` 条质量查询和 `3` 条 lexical controls，保留 embedding 模型与索引内容语义不变，只调整 query understanding、候选融合与 rerank。
@@ -113,6 +112,7 @@
 - `searchMemory({ scope: "project" })` 仍要求 refreshed vector index，并调 `searchProjectMemoryHybrid`；缺少 `memory.embedding`、`vector_index` metadata 或 stored vectors 时返回 `MEMORY_VECTOR_INDEX_REQUIRED`。
 - query intent 来自 `packages/core/src/memory-query.ts` 的 `buildProjectQueryIntent` / `extractProjectKeywordTerms`；lexical terms 可以被清洗，但 query embedding 使用原始语义查询文本。
 - `searchProjectMemoryHybrid` 汇总三条候选路线：`doc_embeddings` 上的 vector cosine similarity、`docs_fts` 的 keyword/BM25 route（含 substring fallback），以及 `searchProjectMemorySignals` 的 document-signal route。
+- 当前 vector route 会从 `doc_embeddings` 读取全部 rows 的 `chunk_text` 和 `embedding_json`，逐 row 构造 snippet、JSON 解码并计算 cosine similarity；按 source 折叠、排序和 `candidateLimit` 截取发生在这次全量扫描之后。因此 `candidateLimit` 不限制向量读取或逐 chunk 打分工作量。
 - fusion 使用 `reciprocalRankScore(rank, weight)`，当前权重是 vector `0.50`、keyword `0.30`、signal `0.20`；每条 route 的首入候选还会带入 `exactBoost`。
 - final rerank 会为尚未覆盖的 strong terms 加 `0.015`、普通 terms 加 `0.003`，并给多 route 命中的候选加 `0.003 * (routeCount - 1)`；分数相同再按 `strongMatchedTermCount`、`matchedTermCount`、`exactBoost` 打破平局。
 - `buildProjectSearchSignals` 的 `exactBoost` 同时吸收 strong/weak term hit、term coverage、strong coverage、matched-character density、filename/path hit、phrase match、title match 与 document-type match，并扣除 weak-only、index-like 与 query-aware generic-document penalty。
