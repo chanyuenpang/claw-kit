@@ -1,11 +1,12 @@
 ﻿# Claw workflow 成本与真实执行路径审计
 
+<!-- state: current -->
 ## 结论
 
 - 正式 claw workflow 的主要成本不只来自业务执行，还来自合同版本漂移、plan lifecycle mutation、hook-owned writer execution、query embedding、completion refresh 与 GitNexus 分析。
 - lifecycle 元状态与业务进度必须分开理解：当前单一 planning bridge 用于完成讨论并切换执行状态，不计入 downstream 业务 task 数，也不应独立触发 truth deposition；旧版独立 `Enter process.active` 只属于版本化 benchmark 与历史 plan evidence。
 - `truthDispatch = "final_only" | "per_task"` 与按 task 派发 writer 是 `0.1.65` 及更早性能样本的版本化输入，不是当前 project schema 或 lifecycle owner。
-- 当前项目配置使用 `knowledgeWriter = { externalSkill: null, model: null, reasoningEffort: "medium", datedSectionsToKeep: 6 }`；正式 workflow 协调 `.claw` plan state、Codex Goal/progress actions，以及完成后的一次 combined writer job。retention 的字段语义由 `truth-and-adr-corpus-semantics.md` 唯一拥有。
+- 当前项目配置可使用 `knowledgeWriter.externalSkills` 的有序列表；列表缺失或为空时，正式 workflow 协调 `.claw` plan state、Codex Goal/progress actions，以及完成后的一次 built-in `knowledge-writer` job。retention 的字段语义由 `truth-and-adr-corpus-semantics.md` 唯一拥有。
 - 优化时应先修复合同一致性与条件语义，再降低 plan mutation 和后台 refresh 成本；入口 admission 的当前所有权与规则见 `using-claw-kit-session-entry.md`。
 
 ## 已验证的执行事实
