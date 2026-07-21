@@ -1,10 +1,11 @@
 {
-  "version": "0.1.91",
+  "version": "0.1.92",
   "id": "claw-kit",
   "name": "claw-kit",
   "maxTasksToKeep": 9,
   "planning": true,
   "autoUpdate": true,
+  "autoCommitKnowledge": true,
   "goalMode": true,
   "knowledgeWriter": {
     "externalSkill": null,
