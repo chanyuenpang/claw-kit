@@ -2,6 +2,7 @@
 
 `claw-kit` now treats the current `OpenClaw` declaration fields as canonical in `.claw/project.json`.
 
+<!-- state: current -->
 ## Canonical Fields
 
 - `contextPaths`
@@ -9,6 +10,7 @@
 - `memory.embedding`
 - `planning`
 - `autoUpdate`
+- `autoCommitKnowledge`
 - `externalPlanningSkill`
 - `goalMode`
 - `knowledgeWriter`
@@ -28,6 +30,7 @@
 - `memory.embedding` now accepts the OpenClaw-compatible subset used by `openclaw-dev`: `provider` (`openai|local`), `model`, `remote.apiKeyEnvVar`, `remote.baseUrl`, `local.modelPath`, `local.modelCacheDir`, `outputDimensionality`, `store.vector.enabled`, and `store.vector.extensionPath`.
 - canonical `.claw/project.json` carries simple project-level workflow toggles as flat fields: `planning`, `autoUpdate`, `externalPlanningSkill`, `goalMode`, and `gitnexus`; combined writer configuration is owned by the nested `knowledgeWriter` object.
 - `autoUpdate` is an explicit project-level boolean gate with default `true`; projects can set it to `false` when version drift should stay informational only.
+- `autoCommitKnowledge` is an explicit project-level boolean gate with default `true`; when set to `false`, successful knowledge finalization still writes and governs Truth/ADR documents, records the result, and queues index refresh, but leaves those document changes uncommitted in the working tree.
 - legacy nested inputs such as `workflow.goalMode.enabled`, `workflow.truthDispatch.mode`, and `gitnexus.enabled` are compatibility inputs for protocol repair; repaired canonical files are flattened instead of preserving those nested containers.
 - The 2026-06-23 compatibility fixture run remains historical evidence for flattening legacy `workflow.goalMode.enabled`, `workflow.truthDispatch.mode`, and object `gitnexus.enabled`; current repair no longer promotes `truthDispatch` into canonical project output.
 - Current repair fills `planning`, `externalPlanningSkill`, and the canonical `knowledgeWriter` object; legacy external truth / ADR skill values are accepted only as migration input for `knowledgeWriter.externalSkill`.
@@ -77,15 +80,15 @@
 
 ## Evidence
 
-- [packages/core/src/init.ts](D:/Users/chany/Documents/claw-kit/packages/core/src/init.ts)
-- [packages/core/src/embedding-defaults.ts](D:/Users/chany/Documents/claw-kit/packages/core/src/embedding-defaults.ts)
-- [packages/core/src/memory.ts](D:/Users/chany/Documents/claw-kit/packages/core/src/memory.ts)
-- [packages/core/src/embedding-worker.ts](D:/Users/chany/Documents/claw-kit/packages/core/src/embedding-worker.ts)
-- [packages/core/src/project-check.ts](D:/Users/chany/Documents/claw-kit/packages/core/src/project-check.ts)
-- [packages/core/src/context.ts](D:/Users/chany/Documents/claw-kit/packages/core/src/context.ts)
-- [packages/cli/src/cli.ts](D:/Users/chany/Documents/claw-kit/packages/cli/src/cli.ts)
-- [packages/core/test/core.test.ts](D:/Users/chany/Documents/claw-kit/packages/core/test/core.test.ts)
+- `packages/core/src/init.ts`
+- `packages/core/src/embedding-defaults.ts`
+- `packages/core/src/memory.ts`
+- `packages/core/src/embedding-worker.ts`
+- `packages/core/src/project-check.ts`
+- `packages/core/src/context.ts`
+- `packages/cli/src/cli.ts`
+- `packages/core/test/core.test.ts`
 - 2026-06-23 temp compatibility fixture root: `C:\Users\chany\AppData\Local\Temp\claw-project-json-compat-2026-06-23T08-56-50-407Z`; `claw check` and `claw context` exited 0 for all four fixture copies.
-- [packages/cli/README.md](D:/Users/chany/Documents/claw-kit/packages/cli/README.md)
-- [README.md](D:/Users/chany/Documents/claw-kit/README.md)
-- [docs/2026-06-06-project-schema-alignment-execution.md](D:/Users/chany/Documents/claw-kit/docs/2026-06-06-project-schema-alignment-execution.md)
+- `packages/cli/README.md`
+- `README.md`
+- `docs/2026-06-06-project-schema-alignment-execution.md`

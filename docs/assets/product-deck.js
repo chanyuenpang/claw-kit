@@ -1,4 +1,4 @@
-import { deckContent } from "./product-deck-content.js?v=20260703-pages-refresh";
+import { deckContent } from "./product-deck-content.js?v=20260721-release-0192";
 import {
   buildLocalizedHref,
   persistPreferredLanguage,

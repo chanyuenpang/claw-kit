@@ -83,7 +83,7 @@ export const deckContent = {
         features: [
           {
             label: "Team config",
-            text: "Use .claw/project.json to define the workflow baseline your team shares."
+            text: "Use .claw/project.json to define the shared workflow baseline, including whether finalized Truth and ADR updates are committed automatically."
           },
           {
             label: "Personal override",
@@ -91,7 +91,7 @@ export const deckContent = {
           },
           {
             label: "Custom templates",
-            text: "Turn recurring work into templates instead of rebuilding the same task shape every time."
+            text: "Turn recurring work into templates; active plans keep the template contract they started with, even after installed templates advance."
           },
           {
             label: "Composable skills",
@@ -223,7 +223,7 @@ export const deckContent = {
         features: [
           {
             label: "团队配置",
-            text: "用 .claw/project.json 固定团队共用的 workflow 基线。"
+            text: "用 .claw/project.json 固定团队共用的 workflow 基线，也可决定完成沉淀后是否自动提交 Truth 与 ADR 更新。"
           },
           {
             label: "个人覆盖",
@@ -231,7 +231,7 @@ export const deckContent = {
           },
           {
             label: "自定义模板",
-            text: "把高频任务沉淀成模板，不用每次都从空白重新搭。"
+            text: "把高频任务沉淀成模板；即使已安装模板继续升级，进行中的计划仍沿用启动时的模板契约。"
           },
           {
             label: "可组合扩展",
