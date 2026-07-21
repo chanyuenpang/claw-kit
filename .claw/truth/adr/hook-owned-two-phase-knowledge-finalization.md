@@ -14,12 +14,12 @@
 - Codex 的 task conclusion capture 直接复用成功 `task.done` response 已有的 `ok: true` 与 `command: "task.done"`，不增加专用 marker，也不依赖 mutation、host-action、plan 或 task identity。每次 Stop 只读取其所属 turn 的完整 transcript 记录，把该轮每个成功返回绑定到最近的前置 assistant conclusion，再追加到 registry 当前拥有的相邻 report；没有可靠成功返回或结论时不制造 summary。
 - Main agent 不派发 knowledge writer，也不消费 writer 返回文本来决定 canonical deposition。Detached finalizer 动态运行 job 配置的 writer skill；未配置 external skill 时运行内置 `claw-kit:knowledge-writer`。source `plan.json`、相邻 report 与 finalize id 是 finalizer 当前提供的具体 runtime materials，不是内置 writer 的输入 schema；内置 writer 按内容解释所有提供的材料，并以六个 guidance-backed 阶段分离结论提取、证据新鲜度判断、owner 搜索、Truth 维护、ADR 维护和跨文档一致性审查。该 pass 固定先维护 Truth、再维护 ADR 并收敛一个 current owner；external skill 的语义治理由 `external-writer-skill-config.md` 唯一拥有，不由 finalizer 注入。
 - Keep the built-in `knowledge-writer` explicit-invocation only. The host-aware finalizer owns the automatic closeout trigger and explicitly invokes the skill with supplied materials; an interactive caller must likewise name the skill and materials. Do not let ordinary skill matching, foreground `using-claw-kit`, or reusable-knowledge heuristics start it implicitly. The generic thin-entry/template-ownership and storage-scope decisions remain owned by `create-claw-skill-entry-route-and-fallback.md`; shared-package materialization remains owned by `shared-planning-skill-source.md`.
-- `knowledgeWriter.externalSkills`、`model`、`reasoningEffort` 与 `datedSectionsToKeep` 在 job 创建时快照。finalizer 按 `externalSkills` 顺序运行独立 writer session；列表缺失或为空时使用内置 writer。Codex job 使用版本化 SDK runtime，OpenCode job 使用 `opencode run`；runner 不替换 job 指定的模型或思考强度，内置 writer 的 dated-section governance 使用同一 job snapshot。
+- `knowledgeWriter.externalSkills`、`model`、`reasoningEffort` 与 `datedSectionsToKeep` 在 job 创建时快照。finalizer 按 `externalSkills` 顺序运行独立 writer session；列表缺失或为空时使用内置 writer。内置和外部 writer 都收到同一无人值守治理 prompt；外部 skill 依其自身治理规则处理材料而不要求严格执行交互式 skill 合同，内置 writer 仍遵循其严格合同。Codex job 使用版本化 SDK runtime，OpenCode job 使用 `opencode run`；runner 不替换 job 指定的模型或思考强度，内置 writer 的 dated-section governance 使用同一 job snapshot。
 - Writer 线程环境设置 `CLAW_KNOWLEDGE_FINALIZER=1`，使其 Stop/SessionStart hook 在 CLI preflight 前退出；内置 skill 的 top-level `scope: "session"` 又让 writer 自身 claw harness 存在于用户级 session runtime，不触发项目 knowledge capture。invocation host 的输入验证、job 快照与 worker 路由由 `invocation-host-handling.md` 拥有。
 - 内置 writer 成功后，worker 对该 pass 改动的 canonical Markdown 执行 dated-section governance 并记录裁剪结果；external skill 跳过治理快照与 dated compaction。两条路径随后都依次归一化 `.claw/truth/**/*.md` 编码、请求 completion recall refresh、向相邻 report追加一条以 `finalizeId` 幂等去重的 `knowledge_finalization` JSONL 结果，最后持久化 `succeeded` job。writer、适用的 governance、编码、refresh 或结果写回失败都进入既有重试路径；重复尝试不得伪造或追加第二条成功结果。Governance 的语义与取舍由 `bounded-truth-and-adr-evolution-governance.md` 拥有。
 - `succeeded` result 与 job 持久化后，finalizer 默认对本轮 canonical Markdown 净变化执行一次 fail-open Git commit；项目级 `autoCommitKnowledge` 默认为 `true`，设为 `false` 时只跳过这一步，Truth/ADR 写入与治理、成功记录和 index refresh 仍照常完成，文档改动保留在工作区。启用自动提交时，commit message 精确使用 source `taskName`；候选集只包含 writer 开始前干净的变化路径，pre-existing dirty Truth 保持未提交。commit 使用从 `HEAD` 初始化的独立临时 index 并禁用 hooks，使用户真实 index 中的无关 staged content 不能进入该 commit。Git 不可用、没有候选变化、临时 index 操作失败或 commit 失败都不反转 finalizer 成功状态，也不删除文档改动。该隔离是路径级而非行级：同一条原先干净文档上的并发写入不能与 writer 内容可靠分离。
 - Finalizer 不再主动删除 report。report 与 source plan 同属 task directory，归档时一起移动到 `.claw/archive/tasks/`，仅在 task retention 超过 `maxTasksToKeep` 并裁剪整个 archived task 时删除。新项目与缺失配置统一使用共享默认值 `9`；通用 task layout 与 retention 事实由 `../features/task-layout-and-session-bindings.md` 记录。
-- 内置 `knowledge-writer` 统一拥有 conclusion-evidence qualification、Truth→ADR 固定顺序、候选阅读、freshness qualification 与 one-owner consistency；response format 与自然语言总结不参与控制流。所有 writer 的 host session completion 只检查存在 `end.completed`、tasks 非空且全部 `done` 的 session workflow，不绑定内置 `templateId`。
+- 内置 `knowledge-writer` 统一拥有 conclusion-evidence qualification、Truth→ADR 固定顺序、候选阅读、freshness qualification 与 one-owner consistency；response format 与自然语言总结不参与控制流。host session completion 断言只适用于内置 writer：它检查存在 `end.completed`、tasks 非空且全部 `done` 的 session workflow；外部治理 skill 不受该断言约束。
 
 ## Alternatives Considered
 
@@ -33,6 +33,14 @@
 - 复用用户真实 index 或在 commit hooks 开启时直接提交：拒绝，因为既有 staged content 或 hook 新增路径可能越过 finalizer 的文档 ownership 边界。把 Git commit 纳入 finalizer 成功事务也被拒绝；自动提交是交付便利 side effect，不能让 Git 环境问题把已经完成的 canonical deposition 改写为失败并触发重复 writer。
 - 把 `autoCommitKnowledge = false` 解释为跳过知识写入或把 finalization 标记为失败：拒绝，因为该配置只选择是否自动创建 Git commit，不应改变 canonical knowledge、治理、结果记录或 recall refresh 的成功边界。
 - 增加专用 marker，或以 mutation、host-action、plan、task identity 作为 conclusion checkpoint：拒绝，因为 writer 只消费符合规则的信息，成功 `task.done` response 的既有字段已经足够识别 direct / deferred tool output；额外身份只增加协议和维护成本。
+
+<!-- state: history -->
+## Evolution history
+
+<!-- dated: 2026-07-21 -->
+### External governance skills became unattended-adapter runs
+
+The earlier completion gate applied to every writer session and the invocation instructed each selected skill to be followed exactly. The current finalizer keeps the built-in writer's strict workflow contract, but adapts external skills to unattended governance so their interactive gates are not treated as fulfilled by the runner itself.
 
 ## Consequences
 
