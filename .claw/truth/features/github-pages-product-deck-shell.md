@@ -17,8 +17,6 @@
 - 这轮 hero 定位已经收敛到更明确的产品叙事：英文主标题固定为 `Claw Kit, a harness for complex projects and long-running tasks`，中文 hero 也同步改成围绕 `complex projects` 与 `long-running tasks` 的同一定位方向，而不是之前更泛化的协作口号。
 - 页面左上角品牌链接现在直接指向 `https://github.com/chanyuenpang/claw-kit`，不再回退到 `../README.md`，因此产品页的公开入口和仓库主入口保持一致。
 - 介绍页里的 advanced-features 文案刻意覆盖了 `shared team config`、`personal overrides via .claw/project-override.json`、`custom templates`、`planning skills`、`writer skills`，以及与其他 skills 或自定义 harness 的低干扰兼容性，这一段话术可以直接复用于同类产品页。
-- 团队配置的中英文文案都明确说明 `.claw/project.json` 可以控制完成沉淀后的 Truth 与 ADR 更新是否自动提交，使公开产品说明与 `autoCommitKnowledge` 的当前契约保持一致。
-- 自定义模板的中英文文案都明确说明：即使已安装模板继续升级，进行中的计划仍沿用启动时的模板契约；这使页面不只介绍模板复用，也公开表达了 active plan 的模板稳定性边界。
 - `scripts/product-deck.test.mjs` 用轻量 `node:test` 回归了双语 section 对齐、advanced-features 文案、HTML escaping，以及 section 渲染数量，说明这类页面可以用纯字符串层面的测试维持稳定。
 - 同一套测试现在还覆盖 hero 定位和品牌链接，说明这两个入口层事实已经进入可回归的稳定面，而不是只靠人工浏览确认。
 - 对这类静态 bilingual deck 来说，截图驱动的浏览器审查是布局工作的必需决策工具，单靠 CSS 文字推断不足以判断 composition 是否正确。
