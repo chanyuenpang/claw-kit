@@ -28,7 +28,7 @@
   - directory paths like `docs/`
 - External memory paths only index `.md` files from the configured path set.
 - `memory.embedding` now accepts the OpenClaw-compatible subset used by `openclaw-dev`: `provider` (`openai|local`), `model`, `remote.apiKeyEnvVar`, `remote.baseUrl`, `local.modelPath`, `local.modelCacheDir`, `outputDimensionality`, `store.vector.enabled`, and `store.vector.extensionPath`.
-- canonical `.claw/project.json` carries simple project-level workflow toggles as flat fields: `planning`, `autoUpdate`, `externalPlanningSkill`, `goalMode`, and `gitnexus`; combined writer configuration is owned by the nested `knowledgeWriter` object.
+- canonical `.claw/project.json` carries simple project-level workflow toggles as flat fields: `planning`, `autoUpdate`, `autoCommitKnowledge`, `externalPlanningSkill`, `goalMode`, and `gitnexus`; combined writer configuration is owned by the nested `knowledgeWriter` object.
 - `autoUpdate` is an explicit project-level boolean gate with default `true`; projects can set it to `false` when version drift should stay informational only.
 - `autoCommitKnowledge` is an explicit project-level boolean gate with default `true`; when set to `false`, successful knowledge finalization still writes and governs Truth/ADR documents, records the result, and queues index refresh, but leaves those document changes uncommitted in the working tree.
 - legacy nested inputs such as `workflow.goalMode.enabled`, `workflow.truthDispatch.mode`, and `gitnexus.enabled` are compatibility inputs for protocol repair; repaired canonical files are flattened instead of preserving those nested containers.
