@@ -7,6 +7,7 @@
 - 每次 claw plan mutation 都由固定 v6 code-mode driver 先消费 `hostActions`，再只向 Agent 返回当前阶段所需的 compact 字段，例如 `stage`、`planSummary`、`nextTask`、`commandHints`、`askUser` 与需要时的 `completionRefresh`。root `plan.done` 额外暴露 `planPath`、final `nextsteps` 与 `achievement`；普通 mutation 和 subplan parent-resume 不制造 terminal completion signal。
 - `packages/cli/src/cli.ts` 的 `buildHostActions()` 继续生成 native schema-v1 `update_plan`、`create_goal` 与 `update_goal`，但每个 action envelope 只保留 `schemaVersion`、用于至多一次消费的 `id`、`tool` 与真实 host `input`；Codex consumer 不读取的 `sourceEventId`、`meta.reason` 与 `meta.allowOverwrite` 不再输出。
 - `update_plan` 只在 mutation 前后的完整 Codex plan 投影实际变化时生成；metadata-only `plan.edit`、detail-only `task.edit` 与不改变任务投影的普通 `plan.done` 不重复同步。只要生成 `update_plan`，`input.plan` 仍是完整数组，而不是增量 patch。
+- 当 plan 处于 `process.active` 时，`buildCodexPlanProjection()` 优先把实际标记为 `in_progress` 或 `subagent_running` 的 task 投影为 `in_progress`；只有不存在显式运行 task 时，才回退为首个非 `done` task。这样后续 task 先启动而前序 task 仍为 `pending` 时，host progress 仍与 canonical plan 同步。
 - Codex create 类 compact response 只在 `workflowGuidance.stage === "discussion"` 时返回完整 `plan`；返回完整 plan 时省略重复的 `planSummary`，其他阶段只保留紧凑摘要。该裁剪只影响 Codex 可见响应，不改变 canonical plan、非 Codex 输出或 host action 语义。
 - 当前 `packages/codex-adapter/skills/using-claw-kit/SKILL.md` 的 cold path 获取并校验完整 driver envelope，再以 `claw-kit:codex-driver:v6:s1` 缓存该 envelope；同线程后续 mutation 可跳过 `claw codex driver` 获取，但仍通过同一个完整 `runClawPlanMutation` wrapper 调用已缓存 `source`。只缓存 `source` 并使用 4–6 行 hot path 是已评估的后续压缩方向，不是当前实现。
 - `planSummary` 是聊天协作中可展示的紧凑计划状态；adapter 不应期待 render blocks、widget envelope、`claw plan app` 或 `claw plan render`。
@@ -71,6 +72,12 @@
 - Variant B 在一个 code-mode call 中执行 CLI，解析 `Output:` marker 后的 JSON，只允许 `hostActions.tool === "update_plan"`，再调用 `tools.update_plan(action.input)`。四次 `totalMs` 为 `734`、`791`、`761`、`769`，median `765ms`、mean `764ms`；`4/4` 成功，共 `4` 次 exec call，且没有人工 payload transfer。
 - 在当前 Codex code-mode surface 上，对 schema-compatible `update_plan` 使用单调用自动 consumer，比两调用手工 handoff 更容易且明显更快；它消除了 main agent 跨 model/tool boundary 复制 payload 的负担，并把每次 mutation 的 host 同步收敛到同一次 code-mode 调用。
 - 该 A/B 当时只覆盖 `update_plan`；0.1.75 已在真实 Host 验证 native schema-v1 `create_goal` / `update_goal` 的固定消费路径，最终合同见下文。
+
+<!-- dated: 2026-07-21 -->
+### 修正 active task 的 progress 投影
+
+- 先前 `process.active` 的投影总是选择首个未完成 task，因而在后续 task 已进入 `in_progress` 或 `subagent_running`、前序 task 仍 `pending` 时可能遗漏实际进度或显示错误 task。
+- `packages/cli/src/cli.ts` 现在先选择显式运行 task，并保留无显式运行 task 时的首个非 `done` fallback；`packages/cli/test/cli.test.ts` 覆盖第二个 task 运行、首个 task 仍 pending 的回归场景。
 
 ### Host action schema 与同调用消费合同
 
