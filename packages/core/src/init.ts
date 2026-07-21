@@ -78,6 +78,7 @@ export function initProject(input: InitProjectInput): InitProjectResult {
     maxTasksToKeep,
     planning: input.planning ?? true,
     autoUpdate: true,
+    autoCommitKnowledge: true,
     goalMode: true,
     knowledgeWriter: {
       externalSkill: normalizeOptionalSkill(input.externalWriterSkill),

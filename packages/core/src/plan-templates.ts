@@ -35,37 +35,40 @@ export type ResolvedPlanTemplate = {
 const PLAN_TEMPLATES: ResolvedPlanTemplate[] = [normalizePlanLikeTemplate(defaultPlanTemplate, { source: "builtin" })];
 const CURRENT_TEMPLATE_VERSION = defaultPlanTemplate.version;
 const CREATE_CLAW_SKILL = "claw-kit:create-claw-skill";
+type TemplateVersionPolicy = "require-current" | "ignore";
 
 export async function resolveSeedPlanTemplate(params: {
   projectRoot?: string;
   templateName?: string | null;
   templateFile?: string | null;
+  versionPolicy?: TemplateVersionPolicy;
 }): Promise<ResolvedPlanTemplate> {
+  const versionPolicy = params.versionPolicy ?? "require-current";
   if (params.templateFile?.trim()) {
-    return resolvePlanTemplateFile(params.templateFile);
+    return resolvePlanTemplateFile(params.templateFile, versionPolicy);
   }
   const normalized = params.templateName?.trim().toLowerCase() || defaultPlanTemplate.id;
-  const projectTemplate = params.projectRoot ? await loadProjectPlanTemplate(params.projectRoot, normalized) : null;
+  const projectTemplate = params.projectRoot ? await loadProjectPlanTemplate(params.projectRoot, normalized, versionPolicy) : null;
   if (projectTemplate) {
     return projectTemplate;
   }
-  const projectSkillTemplate = params.projectRoot ? await loadProjectSkillPlanTemplate(params.projectRoot, normalized) : null;
+  const projectSkillTemplate = params.projectRoot ? await loadProjectSkillPlanTemplate(params.projectRoot, normalized, versionPolicy) : null;
   if (projectSkillTemplate) {
     return projectSkillTemplate;
   }
-  const projectPackageTemplate = params.projectRoot ? await loadProjectPackagePlanTemplate(params.projectRoot, normalized) : null;
+  const projectPackageTemplate = params.projectRoot ? await loadProjectPackagePlanTemplate(params.projectRoot, normalized, versionPolicy) : null;
   if (projectPackageTemplate) {
     return projectPackageTemplate;
   }
-  const globalTemplate = await loadGlobalPlanTemplate(normalized);
+  const globalTemplate = await loadGlobalPlanTemplate(normalized, versionPolicy);
   if (globalTemplate) {
     return globalTemplate;
   }
-  const globalSkillTemplate = await loadGlobalSkillPlanTemplate(normalized);
+  const globalSkillTemplate = await loadGlobalSkillPlanTemplate(normalized, versionPolicy);
   if (globalSkillTemplate) {
     return globalSkillTemplate;
   }
-  const globalPackageTemplate = await loadGlobalPackagePlanTemplate(normalized);
+  const globalPackageTemplate = await loadGlobalPackagePlanTemplate(normalized, versionPolicy);
   if (globalPackageTemplate) {
     return globalPackageTemplate;
   }
@@ -81,9 +84,12 @@ export async function resolveSeedPlanTemplate(params: {
   return match;
 }
 
-export async function resolvePlanTemplateFile(templatePath: string): Promise<ResolvedPlanTemplate> {
+export async function resolvePlanTemplateFile(
+  templatePath: string,
+  versionPolicy: TemplateVersionPolicy = "require-current",
+): Promise<ResolvedPlanTemplate> {
   const raw = await loadPlanTemplateSource(templatePath);
-  return validatePlanTemplateSource(raw, templatePath, "project");
+  return validatePlanTemplateSource(raw, templatePath, "project", versionPolicy);
 }
 
 async function loadPlanTemplateSource(templatePath: string): Promise<unknown> {
@@ -96,6 +102,7 @@ export function validatePlanTemplateSource(
   raw: unknown,
   templatePath: string,
   source: "builtin" | "project" = "project",
+  versionPolicy: TemplateVersionPolicy = "require-current",
 ): ResolvedPlanTemplate {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     throw new ClawError("PROJECT_CONFIG_INVALID", `Invalid plan template at ${templatePath}.`, {
@@ -103,37 +110,37 @@ export function validatePlanTemplateSource(
     });
   }
 
-  return normalizePlanLikeTemplate(validatePlanLikeTemplate(raw, templatePath), {
+  return normalizePlanLikeTemplate(validatePlanLikeTemplate(raw, templatePath, versionPolicy), {
     source,
     templatePath: source === "project" ? templatePath : undefined,
   });
 }
 
-async function loadProjectPlanTemplate(projectRoot: string, normalizedTemplateName: string): Promise<ResolvedPlanTemplate | null> {
-  return loadPlanTemplateFromDirectory(path.join(projectRoot, ".claw", "templates"), normalizedTemplateName);
+async function loadProjectPlanTemplate(projectRoot: string, normalizedTemplateName: string, versionPolicy: TemplateVersionPolicy): Promise<ResolvedPlanTemplate | null> {
+  return loadPlanTemplateFromDirectory(path.join(projectRoot, ".claw", "templates"), normalizedTemplateName, versionPolicy);
 }
 
-async function loadProjectSkillPlanTemplate(projectRoot: string, normalizedTemplateName: string): Promise<ResolvedPlanTemplate | null> {
-  return loadPlanTemplateFromSkillRoots(resolveProjectSkillRoots(projectRoot), normalizedTemplateName);
+async function loadProjectSkillPlanTemplate(projectRoot: string, normalizedTemplateName: string, versionPolicy: TemplateVersionPolicy): Promise<ResolvedPlanTemplate | null> {
+  return loadPlanTemplateFromSkillRoots(resolveProjectSkillRoots(projectRoot), normalizedTemplateName, versionPolicy);
 }
 
-async function loadProjectPackagePlanTemplate(projectRoot: string, normalizedTemplateName: string): Promise<ResolvedPlanTemplate | null> {
-  return loadPlanTemplateFromTemplateDirs(resolveProjectPackageTemplateDirs(projectRoot), normalizedTemplateName);
+async function loadProjectPackagePlanTemplate(projectRoot: string, normalizedTemplateName: string, versionPolicy: TemplateVersionPolicy): Promise<ResolvedPlanTemplate | null> {
+  return loadPlanTemplateFromTemplateDirs(resolveProjectPackageTemplateDirs(projectRoot), normalizedTemplateName, versionPolicy);
 }
 
-async function loadGlobalPlanTemplate(normalizedTemplateName: string): Promise<ResolvedPlanTemplate | null> {
-  return loadPlanTemplateFromDirectory(path.join(os.homedir(), ".claw", "templates"), normalizedTemplateName);
+async function loadGlobalPlanTemplate(normalizedTemplateName: string, versionPolicy: TemplateVersionPolicy): Promise<ResolvedPlanTemplate | null> {
+  return loadPlanTemplateFromDirectory(path.join(os.homedir(), ".claw", "templates"), normalizedTemplateName, versionPolicy);
 }
 
-async function loadGlobalSkillPlanTemplate(normalizedTemplateName: string): Promise<ResolvedPlanTemplate | null> {
-  return loadPlanTemplateFromSkillRoots(resolveGlobalSkillRoots(), normalizedTemplateName);
+async function loadGlobalSkillPlanTemplate(normalizedTemplateName: string, versionPolicy: TemplateVersionPolicy): Promise<ResolvedPlanTemplate | null> {
+  return loadPlanTemplateFromSkillRoots(resolveGlobalSkillRoots(), normalizedTemplateName, versionPolicy);
 }
 
-async function loadGlobalPackagePlanTemplate(normalizedTemplateName: string): Promise<ResolvedPlanTemplate | null> {
-  return loadPlanTemplateFromTemplateDirs(resolveGlobalPackageTemplateDirs(), normalizedTemplateName);
+async function loadGlobalPackagePlanTemplate(normalizedTemplateName: string, versionPolicy: TemplateVersionPolicy): Promise<ResolvedPlanTemplate | null> {
+  return loadPlanTemplateFromTemplateDirs(resolveGlobalPackageTemplateDirs(), normalizedTemplateName, versionPolicy);
 }
 
-async function loadPlanTemplateFromDirectory(templatesDir: string, normalizedTemplateName: string): Promise<ResolvedPlanTemplate | null> {
+async function loadPlanTemplateFromDirectory(templatesDir: string, normalizedTemplateName: string, versionPolicy: TemplateVersionPolicy): Promise<ResolvedPlanTemplate | null> {
   if (!fs.existsSync(templatesDir)) {
     return null;
   }
@@ -153,13 +160,13 @@ async function loadPlanTemplateFromDirectory(templatesDir: string, normalizedTem
       candidatePaths: candidateEntries.map((entryName) => path.join(templatesDir, entryName)),
     });
   }
-  return resolvePlanTemplateFile(path.join(templatesDir, candidateEntries[0]!));
+  return resolvePlanTemplateFile(path.join(templatesDir, candidateEntries[0]!), versionPolicy);
 }
 
-async function loadPlanTemplateFromTemplateDirs(templateDirs: string[], normalizedTemplateName: string): Promise<ResolvedPlanTemplate | null> {
+async function loadPlanTemplateFromTemplateDirs(templateDirs: string[], normalizedTemplateName: string, versionPolicy: TemplateVersionPolicy): Promise<ResolvedPlanTemplate | null> {
   const matches: string[] = [];
   for (const templateDir of templateDirs) {
-    const match = await loadPlanTemplateFromDirectory(templateDir, normalizedTemplateName);
+    const match = await loadPlanTemplateFromDirectory(templateDir, normalizedTemplateName, versionPolicy);
     if (match?.templatePath) {
       matches.push(match.templatePath);
     }
@@ -170,10 +177,10 @@ async function loadPlanTemplateFromTemplateDirs(templateDirs: string[], normaliz
       candidatePaths: matches,
     });
   }
-  return matches.length === 1 ? resolvePlanTemplateFile(matches[0]!) : null;
+  return matches.length === 1 ? resolvePlanTemplateFile(matches[0]!, versionPolicy) : null;
 }
 
-async function loadPlanTemplateFromSkillRoots(skillRoots: string[], normalizedTemplateName: string): Promise<ResolvedPlanTemplate | null> {
+async function loadPlanTemplateFromSkillRoots(skillRoots: string[], normalizedTemplateName: string, versionPolicy: TemplateVersionPolicy): Promise<ResolvedPlanTemplate | null> {
   const matches: { path: string; signature: string; template: ResolvedPlanTemplate }[] = [];
   for (const skillRoot of skillRoots) {
     for (const templatePath of collectSkillTemplateFiles(skillRoot)) {
@@ -182,7 +189,7 @@ async function loadPlanTemplateFromSkillRoots(skillRoots: string[], normalizedTe
         ? (raw as Record<string, unknown>).id
         : undefined;
       if (typeof rawId === "string" && rawId.toLowerCase() === normalizedTemplateName) {
-        const template = validatePlanTemplateSource(raw, templatePath, "project");
+        const template = validatePlanTemplateSource(raw, templatePath, "project", versionPolicy);
         matches.push({ path: templatePath, signature: signatureForTemplateConflict(template), template });
       }
     }
@@ -324,7 +331,11 @@ function collectSkillTemplateFiles(skillRoot: string): string[] {
   return templateFiles;
 }
 
-function validatePlanLikeTemplate(raw: unknown, templatePath: string): PlanTemplateDocument {
+function validatePlanLikeTemplate(
+  raw: unknown,
+  templatePath: string,
+  versionPolicy: TemplateVersionPolicy,
+): PlanTemplateDocument {
   const candidate = raw as Record<string, unknown>;
   const allowedKeys = new Set([
     "id",
@@ -366,7 +377,9 @@ function validatePlanLikeTemplate(raw: unknown, templatePath: string): PlanTempl
       templatePath,
     });
   }
-  assertCompatibleTemplateVersion(candidate.version, templatePath);
+  if (versionPolicy === "require-current") {
+    assertCompatibleTemplateVersion(candidate.version, templatePath);
+  }
   if (candidate.title !== undefined && typeof candidate.title !== "string") {
     throw new ClawError("PROJECT_CONFIG_INVALID", `Invalid template title at ${templatePath}.`, {
       templatePath,

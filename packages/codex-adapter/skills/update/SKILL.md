@@ -28,10 +28,6 @@ Resolve `<skill-dir>` as the directory containing this loaded `SKILL.md`.
 - During release closeout, publish and verify the target version before invoking this skill.
 - Keep execution details in `TEMPLATE.json`; use `non-claw-fallback.md` only outside the claw harness.
 
-## Existing-plan version handoff
-
-Record the starting CLI version before refreshing it. If the refreshed CLI rejects a remaining mutation because this already-created plan still references an older installed `TEMPLATE.json`, do not rewrite the plan or template and do not invoke `create-claw-skill`. Run only the remaining plan mutations through the fixed Codex driver with the matching published CLI, for example `npx --yes @veewo/claw@<templateVersion> ...`; use the exact `--task-name` and `--plan-file` override only if the session binding is unavailable. Then verify the global `claw` command still resolves to the target version. This exception does not authorize workspace content, a local marketplace, or an unpublished package.
-
 ## References
 
 - Fallback: `non-claw-fallback.md`

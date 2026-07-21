@@ -2204,6 +2204,7 @@ test("cli init writes maxTasksToKeep into project.json", () => {
   ) as JsonRecord;
   assert.equal(projectConfig.maxTasksToKeep, 12);
   assert.equal(projectConfig.autoUpdate, true);
+  assert.equal(projectConfig.autoCommitKnowledge, true);
   assert.equal(projectConfig.goalMode, true);
   assert.deepEqual(projectConfig.knowledgeWriter, {
     externalSkill: "team-knowledge-writer",
@@ -2227,6 +2228,7 @@ test("cli init writes default maxTasksToKeep into project.json", () => {
     fs.readFileSync(path.join(root, ".claw", "project.json"), "utf-8"),
   ) as JsonRecord;
   assert.equal(projectConfig.maxTasksToKeep, 9);
+  assert.equal(projectConfig.autoCommitKnowledge, true);
   assert.equal(projectConfig.goalMode, true);
   assert.deepEqual(projectConfig.knowledgeWriter, {
     externalSkill: null,
@@ -2357,6 +2359,7 @@ test("cli context auto-corrects malformed existing .claw state", () => {
   assert.equal(projectConfig.version, cliPackageVersion);
   assert.equal(projectConfig.maxTasksToKeep, 9);
   assert.equal(projectConfig.autoUpdate, true);
+  assert.equal(projectConfig.autoCommitKnowledge, true);
   assert.deepEqual(projectConfig.memory, {
     enabled: true,
     externalDocPaths: [],
@@ -2542,6 +2545,7 @@ test("cli check auto-corrects project.json into explicit protocol fields", () =>
   assert.equal(projectConfig.id, "broken-project");
   assert.equal(projectConfig.name, "Broken Project");
   assert.equal(projectConfig.maxTasksToKeep, 9);
+  assert.equal(projectConfig.autoCommitKnowledge, true);
   assert.deepEqual(projectConfig.contextPaths, []);
   assert.equal(projectConfig.goalMode, true);
   assert.deepEqual(projectConfig.knowledgeWriter, {
@@ -3704,6 +3708,58 @@ test("knowledge finalization honors a custom writer without applying built-in go
   });
   assert.equal(repeated.status, 0);
   assert.equal(fs.readFileSync(reportPath, "utf-8").trim().split(/\r?\n/).length, 2);
+
+  const overridePath = path.join(root, ".claw", "project-override.json");
+  fs.writeFileSync(overridePath, `${JSON.stringify({ autoCommitKnowledge: false }, null, 2)}\n`, "utf-8");
+  const uncommittedTaskDir = path.join(root, ".claw", "tasks", "uncommitted-task");
+  const uncommittedPlanPath = path.join(uncommittedTaskDir, "plan.json");
+  const uncommittedReportPath = path.join(uncommittedTaskDir, "plan.report");
+  const uncommittedKnowledgePath = path.join(root, ".claw", "truth", "features", "uncommitted-writer.md");
+  fs.mkdirSync(uncommittedTaskDir, { recursive: true });
+  fs.writeFileSync(uncommittedPlanPath, JSON.stringify({ title: "Uncommitted", status: "end.completed" }), "utf-8");
+  fs.writeFileSync(uncommittedReportPath, "{}\n", "utf-8");
+  fs.writeFileSync(
+    path.join(sdkRoot, "dist", "index.js"),
+    `import fs from "node:fs";\nimport path from "node:path";\nimport { createHash } from "node:crypto";\nexport class Codex { startThread() { return { id: "thread-uncommitted", run: async () => { fs.mkdirSync(path.dirname(${JSON.stringify(uncommittedKnowledgePath)}), { recursive: true }); fs.writeFileSync(${JSON.stringify(uncommittedKnowledgePath)}, "# Uncommitted knowledge\\n", "utf-8"); const digest = createHash("sha256").update("thread-uncommitted").digest("hex"); const workflowDir = path.join(process.env.CLAW_SESSION_RUNTIME_DIR, digest); const taskDir = path.join(workflowDir, "tasks", "custom-writer-run"); fs.mkdirSync(taskDir, { recursive: true }); fs.writeFileSync(path.join(workflowDir, "session.json"), JSON.stringify({ version: 1, scope: "session", originCwd: ${JSON.stringify(root)}, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })); fs.writeFileSync(path.join(taskDir, "plan.json"), JSON.stringify({ title: "custom writer", status: "end.completed", tasks: [{ id: 1, status: "done" }] })); return { finalResponse: "Uncommitted knowledge updated." }; } }; } }\n`,
+    "utf-8",
+  );
+  const uncommittedJobPath = path.join(jobsDir, "uncommitted.json");
+  fs.writeFileSync(uncommittedJobPath, JSON.stringify({
+    schemaVersion: 1,
+    finalizeId: "uncommitted",
+    sessionId: "thread-uncommitted-owner",
+    projectRoot: root,
+    taskName: "uncommitted-task",
+    host: "codex",
+    planPath: uncommittedPlanPath,
+    reportPath: uncommittedReportPath,
+    writer: {
+      externalSkill: "team:custom-knowledge-writer",
+      model: null,
+      reasoningEffort: "medium",
+      datedSectionsToKeep: 2,
+    },
+    status: "queued",
+    attempts: 0,
+    queuedAt: new Date().toISOString(),
+  }), "utf-8");
+  const headBeforeDisabledFinalization = runGit(["rev-parse", "HEAD"], root).trim();
+
+  const uncommittedFinalized = runClawRaw(["internal-knowledge-finalize", "--job", uncommittedJobPath], root, {
+    HOME: home,
+    USERPROFILE: home,
+    CLAW_SESSION_RUNTIME_DIR: sessionRuntimeDir,
+    CLAW_KNOWLEDGE_FINALIZER_DISABLE_RETRY: "1",
+  });
+  assert.equal(uncommittedFinalized.status, 0);
+  const uncommittedJob = JSON.parse(fs.readFileSync(uncommittedJobPath, "utf-8")) as JsonRecord;
+  assert.equal(uncommittedJob.status, "succeeded");
+  assert.equal(uncommittedJob.finalResponse, "Uncommitted knowledge updated.");
+  assert.equal(runGit(["rev-parse", "HEAD"], root).trim(), headBeforeDisabledFinalization);
+  assert.equal(fs.readFileSync(uncommittedKnowledgePath, "utf-8"), "\uFEFF# Uncommitted knowledge\n");
+  assert.match(runGit(["status", "--short", "--", uncommittedKnowledgePath], root), /\?\?/u);
+  const uncommittedReportEntries = fs.readFileSync(uncommittedReportPath, "utf-8").trim().split(/\r?\n/);
+  assert.equal(uncommittedReportEntries.length, 2);
 });
 
 test("knowledge finalization deterministically trims excess dated evolution written by the writer", () => {

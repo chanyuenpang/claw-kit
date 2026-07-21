@@ -400,6 +400,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
               projectRoot: task.project.projectRoot,
               templateName: previous.templateId,
               templateFile: previous.templateFile,
+              versionPolicy: "ignore",
             }),
             currentTask.id,
           )
@@ -1121,6 +1122,7 @@ async function validateDoneTransitions(params: {
     projectRoot,
     templateName: nextPlan.templateId,
     templateFile: nextPlan.templateFile,
+    versionPolicy: "ignore",
   });
   const previousTasks = new Map(previousPlan.tasks.map((task) => [task.id, task]));
 

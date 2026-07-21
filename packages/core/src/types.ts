@@ -29,6 +29,7 @@ export type ProjectConfig = {
   maxTasksToKeep?: number;
   planning?: boolean;
   autoUpdate?: boolean;
+  autoCommitKnowledge?: boolean;
   goalMode?: boolean;
   knowledgeWriter?: KnowledgeWriterConfig;
   externalPlanningSkill?: string | null;

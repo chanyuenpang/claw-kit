@@ -567,6 +567,7 @@ async function applyTemplateTaskDoneGuidance(params: {
     projectRoot,
     templateName: plan.templateId,
     templateFile: plan.templateFile,
+    versionPolicy: "ignore",
   });
   let mergedGuidance = guidance;
   const completedTask = completedTaskId === undefined

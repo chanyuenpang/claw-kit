@@ -49,6 +49,10 @@ Together, the canonical config plus local override model gives longer-running pr
   - default: `true`
   - when `true` and a newer published claw-kit exists, startup recovery tells the agent that the first action must be `claw-kit:update`
   - when `false`, startup recovery only reports the version mismatch and must not instruct the agent to perform the update
+- `autoCommitKnowledge`
+  - default: `true`
+  - when `true`, successful knowledge finalization automatically commits newly produced Truth/ADR document changes
+  - when `false`, finalization still writes and governs knowledge, records success, and queues index refresh, but leaves the document changes uncommitted in the working tree
 - `id`
   - stable project id
 - `name`
@@ -130,6 +134,7 @@ Older nested inputs should be rewritten into the flat fields above during protoc
   "maxTasksToKeep": 9,
   "planning": true,
   "autoUpdate": true,
+  "autoCommitKnowledge": true,
   "externalPlanningSkill": null,
   "defaultPlanTemplate": null,
   "contextPaths": [],
@@ -383,6 +388,7 @@ When explaining project behavior:
 - `planning = false` makes `plan create` start directly in `process.active` with a minimal executable plan
 - `autoUpdate = true` lets startup recovery route the agent to `claw-kit:update` first when a newer published claw-kit version is available
 - `autoUpdate = false` keeps version drift informational only
+- `autoCommitKnowledge = false` preserves successful knowledge deposition and index refresh while leaving the resulting document changes uncommitted
 - `externalPlanningSkill` only selects the planning skill name used by the initial discussion guidance; it does not make the skill claw-aware
 - `gitnexus = true` opts a project into GitNexus-related integration behavior, but `claw-kit` still works without it
 - `goalMode = false` removes `goalMode` from workflow guidance

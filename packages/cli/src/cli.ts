@@ -1411,7 +1411,10 @@ async function runInternalKnowledgeFinalize(args: string[]): Promise<void> {
     const project = resolveProjectContext(running.projectRoot);
     const useBuiltInAutomation = usesBuiltInKnowledgeWriter(running);
     const knowledgeBefore = snapshotKnowledgeMarkdown(project.truthDir);
-    const knowledgeGitState = captureKnowledgeGitState(running.projectRoot, project.truthDir);
+    const autoCommitKnowledge = project.projectConfig?.autoCommitKnowledge !== false;
+    const knowledgeGitState = autoCommitKnowledge
+      ? captureKnowledgeGitState(running.projectRoot, project.truthDir)
+      : null;
     const writerRun = await runKnowledgeWriterForJob(running);
     const knowledgeGovernance = useBuiltInAutomation
       ? governChangedKnowledgeMarkdown({
@@ -1457,12 +1460,14 @@ async function runInternalKnowledgeFinalize(args: string[]): Promise<void> {
       ...(knowledgeGovernance ? { knowledgeGovernance } : {}),
       truthEncoding,
     });
-    commitKnowledgeDocumentation({
-      state: knowledgeGitState,
-      truthDir: project.truthDir,
-      changedPaths: changedKnowledgePaths,
-      message: running.taskName,
-    });
+    if (autoCommitKnowledge) {
+      commitKnowledgeDocumentation({
+        state: knowledgeGitState,
+        truthDir: project.truthDir,
+        changedPaths: changedKnowledgePaths,
+        message: running.taskName,
+      });
+    }
   } catch (error) {
     const failed: KnowledgeFinalizationJob = {
       ...running,

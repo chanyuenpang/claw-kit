@@ -308,6 +308,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
     name: string;
     maxTasksToKeep: number;
     autoUpdate: boolean;
+    autoCommitKnowledge: boolean;
     contextPaths: string[];
     goalMode: boolean;
     knowledgeWriter: {
@@ -347,6 +348,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
     maxTasksToKeep: 20,
     planning: true,
     autoUpdate: true,
+    autoCommitKnowledge: true,
     externalPlanningSkill: null,
     defaultPlanTemplate: null,
     contextPaths: ["docs/project-guide.md"],
@@ -2508,6 +2510,7 @@ test("process entry returns the first task and task completion returns the next 
         id: "process-entry-and-truth-contract",
         name: "Process Entry And Truth Contract",
         maxTasksToKeep: 99,
+        autoCommitKnowledge: true,
         goalMode: true,
         knowledgeWriter: {
           externalSkill: "team-knowledge-writer",
@@ -2612,6 +2615,7 @@ test("resolveContext deep-merges project-override.json and preserves explicit nu
     path.join(root, ".claw", "project-override.json"),
     JSON.stringify(
       {
+        autoCommitKnowledge: false,
         goalMode: false,
         knowledgeWriter: {
           externalSkill: null,
@@ -2633,6 +2637,7 @@ test("resolveContext deep-merges project-override.json and preserves explicit nu
   const result = resolveContext(root);
 
   assert.deepEqual(result.project.projectConfig?.contextPaths, ["docs/personal.md"]);
+  assert.equal(result.project.projectConfig?.autoCommitKnowledge, false);
   assert.equal(result.project.projectConfig?.goalMode, false);
   assert.deepEqual(result.project.projectConfig?.knowledgeWriter, {
     externalSkill: null,
@@ -2863,6 +2868,94 @@ test("atomic plan start refines, appends, completes the initial task, and emits 
   assert.ok(result.events.every((event) => event.schemaVersion === 1));
   assert.ok(result.events.every((event) => event.commandSource === "plan.start"));
   assert.equal(new Set(result.events.map((event) => event.eventId)).size, result.events.length);
+});
+
+test("post-create mutations consume guidance from an older template version", async () => {
+  const root = createFixture("post-create-older-template-version");
+  initProject({ cwd: root, projectName: "Post-create Older Template Version", planning: true, force: true });
+  const templatesDir = path.join(root, ".claw", "templates");
+  const templatePath = path.join(templatesDir, "older-after-create.json");
+  fs.mkdirSync(templatesDir, { recursive: true });
+  const template = createPlanLikeTemplate({
+    id: "older-after-create",
+    status: "process.discussing",
+    tasks: [
+      {
+        id: 1,
+        title: "Complete planning",
+        status: "pending",
+        guidance: {
+          onPlanStart: {
+            completeTask: true,
+            status: "process.active",
+          },
+        },
+      },
+      {
+        id: 2,
+        title: "Choose the completion route",
+        status: "pending",
+        guidance: {
+          onDone: {
+            choices: {
+              simple: {
+                summary: "Older template guidance was preserved",
+                nextsteps: ["Continue through the selected route."],
+              },
+            },
+          },
+        },
+      },
+    ],
+  });
+  fs.writeFileSync(templatePath, `${JSON.stringify(template, null, 2)}\n`, "utf-8");
+
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Keep runtime template guidance",
+    templateFile: templatePath,
+  });
+  fs.writeFileSync(
+    templatePath,
+    `${JSON.stringify({ ...template, version: "0.1.90" }, null, 2)}\n`,
+    "utf-8",
+  );
+
+  const started = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    updates: {
+      requirementsSummary: "Use the selected route",
+      acceptanceCriteria: ["Older runtime guidance remains active"],
+    },
+    applyPlanStartGuidance: true,
+    commandSource: "plan.start",
+  });
+  assert.equal(started.planStatus, "process.active");
+  assert.equal(started.plan.tasks[0]?.status, "done");
+  assert.deepEqual(started.workflowGuidance.nextTask?.completionChoices, ["simple"]);
+
+  await assert.rejects(
+    () =>
+      editPlan({
+        cwd: root,
+        taskName: "demo-task",
+        taskId: 2,
+        taskStatus: "done",
+      }),
+    /requires --choice/i,
+  );
+
+  const completed = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    taskId: 2,
+    taskStatus: "done",
+    taskChoiceId: "simple",
+  });
+  assert.equal(completed.workflowGuidance.summary, "Older template guidance was preserved");
 });
 
 test("plan edit appendTasks defaults omitted task status to pending", async () => {
@@ -4965,6 +5058,7 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
     };
     maxTasksToKeep: number;
     autoUpdate: boolean;
+    autoCommitKnowledge: boolean;
     contextPaths: string[];
     goalMode: boolean;
     knowledgeWriter: {
@@ -4997,6 +5091,7 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
   assert.equal(projectConfig.var.releaseChannel, "canary");
   assert.equal(projectConfig.maxTasksToKeep, 9);
   assert.equal(projectConfig.autoUpdate, true);
+  assert.equal(projectConfig.autoCommitKnowledge, true);
   assert.deepEqual(projectConfig.contextPaths, []);
   assert.equal(projectConfig.goalMode, true);
   assert.deepEqual(projectConfig.knowledgeWriter, {

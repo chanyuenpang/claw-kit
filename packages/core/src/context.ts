@@ -179,6 +179,7 @@ function normalizeProjectConfig(projectConfig: ProjectConfig): ProjectConfig {
         : DEFAULT_MAX_TASKS_TO_KEEP,
     planning: projectConfig.planning !== false,
     autoUpdate: projectConfig.autoUpdate === true,
+    autoCommitKnowledge: projectConfig.autoCommitKnowledge !== false,
     goalMode: typeof projectConfig.goalMode === "boolean" ? projectConfig.goalMode : true,
     knowledgeWriter: {
       externalSkill: resolveExternalWriterSkill(legacyConfig),

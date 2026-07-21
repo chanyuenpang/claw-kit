@@ -4,6 +4,20 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## Unreleased
 
+## [0.1.92] - 2026-07-21
+
+### Added
+
+- Project configuration now supports `autoCommitKnowledge`, allowing successful Truth/ADR finalization to leave documentation changes uncommitted when explicitly disabled
+
+### Changed
+
+- Active plans keep using their original template contract during task completion and plan editing even after the installed template version advances
+
+### Fixed
+
+- The Codex update workflow now avoids stale copied guidance that conflicted with the published-source update contract
+
 ## [0.1.91] - 2026-07-21
 
 ### Added

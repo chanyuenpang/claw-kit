@@ -118,6 +118,7 @@ function normalizeProjectConfig(raw: unknown, projectRoot: string): ProjectConfi
     maxTasksToKeep: _maxTasksToKeep,
     planning: _planning,
     autoUpdate: _autoUpdate,
+    autoCommitKnowledge: _autoCommitKnowledge,
     goalMode: _goalMode,
     knowledgeWriter: _knowledgeWriter,
     externalPlanningSkill: _externalPlanningSkill,
@@ -145,6 +146,7 @@ function normalizeProjectConfig(raw: unknown, projectRoot: string): ProjectConfi
         : DEFAULT_MAX_TASKS_TO_KEEP,
     planning: typeof source?.planning === "boolean" ? source.planning : true,
     autoUpdate: readBooleanConfig(source?.autoUpdate, true),
+    autoCommitKnowledge: readBooleanConfig(source?.autoCommitKnowledge, true),
     goalMode: readBooleanConfig(source?.goalMode, true),
     knowledgeWriter: {
       externalSkill: resolveExternalWriterSkill(source, sourceKnowledgeWriter),
@@ -213,6 +215,7 @@ function validateProjectConfig(raw: unknown, issues: ProjectProtocolIssue[]): vo
   requireIntegerAtLeast(config, "maxTasksToKeep", 1, issues);
   requireBoolean(config, "planning", issues);
   requireOptionalBoolean(config, "autoUpdate", issues);
+  requireBoolean(config, "autoCommitKnowledge", issues);
   requireBoolean(config, "goalMode", issues);
   const knowledgeWriter = requireObject(config, "knowledgeWriter", issues);
   if (knowledgeWriter) {
