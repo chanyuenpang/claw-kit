@@ -50,7 +50,6 @@ export async function createConfiguredLocalEmbeddingSession(
   const fingerprint = createHash("sha256")
     .update(JSON.stringify({
       version: 1,
-      projectCwd: path.resolve(projectCwd),
       resolvedModulePath,
       modelId,
       modelSignature: resolveModelSignature(embedding.local?.modelPath),
@@ -102,7 +101,6 @@ export function resolveConfiguredLocalEmbeddingFingerprint(
   return createHash("sha256")
     .update(JSON.stringify({
       version: 1,
-      projectCwd: path.resolve(projectCwd),
       resolvedModulePath: resolveTransformersModulePath(projectRequire, workerRequire),
       modelId,
       modelSignature: resolveModelSignature(embedding.local?.modelPath),

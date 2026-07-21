@@ -41,6 +41,8 @@ const DEFAULT_MEMORY_SQLITE_BUSY_TIMEOUT_MS = 5000;
 const PROJECT_QUERY_EMBEDDING_CACHE_LIMIT = 128;
 const PROJECT_QUERY_EMBEDDING_CACHE_VERSION = "v1";
 const PROJECT_EMBEDDING_CHUNKING_VERSION = "generic-knowledge-markers-v3";
+const PROJECT_EMBEDDING_VECTOR_STORAGE_VERSION = "float32-blob-v1";
+const DEFAULT_PERSISTENT_SEARCH_DATABASE_LIMIT = 2;
 
 type KnowledgeDocumentSearchKind = "truth" | "adr" | "other";
 
@@ -70,6 +72,27 @@ type ProjectDocSearchSignals = {
   genericPenalty: number;
   exactBoost: number;
 };
+
+type ProjectStoredVectorRow = {
+  doc_id: number;
+  chunk_index: number;
+  source_path: string;
+  kind: string;
+  heading_path: string;
+  document_kind: KnowledgeDocumentSearchKind;
+  document_state: KnowledgeState | null;
+  chunk_state: KnowledgeState | null;
+  dated: string | null;
+  embedding_blob?: Uint8Array;
+  embedding_json?: string;
+};
+
+const persistentMemoryDatabases = new Map<string, DatabaseSync>();
+const projectVectorRowsByDatabase = new WeakMap<DatabaseSync, {
+  indexedAt: string | null;
+  compactVectorStorage: boolean;
+  rows: ProjectStoredVectorRow[];
+}>();
 
 export type ProjectEmbeddingWarmupResult = {
   warmed: boolean;
@@ -145,6 +168,7 @@ function rebuildTaskMemoryIndex(
   db.exec("DELETE FROM docs;");
   db.exec("DELETE FROM docs_fts;");
   db.exec("DELETE FROM doc_embeddings;");
+  db.exec("DELETE FROM doc_embedding_vectors;");
   const insertDoc = db.prepare(
     "INSERT INTO docs (source_path, kind, content, content_hash) VALUES (?, ?, ?, ?)",
   );
@@ -221,6 +245,7 @@ function syncProjectMemoryIndex(
     deleteDocsById(db, docsToDelete.map((doc) => doc.id));
     if (requiresVectorReset) {
       db.exec("DELETE FROM doc_embeddings;");
+      db.exec("DELETE FROM doc_embedding_vectors;");
       db.exec("DELETE FROM query_embeddings;");
     }
     insertDocs(db, limitedDocsToInsert);
@@ -249,6 +274,8 @@ function syncProjectMemoryIndex(
       pendingFileCount,
     };
   }
+  backfillDocEmbeddingVectors(db);
+  upsertMetadata(db, "embedding_vector_storage", PROJECT_EMBEDDING_VECTOR_STORAGE_VERSION);
   return {
     vectorIndex: summarizeVectorIndex(db, embedding),
     processedFileCount: limitedDocsToInsert.length,
@@ -289,10 +316,12 @@ function deleteDocsById(db: DatabaseSync, docIds: number[]): void {
   }
   const deleteFts = db.prepare("DELETE FROM docs_fts WHERE rowid = ?");
   const deleteEmbeddings = db.prepare("DELETE FROM doc_embeddings WHERE doc_id = ?");
+  const deleteEmbeddingVectors = db.prepare("DELETE FROM doc_embedding_vectors WHERE doc_id = ?");
   const deleteDoc = db.prepare("DELETE FROM docs WHERE id = ?");
   for (const docId of docIds) {
     deleteFts.run(docId);
     deleteEmbeddings.run(docId);
+    deleteEmbeddingVectors.run(docId);
     deleteDoc.run(docId);
   }
 }
@@ -369,6 +398,65 @@ export function searchMemory(input: MemorySearchInput): MemorySearchResult {
   });
 }
 
+export async function searchMemoryAsync(input: MemorySearchInput): Promise<MemorySearchResult> {
+  const startedAt = performance.now();
+  const primedRuntime = await primePersistentProjectQueryEmbedding(input);
+  const result = searchMemory(input);
+  result.telemetry.durationMs = Number((performance.now() - startedAt).toFixed(2));
+  if (primedRuntime) {
+    result.telemetry.queryEmbedding = "generated";
+    result.telemetry.embeddingRuntime = primedRuntime;
+  }
+  return result;
+}
+
+async function primePersistentProjectQueryEmbedding(
+  input: MemorySearchInput,
+): Promise<"persistent_daemon" | null> {
+  if (
+    input.scope === "task"
+    || process.env.CLAW_EMBEDDING_MOCK === "1"
+    || process.env.CLAW_EMBEDDING_PERSISTENT_WORKER === "0"
+    || !input.query.trim()
+  ) {
+    return null;
+  }
+  const project = resolveProjectContext(input.cwd);
+  const embedding = resolveProjectMemoryEmbeddingConfig(project);
+  const storePath = getMemoryStorePath(project, "project");
+  if (embedding?.provider !== "local" || !fs.existsSync(storePath)) {
+    return null;
+  }
+  const queryText = buildProjectQueryIntent(input.query).embeddingText || input.query;
+  const identity = buildProjectQueryEmbeddingCacheIdentity(embedding, queryText);
+  const cached = withMemoryDatabase(storePath, "query embedding cache lookup", "read", (db) => {
+    prepareSchema(db);
+    return readProjectQueryEmbeddingCache(db, identity);
+  });
+  if (cached) {
+    return null;
+  }
+  let generated: Awaited<ReturnType<typeof requestPersistentEmbedding>>;
+  try {
+    generated = await requestPersistentEmbedding({
+      embedding,
+      texts: [identity.normalizedQueryText],
+      projectCwd: project.projectRoot,
+    });
+  } catch {
+    return null;
+  }
+  const vector = generated?.vectors[0];
+  if (!vector?.length) {
+    return null;
+  }
+  withMemoryDatabase(storePath, "query embedding cache update", "write", (db) => {
+    prepareSchema(db);
+    writeProjectQueryEmbeddingCache(db, identity, vector);
+  });
+  return "persistent_daemon";
+}
+
 export function getMemory(input: MemoryGetInput): MemoryGetResult {
   const { scope, project, task } = resolveMemoryScope(input);
   const storePath = getMemoryStorePath(project, scope, task);
@@ -413,10 +501,24 @@ function withMemoryDatabase<T>(
   access: "read" | "write",
   callback: (db: DatabaseSync) => T,
 ): T {
+  const persistentRead = access === "read" && process.env.CLAW_SEARCH_DAEMON === "1";
   let db: DatabaseSync | null = null;
   try {
-    db = new DatabaseSync(storePath);
-    configureMemoryDatabase(db, access);
+    if (persistentRead) {
+      db = persistentMemoryDatabases.get(storePath) ?? null;
+      if (!db) {
+        evictPersistentMemoryDatabases();
+        db = new DatabaseSync(storePath);
+        configureMemoryDatabase(db, access);
+        persistentMemoryDatabases.set(storePath, db);
+      } else {
+        persistentMemoryDatabases.delete(storePath);
+        persistentMemoryDatabases.set(storePath, db);
+      }
+    } else {
+      db = new DatabaseSync(storePath);
+      configureMemoryDatabase(db, access);
+    }
     return callback(db);
   } catch (error) {
     if (isSqliteBusyError(error)) {
@@ -424,7 +526,24 @@ function withMemoryDatabase<T>(
     }
     throw error;
   } finally {
-    db?.close();
+    if (!persistentRead) {
+      db?.close();
+    }
+  }
+}
+
+function evictPersistentMemoryDatabases(): void {
+  const rawLimit = Number.parseInt(process.env.CLAW_SEARCH_DATABASE_LIMIT ?? "", 10);
+  const limit = Number.isFinite(rawLimit) && rawLimit > 0
+    ? rawLimit
+    : DEFAULT_PERSISTENT_SEARCH_DATABASE_LIMIT;
+  while (persistentMemoryDatabases.size >= limit) {
+    const oldest = persistentMemoryDatabases.entries().next().value as [string, DatabaseSync] | undefined;
+    if (!oldest) {
+      return;
+    }
+    persistentMemoryDatabases.delete(oldest[0]);
+    oldest[1].close();
   }
 }
 
@@ -618,6 +737,19 @@ function prepareSchema(db: DatabaseSync): void {
       "  embedding_json TEXT NOT NULL,",
       "  created_at INTEGER NOT NULL",
       ");",
+      "CREATE TABLE IF NOT EXISTS doc_embedding_vectors (",
+      "  doc_id INTEGER NOT NULL,",
+      "  chunk_index INTEGER NOT NULL,",
+      "  source_path TEXT NOT NULL,",
+      "  kind TEXT NOT NULL,",
+      "  heading_path TEXT NOT NULL DEFAULT '',",
+      "  document_kind TEXT NOT NULL DEFAULT 'other',",
+      "  document_state TEXT,",
+      "  chunk_state TEXT,",
+      "  dated TEXT,",
+      "  embedding_blob BLOB NOT NULL,",
+      "  PRIMARY KEY (doc_id, chunk_index)",
+      ") WITHOUT ROWID;",
     ].join("\n"),
   );
   const docsColumns = db.prepare("PRAGMA table_info(docs)").all() as Array<{ name: string }>;
@@ -825,6 +957,13 @@ function insertDocEmbeddings(
       "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     ].join(" "),
   );
+  const insertEmbeddingVector = db.prepare(
+    [
+      "INSERT OR REPLACE INTO doc_embedding_vectors",
+      "  (doc_id, chunk_index, source_path, kind, heading_path, document_kind, document_state, chunk_state, dated, embedding_blob)",
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    ].join(" "),
+  );
   embeddings.forEach((embedding) => {
     insertEmbedding.run(
       embedding.docId,
@@ -839,7 +978,76 @@ function insertDocEmbeddings(
       embedding.dated,
       JSON.stringify(embedding.vector),
     );
+    insertEmbeddingVector.run(
+      embedding.docId,
+      embedding.chunkIndex,
+      embedding.sourcePath,
+      embedding.kind,
+      embedding.headingPath,
+      embedding.documentKind,
+      embedding.documentState,
+      embedding.state,
+      embedding.dated,
+      serializeNormalizedEmbedding(embedding.vector),
+    );
   });
+}
+
+function backfillDocEmbeddingVectors(db: DatabaseSync): void {
+  const missing = db
+    .prepare(
+      [
+        "SELECT e.doc_id, e.chunk_index, e.source_path, e.kind, e.heading_path, e.document_kind,",
+        "  e.document_state, e.chunk_state, e.dated, e.embedding_json",
+        "FROM doc_embeddings e",
+        "LEFT JOIN doc_embedding_vectors v",
+        "  ON v.doc_id = e.doc_id AND v.chunk_index = e.chunk_index",
+        "WHERE v.doc_id IS NULL",
+      ].join(" "),
+    )
+    .all() as Array<{
+      doc_id: number;
+      chunk_index: number;
+      source_path: string;
+      kind: string;
+      heading_path: string;
+      document_kind: KnowledgeDocumentSearchKind;
+      document_state: KnowledgeState | null;
+      chunk_state: KnowledgeState | null;
+      dated: string | null;
+      embedding_json: string;
+    }>;
+  if (missing.length === 0) {
+    return;
+  }
+  const insert = db.prepare(
+    [
+      "INSERT OR REPLACE INTO doc_embedding_vectors",
+      "  (doc_id, chunk_index, source_path, kind, heading_path, document_kind, document_state, chunk_state, dated, embedding_blob)",
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    ].join(" "),
+  );
+  db.exec("BEGIN");
+  try {
+    for (const row of missing) {
+      insert.run(
+        row.doc_id,
+        row.chunk_index,
+        row.source_path,
+        row.kind,
+        row.heading_path,
+        row.document_kind,
+        row.document_state,
+        row.chunk_state,
+        row.dated,
+        serializeNormalizedEmbedding(parseEmbeddingJson(row.embedding_json)),
+      );
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 function listDocsMissingEmbeddings(
@@ -1253,6 +1461,10 @@ function searchProjectMemoryHybrid(
     route: "lexical_fast_path" | "hybrid";
     queryEmbedding: "skipped" | "cache_hit" | "generated";
     embeddingRuntime?: "mock" | "persistent_daemon" | "one_shot" | "remote";
+    vectorScanMs?: number;
+    fusionMs?: number;
+    vectorCount?: number;
+    vectorBytes?: number;
   };
 } {
   const embedding = resolveProjectMemoryEmbeddingConfig(project);
@@ -1316,63 +1528,10 @@ function searchProjectMemoryHybrid(
     queryIntent.embeddingText || query,
   );
 
-  const vectorRows = db
-    .prepare(
-      [
-        "SELECT source_path, kind, chunk_text, heading_path, document_kind, document_state, chunk_state, dated, embedding_json",
-        "FROM doc_embeddings",
-      ].join(" "),
-    )
-    .all() as Array<{
-      source_path: string;
-      kind: string;
-      chunk_text: string;
-      heading_path: string;
-      document_kind: KnowledgeDocumentSearchKind;
-      document_state: KnowledgeState | null;
-      chunk_state: KnowledgeState | null;
-      dated: string | null;
-      embedding_json: string;
-    }>;
-  if (vectorRows.length === 0) {
-    throw new ClawError(
-      "MEMORY_VECTOR_INDEX_REQUIRED",
-      "Project search requires stored vectors. Run `claw search index --refresh` first.",
-    );
-  }
-
-  const rankedVectors = vectorRows
-    .map((row) => {
-      const signals = docSignals.get(row.source_path);
-      return {
-        sourcePath: row.source_path,
-        kind: row.kind,
-        snippet: buildSnippet(row.chunk_text),
-        similarity: cosineSimilarity(queryEmbedding.vector, parseEmbeddingJson(row.embedding_json)),
-        exactBoost: signals?.exactBoost ?? 0,
-        temporalBoost: calculateTemporalChunkBoost({
-          intent: temporalIntent,
-          documentState: row.document_state,
-          state: row.chunk_state,
-          dated: row.dated,
-        }),
-        documentKind: row.document_kind,
-        documentState: row.document_state,
-        state: row.chunk_state,
-        dated: row.dated,
-        headingPath: row.heading_path,
-      };
-    })
-    .filter((row) => Number.isFinite(row.similarity))
-    .sort((left, right) => {
-      const leftScore = left.similarity + left.exactBoost + left.temporalBoost;
-      const rightScore = right.similarity + right.exactBoost + right.temporalBoost;
-      return rightScore - leftScore;
-    });
-
   const bestVectorBySource = new Map<string, {
+    docId: number;
+    chunkIndex: number;
     kind: string;
-    snippet: string;
     similarity: number;
     vectorScore: number;
     documentKind: KnowledgeDocumentSearchKind;
@@ -1380,25 +1539,58 @@ function searchProjectMemoryHybrid(
     state: KnowledgeState | null;
     dated: string | null;
     headingPath: string;
+    ordinal: number;
   }>();
-  for (const row of rankedVectors) {
-    const existing = bestVectorBySource.get(row.sourcePath);
-    const vectorScore = row.similarity + row.temporalBoost;
+  const compactVectorStorage = getMetadata(db, "embedding_vector_storage")
+    === PROJECT_EMBEDDING_VECTOR_STORAGE_VERSION;
+  const vectorRows = loadProjectVectorRows(db, compactVectorStorage);
+  const normalizedQueryEmbedding = normalizeEmbedding(queryEmbedding.vector);
+  const vectorScanStartedAt = performance.now();
+  let vectorCount = 0;
+  let vectorBytes = 0;
+  for (const row of vectorRows) {
+    const ordinal = vectorCount;
+    vectorCount += 1;
+    const similarity = row.embedding_blob
+      ? dotProductFloat32(normalizedQueryEmbedding, row.embedding_blob)
+      : dotProduct(normalizedQueryEmbedding, normalizeEmbedding(parseEmbeddingJson(row.embedding_json ?? "[]")));
+    vectorBytes += row.embedding_blob?.byteLength ?? Buffer.byteLength(row.embedding_json ?? "", "utf-8");
+    if (!Number.isFinite(similarity)) {
+      continue;
+    }
+    const temporalBoost = calculateTemporalChunkBoost({
+      intent: temporalIntent,
+      documentState: row.document_state,
+      state: row.chunk_state,
+      dated: row.dated,
+    });
+    const existing = bestVectorBySource.get(row.source_path);
+    const vectorScore = similarity + temporalBoost;
     if (!existing || vectorScore > existing.vectorScore) {
-      bestVectorBySource.set(row.sourcePath, {
+      bestVectorBySource.set(row.source_path, {
+        docId: row.doc_id,
+        chunkIndex: row.chunk_index,
         kind: row.kind,
-        snippet: row.snippet,
-        similarity: row.similarity,
+        similarity,
         vectorScore,
-        documentKind: row.documentKind,
-        documentState: row.documentState,
-        state: row.state,
+        documentKind: row.document_kind,
+        documentState: row.document_state,
+        state: row.chunk_state,
         dated: row.dated,
-        headingPath: row.headingPath,
+        headingPath: row.heading_path,
+        ordinal,
       });
     }
   }
+  const vectorScanMs = performance.now() - vectorScanStartedAt;
+  if (vectorCount === 0) {
+    throw new ClawError(
+      "MEMORY_VECTOR_INDEX_REQUIRED",
+      "Project search requires stored vectors. Run `claw search index --refresh` first.",
+    );
+  }
 
+  const fusionStartedAt = performance.now();
   const fused = new Map<
     string,
     MemorySearchResultEntry & {
@@ -1407,19 +1599,19 @@ function searchProjectMemoryHybrid(
       signalRank?: number;
     }
   >();
-  Array.from(bestVectorBySource.entries())
+  const selectedVectorCandidates = Array.from(bestVectorBySource.entries())
     .sort((left, right) => {
       const leftScore = left[1].vectorScore + (docSignals.get(left[0])?.exactBoost ?? 0);
       const rightScore = right[1].vectorScore + (docSignals.get(right[0])?.exactBoost ?? 0);
-      return rightScore - leftScore;
+      return rightScore - leftScore || left[1].ordinal - right[1].ordinal;
     })
-    .slice(0, candidateLimit)
-    .forEach(([sourcePath, row], index) => {
+    .slice(0, candidateLimit);
+  selectedVectorCandidates.forEach(([sourcePath, row], index) => {
       const signals = docSignals.get(sourcePath);
       fused.set(sourcePath, {
         sourcePath,
         kind: row.kind,
-        snippet: row.snippet,
+        snippet: "",
         score: reciprocalRankScore(index + 1, 0.5) + (signals?.exactBoost ?? 0),
         vectorRank: index + 1,
         documentKind: row.documentKind,
@@ -1428,7 +1620,7 @@ function searchProjectMemoryHybrid(
         dated: row.dated,
         headingPath: row.headingPath,
       });
-    });
+  });
 
   ftsRows.forEach((row, index) => {
     const existing = fused.get(row.source_path);
@@ -1461,14 +1653,74 @@ function searchProjectMemoryHybrid(
     });
   });
 
+  const results = rerankProjectSearchCandidates(Array.from(fused.values()), docSignals, limit);
+  hydrateMissingVectorSnippets(db, results, new Map(selectedVectorCandidates));
+  const fusionMs = performance.now() - fusionStartedAt;
   return {
-    results: rerankProjectSearchCandidates(Array.from(fused.values()), docSignals, limit),
+    results,
     telemetry: {
       route: "hybrid",
       queryEmbedding: queryEmbedding.cacheHit ? "cache_hit" : "generated",
       ...(queryEmbedding.runtime ? { embeddingRuntime: queryEmbedding.runtime } : {}),
+      vectorScanMs: Number(vectorScanMs.toFixed(2)),
+      fusionMs: Number(fusionMs.toFixed(2)),
+      vectorCount,
+      vectorBytes,
     },
   };
+}
+
+function loadProjectVectorRows(
+  db: DatabaseSync,
+  compactVectorStorage: boolean,
+): Iterable<ProjectStoredVectorRow> {
+  const statement = compactVectorStorage
+    ? db.prepare(
+        [
+          "SELECT doc_id, chunk_index, source_path, kind, heading_path, document_kind, document_state, chunk_state, dated, embedding_blob",
+          "FROM doc_embedding_vectors",
+        ].join(" "),
+      )
+    : db.prepare(
+        [
+          "SELECT doc_id, chunk_index, source_path, kind, heading_path, document_kind, document_state, chunk_state, dated, embedding_json",
+          "FROM doc_embeddings",
+        ].join(" "),
+      );
+  if (process.env.CLAW_SEARCH_DAEMON !== "1") {
+    return statement.iterate() as Iterable<ProjectStoredVectorRow>;
+  }
+  const indexedAt = getMetadata(db, "indexed_at");
+  const cached = projectVectorRowsByDatabase.get(db);
+  if (cached?.indexedAt === indexedAt && cached.compactVectorStorage === compactVectorStorage) {
+    return cached.rows;
+  }
+  const rows = statement.all() as ProjectStoredVectorRow[];
+  projectVectorRowsByDatabase.set(db, { indexedAt, compactVectorStorage, rows });
+  return rows;
+}
+
+function hydrateMissingVectorSnippets(
+  db: DatabaseSync,
+  results: MemorySearchResultEntry[],
+  vectorCandidates: Map<string, { docId: number; chunkIndex: number }>,
+): void {
+  const readChunk = db.prepare(
+    "SELECT chunk_text FROM doc_embeddings WHERE doc_id = ? AND chunk_index = ?",
+  );
+  for (const result of results) {
+    if (result.snippet) {
+      continue;
+    }
+    const candidate = vectorCandidates.get(result.sourcePath);
+    if (!candidate) {
+      continue;
+    }
+    const row = readChunk.get(candidate.docId, candidate.chunkIndex) as { chunk_text: string } | undefined;
+    if (row) {
+      result.snippet = buildSnippet(row.chunk_text);
+    }
+  }
 }
 
 function tryProjectLexicalFastPath(input: {
@@ -1565,6 +1817,34 @@ function resolveProjectQueryEmbedding(
   cacheHit: boolean;
   runtime?: "mock" | "persistent_daemon" | "one_shot" | "remote";
 } {
+  const identity = buildProjectQueryEmbeddingCacheIdentity(embedding, queryText);
+  const cached = readProjectQueryEmbeddingCache(db, identity);
+  if (cached) {
+    return { vector: cached, cacheHit: true };
+  }
+
+  const generated = runEmbeddingWorker({
+    embedding,
+    texts: [identity.normalizedQueryText],
+  });
+  const vector = generated.vectors[0];
+  if (!vector?.length) {
+    throw new ClawError("MEMORY_VECTOR_INDEX_REQUIRED", "Unable to generate a query embedding for project search.");
+  }
+  writeProjectQueryEmbeddingCache(db, identity, vector);
+  return { vector, cacheHit: false, ...(generated.runtime ? { runtime: generated.runtime } : {}) };
+}
+
+type ProjectQueryEmbeddingCacheIdentity = {
+  cacheKey: string;
+  embeddingFingerprint: string;
+  normalizedQueryText: string;
+};
+
+function buildProjectQueryEmbeddingCacheIdentity(
+  embedding: MemoryEmbeddingConfig,
+  queryText: string,
+): ProjectQueryEmbeddingCacheIdentity {
   const normalizedQueryText = queryText.trim().replace(/\s+/g, " ");
   const embeddingFingerprint = createHash("sha256")
     .update(JSON.stringify(embedding))
@@ -1572,6 +1852,13 @@ function resolveProjectQueryEmbedding(
   const cacheKey = createHash("sha256")
     .update(`${PROJECT_QUERY_EMBEDDING_CACHE_VERSION}\0${embeddingFingerprint}\0${normalizedQueryText}`)
     .digest("hex");
+  return { cacheKey, embeddingFingerprint, normalizedQueryText };
+}
+
+function readProjectQueryEmbeddingCache(
+  db: DatabaseSync,
+  identity: ProjectQueryEmbeddingCacheIdentity,
+): number[] | null {
   const cached = db
     .prepare(
       [
@@ -1580,25 +1867,25 @@ function resolveProjectQueryEmbedding(
         "WHERE cache_key = ? AND embedding_fingerprint = ? AND query_text = ?",
       ].join(" "),
     )
-    .get(cacheKey, embeddingFingerprint, normalizedQueryText) as
+    .get(identity.cacheKey, identity.embeddingFingerprint, identity.normalizedQueryText) as
       | { dimensions: number; embedding_json: string }
       | undefined;
-  if (cached) {
-    const vector = parseEmbeddingJson(cached.embedding_json);
-    if (cached.dimensions > 0 && vector.length === cached.dimensions) {
-      return { vector, cacheHit: true };
-    }
-    db.prepare("DELETE FROM query_embeddings WHERE cache_key = ?").run(cacheKey);
+  if (!cached) {
+    return null;
   }
+  const vector = parseEmbeddingJson(cached.embedding_json);
+  if (cached.dimensions > 0 && vector.length === cached.dimensions) {
+    return vector;
+  }
+  db.prepare("DELETE FROM query_embeddings WHERE cache_key = ?").run(identity.cacheKey);
+  return null;
+}
 
-  const generated = runEmbeddingWorker({
-    embedding,
-    texts: [normalizedQueryText],
-  });
-  const vector = generated.vectors[0];
-  if (!vector?.length) {
-    throw new ClawError("MEMORY_VECTOR_INDEX_REQUIRED", "Unable to generate a query embedding for project search.");
-  }
+function writeProjectQueryEmbeddingCache(
+  db: DatabaseSync,
+  identity: ProjectQueryEmbeddingCacheIdentity,
+  vector: number[],
+): void {
   db.prepare(
     [
       "INSERT INTO query_embeddings",
@@ -1612,9 +1899,9 @@ function resolveProjectQueryEmbedding(
       "  created_at = excluded.created_at",
     ].join(" "),
   ).run(
-    cacheKey,
-    embeddingFingerprint,
-    normalizedQueryText,
+    identity.cacheKey,
+    identity.embeddingFingerprint,
+    identity.normalizedQueryText,
     vector.length,
     JSON.stringify(vector),
     Date.now(),
@@ -1629,7 +1916,6 @@ function resolveProjectQueryEmbedding(
       ")",
     ].join(" "),
   ).run(PROJECT_QUERY_EMBEDDING_CACHE_LIMIT);
-  return { vector, cacheHit: false, ...(generated.runtime ? { runtime: generated.runtime } : {}) };
 }
 
 function searchProjectMemoryKeywords(
@@ -2166,6 +2452,59 @@ function reciprocalRankScore(rank: number, weight: number): number {
 function parseEmbeddingJson(value: string): number[] {
   const parsed = JSON.parse(value) as unknown;
   return Array.isArray(parsed) ? parsed.map((entry) => Number(entry)) : [];
+}
+
+function normalizeEmbedding(vector: number[]): number[] {
+  let squaredNorm = 0;
+  for (const value of vector) {
+    squaredNorm += value * value;
+  }
+  if (squaredNorm === 0) {
+    return [];
+  }
+  const inverseNorm = 1 / Math.sqrt(squaredNorm);
+  return vector.map((value) => value * inverseNorm);
+}
+
+function serializeNormalizedEmbedding(vector: number[]): Buffer {
+  const normalized = normalizeEmbedding(vector);
+  const buffer = Buffer.allocUnsafe(normalized.length * Float32Array.BYTES_PER_ELEMENT);
+  for (let index = 0; index < normalized.length; index += 1) {
+    buffer.writeFloatLE(normalized[index] ?? 0, index * Float32Array.BYTES_PER_ELEMENT);
+  }
+  return buffer;
+}
+
+function dotProduct(left: number[], right: number[]): number {
+  const dimensions = Math.min(left.length, right.length);
+  if (dimensions === 0) {
+    return Number.NEGATIVE_INFINITY;
+  }
+  let dot = 0;
+  for (let index = 0; index < dimensions; index += 1) {
+    dot += (left[index] ?? 0) * (right[index] ?? 0);
+  }
+  return dot;
+}
+
+function dotProductFloat32(left: number[], right: Uint8Array): number {
+  const dimensions = Math.min(left.length, Math.floor(right.byteLength / Float32Array.BYTES_PER_ELEMENT));
+  if (dimensions === 0) {
+    return Number.NEGATIVE_INFINITY;
+  }
+  let dot = 0;
+  if (right.byteOffset % Float32Array.BYTES_PER_ELEMENT === 0) {
+    const view = new Float32Array(right.buffer, right.byteOffset, dimensions);
+    for (let index = 0; index < dimensions; index += 1) {
+      dot += (left[index] ?? 0) * (view[index] ?? 0);
+    }
+  } else {
+    const view = new DataView(right.buffer, right.byteOffset, right.byteLength);
+    for (let index = 0; index < dimensions; index += 1) {
+      dot += (left[index] ?? 0) * view.getFloat32(index * Float32Array.BYTES_PER_ELEMENT, true);
+    }
+  }
+  return dot;
 }
 
 function cosineSimilarity(left: number[], right: number[]): number {

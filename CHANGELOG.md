@@ -4,6 +4,24 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## Unreleased
 
+## [0.1.94] - 2026-07-22
+
+### Added
+
+- Added a persistent search reader with bounded project database/vector caches and a lightweight CLI search entrypoint
+- Added compact normalized Float32 BLOB vector storage with automatic backfill for existing indexes and stage-level search telemetry
+
+### Changed
+
+- Project search now collapses vector chunks by source while scanning, delays snippet reads until final results, and avoids JSON vector decoding on refreshed indexes
+- Query embedding generation now talks directly to the persistent embedding daemon, whose reusable session cache retains two compatible model runtimes for ten minutes
+
+### Fixed
+
+- Codex host progress projection now follows the task actually marked in progress instead of assigning progress to the first unfinished task
+- Local embedding runtime fingerprints no longer split otherwise identical model sessions solely by project path
+- Updated vulnerable transitive `tar` and `protobufjs` runtime dependencies to patched releases
+
 ## [0.1.93] - 2026-07-21
 
 ### Changed

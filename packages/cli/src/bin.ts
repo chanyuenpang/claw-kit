@@ -14,10 +14,23 @@ process.emitWarning = ((warning: unknown, ...args: unknown[]) => {
 void main();
 
 async function main(): Promise<void> {
-  if (!await shouldLoadCliForInvocation(process.argv.slice(2), process.cwd(), process.env)) {
+  const args = process.argv.slice(2);
+  if (!await shouldLoadCliForInvocation(args, process.cwd(), process.env)) {
+    return;
+  }
+  if (isSearchInvocation(args)) {
+    const { runSearchEntry } = await import("./search-entry.js");
+    await runSearchEntry(args.slice(1));
     return;
   }
   await import("./cli.js");
+}
+
+function isSearchInvocation(args: string[]): boolean {
+  return args[0] === "search"
+    && args[1] !== "help"
+    && !args.includes("--help")
+    && !args.includes("-h");
 }
 
 function shouldSuppressSqliteExperimentalWarning(warning: unknown, args: unknown[]): boolean {

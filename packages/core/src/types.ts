@@ -675,6 +675,10 @@ export type MemorySearchResult = {
     route: "task_fts" | "lexical_fast_path" | "hybrid";
     queryEmbedding: "skipped" | "cache_hit" | "generated";
     embeddingRuntime?: "mock" | "persistent_daemon" | "one_shot" | "remote";
+    vectorScanMs?: number;
+    fusionMs?: number;
+    vectorCount?: number;
+    vectorBytes?: number;
     durationMs: number;
   };
 };

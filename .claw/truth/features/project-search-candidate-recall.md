@@ -97,33 +97,22 @@
 - 同日后续 `120` 条 development split 实验曾在尚未解封 holdout 时报告 Top-1 `0.7917`、Recall@5 `0.9333`、MRR@10 `0.8465`，但 supplied closeout 明确把该流程标为暂停且未完成；这些数值只能作为 provisional development evidence，不能替代已完成五轮的同口径指标，也不能证明 holdout 泛化。
 - 聚焦测试 `17/17` 与 core 测试 `138/138` 是该 completed closeout revision 的版本化验证结果。当前测试数量会随测试集演进，不应作为永久 suite-size 合同。
 
+<!-- dated: 2026-07-21 -->
+### P0/P1 搜索性能优化复测
+
+- 在完成重建的 NeonSpark 索引上，`23,084` 个向量均已回填为 Float32 BLOB；同一 `50` 条标题引导查询的 Recall@1/3/5 为 `96%` / `98%` / `98%`，MRR@5 为 `0.967`，平均 wall time 为 `0.667s`、P95 为 `0.993s`。这些是该索引、查询集和完成时 revision 的版本化结果，不是跨项目 SLA。
+- 同轮完成记录中的 core `149/149`、CLI 隔离回归修复后的目标用例、全仓 check 与 `git diff --check` 均为当时的验证证据；测试数量和构建状态不构成永久行为合同。
+
+<!-- state: current -->
+## 当前存储与执行路径
+
+- project-level search 的主入口在 `packages/core/src/memory.ts`。`.claw/memory.sqlite` 保留 `doc_embeddings.embedding_json` 作为兼容数据，同时以 `doc_embedding_vectors` 的 `embedding_blob` 保存归一化 Float32 向量；refresh 会回填缺失 BLOB，并以 `embedding_vector_storage = float32-blob-v1` 选择紧凑读取路径。
+- `searchProjectMemoryHybrid` 仍汇总 vector、`docs_fts` keyword/BM25（含 substring fallback）与 document-signal 三条候选路线，并保持 vector-required 契约。向量扫描按 source 聚合最佳候选、只在最终候选缺少文本结果时读取 `chunk_text` 构造 snippet，避免对全部向量行提前构造 snippet 或 JSON 解码。
+- 当 `CLAW_SEARCH_DAEMON=1` 时，reader 复用有界 SQLite 连接并缓存与 `indexed_at` 对齐的向量行；索引刷新会使缓存失效。`packages/cli/src/search-entry.ts` 先请求有界常驻 reader，reader 不可用时才走本地异步 search 路径。
+- search reader 默认空闲 `10` 分钟退出；若设置 `CLAW_EMBEDDING_DAEMON_RUNTIME_DIR`，其运行目录固定在该目录下的 `search-reader`，从而与显式 embedding runtime 的隔离边界保持一致。
+- query intent 来自 `packages/core/src/memory-query.ts` 的 `buildProjectQueryIntent` / `extractProjectKeywordTerms`；lexical terms 可以被清洗，但 query embedding 使用原始语义查询文本。fusion 继续使用 vector `0.50`、keyword `0.30`、signal `0.20`，最终 rerank 的现行常量与信号见上文。
+
 ## 适用提醒
 
-- 这轮提升的是 recall 质量，不是搜索产品边界的变化。
-- `claw search` 仍然是项目文档 recall。
-- project search 仍然要求已有 vector index，不能退回成纯 FTS fallback。
-
-## Task 3: traditional search ranking mechanics
-
-本轮 completed subtask `Compare-traditional-search-vs-claw-search-for-vector-database-search-ranking` 的 traditional-search 结论应归入当前 `claw search` project recall 事实，而不是另建一套 search 文档。
-
-- project-level search 的主入口仍在 `packages/core/src/memory.ts`：`buildMemoryIndex` 收集 `.claw/memory.md`、`.claw/truth/**/*.md`、`.claw/.knowledge` 下的 `md` / `txt` / `json`，以及 `memory.externalDocPaths` 配置的 markdown 文件；sqlite 存储仍是 `.claw/memory.sqlite` 的 `docs`、`docs_fts`、`doc_embeddings` 与 `index_metadata.vector_index`。
-- `buildMemoryIndex` / project sync 使用 `docs.content_hash` 做增量同步；embedding 配置变更会 reset vector rows 和 `vector_index` metadata；markdown 先按段落和目标长度 chunk，再写入 `doc_embeddings`。
-- `searchMemory({ scope: "project" })` 仍要求 refreshed vector index，并调 `searchProjectMemoryHybrid`；缺少 `memory.embedding`、`vector_index` metadata 或 stored vectors 时返回 `MEMORY_VECTOR_INDEX_REQUIRED`。
-- query intent 来自 `packages/core/src/memory-query.ts` 的 `buildProjectQueryIntent` / `extractProjectKeywordTerms`；lexical terms 可以被清洗，但 query embedding 使用原始语义查询文本。
-- `searchProjectMemoryHybrid` 汇总三条候选路线：`doc_embeddings` 上的 vector cosine similarity、`docs_fts` 的 keyword/BM25 route（含 substring fallback），以及 `searchProjectMemorySignals` 的 document-signal route。
-- 当前 vector route 会从 `doc_embeddings` 读取全部 rows 的 `chunk_text` 和 `embedding_json`，逐 row 构造 snippet、JSON 解码并计算 cosine similarity；按 source 折叠、排序和 `candidateLimit` 截取发生在这次全量扫描之后。因此 `candidateLimit` 不限制向量读取或逐 chunk 打分工作量。
-- fusion 使用 `reciprocalRankScore(rank, weight)`，当前权重是 vector `0.50`、keyword `0.30`、signal `0.20`；每条 route 的首入候选还会带入 `exactBoost`。
-- final rerank 会为尚未覆盖的 strong terms 加 `0.015`、普通 terms 加 `0.003`，并给多 route 命中的候选加 `0.003 * (routeCount - 1)`；分数相同再按 `strongMatchedTermCount`、`matchedTermCount`、`exactBoost` 打破平局。
-- `buildProjectSearchSignals` 的 `exactBoost` 同时吸收 strong/weak term hit、term coverage、strong coverage、matched-character density、filename/path hit、phrase match、title match 与 document-type match，并扣除 weak-only、index-like 与 query-aware generic-document penalty。
-- CLI surface 仍在 `packages/cli/src/cli.ts` 的 `runSearch`：`claw search index --refresh` 调 project-scope `buildMemoryIndex`，`claw search` 调 project-scope `searchMemory`。
-- `packages/core/test/core.test.ts` 覆盖 vector-required 行为、中文 query intent、strong-term 优先、多词 recall、coverage-aware rerank、filename rescue，以及 vector row metadata。
-
-## Task 4: unrestricted search method comparison
-
-本轮 completed subtask `Compare-traditional-search-vs-claw-search-for-vector-database-search-ranking` 的 unrestricted-search 复核补充的是检索方法分工，而不是新的 ranking 语义。
-
-- `claw search` 适合优先找 canonical truth / ADR context；本轮快速命中 `.claw/truth/features/project-search-candidate-recall.md` 与 `.claw/truth/adr/search-index-refresh-and-openai-embeddings.md`，足以恢复 multi-route candidate recall、unified rerank、vector-required semantics 和 document-signal candidates 的背景。
-- GitNexus query/context 更适合找代码图锚点；本轮快速定位 `searchProjectMemoryHybrid`、`rerankProjectSearchCandidates`、`buildMemoryIndex`、`syncProjectMemoryIndex`、`chunkMarkdownContent`，并确认 `searchMemory` 到 `searchProjectMemoryHybrid`、再到 keyword / signal / rerank helper symbols 的调用关系。
-- GitNexus 结果可能混入 docs/assets noise，例如 `docs/assets/product-deck.js` symbols；做 ranking 或 numeric truth 结论时，仍应回到 `packages/core/src/memory.ts` / `packages/core/src/memory-query.ts` 用 `rg` 或代码读取确认。
-- 当前 exact ranking constants 已在上一节记录：vector / keyword / signal RRF 权重、candidate limit 扩宽规则，以及 final rerank 的 uncovered-term 与 multi-route boosts；后续不要为同一组常量另建重复 truth 文档。
+- 这轮提升的是 recall 执行路径，不改变搜索产品边界：`claw search` 仍是项目文档 recall，不能退回成纯 FTS fallback。
+- `claw search` 适合找 canonical Truth/ADR context；源码行为和精确 ranking 常量仍应以 `packages/core/src/memory.ts` 与 `packages/core/src/memory-query.ts` 为准。GitNexus 可用于代码关系线索，但结果可能混入 docs/assets noise。

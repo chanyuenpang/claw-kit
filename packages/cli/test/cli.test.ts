@@ -1153,6 +1153,25 @@ test("Codex emits update_plan only when the projected host plan changes", () => 
   ]);
 });
 
+test("Codex progress projection follows the task actually marked in progress", () => {
+  const root = createFixture("codex-actual-in-progress-task");
+  runClaw(["init", "--name", "Codex Actual Progress", "--planning", "false"], root);
+  runClaw(["plan", "create", "--title", "demo-task", "--goal", "Track actual task"], root);
+  runClaw(["task", "add", "--task-name", "demo-task", "--title", "Second task"], root);
+  runClaw(["plan", "edit", "--task-name", "demo-task", "--status", "process.active"], root);
+
+  const result = runClaw([
+    "task", "edit", "--task-name", "demo-task", "--id", "2", "--status", "in_progress", "--host", "codex",
+  ], root);
+
+  const actions = result.hostActions as JsonRecord[];
+  assert.deepEqual(actions.map((action) => action.tool), ["update_plan"]);
+  assert.deepEqual((actions[0]!.input as JsonRecord).plan, [
+    { step: "Track actual task", status: "pending" },
+    { step: "Second task", status: "in_progress" },
+  ]);
+});
+
 test("cli plan edit rejects partial single-reference shortcut flags", () => {
   const root = createFixture("plan-edit-reference-flags-missing-half");
   runClaw(["init", "--name", "Reference Flags Missing Half", "--planning", "false"], root);

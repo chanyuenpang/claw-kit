@@ -3657,6 +3657,10 @@ test("project search caches embeddings by the original semantic query text", { c
     assert.equal(firstSearch.telemetry.route, "hybrid");
     assert.equal(firstSearch.telemetry.queryEmbedding, "generated");
     assert.equal(firstSearch.telemetry.embeddingRuntime, "mock");
+    assert.ok((firstSearch.telemetry.vectorCount ?? 0) > 0);
+    assert.ok((firstSearch.telemetry.vectorBytes ?? 0) > 0);
+    assert.ok((firstSearch.telemetry.vectorScanMs ?? -1) >= 0);
+    assert.ok((firstSearch.telemetry.fusionMs ?? -1) >= 0);
     assert.equal(secondSearch.telemetry.queryEmbedding, "cache_hit");
     assert.equal(secondSearch.telemetry.embeddingRuntime, undefined);
     assert.equal(paraphrasedSearch.telemetry.queryEmbedding, "generated");
@@ -4244,10 +4248,19 @@ test("project memory refresh generates local embedding metadata and vector rows 
       const vectors = db
         .prepare("SELECT COUNT(*) AS count FROM doc_embeddings")
         .get() as { count: number };
+      const compactVectors = db
+        .prepare("SELECT COUNT(*) AS count, MIN(length(embedding_blob)) AS bytes FROM doc_embedding_vectors")
+        .get() as { count: number; bytes: number };
+      const vectorStorage = db
+        .prepare("SELECT value FROM index_metadata WHERE key = 'embedding_vector_storage'")
+        .get() as { value: string } | undefined;
 
       assert.ok(metadata);
       assert.deepEqual(JSON.parse(metadata.value), result.vectorIndex);
       assert.equal(vectors.count, 3);
+      assert.equal(compactVectors.count, 3);
+      assert.equal(compactVectors.bytes, 384 * Float32Array.BYTES_PER_ELEMENT);
+      assert.equal(vectorStorage?.value, "float32-blob-v1");
     } finally {
       db.close();
     }

@@ -26,8 +26,8 @@ type SessionEntry = {
   lastUsedAt: number;
 };
 
-const DEFAULT_IDLE_TTL_MS = 120000;
-const DEFAULT_SESSION_LIMIT = 1;
+const DEFAULT_IDLE_TTL_MS = 10 * 60 * 1000;
+const DEFAULT_SESSION_LIMIT = 2;
 const runtimeDir = resolveRuntimeDirFromArgs(process.argv.slice(2));
 const instanceId = randomBytes(16).toString("hex");
 const token = createEmbeddingDaemonToken();

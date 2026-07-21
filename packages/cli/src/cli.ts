@@ -30,7 +30,7 @@ import {
   resolveSessionBoundPlan,
   resolveContext,
   resolveSeedPlanTemplate,
-  searchMemory,
+  searchMemoryAsync,
   warmProjectMemoryEmbedding,
   showPlan,
   createSubplan,
@@ -541,7 +541,7 @@ async function main(): Promise<void> {
         );
         return;
       case "search":
-        runSearch(args);
+        await runSearch(args);
         return;
       case "direct":
         runDirect(args, effectiveHost);
@@ -914,7 +914,7 @@ async function runTask(args: string[], effectiveHost: ClawHost | undefined): Pro
   }
 }
 
-function runSearch(args: string[]): void {
+async function runSearch(args: string[]): Promise<void> {
   const subcommand = args[0];
   if (subcommand === "index") {
     args.shift();
@@ -945,7 +945,7 @@ function runSearch(args: string[]): void {
   printJson({
     ok: true,
     command: "search",
-    ...searchMemory({
+    ...await searchMemoryAsync({
       cwd: process.cwd(),
       limit: readOptionalNumber(args, "--limit"),
       query: readRequiredSearchQuery(args),
@@ -2333,12 +2333,15 @@ function buildCodexPlanProjection(
   plan: PlanDocument,
   planStatus: string,
 ): Array<{ step: string; status: "pending" | "in_progress" | "completed" }> {
-  let assignedInProgress = false;
+  const activeTask = plan.tasks.find(
+    (task) => task.status === "in_progress" || task.status === "subagent_running",
+  ) ?? (planStatus === "process.active"
+    ? plan.tasks.find((task) => task.status !== "done")
+    : undefined);
   return plan.tasks.map((task) => {
     let status: "pending" | "in_progress" | "completed" = task.status === "done" ? "completed" : "pending";
-    if (!assignedInProgress && planStatus === "process.active" && task.status !== "done") {
+    if (task.id === activeTask?.id) {
       status = "in_progress";
-      assignedInProgress = true;
     }
     return { step: task.title, status };
   });

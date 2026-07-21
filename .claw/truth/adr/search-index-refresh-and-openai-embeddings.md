@@ -40,7 +40,7 @@
 - 这轮 trimmed `OpenClaw` 迁移保留 exact、keyword、semantic 和 document-signal 候选来源，但不引入更大的 session-memory / host abstraction surface。
 - 所有召回路径产出的候选都进入同一轮 unified reranking，保持 exact-match 优势，同时让 conversational Chinese queries 和 mixed multi-term queries 能共享同一套最终排序逻辑。
 - 后续 search-quality 优化优先落在可测量的 rerank tuning、vector scan / candidate performance、chunking / query-intent quality 和 evaluation fixtures；不通过放松 `vector-required` 契约来换取短期召回。
-- 下一轮单次搜索 latency 优化先保持现有排序语义：先增加 vector-read、vector-score、snippet 与 fusion 的分段观测，再按 `Float32` 向量存储、最终候选前延迟读取文本/snippet、流式 per-source top-K 的顺序推进。ANN 只在独立质量门禁通过后再评估，不作为首轮替代方案。
+- 单次搜索 latency 优化保持现有排序语义：保留 `doc_embeddings.embedding_json` 作为兼容数据，同时用 `doc_embedding_vectors.embedding_blob` 承载归一化 Float32 热路径；向量扫描按 source 折叠候选并延迟读取最终 snippet。`claw search` 通过轻量 entry 优先请求有界常驻 reader，reader 以 `indexed_at` 失效其向量缓存。ANN 仍只在独立质量门禁通过后评估，不作为该路径的替代方案。
 - 对多词查询，project-level `claw search --query` 同时保留 exact multi-term keyword query，以及逐词 fallback query，而不是只执行一次严格的原始 `FTS MATCH`。
 - 这套 planner 的目标是避免中文多词 recall 过度依赖“同一条记录同时命中所有词”的语义，让检索行为更接近文档 recall / fuzzy retrieval。
 - 语义 query embedding 必须使用原始查询文本；关键词提取、弱词处理和实体清洗只服务 lexical recall，不能用清洗后的词串替换 Jina 的句法与实体上下文。
