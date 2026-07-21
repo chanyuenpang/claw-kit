@@ -373,7 +373,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
         planning: false,
         goalMode: true,
         knowledgeWriter: {
-          externalSkill: "external-knowledge-writer",
+          externalSkills: ["external-knowledge-writer"],
           model: null,
           reasoningEffort: "medium",
         },
@@ -2207,7 +2207,7 @@ test("cli init writes maxTasksToKeep into project.json", () => {
   assert.equal(projectConfig.autoCommitKnowledge, true);
   assert.equal(projectConfig.goalMode, true);
   assert.deepEqual(projectConfig.knowledgeWriter, {
-    externalSkill: "team-knowledge-writer",
+    externalSkills: ["team-knowledge-writer"],
     model: null,
     reasoningEffort: "medium",
     datedSectionsToKeep: 6,
@@ -2231,7 +2231,7 @@ test("cli init writes default maxTasksToKeep into project.json", () => {
   assert.equal(projectConfig.autoCommitKnowledge, true);
   assert.equal(projectConfig.goalMode, true);
   assert.deepEqual(projectConfig.knowledgeWriter, {
-    externalSkill: null,
+    externalSkills: [],
     model: null,
     reasoningEffort: "medium",
     datedSectionsToKeep: 6,
@@ -2370,7 +2370,7 @@ test("cli context auto-corrects malformed existing .claw state", () => {
   });
   assert.equal(projectConfig.goalMode, true);
   assert.deepEqual(projectConfig.knowledgeWriter, {
-    externalSkill: null,
+    externalSkills: [],
     model: null,
     reasoningEffort: "medium",
     datedSectionsToKeep: 6,
@@ -2549,7 +2549,7 @@ test("cli check auto-corrects project.json into explicit protocol fields", () =>
   assert.deepEqual(projectConfig.contextPaths, []);
   assert.equal(projectConfig.goalMode, true);
   assert.deepEqual(projectConfig.knowledgeWriter, {
-    externalSkill: null,
+    externalSkills: [],
     model: null,
     reasoningEffort: "medium",
     datedSectionsToKeep: 6,
@@ -3439,7 +3439,7 @@ test("completed-plan Stop owns the final turn and queues a retryable SDK job", (
   const projectJsonPath = path.join(root, ".claw", "project.json");
   const projectConfig = JSON.parse(fs.readFileSync(projectJsonPath, "utf-8")) as JsonRecord;
   projectConfig.knowledgeWriter = {
-    externalSkill: "custom-knowledge-writer",
+    externalSkills: ["truth-writer", "adr-writer"],
     model: "gpt-test-writer",
     reasoningEffort: "high",
   };
@@ -3475,7 +3475,7 @@ test("completed-plan Stop owns the final turn and queues a retryable SDK job", (
   assert.equal(queued.status, "queued");
   assert.equal(queued.attempts, 0);
   assert.deepEqual(queued.writer, {
-    externalSkill: "custom-knowledge-writer",
+    externalSkills: ["truth-writer", "adr-writer"],
     model: "gpt-test-writer",
     reasoningEffort: "high",
     datedSectionsToKeep: 6,
@@ -3586,7 +3586,7 @@ test("opencode finalizer environment drops the parent platform session identity"
   assert.equal(env.PATH, "preserved");
 });
 
-test("knowledge finalization honors a custom writer without applying built-in governance", () => {
+test("knowledge finalization runs ordered custom writers without applying built-in governance", () => {
   const root = createFixture("knowledge-writer-no-op");
   const home = path.join(root, "home");
   const taskDir = path.join(root, ".claw", "tasks", "no-op-task");
@@ -3617,7 +3617,7 @@ test("knowledge finalization honors a custom writer without applying built-in go
   ].join("\n");
   fs.writeFileSync(
     path.join(sdkRoot, "dist", "index.js"),
-    `import fs from "node:fs";\nimport path from "node:path";\nimport { createHash } from "node:crypto";\nexport class Codex { startThread(options) { fs.writeFileSync(${JSON.stringify(optionsLog)}, JSON.stringify(options)); return { id: "thread-knowledge", run: async (prompt) => { fs.appendFileSync(${JSON.stringify(promptLog)}, prompt + "\\n---PASS---\\n"); fs.mkdirSync(path.dirname(${JSON.stringify(knowledgePath)}), { recursive: true }); fs.writeFileSync(${JSON.stringify(knowledgePath)}, ${JSON.stringify(customKnowledge)}, "utf-8"); const digest = createHash("sha256").update("thread-knowledge").digest("hex"); const workflowDir = path.join(process.env.CLAW_SESSION_RUNTIME_DIR, digest); const taskDir = path.join(workflowDir, "tasks", "custom-writer-run"); fs.mkdirSync(taskDir, { recursive: true }); fs.writeFileSync(path.join(workflowDir, "session.json"), JSON.stringify({ version: 1, scope: "session", originCwd: ${JSON.stringify(root)}, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })); fs.writeFileSync(path.join(taskDir, "plan.json"), JSON.stringify({ title: "custom writer", status: "end.completed", tasks: [{ id: 1, status: "done" }] })); return { finalResponse: "Custom knowledge updated." }; } }; } }\n`,
+    `import fs from "node:fs";\nimport path from "node:path";\nexport class Codex { startThread(options) { fs.writeFileSync(${JSON.stringify(optionsLog)}, JSON.stringify(options)); return { id: "thread-knowledge", run: async (prompt) => { fs.appendFileSync(${JSON.stringify(promptLog)}, prompt + "\\n---PASS---\\n"); fs.mkdirSync(path.dirname(${JSON.stringify(knowledgePath)}), { recursive: true }); fs.writeFileSync(${JSON.stringify(knowledgePath)}, ${JSON.stringify(customKnowledge)}, "utf-8"); return { finalResponse: "Custom knowledge updated." }; } }; } }\n`,
     "utf-8",
   );
 
@@ -3634,7 +3634,7 @@ test("knowledge finalization honors a custom writer without applying built-in go
     planPath,
     reportPath,
     writer: {
-      externalSkill: "team:custom-knowledge-writer",
+      externalSkills: ["team:truth-writer", "team:adr-writer"],
       model: null,
       reasoningEffort: "medium",
       datedSectionsToKeep: 2,
@@ -3653,16 +3653,17 @@ test("knowledge finalization honors a custom writer without applying built-in go
   const finalized = runClawRaw(["internal-knowledge-finalize", "--job", jobPath], root, {
     HOME: home,
     USERPROFILE: home,
-    CLAW_SESSION_RUNTIME_DIR: sessionRuntimeDir,
+    CLAW_SESSION_RUNTIME_DIR: path.join(root, "session-runtime"),
     CLAW_KNOWLEDGE_FINALIZER_DISABLE_RETRY: "1",
   });
   assert.equal(finalized.status, 0);
   const job = JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord;
   assert.equal(job.status, "succeeded");
   assert.equal(job.sdkThreadId, "thread-knowledge");
+  assert.deepEqual(job.sdkThreadIds, ["thread-knowledge", "thread-knowledge"]);
   assert.equal(job.truthThreadId, undefined);
   assert.equal(job.adrThreadId, undefined);
-  assert.equal(job.finalResponse, "Custom knowledge updated.");
+  assert.equal(job.finalResponse, "Custom knowledge updated.\n\nCustom knowledge updated.");
   assert.equal(job.knowledgeGovernance, undefined);
   assert.equal(runGit(["log", "-1", "--pretty=%B"], root).trim(), "no-op-task");
   assert.equal(
@@ -3675,13 +3676,21 @@ test("knowledge finalization honors a custom writer without applying built-in go
   assert.match(knowledge, /Third state/u);
   assert.match(knowledge, /Fourth state/u);
   const prompts = fs.readFileSync(promptLog, "utf-8").split("---PASS---").filter((item) => item.trim());
-  assert.equal(prompts.length, 1);
-  assert.match(prompts[0]!, /Use the team:custom-knowledge-writer skill and follow it exactly\./);
-  assert.doesNotMatch(prompts[0]!, /Use the claw-kit:knowledge-writer skill/);
-  assert.doesNotMatch(prompts[0]!, /one current owner|Evolution retention|dated:/i);
-  assert.match(prompts[0]!, /interpret all supplied materials by their content/i);
-  assert.doesNotMatch(prompts[0]!, /entryType|knowledge_finalization/);
-  assert.doesNotMatch(prompts[0]!, /using-claw-kit/i);
+  assert.equal(prompts.length, 2);
+  assert.match(prompts[0]!, /Apply the team:truth-writer skill's documentation-governance rules/i);
+  assert.match(prompts[1]!, /Apply the team:adr-writer skill's documentation-governance rules/i);
+  for (const prompt of prompts) {
+    assert.match(prompt, /Work unattended; do not request review or confirmation/i);
+    assert.match(prompt, /Do not reference or link to the supplied materials/i);
+    assert.match(prompt, /they are transient and will be destroyed after finalization/i);
+    assert.doesNotMatch(prompt, /only supported conclusions|make evidence-based decisions/i);
+    assert.doesNotMatch(prompt, /follow it exactly/i);
+    assert.doesNotMatch(prompt, /Use the claw-kit:knowledge-writer skill/);
+    assert.doesNotMatch(prompt, /one current owner|Evolution retention|dated:/i);
+    assert.match(prompt, /interpret inputs by content/i);
+    assert.doesNotMatch(prompt, /entryType|knowledge_finalization/);
+    assert.doesNotMatch(prompt, /using-claw-kit/i);
+  }
   const writerOptions = JSON.parse(fs.readFileSync(optionsLog, "utf-8")) as JsonRecord;
   assert.equal(writerOptions.sandboxMode, process.platform === "win32" ? "danger-full-access" : "workspace-write");
   assert.equal(fs.existsSync(reportPath), true);
@@ -3694,7 +3703,7 @@ test("knowledge finalization honors a custom writer without applying built-in go
     taskName: "no-op-task",
     recordedAt: job.finishedAt,
     status: "succeeded",
-    result: "Custom knowledge updated.",
+    result: "Custom knowledge updated.\n\nCustom knowledge updated.",
     attempts: 1,
     host: "codex",
     threadId: "thread-knowledge",
@@ -3734,7 +3743,7 @@ test("knowledge finalization honors a custom writer without applying built-in go
     planPath: uncommittedPlanPath,
     reportPath: uncommittedReportPath,
     writer: {
-      externalSkill: "team:custom-knowledge-writer",
+      externalSkills: ["team:custom-knowledge-writer"],
       model: null,
       reasoningEffort: "medium",
       datedSectionsToKeep: 2,
@@ -3861,9 +3870,10 @@ test("knowledge finalization fails and retains its report when the SDK writer do
   );
   fs.mkdirSync(path.join(sdkRoot, "dist"), { recursive: true });
   fs.writeFileSync(path.join(sdkRoot, "package.json"), JSON.stringify({ type: "module" }), "utf-8");
+  const promptLog = path.join(root, "built-in-writer-prompt.log");
   fs.writeFileSync(
     path.join(sdkRoot, "dist", "index.js"),
-    `export class Codex { startThread() { return { id: "thread-incomplete", run: async () => ({ finalResponse: "Could not read the inputs." }) }; } }\n`,
+    `import fs from "node:fs";\nexport class Codex { startThread() { return { id: "thread-incomplete", run: async (prompt) => { fs.writeFileSync(${JSON.stringify(promptLog)}, prompt, "utf-8"); return { finalResponse: "Could not read the inputs." }; } }; } }\n`,
     "utf-8",
   );
 
@@ -3894,6 +3904,12 @@ test("knowledge finalization fails and retains its report when the SDK writer do
   const job = JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord;
   assert.equal(job.status, "failed");
   assert.match(String((job.error as JsonRecord).message), /did not create its required session workflow/i);
+  const builtInPrompt = fs.readFileSync(promptLog, "utf-8");
+  assert.match(builtInPrompt, /Apply the claw-kit:knowledge-writer skill's documentation-governance rules/i);
+  assert.match(builtInPrompt, /Work unattended; do not request review or confirmation/i);
+  assert.match(builtInPrompt, /Do not reference or link to the supplied materials/i);
+  assert.doesNotMatch(builtInPrompt, /only supported conclusions|make evidence-based decisions/i);
+  assert.doesNotMatch(builtInPrompt, /follow it exactly/i);
   assert.equal(fs.existsSync(reportPath), true);
 });
 
@@ -3940,7 +3956,7 @@ test("opencode host finalization routes through opencode runner, not Codex SDK",
   const projectJsonPath = path.join(root, ".claw", "project.json");
   const projectConfig = JSON.parse(fs.readFileSync(projectJsonPath, "utf-8")) as JsonRecord;
   projectConfig.knowledgeWriter = {
-    externalSkill: "custom-knowledge-writer",
+    externalSkills: ["custom-knowledge-writer"],
     model: "gpt-test-writer",
     reasoningEffort: "high",
   };

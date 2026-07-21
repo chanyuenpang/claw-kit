@@ -213,7 +213,10 @@ function signatureForTemplateConflict(template: ResolvedPlanTemplate): string {
 }
 
 function resolveProjectSkillRoots(projectRoot: string): string[] {
-  const roots = [path.join(projectRoot, "skills")];
+  const roots = [
+    path.join(projectRoot, ".agents", "skills"),
+    path.join(projectRoot, "skills"),
+  ];
   const packagesDir = path.join(projectRoot, "packages");
   if (!fs.existsSync(packagesDir)) {
     return roots;
@@ -714,20 +717,21 @@ function normalizeTemplateConfigOverride(value: unknown): TemplateConfigOverride
   const writer = candidate.knowledgeWriter && typeof candidate.knowledgeWriter === "object"
     ? candidate.knowledgeWriter as Record<string, unknown>
     : null;
-  const hasCanonicalExternalSkill = writer
-    ? Object.prototype.hasOwnProperty.call(writer, "externalSkill")
+  const hasCanonicalExternalSkills = writer
+    ? Object.prototype.hasOwnProperty.call(writer, "externalSkills")
     : false;
   const truthSkill = normalizeTemplateSkill(candidate.externalTruthSkill);
   const adrSkill = normalizeTemplateSkill(candidate.externalAdrSkill);
-  const migratedExternalSkill = truthSkill && adrSkill && truthSkill !== adrSkill
-    ? null
-    : truthSkill ?? adrSkill;
+  const migratedExternalSkills = truthSkill && adrSkill
+    ? truthSkill === adrSkill ? [truthSkill] : [truthSkill, adrSkill]
+    : [truthSkill ?? adrSkill].filter((skill): skill is string => skill !== null);
   const normalizedWriter = {
-    ...(hasCanonicalExternalSkill
-      ? { externalSkill: normalizeTemplateSkill(writer?.externalSkill) }
-      : (candidate.externalTruthSkill !== undefined || candidate.externalAdrSkill !== undefined)
-        ? { externalSkill: migratedExternalSkill }
-        : {}),
+    ...(hasCanonicalExternalSkills
+      ? { externalSkills: normalizeTemplateSkills(writer?.externalSkills) }
+      : {}),
+    ...(!hasCanonicalExternalSkills && (candidate.externalTruthSkill !== undefined || candidate.externalAdrSkill !== undefined)
+      ? { externalSkills: migratedExternalSkills }
+      : {}),
     ...(writer && Object.prototype.hasOwnProperty.call(writer, "model")
       ? { model: normalizeTemplateSkill(writer.model) }
       : {}),
@@ -749,14 +753,18 @@ function isTemplateKnowledgeWriterConfig(value: unknown): boolean {
     return false;
   }
   const candidate = value as Record<string, unknown>;
-  if (Object.keys(candidate).some((key) => !["externalSkill", "model", "reasoningEffort", "datedSectionsToKeep"].includes(key))) {
+  if (Object.keys(candidate).some((key) => !["externalSkills", "model", "reasoningEffort", "datedSectionsToKeep"].includes(key))) {
     return false;
   }
-  for (const key of ["externalSkill", "model"]) {
+  for (const key of ["model"]) {
     const field = candidate[key];
     if (field !== undefined && field !== null && typeof field !== "string") {
       return false;
     }
+  }
+  if (candidate.externalSkills !== undefined && (!Array.isArray(candidate.externalSkills)
+    || candidate.externalSkills.some((skill) => typeof skill !== "string"))) {
+    return false;
   }
   return (candidate.reasoningEffort === undefined || isKnowledgeWriterReasoningEffort(candidate.reasoningEffort))
     && (candidate.datedSectionsToKeep === undefined
@@ -769,6 +777,15 @@ function isKnowledgeWriterReasoningEffort(value: unknown): value is "minimal" | 
 
 function normalizeTemplateSkill(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function normalizeTemplateSkills(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((skill) => normalizeTemplateSkill(skill))
+    .filter((skill): skill is string => skill !== null);
 }
 
 function isTemplateTaskGuidance(value: unknown): value is TemplateTaskGuidance | undefined {

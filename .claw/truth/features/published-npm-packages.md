@@ -13,7 +13,7 @@
 - canonical release gate 固定覆盖版本与内部依赖对齐、shared-skill 同步、committed Codex marketplace payload、隔离 template smoke、clean worktree 与 exact `main == origin/main`。完整测试、adapter bundle tests 和双包 dry-run 按本轮实际风险比例化追加。
 - 双包发布顺序固定为先 `@veewo/claw-core`、后 `@veewo/claw`。release 完成态直接核对 GitHub source/tag、npm 双包与 `dist-tags.latest`、committed Codex marketplace payload 和 clean worktree。
 - release 与用户端 `update` 是两个有序完成边界。release 不要求刷新本机全局 CLI 或 installed Codex plugin；发布后由独立 `claw-kit:update` 从已发布 npm 与 official GitHub marketplace 刷新，并只允许 `claw-kit@claw-kit` identity。
-- Codex 维护者的完整发布入口是 `claw plan create --template release-claw-kit --title release-claw-kit`。相邻的 `release-claw-kit` template 以 8 个无 choice 的线性任务串联版本准备、比例化验证、direct-`main` 推送、guarded publish、GitHub/npm/committed-plugin 验收与 published-source Codex 更新；第 6 个任务先完成 artifact release，第 7 至 8 个任务才进入独立安装更新边界。
+- claw-kit 维护者的完整发布入口是仓库本地 `.agents/skills/release-claw-kit`，通过 `claw plan create --template release-claw-kit --title release-claw-kit` 调用。该项目 skill 不随 Codex plugin 发布；其 8 个无 choice 的线性任务串联版本准备、比例化验证、direct-`main` 推送、guarded publish、GitHub/npm/committed-plugin 验收与 published-source Codex 更新，第 6 个任务先完成 artifact release，第 7 至 8 个任务才进入独立安装更新边界。
 - 新模板协议可能让旧的正式 CLI 无法加载待发布模板。release 开发阶段可以临时把全局 `claw` link 到已构建的 workspace CLI/core 以解除自举阻塞，但这不是发布或 update 完成证据；registry 可见后必须恢复正式 npm 安装，Codex plugin 仍不得从未发布 workspace payload 刷新。
 - npm registry 传播可能短暂滞后。若 metadata 尚未看到新版本，应等待可见后再进入独立 update；若 metadata 已可见但 tarball retrieval 报 `ETARGET`，先清理本地 npm cache 再重试，不能把本地 cache stale 误判为 publish 回滚。
 
@@ -23,8 +23,8 @@
 - `packages/core/package.json`
 - `packages/cli/package.json`
 - `packages/codex-adapter/.codex-plugin/plugin.json`
-- `packages/codex-adapter/skills/release-claw-kit/SKILL.md`
-- `packages/codex-adapter/skills/release-claw-kit/TEMPLATE.json`
+- `.agents/skills/release-claw-kit/SKILL.md`
+- `.agents/skills/release-claw-kit/TEMPLATE.json`
 - `packages/codex-adapter/skills/update/SKILL.md`
 - `scripts/publish-release.mjs`
 - `scripts/update-template-versions.mjs`

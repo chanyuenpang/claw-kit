@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const defaultRepoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const templateRoots = [
+  path.join(".agents", "skills"),
   path.join("shared", "skills"),
   path.join("packages", "codex-adapter", "skills"),
   path.join("packages", "opencode-adapter", "skills"),

@@ -45,7 +45,7 @@ Use it when the team should share the behavior:
 - `memory.externalDocPaths`
 - `memory.embedding`
 - `goalMode`
-- `knowledgeWriter.externalSkill`
+- `knowledgeWriter.externalSkills`
 - `knowledgeWriter.model`
 - `knowledgeWriter.reasoningEffort`
 - `knowledgeWriter.datedSectionsToKeep`
@@ -65,7 +65,7 @@ Example personal override:
 {
   "goalMode": false,
   "knowledgeWriter": {
-    "externalSkill": "my-two-pass-knowledge-writer",
+    "externalSkills": ["truth-writer", "adr-writer"],
     "model": "gpt-5.6-terra",
     "reasoningEffort": "high"
   }
@@ -113,7 +113,7 @@ Keep nested shape only where the field actually has substructure:
 ```json
 {
   "knowledgeWriter": {
-    "externalSkill": null,
+    "externalSkills": [],
     "model": null,
     "reasoningEffort": "medium",
     "datedSectionsToKeep": 6
@@ -134,7 +134,7 @@ The default local model is `jinaai/jina-embeddings-v2-base-zh` at 768 dimensions
 - `Snowflake/snowflake-arctic-embed-m-v2.0` at 768 dimensions for projects that accept higher model, CPU, and memory cost.
 - `Snowflake/snowflake-arctic-embed-xs` at 384 dimensions for explicit low-resource or English-oriented use. It is not recommended for Chinese-heavy recall because the claw search comparison found substantial Chinese semantic-recall regressions.
 
-`knowledgeWriter.externalSkill = null` runs the built-in `claw-kit:knowledge-writer` in one consistency-aware pass. A non-null value overrides that writer skill. `model = null` uses the host default model. `reasoningEffort` accepts `minimal`, `low`, `medium`, `high`, or `xhigh`. `datedSectionsToKeep` is a non-negative integer; it caps only complete evolution sections marked by `<!-- dated: YYYY-MM-DD -->` in each canonical document changed by the built-in writer. It does not limit current prose by length or age.
+The finalizer always runs an ordered documentation-governance skill sequence with one unattended pass per skill. `knowledgeWriter.externalSkills` replaces the default sequence; an empty or absent list resolves to `["claw-kit:knowledge-writer"]`. Every governance skill receives the same unattended prompt, while a skill-specific claw session workflow is required only when that skill's runtime contract needs it. `model = null` uses the host default model. `reasoningEffort` accepts `minimal`, `low`, `medium`, `high`, or `xhigh`. `datedSectionsToKeep` is a non-negative integer; it caps only complete evolution sections marked by `<!-- dated: YYYY-MM-DD -->` in each canonical document changed by the built-in writer. It does not limit current prose by length or age.
 
 `autoCommitKnowledge` defaults to `true`. When `false`, knowledge finalization still writes and governs Truth/ADR documents, records the result, and queues index refresh, but leaves those document changes uncommitted in the working tree.
 

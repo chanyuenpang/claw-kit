@@ -3,6 +3,7 @@
 ## Source to converted-home mapping
 
 - Triggers and task-ownership routing: `SKILL.md`.
+- Repository ownership: the skill lives under `.agents/skills` and is excluded from the published Codex plugin payload.
 - Whole-task and independently owned stage entry: `SKILL.md` routes to the adjacent `TEMPLATE.json`; mixed stages and unavailable tooling route to `FALLBACK.md`.
 - Repository authority and distribution model: template tasks 1-2 and `references/release-protocol.md`, grounded in root `AGENTS.md`, `DISTRIBUTION.md`, and the release ADR.
 - Version alignment, generated template synchronization, lockfile, changelog, and plugin manifest: template task 2.

@@ -16,7 +16,8 @@ export type MemoryEmbeddingConfig = {
 export type KnowledgeWriterReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
 
 export type KnowledgeWriterConfig = {
-  externalSkill?: string | null;
+  /** Ordered external finalizer skills. Each runs in sequence. */
+  externalSkills?: string[];
   model?: string | null;
   reasoningEffort?: KnowledgeWriterReasoningEffort;
   datedSectionsToKeep?: number;

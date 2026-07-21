@@ -4,6 +4,14 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## Unreleased
 
+## [0.1.93] - 2026-07-21
+
+### Changed
+
+- Replaced the single external knowledge-writer skill with an ordered `externalSkills` governance sequence and migration from the retired Truth/ADR fields
+- Unified unattended finalizer prompting across built-in and external governance skills while preventing durable documentation from referencing transient finalization inputs
+- `release-claw-kit` is now a repository-local maintainer skill and is no longer included in the published Codex plugin
+
 ## [0.1.92] - 2026-07-21
 
 ### Added

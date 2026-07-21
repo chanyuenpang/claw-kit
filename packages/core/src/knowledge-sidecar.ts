@@ -53,6 +53,7 @@ export type KnowledgeFinalizationJob = {
   adrResponse?: string;
   /** Legacy aggregate fields retained for job observability and older readers. */
   sdkThreadId?: string;
+  sdkThreadIds?: string[];
   finalResponse?: string;
   truthEncoding?: {
     checkedFiles: number;
@@ -270,7 +271,7 @@ export function tryCaptureKnowledgeStop(input: {
             projectRoot: input.project.projectRoot,
             taskName: taskNameFromPlanPath(registry.pendingTurnOwner.planPath),
             writer: {
-              externalSkill: input.project.projectConfig?.knowledgeWriter?.externalSkill ?? null,
+              externalSkills: input.project.projectConfig?.knowledgeWriter?.externalSkills ?? [],
               model: input.project.projectConfig?.knowledgeWriter?.model ?? null,
               reasoningEffort: input.project.projectConfig?.knowledgeWriter?.reasoningEffort ?? "medium",
               datedSectionsToKeep:

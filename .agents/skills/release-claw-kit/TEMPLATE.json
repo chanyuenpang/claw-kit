@@ -1,6 +1,6 @@
 {
   "id": "release-claw-kit",
-  "version": "0.1.92",
+  "version": "0.1.93",
   "title": "release-claw-kit",
   "status": "process.active",
   "goal": {
@@ -154,7 +154,7 @@
     {
       "id": 8,
       "title": "Verify installation and close out",
-      "detail": "Verify the Windows claw shim path, claw --version, npm list -g @veewo/claw --depth=0, and a repo-local claw context smoke that proves current flat project config is not rewritten to legacy nested fields. Verify the official marketplace origin, enabled claw-kit@claw-kit identity, source and active cache plugin versions, matching manifest hashes, and expected skill payload including release-claw-kit. Confirm local identity is disabled/absent. Restart Codex and start a new task before claiming the newly loaded skill version. Report the target version, release commit/tag, exact GitHub/npm/plugin evidence, checks run, and any unverified restart-dependent state.",
+      "detail": "Verify the Windows claw shim path, claw --version, npm list -g @veewo/claw --depth=0, and a repo-local claw context smoke that proves current flat project config is not rewritten to legacy nested fields. Verify the official marketplace origin, enabled claw-kit@claw-kit identity, source and active cache plugin versions, matching manifest hashes, and expected public skill payload. Confirm release-claw-kit remains repository-local and the local plugin identity is disabled/absent. Restart Codex and start a new task before claiming the newly loaded skill version. Report the target version, release commit/tag, exact GitHub/npm/plugin evidence, checks run, and any unverified restart-dependent state.",
       "status": "pending"
     }
   ],

@@ -1456,6 +1456,7 @@ async function runInternalKnowledgeFinalize(args: string[]): Promise<void> {
       status: "succeeded",
       finishedAt,
       ...(writerRun.threadId ? { sdkThreadId: writerRun.threadId } : {}),
+      ...(writerRun.threadIds ? { sdkThreadIds: writerRun.threadIds } : {}),
       finalResponse: writerRun.finalResponse,
       ...(knowledgeGovernance ? { knowledgeGovernance } : {}),
       truthEncoding,
@@ -1485,6 +1486,7 @@ async function runInternalKnowledgeFinalize(args: string[]): Promise<void> {
 type KnowledgeWriterRunResult = {
   finalResponse: string;
   threadId?: string;
+  threadIds?: string[];
 };
 
 const BUILT_IN_KNOWLEDGE_WRITER_SKILL = "claw-kit:knowledge-writer";
@@ -1495,25 +1497,39 @@ const BUILT_IN_KNOWLEDGE_WRITER_SKILL = "claw-kit:knowledge-writer";
  * legacy jobs without a host field keep using the versioned Codex SDK runtime.
  */
 async function runKnowledgeWriterForJob(running: KnowledgeFinalizationJob): Promise<KnowledgeWriterRunResult> {
-  if (running.host === "opencode") {
-    const result = runOpencodeKnowledgeWriter({
-      prompt: buildKnowledgeWriterPrompt(running),
-      projectRoot: running.projectRoot,
-      writer: running.writer ?? null,
-    });
-    assertCompletedKnowledgeWriterSession(result.threadId ?? null);
-    return {
-      finalResponse: result.finalResponse,
-      ...(result.threadId ? { threadId: result.threadId } : {}),
-    };
+  const skills = resolveKnowledgeWriterSkills(running);
+  const results: KnowledgeWriterRunResult[] = [];
+  for (const skill of skills) {
+    if (running.host === "opencode") {
+      const result = runOpencodeKnowledgeWriter({
+        prompt: buildKnowledgeWriterPrompt(running, skill),
+        projectRoot: running.projectRoot,
+        writer: running.writer ?? null,
+      });
+      if (isBuiltInKnowledgeWriterSkill(skill)) {
+        assertCompletedKnowledgeWriterSession(result.threadId ?? null);
+      }
+      results.push({
+        finalResponse: result.finalResponse,
+        ...(result.threadId ? { threadId: result.threadId } : {}),
+      });
+      continue;
+    }
+    if (running.host !== undefined && running.host !== null && running.host !== "codex") {
+      throw new Error(`Unsupported knowledge finalization job host "${String(running.host)}".`);
+    }
+    results.push(await runCodexSdkWriter(running, skill));
   }
-  if (running.host !== undefined && running.host !== null && running.host !== "codex") {
-    throw new Error(`Unsupported knowledge finalization job host "${String(running.host)}".`);
-  }
-  return runCodexSdkWriter(running);
+  const threadIds = results.flatMap((result) => result.threadId ? [result.threadId] : []);
+  const last = results.at(-1);
+  return {
+    finalResponse: results.map((result) => result.finalResponse).join("\n\n"),
+    ...(last?.threadId ? { threadId: last.threadId } : {}),
+    ...(threadIds.length > 0 ? { threadIds } : {}),
+  };
 }
 
-async function runCodexSdkWriter(running: KnowledgeFinalizationJob): Promise<KnowledgeWriterRunResult> {
+async function runCodexSdkWriter(running: KnowledgeFinalizationJob, skill: string): Promise<KnowledgeWriterRunResult> {
   const sdk = await import(pathToFileURL(resolveCodexSdkEntryPath()).href) as {
     Codex: new (options?: { env?: Record<string, string>; codexPathOverride?: string }) => {
       startThread(options: Record<string, unknown>): {
@@ -1540,8 +1556,10 @@ async function runCodexSdkWriter(running: KnowledgeFinalizationJob): Promise<Kno
       ? { modelReasoningEffort: writer.reasoningEffort }
       : {}),
   });
-  const turn = await thread.run(buildKnowledgeWriterPrompt(running));
-  assertCompletedKnowledgeWriterSession(thread.id);
+  const turn = await thread.run(buildKnowledgeWriterPrompt(running, skill));
+  if (isBuiltInKnowledgeWriterSkill(skill)) {
+    assertCompletedKnowledgeWriterSession(thread.id);
+  }
   return {
     finalResponse: turn.finalResponse,
     ...(thread.id ? { threadId: thread.id } : {}),
@@ -1590,24 +1608,28 @@ function knowledgeFinalizerEnvironment(): Record<string, string> {
   return env;
 }
 
-function buildKnowledgeWriterPrompt(job: KnowledgeFinalizationJob): string {
-  const writerSkill = resolveKnowledgeWriterSkill(job);
+function buildKnowledgeWriterPrompt(job: KnowledgeFinalizationJob, writerSkill: string): string {
   return [
-    `Use the ${writerSkill} skill and follow it exactly.`,
-    "Supplied materials:",
+    `Apply the ${writerSkill} skill's documentation-governance rules to the supplied materials and update the governed project documentation. Work unattended; do not request review or confirmation. Use task status to distinguish completed work from pending or blocked intent, and never present requirements or intentions as results. Skip and report ambiguous or unsafe changes.`,
+    "Materials:",
     `- ${job.planPath}`,
     `- ${job.reportPath}`,
     `Finalization id: ${job.finalizeId}`,
-    "Interpret all supplied materials by their content, not by a fixed filename, field, record shape, or serialization format. Extract conclusion-bearing evidence wherever it appears. Use task status when present to interpret completed, pending, and blocked scope, but do not treat task titles or descriptions as an execution log or promote requirements and intentions into results. Do not edit source inputs, dispatch subagents, or repeat implementation or test verification.",
+    "Interpret inputs by content, regardless of filename or schema. Do not reference or link to the supplied materials in governed documentation; they are transient and will be destroyed after finalization. Do not modify inputs, delegate, reimplement, or rerun tests.",
   ].join("\n");
 }
 
-function resolveKnowledgeWriterSkill(job: KnowledgeFinalizationJob): string {
-  return job.writer?.externalSkill?.trim() || BUILT_IN_KNOWLEDGE_WRITER_SKILL;
+function resolveKnowledgeWriterSkills(job: KnowledgeFinalizationJob): string[] {
+  const configured = job.writer?.externalSkills?.map((skill) => skill.trim()).filter(Boolean);
+  return configured && configured.length > 0 ? configured : [BUILT_IN_KNOWLEDGE_WRITER_SKILL];
+}
+
+function isBuiltInKnowledgeWriterSkill(skill: string): boolean {
+  return skill === BUILT_IN_KNOWLEDGE_WRITER_SKILL;
 }
 
 function usesBuiltInKnowledgeWriter(job: KnowledgeFinalizationJob): boolean {
-  return resolveKnowledgeWriterSkill(job) === BUILT_IN_KNOWLEDGE_WRITER_SKILL;
+  return resolveKnowledgeWriterSkills(job).every(isBuiltInKnowledgeWriterSkill);
 }
 
 function launchKnowledgeFinalizationWorker(jobPath: string, cwd: string): void {

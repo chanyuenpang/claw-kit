@@ -31,7 +31,7 @@ Important consequences:
 
 - local overrides can replace a single field without copying the full object
 - arrays are replacement values, not append-only patches
-- explicit `null` can intentionally clear inherited values such as `knowledgeWriter.externalSkill`
+- an empty `knowledgeWriter.externalSkills` array intentionally selects the built-in writer
 - protocol repair does not write local override state back into canonical `project.json`
 - legacy nested inputs may be tolerated by repair in `.claw/project.json`, but new override examples should use the flat canonical field shape
 
@@ -73,9 +73,9 @@ Together, the canonical config plus local override model gives longer-running pr
 
 ### Knowledge writer
 
-- `knowledgeWriter.externalSkill`
-  - optional skill override used by the combined knowledge-writer pass
-  - use `null` for the built-in consistency-aware `claw-kit:knowledge-writer`
+- `knowledgeWriter.externalSkills`
+  - ordered documentation-governance skill sequence replacing the default `["claw-kit:knowledge-writer"]`; each receives the same unattended prompt in a separate sequential pass
+  - use an empty array for the built-in consistency-aware `claw-kit:knowledge-writer`
 
 ### Context and memory
 
@@ -103,7 +103,7 @@ Together, the canonical config plus local override model gives longer-running pr
   - default: `true`
   - when `false`, returned `workflowGuidance` suppresses `goalMode`
 - `knowledgeWriter`
-  - `externalSkill`: optional skill override for the combined finalizer prompt; `null` uses `claw-kit:knowledge-writer`
+  - `externalSkills`: ordered skill overrides for sequential finalizer prompts; an empty array uses `claw-kit:knowledge-writer`
   - `model`: optional Codex model override for the asynchronous auto-doc writer; `null` uses the SDK default
   - `reasoningEffort`: writer reasoning depth; one of `minimal`, `low`, `medium`, `high`, or `xhigh`
   - `datedSectionsToKeep`: maximum complete dated evolution sections retained in each Truth or ADR document changed by the built-in writer; default `6`
@@ -149,7 +149,7 @@ Older nested inputs should be rewritten into the flat fields above during protoc
   },
   "goalMode": true,
   "knowledgeWriter": {
-    "externalSkill": null,
+    "externalSkills": [],
     "model": null,
     "reasoningEffort": "medium",
     "datedSectionsToKeep": 6
@@ -287,7 +287,7 @@ With this config, planning-enabled default plans still start in `process.discuss
 {
   "goalMode": false,
   "knowledgeWriter": {
-    "externalSkill": null,
+    "externalSkills": [],
     "model": "gpt-5.6-sol",
     "reasoningEffort": "high"
   }
@@ -323,7 +323,7 @@ With this config, planning-enabled default plans still start in `process.discuss
 ```json
 {
   "knowledgeWriter": {
-    "externalSkill": "external-knowledge-writer"
+    "externalSkills": ["external-knowledge-writer"]
   }
 }
 ```
@@ -335,7 +335,7 @@ With this config, planning-enabled default plans still start in `process.discuss
 ```json
 {
   "knowledgeWriter": {
-    "externalSkill": null
+    "externalSkills": []
   }
 }
 ```

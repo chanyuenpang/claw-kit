@@ -73,7 +73,7 @@ export const configGuideContent = {
         title: "Auto-doc writer model and reasoning",
         summary: "Configures the Codex SDK writer used after a plan closes.",
         detail: "Set model to null to use the SDK default. reasoningEffort accepts minimal, low, medium, high, or xhigh. datedSectionsToKeep caps only complete dated evolution sections in documents changed by the built-in writer; the default is 6.",
-        example: `"knowledgeWriter": { "externalSkill": null, "model": null, "reasoningEffort": "medium", "datedSectionsToKeep": 6 }`
+        example: `"knowledgeWriter": { "externalSkills": [], "model": null, "reasoningEffort": "medium", "datedSectionsToKeep": 6 }`
       },
       {
         id: "defaultPlanTemplate",
@@ -100,12 +100,12 @@ export const configGuideContent = {
         example: `"externalPlanningSkill": "team-planner"`
       },
       {
-        id: "knowledgeWriter.externalSkill",
+        id: "knowledgeWriter.externalSkills",
         group: "Extension",
-        title: "Project-selected knowledge writer",
-        summary: "Overrides the skill used by the combined knowledge-writer pass.",
-        detail: "Keep it null to run the built-in consistency-aware claw-kit:knowledge-writer; a non-null value overrides that single finalizer prompt.",
-        example: `"knowledgeWriter": { "externalSkill": "external-knowledge-writer" }`
+        title: "Ordered knowledge writers",
+        summary: "Runs project-selected knowledge writer skills in configuration order.",
+        detail: "The finalizer always runs an ordered governance-skill sequence with the same unattended prompt. This array replaces the default [claw-kit:knowledge-writer]; external skills do not need a claw session workflow.",
+        example: `"knowledgeWriter": { "externalSkills": ["truth-writer", "adr-writer"] }`
       },
       {
         id: "memory.enabled",
@@ -210,7 +210,7 @@ export const configGuideContent = {
         title: "auto-doc writer 的模型与思考深度",
         summary: "配置 plan closeout 后由 Codex SDK 启动的知识 writer。",
         detail: "model 为 null 时使用 SDK 默认模型；reasoningEffort 可选 minimal、low、medium、high 或 xhigh。datedSectionsToKeep 只限制内置 writer 本次改动文档中的完整 dated 演化区块数量，默认值为 6。",
-        example: `"knowledgeWriter": { "externalSkill": null, "model": null, "reasoningEffort": "medium", "datedSectionsToKeep": 6 }`
+        example: `"knowledgeWriter": { "externalSkills": [], "model": null, "reasoningEffort": "medium", "datedSectionsToKeep": 6 }`
       },
       {
         id: "defaultPlanTemplate",
@@ -237,12 +237,12 @@ export const configGuideContent = {
         example: `"externalPlanningSkill": "team-planner"`
       },
       {
-        id: "knowledgeWriter.externalSkill",
+        id: "knowledgeWriter.externalSkills",
         group: "扩展",
-        title: "项目指定的 knowledge writer",
-        summary: "覆盖两个聚焦 writer 阶段所使用的 skill。",
-        detail: "保持 null 时运行内置的一致性感知 claw-kit:knowledge-writer；非 null 值会覆盖这一轮 finalizer prompt。",
-        example: `"knowledgeWriter": { "externalSkill": "external-knowledge-writer" }`
+        title: "有序 knowledge writer",
+        summary: "按配置顺序运行项目指定的 knowledge writer skill。",
+        detail: "finalizer 始终使用同一份无人值守 prompt 运行有序治理 skill 序列。该数组替换默认的 [claw-kit:knowledge-writer]；外部 skill 不要求 claw session workflow。",
+        example: `"knowledgeWriter": { "externalSkills": ["truth-writer", "adr-writer"] }`
       },
       {
         id: "memory.enabled",
@@ -285,7 +285,7 @@ export const configGuideContent = {
   "planning": true,
   "goalMode": true,
   "autoCommitKnowledge": true,
-  "knowledgeWriter": { "externalSkill": null, "model": null, "reasoningEffort": "medium" },
+  "knowledgeWriter": { "externalSkills": [], "model": null, "reasoningEffort": "medium" },
   "gitnexus": false
 }`
       },
@@ -293,7 +293,7 @@ export const configGuideContent = {
         title: "个人覆盖配置",
         body: `{
   "goalMode": false,
-  "knowledgeWriter": { "externalSkill": null, "model": "gpt-5.6-sol", "reasoningEffort": "high" },
+  "knowledgeWriter": { "externalSkills": [], "model": "gpt-5.6-sol", "reasoningEffort": "high" },
   "defaultPlanTemplate": "my-personal-template"
 }`
       },

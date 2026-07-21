@@ -312,7 +312,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
     contextPaths: string[];
     goalMode: boolean;
     knowledgeWriter: {
-      externalSkill: string | null;
+      externalSkills: string[];
       model: string | null;
       reasoningEffort: string;
       datedSectionsToKeep: number;
@@ -354,7 +354,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
     contextPaths: ["docs/project-guide.md"],
     goalMode: true,
     knowledgeWriter: {
-      externalSkill: "external-knowledge-writer",
+      externalSkills: ["external-knowledge-writer"],
       model: null,
       reasoningEffort: "medium",
       datedSectionsToKeep: 6,
@@ -659,9 +659,9 @@ test("writePlan loads a global user template when the project does not define on
 test("writePlan loads a project skill-local template from TEMPLATE.json", async () => {
   const root = createFixture("plan-template-project-skill-local");
   initProject({ cwd: root, projectName: "Project Skill Local Template", planning: true, force: true });
-  fs.mkdirSync(path.join(root, "skills", "example-skill-template"), { recursive: true });
+  fs.mkdirSync(path.join(root, ".agents", "skills", "example-skill-template"), { recursive: true });
   fs.writeFileSync(
-    path.join(root, "skills", "example-skill-template", "TEMPLATE.json"),
+    path.join(root, ".agents", "skills", "example-skill-template", "TEMPLATE.json"),
     `${JSON.stringify(createPlanLikeTemplate({
       id: "example-skill-template",
       tasks: [
@@ -2513,7 +2513,7 @@ test("process entry returns the first task and task completion returns the next 
         autoCommitKnowledge: true,
         goalMode: true,
         knowledgeWriter: {
-          externalSkill: "team-knowledge-writer",
+          externalSkills: ["team-knowledge-writer"],
           model: "gpt-team-writer",
           reasoningEffort: "medium",
         },
@@ -2618,7 +2618,7 @@ test("resolveContext deep-merges project-override.json and preserves explicit nu
         autoCommitKnowledge: false,
         goalMode: false,
         knowledgeWriter: {
-          externalSkill: null,
+          externalSkills: [],
           reasoningEffort: "high",
         },
         contextPaths: ["docs/personal.md"],
@@ -2640,7 +2640,7 @@ test("resolveContext deep-merges project-override.json and preserves explicit nu
   assert.equal(result.project.projectConfig?.autoCommitKnowledge, false);
   assert.equal(result.project.projectConfig?.goalMode, false);
   assert.deepEqual(result.project.projectConfig?.knowledgeWriter, {
-    externalSkill: null,
+    externalSkills: [],
     model: "gpt-team-writer",
     reasoningEffort: "high",
     datedSectionsToKeep: 6,
@@ -2660,7 +2660,7 @@ test("resolveContext migrates a legacy writer skill from project-override.json o
 
   const result = resolveContext(root);
 
-  assert.equal(result.project.projectConfig?.knowledgeWriter?.externalSkill, "personal-knowledge-writer");
+  assert.deepEqual(result.project.projectConfig?.knowledgeWriter?.externalSkills, ["personal-knowledge-writer"]);
 });
 
 test("resolveContext deep-merges defaultPlanTemplate from project-override.json", () => {
@@ -4964,7 +4964,7 @@ test("Codex workflow guidance ignores legacy external writer routing", async () 
 test("direct workflow guidance queues refresh without extra agent workflow", () => {
   const guidance = buildDirectWorkflowGuidance({
     projectConfig: {
-      knowledgeWriter: { externalSkill: "external-knowledge-writer" },
+      knowledgeWriter: { externalSkills: ["external-knowledge-writer"] },
     },
   });
 
@@ -5062,7 +5062,7 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
     contextPaths: string[];
     goalMode: boolean;
     knowledgeWriter: {
-      externalSkill: string | null;
+      externalSkills: string[];
       model: string | null;
       reasoningEffort: string;
       datedSectionsToKeep: number;
@@ -5095,7 +5095,7 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
   assert.deepEqual(projectConfig.contextPaths, []);
   assert.equal(projectConfig.goalMode, true);
   assert.deepEqual(projectConfig.knowledgeWriter, {
-    externalSkill: null,
+    externalSkills: [],
     model: null,
     reasoningEffort: "medium",
     datedSectionsToKeep: 6,
@@ -5151,7 +5151,7 @@ test("ensureProjectProtocol removes legacy default local modelCacheDir so runtim
   const projectConfig = JSON.parse(fs.readFileSync(result.projectJsonPath, "utf-8")) as {
     goalMode: boolean;
     knowledgeWriter: {
-      externalSkill: string | null;
+      externalSkills: string[];
       model: string | null;
       reasoningEffort: string;
       datedSectionsToKeep: number;
@@ -5170,7 +5170,7 @@ test("ensureProjectProtocol removes legacy default local modelCacheDir so runtim
   assert.equal(result.changed, true);
   assert.equal(projectConfig.goalMode, true);
   assert.deepEqual(projectConfig.knowledgeWriter, {
-    externalSkill: null,
+    externalSkills: [],
     model: null,
     reasoningEffort: "medium",
     datedSectionsToKeep: 6,
@@ -5181,27 +5181,27 @@ test("ensureProjectProtocol removes legacy default local modelCacheDir so runtim
   });
 });
 
-test("ensureProjectProtocol migrates legacy truth and ADR skill fields into knowledgeWriter.externalSkill", () => {
+test("ensureProjectProtocol migrates legacy truth and ADR skill fields into knowledgeWriter.externalSkills", () => {
   const cases = [
     {
       name: "truth-only",
       legacy: { externalTruthSkill: "team-knowledge-writer", externalAdrSkill: null },
-      expected: "team-knowledge-writer",
+      expected: ["team-knowledge-writer"],
     },
     {
       name: "adr-only",
       legacy: { externalTruthSkill: null, externalAdrSkill: "team-knowledge-writer" },
-      expected: "team-knowledge-writer",
+      expected: ["team-knowledge-writer"],
     },
     {
       name: "matching",
       legacy: { externalTruthSkill: "team-knowledge-writer", externalAdrSkill: "team-knowledge-writer" },
-      expected: "team-knowledge-writer",
+      expected: ["team-knowledge-writer"],
     },
     {
       name: "conflicting",
       legacy: { externalTruthSkill: "truth-only-writer", externalAdrSkill: "adr-only-writer" },
-      expected: null,
+      expected: ["truth-only-writer", "adr-only-writer"],
     },
   ] as const;
 
@@ -5216,7 +5216,7 @@ test("ensureProjectProtocol migrates legacy truth and ADR skill fields into know
 
     const result = ensureProjectProtocol(root);
     const repaired = JSON.parse(fs.readFileSync(result.projectJsonPath, "utf-8")) as Record<string, unknown>;
-    assert.equal(((repaired.knowledgeWriter as Record<string, unknown>).externalSkill), item.expected);
+    assert.deepEqual(((repaired.knowledgeWriter as Record<string, unknown>).externalSkills), item.expected);
     assert.equal("externalTruthSkill" in repaired, false);
     assert.equal("externalAdrSkill" in repaired, false);
   }

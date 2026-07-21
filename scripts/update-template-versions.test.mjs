@@ -16,6 +16,7 @@ test("template release updater aligns plugin and built-in template versions", as
 
   await fs.writeFile(path.join(repoRoot, "package.json"), '{"version":"1.2.3"}\n', "utf8");
   const templatePaths = [
+    path.join(".agents", "skills", "release-demo", "TEMPLATE.json"),
     path.join("shared", "skills", "demo", "TEMPLATE.json"),
     path.join("packages", "codex-adapter", "skills", "demo", "TEMPLATE.json"),
     path.join("packages", "opencode-adapter", "skills", "demo", "TEMPLATE.json"),
@@ -35,8 +36,8 @@ test("template release updater aligns plugin and built-in template versions", as
   );
 
   const before = await inspectTemplateVersions({ repoRoot });
-  assert.equal(before.templateCount, 3);
-  assert.equal(before.issues.length, 4);
+  assert.equal(before.templateCount, 4);
+  assert.equal(before.issues.length, 5);
   await assert.rejects(
     assertTemplateVersionsAligned({ repoRoot }),
     /sync:template-versions[\s\S]*sync:shared-skills/u,
@@ -44,7 +45,7 @@ test("template release updater aligns plugin and built-in template versions", as
 
   const update = await updateTemplateVersions({ repoRoot });
   assert.equal(update.version, "1.2.3");
-  assert.equal(update.updated.length, 4);
+  assert.equal(update.updated.length, 5);
   await assert.doesNotReject(assertTemplateVersionsAligned({ repoRoot }));
 
   for (const relativePath of templatePaths) {

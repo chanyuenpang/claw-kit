@@ -149,7 +149,7 @@ function normalizeProjectConfig(raw: unknown, projectRoot: string): ProjectConfi
     autoCommitKnowledge: readBooleanConfig(source?.autoCommitKnowledge, true),
     goalMode: readBooleanConfig(source?.goalMode, true),
     knowledgeWriter: {
-      externalSkill: resolveExternalWriterSkill(source, sourceKnowledgeWriter),
+      externalSkills: resolveExternalWriterSkills(source, sourceKnowledgeWriter),
       model: normalizeOptionalSkill(sourceKnowledgeWriter?.model),
       reasoningEffort: readKnowledgeWriterReasoningEffort(
         sourceKnowledgeWriter?.reasoningEffort,
@@ -219,7 +219,7 @@ function validateProjectConfig(raw: unknown, issues: ProjectProtocolIssue[]): vo
   requireBoolean(config, "goalMode", issues);
   const knowledgeWriter = requireObject(config, "knowledgeWriter", issues);
   if (knowledgeWriter) {
-    requireNullableString(knowledgeWriter, "externalSkill", issues, "knowledgeWriter.externalSkill");
+    requireOptionalStringArray(knowledgeWriter, "externalSkills", issues, "knowledgeWriter.externalSkills");
     requireNullableString(knowledgeWriter, "model", issues, "knowledgeWriter.model");
     requireKnowledgeWriterReasoningEffort(
       knowledgeWriter,
@@ -252,19 +252,20 @@ function validateProjectConfig(raw: unknown, issues: ProjectProtocolIssue[]): vo
 
 }
 
-function resolveExternalWriterSkill(
+function resolveExternalWriterSkills(
   source: Record<string, unknown> | null,
   knowledgeWriter: Record<string, unknown> | null,
-): string | null {
-  if (knowledgeWriter && Object.prototype.hasOwnProperty.call(knowledgeWriter, "externalSkill")) {
-    return normalizeOptionalSkill(knowledgeWriter.externalSkill);
+): string[] {
+  if (knowledgeWriter && Object.prototype.hasOwnProperty.call(knowledgeWriter, "externalSkills")) {
+    return normalizeStringArray(knowledgeWriter.externalSkills);
   }
   const truthSkill = normalizeOptionalSkill(source?.externalTruthSkill);
   const adrSkill = normalizeOptionalSkill(source?.externalAdrSkill);
-  if (truthSkill && adrSkill && truthSkill !== adrSkill) {
-    return null;
+  if (truthSkill && adrSkill) {
+    return truthSkill === adrSkill ? [truthSkill] : [truthSkill, adrSkill];
   }
-  return truthSkill ?? adrSkill;
+  const legacySkill = truthSkill ?? adrSkill;
+  return legacySkill ? [legacySkill] : [];
 }
 
 function requireString(
@@ -373,6 +374,17 @@ function requireStringArray(
   const value = source[key];
   if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
     issues.push({ path: label, message: "Field must be an array of strings." });
+  }
+}
+
+function requireOptionalStringArray(
+  source: Record<string, unknown>,
+  key: string,
+  issues: ProjectProtocolIssue[],
+  label = key,
+): void {
+  if (key in source) {
+    requireStringArray(source, key, issues, label);
   }
 }
 

@@ -149,7 +149,7 @@ function migrateLegacyWriterConfigLayer(config: ProjectConfig | undefined): Proj
   const hasLegacy = Object.prototype.hasOwnProperty.call(source, "externalTruthSkill")
     || Object.prototype.hasOwnProperty.call(source, "externalAdrSkill");
   const hasCanonical = source.knowledgeWriter
-    && Object.prototype.hasOwnProperty.call(source.knowledgeWriter, "externalSkill");
+    && Object.prototype.hasOwnProperty.call(source.knowledgeWriter, "externalSkills");
   if (!hasLegacy || hasCanonical) {
     return config;
   }
@@ -158,7 +158,7 @@ function migrateLegacyWriterConfigLayer(config: ProjectConfig | undefined): Proj
     ...rest,
     knowledgeWriter: {
       ...(source.knowledgeWriter ?? {}),
-      externalSkill: resolveExternalWriterSkill(source),
+      externalSkills: resolveExternalWriterSkills(source),
     },
   };
 }
@@ -182,7 +182,7 @@ function normalizeProjectConfig(projectConfig: ProjectConfig): ProjectConfig {
     autoCommitKnowledge: projectConfig.autoCommitKnowledge !== false,
     goalMode: typeof projectConfig.goalMode === "boolean" ? projectConfig.goalMode : true,
     knowledgeWriter: {
-      externalSkill: resolveExternalWriterSkill(legacyConfig),
+      externalSkills: resolveExternalWriterSkills(legacyConfig),
       model: normalizeOptionalSkill(projectConfig.knowledgeWriter?.model),
       reasoningEffort: normalizeKnowledgeWriterReasoningEffort(
         projectConfig.knowledgeWriter?.reasoningEffort,
@@ -211,24 +211,34 @@ function normalizeNonNegativeInteger(value: unknown, fallback: number): number {
   return Number.isInteger(value) && (value as number) >= 0 ? value as number : fallback;
 }
 
-function resolveExternalWriterSkill(
+function resolveExternalWriterSkills(
   projectConfig: ProjectConfig & {
     externalTruthSkill?: string | null;
     externalAdrSkill?: string | null;
   },
-): string | null {
+): string[] {
   if (
     projectConfig.knowledgeWriter
-    && Object.prototype.hasOwnProperty.call(projectConfig.knowledgeWriter, "externalSkill")
+    && Object.prototype.hasOwnProperty.call(projectConfig.knowledgeWriter, "externalSkills")
   ) {
-    return normalizeOptionalSkill(projectConfig.knowledgeWriter.externalSkill);
+    return normalizeSkillArray(projectConfig.knowledgeWriter.externalSkills);
   }
   const truthSkill = normalizeOptionalSkill(projectConfig.externalTruthSkill);
   const adrSkill = normalizeOptionalSkill(projectConfig.externalAdrSkill);
-  if (truthSkill && adrSkill && truthSkill !== adrSkill) {
-    return null;
+  if (truthSkill && adrSkill) {
+    return truthSkill === adrSkill ? [truthSkill] : [truthSkill, adrSkill];
   }
-  return truthSkill ?? adrSkill;
+  const legacySkill = truthSkill ?? adrSkill;
+  return legacySkill ? [legacySkill] : [];
+}
+
+function normalizeSkillArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((skill) => normalizeOptionalSkill(skill))
+    .filter((skill): skill is string => skill !== null);
 }
 
 function normalizeKnowledgeWriterReasoningEffort(value: unknown): KnowledgeWriterReasoningEffort {

@@ -70,6 +70,7 @@ export function initProject(input: InitProjectInput): InitProjectResult {
   const projectName = input.projectName?.trim() || path.basename(projectRoot);
   const projectId = normalizeProjectId(input.projectId ?? projectName, projectRoot);
   const maxTasksToKeep = input.maxTasksToKeep ?? DEFAULT_MAX_TASKS_TO_KEEP;
+  const externalWriterSkill = normalizeOptionalSkill(input.externalWriterSkill);
   validateMaxTasksToKeep(maxTasksToKeep, projectRoot);
   const projectConfig: ProjectConfig = {
     version: normalizeVersion(input.version),
@@ -81,7 +82,7 @@ export function initProject(input: InitProjectInput): InitProjectResult {
     autoCommitKnowledge: true,
     goalMode: true,
     knowledgeWriter: {
-      externalSkill: normalizeOptionalSkill(input.externalWriterSkill),
+      externalSkills: externalWriterSkill ? [externalWriterSkill] : [],
       model: null,
       reasoningEffort: "medium",
       datedSectionsToKeep: DEFAULT_KNOWLEDGE_DATED_SECTIONS_TO_KEEP,
