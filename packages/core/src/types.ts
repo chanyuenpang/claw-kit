@@ -30,7 +30,6 @@ export type ProjectConfig = {
   maxTasksToKeep?: number;
   planning?: boolean;
   autoUpdate?: boolean;
-  autoCommitKnowledge?: boolean;
   goalMode?: boolean;
   knowledgeWriter?: KnowledgeWriterConfig;
   externalPlanningSkill?: string | null;
@@ -127,6 +126,7 @@ export type PlanDocument = {
   configOverride?: TemplateConfigOverride;
   status: PlanStatus;
   completedAt?: string;
+  updatedAt?: string;
   goal: {
     text: string;
   };
@@ -745,6 +745,7 @@ export type ArchivedTaskRecord = {
 export type TaskRetentionResult = {
   enabled: boolean;
   maxTasksToKeep: number;
+  archivedTasks: ArchivedTaskRecord[];
   archivedCurrentTask?: ArchivedTaskRecord;
   prunedArchivedTasks: ArchivedTaskRecord[];
 };

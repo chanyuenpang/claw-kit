@@ -17,7 +17,8 @@ session binding 已能稳定标识同一 thread 当前拥有的 root plan 或 su
 - `claw plan remove` 使用与 edit 相同的字段名，按精确值删除数组项。
 - task item 使用独立的 `claw task add/edit/remove/done` 命令。
 - 所有 mutation 默认作用于 session-bound 当前 plan/subplan；`--task-name` 与 `--plan-file` 仅作为无 binding 时的高级覆盖。
-- `--summary` 只表示 `plan.summary`；完成说明使用 `claw plan done --retrospective`；mutation audit 不要求 agent 提供。
+- `--summary` 只表示 `plan.summary`；`claw plan edit` 可写入 retrospective、what-worked、issue、follow-up 与 key-decision 等 closeout 字段；`--status end.completed` 仍要求 retrospective。
+- `claw plan done --retrospective` 只是把 closeout 字段和 `end.completed` 组成一次有序 `plan edit` 的快捷入口，不拥有独有的 completion-finalization 分支。project-scope workflow 中，任何请求 `end.*` 的 `plan edit` 与该快捷入口都使用同一 dispatcher 排队 completion refresh。
 - `claw plan start` 用显式 plan 字段和重复的 `--add-task <title> --detail <text>` 分组原子提交 planning 结果，再应用 current template task 的 `guidance.onPlanStart`；具体 activation transition 由 `cli-guided-plan-lifecycle.md` 拥有。
 
 ## Consequences
@@ -26,6 +27,7 @@ session binding 已能稳定标识同一 thread 当前拥有的 root plan 或 su
 - plan 与 task item 的职责边界明确，参数不再跨对象复用。
 - root plan 与 subplan 使用完全相同的 mutation 命令；binding 切换决定当前目标。
 - 数组删除采用精确值匹配；调用方可先通过 `claw plan show` 获取原值。
+- project-scope workflow 的不同完成命令入口不会遗漏 retention、memory reindex 或适用的 GitNexus refresh；`end.completed`、`end.closed` 与 `end.leave` 的最终状态保持同一收尾派发边界。
 - 旧通用输入会作为未知参数失败，避免静默 no-op 或继续诱导 agent 使用旧路径。
 
 ## Related Code

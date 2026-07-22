@@ -21,7 +21,6 @@ test("config guide content model covers every supported project.json field", asy
     "maxTasksToKeep",
     "planning",
     "goalMode",
-    "autoCommitKnowledge",
     "knowledgeWriter",
     "defaultPlanTemplate",
     "contextPaths",

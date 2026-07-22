@@ -4,6 +4,21 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## Unreleased
 
+## [0.1.95] - 2026-07-22
+
+### Added
+
+- New project tasks are organized under date-scoped directories, with lock-protected daily maintenance that archives expired task and session state.
+- Added `claw plan sync` to restore Codex host progress and Goal Mode after a recovered active workflow.
+
+### Changed
+
+- Plan completion now records retrospective fields atomically before entering the completed state, and task lookups support both legacy and date-scoped layouts.
+
+### Fixed
+
+- Knowledge finalization no longer creates implicit Git commits, preserving caller-owned working tree state.
+
 ## [0.1.94] - 2026-07-22
 
 ### Added

@@ -35,7 +35,7 @@ Accepted
 - subplan create 把 binding 切到 child，subplan done 切回 `parentPlan`，root plan done 删除 binding
 - 恢复成功时，只注入最小 workflow snapshot 和基于当前 canonical state 重算得到的 `workflowGuidance`
 - 恢复成功时，额外把当前 plan content 放进 recovered JSON / additional prompt surface，但仍然保持最小化，不重复 project root、`.claw` 路径或 raw 计划历史
-- 对恢复出的 `process.active` Codex plan，`SessionStart` 仍然只注入文本，不直接调用原生 host tool；它必须要求固定 Codex driver 在继续前运行只读 `claw plan sync`。该命令从当前 canonical plan 重建 recovery guidance，并通过既有 host-action consumer 同步 `update_plan` 与 `create_goal`。
+- 对恢复出的 `process.active` Codex plan，`SessionStart` 仍然只注入文本，不直接调用原生 host tool；它必须要求固定 Codex driver 在继续前运行只读 `claw plan sync`。该命令从当前 canonical plan 和 effective project config 重建 recovery guidance，并通过既有 host-action consumer 同步非空 `update_plan`；只有 `goalMode` 未被 project 或个人 override 设为 `false` 时才创建 Goal。
 - `SessionStart` 生成 additional prompt surface 时，必须消费 `startupRecovery.versionSync`，把 CLI 版本落后、是否存在已发布更新、`autoUpdate` 是否开启，以及下一步应否先执行更新 contract 明确写进 startup 提示
 - `runContextCommand` 保留版本漂移检测和 `startupRecovery.versionSync` 计算，但不再因为检测到版本落后就隐式执行本地升级；startup recovery 只负责把该结果 surface 给 prompt
 - `project.json.autoUpdate` 是显式布尔 gate，默认 `true`；项目若不希望 startup 触发 update-first 路由，需要显式把它设为 `false`
@@ -51,7 +51,7 @@ Accepted
 
 - Codex compact 后的同线程继续对话可以自动回到当前 session 已绑定的 workflow，而不是重新靠 prompt 猜测上下文
 - resumed agent 可以直接看到当前 plan content，因此恢复后的第一轮更像“继续执行”而不是“重新发现计划”
-- 恢复 active Codex plan 后，host progress 与 Goal Mode 也会在独立的 `plan sync` code-mode call 中恢复；SessionStart hook 本身仍不获得或伪造 host-tool capability。
+- 恢复 active Codex plan 后，host progress 会在独立的 `plan sync` code-mode call 中恢复；Goal Mode 只在 effective config 启用时恢复，SessionStart hook 本身仍不获得或伪造 host-tool capability。
 - recovered workflow 不再只是被动回显状态；它现在明确阻止 agent 跳过 unfinished plan 决策门，先做 continue-or-close 的用户确认，再决定是否允许切到不相关的新任务
 - startup recovery 继续保持为 enhancement，而不是替代 `plan write`、`plan edit`、`plan done` 和 truth/ADR deposition 的 correctness 机制
 - workflow 恢复与 `workflowGuidance` lifecycle contract 保持一致，减少 adapter 在 compact 后自行发明下一步或把 `commandHints` 误当作必须立即执行动作的空间

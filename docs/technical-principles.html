@@ -528,9 +528,8 @@
           </p>
           <p>
             写入知识与提交 Git 是两个不同边界。
-            默认情况下，成功完成 Truth 与 ADR finalization 后会自动提交这些文档；
-            团队也可以把 <code>autoCommitKnowledge</code> 设为 <code>false</code>，
-            让治理、结果记录和索引刷新照常完成，同时把文档改动留在工作区交给维护者审阅后提交。
+            Truth 与 ADR finalization 只负责治理、结果记录和索引刷新；
+            文档改动始终留在工作区，由维护者在正常开发流程中审阅后提交。
           </p>
           <p>
             这样做不是为了把文档越写越多。

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { buildCompletionHooks } from "./completion-hooks.js";
-import { ensureTaskContext, removeLegacyTaskMeta, resolveTaskContext, resolveTaskName } from "./context.js";
+import { ensureTaskContext, findTaskDirectory, listTaskDirectories, removeLegacyTaskMeta, resolveTaskContext, resolveTaskName } from "./context.js";
 import { resolvePlanEffectiveConfig } from "./effective-config.js";
 import { ClawError } from "./errors.js";
 import { readJsonFile, withFileLock, withSerializedAccess, writeJsonFile } from "./io.js";
@@ -92,7 +92,7 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
   const scope = input.scope ?? await resolveTemplateCreationScope(templateProjectRoot, input.templateName, templateFile);
   const project = resolveWorkflowProjectContext(input.cwd, input.ownerSessionKey, scope);
   const taskName = deriveTaskName(input);
-  const createdTask = !fs.existsSync(path.join(project.tasksDir, taskName, "plan.json"));
+  const createdTask = !findTaskDirectory(project, taskName);
   const task = ensureTaskContext(project, taskName);
   const planFile = derivePlanFile(task, input.filePath, input.parentTaskId);
   const planPath = requireInsideTask(task, planFile);
@@ -145,11 +145,13 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
     if (subplanContext.parentTask.status === "pending") {
       subplanContext.parentTask.status = "in_progress";
     }
+    subplanContext.parentPlan.updatedAt = new Date().toISOString();
     withFileLock(subplanContext.parentPlanPath, () => {
       writeJsonFile(subplanContext.parentPlanPath, subplanContext.parentPlan);
     });
   }
 
+  plan.updatedAt = new Date().toISOString();
   fs.mkdirSync(path.dirname(planPath), { recursive: true });
   withFileLock(planPath, () => {
     writeJsonFile(planPath, plan);
@@ -447,6 +449,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
         "end.completed requires retrospective.summary before the plan can be completed.",
       );
     }
+    next.updatedAt = new Date().toISOString();
 
     withFileLock(planPath, () => {
       const current = normalizePlanDocument(readJsonFile<PlanDocument>(planPath));
@@ -1278,7 +1281,14 @@ function resolveShowPlanTarget(input: PlanShowInput): {
   if (project.scope === "session") {
     throw new ClawError("TASK_NOT_FOUND", `Task "${input.taskName}" does not exist.`, { taskName: input.taskName });
   }
-  const archivedTaskDir = path.join(project.clawDir, "archive", "tasks", input.taskName);
+  const archiveRoot = path.join(project.clawDir, "archive", "tasks");
+  const archivedTaskDir = listTaskDirectories({ tasksDir: archiveRoot } as typeof project)
+    .filter((task) => task.taskName === input.taskName)
+    .sort((left, right) => left.relativePath.localeCompare(right.relativePath))
+    .at(-1)?.taskDir;
+  if (!archivedTaskDir) {
+    throw new ClawError("TASK_NOT_FOUND", `Task "${input.taskName}" does not exist.`, { taskName: input.taskName });
+  }
   const archivedMetaPath = path.join(archivedTaskDir, "meta.json");
   const archivedRootPlanPath = path.join(archivedTaskDir, "plan.json");
   if (!fs.existsSync(archivedRootPlanPath) && !fs.existsSync(archivedMetaPath)) {

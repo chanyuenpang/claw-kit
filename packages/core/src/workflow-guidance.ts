@@ -301,6 +301,7 @@ export async function buildPlanWorkflowGuidance(params: {
   appendedTaskIds?: number[];
   completedTaskIds?: number[];
   host?: string;
+  recoveryResync?: boolean;
 }): Promise<WorkflowGuidance> {
   const {
     taskName,
@@ -323,7 +324,7 @@ export async function buildPlanWorkflowGuidance(params: {
   const allTasksDone = hasTasks && plan.tasks.every((task) => task.status === "done");
   const justEnteredProcess = plan.status.startsWith("process.") && (!previousStatus || previousStatus.startsWith("prepare."));
   const resumedIntoActive = plan.status === "process.active"
-    && (previousStatus === "process.wait" || previousStatus === "process.discussing");
+    && (params.recoveryResync || previousStatus === "process.wait" || previousStatus === "process.discussing");
   const hasChangedTasks = (changedTaskIds?.length ?? 0) > 0;
   const hasAppendedTasks = (appendedTaskIds?.length ?? 0) > 0;
   const hasCompletedTasks = (completedTaskIds?.length ?? 0) > 0;

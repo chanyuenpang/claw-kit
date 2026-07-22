@@ -60,14 +60,6 @@ export const configGuideContent = {
         example: `"goalMode": true`
       },
       {
-        id: "autoCommitKnowledge",
-        group: "Workflow",
-        title: "Whether finalized knowledge is committed automatically",
-        summary: "Controls the Git commit step after successful Truth and ADR finalization.",
-        detail: "The default is true. When false, finalization still writes and governs the knowledge documents, records success, and queues index refresh, but leaves those document changes uncommitted in the working tree.",
-        example: `"autoCommitKnowledge": false`
-      },
-      {
         id: "knowledgeWriter",
         group: "Workflow",
         title: "Auto-doc writer model and reasoning",
@@ -197,14 +189,6 @@ export const configGuideContent = {
         example: `"goalMode": true`
       },
       {
-        id: "autoCommitKnowledge",
-        group: "工作流",
-        title: "是否自动提交完成沉淀的知识文档",
-        summary: "控制 Truth 与 ADR 成功完成沉淀后是否自动创建 Git 提交。",
-        detail: "默认值为 true。设为 false 时，finalization 仍会写入并治理知识文档、记录成功结果并排队刷新索引，只是把文档改动保留在工作区，不自动提交。",
-        example: `"autoCommitKnowledge": false`
-      },
-      {
         id: "knowledgeWriter",
         group: "工作流",
         title: "auto-doc writer 的模型与思考深度",
@@ -284,7 +268,6 @@ export const configGuideContent = {
   "version": "0.1.92",
   "planning": true,
   "goalMode": true,
-  "autoCommitKnowledge": true,
   "knowledgeWriter": { "externalSkills": [], "model": null, "reasoningEffort": "medium" },
   "gitnexus": false
 }`

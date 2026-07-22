@@ -18,6 +18,8 @@ import {
   editPlan,
   ensureProjectProtocol,
   enforceTaskRetention,
+  findTaskDirectory,
+  runDailyMaintenance,
   ingestTruth,
   initProject,
   getTemplateTaskDoneChoices,
@@ -70,7 +72,6 @@ import {
 import { consumeBufferedHookInput } from "./knowledge-hook-preflight.js";
 import { resolveInvocationHost, withoutInvocationHost, type ClawHost } from "./invocation-host.js";
 import { runOpencodeKnowledgeWriter } from "./opencode-runner.js";
-import { captureKnowledgeGitState, commitKnowledgeDocumentation } from "./knowledge-git-commit.js";
 
 const CLI_VERSION = readCliVersion();
 
@@ -92,7 +93,7 @@ const TOP_LEVEL_COMMANDS: { name: string; summary: string }[] = [
   { name: "context [--task <name>]", summary: "Resolve project context, auto-initializing or correcting .claw state." },
   { name: "session clean [--expired]", summary: "Remove current or expired session workflow state." },
   { name: "check", summary: "Check and auto-correct .claw project protocol fields." },
-  { name: "plan <subcommand> [options]", summary: "Plan lifecycle: create, start, edit, remove, wait, resume, show, done." },
+  { name: "plan <subcommand> [options]", summary: "Plan lifecycle: create, start, edit, remove, wait, resume, sync, show, done." },
   { name: "codex driver", summary: "Return the versioned code-mode driver used by the Codex adapter." },
   { name: "template <subcommand> [options]", summary: "Plan template helpers such as validation." },
   { name: "task <subcommand> [options]", summary: "Task lifecycle helpers inside an existing plan." },
@@ -171,6 +172,10 @@ const COMMAND_HELP: Record<string, HelpNode> = {
           { flag: "--summary <text>", detail: "Set the plan summary." },
           { flag: "--rule <text>", detail: "Append a rule (repeatable)." },
           { flag: "--key-decision <text>", detail: "Append a key decision (repeatable)." },
+          { flag: "--retrospective <text>", detail: "Set the retrospective summary; required before --status end.completed." },
+          { flag: "--what-worked <text>", detail: "Append a retrospective success (repeatable)." },
+          { flag: "--issue <text>", detail: "Append a retrospective issue (repeatable)." },
+          { flag: "--follow-up <text>", detail: "Append a retrospective follow-up (repeatable)." },
           { flag: "--reference <path>", detail: "Add a reference; follow it immediately with --why (repeatable)." },
           { flag: "--why <text>", detail: "Explain the immediately preceding --reference." },
           { flag: "--task-name <name>", detail: "Advanced: override the session-bound task scope." },
@@ -209,6 +214,11 @@ const COMMAND_HELP: Record<string, HelpNode> = {
           { flag: "--plan-file <relative-path>", detail: "Advanced: override the session-bound plan file." },
         ],
       },
+      sync: {
+        usage: ["{script} plan sync"],
+        description: "Resynchronize a recovered active Codex plan with host progress and Goal Mode without mutating the plan.",
+        summary: "Resync a recovered active Codex plan.",
+      },
       start: {
         usage: ["{script} plan start --requirements <text> --add-task <title> [--detail <text>] [options]"],
         description:
@@ -241,8 +251,8 @@ const COMMAND_HELP: Record<string, HelpNode> = {
       done: {
         usage: ["{script} plan done --retrospective <text> [options]"],
         description:
-          "Close out a plan: write a retrospective, mark status end.completed with completedAt, retain it for at least one hour, sweep older completed tasks into the archive, and queue the async completion refresh.",
-        summary: "Close out a plan with a retrospective and queue completion refresh.",
+          "Shortcut for applying closeout fields and --status end.completed in one ordered plan edit; it retains the task for at least one hour, sweeps older completed tasks into the archive, and queues the async completion refresh.",
+        summary: "Shortcut for completing a plan with a retrospective and queueing completion refresh.",
         options: [
           { flag: "--retrospective <text>", detail: "Retrospective summary (required)." },
           { flag: "--key-decision <text>", detail: "Append a durable key decision when one exists (repeatable)." },
@@ -644,15 +654,21 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
       if (operations.length === 0) {
         throw new ClawError("PROJECT_CONFIG_INVALID", "plan edit requires at least one plan field or --status.");
       }
+      const ownerSessionKey = resolveOwnerSessionKey() ?? undefined;
+      const entersEndState = requestsPlanEndState(operations);
+      const queuePlanEndFinalization = entersEndState
+        ? preparePlanEndFinalization(process.cwd(), ownerSessionKey)
+        : undefined;
       const result = await editPlan({
         cwd: process.cwd(),
         ...target,
         operations,
         commandSource: "plan.edit",
         host: effectiveHost,
-        ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
+        ownerSessionKey,
       });
-      printJson(compactPlanCommandResult("plan.edit", result, effectiveHost));
+      const completionRefresh = queuePlanEndFinalization?.(result.taskName);
+      printJson(compactPlanCommandResult("plan.edit", result, effectiveHost, completionRefresh));
       if (result.operationChain?.status === "partial") process.exitCode = 1;
       return;
     }
@@ -682,6 +698,9 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
       return;
     case "resume":
       await runPlanStatusAlias(args, "process.active", "plan.resume", effectiveHost);
+      return;
+    case "sync":
+      await runPlanSync(args, effectiveHost);
       return;
     case "start": {
       const updates = readPlanFieldUpdates(args);
@@ -725,26 +744,16 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
       const target = readPlanMutationTarget(args);
       assertNoRemainingArgs(args, "plan done");
       const ownerSessionKey = resolveOwnerSessionKey() ?? undefined;
-      const workflowProject = resolveWorkflowProjectContext(process.cwd(), ownerSessionKey);
-      const gitNexusPreflightAnalyzed = workflowProject.scope === "project"
-        ? ensureGitNexusReadyForPlanDone(process.cwd())
-        : false;
+      const queuePlanEndFinalization = preparePlanEndFinalization(process.cwd(), ownerSessionKey);
       const result = await editPlan({
         cwd: process.cwd(),
         ...target,
-        updates,
-        planStatus: "end.completed",
+        operations: planCompletionOperations(updates),
         commandSource: "plan.done",
         host: effectiveHost,
         ownerSessionKey,
       });
-      const completionRefresh = workflowProject.scope === "project"
-        ? queueCompletionRefresh({
-            cwd: process.cwd(),
-            taskName: result.taskName,
-            skipGitNexusRefresh: gitNexusPreflightAnalyzed,
-          })
-        : undefined;
+      const completionRefresh = queuePlanEndFinalization?.(result.taskName);
       printJson(compactPlanCommandResult("plan.done", result, effectiveHost, completionRefresh));
       return;
     }
@@ -788,7 +797,35 @@ async function runPlanStatusAlias(
     ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
   });
   assertNoRemainingArgs(args, command);
-  printJson(compactPlanCommandResult(command, result, effectiveHost));
+  printJson(compactPlanCommandResult(command, result, effectiveHost, undefined, true));
+}
+
+async function runPlanSync(args: string[], effectiveHost: ClawHost | undefined): Promise<void> {
+  const ownerSessionKey = resolveOwnerSessionKey() ?? undefined;
+  const result = showPlan({ cwd: process.cwd(), ...readPlanMutationTarget(args), ownerSessionKey });
+  assertNoRemainingArgs(args, "plan sync");
+  if (result.plan.status !== "process.active") {
+    printJson({ ok: true, command: "plan.sync", planPath: result.planPath, planStatus: result.plan.status });
+    return;
+  }
+  const project = resolveWorkflowProjectContext(process.cwd(), ownerSessionKey);
+  const workflowGuidance = await buildPlanWorkflowGuidance({
+    taskName: result.taskName,
+    planFile: result.planFile,
+    plan: result.plan,
+    projectRoot: project.projectRoot,
+    projectConfig: project.projectConfig,
+    previousStatus: "process.wait",
+    host: effectiveHost,
+    recoveryResync: true,
+  });
+  printJson(compactPlanCommandResult(
+    "plan.sync",
+    { ...result, planStatus: result.plan.status, workflowGuidance },
+    effectiveHost,
+    undefined,
+    true,
+  ));
 }
 
 async function runTemplate(args: string[]): Promise<void> {
@@ -990,6 +1027,7 @@ async function runContextCommand(
 
   const sessionProject = resolveSessionWorkflowContext(ownerSessionKey ?? undefined);
   if (sessionProject) {
+    const maintenance = runDailyMaintenance(sessionProject, { excludeSessionKey: ownerSessionKey ?? undefined, includeProject: false });
     const activeWorkflow = !taskName && ownerSessionKey
       ? await tryResolveActiveWorkflowSnapshot(cwd, ownerSessionKey, effectiveHost)
       : null;
@@ -1000,6 +1038,7 @@ async function runContextCommand(
     return {
       project: sessionProject,
       ...(activeWorkflow ? { activeWorkflow } : {}),
+      ...(maintenance.ran ? { maintenance } : {}),
       ...(codexRuntimeError ? { error: codexRuntimeError } : {}),
     };
   }
@@ -1016,6 +1055,7 @@ async function runContextCommand(
     initialized = true;
   }
 
+  const maintenance = runDailyMaintenance(resolveProjectContext(cwd), { excludeSessionKey: ownerSessionKey ?? undefined });
   let resolved = resolveContext(cwd, taskName);
   const versionSync = syncProjectVersionWithCli(cwd, resolved.project);
   if (versionSync.projectVersionUpdated) {
@@ -1038,6 +1078,7 @@ async function runContextCommand(
 
   return {
     ...resolved,
+    ...(maintenance.ran ? { maintenance } : {}),
     ...(activeWorkflow ? { activeWorkflow } : {}),
     ...(codexRuntimeError ? { error: codexRuntimeError } : {}),
     protocolCheck: checkProjectProtocol(cwd),
@@ -1411,10 +1452,6 @@ async function runInternalKnowledgeFinalize(args: string[]): Promise<void> {
     const project = resolveProjectContext(running.projectRoot);
     const useBuiltInAutomation = usesBuiltInKnowledgeWriter(running);
     const knowledgeBefore = snapshotKnowledgeMarkdown(project.truthDir);
-    const autoCommitKnowledge = project.projectConfig?.autoCommitKnowledge !== false;
-    const knowledgeGitState = autoCommitKnowledge
-      ? captureKnowledgeGitState(running.projectRoot, project.truthDir)
-      : null;
     const writerRun = await runKnowledgeWriterForJob(running);
     const knowledgeGovernance = useBuiltInAutomation
       ? governChangedKnowledgeMarkdown({
@@ -1461,14 +1498,6 @@ async function runInternalKnowledgeFinalize(args: string[]): Promise<void> {
       ...(knowledgeGovernance ? { knowledgeGovernance } : {}),
       truthEncoding,
     });
-    if (autoCommitKnowledge) {
-      commitKnowledgeDocumentation({
-        state: knowledgeGitState,
-        truthDir: project.truthDir,
-        changedPaths: changedKnowledgePaths,
-        message: running.taskName,
-      });
-    }
   } catch (error) {
     const failed: KnowledgeFinalizationJob = {
       ...running,
@@ -1699,7 +1728,7 @@ async function runSessionStartHook(effectiveHost: ClawHost | undefined): Promise
         }
       }
     }
-    const additionalContext = buildSessionStartAdditionalContext(context, hookCwd);
+    const additionalContext = buildSessionStartAdditionalContext(context, hookCwd, effectiveHost);
 
     if (!additionalContext) {
       return;
@@ -1791,14 +1820,22 @@ function safeResolveTempDir(): string | null {
   }
 }
 
-function buildSessionStartAdditionalContext(context: Record<string, unknown>, sessionCwd: string): string | null {
+function buildSessionStartAdditionalContext(
+  context: Record<string, unknown>,
+  sessionCwd: string,
+  effectiveHost: ClawHost | undefined,
+): string | null {
   const versionSyncPrompt = buildVersionSyncPrompt(context);
   const searchGuidance = buildContextSearchGuidance(context);
   const runtimeErrorPrompt = buildCodexRuntimeErrorPrompt(context);
   const activeWorkflow = context.activeWorkflow as JsonRecord | undefined;
   if (activeWorkflow) {
     const prompt = buildRecoveredWorkflowAdditionalContext(activeWorkflow, versionSyncPrompt);
-    const promptWithSearch = searchGuidance ? `${prompt}\n${searchGuidance}` : prompt;
+    const recoverySyncPrompt = effectiveHost === "codex" && activeWorkflow.planStatus === "process.active"
+      ? "Before continuing, run `claw plan sync` once through the fixed Codex driver to restore host progress and Goal Mode."
+      : "";
+    const promptWithSync = recoverySyncPrompt ? `${prompt}\n${recoverySyncPrompt}` : prompt;
+    const promptWithSearch = searchGuidance ? `${promptWithSync}\n${searchGuidance}` : promptWithSync;
     return runtimeErrorPrompt ? `${runtimeErrorPrompt}\n\n${promptWithSearch}` : promptWithSearch;
   }
 
@@ -2000,18 +2037,15 @@ async function tryResolveActiveWorkflowSnapshot(
   }
 
   try {
-    const relativePlanPath = path.relative(project.tasksDir, planPath);
-    const segments = relativePlanPath.split(path.sep);
-    const taskName = segments.shift();
-    const planFile = segments.join("/");
-    if (!taskName || !planFile) {
+    const target = parseTaskPlanPath(project, planPath);
+    if (!target) {
       unbindSession(project, ownerSessionKey);
       return null;
     }
     const result = showPlan({
       cwd,
-      taskName,
-      planFile,
+      taskName: target.taskName,
+      planFile: target.planFile,
       ownerSessionKey,
     });
     if (result.plan.status.startsWith("end.")) {
@@ -2139,7 +2173,7 @@ function stripBom(content: string): string {
 }
 
 function compactPlanCommandResult(
-  command: "plan.create" | "plan.start" | "plan.edit" | "plan.remove" | "plan.wait" | "plan.resume" | "plan.done" | "task.add" | "task.edit" | "task.remove" | "task.done" | "subplan.create",
+  command: "plan.create" | "plan.start" | "plan.edit" | "plan.remove" | "plan.wait" | "plan.resume" | "plan.sync" | "plan.done" | "task.add" | "task.edit" | "task.remove" | "task.done" | "subplan.create",
   result: {
     taskName: string;
     planFile: string;
@@ -2168,6 +2202,7 @@ function compactPlanCommandResult(
   },
   effectiveHost: ClawHost | undefined,
   completionRefresh?: CompletionRefreshResult,
+  forceProjectionSync = false,
   ): Record<string, unknown> {
     const archivedPlanPath =
       completionRefresh?.taskRetention.archivedCurrentTask?.taskName === result.taskName &&
@@ -2176,9 +2211,8 @@ function compactPlanCommandResult(
         : undefined;
     const resolvedPlanPath = archivedPlanPath ?? result.planPath;
     const codexResult = effectiveHost === "codex";
-    const hostActions = codexResult ? buildHostActions(result) : [];
+    const hostActions = codexResult ? buildHostActions(result, { forceProjectionSync, actionIdPrefix: command === "plan.sync" ? `plan.sync:${createHash("sha256").update(result.planPath).digest("hex").slice(0, 16)}` : undefined }) : [];
     const nextsteps = codexResult
-      && command === "plan.done"
       && result.planStatus === "end.completed"
       && result.workflowGuidance.goalTool?.tool === "update_goal"
       && result.workflowGuidance.goalTool.status === "complete"
@@ -2190,7 +2224,7 @@ function compactPlanCommandResult(
       && result.plan
       && (!codexResult || result.workflowGuidance.stage === "discussion"),
     );
-    const achievement = command === "plan.done" && result.planStatus === "end.completed" && result.plan
+    const achievement = result.planStatus === "end.completed" && result.plan
       ? {
           status: result.planStatus,
           title: result.plan.title,
@@ -2214,7 +2248,7 @@ function compactPlanCommandResult(
       ...(!codexResult && result.changedTaskIds?.length ? { changedTaskIds: result.changedTaskIds } : {}),
       ...(!codexResult && result.appendedTaskIds?.length ? { appendedTaskIds: result.appendedTaskIds } : {}),
       ...(codexResult ? { stage: result.workflowGuidance.stage } : {}),
-      ...(!codexResult || command === "plan.done"
+      ...(!codexResult || result.planStatus === "end.completed"
         ? { nextsteps }
         : {}),
       ...(result.workflowGuidance.nextTask ? { nextTask: result.workflowGuidance.nextTask } : {}),
@@ -2258,9 +2292,10 @@ function buildHostActions(result: {
   planView: PlanViewModel;
   workflowGuidance: WorkflowGuidance;
   events?: PlanEvent[];
-}): Array<Record<string, unknown>> {
+}, options: { forceProjectionSync?: boolean; actionIdPrefix?: string } = {}): Array<Record<string, unknown>> {
   const latestEvent = result.events?.at(-1);
-  if (!latestEvent) {
+  const actionIdPrefix = options.actionIdPrefix ?? latestEvent?.mutationId;
+  if (!actionIdPrefix) {
     return [];
   }
   const actions: Array<Record<string, unknown>> = [];
@@ -2273,18 +2308,22 @@ function buildHostActions(result: {
   if (isSubplanGoalHandoff && goalTool?.tool === "update_goal") {
     actions.push({
       schemaVersion: 1,
-      id: `${latestEvent.mutationId}:update_goal`,
+      id: `${actionIdPrefix}:update_goal`,
       tool: "update_goal",
       input: {
         status: "complete",
       },
     });
   }
-  if (result.plan && codexPlanProjectionChanged(result.previousPlan, result.plan, result.planStatus)) {
+  if (
+    result.plan
+    && result.plan.tasks.length > 0
+    && (options.forceProjectionSync || codexPlanProjectionChanged(result.previousPlan, result.plan, result.planStatus))
+  ) {
     const plan = buildCodexPlanProjection(result.plan, result.planStatus);
     actions.push({
       schemaVersion: 1,
-      id: `${latestEvent.mutationId}:update_plan`,
+      id: `${actionIdPrefix}:update_plan`,
       tool: "update_plan",
       input: {
         explanation: result.workflowGuidance.summary,
@@ -2296,7 +2335,7 @@ function buildHostActions(result: {
     if (goalTool.tool === "create_goal") {
       actions.push({
         schemaVersion: 1,
-        id: `${latestEvent.mutationId}:create_goal`,
+        id: `${actionIdPrefix}:create_goal`,
         tool: "create_goal",
         input: {
           objective: goalTool.objective,
@@ -2308,7 +2347,7 @@ function buildHostActions(result: {
         : goalTool.status;
       actions.push({
         schemaVersion: 1,
-        id: `${latestEvent.mutationId}:update_goal`,
+        id: `${actionIdPrefix}:update_goal`,
         tool: "update_goal",
         input: {
           status: codexStatus,
@@ -2410,6 +2449,18 @@ function readOrderedPlanEditOperations(args: string[]): PlanMutationOperation[] 
       case "--key-decision":
         operations.push({ type: "plan.update", updates: { keyDecisions: [readChainValue(args, flag)] } });
         break;
+      case "--retrospective":
+        operations.push({ type: "plan.update", updates: { retrospectiveSummary: readChainValue(args, flag) } });
+        break;
+      case "--what-worked":
+        operations.push({ type: "plan.update", updates: { whatWorked: [readChainValue(args, flag)] } });
+        break;
+      case "--issue":
+        operations.push({ type: "plan.update", updates: { issues: [readChainValue(args, flag)] } });
+        break;
+      case "--follow-up":
+        operations.push({ type: "plan.update", updates: { followUps: [readChainValue(args, flag)] } });
+        break;
       case "--reference": {
         const path = readChainValue(args, flag);
         const whyFlag = args.shift();
@@ -2427,6 +2478,17 @@ function readOrderedPlanEditOperations(args: string[]): PlanMutationOperation[] 
     }
   }
   return operations;
+}
+
+function requestsPlanEndState(operations: PlanMutationOperation[]): boolean {
+  return operations.some((operation) => operation.type === "plan.status" && operation.status.startsWith("end."));
+}
+
+function planCompletionOperations(updates: PlanFieldUpdates): PlanMutationOperation[] {
+  return [
+    { type: "plan.update", updates },
+    { type: "plan.status", status: "end.completed" },
+  ];
 }
 
 function readOrderedTaskAddOperations(args: string[]): PlanMutationOperation[] {
@@ -2571,15 +2633,24 @@ function readPlanMutationTarget(args: string[]): { taskName: string; planFile?: 
     );
   }
 
-  const relativePlanPath = path.relative(project.tasksDir, boundPlanPath);
-  const segments = relativePlanPath.split(path.sep).filter(Boolean);
-  if (segments.length < 2 || relativePlanPath.startsWith("..") || path.isAbsolute(relativePlanPath)) {
+  const target = parseTaskPlanPath(project, boundPlanPath);
+  if (!target) {
     throw new ClawError("PROJECT_CONFIG_INVALID", `Invalid session-bound plan path: ${boundPlanPath}`);
   }
   return {
-    taskName: segments[0]!,
-    planFile: explicitPlanFile ?? segments.slice(1).join(path.sep),
+    taskName: target.taskName,
+    planFile: explicitPlanFile ?? target.planFile,
   };
+}
+
+function parseTaskPlanPath(project: ProjectContext, planPath: string): { taskName: string; planFile: string } | null {
+  const relativePlanPath = path.relative(project.tasksDir, planPath);
+  if (relativePlanPath.startsWith("..") || path.isAbsolute(relativePlanPath)) return null;
+  const segments = relativePlanPath.split(path.sep).filter(Boolean);
+  const dated = /^\d{4}-\d{2}-\d{2}$/.test(segments[0] ?? "");
+  const taskName = dated ? segments[1] : segments[0];
+  const planFile = (dated ? segments.slice(2) : segments.slice(1)).join(path.sep);
+  return taskName && planFile ? { taskName, planFile } : null;
 }
 
 function readExplicitAddedTasks(args: string[]): PlanTask[] {
@@ -2721,6 +2792,13 @@ type CompletionRefreshFlightState = {
   startedAt?: string;
 };
 
+function preparePlanEndFinalization(cwd: string, ownerSessionKey: string | undefined): ((taskName: string) => CompletionRefreshResult) | undefined {
+  const workflowProject = resolveWorkflowProjectContext(cwd, ownerSessionKey);
+  if (workflowProject.scope !== "project") return undefined;
+  const skipGitNexusRefresh = ensureGitNexusReadyForPlanFinalization(cwd);
+  return (taskName) => queueCompletionRefresh({ cwd, taskName, skipGitNexusRefresh });
+}
+
 function queueCompletionRefresh(input: {
   cwd: string;
   taskName: string;
@@ -2737,6 +2815,7 @@ function queueCompletionRefresh(input: {
     : {
         enabled: false,
         maxTasksToKeep: project.projectConfig?.maxTasksToKeep ?? DEFAULT_MAX_TASKS_TO_KEEP,
+        archivedTasks: [],
         prunedArchivedTasks: [],
       };
   const startedAt = new Date().toISOString();
@@ -3161,7 +3240,7 @@ function computeCompletionDirtyHash(
   const roots = [
     path.join(project.clawDir, "memory.md"),
     path.join(project.clawDir, "truth"),
-    path.join(project.tasksDir, taskName),
+    findTaskDirectory(project, taskName) ?? path.join(project.tasksDir, taskName),
   ];
   const files = roots.flatMap((root) => listCompletionFingerprintFiles(root)).sort();
   for (const filePath of files) {
@@ -3293,7 +3372,7 @@ function isWindowsAccessViolation(result: { status: number | null }): boolean {
     && (result.status >>> 0) === 0xc0000005;
 }
 
-function ensureGitNexusReadyForPlanDone(cwd: string): boolean {
+function ensureGitNexusReadyForPlanFinalization(cwd: string): boolean {
   const project = resolveProjectContext(cwd);
   if (project.projectConfig?.gitnexus !== true) {
     return false;

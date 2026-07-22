@@ -10,7 +10,6 @@
 - `memory.embedding`
 - `planning`
 - `autoUpdate`
-- `autoCommitKnowledge`
 - `externalPlanningSkill`
 - `goalMode`
 - `knowledgeWriter`
@@ -28,9 +27,8 @@
   - directory paths like `docs/`
 - External memory paths only index `.md` files from the configured path set.
 - `memory.embedding` now accepts the OpenClaw-compatible subset used by `openclaw-dev`: `provider` (`openai|local`), `model`, `remote.apiKeyEnvVar`, `remote.baseUrl`, `local.modelPath`, `local.modelCacheDir`, `outputDimensionality`, `store.vector.enabled`, and `store.vector.extensionPath`.
-- canonical `.claw/project.json` carries simple project-level workflow toggles as flat fields: `planning`, `autoUpdate`, `autoCommitKnowledge`, `externalPlanningSkill`, `goalMode`, and `gitnexus`; combined writer configuration is owned by the nested `knowledgeWriter` object.
+- canonical `.claw/project.json` carries simple project-level workflow toggles as flat fields: `planning`, `autoUpdate`, `externalPlanningSkill`, `goalMode`, and `gitnexus`; combined writer configuration is owned by the nested `knowledgeWriter` object.
 - `autoUpdate` is an explicit project-level boolean gate with default `true`; projects can set it to `false` when version drift should stay informational only.
-- `autoCommitKnowledge` is an explicit project-level boolean gate with default `true`; when set to `false`, successful knowledge finalization still writes and governs Truth/ADR documents, records the result, and queues index refresh, but leaves those document changes uncommitted in the working tree.
 - legacy nested inputs such as `workflow.goalMode.enabled`, `workflow.truthDispatch.mode`, and `gitnexus.enabled` are compatibility inputs for protocol repair; repaired canonical files are flattened instead of preserving those nested containers.
 - The 2026-06-23 compatibility fixture run remains historical evidence for flattening legacy `workflow.goalMode.enabled`, `workflow.truthDispatch.mode`, and object `gitnexus.enabled`; current repair no longer promotes `truthDispatch` into canonical project output.
 - Current repair fills `planning`, `externalPlanningSkill`, and the canonical `knowledgeWriter` object; `knowledgeWriter.externalSkills` is the ordered current writer configuration.
@@ -70,8 +68,8 @@
 - Task-scope memory search still uses the existing active-plan-plus-task-memory FTS path and does not participate in the hybrid/vector recall flow.
 - Codex-facing recall is `claw search --query "<topic>"`; this reads the indexed project context before planning or investigation, and it remains document recall rather than code search.
 - `claw memory ...` remains as legacy/debug and low-level index management, not the primary Codex workflow term.
-- `claw plan done` rebuilds project/task search indexes and only refreshes GitNexus when flat `gitnexus` is `true`.
-- `claw plan done` 的 GitNexus 预检与自愈链路仍然只认 canonical `gitnexus` boolean，不再使用 `gitnexus.enabled` 作为规范字段；同一条 gate 既控制是否刷新，也控制是否先做前台 install/setup / embeddings self-heal。
+- project-scope terminal plan finalization rebuilds project/task search indexes and only refreshes GitNexus when flat `gitnexus` is `true`; `claw plan done` and `claw plan edit --status end.*` use that same route.
+- terminal plan finalization 的 GitNexus 预检与自愈链路仍然只认 canonical `gitnexus` boolean，不再使用 `gitnexus.enabled` 作为规范字段；同一条 gate 既控制是否刷新，也控制是否先做前台 install/setup / embeddings self-heal。
 - 本文只拥有 canonical `gitnexus` schema gate；GitNexus analyze 的 `--no-ai-context` fallback、Windows access-violation force rebuild 与错误边界由 `local-claw-cli.md` 统一拥有。
 - The hybrid project query path is adapted from the more mature `openclaw-dev` memory query design, but its current behavior and migration scope are maintained by `project-search-candidate-recall.md`.
 - incremental refresh 的存在不改变 project search 的可用性契约：project recall 依然要求 vector index，不能回退成纯 FTS fallback。
@@ -92,3 +90,11 @@
 - `packages/cli/README.md`
 - `README.md`
 - `docs/2026-06-06-project-schema-alignment-execution.md`
+
+<!-- state: history -->
+## Evolution history
+
+<!-- dated: 2026-07-22 -->
+### 移除自动知识提交配置
+
+- `autoCommitKnowledge` 曾是控制 finalizer 自动 Git commit 的项目级 boolean。自动提交运行路径移除后，该字段不再属于 schema、默认配置或协议校验。

@@ -38,13 +38,14 @@ export function resolveProjectContext(cwd: string): ProjectContext {
 
 export function resolveTaskContext(project: ProjectContext, taskName: string, ownerSessionKey?: string): TaskContext {
   const resolvedTaskName = resolveTaskName(taskName);
-  const taskDir = path.join(project.tasksDir, resolvedTaskName);
+  const taskDir = findTaskDirectory(project, resolvedTaskName);
+  if (!taskDir) {
+    throw new ClawError("TASK_NOT_FOUND", `Task "${resolvedTaskName}" does not exist.`, { taskName: resolvedTaskName });
+  }
   const metaPath = path.join(taskDir, "meta.json");
   const rootPlanPath = path.join(taskDir, "plan.json");
   const legacyMeta = fs.existsSync(metaPath) ? readJsonFile<TaskMeta>(metaPath) : undefined;
-  if (!fs.existsSync(rootPlanPath) && !legacyMeta) {
-    throw new ClawError("TASK_NOT_FOUND", `Task "${resolvedTaskName}" does not exist.`, { taskName: resolvedTaskName });
-  }
+  if (!fs.existsSync(rootPlanPath) && !legacyMeta) throw new ClawError("TASK_NOT_FOUND", `Task "${resolvedTaskName}" does not exist.`, { taskName: resolvedTaskName });
 
   const boundPlanPath = resolveSessionBoundPlan(project, ownerSessionKey);
   const boundPlanInsideTask = boundPlanPath ? path.relative(taskDir, boundPlanPath) : undefined;
@@ -92,7 +93,7 @@ export function ensureTaskContext(
   taskName: string,
 ): TaskContext {
   const resolvedTaskName = resolveTaskName(taskName);
-  const taskDir = path.join(project.tasksDir, resolvedTaskName);
+  const taskDir = findTaskDirectory(project, resolvedTaskName) ?? path.join(project.tasksDir, currentTaskDate(), resolvedTaskName);
   const metaPath = path.join(taskDir, "meta.json");
   fs.mkdirSync(taskDir, { recursive: true });
   const legacyMeta = fs.existsSync(metaPath) ? readJsonFile<TaskMeta>(metaPath) : undefined;
@@ -105,6 +106,44 @@ export function ensureTaskContext(
     activePlanPath: path.join(taskDir, activePlan),
     ...(legacyMeta ? { legacyMetaPath: metaPath, legacyMeta } : {}),
   };
+}
+
+/** Returns legacy flat task paths first, then date-grouped task paths. */
+export function findTaskDirectory(project: ProjectContext, taskName: string): string | null {
+  const legacy = path.join(project.tasksDir, taskName);
+  if (fs.existsSync(legacy) && fs.statSync(legacy).isDirectory()) return legacy;
+  if (!fs.existsSync(project.tasksDir)) return null;
+  const matches = fs.readdirSync(project.tasksDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && /^\d{4}-\d{2}-\d{2}$/.test(entry.name))
+    .map((entry) => path.join(project.tasksDir, entry.name, taskName))
+    .filter((candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isDirectory());
+  if (matches.length === 0) return null;
+  return matches.sort().at(-1) ?? null;
+}
+
+/** Lists only task directories, supporting both legacy and YYYY-MM-DD layouts. */
+export function listTaskDirectories(project: ProjectContext): Array<{ taskName: string; taskDir: string; relativePath: string }> {
+  if (!fs.existsSync(project.tasksDir)) return [];
+  const result: Array<{ taskName: string; taskDir: string; relativePath: string }> = [];
+  for (const entry of fs.readdirSync(project.tasksDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const root = path.join(project.tasksDir, entry.name);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(entry.name)) {
+      result.push({ taskName: entry.name, taskDir: root, relativePath: entry.name });
+      continue;
+    }
+    for (const child of fs.readdirSync(root, { withFileTypes: true })) {
+      if (child.isDirectory()) result.push({ taskName: child.name, taskDir: path.join(root, child.name), relativePath: path.join(entry.name, child.name) });
+    }
+  }
+  return result;
+}
+
+function currentTaskDate(now = new Date()): string {
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 export function removeLegacyTaskMeta(task: TaskContext): void {
@@ -179,7 +218,6 @@ function normalizeProjectConfig(projectConfig: ProjectConfig): ProjectConfig {
         : DEFAULT_MAX_TASKS_TO_KEEP,
     planning: projectConfig.planning !== false,
     autoUpdate: projectConfig.autoUpdate === true,
-    autoCommitKnowledge: projectConfig.autoCommitKnowledge !== false,
     goalMode: typeof projectConfig.goalMode === "boolean" ? projectConfig.goalMode : true,
     knowledgeWriter: {
       externalSkills: resolveExternalWriterSkills(legacyConfig),

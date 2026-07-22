@@ -57,6 +57,7 @@ export function initProject(input: InitProjectInput): InitProjectResult {
   const memoryPath = path.join(clawDir, "memory.md");
   const truthDir = path.join(clawDir, "truth");
   const tasksDir = path.join(clawDir, "tasks");
+  const runtimeTmpDir = path.join(clawDir, "runtime", "tmp");
   const knowledgeDir = path.join(clawDir, ".knowledge");
 
   const createdPaths: string[] = [];
@@ -79,7 +80,6 @@ export function initProject(input: InitProjectInput): InitProjectResult {
     maxTasksToKeep,
     planning: input.planning ?? true,
     autoUpdate: true,
-    autoCommitKnowledge: true,
     goalMode: true,
     knowledgeWriter: {
       externalSkills: externalWriterSkill ? [externalWriterSkill] : [],
@@ -104,9 +104,10 @@ export function initProject(input: InitProjectInput): InitProjectResult {
   ensureDir(clawDir, createdPaths);
   ensureDir(truthDir, createdPaths);
   ensureDir(tasksDir, createdPaths);
+  ensureDir(runtimeTmpDir, createdPaths);
   ensureDir(knowledgeDir, createdPaths);
-  const taskLayoutMarkerPath = markTaskLayoutMigrationComplete(clawDir);
-  createdPaths.push(taskLayoutMarkerPath);
+  const taskLayoutMaintenancePath = markTaskLayoutMigrationComplete(clawDir);
+  createdPaths.push(taskLayoutMaintenancePath);
 
   writeFile(projectJsonPath, `${JSON.stringify(projectConfig, null, 2)}\n`, createdPaths);
   writeFile(

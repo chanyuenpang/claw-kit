@@ -40,7 +40,6 @@ Use it when the team should share the behavior:
 
 - `planning`
 - `autoUpdate`
-- `autoCommitKnowledge`
 - `externalPlanningSkill`
 - `contextPaths`
 - `memory.externalDocPaths`
@@ -102,7 +101,6 @@ Use the flat canonical fields for simple project-level toggles:
 {
   "planning": true,
   "autoUpdate": true,
-  "autoCommitKnowledge": true,
   "externalPlanningSkill": null,
   "goalMode": true,
   "gitnexus": false
@@ -136,8 +134,6 @@ The default local model is `jinaai/jina-embeddings-v2-base-zh` at 768 dimensions
 - `Snowflake/snowflake-arctic-embed-xs` at 384 dimensions for explicit low-resource or English-oriented use. It is not recommended for Chinese-heavy recall because the claw search comparison found substantial Chinese semantic-recall regressions.
 
 The finalizer always runs an ordered documentation-governance skill sequence with one unattended pass per skill. `knowledgeWriter.externalSkills` replaces the default sequence; an empty or absent list resolves to `["claw-kit:knowledge-writer"]`. Every governance skill receives the same unattended prompt, while a skill-specific claw session workflow is required only when that skill's runtime contract needs it. `model = null` uses the host default model. `reasoningEffort` accepts `minimal`, `low`, `medium`, `high`, or `xhigh`. `datedSectionsToKeep` is a non-negative integer; it caps only complete evolution sections marked by `<!-- dated: YYYY-MM-DD -->` in each canonical document changed by the built-in writer. It does not limit current prose by length or age.
-
-`autoCommitKnowledge` defaults to `true`. When `false`, knowledge finalization still writes and governs Truth/ADR documents, records the result, and queues index refresh, but leaves those document changes uncommitted in the working tree.
 
 ## Safe editing flow
 
