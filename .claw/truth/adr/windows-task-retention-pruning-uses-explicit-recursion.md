@@ -19,8 +19,8 @@ Accepted
 - `fs.rmSync(..., { recursive: true })` 不作为 Windows archive pruning 的核心删除机制。
 - Regression coverage 必须包含非 ASCII archived task name，确保 `.claw/archive/tasks/` 中的中文路径可以被正确 pruning。
 - 进入 `end.completed` 时写入稳定的 `completedAt`；`claw plan done` 不立即移动当前 task directory。
-- active task 的 archive eligibility 只有一个语义条件：`completedAt` 有效且距可注入的当前时间至少一小时。`status`、current-task identity、writer receipt 与 file mtime 都不是 eligibility 条件。
-- 未设置、无效或未满一小时的 `completedAt` 均不触发归档；固定阈值使用毫秒常量与可注入 `now` 测试 seam。
+- 直接 task retention 的 archive eligibility 只有一个语义条件：`completedAt` 有效且距可注入的当前时间至少一小时。`status`、current-task identity 与 writer receipt 都不是这条路径的 eligibility 条件。
+- 直接 retention 中未设置、无效或未满一小时的 `completedAt` 均不触发归档；固定阈值使用毫秒常量与可注入 `now` 测试 seam。每日 maintenance 的无日期 legacy cleanup 是独立路径，按 `plan.updatedAt` 判断活跃度，缺失或无效时才回退 `plan.json` 修改时间。
 - eligible task directory 移入 `.claw/archive/tasks/` 后，现有 `maxTasksToKeep` pruning 继续执行。
 
 ## Consequences
@@ -29,7 +29,7 @@ Accepted
 - `maxTasksToKeep` 的语义对 ASCII 与非 ASCII task names 保持一致。
 - Task retention 的删除行为更显式，后续排查 archive residue 时可以直接查看递归 unlink/rmdir 路径。
 - foreground closeout 不必等待异步 knowledge finalization，同时 combined writer 在一小时窗口内仍可从原 `planPath` 读取 completed plan。
-- 归档时机由计划数据中的 `completedAt` 决定，不依赖易漂移的文件时间或额外 receipt 状态；代价是刚完成的 task 会在 active tasks 目录保留到后续 retention sweep。
+- 直接 retention 的归档时机由计划数据中的 `completedAt` 决定，不依赖额外 receipt 状态；代价是刚完成的 task 会在 active tasks 目录保留到后续 retention sweep。每日 legacy cleanup 以最后计划活动时间处理没有完成时间的历史计划。
 
 ## Related Code
 
@@ -52,3 +52,11 @@ Accepted
 - `archive eligibility`
 - `injectable now`
 - `asynchronous ADR writer`
+
+<!-- state: history -->
+## Evolution history
+
+<!-- dated: 2026-07-22 -->
+### Narrowed the completedAt-only rule to direct retention
+
+早期规则把所有 active task archive eligibility 都归为 `completedAt`，因而无法表达每日维护对无日期 legacy task 的回收。直接 retention 保留该完成时间规则；每日 legacy cleanup 改由 `updatedAt`，并对历史文件使用修改时间回退。
