@@ -17,7 +17,7 @@
 - `knowledgeWriter.externalSkills`、`model`、`reasoningEffort` 与 `datedSectionsToKeep` 在 job 创建时快照。finalizer 按 `externalSkills` 顺序运行独立 writer session；列表缺失或为空时使用内置 writer。内置和外部 writer 都收到同一无人值守治理 prompt；外部 skill 依其自身治理规则处理材料而不要求严格执行交互式 skill 合同，内置 writer 仍遵循其严格合同。Codex job 使用版本化 SDK runtime，OpenCode job 使用 `opencode run`；runner 不替换 job 指定的模型或思考强度，内置 writer 的 dated-section governance 使用同一 job snapshot。
 - Writer 线程环境设置 `CLAW_KNOWLEDGE_FINALIZER=1`，使其 Stop/SessionStart hook 在 CLI preflight 前退出；内置 skill 的 top-level `scope: "session"` 又让 writer 自身 claw harness 存在于用户级 session runtime，不触发项目 knowledge capture。invocation host 的输入验证、job 快照与 worker 路由由 `invocation-host-handling.md` 拥有。
 - 内置 writer 成功后，worker 对该 pass 改动的 canonical Markdown 执行 dated-section governance 并记录裁剪结果；external skill 跳过治理快照与 dated compaction。两条路径随后都依次归一化 `.claw/truth/**/*.md` 编码、请求 completion recall refresh、向相邻 report追加一条以 `finalizeId` 幂等去重的 `knowledge_finalization` JSONL 结果，最后持久化 `succeeded` job。writer、适用的 governance、编码、refresh 或结果写回失败都进入既有重试路径；重复尝试不得伪造或追加第二条成功结果。Governance 的语义与取舍由 `bounded-truth-and-adr-evolution-governance.md` 拥有。
-- `succeeded` result 与 job 持久化后，finalizer 默认对本轮 canonical Markdown 净变化执行一次 fail-open Git commit；项目级 `autoCommitKnowledge` 默认为 `true`，设为 `false` 时只跳过这一步，Truth/ADR 写入与治理、成功记录和 index refresh 仍照常完成，文档改动保留在工作区。启用自动提交时，commit message 精确使用 source `taskName`；候选集只包含 writer 开始前干净的变化路径，pre-existing dirty Truth 保持未提交。commit 使用从 `HEAD` 初始化的独立临时 index 并禁用 hooks，使用户真实 index 中的无关 staged content 不能进入该 commit。Git 不可用、没有候选变化、临时 index 操作失败或 commit 失败都不反转 finalizer 成功状态，也不删除文档改动。该隔离是路径级而非行级：同一条原先干净文档上的并发写入不能与 writer 内容可靠分离。
+- `succeeded` result 与 job 持久化后，finalizer 不调用 Git。Truth/ADR 写入与治理、成功记录和 index refresh 完成后，canonical 文档改动留在工作区，由正常开发流程审阅和提交。
 - Finalizer 不再主动删除 report。report 与 source plan 同属 task directory，归档时一起移动到 `.claw/archive/tasks/`，仅在 task retention 超过 `maxTasksToKeep` 并裁剪整个 archived task 时删除。新项目与缺失配置统一使用共享默认值 `9`；通用 task layout 与 retention 事实由 `../features/task-layout-and-session-bindings.md` 记录。
 - 内置 `knowledge-writer` 统一拥有 conclusion-evidence qualification、Truth→ADR 固定顺序、候选阅读、freshness qualification 与 one-owner consistency；response format 与自然语言总结不参与控制流。host session completion 断言只适用于内置 writer：它检查存在 `end.completed`、tasks 非空且全部 `done` 的 session workflow；外部治理 skill 不受该断言约束。
 
@@ -30,18 +30,22 @@
 - 仅设置 launch-disable 环境变量跳过 job：拒绝，因为 queued/failed job 会在后续 SessionStart 被重新发现；真正的 no-deposition workflow 应由显式 session scope 或持久化 policy 表达。
 - 让 foreground 等待 writer：拒绝，因为 knowledge sidecar 失败不能阻塞 plan lifecycle。
 - finalization 成功后主动删除 report：拒绝，因为这会丢失原始 turn 结论和 writer 的结构化完成结果，使异步 closeout 难以观察；report 应遵循已有 task archive/retention lifecycle。
-- 复用用户真实 index 或在 commit hooks 开启时直接提交：拒绝，因为既有 staged content 或 hook 新增路径可能越过 finalizer 的文档 ownership 边界。把 Git commit 纳入 finalizer 成功事务也被拒绝；自动提交是交付便利 side effect，不能让 Git 环境问题把已经完成的 canonical deposition 改写为失败并触发重复 writer。
-- 把 `autoCommitKnowledge = false` 解释为跳过知识写入或把 finalization 标记为失败：拒绝，因为该配置只选择是否自动创建 Git commit，不应改变 canonical knowledge、治理、结果记录或 recall refresh 的成功边界。
 - 增加专用 marker，或以 mutation、host-action、plan、task identity 作为 conclusion checkpoint：拒绝，因为 writer 只消费符合规则的信息，成功 `task.done` response 的既有字段已经足够识别 direct / deferred tool output；额外身份只增加协议和维护成本。
 
 <!-- state: history -->
 ## Evolution history
+
+<!-- dated: 2026-07-22 -->
+### 移除 finalizer 自动 Git 提交
+
+- 先前决策把一次隔离的 fail-open Git commit 作为 successful finalization 的后置副作用，并以 `autoCommitKnowledge` 作为项目配置 gate。该机制已完全移除：finalizer 只写入、治理、记录结果和刷新索引，文档提交由正常开发流程负责。
 
 <!-- dated: 2026-07-21 -->
 ### External governance skills became unattended-adapter runs
 
 The earlier completion gate applied to every writer session and the invocation instructed each selected skill to be followed exactly. The current finalizer keeps the built-in writer's strict workflow contract, but adapts external skills to unattended governance so their interactive gates are not treated as fulfilled by the runner itself.
 
+<!-- state: current -->
 ## Consequences
 
 - 完成期沉淀由一个 host-aware job owner 管理，main agent、workflow guidance 和旧 specialist reuse policy 不再形成第二套当前派发合同。
@@ -51,8 +55,6 @@ The earlier completion gate applied to every writer session and the invocation i
 - 进入任一 `end.*` 才形成自动沉淀边界；process 状态中的 report 与 plan 明确结论可供后续终结评估，但不会单独触发 partial finalization。
 - Writer 递归 hook 已在进程环境与 CLI preflight 两层被阻断；外层 harness plan 若不应沉淀，仍需要单独的 session-scope lifecycle，而不是依赖 runner guard。
 - Job、report result、encoding、refresh 和持久化顺序成为可回归的完成证据；相邻 report 同时保留原始 turn 结论与可按 `finalizeId` 读取的 writer 结果。
-- 成功 finalization 可以产生一个只含本轮自有 canonical documentation 的 task-named commit，同时保留用户先前的 dirty Truth、无关 staged content 和 Git 失败后的未提交文档；路径级隔离无法解决 writer 窗口内同文件并发编辑。
-- 团队可以关闭 `autoCommitKnowledge` 以保留人工审阅与提交边界，而不牺牲 finalization 的知识写入、治理、结果记录或索引刷新。
 - 单次 Stop 可以恢复同一 turn 内多个成功 `task.done` 返回对应的 assistant conclusions，并与该 turn 的最终 report 一起保存；多轮完成由各轮 Stop 分别追加，writer 不区分这些信息来自哪个 task。
 - OpenCode host 的 finalizer agent 入口收敛为单一 `packages/opencode-adapter/agents/claw-knowledge-writer.md`。该 `mode: primary` agent 由 host-aware finalizer 经 `opencode run` 直接启动（不是 main-agent subagent dispatch，因此与 `claw-researcher` 的 `mode: subagent` 形态不同），不加载 `using-claw-kit`，也不派发另一个 writer 或拆分 pass；host-aware finalizer 动态选择 configured skill，并要求其 host session 中存在达到 `end.completed`、tasks 非空且全部 `done` 的 session workflow，不要求内置 template identity。retired `claw-truth-writer.md` 与 `claw-adr-writer.md` agent 不再随 OpenCode adapter 发布，对应 discovery 目录由 `installOpencodePlugin` 在安装期移除。
 
@@ -62,7 +64,6 @@ The earlier completion gate applied to every writer session and the invocation i
 - `packages/core/src/knowledge-governance.ts`
 - `packages/core/src/plan.ts`
 - `packages/cli/src/knowledge-hook-preflight.ts`
-- `packages/cli/src/knowledge-git-commit.ts`
 - `packages/cli/src/cli.ts`
 - `packages/cli/src/codex-transcript.ts`
 - `packages/cli/src/opencode-runner.ts`
