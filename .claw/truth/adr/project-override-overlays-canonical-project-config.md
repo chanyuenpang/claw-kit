@@ -62,3 +62,13 @@ Accepted
 - `gitnexus`
 - `final_only`
 - `per_task`
+
+<!-- state: history -->
+## Evolution history
+
+<!-- dated: 2026-07-22 -->
+### Existing projects adopt shared GitNexus enablement
+
+- The `17` claw projects discovered under the two user Documents roots adopted GitNexus by setting the flat boolean `gitnexus` field to `true` in the team-owned `.claw/project.json`.
+- The rollout intentionally left `.claw/project-override.json` unchanged: enabling a project integration as the shared baseline belongs to canonical project config, while the personal overlay remains the owner of local deviations and can still change the effective runtime value.
+- The decision applied to the projects that existed at this checkpoint. Projects created or reconfigured later still require their own explicit shared-config decision.
