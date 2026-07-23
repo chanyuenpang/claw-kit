@@ -4,6 +4,12 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## Unreleased
 
+## [0.1.96] - 2026-07-23
+
+### Changed
+
+- Default root plans with two or fewer total tasks now skip Codex Goal Mode and progress synchronization; template-backed plans and subplans retain their lifecycle integration.
+
 ## [0.1.95] - 2026-07-22
 
 ### Added
