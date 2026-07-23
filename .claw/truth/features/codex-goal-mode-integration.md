@@ -1,10 +1,14 @@
 ﻿# Codex Goal mode integration
 
+<!-- state: current -->
+## Current behavior
+
 - Codex Goal mode is a host-level thread feature, not a `claw-kit` plugin-owned runtime.
 - Official Codex docs describe Goal mode as a persistent thread objective started through `/goal`, with progress controls shown above the composer in the app, and equivalent support in the CLI and IDE surfaces.
 - `claw-kit` 只在 plan 首次进入 `process.active` 或从暂停态恢复进入 `process.active` 时返回 Goal lifecycle 合同；`prepare.requirements` 阶段不应提前返回 active goal 建议。
 - `prepare.requirements` 即使已经有 `goal.text`，现在也不再返回“立刻启动 active goal”的推荐；这一阶段只负责补全 requirements 并推进到真正的执行态。
 - canonical `.claw/project.json` now exposes flat `goalMode` as the project-level gate for this behavior.
+- Host-level Goal and `update_plan` integration is reserved for plans that need it: a default root plan with two or fewer tasks does not emit `goalMode`, `goalTool`, or Codex `hostActions`. The count includes all plan tasks, including a planning task. Template-backed plans and subplans retain integration at every task count; default root plans begin using it at three tasks.
 - when `goalMode = false`, `workflowGuidance` must suppress both `goalMode` and `goalTool` entirely even if the active plan has a valid `goal.text` and has just entered `process.active`.
 - `workflowGuidance` 现在把 Goal lifecycle 拆成两个互补字段：`goalMode` 负责 host 侧 Goal mode 时机和推荐目标，`goalTool` 负责必须执行的真实 Codex goal tool 合同。
 - `packages/core/src/templates/plans/default.ts` 的单一 seeded planning bridge 文案也消费同一个 `goalMode` 推荐目标：只要 `goalMode` enabled 且 host 不是显式 `opencode`，就会把 `buildGoalModeObjective(...)` 产出的 recommended objective 追加到 bridge detail，并明确只有 bridge 原子进入 `process.active` 后才启动 Goal Mode；Codex 默认 no-host 路径按 Codex-compatible 处理，显式 `host: "opencode"` 保留不含 Codex objective 的 detail，而 `goalMode = false` 只输出 base detail。默认 bridge 与 legacy 双任务兼容的完整生命周期事实由 `cli-guided-workflow.md` 拥有。
@@ -52,6 +56,7 @@
   - `process.wait` 与 `process.discussing` 声明 cross-host `goalTool.tool = update_goal` 且 `status = blocked`
   - `end.completed` 声明 `goalTool.tool = update_goal` 且 `status = complete`
 - `packages/core/src/workflow-guidance.ts`
+  - `shouldUsePlanHostIntegration()` is the shared task-count and lifecycle predicate; `buildPlanWorkflowGuidance()` applies it to Goal-mode guidance.
   - `buildGoalMode()` 继续定义 `allowOverwrite = true`、`ifNoActiveGoal = true`、`supportedSurfaces`
   - `buildGoalModeObjective()` 负责把 `recommendedObjective` 渲染成可复用的 planning-bridge 文案片段
   - `buildGoalTool()` 负责把 `create_goal` / `update_goal` 模板实例化成真实 workflowGuidance 合同
@@ -63,6 +68,7 @@
   - `validatePlanDocument()` 要求 `goal.text` 缺失时 plan 不能离开 `prepare.requirements`
 - `packages/cli/src/cli.ts`
   - compact plan result 会把 `workflowGuidance.goalTool` 原样透传到 CLI JSON
+  - `buildHostActions()` uses the same `shouldUsePlanHostIntegration()` predicate before projecting Codex progress.
   - `buildHostActions()` 根据 committed `planStatus` 把 wait/discussing 的 Codex native action 投影为 schema-v1 `update_goal({ status: "complete" })`，不改写 compatibility `goalTool.status = blocked`
   - `subplan.create` 的 Codex hostActions 固定先执行 `update_goal(complete)`、再执行 `update_plan`，且本次 handoff 不生成 `create_goal`
 - `packages/cli/src/codex-driver.ts`
@@ -79,3 +85,4 @@
 - `packages/cli/test/cli.test.ts`
   - CLI 回归覆盖 wait/discussing 的 Codex hostAction 投影为 schema-v1 `update_goal(complete)`，以及 active/resumed active 的 `create_goal`、普通 active progress 不产生 Goal action
   - 覆盖 `goalMode = false` 时 suppress `goalMode` / `goalTool`
+  - covers lightweight default plans, three-task plans, template-backed plans, and subplans at the host-integration boundary.

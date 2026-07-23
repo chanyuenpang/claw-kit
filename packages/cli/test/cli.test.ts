@@ -436,12 +436,8 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   assert.equal("taskName" in writeResult, false);
   assert.equal("planFile" in writeResult, false);
   assert.equal(writeResult.planSummary, "0/1 e2e-task");
-  const createGoalMode = writeResult.goalMode as JsonRecord;
-  const createGoalTool = writeResult.goalTool as JsonRecord;
-  assert.match(String(createGoalMode.recommendedObjective), /Verify the CLI lifecycle/);
-  assert.equal(createGoalMode.setWhen, "on_enter_process_active");
-  assert.equal(createGoalTool.tool, "create_goal");
-  assert.equal(createGoalTool.allowOverwrite, true);
+  assert.equal("goalMode" in writeResult, false);
+  assert.equal("goalTool" in writeResult, false);
   assert.equal("nextAction" in writeResult, false);
   assert.equal("instruction" in writeResult, false);
   assert.equal("askUser" in writeResult, false);
@@ -868,7 +864,7 @@ test("Codex driver reuses an active Goal on resume and skips closing an already 
   assert.deepEqual(calls, []);
 });
 
-test("Codex plan results keep only stage-relevant fields and hostActions", () => {
+test("Codex lightweight plans skip Goal and progress synchronization", () => {
   const root = createFixture("codex-stage-minimal-result");
   runClaw(["init", "--name", "Codex Minimal Result", "--planning", "false"], root);
   const result = runClaw(
@@ -884,15 +880,30 @@ test("Codex plan results keep only stage-relevant fields and hostActions", () =>
   assert.equal("events" in result, false);
   assert.equal("changedTaskIds" in result, false);
   assert.equal("appendedTaskIds" in result, false);
-  const actions = result.hostActions as JsonRecord[];
-  assert.deepEqual(actions.map((action) => action.tool), ["update_plan", "create_goal"]);
-  assert.deepEqual(Object.keys(actions[0]!).sort(), ["id", "input", "schemaVersion", "tool"]);
-  assert.deepEqual(Object.keys(actions[1]!).sort(), ["id", "input", "schemaVersion", "tool"]);
+  assert.equal("hostActions" in result, false);
   assert.equal("plan" in result, false);
   assert.equal(result.planSummary, "0/1 demo-task");
   assert.equal("nextsteps" in result, false);
   assert.equal("notes" in result, false);
   assert.ok(Array.isArray(result.commandHints));
+});
+
+test("Codex template-backed plans keep Goal and progress synchronization below the task threshold", () => {
+  const root = createFixture("codex-template-host-integration");
+  const templatePath = path.join(root, "template.json");
+  fs.writeFileSync(templatePath, `${JSON.stringify(createPlanLikeTemplate({
+    id: "single-task-template",
+    status: "process.active",
+    tasks: [{ id: 1, title: "Run template work", status: "pending" }],
+  }), null, 2)}\n`, "utf-8");
+  runClaw(["init", "--name", "Codex Template Integration", "--planning", "false"], root);
+
+  const result = runClaw(
+    ["plan", "create", "--title", "template-task", "--template-file", templatePath, "--host", "codex"],
+    root,
+  );
+
+  assert.deepEqual((result.hostActions as JsonRecord[]).map((action) => action.tool), ["update_plan", "create_goal"]);
 });
 
 test("session scope runs outside a project, recovers across cwd, and cleans without project side effects", () => {
@@ -1007,7 +1018,7 @@ test("explicit session scope overrides an initialized project and remains isolat
   runClaw(["session", "clean"], root, env);
 });
 
-test("session plan completion keeps Goal actions but queues no knowledge or project refresh work", () => {
+test("lightweight session plan completion skips Goal actions and queues no project refresh work", () => {
   const root = createFixture("session-scope-completion");
   const runtimeDir = createFixture("session-scope-completion-runtime");
   const env = { CODEX_THREAD_ID: "thread-session-completion", CLAW_SESSION_RUNTIME_DIR: runtimeDir };
@@ -1018,8 +1029,7 @@ test("session plan completion keeps Goal actions but queues no knowledge or proj
   );
   const planPath = String(created.planPath);
   const activated = runClaw(["plan", "edit", "--status", "process.active", "--host", "codex"], root, env);
-  const activationActions = activated.hostActions as Array<JsonRecord>;
-  assert.ok(activationActions.some((action) => action.tool === "create_goal"));
+  assert.equal("hostActions" in activated, false);
 
   const plan = JSON.parse(fs.readFileSync(planPath, "utf-8")) as { tasks: Array<{ id: number }> };
   for (const task of plan.tasks) {
@@ -1034,9 +1044,8 @@ test("session plan completion keeps Goal actions but queues no knowledge or proj
   assert.equal(completed.planPath, planPath);
   assert.equal((completed.achievement as JsonRecord).status, "end.completed");
   assert.equal((completed.nextsteps as string[]).some((step) => step.includes("using-claw-kit")), true);
-  assert.equal((completed.nextsteps as string[]).some((step) => step.includes("update_goal")), false);
-  const completionActions = completed.hostActions as Array<JsonRecord>;
-  assert.deepEqual(completionActions.map((action) => action.tool), ["update_goal"]);
+  assert.equal((completed.nextsteps as string[]).some((step) => step.includes("update_goal")), true);
+  assert.equal("hostActions" in completed, false);
 
   const sessionRoot = path.dirname(path.dirname(path.dirname(planPath)));
   assert.equal(fs.existsSync(path.join(sessionRoot, "runtime", "knowledge-sessions")), false);
@@ -1127,7 +1136,7 @@ test("background worker environments drop the foreground invocation host", () =>
   assert.equal(source.CLAW_HOST, "codex");
 });
 
-test("Codex wait and resume results omit compatibility guidance already handled by hostActions", () => {
+test("Codex lightweight wait and resume results omit host synchronization", () => {
   const root = createFixture("codex-wait-resume-minimal-result");
   runClaw(["init", "--name", "Codex Wait Resume", "--planning", "false"], root);
   runClaw(["plan", "create", "--title", "demo-task", "--goal", "Pause and resume cleanly"], root);
@@ -1141,8 +1150,7 @@ test("Codex wait and resume results omit compatibility guidance already handled 
   assert.equal("goalTool" in waitResult, false);
   assert.equal("nextsteps" in waitResult, false);
   assert.deepEqual(waitResult.commandHints, ["claw plan resume"]);
-  assert.deepEqual((waitResult.hostActions as JsonRecord[]).map((action) => action.tool), ["update_plan", "update_goal"]);
-  assert.ok(Array.isArray((((waitResult.hostActions as JsonRecord[])[0]!.input as JsonRecord).plan)));
+  assert.equal("hostActions" in waitResult, false);
 
   const resumeResult = runClaw(["plan", "resume", "--task-name", "demo-task", "--host", "codex"], root);
   assert.equal(resumeResult.command, "plan.resume");
@@ -1151,10 +1159,10 @@ test("Codex wait and resume results omit compatibility guidance already handled 
   assert.equal("goalMode" in resumeResult, false);
   assert.equal("goalTool" in resumeResult, false);
   assert.equal("nextsteps" in resumeResult, false);
-  assert.deepEqual((resumeResult.hostActions as JsonRecord[]).map((action) => action.tool), ["update_plan", "create_goal"]);
+  assert.equal("hostActions" in resumeResult, false);
 });
 
-test("Codex plan sync restores host progress and Goal Mode for a recovered active plan", () => {
+test("Codex lightweight plan sync skips host progress and Goal Mode", () => {
   const root = createFixture("codex-plan-sync");
   const env = { CODEX_THREAD_ID: "thread-plan-sync" };
   runClaw(["init", "--name", "Codex Plan Sync", "--planning", "false"], root, env);
@@ -1164,15 +1172,17 @@ test("Codex plan sync restores host progress and Goal Mode for a recovered activ
 
   assert.equal(sync.command, "plan.sync");
   assert.equal(sync.planStatus, "process.active");
-  assert.deepEqual((sync.hostActions as JsonRecord[]).map((action) => action.tool), ["update_plan", "create_goal"]);
+  assert.equal("hostActions" in sync, false);
 });
 
-test("Codex plan sync respects the project goalMode override", () => {
+test("Codex plan sync respects the project goalMode override above the task threshold", () => {
   const root = createFixture("codex-plan-sync-goal-mode-disabled");
   const env = { CODEX_THREAD_ID: "thread-plan-sync-no-goal" };
   runClaw(["init", "--name", "Codex Plan Sync No Goal", "--planning", "false"], root, env);
   fs.writeFileSync(path.join(root, ".claw", "project-override.json"), JSON.stringify({ goalMode: false }), "utf-8");
   runClaw(["plan", "create", "--title", "demo-task", "--goal", "Restore only progress"], root, env);
+  runClaw(["task", "add", "--task-name", "demo-task", "--title", "Second task"], root, env);
+  runClaw(["task", "add", "--task-name", "demo-task", "--title", "Third task"], root, env);
 
   const sync = runClaw(["plan", "sync", "--host", "codex"], root, env);
 
@@ -1183,6 +1193,8 @@ test("Codex emits update_plan only when the projected host plan changes", () => 
   const root = createFixture("codex-projected-plan-change");
   runClaw(["init", "--name", "Codex Projection", "--planning", "false"], root);
   runClaw(["plan", "create", "--title", "demo-task", "--goal", "Track projection"], root);
+  runClaw(["task", "add", "--task-name", "demo-task", "--title", "Second task"], root);
+  runClaw(["task", "add", "--task-name", "demo-task", "--title", "Third task"], root);
 
   const metadataOnly = runClaw([
     "plan", "edit", "--task-name", "demo-task", "--summary", "Document context", "--host", "codex",
@@ -1201,6 +1213,8 @@ test("Codex emits update_plan only when the projected host plan changes", () => 
   assert.deepEqual(actions.map((action) => action.tool), ["update_plan"]);
   assert.deepEqual(((actions[0]!.input as JsonRecord).plan), [
     { step: "Renamed work", status: "in_progress" },
+    { step: "Second task", status: "pending" },
+    { step: "Third task", status: "pending" },
   ]);
 });
 
@@ -1209,6 +1223,7 @@ test("Codex progress projection follows the task actually marked in progress", (
   runClaw(["init", "--name", "Codex Actual Progress", "--planning", "false"], root);
   runClaw(["plan", "create", "--title", "demo-task", "--goal", "Track actual task"], root);
   runClaw(["task", "add", "--task-name", "demo-task", "--title", "Second task"], root);
+  runClaw(["task", "add", "--task-name", "demo-task", "--title", "Third task"], root);
   runClaw(["plan", "edit", "--task-name", "demo-task", "--status", "process.active"], root);
 
   const result = runClaw([
@@ -1220,6 +1235,7 @@ test("Codex progress projection follows the task actually marked in progress", (
   assert.deepEqual((actions[0]!.input as JsonRecord).plan, [
     { step: "Track actual task", status: "pending" },
     { step: "Second task", status: "in_progress" },
+    { step: "Third task", status: "pending" },
   ]);
 });
 
@@ -1436,6 +1452,8 @@ test("cli routes host-neutral Goal guidance by paused and resumed plan status", 
   const root = createFixture("plan-edit-wait-and-resume-guidance");
   runClaw(["init", "--name", "Wait And Resume Guidance", "--planning", "false"], root);
   runClaw(["plan", "create", "--title", "demo-task", "--goal", "Pause and resume cleanly"], root);
+  runClaw(["task", "add", "--task-name", "demo-task", "--title", "Second task"], root);
+  runClaw(["task", "add", "--task-name", "demo-task", "--title", "Third task"], root);
 
   const patchPath = path.join(root, "wait-guidance-tasks.json");
   fs.writeFileSync(
@@ -2211,6 +2229,7 @@ test("cli plan done on a subplan resumes the parent plan instead of archiving th
     "--title", "Implement child work", "--detail", "Split the risky work into a subplan",
   ], root, env);
   runClaw(["task", "add", "--title", "Resume parent work"], root, env);
+  runClaw(["task", "add", "--title", "Third parent task"], root, env);
   runClaw(["plan", "edit", "--status", "process.active"], root, env);
   runClaw(["subplan", "create", "--parent", "demo-task", "--task-id", "1"], root, env);
 

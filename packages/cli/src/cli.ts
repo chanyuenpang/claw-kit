@@ -12,6 +12,7 @@ import {
   checkProjectProtocol,
   ClawError,
   buildPlanWorkflowGuidance,
+  shouldUsePlanHostIntegration,
   buildMemoryIndex,
   buildSessionStartDefaultPrompt,
   buildSessionStartRecoveredPrompt,
@@ -2317,6 +2318,7 @@ function buildHostActions(result: {
   }
   if (
     result.plan
+    && shouldUsePlanHostIntegration(result.plan)
     && result.plan.tasks.length > 0
     && (options.forceProjectionSync || codexPlanProjectionChanged(result.previousPlan, result.plan, result.planStatus))
   ) {

@@ -25,6 +25,7 @@ Treat Goal mode as a thread-level Codex feature. `claw-kit` supplies the plan-de
 
 Default policy:
 
+- host-level Goal and progress synchronization is enabled for default root plans only after they exceed two tasks (the complete task list, including planning tasks); template-backed plans and subplans retain it at every task count
 - `prepare.requirements` does not emit an active-goal recommendation
 - only when a plan first enters `process.active`, expose a `goalMode` recommendation from canonical `plan.goal.text`
 - only entering or resuming `process.active` emits native schema-v1 `create_goal`
@@ -41,6 +42,7 @@ Default policy:
 ## Consequences
 
 - The integration is honest about the host boundary.
+- Small, self-contained default plans avoid host Goal/progress overhead, while plans with three or more tasks and lifecycle-owning template or subplan flows preserve the existing synchronization and handoff contract.
 - Active execution can still align with Goal mode automatically in tool-capable environments.
 - Goal lifecycle changes are expressed through real Codex contracts, not adapter-invented pseudo-operations.
 - The same plan remains portable across hosts, because the canonical source stays in `.claw`, while Goal mode remains an optional Codex-host enhancement.

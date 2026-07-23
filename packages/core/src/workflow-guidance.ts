@@ -195,6 +195,16 @@ export function buildGoalModeObjective(planGoal: string): string {
   return renderTemplateString(template, { planGoal: trimmedGoal });
 }
 
+/**
+ * Keep lightweight default plans out of host-level Goal and progress synchronization.
+ * Template-backed skills and subplans own lifecycle handoffs and always keep it enabled.
+ */
+export function shouldUsePlanHostIntegration(plan: Pick<PlanDocument, "tasks" | "templateFile" | "templateId" | "parentPlan">): boolean {
+  return Boolean(plan.parentPlan)
+    || (plan.templateId !== "default" && Boolean(plan.templateFile))
+    || plan.tasks.length > 2;
+}
+
 function nextUnfinishedTask(plan: PlanDocument): PlanTask | undefined {
   return plan.tasks.find((task) => task.status !== "done");
 }
@@ -328,7 +338,7 @@ export async function buildPlanWorkflowGuidance(params: {
   const hasChangedTasks = (changedTaskIds?.length ?? 0) > 0;
   const hasAppendedTasks = (appendedTaskIds?.length ?? 0) > 0;
   const hasCompletedTasks = (completedTaskIds?.length ?? 0) > 0;
-  const goalModeEnabled = isGoalModeEnabled(projectConfig);
+  const goalModeEnabled = isGoalModeEnabled(projectConfig) && shouldUsePlanHostIntegration(plan);
   const suppressGoalFields = params.host === "opencode";
   const startedGoalModeThisRound = goalModeEnabled && previousStatus === "process.active";
   const nextTask = nextUnfinishedTask(plan);
