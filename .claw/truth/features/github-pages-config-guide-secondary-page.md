@@ -1,5 +1,6 @@
 ﻿# GitHub Pages Config Guide Secondary Page
 
+<!-- state: current -->
 ## 状态
 
 这是 `GitHub Pages 配置说明页` 这轮完成后沉淀下来的稳定实现事实，适合作为后续第二层静态文档页的复用锚点。
@@ -21,13 +22,13 @@
 
 ## 关联代码
 
-- [docs/config-guide.html](D:/Users/chany/Documents/claw-kit/docs/config-guide.html)
-- [docs/assets/config-guide-content.js](D:/Users/chany/Documents/claw-kit/docs/assets/config-guide-content.js)
-- [docs/assets/config-guide.js](D:/Users/chany/Documents/claw-kit/docs/assets/config-guide.js)
-- [docs/assets/config-guide.css](D:/Users/chany/Documents/claw-kit/docs/assets/config-guide.css)
-- [scripts/config-guide.test.mjs](D:/Users/chany/Documents/claw-kit/scripts/config-guide.test.mjs)
-- [scripts/product-deck.test.mjs](D:/Users/chany/Documents/claw-kit/scripts/product-deck.test.mjs)
-- [docs/project-json-reference.md](D:/Users/chany/Documents/claw-kit/docs/project-json-reference.md)
+- `docs/config-guide.html`
+- `docs/assets/config-guide-content.js`
+- `docs/assets/config-guide.js`
+- `docs/assets/config-guide.css`
+- `scripts/config-guide.test.mjs`
+- `scripts/product-deck.test.mjs`
+- `docs/project-json-reference.md`
 
 ## 关键检索词
 
@@ -36,3 +37,11 @@
 - `Config guide / 配置说明`
 - `docs/project-json-reference.md`
 - `zero-build static docs`
+
+<!-- state: history -->
+## 演化历史
+
+<!-- dated: 2026-07-22 -->
+### 移除自动知识提交说明
+
+- 配置说明页曾公开 `autoCommitKnowledge`。自动提交运行路径和配置契约移除后，该 field card 与项目配置示例不再包含此字段。

@@ -1,0 +1,25 @@
+{
+  "name": "@claw-kit/qoder-adapter",
+  "version": "0.1.95",
+  "private": true,
+  "type": "module",
+  "description": "Qoder adapter assets for landing the claw-kit .claw workflow inside Qoder.",
+  "keywords": [
+    "claw",
+    ".claw",
+    "qoder",
+    "agent-workflow",
+    "knowledge-capture",
+    "adapter"
+  ],
+  "homepage": "https://github.com/chanyuenpang/claw-kit",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chanyuenpang/claw-kit.git",
+    "directory": "packages/qoder-adapter"
+  },
+  "scripts": {
+    "build": "node -e \"console.log('qoder-adapter has no build step')\"",
+    "check": "node -e \"console.log('qoder-adapter check ok')\""
+  }
+}

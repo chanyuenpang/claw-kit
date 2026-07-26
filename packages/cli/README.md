@@ -35,6 +35,8 @@ claw plan create "Ephemeral harness" --scope session --goal "Use plan and Goal w
 
 `claw plan create` uses explicit `--template` first, otherwise the project's configured `defaultPlanTemplate`, and finally falls back to the built-in `default` template. You can select a template explicitly with `claw plan create "<title>" --template <name>` or `claw plan create --template <name> --title "<title>"`.
 
+New project tasks are grouped under `.claw/tasks/YYYY-MM-DD/`. On the first `claw context` call of each local calendar day, claw performs a lock-protected maintenance pass: it clears `.claw/runtime/tmp/` (and removes legacy `.claw/tmp/`), moves date-scoped task folders from before yesterday into the archive even when old plans have no `completedAt`, archives legacy flat tasks by `plan.updatedAt` (falling back to the plan file timestamp), applies `maxTasksToKeep` to archived tasks, removes bindings to plans no longer under active tasks, and sweeps expired session workflows. This is lazy maintenance, not a background scheduler.
+
 `--scope session` stores the workflow in a user-level directory keyed by the platform session id, so it works without a project `.claw` directory and recovers across cwd changes. It preserves plan/task/subplan/Goal behavior while disabling project knowledge capture, memory/GitNexus refresh, and project retention. Use `claw session clean` for the current session or `claw session clean --expired` for the seven-day TTL sweep.
 
 Projects can add reusable templates directly under `.claw/templates` with `.json`, `.js`, `.mjs`, or `.cjs` files. Put `defaultPlanTemplate` in `.claw/project.json` for a shared team default, or in `.claw/project-override.json` for a local personal override.

@@ -3,8 +3,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { readJsonFile, withFileLock, writeJsonFile } from "./io.js";
 import { ensureInsideDir } from "./paths.js";
+import { listTaskDirectories } from "./context.js";
 import { ensureUtf8Bom, hasUtf8BomPrefix } from "./text-encoding.js";
-import type { KnowledgeGovernanceResult } from "./knowledge-governance.js";
+import { snapshotKnowledgeMarkdown, type KnowledgeGovernanceResult, type KnowledgeMarkdownSnapshot } from "./knowledge-governance.js";
 import type { KnowledgeWriterConfig, ProjectContext } from "./types.js";
 
 export type KnowledgeReportTarget = {
@@ -15,7 +16,7 @@ export type KnowledgeReportTarget = {
   completedAt?: string;
 };
 
-export type KnowledgeFinalizationHost = "codex" | "opencode";
+export type KnowledgeFinalizationHost = "codex" | "opencode" | "qoder";
 
 export type KnowledgeSessionRegistry = {
   schemaVersion: 1;
@@ -53,12 +54,28 @@ export type KnowledgeFinalizationJob = {
   adrResponse?: string;
   /** Legacy aggregate fields retained for job observability and older readers. */
   sdkThreadId?: string;
+  sdkThreadIds?: string[];
   finalResponse?: string;
   truthEncoding?: {
     checkedFiles: number;
     updatedFiles: number;
   };
   knowledgeGovernance?: KnowledgeGovernanceResult;
+  /**
+   * Truth markdown baseline captured when the job was queued. Only qoder jobs carry this,
+   * because qoder finalization runs in-conversation (subagent dispatch + record command)
+   * instead of a detached worker that could snapshot immediately before running the writer.
+   */
+  truthSnapshotBefore?: KnowledgeMarkdownSnapshot;
+  /**
+   * Dispatch evidence recorded by internal-knowledge-finalize-record from the
+   * `<finalizeId>.dispatch.json` marker the writer subagent writes next to the job.
+   * Evidence only: recording stays fail-open and never gates on dispatch.
+   */
+  dispatch?: {
+    dispatched: boolean;
+    dispatchedAt?: string;
+  };
   error?: {
     message: string;
   };
@@ -89,6 +106,8 @@ export type KnowledgeFinalizationReportEntry = {
   attempts: number;
   host?: KnowledgeFinalizationHost | null;
   threadId?: string;
+  /** qoder only: whether the writer subagent left dispatch evidence before record ran. */
+  dispatched?: boolean;
   truthEncoding?: {
     checkedFiles: number;
     updatedFiles: number;
@@ -118,8 +137,10 @@ export function knowledgeSessionRegistryPath(project: ProjectContext, sessionId:
   return path.join(project.clawDir, "runtime", "knowledge-sessions", `${key}.json`);
 }
 
-export function knowledgeFinalizationJobPath(project: ProjectContext, finalizeId: string): string {
-  return path.join(project.clawDir, "runtime", "knowledge-finalization", "jobs", `${finalizeId}.json`);
+export function knowledgeFinalizationJobPath(project: ProjectContext, taskName: string, finalizeId: string): string {
+  const task = listTaskDirectories(project).find((candidate) => candidate.taskName === taskName);
+  if (!task) throw new Error(`Knowledge finalization task does not exist: ${taskName}`);
+  return path.join(task.taskDir, ".runtime", "knowledge-finalization", `${finalizeId}.json`);
 }
 
 export function tryRegisterKnowledgePlan(input: {
@@ -261,7 +282,8 @@ export function tryCaptureKnowledgeStop(input: {
         finalizeId = createHash("sha256")
           .update(`${sessionId}\n${registry.pendingTurnOwner.planPath}\n${registry.pendingTurnOwner.endedAt ?? registry.pendingTurnOwner.completedAt ?? ""}`)
           .digest("hex");
-        jobPath = knowledgeFinalizationJobPath(input.project, finalizeId);
+        const planPath = resolveProjectRelativePlanPath(input.project, registry.pendingTurnOwner.planPath);
+        jobPath = knowledgeFinalizationJobPathForPlan(input.project, planPath, finalizeId);
         if (!fs.existsSync(jobPath)) {
           const job: KnowledgeFinalizationJob = {
             schemaVersion: 1,
@@ -270,18 +292,23 @@ export function tryCaptureKnowledgeStop(input: {
             projectRoot: input.project.projectRoot,
             taskName: taskNameFromPlanPath(registry.pendingTurnOwner.planPath),
             writer: {
-              externalSkill: input.project.projectConfig?.knowledgeWriter?.externalSkill ?? null,
+              externalSkills: input.project.projectConfig?.knowledgeWriter?.externalSkills ?? [],
               model: input.project.projectConfig?.knowledgeWriter?.model ?? null,
               reasoningEffort: input.project.projectConfig?.knowledgeWriter?.reasoningEffort ?? "medium",
               datedSectionsToKeep:
                 input.project.projectConfig?.knowledgeWriter?.datedSectionsToKeep ?? 6,
             },
             host: input.host ?? null,
-            planPath: resolveProjectRelativePlanPath(input.project, registry.pendingTurnOwner.planPath),
+            planPath,
             reportPath,
             status: "queued",
             attempts: 0,
             queuedAt: new Date().toISOString(),
+            // qoder finalization is dispatched in-conversation, so capture the Truth
+            // baseline now; the record command governs changed docs against it.
+            ...(input.host === "qoder"
+              ? { truthSnapshotBefore: snapshotKnowledgeMarkdown(input.project.truthDir) }
+              : {}),
           };
           writeJsonFile(jobPath, job);
         }
@@ -332,13 +359,13 @@ export function claimKnowledgeFinalizationJob(jobPath: string): KnowledgeFinaliz
 }
 
 export function listRetryableKnowledgeFinalizationJobs(project: ProjectContext): string[] {
-  const jobsDir = path.join(project.clawDir, "runtime", "knowledge-finalization", "jobs");
-  if (!fs.existsSync(jobsDir)) {
-    return [];
-  }
-  return fs.readdirSync(jobsDir)
-    .filter((name) => name.endsWith(".json"))
-    .map((name) => path.join(jobsDir, name))
+  const taskJobs = listTaskDirectories(project)
+    .flatMap((task) => listKnowledgeJobs(path.join(task.taskDir, ".runtime", "knowledge-finalization")));
+  const archivedTaskJobs = listTaskDirectories({ tasksDir: path.join(project.clawDir, "archive", "tasks") } as ProjectContext)
+    .flatMap((task) => listKnowledgeJobs(path.join(task.taskDir, ".runtime", "knowledge-finalization")));
+  // Read legacy central jobs so an upgrade does not strand retryable work. New jobs are never written there.
+  const legacyJobs = listKnowledgeJobs(path.join(project.clawDir, "runtime", "knowledge-finalization", "jobs"));
+  return [...taskJobs, ...archivedTaskJobs, ...legacyJobs]
     .filter((jobPath) => {
       try {
         const job = readKnowledgeFinalizationJob(jobPath);
@@ -347,6 +374,63 @@ export function listRetryableKnowledgeFinalizationJobs(project: ProjectContext):
         return false;
       }
     });
+}
+
+/** Remove obsolete legacy runtime records left by releases before task-local jobs. */
+export function pruneLegacyKnowledgeRuntime(project: ProjectContext): { jobsRemoved: number; sessionsRemoved: number } {
+  const legacyJobsDir = path.join(project.clawDir, "runtime", "knowledge-finalization", "jobs");
+  let jobsRemoved = 0;
+  for (const jobPath of listKnowledgeJobs(legacyJobsDir)) {
+    try {
+      const job = readKnowledgeFinalizationJob(jobPath);
+      if (job.status === "succeeded" || !isActiveProjectPlanPath(project, job.planPath)) {
+        fs.unlinkSync(jobPath);
+        jobsRemoved += 1;
+      }
+    } catch {
+      fs.unlinkSync(jobPath);
+      jobsRemoved += 1;
+    }
+  }
+  const sessionsDir = path.join(project.clawDir, "runtime", "knowledge-sessions");
+  let sessionsRemoved = 0;
+  if (fs.existsSync(sessionsDir)) {
+    for (const entry of fs.readdirSync(sessionsDir, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+      const sessionPath = path.join(sessionsDir, entry.name);
+      try {
+        const registry = readJsonFile<Partial<KnowledgeSessionRegistry>>(sessionPath);
+        if (!registry.activePlanPath || !isActiveProjectPlanPath(project, registry.activePlanPath)) {
+          fs.unlinkSync(sessionPath);
+          sessionsRemoved += 1;
+        }
+      } catch {
+        fs.unlinkSync(sessionPath);
+        sessionsRemoved += 1;
+      }
+    }
+  }
+  return { jobsRemoved, sessionsRemoved };
+}
+
+function isActiveProjectPlanPath(project: ProjectContext, planPath: string): boolean {
+  const candidate = path.isAbsolute(planPath) ? path.resolve(planPath) : path.resolve(project.clawDir, planPath);
+  return candidate.startsWith(`${path.resolve(project.tasksDir)}${path.sep}`) && fs.existsSync(candidate);
+}
+
+function listKnowledgeJobs(directory: string): string[] {
+  if (!fs.existsSync(directory)) return [];
+  return fs.readdirSync(directory)
+    .filter((name) => name.endsWith(".json"))
+    .map((name) => path.join(directory, name));
+}
+
+function knowledgeFinalizationJobPathForPlan(project: ProjectContext, planPath: string, finalizeId: string): string {
+  const relative = path.relative(project.tasksDir, planPath);
+  const segments = relative.split(path.sep).filter(Boolean);
+  const taskSegments = /^\d{4}-\d{2}-\d{2}$/.test(segments[0] ?? "") ? segments.slice(0, 2) : segments.slice(0, 1);
+  if (taskSegments.length === 0 || taskSegments.some((segment) => !segment)) throw new Error(`Invalid knowledge plan path: ${planPath}`);
+  return path.join(project.tasksDir, ...taskSegments, ".runtime", "knowledge-finalization", `${finalizeId}.json`);
 }
 
 export function normalizeTruthMarkdownEncoding(project: ProjectContext): {

@@ -16,7 +16,8 @@ export type MemoryEmbeddingConfig = {
 export type KnowledgeWriterReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
 
 export type KnowledgeWriterConfig = {
-  externalSkill?: string | null;
+  /** Ordered external finalizer skills. Each runs in sequence. */
+  externalSkills?: string[];
   model?: string | null;
   reasoningEffort?: KnowledgeWriterReasoningEffort;
   datedSectionsToKeep?: number;
@@ -125,6 +126,7 @@ export type PlanDocument = {
   configOverride?: TemplateConfigOverride;
   status: PlanStatus;
   completedAt?: string;
+  updatedAt?: string;
   goal: {
     text: string;
   };
@@ -172,13 +174,13 @@ export type WorkflowGuidanceOption = {
 
 export type WorkflowGuidanceGoalTool =
   | {
-      tool: "create_goal";
+      tool: "create_goal" | "createGoal";
       objective: string;
       allowOverwrite: true;
       reason: string;
     }
   | {
-      tool: "update_goal";
+      tool: "update_goal" | "updateGoal";
       status: "complete" | "blocked";
       reason: string;
     };
@@ -673,6 +675,10 @@ export type MemorySearchResult = {
     route: "task_fts" | "lexical_fast_path" | "hybrid";
     queryEmbedding: "skipped" | "cache_hit" | "generated";
     embeddingRuntime?: "mock" | "persistent_daemon" | "one_shot" | "remote";
+    vectorScanMs?: number;
+    fusionMs?: number;
+    vectorCount?: number;
+    vectorBytes?: number;
     durationMs: number;
   };
 };
@@ -739,6 +745,7 @@ export type ArchivedTaskRecord = {
 export type TaskRetentionResult = {
   enabled: boolean;
   maxTasksToKeep: number;
+  archivedTasks: ArchivedTaskRecord[];
   archivedCurrentTask?: ArchivedTaskRecord;
   prunedArchivedTasks: ArchivedTaskRecord[];
 };

@@ -9,6 +9,12 @@ Use a plan-like `TEMPLATE.json` beside `SKILL.md`.
 - Executable workflows normally start in `process.active`.
 - Keep structured execution in template tasks, guidance, rules, and references; keep direct plan-independent behavior in the adjacent fallback.
 
+## Rule ownership
+
+- Put a constraint in the owning sub-task's `detail` when one sub-task owns it.
+- Use top-level `rules` only for constraints that span tasks or govern the whole plan.
+- Do not duplicate a constraint in both places.
+
 ## Routing and lifecycle
 
 - Whole task: create a plan with the adjacent template file.
@@ -22,4 +28,4 @@ Use `guidance.onDone.choices` only when the selection changes the immediate down
 
 ## Validation
 
-Run `claw template validate --file "<skill-dir>/TEMPLATE.json"`. Then check content coverage so important source behavior remains represented in `SKILL.md`, `TEMPLATE.json`, the fallback, or focused references.
+Run `claw template validate --file "<skill-dir>/TEMPLATE.json"`. Confirm no task-specific constraint remains in top-level `rules`. Then check content coverage so important source behavior remains represented in `SKILL.md`, `TEMPLATE.json`, the fallback, or focused references.

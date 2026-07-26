@@ -1,5 +1,5 @@
 {
-  "version": "0.1.91",
+  "version": "0.1.95",
   "id": "claw-kit",
   "name": "claw-kit",
   "maxTasksToKeep": 9,
@@ -7,7 +7,7 @@
   "autoUpdate": true,
   "goalMode": true,
   "knowledgeWriter": {
-    "externalSkill": null,
+    "externalSkills": [],
     "model": null,
     "reasoningEffort": "medium",
     "datedSectionsToKeep": 6

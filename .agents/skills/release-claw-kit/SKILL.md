@@ -1,10 +1,10 @@
 ---
 name: release-claw-kit
-description: Use when the claw-kit repository owner asks to publish, release, or ship a new claw-kit version and wants the published CLI, GitHub marketplace plugin, and maintainer Codex installation closed out through one workflow.
+description: Repository-local workflow for the claw-kit owner to publish or release a new version, verify its CLI and GitHub marketplace artifacts, and refresh the maintainer Codex installation.
 ---
 # release-claw-kit
 
-Run the claw-kit repository's guarded release protocol, prove the GitHub and npm artifacts, then hand off to the published-source Codex update phase. Treat repository `AGENTS.md` and the checked-out release code as authoritative; do not copy repository-owner policy into unrelated projects.
+Run only inside the claw-kit repository. Apply its guarded release protocol, prove the GitHub and npm artifacts, then hand off to the published-source Codex update phase. Treat repository `AGENTS.md` and the checked-out release code as authoritative.
 
 ## Route By Task Ownership
 

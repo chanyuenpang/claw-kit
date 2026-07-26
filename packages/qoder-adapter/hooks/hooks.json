@@ -1,0 +1,29 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact|new",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claw hook auto-claw --host qoder",
+            "timeout": 30,
+            "statusMessage": "claw: loading plan context"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claw hook auto-doc --host qoder",
+            "timeout": 30,
+            "statusMessage": "claw: capturing plan report"
+          }
+        ]
+      }
+    ]
+  }
+}

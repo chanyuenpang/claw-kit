@@ -17,6 +17,7 @@ Accepted
 ## Decision
 
 - runtime plan 必须持久化 `plan.templateId`；通过精确文件创建时还必须持久化 `plan.templateFile`，使后续 done validation 与 guidance 始终返回同一个 template 文件
+- task completion 与 plan editing 必须继续按 runtime plan 持久化的模板身份解析启动时的合同；已安装模板的后续版本升级只影响新计划，不能悄悄改写 active plan 的 guidance 或完成规则
 - skill-backed workflow 使用相邻 `TEMPLATE.json` 的 `--template-file` 入口；`--template <id>` 继续作为兼容的 id discovery，不能作为同名跨 adapter template 的权威来源
 - runtime plan 必须持久化模板作用域内的 `plan.configOverride`
 - 模板专属 guidance 继续由模板定义，尤其是 `guidance.onDone` 和 `guidance.onDone.choices`
@@ -37,6 +38,7 @@ Accepted
 ## Consequences
 
 - 运行时 plan 可以在没有 sidecar 状态的情况下重新解析同一个模板文件、模板路由和模板级覆盖
+- active plan 的模板合同不会随已安装模板版本推进而漂移，升级后的规则从新计划开始生效
 - `goalMode` 与 `knowledgeWriter` 等 current effective behavior 可以通过 `configOverride` 在统一 runtime contract 下覆盖；旧 `truthDispatch` 只属于兼容输入
 - 路由完成的校验面收敛为一条规则，`choiceId` 不会因为入口不同而产生分叉
 - 调用者无需从 template JSON 或内部字段名反推 route；compact guidance 本身提供 choices 与可复制执行的命令

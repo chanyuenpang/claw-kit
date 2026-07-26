@@ -50,9 +50,12 @@ test("create-claw-skill stub generator writes standard fill-in surfaces", async 
   assert.equal(template.tasks.length, 3);
   assert.equal(template.tasks.some((task) => task.guidance?.onPlanStart), false);
   assert.doesNotMatch(templateText, /"choices"/);
-  assert.match(template.rules.join("\n"), /optional claw plan start shorthand/i);
-  assert.match(template.rules.join("\n"), /completionChoices[\s\S]*one claw task done[\s\S]*do not repeat ids in nextsteps/i);
-  assert.match(template.rules.join("\n"), /version equal to the current claw CLI version/i);
+  assert.deepEqual(template.rules, ["Follow returned workflowGuidance before advancing."]);
+  assert.match(template.tasks[0].detail, /task-specific constraint[\s\S]*owning sub-task's detail/i);
+  assert.match(template.tasks[0].detail, /top-level rules for cross-task constraints/i);
+  assert.match(template.tasks[0].detail, /guidance\.onPlanStart[\s\S]*process\.active/i);
+  assert.match(template.tasks[2].detail, /template version matches the current claw CLI/i);
+  assert.match(template.tasks[2].detail, /completionChoices[\s\S]*one claw task done[\s\S]*Do not repeat ids in nextsteps/i);
   assert.match(coverageText, /Skill-local template: `TEMPLATE\.json` with id `demo-skill`/);
   assert.match(coverageText, /Mixed-stage entry:[\s\S]*fallback/);
   assert.match(coverageText, /Unavailable-tooling entry:[\s\S]*same fallback/);

@@ -25,7 +25,7 @@ test("config guide content model covers every supported project.json field", asy
     "defaultPlanTemplate",
     "contextPaths",
     "externalPlanningSkill",
-    "knowledgeWriter.externalSkill",
+    "knowledgeWriter.externalSkills",
     "memory.enabled",
     "memory.externalDocPaths",
     "memory.embedding",

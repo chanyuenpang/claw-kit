@@ -8,6 +8,7 @@
 - Evidence freshness and unresolved-conflict handling: `non-claw-fallback.md`, template task 2, acceptance criteria, and template rules.
 - Runtime scope: `TEMPLATE.json` top-level `scope` only; it is not repeated in writer prompts.
 - Fixed Truth-then-ADR sequence without routing choices: template tasks 4 and 5 and `non-claw-fallback.md`.
+- Three-part admission gate for new accepted ADRs: template task 5, acceptance criteria, rules, and `non-claw-fallback.md`.
 - Machine-stable current/history/superseded metadata and dated evolution grammar: `knowledge-format.md`, template tasks 4 and 5, and `non-claw-fallback.md`.
 - On-write format inspection and repair without corpus-wide migration: `knowledge-format.md`, template tasks 3 through 6, acceptance criteria, and template rules.
 - Canonical-owner discovery and exhaustive search: template tasks 3 through 6 plus template rules.
@@ -21,6 +22,7 @@
 - [x] Important source triggers and inputs are represented.
 - [x] Conclusion-bearing content from every supplied material drives deposition; task status informs interpretation without turning task metadata into an execution record.
 - [x] The ordered workflow always performs the Truth pass before the ADR pass and has no route-choice task.
+- [x] New accepted ADRs require costly reversal, non-obvious rationale, and a credible alternative with a real tradeoff.
 - [x] Search tools, ownership constraints, and safety boundaries are represented.
 - [x] Time-bounded authority, current-anchor checks, and unresolved-freshness no-edit behavior are represented.
 - [x] Writing and consistency verification requirements are represented.

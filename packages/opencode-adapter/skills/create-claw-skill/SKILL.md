@@ -34,6 +34,10 @@ See `references/template-upgrade.md` for the upgrade checklist.
 
 Treat `claw plan start` as optional global syntax sugar. Add `guidance.onPlanStart` to a task only when that task's completed discussion should deliberately bundle plan refinement with its declared internal transition, such as completing the task and entering `process.active`. Otherwise omit it and express delivery with ordinary task guidance and plan/task mutations. An executable template should normally start in `process.active` and need no `onPlanStart`.
 
+## Rule Ownership
+
+Put a constraint in the owning sub-task's `detail` when one sub-task owns it. Use top-level `rules` only for constraints that span tasks or govern the whole plan. Do not duplicate a constraint in both places.
+
 Fallback: `FALLBACK.md`.
 Template upgrade: `references/template-upgrade.md`.
 Template authoring contract: `references/template-authoring.md`.

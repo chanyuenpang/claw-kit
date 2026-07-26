@@ -26,7 +26,7 @@ Accepted
 
 - 项目架构重新收敛到 CLI/core 和 `.claw` canonical state，减少 Apps SDK host boundary 带来的维护面。
 - Codex adapter 继续消费 CLI 返回的 compact `workflowGuidance` 与 `planSummary`，而不是维护独立 app/widget 渲染路径。
-- 完成期知识沉淀仍保持 focused writer 边界，但 main thread 不派发 writer；Stop/session-idle sidecar 以 completed `plan.json` 和相邻 report 创建 job，不把 writer 流程内联为普通聊天输出。
+- 完成期知识沉淀仍保持 focused writer 边界，且 Stop/session-idle sidecar 以 completed `plan.json` 和相邻 report 创建 job，不把 writer 流程内联为普通聊天输出；各 host 的 writer 派发归属（含 qoder 的 in-conversation subagent dispatch 例外）由 `hook-owned-two-phase-knowledge-finalization.md` 拥有。
 - 未来如需 UI surface，需要作为新的显式架构决策重新提出；旧的 `claw plan app` 与 Apps SDK widget contract 不再是兼容目标。
 
 ## Related Code

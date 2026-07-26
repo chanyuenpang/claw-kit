@@ -1,0 +1,362 @@
+{
+  "goalModeObjective": {
+    "withGoal": "Follow the claw workflow guidance and finish your goal: {{planGoal}}",
+    "withoutGoal": "Follow the claw workflow guidance and finish your goal."
+  },
+  "planCreateRecall": {
+    "recommendedCommand": "claw search --query \"<topic>\""
+  },
+  "states": {
+    "prepare.requirements.withGoal": {
+      "stage": "requirements",
+      "summary": "Task scope is bound. Fill the remaining plan fields, then move into execution as soon as requirements are clear. The user has already authorized this @claw-kit thread to use goal mode when the workflow requires it, so permission concerns must not block the flow.",
+      "nextsteps": [
+        "1. Fill the missing plan fields.",
+        "2. Move into `process.active` once requirements are clear."
+      ],
+      "notes": "Fill only the fields still needed to execute, such as `requirements`, `tasks`, `references`, `rules`, and `keyDecisions`. If scope is still unclear, clarify it with the user before switching to `process.active`.",
+      "commandHints": [
+        "{{editBase}} --status process.active",
+        "{{editBase}} --requirements \"<summary>\" --acceptance \"<criterion>\"",
+        "{{editBase}} --reference <path> --why \"<reason>\""
+      ]
+    },
+    "prepare.requirements.withGoal.noGoalMode": {
+      "stage": "requirements",
+      "summary": "Task scope is bound. Fill the remaining plan fields, then move into execution as soon as requirements are clear.",
+      "nextsteps": [
+        "1. Fill the missing plan fields.",
+        "2. Move into `process.active` once requirements are clear."
+      ],
+      "notes": "Fill only the fields still needed to execute, such as `requirements`, `tasks`, `references`, `rules`, and `keyDecisions`. If scope is still unclear, clarify it with the user before switching to `process.active`.",
+      "commandHints": [
+        "{{editBase}} --status process.active",
+        "{{editBase}} --requirements \"<summary>\" --acceptance \"<criterion>\"",
+        "{{editBase}} --reference <path> --why \"<reason>\""
+      ]
+    },
+    "prepare.requirements.withoutGoal": {
+      "stage": "requirements",
+      "summary": "Task scope is bound. Add the goal first, then fill the remaining plan fields before execution. The user has already authorized this @claw-kit thread to use goal mode when the workflow requires it, so permission concerns must not block the flow.",
+      "nextsteps": [
+        "1. Fill `goal.text`.",
+        "2. Fill the missing plan fields.",
+        "3. Move into `process.active` once requirements are clear."
+      ],
+      "notes": "Fill only the fields still needed to execute, such as `requirements`, `tasks`, `references`, `rules`, and `keyDecisions`. If scope is still unclear, clarify it with the user before switching to `process.active`.",
+      "commandHints": [
+        "{{editBase}} --status process.active",
+        "{{editBase}} --goal \"<goal>\" --requirements \"<summary>\" --acceptance \"<criterion>\"",
+        "{{editBase}} --reference <path> --why \"<reason>\""
+      ]
+    },
+    "prepare.requirements.withoutGoal.noGoalMode": {
+      "stage": "requirements",
+      "summary": "Task scope is bound. Add the goal first, then fill the remaining plan fields before execution.",
+      "nextsteps": [
+        "1. Fill `goal.text`.",
+        "2. Fill the missing plan fields.",
+        "3. Move into `process.active` once requirements are clear."
+      ],
+      "notes": "Fill only the fields still needed to execute, such as `requirements`, `tasks`, `references`, `rules`, and `keyDecisions`. If scope is still unclear, clarify it with the user before switching to `process.active`.",
+      "commandHints": [
+        "{{editBase}} --status process.active",
+        "{{editBase}} --goal \"<goal>\" --requirements \"<summary>\" --acceptance \"<criterion>\"",
+        "{{editBase}} --reference <path> --why \"<reason>\""
+      ]
+    },
+    "prepare.review": {
+      "stage": "review",
+      "summary": "This plan is in a legacy review stage.",
+      "nextsteps": [
+        "1. Fold the remaining review notes into the plan.",
+        "2. Confirm the route with the user.",
+        "3. Move the plan back into `prepare.requirements` or `process.discussing`."
+      ],
+      "notes": "Do not create a separate review pass. Merge review criteria into planning itself.",
+      "commandHints": [
+        "{{editBase}} --requirements \"<revised summary>\" --key-decision \"<confirmed decision>\"",
+        "{{editBase}} --status prepare.requirements",
+        "{{editBase}} --status process.discussing"
+      ],
+      "askUser": {
+        "reason": "This legacy review stage should be resolved back into normal planning before execution.",
+        "options": [
+          {
+            "id": "merge-revisions",
+            "label": "Revise plan",
+            "description": "Apply the remaining plan changes directly, then continue with normal planning.",
+            "recommended": true
+          },
+          {
+            "id": "discuss-tradeoff",
+            "label": "Discuss tradeoff",
+            "description": "The review raised a route choice that should be clarified with the user."
+          },
+          {
+            "id": "hold-plan",
+            "label": "Hold execution",
+            "description": "Pause until missing requirements or constraints are clarified."
+          }
+        ]
+      }
+    },
+    "process.allTasksDone": {
+      "stage": "done",
+      "summary": "All plan tasks are done. Finish the plan record, then complete the canonical plan lifecycle.",
+      "nextsteps": [
+        "1. Clear thread progress with `TodoWrite`.",
+        "2. Run `claw plan done --retrospective` once. Add `--key-decision` only for real durable decisions not already recorded.",
+        "3. After the canonical plan transition, knowledge finalization is captured for later. When the workflow surfaces a pending knowledge-finalization job, dispatch the knowledge-writer subagent for it and then record it as instructed."
+      ],
+      "notes": "On qoder there is no background finalization worker: knowledge deposition runs in-conversation via subagent dispatch when a pending job is surfaced. It must not change plan completion or subplan resume.",
+      "commandHints": [
+        "{{doneBase}} --retrospective \"<summary>\" [--key-decision \"<durable decision>\"]"
+      ]
+    },
+    "process.hasCompletedTasks": {
+      "stage": "{{processStage}}",
+      "summary": "Execution is in progress.",
+      "nextsteps": [
+        "1. Sync thread progress with `TodoWrite`.",
+        "2. Continue with {{nextTaskRef}}."
+      ],
+      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
+      "commandHints": [
+        "{{taskDoneCommand}}",
+        "claw task edit --id <id> --status in_progress"
+      ]
+    },
+    "process.justEntered": {
+      "stage": "{{processStage}}",
+      "summary": "Execution is starting.",
+      "nextsteps": [
+        "Sync thread progress with `TodoWrite`.",
+        "Start with {{nextTaskRef}}."
+      ],
+      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
+      "commandHints": [
+        "{{taskDoneCommand}}",
+        "{{doneBase}} --retrospective \"<summary>\""
+      ],
+      "goalTool": {
+        "tool": "createGoal",
+        "allowOverwrite": true,
+        "reason": "Execution is entering an active process state, so the thread should have an active thread goal tied to the plan goal."
+      },
+      "goalMode": {
+        "allowOverwrite": true,
+        "setWhen": "on_enter_process_active"
+      }
+    },
+    "process.justEntered.noGoalMode": {
+      "stage": "{{processStage}}",
+      "summary": "Execution is starting.",
+      "nextsteps": [
+        "Sync thread progress with `TodoWrite`.",
+        "Start with {{nextTaskRef}}."
+      ],
+      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
+      "commandHints": [
+        "{{taskDoneCommand}}",
+        "{{doneBase}} --retrospective \"<summary>\""
+      ]
+    },
+    "process.resumedActive": {
+      "stage": "execution",
+      "summary": "Execution is resuming.",
+      "nextsteps": [
+        "Sync thread progress with `TodoWrite`.",
+        "Restore Goal Mode to the active state.",
+        "Resume with {{nextTaskRef}}."
+      ],
+      "notes": "The plan is moving back from a paused status into active execution, so Goal Mode should be restored to the active state before work resumes.",
+      "commandHints": [
+        "{{taskDoneCommand}}",
+        "{{doneBase}} --retrospective \"<summary>\""
+      ],
+      "goalTool": {
+        "tool": "createGoal",
+        "allowOverwrite": true,
+        "reason": "Execution is resuming from a paused process state, so the thread should restore an active thread goal for the plan goal."
+      },
+      "goalMode": {
+        "allowOverwrite": true,
+        "setWhen": "on_resume_process_active"
+      }
+    },
+    "process.resumedActive.noGoalMode": {
+      "stage": "execution",
+      "summary": "Execution is resuming.",
+      "nextsteps": [
+        "Sync the thread progress with our tasks.",
+        "Resume with {{nextTaskRef}}."
+      ],
+      "notes": "The plan is moving back from a paused status into active execution.",
+      "commandHints": [
+        "{{taskDoneCommand}}",
+        "{{doneBase}} --retrospective \"<summary>\""
+      ]
+    },
+    "process.wait": {
+      "stage": "paused",
+      "summary": "Execution is paused.",
+      "nextsteps": [
+        "1. Use `updateGoal(status=\"blocked\")` to end the current active thread goal.",
+        "2. When resuming the plan, restore the active thread goal after re-entering `process.active`.",
+        "3. Resume through `process.active` when execution should continue."
+      ],
+      "notes": "Use `process.wait` for a real blocker or a deliberate hold. Do not keep executing while the plan is paused.",
+      "commandHints": [
+        "{{resumeBase}}"
+      ],
+      "goalTool": {
+        "tool": "updateGoal",
+        "status": "blocked",
+        "reason": "Execution is paused in `process.wait`, so the current active thread goal should be ended as blocked until work resumes."
+      }
+    },
+    "process.wait.noGoalMode": {
+      "stage": "paused",
+      "summary": "Execution is paused.",
+      "nextsteps": [
+        "1. Resume through `process.active` when execution should continue."
+      ],
+      "notes": "Use `process.wait` for a real blocker or a deliberate hold. Do not keep executing while the plan is paused.",
+      "commandHints": [
+        "{{resumeBase}}"
+      ]
+    },
+    "process.discussing": {
+      "stage": "discussion",
+      "summary": "The plan is paused for discussion.",
+      "nextsteps": [
+        "1. Use `updateGoal(status=\"blocked\")` to end the current active thread goal.",
+        "2. When resuming the plan, restore the active thread goal after re-entering `process.active`.",
+        "3. Resolve the discussion, then resume through `process.active`."
+      ],
+      "notes": "Use `process.discussing` for route discussion or decision-making. Resume execution only after the discussion is settled.",
+      "commandHints": [
+        "{{resumeBase}}"
+      ],
+      "goalTool": {
+        "tool": "updateGoal",
+        "status": "blocked",
+        "reason": "Execution is paused in `process.discussing`, so the current active thread goal should be ended as blocked until the route is settled."
+      }
+    },
+    "process.discussing.initial": {
+      "stage": "discussion",
+      "summary": "The plan starts in discussion while the requirements and proposed solution are discussed and confirmed with the user.",
+      "nextsteps": [
+        "1. Use {{planningSkill}} to discuss and confirm the requirements and proposed solution with the user.",
+        "2. If execution remains, record the task list with the relevant command hint. If planning resolves the request, complete task #1 and close the plan."
+      ],
+      "notes": "A draft is not completion.",
+      "commandHints": [
+        "{{startBase}} --requirements \"<summary>\" --acceptance \"<criterion>\" --add-task \"<title>\" --detail \"<detail>\"",
+        "claw task done --id 1"
+      ]
+    },
+    "process.discussing.initial.noPlanStart": {
+      "stage": "discussion",
+      "summary": "The plan starts in discussion and must remain there until the current template task's delivery guidance is satisfied.",
+      "nextsteps": [
+        "1. Use the task's requested planning or discussion skill until its outcome, constraints, and material open questions are clear.",
+        "2. Follow the current template task's delivery guidance; use ordinary plan and task mutations unless that guidance deliberately adopts the optional plan start shorthand."
+      ],
+      "notes": "claw plan start remains globally available as optional syntax sugar, but this template task has not selected it as the recommended delivery path."
+    },
+    "process.discussing.noGoalMode": {
+      "stage": "discussion",
+      "summary": "The plan is paused for discussion.",
+      "nextsteps": [
+        "1. Resolve the discussion, then resume through `process.active`."
+      ],
+      "notes": "Use `process.discussing` for route discussion or decision-making. Resume execution only after the discussion is settled.",
+      "commandHints": [
+        "{{resumeBase}}"
+      ]
+    },
+    "process.activeTask": {
+      "stage": "{{processStage}}",
+      "summary": "Execution is in progress.",
+      "nextsteps": [
+        "Continue the current task."
+      ],
+      "commandHints": [
+        "{{taskDoneCommand}}"
+      ]
+    },
+    "process.default": {
+      "stage": "{{processStage}}",
+      "summary": "Execution is in progress.",
+      "nextsteps": [
+        "Continue with {{nextTaskRef}}."
+      ],
+      "commandHints": [
+        "{{taskDoneCommand}}"
+      ]
+    },
+    "end.completed": {
+      "stage": "done",
+      "summary": "The plan is completed and ready for closeout.",
+      "nextsteps": [
+        "1. Use `updateGoal(status=\"complete\")` to close the active thread goal for this plan.",
+        "2. Finish any remaining workflow-guided closeout work such as archive or parent-plan resumption.",
+        "3. Do not continue ad hoc in this thread. Start the next task only through `using-claw-kit`, then follow the returned `workflowGuidance`."
+      ],
+      "goalTool": {
+        "tool": "updateGoal",
+        "status": "complete",
+        "reason": "The plan has reached completion, so the active thread goal should be marked complete."
+      }
+    },
+    "end.closed": {
+      "stage": "paused",
+      "summary": "The plan is no longer active.",
+      "nextsteps": [
+        "Reopen through `prepare.requirements` before resuming, or leave it as historical context."
+      ],
+      "commandHints": [
+        "{{editBase}} --status prepare.requirements"
+      ]
+    }
+  },
+  "sessionStart": {
+    "default": {
+      "lines": [
+        "This session started inside a .claw project: {{projectName}} ({{projectId}}).",
+        ".claw directory: {{clawDir}}",
+        "You can use goal mode in this thread when required by the claw workflow; don't ask me again.",
+        "Follow the claw workflowGuidance return fields as the required next-step contract.",
+        "Load claw-kit:using-claw-kit as the main workflow skill for this session."
+      ]
+    },
+    "recovered": {
+      "header": [
+        "Use @claw-kit for this session.",
+        "Claw workflow snapshot is recovered.",
+        "Treat returned claw workflowGuidance as the only next-step contract.",
+        "There is already an unfinished plan in this thread.",
+        "Tell the user and ask whether to close the current plan or continue advancing it before starting unrelated work.",
+        "You can use goal mode in this thread when required by the claw workflow; don't ask me again.",
+        "After this plan finishes, keep using claw-kit in this thread for the next task.",
+        ""
+      ],
+      "snapshotHeader": "Current claw workflow snapshot:",
+      "snapshotFields": {
+        "task": "- task: {{taskName}}",
+        "plan": "- plan: {{planFile}}",
+        "planStatus": "- plan status: {{planStatus}}",
+        "planSummary": "- plan summary: {{planSummary}}",
+        "nextSteps": "- next steps: {{nextSteps}}",
+        "commandHints": "- command hints: {{commandHints}}",
+        "notes": "- notes: {{notes}}",
+        "askUser": "- ask user: {{askUser}}",
+        "goalMode": "- goal mode: {{goalMode}}"
+      },
+      "planContentHeader": "Current plan content:"
+    }
+  }
+}

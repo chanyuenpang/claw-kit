@@ -1,9 +1,6 @@
 ﻿# Local claw CLI
 
-## Status
-
-Accepted working truth for local development on this machine.
-
+<!-- state: current -->
 ## Core facts
 
 - `claw init` now exists and bootstraps a minimal `.claw` project.
@@ -72,12 +69,12 @@ Accepted working truth for local development on this machine.
 - `packages/core/src/embedding-worker.ts` 现在在执行 embedding batch 前先通过 `resolveLocalTokenizerMaxLength(...)` 把 tokenizer 的 `max_length` clamp 到模型真实 positional limit；对 `Snowflake/snowflake-arctic-embed-m-v2.0`，即使 tokenizer 暴露 `model_max_length = 32768`，安全运行上限也应视为 `8192`。
 - 这次可复现的 refresh 停滞根因是 local ONNX embedding failure，而不是缺源或 refresh no-op；失败复现批次里 `.claw/truth/SUMMARY.md` 的 chunk 3 被分词到 `19339` tokens，并在 `Snowflake` local model 里触发了 `SkipLayerNormalization`。
 - 修复生效后，之前失败的复现路径已经恢复成功；在 `tiny-world` 的真实 `search index --refresh` 中，索引从 `100` docs 前进到 `200` docs，`pendingFileCount` 降到 `217`。
-- Windows 下的 `claw plan done` 现在会先把 JSON 结果返回给调用方，再通过外部 launcher 异步启动 `internal-completion-refresh`；不再直接在同一个主 CLI 进程里用 `detached + unref` 后台化 refresh。
+- Windows 下的 project-scope terminal plan finalization（`claw plan done` 或 `claw plan edit --status end.*`）会先把 JSON 结果返回给调用方，再通过外部 launcher 异步启动 `internal-completion-refresh`；不再直接在同一个主 CLI 进程里用 `detached + unref` 后台化 refresh。
 - `packages/cli/src/cli.ts` 里的 completion refresh status file 现在会显式经历 `queued` / `running` / `finished` 生命周期；如果 refresh 失败，失败 payload 仍写回同一个 status file。
 - `packages/core/src/memory.ts` 现在给 `embedding-worker.js` 加了默认 30 分钟硬超时，并把 `timedOut` / `timeoutMs` 写进失败细节，避免异步 refresh 因 embedding 子进程无限挂起而长期占住 sqlite lock。
 - Windows closeout archive pruning no longer uses `fs.rmSync(..., { recursive: true })`: non-ASCII archived task directories can fail or terminate silently on that path, so `packages/core/src/task-retention.ts` now removes archive trees with explicit recursive `unlinkSync` / `rmdirSync`, and `packages/core/test/core.test.ts` covers non-ASCII archive pruning.
-- 当 canonical `gitnexus = true` 时，`claw plan done` 会先在前台跑 GitNexus 预检；如果 CLI 不存在，会先尝试 `npm install -g @veewo/gitnexus`，再执行 `gitnexus setup --cli-spec @veewo/gitnexus`，安装或 setup 失败会直接阻断 completion refresh。
-- 如果 GitNexus 已安装但 embeddings 还没有持久化到 GitNexus 自己的 analyze 配置里，`claw plan done` 会前台补跑 `gitnexus analyze --embeddings`，并尽量从匹配的 claw 模型缓存预热 GitNexus transformers cache，避免第二次下载。
+- 当 canonical `gitnexus = true` 时，project-scope terminal plan finalization 会先在前台跑 GitNexus 预检；如果 CLI 不存在，会先尝试 `npm install -g @veewo/gitnexus`，再执行 `gitnexus setup --cli-spec @veewo/gitnexus`，安装或 setup 失败会直接阻断 completion refresh。
+- 如果 GitNexus 已安装但 embeddings 还没有持久化到 GitNexus 自己的 analyze 配置里，terminal plan finalization 会前台补跑 `gitnexus analyze --embeddings`，并尽量从匹配的 claw 模型缓存预热 GitNexus transformers cache，避免第二次下载。
 - 背景 completion refresh 仍然保留现有的 `gitnexus analyze --no-ai-context` 路径；当已安装的 GitNexus CLI 不支持该参数时，会回退到普通 `gitnexus analyze`。
 - 本文是 GitNexus analyze 运行时恢复行为的当前 Truth owner：在 Windows 上，只有 analyze 子进程以无符号退出状态 `0xC0000005`（access violation）结束时，`runGitNexusAnalyze()` 才会追加 `--force` 重建并重试一次；重试仍保留 `--embeddings` 与 `--no-ai-context` / plain-analyze fallback 语义，其他失败继续走既有错误路径。
 - 2026-07-19 的 `@veewo/gitnexus@1.5.9` 故障实例把该签名定位到既有 `.gitnexus/lbug` LadybugDB 索引损坏：fresh indexing 成功，force rebuild 后 `status`、`query`、`context` 恢复。该实例是版本化诊断证据，不表示所有 `0xC0000005` 都必然由同一种损坏造成。
@@ -87,7 +84,7 @@ Accepted working truth for local development on this machine.
 - 同一历史环境能成功创建 fresh index，且损坏发生时 GitNexus 模型未发生切换，因此该实例不支持“模型变化”“`@veewo/gitnexus@1.5.9` / Node 普遍不兼容”或“只是索引陈旧”作为原因。这里排除的是该版本化事故的替代解释，不是对所有未来故障的全局保证。
 - 该次重建后的另一次 refresh 在 index 与 `meta.json` 已成功写入、`status` / `query` 仍健康后才以 `0xC0000374` 退出；它更符合原生退出清理阶段的 heap-corruption 假失败，而不是索引再次损坏。后续调查的 `24` 次最小 close/exit 探针和 `6` 次真实串行 analyze 都退出 `0`，Windows Application Error 也没有对应事件，因此这个根因仍未确认，不能据此猜测性修改 close 策略或增加重试。当前 `runGitNexusAnalyze()` 不会对这个不同签名自动 `--force`，诊断时应先区分已写入后的退出失败与不可读索引。
 - claw project memory 与 GitNexus 各自拥有 embedding model；claw 只在 model id 匹配时 best-effort 预热 GitNexus cache，不会用 `memory.embedding.model` 改写 GitNexus 的模型选择。
-- `packages/cli/test/cli.test.ts` 新增了 `plan done` 的三类回归覆盖：安装失败必须先于 completion refresh 暴露、embeddings 自愈和 cache seeding、以及 `--no-ai-context` fallback。
+- `packages/cli/test/cli.test.ts` 覆盖 terminal plan finalization：GitNexus 安装失败必须先于 completion refresh 暴露、embeddings 自愈和 cache seeding、以及 `--no-ai-context` fallback；`plan done` 与 `plan edit --status end.completed|end.closed|end.leave` 共享 completion-finalization dispatch。
 - 在 NeonSpark 的真实重测里，最初失败点先从 DirectML gating 收敛到过大的 embedding 输入张量（`33737 x 512`，请求分配约 `26.5 GB`），随后又暴露出 stdout 巨型 vector JSON；最终通过临时文件回传结果把这条链路打通。
 - 该重测最后确认 `claw search index --refresh` 可以在大项目上成功完成，并产出 `indexedCount: 698` 与 `vectorIndex.chunkCount: 33737`。
 - 用户面文档现在把默认的 `100` 文件分片推进和 `cpu` rescue path 讲清楚了，但没有暴露新的 CLI 参数。
@@ -125,7 +122,7 @@ Accepted working truth for local development on this machine.
 ## Practical implications
 
 - `claw` can now be used as a normal shell command during local development.
-- 在 Windows 上，`claw plan done` 的 stdout JSON 契约和异步 completion refresh 现在可以同时成立；调用方不需要在“及时拿到 JSON”和“后台继续索引”之间二选一。
+- 在 Windows 上，terminal plan finalization 的 stdout JSON 契约和异步 completion refresh 现在可以同时成立；调用方不需要在“及时拿到 JSON”和“后台继续索引”之间二选一。
 - New projects do not need manual `.claw` scaffolding before they can enter the harness flow.
 - Workflow docs and skills should say `claw search`, not OpenClaw-style "memory search", when explaining recall to Codex agents.
 - Code investigation should still be dispatched through `researcher`; within that dispatched workflow, `claw search` restores relevant project context before GitNexus or another code index and exact source inspection. Ordinary project recall remains direct main-agent `claw search` work and does not dispatch a researcher. The operational sequence is owned by `codex-subagent-reuse.md`.

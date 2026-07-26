@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { readJsonFile } from "./io.js";
+import { listTaskDirectories } from "./context.js";
 import { DEFAULT_MAX_TASKS_TO_KEEP } from "./project-defaults.js";
 import type { ArchivedTaskRecord, PlanDocument, ProjectContext, TaskRetentionResult } from "./types.js";
 
@@ -10,23 +11,32 @@ export function enforceTaskRetention(
   project: ProjectContext,
   currentTaskName?: string,
   nowMs = Date.now(),
+  options: { includeDatedTasks?: boolean; includeLegacyTasks?: boolean } = {},
 ): TaskRetentionResult {
   const maxTasksToKeep = project.projectConfig?.maxTasksToKeep ?? DEFAULT_MAX_TASKS_TO_KEEP;
   const archiveTasksRoot = path.join(project.clawDir, "archive", "tasks");
   const prunedArchivedTasks: ArchivedTaskRecord[] = [];
+  const archivedTasks: ArchivedTaskRecord[] = [];
   let archivedCurrentTask: ArchivedTaskRecord | undefined;
 
-  for (const taskName of listActiveTaskNames(project)) {
-    const archivedTask = archiveTaskDirectory(project, taskName, archiveTasksRoot, nowMs);
-    if (archivedTask && taskName === currentTaskName) {
+  for (const task of listTaskDirectories(project)) {
+    if (options.includeDatedTasks === false && /^\d{4}-\d{2}-\d{2}[\\/]/.test(task.relativePath)) {
+      continue;
+    }
+    if (options.includeLegacyTasks === false && !/^\d{4}-\d{2}-\d{2}[\\/]/.test(task.relativePath)) {
+      continue;
+    }
+    const archivedTask = archiveTaskDirectory(project, task, archiveTasksRoot, nowMs);
+    if (archivedTask) archivedTasks.push(archivedTask);
+    if (archivedTask && task.taskName === currentTaskName) {
       archivedCurrentTask = archivedTask;
     }
   }
 
-  const archivedTasks = listArchivedTasks(archiveTasksRoot);
-  if (archivedTasks.length > maxTasksToKeep) {
-    const overflow = archivedTasks.length - maxTasksToKeep;
-    const toPrune = archivedTasks
+  const retainedArchivedTasks = listArchivedTasks(archiveTasksRoot);
+  if (retainedArchivedTasks.length > maxTasksToKeep) {
+    const overflow = retainedArchivedTasks.length - maxTasksToKeep;
+    const toPrune = retainedArchivedTasks
       .sort(compareArchivedTasksByCompletedAt)
       .slice(0, overflow);
 
@@ -39,6 +49,7 @@ export function enforceTaskRetention(
   return {
     enabled: true,
     maxTasksToKeep,
+    archivedTasks,
     ...(archivedCurrentTask ? { archivedCurrentTask } : {}),
     prunedArchivedTasks,
   };
@@ -46,11 +57,11 @@ export function enforceTaskRetention(
 
 function archiveTaskDirectory(
   project: ProjectContext,
-  taskName: string,
+  task: { taskName: string; taskDir: string; relativePath: string },
   archiveTasksRoot: string,
   nowMs: number,
 ): ArchivedTaskRecord | undefined {
-  const sourceTaskDir = path.join(project.tasksDir, taskName);
+  const sourceTaskDir = task.taskDir;
   if (!fs.existsSync(sourceTaskDir) || !fs.statSync(sourceTaskDir).isDirectory()) {
     return undefined;
   }
@@ -73,14 +84,14 @@ function archiveTaskDirectory(
   }
 
   fs.mkdirSync(archiveTasksRoot, { recursive: true });
-  const archivedTaskDir = uniqueArchiveTaskDir(archiveTasksRoot, taskName);
+  const archivedTaskDir = uniqueArchiveTaskDir(archiveTasksRoot, task.relativePath);
   renameDirectoryWithRetry(sourceTaskDir, archivedTaskDir);
   const archivedPlanPath = activePlanPath
     ? path.join(archivedTaskDir, path.relative(sourceTaskDir, activePlanPath))
     : undefined;
 
   return {
-    taskName,
+    taskName: task.taskName,
     sourceTaskDir,
     archivedTaskDir,
     ...(archivedPlanPath ? { archivedPlanPath } : {}),
@@ -106,30 +117,18 @@ function renameDirectoryWithRetry(sourceDir: string, targetDir: string): void {
   }
 }
 
-function listActiveTaskNames(project: ProjectContext): string[] {
-  if (!fs.existsSync(project.tasksDir)) {
-    return [];
-  }
-  return fs
-    .readdirSync(project.tasksDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name);
-}
-
 function listArchivedTasks(archiveTasksRoot: string): ArchivedTaskRecord[] {
   if (!fs.existsSync(archiveTasksRoot)) {
     return [];
   }
 
   const entries: ArchivedTaskRecord[] = [];
-  for (const child of fs.readdirSync(archiveTasksRoot, { withFileTypes: true })) {
-    if (!child.isDirectory()) {
-      continue;
-    }
-    const archivedTaskDir = path.join(archiveTasksRoot, child.name);
+  const candidates = listTaskDirectories({ tasksDir: archiveTasksRoot } as ProjectContext);
+  for (const child of candidates) {
+    const archivedTaskDir = child.taskDir;
     const rootPlanPath = path.join(archivedTaskDir, "plan.json");
     let completedAt: string | undefined;
-    let taskName = child.name;
+    let taskName = child.taskName;
     let archivedPlanPath: string | undefined;
     if (fs.existsSync(rootPlanPath)) {
       const plan = readJsonFile<PlanDocument>(rootPlanPath);
@@ -140,7 +139,7 @@ function listArchivedTasks(archiveTasksRoot: string): ArchivedTaskRecord[] {
       if (fs.existsSync(metaPath)) {
         const meta = readJsonFile<{ name?: string; activePlan?: string; updatedAt?: string }>(metaPath);
         completedAt = meta.updatedAt;
-        taskName = typeof meta.name === "string" && meta.name.trim() ? meta.name : child.name;
+        taskName = typeof meta.name === "string" && meta.name.trim() ? meta.name : child.taskName;
         if (typeof meta.activePlan === "string" && meta.activePlan.trim()) {
           archivedPlanPath = path.join(archivedTaskDir, meta.activePlan);
         }
@@ -188,8 +187,9 @@ function removeDirectoryTreeSync(targetDir: string): void {
   fs.rmdirSync(targetDir);
 }
 
-function uniqueArchiveTaskDir(archiveTasksRoot: string, taskName: string): string {
-  const candidate = path.join(archiveTasksRoot, taskName);
+function uniqueArchiveTaskDir(archiveTasksRoot: string, relativePath: string): string {
+  const candidate = path.join(archiveTasksRoot, relativePath);
+  fs.mkdirSync(path.dirname(candidate), { recursive: true });
   if (!fs.existsSync(candidate)) {
     return candidate;
   }
@@ -197,7 +197,7 @@ function uniqueArchiveTaskDir(archiveTasksRoot: string, taskName: string): strin
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   let attempt = 1;
   while (true) {
-    const suffixed = path.join(archiveTasksRoot, `${taskName}--${stamp}-${attempt}`);
+    const suffixed = path.join(path.dirname(candidate), `${path.basename(candidate)}--${stamp}-${attempt}`);
     if (!fs.existsSync(suffixed)) {
       return suffixed;
     }

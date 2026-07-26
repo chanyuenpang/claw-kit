@@ -2,6 +2,7 @@
 
 `claw-kit` now treats the current `OpenClaw` declaration fields as canonical in `.claw/project.json`.
 
+<!-- state: current -->
 ## Canonical Fields
 
 - `contextPaths`
@@ -30,7 +31,7 @@
 - `autoUpdate` is an explicit project-level boolean gate with default `true`; projects can set it to `false` when version drift should stay informational only.
 - legacy nested inputs such as `workflow.goalMode.enabled`, `workflow.truthDispatch.mode`, and `gitnexus.enabled` are compatibility inputs for protocol repair; repaired canonical files are flattened instead of preserving those nested containers.
 - The 2026-06-23 compatibility fixture run remains historical evidence for flattening legacy `workflow.goalMode.enabled`, `workflow.truthDispatch.mode`, and object `gitnexus.enabled`; current repair no longer promotes `truthDispatch` into canonical project output.
-- Current repair fills `planning`, `externalPlanningSkill`, and the canonical `knowledgeWriter` object; legacy external truth / ADR skill values are accepted only as migration input for `knowledgeWriter.externalSkill`.
+- Current repair fills `planning`, `externalPlanningSkill`, and the canonical `knowledgeWriter` object; `knowledgeWriter.externalSkills` is the ordered current writer configuration.
 - `claw init` and protocol normalization now auto-fill a minimal default local embedding config when `memory.embedding` is missing, using `jinaai/jina-embeddings-v2-base-zh`; default vector indexing remains runtime-enabled without persisting `store.vector.enabled = true`, `store.vector` is retained only for explicit `enabled: false` or `extensionPath`, and the default cache location is runtime-resolved instead of being persisted into `project.json`.
 - `packages/core/src/embedding-defaults.ts` now resolves platform-global cache roots (`%LOCALAPPDATA%\\claw\\models` on Windows, `~/Library/Caches/claw/models` on macOS, and `$XDG_CACHE_HOME/claw/models` or `~/.cache/claw/models` on Linux) and the local/global/fallback cache-selection order for embedding models.
 - `packages/core/src/embedding-worker.ts` now resolves cache usage by model id: explicit local cache wins only when that local cache already contains the model; otherwise an existing global cache is reused; if both are missing, downloads go to the explicit local cache when configured, or to the global cache by default.
@@ -67,8 +68,8 @@
 - Task-scope memory search still uses the existing active-plan-plus-task-memory FTS path and does not participate in the hybrid/vector recall flow.
 - Codex-facing recall is `claw search --query "<topic>"`; this reads the indexed project context before planning or investigation, and it remains document recall rather than code search.
 - `claw memory ...` remains as legacy/debug and low-level index management, not the primary Codex workflow term.
-- `claw plan done` rebuilds project/task search indexes and only refreshes GitNexus when flat `gitnexus` is `true`.
-- `claw plan done` 的 GitNexus 预检与自愈链路仍然只认 canonical `gitnexus` boolean，不再使用 `gitnexus.enabled` 作为规范字段；同一条 gate 既控制是否刷新，也控制是否先做前台 install/setup / embeddings self-heal。
+- project-scope terminal plan finalization rebuilds project/task search indexes and only refreshes GitNexus when flat `gitnexus` is `true`; `claw plan done` and `claw plan edit --status end.*` use that same route.
+- terminal plan finalization 的 GitNexus 预检与自愈链路仍然只认 canonical `gitnexus` boolean，不再使用 `gitnexus.enabled` 作为规范字段；同一条 gate 既控制是否刷新，也控制是否先做前台 install/setup / embeddings self-heal。
 - 本文只拥有 canonical `gitnexus` schema gate；GitNexus analyze 的 `--no-ai-context` fallback、Windows access-violation force rebuild 与错误边界由 `local-claw-cli.md` 统一拥有。
 - The hybrid project query path is adapted from the more mature `openclaw-dev` memory query design, but its current behavior and migration scope are maintained by `project-search-candidate-recall.md`.
 - incremental refresh 的存在不改变 project search 的可用性契约：project recall 依然要求 vector index，不能回退成纯 FTS fallback。
@@ -77,15 +78,30 @@
 
 ## Evidence
 
-- [packages/core/src/init.ts](D:/Users/chany/Documents/claw-kit/packages/core/src/init.ts)
-- [packages/core/src/embedding-defaults.ts](D:/Users/chany/Documents/claw-kit/packages/core/src/embedding-defaults.ts)
-- [packages/core/src/memory.ts](D:/Users/chany/Documents/claw-kit/packages/core/src/memory.ts)
-- [packages/core/src/embedding-worker.ts](D:/Users/chany/Documents/claw-kit/packages/core/src/embedding-worker.ts)
-- [packages/core/src/project-check.ts](D:/Users/chany/Documents/claw-kit/packages/core/src/project-check.ts)
-- [packages/core/src/context.ts](D:/Users/chany/Documents/claw-kit/packages/core/src/context.ts)
-- [packages/cli/src/cli.ts](D:/Users/chany/Documents/claw-kit/packages/cli/src/cli.ts)
-- [packages/core/test/core.test.ts](D:/Users/chany/Documents/claw-kit/packages/core/test/core.test.ts)
+- `packages/core/src/init.ts`
+- `packages/core/src/embedding-defaults.ts`
+- `packages/core/src/memory.ts`
+- `packages/core/src/embedding-worker.ts`
+- `packages/core/src/project-check.ts`
+- `packages/core/src/context.ts`
+- `packages/cli/src/cli.ts`
+- `packages/core/test/core.test.ts`
 - 2026-06-23 temp compatibility fixture root: `C:\Users\chany\AppData\Local\Temp\claw-project-json-compat-2026-06-23T08-56-50-407Z`; `claw check` and `claw context` exited 0 for all four fixture copies.
-- [packages/cli/README.md](D:/Users/chany/Documents/claw-kit/packages/cli/README.md)
-- [README.md](D:/Users/chany/Documents/claw-kit/README.md)
-- [docs/2026-06-06-project-schema-alignment-execution.md](D:/Users/chany/Documents/claw-kit/docs/2026-06-06-project-schema-alignment-execution.md)
+- `packages/cli/README.md`
+- `README.md`
+- `docs/2026-06-06-project-schema-alignment-execution.md`
+
+<!-- state: history -->
+## Evolution history
+
+<!-- dated: 2026-07-22 -->
+### 移除自动知识提交配置
+
+- `autoCommitKnowledge` 曾是控制 finalizer 自动 Git commit 的项目级 boolean。自动提交运行路径移除后，该字段不再属于 schema、默认配置或协议校验。
+
+<!-- dated: 2026-07-22 -->
+### Existing-project GitNexus rollout
+
+- At this checkpoint, the `17` existing claw projects discovered under `D:\Users\chany\Documents` and `C:\Users\chany\Documents` had their team-owned `.claw/project.json` normalized to the flat boolean `"gitnexus": true`; no `.claw/project-override.json` shadowed that setting.
+- All `17` project configs passed `claw check` at the checkpoint. That command also normalized missing canonical, version, and runtime-maintenance fields in some older configs, so later rollout audits must classify protocol-repair diffs instead of assuming that the GitNexus toggle is the only possible file change.
+- This is time-bounded rollout evidence for the projects that existed on `2026-07-22`, not a standing claim about projects created or reconfigured later.

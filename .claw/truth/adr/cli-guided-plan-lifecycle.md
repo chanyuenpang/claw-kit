@@ -71,7 +71,7 @@ Accepted
 - host lifecycle bridge 与 shared planning skill 都要求在采用另一条 solution 前披露 decision-relevant content，并只对 meaningful choice 等待用户回应；当下游路线依赖未知证据时，shared planning 进一步把 decisive checkpoint 及其后续 planning task 定义为当前阶段方案。bridge 拥有 activation gate，task shape 与 staged-planning 决策仍由 `shared-planning-skill-source.md` 拥有
 - 不引入 mandatory post-implementation review loop，避免用一套新的 lifecycle 机制重复解决执行前 solution discussion 已拥有的问题；可预见反复修改时的 final `manual-review` 只有用户选择后才成为普通 plan task，未选择时不会出现，后续用户反馈仍按实际目标和现有 plan mutation surface 处理，而不是由 planning skill 预置固定反馈流程
 - finalizer-owned `knowledge-writer` 以一次 combined pass 维护 Truth 与 ADR，不作为 main-agent specialist 或 `workflowGuidance` delegation
-- root plan closeout 需要先补齐 retrospective 和 `keyDecisions`；`claw plan done` 只提交 completion state、binding transition 与 completion refresh，不等待 knowledge job
+- root plan closeout 需要先补齐 retrospective 和 `keyDecisions`；`claw plan done` 是提交这些 closeout 字段与 `end.completed` 的快捷入口，和显式 terminal `plan edit` 共享 completion state、binding transition 与 completion refresh，且不等待 knowledge job
 - root completion signal 与 subplan parent-resume signal 保持可判别：调用方只在收到 root-only `achievement` 时展示终结结果，subplan resume 继续按 parent progress 处理
 - completed plan 在原 task 路径至少保留一小时，使 Stop 之后排队的异步 finalizer 不需要切换到 archive 路径补救
 - knowledge deposition 失败不会阻塞本次 plan closeout；job queueing 与异步完成语义保持分离

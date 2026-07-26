@@ -84,7 +84,7 @@ test("background finalizer owns one combined knowledge stewardship contract", ()
   assert.match(knowledgeContract, /knowledge-base steward/i);
   assert.match(knowledgeContract, /Truth and ADR are one knowledge system/i);
   assert.match(knowledgeContract, /one current owner/i);
-  assert.match(configSkill, /knowledgeWriter\.externalSkill/);
+  assert.match(configSkill, /knowledgeWriter\.externalSkills/);
   assert.match(configSkill, /built-in `claw-kit:knowledge-writer`/i);
 });
 

@@ -7,7 +7,8 @@ import {
   getTemplateTaskPlanStartGuidance,
   resolveSeedPlanTemplate,
 } from "./plan-templates.js";
-import workflowGuidanceConfigJson from "./workflow-guidance.config.json" with { type: "json" };
+import codexGuidanceConfigJson from "./workflow-guidance.codex.config.json" with { type: "json" };
+import qoderGuidanceConfigJson from "./workflow-guidance.qoder.config.json" with { type: "json" };
 import type {
   PlanCompletionHooks,
   PlanDocument,
@@ -26,12 +27,12 @@ type GoalModeTemplate = {
 
 type GoalToolTemplate =
   | {
-      tool: "create_goal";
+      tool: "create_goal" | "createGoal";
       allowOverwrite: true;
       reason: string;
     }
   | {
-      tool: "update_goal";
+      tool: "update_goal" | "updateGoal";
       status: "complete" | "blocked";
       reason: string;
     };
@@ -46,7 +47,7 @@ type GuidanceStateTemplate = {
   goalTool?: GoalToolTemplate;
   askUser?: {
     reason: string;
-    useCodexOptions: true;
+    useCodexOptions?: true;
     options: WorkflowGuidanceOption[];
   };
 };
@@ -93,7 +94,20 @@ type GuidanceConfig = {
 
 type TemplateVars = Record<string, string>;
 
-function loadGuidanceConfig(): GuidanceConfig {
+const BUNDLED_GUIDANCE_CONFIG_BY_HOST: Record<string, GuidanceConfig> = {
+  codex: codexGuidanceConfigJson as GuidanceConfig,
+  qoder: qoderGuidanceConfigJson as GuidanceConfig,
+};
+
+/**
+ * Resolve the guidance config for the current invocation.
+ *
+ * Resolution order:
+ *   1. CLAW_GUIDANCE_CONFIG env var (opencode injects this per shell execution).
+ *   2. The bundled config that matches the invocation host (codex/qoder).
+ *   3. Fall back to the codex config when host is unknown/unset.
+ */
+function getGuidanceConfig(host?: string): GuidanceConfig {
   const externalPath = process.env.CLAW_GUIDANCE_CONFIG;
   if (externalPath) {
     try {
@@ -103,31 +117,29 @@ function loadGuidanceConfig(): GuidanceConfig {
       // If external config fails to load, fall back to bundled config
     }
   }
-  return workflowGuidanceConfigJson as GuidanceConfig;
+  return (host ? BUNDLED_GUIDANCE_CONFIG_BY_HOST[host] : undefined) ?? BUNDLED_GUIDANCE_CONFIG_BY_HOST.codex;
 }
 
-const workflowGuidanceConfig = loadGuidanceConfig();
-
-function buildGoalMode(planGoal: string, template: GoalModeTemplate): NonNullable<WorkflowGuidance["goalMode"]> {
+function buildGoalMode(planGoal: string, template: GoalModeTemplate, host?: string): NonNullable<WorkflowGuidance["goalMode"]> {
   return {
-    recommendedObjective: buildGoalModeObjective(planGoal),
+    recommendedObjective: buildGoalModeObjective(planGoal, host),
     allowOverwrite: template.allowOverwrite,
     ...(template.setWhen ? { setWhen: template.setWhen } : {}),
   };
 }
 
-function buildGoalTool(planGoal: string, template: GoalToolTemplate): WorkflowGuidanceGoalTool {
-  if (template.tool === "create_goal") {
+function buildGoalTool(planGoal: string, template: GoalToolTemplate, host?: string): WorkflowGuidanceGoalTool {
+  if ("status" in template) {
     return {
-      tool: "create_goal",
-      objective: buildGoalModeObjective(planGoal),
-      allowOverwrite: true,
+      tool: template.tool,
+      status: template.status,
       reason: template.reason,
     };
   }
   return {
-    tool: "update_goal",
-    status: template.status,
+    tool: template.tool,
+    objective: buildGoalModeObjective(planGoal, host),
+    allowOverwrite: true,
     reason: template.reason,
   };
 }
@@ -139,8 +151,9 @@ function applyCreateGuidance(params: {
   goalModeEnabled: boolean;
   suppressGoalFields: boolean;
   guidance: WorkflowGuidance;
+  host?: string;
 }): WorkflowGuidance {
-  const recall = workflowGuidanceConfig.planCreateRecall ?? {
+  const recall = getGuidanceConfig(params.host).planCreateRecall ?? {
     recommendedCommand: 'claw search --query "<topic>"',
   };
   const guidance = params.commandSource === "plan.create" || params.commandSource === "subplan.create"
@@ -162,7 +175,7 @@ function applyCreateGuidance(params: {
     return guidance;
   }
 
-  const subplanObjective = buildGoalModeObjective(params.plan.goal.text);
+  const subplanObjective = buildGoalModeObjective(params.plan.goal.text, params.host);
   const subplanNextstep = `After the parent goal is completed by this subplan handoff, start the subplan goal before doing target work: ${subplanObjective}`;
   const subplanNote =
     `Subplan "${params.planFile}" is now the active plan under parent plan "${params.plan.parentPlan}" task #${params.plan.parentTaskId}. ` +
@@ -175,7 +188,7 @@ function applyCreateGuidance(params: {
       : [subplanNextstep, ...guidance.nextsteps],
     notes: guidance.notes ? `${subplanNote} ${guidance.notes}` : subplanNote,
     goalTool: {
-      tool: "update_goal",
+      tool: params.host === "qoder" ? "updateGoal" : "update_goal",
       status: "complete",
       reason: "Subplan creation must complete the active parent goal before the child plan creates its own goal.",
     },
@@ -187,11 +200,12 @@ function applyCreateGuidance(params: {
   };
 }
 
-export function buildGoalModeObjective(planGoal: string): string {
+export function buildGoalModeObjective(planGoal: string, host?: string): string {
+  const config = getGuidanceConfig(host);
   const trimmedGoal = planGoal.trim();
   const template = trimmedGoal
-    ? workflowGuidanceConfig.goalModeObjective.withGoal
-    : workflowGuidanceConfig.goalModeObjective.withoutGoal;
+    ? config.goalModeObjective.withGoal
+    : config.goalModeObjective.withoutGoal;
   return renderTemplateString(template, { planGoal: trimmedGoal });
 }
 
@@ -261,8 +275,8 @@ function renderTemplateValue<T>(value: T, vars: TemplateVars): T {
   return value;
 }
 
-function renderStateTemplate(key: string, vars: TemplateVars): GuidanceStateTemplate {
-  const template = workflowGuidanceConfig.states[key];
+function renderStateTemplate(key: string, vars: TemplateVars, host?: string): GuidanceStateTemplate {
+  const template = getGuidanceConfig(host).states[key];
   if (!template) {
     throw new Error(`Unknown workflow guidance template: ${key}`);
   }
@@ -301,6 +315,7 @@ export async function buildPlanWorkflowGuidance(params: {
   appendedTaskIds?: number[];
   completedTaskIds?: number[];
   host?: string;
+  recoveryResync?: boolean;
 }): Promise<WorkflowGuidance> {
   const {
     taskName,
@@ -315,6 +330,7 @@ export async function buildPlanWorkflowGuidance(params: {
     appendedTaskIds,
     completedTaskIds,
   } = params;
+  const host = params.host;
   const editBase = "claw plan edit";
   const startBase = "claw plan start";
   const resumeBase = "claw plan resume";
@@ -323,12 +339,12 @@ export async function buildPlanWorkflowGuidance(params: {
   const allTasksDone = hasTasks && plan.tasks.every((task) => task.status === "done");
   const justEnteredProcess = plan.status.startsWith("process.") && (!previousStatus || previousStatus.startsWith("prepare."));
   const resumedIntoActive = plan.status === "process.active"
-    && (previousStatus === "process.wait" || previousStatus === "process.discussing");
+    && (params.recoveryResync || previousStatus === "process.wait" || previousStatus === "process.discussing");
   const hasChangedTasks = (changedTaskIds?.length ?? 0) > 0;
   const hasAppendedTasks = (appendedTaskIds?.length ?? 0) > 0;
   const hasCompletedTasks = (completedTaskIds?.length ?? 0) > 0;
   const goalModeEnabled = isGoalModeEnabled(projectConfig);
-  const suppressGoalFields = params.host === "opencode";
+  const suppressGoalFields = host === "opencode";
   const startedGoalModeThisRound = goalModeEnabled && previousStatus === "process.active";
   const nextTask = nextUnfinishedTask(plan);
   const activeTask = currentActiveTask(plan);
@@ -359,7 +375,7 @@ export async function buildPlanWorkflowGuidance(params: {
       const templateKey = hasGoal
         ? (goalModeEnabled ? "prepare.requirements.withGoal" : "prepare.requirements.withGoal.noGoalMode")
         : (goalModeEnabled ? "prepare.requirements.withoutGoal" : "prepare.requirements.withoutGoal.noGoalMode");
-      const template = renderStateTemplate(templateKey, vars);
+      const template = renderStateTemplate(templateKey, vars, host);
       return {
         stage: template.stage as WorkflowGuidance["stage"],
         summary: template.summary,
@@ -369,7 +385,7 @@ export async function buildPlanWorkflowGuidance(params: {
       };
     }
     case "prepare.review": {
-      const template = renderStateTemplate("prepare.review", vars);
+      const template = renderStateTemplate("prepare.review", vars, host);
       return {
         stage: template.stage as WorkflowGuidance["stage"],
         summary: template.summary,
@@ -382,13 +398,14 @@ export async function buildPlanWorkflowGuidance(params: {
     case "process.wait":
     case "process.discussing": {
       if (plan.status === "process.discussing" && allTasksDone) {
-        const template = renderStateTemplate("process.allTasksDone", vars);
+        const template = renderStateTemplate("process.allTasksDone", vars, host);
         return applyCreateGuidance({
           commandSource,
           plan,
           planFile,
           goalModeEnabled,
           suppressGoalFields,
+          host,
           guidance: {
             stage: template.stage as WorkflowGuidance["stage"],
             summary: template.summary,
@@ -410,7 +427,7 @@ export async function buildPlanWorkflowGuidance(params: {
         : startedGoalModeThisRound
           ? plan.status
           : `${plan.status}.noGoalMode`;
-      const template = renderStateTemplate(templateKey, vars);
+      const template = renderStateTemplate(templateKey, vars, host);
       const shouldEmitBlockedGoalTool = startedGoalModeThisRound;
       return applyCreateGuidance({
         commandSource,
@@ -418,6 +435,7 @@ export async function buildPlanWorkflowGuidance(params: {
         planFile,
         goalModeEnabled,
         suppressGoalFields,
+        host,
         guidance: {
           stage: template.stage as WorkflowGuidance["stage"],
           summary: template.summary,
@@ -425,14 +443,14 @@ export async function buildPlanWorkflowGuidance(params: {
           ...(template.notes ? { notes: template.notes } : {}),
           ...(template.commandHints ? { commandHints: template.commandHints } : {}),
           ...(template.goalTool && shouldEmitBlockedGoalTool && goalModeEnabled && hasGoal && !suppressGoalFields
-            ? { goalTool: buildGoalTool(plan.goal.text, template.goalTool) }
+            ? { goalTool: buildGoalTool(plan.goal.text, template.goalTool, host) }
             : {}),
         },
       });
     }
     case "process.active": {
       if (allTasksDone) {
-        const template = renderStateTemplate("process.allTasksDone", vars);
+        const template = renderStateTemplate("process.allTasksDone", vars, host);
         const guidance = {
           stage: template.stage as WorkflowGuidance["stage"],
           summary: template.summary,
@@ -446,6 +464,7 @@ export async function buildPlanWorkflowGuidance(params: {
           planFile,
         goalModeEnabled,
         suppressGoalFields,
+        host,
         guidance: await applyTemplateTaskDoneGuidance({
             projectRoot,
             projectConfig,
@@ -465,7 +484,7 @@ export async function buildPlanWorkflowGuidance(params: {
           : activeTask
             ? "process.activeTask"
             : "process.default";
-      const template = renderStateTemplate(templateKey, vars);
+      const template = renderStateTemplate(templateKey, vars, host);
 
       const guidance = {
         stage: template.stage as WorkflowGuidance["stage"],
@@ -483,10 +502,10 @@ export async function buildPlanWorkflowGuidance(params: {
           : {}),
         ...(template.notes ? { notes: template.notes } : {}),
         ...(template.goalMode && goalModeEnabled && (justEnteredProcess || resumedIntoActive) && hasGoal && !suppressGoalFields
-          ? { goalMode: buildGoalMode(plan.goal.text, template.goalMode) }
+          ? { goalMode: buildGoalMode(plan.goal.text, template.goalMode, host) }
           : {}),
         ...(template.goalTool && goalModeEnabled && (justEnteredProcess || resumedIntoActive) && hasGoal && !suppressGoalFields
-          ? { goalTool: buildGoalTool(plan.goal.text, template.goalTool) }
+          ? { goalTool: buildGoalTool(plan.goal.text, template.goalTool, host) }
           : {}),
         ...(template.commandHints ? { commandHints: template.commandHints } : {}),
       };
@@ -496,6 +515,7 @@ export async function buildPlanWorkflowGuidance(params: {
         planFile,
         goalModeEnabled,
         suppressGoalFields,
+        host,
         guidance: await applyTemplateTaskDoneGuidance({
           projectRoot,
           projectConfig,
@@ -506,23 +526,23 @@ export async function buildPlanWorkflowGuidance(params: {
       });
     }
     case "end.completed": {
-      const template = workflowGuidanceConfig.states["end.completed"]
-        ? renderStateTemplate("end.completed", vars)
-        : renderStateTemplate("end.closed", vars);
+      const template = getGuidanceConfig(host).states["end.completed"]
+        ? renderStateTemplate("end.completed", vars, host)
+        : renderStateTemplate("end.closed", vars, host);
       return {
         stage: template.stage as WorkflowGuidance["stage"],
         summary: template.summary,
         nextsteps: template.nextsteps,
         ...(template.notes ? { notes: template.notes } : {}),
         ...(template.goalTool && goalModeEnabled && previousStatus === "process.active" && hasGoal && !suppressGoalFields
-          ? { goalTool: buildGoalTool(plan.goal.text, template.goalTool) }
+          ? { goalTool: buildGoalTool(plan.goal.text, template.goalTool, host) }
           : {}),
         ...(template.commandHints ? { commandHints: template.commandHints } : {}),
       };
     }
     case "end.closed":
     case "end.leave": {
-      const template = renderStateTemplate("end.closed", vars);
+      const template = renderStateTemplate("end.closed", vars, host);
       return {
         stage: template.stage as WorkflowGuidance["stage"],
         summary: template.summary,
@@ -567,6 +587,7 @@ async function applyTemplateTaskDoneGuidance(params: {
     projectRoot,
     templateName: plan.templateId,
     templateFile: plan.templateFile,
+    versionPolicy: "ignore",
   });
   let mergedGuidance = guidance;
   const completedTask = completedTaskId === undefined
@@ -696,6 +717,7 @@ export interface SessionStartDefaultParams {
   projectId: string;
   clawDir: string;
   protocolOk: string;
+  host?: string;
 }
 
 export interface SessionStartRecoveredParams {
@@ -709,6 +731,7 @@ export interface SessionStartRecoveredParams {
   askUser: string;
   goalMode: string;
   planContentLines: string[];
+  host?: string;
 }
 
 const FALLBACK_SESSION_START_DEFAULT_LINES: string[] = [
@@ -746,7 +769,7 @@ const FALLBACK_SESSION_START_RECOVERED: SessionStartRecoveredTemplate = {
 };
 
 export function buildSessionStartDefaultPrompt(params: SessionStartDefaultParams): string {
-  const template = workflowGuidanceConfig.sessionStart?.default;
+  const template = getGuidanceConfig(params.host).sessionStart?.default;
   const lines = template?.lines ?? FALLBACK_SESSION_START_DEFAULT_LINES;
   const vars: TemplateVars = {
     projectName: params.projectName,
@@ -758,7 +781,7 @@ export function buildSessionStartDefaultPrompt(params: SessionStartDefaultParams
 }
 
 export function buildSessionStartRecoveredPrompt(params: SessionStartRecoveredParams): string {
-  const template = workflowGuidanceConfig.sessionStart?.recovered ?? FALLBACK_SESSION_START_RECOVERED;
+  const template = getGuidanceConfig(params.host).sessionStart?.recovered ?? FALLBACK_SESSION_START_RECOVERED;
   const fields = template.snapshotFields;
   const baseVars: TemplateVars = {
     taskName: params.taskName,

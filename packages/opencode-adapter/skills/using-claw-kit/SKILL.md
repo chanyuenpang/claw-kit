@@ -14,13 +14,18 @@ If the request is not expected to produce reusable project knowledge, skip this 
 
 ## Lifecycle semantics
 
-A plan is the task's container, not a frozen script: even while `process.active` is advancing, adapt the plan to new user requirements and add sub-tasks when needed to complete the task.
+A plan is the task's container, not a frozen script: even while `process.active` is advancing, adapt its requirements, scope, and tasks to new user needs. Keep the plan current rather than forcing changed work through stale tasks.
+
+- For a complex sub-task with an independently manageable scope, prefer `claw subplan create` to hand it off into a smaller task boundary instead of continually expanding the parent plan.
 
 - `process.discussing`: execution is paused for user discussion. It is a stable cross-turn state that can start a plan or be re-entered from `process.active`; do not implement, enter Goal Mode, convert it to `wait`, or close it before the discussion is settled.
 - `process.active`: downstream tasks are explicit and the user can hand off execution. Execute one task at a time and keep plan progress current through returned guidance.
-- `process.wait`: active execution is blocked on user input or an external dependency. Stop until returned guidance resumes it.
+- `process.wait`: when execution becomes blocked on user input or an external dependency, proactively move the plan to `process.wait`, then stop until returned guidance resumes it.
 - `end.completed`: the canonical completed plan status. Its returned guidance uses stage `done`; record the retrospective and durable key decisions, then close the plan through that guidance.
-- Claw automatically deposits reusable knowledge into canonical Truth documents during eligible closeout flows; resulting Truth file changes are normal workflow output, including while other tasks run in parallel.
+
+## Investigation
+
+Use `claw-kit:researcher` for bounded code or implementation investigations when it reduces main-thread context consumption.
 
 ## Hard boundaries
 

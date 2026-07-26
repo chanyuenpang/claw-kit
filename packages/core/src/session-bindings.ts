@@ -36,6 +36,23 @@ export function unbindSession(project: ProjectContext, sessionKey: string | unde
   });
 }
 
+/** Remove registry entries whose bound plan is no longer present under active tasks. */
+export function pruneStaleSessionBindings(project: ProjectContext): string[] {
+  const removed: string[] = [];
+  updateRegistry(project, (registry) => {
+    for (const [key, relativePath] of Object.entries(registry.bindings)) {
+      const normalizedRelative = typeof relativePath === "string" ? relativePath.replace(/\\/g, "/") : "";
+      const taskRelativePath = normalizedRelative.startsWith("tasks/") ? normalizedRelative.slice("tasks/".length) : "";
+      const planPath = taskRelativePath ? ensureInsideDir(project.tasksDir, taskRelativePath) : null;
+      if (!planPath || !fs.existsSync(planPath)) {
+        delete registry.bindings[key];
+        removed.push(key);
+      }
+    }
+  });
+  return removed;
+}
+
 export function resolveSessionBoundPlan(project: ProjectContext, sessionKey: string | undefined): string | null {
   const normalizedKey = bindingKey(project, sessionKey);
   if (!normalizedKey) {

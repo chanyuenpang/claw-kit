@@ -4,6 +4,61 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## Unreleased
 
+## [0.1.95] - 2026-07-22
+
+### Added
+
+- New project tasks are organized under date-scoped directories, with lock-protected daily maintenance that archives expired task and session state.
+- Added `claw plan sync` to restore Codex host progress and Goal Mode after a recovered active workflow.
+
+### Changed
+
+- Plan completion now records retrospective fields atomically before entering the completed state, and task lookups support both legacy and date-scoped layouts.
+
+### Fixed
+
+- Knowledge finalization no longer creates implicit Git commits, preserving caller-owned working tree state.
+
+## [0.1.94] - 2026-07-22
+
+### Added
+
+- Added a persistent search reader with bounded project database/vector caches and a lightweight CLI search entrypoint
+- Added compact normalized Float32 BLOB vector storage with automatic backfill for existing indexes and stage-level search telemetry
+
+### Changed
+
+- Project search now collapses vector chunks by source while scanning, delays snippet reads until final results, and avoids JSON vector decoding on refreshed indexes
+- Query embedding generation now talks directly to the persistent embedding daemon, whose reusable session cache retains two compatible model runtimes for ten minutes
+
+### Fixed
+
+- Codex host progress projection now follows the task actually marked in progress instead of assigning progress to the first unfinished task
+- Local embedding runtime fingerprints no longer split otherwise identical model sessions solely by project path
+- Updated vulnerable transitive `tar` and `protobufjs` runtime dependencies to patched releases
+
+## [0.1.93] - 2026-07-21
+
+### Changed
+
+- Replaced the single external knowledge-writer skill with an ordered `externalSkills` governance sequence and migration from the retired Truth/ADR fields
+- Unified unattended finalizer prompting across built-in and external governance skills while preventing durable documentation from referencing transient finalization inputs
+- `release-claw-kit` is now a repository-local maintainer skill and is no longer included in the published Codex plugin
+
+## [0.1.92] - 2026-07-21
+
+### Added
+
+- Project configuration now supports `autoCommitKnowledge`, allowing successful Truth/ADR finalization to leave documentation changes uncommitted when explicitly disabled
+
+### Changed
+
+- Active plans keep using their original template contract during task completion and plan editing even after the installed template version advances
+
+### Fixed
+
+- The Codex update workflow now avoids stale copied guidance that conflicted with the published-source update contract
+
 ## [0.1.91] - 2026-07-21
 
 ### Added

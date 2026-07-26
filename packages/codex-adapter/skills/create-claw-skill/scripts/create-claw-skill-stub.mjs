@@ -136,7 +136,7 @@ function buildTemplate({ skillName, templateId, targetWork, templateVersion }) {
       {
         id: 1,
         title: "Inspect inputs and define the workflow",
-        detail: "Identify the concrete target, required inputs, ordered workflow, constraints, real control-flow branches, and verification. Do not ask for a route choice when source evidence can determine the shape.",
+        detail: "Identify the target, inputs, workflow, constraints, branches, and verification. Put each task-specific constraint in its owning sub-task's detail. Reserve top-level rules for cross-task constraints. Do not ask for a route choice when evidence determines the shape. Use choices only when the selection changes the immediate downstream task or route. Keep completionChoices as the only valid-id list. Keep one claw task done --id <id> --choice <choice> command template. Do not repeat ids in nextsteps. Use guidance.onPlanStart only for a real discussion-to-execution delivery point. This executable template starts in process.active otherwise.",
         status: "pending",
         guidance: {
           onDone: {
@@ -145,7 +145,7 @@ function buildTemplate({ skillName, templateId, targetWork, templateVersion }) {
               summary: "Inputs are clear; continue with the core workflow.",
               nextsteps: [
                 "Keep task-ownership routing and repeated high-signal reminders in SKILL.md.",
-                "Use template tasks, guidance, rules, and references for structured execution information.",
+                "Keep each constraint at its narrowest task owner.",
                 "Use the fallback document for full plan-independent behavior when needed.",
               ],
               nextTaskId: 2,
@@ -156,7 +156,7 @@ function buildTemplate({ skillName, templateId, targetWork, templateVersion }) {
       {
         id: 2,
         title: "Run the core skill workflow",
-        detail: "TODO: Replace with the source skill's core workflow steps. Keep structured workflow control in the template and keep only non-template supplement material in SKILL.md or optional skill-local references.",
+        detail: "TODO: Replace with the source skill's core workflow steps and task-specific constraints. Keep structured workflow control in the template. Keep task-ownership routing and non-template supplements in SKILL.md. Use skill-local references only when needed.",
         status: "pending",
         guidance: {
           onDone: {
@@ -175,7 +175,7 @@ function buildTemplate({ skillName, templateId, targetWork, templateVersion }) {
       {
         id: 3,
         title: "Verify and close out",
-        detail: "Run the source skill's verification checks, summarize the result, and record any risks or omitted source details.",
+        detail: "Run the source skill's verification checks. Confirm the template version matches the current claw CLI. Confirm no task-specific constraint remains in top-level rules. When choices exist, confirm completionChoices is the only valid-id list and commandHints contains one claw task done --id <id> --choice <choice> template. Do not repeat ids in nextsteps. Summarize the result and record any risks or omitted source details. Do not claim completion before these checks pass.",
         status: "pending",
       },
     ],
@@ -187,13 +187,6 @@ function buildTemplate({ skillName, templateId, targetWork, templateVersion }) {
     ],
     rules: [
       "Follow returned workflowGuidance before advancing.",
-      "Keep the top-level TEMPLATE.json version equal to the current claw CLI version; when upgrading an older or unversioned template, inspect and optimize the whole package before advancing it.",
-      "This executable template starts in process.active and does not need guidance.onPlanStart; add it only when a real discussion task deliberately bundles delivery into execution through the optional claw plan start shorthand.",
-      "Keep structured execution information in template tasks, guidance, rules, and references.",
-      "Keep task-ownership routing and non-template supplements in SKILL.md, and use skill-local references only when needed.",
-      "Use choices only when the selected value changes the immediate downstream task or route.",
-      "When choices exist, completionChoices is the only valid-id list and commandHints contains one claw task done --id <id> --choice <choice> template; do not repeat ids in nextsteps, and keep choiceId only as the persisted plan field.",
-      "Do not claim completion until the verification task is done.",
     ],
   }, null, 2)}\n`;
 }
@@ -213,6 +206,7 @@ function buildCoverage({ skillName, templateId, targetWork, fallbackDoc }) {
 - Intended work: ${targetWork}.
 - Lifecycle handoff: TODO; keep the default active start, or document why a real discussion delivery task adopts optional \`guidance.onPlanStart\`.
 - Ordered workflow steps: TODO.
+- Rule ownership: task-specific constraints belong to their owning sub-task details; top-level rules are cross-task only.
 - Branch conditions: TODO.
 - Tool constraints and helper files: TODO.
 - Non-template supplement material kept in \`SKILL.md\`: TODO.
@@ -224,6 +218,8 @@ function buildCoverage({ skillName, templateId, targetWork, fallbackDoc }) {
 
 - [ ] Important source triggers are represented.
 - [ ] Important workflow steps are represented.
+- [ ] Task-specific constraints live in their owning sub-task details.
+- [ ] Top-level rules contain only cross-task constraints.
 - [ ] Important branch behavior is represented.
 - [ ] Required tools, commands, helper files, and links are represented.
 - [ ] Information that does not fit template structure stays in \`SKILL.md\` or optional skill-local references.

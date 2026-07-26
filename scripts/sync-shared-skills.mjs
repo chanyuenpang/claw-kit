@@ -14,6 +14,7 @@ function targetPathsForSkill(repoRoot, skillName) {
   return [
     path.join(repoRoot, "packages", "codex-adapter", "skills", skillName, "SKILL.md"),
     path.join(repoRoot, "packages", "opencode-adapter", "skills", skillName, "SKILL.md"),
+    path.join(repoRoot, "packages", "qoder-adapter", "skills", skillName, "SKILL.md"),
   ];
 }
 
@@ -117,7 +118,11 @@ async function expectedSkillFile(sourceDir, relativePath, skillName) {
 export async function verifySharedSkillsSynced({
   repoRoot = defaultRepoRoot,
   skillNames = SHARED_SKILL_NAMES,
-  adapterDirs = [path.join(repoRoot, "packages", "codex-adapter"), path.join(repoRoot, "packages", "opencode-adapter")],
+  adapterDirs = [
+    path.join(repoRoot, "packages", "codex-adapter"),
+    path.join(repoRoot, "packages", "opencode-adapter"),
+    path.join(repoRoot, "packages", "qoder-adapter"),
+  ],
 } = {}) {
   const problems = [];
 

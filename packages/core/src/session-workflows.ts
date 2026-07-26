@@ -98,12 +98,13 @@ export function sweepExpiredSessionWorkflows(options: {
   now?: number;
   ttlMs?: number;
   excludeSessionKey?: string;
+  env?: NodeJS.ProcessEnv;
 } = {}): string[] {
-  const baseDir = sessionWorkflowBaseDir();
+  const baseDir = sessionWorkflowBaseDir(options.env);
   if (!fs.existsSync(baseDir)) {
     return [];
   }
-  const excludedDir = options.excludeSessionKey ? sessionWorkflowDir(options.excludeSessionKey) : null;
+  const excludedDir = options.excludeSessionKey ? sessionWorkflowDir(options.excludeSessionKey, options.env) : null;
   const now = options.now ?? Date.now();
   const ttlMs = options.ttlMs ?? DEFAULT_SESSION_TTL_MS;
   const removed: string[] = [];

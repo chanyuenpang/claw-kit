@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { ClawError } from "./errors.js";
-import { readJsonFile, writeJsonFile } from "./io.js";
+import { listTaskDirectories } from "./context.js";
+import { readJsonFile, withFileLock, writeJsonFile } from "./io.js";
 import { ensureInsideDir, normalizePlanFile } from "./paths.js";
 import { bindSessionToPlan, resolveSessionBoundPlan, unbindSession } from "./session-bindings.js";
 import type { PlanDocument, ProjectContext, TaskMeta } from "./types.js";
@@ -26,15 +27,28 @@ export type TaskLayoutMigrationResult = {
 
 export function migrateLegacyTaskLayout(project: ProjectContext): TaskLayoutMigrationResult {
   const markerPath = taskLayoutMigrationMarkerPath(project.clawDir);
-  if (fs.existsSync(markerPath)) {
-    return { changed: false, fixedPaths: [] };
+  const maintenancePath = taskLayoutMaintenancePath(project.clawDir);
+  return withFileLock(maintenancePath, () => migrateLegacyTaskLayoutLocked(project, markerPath, maintenancePath));
+}
+
+function migrateLegacyTaskLayoutLocked(
+  project: ProjectContext,
+  markerPath: string,
+  maintenancePath: string,
+): TaskLayoutMigrationResult {
+  const maintenance = readTaskLayoutMaintenance(maintenancePath);
+  if (maintenance.migrations?.taskLayoutV2At) {
+    if (!fs.existsSync(markerPath)) return { changed: false, fixedPaths: [] };
+    fs.unlinkSync(markerPath);
+    return { changed: true, fixedPaths: [toProjectRelativePath(project, markerPath)] };
   }
 
-  const taskDirs = fs.existsSync(project.tasksDir)
-    ? fs.readdirSync(project.tasksDir, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory())
-        .map((entry) => path.join(project.tasksDir, entry.name))
-    : [];
+  if (fs.existsSync(markerPath)) {
+    writeTaskLayoutMigrationCompletion(maintenancePath, maintenance);
+    fs.unlinkSync(markerPath);
+    return { changed: true, fixedPaths: [toProjectRelativePath(project, markerPath), toProjectRelativePath(project, maintenancePath)] };
+  }
+  const taskDirs = listTaskDirectories(project).map((task) => task.taskDir);
   const moves = taskDirs.flatMap((taskDir) => collectLegacyPlanMoves(taskDir));
   validateMoves(moves);
 
@@ -63,8 +77,8 @@ export function migrateLegacyTaskLayout(project: ProjectContext): TaskLayoutMigr
   }
 
   applyBindingCandidates(project, bindingCandidates, fixedPaths);
-  markTaskLayoutMigrationComplete(project.clawDir);
-  fixedPaths.add(toProjectRelativePath(project, markerPath));
+  writeTaskLayoutMigrationCompletion(maintenancePath, maintenance);
+  fixedPaths.add(toProjectRelativePath(project, maintenancePath));
   return { changed: fixedPaths.size > 0, fixedPaths: [...fixedPaths] };
 }
 
@@ -73,10 +87,41 @@ export function taskLayoutMigrationMarkerPath(clawDir: string): string {
 }
 
 export function markTaskLayoutMigrationComplete(clawDir: string): string {
-  const markerPath = taskLayoutMigrationMarkerPath(clawDir);
-  fs.mkdirSync(path.dirname(markerPath), { recursive: true });
-  fs.writeFileSync(markerPath, "", "utf-8");
-  return markerPath;
+  const maintenancePath = taskLayoutMaintenancePath(clawDir);
+  withFileLock(maintenancePath, () => {
+    writeTaskLayoutMigrationCompletion(maintenancePath, readTaskLayoutMaintenance(maintenancePath));
+  });
+  return maintenancePath;
+}
+
+function taskLayoutMaintenancePath(clawDir: string): string {
+  return path.join(clawDir, "runtime", "maintenance.json");
+}
+
+type MaintenanceState = {
+  lastRunDate?: string;
+  migrations?: {
+    taskLayoutV2At?: string;
+  };
+};
+
+function readTaskLayoutMaintenance(maintenancePath: string): MaintenanceState {
+  try {
+    const value = readJsonFile<MaintenanceState>(maintenancePath);
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeTaskLayoutMigrationCompletion(maintenancePath: string, maintenance: MaintenanceState): void {
+  writeJsonFile(maintenancePath, {
+    ...maintenance,
+    migrations: {
+      ...maintenance.migrations,
+      taskLayoutV2At: new Date().toISOString(),
+    },
+  } satisfies MaintenanceState);
 }
 
 function collectLegacyPlanMoves(taskDir: string): LegacyPlanMove[] {

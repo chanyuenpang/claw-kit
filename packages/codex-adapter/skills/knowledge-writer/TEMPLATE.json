@@ -1,6 +1,6 @@
 {
   "id": "knowledge-writer",
-  "version": "0.1.91",
+  "version": "0.1.95",
   "scope": "session",
   "title": "knowledge-writer",
   "status": "process.active",
@@ -15,6 +15,7 @@
       "Task status informs completed, pending, and blocked scope without turning task titles or descriptions into execution evidence.",
       "Requirements and intentions are never promoted into completed results merely because they appear in the plan.",
       "Truth is maintained before ADR without a deposition routing or choice task.",
+      "A new accepted ADR passes all three gates: costly or risky reversal, non-obvious rationale, and a credible alternative with a real tradeoff.",
       "Each material current fact or decision has one owner and related Truth and ADR claims are consistent.",
       "Every Truth or ADR owner written by this pass is inspected and repaired to the machine-stable state and dated evolution format while untouched documents remain unmigrated.",
       "Supplied materials remain unchanged.",
@@ -94,7 +95,9 @@
             "mergeMode": "override",
             "summary": "The Truth pass is complete; maintain ADR from the same evidence and resulting Truth state.",
             "nextsteps": [
-              "Evaluate only durable decisions, rationale, alternatives, tradeoffs, ownership, and consequences.",
+              "Create a new accepted ADR only when reversal is costly or risky, the rationale is not obvious, and a credible alternative exposed a real tradeoff.",
+              "Send stable facts that fail this gate to Truth or no-edit.",
+              "Requalify only a replacement decision, not an existing ADR's original decision.",
               "Keep ADR current claims aligned with the Truth owners just established.",
               "A valid Truth no-edit outcome does not require manufacturing content before the ADR pass; every Truth owner actually written must now conform to knowledge-format.md."
             ],
@@ -106,7 +109,7 @@
     {
       "id": 5,
       "title": "Maintain canonical ADRs",
-      "detail": "Using the same qualified evidence and resulting Truth state, update durable decisions, context, rationale, alternatives, tradeoffs, ownership, and consequences in canonical ADR owners. Before writing an owner, inspect its conformance to knowledge-format.md and repair any nonconforming structure in the same edit. Apply this to every written owner without mass-rewriting untouched documents. Keep the document state accepted, superseded, or historical as appropriate, and retain dated decision evolution only when the former decision remains useful. Do not manufacture an ADR when the evidence contains no durable decision; retain that as the no-edit reason. Preserve unrelated user edits and repository conventions.",
+      "detail": "Maintain durable decisions, rationale, alternatives, tradeoffs, ownership, and consequences. Create a new accepted ADR only when all three gates pass. Reversal is costly or risky. The rationale is not obvious. A credible alternative exposed a real tradeoff. Otherwise write stable facts to Truth or make no ADR edit. Updating or superseding an existing ADR does not requalify its original decision. A replacement decision must pass the gate. Inspect and repair each written owner against knowledge-format.md. Do not mass-rewrite untouched documents. Preserve unrelated user edits and repository conventions.",
       "status": "pending",
       "guidance": {
         "onDone": {
@@ -164,6 +167,8 @@
     "Trusted evidence is time-bounded; current implementation outranks older report wording for current-state claims.",
     "A read-only implementation freshness check is required and is not repeated implementation verification.",
     "No durable supplied conclusion, unresolved freshness conflicts, and unchanged durable knowledge are valid no-edit outcomes.",
+    "Create a new accepted ADR only when reversal is costly or risky, the rationale is not obvious, and a credible alternative exposed a real tradeoff.",
+    "Route stable facts that fail the ADR gate to Truth or no-edit.",
     "Do not modify supplied materials or repeat implementation verification.",
     "Maintain one current owner for each material fact or decision across Truth and ADR.",
     "Use claw search plus exhaustive text search when top-k recall could hide another current claim.",

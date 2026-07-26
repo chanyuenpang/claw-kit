@@ -10,7 +10,7 @@ Accepted
 
 The completed template-version workflow closed a separate release drift gap: package and plugin versions could be aligned while skill-local `TEMPLATE.json` files or the built-in default still advertised an older CLI template contract. Because shared templates are later materialized into adapter payloads, correcting versions after shared-skill synchronization would duplicate work and make partial-copy mistakes easier to miss.
 
-The repository also needs one maintainer entry that can execute the accepted release protocol and then hand off to the already host-specific Codex update contract. That final installation stage depends on Codex marketplace identity, source/cache, restart, and new-task evidence, so the combined orchestration is not host-neutral shared skill content.
+The repository also needs one maintainer entry that can execute the accepted release protocol and then hand off to the already host-specific Codex update contract. This workflow is repository governance, not an end-user plugin capability: its release stage depends on claw-kit package, branch, registry, and repository policy, while its final installation stage invokes the public Codex update contract.
 
 ## Decision
 
@@ -43,7 +43,7 @@ The repository also needs one maintainer entry that can execute the accepted rel
 - 如果 release round 包含 `workflowGuidance` wording 或 config 变更，release closeout 验证 source config、built `dist/workflow-guidance.config.json`、committed marketplace payload 与 registry package 携带同一合同；随后独立 `update` closeout 再验证 installed global CLI guidance output 与 official Codex plugin cache payload。`0.1.49` 曾在同一次历史 closeout 中验证关键句 `When dispatching a subagent, each entry is a required structured contract whose fields must be honored directly.`，不构成当前 release 必须刷新本机安装面的规则
 - 独立 `update` 的 local runtime refresh verification 必须包含实际 Windows shim path、`claw --version`、`npm list -g @veewo/claw --depth=0`，以及证明 protocol repair 不会把 flat config 改回 legacy nested fields 的 repo-local `claw context` smoke check
 - release closeout 的 done 条件不包括本机全局 `claw` CLI 或 installed Codex plugin 刷新；`scripts/publish-release.mjs` 在双包 publish 后提示调用 `claw-kit:update`，并明确禁止从未发布的 workspace content 安装
-- 完整维护者编排由 Codex adapter 自有的 `release-claw-kit` skill/template 承担，而不是进入 `shared/skills`。其 8 个线性任务以 artifact release 和 published-source Codex update 为先后两个完成边界：第 6 个任务完成 GitHub/npm/committed-plugin release 验收后，第 7 至 8 个任务才复用 Codex update 合同；模板不设置 route choice，也不把本机安装证据提升为 release artifact 的完成条件。
+- 完整维护者编排由仓库本地 `.agents/skills/release-claw-kit` skill/template 承担，不进入 published Codex plugin 或 `shared/skills`。其 8 个线性任务以 artifact release 和 published-source Codex update 为先后两个完成边界：第 6 个任务完成 GitHub/npm/committed-plugin release 验收后，第 7 至 8 个任务才复用公开的 Codex update 合同；模板不设置 route choice，也不把本机安装证据提升为 release artifact 的完成条件。
 - 后续 Codex update 验证必须 identity-aware：只允许 official `claw-kit@claw-kit`，并核对 official repository marketplace source、matching cache、所需 skill payload 与 restart/new-task loaded locator；cache 目录存在或较新但未启用不能作为 update completion 证据
 - when adapter skills change, plugin cache verification should inspect both the manifest version and the expected skill files; `0.1.48` specifically required `skills/config/SKILL.md` to be present in the local Codex cache
 - 如果 release round 同时包含 Codex workflow contract 变更，closeout 应把这些长期规则一并沉淀到 canonical truth；`0.1.39` 的新增规则是 researcher dispatch 前不要由 host 内联读取 search skill，且依赖 research 结果的主流程必须等待 `researcher` 返回
@@ -66,7 +66,7 @@ The repository also needs one maintainer entry that can execute the accepted rel
 - Template compatibility now advances as one release surface: source templates are updated once before materialization, while the release gate remains side-effect free and exposes exact stale owners for correction.
 - The temporary workspace CLI link breaks a release-development bootstrap cycle without weakening the published-source boundary: it is reversible, version-scoped, and must be replaced by the registry install before the machine is treated as updated.
 - release 与本机 update 形成有序的两个完成边界：release 证明 GitHub、npm 与 committed Codex payload 可交付；随后 `claw-kit:update` 证明操作者机器的 CLI、official identity、source/cache 与新任务 loaded locator 已采用该发布
-- `release-claw-kit` 为 Codex 维护者提供一个可重复入口，同时通过任务边界而不是合并验收条件来串联 release 与 update；其他 host 若需要同类编排，必须拥有自己的安装阶段，而不能复用 Codex marketplace 细节。
+- repository-local `release-claw-kit` 为 claw-kit 维护者提供一个可重复入口，同时通过任务边界而不是合并验收条件来串联 release 与 update；插件用户不会看到该项目私有发布能力，其他仓库也不会继承 claw-kit 的 direct-main、npm 与 GitHub Release 规则。
 - active identity 与 source/cache 一致性只在 update 完成态中作为安装证据，避免把本机缓存状态误写成 registry/GitHub release 的必要条件
 - workflowGuidance wording patch 不能只停在源码层；release state 要证明 committed marketplace payload 与 registry package 携带同一合同，随后 update state 再证明 global CLI 和 official plugin cache 已采用该合同
 - plugin cache 的 direct filesystem sync 范围被继续固定下来，后续 closeout 可以明确判断“缓存没刷新”与“缓存目录已切换但 payload 不一致”这两类不同故障
@@ -89,9 +89,9 @@ The `0.1.87` release was the first recorded use of the narrow workspace-link exc
 ## Related code
 
 - `DISTRIBUTION.md`
-- `packages/codex-adapter/skills/release-claw-kit/SKILL.md`
-- `packages/codex-adapter/skills/release-claw-kit/TEMPLATE.json`
-- `packages/codex-adapter/skills/release-claw-kit/references/release-protocol.md`
+- `.agents/skills/release-claw-kit/SKILL.md`
+- `.agents/skills/release-claw-kit/TEMPLATE.json`
+- `.agents/skills/release-claw-kit/references/release-protocol.md`
 - `docs/2026-06-08-closeout-workflow.md`
 - `scripts/install-cli.ps1`
 - `scripts/update-template-versions.mjs`

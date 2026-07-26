@@ -1,4 +1,5 @@
 export * from "./context.js";
+export * from "./daily-maintenance.js";
 export * from "./completion-hooks.js";
 export * from "./errors.js";
 export * from "./init.js";

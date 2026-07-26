@@ -1,6 +1,6 @@
 {
   "id": "create-claw-skill",
-  "version": "0.1.91",
+  "version": "0.1.95",
   "title": "create-claw-skill",
   "status": "process.active",
   "goal": {
@@ -13,6 +13,7 @@
       "The generated entry routes by whole-task, independent-stage, and mixed-stage ownership semantics without exposing storage scope.",
       "Independent-stage entries preserve the Goal handoff: complete the active parent goal before the child plan creates its own goal.",
       "The generated template owns the structured workflow and contains choices only for real downstream branches; choice-aware guidance exposes valid ids once and one executable --choice command template.",
+      "Each constraint lives at its narrowest owner: task-specific constraints in sub-task detail and only cross-task constraints in top-level rules.",
       "The template deliberately chooses whether a discussion delivery task adopts optional guidance.onPlanStart; executable templates start active without it by default.",
       "The adjacent fallback document preserves direct skill behavior for mixed-stage use and unavailable claw tooling.",
       "The generated TEMPLATE.json declares the current claw CLI version; a missing or older version triggers this skill for inspection and optimization before the version is advanced.",
@@ -24,7 +25,7 @@
     {
       "id": 1,
       "title": "Confirm the user requirements and adapt the plan",
-      "detail": "Confirm the user's requirements for the target skill and compare them with this generated plan before implementation. Adjust the plan to match the requested scope and workflow. Do not delete any sub-task or change any task id because template guidance depends on those ids. When a task is not applicable, keep it and change its description to mark it as removed from scope instead of deleting it.",
+      "detail": "Confirm the user's requirements and adapt this plan before implementation. Do not delete a sub-task or change its id. Mark excluded work in that sub-task's description. Move any rule owned by one sub-task into that sub-task's detail. Keep only cross-task constraints in top-level rules.",
       "status": "pending",
       "guidance": {
         "onDone": {
@@ -33,7 +34,8 @@
             "summary": "The user requirements are confirmed and the plan reflects the requested scope without breaking template guidance.",
             "nextsteps": [
               "Inspect the source or skill idea using the adapted task descriptions.",
-              "Preserve every sub-task id even when its description marks it as removed from scope."
+              "Preserve every sub-task id even when its description marks it as removed from scope.",
+              "Keep each constraint at its narrowest task owner."
             ],
             "nextTaskId": 2
           }
@@ -43,7 +45,7 @@
     {
       "id": 2,
       "title": "Inspect the source and choose the conversion shape",
-      "detail": "Read the source skill or distill the user idea. Identify its trigger, ordered workflow, tools, constraints, real control-flow branches, verification, lifecycle handoff, and companion files. For an existing TEMPLATE.json, inspect its version first: a missing or older version means the full skill package must be reviewed and optimized against the current CLI contract, not merely version-bumped. Decide the conversion shape from evidence without asking the user to choose a template style. Treat claw plan start as optional global syntax sugar: adopt guidance.onPlanStart only for a genuine discussion-to-execution delivery point; otherwise start executable work in process.active.",
+      "detail": "Read the source skill or distill the user idea. Identify its trigger, workflow, tools, constraints, branches, verification, lifecycle handoff, and companion files. Assign each constraint to its owning sub-task. Reserve top-level rules for cross-task constraints. Inspect an existing template's version. Review and optimize an older or unversioned package before advancing its version. Choose the conversion shape from evidence. Use choices only for real downstream routes. Use guidance.onPlanStart only for a real discussion-to-execution delivery point. Start executable work in process.active otherwise.",
       "status": "pending",
       "guidance": {
         "onDone": {
@@ -64,7 +66,7 @@
     {
       "id": 3,
       "title": "Generate and complete the claw skill package",
-      "detail": "Start with `node <create-claw-skill-dir>/scripts/create-claw-skill-stub.mjs --skill-name <skill-name> --out <target-skill-package>`. Add optional flags only when defaults do not fit. Replace generated TODOs, preserve companion files and links, and keep the entry focused on task-ownership routing while TEMPLATE.json owns execution. The stub writes the current CLI version. For an existing package, set its template version to the current CLI version only after the inspection and optimization pass is complete.",
+      "detail": "Run `node <create-claw-skill-dir>/scripts/create-claw-skill-stub.mjs --skill-name <skill-name> --out <target-skill-package>`. Add flags only when needed. Replace generated TODOs. Put task-specific constraints in the owning sub-task's detail. Do not repeat them in rules. Keep the entry focused on task-ownership routing. Preserve companion files and links. Let explicit template creation choose storage. Set the template version only after inspection and optimization.",
       "status": "pending",
       "guidance": {
         "onDone": {
@@ -83,7 +85,7 @@
     {
       "id": 4,
       "title": "Validate structure and content coverage",
-      "detail": "Run `claw template validate --file <target-skill-package>/TEMPLATE.json` and confirm the returned version equals the current CLI version. Validate the skill package structure, and map important source behavior to entry, template tasks/guidance/rules/references, or the fallback document. For every task listed in choiceRequiredTasks, exercise its live workflow guidance and confirm completionChoices contains the valid ids while commandHints contains exactly one claw task done --id <id> --choice <choice> template and nextsteps does not repeat the ids. Use named `--template <id>` validation only after the skill is materialized in a supported runtime registry.",
+      "detail": "Run `claw template validate --file <target-skill-package>/TEMPLATE.json`. Confirm the returned version matches the current CLI. Validate package structure and content coverage. Confirm no task-specific constraint remains in top-level rules. For each choiceRequiredTasks entry, exercise live guidance. Require completionChoices as the only valid-id list. Require one claw task done --id <id> --choice <choice> command template. Do not repeat ids in nextsteps. Use named `--template <id>` validation only after registry materialization.",
       "status": "pending"
     }
   ],
@@ -106,17 +108,7 @@
     }
   ],
   "rules": [
-    "Keep task ids numeric and workflow control in the template.",
-    "Adapt the generated plan to confirmed user requirements without deleting sub-tasks or changing task ids; mark excluded work in the task description instead.",
-    "Route by whether the skill owns the whole task, one independent stage, or only part of a mixed stage.",
-    "Treat each batch item as a stage-level subplan when the skill owns that stage.",
-    "On Goal Mode hosts, every subplan entry must consume the returned handoff that completes the parent goal before creating the child goal.",
-    "Let explicit template creation choose its runtime storage automatically.",
-    "Preserve direct behavior in the adjacent fallback document and use focused references only when needed.",
-    "Every TEMPLATE.json declares the current CLI version; missing, invalid, or older versions route through this skill for a real inspection and optimization pass before advancing the field.",
-    "Every guidance.onDone.choices task must expose valid ids once in completionChoices and one real --choice CLI command template without repeating ids in nextsteps.",
-    "Treat claw plan start as optional global syntax sugar: templates opt into recommending it through the current task's guidance.onPlanStart, while ordinary plan and task mutations remain valid.",
-    "Do not claim completion before file-based template validation and content coverage pass."
+    "Keep task ids numeric and stable across the template."
   ],
   "keyDecisions": [],
   "retrospective": {

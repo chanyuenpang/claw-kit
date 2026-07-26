@@ -18,6 +18,8 @@ import {
   editPlan,
   ensureProjectProtocol,
   enforceTaskRetention,
+  findTaskDirectory,
+  runDailyMaintenance,
   ingestTruth,
   initProject,
   getTemplateTaskDoneChoices,
@@ -30,13 +32,14 @@ import {
   resolveSessionBoundPlan,
   resolveContext,
   resolveSeedPlanTemplate,
-  searchMemory,
+  searchMemoryAsync,
   warmProjectMemoryEmbedding,
   showPlan,
   createSubplan,
   switchTask,
   tryCaptureKnowledgeStop,
   claimKnowledgeFinalizationJob,
+  readKnowledgeFinalizationJob,
   changedKnowledgeMarkdownPaths,
   listRetryableKnowledgeFinalizationJobs,
   governChangedKnowledgeMarkdown,
@@ -70,7 +73,6 @@ import {
 import { consumeBufferedHookInput } from "./knowledge-hook-preflight.js";
 import { resolveInvocationHost, withoutInvocationHost, type ClawHost } from "./invocation-host.js";
 import { runOpencodeKnowledgeWriter } from "./opencode-runner.js";
-import { captureKnowledgeGitState, commitKnowledgeDocumentation } from "./knowledge-git-commit.js";
 
 const CLI_VERSION = readCliVersion();
 
@@ -92,7 +94,7 @@ const TOP_LEVEL_COMMANDS: { name: string; summary: string }[] = [
   { name: "context [--task <name>]", summary: "Resolve project context, auto-initializing or correcting .claw state." },
   { name: "session clean [--expired]", summary: "Remove current or expired session workflow state." },
   { name: "check", summary: "Check and auto-correct .claw project protocol fields." },
-  { name: "plan <subcommand> [options]", summary: "Plan lifecycle: create, start, edit, remove, wait, resume, show, done." },
+  { name: "plan <subcommand> [options]", summary: "Plan lifecycle: create, start, edit, remove, wait, resume, sync, show, done." },
   { name: "codex driver", summary: "Return the versioned code-mode driver used by the Codex adapter." },
   { name: "template <subcommand> [options]", summary: "Plan template helpers such as validation." },
   { name: "task <subcommand> [options]", summary: "Task lifecycle helpers inside an existing plan." },
@@ -171,6 +173,10 @@ const COMMAND_HELP: Record<string, HelpNode> = {
           { flag: "--summary <text>", detail: "Set the plan summary." },
           { flag: "--rule <text>", detail: "Append a rule (repeatable)." },
           { flag: "--key-decision <text>", detail: "Append a key decision (repeatable)." },
+          { flag: "--retrospective <text>", detail: "Set the retrospective summary; required before --status end.completed." },
+          { flag: "--what-worked <text>", detail: "Append a retrospective success (repeatable)." },
+          { flag: "--issue <text>", detail: "Append a retrospective issue (repeatable)." },
+          { flag: "--follow-up <text>", detail: "Append a retrospective follow-up (repeatable)." },
           { flag: "--reference <path>", detail: "Add a reference; follow it immediately with --why (repeatable)." },
           { flag: "--why <text>", detail: "Explain the immediately preceding --reference." },
           { flag: "--task-name <name>", detail: "Advanced: override the session-bound task scope." },
@@ -209,6 +215,11 @@ const COMMAND_HELP: Record<string, HelpNode> = {
           { flag: "--plan-file <relative-path>", detail: "Advanced: override the session-bound plan file." },
         ],
       },
+      sync: {
+        usage: ["{script} plan sync"],
+        description: "Resynchronize a recovered active Codex plan with host progress and Goal Mode without mutating the plan.",
+        summary: "Resync a recovered active Codex plan.",
+      },
       start: {
         usage: ["{script} plan start --requirements <text> --add-task <title> [--detail <text>] [options]"],
         description:
@@ -241,8 +252,8 @@ const COMMAND_HELP: Record<string, HelpNode> = {
       done: {
         usage: ["{script} plan done --retrospective <text> [options]"],
         description:
-          "Close out a plan: write a retrospective, mark status end.completed with completedAt, retain it for at least one hour, sweep older completed tasks into the archive, and queue the async completion refresh.",
-        summary: "Close out a plan with a retrospective and queue completion refresh.",
+          "Shortcut for applying closeout fields and --status end.completed in one ordered plan edit; it retains the task for at least one hour, sweeps older completed tasks into the archive, and queues the async completion refresh.",
+        summary: "Shortcut for completing a plan with a retrospective and queueing completion refresh.",
         options: [
           { flag: "--retrospective <text>", detail: "Retrospective summary (required)." },
           { flag: "--key-decision <text>", detail: "Append a durable key decision when one exists (repeatable)." },
@@ -431,6 +442,11 @@ const COMMAND_HELP: Record<string, HelpNode> = {
     description: "Internal: runs one queued knowledge deposition job through the host-aware finalization runner (Codex SDK for codex host, opencode run for opencode host).",
     options: [{ flag: "--job <path>", detail: "(required) Finalization job JSON path." }],
   },
+  "internal-knowledge-finalize-record": {
+    usage: ["{script} internal-knowledge-finalize-record --job <path>"],
+    description: "Internal: records a qoder knowledge deposition job after the main agent dispatched the knowledge-writer subagent (governs, records the result, and marks the job succeeded).",
+    options: [{ flag: "--job <path>", detail: "(required) Finalization job JSON path." }],
+  },
   "internal-embedding-warmup": {
     usage: ["{script} internal-embedding-warmup --cwd <dir>"],
     description: "Internal: warms the configured local persistent embedding session after context recovery without delaying SessionStart.",
@@ -541,7 +557,7 @@ async function main(): Promise<void> {
         );
         return;
       case "search":
-        runSearch(args);
+        await runSearch(args);
         return;
       case "direct":
         runDirect(args, effectiveHost);
@@ -560,6 +576,9 @@ async function main(): Promise<void> {
         return;
       case "internal-knowledge-finalize":
         await runInternalKnowledgeFinalize(args);
+        return;
+      case "internal-knowledge-finalize-record":
+        await runInternalKnowledgeFinalizeRecord(args);
         return;
       case "internal-embedding-warmup":
         await runInternalEmbeddingWarmup(args);
@@ -644,15 +663,21 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
       if (operations.length === 0) {
         throw new ClawError("PROJECT_CONFIG_INVALID", "plan edit requires at least one plan field or --status.");
       }
+      const ownerSessionKey = resolveOwnerSessionKey() ?? undefined;
+      const entersEndState = requestsPlanEndState(operations);
+      const queuePlanEndFinalization = entersEndState
+        ? preparePlanEndFinalization(process.cwd(), ownerSessionKey)
+        : undefined;
       const result = await editPlan({
         cwd: process.cwd(),
         ...target,
         operations,
         commandSource: "plan.edit",
         host: effectiveHost,
-        ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
+        ownerSessionKey,
       });
-      printJson(compactPlanCommandResult("plan.edit", result, effectiveHost));
+      const completionRefresh = queuePlanEndFinalization?.(result.taskName);
+      printJson(compactPlanCommandResult("plan.edit", result, effectiveHost, completionRefresh));
       if (result.operationChain?.status === "partial") process.exitCode = 1;
       return;
     }
@@ -682,6 +707,9 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
       return;
     case "resume":
       await runPlanStatusAlias(args, "process.active", "plan.resume", effectiveHost);
+      return;
+    case "sync":
+      await runPlanSync(args, effectiveHost);
       return;
     case "start": {
       const updates = readPlanFieldUpdates(args);
@@ -725,26 +753,16 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
       const target = readPlanMutationTarget(args);
       assertNoRemainingArgs(args, "plan done");
       const ownerSessionKey = resolveOwnerSessionKey() ?? undefined;
-      const workflowProject = resolveWorkflowProjectContext(process.cwd(), ownerSessionKey);
-      const gitNexusPreflightAnalyzed = workflowProject.scope === "project"
-        ? ensureGitNexusReadyForPlanDone(process.cwd())
-        : false;
+      const queuePlanEndFinalization = preparePlanEndFinalization(process.cwd(), ownerSessionKey);
       const result = await editPlan({
         cwd: process.cwd(),
         ...target,
-        updates,
-        planStatus: "end.completed",
+        operations: planCompletionOperations(updates),
         commandSource: "plan.done",
         host: effectiveHost,
         ownerSessionKey,
       });
-      const completionRefresh = workflowProject.scope === "project"
-        ? queueCompletionRefresh({
-            cwd: process.cwd(),
-            taskName: result.taskName,
-            skipGitNexusRefresh: gitNexusPreflightAnalyzed,
-          })
-        : undefined;
+      const completionRefresh = queuePlanEndFinalization?.(result.taskName);
       printJson(compactPlanCommandResult("plan.done", result, effectiveHost, completionRefresh));
       return;
     }
@@ -788,7 +806,35 @@ async function runPlanStatusAlias(
     ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
   });
   assertNoRemainingArgs(args, command);
-  printJson(compactPlanCommandResult(command, result, effectiveHost));
+  printJson(compactPlanCommandResult(command, result, effectiveHost, undefined, true));
+}
+
+async function runPlanSync(args: string[], effectiveHost: ClawHost | undefined): Promise<void> {
+  const ownerSessionKey = resolveOwnerSessionKey() ?? undefined;
+  const result = showPlan({ cwd: process.cwd(), ...readPlanMutationTarget(args), ownerSessionKey });
+  assertNoRemainingArgs(args, "plan sync");
+  if (result.plan.status !== "process.active") {
+    printJson({ ok: true, command: "plan.sync", planPath: result.planPath, planStatus: result.plan.status });
+    return;
+  }
+  const project = resolveWorkflowProjectContext(process.cwd(), ownerSessionKey);
+  const workflowGuidance = await buildPlanWorkflowGuidance({
+    taskName: result.taskName,
+    planFile: result.planFile,
+    plan: result.plan,
+    projectRoot: project.projectRoot,
+    projectConfig: project.projectConfig,
+    previousStatus: "process.wait",
+    host: effectiveHost,
+    recoveryResync: true,
+  });
+  printJson(compactPlanCommandResult(
+    "plan.sync",
+    { ...result, planStatus: result.plan.status, workflowGuidance },
+    effectiveHost,
+    undefined,
+    true,
+  ));
 }
 
 async function runTemplate(args: string[]): Promise<void> {
@@ -914,7 +960,7 @@ async function runTask(args: string[], effectiveHost: ClawHost | undefined): Pro
   }
 }
 
-function runSearch(args: string[]): void {
+async function runSearch(args: string[]): Promise<void> {
   const subcommand = args[0];
   if (subcommand === "index") {
     args.shift();
@@ -945,7 +991,7 @@ function runSearch(args: string[]): void {
   printJson({
     ok: true,
     command: "search",
-    ...searchMemory({
+    ...await searchMemoryAsync({
       cwd: process.cwd(),
       limit: readOptionalNumber(args, "--limit"),
       query: readRequiredSearchQuery(args),
@@ -990,6 +1036,7 @@ async function runContextCommand(
 
   const sessionProject = resolveSessionWorkflowContext(ownerSessionKey ?? undefined);
   if (sessionProject) {
+    const maintenance = runDailyMaintenance(sessionProject, { excludeSessionKey: ownerSessionKey ?? undefined, includeProject: false });
     const activeWorkflow = !taskName && ownerSessionKey
       ? await tryResolveActiveWorkflowSnapshot(cwd, ownerSessionKey, effectiveHost)
       : null;
@@ -1000,6 +1047,7 @@ async function runContextCommand(
     return {
       project: sessionProject,
       ...(activeWorkflow ? { activeWorkflow } : {}),
+      ...(maintenance.ran ? { maintenance } : {}),
       ...(codexRuntimeError ? { error: codexRuntimeError } : {}),
     };
   }
@@ -1016,6 +1064,7 @@ async function runContextCommand(
     initialized = true;
   }
 
+  const maintenance = runDailyMaintenance(resolveProjectContext(cwd), { excludeSessionKey: ownerSessionKey ?? undefined });
   let resolved = resolveContext(cwd, taskName);
   const versionSync = syncProjectVersionWithCli(cwd, resolved.project);
   if (versionSync.projectVersionUpdated) {
@@ -1038,6 +1087,7 @@ async function runContextCommand(
 
   return {
     ...resolved,
+    ...(maintenance.ran ? { maintenance } : {}),
     ...(activeWorkflow ? { activeWorkflow } : {}),
     ...(codexRuntimeError ? { error: codexRuntimeError } : {}),
     protocolCheck: checkProjectProtocol(cwd),
@@ -1361,8 +1411,11 @@ async function runStopHook(effectiveHost: ClawHost | undefined): Promise<void> {
   const sessionId = resolveOwnerSessionKey(payload);
   const turnId = readHookString(payload, "turn_id");
   const transcriptPath = readHookString(payload, "transcript_path");
-  const payloadMessage = readHookString(payload, "message");
-  if (!hookCwd || !sessionId || !turnId || !containsClawDir(hookCwd)) {
+  const payloadMessage = readHookString(payload, "message") ?? readHookString(payload, "last_assistant_message");
+  // Qoder's Stop event uses last_assistant_message and does not send turn_id.
+  // Use session_id as a stable fallback so the hook can proceed without a host-specific turn id.
+  const effectiveTurnId = turnId ?? sessionId;
+  if (!hookCwd || !sessionId || !effectiveTurnId || !containsClawDir(hookCwd)) {
     return;
   }
   try {
@@ -1370,7 +1423,7 @@ async function runStopHook(effectiveHost: ClawHost | undefined): Promise<void> {
     // Codex passes a transcript_path; opencode and other hosts without a file
     // transcript pass the final assistant message inline. Either source is valid.
     const message = payloadMessage ?? (
-      transcriptPath ? extractLatestFinalAssistantMessage(transcriptPath, turnId) : null
+      transcriptPath ? extractLatestFinalAssistantMessage(transcriptPath, turnId ?? undefined) : null
     );
     if (!message) {
       return;
@@ -1378,13 +1431,17 @@ async function runStopHook(effectiveHost: ClawHost | undefined): Promise<void> {
     const result = tryCaptureKnowledgeStop({
       project,
       sessionId,
-      turnId,
+      turnId: effectiveTurnId,
       message,
       host: effectiveHost,
-      taskConclusions: transcriptPath ? extractTaskDoneConclusions(transcriptPath, turnId) : [],
+      taskConclusions: transcriptPath ? extractTaskDoneConclusions(transcriptPath, turnId ?? undefined) : [],
     });
     if (result.ok && result.jobPath && process.env.CLAW_KNOWLEDGE_FINALIZER_DISABLE_LAUNCH !== "1") {
-      launchKnowledgeFinalizationWorker(result.jobPath, project.projectRoot);
+      // qoder finalization is dispatched by the main agent as a subagent (no headless
+      // runner exists), so the job stays queued and is surfaced at the next SessionStart.
+      if (effectiveHost !== "qoder") {
+        launchKnowledgeFinalizationWorker(result.jobPath, project.projectRoot);
+      }
     }
   } catch {
     // Knowledge capture is a fail-open sidecar and must never block Stop.
@@ -1411,7 +1468,6 @@ async function runInternalKnowledgeFinalize(args: string[]): Promise<void> {
     const project = resolveProjectContext(running.projectRoot);
     const useBuiltInAutomation = usesBuiltInKnowledgeWriter(running);
     const knowledgeBefore = snapshotKnowledgeMarkdown(project.truthDir);
-    const knowledgeGitState = captureKnowledgeGitState(running.projectRoot, project.truthDir);
     const writerRun = await runKnowledgeWriterForJob(running);
     const knowledgeGovernance = useBuiltInAutomation
       ? governChangedKnowledgeMarkdown({
@@ -1453,15 +1509,10 @@ async function runInternalKnowledgeFinalize(args: string[]): Promise<void> {
       status: "succeeded",
       finishedAt,
       ...(writerRun.threadId ? { sdkThreadId: writerRun.threadId } : {}),
+      ...(writerRun.threadIds ? { sdkThreadIds: writerRun.threadIds } : {}),
       finalResponse: writerRun.finalResponse,
       ...(knowledgeGovernance ? { knowledgeGovernance } : {}),
       truthEncoding,
-    });
-    commitKnowledgeDocumentation({
-      state: knowledgeGitState,
-      truthDir: project.truthDir,
-      changedPaths: changedKnowledgePaths,
-      message: running.taskName,
     });
   } catch (error) {
     const failed: KnowledgeFinalizationJob = {
@@ -1477,9 +1528,131 @@ async function runInternalKnowledgeFinalize(args: string[]): Promise<void> {
   }
 }
 
+/**
+ * Record a qoder knowledge finalization job after the main agent dispatched the
+ * knowledge-writer subagent. The subagent already edited the governed docs, so this
+ * command only runs the bookkeeping the detached worker would otherwise do: govern the
+ * changed docs against the queue-time Truth baseline, normalize encoding, record the
+ * result, and mark the job succeeded. Unlike the codex/opencode worker, it never runs a
+ * writer and never relaunches a detached worker on failure (the next SessionStart
+ * re-surfaces a still-queued job).
+ */
+async function runInternalKnowledgeFinalizeRecord(args: string[]): Promise<void> {
+  const jobPath = readRequiredFlag(args, "--job");
+  assertNoRemainingArgs(args, "internal-knowledge-finalize-record");
+  const running = claimKnowledgeFinalizationJob(jobPath);
+  if (!running) {
+    printJson({ command: "internal-knowledge-finalize-record", ok: true, claimed: false });
+    return;
+  }
+  if (running.host !== "qoder") {
+    const failed: KnowledgeFinalizationJob = {
+      ...running,
+      status: "failed",
+      finishedAt: new Date().toISOString(),
+      error: { message: `internal-knowledge-finalize-record only handles qoder jobs, got host "${String(running.host)}".` },
+    };
+    writeKnowledgeFinalizationJob(jobPath, failed);
+    printJson({ command: "internal-knowledge-finalize-record", ok: false, error: failed.error?.message });
+    return;
+  }
+  try {
+    const project = resolveProjectContext(running.projectRoot);
+    const useBuiltInAutomation = usesBuiltInKnowledgeWriter(running);
+    // Dispatch evidence marker written by the writer subagent per the SessionStart directive.
+    // Evidence only: absence never blocks recording (fail-open), it is just recorded honestly.
+    const dispatchMarkerPath = jobPath.replace(/\.json$/i, ".dispatch.json");
+    let dispatch: { dispatched: boolean; dispatchedAt?: string } = { dispatched: false };
+    if (fs.existsSync(dispatchMarkerPath)) {
+      try {
+        const marker = JSON.parse(fs.readFileSync(dispatchMarkerPath, "utf-8")) as {
+          finalizeId?: string;
+          dispatchedAt?: string;
+        };
+        if (marker.finalizeId === running.finalizeId) {
+          dispatch = {
+            dispatched: true,
+            ...(typeof marker.dispatchedAt === "string" ? { dispatchedAt: marker.dispatchedAt } : {}),
+          };
+        }
+      } catch {
+        // An unreadable marker counts as no evidence; recording stays fail-open.
+      }
+    }
+    const before = running.truthSnapshotBefore ?? snapshotKnowledgeMarkdown(project.truthDir);
+    const knowledgeGovernance = useBuiltInAutomation
+      ? governChangedKnowledgeMarkdown({
+          truthDir: project.truthDir,
+          before,
+          datedSectionsToKeep: running.writer?.datedSectionsToKeep ?? 6,
+        })
+      : undefined;
+    const truthEncoding = normalizeTruthMarkdownEncoding(project);
+    const changedKnowledgePaths = changedKnowledgeMarkdownPaths(
+      before,
+      snapshotKnowledgeMarkdown(project.truthDir),
+    );
+    queueCompletionRefresh({
+      cwd: running.projectRoot,
+      taskName: running.taskName,
+      includeTaskRetention: false,
+      includeTaskMemory: false,
+      statusLabel: `knowledge-${running.finalizeId.slice(0, 12)}`,
+      skipGitNexusRefresh: true,
+    });
+    const finishedAt = new Date().toISOString();
+    const finalResponse = dispatch.dispatched
+      ? `Recorded qoder knowledge finalization via subagent dispatch. Changed docs: ${changedKnowledgePaths.length}.`
+      : `Recorded qoder knowledge finalization without dispatch evidence (fail-open). Changed docs: ${changedKnowledgePaths.length}.`;
+    recordKnowledgeFinalizationResult(project, running.reportPath, {
+      schemaVersion: 1,
+      entryType: "knowledge_finalization",
+      finalizeId: running.finalizeId,
+      taskName: running.taskName,
+      recordedAt: finishedAt,
+      status: "succeeded",
+      result: finalResponse,
+      attempts: running.attempts,
+      host: running.host,
+      dispatched: dispatch.dispatched,
+      ...(knowledgeGovernance ? { knowledgeGovernance } : {}),
+      truthEncoding,
+    });
+    writeKnowledgeFinalizationJob(jobPath, {
+      ...running,
+      status: "succeeded",
+      finishedAt,
+      finalResponse,
+      dispatch,
+      ...(knowledgeGovernance ? { knowledgeGovernance } : {}),
+      truthEncoding,
+    });
+    fs.rmSync(dispatchMarkerPath, { force: true });
+    printJson({
+      command: "internal-knowledge-finalize-record",
+      ok: true,
+      claimed: true,
+      finalizeId: running.finalizeId,
+      dispatched: dispatch.dispatched,
+      changedKnowledgePaths,
+      ...(knowledgeGovernance ? { knowledgeGovernance } : {}),
+    });
+  } catch (error) {
+    const failed: KnowledgeFinalizationJob = {
+      ...running,
+      status: "failed",
+      finishedAt: new Date().toISOString(),
+      error: { message: error instanceof Error ? error.message : String(error) },
+    };
+    writeKnowledgeFinalizationJob(jobPath, failed);
+    printJson({ command: "internal-knowledge-finalize-record", ok: false, error: failed.error?.message });
+  }
+}
+
 type KnowledgeWriterRunResult = {
   finalResponse: string;
   threadId?: string;
+  threadIds?: string[];
 };
 
 const BUILT_IN_KNOWLEDGE_WRITER_SKILL = "claw-kit:knowledge-writer";
@@ -1490,25 +1663,42 @@ const BUILT_IN_KNOWLEDGE_WRITER_SKILL = "claw-kit:knowledge-writer";
  * legacy jobs without a host field keep using the versioned Codex SDK runtime.
  */
 async function runKnowledgeWriterForJob(running: KnowledgeFinalizationJob): Promise<KnowledgeWriterRunResult> {
-  if (running.host === "opencode") {
-    const result = runOpencodeKnowledgeWriter({
-      prompt: buildKnowledgeWriterPrompt(running),
-      projectRoot: running.projectRoot,
-      writer: running.writer ?? null,
-    });
-    assertCompletedKnowledgeWriterSession(result.threadId ?? null);
-    return {
-      finalResponse: result.finalResponse,
-      ...(result.threadId ? { threadId: result.threadId } : {}),
-    };
+  const skills = resolveKnowledgeWriterSkills(running);
+  const results: KnowledgeWriterRunResult[] = [];
+  for (const skill of skills) {
+    if (running.host === "opencode") {
+      const result = runOpencodeKnowledgeWriter({
+        prompt: buildKnowledgeWriterPrompt(running, skill),
+        projectRoot: running.projectRoot,
+        writer: running.writer ?? null,
+      });
+      if (isBuiltInKnowledgeWriterSkill(skill)) {
+        assertCompletedKnowledgeWriterSession(result.threadId ?? null);
+      }
+      results.push({
+        finalResponse: result.finalResponse,
+        ...(result.threadId ? { threadId: result.threadId } : {}),
+      });
+      continue;
+    }
+    if (running.host === "qoder") {
+      throw new Error("qoder knowledge finalization runs in-conversation via subagent dispatch; the detached worker must not run qoder jobs.");
+    }
+    if (running.host !== undefined && running.host !== null && running.host !== "codex") {
+      throw new Error(`Unsupported knowledge finalization job host "${String(running.host)}".`);
+    }
+    results.push(await runCodexSdkWriter(running, skill));
   }
-  if (running.host !== undefined && running.host !== null && running.host !== "codex") {
-    throw new Error(`Unsupported knowledge finalization job host "${String(running.host)}".`);
-  }
-  return runCodexSdkWriter(running);
+  const threadIds = results.flatMap((result) => result.threadId ? [result.threadId] : []);
+  const last = results.at(-1);
+  return {
+    finalResponse: results.map((result) => result.finalResponse).join("\n\n"),
+    ...(last?.threadId ? { threadId: last.threadId } : {}),
+    ...(threadIds.length > 0 ? { threadIds } : {}),
+  };
 }
 
-async function runCodexSdkWriter(running: KnowledgeFinalizationJob): Promise<KnowledgeWriterRunResult> {
+async function runCodexSdkWriter(running: KnowledgeFinalizationJob, skill: string): Promise<KnowledgeWriterRunResult> {
   const sdk = await import(pathToFileURL(resolveCodexSdkEntryPath()).href) as {
     Codex: new (options?: { env?: Record<string, string>; codexPathOverride?: string }) => {
       startThread(options: Record<string, unknown>): {
@@ -1535,8 +1725,10 @@ async function runCodexSdkWriter(running: KnowledgeFinalizationJob): Promise<Kno
       ? { modelReasoningEffort: writer.reasoningEffort }
       : {}),
   });
-  const turn = await thread.run(buildKnowledgeWriterPrompt(running));
-  assertCompletedKnowledgeWriterSession(thread.id);
+  const turn = await thread.run(buildKnowledgeWriterPrompt(running, skill));
+  if (isBuiltInKnowledgeWriterSkill(skill)) {
+    assertCompletedKnowledgeWriterSession(thread.id);
+  }
   return {
     finalResponse: turn.finalResponse,
     ...(thread.id ? { threadId: thread.id } : {}),
@@ -1585,24 +1777,28 @@ function knowledgeFinalizerEnvironment(): Record<string, string> {
   return env;
 }
 
-function buildKnowledgeWriterPrompt(job: KnowledgeFinalizationJob): string {
-  const writerSkill = resolveKnowledgeWriterSkill(job);
+function buildKnowledgeWriterPrompt(job: KnowledgeFinalizationJob, writerSkill: string): string {
   return [
-    `Use the ${writerSkill} skill and follow it exactly.`,
-    "Supplied materials:",
+    `Apply the ${writerSkill} skill's documentation-governance rules to the supplied materials and update the governed project documentation. Work unattended; do not request review or confirmation. Use task status to distinguish completed work from pending or blocked intent, and never present requirements or intentions as results. Skip and report ambiguous or unsafe changes.`,
+    "Materials:",
     `- ${job.planPath}`,
     `- ${job.reportPath}`,
     `Finalization id: ${job.finalizeId}`,
-    "Interpret all supplied materials by their content, not by a fixed filename, field, record shape, or serialization format. Extract conclusion-bearing evidence wherever it appears. Use task status when present to interpret completed, pending, and blocked scope, but do not treat task titles or descriptions as an execution log or promote requirements and intentions into results. Do not edit source inputs, dispatch subagents, or repeat implementation or test verification.",
+    "Interpret inputs by content, regardless of filename or schema. Do not reference or link to the supplied materials in governed documentation; they are transient and will be destroyed after finalization. Do not modify inputs, delegate, reimplement, or rerun tests.",
   ].join("\n");
 }
 
-function resolveKnowledgeWriterSkill(job: KnowledgeFinalizationJob): string {
-  return job.writer?.externalSkill?.trim() || BUILT_IN_KNOWLEDGE_WRITER_SKILL;
+function resolveKnowledgeWriterSkills(job: KnowledgeFinalizationJob): string[] {
+  const configured = job.writer?.externalSkills?.map((skill) => skill.trim()).filter(Boolean);
+  return configured && configured.length > 0 ? configured : [BUILT_IN_KNOWLEDGE_WRITER_SKILL];
+}
+
+function isBuiltInKnowledgeWriterSkill(skill: string): boolean {
+  return skill === BUILT_IN_KNOWLEDGE_WRITER_SKILL;
 }
 
 function usesBuiltInKnowledgeWriter(job: KnowledgeFinalizationJob): boolean {
-  return resolveKnowledgeWriterSkill(job) === BUILT_IN_KNOWLEDGE_WRITER_SKILL;
+  return resolveKnowledgeWriterSkills(job).every(isBuiltInKnowledgeWriterSkill);
 }
 
 function launchKnowledgeFinalizationWorker(jobPath: string, cwd: string): void {
@@ -1658,6 +1854,7 @@ async function runSessionStartHook(effectiveHost: ClawHost | undefined): Promise
   try {
     const context = await runContextCommand([], hookCwd, ownerSessionKey, effectiveHost);
     const contextProject = asJsonRecord(context.project);
+    const pendingQoderFinalizationJobs: string[] = [];
     if (
       contextProject?.scope !== "session"
       && !context.error
@@ -1665,6 +1862,18 @@ async function runSessionStartHook(effectiveHost: ClawHost | undefined): Promise
     ) {
       const project = resolveProjectContext(hookCwd);
       for (const jobPath of listRetryableKnowledgeFinalizationJobs(project)) {
+        let jobHost: string | null | undefined;
+        try {
+          jobHost = readKnowledgeFinalizationJob(jobPath).host;
+        } catch {
+          jobHost = undefined;
+        }
+        // qoder jobs are finalized in-conversation via subagent dispatch, so never
+        // launch a detached worker for them; surface them to the main agent instead.
+        if (jobHost === "qoder") {
+          pendingQoderFinalizationJobs.push(jobPath);
+          continue;
+        }
         try {
           launchKnowledgeFinalizationWorker(jobPath, project.projectRoot);
         } catch {
@@ -1672,7 +1881,12 @@ async function runSessionStartHook(effectiveHost: ClawHost | undefined): Promise
         }
       }
     }
-    const additionalContext = buildSessionStartAdditionalContext(context, hookCwd);
+    const additionalContext = buildSessionStartAdditionalContext(
+      context,
+      hookCwd,
+      effectiveHost,
+      pendingQoderFinalizationJobs,
+    );
 
     if (!additionalContext) {
       return;
@@ -1764,20 +1978,31 @@ function safeResolveTempDir(): string | null {
   }
 }
 
-function buildSessionStartAdditionalContext(context: Record<string, unknown>, sessionCwd: string): string | null {
+function buildSessionStartAdditionalContext(
+  context: Record<string, unknown>,
+  sessionCwd: string,
+  effectiveHost: ClawHost | undefined,
+  pendingQoderFinalizationJobs: string[] = [],
+): string | null {
   const versionSyncPrompt = buildVersionSyncPrompt(context);
   const searchGuidance = buildContextSearchGuidance(context);
   const runtimeErrorPrompt = buildCodexRuntimeErrorPrompt(context);
+  const finalizationDirective = buildQoderKnowledgeFinalizationDirective(pendingQoderFinalizationJobs);
   const activeWorkflow = context.activeWorkflow as JsonRecord | undefined;
   if (activeWorkflow) {
-    const prompt = buildRecoveredWorkflowAdditionalContext(activeWorkflow, versionSyncPrompt);
-    const promptWithSearch = searchGuidance ? `${prompt}\n${searchGuidance}` : prompt;
-    return runtimeErrorPrompt ? `${runtimeErrorPrompt}\n\n${promptWithSearch}` : promptWithSearch;
+    const prompt = buildRecoveredWorkflowAdditionalContext(activeWorkflow, versionSyncPrompt, effectiveHost);
+    const recoverySyncPrompt = effectiveHost === "codex" && activeWorkflow.planStatus === "process.active"
+      ? "Before continuing, run `claw plan sync` once through the fixed Codex driver to restore host progress and Goal Mode."
+      : "";
+    const promptWithSync = recoverySyncPrompt ? `${prompt}\n${recoverySyncPrompt}` : prompt;
+    const promptWithSearch = searchGuidance ? `${promptWithSync}\n${searchGuidance}` : promptWithSync;
+    const promptWithFinalize = finalizationDirective ? `${promptWithSearch}\n\n${finalizationDirective}` : promptWithSearch;
+    return runtimeErrorPrompt ? `${runtimeErrorPrompt}\n\n${promptWithFinalize}` : promptWithFinalize;
   }
 
   const project = context.project as JsonRecord | undefined;
   if (!project) {
-    return null;
+    return finalizationDirective;
   }
 
   const projectName = typeof project.projectName === "string" && project.projectName.trim()
@@ -1789,14 +2014,59 @@ function buildSessionStartAdditionalContext(context: Record<string, unknown>, se
   const projectId = typeof project.projectId === "string" ? project.projectId : projectName;
   const clawDir = typeof project.clawDir === "string" ? project.clawDir : path.join(projectRoot, ".claw");
   const protocolOk = (context.protocolCheck as JsonRecord | undefined)?.ok === true ? "ok" : "needs attention";
-  const prompt = buildSessionStartDefaultPrompt({ projectName, projectId, clawDir, protocolOk });
+  const prompt = buildSessionStartDefaultPrompt({ projectName, projectId, clawDir, protocolOk, host: effectiveHost });
   const promptWithVersion = !versionSyncPrompt
     ? prompt
     : versionSyncPrompt.placement === "prefix"
     ? `${versionSyncPrompt.lines.join("\n")}\n${prompt}`
     : `${prompt}\n${versionSyncPrompt.lines.join("\n")}`;
   const promptWithSearch = searchGuidance ? `${promptWithVersion}\n${searchGuidance}` : promptWithVersion;
-  return runtimeErrorPrompt ? `${runtimeErrorPrompt}\n\n${promptWithSearch}` : promptWithSearch;
+  const promptWithFinalize = finalizationDirective ? `${promptWithSearch}\n\n${finalizationDirective}` : promptWithSearch;
+  return runtimeErrorPrompt ? `${runtimeErrorPrompt}\n\n${promptWithFinalize}` : promptWithFinalize;
+}
+
+/**
+ * Build the main-agent directive that finalizes pending qoder knowledge jobs. qoder has no
+ * headless runner, so the main agent dispatches the knowledge-writer skill as a subagent for
+ * each queued job and then records it. Returns null when there is nothing to finalize.
+ */
+function buildQoderKnowledgeFinalizationDirective(jobPaths: string[]): string | null {
+  if (jobPaths.length === 0) {
+    return null;
+  }
+  const entries: string[] = [];
+  for (const jobPath of jobPaths) {
+    let job: KnowledgeFinalizationJob;
+    try {
+      job = readKnowledgeFinalizationJob(jobPath);
+    } catch {
+      continue;
+    }
+    const subagentTask = resolveKnowledgeWriterSkills(job)
+      .map((skill) => buildKnowledgeWriterPrompt(job, skill))
+      .join("\n\n");
+    const dispatchMarkerPath = jobPath.replace(/\.json$/i, ".dispatch.json");
+    const dispatchEvidenceTask = [
+      `Dispatch evidence (required): as your final action, write the file ${dispatchMarkerPath}`,
+      `with exactly this JSON: {"finalizeId": "${job.finalizeId}", "dispatchedAt": "<current ISO-8601 UTC timestamp>"}.`,
+      "This marker is the only verifiable proof that the subagent actually ran; never skip it.",
+    ].join(" ");
+    entries.push([
+      `- Job: ${jobPath}`,
+      "  Step 1: Dispatch a subagent (Agent tool, GeneralPurpose) with the task below. It must apply the knowledge-writer skill and update the governed docs.",
+      `  Step 2: After the subagent finishes, run: claw internal-knowledge-finalize-record --job "${jobPath}"`,
+      "  Subagent task:",
+      [subagentTask, dispatchEvidenceTask].join("\n").split("\n").map((line) => `    ${line}`).join("\n"),
+    ].join("\n"));
+  }
+  if (entries.length === 0) {
+    return null;
+  }
+  return [
+    `Pending claw knowledge finalization: ${entries.length} job(s) captured from completed plans still need deposition.`,
+    "On qoder, finalization runs in-conversation: dispatch the knowledge-writer subagent for each job, then record it. Do this before starting unrelated work.",
+    ...entries,
+  ].join("\n");
 }
 
 function buildCodexRuntimeErrorPrompt(context: Record<string, unknown>): string | null {
@@ -1810,6 +2080,7 @@ function buildCodexRuntimeErrorPrompt(context: Record<string, unknown>): string 
 function buildRecoveredWorkflowAdditionalContext(
   activeWorkflow: JsonRecord,
   versionSyncPrompt: { placement: "prefix" | "suffix"; lines: string[] } | null,
+  effectiveHost: ClawHost | undefined,
 ): string {
   const taskName = String(activeWorkflow.taskName ?? "");
   const planFile = String(activeWorkflow.planFile ?? "plan.json");
@@ -1835,6 +2106,7 @@ function buildRecoveredWorkflowAdditionalContext(
     askUser: askUser ?? "",
     goalMode: goalMode ?? "",
     planContentLines,
+    host: effectiveHost,
   });
   if (!versionSyncPrompt) {
     return prompt;
@@ -1973,18 +2245,15 @@ async function tryResolveActiveWorkflowSnapshot(
   }
 
   try {
-    const relativePlanPath = path.relative(project.tasksDir, planPath);
-    const segments = relativePlanPath.split(path.sep);
-    const taskName = segments.shift();
-    const planFile = segments.join("/");
-    if (!taskName || !planFile) {
+    const target = parseTaskPlanPath(project, planPath);
+    if (!target) {
       unbindSession(project, ownerSessionKey);
       return null;
     }
     const result = showPlan({
       cwd,
-      taskName,
-      planFile,
+      taskName: target.taskName,
+      planFile: target.planFile,
       ownerSessionKey,
     });
     if (result.plan.status.startsWith("end.")) {
@@ -2112,7 +2381,7 @@ function stripBom(content: string): string {
 }
 
 function compactPlanCommandResult(
-  command: "plan.create" | "plan.start" | "plan.edit" | "plan.remove" | "plan.wait" | "plan.resume" | "plan.done" | "task.add" | "task.edit" | "task.remove" | "task.done" | "subplan.create",
+  command: "plan.create" | "plan.start" | "plan.edit" | "plan.remove" | "plan.wait" | "plan.resume" | "plan.sync" | "plan.done" | "task.add" | "task.edit" | "task.remove" | "task.done" | "subplan.create",
   result: {
     taskName: string;
     planFile: string;
@@ -2141,6 +2410,7 @@ function compactPlanCommandResult(
   },
   effectiveHost: ClawHost | undefined,
   completionRefresh?: CompletionRefreshResult,
+  forceProjectionSync = false,
   ): Record<string, unknown> {
     const archivedPlanPath =
       completionRefresh?.taskRetention.archivedCurrentTask?.taskName === result.taskName &&
@@ -2149,9 +2419,8 @@ function compactPlanCommandResult(
         : undefined;
     const resolvedPlanPath = archivedPlanPath ?? result.planPath;
     const codexResult = effectiveHost === "codex";
-    const hostActions = codexResult ? buildHostActions(result) : [];
+    const hostActions = codexResult ? buildHostActions(result, { forceProjectionSync, actionIdPrefix: command === "plan.sync" ? `plan.sync:${createHash("sha256").update(result.planPath).digest("hex").slice(0, 16)}` : undefined }) : [];
     const nextsteps = codexResult
-      && command === "plan.done"
       && result.planStatus === "end.completed"
       && result.workflowGuidance.goalTool?.tool === "update_goal"
       && result.workflowGuidance.goalTool.status === "complete"
@@ -2163,7 +2432,7 @@ function compactPlanCommandResult(
       && result.plan
       && (!codexResult || result.workflowGuidance.stage === "discussion"),
     );
-    const achievement = command === "plan.done" && result.planStatus === "end.completed" && result.plan
+    const achievement = result.planStatus === "end.completed" && result.plan
       ? {
           status: result.planStatus,
           title: result.plan.title,
@@ -2187,7 +2456,7 @@ function compactPlanCommandResult(
       ...(!codexResult && result.changedTaskIds?.length ? { changedTaskIds: result.changedTaskIds } : {}),
       ...(!codexResult && result.appendedTaskIds?.length ? { appendedTaskIds: result.appendedTaskIds } : {}),
       ...(codexResult ? { stage: result.workflowGuidance.stage } : {}),
-      ...(!codexResult || command === "plan.done"
+      ...(!codexResult || result.planStatus === "end.completed"
         ? { nextsteps }
         : {}),
       ...(result.workflowGuidance.nextTask ? { nextTask: result.workflowGuidance.nextTask } : {}),
@@ -2231,9 +2500,10 @@ function buildHostActions(result: {
   planView: PlanViewModel;
   workflowGuidance: WorkflowGuidance;
   events?: PlanEvent[];
-}): Array<Record<string, unknown>> {
+}, options: { forceProjectionSync?: boolean; actionIdPrefix?: string } = {}): Array<Record<string, unknown>> {
   const latestEvent = result.events?.at(-1);
-  if (!latestEvent) {
+  const actionIdPrefix = options.actionIdPrefix ?? latestEvent?.mutationId;
+  if (!actionIdPrefix) {
     return [];
   }
   const actions: Array<Record<string, unknown>> = [];
@@ -2246,18 +2516,22 @@ function buildHostActions(result: {
   if (isSubplanGoalHandoff && goalTool?.tool === "update_goal") {
     actions.push({
       schemaVersion: 1,
-      id: `${latestEvent.mutationId}:update_goal`,
+      id: `${actionIdPrefix}:update_goal`,
       tool: "update_goal",
       input: {
         status: "complete",
       },
     });
   }
-  if (result.plan && codexPlanProjectionChanged(result.previousPlan, result.plan, result.planStatus)) {
+  if (
+    result.plan
+    && result.plan.tasks.length > 0
+    && (options.forceProjectionSync || codexPlanProjectionChanged(result.previousPlan, result.plan, result.planStatus))
+  ) {
     const plan = buildCodexPlanProjection(result.plan, result.planStatus);
     actions.push({
       schemaVersion: 1,
-      id: `${latestEvent.mutationId}:update_plan`,
+      id: `${actionIdPrefix}:update_plan`,
       tool: "update_plan",
       input: {
         explanation: result.workflowGuidance.summary,
@@ -2266,10 +2540,10 @@ function buildHostActions(result: {
     });
   }
   if (goalTool && !isSubplanGoalHandoff) {
-    if (goalTool.tool === "create_goal") {
+    if ("objective" in goalTool) {
       actions.push({
         schemaVersion: 1,
-        id: `${latestEvent.mutationId}:create_goal`,
+        id: `${actionIdPrefix}:create_goal`,
         tool: "create_goal",
         input: {
           objective: goalTool.objective,
@@ -2281,7 +2555,7 @@ function buildHostActions(result: {
         : goalTool.status;
       actions.push({
         schemaVersion: 1,
-        id: `${latestEvent.mutationId}:update_goal`,
+        id: `${actionIdPrefix}:update_goal`,
         tool: "update_goal",
         input: {
           status: codexStatus,
@@ -2306,12 +2580,15 @@ function buildCodexPlanProjection(
   plan: PlanDocument,
   planStatus: string,
 ): Array<{ step: string; status: "pending" | "in_progress" | "completed" }> {
-  let assignedInProgress = false;
+  const activeTask = plan.tasks.find(
+    (task) => task.status === "in_progress" || task.status === "subagent_running",
+  ) ?? (planStatus === "process.active"
+    ? plan.tasks.find((task) => task.status !== "done")
+    : undefined);
   return plan.tasks.map((task) => {
     let status: "pending" | "in_progress" | "completed" = task.status === "done" ? "completed" : "pending";
-    if (!assignedInProgress && planStatus === "process.active" && task.status !== "done") {
+    if (task.id === activeTask?.id) {
       status = "in_progress";
-      assignedInProgress = true;
     }
     return { step: task.title, status };
   });
@@ -2380,6 +2657,18 @@ function readOrderedPlanEditOperations(args: string[]): PlanMutationOperation[] 
       case "--key-decision":
         operations.push({ type: "plan.update", updates: { keyDecisions: [readChainValue(args, flag)] } });
         break;
+      case "--retrospective":
+        operations.push({ type: "plan.update", updates: { retrospectiveSummary: readChainValue(args, flag) } });
+        break;
+      case "--what-worked":
+        operations.push({ type: "plan.update", updates: { whatWorked: [readChainValue(args, flag)] } });
+        break;
+      case "--issue":
+        operations.push({ type: "plan.update", updates: { issues: [readChainValue(args, flag)] } });
+        break;
+      case "--follow-up":
+        operations.push({ type: "plan.update", updates: { followUps: [readChainValue(args, flag)] } });
+        break;
       case "--reference": {
         const path = readChainValue(args, flag);
         const whyFlag = args.shift();
@@ -2397,6 +2686,17 @@ function readOrderedPlanEditOperations(args: string[]): PlanMutationOperation[] 
     }
   }
   return operations;
+}
+
+function requestsPlanEndState(operations: PlanMutationOperation[]): boolean {
+  return operations.some((operation) => operation.type === "plan.status" && operation.status.startsWith("end."));
+}
+
+function planCompletionOperations(updates: PlanFieldUpdates): PlanMutationOperation[] {
+  return [
+    { type: "plan.update", updates },
+    { type: "plan.status", status: "end.completed" },
+  ];
 }
 
 function readOrderedTaskAddOperations(args: string[]): PlanMutationOperation[] {
@@ -2541,15 +2841,24 @@ function readPlanMutationTarget(args: string[]): { taskName: string; planFile?: 
     );
   }
 
-  const relativePlanPath = path.relative(project.tasksDir, boundPlanPath);
-  const segments = relativePlanPath.split(path.sep).filter(Boolean);
-  if (segments.length < 2 || relativePlanPath.startsWith("..") || path.isAbsolute(relativePlanPath)) {
+  const target = parseTaskPlanPath(project, boundPlanPath);
+  if (!target) {
     throw new ClawError("PROJECT_CONFIG_INVALID", `Invalid session-bound plan path: ${boundPlanPath}`);
   }
   return {
-    taskName: segments[0]!,
-    planFile: explicitPlanFile ?? segments.slice(1).join(path.sep),
+    taskName: target.taskName,
+    planFile: explicitPlanFile ?? target.planFile,
   };
+}
+
+function parseTaskPlanPath(project: ProjectContext, planPath: string): { taskName: string; planFile: string } | null {
+  const relativePlanPath = path.relative(project.tasksDir, planPath);
+  if (relativePlanPath.startsWith("..") || path.isAbsolute(relativePlanPath)) return null;
+  const segments = relativePlanPath.split(path.sep).filter(Boolean);
+  const dated = /^\d{4}-\d{2}-\d{2}$/.test(segments[0] ?? "");
+  const taskName = dated ? segments[1] : segments[0];
+  const planFile = (dated ? segments.slice(2) : segments.slice(1)).join(path.sep);
+  return taskName && planFile ? { taskName, planFile } : null;
 }
 
 function readExplicitAddedTasks(args: string[]): PlanTask[] {
@@ -2691,6 +3000,13 @@ type CompletionRefreshFlightState = {
   startedAt?: string;
 };
 
+function preparePlanEndFinalization(cwd: string, ownerSessionKey: string | undefined): ((taskName: string) => CompletionRefreshResult) | undefined {
+  const workflowProject = resolveWorkflowProjectContext(cwd, ownerSessionKey);
+  if (workflowProject.scope !== "project") return undefined;
+  const skipGitNexusRefresh = ensureGitNexusReadyForPlanFinalization(cwd);
+  return (taskName) => queueCompletionRefresh({ cwd, taskName, skipGitNexusRefresh });
+}
+
 function queueCompletionRefresh(input: {
   cwd: string;
   taskName: string;
@@ -2707,6 +3023,7 @@ function queueCompletionRefresh(input: {
     : {
         enabled: false,
         maxTasksToKeep: project.projectConfig?.maxTasksToKeep ?? DEFAULT_MAX_TASKS_TO_KEEP,
+        archivedTasks: [],
         prunedArchivedTasks: [],
       };
   const startedAt = new Date().toISOString();
@@ -3131,7 +3448,7 @@ function computeCompletionDirtyHash(
   const roots = [
     path.join(project.clawDir, "memory.md"),
     path.join(project.clawDir, "truth"),
-    path.join(project.tasksDir, taskName),
+    findTaskDirectory(project, taskName) ?? path.join(project.tasksDir, taskName),
   ];
   const files = roots.flatMap((root) => listCompletionFingerprintFiles(root)).sort();
   for (const filePath of files) {
@@ -3263,7 +3580,7 @@ function isWindowsAccessViolation(result: { status: number | null }): boolean {
     && (result.status >>> 0) === 0xc0000005;
 }
 
-function ensureGitNexusReadyForPlanDone(cwd: string): boolean {
+function ensureGitNexusReadyForPlanFinalization(cwd: string): boolean {
   const project = resolveProjectContext(cwd);
   if (project.projectConfig?.gitnexus !== true) {
     return false;

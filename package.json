@@ -1,13 +1,13 @@
 {
   "name": "claw-kit",
-  "version": "0.1.91",
+  "version": "0.1.95",
   "private": true,
   "workspaces": [
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build -w @veewo/claw-core && npm run build -w @veewo/claw && npm run build -w @claw-kit/openclaw-adapter && npm run build -w @claw-kit/codex-adapter && npm run build -w @claw-kit/opencode-adapter",
-    "check": "npm run build -w @veewo/claw-core && npm run check -w @veewo/claw && npm run check -w @claw-kit/openclaw-adapter && npm run check -w @claw-kit/codex-adapter && npm run check -w @claw-kit/opencode-adapter && node scripts/truth-encoding-audit.mjs --check",
+    "build": "npm run build -w @veewo/claw-core && npm run build -w @veewo/claw && npm run build -w @claw-kit/openclaw-adapter && npm run build -w @claw-kit/codex-adapter && npm run build -w @claw-kit/opencode-adapter && npm run build -w @claw-kit/qoder-adapter",
+    "check": "npm run build -w @veewo/claw-core && npm run check -w @veewo/claw && npm run check -w @claw-kit/openclaw-adapter && npm run check -w @claw-kit/codex-adapter && npm run check -w @claw-kit/opencode-adapter && npm run check -w @claw-kit/qoder-adapter && node scripts/truth-encoding-audit.mjs --check",
     "export:codex-plugin": "node .\\scripts\\export-codex-plugin.mjs",
     "export:opencode-plugin": "node .\\scripts\\export-opencode-plugin.mjs",
     "install:local-cli": "powershell -ExecutionPolicy Bypass -File .\\scripts\\install-cli.ps1",

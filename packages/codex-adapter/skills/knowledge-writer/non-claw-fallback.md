@@ -28,6 +28,14 @@ Use `knowledge-format.md` for every new document and every existing owner writte
 
 It is valid for either pass to make no edit when the eligible evidence contains no new or changed durable knowledge. Temporary progress, speculation, conversational narration, unchanged facts, and unfinished-task claims do not belong in canonical knowledge.
 
+Create a new accepted ADR only when all three conditions hold:
+
+- Reversal is costly or risky.
+- The rationale is not obvious.
+- A credible alternative exposed a real tradeoff.
+
+Otherwise place stable facts in Truth or make no ADR edit. Updating or superseding an existing ADR does not requalify its original decision. A replacement decision must pass the gate.
+
 ## Stewardship and ownership
 
 Use `claw search` to discover existing owners, then open every plausible candidate before judging it. Use exhaustive text search for distinguishing identifiers when top-k recall could hide another current claim. Update the document that already owns the topic; create a new document only for a genuinely new durable topic after filename and title collision checks.

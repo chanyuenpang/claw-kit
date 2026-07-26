@@ -1,0 +1,170 @@
+{
+  "summary": {
+    "projectName": "claw-kit",
+    "locale": "zh-CN",
+    "modelId": "agent-work-loop-v4",
+    "reportContractVersion": 24,
+    "overview": "claw-kit 是面向多主机（Codex/OpenCode/OpenClaw/Qoder）的 AI 代理工作流工具包，拥有强所有者化的发布门禁（publish-release.mjs）与 Truth/ADR 治理。但当前工作树存在未解决的合并冲突阻塞发布门禁，直推 main 的常规变更路径缺少机械化预验收门禁，且学习回路因会话源根未启用而无法评估。本次为 session-limited 审查——无可分析的会话证据，所有行为类结论保持未观测。",
+    "aiAgentPractice": {
+      "inspectedSurfaces": [
+        "Rules",
+        "Skills",
+        "Plugins",
+        "Custom Agents"
+      ],
+      "coverageRows": [
+        {
+          "surface": "Rules",
+          "scopes": [
+            "Project"
+          ],
+          "count": 1,
+          "paths": [
+            "AGENTS.md"
+          ]
+        },
+        {
+          "surface": "Skills",
+          "scopes": [
+            "Project"
+          ],
+          "count": 1,
+          "paths": [
+            ".agents/skills/release-claw-kit/SKILL.md"
+          ]
+        },
+        {
+          "surface": "Plugins",
+          "scopes": [
+            "Plugin"
+          ],
+          "count": 3,
+          "paths": [
+            "qoder-bundler plugins (better-loop, qoder-computer-use, qoder-create-plugin)"
+          ]
+        },
+        {
+          "surface": "Custom Agents",
+          "scopes": [
+            "Project"
+          ],
+          "count": 0,
+          "paths": []
+        }
+      ]
+    },
+    "suggestions": [],
+    "assignmentSummaries": [],
+    "dimensions": [
+      {
+        "id": "task-understanding",
+        "label": "任务理解",
+        "score": 68,
+        "summary": "AGENTS.md 与 release-claw-kit skill 为发布边界提供清晰目标与验收，Truth/ADR 提供权威上下文；但常规任务缺少目录职责表与变更→check 路由映射，且无会话证据证明实际执行。",
+        "findingRefs": []
+      },
+      {
+        "id": "controlled-execution",
+        "label": "可控执行",
+        "score": 58,
+        "summary": "npm workspaces 提供 build/check/test 脚本（仅 Windows 完整可用），但无运行时版本钉住；直推 main 且无 pre-push/pre-commit 生命周期门禁，合并冲突证明破损状态未被早期捕获。",
+        "findingRefs": [
+          "routine-change-gate-missing",
+          "cross-platform-dev-scripts"
+        ]
+      },
+      {
+        "id": "change-validation",
+        "label": "改动验证",
+        "score": 52,
+        "summary": "`npm run check`（build+typecheck+truth-audit）与 20 个测试文件存在，但未绑定到常规变更生命周期，且当前因 truth 文件合并冲突而处于失败状态；无观测到的失败→诊断→修复链。",
+        "findingRefs": [
+          "unresolved-truth-merge-conflict",
+          "routine-change-gate-missing"
+        ]
+      },
+      {
+        "id": "reliable-delivery",
+        "label": "可靠交付",
+        "score": 58,
+        "summary": "publish-release.mjs 提供强所有者化发布门禁（干净工作树、版本对齐、隔离冒烟、默认 dry-run），但当前被合并冲突与脏工作树阻塞；常规推送无审批门禁。",
+        "findingRefs": [
+          "unresolved-truth-merge-conflict",
+          "routine-change-gate-missing"
+        ]
+      },
+      {
+        "id": "learning-capture",
+        "label": "经验沉淀",
+        "score": 42,
+        "summary": "存在学习机制（memory、skills、truth/adr 演进），但 0 个会话源根启用、17 个候选技能 0 观测使用、无可比结果窗口；学习回路有效性与纵向验证均未观测。",
+        "findingRefs": [
+          "learning-loop-observability-unconfigured"
+        ]
+      }
+    ]
+  },
+  "findings": [
+    {
+      "id": "unresolved-truth-merge-conflict",
+      "title": "权威 truth 文件存在未解决合并冲突，阻塞发布门禁与 truth 编码审计",
+      "severity": "High",
+      "reason": "已核验 `.claw/truth/features/published-npm-packages.md` 处于 `UU` 未合并状态，含两处冲突标记（HEAD 版本线 0.1.91 对比传入版本线 0.1.93/0.1.94）。这直接违反 AGENTS.md 记录的完成边界（`git status --porcelain` 为空），并使 publish-release.mjs 的 assertCleanWorktree 无法通过；`npm run check` 末尾的 truth-encoding-audit 会读到冲突标记而失败；同时令 canonical truth 的「当前行为」版本线歧义。该文件是发布协议的权威实现锚点之一，处于破损状态时任何读取该 truth 的 build/check 都可能读到冲突标记。",
+      "expectedOutput": [
+        "合并冲突已解决，canonical truth 版本线单一且自洽。",
+        "`npm run check` 与 `npm run verify:release` 在干净工作树上通过。"
+      ],
+      "expectedArtifact": "Resolved merge conflict",
+      "aiFixPrompt": "/better-loop fix this issue\n\n解决 `.claw/truth/features/published-npm-packages.md` 的合并冲突，确定当前权威版本线（0.1.91 与 0.1.93/0.1.94 二选一），移除全部冲突标记并保持 canonical truth 内容自洽；不要改动既有的发布验收边界。\n\n## Validation\n\n- 运行 `npm run check`（含 build、typecheck、truth-encoding-audit）并通过\n- 运行 `npm run verify:release`（只读发布断言）并通过\n- 确认 `git status --porcelain` 不再含 `UU` 条目",
+      "dimensionRefs": [
+        "reliable-delivery",
+        "change-validation"
+      ]
+    },
+    {
+      "id": "routine-change-gate-missing",
+      "title": "直推 main 的常规变更路径缺少机械化预验收门禁",
+      "severity": "Medium",
+      "reason": "AGENTS.md 规定所有者直接推送 main；已核验仓库零 CI 配置（无 .github、无任何 CI 文件），且 codex-adapter hooks.json 仅含 SessionStart/Stop，无 pre-push/pre-commit/PostToolUse。唯一强制的机械化门禁是发布时的 verify:release，这是一个晚期边界。当前未提交 diff 横跨 138 文件/4296 行却无任何自动化验证；上一条 finding 的合并冲突正是该缺口的直接后果——破损状态进入工作树后，直到发布门禁才可能被捕获。需尊重 AGENTS.md 的比例化验证政策：本 finding 的最小修复不是引入重型 CI，而是补一条轻量预推送检查或在 AGENTS.md 显式记录「推送前手动 npm run check」为有意门禁及其覆盖边界。",
+      "expectedOutput": [
+        "常规变更到 main 前存在一条机械化或显式记录的验收门禁。",
+        "release 门禁与比例化验证政策保持不变。"
+      ],
+      "expectedArtifact": "Guardrail",
+      "aiFixPrompt": "/better-loop fix this issue\n\n为直推 main 的常规变更补一条最小所有者对齐的预验收门禁：新增轻量 pre-push hook 或 push 触发的 GitHub Action 运行 `npm run check`；或在 AGENTS.md 显式记录「推送前手动 `npm run check`」为有意门禁、说明其覆盖边界与有意缺席 CI 的理由。不要削弱既有的比例化验证政策与 release 门禁。\n\n## Validation\n\n- 确认门禁在常规变更上触发（hook 事件样本或 CI 通过记录），或 AGENTS.md 记录了有意缺席的理由\n- 确认 release 门禁（verify:release）行为不变",
+      "dimensionRefs": [
+        "reliable-delivery",
+        "controlled-execution",
+        "change-validation"
+      ]
+    },
+    {
+      "id": "cross-platform-dev-scripts",
+      "title": "开发/发布/插件测试 npm 脚本仅 Windows 可执行",
+      "severity": "Medium",
+      "reason": "已核验 package.json 中 export:codex-plugin、export:opencode-plugin、install:local-cli、install:codex-plugin、install:opencode-plugin、test:codex-plugin、test:opencode-plugin 均使用反斜杠路径（`.\\scripts\\...`）与 `powershell -ExecutionPolicy Bypass -File`。macOS/Linux 贡献者无法运行这些命令完成 build/export/install/plugin-test。CLI 自身的 bin/dist 跨平台，但开发与发布命令不跨平台；对一个发布到公共 npm、且维护 codex/opencode/openclaw/qoder 多主机适配器的工具包构成可移植性缺口。所有者当前在 Windows 上工作，故对本机流程不构成阻塞，但影响贡献者上手与未来跨平台 CI。",
+      "expectedOutput": [
+        "export/install/plugin-test 脚本在非 Windows 主机可用，或其 Windows-only 要求被显式记录。"
+      ],
+      "expectedArtifact": "Script",
+      "aiFixPrompt": "/better-loop fix this issue\n\n将 package.json 中使用反斜杠路径与 powershell 专有调用的 export/install/test:codex-plugin/test:opencode-plugin 脚本改为跨平台形式：统一正斜杠路径并以 `node scripts/...` 调用，用跨平台 node 脚本替代 powershell 专有 install 脚本；或在 AGENTS.md 显式记录 Windows-only 要求与理由。不要改动已跨平台的 build/check/test 主脚本。\n\n## Validation\n\n- 在非 Windows 主机运行 `npm run export:codex-plugin` 成功，或 AGENTS.md 记录了 Windows-only 要求",
+      "dimensionRefs": [
+        "controlled-execution"
+      ]
+    },
+    {
+      "id": "learning-loop-observability-unconfigured",
+      "title": "会话源根未启用，学习回路与任务证据无法采集",
+      "severity": "Low",
+      "reason": "harness analyze 显示 0/5 启用源根存在（warnings: disabled-source-root、missing-optional-root），导致 0 可分析会话、0 Task Episode、0 observed skill use（17 个候选技能均未观测使用）。学习捕获状态为 not-evaluable（capture/routing/freshness/effectiveness 均因缺失归一化事件不可评估）。这是一个证据边界型 finding：学习回路有效性的分类决策被会话观测边界阻断。最小所有者对齐修复是启用/配置会话源根，或为学习回路显式记录一条评估路由（如 bounded outcome 比较或定期 truth/skill 刷新检查）。",
+      "expectedOutput": [
+        "学习回路具备可采集的任务证据，或一条被显式记录的有效性验证路由。"
+      ],
+      "expectedArtifact": "Observability route",
+      "aiFixPrompt": "/better-loop fix this issue\n\n为学习回路建立一条最小评估路由：启用/配置会话源根使未来审查可采集任务证据；或在 AGENTS.md / 维护者 skill 中显式记录学习回路的有效性验证方式（例如对一次改进做 bounded outcome 比较，或对 truth/skill 做定期 freshness 检查）。不要凭空创造未被证据支持的循环或机制。\n\n## Validation\n\n- 下一次审查显示 analyzed sessions > 0，或存在一条被记录的学习回路验证路由",
+      "dimensionRefs": [
+        "learning-capture"
+      ]
+    }
+  ]
+}

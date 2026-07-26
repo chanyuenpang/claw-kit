@@ -1,5 +1,6 @@
 ﻿# GitHub Pages Product Deck Shell
 
+<!-- state: current -->
 ## 状态
 
 这是 `GitHub Pages 产品介绍页` 这轮完成后的稳定实现事实，适合作为后续类似产品页的复用锚点。
@@ -37,13 +38,13 @@
 
 ## 关联代码
 
-- [docs/index.html](D:/Users/chany/Documents/claw-kit/docs/index.html)
-- [docs/assets/product-deck-content.js](D:/Users/chany/Documents/claw-kit/docs/assets/product-deck-content.js)
-- [docs/assets/product-deck.js](D:/Users/chany/Documents/claw-kit/docs/assets/product-deck.js)
-- [docs/assets/product-deck.css](D:/Users/chany/Documents/claw-kit/docs/assets/product-deck.css)
-- [scripts/product-deck.test.mjs](D:/Users/chany/Documents/claw-kit/scripts/product-deck.test.mjs)
-- [docs/superpowers/specs/2026-07-02-github-pages-product-deck-design.md](D:/Users/chany/Documents/claw-kit/docs/superpowers/specs/2026-07-02-github-pages-product-deck-design.md)
-- [docs/superpowers/plans/2026-07-02-github-pages-product-deck-implementation.md](D:/Users/chany/Documents/claw-kit/docs/superpowers/plans/2026-07-02-github-pages-product-deck-implementation.md)
+- `docs/index.html`
+- `docs/assets/product-deck-content.js`
+- `docs/assets/product-deck.js`
+- `docs/assets/product-deck.css`
+- `scripts/product-deck.test.mjs`
+- `docs/superpowers/specs/2026-07-02-github-pages-product-deck-design.md`
+- `docs/superpowers/plans/2026-07-02-github-pages-product-deck-implementation.md`
 
 ## 关键检索词
 

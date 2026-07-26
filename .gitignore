@@ -14,6 +14,8 @@ Thumbs.db
 !/.agents/plugins/
 /.agents/plugins/*
 !/.agents/plugins/marketplace.json
+!/.agents/skills/
+!/.agents/skills/**
 
 # Local reference repos
 /superpowers/

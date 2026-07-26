@@ -1,0 +1,24 @@
+{
+  "name": "claw-kit",
+  "displayName": "Claw Kit",
+  "version": "0.1.95",
+  "description": "Structured agent workflow with plan lifecycle, knowledge capture, and hook automation for Qoder.",
+  "descriptionZh": "为 Qoder 带来结构化的 agent 工作流：计划生命周期、知识沉淀和 hook 自动化。",
+  "author": {
+    "name": "chanyuenpang"
+  },
+  "homepage": "https://github.com/chanyuenpang/claw-kit",
+  "repository": "https://github.com/chanyuenpang/claw-kit",
+  "logo": "./assets/avatar.svg",
+  "keywords": [
+    "qoder-plugin",
+    "claw",
+    ".claw",
+    "agent-workflow",
+    "knowledge-capture"
+  ],
+  "category": "developer-tools",
+  "tags": ["skill", "hooks"],
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.json"
+}

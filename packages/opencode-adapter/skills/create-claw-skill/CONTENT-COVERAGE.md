@@ -1,9 +1,9 @@
 # create-claw-skill content coverage
 
 - Trigger, ownership routing, broad-change fallback, upgrade entry, and companion-file links: `SKILL.md`.
-- User-requirement plan adaptation and structured conversion and upgrade workflow: `TEMPLATE.json` tasks, guidance, acceptance criteria, and rules.
+- User-requirement plan adaptation, narrow rule ownership, and structured conversion and upgrade workflow: `TEMPLATE.json` tasks, guidance, acceptance criteria, and rules.
 - Plan-independent conversion behavior: `FALLBACK.md`.
-- Current authoring, lifecycle, routing, choice, and validation contract: `references/template-authoring.md`.
+- Current authoring, rule ownership, lifecycle, routing, choice, and validation contract: `references/template-authoring.md`.
 - Out-of-date template upgrade checklist: `references/template-upgrade.md`.
 - Version-aware package generation: `scripts/create-claw-skill-stub.mjs`.
 
@@ -12,6 +12,7 @@
 - [x] Whole-task, independent-stage, batch-stage, and mixed-stage routes are represented.
 - [x] Broad user-driven changes route to fallback, while template plans preserve sub-task ids during narrower adaptations.
 - [x] Goal handoff and optional `guidance.onPlanStart` semantics are represented.
+- [x] Task-specific constraints live in sub-task details; top-level rules are cross-task only.
 - [x] Choice guidance and file-based validation requirements are represented.
 - [x] Missing or stale versions route through inspection and optimization before upgrade.
 - [x] Every runtime reference is contained in the installed skill package.

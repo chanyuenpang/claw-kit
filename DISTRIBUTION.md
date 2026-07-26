@@ -47,7 +47,7 @@ If the user does not explicitly narrow the mode, run `full-publish`.
 
 ## Template-driven maintainer release
 
-The supported maintainer orchestration entrypoint is the Codex-owned `release-claw-kit` template:
+The supported maintainer orchestration entrypoint is the repository-local `.agents/skills/release-claw-kit` template. It is project governance for this repository and is not part of the published Codex plugin:
 
 ```powershell
 claw plan create --template release-claw-kit --title release-claw-kit
@@ -81,7 +81,7 @@ Update these files together for a release:
 6. `packages/openclaw-adapter/package.json`
 7. `packages/codex-adapter/.codex-plugin/plugin.json`
 8. `packages/core/src/templates/plans/default.ts`
-9. every plugin `TEMPLATE.json` under `shared/skills`, `packages/codex-adapter/skills`, and `packages/opencode-adapter/skills`
+9. every release-tracked `TEMPLATE.json` under `.agents/skills`, `shared/skills`, `packages/codex-adapter/skills`, and `packages/opencode-adapter/skills`
 10. `CHANGELOG.md`
 
 Version rules:
@@ -89,7 +89,7 @@ Version rules:
 - Keep `packages/core` and `packages/cli` on the same release version unless there is a deliberate split.
 - Keep adapter package versions aligned with the release unless there is a deliberate reason not to.
 - Use `semver+codex.<timestamp>` for `packages/codex-adapter/.codex-plugin/plugin.json`.
-- After changing root `package.json.version`, run `npm run sync:template-versions`. This updates every plugin template plus the built-in default template to the CLI release version.
+- After changing root `package.json.version`, run `npm run sync:template-versions`. This updates every project/plugin template plus the built-in default template to the CLI release version.
 - Run `npm run sync:shared-skills` after template synchronization, then require `npm run check:template-versions` to pass. Do not bump only one adapter copy.
 - Run `npm install` after editing version files so `package-lock.json` stays consistent.
 
