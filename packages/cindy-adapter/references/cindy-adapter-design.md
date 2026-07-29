@@ -12,20 +12,19 @@ turn the hook into a Skill-only approximation.
 
 The first Cindy integration uses this split:
 
-1. The Cindy plugin declares the claw lifecycle hooks and carries the Cindy-side
-   adapter logic.
-2. Cindy Desktop Host exposes a generic lifecycle dispatcher and invokes the
-   declared hooks.
+1. The Cindy Ghost plugin declares `subscribe`, `node`, and background `agent`
+   capabilities and carries the adapter logic.
+2. Cindy Desktop Host dispatches the declared Ghost capabilities; no Cindy
+   source change is required.
 3. The claw CLI remains outside the plugin and is checked or initialized by
    `claw init` / `claw context`.
 
 The plugin must not automatically install the CLI, write PATH entries, or
 modify the user's environment.
 
-The first installable plugin package contains only Skills: `using-claw-kit`
-and the explicitly dispatched `knowledge-writer`. Cindy Host lifecycle
-changes are not hidden in those Skills and remain a separate Host
-implementation task.
+The first installable plugin package contains `using-claw-kit` and the
+explicitly dispatched `knowledge-writer` Skills, plus the runtime Hook entry.
+The CLI is never copied into the package.
 
 ## 2. First-version scope
 
@@ -60,7 +59,24 @@ Cindy progress or Goal state must not be allowed to mutate the canonical claw
 plan implicitly. The Host adapter may reuse the GoalController's continuation
 mechanics, but it must still make the claw plan status the continuation gate.
 
-## 3. Session-start flow
+## 3. Ghost Hook mapping
+
+The Cindy mapping follows the existing OpenCode adapter's event responsibilities:
+
+| Existing claw adapter behavior | Cindy Ghost implementation |
+| --- | --- |
+| session-start `claw hook auto-claw` | `did-session-created` warms the Node worker; `will-user-message` rewrites the first message |
+| OpenCode first-message synthetic context | `will-user-message` `rewrite` with the recovered context |
+| turn-end plan inspection | `did-turn-end` calls `claw context --host cindy` through Node |
+| `process.active` continuation | background `cindy.agent.run({ mode: 'continue' })` |
+| completion knowledge closeout | background Agent prompt loading `knowledge-writer` |
+
+`did-*` topics are fire-and-forget metadata events. The `will-user-message`
+hook is the only blocking message boundary and must return within Cindy's
+three-second fail-open window. The plugin does not execute `claw` from the
+sandbox; the declared Node worker does it through PATH.
+
+## 4. Session-start flow
 
 At local session start, the Cindy Host invokes the plugin-declared startup hook:
 
@@ -74,7 +90,7 @@ At local session start, the Cindy Host invokes the plugin-declared startup hook:
 
 The first version does not automatically install the CLI.
 
-## 4. Failure policy
+## 5. Failure policy
 
 Startup and closeout hooks are fail-open enhancements:
 
@@ -90,7 +106,7 @@ Startup and closeout hooks are fail-open enhancements:
 This follows the current OpenCode behavior: startup recovery is an enhancement,
 and turn-report capture never blocks the foreground session.
 
-## 5. Turn-end continuation
+## 6. Turn-end continuation
 
 Cindy should match the current OpenCode continuation rule:
 
@@ -104,19 +120,18 @@ Cindy should match the current OpenCode continuation rule:
 
 The Host must make this dispatch idempotent for a single completed turn.
 
-## 6. Completion closeout
+## 7. Completion closeout
 
 After all plan tasks are complete, the adapter dispatches a separate
-knowledge-writer closeout turn through Cindy's existing Host session-send
-worker path. The Skills-only plugin does not request the privileged Ghost
-`agent` slot; the closeout prompt therefore runs in the current Cindy agent
-context and remains bounded to the current project and plan.
+knowledge-writer closeout turn through the declared background `agent` slot.
+The closeout prompt remains bounded to the current Cindy session, project, and
+plan.
 
 The closeout must remain bounded to the current project and plan. A worker
 failure must be visible and recoverable, rather than silently marking the plan
 as fully closed.
 
-## 7. Acceptance scenarios
+## 8. Acceptance scenarios
 
 The first version is accepted only after the complete local loop is verified:
 
@@ -130,12 +145,13 @@ The first version is accepted only after the complete local loop is verified:
    automatic continuation.
 6. All tasks complete and the knowledge-writer is dispatched and completes.
 7. The adapter does not automatically install the CLI or modify user PATH.
-8. The plugin remains Skills-only; Cindy native progress may be used for
-   presentation, but no bidirectional Todo or Goal sync is required.
+8. The plugin uses Skills plus Ghost runtime hooks; Cindy native progress may
+   be used for presentation, but no bidirectional Todo or Goal sync is
+   required.
 
-## 8. Current implementation status
+## 9. Current implementation status
 
-Implemented in the Cindy Desktop Host working tree:
+Implemented in the Cindy Ghost plugin package:
 
 - local-only `claw hook auto-claw --host cindy` execution during session start;
 - one-time, wire-only first-user-message context injection;
@@ -146,19 +162,19 @@ Implemented in the Cindy Desktop Host working tree:
 
 The Host currently keeps the native Cindy Goal controller and progress surface
 optional; the claw plan remains the continuation gate. Closeout is dispatched
-through Cindy's existing Host session-send worker path, because the Skills-only
-plugin intentionally does not request the privileged Ghost `agent` slot.
+through the declared background `agent` slot. The CLI remains a separate
+user-installed dependency and is invoked by the declared Node worker.
 
-## 9. Implementation constraints to verify next
+## 10. Remaining runtime verification
 
-Before adding runtime code, verify in Cindy Desktop Host:
+Before claiming full runtime parity, verify in Cindy:
 
-- the plugin manifest shape for declaring lifecycle hooks;
-- the host-to-plugin hook invocation contract and returned prompt mutation;
-- the session event that represents a completed turn;
-- the safe API for sending one follow-up prompt;
-- the available subagent/worker API for mandatory knowledge closeout;
-- local command execution and error reporting boundaries.
+- whether the background Agent slot is associated with a session before a user
+  has clicked a plugin card; Cindy's documented background path requires a
+  prior user association and may limit unattended continuation;
+- whether the Node worker can resolve the user's installed `claw` executable
+  on Windows/macOS/Linux in the packaged runtime;
+- the full installed-plugin loop with a local `.claw` project.
 
 If any of these are not exposed to third-party plugins, the required change is
 to add a documented Host extension point rather than hiding the behavior in a

@@ -2,13 +2,24 @@
   "schemaVersion": 2,
   "id": "claw-kit",
   "name": "claw-kit",
-  "description": "Cindy workflow skills and Host hook contract for claw-kit.",
-  "whenToUse": "Cindy workflow skills and Host hook contract for claw-kit.",
+  "description": "Cindy workflow hooks and Skills for claw-kit.",
+  "whenToUse": "Use for Cindy sessions working inside a claw-kit project.",
   "version": "1.0.0",
   "kind": "chip",
   "entry": "main.js",
+  "launch": "resident",
   "icon": "assets/icon.png",
-  "slots": ["skill"],
+  "slots": ["agent", "node", "skill", "subscribe"],
+  "agent": { "background": true },
+  "node": {
+    "entry": "node/claw-worker.cjs",
+    "protocol": "json-rpc-stdio",
+    "lifecycle": "on-demand"
+  },
+  "subscribe": {
+    "topics": ["turn", "session"],
+    "hooks": ["will-user-message"]
+  },
   "skill": {
     "items": [
       {
