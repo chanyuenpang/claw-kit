@@ -2,8 +2,8 @@
 
 This package is the Cindy-specific landing surface for the `claw-kit` workflow.
 
-The first version is intentionally documentation-first. It preserves the agreed
-adapter contract before Cindy Host integration code is added.
+The first version keeps the plugin distribution Skills-only. Cindy Host
+lifecycle integration remains a separate Host-side implementation boundary.
 
 ## Scope
 
@@ -20,5 +20,8 @@ adapter contract before Cindy Host integration code is added.
 See [Cindy adapter design](references/cindy-adapter-design.md) for the confirmed
 workflow, failure policy, permission boundary, and acceptance scenarios.
 
-Runtime implementation is intentionally pending verification of the Cindy Host
-plugin hook and subagent interfaces.
+The installable Ghost source is under [plugin](plugin). It bundles the
+`using-claw-kit` Skill. The Cindy Desktop Host implementation now covers local
+session-start CLI/context execution, first-message wire injection, fail-open
+CLI guidance, `process.active` turn-end continuation, and a separate
+`end.completed` knowledge-writer closeout turn.

@@ -1395,6 +1395,11 @@ async function runHook(args: string[], effectiveHost: ClawHost | undefined): Pro
 }
 
 async function runStopHook(effectiveHost: ClawHost | undefined): Promise<void> {
+  // Cindy owns task-completion closeout in its Host worker path. The CLI sidecar
+  // must not enqueue a job that it cannot execute with a Cindy session runner.
+  if (effectiveHost === "cindy") {
+    return;
+  }
   if (process.env.CLAW_KNOWLEDGE_FINALIZER === "1") {
     return;
   }
@@ -3949,7 +3954,7 @@ function printTopLevelUsage(): void {
     "Global flags:",
     "  -h, --help     Show help (use `claw help <command>` for command details).",
     "  -v, --version  Print the CLI version.",
-    "  --host <host>   Select host-specific output projection (codex or opencode).",
+    "  --host <host>   Select host-specific output projection (codex, opencode, or cindy).",
     "",
     "Run `claw help <command>` or `claw help <command> <subcommand>` for detailed help.",
   ];

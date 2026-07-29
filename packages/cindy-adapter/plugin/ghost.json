@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 2,
+  "id": "claw-kit",
+  "name": "claw-kit",
+  "description": "Cindy workflow skills and Host hook contract for claw-kit.",
+  "whenToUse": "Cindy workflow skills and Host hook contract for claw-kit.",
+  "version": "1.0.0",
+  "kind": "chip",
+  "entry": "main.js",
+  "icon": "assets/icon.png",
+  "slots": ["skill"],
+  "skill": {
+    "items": [
+      {
+        "dir": "skills/using-claw-kit",
+        "name": "using-claw-kit",
+        "description": "Use claw-kit as the canonical project workflow in Cindy: recover context, follow workflowGuidance, advance one plan task at a time, and complete knowledge closeout."
+      },
+      {
+        "dir": "skills/knowledge-writer",
+        "name": "knowledge-writer",
+        "description": "Evaluate supplied completed-work materials and maintain canonical Truth followed by ADR knowledge in one consistency-aware pass."
+      }
+    ]
+  }
+}

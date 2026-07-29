@@ -2,8 +2,8 @@
 
 Status: decision baseline, 2026-07-29
 
-This document records the agreed Cindy migration contract before runtime
-implementation. It is the source of truth for the first adapter design pass.
+This document records the agreed Cindy migration contract and the current
+implementation boundary. It is the source of truth for the first adapter pass.
 
 ## 1. Adapter boundary
 
@@ -21,6 +21,11 @@ The first Cindy integration uses this split:
 
 The plugin must not automatically install the CLI, write PATH entries, or
 modify the user's environment.
+
+The first installable plugin package contains only Skills: `using-claw-kit`
+and the explicitly dispatched `knowledge-writer`. Cindy Host lifecycle
+changes are not hidden in those Skills and remain a separate Host
+implementation task.
 
 ## 2. First-version scope
 
@@ -101,10 +106,11 @@ The Host must make this dispatch idempotent for a single completed turn.
 
 ## 6. Completion closeout
 
-After all plan tasks are complete, the adapter must successfully dispatch and
-complete the knowledge-writer closeout. The exact Cindy worker mechanism is an
-implementation detail; the first version must verify that Cindy has a usable
-subagent/worker path before claiming complete workflow parity.
+After all plan tasks are complete, the adapter dispatches a separate
+knowledge-writer closeout turn through Cindy's existing Host session-send
+worker path. The Skills-only plugin does not request the privileged Ghost
+`agent` slot; the closeout prompt therefore runs in the current Cindy agent
+context and remains bounded to the current project and plan.
 
 The closeout must remain bounded to the current project and plan. A worker
 failure must be visible and recoverable, rather than silently marking the plan
@@ -127,7 +133,23 @@ The first version is accepted only after the complete local loop is verified:
 8. The plugin remains Skills-only; Cindy native progress may be used for
    presentation, but no bidirectional Todo or Goal sync is required.
 
-## 8. Implementation constraints to verify next
+## 8. Current implementation status
+
+Implemented in the Cindy Desktop Host working tree:
+
+- local-only `claw hook auto-claw --host cindy` execution during session start;
+- one-time, wire-only first-user-message context injection;
+- actionable missing/failed CLI guidance with fail-open behavior;
+- `claw context --host cindy` turn-end inspection;
+- exactly-one guarded continuation for `process.active`.
+- exactly-one Host-dispatched knowledge-writer turn for `end.completed`.
+
+The Host currently keeps the native Cindy Goal controller and progress surface
+optional; the claw plan remains the continuation gate. Closeout is dispatched
+through Cindy's existing Host session-send worker path, because the Skills-only
+plugin intentionally does not request the privileged Ghost `agent` slot.
+
+## 9. Implementation constraints to verify next
 
 Before adding runtime code, verify in Cindy Desktop Host:
 

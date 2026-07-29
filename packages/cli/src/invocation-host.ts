@@ -1,6 +1,6 @@
 import { ClawError } from "@veewo/claw-core";
 
-export const SUPPORTED_CLAW_HOSTS = ["codex", "opencode"] as const;
+export const SUPPORTED_CLAW_HOSTS = ["codex", "opencode", "cindy"] as const;
 
 export type ClawHost = (typeof SUPPORTED_CLAW_HOSTS)[number];
 
