@@ -730,9 +730,9 @@ test("cli codex driver returns an executable versioned source envelope", async (
   const root = createFixture("codex-driver-envelope");
   const envelope = runClaw(["codex", "driver"], root);
   assert.equal(envelope.command, "codex.driver");
-  assert.equal(envelope.driverVersion, 7);
+  assert.equal(envelope.driverVersion, 8);
   assert.equal(envelope.hostActionSchemaVersion, 1);
-  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v7:s1");
+  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v8:s1");
   assert.match(String(envelope.sha256), /^[a-f0-9]{64}$/);
 
   const runner = (0, eval)(`(${String(envelope.source)})`) as (
@@ -833,7 +833,7 @@ test("cli codex driver returns an executable versioned source envelope", async (
   assert.deepEqual(taskDoneActual, { ok: true, command: "task.done" });
 });
 
-test("Codex driver reuses an active Goal on resume and skips closing an already closed Goal", async () => {
+test("Codex driver replaces any nonterminal Goal and skips closing an already closed Goal", async () => {
   const root = createFixture("codex-driver-goal-idempotency");
   const envelope = runClaw(["codex", "driver"], root);
   const runner = (0, eval)(`(${String(envelope.source)})`) as (
@@ -857,12 +857,31 @@ test("Codex driver reuses an active Goal on resume and skips closing an already 
     shell_command: async () => JSON.stringify(commandResult),
     update_plan: async () => calls.push("update_plan"),
     get_goal: async () => ({ goal: { status: goalStatus } }),
-    create_goal: async () => calls.push("create_goal"),
-    update_goal: async () => calls.push("update_goal"),
+    create_goal: async () => { calls.push("create_goal"); goalStatus = "active"; },
+    update_goal: async () => { calls.push("update_goal"); goalStatus = "complete"; },
   };
 
-  await runner({ command: "claw plan resume", workdir: root }, { tools, text: () => {} });
-  assert.deepEqual(calls, []);
+  const replaced = await runner({ command: "claw plan resume", workdir: root }, { tools, text: () => {} });
+  assert.deepEqual(calls, ["update_goal"]);
+  assert.deepEqual(replaced.goalRecovery, {
+    command: "claw plan sync",
+    reason: "Completed the prior nonterminal Codex Goal before recreating Goal Mode.",
+  });
+
+  commandResult = {
+    ok: true,
+    command: "plan.sync",
+    stage: "execution",
+    hostActions: [{
+      schemaVersion: 1,
+      id: "sync:create_goal",
+      tool: "create_goal",
+      input: { objective: "resume work" },
+    }],
+  };
+  const recreated = await runner({ command: "claw plan sync", workdir: root }, { tools, text: () => {} });
+  assert.equal(recreated.goalRecovery, undefined);
+  assert.deepEqual(calls, ["update_goal", "create_goal"]);
 
   commandResult = {
     ok: true,
@@ -877,7 +896,29 @@ test("Codex driver reuses an active Goal on resume and skips closing an already 
   };
   goalStatus = "complete";
   await runner({ command: "claw plan done --retrospective done", workdir: root }, { tools, text: () => {} });
-  assert.deepEqual(calls, []);
+  assert.deepEqual(calls, ["update_goal", "create_goal"]);
+
+  commandResult = {
+    ok: true,
+    command: "plan.resume",
+    stage: "execution",
+    hostActions: [{
+      schemaVersion: 1,
+      id: "blocked:create_goal",
+      tool: "create_goal",
+      input: { objective: "resume work" },
+    }],
+  };
+  goalStatus = "blocked";
+  const recovered = await runner(
+    { command: "claw plan resume", workdir: root },
+    { tools, text: () => {} },
+  );
+  assert.deepEqual(calls, ["update_goal", "create_goal", "update_goal"]);
+  assert.deepEqual(recovered.goalRecovery, {
+    command: "claw plan sync",
+    reason: "Completed the prior nonterminal Codex Goal before recreating Goal Mode.",
+  });
 });
 
 test("Codex lightweight plans skip Goal and progress synchronization", () => {

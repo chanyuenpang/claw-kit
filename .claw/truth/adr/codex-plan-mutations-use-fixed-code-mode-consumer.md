@@ -36,7 +36,7 @@ Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode c
 - v4 曾只扩大 `plan.done` 的可见终结字段：`planPath`、`nextsteps` 与 `achievement`；v5 保留这些 compact-result 语义，并加入固定程序内的 Goal-action 幂等检查。普通 mutation 仍保持精简，subplan done 恢复 parent 时因为没有 root terminal `achievement` 而不会制造终结成就。
 - Goal action 继续使用 schema-v1 原生命令，不引入 `ensure_goal` pseudo-action，也不匹配 host error text。只有固定 driver 或 bundled consumer 可以在 action 紧前方调用 `get_goal`；Agent 禁止单独检查 Goal 状态。
 - CLI 只按 mutation 提交后的 plan 状态路由 Goal action：`process.wait` / `process.discussing` 发出 `update_goal(status="complete")`，进入或恢复 `process.active` 发出 `create_goal`，`end.completed` 发出 `update_goal(status="complete")`。
-- consumer 逐条执行 CLI 返回的 action；每个 `create_goal` / `update_goal` 紧前方读取 Goal snapshot。已有 active Goal 时跳过 `create_goal`，没有 active Goal 时跳过 `update_goal`，两种 no-op 都记录对应 action id 为已消费。不能在同一个 code-mode call 中合并 complete→create，resume 的 `create_goal` 必须位于后续 mutation call。
+- consumer 逐条执行 CLI 返回的 action；每个 `create_goal` / `update_goal` 紧前方读取 Goal snapshot。设置 Goal 时，任何非 `complete` 的现有 Goal 都先以 `update_goal(complete)` 关闭，并返回结构化 `goalRecovery.command = "claw plan sync"`；Agent 必须在新的 code-mode call 执行该命令，直到新 Goal 创建成功。没有 active Goal 时跳过 `update_goal`。不能在同一个 code-mode call 中合并 complete→create，resume 的 canonical transition 不得重放。
 - 未知 `schemaVersion`、未知 tool、不兼容 input 或缺失 host tool 一律 fail closed。Codex 不提供 direct-call 或 split-call fallback。
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md` 内嵌固定 `runClawPlanMutation` driver，以便在 isolate 内直接执行；`packages/codex-adapter/scripts/code-mode-host-action-consumer.mjs` 保留为完整、可复用且可测试的 source contract。
 - Goal lifecycle 变更发布前必须用未发布的本地构建通过真实 Host wait→active 验收：wait 后 Goal 为空，resume 后新 Goal 在跨调用结算后仍保持 active；单元合同测试不能替代该门禁。
@@ -70,7 +70,7 @@ Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode c
 - Codex 的计划镜像和 Goal Mode 生命周期由 CLI 投影的同一组 `hostActions` 驱动，避免 `goalTool` 造成第二次调用。
 - action 的 schema、顺序、幂等性、input 边界和 tool 白名单成为可测试的程序合同，不再依赖 Agent 判断。
 - schema-v1 envelope 删除无人消费的事件与策略 metadata，保留 `id` 的至多一次语义和原生 host `input`；兼容精简不需要新增 schema 版本，也不改变 consumer 实现边界。
-- Goal action 的目标状态幂等性由固定程序拥有：active Goal 可被 resume 复用，已关闭或不存在的 Goal 不会被 completion 再次关闭；两种跳过都保留 action-id 至多一次语义。
+- Goal action 的目标状态幂等性由固定程序拥有：设置 Goal 不复用旧 Goal，而是关闭任何非终态旧 Goal 后通过独立 call 创建本次目标；已关闭或不存在的 Goal 不会被 completion 再次关闭。所有路径都保留 action-id 至多一次语义。
 - plan-status router 消除 Goal 桥接对 Agent 所见历史状态、错误文本和补偿判断的依赖；source 与 versioned cache 中的 consumer/driver 必须保持该合同一致。
 - app-server 的 Goal/MCP 能力不改变当前 owner：在公开协议出现客户端 plan setter、或 claw 成为连接当前 UI thread 的原生客户端之前，`update_plan` 继续由 agent 触发的固定 code-mode consumer 执行。
 - wait/discussing 的 complete 与后续 resume create 分处不同 mutation calls，符合 Codex 的调用结束结算语义。

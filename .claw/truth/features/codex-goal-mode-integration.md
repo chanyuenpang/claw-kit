@@ -26,7 +26,7 @@
 - The recommended objective is still derived from canonical `plan.goal.text`.
 - `goalMode` 与 `goalTool` 只有在 `goal.text` 已存在时才成立，因为 harness 本身禁止没有 goal 的 plan 离开 `prepare.requirements`。
 - Active `@claw-kit` threads are still pre-authorized to use Goal mode when the workflow later returns these contracts, so no extra per-turn authorization gate should block it.
-- Codex agent 只运行固定 code-mode consumer，不自行检查 Goal state，也不解析 Goal tool error；CLI 仍根据已提交的 canonical plan status 决定请求哪一种 Goal action，而固定 driver/consumer 在每次真实 Goal mutation 前立即调用 `get_goal`：已有 active Goal 时把 `create_goal` 视为已消费并跳过，没有 active Goal 时把 `update_goal` 视为已消费并跳过。普通 `process.active` 进度不产生 Goal action，只有首次进入或从暂停态恢复进入 `process.active` 才请求 `create_goal`。
+- Codex agent 只运行固定 code-mode consumer，不自行检查 Goal state，也不解析 Goal tool error；CLI 仍根据已提交的 canonical plan status 决定请求哪一种 Goal action，而固定 driver/consumer 在每次真实 Goal mutation 前立即调用 `get_goal`：设置 Goal 遇到任何非 `complete` Goal 时，先完成旧 Goal 并返回 `goalRecovery.command = "claw plan sync"`，由 Agent 在新的 code-mode call 立即执行，以最终创建本次 plan 的目标 Goal；`update_goal` 在无 active Goal 时跳过。普通 `process.active` 进度不产生 Goal action，只有首次进入或从暂停态恢复进入 `process.active` 才请求 `create_goal`。
 
 ## 0.1.75 真实 Host 生命周期边界
 
@@ -46,7 +46,7 @@
 
 - `0.1.86` 同版本线的真实 installed lifecycle 曾执行 `process.active -> process.wait -> process.active -> end.completed`。`plan.wait` 的 canonical 状态与 compact `stage="paused"` 正常，但后续 `plan.resume` 在已把 canonical plan 恢复为 `process.active` 后调用 `create_goal`，Host 返回 `cannot create a new goal because this thread has an unfinished goal; complete the existing goal first`。只读检查确认原 Goal 仍 active，因此没有重放 resume；这是修复前的版本化 Host 证据。
 - 同一轮 root closeout 已把 plan 持久化为 `end.completed`，随后暴露的重复 Goal close 指示在 Goal 已为空时返回 `cannot update goal because this thread has no goal`。terminal `nextsteps` 重复已消费 action 的 compact-result 缺陷由 `cli-guided-workflow.md` 唯一拥有；本文只保留 Goal 状态幂等问题的历史事实与当前行为。
-- 当前 worktree 已在 `packages/cli/src/codex-driver.ts` 和 bundled `packages/codex-adapter/scripts/code-mode-host-action-consumer.mjs` 中把 `get_goal` 检查放进固定程序，并在 mutation 前按 active 状态跳过多余的 `create_goal` 或 `update_goal`。agent 不得在程序外单独调用 `get_goal`；当前 driver/cache identity 由 `codex-workflow-guidance-consumption.md` 唯一拥有。
+- 当前 worktree 已在 `packages/cli/src/codex-driver.ts` 和 bundled `packages/codex-adapter/scripts/code-mode-host-action-consumer.mjs` 中把 `get_goal` 检查放进固定程序；设置 Goal 遇到旧的非终态 Goal 时固定程序关闭它并显式返回跨调用恢复命令，随后在独立 call 创建新 Goal。agent 不得在程序外单独调用 `get_goal`；当前 driver/cache identity 由 `codex-workflow-guidance-consumption.md` 唯一拥有。
 - canonical mutation 仍可能先于 Host action 失败，因此不得重放已持久化的 transition。当前程序化消费决策由 `.claw/truth/adr/codex-plan-mutations-use-fixed-code-mode-consumer.md` 拥有；thread-level 生命周期决策仍由 `.claw/truth/adr/codex-goal-mode-thread-contract.md` 拥有。
 
 ## 真实代码锚点
@@ -72,7 +72,7 @@
   - `buildHostActions()` 根据 committed `planStatus` 把 wait/discussing 的 Codex native action 投影为 schema-v1 `update_goal({ status: "complete" })`，不改写 compatibility `goalTool.status = blocked`
   - `subplan.create` 的 Codex hostActions 固定先执行 `update_goal(complete)`、再执行 `update_plan`，且本次 handoff 不生成 `create_goal`
 - `packages/cli/src/codex-driver.ts`
-  - fixed driver 在 `create_goal` / `update_goal` 前立即读取 Goal snapshot；active Goal 复用已有目标，已无 active Goal 时跳过重复关闭，并将跳过的 action id 记为已消费
+- fixed driver 在 `create_goal` / `update_goal` 前立即读取 Goal snapshot；设置 Goal 时关闭任何非终态旧 Goal 并返回跨调用恢复命令，已无 active Goal 时跳过重复关闭，并将跳过的 action id 记为已消费
 - `packages/codex-adapter/scripts/code-mode-host-action-consumer.mjs`
   - bundled consumer 与 driver 保持相同的 Goal action 幂等规则，并在 `get_goal` 不可用时 fail closed
 - `packages/codex-adapter/references/workflow-guidance-consumption.md`

@@ -85,7 +85,7 @@ test("native Goal tool failures propagate unchanged for Agent-level outcome hand
   );
 });
 
-test("Goal actions reuse an active Goal and do not close an already closed Goal", async () => {
+test("Goal actions replace an active Goal and do not close an already closed Goal", async () => {
   const calls = [];
   const consumedIds = new Set();
   const hostTools = {
@@ -99,8 +99,12 @@ test("Goal actions reuse an active Goal and do not close an already closed Goal"
     hostTools,
     consumedIds,
   });
-  assert.deepEqual(calls, []);
+  assert.deepEqual(calls, ["update_goal"]);
   assert.deepEqual(resume.consumedActionIds, ["mutation:create_goal"]);
+  assert.deepEqual(resume.goalRecovery, {
+    command: "claw plan sync",
+    reason: "Completed the prior nonterminal Codex Goal before recreating Goal Mode.",
+  });
 
   hostTools.get_goal = async () => ({ goal: { status: "complete" } });
   const done = await consumeCodexHostActions({
@@ -108,8 +112,41 @@ test("Goal actions reuse an active Goal and do not close an already closed Goal"
     hostTools,
     consumedIds,
   });
-  assert.deepEqual(calls, []);
+  assert.deepEqual(calls, ["update_goal"]);
   assert.deepEqual(done.consumedActionIds, ["mutation:update_goal"]);
+});
+
+test("a blocked Goal is completed and requests an independent plan sync", async () => {
+  const calls = [];
+  const result = await consumeCodexHostActions({
+    result: { hostActions: [makeActions()[1]] },
+    hostTools: {
+      get_goal: async () => ({ goal: { status: "blocked" } }),
+      create_goal: async () => calls.push("create_goal"),
+      update_goal: async (input) => calls.push(["update_goal", input]),
+    },
+  });
+
+  assert.deepEqual(calls, [["update_goal", { status: "complete" }]]);
+  assert.deepEqual(result.goalRecovery, {
+    command: "claw plan sync",
+    reason: "Completed the prior nonterminal Codex Goal before recreating Goal Mode.",
+  });
+});
+
+test("an unrecognized Goal state is completed before setting the requested Goal", async () => {
+  const calls = [];
+  const result = await consumeCodexHostActions({
+    result: { hostActions: [makeActions()[1]] },
+    hostTools: {
+      get_goal: async () => ({ goal: { status: "unknown_future_state" } }),
+      create_goal: async () => calls.push("create_goal"),
+      update_goal: async (input) => calls.push(["update_goal", input]),
+    },
+  });
+
+  assert.deepEqual(calls, [["update_goal", { status: "complete" }]]);
+  assert.equal(result.goalRecovery.command, "claw plan sync");
 });
 
 test("program consumes an action id at most once", async () => {
@@ -201,8 +238,8 @@ test("the embedded bootstrap caches the CLI driver and dispatches native host ac
         if (options.command === "claw codex driver") {
           return JSON.stringify({
             ok: true,
-            cacheKey: "claw-kit:codex-driver:v7:s1",
-            driverVersion: 7,
+            cacheKey: "claw-kit:codex-driver:v8:s1",
+            driverVersion: 8,
             hostActionSchemaVersion: 1,
             source: driverSource,
           });
@@ -253,8 +290,8 @@ test("the embedded bootstrap uses exec_command when shell_command is unavailable
         if (options.command === "claw codex driver") {
           return JSON.stringify({
             ok: true,
-            cacheKey: "claw-kit:codex-driver:v7:s1",
-            driverVersion: 7,
+            cacheKey: "claw-kit:codex-driver:v8:s1",
+            driverVersion: 8,
             hostActionSchemaVersion: 1,
             source: driverSource,
           });

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-export const CODEX_DRIVER_VERSION = 7;
+export const CODEX_DRIVER_VERSION = 8;
 export const CODEX_HOST_ACTION_SCHEMA_VERSION = 1;
 export const CODEX_DRIVER_CACHE_KEY =
   `claw-kit:codex-driver:v${CODEX_DRIVER_VERSION}:s${CODEX_HOST_ACTION_SCHEMA_VERSION}`;
@@ -87,6 +87,7 @@ async function codexDriverRunner(
     update_goal: new Set(["status"]),
   };
   const consumed = new Set<string>();
+  let goalRecovery: Record<string, string> | undefined;
   const actions = Array.isArray(result.hostActions) ? result.hostActions : [];
   for (const candidate of actions) {
     const action = candidate as Record<string, unknown>;
@@ -112,11 +113,24 @@ async function codexDriverRunner(
       const goal = snapshot && typeof snapshot === "object" && !Array.isArray(snapshot)
         ? (snapshot as Record<string, unknown>).goal
         : undefined;
-      const activeGoal = Boolean(
-        goal && typeof goal === "object" && !Array.isArray(goal)
-        && (goal as Record<string, unknown>).status === "active",
-      );
-      if ((tool === "create_goal" && activeGoal) || (tool === "update_goal" && !activeGoal)) {
+      const goalRecord = goal && typeof goal === "object" && !Array.isArray(goal)
+        ? goal as Record<string, unknown>
+        : undefined;
+      const goalStatus = goalRecord?.status;
+      const openGoal = Boolean(goalRecord && goalStatus !== "complete");
+      if (tool === "create_goal" && openGoal) {
+        if (typeof tools.update_goal !== "function") {
+          throw new Error("Codex host tool is unavailable: update_goal");
+        }
+        await tools.update_goal({ status: "complete" });
+        goalRecovery = {
+          command: "claw plan sync",
+          reason: "Completed the prior nonterminal Codex Goal before recreating Goal Mode.",
+        };
+        consumed.add(id);
+        continue;
+      }
+      if (tool === "update_goal" && goalStatus !== "active") {
         consumed.add(id);
         continue;
       }
@@ -151,6 +165,7 @@ async function codexDriverRunner(
   const visibleResult = Object.fromEntries(
     Object.entries(result).filter(([key]) => visibleKeys.has(key)),
   );
+  if (goalRecovery) visibleResult.goalRecovery = goalRecovery;
   text(JSON.stringify(visibleResult));
   return visibleResult;
 }

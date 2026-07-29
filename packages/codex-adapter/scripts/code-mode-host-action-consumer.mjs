@@ -18,6 +18,7 @@ export async function consumeCodexHostActions({ result, hostTools, consumedIds =
   }
 
   const consumedActionIds = [];
+  let goalRecovery;
   for (const action of result?.hostActions ?? []) {
     validateActionEnvelope(action);
     if (consumedIds.has(action.id)) {
@@ -31,8 +32,24 @@ export async function consumeCodexHostActions({ result, hostTools, consumedIds =
         throw new Error("Codex host tool is unavailable: get_goal");
       }
       const snapshot = await getGoal({});
-      const activeGoal = snapshot?.goal?.status === "active";
-      if ((action.tool === "create_goal" && activeGoal) || (action.tool === "update_goal" && !activeGoal)) {
+      const goalRecord = snapshot?.goal && typeof snapshot.goal === "object" ? snapshot.goal : undefined;
+      const goalStatus = goalRecord?.status;
+      const openGoal = Boolean(goalRecord && goalStatus !== "complete");
+      if (action.tool === "create_goal" && openGoal) {
+        const updateGoal = hostTools.update_goal;
+        if (typeof updateGoal !== "function") {
+          throw new Error("Codex host tool is unavailable: update_goal");
+        }
+        await updateGoal({ status: "complete" });
+        goalRecovery = {
+          command: "claw plan sync",
+          reason: "Completed the prior nonterminal Codex Goal before recreating Goal Mode.",
+        };
+        consumedIds.add(action.id);
+        consumedActionIds.push(action.id);
+        continue;
+      }
+      if (action.tool === "update_goal" && goalStatus !== "active") {
         consumedIds.add(action.id);
         consumedActionIds.push(action.id);
         continue;
@@ -47,7 +64,7 @@ export async function consumeCodexHostActions({ result, hostTools, consumedIds =
     consumedActionIds.push(action.id);
   }
 
-  return { consumedActionIds, consumedIds };
+  return { consumedActionIds, consumedIds, ...(goalRecovery ? { goalRecovery } : {}) };
 }
 
 export async function runCodexPlanMutation({ command, runCommand, hostTools, consumedIds = new Set() }) {

@@ -33,7 +33,7 @@ For every claw plan mutation, call the function below in code mode and change on
 
 ```javascript
 async function runClawPlanMutation({ command, workdir, timeout_ms = 30000 }) {
-  const cacheKey = "claw-kit:codex-driver:v7:s1";
+  const cacheKey = "claw-kit:codex-driver:v8:s1";
   let envelope = load(cacheKey);
   if (!envelope) {
     const commandTool = typeof tools.shell_command === "function" ? tools.shell_command : tools.exec_command;
@@ -44,7 +44,7 @@ async function runClawPlanMutation({ command, workdir, timeout_ms = 30000 }) {
     const end = output.lastIndexOf("}") + 1;
     if (start < 0 || end <= start) throw new Error("claw returned no driver envelope");
     envelope = JSON.parse(output.slice(start, end));
-    if (envelope?.cacheKey !== cacheKey || envelope?.driverVersion !== 7
+    if (envelope?.cacheKey !== cacheKey || envelope?.driverVersion !== 8
       || envelope?.hostActionSchemaVersion !== 1 || typeof envelope?.source !== "string") {
       throw new Error("incompatible claw Codex driver envelope");
     }
@@ -57,7 +57,7 @@ async function runClawPlanMutation({ command, workdir, timeout_ms = 30000 }) {
 ```
 ## Hard boundaries
 
-- Strongly prefer running plan mutations through the code-mode bridge without splitting host calls, reconstructing `hostActions` or `goalTool`, or repeating canonical transitions as compensation.
+- Strongly prefer running plan mutations through the code-mode bridge without splitting host calls, reconstructing `hostActions` or `goalTool`, or repeating canonical transitions as compensation; if it returns `goalRecovery.command`, immediately run that command in a new code-mode call before replying.
 - Goal-state inspection belongs only to the fixed driver or bundled consumer program; the agent must never call `get_goal` separately.
 - Edit canonical plan state only through claw commands supplied or permitted by returned guidance.
 - If code mode, the driver, or a required host tool is unavailable, stop with the program error; there is no direct-call fallback.

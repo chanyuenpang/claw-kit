@@ -4,6 +4,12 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## Unreleased
 
+## [0.1.98] - 2026-07-29
+
+### Fixed
+
+- Codex Goal recovery now closes any unfinished prior Goal and returns a structured cross-call recovery command before recreating the plan Goal, including blocked and unknown Goal states.
+
 ## [0.1.97] - 2026-07-29
 
 ### Fixed
