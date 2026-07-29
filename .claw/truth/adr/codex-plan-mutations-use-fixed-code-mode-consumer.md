@@ -30,7 +30,7 @@ Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode c
 - schema v1 action envelope 只保留 `schemaVersion`、作为至多一次消费键的 `id`、`tool` 与真实 host `input`。`sourceEventId`、`meta.reason` 与 `meta.allowOverwrite` 没有 Codex consumer，因此不再输出；不为这次兼容精简引入 schema v2。
 - consumer 只白名单调用 `update_plan`、`create_goal` 和 `update_goal`，且只把经过验证的 `input` 投影给 host tool。action envelope 的最小字段不改变工具白名单、顺序、幂等或 fail-closed 边界。
 - consumer 语义变更必须同时 bump versioned driver/cache identity，避免同线程继续复用旧 source；本次 Goal-action 幂等变更以 v5 bump 落地。当前具体 identity 由 `../features/codex-workflow-guidance-consumption.md` 唯一拥有。
-- command-execution capability 必须由 driver 在运行时从注入的 `tools` object 解析：可用时使用 `shell_command`，否则使用 `exec_command`；两者都不可用时，以明确的 unsupported-command-execution error 失败。bridge 不得从 OS、Codex version、environment variables 或 Agent 提供的 tool name 推断该能力。此选择同时适用于获取 driver 的 bootstrap 与返回的 driver source；任一语义变化都要求新的 driver/cache identity。
+- command-execution capability 必须由 driver 在运行时从注入的 `tools` object 解析：可用时使用 `shell_command({ command, workdir, timeout_ms })`，否则使用 `exec_command({ cmd, workdir, yield_time_ms })`；两者都不可用时，以明确的 unsupported-command-execution error 失败。bridge 不得从 OS、Codex version、environment variables 或 Agent 提供的 tool name 推断该能力。此选择同时适用于获取 driver 的 bootstrap 与返回的 driver source；任一语义变化都要求新的 driver/cache identity。
 - bridge 的安全压缩路线是 cold path 保留完整 bootstrap 和兼容性校验；校验成功后只缓存已验证的 `source`，让同线程后续 mutation 通过约 4–6 行 hot path `eval` 并调用 runner。当前 skill 仍缓存完整 envelope 并复用同一个 wrapper，这项压缩尚未实现。
 - hot path 发现缓存缺失或版本不兼容时，只能重新进入完整 bootstrap，或以 `bootstrap required` 一类明确错误 fail closed；不能运行未验证 source、手工解释 `hostActions`，也不能把 CLI mutation 与 native host action 改成两个调用。
 - v4 曾只扩大 `plan.done` 的可见终结字段：`planPath`、`nextsteps` 与 `achievement`；v5 保留这些 compact-result 语义，并加入固定程序内的 Goal-action 幂等检查。普通 mutation 仍保持精简，subplan done 恢复 parent 时因为没有 root terminal `achievement` 而不会制造终结成就。
@@ -77,6 +77,7 @@ Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode c
 - 真实 Host lifecycle 成为 Goal action 发布门禁，避免仅靠 mock 或单元测试批准宿主时序错误。
 - host tool 不可用或合同不兼容时会显式停止；调用方必须修复程序或接口版本，而不能静默绕过合同。
 - command execution 兼容已支持的 host-tool variants，不把 adapter 绑定到单一 Codex tool name；不受支持的 host 仍须在任何 CLI mutation 或 host-action dispatch 前失败。
+- `exec_command` 不能复用 `shell_command` 的参数名称；bootstrap 与 driver source 都须将 timeout 投影为 `yield_time_ms`，并随该语义变更使用新的 v9 driver/cache identity。
 - 内嵌 driver 与独立 source contract 必须通过合同测试保持语义一致。
 - cold/hot path 分层允许后续 mutation 减少重复样板，同时把信任建立、版本/schema 校验与 fail-closed 边界保留在首次 bootstrap；落地前不得把该预期收益描述成当前行为。
 - v4 引入的终结字段过滤继续让 Codex 能直接呈现 root completion，同时不把完整 CLI result 或其他 mutation 的内部字段暴露给 Agent；CLI completion shape 的 owner 仍是 `.claw/truth/adr/cli-guided-plan-lifecycle.md`。
@@ -111,6 +112,11 @@ Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode c
 
 <!-- state: history -->
 ## 演化历史
+
+<!-- dated: 2026-07-29 -->
+### `exec_command` 参数 schema 兼容
+
+v8 的 fallback 曾把 `{ command, workdir, timeout_ms }` 传给 `exec_command`。v9 将 bootstrap 与 driver source 同步改为 `{ cmd, workdir, yield_time_ms }`；保留这段演化记录，以便排查旧 cache source 与 Unified Exec host 的兼容问题。
 
 <!-- dated: 2026-07-17 -->
 ### 短 bootstrap 与跨调用 Goal lifecycle 实测

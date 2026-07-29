@@ -33,18 +33,18 @@ For every claw plan mutation, call the function below in code mode and change on
 
 ```javascript
 async function runClawPlanMutation({ command, workdir, timeout_ms = 30000 }) {
-  const cacheKey = "claw-kit:codex-driver:v8:s1";
+  const cacheKey = "claw-kit:codex-driver:v9:s1";
   let envelope = load(cacheKey);
   if (!envelope) {
-    const commandTool = typeof tools.shell_command === "function" ? tools.shell_command : tools.exec_command;
-    if (!commandTool) throw new Error("Codex host has no supported command-execution tool");
-    const raw = await commandTool({ command: "claw codex driver", workdir, timeout_ms });
+    const raw = typeof tools.shell_command === "function" ? await tools.shell_command({ command: "claw codex driver", workdir, timeout_ms })
+      : typeof tools.exec_command === "function" ? await tools.exec_command({ cmd: "claw codex driver", workdir, yield_time_ms: timeout_ms })
+      : (() => { throw new Error("Codex host has no supported command-execution tool"); })();
     const output = typeof raw === "string" ? raw : (raw.output ?? raw.stdout ?? raw.text ?? "");
     const start = output.indexOf("{");
     const end = output.lastIndexOf("}") + 1;
     if (start < 0 || end <= start) throw new Error("claw returned no driver envelope");
     envelope = JSON.parse(output.slice(start, end));
-    if (envelope?.cacheKey !== cacheKey || envelope?.driverVersion !== 8
+    if (envelope?.cacheKey !== cacheKey || envelope?.driverVersion !== 9
       || envelope?.hostActionSchemaVersion !== 1 || typeof envelope?.source !== "string") {
       throw new Error("incompatible claw Codex driver envelope");
     }

@@ -4,6 +4,12 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## Unreleased
 
+## [0.1.99] - 2026-07-29
+
+### Fixed
+
+- Codex bridge now sends the Unified Exec fallback the required `cmd` and `yield_time_ms` parameters instead of the `shell_command` parameter schema.
+
 ## [0.1.98] - 2026-07-29
 
 ### Fixed

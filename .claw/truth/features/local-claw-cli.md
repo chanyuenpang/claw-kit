@@ -4,6 +4,7 @@
 ## Core facts
 
 - `claw init` now exists and bootstraps a minimal `.claw` project.
+- `packages/cli/test/cli.test.ts` 的 CLI 测试项目夹具由 `createFixture()` 在 `os.tmpdir()` 下创建，名称固定为 `claw-kit-cli-<test-name>-<random-suffix>`；该前缀用于识别测试隔离目录，不表示 Git worktree。目录的实际父路径由运行测试进程的系统临时目录配置决定。所有经 `createTemporaryDirectory()` 创建的测试目录都会在测试结束时由 `after()` 清理。
 - `packages/core/src/init.ts` 的 `initProject()` 现在还会在初始化完成后检查项目根目录 `.gitignore`，当缺少 claw-kit 专用规则块时只追加一次：
   `# claw-kit`
   `.claw/*`

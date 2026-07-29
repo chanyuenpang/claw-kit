@@ -238,8 +238,8 @@ test("the embedded bootstrap caches the CLI driver and dispatches native host ac
         if (options.command === "claw codex driver") {
           return JSON.stringify({
             ok: true,
-            cacheKey: "claw-kit:codex-driver:v8:s1",
-            driverVersion: 8,
+            cacheKey: "claw-kit:codex-driver:v9:s1",
+            driverVersion: 9,
             hostActionSchemaVersion: 1,
             source: driverSource,
           });
@@ -276,7 +276,7 @@ test("the embedded bootstrap uses exec_command when shell_command is unavailable
 
   const calls = [];
   const driverSource = `async ({ command, workdir, timeout_ms }, { tools, text }) => {
-    const raw = await tools.exec_command({ command: command + " --host codex", workdir, timeout_ms });
+    const raw = await tools.exec_command({ cmd: command + " --host codex", workdir, yield_time_ms: timeout_ms });
     const parsed = JSON.parse(raw);
     const visible = { stage: parsed.stage, planSummary: parsed.planSummary };
     text(JSON.stringify(visible));
@@ -287,11 +287,11 @@ test("the embedded bootstrap uses exec_command when shell_command is unavailable
     tools: {
       exec_command: async (options) => {
         calls.push(["exec_command", options]);
-        if (options.command === "claw codex driver") {
+        if (options.cmd === "claw codex driver") {
           return JSON.stringify({
             ok: true,
-            cacheKey: "claw-kit:codex-driver:v8:s1",
-            driverVersion: 8,
+            cacheKey: "claw-kit:codex-driver:v9:s1",
+            driverVersion: 9,
             hostActionSchemaVersion: 1,
             source: driverSource,
           });
@@ -310,4 +310,14 @@ test("the embedded bootstrap uses exec_command when shell_command is unavailable
 
   assert.deepEqual(actual, { stage: "execution", planSummary: "1/2 example" });
   assert.deepEqual(calls.map(([name]) => name), ["exec_command", "exec_command", "text"]);
+  assert.deepEqual(JSON.parse(JSON.stringify(calls[0][1])), {
+    cmd: "claw codex driver",
+    workdir: "G:\\example",
+    yield_time_ms: 30000,
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(calls[1][1])), {
+    cmd: "claw plan start --requirements ready --host codex",
+    workdir: "G:\\example",
+    yield_time_ms: 30000,
+  });
 });

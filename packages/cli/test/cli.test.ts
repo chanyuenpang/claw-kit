@@ -1,4 +1,4 @@
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -16,9 +16,23 @@ const cliPackageVersion = String(
   (JSON.parse(fs.readFileSync(path.resolve(thisDir, "..", "package.json"), "utf-8")) as { version: string }).version,
 );
 
-function createFixture(name: string): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), `claw-kit-cli-${name}-`));
+const temporaryDirectories = new Set<string>();
+
+function createTemporaryDirectory(prefix: string): string {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  temporaryDirectories.add(directory);
+  return directory;
 }
+
+function createFixture(name: string): string {
+  return createTemporaryDirectory(`claw-kit-cli-${name}-`);
+}
+
+after(() => {
+  for (const directory of temporaryDirectories) {
+    fs.rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+  }
+});
 
 function localDateDirectory(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -253,7 +267,7 @@ async function waitForLatestCompletionRefreshStatus(root: string, timeoutMs = 15
 }
 
 function createGitnexusShim(mode: "fallback" | "primary" | "lock-once" | "access-violation-once", delayMs = 0): { binDir: string; logPath: string } {
-  const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-kit-gitnexus-bin-"));
+  const binDir = createTemporaryDirectory("claw-kit-gitnexus-bin-");
   const logPath = path.join(binDir, "gitnexus.log");
   const cmdPath = path.join(binDir, "gitnexus.cmd");
 const jsPath = path.join(binDir, "gitnexus-shim.js");
@@ -308,7 +322,7 @@ if (args[0] === "analyze" && args.includes("--embeddings")) {
 }
 
 function createNpmShim(mode: "fail-install" | "pass"): { binDir: string; logPath: string } {
-  const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-kit-npm-bin-"));
+  const binDir = createTemporaryDirectory("claw-kit-npm-bin-");
   const logPath = path.join(binDir, "npm.log");
   const cmdPath = path.join(binDir, "npm.cmd");
   const jsPath = path.join(binDir, "npm-shim.js");
@@ -335,7 +349,7 @@ function createClawUpdateNpmShim(options: {
   latestVersion: string;
   failLatestInstall?: boolean;
 }): { binDir: string; logPath: string } {
-  const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-kit-claw-update-npm-"));
+  const binDir = createTemporaryDirectory("claw-kit-claw-update-npm-");
   const logPath = path.join(binDir, "npm.log");
   const cmdPath = path.join(binDir, "npm.cmd");
   const jsPath = path.join(binDir, "npm-shim.js");
@@ -730,9 +744,9 @@ test("cli codex driver returns an executable versioned source envelope", async (
   const root = createFixture("codex-driver-envelope");
   const envelope = runClaw(["codex", "driver"], root);
   assert.equal(envelope.command, "codex.driver");
-  assert.equal(envelope.driverVersion, 8);
+  assert.equal(envelope.driverVersion, 9);
   assert.equal(envelope.hostActionSchemaVersion, 1);
-  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v8:s1");
+  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v9:s1");
   assert.match(String(envelope.sha256), /^[a-f0-9]{64}$/);
 
   const runner = (0, eval)(`(${String(envelope.source)})`) as (
@@ -819,7 +833,8 @@ test("cli codex driver returns an executable versioned source envelope", async (
     },
   );
   assert.deepEqual(execCalls.map(([name]) => name), ["exec_command", "text"]);
-  assert.match(String((execCalls[0][1] as JsonRecord).command), /--host codex$/);
+  assert.match(String((execCalls[0][1] as JsonRecord).cmd), /--host codex$/);
+  assert.equal((execCalls[0][1] as JsonRecord).yield_time_ms, 30_000);
 
   const taskDoneActual = await runner(
     { command: "claw task done --id 1", workdir: root },

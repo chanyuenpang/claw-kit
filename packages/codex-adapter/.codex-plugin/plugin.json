@@ -1,6 +1,6 @@
 {
   "name": "claw-kit",
-  "version": "0.1.98+codex.20260729055754",
+  "version": "0.1.99+codex.20260729082500",
   "description": "Thin Codex adapter for claw-kit with fixed code-mode plan and Goal synchronization.",
   "author": {
     "name": "chanyuenpang",
