@@ -54,10 +54,10 @@ Install the published CLI with:
 npm install -g @veewo/claw
 ```
 
-Or use the one-shot install script:
+Or refresh it from a repository checkout with the cross-platform update entry:
 
-```powershell
-.\scripts\install-cli.ps1
+```bash
+npm run install:local-cli
 ```
 
 After the CLI is installed, project search still needs one-time setup inside each target project:

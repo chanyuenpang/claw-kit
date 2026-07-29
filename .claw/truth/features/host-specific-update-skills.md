@@ -17,6 +17,7 @@ Accepted working truth for the current Codex and OpenCode update surfaces.
 ## Codex contract
 
 - Refresh the published global CLI first, then refresh the official Codex plugin from the `chanyuenpang/claw-kit` GitHub marketplace.
+- Repository commands `npm run install:local-cli` and `npm run install:codex-plugin` use cross-platform Node entrypoints. The CLI updater refreshes the prefix that owns the active `claw` command before falling back to npm's default global prefix; the Codex updater clones the official GitHub `main` snapshot and never installs the workspace plugin payload.
 - Only `claw-kit@claw-kit` may be enabled; `claw-kit@claw-kit-local` must be disabled. Unpublished workspace files and local marketplaces are not valid update sources.
 - If refreshing the CLI leaves an already-created plan bound to an older installed `TEMPLATE.json` and the new CLI rejects a remaining canonical mutation, preserve the plan and template unchanged. Run only the remaining mutations through the fixed Codex driver with the matching published CLI, then verify that the global `claw` command still resolves to the target version. This compatibility recovery does not authorize unpublished workspace content, a local marketplace, or keeping the older CLI installed.
 - If a full Git clone stalls during `index-pack` and an existing clean official checkout already points at the same GitHub origin, prefer a filtered shallow fetch such as `--depth=1 --filter=blob:none` to fast-forward that checkout. Treat the recovery as complete only when marketplace HEAD, source manifest, cache manifest, appserver identity, and source/cache payload comparison all agree with the published target; `.git` metadata or a successful fetch alone is insufficient.
@@ -42,6 +43,9 @@ Accepted working truth for the current Codex and OpenCode update surfaces.
 - `scripts/sync-shared-skills.mjs`
 - `scripts/sync-shared-skills.test.mjs`
 - `scripts/codex-plugin-bundle.test.mjs`
+- `scripts/codex-update-entrypoints.test.mjs`
+- `scripts/install-cli.mjs`
+- `scripts/install-codex-plugin-official.mjs`
 - `scripts/opencode-plugin-bundle.test.mjs`
 - `packages/opencode-adapter/references/opencode-plugin-update.md`
 
@@ -53,6 +57,8 @@ Accepted working truth for the current Codex and OpenCode update surfaces.
 - `no host route choice`
 - `SHARED_SKILL_NAMES excludes update`
 - `Codex update official marketplace`
+- `cross-platform Node update entrypoints`
+- `active claw npm prefix`
 - `existing-plan template-version handoff`
 - `matching published CLI remaining mutations`
 - `filtered shallow fetch`
