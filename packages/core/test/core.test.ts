@@ -2382,7 +2382,11 @@ test("plan edit can move from requirements to process.active without a separate 
       title: "Demo task",
       status: "prepare.requirements",
       goal: { text: "Ship the first plan" },
-      tasks: [{ id: 1, title: "Implement work", status: "pending" }],
+      tasks: [
+        { id: 1, title: "Implement work", status: "pending" },
+        { id: 2, title: "Prior work", status: "done" },
+        { id: 3, title: "Prior review", status: "done" },
+      ],
     },
   });
 
@@ -2409,10 +2413,14 @@ test("plan edit can move from requirements to process.active without a separate 
   });
 
   assert.equal(result.planStatus, "process.active");
-  assert.equal(result.planView.counts.completed, 1);
+  assert.equal(result.planView.counts.completed, 3);
   assert.deepEqual(
     result.planView.tasks.items.map((task) => ({ id: task.id, status: task.status })),
-    [{ id: 1, status: "done" }],
+    [
+      { id: 1, status: "done" },
+      { id: 2, status: "done" },
+      { id: 3, status: "done" },
+    ],
   );
 
   assert.equal(result.workflowGuidance.stage, "done");
@@ -2470,7 +2478,11 @@ test("plan edit process.wait guidance pauses goal mode and points resume back to
       title: "Demo task",
       status: "process.active",
       goal: { text: "Pause execution cleanly" },
-      tasks: [{ id: 1, title: "Implement work", status: "in_progress" }],
+      tasks: [
+        { id: 1, title: "Implement work", status: "in_progress" },
+        { id: 2, title: "Prior work", status: "done" },
+        { id: 3, title: "Prior review", status: "done" },
+      ],
     },
   });
 
@@ -2509,7 +2521,11 @@ test("plan edit process.discussing guidance pauses goal mode and waits for discu
       title: "Demo task",
       status: "process.active",
       goal: { text: "Discuss the next route" },
-      tasks: [{ id: 1, title: "Decide route", status: "in_progress" }],
+      tasks: [
+        { id: 1, title: "Decide route", status: "in_progress" },
+        { id: 2, title: "Prior work", status: "done" },
+        { id: 3, title: "Prior review", status: "done" },
+      ],
     },
   });
 
@@ -2548,7 +2564,11 @@ test("resuming from process.wait to process.active re-emits goal mode guidance",
       title: "Demo task",
       status: "process.wait",
       goal: { text: "Resume execution with goal mode" },
-      tasks: [{ id: 1, title: "Implement work", status: "pending" }],
+      tasks: [
+        { id: 1, title: "Implement work", status: "pending" },
+        { id: 2, title: "Prior work", status: "done" },
+        { id: 3, title: "Prior review", status: "done" },
+      ],
     },
   });
 
@@ -2591,7 +2611,11 @@ test("end.completed emits complete goal tool guidance", async () => {
       title: "Demo task",
       status: "process.active",
       goal: { text: "Finish the plan" },
-      tasks: [{ id: 1, title: "Implement work", status: "done" }],
+      tasks: [
+        { id: 1, title: "Implement work", status: "done" },
+        { id: 2, title: "Prior work", status: "done" },
+        { id: 3, title: "Prior review", status: "done" },
+      ],
       retrospective: { summary: "Done." },
     },
   });

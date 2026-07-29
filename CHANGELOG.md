@@ -4,6 +4,12 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## Unreleased
 
+## [0.1.97] - 2026-07-29
+
+### Fixed
+
+- The Codex driver and bootstrap now use the available command-execution tool, falling back from `shell_command` to `exec_command` so plan mutations work with Unified Exec hosts.
+
 ## [0.1.96] - 2026-07-23
 
 ### Changed

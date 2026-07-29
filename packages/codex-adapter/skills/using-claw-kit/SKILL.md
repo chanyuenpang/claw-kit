@@ -33,16 +33,18 @@ For every claw plan mutation, call the function below in code mode and change on
 
 ```javascript
 async function runClawPlanMutation({ command, workdir, timeout_ms = 30000 }) {
-  const cacheKey = "claw-kit:codex-driver:v6:s1";
+  const cacheKey = "claw-kit:codex-driver:v7:s1";
   let envelope = load(cacheKey);
   if (!envelope) {
-    const raw = await tools.shell_command({ command: "claw codex driver", workdir, timeout_ms });
+    const commandTool = typeof tools.shell_command === "function" ? tools.shell_command : tools.exec_command;
+    if (!commandTool) throw new Error("Codex host has no supported command-execution tool");
+    const raw = await commandTool({ command: "claw codex driver", workdir, timeout_ms });
     const output = typeof raw === "string" ? raw : (raw.output ?? raw.stdout ?? raw.text ?? "");
     const start = output.indexOf("{");
     const end = output.lastIndexOf("}") + 1;
     if (start < 0 || end <= start) throw new Error("claw returned no driver envelope");
     envelope = JSON.parse(output.slice(start, end));
-    if (envelope?.cacheKey !== cacheKey || envelope?.driverVersion !== 6
+    if (envelope?.cacheKey !== cacheKey || envelope?.driverVersion !== 7
       || envelope?.hostActionSchemaVersion !== 1 || typeof envelope?.source !== "string") {
       throw new Error("incompatible claw Codex driver envelope");
     }
@@ -53,7 +55,6 @@ async function runClawPlanMutation({ command, workdir, timeout_ms = 30000 }) {
   return runner({ command, workdir, timeout_ms }, { tools, text });
 }
 ```
-
 ## Hard boundaries
 
 - Strongly prefer running plan mutations through the code-mode bridge without splitting host calls, reconstructing `hostActions` or `goalTool`, or repeating canonical transitions as compensation.

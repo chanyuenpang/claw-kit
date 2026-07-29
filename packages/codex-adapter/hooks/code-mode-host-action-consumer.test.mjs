@@ -201,8 +201,8 @@ test("the embedded bootstrap caches the CLI driver and dispatches native host ac
         if (options.command === "claw codex driver") {
           return JSON.stringify({
             ok: true,
-            cacheKey: "claw-kit:codex-driver:v6:s1",
-            driverVersion: 6,
+            cacheKey: "claw-kit:codex-driver:v7:s1",
+            driverVersion: 7,
             hostActionSchemaVersion: 1,
             source: driverSource,
           });
@@ -230,4 +230,47 @@ test("the embedded bootstrap caches the CLI driver and dispatches native host ac
     "command", "update_plan", "create_goal", "update_goal", "text",
   ]);
   assert.equal(calls.filter(([name, input]) => name === "command" && input.command === "claw codex driver").length, 1);
+});
+
+test("the embedded bootstrap uses exec_command when shell_command is unavailable", async () => {
+  const skill = await fs.readFile(path.resolve(hooksDir, "..", "skills", "using-claw-kit", "SKILL.md"), "utf8");
+  const match = skill.match(/```javascript\r?\n([\s\S]*?)\r?\n```/);
+  assert.ok(match, "using-claw-kit must embed the short code-mode bootstrap");
+
+  const calls = [];
+  const driverSource = `async ({ command, workdir, timeout_ms }, { tools, text }) => {
+    const raw = await tools.exec_command({ command: command + " --host codex", workdir, timeout_ms });
+    const parsed = JSON.parse(raw);
+    const visible = { stage: parsed.stage, planSummary: parsed.planSummary };
+    text(JSON.stringify(visible));
+    return visible;
+  }`;
+  const cache = new Map();
+  const context = vm.createContext({
+    tools: {
+      exec_command: async (options) => {
+        calls.push(["exec_command", options]);
+        if (options.command === "claw codex driver") {
+          return JSON.stringify({
+            ok: true,
+            cacheKey: "claw-kit:codex-driver:v7:s1",
+            driverVersion: 7,
+            hostActionSchemaVersion: 1,
+            source: driverSource,
+          });
+        }
+        return JSON.stringify({ ok: true, stage: "execution", planSummary: "1/2 example" });
+      },
+    },
+    text: (value) => calls.push(["text", value]),
+    load: (key) => cache.get(key),
+    store: (key, value) => cache.set(key, value),
+    JSON, Error, eval,
+  });
+  const runClawPlanMutation = vm.runInContext(`${match[1]}\nrunClawPlanMutation`, context);
+
+  const actual = await runClawPlanMutation({ command: "claw plan start --requirements ready", workdir: "G:\\example" });
+
+  assert.deepEqual(actual, { stage: "execution", planSummary: "1/2 example" });
+  assert.deepEqual(calls.map(([name]) => name), ["exec_command", "exec_command", "text"]);
 });

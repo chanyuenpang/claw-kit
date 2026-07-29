@@ -10,7 +10,8 @@
 - 恢复 active Codex plan 时，`SessionStart` 仍保持 host-tool-free：它只恢复 snapshot 并提示固定 driver 在继续工作前运行只读的 `claw plan sync`。`plan sync` 不修改 canonical plan；它只对 `process.active` plan 以 recovery resync 方式重建 workflow guidance，并经既有 `buildHostActions()` / fixed code-mode driver 派发非空的完整 `update_plan` 投影。只有 effective project config 没有禁用 `goalMode` 时，该调用才额外派发 `create_goal`；`.claw/project-override.json` 的 `goalMode: false` 同样生效。零任务 plan 不派发空 `update_plan`。非 active plan 返回状态而不派发 host action；非 Codex host 不获得这些 action。该路径修复恢复期的 Goal Mode 和 host progress 缺口，而不把原生 host 调用放进 hook。
 - 当 plan 处于 `process.active` 时，`buildCodexPlanProjection()` 优先把实际标记为 `in_progress` 或 `subagent_running` 的 task 投影为 `in_progress`；只有不存在显式运行 task 时，才回退为首个非 `done` task。这样后续 task 先启动而前序 task 仍为 `pending` 时，host progress 仍与 canonical plan 同步。
 - Codex create 类 compact response 只在 `workflowGuidance.stage === "discussion"` 时返回完整 `plan`；返回完整 plan 时省略重复的 `planSummary`，其他阶段只保留紧凑摘要。该裁剪只影响 Codex 可见响应，不改变 canonical plan、非 Codex 输出或 host action 语义。
-- 当前 `packages/codex-adapter/skills/using-claw-kit/SKILL.md` 的 cold path 获取并校验完整 driver envelope，再以 `claw-kit:codex-driver:v6:s1` 缓存该 envelope；同线程后续 mutation 可跳过 `claw codex driver` 获取，但仍通过同一个完整 `runClawPlanMutation` wrapper 调用已缓存 `source`。只缓存 `source` 并使用 4–6 行 hot path 是已评估的后续压缩方向，不是当前实现。
+- 当前 `packages/codex-adapter/skills/using-claw-kit/SKILL.md` 的 cold path 获取并校验完整 driver envelope，再以 `claw-kit:codex-driver:v7:s1` 缓存该 envelope；同线程后续 mutation 可跳过 `claw codex driver` 获取，但仍通过同一个完整 `runClawPlanMutation` wrapper 调用已缓存 `source`。只缓存 `source` 并使用 4–6 行 hot path 是已评估的后续压缩方向，不是当前实现。
+- v7 driver 与 bundled bridge 在运行时优先使用 `tools.shell_command`，并在其不可用时使用 `tools.exec_command`；两者都不可用时，以明确的 command-execution capability 错误停止。CLI mutation 与 native host action 仍在同一次 code-mode 调用内完成，未引入 direct-call 或 split-call fallback。
 - `planSummary` 是聊天协作中可展示的紧凑计划状态；adapter 不应期待 render blocks、widget envelope、`claw plan app` 或 `claw plan render`。
 - code-investigation-first 可由 task shape 触发，不必等待 `workflowGuidance.delegateSubagents` 明确列出；普通项目 recall、Truth/ADR lookup 与历史上下文查询不是 researcher dispatch trigger。这只定义 guidance 的触发边界，不在本文重复拥有 researcher 的 agent type、派发、复用、等待或调查顺序。
 - researcher 的当前代码调查派发、相关同线程复用、窄 brief、阻塞等待与非递归合同统一由 `.claw/truth/features/codex-subagent-reuse.md` 拥有。
@@ -40,6 +41,7 @@
 - `packages/core/src/workflow-guidance.config.json`
 - `packages/core/src/workflow-guidance.ts`
 - `packages/cli/src/cli.ts`
+- `packages/cli/src/codex-driver.ts`
 - `packages/codex-adapter/references/workflow-guidance-consumption.md`
 - `packages/codex-adapter/skills/planning/SKILL.md`
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md`

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-export const CODEX_DRIVER_VERSION = 6;
+export const CODEX_DRIVER_VERSION = 7;
 export const CODEX_HOST_ACTION_SCHEMA_VERSION = 1;
 export const CODEX_DRIVER_CACHE_KEY =
   `claw-kit:codex-driver:v${CODEX_DRIVER_VERSION}:s${CODEX_HOST_ACTION_SCHEMA_VERSION}`;
@@ -30,7 +30,15 @@ async function codexDriverRunner(
   const codexCommand = /(?:^|\s)--host(?:=|\s)/.test(command)
     ? command
     : `${command} --host codex`;
-  const raw = await tools.shell_command({ command: codexCommand, workdir, timeout_ms });
+  const commandTool = typeof tools.shell_command === "function"
+    ? tools.shell_command
+    : typeof tools.exec_command === "function"
+      ? tools.exec_command
+      : undefined;
+  if (!commandTool) {
+    throw new Error("Codex host has no supported command-execution tool");
+  }
+  const raw = await commandTool({ command: codexCommand, workdir, timeout_ms });
   const outputText = typeof raw === "string"
     ? raw
     : ((raw as Record<string, unknown>).output

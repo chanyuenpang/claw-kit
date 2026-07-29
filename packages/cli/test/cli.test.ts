@@ -730,9 +730,9 @@ test("cli codex driver returns an executable versioned source envelope", async (
   const root = createFixture("codex-driver-envelope");
   const envelope = runClaw(["codex", "driver"], root);
   assert.equal(envelope.command, "codex.driver");
-  assert.equal(envelope.driverVersion, 6);
+  assert.equal(envelope.driverVersion, 7);
   assert.equal(envelope.hostActionSchemaVersion, 1);
-  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v6:s1");
+  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v7:s1");
   assert.match(String(envelope.sha256), /^[a-f0-9]{64}$/);
 
   const runner = (0, eval)(`(${String(envelope.source)})`) as (
@@ -804,6 +804,22 @@ test("cli codex driver returns an executable versioned source envelope", async (
   assert.match(String((calls[0][1] as JsonRecord).command), /--host codex$/);
   assert.deepEqual(calls.map(([name]) => name), ["shell_command", "update_plan", "get_goal", "create_goal", "text"]);
   assert.equal("hostActions" in JSON.parse(String(calls.at(-1)?.[1])), false);
+
+  const execCalls: Array<[string, unknown]> = [];
+  await runner(
+    { command: "claw task done --id 1", workdir: root },
+    {
+      tools: {
+        exec_command: async (input: unknown) => {
+          execCalls.push(["exec_command", input]);
+          return JSON.stringify({ ok: true, command: "task.done" });
+        },
+      },
+      text: (input: unknown) => execCalls.push(["text", input]),
+    },
+  );
+  assert.deepEqual(execCalls.map(([name]) => name), ["exec_command", "text"]);
+  assert.match(String((execCalls[0][1] as JsonRecord).command), /--host codex$/);
 
   const taskDoneActual = await runner(
     { command: "claw task done --id 1", workdir: root },
