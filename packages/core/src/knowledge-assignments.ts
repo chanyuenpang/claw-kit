@@ -16,11 +16,7 @@ export type KnowledgeWriterAssignment = {
 export type KnowledgeDelegateDispatch = {
   schemaVersion: 1;
   policy: "background" | "subagent";
-  projectRoot: string;
-  taskName: string;
   finalizeId: string;
-  templatePath: string;
-  forkTurns: "none";
   model?: string;
   reasoningEffort?: NonNullable<KnowledgeWriterConfig["reasoningEffort"]>;
   prompt: string;
@@ -37,8 +33,6 @@ export function knowledgeDelegateTemplatePath(): string {
 
 export function buildKnowledgeDelegateDispatch(input: {
   policy: "background" | "subagent";
-  projectRoot: string;
-  taskName: string;
   finalizeId: string;
   writer?: KnowledgeWriterConfig | null;
 }): KnowledgeDelegateDispatch {
@@ -47,22 +41,15 @@ export function buildKnowledgeDelegateDispatch(input: {
   return {
     schemaVersion: 1,
     policy: input.policy,
-    projectRoot: input.projectRoot,
-    taskName: input.taskName,
     finalizeId: input.finalizeId,
-    templatePath,
-    forkTurns: "none",
     ...(input.writer?.model ? { model: input.writer.model } : {}),
     ...(input.writer?.reasoningEffort ? { reasoningEffort: input.writer.reasoningEffort } : {}),
     prompt: [
       "Execute this claw knowledge-finalization job directly and unattended.",
-      "Do not invoke a user-facing delegate skill, background finalizer, writer proxy, or collaboration subagent.",
-      `Use ${input.projectRoot} as the working directory for every claw command.`,
       `First run: claw plan create --template-file "${templatePath}" --title "${delegateTitle}"`,
       "Then follow the returned workflowGuidance until the internal session plan is complete.",
-      `Project root: ${input.projectRoot}`,
-      `Task: ${input.taskName}`,
       `Finalization id: ${input.finalizeId}`,
+      "Do not invoke a user-facing delegate skill, background finalizer, writer proxy, or collaboration subagent.",
     ].join("\n"),
   };
 }

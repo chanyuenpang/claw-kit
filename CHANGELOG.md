@@ -4,6 +4,21 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## Unreleased
 
+## [0.2.3] - 2026-07-31
+
+### Changed
+
+- Simplified the Codex knowledge delegate dispatch to the fields consumed by the host while keeping configured writer skills in the claim-generated assignment template.
+- Clarified that recovered delegate orchestration errors may still complete successfully when every knowledge assignment eventually succeeds.
+- Refined Cindy entry routing so Ghost tool discovery and trusted session context remain owned by the bundled workflow skill.
+
+### Fixed
+
+- Codex Stop hooks launch the global `claw` command through the Windows command shell while retaining the direct launcher on macOS and Linux.
+- Date-scoped task paths now record the real task name in knowledge finalization jobs and reports instead of the date directory.
+- Knowledge delegates derive the assignment subplan parent from the finalization id instead of using a mismatched fixed task name.
+- Release template synchronization now covers the internal delegate and built-in knowledge-writer templates.
+
 ## [0.2.2] - 2026-07-30
 
 ### Added

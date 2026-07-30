@@ -782,11 +782,7 @@ test("cli codex driver returns an executable versioned source envelope", async (
     knowledgeDispatch: {
       schemaVersion: 1,
       policy: "subagent",
-      projectRoot: "G:\\example",
-      taskName: "demo",
       finalizeId: "finalize-demo",
-      templatePath: "G:\\claw\\internal\\delegate-writer\\TEMPLATE.json",
-      forkTurns: "none",
       prompt: "Use the internal knowledge delegate.",
     },
     hostActions: [
@@ -2507,6 +2503,7 @@ test("cli context runs the daily maintenance pass once for project and session r
   fs.writeFileSync(planPath, JSON.stringify(plan), "utf-8");
   const tmpFile = path.join(root, ".claw", "runtime", "tmp", "scratch.txt");
   fs.writeFileSync(tmpFile, "temporary", "utf-8");
+  fs.utimesSync(tmpFile, oldDate, oldDate);
   const staleSession = path.join(sessionRuntime, "stale");
   fs.mkdirSync(staleSession, { recursive: true });
   fs.writeFileSync(path.join(staleSession, "session.json"), JSON.stringify({ version: 1, scope: "session", originCwd: root, createdAt: "2020-01-01T00:00:00.000Z", updatedAt: "2020-01-01T00:00:00.000Z" }), "utf-8");
@@ -2858,14 +2855,18 @@ test("cli plan done emits Codex subagent dispatch and rejects unsupported hosts"
   const done = runClaw(["plan", "done", "--retrospective", "Ready for knowledge finalization."], root, codexEnv);
   const dispatch = done.knowledgeDispatch as JsonRecord;
   assert.equal(dispatch.policy, "subagent");
-  assert.equal("skill" in dispatch, false);
-  assert.match(String(dispatch.templatePath), /resources[\\/]delegate-writer[\\/]TEMPLATE\.json$/);
-  assert.equal(dispatch.projectRoot, root);
-  assert.equal(dispatch.taskName, "dispatch-task");
+  assert.deepEqual(Object.keys(dispatch).sort(), [
+    "finalizeId",
+    "policy",
+    "prompt",
+    "reasoningEffort",
+    "schemaVersion",
+  ]);
   assert.match(String(dispatch.finalizeId), /^[a-f0-9]{64}$/);
-  assert.equal(dispatch.forkTurns, "none");
   assert.equal(dispatch.reasoningEffort, "medium");
   assert.match(String(dispatch.prompt), /claw knowledge-finalization job/i);
+  assert.match(String(dispatch.prompt), /resources[\\/]delegate-writer[\\/]TEMPLATE\.json/);
+  assert.doesNotMatch(String(dispatch.prompt), /Project root:|Task:|working directory/i);
 
   const unsupportedRoot = createFixture("plan-done-subagent-unsupported");
   const opencodeEnv = {
@@ -3441,6 +3442,40 @@ test("cli hook emits SessionStart additionalContext inside .claw projects", () =
   assert.match(additionalContext, /You can use goal mode in this thread when required by the claw workflow; don't ask me again/i);
   assert.match(additionalContext, /Load claw-kit:using-claw-kit as the main workflow skill for this session\./i);
   assert.match(additionalContext, /When useful, use `claw search` to narrow the document search scope.*default search/i);
+});
+
+test("Cindy auto-claw reuses Codex project and recovery wording without Goal Mode", () => {
+  const root = createFixture("hook-cindy-session-start");
+  runClaw(["init", "--name", "Cindy Hook Project"], root);
+  const sessionId = "thread-cindy-session-start";
+  const env = { CODEX_THREAD_ID: sessionId, CLAW_HOST: "cindy" };
+
+  const defaultResult = runClawHook("auto-claw", root, {
+    session_id: sessionId,
+    cwd: root,
+    hook_event_name: "SessionStart",
+  }, env);
+  assert.equal(defaultResult.status, 0);
+  const defaultOutput = (JSON.parse(defaultResult.stdout) as JsonRecord).hookSpecificOutput as JsonRecord;
+  const defaultContext = String(defaultOutput.additionalContext);
+  assert.match(defaultContext, /This session started inside a \.claw project: Cindy Hook Project \(cindy-hook-project\)\./);
+  assert.match(defaultContext, /\.claw directory:/);
+  assert.doesNotMatch(defaultContext, /goal mode/i);
+  assert.doesNotMatch(defaultContext, /Cindy workspace|Ghost tools/i);
+
+  runClaw(["plan", "create", "--title", "recover-cindy", "--goal", "Recover Cindy workflow"], root, env);
+  const recoveredResult = runClawHook("auto-claw", root, {
+    session_id: sessionId,
+    cwd: root,
+    hook_event_name: "SessionStart",
+  }, env);
+  assert.equal(recoveredResult.status, 0);
+  const recoveredOutput = (JSON.parse(recoveredResult.stdout) as JsonRecord).hookSpecificOutput as JsonRecord;
+  const recoveredContext = String(recoveredOutput.additionalContext);
+  assert.match(recoveredContext, /Claw workflow snapshot is recovered\./);
+  assert.match(recoveredContext, /Treat returned claw workflowGuidance as the only next-step contract\./);
+  assert.match(recoveredContext, /task: recover-cindy/);
+  assert.doesNotMatch(recoveredContext, /goal mode/i);
 });
 
 test("Codex SessionStart asks for user consent before repairing a missing SDK runtime", () => {

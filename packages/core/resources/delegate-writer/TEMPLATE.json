@@ -1,6 +1,6 @@
 {
   "id": "internal-knowledge-delegate",
-  "version": "0.2.1",
+  "version": "0.2.3",
   "scope": "session",
   "title": "internal knowledge delegate",
   "status": "process.active",
@@ -11,7 +11,7 @@
     "summary": "Wait for Stop capture, claim the immutable job, execute its generated assignment subplan sequentially, and persist one terminal result.",
     "openQuestions": [],
     "acceptanceCriteria": [
-      "The job is located by the supplied project root and finalization id.",
+      "The job is located from the current project and supplied finalization id.",
       "Only a successful claim can execute assignments.",
       "Every assignment runs sequentially in the generated session-scoped subplan.",
       "A successful claim always reaches exactly one terminal knowledge done call."
@@ -21,7 +21,7 @@
     {
       "id": 1,
       "title": "Wait for Stop capture",
-      "detail": "Run `claw knowledge wait --project-root <project-root> --finalize-id <finalize-id>` using the exact values supplied by dispatch. Allow at least 310 seconds for this command because it may wait up to 300 seconds for the parent Stop hook. This wait is only for job readiness; do not create or inspect a binding. Retain the returned jobPath.",
+      "detail": "Run `claw knowledge wait --project-root . --finalize-id <finalize-id>` from the current project using the exact finalization id supplied by dispatch. Allow at least 310 seconds for this command because it may wait up to 300 seconds for the parent Stop hook. This wait is only for job readiness; do not create or inspect a binding. Retain the returned jobPath.",
       "status": "pending"
     },
     {
@@ -33,13 +33,13 @@
     {
       "id": 3,
       "title": "Execute the assignment subplan",
-      "detail": "Run `claw subplan create --parent \"internal knowledge delegate\" --task-id 3 --template-file <templatePath>`, then follow the returned workflowGuidance. Execute each assignment yourself in order. Do not invoke a background finalizer, another writer agent, or a collaboration subagent.",
+      "detail": "Run `claw subplan create --parent \"knowledge-finalizer-<first-12-finalize-id>\" --task-id 3 --template-file <templatePath>`, deriving the parent from the exact finalization id supplied by dispatch, then follow the returned workflowGuidance. Execute each assignment yourself in order. Do not invoke a background finalizer, another writer agent, or a collaboration subagent.",
       "status": "pending"
     },
     {
       "id": 4,
       "title": "Persist the terminal result",
-      "detail": "After claim, call `claw knowledge done --job <jobPath> --claim-token <claimToken>` exactly once. Use `--status succeeded --result <concise-result>` only when every assignment succeeded; otherwise use `--status failed --error <concise-error>`. Treat this as a finally-style obligation and then complete this delegate plan.",
+      "detail": "After claim, call `claw knowledge done --job <jobPath> --claim-token <claimToken>` exactly once. A recovered orchestration command error does not make the job fail: use `--status succeeded --result <concise-result>` when every assignment eventually succeeded. If an orchestration error remains unrecovered or any assignment fails, use `--status failed --error <concise-error>`. Treat this as a finally-style obligation and then complete this delegate plan.",
       "status": "pending"
     }
   ],

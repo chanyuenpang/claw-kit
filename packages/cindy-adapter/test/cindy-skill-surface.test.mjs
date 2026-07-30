@@ -21,14 +21,18 @@ test('Cindy plugin exposes the full claw-kit skill surface', async () => {
   }
 });
 
-test('Cindy entry prompt routes named skills through Ghost tools', async () => {
-  const source = await readFile(new URL('main.js', root), 'utf8');
-  assert.match(source, /using-claw-kit/);
-  assert.match(source, /list_tools/);
-  assert.match(source, /call_tool/);
-  assert.match(source, /named bundled skill directly/);
-  assert.match(source, /Do not search MCP resources/);
-  assert.match(source, /Do not .*claw shell commands/);
+test('Cindy entry prompt routes through the main skill and leaves Ghost mechanics to it', async () => {
+  const [source, skill] = await Promise.all([
+    readFile(new URL('main.js', root), 'utf8'),
+    readFile(new URL('skills/using-claw-kit/SKILL.md', root), 'utf8'),
+  ]);
+  assert.match(source, /Load claw-kit:using-claw-kit as the main workflow skill for this session/);
+  assert.match(source, /Follow the claw workflowGuidance return fields as the required next-step contract/);
+  assert.doesNotMatch(source, /First call the Ghost tool/);
+  assert.match(skill, /Use the Ghost tools in this exact order/);
+  assert.match(skill, /Never pass `list_tools` itself as `call_tool\.name`/);
+  assert.match(skill, /Host-forged `args\.session_context`/);
+  assert.match(skill, /Do not\s+add, reconstruct, or override this field/);
 });
 
 test('Goal continuation keeps structured events out of the visible prompt', async () => {

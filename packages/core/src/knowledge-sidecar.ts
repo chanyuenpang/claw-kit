@@ -719,7 +719,8 @@ function resolveProjectRelativeReportPath(project: ProjectContext, reportPath: s
 
 function taskNameFromPlanPath(planPath: string): string {
   const taskRelativePath = planPath.startsWith("tasks/") ? planPath.slice("tasks/".length) : "";
-  const taskName = taskRelativePath.split("/")[0];
+  const segments = taskRelativePath.split("/").filter(Boolean);
+  const taskName = segments.at(-2);
   if (!taskName) {
     throw new Error(`Invalid knowledge plan path: ${planPath}`);
   }

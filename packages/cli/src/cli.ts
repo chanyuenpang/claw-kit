@@ -871,8 +871,6 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
         && result.knowledgeFinalizeId
       )
         ? buildKnowledgeDispatch({
-            projectRoot: project.projectRoot,
-            taskName: result.taskName,
             finalizeId: result.knowledgeFinalizeId,
             writer: effectiveWriter,
           })
@@ -990,8 +988,6 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
         && result.knowledgeFinalizeId
       )
         ? buildKnowledgeDispatch({
-            projectRoot: project!.projectRoot,
-            taskName: result.taskName,
             finalizeId: result.knowledgeFinalizeId,
             writer: effectiveWriter,
           })
@@ -2045,8 +2041,6 @@ type KnowledgeWriterRunResult = {
 async function runKnowledgeDelegateForJob(running: KnowledgeFinalizationJob): Promise<KnowledgeWriterRunResult> {
   const dispatch = buildKnowledgeDelegateDispatch({
     policy: "background",
-    projectRoot: running.projectRoot,
-    taskName: running.taskName,
     finalizeId: running.finalizeId,
     writer: running.writer,
   });
@@ -2319,10 +2313,10 @@ function buildSessionStartAdditionalContext(
   sessionCwd: string,
   effectiveHost: ClawHost | undefined,
 ): string | null {
-  if (effectiveHost === "cindy") {
-    return buildCindySessionStartContext(context, sessionCwd);
-  }
   const versionSyncPrompt = buildVersionSyncPrompt(context);
+  if (effectiveHost === "cindy") {
+    return buildCindySessionStartContext(context, sessionCwd, versionSyncPrompt);
+  }
   const searchGuidance = buildContextSearchGuidance(context);
   const runtimeErrorPrompt = buildCodexRuntimeErrorPrompt(context);
   const activeWorkflow = context.activeWorkflow as JsonRecord | undefined;
@@ -2362,32 +2356,46 @@ function buildSessionStartAdditionalContext(
 
 /**
  * Cindy Agents use the Ghost Tool gateway, not shell commands or Host actions.
- * Keep startup recovery to the actionable plan snapshot only; the worker owns
- * session identity, host selection, and any future Goal projection.
+ * Match the Codex session-start wording and structure. Cindy's static entry
+ * prompt supplies the shared skill and guidance lines; this dynamic context
+ * supplies project identity or a recovered workflow snapshot. Goal Mode is
+ * intentionally omitted because Cindy does not expose that Host surface.
  */
-function buildCindySessionStartContext(context: Record<string, unknown>, sessionCwd: string): string | null {
+function buildCindySessionStartContext(
+  context: Record<string, unknown>,
+  sessionCwd: string,
+  versionSyncPrompt: { placement: "prefix" | "suffix"; lines: string[] } | null,
+): string | null {
   const activeWorkflow = asJsonRecord(context.activeWorkflow);
   if (activeWorkflow) {
-    const taskName = typeof activeWorkflow.taskName === "string" ? activeWorkflow.taskName.trim() : "current task";
-    const planStatus = typeof activeWorkflow.planStatus === "string" ? activeWorkflow.planStatus.trim() : "unknown";
-    const planSummary = typeof activeWorkflow.planSummary === "string" ? activeWorkflow.planSummary.trim() : "";
-    const lines = [
-      "claw-kit has recovered a Cindy workflow.",
-      `- task: ${taskName}`,
-      `- plan status: ${planStatus}`,
-      ...(planSummary ? [`- plan summary: ${planSummary}`] : []),
-    ];
-    return lines.join("\n");
+    return stripCindyGoalModeLines(buildRecoveredWorkflowAdditionalContext(activeWorkflow, versionSyncPrompt));
   }
 
   const project = asJsonRecord(context.project);
   if (!project) return null;
   const projectName = typeof project.projectName === "string" && project.projectName.trim()
     ? project.projectName.trim()
-    : path.basename(String(project.projectRoot ?? sessionCwd ?? "project"));
-  return [
-    `claw-kit is ready for the Cindy workspace: ${projectName}.`,
+    : typeof project.projectId === "string" && project.projectId.trim()
+      ? project.projectId.trim()
+      : path.basename(String(project.projectRoot ?? sessionCwd ?? "project"));
+  const projectRoot = typeof project.projectRoot === "string" ? project.projectRoot : sessionCwd;
+  const projectId = typeof project.projectId === "string" ? project.projectId : projectName;
+  const clawDir = typeof project.clawDir === "string" ? project.clawDir : path.join(projectRoot, ".claw");
+  const prompt = [
+    `This session started inside a .claw project: ${projectName} (${projectId}).`,
+    `.claw directory: ${clawDir}`,
   ].join("\n");
+  if (!versionSyncPrompt) return prompt;
+  return versionSyncPrompt.placement === "prefix"
+    ? `${versionSyncPrompt.lines.join("\n")}\n${prompt}`
+    : `${prompt}\n${versionSyncPrompt.lines.join("\n")}`;
+}
+
+function stripCindyGoalModeLines(prompt: string): string {
+  return prompt
+    .split("\n")
+    .filter((line) => !/goal mode/i.test(line))
+    .join("\n");
 }
 
 function buildCodexRuntimeErrorPrompt(context: Record<string, unknown>): string | null {
@@ -2702,8 +2710,6 @@ function stripBom(content: string): string {
 }
 
 function buildKnowledgeDispatch(input: {
-  projectRoot: string;
-  taskName: string;
   finalizeId: string;
   writer?: KnowledgeFinalizationJob["writer"];
 }): KnowledgeDelegateDispatch {

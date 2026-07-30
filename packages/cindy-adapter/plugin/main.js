@@ -25,11 +25,8 @@ const cardLastUpdatedAt = new Map();
 const sessionModels = new Map();
 
 const CINDY_CLAW_ENTRY_PROMPT_DEFAULT = [
-  'This session uses claw-kit through Cindy.',
-  'Enter the workflow through the `using-claw-kit` skill before taking any claw workflow action.',
-  'If the user explicitly names another claw-kit skill, load and follow that named bundled skill directly after entering the main route.',
-  'First call the Ghost tool `list_tools`; then call `call_tool` with the returned operation name and JSON arguments.',
-  'Do not search MCP resources, discover MCP server names, inspect `.claw` as a substitute for the tools, or invoke claw shell commands.',
+  'Load claw-kit:using-claw-kit as the main workflow skill for this session.',
+  'Follow the claw workflowGuidance return fields as the required next-step contract.',
 ].join('\n');
 
 const CINDY_CLAW_ENTRY_PROMPT_GPT = [

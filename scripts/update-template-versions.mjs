@@ -7,6 +7,7 @@ const templateRoots = [
   path.join(".agents", "skills"),
   path.join("shared", "skills"),
   path.join("packages", "codex-adapter", "skills"),
+  path.join("packages", "core", "resources"),
   path.join("packages", "opencode-adapter", "skills"),
 ];
 const defaultTemplateSource = path.join("packages", "core", "src", "templates", "plans", "default.ts");

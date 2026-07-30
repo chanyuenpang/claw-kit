@@ -117,10 +117,23 @@ recovery. It is never a turn-end status probe.
 
 ### Planning and execution
 
-- The first tool action is always the Ghost `list_tools` operation. Do not use
-  MCP resource discovery or search for a server name.
-- Use `list_tools` to discover the typed workflow operations and `call_tool`
-  to invoke them. Use operation names and JSON arguments, not shell strings.
+- Use the Ghost tools in this exact order:
+  1. Refresh the Ghost list and identify the `claw-kit` plugin. Do not search
+     MCP resources or discover server names.
+  2. Invoke its `list_tools` with no `category` to get the category overview.
+  3. Invoke that same `list_tools` again with the selected `category` to get
+     operation names and argument schemas.
+  4. Invoke `call_tool` with one of those operation names and its JSON
+     arguments. Never pass `list_tools` itself as `call_tool.name`.
+- `call_tool` receives Host-forged `args.session_context` automatically. It
+  identifies the current Cindy session and workspace (`session_id`, `workdir`,
+  `workdir_is_local`, and `workdir_is_read_only`) so the plugin can execute in
+  the right project without accepting agent-supplied identity or paths. Do not
+  add, reconstruct, or override this field.
+- If a catalog call succeeds but `call_tool` returns a generic Host error, do
+  not fall back to shell commands or fabricate session context. Surface the
+  recoverable failure; the Host must deliver the trusted context before a
+  workflow operation can run.
 - Follow the returned Cindy `guidance` object. Its `commandHints` are
   equivalent `call_tool` instructions: invoke the given operation name and
   JSON arguments, and fill any listed `requiredArgs` before calling.

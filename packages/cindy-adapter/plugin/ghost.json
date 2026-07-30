@@ -4,7 +4,7 @@
   "name": "claw-kit",
   "description": "Cindy workflow tools, lifecycle recovery, and Skills for claw-kit.",
   "whenToUse": "Use for Cindy sessions that need claw-kit plan, task, subplan, or workflow operations.",
-  "version": "0.2.2.21",
+  "version": "0.2.3.0",
   "kind": "chip",
   "entry": "main.js",
   "launch": "resident",
@@ -69,11 +69,6 @@
         "dir": "skills/researcher",
         "name": "researcher",
         "description": "Delegate code investigation, source inspection, symbol or dependency tracing, code architecture analysis, and current implementation behavior analysis to a focused researcher subagent. Reuse a related researcher already available in the same thread."
-      },
-      {
-        "dir": "skills/config",
-        "name": "config",
-        "description": "Use when a user wants to inspect, explain, or change claw-kit project configuration, including team-owned .claw/project.json and personal .claw/project-override.json preferences."
       }
     ]
   }

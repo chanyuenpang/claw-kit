@@ -9,6 +9,7 @@ import {
   buildKnowledgeDelegateDispatch,
   buildKnowledgeAssignmentTemplate,
   buildKnowledgeWriterAssignments,
+  knowledgeDelegateTemplatePath,
   buildMemoryIndex,
   createSubplan,
   ensureProjectProtocol,
@@ -140,7 +141,7 @@ test("knowledge sidecar derives adjacent report names and keeps one report owner
   const root = createEmptyFixture("knowledge-sidecar");
   initProject({ cwd: root, projectName: "Knowledge Sidecar" });
   const project = resolveProjectContext(root);
-  const taskDir = path.join(project.tasksDir, "demo-task");
+  const taskDir = path.join(project.tasksDir, "2026-07-30", "demo-task");
   fs.mkdirSync(taskDir, { recursive: true });
   const rootPlanPath = path.join(taskDir, "plan.json");
   const subplanPath = path.join(taskDir, "design.json");
@@ -272,19 +273,35 @@ test("knowledge wait is readiness-only while claim owns execution and prompt rou
     assert.match(builtinAssignments[0]!.prompt, /keep at most 6 complete evolution sections/i);
     const delegateDispatch = buildKnowledgeDelegateDispatch({
       policy: "subagent",
-      projectRoot: root,
-      taskName: "demo",
       finalizeId,
       writer: { model: "test-model", reasoningEffort: "high" },
     });
     assert.equal(delegateDispatch.policy, "subagent");
-    assert.equal(delegateDispatch.forkTurns, "none");
     assert.equal(delegateDispatch.model, "test-model");
     assert.equal(delegateDispatch.reasoningEffort, "high");
-    assert.match(delegateDispatch.templatePath, /resources[\\/]delegate-writer[\\/]TEMPLATE\.json$/);
-    assert.equal(fs.existsSync(delegateDispatch.templatePath), true);
+    assert.deepEqual(Object.keys(delegateDispatch).sort(), [
+      "finalizeId",
+      "model",
+      "policy",
+      "prompt",
+      "reasoningEffort",
+      "schemaVersion",
+    ]);
     assert.match(delegateDispatch.prompt, /claw plan create --template-file/);
+    assert.match(delegateDispatch.prompt, /resources[\\/]delegate-writer[\\/]TEMPLATE\.json/);
+    assert.doesNotMatch(delegateDispatch.prompt, /Project root:|Task:|working directory/i);
     assert.doesNotMatch(delegateDispatch.prompt, /claw-kit:delegate-writer/i);
+    const delegateTemplate = JSON.parse(
+      fs.readFileSync(knowledgeDelegateTemplatePath(), "utf-8"),
+    ) as { tasks: Array<{ id: number; detail?: string }> };
+    assert.match(
+      delegateTemplate.tasks.find((task) => task.id === 3)?.detail ?? "",
+      /--parent "knowledge-finalizer-<first-12-finalize-id>"/,
+    );
+    assert.match(
+      delegateTemplate.tasks.find((task) => task.id === 4)?.detail ?? "",
+      /recovered orchestration command error does not make the job fail/i,
+    );
     const builtinTemplate = buildKnowledgeAssignmentTemplate({
       assignments: builtinAssignments,
       finalizeId,
