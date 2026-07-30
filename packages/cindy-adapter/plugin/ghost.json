@@ -4,7 +4,7 @@
   "name": "claw-kit",
   "description": "Cindy workflow tools, lifecycle recovery, and Skills for claw-kit.",
   "whenToUse": "Use for Cindy sessions that need claw-kit plan, task, subplan, or workflow operations.",
-  "version": "0.2.2.20",
+  "version": "0.2.2.21",
   "kind": "chip",
   "entry": "main.js",
   "launch": "resident",
@@ -58,32 +58,22 @@
       {
         "dir": "skills/using-claw-kit",
         "name": "using-claw-kit",
-        "description": "Use first whenever the claw-kit Cindy plugin is enabled or its start prompt is present; route workflow actions through Cindy Ghost tools."
+        "description": "Use first whenever the claw-kit Cindy plugin is enabled or its start prompt is present; check your available tools and follow the matching execution route."
       },
       {
         "dir": "skills/planning",
         "name": "planning",
-        "description": "Use when a planning step needs to refine a user request into clear requirements, scope, completion criteria, dependencies, and executable tasks."
+        "description": "Use when a planning step needs to refine a user request into clear requirements, scope, completion criteria, dependencies, and executable tasks, especially when task boundaries or an evidence-dependent route still need judgment."
       },
       {
         "dir": "skills/researcher",
         "name": "researcher",
-        "description": "Delegate code investigation, source inspection, symbol or dependency tracing, code architecture analysis, and current implementation behavior analysis to a focused researcher subagent."
-      },
-      {
-        "dir": "skills/create-claw-skill",
-        "name": "create-claw-skill",
-        "description": "Convert a text skill or skill idea into a claw-template-backed skill in the same skill package."
-      },
-      {
-        "dir": "skills/update",
-        "name": "update",
-        "description": "Refresh the published claw CLI and Cindy plugin when a newer claw-kit version is detected."
+        "description": "Delegate code investigation, source inspection, symbol or dependency tracing, code architecture analysis, and current implementation behavior analysis to a focused researcher subagent. Reuse a related researcher already available in the same thread."
       },
       {
         "dir": "skills/config",
         "name": "config",
-        "description": "Inspect, explain, or change claw-kit project configuration."
+        "description": "Use when a user wants to inspect, explain, or change claw-kit project configuration, including team-owned .claw/project.json and personal .claw/project-override.json preferences."
       }
     ]
   }
