@@ -42,5 +42,6 @@ export function withoutInvocationHost(
 ): NodeJS.ProcessEnv {
   const env = { ...source };
   delete env.CLAW_HOST;
+  delete env.CLAW_SESSION_ID;
   return env;
 }

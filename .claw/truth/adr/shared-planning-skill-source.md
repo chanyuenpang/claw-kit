@@ -6,14 +6,14 @@ Accepted
 
 ## Context
 
-`claw-kit` treats `planning`, `config`, `create-claw-skill`, and `knowledge-writer` as shared skill packages rather than adapter-local authoring surfaces. `update` followed that model historically, but its current adapter-owned exception is decided in `host-specific-update-skill-ownership`.
+`claw-kit` treats `planning`, `config`, and `create-claw-skill` as shared skill packages rather than adapter-local authoring surfaces. `knowledge-writer` followed that model historically but is now a Core internal governance resource; `update` is an adapter-owned exception decided in `host-specific-update-skill-ownership`.
 At the same time, both Codex and OpenCode plugin payloads still need physical skill files inside their own adapter directories so local skill loading and exported bundles continue to work.
 
 Maintaining separate copies in adapter directories creates unnecessary drift, especially when only one copy is edited and the other is forgotten.
 
 The final `0.1.49` release line extended this shared-source rule from `planning` to the user-facing `config` skill and verified that generated Codex/OpenCode adapter payloads stay synchronized from `shared/skills`.
 
-`0.1.80` added the combined `knowledge-writer` package to that distribution contract. Its adjacent `TEMPLATE.json`, `non-claw-fallback.md`, and coverage metadata are part of the skill: the top-level `scope: "session"` is required so the finalizer can use the claw harness without starting another project knowledge-deposition cycle.
+`0.1.80` added the combined `knowledge-writer` package to that distribution contract. Its adjacent `TEMPLATE.json`, `non-claw-fallback.md`, and coverage metadata are part of the skill. At that point the top-level `scope: "session"` was also the primary recursion boundary for finalizer-driven harness use; the current executor-owned isolation is recorded below.
 
 The original synchronization implementation wrote those adapter-local copies into the checkout before bundling or installing. That made a normal local plugin refresh modify tracked source files, despite those files being generated artifacts. The `0.1.61` release therefore moved generation into temporary staging.
 
@@ -42,7 +42,8 @@ Use shared sources for host-neutral skills, including future shared workflow ski
 - canonical source: `shared/skills/planning/SKILL.md`
 - canonical source: `shared/skills/config/SKILL.md`
 - canonical source: `shared/skills/create-claw-skill/`
-- canonical source: `shared/skills/knowledge-writer/`
+
+Delegate orchestration and built-in knowledge governance are not shared skills. Their canonical resources are `packages/core/resources/delegate-writer/` and `packages/core/resources/knowledge-writer/`; adapter skill directories and user discovery surfaces must not contain them.
 
 `update` is not a shared source. Its canonical sources are `packages/codex-adapter/skills/update/` and `packages/opencode-adapter/skills/update/`; see `host-specific-update-skill-ownership`.
 
@@ -52,7 +53,7 @@ Codex Git marketplace 的发布源必须是已提交、自包含的 `packages/co
 - 远程安装以通过 committed HEAD gate 的 Git-backed repository marketplace 快照为正式发布物；GitHub Release 不上传插件 ZIP
 - marketplace 安装不得依赖 `npm install`、npm lifecycle、build 或同步脚本在目标机器上补全 payload
 - Git checkout / sparse checkout 必须同时包含 marketplace manifest 及其 `source.path` 指向的 `packages/codex-adapter`；只取 `.agents/plugins` 的 sparse checkout 不构成完整安装源
-- `packages/codex-adapter/skills/planning/`、`config/`、`update/`、`create-claw-skill/`、`knowledge-writer/` 必须在提交中包含完整目录及全部相邻资源；其中 `update/` 是 adapter-owned source，其余 listed shared skills 是 materialized payload
+- `packages/codex-adapter/skills/planning/`、`config/`、`update/`、`create-claw-skill/` 必须在提交中包含完整目录及全部相邻资源；其中 `update/` 是 adapter-owned source，其余 listed shared skills 是 materialized payload。writer orchestration 与 built-in governance 由 Core package 分发，不进入该插件 skill tree
 - `shared/skills` 仍是 shared packages 的规范维护源；维护者通过显式 `npm run sync:shared-skills` 更新派生副本，审查后连同源文件一起提交。该命令不得改写 adapter-owned `update/`
 - release gate 必须从 committed HEAD 读取并核对 marketplace `source.path`、plugin manifest 版本以及必需的 materialized skill/resource 路径；工作区里尚未提交的生成结果不能让 gate 通过
 - `scripts/publish-release.mjs` 通过 `assertSharedSkillsSynced(...)` 只读比较规范源与已物化副本；缺失、文件集合不完整或内容落后时必须失败
@@ -60,6 +61,11 @@ Codex Git marketplace 的发布源必须是已提交、自包含的 `packages/co
 
 <!-- state: history -->
 ## Evolution history
+
+<!-- dated: 2026-07-30 -->
+### Knowledge governance moved from shared skill to Core internal resources
+
+The earlier `knowledge-writer` package was synchronized into Codex/OpenCode skill discovery and used its own session-scoped template. The current design removes both public writer packages: a Core internal delegate template owns session scope, while a Core internal built-in governance contract is materialized by claim. External skills remain discoverable only when explicitly configured as assignments.
 
 <!-- dated: 2026-07-16 -->
 ### 0.1.69 active identity/source contract superseded by official-only delivery
@@ -135,7 +141,7 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 - release gate 发现未同步时直接失败；bundle 导出不再通过临时生成制造假阳性。
 - OpenCode 仍可把 temporary staging 作为自身分发边界，而不会弱化 Codex marketplace 的自包含要求。
 - A shared skill directory is an atomic distribution unit: the generated plugin must retain every required resource beside `SKILL.md`, not only the entry instruction file.
-- Session-scoped workflow metadata is part of the distributed skill contract: stripping or rewriting `knowledge-writer/TEMPLATE.json` would reintroduce project finalization recursion or make projectless entry fail.
+- Session-scoped workflow metadata remains part of template-backed skill packages generally. Knowledge finalization is the explicit exception: its session template is a Core internal resource, not a shared or adapter skill contract; lifecycle ownership remains in `hook-owned-two-phase-knowledge-finalization.md`.
 - Host/runtime-specific workflow rules remain separated from generic planning and config guidance.
 - A single `Quality bar` makes the plan's goal, decision logic, decomposition rationale, sequencing, scope, risks, observable completion, and handoff criteria reviewable in one place; the rejected alternative is an opening `A good plan should answer` checklist that repeats the same contract and lets the two sections drift.
 - Planning quality is reviewed against checkpoint value and evidence sufficiency, so coherent supporting edits and checks stay together unless they create an independently useful boundary; task count is allowed to vary with the work.
@@ -158,7 +164,8 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 - `shared/skills/planning/SKILL.md`
 - `shared/skills/config/SKILL.md`
 - `shared/skills/create-claw-skill/`
-- `shared/skills/knowledge-writer/`
+- `packages/core/resources/delegate-writer/`
+- `packages/core/resources/knowledge-writer/`
 - `.agents/plugins/marketplace.json`
 - `scripts/sync-shared-skills.mjs`
 - `scripts/sync-planning-skill.mjs`

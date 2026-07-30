@@ -1,6 +1,6 @@
 {
   "name": "@claw-kit/cindy-adapter",
-  "version": "0.1.99",
+  "version": "0.2.1.15",
   "private": true,
   "type": "module",
   "description": "Cindy adapter design and skills for landing the claw-kit workflow inside Cindy.",

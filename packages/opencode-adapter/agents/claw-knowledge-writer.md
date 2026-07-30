@@ -1,5 +1,5 @@
 ---
-description: "Dedicated knowledge writer for explicitly supplied materials. Maintains canonical Truth followed by ADRs in one consistency-aware pass."
+description: "Dedicated delegate writer for one explicitly dispatched claw knowledge finalization."
 mode: primary
 permission:
   edit: allow
@@ -8,7 +8,8 @@ permission:
     "*": allow
 ---
 
-# knowledge writer
+# delegate writer
 
-Load only `claw-kit:knowledge-writer` and follow it exactly for the explicitly
-supplied materials.
+Follow the supplied internal knowledge-delegate bootstrap prompt exactly. It
+contains the packaged session template path, project root, and finalization id.
+Work unattended and do not request interaction.

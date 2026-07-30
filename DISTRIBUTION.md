@@ -37,13 +37,26 @@ GitHub Release ZIP assets are not part of the supported Codex installation path.
 
 ## Release Modes
 
-Default mode is `full-publish` unless a narrower mode is explicitly requested.
+There are three independent release modes. Choose based on what changed:
 
-- `full-publish`: verify -> publish core -> publish cli -> create the GitHub release -> verify repository marketplace install
-- `prepare-only`: verify and dry-run package artifacts only
-- `publish-only`: publish already-prepared package versions
+### CLI release
 
-If the user does not explicitly narrow the mode, run `full-publish`.
+Triggered when core or CLI files changed. Publishes @veewo/claw-core then @veewo/claw to npm, creates a GitHub Release with tag <version>. Resets all adapter 4th segments to .0.
+
+### Codex plugin release
+
+Triggered when codex-adapter changed. Updates the committed marketplace snapshot, tags codex-<version>, creates a GitHub Release. No npm publish (adapter is private).
+
+### Other adapter release
+
+Triggered when cindy-adapter, openclaw-adapter, or opencode-adapter changed. Tags e.g. cindy-<version>, creates a GitHub Release. No npm publish.
+
+### Narrower modes
+
+- prepare-only: verify and dry-run package artifacts only
+- publish-only: publish already-prepared package versions
+
+If the user does not explicitly narrow the mode and the diff spans multiple scopes, prefer the highest-impact release: CLI > Codex > adapter-only.
 
 ## Template-driven maintainer release
 
@@ -69,56 +82,105 @@ This repository uses direct maintainer publishing by default:
 
 ## Versioning Rules
 
-Keep package versions aligned unless there is a strong reason to split them.
+### Version scheme
 
-Update these files together for a release:
+| Component | Format | Example | Notes |
+|-----------|--------|---------|-------|
+| CLI + Core | `MAJOR.MINOR.PATCH` | `0.2.1` | Root `package.json`, `@veewo/claw-core`, `@veewo/claw` share this. |
+| Codex adapter | `CLI_VERSION.PATCH` | `0.2.1.0` | 4th segment for independent iteration. |
+| Cindy adapter | `CLI_VERSION.PATCH` | `0.2.1.0` | Same 4-segment rule. |
+| OpenClaw adapter | `CLI_VERSION.PATCH` | `0.2.1.0` | Same 4-segment rule. |
+| OpenCode adapter | `CLI_VERSION.PATCH` | `0.2.1.0` | Same 4-segment rule. |
+| Codex plugin manifest | `ADAPTER_VERSION` | `0.2.1.0` | Mirrors codex-adapter package version. No timestamp. |
+| Templates | `CLI_VERSION` | `0.2.1` | TEMPLATE.json `version` follows CLI version. |
 
-1. `package.json`
+### Version file checklist
+
+#### CLI release (always includes core)
+
+Update these to the new `MAJOR.MINOR.PATCH` version:
+
+1. Root `package.json` (version)
 2. `package-lock.json`
-3. `packages/core/package.json`
-4. `packages/cli/package.json`
-5. `packages/codex-adapter/package.json`
-6. `packages/openclaw-adapter/package.json`
-7. `packages/codex-adapter/.codex-plugin/plugin.json`
+3. `packages/core/package.json` (version)
+4. `packages/cli/package.json` (version; dependency `@veewo/claw-core` pinned exactly)
+5. Reset all adapter versions to `<CLI_VERSION>.0`:
+   - `packages/codex-adapter/package.json`
+   - `packages/cindy-adapter/package.json`
+   - `packages/openclaw-adapter/package.json`
+   - `packages/opencode-adapter/package.json`
+6. `packages/codex-adapter/.codex-plugin/plugin.json` = `<CLI_VERSION>.0`
+7. `packages/openclaw-adapter/package.json` dependency `@veewo/claw-core` pinned exactly
 8. `packages/core/src/templates/plans/default.ts`
-9. every release-tracked `TEMPLATE.json` under `.agents/skills`, `shared/skills`, `packages/codex-adapter/skills`, and `packages/opencode-adapter/skills`
+9. Every release-tracked `TEMPLATE.json` under `.agents/skills`, `shared/skills`, `packages/codex-adapter/skills`, and `packages/opencode-adapter/skills`
 10. `CHANGELOG.md`
 
-Version rules:
+#### Codex-only plugin release
 
-- Keep `packages/core` and `packages/cli` on the same release version unless there is a deliberate split.
-- Keep adapter package versions aligned with the release unless there is a deliberate reason not to.
-- Use `semver+codex.<timestamp>` for `packages/codex-adapter/.codex-plugin/plugin.json`.
-- After changing root `package.json.version`, run `npm run sync:template-versions`. This updates every project/plugin template plus the built-in default template to the CLI release version.
-- Run `npm run sync:shared-skills` after template synchronization, then require `npm run check:template-versions` to pass. Do not bump only one adapter copy.
-- Run `npm install` after editing version files so `package-lock.json` stays consistent.
+Update only:
 
-Published package mapping:
+1. `packages/codex-adapter/package.json` (bump 4th segment)
+2. `packages/codex-adapter/.codex-plugin/plugin.json` (match adapter version)
+
+Do not touch CLI/core or other adapters.
+
+#### Other adapter-only release
+
+Update only:
+
+1. `packages/<adapter>/package.json` (bump 4th segment)
+
+### Post-edit steps
+
+After changing version files:
+
+- Run `npm install --package-lock-only --ignore-scripts` to keep `package-lock.json` consistent.
+- Run `npm run sync:template-versions`. This updates every project/plugin template plus the built-in default template.
+- Run `npm run sync:shared-skills` after template synchronization, then require `npm run check:template-versions` to pass.
+- Do not bump only one adapter copy of shared skills.
+
+### Publishing rules
 
 - `packages/core` -> `@veewo/claw-core`
 - `packages/cli` -> `@veewo/claw`
-- local executable name -> `claw`
+- CLI pins `@veewo/claw-core` exactly (no range).
+- Core is always published before CLI.
+- Adapter packages are private and not published to npm.
 
 ## Release Checklist
 
-1. Confirm the target version.
+### For any release mode
+
+1. Confirm the target release mode: CLI, Codex plugin, or adapter-only.
 2. Classify all local changes; commit useful release content, remove disposable output, and ignore intentional local-only files. Do not stash changes to bypass this step.
 3. Ensure the checked-out branch is `main` and push the release commit directly to `origin/main`.
-4. Align package versions and changelog, then run `npm run sync:template-versions`.
+4. Align package versions according to the version scheme, then run `npm run sync:template-versions`.
 5. Run `npm run sync:shared-skills`, followed by `npm run check:template-versions`; review the generated adapter files and include them in the release commit.
 6. Run `npm install`.
 7. Run verification commands.
 8. Dry-run package artifacts.
 9. Create the release commit and push it directly to GitHub.
-10. Run `npm run verify:release`; it validates the clean tree, package and template version alignment, exact `main`/`origin/main` parity, marketplace metadata, materialized Codex skills, exported payload, and isolated `claw template validate` execution from a marketplace-style cache.
+10. Run `npm run verify:release`; it validates the clean tree, version alignment, exact `main`/`origin/main` parity, marketplace metadata, materialized Codex skills, exported payload, and isolated `claw template validate` execution from a marketplace-style cache.
+
+### CLI release only
+
 11. Confirm npm auth.
-12. Publish `@veewo/claw-core` first.
+12. Publish `@veewo/claw-core` first (`npm run publish:release` handles this).
 13. Publish `@veewo/claw` second.
-14. Verify the worktree is still clean, verify published versions, and create the GitHub release without a plugin ZIP asset. The tagged Git marketplace snapshot is the Codex release artifact.
+14. Verify the worktree is still clean, verify published versions, and create the GitHub release with tag `v<version>` without a plugin ZIP asset.
 15. Refresh the locally installed CLI and maintainer development cache.
 16. Upgrade the Codex marketplace snapshot and verify installation from a clean machine.
 
-Execution policy by mode:
+### Codex plugin release only
+
+11. Create and push the tag `vcodex-<version>`. Create the GitHub Release for the committed marketplace snapshot.
+12. Upgrade the Codex marketplace snapshot and verify installation from a clean machine.
+
+### Other adapter release only
+
+11. Create and push the tag e.g. `vcindy-<version>`. Create the GitHub Release.
+12. Verify the tag and the committed adapter source.
+
 
 - `full-publish`: complete all 16 steps.
 - `prepare-only`: complete through step 6 only.

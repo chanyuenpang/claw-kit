@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { readJsonFile, withFileLock, writeJsonFile } from "./io.js";
@@ -11,12 +11,18 @@ import type { KnowledgeWriterConfig, ProjectContext } from "./types.js";
 export type KnowledgeReportTarget = {
   planPath: string;
   reportPath: string;
+  finalizeId?: string;
+  writer?: KnowledgeWriterConfig;
   endedAt?: string;
   /** Legacy field retained for registries written before every end.* boundary was eligible. */
   completedAt?: string;
 };
 
-export type KnowledgeFinalizationHost = "codex" | "opencode";
+/**
+ * The host which owns execution of a queued writer job.  Core only persists
+ * the lifecycle; each adapter supplies its own runner.
+ */
+export type KnowledgeFinalizationHost = "codex" | "opencode" | "cindy";
 
 export type KnowledgeSessionRegistry = {
   schemaVersion: 1;
@@ -48,6 +54,9 @@ export type KnowledgeFinalizationJob = {
   queuedAt: string;
   startedAt?: string;
   finishedAt?: string;
+  /** Opaque ownership token issued by the exclusive claim operation. */
+  claimToken?: string;
+  claimedAt?: string;
   truthThreadId?: string;
   adrThreadId?: string;
   truthResponse?: string;
@@ -103,6 +112,10 @@ export type KnowledgeSidecarResult = {
   error?: string;
 };
 
+export type KnowledgePlanEndResult = KnowledgeSidecarResult & {
+  finalizeId?: string;
+};
+
 export type KnowledgeStopResult = KnowledgeSidecarResult & {
   captured?: boolean;
   duplicate?: boolean;
@@ -124,6 +137,60 @@ export function knowledgeFinalizationJobPath(project: ProjectContext, taskName: 
   const task = listTaskDirectories(project).find((candidate) => candidate.taskName === taskName);
   if (!task) throw new Error(`Knowledge finalization task does not exist: ${taskName}`);
   return path.join(task.taskDir, ".runtime", "knowledge-finalization", `${finalizeId}.json`);
+}
+
+export function findKnowledgeFinalizationJobPath(
+  project: ProjectContext,
+  finalizeId: string,
+): string | null {
+  const normalizedId = finalizeId.trim();
+  if (!/^[a-f0-9]{64}$/i.test(normalizedId)) {
+    throw new Error("Knowledge finalization id must be a 64-character hexadecimal value.");
+  }
+  for (const task of listTaskDirectories(project)) {
+    const candidate = path.join(task.taskDir, ".runtime", "knowledge-finalization", `${normalizedId}.json`);
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+export function waitForKnowledgeFinalizationJobReady(input: {
+  project: ProjectContext;
+  finalizeId: string;
+  timeoutMs?: number;
+  pollIntervalMs?: number;
+}): { jobPath: string; job: KnowledgeFinalizationJob } {
+  const timeoutMs = input.timeoutMs ?? 300_000;
+  const pollIntervalMs = input.pollIntervalMs ?? 100;
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 0) {
+    throw new Error("Knowledge finalization wait timeout must be a non-negative integer.");
+  }
+  const deadline = Date.now() + timeoutMs;
+  const signal = new Int32Array(new SharedArrayBuffer(4));
+  do {
+    const jobPath = findKnowledgeFinalizationJobPath(input.project, input.finalizeId);
+    if (jobPath) {
+      return { jobPath, job: readKnowledgeFinalizationJob(jobPath) };
+    }
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      break;
+    }
+    Atomics.wait(signal, 0, 0, Math.min(pollIntervalMs, remaining));
+  } while (Date.now() <= deadline);
+  throw new Error(`Timed out waiting for knowledge finalization ${input.finalizeId}.`);
+}
+
+export function deriveKnowledgeFinalizeId(input: {
+  sessionId: string;
+  planPath: string;
+  endedAt: string;
+}): string {
+  return createHash("sha256")
+    .update(`${input.sessionId}\n${input.planPath}\n${input.endedAt}`)
+    .digest("hex");
 }
 
 export function tryRegisterKnowledgePlan(input: {
@@ -156,7 +223,8 @@ export function tryEndKnowledgePlan(input: {
   endedPlanPath: string;
   resumedPlanPath?: string;
   endedAt: string;
-}): KnowledgeSidecarResult {
+  writer?: KnowledgeWriterConfig;
+}): KnowledgePlanEndResult {
   const sessionId = input.sessionId?.trim();
   if (!sessionId) {
     return { ok: true };
@@ -173,6 +241,11 @@ export function tryEndKnowledgePlan(input: {
     const resumedReportPath = input.resumedPlanPath
       ? toProjectRelativeReportPath(input.project, deriveKnowledgeReportPath(input.resumedPlanPath))
       : undefined;
+    const finalizeId = deriveKnowledgeFinalizeId({
+      sessionId,
+      planPath: endedPlanPath,
+      endedAt: input.endedAt,
+    });
     updateKnowledgeRegistry(input.project, sessionId, (registry) => ({
       ...registry,
       ...(resumedPlanPath
@@ -181,11 +254,13 @@ export function tryEndKnowledgePlan(input: {
       pendingTurnOwner: {
         planPath: endedPlanPath,
         reportPath,
+        finalizeId,
+        ...(input.writer ? { writer: input.writer } : {}),
         endedAt: input.endedAt,
       },
       updatedAt: new Date().toISOString(),
     }));
-    return { ok: true };
+    return { ok: true, finalizeId };
   } catch (error) {
     return { ok: false, error: errorMessage(error) };
   }
@@ -262,9 +337,11 @@ export function tryCaptureKnowledgeStop(input: {
       let jobPath: string | undefined;
       let finalizeId: string | undefined;
       if (registry.pendingTurnOwner) {
-        finalizeId = createHash("sha256")
-          .update(`${sessionId}\n${registry.pendingTurnOwner.planPath}\n${registry.pendingTurnOwner.endedAt ?? registry.pendingTurnOwner.completedAt ?? ""}`)
-          .digest("hex");
+        finalizeId = registry.pendingTurnOwner.finalizeId ?? deriveKnowledgeFinalizeId({
+          sessionId,
+          planPath: registry.pendingTurnOwner.planPath,
+          endedAt: registry.pendingTurnOwner.endedAt ?? registry.pendingTurnOwner.completedAt ?? "",
+        });
         const planPath = resolveProjectRelativePlanPath(input.project, registry.pendingTurnOwner.planPath);
         jobPath = knowledgeFinalizationJobPathForPlan(input.project, planPath, finalizeId);
         if (!fs.existsSync(jobPath)) {
@@ -275,11 +352,26 @@ export function tryCaptureKnowledgeStop(input: {
             projectRoot: input.project.projectRoot,
             taskName: taskNameFromPlanPath(registry.pendingTurnOwner.planPath),
             writer: {
-              externalSkills: input.project.projectConfig?.knowledgeWriter?.externalSkills ?? [],
-              model: input.project.projectConfig?.knowledgeWriter?.model ?? null,
-              reasoningEffort: input.project.projectConfig?.knowledgeWriter?.reasoningEffort ?? "medium",
+              executionPolicy:
+                registry.pendingTurnOwner.writer?.executionPolicy
+                ?? input.project.projectConfig?.knowledgeWriter?.executionPolicy
+                ?? "background",
+              externalSkills:
+                registry.pendingTurnOwner.writer?.externalSkills
+                ?? input.project.projectConfig?.knowledgeWriter?.externalSkills
+                ?? [],
+              model:
+                registry.pendingTurnOwner.writer?.model
+                ?? input.project.projectConfig?.knowledgeWriter?.model
+                ?? null,
+              reasoningEffort:
+                registry.pendingTurnOwner.writer?.reasoningEffort
+                ?? input.project.projectConfig?.knowledgeWriter?.reasoningEffort
+                ?? "medium",
               datedSectionsToKeep:
-                input.project.projectConfig?.knowledgeWriter?.datedSectionsToKeep ?? 6,
+                registry.pendingTurnOwner.writer?.datedSectionsToKeep
+                ?? input.project.projectConfig?.knowledgeWriter?.datedSectionsToKeep
+                ?? 6,
             },
             host: input.host ?? null,
             planPath,
@@ -319,20 +411,67 @@ export function readKnowledgeFinalizationJob(jobPath: string): KnowledgeFinaliza
 
 export function claimKnowledgeFinalizationJob(jobPath: string): KnowledgeFinalizationJob | null {
   return withFileLock(jobPath, () => {
-    const job = readJsonFile<KnowledgeFinalizationJob>(jobPath);
-    if (job.status === "succeeded" || job.status === "running" || job.attempts >= 3) {
+    const current = readJsonFile<KnowledgeFinalizationJob>(jobPath);
+    if (current.status === "succeeded" || current.status === "running" || current.attempts >= 3) {
       return null;
     }
+    const now = new Date().toISOString();
     const running: KnowledgeFinalizationJob = {
-      ...job,
+      ...current,
       status: "running",
-      attempts: job.attempts + 1,
-      startedAt: new Date().toISOString(),
+      attempts: current.attempts + 1,
+      startedAt: now,
+      claimedAt: now,
+      claimToken: randomUUID(),
       finishedAt: undefined,
       error: undefined,
     };
     writeJsonFile(jobPath, running);
     return running;
+  });
+}
+
+export function doneKnowledgeFinalizationJob(input: {
+  jobPath: string;
+  claimToken: string;
+  status: "succeeded" | "failed";
+  result?: string;
+  error?: string;
+  finishedAt?: string;
+  patch?: Partial<KnowledgeFinalizationJob>;
+}): { job: KnowledgeFinalizationJob; alreadyDone: boolean } {
+  return withFileLock(input.jobPath, () => {
+    const current = readJsonFile<KnowledgeFinalizationJob>(input.jobPath);
+    if (
+      !current.claimToken
+      || current.claimToken !== input.claimToken
+    ) {
+      throw new Error("Knowledge finalization done does not match the active claim.");
+    }
+    if (current.status === "succeeded" || current.status === "failed") {
+      const sameResult = input.status === "succeeded"
+        ? current.status === "succeeded" && current.finalResponse === (input.result ?? "")
+        : current.status === "failed" && current.error?.message === (input.error ?? "");
+      if (!sameResult) {
+        throw new Error("Knowledge finalization job already has a different terminal result.");
+      }
+      return { job: current, alreadyDone: true };
+    }
+    if (current.status !== "running") {
+      throw new Error("Knowledge finalization job must be claimed before done.");
+    }
+    const finishedAt = input.finishedAt ?? new Date().toISOString();
+    const terminal: KnowledgeFinalizationJob = {
+      ...current,
+      ...(input.patch ?? {}),
+      status: input.status,
+      finishedAt,
+      ...(input.status === "succeeded"
+        ? { finalResponse: input.result ?? "", error: undefined }
+        : { error: { message: input.error ?? "Knowledge finalization failed." } }),
+    };
+    writeJsonFile(input.jobPath, terminal);
+    return { job: terminal, alreadyDone: false };
   });
 }
 

@@ -2,7 +2,9 @@
 
 ## Status
 
-Superseded for current knowledge deposition by `.claw/truth/adr/hook-owned-two-phase-knowledge-finalization.md`. 下文的 `truth-writer` / `adr-writer`、value gate、required dispatch 与 specialist reuse 只保留为历史合同；当前 owner 是一次 consistency-aware `knowledge-writer` pass。
+Historical
+
+Superseded for current knowledge deposition by `.claw/truth/adr/hook-owned-two-phase-knowledge-finalization.md`. 下文的 `truth-writer` / `adr-writer`、value gate、required dispatch 与 specialist reuse 只保留为历史合同；当前行为由 `codex-knowledge-capture-boundary.md` 拥有。
 
 - 历史 Codex adapter 的 canonical deposition specialists 是 `truth-writer` 与 `adr-writer`；主代理曾把可复用知识或 completed `plan.json` 以紧凑 bundle 交给它们。
 - `researcher` 的当前派发、同线程复用、阻塞等待与非递归调查合同由 `.claw/truth/features/codex-subagent-reuse.md` 单独拥有；本文不再重复定义 agent type、model 或复用强度。

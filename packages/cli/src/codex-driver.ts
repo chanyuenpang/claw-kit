@@ -153,6 +153,10 @@ async function codexDriverRunner(
     visibleKeys.add("planPath");
     visibleKeys.add("nextsteps");
     visibleKeys.add("achievement");
+    visibleKeys.add("knowledgeDispatch");
+  }
+  if (result.knowledgeDispatch) {
+    visibleKeys.add("knowledgeDispatch");
   }
   if (result.command === "task.done") {
     visibleKeys.add("ok");

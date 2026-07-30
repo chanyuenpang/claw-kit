@@ -2,10 +2,11 @@
 
 ## Status
 
-Partially superseded. 本文关于 `truth-writer` / `adr-writer` 的复用与 main-thread dispatch 仅是历史证据；当前沉淀由 hook-owned combined `knowledge-writer` pass 管理。Codex `researcher` 的代码调查派发与复用规则仍属本文范围。
+Current
+
+本文当前只拥有 Codex `researcher` 的代码调查派发与复用规则；旧 `truth-writer` / `adr-writer` 复用仅是历史证据。knowledge finalization 的 policy-specific fresh executor 由 `codex-knowledge-capture-boundary.md` 拥有。
 
 - Codex adapter 只把代码调查交给 `researcher` subagent：代码库调查、源码/符号/依赖追踪、代码架构理解、当前实现行为追踪，以及 planning 或 implementation 前的代码证据收集。主 agent 不在自身上下文内联完成这类完整代码调查。
-- `truth-writer` 与 `adr-writer` 在 dispatch 后应保持打开，供同线程后续复用，而不是立刻关闭。
 - 普通项目 recall、canonical Truth/ADR lookup 与历史上下文查询由主 agent 直接运行 `claw search`；这些文档召回本身不触发或派发 `researcher`。
 - 代码调查 task 必须委派给 `researcher` specialist，以节省主 agent context。
 - `researcher` 被派发后，调查执行顺序先用 `claw search --query "<topic>"` 恢复与代码问题相关的项目上下文，再按项目配置使用 GitNexus 或其他代码索引，最后检查精确源码与关系锚点。这里的 `claw search` 是已派发代码调查的第一步，不把普通项目 recall 扩大为 researcher trigger。

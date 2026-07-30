@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import path from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import type { Plugin } from "@opencode-ai/plugin";
@@ -149,9 +149,9 @@ function invokeClawSessionStart(projectDir: string): string | null {
 function invokeClawAutoDoc(
   projectDir: string,
   payload: { cwd: string; session_id: string; turn_id: string; message: string },
-): void {
+): { jobPath?: string; finalizeId?: string } | null {
   try {
-    execSync("claw hook auto-doc --host opencode", {
+    const stdout = execSync("claw hook auto-doc --host opencode", {
       cwd: projectDir,
       encoding: "utf8",
       timeout: 30_000,
@@ -160,12 +160,45 @@ function invokeClawAutoDoc(
       env: {
         ...process.env,
         CLAW_HOST: "opencode",
+        CLAW_KNOWLEDGE_FINALIZER_DISABLE_LAUNCH: "1",
+        CLAW_KNOWLEDGE_CAPTURE_RESULT: "1",
         ...(existsSync(GUIDANCE_CONFIG_PATH) ? { CLAW_GUIDANCE_CONFIG: GUIDANCE_CONFIG_PATH } : {}),
       },
     });
+    const parsed = JSON.parse(stdout) as { jobPath?: unknown; finalizeId?: unknown };
+    return {
+      ...(typeof parsed.jobPath === "string" ? { jobPath: parsed.jobPath } : {}),
+      ...(typeof parsed.finalizeId === "string" ? { finalizeId: parsed.finalizeId } : {}),
+    };
   } catch {
     // Knowledge report capture is a fail-open sidecar and must never block session.idle.
+    return null;
   }
+}
+
+/**
+ * Keep finalization detached from session.idle. The CLI owns the canonical
+ * session-bound wait/claim/run/done lifecycle and selects the OpenCode runner
+ * from the job's persisted host.
+ */
+function dispatchOpenCodeKnowledgeWriter(projectDir: string, jobPath: string): void {
+  const command = process.platform === "win32" ? "claw.cmd" : "claw";
+  const child = spawn(command, ["internal-knowledge-finalize", "--job", jobPath], {
+    cwd: projectDir,
+    env: {
+      ...process.env,
+      CLAW_HOST: "opencode",
+      CLAW_KNOWLEDGE_FINALIZER: "1",
+      CLAW_KNOWLEDGE_FINALIZER_DISABLE_RETRY: "1",
+    },
+    windowsHide: true,
+    detached: process.platform !== "win32",
+    stdio: "ignore",
+  });
+  child.on("error", () => {
+    // The queued job remains available for a later adapter retry.
+  });
+  child.unref();
 }
 
 export const ClawKitPlugin: Plugin = async ({ directory }) => {
@@ -265,12 +298,15 @@ export const ClawKitPlugin: Plugin = async ({ directory }) => {
           const assistantMessageId = lastAssistantMessageBySession.get(sessionID);
           const message = assistantMessageId ? assistantTextByMessage.get(assistantMessageId) : undefined;
           if (assistantMessageId && message) {
-            invokeClawAutoDoc(projectDir, {
+            const captured = invokeClawAutoDoc(projectDir, {
               cwd: projectDir,
               session_id: sessionID,
               turn_id: assistantMessageId,
               message,
             });
+            if (captured?.jobPath && captured.finalizeId) {
+              dispatchOpenCodeKnowledgeWriter(projectDir, captured.jobPath);
+            }
             assistantTextByMessage.delete(assistantMessageId);
             lastAssistantMessageBySession.delete(sessionID);
           }

@@ -339,7 +339,9 @@ export async function buildPlanWorkflowGuidance(params: {
   const hasAppendedTasks = (appendedTaskIds?.length ?? 0) > 0;
   const hasCompletedTasks = (completedTaskIds?.length ?? 0) > 0;
   const goalModeEnabled = isGoalModeEnabled(projectConfig) && shouldUsePlanHostIntegration(plan);
-  const suppressGoalFields = params.host === "opencode";
+  // Cindy owns any eventual Goal projection in its Ghost Host. The CLI must
+  // not ask a Cindy Agent to operate another Host's Goal or progress tools.
+  const suppressGoalFields = params.host === "opencode" || params.host === "cindy";
   const startedGoalModeThisRound = goalModeEnabled && previousStatus === "process.active";
   const nextTask = nextUnfinishedTask(plan);
   const activeTask = currentActiveTask(plan);

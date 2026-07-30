@@ -2,7 +2,14 @@
 
 ## Status
 
-Accepted
+Superseded
+
+The current update contract is owned by
+`.claw/truth/adr/host-specific-update-skill-ownership.md` and the current
+release/direct-delivery contract by
+`.claw/truth/adr/release-0-1-18-publish-and-install-protocol.md`. The workflow
+below remains historical evidence only; it no longer authorizes stash-based
+delivery closeout or refreshing Codex from repository-local plugin payloads.
 
 ## Context
 

@@ -11,7 +11,7 @@ function readPluginFile(relativePath) {
   return fs.readFileSync(path.join(pluginRoot, relativePath), "utf-8");
 }
 
-test("fixed Codex hook events use the auto-claw and auto-doc command names", () => {
+test("Codex hooks recover with auto-claw and run the adapter-owned finalizer on Stop", () => {
   const config = JSON.parse(readPluginFile(path.join("hooks", "hooks.json")));
   const strategy = readPluginFile(path.join("references", "codex-hooks-strategy.md"));
   const sessionStart = config.hooks.SessionStart[0].hooks[0];
@@ -20,8 +20,8 @@ test("fixed Codex hook events use the auto-claw and auto-doc command names", () 
   assert.equal(sessionStart.command, "claw hook auto-claw --host codex");
   assert.equal(sessionStart.commandWindows, "claw hook auto-claw --host codex");
   assert.match(sessionStart.statusMessage, /^auto-claw:/);
-  assert.equal(stop.command, "claw hook auto-doc --host codex");
-  assert.equal(stop.commandWindows, "claw hook auto-doc --host codex");
+  assert.match(stop.command, /\$PLUGIN_ROOT\/scripts\/knowledge-finalizer\.mjs/);
+  assert.match(stop.commandWindows, /%PLUGIN_ROOT%\\scripts\\knowledge-finalizer\.mjs/);
   assert.match(stop.statusMessage, /^auto-doc:/);
   assert.match(strategy, /thread-scoped `SessionStart`/i);
   assert.match(strategy, /turn-scoped `Stop`/i);
@@ -39,16 +39,30 @@ test("Codex adapter owns the SDK and matching direct platform packages", () => {
   }
 });
 
-test("main-agent Codex surfaces contain no writer-delegation workflow", () => {
+test("Codex Stop finalizer only captures and launches the policy-aware CLI worker", () => {
+  const finalizer = readPluginFile(path.join("scripts", "knowledge-finalizer.mjs"));
+  assert.match(finalizer, /hook", "auto-doc"/);
+  assert.match(finalizer, /internal-knowledge-finalize/);
+  assert.doesNotMatch(finalizer, /"knowledge", "wait"/);
+  assert.doesNotMatch(finalizer, /"knowledge", "claim"/);
+  assert.doesNotMatch(finalizer, /"knowledge", "done"/);
+  assert.doesNotMatch(finalizer, /CLAW_SESSION_ID\s*=/);
+});
+
+test("main-agent Codex surfaces expose only the internal subagent dispatch contract", () => {
   const mainRouter = readPluginFile(path.join("skills", "using-claw-kit", "SKILL.md"));
   const planningSkill = readPluginFile(path.join("skills", "planning", "SKILL.md"));
   const workflowReference = readPluginFile(path.join("references", "workflow-guidance-consumption.md"));
   const pluginManifest = readPluginFile(path.join(".codex-plugin", "plugin.json"));
   const forbidden = /truth-writer|adr-writer|knowledge-writer|writer delegation|deposition/i;
 
-  for (const surface of [mainRouter, planningSkill, workflowReference, pluginManifest]) {
+  for (const surface of [planningSkill, workflowReference, pluginManifest]) {
     assert.doesNotMatch(surface, forbidden);
   }
+  assert.match(mainRouter, /knowledgeDispatch/);
+  assert.match(mainRouter, /spawn_agent/);
+  assert.match(mainRouter, /Do not wait for that agent/i);
+  assert.doesNotMatch(mainRouter, /claw-kit:delegate-writer/);
 });
 
 test("researcher is code-only, dispatches narrow subagents, and reuses related researchers", () => {
@@ -73,19 +87,22 @@ test("researcher is code-only, dispatches narrow subagents, and reuses related r
   assert.doesNotMatch(researcherSkill, /## Boundary/);
 });
 
-test("background finalizer owns one combined knowledge stewardship contract", () => {
-  const knowledgeSkill = readPluginFile(path.join("skills", "knowledge-writer", "SKILL.md"));
-  const knowledgeTemplate = readPluginFile(path.join("skills", "knowledge-writer", "TEMPLATE.json"));
-  const knowledgeFallback = readPluginFile(path.join("skills", "knowledge-writer", "non-claw-fallback.md"));
+test("delegate orchestration and built-in knowledge governance stay internal", () => {
+  const delegateTemplate = fs.readFileSync(path.resolve(pluginRoot, "..", "core", "resources", "delegate-writer", "TEMPLATE.json"), "utf-8");
+  const knowledgeTemplate = fs.readFileSync(path.resolve(pluginRoot, "..", "core", "resources", "knowledge-writer", "TEMPLATE.json"), "utf-8");
+  const knowledgeFallback = fs.readFileSync(path.resolve(pluginRoot, "..", "core", "resources", "knowledge-writer", "non-claw-fallback.md"), "utf-8");
   const configSkill = readPluginFile(path.join("skills", "config", "SKILL.md"));
   const knowledgeContract = `${knowledgeTemplate}\n${knowledgeFallback}`;
 
-  assert.match(knowledgeSkill, /Use only when explicitly invoked/i);
+  assert.match(delegateTemplate, /knowledge wait/i);
+  assert.match(delegateTemplate, /"scope": "session"/i);
   assert.match(knowledgeContract, /knowledge-base steward/i);
   assert.match(knowledgeContract, /Truth and ADR are one knowledge system/i);
   assert.match(knowledgeContract, /one current owner/i);
   assert.match(configSkill, /knowledgeWriter\.externalSkills/);
-  assert.match(configSkill, /built-in `claw-kit:knowledge-writer`/i);
+  assert.match(configSkill, /hidden built-in governance contract/i);
+  assert.equal(fs.existsSync(path.join(pluginRoot, "skills", "delegate-writer", "SKILL.md")), false);
+  assert.equal(fs.existsSync(path.join(pluginRoot, "skills", "knowledge-writer", "SKILL.md")), false);
 });
 
 test("Codex plan commands use only the bundled code-mode consumer", () => {
@@ -99,7 +116,7 @@ test("Codex plan commands use only the bundled code-mode consumer", () => {
   assert.match(mainRouter, /load\(cacheKey\)/i);
   assert.match(mainRouter, /store\(cacheKey, envelope\)/i);
   assert.match(mainRouter, /eval/i);
-  assert.match(mainRouter, /Never run a plan mutation outside the code-mode bridge/i);
+  assert.match(mainRouter, /plan mutations through the code-mode bridge/i);
   assert.match(mainRouter, /agent must never call `get_goal` separately/i);
   assert.match(mainRouter, /no direct-call fallback/i);
   assert.match(workflowReference, /code-mode consumption is the adapter execution method/i);

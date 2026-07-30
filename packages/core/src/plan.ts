@@ -532,14 +532,18 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
     } else {
       bindSessionToPlan(task.project, input.ownerSessionKey, resultPlanPath);
     }
+    let knowledgeFinalizeId: string | undefined;
     if (enteredEndState && endedAt && task.project.scope === "project") {
-      tryEndKnowledgePlan({
+      const effectiveConfig = resolvePlanEffectiveConfig(task.project.projectConfig, next);
+      const knowledgeEnd = tryEndKnowledgePlan({
         project: task.project,
         sessionId: input.ownerSessionKey,
         endedPlanPath: planPath,
         ...(completionHooks?.subplanClosureCandidate ? { resumedPlanPath: resultPlanPath } : {}),
         endedAt,
+        ...(effectiveConfig?.knowledgeWriter ? { writer: effectiveConfig.knowledgeWriter } : {}),
       });
+      knowledgeFinalizeId = knowledgeEnd.finalizeId;
     } else if (!resultPlan.status.startsWith("end.") && task.project.scope === "project") {
       tryRegisterKnowledgePlan({
         project: task.project,
@@ -562,6 +566,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
       appendedTaskIds,
       completedTaskIds,
       ...(completionHooks ? { completionHooks } : {}),
+      ...(knowledgeFinalizeId ? { knowledgeFinalizeId } : {}),
       workflowGuidance: await buildPlanWorkflowGuidance({
         taskName: task.taskName,
         planFile: resultPlanFile,

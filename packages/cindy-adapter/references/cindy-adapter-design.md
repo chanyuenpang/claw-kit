@@ -14,8 +14,9 @@ The first Cindy integration uses this split:
 
 1. The Cindy Ghost plugin declares `subscribe`, `node`, and background `agent`
    capabilities and carries the adapter logic.
-2. Cindy Desktop Host dispatches the declared Ghost capabilities; no Cindy
-   source change is required.
+2. Cindy Desktop Host dispatches the declared Ghost capabilities; the plugin's
+   Agent Tool calls receive trusted `session-context` and route workflow
+   operations through the Node worker.
 3. The claw CLI remains outside the plugin and is checked or initialized by
    `claw init` / `claw context`.
 
@@ -30,6 +31,9 @@ The CLI is never copied into the package.
 
 - Support local workspaces only.
 - Start with workflow integration; do not build a task panel.
+- Agent-facing plan, task, subplan, and query operations use the Ghost Tool
+  gateway. The worker maps typed operations to the existing claw CLI surface
+  and injects the Cindy host/session identity for that child process.
 - Cindy's native progress/Todo presentation may be used as a Host-side execution
   aid when available, but claw does not require bidirectional Todo
   synchronization.
@@ -45,8 +49,7 @@ treated as one shared Todo API:
 
 - Progress is a presentation/execution checklist for the current conversation.
 - Goal is a Host-owned continuation controller with active, paused, blocked,
-  complete, and budget-limited states, plus turn-end guards and follow-up
-  dispatch.
+  complete, and budget-limited states, plus guarded follow-up dispatch.
 - The current GoalController is an internal Desktop capability, not yet a
   stable third-party plugin persistence API.
 
@@ -67,8 +70,8 @@ The Cindy mapping follows the existing OpenCode adapter's event responsibilities
 | --- | --- |
 | session-start `claw hook auto-claw` | `did-session-created` warms the Node worker; `will-user-message` rewrites the first message |
 | OpenCode first-message synthetic context | `will-user-message` `rewrite` with the recovered context |
-| turn-end plan inspection | `did-turn-end` calls `claw context --host cindy` through Node |
-| `process.active` continuation | background `cindy.agent.run({ mode: 'continue' })` |
+| turn-end plan inspection | no CLI polling; the latest typed command result is the state source |
+| `process.active` continuation | Cindy Goal mode when a stable public Host API is available; otherwise no manual turn-end continuation |
 | completion knowledge closeout | background Agent prompt loading `knowledge-writer` |
 
 `did-*` topics are fire-and-forget metadata events. The `will-user-message`
@@ -106,19 +109,15 @@ Startup and closeout hooks are fail-open enhancements:
 This follows the current OpenCode behavior: startup recovery is an enhancement,
 and turn-report capture never blocks the foreground session.
 
-## 6. Turn-end continuation
+## 6. Goal-mode continuation
 
-Cindy should match the current OpenCode continuation rule:
+The worker returns a one-way state projection with each mutating workflow
+operation. If Cindy later exposes a stable public Goal API, the Host may apply
+that projection to request continuation for `process.active` and pause or
+complete the Goal for other terminal states. Until then, the plugin neither
+polls the plan at turn end nor manually dispatches a follow-up Agent turn.
 
-- On turn-end, inspect the session-bound plan.
-- Automatically dispatch the next prompt only when the plan is bound to the
-  session and has status `process.active`.
-- Do not auto-continue `process.discussing`, `process.wait`, or any `end.*`
-  status.
-- The continuation prompt must tell the agent to follow the current
-  `workflowGuidance` and avoid unrelated work.
-
-The Host must make this dispatch idempotent for a single completed turn.
+The claw plan remains the canonical continuation gate in either case.
 
 ## 7. Completion closeout
 
@@ -140,9 +139,9 @@ The first version is accepted only after the complete local loop is verified:
 2. CLI missing: installation guidance is injected and the session continues.
 3. `claw context` failure: an actionable failure is surfaced and the session
    continues.
-4. A bound `process.active` plan triggers exactly one turn-end continuation.
-5. `process.discussing`, `process.wait`, and `end.*` plans do not trigger
-   automatic continuation.
+4. A bound plan operation returns a structured projection for the Cindy Host.
+5. `process.active`, `process.discussing`, `process.wait`, and `end.*` are
+   projected one-way; no turn-end polling or manual continuation is used.
 6. All tasks complete and the knowledge-writer is dispatched and completes.
 7. The adapter does not automatically install the CLI or modify user PATH.
 8. The plugin uses Skills plus Ghost runtime hooks; Cindy native progress may
@@ -156,14 +155,17 @@ Implemented in the Cindy Ghost plugin package:
 - local-only `claw hook auto-claw --host cindy` execution during session start;
 - one-time, wire-only first-user-message context injection;
 - actionable missing/failed CLI guidance with fail-open behavior;
-- `claw context --host cindy` turn-end inspection;
-- exactly-one guarded continuation for `process.active`.
+- typed `list_tools` / `call_tool` operations that resolve the trusted Cindy
+  session context in the Host rather than in the Agent prompt;
+- structured plan-state projection from the command result, with Goal-mode
+  integration reserved for a stable future Cindy public API;
 - exactly-one Host-dispatched knowledge-writer turn for `end.completed`.
 
 The Host currently keeps the native Cindy Goal controller and progress surface
-optional; the claw plan remains the continuation gate. Closeout is dispatched
-through the declared background `agent` slot. The CLI remains a separate
-user-installed dependency and is invoked by the declared Node worker.
+optional because no stable third-party Goal API is available. The claw plan
+remains canonical; closeout is dispatched through the declared background
+`agent` slot. The CLI remains a separate user-installed dependency and is
+invoked by the declared Node worker.
 
 ## 10. Remaining runtime verification
 

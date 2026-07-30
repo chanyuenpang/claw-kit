@@ -114,7 +114,7 @@ Accepted
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md`
 - `packages/codex-adapter/skills/planning/SKILL.md`
 - `packages/core/src/knowledge-sidecar.ts`
-- `shared/skills/knowledge-writer/`
+- `packages/core/resources/knowledge-writer/`
 - `packages/codex-adapter/references/workflow-guidance-consumption.md`
 - `shared/skills/planning/SKILL.md`
 - `packages/opencode-adapter/workflow-guidance.opencode.json`

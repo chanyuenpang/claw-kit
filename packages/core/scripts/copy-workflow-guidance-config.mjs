@@ -9,3 +9,13 @@ const destPath = path.join(packageDir, "dist", "src", "workflow-guidance.config.
 
 fs.mkdirSync(path.dirname(destPath), { recursive: true });
 fs.copyFileSync(sourcePath, destPath);
+
+const knowledgeWriterSource = path.join(packageDir, "resources", "knowledge-writer");
+const knowledgeWriterDest = path.join(packageDir, "dist", "src", "resources", "knowledge-writer");
+fs.rmSync(knowledgeWriterDest, { recursive: true, force: true });
+fs.cpSync(knowledgeWriterSource, knowledgeWriterDest, { recursive: true });
+
+const delegateWriterSource = path.join(packageDir, "resources", "delegate-writer");
+const delegateWriterDest = path.join(packageDir, "dist", "src", "resources", "delegate-writer");
+fs.rmSync(delegateWriterDest, { recursive: true, force: true });
+fs.cpSync(delegateWriterSource, delegateWriterDest, { recursive: true });

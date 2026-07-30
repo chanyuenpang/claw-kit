@@ -12,6 +12,8 @@
 - `create-claw-skill` 也按单一源码维护，规范源文件位于 `shared/skills/create-claw-skill/SKILL.md`。
 - `packages/codex-adapter/skills/planning/SKILL.md`、`packages/opencode-adapter/skills/planning/SKILL.md`、`packages/codex-adapter/skills/config/SKILL.md`、`packages/opencode-adapter/skills/config/SKILL.md` 不再各自独立维护；它们是由共享源同步生成的副本，并带有 `AUTO-GENERATED` 标记。
 - `packages/codex-adapter/skills/create-claw-skill/SKILL.md`、`packages/opencode-adapter/skills/create-claw-skill/SKILL.md` 同样是共享源同步生成的副本；它们的 shared source 只需维护 `shared/skills/create-claw-skill/SKILL.md`。
+- `knowledge-writer` 不再属于 shared skill source 或 adapter materialization 集合。delegate orchestration template 与 built-in governance contract 当前位于 `packages/core/resources/delegate-writer/` 和 `packages/core/resources/knowledge-writer/`，由 Core package 作为不可发现内部资源分发；`scripts/sync-shared-skills.mjs` 的当前列表只有 `planning`、`config`、`create-claw-skill`。
+- Codex/OpenCode/Cindy 的插件 skill discovery surface 都不得重新物化 `delegate-writer` 或 `knowledge-writer`。外部治理能力只来自项目显式配置的 `knowledgeWriter.externalSkills`。
 - `scripts/sync-shared-skills.mjs` 负责把共享源同步到两个适配器目录，并按技能目录整体复制受维护的 shared skill tree。
 - `scripts/sync-planning-skill.mjs` 仍保留为兼容 wrapper。
 - `scripts/codex-plugin-bundle.mjs` 与 `scripts/opencode-plugin-bundle.mjs` 在读取插件源之前都会先执行 shared skill sync，因此导出或安装插件时会自动带上最新的共享 skills。
@@ -37,6 +39,7 @@
 - 以后修改 planning skill 时，只需要编辑 `shared/skills/planning/SKILL.md`，不应再分别修改 codex 和 opencode 两份副本。
 - 以后修改 config skill 时，只需要编辑 `shared/skills/config/SKILL.md`，不应再分别修改 codex 和 opencode 两份副本。
 - 以后修改 create-claw-skill skill 时，只需要编辑 `shared/skills/create-claw-skill/SKILL.md`，不应再分别修改 codex 和 opencode 两份副本。
+- 以后修改自动 knowledge finalization 的 delegate 或 built-in governance contract，应编辑 `packages/core/resources/`，而不是在 `shared/skills` 或 adapter `skills/` 中恢复公开 writer package。
 - planning 文案可以继续朝“通用 plan skill”演化，而宿主差异与 claw-kit 专属合同应继续收敛到 `using-claw-kit` 或其他宿主级入口技能中；如果未来再调整 project-plan admission 或 direct-work 语义，应同时修改两个 host-specific 入口 skill，而不是把入口规则写回 shared planning 源。
 - planning 的任务质量检查应审阅检查点是否可验收、是否支持后续继续或独立重试，以及证据依赖的后续阶段是否被延迟到第二次规划；不应以 task 数量是否落在某个范围内作为质量标准。
 - 2026-07-19 的只读质量 review 在当时的 planning 文案中发现四项缺口：三处强制确认 `proposed solution` 与证据依赖的阶段性规划冲突；复杂前向场景仍在 planning task 之后预建实现、Windows 验证和文档 tasks；简单 CLI 错误消息场景把没有独立检查点价值的包级验证拆开；`## When to use` 与多个质量章节存在重复。该 review 同时确认结构与分发同步健康，这些结论只描述 review 当时的源码和场景结果。
@@ -69,6 +72,8 @@
 - `packages/codex-adapter/skills/create-claw-skill/SKILL.md`
 - `packages/opencode-adapter/skills/create-claw-skill/SKILL.md`
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md`
+- `packages/core/resources/delegate-writer/TEMPLATE.json`
+- `packages/core/resources/knowledge-writer/`
 <!-- state: history -->
 ## 演化历史
 

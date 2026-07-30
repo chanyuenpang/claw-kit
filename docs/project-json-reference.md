@@ -70,8 +70,12 @@ Together, the canonical config plus local override model gives longer-running pr
 ### Knowledge writer
 
 - `knowledgeWriter.externalSkills`
-  - ordered documentation-governance skill sequence replacing the default `["claw-kit:knowledge-writer"]`; each receives the same unattended prompt in a separate sequential pass
-  - use an empty array for the built-in consistency-aware `claw-kit:knowledge-writer`
+- `knowledgeWriter.executionPolicy`
+  - `background` (default) launches a detached host agent after Stop capture
+  - `subagent` asks the active Codex main agent to dispatch a native collaboration subagent before its final response; unsupported hosts reject this policy before plan completion
+  - both policies execute the same packaged, internal session-scoped delegate template and never expose it as a user skill
+  - `externalSkills` is an ordered documentation-governance skill sequence; each custom skill receives an explicit unattended, non-interactive invocation prompt in a separate sequential assignment
+  - use an empty array for claw-kit's hidden built-in consistency-aware governance contract, whose direct prompt is distinct from custom skill invocation wording
 
 ### Context and memory
 

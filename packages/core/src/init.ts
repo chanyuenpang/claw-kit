@@ -82,6 +82,7 @@ export function initProject(input: InitProjectInput): InitProjectResult {
     autoUpdate: true,
     goalMode: true,
     knowledgeWriter: {
+      executionPolicy: "background",
       externalSkills: externalWriterSkill ? [externalWriterSkill] : [],
       model: null,
       reasoningEffort: "medium",

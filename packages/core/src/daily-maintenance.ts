@@ -21,6 +21,8 @@ export type DailyMaintenanceResult = {
   legacyTmpRemoved: boolean;
   archivedTasks: number;
   prunedArchivedTasks: number;
+  emptyDatedDirectoriesRemoved: number;
+  logsRemoved: number;
   expiredSessionsRemoved: number;
   staleBindingsRemoved: number;
   legacyFinalizerJobsRemoved: number;
@@ -44,6 +46,8 @@ export function runDailyMaintenance(project: ProjectContext, options: {
     const archivedDatedTasks = archiveDatedTaskDirectoriesBefore(project, cutoffDate);
     const archivedLegacyTasks = archiveLegacyTaskDirectoriesBefore(project, cutoffDate);
     const retention = enforceTaskRetention(project, undefined, now.getTime(), { includeDatedTasks: false, includeLegacyTasks: false });
+    const emptyDatedDirectoriesRemoved = removeEmptyDatedTaskDirectories(project);
+    const logsRemoved = pruneProjectLogs(project, cutoffDate);
     const staleBindingsRemoved = pruneStaleSessionBindings(project).length;
     const legacyRuntime = pruneLegacyKnowledgeRuntime(project);
     return {
@@ -51,6 +55,8 @@ export function runDailyMaintenance(project: ProjectContext, options: {
       legacyTmpRemoved,
       archivedTasks: archivedDatedTasks + archivedLegacyTasks + retention.archivedTasks.length,
       prunedArchivedTasks: retention.prunedArchivedTasks.length,
+      emptyDatedDirectoriesRemoved,
+      logsRemoved,
       staleBindingsRemoved,
       legacyFinalizerJobsRemoved: legacyRuntime.jobsRemoved,
       knowledgeSessionsRemoved: legacyRuntime.sessionsRemoved,
@@ -70,6 +76,8 @@ export function runDailyMaintenance(project: ProjectContext, options: {
     legacyTmpRemoved: projectResult.value?.legacyTmpRemoved ?? false,
     archivedTasks: projectResult.value?.archivedTasks ?? 0,
     prunedArchivedTasks: projectResult.value?.prunedArchivedTasks ?? 0,
+    emptyDatedDirectoriesRemoved: projectResult.value?.emptyDatedDirectoriesRemoved ?? 0,
+    logsRemoved: projectResult.value?.logsRemoved ?? 0,
     expiredSessionsRemoved: sessionResult.value?.expiredSessionsRemoved ?? 0,
     staleBindingsRemoved: projectResult.value?.staleBindingsRemoved ?? 0,
     legacyFinalizerJobsRemoved: projectResult.value?.legacyFinalizerJobsRemoved ?? 0,
@@ -105,6 +113,50 @@ function removeDirectory(directory: string): boolean {
   if (!fs.existsSync(directory)) return false;
   fs.rmSync(directory, { recursive: true, force: true });
   return true;
+}
+
+function removeEmptyDatedTaskDirectories(project: ProjectContext): number {
+  return [
+    project.tasksDir,
+    path.join(project.clawDir, "archive", "tasks"),
+  ].reduce((removed, root) => removed + removeEmptyDatedDirectories(root), 0);
+}
+
+function removeEmptyDatedDirectories(root: string): number {
+  if (!fs.existsSync(root)) return 0;
+  let removed = 0;
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !/^\d{4}-\d{2}-\d{2}$/.test(entry.name)) continue;
+    const directory = path.join(root, entry.name);
+    if (fs.readdirSync(directory).length > 0) continue;
+    fs.rmdirSync(directory);
+    removed += 1;
+  }
+  return removed;
+}
+
+function pruneProjectLogs(project: ProjectContext, cutoffDate: string): number {
+  return pruneLogDirectory(path.join(project.clawDir, "logs"), cutoffDate, true);
+}
+
+function pruneLogDirectory(directory: string, cutoffDate: string, isRoot = false): number {
+  if (!fs.existsSync(directory)) return 0;
+  let removed = 0;
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const child = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      if (entry.name === "inflight.lock") continue;
+      removed += pruneLogDirectory(child, cutoffDate);
+      continue;
+    }
+    if (localDate(fs.statSync(child).mtime) >= cutoffDate) continue;
+    fs.unlinkSync(child);
+    removed += 1;
+  }
+  if (!isRoot && fs.readdirSync(directory).length === 0) {
+    fs.rmdirSync(directory);
+  }
+  return removed;
 }
 
 function localDate(now: Date): string {

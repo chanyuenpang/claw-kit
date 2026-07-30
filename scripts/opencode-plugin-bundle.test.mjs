@@ -120,9 +120,6 @@ test("OpenCode researcher includes the search query syntax", async () => {
 test("OpenCode main-agent guidance leaves automatic closeout to the host", async () => {
   const adapterRoot = new URL("../packages/opencode-adapter/", import.meta.url);
   const guidance = JSON.parse(await fs.readFile(new URL("workflow-guidance.opencode.json", adapterRoot), "utf8"));
-  const knowledgeSkill = await fs.readFile(new URL("skills/knowledge-writer/SKILL.md", adapterRoot), "utf8");
-  const knowledgeTemplate = JSON.parse(await fs.readFile(new URL("skills/knowledge-writer/TEMPLATE.json", adapterRoot), "utf8"));
-  const knowledgeFallback = await fs.readFile(new URL("skills/knowledge-writer/non-claw-fallback.md", adapterRoot), "utf8");
   const agent = await fs.readFile(new URL("agents/claw-knowledge-writer.md", adapterRoot), "utf8");
   const allDone = guidance.states["process.allTasksDone"];
 
@@ -131,21 +128,12 @@ test("OpenCode main-agent guidance leaves automatic closeout to the host", async
   assert.match(allDone.notes, /requires no main-agent action/i);
   assert.doesNotMatch(JSON.stringify(allDone), /truth-writer|adr-writer|knowledge-writer|subagent|deposition/i);
 
-  assert.match(agent, /claw-kit:knowledge-writer/i);
+  assert.doesNotMatch(agent, /claw-kit:delegate-writer/i);
   assert.match(agent, /mode: primary/i);
-  assert.match(agent, /explicitly supplied materials/i);
+  assert.match(agent, /internal knowledge-delegate bootstrap prompt/i);
   assert.doesNotMatch(agent, /session-scoped|through \d+\/\d+|supplied plan|report conclusions/i);
-  assert.match(knowledgeSkill, /Use only when explicitly invoked/i);
-  const knowledgeContract = `${JSON.stringify(knowledgeTemplate)}\n${knowledgeFallback}`;
-  assert.match(knowledgeContract, /knowledge-base steward/i);
-  assert.match(knowledgeContract, /Truth and ADR are one knowledge system/i);
-  assert.match(knowledgeContract, /Maintain Truth first and ADR second|Truth is maintained before ADR/i);
-  assert.match(knowledgeContract, /filename, field, record shape, or serialization format/i);
-  assert.match(knowledgeContract, /retrospective lessons, key decisions/i);
-  assert.match(knowledgeContract, /task status is present/i);
-  assert.match(knowledgeContract, /task titles or descriptions as an execution log/i);
-  assert.match(knowledgeContract, /one current owner/i);
-  assert.match(knowledgeContract, /exhaustive text search/i);
+  await assert.rejects(fs.access(new URL("skills/delegate-writer/SKILL.md", adapterRoot)));
+  await assert.rejects(fs.access(new URL("skills/knowledge-writer/SKILL.md", adapterRoot)));
 
   await assert.rejects(fs.access(new URL("skills/truth-writer/SKILL.md", adapterRoot)));
   await assert.rejects(fs.access(new URL("skills/adr-writer/SKILL.md", adapterRoot)));
@@ -250,7 +238,8 @@ test("installOpencodePlugin copies skills into the opencode skills discovery dir
   assert.equal(result.skillsDir, path.join(installDir, "skills"));
   const copiedSkill = await fs.readFile(path.join(result.skillsDir, "config", "SKILL.md"), "utf8");
   assert.match(copiedSkill, /name: config/);
-  await assert.doesNotReject(fs.access(path.join(result.skillsDir, "knowledge-writer", "SKILL.md")));
+  await assert.rejects(fs.access(path.join(result.skillsDir, "delegate-writer", "SKILL.md")));
+  await assert.rejects(fs.access(path.join(result.skillsDir, "knowledge-writer", "SKILL.md")));
   await assert.rejects(fs.access(retiredTruthDir));
   await assert.rejects(fs.access(retiredAdrDir));
 

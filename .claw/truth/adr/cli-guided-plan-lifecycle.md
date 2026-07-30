@@ -38,7 +38,7 @@ Accepted
 - plan-start state change 由 current template task 的 `guidance.onPlanStart` 声明；default template 声明 `completeTask: true` 与 `status: "process.active"`，`plan start` 只提交 refined fields、追加 outcome tasks 并应用这项声明，不检查 task title、语言、bridge 数量或 legacy plan shape
 - planning bridge 展示的 skill 名称必须来自 project config 与 template `configOverride` 合并后的 effective `externalPlanningSkill`；未设置时固定回退到 `claw-kit:planning`。`{{planningSkill}}` 同时渲染进 title 与 detail，不能只渲染 detail 或硬编码默认 skill
 - foreground lifecycle 不再派发 knowledge writer；`process.allTasksDone` 只要求在 `plan done` 前持久化 retrospective 与 durable `keyDecisions`
-- plan completion 登记 pending turn owner，下一次 Stop/session-idle 才由 `hook-owned-two-phase-knowledge-finalization.md` 所定义的 sidecar 捕获 report 并异步排队一次 combined `knowledge-writer` pass
+- plan completion 登记 pending turn owner，下一次 Stop/session-idle 才由 `hook-owned-two-phase-knowledge-finalization.md` 所定义的 sidecar 捕获 report 并异步排队一次 knowledge finalization job；launcher、internal delegate 与 governance assignment 语义由该 ADR 单独拥有
 - knowledge finalization 不阻塞 foreground closeout；它的失败、重试和完成状态不改变 canonical plan completion
 - `end.completed` 写入稳定的 `completedAt`，但 `claw plan done` 保留当前 task directory 与原 `planPath`，不在本次命令中立即移动计划
 - root `plan.done` 的 foreground completion contract 显式返回 `achievement`、完成后的 canonical `planPath` 与继续使用 claw 的 `nextsteps`，让调用方无需从 session binding 或 raw plan 重新推断完成结果。`achievement` 只证明 canonical root plan 已进入 `end.completed`；它不替代异步 knowledge-finalization 状态。

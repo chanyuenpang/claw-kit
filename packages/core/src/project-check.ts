@@ -13,6 +13,7 @@ import {
 } from "./project-defaults.js";
 import { migrateLegacyTaskLayout } from "./task-layout-migration.js";
 import type {
+  KnowledgeWriterExecutionPolicy,
   KnowledgeWriterReasoningEffort,
   MemoryEmbeddingConfig,
   ProjectConfig,
@@ -147,6 +148,10 @@ function normalizeProjectConfig(raw: unknown, projectRoot: string): ProjectConfi
     autoUpdate: readBooleanConfig(source?.autoUpdate, true),
     goalMode: readBooleanConfig(source?.goalMode, true),
     knowledgeWriter: {
+      executionPolicy: readKnowledgeWriterExecutionPolicy(
+        sourceKnowledgeWriter?.executionPolicy,
+        "background",
+      ),
       externalSkills: resolveExternalWriterSkills(source, sourceKnowledgeWriter),
       model: normalizeOptionalSkill(sourceKnowledgeWriter?.model),
       reasoningEffort: readKnowledgeWriterReasoningEffort(
@@ -216,6 +221,12 @@ function validateProjectConfig(raw: unknown, issues: ProjectProtocolIssue[]): vo
   requireBoolean(config, "goalMode", issues);
   const knowledgeWriter = requireObject(config, "knowledgeWriter", issues);
   if (knowledgeWriter) {
+    requireKnowledgeWriterExecutionPolicy(
+      knowledgeWriter,
+      "executionPolicy",
+      issues,
+      "knowledgeWriter.executionPolicy",
+    );
     requireOptionalStringArray(knowledgeWriter, "externalSkills", issues, "knowledgeWriter.externalSkills");
     requireNullableString(knowledgeWriter, "model", issues, "knowledgeWriter.model");
     requireKnowledgeWriterReasoningEffort(
@@ -341,6 +352,22 @@ function requireKnowledgeWriterReasoningEffort(
   }
 }
 
+function requireKnowledgeWriterExecutionPolicy(
+  source: Record<string, unknown>,
+  key: string,
+  issues: ProjectProtocolIssue[],
+  label = key,
+): void {
+  if (!(key in source)) {
+    issues.push({ path: label, message: "Field is required and must be explicitly present." });
+    return;
+  }
+  const value = source[key];
+  if (value !== "background" && value !== "subagent") {
+    issues.push({ path: label, message: 'Field must be "background" or "subagent".' });
+  }
+}
+
 function requireIntegerAtLeast(
   source: Record<string, unknown>,
   key: string,
@@ -457,6 +484,13 @@ function readKnowledgeWriterReasoningEffort(
     return value;
   }
   return fallback;
+}
+
+function readKnowledgeWriterExecutionPolicy(
+  value: unknown,
+  fallback: KnowledgeWriterExecutionPolicy,
+): KnowledgeWriterExecutionPolicy {
+  return value === "background" || value === "subagent" ? value : fallback;
 }
 
 function normalizeMemoryEmbeddingConfig(value: unknown): MemoryEmbeddingConfig | null {

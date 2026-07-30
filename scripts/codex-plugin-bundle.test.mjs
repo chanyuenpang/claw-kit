@@ -88,7 +88,7 @@ test("Codex entry stays compact without dropping guidance, lifecycle, or the mut
   );
   const lineCount = skill.trimEnd().split(/\r?\n/).length;
 
-  assert.ok(lineCount >= 50 && lineCount <= 65, `expected 50-65 lines, received ${lineCount}`);
+  assert.ok(lineCount >= 50 && lineCount <= 70, `expected 50-70 lines, received ${lineCount}`);
   assert.match(skill, /## First Action/i);
   assert.match(skill, /skip this skill and work directly/i);
   assert.match(skill, /claw plan create "<title>"/i);
@@ -106,7 +106,7 @@ test("Codex entry stays compact without dropping guidance, lifecycle, or the mut
   assert.doesNotMatch(skill, /Core execution chain|Detailed call flow|claw plan start|claw task done|claw plan done/i);
 });
 
-test("Codex main-agent bundle excludes retired workflow skills and closeout routing language", async () => {
+test("Codex main-agent bundle exposes only structured internal closeout dispatch", async () => {
   const adapterRoot = new URL("../packages/codex-adapter/", import.meta.url);
   const skill = await fs.readFile(
     new URL("skills/using-claw-kit/SKILL.md", adapterRoot),
@@ -119,20 +119,23 @@ test("Codex main-agent bundle excludes retired workflow skills and closeout rout
   const manifest = await fs.readFile(new URL(".codex-plugin/plugin.json", adapterRoot), "utf8");
   const forbidden = /truth-writer|adr-writer|knowledge-writer|writer delegation|deposition|delegated subagents?|dispatch[^\n]*subagent/i;
 
-  assert.doesNotMatch(skill, forbidden);
+  assert.doesNotMatch(skill, /truth-writer|adr-writer|claw-kit:knowledge-writer|claw-kit:delegate-writer|deposition/i);
+  assert.match(skill, /knowledgeDispatch/);
+  assert.match(skill, /spawn_agent/);
   assert.doesNotMatch(reference, forbidden);
   assert.doesNotMatch(manifest, forbidden);
-  await assert.doesNotReject(fs.access(new URL("skills/knowledge-writer/SKILL.md", adapterRoot)));
+  await assert.rejects(fs.access(new URL("skills/delegate-writer/SKILL.md", adapterRoot)));
+  await assert.rejects(fs.access(new URL("skills/knowledge-writer/SKILL.md", adapterRoot)));
   await assert.rejects(fs.access(new URL("skills/truth-writer/SKILL.md", adapterRoot)));
   await assert.rejects(fs.access(new URL("skills/adr-writer/SKILL.md", adapterRoot)));
   await assert.rejects(fs.access(new URL("skills/search-workflow/SKILL.md", adapterRoot)));
   await assert.rejects(fs.access(new URL("skills/init/SKILL.md", adapterRoot)));
 });
 
-test("combined knowledge writer enforces trusted evidence and cross-document ownership", async () => {
-  const skill = await fs.readFile(new URL("../shared/skills/knowledge-writer/SKILL.md", import.meta.url), "utf8");
-  const template = JSON.parse(await fs.readFile(new URL("../shared/skills/knowledge-writer/TEMPLATE.json", import.meta.url), "utf8"));
-  const fallback = await fs.readFile(new URL("../shared/skills/knowledge-writer/non-claw-fallback.md", import.meta.url), "utf8");
+test("hidden built-in knowledge contract enforces trusted evidence and cross-document ownership", async () => {
+  const skill = await fs.readFile(new URL("../packages/core/resources/knowledge-writer/SKILL.md", import.meta.url), "utf8");
+  const template = JSON.parse(await fs.readFile(new URL("../packages/core/resources/knowledge-writer/TEMPLATE.json", import.meta.url), "utf8"));
+  const fallback = await fs.readFile(new URL("../packages/core/resources/knowledge-writer/non-claw-fallback.md", import.meta.url), "utf8");
   const contract = `${JSON.stringify(template)}\n${fallback}`;
   assert.doesNotMatch(skill, /end\.\*|session-scoped|parent-plan|source plan/i);
   assert.match(skill, /Use only when explicitly invoked with supplied materials; do not trigger this skill implicitly/i);
@@ -181,10 +184,11 @@ test("exported Codex plugin contains every shared workflow skill", async () => {
   const outDir = path.join(root, "dist");
   const result = await exportCodexPluginBundle({ outDir });
 
-  for (const skillName of ["planning", "config", "update", "create-claw-skill", "knowledge-writer"]) {
+  for (const skillName of ["planning", "config", "update", "create-claw-skill"]) {
     await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", skillName, "SKILL.md")));
   }
-  await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "knowledge-writer", "agents", "openai.yaml")));
+  await assert.rejects(fs.access(path.join(result.bundleDir, "skills", "delegate-writer", "SKILL.md")));
+  await assert.rejects(fs.access(path.join(result.bundleDir, "skills", "knowledge-writer", "SKILL.md")));
   await assert.rejects(fs.access(path.join(result.bundleDir, "skills", "truth-writer", "SKILL.md")));
   await assert.rejects(fs.access(path.join(result.bundleDir, "skills", "adr-writer", "SKILL.md")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "update", "TEMPLATE.json")));
@@ -222,7 +226,7 @@ test("release protocol publishes the committed Git marketplace snapshot without 
   assert.doesNotMatch(distribution, /attach the exported Codex plugin bundle to the GitHub release/);
   assert.match(releaseScript, /assertRepositoryMarketplaceSnapshot/);
   assert.match(releaseScript, /assertTemplateVersionsAligned/);
-  assert.match(releaseScript, /"update", "create-claw-skill", "knowledge-writer"/);
+  assert.doesNotMatch(releaseScript, /"delegate-writer"/);
   assert.doesNotMatch(releaseScript, /requiredPluginSkills[^\n]*release-claw-kit/);
   assert.match(releaseScript, /no GitHub Release ZIP is required/);
   assert.match(releaseScript, /Next: invoke the claw-kit update skill/);

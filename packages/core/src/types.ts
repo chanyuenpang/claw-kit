@@ -14,8 +14,10 @@ export type MemoryEmbeddingConfig = {
 };
 
 export type KnowledgeWriterReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
+export type KnowledgeWriterExecutionPolicy = "background" | "subagent";
 
 export type KnowledgeWriterConfig = {
+  executionPolicy?: KnowledgeWriterExecutionPolicy;
   /** Ordered external finalizer skills. Each runs in sequence. */
   externalSkills?: string[];
   model?: string | null;
@@ -575,6 +577,7 @@ export type PlanEditResult = {
   completedTaskIds: number[];
   planReview?: PlanReviewResult;
   completionHooks?: PlanCompletionHooks;
+  knowledgeFinalizeId?: string;
   workflowGuidance: WorkflowGuidance;
   previousPlan: PlanDocument;
   plan: PlanDocument;

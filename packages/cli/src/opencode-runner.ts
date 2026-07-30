@@ -24,6 +24,7 @@ export function opencodeKnowledgeFinalizerEnvironment(
   env.CLAW_KNOWLEDGE_FINALIZER = "1";
   delete env.CODEX_THREAD_ID;
   delete env.CODEX_SESSION_ID;
+  delete env.CLAW_SESSION_ID;
   return env;
 }
 
@@ -55,8 +56,7 @@ export function runOpencodeKnowledgeWriter(input: {
 
   const env = opencodeKnowledgeFinalizerEnvironment();
   // A detached opencode run owns a new host session. Never let the parent
-  // Codex/OpenCode session identity bind the writer's session-scoped harness;
-  // the OpenCode plugin injects the child session id for its own shell calls.
+  // Codex/OpenCode session identity bind the writer's session-scoped harness.
   delete env.CODEX_THREAD_ID;
   delete env.CODEX_SESSION_ID;
 

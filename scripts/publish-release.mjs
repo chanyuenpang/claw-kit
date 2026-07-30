@@ -10,7 +10,7 @@ import { assertTemplateVersionsAligned } from "./update-template-versions.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publish = process.argv.includes("--publish");
-const requiredPluginSkills = ["planning", "config", "update", "create-claw-skill", "knowledge-writer"];
+const requiredPluginSkills = ["planning", "config", "update", "create-claw-skill"];
 const npmExecPath = process.env.npm_execpath;
 
 function command(command, args) {
@@ -88,10 +88,6 @@ function assertRepositoryMarketplaceSnapshot({ pluginVersion }) {
     "skills/create-claw-skill/references/template-authoring.md",
     "skills/create-claw-skill/references/template-upgrade.md",
     "skills/create-claw-skill/scripts/create-claw-skill-stub.mjs",
-    "skills/knowledge-writer/SKILL.md",
-    "skills/knowledge-writer/TEMPLATE.json",
-    "skills/knowledge-writer/non-claw-fallback.md",
-    "skills/knowledge-writer/CONTENT-COVERAGE.md",
   ]) {
     assertHeadPathExists(`${sourceRoot}/${relativePath}`);
   }
@@ -101,23 +97,48 @@ async function readJson(relativePath) {
   return JSON.parse(await fs.readFile(path.join(repoRoot, relativePath), "utf8"));
 }
 
+function isAdapterVersion(adapterVersion, cliVersion) {
+  const prefix = `${cliVersion}.`;
+  return adapterVersion.startsWith(prefix) && /^\d+\.\d+\.\d+\.\d+$/.test(adapterVersion) && adapterVersion.slice(prefix.length).length > 0;
+}
+
 async function verifyReleaseReadiness() {
   const root = await readJson("package.json");
   const core = await readJson("packages/core/package.json");
   const cli = await readJson("packages/cli/package.json");
   const codex = await readJson("packages/codex-adapter/package.json");
+  const cindy = await readJson("packages/cindy-adapter/package.json");
   const openclaw = await readJson("packages/openclaw-adapter/package.json");
   const opencode = await readJson("packages/opencode-adapter/package.json");
-  const plugin = await readJson("packages/codex-adapter/.codex-plugin/plugin.json");
   const marketplace = await readJson(".agents/plugins/marketplace.json");
-  const version = root.version;
+  const plugin = await readJson("packages/codex-adapter/.codex-plugin/plugin.json");
 
-  assert([core, cli, codex, openclaw, opencode].every((pkg) => pkg.version === version), `Release versions must all equal ${version}.`);
-  assert(cli.dependencies?.["@veewo/claw-core"] === version, "CLI must depend on the same @veewo/claw-core version.");
-  assert(openclaw.dependencies?.["@veewo/claw-core"] === version, "OpenClaw adapter must depend on the same @veewo/claw-core version.");
-  assert(plugin.version.startsWith(`${version}+codex.`), "Codex plugin version must use the release version plus a +codex timestamp.");
+  const cliVersion = root.version;
+
+  assert(core.version === cliVersion, `@veewo/claw-core version ${core.version} must equal the CLI release version ${cliVersion}.`);
+  assert(cli.version === cliVersion, `@veewo/claw version ${cli.version} must equal the CLI release version ${cliVersion}.`);
+  assert(cli.dependencies?.["@veewo/claw-core"] === cliVersion, "CLI must pin the exact @veewo/claw-core version.");
+  assert(openclaw.dependencies?.["@veewo/claw-core"] === cliVersion, "OpenClaw adapter must pin the exact @veewo/claw-core version.");
+
+  for (const [name, pkg] of [
+    ["codex-adapter", codex],
+    ["cindy-adapter", cindy],
+    ["openclaw-adapter", openclaw],
+    ["opencode-adapter", opencode],
+  ]) {
+    assert(
+      isAdapterVersion(pkg.version, cliVersion),
+      `${name} version ${pkg.version} must start with ${cliVersion}. and use four segments (e.g. ${cliVersion}.0).`,
+    );
+  }
+
+  assert(
+    plugin.version === codex.version,
+    `Codex plugin manifest version ${plugin.version} must match codex-adapter version ${codex.version}.`,
+  );
+
   assert(marketplace.plugins?.some((entry) => entry.name === "claw-kit" && entry.source?.path === "./packages/codex-adapter"), "Codex marketplace must point claw-kit at ./packages/codex-adapter.");
-  await assertTemplateVersionsAligned({ repoRoot, expectedVersion: version });
+  await assertTemplateVersionsAligned({ repoRoot, expectedVersion: cliVersion });
   await assertSharedSkillsSynced({ adapterDirs: [path.join(repoRoot, "packages", "codex-adapter")] });
   assertCleanWorktree("Before publishing");
   assertDirectMainCheckout();
@@ -132,8 +153,6 @@ async function verifyReleaseReadiness() {
     await fs.access(path.join(bundle.bundleDir, "skills", "update", "TEMPLATE.json"));
     await fs.access(path.join(bundle.bundleDir, "skills", "create-claw-skill", "TEMPLATE.json"));
     await fs.access(path.join(bundle.bundleDir, "skills", "create-claw-skill", "FALLBACK.md"));
-    await fs.access(path.join(bundle.bundleDir, "skills", "knowledge-writer", "TEMPLATE.json"));
-    await fs.access(path.join(bundle.bundleDir, "skills", "knowledge-writer", "non-claw-fallback.md"));
 
     npmCommand(["run", "build", "-w", "@veewo/claw-core"]);
     npmCommand(["run", "build", "-w", "@veewo/claw"]);
@@ -151,7 +170,7 @@ async function verifyReleaseReadiness() {
       env: smokeEnv,
       stdio: "pipe",
     });
-    for (const templateName of ["update", "create-claw-skill", "knowledge-writer"]) {
+    for (const templateName of ["update", "create-claw-skill"]) {
       const output = execFileSync(process.execPath, [cliPath, "template", "validate", "--template", templateName], {
         cwd: smokeProject,
         env: smokeEnv,
@@ -174,11 +193,12 @@ async function verifyReleaseReadiness() {
     await fs.rm(outDir, { recursive: true, force: true });
   }
 
-  return { version, pluginVersion: plugin.version };
+  return { cliVersion, codexPluginVersion: plugin.version };
 }
 
 const release = await verifyReleaseReadiness();
-console.log(`Release ${release.version} is committed, pushed, version-aligned, and exposes a complete Git marketplace plugin snapshot.`);
+console.log(`Release CLI ${release.cliVersion} is committed, pushed, version-aligned, and exposes a complete Git marketplace plugin snapshot.`);
+console.log(`Codex plugin version: ${release.codexPluginVersion}`);
 console.log("The committed repository marketplace is the Codex release artifact; no GitHub Release ZIP is required.");
 
 if (!publish) {
@@ -196,5 +216,5 @@ for (const workspace of ["@veewo/claw-core", "@veewo/claw"]) {
 }
 
 assertCleanWorktree("After publishing");
-console.log(`Published @veewo/claw-core and @veewo/claw ${release.version}.`);
+console.log(`Published @veewo/claw-core and @veewo/claw ${release.cliVersion}.`);
 console.log("Next: invoke the claw-kit update skill to refresh the global CLI and the official GitHub marketplace plugin. Do not install from local workspace content.");

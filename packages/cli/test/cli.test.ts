@@ -30,7 +30,15 @@ function createFixture(name: string): string {
 
 after(() => {
   for (const directory of temporaryDirectories) {
-    fs.rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+    try {
+      fs.rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EPERM" && (error as NodeJS.ErrnoException).code !== "EBUSY") {
+        throw error;
+      }
+      // Detached completion workers can briefly retain a Windows directory
+      // handle after all behavioral assertions have completed.
+    }
   }
 });
 
@@ -771,6 +779,16 @@ test("cli codex driver returns an executable versioned source envelope", async (
       retrospectiveSaved: true,
       keyDecisionsSaved: 1,
     },
+    knowledgeDispatch: {
+      schemaVersion: 1,
+      policy: "subagent",
+      projectRoot: "G:\\example",
+      taskName: "demo",
+      finalizeId: "finalize-demo",
+      templatePath: "G:\\claw\\internal\\delegate-writer\\TEMPLATE.json",
+      forkTurns: "none",
+      prompt: "Use the internal knowledge delegate.",
+    },
     hostActions: [
       {
         schemaVersion: 1,
@@ -812,6 +830,7 @@ test("cli codex driver returns an executable versioned source envelope", async (
     planPath: "G:\\example\\.claw\\tasks\\demo\\plan.json",
     nextsteps: ["Start the next task through using-claw-kit."],
     achievement: mutationResult.achievement,
+    knowledgeDispatch: mutationResult.knowledgeDispatch,
   });
   assert.equal("hostActions" in actual, false);
   assert.equal("command" in actual, false);
@@ -1015,6 +1034,23 @@ test("session scope runs outside a project, recovers across cwd, and cleans with
   assert.equal(fs.existsSync(path.join(secondCwd, ".claw")), false);
 });
 
+test("CLAW_SESSION_ID restores a Cindy session-scoped workflow", () => {
+  const firstCwd = createFixture("cindy-session-scope-first");
+  const secondCwd = createFixture("cindy-session-scope-second");
+  const runtimeDir = createFixture("cindy-session-scope-runtime");
+  const env = {
+    CLAW_SESSION_ID: "cindy-session-scope",
+    CLAW_SESSION_RUNTIME_DIR: runtimeDir,
+  };
+
+  const created = runClaw(["plan", "create", "Cindy session", "--scope", "session"], firstCwd, env);
+  const context = runClaw(["context"], secondCwd, env);
+
+  assert.equal(created.ok, true);
+  assert.equal((context.project as JsonRecord).scope, "session");
+  assert.equal((context.activeWorkflow as JsonRecord).planPath, created.planPath);
+});
+
 test("an explicit template selects session storage automatically outside a claw project", () => {
   const cwd = createFixture("template-auto-session-cwd");
   const homeRoot = createFixture("template-auto-session-home");
@@ -1177,6 +1213,27 @@ test("host-neutral and opencode plan results never expose Codex hostActions", ()
   );
   assert.equal("hostActions" in opencode, false);
   assert.ok(Array.isArray(opencode.nextsteps));
+});
+
+test("Cindy plan results omit host actions and Goal fields while retaining command hints", () => {
+  const root = createFixture("cindy-agent-guidance");
+  runClaw(["init", "--name", "Cindy Guidance", "--planning", "false"], root);
+  runClaw(["plan", "create", "--title", "demo-task", "--goal", "Keep the Agent focused"], root);
+  runClaw(["task", "add", "--task-name", "demo-task", "--title", "Second task"], root);
+  runClaw(["task", "add", "--task-name", "demo-task", "--title", "Third task"], root);
+
+  const result = runClaw(["plan", "wait", "--task-name", "demo-task", "--host", "cindy"], root);
+  assert.equal(result.planStatus, "process.wait");
+  assert.equal("hostActions" in result, false);
+  assert.ok(Array.isArray(result.commandHints));
+  assert.equal("nextsteps" in result, false);
+  assert.equal("notes" in result, false);
+  assert.equal("goalMode" in result, false);
+  assert.equal("goalTool" in result, false);
+  const planView = result.planView as JsonRecord;
+  assert.equal(String(planView.title), "demo-task");
+  assert.deepEqual(planView.counts, { completed: 0, total: 3 });
+  assert.equal(String((planView.goal as JsonRecord).text), "Keep the Agent focused");
 });
 
 test("invocation host rejects invalid and conflicting sources before project mutation", () => {
@@ -2367,6 +2424,7 @@ test("cli init writes maxTasksToKeep into project.json", () => {
   assert.equal(projectConfig.autoUpdate, true);
   assert.equal(projectConfig.goalMode, true);
   assert.deepEqual(projectConfig.knowledgeWriter, {
+    executionPolicy: "background",
     externalSkills: ["team-knowledge-writer"],
     model: null,
     reasoningEffort: "medium",
@@ -2390,6 +2448,7 @@ test("cli init writes default maxTasksToKeep into project.json", () => {
   assert.equal(projectConfig.maxTasksToKeep, 9);
   assert.equal(projectConfig.goalMode, true);
   assert.deepEqual(projectConfig.knowledgeWriter, {
+    executionPolicy: "background",
     externalSkills: [],
     model: null,
     reasoningEffort: "medium",
@@ -2558,6 +2617,7 @@ test("cli context auto-corrects malformed existing .claw state", () => {
   });
   assert.equal(projectConfig.goalMode, true);
   assert.deepEqual(projectConfig.knowledgeWriter, {
+    executionPolicy: "background",
     externalSkills: [],
     model: null,
     reasoningEffort: "medium",
@@ -2662,7 +2722,7 @@ test("cli hook surfaces lagging prompt note when autoUpdate is disabled and proj
   assert.match(additionalContext, /npm latest is only 0\.9\.9/i);
 });
 
-test("cli hook promotes update skill first when autoUpdate is enabled and a newer published version exists", () => {
+test("cli hook asks for update confirmation when autoUpdate is enabled and a newer published version exists", () => {
   const root = createFixture("hook-version-auto-update");
   const npmShim = createClawUpdateNpmShim({
     latestVersion: "99.0.0",
@@ -2683,9 +2743,10 @@ test("cli hook promotes update skill first when autoUpdate is enabled and a newe
   const hookSpecificOutput = payload.hookSpecificOutput as JsonRecord;
   const additionalContext = String(hookSpecificOutput.additionalContext);
   const npmLog = fs.readFileSync(npmShim.logPath, "utf-8");
-  assert.match(additionalContext, /Before anything else, a newer claw-kit version was detected/i);
-  assert.match(additionalContext, /First action: use claw-kit:update to update the claw-kit CLI and the current host plugin surface/i);
-  assert.match(additionalContext, /First action: use claw-kit:update to update the claw-kit CLI and the current host plugin surface before continuing any other work\./i);
+  assert.match(additionalContext, /A newer claw-kit version is available/i);
+  assert.match(additionalContext, /Tell the user in their language that the current claw-kit installation is out of date and must be updated before they can continue using claw-kit/i);
+  assert.match(additionalContext, /Ask whether they want to update now, then wait for their answer/i);
+  assert.match(additionalContext, /After the user confirms, use claw-kit:update to update the claw-kit CLI and the current host plugin surface, then continue the original task\./i);
   assert.match(additionalContext, /When useful, use `claw search` to narrow the document search scope.*default search/i);
   assert.doesNotMatch(npmLog, /install -g @veewo\/claw@latest/);
 });
@@ -2736,6 +2797,7 @@ test("cli check auto-corrects project.json into explicit protocol fields", () =>
   assert.deepEqual(projectConfig.contextPaths, []);
   assert.equal(projectConfig.goalMode, true);
   assert.deepEqual(projectConfig.knowledgeWriter, {
+    executionPolicy: "background",
     externalSkills: [],
     model: null,
     reasoningEffort: "medium",
@@ -2780,10 +2842,67 @@ test("cli plan done records completedAt and retains the current task path", asyn
   assert.equal("activeWorkflow" in runClaw(["context"], root, env), false);
 });
 
+test("cli plan done emits Codex subagent dispatch and rejects unsupported hosts", () => {
+  const root = createFixture("plan-done-subagent-dispatch");
+  const codexEnv = {
+    CLAW_HOST: "codex",
+    CODEX_THREAD_ID: "thread-subagent-dispatch",
+  };
+  runClaw(["init", "--name", "Subagent Dispatch", "--planning", "false"], root, codexEnv);
+  const projectPath = path.join(root, ".claw", "project.json");
+  const projectConfig = JSON.parse(fs.readFileSync(projectPath, "utf-8")) as JsonRecord;
+  (projectConfig.knowledgeWriter as JsonRecord).executionPolicy = "subagent";
+  fs.writeFileSync(projectPath, `${JSON.stringify(projectConfig, null, 2)}\n`, "utf-8");
+  runClaw(["plan", "create", "--title", "dispatch-task", "--goal", "Dispatch writer"], root, codexEnv);
+
+  const done = runClaw(["plan", "done", "--retrospective", "Ready for knowledge finalization."], root, codexEnv);
+  const dispatch = done.knowledgeDispatch as JsonRecord;
+  assert.equal(dispatch.policy, "subagent");
+  assert.equal("skill" in dispatch, false);
+  assert.match(String(dispatch.templatePath), /resources[\\/]delegate-writer[\\/]TEMPLATE\.json$/);
+  assert.equal(dispatch.projectRoot, root);
+  assert.equal(dispatch.taskName, "dispatch-task");
+  assert.match(String(dispatch.finalizeId), /^[a-f0-9]{64}$/);
+  assert.equal(dispatch.forkTurns, "none");
+  assert.equal(dispatch.reasoningEffort, "medium");
+  assert.match(String(dispatch.prompt), /claw knowledge-finalization job/i);
+
+  const unsupportedRoot = createFixture("plan-done-subagent-unsupported");
+  const opencodeEnv = {
+    CLAW_HOST: "opencode",
+    CODEX_THREAD_ID: "thread-subagent-unsupported",
+  };
+  runClaw(["init", "--name", "Subagent Unsupported", "--planning", "false"], unsupportedRoot, opencodeEnv);
+  const unsupportedProjectPath = path.join(unsupportedRoot, ".claw", "project.json");
+  const unsupportedConfig = JSON.parse(fs.readFileSync(unsupportedProjectPath, "utf-8")) as JsonRecord;
+  (unsupportedConfig.knowledgeWriter as JsonRecord).executionPolicy = "subagent";
+  fs.writeFileSync(unsupportedProjectPath, `${JSON.stringify(unsupportedConfig, null, 2)}\n`, "utf-8");
+  runClaw(["plan", "create", "--title", "unsupported-task", "--goal", "Reject writer"], unsupportedRoot, opencodeEnv);
+
+  const failure = runClawExpectFailure(
+    ["plan", "done", "--retrospective", "Must not complete."],
+    unsupportedRoot,
+    opencodeEnv,
+  );
+  assert.match(String((failure.error as JsonRecord).message), /supported only by the Codex host/);
+  const current = runClaw(["plan", "show"], unsupportedRoot, opencodeEnv);
+  assert.equal(current.planStatus, "process.active");
+  const editFailure = runClawExpectFailure(
+    ["plan", "edit", "--retrospective", "Must not complete.", "--status", "end.completed"],
+    unsupportedRoot,
+    opencodeEnv,
+  );
+  assert.match(String((editFailure.error as JsonRecord).message), /supported only by the Codex host/);
+});
+
 test("cli plan edit completion dispatches the same completion refresh as plan done", async () => {
   const root = createFixture("plan-edit-completion-refresh");
-  const env = { CLAW_EMBEDDING_MOCK: "1", CODEX_THREAD_ID: "thread-root-edit" };
+  const env = { CLAW_HOST: "codex", CLAW_EMBEDDING_MOCK: "1", CODEX_THREAD_ID: "thread-root-edit" };
   runClaw(["init", "--name", "Edit Completion Refresh", "--max-tasks-to-keep", "99", "--planning", "false"], root, env);
+  const projectPath = path.join(root, ".claw", "project.json");
+  const projectConfig = JSON.parse(fs.readFileSync(projectPath, "utf-8")) as JsonRecord;
+  (projectConfig.knowledgeWriter as JsonRecord).executionPolicy = "subagent";
+  fs.writeFileSync(projectPath, `${JSON.stringify(projectConfig, null, 2)}\n`, "utf-8");
   runClaw(["plan", "create", "--title", "edit-task", "--goal", "Complete through plan edit"], root, env);
 
   const result = runClaw(
@@ -2796,6 +2915,7 @@ test("cli plan edit completion dispatches the same completion refresh as plan do
   const achievement = result.achievement as JsonRecord;
   assert.equal(achievement.status, "end.completed");
   assert.equal(achievement.retrospectiveSaved, true);
+  assert.equal((result.knowledgeDispatch as JsonRecord).policy, "subagent");
   const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
   const memory = refreshStatus.memory as JsonRecord;
   assert.ok(memory.task as JsonRecord | undefined);
@@ -3701,6 +3821,7 @@ test("completed-plan Stop owns the final turn and queues a retryable SDK job", (
   assert.equal(queued.status, "queued");
   assert.equal(queued.attempts, 0);
   assert.deepEqual(queued.writer, {
+    executionPolicy: "background",
     externalSkills: ["truth-writer", "adr-writer"],
     model: "gpt-test-writer",
     reasoningEffort: "high",
@@ -3804,15 +3925,125 @@ test("opencode finalizer environment drops the parent platform session identity"
   const env = opencodeKnowledgeFinalizerEnvironment({
     CODEX_THREAD_ID: "parent-codex-thread",
     CODEX_SESSION_ID: "parent-opencode-session",
+    CLAW_SESSION_ID: "parent-claw-session",
     PATH: "preserved",
   });
   assert.equal(env.CODEX_THREAD_ID, undefined);
   assert.equal(env.CODEX_SESSION_ID, undefined);
   assert.equal(env.CLAW_KNOWLEDGE_FINALIZER, "1");
+  assert.equal(env.CLAW_SESSION_ID, undefined);
   assert.equal(env.PATH, "preserved");
 });
 
-test("knowledge finalization runs ordered custom writers without applying built-in governance", () => {
+test("knowledge wait is readiness-only and the internal delegate template owns session scope", () => {
+  const root = createFixture("knowledge-session-lifecycle");
+  const runtimeDir = createFixture("knowledge-session-lifecycle-runtime");
+  runClaw(["init", "--name", "Knowledge Session Lifecycle"], root);
+  const taskDir = path.join(root, ".claw", "tasks", "source-task");
+  fs.mkdirSync(taskDir, { recursive: true });
+  const finalizeId = "a".repeat(64);
+  const jobPath = path.join(taskDir, ".runtime", "knowledge-finalization", `${finalizeId}.json`);
+  fs.mkdirSync(path.dirname(jobPath), { recursive: true });
+  fs.writeFileSync(jobPath, JSON.stringify({
+    schemaVersion: 1,
+    finalizeId,
+    sessionId: "owner-thread",
+    projectRoot: root,
+    taskName: "source-task",
+    planPath: path.join(taskDir, "plan.json"),
+    reportPath: path.join(taskDir, "plan.report"),
+    status: "queued",
+    attempts: 0,
+    queuedAt: new Date().toISOString(),
+  }), "utf-8");
+  const env = {
+    CLAW_SESSION_ID: "knowledge-executor",
+    CLAW_SESSION_RUNTIME_DIR: runtimeDir,
+  };
+
+  const waited = runClaw([
+    "knowledge", "wait",
+    "--project-root", root,
+    "--finalize-id", finalizeId,
+    "--timeout-ms", "0",
+  ], root, env);
+  assert.equal(waited.status, "queued");
+  assert.equal(waited.jobPath, jobPath);
+  assert.equal("executorSessionId" in waited, false);
+
+  const internalTemplate = path.resolve(thisDir, "..", "..", "core", "dist", "src", "resources", "delegate-writer", "TEMPLATE.json");
+  runClaw([
+    "plan", "create",
+    "--title", "dynamic-writer-plan",
+    "--template-file", internalTemplate,
+  ], root, env);
+  const dynamicContext = runClaw(["context"], root, env);
+  assert.equal((dynamicContext.project as JsonRecord).scope, "session");
+  assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "dynamic-writer-plan")), false);
+  runClaw(["task", "done", "--id", "1"], root, env);
+
+  const claimed = runClaw(["knowledge", "claim", "--job", jobPath], root, env);
+  assert.equal(claimed.claimed, true);
+  assert.ok(typeof claimed.claimToken === "string");
+  assert.equal(Array.isArray(claimed.assignments), true);
+  assert.ok(typeof claimed.templatePath === "string");
+  runClaw(["task", "done", "--id", "2"], root, env);
+  runClaw([
+    "subplan", "create",
+    "--parent", "dynamic-writer-plan",
+    "--task-id", "3",
+    "--template-file", String(claimed.templatePath),
+  ], root, env);
+  for (const taskId of ["1", "2", "3", "4", "5", "6"]) {
+    runClaw(["task", "done", "--id", taskId], root, env);
+  }
+  runClaw(["plan", "done", "--retrospective", "Assignments executed."], root, env);
+  const done = runClaw([
+    "knowledge", "done",
+    "--job", jobPath,
+    "--claim-token", String(claimed.claimToken),
+    "--status", "failed",
+    "--error", "intentional test failure",
+  ], root, env);
+  assert.equal(done.failed, true);
+  runClaw(["task", "done", "--id", "4"], root, env);
+  runClaw(["plan", "done", "--retrospective", "Delegate lifecycle completed."], root, env);
+  assert.equal((JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord).status, "failed");
+  assert.equal(fs.existsSync(String(claimed.templatePath)), false);
+});
+
+test("background finalizer never claims a subagent-policy job", () => {
+  const root = createFixture("knowledge-subagent-policy-isolation");
+  runClaw(["init", "--name", "Subagent Policy Isolation"], root);
+  const taskDir = path.join(root, ".claw", "tasks", "source-task");
+  const jobPath = path.join(taskDir, ".runtime", "knowledge-finalization", "subagent.json");
+  fs.mkdirSync(path.dirname(jobPath), { recursive: true });
+  fs.writeFileSync(jobPath, JSON.stringify({
+    schemaVersion: 1,
+    finalizeId: "subagent-policy",
+    sessionId: "owner-thread",
+    projectRoot: root,
+    taskName: "source-task",
+    host: "codex",
+    planPath: path.join(taskDir, "plan.json"),
+    reportPath: path.join(taskDir, "plan.report"),
+    writer: { executionPolicy: "subagent", externalSkills: [] },
+    status: "queued",
+    attempts: 0,
+    queuedAt: new Date().toISOString(),
+  }), "utf-8");
+
+  const finalized = runClawRaw(["internal-knowledge-finalize", "--job", jobPath], root, {
+    CLAW_CODEX_PATH_OVERRIDE: path.join(root, "must-not-launch.exe"),
+  });
+  assert.equal(finalized.status, 0);
+  const job = JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord;
+  assert.equal(job.status, "queued");
+  assert.equal(job.attempts, 0);
+  assert.equal(job.claimToken, undefined);
+});
+
+test("background knowledge finalization uses one internal delegate bootstrap and requires terminal acknowledgement", async () => {
   const root = createFixture("knowledge-writer-no-op");
   const home = path.join(root, "home");
   const taskDir = path.join(root, ".claw", "tasks", "no-op-task");
@@ -3881,15 +4112,16 @@ test("knowledge finalization runs ordered custom writers without applying built-
     USERPROFILE: home,
     CLAW_SESSION_RUNTIME_DIR: path.join(root, "session-runtime"),
     CLAW_KNOWLEDGE_FINALIZER_DISABLE_RETRY: "1",
+    CLAW_EMBEDDING_PERSISTENT_WORKER: "0",
   });
   assert.equal(finalized.status, 0);
   const job = JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord;
-  assert.equal(job.status, "succeeded");
-  assert.equal(job.sdkThreadId, "thread-knowledge");
-  assert.deepEqual(job.sdkThreadIds, ["thread-knowledge", "thread-knowledge"]);
+  assert.equal(job.status, "failed");
+  assert.equal(job.sdkThreadId, undefined);
+  assert.equal(job.sdkThreadIds, undefined);
   assert.equal(job.truthThreadId, undefined);
   assert.equal(job.adrThreadId, undefined);
-  assert.equal(job.finalResponse, "Custom knowledge updated.\n\nCustom knowledge updated.");
+  assert.equal(job.finalResponse, undefined);
   assert.equal(job.knowledgeGovernance, undefined);
   assert.equal(runGit(["log", "-1", "--pretty=%B"], root).trim(), "baseline");
   assert.match(runGit(["status", "--short", "--", knowledgePath], root), /\?\?/u);
@@ -3899,47 +4131,27 @@ test("knowledge finalization runs ordered custom writers without applying built-
   assert.match(knowledge, /Third state/u);
   assert.match(knowledge, /Fourth state/u);
   const prompts = fs.readFileSync(promptLog, "utf-8").split("---PASS---").filter((item) => item.trim());
-  assert.equal(prompts.length, 2);
-  assert.match(prompts[0]!, /Apply the team:truth-writer skill's documentation-governance rules/i);
-  assert.match(prompts[1]!, /Apply the team:adr-writer skill's documentation-governance rules/i);
+  assert.equal(prompts.length, 1);
   for (const prompt of prompts) {
-    assert.match(prompt, /Work unattended; do not request review or confirmation/i);
-    assert.match(prompt, /Do not reference or link to the supplied materials/i);
-    assert.match(prompt, /they are transient and will be destroyed after finalization/i);
-    assert.doesNotMatch(prompt, /only supported conclusions|make evidence-based decisions/i);
-    assert.doesNotMatch(prompt, /follow it exactly/i);
-    assert.doesNotMatch(prompt, /Use the claw-kit:knowledge-writer skill/);
-    assert.doesNotMatch(prompt, /one current owner|Evolution retention|dated:/i);
-    assert.match(prompt, /interpret inputs by content/i);
-    assert.doesNotMatch(prompt, /entryType|knowledge_finalization/);
-    assert.doesNotMatch(prompt, /using-claw-kit/i);
+    assert.match(prompt, /claw plan create --template-file/i);
+    assert.match(prompt, /internal session plan/i);
+    assert.doesNotMatch(prompt, /claw-kit:delegate-writer/i);
+    assert.doesNotMatch(prompt, /team:truth-writer|team:adr-writer/i);
   }
   const writerOptions = JSON.parse(fs.readFileSync(optionsLog, "utf-8")) as JsonRecord;
   assert.equal(writerOptions.sandboxMode, process.platform === "win32" ? "danger-full-access" : "workspace-write");
   assert.equal(fs.existsSync(reportPath), true);
   const reportEntries = fs.readFileSync(reportPath, "utf-8").trim().split(/\r?\n/).map((line) => JSON.parse(line) as JsonRecord);
-  assert.equal(reportEntries.length, 2);
-  assert.deepEqual(reportEntries[1], {
-    schemaVersion: 1,
-    entryType: "knowledge_finalization",
-    finalizeId: "no-op",
-    taskName: "no-op-task",
-    recordedAt: job.finishedAt,
-    status: "succeeded",
-    result: "Custom knowledge updated.\n\nCustom knowledge updated.",
-    attempts: 1,
-    host: "codex",
-    threadId: "thread-knowledge",
-    truthEncoding: job.truthEncoding,
-  });
+  assert.equal(reportEntries.length, 1);
   const repeated = runClawRaw(["internal-knowledge-finalize", "--job", jobPath], root, {
     HOME: home,
     USERPROFILE: home,
     CLAW_SESSION_RUNTIME_DIR: sessionRuntimeDir,
     CLAW_KNOWLEDGE_FINALIZER_DISABLE_RETRY: "1",
+    CLAW_EMBEDDING_PERSISTENT_WORKER: "0",
   });
   assert.equal(repeated.status, 0);
-  assert.equal(fs.readFileSync(reportPath, "utf-8").trim().split(/\r?\n/).length, 2);
+  assert.equal(fs.readFileSync(reportPath, "utf-8").trim().split(/\r?\n/).length, 1);
 
   const uncommittedTaskDir = path.join(root, ".claw", "tasks", "uncommitted-task");
   const uncommittedPlanPath = path.join(uncommittedTaskDir, "plan.json");
@@ -3982,19 +4194,20 @@ test("knowledge finalization runs ordered custom writers without applying built-
     USERPROFILE: home,
     CLAW_SESSION_RUNTIME_DIR: sessionRuntimeDir,
     CLAW_KNOWLEDGE_FINALIZER_DISABLE_RETRY: "1",
+    CLAW_EMBEDDING_PERSISTENT_WORKER: "0",
   });
   assert.equal(uncommittedFinalized.status, 0);
   const uncommittedJob = JSON.parse(fs.readFileSync(uncommittedJobPath, "utf-8")) as JsonRecord;
-  assert.equal(uncommittedJob.status, "succeeded");
-  assert.equal(uncommittedJob.finalResponse, "Uncommitted knowledge updated.");
+  assert.equal(uncommittedJob.status, "failed");
+  assert.equal(uncommittedJob.finalResponse, undefined);
   assert.equal(runGit(["rev-parse", "HEAD"], root).trim(), headBeforeDisabledFinalization);
-  assert.equal(fs.readFileSync(uncommittedKnowledgePath, "utf-8"), "\uFEFF# Uncommitted knowledge\n");
+  assert.equal(fs.readFileSync(uncommittedKnowledgePath, "utf-8"), "# Uncommitted knowledge\n");
   assert.match(runGit(["status", "--short", "--", uncommittedKnowledgePath], root), /\?\?/u);
   const uncommittedReportEntries = fs.readFileSync(uncommittedReportPath, "utf-8").trim().split(/\r?\n/);
-  assert.equal(uncommittedReportEntries.length, 2);
+  assert.equal(uncommittedReportEntries.length, 1);
 });
 
-test("knowledge finalization deterministically trims excess dated evolution written by the writer", () => {
+test("background delegate failure does not post-process unacknowledged writer output", async () => {
   const root = createFixture("knowledge-writer-retention");
   const home = path.join(root, "home");
   const taskDir = path.join(root, ".claw", "tasks", "retention-task");
@@ -4023,7 +4236,7 @@ test("knowledge finalization deterministically trims excess dated evolution writ
   ].join("\n");
   fs.writeFileSync(
     path.join(sdkRoot, "dist", "index.js"),
-    `import fs from "node:fs";\nimport path from "node:path";\nimport { createHash } from "node:crypto";\nexport class Codex { startThread() { return { id: "thread-retention", run: async () => { fs.mkdirSync(path.dirname(${JSON.stringify(knowledgePath)}), { recursive: true }); fs.writeFileSync(${JSON.stringify(knowledgePath)}, ${JSON.stringify(writtenKnowledge)}, "utf-8"); const digest = createHash("sha256").update("thread-retention").digest("hex"); const workflowDir = path.join(process.env.CLAW_SESSION_RUNTIME_DIR, digest); const workflowTaskDir = path.join(workflowDir, "tasks", "knowledge-writer"); fs.mkdirSync(workflowTaskDir, { recursive: true }); fs.writeFileSync(path.join(workflowDir, "session.json"), JSON.stringify({ version: 1, scope: "session", originCwd: ${JSON.stringify(root)}, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })); fs.writeFileSync(path.join(workflowTaskDir, "plan.json"), JSON.stringify({ title: "knowledge-writer", templateId: "knowledge-writer", status: "end.completed", tasks: [{ id: 1, status: "done" }] })); return { finalResponse: "Knowledge updated." }; } }; } }\n`,
+    `import fs from "node:fs";\nimport path from "node:path";\nimport { createHash } from "node:crypto";\nexport class Codex { constructor(options) { this.env = options.env; } startThread() { const env = this.env; return { id: "thread-retention", run: async () => { fs.mkdirSync(path.dirname(${JSON.stringify(knowledgePath)}), { recursive: true }); fs.writeFileSync(${JSON.stringify(knowledgePath)}, ${JSON.stringify(writtenKnowledge)}, "utf-8"); const digest = createHash("sha256").update(env.CLAW_SESSION_ID).digest("hex"); const workflowDir = path.join(env.CLAW_SESSION_RUNTIME_DIR, digest); const workflowTaskDir = path.join(workflowDir, "tasks", "knowledge-writer"); fs.mkdirSync(workflowTaskDir, { recursive: true }); fs.writeFileSync(path.join(workflowDir, "session.json"), JSON.stringify({ version: 1, scope: "session", originCwd: ${JSON.stringify(root)}, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })); fs.writeFileSync(path.join(workflowTaskDir, "plan.json"), JSON.stringify({ title: "knowledge-writer", templateId: "knowledge-writer", status: "end.completed", tasks: [{ id: 1, status: "done" }] })); return { finalResponse: "Knowledge updated." }; } }; } }\n`,
     "utf-8",
   );
 
@@ -4050,30 +4263,19 @@ test("knowledge finalization deterministically trims excess dated evolution writ
     USERPROFILE: home,
     CLAW_SESSION_RUNTIME_DIR: path.join(root, "session-runtime"),
     CLAW_KNOWLEDGE_FINALIZER_DISABLE_RETRY: "1",
+    CLAW_EMBEDDING_PERSISTENT_WORKER: "0",
   });
   assert.equal(finalized.status, 0);
   const content = fs.readFileSync(knowledgePath, "utf-8");
   assert.match(content, /Current behavior remains intact/u);
-  assert.doesNotMatch(content, /First historical state/u);
-  assert.doesNotMatch(content, /Second historical state/u);
+  assert.match(content, /First historical state/u);
+  assert.match(content, /Second historical state/u);
   assert.match(content, /Third historical state/u);
   assert.match(content, /Fourth historical state/u);
 
   const job = JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord;
-  assert.deepEqual(job.knowledgeGovernance, {
-    changedFiles: 1,
-    compactedFiles: 1,
-    removedSections: 2,
-    files: [{
-      path: "features/evolving.md",
-      datedSectionCountBefore: 4,
-      datedSectionCountAfter: 2,
-      removedSections: [
-        { date: "2026-07-20", heading: "### First" },
-        { date: "2026-07-20", heading: "### Second" },
-      ],
-    }],
-  });
+  assert.equal(job.status, "failed");
+  assert.equal(job.knowledgeGovernance, undefined);
 });
 
 test("knowledge finalization fails and retains its report when the SDK writer does not complete a session workflow", () => {
@@ -4126,13 +4328,11 @@ test("knowledge finalization fails and retains its report when the SDK writer do
   assert.equal(finalized.status, 0);
   const job = JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord;
   assert.equal(job.status, "failed");
-  assert.match(String((job.error as JsonRecord).message), /did not create its required session workflow/i);
+  assert.match(String((job.error as JsonRecord).message), /without acknowledging a terminal result/i);
   const builtInPrompt = fs.readFileSync(promptLog, "utf-8");
-  assert.match(builtInPrompt, /Apply the claw-kit:knowledge-writer skill's documentation-governance rules/i);
-  assert.match(builtInPrompt, /Work unattended; do not request review or confirmation/i);
-  assert.match(builtInPrompt, /Do not reference or link to the supplied materials/i);
-  assert.doesNotMatch(builtInPrompt, /only supported conclusions|make evidence-based decisions/i);
-  assert.doesNotMatch(builtInPrompt, /follow it exactly/i);
+  assert.match(builtInPrompt, /claw plan create --template-file/i);
+  assert.match(builtInPrompt, /internal session plan/i);
+  assert.doesNotMatch(builtInPrompt, /claw-kit:knowledge-writer|claw-kit:delegate-writer/i);
   assert.equal(fs.existsSync(reportPath), true);
 });
 

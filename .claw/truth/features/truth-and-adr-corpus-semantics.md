@@ -36,8 +36,8 @@
 <!-- state: current -->
 ## 关联代码与文档
 
-- `shared/skills/knowledge-writer/knowledge-format.md`
-- `shared/skills/knowledge-writer/`
+- `packages/core/resources/knowledge-writer/knowledge-format.md`
+- `packages/core/resources/knowledge-writer/`
 - `packages/core/src/knowledge-document.ts`
 - `packages/core/src/knowledge-governance.ts`
 - `packages/core/src/knowledge-sidecar.ts`

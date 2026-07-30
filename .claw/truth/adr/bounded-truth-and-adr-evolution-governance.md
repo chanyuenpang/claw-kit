@@ -49,8 +49,8 @@ This ADR owns the built-in bounded canonical-evolution model and its writer/runt
 
 ## Related Code
 
-- `shared/skills/knowledge-writer/knowledge-format.md`
-- `shared/skills/knowledge-writer/TEMPLATE.json`
+- `packages/core/resources/knowledge-writer/knowledge-format.md`
+- `packages/core/resources/knowledge-writer/TEMPLATE.json`
 - `packages/core/src/knowledge-document.ts`
 - `packages/core/src/knowledge-governance.ts`
 - `packages/core/src/knowledge-sidecar.ts`

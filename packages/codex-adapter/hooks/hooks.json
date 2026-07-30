@@ -18,8 +18,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "claw hook auto-doc --host codex",
-            "commandWindows": "claw hook auto-doc --host codex",
+            "command": "node \"$PLUGIN_ROOT/scripts/knowledge-finalizer.mjs\"",
+            "commandWindows": "node \"%PLUGIN_ROOT%\\scripts\\knowledge-finalizer.mjs\"",
             "timeout": 30,
             "statusMessage": "auto-doc: capturing plan report"
           }

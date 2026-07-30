@@ -1,7 +1,5 @@
 ﻿# Published npm Packages
 
-<!-- document-state: current -->
-
 <!-- state: current -->
 ## 当前行为
 
@@ -94,6 +92,13 @@
 - `0.1.94` 已从 release commit `797da0e` 发布；`@veewo/claw-core` 与 `@veewo/claw`、GitHub Release `v0.1.94` 和 committed Codex marketplace manifest `0.1.94+codex.20260721175818` 均属于该完成边界。该版本交付了 Codex host progress projection 修复及项目搜索的 persistent reader、紧凑向量存储和延迟 snippet 读取优化。
 - 完成报告记录 core `149/149`、CLI `126/126`、plugin checks、production audit、registry retrieval 与 GitHub Release 验证均通过；这些结果只证明该 release revision，不将完整验证矩阵提升为未来发布的固定要求。
 - 发布后的维护者安装已从已发布 npm 和 official GitHub marketplace 刷新到 `0.1.94`；发布完成时 `main`、`origin/main` 与 `v0.1.94` 收敛到同一 commit，工作树干净。正在运行的 Codex 进程仍须重启并新建任务，才能把已安装的新 plugin skill 作为运行时加载证据；该重启依赖不否定已完成的安装面验证。
+
+<!-- dated: 2026-07-26 -->
+### 0.1.96 维护者安装刷新完成态
+
+- npm 与 official `chanyuenpang/claw-kit` GitHub marketplace 均已提供 `0.1.96`。全局 `@veewo/claw` 已从 npm 重新安装为非 workspace-link 的 `0.1.96`，旧的本地仓库链接已移除。
+- Codex plugin 已从 official GitHub marketplace 刷新为 `0.1.96+codex.20260723133832`；只启用 `claw-kit@claw-kit`，禁用 `claw-kit@claw-kit-local`。source/cache manifest 一致，published skill 边界验证通过。
+- 该完成证据覆盖 CLI 与 plugin 安装面，不声称当时运行中的 Codex 任务已采用新 skill。运行时采用仍须由重启 Codex 后的新任务确认 loaded skill version。
 
 <!-- dated: 2026-07-29 -->
 ### 0.1.97 发布与维护者安装刷新完成态

@@ -15,8 +15,8 @@
 - `planSummary` 是聊天协作中可展示的紧凑计划状态；adapter 不应期待 render blocks、widget envelope、`claw plan app` 或 `claw plan render`。
 - code-investigation-first 可由 task shape 触发，不必等待 `workflowGuidance.delegateSubagents` 明确列出；普通项目 recall、Truth/ADR lookup 与历史上下文查询不是 researcher dispatch trigger。这只定义 guidance 的触发边界，不在本文重复拥有 researcher 的 agent type、派发、复用、等待或调查顺序。
 - researcher 的当前代码调查派发、相关同线程复用、窄 brief、阻塞等待与非递归合同统一由 `.claw/truth/features/codex-subagent-reuse.md` 拥有。
-- `workflowGuidance` 不再派发 Truth/ADR writer。completed plan、相邻 report 与 job snapshot 由 Stop/session-idle sidecar 交给一次 combined `knowledge-writer` pass；main agent 不在 closure 前另行沉淀。
-- `workflowGuidance.delegateSubagents` 的历史 writer entries 已退出当前 lifecycle；该字段若用于其他 specialist，仍按 returned structured contract 消费，不能据此恢复 main-agent writer dispatch。
+- `workflowGuidance` 不再派发 Truth/ADR writer。completed plan、相邻 report 与 job snapshot 由 finalization executor 交给一次隐藏的 combined governance assignment；main agent 不在 closure 前自行读取材料或沉淀。
+- `workflowGuidance.delegateSubagents` 的历史 writer entries 已退出当前 lifecycle；该字段若用于其他 specialist，仍按 returned structured contract 消费。Codex `subagent` policy 使用的是 terminal mutation 顶层、由 fixed driver 保留的 `knowledgeDispatch`：main agent 只原生启动 fresh executor 且不等待，这不是恢复旧 writer reuse 或 `workflowGuidance` dispatch。
 - `process.wait` 和 `process.discussing` 都是暂停型 guidance：cross-host `workflowGuidance.goalTool` 继续描述 `update_goal(status="blocked")`；Codex adapter 不直接执行该 compatibility metadata，而是消费 CLI `buildHostActions` 按 committed `planStatus` 投影出的 schema-v1 `update_goal(status="complete")`，目标是在后续独立 mutation 恢复到 `process.active` 前结束当前 Goal。修复前的 `0.1.86` installed Host 偏差及当前 v6 Goal-action 幂等行为由 `codex-goal-mode-integration.md` 拥有。
 - 当 `workflowGuidance` 在从 `process.wait` 或 `process.discussing` 恢复后返回 `goalMode` 时，adapter 应把它当成 `on_resume_process_active` 的重新激活，而不是 `plan write` 阶段的首次 Goal Mode 授权。
 - `prepare.requirements` 阶段如果 `goal.text` 缺失，adapter 应先补 goal，再补其余 plan 字段；如果需求已经完整，补完后应立即把 `plan.status` 切到 `process.active`，而不是继续停留在 requirements。

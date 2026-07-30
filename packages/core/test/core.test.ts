@@ -6,6 +6,9 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import {
   buildDirectWorkflowGuidance,
+  buildKnowledgeDelegateDispatch,
+  buildKnowledgeAssignmentTemplate,
+  buildKnowledgeWriterAssignments,
   buildMemoryIndex,
   createSubplan,
   ensureProjectProtocol,
@@ -20,10 +23,12 @@ import {
   knowledgeFinalizationJobPath,
   knowledgeSessionRegistryPath,
   claimKnowledgeFinalizationJob,
+  doneKnowledgeFinalizationJob,
   listRetryableKnowledgeFinalizationJobs,
   normalizeTruthMarkdownEncoding,
   recordKnowledgeFinalizationResult,
   readKnowledgeFinalizationJob,
+  waitForKnowledgeFinalizationJobReady,
   runDailyMaintenance,
   writeKnowledgeFinalizationJob,
   resolveContext,
@@ -229,6 +234,100 @@ test("knowledge sidecar failures stay fail-open for plan lifecycle callers", () 
   assert.match(result.error ?? "", /must stay inside/);
 });
 
+test("knowledge wait is readiness-only while claim owns execution and prompt routing", () => {
+  const root = createEmptyFixture("knowledge-lifecycle");
+  const runtimeDir = createEmptyFixture("knowledge-lifecycle-runtime");
+  initProject({ cwd: root, projectName: "Knowledge Lifecycle" });
+  const project = resolveProjectContext(root);
+  const finalizeId = "a".repeat(64);
+  const taskDir = path.join(project.tasksDir, "demo");
+  const jobPath = path.join(taskDir, ".runtime", "knowledge-finalization", `${finalizeId}.json`);
+  fs.mkdirSync(path.dirname(jobPath), { recursive: true });
+  fs.writeFileSync(jobPath, JSON.stringify({
+    schemaVersion: 1,
+    finalizeId,
+    sessionId: "owner-thread",
+    projectRoot: root,
+    taskName: "demo",
+    planPath: path.join(taskDir, "plan.json"),
+    reportPath: path.join(taskDir, "plan.report"),
+    writer: { executionPolicy: "background", externalSkills: [] },
+    status: "queued",
+    attempts: 0,
+    queuedAt: new Date().toISOString(),
+  }), "utf-8");
+
+  const previousRuntimeDir = process.env.CLAW_SESSION_RUNTIME_DIR;
+  process.env.CLAW_SESSION_RUNTIME_DIR = runtimeDir;
+  try {
+    const waited = waitForKnowledgeFinalizationJobReady({ project, finalizeId, timeoutMs: 0 });
+    assert.equal(waited.jobPath, jobPath);
+    assert.equal(fs.readdirSync(runtimeDir).length, 0);
+    assert.equal("executorSessionId" in waited.job, false);
+
+    const builtinAssignments = buildKnowledgeWriterAssignments(waited.job);
+    assert.equal(builtinAssignments[0]?.kind, "builtin");
+    assert.doesNotMatch(builtinAssignments[0]!.prompt, /invoke the .* skill/i);
+    assert.doesNotMatch(builtinAssignments[0]!.prompt, /request confirmation or review/i);
+    assert.match(builtinAssignments[0]!.prompt, /keep at most 6 complete evolution sections/i);
+    const delegateDispatch = buildKnowledgeDelegateDispatch({
+      policy: "subagent",
+      projectRoot: root,
+      taskName: "demo",
+      finalizeId,
+      writer: { model: "test-model", reasoningEffort: "high" },
+    });
+    assert.equal(delegateDispatch.policy, "subagent");
+    assert.equal(delegateDispatch.forkTurns, "none");
+    assert.equal(delegateDispatch.model, "test-model");
+    assert.equal(delegateDispatch.reasoningEffort, "high");
+    assert.match(delegateDispatch.templatePath, /resources[\\/]delegate-writer[\\/]TEMPLATE\.json$/);
+    assert.equal(fs.existsSync(delegateDispatch.templatePath), true);
+    assert.match(delegateDispatch.prompt, /claw plan create --template-file/);
+    assert.doesNotMatch(delegateDispatch.prompt, /claw-kit:delegate-writer/i);
+    const builtinTemplate = buildKnowledgeAssignmentTemplate({
+      assignments: builtinAssignments,
+      finalizeId,
+      version: corePackageVersion,
+    });
+    assert.equal(builtinTemplate.scope, "session");
+    assert.equal(builtinTemplate.tasks.length, 6);
+    assert.ok(builtinTemplate.references?.every((reference) => path.isAbsolute(reference.path)));
+
+    const externalAssignments = buildKnowledgeWriterAssignments({
+      ...waited.job,
+      writer: { externalSkills: ["custom-one", "custom-two"] },
+    });
+    assert.equal(externalAssignments.length, 2);
+    assert.equal(externalAssignments[0]?.kind, "external_skill");
+    assert.match(externalAssignments[0]!.prompt, /invoke the custom-one skill/i);
+    assert.match(externalAssignments[0]!.prompt, /run unattended and non-interactively/i);
+    assert.match(externalAssignments[0]!.prompt, /do not ask questions/i);
+
+    const claimed = claimKnowledgeFinalizationJob(jobPath);
+    assert.equal(claimed?.status, "running");
+    assert.ok(claimed?.claimToken);
+    assert.throws(
+      () => doneKnowledgeFinalizationJob({
+        jobPath,
+        claimToken: "wrong-token",
+        status: "succeeded",
+        result: "done",
+      }),
+      /does not match the active claim/i,
+    );
+    assert.equal(doneKnowledgeFinalizationJob({
+      jobPath,
+      claimToken: claimed!.claimToken!,
+      status: "succeeded",
+      result: "done",
+    }).job.status, "succeeded");
+  } finally {
+    if (previousRuntimeDir === undefined) delete process.env.CLAW_SESSION_RUNTIME_DIR;
+    else process.env.CLAW_SESSION_RUNTIME_DIR = previousRuntimeDir;
+  }
+});
+
 test("knowledge finalization post-processing normalizes truth encoding and records an observable result", () => {
   const root = createEmptyFixture("knowledge-finalization-post-processing");
   initProject({ cwd: root, projectName: "Knowledge Finalization Post Processing" });
@@ -362,6 +461,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
     contextPaths: ["docs/project-guide.md"],
     goalMode: true,
     knowledgeWriter: {
+      executionPolicy: "background",
       externalSkills: ["external-knowledge-writer"],
       model: null,
       reasoningEffort: "medium",
@@ -451,6 +551,21 @@ test("daily maintenance clears managed tmp, archives old dated tasks without com
   fs.writeFileSync(path.join(knowledgeSessionsDir, "orphan.json"), JSON.stringify({ schemaVersion: 1, sessionId: "orphan", updatedAt: "2026-01-01T00:00:00.000Z" }), "utf-8");
   const tmpFile = path.join(root, ".claw", "runtime", "tmp", "scratch.json");
   fs.writeFileSync(tmpFile, "discard", "utf-8");
+  const emptyCurrentTaskDateDir = path.join(root, ".claw", "tasks", "2026-02-02");
+  const emptyArchivedTaskDateDir = path.join(root, ".claw", "archive", "tasks", "2026-01-29");
+  fs.mkdirSync(emptyCurrentTaskDateDir, { recursive: true });
+  fs.mkdirSync(emptyArchivedTaskDateDir, { recursive: true });
+  const completionLogsDir = path.join(root, ".claw", "logs", "completion-refresh");
+  const oldLog = path.join(completionLogsDir, "old.json");
+  const yesterdayLog = path.join(completionLogsDir, "yesterday.json");
+  const inflightLog = path.join(completionLogsDir, "inflight.lock", "state.json");
+  fs.mkdirSync(path.dirname(inflightLog), { recursive: true });
+  fs.writeFileSync(oldLog, "old", "utf-8");
+  fs.writeFileSync(yesterdayLog, "yesterday", "utf-8");
+  fs.writeFileSync(inflightLog, "inflight", "utf-8");
+  fs.utimesSync(oldLog, new Date("2026-01-30T12:00:00.000Z"), new Date("2026-01-30T12:00:00.000Z"));
+  fs.utimesSync(yesterdayLog, new Date("2026-01-31T12:00:00.000Z"), new Date("2026-01-31T12:00:00.000Z"));
+  fs.utimesSync(inflightLog, new Date("2026-01-01T00:00:00.000Z"), new Date("2026-01-01T00:00:00.000Z"));
   const staleSession = path.join(sessionRoot, "stale");
   fs.mkdirSync(staleSession, { recursive: true });
   fs.writeFileSync(path.join(staleSession, "session.json"), JSON.stringify({ version: 1, scope: "session", originCwd: root, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" }), "utf-8");
@@ -467,6 +582,13 @@ test("daily maintenance clears managed tmp, archives old dated tasks without com
   assert.equal(first.staleBindingsRemoved, 1);
   assert.equal(first.legacyFinalizerJobsRemoved, 1);
   assert.equal(first.knowledgeSessionsRemoved, 1);
+  assert.equal(first.emptyDatedDirectoriesRemoved, 2);
+  assert.equal(first.logsRemoved, 1);
+  assert.equal(fs.existsSync(emptyCurrentTaskDateDir), false);
+  assert.equal(fs.existsSync(emptyArchivedTaskDateDir), false);
+  assert.equal(fs.existsSync(oldLog), false);
+  assert.equal(fs.existsSync(yesterdayLog), true);
+  assert.equal(fs.existsSync(inflightLog), true);
   assert.equal(fs.existsSync(path.join(root, ".claw", "runtime", "session-bindings.json")), false);
   assert.equal(fs.existsSync(path.join(legacyJobsDir, "succeeded.json")), false);
   assert.equal(fs.existsSync(path.join(knowledgeSessionsDir, "orphan.json")), false);
@@ -2777,6 +2899,7 @@ test("resolveContext deep-merges project-override.json and preserves explicit nu
   assert.deepEqual(result.project.projectConfig?.contextPaths, ["docs/personal.md"]);
   assert.equal(result.project.projectConfig?.goalMode, false);
   assert.deepEqual(result.project.projectConfig?.knowledgeWriter, {
+    executionPolicy: "background",
     externalSkills: [],
     model: "gpt-team-writer",
     reasoningEffort: "high",
@@ -5243,6 +5366,7 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
   assert.deepEqual(projectConfig.contextPaths, []);
   assert.equal(projectConfig.goalMode, true);
   assert.deepEqual(projectConfig.knowledgeWriter, {
+    executionPolicy: "background",
     externalSkills: [],
     model: null,
     reasoningEffort: "medium",
@@ -5318,6 +5442,7 @@ test("ensureProjectProtocol removes legacy default local modelCacheDir so runtim
   assert.equal(result.changed, true);
   assert.equal(projectConfig.goalMode, true);
   assert.deepEqual(projectConfig.knowledgeWriter, {
+    executionPolicy: "background",
     externalSkills: [],
     model: null,
     reasoningEffort: "medium",

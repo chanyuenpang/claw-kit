@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted working truth for the current Codex adapter prompt surface.
+Current
 
 ## Core facts
 
@@ -16,7 +16,7 @@ Accepted working truth for the current Codex adapter prompt surface.
 ## Workflow implications
 
 - `using-claw-kit` 的当前入口路由由 `using-claw-kit-session-entry.md` 与 `codex-plugin-workflow-mechanics.md` 拥有；本文件不再重复其 prompt guidance 检查、next-step 来源优先级或具体入口句子。
-- 代码调查与项目 recall 之间的 researcher 路由边界由 `.claw/truth/features/codex-subagent-reuse.md` 拥有，本文不重复其触发、派发或复用合同。完成期 Truth/ADR 由 hook-owned `knowledge-writer` 处理，不属于 main-agent specialist dispatch。
+- 代码调查与项目 recall 之间的 researcher 路由边界由 `.claw/truth/features/codex-subagent-reuse.md` 拥有，本文不重复其触发、派发或复用合同。完成期 Truth/ADR 由内部 delegate workflow 处理；`subagent` policy 下 main agent 只消费 terminal `knowledgeDispatch` 启动 fresh executor，不把它当作可复用 specialist。
 - task 相关 supporting docs 放在 `plan.references`，而不是依赖 task-local search。
 - `claw search` 负责 project-scope recall；GitNexus 调查入口通过 `tool_search` 定位对应工具。
 
@@ -34,7 +34,8 @@ Accepted working truth for the current Codex adapter prompt surface.
 - `packages/codex-adapter/skills/plan-workflow/SKILL.md`
 - `packages/codex-adapter/skills/planning/SKILL.md`
 - `packages/codex-adapter/skills/researcher/SKILL.md`
-- `packages/codex-adapter/skills/knowledge-writer/`
+- `packages/core/resources/delegate-writer/TEMPLATE.json`
+- `packages/core/resources/knowledge-writer/`
 - `packages/codex-adapter/references/workflow-guidance-consumption.md`
 - `packages/codex-adapter/references/codex-subagent-dispatch.md`
 

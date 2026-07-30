@@ -8,7 +8,7 @@ import {
   DEFAULT_MAX_TASKS_TO_KEEP,
 } from "./project-defaults.js";
 import { resolveSessionBoundPlan } from "./session-bindings.js";
-import type { KnowledgeWriterReasoningEffort, MemoryEmbeddingConfig, ProjectConfig, ProjectContext, ResolvedContext, TaskContext, TaskMeta } from "./types.js";
+import type { KnowledgeWriterExecutionPolicy, KnowledgeWriterReasoningEffort, MemoryEmbeddingConfig, ProjectConfig, ProjectContext, ResolvedContext, TaskContext, TaskMeta } from "./types.js";
 
 const CORE_VERSION = readCoreVersion();
 
@@ -220,6 +220,9 @@ function normalizeProjectConfig(projectConfig: ProjectConfig): ProjectConfig {
     autoUpdate: projectConfig.autoUpdate === true,
     goalMode: typeof projectConfig.goalMode === "boolean" ? projectConfig.goalMode : true,
     knowledgeWriter: {
+      executionPolicy: normalizeKnowledgeWriterExecutionPolicy(
+        projectConfig.knowledgeWriter?.executionPolicy,
+      ),
       externalSkills: resolveExternalWriterSkills(legacyConfig),
       model: normalizeOptionalSkill(projectConfig.knowledgeWriter?.model),
       reasoningEffort: normalizeKnowledgeWriterReasoningEffort(
@@ -283,6 +286,10 @@ function normalizeKnowledgeWriterReasoningEffort(value: unknown): KnowledgeWrite
   return value === "minimal" || value === "low" || value === "high" || value === "xhigh"
     ? value
     : "medium";
+}
+
+function normalizeKnowledgeWriterExecutionPolicy(value: unknown): KnowledgeWriterExecutionPolicy {
+  return value === "subagent" ? "subagent" : "background";
 }
 
 function deriveProjectId(projectRoot: string, projectConfig: ProjectConfig | null): string {

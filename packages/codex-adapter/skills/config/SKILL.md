@@ -46,6 +46,7 @@ Use it when the team should share the behavior:
 - `memory.embedding`
 - `goalMode`
 - `knowledgeWriter.externalSkills`
+- `knowledgeWriter.executionPolicy`
 - `knowledgeWriter.model`
 - `knowledgeWriter.reasoningEffort`
 - `knowledgeWriter.datedSectionsToKeep`
@@ -112,6 +113,7 @@ Keep nested shape only where the field actually has substructure:
 ```json
 {
   "knowledgeWriter": {
+    "executionPolicy": "background",
     "externalSkills": [],
     "model": null,
     "reasoningEffort": "medium",
@@ -133,7 +135,7 @@ The default local model is `jinaai/jina-embeddings-v2-base-zh` at 768 dimensions
 - `Snowflake/snowflake-arctic-embed-m-v2.0` at 768 dimensions for projects that accept higher model, CPU, and memory cost.
 - `Snowflake/snowflake-arctic-embed-xs` at 384 dimensions for explicit low-resource or English-oriented use. It is not recommended for Chinese-heavy recall because the claw search comparison found substantial Chinese semantic-recall regressions.
 
-The finalizer always runs an ordered documentation-governance skill sequence with one unattended pass per skill. `knowledgeWriter.externalSkills` replaces the default sequence; an empty or absent list resolves to `["claw-kit:knowledge-writer"]`. Every governance skill receives the same unattended prompt, while a skill-specific claw session workflow is required only when that skill's runtime contract needs it. `model = null` uses the host default model. `reasoningEffort` accepts `minimal`, `low`, `medium`, `high`, or `xhigh`. `datedSectionsToKeep` is a non-negative integer; it caps only complete evolution sections marked by `<!-- dated: YYYY-MM-DD -->` in each canonical document changed by the built-in writer. It does not limit current prose by length or age.
+`knowledgeWriter.executionPolicy` accepts `background` or `subagent` and defaults to `background`; `subagent` is supported only by Codex. The finalizer runs an ordered documentation-governance assignment sequence. `knowledgeWriter.externalSkills` replaces the built-in default assignment. Custom skills receive an explicit unattended, non-interactive invocation envelope; an empty or absent list uses the hidden built-in governance contract with its own direct wording. This is configuration fallback, not failure fallback. `model = null` uses the host default model. `reasoningEffort` accepts `minimal`, `low`, `medium`, `high`, or `xhigh`. `datedSectionsToKeep` is a non-negative integer; it caps only complete evolution sections marked by `<!-- dated: YYYY-MM-DD -->` in each canonical document changed by the built-in writer. It does not limit current prose by length or age.
 
 ## Safe editing flow
 

@@ -6,7 +6,7 @@
 - 正式 claw workflow 的主要成本不只来自业务执行，还来自合同版本漂移、plan lifecycle mutation、hook-owned writer execution、query embedding、completion refresh 与 GitNexus 分析。
 - lifecycle 元状态与业务进度必须分开理解：当前单一 planning bridge 用于完成讨论并切换执行状态，不计入 downstream 业务 task 数，也不应独立触发 truth deposition；旧版独立 `Enter process.active` 只属于版本化 benchmark 与历史 plan evidence。
 - `truthDispatch = "final_only" | "per_task"` 与按 task 派发 writer 是 `0.1.65` 及更早性能样本的版本化输入，不是当前 project schema 或 lifecycle owner。
-- 当前项目配置可使用 `knowledgeWriter.externalSkills` 的有序列表；列表缺失或为空时，正式 workflow 协调 `.claw` plan state、Codex Goal/progress actions，以及完成后的一次 built-in `knowledge-writer` job。retention 的字段语义由 `truth-and-adr-corpus-semantics.md` 唯一拥有。
+- 当前项目配置可使用 `knowledgeWriter.externalSkills` 的有序列表；列表缺失或为空时，正式 workflow 协调 `.claw` plan state、Codex Goal/progress actions，以及完成后的一次 Core 内部 built-in governance assignment。retention 的字段语义由 `truth-and-adr-corpus-semantics.md` 唯一拥有。
 - 优化时应先修复合同一致性与条件语义，再降低 plan mutation 和后台 refresh 成本；入口 admission 的当前所有权与规则见 `using-claw-kit-session-entry.md`。
 
 ## 已验证的执行事实
@@ -27,13 +27,13 @@
 
 ### Truth delegation 条件语义
 
-- Historical `0.1.65` workflow delegate output used `dispatch` for separate writer semantics. Current finalization has no foreground writer delegate output; the Stop/session-idle job runs one combined `knowledge-writer` pass.
-- `0.1.65` 的 main-agent truth value gate、required ADR dispatch 与 phase-specific references 仅保留为历史成本证据。当前 combined `knowledge-writer` 在 trusted evidence freshness check 后固定先评估 Truth、再评估 ADR；各阶段可以 evidence-backed no-edit，但没有 Truth/ADR/both/noop route task。
-- 判断 live 行为时必须区分历史 benchmark 的 installed CLI/skill snapshot 与当前 `0.1.80` combined writer contract。
+- Historical `0.1.65` workflow delegate output used `dispatch` for separate writer semantics. Current finalization can return a Codex-only terminal `knowledgeDispatch` when `executionPolicy = "subagent"`, but that dispatch only starts the same internal delegate executor used by background policy; it does not expose governance routing.
+- `0.1.65` 的 main-agent truth value gate、required ADR dispatch 与 phase-specific references 仅保留为历史成本证据。当前 hidden built-in governance 在 trusted evidence freshness check 后固定先评估 Truth、再评估 ADR；各阶段可以 evidence-backed no-edit，但没有 Truth/ADR/both/noop route task。
+- 判断 live 行为时必须区分历史 benchmark 的 installed CLI/skill snapshot 与当前 Core 内部 delegate + hidden built-in governance contract。
 
 ### Writer target routing 与性能
 
-- Combined `knowledge-writer` 启动后完整读取 skill-local workflow references，并对候选 owner 做 focused 与 exhaustive search；这部分 stewardship 成本不能通过恢复两个窄 phase 来规避。
+- Built-in governance assignment 启动后完整读取 Core 内部 workflow references，并对候选 owner 做 focused 与 exhaustive search；这部分 stewardship 成本不能通过恢复两个窄 phase 来规避。
 - canonical target routing 属于 writer 自身职责，不应要求 main agent 先理解 truth/ADR 文件布局或选择目标。writer 使用 `claw search` 召回候选 canonical 文档，再只读取相关候选；只有 search 不可用、候选冲突或 canonical routing 仍无法确定时，才回退到 full-corpus inspection。
 - 历史 release closeout 实测中，宽泛 ADR 任务两次分别约 `40-90s` 与 `90s`，且都没有落盘；把输入收敛为唯一 `targetPath` 与两条追加事实后，约 `10s` 完成。该对比说明主要优化点是 target certainty，而不是删除 router/reference 合同。
 - 本轮 fresh-agent 前向验证中，明确 `targetPath` 的 ADR 约 `70s` 落盘，truth 约 `85s` 落盘；两者均正确走定向写入且没有修改索引，但端到端时延没有稳定优于历史样本。当前改动能确认消除了不必要的 corpus 扫描，不能据此宣称 subagent 总耗时已经下降；剩余时延主要位于 writer 启动、模型处理和完整 deposition 合同执行。

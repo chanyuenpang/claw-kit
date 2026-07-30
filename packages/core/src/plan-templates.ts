@@ -10,7 +10,7 @@ import {
   type TemplateGuidanceRoute,
   type TemplateTaskGuidance,
 } from "./templates/plans/default.js";
-import type { PlanReference, PlanRequirements, PlanRetrospective, PlanStatus, TemplateConfigOverride } from "./types.js";
+import type { KnowledgeWriterExecutionPolicy, PlanReference, PlanRequirements, PlanRetrospective, PlanStatus, TemplateConfigOverride } from "./types.js";
 
 export type ResolvedPlanTemplate = {
   id: string;
@@ -726,6 +726,9 @@ function normalizeTemplateConfigOverride(value: unknown): TemplateConfigOverride
     ? truthSkill === adrSkill ? [truthSkill] : [truthSkill, adrSkill]
     : [truthSkill ?? adrSkill].filter((skill): skill is string => skill !== null);
   const normalizedWriter = {
+    ...(writer && (writer.executionPolicy === "background" || writer.executionPolicy === "subagent")
+      ? { executionPolicy: writer.executionPolicy as KnowledgeWriterExecutionPolicy }
+      : {}),
     ...(hasCanonicalExternalSkills
       ? { externalSkills: normalizeTemplateSkills(writer?.externalSkills) }
       : {}),
@@ -753,7 +756,7 @@ function isTemplateKnowledgeWriterConfig(value: unknown): boolean {
     return false;
   }
   const candidate = value as Record<string, unknown>;
-  if (Object.keys(candidate).some((key) => !["externalSkills", "model", "reasoningEffort", "datedSectionsToKeep"].includes(key))) {
+  if (Object.keys(candidate).some((key) => !["executionPolicy", "externalSkills", "model", "reasoningEffort", "datedSectionsToKeep"].includes(key))) {
     return false;
   }
   for (const key of ["model"]) {
@@ -766,7 +769,8 @@ function isTemplateKnowledgeWriterConfig(value: unknown): boolean {
     || candidate.externalSkills.some((skill) => typeof skill !== "string"))) {
     return false;
   }
-  return (candidate.reasoningEffort === undefined || isKnowledgeWriterReasoningEffort(candidate.reasoningEffort))
+  return (candidate.executionPolicy === undefined || candidate.executionPolicy === "background" || candidate.executionPolicy === "subagent")
+    && (candidate.reasoningEffort === undefined || isKnowledgeWriterReasoningEffort(candidate.reasoningEffort))
     && (candidate.datedSectionsToKeep === undefined
       || (Number.isInteger(candidate.datedSectionsToKeep) && (candidate.datedSectionsToKeep as number) >= 0));
 }

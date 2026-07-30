@@ -8,6 +8,9 @@ import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import {
   buildDirectWorkflowGuidance,
+  buildKnowledgeDelegateDispatch,
+  buildKnowledgeAssignmentTemplate,
+  buildKnowledgeWriterAssignments,
   DEFAULT_MAX_TASKS_TO_KEEP,
   checkProjectProtocol,
   ClawError,
@@ -25,6 +28,7 @@ import {
   initProject,
   getTemplateTaskDoneChoices,
   resolvePlanTemplateFile,
+  resolvePlanEffectiveConfig,
   resolveProjectContext,
   resolveWorkflowProjectContext,
   resolveSessionWorkflowContext,
@@ -40,13 +44,12 @@ import {
   switchTask,
   tryCaptureKnowledgeStop,
   claimKnowledgeFinalizationJob,
-  changedKnowledgeMarkdownPaths,
+  doneKnowledgeFinalizationJob,
+  readKnowledgeFinalizationJob,
+  waitForKnowledgeFinalizationJobReady,
   listRetryableKnowledgeFinalizationJobs,
-  governChangedKnowledgeMarkdown,
   normalizeTruthMarkdownEncoding,
   recordKnowledgeFinalizationResult,
-  snapshotKnowledgeMarkdown,
-  writeKnowledgeFinalizationJob,
   unbindSession,
   writePlan,
   type InitProjectInput,
@@ -63,6 +66,7 @@ import {
   type ProjectContext,
   type WorkflowGuidance,
   type KnowledgeFinalizationJob,
+  type KnowledgeDelegateDispatch,
 } from "@veewo/claw-core";
 import { buildCodexDriverEnvelope } from "./codex-driver.js";
 import { checkCodexRuntime, resolveCodexSdkEntryPath } from "./codex-runtime.js";
@@ -101,6 +105,7 @@ const TOP_LEVEL_COMMANDS: { name: string; summary: string }[] = [
   { name: "subplan create [options]", summary: "Create a subplan nested under a parent task item." },
   { name: "switch-task --from <task> --to <task>", summary: "Switch the active task, carrying inherited context." },
   { name: "search [<query>] [options]", summary: "Recall project memory, truth, ADR, and declared docs." },
+  { name: "knowledge <subcommand> [options]", summary: "Knowledge finalization lifecycle: wait, claim, done." },
   { name: "truth ingest [options]", summary: "Ingest a truth document under .claw/truth." },
   { name: "hook <event-name>", summary: "Emit host hook output (e.g. SessionStart)." },
 ];
@@ -400,6 +405,43 @@ const COMMAND_HELP: Record<string, HelpNode> = {
       },
     },
   },
+  knowledge: {
+    usage: ["{script} knowledge <subcommand> [options]"],
+    description: "Session-bound lifecycle commands for a queued knowledge finalization job.",
+    subcommands: {
+      wait: {
+        usage: ["{script} knowledge wait --project-root <path> --finalize-id <id> [--timeout-ms <n>]"],
+        description: "Wait for Stop capture to create a knowledge finalization job. This command does not create or inspect session bindings.",
+        summary: "Wait until the finalization job exists.",
+        options: [
+          { flag: "--project-root <path>", detail: "(required) Project that owns the pending finalization." },
+          { flag: "--finalize-id <id>", detail: "(required) Stable finalization id returned by plan done." },
+          { flag: "--timeout-ms <n>", detail: "Maximum wait in milliseconds (default 300000)." },
+        ],
+      },
+      claim: {
+        usage: ["{script} knowledge claim --job <path>"],
+        description: "Claim a queued or retryable job after its executor session has been bound.",
+        summary: "Claim a session-bound finalization job.",
+        options: [{ flag: "--job <path>", detail: "(required) Finalization job JSON path." }],
+      },
+      done: {
+        usage: [
+          "{script} knowledge done --job <path> --claim-token <token> --status succeeded --result <text>",
+          "{script} knowledge done --job <path> --claim-token <token> --status failed --error <text>",
+        ],
+        description: "Persist the terminal result for a claimed knowledge finalization job.",
+        summary: "Complete a claimed finalization job.",
+        options: [
+          { flag: "--job <path>", detail: "(required) Finalization job JSON path." },
+          { flag: "--claim-token <token>", detail: "(required) Token returned by knowledge claim." },
+          { flag: "--status succeeded|failed", detail: "(required) Terminal execution status." },
+          { flag: "--result <text>", detail: "Required when status is succeeded." },
+          { flag: "--error <text>", detail: "Required when status is failed." },
+        ],
+      },
+    },
+  },
   truth: {
     usage: ["{script} truth <subcommand> [options]"],
     description: "Truth document ingestion under .claw/truth.",
@@ -554,6 +596,9 @@ async function main(): Promise<void> {
       case "search":
         await runSearch(args);
         return;
+      case "knowledge":
+        runKnowledge(args);
+        return;
       case "direct":
         runDirect(args, effectiveHost);
         return;
@@ -571,6 +616,18 @@ async function main(): Promise<void> {
         return;
       case "internal-knowledge-finalize":
         await runInternalKnowledgeFinalize(args);
+        return;
+      case "internal-knowledge-capture":
+        await runInternalKnowledgeCapture(args, effectiveHost);
+        return;
+      case "internal-knowledge-complete":
+        runInternalKnowledgeComplete(args);
+        return;
+      case "internal-knowledge-claim":
+        runInternalKnowledgeClaim(args);
+        return;
+      case "internal-knowledge-fail":
+        runInternalKnowledgeFail(args);
         return;
       case "internal-embedding-warmup":
         await runInternalEmbeddingWarmup(args);
@@ -616,6 +673,92 @@ function runSession(args: string[]): void {
   });
 }
 
+function runKnowledge(args: string[]): void {
+  const subcommand = args.shift();
+  switch (subcommand) {
+    case "wait": {
+      const projectRoot = path.resolve(readRequiredFlag(args, "--project-root"));
+      const finalizeId = readRequiredFlag(args, "--finalize-id");
+      const timeoutMs = readOptionalNumber(args, "--timeout-ms") ?? 300_000;
+      assertNoRemainingArgs(args, "knowledge wait");
+      const { jobPath, job } = waitForKnowledgeFinalizationJobReady({
+        project: resolveProjectContext(projectRoot),
+        finalizeId,
+        timeoutMs,
+      });
+      printJson({
+        ok: true,
+        command: "knowledge.wait",
+        finalizeId: job.finalizeId,
+        status: job.status,
+        jobPath,
+      });
+      return;
+    }
+    case "claim": {
+      const jobPath = readRequiredFlag(args, "--job");
+      assertNoRemainingArgs(args, "knowledge claim");
+      const job = claimKnowledgeFinalizationJob(jobPath);
+      const assignments = job ? buildKnowledgeWriterAssignments(job) : [];
+      const templatePath = job
+        ? path.join(path.dirname(jobPath), `${job.finalizeId}.assignments.json`)
+        : undefined;
+      if (job && templatePath) {
+        fs.writeFileSync(
+          templatePath,
+          `${JSON.stringify(buildKnowledgeAssignmentTemplate({
+            assignments,
+            finalizeId: job.finalizeId,
+            version: CLI_VERSION,
+          }), null, 2)}\n`,
+          "utf-8",
+        );
+      }
+      printJson({
+        ok: true,
+        command: "knowledge.claim",
+        claimed: Boolean(job),
+        ...(job ? {
+          finalizeId: job.finalizeId,
+          claimToken: job.claimToken,
+          projectRoot: job.projectRoot,
+          writer: job.writer ?? null,
+          planPath: job.planPath,
+          reportPath: job.reportPath,
+          assignments,
+          templatePath,
+        } : {}),
+      });
+      return;
+    }
+    case "done": {
+      const jobPath = readRequiredFlag(args, "--job");
+      const claimToken = readRequiredFlag(args, "--claim-token");
+      const status = readRequiredFlag(args, "--status");
+      const result = readOptionalFlag(args, "--result");
+      const error = readOptionalFlag(args, "--error");
+      assertNoRemainingArgs(args, "knowledge done");
+      if (status === "succeeded") {
+        if (result === undefined) {
+          throw new ClawError("PROJECT_CONFIG_INVALID", "knowledge done --status succeeded requires --result.");
+        }
+        completeKnowledgeFinalizationJob(jobPath, result, claimToken);
+        return;
+      }
+      if (status === "failed") {
+        if (!error) {
+          throw new ClawError("PROJECT_CONFIG_INVALID", "knowledge done --status failed requires --error.");
+        }
+        failKnowledgeFinalizationJob(jobPath, error, claimToken);
+        return;
+      }
+      throw new ClawError("PROJECT_CONFIG_INVALID", `Unsupported knowledge done status "${status}".`);
+    }
+    default:
+      throw new ClawError("PROJECT_CONFIG_INVALID", `Unknown knowledge subcommand "${subcommand ?? ""}".`);
+  }
+}
+
 async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Promise<void> {
   const subcommand = args.shift();
   switch (subcommand) {
@@ -657,6 +800,25 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
       }
       const ownerSessionKey = resolveOwnerSessionKey() ?? undefined;
       const entersEndState = requestsPlanEndState(operations);
+      const current = entersEndState
+        ? showPlan({ cwd: process.cwd(), ...target, ownerSessionKey })
+        : undefined;
+      const project = entersEndState ? tryResolveHookProject(process.cwd()) : null;
+      const effectiveWriter = current && project
+        ? resolvePlanEffectiveConfig(project.projectConfig, current.plan)?.knowledgeWriter
+        : undefined;
+      if (
+        current
+        && !current.plan.parentPlan
+        && effectiveWriter?.executionPolicy === "subagent"
+        && effectiveHost !== "codex"
+      ) {
+        throw new ClawError(
+          "PROJECT_CONFIG_INVALID",
+          'knowledgeWriter.executionPolicy "subagent" is supported only by the Codex host.',
+          { host: effectiveHost ?? null },
+        );
+      }
       const queuePlanEndFinalization = entersEndState
         ? preparePlanEndFinalization(process.cwd(), ownerSessionKey)
         : undefined;
@@ -669,7 +831,22 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
         ownerSessionKey,
       });
       const completionRefresh = queuePlanEndFinalization?.(result.taskName);
-      printJson(compactPlanCommandResult("plan.edit", result, effectiveHost, completionRefresh));
+      const knowledgeDispatch = (
+        current
+        && project
+        && effectiveHost === "codex"
+        && !current.plan.parentPlan
+        && effectiveWriter?.executionPolicy === "subagent"
+        && result.knowledgeFinalizeId
+      )
+        ? buildKnowledgeDispatch({
+            projectRoot: project.projectRoot,
+            taskName: result.taskName,
+            finalizeId: result.knowledgeFinalizeId,
+            writer: effectiveWriter,
+          })
+        : undefined;
+      printJson(compactPlanCommandResult("plan.edit", result, effectiveHost, completionRefresh, false, knowledgeDispatch));
       if (result.operationChain?.status === "partial") process.exitCode = 1;
       return;
     }
@@ -745,6 +922,26 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
       const target = readPlanMutationTarget(args);
       assertNoRemainingArgs(args, "plan done");
       const ownerSessionKey = resolveOwnerSessionKey() ?? undefined;
+      const current = showPlan({
+        cwd: process.cwd(),
+        ...target,
+        ownerSessionKey,
+      });
+      const project = tryResolveHookProject(process.cwd());
+      const effectiveWriter = project
+        ? resolvePlanEffectiveConfig(project.projectConfig, current.plan)?.knowledgeWriter
+        : undefined;
+      if (
+        !current.plan.parentPlan
+        && effectiveWriter?.executionPolicy === "subagent"
+        && effectiveHost !== "codex"
+      ) {
+        throw new ClawError(
+          "PROJECT_CONFIG_INVALID",
+          'knowledgeWriter.executionPolicy "subagent" is supported only by the Codex host.',
+          { host: effectiveHost ?? null },
+        );
+      }
       const queuePlanEndFinalization = preparePlanEndFinalization(process.cwd(), ownerSessionKey);
       const result = await editPlan({
         cwd: process.cwd(),
@@ -755,7 +952,27 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
         ownerSessionKey,
       });
       const completionRefresh = queuePlanEndFinalization?.(result.taskName);
-      printJson(compactPlanCommandResult("plan.done", result, effectiveHost, completionRefresh));
+      const knowledgeDispatch = (
+        effectiveHost === "codex"
+        && !current.plan.parentPlan
+        && effectiveWriter?.executionPolicy === "subagent"
+        && result.knowledgeFinalizeId
+      )
+        ? buildKnowledgeDispatch({
+            projectRoot: project!.projectRoot,
+            taskName: result.taskName,
+            finalizeId: result.knowledgeFinalizeId,
+            writer: effectiveWriter,
+          })
+        : undefined;
+      printJson(compactPlanCommandResult(
+        "plan.done",
+        result,
+        effectiveHost,
+        completionRefresh,
+        false,
+        knowledgeDispatch,
+      ));
       return;
     }
     case "show": {
@@ -1430,12 +1647,177 @@ async function runStopHook(effectiveHost: ClawHost | undefined): Promise<void> {
       host: effectiveHost,
       taskConclusions: transcriptPath ? extractTaskDoneConclusions(transcriptPath, turnId) : [],
     });
-    if (result.ok && result.jobPath && process.env.CLAW_KNOWLEDGE_FINALIZER_DISABLE_LAUNCH !== "1") {
+    // Current named hosts own their runner in their adapters.  Keep the CLI
+    // launcher only for jobs written by pre-adapter releases with no host.
+    if (result.ok && result.jobPath && !effectiveHost && process.env.CLAW_KNOWLEDGE_FINALIZER_DISABLE_LAUNCH !== "1") {
       launchKnowledgeFinalizationWorker(result.jobPath, project.projectRoot);
+    }
+    if (process.env.CLAW_KNOWLEDGE_CAPTURE_RESULT === "1") {
+      printJson(result);
     }
   } catch {
     // Knowledge capture is a fail-open sidecar and must never block Stop.
   }
+}
+
+/**
+ * Machine-facing report capture for hosts whose final-message hook is owned by
+ * the adapter rather than by the CLI.  Unlike `hook auto-doc`, this only
+ * persists the report/job hand-off; it never chooses or launches a writer.
+ */
+async function runInternalKnowledgeCapture(args: string[], effectiveHost: ClawHost | undefined): Promise<void> {
+  assertNoRemainingArgs(args, "internal-knowledge-capture");
+  const payload = await readStdinJson();
+  const hookCwd = resolveHookCwd(payload);
+  const sessionId = resolveOwnerSessionKey(payload);
+  const turnId = readHookString(payload, "turn_id");
+  const message = readHookString(payload, "message");
+  if (!hookCwd || !sessionId || !turnId || !message || !containsClawDir(hookCwd)) {
+    printJson({ ok: true, captured: false });
+    return;
+  }
+  try {
+    const project = resolveProjectContext(hookCwd);
+    const result = tryCaptureKnowledgeStop({
+      project,
+      sessionId,
+      turnId,
+      message,
+      host: effectiveHost === "cindy" ? "cindy" : effectiveHost,
+    });
+    printJson(result);
+  } catch (error) {
+    // Capture is a non-blocking sidecar.  Return structured failure so the
+    // owning adapter can surface/retry it without affecting the assistant turn.
+    printJson({ ok: false, error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
+/** Record a successful adapter-owned writer run without invoking a host SDK. */
+function runInternalKnowledgeComplete(args: string[]): void {
+  const jobPath = readRequiredFlag(args, "--job");
+  const result = readRequiredFlag(args, "--result");
+  assertNoRemainingArgs(args, "internal-knowledge-complete");
+  const running = ensureLegacyKnowledgeClaim(jobPath);
+  if (!running?.claimToken) {
+    printJson({ ok: true, completed: false, reason: "job is not claimable" });
+    return;
+  }
+  completeKnowledgeFinalizationJob(jobPath, result, running.claimToken);
+}
+
+function runInternalKnowledgeClaim(args: string[]): void {
+  const jobPath = readRequiredFlag(args, "--job");
+  assertNoRemainingArgs(args, "internal-knowledge-claim");
+  const job = ensureLegacyKnowledgeClaim(jobPath);
+  printJson({
+    ok: true,
+    claimed: Boolean(job),
+    ...(job ? {
+      finalizeId: job.finalizeId,
+      claimToken: job.claimToken,
+    } : {}),
+  });
+}
+
+function runInternalKnowledgeFail(args: string[]): void {
+  const jobPath = readRequiredFlag(args, "--job");
+  const message = readRequiredFlag(args, "--message");
+  assertNoRemainingArgs(args, "internal-knowledge-fail");
+  const job = ensureLegacyKnowledgeClaim(jobPath);
+  if (!job?.claimToken) {
+    printJson({ ok: true, failed: false, reason: "job is not claimable" });
+    return;
+  }
+  failKnowledgeFinalizationJob(jobPath, message, job.claimToken);
+}
+
+function ensureLegacyKnowledgeClaim(jobPath: string): KnowledgeFinalizationJob | null {
+  const job = readKnowledgeFinalizationJob(jobPath);
+  if (job.status === "succeeded" || job.status === "failed" && job.attempts >= 3) {
+    return null;
+  }
+  if (job.status === "running") {
+    return job;
+  }
+  return claimKnowledgeFinalizationJob(jobPath);
+}
+
+function completeKnowledgeFinalizationJob(
+  jobPath: string,
+  result: string,
+  claimToken: string,
+): void {
+  const running = readKnowledgeFinalizationJob(jobPath);
+  if (running.status === "succeeded") {
+    const terminal = doneKnowledgeFinalizationJob({
+      jobPath,
+      claimToken,
+      status: "succeeded",
+      result,
+    });
+    removeKnowledgeAssignmentTemplate(jobPath, running.finalizeId);
+    printJson({ ok: true, completed: true, alreadyDone: terminal.alreadyDone, finalizeId: running.finalizeId });
+    return;
+  }
+  if (running.status !== "running") {
+    throw new Error("Knowledge finalization job must be claimed before successful completion.");
+  }
+  if (running.claimToken !== claimToken) {
+    throw new Error("Knowledge finalization completion does not match the active claim.");
+  }
+  const project = resolveProjectContext(running.projectRoot);
+  const finishedAt = new Date().toISOString();
+  const truthEncoding = normalizeTruthMarkdownEncoding(project);
+  recordKnowledgeFinalizationResult(project, running.reportPath, {
+    schemaVersion: 1,
+    entryType: "knowledge_finalization",
+    finalizeId: running.finalizeId,
+    taskName: running.taskName,
+    recordedAt: finishedAt,
+    status: "succeeded",
+    result,
+    attempts: running.attempts,
+    ...(running.host !== undefined ? { host: running.host } : {}),
+    truthEncoding,
+  });
+  const terminal = doneKnowledgeFinalizationJob({
+    jobPath,
+    claimToken,
+    status: "succeeded",
+    result,
+    finishedAt,
+    patch: { truthEncoding },
+  });
+  removeKnowledgeAssignmentTemplate(jobPath, running.finalizeId);
+  queueCompletionRefresh({
+    cwd: running.projectRoot,
+    taskName: running.taskName,
+    includeTaskRetention: false,
+    includeTaskMemory: false,
+    statusLabel: `knowledge-${running.finalizeId.slice(0, 12)}`,
+    skipGitNexusRefresh: true,
+  });
+  printJson({ ok: true, completed: true, alreadyDone: terminal.alreadyDone, finalizeId: running.finalizeId });
+}
+
+function failKnowledgeFinalizationJob(
+  jobPath: string,
+  message: string,
+  claimToken: string,
+): void {
+  const terminal = doneKnowledgeFinalizationJob({
+    jobPath,
+    claimToken,
+    status: "failed",
+    error: message,
+  });
+  removeKnowledgeAssignmentTemplate(jobPath, terminal.job.finalizeId);
+  printJson({ ok: true, failed: true, alreadyDone: terminal.alreadyDone, finalizeId: terminal.job.finalizeId });
+}
+
+function removeKnowledgeAssignmentTemplate(jobPath: string, finalizeId: string): void {
+  fs.rmSync(path.join(path.dirname(jobPath), `${finalizeId}.assignments.json`), { force: true });
 }
 
 async function runInternalEmbeddingWarmup(args: string[]): Promise<void> {
@@ -1450,68 +1832,51 @@ async function runInternalEmbeddingWarmup(args: string[]): Promise<void> {
 
 async function runInternalKnowledgeFinalize(args: string[]): Promise<void> {
   const jobPath = readRequiredFlag(args, "--job");
-  const running = claimKnowledgeFinalizationJob(jobPath);
-  if (!running) {
+  const queued = readKnowledgeFinalizationJob(jobPath);
+  assertNoRemainingArgs(args, "internal-knowledge-finalize");
+  if ((queued.writer?.executionPolicy ?? "background") !== "background") {
     return;
   }
   try {
-    const project = resolveProjectContext(running.projectRoot);
-    const useBuiltInAutomation = usesBuiltInKnowledgeWriter(running);
-    const knowledgeBefore = snapshotKnowledgeMarkdown(project.truthDir);
-    const writerRun = await runKnowledgeWriterForJob(running);
-    const knowledgeGovernance = useBuiltInAutomation
-      ? governChangedKnowledgeMarkdown({
-          truthDir: project.truthDir,
-          before: knowledgeBefore,
-          datedSectionsToKeep: running.writer?.datedSectionsToKeep ?? 6,
-        })
-      : undefined;
-    const truthEncoding = normalizeTruthMarkdownEncoding(project);
-    const changedKnowledgePaths = changedKnowledgeMarkdownPaths(
-      knowledgeBefore,
-      snapshotKnowledgeMarkdown(project.truthDir),
-    );
-    queueCompletionRefresh({
-      cwd: running.projectRoot,
-      taskName: running.taskName,
-      includeTaskRetention: false,
-      includeTaskMemory: false,
-      statusLabel: `knowledge-${running.finalizeId.slice(0, 12)}`,
-      skipGitNexusRefresh: true,
-    });
-    const finishedAt = new Date().toISOString();
-    recordKnowledgeFinalizationResult(project, running.reportPath, {
-      schemaVersion: 1,
-      entryType: "knowledge_finalization",
-      finalizeId: running.finalizeId,
-      taskName: running.taskName,
-      recordedAt: finishedAt,
-      status: "succeeded",
-      result: writerRun.finalResponse,
-      attempts: running.attempts,
-      ...(running.host !== undefined ? { host: running.host } : {}),
+    const writerRun = await runKnowledgeDelegateForJob(queued);
+    const terminal = readKnowledgeFinalizationJob(jobPath);
+    if (terminal.status !== "succeeded" && terminal.status !== "failed") {
+      throw new Error("Knowledge delegate returned without acknowledging a terminal result.");
+    }
+    if (writerRun.threadId) {
+      assertCompletedKnowledgeWriterSession(writerRun.threadId);
+    }
+    printJson({
+      ok: terminal.status === "succeeded",
+      command: "internal-knowledge-finalize",
+      finalizeId: terminal.finalizeId,
+      status: terminal.status,
       ...(writerRun.threadId ? { threadId: writerRun.threadId } : {}),
-      ...(knowledgeGovernance ? { knowledgeGovernance } : {}),
-      truthEncoding,
-    });
-    writeKnowledgeFinalizationJob(jobPath, {
-      ...running,
-      status: "succeeded",
-      finishedAt,
-      ...(writerRun.threadId ? { sdkThreadId: writerRun.threadId } : {}),
-      ...(writerRun.threadIds ? { sdkThreadIds: writerRun.threadIds } : {}),
-      finalResponse: writerRun.finalResponse,
-      ...(knowledgeGovernance ? { knowledgeGovernance } : {}),
-      truthEncoding,
     });
   } catch (error) {
-    const failed: KnowledgeFinalizationJob = {
-      ...running,
-      status: "failed",
-      finishedAt: new Date().toISOString(),
-      error: { message: error instanceof Error ? error.message : String(error) },
-    };
-    writeKnowledgeFinalizationJob(jobPath, failed);
+    const message = error instanceof Error ? error.message : String(error);
+    let failed = readKnowledgeFinalizationJob(jobPath);
+    if (failed.status === "running" && failed.claimToken) {
+      failed = doneKnowledgeFinalizationJob({
+        jobPath,
+        claimToken: failed.claimToken,
+        status: "failed",
+        error: message,
+      }).job;
+    } else if (failed.status === "queued") {
+      const supervisorClaim = claimKnowledgeFinalizationJob(jobPath);
+      if (supervisorClaim?.claimToken) {
+        failed = doneKnowledgeFinalizationJob({
+          jobPath,
+          claimToken: supervisorClaim.claimToken,
+          status: "failed",
+          error: message,
+        }).job;
+      }
+    }
+    if (failed.status === "failed") {
+      removeKnowledgeAssignmentTemplate(jobPath, failed.finalizeId);
+    }
     if (failed.attempts < 3 && process.env.CLAW_KNOWLEDGE_FINALIZER_DISABLE_RETRY !== "1") {
       launchKnowledgeFinalizationWorker(jobPath, failed.projectRoot);
     }
@@ -1521,50 +1886,26 @@ async function runInternalKnowledgeFinalize(args: string[]): Promise<void> {
 type KnowledgeWriterRunResult = {
   finalResponse: string;
   threadId?: string;
-  threadIds?: string[];
 };
 
-const BUILT_IN_KNOWLEDGE_WRITER_SKILL = "claw-kit:knowledge-writer";
-
-/**
- * Pick the host-aware finalization runner. The opencode host never assumes a Codex SDK
- * runtime is installed and runs the writer through `opencode run`; the Codex host and
- * legacy jobs without a host field keep using the versioned Codex SDK runtime.
- */
-async function runKnowledgeWriterForJob(running: KnowledgeFinalizationJob): Promise<KnowledgeWriterRunResult> {
-  const skills = resolveKnowledgeWriterSkills(running);
-  const results: KnowledgeWriterRunResult[] = [];
-  for (const skill of skills) {
-    if (running.host === "opencode") {
-      const result = runOpencodeKnowledgeWriter({
-        prompt: buildKnowledgeWriterPrompt(running, skill),
-        projectRoot: running.projectRoot,
-        writer: running.writer ?? null,
-      });
-      if (isBuiltInKnowledgeWriterSkill(skill)) {
-        assertCompletedKnowledgeWriterSession(result.threadId ?? null);
-      }
-      results.push({
-        finalResponse: result.finalResponse,
-        ...(result.threadId ? { threadId: result.threadId } : {}),
-      });
-      continue;
-    }
-    if (running.host !== undefined && running.host !== null && running.host !== "codex") {
-      throw new Error(`Unsupported knowledge finalization job host "${String(running.host)}".`);
-    }
-    results.push(await runCodexSdkWriter(running, skill));
+async function runKnowledgeDelegateForJob(running: KnowledgeFinalizationJob): Promise<KnowledgeWriterRunResult> {
+  const dispatch = buildKnowledgeDelegateDispatch({
+    policy: "background",
+    projectRoot: running.projectRoot,
+    taskName: running.taskName,
+    finalizeId: running.finalizeId,
+    writer: running.writer,
+  });
+  if (running.host === "opencode") {
+    return runOpencodeKnowledgeWriter({
+      prompt: dispatch.prompt,
+      projectRoot: running.projectRoot,
+      writer: running.writer ?? null,
+    });
   }
-  const threadIds = results.flatMap((result) => result.threadId ? [result.threadId] : []);
-  const last = results.at(-1);
-  return {
-    finalResponse: results.map((result) => result.finalResponse).join("\n\n"),
-    ...(last?.threadId ? { threadId: last.threadId } : {}),
-    ...(threadIds.length > 0 ? { threadIds } : {}),
-  };
-}
-
-async function runCodexSdkWriter(running: KnowledgeFinalizationJob, skill: string): Promise<KnowledgeWriterRunResult> {
+  if (running.host !== undefined && running.host !== null && running.host !== "codex") {
+    throw new Error(`Unsupported knowledge finalization job host "${String(running.host)}".`);
+  }
   const sdk = await import(pathToFileURL(resolveCodexSdkEntryPath()).href) as {
     Codex: new (options?: { env?: Record<string, string>; codexPathOverride?: string }) => {
       startThread(options: Record<string, unknown>): {
@@ -1591,10 +1932,7 @@ async function runCodexSdkWriter(running: KnowledgeFinalizationJob, skill: strin
       ? { modelReasoningEffort: writer.reasoningEffort }
       : {}),
   });
-  const turn = await thread.run(buildKnowledgeWriterPrompt(running, skill));
-  if (isBuiltInKnowledgeWriterSkill(skill)) {
-    assertCompletedKnowledgeWriterSession(thread.id);
-  }
+  const turn = await thread.run(dispatch.prompt);
   return {
     finalResponse: turn.finalResponse,
     ...(thread.id ? { threadId: thread.id } : {}),
@@ -1640,31 +1978,10 @@ function knowledgeFinalizerEnvironment(): Record<string, string> {
     }
   }
   env.CLAW_KNOWLEDGE_FINALIZER = "1";
+  delete env.CLAW_SESSION_ID;
+  delete env.CODEX_THREAD_ID;
+  delete env.CODEX_SESSION_ID;
   return env;
-}
-
-function buildKnowledgeWriterPrompt(job: KnowledgeFinalizationJob, writerSkill: string): string {
-  return [
-    `Apply the ${writerSkill} skill's documentation-governance rules to the supplied materials and update the governed project documentation. Work unattended; do not request review or confirmation. Use task status to distinguish completed work from pending or blocked intent, and never present requirements or intentions as results. Skip and report ambiguous or unsafe changes.`,
-    "Materials:",
-    `- ${job.planPath}`,
-    `- ${job.reportPath}`,
-    `Finalization id: ${job.finalizeId}`,
-    "Interpret inputs by content, regardless of filename or schema. Do not reference or link to the supplied materials in governed documentation; they are transient and will be destroyed after finalization. Do not modify inputs, delegate, reimplement, or rerun tests.",
-  ].join("\n");
-}
-
-function resolveKnowledgeWriterSkills(job: KnowledgeFinalizationJob): string[] {
-  const configured = job.writer?.externalSkills?.map((skill) => skill.trim()).filter(Boolean);
-  return configured && configured.length > 0 ? configured : [BUILT_IN_KNOWLEDGE_WRITER_SKILL];
-}
-
-function isBuiltInKnowledgeWriterSkill(skill: string): boolean {
-  return skill === BUILT_IN_KNOWLEDGE_WRITER_SKILL;
-}
-
-function usesBuiltInKnowledgeWriter(job: KnowledgeFinalizationJob): boolean {
-  return resolveKnowledgeWriterSkills(job).every(isBuiltInKnowledgeWriterSkill);
 }
 
 function launchKnowledgeFinalizationWorker(jobPath: string, cwd: string): void {
@@ -1720,13 +2037,17 @@ async function runSessionStartHook(effectiveHost: ClawHost | undefined): Promise
   try {
     const context = await runContextCommand([], hookCwd, ownerSessionKey, effectiveHost);
     const contextProject = asJsonRecord(context.project);
+    const retryableJobs = contextProject?.scope !== "session" && !context.error
+      ? listRetryableKnowledgeFinalizationJobs(resolveProjectContext(hookCwd))
+      : [];
     if (
       contextProject?.scope !== "session"
       && !context.error
+      && effectiveHost !== "cindy"
       && process.env.CLAW_KNOWLEDGE_FINALIZER_DISABLE_LAUNCH !== "1"
     ) {
       const project = resolveProjectContext(hookCwd);
-      for (const jobPath of listRetryableKnowledgeFinalizationJobs(project)) {
+      for (const jobPath of retryableJobs) {
         try {
           launchKnowledgeFinalizationWorker(jobPath, project.projectRoot);
         } catch {
@@ -1745,6 +2066,7 @@ async function runSessionStartHook(effectiveHost: ClawHost | undefined): Promise
         hookSpecificOutput: {
           hookEventName: "SessionStart",
           additionalContext,
+          ...(effectiveHost === "cindy" ? { knowledgeJobs: retryableJobs } : {}),
         },
       })}\n`,
     );
@@ -1831,6 +2153,9 @@ function buildSessionStartAdditionalContext(
   sessionCwd: string,
   effectiveHost: ClawHost | undefined,
 ): string | null {
+  if (effectiveHost === "cindy") {
+    return buildCindySessionStartContext(context, sessionCwd);
+  }
   const versionSyncPrompt = buildVersionSyncPrompt(context);
   const searchGuidance = buildContextSearchGuidance(context);
   const runtimeErrorPrompt = buildCodexRuntimeErrorPrompt(context);
@@ -1867,6 +2192,41 @@ function buildSessionStartAdditionalContext(
     : `${prompt}\n${versionSyncPrompt.lines.join("\n")}`;
   const promptWithSearch = searchGuidance ? `${promptWithVersion}\n${searchGuidance}` : promptWithVersion;
   return runtimeErrorPrompt ? `${runtimeErrorPrompt}\n\n${promptWithSearch}` : promptWithSearch;
+}
+
+/**
+ * Cindy Agents use the Ghost Tool gateway, not shell commands or Host actions.
+ * Keep startup recovery to the actionable plan snapshot only; the worker owns
+ * session identity, host selection, and any future Goal projection.
+ */
+function buildCindySessionStartContext(context: Record<string, unknown>, sessionCwd: string): string | null {
+  const activeWorkflow = asJsonRecord(context.activeWorkflow);
+  if (activeWorkflow) {
+    const taskName = typeof activeWorkflow.taskName === "string" ? activeWorkflow.taskName.trim() : "current task";
+    const planStatus = typeof activeWorkflow.planStatus === "string" ? activeWorkflow.planStatus.trim() : "unknown";
+    const planSummary = typeof activeWorkflow.planSummary === "string" ? activeWorkflow.planSummary.trim() : "";
+    const nextTask = asJsonRecord(activeWorkflow.workflowGuidance)?.nextTask;
+    const nextTaskTitle = asJsonRecord(nextTask)?.title;
+    const lines = [
+      "claw-kit recovered a Cindy workflow.",
+      `- task: ${taskName}`,
+      `- plan status: ${planStatus}`,
+      ...(planSummary ? [`- plan summary: ${planSummary}`] : []),
+      ...(typeof nextTaskTitle === "string" && nextTaskTitle.trim() ? [`- next task: ${nextTaskTitle.trim()}`] : []),
+      "Use the claw-kit Ghost tools to inspect or advance this workflow. Do not run claw shell commands or manage host/session/Goal state yourself.",
+    ];
+    return lines.join("\n");
+  }
+
+  const project = asJsonRecord(context.project);
+  if (!project) return null;
+  const projectName = typeof project.projectName === "string" && project.projectName.trim()
+    ? project.projectName.trim()
+    : path.basename(String(project.projectRoot ?? sessionCwd ?? "project"));
+  return [
+    `claw-kit is ready for the Cindy workspace: ${projectName}.`,
+    "Use the claw-kit Ghost tools when this work needs a plan; do not invoke claw shell commands directly.",
+  ].join("\n");
 }
 
 function buildCodexRuntimeErrorPrompt(context: Record<string, unknown>): string | null {
@@ -1941,8 +2301,9 @@ function buildVersionSyncPrompt(
     return {
       placement: "suffix",
       lines: [
-        `Before anything else, a newer claw-kit version was detected: local CLI ${cliVersion}, published latest ${latestPublishedVersion}.`,
-        `First action: use ${updateSkill} to update the claw-kit CLI and the current host plugin surface before continuing any other work.`,
+        `A newer claw-kit version is available: installed CLI ${cliVersion}, published latest ${latestPublishedVersion}.`,
+        "Tell the user in their language that the current claw-kit installation is out of date and must be updated before they can continue using claw-kit. Ask whether they want to update now, then wait for their answer.",
+        `After the user confirms, use ${updateSkill} to update the claw-kit CLI and the current host plugin surface, then continue the original task.`,
       ],
     };
   }
@@ -2110,6 +2471,7 @@ async function runSubplan(args: string[], effectiveHost: ClawHost | undefined): 
 
 function resolveOwnerSessionKey(payload?: unknown): string | null {
   const envCandidates = [
+    process.env.CLAW_SESSION_ID,
     process.env.CODEX_THREAD_ID,
     process.env.CODEX_SESSION_ID,
   ];
@@ -2178,6 +2540,18 @@ function stripBom(content: string): string {
   return content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
 }
 
+function buildKnowledgeDispatch(input: {
+  projectRoot: string;
+  taskName: string;
+  finalizeId: string;
+  writer?: KnowledgeFinalizationJob["writer"];
+}): KnowledgeDelegateDispatch {
+  return buildKnowledgeDelegateDispatch({
+    policy: "subagent",
+    ...input,
+  });
+}
+
 function compactPlanCommandResult(
   command: "plan.create" | "plan.start" | "plan.edit" | "plan.remove" | "plan.wait" | "plan.resume" | "plan.sync" | "plan.done" | "task.add" | "task.edit" | "task.remove" | "task.done" | "subplan.create",
   result: {
@@ -2198,6 +2572,7 @@ function compactPlanCommandResult(
     changedTaskIds?: number[];
     appendedTaskIds?: number[];
     completedTaskIds?: number[];
+    knowledgeFinalizeId?: string;
     events?: PlanEvent[];
     operationChain?: {
       status: "completed" | "partial";
@@ -2209,6 +2584,7 @@ function compactPlanCommandResult(
   effectiveHost: ClawHost | undefined,
   completionRefresh?: CompletionRefreshResult,
   forceProjectionSync = false,
+  knowledgeDispatch?: KnowledgeDelegateDispatch,
   ): Record<string, unknown> {
     const archivedPlanPath =
       completionRefresh?.taskRetention.archivedCurrentTask?.taskName === result.taskName &&
@@ -2217,6 +2593,7 @@ function compactPlanCommandResult(
         : undefined;
     const resolvedPlanPath = archivedPlanPath ?? result.planPath;
     const codexResult = effectiveHost === "codex";
+    const cindyResult = effectiveHost === "cindy";
     const hostActions = codexResult ? buildHostActions(result, { forceProjectionSync, actionIdPrefix: command === "plan.sync" ? `plan.sync:${createHash("sha256").update(result.planPath).digest("hex").slice(0, 16)}` : undefined }) : [];
     const nextsteps = codexResult
       && result.planStatus === "end.completed"
@@ -2249,16 +2626,17 @@ function compactPlanCommandResult(
       ...(archivedPlanPath ? { archivedPlanPath } : {}),
       planStatus: result.planStatus,
       ...(achievement ? { achievement } : {}),
+      ...(knowledgeDispatch ? { knowledgeDispatch } : {}),
       ...(!codexResult && result.previousPlanStatus ? { previousPlanStatus: result.previousPlanStatus } : {}),
       ...(hostActions.length ? { hostActions } : {}),
       ...(!codexResult && result.changedTaskIds?.length ? { changedTaskIds: result.changedTaskIds } : {}),
       ...(!codexResult && result.appendedTaskIds?.length ? { appendedTaskIds: result.appendedTaskIds } : {}),
       ...(codexResult ? { stage: result.workflowGuidance.stage } : {}),
-      ...(!codexResult || result.planStatus === "end.completed"
+      ...((!codexResult && !cindyResult) || result.planStatus === "end.completed" && !cindyResult
         ? { nextsteps }
         : {}),
       ...(result.workflowGuidance.nextTask ? { nextTask: result.workflowGuidance.nextTask } : {}),
-      ...(result.workflowGuidance.notes?.trim() && !codexResult
+      ...(result.workflowGuidance.notes?.trim() && !codexResult && !cindyResult
         ? { notes: result.workflowGuidance.notes }
         : {}),
       ...(result.workflowGuidance.commandHints?.length
@@ -2273,9 +2651,13 @@ function compactPlanCommandResult(
             failedOperation: result.operationChain.failedOperation,
           }
         : {}),
-      ...(!codexResult && result.workflowGuidance.goalMode ? { goalMode: result.workflowGuidance.goalMode } : {}),
-      ...(!codexResult && result.workflowGuidance.goalTool ? { goalTool: result.workflowGuidance.goalTool } : {}),
+      ...(!codexResult && !cindyResult && result.workflowGuidance.goalMode ? { goalMode: result.workflowGuidance.goalMode } : {}),
+      ...(!codexResult && !cindyResult && result.workflowGuidance.goalTool ? { goalTool: result.workflowGuidance.goalTool } : {}),
       ...(includePlan && result.plan ? { plan: result.plan } : {}),
+      // Cindy's Ghost card is a Host-owned projection.  It needs the
+      // canonical task list to render its expandable Todo view, but that
+      // view stays out of Agent guidance in the Cindy adapter.
+      ...(cindyResult ? { planView: result.planView } : {}),
       ...(result.planReview
         ? {
             planReview: {

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted working truth for the opencode adapter plugin installation chain, its symmetry with the Codex adapter chain, and behavioral contracts.
+Current
 
 ## Dual symmetric install chains
 
@@ -26,7 +26,7 @@ Overlapping behaviors (test-file filtering, `node` preflight, `--source-dir` pas
    export { default, ClawKitPlugin } from "./claw-kit/plugin/index.ts";
    ```
 3. **Copy skills into the opencode discovery directory** at `~/.config/opencode/skills/<name>/SKILL.md`. The plugin API can register custom `tool`s but not skills, so claw-kit's installer mirrors each skill folder into the global conventional directory that opencode scans for skills. The copy is idempotent: reinstall overwrites stale skill content without duplicating entries.
-4. **Remove retired focused-writer discovery directories** `~/.config/opencode/skills/truth-writer/` and `~/.config/opencode/skills/adr-writer/` before copying skills, even when a residual source checkout still contains empty generated directories. Only `knowledge-writer` remains as the discoverable writer skill.
+4. **Remove retired writer discovery directories** `~/.config/opencode/skills/truth-writer/`, `adr-writer/`, and `knowledge-writer/` before copying skills. Delegate orchestration and built-in governance are Core internal resources and never enter OpenCode skill discovery.
 5. **Copy agent definitions** (`*.md` from `packages/opencode-adapter/agents/`) to `~/.config/opencode/agent/`. Only `claw-knowledge-writer.md` and `claw-researcher.md` are present; retired `claw-truth-writer.md` and `claw-adr-writer.md` are not shipped.
 6. After install, **opencode must be restarted** for the plugin to take effect.
 
@@ -53,13 +53,13 @@ Both plugins have dedicated test suites using `node:test` + `node:assert/strict`
 - `test:codex-plugin` — `scripts/codex-plugin-bundle.test.mjs`
 - `test:opencode-plugin` — `scripts/opencode-plugin-bundle.test.mjs` (10 tests)
 
-Both use `fs.mkdtemp` for temp-directory isolation. The opencode tests cover: read source metadata; config skill entrypoint; `using-claw-kit` session-entry contracts (knowledge routing, compact guidance, state vocabulary); researcher search-query syntax; main-agent guidance leaving closeout to the host (the `claw-knowledge-writer.md` agent loads only `claw-kit:knowledge-writer`, does not load `using-claw-kit`, and retired writer skills/agents are absent); shared-skills sync; export+filter; install e2e (payload + shim + agents + filter); and idempotent skills discovery copy that removes retired `truth-writer`/`adr-writer` directories without creating `opencode.json`.
+Both use `fs.mkdtemp` for temp-directory isolation. The opencode tests cover: read source metadata; config skill entrypoint; `using-claw-kit` session-entry contracts; researcher search-query syntax; the `claw-knowledge-writer.md` primary agent consuming only the supplied internal bootstrap prompt; absence of public writer skills; shared-skills sync; export+filter; install e2e; and idempotent discovery cleanup without creating `opencode.json`.
 
 ## OpenCode finalizer agent entry
 
-`packages/opencode-adapter/agents/claw-knowledge-writer.md` is the only shipped writer agent for the OpenCode host. It is a `mode: primary` entry (launched directly by the host-aware finalizer via `opencode run`, not dispatched as a main-agent subagent; contrast `claw-researcher.md`, which remains `mode: subagent`) whose body instructs the worker to load only the combined `claw-kit:knowledge-writer` skill, to not load `using-claw-kit` (the writer's own session-scoped template is a self-contained claw harness), to create that template plan before reading inputs, and to not dispatch another writer or split the pass. The host-aware finalizer requires this writer's session-scoped plan to reach `end.completed` with every template task `done` before finalization succeeds. The retired `claw-truth-writer.md` and `claw-adr-writer.md` agent entries are intentionally absent from `packages/opencode-adapter/agents/`.
+`packages/opencode-adapter/agents/claw-knowledge-writer.md` is the only shipped writer agent for the OpenCode host. It is a `mode: primary` entry launched by the background finalizer through `opencode run`; its body follows the supplied internal knowledge-delegate bootstrap prompt containing the packaged template path, project root, and finalize id. It does not load `using-claw-kit` or a writer skill and does not dispatch another writer. The internal delegate session plan and its dynamic assignment subplan must complete before finalization succeeds. Retired focused writer agents remain absent.
 
-Real-runner verification via `opencode run` must confirm end-to-end that the writer's session-scoped plan reaches `end.completed` with every template task `done`, that the worker loaded only `claw-kit:knowledge-writer` and did not load `using-claw-kit`, and that no recursive finalization job is queued from the worker's own session; the unit-test coverage above does not substitute for this real-runner check.
+Real-runner verification via `opencode run` must confirm end-to-end that the internal delegate session plan and assignment subplan reach `end.completed`, no writer skill is discovered or loaded, and no recursive finalization job is queued from the executor session; unit coverage does not substitute for this real-runner check.
 
 ## Related files
 
@@ -68,7 +68,7 @@ Real-runner verification via `opencode run` must confirm end-to-end that the wri
 - `scripts/install-opencode-plugin.mjs` — thin CLI wrapper with `--source-dir` / `--install-dir`
 - `scripts/install-opencode-plugin.ps1` — PowerShell entrypoint with `Assert-Command -Name "node"` preflight
 - `scripts/opencode-plugin-bundle.test.mjs` — 10 unit tests
-- `packages/opencode-adapter/agents/claw-knowledge-writer.md` — finalizer agent entry that loads only `claw-kit:knowledge-writer`
+- `packages/opencode-adapter/agents/claw-knowledge-writer.md` — primary finalizer agent that consumes the internal bootstrap prompt
 - `packages/opencode-adapter/` — adapter source (plugin, skills, agents, references)
 
 ### Codex chain (symmetric counterpart)
