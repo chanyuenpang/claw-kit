@@ -55,8 +55,10 @@ function launchFinalizer(jobPath) {
 }
 
 function runClaw(args, input, extraEnv) {
-  const command = process.platform === "win32" ? "claw.cmd" : "claw";
-  const result = spawnSync(command, args, {
+  const isWindows = process.platform === "win32";
+  const command = isWindows ? (process.env.ComSpec || "cmd.exe") : "claw";
+  const commandArgs = isWindows ? ["/d", "/s", "/c", "claw.cmd", ...args] : args;
+  const result = spawnSync(command, commandArgs, {
     cwd: payload?.cwd || process.cwd(),
     input: input === undefined ? undefined : JSON.stringify(input),
     encoding: "utf8",

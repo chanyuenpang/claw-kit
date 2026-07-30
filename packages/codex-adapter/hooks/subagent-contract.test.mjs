@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -47,6 +49,44 @@ test("Codex Stop finalizer only captures and launches the policy-aware CLI worke
   assert.doesNotMatch(finalizer, /"knowledge", "claim"/);
   assert.doesNotMatch(finalizer, /"knowledge", "done"/);
   assert.doesNotMatch(finalizer, /CLAW_SESSION_ID\s*=/);
+});
+
+test("Codex Stop finalizer invokes the platform claw launcher from PATH", () => {
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-codex-stop-"));
+  const capturePath = path.join(fixtureDir, "capture.txt");
+  const finalizerPath = path.join(pluginRoot, "scripts", "knowledge-finalizer.mjs");
+  try {
+    if (process.platform === "win32") {
+      fs.writeFileSync(
+        path.join(fixtureDir, "claw.cmd"),
+        '@echo off\r\n> "%CLAW_TEST_CAPTURE%" echo %*\r\necho {"ok":true,"captured":false}\r\n',
+      );
+    } else {
+      const launcherPath = path.join(fixtureDir, "claw");
+      fs.writeFileSync(
+        launcherPath,
+        '#!/bin/sh\nprintf "%s\\n" "$*" > "$CLAW_TEST_CAPTURE"\nprintf "%s\\n" \'{"ok":true,"captured":false}\'\n',
+      );
+      fs.chmodSync(launcherPath, 0o755);
+    }
+
+    const result = spawnSync(process.execPath, [finalizerPath], {
+      cwd: fixtureDir,
+      env: {
+        ...process.env,
+        PATH: `${fixtureDir}${path.delimiter}${process.env.PATH || ""}`,
+        CLAW_TEST_CAPTURE: capturePath,
+      },
+      input: JSON.stringify({ cwd: fixtureDir }),
+      encoding: "utf8",
+      windowsHide: true,
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(fs.readFileSync(capturePath, "utf8").trim(), "hook auto-doc --host codex");
+  } finally {
+    fs.rmSync(fixtureDir, { recursive: true, force: true });
+  }
 });
 
 test("main-agent Codex surfaces expose only the internal subagent dispatch contract", () => {
@@ -131,7 +171,7 @@ test("Codex plan commands use only the bundled code-mode consumer", () => {
   assert.match(workflowReference, /do not parse host error wording/i);
   assert.match(workflowReference, /routes Codex Goal actions from the committed plan status/i);
   assert.match(workflowReference, /ordinary active progress emits no Goal action/i);
-  assert.match(workflowReference, /resume can therefore create the next active Goal in its normal single code-mode call/i);
+  assert.match(workflowReference, /resume can therefore create the next active Goal through the recovery contract/i);
   assert.match(workflowReference, /fail closed/i);
   assert.match(workflowReference, /Codex compact results do not return `goalMode` or `goalTool`/i);
   assert.match(workflowReference, /explicit stage-aware allowlist/i);
