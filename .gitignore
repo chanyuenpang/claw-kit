@@ -28,6 +28,15 @@ Thumbs.db
 /packages/*/dist/
 /packages/*/dist-test/
 /packages/*/coverage/
+
+# Local packaging and Windows-shell leftovers. Keep the current Cindy bundle
+# explicitly tracked when it is intentionally released.
+/%SystemDrive%/
+/_patch1.ps1
+/veewo-*.tgz
+/packages/cindy-adapter/plugin/claw-kit-0.1.99.cindy
+/packages/cindy-adapter/plugin/claw-kit-0.2.1*.cindy
+!/packages/cindy-adapter/plugin/claw-kit-0.2.1.18.cindy
 # Generated from shared/skills; edit shared sources and run npm run sync:shared-skills.
 /packages/opencode-adapter/skills/config/SKILL.md
 /packages/opencode-adapter/skills/planning/SKILL.md
