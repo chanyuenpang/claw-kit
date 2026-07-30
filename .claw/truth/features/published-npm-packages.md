@@ -4,7 +4,7 @@
 ## 当前行为
 
 - `claw-kit` 发布两个 npm 包：`@veewo/claw-core` 提供核心 `.claw` harness 语义，`@veewo/claw` 提供 `claw` CLI 并精确依赖同版本的 `@veewo/claw-core`。
-- 当前最新已验证发布版本线为 `0.1.98`。release commit `f9df29e` 对应 `v0.1.98`；Codex marketplace manifest 为 `0.1.98+codex.20260729055754`。
+- 当前最新已验证发布版本线为 `0.1.99`。release commit `39e8199` 对应 `v0.1.99`；Codex marketplace manifest 为 `0.1.99+codex.20260729082500`。
 - release version bump 覆盖 root、lockfile、core、CLI、Codex/OpenClaw/OpenCode adapters、内部 `@veewo/claw-core` 依赖和 Codex plugin manifest。root `package.json.version` 同时是全部 plugin `TEMPLATE.json` 与 built-in default template 的版本权威。
 - 模板版本维护顺序固定为 `npm run sync:template-versions`、`npm run sync:shared-skills`、`npm run check:template-versions`。`npm run verify:release` 与 `npm run publish:release` 复用只读版本断言，禁止发布时隐式修复 stale template。
 - owner 直接从 `main` 交付。发布前必须提交并推送有价值内容，使本地 `main` 精确等于 `origin/main` 且 `git status --porcelain` 为空；不得用 stash、临时分支或 PR 绕过门禁。
@@ -115,3 +115,11 @@
 - 该 revision 的完成报告记录 core `154/154`、CLI `130/130`、Codex plugin `18/18` 与 OpenCode plugin `11/11` 通过；这些都是版本化发布证据，不构成后续版本的固定验证矩阵。
 - 发布后的维护者安装已从 published npm 和 official GitHub marketplace 刷新：全局 `claw --version` 为 `0.1.98`，official `claw-kit@claw-kit` 已启用且 `claw-kit@claw-kit-local` 已禁用，official source manifest 与 active cache manifest 均匹配 `0.1.98+codex.20260729055754`。
 - 本次记录不把运行时采用写为完成：当前进程仍需重启并新建任务，才能证明新会话实际加载该版本技能。
+
+<!-- dated: 2026-07-29 -->
+### 0.1.99 发布与维护者安装刷新完成态
+
+- `0.1.99` 已从 release commit `39e8199` 发布；`@veewo/claw-core`、`@veewo/claw`、GitHub Release `v0.1.99` 和 committed Codex marketplace manifest `0.1.99+codex.20260729082500` 均属于该完成边界。完成时 `main` 与 `origin/main` 一致且工作树干净。
+- 该 revision 修复 Unified Exec fallback，使固定 Codex driver 在只有 `exec_command` 时使用 `cmd` 与 `yield_time_ms` 参数。完成报告记录完整 core/CLI 测试、静态检查、template 与 shared-skill 检查、Codex/OpenCode bundle 测试、双 npm 包 dry-run 和 guarded release verification 均通过；这些是该 revision 的版本化证据，不构成后续版本的固定验证矩阵。
+- 发布后的维护者安装已从 published npm 和 official GitHub marketplace 刷新：全局 `claw --version` 为 `0.1.99`，official `claw-kit@claw-kit` 已启用且 `claw-kit@claw-kit-local` 已禁用，official marketplace source 与 active cache manifest 均匹配 `0.1.99+codex.20260729082500`，并已核对 manifest hash 一致。
+- 本次记录不把运行时采用写为完成：仍需重启 Codex 并新建任务，才能证明新会话实际加载该版本技能。

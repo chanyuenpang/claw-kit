@@ -37,7 +37,17 @@ GitHub Release ZIP assets are not part of the supported Codex installation path.
 
 ## Release Modes
 
-There are three independent release modes. Choose based on what changed:
+There are five independent artifact families. Select the requested artifact before choosing a version:
+
+| Artifact family | Source scope | Version | Published artifact | Tag |
+|---|---|---|---|---|
+| CLI | core, CLI, or shared CLI/runtime | 3 segments | `@veewo/claw-core` then `@veewo/claw` | `v<version>` |
+| Codex plugin | codex-adapter | 4 segments | committed GitHub marketplace snapshot | `vcodex-<version>` |
+| Cindy plugin | cindy-adapter | 4 segments | Cindy adapter GitHub release artifact | `vcindy-<version>` |
+| OpenClaw plugin | openclaw-adapter | 4 segments | OpenClaw adapter GitHub release artifact | `vopenclaw-<version>` |
+| OpenCode plugin | opencode-adapter | 4 segments | OpenCode adapter GitHub release artifact | `vopencode-<version>` |
+
+Platform requests remain platform-only. CLI/core requests include core and CLI. Mixed adapter scopes require an explicit batch decision. Packaging, export, and dry-run requests are `prepare-only` unless publishing is explicitly requested.
 
 ### CLI release
 
@@ -47,16 +57,16 @@ Triggered when core or CLI files changed. Publishes @veewo/claw-core then @veewo
 
 Triggered when codex-adapter changed. Updates the committed marketplace snapshot, tags codex-<version>, creates a GitHub Release. No npm publish (adapter is private).
 
-### Other adapter release
+### Cindy, OpenClaw, or OpenCode adapter release
 
-Triggered when cindy-adapter, openclaw-adapter, or opencode-adapter changed. Tags e.g. cindy-<version>, creates a GitHub Release. No npm publish.
+Triggered when exactly one platform adapter changed. Tag the relevant adapter release, create a GitHub Release, and do not publish npm packages.
 
 ### Narrower modes
 
 - prepare-only: verify and dry-run package artifacts only
 - publish-only: publish already-prepared package versions
 
-If the user does not explicitly narrow the mode and the diff spans multiple scopes, prefer the highest-impact release: CLI > Codex > adapter-only.
+If the user does not explicitly identify an artifact and the diff spans multiple scopes, stop and request the artifact choice; do not silently promote the change to a CLI release.
 
 ## Template-driven maintainer release
 
@@ -151,7 +161,7 @@ After changing version files:
 
 ### For any release mode
 
-1. Confirm the target release mode: CLI, Codex plugin, or adapter-only.
+1. Confirm the target artifact family: CLI, Codex, Cindy, OpenClaw, or OpenCode; or record `prepare-only`.
 2. Classify all local changes; commit useful release content, remove disposable output, and ignore intentional local-only files. Do not stash changes to bypass this step.
 3. Ensure the checked-out branch is `main` and push the release commit directly to `origin/main`.
 4. Align package versions according to the version scheme, then run `npm run sync:template-versions`.
@@ -168,6 +178,7 @@ After changing version files:
 12. Publish `@veewo/claw-core` first (`npm run publish:release` handles this).
 13. Publish `@veewo/claw` second.
 14. Verify the worktree is still clean, verify published versions, and create the GitHub release with tag `v<version>` without a plugin ZIP asset.
+    The committed marketplace snapshot is the plugin artifact; create the GitHub release without a plugin ZIP asset.
 15. Refresh the locally installed CLI and maintainer development cache.
 16. Upgrade the Codex marketplace snapshot and verify installation from a clean machine.
 
@@ -176,7 +187,7 @@ After changing version files:
 11. Create and push the tag `vcodex-<version>`. Create the GitHub Release for the committed marketplace snapshot.
 12. Upgrade the Codex marketplace snapshot and verify installation from a clean machine.
 
-### Other adapter release only
+### Platform adapter release only
 
 11. Create and push the tag e.g. `vcindy-<version>`. Create the GitHub Release.
 12. Verify the tag and the committed adapter source.

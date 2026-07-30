@@ -4,6 +4,13 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## Unreleased
 
+## [0.2.2] - 2026-07-30
+
+### Added
+
+- Split release-claw-kit into explicit CLI, Codex, Cindy, OpenClaw, OpenCode, and prepare-only artifact routes.
+- Added Cindy adapter release preparation at version `0.2.2.0` alongside the CLI `0.2.2` release baseline.
+
 ## [0.1.99] - 2026-07-29
 
 ### Fixed

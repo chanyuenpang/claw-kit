@@ -2,13 +2,16 @@
 
 Use this plan-independent sequence only when claw planning is unavailable or when this capability is one part of another owning workflow.
 
-## Choose the release mode
+## Choose the artifact family and delivery mode
 
 1. Inspect `AGENTS.md`, `DISTRIBUTION.md`, the release ADR, repository/remote/tag state, npm latest versions, and every worktree change.
-2. Decide the mode based on what changed:
+2. Record `prepare-only` when the user asks only to package, build, export, or dry-run. Otherwise decide the artifact family based on the requested product and changed scope:
    - **CLI release**: core or CLI files changed. Bump CLI version (3-segment), publish `@veewo/claw-core` and `@veewo/claw`.
    - **Codex plugin release**: codex-adapter changed. Bump its 4th segment only, tag and release.
-   - **Other adapter release**: cindy/openclaw/opencode-adapter changed. Bump that adapter's 4th segment only, tag and release.
+   - **Cindy plugin release**: cindy-adapter changed. Bump its 4th segment only, tag and release.
+   - **OpenClaw plugin release**: openclaw-adapter changed. Bump its 4th segment only, tag and release.
+   - **OpenCode plugin release**: opencode-adapter changed. Bump its 4th segment only, tag and release.
+   - A platform request does not select CLI. Multiple adapter families require an explicit batch decision.
    - Default to the next patch only when no prepared higher target exists and the user did not specify another semver.
 3. A CLI release resets all adapter versions to `<CLI_VERSION>.0`. An adapter-only release leaves other packages untouched.
 
@@ -36,9 +39,9 @@ Use this plan-independent sequence only when claw planning is unavailable or whe
 1. Bump `packages/codex-adapter/package.json` 4th segment.
 2. Update `packages/codex-adapter/.codex-plugin/plugin.json` to match.
 
-### Other adapter-only release
+### Platform adapter-only release
 
-1. Bump that adapter's `package.json` 4th segment only.
+1. Bump only the requested adapter's `package.json` 4th segment.
 
 ### All modes
 

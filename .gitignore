@@ -37,6 +37,8 @@ Thumbs.db
 /packages/cindy-adapter/plugin/claw-kit-0.1.99.cindy
 /packages/cindy-adapter/plugin/claw-kit-0.2.1*.cindy
 !/packages/cindy-adapter/plugin/claw-kit-0.2.1.18.cindy
+/packages/cindy-adapter/plugin/claw-kit-0.2.2*.cindy
+!/packages/cindy-adapter/plugin/claw-kit-0.2.2.0.cindy
 # Generated from shared/skills; edit shared sources and run npm run sync:shared-skills.
 /packages/opencode-adapter/skills/config/SKILL.md
 /packages/opencode-adapter/skills/planning/SKILL.md

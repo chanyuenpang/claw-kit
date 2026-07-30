@@ -1,28 +1,37 @@
 {
   "id": "release-claw-kit",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "title": "release-claw-kit",
   "status": "process.active",
   "goal": {
     "text": "Publish a verified claw-kit release, then refresh and verify the maintainer Codex installation from the published sources."
   },
   "requirements": {
-    "summary": "Classify local changes to choose the correct release mode (CLI, Codex plugin, or other adapter), prepare the aligned release source, pass the guarded release gates, verify GitHub, npm, and the committed plugin payload, then run the separate published-source update phase inside the same plan.",
+    "summary": "Route the request to one artifact rule, prepare and verify only that artifact, then publish and refresh installations only when the routed rule requires it.",
+    "artifactRoutes": {
+      "cli": "rules/cli.md",
+      "codex": "rules/codex.md",
+      "cindy": "rules/cindy.md",
+      "openclaw": "rules/openclaw.md",
+      "opencode": "rules/opencode.md",
+      "prepare-only": "rules/prepare-only.md"
+    },
     "openQuestions": [],
     "acceptanceCriteria": [
-      "Every local change is classified and the correct release mode (CLI, Codex plugin, or adapter-only) is chosen before touching versions.",
+      "Every request is routed to exactly one artifact rule and delivery intent before touching versions.",
+      "The selected rule owns the artifact's version scope, checks, tag, publication, and installation behavior.",
       "CLI + core use 3-segment versions; adapters use 4-segment CLI_VERSION.PATCH versions and reset to .0 on CLI bumps.",
       "The version, dependency pins, lockfile, plugin manifest, templates, materialized shared skills, and changelog form one reviewed release baseline.",
       "The guarded verifier passes before any tag is pushed and before @veewo/claw-core and @veewo/claw are published (CLI release only).",
       "GitHub source and tag, npm metadata and retrieval, the committed Codex marketplace payload, and a clean worktree are verified for the target version.",
-      "Only after release completion, the global CLI and official claw-kit@claw-kit Codex installation are refreshed from published sources and verified exactly."
+      "Only routes that require it refresh the global CLI and official claw-kit@claw-kit Codex installation from published sources; platform-only routes do not refresh Codex implicitly."
     ]
   },
   "tasks": [
     {
       "id": 1,
       "title": "Establish the release target and mode",
-      "detail": "Read repository AGENTS.md, DISTRIBUTION.md, package manifests, the release ADR, current git status/branch/remotes, origin/main, tags, and npm latest versions. Classify every local change: does it touch core/CLI, codex-adapter, cindy-adapter, openclaw-adapter, or opencode-adapter? Choose CLI release if core or CLI changed; choose Codex plugin release if only codex-adapter changed; choose adapter-only release if only cindy/openclaw/opencode changed. Default to next CLI patch for the highest-impact change. Do not stash, discard user work, create a branch, or publish from an unexamined worktree.",
+      "detail": "Read repository AGENTS.md, DISTRIBUTION.md, package manifests, the release protocol, current git status/branch/remotes, origin/main, tags, and npm latest versions. Route the request by named product to exactly one artifact rule under rules/: cli, codex, cindy, openclaw, opencode, or prepare-only. Then check the changed paths against that rule. A platform request never routes to cli; mixed adapter scopes require an explicit batch decision. Do not stash, discard user work, create a branch, or publish from an unexamined worktree.",
       "status": "pending",
       "guidance": {
         "onDone": {
@@ -31,7 +40,7 @@
             "summary": "The target release mode, version, branch baseline, and every local change are classified.",
             "nextsteps": [
               "Prepare the release source according to the chosen mode.",
-              "CLI release resets all adapter 4th segments to .0; adapter-only releases only bump that adapter.",
+              "The selected artifact rule is the authority for version scope, checks, tag, publication, and installation refresh.",
               "Keep disposable output out and preserve intentional user work."
             ],
             "nextTaskId": 2
@@ -42,7 +51,7 @@
     {
       "id": 2,
       "title": "Prepare the aligned release source",
-      "detail": "Update version files according to the chosen release mode. For CLI: root, core, CLI (3-segment), reset adapters to <CLI_VERSION>.0 (4-segment), and set codex plugin manifest to match codex-adapter version. For adapter-only: bump only that adapter's 4th segment and its plugin manifest. Pin @veewo/claw-core in CLI and OpenClaw adapter. Update CHANGELOG.md. Regenerate package-lock metadata. Run npm run sync:template-versions before npm run sync:shared-skills, then npm run check:template-versions. Review all generated adapter copies and the complete diff.",
+      "detail": "Read and follow the selected rules/<artifact>.md. Change only that artifact's version scope and source files. The cli rule updates root/core/CLI, resets adapters, synchronizes templates/shared skills, pins dependencies, updates the changelog and lockfile. Platform rules bump only the named adapter's fourth segment. The prepare-only rule stops after local build/export and dry-run. Review the complete diff before advancing.",
       "status": "pending",
       "guidance": {
         "onDone": {
@@ -137,7 +146,7 @@
     {
       "id": 7,
       "title": "Refresh the maintainer Codex installation",
-      "detail": "After the release is fully verified, apply the claw-kit:update workflow as an independently owned update stage. Refresh the global CLI from the published npm package first, then upgrade/install the official chanyuenpang/claw-kit GitHub marketplace source and enable only claw-kit@claw-kit. Disable any claw-kit@claw-kit-local identity. Do not install the CLI or plugin from unpublished workspace files, even though this plan is running inside the repository.",
+      "detail": "Run only when the selected artifact rule explicitly requires maintainer installation refresh. Apply the claw-kit:update workflow from published sources: refresh the global CLI from npm first, then upgrade/install the official GitHub marketplace source and enable only claw-kit@claw-kit. Skip for prepare-only and Cindy/OpenClaw/OpenCode-only routes unless separately requested.",
       "status": "pending",
       "guidance": {
         "onDone": {
@@ -173,7 +182,9 @@
   "rules": [
     "Follow returned workflowGuidance before advancing.",
     "Honor repository AGENTS.md and preserve user-owned changes; never use stash or destructive cleanup to manufacture a clean release gate.",
-    "Classify local changes to choose the correct release mode: CLI, Codex plugin, or adapter-only.",
+    "Route every request to exactly one artifact rule under rules/ before changing versions.",
+    "The selected artifact rule owns its version scope, checks, tag, publication, and installation behavior.",
+    "A platform request must never silently route to the CLI rule.",
     "CLI + core use 3-segment versions; adapters use 4-segment CLI_VERSION.PATCH and reset to .0 on CLI bumps.",
     "Codex plugin manifest version equals codex-adapter package version (no timestamp).",
     "Release preparation may mutate source; npm run verify:release and npm run publish:release must remain side-effect free except for the intended registry publish.",

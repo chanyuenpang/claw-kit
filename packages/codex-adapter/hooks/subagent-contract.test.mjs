@@ -125,7 +125,7 @@ test("Codex plan commands use only the bundled code-mode consumer", () => {
   assert.match(workflowReference, /schema v1 native `create_goal` or `update_goal`/i);
   assert.match(workflowReference, /exactly once/i);
   assert.match(workflowReference, /inspects `get_goal`/i);
-  assert.match(workflowReference, /resume reuses an existing active Goal/i);
+  assert.match(workflowReference, /any non-`complete` Goal/i);
   assert.match(workflowReference, /completion skips `update_goal` when no active Goal remains/i);
   assert.match(workflowReference, /agent must never inspect Goal state through a separate `get_goal` call/i);
   assert.match(workflowReference, /do not parse host error wording/i);

@@ -42,11 +42,11 @@
 - child plan 后续进入或恢复 `process.active` 时，才由独立 mutation 返回 `create_goal`。因此 parent close 与 child create 跨 Host 结算边界，不覆盖仍活跃的父 Goal，也不会在同一 call 内把新 Goal 一并清除。
 - 对应决策 owner 是 `.claw/truth/adr/codex-goal-mode-thread-contract.md`。
 
-## 0.1.86 installed Host 历史偏差与当前 worktree 修复
+## 0.1.86 installed Host 历史偏差与 0.1.99 发布修复
 
 - `0.1.86` 同版本线的真实 installed lifecycle 曾执行 `process.active -> process.wait -> process.active -> end.completed`。`plan.wait` 的 canonical 状态与 compact `stage="paused"` 正常，但后续 `plan.resume` 在已把 canonical plan 恢复为 `process.active` 后调用 `create_goal`，Host 返回 `cannot create a new goal because this thread has an unfinished goal; complete the existing goal first`。只读检查确认原 Goal 仍 active，因此没有重放 resume；这是修复前的版本化 Host 证据。
 - 同一轮 root closeout 已把 plan 持久化为 `end.completed`，随后暴露的重复 Goal close 指示在 Goal 已为空时返回 `cannot update goal because this thread has no goal`。terminal `nextsteps` 重复已消费 action 的 compact-result 缺陷由 `cli-guided-workflow.md` 唯一拥有；本文只保留 Goal 状态幂等问题的历史事实与当前行为。
-- 当前 worktree 已在 `packages/cli/src/codex-driver.ts` 和 bundled `packages/codex-adapter/scripts/code-mode-host-action-consumer.mjs` 中把 `get_goal` 检查放进固定程序；设置 Goal 遇到旧的非终态 Goal 时固定程序关闭它并显式返回跨调用恢复命令，随后在独立 call 创建新 Goal。agent 不得在程序外单独调用 `get_goal`；当前 driver/cache identity 由 `codex-workflow-guidance-consumption.md` 唯一拥有。
+- `0.1.99` 已发布在 `packages/cli/src/codex-driver.ts` 和 bundled `packages/codex-adapter/scripts/code-mode-host-action-consumer.mjs` 中的固定程序检查：设置 Goal 遇到旧的非终态 Goal 时，程序关闭它并显式返回跨调用恢复命令，随后在独立 call 创建新 Goal。agent 不得在程序外单独调用 `get_goal`；当前 driver/cache identity 由 `codex-workflow-guidance-consumption.md` 唯一拥有。
 - canonical mutation 仍可能先于 Host action 失败，因此不得重放已持久化的 transition。当前程序化消费决策由 `.claw/truth/adr/codex-plan-mutations-use-fixed-code-mode-consumer.md` 拥有；thread-level 生命周期决策仍由 `.claw/truth/adr/codex-goal-mode-thread-contract.md` 拥有。
 
 ## 真实代码锚点

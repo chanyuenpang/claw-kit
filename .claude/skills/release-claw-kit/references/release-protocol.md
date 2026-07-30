@@ -16,7 +16,19 @@ Run commands from the repository root. Treat current repository files as authori
 
 Adapters can be published independently: bump their 4th segment, retag with `v<adapter-name>-<version>` (e.g. `vcodex-0.2.1.1`), and do not touch CLI/core packages or other adapters.
 
-## Three release modes
+## Artifact families and release modes
+
+Select one artifact family before version changes. “Package”, “build”, and “prepare” mean prepare-only unless the user also authorizes commit/push/tag/publish.
+
+| Artifact family | Source scope | Version | Artifact | Tag |
+|---|---|---|---|---|
+| CLI | core, CLI, or shared CLI/runtime | 3 segments | `@veewo/claw-core` then `@veewo/claw` | `v<version>` |
+| Codex | codex-adapter | 4 segments | committed GitHub marketplace snapshot | `vcodex-<version>` |
+| Cindy | cindy-adapter | 4 segments | Cindy adapter release artifact | `vcindy-<version>` |
+| OpenClaw | openclaw-adapter | 4 segments | OpenClaw adapter release artifact | `vopenclaw-<version>` |
+| OpenCode | opencode-adapter | 4 segments | OpenCode adapter release artifact | `vopencode-<version>` |
+
+Routing is explicit: platform requests stay platform-only; CLI/core requests include core and CLI; mixed adapter scopes require an explicit batch decision. Do not use a CLI version request as permission to publish every adapter.
 
 ### 1. CLI release (always includes core)
 
@@ -26,9 +38,13 @@ Triggered when core or CLI changes. Publishes `@veewo/claw-core` then `@veewo/cl
 
 Triggered when codex-adapter changes. Updates the committed marketplace snapshot, tags `vcodex-<version>`, and creates a GitHub Release. No npm publish (adapter is private).
 
-### 3. Other platform adapter release
+### 3. Cindy, OpenClaw, or OpenCode adapter release
 
-Triggered when cindy-adapter, openclaw-adapter, or opencode-adapter changes. Tag with `v<adapter>-<version>`, no npm publish. The release gate verifier must still pass.
+Triggered when exactly one of cindy-adapter, openclaw-adapter, or opencode-adapter changes. Tag with that adapter's tag, no npm publish. The release gate verifier must still pass.
+
+### 4. Prepare-only mode
+
+Use for packaging, export, dry-run, or local verification without an explicit publish request. It may update local version/build outputs, but must stop before commit, push, tag, GitHub Release, npm publish, or maintainer installation refresh.
 
 ## Baseline and preparation
 
