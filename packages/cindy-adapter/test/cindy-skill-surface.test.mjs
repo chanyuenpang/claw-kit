@@ -43,7 +43,8 @@ test('Goal continuation keeps structured events out of the visible prompt', asyn
   assert.doesNotMatch(source, /cindyAuthorizationCardIssued\.delete\(sessionId\)/);
   assert.match(source, /state: projection\.planStatus === 'process\.active' \? 'working' : 'done'/);
   assert.match(source, /session-start-failed-retryable/);
-  assert.match(source, /function assistantMessageText\(data\)/);
   assert.match(source, /msg\.name === 'will-assistant-message'/);
+  assert.match(source, /msg\.name === 'did-turn-end'/);
+  assert.match(source, /function captureTurnEndReport\(msg\)/);
   assert.match(source, /capturedTurnKeys/);
 });

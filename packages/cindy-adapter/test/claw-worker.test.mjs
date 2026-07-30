@@ -56,6 +56,7 @@ test("Cindy SQLite reader extracts task conclusions from the current session", (
     CREATE TABLE sessions (id TEXT PRIMARY KEY);
     CREATE TABLE messages (
       id TEXT PRIMARY KEY,
+      client_id TEXT,
       session_id TEXT NOT NULL,
       role TEXT NOT NULL,
       content TEXT NOT NULL,
@@ -82,10 +83,12 @@ test("Cindy SQLite reader extracts task conclusions from the current session", (
   const previous = process.env.CINDY_USER_DATA;
   process.env.CINDY_USER_DATA = fixtureDir;
   try {
-    const { readTaskConclusions } = require(sqliteReaderPath);
-    assert.deepEqual(readTaskConclusions("session-1", "turn-1", "Final result."), [
-      { turnId: "turn-1", message: "Finished task two." },
-    ]);
+    const { readTurnCapture } = require(sqliteReaderPath);
+    assert.deepEqual(readTurnCapture("session-1"), {
+      turnId: "assistant-final",
+      message: "Final result.",
+      taskConclusions: [{ turnId: "assistant-final", message: "Finished task two." }],
+    });
   } finally {
     if (previous === undefined) delete process.env.CINDY_USER_DATA;
     else process.env.CINDY_USER_DATA = previous;
@@ -237,13 +240,26 @@ test("session-start treats an empty successful hook response as no injected cont
 
 test("worker captures a final Cindy report through the host-neutral CLI hand-off", { skip: process.platform !== "win32" }, async () => {
   const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-report-capture-"));
+  const db = new DatabaseSync(path.join(fixtureDir, "cindy-reader.db"));
+  db.exec(`
+    CREATE TABLE sessions (id TEXT PRIMARY KEY);
+    CREATE TABLE messages (
+      id TEXT PRIMARY KEY, client_id TEXT, session_id TEXT NOT NULL, role TEXT NOT NULL,
+      content TEXT NOT NULL, tool_use_id TEXT, created_at INTEGER NOT NULL,
+      rewind_at INTEGER
+    );
+  `);
+  db.prepare("INSERT INTO sessions (id) VALUES (?)").run("cindy-report-session");
+  db.prepare("INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)")
+    .run("assistant-final", "cindy-report-session", "assistant", JSON.stringify("Completed the requested change."), 1);
+  db.close();
   fs.writeFileSync(
     path.join(fixtureDir, "claw.cmd"),
     '@echo off\r\necho {"ok":true,"captured":true,"finalizeId":"finalize-1","jobPath":"C:\\\\jobs\\\\finalize-1.json","sessionId":"%CLAW_SESSION_ID%","args":"%*"}\r\n',
   );
   const child = spawn(process.execPath, [workerPath], {
     cwd: fixtureDir,
-    env: { ...process.env, PATH: `${fixtureDir}${path.delimiter}${process.env.PATH || ""}` },
+    env: { ...process.env, CINDY_USER_DATA: fixtureDir, PATH: `${fixtureDir}${path.delimiter}${process.env.PATH || ""}` },
     stdio: ["pipe", "pipe", "pipe"],
     windowsHide: true,
   });
@@ -256,8 +272,6 @@ test("worker captures a final Cindy report through the host-neutral CLI hand-off
       params: {
         sessionId: "cindy-report-session",
         workdir: fixtureDir,
-        turnId: "cindy-hook-12",
-        message: "Completed the requested change.",
       },
     });
     assert.equal(response.result.ok, true);

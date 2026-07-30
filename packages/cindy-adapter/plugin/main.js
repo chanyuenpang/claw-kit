@@ -216,13 +216,7 @@ async function applyProjection(sessionId, execution, callId) {
     cindy.send({ type: 'card-update', callId: cardId, v: 2, state: mergedProjection.planStatus === 'process.active' ? 'working' : 'done', html: renderWorkflowCard(mergedProjection, expanded, goalAuthorizationCards.get(cardId) === true), height: workflowCardHeight(mergedProjection, expanded) });
   }
   // A plan end only registers a pending report in Core. The writer is queued
-  // after will-assistant-message captures this turn's final report.
-}
-
-function assistantTurnId(msg) {
-  const supplied = typeof msg.data?.turnId === 'string' ? msg.data.turnId.trim() : '';
-  if (supplied) return supplied;
-  return `cindy-hook-${String(msg.seq ?? `${Date.now()}-${Math.random()}`)}`;
+  // after did-turn-end reads this turn from Cindy's persisted SQLite history.
 }
 
 async function dispatchKnowledgeWriter(sessionId, job) {
@@ -246,53 +240,46 @@ async function dispatchKnowledgeWriter(sessionId, job) {
   }
 }
 
-async function captureAssistantReport(msg) {
+async function captureTurnEndReport(msg) {
   const sessionId = typeof msg.data?.sessionId === 'string' ? msg.data.sessionId : '';
-  const message = assistantMessageText(msg.data);
-  const turnId = assistantTurnId(msg);
   const workdir = workdirs.get(sessionId);
-  if (!sessionId || !workdir || !message) {
-    traceHook('will-assistant-message', {
+  if (!sessionId || !workdir) {
+    traceHook('did-turn-end', {
       sessionId: sessionId || null,
       phase: 'capture-skipped',
-      reason: !sessionId ? 'missing-session-id' : !workdir ? 'missing-workdir' : 'empty-message',
+      reason: !sessionId ? 'missing-session-id' : 'missing-workdir',
     });
     return { status: 'skipped' };
   }
-  const captureKey = `${sessionId}:${turnId}`;
-  if (capturedTurnKeys.has(captureKey)) return { status: 'duplicate' };
   const capture = await nodeRequest('claw/capture-report', {
     sessionId,
     workdir,
-    turnId,
-    message,
   }, 30000);
+  const turnId = typeof capture?.turnId === 'string' ? capture.turnId : '';
+  if (!turnId) {
+    traceHook('did-turn-end', { sessionId, phase: 'capture-failed', reason: capture?.error || 'missing-database-turn-id' });
+    return { status: 'capture-failed' };
+  }
+  const captureKey = `${sessionId}:${turnId}`;
+  if (capturedTurnKeys.has(captureKey)) return { status: 'duplicate' };
   if (capture?.ok && capture.captured) {
     capturedTurnKeys.add(captureKey);
   }
   if (capture?.ok && capture.jobPath && capture.finalizeId) {
-    traceHook('will-assistant-message', { sessionId, phase: 'capture-succeeded', finalizeId: capture.finalizeId, jobPath: capture.jobPath });
+    traceHook('did-turn-end', { sessionId, phase: 'capture-succeeded', turnId, finalizeId: capture.finalizeId, jobPath: capture.jobPath });
     await dispatchKnowledgeWriter(sessionId, capture);
     return { status: 'captured', finalizeId: capture.finalizeId };
   }
   if (capture?.ok && capture.captured) {
-    traceHook('will-assistant-message', { sessionId, phase: 'capture-succeeded', reportPath: capture.reportPath || null });
+    traceHook('did-turn-end', { sessionId, phase: 'capture-succeeded', turnId, reportPath: capture.reportPath || null });
     return { status: 'captured' };
   }
-  traceHook('will-assistant-message', {
+  traceHook('did-turn-end', {
     sessionId,
     phase: 'capture-failed',
     reason: capture?.error || 'capture-report-did-not-return-job',
   });
   return { status: 'capture-failed' };
-}
-
-function assistantMessageText(data) {
-  const candidates = [data?.text, data?.message, data?.content, data?.assistantMessage];
-  for (const candidate of candidates) {
-    if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
-  }
-  return '';
 }
 
 async function pauseGoalAfterRetries(sessionId, goal) {
@@ -462,6 +449,7 @@ cindy.onHostMessage(async (msg) => {
   }
 
   if (msg.name === 'did-turn-end') {
+    void captureTurnEndReport(msg);
     await continueGoalAfterTurnEnd(msg);
     return;
   }
@@ -494,13 +482,9 @@ cindy.onHostMessage(async (msg) => {
 
   if (msg.name === 'will-assistant-message') {
     const sessionId = typeof msg.data?.sessionId === 'string' ? msg.data.sessionId : '';
-    traceHook('will-assistant-message', { sessionId: sessionId || null, phase: 'received', hasWorkdir: Boolean(workdirs.get(sessionId)) });
-    try {
-      await captureAssistantReport(msg);
-    } finally {
-      sendVerdict(msg.hookId, 'allow');
-      traceHook('will-assistant-message', { sessionId: sessionId || null, phase: 'verdict', action: 'allow' });
-    }
+    traceHook('will-assistant-message', { sessionId: sessionId || null, phase: 'received', purpose: 'allow-only' });
+    sendVerdict(msg.hookId, 'allow');
+    traceHook('will-assistant-message', { sessionId: sessionId || null, phase: 'verdict', action: 'allow' });
     return;
   }
 

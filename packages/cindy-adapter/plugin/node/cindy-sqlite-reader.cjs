@@ -57,37 +57,42 @@ function messageText(value) {
   return typeof content?.text === 'string' ? content.text.trim() : '';
 }
 
-function readTaskConclusions(sessionId, turnId, finalMessage) {
-  if (!sessionId || !turnId) return [];
+function readSessionMessages(db, sessionId) {
+  return db.prepare(`
+    SELECT rowid, id, client_id, role, content, tool_use_id, created_at
+    FROM messages
+    WHERE session_id = ? AND rewind_at IS NULL
+    ORDER BY created_at ASC, rowid ASC
+  `).all(sessionId);
+}
+
+function readTurnCapture(sessionId) {
+  if (!sessionId) return null;
   const match = findDatabaseForSession(sessionId);
-  if (!match) return [];
+  if (!match) return null;
   try {
-    const rows = match.db.prepare(`
-      SELECT rowid, role, content, tool_use_id, created_at
-      FROM messages
-      WHERE session_id = ? AND rewind_at IS NULL
-      ORDER BY created_at ASC, rowid ASC
-    `).all(sessionId);
-    let end = rows.length;
-    if (finalMessage) {
-      for (let index = rows.length - 1; index >= 0; index -= 1) {
-        if (rows[index].role === 'assistant' && messageText(rows[index].content) === finalMessage.trim()) {
-          end = index + 1;
-          break;
-        }
+    const rows = readSessionMessages(match.db, sessionId);
+    let end = -1;
+    for (let index = rows.length - 1; index >= 0; index -= 1) {
+      if (rows[index].role === 'assistant' && messageText(rows[index].content)) {
+        end = index;
+        break;
       }
     }
+    if (end < 0) return null;
     let start = 0;
-    for (let index = end - 1; index >= 0; index -= 1) {
+    for (let index = end; index >= 0; index -= 1) {
       if (rows[index].role === 'user') {
         start = index + 1;
         break;
       }
     }
+    const finalRow = rows[end];
+    const turnId = String(finalRow.client_id || finalRow.id || `row-${finalRow.rowid}`);
     let latestAssistant = '';
     const conclusions = [];
     const seen = new Set();
-    for (const row of rows.slice(start, end)) {
+    for (const row of rows.slice(start, end + 1)) {
       if (row.role === 'assistant') {
         const text = messageText(row.content);
         if (text) latestAssistant = text;
@@ -99,12 +104,26 @@ function readTaskConclusions(sessionId, turnId, finalMessage) {
       seen.add(latestAssistant);
       conclusions.push({ turnId, message: latestAssistant });
     }
-    return conclusions;
+    return {
+      turnId,
+      message: messageText(finalRow.content),
+      taskConclusions: conclusions,
+    };
   } catch {
-    return [];
+    return null;
   } finally {
     try { match.db.close(); } catch { /* fail open */ }
   }
 }
 
-module.exports = { readTaskConclusions };
+async function readTurnCaptureWithRetry(sessionId) {
+  const delays = [0, 25, 75, 150, 300];
+  for (const delay of delays) {
+    if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+    const capture = readTurnCapture(sessionId);
+    if (capture?.message) return capture;
+  }
+  return null;
+}
+
+module.exports = { readTurnCapture, readTurnCaptureWithRetry };

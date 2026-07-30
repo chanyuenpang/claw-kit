@@ -74,7 +74,7 @@ The Cindy mapping follows the existing OpenCode adapter's event responsibilities
 | OpenCode first-message synthetic context | `will-user-message` `rewrite` with the recovered context |
 | turn-end plan inspection | no CLI polling; the latest typed command result is the state source |
 | `process.active` continuation | Ghost Hook queues one background `agent.run` continuation after the assistant turn; the `.claw` plan status remains the gate |
-| completion knowledge closeout | every `will-assistant-message` invokes the Core capture path, followed by a bounded background Agent prompt and private worker claim/done operations |
+| completion knowledge closeout | `did-turn-end` triggers SQLite history capture, followed by a bounded background Agent prompt and private worker claim/done operations |
 
 `did-*` topics are fire-and-forget metadata events. The `will-user-message`
 hook is the only blocking message boundary and must return within Cindy's
@@ -142,19 +142,21 @@ The closeout must remain bounded to the current project and plan. Cindy's
 `will-assistant-message` is a single post-turn hook: the Host calls it once
 with the completed assistant text, not once per streamed or intermediate
 assistant message. Its public payload has no turn transcript, turn id, or
-tool-call history. The adapter therefore uses the WAM as the trigger, then
-opens Cindy's local SQLite database read-only in the Node worker to recover the
-current session's persisted messages. It scopes the query to the current turn
-by locating the WAM final text and the preceding user boundary, then extracts
-successful `task.done` results and their preceding assistant conclusions.
+tool-call history. The adapter therefore uses `did-turn-end` as the trigger,
+then opens Cindy's local SQLite database read-only in the Node worker to recover
+the current session's persisted messages. It scopes the query to the current
+turn by locating the latest persisted assistant message and preceding user
+boundary, then extracts successful `task.done` results and their preceding
+assistant conclusions.
 
 The SQLite reader is an adapter-private implementation detail: it never writes
-the database, never depends on a Host IPC endpoint, and fails open to the WAM
-text when the database path or schema is unavailable. Core receives only the
-standard `taskConclusions` shape. Core's session/turn idempotency still prevents
-duplicate entries and duplicate writer dispatch. `did-turn-end` remains a Goal
-continuation boundary only. A worker failure must be visible and recoverable,
-rather than silently marking the plan as fully closed.
+the database, never depends on a Host IPC endpoint, and retries briefly when
+the end event arrives before the final assistant row is visible. Core receives
+only the standard `taskConclusions` shape. Core's session/turn idempotency still
+prevents duplicate entries and duplicate writer dispatch. `will-assistant-message`
+remains an allow-only presentation hook and does not participate in knowledge
+capture. A worker failure must be visible and recoverable, rather than silently
+marking the plan as fully closed.
 
 ## 8. Acceptance scenarios
 

@@ -1,7 +1,7 @@
 const { spawn } = require('node:child_process');
 const readline = require('node:readline');
 const fs = require('node:fs');
-const { readTaskConclusions } = require('./cindy-sqlite-reader.cjs');
+const { readTurnCaptureWithRetry } = require('./cindy-sqlite-reader.cjs');
 const writerJobs = new Map();
 
 const OPERATION_CATALOG = {
@@ -486,9 +486,12 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
   if (request.method === 'claw/capture-report') {
     const sessionId = typeof params.sessionId === 'string' ? params.sessionId : '';
     const workdir = typeof params.workdir === 'string' ? params.workdir : '';
-    const turnId = typeof params.turnId === 'string' ? params.turnId : '';
-    const message = typeof params.message === 'string' ? params.message : '';
-    const taskConclusions = readTaskConclusions(sessionId, turnId, message);
+    const captureInput = await readTurnCaptureWithRetry(sessionId);
+    if (!captureInput) {
+      reply(request.id, { ok: true, captured: false, error: 'Cindy SQLite did not expose a completed assistant message yet.' });
+      return;
+    }
+    const { turnId, message, taskConclusions } = captureInput;
     const result = await runClaw(
       ['internal-knowledge-capture', '--host', 'cindy'],
       workdir,
@@ -496,7 +499,9 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
       10000,
       sessionId,
     );
-    reply(request.id, result.ok ? { ok: true, ...(result.output || {}) } : { ok: false, error: result.error });
+    reply(request.id, result.ok
+      ? { ok: true, turnId, message, ...(result.output || {}) }
+      : { ok: false, error: result.error });
     return;
   }
   if (request.method === 'claw/register-knowledge-writer') {
