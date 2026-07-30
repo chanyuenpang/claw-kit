@@ -43,3 +43,6 @@ Thumbs.db
 /packages/opencode-adapter/skills/config/SKILL.md
 /packages/opencode-adapter/skills/planning/SKILL.md
 .gitnexus
+
+.claude/
+_cindy-config-backup.toml

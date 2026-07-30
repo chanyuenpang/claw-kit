@@ -2371,15 +2371,11 @@ function buildCindySessionStartContext(context: Record<string, unknown>, session
     const taskName = typeof activeWorkflow.taskName === "string" ? activeWorkflow.taskName.trim() : "current task";
     const planStatus = typeof activeWorkflow.planStatus === "string" ? activeWorkflow.planStatus.trim() : "unknown";
     const planSummary = typeof activeWorkflow.planSummary === "string" ? activeWorkflow.planSummary.trim() : "";
-    const nextTask = asJsonRecord(activeWorkflow.workflowGuidance)?.nextTask;
-    const nextTaskTitle = asJsonRecord(nextTask)?.title;
     const lines = [
-      "claw-kit recovered a Cindy workflow.",
+      "claw-kit has recovered a Cindy workflow.",
       `- task: ${taskName}`,
       `- plan status: ${planStatus}`,
       ...(planSummary ? [`- plan summary: ${planSummary}`] : []),
-      ...(typeof nextTaskTitle === "string" && nextTaskTitle.trim() ? [`- next task: ${nextTaskTitle.trim()}`] : []),
-      "Use the claw-kit Ghost tools to inspect or advance this workflow. Do not run claw shell commands or manage host/session/Goal state yourself.",
     ];
     return lines.join("\n");
   }
@@ -2391,7 +2387,6 @@ function buildCindySessionStartContext(context: Record<string, unknown>, session
     : path.basename(String(project.projectRoot ?? sessionCwd ?? "project"));
   return [
     `claw-kit is ready for the Cindy workspace: ${projectName}.`,
-    "Use the claw-kit Ghost tools when this work needs a plan; do not invoke claw shell commands directly.",
   ].join("\n");
 }
 

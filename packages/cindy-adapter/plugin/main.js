@@ -21,13 +21,22 @@ const expandedWorkflowCards = new Map();
 const cardSessions = new Map();
 const cardInteractionTimers = new Map();
 const cardLastUpdatedAt = new Map();
+// Model per session: gpt models use shell + bridge; everything else uses Ghost tools.
+const sessionModels = new Map();
 
-const CINDY_CLAW_ENTRY_PROMPT = [
+const CINDY_CLAW_ENTRY_PROMPT_DEFAULT = [
   'This session uses claw-kit through Cindy.',
   'Enter the workflow through the `using-claw-kit` skill before taking any claw workflow action.',
   'If the user explicitly names another claw-kit skill, load and follow that named bundled skill directly after entering the main route.',
   'First call the Ghost tool `list_tools`; then call `call_tool` with the returned operation name and JSON arguments.',
   'Do not search MCP resources, discover MCP server names, inspect `.claw` as a substitute for the tools, or invoke claw shell commands.',
+].join('\n');
+
+const CINDY_CLAW_ENTRY_PROMPT_GPT = [
+  'This session uses claw-kit through Cindy.',
+  'Enter the workflow through the `using-claw-kit` skill before taking any claw workflow action.',
+  'If the user explicitly names another claw-kit skill, load and follow that named bundled skill directly after entering the main route.',
+  'Use `shell_command` to run `claw` CLI commands and the code-mode bridge for plan mutations as instructed by the skill. Do not use Ghost tools for claw workflow operations.',
 ].join('\n');
 
 function traceHook(hook, fields = {}) {
@@ -49,7 +58,7 @@ async function nodeRequest(method, params, timeoutMs = 10000) {
 async function requestSessionPrompt(sessionId, workdir) {
   if (!workdir) return { context: null, failed: false };
   workdirs.set(sessionId, workdir);
-  const result = await nodeRequest('claw/session-start', { sessionId, workdir });
+  const model = sessionModels.get(sessionId); const result = await nodeRequest('claw/session-start', { sessionId, workdir, ...(model ? { model } : {}) });
   if (result?.context) contexts.set(sessionId, result.context);
   else if (result?.errorPrompt) contexts.set(sessionId, result.errorPrompt);
   else contexts.set(sessionId, null);
@@ -442,7 +451,8 @@ cindy.onHostMessage(async (msg) => {
     const data = msg.data || {};
     if (data.sessionId && data.workdir) {
       workdirs.set(data.sessionId, data.workdir);
-      traceHook('did-session-created', { sessionId: data.sessionId, workdir: data.workdir });
+      if (typeof data.model === 'string' && data.model.trim()) sessionModels.set(data.sessionId, data.model.trim());
+      traceHook('did-session-created', { sessionId: data.sessionId, workdir: data.workdir, model: data.model || null });
       void warmSessionBackground(data.sessionId, data.workdir);
     }
     return;
@@ -475,8 +485,15 @@ cindy.onHostMessage(async (msg) => {
       return;
     }
     injectedSessions.add(sessionId);
-    sendVerdict(msg.hookId, 'rewrite', { text: `${CINDY_CLAW_ENTRY_PROMPT}\n\n${promptResult.context}\n\n${msg.data.text}` });
-    traceHook('will-user-message', { sessionId, phase: 'verdict', action: 'rewrite' });
+        const model = sessionModels.get(sessionId);
+    const gptModels = model && /^gpt/i.test(String(model));
+    const entryPrompt = gptModels ? CINDY_CLAW_ENTRY_PROMPT_GPT : CINDY_CLAW_ENTRY_PROMPT_DEFAULT;
+    sendVerdict(msg.hookId, 'rewrite', { text: `${entryPrompt}
+
+${promptResult.context}
+
+${msg.data.text}` });
+    traceHook('will-user-message', { sessionId, phase: 'verdict', action: 'rewrite', model: model || null, gptRoute: Boolean(gptModels) });    traceHook('will-user-message', { sessionId, phase: 'verdict', action: 'rewrite' });
     return;
   }
 

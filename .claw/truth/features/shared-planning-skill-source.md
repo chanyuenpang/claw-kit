@@ -77,60 +77,6 @@
 <!-- state: history -->
 ## 演化历史
 
-<!-- dated: 2026-07-14 -->
-### 统一 plan template 解析与实例化
-
-#### 结论
-
-- `claw plan create` 与 `claw subplan create` 现在共用单一模板解析流程。两条入口最终都进入 `packages/core/src/plan.ts` 的 `writePlan(...)`，再统一通过 `createPlanFromTemplate(...) -> resolvePlanTemplate(...)` 完成模板发现、schema 判别和实例化。
-- `packages/core/src/plan-templates.ts` 的 `resolvePlanTemplate(...)` 同时兼容 built-in / project legacy `SeedPlanTemplate`，以及 skill-local `TEMPLATE.json` 提供的 full `PlanDocument` template。候选 skill roots 统一来自显式 `CLAW_SKILL_ROOTS`、当前项目 `shared/skills`、源码 checkout 的 `shared/skills`，以及 Codex / OpenCode 对应的 host 安装面；这些只是同一个 resolver 的发现来源，不是不同 create 流程。
-- `subplan` 的唯一额外行为发生在统一实例化之后：写入 `parentPlan` / `parentTaskId`，合并父计划的 rules / references，并把父任务的 `execution.type`、`execution.subplan`、`execution.planPath` 更新为 child plan linkage；父任务原为 `pending` 时同时转为 `in_progress`。
-
-#### 长期行为 / 规则
-
-- full template 的 `configOverride` 会进入 `effectivePlanProjectConfig(...)`，从而影响运行时 `workflowGuidance`；不能把它当作仅用于生成静态 JSON 的元数据。
-- full template task 的 `guidance.onDone` 会参与任务完成时的 guidance 合并；若 task 定义 choices，当前 CLI 由 `claw task done --id <id> --choice <choice-id>` 或 `claw task edit --id <id> --status done --choice <choice-id>` 选择对应分支，所选分支的 `summary` 等字段进入运行时响应。旧 `plan edit --choice-id` 只保留在下方明确标注的历史 smoke 中。
-- CLI compact plan response 必须保留 `workflowGuidance.summary`，并继续以顶层 `summary` 返回；不能只保留 `nextsteps`、`commandHints` 或折叠后的 `planSummary`。
-- 当时的 `shared/skills/update/TEMPLATE.json` 是 full `PlanDocument` template；当前两个 adapter-owned `update/TEMPLATE.json` 仍沿用同一 full-template resolver，不需要降格为 legacy `SeedPlanTemplate`。
-
-#### 真实调用链路
-
-- root plan：CLI `plan create` -> `writePlan(...)` -> `createPlanFromTemplate(...)` -> `resolvePlanTemplate(...)` -> seed/full template 实例化。
-- child plan：CLI `subplan create` -> `createSubplan(...)` -> `writePlan(...)` -> 同一 `createPlanFromTemplate(...)` / `resolvePlanTemplate(...)` 链路 -> 统一实例化后补 parent linkage 并更新父任务 execution。
-
-#### 验证标准
-
-- 全仓 `npm run check` 通过。
-- Core 测试：90/90 通过。
-- CLI 测试：56/56 通过。
-- Codex bundle 测试：6/6 通过。
-- OpenCode bundle 测试：5/5 通过。
-- 该轮隔离 live smoke 使用当时的 canonical `shared/skills/update/TEMPLATE.json`：`plan create --template update` 与 `subplan create --template update` 均生成 `process.active`、3 tasks 的 plan；child 明确记录 `parentPlan = plan.json`、`parentTaskId = 1`。
-- 同一历史 smoke 中，`plan edit ... --choice-id codex` 返回 `summary = The current host route is Codex.` 和 `nextTask = 2`。当前 host-specific templates 已删除该 platform choice；这条记录只证明 full-template choice 语义在当时进入真实运行时响应。
-
-#### 关联代码
-
-- `shared/skills/update/SKILL.md`（该轮历史路径，现已删除）
-- `shared/skills/update/TEMPLATE.json`（该轮历史路径，现已删除）
-- `packages/core/src/plan.ts`
-- `packages/core/src/plan-templates.ts`
-- `packages/core/src/workflow-guidance.ts`
-- `packages/core/src/types.ts`
-- `packages/cli/src/cli.ts`
-- `packages/core/test/core.test.ts`
-- `packages/cli/test/cli.test.ts`
-- `packages/core/src/templates/plans/default.ts`
-
-#### 补充检索词
-
-- `writePlan resolvePlanTemplate`
-- `FullPlanTemplate`
-- `SeedPlanTemplate`
-- `skill-local TEMPLATE.json`
-- `CLAW_SKILL_ROOTS shared/skills`
-- `guidance.onDone choiceId`
-- `workflowGuidance.summary`
-
 <!-- dated: 2026-07-15 -->
 ### 官方 Codex marketplace 源物化与模板 resolver 收敛
 
@@ -377,3 +323,22 @@
 - `GitHub Release zero assets`
 - `repository clone four minutes`
 - `claw-kit@claw-kit official identity`
+
+<!-- dated: 2026-07-30 -->
+### 0.2.2.1 Codex-only marketplace 发布完成态
+
+#### 结论
+
+- Codex adapter package 与 committed plugin manifest 已对齐到 `0.2.2.1`。release commit `71aee20c4d1c32cc61b64012949ae596ae93ae67` 直接交付到 `origin/main`，并由不可变标签 `vcodex-0.2.2.1` 与正式 GitHub Release 标识。
+- 该轮严格走 Codex artifact rule：GitHub Release 没有 ZIP 资产，也没有发布 npm 包；交付物仍是标签提交中通过门禁的 `packages/codex-adapter` marketplace snapshot。
+- 该 revision 的完成报告记录 template version 检查、shared-skill 同步测试 `4/4`、全仓 `npm run check`、Codex bundle 测试 `18/18`、staged diff 检查和 guarded `verify:release` 均通过。完成边界内 `main`、`origin/main` 与标签提交一致，工作树为空；这些是该 revision 的版本化证据，不构成后续发布的固定验证矩阵。
+- 本轮没有刷新维护者本机安装，因为 Codex artifact rule 只在明确请求时进入 published-source update。已发布的 `0.2.2.1` 不能单独证明 active marketplace identity、cache 或新任务运行时已经采用该版本。
+
+#### 关联代码与检索词
+
+- adapter package：`packages/codex-adapter/package.json`
+- committed manifest：`packages/codex-adapter/.codex-plugin/plugin.json`
+- marketplace source：`.agents/plugins/marketplace.json`
+- release rule：`.agents/skills/release-claw-kit/rules/codex.md`
+- `vcodex-0.2.2.1`
+- `71aee20c4d1c32cc61b64012949ae596ae93ae67`

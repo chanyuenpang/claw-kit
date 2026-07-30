@@ -4,7 +4,7 @@
   "name": "claw-kit",
   "description": "Cindy workflow tools, lifecycle recovery, and Skills for claw-kit.",
   "whenToUse": "Use for Cindy sessions that need claw-kit plan, task, subplan, or workflow operations.",
-  "version": "0.2.2.19",
+  "version": "0.2.2.20",
   "kind": "chip",
   "entry": "main.js",
   "launch": "resident",
@@ -36,7 +36,7 @@
     },
     {
       "name": "call_tool",
-      "description": "Run one claw-kit workflow operation in the current Cindy session. Use a name returned by list_tools and pass only that operation's JSON arguments; Cindy supplies the session and workspace identity.",
+      "description": "Run one claw-kit workflow operation in the current Cindy session. Use a name returned by list_tools and pass only that operation''s JSON arguments; Cindy supplies the session and workspace identity.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -63,12 +63,27 @@
       {
         "dir": "skills/planning",
         "name": "planning",
-        "description": "Use when a planning step needs to refine a user request into clear requirements, scope, completion criteria, dependencies, and executable tasks, especially when task boundaries or an evidence-dependent route still need judgment."
+        "description": "Use when a planning step needs to refine a user request into clear requirements, scope, completion criteria, dependencies, and executable tasks."
       },
       {
         "dir": "skills/researcher",
         "name": "researcher",
-        "description": "Delegate code investigation, source inspection, symbol or dependency tracing, code architecture analysis, and current implementation behavior analysis to a focused researcher subagent. Reuse a related researcher already available in the same thread."
+        "description": "Delegate code investigation, source inspection, symbol or dependency tracing, code architecture analysis, and current implementation behavior analysis to a focused researcher subagent."
+      },
+      {
+        "dir": "skills/create-claw-skill",
+        "name": "create-claw-skill",
+        "description": "Convert a text skill or skill idea into a claw-template-backed skill in the same skill package."
+      },
+      {
+        "dir": "skills/update",
+        "name": "update",
+        "description": "Refresh the published claw CLI and Cindy plugin when a newer claw-kit version is detected."
+      },
+      {
+        "dir": "skills/config",
+        "name": "config",
+        "description": "Inspect, explain, or change claw-kit project configuration."
       }
     ]
   }
