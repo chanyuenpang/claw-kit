@@ -1,0 +1,73 @@
+{
+  "id": "update",
+  "version": "0.2.2",
+  "title": "update",
+  "status": "process.active",
+  "goal": {
+    "text": "Refresh the published claw-kit CLI and Cindy plugin installation."
+  },
+  "requirements": {
+    "summary": "Refresh the global CLI first, refresh Cindy from the published Cindy plugin package second, then verify both installed surfaces and report exact status.",
+    "openQuestions": [],
+    "acceptanceCriteria": [
+      "The published global `@veewo/claw` CLI and Cindy plugin are both refreshed.",
+      "Cindy uses the `chanyuenpang/claw-kit` published plugin package and only the installed Cindy plugin id `claw-kit` remains enabled.",
+      "CLI, marketplace source, enabled identity, source manifest, and cache manifest are verified against the target version.",
+      "The result reports exact success or failure for each surface."
+    ]
+  },
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Confirm the published target version and official Cindy source",
+      "detail": "Tell the user a newer claw-kit version was detected. Confirm the target version is published and available from the official package and `chanyuenpang/claw-kit` GitHub marketplace before changing local installs. A release workflow must publish and verify first.",
+      "status": "pending"
+    },
+    {
+      "id": 2,
+      "title": "Refresh the CLI and Cindy plugin",
+      "detail": "Refresh the global CLI first. Inside this repository use `npm run install:local-cli`, then `npm run install:cindy-plugin`; the Cindy installer reads the published GitHub `main` marketplace snapshot. On another Cindy machine, add `chanyuenpang/claw-kit --ref main` for first setup or upgrade the `claw-kit` marketplace, then install or enable the installed Cindy plugin id `claw-kit`. Disable any local claw-kit identity. Do not install from unpublished workspace files or a local marketplace.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "default": {
+            "mergeMode": "override",
+            "summary": "The CLI and Cindy plugin refresh commands completed; verify both installed surfaces.",
+            "nextsteps": [
+              "Verify the global CLI version.",
+              "Verify the official Cindy marketplace source, enabled identity, and matching manifests."
+            ],
+            "nextTaskId": 3
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Verify the CLI and Cindy plugin",
+      "detail": "Run `claw --version` and `npm list -g @veewo/claw --depth=0`. Verify the installed Cindy plugin id `claw-kit` is enabled, any local claw-kit identity is disabled, and the official marketplace source manifest plus matching cache manifest equal the published target version. Confirm the active cache contains planning, config, update, create-claw-skill, and knowledge-writer, with repository-local release-claw-kit and retired truth-writer and adr-writer absent. Restart Cindy and start a new task before validating the loaded skill version. Report exact success or failure for both surfaces.",
+      "status": "pending"
+    }
+  ],
+  "references": [
+    {
+      "path": "non-claw-fallback.md",
+      "why": "Preserves the direct Cindy update workflow when the claw template cannot run."
+    },
+    {
+      "path": "CONTENT-COVERAGE.md",
+      "why": "Maps Cindy update requirements to this skill package."
+    }
+  ],
+  "rules": [
+    "Follow returned workflowGuidance before advancing.",
+    "Do not route or ask about another host; this is the Cindy update workflow.",
+    "Publish and verify the target version before release-time installation refresh.",
+    "Use only the published Cindy plugin package and claw-kit@claw-kit identity.",
+    "Do not claim success unless both CLI and Cindy plugin verification pass."
+  ]
+}
+
+
+
+

@@ -10,6 +10,7 @@ type SessionBindingRegistry = {
 };
 
 const SESSION_SCOPE_BINDING_KEY = "$session";
+export const SESSION_BINDING_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export function sessionBindingRegistryPath(project: ProjectContext): string {
   return path.join(project.clawDir, "runtime", "session-bindings.json");
@@ -37,8 +38,21 @@ export function unbindSession(project: ProjectContext, sessionKey: string | unde
 }
 
 /** Remove registry entries whose bound plan is no longer present under active tasks. */
-export function pruneStaleSessionBindings(project: ProjectContext): string[] {
+export function pruneStaleSessionBindings(project: ProjectContext, nowMs = Date.now()): string[] {
   const removed: string[] = [];
+  const registryPath = sessionBindingRegistryPath(project);
+  if (fs.existsSync(registryPath)) {
+    try {
+      if (nowMs - fs.statSync(registryPath).mtimeMs >= SESSION_BINDING_TTL_MS) {
+        const registry = readRegistry(project);
+        removed.push(...Object.keys(registry.bindings));
+        fs.unlinkSync(registryPath);
+        return removed;
+      }
+    } catch {
+      return removed;
+    }
+  }
   updateRegistry(project, (registry) => {
     for (const [key, relativePath] of Object.entries(registry.bindings)) {
       const normalizedRelative = typeof relativePath === "string" ? relativePath.replace(/\\/g, "/") : "";
@@ -69,6 +83,11 @@ export function resolveSessionBoundPlan(project: ProjectContext, sessionKey: str
   if (!planPath || !fs.existsSync(planPath)) {
     unbindSession(project, normalizedKey);
     return null;
+  }
+  try {
+    fs.utimesSync(sessionBindingRegistryPath(project), new Date(), new Date());
+  } catch {
+    // Binding freshness is advisory; resolution remains valid.
   }
   return planPath;
 }

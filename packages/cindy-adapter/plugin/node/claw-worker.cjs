@@ -1,6 +1,7 @@
 const { spawn } = require('node:child_process');
 const readline = require('node:readline');
 const fs = require('node:fs');
+const { readTaskConclusions } = require('./cindy-sqlite-reader.cjs');
 const writerJobs = new Map();
 
 const OPERATION_CATALOG = {
@@ -464,15 +465,22 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
       params.sessionId,
     );
     const context = result.output?.hookSpecificOutput?.additionalContext;
-    const jobs = Array.isArray(result.output?.hookSpecificOutput?.knowledgeJobs)
-      ? result.output.hookSpecificOutput.knowledgeJobs.flatMap((jobPath) => {
-        try { const job = JSON.parse(fs.readFileSync(jobPath, 'utf8')); return job.finalizeId ? [{ jobPath, finalizeId: job.finalizeId }] : []; } catch { return []; }
-      }) : [];
     reply(request.id, {
       ...(typeof context === 'string' && context.trim() ? { context } : {}),
+      ...(projectionFor(result.output) ? { projection: projectionFor(result.output) } : {}),
       ...(result.error ? { error: result.error } : {}),
-      ...(jobs.length ? { knowledgeJobs: jobs } : {}),
     });
+    return;
+  }
+  if (request.method === 'claw/session-background') {
+    const result = await runClaw(
+      ['internal-background-maintenance', '--cwd', params.workdir, '--session-key', params.sessionId],
+      params.workdir,
+      JSON.stringify({ cwd: params.workdir, session_id: params.sessionId }),
+      10000,
+      params.sessionId,
+    );
+    reply(request.id, result.ok ? { ok: true } : { ok: false, error: result.error });
     return;
   }
   if (request.method === 'claw/capture-report') {
@@ -480,10 +488,11 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
     const workdir = typeof params.workdir === 'string' ? params.workdir : '';
     const turnId = typeof params.turnId === 'string' ? params.turnId : '';
     const message = typeof params.message === 'string' ? params.message : '';
+    const taskConclusions = readTaskConclusions(sessionId, turnId, message);
     const result = await runClaw(
       ['internal-knowledge-capture', '--host', 'cindy'],
       workdir,
-      JSON.stringify({ cwd: workdir, session_id: sessionId, turn_id: turnId, message }),
+      JSON.stringify({ cwd: workdir, session_id: sessionId, turn_id: turnId, message, task_conclusions: taskConclusions }),
       10000,
       sessionId,
     );

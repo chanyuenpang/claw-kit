@@ -489,6 +489,28 @@ const COMMAND_HELP: Record<string, HelpNode> = {
     description: "Internal: warms the configured local persistent embedding session after context recovery without delaying SessionStart.",
     options: [{ flag: "--cwd <dir>", detail: "(required) Project root." }],
   },
+  "internal-daily-maintenance": {
+    usage: ["{script} internal-daily-maintenance --cwd <dir> [--session-key <key>] [--session-only]"],
+    description: "Internal: runs the lock-protected daily cleanup asynchronously after context recovery.",
+    options: [
+      { flag: "--cwd <dir>", detail: "(required) Current workspace directory." },
+      { flag: "--session-key <key>", detail: "Optional owner session key used for session workflow maintenance." },
+      { flag: "--session-only", detail: "Only maintain the session workflow; do not touch project tasks." },
+    ],
+  },
+  "internal-knowledge-sweep": {
+    usage: ["{script} internal-knowledge-sweep --cwd <dir>"],
+    description: "Internal: discovers retryable knowledge jobs and launches their detached finalizers.",
+    options: [{ flag: "--cwd <dir>", detail: "(required) Project root." }],
+  },
+  "internal-background-maintenance": {
+    usage: ["{script} internal-background-maintenance --cwd <dir> [--session-key <key>]"],
+    description: "Internal: runs non-blocking cleanup, embedding warmup, and knowledge job discovery in one worker.",
+    options: [
+      { flag: "--cwd <dir>", detail: "(required) Current workspace directory." },
+      { flag: "--session-key <key>", detail: "Optional owner session key used for session workflow maintenance." },
+    ],
+  },
 };
 
 async function main(): Promise<void> {
@@ -631,6 +653,15 @@ async function main(): Promise<void> {
         return;
       case "internal-embedding-warmup":
         await runInternalEmbeddingWarmup(args);
+        return;
+      case "internal-daily-maintenance":
+        runInternalDailyMaintenance(args);
+        return;
+      case "internal-knowledge-sweep":
+        runInternalKnowledgeSweep(args);
+        return;
+      case "internal-background-maintenance":
+        await runInternalBackgroundMaintenance(args);
         return;
       default:
         printTopLevelUsage();
@@ -1245,7 +1276,15 @@ async function runContextCommand(
 
   const sessionProject = resolveSessionWorkflowContext(ownerSessionKey ?? undefined);
   if (sessionProject) {
-    const maintenance = runDailyMaintenance(sessionProject, { excludeSessionKey: ownerSessionKey ?? undefined, includeProject: false });
+    const maintenance = effectiveHost
+      ? null
+      : runDailyMaintenance(sessionProject, {
+        excludeSessionKey: ownerSessionKey ?? undefined,
+        includeProject: false,
+      });
+    if (effectiveHost) {
+      launchDailyMaintenance(cwd, ownerSessionKey, true);
+    }
     const activeWorkflow = !taskName && ownerSessionKey
       ? await tryResolveActiveWorkflowSnapshot(cwd, ownerSessionKey, effectiveHost)
       : null;
@@ -1256,7 +1295,7 @@ async function runContextCommand(
     return {
       project: sessionProject,
       ...(activeWorkflow ? { activeWorkflow } : {}),
-      ...(maintenance.ran ? { maintenance } : {}),
+      ...(maintenance?.ran ? { maintenance } : {}),
       ...(codexRuntimeError ? { error: codexRuntimeError } : {}),
     };
   }
@@ -1273,7 +1312,13 @@ async function runContextCommand(
     initialized = true;
   }
 
-  const maintenance = runDailyMaintenance(resolveProjectContext(cwd), { excludeSessionKey: ownerSessionKey ?? undefined });
+  const project = resolveProjectContext(cwd);
+  const maintenance = effectiveHost
+    ? null
+    : runDailyMaintenance(project, { excludeSessionKey: ownerSessionKey ?? undefined });
+  if (effectiveHost) {
+    launchDailyMaintenance(cwd, ownerSessionKey, false);
+  }
   let resolved = resolveContext(cwd, taskName);
   const versionSync = syncProjectVersionWithCli(cwd, resolved.project);
   if (versionSync.projectVersionUpdated) {
@@ -1296,7 +1341,7 @@ async function runContextCommand(
 
   return {
     ...resolved,
-    ...(maintenance.ran ? { maintenance } : {}),
+    ...(maintenance?.ran ? { maintenance } : {}),
     ...(activeWorkflow ? { activeWorkflow } : {}),
     ...(codexRuntimeError ? { error: codexRuntimeError } : {}),
     protocolCheck: checkProjectProtocol(cwd),
@@ -1348,6 +1393,28 @@ function launchProjectEmbeddingWarmup(project: ProjectContext): void {
     child.unref();
   } catch {
     // Context recovery is authoritative; embedding warmup is fail-open latency work.
+  }
+}
+
+function launchDailyMaintenance(cwd: string, ownerSessionKey: string | null, sessionOnly: boolean): void {
+  const args = [resolveCliEntryPath(), "internal-daily-maintenance", "--cwd", cwd];
+  if (ownerSessionKey) {
+    args.push("--session-key", ownerSessionKey);
+  }
+  if (sessionOnly) {
+    args.push("--session-only");
+  }
+  try {
+    const child = spawn(process.execPath, args, {
+      cwd,
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+      env: withoutInvocationHost(),
+    });
+    child.unref();
+  } catch {
+    // Context recovery is authoritative; daily cleanup is fail-open latency work.
   }
 }
 
@@ -1672,6 +1739,7 @@ async function runInternalKnowledgeCapture(args: string[], effectiveHost: ClawHo
   const sessionId = resolveOwnerSessionKey(payload);
   const turnId = readHookString(payload, "turn_id");
   const message = readHookString(payload, "message");
+  const taskConclusions = readHookTaskConclusions(payload, turnId);
   if (!hookCwd || !sessionId || !turnId || !message || !containsClawDir(hookCwd)) {
     printJson({ ok: true, captured: false });
     return;
@@ -1684,6 +1752,7 @@ async function runInternalKnowledgeCapture(args: string[], effectiveHost: ClawHo
       turnId,
       message,
       host: effectiveHost === "cindy" ? "cindy" : effectiveHost,
+      taskConclusions,
     });
     printJson(result);
   } catch (error) {
@@ -1828,6 +1897,91 @@ async function runInternalEmbeddingWarmup(args: string[]): Promise<void> {
     ok: true,
     ...await warmProjectMemoryEmbedding({ cwd }),
   });
+}
+
+function runInternalDailyMaintenance(args: string[]): void {
+  const cwd = readRequiredFlag(args, "--cwd");
+  const sessionKey = readOptionalFlag(args, "--session-key");
+  const sessionOnly = readBooleanFlag(args, "--session-only");
+  assertNoRemainingArgs(args, "internal-daily-maintenance");
+
+  const project = sessionOnly
+    ? (sessionKey ? resolveSessionWorkflowContext(sessionKey) : null)
+    : resolveProjectContext(cwd);
+  if (!project) {
+    printJson({ command: "internal-daily-maintenance", ok: true, ran: false, skipped: true });
+    return;
+  }
+
+  printJson({
+    command: "internal-daily-maintenance",
+    ok: true,
+    ...runDailyMaintenance(project, {
+      excludeSessionKey: sessionKey ?? undefined,
+      includeProject: !sessionOnly,
+    }),
+  });
+}
+
+function runInternalKnowledgeSweep(args: string[]): void {
+  const cwd = readRequiredFlag(args, "--cwd");
+  assertNoRemainingArgs(args, "internal-knowledge-sweep");
+  const project = tryResolveHookProject(cwd);
+  if (!project) {
+    printJson({ command: "internal-knowledge-sweep", ok: true, launched: 0, skipped: true });
+    return;
+  }
+  const jobs = listRetryableKnowledgeFinalizationJobs(project);
+  let launched = 0;
+  for (const jobPath of jobs) {
+    try {
+      launchKnowledgeFinalizationWorker(jobPath, project.projectRoot);
+      launched += 1;
+    } catch {
+      // A later background sweep can retry a job that could not be launched.
+    }
+  }
+  printJson({ command: "internal-knowledge-sweep", ok: true, discovered: jobs.length, launched });
+}
+
+async function runInternalBackgroundMaintenance(args: string[]): Promise<void> {
+  const cwd = readRequiredFlag(args, "--cwd");
+  const sessionKey = readOptionalFlag(args, "--session-key");
+  assertNoRemainingArgs(args, "internal-background-maintenance");
+
+  const sessionProject = sessionKey ? resolveSessionWorkflowContext(sessionKey) : null;
+  const project = sessionProject ? null : tryResolveHookProject(cwd);
+  let maintenance: Record<string, unknown> = { ran: false, skipped: true };
+  if (sessionProject) {
+    maintenance = runDailyMaintenance(sessionProject, { excludeSessionKey: sessionKey ?? undefined, includeProject: false });
+  } else if (project) {
+    maintenance = runDailyMaintenance(project, { excludeSessionKey: sessionKey ?? undefined });
+  }
+
+  let embedding: Record<string, unknown> = { warmed: false, reason: "skipped" };
+  try {
+    embedding = await warmProjectMemoryEmbedding({ cwd });
+  } catch (error) {
+    embedding = { warmed: false, reason: "failed", error: error instanceof Error ? error.message : String(error) };
+  }
+
+  let discovered = 0;
+  let launched = 0;
+  const knowledgeProject = project ?? sessionProject;
+  if (knowledgeProject) {
+    const jobs = listRetryableKnowledgeFinalizationJobs(knowledgeProject);
+    discovered = jobs.length;
+    for (const jobPath of jobs) {
+      try {
+        launchKnowledgeFinalizationWorker(jobPath, knowledgeProject.projectRoot);
+        launched += 1;
+      } catch {
+        // A later background sweep can retry a job that could not be launched.
+      }
+    }
+  }
+
+  printJson({ command: "internal-background-maintenance", ok: true, maintenance, embedding, discovered, launched });
 }
 
 async function runInternalKnowledgeFinalize(args: string[]): Promise<void> {
@@ -2037,7 +2191,7 @@ async function runSessionStartHook(effectiveHost: ClawHost | undefined): Promise
   try {
     const context = await runContextCommand([], hookCwd, ownerSessionKey, effectiveHost);
     const contextProject = asJsonRecord(context.project);
-    const retryableJobs = contextProject?.scope !== "session" && !context.error
+    const retryableJobs = effectiveHost !== "cindy" && contextProject?.scope !== "session" && !context.error
       ? listRetryableKnowledgeFinalizationJobs(resolveProjectContext(hookCwd))
       : [];
     if (
@@ -2066,7 +2220,6 @@ async function runSessionStartHook(effectiveHost: ClawHost | undefined): Promise
         hookSpecificOutput: {
           hookEventName: "SessionStart",
           additionalContext,
-          ...(effectiveHost === "cindy" ? { knowledgeJobs: retryableJobs } : {}),
         },
       })}\n`,
     );
@@ -2101,6 +2254,19 @@ function readHookString(payload: unknown, key: string): string | null {
   }
   const value = (payload as Record<string, unknown>)[key];
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function readHookTaskConclusions(payload: unknown, turnId: string | null): { turnId: string; message: string }[] {
+  if (!turnId || !payload || typeof payload !== "object") return [];
+  const value = (payload as Record<string, unknown>).task_conclusions;
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const message = (item as Record<string, unknown>).message;
+    return typeof message === "string" && message.trim()
+      ? [{ turnId, message: message.trim() }]
+      : [];
+  });
 }
 
 function containsClawDir(cwd: string): boolean {

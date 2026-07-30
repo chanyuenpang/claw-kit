@@ -1,13 +1,13 @@
 ---
 name: using-claw-kit
-description: "Use claw-kit through Cindy Ghost tools: recover the injected workflow snapshot, advance one plan task at a time, and keep Cindy-specific execution details out of the Agent prompt."
+description: "Use first whenever the claw-kit Cindy plugin is enabled or its start prompt is present; route workflow actions through Cindy Ghost tools."
 ---
 
 # Using claw-kit in Cindy
 
-Use this skill when the current workspace may contain a `.claw/` project or when
-the user asks for a reusable multi-step change that should preserve project
-knowledge.
+Use this skill first whenever the claw-kit Cindy plugin is enabled or the Cindy
+start prompt identifies a claw-kit workflow. It is the main entry contract;
+other claw-kit skills are selected from this route.
 
 ## Canonical state
 
@@ -32,6 +32,8 @@ recovery. It is never a turn-end status probe.
 
 ## Planning and execution
 
+- The first tool action is always the Ghost `list_tools` operation. Do not use
+  MCP resource discovery or search for a server name.
 - Use `list_tools` to discover the typed workflow operations and `call_tool`
   to invoke them. Use operation names and JSON arguments, not shell strings.
 - Follow the returned Cindy `guidance` object. Its `commandHints` are

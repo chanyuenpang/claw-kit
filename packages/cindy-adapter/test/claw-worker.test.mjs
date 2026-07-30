@@ -5,9 +5,34 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
+import { DatabaseSync } from "node:sqlite";
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
 const workerPath = path.resolve(testDir, "../plugin/node/claw-worker.cjs");
+const mainPath = path.resolve(testDir, "../plugin/main.js");
+const sqliteReaderPath = path.resolve(testDir, "../plugin/node/cindy-sqlite-reader.cjs");
+
+test("Cindy Hook owns Goal continuation without claiming a native Host Goal API", () => {
+  const source = fs.readFileSync(mainPath, "utf8");
+  assert.match(source, /const goalSessions = new Map\(\)/);
+  assert.match(source, /projection\.goal === 'resume'/);
+  assert.match(source, /projection\.goal === 'pause' \|\| projection\.goal === 'complete' \|\| projection\.goal === 'stop'/);
+  assert.match(source, /kind: 'claw-goal-continuation'/);
+  assert.match(source, /claw-continue-goal/);
+  assert.match(source, /userActionToken/);
+  assert.match(source, /claw-goal-click-continuation/);
+  assert.match(source, /mode: 'continue'/);
+  assert.match(source, /msg\.name === 'did-turn-end'/);
+  assert.match(source, /operation: 'plan.wait'/);
+  assert.match(source, /taskId/);
+  assert.match(source, /retryCount >= 2/);
+  assert.match(source, /await continueGoalAfterTurnEnd\(msg\)/);
+  assert.doesNotMatch(source, /await continueGoalAfterAssistant\(msg\)/);
+  assert.match(source, /cindyAuthorizationCardIssued = new Set\(\)/);
+  assert.doesNotMatch(source, /cindyAuthorizationCardIssued\.delete\(sessionId\)/);
+});
 
 test("Cindy writer gateway uses exclusive claim and tokenized done without knowledge binding", () => {
   const source = fs.readFileSync(workerPath, "utf8");
@@ -21,6 +46,51 @@ test("Cindy writer gateway uses exclusive claim and tokenized done without knowl
   assert.match(source, /claimToken: claimed\.output\.claimToken/);
   assert.match(source, /'--claim-token', job\.claimToken/);
   assert.doesNotMatch(source, /internal-knowledge-(claim|complete|fail)/);
+});
+
+test("Cindy SQLite reader extracts task conclusions from the current session", () => {
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-sqlite-reader-"));
+  const dbPath = path.join(fixtureDir, "cindy-reader.db");
+  const db = new DatabaseSync(dbPath);
+  db.exec(`
+    CREATE TABLE sessions (id TEXT PRIMARY KEY);
+    CREATE TABLE messages (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL,
+      tool_use_id TEXT,
+      created_at INTEGER NOT NULL,
+      rewind_at INTEGER
+    );
+  `);
+  db.prepare("INSERT INTO sessions (id) VALUES (?)").run("session-1");
+  db.prepare("INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)")
+    .run("assistant-1", "session-1", "assistant", JSON.stringify("Finished task one."), 1);
+  db.prepare("INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)")
+    .run("tool-1", "session-1", "tool_result", JSON.stringify({ ok: true, command: "task.done" }), 2);
+  db.prepare("INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)")
+    .run("user-2", "session-1", "user", JSON.stringify("Continue."), 3);
+  db.prepare("INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)")
+    .run("assistant-2", "session-1", "assistant", JSON.stringify("Finished task two."), 4);
+  db.prepare("INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)")
+    .run("tool-2", "session-1", "tool_result", JSON.stringify({ ok: true, command: "task.done" }), 5);
+  db.prepare("INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)")
+    .run("assistant-final", "session-1", "assistant", JSON.stringify("Final result."), 6);
+  db.close();
+
+  const previous = process.env.CINDY_USER_DATA;
+  process.env.CINDY_USER_DATA = fixtureDir;
+  try {
+    const { readTaskConclusions } = require(sqliteReaderPath);
+    assert.deepEqual(readTaskConclusions("session-1", "turn-1", "Final result."), [
+      { turnId: "turn-1", message: "Finished task two." },
+    ]);
+  } finally {
+    if (previous === undefined) delete process.env.CINDY_USER_DATA;
+    else process.env.CINDY_USER_DATA = previous;
+    fs.rmSync(fixtureDir, { recursive: true, force: true });
+  }
 });
 
 function requestWorker(child, request) {

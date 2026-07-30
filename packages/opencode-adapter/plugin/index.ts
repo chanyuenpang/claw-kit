@@ -1,6 +1,6 @@
 import { execSync, spawn } from "node:child_process";
 import path from "node:path";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import type { Plugin } from "@opencode-ai/plugin";
 import type { Part } from "@opencode-ai/sdk";
 
@@ -20,8 +20,9 @@ import type { Part } from "@opencode-ai/sdk";
  *      be summarized away, so the system prompt re-establishes claw context.
  *   5. event(message.updated) + event(message.part.updated) — track the latest assistant
  *      text per session so session.idle can hand the turn's final assistant message to claw.
- *   6. event(session.idle) — turn report capture: call claw hook auto-doc with the turn's
- *      final assistant message (fail-open knowledge sidecar).
+ *   6. event(session.idle) — turn report capture plus Goal continuation. The
+ *      plan file remains canonical: task progress resets retry state, while
+ *      two unchanged task endings pause the plan.
  */
 
 const ADAPTER_DIR = import.meta.dirname ?? path.dirname(new URL("", import.meta.url).pathname);
@@ -39,6 +40,14 @@ const injectedSessions = new Set<string>();
 // `claw hook auto-doc` for fail-open knowledge report capture.
 const lastAssistantMessageBySession = new Map<string, string>();
 const assistantTextByMessage = new Map<string, string>();
+type GoalSession = {
+  taskId: number | null;
+  retryCount: number;
+  attemptPending: boolean;
+  continuationQueued: boolean;
+  pausing?: boolean;
+};
+const goalSessions = new Map<string, GoalSession>();
 
 function hasClawProject(dir: string): boolean {
   return existsSync(path.join(dir, ".claw"));
@@ -86,6 +95,38 @@ function resolveActivePlanPath(projectDir: string): string | null {
   const defaultPlan = path.join(clawDir, "plan.json");
   if (existsSync(defaultPlan)) return defaultPlan;
 
+  // Newer .claw layouts bind the active task through the runtime/session
+  // registry instead of a root task-meta.json. Keep this adapter read-only by
+  // selecting the newest active plan as a recovery fallback.
+  const activePlans: Array<{ planPath: string; updatedAt: number }> = [];
+  const visit = (dir: string): void => {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true, encoding: "utf8" });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const entryPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        visit(entryPath);
+        continue;
+      }
+      if (entry.name !== "plan.json") continue;
+      try {
+        const plan = JSON.parse(readFileSync(entryPath, "utf8")) as { status?: unknown };
+        if (plan.status === "process.active") {
+          activePlans.push({ planPath: entryPath, updatedAt: statSync(entryPath).mtimeMs });
+        }
+      } catch {
+        // Ignore incomplete or unrelated plan files.
+      }
+    }
+  };
+  visit(path.join(clawDir, "tasks"));
+  activePlans.sort((left, right) => right.updatedAt - left.updatedAt);
+  if (activePlans[0]) return activePlans[0].planPath;
+
   return null;
 }
 
@@ -104,6 +145,26 @@ function readPlanSummary(planPath: string): string | null {
       }
     }
     return lines.join("\n");
+  } catch {
+    return null;
+  }
+}
+
+function readActivePlanState(projectDir: string): { status: string; taskId: number | null } | null {
+  const planPath = resolveActivePlanPath(projectDir);
+  if (!planPath) return null;
+  try {
+    const plan = JSON.parse(readFileSync(planPath, "utf8")) as {
+      status?: unknown;
+      tasks?: Array<{ id?: unknown; status?: unknown }>;
+    };
+    const tasks = Array.isArray(plan.tasks) ? plan.tasks : [];
+    const task = tasks.find((item) => item.status === "in_progress")
+      ?? tasks.find((item) => item.status === "pending");
+    return {
+      status: typeof plan.status === "string" ? plan.status : "",
+      taskId: Number.isInteger(task?.id) ? Number(task?.id) : null,
+    };
   } catch {
     return null;
   }
@@ -201,7 +262,44 @@ function dispatchOpenCodeKnowledgeWriter(projectDir: string, jobPath: string): v
   child.unref();
 }
 
-export const ClawKitPlugin: Plugin = async ({ directory }) => {
+async function invokeOpenCodeContinuation(
+  client: Parameters<Plugin>[0]["client"],
+  projectDir: string,
+  sessionId: string,
+): Promise<boolean> {
+  try {
+    await client.session.promptAsync({
+      path: { id: sessionId },
+      query: { directory: projectDir },
+      body: {
+        parts: [{
+          type: "text",
+          text: "继续执行当前 claw 计划：遵循 claw-kit workflow guidance，完成当前任务后记录状态；只有计划进入暂停、讨论或终态时才停止。",
+        }],
+      },
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function invokeOpenCodePlanWait(projectDir: string, sessionId: string): boolean {
+  try {
+    execSync("claw plan wait --host opencode", {
+      cwd: projectDir,
+      encoding: "utf8",
+      timeout: 30_000,
+      stdio: ["pipe", "pipe", "pipe"],
+      env: { ...process.env, CLAW_HOST: "opencode", CODEX_SESSION_ID: sessionId },
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export const ClawKitPlugin: Plugin = async ({ directory, client }) => {
   const projectDir = directory;
 
   /**
@@ -309,6 +407,50 @@ export const ClawKitPlugin: Plugin = async ({ directory }) => {
             }
             assistantTextByMessage.delete(assistantMessageId);
             lastAssistantMessageBySession.delete(sessionID);
+          }
+
+          const planState = readActivePlanState(projectDir);
+          const existingGoal = goalSessions.get(sessionID);
+          if (!planState || planState.status !== "process.active") {
+            goalSessions.delete(sessionID);
+            return;
+          }
+
+          const taskChanged = existingGoal && planState.taskId !== existingGoal.taskId;
+          const goal: GoalSession = {
+            taskId: planState.taskId,
+            retryCount: taskChanged ? 0 : existingGoal?.retryCount || 0,
+            attemptPending: taskChanged ? false : existingGoal?.attemptPending === true,
+            continuationQueued: taskChanged ? false : existingGoal?.continuationQueued === true,
+            ...(existingGoal?.pausing ? { pausing: true } : {}),
+          };
+          goalSessions.set(sessionID, goal);
+          if (goal.pausing) return;
+
+          if (goal.attemptPending) {
+            goal.attemptPending = false;
+            goal.continuationQueued = false;
+            if (goal.taskId === existingGoal?.taskId) goal.retryCount += 1;
+            else goal.retryCount = 0;
+            if (goal.retryCount >= 2) {
+              goal.pausing = true;
+              if (invokeOpenCodePlanWait(projectDir, sessionID)) goalSessions.delete(sessionID);
+              return;
+            }
+          }
+
+          if (goal.continuationQueued) return;
+          goal.continuationQueued = true;
+          goal.attemptPending = true;
+          const dispatched = await invokeOpenCodeContinuation(client, projectDir, sessionID);
+          if (!dispatched) {
+            goal.attemptPending = false;
+            goal.continuationQueued = false;
+            goal.retryCount += 1;
+            if (goal.retryCount >= 2) {
+              goal.pausing = true;
+              if (invokeOpenCodePlanWait(projectDir, sessionID)) goalSessions.delete(sessionID);
+            }
           }
         }
       }

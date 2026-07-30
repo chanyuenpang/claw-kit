@@ -15,12 +15,14 @@ into the plugin.
 - The Cindy adapter is local-workspace-only in the first version.
 - Cindy Desktop Host provides the lifecycle dispatcher for plugin-declared
   Ghost hooks; no Cindy source modification is required.
-- Each workflow operation updates its own Ghost call card from canonical plan
-  data: title, goal, completed/total tasks, and the next task. This is a
+- `plan.create`, `plan.resume`, and `plan.done` create a Ghost progress card;
+  later task and plan mutations update the current session card from canonical
+  plan data: title, goal, completed/total tasks, and the next task. This is a
   one-way presentation projection, not a second workflow store.
-- Cindy's native progress/Todo UI may be reused as a presentation aid later,
-  but bidirectional Todo or Goal synchronization is not a first-version
-  requirement.
+- Cindy's native progress/Todo UI remains presentation-only. Goal-mode
+  continuation is implemented inside the Ghost Hook: `.claw` stays canonical,
+  and an active plan may queue one background `agent.run` continuation after
+  each completed assistant turn.
 
 ## Current design baseline
 
@@ -28,9 +30,14 @@ See [Cindy adapter design](references/cindy-adapter-design.md) for the confirmed
 workflow, failure policy, permission boundary, and acceptance scenarios.
 
 The installable Ghost source is under [plugin](plugin). It bundles the
-`using-claw-kit` and `knowledge-writer` Skills plus the runtime hook entry.
+declared workflow Skills plus the runtime hook entry. Knowledge closeout is
+handled by the private worker operation and does not require exposing a
+separate Agent-facing Skill.
 The plugin covers local session-start recovery, first-message context injection,
 structured Agent Tool calls that execute workflow commands with Cindy-owned host
 and session identity, and a live workflow card updated by those Tool calls. It
-does not poll `claw context` at turn end. Native Cindy Goal/Progress projection
-remains capability-gated until Cindy exposes a stable public plugin API.
+does not poll `claw context` at turn end. The Ghost Hook consumes the latest
+typed plan projection to emulate Goal Mode without requiring a native Cindy
+Goal API; paused, discussing, completed, and closed plans stop continuation.
+The continuation guard keys retries by the current task id, resets when that
+id advances, and pauses the plan after two unsuccessful attempts on one task.

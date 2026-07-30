@@ -4,7 +4,7 @@
   "name": "claw-kit",
   "description": "Cindy workflow tools, lifecycle recovery, and Skills for claw-kit.",
   "whenToUse": "Use for Cindy sessions that need claw-kit plan, task, subplan, or workflow operations.",
-  "version": "0.2.2.0",
+  "version": "0.2.2.19",
   "kind": "chip",
   "entry": "main.js",
   "launch": "resident",
@@ -58,7 +58,17 @@
       {
         "dir": "skills/using-claw-kit",
         "name": "using-claw-kit",
-        "description": "Use claw-kit through Cindy Ghost tools: recover the injected workflow snapshot, advance one plan task at a time, and keep Cindy-specific execution details out of the Agent prompt."
+        "description": "Use first whenever the claw-kit Cindy plugin is enabled or its start prompt is present; route workflow actions through Cindy Ghost tools."
+      },
+      {
+        "dir": "skills/planning",
+        "name": "planning",
+        "description": "Use when a planning step needs to refine a user request into clear requirements, scope, completion criteria, dependencies, and executable tasks, especially when task boundaries or an evidence-dependent route still need judgment."
+      },
+      {
+        "dir": "skills/researcher",
+        "name": "researcher",
+        "description": "Delegate code investigation, source inspection, symbol or dependency tracing, code architecture analysis, and current implementation behavior analysis to a focused researcher subagent. Reuse a related researcher already available in the same thread."
       }
     ]
   }

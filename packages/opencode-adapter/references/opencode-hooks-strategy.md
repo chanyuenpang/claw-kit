@@ -7,12 +7,12 @@
 opencode has no `hooks.json` command surface like Codex. Instead the adapter registers a TypeScript plugin (`packages/opencode-adapter/plugin/index.ts`) that subscribes to the opencode event stream and delegates the two canonical claw hook entries:
 
 - `session.created` and `session.compacted` → `claw hook auto-claw --host opencode` (startup recovery)
-- `session.idle` → `claw hook auto-doc --host opencode` (turn report capture)
+- `session.idle` → turn report capture plus the shared Goal continuation state machine
 
 The core workflow works without the plugin. The plugin is an enhancement layer for:
 
 - one-shot startup recovery nudges on new and compacted sessions
-- one report append when each main-agent turn goes idle
+- one report append and one Goal decision when each main-agent turn goes idle
 
 ## Why this matters
 
@@ -36,9 +36,26 @@ Current active use:
 ## Decision rule
 
 - `session.created` / `session.compacted` are for attach-free startup recovery hints only.
-- `session.idle` is the fail-open turn report collector; it never owns canonical plan or session transitions.
+- `session.idle` is the fail-open turn report collector and Goal continuation
+  boundary. It reads canonical plan state and pauses the plan when the shared
+  retry threshold is reached.
 - `message.*` events are diagnostics/state tracking only, never core task binding.
 - opencode never assumes a Codex SDK runtime is installed; finalization runs through `opencode run`.
+
+## Goal-mode continuation
+
+OpenCode follows the same Goal strategy as Cindy. The host event differs, but
+the state machine does not:
+
+- `process.active` arms one continuation after `session.idle`.
+- The current task id is the retry key; a changed task id resets the retry count.
+- Two `session.idle` boundaries with the same task id pause the plan through
+  `claw plan wait --host opencode` and clear continuation state.
+- `process.wait`, `process.discussing`, and `end.*` never queue continuation.
+
+OpenCode's only platform-specific part is using `client.session.promptAsync`
+to submit the next turn. Cindy uses its background Agent slot for the same
+state transition; neither platform has a different retry policy.
 
 ## Candidate events
 

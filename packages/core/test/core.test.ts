@@ -505,7 +505,7 @@ test("plan writes maintain updatedAt for legacy activity cleanup", async () => {
   assert.match(edited.plan.updatedAt ?? "", /^\d{4}-\d{2}-\d{2}T/);
 });
 
-test("daily maintenance clears managed tmp, archives old dated tasks without completedAt, and sweeps stale sessions once", async () => {
+test("daily maintenance cleans expired tmp, archives old dated tasks without completedAt, and sweeps stale sessions once", async () => {
   const root = createFixture("daily-maintenance");
   const sessionRoot = path.join(root, "session-runtime");
   initProject({ cwd: root, projectName: "Daily maintenance", force: true, maxTasksToKeep: 9 });
@@ -534,6 +534,13 @@ test("daily maintenance clears managed tmp, archives old dated tasks without com
     JSON.stringify({ title: "Legacy", status: "process.active", updatedAt: "2026-01-30T12:00:00.000Z", goal: { text: "Archive by activity" }, tasks: [] }),
     "utf-8",
   );
+  const expiredIncompleteTaskDir = path.join(root, ".claw", "tasks", "expired-incomplete");
+  fs.mkdirSync(expiredIncompleteTaskDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(expiredIncompleteTaskDir, "plan.json"),
+    JSON.stringify({ title: "Expired incomplete", status: "process.active", updatedAt: "2025-12-01T12:00:00.000Z", goal: { text: "Eventually remove" }, tasks: [] }),
+    "utf-8",
+  );
   fs.writeFileSync(
     path.join(root, ".claw", "runtime", "session-bindings.json"),
     JSON.stringify({ version: 1, bindings: { "stale-thread": "tasks/legacy-without-completed-at/plan.json" } }),
@@ -551,6 +558,14 @@ test("daily maintenance clears managed tmp, archives old dated tasks without com
   fs.writeFileSync(path.join(knowledgeSessionsDir, "orphan.json"), JSON.stringify({ schemaVersion: 1, sessionId: "orphan", updatedAt: "2026-01-01T00:00:00.000Z" }), "utf-8");
   const tmpFile = path.join(root, ".claw", "runtime", "tmp", "scratch.json");
   fs.writeFileSync(tmpFile, "discard", "utf-8");
+  fs.utimesSync(tmpFile, new Date("2026-01-30T12:00:00.000Z"), new Date("2026-01-30T12:00:00.000Z"));
+  const freshTmpFile = path.join(root, ".claw", "runtime", "tmp", "adapter", "fresh.tmp");
+  fs.mkdirSync(path.dirname(freshTmpFile), { recursive: true });
+  fs.writeFileSync(freshTmpFile, "keep", "utf-8");
+  const expiredEnvelope = path.join(root, ".claw", "runtime", "tmp", "expired.status.json");
+  fs.writeFileSync(expiredEnvelope, JSON.stringify({ schemaVersion: 1, kind: "adapter-temp", expiresAt: "2026-01-31T00:00:00.000Z" }), "utf-8");
+  const activeEnvelope = path.join(root, ".claw", "runtime", "tmp", "active.status.json");
+  fs.writeFileSync(activeEnvelope, JSON.stringify({ schemaVersion: 1, kind: "adapter-temp", status: "active", expiresAt: "2026-02-02T00:00:00.000Z" }), "utf-8");
   const emptyCurrentTaskDateDir = path.join(root, ".claw", "tasks", "2026-02-02");
   const emptyArchivedTaskDateDir = path.join(root, ".claw", "archive", "tasks", "2026-01-29");
   fs.mkdirSync(emptyCurrentTaskDateDir, { recursive: true });
@@ -573,13 +588,19 @@ test("daily maintenance clears managed tmp, archives old dated tasks without com
   const first = runDailyMaintenance(resolveProjectContext(root), { now: new Date("2026-02-01T00:00:00.000Z"), env: { CLAW_SESSION_RUNTIME_DIR: sessionRoot } });
   assert.equal(first.ran, true);
   assert.equal(fs.existsSync(tmpFile), false);
+  assert.equal(first.tmpEntriesRemoved, 2);
+  assert.equal(fs.existsSync(freshTmpFile), true);
+  assert.equal(fs.existsSync(expiredEnvelope), false);
+  assert.equal(fs.existsSync(activeEnvelope), true);
   assert.equal(fs.existsSync(oldTaskDir), false);
   assert.equal(fs.existsSync(path.join(root, ".claw", "archive", "tasks", "2026-01-30", "completed-task", "plan.json")), true);
   assert.equal(fs.existsSync(yesterdayTaskDir), true);
   assert.equal(fs.existsSync(todayTaskDir), true);
   assert.equal(fs.existsSync(legacyTaskDir), false);
+  assert.equal(fs.existsSync(expiredIncompleteTaskDir), false);
   assert.equal(fs.existsSync(path.join(root, ".claw", "archive", "tasks", "legacy-without-completed-at", "plan.json")), true);
   assert.equal(first.staleBindingsRemoved, 1);
+  assert.equal(first.expiredTaskDirectoriesRemoved, 1);
   assert.equal(first.legacyFinalizerJobsRemoved, 1);
   assert.equal(first.knowledgeSessionsRemoved, 1);
   assert.equal(first.emptyDatedDirectoriesRemoved, 2);

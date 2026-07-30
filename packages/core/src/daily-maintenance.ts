@@ -1,11 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { readJsonFile, withFileLock, writeJsonFile } from "./io.js";
-import { listTaskDirectories } from "./context.js";
 import { pruneStaleSessionBindings } from "./session-bindings.js";
 import { pruneLegacyKnowledgeRuntime } from "./knowledge-sidecar.js";
 import { sessionWorkflowBaseDir, sweepExpiredSessionWorkflows } from "./session-workflows.js";
-import { enforceTaskRetention } from "./task-retention.js";
+import { runTaskLifecycleMaintenance } from "./task-lifecycle.js";
 import type { ProjectContext } from "./types.js";
 
 type MaintenanceStamp = {
@@ -18,6 +17,7 @@ type MaintenanceStamp = {
 export type DailyMaintenanceResult = {
   ran: boolean;
   tmpCleared: boolean;
+  tmpEntriesRemoved: number;
   legacyTmpRemoved: boolean;
   archivedTasks: number;
   prunedArchivedTasks: number;
@@ -25,6 +25,7 @@ export type DailyMaintenanceResult = {
   logsRemoved: number;
   expiredSessionsRemoved: number;
   staleBindingsRemoved: number;
+  expiredTaskDirectoriesRemoved: number;
   legacyFinalizerJobsRemoved: number;
   knowledgeSessionsRemoved: number;
 };
@@ -40,24 +41,23 @@ export function runDailyMaintenance(project: ProjectContext, options: {
   const projectResult = options.includeProject === false ? { ran: false as const } : runOncePerDay(path.join(project.clawDir, "runtime", "maintenance.json"), date, () => {
     const runtimeTmp = path.join(project.clawDir, "runtime", "tmp");
     const legacyTmp = path.join(project.clawDir, "tmp");
-    clearDirectory(runtimeTmp);
+    const tmpEntriesRemoved = cleanupTemporaryDirectory(runtimeTmp, now.getTime());
     const legacyTmpRemoved = removeDirectory(legacyTmp);
     const cutoffDate = previousLocalDate(now);
-    const archivedDatedTasks = archiveDatedTaskDirectoriesBefore(project, cutoffDate);
-    const archivedLegacyTasks = archiveLegacyTaskDirectoriesBefore(project, cutoffDate);
-    const retention = enforceTaskRetention(project, undefined, now.getTime(), { includeDatedTasks: false, includeLegacyTasks: false });
-    const emptyDatedDirectoriesRemoved = removeEmptyDatedTaskDirectories(project);
+    const taskLifecycle = runTaskLifecycleMaintenance(project, now);
     const logsRemoved = pruneProjectLogs(project, cutoffDate);
-    const staleBindingsRemoved = pruneStaleSessionBindings(project).length;
+    const staleBindingsRemoved = pruneStaleSessionBindings(project, now.getTime()).length;
     const legacyRuntime = pruneLegacyKnowledgeRuntime(project);
     return {
       tmpCleared: true,
+      tmpEntriesRemoved,
       legacyTmpRemoved,
-      archivedTasks: archivedDatedTasks + archivedLegacyTasks + retention.archivedTasks.length,
-      prunedArchivedTasks: retention.prunedArchivedTasks.length,
-      emptyDatedDirectoriesRemoved,
+      archivedTasks: taskLifecycle.archivedTasks,
+      prunedArchivedTasks: taskLifecycle.prunedArchivedTasks,
+      emptyDatedDirectoriesRemoved: taskLifecycle.emptyDatedDirectoriesRemoved,
       logsRemoved,
       staleBindingsRemoved,
+      expiredTaskDirectoriesRemoved: taskLifecycle.expiredTaskDirectoriesRemoved,
       legacyFinalizerJobsRemoved: legacyRuntime.jobsRemoved,
       knowledgeSessionsRemoved: legacyRuntime.sessionsRemoved,
     };
@@ -73,6 +73,7 @@ export function runDailyMaintenance(project: ProjectContext, options: {
   return {
     ran: projectResult.ran || sessionResult.ran,
     tmpCleared: projectResult.value?.tmpCleared ?? false,
+    tmpEntriesRemoved: projectResult.value?.tmpEntriesRemoved ?? 0,
     legacyTmpRemoved: projectResult.value?.legacyTmpRemoved ?? false,
     archivedTasks: projectResult.value?.archivedTasks ?? 0,
     prunedArchivedTasks: projectResult.value?.prunedArchivedTasks ?? 0,
@@ -80,6 +81,7 @@ export function runDailyMaintenance(project: ProjectContext, options: {
     logsRemoved: projectResult.value?.logsRemoved ?? 0,
     expiredSessionsRemoved: sessionResult.value?.expiredSessionsRemoved ?? 0,
     staleBindingsRemoved: projectResult.value?.staleBindingsRemoved ?? 0,
+    expiredTaskDirectoriesRemoved: projectResult.value?.expiredTaskDirectoriesRemoved ?? 0,
     legacyFinalizerJobsRemoved: projectResult.value?.legacyFinalizerJobsRemoved ?? 0,
     knowledgeSessionsRemoved: projectResult.value?.knowledgeSessionsRemoved ?? 0,
   };
@@ -104,35 +106,64 @@ function readStamp(stampPath: string): MaintenanceStamp | null {
   }
 }
 
-function clearDirectory(directory: string): void {
+const TEMPORARY_TTL_MS = 24 * 60 * 60 * 1000;
+function cleanupTemporaryDirectory(directory: string, nowMs: number): number {
   fs.mkdirSync(directory, { recursive: true });
-  for (const child of fs.readdirSync(directory)) fs.rmSync(path.join(directory, child), { recursive: true, force: true });
+  return cleanupTemporaryEntries(directory, nowMs);
+}
+
+function cleanupTemporaryEntries(directory: string, nowMs: number): number {
+  let removed = 0;
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const target = path.join(directory, entry.name);
+    if (entry.isDirectory() && !entry.isSymbolicLink()) {
+      removed += cleanupTemporaryEntries(target, nowMs);
+      if (fs.readdirSync(target).length === 0) {
+        fs.rmdirSync(target);
+      }
+      continue;
+    }
+    if (!entry.isFile() || !isExpiredTemporaryEntry(target, nowMs)) continue;
+    try {
+      fs.unlinkSync(target);
+      removed += 1;
+    } catch {
+      // A concurrent writer or host lock must not make maintenance blocking.
+    }
+  }
+  return removed;
+}
+
+function isExpiredTemporaryEntry(filePath: string, nowMs: number): boolean {
+  try {
+    const stat = fs.statSync(filePath);
+    const envelope = readTemporaryEnvelope(filePath);
+    if (envelope?.expiresAt) {
+      const expiresAt = Date.parse(envelope.expiresAt);
+      if (Number.isFinite(expiresAt)) return expiresAt <= nowMs;
+    }
+    return nowMs - stat.mtimeMs >= TEMPORARY_TTL_MS;
+  } catch {
+    return false;
+  }
+}
+
+function readTemporaryEnvelope(filePath: string): { expiresAt?: string } | null {
+  if (!/\.json$/i.test(filePath)) return null;
+  try {
+    const value = readJsonFile<unknown>(filePath);
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const expiresAt = (value as { expiresAt?: unknown }).expiresAt;
+    return typeof expiresAt === "string" ? { expiresAt } : {};
+  } catch {
+    return null;
+  }
 }
 
 function removeDirectory(directory: string): boolean {
   if (!fs.existsSync(directory)) return false;
   fs.rmSync(directory, { recursive: true, force: true });
   return true;
-}
-
-function removeEmptyDatedTaskDirectories(project: ProjectContext): number {
-  return [
-    project.tasksDir,
-    path.join(project.clawDir, "archive", "tasks"),
-  ].reduce((removed, root) => removed + removeEmptyDatedDirectories(root), 0);
-}
-
-function removeEmptyDatedDirectories(root: string): number {
-  if (!fs.existsSync(root)) return 0;
-  let removed = 0;
-  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
-    if (!entry.isDirectory() || !/^\d{4}-\d{2}-\d{2}$/.test(entry.name)) continue;
-    const directory = path.join(root, entry.name);
-    if (fs.readdirSync(directory).length > 0) continue;
-    fs.rmdirSync(directory);
-    removed += 1;
-  }
-  return removed;
 }
 
 function pruneProjectLogs(project: ProjectContext, cutoffDate: string): number {
@@ -166,78 +197,4 @@ function localDate(now: Date): string {
 function previousLocalDate(now: Date): string {
   const previous = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
   return localDate(previous);
-}
-
-/**
- * Archive date-scoped task directories before the supplied local date. Moving the
- * date directory (rather than marking individual plans) also handles older tasks
- * that predate completedAt and leaves no empty date directories behind.
- */
-function archiveDatedTaskDirectoriesBefore(project: ProjectContext, cutoffDate: string): number {
-  if (!fs.existsSync(project.tasksDir)) return 0;
-  const archiveRoot = path.join(project.clawDir, "archive", "tasks");
-  let archivedTaskCount = 0;
-  for (const entry of fs.readdirSync(project.tasksDir, { withFileTypes: true })) {
-    if (!entry.isDirectory() || !/^\d{4}-\d{2}-\d{2}$/.test(entry.name) || entry.name >= cutoffDate) continue;
-    const sourceDateDir = path.join(project.tasksDir, entry.name);
-    const taskCount = fs.readdirSync(sourceDateDir, { withFileTypes: true }).filter((child) => child.isDirectory()).length;
-    moveDateDirectory(sourceDateDir, path.join(archiveRoot, entry.name));
-    archivedTaskCount += taskCount;
-  }
-  return archivedTaskCount;
-}
-
-function moveDateDirectory(sourceDateDir: string, targetDateDir: string): void {
-  fs.mkdirSync(path.dirname(targetDateDir), { recursive: true });
-  if (!fs.existsSync(targetDateDir)) {
-    fs.renameSync(sourceDateDir, targetDateDir);
-    return;
-  }
-  for (const child of fs.readdirSync(sourceDateDir, { withFileTypes: true })) {
-    const source = path.join(sourceDateDir, child.name);
-    let target = path.join(targetDateDir, child.name);
-    let suffix = 1;
-    while (fs.existsSync(target)) {
-      target = path.join(targetDateDir, `${child.name}--${suffix}`);
-      suffix += 1;
-    }
-    fs.renameSync(source, target);
-  }
-  fs.rmdirSync(sourceDateDir);
-}
-
-function archiveLegacyTaskDirectoriesBefore(project: ProjectContext, cutoffDate: string): number {
-  const archiveRoot = path.join(project.clawDir, "archive", "tasks");
-  let archivedTaskCount = 0;
-  for (const task of listTaskDirectories(project)) {
-    if (/^\d{4}-\d{2}-\d{2}[\\/]/.test(task.relativePath)) continue;
-    const planPath = path.join(task.taskDir, "plan.json");
-    const updatedAt = readPlanUpdatedAt(planPath);
-    if (!updatedAt || localDate(new Date(updatedAt)) >= cutoffDate) continue;
-    moveDirectoryWithCollision(task.taskDir, path.join(archiveRoot, task.relativePath));
-    archivedTaskCount += 1;
-  }
-  return archivedTaskCount;
-}
-
-function readPlanUpdatedAt(planPath: string): number | null {
-  if (!fs.existsSync(planPath)) return null;
-  try {
-    const plan = readJsonFile<{ updatedAt?: string }>(planPath);
-    const timestamp = typeof plan.updatedAt === "string" ? Date.parse(plan.updatedAt) : Number.NaN;
-    return Number.isFinite(timestamp) ? timestamp : fs.statSync(planPath).mtimeMs;
-  } catch {
-    return fs.statSync(planPath).mtimeMs;
-  }
-}
-
-function moveDirectoryWithCollision(sourceDir: string, targetDir: string): void {
-  fs.mkdirSync(path.dirname(targetDir), { recursive: true });
-  let target = targetDir;
-  let suffix = 1;
-  while (fs.existsSync(target)) {
-    target = `${targetDir}--${suffix}`;
-    suffix += 1;
-  }
-  fs.renameSync(sourceDir, target);
 }
