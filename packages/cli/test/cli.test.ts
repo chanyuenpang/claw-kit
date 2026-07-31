@@ -2565,7 +2565,8 @@ test("cli context generates search guidance from enabled embedding and GitNexus 
     assert.equal(guidance.includes("GitNexus"), testCase.gitNexus, testCase.name);
     assert.equal("searchGuidance" in result, testCase.clawSearch || testCase.gitNexus, testCase.name);
     if (guidance) {
-      assert.match(guidance, /default search/);
+      assert.match(guidance, /before.*\brg\b/i);
+      assert.match(guidance, /exact files or symbols/i);
     }
   }
 });
@@ -3444,7 +3445,7 @@ test("cli hook emits SessionStart additionalContext inside .claw projects", () =
   assert.match(additionalContext, /When useful, use `claw search` to narrow the document search scope.*default search/i);
 });
 
-test("Cindy auto-claw reuses Codex project and recovery wording without Goal Mode", () => {
+test("Cindy auto-claw emits diagnostics without project identity or plan recovery", () => {
   const root = createFixture("hook-cindy-session-start");
   runClaw(["init", "--name", "Cindy Hook Project"], root);
   const sessionId = "thread-cindy-session-start";
@@ -3458,10 +3459,10 @@ test("Cindy auto-claw reuses Codex project and recovery wording without Goal Mod
   assert.equal(defaultResult.status, 0);
   const defaultOutput = (JSON.parse(defaultResult.stdout) as JsonRecord).hookSpecificOutput as JsonRecord;
   const defaultContext = String(defaultOutput.additionalContext);
-  assert.match(defaultContext, /This session started inside a \.claw project: Cindy Hook Project \(cindy-hook-project\)\./);
-  assert.match(defaultContext, /\.claw directory:/);
-  assert.doesNotMatch(defaultContext, /goal mode/i);
-  assert.doesNotMatch(defaultContext, /Cindy workspace|Ghost tools/i);
+  assert.match(defaultContext, /Before using `rg`/i);
+  assert.match(defaultContext, /claw search --query/);
+  assert.match(defaultContext, /GitNexus/);
+  assert.doesNotMatch(defaultContext, /This session started inside|Claw workflow snapshot is recovered/i);
 
   runClaw(["plan", "create", "--title", "recover-cindy", "--goal", "Recover Cindy workflow"], root, env);
   const recoveredResult = runClawHook("auto-claw", root, {
@@ -3472,10 +3473,36 @@ test("Cindy auto-claw reuses Codex project and recovery wording without Goal Mod
   assert.equal(recoveredResult.status, 0);
   const recoveredOutput = (JSON.parse(recoveredResult.stdout) as JsonRecord).hookSpecificOutput as JsonRecord;
   const recoveredContext = String(recoveredOutput.additionalContext);
-  assert.match(recoveredContext, /Claw workflow snapshot is recovered\./);
-  assert.match(recoveredContext, /Treat returned claw workflowGuidance as the only next-step contract\./);
-  assert.match(recoveredContext, /task: recover-cindy/);
-  assert.doesNotMatch(recoveredContext, /goal mode/i);
+  assert.match(recoveredContext, /Before using `rg`/i);
+  assert.match(recoveredContext, /claw search --query/);
+  assert.match(recoveredContext, /GitNexus/);
+  assert.doesNotMatch(recoveredContext, /recover-cindy|Claw workflow snapshot is recovered/i);
+});
+
+test("Cindy auto-claw surfaces project configuration repairs", () => {
+  const root = createFixture("hook-cindy-config-repair");
+  runClaw(["init", "--name", "Cindy Config Repair"], root);
+  const projectJsonPath = path.join(root, ".claw", "project.json");
+  fs.writeFileSync(
+    projectJsonPath,
+    `${JSON.stringify({ id: "cindy-config-repair", name: "Cindy Config Repair" }, null, 2)}\n`,
+    "utf-8",
+  );
+
+  const result = runClawHook("auto-claw", root, {
+    session_id: "thread-cindy-config-repair",
+    cwd: root,
+    hook_event_name: "SessionStart",
+  }, {
+    CLAW_HOST: "cindy",
+  });
+
+  assert.equal(result.status, 0);
+  const output = (JSON.parse(result.stdout) as JsonRecord).hookSpecificOutput as JsonRecord;
+  const context = String(output.additionalContext);
+  assert.match(context, /claw-kit repaired the project configuration/i);
+  assert.match(context, /maxTasksToKeep|project\.json/i);
+  assert.doesNotMatch(context, /Claw workflow snapshot is recovered|This session started inside/i);
 });
 
 test("Codex SessionStart asks for user consent before repairing a missing SDK runtime", () => {

@@ -10,7 +10,8 @@ The plugin works on these rules:
 
 - skills load reliably
 - plugin command hooks are enhancement only
-- `SessionStart` recovery restores startup harness state before the main workflow starts
+- `SessionStart` restores a plan only when the current thread has a valid nonterminal session binding; a fresh thread has no plan to recover
+- `auto-claw` still returns project, runtime, version, configuration, update, and search diagnostics when no plan is recovered
 - if `claw context` detects that the project protocol version is ahead of the current CLI, startup recovery must surface `startupRecovery.versionSync` in the prompt
 - if `autoUpdate = true` and a newer published claw-kit exists, startup recovery must route the agent to `claw-kit:update` as the first action before other work
 - if `autoUpdate = false`, startup recovery must keep the version note informational only and must not inject update execution steps
@@ -47,9 +48,9 @@ When `@claw-kit` is used in a real project thread:
 - task in `process.*`:
   - execute against the active plan
 - task near completion:
-  - update plan status
-  - deposit truth
-  - deposit ADRs from the `all tasks done` guidance before root `claw plan done`
+  - persist the retrospective and durable key decisions
+  - run the canonical `claw plan done` transition
+  - let the adapter-owned Stop/finalizer path capture the report and execute any required consistency-aware knowledge closeout
 
 ## Non-goals
 

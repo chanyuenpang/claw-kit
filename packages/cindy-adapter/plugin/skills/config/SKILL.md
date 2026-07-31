@@ -153,7 +153,7 @@ The default local model is `jinaai/jina-embeddings-v2-base-zh` at 768 dimensions
 - Do not commit `.claw/project-override.json`.
 - Do not describe `.claw/project-override.json` as canonical.
 - Do not recommend legacy nested toggle shapes as the normal format.
-- Do not use `memory.enabled`; it is not a canonical field.
+- Use `memory.enabled` only as the documented master switch for project memory, task memory, embedding refresh, and `claw search`; do not substitute an invented toggle.
 - Do not invent new config fields when an existing canonical field covers the need.
 
 

@@ -70,52 +70,89 @@ The Cindy mapping follows the existing OpenCode adapter's event responsibilities
 
 | Existing claw adapter behavior | Cindy Ghost implementation |
 | --- | --- |
-| session-start `claw hook auto-claw` | `will-user-message` calls the prompt path directly; `did-session-created` starts one independent background worker |
-| OpenCode first-message synthetic context | `will-user-message` `rewrite` with the recovered context |
+| session-start `claw hook auto-claw` | `did-session-created` fire-and-forgets `auto-claw` diagnostics and maintenance without awaiting either |
+| OpenCode first-message synthetic context | `will-user-message` performs only a memory-cache lookup and injects a completed non-empty diagnostic/recovery prompt |
 | turn-end plan inspection | no CLI polling; the latest typed command result is the state source |
 | `process.active` continuation | Ghost Hook queues one background `agent.run` continuation after the assistant turn; the `.claw` plan status remains the gate |
 | completion knowledge closeout | `did-turn-end` triggers SQLite history capture, followed by a bounded background Agent prompt and private worker claim/done operations |
 
-`did-*` topics are fire-and-forget metadata events. The `will-user-message`
-hook is the only blocking message boundary and must return within Cindy's
-three-second fail-open window. The plugin does not execute `claw` from the
-sandbox; the declared Node worker does it through PATH.
+The plugin subscribes to the `session` topic, but its `did-session-created`
+handler performs no awaited work: it records the event and defers preparation
+to the next timer turn. `will-user-message` is a blocking message
+boundary, so it never calls Node or the CLI and only reads the completed
+in-memory result. The plugin does not execute `claw` from the sandbox; the
+declared Node worker does it through PATH.
 
-## 4. Session-start flow
+## 4. Session-created background and WAM cache flow
 
-At local session start, Cindy separates prompt recovery from non-critical maintenance:
+At `did-session-created`, Cindy schedules one zero-delay timer and returns.
+The timer starts background preparation, which runs two operations in
+parallel:
 
-1. `did-session-created` fire-and-forgets one background worker for daily
-   cleanup, embedding warmup, and retryable knowledge-job discovery.
-2. `will-user-message` checks the session workspace and calls
-   `claw hook auto-claw --host cindy` directly through the declared Node worker.
-3. Inject the returned context into the first user message, following the
-   OpenCode adapter's primary injection strategy.
-4. If the CLI is missing, inject an actionable installation and initialization
-   guide into the first user message, then continue the normal session.
+1. Request the bounded `auto-claw` prompt. This retains installation, update,
+   configuration-repair, search, and GitNexus guidance even though a brand-new
+   session has no plan to recover.
+2. Run daily cleanup, embedding warmup,
+   and retryable knowledge-job discovery.
 
-The prompt path does not wait for, read, or depend on the background worker.
-The background worker does not return knowledge jobs through `auto-claw`.
+WAM never waits for that promise. If preparation has already produced a
+non-empty prompt, WAM consumes it once and rewrites the message. If preparation
+is pending or completed without a prompt, WAM immediately allows the original
+message. A pending result may be consumed by a later user message.
+
+Session creation belongs to a new session, so a session-bound plan cannot
+exist yet and there is nothing to recover. Plan recovery only becomes meaningful
+after that same session creates a plan and is later restored following a Codex
+restart or context compaction; Codex session-start handling owns that path.
+
+WAM never adds a generic reminder that proactively recalls claw-kit. Calling
+`auto-claw` in the DSC background task does not imply that a new session has a
+plan to recover; only a completed non-empty diagnostic or recovery response is
+eligible for later injection.
 
 The first version does not automatically install the CLI.
 
-## 5. Failure policy
+## 5. Session context and Node worker cwd
 
-Startup and closeout hooks are fail-open enhancements:
+Cindy injects trusted session identity only into the Ghost tool call as
+`args.session_context`. The Host removes any Agent-supplied field with that name
+and then forges `session_id`, `workdir`, `workdir_is_local`, and
+`workdir_is_read_only` from the active session snapshot.
+
+The Node worker cannot rediscover that workdir from `process.cwd()`. Current
+Cindy starts every Ghost utility process with `cwd: os.tmpdir()` and intentionally
+does not expose the plugin install directory. The worker is also shared across
+requests and may serve multiple sessions. Therefore `main.js` must validate the
+Host-forged context and pass the session id, local/read-only verdict, and workdir
+in the Node request. Removing that transport requires a new Host API that injects
+session context into `cindy.node.request`; using worker cwd or an ambient
+environment variable would be incorrect.
+
+## 6. Failure policy
+
+First-message maintenance and closeout hooks are fail-open enhancements:
 
 - A missing CLI does not block an ordinary Cindy session.
-- A failed `claw context` does not block the session.
-- The first user message should receive an actionable error summary when the
-  adapter has one; it must not silently convert a failed workflow into a
-  successful one.
+- A failed background maintenance request does not block the session.
 - Hook failure must not corrupt the canonical `.claw` plan state.
 - Knowledge capture is a sidecar, but its required completion result is part
   of the accepted claw workflow closeout when the plan reaches completion.
 
+Foreground tool failures retain their layer and exact reason:
+
+- Node broker failures become `NODE_<broker-code>` and include the method,
+  broker code, message, and optional diagnostic data.
+- Worker execution distinguishes unavailable CLI, timeout, non-zero exit,
+  invalid JSON, invalid operation arguments, missing workdir, and read-only
+  workspaces.
+- Structured claw CLI error codes and messages pass through unchanged.
+- An unexpected `main.js` dispatch exception becomes
+  `CLAW_TOOL_DISPATCH_FAILED` with the original exception message.
+
 This follows the current OpenCode behavior: startup recovery is an enhancement,
 and turn-report capture never blocks the foreground session.
 
-## 6. Goal-mode continuation
+## 7. Goal-mode continuation
 
 The worker returns a one-way state projection with each mutating workflow
 operation. The resident Ghost Hook stores only a per-session continuation
@@ -131,7 +168,7 @@ This emulates OpenCode's continuation behavior through Cindy's public Hook and
 Agent APIs. It does not read or mutate Cindy's private native Goal controller;
 the `.claw` plan remains the continuation gate and source of truth.
 
-## 7. Completion closeout
+## 8. Completion closeout
 
 After all plan tasks are complete, the adapter dispatches a separate
 knowledge-writer closeout turn through the declared background `agent` slot.
@@ -158,14 +195,14 @@ remains an allow-only presentation hook and does not participate in knowledge
 capture. A worker failure must be visible and recoverable, rather than silently
 marking the plan as fully closed.
 
-## 8. Acceptance scenarios
+## 9. Acceptance scenarios
 
 The first version is accepted only after the complete local loop is verified:
 
 1. CLI installed: startup context is obtained and injected into the first user
    message.
 2. CLI missing: installation guidance is injected and the session continues.
-3. `claw context` failure: an actionable failure is surfaced and the session
+3. `auto-claw` failure: an actionable failure is surfaced and the session
    continues.
 4. A bound plan operation returns a structured projection for the Cindy Host.
 5. `process.active`, `process.discussing`, `process.wait`, and `end.*` are
@@ -177,15 +214,19 @@ The first version is accepted only after the complete local loop is verified:
    be used for presentation, but no bidirectional Todo or Goal sync is
    required.
 
-## 9. Current implementation status
+## 10. Current implementation status
 
 Implemented in the Cindy Ghost plugin package:
 
-- local-only `claw hook auto-claw --host cindy` execution during session start;
-- one-time, wire-only first-user-message context injection;
-- actionable missing/failed CLI guidance with fail-open behavior;
+- fully asynchronous DSC preparation that runs bounded `auto-claw` diagnostics,
+  cleanup, embedding warmup, and knowledge-job discovery in parallel;
+- WAM-only cache consumption with no Node or CLI request, injecting guidance
+  only when non-empty and without a generic claw-kit reminder;
+- fail-open background maintenance;
 - typed `list_tools` / `call_tool` operations that resolve the trusted Cindy
   session context in the Host rather than in the Agent prompt;
+- structured Node broker and CLI failures that preserve the originating layer,
+  stable error code, and exact reason;
 - structured plan-state projection from the command result, with Hook-owned
   Goal-mode continuation and no dependency on a private Cindy Goal API;
 - one progress card created for `plan.create`, `plan.resume`, and `plan.done`, with later task
@@ -198,7 +239,7 @@ remains canonical; closeout is dispatched through the declared background
 `agent` slot. The CLI remains a separate user-installed dependency and is
 invoked by the declared Node worker.
 
-## 10. Remaining runtime verification
+## 11. Remaining runtime verification
 
 Before claiming full runtime parity, verify in Cindy:
 

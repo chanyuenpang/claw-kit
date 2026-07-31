@@ -128,6 +128,24 @@ function invocation(args) {
 
 function runClaw(args, cwd, input, timeoutMs, sessionId) {
   return new Promise((resolve) => {
+    if (typeof cwd !== 'string' || !cwd.trim()) {
+      resolve({
+        ok: false,
+        errorCode: 'SESSION_WORKDIR_UNAVAILABLE',
+        reason: 'Cindy did not provide a workdir for this session.',
+      });
+      return;
+    }
+    try {
+      if (!fs.statSync(cwd).isDirectory()) throw new Error('not a directory');
+    } catch {
+      resolve({
+        ok: false,
+        errorCode: 'SESSION_WORKDIR_INVALID',
+        reason: `Cindy session workdir is not an accessible directory: ${cwd}`,
+      });
+      return;
+    }
     const command = invocation(args);
     const child = spawn(command.executable, command.args, {
       cwd,
@@ -140,33 +158,61 @@ function runClaw(args, cwd, input, timeoutMs, sessionId) {
     });
     let stdout = '';
     let stderr = '';
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(result);
+    };
     const timer = setTimeout(() => {
       child.kill();
-      resolve({ ok: false, error: 'claw CLI timed out.' });
+      finish({
+        ok: false,
+        errorCode: 'CLAW_CLI_TIMEOUT',
+        reason: `claw CLI timed out after ${timeoutMs}ms.`,
+      });
     }, timeoutMs);
     child.stdout.on('data', (chunk) => { stdout += String(chunk); });
     child.stderr.on('data', (chunk) => { stderr += String(chunk); });
     child.on('error', (error) => {
-      clearTimeout(timer);
-      resolve({ ok: false, error: `claw CLI is unavailable: ${error.message}` });
+      finish({
+        ok: false,
+        errorCode: 'CLAW_CLI_UNAVAILABLE',
+        reason: `claw CLI is unavailable: ${error.message}`,
+      });
     });
     child.on('close', (code) => {
-      clearTimeout(timer);
+      if (settled) return;
       if (code !== 0) {
-        resolve({ ok: false, error: stderr.trim() || `claw CLI exited with code ${code}.` });
+        const failure = operationFailure(stderr, 'CLAW_CLI_EXITED');
+        finish({
+          ok: false,
+          errorCode: failure.errorCode,
+          reason: failure.errorCode === 'CLAW_CLI_EXITED'
+            ? (stderr.trim()
+              ? `claw CLI exited with code ${code}: ${failure.reason}`
+              : `claw CLI exited with code ${code} without stderr output.`)
+            : failure.reason,
+          exitCode: code,
+        });
         return;
       }
       // A session-start hook may intentionally have nothing to inject when no
       // workflow is bound. Treat its empty successful stdout as that outcome,
       // not as a malformed CLI response.
       if (!stdout.trim()) {
-        resolve({ ok: true, output: {} });
+        finish({ ok: true, output: {} });
         return;
       }
       try {
-        resolve({ ok: true, output: JSON.parse(stdout.trim()) });
+        finish({ ok: true, output: JSON.parse(stdout.trim()) });
       } catch (error) {
-        resolve({ ok: false, error: `claw CLI returned invalid JSON: ${error.message}` });
+        finish({
+          ok: false,
+          errorCode: 'CLAW_CLI_INVALID_JSON',
+          reason: `claw CLI returned invalid JSON: ${error.message}`,
+        });
       }
     });
     if (input !== undefined) child.stdin.end(input);
@@ -189,6 +235,25 @@ function requiredNumber(args, name) {
   const value = args[name];
   if (!Number.isInteger(value)) throw new Error(`${name} must be an integer.`);
   return value;
+}
+
+function operationFailure(rawReason, fallbackCode = 'CLAW_OPERATION_FAILED') {
+  const reason = typeof rawReason === 'string' && rawReason.trim()
+    ? rawReason.trim()
+    : 'claw-kit operation failed.';
+  try {
+    const parsed = JSON.parse(reason);
+    const error = parsed?.error;
+    const errorCode = typeof error?.code === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(error.code)
+      ? error.code
+      : fallbackCode;
+    const message = typeof error?.message === 'string' && error.message.trim()
+      ? error.message.trim()
+      : reason;
+    return { errorCode, reason: message };
+  } catch {
+    return { errorCode: fallbackCode, reason };
+  }
 }
 
 function operationCommand(name, args) {
@@ -461,14 +526,23 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
       ['hook', 'auto-claw', '--host', 'cindy'],
       params.workdir,
       JSON.stringify({ cwd: params.workdir, session_id: params.sessionId }),
-      10000,
+      2000,
       params.sessionId,
     );
+    if (!result.ok) {
+      reply(request.id, {
+        ok: false,
+        errorCode: result.errorCode,
+        reason: result.reason,
+        errorPrompt: `${result.reason} Install or update the claw CLI, then retry this message.`,
+      });
+      return;
+    }
     const context = result.output?.hookSpecificOutput?.additionalContext;
     reply(request.id, {
+      ok: true,
       ...(typeof context === 'string' && context.trim() ? { context } : {}),
       ...(projectionFor(result.output) ? { projection: projectionFor(result.output) } : {}),
-      ...(result.error ? { error: result.error } : {}),
     });
     return;
   }
@@ -556,18 +630,33 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
     const operation = typeof params.operation === 'string' ? params.operation : '';
     const specification = OPERATIONS.get(operation);
     if (!specification) {
-      reply(request.id, { ok: false, error: `Unknown operation: ${operation}` });
+      reply(request.id, {
+        ok: false,
+        operation,
+        errorCode: 'UNKNOWN_OPERATION',
+        reason: `Unknown claw-kit operation: ${operation || '(empty)'}.`,
+      });
       return;
     }
     if (params.readOnly && specification.mutates) {
-      reply(request.id, { ok: false, operation, error: 'The current Cindy workspace is read-only.' });
+      reply(request.id, {
+        ok: false,
+        operation,
+        errorCode: 'WORKSPACE_READ_ONLY',
+        reason: 'The current Cindy workspace is read-only.',
+      });
       return;
     }
     try {
       const command = operationCommand(operation, params.args && typeof params.args === 'object' ? params.args : {});
       const result = await runClaw([...command, '--host', 'cindy'], params.workdir, undefined, 30000, params.sessionId);
       if (!result.ok) {
-        reply(request.id, { ok: false, operation, error: result.error });
+        reply(request.id, {
+          ok: false,
+          operation,
+          errorCode: result.errorCode,
+          reason: result.reason,
+        });
         return;
       }
       reply(request.id, {
@@ -580,9 +669,17 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
         writerJobs.delete(String(params.args?.finalizeId || ''));
       }
     } catch (error) {
-      reply(request.id, { ok: false, operation, error: error instanceof Error ? error.message : String(error) });
+      reply(request.id, {
+        ok: false,
+        operation,
+        ...operationFailure(error instanceof Error ? error.message : String(error), 'INVALID_OPERATION_ARGUMENTS'),
+      });
     }
     return;
   }
-  reply(request.id, { ok: false, error: 'Unknown claw worker method' });
+  reply(request.id, {
+    ok: false,
+    errorCode: 'UNKNOWN_WORKER_METHOD',
+    reason: `Unknown claw worker method: ${request.method || '(empty)'}.`,
+  });
 });

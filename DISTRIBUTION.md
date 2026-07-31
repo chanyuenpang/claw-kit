@@ -317,10 +317,6 @@ After publishing and verifying registry/GitHub state, invoke the update skill to
 2. Install the Codex plugin from the published GitHub marketplace snapshot.
 3. Verify that `claw-kit@claw-kit` is enabled, `claw-kit@claw-kit-local` is disabled, and the official cache points at the new release.
 
-Use the closeout workflow for the local-copy details:
-
-- [docs/2026-06-08-closeout-workflow.md](G:/Projects/claw-kit/docs/2026-06-08-closeout-workflow.md)
-
 Maintainer Codex plugin commands:
 
 ```powershell

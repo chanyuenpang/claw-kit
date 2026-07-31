@@ -2,9 +2,11 @@
 // The claw CLI remains user-installed; this resident process only orchestrates
 // the CLI through the declared Node worker and uses Cindy's public Agent slot.
 
-const contexts = new Map();
 const workdirs = new Map();
 const injectedSessions = new Set();
+const sessionPrompts = new Map();
+const preparedSessions = new Set();
+const preparingSessions = new Set();
 const closeoutRequested = new Set();
 const capturedTurnKeys = new Set();
 const projections = new Map();
@@ -21,20 +23,6 @@ const expandedWorkflowCards = new Map();
 const cardSessions = new Map();
 const cardInteractionTimers = new Map();
 const cardLastUpdatedAt = new Map();
-// Model per session: gpt models use shell + bridge; everything else uses Ghost tools.
-const sessionModels = new Map();
-
-const CINDY_CLAW_ENTRY_PROMPT_DEFAULT = [
-  'Load claw-kit:using-claw-kit as the main workflow skill for this session.',
-  'Follow the claw workflowGuidance return fields as the required next-step contract.',
-].join('\n');
-
-const CINDY_CLAW_ENTRY_PROMPT_GPT = [
-  'This session uses claw-kit through Cindy.',
-  'Enter the workflow through the `using-claw-kit` skill before taking any claw workflow action.',
-  'If the user explicitly names another claw-kit skill, load and follow that named bundled skill directly after entering the main route.',
-  'Use `shell_command` to run `claw` CLI commands and the code-mode bridge for plan mutations as instructed by the skill. Do not use Ghost tools for claw workflow operations.',
-].join('\n');
 
 function traceHook(hook, fields = {}) {
   // Keep a machine-readable runtime trace so Hook delivery can be proven from
@@ -47,27 +35,98 @@ function sendVerdict(hookId, action, extra = {}) {
 }
 
 async function nodeRequest(method, params, timeoutMs = 10000) {
-  const response = await cindy.node.request({ method, params, timeoutMs });
-  if (!response?.ok) return { ok: false, error: response?.message || 'Node worker failed' };
-  return response.result || { ok: true };
+  try {
+    const response = await cindy.node.request({ method, params, timeoutMs });
+    if (!response?.ok) {
+      const brokerCode = typeof response?.errorCode === 'string' ? response.errorCode : 'UNKNOWN';
+      const brokerReason = typeof response?.message === 'string' && response.message.trim()
+        ? response.message.trim()
+        : 'Node worker failed without an error message';
+      return {
+        ok: false,
+        errorCode: `NODE_${brokerCode}`,
+        reason: `Node request "${method}" failed (${brokerCode}): ${brokerReason}`,
+        data: response?.data,
+      };
+    }
+    return response.result || { ok: true };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      errorCode: 'NODE_REQUEST_REJECTED',
+      reason: `Node request "${method}" was rejected: ${reason}`,
+    };
+  }
 }
 
 async function requestSessionPrompt(sessionId, workdir) {
-  if (!workdir) return { context: null, failed: false };
+  if (!workdir) {
+    return { context: null, failed: true };
+  }
   workdirs.set(sessionId, workdir);
-  const model = sessionModels.get(sessionId); const result = await nodeRequest('claw/session-start', { sessionId, workdir, ...(model ? { model } : {}) });
-  if (result?.context) contexts.set(sessionId, result.context);
-  else if (result?.errorPrompt) contexts.set(sessionId, result.errorPrompt);
-  else contexts.set(sessionId, null);
+  const result = await nodeRequest('claw/session-start', { sessionId, workdir }, 2500);
   if (result?.projection?.planStatus) {
     await applyProjection(sessionId, { projection: result.projection }, undefined);
   }
-  return { context: contexts.get(sessionId) || null, failed: Boolean(result?.error) };
+  return {
+    context: result?.context || result?.errorPrompt || result?.reason || null,
+    failed: result?.ok === false,
+  };
 }
 
-async function warmSessionBackground(sessionId, workdir) {
+async function runSessionMaintenance(sessionId, workdir) {
   if (!workdir) return;
-  await nodeRequest('claw/session-background', { sessionId, workdir });
+  try {
+    const result = await nodeRequest('claw/session-background', { sessionId, workdir });
+    if (!result?.ok) {
+      traceHook('did-session-created', { sessionId, phase: 'maintenance-failed', reason: result?.reason || result?.error || 'unknown-error' });
+    }
+  } catch (error) {
+    traceHook('did-session-created', {
+      sessionId,
+      phase: 'maintenance-failed',
+      reason: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function prepareSessionBackground(sessionId, workdir) {
+  if (!sessionId || preparingSessions.has(sessionId) || preparedSessions.has(sessionId)) return;
+  preparingSessions.add(sessionId);
+  if (workdir) workdirs.set(sessionId, workdir);
+  try {
+    if (!workdir) {
+      traceHook('did-session-created', { sessionId, phase: 'background-skipped', reason: 'missing-workdir' });
+      return;
+    }
+    const [promptResult] = await Promise.all([
+      requestSessionPrompt(sessionId, workdir),
+      runSessionMaintenance(sessionId, workdir),
+    ]);
+    if (promptResult.context) sessionPrompts.set(sessionId, promptResult.context);
+    traceHook('did-session-created', {
+      sessionId,
+      phase: 'background-complete',
+      hasPrompt: Boolean(promptResult.context),
+      autoClawFailed: promptResult.failed,
+    });
+  } catch (error) {
+    traceHook('did-session-created', {
+      sessionId,
+      phase: 'background-failed',
+      reason: error instanceof Error ? error.message : String(error),
+    });
+  } finally {
+    preparingSessions.delete(sessionId);
+    preparedSessions.add(sessionId);
+  }
+}
+
+function scheduleSessionBackground(sessionId, workdir) {
+  setTimeout(() => {
+    void prepareSessionBackground(sessionId, workdir);
+  }, 0);
 }
 
 async function runAgentTurn(sessionId, prompt, event, userActionToken) {
@@ -345,13 +404,21 @@ async function continueGoalAfterTurnEnd(msg) {
   }
 }
 
-function toolFailure(callId, message) {
-  cindy.send({ type: 'tool-result', callId, ok: false, error: message });
+function toolFailure(callId, reason, errorCode = 'CLAW_OPERATION_FAILED') {
+  cindy.send({ type: 'tool-result', callId, ok: false, errorCode, message: reason });
 }
 
-async function handleToolCall(msg) {
+async function dispatchToolCall(msg) {
   if (msg.tool === 'list_tools') {
     const catalog = await nodeRequest('claw/catalog', {});
+    if (!catalog?.categories) {
+      toolFailure(
+        msg.callId,
+        catalog?.reason || 'The claw-kit operation catalog is unavailable.',
+        catalog?.errorCode || 'CLAW_CATALOG_UNAVAILABLE',
+      );
+      return;
+    }
     const category = typeof msg.args?.category === 'string' ? msg.args.category : '';
     const categories = Array.isArray(catalog?.categories) ? catalog.categories : [];
     const result = category
@@ -364,11 +431,11 @@ async function handleToolCall(msg) {
 
   const context = msg.args?.session_context;
   if (!context?.session_id || !context?.workdir) {
-    toolFailure(msg.callId, 'Cindy did not provide a session workspace for this claw-kit operation.');
+    toolFailure(msg.callId, 'Cindy did not provide a session workspace for this claw-kit operation.', 'SESSION_CONTEXT_UNAVAILABLE');
     return;
   }
   if (!context.workdir_is_local) {
-    toolFailure(msg.callId, 'claw-kit workflow operations require a local Cindy workspace.');
+    toolFailure(msg.callId, 'claw-kit workflow operations require a local Cindy workspace.', 'LOCAL_WORKSPACE_REQUIRED');
     return;
   }
   const operation = typeof msg.args?.name === 'string' ? msg.args.name : '';
@@ -381,7 +448,11 @@ async function handleToolCall(msg) {
     workdir: context.workdir,
   });
   if (!execution?.ok) {
-    toolFailure(msg.callId, execution?.error || 'claw-kit operation failed.');
+    toolFailure(
+      msg.callId,
+      execution?.reason || execution?.error || 'claw-kit operation failed.',
+      execution?.errorCode || 'CLAW_OPERATION_FAILED',
+    );
     return;
   }
   await applyProjection(context.session_id, execution, msg.callId);
@@ -391,6 +462,19 @@ async function handleToolCall(msg) {
   // Projection is Host-only lifecycle state. The Agent receives only the
   // operation result and its Cindy-safe guidance.
   cindy.send({ type: 'tool-result', callId: msg.callId, ok: true, result: execution.result });
+}
+
+async function handleToolCall(msg) {
+  try {
+    await dispatchToolCall(msg);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    toolFailure(
+      msg.callId,
+      `claw-kit tool dispatch failed unexpectedly: ${reason}`,
+      'CLAW_TOOL_DISPATCH_FAILED',
+    );
+  }
 }
 
 cindy.onHostMessage(async (msg) => {
@@ -444,20 +528,22 @@ cindy.onHostMessage(async (msg) => {
     return;
   }
 
-  if (msg.name === 'did-session-created') {
-    const data = msg.data || {};
-    if (data.sessionId && data.workdir) {
-      workdirs.set(data.sessionId, data.workdir);
-      if (typeof data.model === 'string' && data.model.trim()) sessionModels.set(data.sessionId, data.model.trim());
-      traceHook('did-session-created', { sessionId: data.sessionId, workdir: data.workdir, model: data.model || null });
-      void warmSessionBackground(data.sessionId, data.workdir);
-    }
-    return;
-  }
-
   if (msg.name === 'did-turn-end') {
     void captureTurnEndReport(msg);
     await continueGoalAfterTurnEnd(msg);
+    return;
+  }
+
+  if (msg.name === 'did-session-created') {
+    const data = msg.data || {};
+    if (data.sessionId) {
+      traceHook('did-session-created', {
+        sessionId: data.sessionId,
+        phase: 'received',
+        hasWorkdir: Boolean(data.workdir),
+      });
+      scheduleSessionBackground(data.sessionId, data.workdir);
+    }
     return;
   }
 
@@ -473,24 +559,26 @@ cindy.onHostMessage(async (msg) => {
       traceHook('will-user-message', { sessionId: sessionId || null, phase: 'verdict', action: 'allow', reason: !sessionId ? 'missing-session-id' : 'already-injected' });
       return;
     }
-    const workdir = msg.data?.workdir || workdirs.get(sessionId);
-    const promptResult = await requestSessionPrompt(sessionId, workdir);
-    if (!promptResult.context) {
-      if (!promptResult.failed) injectedSessions.add(sessionId);
+    const prompt = sessionPrompts.get(sessionId);
+    if (!prompt) {
+      if (preparedSessions.has(sessionId)) injectedSessions.add(sessionId);
       sendVerdict(msg.hookId, 'allow');
-      traceHook('will-user-message', { sessionId, phase: 'verdict', action: 'allow', reason: promptResult.failed ? 'session-start-failed-retryable' : 'no-session-context' });
+      traceHook('will-user-message', {
+        sessionId,
+        phase: 'verdict',
+        action: 'allow',
+        reason: preparedSessions.has(sessionId) ? 'no-auto-claw-prompt' : 'session-background-pending',
+      });
       return;
     }
+    sessionPrompts.delete(sessionId);
     injectedSessions.add(sessionId);
-        const model = sessionModels.get(sessionId);
-    const gptModels = model && /^gpt/i.test(String(model));
-    const entryPrompt = gptModels ? CINDY_CLAW_ENTRY_PROMPT_GPT : CINDY_CLAW_ENTRY_PROMPT_DEFAULT;
-    sendVerdict(msg.hookId, 'rewrite', { text: `${entryPrompt}
-
-${promptResult.context}
-
-${msg.data.text}` });
-    traceHook('will-user-message', { sessionId, phase: 'verdict', action: 'rewrite', model: model || null, gptRoute: Boolean(gptModels) });    traceHook('will-user-message', { sessionId, phase: 'verdict', action: 'rewrite' });
+    sendVerdict(msg.hookId, 'rewrite', { text: `${prompt}\n\n${msg.data.text}` });
+    traceHook('will-user-message', {
+      sessionId,
+      phase: 'verdict',
+      action: 'rewrite',
+    });
     return;
   }
 

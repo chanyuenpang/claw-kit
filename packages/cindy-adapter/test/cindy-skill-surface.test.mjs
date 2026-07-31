@@ -21,14 +21,40 @@ test('Cindy plugin exposes the full claw-kit skill surface', async () => {
   }
 });
 
-test('Cindy entry prompt routes through the main skill and leaves Ghost mechanics to it', async () => {
-  const [source, skill] = await Promise.all([
+test('Cindy WAM only injects an actionable auto-claw prompt and never proactively recalls the plugin', async () => {
+  const [source, skill, manifestSource, worker] = await Promise.all([
     readFile(new URL('main.js', root), 'utf8'),
     readFile(new URL('skills/using-claw-kit/SKILL.md', root), 'utf8'),
+    readFile(new URL('ghost.json', root), 'utf8'),
+    readFile(new URL('node/claw-worker.cjs', root), 'utf8'),
   ]);
-  assert.match(source, /Load claw-kit:using-claw-kit as the main workflow skill for this session/);
-  assert.match(source, /Follow the claw workflowGuidance return fields as the required next-step contract/);
+  const manifest = JSON.parse(manifestSource);
+  const wamStart = source.indexOf("if (msg.name === 'will-user-message')");
+  const wamEnd = source.indexOf("if (msg.name === 'will-assistant-message')");
+  const wamSource = source.slice(wamStart, wamEnd);
+  assert.doesNotMatch(source, /CINDY_CLAW_ENTRY_PROMPT|Use claw-kit:using-claw-kit/);
   assert.doesNotMatch(source, /First call the Ghost tool/);
+  assert.match(source, /msg\.name === 'did-session-created'/);
+  assert.match(source, /scheduleSessionBackground\(data\.sessionId, data\.workdir\)/);
+  assert.match(source, /setTimeout\(\(\) => \{\s*void prepareSessionBackground\(sessionId, workdir\)/);
+  assert.doesNotMatch(source, /await prepareSessionBackground/);
+  assert.match(source, /requestSessionPrompt/);
+  assert.match(source, /claw\/session-start/);
+  assert.match(worker, /claw\/session-start/);
+  assert.match(worker, /hook', 'auto-claw/);
+  assert.deepEqual(manifest.subscribe.topics, ['session', 'turn']);
+  assert.match(source, /runSessionMaintenance/);
+  assert.match(source, /claw\/session-background/);
+  assert.match(source, /Promise\.all\(\[\s*requestSessionPrompt\(sessionId, workdir\),\s*runSessionMaintenance\(sessionId, workdir\)/);
+  assert.doesNotMatch(wamSource, /requestSessionPrompt|runSessionMaintenance|nodeRequest/);
+  assert.match(wamSource, /sessionPrompts\.get\(sessionId\)/);
+  assert.match(source, /sendVerdict\(msg\.hookId, 'allow'\)/);
+  assert.match(source, /text: `\$\{prompt\}\\n\\n\$\{msg\.data\.text\}`/);
+  assert.match(source, /function toolFailure\(callId, reason, errorCode = 'CLAW_OPERATION_FAILED'\)/);
+  assert.match(source, /tool-result', callId, ok: false, errorCode, message: reason/);
+  assert.doesNotMatch(source, /sessionModels|CINDY_CLAW_ENTRY_PROMPT_GPT|data\.model/);
+  assert.match(skill, /know.*GPT\/Codex.*Shell \+ bridge/is);
+  assert.match(skill, /not sure.*Ghost tool/is);
   assert.match(skill, /Use the Ghost tools in this exact order/);
   assert.match(skill, /Never pass `list_tools` itself as `call_tool\.name`/);
   assert.match(skill, /Host-forged `args\.session_context`/);
@@ -46,7 +72,6 @@ test('Goal continuation keeps structured events out of the visible prompt', asyn
   assert.match(source, /cindyAuthorizationCardIssued\.has\(sessionId\)/);
   assert.doesNotMatch(source, /cindyAuthorizationCardIssued\.delete\(sessionId\)/);
   assert.match(source, /state: projection\.planStatus === 'process\.active' \? 'working' : 'done'/);
-  assert.match(source, /session-start-failed-retryable/);
   assert.match(source, /msg\.name === 'will-assistant-message'/);
   assert.match(source, /msg\.name === 'did-turn-end'/);
   assert.match(source, /function captureTurnEndReport\(msg\)/);

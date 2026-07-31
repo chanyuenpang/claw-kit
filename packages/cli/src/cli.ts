@@ -1471,7 +1471,7 @@ function buildPublicContextOutput(context: Record<string, unknown>): Record<stri
     output.startupRecovery = compactRecovery;
   }
 
-  const searchGuidance = buildContextSearchGuidance(context);
+  const searchGuidance = buildContextSearchGuidance(context, "rg");
   if (searchGuidance) {
     output.searchGuidance = searchGuidance;
   }
@@ -1485,7 +1485,7 @@ function shouldExposeVersionSync(versionSync: JsonRecord): boolean {
     || versionSync.projectVersion !== versionSync.cliVersion;
 }
 
-function buildContextSearchGuidance(context: Record<string, unknown>): string | null {
+function buildContextSearchGuidance(context: Record<string, unknown>, style: "default" | "rg" = "default"): string | null {
   const project = asJsonRecord(context.project);
   const projectConfig = asJsonRecord(project?.projectConfig);
   const memory = asJsonRecord(projectConfig?.memory);
@@ -1493,13 +1493,19 @@ function buildContextSearchGuidance(context: Record<string, unknown>): string | 
   const gitnexusEnabled = projectConfig?.gitnexus === true;
 
   if (embeddingEnabled && gitnexusEnabled) {
-    return "When useful, use `claw search` to narrow the document search scope and GitNexus to narrow the code search scope, then use the default search to locate exact files or symbols.";
+    return style === "rg"
+      ? "Before using `rg`, use `claw search --query` to narrow the document search scope and GitNexus to narrow the code search scope, then use `rg` to locate exact files or symbols."
+      : "When useful, use `claw search` to narrow the document search scope and GitNexus to narrow the code search scope, then use the default search to locate exact files or symbols.";
   }
   if (embeddingEnabled) {
-    return "When useful, use `claw search` to narrow the document search scope, then use the default search to locate exact files or symbols.";
+    return style === "rg"
+      ? "Before using `rg`, use `claw search --query` to narrow the document search scope, then use `rg` to locate exact files or symbols."
+      : "When useful, use `claw search` to narrow the document search scope, then use the default search to locate exact files or symbols.";
   }
   if (gitnexusEnabled) {
-    return "When useful, use GitNexus to narrow the code search scope, then use the default search to locate exact files or symbols.";
+    return style === "rg"
+      ? "Before using `rg`, use GitNexus to narrow the code search scope, then use `rg` to locate exact files or symbols."
+      : "When useful, use GitNexus to narrow the code search scope, then use the default search to locate exact files or symbols.";
   }
   return null;
 }
@@ -2363,32 +2369,21 @@ function buildSessionStartAdditionalContext(
  */
 function buildCindySessionStartContext(
   context: Record<string, unknown>,
-  sessionCwd: string,
+  _sessionCwd: string,
   versionSyncPrompt: { placement: "prefix" | "suffix"; lines: string[] } | null,
 ): string | null {
-  const activeWorkflow = asJsonRecord(context.activeWorkflow);
-  if (activeWorkflow) {
-    return stripCindyGoalModeLines(buildRecoveredWorkflowAdditionalContext(activeWorkflow, versionSyncPrompt));
+  const lines: string[] = [];
+  const startupRecovery = asJsonRecord(context.startupRecovery);
+  const fixedPaths = Array.isArray(startupRecovery?.fixedPaths)
+    ? startupRecovery.fixedPaths.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+    : [];
+  if (startupRecovery?.corrected === true) {
+    lines.push(`claw-kit repaired the project configuration${fixedPaths.length > 0 ? `: ${fixedPaths.join(", ")}` : "."}`);
   }
-
-  const project = asJsonRecord(context.project);
-  if (!project) return null;
-  const projectName = typeof project.projectName === "string" && project.projectName.trim()
-    ? project.projectName.trim()
-    : typeof project.projectId === "string" && project.projectId.trim()
-      ? project.projectId.trim()
-      : path.basename(String(project.projectRoot ?? sessionCwd ?? "project"));
-  const projectRoot = typeof project.projectRoot === "string" ? project.projectRoot : sessionCwd;
-  const projectId = typeof project.projectId === "string" ? project.projectId : projectName;
-  const clawDir = typeof project.clawDir === "string" ? project.clawDir : path.join(projectRoot, ".claw");
-  const prompt = [
-    `This session started inside a .claw project: ${projectName} (${projectId}).`,
-    `.claw directory: ${clawDir}`,
-  ].join("\n");
-  if (!versionSyncPrompt) return prompt;
-  return versionSyncPrompt.placement === "prefix"
-    ? `${versionSyncPrompt.lines.join("\n")}\n${prompt}`
-    : `${prompt}\n${versionSyncPrompt.lines.join("\n")}`;
+  if (versionSyncPrompt?.placement === "prefix") lines.push(...versionSyncPrompt.lines);
+  lines.push("Before using `rg`, use `claw search --query` to narrow the document search scope and GitNexus to narrow the code search scope, then use `rg` to locate exact files or symbols.");
+  if (versionSyncPrompt?.placement === "suffix") lines.push(...versionSyncPrompt.lines);
+  return lines.length > 0 ? lines.join("\n") : null;
 }
 
 function stripCindyGoalModeLines(prompt: string): string {

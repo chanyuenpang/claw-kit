@@ -89,7 +89,7 @@
 - 2026-06-23 temp compatibility fixture root: `C:\Users\chany\AppData\Local\Temp\claw-project-json-compat-2026-06-23T08-56-50-407Z`; `claw check` and `claw context` exited 0 for all four fixture copies.
 - `packages/cli/README.md`
 - `README.md`
-- `docs/2026-06-06-project-schema-alignment-execution.md`
+- `docs/project-json-reference.md`
 
 <!-- state: history -->
 ## Evolution history

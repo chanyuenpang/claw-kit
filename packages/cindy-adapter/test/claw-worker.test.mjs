@@ -34,6 +34,15 @@ test("Cindy Hook owns Goal continuation without claiming a native Host Goal API"
   assert.doesNotMatch(source, /cindyAuthorizationCardIssued\.delete\(sessionId\)/);
 });
 
+test("Cindy tool dispatch preserves Node broker failures with an exact reason", () => {
+  const source = fs.readFileSync(mainPath, "utf8");
+  assert.match(source, /errorCode: `NODE_\$\{brokerCode\}`/);
+  assert.match(source, /reason: `Node request "\$\{method\}" failed \(\$\{brokerCode\}\): \$\{brokerReason\}`/);
+  assert.match(source, /data: response\?\.data/);
+  assert.match(source, /catch \(error\)/);
+  assert.match(source, /CLAW_TOOL_DISPATCH_FAILED/);
+});
+
 test("Cindy writer gateway uses exclusive claim and tokenized done without knowledge binding", () => {
   const source = fs.readFileSync(workerPath, "utf8");
   const waitIndex = source.indexOf("['knowledge', 'wait'");
@@ -206,11 +215,164 @@ test("worker wraps the user-installed claw launcher with Cindy host and session 
   }
 });
 
-test("session-start treats an empty successful hook response as no injected context", { skip: process.platform !== "win32" }, async () => {
-  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-empty-start-"));
+test("worker preserves a structured CLI failure code and reason", { skip: process.platform !== "win32" }, async () => {
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-worker-error-"));
   fs.writeFileSync(
     path.join(fixtureDir, "claw.cmd"),
-    '@echo off\r\nif "%1"=="hook" exit /b 0\r\necho {}\r\n',
+    '@echo off\r\n>&2 echo {"error":{"code":"PROJECT_CONFIG_INVALID","message":"No plan is bound to the current session."}}\r\nexit /b 1\r\n',
+  );
+  const child = spawn(process.execPath, [workerPath], {
+    cwd: fixtureDir,
+    env: {
+      ...process.env,
+      PATH: `${fixtureDir}${path.delimiter}${process.env.PATH || ""}`,
+    },
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true,
+  });
+
+  try {
+    const response = await requestWorker(child, {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "claw/execute",
+      params: {
+        operation: "plan.show",
+        args: {},
+        sessionId: "cindy-session",
+        workdir: fixtureDir,
+      },
+    });
+
+    assert.deepEqual(response.result, {
+      ok: false,
+      operation: "plan.show",
+      errorCode: "PROJECT_CONFIG_INVALID",
+      reason: "No plan is bound to the current session.",
+    });
+  } finally {
+    child.stdin.end();
+    if (child.exitCode === null && child.signalCode === null) {
+      const closed = new Promise((resolve) => child.once("close", resolve));
+      child.kill();
+      await closed;
+    }
+    fs.rmSync(fixtureDir, { recursive: true, force: true });
+  }
+});
+
+test("worker distinguishes invalid CLI JSON from an operation failure", { skip: process.platform !== "win32" }, async () => {
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-worker-json-"));
+  fs.writeFileSync(path.join(fixtureDir, "claw.cmd"), "@echo off\r\necho not-json\r\n");
+  const child = spawn(process.execPath, [workerPath], {
+    cwd: fixtureDir,
+    env: { ...process.env, PATH: `${fixtureDir}${path.delimiter}${process.env.PATH || ""}` },
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true,
+  });
+
+  try {
+    const response = await requestWorker(child, {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "claw/execute",
+      params: {
+        operation: "plan.show",
+        args: {},
+        sessionId: "cindy-session",
+        workdir: fixtureDir,
+      },
+    });
+
+    assert.equal(response.result.ok, false);
+    assert.equal(response.result.errorCode, "CLAW_CLI_INVALID_JSON");
+    assert.match(response.result.reason, /^claw CLI returned invalid JSON:/);
+  } finally {
+    child.stdin.end();
+    if (child.exitCode === null && child.signalCode === null) {
+      const closed = new Promise((resolve) => child.once("close", resolve));
+      child.kill();
+      await closed;
+    }
+    fs.rmSync(fixtureDir, { recursive: true, force: true });
+  }
+});
+
+test("worker rejects a missing session workdir before spawning claw", async () => {
+  const child = spawn(process.execPath, [workerPath], {
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true,
+  });
+
+  try {
+    const response = await requestWorker(child, {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "claw/execute",
+      params: {
+        operation: "plan.show",
+        args: {},
+        sessionId: "cindy-session",
+      },
+    });
+
+    assert.deepEqual(response.result, {
+      ok: false,
+      operation: "plan.show",
+      errorCode: "SESSION_WORKDIR_UNAVAILABLE",
+      reason: "Cindy did not provide a workdir for this session.",
+    });
+  } finally {
+    child.stdin.end();
+    if (child.exitCode === null && child.signalCode === null) {
+      const closed = new Promise((resolve) => child.once("close", resolve));
+      child.kill();
+      await closed;
+    }
+  }
+});
+
+test("worker distinguishes a vanished session workdir from a missing CLI", async () => {
+  const vanishedWorkdir = path.join(os.tmpdir(), `claw-cindy-vanished-${Date.now()}`);
+  const child = spawn(process.execPath, [workerPath], {
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true,
+  });
+
+  try {
+    const response = await requestWorker(child, {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "claw/execute",
+      params: {
+        operation: "plan.show",
+        args: {},
+        sessionId: "cindy-session",
+        workdir: vanishedWorkdir,
+      },
+    });
+
+    assert.deepEqual(response.result, {
+      ok: false,
+      operation: "plan.show",
+      errorCode: "SESSION_WORKDIR_INVALID",
+      reason: `Cindy session workdir is not an accessible directory: ${vanishedWorkdir}`,
+    });
+  } finally {
+    child.stdin.end();
+    if (child.exitCode === null && child.signalCode === null) {
+      const closed = new Promise((resolve) => child.once("close", resolve));
+      child.kill();
+      await closed;
+    }
+  }
+});
+
+test("session-start turns an unavailable CLI into an installation prompt", { skip: process.platform !== "win32" }, async () => {
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-session-start-install-"));
+  fs.writeFileSync(
+    path.join(fixtureDir, "claw.cmd"),
+    '@echo off\r\n>&2 echo claw CLI is unavailable\r\nexit /b 1\r\n',
   );
   const child = spawn(process.execPath, [workerPath], {
     cwd: fixtureDir,
@@ -224,9 +386,10 @@ test("session-start treats an empty successful hook response as no injected cont
       jsonrpc: "2.0",
       id: 1,
       method: "claw/session-start",
-      params: { sessionId: "cindy-empty", workdir: fixtureDir },
+      params: { sessionId: "cindy-install", workdir: fixtureDir },
     });
-    assert.deepEqual(response.result, {});
+    assert.match(response.result.errorPrompt, /claw CLI.*unavailable/i);
+    assert.match(response.result.errorPrompt, /install|update/i);
   } finally {
     child.stdin.end();
     if (child.exitCode === null && child.signalCode === null) {

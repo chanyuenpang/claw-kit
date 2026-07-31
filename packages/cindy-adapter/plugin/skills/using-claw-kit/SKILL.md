@@ -13,10 +13,14 @@ operations. Follow the matching path below; do not mix routes.
 
 ## Route detection
 
-- **If the start prompt says to use `shell_command` and a code-mode bridge:**
+- **If you know from the runtime instructions that you are a GPT/Codex model:**
   Go to [Shell + bridge path](#shell--bridge-path--gpt-models).
-- **If the start prompt says to use Ghost tools (`list_tools` / `call_tool`):**
+- **If you are not sure that you are a GPT/Codex model:**
   Go to [Ghost tool path](#ghost-tool-path--default).
+
+Do not infer the route from model data captured during Cindy session start.
+The skill owns this choice; uncertainty always falls back to the Cindy Ghost
+tool path.
 
 ---
 

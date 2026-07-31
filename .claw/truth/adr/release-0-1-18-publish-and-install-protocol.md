@@ -92,7 +92,7 @@ The `0.1.87` release was the first recorded use of the narrow workspace-link exc
 - `.agents/skills/release-claw-kit/SKILL.md`
 - `.agents/skills/release-claw-kit/TEMPLATE.json`
 - `.agents/skills/release-claw-kit/references/release-protocol.md`
-- `docs/2026-06-08-closeout-workflow.md`
+- `DISTRIBUTION.md`
 - `scripts/install-cli.ps1`
 - `scripts/update-template-versions.mjs`
 - `packages/core/src/templates/plans/default.ts`

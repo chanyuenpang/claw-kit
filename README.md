@@ -36,7 +36,7 @@ The GitHub Pages product deck lives in [docs/index.html](docs/index.html) and is
 
 In a typical round, `claw-kit` helps an agent move through a repeatable loop:
 
-`plan` -> `search and recall` -> `execute` -> `deposit truth / ADR` -> `close out`
+`plan` -> `search and recall` -> `execute` -> `close out` -> `finalize reusable knowledge`
 
 That loop is the core product idea: a reusable project workflow instead of a one-off chat session.
 
@@ -170,4 +170,4 @@ When you need backup detail, start with the adapter reference notes above and us
 
 ## Maintainer docs
 
-For release and distribution steps, use the dedicated maintainer docs in [DISTRIBUTION.md](DISTRIBUTION.md) and [docs/2026-06-08-closeout-workflow.md](docs/2026-06-08-closeout-workflow.md).
+For release and distribution steps, use the canonical maintainer workflow in [DISTRIBUTION.md](DISTRIBUTION.md) and the repository-local `release-claw-kit` skill.
