@@ -202,7 +202,7 @@ After changing version files:
 Run these from the repository root unless noted:
 
 ```powershell
-npm test
+npm run test:full
 npm run check
 npm run check:template-versions
 npm run test:codex-plugin
@@ -215,6 +215,22 @@ cd ..\..
 git status --short
 git show --no-patch --decorate --oneline HEAD
 ```
+
+For ordinary development, `npm test` selects test domains from staged,
+unstaged, and untracked paths. Use `npm run test:domain -- <domain>` to select a
+known area explicitly, `npm run test:list` to inspect available domains, or
+`npm run test:changed -- --base <ref>` to include committed changes since a
+branch or tag. Unclassified and cross-cutting files conservatively select the
+full suite; documentation-only changes select no executable tests. Release and
+broad integration validation must use `npm run test:full` explicitly.
+
+The CLI suite is split by product responsibility into `cli-workflow`,
+`cli-session-scope`, `cli-search`, `cli-closeout`, `cli-host-actions`,
+`cli-project`, and `cli-surface`. Dedicated CLI source and test files select
+their exact domain. The shared `cli.ts` entrypoint explicitly selects all CLI
+domains because it still owns all parsing routes; it does not use a hidden
+monolithic compatibility suite. Shared test support also selects all CLI
+domains, while unknown paths continue to escalate to `full`.
 
 Recommended extra release checks:
 

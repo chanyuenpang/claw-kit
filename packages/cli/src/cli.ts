@@ -22,6 +22,7 @@ import {
   editPlan,
   ensureProjectProtocol,
   enforceTaskRetention,
+  findKnowledgeFinalizationJobPath,
   findTaskDirectory,
   runDailyMaintenance,
   ingestTruth,
@@ -47,6 +48,7 @@ import {
   doneKnowledgeFinalizationJob,
   readKnowledgeFinalizationJob,
   waitForKnowledgeFinalizationJobReady,
+  listKnowledgeFinalizationJobs,
   listRetryableKnowledgeFinalizationJobs,
   normalizeTruthMarkdownEncoding,
   recordKnowledgeFinalizationResult,
@@ -801,10 +803,11 @@ async function runPersistentSession(
         if (command.kind === "status") {
           writeSessionOutput({ ok: true, command: "session.status", ...(await opened.status() as object) });
         } else {
+          const envelope = await opened.commandEnvelope(command.request);
           writeSessionOutput({
             ok: true,
             command: command.request.operation,
-            output: await opened.command(command.request),
+            ...envelope,
           });
         }
       } catch (error) {
@@ -1098,16 +1101,57 @@ function serializeSessionError(error: unknown): Record<string, unknown> {
 function runKnowledge(args: string[]): void {
   const subcommand = args.shift();
   switch (subcommand) {
+    case "list": {
+      const projectRoot = path.resolve(readRequiredFlag(args, "--project-root"));
+      const sessionKey = readOptionalFlag(args, "--session-key");
+      const host = readOptionalFlag(args, "--job-host");
+      assertNoRemainingArgs(args, "knowledge list");
+      const sessionProject = sessionKey ? resolveSessionWorkflowContext(sessionKey) : null;
+      const project = resolveProjectContext(projectRoot);
+      const candidates = sessionProject && sessionProject.clawDir !== project.clawDir
+        ? [sessionProject, project]
+        : [sessionProject ?? project];
+      const jobs = candidates.flatMap((candidate) => listKnowledgeFinalizationJobs(candidate))
+        .map((jobPath) => ({ jobPath, job: readKnowledgeFinalizationJob(jobPath) }))
+        .filter(({ job }) => (
+          job.status === "running"
+          || ((job.status === "queued" || job.status === "failed") && job.attempts < 3)
+        ) && (!host || job.host === host))
+        .map(({ jobPath, job }) => ({
+          jobPath,
+          finalizeId: job.finalizeId,
+          status: job.status,
+          attempts: job.attempts,
+        }));
+      printJson({ ok: true, command: "knowledge.list", jobs });
+      return;
+    }
     case "wait": {
       const projectRoot = path.resolve(readRequiredFlag(args, "--project-root"));
       const finalizeId = readRequiredFlag(args, "--finalize-id");
+      const sessionKey = readOptionalFlag(args, "--session-key");
       const timeoutMs = readOptionalNumber(args, "--timeout-ms") ?? 300_000;
       assertNoRemainingArgs(args, "knowledge wait");
-      const { jobPath, job } = waitForKnowledgeFinalizationJobReady({
-        project: resolveProjectContext(projectRoot),
-        finalizeId,
-        timeoutMs,
-      });
+      const sessionProject = sessionKey ? resolveSessionWorkflowContext(sessionKey) : null;
+      const project = resolveProjectContext(projectRoot);
+      const candidates = sessionProject && sessionProject.clawDir !== project.clawDir
+        ? [sessionProject, project]
+        : [sessionProject ?? project];
+      let located = candidates
+        .map((candidate) => findKnowledgeFinalizationJobPath(candidate, finalizeId))
+        .find((candidate): candidate is string => Boolean(candidate));
+      if (!located && timeoutMs > 0) {
+        located = waitForKnowledgeFinalizationJobReady({
+          project: candidates[0],
+          finalizeId,
+          timeoutMs,
+        }).jobPath;
+      }
+      if (!located) {
+        throw new Error(`Knowledge finalization ${finalizeId} is unavailable.`);
+      }
+      const jobPath = located;
+      const job = readKnowledgeFinalizationJob(jobPath);
       printJson({
         ok: true,
         command: "knowledge.wait",
@@ -2139,12 +2183,12 @@ async function runInternalKnowledgeCapture(args: string[], effectiveHost: ClawHo
   const turnId = readHookString(payload, "turn_id");
   const message = readHookString(payload, "message");
   const taskConclusions = readHookTaskConclusions(payload, turnId);
-  if (!hookCwd || !sessionId || !turnId || !message || !containsClawDir(hookCwd)) {
+  if (!hookCwd || !sessionId || !turnId || !message) {
     printJson({ ok: true, captured: false });
     return;
   }
   try {
-    const project = resolveProjectContext(hookCwd);
+    const project = resolveWorkflowProjectContext(hookCwd, sessionId);
     const result = tryCaptureKnowledgeStop({
       project,
       sessionId,
@@ -2234,7 +2278,7 @@ function completeKnowledgeFinalizationJob(
   if (running.claimToken !== claimToken) {
     throw new Error("Knowledge finalization completion does not match the active claim.");
   }
-  const project = resolveProjectContext(running.projectRoot);
+  const project = resolveKnowledgeJobProject(jobPath, running);
   const finishedAt = new Date().toISOString();
   const truthEncoding = normalizeTruthMarkdownEncoding(project);
   recordKnowledgeFinalizationResult(project, running.reportPath, {
@@ -2267,6 +2311,21 @@ function completeKnowledgeFinalizationJob(
     skipGitNexusRefresh: true,
   });
   printJson({ ok: true, completed: true, alreadyDone: terminal.alreadyDone, finalizeId: running.finalizeId });
+}
+
+function resolveKnowledgeJobProject(
+  jobPath: string,
+  job: KnowledgeFinalizationJob,
+): ProjectContext {
+  const project = resolveProjectContext(job.projectRoot);
+  const sessionProject = resolveSessionWorkflowContext(job.sessionId);
+  for (const candidate of sessionProject ? [sessionProject, project] : [project]) {
+    const relative = path.relative(candidate.clawDir, path.resolve(jobPath));
+    if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) {
+      return candidate;
+    }
+  }
+  throw new Error("Knowledge finalization job is outside its project or session workflow.");
 }
 
 function failKnowledgeFinalizationJob(
@@ -2330,7 +2389,7 @@ function runInternalKnowledgeSweep(args: string[]): void {
     printJson({ command: "internal-knowledge-sweep", ok: true, launched: 0, skipped: true });
     return;
   }
-  const jobs = listRetryableKnowledgeFinalizationJobs(project);
+  const jobs = listRetryableKnowledgeFinalizationJobs(project, { excludeHosts: ["cindy"] });
   let launched = 0;
   for (const jobPath of jobs) {
     try {
@@ -2368,7 +2427,7 @@ async function runInternalBackgroundMaintenance(args: string[]): Promise<void> {
   let launched = 0;
   const knowledgeProject = project ?? sessionProject;
   if (knowledgeProject) {
-    const jobs = listRetryableKnowledgeFinalizationJobs(knowledgeProject);
+    const jobs = listRetryableKnowledgeFinalizationJobs(knowledgeProject, { excludeHosts: ["cindy"] });
     discovered = jobs.length;
     for (const jobPath of jobs) {
       try {
@@ -2589,7 +2648,7 @@ async function runSessionStartHook(effectiveHost: ClawHost | undefined): Promise
     const context = await runContextCommand([], hookCwd, ownerSessionKey, effectiveHost);
     const contextProject = asJsonRecord(context.project);
     const retryableJobs = effectiveHost !== "cindy" && contextProject?.scope !== "session" && !context.error
-      ? listRetryableKnowledgeFinalizationJobs(resolveProjectContext(hookCwd))
+      ? listRetryableKnowledgeFinalizationJobs(resolveProjectContext(hookCwd), { excludeHosts: ["cindy"] })
       : [];
     if (
       contextProject?.scope !== "session"

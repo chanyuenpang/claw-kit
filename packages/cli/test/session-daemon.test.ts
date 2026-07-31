@@ -59,6 +59,55 @@ test("daemon and lightweight client share authenticated persistent session comma
   await daemon.close();
 });
 
+test("persistent session starts a planning plan through the typed protocol", async () => {
+  const runtimeRoot = fixture("plan-start-runtime");
+  const projectRoot = fixture("plan-start-project");
+  const agentSessionId = `agent-plan-start-${path.basename(runtimeRoot)}`;
+  initProject({ cwd: projectRoot, projectName: "Daemon Plan Start", planning: true });
+  const daemon = await startSessionDaemon({ runtimeRoot, idleTtlMs: 0 });
+  const opened = await new ClawClient({ runtimeRoot, host: "cindy", clientKind: "adapter" })
+    .open(agentSessionId, projectRoot);
+
+  try {
+    await opened.command({
+      operation: "plan.create",
+      input: {
+        taskName: "plan-start",
+        title: "Plan start",
+        goalText: "Start through JSONL",
+        scope: "session",
+      },
+    });
+    const started = await opened.commandEnvelope({
+      operation: "plan.start",
+      input: {
+        updates: {
+          requirementsSummary: "Keep the session resident.",
+          acceptanceCriteria: ["The typed start succeeds."],
+        },
+        appendTasks: [{ title: "Implement resident transport", detail: "Use one session connection." }],
+      },
+    });
+    const output = started.output as {
+      planStatus: string;
+      plan: {
+        requirements: { summary: string; acceptanceCriteria: string[] };
+        tasks: Array<{ title: string; status: string }>;
+      };
+    };
+    assert.equal(output.planStatus, "process.active");
+    assert.equal(output.plan.requirements.summary, "Keep the session resident.");
+    assert.deepEqual(output.plan.requirements.acceptanceCriteria, ["The typed start succeeds."]);
+    assert.deepEqual(output.plan.tasks.map((task) => [task.title, task.status]), [
+      ["Complete planning with claw-kit:planning", "done"],
+      ["Implement resident transport", "pending"],
+    ]);
+  } finally {
+    await opened.close();
+    await daemon.close();
+  }
+});
+
 test("daemon preserves post-commit host actions in the typed command envelope", async () => {
   const runtimeRoot = fixture("host-actions-runtime");
   const projectRoot = fixture("host-actions-project");

@@ -1,6 +1,6 @@
 {
   "name": "@veewo/claw-client",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "type": "module",
   "description": "Lightweight typed Node client for persistent claw sessions.",
   "keywords": [
@@ -37,7 +37,7 @@
     "test": "tsc -p tsconfig.test.json && node --test dist-test/**/*.test.js"
   },
   "peerDependencies": {
-    "@veewo/claw": "0.2.3"
+    "@veewo/claw": "0.2.4"
   },
   "peerDependenciesMeta": {
     "@veewo/claw": {

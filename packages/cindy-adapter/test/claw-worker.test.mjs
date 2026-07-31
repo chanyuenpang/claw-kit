@@ -34,6 +34,18 @@ test("Cindy Hook owns Goal continuation without claiming a native Host Goal API"
   assert.doesNotMatch(source, /cindyAuthorizationCardIssued\.delete\(sessionId\)/);
 });
 
+test("Cindy session focus reconciliation preheats transport and recovers writer jobs", () => {
+  const mainSource = fs.readFileSync(mainPath, "utf8");
+  const workerSource = fs.readFileSync(workerPath, "utf8");
+  assert.match(mainSource, /msg\.name === 'did-session-switched'/);
+  assert.match(mainSource, /reconcilingSessions\.has\(sessionId\)/);
+  assert.match(mainSource, /reconcileFocusedSession\(data\.sessionId, workdir\)/);
+  assert.match(mainSource, /await captureTurnEndReport\(\{ data: \{ sessionId \} \}\)/);
+  assert.match(workerSource, /await ensureSession\(params\.sessionId, params\.workdir\)/);
+  assert.match(workerSource, /'knowledge', 'list'/);
+  assert.match(workerSource, /'--job-host', 'cindy'/);
+});
+
 test("Cindy tool dispatch preserves Node broker failures with an exact reason", () => {
   const source = fs.readFileSync(mainPath, "utf8");
   assert.match(source, /errorCode: `NODE_\$\{brokerCode\}`/);
@@ -43,18 +55,14 @@ test("Cindy tool dispatch preserves Node broker failures with an exact reason", 
   assert.match(source, /CLAW_TOOL_DISPATCH_FAILED/);
 });
 
-test("Cindy writer gateway uses exclusive claim and tokenized done without knowledge binding", () => {
+test("Cindy writer gateway treats the persisted job as its durable supervisor state", () => {
   const source = fs.readFileSync(workerPath, "utf8");
-  const waitIndex = source.indexOf("['knowledge', 'wait'");
-  const claimIndex = source.indexOf("['knowledge', 'claim'");
-  const doneIndex = source.indexOf("'knowledge', 'done'");
-
-  assert.equal(waitIndex, -1);
-  assert.ok(claimIndex >= 0);
-  assert.ok(doneIndex >= 0);
-  assert.match(source, /claimToken: claimed\.output\.claimToken/);
-  assert.match(source, /'--claim-token', job\.claimToken/);
-  assert.doesNotMatch(source, /internal-knowledge-(claim|complete|fail)/);
+  assert.match(source, /'knowledge', 'wait'/);
+  assert.match(source, /'knowledge', 'claim'/);
+  assert.match(source, /'internal-knowledge-complete'/);
+  assert.match(source, /persisted\.status === 'running'/);
+  assert.match(source, /typeof persisted\.claimToken === 'string'/);
+  assert.doesNotMatch(source, /writerJobs/);
 });
 
 test("Cindy SQLite reader extracts task conclusions from the current session", () => {
@@ -101,7 +109,7 @@ test("Cindy SQLite reader extracts task conclusions from the current session", (
   } finally {
     if (previous === undefined) delete process.env.CINDY_USER_DATA;
     else process.env.CINDY_USER_DATA = previous;
-    fs.rmSync(fixtureDir, { recursive: true, force: true });
+    fs.rmSync(fixtureDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
 });
 
@@ -131,13 +139,125 @@ function requestWorker(child, request) {
   });
 }
 
+async function stopWorker(child) {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const closed = new Promise((resolve) => child.once('close', resolve));
+  child.stdin.end();
+  const timer = setTimeout(() => child.kill(), 1500);
+  await closed;
+  clearTimeout(timer);
+}
+
+function writePersistentClawFixture(fixtureDir, commandHandlerSource) {
+  const scriptPath = path.join(fixtureDir, 'fake-claw-session.cjs');
+  fs.writeFileSync(scriptPath, `
+const readline = require('node:readline');
+const args = process.argv.slice(2);
+if (args[0] !== 'session' || args[1] !== 'open') process.exit(2);
+process.stdout.write(JSON.stringify({ ok: true, command: 'session.open', session: { state: 'live' } }) + '\\n');
+const handle = ${commandHandlerSource};
+readline.createInterface({ input: process.stdin }).on('line', (line) => {
+  if (line.trim() === 'session close') process.exit(0);
+  handle(JSON.parse(line), args);
+});
+`, 'utf8');
+  fs.writeFileSync(
+    path.join(fixtureDir, 'claw.cmd'),
+    `@echo off\r\n"${process.execPath}" "${scriptPath}" %*\r\n`,
+    'utf8',
+  );
+}
+
+test("knowledge completion recovers a persisted running Cindy job after worker restart", { skip: process.platform !== "win32" }, async () => {
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-writer-recovery-"));
+  const jobPath = path.join(fixtureDir, "knowledge-job.json");
+  const finalizeId = "a".repeat(64);
+  fs.writeFileSync(jobPath, JSON.stringify({
+    schemaVersion: 1,
+    finalizeId,
+    host: "cindy",
+    status: "running",
+    claimToken: "persisted-claim",
+  }), "utf8");
+  const scriptPath = path.join(fixtureDir, "fake-claw-writer.cjs");
+  fs.writeFileSync(scriptPath, `
+const args = process.argv.slice(2);
+if (args[0] === 'knowledge' && args[1] === 'wait') {
+  process.stdout.write(JSON.stringify({ ok: true, command: 'knowledge.wait', jobPath: ${JSON.stringify(jobPath)}, status: 'running' }) + '\\n');
+  process.exit(0);
+}
+if (args[0] === 'internal-knowledge-complete') {
+  process.stdout.write(JSON.stringify({ ok: true, completed: true, finalizeId: ${JSON.stringify(finalizeId)} }) + '\\n');
+  process.exit(0);
+}
+process.stderr.write('unexpected command: ' + args.join(' '));
+process.exit(2);
+`, "utf8");
+  fs.writeFileSync(
+    path.join(fixtureDir, "claw.cmd"),
+    `@echo off\r\n"${process.execPath}" "${scriptPath}" %*\r\n`,
+    "utf8",
+  );
+  const child = spawn(process.execPath, [workerPath], {
+    cwd: fixtureDir,
+    env: { ...process.env, PATH: `${fixtureDir}${path.delimiter}${process.env.PATH || ""}` },
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true,
+  });
+
+  try {
+    const registration = await requestWorker(child, {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "claw/register-knowledge-writer",
+      params: { sessionId: "writer-session", finalizeId, jobPath, workdir: fixtureDir },
+    });
+    assert.deepEqual(registration.result, { ok: true, resumed: true });
+
+    const completion = await requestWorker(child, {
+      jsonrpc: "2.0",
+      id: 2,
+      method: "claw/execute",
+      params: {
+        operation: "knowledge.complete",
+        args: { finalizeId, result: "Truth and ADR updated." },
+        sessionId: "writer-session",
+        workdir: fixtureDir,
+      },
+    });
+    assert.equal(completion.result.ok, true);
+    assert.equal(completion.result.result.completed, true);
+  } finally {
+    await stopWorker(child);
+    fs.rmSync(fixtureDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
 test("worker wraps the user-installed claw launcher with Cindy host and session identity on Windows", { skip: process.platform !== "win32" }, async () => {
   const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-worker-"));
-  const launcherPath = path.join(fixtureDir, "claw.cmd");
-  fs.writeFileSync(
-    launcherPath,
-    '@echo off\r\necho {"planStatus":"process.active","planSummary":"1/3 Gateway Plan","sessionId":"%CLAW_SESSION_ID%","args":"%*","hostActions":[{"tool":"update_goal"}],"goalMode":{"recommendedObjective":"internal"},"goalTool":{"tool":"create_goal"},"commandHints":["claw task done --id 1","claw plan sync"],"nextsteps":["Run claw plan sync"],"notes":"internal host state","nextTask":{"id":1,"title":"Implement gateway","status":"pending"},"planView":{"title":"Gateway Plan","counts":{"completed":1,"total":3},"tasks":{"items":[{"id":2,"title":"Review gateway","status":"pending"},{"id":1,"title":"Implement gateway","status":"done"}]}}}\r\n',
-  );
+  writePersistentClawFixture(fixtureDir, `(request, args) => process.stdout.write(JSON.stringify({
+    ok: true,
+    command: request.operation,
+    schemaVersion: 1,
+    output: {
+      planStatus: 'process.active',
+      planSummary: '1/3 Gateway Plan',
+      sessionId: args[3],
+      request,
+      hostActions: [{ tool: 'update_goal' }],
+      goalMode: { recommendedObjective: 'internal' },
+      goalTool: { tool: 'create_goal' },
+      commandHints: ['claw task done --id 1', 'claw plan sync'],
+      nextsteps: ['Run claw plan sync'],
+      notes: 'internal host state',
+      nextTask: { id: 1, title: 'Implement gateway', status: 'pending' },
+      planView: { title: 'Gateway Plan', counts: { completed: 1, total: 3 }, tasks: { items: [
+        { id: 2, title: 'Review gateway', status: 'pending' },
+        { id: 1, title: 'Implement gateway', status: 'done' },
+      ] } },
+    },
+    postCommitEffects: [{ type: 'projection.refresh' }],
+  }) + '\\n')`);
 
   const child = spawn(process.execPath, [workerPath], {
     cwd: fixtureDir,
@@ -169,11 +289,14 @@ test("worker wraps the user-installed claw launcher with Cindy host and session 
     assert.equal(response.result.ok, true);
     assert.equal(response.result.operation, "plan.start");
     assert.equal(response.result.result.sessionId, "cindy-session");
-    assert.match(response.result.result.args, /plan start/);
-    assert.match(response.result.result.args, /--requirements verify-card/);
-    assert.match(response.result.result.args, /--acceptance shows-progress/);
-    assert.match(response.result.result.args, /--add-task review-card/);
-    assert.match(response.result.result.args, /--host cindy/);
+    assert.deepEqual(response.result.result.request, {
+      operation: 'plan.start',
+      input: {
+        updates: { requirementsSummary: 'verify-card', acceptanceCriteria: ['shows-progress'] },
+        appendTasks: [{ title: 'review-card', detail: 'inspect-projection' }],
+      },
+    });
+    assert.deepEqual(response.result.postCommitEffects, [{ type: 'projection.refresh' }]);
     assert.equal("hostActions" in response.result.result, false);
     assert.equal("goalMode" in response.result.result, false);
     assert.equal("goalTool" in response.result.result, false);
@@ -205,22 +328,16 @@ test("worker wraps the user-installed claw launcher with Cindy host and session 
       },
     });
   } finally {
-    child.stdin.end();
-    if (child.exitCode === null && child.signalCode === null) {
-      const closed = new Promise((resolve) => child.once("close", resolve));
-      child.kill();
-      await closed;
-    }
-    fs.rmSync(fixtureDir, { recursive: true, force: true });
+    await stopWorker(child);
+    fs.rmSync(fixtureDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
 });
 
 test("worker preserves a structured CLI failure code and reason", { skip: process.platform !== "win32" }, async () => {
   const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-worker-error-"));
-  fs.writeFileSync(
-    path.join(fixtureDir, "claw.cmd"),
-    '@echo off\r\n>&2 echo {"error":{"code":"PROJECT_CONFIG_INVALID","message":"No plan is bound to the current session."}}\r\nexit /b 1\r\n',
-  );
+  writePersistentClawFixture(fixtureDir, `() => process.stdout.write(JSON.stringify({ ok: false, error: {
+    code: 'PROJECT_CONFIG_INVALID', message: 'No plan is bound to the current session.', outcome: 'known'
+  } }) + '\\n')`);
   const child = spawn(process.execPath, [workerPath], {
     cwd: fixtureDir,
     env: {
@@ -251,19 +368,14 @@ test("worker preserves a structured CLI failure code and reason", { skip: proces
       reason: "No plan is bound to the current session.",
     });
   } finally {
-    child.stdin.end();
-    if (child.exitCode === null && child.signalCode === null) {
-      const closed = new Promise((resolve) => child.once("close", resolve));
-      child.kill();
-      await closed;
-    }
-    fs.rmSync(fixtureDir, { recursive: true, force: true });
+    await stopWorker(child);
+    fs.rmSync(fixtureDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
 });
 
 test("worker distinguishes invalid CLI JSON from an operation failure", { skip: process.platform !== "win32" }, async () => {
   const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-worker-json-"));
-  fs.writeFileSync(path.join(fixtureDir, "claw.cmd"), "@echo off\r\necho not-json\r\n");
+  writePersistentClawFixture(fixtureDir, `() => process.stdout.write('not-json\\n')`);
   const child = spawn(process.execPath, [workerPath], {
     cwd: fixtureDir,
     env: { ...process.env, PATH: `${fixtureDir}${path.delimiter}${process.env.PATH || ""}` },
@@ -286,15 +398,10 @@ test("worker distinguishes invalid CLI JSON from an operation failure", { skip: 
 
     assert.equal(response.result.ok, false);
     assert.equal(response.result.errorCode, "CLAW_CLI_INVALID_JSON");
-    assert.match(response.result.reason, /^claw CLI returned invalid JSON:/);
+    assert.match(response.result.reason, /^claw session returned invalid JSON/);
   } finally {
-    child.stdin.end();
-    if (child.exitCode === null && child.signalCode === null) {
-      const closed = new Promise((resolve) => child.once("close", resolve));
-      child.kill();
-      await closed;
-    }
-    fs.rmSync(fixtureDir, { recursive: true, force: true });
+    await stopWorker(child);
+    fs.rmSync(fixtureDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
 });
 
@@ -323,12 +430,7 @@ test("worker rejects a missing session workdir before spawning claw", async () =
       reason: "Cindy did not provide a workdir for this session.",
     });
   } finally {
-    child.stdin.end();
-    if (child.exitCode === null && child.signalCode === null) {
-      const closed = new Promise((resolve) => child.once("close", resolve));
-      child.kill();
-      await closed;
-    }
+    await stopWorker(child);
   }
 });
 
@@ -359,12 +461,7 @@ test("worker distinguishes a vanished session workdir from a missing CLI", async
       reason: `Cindy session workdir is not an accessible directory: ${vanishedWorkdir}`,
     });
   } finally {
-    child.stdin.end();
-    if (child.exitCode === null && child.signalCode === null) {
-      const closed = new Promise((resolve) => child.once("close", resolve));
-      child.kill();
-      await closed;
-    }
+    await stopWorker(child);
   }
 });
 
@@ -391,13 +488,8 @@ test("session-start turns an unavailable CLI into an installation prompt", { ski
     assert.match(response.result.errorPrompt, /claw CLI.*unavailable/i);
     assert.match(response.result.errorPrompt, /install|update/i);
   } finally {
-    child.stdin.end();
-    if (child.exitCode === null && child.signalCode === null) {
-      const closed = new Promise((resolve) => child.once("close", resolve));
-      child.kill();
-      await closed;
-    }
-    fs.rmSync(fixtureDir, { recursive: true, force: true });
+    await stopWorker(child);
+    fs.rmSync(fixtureDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
 });
 
@@ -444,12 +536,7 @@ test("worker captures a final Cindy report through the host-neutral CLI hand-off
     assert.match(response.result.args, /internal-knowledge-capture/);
     assert.match(response.result.args, /--host cindy/);
   } finally {
-    child.stdin.end();
-    if (child.exitCode === null && child.signalCode === null) {
-      const closed = new Promise((resolve) => child.once("close", resolve));
-      child.kill();
-      await closed;
-    }
-    fs.rmSync(fixtureDir, { recursive: true, force: true });
+    await stopWorker(child);
+    fs.rmSync(fixtureDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
 });

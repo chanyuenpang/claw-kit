@@ -1,8 +1,9 @@
 const { spawn } = require('node:child_process');
 const readline = require('node:readline');
 const fs = require('node:fs');
+const path = require('node:path');
 const { readTurnCaptureWithRetry } = require('./cindy-sqlite-reader.cjs');
-const writerJobs = new Map();
+const sessions = new Map();
 
 const OPERATION_CATALOG = {
   plan: [
@@ -124,6 +125,265 @@ function invocation(args) {
     };
   }
   return { executable: 'claw', args };
+}
+
+class NativeClawSession {
+  constructor(sessionId, workdir) {
+    this.sessionId = sessionId;
+    this.workdir = path.resolve(workdir);
+    this.child = null;
+    this.stderr = '';
+    this.buffer = '';
+    this.pending = null;
+    this.openPromise = null;
+    this.closed = false;
+    this.chain = Promise.resolve();
+  }
+
+  open() {
+    if (this.openPromise) return this.openPromise;
+    this.openPromise = new Promise((resolve, reject) => {
+      const command = invocation(['session', 'open', this.workdir, this.sessionId, '--host', 'cindy']);
+      const child = spawn(command.executable, command.args, {
+        cwd: this.workdir,
+        env: process.env,
+        windowsHide: true,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      this.child = child;
+      const timer = setTimeout(() => {
+        this.failPending(sessionError('CLAW_SESSION_OPEN_TIMEOUT', 'claw session open timed out.', 'known'));
+        child.kill();
+      }, 5000);
+      this.pending = {
+        resolve: (value) => {
+          clearTimeout(timer);
+          if (!value?.ok || value.command !== 'session.open') {
+            reject(sessionResponseError(value, 'CLAW_SESSION_OPEN_FAILED'));
+            return;
+          }
+          resolve(this);
+        },
+        reject: (error) => {
+          clearTimeout(timer);
+          reject(error);
+        },
+      };
+      child.stdout.on('data', (chunk) => this.consume(String(chunk)));
+      child.stderr.on('data', (chunk) => {
+        this.stderr = (this.stderr + String(chunk)).slice(-8192);
+      });
+      child.on('error', (error) => {
+        this.closed = true;
+        this.failPending(sessionError('CLAW_CLI_UNAVAILABLE', `claw CLI is unavailable: ${error.message}`, 'known'));
+      });
+      child.on('close', (code) => {
+        this.closed = true;
+        const detail = this.stderr.trim();
+        this.failPending(sessionError(
+          'SESSION_CONNECTION_LOST',
+          detail || `claw session exited with code ${String(code)}.`,
+          'unknown',
+        ));
+      });
+    });
+    return this.openPromise;
+  }
+
+  consume(chunk) {
+    this.buffer += chunk;
+    while (true) {
+      const newline = this.buffer.indexOf('\n');
+      if (newline < 0) return;
+      const line = this.buffer.slice(0, newline).trim();
+      this.buffer = this.buffer.slice(newline + 1);
+      if (!line) continue;
+      let value;
+      try { value = JSON.parse(line); } catch {
+        this.failPending(sessionError('CLAW_CLI_INVALID_JSON', 'claw session returned invalid JSON.', 'unknown'));
+        continue;
+      }
+      const pending = this.pending;
+      this.pending = null;
+      pending?.resolve(value);
+    }
+  }
+
+  request(request, timeoutMs = 30000) {
+    const execute = async () => {
+      await this.open();
+      if (this.closed || !this.child?.stdin?.writable) {
+        throw sessionError('SESSION_CONNECTION_LOST', 'claw session connection is unavailable.', 'known');
+      }
+      return await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          this.pending = null;
+          this.child?.kill();
+          reject(sessionError('CLAW_SESSION_TIMEOUT', `claw session command timed out after ${timeoutMs}ms.`, 'unknown'));
+        }, timeoutMs);
+        this.pending = {
+          resolve: (value) => {
+            clearTimeout(timer);
+            if (!value?.ok) reject(sessionResponseError(value, 'CLAW_OPERATION_FAILED'));
+            else resolve(value);
+          },
+          reject: (error) => {
+            clearTimeout(timer);
+            reject(error);
+          },
+        };
+        this.child.stdin.write(`${JSON.stringify(request)}\n`, (error) => {
+          if (!error) return;
+          const pending = this.pending;
+          this.pending = null;
+          pending?.reject(sessionError('SESSION_CONNECTION_LOST', error.message, 'known'));
+        });
+      });
+    };
+    const result = this.chain.then(execute, execute);
+    this.chain = result.catch(() => undefined);
+    return result;
+  }
+
+  close() {
+    if (this.closed || !this.child) return Promise.resolve();
+    return new Promise((resolve) => {
+      const child = this.child;
+      const timer = setTimeout(() => {
+        if (!this.closed) child.kill();
+        resolve();
+      }, 1000);
+      child.once('close', () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      if (child.stdin.writable) child.stdin.write('session close\n');
+      else child.kill();
+    });
+  }
+
+  failPending(error) {
+    const pending = this.pending;
+    this.pending = null;
+    pending?.reject(error);
+  }
+}
+
+function sessionError(code, message, outcome) {
+  const error = new Error(message);
+  error.code = code;
+  error.outcome = outcome;
+  return error;
+}
+
+function sessionResponseError(response, fallbackCode) {
+  const raw = response?.error;
+  if (raw && typeof raw === 'object') {
+    return sessionError(
+      typeof raw.code === 'string' ? raw.code : fallbackCode,
+      typeof raw.message === 'string' ? raw.message : fallbackCode,
+      raw.outcome === 'unknown' ? 'unknown' : 'known',
+    );
+  }
+  return sessionError(fallbackCode, typeof raw === 'string' ? raw : fallbackCode, 'known');
+}
+
+function validateSessionIdentity(sessionId, workdir) {
+  if (typeof sessionId !== 'string' || !sessionId.trim()) {
+    throw sessionError('SESSION_IDENTITY_UNAVAILABLE', 'Cindy did not provide a session id.', 'known');
+  }
+  if (typeof workdir !== 'string' || !workdir.trim()) {
+    throw sessionError('SESSION_WORKDIR_UNAVAILABLE', 'Cindy did not provide a workdir for this session.', 'known');
+  }
+  const resolved = path.resolve(workdir);
+  try {
+    if (!fs.statSync(resolved).isDirectory()) throw new Error('not a directory');
+  } catch {
+    throw sessionError('SESSION_WORKDIR_INVALID', `Cindy session workdir is not an accessible directory: ${workdir}`, 'known');
+  }
+  return { sessionId: sessionId.trim(), workdir: resolved };
+}
+
+async function ensureSession(sessionId, workdir) {
+  const identity = validateSessionIdentity(sessionId, workdir);
+  const key = `${identity.workdir}\0${identity.sessionId}`;
+  let session = sessions.get(key);
+  if (!session || session.closed) {
+    session = new NativeClawSession(identity.sessionId, identity.workdir);
+    sessions.set(key, session);
+    try {
+      await session.open();
+    } catch (error) {
+      if (sessions.get(key) === session) sessions.delete(key);
+      throw error;
+    }
+  }
+  return session;
+}
+
+let shuttingDown = false;
+async function shutdownWorker() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  await Promise.allSettled([...sessions.values()].map((session) => session.close()));
+  process.exit(0);
+}
+process.on('SIGINT', () => { void shutdownWorker(); });
+process.on('SIGTERM', () => { void shutdownWorker(); });
+
+function sessionRequest(name, args) {
+  switch (name) {
+    case 'plan.create': return { operation: name, input: {
+      title: requiredString(args, 'title'),
+      ...(typeof args.goal === 'string' ? { goalText: args.goal } : {}),
+      ...(args.scope === 'project' || args.scope === 'session' ? { scope: args.scope } : {}),
+      ...(typeof args.template === 'string' ? { templateName: args.template } : {}),
+      ...(typeof args.templateFile === 'string' ? { templateFile: path.resolve(args.templateFile) } : {}),
+    } };
+    case 'plan.show': return { operation: name, input: { simple: false } };
+    case 'plan.start': {
+      const updates = {
+        ...(typeof args.requirements === 'string' ? { requirementsSummary: args.requirements } : {}),
+        ...(Array.isArray(args.acceptance) ? { acceptanceCriteria: args.acceptance } : {}),
+      };
+      return { operation: name, input: {
+        ...(Object.keys(updates).length ? { updates } : {}),
+        ...(Array.isArray(args.addTasks) ? { appendTasks: args.addTasks } : {}),
+      } };
+    }
+    case 'plan.wait': return { operation: name, input: {} };
+    case 'plan.resume': return { operation: 'plan.edit', input: { operations: [{ type: 'plan.status', status: 'process.active' }] } };
+    case 'plan.edit': {
+      const updates = {};
+      if (typeof args.goal === 'string') updates.goalText = args.goal;
+      if (typeof args.summary === 'string') updates.planSummary = args.summary;
+      const operations = [];
+      if (Object.keys(updates).length) operations.push({ type: 'plan.update', updates });
+      if (typeof args.status === 'string') operations.push({ type: 'plan.status', status: args.status });
+      return { operation: name, input: { operations } };
+    }
+    case 'plan.done': return { operation: name, input: {
+      retrospectiveSummary: requiredString(args, 'retrospective'),
+      ...(typeof args.keyDecision === 'string' ? { keyDecisions: [args.keyDecision] } : {}),
+    } };
+    case 'task.add': return { operation: name, input: { tasks: [{ title: requiredString(args, 'title'), ...(typeof args.detail === 'string' ? { detail: args.detail } : {}) }] } };
+    case 'task.edit': return { operation: name, input: {
+      taskId: requiredNumber(args, 'id'),
+      ...(typeof args.title === 'string' ? { taskTitle: args.title } : {}),
+      ...(typeof args.detail === 'string' ? { taskDetail: args.detail } : {}),
+      ...(typeof args.status === 'string' ? { taskStatus: args.status } : {}),
+      ...(typeof args.choice === 'string' ? { taskChoiceId: args.choice } : {}),
+    } };
+    case 'task.done': return { operation: name, input: { tasks: [{ id: requiredNumber(args, 'id'), ...(typeof args.choice === 'string' ? { choiceId: args.choice } : {}) }] } };
+    case 'subplan.create': return { operation: name, input: {
+      parentTaskName: requiredString(args, 'parent'),
+      parentTaskId: requiredNumber(args, 'taskId'),
+      ...(typeof args.template === 'string' ? { templateName: args.template } : {}),
+      ...(typeof args.templateFile === 'string' ? { templateFile: path.resolve(args.templateFile) } : {}),
+    } };
+    case 'search': return { operation: name, input: { query: requiredString(args, 'query') } };
+    default: throw new Error(`Operation ${name} is not available through a claw session.`);
+  }
 }
 
 function runClaw(args, cwd, input, timeoutMs, sessionId) {
@@ -317,16 +577,7 @@ function operationCommand(name, args) {
     }
     case 'search': return ['search', '--query', requiredString(args, 'query')];
     case 'knowledge.complete': {
-      const finalizeId = requiredString(args, 'finalizeId');
-      const job = writerJobs.get(finalizeId);
-      if (!job) throw new Error('Knowledge finalization job is unavailable or has already been acknowledged.');
-      return [
-        'knowledge', 'done',
-        '--job', job.jobPath,
-        '--claim-token', job.claimToken,
-        '--status', 'succeeded',
-        '--result', requiredString(args, 'result'),
-      ];
+      throw new Error('knowledge.complete must be routed through the durable writer supervisor.');
     }
     default: throw new Error(`Unknown claw-kit operation: ${name}`);
   }
@@ -513,7 +764,8 @@ function reply(id, result) {
   process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id, result })}\n`);
 }
 
-readline.createInterface({ input: process.stdin }).on('line', async (line) => {
+const rpcInput = readline.createInterface({ input: process.stdin });
+rpcInput.on('line', async (line) => {
   let request;
   try { request = JSON.parse(line); } catch { return; }
   const params = request.params || {};
@@ -522,6 +774,17 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
     return;
   }
   if (request.method === 'claw/session-start') {
+    try {
+      await ensureSession(params.sessionId, params.workdir);
+    } catch (error) {
+      reply(request.id, {
+        ok: false,
+        errorCode: error?.code || 'CLAW_SESSION_OPEN_FAILED',
+        reason: error instanceof Error ? error.message : String(error),
+        errorPrompt: `${error instanceof Error ? error.message : String(error)} Install or update the claw CLI, then retry this message.`,
+      });
+      return;
+    }
     const result = await runClaw(
       ['hook', 'auto-claw', '--host', 'cindy'],
       params.workdir,
@@ -538,11 +801,18 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
       });
       return;
     }
+    const reconciliation = await runClaw([
+      'knowledge', 'list',
+      '--project-root', params.workdir,
+      '--session-key', params.sessionId,
+      '--job-host', 'cindy',
+    ], params.workdir, undefined, 10000, params.sessionId);
     const context = result.output?.hookSpecificOutput?.additionalContext;
     reply(request.id, {
       ok: true,
       ...(typeof context === 'string' && context.trim() ? { context } : {}),
       ...(projectionFor(result.output) ? { projection: projectionFor(result.output) } : {}),
+      ...(Array.isArray(reconciliation.output?.jobs) ? { knowledgeJobs: reconciliation.output.jobs } : {}),
     });
     return;
   }
@@ -586,13 +856,29 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
       reply(request.id, { ok: false, error: 'finalizeId, jobPath, and executor session id are required.' });
       return;
     }
-    const claimed = await runClaw(['knowledge', 'claim', '--job', jobPath], params.workdir, undefined, 10000, executorSessionId);
-    if (!claimed.ok || !claimed.output?.claimed || typeof claimed.output.claimToken !== 'string') {
-      reply(request.id, { ok: false, error: claimed.error || 'Knowledge finalization job is already claimed.' });
+    let persisted;
+    try { persisted = JSON.parse(fs.readFileSync(jobPath, 'utf8')); } catch {
+      reply(request.id, { ok: false, error: 'Knowledge finalization job is unavailable.' });
       return;
     }
-    writerJobs.set(finalizeId, { jobPath, sessionId: executorSessionId, claimToken: claimed.output.claimToken });
-    reply(request.id, { ok: true });
+    if (persisted.finalizeId !== finalizeId || persisted.host !== 'cindy') {
+      reply(request.id, { ok: false, error: 'Knowledge finalization job does not belong to this Cindy closeout.' });
+      return;
+    }
+    if (persisted.status === 'succeeded') {
+      reply(request.id, { ok: true, alreadyCompleted: true });
+      return;
+    }
+    if (persisted.status === 'running' && typeof persisted.claimToken === 'string' && persisted.claimToken) {
+      reply(request.id, { ok: true, resumed: true });
+      return;
+    }
+    const claimed = await runClaw(['knowledge', 'claim', '--job', jobPath], params.workdir, undefined, 10000, executorSessionId);
+    if (!claimed.ok || !claimed.output?.claimed || typeof claimed.output.claimToken !== 'string') {
+      reply(request.id, { ok: false, error: claimed.error || 'Knowledge finalization job is not claimable.' });
+      return;
+    }
+    reply(request.id, { ok: true, claimed: true });
     return;
   }
   if (request.method === 'claw/fail-knowledge-writer') {
@@ -648,31 +934,70 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
       return;
     }
     try {
-      const command = operationCommand(operation, params.args && typeof params.args === 'object' ? params.args : {});
-      const result = await runClaw([...command, '--host', 'cindy'], params.workdir, undefined, 30000, params.sessionId);
-      if (!result.ok) {
-        reply(request.id, {
-          ok: false,
-          operation,
-          errorCode: result.errorCode,
-          reason: result.reason,
-        });
-        return;
+      const operationArgs = params.args && typeof params.args === 'object' ? params.args : {};
+      let output;
+      let envelope = {};
+      if (operation === 'knowledge.complete') {
+        const finalizeId = requiredString(operationArgs, 'finalizeId');
+        const resultText = requiredString(operationArgs, 'result');
+        const located = await runClaw([
+          'knowledge', 'wait',
+          '--project-root', params.workdir,
+          '--session-key', params.sessionId,
+          '--finalize-id', finalizeId,
+          '--timeout-ms', '0',
+          '--host', 'cindy',
+        ], params.workdir, undefined, 10000, params.sessionId);
+        if (!located.ok || typeof located.output?.jobPath !== 'string') {
+          reply(request.id, {
+            ok: false,
+            operation,
+            errorCode: located.errorCode || 'KNOWLEDGE_JOB_UNAVAILABLE',
+            reason: located.reason || 'Knowledge finalization job is unavailable.',
+          });
+          return;
+        }
+        const result = await runClaw([
+          'internal-knowledge-complete',
+          '--job', located.output.jobPath,
+          '--result', resultText,
+          '--host', 'cindy',
+        ], params.workdir, undefined, 30000, params.sessionId);
+        if (!result.ok) {
+          reply(request.id, {
+            ok: false,
+            operation,
+            errorCode: result.errorCode,
+            reason: result.reason,
+          });
+          return;
+        }
+        output = result.output;
+      } else {
+        const session = await ensureSession(params.sessionId, params.workdir);
+        const response = await session.request(sessionRequest(operation, operationArgs));
+        output = response.output;
+        envelope = {
+          ...(Array.isArray(response.hostActions) ? { hostActions: response.hostActions } : {}),
+          ...(Array.isArray(response.postCommitEffects) ? { postCommitEffects: response.postCommitEffects } : {}),
+          ...(response.knowledgeDispatch ? { knowledgeDispatch: response.knowledgeDispatch } : {}),
+        };
       }
       reply(request.id, {
         ok: true,
         operation,
-        result: cindyAgentResult(result.output),
-        ...(projectionFor(result.output) ? { projection: projectionFor(result.output) } : {}),
+        result: cindyAgentResult(output),
+        ...(projectionFor(output) ? { projection: projectionFor(output) } : {}),
+        ...envelope,
       });
-      if (operation === 'knowledge.complete' && result.output?.completed) {
-        writerJobs.delete(String(params.args?.finalizeId || ''));
-      }
     } catch (error) {
+      const structured = typeof error?.code === 'string'
+        ? { errorCode: error.code, reason: error.message }
+        : operationFailure(error instanceof Error ? error.message : String(error), 'INVALID_OPERATION_ARGUMENTS');
       reply(request.id, {
         ok: false,
         operation,
-        ...operationFailure(error instanceof Error ? error.message : String(error), 'INVALID_OPERATION_ARGUMENTS'),
+        ...structured,
       });
     }
     return;
@@ -683,3 +1008,4 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
     reason: `Unknown claw worker method: ${request.method || '(empty)'}.`,
   });
 });
+rpcInput.on('close', () => { void shutdownWorker(); });

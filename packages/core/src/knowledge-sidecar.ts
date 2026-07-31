@@ -475,22 +475,32 @@ export function doneKnowledgeFinalizationJob(input: {
   });
 }
 
-export function listRetryableKnowledgeFinalizationJobs(project: ProjectContext): string[] {
+export function listRetryableKnowledgeFinalizationJobs(
+  project: ProjectContext,
+  options: { excludeHosts?: KnowledgeFinalizationHost[] } = {},
+): string[] {
+  const excludedHosts = new Set(options.excludeHosts ?? []);
+  return listKnowledgeFinalizationJobs(project)
+    .filter((jobPath) => {
+      try {
+        const job = readKnowledgeFinalizationJob(jobPath);
+        return (job.status === "queued" || job.status === "failed")
+          && job.attempts < 3
+          && !excludedHosts.has(job.host as KnowledgeFinalizationHost);
+      } catch {
+        return false;
+      }
+    });
+}
+
+export function listKnowledgeFinalizationJobs(project: ProjectContext): string[] {
   const taskJobs = listTaskDirectories(project)
     .flatMap((task) => listKnowledgeJobs(path.join(task.taskDir, ".runtime", "knowledge-finalization")));
   const archivedTaskJobs = listTaskDirectories({ tasksDir: path.join(project.clawDir, "archive", "tasks") } as ProjectContext)
     .flatMap((task) => listKnowledgeJobs(path.join(task.taskDir, ".runtime", "knowledge-finalization")));
   // Read legacy central jobs so an upgrade does not strand retryable work. New jobs are never written there.
   const legacyJobs = listKnowledgeJobs(path.join(project.clawDir, "runtime", "knowledge-finalization", "jobs"));
-  return [...taskJobs, ...archivedTaskJobs, ...legacyJobs]
-    .filter((jobPath) => {
-      try {
-        const job = readKnowledgeFinalizationJob(jobPath);
-        return (job.status === "queued" || job.status === "failed") && job.attempts < 3;
-      } catch {
-        return false;
-      }
-    });
+  return [...taskJobs, ...archivedTaskJobs, ...legacyJobs];
 }
 
 /** Remove obsolete legacy runtime records left by releases before task-local jobs. */

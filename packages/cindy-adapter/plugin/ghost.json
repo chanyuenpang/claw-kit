@@ -4,7 +4,7 @@
   "name": "claw-kit",
   "description": "Cindy workflow tools, lifecycle guidance, and Skills for claw-kit.",
   "whenToUse": "Use for Cindy sessions that need claw-kit plan, task, subplan, or workflow operations.",
-  "version": "0.2.3.1",
+  "version": "0.2.4.0",
   "kind": "chip",
   "entry": "main.js",
   "launch": "resident",
@@ -14,7 +14,7 @@
   "node": {
     "entry": "node/claw-worker.cjs",
     "protocol": "json-rpc-stdio",
-    "lifecycle": "on-demand"
+    "lifecycle": "resident"
   },
   "subscribe": {
     "topics": ["session", "turn"],
@@ -68,7 +68,7 @@
       {
         "dir": "skills/researcher",
         "name": "researcher",
-        "description": "Delegate code investigation, source inspection, symbol or dependency tracing, code architecture analysis, and current implementation behavior analysis to a focused researcher subagent. Reuse a related researcher already available in the same thread."
+        "description": "Use for focused code investigation, source inspection, symbol or dependency tracing, architecture analysis, and current implementation behavior analysis. In Cindy, run the investigation through a persistent, UI-visible Orca researcher Worker, reusing a matching Worker in the current workflow when possible, and consume its evidence-backed report before completing dependent work."
       }
     ]
   }

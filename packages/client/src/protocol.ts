@@ -19,7 +19,28 @@ export type SessionSimplePlanView = {
 };
 
 export type ClawSessionCommand =
-  | { operation: "plan.create"; input: { title?: string; goalText?: string; taskName?: string } }
+  | {
+      operation: "plan.create";
+      input: {
+        title?: string;
+        goalText?: string;
+        taskName?: string;
+        scope?: "project" | "session";
+        templateName?: string;
+        templateFile?: string;
+      };
+    }
+  | {
+      operation: "plan.start";
+      input: {
+        updates?: {
+          goalText?: string;
+          requirementsSummary?: string;
+          acceptanceCriteria?: string[];
+        };
+        appendTasks?: Array<{ title: string; detail?: string }>;
+      };
+    }
   | { operation: "plan.resume"; input: { planId?: string } }
   | { operation: "plan.leave"; input: Record<string, never> }
   | { operation: "plan.show"; input: { simple?: boolean } }

@@ -4,6 +4,24 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## Unreleased
 
+## [0.2.4] - 2026-07-31
+
+### Added
+
+- Added a typed persistent session command path for Cindy, including session-scoped plan creation and atomic plan start.
+- Added durable Cindy knowledge-job discovery and recovery across Node worker restarts.
+
+### Changed
+
+- Cindy now keeps its bundled Node worker resident and lazily opens native claw sessions from trusted tool-call context.
+- Cindy's researcher skill now routes investigations through a reusable, UI-visible Orca worker.
+- Split the CLI test suite by product responsibility and added changed-path test selection for ordinary development.
+
+### Fixed
+
+- Session-scoped plan operations consistently retain their owner session identity instead of falling back to project scope.
+- Cindy turn capture, writer claims, and completion now use persisted session workflow state rather than volatile worker maps.
+
 ## [0.2.3] - 2026-07-31
 
 ### Changed

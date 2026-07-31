@@ -1,6 +1,6 @@
 {
   "name": "@veewo/claw",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "type": "module",
   "description": "CLI for running the .claw workflow: project planning, recall, truth ingestion, and closeout.",
   "keywords": [
@@ -31,8 +31,8 @@
     "claw": "./dist/bin.js"
   },
   "dependencies": {
-    "@veewo/claw-client": "0.2.3",
-    "@veewo/claw-core": "0.2.3"
+    "@veewo/claw-client": "0.2.4",
+    "@veewo/claw-core": "0.2.4"
   },
   "exports": {
     "./session-daemon": "./dist/session-daemon-entry.js"

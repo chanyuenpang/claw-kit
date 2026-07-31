@@ -15,7 +15,7 @@ import {
   releaseCurrentPlanFocus,
   readFocusedPlan,
   resolvePlanEffectiveConfig,
-  resolveProjectContext,
+  resolveWorkflowProjectContext,
   searchMemoryAsync,
   showPlan,
   tryEndKnowledgePlan,
@@ -46,6 +46,13 @@ export type ClawCommandRequest =
   | {
       operation: "plan.create";
       input: Omit<PlanWriteInput, "cwd" | "ownerSessionKey">;
+    }
+  | {
+      operation: "plan.start";
+      input: {
+        updates?: PlanFieldUpdates;
+        appendTasks?: Array<{ title: string; detail?: string }>;
+      };
     }
   | { operation: "plan.resume"; input: { planId?: string } }
   | { operation: "plan.leave"; input: Record<string, never> }
@@ -101,12 +108,43 @@ export class ClawCommandService {
           cwd,
           taskName: current.taskName,
           planFile: current.planFile,
+          ownerSessionKey: this.ownerSessionKey(context),
         });
         return { output: commandInput.simple ? shown.simplePlanView : shown };
       }
+      case "plan.start": {
+        const commandInput = request.input as {
+          updates?: PlanFieldUpdates;
+          appendTasks?: Array<{ title: string; detail?: string }>;
+        };
+        const hasUpdates = Boolean(commandInput.updates && Object.keys(commandInput.updates).length > 0);
+        if (!hasUpdates && !commandInput.appendTasks?.length) {
+          throw new ClawError(
+            "PROJECT_CONFIG_INVALID",
+            "plan.start requires plan fields or at least one task.",
+          );
+        }
+        const current = this.requireCurrentPlan(context);
+        const result = await editPlan({
+          cwd,
+          taskName: current.taskName,
+          planFile: current.planFile,
+          updates: hasUpdates ? commandInput.updates : undefined,
+          appendTasks: commandInput.appendTasks?.map((task) => ({
+            ...task,
+            status: "pending",
+          })) as PlanEditInput["appendTasks"],
+          applyPlanStartGuidance: true,
+          commandSource: "plan.start",
+          ownerSessionKey: this.ownerSessionKey(context),
+          host: context.host,
+        });
+        const hostActions = this.codexActionsFromMutation(context, "plan.edit", result);
+        return { output: result, ...(hostActions.length ? { hostActions } : {}) };
+      }
       case "plan.leave": {
         const sessionKey = this.requireSessionKey(context);
-        const project = resolveProjectContext(cwd);
+        const project = this.resolveProject(context);
         const result = await leaveCurrentPlan({
           project,
           sessionKey,
@@ -158,7 +196,7 @@ export class ClawCommandService {
       case "plan.resume": {
         const commandInput = request.input as { planId?: string };
         const sessionKey = this.requireSessionKey(context);
-        const project = resolveProjectContext(cwd);
+        const project = this.resolveProject(context);
         const target = commandInput.planId
           ? parsePlanId(project, commandInput.planId)
           : undefined;
@@ -170,7 +208,12 @@ export class ClawCommandService {
         });
         const knowledgeDispatch = this.finalizeEnteredEnds(context, result.enteredEndPlans, result.currentPlan);
         const shown = result.currentPlan
-          ? showPlan({ cwd, taskName: result.currentPlan.taskName, planFile: result.currentPlan.planFile })
+          ? showPlan({
+              cwd,
+              taskName: result.currentPlan.taskName,
+              planFile: result.currentPlan.planFile,
+              ownerSessionKey: this.ownerSessionKey(context),
+            })
           : undefined;
         const hostActions = shown
           ? await this.codexActionsForPlan(context, {
@@ -198,10 +241,10 @@ export class ClawCommandService {
         const created = await writePlan({
           ...commandInput,
           cwd,
-          ownerSessionKey: undefined,
+          ownerSessionKey: context.agentSessionId,
           host: commandInput.host ?? context.host,
         });
-        const project = resolveProjectContext(cwd);
+        const project = this.resolveProject(context, commandInput.scope);
         const createdRef = createPlanRef(project, created.taskName, created.planFile);
         const focus = await createPlanAndSwitchFocus({
           project,
@@ -227,17 +270,18 @@ export class ClawCommandService {
         const created = await createSubplan({
           ...commandInput,
           cwd,
-          ownerSessionKey: undefined,
+          ownerSessionKey: this.ownerSessionKey(context),
           host: commandInput.host ?? context.host,
           deferParentMutation: true,
         });
-        const project = resolveProjectContext(cwd);
+        const project = this.resolveProject(context);
         const parentRef = createPlanRef(project, created.taskName, created.parentPlan ?? "plan.json");
         const childRef = createPlanRef(project, created.taskName, created.planFile);
         const parentAfterLink = structuredClone(showPlan({
           cwd,
           taskName: created.taskName,
           planFile: parentRef.planFile,
+          ownerSessionKey: this.ownerSessionKey(context),
         }).plan);
         const parentTask = parentAfterLink.tasks.find((task) => task.id === created.parentTaskId);
         if (!parentTask) {
@@ -285,7 +329,7 @@ export class ClawCommandService {
           cwd,
           taskName: current.taskName,
           planFile: current.planFile,
-          ownerSessionKey: undefined,
+          ownerSessionKey: this.ownerSessionKey(context),
           host: commandInput.host ?? context.host,
         });
         const hostActions = this.codexActionsFromMutation(context, "task.edit", result);
@@ -348,6 +392,18 @@ export class ClawCommandService {
     return context.sessionKey;
   }
 
+  private resolveProject(context: CommandContext, requestedScope?: "project" | "session") {
+    return resolveWorkflowProjectContext(
+      context.cwd,
+      context.mode === "session" ? context.agentSessionId : undefined,
+      requestedScope,
+    );
+  }
+
+  private ownerSessionKey(context: CommandContext): string | undefined {
+    return context.mode === "session" ? context.agentSessionId : undefined;
+  }
+
   private async editCurrentPlan(
     context: CommandContext,
     operations: PlanMutationOperation[],
@@ -355,14 +411,14 @@ export class ClawCommandService {
   ): Promise<ClawCommandResult> {
     const current = this.requireCurrentPlan(context);
     const sessionKey = this.requireSessionKey(context);
-    const project = resolveProjectContext(context.cwd);
+    const project = this.resolveProject(context);
     const result = await editPlan({
       cwd: context.cwd,
       taskName: current.taskName,
       planFile: current.planFile,
       operations,
       commandSource,
-      ownerSessionKey: undefined,
+      ownerSessionKey: this.ownerSessionKey(context),
       host: context.host,
       deferSubplanClosure: true,
     });
@@ -414,7 +470,7 @@ export class ClawCommandService {
   private requireCurrentPlan(context: CommandContext): PlanRef {
     if (context.mode === "session") {
       const sessionKey = this.requireSessionKey(context);
-      const project = resolveProjectContext(context.cwd);
+      const project = this.resolveProject(context);
       const current = readFocusedPlan(project, sessionKey, this.focusStore);
       if (current) return current;
     } else if (context.currentPlan) {
@@ -432,9 +488,14 @@ export class ClawCommandService {
     resumed?: PlanRef,
   ): KnowledgeDelegateDispatch | undefined {
     if (!context.agentSessionId || entered.length === 0) return undefined;
-    const project = resolveProjectContext(context.cwd);
+    const project = this.resolveProject(context);
     const resumedPath = resumed
-      ? showPlan({ cwd: context.cwd, taskName: resumed.taskName, planFile: resumed.planFile }).planPath
+      ? showPlan({
+          cwd: context.cwd,
+          taskName: resumed.taskName,
+          planFile: resumed.planFile,
+          ownerSessionKey: this.ownerSessionKey(context),
+        }).planPath
       : undefined;
     let dispatch: KnowledgeDelegateDispatch | undefined;
     for (const ended of entered) {
@@ -442,6 +503,7 @@ export class ClawCommandService {
         cwd: context.cwd,
         taskName: ended.ref.taskName,
         planFile: ended.ref.planFile,
+        ownerSessionKey: this.ownerSessionKey(context),
       });
       const effectiveConfig = resolvePlanEffectiveConfig(project.projectConfig, ended.plan);
       const writer = effectiveConfig?.knowledgeWriter;
@@ -518,7 +580,7 @@ export class ClawCommandService {
     },
   ): Promise<unknown[]> {
     if (context.host !== "codex") return [];
-    const project = resolveProjectContext(context.cwd);
+    const project = this.resolveProject(context);
     const workflowGuidance = await buildPlanWorkflowGuidance({
       taskName: input.taskName,
       planFile: input.planFile,
@@ -542,7 +604,7 @@ export class ClawCommandService {
 }
 
 function parsePlanId(
-  project: ReturnType<typeof resolveProjectContext>,
+  project: ReturnType<typeof resolveWorkflowProjectContext>,
   planId: string,
 ): PlanRef {
   const normalized = planId.trim().replace(/\\/g, "/");

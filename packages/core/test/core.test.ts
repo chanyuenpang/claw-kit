@@ -215,6 +215,14 @@ test("knowledge sidecar derives adjacent report names and keeps one report owner
     error: { message: "transient" },
   });
   assert.deepEqual(listRetryableKnowledgeFinalizationJobs(project), [firstStop.jobPath]);
+  writeKnowledgeFinalizationJob(firstStop.jobPath!, {
+    ...readKnowledgeFinalizationJob(firstStop.jobPath!),
+    host: "cindy",
+  });
+  assert.deepEqual(
+    listRetryableKnowledgeFinalizationJobs(project, { excludeHosts: ["cindy"] }),
+    [],
+  );
 
   const secondStop = tryCaptureKnowledgeStop({
     project,

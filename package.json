@@ -1,6 +1,6 @@
 {
   "name": "claw-kit",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "private": true,
   "workspaces": [
     "packages/*"
@@ -27,7 +27,12 @@
     "benchmark:session": "node .\\scripts\\session-performance-benchmark.mjs",
     "test:session-pack": "node .\\scripts\\session-package-smoke.mjs",
     "uninstall:local-cli": "npm uninstall -g @veewo/claw",
-    "test": "npm run build -w @veewo/claw-core && npm run build -w @veewo/claw-client && npm run build -w @veewo/claw && npm run test -w @veewo/claw-core && npm run test -w @veewo/claw-client && npm run test -w @veewo/claw",
+    "test": "node .\\scripts\\test-manager.mjs changed",
+    "test:changed": "node .\\scripts\\test-manager.mjs changed",
+    "test:domain": "node .\\scripts\\test-manager.mjs domain",
+    "test:list": "node .\\scripts\\test-manager.mjs list",
+    "test:full": "node .\\scripts\\test-manager.mjs full",
+    "test:test-manager": "node --test .\\scripts\\test-manager.test.mjs",
     "start": "node ./packages/cli/dist/bin.js"
   },
   "devDependencies": {

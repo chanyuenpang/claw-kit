@@ -7,6 +7,7 @@ const injectedSessions = new Set();
 const sessionPrompts = new Map();
 const preparedSessions = new Set();
 const preparingSessions = new Set();
+const reconcilingSessions = new Set();
 const closeoutRequested = new Set();
 const capturedTurnKeys = new Set();
 const projections = new Map();
@@ -65,9 +66,12 @@ async function requestSessionPrompt(sessionId, workdir) {
     return { context: null, failed: true };
   }
   workdirs.set(sessionId, workdir);
-  const result = await nodeRequest('claw/session-start', { sessionId, workdir }, 2500);
+  const result = await nodeRequest('claw/session-start', { sessionId, workdir }, 12000);
   if (result?.projection?.planStatus) {
     await applyProjection(sessionId, { projection: result.projection }, undefined);
+  }
+  for (const job of Array.isArray(result?.knowledgeJobs) ? result.knowledgeJobs : []) {
+    await dispatchKnowledgeWriter(sessionId, job);
   }
   return {
     context: result?.context || result?.errorPrompt || result?.reason || null,
@@ -127,6 +131,21 @@ function scheduleSessionBackground(sessionId, workdir) {
   setTimeout(() => {
     void prepareSessionBackground(sessionId, workdir);
   }, 0);
+}
+
+async function reconcileFocusedSession(sessionId, workdir) {
+  if (!sessionId || !workdir || reconcilingSessions.has(sessionId)) return;
+  reconcilingSessions.add(sessionId);
+  try {
+    workdirs.set(sessionId, workdir);
+    const promptResult = await requestSessionPrompt(sessionId, workdir);
+    if (promptResult.context && !injectedSessions.has(sessionId)) {
+      sessionPrompts.set(sessionId, promptResult.context);
+    }
+    await captureTurnEndReport({ data: { sessionId } });
+  } finally {
+    reconcilingSessions.delete(sessionId);
+  }
 }
 
 async function runAgentTurn(sessionId, prompt, event, userActionToken) {
@@ -291,6 +310,10 @@ async function dispatchKnowledgeWriter(sessionId, job) {
   closeoutRequested.add(finalizeId);
   const registered = await nodeRequest('claw/register-knowledge-writer', { sessionId, finalizeId, jobPath, workdir: workdirs.get(sessionId) });
   if (!registered?.ok) {
+    closeoutRequested.delete(finalizeId);
+    return;
+  }
+  if (registered.alreadyCompleted) {
     closeoutRequested.delete(finalizeId);
     return;
   }
@@ -543,6 +566,20 @@ cindy.onHostMessage(async (msg) => {
         hasWorkdir: Boolean(data.workdir),
       });
       scheduleSessionBackground(data.sessionId, data.workdir);
+    }
+    return;
+  }
+
+  if (msg.name === 'did-session-switched') {
+    const data = msg.data || {};
+    const workdir = data.workdir || workdirs.get(data.sessionId);
+    if (data.sessionId && workdir) {
+      traceHook('did-session-switched', {
+        sessionId: data.sessionId,
+        phase: 'received',
+        hasWorkdir: true,
+      });
+      void reconcileFocusedSession(data.sessionId, workdir);
     }
     return;
   }

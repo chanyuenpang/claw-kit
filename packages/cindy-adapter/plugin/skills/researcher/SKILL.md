@@ -1,55 +1,43 @@
 ---
 name: researcher
-description: Delegate code investigation, source inspection, symbol or dependency tracing, code architecture analysis, and current implementation behavior analysis to a focused researcher subagent. Reuse a related researcher already available in the same thread.
+description: Use for focused code investigation, source inspection, symbol or dependency tracing, architecture analysis, and current implementation behavior analysis. In Cindy, run the investigation through a persistent, UI-visible Orca researcher Worker, reusing a matching Worker in the current workflow when possible, and consume its evidence-backed report before completing dependent work.
 ---
 
-# researcher
+# Researcher
 
-Run code investigation outside the main-agent context and return only a compact, evidence-backed result.
+Run a concrete, bounded code investigation through Cindy's Orca workflow. The researcher is a persistent, UI-visible Worker session in the current workflow.
 
-## Cindy routing
+## When coordinating research
 
-- Main agent: consume the `delegateSubagents` contract below and dispatch the assignment through Cindy's Agent capability before continuing.
-- Assigned researcher: skip the delegation contract, execute the investigation order, and return the `outputContract` result.
-- The research prompt and output contract are platform-neutral. Only the dispatch primitive is Cindy-specific; do not substitute a Codex `spawn_agent` call or a shell command.
+1. Call `cindy_orca.get_workspace_info` before dispatching. Confirm that an active Orca workflow exists and look for a Worker whose role or label identifies it as a researcher.
+2. If a matching Worker exists, call `cindy_orca.send_to_worker` with its session id as `target_session_id`. A busy Worker may accept queued work.
+3. When the workflow needs a new researcher and the user has explicitly authorized it, call `cindy_orca.create_worker` with role `researcher`, a unique researcher label, an appropriate available agent, and the assignment in `initial_task`. Leave model, effort, and fast mode unspecified by default; apply values the user requests. Surface the active-workflow requirement when creation needs one.
+4. Make every assignment independently executable. Include these labeled sections:
+   - `Intent`: why the investigation matters
+   - `Decisions`: constraints and choices already settled
+   - `Boundaries`: read-only scope, exact targets, and repository state to preserve
+   - `Task`: the concrete question and required evidence
+5. Require the Worker to investigate directly as the sole researcher, preserve repository state, and return `status`, `findings`, `uncertainty`, and `nextStep` with exact paths, symbols, or line anchors.
+6. Accept a dispatch when the Orca response explicitly reports that the task was dispatched, queued, resumed, or already active. Surface every other dispatch outcome immediately.
+7. After a successful dispatch, yield silently and rely on Cindy's automatic delivery of the Worker's report to the Lead. Continue independent work while it runs, then review the report before completing dependent work.
+8. Keep a useful researcher Worker available for related investigations by default. Archive it or end the team when the user requests that lifecycle change.
 
-## Delegation contract
+## When running as the researcher Worker
 
-```yaml
-delegateSubagents:
-  - name: researcher
-    skill: researcher
-    worker: readonly
-    fork_context: false
-    waitForCompletion: true
-    preferReuseSameTypeInThread: true
-    inputContract:
-      question: concrete code question
-      cwd: working directory
-      targets: known files, modules, or symbols
-      constraints: relevant task boundaries
-    outputContract:
-      status: answered or unresolved
-      findings: concise evidence with exact code anchors
-      uncertainty: explicit gaps
-      nextStep: recommendation for the main agent
-    closePolicy: keep_open_for_reuse
-```
+Execute the assignment directly as the sole researcher within its read-only boundaries. Keep repository state unchanged.
 
-## Recommended investigation order
+Work within the supplied scope. Prefer configured code indexes or semantic search when available, with precise inspection of the smallest relevant set of files, symbols, tests, and dependency relationships as the fallback. Distinguish confirmed behavior from inference and cite exact paths, symbols, or line anchors.
 
-1. Use Cindy Ghost `list_tools` and `call_tool` to run the read-only `search` operation when project context is needed.
-2. Read project configuration when it may expose code-indexing tools.
-3. Use code-indexing tools when configured.
-4. Inspect only the exact source files, symbols, and relationships needed to answer the question.
-5. Anchor the findings in code or code-index evidence.
+Send one completed or blocked report to the Lead with the `send_to_lead` tool supplied by the Worker instructions. Use this shape:
 
-## GitNexus rule
+status: answered, unresolved, or blocked
 
-- When project configuration exposes GitNexus or another code index, use that route before broad manual exploration:
+findings:
+- concise evidence-backed findings with exact anchors
 
-  - search for the relevant skills or tools before broad manual codebase exploration
-  - use indexed code investigation for relationship tracing and repository understanding
-  - fall back to manual code inspection when the index is unavailable or too narrow
+uncertainty:
+- remaining gaps, or none
 
+nextStep:
+- the most useful action for the coordinating agent
 
