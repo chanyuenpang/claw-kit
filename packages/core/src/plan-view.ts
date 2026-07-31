@@ -1,4 +1,17 @@
-import type { PlanDocument, PlanTask, PlanViewModel, PlanViewTask } from "./types.js";
+import type { PlanDocument, PlanTask, PlanViewModel, PlanViewTask, SimplePlanView } from "./types.js";
+
+export function buildSimplePlanView(plan: PlanDocument): SimplePlanView {
+  return {
+    status: plan.status,
+    goal: {
+      text: plan.goal.text,
+    },
+    tasks: plan.tasks.map((task) => ({
+      title: task.title,
+    })),
+    rules: plan.rules ?? [],
+  };
+}
 
 export function buildPlanViewModel(input: {
   taskName: string;

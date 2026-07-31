@@ -16,6 +16,8 @@ The GitHub Pages product deck lives in [docs/index.html](docs/index.html) and is
 - Closeout workflows that keep tasks, notes, and decisions aligned
 - Planning surfaces that can stay enabled, be turned off, or be routed through a custom planning skill
 - Adapter surfaces that let the same workflow shape land in different agent hosts
+- A persistent, host-neutral session daemon and typed Node client that retain
+  workdir and current-plan focus across operations
 
 ## Why teams use it
 
@@ -73,6 +75,20 @@ claw plan create --title "My task" --goal "Define the first task"
 claw plan create "My templated task" --template default --goal "Use the default template"
 claw plan create "Ephemeral harness" --scope session --goal "Run the full workflow without project deposition"
 ```
+
+For a persistent terminal session, open the immutable project workdir together
+with the host agent session id:
+
+```powershell
+claw session open G:\Projects\my-project agent-session-id
+```
+
+Commands entered after that point reuse the session workdir and current plan.
+`plan create`, `plan resume [planId]`, and `plan leave` change current-plan
+focus; ordinary `plan` and `task` commands do not need a repeated task name or
+plan file. Use `search --dir <other-dir> <query>` for one cross-directory
+lookup without changing the session workdir. Closing the terminal disconnects
+the live client but retains session metadata for seven days.
 
 `claw plan create` now routes through seed-plan templates. Explicit `--template` wins first; otherwise claw uses `defaultPlanTemplate` from `.claw/project.json` or `.claw/project-override.json`, then falls back to the built-in `default` template. Planning-enabled projects start in `process.discussing` with a planning task plus an activation bridge task; planning-disabled projects start directly in `process.active`. The planning task analyzes the request and uses the configured planning skill to fill executable tasks. `claw search --query "<topic>"` remains an optional command hint, not a mandatory planning step.
 
@@ -146,6 +162,9 @@ Use `install:opencode-plugin` when you want this machine to start using the adap
 
 - `@veewo/claw`
   - CLI entrypoint for running the `.claw` workflow in a project
+- `@veewo/claw-client`
+  - lightweight typed Node API for the same persistent session daemon used by
+    `claw session open`
 - `@veewo/claw-core`
   - shared workflow primitives for project config, planning, search, truth ingestion, and retention
 - `@claw-kit/codex-adapter`

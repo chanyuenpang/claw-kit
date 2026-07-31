@@ -53,6 +53,50 @@ In a typical round, the CLI helps land this loop in a project:
 
 That project-level plan structure helps agents carry longer-running work more cleanly than leaving the task in loose chat state alone.
 
+## Persistent sessions
+
+Open a persistent terminal with:
+
+```bash
+claw session open <dir> <agent-session-id>
+```
+
+The workdir is immutable for the lifetime of that session. Opening another
+directory closes the prior live connection and opens the composite identity
+`(canonical workdir, agent session id)`; two directories with the same agent id
+remain isolated.
+
+Inside the terminal, these commands implicitly target `currentPlan`:
+
+```text
+plan show [--simple]
+plan edit ...
+plan wait
+plan done --retrospective "..."
+task add ...
+task edit --id ...
+task done --id ...
+```
+
+Use `plan resume` to resume the retained current plan, `plan resume <planId>` to
+make a specified resumable plan current, and `plan leave` to enter
+`end.leave` and clear focus. Every `end.*` triggers end-state finalization;
+`end.leave` remains resumable and does not set `completedAt`.
+
+`search --dir <dir> <query>` changes only that search operation. It never
+changes the session workdir or current plan.
+
+On an interrupted connection, mutations are never replayed automatically.
+Reopen with the exact command returned by the error, then inspect
+`plan show --simple`. Retained v2 state expires seven days after its last
+update. Legacy session caches are not migrated and canonical plans are never
+deleted by v2 cleanup.
+
+Host adapters remain compatible with the stateless CLI. They can adopt
+`@veewo/claw-client` incrementally once they consume the same structured
+post-commit effects; opening a persistent session does not change existing
+adapter behavior.
+
 Codex startup workflow should rely on the session hook or startup recovery path instead of treating any extra manual recovery step as required after plan creation.
 
 ## Search and recall

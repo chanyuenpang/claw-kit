@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 let bufferedHookInput: string | null = null;
@@ -15,7 +16,7 @@ export async function shouldLoadCliForInvocation(
   if (env.CLAW_KNOWLEDGE_FINALIZER === "1") {
     return false;
   }
-  if (!resolveCurrentClawDir(cwd)) {
+  if (!resolveAncestorClawDir(cwd)) {
     return false;
   }
 
@@ -40,7 +41,7 @@ export function shouldRunKnowledgeHook(
     return false;
   }
 
-  const clawDir = resolveCurrentClawDir(hookCwd);
+  const clawDir = resolveAncestorClawDir(hookCwd);
   if (!clawDir || !hasKnowledgeContext(clawDir, sessionId)) {
     return false;
   }
@@ -102,10 +103,45 @@ function readHookString(payload: Record<string, unknown> | null, key: string): s
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function resolveCurrentClawDir(cwd: string): string | null {
+function resolveAncestorClawDir(cwd: string): string | null {
   try {
-    const candidate = path.join(path.resolve(cwd), ".claw");
-    return fs.statSync(candidate).isDirectory() ? candidate : null;
+    const startDir = path.resolve(cwd);
+    const tempDir = safeResolveTempDir();
+    let current = startDir;
+    while (true) {
+      const candidate = path.join(current, ".claw");
+      if (
+        fs.existsSync(candidate)
+        && fs.statSync(candidate).isDirectory()
+        && shouldTreatAsProjectRoot(current, startDir, tempDir)
+      ) {
+        return candidate;
+      }
+      const parent = path.dirname(current);
+      if (parent === current) {
+        return null;
+      }
+      current = parent;
+    }
+  } catch {
+    return null;
+  }
+}
+
+function shouldTreatAsProjectRoot(candidateRoot: string, startDir: string, tempDir: string | null): boolean {
+  if (tempDir && isWithinDir(startDir, tempDir) && candidateRoot !== tempDir && isWithinDir(tempDir, candidateRoot)) {
+    return false;
+  }
+  return true;
+}
+
+function isWithinDir(target: string, root: string): boolean {
+  return target === root || target.startsWith(`${root}${path.sep}`);
+}
+
+function safeResolveTempDir(): string | null {
+  try {
+    return path.resolve(os.tmpdir());
   } catch {
     return null;
   }

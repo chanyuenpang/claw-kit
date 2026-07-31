@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
@@ -15,7 +16,6 @@ import {
   checkProjectProtocol,
   ClawError,
   buildPlanWorkflowGuidance,
-  shouldUsePlanHostIntegration,
   buildMemoryIndex,
   buildSessionStartDefaultPrompt,
   buildSessionStartRecoveredPrompt,
@@ -69,6 +69,7 @@ import {
   type KnowledgeDelegateDispatch,
 } from "@veewo/claw-core";
 import { buildCodexDriverEnvelope } from "./codex-driver.js";
+import { buildCodexHostActions } from "./codex-host-actions.js";
 import { checkCodexRuntime, resolveCodexSdkEntryPath } from "./codex-runtime.js";
 import {
   extractLatestFinalAssistantMessage,
@@ -77,6 +78,12 @@ import {
 import { consumeBufferedHookInput } from "./knowledge-hook-preflight.js";
 import { resolveInvocationHost, withoutInvocationHost, type ClawHost } from "./invocation-host.js";
 import { runOpencodeKnowledgeWriter } from "./opencode-runner.js";
+import {
+  ClawClient,
+  ClawSessionError,
+  type ClawSession,
+  type ClawSessionCommand,
+} from "@veewo/claw-client";
 
 const CLI_VERSION = readCliVersion();
 
@@ -137,8 +144,12 @@ const COMMAND_HELP: Record<string, HelpNode> = {
     ],
   },
   session: {
-    usage: ["{script} session clean", "{script} session clean --expired"],
-    description: "Clean ephemeral session-scoped workflow state without touching a project .claw directory.",
+    usage: [
+      "{script} session open <dir> <session-id>",
+      "{script} session clean",
+      "{script} session clean --expired",
+    ],
+    description: "Open a persistent claw command session or clean legacy ephemeral session workflow state.",
   },
   check: {
     usage: ["{script} check"],
@@ -246,10 +257,11 @@ const COMMAND_HELP: Record<string, HelpNode> = {
         ],
       },
       show: {
-        usage: ["{script} plan show"],
+        usage: ["{script} plan show", "{script} plan show --simple"],
         description: "Show the session-bound current plan, including archived plans through an explicit override.",
         summary: "Show the current plan for a task.",
         options: [
+          { flag: "--simple", detail: "Return only status, goal.text, tasks[].title, and rules." },
           { flag: "--task-name <name>", detail: "Advanced: override the session-bound task scope." },
           { flag: "--plan-file <relative-path>", detail: "Advanced: override the session-bound plan file." },
         ],
@@ -386,11 +398,12 @@ const COMMAND_HELP: Record<string, HelpNode> = {
     ],
   },
   search: {
-    usage: ["{script} search [<query>] [--limit <n>]", "{script} search index --refresh"],
+    usage: ["{script} search [<query>] [--dir <dir>] [--limit <n>]", "{script} search index --refresh"],
     description:
       "Project-scoped recall over .claw memory, truth, ADR, and declared markdown docs. Use a positional query or --query. Task-local scope (--task/--scope) is rejected; put task materials in plan.references instead.",
     options: [
       { flag: "--query <text>", detail: "Search query (or pass the query positionally)." },
+      { flag: "--dir <dir>", detail: "Override the project directory for this search only." },
       { flag: "--limit <n>", detail: "Max number of results." },
     ],
     subcommands: {
@@ -574,7 +587,7 @@ async function main(): Promise<void> {
         printJson(buildPublicContextOutput(await runContextCommand(args, process.cwd(), resolveOwnerSessionKey(), effectiveHost)));
         return;
       case "session":
-        runSession(args);
+        await runSession(args, effectiveHost);
         return;
       case "check":
         const checkResult = ensureProjectProtocol(process.cwd());
@@ -592,7 +605,7 @@ async function main(): Promise<void> {
         await runPlan(args, effectiveHost);
         return;
       case "codex":
-        runCodex(args);
+        await runCodex(args);
         return;
       case "template":
         await runTemplate(args);
@@ -672,17 +685,63 @@ async function main(): Promise<void> {
   }
 }
 
-function runCodex(args: string[]): void {
+async function runCodex(args: string[]): Promise<void> {
   const subcommand = args.shift();
-  if (subcommand !== "driver") {
-    throw new ClawError("PROJECT_CONFIG_INVALID", `Unknown codex subcommand "${subcommand ?? ""}".`);
+  if (subcommand === "driver") {
+    assertNoRemainingArgs(args, "codex driver");
+    printJson(buildCodexDriverEnvelope(CLI_VERSION));
+    return;
   }
-  assertNoRemainingArgs(args, "codex driver");
-  printJson(buildCodexDriverEnvelope(CLI_VERSION));
+  if (subcommand === "invoke") {
+    const encoded = args.shift();
+    assertNoRemainingArgs(args, "codex invoke");
+    if (!encoded || !/^(?:[a-f0-9]{4})+$/i.test(encoded)) {
+      throw new ClawError("PROJECT_CONFIG_INVALID", "codex invoke requires one UTF-16 hex argv payload.");
+    }
+    let json = "";
+    for (let index = 0; index < encoded.length; index += 4) {
+      json += String.fromCharCode(Number.parseInt(encoded.slice(index, index + 4), 16));
+    }
+    const invocation = JSON.parse(json) as unknown;
+    if (
+      !Array.isArray(invocation)
+      || invocation.length === 0
+      || invocation.some((value) => typeof value !== "string")
+      || !["plan", "task", "subplan"].includes(invocation[0] as string)
+      || invocation.some((value) => value === "--host")
+    ) {
+      throw new ClawError(
+        "PROJECT_CONFIG_INVALID",
+        "codex invoke accepts only a structured plan, task, or subplan argv without --host.",
+      );
+    }
+    const originalArgv = process.argv;
+    try {
+      process.argv = [originalArgv[0]!, originalArgv[1]!, ...invocation, "--host", "codex"];
+      await main();
+    } finally {
+      process.argv = originalArgv;
+    }
+    return;
+  }
+  throw new ClawError("PROJECT_CONFIG_INVALID", `Unknown codex subcommand "${subcommand ?? ""}".`);
 }
 
-function runSession(args: string[]): void {
+async function runSession(args: string[], effectiveHost: ClawHost | undefined): Promise<void> {
   const subcommand = args.shift();
+  if (subcommand === "open") {
+    const workdir = args.shift();
+    const agentSessionId = args.shift();
+    assertNoRemainingArgs(args, "session open");
+    if (!workdir || !agentSessionId) {
+      throw new ClawError(
+        "PROJECT_CONFIG_INVALID",
+        "session open requires <dir> <session-id> in that order.",
+      );
+    }
+    await runPersistentSession(workdir, agentSessionId, effectiveHost);
+    return;
+  }
   if (subcommand !== "clean") {
     throw new ClawError("PROJECT_CONFIG_INVALID", `Unknown session subcommand "${subcommand ?? ""}".`);
   }
@@ -702,6 +761,338 @@ function runSession(args: string[]): void {
     command: "session.clean",
     removed: deleteSessionWorkflow(ownerSessionKey),
   });
+}
+
+async function runPersistentSession(
+  workdir: string,
+  agentSessionId: string,
+  effectiveHost: ClawHost | undefined,
+): Promise<void> {
+  const opened = await new ClawClient({
+    clientKind: "terminal",
+    ...(effectiveHost ? { host: effectiveHost } : {}),
+  }).open(agentSessionId, path.resolve(workdir));
+  writeSessionOutput({
+    ok: true,
+    command: "session.open",
+    ...(opened.openResult as Record<string, unknown>),
+  });
+  const readline = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    terminal: Boolean(process.stdin.isTTY && process.stdout.isTTY),
+    prompt: "claw> ",
+  });
+  if (process.stdin.isTTY && process.stdout.isTTY) readline.prompt();
+  try {
+    for await (const line of readline) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        if (process.stdin.isTTY && process.stdout.isTTY) readline.prompt();
+        continue;
+      }
+      try {
+        const command = parsePersistentSessionCommand(trimmed);
+        if (command.kind === "close") {
+          await opened.close();
+          writeSessionOutput({ ok: true, command: "session.close" });
+          return;
+        }
+        if (command.kind === "status") {
+          writeSessionOutput({ ok: true, command: "session.status", ...(await opened.status() as object) });
+        } else {
+          writeSessionOutput({
+            ok: true,
+            command: command.request.operation,
+            output: await opened.command(command.request),
+          });
+        }
+      } catch (error) {
+        writeSessionOutput({ ok: false, error: serializeSessionError(error) });
+        if (error instanceof ClawSessionError && error.code === "SESSION_CONNECTION_LOST") return;
+      }
+      if (process.stdin.isTTY && process.stdout.isTTY) readline.prompt();
+    }
+  } finally {
+    readline.close();
+    try {
+      await opened.close();
+    } catch {
+      // EOF is a soft close; retained state survives a lost daemon connection.
+    }
+  }
+}
+
+type PersistentSessionCommand =
+  | { kind: "close" }
+  | { kind: "status" }
+  | { kind: "command"; request: ClawSessionCommand };
+
+function parsePersistentSessionCommand(line: string): PersistentSessionCommand {
+  if (line.startsWith("{")) {
+    const request = JSON.parse(line) as { operation?: unknown; input?: unknown };
+    if (typeof request.operation !== "string") {
+      throw new ClawError("PROJECT_CONFIG_INVALID", "JSON session commands require operation.");
+    }
+    return {
+      kind: "command",
+      request: { operation: request.operation, input: request.input ?? {} } as ClawSessionCommand,
+    };
+  }
+  const tokens = tokenizeSessionLine(line);
+  const group = tokens.shift();
+  const action = tokens.shift();
+  if ((group === "session" && action === "close") || group === "exit" || group === "quit") {
+    return { kind: "close" };
+  }
+  if ((group === "session" && action === "status") || group === "status") {
+    return { kind: "status" };
+  }
+  if (group === "plan" && action === "show") {
+    const simple = consumeSessionBoolean(tokens, "--simple");
+    assertSessionTokensConsumed(tokens, line);
+    return {
+      kind: "command",
+      request: { operation: "plan.show", input: { simple } },
+    };
+  }
+  if (group === "plan" && action === "leave") {
+    assertSessionTokensConsumed(tokens, line);
+    return { kind: "command", request: { operation: "plan.leave", input: {} } };
+  }
+  if (group === "plan" && action === "resume") {
+    const planId = tokens.shift();
+    assertSessionTokensConsumed(tokens, line);
+    return {
+      kind: "command",
+      request: { operation: "plan.resume", input: planId ? { planId } : {} },
+    };
+  }
+  if (group === "plan" && action === "create") {
+    const title = consumeSessionFlag(tokens, "--title") ?? tokens.shift();
+    if (!title) throw new ClawError("PROJECT_CONFIG_INVALID", "plan create requires a title.");
+    const goalText = consumeSessionFlag(tokens, "--goal");
+    assertSessionTokensConsumed(tokens, line);
+    return {
+      kind: "command",
+      request: {
+        operation: "plan.create",
+        input: { title, ...(goalText ? { goalText } : {}) },
+      },
+    };
+  }
+  if (group === "plan" && action === "wait") {
+    assertSessionTokensConsumed(tokens, line);
+    return { kind: "command", request: { operation: "plan.wait", input: {} } };
+  }
+  if (group === "plan" && action === "edit") {
+    const operations = parseSessionPlanEditOperations(tokens, line);
+    return {
+      kind: "command",
+      request: { operation: "plan.edit", input: { operations } } as ClawSessionCommand,
+    };
+  }
+  if (group === "plan" && action === "done") {
+    const retrospectiveSummary = consumeSessionFlag(tokens, "--retrospective");
+    if (!retrospectiveSummary) {
+      throw new ClawError("RETROSPECTIVE_REQUIRED", "plan done requires --retrospective.");
+    }
+    const keyDecisions = consumeAllSessionFlags(tokens, "--key-decision");
+    const whatWorked = consumeAllSessionFlags(tokens, "--what-worked");
+    const issues = consumeAllSessionFlags(tokens, "--issue");
+    const followUps = consumeAllSessionFlags(tokens, "--follow-up");
+    assertSessionTokensConsumed(tokens, line);
+    return {
+      kind: "command",
+      request: {
+        operation: "plan.done",
+        input: {
+          retrospectiveSummary,
+          ...(keyDecisions.length ? { keyDecisions } : {}),
+          ...(whatWorked.length ? { whatWorked } : {}),
+          ...(issues.length ? { issues } : {}),
+          ...(followUps.length ? { followUps } : {}),
+        },
+      },
+    };
+  }
+  if (group === "task" && action === "add") {
+    const tasks: Array<{ title: string; detail?: string }> = [];
+    while (tokens.length > 0) {
+      if (tokens.shift() !== "--title") {
+        throw new ClawError("PROJECT_CONFIG_INVALID", "task add expects --title to start each task.");
+      }
+      const title = tokens.shift();
+      if (!title) throw new ClawError("PROJECT_CONFIG_INVALID", "task add requires a title.");
+      let detail: string | undefined;
+      if (tokens[0] === "--detail") {
+        tokens.shift();
+        detail = tokens.shift();
+        if (!detail) throw new ClawError("PROJECT_CONFIG_INVALID", "task add --detail requires a value.");
+      }
+      tasks.push({ title, ...(detail ? { detail } : {}) });
+    }
+    if (!tasks.length) throw new ClawError("PROJECT_CONFIG_INVALID", "task add requires at least one task.");
+    return { kind: "command", request: { operation: "task.add", input: { tasks } } };
+  }
+  if (group === "task" && action === "edit") {
+    const id = Number(consumeSessionFlag(tokens, "--id"));
+    if (!Number.isInteger(id)) throw new ClawError("PROJECT_CONFIG_INVALID", "task edit requires integer --id.");
+    const taskTitle = consumeSessionFlag(tokens, "--title");
+    const taskDetail = consumeSessionFlag(tokens, "--detail");
+    const taskStatus = consumeSessionFlag(tokens, "--status") as
+      | "pending" | "in_progress" | "subagent_running" | "done" | "blocked" | undefined;
+    const taskChoiceId = consumeSessionFlag(tokens, "--choice");
+    if (!taskTitle && !taskDetail && !taskStatus && !taskChoiceId) {
+      throw new ClawError("PROJECT_CONFIG_INVALID", "task edit requires a field to change.");
+    }
+    assertSessionTokensConsumed(tokens, line);
+    return {
+      kind: "command",
+      request: {
+        operation: "task.edit",
+        input: {
+          taskId: id,
+          ...(taskTitle ? { taskTitle } : {}),
+          ...(taskDetail ? { taskDetail } : {}),
+          ...(taskStatus ? { taskStatus } : {}),
+          ...(taskChoiceId ? { taskChoiceId } : {}),
+        },
+      },
+    };
+  }
+  if (group === "task" && action === "done") {
+    const tasks: Array<{ id: number; choiceId?: string }> = [];
+    while (tokens.length > 0) {
+      if (tokens.shift() !== "--id") {
+        throw new ClawError("PROJECT_CONFIG_INVALID", "task done expects --id to start each task.");
+      }
+      const id = Number(tokens.shift());
+      if (!Number.isInteger(id)) throw new ClawError("PROJECT_CONFIG_INVALID", "task done requires integer ids.");
+      let choiceId: string | undefined;
+      if (tokens[0] === "--choice") {
+        tokens.shift();
+        choiceId = tokens.shift();
+        if (!choiceId) throw new ClawError("PROJECT_CONFIG_INVALID", "task done --choice requires a value.");
+      }
+      tasks.push({ id, ...(choiceId ? { choiceId } : {}) });
+    }
+    if (!tasks.length) throw new ClawError("PROJECT_CONFIG_INVALID", "task done requires at least one task.");
+    return { kind: "command", request: { operation: "task.done", input: { tasks } } };
+  }
+  if (group === "search") {
+    const query = consumeSessionFlag(tokens, "--query") ?? action;
+    if (!query) throw new ClawError("MEMORY_QUERY_REQUIRED", "search requires a query.");
+    const dir = consumeSessionFlag(tokens, "--dir");
+    const limitRaw = consumeSessionFlag(tokens, "--limit");
+    assertSessionTokensConsumed(tokens, line);
+    return {
+      kind: "command",
+      request: {
+        operation: "search",
+        input: {
+          query,
+          ...(dir ? { dir } : {}),
+          ...(limitRaw ? { limit: Number(limitRaw) } : {}),
+        },
+      },
+    };
+  }
+  throw new ClawError(
+    "SESSION_OPERATION_UNSUPPORTED",
+    `Unsupported persistent session command: ${line}`,
+  );
+}
+
+function tokenizeSessionLine(line: string): string[] {
+  const tokens: string[] = [];
+  const pattern = /"((?:\\.|[^"])*)"|'((?:\\.|[^'])*)'|(\S+)/g;
+  for (const match of line.matchAll(pattern)) {
+    tokens.push((match[1] ?? match[2] ?? match[3] ?? "").replace(/\\(["'\\])/g, "$1"));
+  }
+  return tokens;
+}
+
+function consumeSessionFlag(tokens: string[], flag: string): string | undefined {
+  const index = tokens.indexOf(flag);
+  if (index < 0) return undefined;
+  const value = tokens[index + 1];
+  if (!value) throw new ClawError("PROJECT_CONFIG_INVALID", `Missing value for ${flag}.`);
+  tokens.splice(index, 2);
+  return value;
+}
+
+function consumeAllSessionFlags(tokens: string[], flag: string): string[] {
+  const values: string[] = [];
+  while (tokens.includes(flag)) {
+    values.push(consumeSessionFlag(tokens, flag)!);
+  }
+  return values;
+}
+
+function parseSessionPlanEditOperations(tokens: string[], line: string): PlanMutationOperation[] {
+  const operations: PlanMutationOperation[] = [];
+  const updateFlags: Record<string, keyof PlanFieldUpdates> = {
+    "--goal": "goalText",
+    "--requirements": "requirementsSummary",
+    "--summary": "planSummary",
+    "--rule": "rules",
+    "--key-decision": "keyDecisions",
+  };
+  while (tokens.length > 0) {
+    const flag = tokens.shift()!;
+    const value = tokens.shift();
+    if (!value) throw new ClawError("PROJECT_CONFIG_INVALID", `Missing value for ${flag}.`);
+    if (flag === "--status") {
+      operations.push({ type: "plan.status", status: value });
+      continue;
+    }
+    const field = updateFlags[flag];
+    if (!field) {
+      throw new ClawError("PROJECT_CONFIG_INVALID", `Unknown plan edit argument in "${line}": ${flag}`);
+    }
+    const listField = field === "rules" || field === "keyDecisions";
+    operations.push({
+      type: "plan.update",
+      updates: { [field]: listField ? [value] : value },
+    });
+  }
+  if (!operations.length) throw new ClawError("PROJECT_CONFIG_INVALID", "plan edit requires a field to change.");
+  return operations;
+}
+
+function consumeSessionBoolean(tokens: string[], flag: string): boolean {
+  const index = tokens.indexOf(flag);
+  if (index < 0) return false;
+  tokens.splice(index, 1);
+  return true;
+}
+
+function assertSessionTokensConsumed(tokens: string[], line: string): void {
+  if (tokens.length > 0) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", `Unknown session command arguments in "${line}": ${tokens.join(" ")}`);
+  }
+}
+
+function writeSessionOutput(value: unknown): void {
+  process.stdout.write(`${JSON.stringify(value)}\n`);
+}
+
+function serializeSessionError(error: unknown): Record<string, unknown> {
+  if (error instanceof ClawSessionError) {
+    return {
+      code: error.code,
+      message: error.message,
+      retryable: error.retryable,
+      outcome: error.outcome,
+      ...(error.recoveryCommand ? { recoveryCommand: error.recoveryCommand } : {}),
+      ...(error.details ? { details: error.details } : {}),
+    };
+  }
+  if (error instanceof ClawError) {
+    return { code: error.code, message: error.message, ...(error.details ? { details: error.details } : {}) };
+  }
+  return { code: "SESSION_COMMAND_FAILED", message: error instanceof Error ? error.message : String(error) };
 }
 
 function runKnowledge(args: string[]): void {
@@ -830,11 +1221,11 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
         throw new ClawError("PROJECT_CONFIG_INVALID", "plan edit requires at least one plan field or --status.");
       }
       const ownerSessionKey = resolveOwnerSessionKey() ?? undefined;
-      const entersEndState = requestsPlanEndState(operations);
-      const current = entersEndState
+      const entersEndTerminal = requestsPlanEndTerminal(operations);
+      const current = entersEndTerminal
         ? showPlan({ cwd: process.cwd(), ...target, ownerSessionKey })
         : undefined;
-      const project = entersEndState ? tryResolveHookProject(process.cwd()) : null;
+      const project = entersEndTerminal ? tryResolveHookProject(process.cwd()) : null;
       const effectiveWriter = current && project
         ? resolvePlanEffectiveConfig(project.projectConfig, current.plan)?.knowledgeWriter
         : undefined;
@@ -850,7 +1241,7 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
           { host: effectiveHost ?? null },
         );
       }
-      const queuePlanEndFinalization = entersEndState
+      const queuePlanEndFinalization = entersEndTerminal
         ? preparePlanEndFinalization(process.cwd(), ownerSessionKey)
         : undefined;
       const result = await editPlan({
@@ -1003,6 +1394,7 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
       return;
     }
     case "show": {
+      const simple = readBooleanFlag(args, "--simple");
       const target = readPlanMutationTarget(args);
       assertNoRemainingArgs(args, "plan show");
       const result = showPlan({
@@ -1010,6 +1402,10 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
         ...target,
         ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
       });
+      if (simple) {
+        printJson(result.simplePlanView);
+        return;
+      }
       printJson({
         ok: true,
         command: "plan.show",
@@ -1224,11 +1620,12 @@ async function runSearch(args: string[]): Promise<void> {
       "claw search is project-scoped only. Put task-specific materials in plan.references instead of using task-local search.",
     );
   }
+  const dir = readOptionalFlag(args, "--dir");
   printJson({
     ok: true,
     command: "search",
     ...await searchMemoryAsync({
-      cwd: process.cwd(),
+      cwd: dir ? path.resolve(process.cwd(), dir) : process.cwd(),
       limit: readOptionalNumber(args, "--limit"),
       query: readRequiredSearchQuery(args),
       scope: "project",
@@ -2756,7 +3153,7 @@ function compactPlanCommandResult(
     const resolvedPlanPath = archivedPlanPath ?? result.planPath;
     const codexResult = effectiveHost === "codex";
     const cindyResult = effectiveHost === "cindy";
-    const hostActions = codexResult ? buildHostActions(result, { forceProjectionSync, actionIdPrefix: command === "plan.sync" ? `plan.sync:${createHash("sha256").update(result.planPath).digest("hex").slice(0, 16)}` : undefined }) : [];
+    const hostActions = codexResult ? buildCodexHostActions(result, { forceProjectionSync, actionIdPrefix: command === "plan.sync" ? `plan.sync:${createHash("sha256").update(result.planPath).digest("hex").slice(0, 16)}` : undefined }) : [];
     const nextsteps = codexResult
       && result.planStatus === "end.completed"
       && result.workflowGuidance.goalTool?.tool === "update_goal"
@@ -2832,109 +3229,6 @@ function compactPlanCommandResult(
         : {}),
       ...(!codexResult || !includePlan ? { planSummary } : {}),
     };
-}
-
-function buildHostActions(result: {
-  planPath: string;
-  planStatus: string;
-  previousPlan?: PlanDocument;
-  plan?: PlanDocument;
-  planView: PlanViewModel;
-  workflowGuidance: WorkflowGuidance;
-  events?: PlanEvent[];
-}, options: { forceProjectionSync?: boolean; actionIdPrefix?: string } = {}): Array<Record<string, unknown>> {
-  const latestEvent = result.events?.at(-1);
-  const actionIdPrefix = options.actionIdPrefix ?? latestEvent?.mutationId;
-  if (!actionIdPrefix) {
-    return [];
-  }
-  const actions: Array<Record<string, unknown>> = [];
-  const goalTool = result.workflowGuidance.goalTool;
-  const isSubplanGoalHandoff = Boolean(
-    result.plan?.parentPlan
-    && goalTool?.tool === "update_goal"
-    && goalTool.status === "complete",
-  );
-  if (isSubplanGoalHandoff && goalTool?.tool === "update_goal") {
-    actions.push({
-      schemaVersion: 1,
-      id: `${actionIdPrefix}:update_goal`,
-      tool: "update_goal",
-      input: {
-        status: "complete",
-      },
-    });
-  }
-  if (
-    result.plan
-    && shouldUsePlanHostIntegration(result.plan)
-    && result.plan.tasks.length > 0
-    && (options.forceProjectionSync || codexPlanProjectionChanged(result.previousPlan, result.plan, result.planStatus))
-  ) {
-    const plan = buildCodexPlanProjection(result.plan, result.planStatus);
-    actions.push({
-      schemaVersion: 1,
-      id: `${actionIdPrefix}:update_plan`,
-      tool: "update_plan",
-      input: {
-        explanation: result.workflowGuidance.summary,
-        plan,
-      },
-    });
-  }
-  if (goalTool && !isSubplanGoalHandoff) {
-    if (goalTool.tool === "create_goal") {
-      actions.push({
-        schemaVersion: 1,
-        id: `${actionIdPrefix}:create_goal`,
-        tool: "create_goal",
-        input: {
-          objective: goalTool.objective,
-        },
-      });
-    } else {
-      const codexStatus = result.planStatus === "process.wait" || result.planStatus === "process.discussing"
-        ? "complete"
-        : goalTool.status;
-      actions.push({
-        schemaVersion: 1,
-        id: `${actionIdPrefix}:update_goal`,
-        tool: "update_goal",
-        input: {
-          status: codexStatus,
-        },
-      });
-    }
-  }
-  return actions;
-}
-
-function codexPlanProjectionChanged(
-  previousPlan: PlanDocument | undefined,
-  plan: PlanDocument,
-  planStatus: string,
-): boolean {
-  if (!previousPlan) return true;
-  return JSON.stringify(buildCodexPlanProjection(previousPlan, previousPlan.status))
-    !== JSON.stringify(buildCodexPlanProjection(plan, planStatus));
-}
-
-function buildCodexPlanProjection(
-  plan: PlanDocument,
-  planStatus: string,
-): Array<{ step: string; status: "pending" | "in_progress" | "completed" }> {
-  const activeTask = plan.tasks.find(
-    (task) => task.status === "in_progress" || task.status === "subagent_running",
-  ) ?? (planStatus === "process.active"
-    ? plan.tasks.find((task) => task.status !== "done")
-    : undefined);
-  return plan.tasks.map((task) => {
-    let status: "pending" | "in_progress" | "completed" = task.status === "done" ? "completed" : "pending";
-    if (task.id === activeTask?.id) {
-      status = "in_progress";
-    }
-    return { step: task.title, status };
-  });
 }
 
 function compactDirectCommandResult(
@@ -3031,8 +3325,10 @@ function readOrderedPlanEditOperations(args: string[]): PlanMutationOperation[] 
   return operations;
 }
 
-function requestsPlanEndState(operations: PlanMutationOperation[]): boolean {
-  return operations.some((operation) => operation.type === "plan.status" && operation.status.startsWith("end."));
+function requestsPlanEndTerminal(operations: PlanMutationOperation[]): boolean {
+  return operations.some(
+    (operation) => operation.type === "plan.status" && operation.status.startsWith("end."),
+  );
 }
 
 function planCompletionOperations(updates: PlanFieldUpdates): PlanMutationOperation[] {

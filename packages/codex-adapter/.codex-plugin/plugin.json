@@ -31,9 +31,7 @@
       "Write"
     ],
     "defaultPrompt": [
-      "Start with using-claw-kit. If a .claw workflow is already recovered, follow its returned workflowGuidance before creating anything.",
-      "Start with using-claw-kit. When no task scope exists, create a plan if reusable project knowledge is expected; otherwise work directly. A created plan may remain in process.discussing, and enters process.active only when downstream tasks are explicit and the user can hand off execution.",
-      "Start with using-claw-kit. On Codex, run every claw plan mutation only through its fixed code-mode driver; the program consumes hostActions and the agent must not execute goalTool or split host calls."
+      "Start with using-claw-kit. Follow recovered workflowGuidance before creating anything. When no task scope exists, create a plan only when reusable project knowledge is expected; keep it in process.discussing until downstream tasks are explicit and handoff-ready, then enter process.active. Run every Codex claw plan mutation through the fixed code-mode driver, which consumes hostActions without separate goalTool calls."
     ],
     "websiteURL": "https://github.com/chanyuenpang/claw-kit",
     "privacyPolicyURL": "https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement",

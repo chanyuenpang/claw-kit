@@ -1,3 +1,5 @@
+// Test-only oracle for the CLI-provided versioned driver. This file is not
+// distributed in the Codex plugin payload.
 const SUPPORTED_SCHEMA_VERSION = 1;
 const PLAN_STATUSES = new Set(["pending", "in_progress", "completed"]);
 const GOAL_STATUSES = new Set(["complete", "blocked"]);

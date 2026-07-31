@@ -16,7 +16,7 @@
 - Codex `Stop` 从 transcript 尾部定位当前 Stop turn 的边界，只读取该轮的完整记录而不扫描更早轮次。每个成功 `task.done` 返回关联同 turn 内位于它之前且距离最近的 assistant message；没有可靠前置结论时跳过。sidecar 把所有合格结论作为 `entryType: "task_conclusion"` 追加到 Stop registry 当前拥有的相邻 report，再追加本 turn 的最终 report entry，不按 plan 或 task identity 过滤。
 - 因此当前 `task_conclusion` 是同一真实 agent turn 内由 claw task checkpoint 恢复的阶段结论，不是独立 Codex turn。最终 report entry 才对应 `Stop` 所结束的真实 turn；在 `Stop` 发生前，即使该 turn 已完成多个 `task.done`，相邻 report 也不会出现该 turn 的新增记录。
 - report 追加按 `sessionId`、`turnId`、entry type 与 message 幂等去重。因此同一 turn 可以保留不同结论，也可以同时保留最终 turn report；相同信息是否来自一个或多个 task 不影响 writer 消费。
-- 当前 CLI 加载前的 knowledge hook preflight 只检查 hook cwd 直属的 `.claw`，不会向上解析项目根；因此从项目内 nested cwd 结束的 turn 会在读取 payload 和 registry 前直接退出，即使后续 `runStopHook` 与 project resolver 本可识别祖先项目。这会使该 turn 的 report、终态 job 与 writer 覆盖整体缺失，而不是仅降低单条 `task_conclusion` 的质量。
+- 当前 CLI 加载前的 knowledge hook preflight 会从 hook cwd 向上解析最近的 `.claw` 项目根，并以系统临时目录作为向上搜索的停止边界；因此项目根和项目内 nested cwd 共享同一 Stop capture/finalization 资格，而真正不属于项目或没有 session knowledge target 的调用仍快速退出。
 - Knowledge finalization executor 只异步消费进入 `end.*` 的 source `plan.json`、其相邻 report、finalize id、job host 与冻结的 writer 配置。`externalSkills` 非空时按顺序物化真实 skill assignments；列表缺失或为空时物化 Core 内部的 consistency-aware governance assignment。内置 assignment 共同维护 Truth 和 ADR、收敛每条 material current claim 的唯一 owner，但不以用户可发现的 `claw-kit:knowledge-writer` skill 形式发布。外部 skill 的 prompt 与治理边界由 `external-writer-skill-config.md` 唯一拥有；全部 assignments 成功完成后才请求 recall indexing。
 - Codex 与 OpenCode 的 `using-claw-kit` 入口都明确告知 agent：eligible closeout 会自动把可复用知识沉淀进 canonical Truth。由该流程产生的 Truth 文件修改属于正常 workflow output，包括其他任务并行运行期间；仅观察到这类修改本身不构成写集冲突或异常沉淀的证据。
 - `knowledgeWriter.executionPolicy` 只选择 executor launcher：`background` 是默认值，由 Stop 后启动独立 host agent；`subagent` 仅受 Codex 支持，终态 plan mutation 在 Stop 前返回确定性 `knowledgeDispatch`，主 agent 直接 `spawn_agent` 后结束当前回合且绝不等待。Stop 随后创建真实 job；background CLI worker看到 `subagent` job 会直接退出，不得 claim 或跨策略 fallback。
@@ -30,6 +30,7 @@
 - finalizer 不主动删除 report。report 随整个 task directory 归档，并只在 task retention 裁剪对应 archived task 时删除；这一 retention 生命周期及默认值由 `task-layout-and-session-bindings.md` 记录，决策理由由 `../adr/hook-owned-two-phase-knowledge-finalization.md` 拥有。
 - 主 agent 不判断 assignment、治理结果或 Truth→ADR 路由；仅在 Codex `subagent` policy 下消费结构化 dispatch、启动一个 fresh executor 并立即让出回合。combined writer 的返回文本不控制 fixed Truth→ADR deposition sequence，异步知识采集也不能反向接管 plan lifecycle。
 - 前台 plan mutation 成功后，hook、report 或 SDK 的错误只能作为可观察的附加失败，不能回滚、阻塞或重写 canonical plan state。
+- `packages/codex-adapter/scripts/knowledge-finalizer.mjs` 在 capture、capture protocol 或 detached launch 失败时向 stderr 输出一条脱敏 JSON diagnostic，并把结果标记为 `failed-open`；诊断不得包含项目路径、用户内容或 transcript 内容，且不得把 sidecar 失败升级为前台 lifecycle 失败。
 - Codex host 的 SessionStart hook 显式调用 `claw context --host codex`。该 context 路径只检查 `%USERPROFILE%\.claw-kit\codex-runtime\<version>` 下用户级、版本化 SDK runtime 是否可用，不安装、不修复、不自动重试；非 Codex host 不承担这项检测。
 - `@claw-kit/codex-adapter` 拥有 Codex SDK 依赖，通用 `@veewo/claw` CLI 不静态依赖 SDK。knowledge worker 从 context 已准备的 runtime 动态加载 SDK。
 - runtime 健康时，公开 context 不输出 runtime 路径或版本；runtime 缺失或无效时，返回英文结构化 `CODEX_SDK_RUNTIME_MISSING` error，其 `requiresUserConsent` 为 `true`，且不提供固定 `repairCommand`。
@@ -59,7 +60,7 @@
 
 - 不能根据目录扫描或 hook event 推断 active plan；无 session binding 时必须保持无恢复状态。
 - 不能把 final message 当作可随意裁掉的重复文本；在当前实现中，空 message 会让 report capture 和终态 job 创建同时短路。若要解耦内容去重与 lifecycle trigger，必须先引入独立、可持久化的 Stop/coverage 完成状态。
-- 不能把 nested cwd 没有直属 `.claw` 解释为“不在项目中”；当前 preflight 的直属目录 gate 会让整轮 report 与 finalization 不可观察地漏收。
+- 不能把 nested cwd 没有直属 `.claw` 解释为“不在项目中”，也不能把 preflight 退回直属目录 gate；项目内子目录必须复用祖先项目根，系统临时目录边界之外则不得继续扩大搜索范围。
 - report 写入时不可把 pending ended plan 和已经恢复的 parent plan 都当成同一 turn 的 owner，否则会产生双写和不确定的 closeout 证据。
 - 不能把 Goal Mode 内的 commentary、工具批次、compaction 或 claw task checkpoint 解释为新的 `turn_id`，也不能声称 `Stop` 会逐个 flush 这些内部推进。需要阶段级 report 时必须另行定义稳定分段信号，不能复用 turn 级边界冒充。
 - 异步 writer 的完成状态与前台 `claw plan done` 成功是两件事；不得把后者表述为已完成 truth / ADR 沉淀。
@@ -71,6 +72,7 @@
 - 人为让 hook、report 或 SDK 路径失败后，plan create/edit/done、subplan parent resume 和 binding 仍按 canonical lifecycle 完成。
 - 创建 root plan 和 subplan 时，各自只有由 `.json` 派生的相邻 `.report` 路径。
 - Stop preflight 必须覆盖项目根与项目内 nested cwd，并继续拒绝真正不属于该项目或没有 session knowledge target 的调用。
+- Stop sidecar 失败验证必须确认 stderr 只出现脱敏、结构化、`failed-open` 的诊断，且前台 plan/session 结果不被回滚或改写。
 - 终态 transition 的 Stop 只产生一份、且属于 pending ended plan 的 report；普通 Stop 只属于 active plan。
 - final-message capture 回归必须覆盖空 message 不创建 job、非空 message 才消费 `pendingTurnOwner` 并创建幂等 job，以及未来若解耦 trigger 时不再以 message presence 充当 Stop/coverage 状态。
 - transcript capture 回归应覆盖 direct / deferred 成功输出、失败调用与文本伪阳性、同 turn 多次成功返回、最近前置 assistant conclusion，以及同一 Stop 重放的 report 幂等性。
@@ -104,6 +106,12 @@
 - 对 9 个已归档任务的只读抽样中，8 个存在 report，共包含 16 条 `task_conclusion` 与 10 条 turn final；约 12 条 checkpoint 信息是可复用的设计事实、风险、根因或验收证据，约 4 条只是过渡状态。该基线说明筛选后的 checkpoint 相比全量 commentary 信噪比较高，但不能单独保证结论完整。
 - 同一抽样有 1 个任务因 nested cwd 完全没有 report；另有失败归因、测试前置与替代验证关系只能由 plan retrospective 补回或仍然缺失。这个 incident baseline 保留用于解释为什么 report 覆盖与 source `plan.json` 的联合消费比单条消息质量更关键，不再作为未来 turn-level 捕获合同的决策依据。
 - 对其中 8 个 plan-done turn 的进一步对照显示，约半数 final 基本重复 task conclusions、retrospective 与 key decisions，约半数补充了会改变沉淀强度的最终事实集合、证据入口、未验证项或交付边界。该样本只支持“不能全局假定 final 冗余”，不构成未来固定比例或完整性保证。
+
+<!-- dated: 2026-07-31 -->
+### Nested cwd preflight 与 Stop 失败可观察性
+
+- 旧 preflight 只检查 hook cwd 直属 `.claw`，曾使 nested cwd 的整轮 report 与 finalization 漏收。当前实现改为解析祖先项目根，并保留临时目录停止边界；旧抽样中的漏收只作为历史 incident 证据。
+- Stop sidecar 继续 fail-open，但 capture、protocol 与 launch 失败不再静默：finalizer 输出不含路径或用户内容的结构化 stderr diagnostic，供 agent/operator 定位失败而不改变 canonical lifecycle。
 
 <!-- state: current -->
 ## 当前沉淀边界

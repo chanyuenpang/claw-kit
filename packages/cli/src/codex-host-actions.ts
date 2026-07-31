@@ -1,0 +1,105 @@
+import {
+  shouldUsePlanHostIntegration,
+  type PlanDocument,
+  type PlanEvent,
+  type WorkflowGuidance,
+} from "@veewo/claw-core";
+
+export function buildCodexHostActions(
+  result: {
+    planStatus: string;
+    previousPlan?: PlanDocument;
+    plan?: PlanDocument;
+    workflowGuidance: WorkflowGuidance;
+    events?: PlanEvent[];
+  },
+  options: { forceProjectionSync?: boolean; actionIdPrefix?: string } = {},
+): Array<Record<string, unknown>> {
+  const latestEvent = result.events?.at(-1);
+  const actionIdPrefix = options.actionIdPrefix ?? latestEvent?.mutationId;
+  if (!actionIdPrefix) return [];
+
+  const actions: Array<Record<string, unknown>> = [];
+  const goalTool = result.workflowGuidance.goalTool;
+  const isSubplanGoalHandoff = Boolean(
+    result.plan?.parentPlan
+    && goalTool?.tool === "update_goal"
+    && goalTool.status === "complete",
+  );
+  if (isSubplanGoalHandoff) {
+    actions.push({
+      schemaVersion: 1,
+      id: `${actionIdPrefix}:update_goal`,
+      tool: "update_goal",
+      input: { status: "complete" },
+    });
+  }
+  if (
+    result.plan
+    && shouldUsePlanHostIntegration(result.plan)
+    && result.plan.tasks.length > 0
+    && (
+      options.forceProjectionSync
+      || codexPlanProjectionChanged(result.previousPlan, result.plan, result.planStatus)
+    )
+  ) {
+    actions.push({
+      schemaVersion: 1,
+      id: `${actionIdPrefix}:update_plan`,
+      tool: "update_plan",
+      input: {
+        explanation: result.workflowGuidance.summary,
+        plan: buildCodexPlanProjection(result.plan, result.planStatus),
+      },
+    });
+  }
+  if (goalTool && !isSubplanGoalHandoff) {
+    actions.push(goalTool.tool === "create_goal"
+      ? {
+          schemaVersion: 1,
+          id: `${actionIdPrefix}:create_goal`,
+          tool: "create_goal",
+          input: { objective: goalTool.objective },
+        }
+      : {
+          schemaVersion: 1,
+          id: `${actionIdPrefix}:update_goal`,
+          tool: "update_goal",
+          input: {
+            status: result.planStatus === "process.wait" || result.planStatus === "process.discussing"
+              ? "complete"
+              : goalTool.status,
+          },
+        });
+  }
+  return actions;
+}
+
+export function buildCodexPlanProjection(
+  plan: PlanDocument,
+  planStatus: string,
+): Array<{ step: string; status: "pending" | "in_progress" | "completed" }> {
+  const activeTask = plan.tasks.find(
+    (task) => task.status === "in_progress" || task.status === "subagent_running",
+  ) ?? (planStatus === "process.active"
+    ? plan.tasks.find((task) => task.status !== "done")
+    : undefined);
+  return plan.tasks.map((task) => ({
+    step: task.title,
+    status: task.status === "done"
+      ? "completed"
+      : task.id === activeTask?.id
+        ? "in_progress"
+        : "pending",
+  }));
+}
+
+function codexPlanProjectionChanged(
+  previousPlan: PlanDocument | undefined,
+  plan: PlanDocument,
+  planStatus: string,
+): boolean {
+  if (!previousPlan) return true;
+  return JSON.stringify(buildCodexPlanProjection(previousPlan, previousPlan.status))
+    !== JSON.stringify(buildCodexPlanProjection(plan, planStatus));
+}

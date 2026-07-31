@@ -45,6 +45,8 @@ The repository also needs one maintainer entry that can execute the accepted rel
 - release closeout 的 done 条件不包括本机全局 `claw` CLI 或 installed Codex plugin 刷新；`scripts/publish-release.mjs` 在双包 publish 后提示调用 `claw-kit:update`，并明确禁止从未发布的 workspace content 安装
 - 完整维护者编排由仓库本地 `.agents/skills/release-claw-kit` skill/template 承担，不进入 published Codex plugin 或 `shared/skills`。其 8 个线性任务以 artifact release 和 published-source Codex update 为先后两个完成边界：第 6 个任务完成 GitHub/npm/committed-plugin release 验收后，第 7 至 8 个任务才复用公开的 Codex update 合同；模板不设置 route choice，也不把本机安装证据提升为 release artifact 的完成条件。
 - 后续 Codex update 验证必须 identity-aware：只允许 official `claw-kit@claw-kit`，并核对 official repository marketplace source、matching cache、所需 skill payload 与 restart/new-task loaded locator；cache 目录存在或较新但未启用不能作为 update completion 证据
+- published-source Codex installer 对请求 ref（默认 `main`）只解析一次：先用 `git ls-remote` 得到并校验 40 字符 commit SHA，再 fetch 该 SHA 并 detached checkout。安装事务后续只消费这个不可变 source snapshot，不允许可变 ref 在下载与激活之间漂移。
+- Codex payload 的 export/cache 安装采用同父目录 staging 与 atomic rename：拒绝 symlink，校验 manifest、hooks 和 source/destination 全文件 SHA-256 后才激活；替换中断时恢复旧目录并清理 staging/backup。失败不能留下半写 cache，也不能用“目标目录已出现”冒充安装成功。
 - when adapter skills change, plugin cache verification should inspect both the manifest version and the expected skill files; `0.1.48` specifically required `skills/config/SKILL.md` to be present in the local Codex cache
 - 如果 release round 同时包含 Codex workflow contract 变更，closeout 应把这些长期规则一并沉淀到 canonical truth；`0.1.39` 的新增规则是 researcher dispatch 前不要由 host 内联读取 search skill，且依赖 research 结果的主流程必须等待 `researcher` 返回
 - `release-next-version-and-refresh-local-installs` 这轮把 release baseline 明确卡在 `0.1.51`，因此 `0.1.52` 的版本 bump 必须覆盖 root/package-lock metadata、`@veewo/claw-core`、`@veewo/claw`、Codex/OpenClaw/OpenCode adapter package versions、CLI/OpenClaw dependency pins on `@veewo/claw-core`，以及 `packages/codex-adapter/.codex-plugin/plugin.json` 的 `0.1.52+codex.20260624215321` 版本；发布后仍要验证 `npm test`、`npm run check`、`npm pack --dry-run`、`claw --version`、`npm list -g @veewo/claw --depth=0` 和本地 Codex plugin cache 的实际刷新结果
@@ -68,6 +70,7 @@ The repository also needs one maintainer entry that can execute the accepted rel
 - release 与本机 update 形成有序的两个完成边界：release 证明 GitHub、npm 与 committed Codex payload 可交付；随后 `claw-kit:update` 证明操作者机器的 CLI、official identity、source/cache 与新任务 loaded locator 已采用该发布
 - repository-local `release-claw-kit` 为 claw-kit 维护者提供一个可重复入口，同时通过任务边界而不是合并验收条件来串联 release 与 update；插件用户不会看到该项目私有发布能力，其他仓库也不会继承 claw-kit 的 direct-main、npm 与 GitHub Release 规则。
 - active identity 与 source/cache 一致性只在 update 完成态中作为安装证据，避免把本机缓存状态误写成 registry/GitHub release 的必要条件
+- ref resolution 与 cache activation 分别固定 source immutability 和 local atomicity：前者避免同一次安装跨越两个 `main` revision，后者保证失败后仍保留上一份完整 cache。
 - workflowGuidance wording patch 不能只停在源码层；release state 要证明 committed marketplace payload 与 registry package 携带同一合同，随后 update state 再证明 global CLI 和 official plugin cache 已采用该合同
 - plugin cache 的 direct filesystem sync 范围被继续固定下来，后续 closeout 可以明确判断“缓存没刷新”与“缓存目录已切换但 payload 不一致”这两类不同故障
 - 0.1.50 这轮把真实 publish / restore / push 的失败恢复边界也固定了：core 先发、CLI 后发，helper 安装脚本超时后用显式 global npm install 恢复 `claw`，GitHub 连接异常时可用 `http.curloptResolve` 作为一次性 push 恢复手段
@@ -94,6 +97,9 @@ The `0.1.87` release was the first recorded use of the narrow workspace-link exc
 - `.agents/skills/release-claw-kit/references/release-protocol.md`
 - `DISTRIBUTION.md`
 - `scripts/install-cli.ps1`
+- `scripts/install-codex-plugin.ps1`
+- `scripts/codex-plugin-bundle.mjs`
+- `scripts/codex-plugin-bundle.test.mjs`
 - `scripts/update-template-versions.mjs`
 - `packages/core/src/templates/plans/default.ts`
 - `package.json`
@@ -155,3 +161,6 @@ The `0.1.87` release was the first recorded use of the narrow workspace-link exc
 - `release-claw-kit`
 - `Codex-owned release template`
 - `artifact release before published-source update`
+- `immutable marketplace commit`
+- `atomic plugin cache activation`
+- `payload hash comparison`

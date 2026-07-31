@@ -24,21 +24,24 @@ Codex 的 claw plan mutation 会同时产生 CLI JSON 和需要调用原生 host
 
 Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode consumer：
 
-- Agent 只向 `runClawPlanMutation` 提供 claw command、working directory 和 timeout，不解释或手写 action dispatch。
+- Agent 只向 `runClawPlanMutation` 提供结构化 `argv: string[]`、working directory 和 timeout，不拼接 shell command，也不解释或手写 action dispatch。argv 只允许 `plan`、`task`、`subplan` group，并拒绝调用方提供 `claw` 或 `--host`。
+- driver 把 argv 编码为 UTF-16 hex，并只运行固定形状的 `claw codex invoke <hex>`；CLI 解码并再次校验后内部追加 `--host codex`。shell output 中只有同时满足 `ok: boolean` 与 `command: string` 的完整 JSON object 才是 protocol result。
 - consumer 解析 CLI JSON，并按返回顺序消费 `hostActions`；每个 action 按 `id` 至多成功执行一次。
 - `hostActions` 是 Codex 唯一的 host 执行源。`workflowGuidance.goalTool` 继续作为 core 和其他 host 的兼容合同存在，但 Codex 不解释、不执行，也不据此补建或重试 action。
 - schema v1 action envelope 只保留 `schemaVersion`、作为至多一次消费键的 `id`、`tool` 与真实 host `input`。`sourceEventId`、`meta.reason` 与 `meta.allowOverwrite` 没有 Codex consumer，因此不再输出；不为这次兼容精简引入 schema v2。
 - consumer 只白名单调用 `update_plan`、`create_goal` 和 `update_goal`，且只把经过验证的 `input` 投影给 host tool。action envelope 的最小字段不改变工具白名单、顺序、幂等或 fail-closed 边界。
+- `packages/cli/src/codex-host-actions.ts` 是 stateless CLI 与 process-backed session command service 的唯一 host-action projector；两条入口不得复制 plan/Goal 投影规则。
 - consumer 语义变更必须同时 bump versioned driver/cache identity，避免同线程继续复用旧 source；本次 Goal-action 幂等变更以 v5 bump 落地。当前具体 identity 由 `../features/codex-workflow-guidance-consumption.md` 唯一拥有。
 - command-execution capability 必须由 driver 在运行时从注入的 `tools` object 解析：可用时使用 `shell_command({ command, workdir, timeout_ms })`，否则使用 `exec_command({ cmd, workdir, yield_time_ms })`；两者都不可用时，以明确的 unsupported-command-execution error 失败。bridge 不得从 OS、Codex version、environment variables 或 Agent 提供的 tool name 推断该能力。此选择同时适用于获取 driver 的 bootstrap 与返回的 driver source；任一语义变化都要求新的 driver/cache identity。
 - bridge 的安全压缩路线是 cold path 保留完整 bootstrap 和兼容性校验；校验成功后只缓存已验证的 `source`，让同线程后续 mutation 通过约 4–6 行 hot path `eval` 并调用 runner。当前 skill 仍缓存完整 envelope 并复用同一个 wrapper，这项压缩尚未实现。
 - hot path 发现缓存缺失或版本不兼容时，只能重新进入完整 bootstrap，或以 `bootstrap required` 一类明确错误 fail closed；不能运行未验证 source、手工解释 `hostActions`，也不能把 CLI mutation 与 native host action 改成两个调用。
 - v4 曾只扩大 `plan.done` 的可见终结字段：`planPath`、`nextsteps` 与 `achievement`；v5 保留这些 compact-result 语义，并加入固定程序内的 Goal-action 幂等检查。普通 mutation 仍保持精简，subplan done 恢复 parent 时因为没有 root terminal `achievement` 而不会制造终结成就。
-- Goal action 继续使用 schema-v1 原生命令，不引入 `ensure_goal` pseudo-action，也不匹配 host error text。只有固定 driver 或 bundled consumer 可以在 action 紧前方调用 `get_goal`；Agent 禁止单独检查 Goal 状态。
+- Goal action 继续使用 schema-v1 原生命令，不引入 `ensure_goal` pseudo-action，也不匹配 host error text。只有固定 driver 可以在 action 紧前方调用 `get_goal`；Agent 禁止单独检查 Goal 状态。
 - CLI 只按 mutation 提交后的 plan 状态路由 Goal action：`process.wait` / `process.discussing` 发出 `update_goal(status="complete")`，进入或恢复 `process.active` 发出 `create_goal`，`end.completed` 发出 `update_goal(status="complete")`。
 - consumer 逐条执行 CLI 返回的 action；每个 `create_goal` / `update_goal` 紧前方读取 Goal snapshot。设置 Goal 时，任何非 `complete` 的现有 Goal 都先以 `update_goal(complete)` 关闭，并返回结构化 `goalRecovery.command = "claw plan sync"`；Agent 必须在新的 code-mode call 执行该命令，直到新 Goal 创建成功。没有 active Goal 时跳过 `update_goal`。不能在同一个 code-mode call 中合并 complete→create，resume 的 canonical transition 不得重放。
 - 未知 `schemaVersion`、未知 tool、不兼容 input 或缺失 host tool 一律 fail closed。Codex 不提供 direct-call 或 split-call fallback。
-- `packages/codex-adapter/skills/using-claw-kit/SKILL.md` 内嵌固定 `runClawPlanMutation` driver，以便在 isolate 内直接执行；`packages/codex-adapter/scripts/code-mode-host-action-consumer.mjs` 保留为完整、可复用且可测试的 source contract。
+- `packages/codex-adapter/skills/using-claw-kit/SKILL.md` 内嵌固定 `runClawPlanMutation` driver，以便在 isolate 内直接执行；`packages/cli/src/codex-driver.ts` 是当前 source contract，并由 source SHA snapshot 强制 driver/cache identity 随序列化语义变化升级。旧的 `packages/codex-adapter/scripts/code-mode-host-action-consumer.mjs` 只保留为 repository test oracle，不进入 plugin payload。
+- Node adapter worker 走 `@veewo/claw-client` 的持久 session 时，使用 schema-v1 `commandEnvelope()` 接收 `output`、`hostActions`、`postCommitEffects` 与可选 `knowledgeDispatch`；普通 `command()` 只返回 `output`。当前 Codex code-mode 不能跨调用持有该 Node socket，因此仍用 structured-invoke compatibility transport，每次 mutation 启动一个轻量 CLI 进程。
 - Goal lifecycle 变更发布前必须用未发布的本地构建通过真实 Host wait→active 验收：wait 后 Goal 为空，resume 后新 Goal 在跨调用结算后仍保持 active；单元合同测试不能替代该门禁。
 
 ## Alternatives Considered
@@ -47,6 +50,7 @@ Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode c
 - CLI 子进程直接调用 Codex host tools：拒绝，因为公开插件接口没有提供这条能力边界。
 - 把 app-server Goal/MCP API 当作当前 plugin shortcut：拒绝，因为它需要同一 app-server instance、初始化与 thread identity，而且没有客户端 plan setter；仅保留为未来原生 Codex integration 的独立候选路线。
 - code mode 失败后退回分离 host 调用：拒绝，因为 fallback 会绕过同一程序内的 schema 校验、幂等性和字段白名单。
+- 继续接受 Agent 提供完整 shell command：拒绝，因为 quoting、shell interpolation 与 `--host` ownership 会重新进入 prompt-controlled surface；structured argv 和固定 invoke command 把这些边界收回程序。
 - 在首次调用前直接使用短 hot path：拒绝，因为尚未建立可信的 versioned driver source；短调用只适用于同线程已通过完整 bootstrap 的缓存命中。
 - 现在把 bridge 收敛成真正的一行 CLI 调用：暂不采用，因为普通 CLI 子进程没有当前 thread 的原生 host-tool capability；只有未来 Codex runtime 提供专用持久 helper/tool 时才重新评估。
 - 在 isolate 内 import consumer 模块：不可行，因为当前 code-mode isolate 不能直接 import 本地插件模块。
@@ -56,12 +60,16 @@ Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode c
 ## Related Code
 
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md`
-- `packages/codex-adapter/scripts/code-mode-host-action-consumer.mjs`
 - `packages/codex-adapter/hooks/code-mode-host-action-consumer.test.mjs`
 - `packages/codex-adapter/hooks/subagent-contract.test.mjs`
 - `packages/codex-adapter/references/workflow-guidance-consumption.md`
 - `packages/cli/src/cli.ts`
+- `packages/cli/src/codex-driver.ts`
+- `packages/cli/src/codex-host-actions.ts`
+- `packages/cli/src/command-service.ts`
 - `packages/cli/test/cli.test.ts`
+- `packages/client/src/protocol.ts`
+- `packages/client/src/index.ts`
 - `.claw/tasks/实现-Goal-目标状态幂等保证并发布-0.1.72/plan.json`
 - `.claw/tasks/验收-0.1.75-短Bootstrap-20260717T1255/plan.json`
 
@@ -69,6 +77,8 @@ Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode c
 
 - Codex 的计划镜像和 Goal Mode 生命周期由 CLI 投影的同一组 `hostActions` 驱动，避免 `goalTool` 造成第二次调用。
 - action 的 schema、顺序、幂等性、input 边界和 tool 白名单成为可测试的程序合同，不再依赖 Agent 判断。
+- structured argv、固定 invoke command 与 CLI 侧二次校验移除了 Agent-controlled shell quoting 和 host injection；protocol parser 不会把 shell diagnostics 中任意花括号误当 mutation result。
+- stateless CLI 与 session command service 共享同一个 host-action projector；Node adapter 得到原生 envelope，而 Codex code mode 保留兼容 transport。两者共享语义，但不虚构 Codex 已拥有持久 socket。
 - schema-v1 envelope 删除无人消费的事件与策略 metadata，保留 `id` 的至多一次语义和原生 host `input`；兼容精简不需要新增 schema 版本，也不改变 consumer 实现边界。
 - Goal action 的目标状态幂等性由固定程序拥有：设置 Goal 不复用旧 Goal，而是关闭任何非终态旧 Goal 后通过独立 call 创建本次目标；已关闭或不存在的 Goal 不会被 completion 再次关闭。所有路径都保留 action-id 至多一次语义。
 - plan-status router 消除 Goal 桥接对 Agent 所见历史状态、错误文本和补偿判断的依赖；source 与 versioned cache 中的 consumer/driver 必须保持该合同一致。
@@ -77,7 +87,7 @@ Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode c
 - 真实 Host lifecycle 成为 Goal action 发布门禁，避免仅靠 mock 或单元测试批准宿主时序错误。
 - host tool 不可用或合同不兼容时会显式停止；调用方必须修复程序或接口版本，而不能静默绕过合同。
 - command execution 兼容已支持的 host-tool variants，不把 adapter 绑定到单一 Codex tool name；不受支持的 host 仍须在任何 CLI mutation 或 host-action dispatch 前失败。
-- `exec_command` 不能复用 `shell_command` 的参数名称；bootstrap 与 driver source 都须将 timeout 投影为 `yield_time_ms`，并随该语义变更使用新的 v9 driver/cache identity。
+- `exec_command` 不能复用 `shell_command` 的参数名称；bootstrap 与 driver source 都须将 timeout 投影为 `yield_time_ms`。v9 修复了该参数投影，当前 structured-argv/source-SHA 合同使用 v10 driver/cache identity。
 - 内嵌 driver 与独立 source contract 必须通过合同测试保持语义一致。
 - cold/hot path 分层允许后续 mutation 减少重复样板，同时把信任建立、版本/schema 校验与 fail-closed 边界保留在首次 bootstrap；落地前不得把该预期收益描述成当前行为。
 - v4 引入的终结字段过滤继续让 Codex 能直接呈现 root completion，同时不把完整 CLI result 或其他 mutation 的内部字段暴露给 Agent；CLI completion shape 的 owner 仍是 `.claw/truth/adr/cli-guided-plan-lifecycle.md`。
@@ -109,6 +119,11 @@ Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode c
 - `cold path full bootstrap hot path cached source`
 - `bootstrap required`
 - `minimal mutation response`
+- `structured argv`
+- `claw codex invoke`
+- `ClawSessionCommandEnvelope`
+- `commandEnvelope`
+- `single host-action projector`
 
 <!-- state: history -->
 ## 演化历史

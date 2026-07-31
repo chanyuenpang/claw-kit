@@ -188,7 +188,7 @@ export type WorkflowGuidanceGoalTool =
     };
 
 export type WorkflowGuidance = {
-  stage: "requirements" | "review" | "discussion" | "execution" | "done" | "deposition" | "paused";
+  stage: "requirements" | "review" | "discussion" | "execution" | "done" | "deposition" | "paused" | "left";
   summary: string;
   nextsteps: string[];
   nextTask?: {
@@ -296,6 +296,17 @@ export type PlanViewModel = {
     supportsGoalDisclosure: true;
     refreshOn: Array<"plan.write" | "plan.edit" | "plan.done">;
   };
+};
+
+export type SimplePlanView = {
+  status: PlanStatus;
+  goal: {
+    text: string;
+  };
+  tasks: Array<{
+    title: string;
+  }>;
+  rules: string[];
 };
 
 export type PlanReviewInput = {
@@ -461,6 +472,7 @@ export type PlanWriteInput = {
   content?: PlanDocument;
   parentTaskId?: number;
   parentPlanFile?: string;
+  deferParentMutation?: boolean;
   reviewer?: PlanReviewer;
   workflowDefinitions?: string;
   host?: string;
@@ -491,6 +503,11 @@ export type SubplanWriteInput = {
   templateFile?: string;
   ownerSessionKey?: string;
   host?: string;
+  /**
+   * Creates the child plan without writing the parent linkage. Session focus
+   * coordination uses this to journal parent linkage and focus as one commit.
+   */
+  deferParentMutation?: boolean;
 };
 
 export type PlanEditInput = {
@@ -513,6 +530,7 @@ export type PlanEditInput = {
   workflowDefinitions?: string;
   host?: string;
   ownerSessionKey?: string;
+  deferSubplanClosure?: boolean;
   operations?: PlanMutationOperation[];
 };
 
@@ -593,13 +611,14 @@ export type PlanShowInput = {
 };
 
 export type PlanShowResult = {
-    taskName: string;
-    planPath: string;
-    planFile: string;
-    archived?: true;
-    plan: PlanDocument;
-    planView: PlanViewModel;
-  };
+  taskName: string;
+  planPath: string;
+  planFile: string;
+  archived?: true;
+  plan: PlanDocument;
+  planView: PlanViewModel;
+  simplePlanView: SimplePlanView;
+};
 
 export type SwitchTaskInput = {
   cwd: string;

@@ -533,9 +533,17 @@ export async function buildPlanWorkflowGuidance(params: {
         ...(template.commandHints ? { commandHints: template.commandHints } : {}),
       };
     }
-    case "end.closed":
-    case "end.leave": {
+    case "end.closed": {
       const template = renderStateTemplate("end.closed", vars);
+      return {
+        stage: template.stage as WorkflowGuidance["stage"],
+        summary: template.summary,
+        nextsteps: template.nextsteps,
+        ...(template.commandHints ? { commandHints: template.commandHints } : {}),
+      };
+    }
+    case "end.leave": {
+      const template = renderStateTemplate("end.leave", vars);
       return {
         stage: template.stage as WorkflowGuidance["stage"],
         summary: template.summary,

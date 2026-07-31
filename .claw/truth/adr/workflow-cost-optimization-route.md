@@ -42,9 +42,10 @@ Accepted
 9. `0.1.69` 的 complexity-gate dependency 校准只作为版本化性能证据保留；当前 project-plan admission 由 `using-claw-kit-session-entry.md` 的 reusable-project-knowledge 判断拥有。combined writer 固定先评估 Truth、再评估 ADR；每一阶段可以基于 freshness-qualified evidence 不编辑，但不再由旧的独立 ADR phase shortcut 或 Truth/ADR route task 决定 orchestration。
 10. workflow 性能复测必须同时记录线程绑定的 plugin skill snapshot、全局 CLI 的实际命令能力与仓库源码状态。版本号只能作为线索；只有三层合同一致且目标命令在真实 CLI surface 可用，才可把样本归入最新优化路径。
 11. formal workflow 的当前入口边界是是否预期产生可复用项目知识；进入 project plan 后继续保留 planning、Goal Mode、Truth/ADR deposition 与验证门禁，不用删减质量合同换取表面流畅度。
-12. `hostActions` 自动消费已经落地；当前 P1 是让 canonical mutation 已成功、后续 host action 失败的部分成功状态可恢复。driver 应返回结构化 mutation identity、持久化状态与 action 完成情况，并提供幂等 reconcile/recover，而不是让 agent 根据泛化错误猜测或重放 mutation。CLI plan state 仍是 canonical source，不引入 host 侧反向所有权。
+12. `hostActions` 自动消费已经落地；session transport 不为部分成功引入 durable replay、response cache、host-action outbox 或 reconcile protocol。连接中断把 in-flight outcome 明确标记为 unknown，返回精确的 `claw session open <dir> <session-id>`，由 agent 重连后使用 conditional simple view 或 `plan show --simple` 检查 canonical state。重复 mutation 的既有 Core/plan 校验继续作为安全边界，不把 transport 复杂度扩展为第二套 canonical 状态。
+12.1. process-backed session 的性能路线采用 host-neutral Node client/daemon：Node adapter worker 通过持久 `commandEnvelope()` 取得业务 output、native host actions、post-commit effects 与 knowledge dispatch；stateless CLI 和 session command service 共享 `codex-host-actions.ts` 的单一投影。当前 Codex code-mode 无法保留 Node socket，因此使用 structured argv 的固定 `claw codex invoke` 兼容 transport；每次 mutation 仍有一个轻量 CLI 进程，不能以 Node 路线的收益宣称 Codex 已消除进程启动。
 13. `projectVersionAligned` 的诊断不变量是：项目版本与运行时版本相等时必须返回 `true`。equal-version 分支返回 `false` 应作为独立诊断合同缺陷修复，不能被解释为真实版本漂移，也不能覆盖 registry、CLI capability、source、project protocol 与 thread snapshot 的一致性证据。
-14. 后续验收和性能结论继续按 plan lifecycle、lexical search、daemon cold/warm、query cache、writer 与质量门禁分层；不得以任一 search 样本替代整体 workflow 结论。2026-07-19 已完成所有 `end.*` 统一 finalization、conclusion-aware writer evidence 与 SessionStart/context local persistent embedding 异步预热；mutation/host-action recover、knowledge status/retry/explain、统一 doctor 与 deposition manifest 仍是独立后续项。显式 `--template-file` 已解决 template identity，执行期手动 context 样本也不足以支持 compact-context 产品项，因此两者不再占当前优化排序。
+14. 后续验收和性能结论继续按 plan lifecycle、lexical search、daemon cold/warm、query cache、writer 与质量门禁分层；不得以任一 search 样本替代整体 workflow 结论。2026-07-19 已完成所有 `end.*` 统一 finalization、conclusion-aware writer evidence 与 SessionStart/context local persistent embedding 异步预热；durable mutation/host-action replay 已明确不进入当前 session 合同，knowledge status/retry/explain、统一 doctor 与 deposition manifest 仍是独立后续项。显式 `--template-file` 已解决 template identity，执行期手动 context 样本也不足以支持 compact-context 产品项，因此两者不再占当前优化排序。
 15. 采用“验证和测试不应重于其保护的执行”的比例化 policy，并由仓库根 `AGENTS.md` 承载，仅约束 `claw-kit` 自身开发。只有明确且现实的高成本回归风险才能证明更重验证合理；成本判断覆盖选择、编写、运行、排障和维护 checks 的总成本，而不只判断是否新增测试或是否运行全量测试。`shared/skills/planning/SKILL.md` 及其 Codex/OpenCode 物化副本不得包含该仓库政策。自动化测试优先保护稳定、高风险、容易回归的协议、已复现缺陷和关键兼容边界；低风险、纯文档、高频变化或合同未稳定的区域使用最轻可信验证。ADR 负责保存稳定决策与取舍，行为测试负责必要的可执行回归，两者互补而不互相替代。
 16. 本 ADR 早期采用的通常 `1-3` 个 downstream outcome tasks 数字预算已被后续 planning 决策取代，只作为减少管理任务膨胀的历史路线保留。当前 task granularity 由 `shared-planning-skill-source.md` ADR 拥有：以可验收且支持继续或独立重试的进度检查点拆分，并在证据不足时于决定性检查点后进行第二次规划；单一 planning bridge 与 activation gate 的 lifecycle 决策仍由 `cli-guided-plan-lifecycle.md` 拥有。
 
@@ -65,7 +66,7 @@ Accepted
 - writer-owned routing 成为强制边界：main agent 无需理解 canonical 文件布局；writer 依赖 `claw search` 做候选召回、完整读取和明确 disposition，同时保留必要时的受控全量 fallback。
 - 路由提速不得绕过 deposition 的完整 reference 读取、事实验证、路径 containment、编码检查和有界重复检查。
 - writer-owned routing 已消除可控的 ADR corpus 扫描，但 fresh-agent 定向样本未证明端到端耗时下降，因此不能宣称 writer 整体已经加速；后续性能工作应聚焦 writer 启动与模型处理延迟。
-- `0.1.67` 的端到端复测仍未证明 workflow 提速；其 writer-dispatch 观测只作为历史基线，current 审计对象是 hook queue、两个 writer phases 与 completion refresh。
+- `0.1.67` 的端到端复测仍未证明 workflow 提速；其 writer-dispatch 观测只作为历史基线，current 审计对象是 hook queue、一次 consistency-aware writer pass 与 completion refresh。
 - `0.1.68` 复测中，精确路径 search 为 cold `295ms`、warm `172ms` / `175ms`；semantic one-shot miss 为 `4161ms`，daemon cold miss 为 `2958ms`，daemon warm miss 为 `536ms`，同 query cache hit 为 `401ms`。这些成功样本均返回稳定 top result，证明 fast path、daemon session 复用与 query cache 的局部收益，但不代表统一 search 延迟。
 - 同轮 `plan show` warm 均值约 `153ms`，与 `0.1.67` 约 `151ms` 基本持平；create、planning patch、append 与 done mutations 分别为 `587ms`、`524ms`、`437ms`、`397ms`，未证明 plan lifecycle 提速。后续 formal workflow 性能声明必须同时包含 plan mutation 与 closeout 证据。
 - 保守 lexical fast path 与配置感知的 SQLite query embedding cache 已落地：源码 CLI 实测精确路径 cold 345ms、warm 157/160ms；全新语义查询首次 5064ms、第二次 cache hit 188ms，且 top result 保持一致。core 118/118、CLI 63/63、完整 `npm test` 与 `npm run check` 均通过。
@@ -86,7 +87,9 @@ Accepted
 - `0.1.75` 复测证明当前流程的主要体验收益来自 atomic `plan start` 与 Codex `hostActions` 自动桥接，热态表现相对 `0.1.70` 持平到小幅提升；这不能表述为新的数量级 CLI 提速。
 - cold search、错误命令 exit-code 语义与 writer model capability 对齐仍是独立质量和效率工作项，但 2026-07-19 审计已将 recoverability、all-`end.*` deposition 与 knowledge job observability 排在其前面；cold search 的下一项限定为 SessionStart/context 条件预热，不扩展为执行期 context 或无条件 plan-create 预热。
 - `projectVersionAligned` 的 equal-version 误报被隔离为诊断合同缺陷；修复该字段时必须保持 CLI plan canonical state、单向 host synchronization 与现有多层版本/capability 验证边界。
-- project-plan workflow 的质量门禁继续保留；未预期产生可复用项目知识的请求由默认入口直接工作。后续效率收益应来自 host-action 部分成功恢复、减少双写和提高异步 closeout 可观察性，而不是再次实现已经存在的自动桥接。
+- disconnect recovery 保持简单且可审计：不自动重放 outcome unknown 的 mutation，不新增 durable host-action ownership；恢复成本是 agent 重连后显式检查 canonical state。
+- session command envelope 把 adapter 所需 side effects 与普通业务 output 分层，允许 Node worker减少重复 host/workdir/plan 参数和 CLI 进程开销；Codex structured-invoke 只共享协议和投影语义，不共享持久连接的性能结论。
+- project-plan workflow 的质量门禁继续保留；未预期产生可复用项目知识的请求由默认入口直接工作。后续效率收益应来自减少重复参数与双写、Node session 复用和提高异步 closeout 可观察性，而不是 durable host-action replay 或再次实现已经存在的自动桥接。
 - `claw-kit` 仓库内的 planning 按根 `AGENTS.md` 决定测试投入；shared planning skill 不再传播该仓库政策。这样既保留高风险稳定行为的回归保护，也避免为纯文档或未稳定合同制造脆弱、昂贵的细粒度测试，并避免约束插件使用方的其他项目。
 - 性能结论不能只看单条命令基准；必须同时覆盖交互成本、状态写入、首个有效工作时间和质量回归。
 - 分阶段 A/B 让每项收益可归因，并允许在质量指标回退时停止推进对应路线。
@@ -121,6 +124,11 @@ Accepted
 - `packages/core/src/plan.ts`
 - `packages/core/src/memory.ts`
 - `packages/core/src/embedding-worker.ts`
+- `packages/client/src/protocol.ts`
+- `packages/client/src/index.ts`
+- `packages/cli/src/command-service.ts`
+- `packages/cli/src/codex-host-actions.ts`
+- `packages/cli/src/codex-driver.ts`
 
 ## Search Terms
 
@@ -169,3 +177,7 @@ Accepted
 - `cold search exit code writer model capability alignment`
 - `projectVersionAligned equal-version false`
 - `equal-version diagnostic contract`
+- `commandEnvelope hostActions postCommitEffects knowledgeDispatch`
+- `unknown outcome no replay`
+- `claw session open recovery`
+- `structured invoke compatibility transport`
