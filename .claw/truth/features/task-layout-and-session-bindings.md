@@ -11,6 +11,10 @@
 - legacy `meta.json` 与 `plans/` layout 的迁移只运行一次；完成状态存入 `.claw/runtime/maintenance.json` 的 `migrations.taskLayoutV2At`。迁移与 daily maintenance 共用该文件锁，写入时保留对方字段。旧版 `.claw/runtime/task-layout-v2.complete` 会在下次 protocol ensure 时自动收敛到该字段并删除。该 guard 防止后续 context/CLI 调用重复搬运已经迁移的 task 文件。
 - 每个本地日首次 `claw context` 对项目和有效的用户级 session runtime 各执行一次锁保护的惰性维护：清空 `.claw/runtime/tmp/`、移除遗留 `.claw/tmp/`、将早于昨天的日期目录整体归档，并按 `updatedAt`（缺失时按 `plan.json` 修改时间）归档早于昨天的无日期 legacy task；随后按 `maxTasksToKeep` 裁剪 archive，删除 `.claw/tasks/` 与 `.claw/archive/tasks/` 下所有空的 `YYYY-MM-DD` 目录，并递归清理 `.claw/logs/` 中修改日期早于昨天的文件和清空后的日志子目录。日志清理保留今天和昨天的文件，并跳过名为 `inflight.lock` 的整棵目录。session 侧同时清除默认 TTL 为七天的过期或无效 workflow；当前 session workflow 不会被清理。系统临时目录中的 daemon 状态和用户级模型缓存不属于该维护范围。维护成功后才写入对应的 `maintenance.json` 日期标记；同日后续调用跳过。
 - 同一项目维护还会移除指向 active tasks 之外或不存在 plan 的 session binding；清理遗留集中 finalizer jobs 时，删除已成功、损坏或不再关联 active plan 的记录，并删除缺少 active plan 的 knowledge session registry。仍关联 active plan 的 running 或可重试记录不在此清理范围内。
+- process-backed session runtime 以 `(canonicalWorkdir, agentSessionId)` 作为隔离键。每个 session 固定一个不可原地变更的 workdir，并保存零或一个 `currentPlan`；`claw session open <dir> <session-id>` 负责 create-or-open，调用方切换目录时打开另一复合键 session，而不是修改现有 session。
+- terminal 或 Node client 的 soft close 只结束 live attachment，不删除 retained session 或 canonical plan。retained record 按最后 `updatedAt` 保留七天；daemon 重启后仍可由同一 open 命令恢复。打开已有且需要恢复 current plan 的 session 时，`currentPlan` 只复用 `plan show --simple` 的最小 `{status, goal, tasks[].title, rules}` 投影；新 session、无 binding 或不需要恢复时省略该字段。
+- session 内 mutation 串行执行并隐式继承 workdir、agent session identity、host metadata 与 current-plan target。`search --dir <dir>` 只为单次搜索临时覆盖目录，不改变 session workdir、currentPlan 或 session identity。
+- 连接中断不自动重放 mutation，也不建立 durable response/host-action outbox。client 把 in-flight outcome 标记为 unknown，返回精确的 `claw session open <dir> <session-id>` 恢复命令；重连后由 agent 使用 conditional simple view 或 `plan show --simple` 检查 canonical state。
 
 ## 长期行为与边界
 
@@ -22,6 +26,7 @@
 - daily maintenance 是由 `claw context` 触发的惰性操作，不是后台定时器；失败的维护步骤不会更新其日期标记，以便后续调用重试。项目和 session runtime 使用独立标记，避免每个项目重复扫描同一批 session workflow。
 - 空日期目录清理不使用日期保留窗口，只以目录名匹配 `YYYY-MM-DD` 且目录当前为空为资格；日志清理按文件修改时间的本地日期判断，保留今天和昨天。`inflight.lock` 目录是运行中 completion refresh 的保护边界，维护不得进入或删除其内容。
 - migration guard 属于 project runtime state，不是 task 内容；迁移完成后，旧 `meta.json` / `plans/` 不应继续作为 live lookup surface。
+- session daemon 是本地执行优化与 retained context owner，不拥有 canonical plan state。Node client 的 `command()` 只返回业务 `output`；需要承接 host integration 的 adapter 使用 versioned `commandEnvelope()`，取得同一 mutation 的 `hostActions`、`postCommitEffects` 与 `knowledgeDispatch`。
 
 ## 关联代码与验证
 
@@ -37,11 +42,13 @@
 - task 私有 finalization jobs 与旧路径 retry compatibility：`packages/core/src/knowledge-sidecar.ts`
 - retention 共享默认值：`packages/core/src/project-defaults.ts`
 - context/CLI routing：`packages/cli/src/cli.ts`
+- session protocol/client：`packages/client/src/protocol.ts`、`packages/client/src/index.ts`
+- session daemon、registry 与 command service：`packages/cli/src/session-daemon.ts`、`packages/cli/src/session-registry-v2.ts`、`packages/cli/src/command-service.ts`
 - core 与 CLI tests 覆盖日期 task 与旧平铺 task lookup、session lookup 不扫描 task、flat subplan collision、child/parent/root rebinding、`completedAt` retention/pruning、每日维护的空日期目录与日志清理、`inflight.lock` 保留，以及 `maintenance.json` 的 task-layout migration guard。
 
 ## 关键检索词
 
-`sessionKey`、`planPath`、`session bindings`、`active workflow lookup`、`YYYY-MM-DD`、`flat subplan`、`parentPlan`、`updatedAt`、`completedAt`、`legacy task`、`delayed archive`、`archive pruning`、`maintenance.json`、`runtime/tmp`、`logs`、`completion-refresh`、`inflight.lock`、`knowledge-finalization`、`taskLayoutV2At`、`meta.json migration`
+`sessionKey`、`planPath`、`session bindings`、`active workflow lookup`、`agentSessionId canonicalWorkdir`、`claw session open`、`currentPlan`、`commandEnvelope`、`SESSION_CONNECTION_LOST`、`search --dir`、`YYYY-MM-DD`、`flat subplan`、`parentPlan`、`updatedAt`、`completedAt`、`legacy task`、`delayed archive`、`archive pruning`、`maintenance.json`、`runtime/tmp`、`logs`、`completion-refresh`、`inflight.lock`、`knowledge-finalization`、`taskLayoutV2At`、`meta.json migration`
 
 ## Windows task retention 有界重试
 

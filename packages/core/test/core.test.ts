@@ -9,6 +9,12 @@ import {
   buildKnowledgeDelegateDispatch,
   buildKnowledgeAssignmentTemplate,
   buildKnowledgeWriterAssignments,
+  activatePlan,
+  completeSubplanAndRestoreParent,
+  createSubplanAndSwitchFocus,
+  createPlanRef,
+  focusOwnersPath,
+  focusTransitionsDirectory,
   knowledgeDelegateTemplatePath,
   buildMemoryIndex,
   createSubplan,
@@ -20,15 +26,22 @@ import {
   getMemory,
   ingestTruth,
   initProject,
+  isCompletionTerminal,
+  isEndTerminal,
+  isFocusLeave,
   deriveKnowledgeReportPath,
   knowledgeFinalizationJobPath,
   knowledgeSessionRegistryPath,
   claimKnowledgeFinalizationJob,
   doneKnowledgeFinalizationJob,
   listRetryableKnowledgeFinalizationJobs,
+  leaveCurrentPlan,
   normalizeTruthMarkdownEncoding,
   recordKnowledgeFinalizationResult,
   readKnowledgeFinalizationJob,
+  readFocusedPlan,
+  readPlanFocusOwner,
+  recoverProjectFocusTransitions,
   waitForKnowledgeFinalizationJobReady,
   runDailyMaintenance,
   writeKnowledgeFinalizationJob,
@@ -37,6 +50,7 @@ import {
   resolveSessionBoundPlan,
   searchMemory,
   showPlan,
+  switchCurrentPlan,
   switchTask,
   tryCaptureKnowledgeStop,
   tryCompleteKnowledgePlan,
@@ -2760,6 +2774,361 @@ test("resuming from process.wait to process.active re-emits goal mode guidance",
   assert.ok(resumed.workflowGuidance.nextsteps.includes("Sync thread progress with `update_plan`."));
 });
 
+test("end.leave finalizes the current end boundary and resumes directly", async () => {
+  const root = createEmptyFixture("plan-edit-leave-resume");
+  initProject({ cwd: root, projectName: "Leave And Resume", planning: false });
+  const ownerSessionKey = "thread-leave-resume";
+  const created = await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Leave and resume execution",
+    ownerSessionKey,
+    content: {
+      title: "Demo task",
+      status: "process.active",
+      goal: { text: "Leave and resume execution" },
+      tasks: [{ id: 1, title: "Continue work", status: "in_progress" }],
+    },
+  });
+
+  const left = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    planStatus: "end.leave",
+    ownerSessionKey,
+  });
+
+  assert.equal(left.planStatus, "end.leave");
+  assert.equal(left.plan.leaveReason, "manual_leave");
+  assert.equal(left.plan.completedAt, undefined);
+  assert.match(left.knowledgeFinalizeId ?? "", /^[a-f0-9]{64}$/);
+  assert.equal(left.workflowGuidance.stage, "left");
+  assert.equal(left.workflowGuidance.goalTool, undefined);
+  assert.deepEqual(left.workflowGuidance.commandHints, [
+    "claw plan resume <planId>",
+    "claw plan create \"<title>\"",
+  ]);
+  const registry = JSON.parse(
+    fs.readFileSync(knowledgeSessionRegistryPath(resolveProjectContext(root), ownerSessionKey), "utf-8"),
+  ) as Record<string, unknown>;
+  assert.equal(registry.activePlanPath, undefined);
+  assert.equal(
+    (registry.pendingTurnOwner as Record<string, unknown>).finalizeId,
+    left.knowledgeFinalizeId,
+  );
+  assert.equal(resolveSessionBoundPlan(resolveProjectContext(root), ownerSessionKey), null);
+
+  const resumed = await editPlan({
+    cwd: root,
+    taskName: "demo-task",
+    planStatus: "process.active",
+    ownerSessionKey,
+  });
+
+  assert.equal(resumed.planPath, created.planPath);
+  assert.equal(resumed.planStatus, "process.active");
+  assert.equal(resumed.plan.leaveReason, undefined);
+  assert.equal(resumed.workflowGuidance.stage, "execution");
+  assert.equal(resolveSessionBoundPlan(resolveProjectContext(root), ownerSessionKey), created.planPath);
+});
+
+test("plan status classification separates focus leave from completion terminals", () => {
+  const statuses: PlanDocument["status"][] = [
+    "prepare.requirements",
+    "prepare.review",
+    "process.active",
+    "process.wait",
+    "process.discussing",
+    "end.completed",
+    "end.closed",
+    "end.leave",
+  ];
+
+  assert.deepEqual(statuses.filter(isFocusLeave), ["end.leave"]);
+  assert.deepEqual(statuses.filter(isEndTerminal), ["end.completed", "end.closed", "end.leave"]);
+  assert.deepEqual(statuses.filter(isCompletionTerminal), ["end.completed", "end.closed"]);
+});
+
+test("focus coordinator enforces exclusive ownership and switches plans atomically", async () => {
+  const root = createEmptyFixture("focus-exclusive-switch");
+  initProject({ cwd: root, projectName: "Focus Exclusive Switch", planning: false });
+  await writePlan({
+    cwd: root,
+    taskName: "plan-a",
+    title: "Plan A",
+    goalText: "Own plan A",
+  });
+  await writePlan({
+    cwd: root,
+    taskName: "plan-b",
+    title: "Plan B",
+    goalText: "Own plan B",
+  });
+  const project = resolveProjectContext(root);
+  const planA = createPlanRef(project, "plan-a");
+  const planB = createPlanRef(project, "plan-b");
+
+  const acquired = await activatePlan({ project, sessionKey: "session-a", target: planA });
+  assert.equal(acquired.changed, true);
+  assert.deepEqual(readFocusedPlan(project, "session-a"), planA);
+  assert.ok(readPlanFocusOwner(project, planA));
+
+  await assert.rejects(
+    () => activatePlan({ project, sessionKey: "session-b", target: planA }),
+    (error: unknown) => error instanceof Error
+      && "code" in error
+      && (error as { code: string }).code === "PLAN_FOCUS_CONFLICT",
+  );
+
+  const switched = await switchCurrentPlan({
+    project,
+    sessionKey: "session-a",
+    target: planB,
+  });
+  assert.deepEqual(switched.previousCurrentPlan, planA);
+  assert.deepEqual(switched.currentPlan, planB);
+  assert.deepEqual(switched.enteredEndPlans.map((entry) => entry.ref), [planA]);
+  assert.equal(showPlan({ cwd: root, taskName: "plan-a" }).plan.status, "end.leave");
+  assert.equal(showPlan({ cwd: root, taskName: "plan-a" }).plan.leaveReason, "switch_to_new_plan");
+  assert.equal(showPlan({ cwd: root, taskName: "plan-b" }).plan.status, "process.active");
+  assert.equal(readPlanFocusOwner(project, planA), undefined);
+  assert.equal(readPlanFocusOwner(project, planB)?.sessionKeyHash.length, 64);
+
+  const left = await leaveCurrentPlan({ project, sessionKey: "session-a" });
+  assert.deepEqual(left.enteredEndPlans.map((entry) => entry.ref), [planB]);
+  assert.equal(readFocusedPlan(project, "session-a"), undefined);
+  assert.equal(showPlan({ cwd: root, taskName: "plan-b" }).plan.leaveReason, "manual_leave");
+
+  await activatePlan({ project, sessionKey: "session-a", target: planB });
+  assert.equal(showPlan({ cwd: root, taskName: "plan-b" }).plan.status, "process.active");
+  assert.equal(showPlan({ cwd: root, taskName: "plan-b" }).plan.leaveReason, undefined);
+  const noOp = await activatePlan({ project, sessionKey: "session-a" });
+  assert.equal(noOp.changed, false);
+});
+
+test("focus coordinator keeps subplan linkage, leave, completion, and parent restore together", async () => {
+  const root = createEmptyFixture("focus-subplan-lifecycle");
+  initProject({ cwd: root, projectName: "Focus Subplan Lifecycle", planning: false });
+  await writePlan({
+    cwd: root,
+    taskName: "parent-task",
+    title: "Parent",
+    goalText: "Finish parent and child",
+    content: {
+      title: "Parent",
+      status: "process.active",
+      goal: { text: "Finish parent and child" },
+      tasks: [{ id: 1, title: "Child work", status: "pending" }],
+    },
+  });
+  await writePlan({
+    cwd: root,
+    taskName: "parent-task",
+    filePath: "child.json",
+    title: "Child",
+    goalText: "Finish child work",
+    content: {
+      title: "Child",
+      status: "process.active",
+      parentPlan: "plan.json",
+      parentTaskId: 1,
+      goal: { text: "Finish child work" },
+      tasks: [{ id: 1, title: "Implement child", status: "pending" }],
+    },
+  });
+  const project = resolveProjectContext(root);
+  const parentRef = createPlanRef(project, "parent-task");
+  const childRef = createPlanRef(project, "parent-task", "child.json");
+  await activatePlan({ project, sessionKey: "subplan-session", target: parentRef });
+  const parentAfterLink = structuredClone(showPlan({
+    cwd: root,
+    taskName: "parent-task",
+    planFile: "plan.json",
+  }).plan);
+  parentAfterLink.tasks[0]!.status = "in_progress";
+  parentAfterLink.tasks[0]!.execution = {
+    type: "subplan",
+    subplan: "child.json",
+    planPath: "child.json",
+  };
+
+  const created = await createSubplanAndSwitchFocus({
+    project,
+    sessionKey: "subplan-session",
+    parentPlan: parentRef,
+    parentAfterLink,
+    childPlan: childRef,
+  });
+
+  assert.deepEqual(created.enteredEndPlans.map((entry) => entry.ref), [parentRef]);
+  const leftParent = showPlan({ cwd: root, taskName: "parent-task", planFile: "plan.json" }).plan;
+  assert.equal(leftParent.status, "end.leave");
+  assert.equal(leftParent.leaveReason, "switch_to_new_plan");
+  assert.equal(leftParent.tasks[0]!.execution?.subplan, "child.json");
+  assert.deepEqual(readFocusedPlan(project, "subplan-session"), childRef);
+
+  const completedChild = structuredClone(showPlan({
+    cwd: root,
+    taskName: "parent-task",
+    planFile: "child.json",
+  }).plan);
+  completedChild.status = "end.completed";
+  completedChild.completedAt = new Date().toISOString();
+  completedChild.tasks[0]!.status = "done";
+  completedChild.retrospective = { summary: "Child completed." };
+
+  const completed = await completeSubplanAndRestoreParent({
+    project,
+    sessionKey: "subplan-session",
+    childPlan: childRef,
+    completedChild,
+    parentPlan: parentRef,
+    parentTaskId: 1,
+  });
+
+  assert.deepEqual(completed.enteredEndPlans.map((entry) => entry.ref), [childRef]);
+  assert.deepEqual(readFocusedPlan(project, "subplan-session"), parentRef);
+  const restoredParent = showPlan({ cwd: root, taskName: "parent-task", planFile: "plan.json" }).plan;
+  assert.equal(restoredParent.status, "process.active");
+  assert.equal(restoredParent.leaveReason, undefined);
+  assert.equal(restoredParent.tasks[0]!.status, "done");
+  assert.equal(
+    showPlan({ cwd: root, taskName: "parent-task", planFile: "child.json" }).plan.status,
+    "end.completed",
+  );
+});
+
+for (const failAt of [
+  "after_prepared",
+  "after_applying",
+  "after_plan",
+  "after_owners",
+  "after_session",
+  "after_committed",
+] as const) {
+  test(`focus recovery is deterministic after ${failAt}`, async () => {
+    const root = createEmptyFixture(`focus-recovery-${failAt}`);
+    initProject({ cwd: root, projectName: `Focus Recovery ${failAt}`, planning: false });
+    await writePlan({
+      cwd: root,
+      taskName: "recoverable",
+      title: "Recoverable",
+      goalText: "Recover focus",
+      content: {
+        title: "Recoverable",
+        status: "end.leave",
+        leaveReason: "manual_leave",
+        goal: { text: "Recover focus" },
+        tasks: [{ id: 1, title: "Continue", status: "pending" }],
+      },
+    });
+    const project = resolveProjectContext(root);
+    const planRef = createPlanRef(project, "recoverable");
+
+    await assert.rejects(
+      () => activatePlan({
+        project,
+        sessionKey: "recover-session",
+        target: planRef,
+        testHooks: { failAt },
+      }),
+      new RegExp(failAt),
+    );
+
+    const recovery = await recoverProjectFocusTransitions({ project });
+    if (failAt === "after_prepared") {
+      assert.equal(showPlan({ cwd: root, taskName: "recoverable" }).plan.status, "end.leave");
+      assert.equal(readFocusedPlan(project, "recover-session"), undefined);
+      assert.equal(recovery.discarded.length, 1);
+    } else {
+      assert.equal(showPlan({ cwd: root, taskName: "recoverable" }).plan.status, "process.active");
+      assert.deepEqual(readFocusedPlan(project, "recover-session"), planRef);
+      assert.equal(readPlanFocusOwner(project, planRef)?.sessionKeyHash.length, 64);
+      assert.equal(recovery.recovered.length, 1);
+    }
+    const journals = fs.existsSync(focusTransitionsDirectory(project))
+      ? fs.readdirSync(focusTransitionsDirectory(project))
+        .filter((name) => /^[0-9a-f-]+\.json$/i.test(name))
+      : [];
+    assert.deepEqual(journals, []);
+  });
+}
+
+for (const failAfterPlanWrites of [1, 2]) {
+  test(`focus recovery rolls forward a two-plan switch after plan write ${failAfterPlanWrites}`, async () => {
+    const root = createEmptyFixture(`focus-recovery-two-plan-${failAfterPlanWrites}`);
+    initProject({ cwd: root, projectName: "Focus Recovery Two Plan", planning: false });
+    await writePlan({ cwd: root, taskName: "plan-a", title: "Plan A", goalText: "Plan A" });
+    await writePlan({ cwd: root, taskName: "plan-b", title: "Plan B", goalText: "Plan B" });
+    const project = resolveProjectContext(root);
+    const planA = createPlanRef(project, "plan-a");
+    const planB = createPlanRef(project, "plan-b");
+    await activatePlan({ project, sessionKey: "switch-session", target: planA });
+
+    await assert.rejects(
+      () => switchCurrentPlan({
+        project,
+        sessionKey: "switch-session",
+        target: planB,
+        testHooks: { failAt: "after_plan", failAfterPlanWrites },
+      }),
+      /after_plan/,
+    );
+    const recovery = await recoverProjectFocusTransitions({ project });
+
+    assert.equal(recovery.recovered.length, 1);
+    assert.equal(showPlan({ cwd: root, taskName: "plan-a" }).plan.status, "end.leave");
+    assert.equal(showPlan({ cwd: root, taskName: "plan-b" }).plan.status, "process.active");
+    assert.deepEqual(readFocusedPlan(project, "switch-session"), planB);
+  });
+}
+
+test("focus recovery retains a journal on unexpected third-party plan content", async () => {
+  const root = createEmptyFixture("focus-recovery-conflict");
+  initProject({ cwd: root, projectName: "Focus Recovery Conflict", planning: false });
+  const created = await writePlan({
+    cwd: root,
+    taskName: "conflicted",
+    title: "Conflicted",
+    goalText: "Detect conflicting recovery",
+    content: {
+      title: "Conflicted",
+      status: "end.leave",
+      leaveReason: "manual_leave",
+      goal: { text: "Detect conflicting recovery" },
+      tasks: [{ id: 1, title: "Continue", status: "pending" }],
+    },
+  });
+  const project = resolveProjectContext(root);
+  const planRef = createPlanRef(project, "conflicted");
+  await assert.rejects(
+    () => activatePlan({
+      project,
+      sessionKey: "conflict-session",
+      target: planRef,
+      testHooks: { failAt: "after_applying" },
+    }),
+    /after_applying/,
+  );
+  const thirdParty = JSON.parse(fs.readFileSync(created.planPath, "utf-8")) as PlanDocument;
+  thirdParty.summary = "Third-party change";
+  fs.writeFileSync(created.planPath, `${JSON.stringify(thirdParty, null, 2)}\n`, "utf-8");
+
+  await assert.rejects(
+    () => recoverProjectFocusTransitions({ project }),
+    (error: unknown) => error instanceof Error
+      && "code" in error
+      && (error as { code: string }).code === "FOCUS_RECOVERY_CONFLICT",
+  );
+  assert.equal(
+    fs.readdirSync(focusTransitionsDirectory(project))
+      .filter((name) => /^[0-9a-f-]+\.json$/i.test(name)).length,
+    1,
+  );
+  assert.equal(fs.existsSync(focusOwnersPath(project)), false);
+});
+
 test("end.completed emits complete goal tool guidance", async () => {
   const root = createFixture("end-completed-goal-tool");
   await writePlan({
@@ -3477,6 +3846,7 @@ test("plan show returns canonical plan plus collapsed and expanded plan view dat
         { id: 1, title: "First task", status: "done" },
         { id: 2, title: "Second task", status: "in_progress" },
       ],
+      rules: ["Keep the projection minimal"],
     },
   });
 
@@ -3503,6 +3873,15 @@ test("plan show returns canonical plan plus collapsed and expanded plan view dat
     result.planView.expanded.sections[1]?.items.map((task) => task.id),
     [2, 1],
   );
+  assert.deepEqual(result.simplePlanView, {
+    status: "process.active",
+    goal: { text: "Render the current plan" },
+    tasks: [
+      { title: "First task" },
+      { title: "Second task" },
+    ],
+    rules: ["Keep the projection minimal"],
+  });
 });
 
 test("plan show falls back to archived tasks when the active task no longer exists", async () => {
@@ -5902,14 +6281,19 @@ test("concurrent plan edits serialize and apply against the latest plan state", 
 test("serialized access waits for queue lock contention instead of failing fast", async () => {
   const root = createFixture("serialized-access-queue-lock-contention");
   const targetPath = path.join(root, ".claw", "tasks", "demo-task", "plan.json");
-  const queueLockPath = `${targetPath}.queue.json.lock`;
+  const queuePath = `${targetPath}.queue.json`;
 
-  fs.mkdirSync(path.dirname(queueLockPath), { recursive: true });
-  fs.writeFileSync(queueLockPath, "", "utf-8");
+  fs.mkdirSync(path.dirname(queuePath), { recursive: true });
+  fs.writeFileSync(queuePath, JSON.stringify({
+    schemaVersion: 1,
+    token: "live-owner",
+    pid: process.pid,
+    acquiredAt: new Date().toISOString(),
+  }), "utf-8");
 
   const releaseTimer = setTimeout(() => {
-    if (fs.existsSync(queueLockPath)) {
-      fs.unlinkSync(queueLockPath);
+    if (fs.existsSync(queuePath)) {
+      fs.unlinkSync(queuePath);
     }
   }, 50);
 
@@ -5923,10 +6307,32 @@ test("serialized access waits for queue lock contention instead of failing fast"
     assert.equal(result, "ok");
   } finally {
     clearTimeout(releaseTimer);
-    if (fs.existsSync(queueLockPath)) {
-      fs.unlinkSync(queueLockPath);
+    if (fs.existsSync(queuePath)) {
+      fs.unlinkSync(queuePath);
     }
   }
+});
+
+test("serialized access reclaims a queue owned by a dead process", async () => {
+  const root = createFixture("serialized-access-dead-owner");
+  const targetPath = path.join(root, ".claw", "tasks", "demo-task", "plan.json");
+  const queuePath = `${targetPath}.queue.json`;
+  fs.mkdirSync(path.dirname(queuePath), { recursive: true });
+  fs.writeFileSync(queuePath, JSON.stringify({
+    schemaVersion: 1,
+    token: "dead-owner",
+    pid: 2_147_483_647,
+    acquiredAt: "2020-01-01T00:00:00.000Z",
+  }), "utf-8");
+
+  const result = await withSerializedAccess(
+    targetPath,
+    async () => "recovered",
+    { pollMs: 10, timeoutMs: 500 },
+  );
+
+  assert.equal(result, "recovered");
+  assert.equal(fs.existsSync(queuePath), false);
 });
 
 test("plan edit can update explicit task fields and status atomically", async () => {

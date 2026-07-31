@@ -5,16 +5,34 @@ const capture = runClaw(["hook", "auto-doc", "--host", "codex"], payload, {
   CLAW_KNOWLEDGE_FINALIZER_DISABLE_LAUNCH: "1",
   CLAW_KNOWLEDGE_CAPTURE_RESULT: "1",
 });
-if (!capture.ok || !capture.stdout.trim()) process.exit(0);
+if (!capture.ok) {
+  reportFailure("capture");
+  process.exit(0);
+}
+if (!capture.stdout.trim()) process.exit(0);
 
 let handoff;
-try { handoff = JSON.parse(capture.stdout); } catch { process.exit(0); }
+try {
+  handoff = JSON.parse(capture.stdout);
+} catch {
+  reportFailure("capture_protocol");
+  process.exit(0);
+}
 if (!handoff?.jobPath) process.exit(0);
 
 try {
   launchFinalizer(handoff.jobPath);
 } catch {
-  // Stop capture and launch remain fail-open.
+  reportFailure("launch");
+}
+
+function reportFailure(stage) {
+  process.stderr.write(`${JSON.stringify({
+    source: "claw-kit",
+    component: "codex-knowledge-finalizer",
+    stage,
+    outcome: "failed-open",
+  })}\n`);
 }
 
 function launchFinalizer(jobPath) {

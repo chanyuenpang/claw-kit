@@ -752,10 +752,15 @@ test("cli codex driver returns an executable versioned source envelope", async (
   const root = createFixture("codex-driver-envelope");
   const envelope = runClaw(["codex", "driver"], root);
   assert.equal(envelope.command, "codex.driver");
-  assert.equal(envelope.driverVersion, 9);
+  assert.equal(envelope.driverVersion, 10);
   assert.equal(envelope.hostActionSchemaVersion, 1);
-  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v9:s1");
+  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v10:s1");
   assert.match(String(envelope.sha256), /^[a-f0-9]{64}$/);
+  assert.equal(
+    envelope.sha256,
+    "0d79c40c948cbb5dea06294d3ead2ed52f8a2c3da84811a9e0d2b29942a9ce3b",
+    "changing serialized driver source requires a driver version/cache-key bump",
+  );
 
   const runner = (0, eval)(`(${String(envelope.source)})`) as (
     input: Record<string, unknown>,
@@ -801,7 +806,7 @@ test("cli codex driver returns an executable versioned source envelope", async (
     ],
   };
   const actual = await runner(
-    { command: "claw plan resume", workdir: root },
+    { argv: ["plan", "resume"], workdir: root },
     {
       tools: {
         shell_command: async (input: unknown) => {
@@ -830,13 +835,13 @@ test("cli codex driver returns an executable versioned source envelope", async (
   });
   assert.equal("hostActions" in actual, false);
   assert.equal("command" in actual, false);
-  assert.match(String((calls[0][1] as JsonRecord).command), /--host codex$/);
+  assert.match(String((calls[0][1] as JsonRecord).command), /^claw codex invoke [a-f0-9]+$/);
   assert.deepEqual(calls.map(([name]) => name), ["shell_command", "update_plan", "get_goal", "create_goal", "text"]);
   assert.equal("hostActions" in JSON.parse(String(calls.at(-1)?.[1])), false);
 
   const execCalls: Array<[string, unknown]> = [];
   await runner(
-    { command: "claw task done --id 1", workdir: root },
+    { argv: ["task", "done", "--id", "1"], workdir: root },
     {
       tools: {
         exec_command: async (input: unknown) => {
@@ -848,11 +853,11 @@ test("cli codex driver returns an executable versioned source envelope", async (
     },
   );
   assert.deepEqual(execCalls.map(([name]) => name), ["exec_command", "text"]);
-  assert.match(String((execCalls[0][1] as JsonRecord).cmd), /--host codex$/);
+  assert.match(String((execCalls[0][1] as JsonRecord).cmd), /^claw codex invoke [a-f0-9]+$/);
   assert.equal((execCalls[0][1] as JsonRecord).yield_time_ms, 30_000);
 
   const taskDoneActual = await runner(
-    { command: "claw task done --id 1", workdir: root },
+    { argv: ["task", "done", "--id", "1"], workdir: root },
     {
       tools: {
         shell_command: async () => JSON.stringify({ ok: true, command: "task.done" }),
@@ -861,6 +866,85 @@ test("cli codex driver returns an executable versioned source envelope", async (
     },
   );
   assert.deepEqual(taskDoneActual, { ok: true, command: "task.done" });
+});
+
+test("Codex driver skips unrelated JSON diagnostics and validates native action shapes", async () => {
+  const root = createFixture("codex-driver-protocol-validation");
+  const envelope = runClaw(["codex", "driver"], root);
+  const runner = (0, eval)(`(${String(envelope.source)})`) as (
+    input: Record<string, unknown>,
+    runtime: Record<string, unknown>,
+  ) => Promise<JsonRecord>;
+  const validResult = {
+    ok: true,
+    command: "plan.edit",
+    stage: "execution",
+    hostActions: [{
+      schemaVersion: 1,
+      id: "edit:update_plan",
+      tool: "update_plan",
+      input: {
+        explanation: "sync",
+        plan: [{ step: "work", status: "in_progress" }],
+      },
+    }],
+  };
+  const calls: string[] = [];
+  const actual = await runner(
+    { argv: ["plan", "edit", "--summary", "ready"], workdir: root },
+    {
+      tools: {
+        shell_command: async () => `warning: ${JSON.stringify({ diagnostic: true })}\n${JSON.stringify(validResult)}`,
+        update_plan: async () => calls.push("update_plan"),
+      },
+      text: () => {},
+    },
+  );
+  assert.equal(actual.stage, "execution");
+  assert.deepEqual(calls, ["update_plan"]);
+
+  for (const input of [
+    { explanation: "sync", plan: [{ step: "work", status: "unknown" }] },
+    { explanation: "sync", plan: [{ step: "work", status: "pending", extra: true }] },
+    { explanation: 1, plan: [{ step: "work", status: "pending" }] },
+  ]) {
+    await assert.rejects(
+      runner(
+        { argv: ["plan", "edit", "--summary", "ready"], workdir: root },
+        {
+          tools: {
+            shell_command: async () => JSON.stringify({
+              ...validResult,
+              hostActions: [{ ...validResult.hostActions[0], input }],
+            }),
+            update_plan: async () => {},
+          },
+          text: () => {},
+        },
+      ),
+      /invalid Codex hostAction input/,
+    );
+  }
+});
+
+test("codex invoke preserves structured user values without shell interpretation", () => {
+  const root = createFixture("codex-structured-invoke");
+  runClaw(["init", "--name", "Codex Structured Invoke", "--planning", "false"], root);
+  const title = "literal $(Get-ChildItem); --host opencode";
+  const argv = ["plan", "create", "--title", title, "--goal", "Keep every value literal"];
+  const json = JSON.stringify(argv);
+  let encoded = "";
+  for (let index = 0; index < json.length; index += 1) {
+    encoded += json.charCodeAt(index).toString(16).padStart(4, "0");
+  }
+
+  const result = runClaw(["codex", "invoke", encoded], root, {
+    CODEX_THREAD_ID: "thread-structured-invoke",
+  });
+
+  assert.equal(result.ok, true);
+  const plan = JSON.parse(fs.readFileSync(String(result.planPath), "utf8")) as { title?: string };
+  assert.equal(plan.title, title);
 });
 
 test("Codex driver replaces any nonterminal Goal and skips closing an already closed Goal", async () => {
@@ -891,7 +975,7 @@ test("Codex driver replaces any nonterminal Goal and skips closing an already cl
     update_goal: async () => { calls.push("update_goal"); goalStatus = "complete"; },
   };
 
-  const replaced = await runner({ command: "claw plan resume", workdir: root }, { tools, text: () => {} });
+  const replaced = await runner({ argv: ["plan", "resume"], workdir: root }, { tools, text: () => {} });
   assert.deepEqual(calls, ["update_goal"]);
   assert.deepEqual(replaced.goalRecovery, {
     command: "claw plan sync",
@@ -909,7 +993,7 @@ test("Codex driver replaces any nonterminal Goal and skips closing an already cl
       input: { objective: "resume work" },
     }],
   };
-  const recreated = await runner({ command: "claw plan sync", workdir: root }, { tools, text: () => {} });
+  const recreated = await runner({ argv: ["plan", "sync"], workdir: root }, { tools, text: () => {} });
   assert.equal(recreated.goalRecovery, undefined);
   assert.deepEqual(calls, ["update_goal", "create_goal"]);
 
@@ -925,7 +1009,7 @@ test("Codex driver replaces any nonterminal Goal and skips closing an already cl
     }],
   };
   goalStatus = "complete";
-  await runner({ command: "claw plan done --retrospective done", workdir: root }, { tools, text: () => {} });
+  await runner({ argv: ["plan", "done", "--retrospective", "done"], workdir: root }, { tools, text: () => {} });
   assert.deepEqual(calls, ["update_goal", "create_goal"]);
 
   commandResult = {
@@ -941,7 +1025,7 @@ test("Codex driver replaces any nonterminal Goal and skips closing an already cl
   };
   goalStatus = "blocked";
   const recovered = await runner(
-    { command: "claw plan resume", workdir: root },
+    { argv: ["plan", "resume"], workdir: root },
     { tools, text: () => {} },
   );
   assert.deepEqual(calls, ["update_goal", "create_goal", "update_goal"]);
@@ -1689,6 +1773,36 @@ test("cli search accepts a positional query for project recall", () => {
   assert.equal(searchResult.command, "search");
   assert.equal(searchResult.scope, "project");
   assert.ok(Array.isArray(searchResult.results));
+});
+
+test("cli search --dir temporarily searches another project without changing cwd", () => {
+  const sourceRoot = createFixture("search-dir-source");
+  const targetRoot = createFixture("search-dir-target");
+  const env = {
+    CLAW_EMBEDDING_MOCK: "1",
+  };
+
+  runClaw(["init", "--name", "Search Dir Source", "--planning", "false"], sourceRoot, env);
+  runClaw(["init", "--name", "Search Dir Target", "--ext-path", "docs/"], targetRoot, env);
+  fs.mkdirSync(path.join(targetRoot, "docs"), { recursive: true });
+  fs.writeFileSync(path.join(targetRoot, "docs", "guide.md"), "cross-domain recall marker\n", "utf-8");
+  runClaw(["search", "index", "--refresh"], targetRoot, env);
+
+  const searchResult = runClaw(
+    ["search", "cross-domain", "--dir", targetRoot],
+    sourceRoot,
+    env,
+  );
+
+  assert.equal(searchResult.command, "search");
+  assert.equal(searchResult.scope, "project");
+  assert.equal(
+    path.resolve(String(searchResult.storePath)),
+    path.resolve(targetRoot, ".claw", "memory.sqlite"),
+  );
+  assert.ok((searchResult.results as JsonRecord[]).some(
+    (entry) => String(entry.sourcePath).endsWith(path.join("docs", "guide.md")),
+  ));
 });
 
 test("cli search without a query returns a directly executable command hint", () => {
@@ -2924,21 +3038,41 @@ test("cli plan edit completion dispatches the same completion refresh as plan do
   assert.match(String(completedPlan.completedAt), /^\d{4}-\d{2}-\d{2}T/);
 });
 
-for (const endStatus of ["end.closed", "end.leave"] as const) {
-  test(`cli plan edit ${endStatus} dispatches completion finalization`, async () => {
-    const root = createFixture(`plan-edit-${endStatus.replace(".", "-")}-refresh`);
-    const env = { CLAW_EMBEDDING_MOCK: "1", CODEX_THREAD_ID: `thread-${endStatus}` };
-    runClaw(["init", "--name", `Edit ${endStatus}`, "--max-tasks-to-keep", "99", "--planning", "false"], root, env);
-    runClaw(["plan", "create", "--title", "end-task", "--goal", "End through plan edit"], root, env);
+test("cli plan edit end.closed dispatches completion finalization", async () => {
+  const root = createFixture("plan-edit-end-closed-refresh");
+  const env = { CLAW_EMBEDDING_MOCK: "1", CODEX_THREAD_ID: "thread-end-closed" };
+  runClaw(["init", "--name", "Edit end.closed", "--max-tasks-to-keep", "99", "--planning", "false"], root, env);
+  runClaw(["plan", "create", "--title", "end-task", "--goal", "End through plan edit"], root, env);
 
-    const result = runClaw(["plan", "edit", "--status", endStatus], root, env);
+  const result = runClaw(["plan", "edit", "--status", "end.closed"], root, env);
 
-    assert.equal(result.planStatus, endStatus);
-    const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
-    const memory = refreshStatus.memory as JsonRecord;
-    assert.ok(memory.task as JsonRecord | undefined);
-  });
-}
+  assert.equal(result.planStatus, "end.closed");
+  const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
+  const memory = refreshStatus.memory as JsonRecord;
+  assert.ok(memory.task as JsonRecord | undefined);
+});
+
+test("cli plan edit end.leave dispatches end-state finalization", async () => {
+  const root = createFixture("plan-edit-end-leave-refresh");
+  const env = {
+    CLAW_EMBEDDING_MOCK: "1",
+    CLAW_HOST: "codex",
+    CODEX_THREAD_ID: "thread-end-leave",
+  };
+  runClaw(["init", "--name", "Edit end.leave", "--max-tasks-to-keep", "99", "--planning", "false"], root, env);
+  runClaw(["plan", "create", "--title", "leave-task", "--goal", "Leave without completion"], root, env);
+
+  const result = runClaw(["plan", "edit", "--status", "end.leave"], root, env);
+
+  assert.equal(result.planStatus, "end.leave");
+  assert.equal(result.stage, "left");
+  const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
+  const memory = refreshStatus.memory as JsonRecord;
+  assert.ok(memory.task as JsonRecord | undefined);
+  const plan = JSON.parse(fs.readFileSync(taskFile(root, "leave-task", "plan.json"), "utf-8")) as JsonRecord;
+  assert.equal(plan.completedAt, undefined);
+  assert.equal(plan.leaveReason, "manual_leave");
+});
 
 test("claw context does not discover an unfinished plan without a session binding", () => {
   const root = createFixture("context-binding-only");
@@ -2965,6 +3099,31 @@ test("cli plan show reads a completed task during the delayed archive window", (
   assert.match(String(result.planPath), /\.claw[\\/]tasks[\\/]\d{4}-\d{2}-\d{2}[\\/]archived-task[\\/].*plan\.json$/);
   const planView = result.planView as JsonRecord;
   assert.equal(String(planView.collapsedSummary), "0/1 archived-task");
+});
+
+test("cli plan show --simple returns the exact minimal plan projection", () => {
+  const root = createFixture("plan-show-simple");
+  const env = { CODEX_THREAD_ID: "thread-plan-show-simple" };
+  runClaw(["init", "--name", "Simple Show", "--planning", "false"], root, env);
+  runClaw([
+    "plan", "create",
+    "--title", "simple-task",
+    "--goal", "Show only recovery fields",
+  ], root, env);
+  runClaw(["plan", "edit", "--rule", "Keep the response compact"], root, env);
+  runClaw(["task", "add", "--title", "Second task"], root, env);
+
+  const result = runClaw(["plan", "show", "--simple"], root, env);
+
+  assert.deepEqual(result, {
+    status: "process.active",
+    goal: { text: "Show only recovery fields" },
+    tasks: [
+      { title: "Show only recovery fields" },
+      { title: "Second task" },
+    ],
+    rules: ["Keep the response compact"],
+  });
 });
 
 test("cli plan done sweeps another task only when completedAt is older than one hour", () => {
@@ -3588,7 +3747,7 @@ test("knowledge hook preflight depends only on a valid session knowledge target"
     session_id: sessionId,
     turn_id: "turn-nested-preflight",
     cwd: nestedCwd,
-  }), nestedCwd, {}), false);
+  }), nestedCwd, {}), true);
 
   const knowledgeSessionsDir = path.join(root, ".claw", "runtime", "knowledge-sessions");
   for (const entry of fs.readdirSync(knowledgeSessionsDir)) {
@@ -3598,7 +3757,7 @@ test("knowledge hook preflight depends only on a valid session knowledge target"
   assert.equal(shouldRunKnowledgeHook(rawInput, root, {}), false);
 });
 
-test("knowledge hook exits before reading stdin when cwd has no direct .claw directory", async () => {
+test("knowledge hook exits before reading stdin when cwd has no project .claw ancestor", async () => {
   const root = createFixture("hook-preflight-no-claw");
   const cliPath = path.resolve(thisDir, "..", "dist", "bin.js");
   const child = spawn(process.execPath, [cliPath, "hook", "auto-doc", "--host", "codex"], {
@@ -3770,44 +3929,79 @@ test("one Stop recovers successful task-done conclusions only from its current t
   assert.equal(fs.readFileSync(reportPath, "utf-8").trim().split(/\r?\n/).length, 3);
 });
 
-for (const endStatus of ["end.leave", "end.closed"] as const) {
-  test(`${endStatus} Stop queues conclusion-based knowledge finalization`, () => {
-    const root = createFixture(`hook-stop-${endStatus.replace(".", "-")}`);
-    const sessionId = `thread-${endStatus}`;
-    const env = {
-      CODEX_THREAD_ID: sessionId,
-      CLAW_KNOWLEDGE_FINALIZER_DISABLE_LAUNCH: "1",
-    };
-    runClaw(["init", "--name", `Hook ${endStatus}`, "--planning", "false"], root, env);
-    runClaw(["plan", "create", "--title", "demo-task", "--goal", "Capture end-state conclusions"], root, env);
-    runClaw(["plan", "edit", "--status", endStatus], root, env);
+test("end.closed Stop queues conclusion-based knowledge finalization", () => {
+  const root = createFixture("hook-stop-end-closed");
+  const sessionId = "thread-end.closed";
+  const env = {
+    CODEX_THREAD_ID: sessionId,
+    CLAW_KNOWLEDGE_FINALIZER_DISABLE_LAUNCH: "1",
+  };
+  runClaw(["init", "--name", "Hook end.closed", "--planning", "false"], root, env);
+  runClaw(["plan", "create", "--title", "demo-task", "--goal", "Capture end-state conclusions"], root, env);
+  runClaw(["plan", "edit", "--status", "end.closed"], root, env);
 
-    const transcriptPath = path.join(root, `thread-${endStatus}.jsonl`);
-    fs.writeFileSync(transcriptPath, JSON.stringify({
-      type: "response_item",
-      payload: {
-        type: "message",
-        role: "assistant",
-        phase: "final_answer",
-        content: [{ type: "output_text", text: `Conclusion recorded at ${endStatus}.` }],
-      },
-    }), "utf-8");
-    const stop = runClawHook("auto-doc", root, {
-      session_id: sessionId,
-      turn_id: `turn-${endStatus}`,
-      transcript_path: transcriptPath,
-      cwd: root,
-    }, env);
+  const transcriptPath = path.join(root, "thread-end.closed.jsonl");
+  fs.writeFileSync(transcriptPath, JSON.stringify({
+    type: "response_item",
+    payload: {
+      type: "message",
+      role: "assistant",
+      phase: "final_answer",
+      content: [{ type: "output_text", text: "Conclusion recorded at end.closed." }],
+    },
+  }), "utf-8");
+  const stop = runClawHook("auto-doc", root, {
+    session_id: sessionId,
+    turn_id: "turn-end.closed",
+    transcript_path: transcriptPath,
+    cwd: root,
+  }, env);
 
-    assert.equal(stop.status, 0);
-    const jobsDir = taskFinalizerJobsDirectory(root, "demo-task");
-    const jobFiles = fs.readdirSync(jobsDir).filter((name) => name.endsWith(".json"));
-    assert.equal(jobFiles.length, 1);
-    const queued = JSON.parse(fs.readFileSync(path.join(jobsDir, jobFiles[0]!), "utf-8")) as JsonRecord;
-    assert.equal(queued.status, "queued");
-    assert.equal(queued.planPath, taskFile(root, "demo-task", "plan.json"));
-  });
-}
+  assert.equal(stop.status, 0);
+  const jobsDir = taskFinalizerJobsDirectory(root, "demo-task");
+  const jobFiles = fs.readdirSync(jobsDir).filter((name) => name.endsWith(".json"));
+  assert.equal(jobFiles.length, 1);
+  const queued = JSON.parse(fs.readFileSync(path.join(jobsDir, jobFiles[0]!), "utf-8")) as JsonRecord;
+  assert.equal(queued.status, "queued");
+  assert.equal(queued.planPath, taskFile(root, "demo-task", "plan.json"));
+});
+
+test("end.leave Stop queues knowledge finalization", () => {
+  const root = createFixture("hook-stop-end-leave");
+  const sessionId = "thread-end.leave";
+  const env = {
+    CODEX_THREAD_ID: sessionId,
+    CLAW_KNOWLEDGE_FINALIZER_DISABLE_LAUNCH: "1",
+  };
+  runClaw(["init", "--name", "Hook end.leave", "--planning", "false"], root, env);
+  runClaw(["plan", "create", "--title", "demo-task", "--goal", "Leave without finalization"], root, env);
+  runClaw(["plan", "edit", "--status", "end.leave"], root, env);
+
+  const transcriptPath = path.join(root, "thread-end.leave.jsonl");
+  fs.writeFileSync(transcriptPath, JSON.stringify({
+    type: "response_item",
+    payload: {
+      type: "message",
+      role: "assistant",
+      phase: "final_answer",
+      content: [{ type: "output_text", text: "This is not a completion conclusion." }],
+    },
+  }), "utf-8");
+  const stop = runClawHook("auto-doc", root, {
+    session_id: sessionId,
+    turn_id: "turn-end.leave",
+    transcript_path: transcriptPath,
+    cwd: root,
+  }, env);
+
+  assert.equal(stop.status, 0);
+  const jobsDir = taskFinalizerJobsDirectory(root, "demo-task");
+  const jobFiles = fs.readdirSync(jobsDir).filter((name) => name.endsWith(".json"));
+  assert.equal(jobFiles.length, 1);
+  const queued = JSON.parse(fs.readFileSync(path.join(jobsDir, jobFiles[0]!), "utf-8")) as JsonRecord;
+  assert.equal(queued.status, "queued");
+  assert.equal(queued.planPath, taskFile(root, "demo-task", "plan.json"));
+});
 
 test("completed-plan Stop owns the final turn and queues a retryable SDK job", () => {
   const root = createFixture("hook-stop-closeout");
@@ -4572,6 +4766,7 @@ test("cli search --help shows search query usage", () => {
   assert.equal(result.status, 0);
   assert.equal(result.stderr, "");
   assert.match(result.stdout, /--query/);
+  assert.match(result.stdout, /--dir/);
   assert.match(result.stdout, /--limit/);
 });
 

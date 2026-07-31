@@ -195,7 +195,7 @@ test("exported Codex plugin contains every shared workflow skill", async () => {
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "create-claw-skill", "TEMPLATE.json")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "create-claw-skill", "FALLBACK.md")));
   await assert.rejects(fs.access(path.join(result.bundleDir, "skills", "release-claw-kit", "SKILL.md")));
-  await assert.doesNotReject(fs.access(path.join(result.bundleDir, "scripts", "code-mode-host-action-consumer.mjs")));
+  await assert.rejects(fs.access(path.join(result.bundleDir, "scripts", "code-mode-host-action-consumer.mjs")));
 });
 
 test("repository Codex plugin source is fully materialized from shared skills", async () => {
@@ -245,6 +245,10 @@ test("Codex update contract is platform-specific and supports only the official 
   assert.doesNotMatch(combined, /cache\\claw-kit-local/i);
   assert.doesNotMatch(combined, /OpenCode|conservative fallback|choose (?:the )?host route|"choices"/i);
   assert.match(installer, /github\.com\/chanyuenpang\/claw-kit\.git/i);
+  assert.match(installer, /git ls-remote \$repositoryUrl \$Ref/i);
+  assert.match(installer, /fetch --depth 1 origin \$resolvedCommit/i);
+  assert.match(installer, /checkout --quiet --detach FETCH_HEAD/i);
+  assert.doesNotMatch(installer, /clone --depth 1 --branch main/i);
 });
 
 test("repository-local release template sequences guarded publishing before published-source update", async () => {
@@ -340,6 +344,33 @@ test("installCodexPluginBundle copies a payload source into the versioned Codex 
       process.env.USERPROFILE = previousUserProfile;
     }
   }
+});
+
+test("Codex cache activation is atomic and preserves the previous version on failure", async () => {
+  const { sourceDir, root } = await makeFixture();
+  const cacheRoot = path.join(root, ".codex", "plugins", "cache");
+  const first = await installCodexPluginBundle({ sourceDir, cacheRoot });
+  const sentinelPath = path.join(first.installDir, "previous-install.txt");
+  await fs.writeFile(sentinelPath, "stable");
+
+  await assert.rejects(
+    installCodexPluginBundle({
+      sourceDir,
+      cacheRoot,
+      testHooks: {
+        beforeActivate: async () => {
+          throw new Error("simulated activation interruption");
+        },
+      },
+    }),
+    /simulated activation interruption/,
+  );
+
+  assert.equal(await fs.readFile(sentinelPath, "utf8"), "stable");
+  const versionParent = path.dirname(first.installDir);
+  const leftovers = (await fs.readdir(versionParent))
+    .filter((entry) => entry.includes(".installing-") || entry.includes(".backup-"));
+  assert.deepEqual(leftovers, []);
 });
 
 test("official installer enables the GitHub identity and disables the local identity", async () => {

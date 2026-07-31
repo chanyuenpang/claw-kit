@@ -11,7 +11,7 @@ import { buildPlanEvent } from "./plan-events.js";
 import {
   isProcessStatus,
 } from "./requirements-gate.js";
-import { buildPlanViewModel } from "./plan-view.js";
+import { buildPlanViewModel, buildSimplePlanView } from "./plan-view.js";
 import { getTemplateTaskDoneChoices, getTemplateTaskPlanStartGuidance, renderSeedTemplateText, resolveSeedPlanTemplate } from "./plan-templates.js";
 import { ensureInsideDir, findProjectRoot, normalizePlanFile, slugFromFilePath } from "./paths.js";
 import { bindSessionToPlan, unbindSession } from "./session-bindings.js";
@@ -136,19 +136,21 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
       rules: mergeStringLists(subplanContext.parentPlan.rules, plan.rules),
       references: mergeReferences(subplanContext.parentPlan.references, plan.references),
     });
-    subplanContext.parentTask.execution = {
-      ...subplanContext.parentTask.execution,
-      type: "subplan",
-      subplan: planFile,
-      planPath: planFile,
-    };
-    if (subplanContext.parentTask.status === "pending") {
-      subplanContext.parentTask.status = "in_progress";
+    if (!input.deferParentMutation) {
+      subplanContext.parentTask.execution = {
+        ...subplanContext.parentTask.execution,
+        type: "subplan",
+        subplan: planFile,
+        planPath: planFile,
+      };
+      if (subplanContext.parentTask.status === "pending") {
+        subplanContext.parentTask.status = "in_progress";
+      }
+      subplanContext.parentPlan.updatedAt = new Date().toISOString();
+      withFileLock(subplanContext.parentPlanPath, () => {
+        writeJsonFile(subplanContext.parentPlanPath, subplanContext.parentPlan);
+      });
     }
-    subplanContext.parentPlan.updatedAt = new Date().toISOString();
-    withFileLock(subplanContext.parentPlanPath, () => {
-      writeJsonFile(subplanContext.parentPlanPath, subplanContext.parentPlan);
-    });
   }
 
   plan.updatedAt = new Date().toISOString();
@@ -291,15 +293,13 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
       applyPlanFieldUpdates(next, input.updates);
     }
 
-    if (previousStatus !== "end.completed" && next.status === "end.completed") {
-      next.completedAt = new Date().toISOString();
-    } else if (previousStatus === "end.completed" && next.status !== "end.completed") {
-      delete next.completedAt;
-    }
+    applyPlanStatusMetadata(next, previousStatus, next.status);
 
     if (input.appendTasks?.length) {
       if (isEnd(previous.status) && !requestedStatus) {
+        const currentStatus = next.status;
         next.status = "prepare.requirements";
+        applyPlanStatusMetadata(next, currentStatus, next.status);
       }
       const currentIds = new Set(next.tasks.map((taskItem) => taskItem.id));
       const appendedTasks = normalizePlanTasks(input.appendTasks, nextAvailableTaskId(next.tasks));
@@ -494,8 +494,9 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
       );
     }
 
-    const enteredEndState = !previousStatus.startsWith("end.") && next.status.startsWith("end.");
-    const endedAt = enteredEndState ? next.completedAt ?? new Date().toISOString() : undefined;
+    const enteredEndTerminal =
+      !isEndTerminal(previousStatus) && isEndTerminal(next.status);
+    const endedAt = enteredEndTerminal ? next.completedAt ?? new Date().toISOString() : undefined;
     const completionHooks =
       previousStatus !== "end.completed" && next.status === "end.completed"
         ? buildCompletionHooks({ task, planPath, plan: next })
@@ -517,7 +518,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
     let resultPlanPath = planPath;
     let resultPlan = next;
 
-    if (completionHooks?.subplanClosureCandidate) {
+    if (completionHooks?.subplanClosureCandidate && !input.deferSubplanClosure) {
       const resumedParent = completeSubplanAndResumeParent({
         task,
         closure: completionHooks.subplanClosureCandidate,
@@ -533,7 +534,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
       bindSessionToPlan(task.project, input.ownerSessionKey, resultPlanPath);
     }
     let knowledgeFinalizeId: string | undefined;
-    if (enteredEndState && endedAt && task.project.scope === "project") {
+    if (enteredEndTerminal && endedAt && task.project.scope === "project") {
       const effectiveConfig = resolvePlanEffectiveConfig(task.project.projectConfig, next);
       const knowledgeEnd = tryEndKnowledgePlan({
         project: task.project,
@@ -612,6 +613,7 @@ export function showPlan(input: PlanShowInput): PlanShowResult {
       planFile: resolved.planFile,
       plan,
     }),
+    simplePlanView: buildSimplePlanView(plan),
   };
 }
 
@@ -654,6 +656,7 @@ export async function createSubplan(input: SubplanWriteInput): Promise<PlanWrite
     forcePlanning: true,
     parentTaskId: input.parentTaskId,
     parentPlanFile,
+    deferParentMutation: input.deferParentMutation,
     ownerSessionKey: input.ownerSessionKey,
     scope: parentTask.project.scope,
     host: input.host,
@@ -814,17 +817,13 @@ async function applyPlanMutationOperations(input: {
             throw new ClawError(validation.code, validation.error);
           }
           candidate.status = status;
-          if (current.status !== "end.completed" && status === "end.completed") {
-            candidate.completedAt = new Date().toISOString();
-          } else if (current.status === "end.completed" && status !== "end.completed") {
-            delete candidate.completedAt;
-          }
+          applyPlanStatusMetadata(candidate, current.status, status);
           break;
         }
         case "task.add": {
           if (isEnd(current.status)) {
             candidate.status = "prepare.requirements";
-            delete candidate.completedAt;
+            applyPlanStatusMetadata(candidate, current.status, candidate.status);
           }
           const [task] = normalizePlanTasks([{
             title: operation.title,
@@ -1365,6 +1364,9 @@ function canSetPlanStatus(
   if (isEnd(from) && to === "prepare.requirements") {
     return { ok: true };
   }
+  if (from === "end.leave" && to === "process.active") {
+    return { ok: true };
+  }
   if (isEnd(from) && isProcess(to)) {
     return {
       ok: false,
@@ -1389,6 +1391,40 @@ function isProcess(status: PlanStatus): boolean {
 
 function isEnd(status: PlanStatus): boolean {
   return status.startsWith("end.");
+}
+
+export function isFocusLeave(status: PlanStatus): boolean {
+  return status === "end.leave";
+}
+
+export function isEndTerminal(status: PlanStatus): boolean {
+  return status.startsWith("end.");
+}
+
+export function isCompletionTerminal(status: PlanStatus): boolean {
+  return status === "end.completed" || status === "end.closed";
+}
+
+function applyPlanStatusMetadata(
+  target: PlanDocument,
+  previousStatus: PlanStatus,
+  nextStatus: PlanStatus,
+): void {
+  if (previousStatus !== "end.completed" && nextStatus === "end.completed") {
+    target.completedAt = new Date().toISOString();
+  } else if (previousStatus === "end.completed" && nextStatus !== "end.completed") {
+    delete target.completedAt;
+  }
+
+  if (nextStatus === "end.leave") {
+    delete target.completedAt;
+    target.leaveReason ??= "manual_leave";
+    return;
+  }
+
+  if (nextStatus === "process.active" || isCompletionTerminal(nextStatus) || isPrepare(nextStatus)) {
+    delete target.leaveReason;
+  }
 }
 
 function taskMetaStatusForPlanStatus(status: PlanStatus): "active" | "completed" | "paused" {

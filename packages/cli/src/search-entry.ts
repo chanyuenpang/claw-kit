@@ -1,3 +1,4 @@
+import path from "node:path";
 import {
   buildMemoryIndex,
   ClawError,
@@ -29,8 +30,9 @@ export async function runSearchEntry(args: string[]): Promise<void> {
         "claw search is project-scoped only. Put task-specific materials in plan.references instead of using task-local search.",
       );
     }
+    const dir = readOptionalFlag(searchArgs, "--dir");
     const input = {
-      cwd: process.cwd(),
+      cwd: dir ? path.resolve(process.cwd(), dir) : process.cwd(),
       limit: readOptionalNumber(searchArgs, "--limit"),
       query: readRequiredSearchQuery(searchArgs),
       scope: "project" as const,

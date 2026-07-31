@@ -1,0 +1,47 @@
+{
+  "name": "@veewo/claw-client",
+  "version": "0.2.3",
+  "type": "module",
+  "description": "Lightweight typed Node client for persistent claw sessions.",
+  "keywords": [
+    "claw",
+    "agent-session",
+    "daemon",
+    "typed-client"
+  ],
+  "homepage": "https://github.com/chanyuenpang/claw-kit",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chanyuenpang/claw-kit.git",
+    "directory": "packages/client"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "tsc -p tsconfig.test.json && node --test dist-test/**/*.test.js"
+  },
+  "peerDependencies": {
+    "@veewo/claw": "0.2.3"
+  },
+  "peerDependenciesMeta": {
+    "@veewo/claw": {
+      "optional": true
+    }
+  }
+}

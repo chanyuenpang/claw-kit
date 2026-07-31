@@ -6,8 +6,8 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build -w @veewo/claw-core && npm run build -w @veewo/claw && npm run build -w @claw-kit/openclaw-adapter && npm run build -w @claw-kit/codex-adapter && npm run build -w @claw-kit/opencode-adapter",
-    "check": "npm run build -w @veewo/claw-core && npm run check -w @veewo/claw && npm run check -w @claw-kit/openclaw-adapter && npm run check -w @claw-kit/codex-adapter && npm run check -w @claw-kit/opencode-adapter && node scripts/truth-encoding-audit.mjs --check",
+    "build": "npm run build -w @veewo/claw-core && npm run build -w @veewo/claw-client && npm run build -w @veewo/claw && npm run build -w @claw-kit/openclaw-adapter && npm run build -w @claw-kit/codex-adapter && npm run build -w @claw-kit/opencode-adapter",
+    "check": "npm run build -w @veewo/claw-core && npm run build -w @veewo/claw-client && npm run check -w @veewo/claw-client && npm run check -w @veewo/claw && npm run check -w @claw-kit/openclaw-adapter && npm run check -w @claw-kit/codex-adapter && npm run check -w @claw-kit/opencode-adapter && node scripts/truth-encoding-audit.mjs --check",
     "export:codex-plugin": "node .\\scripts\\export-codex-plugin.mjs",
     "export:opencode-plugin": "node .\\scripts\\export-opencode-plugin.mjs",
     "install:local-cli": "powershell -ExecutionPolicy Bypass -File .\\scripts\\install-cli.ps1",
@@ -24,8 +24,10 @@
     "benchmark:workflow": "node .\\scripts\\workflow-performance-benchmark.mjs",
     "benchmark:complexity": "node .\\scripts\\complexity-gate-calibration.mjs",
     "benchmark:search": "node .\\scripts\\search-performance-benchmark.mjs",
+    "benchmark:session": "node .\\scripts\\session-performance-benchmark.mjs",
+    "test:session-pack": "node .\\scripts\\session-package-smoke.mjs",
     "uninstall:local-cli": "npm uninstall -g @veewo/claw",
-    "test": "npm run build -w @veewo/claw-core && npm run build -w @veewo/claw && npm run test -w @veewo/claw-core && npm run test -w @veewo/claw",
+    "test": "npm run build -w @veewo/claw-core && npm run build -w @veewo/claw-client && npm run build -w @veewo/claw && npm run test -w @veewo/claw-core && npm run test -w @veewo/claw-client && npm run test -w @veewo/claw",
     "start": "node ./packages/cli/dist/bin.js"
   },
   "devDependencies": {

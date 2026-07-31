@@ -151,7 +151,7 @@ test("Codex plan commands use only the bundled code-mode consumer", () => {
 
   assert.match(mainRouter, /cached CLI driver/i);
   assert.match(mainRouter, /async function runClawPlanMutation/i);
-  assert.match(mainRouter, /change only `command`, `workdir`, and `timeout_ms`/i);
+  assert.match(mainRouter, /change only `argv`, `workdir`, and `timeout_ms`/i);
   assert.match(mainRouter, /claw codex driver/i);
   assert.match(mainRouter, /load\(cacheKey\)/i);
   assert.match(mainRouter, /store\(cacheKey, envelope\)/i);
@@ -160,7 +160,8 @@ test("Codex plan commands use only the bundled code-mode consumer", () => {
   assert.match(mainRouter, /agent must never call `get_goal` separately/i);
   assert.match(mainRouter, /no direct-call fallback/i);
   assert.match(workflowReference, /code-mode consumption is the adapter execution method/i);
-  assert.match(workflowReference, /code-mode-host-action-consumer\.mjs/i);
+  assert.match(workflowReference, /single distributed runtime consumer/i);
+  assert.match(workflowReference, /non-distributed test oracle/i);
   assert.match(workflowReference, /Codex has no separate host-call fallback/i);
   assert.match(workflowReference, /schema v1 native `create_goal` or `update_goal`/i);
   assert.match(workflowReference, /exactly once/i);

@@ -22,17 +22,20 @@ Codex adapter 对 hook 生命周期做 scope gating：
 
 - `SessionStart` 只作为启动恢复增强路径；`Stop` 只作为 knowledge capture/finalization sidecar
 - `SessionStart` hook 通过 `claw hook SessionStart` CLI 命令运行（注册于 `packages/codex-adapter/hooks/hooks.json`，实现于 `packages/cli/src/cli.ts`）
-- 启动时先根据 `cwd` 检查是否命中 `.claw` 项目
+- 启动和 Stop preflight 都从 `cwd` 向上解析最近的 `.claw` 项目根，并以系统临时目录为停止边界；不能只检查 cwd 直属 `.claw`
 - 命中 `.claw` 项目时，执行 `claw context`，把紧凑 project context 和 “使用 [@claw-kit](plugin://claw-kit@claw-kit) 推进任务” 的提示写入 `additionalContext`
 - 未命中 `.claw` 项目时，不做任何注入
 - `Stop` 在 CLI 加载前还必须确认当前 session knowledge registry 存在 active 或 pending target；没有 target 时快速退出
 - `Stop` 的 report/job 失败保持 fail-open，writer orchestration 由 `hook-owned-two-phase-knowledge-finalization.md` 单独拥有
+- `Stop` capture、protocol 或 detached launch 失败必须输出一条脱敏 JSON stderr diagnostic，并标记 `failed-open`；不得包含路径、用户内容或 transcript 内容
 - canonical harness correctness 继续由 prompt-driven workflow 与 CLI/core semantics 负责
 
 ## Consequences
 
 - Codex session start 获得 attach-free startup recovery enhancement，同时不要求 hook 接管主流程
 - hook 实现保持 scope-gated：SessionStart 只恢复，Stop 只捕获和排队，复杂 writer 工作在 detached finalizer 中完成
+- 项目内 nested cwd 与项目根共享同一 hook eligibility；临时目录边界之外不会无界向上搜索
+- fail-open 不再等同于静默失败：operator 可以看到最小结构化诊断，但 sidecar 仍不能改变 foreground 结果
 - 非 `.claw` 项目不会被误注入 `claw-kit` 上下文
 - hook 是 startup 恢复与 prompt 注入的唯一当前 owner；foreground 的正向 session-entry 合同由 `using-claw-kit-session-entry.md` 独立拥有
 

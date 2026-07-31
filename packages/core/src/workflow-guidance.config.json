@@ -322,6 +322,17 @@
       "commandHints": [
         "{{editBase}} --status prepare.requirements"
       ]
+    },
+    "end.leave": {
+      "stage": "left",
+      "summary": "The plan has left current-plan focus.",
+      "nextsteps": [
+        "Resume this plan explicitly when it should become current again, or create/select another plan."
+      ],
+      "commandHints": [
+        "claw plan resume <planId>",
+        "claw plan create \"<title>\""
+      ]
     }
   },
   "sessionStart": {

@@ -52,8 +52,8 @@ For every claw plan mutation, run this function in code mode. Change only `comma
 and `timeout_ms`:
 
 ```javascript
-async function runClawPlanMutation({ command, workdir, timeout_ms = 30000 }) {
-  const cacheKey = "claw-kit:codex-driver:v9:s1";
+async function runClawPlanMutation({ argv, workdir, timeout_ms = 30000 }) {
+  const cacheKey = "claw-kit:codex-driver:v10:s1";
   let envelope = load(cacheKey);
   if (!envelope) {
     const raw = typeof tools.shell_command === "function" ? await tools.shell_command({ command: "claw codex driver", workdir, timeout_ms })
@@ -64,14 +64,14 @@ async function runClawPlanMutation({ command, workdir, timeout_ms = 30000 }) {
     const end = output.lastIndexOf("}") + 1;
     if (start < 0 || end <= start) throw new Error("claw returned no driver envelope");
     envelope = JSON.parse(output.slice(start, end));
-    if (envelope?.cacheKey !== cacheKey || envelope?.driverVersion !== 9 || envelope?.hostActionSchemaVersion !== 1) {
+    if (envelope?.cacheKey !== cacheKey || envelope?.driverVersion !== 10 || envelope?.hostActionSchemaVersion !== 1) {
       throw new Error("incompatible claw driver envelope");
     }
     store(cacheKey, envelope);
   }
   const runner = (0, eval)(`(${envelope.source})`);
   if (typeof runner !== "function") throw new Error("invalid claw driver source");
-  return runner({ command, workdir, timeout_ms }, { tools, text });
+  return runner({ argv, workdir, timeout_ms }, { tools, text });
 }
 ```
 

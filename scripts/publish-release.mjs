@@ -2,7 +2,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { exportCodexPluginBundle, installCodexPluginBundle } from "./codex-plugin-bundle.mjs";
 import { assertSharedSkillsSynced } from "./sync-shared-skills.mjs";
@@ -105,6 +105,7 @@ function isAdapterVersion(adapterVersion, cliVersion) {
 async function verifyReleaseReadiness() {
   const root = await readJson("package.json");
   const core = await readJson("packages/core/package.json");
+  const client = await readJson("packages/client/package.json");
   const cli = await readJson("packages/cli/package.json");
   const codex = await readJson("packages/codex-adapter/package.json");
   const cindy = await readJson("packages/cindy-adapter/package.json");
@@ -116,7 +117,10 @@ async function verifyReleaseReadiness() {
   const cliVersion = root.version;
 
   assert(core.version === cliVersion, `@veewo/claw-core version ${core.version} must equal the CLI release version ${cliVersion}.`);
+  assert(client.version === cliVersion, `@veewo/claw-client version ${client.version} must equal the CLI release version ${cliVersion}.`);
+  assert(client.peerDependencies?.["@veewo/claw"] === cliVersion, "Client optional CLI peer must match the release version.");
   assert(cli.version === cliVersion, `@veewo/claw version ${cli.version} must equal the CLI release version ${cliVersion}.`);
+  assert(cli.dependencies?.["@veewo/claw-client"] === cliVersion, "CLI must pin the exact @veewo/claw-client version.");
   assert(cli.dependencies?.["@veewo/claw-core"] === cliVersion, "CLI must pin the exact @veewo/claw-core version.");
   assert(openclaw.dependencies?.["@veewo/claw-core"] === cliVersion, "OpenClaw adapter must pin the exact @veewo/claw-core version.");
 
@@ -155,7 +159,98 @@ async function verifyReleaseReadiness() {
     await fs.access(path.join(bundle.bundleDir, "skills", "create-claw-skill", "FALLBACK.md"));
 
     npmCommand(["run", "build", "-w", "@veewo/claw-core"]);
+    npmCommand(["run", "build", "-w", "@veewo/claw-client"]);
     npmCommand(["run", "build", "-w", "@veewo/claw"]);
+    const packDir = path.join(outDir, "packs");
+    await fs.mkdir(packDir, { recursive: true });
+    const coreTarball = npmCommand(["pack", "--workspace", "@veewo/claw-core", "--pack-destination", packDir])
+      .split(/\r?\n/).at(-1);
+    const clientTarball = npmCommand(["pack", "--workspace", "@veewo/claw-client", "--pack-destination", packDir])
+      .split(/\r?\n/).at(-1);
+    const cliTarball = npmCommand(["pack", "--workspace", "@veewo/claw", "--pack-destination", packDir])
+      .split(/\r?\n/).at(-1);
+    assert(coreTarball && clientTarball && cliTarball, "npm pack must produce core, client, and CLI tarballs.");
+    const clientContents = npmCommand([
+      "pack", "--workspace", "@veewo/claw-client", "--dry-run", "--json",
+    ]);
+    const cliContents = npmCommand([
+      "pack", "--workspace", "@veewo/claw", "--dry-run", "--json",
+    ]);
+    assert(clientContents.includes("dist/index.js") && clientContents.includes("dist/index.d.ts"), "Client pack must contain runtime and declarations.");
+    assert(cliContents.includes("dist/session-daemon-entry.js"), "CLI pack must contain the session daemon entry.");
+    const installDir = path.join(outDir, "installed-packages");
+    await fs.mkdir(installDir, { recursive: true });
+    await fs.writeFile(path.join(installDir, "package.json"), JSON.stringify({
+      private: true,
+      type: "module",
+      dependencies: {
+        "@veewo/claw-core": `file:${path.join(packDir, coreTarball)}`,
+        "@veewo/claw-client": `file:${path.join(packDir, clientTarball)}`,
+        "@veewo/claw": `file:${path.join(packDir, cliTarball)}`,
+      },
+    }, null, 2));
+    execFileSync(
+      process.execPath,
+      [npmExecPath, "install", "--ignore-scripts"],
+      { cwd: installDir, stdio: "pipe" },
+    );
+    const installedCliPath = path.join(installDir, "node_modules", "@veewo", "claw", "dist", "bin.js");
+    assert(
+      execFileSync(process.execPath, [installedCliPath, "--version"], { cwd: installDir, encoding: "utf8" }).trim() === cliVersion,
+      "Installed tarball CLI version smoke failed.",
+    );
+    const installedSessionProject = path.join(outDir, "installed-session-project");
+    const installedSessionRuntime = path.join(outDir, "installed-session-runtime");
+    await fs.mkdir(installedSessionProject, { recursive: true });
+    execFileSync(
+      process.execPath,
+      [installedCliPath, "init", "--name", "Installed Session Smoke", "--planning", "false"],
+      { cwd: installedSessionProject, stdio: "pipe" },
+    );
+    const installedClientPath = path.join(
+      installDir,
+      "node_modules",
+      "@veewo",
+      "claw-client",
+      "dist",
+      "index.js",
+    );
+    const installedDaemonPath = path.join(
+      installDir,
+      "node_modules",
+      "@veewo",
+      "claw",
+      "dist",
+      "session-daemon-entry.js",
+    );
+    const { ClawClient } = await import(`${pathToFileURL(installedClientPath).href}?release=${Date.now()}`);
+    const previousIdleTtl = process.env.CLAW_SESSION_DAEMON_IDLE_TTL_MS;
+    process.env.CLAW_SESSION_DAEMON_IDLE_TTL_MS = "100";
+    try {
+      const installedSession = await new ClawClient({
+        runtimeRoot: installedSessionRuntime,
+        daemonEntryPath: installedDaemonPath,
+        startupTimeoutMs: 10_000,
+      }).open("release-smoke-agent", installedSessionProject);
+      await installedSession.command({
+        operation: "plan.create",
+        input: {
+          taskName: "release-session-plan",
+          title: "Release session plan",
+          goalText: "Verify installed client and daemon",
+        },
+      });
+      const simple = await installedSession.command({
+        operation: "plan.show",
+        input: { simple: true },
+      });
+      assert(simple.goal?.text === "Verify installed client and daemon", "Installed client/daemon command smoke failed.");
+      await installedSession.close();
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    } finally {
+      if (previousIdleTtl === undefined) delete process.env.CLAW_SESSION_DAEMON_IDLE_TTL_MS;
+      else process.env.CLAW_SESSION_DAEMON_IDLE_TTL_MS = previousIdleTtl;
+    }
     const smokeHome = path.join(outDir, "home");
     const smokeProject = path.join(outDir, "project");
     await fs.mkdir(smokeProject, { recursive: true });
@@ -202,11 +297,11 @@ console.log(`Codex plugin version: ${release.codexPluginVersion}`);
 console.log("The committed repository marketplace is the Codex release artifact; no GitHub Release ZIP is required.");
 
 if (!publish) {
-  console.log("Dry run complete. Re-run with --publish to publish @veewo/claw-core and @veewo/claw.");
+  console.log("Dry run complete. Re-run with --publish to publish @veewo/claw-core, @veewo/claw-client, and @veewo/claw.");
   process.exit(0);
 }
 
-for (const workspace of ["@veewo/claw-core", "@veewo/claw"]) {
+for (const workspace of ["@veewo/claw-core", "@veewo/claw-client", "@veewo/claw"]) {
   assert(npmExecPath, "Release publishing must run through an npm script so npm_execpath is available.");
   const result = spawnSync(process.execPath, [npmExecPath, "publish", "--workspace", workspace, "--access", "public"], {
     cwd: repoRoot,
@@ -216,5 +311,5 @@ for (const workspace of ["@veewo/claw-core", "@veewo/claw"]) {
 }
 
 assertCleanWorktree("After publishing");
-console.log(`Published @veewo/claw-core and @veewo/claw ${release.cliVersion}.`);
+console.log(`Published @veewo/claw-core, @veewo/claw-client, and @veewo/claw ${release.cliVersion}.`);
 console.log("Next: invoke the claw-kit update skill to refresh the global CLI and the official GitHub marketplace plugin. Do not install from local workspace content.");
