@@ -396,6 +396,19 @@ test("Cindy subagent claim requires and atomically persists adapter report input
   assert.equal(queued.status, "queued");
   assert.equal(queued.attempts, 0);
 
+  const emptyCapture = runClawExpectFailure([
+    "knowledge", "claim", "--project-root", root, "--finalize-id", finalizeId,
+    "--cindy-report-stdin",
+  ], root, env, JSON.stringify({
+    session_id: sessionId,
+    turn_id: "cindy-turn-1",
+    task_conclusions: [],
+  }));
+  assert.match(String((emptyCapture.error as JsonRecord).message), /at least one task conclusion/i);
+  const stillQueued = JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord;
+  assert.equal(stillQueued.status, "queued");
+  assert.equal(stillQueued.attempts, 0);
+
   const claimed = runClaw([
     "knowledge", "claim", "--project-root", root, "--finalize-id", finalizeId,
     "--cindy-report-stdin",

@@ -41,6 +41,7 @@ Use the Ghost tools in the order required by `using-claw-kit`:
 6. Call `plan.done` with a retrospective and key decision.
 7. Require a structured `knowledgeDispatch` with `policy: subagent`, an exact 64-hex `finalizeId`, and a non-empty prompt. Its terminal mutation must already have created the durable ready job. If this object is absent or malformed, stop and mark the test failed; never derive a finalize id, reconstruct a Writer prompt, or claim that dispatch occurred from `completionHooks` alone.
 8. As the normal Cindy Lead, call `cindy_orca.get_workspace_info`; reuse the stable `knowledge-finalizer` Worker or create it only under the authorization established in preflight. Dispatch `knowledgeDispatch.prompt` byte-for-byte unchanged.
+   The Worker agent must be `codex` even when the Lead uses DeepSeek or another Claude-compatible model; never inherit the Lead agent kind or substitute `claude-code`.
 9. Treat `resumed`, `already-active`, `queued`, or a concrete `session-dispatch` receipt as accepted. End the Lead response immediately and do not wait for the Worker.
 
 Do not manually call `did-turn-end`, `capture-report`, `knowledge.wait`, a background errand, or a raw CLI claim/done command. A naturally emitted Host turn-end event may exist, but the subagent result must not depend on it.

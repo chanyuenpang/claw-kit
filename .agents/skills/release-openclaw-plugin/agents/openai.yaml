@@ -1,0 +1,4 @@
+interface:
+  display_name: "Release OpenClaw plugin"
+  short_description: "Publish the OpenClaw adapter plugin"
+  default_prompt: "Use -openclaw-plugin to release the OpenClaw plugin."

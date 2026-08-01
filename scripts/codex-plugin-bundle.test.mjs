@@ -194,7 +194,9 @@ test("exported Codex plugin contains every shared workflow skill", async () => {
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "update", "TEMPLATE.json")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "create-claw-skill", "TEMPLATE.json")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "create-claw-skill", "FALLBACK.md")));
-  await assert.rejects(fs.access(path.join(result.bundleDir, "skills", "release-claw-kit", "SKILL.md")));
+  for (const skillName of ["release-claw-kit", "release-claw-cli", "release-codex-plugin", "release-cindy-plugin", "release-openclaw-plugin", "release-opencode-plugin"]) {
+    await assert.rejects(fs.access(path.join(result.bundleDir, "skills", skillName, "SKILL.md")));
+  }
   await assert.rejects(fs.access(path.join(result.bundleDir, "scripts", "code-mode-host-action-consumer.mjs")));
 });
 
@@ -251,25 +253,46 @@ test("Codex update contract is platform-specific and supports only the official 
   assert.doesNotMatch(installer, /clone --depth 1 --branch main/i);
 });
 
-test("repository-local release template sequences guarded publishing before published-source update", async () => {
-  const skillRoot = new URL("../.agents/skills/release-claw-kit/", import.meta.url);
-  const skill = await fs.readFile(new URL("SKILL.md", skillRoot), "utf8");
-  const template = JSON.parse(await fs.readFile(new URL("TEMPLATE.json", skillRoot), "utf8"));
-  const fallback = await fs.readFile(new URL("FALLBACK.md", skillRoot), "utf8");
-  const protocol = await fs.readFile(new URL("references/release-protocol.md", skillRoot), "utf8");
-  const combined = `${skill}\n${JSON.stringify(template)}\n${fallback}\n${protocol}`;
+test("repository-local release skills split CLI and platform publication contracts", async () => {
+  const root = new URL("../.agents/skills/", import.meta.url);
+  const router = await fs.readFile(new URL("release-claw-kit/SKILL.md", root), "utf8");
+  const names = [
+    "release-claw-cli",
+    "release-codex-plugin",
+    "release-cindy-plugin",
+    "release-openclaw-plugin",
+    "release-opencode-plugin",
+  ];
+  const payloads = await Promise.all(names.map(async (name) => {
+    const skillRoot = new URL(`${name}/`, root);
+    const skill = await fs.readFile(new URL("SKILL.md", skillRoot), "utf8");
+    const template = JSON.parse(await fs.readFile(new URL("TEMPLATE.json", skillRoot), "utf8"));
+    const fallback = await fs.readFile(new URL("FALLBACK.md", skillRoot), "utf8");
+    const artifact = await fs.readFile(new URL("references/artifact.md", skillRoot), "utf8");
+    return { name, skill, template, fallback, artifact };
+  }));
 
-  assert.equal(template.id, "release-claw-kit");
-  assert.equal(template.status, "process.active");
-  assert.equal(template.tasks.at(-1).id, 8);
+  for (const name of names) assert.match(router, new RegExp(name));
+  assert.match(router, /routes only/i);
+  await assert.rejects(fs.access(new URL("release-claw-kit/TEMPLATE.json", root)));
+
+  for (const payload of payloads) {
+    assert.equal(payload.template.id, payload.name);
+    assert.equal(payload.template.status, "process.active");
+    assert.equal(payload.template.tasks.length, 5);
+    assert.doesNotMatch(JSON.stringify(payload.template), /"choices"/);
+  }
+
+  const combined = payloads.map(({ skill, template, fallback, artifact }) =>
+    `${skill}\n${JSON.stringify(template)}\n${fallback}\n${artifact}`).join("\n");
   assert.match(combined, /npm run verify:release/);
-  assert.match(combined, /npm run publish:release/);
-  assert.match(combined, /@veewo\/claw-core before @veewo\/claw/i);
-  assert.match(combined, /local main exactly equals origin\/main/i);
-  assert.match(combined, /separate completion boundaries/i);
-  assert.match(combined, /claw-kit@claw-kit/);
-  assert.match(combined, /unpublished workspace/i);
-  assert.doesNotMatch(JSON.stringify(template), /"choices"/);
+  assert.match(combined, /@veewo\/claw-core.*before @veewo\/claw/is);
+  assert.match(combined, /HEAD == origin\/main/);
+  assert.match(combined, /vcodex-<version>/);
+  assert.match(combined, /vcindy-<version>/);
+  assert.match(combined, /vopenclaw-<version>/);
+  assert.match(combined, /vopencode-<version>/);
+  assert.match(combined, /single rollback package/i);
 });
 
 test("official marketplace-style cache copy contains all shared skills and resources", async () => {
@@ -284,7 +307,9 @@ test("official marketplace-style cache copy contains all shared skills and resou
   await assert.doesNotReject(fs.access(path.join(result.installDir, "skills", "update", "TEMPLATE.json")));
   await assert.doesNotReject(fs.access(path.join(result.installDir, "skills", "create-claw-skill", "TEMPLATE.json")));
   await assert.doesNotReject(fs.access(path.join(result.installDir, "skills", "create-claw-skill", "FALLBACK.md")));
-  await assert.rejects(fs.access(path.join(result.installDir, "skills", "release-claw-kit", "SKILL.md")));
+  for (const skillName of ["release-claw-kit", "release-claw-cli", "release-codex-plugin", "release-cindy-plugin", "release-openclaw-plugin", "release-opencode-plugin"]) {
+    await assert.rejects(fs.access(path.join(result.installDir, "skills", skillName, "SKILL.md")));
+  }
   await assert.doesNotReject(
     fs.access(path.join(result.installDir, "skills", "create-claw-skill", "scripts", "create-claw-skill-stub.mjs")),
   );

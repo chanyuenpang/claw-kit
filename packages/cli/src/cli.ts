@@ -1144,6 +1144,9 @@ function readCindyKnowledgeClaimCaptureInput(): {
   if (!sessionId || !turnId) {
     throw new ClawError("PROJECT_CONFIG_INVALID", "Cindy knowledge claim report input requires session_id and turn_id.");
   }
+  if (taskConclusions.length === 0) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "Cindy knowledge claim report input requires at least one task conclusion.");
+  }
   return { sessionId, turnId, taskConclusions };
 }
 

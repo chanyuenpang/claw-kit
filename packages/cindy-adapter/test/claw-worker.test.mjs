@@ -188,12 +188,18 @@ test("Cindy SQLite reader prepares subagent report input as soon as knowledgeDis
   db.prepare("INSERT INTO sessions (id, sdk_session_id) VALUES (?, ?)").run("originating-cindy-session", "originating-sdk-session");
   db.prepare("INSERT INTO messages (id, client_id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?, ?)")
     .run("assistant-1", "turn-1", "originating-cindy-session", "assistant", JSON.stringify("Implemented the report fix."), 1);
+  db.prepare("INSERT INTO messages (id, client_id, session_id, role, content, tool_use_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .run("task-use", "turn-1", "originating-cindy-session", "tool_use", JSON.stringify({
+      toolUseId: "call-task-done",
+      toolName: "mcp__cindy__ghost_call",
+      input: { ghost_id: "claw-kit", tool: "call_tool", args: { name: "task.done", args: { id: 2 } } },
+    }), "call-task-done", 2);
+  db.prepare("INSERT INTO messages (id, client_id, session_id, role, content, tool_use_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .run("task-result", "turn-1", "originating-cindy-session", "tool_result", JSON.stringify({ ok: true, result: { planStatus: "process.active" } }), "call-task-done", 3);
   db.prepare("INSERT INTO messages (id, client_id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-    .run("task-result", "turn-1", "originating-cindy-session", "tool_result", JSON.stringify({ ok: true, command: "task.done" }), 2);
+    .run("assistant-2", "turn-1", "originating-cindy-session", "assistant", JSON.stringify("Closed the plan and dispatched the writer."), 4);
   db.prepare("INSERT INTO messages (id, client_id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-    .run("assistant-2", "turn-1", "originating-cindy-session", "assistant", JSON.stringify("Closed the plan and dispatched the writer."), 3);
-  db.prepare("INSERT INTO messages (id, client_id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-    .run("plan-result", "turn-1", "originating-cindy-session", "tool_result", JSON.stringify({ ok: true, result: { knowledgeDispatch: { policy: "subagent", finalizeId } } }), 4);
+    .run("plan-result", "turn-1", "originating-cindy-session", "tool_result", JSON.stringify({ ok: true, result: { knowledgeDispatch: { policy: "subagent", finalizeId } } }), 5);
   db.close();
 
   const previous = process.env.CINDY_USER_DATA;

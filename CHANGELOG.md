@@ -4,6 +4,23 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## Unreleased
 
+## [0.2.6] - 2026-08-01
+
+### Added
+
+- Split repository releases into artifact-specific CLI, Cindy, Codex, OpenClaw, and OpenCode workflows with an explicit batch router.
+- Added a dedicated Cindy release contract that publishes a verified `.cindy` installer while retaining one numerically latest rollback package.
+
+### Changed
+
+- Cindy update guidance now resolves published GitHub release assets and keeps installation confirmation separate from publication.
+- Release verification now validates artifact-specific skill ownership, Codex marketplace payloads, and the supported batch boundaries.
+
+### Fixed
+
+- Cindy report lookup now follows the current task-local runtime layout instead of relying on obsolete global job paths.
+- CLI closeout test support accepts the current task-local knowledge finalization lifecycle without weakening release gates.
+
 ## [0.2.5] - 2026-08-01
 
 ### Added

@@ -19,7 +19,7 @@ After plan or subplan creation, follow the returned `workflowGuidance`.
 
 ## Hard Boundary
 
-This skill never changes versions, commits, pushes, tags, publishes npm or GitHub artifacts, invokes `release-claw-kit`, or claims published-source verification. Local candidate installation is allowed only when the user explicitly requests it, and must use a development identity without deleting the official installation.
+This skill never changes versions, commits, pushes, tags, publishes npm or GitHub artifacts, invokes `release-claw-kit` or an artifact-specific `release-*` skill, or claims published-source verification. Local candidate installation is allowed only when the user explicitly requests it, and must use a development identity without deleting the official installation.
 
 ## References
 

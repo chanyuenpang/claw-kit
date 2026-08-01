@@ -1,0 +1,66 @@
+{
+  "id": "release-claw-cli",
+  "version": "0.2.6",
+  "title": "release-claw-cli",
+  "status": "process.active",
+  "goal": {
+    "text": "Publish a verified claw core and CLI release from exact main source."
+  },
+  "requirements": {
+    "summary": "Release only the CLI/core artifact family, preserving repository gates and verifying npm retrieval.",
+    "openQuestions": [],
+    "acceptanceCriteria": [
+      "Root, core, CLI, dependency pins, adapter resets, templates, and lockfile are version-aligned.",
+      "Focused checks, package dry-runs, and npm run verify:release pass from clean origin/main.",
+      "@veewo/claw-core is published before @veewo/claw and both are retrievable.",
+      "The immutable v<version> tag and GitHub Release are verified."
+    ]
+  },
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Inspect and classify the CLI release baseline",
+      "detail": "Read AGENTS.md and references/artifact.md; inspect branch, remotes, tags, npm latest versions, manifests, lockfile, and every worktree change. Stop if another artifact family is mixed without explicit batch authority.",
+      "status": "pending"
+    },
+    {
+      "id": 2,
+      "title": "Prepare the CLI and core version baseline",
+      "detail": "Set the authorized three-segment root/core/CLI version, exact dependency pins, adapter <cli>.0 resets, template/shared-skill versions, changelog, and lockfile. Review the complete diff.",
+      "status": "pending"
+    },
+    {
+      "id": 3,
+      "title": "Verify the CLI release candidate",
+      "detail": "Run risk-proportionate focused checks, template/shared-skill validation, git diff --check, npm pack dry-runs for core and CLI, and any checks justified by the diff.",
+      "status": "pending"
+    },
+    {
+      "id": 4,
+      "title": "Pass the exact-source gate and publish",
+      "detail": "Commit intended content on main, push origin/main, require an empty worktree and HEAD == origin/main, run npm run verify:release, publish @veewo/claw-core before @veewo/claw, then create and push v<version> plus its GitHub Release.",
+      "status": "pending"
+    },
+    {
+      "id": 5,
+      "title": "Verify npm and GitHub evidence",
+      "detail": "Verify both package metadata and real retrieval, tag and release targets, final repository cleanliness, and any separately authorized published-source installation refresh.",
+      "status": "pending"
+    }
+  ],
+  "references": [
+    {
+      "path": "references/artifact.md",
+      "why": "Owns the CLI release contract."
+    },
+    {
+      "path": "FALLBACK.md",
+      "why": "Provides the plan-independent route."
+    }
+  ],
+  "rules": [
+    "Never publish a platform plugin through this skill.",
+    "Never stash or discard user work to satisfy a release gate.",
+    "Stop at the first failed release boundary."
+  ]
+}

@@ -1,6 +1,6 @@
 {
   "id": "update",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "title": "update",
   "status": "process.active",
   "goal": {
@@ -45,7 +45,7 @@
     {
       "id": 3,
       "title": "Verify the CLI and Codex plugin",
-      "detail": "Run `claw --version` and `npm list -g @veewo/claw --depth=0`. Verify `claw-kit@claw-kit` is enabled, `claw-kit@claw-kit-local` is disabled, and the official marketplace source manifest plus matching cache manifest equal the published target version. Confirm the active cache contains planning, researcher, config, update, and create-claw-skill, while repository-local release-claw-kit, internal delegate-writer and knowledge-writer, and retired truth-writer and adr-writer remain absent. Restart Codex and start a new task before validating the loaded skill version. Report exact success or failure for both surfaces.",
+      "detail": "Run `claw --version` and `npm list -g @veewo/claw --depth=0`. Verify `claw-kit@claw-kit` is enabled, `claw-kit@claw-kit-local` is disabled, and the official marketplace source manifest plus matching cache manifest equal the published target version. Confirm the active cache contains planning, researcher, config, update, and create-claw-skill, while repository-local release-claw-kit and artifact-specific release-* skills, internal delegate-writer and knowledge-writer, and retired truth-writer and adr-writer remain absent. Restart Codex and start a new task before validating the loaded skill version. Report exact success or failure for both surfaces.",
       "status": "pending"
     }
   ],

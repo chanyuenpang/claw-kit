@@ -22,6 +22,30 @@ test('Cindy plugin exposes the full claw-kit skill surface', async () => {
   }
 });
 
+test('Cindy release and update contracts retain one rollback package and install the latest matching GitHub asset', async () => {
+  const [releaseRule, skill, template, fallback, coverage] = await Promise.all([
+    readFile(new URL('../../../.agents/skills/release-cindy-plugin/references/artifact.md', import.meta.url), 'utf8'),
+    readFile(new URL('skills/update/SKILL.md', root), 'utf8'),
+    readFile(new URL('skills/update/TEMPLATE.json', root), 'utf8'),
+    readFile(new URL('skills/update/non-claw-fallback.md', root), 'utf8'),
+    readFile(new URL('skills/update/CONTENT-COVERAGE.md', root), 'utf8'),
+  ]);
+
+  assert.match(releaseRule, /target release artifact.*single\s+rollback package/is);
+  assert.match(releaseRule, /parse version segments numerically/is);
+  assert.match(releaseRule, /Delete every other matching local build output/is);
+
+  for (const source of [skill, template, fallback, coverage]) {
+    assert.match(source, /vcindy-/);
+    assert.match(source, /\.cindy/);
+    assert.match(source, /GitHub Release/i);
+  }
+  assert.match(skill, /Do not use the\s+repository-wide `releases\/latest` shortcut/is);
+  assert.match(template, /immutable official GitHub Release URL/);
+  assert.match(fallback, /If the newest stable `vcindy-\*`\s+release has no matching `\.cindy` asset/is);
+  assert.doesNotMatch(`${skill}\n${template}\n${fallback}`, /marketplace (?:add|upgrade)|--ref main/);
+});
+
 test('Cindy E2E skill rejects session-scope and reconstructed dispatch samples', async () => {
   const source = await readFile(new URL('skills/cindy-claw-e2e/SKILL.md', root), 'utf8');
   assert.match(source, /literal argument `"scope": "project"`/);
@@ -30,6 +54,8 @@ test('Cindy E2E skill rejects session-scope and reconstructed dispatch samples',
   assert.match(source, /exact 64-hex `finalizeId`/);
   assert.match(source, /never derive a finalize id, reconstruct a Writer prompt/);
   assert.match(source, /Dispatch `knowledgeDispatch\.prompt` byte-for-byte unchanged/);
+  assert.match(source, /Worker agent must be `codex`/);
+  assert.match(source, /never inherit the Lead agent kind or substitute `claude-code`/);
   assert.match(source, /writer\.executionPolicy: subagent/);
   assert.match(source, /Do not manually call `did-turn-end`, `capture-report`/);
 });

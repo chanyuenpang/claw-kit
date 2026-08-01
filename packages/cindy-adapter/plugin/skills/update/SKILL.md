@@ -22,9 +22,20 @@ Resolve `<skill-dir>` as the directory containing this loaded `SKILL.md`.
 ## Contract
 
 - Refresh the published global CLI first, then the Cindy `.cindy` plugin package.
+- Discover the latest stable Cindy package from the official
+  `chanyuenpang/claw-kit` GitHub Releases list: filter non-draft,
+  non-prerelease releases to tags beginning with `vcindy-`, order their adapter
+  versions numerically, and select the newest release that contains a
+  `.cindy` asset whose filename and embedded `ghost.json` version match the tag.
+- Download that GitHub Release asset and open it with Cindy. Do not use the
+  repository-wide `releases/latest` shortcut because the newest repository
+  release may belong to CLI, Codex, OpenClaw, or OpenCode.
 - Treat the CLI and Cindy plugin as one update unit; verify both before reporting success.
 - Require the installed Cindy plugin id `claw-kit` to be enabled and running.
-- Never claim that a workspace `.cindy` file is installed until Cindy's update confirmation has been accepted.
+- Never install from GitHub `main`, a marketplace snapshot, or a workspace
+  `.cindy` file. If the selected `vcindy-*` release has no matching asset, stop
+  with an explicit error instead of substituting source files.
+- Never claim that a downloaded `.cindy` file is installed until Cindy's update confirmation has been accepted.
 - A cached package alone is not activation proof. Verify the installed plugin version, enabled state, and runtime state.
 - During release closeout, publish and verify the target version before invoking this skill.
 - Keep execution details in `TEMPLATE.json`; use `non-claw-fallback.md` only outside the claw harness.

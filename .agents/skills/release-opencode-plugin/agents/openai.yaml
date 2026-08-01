@@ -1,0 +1,4 @@
+interface:
+  display_name: "Release OpenCode plugin"
+  short_description: "Publish the OpenCode adapter plugin"
+  default_prompt: "Use -opencode-plugin to release the OpenCode plugin."

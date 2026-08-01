@@ -1,0 +1,66 @@
+{
+  "id": "release-codex-plugin",
+  "version": "0.2.6",
+  "title": "release-codex-plugin",
+  "status": "process.active",
+  "goal": {
+    "text": "Publish a verified Codex plugin release from the committed marketplace source."
+  },
+  "requirements": {
+    "summary": "Release only the Codex adapter artifact family without npm publication.",
+    "openQuestions": [],
+    "acceptanceCriteria": [
+      "Only the Codex adapter fourth segment and matching manifest are bumped.",
+      "The committed marketplace payload and metadata are complete and verified.",
+      "The exact vcodex-<version> tag and GitHub Release point to clean origin/main.",
+      "No npm package or plugin ZIP is published."
+    ]
+  },
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Inspect and classify the Codex release baseline",
+      "detail": "Read AGENTS.md and references/artifact.md; inspect branch, remotes, tags, manifests, marketplace metadata, and every worktree change. Reject unapproved cross-family changes.",
+      "status": "pending"
+    },
+    {
+      "id": 2,
+      "title": "Prepare the Codex adapter version and payload",
+      "detail": "Bump only the Codex adapter fourth segment, align .codex-plugin/plugin.json, synchronize generated content, and review the full diff.",
+      "status": "pending"
+    },
+    {
+      "id": 3,
+      "title": "Verify the Codex plugin candidate",
+      "detail": "Run focused adapter and marketplace bundle tests, template/shared-skill checks, git diff --check, and npm run verify:release prerequisites justified by the diff.",
+      "status": "pending"
+    },
+    {
+      "id": 4,
+      "title": "Pass the exact-source gate and release",
+      "detail": "Commit intended content on main, push origin/main, require an empty worktree and HEAD == origin/main, run npm run verify:release, create and push vcodex-<version>, and create the GitHub Release without a ZIP asset.",
+      "status": "pending"
+    },
+    {
+      "id": 5,
+      "title": "Verify the immutable Codex release",
+      "detail": "Verify tag, release, committed marketplace paths and manifests, repository cleanliness, and any separately authorized update from published GitHub source.",
+      "status": "pending"
+    }
+  ],
+  "references": [
+    {
+      "path": "references/artifact.md",
+      "why": "Owns the Codex plugin release contract."
+    },
+    {
+      "path": "FALLBACK.md",
+      "why": "Provides the plan-independent route."
+    }
+  ],
+  "rules": [
+    "Never publish npm packages or attach a plugin ZIP.",
+    "Never modify another artifact family without explicit batch authority.",
+    "Stop at the first failed release boundary."
+  ]
+}

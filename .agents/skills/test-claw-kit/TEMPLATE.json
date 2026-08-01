@@ -1,6 +1,6 @@
 {
   "id": "test-claw-kit",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "title": "test-claw-kit",
   "status": "process.active",
   "goal": {
@@ -112,7 +112,7 @@
   "rules": [
     "Follow returned workflowGuidance before advancing.",
     "Honor repository AGENTS.md and preserve user-owned work; never stash, clean, or discard changes to manufacture a passing candidate.",
-    "Treat testing and release as separate workflows; never invoke release-claw-kit from this skill.",
+    "Treat testing and release as separate workflows; never invoke release-claw-kit or an artifact-specific release-* skill from this skill.",
     "Do not change versions, commit, push, tag, publish, or claim published-source verification.",
     "Run build and static checks before local candidate installation.",
     "Use the test manager's domain selection as evidence, and use the full route for version-level or cross-cutting pre-release validation.",

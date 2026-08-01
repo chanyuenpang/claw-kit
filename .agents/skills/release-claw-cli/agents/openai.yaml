@@ -1,0 +1,4 @@
+interface:
+  display_name: "Release claw CLI"
+  short_description: "Publish claw core and CLI packages"
+  default_prompt: "Use -claw-cli to release the claw CLI and core packages."

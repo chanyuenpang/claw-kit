@@ -1,0 +1,64 @@
+{
+  "id": "release-openclaw-plugin",
+  "version": "0.2.6",
+  "title": "release-openclaw-plugin",
+  "status": "process.active",
+  "goal": {
+    "text": "Publish a verified OpenClaw plugin release."
+  },
+  "requirements": {
+    "summary": "Release only the OpenClaw adapter artifact family without npm publication.",
+    "openQuestions": [],
+    "acceptanceCriteria": [
+      "Only the OpenClaw adapter fourth segment is bumped and its core dependency remains exact.",
+      "Focused OpenClaw checks and the guarded release verifier pass.",
+      "The exact vopenclaw-<version> tag and GitHub Release are verified."
+    ]
+  },
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Inspect and classify the OpenClaw baseline",
+      "detail": "Read AGENTS.md and references/artifact.md; inspect branch, remotes, tags, manifests, dependency pins, and every worktree change.",
+      "status": "pending"
+    },
+    {
+      "id": 2,
+      "title": "Prepare the OpenClaw adapter",
+      "detail": "Bump only the adapter fourth segment, preserve the exact core dependency, synchronize required content, and review the complete diff.",
+      "status": "pending"
+    },
+    {
+      "id": 3,
+      "title": "Verify the OpenClaw candidate",
+      "detail": "Run focused adapter checks, package/build validation, template/shared-skill checks, and git diff --check.",
+      "status": "pending"
+    },
+    {
+      "id": 4,
+      "title": "Pass the exact-source gate and release",
+      "detail": "Commit intended content on main, push origin/main, require an empty worktree and HEAD == origin/main, run npm run verify:release, create and push vopenclaw-<version>, and create the GitHub Release.",
+      "status": "pending"
+    },
+    {
+      "id": 5,
+      "title": "Verify the OpenClaw release",
+      "detail": "Verify tag, GitHub Release artifact evidence, repository cleanliness, and only the separately authorized platform installation refresh.",
+      "status": "pending"
+    }
+  ],
+  "references": [
+    {
+      "path": "references/artifact.md",
+      "why": "Owns the OpenClaw release contract."
+    },
+    {
+      "path": "FALLBACK.md",
+      "why": "Provides the plan-independent route."
+    }
+  ],
+  "rules": [
+    "Never publish npm packages or modify another artifact family.",
+    "Stop at the first failed release boundary."
+  ]
+}

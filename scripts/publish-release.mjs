@@ -274,16 +274,24 @@ async function verifyReleaseReadiness() {
       const validation = JSON.parse(output);
       assert(validation.ok === true && validation.templateId === templateName, `Bundled template ${templateName} failed isolated CLI validation.`);
     }
-    const projectTemplateOutput = execFileSync(
-      process.execPath,
-      [cliPath, "template", "validate", "--template", "release-claw-kit"],
-      { cwd: repoRoot, env: smokeEnv, encoding: "utf8" },
-    );
-    const projectTemplateValidation = JSON.parse(projectTemplateOutput);
-    assert(
-      projectTemplateValidation.ok === true && projectTemplateValidation.templateId === "release-claw-kit",
-      "Repository-local release-claw-kit template failed CLI validation.",
-    );
+    for (const templateName of [
+      "release-claw-cli",
+      "release-codex-plugin",
+      "release-cindy-plugin",
+      "release-openclaw-plugin",
+      "release-opencode-plugin",
+    ]) {
+      const projectTemplateOutput = execFileSync(
+        process.execPath,
+        [cliPath, "template", "validate", "--template", templateName],
+        { cwd: repoRoot, env: smokeEnv, encoding: "utf8" },
+      );
+      const projectTemplateValidation = JSON.parse(projectTemplateOutput);
+      assert(
+        projectTemplateValidation.ok === true && projectTemplateValidation.templateId === templateName,
+        `Repository-local ${templateName} template failed CLI validation.`,
+      );
+    }
   } finally {
     await fs.rm(outDir, { recursive: true, force: true });
   }

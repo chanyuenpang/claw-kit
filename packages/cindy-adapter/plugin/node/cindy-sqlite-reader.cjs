@@ -38,6 +38,24 @@ function containsSuccessfulTaskDone(value) {
   return Object.values(value).some(containsSuccessfulTaskDone);
 }
 
+function isTaskDoneToolUse(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  return value.toolName === 'mcp__cindy__ghost_call'
+    && value.input?.tool === 'call_tool'
+    && value.input?.args?.name === 'task.done';
+}
+
+function isSuccessfulTaskDoneResult(row, taskDoneToolUseIds) {
+  const content = readJsonContent(row.content);
+  if (containsSuccessfulTaskDone(content)) return true;
+  if (!row.tool_use_id || !taskDoneToolUseIds.has(row.tool_use_id)) return false;
+  if (!content || typeof content !== 'object' || Array.isArray(content) || content.ok !== true) return false;
+  return !content.result
+    || typeof content.result !== 'object'
+    || Array.isArray(content.result)
+    || content.result.ok !== false;
+}
+
 function findDatabaseForSession(sessionId, options = {}) {
   for (const userDataDir of candidateUserDataDirs(options.env, options.homeDir)) {
     let entries;
@@ -340,14 +358,21 @@ function readTurnCapture(sessionId) {
     let latestAssistant = '';
     const conclusions = [];
     const seen = new Set();
+    const taskDoneToolUseIds = new Set();
     for (const row of rows.slice(start, end + 1)) {
       if (row.role === 'assistant') {
         const text = messageText(row.content);
         if (text) latestAssistant = text;
         continue;
       }
+      if (row.role === 'tool_use') {
+        if (row.tool_use_id && isTaskDoneToolUse(readJsonContent(row.content))) {
+          taskDoneToolUseIds.add(row.tool_use_id);
+        }
+        continue;
+      }
       if (row.role !== 'tool_result' || !latestAssistant) continue;
-      if (!containsSuccessfulTaskDone(readJsonContent(row.content))) continue;
+      if (!isSuccessfulTaskDoneResult(row, taskDoneToolUseIds)) continue;
       if (seen.has(latestAssistant)) continue;
       seen.add(latestAssistant);
       conclusions.push({ turnId, message: latestAssistant });
@@ -391,6 +416,7 @@ function readKnowledgeClaimCapture(sessionId, finalizeId, startedAt) {
     let latestTurnId = '';
     const conclusions = [];
     const seen = new Set();
+    const taskDoneToolUseIds = new Set();
     for (const row of rows) {
       if (row.role === 'assistant') {
         const text = messageText(row.content);
@@ -400,9 +426,15 @@ function readKnowledgeClaimCapture(sessionId, finalizeId, startedAt) {
         }
         continue;
       }
+      if (row.role === 'tool_use') {
+        if (row.tool_use_id && isTaskDoneToolUse(readJsonContent(row.content))) {
+          taskDoneToolUseIds.add(row.tool_use_id);
+        }
+        continue;
+      }
       if (row.role !== 'tool_result') continue;
       const content = readJsonContent(row.content);
-      if (latestAssistant && containsSuccessfulTaskDone(content)) {
+      if (latestAssistant && isSuccessfulTaskDoneResult(row, taskDoneToolUseIds)) {
         const key = `${latestTurnId}\n${latestAssistant}`;
         if (!seen.has(key)) {
           seen.add(key);
@@ -410,6 +442,7 @@ function readKnowledgeClaimCapture(sessionId, finalizeId, startedAt) {
         }
       }
       if (containsKnowledgeDispatch(content, finalizeId)) {
+        if (conclusions.length === 0) return null;
         return {
           sessionId,
           turnId: String(row.client_id || latestTurnId || row.id || `row-${row.rowid}`),

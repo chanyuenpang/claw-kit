@@ -146,13 +146,14 @@ export function runClaw(args: string[], cwd: string, env?: NodeJS.ProcessEnv, in
   return JSON.parse(result.stdout) as JsonRecord;
 }
 
-export function runClawExpectFailure(args: string[], cwd: string, env?: NodeJS.ProcessEnv): JsonRecord {
+export function runClawExpectFailure(args: string[], cwd: string, env?: NodeJS.ProcessEnv, input?: string): JsonRecord {
   const cliPath = path.resolve(thisDir, "..", "dist", "bin.js");
   const result = spawnSync(process.execPath, [cliPath, ...args], {
     cwd,
     env: buildSpawnEnv(env),
     encoding: "utf-8",
     windowsHide: true,
+    ...(input !== undefined ? { input } : {}),
   });
 
   if (result.status === 0) {

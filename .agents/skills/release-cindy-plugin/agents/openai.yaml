@@ -1,0 +1,4 @@
+interface:
+  display_name: "Release Cindy plugin"
+  short_description: "Publish the Cindy adapter package"
+  default_prompt: "Use -cindy-plugin to release the Cindy plugin."

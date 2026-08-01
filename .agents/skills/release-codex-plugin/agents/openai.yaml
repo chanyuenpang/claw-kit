@@ -1,0 +1,4 @@
+interface:
+  display_name: "Release Codex plugin"
+  short_description: "Publish the Codex adapter plugin"
+  default_prompt: "Use -codex-plugin to release the Codex plugin."
