@@ -3,10 +3,6 @@
 // the CLI through the declared Node worker and uses Cindy's public Agent slot.
 
 const workdirs = new Map();
-const injectedSessions = new Set();
-const sessionPrompts = new Map();
-const preparedSessions = new Set();
-const preparingSessions = new Set();
 const reconcilingSessions = new Set();
 const capturedTurnKeys = new Set();
 const projections = new Map();
@@ -60,9 +56,9 @@ async function nodeRequest(method, params, timeoutMs = 10000) {
   }
 }
 
-async function requestSessionPrompt(sessionId, workdir) {
+async function refreshSessionStart(sessionId, workdir) {
   if (!workdir) {
-    return { context: null, failed: true };
+    return { failed: true };
   }
   workdirs.set(sessionId, workdir);
   const result = await nodeRequest('claw/session-start', { sessionId, workdir }, 12000);
@@ -73,7 +69,6 @@ async function requestSessionPrompt(sessionId, workdir) {
     await dispatchKnowledgeWriter(sessionId, job);
   }
   return {
-    context: result?.context || result?.errorPrompt || result?.reason || null,
     failed: result?.ok === false,
   };
 }
@@ -95,24 +90,21 @@ async function runSessionMaintenance(sessionId, workdir) {
 }
 
 async function prepareSessionBackground(sessionId, workdir) {
-  if (!sessionId || preparingSessions.has(sessionId) || preparedSessions.has(sessionId)) return;
-  preparingSessions.add(sessionId);
+  if (!sessionId) return;
   if (workdir) workdirs.set(sessionId, workdir);
   try {
     if (!workdir) {
       traceHook('did-session-created', { sessionId, phase: 'background-skipped', reason: 'missing-workdir' });
       return;
     }
-    const [promptResult] = await Promise.all([
-      requestSessionPrompt(sessionId, workdir),
+    const [sessionStartResult] = await Promise.all([
+      refreshSessionStart(sessionId, workdir),
       runSessionMaintenance(sessionId, workdir),
     ]);
-    if (promptResult.context) sessionPrompts.set(sessionId, promptResult.context);
     traceHook('did-session-created', {
       sessionId,
       phase: 'background-complete',
-      hasPrompt: Boolean(promptResult.context),
-      autoClawFailed: promptResult.failed,
+      autoClawFailed: sessionStartResult.failed,
     });
   } catch (error) {
     traceHook('did-session-created', {
@@ -120,9 +112,6 @@ async function prepareSessionBackground(sessionId, workdir) {
       phase: 'background-failed',
       reason: error instanceof Error ? error.message : String(error),
     });
-  } finally {
-    preparingSessions.delete(sessionId);
-    preparedSessions.add(sessionId);
   }
 }
 
@@ -137,10 +126,7 @@ async function reconcileFocusedSession(sessionId, workdir) {
   reconcilingSessions.add(sessionId);
   try {
     workdirs.set(sessionId, workdir);
-    const promptResult = await requestSessionPrompt(sessionId, workdir);
-    if (promptResult.context && !injectedSessions.has(sessionId)) {
-      sessionPrompts.set(sessionId, promptResult.context);
-    }
+    await refreshSessionStart(sessionId, workdir);
     await captureTurnEndReport({ data: { sessionId } });
   } finally {
     reconcilingSessions.delete(sessionId);
@@ -619,41 +605,6 @@ cindy.onHostMessage(async (msg) => {
       });
       void reconcileFocusedSession(data.sessionId, workdir);
     }
-    return;
-  }
-
-  if (msg.name === 'will-user-message') {
-    const sessionId = msg.data?.sessionId;
-    traceHook('will-user-message', {
-      sessionId: sessionId || null,
-      phase: 'received',
-      hasWorkdir: Boolean(msg.data?.workdir || workdirs.get(sessionId)),
-    });
-    if (!sessionId || injectedSessions.has(sessionId)) {
-      sendVerdict(msg.hookId, 'allow');
-      traceHook('will-user-message', { sessionId: sessionId || null, phase: 'verdict', action: 'allow', reason: !sessionId ? 'missing-session-id' : 'already-injected' });
-      return;
-    }
-    const prompt = sessionPrompts.get(sessionId);
-    if (!prompt) {
-      if (preparedSessions.has(sessionId)) injectedSessions.add(sessionId);
-      sendVerdict(msg.hookId, 'allow');
-      traceHook('will-user-message', {
-        sessionId,
-        phase: 'verdict',
-        action: 'allow',
-        reason: preparedSessions.has(sessionId) ? 'no-auto-claw-prompt' : 'session-background-pending',
-      });
-      return;
-    }
-    sessionPrompts.delete(sessionId);
-    injectedSessions.add(sessionId);
-    sendVerdict(msg.hookId, 'rewrite', { text: `${prompt}\n\n${msg.data.text}` });
-    traceHook('will-user-message', {
-      sessionId,
-      phase: 'verdict',
-      action: 'rewrite',
-    });
     return;
   }
 

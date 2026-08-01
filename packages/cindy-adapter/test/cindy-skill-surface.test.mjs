@@ -60,7 +60,7 @@ test('Cindy E2E skill rejects session-scope and reconstructed dispatch samples',
   assert.match(source, /Do not manually call `did-turn-end`, `capture-report`/);
 });
 
-test('Cindy WAM only injects an actionable auto-claw prompt and never proactively recalls the plugin', async () => {
+test('Cindy omits WUM prompt injection and keeps session-start work asynchronous', async () => {
   const [source, skill, manifestSource, worker] = await Promise.all([
     readFile(new URL('main.js', root), 'utf8'),
     readFile(new URL('skills/using-claw-kit/SKILL.md', root), 'utf8'),
@@ -69,29 +69,24 @@ test('Cindy WAM only injects an actionable auto-claw prompt and never proactivel
   ]);
   const manifest = JSON.parse(manifestSource);
   assert.deepEqual(manifest.agent, { background: true });
-  const wamStart = source.indexOf("if (msg.name === 'will-user-message')");
-  const wamEnd = source.indexOf("if (msg.name === 'will-assistant-message')");
-  const wamSource = source.slice(wamStart, wamEnd);
   assert.doesNotMatch(source, /CINDY_CLAW_ENTRY_PROMPT|Use claw-kit:using-claw-kit/);
   assert.doesNotMatch(source, /First call the Ghost tool/);
+  assert.doesNotMatch(source, /will-user-message/);
+  assert.doesNotMatch(source, /sessionPrompts|injectedSessions|preparedSessions|preparingSessions/);
   assert.match(source, /msg\.name === 'did-session-created'/);
   assert.match(source, /scheduleSessionBackground\(data\.sessionId, data\.workdir\)/);
   assert.match(source, /setTimeout\(\(\) => \{\s*void prepareSessionBackground\(sessionId, workdir\)/);
   assert.doesNotMatch(source, /await prepareSessionBackground/);
-  assert.match(source, /requestSessionPrompt/);
+  assert.match(source, /refreshSessionStart/);
   assert.match(source, /claw\/session-start/);
   assert.match(worker, /claw\/session-start/);
   assert.match(worker, /hook', 'auto-claw/);
   assert.deepEqual(manifest.subscribe.topics, ['session', 'turn']);
   assert.match(source, /runSessionMaintenance/);
   assert.match(source, /claw\/session-background/);
-  assert.match(source, /Promise\.all\(\[\s*requestSessionPrompt\(sessionId, workdir\),\s*runSessionMaintenance\(sessionId, workdir\)/);
-  assert.doesNotMatch(wamSource, /requestSessionPrompt|runSessionMaintenance|nodeRequest/);
-  assert.doesNotMatch(wamSource, /knowledge|finaliz/i);
+  assert.match(source, /Promise\.all\(\[\s*refreshSessionStart\(sessionId, workdir\),\s*runSessionMaintenance\(sessionId, workdir\)/);
   assert.doesNotMatch(source, /cindy\.agent\.errand|cindy\.agent\.queryErrand/);
-  assert.match(wamSource, /sessionPrompts\.get\(sessionId\)/);
-  assert.match(source, /sendVerdict\(msg\.hookId, 'allow'\)/);
-  assert.match(source, /text: `\$\{prompt\}\\n\\n\$\{msg\.data\.text\}`/);
+  assert.deepEqual(manifest.subscribe.hooks, ['will-assistant-message']);
   assert.match(source, /function toolFailure\(callId, reason, errorCode = 'CLAW_OPERATION_FAILED'\)/);
   assert.match(source, /tool-result', callId, ok: false, errorCode, message: reason/);
   assert.doesNotMatch(source, /sessionModels|CINDY_CLAW_ENTRY_PROMPT_GPT|data\.model/);

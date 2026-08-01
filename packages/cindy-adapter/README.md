@@ -41,10 +41,10 @@ the adjacent report before issuing a token, executes the canonical assignments,
 and acknowledges completion through `knowledge.done`. Cindy does not use an
 errand or a Stop hook for knowledge finalization; legacy background jobs are
 diagnostic-only and are not launched.
-The plugin starts `auto-claw`, cleanup, and embedding warmup asynchronously
-from `did-session-created`. `will-user-message` performs only a non-blocking
-cache lookup: it leaves the message unchanged unless a completed background
-run produced an actionable diagnostic or recovery prompt. It provides structured Agent Tool calls that execute workflow commands with
+Cindy does not inject `additionalContext` into user messages. The plugin starts
+session-state refresh, cleanup, and embedding warmup asynchronously from
+`did-session-created`; it will reconsider prompt delivery only when a future
+Cindy Host version supplies suitable trusted message context. It provides structured Agent Tool calls that execute workflow commands with
 Cindy-owned host and session identity, and maintains a live workflow card
 updated by those Tool calls. It does not recover a plan during session creation
 or poll `claw context` at turn end. The Ghost Hook consumes the latest

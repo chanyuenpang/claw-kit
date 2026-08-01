@@ -70,18 +70,18 @@ The Cindy mapping follows the existing OpenCode adapter's event responsibilities
 
 | Existing claw adapter behavior | Cindy Ghost implementation |
 | --- | --- |
-| session-start `claw hook auto-claw` | `did-session-created` fire-and-forgets `auto-claw` diagnostics and maintenance without awaiting either |
-| OpenCode first-message synthetic context | `will-user-message` performs only a memory-cache lookup and injects a completed non-empty diagnostic/recovery prompt |
+| session-start `claw hook auto-claw` | `did-session-created` refreshes session state asynchronously without delivering `additionalContext` |
+| OpenCode first-message synthetic context | unsupported in Cindy until the Host provides trusted message context |
 | turn-end plan inspection | no CLI polling; the latest typed command result is the state source |
 | `process.active` continuation | Ghost Hook queues one background `agent.run` continuation after the assistant turn; the `.claw` plan status remains the gate |
 | completion knowledge closeout | Cindy normalizes every configured policy to `subagent`. The terminal mutation creates the durable job and returns an Orca `knowledge-finalizer` dispatch. The Worker atomically captures Cindy SQLite task conclusions during `knowledge.claim`, then owns claim/assignments/done without a Stop hook or errand. |
 
 The plugin subscribes to the `session` topic, but its `did-session-created`
 handler performs no awaited work: it records the event and defers preparation
-to the next timer turn. `will-user-message` is a blocking message
-boundary, so it never calls Node or the CLI and only reads the completed
-in-memory result. The plugin does not execute `claw` from the sandbox; the
-declared Node worker does it through PATH.
+to the next timer turn. Cindy does not currently expose enough trusted context
+at a user-message boundary for prompt delivery, so the plugin does not
+subscribe to `will-user-message`. The plugin does not execute `claw` from the
+sandbox; the declared Node worker does it through PATH.
 
 Knowledge finalization does not use `will-user-message`. Cindy supports only the
 effective `subagent` lifecycle, regardless of the configured policy. The
@@ -92,32 +92,24 @@ report from the originating Cindy session. The
 Ghost path inspects persisted legacy jobs for diagnosis but never claims or
 launches an errand for them.
 
-## 4. Session-created background and WAM cache flow
+## 4. Session-created background flow
 
 At `did-session-created`, Cindy schedules one zero-delay timer and returns.
 The timer starts background preparation, which runs two operations in
 parallel:
 
-1. Request the bounded `auto-claw` prompt. This retains installation, update,
-   configuration-repair, search, and GitNexus guidance even though a brand-new
-   session has no plan to recover.
+1. Refresh `auto-claw` session state without delivering its `additionalContext`.
 2. Run daily cleanup, embedding warmup,
    and retryable knowledge-job discovery.
-
-WAM never waits for that promise. If preparation has already produced a
-non-empty prompt, WAM consumes it once and rewrites the message. If preparation
-is pending or completed without a prompt, WAM immediately allows the original
-message. A pending result may be consumed by a later user message.
 
 Session creation belongs to a new session, so a session-bound plan cannot
 exist yet and there is nothing to recover. Plan recovery only becomes meaningful
 after that same session creates a plan and is later restored following a Codex
 restart or context compaction; Codex session-start handling owns that path.
 
-WAM never adds a generic reminder that proactively recalls claw-kit. Calling
-`auto-claw` in the DSC background task does not imply that a new session has a
-plan to recover; only a completed non-empty diagnostic or recovery response is
-eligible for later injection.
+No generic reminder or diagnostic is injected into a Cindy user message.
+Prompt delivery is deferred until a future Host version supplies the required
+trusted message context.
 
 The first version does not automatically install the CLI.
 

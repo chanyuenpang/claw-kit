@@ -205,14 +205,6 @@ test('legacy Cindy background jobs are visible but never launched through errand
   const catalog = harness.sent.find(({ type, callId }) => type === 'tool-result' && callId === 'catalog');
   assert.deepEqual(JSON.parse(JSON.stringify(catalog.result.categories)), [{ name: 'plan', operationCount: 0 }]);
 
-  await harness.handle({
-    type: 'event',
-    name: 'will-user-message',
-    hookId: 'next-user-turn',
-    data: { sessionId: harness.sessionId, text: 'Continue normally.' },
-  });
-  const verdict = harness.sent.find(({ type, hookId }) => type === 'event-verdict' && hookId === 'next-user-turn');
-  assert.equal(verdict.action, 'allow');
 });
 
 test('subagent policy returns its Orca dispatch without waiting for did-turn-end', async () => {

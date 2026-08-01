@@ -18,6 +18,8 @@ Accepted working truth for the current Codex and OpenCode update surfaces.
 
 - Refresh the published global CLI first, then refresh the official Codex plugin from the `chanyuenpang/claw-kit` GitHub marketplace.
 - Only `claw-kit@claw-kit` may be enabled; `claw-kit@claw-kit-local` must be disabled. Unpublished workspace files and local marketplaces are not valid update sources.
+- On Windows, resolve a marketplace ref by collecting the complete `git ls-remote` result before selecting a matching line. Piping `git ls-remote` directly into `Select-Object -First 1` can close the pipeline early and leave a false nonzero exit status even when the commit was returned.
+- Official activation disables both maintained local identities, `claw-kit@claw-kit-local` and `claw-kit-local@personal`, rather than only the first legacy id. The installed cache payload must include manifest-declared assets as well as skills, hooks, references, scripts, and package metadata; source/cache file parity is the completion boundary.
 - If refreshing the CLI leaves an already-created plan bound to an older installed `TEMPLATE.json` and the new CLI rejects a remaining canonical mutation, preserve the plan and template unchanged. Run only the remaining mutations through the fixed Codex driver with the matching published CLI, then verify that the global `claw` command still resolves to the target version. This compatibility recovery does not authorize unpublished workspace content, a local marketplace, or keeping the older CLI installed.
 - If a full Git clone stalls during `index-pack` and an existing clean official checkout already points at the same GitHub origin, prefer a filtered shallow fetch such as `--depth=1 --filter=blob:none` to fast-forward that checkout. Treat the recovery as complete only when marketplace HEAD, source manifest, cache manifest, appserver identity, and source/cache payload comparison all agree with the published target; `.git` metadata or a successful fetch alone is insufficient.
 - If the official Git checkout still cannot be recovered, a GitHub-published branch archive such as the official `main.zip` snapshot remains an acceptable source-transport fallback only after its plugin manifest is verified against the published target. The verified snapshot may then be passed to the maintained cache/identity installer; neither recovery authorizes workspace payloads, local marketplaces, or skipping source/cache manifest and payload comparison.
@@ -42,6 +44,8 @@ Accepted working truth for the current Codex and OpenCode update surfaces.
 - `scripts/sync-shared-skills.mjs`
 - `scripts/sync-shared-skills.test.mjs`
 - `scripts/codex-plugin-bundle.test.mjs`
+- `scripts/codex-plugin-bundle.mjs`
+- `scripts/install-codex-plugin.ps1`
 - `scripts/opencode-plugin-bundle.test.mjs`
 - `packages/opencode-adapter/references/opencode-plugin-update.md`
 
@@ -58,3 +62,11 @@ Accepted working truth for the current Codex and OpenCode update surfaces.
 - `filtered shallow fetch`
 - `index-pack stall recovery`
 - `OpenCode update maintained installer`
+
+<!-- state: history -->
+## Evolution history
+
+<!-- dated: 2026-08-01 -->
+### Hardened the official Codex install path with real Windows evidence
+
+The `0.2.6.0` maintenance refresh found three gaps that candidate and marketplace tests had not exposed: early PowerShell pipeline closure made a successful `git ls-remote` look failed, official activation left a local identity enabled, and the cache payload omitted `assets/icon.png`. The installer now resolves refs without an early-closing pipe, disables local identities, and copies assets; the completed refresh compared all `27/27` official source and cache files. Restarting Codex and starting a new task remains a separate loaded-runtime check.

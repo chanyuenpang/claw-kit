@@ -861,10 +861,8 @@ rpcInput.on('line', async (line) => {
       '--session-key', params.sessionId,
       '--job-host', 'cindy',
     ], params.workdir, undefined, 10000, params.sessionId);
-    const context = result.output?.hookSpecificOutput?.additionalContext;
     reply(request.id, {
       ok: true,
-      ...(typeof context === 'string' && context.trim() ? { context } : {}),
       ...(projectionFor(result.output) ? { projection: projectionFor(result.output) } : {}),
       ...(Array.isArray(reconciliation.output?.jobs) ? { knowledgeJobs: reconciliation.output.jobs } : {}),
     });
