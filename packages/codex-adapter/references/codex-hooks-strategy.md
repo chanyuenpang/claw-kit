@@ -2,7 +2,7 @@
 
 ## Current posture
 
-`claw-kit` does not depend on Codex hooks for correctness.
+`claw-kit` does not depend on Codex hooks for correctness. Subagent knowledge finalization does not use Stop at all.
 
 The active adapter registers a thread-scoped `SessionStart` hook for startup recovery and a turn-scoped `Stop` hook for report capture.
 
@@ -21,7 +21,8 @@ Current active use:
 - `SessionStart` calls the Codex-host recovery entry, which lets `claw context` detect whether the versioned user-level Codex SDK runtime is available before returning project recovery context.
 - A missing or invalid runtime produces an English consent-required error prompt for the agent. The CLI does not install, repair, or automatically retry the runtime.
 - `SessionStart` runs at thread scope and listens to startup, resume, clear, and compact sources.
-- `Stop` runs at turn scope, receives `turn_id` and `transcript_path`, and invokes the Codex-host `auto-doc` entry after the assistant turn stops. The capture is composite rather than final-message-only: it records each successful `task.done` checkpoint's preceding assistant conclusion as a `task_conclusion`, then records the turn's `final_answer` as the turn report. Before loading the main CLI, `auto-doc` exits unless the session knowledge registry contains an active or pending target. The registry stores no host. The hook writes `codex` directly into a queued finalization job, and the detached worker routes from that snapshot without inheriting a foreground `CLAW_HOST` before loading the Codex SDK writer, normalizing Truth/ADR Markdown encoding, queuing recall refresh, and appending an observable finalization result to the retained report.
+- With `knowledgeWriter.executionPolicy: "background"`, `Stop` runs at turn scope, receives `turn_id` and `transcript_path`, and invokes the Codex-host `auto-doc` entry after the assistant turn stops. The capture is composite rather than final-message-only: it records each successful `task.done` checkpoint's preceding assistant conclusion as a `task_conclusion`, then records the turn's `final_answer` as the turn report. The hook writes `codex` directly into a queued finalization job, and the detached worker routes from that snapshot without inheriting a foreground `CLAW_HOST`.
+- With `knowledgeWriter.executionPolicy: "subagent"`, the terminal plan transition creates the queued job before dispatch. Stop exits without capturing, queuing, launching, or amending that job. `knowledge claim` reuses the Stop task-conclusion extractor against the parent transcript, freezes those report entries without requiring the not-yet-produced final message, and only then grants claim ownership.
 - `SessionStart` runs when `cwd` resolves into a `.claw` project or the platform session id resolves to an explicit session-scoped workflow. `Stop` remains project-only: it requires `.claw` directly under hook `cwd` plus a valid session knowledge target; it neither reads plan bindings nor inherits a parent directory's `.claw`, and an uninterested session exits before transcript or project-config work. Session-scoped workflows therefore recover guidance but never trigger knowledge capture.
 - When that gate is met, the entry gathers current project startup state and injects developer-visible startup guidance.
 - When a session-bound active task is recovered, that guidance also carries the current plan content needed to resume safely.

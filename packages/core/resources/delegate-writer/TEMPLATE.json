@@ -1,6 +1,6 @@
 {
   "id": "internal-knowledge-delegate",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "scope": "session",
   "title": "internal knowledge delegate",
   "status": "process.active",
@@ -8,10 +8,11 @@
     "text": "Complete one dispatched knowledge finalization without interaction or recursive delegation."
   },
   "requirements": {
-    "summary": "Wait for Stop capture, claim the immutable job, execute its generated assignment subplan sequentially, and persist one terminal result.",
+    "summary": "Claim the ready job and collect its existing parent-turn report, execute its generated assignment subplan sequentially, and persist one terminal result.",
     "openQuestions": [],
     "acceptanceCriteria": [
-      "The job is located from the current project and supplied finalization id.",
+      "The ready job is located from the current project and supplied finalization id without waiting for Stop.",
+      "A successful claim collects and freezes the same task-conclusion report entries used by Stop before returning assignments.",
       "Only a successful claim can execute assignments.",
       "Every assignment runs sequentially in the generated session-scoped subplan.",
       "A successful claim always reaches exactly one terminal knowledge done call."
@@ -20,24 +21,18 @@
   "tasks": [
     {
       "id": 1,
-      "title": "Wait for Stop capture",
-      "detail": "Run `claw knowledge wait --project-root . --finalize-id <finalize-id>` from the current project using the exact finalization id supplied by dispatch. Allow at least 310 seconds for this command because it may wait up to 300 seconds for the parent Stop hook. This wait is only for job readiness; do not create or inspect a binding. Retain the returned jobPath.",
+      "title": "Claim the ready knowledge job",
+      "detail": "Run `claw knowledge claim --project-root . --finalize-id <finalize-id>` from the current project using the exact finalization id supplied by dispatch. Do not run knowledge wait. The claim collects and freezes the parent transcript's existing task conclusions before returning. Stop without executing assignments if claimed is false. Retain jobPath, claimToken, templatePath, assignments, and immutable writer configuration.",
       "status": "pending"
     },
     {
       "id": 2,
-      "title": "Claim the knowledge job",
-      "detail": "Run `claw knowledge claim --job <jobPath>`. Stop without executing assignments if claimed is false. Retain claimToken, templatePath, assignments, and immutable writer configuration. Do not execute any assignment before a successful claim.",
+      "title": "Execute the assignment subplan",
+      "detail": "Run `claw subplan create --parent \"knowledge-finalizer-<first-12-finalize-id>\" --task-id 2 --template-file <templatePath>`, deriving the parent from the exact finalization id supplied by dispatch, then follow the returned workflowGuidance. Execute each assignment yourself in order. Do not invoke a background finalizer, another writer agent, or a collaboration subagent.",
       "status": "pending"
     },
     {
       "id": 3,
-      "title": "Execute the assignment subplan",
-      "detail": "Run `claw subplan create --parent \"knowledge-finalizer-<first-12-finalize-id>\" --task-id 3 --template-file <templatePath>`, deriving the parent from the exact finalization id supplied by dispatch, then follow the returned workflowGuidance. Execute each assignment yourself in order. Do not invoke a background finalizer, another writer agent, or a collaboration subagent.",
-      "status": "pending"
-    },
-    {
-      "id": 4,
       "title": "Persist the terminal result",
       "detail": "After claim, call `claw knowledge done --job <jobPath> --claim-token <claimToken>` exactly once. A recovered orchestration command error does not make the job fail: use `--status succeeded --result <concise-result>` when every assignment eventually succeeded. If an orchestration error remains unrecovered or any assignment fails, use `--status failed --error <concise-error>`. Treat this as a finally-style obligation and then complete this delegate plan.",
       "status": "pending"

@@ -178,7 +178,7 @@ test("cli plan done records completedAt and retains the current task path", asyn
   assert.equal("activeWorkflow" in runClaw(["context"], root, env), false);
 });
 
-test("cli plan done emits Codex subagent dispatch and rejects unsupported hosts", () => {
+test("cli plan done emits host-specific subagent dispatch for Codex and Cindy and rejects unsupported hosts", () => {
   const root = createFixture("plan-done-subagent-dispatch");
   const codexEnv = {
     CLAW_HOST: "codex",
@@ -207,6 +207,27 @@ test("cli plan done emits Codex subagent dispatch and rejects unsupported hosts"
   assert.match(String(dispatch.prompt), /resources[\\/]delegate-writer[\\/]TEMPLATE\.json/);
   assert.doesNotMatch(String(dispatch.prompt), /Project root:|Task:|working directory/i);
 
+  const cindyRoot = createFixture("plan-done-subagent-cindy");
+  const cindyEnv = {
+    CLAW_HOST: "cindy",
+    CLAW_SESSION_ID: "cindy-session-subagent-dispatch",
+  };
+  runClaw(["init", "--name", "Cindy Subagent Dispatch", "--planning", "false"], cindyRoot, cindyEnv);
+  runClaw(["plan", "create", "--title", "cindy-dispatch-task", "--goal", "Dispatch Orca writer"], cindyRoot, cindyEnv);
+
+  const cindyDone = runClaw(
+    ["plan", "done", "--retrospective", "Ready for Orca knowledge finalization."],
+    cindyRoot,
+    cindyEnv,
+  );
+  const cindyDispatch = cindyDone.knowledgeDispatch as JsonRecord;
+  assert.equal(cindyDispatch.policy, "subagent");
+  assert.match(String(cindyDispatch.prompt), /claw-kit Cindy Ghost tools/);
+  assert.match(String(cindyDispatch.prompt), /knowledge\.claim/);
+  assert.match(String(cindyDispatch.prompt), /knowledge\.done/);
+  assert.doesNotMatch(String(cindyDispatch.prompt), /did-turn-end|Stop hook|knowledge wait/i);
+  assert.doesNotMatch(String(cindyDispatch.prompt), /claw plan create|template-file/i);
+
   const unsupportedRoot = createFixture("plan-done-subagent-unsupported");
   const opencodeEnv = {
     CLAW_HOST: "opencode",
@@ -224,7 +245,7 @@ test("cli plan done emits Codex subagent dispatch and rejects unsupported hosts"
     unsupportedRoot,
     opencodeEnv,
   );
-  assert.match(String((failure.error as JsonRecord).message), /supported only by the Codex host/);
+  assert.match(String((failure.error as JsonRecord).message), /supported only by the Codex or Cindy host/);
   const current = runClaw(["plan", "show"], unsupportedRoot, opencodeEnv);
   assert.equal(current.planStatus, "process.active");
   const editFailure = runClawExpectFailure(
@@ -232,7 +253,166 @@ test("cli plan done emits Codex subagent dispatch and rejects unsupported hosts"
     unsupportedRoot,
     opencodeEnv,
   );
-  assert.match(String((editFailure.error as JsonRecord).message), /supported only by the Codex host/);
+  assert.match(String((editFailure.error as JsonRecord).message), /supported only by the Codex or Cindy host/);
+});
+
+test("Codex subagent claim captures the Stop-style task report without waiting for Stop", () => {
+  const root = createFixture("subagent-claim-report-capture");
+  const codexHome = createTemporaryDirectory("subagent-claim-codex-home");
+  const sessionId = "019fbbe1-subagent-claim-report";
+  const env = {
+    CLAW_HOST: "codex",
+    CODEX_THREAD_ID: sessionId,
+    CODEX_HOME: codexHome,
+    CLAW_KNOWLEDGE_FINALIZER_DISABLE_LAUNCH: "1",
+  };
+  runClaw(["init", "--name", "Subagent Claim Report", "--planning", "false"], root, env);
+  const projectPath = path.join(root, ".claw", "project.json");
+  const projectConfig = JSON.parse(fs.readFileSync(projectPath, "utf-8")) as JsonRecord;
+  (projectConfig.knowledgeWriter as JsonRecord).executionPolicy = "subagent";
+  fs.writeFileSync(projectPath, `${JSON.stringify(projectConfig, null, 2)}\n`, "utf-8");
+  runClaw(["plan", "create", "--title", "claim-report-task", "--goal", "Capture report at claim"], root, env);
+
+  const done = runClaw(
+    ["plan", "done", "--retrospective", "The completed plan is ready for claim."],
+    root,
+    env,
+  );
+  const dispatch = done.knowledgeDispatch as JsonRecord;
+  const finalizeId = String(dispatch.finalizeId);
+  const jobPath = path.join(taskFinalizerJobsDirectory(root, "claim-report-task"), `${finalizeId}.json`);
+  const reportPath = taskFile(root, "claim-report-task", "plan.report");
+  assert.equal(fs.existsSync(jobPath), true);
+  assert.equal(fs.existsSync(reportPath), false);
+  assert.equal((JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord).status, "queued");
+
+  const missingTranscript = runClawExpectFailure([
+    "knowledge", "claim",
+    "--project-root", root,
+    "--finalize-id", finalizeId,
+  ], root, env);
+  assert.match(String((missingTranscript.error as JsonRecord).message), /transcript is unavailable/i);
+  const stillQueued = JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord;
+  assert.equal(stillQueued.status, "queued");
+  assert.equal(stillQueued.attempts, 0);
+  assert.equal((stillQueued.reportCapture as JsonRecord).status, "pending");
+
+  const transcriptDir = path.join(codexHome, "sessions", "2026", "08", "01");
+  const transcriptPath = path.join(transcriptDir, `rollout-test-${sessionId}.jsonl`);
+  fs.mkdirSync(transcriptDir, { recursive: true });
+  const responseItem = (payload: JsonRecord) => JSON.stringify({
+    timestamp: "2099-08-01T00:00:00.000Z",
+    type: "response_item",
+    payload,
+  });
+  fs.writeFileSync(transcriptPath, [
+    responseItem({
+      type: "message",
+      role: "assistant",
+      phase: "commentary",
+      content: [{ type: "output_text", text: "Implemented the ready-job lifecycle and verified its invariant." }],
+      internal_chat_message_metadata_passthrough: { turn_id: "turn-work" },
+    }),
+    responseItem({
+      type: "custom_tool_call_output",
+      output: [{ type: "input_text", text: `Script completed\n${JSON.stringify({ ok: true, command: "task.done" })}` }],
+      internal_chat_message_metadata_passthrough: { turn_id: "turn-work" },
+    }),
+  ].join("\n"), "utf-8");
+
+  const stop = runClawHook("auto-doc", root, {
+    session_id: sessionId,
+    turn_id: "turn-work",
+    transcript_path: transcriptPath,
+    cwd: root,
+    hook_event_name: "Stop",
+  }, env);
+  assert.equal(stop.status, 0);
+  assert.equal(fs.existsSync(reportPath), false);
+
+  const claimed = runClaw([
+    "knowledge", "claim",
+    "--project-root", root,
+    "--finalize-id", finalizeId,
+  ], root, env);
+  assert.equal(claimed.claimed, true);
+  assert.equal(claimed.jobPath, jobPath);
+  const entries = fs.readFileSync(reportPath, "utf-8").trim().split(/\r?\n/)
+    .map((line) => JSON.parse(line) as JsonRecord);
+  assert.deepEqual(entries.map((entry) => entry.entryType), ["task_conclusion"]);
+  assert.equal(entries[0]?.message, "Implemented the ready-job lifecycle and verified its invariant.");
+  const running = JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord;
+  assert.equal(running.status, "running");
+  assert.equal((running.reportCapture as JsonRecord).status, "captured");
+  assert.equal((running.reportCapture as JsonRecord).messageCount, 1);
+
+  fs.appendFileSync(transcriptPath, `\n${responseItem({
+    type: "message",
+    role: "assistant",
+    phase: "final_answer",
+    content: [{ type: "output_text", text: "A later final answer must not amend the claimed report." }],
+    internal_chat_message_metadata_passthrough: { turn_id: "turn-work" },
+  })}`, "utf-8");
+  const laterStop = runClawHook("auto-doc", root, {
+    session_id: sessionId,
+    turn_id: "turn-work",
+    transcript_path: transcriptPath,
+    cwd: root,
+    hook_event_name: "Stop",
+  }, env);
+  assert.equal(laterStop.status, 0);
+  const finalReport = fs.readFileSync(reportPath, "utf-8");
+  assert.equal(finalReport.trim().split(/\r?\n/).length, 1);
+  assert.doesNotMatch(finalReport, /later final answer/i);
+  assert.deepEqual(fs.readdirSync(path.dirname(jobPath)).filter((entry) => (
+    entry.endsWith(".json") && !entry.endsWith(".assignments.json")
+  )), [path.basename(jobPath)]);
+});
+
+test("Cindy subagent claim requires and atomically persists adapter report input", () => {
+  const root = createFixture("cindy-subagent-claim-report");
+  const sessionId = "cindy-originating-session";
+  const env = {
+    CLAW_HOST: "cindy",
+    CLAW_SESSION_ID: sessionId,
+    CLAW_KNOWLEDGE_FINALIZER_DISABLE_LAUNCH: "1",
+  };
+  runClaw(["init", "--name", "Cindy Claim Report", "--planning", "false"], root, env);
+  const projectPath = path.join(root, ".claw", "project.json");
+  const projectConfig = JSON.parse(fs.readFileSync(projectPath, "utf-8")) as JsonRecord;
+  (projectConfig.knowledgeWriter as JsonRecord).executionPolicy = "subagent";
+  fs.writeFileSync(projectPath, `${JSON.stringify(projectConfig, null, 2)}\n`, "utf-8");
+  runClaw(["plan", "create", "--title", "cindy-claim-task", "--goal", "Capture Cindy report at claim"], root, env);
+  const done = runClaw(["plan", "done", "--retrospective", "Ready."], root, env);
+  const finalizeId = String((done.knowledgeDispatch as JsonRecord).finalizeId);
+  const jobPath = path.join(taskFinalizerJobsDirectory(root, "cindy-claim-task"), `${finalizeId}.json`);
+  const reportPath = taskFile(root, "cindy-claim-task", "plan.report");
+
+  const missingCapture = runClawExpectFailure([
+    "knowledge", "claim", "--project-root", root, "--finalize-id", finalizeId,
+  ], root, env);
+  assert.match(String((missingCapture.error as JsonRecord).message), /Cindy report capture is unavailable/i);
+  const queued = JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord;
+  assert.equal(queued.status, "queued");
+  assert.equal(queued.attempts, 0);
+
+  const claimed = runClaw([
+    "knowledge", "claim", "--project-root", root, "--finalize-id", finalizeId,
+    "--cindy-report-stdin",
+  ], root, env, JSON.stringify({
+    session_id: sessionId,
+    turn_id: "cindy-turn-1",
+    task_conclusions: [{ turnId: "cindy-turn-1", message: "Implemented and verified Cindy no-Stop closeout." }],
+  }));
+  assert.equal(claimed.claimed, true);
+  assert.equal(claimed.jobPath, jobPath);
+  const entries = fs.readFileSync(reportPath, "utf-8").trim().split(/\r?\n/)
+    .map((line) => JSON.parse(line) as JsonRecord);
+  assert.deepEqual(entries.map((entry) => entry.message), ["Implemented and verified Cindy no-Stop closeout."]);
+  const running = JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord;
+  assert.equal(running.status, "running");
+  assert.equal((running.reportCapture as JsonRecord).status, "captured");
+  assert.equal((running.reportCapture as JsonRecord).messageCount, 1);
 });
 
 test("cli plan edit completion dispatches the same completion refresh as plan done", async () => {
@@ -639,6 +819,24 @@ test("knowledge hook preflight depends only on a valid session knowledge target"
   }
   assert.equal(fs.existsSync(path.join(root, ".claw", "runtime", "session-bindings.json")), true);
   assert.equal(shouldRunKnowledgeHook(rawInput, root, {}), false);
+
+  const subagentRoot = createFixture("hook-knowledge-preflight-subagent");
+  const subagentSessionId = "thread-knowledge-preflight-subagent";
+  runClaw(["init", "--name", "Hook Subagent Preflight"], subagentRoot);
+  const subagentProjectPath = path.join(subagentRoot, ".claw", "project.json");
+  const subagentConfig = JSON.parse(fs.readFileSync(subagentProjectPath, "utf-8")) as JsonRecord;
+  (subagentConfig.knowledgeWriter as JsonRecord).executionPolicy = "subagent";
+  fs.writeFileSync(subagentProjectPath, `${JSON.stringify(subagentConfig, null, 2)}\n`, "utf-8");
+  runClaw(
+    ["plan", "create", "--title", "subagent-task", "--goal", "Skip Stop preflight"],
+    subagentRoot,
+    { CODEX_THREAD_ID: subagentSessionId },
+  );
+  assert.equal(shouldRunKnowledgeHook(JSON.stringify({
+    session_id: subagentSessionId,
+    turn_id: "turn-subagent-preflight",
+    cwd: subagentRoot,
+  }), subagentRoot, {}), false);
 });
 
 test("knowledge hook exits before reading stdin when cwd has no project .claw ancestor", async () => {
@@ -1006,7 +1204,7 @@ test("opencode finalizer environment drops the parent platform session identity"
   assert.equal(env.PATH, "preserved");
 });
 
-test("knowledge wait is readiness-only and the internal delegate template owns session scope", () => {
+test("knowledge wait remains a compatibility path while the internal delegate template owns session scope", () => {
   const root = createFixture("knowledge-session-lifecycle");
   const runtimeDir = createFixture("knowledge-session-lifecycle-runtime");
   runClaw(["init", "--name", "Knowledge Session Lifecycle"], root);
@@ -1099,11 +1297,10 @@ test("knowledge wait is readiness-only and the internal delegate template owns s
   assert.ok(typeof claimed.claimToken === "string");
   assert.equal(Array.isArray(claimed.assignments), true);
   assert.ok(typeof claimed.templatePath === "string");
-  runClaw(["task", "done", "--id", "2"], root, env);
   runClaw([
     "subplan", "create",
     "--parent", "dynamic-writer-plan",
-    "--task-id", "3",
+    "--task-id", "2",
     "--template-file", String(claimed.templatePath),
   ], root, env);
   for (const taskId of ["1", "2", "3", "4", "5", "6"]) {
@@ -1118,7 +1315,7 @@ test("knowledge wait is readiness-only and the internal delegate template owns s
     "--error", "intentional test failure",
   ], root, env);
   assert.equal(done.failed, true);
-  runClaw(["task", "done", "--id", "4"], root, env);
+  runClaw(["task", "done", "--id", "3"], root, env);
   runClaw(["plan", "done", "--retrospective", "Delegate lifecycle completed."], root, env);
   assert.equal((JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord).status, "failed");
   assert.equal(fs.existsSync(String(claimed.templatePath)), false);

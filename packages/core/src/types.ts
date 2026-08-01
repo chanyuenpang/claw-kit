@@ -525,7 +525,14 @@ export type PlanEditInput = {
   removeTaskIds?: number[];
   appendTasks?: PlanTask[];
   applyPlanStartGuidance?: boolean;
-  commandSource?: "plan.edit" | "plan.start" | "plan.done";
+  commandSource?:
+    | "plan.edit"
+    | "plan.start"
+    | "plan.done"
+    | "task.add"
+    | "task.edit"
+    | "task.remove"
+    | "task.done";
   reviewer?: PlanReviewer;
   workflowDefinitions?: string;
   host?: string;

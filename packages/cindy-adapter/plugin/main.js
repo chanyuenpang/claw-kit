@@ -8,7 +8,6 @@ const sessionPrompts = new Map();
 const preparedSessions = new Set();
 const preparingSessions = new Set();
 const reconcilingSessions = new Set();
-const closeoutRequested = new Set();
 const capturedTurnKeys = new Set();
 const projections = new Map();
 // Cindy has no public native Goal API. This is the adapter-owned continuation
@@ -299,73 +298,112 @@ async function applyProjection(sessionId, execution, callId) {
     const expanded = expandedWorkflowCards.get(cardId) === true;
     cindy.send({ type: 'card-update', callId: cardId, v: 2, state: mergedProjection.planStatus === 'process.active' ? 'working' : 'done', html: renderWorkflowCard(mergedProjection, expanded, goalAuthorizationCards.get(cardId) === true), height: workflowCardHeight(mergedProjection, expanded) });
   }
-  // A plan end only registers a pending report in Core. The writer is queued
-  // after did-turn-end reads this turn from Cindy's persisted SQLite history.
+  // Cindy closeout is already durable here: the terminal mutation always
+  // creates a subagent job and returns knowledgeDispatch. Turn-end hooks do not
+  // create or claim Cindy knowledge jobs.
 }
 
 async function dispatchKnowledgeWriter(sessionId, job) {
   const finalizeId = typeof job?.finalizeId === 'string' ? job.finalizeId : '';
   const jobPath = typeof job?.jobPath === 'string' ? job.jobPath : '';
-  if (!finalizeId || !jobPath || closeoutRequested.has(finalizeId)) return;
-  closeoutRequested.add(finalizeId);
-  const registered = await nodeRequest('claw/register-knowledge-writer', { sessionId, finalizeId, jobPath, workdir: workdirs.get(sessionId) });
-  if (!registered?.ok) {
-    closeoutRequested.delete(finalizeId);
-    return;
-  }
-  if (registered.alreadyCompleted) {
-    closeoutRequested.delete(finalizeId);
-    return;
-  }
-  const dispatched = await runAgentTurn(
+  if (!finalizeId || !jobPath) return { started: false, reason: 'invalid-job' };
+  const inspected = await nodeRequest('claw/inspect-knowledge-writer', {
     sessionId,
-    'Run the knowledge-writer closeout for the completed claw plan. Inspect its captured report and completed-work files; update canonical Truth first and then ADRs. Do not reopen plan tasks. When the closeout is genuinely finished, call claw-kit `call_tool` with name `knowledge.complete` and args `{ "finalizeId": "' + finalizeId + '", "result": "<concise outcome>" }` before your final response. If it cannot be completed, state the recoverable failure and do not acknowledge the job.',
-    { kind: 'claw-knowledge-closeout', finalizeId },
-  );
-  if (!dispatched?.ok) {
-    await nodeRequest('claw/fail-knowledge-writer', { sessionId, workdir: workdirs.get(sessionId), jobPath, message: dispatched?.message || 'Cindy background writer could not start.' });
-    closeoutRequested.delete(finalizeId);
+    finalizeId,
+    workdir: workdirs.get(sessionId),
+    jobPath,
+  });
+  if (!inspected?.ok) {
+    traceHook('knowledge-writer', {
+      sessionId,
+      finalizeId,
+      phase: 'dispatch-skipped',
+      reason: inspected?.reason || inspected?.error || 'writer-policy-unavailable',
+    });
+    return { started: false, reason: 'writer-policy-unavailable' };
   }
+  if (inspected.executionPolicy !== 'subagent') {
+    traceHook('knowledge-writer', {
+      sessionId,
+      finalizeId,
+      phase: 'legacy-background-skipped',
+      reason: 'cindy-subagent-only',
+      jobPath,
+    });
+    return { started: false, disposition: 'unsupported-legacy-background' };
+  }
+  traceHook('knowledge-writer', {
+    sessionId,
+    finalizeId,
+    phase: 'orca-owned',
+    jobPath,
+  });
+  return { started: false, disposition: 'orca-owned' };
 }
 
 async function captureTurnEndReport(msg) {
-  const sessionId = typeof msg.data?.sessionId === 'string' ? msg.data.sessionId : '';
-  const workdir = workdirs.get(sessionId);
-  if (!sessionId || !workdir) {
+  const cindySessionId = typeof msg.data?.sessionId === 'string' ? msg.data.sessionId : '';
+  traceHook('did-turn-end', {
+    sessionId: cindySessionId || null,
+    phase: 'received',
+    hasCachedWorkdir: Boolean(cindySessionId && workdirs.get(cindySessionId)),
+  });
+  if (!cindySessionId) {
     traceHook('did-turn-end', {
-      sessionId: sessionId || null,
+      sessionId: null,
       phase: 'capture-skipped',
-      reason: !sessionId ? 'missing-session-id' : 'missing-workdir',
+      reason: 'missing-session-id',
     });
     return { status: 'skipped' };
   }
+  const context = await nodeRequest('claw/resolve-session-context', { sessionId: cindySessionId }, 10000);
+  if (!context?.ok || !context.workdir || !context.clawSessionId) {
+    traceHook('did-turn-end', {
+      sessionId: cindySessionId,
+      phase: 'capture-skipped',
+      reason: context?.status || context?.reason || 'session-context-unavailable',
+      errorCode: context?.errorCode || null,
+    });
+    return { status: 'skipped', reason: context?.status || 'session-context-unavailable' };
+  }
+  const workdir = context.workdir;
+  const clawSessionId = context.clawSessionId;
+  workdirs.set(cindySessionId, workdir);
+  traceHook('did-turn-end', {
+    sessionId: cindySessionId,
+    phase: 'context-resolved',
+    clawSessionId,
+    planPath: context.planPath || null,
+  });
   const capture = await nodeRequest('claw/capture-report', {
-    sessionId,
+    sessionId: cindySessionId,
+    clawSessionId,
     workdir,
   }, 30000);
   const turnId = typeof capture?.turnId === 'string' ? capture.turnId : '';
   if (!turnId) {
-    traceHook('did-turn-end', { sessionId, phase: 'capture-failed', reason: capture?.error || 'missing-database-turn-id' });
+    traceHook('did-turn-end', { sessionId: cindySessionId, clawSessionId, phase: 'capture-failed', reason: capture?.error || capture?.reason || 'missing-database-turn-id' });
     return { status: 'capture-failed' };
   }
-  const captureKey = `${sessionId}:${turnId}`;
+  const captureKey = `${cindySessionId}:${turnId}`;
   if (capturedTurnKeys.has(captureKey)) return { status: 'duplicate' };
   if (capture?.ok && capture.captured) {
     capturedTurnKeys.add(captureKey);
   }
   if (capture?.ok && capture.jobPath && capture.finalizeId) {
-    traceHook('did-turn-end', { sessionId, phase: 'capture-succeeded', turnId, finalizeId: capture.finalizeId, jobPath: capture.jobPath });
-    await dispatchKnowledgeWriter(sessionId, capture);
+    traceHook('did-turn-end', { sessionId: cindySessionId, clawSessionId, phase: 'capture-succeeded', turnId, finalizeId: capture.finalizeId, jobPath: capture.jobPath });
+    await dispatchKnowledgeWriter(cindySessionId, capture);
     return { status: 'captured', finalizeId: capture.finalizeId };
   }
   if (capture?.ok && capture.captured) {
-    traceHook('did-turn-end', { sessionId, phase: 'capture-succeeded', turnId, reportPath: capture.reportPath || null });
+    traceHook('did-turn-end', { sessionId: cindySessionId, clawSessionId, phase: 'capture-succeeded', turnId, reportPath: capture.reportPath || null });
     return { status: 'captured' };
   }
   traceHook('did-turn-end', {
-    sessionId,
+    sessionId: cindySessionId,
+    clawSessionId,
     phase: 'capture-failed',
-    reason: capture?.error || 'capture-report-did-not-return-job',
+    reason: capture?.error || capture?.reason || 'capture-report-did-not-return-job',
   });
   return { status: 'capture-failed' };
 }
@@ -479,12 +517,12 @@ async function dispatchToolCall(msg) {
     return;
   }
   await applyProjection(context.session_id, execution, msg.callId);
-  if (operation === 'knowledge.complete' && execution.result?.completed) {
-    closeoutRequested.delete(String(operationArgs.finalizeId || ''));
-  }
   // Projection is Host-only lifecycle state. The Agent receives only the
   // operation result and its Cindy-safe guidance.
-  cindy.send({ type: 'tool-result', callId: msg.callId, ok: true, result: execution.result });
+  const agentResult = execution.knowledgeDispatch && execution.result && typeof execution.result === 'object'
+    ? { ...execution.result, knowledgeDispatch: execution.knowledgeDispatch }
+    : execution.result;
+  cindy.send({ type: 'tool-result', callId: msg.callId, ok: true, result: agentResult });
 }
 
 async function handleToolCall(msg) {

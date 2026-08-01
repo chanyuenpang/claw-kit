@@ -1,0 +1,125 @@
+{
+  "id": "test-claw-kit",
+  "version": "0.2.5",
+  "title": "test-claw-kit",
+  "status": "process.active",
+  "goal": {
+    "text": "Verify the current claw-kit candidate before release and stop with an evidence-backed readiness result."
+  },
+  "requirements": {
+    "summary": "Classify the candidate surface, build and statically check it, run release-quality tests, diagnose failures without weakening gates, optionally validate explicitly requested local development installs, and stop before release.",
+    "openQuestions": [],
+    "acceptanceCriteria": [
+      "The current branch, worktree changes, candidate versions, affected artifact families, and requested local-runtime scope are recorded before testing.",
+      "Workspace build, static checks, encoding and template/shared-skill consistency checks appropriate to the changed surfaces pass.",
+      "The release-quality test route completes, and every failure is either reproduced and fixed or retained as an explicit unresolved blocker.",
+      "Timing or environment-sensitive failures are isolated and rerun through their focused domain; they are never hidden by deleting, skipping, or weakening a test.",
+      "Affected packages and plugin bundles receive dry-run or export smoke checks proportional to their artifact risk.",
+      "Any explicitly requested local install uses a development identity, verifies source-to-cache parity, and preserves the official installation.",
+      "The final report lists exact commands, counts, artifacts, hashes or paths when relevant, residual risks, and a ready or not-ready conclusion without starting release."
+    ]
+  },
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Establish the candidate and test scope",
+      "detail": "Read repository AGENTS.md, package manifests, git status, current branch, changed paths, and the test-manager domain list. Classify CLI/core and each platform adapter separately. Record whether the user explicitly requested local candidate installation. Preserve all user-owned changes and do not clean, stash, version-bump, or enter a release workflow.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "default": {
+            "mergeMode": "override",
+            "summary": "The candidate surfaces, test route, and local-runtime boundary are explicit.",
+            "nextsteps": [
+              "Build and statically check the current workspace before installing anything.",
+              "Keep release and publication actions out of this plan."
+            ],
+            "nextTaskId": 2
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Build and run static candidate checks",
+      "detail": "Run `npm run build`, `npm run check`, and `git diff --check`. Run `npm run check:template-versions` and shared-skill synchronization tests when templates or shared skills are affected. Verify manifests and generated payload structure for each changed adapter. Stop on a real build or static-check failure and retain its complete command and error evidence.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "default": {
+            "mergeMode": "override",
+            "summary": "The workspace builds and its static candidate gates pass.",
+            "nextsteps": [
+              "Run the release-quality test route.",
+              "Do not install a candidate before source tests pass."
+            ],
+            "nextTaskId": 3
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Run tests and resolve failure evidence",
+      "detail": "Run `npm run test:changed` and use its reported domains as evidence. For a version-level pre-release request or any full/cross-cutting route, run `npm run test:full`. When a suite stops at a failure, isolate that exact test, inspect recent relevant changes, rerun its focused domain, and then run any tail domains skipped by fail-fast execution. Fix only a confirmed candidate regression. Never relax a timeout, count, assertion, or domain merely to make the gate green; update a fixed discovery baseline only when an intentionally added test proves the expected count changed.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "default": {
+            "mergeMode": "override",
+            "summary": "Release-quality tests and any failure investigations are complete with exact evidence.",
+            "nextsteps": [
+              "Smoke the affected candidate artifacts.",
+              "Install locally only when the user explicitly requested development-runtime validation."
+            ],
+            "nextTaskId": 4
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Smoke artifacts and optional local runtimes",
+      "detail": "For CLI/core package changes, inspect `npm pack --dry-run` output or equivalent isolated package contents. For adapter changes, run the matching bundle export and bundle tests. If and only if local validation was requested, install from the tested workspace through an existing development route: make the global CLI resolve to the workspace when CLI behavior is under test, install Codex through a local marketplace identity such as `claw-kit-local`, disable rather than delete the official identity, and compare source/cache manifests plus critical-file hashes. Do not use published-source update or release workflows for a local candidate.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "default": {
+            "mergeMode": "override",
+            "summary": "Affected artifacts and any requested local development runtimes match the tested candidate.",
+            "nextsteps": [
+              "Summarize readiness and residual risk.",
+              "State when a Codex restart and new task are required to load the local bundle."
+            ],
+            "nextTaskId": 5
+          }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Report candidate readiness and stop",
+      "detail": "Report candidate versions, changed artifact families, exact build/check/test commands and counts, isolated failures and their disposition, package or bundle paths, local CLI/plugin identities and hashes when used, unverified restart-dependent behavior, and a clear ready or not-ready conclusion. Stop before version changes, commit, push, tag, npm/GitHub publication, or `release-claw-kit`; release requires a separate explicit task.",
+      "status": "pending"
+    }
+  ],
+  "references": [
+    {
+      "path": "CONTENT-COVERAGE.md",
+      "why": "Maps the pre-release testing contract to the skill entry, template, and fallback."
+    }
+  ],
+  "rules": [
+    "Follow returned workflowGuidance before advancing.",
+    "Honor repository AGENTS.md and preserve user-owned work; never stash, clean, or discard changes to manufacture a passing candidate.",
+    "Treat testing and release as separate workflows; never invoke release-claw-kit from this skill.",
+    "Do not change versions, commit, push, tag, publish, or claim published-source verification.",
+    "Run build and static checks before local candidate installation.",
+    "Use the test manager's domain selection as evidence, and use the full route for version-level or cross-cutting pre-release validation.",
+    "Diagnose failures before fixing them; distinguish candidate regressions from timing or environmental failures with isolated reproduction.",
+    "Do not weaken or skip a gate merely to obtain a green result.",
+    "Install locally only with explicit authorization and through a development identity that preserves the official installation.",
+    "Do not claim the currently running Codex task loaded a refreshed plugin; require restart and a new task for that assertion.",
+    "Do not claim completion until the evidence report states ready or not-ready and every required test surface is accounted for."
+  ]
+}

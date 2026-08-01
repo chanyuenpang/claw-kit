@@ -9,6 +9,8 @@ import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import {
   buildDirectWorkflowGuidance,
+  appendKnowledgeTaskConclusions,
+  buildKnowledgeAtomicDispatch,
   buildKnowledgeDelegateDispatch,
   buildKnowledgeAssignmentTemplate,
   buildKnowledgeWriterAssignments,
@@ -30,6 +32,7 @@ import {
   getTemplateTaskDoneChoices,
   resolvePlanTemplateFile,
   resolvePlanEffectiveConfig,
+  resolveKnowledgeWriterForHost,
   resolveProjectContext,
   resolveWorkflowProjectContext,
   resolveSessionWorkflowContext,
@@ -76,6 +79,7 @@ import { checkCodexRuntime, resolveCodexSdkEntryPath } from "./codex-runtime.js"
 import {
   extractLatestFinalAssistantMessage,
   extractTaskDoneConclusions,
+  findCodexTranscriptPath,
 } from "./codex-transcript.js";
 import { consumeBufferedHookInput } from "./knowledge-hook-preflight.js";
 import { resolveInvocationHost, withoutInvocationHost, type ClawHost } from "./invocation-host.js";
@@ -379,7 +383,7 @@ const COMMAND_HELP: Record<string, HelpNode> = {
           "Create a flat subplan file under the task directory. Uses explicit `--template` first, otherwise the project's configured `defaultPlanTemplate`, and finally falls back to the built-in `default`. The current session binding switches to the subplan and returns to its parent when the subplan ends.",
         summary: "Create a subplan under a parent task's task item.",
         options: [
-          { flag: "--parent <task-name>", detail: "(required) Parent task name." },
+          { flag: "--parent <task-name>", detail: "(required) Parent task directory name (`taskName`), not its plan title." },
           { flag: "--task-id <number>", detail: "(required) Parent task item id to split into a subplan." },
           { flag: "--template <name>", detail: "Optional plan template name. Overrides the project's configured default template." },
           { flag: "--template-file <path>", detail: "Exact plan template file. Mutually exclusive with --template." },
@@ -435,10 +439,17 @@ const COMMAND_HELP: Record<string, HelpNode> = {
         ],
       },
       claim: {
-        usage: ["{script} knowledge claim --job <path>"],
-        description: "Claim a queued or retryable job after its executor session has been bound.",
-        summary: "Claim a session-bound finalization job.",
-        options: [{ flag: "--job <path>", detail: "(required) Finalization job JSON path." }],
+        usage: [
+          "{script} knowledge claim --job <path>",
+          "{script} knowledge claim --project-root <path> --finalize-id <id>",
+        ],
+        description: "Claim a queued or retryable job. Codex subagent claims capture the existing task conclusions from the parent transcript before ownership is granted.",
+        summary: "Claim a ready finalization job and prepare its report.",
+        options: [
+          { flag: "--job <path>", detail: "Exact finalization job JSON path." },
+          { flag: "--project-root <path>", detail: "Project that owns a ready finalization job." },
+          { flag: "--finalize-id <id>", detail: "Finalization id used with --project-root." },
+        ],
       },
       done: {
         usage: [
@@ -1098,6 +1109,44 @@ function serializeSessionError(error: unknown): Record<string, unknown> {
   return { code: "SESSION_COMMAND_FAILED", message: error instanceof Error ? error.message : String(error) };
 }
 
+type CindyKnowledgeClaimCaptureInput = {
+  session_id?: unknown;
+  turn_id?: unknown;
+  task_conclusions?: unknown;
+};
+
+function readCindyKnowledgeClaimCaptureInput(): {
+  sessionId: string;
+  turnId: string;
+  taskConclusions: Array<{ turnId: string; message: string }>;
+} {
+  const raw = fs.readFileSync(0, "utf8").trim();
+  if (!raw) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "Cindy knowledge claim report input is empty.");
+  }
+  let parsed: CindyKnowledgeClaimCaptureInput;
+  try {
+    parsed = JSON.parse(raw) as CindyKnowledgeClaimCaptureInput;
+  } catch {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "Cindy knowledge claim report input is invalid JSON.");
+  }
+  const sessionId = typeof parsed.session_id === "string" ? parsed.session_id.trim() : "";
+  const turnId = typeof parsed.turn_id === "string" ? parsed.turn_id.trim() : "";
+  const taskConclusions = Array.isArray(parsed.task_conclusions)
+    ? parsed.task_conclusions.flatMap((entry) => {
+        if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
+        const item = entry as { turnId?: unknown; message?: unknown };
+        const itemTurnId = typeof item.turnId === "string" ? item.turnId.trim() : "";
+        const message = typeof item.message === "string" ? item.message.trim() : "";
+        return itemTurnId && message ? [{ turnId: itemTurnId, message }] : [];
+      })
+    : [];
+  if (!sessionId || !turnId) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "Cindy knowledge claim report input requires session_id and turn_id.");
+  }
+  return { sessionId, turnId, taskConclusions };
+}
+
 function runKnowledge(args: string[]): void {
   const subcommand = args.shift();
   switch (subcommand) {
@@ -1162,9 +1211,87 @@ function runKnowledge(args: string[]): void {
       return;
     }
     case "claim": {
-      const jobPath = readRequiredFlag(args, "--job");
+      const explicitJobPath = readOptionalFlag(args, "--job");
+      const projectRoot = readOptionalFlag(args, "--project-root");
+      const finalizeId = readOptionalFlag(args, "--finalize-id");
+      const captureCindyReport = readBooleanFlag(args, "--cindy-report-stdin");
+      const cindyCapture = captureCindyReport ? readCindyKnowledgeClaimCaptureInput() : undefined;
+      if (explicitJobPath && (projectRoot || finalizeId)) {
+        throw new ClawError("PROJECT_CONFIG_INVALID", "knowledge claim accepts either --job or --project-root with --finalize-id.");
+      }
+      if (!explicitJobPath && (!projectRoot || !finalizeId)) {
+        throw new ClawError("PROJECT_CONFIG_INVALID", "knowledge claim requires --job or both --project-root and --finalize-id.");
+      }
       assertNoRemainingArgs(args, "knowledge claim");
-      const job = claimKnowledgeFinalizationJob(jobPath);
+      const jobPath = explicitJobPath ?? findKnowledgeFinalizationJobPath(
+        resolveProjectContext(path.resolve(projectRoot!)),
+        finalizeId!,
+      );
+      if (!jobPath) {
+        throw new Error(`Knowledge finalization ${finalizeId} is unavailable.`);
+      }
+      const job = claimKnowledgeFinalizationJob(jobPath, {
+        prepare: (queued) => {
+          if (
+            queued.writer?.executionPolicy !== "subagent"
+            || queued.reportCapture?.mode !== "claim"
+            || queued.reportCapture.status === "captured"
+          ) {
+            return;
+          }
+          if (queued.host === "cindy") {
+            if (!cindyCapture) {
+              throw new Error(`Cindy report capture is unavailable for knowledge session ${queued.sessionId}.`);
+            }
+            if (cindyCapture.sessionId !== queued.sessionId) {
+              throw new Error("Cindy report capture does not match the originating knowledge session.");
+            }
+            const capturedAt = new Date().toISOString();
+            appendKnowledgeTaskConclusions(
+              queued.reportPath,
+              queued.sessionId,
+              cindyCapture.taskConclusions,
+              capturedAt,
+            );
+            return {
+              reportCapture: {
+                ...queued.reportCapture,
+                status: "captured" as const,
+                capturedAt,
+                messageCount: cindyCapture.taskConclusions.length,
+              },
+            };
+          }
+          if (queued.host !== "codex") {
+            throw new Error(`Claim-time report capture is unavailable for host ${queued.host ?? "unknown"}.`);
+          }
+          const transcriptPath = findCodexTranscriptPath(queued.sessionId);
+          if (!transcriptPath) {
+            throw new Error(`Codex transcript is unavailable for knowledge session ${queued.sessionId}.`);
+          }
+          const conclusions = extractTaskDoneConclusions(
+            transcriptPath,
+            undefined,
+            queued.reportCapture.startedAt,
+          );
+          const capturedAt = new Date().toISOString();
+          appendKnowledgeTaskConclusions(
+            queued.reportPath,
+            queued.sessionId,
+            conclusions,
+            capturedAt,
+          );
+          return {
+            reportCapture: {
+              ...queued.reportCapture,
+              status: "captured" as const,
+              capturedAt,
+              transcriptPath,
+              messageCount: conclusions.length,
+            },
+          };
+        },
+      });
       const assignments = job ? buildKnowledgeWriterAssignments(job) : [];
       const templatePath = job
         ? path.join(path.dirname(jobPath), `${job.finalizeId}.assignments.json`)
@@ -1186,6 +1313,7 @@ function runKnowledge(args: string[]): void {
         claimed: Boolean(job),
         ...(job ? {
           finalizeId: job.finalizeId,
+          jobPath,
           claimToken: job.claimToken,
           projectRoot: job.projectRoot,
           writer: job.writer ?? null,
@@ -1270,18 +1398,22 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
         ? showPlan({ cwd: process.cwd(), ...target, ownerSessionKey })
         : undefined;
       const project = entersEndTerminal ? tryResolveHookProject(process.cwd()) : null;
-      const effectiveWriter = current && project
-        ? resolvePlanEffectiveConfig(project.projectConfig, current.plan)?.knowledgeWriter
-        : undefined;
+      const effectiveWriter = resolveKnowledgeWriterForHost(
+        current && project
+          ? resolvePlanEffectiveConfig(project.projectConfig, current.plan)?.knowledgeWriter
+          : undefined,
+        effectiveHost,
+      );
       if (
         current
         && !current.plan.parentPlan
         && effectiveWriter?.executionPolicy === "subagent"
         && effectiveHost !== "codex"
+        && effectiveHost !== "cindy"
       ) {
         throw new ClawError(
           "PROJECT_CONFIG_INVALID",
-          'knowledgeWriter.executionPolicy "subagent" is supported only by the Codex host.',
+          'knowledgeWriter.executionPolicy "subagent" is supported only by the Codex or Cindy host.',
           { host: effectiveHost ?? null },
         );
       }
@@ -1300,12 +1432,13 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
       const knowledgeDispatch = (
         current
         && project
-        && effectiveHost === "codex"
+        && (effectiveHost === "codex" || effectiveHost === "cindy")
         && !current.plan.parentPlan
         && effectiveWriter?.executionPolicy === "subagent"
         && result.knowledgeFinalizeId
       )
-        ? buildKnowledgeDispatch({
+          ? buildKnowledgeDispatch({
+            host: effectiveHost,
             finalizeId: result.knowledgeFinalizeId,
             writer: effectiveWriter,
           })
@@ -1392,17 +1525,21 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
         ownerSessionKey,
       });
       const project = tryResolveHookProject(process.cwd());
-      const effectiveWriter = project
-        ? resolvePlanEffectiveConfig(project.projectConfig, current.plan)?.knowledgeWriter
-        : undefined;
+      const effectiveWriter = resolveKnowledgeWriterForHost(
+        project
+          ? resolvePlanEffectiveConfig(project.projectConfig, current.plan)?.knowledgeWriter
+          : undefined,
+        effectiveHost,
+      );
       if (
         !current.plan.parentPlan
         && effectiveWriter?.executionPolicy === "subagent"
         && effectiveHost !== "codex"
+        && effectiveHost !== "cindy"
       ) {
         throw new ClawError(
           "PROJECT_CONFIG_INVALID",
-          'knowledgeWriter.executionPolicy "subagent" is supported only by the Codex host.',
+          'knowledgeWriter.executionPolicy "subagent" is supported only by the Codex or Cindy host.',
           { host: effectiveHost ?? null },
         );
       }
@@ -1417,12 +1554,13 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
       });
       const completionRefresh = queuePlanEndFinalization?.(result.taskName);
       const knowledgeDispatch = (
-        effectiveHost === "codex"
+        (effectiveHost === "codex" || effectiveHost === "cindy")
         && !current.plan.parentPlan
         && effectiveWriter?.executionPolicy === "subagent"
         && result.knowledgeFinalizeId
       )
-        ? buildKnowledgeDispatch({
+          ? buildKnowledgeDispatch({
+            host: effectiveHost,
             finalizeId: result.knowledgeFinalizeId,
             writer: effectiveWriter,
           })
@@ -1579,7 +1717,7 @@ async function runTask(args: string[], effectiveHost: ClawHost | undefined): Pro
         cwd: process.cwd(),
         ...target,
         operations,
-        commandSource: "plan.edit",
+        commandSource: "task.add",
         host: effectiveHost,
         ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
       });
@@ -1594,7 +1732,7 @@ async function runTask(args: string[], effectiveHost: ClawHost | undefined): Pro
         cwd: process.cwd(),
         ...target,
         operations,
-        commandSource: "plan.edit",
+        commandSource: "task.edit",
         host: effectiveHost,
         ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
       });
@@ -1609,7 +1747,7 @@ async function runTask(args: string[], effectiveHost: ClawHost | undefined): Pro
         cwd: process.cwd(),
         ...target,
         operations,
-        commandSource: "plan.edit",
+        commandSource: "task.remove",
         host: effectiveHost,
         ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
       });
@@ -1624,6 +1762,7 @@ async function runTask(args: string[], effectiveHost: ClawHost | undefined): Pro
         cwd: process.cwd(),
         ...target,
         operations,
+        commandSource: "task.done",
         host: effectiveHost,
         ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
       });
@@ -3161,12 +3300,17 @@ function stripBom(content: string): string {
 }
 
 function buildKnowledgeDispatch(input: {
+  host: "codex" | "cindy";
   finalizeId: string;
   writer?: KnowledgeFinalizationJob["writer"];
 }): KnowledgeDelegateDispatch {
+  if (input.host === "cindy") {
+    return buildKnowledgeAtomicDispatch(input);
+  }
   return buildKnowledgeDelegateDispatch({
     policy: "subagent",
-    ...input,
+    finalizeId: input.finalizeId,
+    writer: input.writer,
   });
 }
 

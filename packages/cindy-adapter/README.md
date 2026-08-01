@@ -10,11 +10,13 @@ into the plugin.
 
 - The plugin distribution surface contains Skills, `subscribe` hooks, a typed
   Agent Tool gateway, trusted `session-context`, and narrowly declared
-  `node`/background `agent` capabilities.
+  `node` and background `agent` capabilities.
 - The `claw` CLI remains a separate installation and upgrade surface.
 - The Cindy adapter is local-workspace-only in the first version.
 - Cindy Desktop Host provides the lifecycle dispatcher for plugin-declared
-  Ghost hooks; no Cindy source modification is required.
+  Ghost hooks. User-facing Orca Lead sessions remain eligible for ordinary
+  Ghost lifecycle hooks while Workers are excluded; that Host fix is independent
+  of the subagent knowledge path, which does not require a Stop hook.
 - `plan.create`, `plan.resume`, and `plan.done` create a Ghost progress card;
   later task and plan mutations update the current session card from canonical
   plan data: title, goal, completed/total tasks, and the next task. This is a
@@ -30,9 +32,15 @@ See [Cindy adapter design](references/cindy-adapter-design.md) for the confirmed
 workflow, failure policy, permission boundary, and acceptance scenarios.
 
 The installable Ghost source is under [plugin](plugin). It bundles the
-declared workflow Skills plus the runtime hook entry. Knowledge closeout is
-handled by the private worker operation and does not require exposing a
-separate Agent-facing Skill.
+declared workflow Skills plus the runtime hook entry. Cindy normalizes either
+configured knowledge execution policy to `subagent`; the active Lead pre-dispatches one
+persistent, sidebar-visible Orca `knowledge-finalizer` Worker after the terminal
+mutation has created the durable job. The Worker calls the plugin's atomic
+`knowledge.claim`, which captures the originating Cindy task conclusions into
+the adjacent report before issuing a token, executes the canonical assignments,
+and acknowledges completion through `knowledge.done`. Cindy does not use an
+errand or a Stop hook for knowledge finalization; legacy background jobs are
+diagnostic-only and are not launched.
 The plugin starts `auto-claw`, cleanup, and embedding warmup asynchronously
 from `did-session-created`. `will-user-message` performs only a non-blocking
 cache lookup: it leaves the message unchanged unless a completed background

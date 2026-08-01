@@ -6,6 +6,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import {
   buildDirectWorkflowGuidance,
+  buildKnowledgeAtomicDispatch,
   buildKnowledgeDelegateDispatch,
   buildKnowledgeAssignmentTemplate,
   buildKnowledgeWriterAssignments,
@@ -54,6 +55,7 @@ import {
   switchTask,
   tryCaptureKnowledgeStop,
   tryCompleteKnowledgePlan,
+  tryEndKnowledgePlan,
   tryRegisterKnowledgePlan,
   warmProjectMemoryEmbedding,
   writePlan,
@@ -257,7 +259,142 @@ test("knowledge sidecar failures stay fail-open for plan lifecycle callers", () 
   assert.match(result.error ?? "", /must stay inside/);
 });
 
-test("knowledge wait is readiness-only while claim owns execution and prompt routing", () => {
+test("subagent plan end creates a ready job while Stop stays out of the lifecycle", () => {
+  const root = createEmptyFixture("knowledge-subagent-ready-job");
+  initProject({ cwd: root, projectName: "Knowledge Subagent Ready Job" });
+  const project = resolveProjectContext(root);
+  const taskDir = path.join(project.tasksDir, "demo");
+  const planPath = path.join(taskDir, "plan.json");
+  const subplanPath = path.join(taskDir, "design.json");
+  fs.mkdirSync(taskDir, { recursive: true });
+  fs.writeFileSync(planPath, "{}", "utf-8");
+  fs.writeFileSync(subplanPath, "{}", "utf-8");
+  const writer = { executionPolicy: "subagent" as const, externalSkills: [] };
+
+  assert.equal(tryRegisterKnowledgePlan({
+    project,
+    sessionId: "thread-subagent-ready",
+    planPath,
+    writer,
+  }).ok, true);
+  const rootRegistry = JSON.parse(
+    fs.readFileSync(knowledgeSessionRegistryPath(project, "thread-subagent-ready"), "utf-8"),
+  ) as Record<string, unknown>;
+  assert.equal(tryRegisterKnowledgePlan({
+    project,
+    sessionId: "thread-subagent-ready",
+    planPath: subplanPath,
+    writer,
+  }).ok, true);
+  const subplanRegistry = JSON.parse(
+    fs.readFileSync(knowledgeSessionRegistryPath(project, "thread-subagent-ready"), "utf-8"),
+  ) as Record<string, unknown>;
+  assert.equal(subplanRegistry.activeStartedAt, rootRegistry.activeStartedAt);
+  const subplanEnded = tryEndKnowledgePlan({
+    project,
+    sessionId: "thread-subagent-ready",
+    endedPlanPath: subplanPath,
+    resumedPlanPath: planPath,
+    endedAt: "2026-08-01T00:00:00.000Z",
+    writer,
+    host: "codex",
+  });
+  assert.deepEqual(subplanEnded, { ok: true });
+  const resumedRegistry = JSON.parse(
+    fs.readFileSync(knowledgeSessionRegistryPath(project, "thread-subagent-ready"), "utf-8"),
+  ) as Record<string, unknown>;
+  assert.equal(resumedRegistry.activePlanPath, "tasks/demo/plan.json");
+  assert.equal(resumedRegistry.activeStartedAt, rootRegistry.activeStartedAt);
+  assert.equal((resumedRegistry.activeWriter as Record<string, unknown>).executionPolicy, "subagent");
+  assert.equal(resumedRegistry.pendingTurnOwner, undefined);
+  const ended = tryEndKnowledgePlan({
+    project,
+    sessionId: "thread-subagent-ready",
+    endedPlanPath: planPath,
+    endedAt: "2026-08-01T00:00:00.000Z",
+    writer,
+    host: "codex",
+  });
+
+  assert.equal(ended.ok, true);
+  assert.ok(ended.finalizeId);
+  assert.ok(ended.jobPath);
+  const queued = readKnowledgeFinalizationJob(ended.jobPath!);
+  assert.equal(queued.status, "queued");
+  assert.equal(queued.attempts, 0);
+  assert.equal(queued.host, "codex");
+  assert.equal(queued.reportCapture?.status, "pending");
+  const registry = JSON.parse(
+    fs.readFileSync(knowledgeSessionRegistryPath(project, "thread-subagent-ready"), "utf-8"),
+  ) as Record<string, unknown>;
+  assert.equal(registry.pendingTurnOwner, undefined);
+  assert.equal(registry.activePlanPath, undefined);
+
+  const stop = tryCaptureKnowledgeStop({
+    project,
+    sessionId: "thread-subagent-ready",
+    turnId: "turn-final",
+    message: "This final answer must not be captured by Stop.",
+    host: "codex",
+  });
+  assert.equal(stop.captured, false);
+  assert.equal(fs.existsSync(queued.reportPath), false);
+
+  assert.throws(() => claimKnowledgeFinalizationJob(ended.jobPath!, {
+    prepare: () => {
+      throw new Error("parent transcript unavailable");
+    },
+  }), /parent transcript unavailable/);
+  const retryable = readKnowledgeFinalizationJob(ended.jobPath!);
+  assert.equal(retryable.status, "queued");
+  assert.equal(retryable.attempts, 0);
+});
+
+test("Cindy coerces a configured background writer to the subagent lifecycle", () => {
+  const root = createEmptyFixture("knowledge-cindy-subagent-only");
+  initProject({ cwd: root, projectName: "Knowledge Cindy Subagent Only" });
+  const project = resolveProjectContext(root);
+  const taskDir = path.join(project.tasksDir, "demo");
+  const planPath = path.join(taskDir, "plan.json");
+  fs.mkdirSync(taskDir, { recursive: true });
+  fs.writeFileSync(planPath, "{}", "utf-8");
+  const writer = { executionPolicy: "background" as const, externalSkills: [] };
+
+  assert.equal(tryRegisterKnowledgePlan({
+    project,
+    sessionId: "cindy-subagent-only",
+    planPath,
+    writer,
+    host: "cindy",
+  }).ok, true);
+  const activeRegistry = JSON.parse(
+    fs.readFileSync(knowledgeSessionRegistryPath(project, "cindy-subagent-only"), "utf-8"),
+  ) as { activeWriter?: { executionPolicy?: string } };
+  assert.equal(activeRegistry.activeWriter?.executionPolicy, "subagent");
+
+  const ended = tryEndKnowledgePlan({
+    project,
+    sessionId: "cindy-subagent-only",
+    endedPlanPath: planPath,
+    endedAt: "2026-08-01T00:00:00.000Z",
+    writer,
+    host: "cindy",
+  });
+  assert.ok(ended.jobPath);
+  const queued = readKnowledgeFinalizationJob(ended.jobPath!);
+  assert.equal(queued.writer?.executionPolicy, "subagent");
+  assert.equal(queued.reportCapture?.mode, "claim");
+  assert.equal(queued.status, "queued");
+  assert.equal(tryCaptureKnowledgeStop({
+    project,
+    sessionId: "cindy-subagent-only",
+    turnId: "turn-after-end",
+    message: "Stop must not own Cindy knowledge capture.",
+    host: "cindy",
+  }).captured, false);
+});
+
+test("knowledge claim owns execution and delegate prompt routing", () => {
   const root = createEmptyFixture("knowledge-lifecycle");
   const runtimeDir = createEmptyFixture("knowledge-lifecycle-runtime");
   initProject({ cwd: root, projectName: "Knowledge Lifecycle" });
@@ -313,15 +450,37 @@ test("knowledge wait is readiness-only while claim owns execution and prompt rou
     assert.match(delegateDispatch.prompt, /resources[\\/]delegate-writer[\\/]TEMPLATE\.json/);
     assert.doesNotMatch(delegateDispatch.prompt, /Project root:|Task:|working directory/i);
     assert.doesNotMatch(delegateDispatch.prompt, /claw-kit:delegate-writer/i);
+
+    const atomicDispatch = buildKnowledgeAtomicDispatch({
+      finalizeId,
+      writer: { model: "test-model", reasoningEffort: "high" },
+    });
+    assert.equal(atomicDispatch.policy, "subagent");
+    assert.equal(atomicDispatch.model, "test-model");
+    assert.equal(atomicDispatch.reasoningEffort, "high");
+    assert.match(atomicDispatch.prompt, /claw-kit Cindy Ghost tools/);
+    assert.match(atomicDispatch.prompt, /knowledge\.claim/);
+    assert.match(atomicDispatch.prompt, /knowledge\.done/);
+    assert.doesNotMatch(atomicDispatch.prompt, /did-turn-end|Stop hook|knowledge wait/i);
+    assert.match(atomicDispatch.prompt, /execute each returned assignment prompt yourself/i);
+    assert.doesNotMatch(atomicDispatch.prompt, /claw plan create|template-file/i);
     const delegateTemplate = JSON.parse(
       fs.readFileSync(knowledgeDelegateTemplatePath(), "utf-8"),
     ) as { tasks: Array<{ id: number; detail?: string }> };
     assert.match(
-      delegateTemplate.tasks.find((task) => task.id === 3)?.detail ?? "",
+      delegateTemplate.tasks.find((task) => task.id === 1)?.detail ?? "",
+      /knowledge claim --project-root \. --finalize-id/,
+    );
+    assert.doesNotMatch(
+      delegateTemplate.tasks.map((task) => task.detail ?? "").join("\n"),
+      /`claw knowledge wait/i,
+    );
+    assert.match(
+      delegateTemplate.tasks.find((task) => task.id === 2)?.detail ?? "",
       /--parent "knowledge-finalizer-<first-12-finalize-id>"/,
     );
     assert.match(
-      delegateTemplate.tasks.find((task) => task.id === 4)?.detail ?? "",
+      delegateTemplate.tasks.find((task) => task.id === 3)?.detail ?? "",
       /recovered orchestration command error does not make the job fail/i,
     );
     const builtinTemplate = buildKnowledgeAssignmentTemplate({

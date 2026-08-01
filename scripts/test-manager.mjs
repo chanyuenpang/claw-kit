@@ -128,6 +128,7 @@ export const TEST_DOMAINS = {
       "--test",
       "./packages/cindy-adapter/test/cindy-skill-surface.test.mjs",
       "./packages/cindy-adapter/test/claw-worker.test.mjs",
+      "./packages/cindy-adapter/test/plugin-main.test.mjs",
     )],
   },
   codex: {
@@ -180,6 +181,7 @@ const FULL_STEPS = [
     "--test",
     "./packages/cindy-adapter/test/cindy-skill-surface.test.mjs",
     "./packages/cindy-adapter/test/claw-worker.test.mjs",
+    "./packages/cindy-adapter/test/plugin-main.test.mjs",
     "./packages/codex-adapter/hooks/code-mode-host-action-consumer.test.mjs",
     "./packages/codex-adapter/hooks/subagent-contract.test.mjs",
     "./scripts/codex-plugin-bundle.test.mjs",

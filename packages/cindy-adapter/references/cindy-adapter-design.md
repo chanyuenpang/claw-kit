@@ -74,7 +74,7 @@ The Cindy mapping follows the existing OpenCode adapter's event responsibilities
 | OpenCode first-message synthetic context | `will-user-message` performs only a memory-cache lookup and injects a completed non-empty diagnostic/recovery prompt |
 | turn-end plan inspection | no CLI polling; the latest typed command result is the state source |
 | `process.active` continuation | Ghost Hook queues one background `agent.run` continuation after the assistant turn; the `.claw` plan status remains the gate |
-| completion knowledge closeout | `did-turn-end` triggers SQLite history capture, followed by a bounded background Agent prompt and private worker claim/done operations |
+| completion knowledge closeout | Cindy normalizes every configured policy to `subagent`. The terminal mutation creates the durable job and returns an Orca `knowledge-finalizer` dispatch. The Worker atomically captures Cindy SQLite task conclusions during `knowledge.claim`, then owns claim/assignments/done without a Stop hook or errand. |
 
 The plugin subscribes to the `session` topic, but its `did-session-created`
 handler performs no awaited work: it records the event and defers preparation
@@ -82,6 +82,15 @@ to the next timer turn. `will-user-message` is a blocking message
 boundary, so it never calls Node or the CLI and only reads the completed
 in-memory result. The plugin does not execute `claw` from the sandbox; the
 declared Node worker does it through PATH.
+
+Knowledge finalization does not use `will-user-message`. Cindy supports only the
+effective `subagent` lifecycle, regardless of the configured policy. The
+Lead dispatches the complete immutable `knowledgeDispatch` before its final
+response and does not wait. The Orca Worker inherits the Lead's project workdir,
+claims the already-created job exactly once while atomically materializing its
+report from the originating Cindy session. The
+Ghost path inspects persisted legacy jobs for diagnosis but never claims or
+launches an errand for them.
 
 ## 4. Session-created background and WAM cache flow
 
@@ -170,30 +179,19 @@ the `.claw` plan remains the continuation gate and source of truth.
 
 ## 8. Completion closeout
 
-After all plan tasks are complete, the adapter dispatches a separate
-knowledge-writer closeout turn through the declared background `agent` slot.
-The closeout prompt remains bounded to the current Cindy session, project, and
-plan.
+After all plan tasks are complete, the terminal mutation creates one durable
+subagent job and returns its immutable `knowledgeDispatch` to the active Lead.
+The Lead sends that prompt unchanged to the persistent Orca
+`knowledge-finalizer` and returns without waiting.
 
-The closeout must remain bounded to the current project and plan. Cindy's
-`will-assistant-message` is a single post-turn hook: the Host calls it once
-with the completed assistant text, not once per streamed or intermediate
-assistant message. Its public payload has no turn transcript, turn id, or
-tool-call history. The adapter therefore uses `did-turn-end` as the trigger,
-then opens Cindy's local SQLite database read-only in the Node worker to recover
-the current session's persisted messages. It scopes the query to the current
-turn by locating the latest persisted assistant message and preceding user
-boundary, then extracts successful `task.done` results and their preceding
-assistant conclusions.
-
-The SQLite reader is an adapter-private implementation detail: it never writes
-the database, never depends on a Host IPC endpoint, and retries briefly when
-the end event arrives before the final assistant row is visible. Core receives
-only the standard `taskConclusions` shape. Core's session/turn idempotency still
-prevents duplicate entries and duplicate writer dispatch. `will-assistant-message`
-remains an allow-only presentation hook and does not participate in knowledge
-capture. A worker failure must be visible and recoverable, rather than silently
-marking the plan as fully closed.
+The Worker calls `knowledge.claim`. Before issuing the claim token, the Cindy
+adapter opens Cindy's local SQLite database read-only, locates the originating
+session and terminal mutation, extracts successful `task.done` conclusions, and
+atomically materializes the adjacent `plan.report`. It then executes ordered
+assignments and calls `knowledge.done`. Neither job creation nor report capture
+depends on `did-turn-end`, `will-assistant-message`, or the Lead's final answer.
+The closeout remains bounded to the originating project and plan; failures stay
+visible and retryable rather than silently marking the job succeeded.
 
 ## 9. Acceptance scenarios
 
@@ -231,21 +229,20 @@ Implemented in the Cindy Ghost plugin package:
   Goal-mode continuation and no dependency on a private Cindy Goal API;
 - one progress card created for `plan.create`, `plan.resume`, and `plan.done`, with later task
   mutations updating that card instead of creating new cards;
-- exactly-one Host-dispatched knowledge-writer turn for `end.completed`.
+- exactly one Lead-dispatched Orca knowledge-writer turn for `end.completed`.
 
 The Host currently keeps the native Cindy Goal controller and progress surface
 optional because no stable third-party Goal API is available. The claw plan
-remains canonical; closeout is dispatched through the declared background
-`agent` slot. The CLI remains a separate user-installed dependency and is
+remains canonical; knowledge closeout is dispatched by the active Lead to its
+Orca `knowledge-finalizer`. The CLI remains a separate user-installed dependency and is
 invoked by the declared Node worker.
 
 ## 11. Remaining runtime verification
 
 Before claiming full runtime parity, verify in Cindy:
 
-- whether the background Agent slot is associated with a session before a user
-  has clicked a plugin card; Cindy's documented background path requires a
-  prior user association and may limit unattended continuation;
+- whether the persistent Orca Worker reliably inherits the originating project
+  workdir and continues after the Lead returns;
 - whether the Node worker can resolve the user's installed `claw` executable
   on Windows/macOS/Linux in the packaged runtime;
 - the full installed-plugin loop with a local `.claw` project.

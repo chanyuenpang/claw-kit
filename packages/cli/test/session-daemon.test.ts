@@ -156,6 +156,39 @@ test("daemon preserves post-commit host actions in the typed command envelope", 
   await daemon.close();
 });
 
+test("Cindy daemon sessions coerce background config to the atomic no-Stop knowledge dispatch", async () => {
+  const runtimeRoot = fixture("cindy-atomic-dispatch-runtime");
+  const projectRoot = fixture("cindy-atomic-dispatch-project");
+  initProject({ cwd: projectRoot, projectName: "Cindy Atomic Dispatch", planning: false });
+  const daemon = await startSessionDaemon({ runtimeRoot, idleTtlMs: 0 });
+  const opened = await new ClawClient({ runtimeRoot, host: "cindy", clientKind: "adapter" })
+    .open("cindy-atomic-dispatch", projectRoot);
+
+  try {
+    await opened.command({
+      operation: "plan.create",
+      input: {
+        taskName: "cindy-atomic-plan",
+        title: "Cindy atomic plan",
+        goalText: "Dispatch without a Stop hook",
+      },
+    });
+    await opened.command({ operation: "task.done", input: { tasks: [{ id: 1 }] } });
+    const done = await opened.commandEnvelope({
+      operation: "plan.done",
+      input: { retrospectiveSummary: "Complete" },
+    });
+    const dispatch = done.knowledgeDispatch as { policy?: string; prompt?: string } | undefined;
+    assert.equal(dispatch?.policy, "subagent");
+    assert.match(String(dispatch?.prompt), /knowledge\.claim/);
+    assert.match(String(dispatch?.prompt), /claw-kit.*Ghost/is);
+    assert.doesNotMatch(String(dispatch?.prompt), /did-turn-end|Stop hook|knowledge wait/i);
+  } finally {
+    await opened.close();
+    await daemon.close();
+  }
+});
+
 test("Codex adapter sessions receive native plan and Goal actions without daemon loss", async () => {
   const runtimeRoot = fixture("codex-actions-runtime");
   const projectRoot = fixture("codex-actions-project");

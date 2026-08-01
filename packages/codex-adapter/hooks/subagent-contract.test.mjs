@@ -134,7 +134,8 @@ test("delegate orchestration and built-in knowledge governance stay internal", (
   const configSkill = readPluginFile(path.join("skills", "config", "SKILL.md"));
   const knowledgeContract = `${knowledgeTemplate}\n${knowledgeFallback}`;
 
-  assert.match(delegateTemplate, /knowledge wait/i);
+  assert.doesNotMatch(delegateTemplate, /`claw knowledge wait/i);
+  assert.match(delegateTemplate, /knowledge claim --project-root/i);
   assert.match(delegateTemplate, /"scope": "session"/i);
   assert.match(knowledgeContract, /knowledge-base steward/i);
   assert.match(knowledgeContract, /Truth and ADR are one knowledge system/i);

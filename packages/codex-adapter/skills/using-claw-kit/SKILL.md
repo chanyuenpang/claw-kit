@@ -58,7 +58,7 @@ async function runClawPlanMutation({ argv, workdir, timeout_ms = 30000 }) {
 
 ## Knowledge subagent dispatch
 - When a terminal plan mutation returns a valid `knowledgeDispatch` for `subagent`, call native `spawn_agent` directly with its complete prompt, `fork_turns: "none"`, task name `knowledge_writer_<first 12 finalizeId characters>`, and any supplied `model` and `reasoningEffort` mapped to native fields; never load a user-facing delegate skill.
-- Do not wait for that agent. End the main turn so Stop creates the awaited job. The bridge cannot call collaboration tools, and `background` never returns this dispatch.
+- The dispatched job already exists. Do not wait for that agent; immediately end the main turn after spawning it. In `subagent` mode, `knowledge claim` collects the existing parent-turn report and Stop does not capture, queue, launch, or amend the job. The bridge cannot call collaboration tools, and `background` never returns this dispatch.
 
 ## Hard boundaries
 

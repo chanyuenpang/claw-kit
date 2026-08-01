@@ -161,10 +161,15 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
 
   bindSessionToPlan(project, input.ownerSessionKey, planPath);
   if (project.scope === "project") {
+    const effectiveConfig = resolvePlanEffectiveConfig(project.projectConfig, plan);
     tryRegisterKnowledgePlan({
       project,
       sessionId: input.ownerSessionKey,
       planPath,
+      ...(effectiveConfig?.knowledgeWriter ? { writer: effectiveConfig.knowledgeWriter } : {}),
+      ...(input.host === "codex" || input.host === "opencode" || input.host === "cindy"
+        ? { host: input.host }
+        : {}),
     });
   }
   if (input.ownerSessionKey) {
@@ -543,13 +548,21 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
         ...(completionHooks?.subplanClosureCandidate ? { resumedPlanPath: resultPlanPath } : {}),
         endedAt,
         ...(effectiveConfig?.knowledgeWriter ? { writer: effectiveConfig.knowledgeWriter } : {}),
+        ...(input.host === "codex" || input.host === "opencode" || input.host === "cindy"
+          ? { host: input.host }
+          : {}),
       });
       knowledgeFinalizeId = knowledgeEnd.finalizeId;
     } else if (!resultPlan.status.startsWith("end.") && task.project.scope === "project") {
+      const effectiveConfig = resolvePlanEffectiveConfig(task.project.projectConfig, resultPlan);
       tryRegisterKnowledgePlan({
         project: task.project,
         sessionId: input.ownerSessionKey,
         planPath: resultPlanPath,
+        ...(effectiveConfig?.knowledgeWriter ? { writer: effectiveConfig.knowledgeWriter } : {}),
+        ...(input.host === "codex" || input.host === "opencode" || input.host === "cindy"
+          ? { host: input.host }
+          : {}),
       });
     }
     if (input.ownerSessionKey) {

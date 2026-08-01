@@ -27,7 +27,7 @@
 
 ### Truth delegation 条件语义
 
-- Historical `0.1.65` workflow delegate output used `dispatch` for separate writer semantics. Current finalization can return a Codex-only terminal `knowledgeDispatch` when `executionPolicy = "subagent"`, but that dispatch only starts the same internal delegate executor used by background policy; it does not expose governance routing.
+- Historical `0.1.65` workflow delegate output used `dispatch` for separate writer semantics. Current subagent finalization can return a host-specific terminal `knowledgeDispatch`, but it does not expose governance routing; launcher support, ready-job timing and Codex/Cindy orchestration differences are owned by `codex-knowledge-capture-boundary.md` and `../adr/hook-owned-two-phase-knowledge-finalization.md` rather than this cost audit.
 - `0.1.65` 的 main-agent truth value gate、required ADR dispatch 与 phase-specific references 仅保留为历史成本证据。当前 hidden built-in governance 在 trusted evidence freshness check 后固定先评估 Truth、再评估 ADR；各阶段可以 evidence-backed no-edit，但没有 Truth/ADR/both/noop route task。
 - 判断 live 行为时必须区分历史 benchmark 的 installed CLI/skill snapshot 与当前 Core 内部 delegate + hidden built-in governance contract。
 

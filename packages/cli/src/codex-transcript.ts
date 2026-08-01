@@ -1,8 +1,12 @@
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 type TranscriptRecord = {
+  timestamp?: unknown;
   type?: unknown;
   payload?: {
+    id?: unknown;
     turn_id?: unknown;
     type?: unknown;
     role?: unknown;
@@ -15,6 +19,34 @@ type TranscriptRecord = {
   };
 };
 
+export function findCodexTranscriptPath(
+  sessionId: string,
+  codexHome = process.env.CODEX_HOME || path.join(os.homedir(), ".codex"),
+): string | null {
+  const normalized = sessionId.trim().toLowerCase();
+  if (!normalized) return null;
+  const sessionsRoot = path.join(codexHome, "sessions");
+  if (!fs.existsSync(sessionsRoot)) return null;
+  const queue: Array<{ directory: string; depth: number }> = [{ directory: sessionsRoot, depth: 0 }];
+  const matches: Array<{ file: string; modifiedAt: number }> = [];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    for (const entry of fs.readdirSync(current.directory, { withFileTypes: true })) {
+      const candidate = path.join(current.directory, entry.name);
+      if (entry.isDirectory() && current.depth < 4) {
+        queue.push({ directory: candidate, depth: current.depth + 1 });
+        continue;
+      }
+      if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".jsonl") || !entry.name.toLowerCase().includes(normalized)) {
+        continue;
+      }
+      matches.push({ file: candidate, modifiedAt: fs.statSync(candidate).mtimeMs });
+    }
+  }
+  matches.sort((left, right) => right.modifiedAt - left.modifiedAt);
+  return matches[0]?.file ?? null;
+}
+
 export type TaskDoneConclusion = {
   turnId: string;
   message: string;
@@ -23,6 +55,7 @@ export type TaskDoneConclusion = {
 export function extractTaskDoneConclusions(
   transcriptPath: string,
   targetTurnId?: string,
+  startedAt?: string,
 ): TaskDoneConclusion[] {
   if (!transcriptPath.trim() || !fs.existsSync(transcriptPath)) {
     return [];
@@ -30,7 +63,27 @@ export function extractTaskDoneConclusions(
   const latestAssistantByTurn = new Map<string, string>();
   const conclusions: TaskDoneConclusion[] = [];
   const seen = new Set<string>();
-  for (const line of readTranscriptTurnLines(transcriptPath, targetTurnId)) {
+  const startedAtMs = startedAt ? Date.parse(startedAt) : Number.NaN;
+  const lines = readTranscriptTurnLines(transcriptPath, targetTurnId);
+  const eligibleTurns = new Set<string>();
+  if (Number.isFinite(startedAtMs)) {
+    for (const line of lines) {
+      try {
+        const record = JSON.parse(line) as TranscriptRecord;
+        const turnId = readTurnId(record);
+        if (
+          turnId
+          && typeof record.timestamp === "string"
+          && Date.parse(record.timestamp) >= startedAtMs
+        ) {
+          eligibleTurns.add(turnId);
+        }
+      } catch {
+        // Ignore incomplete transcript lines while the parent turn is still active.
+      }
+    }
+  }
+  for (const line of lines) {
     let record: TranscriptRecord;
     try {
       record = JSON.parse(line) as TranscriptRecord;
@@ -42,6 +95,9 @@ export function extractTaskDoneConclusions(
     }
     const turnId = readTurnId(record);
     if (!turnId || (targetTurnId && turnId !== targetTurnId)) {
+      continue;
+    }
+    if (Number.isFinite(startedAtMs) && eligibleTurns.size > 0 && !eligibleTurns.has(turnId)) {
       continue;
     }
     if (record.payload?.type === "message" && record.payload.role === "assistant") {

@@ -54,6 +54,30 @@ export function buildKnowledgeDelegateDispatch(input: {
   };
 }
 
+export function buildKnowledgeAtomicDispatch(input: {
+  finalizeId: string;
+  writer?: KnowledgeWriterConfig | null;
+}): KnowledgeDelegateDispatch {
+  return {
+    schemaVersion: 1,
+    policy: "subagent",
+    finalizeId: input.finalizeId,
+    ...(input.writer?.model ? { model: input.writer.model } : {}),
+    ...(input.writer?.reasoningEffort ? { reasoningEffort: input.writer.reasoningEffort } : {}),
+    prompt: [
+      "Execute this already-created claw knowledge-finalization job directly and unattended.",
+      "Use the claw-kit Cindy Ghost tools in the project workspace; do not use the claw CLI for claim or completion.",
+      "Call list_tools for category knowledge, then call_tool knowledge.claim with:",
+      JSON.stringify({ finalizeId: input.finalizeId }),
+      "The claim operation atomically captures the originating Cindy task conclusions into plan.report before it issues the claim token.",
+      "If claimed is false, stop without editing knowledge. If claimed is true, retain claimToken and execute each returned assignment prompt yourself in ascending index order.",
+      "Do not create a claw plan or subplan, invoke another finalizer, or delegate to another agent.",
+      "After a successful claim, call_tool knowledge.done exactly once in a finally-style step with finalizeId, claimToken, status, and result or error.",
+      "Use status succeeded with a concise result only when every assignment succeeds; otherwise use status failed with a concise error.",
+    ].join("\n"),
+  };
+}
+
 export function buildKnowledgeWriterAssignments(
   job: Pick<KnowledgeFinalizationJob, "finalizeId" | "planPath" | "reportPath" | "writer">,
 ): KnowledgeWriterAssignment[] {

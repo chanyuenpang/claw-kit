@@ -69,15 +69,20 @@ test("typed command service implicitly targets current plan for plan and task mu
     operation: "plan.create",
     input: { taskName: "mutation-plan", title: "Mutation plan", goalText: "Mutate implicitly" },
   });
-  await service.execute(context, {
+  const edited = await service.execute(context, {
     operation: "task.edit",
     input: { taskId: 1, taskTitle: "First session task", taskStatus: "in_progress" },
   });
-  await service.execute(context, { operation: "task.done", input: { tasks: [{ id: 1 }] } });
-  await service.execute(context, {
+  const completed = await service.execute(context, { operation: "task.done", input: { tasks: [{ id: 1 }] } });
+  const added = await service.execute(context, {
     operation: "task.add",
     input: { tasks: [{ title: "Second session task", detail: "Added without plan id" }] },
   });
+  for (const [result, commandSource] of [[edited, "task.edit"], [completed, "task.done"], [added, "task.add"]] as const) {
+    const events = (result.output as { events: Array<{ commandSource: string }> }).events;
+    assert.ok(events.length > 0);
+    assert.ok(events.every((event) => event.commandSource === commandSource));
+  }
   await service.execute(context, { operation: "plan.wait", input: {} });
   assert.equal(showPlan({ cwd: projectRoot, taskName: "mutation-plan" }).plan.status, "process.wait");
   await service.execute(context, { operation: "plan.resume", input: {} });

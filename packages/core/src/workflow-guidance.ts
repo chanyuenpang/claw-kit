@@ -133,7 +133,7 @@ function buildGoalTool(planGoal: string, template: GoalToolTemplate): WorkflowGu
 }
 
 function applyCreateGuidance(params: {
-  commandSource?: "plan.create" | "subplan.create" | "plan.edit" | "plan.start" | "plan.done";
+  commandSource?: "plan.create" | "subplan.create" | "plan.edit" | "plan.start" | "plan.done" | "task.add" | "task.edit" | "task.remove" | "task.done";
   plan: PlanDocument;
   planFile: string;
   goalModeEnabled: boolean;
@@ -302,7 +302,7 @@ export async function buildPlanWorkflowGuidance(params: {
   taskName: string;
   planFile: string;
   plan: PlanDocument;
-  commandSource?: "plan.create" | "subplan.create" | "plan.edit" | "plan.start" | "plan.done";
+  commandSource?: "plan.create" | "subplan.create" | "plan.edit" | "plan.start" | "plan.done" | "task.add" | "task.edit" | "task.remove" | "task.done";
   projectRoot?: string;
   projectConfig?: ProjectConfig | null;
   previousStatus?: PlanStatus;

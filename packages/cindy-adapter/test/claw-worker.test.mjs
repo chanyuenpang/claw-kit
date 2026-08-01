@@ -7,6 +7,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { DatabaseSync } from "node:sqlite";
+import { createHash } from "node:crypto";
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -41,6 +42,9 @@ test("Cindy session focus reconciliation preheats transport and recovers writer 
   assert.match(mainSource, /reconcilingSessions\.has\(sessionId\)/);
   assert.match(mainSource, /reconcileFocusedSession\(data\.sessionId, workdir\)/);
   assert.match(mainSource, /await captureTurnEndReport\(\{ data: \{ sessionId \} \}\)/);
+  assert.match(mainSource, /claw\/resolve-session-context/);
+  assert.match(mainSource, /cindySessionId/);
+  assert.match(mainSource, /clawSessionId/);
   assert.match(workerSource, /await ensureSession\(params\.sessionId, params\.workdir\)/);
   assert.match(workerSource, /'knowledge', 'list'/);
   assert.match(workerSource, /'--job-host', 'cindy'/);
@@ -168,17 +172,374 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
   );
 }
 
+test("Cindy SQLite reader prepares subagent report input as soon as knowledgeDispatch is persisted", () => {
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-claim-capture-"));
+  const dbPath = path.join(fixtureDir, "cindy-reader.db");
+  const finalizeId = "b".repeat(64);
+  const db = new DatabaseSync(dbPath);
+  db.exec(`
+    CREATE TABLE sessions (id TEXT PRIMARY KEY, sdk_session_id TEXT);
+    CREATE TABLE messages (
+      id TEXT PRIMARY KEY, client_id TEXT, session_id TEXT NOT NULL,
+      role TEXT NOT NULL, content TEXT NOT NULL, tool_use_id TEXT,
+      created_at INTEGER NOT NULL, rewind_at INTEGER
+    );
+  `);
+  db.prepare("INSERT INTO sessions (id, sdk_session_id) VALUES (?, ?)").run("originating-cindy-session", "originating-sdk-session");
+  db.prepare("INSERT INTO messages (id, client_id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+    .run("assistant-1", "turn-1", "originating-cindy-session", "assistant", JSON.stringify("Implemented the report fix."), 1);
+  db.prepare("INSERT INTO messages (id, client_id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+    .run("task-result", "turn-1", "originating-cindy-session", "tool_result", JSON.stringify({ ok: true, command: "task.done" }), 2);
+  db.prepare("INSERT INTO messages (id, client_id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+    .run("assistant-2", "turn-1", "originating-cindy-session", "assistant", JSON.stringify("Closed the plan and dispatched the writer."), 3);
+  db.prepare("INSERT INTO messages (id, client_id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+    .run("plan-result", "turn-1", "originating-cindy-session", "tool_result", JSON.stringify({ ok: true, result: { knowledgeDispatch: { policy: "subagent", finalizeId } } }), 4);
+  db.close();
+
+  const previous = process.env.CINDY_USER_DATA;
+  process.env.CINDY_USER_DATA = fixtureDir;
+  try {
+    const { readKnowledgeClaimCapture } = require(sqliteReaderPath);
+    assert.deepEqual(readKnowledgeClaimCapture("originating-sdk-session", finalizeId), {
+      sessionId: "originating-sdk-session",
+      turnId: "turn-1",
+      taskConclusions: [{ turnId: "turn-1", message: "Implemented the report fix." }],
+    });
+  } finally {
+    if (previous === undefined) delete process.env.CINDY_USER_DATA;
+    else process.env.CINDY_USER_DATA = previous;
+    fs.rmSync(fixtureDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("Cindy session context resolves the SDK identity that owns the claw plan", () => {
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-session-context-"));
+  const projectDir = path.join(fixtureDir, "project");
+  const runtimeDir = path.join(projectDir, ".claw", "runtime");
+  fs.mkdirSync(runtimeDir, { recursive: true });
+  fs.writeFileSync(path.join(runtimeDir, "session-bindings.json"), JSON.stringify({
+    version: 1,
+    bindings: { "sdk-session": "tasks/2026-08-01/current-plan/plan.json" },
+  }));
+
+  const db = new DatabaseSync(path.join(fixtureDir, "cindy-reader.db"));
+  db.exec(`
+    CREATE TABLE sessions (
+      id TEXT PRIMARY KEY, sdk_session_id TEXT, agent_kind TEXT,
+      workspace_kind TEXT, working_dir TEXT
+    );
+    CREATE TABLE messages (
+      id TEXT PRIMARY KEY, client_id TEXT, session_id TEXT NOT NULL,
+      role TEXT NOT NULL, content TEXT NOT NULL, tool_use_id TEXT,
+      created_at INTEGER NOT NULL, agent_meta TEXT, rewind_at INTEGER
+    );
+  `);
+  db.prepare("INSERT INTO sessions (id, sdk_session_id, agent_kind, workspace_kind, working_dir) VALUES (?, ?, ?, ?, ?)")
+    .run("cindy-session", "sdk-session", "codex", "project", projectDir);
+  db.prepare("INSERT INTO messages (id, session_id, role, content, created_at, agent_meta) VALUES (?, ?, ?, ?, ?, ?)")
+    .run("historical", "cindy-session", "assistant", JSON.stringify("Earlier turn."), 1, JSON.stringify({ sdkSessionId: "old-sdk-session" }));
+  db.close();
+
+  const previous = process.env.CINDY_USER_DATA;
+  process.env.CINDY_USER_DATA = fixtureDir;
+  try {
+    const { resolveCindySessionContext } = require(sqliteReaderPath);
+    assert.deepEqual(resolveCindySessionContext("cindy-session"), {
+      ok: true,
+      status: "bound",
+      cindySessionId: "cindy-session",
+      clawSessionId: "sdk-session",
+      workdir: path.resolve(projectDir),
+      planPath: "tasks/2026-08-01/current-plan/plan.json",
+      agentKind: "codex",
+      workspaceKind: "project",
+    });
+  } finally {
+    if (previous === undefined) delete process.env.CINDY_USER_DATA;
+    else process.env.CINDY_USER_DATA = previous;
+    fs.rmSync(fixtureDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("Cindy session context resolves under the Host-sanitized Ghost Node environment", () => {
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-sanitized-env-context-"));
+  const fakeHome = path.join(fixtureDir, "home");
+  const userDataDir = path.join(fakeHome, "AppData", "Roaming", "Cindy");
+  const projectDir = path.join(fixtureDir, "project");
+  const runtimeDir = path.join(projectDir, ".claw", "runtime");
+  fs.mkdirSync(userDataDir, { recursive: true });
+  fs.mkdirSync(runtimeDir, { recursive: true });
+  fs.writeFileSync(path.join(runtimeDir, "session-bindings.json"), JSON.stringify({
+    version: 1,
+    bindings: { "sanitized-sdk-session": "tasks/2026-08-01/sanitized-plan/plan.json" },
+  }));
+
+  const db = new DatabaseSync(path.join(userDataDir, "cindy-sanitized.db"));
+  db.exec(`
+    CREATE TABLE sessions (
+      id TEXT PRIMARY KEY, sdk_session_id TEXT, agent_kind TEXT,
+      workspace_kind TEXT, working_dir TEXT
+    );
+    CREATE TABLE messages (
+      id TEXT PRIMARY KEY, client_id TEXT, session_id TEXT NOT NULL,
+      role TEXT NOT NULL, content TEXT NOT NULL, tool_use_id TEXT,
+      created_at INTEGER NOT NULL, agent_meta TEXT, rewind_at INTEGER
+    );
+  `);
+  db.prepare("INSERT INTO sessions (id, sdk_session_id, agent_kind, workspace_kind, working_dir) VALUES (?, ?, ?, ?, ?)")
+    .run("sanitized-cindy-session", "sanitized-sdk-session", "codex", "project", projectDir);
+  db.close();
+
+  try {
+    const { resolveCindySessionContext } = require(sqliteReaderPath);
+    assert.deepEqual(resolveCindySessionContext("sanitized-cindy-session", {
+      env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, TEMP: process.env.TEMP },
+      homeDir: fakeHome,
+    }), {
+      ok: true,
+      status: "bound",
+      cindySessionId: "sanitized-cindy-session",
+      clawSessionId: "sanitized-sdk-session",
+      workdir: path.resolve(projectDir),
+      planPath: "tasks/2026-08-01/sanitized-plan/plan.json",
+      agentKind: "codex",
+      workspaceKind: "project",
+    });
+  } finally {
+    fs.rmSync(fixtureDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("Cindy session context rejects candidate identities bound to different plans", () => {
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-session-conflict-"));
+  const projectDir = path.join(fixtureDir, "project");
+  const runtimeDir = path.join(projectDir, ".claw", "runtime");
+  fs.mkdirSync(runtimeDir, { recursive: true });
+  fs.writeFileSync(path.join(runtimeDir, "session-bindings.json"), JSON.stringify({
+    version: 1,
+    bindings: {
+      "cindy-session": "tasks/2026-08-01/cindy-plan/plan.json",
+      "sdk-session": "tasks/2026-08-01/sdk-plan/plan.json",
+    },
+  }));
+
+  const db = new DatabaseSync(path.join(fixtureDir, "cindy-reader.db"));
+  db.exec(`
+    CREATE TABLE sessions (
+      id TEXT PRIMARY KEY, sdk_session_id TEXT, agent_kind TEXT,
+      workspace_kind TEXT, working_dir TEXT
+    );
+    CREATE TABLE messages (
+      id TEXT PRIMARY KEY, client_id TEXT, session_id TEXT NOT NULL,
+      role TEXT NOT NULL, content TEXT NOT NULL, tool_use_id TEXT,
+      created_at INTEGER NOT NULL, agent_meta TEXT, rewind_at INTEGER
+    );
+  `);
+  db.prepare("INSERT INTO sessions (id, sdk_session_id, agent_kind, workspace_kind, working_dir) VALUES (?, ?, ?, ?, ?)")
+    .run("cindy-session", "sdk-session", "codex", "project", projectDir);
+  db.close();
+
+  const previous = process.env.CINDY_USER_DATA;
+  process.env.CINDY_USER_DATA = fixtureDir;
+  try {
+    const { resolveCindySessionContext } = require(sqliteReaderPath);
+    assert.deepEqual(resolveCindySessionContext("cindy-session"), {
+      ok: false,
+      status: "identity-conflict",
+      errorCode: "CINDY_SESSION_IDENTITY_CONFLICT",
+      reason: "Cindy session identities are bound to different claw plans.",
+      cindySessionId: "cindy-session",
+      workdir: path.resolve(projectDir),
+    });
+  } finally {
+    if (previous === undefined) delete process.env.CINDY_USER_DATA;
+    else process.env.CINDY_USER_DATA = previous;
+    fs.rmSync(fixtureDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("Cindy session context resolves the terminal knowledge owner after plan unbind", () => {
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-terminal-context-"));
+  const projectDir = path.join(fixtureDir, "project");
+  const runtimeDir = path.join(projectDir, ".claw", "runtime");
+  const knowledgeDir = path.join(runtimeDir, "knowledge-sessions");
+  fs.mkdirSync(knowledgeDir, { recursive: true });
+  fs.writeFileSync(path.join(runtimeDir, "session-bindings.json"), JSON.stringify({ version: 1, bindings: {} }));
+  const registryName = `${createHash("sha256").update("sdk-session").digest("hex")}.json`;
+  fs.writeFileSync(path.join(knowledgeDir, registryName), JSON.stringify({
+    schemaVersion: 1,
+    sessionId: "sdk-session",
+    pendingTurnOwner: {
+      planPath: "tasks/2026-08-01/completed-plan/plan.json",
+      reportPath: "tasks/2026-08-01/completed-plan/plan.report",
+      finalizeId: "finalize-terminal",
+    },
+  }));
+
+  const db = new DatabaseSync(path.join(fixtureDir, "cindy-reader.db"));
+  db.exec(`
+    CREATE TABLE sessions (
+      id TEXT PRIMARY KEY, sdk_session_id TEXT, agent_kind TEXT,
+      workspace_kind TEXT, working_dir TEXT
+    );
+    CREATE TABLE messages (
+      id TEXT PRIMARY KEY, client_id TEXT, session_id TEXT NOT NULL,
+      role TEXT NOT NULL, content TEXT NOT NULL, tool_use_id TEXT,
+      created_at INTEGER NOT NULL, agent_meta TEXT, rewind_at INTEGER
+    );
+  `);
+  db.prepare("INSERT INTO sessions (id, sdk_session_id, agent_kind, workspace_kind, working_dir) VALUES (?, ?, ?, ?, ?)")
+    .run("cindy-session", "sdk-session", "codex", "project", projectDir);
+  db.close();
+
+  const previous = process.env.CINDY_USER_DATA;
+  process.env.CINDY_USER_DATA = fixtureDir;
+  try {
+    const { resolveCindySessionContext } = require(sqliteReaderPath);
+    assert.deepEqual(resolveCindySessionContext("cindy-session"), {
+      ok: true,
+      status: "bound",
+      cindySessionId: "cindy-session",
+      clawSessionId: "sdk-session",
+      workdir: path.resolve(projectDir),
+      planPath: "tasks/2026-08-01/completed-plan/plan.json",
+      agentKind: "codex",
+      workspaceKind: "project",
+    });
+  } finally {
+    if (previous === undefined) delete process.env.CINDY_USER_DATA;
+    else process.env.CINDY_USER_DATA = previous;
+    fs.rmSync(fixtureDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("Cindy session context resolves a DeepSeek session-scoped terminal knowledge owner", () => {
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-session-scope-context-"));
+  const projectDir = path.join(fixtureDir, "project");
+  const sessionRuntimeDir = path.join(fixtureDir, "session-runtime");
+  const cindySessionId = "deepseek-cindy-session";
+  const workflowKey = createHash("sha256").update(cindySessionId).digest("hex");
+  const workflowDir = path.join(sessionRuntimeDir, workflowKey);
+  const knowledgeDir = path.join(workflowDir, "runtime", "knowledge-sessions");
+  fs.mkdirSync(projectDir, { recursive: true });
+  fs.mkdirSync(knowledgeDir, { recursive: true });
+  fs.writeFileSync(path.join(workflowDir, "session.json"), JSON.stringify({
+    version: 1,
+    scope: "session",
+    originCwd: projectDir,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }));
+  fs.writeFileSync(path.join(knowledgeDir, `${workflowKey}.json`), JSON.stringify({
+    schemaVersion: 1,
+    sessionId: cindySessionId,
+    pendingTurnOwner: {
+      planPath: "tasks/2026-08-01/deepseek-plan/plan.json",
+      reportPath: "tasks/2026-08-01/deepseek-plan/plan.report",
+      finalizeId: "finalize-deepseek",
+    },
+  }));
+
+  const db = new DatabaseSync(path.join(fixtureDir, "cindy-reader.db"));
+  db.exec(`
+    CREATE TABLE sessions (
+      id TEXT PRIMARY KEY, sdk_session_id TEXT, agent_kind TEXT,
+      workspace_kind TEXT, working_dir TEXT
+    );
+    CREATE TABLE messages (
+      id TEXT PRIMARY KEY, client_id TEXT, session_id TEXT NOT NULL,
+      role TEXT NOT NULL, content TEXT NOT NULL, tool_use_id TEXT,
+      created_at INTEGER NOT NULL, agent_meta TEXT, rewind_at INTEGER
+    );
+  `);
+  db.prepare("INSERT INTO sessions (id, sdk_session_id, agent_kind, workspace_kind, working_dir) VALUES (?, ?, ?, ?, ?)")
+    .run(cindySessionId, "deepseek-sdk-session", "codex", "project", projectDir);
+  db.close();
+
+  const previousUserData = process.env.CINDY_USER_DATA;
+  const previousSessionRuntime = process.env.CLAW_SESSION_RUNTIME_DIR;
+  process.env.CINDY_USER_DATA = fixtureDir;
+  process.env.CLAW_SESSION_RUNTIME_DIR = sessionRuntimeDir;
+  try {
+    const { resolveCindySessionContext } = require(sqliteReaderPath);
+    assert.deepEqual(resolveCindySessionContext(cindySessionId), {
+      ok: true,
+      status: "bound",
+      cindySessionId,
+      clawSessionId: cindySessionId,
+      workdir: path.resolve(projectDir),
+      planPath: "tasks/2026-08-01/deepseek-plan/plan.json",
+      agentKind: "codex",
+      workspaceKind: "project",
+    });
+  } finally {
+    if (previousUserData === undefined) delete process.env.CINDY_USER_DATA;
+    else process.env.CINDY_USER_DATA = previousUserData;
+    if (previousSessionRuntime === undefined) delete process.env.CLAW_SESSION_RUNTIME_DIR;
+    else process.env.CLAW_SESSION_RUNTIME_DIR = previousSessionRuntime;
+    fs.rmSync(fixtureDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("Cindy session context reports an explicit unbound state", () => {
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-unbound-context-"));
+  const projectDir = path.join(fixtureDir, "project");
+  const runtimeDir = path.join(projectDir, ".claw", "runtime");
+  fs.mkdirSync(runtimeDir, { recursive: true });
+  fs.writeFileSync(path.join(runtimeDir, "session-bindings.json"), JSON.stringify({ version: 1, bindings: {} }));
+  const db = new DatabaseSync(path.join(fixtureDir, "cindy-reader.db"));
+  db.exec(`
+    CREATE TABLE sessions (
+      id TEXT PRIMARY KEY, sdk_session_id TEXT, agent_kind TEXT,
+      workspace_kind TEXT, working_dir TEXT
+    );
+    CREATE TABLE messages (
+      id TEXT PRIMARY KEY, client_id TEXT, session_id TEXT NOT NULL,
+      role TEXT NOT NULL, content TEXT NOT NULL, tool_use_id TEXT,
+      created_at INTEGER NOT NULL, agent_meta TEXT, rewind_at INTEGER
+    );
+  `);
+  db.prepare("INSERT INTO sessions (id, sdk_session_id, agent_kind, workspace_kind, working_dir) VALUES (?, ?, ?, ?, ?)")
+    .run("cindy-session", "sdk-session", "codex", "project", projectDir);
+  db.close();
+
+  const previous = process.env.CINDY_USER_DATA;
+  process.env.CINDY_USER_DATA = fixtureDir;
+  try {
+    const { resolveCindySessionContext } = require(sqliteReaderPath);
+    assert.deepEqual(resolveCindySessionContext("cindy-session"), {
+      ok: false,
+      status: "unbound",
+      errorCode: "CINDY_SESSION_UNBOUND",
+      reason: "No claw plan is bound to this Cindy session.",
+      cindySessionId: "cindy-session",
+      workdir: path.resolve(projectDir),
+    });
+  } finally {
+    if (previous === undefined) delete process.env.CINDY_USER_DATA;
+    else process.env.CINDY_USER_DATA = previous;
+    fs.rmSync(fixtureDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
 test("knowledge completion recovers a persisted running Cindy job after worker restart", { skip: process.platform !== "win32" }, async () => {
   const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-writer-recovery-"));
   const jobPath = path.join(fixtureDir, "knowledge-job.json");
   const finalizeId = "a".repeat(64);
+  const templatePath = path.join(fixtureDir, `${finalizeId}.assignments.json`);
   fs.writeFileSync(jobPath, JSON.stringify({
     schemaVersion: 1,
     finalizeId,
     host: "cindy",
     status: "running",
     claimToken: "persisted-claim",
+    projectRoot: fixtureDir,
+    planPath: path.join(fixtureDir, "plan.json"),
+    reportPath: path.join(fixtureDir, "plan.report"),
+    writer: { executionPolicy: "background", externalSkills: [] },
+    attempts: 1,
   }), "utf8");
+  fs.writeFileSync(templatePath, "{}\n", "utf8");
   const scriptPath = path.join(fixtureDir, "fake-claw-writer.cjs");
   fs.writeFileSync(scriptPath, `
 const args = process.argv.slice(2);
@@ -212,11 +573,36 @@ process.exit(2);
       method: "claw/register-knowledge-writer",
       params: { sessionId: "writer-session", finalizeId, jobPath, workdir: fixtureDir },
     });
-    assert.deepEqual(registration.result, { ok: true, resumed: true });
+    assert.deepEqual(registration.result, {
+      ok: true,
+      resumed: true,
+      status: "running",
+      finalizeId,
+      claimToken: "persisted-claim",
+      templatePath,
+      projectRoot: fixtureDir,
+      planPath: path.join(fixtureDir, "plan.json"),
+      reportPath: path.join(fixtureDir, "plan.report"),
+      writer: { executionPolicy: "background", externalSkills: [] },
+    });
+
+    const inspection = await requestWorker(child, {
+      jsonrpc: "2.0",
+      id: 2,
+      method: "claw/inspect-knowledge-writer",
+      params: { sessionId: "writer-session", finalizeId, jobPath, workdir: fixtureDir },
+    });
+    assert.deepEqual(inspection.result, {
+      ok: true,
+      finalizeId,
+      status: "running",
+      attempts: 1,
+      executionPolicy: "background",
+    });
 
     const completion = await requestWorker(child, {
       jsonrpc: "2.0",
-      id: 2,
+      id: 3,
       method: "claw/execute",
       params: {
         operation: "knowledge.complete",
@@ -526,15 +912,136 @@ test("worker captures a final Cindy report through the host-neutral CLI hand-off
       method: "claw/capture-report",
       params: {
         sessionId: "cindy-report-session",
+        clawSessionId: "sdk-report-session",
         workdir: fixtureDir,
       },
     });
     assert.equal(response.result.ok, true);
     assert.equal(response.result.captured, true);
     assert.equal(response.result.finalizeId, "finalize-1");
-    assert.equal(response.result.sessionId, "cindy-report-session");
+    assert.equal(response.result.sessionId, "sdk-report-session");
+    assert.equal(response.result.cindySessionId, "cindy-report-session");
+    assert.equal(response.result.clawSessionId, "sdk-report-session");
     assert.match(response.result.args, /internal-knowledge-capture/);
     assert.match(response.result.args, /--host cindy/);
+  } finally {
+    await stopWorker(child);
+    fs.rmSync(fixtureDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
+});
+
+test("worker exposes atomic Cindy knowledge claim and done operations without did-turn-end", { skip: process.platform !== "win32" }, async () => {
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-atomic-knowledge-"));
+  const finalizeId = "c".repeat(64);
+  const originatingSessionId = "originating-cindy-session";
+  const jobPath = path.join(fixtureDir, "knowledge-job.json");
+  const commandLogPath = path.join(fixtureDir, "commands.ndjson");
+  fs.writeFileSync(jobPath, JSON.stringify({
+    schemaVersion: 1,
+    finalizeId,
+    sessionId: originatingSessionId,
+    projectRoot: fixtureDir,
+    taskName: "atomic-task",
+    host: "cindy",
+    planPath: path.join(fixtureDir, "plan.json"),
+    reportPath: path.join(fixtureDir, "plan.report"),
+    reportCapture: { mode: "claim", status: "pending" },
+    writer: { executionPolicy: "subagent", externalSkills: [] },
+    status: "queued",
+    attempts: 0,
+  }), "utf8");
+
+  const db = new DatabaseSync(path.join(fixtureDir, "cindy-reader.db"));
+  db.exec(`
+    CREATE TABLE sessions (id TEXT PRIMARY KEY);
+    CREATE TABLE messages (
+      id TEXT PRIMARY KEY, client_id TEXT, session_id TEXT NOT NULL,
+      role TEXT NOT NULL, content TEXT NOT NULL, tool_use_id TEXT,
+      created_at INTEGER NOT NULL, rewind_at INTEGER
+    );
+  `);
+  db.prepare("INSERT INTO sessions (id) VALUES (?)").run(originatingSessionId);
+  db.prepare("INSERT INTO messages (id, client_id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+    .run("assistant", "turn-atomic", originatingSessionId, "assistant", JSON.stringify("Implemented the atomic Cindy finalizer."), 1);
+  db.prepare("INSERT INTO messages (id, client_id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+    .run("task-result", "turn-atomic", originatingSessionId, "tool_result", JSON.stringify({ ok: true, command: "task.done" }), 2);
+  db.prepare("INSERT INTO messages (id, client_id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+    .run("done-result", "turn-atomic", originatingSessionId, "tool_result", JSON.stringify({ ok: true, result: { knowledgeDispatch: { policy: "subagent", finalizeId } } }), 3);
+  db.close();
+
+  const scriptPath = path.join(fixtureDir, "fake-claw-atomic.cjs");
+  fs.writeFileSync(scriptPath, `
+const fs = require('node:fs');
+const args = process.argv.slice(2);
+const input = fs.readFileSync(0, 'utf8');
+fs.appendFileSync(${JSON.stringify(commandLogPath)}, JSON.stringify({ args, input }) + '\\n');
+if (args[0] === 'knowledge' && args[1] === 'wait') {
+  process.stdout.write(JSON.stringify({ ok: true, command: 'knowledge.wait', jobPath: ${JSON.stringify(jobPath)}, status: 'queued' }) + '\\n');
+  process.exit(0);
+}
+if (args[0] === 'knowledge' && args[1] === 'claim') {
+  process.stdout.write(JSON.stringify({ ok: true, command: 'knowledge.claim', claimed: true, finalizeId: ${JSON.stringify(finalizeId)}, jobPath: ${JSON.stringify(jobPath)}, claimToken: 'claim-atomic', assignments: [{ index: 0, prompt: 'Update Truth.' }] }) + '\\n');
+  process.exit(0);
+}
+if (args[0] === 'knowledge' && args[1] === 'done') {
+  process.stdout.write(JSON.stringify({ ok: true, command: 'knowledge.done', finalizeId: ${JSON.stringify(finalizeId)}, status: 'succeeded' }) + '\\n');
+  process.exit(0);
+}
+process.stderr.write('unexpected command: ' + args.join(' '));
+process.exit(2);
+`, "utf8");
+  fs.writeFileSync(path.join(fixtureDir, "claw.cmd"), `@echo off\r\n"${process.execPath}" "${scriptPath}" %*\r\n`, "utf8");
+  const child = spawn(process.execPath, [workerPath], {
+    cwd: fixtureDir,
+    env: { ...process.env, CINDY_USER_DATA: fixtureDir, PATH: `${fixtureDir}${path.delimiter}${process.env.PATH || ""}` },
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true,
+  });
+
+  try {
+    const claim = await requestWorker(child, {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "claw/execute",
+      params: {
+        operation: "knowledge.claim",
+        args: { finalizeId },
+        readOnly: false,
+        sessionId: "knowledge-finalizer-worker",
+        workdir: fixtureDir,
+      },
+    });
+    assert.equal(claim.result.ok, true);
+    assert.equal(claim.result.result.claimed, true);
+    assert.equal(claim.result.result.claimToken, "claim-atomic");
+    const commandsAfterClaim = fs.readFileSync(commandLogPath, "utf8").trim().split(/\r?\n/).map((line) => JSON.parse(line));
+    const claimCommand = commandsAfterClaim.find(({ args }) => args[0] === "knowledge" && args[1] === "claim");
+    assert.ok(claimCommand);
+    assert.match(claimCommand.args.join(" "), /--cindy-report-stdin/);
+    assert.deepEqual(JSON.parse(claimCommand.input), {
+      session_id: originatingSessionId,
+      turn_id: "turn-atomic",
+      task_conclusions: [{ turnId: "turn-atomic", message: "Implemented the atomic Cindy finalizer." }],
+    });
+
+    const done = await requestWorker(child, {
+      jsonrpc: "2.0",
+      id: 2,
+      method: "claw/execute",
+      params: {
+        operation: "knowledge.done",
+        args: { finalizeId, claimToken: "claim-atomic", status: "succeeded", result: "Truth updated." },
+        readOnly: false,
+        sessionId: "knowledge-finalizer-worker",
+        workdir: fixtureDir,
+      },
+    });
+    assert.equal(done.result.ok, true);
+    assert.equal(done.result.result.status, "succeeded");
+    const commandsAfterDone = fs.readFileSync(commandLogPath, "utf8").trim().split(/\r?\n/).map((line) => JSON.parse(line));
+    const doneCommand = commandsAfterDone.find(({ args }) => args[0] === "knowledge" && args[1] === "done");
+    assert.ok(doneCommand);
+    assert.match(doneCommand.args.join(" "), /--claim-token claim-atomic --status succeeded --result Truth updated\./);
   } finally {
     await stopWorker(child);
     fs.rmSync(fixtureDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });

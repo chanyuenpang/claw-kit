@@ -164,15 +164,22 @@ function registryHasKnowledgeTarget(registryPath: string, sessionId: string): bo
       sessionId?: unknown;
       activePlanPath?: unknown;
       activeReportPath?: unknown;
-      pendingTurnOwner?: unknown;
+      activeWriter?: { executionPolicy?: unknown };
+      pendingTurnOwner?: { writer?: { executionPolicy?: unknown } };
     };
     if (registry.sessionId !== sessionId) {
       return false;
     }
-    return Boolean(
+    const pendingEligible = Boolean(
       registry.pendingTurnOwner
-      || (typeof registry.activePlanPath === "string" && typeof registry.activeReportPath === "string"),
+      && registry.pendingTurnOwner.writer?.executionPolicy !== "subagent",
     );
+    const activeEligible = Boolean(
+      typeof registry.activePlanPath === "string"
+      && typeof registry.activeReportPath === "string"
+      && registry.activeWriter?.executionPolicy !== "subagent",
+    );
+    return pendingEligible || activeEligible;
   } catch {
     return false;
   }

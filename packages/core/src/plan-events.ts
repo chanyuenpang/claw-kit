@@ -7,7 +7,16 @@ export type PlanEventType =
   | "plan_task_completed"
   | "plan_completed";
 
-export type PlanEventCommandSource = "plan.create" | "subplan.create" | "plan.edit" | "plan.start" | "plan.done";
+export type PlanEventCommandSource =
+  | "plan.create"
+  | "subplan.create"
+  | "plan.edit"
+  | "plan.start"
+  | "plan.done"
+  | "task.add"
+  | "task.edit"
+  | "task.remove"
+  | "task.done";
 
 export type PlanEvent = {
   schemaVersion: 1;

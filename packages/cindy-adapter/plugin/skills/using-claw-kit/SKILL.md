@@ -22,6 +22,39 @@ Do not infer the route from model data captured during Cindy session start.
 The skill owns this choice; uncertainty always falls back to the Cindy Ghost
 tool path.
 
+## Knowledge finalizer dispatch
+
+This section applies to both execution routes. Cindy supports only the subagent
+knowledge lifecycle: it normalizes `knowledgeWriter.executionPolicy` to
+`subagent` even when project configuration says `background`. When a terminal
+plan mutation returns a valid `knowledgeDispatch` with `policy: "subagent"`, the
+project knowledge-writer configuration is explicit authorization to use one
+persistent, UI-visible Orca Worker for knowledge closeout. The job already exists
+durably when the terminal mutation returns; neither dispatch nor report capture
+waits for a Stop hook.
+
+1. Call `cindy_orca.get_workspace_info` and look for a Worker with the stable
+   label `knowledge-finalizer`.
+2. If no active workflow exists, call `cindy_orca.start_team`, then create the
+   Worker with `cindy_orca.create_worker`, role `knowledge-finalizer`, label
+   `knowledge-finalizer`, agent `codex`, and the complete
+   `knowledgeDispatch.prompt` as `initial_task`.
+3. If the workflow exists but that Worker does not, create it the same way.
+4. If the Worker already exists, call `cindy_orca.send_to_worker` with its
+   session id and the complete `knowledgeDispatch.prompt`.
+5. Map supplied `model` and `reasoningEffort` to Worker creation only when the
+   Host advertises them as valid for the Codex Worker. Do not replace an
+   unsupported configured model silently.
+6. Treat `resumed`, `already-active`, and `queued` as accepted asynchronous
+   dispatch. Do not wait for the Worker. Finish the main response normally; the
+   Worker uses the `knowledge.claim` operation in the returned prompt to capture
+   task conclusions and claim the existing job atomically.
+
+Never execute the returned finalizer prompt in the Lead, send it through
+`cindy.agent.errand`, or let a did-turn-end hook create or claim a Cindy
+knowledge job. Legacy Cindy background jobs remain visible for diagnosis but
+are not launched.
+
 ---
 
 ## Shell + bridge path (GPT models)
@@ -91,8 +124,9 @@ async function runClawPlanMutation({ argv, workdir, timeout_ms = 30000 }) {
 When all plan tasks are complete:
 
 1. Complete the canonical plan transition through the bridge.
-2. Report the completed work to the user. The Host captures that final report
-   and then queues any required knowledge closeout.
+2. If the result contains a subagent `knowledgeDispatch`, dispatch it through
+   the Orca flow above before returning the normal final response.
+3. Do not wait for a Stop hook or for the Writer to finish.
 
 ---
 
@@ -156,9 +190,10 @@ Worker lifecycle details.
 When all plan tasks are complete:
 
 1. Complete the canonical plan transition through `call_tool`.
-2. Report the completed work to the user. The Host captures that final report
-   and then queues any required knowledge closeout.
-3. Do not manually trigger sync or Goal handling.
+2. If the result contains a subagent `knowledgeDispatch`, dispatch it through
+   the Orca flow above before returning the normal final response.
+3. Do not wait for a Stop hook or for the Writer to finish, and do not manually
+   trigger sync or Goal handling.
 
 Knowledge closeout must remain bounded to the current project and plan. A
 failure must be visible and recoverable; never silently mark a failed closeout

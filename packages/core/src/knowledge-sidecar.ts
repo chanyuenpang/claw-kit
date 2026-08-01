@@ -29,6 +29,8 @@ export type KnowledgeSessionRegistry = {
   sessionId: string;
   activePlanPath?: string;
   activeReportPath?: string;
+  activeWriter?: KnowledgeWriterConfig;
+  activeStartedAt?: string;
   pendingTurnOwner?: KnowledgeReportTarget;
   lastCollectedTurnId?: string;
   updatedAt: string;
@@ -49,6 +51,14 @@ export type KnowledgeFinalizationJob = {
   host?: KnowledgeFinalizationHost | null;
   planPath: string;
   reportPath: string;
+  reportCapture?: {
+    mode: "claim";
+    status: "pending" | "captured";
+    startedAt?: string;
+    capturedAt?: string;
+    transcriptPath?: string;
+    messageCount?: number;
+  };
   status: "queued" | "running" | "succeeded" | "failed";
   attempts: number;
   queuedAt: string;
@@ -114,6 +124,7 @@ export type KnowledgeSidecarResult = {
 
 export type KnowledgePlanEndResult = KnowledgeSidecarResult & {
   finalizeId?: string;
+  jobPath?: string;
 };
 
 export type KnowledgeStopResult = KnowledgeSidecarResult & {
@@ -193,24 +204,49 @@ export function deriveKnowledgeFinalizeId(input: {
     .digest("hex");
 }
 
+export function resolveKnowledgeWriterForHost(
+  writer: KnowledgeWriterConfig | undefined,
+  host?: string | null,
+): KnowledgeWriterConfig | undefined {
+  if (host !== "cindy") {
+    return writer;
+  }
+  return {
+    ...(writer ?? {}),
+    executionPolicy: "subagent",
+  };
+}
+
 export function tryRegisterKnowledgePlan(input: {
   project: ProjectContext;
   sessionId?: string;
   planPath: string;
+  writer?: KnowledgeWriterConfig;
+  host?: KnowledgeFinalizationHost;
 }): KnowledgeSidecarResult {
   const sessionId = input.sessionId?.trim();
   if (!sessionId) {
     return { ok: true };
   }
   try {
+    const writer = resolveKnowledgeWriterForHost(input.writer, input.host);
     const planPath = toProjectRelativePlanPath(input.project, input.planPath);
     const reportPath = toProjectRelativeReportPath(input.project, deriveKnowledgeReportPath(input.planPath));
-    updateKnowledgeRegistry(input.project, sessionId, (registry) => ({
-      ...registry,
-      activePlanPath: planPath,
-      activeReportPath: reportPath,
-      updatedAt: new Date().toISOString(),
-    }));
+    updateKnowledgeRegistry(input.project, sessionId, (registry) => {
+      const samePlan = registry.activePlanPath === planPath;
+      const continuingSubagentCapture = writer?.executionPolicy === "subagent"
+        && registry.activeWriter?.executionPolicy === "subagent";
+      return {
+        ...registry,
+        activePlanPath: planPath,
+        activeReportPath: reportPath,
+        ...(writer ? { activeWriter: writer } : {}),
+        activeStartedAt: (samePlan || continuingSubagentCapture) && registry.activeStartedAt
+          ? registry.activeStartedAt
+          : new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    });
     return { ok: true };
   } catch (error) {
     return { ok: false, error: errorMessage(error) };
@@ -224,12 +260,14 @@ export function tryEndKnowledgePlan(input: {
   resumedPlanPath?: string;
   endedAt: string;
   writer?: KnowledgeWriterConfig;
+  host?: KnowledgeFinalizationHost;
 }): KnowledgePlanEndResult {
   const sessionId = input.sessionId?.trim();
   if (!sessionId) {
     return { ok: true };
   }
   try {
+    const writer = resolveKnowledgeWriterForHost(input.writer, input.host);
     const endedPlanPath = toProjectRelativePlanPath(input.project, input.endedPlanPath);
     const reportPath = toProjectRelativeReportPath(
       input.project,
@@ -246,21 +284,69 @@ export function tryEndKnowledgePlan(input: {
       planPath: endedPlanPath,
       endedAt: input.endedAt,
     });
-    updateKnowledgeRegistry(input.project, sessionId, (registry) => ({
-      ...registry,
-      ...(resumedPlanPath
-        ? { activePlanPath: resumedPlanPath, activeReportPath: resumedReportPath }
-        : { activePlanPath: undefined, activeReportPath: undefined }),
-      pendingTurnOwner: {
-        planPath: endedPlanPath,
-        reportPath,
-        finalizeId,
-        ...(input.writer ? { writer: input.writer } : {}),
-        endedAt: input.endedAt,
-      },
-      updatedAt: new Date().toISOString(),
-    }));
-    return { ok: true, finalizeId };
+    let jobPath: string | undefined;
+    updateKnowledgeRegistry(input.project, sessionId, (registry) => {
+      const common = {
+        ...registry,
+        ...(resumedPlanPath
+          ? {
+              activePlanPath: resumedPlanPath,
+              activeReportPath: resumedReportPath,
+              activeWriter: writer,
+              activeStartedAt: registry.activeStartedAt,
+            }
+          : { activePlanPath: undefined, activeReportPath: undefined, activeWriter: undefined, activeStartedAt: undefined }),
+        updatedAt: new Date().toISOString(),
+      };
+      if (writer?.executionPolicy !== "subagent") {
+        return {
+          ...common,
+          pendingTurnOwner: {
+            planPath: endedPlanPath,
+            reportPath,
+            finalizeId,
+            ...(writer ? { writer } : {}),
+            endedAt: input.endedAt,
+          },
+        };
+      }
+      const subagentCommon = {
+        ...common,
+        pendingTurnOwner: undefined,
+      };
+      if (resumedPlanPath) {
+        return subagentCommon;
+      }
+      const absolutePlanPath = resolveProjectRelativePlanPath(input.project, endedPlanPath);
+      const absoluteReportPath = resolveProjectRelativeReportPath(input.project, reportPath);
+      jobPath = knowledgeFinalizationJobPathForPlan(input.project, absolutePlanPath, finalizeId);
+      if (!fs.existsSync(jobPath)) {
+        writeJsonFile(jobPath, {
+          schemaVersion: 1,
+          finalizeId,
+          sessionId,
+          projectRoot: input.project.projectRoot,
+          taskName: taskNameFromPlanPath(endedPlanPath),
+          writer,
+          host: input.host ?? null,
+          planPath: absolutePlanPath,
+          reportPath: absoluteReportPath,
+          reportCapture: {
+            mode: "claim",
+            status: "pending",
+            ...(registry.activeStartedAt ? { startedAt: registry.activeStartedAt } : {}),
+          },
+          status: "queued",
+          attempts: 0,
+          queuedAt: new Date().toISOString(),
+        } satisfies KnowledgeFinalizationJob);
+      }
+      return subagentCommon;
+    });
+    if (writer?.executionPolicy === "subagent" && resumedPlanPath) {
+      return { ok: true };
+    }
+    return { ok: true, finalizeId, ...(jobPath ? { jobPath } : {}) };
   } catch (error) {
     return { ok: false, error: errorMessage(error) };
   }
@@ -306,27 +392,26 @@ export function tryCaptureKnowledgeStop(input: {
       const registry = readKnowledgeRegistry(registryPath, sessionId);
       const target = registry.pendingTurnOwner ?? (
         registry.activePlanPath && registry.activeReportPath
-          ? { planPath: registry.activePlanPath, reportPath: registry.activeReportPath }
+          ? { planPath: registry.activePlanPath, reportPath: registry.activeReportPath, writer: registry.activeWriter }
           : undefined
       );
       if (!target) {
         return { ok: true, captured: false };
       }
+      if (
+        target.writer?.executionPolicy === "subagent"
+        || (!target.writer && input.project.projectConfig?.knowledgeWriter?.executionPolicy === "subagent")
+      ) {
+        return { ok: true, captured: false };
+      }
       const reportPath = resolveProjectRelativeReportPath(input.project, target.reportPath);
       const capturedAt = new Date().toISOString();
-      for (const conclusion of input.taskConclusions ?? []) {
-        if (conclusion.turnId !== turnId) {
-          continue;
-        }
-        appendKnowledgeReportEntry(reportPath, {
-          schemaVersion: 1,
-          entryType: "task_conclusion",
-          sessionId,
-          turnId: conclusion.turnId,
-          capturedAt,
-          message: conclusion.message,
-        });
-      }
+      appendKnowledgeTaskConclusions(
+        reportPath,
+        sessionId,
+        (input.taskConclusions ?? []).filter((conclusion) => conclusion.turnId === turnId),
+        capturedAt,
+      );
       const duplicate = appendKnowledgeReportEntry(reportPath, {
         schemaVersion: 1,
         sessionId,
@@ -409,15 +494,22 @@ export function readKnowledgeFinalizationJob(jobPath: string): KnowledgeFinaliza
   return readJsonFile<KnowledgeFinalizationJob>(jobPath);
 }
 
-export function claimKnowledgeFinalizationJob(jobPath: string): KnowledgeFinalizationJob | null {
+export function claimKnowledgeFinalizationJob(
+  jobPath: string,
+  options?: {
+    prepare?: (job: KnowledgeFinalizationJob) => Partial<KnowledgeFinalizationJob> | void;
+  },
+): KnowledgeFinalizationJob | null {
   return withFileLock(jobPath, () => {
     const current = readJsonFile<KnowledgeFinalizationJob>(jobPath);
     if (current.status === "succeeded" || current.status === "running" || current.attempts >= 3) {
       return null;
     }
     const now = new Date().toISOString();
+    const prepared = options?.prepare?.(structuredClone(current));
     const running: KnowledgeFinalizationJob = {
       ...current,
+      ...(prepared ?? {}),
       status: "running",
       attempts: current.attempts + 1,
       startedAt: now,
@@ -491,6 +583,29 @@ export function listRetryableKnowledgeFinalizationJobs(
         return false;
       }
     });
+}
+
+export function appendKnowledgeTaskConclusions(
+  reportPath: string,
+  sessionId: string,
+  conclusions: KnowledgeTaskConclusion[],
+  capturedAt = new Date().toISOString(),
+): { written: number; duplicates: number } {
+  let written = 0;
+  let duplicates = 0;
+  for (const conclusion of conclusions) {
+    const entry: KnowledgeReportEntry = {
+      schemaVersion: 1,
+      entryType: "task_conclusion",
+      sessionId,
+      turnId: conclusion.turnId,
+      capturedAt,
+      message: conclusion.message,
+    };
+    if (appendKnowledgeReportEntry(reportPath, entry)) duplicates += 1;
+    else written += 1;
+  }
+  return { written, duplicates };
 }
 
 export function listKnowledgeFinalizationJobs(project: ProjectContext): string[] {

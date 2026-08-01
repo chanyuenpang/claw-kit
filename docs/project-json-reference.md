@@ -71,9 +71,10 @@ Together, the canonical config plus local override model gives longer-running pr
 
 - `knowledgeWriter.externalSkills`
 - `knowledgeWriter.executionPolicy`
-  - `background` (default) launches a detached host agent after Stop capture
-  - `subagent` asks the active Codex main agent to dispatch a native collaboration subagent before its final response; unsupported hosts reject this policy before plan completion
-  - both policies execute the same packaged, internal session-scoped delegate template and never expose it as a user skill
+  - `background` is the cross-host default and launches a detached host agent after Stop capture where that host supports the background lifecycle
+  - `subagent` asks the active Codex main agent to dispatch a native collaboration subagent before the final response; unsupported hosts reject this policy before plan completion
+  - Cindy currently normalizes both configured values to `subagent`: the active Lead dispatches its Orca `knowledge-finalizer` Worker before the final response, and Cindy does not use Stop capture or errand execution for knowledge finalization
+  - Codex uses the packaged internal delegate template; Cindy's Orca Worker uses the same atomic wait/claim/ordered-assignment/done protocol directly
   - `externalSkills` is an ordered documentation-governance skill sequence; each custom skill receives an explicit unattended, non-interactive invocation prompt in a separate sequential assignment
   - use an empty array for claw-kit's hidden built-in consistency-aware governance contract, whose direct prompt is distinct from custom skill invocation wording
 

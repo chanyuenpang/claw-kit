@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   ClawError,
   activatePlan,
+  buildKnowledgeAtomicDispatch,
   buildKnowledgeDelegateDispatch,
   completeSubplanAndRestoreParent,
   createPlanAndSwitchFocus,
@@ -15,6 +16,7 @@ import {
   releaseCurrentPlanFocus,
   readFocusedPlan,
   resolvePlanEffectiveConfig,
+  resolveKnowledgeWriterForHost,
   resolveWorkflowProjectContext,
   searchMemoryAsync,
   showPlan,
@@ -329,6 +331,7 @@ export class ClawCommandService {
           cwd,
           taskName: current.taskName,
           planFile: current.planFile,
+          commandSource: "task.edit",
           ownerSessionKey: this.ownerSessionKey(context),
           host: commandInput.host ?? context.host,
         });
@@ -343,7 +346,7 @@ export class ClawCommandService {
         return this.editCurrentPlan(
           context,
           commandInput.tasks.map((task) => ({ type: "task.add", ...task })),
-          "plan.edit",
+          "task.add",
         );
       }
       case "task.done": {
@@ -359,7 +362,7 @@ export class ClawCommandService {
             status: "done",
             ...(task.choiceId ? { choiceId: task.choiceId } : {}),
           })),
-          "plan.edit",
+          "task.done",
         );
       }
       case "search": {
@@ -407,7 +410,7 @@ export class ClawCommandService {
   private async editCurrentPlan(
     context: CommandContext,
     operations: PlanMutationOperation[],
-    commandSource: "plan.edit" | "plan.done",
+    commandSource: "plan.edit" | "plan.done" | "task.add" | "task.done",
   ): Promise<ClawCommandResult> {
     const current = this.requireCurrentPlan(context);
     const sessionKey = this.requireSessionKey(context);
@@ -506,7 +509,7 @@ export class ClawCommandService {
         ownerSessionKey: this.ownerSessionKey(context),
       });
       const effectiveConfig = resolvePlanEffectiveConfig(project.projectConfig, ended.plan);
-      const writer = effectiveConfig?.knowledgeWriter;
+      const writer = resolveKnowledgeWriterForHost(effectiveConfig?.knowledgeWriter, context.host);
       const knowledgeEnd = tryEndKnowledgePlan({
         project,
         sessionId: context.agentSessionId,
@@ -514,13 +517,18 @@ export class ClawCommandService {
         ...(resumedPath ? { resumedPlanPath: resumedPath } : {}),
         endedAt: ended.endedAt,
         ...(writer ? { writer } : {}),
+        ...(context.host === "codex" || context.host === "opencode" || context.host === "cindy"
+          ? { host: context.host }
+          : {}),
       });
-      if (knowledgeEnd.finalizeId && writer?.executionPolicy === "subagent") {
-        dispatch = buildKnowledgeDelegateDispatch({
-          policy: "subagent",
-          finalizeId: knowledgeEnd.finalizeId,
-          writer,
-        });
+      if (knowledgeEnd.finalizeId && knowledgeEnd.jobPath && writer?.executionPolicy === "subagent") {
+        dispatch = context.host === "cindy"
+          ? buildKnowledgeAtomicDispatch({ finalizeId: knowledgeEnd.finalizeId, writer })
+          : buildKnowledgeDelegateDispatch({
+              policy: "subagent",
+              finalizeId: knowledgeEnd.finalizeId,
+              writer,
+            });
       }
     }
     return dispatch;

@@ -2,8 +2,30 @@ const { spawn } = require('node:child_process');
 const readline = require('node:readline');
 const fs = require('node:fs');
 const path = require('node:path');
-const { readTurnCaptureWithRetry } = require('./cindy-sqlite-reader.cjs');
+const {
+  candidateUserDataDirs,
+  readKnowledgeClaimCaptureWithRetry,
+  readTurnCaptureWithRetry,
+  resolveCindySessionContext,
+} = require('./cindy-sqlite-reader.cjs');
 const sessions = new Map();
+
+function traceWorker(event, fields = {}) {
+  const record = { source: 'claw-kit-cindy', event, ts: new Date().toISOString(), ...fields };
+  const line = JSON.stringify(record);
+  process.stderr.write(`[claw-kit] ${line}\n`);
+  const userDataDir = candidateUserDataDirs().find((dir) => {
+    try { return fs.statSync(dir).isDirectory(); } catch { return false; }
+  }) || '';
+  if (!userDataDir) return;
+  try {
+    const logDir = path.join(userDataDir, 'logs');
+    fs.mkdirSync(logDir, { recursive: true });
+    fs.appendFileSync(path.join(logDir, 'claw-kit.ndjson'), `${line}\n`, 'utf8');
+  } catch {
+    // Diagnostics are fail-open and must never affect the resident worker.
+  }
+}
 
 const OPERATION_CATALOG = {
   plan: [
@@ -83,7 +105,7 @@ const OPERATION_CATALOG = {
       name: 'subplan.create',
       description: 'Create a subplan for a parent task.',
       mutates: true,
-      parameters: objectParameters({ parent: { type: 'string', description: 'Parent task name.' }, taskId: { type: 'number', description: 'Parent task id.' }, template: stringParameter('Optional template name.'), templateFile: stringParameter('Optional template file path.') }, ['parent', 'taskId']),
+      parameters: objectParameters({ parent: { type: 'string', description: 'Parent task directory name (taskName), not the plan title.' }, taskId: { type: 'number', description: 'Parent task id.' }, template: stringParameter('Optional template name.'), templateFile: stringParameter('Optional template file path.') }, ['parent', 'taskId']),
     },
   ],
   search: [
@@ -92,6 +114,26 @@ const OPERATION_CATALOG = {
       description: 'Search project knowledge with a query.',
       mutates: false,
       parameters: objectParameters({ query: { type: 'string', description: 'Search query.' } }, ['query']),
+    },
+  ],
+  knowledge: [
+    {
+      name: 'knowledge.claim',
+      description: 'Atomically capture the originating Cindy task conclusions and claim a ready knowledge-finalization job.',
+      mutates: true,
+      parameters: objectParameters({ finalizeId: stringParameter('Finalization id returned by plan completion.') }, ['finalizeId']),
+    },
+    {
+      name: 'knowledge.done',
+      description: 'Complete a claimed knowledge-finalization job exactly once.',
+      mutates: true,
+      parameters: objectParameters({
+        finalizeId: stringParameter('Finalization id returned by plan completion.'),
+        claimToken: stringParameter('Claim token returned by knowledge.claim.'),
+        status: { type: 'string', enum: ['succeeded', 'failed'], description: 'Terminal finalization status.' },
+        result: stringParameter('Concise success result.'),
+        error: stringParameter('Concise failure reason.'),
+      }, ['finalizeId', 'claimToken', 'status']),
     },
   ],
 };
@@ -773,6 +815,18 @@ rpcInput.on('line', async (line) => {
     reply(request.id, { categories: Object.entries(OPERATION_CATALOG).map(([name, operations]) => ({ name, operations })) });
     return;
   }
+  if (request.method === 'claw/resolve-session-context') {
+    const context = resolveCindySessionContext(params.sessionId);
+    traceWorker('session-context', {
+      phase: context.status,
+      cindySessionId: context.cindySessionId || null,
+      clawSessionId: context.clawSessionId || null,
+      errorCode: context.errorCode || null,
+      planPath: context.planPath || null,
+    });
+    reply(request.id, context);
+    return;
+  }
   if (request.method === 'claw/session-start') {
     try {
       await ensureSession(params.sessionId, params.workdir);
@@ -828,10 +882,24 @@ rpcInput.on('line', async (line) => {
     return;
   }
   if (request.method === 'claw/capture-report') {
-    const sessionId = typeof params.sessionId === 'string' ? params.sessionId : '';
+    const cindySessionId = typeof params.sessionId === 'string' ? params.sessionId : '';
+    const clawSessionId = typeof params.clawSessionId === 'string' && params.clawSessionId.trim()
+      ? params.clawSessionId.trim()
+      : cindySessionId;
     const workdir = typeof params.workdir === 'string' ? params.workdir : '';
-    const captureInput = await readTurnCaptureWithRetry(sessionId);
+    traceWorker('capture-report', {
+      phase: 'received',
+      cindySessionId: cindySessionId || null,
+      clawSessionId: clawSessionId || null,
+    });
+    const captureInput = await readTurnCaptureWithRetry(cindySessionId);
     if (!captureInput) {
+      traceWorker('capture-report', {
+        phase: 'capture-failed',
+        cindySessionId: cindySessionId || null,
+        clawSessionId: clawSessionId || null,
+        errorCode: 'CINDY_TURN_NOT_PERSISTED',
+      });
       reply(request.id, { ok: true, captured: false, error: 'Cindy SQLite did not expose a completed assistant message yet.' });
       return;
     }
@@ -839,13 +907,22 @@ rpcInput.on('line', async (line) => {
     const result = await runClaw(
       ['internal-knowledge-capture', '--host', 'cindy'],
       workdir,
-      JSON.stringify({ cwd: workdir, session_id: sessionId, turn_id: turnId, message, task_conclusions: taskConclusions }),
+      JSON.stringify({ cwd: workdir, session_id: clawSessionId, turn_id: turnId, message, task_conclusions: taskConclusions }),
       10000,
-      sessionId,
+      clawSessionId,
     );
+    traceWorker('capture-report', {
+      phase: result.ok && result.output?.captured ? 'captured' : 'capture-failed',
+      cindySessionId,
+      clawSessionId,
+      turnId,
+      errorCode: result.ok ? null : (result.errorCode || 'CLAW_CAPTURE_FAILED'),
+      finalizeId: result.output?.finalizeId || null,
+      reportPath: result.output?.reportPath || null,
+    });
     reply(request.id, result.ok
-      ? { ok: true, turnId, message, ...(result.output || {}) }
-      : { ok: false, error: result.error });
+      ? { ok: true, turnId, message, ...(result.output || {}), cindySessionId, clawSessionId }
+      : { ok: false, error: result.error, cindySessionId, clawSessionId });
     return;
   }
   if (request.method === 'claw/register-knowledge-writer') {
@@ -866,11 +943,27 @@ rpcInput.on('line', async (line) => {
       return;
     }
     if (persisted.status === 'succeeded') {
-      reply(request.id, { ok: true, alreadyCompleted: true });
+      reply(request.id, { ok: true, alreadyCompleted: true, status: persisted.status, finalizeId });
       return;
     }
     if (persisted.status === 'running' && typeof persisted.claimToken === 'string' && persisted.claimToken) {
-      reply(request.id, { ok: true, resumed: true });
+      const templatePath = path.join(path.dirname(jobPath), `${finalizeId}.assignments.json`);
+      if (!fs.existsSync(templatePath)) {
+        reply(request.id, { ok: false, error: 'Running knowledge finalization is missing its assignment template.' });
+        return;
+      }
+      reply(request.id, {
+        ok: true,
+        resumed: true,
+        status: persisted.status,
+        finalizeId,
+        claimToken: persisted.claimToken,
+        templatePath,
+        projectRoot: persisted.projectRoot,
+        planPath: persisted.planPath,
+        reportPath: persisted.reportPath,
+        writer: persisted.writer || null,
+      });
       return;
     }
     const claimed = await runClaw(['knowledge', 'claim', '--job', jobPath], params.workdir, undefined, 10000, executorSessionId);
@@ -878,14 +971,46 @@ rpcInput.on('line', async (line) => {
       reply(request.id, { ok: false, error: claimed.error || 'Knowledge finalization job is not claimable.' });
       return;
     }
-    reply(request.id, { ok: true, claimed: true });
+    reply(request.id, { ok: true, claimed: true, ...claimed.output });
     return;
   }
-  if (request.method === 'claw/fail-knowledge-writer') {
+  if (request.method === 'claw/inspect-knowledge-writer') {
+    const finalizeId = typeof params.finalizeId === 'string' ? params.finalizeId : '';
     const jobPath = typeof params.jobPath === 'string' ? params.jobPath : '';
     let job;
     try { job = JSON.parse(fs.readFileSync(jobPath, 'utf8')); } catch {
       reply(request.id, { ok: false, error: 'Knowledge finalization job is unavailable.' });
+      return;
+    }
+    if (!finalizeId || job.finalizeId !== finalizeId || job.host !== 'cindy') {
+      reply(request.id, { ok: false, error: 'Knowledge finalization job does not belong to this Cindy closeout.' });
+      return;
+    }
+    reply(request.id, {
+      ok: true,
+      finalizeId,
+      status: job.status,
+      attempts: job.attempts,
+      executionPolicy: job.writer?.executionPolicy || 'background',
+      ...(typeof job.result === 'string' ? { result: job.result } : {}),
+      ...(typeof job.error?.message === 'string' ? { error: job.error.message } : {}),
+    });
+    return;
+  }
+  if (request.method === 'claw/fail-knowledge-writer') {
+    const finalizeId = typeof params.finalizeId === 'string' ? params.finalizeId : '';
+    const jobPath = typeof params.jobPath === 'string' ? params.jobPath : '';
+    let job;
+    try { job = JSON.parse(fs.readFileSync(jobPath, 'utf8')); } catch {
+      reply(request.id, { ok: false, error: 'Knowledge finalization job is unavailable.' });
+      return;
+    }
+    if (!finalizeId || job.finalizeId !== finalizeId || job.host !== 'cindy') {
+      reply(request.id, { ok: false, error: 'Knowledge finalization job does not belong to this Cindy closeout.' });
+      return;
+    }
+    if (job.status === 'succeeded') {
+      reply(request.id, { ok: true, alreadyCompleted: true });
       return;
     }
     const executorSessionId = typeof params.sessionId === 'string' ? params.sessionId.trim() : '';
@@ -937,7 +1062,122 @@ rpcInput.on('line', async (line) => {
       const operationArgs = params.args && typeof params.args === 'object' ? params.args : {};
       let output;
       let envelope = {};
-      if (operation === 'knowledge.complete') {
+      if (operation === 'knowledge.claim') {
+        const finalizeId = requiredString(operationArgs, 'finalizeId');
+        const located = await runClaw([
+          'knowledge', 'wait',
+          '--project-root', params.workdir,
+          '--finalize-id', finalizeId,
+          '--timeout-ms', '0',
+          '--host', 'cindy',
+        ], params.workdir, undefined, 10000, params.sessionId);
+        const jobPath = typeof located.output?.jobPath === 'string' ? located.output.jobPath : '';
+        let job;
+        try { job = JSON.parse(fs.readFileSync(jobPath, 'utf8')); } catch {
+          reply(request.id, {
+            ok: false,
+            operation,
+            errorCode: located.errorCode || 'KNOWLEDGE_JOB_UNAVAILABLE',
+            reason: located.reason || 'Knowledge finalization job is unavailable.',
+          });
+          return;
+        }
+        if (job.finalizeId !== finalizeId || job.host !== 'cindy' || job.writer?.executionPolicy !== 'subagent') {
+          reply(request.id, {
+            ok: false,
+            operation,
+            errorCode: 'KNOWLEDGE_JOB_MISMATCH',
+            reason: 'Knowledge finalization job does not belong to this Cindy subagent closeout.',
+          });
+          return;
+        }
+        const capture = await readKnowledgeClaimCaptureWithRetry(
+          job.sessionId,
+          finalizeId,
+          job.reportCapture?.startedAt,
+        );
+        if (!capture) {
+          reply(request.id, {
+            ok: false,
+            operation,
+            errorCode: 'CINDY_REPORT_NOT_PERSISTED',
+            reason: 'The originating Cindy plan completion has not been persisted yet; retry knowledge.claim.',
+          });
+          return;
+        }
+        const claimed = await runClaw([
+          'knowledge', 'claim',
+          '--job', jobPath,
+          '--cindy-report-stdin',
+          '--host', 'cindy',
+        ], params.workdir, JSON.stringify({
+          session_id: capture.sessionId,
+          turn_id: capture.turnId,
+          task_conclusions: capture.taskConclusions,
+        }), 30000, params.sessionId);
+        if (!claimed.ok) {
+          reply(request.id, {
+            ok: false,
+            operation,
+            errorCode: claimed.errorCode || 'KNOWLEDGE_CLAIM_FAILED',
+            reason: claimed.reason || 'Knowledge finalization claim failed.',
+          });
+          return;
+        }
+        output = claimed.output;
+      } else if (operation === 'knowledge.done') {
+        const finalizeId = requiredString(operationArgs, 'finalizeId');
+        const claimToken = requiredString(operationArgs, 'claimToken');
+        const status = requiredString(operationArgs, 'status');
+        if (status !== 'succeeded' && status !== 'failed') throw new Error('status must be succeeded or failed.');
+        const messageFlag = status === 'succeeded' ? '--result' : '--error';
+        const message = requiredString(operationArgs, status === 'succeeded' ? 'result' : 'error');
+        const located = await runClaw([
+          'knowledge', 'wait',
+          '--project-root', params.workdir,
+          '--finalize-id', finalizeId,
+          '--timeout-ms', '0',
+          '--host', 'cindy',
+        ], params.workdir, undefined, 10000, params.sessionId);
+        const jobPath = typeof located.output?.jobPath === 'string' ? located.output.jobPath : '';
+        let job;
+        try { job = JSON.parse(fs.readFileSync(jobPath, 'utf8')); } catch {
+          reply(request.id, {
+            ok: false,
+            operation,
+            errorCode: located.errorCode || 'KNOWLEDGE_JOB_UNAVAILABLE',
+            reason: located.reason || 'Knowledge finalization job is unavailable.',
+          });
+          return;
+        }
+        if (job.finalizeId !== finalizeId || job.host !== 'cindy') {
+          reply(request.id, {
+            ok: false,
+            operation,
+            errorCode: 'KNOWLEDGE_JOB_MISMATCH',
+            reason: 'Knowledge finalization job does not belong to this Cindy closeout.',
+          });
+          return;
+        }
+        const completed = await runClaw([
+          'knowledge', 'done',
+          '--job', jobPath,
+          '--claim-token', claimToken,
+          '--status', status,
+          messageFlag, message,
+          '--host', 'cindy',
+        ], params.workdir, undefined, 30000, params.sessionId);
+        if (!completed.ok) {
+          reply(request.id, {
+            ok: false,
+            operation,
+            errorCode: completed.errorCode || 'KNOWLEDGE_DONE_FAILED',
+            reason: completed.reason || 'Knowledge finalization completion failed.',
+          });
+          return;
+        }
+        output = completed.output || { ok: true, finalizeId, status };
+      } else if (operation === 'knowledge.complete') {
         const finalizeId = requiredString(operationArgs, 'finalizeId');
         const resultText = requiredString(operationArgs, 'result');
         const located = await runClaw([

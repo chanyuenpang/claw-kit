@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cindy Claw E2E"
+  short_description: "Run clean Cindy project-thread report and knowledge E2Es"
+  default_prompt: "Use $cindy-claw-e2e to run a clean Cindy project-thread report and knowledge finalization E2E."

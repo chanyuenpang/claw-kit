@@ -4,6 +4,24 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## Unreleased
 
+## [0.2.5] - 2026-08-01
+
+### Added
+
+- Added ready-at-terminal knowledge finalization jobs for subagent writers, with claim-time parent report capture and direct `--project-root` / `--finalize-id` claims.
+- Added atomic Cindy knowledge dispatch and persisted session recovery paths for unattended writer execution.
+- Added a repository-local pre-release candidate testing workflow with explicit prepare-only boundaries.
+
+### Changed
+
+- Codex knowledge writers now claim already-created jobs without waiting for Stop, while Stop remains responsible only for background-mode capture.
+- Plan events now preserve the originating task mutation command instead of collapsing task operations into `plan.edit`.
+
+### Fixed
+
+- Finalization dispatch now retains the effective host writer policy and report-capture start boundary across plan mutations and session recovery.
+- CLI closeout and session commands now return stable job paths and reject incomplete or conflicting knowledge claim routes.
+
 ## [0.2.4] - 2026-07-31
 
 ### Added
