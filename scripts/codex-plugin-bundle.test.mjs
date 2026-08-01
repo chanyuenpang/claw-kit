@@ -19,6 +19,7 @@ async function makeFixture() {
   const sourceDir = path.join(root, "packages", "codex-adapter");
 
   await fs.mkdir(path.join(sourceDir, ".codex-plugin"), { recursive: true });
+  await fs.mkdir(path.join(sourceDir, "assets"), { recursive: true });
   await fs.mkdir(path.join(sourceDir, "hooks"), { recursive: true });
   await fs.mkdir(path.join(sourceDir, "references"), { recursive: true });
   await fs.mkdir(path.join(sourceDir, "scripts"), { recursive: true });
@@ -28,6 +29,7 @@ async function makeFixture() {
     path.join(sourceDir, ".codex-plugin", "plugin.json"),
     JSON.stringify({ name: "claw-kit", version: "0.1.41+codex.test" }, null, 2),
   );
+  await fs.writeFile(path.join(sourceDir, "assets", "icon.png"), "fixture icon");
   await fs.writeFile(path.join(sourceDir, "hooks", "hooks.json"), '{"ok":true}');
   await fs.writeFile(path.join(sourceDir, "references", "note.md"), "# note");
   await fs.writeFile(path.join(sourceDir, "scripts", "helper.mjs"), "export const ok = true;\n");
@@ -329,6 +331,7 @@ test("exportCodexPluginBundle copies the expected payload into a versioned bundl
 
   assert.equal(result.bundleDir, path.join(outDir, "claw-kit", "0.1.41+codex.test"));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, ".codex-plugin", "plugin.json")));
+  await assert.doesNotReject(fs.access(path.join(result.bundleDir, "assets", "icon.png")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "hooks", "hooks.json")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "config", "SKILL.md")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "config", "TEMPLATE.json")));
@@ -354,6 +357,7 @@ test("installCodexPluginBundle copies a payload source into the versioned Codex 
     assert.equal(result.installDir, path.join(cacheRoot, "claw-kit", "0.1.41+codex.test"));
     const manifest = JSON.parse(await fs.readFile(path.join(result.installDir, ".codex-plugin", "plugin.json"), "utf8"));
     assert.equal(manifest.version, "0.1.41+codex.test");
+    await assert.doesNotReject(fs.access(path.join(result.installDir, "assets", "icon.png")));
     const installedSkill = await fs.readFile(path.join(result.installDir, "skills", "SKILL.md"), "utf8");
     assert.equal(installedSkill, "# skill");
     await assert.doesNotReject(fs.access(path.join(result.installDir, "hooks", "session-start-recovery.mjs")));

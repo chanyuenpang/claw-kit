@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 export const CODEX_PLUGIN_PAYLOAD_PATHS = [
   ".codex-plugin",
+  "assets",
   "hooks",
   "references",
   "scripts",
