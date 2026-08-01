@@ -233,7 +233,10 @@ export async function activateOfficialCodexPluginIdentity({ configPath = default
     throw new Error("The official claw-kit Git marketplace is not registered in Codex. Add chanyuenpang/claw-kit before installing the plugin.");
   }
   configText = setPluginEnabled(configText, "claw-kit@claw-kit", true);
-  configText = setPluginEnabled(configText, "claw-kit@claw-kit-local", false);
+  const disabledIdentities = ["claw-kit@claw-kit-local", "claw-kit-local@personal"];
+  for (const identity of disabledIdentities) {
+    configText = setPluginEnabled(configText, identity, false);
+  }
   await fs.writeFile(configPath, configText, "utf8");
-  return { configPath, enabledIdentity: "claw-kit@claw-kit", disabledIdentity: "claw-kit@claw-kit-local" };
+  return { configPath, enabledIdentity: "claw-kit@claw-kit", disabledIdentities };
 }

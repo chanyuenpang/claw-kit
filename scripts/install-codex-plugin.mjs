@@ -27,4 +27,4 @@ const identity = await activateOfficialCodexPluginIdentity({
 });
 
 console.log(`Installed GitHub marketplace plugin cache at ${result.installDir}`);
-console.log(`Enabled ${identity.enabledIdentity} and disabled ${identity.disabledIdentity}.`);
+console.log(`Enabled ${identity.enabledIdentity} and disabled ${identity.disabledIdentities.join(" and ")}.`);
