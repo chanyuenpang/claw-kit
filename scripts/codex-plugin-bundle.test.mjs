@@ -248,6 +248,9 @@ test("Codex update contract is platform-specific and supports only the official 
   assert.doesNotMatch(combined, /OpenCode|conservative fallback|choose (?:the )?host route|"choices"/i);
   assert.match(installer, /github\.com\/chanyuenpang\/claw-kit\.git/i);
   assert.match(installer, /git ls-remote \$repositoryUrl \$Ref/i);
+  assert.match(installer, /\$resolvedLines = @\(git ls-remote \$repositoryUrl \$Ref\)/i);
+  assert.match(installer, /\$gitExitCode = \$LASTEXITCODE/i);
+  assert.doesNotMatch(installer, /git ls-remote \$repositoryUrl \$Ref\s*\|\s*Select-Object/i);
   assert.match(installer, /fetch --depth 1 origin \$resolvedCommit/i);
   assert.match(installer, /checkout --quiet --detach FETCH_HEAD/i);
   assert.doesNotMatch(installer, /clone --depth 1 --branch main/i);

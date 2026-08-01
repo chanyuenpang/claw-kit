@@ -23,8 +23,10 @@ $repoRoot = Split-Path -Parent $scriptDir
 
 Write-Host "Resolving the published claw-kit GitHub marketplace ref..."
 $repositoryUrl = "https://github.com/chanyuenpang/claw-kit.git"
-$resolvedLine = git ls-remote $repositoryUrl $Ref | Select-Object -First 1
-if ($LASTEXITCODE -ne 0 -or -not $resolvedLine) {
+$resolvedLines = @(git ls-remote $repositoryUrl $Ref)
+$gitExitCode = $LASTEXITCODE
+$resolvedLine = $resolvedLines | Select-Object -First 1
+if ($gitExitCode -ne 0 -or -not $resolvedLine) {
   throw "Unable to resolve published claw-kit marketplace ref '$Ref'."
 }
 $resolvedCommit = ($resolvedLine -split "\s+")[0]
