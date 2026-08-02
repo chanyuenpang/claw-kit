@@ -5,6 +5,8 @@
 
 计划和 session binding 是 `claw-kit` 的前台 canonical lifecycle，必须独立于 Codex hooks。hook、report 或 SDK 的失败一律 fail-open：不能改变 `claw plan write`、`claw plan edit`、`claw plan done`、subplan 完成后的 parent 恢复，或 session binding 的语义。
 
+`scope: "session"` 是纯临时隔离 workflow，不产生项目知识沉淀：任何 host 的终态 mutation 都不得创建 knowledge job 或返回 `knowledgeDispatch`，其 guidance 也不得指示 claim、finalizer 或 subagent dispatch。该约束在 finalization creation gate 生效，不能只依赖某个 launcher 跳过执行；project scope 的既有 finalization 行为不变。
+
 知识采集使用与前台 lifecycle 分离的 per-session registry / outbox。创建 root plan 或 subplan 时，系统从确定性的计划路径派生相邻 report 路径：`<name>.json` 对应 `<name>.report`。计划从非 `end.*` 进入任一 `end.*` 时，background policy 记录 pending turn owner，Codex subagent policy 则在终态 mutation 内直接物化 ready job；canonical lifecycle 同时按终态语义恢复 parent binding 或清除 root binding，不等待 report、hook 或异步 writer。
 
 ## 长期行为 / 规则

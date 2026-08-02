@@ -26,10 +26,6 @@ function traceHook(hook, fields = {}) {
   console.error(`[claw-kit hook] ${JSON.stringify({ hook, ts: new Date().toISOString(), ...fields })}`);
 }
 
-function sendVerdict(hookId, action, extra = {}) {
-  cindy.send({ type: 'event-verdict', hookId, action, ...extra });
-}
-
 async function nodeRequest(method, params, timeoutMs = 10000) {
   try {
     const response = await cindy.node.request({ method, params, timeoutMs });
@@ -165,51 +161,58 @@ function escapeHtml(value) {
 
 function taskStatus(task) {
   const status = typeof task?.status === 'string' ? task.status : 'pending';
-  if (status === 'done') return { icon: '✓', label: '已完成' };
-  if (status === 'in_progress') return { icon: '◐', label: '进行中' };
-  if (status === 'blocked') return { icon: '!', label: '受阻' };
-  return { icon: '○', label: '待办' };
+  if (status === 'done') return { status, label: '已完成' };
+  if (status === 'in_progress') return { status, label: '进行中' };
+  if (status === 'blocked') return { status, label: '受阻' };
+  return { status: 'pending', label: '待办' };
+}
+
+function taskStatusIcon(status) {
+  const circle = 'display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:18px;height:18px;border:1.5px solid currentColor;border-radius:50%;font-size:11px;font-weight:700;line-height:1';
+  if (status === 'done') return `<span aria-hidden="true" style="${circle}">✓</span>`;
+  if (status === 'in_progress') return `<span aria-hidden="true" style="${circle};border-top-color:transparent;animation:claw-task-spin 3s linear infinite"></span>`;
+  if (status === 'blocked') return `<span aria-hidden="true" style="${circle}">!</span>`;
+  return `<span aria-hidden="true" style="${circle}"></span>`;
 }
 
 function renderWorkflowCard(projection, expanded, authorization = false) {
   const card = projection.card || {};
   const total = Number(card.totalTasks) || 0;
   const done = Number(card.completedTasks) || 0;
-  const percent = total ? Math.round((done / total) * 100) : 0;
-  // The compact card is an execution view: never use the plan title here.
-  const current = card.currentTask?.title || (projection.planStatus === 'process.wait' ? '已暂停，等待恢复' : '暂无待办任务');
-  const active = expanded && projection.planStatus === 'process.active';
-  const shimmer = active
-    ? '<style>@keyframes clawProgressShimmer{from{transform:translateX(-130%)}to{transform:translateX(130%)}}</style><div style="position:absolute;inset:0;width:42%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.42),transparent);animation:clawProgressShimmer 1.8s linear infinite"></div>'
-    : '';
-  const taskRows = (Array.isArray(card.tasks) ? card.tasks : []).map((task) => {
+  // The title remains task-focused, matching Cindy's native workflow bubble.
+  const tasks = Array.isArray(card.tasks) ? card.tasks : [];
+  const hasInProgressTask = tasks.some((task) => task?.status === 'in_progress');
+  const current = card.currentTask?.title
+    || card.nextTask?.title
+    || tasks.at(-1)?.title
+    || (projection.planStatus === 'process.wait' ? '已暂停，等待恢复' : '暂无待办任务');
+  const taskRows = tasks.map((task) => {
     const state = taskStatus(task);
-    const taskNumber = Number.isInteger(task?.id) ? `${task.id}. ` : '';
-    const completed = task?.status === 'done';
-    return `<li style="display:flex;gap:8px;align-items:flex-start;padding:5px 0;font-size:13px"><span style="display:flex;gap:4px;align-items:flex-start;flex:0 0 auto;white-space:nowrap;color:${completed ? 'var(--claw-card-muted,var(--text-secondary,#6f968a))' : 'var(--claw-card-text,var(--text-primary,#245246))'}"><span style="width:16px;flex:0 0 16px;font-weight:650;opacity:${completed ? '.5' : '1'}">${state.icon}</span><span>${escapeHtml(taskNumber)}</span></span><span style="flex:1;min-width:0;color:${completed ? 'var(--claw-card-muted,var(--text-secondary,#6f968a))' : 'var(--claw-card-text,var(--text-primary,#245246))'}">${escapeHtml(task.title || '未命名任务')}</span></li>`;
+    const active = state.status === 'done' || state.status === 'in_progress';
+    const color = active ? '#454a51' : '#6d737c';
+    const weight = active ? '600' : '400';
+    const opacity = active ? '1' : '.6';
+    return `<li style="display:flex;height:30px;align-items:center;gap:10px;color:${color};opacity:${opacity}"><span aria-label="${state.label}" style="display:inline-flex;flex:0 0 18px;width:18px;height:18px">${taskStatusIcon(state.status)}</span><span style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:normal;font-weight:${weight}">${escapeHtml(task.title || '未命名任务')}</span></li>`;
   }).join('');
   const detail = expanded
-    ? `<div style="margin-top:11px;padding-top:10px;border-top:1px solid var(--border-default,#d6d9dc)"><div style="font-size:13px;opacity:.8">${escapeHtml(card.goal || '未设置目标')}</div><ul style="list-style:none;margin:8px 0 0;padding:0">${taskRows || '<li style="font-size:13px;opacity:.7">暂无任务</li>'}</ul></div>`
+    ? `<div style="padding:10px 14px 12px;border-top:1px solid #dfe2e6"><ul style="display:flex;flex-direction:column;gap:2px;list-style:none;margin:0;padding:0">${taskRows || '<li style="height:30px;font-size:13px;line-height:normal;color:#6d737c">暂无任务</li>'}</ul></div>`
     : '';
   const buttonLabel = authorization ? '授权并继续执行计划' : (expanded ? '收起任务' : '查看全部任务');
-  const iconStyle = expanded
-    ? 'transform:rotate(-135deg);margin-top:4px'
-    : 'transform:rotate(45deg);margin-top:-3px';
   const cardHeight = workflowCardHeight(projection, expanded);
-  const canContinue = projection.planStatus === 'process.active' && !authorization;
-  const continueButton = canContinue
-    ? '<button data-ghost-action="claw-continue-goal" aria-label="继续执行计划" title="继续执行计划" style="height:24px;padding:0 8px;border:0;border-radius:4px;background:var(--claw-progress-fill,#69b99f);color:#fff;cursor:pointer;outline:none;-webkit-tap-highlight-color:transparent;font-size:11px;font-weight:650">继续</button>'
-    : '';
   const action = authorization ? 'claw-continue-goal' : 'claw-toggle-tasks';
-  const disclosure = authorization
-    ? ''
-    : `<button aria-label="${buttonLabel}" title="${buttonLabel}" style="display:flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border:0;background:transparent;cursor:pointer;outline:none;-webkit-tap-highlight-color:transparent"><span style="display:block;width:7px;height:7px;border-right:2px solid var(--claw-card-accent,var(--text-secondary,#3f8f77));border-bottom:2px solid var(--claw-card-accent,var(--text-secondary,#3f8f77));${iconStyle}"></span></button>`;
-  return `<div data-ghost-action="${action}" role="button" aria-label="${buttonLabel}" title="${buttonLabel}" style="width:100%;height:${cardHeight}px;min-width:0;box-sizing:border-box;padding:14px 12px 11px;background:var(--panel-bg,var(--surface,#dff6ee));color:var(--claw-card-text,var(--text-primary,#245246));border:0;border-radius:0;cursor:pointer;outline:none;-webkit-tap-highlight-color:transparent"><div style="font-size:13px;color:var(--claw-card-text,var(--text-primary,#245246));white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(current)}</div><div style="display:flex;align-items:center;gap:8px;margin-top:11px"><div style="position:relative;flex:1;height:18px;background:var(--claw-progress-track,#bde6d8);border-radius:0;overflow:hidden"><div style="position:relative;width:${percent}%;height:100%;background:var(--claw-progress-fill,#69b99f);overflow:hidden">${shimmer}</div><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:650;color:#fff;text-shadow:0 1px 1px rgba(0,0,0,.22)">${done} / ${total}</div></div>${continueButton}${disclosure}</div>${detail}</div>`;
+  const disclosure = `<span aria-hidden="true" style="display:block;width:8px;height:8px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);margin-top:-3px"></span>`;
+  const listIcon = `<span aria-hidden="true" style="display:flex;flex-direction:column;gap:2px;width:16px;height:16px"><span style="display:flex;align-items:center;gap:2px;height:4px"><span style="font-size:5px;line-height:1">✓</span><span style="display:block;width:9px;height:1px;background:currentColor"></span></span><span style="display:flex;align-items:center;gap:2px;height:4px"><span style="font-size:5px;line-height:1">✓</span><span style="display:block;width:9px;height:1px;background:currentColor"></span></span><span style="display:flex;align-items:center;gap:2px;height:4px"><span style="font-size:5px;line-height:1">✓</span><span style="display:block;width:9px;height:1px;background:currentColor"></span></span></span>`;
+  const animation = hasInProgressTask ? '<style>@keyframes claw-task-spin{to{transform:rotate(360deg)}}</style>' : '';
+  return `${animation}<div data-ghost-action="${action}" role="button" aria-label="${buttonLabel}" title="${buttonLabel}" style="width:100%;height:${cardHeight}px;min-width:0;box-sizing:border-box;overflow:hidden;background:#fbfbfc;color:#22262b;border:1px solid #dfe2e6;border-radius:12px;cursor:pointer;outline:none;-webkit-tap-highlight-color:transparent"><div style="display:flex;align-items:center;gap:8px;min-height:36px;padding:10px 14px;box-sizing:border-box"><span style="display:inline-flex;align-items:center;justify-content:center;flex:0 0 14px;width:14px;height:14px;color:#6d737c">${disclosure}</span><span aria-hidden="true" style="display:inline-flex;flex:0 0 16px;width:16px;height:16px;color:#454a51">${listIcon}</span><span style="flex:0 0 auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:normal;font-weight:600;color:#454a51">${done}/${total}</span><span aria-hidden="true" style="color:#6d737c;font-size:13px;line-height:normal">·</span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:normal;font-weight:400;color:#454a51">${escapeHtml(current)}</span></div>${detail}</div>`;
+}
+
+function workflowCardState(projection) {
+  return projection?.card?.tasks?.some((task) => task?.status === 'in_progress') ? 'working' : 'done';
 }
 
 function workflowCardHeight(projection, expanded) {
   const taskCount = Array.isArray(projection?.card?.tasks) ? projection.card.tasks.length : 0;
-  return expanded ? Math.min(180 + taskCount * 31, 600) : 120;
+  return expanded ? Math.min(89 + taskCount * 48, 600) : 58;
 }
 
 function updateInteractiveCard(cardId, sessionId) {
@@ -218,7 +221,7 @@ function updateInteractiveCard(cardId, sessionId) {
   const expanded = expandedWorkflowCards.get(cardId) === true;
   const authorization = goalAuthorizationCards.get(cardId) === true;
   cardLastUpdatedAt.set(cardId, Date.now());
-  cindy.send({ type: 'card-update', callId: cardId, v: 2, state: projection.planStatus === 'process.active' ? 'working' : 'done', html: renderWorkflowCard(projection, expanded, authorization), height: workflowCardHeight(projection, expanded) });
+  cindy.send({ type: 'card-update', callId: cardId, v: 2, state: workflowCardState(projection), html: renderWorkflowCard(projection, expanded, authorization), height: workflowCardHeight(projection, expanded) });
 }
 
 function queueInteractiveCardUpdate(cardId, sessionId) {
@@ -281,11 +284,11 @@ async function applyProjection(sessionId, execution, callId) {
     cardSessions.set(cardId, sessionId);
     cardLastUpdatedAt.set(cardId, Date.now());
     const expanded = expandedWorkflowCards.get(cardId) === true;
-    cindy.send({ type: 'card-update', callId: cardId, v: 2, state: mergedProjection.planStatus === 'process.active' ? 'working' : 'done', html: renderWorkflowCard(mergedProjection, expanded, goalAuthorizationCards.get(cardId) === true), height: workflowCardHeight(mergedProjection, expanded) });
+    cindy.send({ type: 'card-update', callId: cardId, v: 2, state: workflowCardState(mergedProjection), html: renderWorkflowCard(mergedProjection, expanded, goalAuthorizationCards.get(cardId) === true), height: workflowCardHeight(mergedProjection, expanded) });
   }
-  // Cindy closeout is already durable here: the terminal mutation always
-  // creates a subagent job and returns knowledgeDispatch. Turn-end hooks do not
-  // create or claim Cindy knowledge jobs.
+  // Cindy closeout is already durable here: the terminal mutation returns an
+  // Orca Worker dispatch using the compatibility policy value "subagent".
+  // Turn-end hooks do not create or claim Cindy knowledge jobs.
 }
 
 async function dispatchKnowledgeWriter(sessionId, job) {
@@ -542,31 +545,20 @@ cindy.onHostMessage(async (msg) => {
       const token = typeof msg.userActionToken === 'string'
         ? msg.userActionToken
         : typeof msg.data?.userActionToken === 'string' ? msg.data.userActionToken : '';
-      const outputCallId = typeof msg.spawnCallId === 'string' ? msg.spawnCallId : cardId;
-      if (!token) {
-        cindy.send({ type: 'card-update', callId: outputCallId, v: 2, state: 'done', html: '<div style="padding:12px">无法获取本次点击授权，请重新点击“继续”。</div>', height: 80 });
-        return;
-      }
+      if (!token) return;
       const goal = goalSessions.get(sessionId);
-      if (!goal || goal.status !== 'active' || projection.planStatus !== 'process.active') {
-        cindy.send({ type: 'card-update', callId: outputCallId, v: 2, state: 'done', html: '<div style="padding:12px">当前计划没有可继续执行的活动任务。</div>', height: 80 });
-        return;
-      }
+      if (!goal || goal.status !== 'active' || projection.planStatus !== 'process.active') return;
       if (goalAuthorizationCards.get(cardId) === true) {
         goalAuthorizationCards.delete(cardId);
         expandedWorkflowCards.set(cardId, false);
-        cindy.send({ type: 'card-update', callId: cardId, v: 2, state: 'working', html: renderWorkflowCard(projection, false), height: workflowCardHeight(projection, false) });
+        cindy.send({ type: 'card-update', callId: cardId, v: 2, state: workflowCardState(projection), html: renderWorkflowCard(projection, false), height: workflowCardHeight(projection, false) });
       }
-      cindy.send({ type: 'card-update', callId: outputCallId, v: 2, state: 'working', html: '<div style="padding:12px">授权已完成，正在继续执行…</div>', height: 80 });
-      const result = await runAgentTurn(
+      await runAgentTurn(
         sessionId,
         goalContinuationPrompt(goal),
         { kind: 'claw-goal-click-continuation', planPath: goal.planPath, objective: goal.objective, sourceCardId: cardId },
         token,
       );
-      if (!result?.ok) {
-        cindy.send({ type: 'card-update', callId: outputCallId, v: 2, state: 'done', html: `<div style="padding:12px">继续执行未启动：${escapeHtml(result?.message || result?.error || '主机拒绝了本次点击授权。')}</div>`, height: 100 });
-      }
       return;
     }
     expandedWorkflowCards.set(cardId, expandedWorkflowCards.get(cardId) !== true);
@@ -604,14 +596,6 @@ cindy.onHostMessage(async (msg) => {
       });
       void reconcileFocusedSession(data.sessionId, workdir);
     }
-    return;
-  }
-
-  if (msg.name === 'will-assistant-message') {
-    const sessionId = typeof msg.data?.sessionId === 'string' ? msg.data.sessionId : '';
-    traceHook('will-assistant-message', { sessionId: sessionId || null, phase: 'received', purpose: 'allow-only' });
-    sendVerdict(msg.hookId, 'allow');
-    traceHook('will-assistant-message', { sessionId: sessionId || null, phase: 'verdict', action: 'allow' });
     return;
   }
 

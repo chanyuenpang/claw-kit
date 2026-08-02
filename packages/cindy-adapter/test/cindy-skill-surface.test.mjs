@@ -88,9 +88,10 @@ test('Repository Cindy E2E skill creates separate Codex and non-Codex lanes and 
 });
 
 test('Cindy omits WUM prompt injection and keeps session-start work asynchronous', async () => {
-  const [source, skill, manifestSource, worker] = await Promise.all([
+  const [source, skill, researcherSkill, manifestSource, worker] = await Promise.all([
     readFile(new URL('main.js', root), 'utf8'),
     readFile(new URL('skills/using-claw-kit/SKILL.md', root), 'utf8'),
+    readFile(new URL('skills/researcher/SKILL.md', root), 'utf8'),
     readFile(new URL('ghost.json', root), 'utf8'),
     readFile(new URL('node/claw-worker.cjs', root), 'utf8'),
   ]);
@@ -113,7 +114,7 @@ test('Cindy omits WUM prompt injection and keeps session-start work asynchronous
   assert.match(source, /claw\/session-background/);
   assert.match(source, /Promise\.all\(\[\s*refreshSessionStart\(sessionId, workdir\),\s*runSessionMaintenance\(sessionId, workdir\)/);
   assert.doesNotMatch(source, /cindy\.agent\.errand|cindy\.agent\.queryErrand/);
-  assert.deepEqual(manifest.subscribe.hooks, ['will-assistant-message']);
+  assert.equal('hooks' in manifest.subscribe, false);
   assert.match(source, /function toolFailure\(callId, reason, errorCode = 'CLAW_OPERATION_FAILED'\)/);
   assert.match(source, /tool-result', callId, ok: false, errorCode, message: reason/);
   assert.doesNotMatch(source, /sessionModels|CINDY_CLAW_ENTRY_PROMPT_GPT|data\.model/);
@@ -124,12 +125,19 @@ test('Cindy omits WUM prompt injection and keeps session-start work asynchronous
   assert.match(skill, /Host-forged `args\.session_context`/);
   assert.match(skill, /Do not\s+add, reconstruct, or override this field/);
   assert.match(skill, /knowledgeDispatch/);
+  assert.match(skill, /Session scope is temporary and does not persist project knowledge/);
+  assert.match(skill, /never returns a `knowledgeDispatch`/);
+  assert.match(skill, /finish normally without creating\s+or messaging an Orca Worker/);
   assert.match(skill, /cindy_orca\.get_workspace_info/);
   assert.match(skill, /cindy_orca\.start_team/);
   assert.match(skill, /cindy_orca\.create_worker/);
   assert.match(skill, /cindy_orca\.send_to_worker/);
   assert.match(skill, /knowledge-finalizer/);
+  assert.match(skill, /The dispatch is always Orca in Cindy; never use a native\s+subagent or\s+`spawn_agent` here/is);
+  assert.match(researcherSkill, /Never substitute a native subagent.*`spawn_agent`.*`multi_agent_v1`/is);
   assert.match(skill, /Do not wait for the Worker/i);
+  assert.match(skill, /Immediately finish the main response after that acknowledgement/i);
+  assert.match(skill, /without polling or reading the\s+Worker/i);
   assert.match(skill, /job already exists/i);
   assert.match(skill, /knowledge\.claim/);
   assert.doesNotMatch(skill, /did-turn-end[^\n]*(capture|create).*job/i);
@@ -145,8 +153,9 @@ test('Goal continuation keeps structured events out of the visible prompt', asyn
   assert.match(source, /taskTitle/);
   assert.match(source, /cindyAuthorizationCardIssued\.has\(sessionId\)/);
   assert.doesNotMatch(source, /cindyAuthorizationCardIssued\.delete\(sessionId\)/);
-  assert.match(source, /state: projection\.planStatus === 'process\.active' \? 'working' : 'done'/);
-  assert.match(source, /msg\.name === 'will-assistant-message'/);
+  assert.match(source, /function workflowCardState\(projection\)/);
+  assert.match(source, /state: workflowCardState\(projection\)/);
+  assert.doesNotMatch(source, /will-assistant-message/);
   assert.match(source, /msg\.name === 'did-turn-end'/);
   assert.match(source, /function captureTurnEndReport\(msg\)/);
   assert.match(source, /capturedTurnKeys/);

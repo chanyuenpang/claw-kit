@@ -80,7 +80,9 @@ test("Codex entry keeps knowledge routing separate from Goal Mode readiness", as
   assert.match(contract, /handoff-ready|hand off execution/i);
   assert.match(skill, /stable cross-turn state/i);
   assert.match(skill, /convert it to `(?:process\.)?wait`/i);
-  assert.doesNotMatch(skill, /--scope session|session scope|projectless harness/i);
+  assert.match(skill, /session scope/i);
+  assert.match(skill, /never returns a `knowledgeDispatch`/i);
+  assert.match(skill, /finish the main turn without `spawn_agent`/i);
 });
 
 test("Codex entry stays compact without dropping guidance, lifecycle, or the mutation bridge", async () => {

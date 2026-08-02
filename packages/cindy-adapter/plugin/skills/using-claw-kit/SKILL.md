@@ -24,14 +24,17 @@ tool path.
 
 ## Knowledge finalizer dispatch
 
-This section applies to both execution routes. Cindy supports only the subagent
-knowledge lifecycle: it normalizes `knowledgeWriter.executionPolicy` to
-`subagent` even when project configuration says `background`. When a terminal
-plan mutation returns a valid `knowledgeDispatch` with `policy: "subagent"`, the
-project knowledge-writer configuration is explicit authorization to use one
-persistent, UI-visible Orca Worker for knowledge closeout. The job already exists
-durably when the terminal mutation returns; neither dispatch nor report capture
-waits for a Stop hook.
+Session scope is temporary and does not persist project knowledge. Its terminal
+mutation never returns a `knowledgeDispatch`; finish normally without creating
+or messaging an Orca Worker, calling `knowledge.claim`, or entering any other
+knowledge-finalization flow.
+
+This section applies to both execution routes. Cindy has one knowledge-closeout
+execution model: a persistent, UI-visible Orca Worker. When a terminal plan
+mutation returns a valid `knowledgeDispatch`, dispatch that Worker directly.
+The dispatch is always Orca in Cindy; never use a native subagent or
+`spawn_agent` here. The job already exists durably when the terminal mutation
+returns; neither dispatch nor report capture waits for a Stop hook.
 
 1. Call `cindy_orca.get_workspace_info` and look for a Worker with the stable
    label `knowledge-finalizer`.
@@ -46,9 +49,11 @@ waits for a Stop hook.
    Host advertises them as valid for the Codex Worker. Do not replace an
    unsupported configured model silently.
 6. Treat `resumed`, `already-active`, and `queued` as accepted asynchronous
-   dispatch. Do not wait for the Worker. Finish the main response normally; the
-   Worker uses the `knowledge.claim` operation in the returned prompt to capture
-   task conclusions and claim the existing job atomically.
+   dispatch. Immediately finish the main response after that acknowledgement.
+   Do not wait for the Worker. Do not poll, read the Worker output, query its
+   status, or describe the finalization as an unfinished foreground step. The Worker uses the
+   `knowledge.claim` operation in the returned prompt to capture task
+   conclusions and claim the existing job atomically.
 
 Never execute the returned finalizer prompt in the Lead, send it through
 `cindy.agent.errand`, or let a did-turn-end hook create or claim a Cindy
@@ -124,9 +129,12 @@ async function runClawPlanMutation({ argv, workdir, timeout_ms = 30000 }) {
 When all plan tasks are complete:
 
 1. Complete the canonical plan transition through the bridge.
-2. If the result contains a subagent `knowledgeDispatch`, dispatch it through
-   the Orca flow above before returning the normal final response.
-3. Do not wait for a Stop hook or for the Writer to finish.
+2. If the result contains a `knowledgeDispatch`, dispatch it through the Orca
+   flow above before returning the normal final response. In Cindy, never
+   substitute a native subagent.
+3. Do not wait for a Stop hook or for the Writer to finish. Once dispatch is
+   accepted, return the main reply immediately without polling or reading the
+   Worker.
 
 ---
 
@@ -190,10 +198,12 @@ Worker lifecycle details.
 When all plan tasks are complete:
 
 1. Complete the canonical plan transition through `call_tool`.
-2. If the result contains a subagent `knowledgeDispatch`, dispatch it through
-   the Orca flow above before returning the normal final response.
-3. Do not wait for a Stop hook or for the Writer to finish, and do not manually
-   trigger sync or Goal handling.
+2. If the result contains a `knowledgeDispatch`, dispatch it through the Orca
+   flow above before returning the normal final response. In Cindy, never
+   substitute a native subagent.
+3. Do not wait for a Stop hook or for the Writer to finish. Once dispatch is
+   accepted, return the main reply immediately without polling or reading the
+   Worker; do not manually trigger sync or Goal handling.
 
 Knowledge closeout must remain bounded to the current project and plan. A
 failure must be visible and recoverable; never silently mark a failed closeout

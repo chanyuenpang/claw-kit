@@ -108,6 +108,49 @@ test("persistent session starts a planning plan through the typed protocol", asy
   }
 });
 
+test("session-scoped daemon completion omits knowledge dispatch and finalization jobs", async () => {
+  const runtimeRoot = fixture("session-scope-closeout-runtime");
+  const projectRoot = fixture("session-scope-closeout-project");
+  const agentSessionId = `session-scope-closeout-${path.basename(runtimeRoot)}`;
+  initProject({ cwd: projectRoot, projectName: "Session Scope Closeout", planning: false });
+  const daemon = await startSessionDaemon({ runtimeRoot, idleTtlMs: 0 });
+  const opened = await new ClawClient({ runtimeRoot, host: "cindy", clientKind: "adapter" })
+    .open(agentSessionId, projectRoot);
+
+  try {
+    const created = await opened.commandEnvelope({
+      operation: "plan.create",
+      input: {
+        taskName: "session-scope-closeout-plan",
+        title: "Session scope closeout",
+        goalText: "Complete without project knowledge deposition",
+        scope: "session",
+      },
+    });
+    const planPath = String((created.output as { planPath?: string }).planPath);
+    await opened.command({ operation: "task.done", input: { tasks: [{ id: 1 }] } });
+    const done = await opened.commandEnvelope({
+      operation: "plan.done",
+      input: { retrospectiveSummary: "Session workflow complete" },
+    });
+
+    assert.equal(done.knowledgeDispatch, undefined);
+    const guidance = (done.output as { workflowGuidance?: unknown }).workflowGuidance;
+    assert.doesNotMatch(
+      JSON.stringify(guidance),
+      /knowledgeDispatch|knowledge[ ._-]*(?:claim|done|finaliz)|spawn_agent/i,
+    );
+    const finalizationDir = path.join(path.dirname(planPath), ".runtime", "knowledge-finalization");
+    const finalizationJobs = fs.existsSync(finalizationDir)
+      ? fs.readdirSync(finalizationDir).filter((entry) => entry.endsWith(".json"))
+      : [];
+    assert.deepEqual(finalizationJobs, []);
+  } finally {
+    await opened.close();
+    await daemon.close();
+  }
+});
+
 test("daemon preserves post-commit host actions in the typed command envelope", async () => {
   const runtimeRoot = fixture("host-actions-runtime");
   const projectRoot = fixture("host-actions-project");

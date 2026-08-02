@@ -492,6 +492,7 @@ export class ClawCommandService {
   ): KnowledgeDelegateDispatch | undefined {
     if (!context.agentSessionId || entered.length === 0) return undefined;
     const project = this.resolveProject(context);
+    if (project.scope !== "project") return undefined;
     const resumedPath = resumed
       ? showPlan({
           cwd: context.cwd,

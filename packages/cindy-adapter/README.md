@@ -16,7 +16,7 @@ into the plugin.
 - Cindy Desktop Host provides the lifecycle dispatcher for plugin-declared
   Ghost hooks. User-facing Orca Lead sessions remain eligible for ordinary
   Ghost lifecycle hooks while Workers are excluded; that Host fix is independent
-  of the subagent knowledge path, which does not require a Stop hook.
+  of the Orca Worker knowledge path, which does not require a Stop hook.
 - `plan.create` creates the Ghost progress card; `plan.resume`, `plan.done`,
   and all later task and plan mutations update the current session card from canonical
   plan data: title, goal, completed/total tasks, and the next task. This is a
@@ -33,8 +33,8 @@ workflow, failure policy, permission boundary, and acceptance scenarios.
 
 The installable Ghost source is under [plugin](plugin). It bundles the
 declared workflow Skills plus the runtime hook entry. Cindy normalizes either
-configured knowledge execution policy to `subagent`; the active Lead pre-dispatches one
-persistent, sidebar-visible Orca `knowledge-finalizer` Worker after the terminal
+configured knowledge execution policy to the compatibility value `subagent`; the active
+Lead pre-dispatches one persistent, sidebar-visible Orca `knowledge-finalizer` Worker after the terminal
 mutation has created the durable job. The Worker calls the plugin's atomic
 `knowledge.claim`, which captures the originating Cindy task conclusions into
 the adjacent report before issuing a token, executes the canonical assignments,

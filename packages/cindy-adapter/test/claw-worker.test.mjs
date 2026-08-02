@@ -23,7 +23,10 @@ test("Cindy Hook owns Goal continuation without claiming a native Host Goal API"
   assert.match(source, /kind: 'claw-goal-continuation'/);
   assert.match(source, /claw-continue-goal/);
   assert.match(source, /userActionToken/);
+  assert.match(source, /claw-task-spin/);
+  assert.match(source, /function workflowCardState/);
   assert.match(source, /claw-goal-click-continuation/);
+  assert.doesNotMatch(source, /Goal 模式已经启动。/);
   assert.match(source, /mode: 'continue'/);
   assert.match(source, /msg\.name === 'did-turn-end'/);
   assert.match(source, /operation: 'plan.wait'/);

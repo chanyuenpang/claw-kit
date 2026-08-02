@@ -6,6 +6,8 @@ description: Use for focused code investigation, source inspection, symbol or de
 # Researcher
 
 Run a concrete, bounded code investigation through Cindy's Orca workflow. The researcher is a persistent, UI-visible Worker session in the current workflow.
+Never substitute a native subagent (`spawn_agent` or `multi_agent_v1`) for this
+Cindy Worker.
 
 ## When coordinating research
 

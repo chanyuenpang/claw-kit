@@ -13,6 +13,7 @@
 ## Decision
 
 - Foreground `claw plan done`、session binding 与 Goal Mode lifecycle 独立于知识采集；hook、report、runner 或 writer 失败一律 fail-open，不回滚 canonical plan state。
+- `scope: "session"` 表示临时隔离 workflow，而非 project closeout 的另一种 launcher：它的任何 `end.*` mutation 都不得创建 finalization job、返回 `knowledgeDispatch` 或在 guidance 中暴露 claim / finalizer / subagent 路径。该 gate 必须位于 shared finalization creation，不能由 host launcher 事后过滤；project scope 继续遵循下列 lifecycle。
 - Knowledge finalization 的 lifecycle trigger 属于所有从非终态进入 `end.*` 的转换：`end.completed`、`end.closed` 与 `end.leave` 都登记一次 finalization；`process.active`、`process.wait` 与 `process.discussing` 只累计 report，不登记或启动沉淀。`packages/core/src/plan.ts` 以 `enteredEndState` 识别该边界，并为 sidecar 提供独立 `endedAt`；`end.completed` 专属的 completion hooks 仍只拥有 completion event、subplan resume 与 `completedAt` 等完成语义。
 - root plan 或 subplan 进入任一 `end.*` 时按 launcher policy 建立 finalization owner：background 登记该 finalization turn 的 pending owner，并由下一次 Stop/session-idle 追加 report、创建幂等 job；subagent 在终态 mutation 内以 source plan、相邻 report、finalize id、writer config snapshot 与 host 直接创建 ready job，随后才返回 dispatch。
 - Codex report 的目标语义是一条记录对应一个真实 agent turn 的最终 assistant message；`turn_id` 是 turn identity，`Stop` 是该 turn 的 flush 边界，Goal Mode 内部 commentary、工具批次、compaction 和 claw task checkpoint 都不增加 report 分段。捕获优先使用 Stop payload 的最终 assistant message，transcript 仅作为兼容回退；`task.done` 不再具有特殊捕获意义。

@@ -204,8 +204,8 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   assert.equal(refreshStatus.ok, true);
   assert.ok(Number((memory.project as JsonRecord).indexedCount) > 0);
   assert.ok(memory.task as JsonRecord | undefined);
-  assert.equal(gitnexus.enabled, false);
-  assert.match(String(gitnexus.reason), /preflight/);
+  assert.equal(gitnexus.enabled, true);
+  assert.equal(gitnexus.command, "gitnexus analyze --embeddings");
   assert.equal(doneResult.planSummary, "1/1 e2e-task");
   const achievement = doneResult.achievement as JsonRecord;
   assert.equal(achievement.status, "end.completed");

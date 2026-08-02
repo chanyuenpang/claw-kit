@@ -220,6 +220,15 @@ test('only plan.create creates a workflow card while resume and done update it',
     'plan-create-card',
   ]);
   assert.equal(cardUpdates.at(-1).state, 'done');
+  assert.match(cardUpdates[0].html, /background:#fbfbfc/);
+  assert.match(cardUpdates[0].html, /border-radius:12px/);
+  assert.match(cardUpdates[0].html, /border-top:1px solid #dfe2e6/);
+  assert.match(cardUpdates[0].html, /padding:10px 14px/);
+  assert.match(cardUpdates[0].html, /height:30px/);
+  assert.match(cardUpdates[0].html, /width:18px;height:18px/);
+  assert.equal(cardUpdates[0].state, 'done');
+  assert.match(cardUpdates[0].html, /0\/1/);
+  assert.doesNotMatch(cardUpdates[0].html, /clawProgressShimmer|claw-progress-fill/);
 });
 
 test('legacy Cindy background jobs are visible but never launched through errand', async () => {

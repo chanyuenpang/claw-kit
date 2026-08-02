@@ -74,7 +74,7 @@ The Cindy mapping follows the existing OpenCode adapter's event responsibilities
 | OpenCode first-message synthetic context | unsupported in Cindy until the Host provides trusted message context |
 | turn-end plan inspection | no CLI polling; the latest typed command result is the state source |
 | `process.active` continuation | Ghost Hook queues one background `agent.run` continuation after the assistant turn; the `.claw` plan status remains the gate |
-| completion knowledge closeout | Cindy normalizes every configured policy to `subagent`. The terminal mutation creates the durable job and returns an Orca `knowledge-finalizer` dispatch. The Worker atomically captures Cindy SQLite task conclusions during `knowledge.claim`, then owns claim/assignments/done without a Stop hook or errand. |
+| completion knowledge closeout | Cindy normalizes every configured policy to the compatibility value `subagent`; it always means an Orca `knowledge-finalizer` Worker, never a native subagent. The terminal mutation creates the durable job and returns that Worker dispatch. The Worker atomically captures Cindy SQLite task conclusions during `knowledge.claim`, then owns claim/assignments/done without a Stop hook or errand. |
 
 The plugin subscribes to the `session` topic, but its `did-session-created`
 handler performs no awaited work: it records the event and defers preparation
@@ -84,7 +84,8 @@ subscribe to `will-user-message`. The plugin does not execute `claw` from the
 sandbox; the declared Node worker does it through PATH.
 
 Knowledge finalization does not use `will-user-message`. Cindy supports only the
-effective `subagent` lifecycle, regardless of the configured policy. The
+effective Orca Worker lifecycle, regardless of the configured policy; the
+compatibility value `subagent` never selects a native subagent. The
 Lead dispatches the complete immutable `knowledgeDispatch` before its final
 response and does not wait. The Orca Worker inherits the Lead's project workdir,
 claims the already-created job exactly once while atomically materializing its
@@ -172,7 +173,7 @@ the `.claw` plan remains the continuation gate and source of truth.
 ## 8. Completion closeout
 
 After all plan tasks are complete, the terminal mutation creates one durable
-subagent job and returns its immutable `knowledgeDispatch` to the active Lead.
+Orca Worker job and returns its immutable `knowledgeDispatch` to the active Lead.
 The Lead sends that prompt unchanged to the persistent Orca
 `knowledge-finalizer` and returns without waiting.
 
