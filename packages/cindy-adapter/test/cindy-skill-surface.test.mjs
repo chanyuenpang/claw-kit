@@ -7,7 +7,7 @@ const root = new URL('../plugin/', import.meta.url);
 test('Cindy plugin exposes the full claw-kit skill surface', async () => {
   const manifest = JSON.parse(await readFile(new URL('ghost.json', root), 'utf8'));
   const names = manifest.skill.items.map((item) => item.name).sort();
-  assert.deepEqual(names, ['planning', 'researcher', 'using-claw-kit']);
+  assert.deepEqual(names, ['planning', 'researcher', 'update', 'using-claw-kit']);
 
   for (const entry of [
     'skills/using-claw-kit/SKILL.md',
@@ -21,8 +21,10 @@ test('Cindy plugin exposes the full claw-kit skill surface', async () => {
   }
 });
 
-test('Cindy release and update contracts retain one rollback package and install the latest matching GitHub asset', async () => {
-  const [releaseRule, skill, template, fallback, coverage] = await Promise.all([
+test('Cindy release and update contracts use the repository custom marketplace without archive assets', async () => {
+  const [marketplaceSource, releaseSkill, releaseRule, skill, template, fallback, coverage] = await Promise.all([
+    readFile(new URL('../../../.agents/plugins/marketplace.json', import.meta.url), 'utf8'),
+    readFile(new URL('../../../.agents/skills/release-cindy-plugin/SKILL.md', import.meta.url), 'utf8'),
     readFile(new URL('../../../.agents/skills/release-cindy-plugin/references/artifact.md', import.meta.url), 'utf8'),
     readFile(new URL('skills/update/SKILL.md', root), 'utf8'),
     readFile(new URL('skills/update/TEMPLATE.json', root), 'utf8'),
@@ -30,22 +32,25 @@ test('Cindy release and update contracts retain one rollback package and install
     readFile(new URL('skills/update/CONTENT-COVERAGE.md', root), 'utf8'),
   ]);
 
-  assert.match(releaseRule, /target release artifact.*single\s+rollback package/is);
-  assert.match(releaseRule, /parse version segments numerically/is);
-  assert.match(releaseRule, /Delete every other matching local build output/is);
+  const marketplace = JSON.parse(marketplaceSource);
+  assert.ok(marketplace.plugins.some((entry) =>
+    entry.name === 'claw-kit-cindy' &&
+    entry.source?.source === 'local' &&
+    entry.source?.path === './packages/cindy-adapter/plugin'
+  ));
 
-  for (const source of [skill, template, fallback, coverage]) {
-    assert.match(source, /vcindy-/);
-    assert.match(source, /\.cindy/);
-    assert.match(source, /GitHub Release/i);
-  }
-  assert.match(skill, /Do not use the\s+repository-wide `releases\/latest` shortcut/is);
+  const contract = `${releaseSkill}\n${releaseRule}\n${skill}\n${template}\n${fallback}\n${coverage}`;
+  assert.match(contract, /custom (?:Git )?marketplace/i);
+  assert.match(contract, /chanyuenpang\/claw-kit/);
+  assert.match(contract, /claw-kit-cindy/);
   assert.match(skill, /Cindy-owned update implementation/);
   assert.match(skill, /Each supported platform maintains\s+its own adjacent `update` skill/);
   assert.match(skill, /shared\s+global CLI together with that platform's plugin/);
-  assert.match(template, /immutable official GitHub Release URL/);
-  assert.match(fallback, /If the newest stable `vcindy-\*`\s+release has no matching `\.cindy` asset/is);
-  assert.doesNotMatch(`${skill}\n${template}\n${fallback}`, /marketplace (?:add|upgrade)|--ref main/);
+  assert.match(skill, /without a pinned ref/);
+  assert.match(fallback, /legacy manual `claw-kit` install conflicts/);
+  assert.match(releaseSkill, /Do not\s+build or upload a `\.cindy` archive/is);
+  assert.match(skill, /do not\s+download or open a `\.cindy` archive/is);
+  assert.doesNotMatch(`${releaseSkill}\n${releaseRule}`, /GitHub Release must contain|attach.*\.cindy/is);
 });
 
 test('Repository Cindy E2E skill creates separate Codex and non-Codex lanes and leaves lifecycle semantics to using-claw-kit', async () => {

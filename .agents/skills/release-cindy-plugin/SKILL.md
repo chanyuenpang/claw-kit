@@ -1,11 +1,12 @@
 ---
 name: release-cindy-plugin
-description: Release the claw-kit Cindy adapter as a vcindy GitHub Release with an installable .cindy asset. Use only when the repository owner explicitly asks to publish or release the Cindy plugin.
+description: Release the claw-kit Cindy adapter through the repository custom marketplace and a vcindy tag. Use only when the repository owner explicitly asks to publish or release the Cindy plugin.
 ---
 # Release Cindy plugin
 
 Run only inside the claw-kit repository. This skill owns only
-`packages/cindy-adapter` and the `vcindy-*` GitHub Release artifact.
+`packages/cindy-adapter`, its repository marketplace entry, and the `vcindy-*`
+tag.
 
 Resolve `<skill-dir>` as this file's directory. For a whole release, create the
 plan with `claw plan create --template-file "<skill-dir>/TEMPLATE.json" --title
@@ -17,7 +18,7 @@ explicit release authority; local packaging or testing belongs to
 `test-claw-kit`. Never change CLI/core or another adapter version, and never
 publish npm packages.
 
-The GitHub Release must contain the matching `.cindy` installer asset. Build and
-verify the target package before pruning old local artifacts. After verification,
-keep the target plus at most one immediately older package as rollback; delete
-all other matching build outputs. Installation refresh is a separate boundary.
+The committed repository marketplace is the Cindy distribution source. Do not
+build or upload a `.cindy` archive and do not create a GitHub Release for the
+adapter. Verify the marketplace entry and plugin tree before pushing the
+`vcindy-*` tag. Installation refresh is a separate boundary.

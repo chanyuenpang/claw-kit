@@ -4,29 +4,29 @@
   "title": "release-cindy-plugin",
   "status": "process.active",
   "goal": {
-    "text": "Publish a verified Cindy plugin release with an installable .cindy asset."
+    "text": "Publish a verified Cindy plugin release through the repository custom marketplace."
   },
   "requirements": {
-    "summary": "Release only the Cindy adapter, attach the matching installer, and retain one local rollback package.",
+    "summary": "Release only the Cindy adapter, verify its repository marketplace source, and publish the matching vcindy tag without an archive.",
     "openQuestions": [],
     "acceptanceCriteria": [
       "Only Cindy package and ghost manifest fourth segments are bumped.",
-      "The target .cindy embedded manifest is valid and matches vcindy-<version>.",
-      "Local build outputs contain the target plus at most one latest older rollback package.",
-      "The GitHub Release contains the matching immutable .cindy asset and no npm package is published."
+      "The claw-kit-cindy marketplace entry points at packages/cindy-adapter/plugin.",
+      "The tagged marketplace ghost manifest is valid and matches vcindy-<version>.",
+      "No .cindy archive, GitHub Release, or npm package is published."
     ]
   },
   "tasks": [
     {
       "id": 1,
       "title": "Inspect and classify the Cindy release baseline",
-      "detail": "Read AGENTS.md and references/artifact.md; inspect branch, remotes, tags, Cindy manifests, existing .cindy outputs, and every worktree change. Reject unapproved cross-family changes.",
+      "detail": "Read AGENTS.md and references/artifact.md; inspect branch, remotes, tags, Cindy manifests, the repository marketplace entry, and every worktree change. Reject unapproved cross-family changes.",
       "status": "pending"
     },
     {
       "id": 2,
       "title": "Prepare and verify the Cindy source",
-      "detail": "Bump only Cindy package.json and plugin/ghost.json fourth segments, validate manifest constraints and skill consistency, synchronize required content, run focused checks, and review the complete diff.",
+      "detail": "Bump only Cindy package.json and plugin/ghost.json fourth segments, validate manifest constraints, skill consistency, and the claw-kit-cindy marketplace source, synchronize required content, run focused checks, and review the complete diff.",
       "status": "pending"
     },
     {
@@ -37,21 +37,21 @@
     },
     {
       "id": 4,
-      "title": "Build, retain, and publish the Cindy installer",
-      "detail": "Build the target .cindy from tagged source and verify its embedded ghost.json. Only after success, delete expired matching outputs while retaining the target and one numerically latest older rollback package. Create the GitHub Release and attach the target installer asset.",
+      "title": "Publish the Cindy marketplace source",
+      "detail": "Verify the tagged repository marketplace resolves claw-kit-cindy to the target plugin directory and ghost.json version. Do not build a .cindy archive or create a GitHub Release; Cindy packages the source locally when the user installs or updates it.",
       "status": "pending"
     },
     {
       "id": 5,
       "title": "Verify the Cindy release and optional install",
-      "detail": "Verify tag, immutable asset URL, filename, size, embedded version, and repository cleanliness. Only when separately requested, install via Cindy confirmation, check logs, restart, and verify enabled/running target version.",
+      "detail": "Verify tag, origin/main equality, marketplace source path, manifest version, and repository cleanliness. Only when separately requested, refresh the custom market, accept Cindy confirmation, check logs, restart, and verify enabled/running target version.",
       "status": "pending"
     }
   ],
   "references": [
     {
       "path": "references/artifact.md",
-      "why": "Owns manifest, package, retention, publication, and installation rules."
+      "why": "Owns manifest, marketplace, tag, publication, migration, and installation rules."
     },
     {
       "path": "FALLBACK.md",
@@ -60,8 +60,8 @@
   ],
   "rules": [
     "Never publish npm packages or modify another adapter.",
-    "Never prune the rollback package before the target installer is verified.",
-    "Never publish a Cindy release without its matching .cindy asset.",
+    "Never build or upload a .cindy archive for a marketplace release.",
+    "Never publish changed Cindy plugin bytes without increasing the manifest version.",
     "Stop at the first failed release boundary."
   ]
 }

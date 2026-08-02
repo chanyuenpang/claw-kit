@@ -299,7 +299,12 @@ test("repository-local release skills split CLI and platform publication contrac
   assert.match(combined, /vcindy-<version>/);
   assert.match(combined, /vopenclaw-<version>/);
   assert.match(combined, /vopencode-<version>/);
-  assert.match(combined, /single rollback package/i);
+  const cindy = payloads.find((payload) => payload.name === "release-cindy-plugin");
+  assert.ok(cindy);
+  const cindyContract = `${cindy.skill}\n${JSON.stringify(cindy.template)}\n${cindy.fallback}\n${cindy.artifact}`;
+  assert.match(cindyContract, /repository custom marketplace/i);
+  assert.match(cindyContract, /do not\s+build or upload a `?\.cindy`? archive/is);
+  assert.doesNotMatch(cindyContract, /single rollback package/i);
 });
 
 test("official marketplace-style cache copy contains all shared skills and resources", async () => {

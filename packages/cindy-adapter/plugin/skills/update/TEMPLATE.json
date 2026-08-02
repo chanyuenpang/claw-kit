@@ -4,29 +4,29 @@
   "title": "update",
   "status": "process.active",
   "goal": {
-    "text": "Refresh the published claw-kit CLI and Cindy plugin installation."
+    "text": "Refresh the published claw-kit CLI and update the Cindy plugin from its custom Git marketplace."
   },
   "requirements": {
-    "summary": "Refresh the global CLI first, refresh Cindy from the published Cindy plugin package second, then verify both installed surfaces and report exact status.",
+    "summary": "Refresh the global CLI first, refresh Cindy through the claw-kit custom Git marketplace second, then verify both installed surfaces and report exact status.",
     "openQuestions": [],
     "acceptanceCriteria": [
       "The published global `@veewo/claw` CLI and Cindy plugin are both refreshed.",
-      "The Cindy target is the newest stable `vcindy-*` GitHub Release that contains a matching `.cindy` asset.",
-      "The downloaded asset filename, release tag, embedded manifest, installed plugin id, enabled state, and runtime state are verified against the target version.",
+      "The Cindy source is the unpinned `chanyuenpang/claw-kit` custom marketplace and its `claw-kit-cindy` entry.",
+      "The marketplace manifest, installed plugin id, enabled state, and runtime state are verified against the target version.",
       "The result reports exact success or failure for each surface."
     ]
   },
   "tasks": [
     {
       "id": 1,
-      "title": "Confirm the published target version and official Cindy source",
-      "detail": "Tell the user a newer claw-kit version was detected. Enumerate the official `chanyuenpang/claw-kit` GitHub Releases, ignore drafts and prereleases unless explicitly requested, filter tags beginning with `vcindy-`, compare their adapter versions numerically, and choose the newest release containing a `.cindy` asset whose filename version matches the tag. Verify the asset's embedded `ghost.json` version before changing local installs. Do not use the repository-wide `releases/latest` shortcut because another artifact family may be newer. A release workflow must publish and verify first.",
+      "title": "Confirm the published target version and Cindy marketplace source",
+      "detail": "Tell the user a newer claw-kit version was detected. Confirm Cindy has or can add the unpinned Git source `chanyuenpang/claw-kit`, refresh it, and verify marketplace entry `claw-kit-cindy` resolves plugin id `claw-kit` from `packages/cindy-adapter/plugin`. Read the candidate version from that source's `ghost.json`. A release workflow must push and tag the source before installation refresh.",
       "status": "pending"
     },
     {
       "id": 2,
       "title": "Refresh the CLI and Cindy plugin",
-      "detail": "Refresh the global CLI first from its published package. Download the selected `.cindy` asset directly from its immutable official GitHub Release URL, then open it with Cindy and accept the install/update confirmation. Enable the installed plugin id `claw-kit` if needed. Do not install from GitHub `main`, a marketplace snapshot, unpublished workspace files, or a local package. If no matching release asset exists, stop and report the missing artifact.",
+      "detail": "Refresh the global CLI first from its published package. Refresh the `chanyuenpang/claw-kit` custom market, review any permission expansion, and accept Cindy's install/update confirmation for plugin id `claw-kit`. If a legacy manual install conflicts, permit exact-manifest adoption only; otherwise uninstall it and perform one marketplace install. Do not download or open a `.cindy` archive.",
       "status": "pending",
       "guidance": {
         "onDone": {
@@ -35,7 +35,7 @@
             "summary": "The CLI and Cindy plugin refresh commands completed; verify both installed surfaces.",
             "nextsteps": [
               "Verify the global CLI version.",
-              "Verify the immutable GitHub Release asset, enabled plugin identity, and matching manifests."
+              "Verify the marketplace source, enabled plugin identity, and matching manifests."
             ],
             "nextTaskId": 3
           }
@@ -45,7 +45,7 @@
     {
       "id": 3,
       "title": "Verify the CLI and Cindy plugin",
-      "detail": "Run `claw --version` and `npm list -g @veewo/claw --depth=0`. Record the selected `vcindy-*` tag and immutable asset URL; verify the downloaded asset filename and embedded `ghost.json` version match that tag. Verify the installed Cindy plugin id `claw-kit` is enabled and running at the same version. Restart Cindy and start a new task before validating the loaded skill version. Report exact success or failure for both surfaces.",
+      "detail": "Run `claw --version` and `npm list -g @veewo/claw --depth=0`. Record the marketplace Git revision and candidate `ghost.json` version. Verify the installed Cindy plugin id `claw-kit` is enabled and running at the same version. Restart Cindy and start a new task before validating the loaded skill version. Report exact success or failure for both surfaces.",
       "status": "pending"
     }
   ],
@@ -63,7 +63,7 @@
     "Follow returned workflowGuidance before advancing.",
     "Do not route or ask about another host; this is the Cindy update workflow.",
     "Publish and verify the target version before release-time installation refresh.",
-    "Use only the matching `.cindy` asset from the newest stable official `vcindy-*` GitHub Release and the installed plugin id `claw-kit`.",
+    "Use only the unpinned `chanyuenpang/claw-kit` custom marketplace and the installed plugin id `claw-kit`.",
     "Do not claim success unless both CLI and Cindy plugin verification pass."
   ]
 }
