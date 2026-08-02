@@ -4,7 +4,7 @@
   "name": "claw-kit",
   "description": "Cindy workflow tools, lifecycle guidance, and Skills for claw-kit.",
   "whenToUse": "Use for Cindy sessions that need claw-kit plan, task, subplan, or workflow operations.",
-  "version": "0.2.8.0",
+  "version": "0.2.8.1",
   "kind": "chip",
   "entry": "main.js",
   "launch": "resident",
