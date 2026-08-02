@@ -10,11 +10,11 @@ Accepted working truth for the current repository-maintainer release surfaces an
 - `release-claw-kit` is a router only. It selects one artifact-specific release skill and does not itself edit versions, package, publish, install, or combine release acceptance across artifact families.
 - Repository-maintainer release ownership is split by artifact family: `release-claw-cli` owns the npm CLI/core/client release line; `release-codex-plugin`, `release-cindy-plugin`, `release-openclaw-plugin`, and `release-opencode-plugin` own their respective versioned plugin artifacts.
 - A multi-family request creates independent parent tasks or subplans. Naming a platform does not select the CLI flow, and package-only validation continues to use `test-claw-kit` rather than any release skill.
-- `release-cindy-plugin` is scoped to `packages/cindy-adapter` and `vcindy-*` GitHub Releases. It never publishes npm packages or changes another adapter version.
-- A Cindy release builds and verifies the target `.cindy` installer before deleting old local build outputs. Cleanup is non-recursive and limited to matching files in the plugin source directory; it retains the target and, when available, the numerically greatest lower version as the one rollback package.
-- A Cindy GitHub Release is complete only when it contains the matching immutable `.cindy` installer asset. Installing that asset is a separate, explicitly requested boundary.
-- The Cindy `update` skill resolves the newest stable official `vcindy-*` GitHub Release numerically and requires a `.cindy` asset whose filename and embedded `ghost.json` version match the tag. It must not use the repository-wide `releases/latest` shortcut, GitHub `main`, a marketplace snapshot, or a workspace package.
-- Cindy update refreshes the published global CLI first and the selected Cindy installer second. Success requires the installed `claw-kit` plugin at the selected version to be enabled and running; download or cache presence alone is not installation proof.
+- `release-cindy-plugin` is scoped to `packages/cindy-adapter`, the `claw-kit-cindy` repository-marketplace entry, and the `vcindy-*` tag. It never publishes npm packages or changes another adapter version.
+- A Cindy release verifies the committed marketplace source tree and the tagged `ghost.json`; it does not build or upload a `.cindy` archive and does not create a GitHub Release. Cindy packages the marketplace source locally during install or update.
+- The marketplace entry points at `packages/cindy-adapter/plugin`; a changed plugin requires a new manifest version before release, and the source/tag must reach `origin/main` before the tag is pushed.
+- The Cindy `update` skill refreshes `chanyuenpang/claw-kit` as an unpinned custom Git marketplace source, then uses Cindy's confirmation-gated install/update action. It must not download or open a `.cindy` archive.
+- Cindy update refreshes the published global CLI first and the marketplace plugin second. Success requires the installed `claw-kit` plugin at the selected version to be enabled and running; refreshed source/cache presence alone is not installation proof.
 
 ## Maintenance anchors
 
@@ -28,6 +28,12 @@ Accepted working truth for the current repository-maintainer release surfaces an
 
 <!-- state: history -->
 ## Evolution history
+
+<!-- dated: 2026-08-02 -->
+### Cindy 0.2.8.2 moved distribution to the repository marketplace
+
+- `vcindy-0.2.8.2` was published from clean `origin/main` with the tagged marketplace entry resolving `claw-kit-cindy` to the `0.2.8.2` plugin manifest.
+- This release deliberately created neither a `.cindy` archive nor a GitHub Release. It replaces the former immutable-installer-asset path; the retained local `0.2.8.1`/`0.2.7.6` archives are historical artifacts, not the current distribution contract.
 
 <!-- dated: 2026-08-02 -->
 ### 0.2.8 multi-artifact release
@@ -46,6 +52,6 @@ Accepted working truth for the current repository-maintainer release surfaces an
 
 - `artifact-specific release skill`
 - `release-cindy-plugin`
-- `vcindy GitHub Release asset`
-- `Cindy rollback package retention`
-- `Cindy update matching cindy asset`
+- `Cindy custom Git marketplace`
+- `claw-kit-cindy marketplace entry`
+- `Cindy update local packaging`
