@@ -219,8 +219,8 @@ Implemented in the Cindy Ghost plugin package:
   stable error code, and exact reason;
 - structured plan-state projection from the command result, with Hook-owned
   Goal-mode continuation and no dependency on a private Cindy Goal API;
-- one progress card created for `plan.create`, `plan.resume`, and `plan.done`, with later task
-  mutations updating that card instead of creating new cards;
+- one progress card created by `plan.create`, with `plan.resume`, `plan.done`, and later
+  task mutations updating that card instead of creating new cards;
 - exactly one Lead-dispatched Orca knowledge-writer turn for `end.completed`.
 
 The Host currently keeps the native Cindy Goal controller and progress surface

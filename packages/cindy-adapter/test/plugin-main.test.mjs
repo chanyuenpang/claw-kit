@@ -12,7 +12,7 @@ function flushAsyncWork() {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
-function createHarness({ queryResults, executionPolicy = 'background', inspectedStatus = 'succeeded', inspectedError, knowledgeDispatch }) {
+function createHarness({ queryResults, executionPolicy = 'background', inspectedStatus = 'succeeded', inspectedError, knowledgeDispatch, executions = [] }) {
   const hostMessages = [];
   const nodeRequests = [];
   const agentRequests = [];
@@ -48,6 +48,7 @@ function createHarness({ queryResults, executionPolicy = 'background', inspected
       async request({ method, params }) {
         nodeRequests.push({ method, params });
         if (method === 'claw/execute') {
+          if (executions.length > 0) return executions.shift();
           return {
             ok: true,
             result: {
@@ -170,6 +171,56 @@ async function completePlanTurn(harness, { includeTurnEnd = true } = {}) {
   await flushAsyncWork();
   await harness.drainTimers();
 }
+
+test('only plan.create creates a workflow card while resume and done update it', async () => {
+  const planPath = 'C:\\runtime\\task\\plan.json';
+  const projection = (planStatus, goal, completedTasks) => ({
+    planStatus,
+    goal,
+    planPath,
+    card: {
+      goal: 'Keep one Cindy workflow card',
+      totalTasks: 1,
+      completedTasks,
+      currentTask: completedTasks ? null : { id: 1, title: 'Verify card reuse', status: 'pending' },
+      tasks: [{ id: 1, title: 'Verify card reuse', status: completedTasks ? 'done' : 'pending' }],
+    },
+  });
+  const harness = createHarness({
+    queryResults: [],
+    executions: [
+      { ok: true, result: { ok: true, operation: 'plan.create', result: {}, projection: projection('process.active', 'resume', 0) } },
+      { ok: true, result: { ok: true, operation: 'plan.resume', result: {}, projection: projection('process.active', 'resume', 0) } },
+      { ok: true, result: { ok: true, operation: 'plan.done', result: {}, projection: projection('end.completed', 'complete', 1) } },
+    ],
+  });
+
+  for (const [name, callId] of [
+    ['plan.create', 'plan-create-card'],
+    ['plan.resume', 'plan-resume-card'],
+    ['plan.done', 'plan-done-card'],
+  ]) {
+    await harness.handle({
+      type: 'tool-call',
+      tool: 'call_tool',
+      callId,
+      args: {
+        name,
+        args: {},
+        session_context: { session_id: harness.sessionId, workdir: 'D:\\repo', workdir_is_local: true },
+      },
+    });
+  }
+
+  const cardUpdates = harness.sent.filter(({ type }) => type === 'card-update');
+  assert.equal(cardUpdates.length, 3);
+  assert.deepEqual(cardUpdates.map(({ callId }) => callId), [
+    'plan-create-card',
+    'plan-create-card',
+    'plan-create-card',
+  ]);
+  assert.equal(cardUpdates.at(-1).state, 'done');
+});
 
 test('legacy Cindy background jobs are visible but never launched through errand', async () => {
   const harness = createHarness({

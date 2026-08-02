@@ -264,14 +264,13 @@ async function applyProjection(sessionId, execution, callId) {
   } else if (projection.goal === 'pause' || projection.goal === 'complete' || projection.goal === 'stop') {
     goalSessions.delete(sessionId);
   }
-  // Create a card only at plan creation, resume, or completion. Other workflow operations
-  // update the current session card so task mutations do not leave duplicates.
+  // Only plan creation owns a new card id. Every later workflow operation
+  // updates the current session card so resume and completion do not leave duplicates.
   const operation = execution?.operation;
-  const createsCard = operation === 'plan.create' || operation === 'plan.resume' || operation === 'plan.done';
+  const createsCard = operation === 'plan.create';
   const cardId = createsCard ? callId : workflowCards.get(sessionId);
   if (cardId && mergedProjection.card) {
-    const firstActiveCard = createsCard
-      && mergedProjection.planStatus === 'process.active'
+    const firstActiveCard = mergedProjection.planStatus === 'process.active'
       && !cindyAuthorizationCardIssued.has(sessionId);
     if (firstActiveCard) {
       goalAuthorizationCards.set(cardId, true);

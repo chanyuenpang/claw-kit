@@ -4,6 +4,12 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## Unreleased
 
+## [0.2.7] - 2026-08-02
+
+### Fixed
+
+- Cindy now keeps one workflow card from plan creation through resume, task updates, and completion.
+
 ## [0.2.6] - 2026-08-01
 
 ### Added

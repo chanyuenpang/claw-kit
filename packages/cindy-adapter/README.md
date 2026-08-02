@@ -17,8 +17,8 @@ into the plugin.
   Ghost hooks. User-facing Orca Lead sessions remain eligible for ordinary
   Ghost lifecycle hooks while Workers are excluded; that Host fix is independent
   of the subagent knowledge path, which does not require a Stop hook.
-- `plan.create`, `plan.resume`, and `plan.done` create a Ghost progress card;
-  later task and plan mutations update the current session card from canonical
+- `plan.create` creates the Ghost progress card; `plan.resume`, `plan.done`,
+  and all later task and plan mutations update the current session card from canonical
   plan data: title, goal, completed/total tasks, and the next task. This is a
   one-way presentation projection, not a second workflow store.
 - Cindy's native progress/Todo UI remains presentation-only. Goal-mode
