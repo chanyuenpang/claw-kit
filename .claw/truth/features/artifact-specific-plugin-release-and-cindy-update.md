@@ -30,6 +30,13 @@ Accepted working truth for the current repository-maintainer release surfaces an
 ## Evolution history
 
 <!-- dated: 2026-08-02 -->
+### 0.2.8 multi-artifact release
+
+- The independently versioned release set was published and verified as CLI/Core/Client `0.2.8`, Codex `0.2.8.1`, and Cindy `0.2.8.1`.
+- The current source records the dedicated release commits `41f95bf` (CLI preparation), `e7176d8` (Codex), `8432efd` (Cindy), and post-release local retention cleanup `c2f28d3`.
+- Cindy's plugin source retains `claw-kit-0.2.8.1.cindy` and the single lower-version rollback package `claw-kit-0.2.7.6.cindy`; this is local artifact retention evidence, not an installation claim.
+
+<!-- dated: 2026-08-02 -->
 ### Codex 0.2.7.1 asset-free marketplace release
 
 - `vcodex-0.2.7.1` was published as an immutable public GitHub Release from commit `ff377b6f33c93c192a66874286b2883e657d745c`. The Codex adapter package and `.codex-plugin/plugin.json` both carry `0.2.7.1`.
