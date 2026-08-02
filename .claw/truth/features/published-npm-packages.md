@@ -4,7 +4,7 @@
 ## 当前行为
 
 - `claw-kit` 发布三个 npm 包：`@veewo/claw-core` 提供核心 `.claw` harness 语义，`@veewo/claw-client` 提供 client API，`@veewo/claw` 提供 CLI 并精确依赖同版本的 Core 与 Client。
-- 当前本文已有完成证据的最新 npm 发布版本线为 `0.2.6`，release commit `d07fb1a6444f9e93c27d05985c7e53267a2b4b2d` 对应 `v0.2.6`。同一显式 batch 的 Cindy 与 Codex manifest 均为 `0.2.6.0`，并分别通过独立 `vcindy-0.2.6.0` 与 `vcodex-0.2.6.0` tag/release 交付。
+- 当前本文已有完成证据的最新 npm 发布版本线为 `0.2.7`，tag `v0.2.7` 指向 release commit `9574d3634cd44e5ba1c6aa112a931c7f1d258663`。npm registry 的 `dist-tags.latest` 已将 Core、Client 与 CLI 都标记为 `0.2.7`；CLI metadata 仍提供 `claw` bin，并精确依赖同版本的 Core 与 Client。GitHub Release `v0.2.7` 已公开发布。`0.2.6` 的 Cindy 与 Codex manifest 同为 `0.2.6.0`，并分别通过独立 `vcindy-0.2.6.0` 与 `vcodex-0.2.6.0` tag/release 交付。
 - CLI release version bump 覆盖 root、lockfile、Core、Client、CLI、各 adapter baseline、内部 `@veewo/claw-core` / `@veewo/claw-client` 依赖和 Codex plugin manifest。root `package.json.version` 同时是全部 plugin `TEMPLATE.json` 与 built-in default template 的版本权威。
 - 模板版本维护顺序固定为 `npm run sync:template-versions`、`npm run sync:shared-skills`、`npm run check:template-versions`。`npm run verify:release` 与 `npm run publish:release` 复用只读版本断言，禁止发布时隐式修复 stale template。
 - owner 直接从 `main` 交付。发布前必须提交并推送有价值内容，使本地 `main` 精确等于 `origin/main` 且 `git status --porcelain` 为空；不得用 stash、临时分支或 PR 绕过门禁。
@@ -45,13 +45,6 @@
 <!-- state: history -->
 ## 演进记录
 
-<!-- dated: 2026-07-26 -->
-### 0.1.96 维护者安装刷新完成态
-
-- npm 与 official `chanyuenpang/claw-kit` GitHub marketplace 均已提供 `0.1.96`。全局 `@veewo/claw` 已从 npm 重新安装为非 workspace-link 的 `0.1.96`，旧的本地仓库链接已移除。
-- Codex plugin 已从 official GitHub marketplace 刷新为 `0.1.96+codex.20260723133832`；只启用 `claw-kit@claw-kit`，禁用 `claw-kit@claw-kit-local`。source/cache manifest 一致，published skill 边界验证通过。
-- 该完成证据覆盖 CLI 与 plugin 安装面，不声称当时运行中的 Codex 任务已采用新 skill。运行时采用仍须由重启 Codex 后的新任务确认 loaded skill version。
-
 <!-- dated: 2026-07-29 -->
 ### 0.1.97 发布与维护者安装刷新完成态
 
@@ -90,3 +83,9 @@
 - npm registry 已确认 CLI 的 `bin.claw` 存在且内部依赖精确指向 Core/Client `0.2.6`。完成报告记录 Core `171/171`、Client `1/1`、CLI `160/160`、adapter/repository `115/115`，并完成真实远端取包运行；这些是该 revision 的版本化证据，不构成未来版本的固定验证矩阵。
 - Cindy `0.2.6.0` release asset 与本地 installer 摘要一致；本次未授权安装 Cindy。Codex `0.2.6.0` 不附 ZIP，并在发布后按独立授权从正式 npm 与 official GitHub marketplace 刷新维护者安装。
 - 真实 Windows 安装暴露并修复了 PowerShell `git ls-remote` 管道退出码误判、local plugin identity 未禁用和 `assets/icon.png` 未进入 cache 三项缺陷。修复提交推进到 `1deed0e00afd1bfdbf0837c37b649a267908cae2` 后，本地 `main`、`origin/main` 与干净工作区收敛，official source/cache 达到 `27/27` 文件一致；运行中 Codex 是否采用新 skill 仍须重启并新建任务确认。
+
+<!-- dated: 2026-08-02 -->
+### 0.2.7 CLI、Core 与 Client 发布完成态
+
+- `0.2.7` 已完成 Core、Client 与 CLI 的 npm 发布；`@veewo/claw-core`、`@veewo/claw-client`、`@veewo/claw` 的 registry metadata 和 `dist-tags.latest` 均为 `0.2.7`。CLI 的 `claw` bin 仍存在，且其依赖精确指向 Core 与 Client `0.2.7`。
+- `v0.2.7` 是公开 GitHub Release，并指向 release commit `9574d3634cd44e5ba1c6aa112a931c7f1d258663`。该版本记录的是 CLI/npm artifact family；后续 Cindy 或 Codex artifact 发布仍须遵循各自独立边界。
