@@ -26,6 +26,15 @@ Accepted working truth for the current repository-maintainer release surfaces an
 - `.agents/skills/release-opencode-plugin/`
 - `packages/cindy-adapter/plugin/skills/update/`
 
+<!-- state: history -->
+## Evolution history
+
+<!-- dated: 2026-08-02 -->
+### Codex 0.2.7.1 asset-free marketplace release
+
+- `vcodex-0.2.7.1` was published as an immutable public GitHub Release from commit `ff377b6f33c93c192a66874286b2883e657d745c`. The Codex adapter package and `.codex-plugin/plugin.json` both carry `0.2.7.1`.
+- This release deliberately contains no ZIP asset, preserving the Codex marketplace-source boundary. It does not imply npm publication or a Cindy artifact release.
+
 ## Search terms
 
 - `artifact-specific release skill`
