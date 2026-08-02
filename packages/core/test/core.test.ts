@@ -1611,6 +1611,8 @@ test("completed task guidance stays focused on the next lifecycle action", async
     "claw task done --id <id>",
     "claw task edit --id <id> --status in_progress",
   ]);
+  assert.match(taskDone.workflowGuidance.notes ?? "", /task done.*no conclusion option/i);
+  assert.match(taskDone.workflowGuidance.notes ?? "", /plan done --retrospective.*--key-decision/i);
 });
 
 test("route-aware task completion requires taskChoiceId when the template defines choices", async () => {
@@ -2664,6 +2666,13 @@ test("writePlan starts directly in process.active when project planning is disab
   assert.equal(result.planStatus, "process.active");
   assert.equal(result.planReview, undefined);
   assert.equal(result.plan.tasks.length, 1);
+  assert.equal(
+    result.workflowGuidance.commandHints?.includes(
+      'claw plan done --retrospective "<summary>" [--key-decision "<durable decision>"]',
+    ),
+    true,
+  );
+  assert.match(result.workflowGuidance.notes ?? "", /task done.*no conclusion option/i);
 });
 
 test("plan edit enforces two-part transition rules", async () => {
@@ -2931,7 +2940,7 @@ test("resuming from process.wait to process.active re-emits goal mode guidance",
   });
   assert.equal(
     resumed.workflowGuidance.notes,
-    "The plan is moving back from a paused status into active execution, so Goal Mode should be restored to the active state before work resumes.",
+    "The plan is moving back from a paused status into active execution, so Goal Mode should be restored to the active state before work resumes. Before each successful `task done`, state a concise evidence-backed task conclusion in the immediately preceding assistant message; `task done` has no conclusion option. Use `plan done --retrospective` and repeatable `--key-decision` values for full-plan closeout.",
   );
   assert.deepEqual(resumed.workflowGuidance.nextsteps, [
     "Sync thread progress with `update_plan`.",
@@ -3407,7 +3416,7 @@ test("process entry returns the first task and task completion returns the next 
   assert.equal(taskDone.workflowGuidance.nextTask?.id, 2);
   assert.equal(
     taskDone.workflowGuidance.notes,
-    "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
+    "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. Before each successful `task done`, state a concise evidence-backed task conclusion in the immediately preceding assistant message; `task done` has no conclusion option. Use `plan done --retrospective` and repeatable `--key-decision` values for full-plan closeout.",
   );
   assert.deepEqual(taskDone.workflowGuidance.nextsteps, [
     "1. Sync thread progress with `update_plan`.",

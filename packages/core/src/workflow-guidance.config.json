@@ -122,7 +122,7 @@
         "1. Sync thread progress with `update_plan`.",
         "2. Continue with {{nextTaskRef}}."
       ],
-      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
+      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. Before each successful `task done`, state a concise evidence-backed task conclusion in the immediately preceding assistant message; `task done` has no conclusion option. Use `plan done --retrospective` and repeatable `--key-decision` values for full-plan closeout.",
       "commandHints": [
         "{{taskDoneCommand}}",
         "claw task edit --id <id> --status in_progress"
@@ -135,10 +135,10 @@
         "Sync thread progress with `update_plan`.",
         "Start with {{nextTaskRef}}."
       ],
-      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
+      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. Before each successful `task done`, state a concise evidence-backed task conclusion in the immediately preceding assistant message; `task done` has no conclusion option. Use `plan done --retrospective` and repeatable `--key-decision` values for full-plan closeout.",
       "commandHints": [
         "{{taskDoneCommand}}",
-        "{{doneBase}} --retrospective \"<summary>\""
+        "{{doneBase}} --retrospective \"<summary>\" [--key-decision \"<durable decision>\"]"
       ],
       "goalTool": {
         "tool": "create_goal",
@@ -157,10 +157,10 @@
         "Sync thread progress with `update_plan`.",
         "Start with {{nextTaskRef}}."
       ],
-      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
+      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. Before each successful `task done`, state a concise evidence-backed task conclusion in the immediately preceding assistant message; `task done` has no conclusion option. Use `plan done --retrospective` and repeatable `--key-decision` values for full-plan closeout.",
       "commandHints": [
         "{{taskDoneCommand}}",
-        "{{doneBase}} --retrospective \"<summary>\""
+        "{{doneBase}} --retrospective \"<summary>\" [--key-decision \"<durable decision>\"]"
       ]
     },
     "process.resumedActive": {
@@ -171,10 +171,10 @@
         "Restore Goal Mode to the active state.",
         "Resume with {{nextTaskRef}}."
       ],
-      "notes": "The plan is moving back from a paused status into active execution, so Goal Mode should be restored to the active state before work resumes.",
+      "notes": "The plan is moving back from a paused status into active execution, so Goal Mode should be restored to the active state before work resumes. Before each successful `task done`, state a concise evidence-backed task conclusion in the immediately preceding assistant message; `task done` has no conclusion option. Use `plan done --retrospective` and repeatable `--key-decision` values for full-plan closeout.",
       "commandHints": [
         "{{taskDoneCommand}}",
-        "{{doneBase}} --retrospective \"<summary>\""
+        "{{doneBase}} --retrospective \"<summary>\" [--key-decision \"<durable decision>\"]"
       ],
       "goalTool": {
         "tool": "create_goal",
@@ -193,10 +193,10 @@
         "Sync the thread progress with our tasks.",
         "Resume with {{nextTaskRef}}."
       ],
-      "notes": "The plan is moving back from a paused status into active execution.",
+      "notes": "The plan is moving back from a paused status into active execution. Before each successful `task done`, state a concise evidence-backed task conclusion in the immediately preceding assistant message; `task done` has no conclusion option. Use `plan done --retrospective` and repeatable `--key-decision` values for full-plan closeout.",
       "commandHints": [
         "{{taskDoneCommand}}",
-        "{{doneBase}} --retrospective \"<summary>\""
+        "{{doneBase}} --retrospective \"<summary>\" [--key-decision \"<durable decision>\"]"
       ]
     },
     "process.wait": {

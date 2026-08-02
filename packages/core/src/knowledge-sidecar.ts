@@ -591,6 +591,8 @@ export function appendKnowledgeTaskConclusions(
   conclusions: KnowledgeTaskConclusion[],
   capturedAt = new Date().toISOString(),
 ): { written: number; duplicates: number } {
+  fs.mkdirSync(path.dirname(reportPath), { recursive: true });
+  fs.closeSync(fs.openSync(reportPath, "a"));
   let written = 0;
   let duplicates = 0;
   for (const conclusion of conclusions) {

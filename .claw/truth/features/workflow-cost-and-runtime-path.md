@@ -222,10 +222,10 @@
 - 这个 single-flight 不只是性能优化，也是 GitNexus 索引完整性边界：2026-07-06 的历史日志把至少 `14` 次重叠 completion refresh 与同一 `.gitnexus/lbug` 上的 shadow/WAL identity mismatch、锁失败、allocation failure 和最终 `0xC0000005` 串成一条高置信度破坏链；guard 在 2026-07-17 才加入，所以不能把事故发生时的旧路径误写成已经受保护。
 - leader 在执行期间若观察到 dirty hash 变化，会补跑 refresh cycle，但最多执行 `3` 个 cycles，避免持续变更导致后台任务无限延长。每个状态记录持久化 `dirtyHash`、`refreshCycles` 与 `coalescedCount`，用于区分输入版本、实际循环次数和被合并请求数。
 - project embedding generation 已移出 SQLite `BEGIN` / `COMMIT` 长写事务；耗时的 embedding 先在事务外生成，只有最终 vector insert 使用短事务，从而缩短写锁持有时间。
-- terminal plan finalization 的 GitNexus embeddings 预检如果已经执行 analyze，后台 completion refresh 会复用该结果并跳过重复 analyze。GitNexus 返回 busy / locked 时，执行路径按 `100ms`、`250ms` 退避重试，处理瞬时锁竞争。
+- 在 `2b397ca` checkpoint，terminal plan finalization 仍会先执行 GitNexus embeddings preflight，后台 completion refresh 再复用该结果；这条 foreground preflight 已被 2026-08-02 的 worker-only route 取代，当前合同由 `local-claw-cli.md` 与相关 ADR 拥有。该 checkpoint 已建立的 busy / locked `100ms`、`250ms` 有界退避仍保留。
 - Windows `.cmd` 调用显式使用 `cmd.exe`，不再依赖 `shell: true`；对应回归验证不再产生 Node `DEP0190`。
-- CLI 回归为 `72/72` 通过，其中覆盖 overlapping direct closeout 只执行一次 GitNexus analyze、transient lock retry，以及 preflight analyze dedupe。
-- 本节取代上方旧 baseline 中“当前仍无 single-flight / embedding 位于长写事务 / preflight 与后台可能重复 analyze”的现状描述；那些条目只表示 `2b397ca` 之前的风险基线。P1 中对应候选至此已实现，不应继续当作未完成建议。
+- 该 checkpoint 的 CLI 回归为 `72/72` 通过，其中覆盖 overlapping direct closeout 只执行一次 GitNexus analyze、transient lock retry，以及当时的 preflight analyze dedupe；该计数不代表当前 suite 规模或当前 terminal ordering 验证。
+- 本节取代上方旧 baseline 中“当时仍无 single-flight / embedding 位于长写事务 / preflight 与后台可能重复 analyze”的描述。single-flight 与短事务仍是当前事实；foreground preflight 只是已被后续 worker-only route 取代的版本化证据。
 ### Search telemetry、P95 与复杂度门控校准
 
 - search 结果现在稳定暴露 `route`、`queryEmbedding`、`embeddingRuntime` 与 `durationMs` telemetry，使 lexical fast path、persistent daemon、cache 与 one-shot fallback 可按真实 route 分组测量，不能再只用总 wall time 猜测执行路径。

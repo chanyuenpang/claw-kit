@@ -127,7 +127,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   assert.equal("askUser" in writeResult, false);
   assert.equal(
     writeResult.notes,
-    "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
+    "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. Before each successful `task done`, state a concise evidence-backed task conclusion in the immediately preceding assistant message; `task done` has no conclusion option. Use `plan done --retrospective` and repeatable `--key-decision` values for full-plan closeout.",
   );
   assert.equal((writeResult.plan as JsonRecord).title, "e2e-task");
   assert.equal((writeResult.plan as JsonRecord).status, "process.active");

@@ -68,8 +68,8 @@
 - Task-scope memory search still uses the existing active-plan-plus-task-memory FTS path and does not participate in the hybrid/vector recall flow.
 - Codex-facing recall is `claw search --query "<topic>"`; this reads the indexed project context before planning or investigation, and it remains document recall rather than code search.
 - `claw memory ...` remains as legacy/debug and low-level index management, not the primary Codex workflow term.
-- project-scope terminal plan finalization rebuilds project/task search indexes and only refreshes GitNexus when flat `gitnexus` is `true`; `claw plan done` and `claw plan edit --status end.*` use that same route.
-- terminal plan finalization 的 GitNexus 预检与自愈链路仍然只认 canonical `gitnexus` boolean，不再使用 `gitnexus.enabled` 作为规范字段；同一条 gate 既控制是否刷新，也控制是否先做前台 install/setup / embeddings self-heal。
+- project-scope terminal plan finalization queues detached project/task search reindexing and only queues GitNexus refresh when flat `gitnexus` is `true`; `claw plan done` and `claw plan edit --status end.*` use that same route.
+- canonical `gitnexus` is the sole gate for worker-side GitNexus install/setup, embeddings self-heal, and analyze; legacy `gitnexus.enabled` is not a normative field. Those operations occur after the terminal result and `knowledgeDispatch` are durable.
 - 本文只拥有 canonical `gitnexus` schema gate；GitNexus analyze 的 `--no-ai-context` fallback、Windows access-violation force rebuild 与错误边界由 `local-claw-cli.md` 统一拥有。
 - The hybrid project query path is adapted from the more mature `openclaw-dev` memory query design, but its current behavior and migration scope are maintained by `project-search-candidate-recall.md`.
 - incremental refresh 的存在不改变 project search 的可用性契约：project recall 依然要求 vector index，不能回退成纯 FTS fallback。
@@ -98,3 +98,8 @@
 ### 移除自动知识提交配置
 
 - `autoCommitKnowledge` 曾是控制 finalizer 自动 Git commit 的项目级 boolean。自动提交运行路径移除后，该字段不再属于 schema、默认配置或协议校验。
+
+<!-- dated: 2026-08-02 -->
+### GitNexus gate 改为只控制 detached refresh
+
+flat `gitnexus` 仍是唯一规范开关，但它不再触发 foreground install/setup 或 embeddings preflight。该 gate 现在只决定 detached completion-refresh worker 是否执行 GitNexus preparation 与 analyze；terminal plan dispatch 不等待这些副作用。

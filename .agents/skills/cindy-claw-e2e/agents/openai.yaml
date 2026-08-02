@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cindy Claw E2E"
+  short_description: "Run repository-owned Cindy claw-kit E2Es"
+  default_prompt: "Use $cindy-claw-e2e to dispatch both Codex and non-Codex normal Cindy project lanes in one controller run with minimal using-claw-kit prompts, then verify their report and knowledge outputs separately."

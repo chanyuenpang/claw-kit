@@ -82,7 +82,7 @@ test("cli leaves completed-task deposition to automatic turn reporting", () => {
   ]);
   assert.equal(
     taskDone.notes,
-    "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
+    "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. Before each successful `task done`, state a concise evidence-backed task conclusion in the immediately preceding assistant message; `task done` has no conclusion option. Use `plan done --retrospective` and repeatable `--key-decision` values for full-plan closeout.",
   );
   assert.deepEqual(taskDone.nextTask, {
     id: 2,
@@ -369,7 +369,7 @@ test("Codex subagent claim captures the Stop-style task report without waiting f
   )), [path.basename(jobPath)]);
 });
 
-test("Cindy subagent claim requires and atomically persists adapter report input", () => {
+test("Cindy subagent claim requires adapter input and atomically persists reports, including empty reports", () => {
   const root = createFixture("cindy-subagent-claim-report");
   const sessionId = "cindy-originating-session";
   const env = {
@@ -396,19 +396,6 @@ test("Cindy subagent claim requires and atomically persists adapter report input
   assert.equal(queued.status, "queued");
   assert.equal(queued.attempts, 0);
 
-  const emptyCapture = runClawExpectFailure([
-    "knowledge", "claim", "--project-root", root, "--finalize-id", finalizeId,
-    "--cindy-report-stdin",
-  ], root, env, JSON.stringify({
-    session_id: sessionId,
-    turn_id: "cindy-turn-1",
-    task_conclusions: [],
-  }));
-  assert.match(String((emptyCapture.error as JsonRecord).message), /at least one task conclusion/i);
-  const stillQueued = JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord;
-  assert.equal(stillQueued.status, "queued");
-  assert.equal(stillQueued.attempts, 0);
-
   const claimed = runClaw([
     "knowledge", "claim", "--project-root", root, "--finalize-id", finalizeId,
     "--cindy-report-stdin",
@@ -426,6 +413,28 @@ test("Cindy subagent claim requires and atomically persists adapter report input
   assert.equal(running.status, "running");
   assert.equal((running.reportCapture as JsonRecord).status, "captured");
   assert.equal((running.reportCapture as JsonRecord).messageCount, 1);
+
+  runClaw(["plan", "create", "--title", "cindy-empty-report-task", "--goal", "Materialize an empty Cindy report"], root, env);
+  const emptyDone = runClaw(["plan", "done", "--retrospective", "Ready without conclusions."], root, env);
+  const emptyFinalizeId = String((emptyDone.knowledgeDispatch as JsonRecord).finalizeId);
+  const emptyJobPath = path.join(taskFinalizerJobsDirectory(root, "cindy-empty-report-task"), `${emptyFinalizeId}.json`);
+  const emptyReportPath = taskFile(root, "cindy-empty-report-task", "plan.report");
+  const emptyClaimed = runClaw([
+    "knowledge", "claim", "--project-root", root, "--finalize-id", emptyFinalizeId,
+    "--cindy-report-stdin",
+  ], root, env, JSON.stringify({
+    session_id: sessionId,
+    turn_id: "cindy-turn-2",
+    task_conclusions: [],
+  }));
+  assert.equal(emptyClaimed.claimed, true);
+  assert.equal(emptyClaimed.jobPath, emptyJobPath);
+  assert.equal(fs.existsSync(emptyReportPath), true);
+  assert.equal(fs.readFileSync(emptyReportPath, "utf-8"), "");
+  const emptyRunning = JSON.parse(fs.readFileSync(emptyJobPath, "utf-8")) as JsonRecord;
+  assert.equal(emptyRunning.status, "running");
+  assert.equal((emptyRunning.reportCapture as JsonRecord).status, "captured");
+  assert.equal((emptyRunning.reportCapture as JsonRecord).messageCount, 0);
 });
 
 test("cli plan edit completion dispatches the same completion refresh as plan done", async () => {
@@ -550,11 +559,42 @@ test("cli plan done skips gitnexus refresh when project config disables it", asy
   assert.match(String(gitnexus.reason), /not enabled/);
 });
 
-test("cli plan done fails before completion refresh when gitnexus auto-install fails", () => {
+test("cli plan done returns terminal state before detached gitnexus analysis", async () => {
+  const root = createFixture("gitnexus-after-terminal-dispatch");
+  const shim = createGitnexusShim("require-completion-worker");
+  const env = {
+    PATH: `${shim.binDir}${path.delimiter}${process.env.PATH ?? ""}`,
+    CLAW_EMBEDDING_MOCK: "1",
+    CLAW_HOST: "codex",
+    CODEX_THREAD_ID: "thread-gitnexus-after-dispatch",
+  };
+
+  runClaw(["init", "--name", "Gitnexus After Dispatch", "--gitnexus", "true", "--planning", "false"], root, env);
+  const projectPath = path.join(root, ".claw", "project.json");
+  const projectConfig = JSON.parse(fs.readFileSync(projectPath, "utf-8")) as JsonRecord;
+  (projectConfig.knowledgeWriter as JsonRecord).executionPolicy = "subagent";
+  fs.writeFileSync(projectPath, `${JSON.stringify(projectConfig, null, 2)}\n`, "utf-8");
+  runClaw(["plan", "create", "--title", "dispatch-task", "--goal", "Return dispatch first"], root, env);
+
+  const done = runClaw(
+    ["plan", "done", "--retrospective", "Terminal state precedes indexing."],
+    root,
+    env,
+  );
+
+  assert.equal(done.planStatus, "end.completed");
+  assert.equal((done.knowledgeDispatch as JsonRecord).policy, "subagent");
+  const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
+  assert.equal(refreshStatus.ok, true);
+  assert.equal((refreshStatus.gitnexus as JsonRecord).enabled, true);
+  assert.match(fs.readFileSync(shim.logPath, "utf-8"), /analyze --embeddings --no-ai-context/);
+});
+
+test("cli plan done reports gitnexus auto-install failure through detached completion refresh", async () => {
   const root = createFixture("gitnexus-install-fails");
   const npmShim = createNpmShim("fail-install");
   const env = {
-    PATH: npmShim.binDir,
+    PATH: `${npmShim.binDir}${path.delimiter}${process.env.PATH ?? ""}`,
     CLAW_EMBEDDING_MOCK: "1",
   };
 
@@ -576,15 +616,17 @@ test("cli plan done fails before completion refresh when gitnexus auto-install f
   runClaw(["plan", "edit", "--task-name", "install-task", "--status", "process.active"], root, env);
   runClaw(["task", "done", "--task-name", "install-task", "--id", "1"], root, env);
 
-  const failure = runClawExpectFailure(
-    ["plan", "done", "--task-name", "install-task", "--retrospective", "Should fail before queuing refresh."],
+  const done = runClaw(
+    ["plan", "done", "--task-name", "install-task", "--retrospective", "Queue the failing refresh."],
     root,
     env,
   );
 
-  const error = failure.error as JsonRecord;
+  assert.equal(done.planStatus, "end.completed");
+  const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
+  assert.equal(refreshStatus.ok, false);
+  const error = refreshStatus.error as JsonRecord;
   assert.match(String(error.message), /automatic installation failed/i);
-  assert.equal(getLatestCompletionRefreshStatusFile(root), null);
   const npmLog = fs.readFileSync(npmShim.logPath, "utf-8");
   assert.match(npmLog, /install -g @veewo\/gitnexus/);
 });
@@ -666,22 +708,21 @@ test("cli plan done auto-enables gitnexus embeddings and seeds the matching mode
   runClaw(["task", "done", "--task-name", "preflight-task", "--id", "1"], root, env);
 
   const doneResult = runClaw(
-    ["plan", "done", "--task-name", "preflight-task", "--retrospective", "Enable embeddings before background refresh."],
+    ["plan", "done", "--task-name", "preflight-task", "--retrospective", "Enable embeddings inside background refresh."],
     root,
     env,
   );
 
   assert.equal(doneResult.planSummary, "1/1 preflight-task");
+  const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
   const meta = JSON.parse(fs.readFileSync(path.join(root, ".gitnexus", "meta.json"), "utf-8")) as {
     analyzeOptions?: { embeddings?: boolean };
   };
   assert.equal(meta.analyzeOptions?.embeddings, true);
   assert.equal(fs.existsSync(path.join(targetCacheDir, "config.json")), true);
 
-  const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
   const gitnexus = refreshStatus.gitnexus as JsonRecord;
-  assert.equal(gitnexus.enabled, false);
-  assert.match(String(gitnexus.reason), /preflight/);
+  assert.equal(gitnexus.enabled, true);
 
   const gitnexusLog = fs.readFileSync(shim.logPath, "utf-8");
   assert.match(gitnexusLog, /analyze --embeddings --no-ai-context/);
@@ -751,7 +792,7 @@ test("overlapping direct closeouts coalesce into one completion refresh", async 
   assert.equal(Math.max(...statuses.map((status) => Number(status.coalescedCount ?? 0))), 1);
   const analyzeCalls = fs.readFileSync(shim.logPath, "utf-8")
     .split(/\r?\n/)
-    .filter((line) => line === "analyze --no-ai-context");
+    .filter((line) => line === "analyze --embeddings --no-ai-context");
   assert.equal(analyzeCalls.length, 1);
 });
 
@@ -773,7 +814,7 @@ test("completion refresh retries one transient GitNexus lock without shell warni
   assert.equal((refreshStatus.gitnexus as JsonRecord).enabled, true);
   const analyzeCalls = fs.readFileSync(shim.logPath, "utf-8")
     .split(/\r?\n/)
-    .filter((line) => line === "analyze --no-ai-context");
+    .filter((line) => line === "analyze --embeddings --no-ai-context");
   assert.equal(analyzeCalls.length, 2);
 });
 
@@ -796,8 +837,8 @@ test("completion refresh rebuilds once after a Windows GitNexus access violation
     .split(/\r?\n/)
     .filter((line) => line.startsWith("analyze "));
   assert.deepEqual(analyzeCalls, [
-    "analyze --no-ai-context",
-    "analyze --force --no-ai-context",
+    "analyze --embeddings --no-ai-context",
+    "analyze --force --embeddings --no-ai-context",
   ]);
 });
 

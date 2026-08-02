@@ -74,9 +74,9 @@
 - `packages/cli/src/cli.ts` 里的 completion refresh status file 现在会显式经历 `queued` / `running` / `finished` 生命周期；如果 refresh 失败，失败 payload 仍写回同一个 status file。
 - `packages/core/src/memory.ts` 现在给 `embedding-worker.js` 加了默认 30 分钟硬超时，并把 `timedOut` / `timeoutMs` 写进失败细节，避免异步 refresh 因 embedding 子进程无限挂起而长期占住 sqlite lock。
 - Windows closeout archive pruning no longer uses `fs.rmSync(..., { recursive: true })`: non-ASCII archived task directories can fail or terminate silently on that path, so `packages/core/src/task-retention.ts` now removes archive trees with explicit recursive `unlinkSync` / `rmdirSync`, and `packages/core/test/core.test.ts` covers non-ASCII archive pruning.
-- 当 canonical `gitnexus = true` 时，project-scope terminal plan finalization 会先在前台跑 GitNexus 预检；如果 CLI 不存在，会先尝试 `npm install -g @veewo/gitnexus`，再执行 `gitnexus setup --cli-spec @veewo/gitnexus`，安装或 setup 失败会直接阻断 completion refresh。
-- 如果 GitNexus 已安装但 embeddings 还没有持久化到 GitNexus 自己的 analyze 配置里，terminal plan finalization 会前台补跑 `gitnexus analyze --embeddings`，并尽量从匹配的 claw 模型缓存预热 GitNexus transformers cache，避免第二次下载。
-- 背景 completion refresh 仍然保留现有的 `gitnexus analyze --no-ai-context` 路径；当已安装的 GitNexus CLI 不支持该参数时，会回退到普通 `gitnexus analyze`。
+- project-scope terminal plan finalization 会先同步持久化 plan、retrospective 与 knowledge-finalization job，并构造 `knowledgeDispatch`，随后才排队 detached completion refresh；GitNexus readiness、自动安装/setup、matching-model cache seeding、embedding enablement 与 analyze 都不再位于 terminal dispatch 的同步关键路径。
+- project memory、task memory 与适用的 GitNexus refresh 都只在 detached completion-refresh worker 中执行。GitNexus 安装、setup 或 analyze 失败不会撤销或阻断已经成功返回的 terminal plan result / `knowledgeDispatch`，而是写入 completion refresh status file 的失败 payload。
+- 当 canonical `gitnexus = true` 时，completion refresh 会在 worker 内确保 CLI 可用、按需预热 matching-model cache，并在 GitNexus 尚未持久化 embeddings 时执行 `gitnexus analyze --embeddings --no-ai-context`；如果已安装 CLI 不支持 `--no-ai-context`，仍回退到 plain analyze。
 - 本文是 GitNexus analyze 运行时恢复行为的当前 Truth owner：在 Windows 上，只有 analyze 子进程以无符号退出状态 `0xC0000005`（access violation）结束时，`runGitNexusAnalyze()` 才会追加 `--force` 重建并重试一次；重试仍保留 `--embeddings` 与 `--no-ai-context` / plain-analyze fallback 语义，其他失败继续走既有错误路径。
 - 2026-07-19 的 `@veewo/gitnexus@1.5.9` 故障实例把该签名定位到既有 `.gitnexus/lbug` LadybugDB 索引损坏：fresh indexing 成功，force rebuild 后 `status`、`query`、`context` 恢复。该实例是版本化诊断证据，不表示所有 `0xC0000005` 都必然由同一种损坏造成。
 - 对该旧索引的只读回溯进一步把损坏原因收窄为高置信度的同库并发写入：2026-07-06 17:27:51–17:29:10 至少有 `14` 次 completion refresh 重叠启动 GitNexus analyze，历史日志依次留下 orphan `lbug.shadow`、`lbug.wal` Database ID mismatch、`lbug` lock failure、`bad allocation`，最后出现同一 `3221225477 / 0xC0000005`。结合 GitNexus force rebuild 会替换 LadybugDB 文件，这条链足以把重叠 analyze 判为约 `90–95%` 置信度的原因；旧文件已重建，因此不能再声称有逐字节法证。
@@ -85,7 +85,7 @@
 - 同一历史环境能成功创建 fresh index，且损坏发生时 GitNexus 模型未发生切换，因此该实例不支持“模型变化”“`@veewo/gitnexus@1.5.9` / Node 普遍不兼容”或“只是索引陈旧”作为原因。这里排除的是该版本化事故的替代解释，不是对所有未来故障的全局保证。
 - 该次重建后的另一次 refresh 在 index 与 `meta.json` 已成功写入、`status` / `query` 仍健康后才以 `0xC0000374` 退出；它更符合原生退出清理阶段的 heap-corruption 假失败，而不是索引再次损坏。后续调查的 `24` 次最小 close/exit 探针和 `6` 次真实串行 analyze 都退出 `0`，Windows Application Error 也没有对应事件，因此这个根因仍未确认，不能据此猜测性修改 close 策略或增加重试。当前 `runGitNexusAnalyze()` 不会对这个不同签名自动 `--force`，诊断时应先区分已写入后的退出失败与不可读索引。
 - claw project memory 与 GitNexus 各自拥有 embedding model；claw 只在 model id 匹配时 best-effort 预热 GitNexus cache，不会用 `memory.embedding.model` 改写 GitNexus 的模型选择。
-- `packages/cli/test/cli.test.ts` 覆盖 terminal plan finalization：GitNexus 安装失败必须先于 completion refresh 暴露、embeddings 自愈和 cache seeding、以及 `--no-ai-context` fallback；`plan done` 与 `plan edit --status end.completed|end.closed|end.leave` 共享 completion-finalization dispatch。
+- `packages/cli/test/cli-closeout.test.ts` 覆盖 terminal plan finalization：GitNexus analyze 只能在 detached completion worker 中运行，自动安装失败通过 worker status file 报告，embeddings 自愈与 cache seeding 留在 worker 内，并保留 `--no-ai-context` fallback；`plan done` 与 `plan edit --status end.completed|end.closed|end.leave` 共享 completion-finalization dispatch。
 - 在 NeonSpark 的真实重测里，最初失败点先从 DirectML gating 收敛到过大的 embedding 输入张量（`33737 x 512`，请求分配约 `26.5 GB`），随后又暴露出 stdout 巨型 vector JSON；最终通过临时文件回传结果把这条链路打通。
 - 该重测最后确认 `claw search index --refresh` 可以在大项目上成功完成，并产出 `indexedCount: 698` 与 `vectorIndex.chunkCount: 33737`。
 - 用户面文档现在把默认的 `100` 文件分片推进和 `cpu` rescue path 讲清楚了，但没有暴露新的 CLI 参数。
@@ -139,3 +139,11 @@
 - search 子命令路由必须保持 `index` 与 help 的一致性：`claw search index ...` 继续进入索引管理路径，而三个 help 入口只展示 usage；后续扩展 positional alias 时，应继续先区分明确的 `--query`、`index` 和精确 `help`，避免把普通 query 或管理命令误分类。
 - 主实现锚点是 `packages/cli/src/cli.ts`；回归锚点是 `packages/cli/test/cli.test.ts`，覆盖 search index/help 路由一致性、stdout 输出、`claw search help` alias 的 non-mutating 行为，以及显式 `--query help` 不受影响。
 - 本次源码验证 CLI 测试为 `69/69` 通过。该行为属于当前仓库 source contract；判断已安装 CLI 时仍应先核对其版本或刷新状态，不能仅凭源码推断旧全局 runtime 已具备相同行为。
+
+<!-- state: history -->
+## 演化历史
+
+<!-- dated: 2026-08-02 -->
+### GitNexus 退出 terminal dispatch 同步关键路径
+
+此前 terminal plan finalization 会在前台完成 GitNexus 自动安装/setup、cache seeding 和 embeddings preflight，安装或 analyze 失败会阻断 completion refresh 与 terminal result。当前实现把这些操作连同 project/task memory indexing 一并移入 detached completion-refresh worker；foreground 只负责持久化 terminal state 与 knowledge-finalization job、构造 `knowledgeDispatch`，再排队 refresh。旧路径只作为理解失败语义与回滚边界的历史依据。

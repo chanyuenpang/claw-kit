@@ -96,6 +96,32 @@ test("cli <command> --help matches cli help <command>", () => {
   assert.equal(flagResult.stderr, commandResult.stderr);
 });
 
+test("every public help topic matches its --help form", () => {
+  const root = createFixture("help-public-topic-consistency");
+  const topics = [
+    ["init"], ["context"], ["session"], ["check"],
+    ["plan"], ["plan", "create"], ["plan", "edit"], ["plan", "remove"],
+    ["plan", "wait"], ["plan", "resume"], ["plan", "sync"], ["plan", "start"],
+    ["plan", "show"], ["plan", "done"],
+    ["codex"], ["codex", "driver"],
+    ["template"], ["template", "validate"],
+    ["task"], ["task", "add"], ["task", "edit"], ["task", "remove"], ["task", "done"],
+    ["subplan"], ["subplan", "create"], ["switch-task"],
+    ["search"], ["search", "index"],
+    ["knowledge"], ["knowledge", "wait"], ["knowledge", "claim"], ["knowledge", "done"],
+    ["truth"], ["truth", "ingest"], ["hook"],
+  ];
+
+  for (const topic of topics) {
+    const commandResult = runClawRaw(["help", ...topic], root);
+    const flagResult = runClawRaw([...topic, "--help"], root);
+    assert.equal(commandResult.status, 0, `help ${topic.join(" ")}`);
+    assert.equal(flagResult.status, 0, `${topic.join(" ")} --help`);
+    assert.equal(commandResult.stdout, flagResult.stdout, `stdout for ${topic.join(" ")}`);
+    assert.equal(commandResult.stderr, flagResult.stderr, `stderr for ${topic.join(" ")}`);
+  }
+});
+
 test("cli help plan prints subcommand group", () => {
   const root = createFixture("help-plan-group");
   const result = runClawRaw(["help", "plan"], root);
@@ -209,6 +235,43 @@ test("cli help plan edit documents --summary and not the mismatched --change-sum
   assert.equal(result.status, 0);
   assert.match(result.stderr, /--summary/);
   assert.doesNotMatch(result.stderr, /--change-summary/);
+});
+
+test("cli help distinguishes task conclusions from plan closeout fields", () => {
+  const root = createFixture("help-closeout-ownership");
+  const taskDone = runClawRaw(["help", "task", "done"], root);
+  const planDone = runClawRaw(["help", "plan", "done"], root);
+  assert.equal(taskDone.status, 0);
+  assert.equal(planDone.status, 0);
+  assert.match(taskDone.stderr, /not a conclusion field/i);
+  assert.match(taskDone.stderr, /immediately preceding assistant message/i);
+  assert.doesNotMatch(taskDone.stderr, /--conclusion/);
+  assert.match(planDone.stderr, /--retrospective/);
+  assert.match(planDone.stderr, /--key-decision/);
+});
+
+test("cli help exposes advanced implemented plan sync and knowledge wait options", () => {
+  const root = createFixture("help-advanced-options");
+  const planSync = runClawRaw(["help", "plan", "sync"], root);
+  const knowledgeWait = runClawRaw(["help", "knowledge", "wait"], root);
+  assert.equal(planSync.status, 0);
+  assert.equal(knowledgeWait.status, 0);
+  assert.match(planSync.stderr, /--task-name/);
+  assert.match(planSync.stderr, /--plan-file/);
+  assert.match(knowledgeWait.stderr, /--session-key/);
+});
+
+test("cli truth ingest enforces the documented input source exclusivity", () => {
+  const root = createFixture("truth-ingest-input-conflict");
+  runClaw(["init", "--name", "Truth Ingest Conflict"], root);
+  const inputPath = path.join(root, "truth-input.md");
+  fs.writeFileSync(inputPath, "from file\n", "utf-8");
+
+  const failure = runClawExpectFailure([
+    "truth", "ingest", "--target", "features/conflict.md",
+    "--input", inputPath, "--content", "inline",
+  ], root);
+  assert.match(String((failure.error as JsonRecord).message), /unknown.*--content/i);
 });
 
 test("cli help <command> <unknown-subcommand> exits non-zero with a hint", () => {

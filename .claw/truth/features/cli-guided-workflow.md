@@ -28,6 +28,8 @@
 - template guidance 现在以 task skeleton 的 `guidance.onDone` 为准；如果模板定义了 `guidance.onDone.choices`，任何进入 `done` 的路径都必须带上匹配的 `choiceId`，否则会触发带 choice 列表的定向错误。
 - `guidance.onDone.default` 即使没有 choices 也可以影响默认 workflow guidance；模板路由对象统一使用 `mergeMode: "override" | "replace"`。`delegateTruth` 只作为旧 template cache 的 inert compatibility metadata 被接受，不再控制当前 writer 路由。
 - `claw task done --id <number> [--choice <choice-id>]` 和 `claw task edit --id <number> --status done --choice <choice-id>` 属于同一条 route-aware completion contract，会把 `task.choiceId` 一起写入并接受 template-bound 校验。
+- `claw task done` 只负责把 task 切换到 `done`，不接受 conclusion 参数。任务结论来自成功 `task.done` 前最近一条 assistant message，并由 knowledge capture 从 parent transcript 自动提取；它不是 CLI closeout 字段。
+- root `claw plan done` 是完整计划收尾入口，要求 `--retrospective "<summary>"`，并通过可重复的 `--key-decision "<durable decision>"` 保存 durable decisions；task conclusion 与 plan retrospective / key decisions 是不同层级的证据。
 - `plan.configOverride` 是 template-only 的 runtime overlay，会通过同一条 effective-config path 影响 `autoUpdate`、`goalMode`、`knowledgeWriter` 与 `externalPlanningSkill`；它不是独立的用户级 plan patch 入口。
 - `plan write` 落在 `prepare.requirements` 且缺少 `goal.text` 时，`workflowGuidance` 的第一优先动作是先补 `goal.text`，再补 `requirements`、`tasks`、`references`、`rules`、`keyDecisions`，需求足够清楚后立刻切到 `process.active`。
 - `goal.text` 是离开 `prepare.requirements` 的硬门；没有 goal 时，任何把 plan 切到 `process.active` 的尝试都应直接失败。
@@ -78,9 +80,15 @@
 - `packages/cli/test/cli.test.ts` 覆盖 `plan write` 后的 `SessionStart` 恢复、`plan done` 归档、以及 completion refresh 的 release smoke path。
 - `packages/cli/test/cli.test.ts` 覆盖 `plan done`、`plan edit --status end.completed`、`plan edit --status end.closed` 和 `plan edit --status end.leave` 的 completion-finalization dispatch。
 - `packages/core/test/core.test.ts` 与 `packages/cli/test/cli.test.ts` 覆盖串行化的并发 mutation、显式字段追加/删除、task item 增删改，以及旧通用输入被拒绝。
+- 2026-08-02 的完整公开 help audit 逐项对照 parser，公开 help 一致性 `23/23`、Codex host-action `23/23`、核心 guidance `3/3`、knowledge claim 与异步 GitNexus / embedding closeout `5/5` 全部通过，CLI 与 OpenCode 类型检查通过。审计修正了 `plan sync`、`knowledge wait` 的参数展示和 `truth ingest` 的互斥校验；隐藏的 `direct`、`codex invoke` 与内部 knowledge commands 继续明确归类为有意不公开的 runtime interface。
 
 <!-- state: history -->
 ## 演化历史
+
+<!-- dated: 2026-08-02 -->
+### 公开 CLI help 与结论字段边界审计
+
+完整 help surface 审计确认：task-level conclusion 从 `task.done` 前一条 assistant message 提取，`task done` 本身没有 conclusion 参数；plan-level retrospective 与 durable key decisions 只由 `plan done` 收尾字段持久化。审计同时修复了三个已确认的公开 parser/help 漂移，并保留有意隐藏的内部 runtime commands。
 
 <!-- dated: 2026-07-20 -->
 ### Root Codex closeout 不再返回已消费的 Goal 指示

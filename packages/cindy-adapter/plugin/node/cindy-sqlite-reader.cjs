@@ -38,17 +38,24 @@ function containsSuccessfulTaskDone(value) {
   return Object.values(value).some(containsSuccessfulTaskDone);
 }
 
-function isTaskDoneToolUse(value) {
+function isTaskCompletionToolUse(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  return value.toolName === 'mcp__cindy__ghost_call'
-    && value.input?.tool === 'call_tool'
-    && value.input?.args?.name === 'task.done';
+  if (value.toolName !== 'mcp__cindy__ghost_call' || value.input?.tool !== 'call_tool') return false;
+  const operation = value.input?.args?.name;
+  return operation === 'task.done'
+    || (operation === 'task.edit' && value.input?.args?.args?.status === 'done');
 }
 
-function isSuccessfulTaskDoneResult(row, taskDoneToolUseIds) {
+function taskCompletionToolMessage(value) {
+  if (!isTaskCompletionToolUse(value) || value.input?.args?.name !== 'task.edit') return '';
+  const detail = value.input?.args?.args?.detail;
+  return typeof detail === 'string' ? detail.trim() : '';
+}
+
+function isSuccessfulTaskCompletionResult(row, taskCompletionToolUseIds) {
   const content = readJsonContent(row.content);
   if (containsSuccessfulTaskDone(content)) return true;
-  if (!row.tool_use_id || !taskDoneToolUseIds.has(row.tool_use_id)) return false;
+  if (!row.tool_use_id || !taskCompletionToolUseIds.has(row.tool_use_id)) return false;
   if (!content || typeof content !== 'object' || Array.isArray(content) || content.ok !== true) return false;
   return !content.result
     || typeof content.result !== 'object'
@@ -358,7 +365,8 @@ function readTurnCapture(sessionId) {
     let latestAssistant = '';
     const conclusions = [];
     const seen = new Set();
-    const taskDoneToolUseIds = new Set();
+    const taskCompletionToolUseIds = new Set();
+    const taskCompletionToolMessages = new Map();
     for (const row of rows.slice(start, end + 1)) {
       if (row.role === 'assistant') {
         const text = messageText(row.content);
@@ -366,16 +374,19 @@ function readTurnCapture(sessionId) {
         continue;
       }
       if (row.role === 'tool_use') {
-        if (row.tool_use_id && isTaskDoneToolUse(readJsonContent(row.content))) {
-          taskDoneToolUseIds.add(row.tool_use_id);
+        const toolUse = readJsonContent(row.content);
+        if (row.tool_use_id && isTaskCompletionToolUse(toolUse)) {
+          taskCompletionToolUseIds.add(row.tool_use_id);
+          taskCompletionToolMessages.set(row.tool_use_id, taskCompletionToolMessage(toolUse));
         }
         continue;
       }
-      if (row.role !== 'tool_result' || !latestAssistant) continue;
-      if (!isSuccessfulTaskDoneResult(row, taskDoneToolUseIds)) continue;
-      if (seen.has(latestAssistant)) continue;
-      seen.add(latestAssistant);
-      conclusions.push({ turnId, message: latestAssistant });
+      if (row.role !== 'tool_result') continue;
+      if (!isSuccessfulTaskCompletionResult(row, taskCompletionToolUseIds)) continue;
+      const message = taskCompletionToolMessages.get(row.tool_use_id) || latestAssistant;
+      if (!message || seen.has(message)) continue;
+      seen.add(message);
+      conclusions.push({ turnId, message });
     }
     return {
       turnId,
@@ -416,7 +427,8 @@ function readKnowledgeClaimCapture(sessionId, finalizeId, startedAt) {
     let latestTurnId = '';
     const conclusions = [];
     const seen = new Set();
-    const taskDoneToolUseIds = new Set();
+    const taskCompletionToolUseIds = new Set();
+    const taskCompletionToolMessages = new Map();
     for (const row of rows) {
       if (row.role === 'assistant') {
         const text = messageText(row.content);
@@ -427,22 +439,24 @@ function readKnowledgeClaimCapture(sessionId, finalizeId, startedAt) {
         continue;
       }
       if (row.role === 'tool_use') {
-        if (row.tool_use_id && isTaskDoneToolUse(readJsonContent(row.content))) {
-          taskDoneToolUseIds.add(row.tool_use_id);
+        const toolUse = readJsonContent(row.content);
+        if (row.tool_use_id && isTaskCompletionToolUse(toolUse)) {
+          taskCompletionToolUseIds.add(row.tool_use_id);
+          taskCompletionToolMessages.set(row.tool_use_id, taskCompletionToolMessage(toolUse));
         }
         continue;
       }
       if (row.role !== 'tool_result') continue;
       const content = readJsonContent(row.content);
-      if (latestAssistant && isSuccessfulTaskDoneResult(row, taskDoneToolUseIds)) {
-        const key = `${latestTurnId}\n${latestAssistant}`;
-        if (!seen.has(key)) {
+      if (isSuccessfulTaskCompletionResult(row, taskCompletionToolUseIds)) {
+        const message = taskCompletionToolMessages.get(row.tool_use_id) || latestAssistant;
+        const key = `${latestTurnId}\n${message}`;
+        if (message && !seen.has(key)) {
           seen.add(key);
-          conclusions.push({ turnId: latestTurnId, message: latestAssistant });
+          conclusions.push({ turnId: latestTurnId, message });
         }
       }
       if (containsKnowledgeDispatch(content, finalizeId)) {
-        if (conclusions.length === 0) return null;
         return {
           sessionId,
           turnId: String(row.client_id || latestTurnId || row.id || `row-${row.rowid}`),

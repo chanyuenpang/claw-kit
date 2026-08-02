@@ -6,6 +6,10 @@ description: Use when a newer claw-kit version is detected in Cindy or the user 
 
 Use this skill to refresh claw-kit on Cindy. The loaded adapter already determines the platform; do not route to Codex or ask the user to choose a host.
 
+This is the Cindy-owned update implementation. Each supported platform maintains
+its own adjacent `update` skill, and each platform skill refreshes the shared
+global CLI together with that platform's plugin.
+
 ## No-.claw fallback
 
 If the workspace has no `.claw` directory, read `non-claw-fallback.md` and

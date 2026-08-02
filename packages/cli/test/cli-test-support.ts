@@ -277,7 +277,7 @@ export async function waitForLatestCompletionRefreshStatus(root: string, timeout
   throw new Error(`Timed out waiting for completion refresh status file under ${root}`);
 }
 
-export function createGitnexusShim(mode: "fallback" | "primary" | "lock-once" | "access-violation-once", delayMs = 0): { binDir: string; logPath: string } {
+export function createGitnexusShim(mode: "fallback" | "primary" | "lock-once" | "access-violation-once" | "require-completion-worker", delayMs = 0): { binDir: string; logPath: string } {
   const binDir = createTemporaryDirectory("claw-kit-gitnexus-bin-");
   const logPath = path.join(binDir, "gitnexus.log");
   const cmdPath = path.join(binDir, "gitnexus.cmd");
@@ -292,6 +292,23 @@ fs.appendFileSync(${JSON.stringify(logPath)}, \`\${args.join(" ")}\\n\`);
 
 if (args[0] === "analyze" && ${JSON.stringify(delayMs)} > 0) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ${JSON.stringify(delayMs)});
+}
+
+if (args[0] === "analyze" && ${JSON.stringify(mode)} === "require-completion-worker") {
+  const refreshDir = path.join(process.cwd(), ".claw", "logs", "completion-refresh");
+  const running = fs.existsSync(refreshDir) && fs.readdirSync(refreshDir)
+    .filter((entry) => entry.endsWith(".json"))
+    .some((entry) => {
+      try {
+        return JSON.parse(fs.readFileSync(path.join(refreshDir, entry), "utf-8")).running === true;
+      } catch {
+        return false;
+      }
+    });
+  if (!running) {
+    process.stderr.write("gitnexus analyze ran before detached completion refresh\\n");
+    process.exit(1);
+  }
 }
 
 if (args[0] === "analyze" && ${JSON.stringify(mode)} === "lock-once" && !fs.existsSync(${JSON.stringify(lockMarkerPath)})) {
@@ -337,6 +354,8 @@ export function createNpmShim(mode: "fail-install" | "pass"): { binDir: string; 
   const logPath = path.join(binDir, "npm.log");
   const cmdPath = path.join(binDir, "npm.cmd");
   const jsPath = path.join(binDir, "npm-shim.js");
+  const missingGitnexusCmdPath = path.join(binDir, "gitnexus.cmd");
+  const missingGitnexusPath = path.join(binDir, "gitnexus");
   const script = `
 const fs = require("node:fs");
 const args = process.argv.slice(2);
@@ -353,6 +372,17 @@ process.exit(0);
 `;
   fs.writeFileSync(jsPath, script, "utf-8");
   fs.writeFileSync(cmdPath, `@echo off\r\n"${process.execPath}" "${jsPath}" %*\r\n`, "utf-8");
+  fs.writeFileSync(
+    missingGitnexusCmdPath,
+    "@echo off\r\necho 'gitnexus' is not recognized as an internal or external command 1>&2\r\nexit /b 1\r\n",
+    "utf-8",
+  );
+  fs.writeFileSync(
+    missingGitnexusPath,
+    "#!/usr/bin/env node\nprocess.stderr.write('gitnexus: command not found\\n');\nprocess.exit(1);\n",
+    "utf-8",
+  );
+  fs.chmodSync(missingGitnexusPath, 0o755);
   return { binDir, logPath };
 }
 

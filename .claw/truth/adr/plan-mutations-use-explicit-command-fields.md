@@ -16,15 +16,17 @@ session binding 已能稳定标识同一 thread 当前拥有的 root plan 或 su
 - `claw plan edit` 只编辑 plan 字段；标量字段直接设置，数组字段通过可重复参数追加。
 - `claw plan remove` 使用与 edit 相同的字段名，按精确值删除数组项。
 - task item 使用独立的 `claw task add/edit/remove/done` 命令。
+- `claw task done` 只表达 task 状态转换，可选的 route 仍只通过 `--choice` 传递；它不接受 conclusion 参数。task-level conclusion 由 knowledge capture 从成功 `task.done` 前最近一条 assistant message 提取。
 - 所有 mutation 默认作用于 session-bound 当前 plan/subplan；`--task-name` 与 `--plan-file` 仅作为无 binding 时的高级覆盖。
 - `--summary` 只表示 `plan.summary`；`claw plan edit` 可写入 retrospective、what-worked、issue、follow-up 与 key-decision 等 closeout 字段；`--status end.completed` 仍要求 retrospective。
-- `claw plan done --retrospective` 只是把 closeout 字段和 `end.completed` 组成一次有序 `plan edit` 的快捷入口，不拥有独有的 completion-finalization 分支。project-scope workflow 中，任何请求 `end.*` 的 `plan edit` 与该快捷入口都使用同一 dispatcher 排队 completion refresh。
+- `claw plan done --retrospective "<summary>" [--key-decision "<durable decision>"]` 是完整 root-plan closeout 入口；`--retrospective` 必填，`--key-decision` 可重复。它只是把 plan-level closeout 字段和 `end.completed` 组成一次有序 `plan edit` 的快捷入口，不拥有独有的 completion-finalization 分支。project-scope workflow 中，任何请求 `end.*` 的 `plan edit` 与该快捷入口都使用同一 dispatcher 排队 completion refresh。
 - `claw plan start` 用显式 plan 字段和重复的 `--add-task <title> --detail <text>` 分组原子提交 planning 结果，再应用 current template task 的 `guidance.onPlanStart`；具体 activation transition 由 `cli-guided-plan-lifecycle.md` 拥有。
 
 ## Consequences
 
 - agent 可以从 `plan/task + edit/remove/done` 的命令树推导常见操作，不需要生成或清理临时 JSON。
 - plan 与 task item 的职责边界明确，参数不再跨对象复用。
+- task conclusion 不会被误建模为 mutation 参数；plan retrospective 与 key decisions 继续作为显式、可验证的 plan-level closeout 字段。
 - root plan 与 subplan 使用完全相同的 mutation 命令；binding 切换决定当前目标。
 - 数组删除采用精确值匹配；调用方可先通过 `claw plan show` 获取原值。
 - project-scope workflow 的不同完成命令入口不会遗漏 retention、memory reindex 或适用的 GitNexus refresh；`end.completed`、`end.closed` 与 `end.leave` 的最终状态保持同一收尾派发边界。
@@ -46,4 +48,6 @@ session binding 已能稳定标识同一 thread 当前拥有的 root plan 或 su
 - `claw plan remove`
 - `claw task edit`
 - `claw plan done --retrospective`
+- `task conclusion transcript extraction`
+- `claw plan done --key-decision`
 - `temporary JSON files removed`

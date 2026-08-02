@@ -24,7 +24,8 @@ project-scope terminal plan finalization（由 `claw plan done` 或 `claw plan e
 - completion refresh 使用 `.claw/logs/completion-refresh/inflight.lock` 作为项目级 leader / single-flight 锁；重叠请求把 status files、operations 与 dirty hash 合并到当前 leader，而不是并行重复刷新。
 - leader 观察到 dirty hash 变化时补跑 refresh cycle，但最多执行 `3` 个 cycles；状态持久化 `dirtyHash`、`refreshCycles` 与 `coalescedCount`。
 - project embedding 在 SQLite 写事务外生成，最终 vector insert 才进入短事务，避免模型计算长期持有数据库写锁。
-- terminal plan finalization 的 GitNexus embeddings preflight 若已完成 analyze，后台 refresh 复用结果并跳过重复 analyze；瞬时 busy / locked 按 `100ms`、`250ms` 有界退避重试。
+- terminal plan finalization 在排队 refresh 前只持久化 terminal state 与 knowledge-finalization job 并构造 `knowledgeDispatch`；GitNexus readiness、project memory 和 task memory indexing 都不进入同步 terminal dispatch 路径。
+- GitNexus 自动安装/setup、cache seeding、embedding enablement 与 analyze 全部由 completion-refresh leader 执行；失败写入 status file，瞬时 busy / locked 按 `100ms`、`250ms` 有界退避重试。
 - Windows `.cmd` 子进程显式通过 `cmd.exe` 启动，不使用 `shell: true` 参数拼接。
 
 ## Consequences
@@ -34,7 +35,8 @@ project-scope terminal plan finalization（由 `claw plan done` 或 `claw plan e
 - embedding worker 如果真的挂住，不会无限期占住 completion-refresh node 进程和 sqlite lock。
 - overlapping closeout 只执行一个有效 leader refresh；dirty 变化被有界 coalescing 吸收，同时保留状态可观察性与失败重试边界。
 - 同一项目不会再由 completion refresh 并发启动多个 GitNexus analyze 去交错替换 LadybugDB 文件，从而封住 2026-07-06 历史事故所暴露的主要损坏路径。
-- embedding 短事务降低 SQLite 写锁竞争；GitNexus preflight/analyze 去重与有界退避降低同一 closeout 内的重复工作和瞬时锁失败。
+- embedding 短事务降低 SQLite 写锁竞争；single-flight 与有界退避降低同一 closeout 内的重复 GitNexus analyze 和瞬时锁失败。
+- terminal JSON 与 `knowledgeDispatch` 不再受 GitNexus 安装、setup、cache 或 analyze 延迟/失败影响；这些副作用的失败仍可从 completion refresh status file 诊断。
 - 显式 `cmd.exe` 启动消除 Windows 参数拼接的 Node `DEP0190`，同时保持后台 one-shot fallback 与失败可见性。
 
 ## Related code
@@ -61,3 +63,11 @@ project-scope terminal plan finalization（由 `claw plan done` 或 `claw plan e
 - `coalescedCount`
 - `GitNexus analyze dedupe`
 - `DEP0190`
+
+<!-- state: history -->
+## Evolution history
+
+<!-- dated: 2026-08-02 -->
+### Moved GitNexus preparation behind terminal dispatch
+
+The launcher initially assumed a foreground GitNexus embeddings preflight whose completed analyze could be reused by the background worker. That still left terminal dispatch coupled to dependency readiness. The accepted route now queues all GitNexus preparation and both memory reindexes into detached completion refresh after terminal state and knowledge dispatch are durable.

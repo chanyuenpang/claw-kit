@@ -27,11 +27,12 @@ At the same time:
 - Write those fields explicitly during `claw init`.
 - Keep `contextPaths` as a schema field but do not consume it in current Codex-first `claw-kit` flows.
 - Use `memory.externalDocPaths` to drive project memory indexing, including directory paths like `docs/`.
-- Make project-scope terminal plan finalization refresh GitNexus only when `gitnexus` is `true`; `claw plan done` and `claw plan edit --status end.*` share this route.
-- When `gitnexus` is `true`, terminal plan finalization must first run a foreground GitNexus preflight before background completion refresh starts; if the CLI is missing, it should try `npm install -g @veewo/gitnexus` followed by `gitnexus setup --cli-spec @veewo/gitnexus`, and any install/setup failure must surface immediately on the foreground error path.
-- If GitNexus is installed but its analyze options have not yet persisted embeddings, terminal plan finalization should self-heal by running `gitnexus analyze --embeddings` in the foreground so GitNexus records `embeddings=true` in `.gitnexus/meta.json`.
+- Make project-scope terminal plan finalization queue a GitNexus refresh only when `gitnexus` is `true`; `claw plan done` and `claw plan edit --status end.*` share this route.
+- Keep terminal dispatch authoritative and synchronous: persist the completed plan and knowledge-finalization job and construct `knowledgeDispatch` before queueing detached completion refresh. GitNexus readiness and embedding-backed project/task memory indexing must not block or invalidate that result.
+- When `gitnexus` is `true`, the detached completion-refresh worker owns CLI readiness, automatic `npm install -g @veewo/gitnexus` plus `gitnexus setup --cli-spec @veewo/gitnexus`, and analyze. Installation, setup, or analyze failures are reported in the worker status file rather than the foreground terminal protocol result.
+- If GitNexus analyze options have not yet persisted embeddings, the worker should self-heal by running `gitnexus analyze --embeddings` so GitNexus records `embeddings=true` in `.gitnexus/meta.json`.
 - `gitnexus analyze --embeddings` 是 GitNexus 自己的持久化 embedding 开关，`claw` 不再为同一状态额外引入平行的 workspace 配置开关。
-- Before enabling embeddings, terminal plan finalization may best-effort seed the GitNexus transformers cache from a matching existing claw model cache to avoid a second download, but only when the model id matches.
+- Before enabling embeddings, the completion-refresh worker may best-effort seed the GitNexus transformers cache from a matching existing claw model cache to avoid a second download, but only when the model id matches.
 - Prefer `gitnexus analyze --no-ai-context`, but automatically fall back to plain `gitnexus analyze` when the installed CLI reports that the flag is unsupported.
 - Keep the intentional `@veewo/gitnexus` integration. Treat only the exact unsigned Windows exit status `0xC0000005` as eligible for one bounded force-rebuild recovery; do not turn other analyze failures into generic rebuilds or unbounded retries. The exact current command construction and fallback behavior are owned by `../features/local-claw-cli.md`.
 - Do not extend that automatic rebuild rule to `0xC0000374`: the observed version-bound instance occurred after the index and metadata were written and remained queryable, so it belongs to health-aware diagnosis of a possible native exit-cleanup failure rather than signature-only destructive recovery.
@@ -44,8 +45,8 @@ At the same time:
 - Existing and future `.claw` projects can rely on stable canonical field names, with older nested input repaired into the flat shape.
 - Project creation no longer leaves schema interpretation implicit.
 - Codex is not forced to adopt `contextPaths` semantics it does not need.
-- terminal plan finalization stays robust across the currently published GitNexus CLI and the newer local source line, while keeping `gitnexus` as the sole claw-side gate.
-- GitNexus readiness problems surface earlier and more deterministically, which makes the foreground terminal-finalization failure path easier to diagnose.
+- terminal plan finalization returns its durable state and `knowledgeDispatch` without waiting for GitNexus readiness, while keeping `gitnexus` as the sole claw-side gate.
+- GitNexus readiness failures remain observable through completion-refresh status without turning a successfully persisted terminal plan into a protocol failure.
 - The persisted embedding toggle stays owned by GitNexus itself, so `claw` does not need a parallel embedding config flag just to remember one analysis mode.
 - Older GitNexus installs still work because the background lane keeps a plain `analyze` fallback instead of assuming the newest CLI flag set.
 - A damaged existing GitNexus index can self-heal on the known Windows crash signature without replacing the integration or requiring every user to diagnose LadybugDB manually.
@@ -53,3 +54,11 @@ At the same time:
 - Keeping `0xC0000374` outside the automatic rebuild rule avoids replacing a healthy index merely because the native process reported a later heap-corruption exit during cleanup.
 - The two lock layers intentionally overlap without having the same owner or purpose: claw coalesces workflow refresh demand, while GitNexus protects its LadybugDB lifecycle even when analyze is launched by another process. The cost is some duplicate serialization logic until the dependency fix is broadly deployed and observed.
 - Changing claw's project-memory model does not silently change GitNexus's model; the tradeoff is that unlike-model caches cannot be reused across the two systems.
+
+<!-- state: history -->
+## Evolution history
+
+<!-- dated: 2026-08-02 -->
+### Removed foreground GitNexus preflight
+
+The earlier decision ran GitNexus installation, setup, cache seeding, and embedding enablement before terminal dispatch, so dependency latency or failure could block a completed plan and its knowledge dispatch. Those operations now belong exclusively to detached completion refresh. The former foreground route remains relevant when interpreting older failure reports and rollback behavior.

@@ -107,9 +107,8 @@
       "summary": "All plan tasks are done. Finish the plan record, then complete the canonical plan lifecycle.",
       "nextsteps": [
         "1. Clear your tasks list with todowrite.",
-        "2. Write both `retrospective` and `keyDecisions` back into the plan.",
-        "3. Run `claw plan done --retrospective` once. Add `--key-decision` only for real durable decisions not already recorded.",
-        "4. Stop after the canonical plan transition; no separate closeout action is required from the main agent."
+        "2. Run `claw plan done --retrospective` once. Add `--key-decision` only for real durable decisions not already recorded.",
+        "3. Stop after the canonical plan transition; no separate closeout action is required from the main agent."
       ],
       "notes": "Background maintenance is fail-open and requires no main-agent action; it must not change plan completion or subplan resume.",
       "commandHints": [
@@ -123,7 +122,7 @@
         "1. Use todowrite to sync your tasks list.",
         "2. Continue with {{nextTaskRef}}."
       ],
-      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
+      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. Before each successful `task done`, state a concise evidence-backed task conclusion in the immediately preceding assistant message; `task done` has no conclusion option. Use `plan done --retrospective` and repeatable `--key-decision` values for full-plan closeout.",
       "commandHints": [
         "{{taskDoneCommand}}",
         "claw task edit --id <id> --status in_progress"
@@ -136,10 +135,10 @@
         "Use todowrite to sync your tasks list.",
         "Start with {{nextTaskRef}}."
       ],
-      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
+      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. Before each successful `task done`, state a concise evidence-backed task conclusion in the immediately preceding assistant message; `task done` has no conclusion option. Use `plan done --retrospective` and repeatable `--key-decision` values for full-plan closeout.",
       "commandHints": [
         "{{taskDoneCommand}}",
-        "{{doneBase}} --retrospective \"<summary>\""
+        "{{doneBase}} --retrospective \"<summary>\" [--key-decision \"<durable decision>\"]"
       ],
       "goalTool": {
         "tool": "create_goal",
@@ -158,10 +157,10 @@
         "Use todowrite to sync your tasks list.",
         "Start with {{nextTaskRef}}."
       ],
-      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption.",
+      "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. Before each successful `task done`, state a concise evidence-backed task conclusion in the immediately preceding assistant message; `task done` has no conclusion option. Use `plan done --retrospective` and repeatable `--key-decision` values for full-plan closeout.",
       "commandHints": [
         "{{taskDoneCommand}}",
-        "{{doneBase}} --retrospective \"<summary>\""
+        "{{doneBase}} --retrospective \"<summary>\" [--key-decision \"<durable decision>\"]"
       ]
     },
     "process.resumedActive": {
@@ -171,10 +170,10 @@
         "Use todowrite to sync your tasks list.",
         "Resume with {{nextTaskRef}}."
       ],
-      "notes": "The plan is moving back from a paused status into active execution.",
+      "notes": "The plan is moving back from a paused status into active execution. Before each successful `task done`, state a concise evidence-backed task conclusion in the immediately preceding assistant message; `task done` has no conclusion option. Use `plan done --retrospective` and repeatable `--key-decision` values for full-plan closeout.",
       "commandHints": [
         "{{taskDoneCommand}}",
-        "{{doneBase}} --retrospective \"<summary>\""
+        "{{doneBase}} --retrospective \"<summary>\" [--key-decision \"<durable decision>\"]"
       ],
       "goalTool": {
         "tool": "create_goal",
@@ -193,10 +192,10 @@
         "Use todowrite to sync your tasks list.",
         "Resume with {{nextTaskRef}}."
       ],
-      "notes": "The plan is moving back from a paused status into active execution.",
+      "notes": "The plan is moving back from a paused status into active execution. Before each successful `task done`, state a concise evidence-backed task conclusion in the immediately preceding assistant message; `task done` has no conclusion option. Use `plan done --retrospective` and repeatable `--key-decision` values for full-plan closeout.",
       "commandHints": [
         "{{taskDoneCommand}}",
-        "{{doneBase}} --retrospective \"<summary>\""
+        "{{doneBase}} --retrospective \"<summary>\" [--key-decision \"<durable decision>\"]"
       ]
     },
     "process.wait": {

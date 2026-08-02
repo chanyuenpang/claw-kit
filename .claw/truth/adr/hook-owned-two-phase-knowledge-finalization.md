@@ -56,6 +56,7 @@
 
 - 早期 Codex subagent 先启动 executor，让它以 `knowledge wait` 等待主线程 Stop 创建 job；这让 job readiness 依赖 main agent 尽快结束，并把 final message 兼作机械触发令牌。当前终态 mutation 在返回 dispatch 前创建 ready job；executor 直接 claim，claim 在签发 token 前冻结父 transcript 已有的 task conclusions，Stop 不再拥有 subagent job。保留 background 的 Stop-owned capture，同时让各 policy 共用 job、assignment 与 token lifecycle。
 - Cindy 对齐同一时序并收敛为唯一支持的知识 launcher：Lead 从 terminal tool result 获得 dispatch 后立即派 Orca Writer；Writer 使用 Ghost `knowledge.claim/done` 原子接口，claim-time 从 originating Cindy SQLite 固化 task conclusions。即使配置仍选择默认 `background`，Cindy 也先归一化为 subagent，不再等待 final answer、Stop hook、did-turn-end 或 errand；Host 侧 Orca Lead hook eligibility 修复仍作为独立通用 bug fix 保留。
+- 2026-08-02 的 DeepSeek/Ghost 项目级 E2E 已完成 create、start、task done 与 plan done 生命周期，并在 Cindy atomic claim 签发 token 前把 originating task conclusion 写入相邻 report。该样本验证 Cindy ready-job 与 claim-time capture 分支；前台计划完成仍不等同于 writer 已成功沉淀。
 
 <!-- dated: 2026-07-30 -->
 ### Launcher policy 与内部 delegate 取代公开 writer skill

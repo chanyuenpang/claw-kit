@@ -618,10 +618,11 @@ test("cli routes host-neutral Goal guidance by paused and resumed plan status", 
     "Restore Goal Mode to the active state.",
     "Resume with task #1.",
   ]);
-  assert.equal(
-    resumeResult.notes,
-    "The plan is moving back from a paused status into active execution, so Goal Mode should be restored to the active state before work resumes.",
+  assert.match(
+    String(resumeResult.notes),
+    /Goal Mode should be restored to the active state before work resumes/,
   );
+  assert.match(String(resumeResult.notes), /task done.*no conclusion option/i);
   assert.equal(resumeGoalMode.setWhen, "on_resume_process_active");
   assert.match(String(resumeGoalMode.recommendedObjective), /Pause and resume cleanly/);
   assert.equal(resumeGoalTool.tool, "create_goal");

@@ -241,6 +241,10 @@ const COMMAND_HELP: Record<string, HelpNode> = {
         usage: ["{script} plan sync"],
         description: "Resynchronize a recovered active Codex plan with host progress and Goal Mode without mutating the plan.",
         summary: "Resync a recovered active Codex plan.",
+        options: [
+          { flag: "--task-name <name>", detail: "Advanced: override the session-bound task scope." },
+          { flag: "--plan-file <relative-path>", detail: "Advanced: override the session-bound plan file." },
+        ],
       },
       start: {
         usage: ["{script} plan start --requirements <text> --add-task <title> [--detail <text>] [options]"],
@@ -362,7 +366,7 @@ const COMMAND_HELP: Record<string, HelpNode> = {
       done: {
         usage: ["{script} task done --id <number> [--choice <choice-id>] [--id <number> [--choice <choice-id>] ...]"],
         description:
-          "Mark one or more task items as done in argument order. Route-aware templates may require `--choice`, and each selected choice is persisted as `task.choiceId` in the plan state.",
+          "Mark one or more task items as done in argument order. This command records task state, not a conclusion field: transcript-backed knowledge capture derives each task conclusion from the immediately preceding assistant message. Route-aware templates may require `--choice`, and each selected choice is persisted as `task.choiceId` in the plan state.",
         summary: "Complete task items with repeated --id groups, optionally recording routing choices.",
         options: [
           { flag: "--id <number>", detail: "(required) Task item id to mark done." },
@@ -429,12 +433,13 @@ const COMMAND_HELP: Record<string, HelpNode> = {
     description: "Session-bound lifecycle commands for a queued knowledge finalization job.",
     subcommands: {
       wait: {
-        usage: ["{script} knowledge wait --project-root <path> --finalize-id <id> [--timeout-ms <n>]"],
+        usage: ["{script} knowledge wait --project-root <path> --finalize-id <id> [--session-key <key>] [--timeout-ms <n>]"],
         description: "Wait for Stop capture to create a knowledge finalization job. This command does not create or inspect session bindings.",
         summary: "Wait until the finalization job exists.",
         options: [
           { flag: "--project-root <path>", detail: "(required) Project that owns the pending finalization." },
           { flag: "--finalize-id <id>", detail: "(required) Stable finalization id returned by plan done." },
+          { flag: "--session-key <key>", detail: "Advanced: resolve a session-scoped workflow before falling back to the project." },
           { flag: "--timeout-ms <n>", detail: "Maximum wait in milliseconds (default 300000)." },
         ],
       },
@@ -1144,9 +1149,6 @@ function readCindyKnowledgeClaimCaptureInput(): {
   if (!sessionId || !turnId) {
     throw new ClawError("PROJECT_CONFIG_INVALID", "Cindy knowledge claim report input requires session_id and turn_id.");
   }
-  if (taskConclusions.length === 0) {
-    throw new ClawError("PROJECT_CONFIG_INVALID", "Cindy knowledge claim report input requires at least one task conclusion.");
-  }
   return { sessionId, turnId, taskConclusions };
 }
 
@@ -1431,7 +1433,6 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
         host: effectiveHost,
         ownerSessionKey,
       });
-      const completionRefresh = queuePlanEndFinalization?.(result.taskName);
       const knowledgeDispatch = (
         current
         && project
@@ -1446,6 +1447,7 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
             writer: effectiveWriter,
           })
         : undefined;
+      const completionRefresh = queuePlanEndFinalization?.(result.taskName);
       printJson(compactPlanCommandResult("plan.edit", result, effectiveHost, completionRefresh, false, knowledgeDispatch));
       if (result.operationChain?.status === "partial") process.exitCode = 1;
       return;
@@ -1555,7 +1557,6 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
         host: effectiveHost,
         ownerSessionKey,
       });
-      const completionRefresh = queuePlanEndFinalization?.(result.taskName);
       const knowledgeDispatch = (
         (effectiveHost === "codex" || effectiveHost === "cindy")
         && !current.plan.parentPlan
@@ -1568,6 +1569,7 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
             writer: effectiveWriter,
           })
         : undefined;
+      const completionRefresh = queuePlanEndFinalization?.(result.taskName);
       printJson(compactPlanCommandResult(
         "plan.done",
         result,
@@ -2200,12 +2202,15 @@ function runTruth(args: string[]): void {
     case "ingest": {
       const inputPath = readOptionalFlag(args, "--input");
       const content = inputPath ? fs.readFileSync(inputPath, "utf-8") : readRequiredFlag(args, "--content");
+      const target = readRequiredFlag(args, "--target");
+      const append = readBooleanFlag(args, "--append");
+      assertNoRemainingArgs(args, "truth ingest");
       printJson(
         ingestTruth({
           cwd: process.cwd(),
-          target: readRequiredFlag(args, "--target"),
+          target,
           content,
-          append: readBooleanFlag(args, "--append"),
+          append,
         }),
       );
       return;
@@ -2449,8 +2454,8 @@ function completeKnowledgeFinalizationJob(
     taskName: running.taskName,
     includeTaskRetention: false,
     includeTaskMemory: false,
+    includeGitNexus: false,
     statusLabel: `knowledge-${running.finalizeId.slice(0, 12)}`,
-    skipGitNexusRefresh: true,
   });
   printJson({ ok: true, completed: true, alreadyDone: terminal.alreadyDone, finalizeId: running.finalizeId });
 }
@@ -3848,8 +3853,7 @@ type CompletionRefreshFlightState = {
 function preparePlanEndFinalization(cwd: string, ownerSessionKey: string | undefined): ((taskName: string) => CompletionRefreshResult) | undefined {
   const workflowProject = resolveWorkflowProjectContext(cwd, ownerSessionKey);
   if (workflowProject.scope !== "project") return undefined;
-  const skipGitNexusRefresh = ensureGitNexusReadyForPlanFinalization(cwd);
-  return (taskName) => queueCompletionRefresh({ cwd, taskName, skipGitNexusRefresh });
+  return (taskName) => queueCompletionRefresh({ cwd, taskName });
 }
 
 function queueCompletionRefresh(input: {
@@ -3857,8 +3861,8 @@ function queueCompletionRefresh(input: {
   taskName: string;
   includeTaskRetention?: boolean;
   includeTaskMemory?: boolean;
+  includeGitNexus?: boolean;
   statusLabel?: string;
-  skipGitNexusRefresh?: boolean;
 }): CompletionRefreshResult {
   const project = resolveProjectContext(input.cwd);
   const includeTaskRetention = input.includeTaskRetention ?? true;
@@ -3877,7 +3881,7 @@ function queueCompletionRefresh(input: {
   if (includeTaskMemory && !taskRetention.archivedCurrentTask) {
     operations.push("memory.reindex.task");
   }
-  if (project.projectConfig?.gitnexus === true && !input.skipGitNexusRefresh) {
+  if (project.projectConfig?.gitnexus === true && input.includeGitNexus !== false) {
     operations.push("gitnexus.refresh");
   }
   const dirtyHash = computeCompletionDirtyHash(input.cwd, input.taskName, operations);
@@ -4085,9 +4089,7 @@ function runInternalCompletionRefresh(args: string[]): void {
         ? refreshGitNexusIfEnabled(cwd, resolveProjectContext(cwd).projectConfig)
         : {
             enabled: false,
-            reason: resolveProjectContext(cwd).projectConfig?.gitnexus === true
-              ? "gitnexus refresh was satisfied by plan-done preflight"
-              : "gitnexus is not enabled in .claw/project.json",
+            reason: "gitnexus is not enabled in .claw/project.json",
           };
       const latestFlight = readCompletionRefreshFlightState(flightDir);
       const latestDirtyHash = computeCompletionDirtyHash(cwd, taskName, latestFlight?.operations ?? operations);
@@ -4404,7 +4406,11 @@ function refreshGitNexusIfEnabled(
     };
   }
 
-  return runGitNexusAnalyze(cwd);
+  ensureGitNexusInstalled(cwd);
+  seedGitNexusEmbeddingCache(cwd, projectConfig);
+  return runGitNexusAnalyze(cwd, {
+    embeddings: !readGitNexusEmbeddingsEnabled(cwd),
+  });
 }
 
 function shouldFallbackToPlainAnalyze(result: {
@@ -4423,17 +4429,6 @@ function isWindowsAccessViolation(result: { status: number | null }): boolean {
   return process.platform === "win32"
     && result.status !== null
     && (result.status >>> 0) === 0xc0000005;
-}
-
-function ensureGitNexusReadyForPlanFinalization(cwd: string): boolean {
-  const project = resolveProjectContext(cwd);
-  if (project.projectConfig?.gitnexus !== true) {
-    return false;
-  }
-
-  ensureGitNexusInstalled(project.projectRoot);
-  seedGitNexusEmbeddingCache(project.projectRoot, project.projectConfig);
-  return ensureGitNexusEmbeddingsEnabled(project.projectRoot);
 }
 
 function ensureGitNexusInstalled(cwd: string): void {
@@ -4471,14 +4466,6 @@ function ensureGitNexusInstalled(cwd: string): void {
       command: "gitnexus",
     });
   }
-}
-
-function ensureGitNexusEmbeddingsEnabled(cwd: string): boolean {
-  if (readGitNexusEmbeddingsEnabled(cwd)) {
-    return false;
-  }
-  runGitNexusAnalyze(cwd, { embeddings: true });
-  return true;
 }
 
 function readGitNexusEmbeddingsEnabled(cwd: string): boolean {
