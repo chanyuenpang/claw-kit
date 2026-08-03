@@ -1,0 +1,159 @@
+---
+name: config
+description: Use when a user wants to inspect, explain, or change claw-kit project configuration, including team-owned .claw/project.json and personal .claw/project-override.json preferences.
+---
+<!-- AUTO-GENERATED from shared/skills/config/SKILL.md. Edit the shared source instead. -->
+# config
+
+Use this skill when the user wants to configure claw-kit behavior.
+
+This skill is a configuration entrypoint, not a planning workflow and not a direct file mutation command.
+It helps decide which config surface should change, then gives the correct field shape.
+
+## First question
+
+Before recommending or making a config change, establish which scope the user wants:
+
+- Team config:
+  - write `.claw/project.json`
+  - commit the change when it should be shared by the repository
+  - use this for project-wide workflow behavior, shared external skill choices, recall paths, and GitNexus integration
+- Personal config:
+  - write `.claw/project-override.json`
+  - keep it local and gitignored
+  - use this for one person's runtime preference, temporary local overrides, or machine-specific choices
+
+If the user has not made the scope clear, ask a concise question before editing:
+
+`Should this be a shared team config change in .claw/project.json, or a personal local override in .claw/project-override.json?`
+
+Do not guess the scope when the consequence matters.
+
+## Config surfaces
+
+### Team config
+
+`.claw/project.json` is the canonical team-owned declaration.
+It is normalized by `claw init` and protocol repair.
+
+Use it when the team should share the behavior:
+
+- `planning`
+- `autoUpdate`
+- `externalPlanningSkill`
+- `contextPaths`
+- `memory.externalDocPaths`
+- `memory.embedding`
+- `goalMode`
+- `knowledgeWriter.externalSkills`
+- `knowledgeWriter.executionPolicy`
+- `knowledgeWriter.model`
+- `knowledgeWriter.reasoningEffort`
+- `knowledgeWriter.datedSectionsToKeep`
+- `gitnexus`
+
+### Personal config
+
+`.claw/project-override.json` is a local runtime-only overlay.
+It deep-merges over `.claw/project.json`.
+It is gitignored by default and must not be treated as a second canonical config file.
+
+Use it when the change should affect only the current checkout or user.
+
+Example personal override:
+
+```json
+{
+  "goalMode": false,
+  "knowledgeWriter": {
+    "externalSkills": ["truth-writer", "adr-writer"],
+    "model": "gpt-5.6-terra",
+    "reasoningEffort": "high"
+  }
+}
+```
+
+Example personal planning override:
+
+```json
+{
+  "planning": true,
+  "externalPlanningSkill": "my-planning-skill"
+}
+```
+
+Example personal GitNexus override:
+
+```json
+{
+  "gitnexus": true
+}
+```
+
+Nested objects still use normal JSON merge behavior.
+Arrays replace inherited arrays rather than appending to them.
+Explicit `null` is a real override value, not inheritance.
+
+## Field shape
+
+Use the flat canonical fields for simple project-level toggles:
+
+```json
+{
+  "planning": true,
+  "autoUpdate": true,
+  "externalPlanningSkill": null,
+  "goalMode": true,
+  "gitnexus": false
+}
+```
+
+Keep nested shape only where the field actually has substructure:
+
+```json
+{
+  "knowledgeWriter": {
+    "executionPolicy": "background",
+    "externalSkills": [],
+    "model": null,
+    "reasoningEffort": "medium",
+    "datedSectionsToKeep": 6
+  },
+  "memory": {
+    "externalDocPaths": ["docs/"],
+    "embedding": {
+      "provider": "local",
+      "model": "jinaai/jina-embeddings-v2-base-zh",
+      "outputDimensionality": 768
+    }
+  }
+}
+```
+
+The default local model is `jinaai/jina-embeddings-v2-base-zh` at 768 dimensions. Two supported Snowflake alternatives are:
+
+- `Snowflake/snowflake-arctic-embed-m-v2.0` at 768 dimensions for projects that accept higher model, CPU, and memory cost.
+- `Snowflake/snowflake-arctic-embed-xs` at 384 dimensions for explicit low-resource or English-oriented use. It is not recommended for Chinese-heavy recall because the claw search comparison found substantial Chinese semantic-recall regressions.
+
+`knowledgeWriter.executionPolicy` accepts `background` or `subagent` and defaults to `background`. Codex honors that selection. In Cindy, both values normalize to the compatibility value `subagent` and always create or reuse a persistent, UI-visible Orca `knowledge-finalizer` Worker; they never select a native subagent. The project knowledge-writer configuration authorizes that Worker. The finalizer runs an ordered documentation-governance assignment sequence. `knowledgeWriter.externalSkills` replaces the built-in default assignment. Custom skills receive an explicit unattended, non-interactive invocation envelope; an empty or absent list uses the hidden built-in governance contract with its own direct wording. This is configuration fallback, not failure fallback. `model = null` uses the host default model. `reasoningEffort` accepts `minimal`, `low`, `medium`, `high`, or `xhigh`. `datedSectionsToKeep` is a non-negative integer; it caps only complete evolution sections marked by `<!-- dated: YYYY-MM-DD -->` in each canonical document changed by the built-in writer. It does not limit current prose by length or age.
+
+## Safe editing flow
+
+1. Determine team vs personal scope.
+2. Read the current target file if it exists.
+3. Preserve unrelated fields.
+4. Apply only the requested config change.
+5. Keep JSON valid and formatted with two-space indentation.
+6. After changing `.claw/project.json`, use Cindy's Ghost `list_tools` and `call_tool` operations to run the available validation or context operation; never invoke the claw CLI from the Agent prompt.
+7. Do not run protocol repair expecting it to write `.claw/project-override.json`; override files are local runtime input only.
+
+## Guardrails
+
+- Do not put personal preferences into `.claw/project.json` unless the user explicitly wants a shared team change.
+- Do not commit `.claw/project-override.json`.
+- Do not describe `.claw/project-override.json` as canonical.
+- Do not recommend legacy nested toggle shapes as the normal format.
+- Use `memory.enabled` only as the documented master switch for project memory, task memory, embedding refresh, and `claw search`; do not substitute an invented toggle.
+- Do not invent new config fields when an existing canonical field covers the need.
+
+

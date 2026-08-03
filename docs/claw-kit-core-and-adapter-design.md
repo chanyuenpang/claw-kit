@@ -493,6 +493,6 @@ not by adding platform-specific assumptions to core prompt semantics.
 
 - [Project configuration reference](project-json-reference.md)
 - [Workflow performance contract](workflow-performance-contract.md)
-- [Cindy adapter design baseline](https://github.com/chanyuenpang/claw-kit-cindy-adapter/blob/main/references/cindy-adapter-design.md)
+- [Cindy adapter design baseline](../packages/cindy-adapter/references/cindy-adapter-design.md)
 - [Codex startup recovery](../packages/codex-adapter/references/codex-startup-recovery.md)
 - [OpenCode startup recovery](../packages/opencode-adapter/references/opencode-startup-recovery.md)

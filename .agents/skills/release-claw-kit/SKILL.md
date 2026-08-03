@@ -12,7 +12,7 @@ scope:
 
 - CLI, core, npm, or a three-segment version: `release-claw-cli`
 - Codex plugin or `vcodex-*`: `release-codex-plugin`
-- Cindy plugin or `vcindy-*`: `release-cindy-plugin` (a handoff to the `claw-kit-cindy-adapter` repository); do not release it from this repository.
+- Cindy plugin or `vcindy-*`: `release-cindy-plugin`
 - OpenClaw plugin or `vopenclaw-*`: `release-openclaw-plugin`
 - OpenCode plugin or `vopencode-*`: `release-opencode-plugin`
 

@@ -108,6 +108,7 @@ async function verifyReleaseReadiness() {
   const client = await readJson("packages/client/package.json");
   const cli = await readJson("packages/cli/package.json");
   const codex = await readJson("packages/codex-adapter/package.json");
+  const cindy = await readJson("packages/cindy-adapter/package.json");
   const openclaw = await readJson("packages/openclaw-adapter/package.json");
   const opencode = await readJson("packages/opencode-adapter/package.json");
   const marketplace = await readJson(".agents/plugins/marketplace.json");
@@ -125,6 +126,7 @@ async function verifyReleaseReadiness() {
 
   for (const [name, pkg] of [
     ["codex-adapter", codex],
+    ["cindy-adapter", cindy],
     ["openclaw-adapter", openclaw],
     ["opencode-adapter", opencode],
   ]) {

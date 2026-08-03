@@ -1,0 +1,15 @@
+{
+  "name": "claw-kit-cindy",
+  "interface": {
+    "displayName": "Claw Kit for Cindy"
+  },
+  "plugins": [
+    {
+      "name": "claw-kit-cindy",
+      "source": {
+        "source": "local",
+        "path": "./packages/cindy-adapter/plugin"
+      }
+    }
+  ]
+}
