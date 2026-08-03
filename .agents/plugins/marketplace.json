@@ -15,13 +15,6 @@
         "authentication": "ON_INSTALL"
       },
       "category": "Developer Tools"
-    },
-    {
-      "name": "claw-kit-cindy",
-      "source": {
-        "source": "local",
-        "path": "./packages/cindy-adapter/plugin"
-      }
     }
   ]
 }

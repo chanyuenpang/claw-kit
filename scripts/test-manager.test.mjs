@@ -27,7 +27,6 @@ test("functional paths select their focused test domains", () => {
     "cli-surface",
     "cli-workflow",
   ]);
-  assert.deepEqual(selectDomains(["packages/cindy-adapter/plugin/main.js"]).domains, ["cindy"]);
   assert.deepEqual(selectDomains(["shared/skills/planning/SKILL.md"]).domains, ["shared-skills"]);
 });
 
@@ -86,7 +85,7 @@ test("CLI domain files replace the monolith with unique discoverable tests", () 
     }
   }
 
-  assert.equal(names.size, 144);
+  assert.equal(names.size, 149);
   const plannedFiles = createExecutionPlan(Object.keys(CLI_DOMAIN_TEST_FILES))
     .filter((step) => step.kind === "node" && step.args[0] === "--test")
     .map((step) => path.basename(step.args[1]))
