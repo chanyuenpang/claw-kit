@@ -15,6 +15,8 @@ Accepted
 
 `Publish-claw-kit-release-and-refresh-local-Codex-plugin` closeout 进一步确认了这个边界的兼容性要求：旧项目里的 nested workflow / GitNexus shape 仍要被接受，但修复后的 committed config 必须回到扁平 canonical fields，同时默认 vector store 配置不能因为 repair 而重新物化进 `.claw/project.json`。
 
+Cross-host settings also need a durable owner without turning a plugin into a second configuration authority. The global layer therefore belongs to the CLI and must participate in the same runtime resolution path before repository-scoped layers.
+
 ## Decision
 
 - 把项目级 workflow 行为纳入 canonical `.claw/project.json` schema。
@@ -22,7 +24,10 @@ Accepted
 - 简单 project-level toggles 使用扁平字段；旧的 nested `workflow.*`、`workflow.truthDispatch.mode` 与 `gitnexus.enabled` 只属于 legacy compatibility input。
 - project config repair 必须把 legacy shape 规范化为当前 canonical fields：`planning`、`externalPlanningSkill`、`goalMode`、`knowledgeWriter` 与 `gitnexus`。`truthDispatch` 不再是 current project schema owner。
 - `.claw/project-override.json` 是完整的 personal overlay，可以覆盖 `.claw/project.json` 的任意字段，而不是只服务某个临时特例；其中 workflow / GitNexus 类简单开关应使用与 team config 相同的扁平 canonical 字段。
-- runtime project resolution 读取并 deep-merge `.claw/project-override.json` 覆盖 canonical `.claw/project.json`。
+- user-global config is CLI-owned, stored outside repositories, and is the lowest editable layer: `global < .claw/project.json < .claw/project-override.json`. It is a complete normalized baseline, not a sparse override; reads and writes materialize its concrete defaults while excluding repository-owned `id` and `name`.
+- runtime project resolution deep-merges those three layers in that order. Arrays replace and explicit `null` remains a real override value.
+- `context.ts` may cache the effective result only while metadata for all three input files is unchanged; file creation, deletion, or metadata changes invalidate it.
+- Hosts may expose a global-settings UI only by routing through `claw config global get|set`; no host API or plugin-owned canonical config is allowed.
 - `.claw/project-override.json` 里的显式 `null` 是真实 override 值，不表示回退到 team config。
 - 只有 runtime project resolution 消费 `.claw/project-override.json`；canonical protocol repair 和 `claw init` 继续只拥有 team-facing `.claw/project.json`。
 - default vector indexing 可以保持 runtime-enabled，但 protocol repair 不能仅因默认值就把 `memory.embedding.store.vector.enabled = true` 写回 `.claw/project.json`；`store.vector` 只在显式 `enabled: false` 或 `extensionPath` 有意义时保留。
@@ -36,6 +41,8 @@ Accepted
 - 用户可以只覆盖局部 config，而不必复制整份 `.claw/project.json`。
 - 显式 `null` override 让 personal overlay 可以真正移除有效配置值，而不是被错误地解释为“未设置”。
 - `claw init`、protocol repair 与 team-facing config normalization 不会把个人覆盖重新物化回 canonical 文件，也不会接管本地 overlay 生命周期。
+- Global defaults can be shared across projects without making a user's local preferences repository content; team and personal project layers retain their existing higher-precedence ownership.
+- The metadata cache avoids repeated JSON parsing and merging on unchanged operations without using polling or watchers.
 - legacy-shape projects can be repaired without losing explicit behavior, while future diffs stop reintroducing nested workflow/GitNexus config or default-only vector store noise.
 - workflow guidance 的 `goalMode` 受 effective project config 控制；knowledge writer 配置经 effective config 解析后在 job 创建时快照，不回流为 main-agent delegation。
 
@@ -51,6 +58,20 @@ Accepted
 - `packages/core/src/init.ts`
 - `packages/core/test/core.test.ts`
 - `packages/cli/test/cli.test.ts`
+
+<!-- state: history -->
+## Evolution history
+
+<!-- dated: 2026-08-03 -->
+### Added the CLI-owned global layer before project layers
+
+- The earlier two-layer runtime route (`project.json` followed by `project-override.json`) remains the compatibility core for repository settings, but it no longer describes the complete effective configuration.
+- A user-global CLI-owned layer now merges ahead of it. This preserves repository and personal precedence while giving every host one constrained cross-project settings surface.
+
+<!-- dated: 2026-08-03 -->
+### Made the global layer a complete defaulted baseline
+
+- The short-lived inherit/absent interpretation for global fields was removed. The global layer now resolves and persists a complete normalized configuration, while the higher-precedence team and personal layers continue to overlay it.
 
 ## Search Terms
 

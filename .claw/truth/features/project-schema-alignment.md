@@ -18,7 +18,8 @@
 ## Current Behavior
 
 - `claw init` writes those fields explicitly when a project is created, so later commands do not need to guess the schema.
-- runtime project resolution now loads canonical `.claw/project.json` first, then deep-merges `.claw/project-override.json` on top when that gitignored override file exists.
+- runtime project resolution merges the CLI-owned user-global config first, then canonical `.claw/project.json`, then `.claw/project-override.json` when that gitignored personal overlay exists.
+- user-global config lives outside the repository (`%APPDATA%\\claw\\config.json` on Windows, or the XDG config root elsewhere) and is always normalized to a complete baseline, even before its file exists; project identity (`id` and `name`) remains repository-owned. `packages/core/src/context.ts` keeps a bounded effective-config cache keyed by the metadata of all three files, so unchanged operations reuse the prior parsed merge while changes, creation, or deletion invalidate it.
 - `project-override.json` is a full project-surface override layer rather than a narrow patch list: it may override any `project.json` field, but personal overrides should use the same flat canonical workflow fields as `.claw/project.json`.
 - override merge keeps explicit `null` as a real project-level value; `null` in `.claw/project-override.json` must not be treated as "missing" and must not fall back to team config or built-in inherited values.
 - `contextPaths` is preserved for schema alignment but is not currently consumed by the Codex-first `claw-kit` workflow.

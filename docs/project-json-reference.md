@@ -6,6 +6,12 @@ At a product level, `claw-kit` can be used without GitNexus. The `gitnexus` fiel
 
 ## Config layers
 
+### User-global `config.json`
+
+- stored outside repositories at `%APPDATA%\\claw\\config.json` on Windows, or `$XDG_CONFIG_HOME/claw/config.json` (falling back to `~/.config/claw/config.json`)
+- owned by the claw CLI and shared by every host; plugins may edit it only through the CLI's constrained config operation
+- is the lowest editable layer and deep-merges before a project's team and personal files
+
 ### `.claw/project.json`
 
 - canonical team-owned project declaration
@@ -25,7 +31,9 @@ This split is one of the reasons `claw-kit` works well for team collaboration: t
 
 The effective runtime config is:
 
-`deepMerge(.claw/project.json, .claw/project-override.json)`
+`deepMerge(deepMerge(global config, .claw/project.json), .claw/project-override.json)`
+
+The user-global layer is always a complete normalized baseline: `claw config global get` returns concrete defaults even before its file exists, and `set` persists the complete normalized result. It has no inherit/absent field state. Repository team and personal layers remain the automatic higher-precedence overlays.
 
 Important consequences:
 

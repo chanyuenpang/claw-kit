@@ -21,6 +21,9 @@ Before recommending or making a config change, establish which scope the user wa
   - write `.claw/project-override.json`
   - keep it local and gitignored
   - use this for one person's runtime preference, temporary local overrides, or machine-specific choices
+- Global config:
+  - write the CLI-owned user config through `claw config global set`
+  - use this for cross-host defaults; project team and personal layers automatically override it
 
 If the user has not made the scope clear, ask a concise question before editing:
 
@@ -29,6 +32,16 @@ If the user has not made the scope clear, ask a concise question before editing:
 Do not guess the scope when the consequence matters.
 
 ## Config surfaces
+
+### User-global config
+
+The CLI-owned user-global file is the lowest editable layer. It is shared by
+Codex, Cindy, and direct CLI use; do not store its canonical values in a
+plugin's settings KV. Its effective precedence is:
+
+`global config (complete defaults) < .claw/project.json < .claw/project-override.json`
+
+The global layer is always a complete normalized baseline. It has no inherit or absent field state; `claw config global get` materializes its concrete defaults and `set` persists the full normalized object.
 
 ### Team config
 
