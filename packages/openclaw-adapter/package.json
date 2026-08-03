@@ -23,7 +23,7 @@
     ".": "./dist/index.js"
   },
   "dependencies": {
-    "@veewo/claw-core": "0.2.9"
+    "@veewo/claw-core": "0.2.10"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

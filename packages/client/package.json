@@ -37,7 +37,7 @@
     "test": "tsc -p tsconfig.test.json && node --test dist-test/**/*.test.js"
   },
   "peerDependencies": {
-    "@veewo/claw": "0.2.9"
+    "@veewo/claw": "0.2.10"
   },
   "peerDependenciesMeta": {
     "@veewo/claw": {
