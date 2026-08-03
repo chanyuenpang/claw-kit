@@ -302,7 +302,8 @@ test("repository-local release skills split CLI and platform publication contrac
   const cindy = payloads.find((payload) => payload.name === "release-cindy-plugin");
   assert.ok(cindy);
   const cindyContract = `${cindy.skill}\n${JSON.stringify(cindy.template)}\n${cindy.fallback}\n${cindy.artifact}`;
-  assert.match(cindyContract, /repository custom marketplace/i);
+  assert.match(cindyContract, /claw-kit-cindy-adapter/i);
+  assert.match(cindyContract, /Cindy-only marketplace/i);
   assert.match(cindyContract, /do not\s+build or upload a `?\.cindy`? archive/is);
   assert.doesNotMatch(cindyContract, /single rollback package/i);
 });

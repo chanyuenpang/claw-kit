@@ -43,7 +43,7 @@ There are five independent artifact families. Select the requested artifact befo
 |---|---|---|---|---|
 | CLI | core, CLI, or shared CLI/runtime | 3 segments | `@veewo/claw-core` then `@veewo/claw` | `v<version>` |
 | Codex plugin | codex-adapter | 4 segments | committed GitHub marketplace snapshot | `vcodex-<version>` |
-| Cindy plugin | cindy-adapter | 4 segments | Cindy adapter GitHub release artifact | `vcindy-<version>` |
+| Cindy plugin | independent `claw-kit-cindy-adapter` repository | 4 segments | Cindy-only Git marketplace | `vcindy-<version>` in the adapter repository |
 | OpenClaw plugin | openclaw-adapter | 4 segments | OpenClaw adapter GitHub release artifact | `vopenclaw-<version>` |
 | OpenCode plugin | opencode-adapter | 4 segments | OpenCode adapter GitHub release artifact | `vopencode-<version>` |
 
@@ -114,9 +114,8 @@ Update these to the new `MAJOR.MINOR.PATCH` version:
 2. `package-lock.json`
 3. `packages/core/package.json` (version)
 4. `packages/cli/package.json` (version; dependency `@veewo/claw-core` pinned exactly)
-5. Reset all adapter versions to `<CLI_VERSION>.0`:
+5. Reset the main-repository adapter versions to `<CLI_VERSION>.0`:
    - `packages/codex-adapter/package.json`
-   - `packages/cindy-adapter/package.json`
    - `packages/openclaw-adapter/package.json`
    - `packages/opencode-adapter/package.json`
 6. `packages/codex-adapter/.codex-plugin/plugin.json` = `<CLI_VERSION>.0`
@@ -161,7 +160,7 @@ After changing version files:
 
 ### For any release mode
 
-1. Confirm the target artifact family: CLI, Codex, Cindy, OpenClaw, or OpenCode; or record `prepare-only`.
+1. Confirm the target artifact family: CLI, Codex, OpenClaw, or OpenCode; Cindy releases occur in the independent `claw-kit-cindy-adapter` repository; or record `prepare-only`.
 2. Classify all local changes; commit useful release content, remove disposable output, and ignore intentional local-only files. Do not stash changes to bypass this step.
 3. Ensure the checked-out branch is `main` and push the release commit directly to `origin/main`.
 4. Align package versions according to the version scheme, then run `npm run sync:template-versions`.

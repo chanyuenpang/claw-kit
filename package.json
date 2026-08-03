@@ -3,7 +3,12 @@
   "version": "0.2.8",
   "private": true,
   "workspaces": [
-    "packages/*"
+    "packages/cli",
+    "packages/client",
+    "packages/codex-adapter",
+    "packages/core",
+    "packages/openclaw-adapter",
+    "packages/opencode-adapter"
   ],
   "scripts": {
     "build": "npm run build -w @veewo/claw-core && npm run build -w @veewo/claw-client && npm run build -w @veewo/claw && npm run build -w @claw-kit/openclaw-adapter && npm run build -w @claw-kit/codex-adapter && npm run build -w @claw-kit/opencode-adapter",

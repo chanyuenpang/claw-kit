@@ -27,7 +27,6 @@ test("functional paths select their focused test domains", () => {
     "cli-surface",
     "cli-workflow",
   ]);
-  assert.deepEqual(selectDomains(["packages/cindy-adapter/plugin/main.js"]).domains, ["cindy"]);
   assert.deepEqual(selectDomains(["shared/skills/planning/SKILL.md"]).domains, ["shared-skills"]);
 });
 

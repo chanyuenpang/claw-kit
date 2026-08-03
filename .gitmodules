@@ -1,0 +1,4 @@
+[submodule "packages/cindy-adapter"]
+	path = packages/cindy-adapter
+	url = https://github.com/chanyuenpang/claw-kit-cindy-adapter.git
+	branch = main

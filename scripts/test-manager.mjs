@@ -122,15 +122,6 @@ export const TEST_DOMAINS = {
     description: "CLI help, version, usage, and argument surface",
     steps: cliDomainTest("cli-surface"),
   },
-  cindy: {
-    description: "Cindy plugin manifest, skill surface, worker, and host integration",
-    steps: [coreBuild, clientBuild, cliBuild, nodeStep(
-      "--test",
-      "./packages/cindy-adapter/test/cindy-skill-surface.test.mjs",
-      "./packages/cindy-adapter/test/claw-worker.test.mjs",
-      "./packages/cindy-adapter/test/plugin-main.test.mjs",
-    )],
-  },
   codex: {
     description: "Codex hooks, subagent contract, and exported plugin bundle",
     steps: [coreBuild, cliBuild, nodeStep(
@@ -179,9 +170,6 @@ const FULL_STEPS = [
   workspaceTest("@veewo/claw"),
   nodeStep(
     "--test",
-    "./packages/cindy-adapter/test/cindy-skill-surface.test.mjs",
-    "./packages/cindy-adapter/test/claw-worker.test.mjs",
-    "./packages/cindy-adapter/test/plugin-main.test.mjs",
     "./packages/codex-adapter/hooks/code-mode-host-action-consumer.test.mjs",
     "./packages/codex-adapter/hooks/subagent-contract.test.mjs",
     "./scripts/codex-plugin-bundle.test.mjs",
@@ -222,7 +210,6 @@ const rules = [
   [["cli-surface"], /^packages\/cli\/test\/cli-surface\.test\.ts$/],
   [CLI_DOMAINS, /^packages\/cli\/(?:src\/cli|test\/cli-test-support)\.ts$/],
   [["cli-workflow", "cli-surface"], /^packages\/cli\/src\/bin\.ts$/],
-  [["cindy"], /^packages\/cindy-adapter\//],
   [["codex"], /^packages\/codex-adapter\//],
   [["opencode"], /^packages\/opencode-adapter\//],
   [["openclaw"], /^packages\/openclaw-adapter\//],
