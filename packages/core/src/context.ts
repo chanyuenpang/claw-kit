@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { ClawError } from "./errors.js";
 import { readJsonFile, writeJsonFileAtomic } from "./io.js";
@@ -8,33 +7,18 @@ import {
   DEFAULT_KNOWLEDGE_DATED_SECTIONS_TO_KEEP,
   DEFAULT_MAX_TASKS_TO_KEEP,
 } from "./project-defaults.js";
+import {
+  DEFAULT_LOCAL_EMBEDDING_MODEL,
+  resolveDefaultLocalEmbeddingDimensions,
+} from "./embedding-defaults.js";
 import { resolveSessionBoundPlan } from "./session-bindings.js";
 import type { KnowledgeWriterExecutionPolicy, KnowledgeWriterReasoningEffort, MemoryEmbeddingConfig, ProjectConfig, ProjectContext, ResolvedContext, TaskContext, TaskMeta } from "./types.js";
 
 const CORE_VERSION = readCoreVersion();
 const CONFIG_CACHE_LIMIT = 64;
 type FileStamp = { exists: boolean; mtimeMs?: number; size?: number };
-type ConfigCacheEntry = { stamps: [FileStamp, FileStamp, FileStamp]; config: ProjectConfig };
+type ConfigCacheEntry = { stamps: [FileStamp, FileStamp]; config: ProjectConfig };
 const configCache = new Map<string, ConfigCacheEntry>();
-
-/** The user-owned, cross-host configuration file. */
-export function resolveGlobalConfigPath(env: NodeJS.ProcessEnv = process.env, platform = process.platform, home = os.homedir()): string {
-  const configured = env.CLAW_CONFIG_HOME?.trim();
-  if (configured) return path.join(configured, "config.json");
-  if (platform === "win32") return path.join(env.APPDATA?.trim() || path.join(home, "AppData", "Roaming"), "claw", "config.json");
-  return path.join(env.XDG_CONFIG_HOME?.trim() || path.join(home, ".config"), "claw", "config.json");
-}
-
-export function readGlobalConfig(): ProjectConfig {
-  const filePath = resolveGlobalConfigPath();
-  return normalizeGlobalConfig(fs.existsSync(filePath) ? readJsonFile<ProjectConfig>(filePath) : undefined);
-}
-
-export function writeGlobalConfig(config: ProjectConfig): string {
-  const filePath = resolveGlobalConfigPath();
-  writeJsonFileAtomic(filePath, normalizeGlobalConfig(config));
-  return filePath;
-}
 
 export function resolveProjectContext(cwd: string): ProjectContext {
   const projectRoot = findProjectRoot(cwd);
@@ -187,16 +171,14 @@ export function resolveTaskName(taskName: string): string {
 function readProjectConfig(projectJsonPath: string): ProjectConfig {
   try {
     const projectOverridePath = path.join(path.dirname(projectJsonPath), "project-override.json");
-    const globalPath = resolveGlobalConfigPath();
-    const stamps: [FileStamp, FileStamp, FileStamp] = [fileStamp(globalPath), fileStamp(projectJsonPath), fileStamp(projectOverridePath)];
+    const stamps: [FileStamp, FileStamp] = [fileStamp(projectJsonPath), fileStamp(projectOverridePath)];
     const cacheKey = path.resolve(projectJsonPath);
     const cached = configCache.get(cacheKey);
     if (cached && sameStamps(cached.stamps, stamps)) return cached.config;
-    const globalConfig = readGlobalConfig();
     const projectConfig = readJsonFile<ProjectConfig>(projectJsonPath);
-    const projectOverride = stamps[2].exists ? readJsonFile<ProjectConfig>(projectOverridePath) : undefined;
+    const projectOverride = stamps[1].exists ? readJsonFile<ProjectConfig>(projectOverridePath) : undefined;
     const config = normalizeProjectConfig(mergeProjectConfig(
-      mergeProjectConfig(migrateLegacyWriterConfigLayer(globalConfig), migrateLegacyWriterConfigLayer(projectConfig)),
+      migrateLegacyWriterConfigLayer(projectConfig),
       migrateLegacyWriterConfigLayer(projectOverride),
     ));
     configCache.delete(cacheKey);
@@ -293,17 +275,6 @@ function normalizeProjectConfig(projectConfig: ProjectConfig): ProjectConfig {
       ? { var: projectConfig.var }
       : {}),
   };
-}
-
-/**
- * The user-global layer is a complete baseline, not a sparse overlay. Project
- * identity remains repository-owned and therefore cannot be set globally.
- */
-function normalizeGlobalConfig(config: ProjectConfig | undefined): ProjectConfig {
-  const normalized = normalizeProjectConfig(migrateLegacyWriterConfigLayer(config) ?? {});
-  delete normalized.id;
-  delete normalized.name;
-  return normalized;
 }
 
 function normalizeNonNegativeInteger(value: unknown, fallback: number): number {
@@ -423,13 +394,13 @@ function cloneValue(value: unknown): unknown {
 
 function normalizeMemoryEmbeddingConfig(value: MemoryEmbeddingConfig | null | undefined): MemoryEmbeddingConfig | null {
   if (!value || typeof value !== "object") {
-    return null;
+    return defaultLocalEmbeddingConfig();
   }
 
   const provider = value.provider === "local" ? "local" : "openai";
   const model = typeof value.model === "string" ? value.model.trim() : "";
   if (!model) {
-    return null;
+    return defaultLocalEmbeddingConfig();
   }
 
   return {
@@ -465,9 +436,19 @@ function normalizeMemoryEmbeddingConfig(value: MemoryEmbeddingConfig | null | un
           },
         }
       : {}),
-    ...(Number.isInteger(value.outputDimensionality) && (value.outputDimensionality as number) > 0
-      ? { outputDimensionality: value.outputDimensionality as number }
-      : {}),
+    outputDimensionality: Number.isInteger(value.outputDimensionality) && (value.outputDimensionality as number) > 0
+      ? value.outputDimensionality as number
+      : provider === "local"
+        ? resolveDefaultLocalEmbeddingDimensions(model)
+        : resolveDefaultLocalEmbeddingDimensions(DEFAULT_LOCAL_EMBEDDING_MODEL),
+  };
+}
+
+function defaultLocalEmbeddingConfig(): MemoryEmbeddingConfig {
+  return {
+    provider: "local",
+    model: DEFAULT_LOCAL_EMBEDDING_MODEL,
+    outputDimensionality: resolveDefaultLocalEmbeddingDimensions(DEFAULT_LOCAL_EMBEDDING_MODEL),
   };
 }
 

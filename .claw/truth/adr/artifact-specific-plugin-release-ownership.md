@@ -26,8 +26,9 @@ selection because a newer release can belong to another artifact family.
 - Route testing, local packaging, and dry-run work to `test-claw-kit` unless
   publication authority is explicit.
 - Give Cindy release ownership to `release-cindy-plugin`: verify the committed
-  `claw-kit-cindy` marketplace entry and target manifest before pushing the
-  matching `vcindy-*` tag; do not build an archive or create a GitHub Release.
+  independent marketplace repository checked out at `packages/cindy-adapter`,
+  push its `main`, then tag that exact commit with `vcindy-*`; do not build an
+  archive or create a GitHub Release.
 - Make the Cindy update skill refresh the unpinned custom Git marketplace and
   use Cindy's confirmation-gated local packaging/install action; keep CLI
   refresh and confirmed enabled/running plugin state as the two required
@@ -62,6 +63,11 @@ The earlier decision used an immutable GitHub Release asset and retained one
 local rollback archive. `vcindy-0.2.8.2` moved the distribution boundary to the
 committed repository marketplace, where Cindy performs local packaging during
 install/update. The former asset contract remains historical evidence only.
+
+<!-- dated: 2026-08-03 -->
+### Clarified the independent Cindy source repository release order
+
+The checked-out Cindy submodule is the independent marketplace repository worktree. Its `main` must be committed and pushed before the matching `vcindy-*` tag is created; this source-release proof does not include installation.
 
 ## Related code
 

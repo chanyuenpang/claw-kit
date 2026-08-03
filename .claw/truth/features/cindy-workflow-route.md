@@ -12,9 +12,8 @@ Current
 - A new plan created in a Cindy session starts in `process.discussing`; execution advances with `plan.start`, and a completed plan reaches `end.completed`.
 - When a completed task declares no `onDone` choices, passing a `choice` argument is rejected by validation. That rejection is expected behavior of the schema check, not a workflow failure.
 - Knowledge finalization in the Cindy host runs through `knowledge.claim` (atomic capture of the originating task conclusions before issuing a claim token) followed by exactly one `knowledge.done` with the `claimToken`, `finalizeId`, and a terminal `status`.
-- The plugin also provides an unprivileged, form-first global-settings panel. It edits the complete normalized global baseline with concrete boolean values; the panel has no inherit or absent-field state, while team and personal project layers remain higher-precedence overlays.
-- The panel retains an advanced JSON disclosure; saves merge that JSON with form values so unknown fields are preserved instead of discarded.
-- The browser page communicates by `BroadcastChannel` with plugin logic, which uses the Node worker to invoke `claw config global get|set`; it displays the CLI-owned global layer and never owns a second config store or uses Cindy Host APIs.
+- The plugin exposes an unprivileged project-configuration explanation through `ghost.json` `settingsHtml: "panel.html"`, Cindy's supported plugin detail-page configuration surface; it does not declare an unsupported `panel` slot.
+- The page documents the only two configuration layers: team-owned `.claw/project.json` and gitignored personal `.claw/project-override.json`. It does not read or write configuration, maintain a second store, or use Cindy Host APIs.
 
 ## Implementation and verification anchors
 

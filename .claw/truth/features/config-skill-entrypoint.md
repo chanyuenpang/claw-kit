@@ -4,9 +4,7 @@
 ## Current behavior
 
 - `config` 是 claw-kit 的专用配置 skill，用于解释、检查或修改 claw-kit 配置。
-- `config` 的第一步必须确认用户要修改的是 user-global、shared team config 还是 personal local config。
-- user-global config is CLI-owned at `%APPDATA%\\claw\\config.json` on Windows, or `$XDG_CONFIG_HOME/claw/config.json` (falling back to `~/.config/claw/config.json`); it is shared across hosts, is not project-owned state, and always resolves to a complete normalized baseline rather than a sparse override.
-- Agents and plugins read or write that layer only through `claw config global get|set`; a plugin must not create a second canonical config file or call Host APIs directly.
+- `config` 的第一步必须确认用户要修改的是 shared team config 还是 personal local config。
 - shared team config 写入 `.claw/project.json`，这是 canonical team-owned declaration surface，适合提交到仓库。
 - personal local config 写入 `.claw/project-override.json`，这是 gitignored runtime overlay，不应提交，也不应被描述成第二份 canonical config。
 - `.claw/project-override.json` 使用与 `.claw/project.json` 相同的 canonical 字段格式，例如 `planning`、`externalPlanningSkill`、`goalMode`、`knowledgeWriter`、`gitnexus`；`knowledgeWriter` 保持有实际子结构的嵌套对象。
@@ -15,7 +13,6 @@
 - `store.vector` is retained only for explicit user intent: `enabled: false` to disable vector indexing, or `extensionPath` to point at a custom vector extension.
 - `memory.enabled` is not a canonical config field.
 - `config` skill 的共享源位于 `shared/skills/config/SKILL.md`，并同步生成到 Codex 和 OpenCode adapter skill directories。
-- Local startup and closeout checks must verify actual global CLI/runtime file content, not only package versions, because stale same-version global runtime can rewrite `.claw/project.json` back to legacy nested config before repo-local repair flattens it again.
 
 ## 代码锚点
 

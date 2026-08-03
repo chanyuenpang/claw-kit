@@ -1,6 +1,6 @@
 {
   "name": "@veewo/claw-client",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "type": "module",
   "description": "Lightweight typed Node client for persistent claw sessions.",
   "keywords": [

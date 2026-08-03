@@ -24,10 +24,7 @@ Cross-host settings also need a durable owner without turning a plugin into a se
 - 简单 project-level toggles 使用扁平字段；旧的 nested `workflow.*`、`workflow.truthDispatch.mode` 与 `gitnexus.enabled` 只属于 legacy compatibility input。
 - project config repair 必须把 legacy shape 规范化为当前 canonical fields：`planning`、`externalPlanningSkill`、`goalMode`、`knowledgeWriter` 与 `gitnexus`。`truthDispatch` 不再是 current project schema owner。
 - `.claw/project-override.json` 是完整的 personal overlay，可以覆盖 `.claw/project.json` 的任意字段，而不是只服务某个临时特例；其中 workflow / GitNexus 类简单开关应使用与 team config 相同的扁平 canonical 字段。
-- user-global config is CLI-owned, stored outside repositories, and is the lowest editable layer: `global < .claw/project.json < .claw/project-override.json`. It is a complete normalized baseline, not a sparse override; reads and writes materialize its concrete defaults while excluding repository-owned `id` and `name`.
-- runtime project resolution deep-merges those three layers in that order. Arrays replace and explicit `null` remains a real override value.
-- `context.ts` may cache the effective result only while metadata for all three input files is unchanged; file creation, deletion, or metadata changes invalidate it.
-- Hosts may expose a global-settings UI only by routing through `claw config global get|set`; no host API or plugin-owned canonical config is allowed.
+- runtime project resolution deep-merges canonical `.claw/project.json` followed by `.claw/project-override.json`. Arrays replace and explicit `null` remains a real override value.
 - `.claw/project-override.json` 里的显式 `null` 是真实 override 值，不表示回退到 team config。
 - 只有 runtime project resolution 消费 `.claw/project-override.json`；canonical protocol repair 和 `claw init` 继续只拥有 team-facing `.claw/project.json`。
 - default vector indexing 可以保持 runtime-enabled，但 protocol repair 不能仅因默认值就把 `memory.embedding.store.vector.enabled = true` 写回 `.claw/project.json`；`store.vector` 只在显式 `enabled: false` 或 `extensionPath` 有意义时保留。
@@ -72,6 +69,12 @@ Cross-host settings also need a durable owner without turning a plugin into a se
 ### Made the global layer a complete defaulted baseline
 
 - The short-lived inherit/absent interpretation for global fields was removed. The global layer now resolves and persists a complete normalized configuration, while the higher-precedence team and personal layers continue to overlay it.
+
+<!-- dated: 2026-08-04 -->
+### Removed the cross-host user-global layer
+
+- The CLI-owned global file, `config global` commands, three-layer cache, and Cindy configuration editor were removed. Runtime configuration again has only the team declaration and personal overlay.
+- Cindy retains a zero-privilege `settingsHtml` explanation of those two files, rather than a configuration read/write channel.
 
 ## Search Terms
 

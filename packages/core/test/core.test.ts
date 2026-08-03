@@ -46,8 +46,6 @@ import {
   waitForKnowledgeFinalizationJobReady,
   runDailyMaintenance,
   writeKnowledgeFinalizationJob,
-  readGlobalConfig,
-  writeGlobalConfig,
   resolveContext,
   resolveProjectContext,
   resolveSessionBoundPlan,
@@ -3491,40 +3489,6 @@ test("resolveContext deep-merges project-override.json and preserves explicit nu
     datedSectionsToKeep: 6,
   });
   assert.equal(result.project.projectConfig?.memory?.embedding?.model, "Snowflake/snowflake-arctic-embed-m-v2.0");
-});
-
-test("resolveContext applies and invalidates the user-global configuration cache", () => {
-  const root = createFixture("global-config-cache");
-  const configRoot = createEmptyFixture("global-config-home");
-  const previous = process.env.CLAW_CONFIG_HOME;
-  process.env.CLAW_CONFIG_HOME = configRoot;
-  try {
-    const defaults = readGlobalConfig();
-    assert.equal(defaults.planning, true);
-    assert.equal(defaults.autoUpdate, false);
-    assert.equal(defaults.goalMode, true);
-    assert.equal(defaults.memory?.enabled, true);
-    assert.equal(defaults.knowledgeWriter?.reasoningEffort, "medium");
-    writeGlobalConfig({ planning: false, memory: { enabled: false }, var: { source: "global" } });
-    const saved = readGlobalConfig();
-    assert.equal(saved.autoUpdate, false);
-    assert.equal(saved.knowledgeWriter?.reasoningEffort, "medium");
-    fs.writeFileSync(path.join(root, ".claw", "project.json"), JSON.stringify({
-      version: corePackageVersion, id: "global-config-cache", name: "Global Config Cache", maxTasksToKeep: 9,
-    }), "utf8");
-    const first = resolveContext(root).project.projectConfig;
-    assert.equal(first?.planning, false);
-    assert.equal(first?.memory?.enabled, false);
-    assert.equal(first?.var?.source, "global");
-    writeGlobalConfig({ planning: true, memory: { enabled: true }, var: { source: "changed" } });
-    const second = resolveContext(root).project.projectConfig;
-    assert.equal(second?.planning, true);
-    assert.equal(second?.memory?.enabled, true);
-    assert.equal(second?.var?.source, "changed");
-  } finally {
-    if (previous === undefined) delete process.env.CLAW_CONFIG_HOME;
-    else process.env.CLAW_CONFIG_HOME = previous;
-  }
 });
 
 test("resolveContext migrates a legacy writer skill from project-override.json over canonical defaults", () => {

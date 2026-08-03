@@ -40,9 +40,6 @@ import {
   sweepExpiredSessionWorkflows,
   resolveSessionBoundPlan,
   resolveContext,
-  readGlobalConfig,
-  resolveGlobalConfigPath,
-  writeGlobalConfig,
   resolveSeedPlanTemplate,
   searchMemoryAsync,
   warmProjectMemoryEmbedding,
@@ -114,7 +111,6 @@ const TOP_LEVEL_COMMANDS: { name: string; summary: string }[] = [
   { name: "context [--task <name>]", summary: "Resolve project context, auto-initializing or correcting .claw state." },
   { name: "session clean [--expired]", summary: "Remove current or expired session workflow state." },
   { name: "check", summary: "Check and auto-correct .claw project protocol fields." },
-  { name: "config global <get|set>", summary: "Read or write the user-global claw configuration." },
   { name: "plan <subcommand> [options]", summary: "Plan lifecycle: create, start, edit, remove, wait, resume, sync, show, done." },
   { name: "codex driver", summary: "Return the versioned code-mode driver used by the Codex adapter." },
   { name: "template <subcommand> [options]", summary: "Plan template helpers such as validation." },
@@ -622,9 +618,6 @@ async function main(): Promise<void> {
           issueCountBefore: checkResult.issueCountBefore,
           fixedPaths: checkResult.fixedPaths,
         });
-        return;
-      case "config":
-        runConfig(args);
         return;
       case "plan":
         await runPlan(args, effectiveHost);
@@ -1157,28 +1150,6 @@ function readCindyKnowledgeClaimCaptureInput(): {
     throw new ClawError("PROJECT_CONFIG_INVALID", "Cindy knowledge claim report input requires session_id and turn_id.");
   }
   return { sessionId, turnId, taskConclusions };
-}
-
-function runConfig(args: string[]): void {
-  const scope = args.shift();
-  const operation = args.shift();
-  if (scope !== "global" || !operation || !["get", "set"].includes(operation)) {
-    throw new ClawError("PROJECT_CONFIG_INVALID", "Usage: claw config global <get|set> [--json <object>].");
-  }
-  if (operation === "get") {
-    assertNoRemainingArgs(args, "config global get");
-    printJson({ command: "config.global.get", path: resolveGlobalConfigPath(), config: readGlobalConfig() });
-    return;
-  }
-  const raw = readRequiredFlag(args, "--json");
-  assertNoRemainingArgs(args, "config global set");
-  let config: unknown;
-  try { config = JSON.parse(raw); } catch { throw new ClawError("PROJECT_CONFIG_INVALID", "--json must be valid JSON."); }
-  if (!config || typeof config !== "object" || Array.isArray(config)) {
-    throw new ClawError("PROJECT_CONFIG_INVALID", "Global configuration must be a JSON object.");
-  }
-  const configPath = writeGlobalConfig(config as ProjectConfig);
-  printJson({ command: "config.global.set", path: configPath, config: readGlobalConfig() });
 }
 
 function runKnowledge(args: string[]): void {
