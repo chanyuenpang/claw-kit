@@ -4,6 +4,21 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## Unreleased
 
+## [0.2.11] - 2026-08-04
+
+### Added
+
+- Added `memory.autoUpdate` and a dependent `doc-updater` stage that governs affected existing external documentation from frozen finalization paths without creating or standardizing documents.
+
+### Changed
+
+- Knowledge finalization now appends external-document governance after either the built-in Truth/ADR writer or configured external skills.
+- Cindy knowledge finalization now uses an internal session delegate template and generated assignment subplan while preserving Ghost claim and token-protected completion boundaries.
+
+### Fixed
+
+- Embedding index metadata tests now assert the effective normalized output dimensionality returned by project search and refresh operations.
+
 ## [0.2.7] - 2026-08-02
 
 ### Fixed

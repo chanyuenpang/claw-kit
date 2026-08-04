@@ -223,10 +223,10 @@ test("cli plan done emits host-specific subagent dispatch for Codex and Cindy an
   const cindyDispatch = cindyDone.knowledgeDispatch as JsonRecord;
   assert.equal(cindyDispatch.policy, "subagent");
   assert.match(String(cindyDispatch.prompt), /claw-kit Cindy Ghost tools/);
-  assert.match(String(cindyDispatch.prompt), /knowledge\.claim/);
-  assert.match(String(cindyDispatch.prompt), /knowledge\.done/);
+  assert.match(String(cindyDispatch.prompt), /resources[\\/]cindy-delegate-writer[\\/]TEMPLATE\.json/);
+  assert.match(String(cindyDispatch.prompt), /session plan/i);
+  assert.match(String(cindyDispatch.prompt), /assignment subplan/i);
   assert.doesNotMatch(String(cindyDispatch.prompt), /did-turn-end|Stop hook|knowledge wait/i);
-  assert.doesNotMatch(String(cindyDispatch.prompt), /claw plan create|template-file/i);
 
   const unsupportedRoot = createFixture("plan-done-subagent-unsupported");
   const opencodeEnv = {

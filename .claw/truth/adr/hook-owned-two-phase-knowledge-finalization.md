@@ -20,11 +20,11 @@
 - 当前保留 plan-done turn 的 final message，且不能按“通常重复”全局省略。Background 若未来实施内容去重，必须先让 finalization job 由显式、可持久化的 turn-stopped/coverage 状态触发而不依赖非空 message；所有 policy 仍需让 structured closeout 覆盖结果、失败与绕路、未验证项及遗留项，才可以只对确认没有内容增量的 final 停止持久化。
 - 上述 turn-level report 合同已经确定，但 2026-07-30 的工作仅完成只读调查，尚未修改产品代码。当前实现仍会在 `Stop` 时扫描同 turn 的成功 `task.done` 并写入 `task_conclusion`；实施状态与运行事实由 `../features/codex-knowledge-capture-boundary.md` 唯一拥有，不能把本 ADR 的目标合同表述为已交付行为。
 - Main agent 不决定 governance assignment、canonical owner 或 Truth→ADR 路由，也不等待 executor。Codex 终态 plan mutation 在 `executionPolicy = "subagent"` 时先创建 ready job，再返回结构化 `knowledgeDispatch`；main agent 直接启动一个 fresh native subagent 并结束回合。Stop 不再捕获、排队、启动或修改该 job，这项 launcher dispatch 也不恢复旧 `workflowGuidance` writer specialist 合同。
-- `knowledgeWriter.executionPolicy` 在支持多种 launcher 的 host 上选择执行方式：`background` 默认在 Stop 后启动独立 host agent，Codex 也支持 `subagent`。Cindy 当前只支持 Orca subagent，并在 host 边界把 `background | subagent` 都归一化为 `subagent`；这是能力约束，不是失败 fallback。所有 launcher 共享 immutable job、assignment builder、claim token 与 done protocol；Codex 使用内部 delegate plan，Cindy 使用 atomic executor，不把 host orchestration 强行统一成同一 plan workflow。
-- Delegate orchestration template 与 built-in governance contract 都是 Core 内部资源，不以 shared 或 adapter user skill 发布。未配置 `externalSkills` 时，claim 把隐藏 built-in contract 直接物化为六任务 assignment template；配置 external skills 时，claim 物化真实 skill assignments。source `plan.json`、相邻 report 与 finalize id 是 runtime materials，不是输入 schema；built-in contract 按内容解释材料，固定先维护 Truth、再维护 ADR并收敛一个 current owner。
+- `knowledgeWriter.executionPolicy` 在支持多种 launcher 的 host 上选择执行方式：`background` 默认在 Stop 后启动独立 host agent，Codex 也支持 `subagent`。Cindy 当前只支持 Orca subagent，并在 host 边界把 `background | subagent` 都归一化为 `subagent`；这是能力约束，不是失败 fallback。所有 launcher 共享 immutable job、assignment builder、claim token 与 done protocol；Codex 与 Cindy 分别消费 Core 内部的 shell-bridge 和 Ghost delegate template，但两者都以 session parent + generated assignment subplan 承载同一生命周期。
+- Delegate orchestration template、built-in governance contract 与 dependent `doc-updater` 都是 Core 内部资源，不以 shared 或 adapter user skill 发布。未配置 `externalSkills` 时，claim 把隐藏 built-in contract 物化为 Truth→ADR 固定 workflow；配置 external skills 时，claim 物化真实 skill assignments。若 job 冻结了有效 external-document paths，claim 在任一路径后追加 `doc-updater` assignment；built-in template 把它插在 ADR 与跨语料一致性复查之间。source `plan.json`、相邻 report 与 finalize id 是 runtime materials，不是输入 schema；built-in contract 按内容解释材料并收敛一个 current owner。
 - `knowledgeWriter.executionPolicy`、`externalSkills`、`model`、`reasoningEffort` 与 `datedSectionsToKeep` 在 job 创建时快照。内置与外部 assignment 使用不同 prompt builder：内置 prompt 直接表达治理合同，外部 prompt 明确调用 skill 并要求无人值守、无交互。model 与 reasoning 由对应 launcher 传给 executor；runner 不替换 job 指定配置。
-- Codex internal delegate template 先建立 session-scoped parent workflow，再以 `projectRoot + finalizeId` 直接 claim 已由终态 mutation 创建的 ready job；不运行 `knowledge wait`。claim 在授予 ownership token 前冻结父 transcript 中已有的 task conclusions，并返回动态 template；同一 executor 顺序完成 assignment subplan；`done` 只凭 token 写入匹配终态并清理动态 template。claim job 与 plan lifecycle 保持为两个明确状态机，避免 claim 内部直接创建 subplan的跨事务失败。Cindy atomic executor 不创建 plan/subplan，但遵守同一 claim/done ownership 边界。
-- Cindy 只使用相同 ready-job 时序，report source 由插件原子操作拥有：Orca Writer 通过 Host-forged workspace 调 `knowledge.claim(finalizeId)`；插件从 job 读取 originating session identity，等待对应 `knowledgeDispatch` tool result 已进入 Cindy SQLite，提取自 plan active boundary 起的成功 `task.done` 前置结论，并把它们作为 claim prepare 输入在同一 job lock 内写入相邻 report、标记 captured、最后签发 token。Lead 的 final response 与 `did-turn-end` 不创建、补写或解锁该 job；旧 Cindy background job 只保留诊断可见性，不再通过 errand 启动。
+- Codex internal delegate template 先建立 session-scoped parent workflow，再以 `projectRoot + finalizeId` 直接 claim 已由终态 mutation 创建的 ready job；不运行 `knowledge wait`。claim 在授予 ownership token 前冻结父 transcript 中已有的 task conclusions，并返回动态 template；同一 executor 顺序完成 assignment subplan；`done` 只凭 token 写入匹配终态并清理动态 template。claim job 与 plan lifecycle 保持为两个明确状态机，避免 claim 内部直接创建 subplan 的跨事务失败。Cindy 的专用 delegate template 通过 Ghost operations 建立同样的 parent/subplan/done 边界，而不是直接执行 returned prompts。
+- Cindy 只使用相同 ready-job 时序，report source 由插件原子操作拥有：Orca Writer 的 session delegate 通过 Host-forged workspace 调 `knowledge.claim(finalizeId)`；插件从 job 读取 originating session identity，等待对应 `knowledgeDispatch` tool result 已进入 Cindy SQLite，提取自 plan active boundary 起的成功 `task.done` 前置结论，并把它们作为 claim prepare 输入在同一 job lock 内写入相邻 report、标记 captured、最后签发 token。delegate 再用 claim 返回的 `templatePath` 创建 assignment subplan，并以 token 调用一次 `knowledge.done`。Lead 的 final response 与 `did-turn-end` 不创建、补写或解锁该 job；旧 Cindy background job 只保留诊断可见性，不再通过 errand 启动。
 - Codex background、OpenCode 与 Cindy subagent 复用这个 lifecycle owner；Codex `subagent` 是另一种 launcher。所有 executor 都使用同一内部 bootstrap，而不是为 background 与 subagent 维护两套 writer prompt 或 assignment 编排。
 - 内置 writer 成功后，worker 对该 pass 改动的 canonical Markdown 执行 dated-section governance 并记录裁剪结果；external skill 跳过治理快照与 dated compaction。两条路径随后都依次归一化 `.claw/truth/**/*.md` 编码、请求 completion recall refresh、向相邻 report追加一条以 `finalizeId` 幂等去重的 `knowledge_finalization` JSONL 结果，最后持久化 `succeeded` job。writer、适用的 governance、编码、refresh 或结果写回失败都进入既有重试路径；重复尝试不得伪造或追加第二条成功结果。Governance 的语义与取舍由 `bounded-truth-and-adr-evolution-governance.md` 拥有。
 - `succeeded` result 与 job 持久化后，finalizer 不调用 Git。Truth/ADR 写入与治理、成功记录和 index refresh 完成后，canonical 文档改动留在工作区，由正常开发流程审阅和提交。
@@ -51,6 +51,12 @@
 
 <!-- state: history -->
 ## Evolution history
+
+<!-- dated: 2026-08-04 -->
+### External-doc governance 与 Cindy delegate template
+
+- finalization job 现在在 `memory.autoUpdate` 有效时冻结 external doc paths，并把 dependent `doc-updater` assignment 追加到 built-in 或 external writer assignments 之后；它只治理冻结范围内已有文档。
+- Cindy 保留 atomic claim-time report capture 与 Ghost transport，但不再直接执行 prompts；专用 session delegate template 现在拥有 claim、generated assignment subplan 与 token-protected done。
 
 <!-- dated: 2026-08-01 -->
 ### Subagent terminal ready job 与 claim-time capture
@@ -98,6 +104,8 @@ The earlier completion gate applied to every writer session and the invocation i
 - `packages/core/src/knowledge-sidecar.ts`
 - `packages/core/src/knowledge-assignments.ts`
 - `packages/core/resources/delegate-writer/TEMPLATE.json`
+- `packages/core/resources/cindy-delegate-writer/TEMPLATE.json`
+- `packages/core/resources/doc-updater/`
 - `packages/core/resources/knowledge-writer/`
 - `packages/core/src/knowledge-governance.ts`
 - `packages/core/src/plan.ts`

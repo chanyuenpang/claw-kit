@@ -140,6 +140,7 @@ test("cli init writes maxTasksToKeep into project.json", () => {
     datedSectionsToKeep: 6,
   });
   assert.equal("truthDispatch" in projectConfig, false);
+  assert.equal((projectConfig.memory as JsonRecord).autoUpdate, true);
   assert.equal(
     ((projectConfig.memory as JsonRecord).embedding as JsonRecord).model,
     "jinaai/jina-embeddings-v2-base-zh",
@@ -320,6 +321,7 @@ test("cli context auto-corrects malformed existing .claw state", () => {
   assert.equal(projectConfig.autoUpdate, true);
   assert.deepEqual(projectConfig.memory, {
     enabled: true,
+    autoUpdate: true,
     externalDocPaths: [],
     embedding: {
       provider: "local",
@@ -516,6 +518,7 @@ test("cli check auto-corrects project.json into explicit protocol fields", () =>
   });
   assert.deepEqual(projectConfig.memory, {
     enabled: true,
+    autoUpdate: true,
     externalDocPaths: [],
     embedding: {
       provider: "local",

@@ -27,6 +27,7 @@ test("config guide content model covers every supported project.json field", asy
     "externalPlanningSkill",
     "knowledgeWriter.externalSkills",
     "memory.enabled",
+    "memory.autoUpdate",
     "memory.externalDocPaths",
     "memory.embedding",
     "gitnexus"

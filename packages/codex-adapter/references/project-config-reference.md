@@ -19,8 +19,8 @@ When the user asks to change claw configuration, use the `config` skill as the d
   - put it in `.claw/project.json`
 - Personal runtime preference
   - put it in `.claw/project-override.json`
-- Tune recall or embeddings
-  - change `memory.enabled`, `memory.externalDocPaths`, or `memory.embedding`
+- Tune recall, external-document governance, or embeddings
+  - change `memory.enabled`, `memory.autoUpdate`, `memory.externalDocPaths`, or `memory.embedding`
 - Add ordered external skills for knowledge finalization
   - set `knowledgeWriter.externalSkills`
 - Pair the workflow with GitNexus
@@ -61,6 +61,9 @@ When memory embedding or GitNexus is enabled, `claw context` adds optional `sear
   - optional ordered documentation-governance skill sequence replacing the default `["claw-kit:knowledge-writer"]`; every skill receives the same unattended prompt, and external skills need no claw session workflow
 - `memory.enabled`
   - master switch for project memory, task memory, embedding refresh, and `claw search`
+- `memory.autoUpdate`
+  - defaults to `true`; when external doc paths exist, finalization updates affected existing documents after the selected writer assignments
+  - never creates documents and is distinct from top-level `autoUpdate`
 - `memory.externalDocPaths`
   - markdown recall roots for `claw search`
 - `memory.embedding`

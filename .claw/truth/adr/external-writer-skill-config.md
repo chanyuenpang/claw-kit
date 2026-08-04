@@ -18,11 +18,13 @@ Use one project-level object:
 - `knowledgeWriter.reasoningEffort`: selects the supported worker effort and defaults to `medium`.
 - `knowledgeWriter.datedSectionsToKeep`: a non-negative integer snapshotted into each finalization job; the built-in retention decision and default are owned by `bounded-truth-and-adr-evolution-governance.md`.
 
-Background Stop/session-idle on supporting hosts and subagent terminal mutation both snapshot the effective configuration into `KnowledgeFinalizationJob.writer`. Cindy always takes the terminal-mutation path and snapshots the normalized `subagent` policy. All launchers share the immutable job, assignment builders, claim ownership and done protocol, but not one orchestration shape: Codex uses the internal delegate template and dynamic assignment subplan, while Cindy uses an atomic executor without a plan/subplan.
+Background Stop/session-idle on supporting hosts and subagent terminal mutation both snapshot the effective configuration into `KnowledgeFinalizationJob.writer`. Cindy always takes the terminal-mutation path and snapshots the normalized `subagent` policy. All launchers share the immutable job, assignment builders, claim ownership and done protocol. Codex and Cindy use separate internal delegate templates because one invokes the shell bridge and the other invokes Host-forged Ghost operations, but both templates own claim, dynamic assignment subplan, and terminal acknowledgement.
 
 Built-in and external assignments use distinct prompt builders. The built-in prompt directly supplies the hidden one-owner, Truth → ADR governance contract. An external assignment explicitly invokes its configured skill and adapts it to unattended, non-interactive execution: do not request review or confirmation, use task status to separate completed scope from pending or blocked intent, and skip ambiguous or unsafe writes. Both prompts prohibit references or links to transient supplied materials. External skills own their semantic governance and document structure; the finalizer does not inject the built-in retention or layout contract into them.
 
-Deterministic dated-section governance is built-in automation. The finalizer takes the canonical Markdown snapshot and applies the snapshotted `knowledgeWriter.datedSectionsToKeep` only for the built-in assignment; external skills skip both snapshotting and compaction. The old nested `knowledgeWriter.retention` shape is not supported. Codex internal delegate and its dynamic assignment subplan must complete with status `end.completed`, a non-empty task list, and every task `done`; Cindy atomic execution uses the ordered assignment results as its completion boundary.
+Deterministic dated-section governance is built-in automation. The finalizer takes the canonical Markdown snapshot and applies the snapshotted `knowledgeWriter.datedSectionsToKeep` only for the built-in assignment; external skills skip both snapshotting and compaction. The old nested `knowledgeWriter.retention` shape is not supported. Each host delegate and its dynamic assignment subplan must complete with status `end.completed`, a non-empty task list, and every task `done`.
+
+When the separately governed `memory.autoUpdate` setting is effective, claim appends the frozen `doc-updater` assignment after either the built-in assignment or all configured external skills. Selecting external skills replaces only the built-in Truth/ADR governance; it does not suppress existing-document governance. Both hosts include this appended task in the same assignment-subplan completion boundary.
 
 Legacy `externalTruthSkill` and `externalAdrSkill` may be normalized only as backward-compatible input. They are not current project schema owners and cannot create separate phase dispatch policies.
 
@@ -33,15 +35,21 @@ Legacy `externalTruthSkill` and `externalAdrSkill` may be normalized only as bac
 - Job snapshots make retries reproducible even if project configuration changes after job creation.
 - `model = null` keeps host defaults available; explicit model and reasoning effort are preserved by either launcher.
 - Default built-in behavior is one hidden governance assignment that reconciles Truth and ADR together.
+- Optional existing-document governance composes after either writer route rather than becoming another external-skill replacement branch.
 - Launcher policy can change executor visibility and timing without forking writer prompts, assignment ordering, claim ownership, or completion semantics.
 
 <!-- state: history -->
 ## Evolution history
 
+<!-- dated: 2026-08-04 -->
+### Cindy adopted template-owned assignment subplans
+
+Cindy previously executed immutable assignments directly after atomic claim. It now loads a dedicated internal session delegate template, creates the generated assignment template as a subplan, and preserves Ghost transport plus originating-report capture as the host-specific boundary.
+
 <!-- dated: 2026-08-01 -->
 ### Added Cindy subagent without universal plan orchestration
 
-The earlier decision described `subagent` as Codex-only and treated the delegate template plus assignment subplan as universal. Cindy added subagent execution through an atomic no-plan executor, then removed its unreliable errand/background launcher: both configured policy values now resolve to the atomic subagent path. The stable decision remains one configuration and one job/assignment/token protocol, while orchestration is explicitly host-owned.
+The earlier decision described `subagent` as Codex-only and treated the delegate template plus assignment subplan as universal. Cindy first added subagent execution through an atomic no-plan executor and removed its unreliable errand/background launcher. Both configured policy values still resolve to the Cindy subagent path, but Cindy now consumes a dedicated session delegate template and generated assignment subplan through Ghost operations. The stable decision remains one configuration and one job/assignment/token protocol, while transport details stay host-owned.
 
 <!-- dated: 2026-07-21 -->
 ### Replaced strict external-skill invocation and universal workflow assertion

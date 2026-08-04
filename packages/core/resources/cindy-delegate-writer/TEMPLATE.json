@@ -1,0 +1,49 @@
+{
+  "id": "internal-cindy-knowledge-delegate",
+  "version": "0.2.11",
+  "scope": "session",
+  "title": "internal Cindy knowledge delegate",
+  "status": "process.active",
+  "goal": {
+    "text": "Complete one dispatched Cindy knowledge finalization through its generated assignment subplan."
+  },
+  "requirements": {
+    "summary": "Claim the durable Cindy job, execute its frozen assignment template as a subplan, and persist one terminal result.",
+    "openQuestions": [],
+    "acceptanceCriteria": [
+      "The claim captures the originating Cindy task conclusions before issuing ownership.",
+      "The generated assignment template executes inside the session workflow.",
+      "The claimed job receives one matching terminal result."
+    ]
+  },
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Claim the ready Cindy knowledge job",
+      "detail": "Use the claw-kit Ghost knowledge.claim operation with the exact finalization id supplied by dispatch. Retain claimToken, templatePath, assignments, and immutable configuration. If the originating report has not yet persisted, retry the same claim; if claimed is false, do not edit project knowledge.",
+      "status": "pending"
+    },
+    {
+      "id": 2,
+      "title": "Execute the assignment subplan",
+      "detail": "Use the claw-kit Ghost subplan.create operation with this finalizer task name as parent, task id 2, and the templateFile returned by knowledge.claim.",
+      "status": "pending"
+    },
+    {
+      "id": 3,
+      "title": "Persist the terminal result",
+      "detail": "After a successful claim, use the claw-kit Ghost knowledge.done operation once with the exact finalization id and claimToken. Report succeeded only when the assignment subplan succeeded; otherwise report failed with the remaining error.",
+      "status": "pending"
+    }
+  ],
+  "references": [],
+  "rules": [
+    "Use only the supplied finalization id, claim token, and generated assignment template.",
+    "Do not modify the supplied plan or report materials.",
+    "Do not start another finalizer or delegate the assignments to another agent."
+  ],
+  "keyDecisions": [],
+  "retrospective": {
+    "summary": ""
+  }
+}

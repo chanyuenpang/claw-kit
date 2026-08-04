@@ -21,12 +21,15 @@ At the same time:
 
 - Preserve the project memory declaration fields in `.claw/project.json`:
   - `contextPaths`
+  - `memory.autoUpdate`
   - `memory.externalDocPaths`
 - Use flat `gitnexus` as the sole claw-side GitNexus integration switch.
 - Treat legacy `gitnexus.enabled` as a compatibility input for protocol repair, not as the canonical output shape.
 - Write those fields explicitly during `claw init`.
 - Keep `contextPaths` as a schema field but do not consume it in current Codex-first `claw-kit` flows.
 - Use `memory.externalDocPaths` to drive project memory indexing, including directory paths like `docs/`.
+- Default `memory.autoUpdate` to `true`, but make it effective only while memory is enabled and `memory.externalDocPaths` is non-empty. Freeze those effective paths into the finalization job so retries do not expand or shrink governance with later config edits.
+- Append one internal existing-document governance assignment after the selected built-in or external writer assignments. It may update only existing documents within the frozen paths and never creates a document; this decision is independent from the flat project-level `autoUpdate` version-update gate.
 - Make project-scope terminal plan finalization queue a GitNexus refresh only when `gitnexus` is `true`; `claw plan done` and `claw plan edit --status end.*` share this route.
 - Keep terminal dispatch authoritative and synchronous: persist the completed plan and knowledge-finalization job and construct `knowledgeDispatch` before queueing detached completion refresh. GitNexus readiness and embedding-backed project/task memory indexing must not block or invalidate that result.
 - When `gitnexus` is `true`, the detached completion-refresh worker owns CLI readiness, automatic `npm install -g @veewo/gitnexus` plus `gitnexus setup --cli-spec @veewo/gitnexus`, and analyze. Installation, setup, or analyze failures are reported in the worker status file rather than the foreground terminal protocol result.
@@ -44,6 +47,7 @@ At the same time:
 
 - Existing and future `.claw` projects can rely on stable canonical field names, with older nested input repaired into the flat shape.
 - Project creation no longer leaves schema interpretation implicit.
+- Projects can opt out of finalization-time external-document maintenance independently of both search indexing and version-update guidance; the immutable job snapshot keeps retry scope reproducible.
 - Codex is not forced to adopt `contextPaths` semantics it does not need.
 - terminal plan finalization returns its durable state and `knowledgeDispatch` without waiting for GitNexus readiness, while keeping `gitnexus` as the sole claw-side gate.
 - GitNexus readiness failures remain observable through completion-refresh status without turning a successfully persisted terminal plan into a protocol failure.

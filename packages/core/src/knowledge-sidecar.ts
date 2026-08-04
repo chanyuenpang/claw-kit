@@ -8,11 +8,16 @@ import { ensureUtf8Bom, hasUtf8BomPrefix } from "./text-encoding.js";
 import type { KnowledgeGovernanceResult } from "./knowledge-governance.js";
 import type { KnowledgeWriterConfig, ProjectContext } from "./types.js";
 
+export type KnowledgeDocUpdateSnapshot = {
+  externalDocPaths: string[];
+};
+
 export type KnowledgeReportTarget = {
   planPath: string;
   reportPath: string;
   finalizeId?: string;
   writer?: KnowledgeWriterConfig;
+  docUpdate?: KnowledgeDocUpdateSnapshot;
   endedAt?: string;
   /** Legacy field retained for registries written before every end.* boundary was eligible. */
   completedAt?: string;
@@ -44,6 +49,8 @@ export type KnowledgeFinalizationJob = {
   taskName: string;
   /** Optional only for jobs queued by versions released before writer config was snapshotted. */
   writer?: KnowledgeWriterConfig;
+  /** Frozen only when automatic external-document governance is effective for this job. */
+  docUpdate?: KnowledgeDocUpdateSnapshot;
   /**
    * Host that queued the job, so the finalization worker can pick the correct runner.
    * Older jobs queued without this field fall back to the Codex SDK runner.
@@ -217,6 +224,19 @@ export function resolveKnowledgeWriterForHost(
   };
 }
 
+function resolveKnowledgeDocUpdateSnapshot(
+  project: ProjectContext,
+): KnowledgeDocUpdateSnapshot | undefined {
+  const memory = project.projectConfig?.memory;
+  const externalDocPaths = memory?.externalDocPaths
+    ?.map((entry) => entry.trim())
+    .filter(Boolean) ?? [];
+  if (memory?.enabled === false || memory?.autoUpdate === false || externalDocPaths.length === 0) {
+    return undefined;
+  }
+  return { externalDocPaths };
+}
+
 export function tryRegisterKnowledgePlan(input: {
   project: ProjectContext;
   sessionId?: string;
@@ -268,6 +288,7 @@ export function tryEndKnowledgePlan(input: {
   }
   try {
     const writer = resolveKnowledgeWriterForHost(input.writer, input.host);
+    const docUpdate = resolveKnowledgeDocUpdateSnapshot(input.project);
     const endedPlanPath = toProjectRelativePlanPath(input.project, input.endedPlanPath);
     const reportPath = toProjectRelativeReportPath(
       input.project,
@@ -306,6 +327,7 @@ export function tryEndKnowledgePlan(input: {
             reportPath,
             finalizeId,
             ...(writer ? { writer } : {}),
+            ...(docUpdate ? { docUpdate } : {}),
             endedAt: input.endedAt,
           },
         };
@@ -328,6 +350,7 @@ export function tryEndKnowledgePlan(input: {
           projectRoot: input.project.projectRoot,
           taskName: taskNameFromPlanPath(endedPlanPath),
           writer,
+          ...(docUpdate ? { docUpdate } : {}),
           host: input.host ?? null,
           planPath: absolutePlanPath,
           reportPath: absoluteReportPath,
@@ -458,6 +481,9 @@ export function tryCaptureKnowledgeStop(input: {
                 ?? input.project.projectConfig?.knowledgeWriter?.datedSectionsToKeep
                 ?? 6,
             },
+            ...(registry.pendingTurnOwner.docUpdate
+              ? { docUpdate: registry.pendingTurnOwner.docUpdate }
+              : {}),
             host: input.host ?? null,
             planPath,
             reportPath,

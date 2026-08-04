@@ -169,6 +169,7 @@ function normalizeProjectConfig(raw: unknown, projectRoot: string): ProjectConfi
     contextPaths: normalizeStringArray(source?.contextPaths),
     memory: {
       enabled: typeof sourceMemory?.enabled === "boolean" ? sourceMemory.enabled : true,
+      autoUpdate: readBooleanConfig(sourceMemory?.autoUpdate, true),
       externalDocPaths: normalizeStringArray(sourceMemory?.externalDocPaths),
       embedding: normalizeMemoryEmbeddingConfig(sourceMemory?.embedding),
     },
@@ -254,6 +255,7 @@ function validateProjectConfig(raw: unknown, issues: ProjectProtocolIssue[]): vo
   const memory = requireObject(config, "memory", issues);
   if (memory) {
     requireBoolean(memory, "enabled", issues, "memory.enabled");
+    requireBoolean(memory, "autoUpdate", issues, "memory.autoUpdate");
     requireStringArray(memory, "externalDocPaths", issues, "memory.externalDocPaths");
     requireNullableEmbeddingConfig(memory, "embedding", issues, "memory.embedding");
   }

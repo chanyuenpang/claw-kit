@@ -15,7 +15,17 @@ const knowledgeWriterDest = path.join(packageDir, "dist", "src", "resources", "k
 fs.rmSync(knowledgeWriterDest, { recursive: true, force: true });
 fs.cpSync(knowledgeWriterSource, knowledgeWriterDest, { recursive: true });
 
+const docUpdaterSource = path.join(packageDir, "resources", "doc-updater");
+const docUpdaterDest = path.join(packageDir, "dist", "src", "resources", "doc-updater");
+fs.rmSync(docUpdaterDest, { recursive: true, force: true });
+fs.cpSync(docUpdaterSource, docUpdaterDest, { recursive: true });
+
 const delegateWriterSource = path.join(packageDir, "resources", "delegate-writer");
 const delegateWriterDest = path.join(packageDir, "dist", "src", "resources", "delegate-writer");
 fs.rmSync(delegateWriterDest, { recursive: true, force: true });
 fs.cpSync(delegateWriterSource, delegateWriterDest, { recursive: true });
+
+const cindyDelegateWriterSource = path.join(packageDir, "resources", "cindy-delegate-writer");
+const cindyDelegateWriterDest = path.join(packageDir, "dist", "src", "resources", "cindy-delegate-writer");
+fs.rmSync(cindyDelegateWriterDest, { recursive: true, force: true });
+fs.cpSync(cindyDelegateWriterSource, cindyDelegateWriterDest, { recursive: true });

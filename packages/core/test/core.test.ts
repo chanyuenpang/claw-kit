@@ -16,6 +16,7 @@ import {
   createPlanRef,
   focusOwnersPath,
   focusTransitionsDirectory,
+  cindyKnowledgeDelegateTemplatePath,
   knowledgeDelegateTemplatePath,
   buildMemoryIndex,
   createSubplan,
@@ -140,6 +141,16 @@ test("workflow guidance json config is emitted with the build output", () => {
     JSON.parse(fs.readFileSync(distConfigPath, "utf-8")),
     JSON.parse(fs.readFileSync(sourceConfigPath, "utf-8")),
   );
+  for (const relativePath of ["SKILL.md", "TEMPLATE.json"]) {
+    const distResource = new URL(`../src/resources/doc-updater/${relativePath}`, import.meta.url);
+    const sourceResource = new URL(`../../resources/doc-updater/${relativePath}`, import.meta.url);
+    assert.equal(fs.existsSync(distResource), true);
+    assert.equal(fs.readFileSync(distResource, "utf-8"), fs.readFileSync(sourceResource, "utf-8"));
+  }
+  assert.equal(
+    fs.existsSync(new URL("../src/resources/knowledge-writer/agents/openai.yaml", import.meta.url)),
+    false,
+  );
 });
 
 test("context resolves nested cwd to project .claw", () => {
@@ -155,7 +166,7 @@ test("context resolves nested cwd to project .claw", () => {
 
 test("knowledge sidecar derives adjacent report names and keeps one report owner per Stop", () => {
   const root = createEmptyFixture("knowledge-sidecar");
-  initProject({ cwd: root, projectName: "Knowledge Sidecar" });
+  initProject({ cwd: root, projectName: "Knowledge Sidecar", externalDocPaths: ["docs"] });
   const project = resolveProjectContext(root);
   const taskDir = path.join(project.tasksDir, "2026-07-30", "demo-task");
   fs.mkdirSync(taskDir, { recursive: true });
@@ -183,6 +194,10 @@ test("knowledge sidecar derives adjacent report names and keeps one report owner
     resumedPlanPath: rootPlanPath,
     completedAt: "2026-07-17T00:00:00.000Z",
   }).ok, true);
+  project.projectConfig!.memory = {
+    ...project.projectConfig!.memory,
+    externalDocPaths: ["changed-after-end"],
+  };
 
   const firstStop = tryCaptureKnowledgeStop({
     project,
@@ -204,6 +219,7 @@ test("knowledge sidecar derives adjacent report names and keeps one report owner
   assert.equal(job.reportPath, path.join(taskDir, "design.report"));
   assert.equal(job.status, "queued");
   assert.equal(job.taskName, "demo-task");
+  assert.deepEqual(job.docUpdate, { externalDocPaths: ["docs"] });
   assert.equal(job.attempts, 0);
   assert.deepEqual(listRetryableKnowledgeFinalizationJobs(project), [firstStop.jobPath]);
   const claimed = claimKnowledgeFinalizationJob(firstStop.jobPath!);
@@ -261,7 +277,7 @@ test("knowledge sidecar failures stay fail-open for plan lifecycle callers", () 
 
 test("subagent plan end creates a ready job while Stop stays out of the lifecycle", () => {
   const root = createEmptyFixture("knowledge-subagent-ready-job");
-  initProject({ cwd: root, projectName: "Knowledge Subagent Ready Job" });
+  initProject({ cwd: root, projectName: "Knowledge Subagent Ready Job", externalDocPaths: ["docs"] });
   const project = resolveProjectContext(root);
   const taskDir = path.join(project.tasksDir, "demo");
   const planPath = path.join(taskDir, "plan.json");
@@ -323,6 +339,7 @@ test("subagent plan end creates a ready job while Stop stays out of the lifecycl
   assert.equal(queued.status, "queued");
   assert.equal(queued.attempts, 0);
   assert.equal(queued.host, "codex");
+  assert.deepEqual(queued.docUpdate, { externalDocPaths: ["docs"] });
   assert.equal(queued.reportCapture?.status, "pending");
   const registry = JSON.parse(
     fs.readFileSync(knowledgeSessionRegistryPath(project, "thread-subagent-ready"), "utf-8"),
@@ -383,6 +400,7 @@ test("Cindy coerces a configured background writer to the subagent lifecycle", (
   assert.ok(ended.jobPath);
   const queued = readKnowledgeFinalizationJob(ended.jobPath!);
   assert.equal(queued.writer?.executionPolicy, "subagent");
+  assert.equal(queued.docUpdate, undefined);
   assert.equal(queued.reportCapture?.mode, "claim");
   assert.equal(queued.status, "queued");
   assert.equal(tryCaptureKnowledgeStop({
@@ -412,6 +430,7 @@ test("knowledge claim owns execution and delegate prompt routing", () => {
     planPath: path.join(taskDir, "plan.json"),
     reportPath: path.join(taskDir, "plan.report"),
     writer: { executionPolicy: "background", externalSkills: [] },
+    docUpdate: { externalDocPaths: ["docs", ".agents/skills"] },
     status: "queued",
     attempts: 0,
     queuedAt: new Date().toISOString(),
@@ -427,6 +446,9 @@ test("knowledge claim owns execution and delegate prompt routing", () => {
 
     const builtinAssignments = buildKnowledgeWriterAssignments(waited.job);
     assert.equal(builtinAssignments[0]?.kind, "builtin");
+    assert.equal(builtinAssignments[1]?.kind, "doc_updater");
+    assert.match(builtinAssignments[1]!.prompt, /doc-updater[\\/]SKILL\.md/);
+    assert.match(builtinAssignments[1]!.prompt, /\.agents\/skills/);
     assert.doesNotMatch(builtinAssignments[0]!.prompt, /invoke the .* skill/i);
     assert.doesNotMatch(builtinAssignments[0]!.prompt, /request confirmation or review/i);
     assert.match(builtinAssignments[0]!.prompt, /keep at most 6 complete evolution sections/i);
@@ -459,11 +481,17 @@ test("knowledge claim owns execution and delegate prompt routing", () => {
     assert.equal(atomicDispatch.model, "test-model");
     assert.equal(atomicDispatch.reasoningEffort, "high");
     assert.match(atomicDispatch.prompt, /claw-kit Cindy Ghost tools/);
-    assert.match(atomicDispatch.prompt, /knowledge\.claim/);
-    assert.match(atomicDispatch.prompt, /knowledge\.done/);
+    assert.match(atomicDispatch.prompt, /cindy-delegate-writer[\\/]TEMPLATE\.json/);
+    assert.match(atomicDispatch.prompt, /session plan/i);
     assert.doesNotMatch(atomicDispatch.prompt, /did-turn-end|Stop hook|knowledge wait/i);
-    assert.match(atomicDispatch.prompt, /execute each returned assignment prompt yourself/i);
-    assert.doesNotMatch(atomicDispatch.prompt, /claw plan create|template-file/i);
+    assert.doesNotMatch(atomicDispatch.prompt, /execute each returned assignment prompt yourself/i);
+    const cindyDelegateTemplate = JSON.parse(
+      fs.readFileSync(cindyKnowledgeDelegateTemplatePath(), "utf-8"),
+    ) as { scope: string; tasks: Array<{ id: number; detail?: string }> };
+    assert.equal(cindyDelegateTemplate.scope, "session");
+    assert.match(cindyDelegateTemplate.tasks.find((task) => task.id === 1)?.detail ?? "", /knowledge\.claim/);
+    assert.match(cindyDelegateTemplate.tasks.find((task) => task.id === 2)?.detail ?? "", /subplan\.create/);
+    assert.match(cindyDelegateTemplate.tasks.find((task) => task.id === 3)?.detail ?? "", /knowledge\.done/);
     const delegateTemplate = JSON.parse(
       fs.readFileSync(knowledgeDelegateTemplatePath(), "utf-8"),
     ) as { tasks: Array<{ id: number; detail?: string }> };
@@ -489,18 +517,27 @@ test("knowledge claim owns execution and delegate prompt routing", () => {
       version: corePackageVersion,
     });
     assert.equal(builtinTemplate.scope, "session");
-    assert.equal(builtinTemplate.tasks.length, 6);
+    assert.equal(builtinTemplate.tasks.length, 7);
+    assert.equal(builtinTemplate.tasks[5]?.title, "Update affected external documentation");
+    assert.equal(builtinTemplate.tasks[6]?.title, "Run the cross-corpus consistency review");
     assert.ok(builtinTemplate.references?.every((reference) => path.isAbsolute(reference.path)));
 
     const externalAssignments = buildKnowledgeWriterAssignments({
       ...waited.job,
       writer: { externalSkills: ["custom-one", "custom-two"] },
     });
-    assert.equal(externalAssignments.length, 2);
+    assert.equal(externalAssignments.length, 3);
     assert.equal(externalAssignments[0]?.kind, "external_skill");
     assert.match(externalAssignments[0]!.prompt, /invoke the custom-one skill/i);
     assert.match(externalAssignments[0]!.prompt, /run unattended and non-interactively/i);
     assert.match(externalAssignments[0]!.prompt, /do not ask questions/i);
+    assert.equal(externalAssignments[2]?.kind, "doc_updater");
+    const externalTemplate = buildKnowledgeAssignmentTemplate({
+      assignments: externalAssignments,
+      finalizeId,
+      version: corePackageVersion,
+    });
+    assert.equal(externalTemplate.tasks[2]?.title, "Update existing external documentation");
 
     const claimed = claimKnowledgeFinalizationJob(jobPath);
     assert.equal(claimed?.status, "running");
@@ -625,6 +662,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
     };
     memory: {
       enabled: boolean;
+      autoUpdate: boolean;
       externalDocPaths: string[];
       embedding: {
         provider: string;
@@ -667,6 +705,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
     },
     memory: {
       enabled: true,
+      autoUpdate: true,
       externalDocPaths: ["docs/", "README.md"],
       embedding: {
         provider: "local",
@@ -4182,6 +4221,7 @@ test("memory search defaults to project scope and task scope prioritizes active 
       local: {
         modelCacheDir: path.join(root, ".model-cache"),
       },
+      outputDimensionality: 384,
     });
     assert.ok(projectSearch.results.some((item) => item.sourcePath.endsWith(path.join(".claw", "memory.md"))));
     assert.ok(projectIndex.sources.some((item) => item.endsWith(path.join(".claw", "truth", "shared.md"))));
@@ -5083,6 +5123,7 @@ test("project memory refresh generates local embedding metadata and vector rows 
       local: {
         modelCacheDir: path.join(root, ".model-cache"),
       },
+      outputDimensionality: 384,
     });
     assert.deepEqual(result.vectorIndex, {
       enabled: true,
@@ -5934,6 +5975,7 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
     };
     memory: {
       enabled: boolean;
+      autoUpdate: boolean;
       externalDocPaths: string[];
       embedding: {
         provider: string;
@@ -5967,6 +6009,7 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
   });
   assert.equal("truthDispatch" in projectConfig, false);
   assert.equal(projectConfig.memory.enabled, true);
+  assert.equal(projectConfig.memory.autoUpdate, true);
   assert.deepEqual(projectConfig.memory.externalDocPaths, ["docs/"]);
   assert.deepEqual(projectConfig.memory.embedding, {
     provider: "openai",

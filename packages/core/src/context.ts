@@ -267,6 +267,7 @@ function normalizeProjectConfig(projectConfig: ProjectConfig): ProjectConfig {
     contextPaths: [...(projectConfig.contextPaths ?? [])],
     memory: {
       enabled: projectConfig.memory?.enabled !== false,
+      autoUpdate: projectConfig.memory?.autoUpdate !== false,
       externalDocPaths: [...(projectConfig.memory?.externalDocPaths ?? [])],
       embedding: normalizeMemoryEmbeddingConfig(projectConfig.memory?.embedding),
     },

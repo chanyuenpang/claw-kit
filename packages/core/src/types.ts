@@ -39,6 +39,7 @@ export type ProjectConfig = {
   contextPaths?: string[];
   memory?: {
     enabled?: boolean;
+    autoUpdate?: boolean;
     externalDocPaths?: string[];
     embedding?: MemoryEmbeddingConfig | null;
   };

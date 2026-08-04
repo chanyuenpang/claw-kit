@@ -41,6 +41,7 @@ Use it when the team should share the behavior:
 - `autoUpdate`
 - `externalPlanningSkill`
 - `contextPaths`
+- `memory.autoUpdate`
 - `memory.externalDocPaths`
 - `memory.embedding`
 - `goalMode`
@@ -119,6 +120,7 @@ Keep nested shape only where the field actually has substructure:
     "datedSectionsToKeep": 6
   },
   "memory": {
+    "autoUpdate": true,
     "externalDocPaths": ["docs/"],
     "embedding": {
       "provider": "local",
@@ -135,6 +137,8 @@ The default local model is `jinaai/jina-embeddings-v2-base-zh` at 768 dimensions
 - `Snowflake/snowflake-arctic-embed-xs` at 384 dimensions for explicit low-resource or English-oriented use. It is not recommended for Chinese-heavy recall because the claw search comparison found substantial Chinese semantic-recall regressions.
 
 `knowledgeWriter.executionPolicy` accepts `background` or `subagent` and defaults to `background`; `subagent` is supported only by Codex. The finalizer runs an ordered documentation-governance assignment sequence. `knowledgeWriter.externalSkills` replaces the built-in default assignment. Custom skills receive an explicit unattended, non-interactive invocation envelope; an empty or absent list uses the hidden built-in governance contract with its own direct wording. This is configuration fallback, not failure fallback. `model = null` uses the host default model. `reasoningEffort` accepts `minimal`, `low`, `medium`, `high`, or `xhigh`. `datedSectionsToKeep` is a non-negative integer; it caps only complete evolution sections marked by `<!-- dated: YYYY-MM-DD -->` in each canonical document changed by the built-in writer. It does not limit current prose by length or age.
+
+`memory.autoUpdate` defaults to `true` and governs configured `memory.externalDocPaths` as one corpus after the selected knowledge-writer assignments. It has no effect when that path list is empty. This is distinct from top-level `autoUpdate`, which controls claw-kit version update guidance.
 
 ## Safe editing flow
 

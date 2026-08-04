@@ -74,7 +74,7 @@ Together, the canonical config plus local override model gives longer-running pr
   - `background` is the cross-host default and launches a detached host agent after Stop capture where that host supports the background lifecycle
   - `subagent` asks the active Codex main agent to dispatch a native collaboration subagent before the final response; unsupported hosts reject this policy before plan completion
   - Cindy currently normalizes both configured values to `subagent`: the active Lead dispatches its Orca `knowledge-finalizer` Worker before the final response, and Cindy does not use Stop capture or errand execution for knowledge finalization
-  - Codex uses the packaged internal delegate template; Cindy's Orca Worker uses the same atomic wait/claim/ordered-assignment/done protocol directly
+  - Codex and Cindy both use packaged session delegate templates and the generated assignment subplan; Cindy performs claim and done through Ghost operations
   - `externalSkills` is an ordered documentation-governance skill sequence; each custom skill receives an explicit unattended, non-interactive invocation prompt in a separate sequential assignment
   - use an empty array for claw-kit's hidden built-in consistency-aware governance contract, whose direct prompt is distinct from custom skill invocation wording
 
@@ -85,6 +85,9 @@ Together, the canonical config plus local override model gives longer-running pr
 - `memory.enabled`
   - master switch for project memory, task memory, embedding refresh, and `claw search`
   - default: `true`
+- `memory.autoUpdate`
+  - updates affected existing documents from `memory.externalDocPaths` after the selected knowledge-writer assignments
+  - default: `true`; it has no effect when `externalDocPaths` is empty and never creates documents
 - `memory.externalDocPaths`
   - markdown-oriented recall sources for `claw search`
 - `memory.embedding`
@@ -140,6 +143,7 @@ Older nested inputs should be rewritten into the flat fields above during protoc
   "contextPaths": [],
   "memory": {
     "enabled": true,
+    "autoUpdate": true,
     "externalDocPaths": [],
     "embedding": {
       "provider": "local",
@@ -256,6 +260,7 @@ With this config, planning-enabled default plans still start in `process.discuss
 {
   "memory": {
     "enabled": true,
+    "autoUpdate": true,
     "externalDocPaths": [
       "docs/",
       "architecture/"
@@ -369,6 +374,7 @@ With this config, planning-enabled default plans still start in `process.discuss
 
 - `claw search` is recall over project docs, not code search
 - `memory.enabled = false` disables project memory, task memory, embedding refresh, and `claw search`
+- `memory.autoUpdate` is distinct from top-level `autoUpdate`; it governs existing external documentation after knowledge finalization
 - `claw search index --refresh` expects `memory.embedding` to be configured
 - local embedding defaults to `jinaai/jina-embeddings-v2-base-zh` at 768 dimensions
 - `Snowflake/snowflake-arctic-embed-m-v2.0` remains a 768-dimensional higher-resource alternative

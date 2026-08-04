@@ -6,6 +6,7 @@
 ## Canonical Fields
 
 - `contextPaths`
+- `memory.autoUpdate`
 - `memory.externalDocPaths`
 - `memory.embedding`
 - `planning`
@@ -26,6 +27,7 @@
   - individual files
   - directory paths like `docs/`
 - External memory paths only index `.md` files from the configured path set.
+- `memory.autoUpdate` defaults to `true`. When memory is enabled and `memory.externalDocPaths` is non-empty, each project finalization job freezes the effective path list and governs affected existing documents after the configured knowledge-writer assignments; disabling it or leaving the path list empty omits that stage. This documentation gate is distinct from the flat project-level `autoUpdate` version-update gate and never authorizes creating documents.
 - `memory.embedding` now accepts the OpenClaw-compatible subset used by `openclaw-dev`: `provider` (`openai|local`), `model`, `remote.apiKeyEnvVar`, `remote.baseUrl`, `local.modelPath`, `local.modelCacheDir`, `outputDimensionality`, `store.vector.enabled`, and `store.vector.extensionPath`.
 - canonical `.claw/project.json` carries simple project-level workflow toggles as flat fields: `planning`, `autoUpdate`, `externalPlanningSkill`, `goalMode`, and `gitnexus`; combined writer configuration is owned by the nested `knowledgeWriter` object.
 - `autoUpdate` is an explicit project-level boolean gate with default `true`; projects can set it to `false` when version drift should stay informational only.

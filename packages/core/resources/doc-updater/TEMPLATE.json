@@ -1,0 +1,98 @@
+{
+  "id": "doc-updater",
+  "version": "0.2.11",
+  "scope": "session",
+  "title": "doc-updater",
+  "status": "process.active",
+  "goal": {
+    "text": "Update affected existing external documentation from the finalized project knowledge state."
+  },
+  "requirements": {
+    "summary": "Use the supplied finalization evidence and resulting canonical knowledge to repair stale or conflicting claims in the frozen external documentation corpus without creating documents or imposing a canonical format.",
+    "openQuestions": [],
+    "acceptanceCriteria": [
+      "Only existing documents inside the frozen external documentation paths are eligible for modification.",
+      "Current-state claims are checked against current implementation and resulting canonical knowledge without rewriting requirements, future design, or history as completed behavior.",
+      "Affected documents retain their own language, structure, purpose, and unrelated user edits.",
+      "Focused semantic and exhaustive identifier searches find no unresolved stale or competing current claim in the affected external documentation corpus."
+    ]
+  },
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Identify affected existing documentation",
+      "detail": "Read this subplan's parent assignment detail to recover the supplied finalization materials and frozen external documentation paths, then inspect the resulting canonical knowledge state. Enumerate only existing documents inside those paths. Use claw search to find documents affected by the completed conclusions, then use exact identifiers, config keys, commands, paths, and other distinguishing terms to find plausible matches that top-k recall could omit. Do not modify documents yet.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "default": {
+            "mergeMode": "override",
+            "summary": "Affected existing documents and plausible competing claims are identified; resolve their semantics and freshness next.",
+            "nextsteps": [
+              "Carry forward the evidence location and affected passage for each candidate.",
+              "Treat absence of an existing affected document as a valid no-edit outcome rather than creating a new document."
+            ],
+            "nextTaskId": 2
+          }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Resolve document semantics and freshness",
+      "detail": "Classify each affected passage as current-state documentation, historical evidence, a requirement, future design, tutorial guidance, or an example. Check material current-state claims against current implementation anchors, relevant working-tree changes, and the resulting canonical Truth and ADR state. Decide whether each passage must be updated, narrowed, time-bound, or retained unchanged. Do not mechanically overwrite an intentional requirement, future design, or useful history because its wording differs from current implementation.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "default": {
+            "mergeMode": "override",
+            "summary": "Affected passages are classified and freshness-qualified; update only the safely resolved existing documents.",
+            "nextsteps": [
+              "Preserve each document's existing purpose and local conventions.",
+              "Retain unresolved ambiguity as an explicit no-edit reason instead of guessing."
+            ],
+            "nextTaskId": 3
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "Update existing external documents",
+      "detail": "Apply the freshness-qualified changes to existing eligible documents only. Preserve their language, structure, formatting, scope, and unrelated user edits. Do not create, move, rename, or standardize documents, and do not require owner metadata or canonical Truth/ADR formatting. Keep useful historical or future-facing content when it is accurately scoped.",
+      "status": "pending",
+      "guidance": {
+        "onDone": {
+          "default": {
+            "mergeMode": "override",
+            "summary": "Eligible existing documents are updated without changing corpus shape; verify the affected corpus now.",
+            "nextsteps": [
+              "Re-run both semantic and exhaustive identifier searches.",
+              "Check that edited current-state wording agrees with implementation and canonical knowledge."
+            ],
+            "nextTaskId": 4
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Verify external documentation consistency",
+      "detail": "Re-run focused claw search and exhaustive identifier search across the frozen external documentation paths. Verify that affected current-state claims no longer conflict with current implementation or resulting canonical knowledge, that historical and future-facing content remains correctly scoped, and that no file outside the frozen paths was modified. Return changed paths, evidence-backed no-edit reasons, and any conflict that could not be resolved safely.",
+      "status": "pending"
+    }
+  ],
+  "references": [],
+  "rules": [
+    "Modify only existing documents inside the frozen external documentation paths; never create, move, or rename a document.",
+    "Do not assume an owner, frontmatter schema, section layout, language, or canonical document format.",
+    "Distinguish current state from requirements, future design, examples, and history before editing.",
+    "Current implementation and resulting canonical knowledge qualify current-state claims, but neither justifies erasing accurately scoped intent or history.",
+    "Preserve unrelated user edits and local document conventions.",
+    "Do not report an unresolved material current-state conflict as governed successfully."
+  ],
+  "keyDecisions": [],
+  "retrospective": {
+    "summary": ""
+  }
+}

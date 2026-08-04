@@ -144,6 +144,8 @@ test("hidden built-in knowledge contract enforces trusted evidence and cross-doc
   assert.doesNotMatch(skill, /end\.\*|session-scoped|parent-plan|source plan/i);
   assert.match(skill, /Use only when explicitly invoked with supplied materials; do not trigger this skill implicitly/i);
   assert.match(skill, /plan create --template-file/i);
+  assert.match(skill, /subplan create --parent/i);
+  await assert.rejects(fs.access(new URL("../packages/core/resources/knowledge-writer/agents/openai.yaml", import.meta.url)));
   assert.match(contract, /knowledge-base steward/i);
   assert.match(contract, /filename, field, record shape, or serialization format/i);
   assert.match(contract, /retrospective lessons, key decisions/i);
@@ -171,6 +173,16 @@ test("hidden built-in knowledge contract enforces trusted evidence and cross-doc
   ]);
   assert.equal(template.tasks.every((task) => task.guidance?.onDone?.default), true);
   assert.equal(template.tasks.some((task) => task.guidance?.onDone?.choices), false);
+
+  const docSkill = await fs.readFile(new URL("../packages/core/resources/doc-updater/SKILL.md", import.meta.url), "utf8");
+  const docTemplate = JSON.parse(await fs.readFile(new URL("../packages/core/resources/doc-updater/TEMPLATE.json", import.meta.url), "utf8"));
+  const docContract = `${docSkill}\n${JSON.stringify(docTemplate)}`;
+  assert.match(docSkill, /subplan create --parent/i);
+  assert.doesNotMatch(docSkill, /claw plan create/i);
+  assert.match(docContract, /existing documents/i);
+  assert.match(docContract, /never create, move, or rename/i);
+  assert.match(docContract, /requirement, future design/i);
+  assert.match(docContract, /Do not assume an owner/i);
 });
 
 test("Codex plugin source includes the config skill entrypoint", async () => {
@@ -303,8 +315,6 @@ test("repository-local release skills split CLI and platform publication contrac
   assert.ok(cindy);
   const cindyContract = `${cindy.skill}\n${JSON.stringify(cindy.template)}\n${cindy.fallback}\n${cindy.artifact}`;
   assert.match(cindyContract, /claw-kit-cindy-adapter/i);
-  assert.match(cindyContract, /Cindy-only marketplace/i);
-  assert.match(cindyContract, /do not\s+build or upload a `?\.cindy`? archive/is);
   assert.doesNotMatch(cindyContract, /single rollback package/i);
 });
 

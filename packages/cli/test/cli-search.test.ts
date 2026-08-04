@@ -268,6 +268,7 @@ test("cli search index refresh returns project index metadata and embedding conf
     remote: {
       apiKeyEnvVar: "OPENAI_API_KEY",
     },
+    outputDimensionality: 768,
   });
 });
 
@@ -323,6 +324,7 @@ test("cli search index refresh returns local vector index metadata and only inde
     local: {
       modelCacheDir: path.join(root, ".model-cache"),
     },
+    outputDimensionality: 384,
   });
   assert.deepEqual(result.vectorIndex, {
     enabled: true,

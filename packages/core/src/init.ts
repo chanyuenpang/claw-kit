@@ -93,6 +93,7 @@ export function initProject(input: InitProjectInput): InitProjectResult {
     contextPaths: [...(input.contextPaths ?? [])],
     memory: {
       enabled: true,
+      autoUpdate: true,
       externalDocPaths: [...(input.externalDocPaths ?? [])],
       embedding: {
         provider: "local",

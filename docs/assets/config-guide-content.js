@@ -108,6 +108,14 @@ export const configGuideContent = {
         example: `"memory": { "enabled": false }`
       },
       {
+        id: "memory.autoUpdate",
+        group: "Memory",
+        title: "Automatic external-document governance",
+        summary: "Updates affected existing external documents after knowledge finalization.",
+        detail: "Defaults to true and only takes effect when externalDocPaths is non-empty. It never creates documents and is distinct from top-level autoUpdate.",
+        example: `"memory": { "autoUpdate": true, "externalDocPaths": ["docs/"] }`
+      },
+      {
         id: "memory.externalDocPaths",
         group: "Memory",
         title: "Docs that recall should search",
@@ -237,6 +245,14 @@ export const configGuideContent = {
         example: `"memory": { "enabled": false }`
       },
       {
+        id: "memory.autoUpdate",
+        group: "记忆",
+        title: "自动治理外部文档",
+        summary: "在知识沉淀后更新受影响的已有 external docs。",
+        detail: "默认开启，仅在 externalDocPaths 非空时生效；它不会新建文档，并且不同于顶层控制版本更新的 autoUpdate。",
+        example: `"memory": { "autoUpdate": true, "externalDocPaths": ["docs/"] }`
+      },
+      {
         id: "memory.externalDocPaths",
         group: "记忆",
         title: "让 recall 搜哪些文档",
@@ -285,6 +301,7 @@ export const configGuideContent = {
         body: `{
   "memory": {
     "enabled": true,
+    "autoUpdate": true,
     "externalDocPaths": ["docs/", "architecture/"],
     "embedding": {
       "provider": "local",

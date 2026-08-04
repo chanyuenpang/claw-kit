@@ -199,7 +199,7 @@ test("daemon preserves post-commit host actions in the typed command envelope", 
   await daemon.close();
 });
 
-test("Cindy daemon sessions coerce background config to the atomic no-Stop knowledge dispatch", async () => {
+test("Cindy daemon sessions coerce background config to the templated no-Stop knowledge dispatch", async () => {
   const runtimeRoot = fixture("cindy-atomic-dispatch-runtime");
   const projectRoot = fixture("cindy-atomic-dispatch-project");
   initProject({ cwd: projectRoot, projectName: "Cindy Atomic Dispatch", planning: false });
@@ -223,7 +223,9 @@ test("Cindy daemon sessions coerce background config to the atomic no-Stop knowl
     });
     const dispatch = done.knowledgeDispatch as { policy?: string; prompt?: string } | undefined;
     assert.equal(dispatch?.policy, "subagent");
-    assert.match(String(dispatch?.prompt), /knowledge\.claim/);
+    assert.match(String(dispatch?.prompt), /resources[\\/]cindy-delegate-writer[\\/]TEMPLATE\.json/);
+    assert.match(String(dispatch?.prompt), /session plan/i);
+    assert.match(String(dispatch?.prompt), /assignment subplan/i);
     assert.match(String(dispatch?.prompt), /claw-kit.*Ghost/is);
     assert.doesNotMatch(String(dispatch?.prompt), /did-turn-end|Stop hook|knowledge wait/i);
   } finally {
