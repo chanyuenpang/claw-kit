@@ -38,6 +38,7 @@ The repository also needs one maintainer entry that can execute the accepted rel
 - `0.1.40` 曾在同一 closeout 中验证安装烟测：`npm view @veewo/claw-core version = 0.1.40`、`npm view @veewo/claw version = 0.1.40`、`claw --version = 0.1.40`，以及 `npm list -g @veewo/claw --depth=0` 解析到 `@veewo/claw@0.1.40`；当前协议将 CLI 与 plugin 安装验收移到发布后的独立 `update` workflow
 - publish 输出里出现 `bin[claw]` normalization warning 时，closeout 仍以 `npm view @veewo/claw version`、`npm view @veewo/claw bin --json` 和实际 CLI/安装解析结果为准，不把该 warning 本身当作失败或回滚证据
 - registry verification must cover both metadata and retrieval/install paths: `version` / `dist-tags.latest`, `bin` / `dependencies`, `dist.tarball` / `dist.integrity` / `dist.shasum`, plus an actual `npm pack` or install smoke before treating a publish as fully propagated
+- When a state-changing npm or GitHub publication request returns a timeout or transport error, query the artifact's authoritative external state before retrying. Retry only when the intended package version, tag, or Release is still absent; if it already landed, continue verification instead of issuing a duplicate publication attempt.
 - 如果 `npm view @veewo/claw@<version> dist.tarball dist.integrity dist.shasum --json` 已返回新 tarball metadata，但本机 `npm pack` / install 仍报 `ETARGET`，先运行 `npm cache clean --force` 再重试；不要把本地 cache stale 误判为 publish 回滚
 - 正式 publish 完成后，release 本身继续直接核对 registry `dist-tags.latest` / `version`、GitHub source/tag、committed marketplace payload 与 clean-worktree 状态；global CLI、active Codex identity、marketplace source/cache 和 restart/new-task loaded locator 属于随后独立 `update` workflow 的完成证据
 - 如果 release round 包含 `workflowGuidance` wording 或 config 变更，release closeout 验证 source config、built `dist/workflow-guidance.config.json`、committed marketplace payload 与 registry package 携带同一合同；随后独立 `update` closeout 再验证 installed global CLI guidance output 与 official Codex plugin cache payload。`0.1.49` 曾在同一次历史 closeout 中验证关键句 `When dispatching a subagent, each entry is a required structured contract whose fields must be honored directly.`，不构成当前 release 必须刷新本机安装面的规则
@@ -63,6 +64,7 @@ The repository also needs one maintainer entry that can execute the accepted rel
 - 正式发布不再被“PATH 上必须已有 npm CLI”这个宿主前提卡死，release automation 在更受限的 managed environment 里仍然可行
 - Windows 本地安装路径保持可重复执行，不需要依赖真实发布来完成日常使用
 - npm registry 的短暂传播延迟被正式纳入 closeout 协议，因此“publish 已成功但第一次本地安装仍拿到旧版本”不再会被误判成 release 回滚或安装脚本损坏
+- Ambiguous transport failures no longer authorize blind publication retries; observing external state first prevents duplicate tags, Releases, or package writes while preserving a recoverable retry when nothing landed.
 - 安装烟测成为独立 `update` closeout 的必选项，避免 registry 成功被误写为操作者机器已经采用新版本
 - canonical release gate 固定验证 committed Codex marketplace payload 与隔离 template smoke；完整 plugin bundle tests 和三个 npm 包的 dry-run 由本轮具体风险决定是否追加
 - Template compatibility now advances as one release surface: source templates are updated once before materialization, while the release gate remains side-effect free and exposes exact stale owners for correction.

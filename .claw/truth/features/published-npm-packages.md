@@ -4,7 +4,7 @@
 ## 当前行为
 
 - `claw-kit` 发布三个 npm 包：`@veewo/claw-core` 提供核心 `.claw` harness 语义，`@veewo/claw-client` 提供 client API，`@veewo/claw` 提供 CLI 并精确依赖同版本的 Core 与 Client。
-- 当前本文已有完成证据的最新 npm 发布版本线为 `0.2.9`，tag 与公开 GitHub Release `v0.2.9` 指向 release commit `11f1294`。npm registry 的 `dist-tags.latest` 已将 Core、Client 与 CLI 都标记为 `0.2.9`；CLI metadata 仍提供 `claw` bin，并精确依赖同版本的 Core 与 Client。Cindy `0.2.9.1` 是独立 marketplace-source release（`vcindy-0.2.9.1`）；Codex 本轮仅对齐版本，未发布或安装。
+- 当前本文已有完成证据的最新 npm 发布版本线为 `0.2.11`，tag 与公开 GitHub Release `v0.2.11` 指向 release commit `78faeec`。npm registry 的 metadata、`dist-tags.latest`、shasum 与真实取包均确认 Core、Client 和 CLI 为 `0.2.11`；CLI 仍提供 `claw` bin，并精确依赖同版本的 Core 与 Client。Cindy `0.2.11.1` 与 Codex `0.2.11.1` 是随后独立发布的 marketplace artifact，不属于 npm 完成边界，也不证明本机安装已刷新。
 - CLI release version bump 覆盖 root、lockfile、Core、Client、CLI、各 adapter baseline、内部 `@veewo/claw-core` / `@veewo/claw-client` 依赖和 Codex plugin manifest。root `package.json.version` 同时是全部 plugin `TEMPLATE.json` 与 built-in default template 的版本权威。
 - 模板版本维护顺序固定为 `npm run sync:template-versions`、`npm run sync:shared-skills`、`npm run check:template-versions`。`npm run verify:release` 与 `npm run publish:release` 复用只读版本断言，禁止发布时隐式修复 stale template。
 - owner 直接从 `main` 交付。发布前必须提交并推送有价值内容，使本地 `main` 精确等于 `origin/main` 且 `git status --porcelain` 为空；不得用 stash、临时分支或 PR 绕过门禁。
@@ -46,14 +46,6 @@
 ## 演进记录
 
 <!-- dated: 2026-07-29 -->
-### 0.1.98 发布与维护者安装刷新完成态
-
-- `0.1.98` 已从 release commit `f9df29e` 发布；`@veewo/claw-core`、`@veewo/claw`、GitHub Release `v0.1.98` 和 committed Codex marketplace manifest `0.1.98+codex.20260729055754` 均属于该完成边界。完成时 `main` 与 `origin/main` 一致且工作树干净。
-- 该 revision 的完成报告记录 core `154/154`、CLI `130/130`、Codex plugin `18/18` 与 OpenCode plugin `11/11` 通过；这些都是版本化发布证据，不构成后续版本的固定验证矩阵。
-- 发布后的维护者安装已从 published npm 和 official GitHub marketplace 刷新：全局 `claw --version` 为 `0.1.98`，official `claw-kit@claw-kit` 已启用且 `claw-kit@claw-kit-local` 已禁用，official source manifest 与 active cache manifest 均匹配 `0.1.98+codex.20260729055754`。
-- 本次记录不把运行时采用写为完成：当前进程仍需重启并新建任务，才能证明新会话实际加载该版本技能。
-
-<!-- dated: 2026-07-29 -->
 ### 0.1.99 发布与维护者安装刷新完成态
 
 - `0.1.99` 已从 release commit `39e8199` 发布；`@veewo/claw-core`、`@veewo/claw`、GitHub Release `v0.1.99` 和 committed Codex marketplace manifest `0.1.99+codex.20260729082500` 均属于该完成边界。完成时 `main` 与 `origin/main` 一致且工作树干净。
@@ -87,3 +79,10 @@
 
 - `@veewo/claw-core`、`@veewo/claw-client` 与 `@veewo/claw` `0.2.9` 已发布并可从 npm 获取；`v0.2.9` 与 GitHub Release 指向 `11f1294`。
 - Cindy marketplace source `0.2.9.1` 已在其独立仓库的 `main` 提交并打上 `vcindy-0.2.9.1`。该 source release 不包含 Cindy 安装；Codex 仅版本对齐而未发布。
+
+<!-- dated: 2026-08-04 -->
+### 0.2.11 CLI/Core/Client 与独立 marketplace releases
+
+- `@veewo/claw-core`、`@veewo/claw-client` 与 `@veewo/claw` `0.2.11` 已从 `78faeec` 发布并可真实获取；`v0.2.11` 与非 draft、非 prerelease GitHub Release 指向同一 commit。
+- Cindy marketplace `0.2.11.1` 从独立仓库 commit `b194613` 以 `vcindy-0.2.11.1` 发布，不含 `.cindy` 或 GitHub Release。Codex marketplace `0.2.11.1` 从主仓库 commit `653a06c` 以 `vcodex-0.2.11.1` 和零资产 GitHub Release 发布。
+- 三条 source/artifact completion 均不包含本机 CLI、Cindy 或 Codex 安装刷新；该采用证明仍属于另行授权的 update workflow。

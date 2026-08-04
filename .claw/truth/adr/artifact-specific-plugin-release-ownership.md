@@ -23,6 +23,10 @@ selection because a newer release can belong to another artifact family.
 - Give the CLI, Codex, Cindy, OpenClaw, and OpenCode artifact families separate
   repository-maintainer release skills with independent templates and
   fallbacks.
+- When one authorized request names multiple artifact families, keep each family
+  in its own parent task or subplan with its own version, exact-source commit,
+  tag/release shape, and terminal acceptance gate. One family's success or
+  version baseline does not complete or select another family.
 - Route testing, local packaging, and dry-run work to `test-claw-kit` unless
   publication authority is explicit.
 - Give Cindy release ownership to `release-cindy-plugin`: verify the committed
@@ -47,6 +51,8 @@ selection because a newer release can belong to another artifact family.
 
 - Maintainers get a smaller, artifact-scoped release contract and cannot
   accidentally treat a platform request as CLI release authority.
+- A multi-family release can be coordinated in one parent plan without merging
+  artifact ownership, terminal evidence, or failure handling.
 - Cindy release completion is proven by the tagged marketplace source and
   manifest version, while local installation remains an opt-in follow-up
   workflow.

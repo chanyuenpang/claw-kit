@@ -13,7 +13,7 @@ Accepted working truth for the current repository-maintainer release surfaces an
 - `release-cindy-plugin` is scoped to the checked-out `packages/cindy-adapter` independent marketplace repository, its `main`, and the `vcindy-*` tag. It never publishes npm packages or changes another adapter version.
 - A Cindy release verifies the committed marketplace source tree and the tagged `ghost.json`; it does not build or upload a `.cindy` archive and does not create a GitHub Release. Cindy packages the marketplace source locally during install or update.
 - The marketplace entry points at `packages/cindy-adapter/plugin`; a changed plugin requires a new manifest version before release, and the source/tag must reach `origin/main` before the tag is pushed.
-- The Cindy `update` skill refreshes `chanyuenpang/claw-kit` as an unpinned custom Git marketplace source, then uses Cindy's confirmation-gated install/update action. It must not download or open a `.cindy` archive.
+- The Cindy `update` skill refreshes `chanyuenpang/claw-kit-cindy-adapter` as an unpinned custom Git marketplace source, then uses Cindy's confirmation-gated install/update action. It must not download or open a `.cindy` archive.
 - Cindy update refreshes the published global CLI first and the marketplace plugin second. Success requires the installed `claw-kit` plugin at the selected version to be enabled and running; refreshed source/cache presence alone is not installation proof.
 
 ## Maintenance anchors
@@ -28,6 +28,12 @@ Accepted working truth for the current repository-maintainer release surfaces an
 
 <!-- state: history -->
 ## Evolution history
+
+<!-- dated: 2026-08-04 -->
+### 0.2.11 independent artifact-family release set
+
+- CLI/Core/Client `0.2.11` used npm plus `v0.2.11`; Cindy `0.2.11.1` used its independent marketplace `main` plus `vcindy-0.2.11.1` without an archive or GitHub Release; Codex `0.2.11.1` used the committed main-repository marketplace plus `vcodex-0.2.11.1` and a zero-asset GitHub Release.
+- Each line reached its own clean pushed exact-source boundary. None of these release proofs asserts that a local CLI or installed plugin was refreshed or loaded.
 
 <!-- dated: 2026-08-02 -->
 ### Cindy 0.2.8.2 moved distribution to the repository marketplace
