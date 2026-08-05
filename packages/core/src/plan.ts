@@ -90,7 +90,15 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
   const templateProjectRoot = findProjectRoot(input.cwd) ?? undefined;
   const templateFile = input.templateFile ? path.resolve(input.cwd, input.templateFile) : undefined;
   const scope = input.scope ?? await resolveTemplateCreationScope(templateProjectRoot, input.templateName, templateFile);
-  const project = resolveWorkflowProjectContext(input.cwd, input.ownerSessionKey, scope);
+  let project: TaskContext["project"];
+  try {
+    project = resolveWorkflowProjectContext(input.cwd, input.ownerSessionKey, scope);
+  } catch (error) {
+    if (!(error instanceof ClawError) || error.code !== "CLAW_DIR_NOT_FOUND") {
+      throw error;
+    }
+    throw buildPlanCreateScopeGuidance(input.cwd, error);
+  }
   const taskName = deriveTaskName(input);
   const createdTask = !findTaskDirectory(project, taskName);
   const task = ensureTaskContext(project, taskName);
@@ -215,6 +223,37 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
     }),
     events: [event],
   };
+}
+
+function buildPlanCreateScopeGuidance(cwd: string, cause: ClawError): ClawError {
+  const workdir = path.resolve(cwd);
+  return new ClawError(
+    "PLAN_CREATE_SCOPE_DECISION_REQUIRED",
+    "plan create found no .claw project. Choose project or session scope from the user's intent and current workspace context before continuing.",
+    {
+      cwd: workdir,
+      prompt: [
+        "No .claw project is available in this workdir.",
+        "Decide the route from the user's intent and the workspace context; do not infer it from the directory path alone.",
+        "Choose project scope only when this is the intended project root and claw state should persist there. Run `claw init`, then repeat `claw plan create <title>`.",
+        "Choose session scope when this is isolated or scratch work, or when project state must not be created here. Repeat `claw plan create <title> --scope session`.",
+        "If the available evidence does not establish the intent, ask the user before running `claw init`.",
+      ].join(" "),
+      routeOptions: [
+        {
+          scope: "project",
+          when: "The workdir is the intended project root and should retain claw project state.",
+          nextCommands: ["claw init", "claw plan create <title>"],
+        },
+        {
+          scope: "session",
+          when: "The workdir is isolated or scratch work, or must not receive claw project state.",
+          nextCommands: ["claw plan create <title> --scope session"],
+        },
+      ],
+      cause: cause.message,
+    },
+  );
 }
 
 export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & { events: PlanEvent[] }> {

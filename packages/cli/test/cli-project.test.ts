@@ -199,7 +199,7 @@ test("cli context omits healthy matching version information", () => {
   assert.equal("projectConfig" in (result.project as JsonRecord), false);
 });
 
-test("cli context runs the daily maintenance pass once for project and session runtime", () => {
+test("cli context honors project maintenance already started by plan-create prewarm while cleaning a new session runtime", () => {
   const root = createFixture("context-daily-maintenance");
   const sessionRuntime = path.join(root, "session-runtime");
   runClaw(["init", "--name", "Context Daily Maintenance"], root);
@@ -223,8 +223,8 @@ test("cli context runs the daily maintenance pass once for project and session r
   fs.writeFileSync(path.join(staleSession, "session.json"), JSON.stringify({ version: 1, scope: "session", originCwd: root, createdAt: "2020-01-01T00:00:00.000Z", updatedAt: "2020-01-01T00:00:00.000Z" }), "utf-8");
 
   runClaw(["context"], root, { CLAW_SESSION_RUNTIME_DIR: sessionRuntime });
-  assert.equal(fs.existsSync(tmpFile), false);
-  assert.equal(fs.existsSync(datedTaskDir), false);
+  assert.equal(fs.existsSync(tmpFile), true);
+  assert.equal(fs.existsSync(datedTaskDir), true);
   assert.equal(fs.existsSync(staleSession), false);
   assert.equal(fs.existsSync(path.join(root, ".claw", "runtime", "maintenance.json")), true);
   assert.equal(fs.existsSync(path.join(sessionRuntime, ".maintenance.json")), true);

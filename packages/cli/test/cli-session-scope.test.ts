@@ -241,3 +241,46 @@ test("cli plan create with an exact template file auto-selects session scope out
   assert.equal(fs.existsSync(path.join(root, ".claw")), false);
   assert.match(String(result.planPath), /\.claw[\\/]runtime[\\/]sessions[\\/]/);
 });
+
+test("plan create asks the agent to select scope without classifying an uninitialized workdir", () => {
+  const scratchCwd = createFixture("plan-create-scope-decision");
+  const projectLikeCwd = fs.mkdtempSync(path.join(thisDir, "..", "..", "..", "..", "claw-project-scope-decision-"));
+  temporaryDirectories.add(projectLikeCwd);
+
+  for (const cwd of [scratchCwd, projectLikeCwd]) {
+    const result = runClawExpectFailure(["plan", "create", "Scope decision task"], cwd);
+    const error = result.error as JsonRecord;
+    const details = error.details as JsonRecord;
+
+    assert.equal(error.code, "PLAN_CREATE_SCOPE_DECISION_REQUIRED");
+    assert.equal(typeof details.prompt, "string");
+    assert.match(String(details.prompt), /do not infer it from the directory path alone/i);
+    assert.equal("workdirKind" in details, false);
+    assert.equal("recommendedScope" in details, false);
+    assert.deepEqual(details.routeOptions, [
+      {
+        scope: "project",
+        when: "The workdir is the intended project root and should retain claw project state.",
+        nextCommands: ["claw init", "claw plan create <title>"],
+      },
+      {
+        scope: "session",
+        when: "The workdir is isolated or scratch work, or must not receive claw project state.",
+        nextCommands: ["claw plan create <title> --scope session"],
+      },
+    ]);
+    assert.equal(fs.existsSync(path.join(cwd, ".claw")), false);
+  }
+});
+
+test("plan create performs project preparation without SessionStart state", () => {
+  const root = createFixture("plan-create-prewarm-reuse");
+  const sessionId = "thread-plan-create-prewarm-reuse";
+  const env = { CODEX_THREAD_ID: sessionId };
+  runClaw(["init", "--name", "Plan Create Prewarm Reuse"], root, env);
+
+  const created = runClaw(["plan", "create", "Prepare without hook"], root, env);
+
+  assert.equal(created.command, "plan.create");
+  assert.equal(fs.existsSync(path.join(root, ".claw", "runtime", "session-prewarm")), false);
+});

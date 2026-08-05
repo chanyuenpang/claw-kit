@@ -1378,6 +1378,7 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
           "plan create requires a title. Use `claw plan create \"<title>\"` or `claw plan create --title \"<title>\"`.",
         );
       }
+      await preparePlanCreateWorkflow(process.cwd(), resolveOwnerSessionKey(), effectiveHost, scope);
       const result = await writePlan({
         cwd: process.cwd(),
         scope,
@@ -2460,6 +2461,38 @@ function completeKnowledgeFinalizationJob(
   printJson({ ok: true, completed: true, alreadyDone: terminal.alreadyDone, finalizeId: running.finalizeId });
 }
 
+async function preparePlanCreateWorkflow(
+  cwd: string,
+  ownerSessionKey: string | null,
+  effectiveHost: ClawHost | undefined,
+  requestedScope: "session" | undefined,
+): Promise<void> {
+  if (requestedScope === "session" || resolveSessionWorkflowContext(ownerSessionKey ?? undefined)) {
+    return;
+  }
+  const project = tryResolveHookProject(cwd);
+  if (!project) {
+    return;
+  }
+  await prepareProjectWorkflow(cwd, ownerSessionKey, effectiveHost, project);
+}
+
+async function prepareProjectWorkflow(
+  cwd: string,
+  ownerSessionKey: string | null,
+  effectiveHost: ClawHost | undefined,
+  project = tryResolveHookProject(cwd),
+): Promise<Record<string, unknown> | null> {
+  const sessionProject = resolveSessionWorkflowContext(ownerSessionKey ?? undefined);
+  if (sessionProject) {
+    return runContextCommand([], cwd, ownerSessionKey, effectiveHost);
+  }
+  if (!project) {
+    return null;
+  }
+  return runContextCommand([], cwd, ownerSessionKey, effectiveHost);
+}
+
 function resolveKnowledgeJobProject(
   jobPath: string,
   job: KnowledgeFinalizationJob,
@@ -2792,7 +2825,10 @@ async function runSessionStartHook(effectiveHost: ClawHost | undefined): Promise
   }
 
   try {
-    const context = await runContextCommand([], hookCwd, ownerSessionKey, effectiveHost);
+    const context = await prepareProjectWorkflow(hookCwd, ownerSessionKey, effectiveHost);
+    if (!context) {
+      return;
+    }
     const contextProject = asJsonRecord(context.project);
     const retryableJobs = effectiveHost !== "cindy" && contextProject?.scope !== "session" && !context.error
       ? listRetryableKnowledgeFinalizationJobs(resolveProjectContext(hookCwd), { excludeHosts: ["cindy"] })
