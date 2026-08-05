@@ -6,14 +6,23 @@ const thisDir = path.dirname(fileURLToPath(import.meta.url));
 const defaultRepoRoot = path.resolve(thisDir, "..");
 
 export const SHARED_SKILL_NAMES = ["planning", "config", "create-claw-skill"];
+export const SHARED_DOCUMENTATION_NAMES = ["claw-kit-doc"];
 let syncQueue = Promise.resolve();
 const LOCK_RETRY_MS = 50;
 const LOCK_TIMEOUT_MS = 10_000;
 
-function targetPathsForSkill(repoRoot, skillName) {
+function defaultSkillAdapterDirs(repoRoot) {
   return [
-    path.join(repoRoot, "packages", "codex-adapter", "skills", skillName, "SKILL.md"),
-    path.join(repoRoot, "packages", "opencode-adapter", "skills", skillName, "SKILL.md"),
+    path.join(repoRoot, "packages", "codex-adapter"),
+    path.join(repoRoot, "packages", "opencode-adapter"),
+  ];
+}
+
+function defaultDocumentationAdapterDirs(repoRoot) {
+  return [
+    ...defaultSkillAdapterDirs(repoRoot),
+    path.join(repoRoot, "packages", "cindy-adapter", "plugin"),
+    path.join(repoRoot, "packages", "openclaw-adapter"),
   ];
 }
 
@@ -95,6 +104,27 @@ async function copySkillDirectory(sourceDir, targetDir, skillName) {
   await copyRecursive(sourceDir, targetDir);
 }
 
+async function copyPlainDirectory(sourceDir, targetDir) {
+  await fs.rm(targetDir, { recursive: true, force: true });
+  await fs.mkdir(targetDir, { recursive: true });
+
+  async function copyRecursive(currentSourceDir, currentTargetDir) {
+    const entries = await fs.readdir(currentSourceDir, { withFileTypes: true });
+    for (const entry of entries) {
+      const sourcePath = path.join(currentSourceDir, entry.name);
+      const targetPath = path.join(currentTargetDir, entry.name);
+      if (entry.isDirectory()) {
+        await fs.mkdir(targetPath, { recursive: true });
+        await copyRecursive(sourcePath, targetPath);
+      } else {
+        await writeFileAtomically(targetPath, await fs.readFile(sourcePath, "utf8"));
+      }
+    }
+  }
+
+  await copyRecursive(sourceDir, targetDir);
+}
+
 async function listFiles(rootDir, currentDir = rootDir) {
   const files = [];
   const entries = await fs.readdir(currentDir, { withFileTypes: true });
@@ -114,17 +144,19 @@ async function expectedSkillFile(sourceDir, relativePath, skillName) {
   return relativePath === "SKILL.md" ? injectBanner(content, skillName) : content;
 }
 
-export async function verifySharedSkillsSynced({
-  repoRoot = defaultRepoRoot,
-  skillNames = SHARED_SKILL_NAMES,
-  adapterDirs = [path.join(repoRoot, "packages", "codex-adapter"), path.join(repoRoot, "packages", "opencode-adapter")],
-} = {}) {
+export async function verifySharedSkillsSynced(options = {}) {
+  const repoRoot = options.repoRoot ?? defaultRepoRoot;
+  const skillNames = options.skillNames ?? SHARED_SKILL_NAMES;
+  const adapterDirs = options.adapterDirs;
+  const documentationNames = options.documentationNames
+    ?? (options.skillNames === undefined ? SHARED_DOCUMENTATION_NAMES : []);
   const problems = [];
 
   for (const skillName of skillNames) {
     const sourceDir = path.join(repoRoot, "shared", "skills", skillName);
     const expectedFiles = await listFiles(sourceDir);
-    for (const adapterDir of adapterDirs) {
+    const targetAdapterDirs = adapterDirs ?? defaultSkillAdapterDirs(repoRoot);
+    for (const adapterDir of targetAdapterDirs) {
       const targetDir = path.join(adapterDir, "skills", skillName);
       let actualFiles = [];
       try {
@@ -146,6 +178,46 @@ export async function verifySharedSkillsSynced({
     }
   }
 
+  for (const documentationName of documentationNames) {
+    const sourceDir = path.join(repoRoot, "shared", "docs", documentationName);
+    const expectedFiles = await listFiles(sourceDir);
+    const targetAdapterDirs = adapterDirs ?? defaultDocumentationAdapterDirs(repoRoot);
+    for (const adapterDir of targetAdapterDirs) {
+      const targetDir = path.join(adapterDir, "skills", documentationName, "references");
+      let actualFiles = [];
+      try {
+        actualFiles = await listFiles(targetDir);
+      } catch (error) {
+        if (error?.code !== "ENOENT") throw error;
+      }
+      if (JSON.stringify(actualFiles) !== JSON.stringify(expectedFiles)) {
+        problems.push(`${path.relative(repoRoot, targetDir)} has an incomplete documentation file set`);
+        continue;
+      }
+      for (const relativePath of expectedFiles) {
+        const expected = await fs.readFile(path.join(sourceDir, relativePath), "utf8");
+        const actual = await fs.readFile(path.join(targetDir, relativePath), "utf8");
+        if (actual !== expected) {
+          problems.push(`${path.relative(repoRoot, path.join(targetDir, relativePath))} is out of sync`);
+        }
+      }
+    }
+  }
+
+  if (!adapterDirs && documentationNames.includes("claw-kit-doc")) {
+    const sharedKnowledgeFormat = await fs.readFile(
+      path.join(repoRoot, "shared", "docs", "claw-kit-doc", "knowledge-format.md"),
+      "utf8",
+    );
+    const writerKnowledgeFormat = await fs.readFile(
+      path.join(repoRoot, "packages", "core", "resources", "knowledge-writer", "knowledge-format.md"),
+      "utf8",
+    );
+    if (writerKnowledgeFormat !== sharedKnowledgeFormat) {
+      problems.push("packages/core/resources/knowledge-writer/knowledge-format.md is out of sync");
+    }
+  }
+
   return { ok: problems.length === 0, problems };
 }
 
@@ -157,20 +229,20 @@ export async function assertSharedSkillsSynced(options = {}) {
   return result;
 }
 
-async function syncSharedSkillsImpl({
-  repoRoot = defaultRepoRoot,
-  skillNames = SHARED_SKILL_NAMES,
-  adapterDirs,
-} = {}) {
+async function syncSharedSkillsImpl(options = {}) {
+  const repoRoot = options.repoRoot ?? defaultRepoRoot;
+  const skillNames = options.skillNames ?? SHARED_SKILL_NAMES;
+  const adapterDirs = options.adapterDirs;
+  const documentationNames = options.documentationNames
+    ?? (options.skillNames === undefined ? SHARED_DOCUMENTATION_NAMES : []);
   return withRepoLock(repoRoot, async () => {
     const synced = [];
 
     for (const skillName of skillNames) {
       const sourceDir = path.join(repoRoot, "shared", "skills", skillName);
       const sourcePath = path.join(sourceDir, "SKILL.md");
-      const targetPaths = adapterDirs
-        ? adapterDirs.map((adapterDir) => path.join(adapterDir, "skills", skillName, "SKILL.md"))
-        : targetPathsForSkill(repoRoot, skillName);
+      const targetAdapterDirs = adapterDirs ?? defaultSkillAdapterDirs(repoRoot);
+      const targetPaths = targetAdapterDirs.map((adapterDir) => path.join(adapterDir, "skills", skillName, "SKILL.md"));
 
       for (const targetPath of targetPaths) {
         await copySkillDirectory(sourceDir, path.dirname(targetPath), skillName);
@@ -181,6 +253,41 @@ async function syncSharedSkillsImpl({
         sourcePath,
         targetPaths,
       });
+    }
+
+    for (const documentationName of documentationNames) {
+      const sourceDir = path.join(repoRoot, "shared", "docs", documentationName);
+      const targetAdapterDirs = adapterDirs ?? defaultDocumentationAdapterDirs(repoRoot);
+      const targetPaths = targetAdapterDirs.map((adapterDir) => (
+        path.join(adapterDir, "skills", documentationName, "references")
+      ));
+      for (const targetPath of targetPaths) {
+        await copyPlainDirectory(sourceDir, targetPath);
+      }
+      synced.push({
+        documentationName,
+        sourcePath: sourceDir,
+        targetPaths,
+      });
+    }
+
+    if (!adapterDirs && documentationNames.includes("claw-kit-doc")) {
+      const knowledgeFormatSource = path.join(
+        repoRoot,
+        "shared",
+        "docs",
+        "claw-kit-doc",
+        "knowledge-format.md",
+      );
+      const knowledgeFormatTarget = path.join(
+        repoRoot,
+        "packages",
+        "core",
+        "resources",
+        "knowledge-writer",
+        "knowledge-format.md",
+      );
+      await writeFileAtomically(knowledgeFormatTarget, await fs.readFile(knowledgeFormatSource, "utf8"));
     }
 
     return {
@@ -202,6 +309,7 @@ const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPat
 if (isMain) {
   const result = await syncSharedSkills();
   for (const entry of result.synced) {
-    console.log(`Synced shared ${entry.skillName} skill from ${entry.sourcePath}`);
+    const label = entry.skillName ? `${entry.skillName} skill` : `${entry.documentationName} documentation`;
+    console.log(`Synced shared ${label} from ${entry.sourcePath}`);
   }
 }

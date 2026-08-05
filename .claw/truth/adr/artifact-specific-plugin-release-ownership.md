@@ -33,10 +33,12 @@ selection because a newer release can belong to another artifact family.
   independent marketplace repository checked out at `packages/cindy-adapter`,
   push its `main`, then tag that exact commit with `vcindy-*`; do not build an
   archive or create a GitHub Release.
-- Make the Cindy update skill refresh the unpinned custom Git marketplace and
-  use Cindy's confirmation-gated local packaging/install action; keep CLI
-  refresh and confirmed enabled/running plugin state as the two required
-  update surfaces.
+- Do not publish a Cindy-specific update skill through Cindy's
+  cross-application skill slot. Keep existing workflow entries unchanged in
+  this update-only decision. Keep Cindy's `claw-kit-doc` entry adapter-owned;
+  it selects the Cindy section from the shared documentation corpus and directs
+  users through Plugins → Market → Installed Markets → refresh, then back to
+  Plugins for the confirmation-gated update.
 
 ## Alternatives considered
 
@@ -57,10 +59,19 @@ selection because a newer release can belong to another artifact family.
   manifest version, while local installation remains an opt-in follow-up
   workflow.
 - Cindy users cannot mistake a refreshed marketplace cache for an activated
-  plugin: confirmation plus enabled/running-version checks remain required.
+  plugin: the documentation separates market refresh from the plugin-page
+  confirmation and enabled/running-version checks.
 
 <!-- state: history -->
 ## Decision evolution
+
+<!-- dated: 2026-08-05 -->
+### Removed the Cindy-only updater from the global skill slot
+
+Cindy publishes enabled Ghost skill items through the cross-application user
+skill root. Keeping the Cindy-specific updater there leaked the wrong update
+route into standalone Codex, so that entry was removed while existing workflow
+entries remain unchanged. Update execution now stays in Cindy's plugin UI.
 
 <!-- dated: 2026-08-02 -->
 ### Replaced prebuilt Cindy installer distribution
@@ -79,7 +90,7 @@ The checked-out Cindy submodule is the independent marketplace repository worktr
 
 - `.agents/skills/release-claw-kit/SKILL.md`
 - `.agents/skills/release-cindy-plugin/`
-- `packages/cindy-adapter/plugin/skills/update/`
+- `packages/cindy-adapter/plugin/skills/claw-kit-doc/references/update.md`
 
 ## Search terms
 

@@ -47,6 +47,13 @@ Delegate orchestration and built-in knowledge governance are not shared skills. 
 
 `update` is not a shared source. Its canonical sources are `packages/codex-adapter/skills/update/` and `packages/opencode-adapter/skills/update/`; see `host-specific-update-skill-ownership`.
 
+`claw-kit-doc` is not a shared skill entry. Each adapter owns its own
+`skills/claw-kit-doc/SKILL.md` and uses that entry only to select the relevant
+documents for its runtime. The maintained documentation corpus is shared at
+`shared/docs/claw-kit-doc/` and synchronization materializes only its reference
+files into each adapter package; it does not overwrite adapter entry skills or
+adapter-only metadata.
+
 Codex Git marketplace 的发布源必须是已提交、自包含的 `packages/codex-adapter` 插件树：
 
 - `.agents/plugins/marketplace.json` 的 `source.path` 固定指向 `./packages/codex-adapter`

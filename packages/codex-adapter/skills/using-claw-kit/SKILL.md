@@ -3,9 +3,9 @@ name: using-claw-kit
 description: Use first whenever the @claw-kit plugin is invoked in a Codex thread; this is the main-agent contract for guidance, lifecycle, and Codex plan mutations.
 ---
 # using-claw-kit
-
 If the request is not expected to produce reusable project knowledge, skip this skill and work directly.
-
+For usage questions, read `../claw-kit-doc/SKILL.md` and only the relevant
+host-update, configuration, or Truth/ADR reference.
 ## First Action
 
 1. By default, run `claw plan create "<title>"`.
@@ -57,11 +57,11 @@ async function runClawPlanMutation({ argv, workdir, timeout_ms = 30000 }) {
 ```
 
 ## Knowledge subagent dispatch
+
 - Session scope is temporary and does not persist project knowledge: it never returns a `knowledgeDispatch`; after its terminal mutation, finish the main turn without `spawn_agent`, `knowledge claim`, or any other knowledge-finalization step.
 - When a terminal plan mutation returns a valid `knowledgeDispatch` for `subagent`, call native `spawn_agent` directly with its complete prompt, `fork_turns: "none"`, task name `knowledge_writer_<first 12 finalizeId characters>`, and any supplied `model` and `reasoningEffort` mapped to native fields; never load a user-facing delegate skill.
 - The dispatched job already exists. Do not wait for that agent; immediately end the main turn after spawning it. In `subagent` mode, `knowledge claim` collects the existing parent-turn report and Stop does not capture, queue, launch, or amend the job. The bridge cannot call collaboration tools, and `background` never returns this dispatch.
 ## Hard boundaries
-
 - Strongly prefer running plan mutations through the code-mode bridge without splitting host calls, reconstructing `hostActions` or `goalTool`, or repeating canonical transitions as compensation; if it returns `goalRecovery.command`, immediately run that command in a new code-mode call before replying.
 - Goal-state inspection belongs only to the fixed driver or bundled consumer program; the agent must never call `get_goal` separately.
 - Edit canonical plan state only through claw commands supplied or permitted by returned guidance.

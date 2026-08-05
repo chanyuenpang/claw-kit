@@ -1,6 +1,6 @@
 ---
 name: researcher
-description: Use when an investigation needs focused project recall, code inspection, and a concise evidence-backed result.
+description: Use for complex research questions that require an independent, multi-step process of gathering and synthesizing evidence—not direct fact lookups or routine searches.
 ---
 
 # researcher

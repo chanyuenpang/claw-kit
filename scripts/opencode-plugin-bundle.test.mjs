@@ -37,6 +37,18 @@ async function makeFixture() {
   await fs.writeFile(path.join(sourceDir, "skills", "SKILL.md"), "# skill");
   await fs.mkdir(path.join(sourceDir, "skills", "config"), { recursive: true });
   await fs.writeFile(path.join(sourceDir, "skills", "config", "SKILL.md"), "# config skill");
+  await fs.mkdir(path.join(sourceDir, "skills", "claw-kit-doc"), { recursive: true });
+  await fs.writeFile(
+    path.join(sourceDir, "skills", "claw-kit-doc", "SKILL.md"),
+    [
+      "---",
+      "name: claw-kit-doc",
+      "description: Use when a user needs claw-kit documentation.",
+      "---",
+      "# OpenCode documentation entry",
+      "",
+    ].join("\n"),
+  );
   await fs.writeFile(path.join(sourceDir, "agents", "team-coder.md"), "# agent");
   await fs.writeFile(path.join(sourceDir, "references", "note.md"), "# note");
 
@@ -178,6 +190,8 @@ test("exportOpencodePluginBundle copies the expected payload and filters *.test.
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "plugin", "index.ts")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "SKILL.md")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "config", "SKILL.md")));
+  await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "claw-kit-doc", "SKILL.md")));
+  await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "claw-kit-doc", "references", "update.md")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "package.json")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "workflow-guidance.opencode.json")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "plugin", "runtime.mjs")));
@@ -238,6 +252,8 @@ test("installOpencodePlugin copies skills into the opencode skills discovery dir
   assert.equal(result.skillsDir, path.join(installDir, "skills"));
   const copiedSkill = await fs.readFile(path.join(result.skillsDir, "config", "SKILL.md"), "utf8");
   assert.match(copiedSkill, /name: config/);
+  const copiedDocs = await fs.readFile(path.join(result.skillsDir, "claw-kit-doc", "SKILL.md"), "utf8");
+  assert.match(copiedDocs, /name: claw-kit-doc/);
   await assert.rejects(fs.access(path.join(result.skillsDir, "delegate-writer", "SKILL.md")));
   await assert.rejects(fs.access(path.join(result.skillsDir, "knowledge-writer", "SKILL.md")));
   await assert.rejects(fs.access(retiredTruthDir));

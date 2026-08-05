@@ -10,14 +10,15 @@
 - `planning` 现在按单一源码维护，规范源文件位于 `shared/skills/planning/SKILL.md`。
 - `config` 也按单一源码维护，规范源文件位于 `shared/skills/config/SKILL.md`。
 - `create-claw-skill` 也按单一源码维护，规范源文件位于 `shared/skills/create-claw-skill/SKILL.md`。
+- `claw-kit-doc` 的共享资料源位于 `shared/docs/claw-kit-doc/`，只维护宿主差异化 update、project configuration 与 Truth/ADR 格式文档；各 adapter 独立维护自己的 `skills/claw-kit-doc/SKILL.md`，该 skill 只负责选择当前宿主的文档入口，不执行 update、配置写入或 plan mutation。
 - `packages/codex-adapter/skills/planning/SKILL.md`、`packages/opencode-adapter/skills/planning/SKILL.md`、`packages/codex-adapter/skills/config/SKILL.md`、`packages/opencode-adapter/skills/config/SKILL.md` 不再各自独立维护；它们是由共享源同步生成的副本，并带有 `AUTO-GENERATED` 标记。
 - `packages/codex-adapter/skills/create-claw-skill/SKILL.md`、`packages/opencode-adapter/skills/create-claw-skill/SKILL.md` 同样是共享源同步生成的副本；它们的 shared source 只需维护 `shared/skills/create-claw-skill/SKILL.md`。
-- `knowledge-writer` 不再属于 shared skill source 或 adapter materialization 集合。delegate orchestration template 与 built-in governance contract 当前位于 `packages/core/resources/delegate-writer/` 和 `packages/core/resources/knowledge-writer/`，由 Core package 作为不可发现内部资源分发；`scripts/sync-shared-skills.mjs` 的当前列表只有 `planning`、`config`、`create-claw-skill`。
+- `claw-kit-doc` 的三份共享 reference 会物化到 Codex、OpenCode、Cindy 与 OpenClaw，但各 adapter 的 `SKILL.md` 不由共享同步覆盖。OpenClaw 通过 `openclaw.plugin.json` 的 `skills` 声明建立发现入口，Cindy 则通过 `ghost.json` 的显式 skill item 暴露它。Cindy 的 `update` entry 仍保持缺席，现有 `using-claw-kit`、`planning` 与 `researcher` workflow entries 不受该 update-only 变更影响。
+- `knowledge-writer` 不再属于 shared skill source 或 adapter materialization 集合。delegate orchestration template 与 built-in governance contract 当前位于 `packages/core/resources/delegate-writer/` 和 `packages/core/resources/knowledge-writer/`，由 Core package 作为不可发现内部资源分发；`scripts/sync-shared-skills.mjs` 的 shared skill 列表是 `planning`、`config`、`create-claw-skill`，`claw-kit-doc` 单独属于 shared documentation 列表。
 - Codex/OpenCode/Cindy 的插件 skill discovery surface 都不得重新物化 `delegate-writer` 或 `knowledge-writer`。外部治理能力只来自项目显式配置的 `knowledgeWriter.externalSkills`。
-- `scripts/sync-shared-skills.mjs` 负责把共享源同步到两个适配器目录，并按技能目录整体复制受维护的 shared skill tree。
+- `scripts/sync-shared-skills.mjs` 默认把通用 shared skills 同步到 Codex 与 OpenCode；对 `claw-kit-doc` 只把共享 references 同步到四个 adapter，并把 canonical knowledge format 同步给 Core 内置 writer。同步不会覆盖 adapter-owned `SKILL.md`。
 - `scripts/sync-planning-skill.mjs` 仍保留为兼容 wrapper。
-- `scripts/codex-plugin-bundle.mjs` 与 `scripts/opencode-plugin-bundle.mjs` 在读取插件源之前都会先执行 shared skill sync，因此导出或安装插件时会自动带上最新的共享 skills。
-- `packages/codex-adapter/package.json` 与 `packages/opencode-adapter/package.json` 的 `build` / `check` 也会先执行共享同步脚本，避免仓库中的副本与共享源漂移。
+- Codex 的 Git marketplace payload 是仓库中已提交的 `packages/codex-adapter`；bundle 与 release gate 对它做只读一致性校验，不以导出时隐式生成掩盖缺失或漂移。OpenCode bundle 可以在临时 staging 中调用 shared sync，但不会反向改写 Codex 的 committed payload。
 - `scripts/sync-shared-skills.mjs` 只会把生成 banner 注入到顶层 `SKILL.md`，不会污染 shared skill tree 里的其他 markdown 或 bundled helper scripts。
 - `scripts/sync-shared-skills.mjs` 现在用 repo lock 保护共享 skill 同步，`scripts/sync-shared-skills.test.mjs` 则覆盖了同步结果、生成 banner 和 Windows 并发打包场景，避免 `codex-plugin-bundle` 与 `opencode-plugin-bundle` 测试在同一工作区里互相抢写。
 - 共享后的 `planning` skill 保持宿主无关：它只描述如何产出高质量 plan 内容，不承担 claw-kit runtime、project-plan admission、status 语义、writer dispatch、goal mode 或 closeout 规则。
@@ -32,13 +33,14 @@
 - 共享后的 `config` skill 保持宿主无关：它只描述配置入口、team-vs-personal scope 判断、canonical field shape 和 override 格式，不承担 claw-kit lifecycle 或 writer dispatch。
 - 共享后的 `create-claw-skill` skill 保持宿主无关：它只负责把既有 skill 或用户想法转换成 claw-template-backed skill，不承担 claw-kit runtime、project-plan admission、status 语义、writer dispatch、goal mode 或 closeout 规则。
 - 为了避免把试验性产物误固化成长期合同，`brainstorming` 和 `systematic-debugging` 这类在创建 `create-claw-skill` 过程中生成的测试 skill 树不应作为正式 shared skills/templates 保留在仓库里；它们不属于 `scripts/sync-shared-skills.mjs` 的默认维护列表，除非未来被明确重新晋升。
-- claw-kit 专属运行时语义继续保留在两个 adapter 的 `using-claw-kit/SKILL.md` 中，而不是重新回流到通用 shared skills；project-plan versus direct-work 的入口判断属于这个入口 skill，而不是 `shared/skills/planning/SKILL.md`。
+- claw-kit 专属运行时语义继续由各宿主的 `using-claw-kit/SKILL.md` 拥有，而不是重新回流到通用 shared skills；project-plan versus direct-work 的入口判断属于宿主入口 skill，而不是 `shared/skills/planning/SKILL.md`。
 
 ## 影响
 
 - 以后修改 planning skill 时，只需要编辑 `shared/skills/planning/SKILL.md`，不应再分别修改 codex 和 opencode 两份副本。
 - 以后修改 config skill 时，只需要编辑 `shared/skills/config/SKILL.md`，不应再分别修改 codex 和 opencode 两份副本。
 - 以后修改 create-claw-skill skill 时，只需要编辑 `shared/skills/create-claw-skill/SKILL.md`，不应再分别修改 codex 和 opencode 两份副本。
+- 以后修改共享使用资料时，只编辑 `shared/docs/claw-kit-doc/`，再同步并提交四个 adapter 的 reference 副本；修改某一宿主的文档入口时只编辑该 adapter 的 `skills/claw-kit-doc/SKILL.md`。宿主 update 路径继续在同一 reference 内明确分流，不能把某一宿主的 updater 当作统一执行入口。
 - 以后修改自动 knowledge finalization 的 delegate 或 built-in governance contract，应编辑 `packages/core/resources/`，而不是在 `shared/skills` 或 adapter `skills/` 中恢复公开 writer package。
 - planning 文案可以继续朝“通用 plan skill”演化，而宿主差异与 claw-kit 专属合同应继续收敛到 `using-claw-kit` 或其他宿主级入口技能中；如果未来再调整 project-plan admission 或 direct-work 语义，应同时修改两个 host-specific 入口 skill，而不是把入口规则写回 shared planning 源。
 - planning 的任务质量检查应审阅检查点是否可验收、是否支持后续继续或独立重试，以及证据依赖的后续阶段是否被延迟到第二次规划；不应以 task 数量是否落在某个范围内作为质量标准。
@@ -58,6 +60,7 @@
 - `shared/skills/planning/SKILL.md`
 - `shared/skills/config/SKILL.md`
 - `shared/skills/create-claw-skill/SKILL.md`
+- `shared/docs/claw-kit-doc/`
 - `scripts/sync-shared-skills.mjs`
 - `scripts/sync-planning-skill.mjs`
 - `scripts/sync-shared-skills.test.mjs`
@@ -71,7 +74,15 @@
 - `packages/opencode-adapter/skills/config/SKILL.md`
 - `packages/codex-adapter/skills/create-claw-skill/SKILL.md`
 - `packages/opencode-adapter/skills/create-claw-skill/SKILL.md`
+- `packages/codex-adapter/skills/claw-kit-doc/`
+- `packages/opencode-adapter/skills/claw-kit-doc/`
+- `packages/cindy-adapter/plugin/skills/claw-kit-doc/`
+- `packages/cindy-adapter/plugin/ghost.json`
+- `packages/openclaw-adapter/skills/claw-kit-doc/`
+- `packages/openclaw-adapter/openclaw.plugin.json`
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md`
+- `packages/opencode-adapter/skills/using-claw-kit/SKILL.md`
+- `packages/cindy-adapter/plugin/skills/using-claw-kit/SKILL.md`
 - `packages/core/resources/delegate-writer/TEMPLATE.json`
 - `packages/core/resources/knowledge-writer/`
 <!-- state: history -->

@@ -1,0 +1,14 @@
+{
+  "id": "claw-kit",
+  "name": "claw-kit",
+  "description": "OpenClaw adapter contracts and the claw-kit documentation entry.",
+  "version": "0.2.11.0",
+  "skills": [
+    "skills"
+  ],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

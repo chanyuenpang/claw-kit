@@ -13,8 +13,8 @@ Accepted working truth for the current repository-maintainer release surfaces an
 - `release-cindy-plugin` is scoped to the checked-out `packages/cindy-adapter` independent marketplace repository, its `main`, and the `vcindy-*` tag. It never publishes npm packages or changes another adapter version.
 - A Cindy release verifies the committed marketplace source tree and the tagged `ghost.json`; it does not build or upload a `.cindy` archive and does not create a GitHub Release. Cindy packages the marketplace source locally during install or update.
 - The marketplace entry points at `packages/cindy-adapter/plugin`; a changed plugin requires a new manifest version before release, and the source/tag must reach `origin/main` before the tag is pushed.
-- The Cindy `update` skill refreshes `chanyuenpang/claw-kit-cindy-adapter` as an unpinned custom Git marketplace source, then uses Cindy's confirmation-gated install/update action. It must not download or open a `.cindy` archive.
-- Cindy update refreshes the published global CLI first and the marketplace plugin second. Success requires the installed `claw-kit` plugin at the selected version to be enabled and running; refreshed source/cache presence alone is not installation proof.
+- Cindy intentionally exposes no claw-kit `update` skill. Existing workflow entries remain available, and Cindy's adapter-owned `claw-kit-doc` entry selects the Cindy section from the shared documentation corpus. Users update from the UI: Plugins → Market → Installed Markets → refresh the market source, then return to Plugins and confirm the claw-kit update.
+- Refreshing the Cindy marketplace source only updates available source metadata. It is not installation proof; the separate plugin-page update remains user-confirmed, and the flow must not download or open a `.cindy` archive.
 
 ## Maintenance anchors
 
@@ -24,10 +24,15 @@ Accepted working truth for the current repository-maintainer release surfaces an
 - `.agents/skills/release-cindy-plugin/`
 - `.agents/skills/release-openclaw-plugin/`
 - `.agents/skills/release-opencode-plugin/`
-- `packages/cindy-adapter/plugin/skills/update/`
+- `packages/cindy-adapter/plugin/skills/claw-kit-doc/references/update.md`
 
 <!-- state: history -->
 ## Evolution history
+
+<!-- dated: 2026-08-05 -->
+### Cindy removed its globally published update skill
+
+- Cindy's skill slot is globally visible through `~/.agents/skills`, so its host-specific updater also appeared in standalone Codex. The `update` entry was removed; Cindy's adapter-owned `claw-kit-doc` entry now routes to the shared UI update reference without offering an executable updater. Other Cindy workflow entries were explicitly left outside this update-only scope.
 
 <!-- dated: 2026-08-04 -->
 ### 0.2.11 independent artifact-family release set

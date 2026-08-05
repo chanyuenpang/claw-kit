@@ -136,8 +136,12 @@ export const TEST_DOMAINS = {
     steps: [build("@claw-kit/opencode-adapter"), nodeStep("--test", "./scripts/opencode-plugin-bundle.test.mjs")],
   },
   openclaw: {
-    description: "OpenClaw adapter type and build boundary",
-    steps: [coreBuild, npmStep("run", "check", "-w", "@claw-kit/openclaw-adapter")],
+    description: "OpenClaw adapter type, manifest, and skill discovery boundary",
+    steps: [
+      coreBuild,
+      npmStep("run", "check", "-w", "@claw-kit/openclaw-adapter"),
+      npmStep("run", "test", "-w", "@claw-kit/openclaw-adapter"),
+    ],
   },
   "shared-skills": {
     description: "Shared skill materialization, template versions, and skill scaffolding",
@@ -168,6 +172,7 @@ const FULL_STEPS = [
   workspaceTest("@veewo/claw-core"),
   workspaceTest("@veewo/claw-client"),
   workspaceTest("@veewo/claw"),
+  workspaceTest("@claw-kit/openclaw-adapter"),
   nodeStep(
     "--test",
     "./packages/codex-adapter/hooks/code-mode-host-action-consumer.test.mjs",

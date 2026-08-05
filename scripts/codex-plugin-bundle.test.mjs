@@ -195,13 +195,16 @@ test("Codex plugin source includes the config skill entrypoint", async () => {
   assert.match(skillText, /\.claw\/project-override\.json/);
 });
 
-test("exported Codex plugin contains every shared workflow skill", async () => {
+test("exported Codex plugin contains every shared workflow and documentation skill", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "claw-kit-codex-plugin-shared-workflows-"));
   const outDir = path.join(root, "dist");
   const result = await exportCodexPluginBundle({ outDir });
 
-  for (const skillName of ["planning", "config", "update", "create-claw-skill"]) {
+  for (const skillName of ["planning", "config", "update", "create-claw-skill", "claw-kit-doc"]) {
     await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", skillName, "SKILL.md")));
+  }
+  for (const referenceName of ["update.md", "configuration.md", "knowledge-format.md"]) {
+    await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "claw-kit-doc", "references", referenceName)));
   }
   await assert.rejects(fs.access(path.join(result.bundleDir, "skills", "delegate-writer", "SKILL.md")));
   await assert.rejects(fs.access(path.join(result.bundleDir, "skills", "knowledge-writer", "SKILL.md")));
@@ -220,6 +223,17 @@ test("repository Codex plugin source is fully materialized from shared skills", 
   const adapterDir = fileURLToPath(new URL("../packages/codex-adapter", import.meta.url));
   const result = await verifySharedSkillsSynced({ adapterDirs: [adapterDir] });
   assert.deepEqual(result, { ok: true, problems: [] });
+});
+
+test("shared claw-kit-doc references are materialized without replacing adapter entries", async () => {
+  const result = await verifySharedSkillsSynced();
+  assert.deepEqual(result, { ok: true, problems: [] });
+
+  const configReference = await fs.readFile(
+    new URL("../shared/docs/claw-kit-doc/configuration.md", import.meta.url),
+    "utf8",
+  );
+  assert.match(configReference, /`subagent` is\s+supported by Codex and Cindy/);
 });
 
 test("repo marketplace points Codex at the materialized adapter source", async () => {

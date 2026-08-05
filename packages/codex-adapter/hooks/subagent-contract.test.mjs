@@ -105,12 +105,14 @@ test("main-agent Codex surfaces expose only the internal subagent dispatch contr
   assert.doesNotMatch(mainRouter, /claw-kit:delegate-writer/);
 });
 
-test("researcher is code-only, dispatches narrow subagents, and reuses related researchers", () => {
+test("researcher has a broad research trigger, dispatches narrow subagents, and reuses related researchers", () => {
   const researcherSkill = readPluginFile(path.join("skills", "researcher", "SKILL.md"));
   const description = researcherSkill.match(/^description: (.+)$/m)?.[1] ?? "";
 
-  assert.match(description, /code investigation/i);
-  assert.doesNotMatch(description, /project recall|truth\/ADR|document search/i);
+  assert.match(description, /complex research questions/i);
+  assert.match(description, /independent, multi-step process of gathering and synthesizing evidence/i);
+  assert.match(description, /not direct fact lookups or routine searches/i);
+  assert.doesNotMatch(description, /subagent|worker|agent|delegate/i);
   assert.match(researcherSkill, /Main agent:[^\n]*consume the `delegateSubagents` contract[^\n]*before continuing/i);
   assert.match(researcherSkill, /Assigned researcher:[^\n]*skip the delegation contract[^\n]*execute the investigation order[^\n]*`outputContract`/i);
   assert.match(researcherSkill, /1\. Use `claw search --query "<topic>"`/i);

@@ -10,6 +10,8 @@ The Cindy plugin is published from the independent
 - Users configure Cindy with the adapter repository URL, without a pinned ref.
 - Run its focused tests before tagging; do not publish an archive or GitHub
   Release for marketplace installation.
+- Verify that the public skill manifest omits the Cindy `update` entry and that
+  the portable `claw-kit-doc` reference contains the manual update route.
 
 The `packages/cindy-adapter` path in this repository is only the pinned
 submodule checkout. Updating that pointer is a separate, reviewable main-repo

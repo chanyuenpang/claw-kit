@@ -10,7 +10,7 @@ import { assertTemplateVersionsAligned } from "./update-template-versions.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publish = process.argv.includes("--publish");
-const requiredPluginSkills = ["planning", "config", "update", "create-claw-skill"];
+const requiredPluginSkills = ["planning", "config", "update", "create-claw-skill", "claw-kit-doc"];
 const npmExecPath = process.env.npm_execpath;
 
 function command(command, args) {
@@ -79,6 +79,11 @@ function assertRepositoryMarketplaceSnapshot({ pluginVersion }) {
     "skills/using-claw-kit/SKILL.md",
     "skills/planning/SKILL.md",
     "skills/config/SKILL.md",
+    "skills/claw-kit-doc/SKILL.md",
+    "skills/claw-kit-doc/agents/openai.yaml",
+    "skills/claw-kit-doc/references/update.md",
+    "skills/claw-kit-doc/references/configuration.md",
+    "skills/claw-kit-doc/references/knowledge-format.md",
     "skills/update/SKILL.md",
     "skills/update/TEMPLATE.json",
     "skills/create-claw-skill/SKILL.md",
@@ -109,6 +114,7 @@ async function verifyReleaseReadiness() {
   const cli = await readJson("packages/cli/package.json");
   const codex = await readJson("packages/codex-adapter/package.json");
   const openclaw = await readJson("packages/openclaw-adapter/package.json");
+  const openclawManifest = await readJson("packages/openclaw-adapter/openclaw.plugin.json");
   const opencode = await readJson("packages/opencode-adapter/package.json");
   const marketplace = await readJson(".agents/plugins/marketplace.json");
   const plugin = await readJson("packages/codex-adapter/.codex-plugin/plugin.json");
@@ -122,6 +128,20 @@ async function verifyReleaseReadiness() {
   assert(cli.dependencies?.["@veewo/claw-client"] === cliVersion, "CLI must pin the exact @veewo/claw-client version.");
   assert(cli.dependencies?.["@veewo/claw-core"] === cliVersion, "CLI must pin the exact @veewo/claw-core version.");
   assert(openclaw.dependencies?.["@veewo/claw-core"] === cliVersion, "OpenClaw adapter must pin the exact @veewo/claw-core version.");
+  assert(openclawManifest.id === "claw-kit", "OpenClaw native plugin manifest must use the claw-kit id.");
+  assert(openclawManifest.version === openclaw.version, "OpenClaw native plugin manifest version must match the adapter package.");
+  assert(
+    Array.isArray(openclawManifest.skills) && openclawManifest.skills.includes("skills"),
+    "OpenClaw native plugin manifest must declare its skills root.",
+  );
+  for (const relativePath of [
+    "packages/openclaw-adapter/skills/claw-kit-doc/SKILL.md",
+    "packages/openclaw-adapter/skills/claw-kit-doc/references/update.md",
+    "packages/openclaw-adapter/skills/claw-kit-doc/references/configuration.md",
+    "packages/openclaw-adapter/skills/claw-kit-doc/references/knowledge-format.md",
+  ]) {
+    await fs.access(path.join(repoRoot, relativePath));
+  }
 
   for (const [name, pkg] of [
     ["codex-adapter", codex],
@@ -153,6 +173,9 @@ async function verifyReleaseReadiness() {
       await fs.access(path.join(bundle.bundleDir, "skills", skillName, "SKILL.md"));
     }
     await fs.access(path.join(bundle.bundleDir, "skills", "update", "TEMPLATE.json"));
+    for (const referenceName of ["update.md", "configuration.md", "knowledge-format.md"]) {
+      await fs.access(path.join(bundle.bundleDir, "skills", "claw-kit-doc", "references", referenceName));
+    }
     await fs.access(path.join(bundle.bundleDir, "skills", "create-claw-skill", "TEMPLATE.json"));
     await fs.access(path.join(bundle.bundleDir, "skills", "create-claw-skill", "FALLBACK.md"));
 

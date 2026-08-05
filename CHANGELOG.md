@@ -4,6 +4,16 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## Unreleased
 
+### Added
+
+- Added adapter-owned `claw-kit-doc` entries backed by one synchronized documentation corpus for update guidance, project configuration, and Truth/ADR formats.
+
+### Changed
+
+- Cindy no longer exposes a claw-kit `update` skill. Its documentation entry directs users through Plugins → Market → Installed Markets → refresh, then back to Plugins to confirm the claw-kit update; existing Cindy workflow skills remain available.
+- `claw-kit-doc` synchronization now manages only reference documents; each adapter owns its entry skill and selects the relevant documentation for its runtime.
+- Researcher skills now share one trigger for complex, independent, multi-step evidence gathering while leaving adapter execution mechanics in their respective skill bodies.
+
 ## [0.2.11] - 2026-08-04
 
 ### Added

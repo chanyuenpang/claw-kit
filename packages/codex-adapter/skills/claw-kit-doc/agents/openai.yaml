@@ -1,0 +1,4 @@
+interface:
+  display_name: "Claw Kit Docs"
+  short_description: "Find claw-kit update, configuration, and knowledge docs"
+  default_prompt: "Use $claw-kit-doc to open the relevant claw-kit documentation for this Codex request."

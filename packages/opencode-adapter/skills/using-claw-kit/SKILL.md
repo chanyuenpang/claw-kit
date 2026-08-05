@@ -6,6 +6,10 @@ description: Use first whenever claw-kit workflow is active in a .claw project; 
 
 If the request is not expected to produce reusable project knowledge, skip this skill and work directly.
 
+For claw-kit usage questions, read the adjacent `../claw-kit-doc/SKILL.md`
+entry and only the relevant reference for host updates, project configuration,
+or Truth/ADR format.
+
 ## First Action
 
 1. By default, run `claw plan create "<title>"`.
