@@ -25,6 +25,11 @@ export function createTemporaryDirectory(prefix: string): string {
   return directory;
 }
 
+// Keep each Node test module away from the user's live session runtime and
+// from other concurrently executed CLI test modules. Individual tests may
+// still override this path through buildSpawnEnv's `extra` argument.
+export const moduleSessionRuntimeDir = createTemporaryDirectory("claw-kit-cli-runtime-");
+
 export function createFixture(name: string): string {
   return createTemporaryDirectory(`claw-kit-cli-${name}-`);
 }
@@ -122,6 +127,7 @@ export function buildSpawnEnv(extra?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     CLAW_EMBEDDING_WARMUP_DISABLE_LAUNCH: "1",
+    CLAW_SESSION_RUNTIME_DIR: moduleSessionRuntimeDir,
   };
   for (const key of ISOLATED_ENV_KEYS) {
     delete env[key];

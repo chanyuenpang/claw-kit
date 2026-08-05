@@ -84,6 +84,34 @@ export function withFileLock<T>(targetPath: string, action: () => T): T {
   }
 }
 
+export type TryFileLockResult<T> =
+  | { acquired: true; value: T }
+  | { acquired: false };
+
+/**
+ * Run an opportunistic action without making an already-held lock fatal.
+ * Action failures still propagate; only initial lock contention is skipped.
+ */
+export function tryWithFileLock<T>(targetPath: string, action: () => T): TryFileLockResult<T> {
+  const lockPath = `${targetPath}.lock`;
+  fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+  let lockFd: number | undefined;
+  try {
+    lockFd = fs.openSync(lockPath, "wx");
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? String((error as { code?: unknown }).code) : "";
+    if (code === "EEXIST") return { acquired: false };
+    throw error;
+  }
+
+  try {
+    return { acquired: true, value: action() };
+  } finally {
+    if (lockFd !== undefined) fs.closeSync(lockFd);
+    if (fs.existsSync(lockPath)) fs.unlinkSync(lockPath);
+  }
+}
+
 async function withFileLockRetry<T>(
   targetPath: string,
   action: () => T,

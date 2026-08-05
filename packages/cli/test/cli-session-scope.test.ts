@@ -28,6 +28,7 @@ import {
   taskFinalizerJobsDirectory,
   createPlanLikeTemplate,
   ISOLATED_ENV_KEYS,
+  moduleSessionRuntimeDir,
   buildSpawnEnv,
   runClaw,
   runClawExpectFailure,
@@ -239,7 +240,7 @@ test("cli plan create with an exact template file auto-selects session scope out
 
   assert.equal(result.command, "plan.create");
   assert.equal(fs.existsSync(path.join(root, ".claw")), false);
-  assert.match(String(result.planPath), /\.claw[\\/]runtime[\\/]sessions[\\/]/);
+  assert.match(String(result.planPath), new RegExp(moduleSessionRuntimeDir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 });
 
 test("plan create asks the agent to select scope without classifying an uninitialized workdir", () => {

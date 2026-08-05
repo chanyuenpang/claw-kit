@@ -2,7 +2,7 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
-## Unreleased
+## [0.2.12] - 2026-08-05
 
 ### Added
 

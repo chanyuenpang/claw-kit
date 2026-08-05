@@ -854,6 +854,28 @@ test("daily maintenance cleans expired tmp, archives old dated tasks without com
   assert.equal(runDailyMaintenance(resolveProjectContext(root), { now: new Date("2026-02-01T12:00:00.000Z"), env: { CLAW_SESSION_RUNTIME_DIR: sessionRoot } }).ran, false);
 });
 
+test("daily maintenance skips held project and session locks without blocking work", () => {
+  const root = createFixture("daily-maintenance-held-locks");
+  const sessionRoot = createFixture("daily-maintenance-held-locks-session");
+  initProject({ cwd: root, projectName: "Held maintenance locks", force: true });
+  const projectLock = path.join(root, ".claw", "runtime", "maintenance.json.lock");
+  const sessionLock = path.join(sessionRoot, ".maintenance.json.lock");
+  fs.mkdirSync(path.dirname(projectLock), { recursive: true });
+  fs.mkdirSync(path.dirname(sessionLock), { recursive: true });
+  fs.writeFileSync(projectLock, "held", "utf-8");
+  fs.writeFileSync(sessionLock, "held", "utf-8");
+
+  const result = runDailyMaintenance(resolveProjectContext(root), {
+    now: new Date("2026-02-01T00:00:00.000Z"),
+    env: { CLAW_SESSION_RUNTIME_DIR: sessionRoot },
+  });
+
+  assert.equal(result.ran, false);
+  assert.deepEqual(result.skippedLockedScopes, ["project", "session"]);
+  assert.equal(fs.existsSync(projectLock), true);
+  assert.equal(fs.existsSync(sessionLock), true);
+});
+
 test("dated tasks keep finalizer jobs inside the task directory", async () => {
   const root = createFixture("dated-finalizer-job");
   initProject({ cwd: root, projectName: "Dated finalizer", force: true });

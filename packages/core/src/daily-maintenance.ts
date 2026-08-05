@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { readJsonFile, withFileLock, writeJsonFile } from "./io.js";
+import { readJsonFile, tryWithFileLock, writeJsonFile } from "./io.js";
 import { pruneStaleSessionBindings } from "./session-bindings.js";
 import { pruneLegacyKnowledgeRuntime } from "./knowledge-sidecar.js";
 import { sessionWorkflowBaseDir, sweepExpiredSessionWorkflows } from "./session-workflows.js";
@@ -16,6 +16,7 @@ type MaintenanceStamp = {
 
 export type DailyMaintenanceResult = {
   ran: boolean;
+  skippedLockedScopes: Array<"project" | "session">;
   tmpCleared: boolean;
   tmpEntriesRemoved: number;
   legacyTmpRemoved: boolean;
@@ -38,7 +39,7 @@ export function runDailyMaintenance(project: ProjectContext, options: {
 } = {}): DailyMaintenanceResult {
   const now = options.now ?? new Date();
   const date = localDate(now);
-  const projectResult = options.includeProject === false ? { ran: false as const } : runOncePerDay(path.join(project.clawDir, "runtime", "maintenance.json"), date, () => {
+  const projectResult = options.includeProject === false ? { ran: false as const, skippedLocked: false } : runOncePerDay(path.join(project.clawDir, "runtime", "maintenance.json"), date, () => {
     const runtimeTmp = path.join(project.clawDir, "runtime", "tmp");
     const legacyTmp = path.join(project.clawDir, "tmp");
     const tmpEntriesRemoved = cleanupTemporaryDirectory(runtimeTmp, now.getTime());
@@ -72,6 +73,10 @@ export function runDailyMaintenance(project: ProjectContext, options: {
   }));
   return {
     ran: projectResult.ran || sessionResult.ran,
+    skippedLockedScopes: [
+      ...(projectResult.skippedLocked ? ["project" as const] : []),
+      ...(sessionResult.skippedLocked ? ["session" as const] : []),
+    ],
     tmpCleared: projectResult.value?.tmpCleared ?? false,
     tmpEntriesRemoved: projectResult.value?.tmpEntriesRemoved ?? 0,
     legacyTmpRemoved: projectResult.value?.legacyTmpRemoved ?? false,
@@ -87,14 +92,15 @@ export function runDailyMaintenance(project: ProjectContext, options: {
   };
 }
 
-function runOncePerDay<T>(stampPath: string, date: string, action: () => T): { ran: boolean; value?: T } {
-  return withFileLock(stampPath, () => {
+function runOncePerDay<T>(stampPath: string, date: string, action: () => T): { ran: boolean; skippedLocked: boolean; value?: T } {
+  const result = tryWithFileLock(stampPath, () => {
     const stamp = readStamp(stampPath);
-    if (stamp?.lastRunDate === date) return { ran: false };
+    if (stamp?.lastRunDate === date) return { ran: false, skippedLocked: false };
     const value = action();
     writeJsonFile(stampPath, { ...stamp, lastRunDate: date } satisfies MaintenanceStamp);
-    return { ran: true, value };
+    return { ran: true, skippedLocked: false, value };
   });
+  return result.acquired ? result.value : { ran: false, skippedLocked: true };
 }
 
 function readStamp(stampPath: string): MaintenanceStamp | null {

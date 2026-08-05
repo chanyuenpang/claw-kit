@@ -433,7 +433,7 @@ test("an explicit template remains project-scoped inside a claw project", () => 
 
   assert.match(String(created.planPath), new RegExp(path.join(cwd, ".claw").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.equal(fs.existsSync(runtimeDir), true);
-  assert.equal(fs.readdirSync(runtimeDir).length, 0);
+  assert.equal(fs.readdirSync(runtimeDir, { withFileTypes: true }).some((entry) => entry.isDirectory()), false);
 });
 
 test("cli plan edit rejects partial single-reference shortcut flags", () => {
