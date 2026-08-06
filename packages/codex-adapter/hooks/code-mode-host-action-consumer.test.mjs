@@ -85,7 +85,7 @@ test("native Goal tool failures propagate unchanged for Agent-level outcome hand
   );
 });
 
-test("Goal actions replace an active Goal and do not close an already closed Goal", async () => {
+test("Goal actions preserve an active Goal and do not close an already closed Goal", async () => {
   const calls = [];
   const consumedIds = new Set();
   const hostTools = {
@@ -99,11 +99,10 @@ test("Goal actions replace an active Goal and do not close an already closed Goa
     hostTools,
     consumedIds,
   });
-  assert.deepEqual(calls, ["update_goal"]);
+  assert.deepEqual(calls, []);
   assert.deepEqual(resume.consumedActionIds, ["mutation:create_goal"]);
   assert.deepEqual(resume.goalRecovery, {
-    command: "claw plan sync",
-    reason: "Completed the prior nonterminal Codex Goal before recreating Goal Mode.",
+    reason: "Retained the existing nonterminal Codex Goal; recovery creates a Goal only when none is active.",
   });
 
   hostTools.get_goal = async () => ({ goal: { status: "complete" } });
@@ -112,11 +111,11 @@ test("Goal actions replace an active Goal and do not close an already closed Goa
     hostTools,
     consumedIds,
   });
-  assert.deepEqual(calls, ["update_goal"]);
+  assert.deepEqual(calls, []);
   assert.deepEqual(done.consumedActionIds, ["mutation:update_goal"]);
 });
 
-test("a blocked Goal is completed and requests an independent plan sync", async () => {
+test("a blocked Goal is retained during recovery", async () => {
   const calls = [];
   const result = await consumeCodexHostActions({
     result: { hostActions: [makeActions()[1]] },
@@ -127,14 +126,13 @@ test("a blocked Goal is completed and requests an independent plan sync", async 
     },
   });
 
-  assert.deepEqual(calls, [["update_goal", { status: "complete" }]]);
+  assert.deepEqual(calls, []);
   assert.deepEqual(result.goalRecovery, {
-    command: "claw plan sync",
-    reason: "Completed the prior nonterminal Codex Goal before recreating Goal Mode.",
+    reason: "Retained the existing nonterminal Codex Goal; recovery creates a Goal only when none is active.",
   });
 });
 
-test("an unrecognized Goal state is completed before setting the requested Goal", async () => {
+test("an unrecognized nonterminal Goal state is retained", async () => {
   const calls = [];
   const result = await consumeCodexHostActions({
     result: { hostActions: [makeActions()[1]] },
@@ -145,8 +143,8 @@ test("an unrecognized Goal state is completed before setting the requested Goal"
     },
   });
 
-  assert.deepEqual(calls, [["update_goal", { status: "complete" }]]);
-  assert.equal(result.goalRecovery.command, "claw plan sync");
+  assert.deepEqual(calls, []);
+  assert.equal(result.goalRecovery.reason, "Retained the existing nonterminal Codex Goal; recovery creates a Goal only when none is active.");
 });
 
 test("program consumes an action id at most once", async () => {
@@ -238,8 +236,8 @@ test("the embedded bootstrap caches the CLI driver and dispatches native host ac
         if (options.command === "claw codex driver") {
           return JSON.stringify({
             ok: true,
-            cacheKey: "claw-kit:codex-driver:v10:s1",
-            driverVersion: 10,
+            cacheKey: "claw-kit:codex-driver:v12:s1",
+            driverVersion: 12,
             hostActionSchemaVersion: 1,
             source: driverSource,
           });
@@ -290,8 +288,8 @@ test("the embedded bootstrap uses exec_command when shell_command is unavailable
         if (options.cmd === "claw codex driver") {
           return JSON.stringify({
             ok: true,
-            cacheKey: "claw-kit:codex-driver:v10:s1",
-            driverVersion: 10,
+            cacheKey: "claw-kit:codex-driver:v12:s1",
+            driverVersion: 12,
             hostActionSchemaVersion: 1,
             source: driverSource,
           });

@@ -18,7 +18,7 @@ Codex 的 claw plan mutation 会同时产生 CLI JSON 和需要调用原生 host
 
 真实 Host lifecycle 验收推翻了 `schema-v2 ensure_goal` 方案：让 Agent 读取当前 Goal 状态、匹配 host error text 或据此补偿，会把宿主内部状态泄漏到提示词控制流；在同一个 code-mode call 中先 complete 再 create 也不可行，因为 Codex 在调用结束时结算 complete，并会清掉同调用中新建的 Goal。`0.1.75` 因此改为由 CLI 按 mutation 提交后的 plan 状态投影 schema-v1 原生 Goal actions，并以跨调用 lifecycle 验证其行为。
 
-`0.1.86` installed Host 历史验收又暴露了两个幂等边界：resume 时旧 Goal 可能仍 active，而 root closeout 时 Goal 可能已经为空。canonical mutation 已先落盘，Agent 不能通过重放 transition 补偿。固定 consumer 因而必须在真实 Goal mutation 紧前方自行读取一次 snapshot，并在目标状态已经满足时把 action 记为已消费；该局部程序检查不改变 CLI 的 plan-status action routing，也不把 Goal 状态暴露给 Agent。
+`0.1.86` installed Host 历史验收又暴露了两个幂等边界：resume 时旧 Goal 可能仍 active，而 root closeout 时 Goal 可能已经为空。canonical mutation 已先落盘，Agent 不能通过重放 transition 补偿。固定 consumer 因而必须在真实 Goal mutation 紧前方自行读取一次 snapshot，并在目标状态已经满足时把 action 记为已消费；该局部程序检查不改变 CLI 的 plan-status action routing，也不把 Goal 状态暴露给 Agent。后续恢复合同明确保留现有 nonterminal Goal；恢复 active plan 的一次 `plan sync` 只恢复 progress projection，并且只在 Goal 缺失时创建 Goal。
 
 ## Decision
 
@@ -38,7 +38,7 @@ Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode c
 - v4 曾只扩大 `plan.done` 的可见终结字段：`planPath`、`nextsteps` 与 `achievement`；v5 保留这些 compact-result 语义，并加入固定程序内的 Goal-action 幂等检查。普通 mutation 仍保持精简，subplan done 恢复 parent 时因为没有 root terminal `achievement` 而不会制造终结成就。
 - Goal action 继续使用 schema-v1 原生命令，不引入 `ensure_goal` pseudo-action，也不匹配 host error text。只有固定 driver 可以在 action 紧前方调用 `get_goal`；Agent 禁止单独检查 Goal 状态。
 - CLI 只按 mutation 提交后的 plan 状态路由 Goal action：`process.wait` / `process.discussing` 发出 `update_goal(status="complete")`，进入或恢复 `process.active` 发出 `create_goal`，`end.completed` 发出 `update_goal(status="complete")`。
-- consumer 逐条执行 CLI 返回的 action；每个 `create_goal` / `update_goal` 紧前方读取 Goal snapshot。设置 Goal 时，任何非 `complete` 的现有 Goal 都先以 `update_goal(complete)` 关闭，并返回结构化 `goalRecovery.command = "claw plan sync"`；Agent 必须在新的 code-mode call 执行该命令，直到新 Goal 创建成功。没有 active Goal 时跳过 `update_goal`。不能在同一个 code-mode call 中合并 complete→create，resume 的 canonical transition 不得重放。
+- consumer 逐条执行 CLI 返回的 action；每个 `create_goal` / `update_goal` 紧前方读取 Goal snapshot。`create_goal` 遇到任何 nonterminal Goal 时保留它、返回可见 recovery note 并将 action 记为已消费；只有不存在 nonterminal Goal 时才创建新 Goal。没有 active Goal 时跳过 `update_goal`。恢复 active plan 时，SessionStart 要求固定 driver 运行一次 `plan sync`，该调用恢复 progress projection，并仅在 Goal 缺失时创建 Goal；resume 的 canonical transition 不得重放。
 - 未知 `schemaVersion`、未知 tool、不兼容 input 或缺失 host tool 一律 fail closed。Codex 不提供 direct-call 或 split-call fallback。
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md` 内嵌固定 `runClawPlanMutation` driver，以便在 isolate 内直接执行；`packages/cli/src/codex-driver.ts` 是当前 source contract，并由 source SHA snapshot 强制 driver/cache identity 随序列化语义变化升级。旧的 `packages/codex-adapter/scripts/code-mode-host-action-consumer.mjs` 只保留为 repository test oracle，不进入 plugin payload。
 - Node adapter worker 走 `@veewo/claw-client` 的持久 session 时，使用 schema-v1 `commandEnvelope()` 接收 `output`、`hostActions`、`postCommitEffects` 与可选 `knowledgeDispatch`；普通 `command()` 只返回 `output`。当前 Codex code-mode 不能跨调用持有该 Node socket，因此仍用 structured-invoke compatibility transport，每次 mutation 启动一个轻量 CLI 进程。
@@ -80,7 +80,7 @@ Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode c
 - structured argv、固定 invoke command 与 CLI 侧二次校验移除了 Agent-controlled shell quoting 和 host injection；protocol parser 不会把 shell diagnostics 中任意花括号误当 mutation result。
 - stateless CLI 与 session command service 共享同一个 host-action projector；Node adapter 得到原生 envelope，而 Codex code mode 保留兼容 transport。两者共享语义，但不虚构 Codex 已拥有持久 socket。
 - schema-v1 envelope 删除无人消费的事件与策略 metadata，保留 `id` 的至多一次语义和原生 host `input`；兼容精简不需要新增 schema 版本，也不改变 consumer 实现边界。
-- Goal action 的目标状态幂等性由固定程序拥有：设置 Goal 不复用旧 Goal，而是关闭任何非终态旧 Goal 后通过独立 call 创建本次目标；已关闭或不存在的 Goal 不会被 completion 再次关闭。所有路径都保留 action-id 至多一次语义。
+- Goal action 的目标状态幂等性由固定程序拥有：设置 Goal 不覆盖任何 nonterminal Goal，而是在没有 nonterminal Goal 时才创建；已关闭或不存在的 Goal 不会被 completion 再次关闭。恢复 active plan 的 `plan sync` 同时恢复 progress projection。所有路径都保留 action-id 至多一次语义。
 - plan-status router 消除 Goal 桥接对 Agent 所见历史状态、错误文本和补偿判断的依赖；source 与 versioned cache 中的 consumer/driver 必须保持该合同一致。
 - app-server 的 Goal/MCP 能力不改变当前 owner：在公开协议出现客户端 plan setter、或 claw 成为连接当前 UI thread 的原生客户端之前，`update_plan` 继续由 agent 触发的固定 code-mode consumer 执行。
 - wait/discussing 的 complete 与后续 resume create 分处不同 mutation calls，符合 Codex 的调用结束结算语义。
@@ -127,6 +127,11 @@ Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode c
 
 <!-- state: history -->
 ## 演化历史
+
+<!-- dated: 2026-08-06 -->
+### 恢复时保留非终态 Goal
+
+旧恢复路径会结束已有 nonterminal Goal，再通过独立调用创建新 Goal。当前决定改为保留已有 Goal；恢复 active plan 的 `plan sync` 只恢复 progress projection，并且仅在没有 nonterminal Goal 时创建 Goal。
 
 <!-- dated: 2026-07-29 -->
 ### `exec_command` 参数 schema 兼容

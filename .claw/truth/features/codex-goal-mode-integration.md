@@ -26,7 +26,7 @@
 - The recommended objective is still derived from canonical `plan.goal.text`.
 - `goalMode` 与 `goalTool` 只有在 `goal.text` 已存在时才成立，因为 harness 本身禁止没有 goal 的 plan 离开 `prepare.requirements`。
 - Active `@claw-kit` threads are still pre-authorized to use Goal mode when the workflow later returns these contracts, so no extra per-turn authorization gate should block it.
-- Codex agent 只运行固定 code-mode consumer，不自行检查 Goal state，也不解析 Goal tool error；CLI 仍根据已提交的 canonical plan status 决定请求哪一种 Goal action，而固定 driver/consumer 在每次真实 Goal mutation 前立即调用 `get_goal`：设置 Goal 遇到任何非 `complete` Goal 时，先完成旧 Goal 并返回 `goalRecovery.command = "claw plan sync"`，由 Agent 在新的 code-mode call 立即执行，以最终创建本次 plan 的目标 Goal；`update_goal` 在无 active Goal 时跳过。普通 `process.active` 进度不产生 Goal action，只有首次进入或从暂停态恢复进入 `process.active` 才请求 `create_goal`。
+- Codex agent 只运行固定 code-mode consumer，不自行检查 Goal state，也不解析 Goal tool error；CLI 仍根据已提交的 canonical plan status 决定请求哪一种 Goal action，而固定 driver/consumer 在每次真实 Goal mutation 前立即调用 `get_goal`：`create_goal` 只在没有 nonterminal Goal 时执行；若已有 Goal，则保留它并返回可见 recovery note，不改变 Goal 状态。`update_goal` 在无 active Goal 时跳过。恢复到 active 的 plan 由 SessionStart 指示固定 driver 运行一次 `plan sync`，以恢复 progress projection，并仅在没有 nonterminal Goal 时创建 Goal。普通 `process.active` 进度不产生 Goal action，只有首次进入或从暂停态恢复进入 `process.active` 才请求 `create_goal`。
 
 ## 0.1.75 真实 Host 生命周期边界
 
@@ -46,7 +46,7 @@
 
 - `0.1.86` 同版本线的真实 installed lifecycle 曾执行 `process.active -> process.wait -> process.active -> end.completed`。`plan.wait` 的 canonical 状态与 compact `stage="paused"` 正常，但后续 `plan.resume` 在已把 canonical plan 恢复为 `process.active` 后调用 `create_goal`，Host 返回 `cannot create a new goal because this thread has an unfinished goal; complete the existing goal first`。只读检查确认原 Goal 仍 active，因此没有重放 resume；这是修复前的版本化 Host 证据。
 - 同一轮 root closeout 已把 plan 持久化为 `end.completed`，随后暴露的重复 Goal close 指示在 Goal 已为空时返回 `cannot update goal because this thread has no goal`。terminal `nextsteps` 重复已消费 action 的 compact-result 缺陷由 `cli-guided-workflow.md` 唯一拥有；本文只保留 Goal 状态幂等问题的历史事实与当前行为。
-- `0.1.99` 已发布在 `packages/cli/src/codex-driver.ts` 和 bundled `packages/codex-adapter/scripts/code-mode-host-action-consumer.mjs` 中的固定程序检查：设置 Goal 遇到旧的非终态 Goal 时，程序关闭它并显式返回跨调用恢复命令，随后在独立 call 创建新 Goal。agent 不得在程序外单独调用 `get_goal`；当前 driver/cache identity 由 `codex-workflow-guidance-consumption.md` 唯一拥有。
+- `0.1.99` 的跨调用 close-then-create 方案已被后续合同取代：当前固定程序保留任何非终态 Goal，只有没有 nonterminal Goal 时才创建 Goal。恢复 active plan 时，SessionStart 要求通过 fixed driver 运行一次 `plan sync`，以重建 progress projection 并在 Goal 缺失时创建它；agent 不得在程序外单独调用 `get_goal`。当前 driver/cache identity 由 `codex-workflow-guidance-consumption.md` 唯一拥有。
 - canonical mutation 仍可能先于 Host action 失败，因此不得重放已持久化的 transition。当前程序化消费决策由 `.claw/truth/adr/codex-plan-mutations-use-fixed-code-mode-consumer.md` 拥有；thread-level 生命周期决策仍由 `.claw/truth/adr/codex-goal-mode-thread-contract.md` 拥有。
 
 ## 真实代码锚点
@@ -72,7 +72,7 @@
   - `buildHostActions()` 根据 committed `planStatus` 把 wait/discussing 的 Codex native action 投影为 schema-v1 `update_goal({ status: "complete" })`，不改写 compatibility `goalTool.status = blocked`
   - `subplan.create` 的 Codex hostActions 固定先执行 `update_goal(complete)`、再执行 `update_plan`，且本次 handoff 不生成 `create_goal`
 - `packages/cli/src/codex-driver.ts`
-- fixed driver 在 `create_goal` / `update_goal` 前立即读取 Goal snapshot；设置 Goal 时关闭任何非终态旧 Goal 并返回跨调用恢复命令，已无 active Goal 时跳过重复关闭，并将跳过的 action id 记为已消费
+- fixed driver 在 `create_goal` / `update_goal` 前立即读取 Goal snapshot；`create_goal` 遇到非终态 Goal 时保留该 Goal、返回 recovery note 并将 action id 记为已消费；已无 active Goal 时跳过重复关闭
 - `packages/codex-adapter/scripts/code-mode-host-action-consumer.mjs`
   - bundled consumer 与 driver 保持相同的 Goal action 幂等规则，并在 `get_goal` 不可用时 fail closed
 - `packages/codex-adapter/references/workflow-guidance-consumption.md`
@@ -86,3 +86,11 @@
   - CLI 回归覆盖 wait/discussing 的 Codex hostAction 投影为 schema-v1 `update_goal(complete)`，以及 active/resumed active 的 `create_goal`、普通 active progress 不产生 Goal action
   - 覆盖 `goalMode = false` 时 suppress `goalMode` / `goalTool`
   - covers lightweight default plans, three-task plans, template-backed plans, and subplans at the host-integration boundary.
+
+<!-- state: history -->
+## Evolution history
+
+<!-- dated: 2026-08-06 -->
+### Recovery preserves an existing nonterminal Goal
+
+The former recovery route closed a nonterminal Goal and requested a second call to recreate it. The current fixed consumer instead preserves the existing Goal. Session recovery runs `plan sync` once to restore the progress projection and creates a Goal only when none is nonterminal; this prevents recovery from replacing a still-valid thread objective.

@@ -10,7 +10,7 @@ host-update, configuration, or Truth/ADR reference.
 
 1. By default, run `claw plan create "<title>"`.
 2. If a template-backed workflow skill fully owns the request, follow that skill's entry route so it supplies its adjacent template file.
-3. Follow the returned `workflowGuidance` as the only lifecycle contract. Use its stage and current task to determine the current work; `commandHints` are command lookup aids, not required next mutations.
+3. Follow the returned `workflowGuidance` as the only lifecycle contract. Use its stage and current task to determine the current work; `commandHints` are command lookup aids, not required next mutations. When SessionStart recovers an active session-bound plan, run `plan sync` through the code-mode bridge once before continuing it; it restores Progress and creates a Goal only when none is nonterminal.
 
 ## Lifecycle semantics
 
@@ -33,7 +33,7 @@ For every claw plan mutation, call the function below in code mode and change on
 
 ```javascript
 async function runClawPlanMutation({ argv, workdir, timeout_ms = 30000 }) {
-  const cacheKey = "claw-kit:codex-driver:v10:s1";
+  const cacheKey = "claw-kit:codex-driver:v12:s1";
   let envelope = load(cacheKey);
   if (!envelope) {
     const raw = typeof tools.shell_command === "function" ? await tools.shell_command({ command: "claw codex driver", workdir, timeout_ms })
@@ -44,7 +44,7 @@ async function runClawPlanMutation({ argv, workdir, timeout_ms = 30000 }) {
     const end = output.lastIndexOf("}") + 1;
     if (start < 0 || end <= start) throw new Error("claw returned no driver envelope");
     envelope = JSON.parse(output.slice(start, end));
-    if (envelope?.cacheKey !== cacheKey || envelope?.driverVersion !== 10
+    if (envelope?.cacheKey !== cacheKey || envelope?.driverVersion !== 12
       || envelope?.hostActionSchemaVersion !== 1 || typeof envelope?.source !== "string") {
       throw new Error("incompatible claw Codex driver envelope");
     }

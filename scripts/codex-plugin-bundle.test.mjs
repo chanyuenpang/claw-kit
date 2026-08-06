@@ -101,7 +101,8 @@ test("Codex entry stays compact without dropping guidance, lifecycle, or the mut
   assert.match(skill, /`commandHints`/);
   assert.doesNotMatch(skill, /current prompt contains/i);
   assert.match(skill, /Keep claw harness mechanics out of normal thread replies/i);
-  assert.doesNotMatch(skill, /recovered plan|recovered `workflowGuidance`|If a recovered|workflow recovery|claw context|claw search/i);
+  assert.doesNotMatch(skill, /recovered `workflowGuidance`|If a recovered|workflow recovery|claw context|claw search/i);
+  assert.match(skill, /SessionStart recovers an active session-bound plan, run `plan sync`/i);
   for (const state of ["process.discussing", "process.active", "process.wait", "end.completed"]) {
     assert.match(skill, new RegExp(state.replace(".", "\\."), "i"));
   }
@@ -178,7 +179,8 @@ test("hidden built-in knowledge contract enforces trusted evidence and cross-doc
   const docTemplate = JSON.parse(await fs.readFile(new URL("../packages/core/resources/doc-updater/TEMPLATE.json", import.meta.url), "utf8"));
   const docContract = `${docSkill}\n${JSON.stringify(docTemplate)}`;
   assert.match(docSkill, /subplan create --parent/i);
-  assert.doesNotMatch(docSkill, /claw plan create/i);
+  assert.match(docSkill, /claw plan create --template-file/i);
+  assert.match(docSkill, /FALLBACK\.md/i);
   assert.match(docContract, /existing documents/i);
   assert.match(docContract, /never create, move, or rename/i);
   assert.match(docContract, /requirement, future design/i);

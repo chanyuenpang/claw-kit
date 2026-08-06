@@ -162,6 +162,7 @@ test("Codex plan commands use only the bundled code-mode consumer", () => {
   assert.match(mainRouter, /plan mutations through the code-mode bridge/i);
   assert.match(mainRouter, /agent must never call `get_goal` separately/i);
   assert.match(mainRouter, /no direct-call fallback/i);
+  assert.match(mainRouter, /SessionStart recovers an active session-bound plan, run `plan sync`/i);
   assert.match(workflowReference, /code-mode consumption is the adapter execution method/i);
   assert.match(workflowReference, /single distributed runtime consumer/i);
   assert.match(workflowReference, /non-distributed test oracle/i);
@@ -169,13 +170,12 @@ test("Codex plan commands use only the bundled code-mode consumer", () => {
   assert.match(workflowReference, /schema v1 native `create_goal` or `update_goal`/i);
   assert.match(workflowReference, /exactly once/i);
   assert.match(workflowReference, /inspects `get_goal`/i);
-  assert.match(workflowReference, /any non-`complete` Goal/i);
+  assert.match(workflowReference, /`create_goal` executes only when there is no nonterminal Goal/i);
+  assert.match(workflowReference, /driver preserves it and returns a visible recovery note/i);
   assert.match(workflowReference, /completion skips `update_goal` when no active Goal remains/i);
   assert.match(workflowReference, /agent must never inspect Goal state through a separate `get_goal` call/i);
   assert.match(workflowReference, /do not parse host error wording/i);
-  assert.match(workflowReference, /routes Codex Goal actions from the committed plan status/i);
-  assert.match(workflowReference, /ordinary active progress emits no Goal action/i);
-  assert.match(workflowReference, /resume can therefore create the next active Goal through the recovery contract/i);
+  assert.match(workflowReference, /recovered active session runs `plan sync` once through the bridge/i);
   assert.match(workflowReference, /fail closed/i);
   assert.match(workflowReference, /Codex compact results do not return `goalMode` or `goalTool`/i);
   assert.match(workflowReference, /explicit stage-aware allowlist/i);

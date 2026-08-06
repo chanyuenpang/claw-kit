@@ -38,14 +38,8 @@ export async function consumeCodexHostActions({ result, hostTools, consumedIds =
       const goalStatus = goalRecord?.status;
       const openGoal = Boolean(goalRecord && goalStatus !== "complete");
       if (action.tool === "create_goal" && openGoal) {
-        const updateGoal = hostTools.update_goal;
-        if (typeof updateGoal !== "function") {
-          throw new Error("Codex host tool is unavailable: update_goal");
-        }
-        await updateGoal({ status: "complete" });
         goalRecovery = {
-          command: "claw plan sync",
-          reason: "Completed the prior nonterminal Codex Goal before recreating Goal Mode.",
+          reason: "Retained the existing nonterminal Codex Goal; recovery creates a Goal only when none is active.",
         };
         consumedIds.add(action.id);
         consumedActionIds.push(action.id);

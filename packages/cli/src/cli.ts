@@ -3438,11 +3438,11 @@ function compactPlanCommandResult(
       ...(!codexResult && result.changedTaskIds?.length ? { changedTaskIds: result.changedTaskIds } : {}),
       ...(!codexResult && result.appendedTaskIds?.length ? { appendedTaskIds: result.appendedTaskIds } : {}),
       ...(codexResult ? { stage: result.workflowGuidance.stage } : {}),
-      ...((!codexResult && !cindyResult) || result.planStatus === "end.completed" && !cindyResult
+      ...(codexResult || !cindyResult
         ? { nextsteps }
         : {}),
       ...(result.workflowGuidance.nextTask ? { nextTask: result.workflowGuidance.nextTask } : {}),
-      ...(result.workflowGuidance.notes?.trim() && !codexResult && !cindyResult
+      ...(result.workflowGuidance.notes?.trim() && !cindyResult
         ? { notes: result.workflowGuidance.notes }
         : {}),
       ...(result.workflowGuidance.commandHints?.length

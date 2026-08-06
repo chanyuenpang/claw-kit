@@ -24,7 +24,7 @@ Built-in and external assignments use distinct prompt builders. The built-in pro
 
 Deterministic dated-section governance is built-in automation. The finalizer takes the canonical Markdown snapshot and applies the snapshotted `knowledgeWriter.datedSectionsToKeep` only for the built-in assignment; external skills skip both snapshotting and compaction. The old nested `knowledgeWriter.retention` shape is not supported. Each host delegate and its dynamic assignment subplan must complete with status `end.completed`, a non-empty task list, and every task `done`.
 
-When the separately governed `memory.autoUpdate` setting is effective, claim appends the frozen `doc-updater` assignment after either the built-in assignment or all configured external skills. Selecting external skills replaces only the built-in Truth/ADR governance; it does not suppress existing-document governance. Both hosts include this appended task in the same assignment-subplan completion boundary.
+When the separately governed `memory.autoUpdate` setting is effective, claim appends the frozen `doc-updater` assignment after either the built-in assignment or all configured external skills. Selecting external skills replaces only the built-in Truth/ADR governance; it does not suppress existing-document governance. Both hosts include this appended task in the same assignment-subplan completion boundary. The existing job, generated assignment plan, tracked subplan, and report are the audit boundary; `knowledge done` retains its established protocol without a doc-update receipt. The internal template-backed doc-updater creates a subplan when it owns an active parent-plan stage, creates its own plan when explicitly invoked independently, and has a fallback when templates are unavailable.
 
 Legacy `externalTruthSkill` and `externalAdrSkill` may be normalized only as backward-compatible input. They are not current project schema owners and cannot create separate phase dispatch policies.
 
@@ -36,10 +36,16 @@ Legacy `externalTruthSkill` and `externalAdrSkill` may be normalized only as bac
 - `model = null` keeps host defaults available; explicit model and reasoning effort are preserved by either launcher.
 - Default built-in behavior is one hidden governance assignment that reconciles Truth and ADR together.
 - Optional existing-document governance composes after either writer route rather than becoming another external-skill replacement branch.
+- Existing-document governance is audited through the job, generated assignment plan, tracked subplan, and report without a second receipt transport.
 - Launcher policy can change executor visibility and timing without forking writer prompts, assignment ordering, claim ownership, or completion semantics.
 
 <!-- state: history -->
 ## Evolution history
+
+<!-- dated: 2026-08-06 -->
+### Removed receipt-gated doc-updater completion
+
+The per-path receipt path briefly added a parallel success condition and CLI transport. It duplicated the audit material already retained by the job, generated assignment plan, tracked subplan, and report, so the decision restores the existing `knowledge done` protocol and keeps doc-updater template-backed instead.
 
 <!-- dated: 2026-08-04 -->
 ### Cindy adopted template-owned assignment subplans

@@ -49,13 +49,13 @@ test("cli codex driver returns an executable versioned source envelope", async (
   const root = createFixture("codex-driver-envelope");
   const envelope = runClaw(["codex", "driver"], root);
   assert.equal(envelope.command, "codex.driver");
-  assert.equal(envelope.driverVersion, 10);
+  assert.equal(envelope.driverVersion, 12);
   assert.equal(envelope.hostActionSchemaVersion, 1);
-  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v10:s1");
+  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v12:s1");
   assert.match(String(envelope.sha256), /^[a-f0-9]{64}$/);
   assert.equal(
     envelope.sha256,
-    "0d79c40c948cbb5dea06294d3ead2ed52f8a2c3da84811a9e0d2b29942a9ce3b",
+    "34d77319c16ffb6c814debefe2085c07b70317be1bfd79308f17dd4a78576015",
     "changing serialized driver source requires a driver version/cache-key bump",
   );
 
@@ -135,6 +135,27 @@ test("cli codex driver returns an executable versioned source envelope", async (
   assert.match(String((calls[0][1] as JsonRecord).command), /^claw codex invoke [a-f0-9]+$/);
   assert.deepEqual(calls.map(([name]) => name), ["shell_command", "update_plan", "get_goal", "create_goal", "text"]);
   assert.equal("hostActions" in JSON.parse(String(calls.at(-1)?.[1])), false);
+
+  const taskGuidance = await runner(
+    { argv: ["task", "edit", "--id", "2", "--status", "in_progress"], workdir: root },
+    {
+      tools: {
+        shell_command: async () => JSON.stringify({
+          ok: true,
+          command: "task.edit",
+          stage: "execution",
+          nextsteps: ["Continue the current task."],
+          notes: "Record completion only after the task is complete.",
+        }),
+      },
+      text: () => {},
+    },
+  );
+  assert.deepEqual(taskGuidance, {
+    stage: "execution",
+    nextsteps: ["Continue the current task."],
+    notes: "Record completion only after the task is complete.",
+  });
 
   const execCalls: Array<[string, unknown]> = [];
   await runner(
@@ -244,7 +265,7 @@ test("codex invoke preserves structured user values without shell interpretation
   assert.equal(plan.title, title);
 });
 
-test("Codex driver replaces any nonterminal Goal and skips closing an already closed Goal", async () => {
+test("Codex driver preserves a nonterminal Goal and creates one only when none exists", async () => {
   const root = createFixture("codex-driver-goal-idempotency");
   const envelope = runClaw(["codex", "driver"], root);
   const runner = (0, eval)(`(${String(envelope.source)})`) as (
@@ -256,12 +277,20 @@ test("Codex driver replaces any nonterminal Goal and skips closing an already cl
     ok: true,
     command: "plan.resume",
     stage: "execution",
-    hostActions: [{
-      schemaVersion: 1,
-      id: "resume:create_goal",
-      tool: "create_goal",
-      input: { objective: "resume work" },
-    }],
+    hostActions: [
+      {
+        schemaVersion: 1,
+        id: "resume:update_plan",
+        tool: "update_plan",
+        input: { plan: [{ step: "resume work", status: "in_progress" }] },
+      },
+      {
+        schemaVersion: 1,
+        id: "resume:create_goal",
+        tool: "create_goal",
+        input: { objective: "resume work" },
+      },
+    ],
   };
   let goalStatus = "active";
   const tools = {
@@ -272,27 +301,35 @@ test("Codex driver replaces any nonterminal Goal and skips closing an already cl
     update_goal: async () => { calls.push("update_goal"); goalStatus = "complete"; },
   };
 
-  const replaced = await runner({ argv: ["plan", "resume"], workdir: root }, { tools, text: () => {} });
-  assert.deepEqual(calls, ["update_goal"]);
-  assert.deepEqual(replaced.goalRecovery, {
-    command: "claw plan sync",
-    reason: "Completed the prior nonterminal Codex Goal before recreating Goal Mode.",
+  const retained = await runner({ argv: ["plan", "resume"], workdir: root }, { tools, text: () => {} });
+  assert.deepEqual(calls, ["update_plan"]);
+  assert.deepEqual(retained.goalRecovery, {
+    reason: "Retained the existing nonterminal Codex Goal; recovery creates a Goal only when none is active.",
   });
 
   commandResult = {
     ok: true,
     command: "plan.sync",
     stage: "execution",
-    hostActions: [{
-      schemaVersion: 1,
-      id: "sync:create_goal",
-      tool: "create_goal",
-      input: { objective: "resume work" },
-    }],
+    hostActions: [
+      {
+        schemaVersion: 1,
+        id: "sync:update_plan",
+        tool: "update_plan",
+        input: { plan: [{ step: "resume work", status: "in_progress" }] },
+      },
+      {
+        schemaVersion: 1,
+        id: "sync:create_goal",
+        tool: "create_goal",
+        input: { objective: "resume work" },
+      },
+    ],
   };
+  goalStatus = "complete";
   const recreated = await runner({ argv: ["plan", "sync"], workdir: root }, { tools, text: () => {} });
   assert.equal(recreated.goalRecovery, undefined);
-  assert.deepEqual(calls, ["update_goal", "create_goal"]);
+  assert.deepEqual(calls, ["update_plan", "update_plan", "create_goal"]);
 
   commandResult = {
     ok: true,
@@ -307,28 +344,35 @@ test("Codex driver replaces any nonterminal Goal and skips closing an already cl
   };
   goalStatus = "complete";
   await runner({ argv: ["plan", "done", "--retrospective", "done"], workdir: root }, { tools, text: () => {} });
-  assert.deepEqual(calls, ["update_goal", "create_goal"]);
+  assert.deepEqual(calls, ["update_plan", "update_plan", "create_goal"]);
 
   commandResult = {
     ok: true,
     command: "plan.resume",
     stage: "execution",
-    hostActions: [{
-      schemaVersion: 1,
-      id: "blocked:create_goal",
-      tool: "create_goal",
-      input: { objective: "resume work" },
-    }],
+    hostActions: [
+      {
+        schemaVersion: 1,
+        id: "blocked:update_plan",
+        tool: "update_plan",
+        input: { plan: [{ step: "resume work", status: "in_progress" }] },
+      },
+      {
+        schemaVersion: 1,
+        id: "blocked:create_goal",
+        tool: "create_goal",
+        input: { objective: "resume work" },
+      },
+    ],
   };
   goalStatus = "blocked";
   const recovered = await runner(
     { argv: ["plan", "resume"], workdir: root },
     { tools, text: () => {} },
   );
-  assert.deepEqual(calls, ["update_goal", "create_goal", "update_goal"]);
+  assert.deepEqual(calls, ["update_plan", "update_plan", "create_goal", "update_plan"]);
   assert.deepEqual(recovered.goalRecovery, {
-    command: "claw plan sync",
-    reason: "Completed the prior nonterminal Codex Goal before recreating Goal Mode.",
+    reason: "Retained the existing nonterminal Codex Goal; recovery creates a Goal only when none is active.",
   });
 });
 
@@ -351,8 +395,8 @@ test("Codex lightweight plans skip Goal and progress synchronization", () => {
   assert.equal("hostActions" in result, false);
   assert.equal("plan" in result, false);
   assert.equal(result.planSummary, "0/1 demo-task");
-  assert.equal("nextsteps" in result, false);
-  assert.equal("notes" in result, false);
+  assert.ok(Array.isArray(result.nextsteps));
+  assert.equal(typeof result.notes, "string");
   assert.ok(Array.isArray(result.commandHints));
 });
 
@@ -455,7 +499,7 @@ test("Codex lightweight wait and resume results omit host synchronization", () =
   assert.equal(waitResult.stage, "paused");
   assert.equal("goalMode" in waitResult, false);
   assert.equal("goalTool" in waitResult, false);
-  assert.equal("nextsteps" in waitResult, false);
+  assert.ok(Array.isArray(waitResult.nextsteps));
   assert.deepEqual(waitResult.commandHints, ["claw plan resume"]);
   assert.equal("hostActions" in waitResult, false);
 
@@ -465,7 +509,7 @@ test("Codex lightweight wait and resume results omit host synchronization", () =
   assert.equal(resumeResult.stage, "execution");
   assert.equal("goalMode" in resumeResult, false);
   assert.equal("goalTool" in resumeResult, false);
-  assert.equal("nextsteps" in resumeResult, false);
+  assert.ok(Array.isArray(resumeResult.nextsteps));
   assert.equal("hostActions" in resumeResult, false);
 });
 
@@ -544,6 +588,7 @@ test("Codex progress projection follows the task actually marked in progress", (
     { step: "Second task", status: "in_progress" },
     { step: "Third task", status: "pending" },
   ]);
+  assert.deepEqual(result.nextsteps, ["Continue the current task."]);
 });
 
 test("cli plan edit executes repeated options in order and emits only net Goal guidance", () => {

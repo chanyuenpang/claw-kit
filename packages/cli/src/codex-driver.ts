@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-export const CODEX_DRIVER_VERSION = 10;
+export const CODEX_DRIVER_VERSION = 12;
 export const CODEX_HOST_ACTION_SCHEMA_VERSION = 1;
 export const CODEX_DRIVER_CACHE_KEY =
   `claw-kit:codex-driver:v${CODEX_DRIVER_VERSION}:s${CODEX_HOST_ACTION_SCHEMA_VERSION}`;
@@ -163,13 +163,8 @@ async function codexDriverRunner(
       const goalStatus = goalRecord?.status;
       const openGoal = Boolean(goalRecord && goalStatus !== "complete");
       if (tool === "create_goal" && openGoal) {
-        if (typeof tools.update_goal !== "function") {
-          throw new Error("Codex host tool is unavailable: update_goal");
-        }
-        await tools.update_goal({ status: "complete" });
         goalRecovery = {
-          command: "claw plan sync",
-          reason: "Completed the prior nonterminal Codex Goal before recreating Goal Mode.",
+          reason: "Retained the existing nonterminal Codex Goal; recovery creates a Goal only when none is active.",
         };
         consumed.add(id);
         continue;
@@ -185,6 +180,8 @@ async function codexDriverRunner(
   const visibleKeys = new Set([
     "stage",
     "planSummary",
+    "nextsteps",
+    "notes",
     "nextTask",
     "commandHints",
     "askUser",
@@ -199,7 +196,6 @@ async function codexDriverRunner(
   ]);
   if (result.command === "plan.done") {
     visibleKeys.add("planPath");
-    visibleKeys.add("nextsteps");
     visibleKeys.add("achievement");
     visibleKeys.add("knowledgeDispatch");
   }
