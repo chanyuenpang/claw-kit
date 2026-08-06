@@ -6,7 +6,7 @@ Use this note when reasoning about how claw-kit enters an opencode session.
 
 The opencode adapter plugin (`packages/opencode-adapter/plugin/index.ts`) establishes claw context through three coordinated surfaces:
 
-1. `event(session.created)` + `event(session.compacted)` — calls `claw hook auto-claw --host opencode` and caches the returned `additionalContext`. Compaction re-runs because the prior system prompt injection is lost when the context window is compressed.
+1. `event(session.created)` + `event(session.compacted)` — the adapter calls `claw context --host opencode` and caches its locally rendered context. Compaction re-runs because the prior system prompt injection is lost when the context window is compressed.
 2. `chat.message` — prepends the cached claw context as a synthetic text part to the session's first user message. LLMs attend to user messages far more strongly than system prompts, so this is the primary injection. Guarded by `injectedSessions` so it only fires once per session.
 3. `experimental.chat.system.transform` — pushes the cached claw context into the system prompt as a compaction fallback.
 

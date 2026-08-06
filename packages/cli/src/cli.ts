@@ -495,9 +495,9 @@ const COMMAND_HELP: Record<string, HelpNode> = {
   hook: {
     usage: ["{script} hook <event-name>"],
     description:
-      "Emit host hook output. `auto-claw` maps to SessionStart recovery and `auto-doc` maps to Stop report capture; fixed platform event names remain accepted as compatibility aliases.",
+      "Emit host hook output. `auto-doc` maps to Stop report capture; startup recovery is owned by each platform adapter through `claw context`.",
     options: [
-      { flag: "<event-name>", detail: "(required) Hook command name (`auto-claw`, `auto-doc`, SessionStart, or Stop)." },
+      { flag: "<event-name>", detail: "(required) Hook command name (`auto-doc` or Stop)." },
     ],
   },
   "internal-completion-refresh": {
@@ -2226,10 +2226,6 @@ async function runHook(args: string[], effectiveHost: ClawHost | undefined): Pro
   if (!eventName) {
     throw new ClawError("PROJECT_CONFIG_INVALID", "claw hook requires an event name.");
   }
-  if (eventName === "SessionStart" || eventName === "auto-claw") {
-    await runSessionStartHook(effectiveHost);
-    return;
-  }
   if (eventName === "Stop" || eventName === "auto-doc") {
     await runStopHook(effectiveHost);
     return;
@@ -2808,65 +2804,6 @@ function launchKnowledgeFinalizationWorker(jobPath: string, cwd: string): void {
   child.unref();
 }
 
-async function runSessionStartHook(effectiveHost: ClawHost | undefined): Promise<void> {
-  if (process.env.CLAW_KNOWLEDGE_FINALIZER === "1") {
-    return;
-  }
-  const payload = await readStdinJson();
-  const hookCwd = resolveHookCwd(payload);
-  const ownerSessionKey = resolveOwnerSessionKey(payload);
-
-  if (!hookCwd) {
-    return;
-  }
-  const sessionProject = resolveSessionWorkflowContext(ownerSessionKey ?? undefined);
-  if (!containsClawDir(hookCwd) && !sessionProject) {
-    return;
-  }
-
-  try {
-    const context = await prepareProjectWorkflow(hookCwd, ownerSessionKey, effectiveHost);
-    if (!context) {
-      return;
-    }
-    const contextProject = asJsonRecord(context.project);
-    const retryableJobs = effectiveHost !== "cindy" && contextProject?.scope !== "session" && !context.error
-      ? listRetryableKnowledgeFinalizationJobs(resolveProjectContext(hookCwd), { excludeHosts: ["cindy"] })
-      : [];
-    if (
-      contextProject?.scope !== "session"
-      && !context.error
-      && effectiveHost !== "cindy"
-      && process.env.CLAW_KNOWLEDGE_FINALIZER_DISABLE_LAUNCH !== "1"
-    ) {
-      const project = resolveProjectContext(hookCwd);
-      for (const jobPath of retryableJobs) {
-        try {
-          launchKnowledgeFinalizationWorker(jobPath, project.projectRoot);
-        } catch {
-          // Retry discovery remains fail-open and may run again on a later SessionStart.
-        }
-      }
-    }
-    const additionalContext = buildSessionStartAdditionalContext(context, hookCwd, effectiveHost);
-
-    if (!additionalContext) {
-      return;
-    }
-
-    process.stdout.write(
-      `${JSON.stringify({
-        hookSpecificOutput: {
-          hookEventName: "SessionStart",
-          additionalContext,
-        },
-      })}\n`,
-    );
-  } catch {
-    return;
-  }
-}
-
 function tryResolveHookProject(cwd: string): ReturnType<typeof resolveProjectContext> | null {
   try {
     return resolveProjectContext(cwd);
@@ -3401,12 +3338,12 @@ function compactPlanCommandResult(
     const codexResult = effectiveHost === "codex";
     const cindyResult = effectiveHost === "cindy";
     const hostActions = codexResult ? buildCodexHostActions(result, { forceProjectionSync, actionIdPrefix: command === "plan.sync" ? `plan.sync:${createHash("sha256").update(result.planPath).digest("hex").slice(0, 16)}` : undefined }) : [];
-    const nextsteps = codexResult
-      && result.planStatus === "end.completed"
-      && result.workflowGuidance.goalTool?.tool === "update_goal"
-      && result.workflowGuidance.goalTool.status === "complete"
-        ? result.workflowGuidance.nextsteps.slice(1)
-        : result.workflowGuidance.nextsteps;
+    const nextsteps = [
+      ...result.workflowGuidance.nextsteps,
+      ...(knowledgeDispatch
+        ? ["A knowledgeDispatch is present: dispatch its unchanged prompt through the current Host's designated knowledge-finalizer now, then do not wait for or poll that worker."]
+        : []),
+    ];
     const planSummary = result.planView.collapsedSummary;
     const includePlan = Boolean(
       (command === "plan.create" || command === "subplan.create")
@@ -3438,9 +3375,7 @@ function compactPlanCommandResult(
       ...(!codexResult && result.changedTaskIds?.length ? { changedTaskIds: result.changedTaskIds } : {}),
       ...(!codexResult && result.appendedTaskIds?.length ? { appendedTaskIds: result.appendedTaskIds } : {}),
       ...(codexResult ? { stage: result.workflowGuidance.stage } : {}),
-      ...(codexResult || !cindyResult
-        ? { nextsteps }
-        : {}),
+      nextsteps,
       ...(result.workflowGuidance.nextTask ? { nextTask: result.workflowGuidance.nextTask } : {}),
       ...(result.workflowGuidance.notes?.trim() && !cindyResult
         ? { notes: result.workflowGuidance.notes }

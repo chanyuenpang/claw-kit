@@ -437,7 +437,7 @@ test("host-neutral and opencode plan results never expose Codex hostActions", ()
   assert.ok(Array.isArray(opencode.nextsteps));
 });
 
-test("Cindy plan results omit host actions and Goal fields while retaining command hints", () => {
+test("Cindy plan results retain shared nextsteps while omitting host actions and Goal fields", () => {
   const root = createFixture("cindy-agent-guidance");
   runClaw(["init", "--name", "Cindy Guidance", "--planning", "false"], root);
   runClaw(["plan", "create", "--title", "demo-task", "--goal", "Keep the Agent focused"], root);
@@ -448,7 +448,7 @@ test("Cindy plan results omit host actions and Goal fields while retaining comma
   assert.equal(result.planStatus, "process.wait");
   assert.equal("hostActions" in result, false);
   assert.ok(Array.isArray(result.commandHints));
-  assert.equal("nextsteps" in result, false);
+  assert.ok(Array.isArray(result.nextsteps));
   assert.equal("notes" in result, false);
   assert.equal("goalMode" in result, false);
   assert.equal("goalTool" in result, false);

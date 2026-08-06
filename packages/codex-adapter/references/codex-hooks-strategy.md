@@ -34,7 +34,7 @@ The previous local hook lab used:
 
 - `../../scripts/log-hook-event.mjs`
 - `../../references/codex-hook-lab.md`
-- active recovery entry: `claw hook auto-claw` (registered under the fixed `SessionStart` event in `hooks.json`)
+- active recovery entry: the adapter-owned `scripts/session-start.mjs`, which calls `claw context --host codex` and renders the Codex Hook envelope
 
 The first question is not "can hooks automate the harness?" but "which events fire at all in this runtime?"
 

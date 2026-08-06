@@ -13,15 +13,15 @@ function readPluginFile(relativePath) {
   return fs.readFileSync(path.join(pluginRoot, relativePath), "utf-8");
 }
 
-test("Codex hooks recover with auto-claw and run the adapter-owned finalizer on Stop", () => {
+test("Codex hooks recover through the adapter-owned context entry and run the adapter-owned finalizer on Stop", () => {
   const config = JSON.parse(readPluginFile(path.join("hooks", "hooks.json")));
   const strategy = readPluginFile(path.join("references", "codex-hooks-strategy.md"));
   const sessionStart = config.hooks.SessionStart[0].hooks[0];
   const stop = config.hooks.Stop[0].hooks[0];
 
-  assert.equal(sessionStart.command, "claw hook auto-claw --host codex");
-  assert.equal(sessionStart.commandWindows, "claw hook auto-claw --host codex");
-  assert.match(sessionStart.statusMessage, /^auto-claw:/);
+  assert.match(sessionStart.command, /\$PLUGIN_ROOT\/scripts\/session-start\.mjs/);
+  assert.match(sessionStart.commandWindows, /%PLUGIN_ROOT%\\scripts\\session-start\.mjs/);
+  assert.match(sessionStart.statusMessage, /^claw context:/);
   assert.match(stop.command, /\$PLUGIN_ROOT\/scripts\/knowledge-finalizer\.mjs/);
   assert.match(stop.commandWindows, /%PLUGIN_ROOT%\\scripts\\knowledge-finalizer\.mjs/);
   assert.match(stop.statusMessage, /^auto-doc:/);

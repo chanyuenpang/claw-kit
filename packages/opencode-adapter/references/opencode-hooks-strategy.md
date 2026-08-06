@@ -6,7 +6,7 @@
 
 opencode has no `hooks.json` command surface like Codex. Instead the adapter registers a TypeScript plugin (`packages/opencode-adapter/plugin/index.ts`) that subscribes to the opencode event stream and delegates the two canonical claw hook entries:
 
-- `session.created` and `session.compacted` → `claw hook auto-claw --host opencode` (startup recovery)
+- `session.created` and `session.compacted` → adapter-owned `claw context --host opencode` (startup recovery)
 - `session.idle` → turn report capture plus the shared Goal continuation state machine
 
 The core workflow works without the plugin. The plugin is an enhancement layer for:
@@ -20,7 +20,7 @@ opencode emits a `session.idle` event after each assistant turn finishes. There 
 
 Current active use:
 
-- `session.created` / `session.compacted` call the opencode-host recovery entry through `claw hook auto-claw`. Compaction re-runs because the prior system prompt injection is lost when the context window is compressed.
+- `session.created` / `session.compacted` call the host-neutral `claw context --host opencode` entry through the adapter. Compaction re-runs because the prior system prompt injection is lost when the context window is compressed.
 - The plugin tracks `message.updated` (role `assistant`) and `message.part.updated` (type `text`) to cache the latest assistant message text per session.
 - `session.idle` hands the cached final assistant message to `claw hook auto-doc --host opencode` via stdin (`{ cwd, session_id, turn_id, message }`). Before loading the main CLI, `auto-doc` exits unless the session knowledge registry contains an active or pending target. Otherwise claw appends one idempotent report entry, and when a plan just completed it queues the host-aware finalization worker.
 - The session knowledge registry stays host-free. `session.idle` writes `opencode`

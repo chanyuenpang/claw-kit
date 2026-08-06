@@ -34,7 +34,6 @@ import {
   runClawExpectFailure,
   runClawRaw,
   runGit,
-  runClawHook,
   waitForCompletionRefreshStatus,
   waitForCondition,
   getLatestCompletionRefreshStatusFile,
@@ -46,7 +45,7 @@ import {
 } from "./cli-test-support.js";
 
 
-test("session scope runs outside a project, recovers across cwd, and cleans without project side effects", () => {
+test("session scope restores through context across cwd and cleans without project side effects", () => {
   const firstCwd = createFixture("session-scope-first");
   const secondCwd = createFixture("session-scope-second");
   const runtimeDir = createFixture("session-scope-runtime");
@@ -67,12 +66,6 @@ test("session scope runs outside a project, recovers across cwd, and cleans with
 
   const shown = runClaw(["plan", "show"], secondCwd, env);
   assert.equal(shown.planPath, created.planPath);
-  const sessionStart = runClawHook("SessionStart", secondCwd, {
-    cwd: secondCwd,
-    session_id: env.CODEX_THREAD_ID,
-  }, env);
-  assert.equal(sessionStart.status, 0);
-  assert.match(sessionStart.stdout, /Session harness/);
   const sessionRoot = path.dirname(path.dirname(path.dirname(String(created.planPath))));
   assert.equal(fs.existsSync(path.join(sessionRoot, "runtime", "knowledge-sessions")), false);
   assert.equal(fs.existsSync(path.join(sessionRoot, "truth")), false);

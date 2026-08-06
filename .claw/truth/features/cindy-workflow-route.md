@@ -12,6 +12,7 @@ Current
 - A new plan created in a Cindy session starts in `process.discussing`; execution advances with `plan.start`, and a completed plan reaches `end.completed`.
 - When a completed task declares no `onDone` choices, passing a `choice` argument is rejected by validation. That rejection is expected behavior of the schema check, not a workflow failure.
 - Knowledge finalization in the Cindy host runs through `knowledge.claim` (atomic capture of the originating task conclusions before issuing a claim token) followed by exactly one `knowledge.done` with the `claimToken`, `finalizeId`, and a terminal `status`.
+- Cindy preserves the CLI's original `workflowGuidance.nextsteps` in every workflow result. Its `guidance` object is only an additive local execution mapping and may not filter or replace shared nextsteps, including the required dispatch instruction for a terminal `knowledgeDispatch`.
 - The plugin exposes an unprivileged project-configuration explanation through `ghost.json` `settingsHtml: "panel.html"`, Cindy's supported plugin detail-page configuration surface; it does not declare an unsupported `panel` slot.
 - The page documents the only two configuration layers: team-owned `.claw/project.json` and gitignored personal `.claw/project-override.json`. It does not read or write configuration, maintain a second store, or use Cindy Host APIs.
 

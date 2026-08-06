@@ -21,8 +21,8 @@ Because of the above, the two guidance configs intentionally diverge on referenc
 
 ## Verification
 
-- `claw hook SessionStart` run against the core bundled config returns Codex conventions (`@claw-kit`, `claw-kit:using-claw-kit`).
-- `claw hook SessionStart` run against the opencode config (`CLAW_GUIDANCE_CONFIG` pointing at `workflow-guidance.opencode.json`, `CLAW_HOST=opencode`) returns opencode conventions (bare skill name, no `plugin://`).
+- The Codex adapter's `claw context --host codex` startup path renders Codex conventions (`@claw-kit`, `claw-kit:using-claw-kit`) locally.
+- The opencode adapter's `claw context --host opencode` startup path renders opencode conventions (bare skill name, no `plugin://`) locally.
 - `npm run check` passes for `packages/core` and `packages/cli`.
 
 ## Known correction point

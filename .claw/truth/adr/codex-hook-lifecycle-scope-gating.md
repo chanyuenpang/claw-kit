@@ -21,7 +21,8 @@ Accepted
 Codex adapter 对 hook 生命周期做 scope gating：
 
 - `SessionStart` 只作为启动恢复增强路径；`Stop` 只作为 knowledge capture/finalization sidecar
-- `SessionStart` hook 通过 `claw hook SessionStart` CLI 命令运行（注册于 `packages/codex-adapter/hooks/hooks.json`，实现于 `packages/cli/src/cli.ts`）
+- `SessionStart` hook 由平台 adapter 运行：注册于 `packages/codex-adapter/hooks/hooks.json` 的 `scripts/session-start.mjs` 用 Host 已认证的 cwd/session 调用 `claw context --host codex`，并在 adapter 内渲染 Codex Hook envelope
+- CLI 只提供 host-neutral 的结构化 context，不再实现 Codex SessionStart 或 `auto-claw` 协议
 - 启动和 Stop preflight 都从 `cwd` 向上解析最近的 `.claw` 项目根，并以系统临时目录为停止边界；不能只检查 cwd 直属 `.claw`
 - 命中 `.claw` 项目时，执行 `claw context`，把紧凑 project context 和 “使用 [@claw-kit](plugin://claw-kit@claw-kit) 推进任务” 的提示写入 `additionalContext`
 - 未命中 `.claw` 项目时，不做任何注入
@@ -42,8 +43,21 @@ Codex adapter 对 hook 生命周期做 scope gating：
 ## Related code
 
 - `packages/cli/src/cli.ts`
+- `packages/codex-adapter/scripts/session-start.mjs`
 - `packages/cli/src/knowledge-hook-preflight.ts`
 - `packages/core/src/knowledge-sidecar.ts`
 - `packages/codex-adapter/hooks/hooks.json`
 - `packages/codex-adapter/.codex-plugin/plugin.json`
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md`
+
+<!-- state: history -->
+## Evolution history
+
+<!-- dated: 2026-08-06 -->
+### SessionStart protocol moved from CLI to the adapter
+
+The former CLI-owned `claw hook SessionStart` path is retired. The stable
+boundary is now an adapter-owned Hook script calling `claw context --host
+codex`; this keeps platform event semantics and envelope rendering out of the
+host-neutral CLI while retaining SessionStart as a lightweight recovery
+enhancement.

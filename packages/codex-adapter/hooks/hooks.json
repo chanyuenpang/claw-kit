@@ -6,9 +6,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "claw hook auto-claw --host codex",
-            "commandWindows": "claw hook auto-claw --host codex",
-            "statusMessage": "auto-claw: loading plan context"
+            "command": "node \"$PLUGIN_ROOT/scripts/session-start.mjs\"",
+            "commandWindows": "node \"%PLUGIN_ROOT%\\scripts\\session-start.mjs\"",
+            "statusMessage": "claw context: loading plan context"
           }
         ]
       }

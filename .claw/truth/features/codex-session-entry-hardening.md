@@ -5,7 +5,8 @@
 
 - `@claw-kit` session entry still routes through `claw-kit:using-claw-kit`.
 - `SessionStart` is an enhancement layer for developer-visible startup context, not the source of canonical workflow correctness.
-- The startup hook implementation is the `claw hook SessionStart` CLI command (registered in `packages/codex-adapter/hooks/hooks.json`, implemented in `packages/cli/src/cli.ts`).
+- The startup hook is adapter-owned: `packages/codex-adapter/scripts/session-start.mjs` calls `claw context --host codex` with Host-authenticated cwd/session identity and locally renders the Codex `hookSpecificOutput` envelope.
+- The CLI owns structured context only; it no longer implements the Codex SessionStart or retired `auto-claw` protocol.
 - `claw context` and SessionStart logging now expose startup repair state through `startupRecovery`, not `bootstrap`.
 - `runContextCommand()` already computes `startupRecovery.versionSync`, and SessionStart default/recovered prompt building appends version-sync notes from that field instead of dropping it.
 - `startupRecovery.versionSync` is now a routing/reporting contract, not proof that `claw context` already executed a local upgrade.

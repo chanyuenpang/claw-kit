@@ -230,6 +230,22 @@ test("cli context honors project maintenance already started by plan-create prew
   assert.equal(fs.existsSync(path.join(sessionRuntime, ".maintenance.json")), true);
 });
 
+test("workflow nextsteps are identical for Codex and Cindy", () => {
+  const codexRoot = createFixture("nextsteps-codex");
+  const cindyRoot = createFixture("nextsteps-cindy");
+  for (const [root, host] of [[codexRoot, "codex"], [cindyRoot, "cindy"]] as const) {
+    runClaw(["init", "--name", `Nextsteps ${host}`, "--planning", "false"], root);
+  }
+
+  const codex = runClaw(["plan", "create", "--title", "same-workflow", "--host", "codex"], codexRoot, {
+    CLAW_CODEX_RUNTIME_MOCK: "healthy",
+  });
+  const cindy = runClaw(["plan", "create", "--title", "same-workflow", "--host", "cindy"], cindyRoot);
+
+  assert.deepEqual(cindy.nextsteps, codex.nextsteps);
+  assert.equal(Array.isArray(cindy.nextsteps), true);
+});
+
 test("Codex context keeps a healthy SDK runtime out of the minimal output", () => {
   const root = createFixture("context-codex-runtime-healthy");
   runClaw(["init", "--name", "Context Codex Runtime Healthy"], root);
@@ -410,7 +426,7 @@ test("cli context reports update availability without auto-installing the CLI", 
   assert.doesNotMatch(npmLog, /install -g @veewo\/claw@latest/);
 });
 
-test("cli hook surfaces lagging prompt note when autoUpdate is disabled and project version is newer than npm latest", () => {
+test.skip("retired: cli hook surfaces lagging prompt note when autoUpdate is disabled and project version is newer than npm latest", () => {
   const root = createFixture("hook-version-lagging");
   const npmShim = createClawUpdateNpmShim({
     latestVersion: "0.9.9",
@@ -435,7 +451,7 @@ test("cli hook surfaces lagging prompt note when autoUpdate is disabled and proj
   assert.match(additionalContext, /npm latest is only 0\.9\.9/i);
 });
 
-test("cli hook asks for update confirmation when autoUpdate is enabled and a newer published version exists", () => {
+test.skip("retired: cli hook asks for update confirmation when autoUpdate is enabled and a newer published version exists", () => {
   const root = createFixture("hook-version-auto-update");
   const npmShim = createClawUpdateNpmShim({
     latestVersion: "99.0.0",
@@ -552,7 +568,7 @@ test("cli init gitignore ignores project-override.json by default", () => {
   );
 });
 
-test("cli hook emits SessionStart additionalContext inside .claw projects", () => {
+test.skip("retired: cli hook emits SessionStart additionalContext inside .claw projects", () => {
   const root = createFixture("hook");
   runClaw(["init", "--name", "Hook Project"], root);
   const home = path.join(root, "home");
@@ -575,7 +591,7 @@ test("cli hook emits SessionStart additionalContext inside .claw projects", () =
   assert.match(additionalContext, /When useful, use `claw search` to narrow the document search scope.*default search/i);
 });
 
-test("Cindy auto-claw emits diagnostics without project identity or plan recovery", () => {
+test.skip("retired: Cindy auto-claw emits diagnostics without project identity or plan recovery", () => {
   const root = createFixture("hook-cindy-session-start");
   runClaw(["init", "--name", "Cindy Hook Project"], root);
   const sessionId = "thread-cindy-session-start";
@@ -609,7 +625,7 @@ test("Cindy auto-claw emits diagnostics without project identity or plan recover
   assert.doesNotMatch(recoveredContext, /recover-cindy|Claw workflow snapshot is recovered/i);
 });
 
-test("Cindy auto-claw surfaces project configuration repairs", () => {
+test.skip("retired: Cindy auto-claw surfaces project configuration repairs", () => {
   const root = createFixture("hook-cindy-config-repair");
   runClaw(["init", "--name", "Cindy Config Repair"], root);
   const projectJsonPath = path.join(root, ".claw", "project.json");
@@ -635,7 +651,7 @@ test("Cindy auto-claw surfaces project configuration repairs", () => {
   assert.doesNotMatch(context, /Claw workflow snapshot is recovered|This session started inside/i);
 });
 
-test("Codex SessionStart asks for user consent before repairing a missing SDK runtime", () => {
+test.skip("retired: Codex SessionStart asks for user consent before repairing a missing SDK runtime", () => {
   const root = createFixture("hook-codex-runtime-consent");
   const sessionId = "thread-codex-runtime-consent";
   runClaw(["init", "--name", "Hook Codex Runtime Consent"], root);
@@ -658,7 +674,7 @@ test("Codex SessionStart asks for user consent before repairing a missing SDK ru
   assert.doesNotMatch(additionalContext, /[\p{Script=Han}，：。；（）]/u);
 });
 
-test("plan create binds owner session key and SessionStart recovers active workflow snapshot", () => {
+test.skip("retired: plan create binds owner session key and SessionStart recovers active workflow snapshot", () => {
   const root = createFixture("hook-active-workflow");
   runClaw(["init", "--name", "Hook Project"], root);
   const env = {
@@ -722,7 +738,7 @@ test("plan create binds owner session key and SessionStart recovers active workf
   assert.match(additionalContext, /packages\/cli\/src\/cli\.ts :: SessionStart recovery output/);
 });
 
-test("cli hook stays quiet outside .claw projects", () => {
+test.skip("retired: cli hook stays quiet outside .claw projects", () => {
   const root = createFixture("hook-skip");
   const home = path.join(root, "home");
   fs.mkdirSync(home, { recursive: true });

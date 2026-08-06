@@ -1235,13 +1235,6 @@ test("Stop hook skips knowledge finalizer child threads to prevent recursion", (
   assert.equal(result.status, 0);
   assert.equal(fs.existsSync(taskFile(root, "demo-task", "plan.report")), false);
 
-  const sessionStart = runClawHook("auto-claw", root, {
-    session_id: sessionId,
-    cwd: root,
-    hook_event_name: "SessionStart",
-  }, env);
-  assert.equal(sessionStart.status, 0);
-  assert.equal(sessionStart.stdout.trim(), "");
 });
 
 test("opencode finalizer environment drops the parent platform session identity", () => {

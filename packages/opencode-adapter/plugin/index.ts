@@ -10,7 +10,7 @@ import type { Part } from "@opencode-ai/sdk";
  * Injection surfaces:
  *   1. shell.env — inject CLAW_HOST + CLAW_GUIDANCE_CONFIG into all shell executions
  *   2. event(session.created) + event(session.compacted) — one-shot init: detect .claw/,
- *      call claw hook auto-claw. Compaction re-runs because the prior system prompt
+ *      call claw context. Compaction re-runs because the prior system prompt
  *      injection is lost when the context window is compressed.
  *   3. chat.message — prepend claw context as a synthetic text part to the session's first
  *      user message. LLMs attend to user messages far more than system prompts, so this is
@@ -171,8 +171,8 @@ function readActivePlanState(projectDir: string): { status: string; taskId: numb
 }
 
 /**
- * Invoke `claw hook auto-claw` to get the full dynamic context that claw CLI
- * generates for this project, including:
+ * Invoke the host-neutral `claw context` entry and render the OpenCode prompt
+ * locally. The CLI returns state only; platform Hook output belongs here.
  *   - skill loading directive
  *   - workflowGuidance contract
  *   - active plan recovery (when a plan exists)
@@ -182,7 +182,7 @@ function readActivePlanState(projectDir: string): { status: string; taskId: numb
  */
 function invokeClawSessionStart(projectDir: string): string | null {
   try {
-    const stdout = execSync("claw hook auto-claw", {
+    const stdout = execSync("claw context --host opencode", {
       cwd: projectDir,
       encoding: "utf8",
       timeout: 10_000,
@@ -194,11 +194,31 @@ function invokeClawSessionStart(projectDir: string): string | null {
       },
     });
     if (!stdout.trim()) return null;
-    const parsed = JSON.parse(stdout);
-    return parsed.hookSpecificOutput?.additionalContext ?? null;
+    return renderClawSessionStart(JSON.parse(stdout));
   } catch {
     return null;
   }
+}
+
+function renderClawSessionStart(context: Record<string, unknown>): string | null {
+  const error = context.error as { prompt?: unknown } | undefined;
+  const runtimePrompt = typeof error?.prompt === "string" ? error.prompt.trim() : "";
+  const workflow = context.activeWorkflow;
+  if (workflow && typeof workflow === "object") {
+    return [
+      runtimePrompt,
+      "Claw workflow snapshot is recovered. Treat `workflowGuidance` as the only next-step contract.",
+      JSON.stringify(workflow),
+    ].filter(Boolean).join("\n\n");
+  }
+  const project = context.project as { projectName?: unknown; projectId?: unknown } | undefined;
+  if (!project) return runtimePrompt || null;
+  const projectName = typeof project.projectName === "string" ? project.projectName : project.projectId;
+  return [
+    runtimePrompt,
+    `This session started inside claw project ${projectName || "project"}. Load claw-kit:using-claw-kit as the main workflow skill for this session.`,
+    typeof context.searchGuidance === "string" ? context.searchGuidance : "",
+  ].filter(Boolean).join("\n\n");
 }
 
 /**
@@ -315,7 +335,7 @@ export const ClawKitPlugin: Plugin = async ({ directory, client }) => {
   }
 
   /**
-   * One-shot initialization: detect .claw/ project, invoke claw hook auto-claw,
+   * One-shot initialization: detect .claw/ project, invoke claw context,
    * read active plan state. Called from session.created and session.compacted.
    */
   function initClawContext(): void {
@@ -490,14 +510,14 @@ export const ClawKitPlugin: Plugin = async ({ directory, client }) => {
       // Unconditional: inject claw workflow context whenever inside a .claw project
       if (!isClawProject()) return;
 
-      // Prefer full claw hook auto-claw context (includes skill loading,
+      // Prefer full claw context (includes workflow recovery,
       // workflowGuidance, and plan recovery)
       if (clawSessionContext) {
         output.system.push(clawSessionContext);
         return;
       }
 
-      // Fallback: static text when claw hook auto-claw was unavailable
+      // Fallback: static text when claw context was unavailable
       const info = projectInfo;
       const lines: string[] = [];
       lines.push("## claw-kit project context");

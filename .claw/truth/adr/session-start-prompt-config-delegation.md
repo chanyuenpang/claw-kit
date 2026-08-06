@@ -9,7 +9,7 @@ Accepted
 SessionStart prompt 原本硬编码在 `packages/cli/src/cli.ts` 的两个 builder 函数（`buildSessionStartAdditionalContext` + `buildRecoveredWorkflowAdditionalContext`）中。这导致两个问题：
 
 1. **平台无法差异化**：Codex 与 OpenCode 共用同一套硬编码文案，无法按平台发布不同的 SessionStart prompt。
-2. **OpenCode plugin 绕过 claw hook**：plugin 的 `experimental.chat.system.transform` 硬编码了精简版静态文本，缺少 `claw hook SessionStart` 返回的关键内容（预授权声明、反阻塞条款、plugin 驱动引用），导致 agent 不走 claw 流程。
+2. **OpenCode plugin 绕过结构化 context**：plugin 的 `experimental.chat.system.transform` 硬编码了精简版静态文本，缺少 `claw context --host opencode` 返回的关键状态，导致 agent 不走 claw 流程。
 
 ## Decision
 
@@ -23,9 +23,9 @@ SessionStart prompt 原本硬编码在 `packages/cli/src/cli.ts` 的两个 build
 - 复用已有 `CLAW_GUIDANCE_CONFIG` 环境变量切换机制
 - config 缺失 `sessionStart` 时，用与原硬编码逐字一致的 fallback 常量保持向后兼容
 
-### 2. OpenCode plugin 委托 claw hook SessionStart
+### 2. OpenCode plugin consumes structured context
 
-- plugin 在 `session.created` 时调用 `claw hook SessionStart` 获取完整动态 context，存入 `clawSessionContext`
+- plugin 在 `session.created` 时调用 `claw context --host opencode` 获取结构化 startup state，并在 adapter 内渲染 prompt，存入 `clawSessionContext`
 - `experimental.chat.system.transform` 优先使用 `clawSessionContext`，只有当 claw CLI 不可用时才 fallback 到静态文本
 
 ### 3. invokeClawSessionStart 必须显式传递环境变量
@@ -36,7 +36,7 @@ plugin 的 `shell.env` hook 注入的环境变量（`CLAW_HOST`、`CLAW_GUIDANCE
 env: { ...process.env, CLAW_HOST: "opencode", CLAW_GUIDANCE_CONFIG: <opencode config path> }
 ```
 
-否则 plugin 调用的 claw hook 会继承默认的 core bundled config，而非 opencode 变体 config。
+否则 plugin 调用的 context path 会继承默认的 core bundled config，而非 opencode 变体 config。
 
 ### 4. 平台 prompt 文案语义隔离
 
@@ -54,9 +54,9 @@ env: { ...process.env, CLAW_HOST: "opencode", CLAW_GUIDANCE_CONFIG: <opencode co
 ## Consequences
 
 - Codex 与 OpenCode 可以通过各自的 config 文件发布不同的 SessionStart prompt，互不干扰
-- 所有平台 adapter 统一走 claw hook SessionStart 获取 prompt，消除硬编码分叉风险
+- 所有平台 adapter 统一调用 `claw context --host <platform>` 获取结构化状态，并在 adapter 内渲染 prompt，消除硬编码分叉风险
 - `summarizeRecoveredPlanContent` 留在 `cli.ts`（纯数据格式化，不属于 prompt 文案），输出作为 `planContentLines: string[]` 参数传入 core builder
-- `codex-adapter/hooks/session-start-recovery.mjs` 是已删除的废弃并行实现（文案曾与 canonical CLI 版本不一致且无 live hook 绑定），现已清理；canonical SessionStart 入口为 `claw hook SessionStart` CLI 命令
+- retired adapter-specific recovery scripts are not canonical entrypoints; each live adapter calls `claw context --host <platform>` and owns its Hook/event envelope
 - **三重隔离**保证平台 config 安全独立：环境变量隔离（`CLAW_GUIDANCE_CONFIG` 指向不同文件）、进程隔离（`invokeClawSessionStart` 的 `execSync` 独立子进程）、文件物理隔离（各自维护独立 JSON 文件）。`cli.test.ts` 断言绑定 core bundled config，opencode config 的文案变更对 cli 测试无影响
 - 任何通过 `execSync` 调用 claw CLI 的代码都必须在 options.env 中显式传递所需环境变量，不能依赖外部 hook 注入
 

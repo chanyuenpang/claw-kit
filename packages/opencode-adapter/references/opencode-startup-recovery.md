@@ -4,7 +4,7 @@ Use this note when opencode plugin events are unavailable or unreliable.
 
 ## Decision
 
-For `claw-kit` on opencode, prompt-driven startup recovery remains the baseline path, delivered through the adapter plugin's `session.created` and `session.compacted` handlers which call `claw hook auto-claw --host opencode`.
+For `claw-kit` on opencode, prompt-driven startup recovery remains the baseline path, delivered through the adapter plugin's `session.created` and `session.compacted` handlers which call `claw context --host opencode` and render the Host prompt locally.
 
 The plugin works on these rules:
 

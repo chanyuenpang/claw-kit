@@ -22,6 +22,20 @@ After installing the CLI, project search still needs one-time setup inside each 
 1. Run `claw context` so `.claw/project.json` is normalized and the default local embedding config is present.
 2. Run `claw search index --refresh` once so the local embedding model can be downloaded or reused and the first vector index can be built.
 
+## Host startup context
+
+`claw context --host <host>` is the single structured startup-state entrypoint
+for host adapters. A host Hook owns its native event payload, validates its
+trusted cwd and session identity, invokes `context`, and maps the JSON result
+to its own prompt, card, or host-action surface. The CLI does not own platform
+Hook event names or Hook-output envelopes.
+
+The result may contain `activeWorkflow`, `error`, `startupRecovery.versionSync`,
+and `searchGuidance`, in addition to project and session state. Adapters must
+not accept cwd or session identity from model input. A missing `activeWorkflow`
+means the session has no bound plan; it does not authorize plan discovery by
+scanning unrelated project tasks.
+
 Then run:
 
 ```bash
