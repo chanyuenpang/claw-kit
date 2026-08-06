@@ -331,6 +331,8 @@ test("repository-local release skills split CLI and platform publication contrac
   assert.ok(cindy);
   const cindyContract = `${cindy.skill}\n${JSON.stringify(cindy.template)}\n${cindy.fallback}\n${cindy.artifact}`;
   assert.match(cindyContract, /claw-kit-cindy-adapter/i);
+  assert.match(cindyContract, /Independent distribution does \*\*not\*\* create an independent version line/);
+  assert.match(cindyContract, /<cli-base>\.<next-fourth-segment>/);
   assert.doesNotMatch(cindyContract, /single rollback package/i);
 });
 

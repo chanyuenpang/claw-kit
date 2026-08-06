@@ -10,6 +10,15 @@ The Cindy adapter is independently released from
 repository; do not require or create a second parallel clone. Do not modify
 the main claw-kit repository for a Cindy-only release.
 
+Independent distribution does **not** create an independent version line.
+Before editing Cindy, resolve the CLI base version: use the authorized CLI
+candidate in a multi-artifact release, or the currently published
+`@veewo/claw` version for a Cindy-only release. Set both Cindy manifests to
+`<cli-base>.<next-fourth-segment>`. Derive only the fourth segment from prior
+`vcindy-<cli-base>.*` tags; never carry forward the first three segments from
+an older Cindy tag. Stop if the CLI base is not known or the resulting manifest
+does not share its first three segments.
+
 Open that repository (normally the submodule), follow its `RELEASING.md`, and
 release only there. Classify and commit the intended adapter changes on its
 `main`, push `origin/main`, then create and push the immutable `vcindy-*` tag

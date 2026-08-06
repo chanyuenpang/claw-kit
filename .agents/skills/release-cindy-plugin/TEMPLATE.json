@@ -10,7 +10,7 @@
     "summary": "Release only the independent Cindy adapter repository, verify its marketplace source, and publish the matching vcindy tag without an archive.",
     "openQuestions": [],
     "acceptanceCriteria": [
-      "Only the independent Cindy adapter package and ghost manifest fourth segments are bumped.",
+      "Both Cindy manifests use the resolved CLI three-segment base plus a newly incremented fourth segment; the independent repository does not own a separate three-segment version line.",
       "The claw-kit-cindy marketplace entry points at plugin.",
       "The tagged adapter-repository ghost manifest is valid and matches vcindy-<version>.",
       "No .cindy archive, GitHub Release, or npm package is published."
@@ -20,13 +20,13 @@
     {
       "id": 1,
       "title": "Inspect and classify the Cindy release baseline",
-      "detail": "Open chanyuenpang/claw-kit-cindy-adapter. Read its RELEASING.md; inspect branch, remotes, tags, Cindy manifests, its marketplace entry, and every worktree change. Reject main-repository changes.",
+      "detail": "Open chanyuenpang/claw-kit-cindy-adapter. Resolve the CLI base from the authorized batch candidate or published @veewo/claw, then read RELEASING.md; inspect branch, remotes, tags for that base, Cindy manifests, marketplace entry, and every worktree change. Reject main-repository changes or an unresolved CLI base.",
       "status": "pending"
     },
     {
       "id": 2,
       "title": "Prepare and verify the Cindy source",
-      "detail": "Bump only the adapter-repository package.json and plugin/ghost.json fourth segments, validate manifest constraints and its claw-kit-cindy marketplace source, run focused checks, and review the complete diff.",
+      "detail": "Set only the adapter-repository package.json and plugin/ghost.json to <cli-base>.<next-fourth>; validate the shared CLI three-segment prefix, manifest constraints, and claw-kit-cindy marketplace source, then run focused checks and review the complete diff.",
       "status": "pending"
     },
     {
