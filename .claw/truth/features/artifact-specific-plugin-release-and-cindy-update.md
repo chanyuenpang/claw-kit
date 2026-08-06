@@ -29,6 +29,17 @@ Accepted working truth for the current repository-maintainer release surfaces an
 <!-- state: history -->
 ## Evolution history
 
+<!-- dated: 2026-08-06 -->
+### 0.2.14 multi-artifact release batch
+
+- CLI/Core/Client `0.2.14` was published through npm with `v0.2.14` and a
+  GitHub Release; Codex `0.2.14.1` was released from the committed marketplace
+  snapshot with `vcodex-0.2.14.1` and a zero-asset GitHub Release; Cindy
+  `0.2.13.2` was released from its independent marketplace `main` with
+  `vcindy-0.2.13.2` and no archive or GitHub Release.
+- Each artifact line retained its own exact-source and acceptance evidence.
+  These releases do not imply any local CLI or plugin refresh.
+
 <!-- dated: 2026-08-05 -->
 ### Cindy removed its globally published update skill
 
