@@ -650,7 +650,7 @@ async function main(): Promise<void> {
         await runSearch(args);
         return;
       case "knowledge":
-        runKnowledge(args);
+        await runKnowledge(args);
         return;
       case "direct":
         runDirect(args, effectiveHost);
@@ -1152,7 +1152,7 @@ function readCindyKnowledgeClaimCaptureInput(): {
   return { sessionId, turnId, taskConclusions };
 }
 
-function runKnowledge(args: string[]): void {
+async function runKnowledge(args: string[]): Promise<void> {
   const subcommand = args.shift();
   switch (subcommand) {
     case "list": {
@@ -1235,6 +1235,10 @@ function runKnowledge(args: string[]): void {
       if (!jobPath) {
         throw new Error(`Knowledge finalization ${finalizeId} is unavailable.`);
       }
+      const queued = readKnowledgeFinalizationJob(jobPath);
+      if (queued.host === "codex" && queued.writer?.executionPolicy === "subagent" && queued.reportCapture?.mode === "claim" && queued.reportCapture.status !== "captured") {
+        await new Promise((resolve) => setTimeout(resolve, 10_000));
+      }
       const job = claimKnowledgeFinalizationJob(jobPath, {
         prepare: (queued) => {
           if (
@@ -1278,6 +1282,7 @@ function runKnowledge(args: string[]): void {
             transcriptPath,
             undefined,
             queued.reportCapture.startedAt,
+            queued.planPath,
           );
           const capturedAt = new Date().toISOString();
           appendKnowledgeTaskConclusions(
@@ -3341,7 +3346,7 @@ function compactPlanCommandResult(
     const nextsteps = [
       ...result.workflowGuidance.nextsteps,
       ...(knowledgeDispatch
-        ? ["A knowledgeDispatch is present: dispatch its unchanged prompt through the current Host's designated knowledge-finalizer now, then do not wait for or poll that worker."]
+        ? ["A knowledgeDispatch is present: dispatch its unchanged prompt through the current Host's designated knowledge-finalizer now, then immediately end the Lead turn; do not wait for or poll that worker."]
         : []),
     ];
     const planSummary = result.planView.collapsedSummary;

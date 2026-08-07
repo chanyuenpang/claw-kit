@@ -1,6 +1,7 @@
 # Codex update fallback
 
-Use this path only when no `.claw` project is available.
+Use this path when no `.claw` project is available or claw-kit cannot be used.
+Continue the update directly; claw-kit is not a prerequisite for this task.
 
 1. Confirm the target claw-kit version is published.
 2. Refresh the CLI with `npm install -g @veewo/claw@latest` and verify it with `claw --version` plus `npm list -g @veewo/claw --depth=0`.

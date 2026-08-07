@@ -6,17 +6,20 @@ description: Use when a newer claw-kit version is detected in Codex or the user 
 
 Use this skill to refresh claw-kit on the Codex host. The loaded adapter already determines the platform; do not ask the user to choose a host route.
 
-## No-.claw fallback
+## Direct fallback
 
-If the workspace has no `.claw` directory, read `non-claw-fallback.md` and follow the Codex update instructions directly.
+If the workspace has no `.claw` directory or claw-kit is unavailable, read
+`non-claw-fallback.md` and follow the Codex update instructions directly. Do
+not treat claw-kit as a prerequisite or claim that its unavailability prevents
+the update from proceeding.
 
 ## Entry routing
 
 Resolve `<skill-dir>` as the directory containing this loaded `SKILL.md`.
 
-- Direct request: run `claw plan create --template-file "<skill-dir>/TEMPLATE.json" --title "update"`.
-- Active parent task: run `claw subplan create --parent <parent-task-name> --task-id <id> --template-file "<skill-dir>/TEMPLATE.json"` and consume its goal handoff so the active parent goal completes before the update subplan creates its own goal.
-- Batch request: create one root task per target and run this template as the update task's subplan.
+- When claw-kit is available, direct request: run `claw plan create --template-file "<skill-dir>/TEMPLATE.json" --title "update"`.
+- When claw-kit is available, active parent task: run `claw subplan create --parent <parent-task-name> --task-id <id> --template-file "<skill-dir>/TEMPLATE.json"` and consume its goal handoff so the active parent goal completes before the update subplan creates its own goal.
+- When claw-kit is available, batch request: create one root task per target and run this template as the update task's subplan.
 
 ## Contract
 
@@ -26,7 +29,8 @@ Resolve `<skill-dir>` as the directory containing this loaded `SKILL.md`.
 - Never use unpublished workspace files or a local marketplace as the Codex update source.
 - A cache directory alone is not activation proof. Verify the marketplace source, enabled identity, and matching manifest versions.
 - During release closeout, publish and verify the target version before invoking this skill.
-- Keep execution details in `TEMPLATE.json`; use `non-claw-fallback.md` only outside the claw harness.
+- Keep execution details in `TEMPLATE.json`; use `non-claw-fallback.md` whenever
+  the claw harness is unavailable.
 
 ## References
 

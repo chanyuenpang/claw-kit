@@ -318,6 +318,23 @@ test("Codex subagent claim captures the Stop-style task report without waiting f
       output: [{ type: "input_text", text: `Script completed\n${JSON.stringify({ ok: true, command: "task.done" })}` }],
       internal_chat_message_metadata_passthrough: { turn_id: "turn-work" },
     }),
+    responseItem({
+      type: "custom_tool_call_output",
+      output: [{ type: "input_text", text: `Script completed\n${JSON.stringify({ ok: true, command: "plan.create", planPath: path.join(root, "next-plan.json") })}` }],
+      internal_chat_message_metadata_passthrough: { turn_id: "turn-next" },
+    }),
+    responseItem({
+      type: "message",
+      role: "assistant",
+      phase: "commentary",
+      content: [{ type: "output_text", text: "This next plan must not enter the prior report." }],
+      internal_chat_message_metadata_passthrough: { turn_id: "turn-next" },
+    }),
+    responseItem({
+      type: "custom_tool_call_output",
+      output: [{ type: "input_text", text: `Script completed\n${JSON.stringify({ ok: true, command: "task.done" })}` }],
+      internal_chat_message_metadata_passthrough: { turn_id: "turn-next" },
+    }),
   ].join("\n"), "utf-8");
 
   const stop = runClawHook("auto-doc", root, {

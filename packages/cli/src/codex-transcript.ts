@@ -56,6 +56,7 @@ export function extractTaskDoneConclusions(
   transcriptPath: string,
   targetTurnId?: string,
   startedAt?: string,
+  planPath?: string,
 ): TaskDoneConclusion[] {
   if (!transcriptPath.trim() || !fs.existsSync(transcriptPath)) {
     return [];
@@ -111,11 +112,15 @@ export function extractTaskDoneConclusions(
       && record.payload?.type !== "function_call_output") {
       continue;
     }
+    const output = readOutputText(record.payload.output);
+    if (containsNewPlanCreate(output, planPath)) {
+      break;
+    }
     const conclusion = latestAssistantByTurn.get(turnId);
     if (!conclusion) {
       continue;
     }
-    for (const _marker of extractTaskDoneMarkers(readOutputText(record.payload.output))) {
+    for (const _marker of extractTaskDoneMarkers(output)) {
       const key = `${turnId}\n${conclusion}`;
       if (seen.has(key)) {
         continue;
@@ -128,6 +133,47 @@ export function extractTaskDoneConclusions(
     }
   }
   return conclusions;
+}
+
+function containsNewPlanCreate(text: string, planPath?: string): boolean {
+  for (const candidate of jsonObjectCandidates(text)) {
+    let value: unknown;
+    try {
+      value = JSON.parse(candidate);
+    } catch {
+      continue;
+    }
+    if (!isSuccessfulPlanCreate(value)) continue;
+    const createdPlanPath = readPlanPath(value);
+    if (!createdPlanPath || !planPath) return true;
+    if (path.resolve(createdPlanPath) !== path.resolve(planPath)) return true;
+  }
+  return false;
+}
+
+function isSuccessfulPlanCreate(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  if (record.ok === true && record.command === "plan.create") return true;
+  return Object.values(record).some((item) => isSuccessfulPlanCreate(item));
+}
+
+function readPlanPath(value: unknown): string {
+  if (!value || typeof value !== "object") return "";
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = readPlanPath(item);
+      if (found) return found;
+    }
+    return "";
+  }
+  const record = value as Record<string, unknown>;
+  if (typeof record.planPath === "string" && record.planPath.trim()) return record.planPath.trim();
+  for (const item of Object.values(record)) {
+    const found = readPlanPath(item);
+    if (found) return found;
+  }
+  return "";
 }
 
 export function extractLatestFinalAssistantMessage(

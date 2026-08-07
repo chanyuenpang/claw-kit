@@ -4,6 +4,14 @@ description: Use first whenever claw-kit workflow is active in a .claw project; 
 ---
 # using-claw-kit
 
+## Availability boundary
+
+If claw-kit, its CLI, or its workflow tools are unavailable, skip claw-kit and
+continue the user's task directly. Do not claim that the task cannot proceed
+solely because claw-kit is unavailable.
+
+> claw kit 并不是任何任务的前置条件，不允许声称 claw kit 不可用而无法推进任务。
+
 If the request is not expected to produce reusable project knowledge, skip this skill and work directly.
 
 For claw-kit usage questions, read the adjacent `../claw-kit-doc/SKILL.md`
