@@ -2,7 +2,7 @@
   "id": "claw-kit",
   "name": "claw-kit",
   "description": "OpenClaw adapter contracts and the claw-kit documentation entry.",
-  "version": "0.2.15.0",
+  "version": "0.2.16.0",
   "skills": [
     "skills"
   ],
