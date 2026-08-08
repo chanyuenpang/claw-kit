@@ -83,7 +83,7 @@ Together, the canonical config plus local override model gives longer-running pr
 - `contextPaths`
   - optional project paths kept for shared context shape alignment
 - `memory.enabled`
-  - master switch for project memory, task memory, embedding refresh, and `claw search`
+  - master switch for project memory, embedding refresh, and `claw search`
   - default: `true`
 - `memory.autoUpdate`
   - updates affected existing documents from `memory.externalDocPaths` after the selected knowledge-writer assignments
@@ -373,7 +373,7 @@ With this config, planning-enabled default plans still start in `process.discuss
 ## Notes on embeddings and refresh
 
 - `claw search` is recall over project docs, not code search
-- `memory.enabled = false` disables project memory, task memory, embedding refresh, and `claw search`
+- `memory.enabled = false` disables project memory, embedding refresh, and `claw search`
 - `memory.autoUpdate` is distinct from top-level `autoUpdate`; it governs existing external documentation after knowledge finalization
 - `claw search index --refresh` expects `memory.embedding` to be configured
 - local embedding defaults to `jinaai/jina-embeddings-v2-base-zh` at 768 dimensions

@@ -171,7 +171,8 @@ test("cli plan done records completedAt and retains the current task path", asyn
   assert.match(String(completedPlan.completedAt), /^\d{4}-\d{2}-\d{2}T/);
   const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
   const memory = refreshStatus.memory as JsonRecord;
-  assert.ok(memory.task as JsonRecord | undefined);
+  assert.equal(memory.task, undefined);
+  assert.equal(fs.existsSync(path.join(taskDirectory(root, "archive-task"), "memory.sqlite")), false);
   assert.equal(fs.existsSync(taskDirectory(root, "archive-task")), true);
   assert.equal(fs.existsSync(path.join(root, ".claw", "archive", "tasks", "archive-task")), false);
   assert.equal(fs.existsSync(path.join(root, ".claw", "runtime", "session-bindings.json")), false);
@@ -477,7 +478,7 @@ test("cli plan edit completion dispatches the same completion refresh as plan do
   assert.equal((result.knowledgeDispatch as JsonRecord).policy, "subagent");
   const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
   const memory = refreshStatus.memory as JsonRecord;
-  assert.ok(memory.task as JsonRecord | undefined);
+  assert.equal(memory.task, undefined);
   const completedPlan = JSON.parse(fs.readFileSync(String(result.planPath), "utf-8")) as JsonRecord;
   assert.match(String(completedPlan.completedAt), /^\d{4}-\d{2}-\d{2}T/);
 });
@@ -493,7 +494,7 @@ test("cli plan edit end.closed dispatches completion finalization", async () => 
   assert.equal(result.planStatus, "end.closed");
   const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
   const memory = refreshStatus.memory as JsonRecord;
-  assert.ok(memory.task as JsonRecord | undefined);
+  assert.equal(memory.task, undefined);
 });
 
 test("cli plan edit end.leave dispatches end-state finalization", async () => {
@@ -512,7 +513,7 @@ test("cli plan edit end.leave dispatches end-state finalization", async () => {
   assert.equal(result.stage, "left");
   const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
   const memory = refreshStatus.memory as JsonRecord;
-  assert.ok(memory.task as JsonRecord | undefined);
+  assert.equal(memory.task, undefined);
   const plan = JSON.parse(fs.readFileSync(taskFile(root, "leave-task", "plan.json"), "utf-8")) as JsonRecord;
   assert.equal(plan.completedAt, undefined);
   assert.equal(plan.leaveReason, "manual_leave");

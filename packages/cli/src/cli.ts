@@ -60,7 +60,6 @@ import {
   type InitProjectInput,
   type InheritedFrom,
   type LeaveState,
-  type MemoryScope,
   type PlanDocument,
   type PlanEvent,
   type PlanFieldUpdates,
@@ -1833,7 +1832,6 @@ function runDirect(args: string[], effectiveHost: ClawHost | undefined): void {
     cwd: process.cwd(),
     taskName: "__direct__",
     includeTaskRetention: false,
-    includeTaskMemory: false,
     statusLabel: "direct",
   });
   printJson(
@@ -2455,7 +2453,6 @@ function completeKnowledgeFinalizationJob(
     cwd: running.projectRoot,
     taskName: running.taskName,
     includeTaskRetention: false,
-    includeTaskMemory: false,
     includeGitNexus: false,
     statusLabel: `knowledge-${running.finalizeId.slice(0, 12)}`,
   });
@@ -3751,7 +3748,7 @@ type CompletionRefreshResult = {
   };
 };
 
-type CompletionRefreshOperation = "memory.reindex.project" | "memory.reindex.task" | "gitnexus.refresh";
+type CompletionRefreshOperation = "memory.reindex.project" | "gitnexus.refresh";
 
 type CompletionRefreshStatus = {
   ok: true;
@@ -3785,7 +3782,6 @@ type CompletionRefreshStatus = {
   taskName: string;
   memory: {
     project: ReturnType<typeof buildMemoryIndex>;
-    task?: ReturnType<typeof buildMemoryIndex>;
   };
   gitnexus?: GitNexusRefreshResult;
   dirtyHash?: string;
@@ -3836,13 +3832,11 @@ function queueCompletionRefresh(input: {
   cwd: string;
   taskName: string;
   includeTaskRetention?: boolean;
-  includeTaskMemory?: boolean;
   includeGitNexus?: boolean;
   statusLabel?: string;
 }): CompletionRefreshResult {
   const project = resolveProjectContext(input.cwd);
   const includeTaskRetention = input.includeTaskRetention ?? true;
-  const includeTaskMemory = input.includeTaskMemory ?? includeTaskRetention;
   const taskRetention = includeTaskRetention
     ? enforceTaskRetention(project, input.taskName)
     : {
@@ -3854,9 +3848,6 @@ function queueCompletionRefresh(input: {
   const startedAt = new Date().toISOString();
   const statusFile = createCompletionRefreshStatusFile(project.clawDir, input.statusLabel ?? input.taskName, startedAt);
   const operations: CompletionRefreshResult["asyncRefresh"]["operations"] = ["memory.reindex.project"];
-  if (includeTaskMemory && !taskRetention.archivedCurrentTask) {
-    operations.push("memory.reindex.task");
-  }
   if (project.projectConfig?.gitnexus === true && input.includeGitNexus !== false) {
     operations.push("gitnexus.refresh");
   }
@@ -4050,7 +4041,6 @@ function runInternalCompletionRefresh(args: string[]): void {
       "utf-8",
     );
     let projectMemory: ReturnType<typeof buildMemoryIndex> | undefined;
-    let taskMemory: ReturnType<typeof buildMemoryIndex> | undefined;
     let gitnexus: GitNexusRefreshResult | undefined;
     let refreshCycles = 0;
     let dirtyHash = "";
@@ -4058,9 +4048,6 @@ function runInternalCompletionRefresh(args: string[]): void {
       refreshCycles += 1;
       dirtyHash = computeCompletionDirtyHash(cwd, taskName, operations);
       projectMemory = buildMemoryIndex({ cwd, scope: "project" });
-      taskMemory = operations.includes("memory.reindex.task")
-        ? tryBuildTaskMemoryIndex(cwd, taskName)
-        : undefined;
       gitnexus = operations.includes("gitnexus.refresh")
         ? refreshGitNexusIfEnabled(cwd, resolveProjectContext(cwd).projectConfig)
         : {
@@ -4089,7 +4076,6 @@ function runInternalCompletionRefresh(args: string[]): void {
       taskName,
       memory: {
         project: projectMemory!,
-        ...(taskMemory ? { task: taskMemory } : {}),
       },
       gitnexus,
       dirtyHash,
@@ -4310,21 +4296,6 @@ function listCompletionFingerprintFiles(root: string): string[] {
     }
   }
   return files;
-}
-
-function tryBuildTaskMemoryIndex(cwd: string, taskName: string): ReturnType<typeof buildMemoryIndex> | undefined {
-  try {
-    return buildMemoryIndex({
-      cwd,
-      scope: "task",
-      taskName,
-    });
-  } catch (error) {
-    if (error instanceof ClawError && error.code === "TASK_NOT_FOUND") {
-      return undefined;
-    }
-    throw error;
-  }
 }
 
 function createCompletionRefreshStatusFile(clawDir: string, taskName: string, startedAt: string): string {

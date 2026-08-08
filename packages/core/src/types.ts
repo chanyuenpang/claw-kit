@@ -645,12 +645,11 @@ export type SwitchTaskResult = {
   leaveState: LeaveState;
 };
 
-export type MemoryScope = "project" | "task";
+export type MemoryScope = "project";
 
 export type MemoryIndexInput = {
   cwd: string;
   scope?: MemoryScope;
-  taskName?: string;
   maxFiles?: number;
 };
 
@@ -658,7 +657,6 @@ export type MemorySearchInput = {
   cwd: string;
   query: string;
   scope?: MemoryScope;
-  taskName?: string;
   limit?: number;
 };
 
@@ -702,7 +700,7 @@ export type MemorySearchResult = {
   storePath: string;
   results: MemorySearchResultEntry[];
   telemetry: {
-    route: "task_fts" | "lexical_fast_path" | "hybrid";
+    route: "lexical_fast_path" | "hybrid";
     queryEmbedding: "skipped" | "cache_hit" | "generated";
     embeddingRuntime?: "mock" | "persistent_daemon" | "one_shot" | "remote";
     vectorScanMs?: number;
@@ -716,7 +714,6 @@ export type MemorySearchResult = {
 export type MemoryGetInput = {
   cwd: string;
   scope?: MemoryScope;
-  taskName?: string;
 };
 
 export type MemoryGetResult = {

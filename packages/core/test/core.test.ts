@@ -25,7 +25,6 @@ import {
   editPlan,
   enforceTaskRetention,
   findTaskDirectory,
-  getMemory,
   ingestTruth,
   initProject,
   isCompletionTerminal,
@@ -4176,7 +4175,7 @@ test("switch-task returns transient lineage without writing task metadata", asyn
   assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "target-task", "meta.json")), false);
 });
 
-test("memory search defaults to project scope and task scope prioritizes active plan structured memory", async () => {
+test("memory search indexes only project-scoped recall sources", async () => {
   const root = createFixture("memory-search");
   fs.writeFileSync(
     path.join(root, ".claw", "project.json"),
@@ -4221,22 +4220,17 @@ test("memory search defaults to project scope and task scope prioritizes active 
       references: [{ why: "delta proof", path: "src/index.ts" }],
     },
   });
-  fs.writeFileSync(taskFile(root, "demo-task", "memory.md"), "legacy epsilon task memory\n", "utf-8");
 
   const previousMockEnv = process.env.CLAW_EMBEDDING_MOCK;
   process.env.CLAW_EMBEDDING_MOCK = "1";
 
   try {
     const projectIndex = buildMemoryIndex({ cwd: root });
-    const taskIndex = buildMemoryIndex({ cwd: root, scope: "task", taskName: "demo-task" });
     const projectSearch = searchMemory({ cwd: root, query: "alpha" });
     const externalSearch = searchMemory({ cwd: root, query: "zeta" });
     const txtSearch = searchMemory({ cwd: root, query: "legacy" });
-    const taskSearch = searchMemory({ cwd: root, scope: "task", taskName: "demo-task", query: "gamma" });
-    const taskMemory = getMemory({ cwd: root, scope: "task", taskName: "demo-task" });
 
     assert.equal(projectIndex.scope, "project");
-    assert.equal(taskIndex.scope, "task");
     assert.deepEqual(projectIndex.embedding, {
       provider: "local",
       model: "Snowflake/snowflake-arctic-embed-xs",
@@ -4252,8 +4246,6 @@ test("memory search defaults to project scope and task scope prioritizes active 
     assert.equal(projectIndex.sources.some((item) => item.endsWith(path.join("docs", "notes.txt"))), false);
     assert.ok(externalSearch.results.some((item) => item.sourcePath.endsWith(path.join("docs", "guide.md"))));
     assert.equal(txtSearch.results.some((item) => item.sourcePath.endsWith(path.join("docs", "notes.txt"))), false);
-    assert.ok(taskSearch.results.some((item) => item.kind === "active_plan"));
-    assert.equal(taskMemory.sources[0]?.kind, "active_plan");
   } finally {
     if (previousMockEnv === undefined) {
       delete process.env.CLAW_EMBEDDING_MOCK;

@@ -60,7 +60,7 @@ When memory embedding or GitNexus is enabled, `claw context` adds optional `sear
 - `knowledgeWriter.externalSkills`
   - optional ordered documentation-governance skill sequence replacing the default `["claw-kit:knowledge-writer"]`; every skill receives the same unattended prompt, and external skills need no claw session workflow
 - `memory.enabled`
-  - master switch for project memory, task memory, embedding refresh, and `claw search`
+  - master switch for project memory, embedding refresh, and `claw search`
 - `memory.externalDocPaths`
   - markdown recall roots for `claw search`
 - `memory.embedding`
@@ -81,7 +81,7 @@ When memory embedding or GitNexus is enabled, `claw context` adds optional `sear
 - Use `.claw/project-override.json` for personal runtime preferences.
 - Use the canonical field names in both files: `planning`, `autoUpdate`, `externalPlanningSkill`, `goalMode`, `knowledgeWriter`, and `gitnexus`.
 - Treat explicit `null` as an intentional override, not inheritance.
-- `memory.enabled = false` disables project memory, task memory, embedding refresh, and `claw search` together.
+- `memory.enabled = false` disables project memory, embedding refresh, and `claw search` together.
 
 ## When to use the canonical guide
 

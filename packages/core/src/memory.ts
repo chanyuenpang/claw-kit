@@ -5,11 +5,11 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
-import { resolveProjectContext, resolveTaskContext } from "./context.js";
+import { resolveProjectContext } from "./context.js";
 import { resolveDefaultLocalEmbeddingDimensions } from "./embedding-defaults.js";
 import { requestPersistentEmbedding } from "./embedding-daemon-protocol.js";
 import { ClawError } from "./errors.js";
-import { readJsonFile, readTextFile } from "./io.js";
+import { readTextFile } from "./io.js";
 import { analyzeKnowledgeDocument, type KnowledgeState } from "./knowledge-document.js";
 import { buildProjectKeywordSearchPlan, buildProjectQueryIntent } from "./memory-query.js";
 import type {
@@ -18,14 +18,11 @@ import type {
   MemoryGetResult,
   MemoryIndexInput,
   MemoryIndexResult,
-  MemoryScope,
   MemorySearchInput,
   MemorySearchResult,
   MemorySearchResultEntry,
   MemorySourceEntry,
-  PlanDocument,
   ProjectContext,
-  TaskContext,
 } from "./types.js";
 
 const DEFAULT_PROJECT_REFRESH_FILE_LIMIT = 100;
@@ -102,39 +99,33 @@ export type ProjectEmbeddingWarmupResult = {
 };
 
 export function buildMemoryIndex(input: MemoryIndexInput): MemoryIndexResult {
-  const { scope, project, task } = resolveMemoryScope(input);
+  const project = resolveProjectContext(input.cwd);
   if (!isProjectMemoryEnabled(project)) {
     return {
-      scope,
-      storePath: getMemoryStorePath(project, scope, task),
+      scope: "project",
+      storePath: getMemoryStorePath(project),
       indexedCount: 0,
       processedFileCount: 0,
       pendingFileCount: 0,
       sources: [],
-      ...(scope === "project" ? { embedding: null, vectorIndex: null } : {}),
+      embedding: null,
+      vectorIndex: null,
     };
   }
-  const storePath = getMemoryStorePath(project, scope, task);
-  const sources = collectMemorySources(project, scope, task);
-  const embedding = scope === "project" ? resolveProjectMemoryEmbeddingConfig(project) : undefined;
+  const storePath = getMemoryStorePath(project);
+  const sources = collectProjectMemorySources(project);
+  const embedding = resolveProjectMemoryEmbeddingConfig(project);
 
   fs.mkdirSync(path.dirname(storePath), { recursive: true });
   return withMemoryDatabase(storePath, "index refresh", "write", (db) => {
     prepareSchema(db);
-    const syncResult =
-      scope === "project"
-        ? syncProjectMemoryIndex(
-            db,
-            sources,
-            embedding ?? null,
-            input.maxFiles ?? DEFAULT_PROJECT_REFRESH_FILE_LIMIT,
-          )
-        : {
-            vectorIndex: rebuildTaskMemoryIndex(db, sources),
-            processedFileCount: sources.length,
-            pendingFileCount: 0,
-          };
-    upsertMetadata(db, "scope", scope);
+    const syncResult = syncProjectMemoryIndex(
+      db,
+      sources,
+      embedding ?? null,
+      input.maxFiles ?? DEFAULT_PROJECT_REFRESH_FILE_LIMIT,
+    );
+    upsertMetadata(db, "scope", "project");
     upsertMetadata(db, "indexed_at", new Date().toISOString());
     if (embedding) {
       upsertMetadata(db, "embedding_config", JSON.stringify(embedding));
@@ -150,42 +141,16 @@ export function buildMemoryIndex(input: MemoryIndexInput): MemoryIndexResult {
     }
 
     return {
-      scope,
+      scope: "project",
       storePath,
       indexedCount: sources.length,
       processedFileCount: syncResult.processedFileCount,
       pendingFileCount: syncResult.pendingFileCount,
       sources: sources.map((entry) => entry.sourcePath),
-      ...(scope === "project" ? { embedding, vectorIndex: syncResult.vectorIndex } : {}),
+      embedding,
+      vectorIndex: syncResult.vectorIndex,
     };
   });
-}
-
-function rebuildTaskMemoryIndex(
-  db: DatabaseSync,
-  sources: MemorySourceEntry[],
-): MemoryIndexResult["vectorIndex"] {
-  db.exec("DELETE FROM docs;");
-  db.exec("DELETE FROM docs_fts;");
-  db.exec("DELETE FROM doc_embeddings;");
-  db.exec("DELETE FROM doc_embedding_vectors;");
-  const insertDoc = db.prepare(
-    "INSERT INTO docs (source_path, kind, content, content_hash) VALUES (?, ?, ?, ?)",
-  );
-  const insertFts = db.prepare(
-    "INSERT INTO docs_fts (rowid, source_path, kind, content) VALUES (?, ?, ?, ?)",
-  );
-
-  for (const source of sources) {
-    const result = insertDoc.run(
-      source.sourcePath,
-      source.kind,
-      source.content,
-      hashMemoryContent(source.content),
-    );
-    insertFts.run(Number(result.lastInsertRowid), source.sourcePath, source.kind, source.content);
-  }
-  return null;
 }
 
 function syncProjectMemoryIndex(
@@ -351,43 +316,27 @@ export function searchMemory(input: MemorySearchInput): MemorySearchResult {
   if (!input.query.trim()) {
     throw new ClawError("MEMORY_QUERY_REQUIRED", "memory search requires a non-empty query.");
   }
-  const { scope, project, task } = resolveMemoryScope(input);
+  const project = resolveProjectContext(input.cwd);
   if (!isProjectMemoryEnabled(project)) {
     throw new ClawError("MEMORY_DISABLED", "Project memory is disabled by .claw/project.json `memory.enabled = false`.", {
-      scope,
+      scope: "project",
       projectRoot: project.projectRoot,
     });
   }
-  const storePath = getMemoryStorePath(project, scope, task);
+  const storePath = getMemoryStorePath(project);
   if (!fs.existsSync(storePath)) {
-    if (scope === "project") {
-      throw new ClawError(
-        "MEMORY_VECTOR_INDEX_REQUIRED",
-        "Project search requires a refreshed vector index. Run `claw search index --refresh` first.",
-      );
-    }
-    buildMemoryIndex({
-      cwd: input.cwd,
-      scope,
-      ...(task ? { taskName: task.taskName } : {}),
-    });
+    throw new ClawError(
+      "MEMORY_VECTOR_INDEX_REQUIRED",
+      "Project search requires a refreshed vector index. Run `claw search index --refresh` first.",
+    );
   }
 
   return withMemoryDatabase(storePath, "search", "read", (db) => {
     prepareSchema(db);
-    const searchResult =
-      scope === "project"
-        ? searchProjectMemoryHybrid(db, input.query, input.limit ?? 10, project)
-        : {
-            results: searchTaskMemoryFts(db, input.query, input.limit ?? 10),
-            telemetry: {
-              route: "task_fts" as const,
-              queryEmbedding: "skipped" as const,
-            },
-          };
+    const searchResult = searchProjectMemoryHybrid(db, input.query, input.limit ?? 10, project);
 
     return {
-      scope,
+      scope: "project",
       storePath,
       results: searchResult.results,
       telemetry: {
@@ -414,8 +363,7 @@ async function primePersistentProjectQueryEmbedding(
   input: MemorySearchInput,
 ): Promise<"persistent_daemon" | null> {
   if (
-    input.scope === "task"
-    || process.env.CLAW_EMBEDDING_MOCK === "1"
+    process.env.CLAW_EMBEDDING_MOCK === "1"
     || process.env.CLAW_EMBEDDING_PERSISTENT_WORKER === "0"
     || !input.query.trim()
   ) {
@@ -423,7 +371,7 @@ async function primePersistentProjectQueryEmbedding(
   }
   const project = resolveProjectContext(input.cwd);
   const embedding = resolveProjectMemoryEmbeddingConfig(project);
-  const storePath = getMemoryStorePath(project, "project");
+  const storePath = getMemoryStorePath(project);
   if (embedding?.provider !== "local" || !fs.existsSync(storePath)) {
     return null;
   }
@@ -458,40 +406,17 @@ async function primePersistentProjectQueryEmbedding(
 }
 
 export function getMemory(input: MemoryGetInput): MemoryGetResult {
-  const { scope, project, task } = resolveMemoryScope(input);
-  const storePath = getMemoryStorePath(project, scope, task);
-  const sources = isProjectMemoryEnabled(project) ? collectMemorySources(project, scope, task) : [];
+  const project = resolveProjectContext(input.cwd);
+  const storePath = getMemoryStorePath(project);
+  const sources = isProjectMemoryEnabled(project) ? collectProjectMemorySources(project) : [];
   return {
-    scope,
+    scope: "project",
     storePath,
     sources,
   };
 }
 
-function resolveMemoryScope(input: MemoryIndexInput | MemorySearchInput): {
-  scope: MemoryScope;
-  project: ProjectContext;
-  task?: TaskContext;
-} {
-  const project = resolveProjectContext(input.cwd);
-  const scope = input.scope ?? "project";
-  if (scope === "task") {
-    if (!input.taskName) {
-      throw new ClawError("TASK_NOT_FOUND", "Task scope memory commands require --task.", { scope });
-    }
-    return {
-      scope,
-      project,
-      task: resolveTaskContext(project, input.taskName),
-    };
-  }
-  return { scope, project };
-}
-
-function getMemoryStorePath(project: ProjectContext, scope: MemoryScope, task?: TaskContext): string {
-  if (scope === "task" && task) {
-    return path.join(task.taskDir, "memory.sqlite");
-  }
+function getMemoryStorePath(project: ProjectContext): string {
   return path.join(project.clawDir, "memory.sqlite");
 }
 
@@ -586,13 +511,6 @@ function buildMemoryStoreBusyError(storePath: string, operation: string, cause: 
   );
 }
 
-function collectMemorySources(project: ProjectContext, scope: MemoryScope, task?: TaskContext): MemorySourceEntry[] {
-  if (scope === "task" && task) {
-    return collectTaskMemorySources(task);
-  }
-  return collectProjectMemorySources(project);
-}
-
 function collectProjectMemorySources(project: ProjectContext): MemorySourceEntry[] {
   const sources: MemorySourceEntry[] = [];
   addTextSourceIfExists(sources, path.join(project.clawDir, "memory.md"), "project_memory");
@@ -608,18 +526,6 @@ function collectProjectMemorySources(project: ProjectContext): MemorySourceEntry
   for (const externalPath of project.projectConfig?.memory?.externalDocPaths ?? []) {
     addExternalDocSources(sources, project.projectRoot, externalPath);
   }
-  return sources;
-}
-
-function collectTaskMemorySources(task: TaskContext): MemorySourceEntry[] {
-  const sources: MemorySourceEntry[] = [];
-  const plan = readJsonFile<PlanDocument>(task.activePlanPath);
-  sources.push({
-    sourcePath: task.activePlanPath,
-    kind: "active_plan",
-    content: renderStructuredPlanMemory(plan),
-  });
-  addTextSourceIfExists(sources, path.join(task.taskDir, "memory.md"), "task_memory");
   return sources;
 }
 
@@ -659,41 +565,6 @@ function addExternalDocSources(
   for (const filePath of listFiles(resolved, isExternalDocFile)) {
     addTextSourceIfExists(sources, filePath, "external_doc");
   }
-}
-
-function renderStructuredPlanMemory(plan: PlanDocument): string {
-  const parts: string[] = [
-    `# ${plan.title}`,
-    `Status: ${plan.status}`,
-    `Goal: ${plan.goal.text}`,
-  ];
-  if (plan.rules?.length) {
-    parts.push("Rules:");
-    parts.push(...plan.rules.map((rule) => `- ${rule}`));
-  }
-  if (plan.references?.length) {
-    parts.push("References:");
-    parts.push(...plan.references.map((reference) => `- ${reference.why}: ${reference.path}`));
-  }
-  if (plan.keyDecisions?.length) {
-    parts.push("Key Decisions:");
-    parts.push(...plan.keyDecisions.map((decision) => `- ${decision}`));
-  }
-  if (plan.retrospective) {
-    parts.push("Retrospective:");
-    parts.push(`- Summary: ${plan.retrospective.summary}`);
-    for (const item of plan.retrospective.whatWorked ?? []) {
-      parts.push(`- Worked: ${item}`);
-    }
-    for (const item of plan.retrospective.issues ?? []) {
-      parts.push(`- Issue: ${item}`);
-    }
-  }
-  if (plan.tasks.length) {
-    parts.push("Tasks:");
-    parts.push(...plan.tasks.map((task) => `- [${task.status}] ${task.id}: ${task.title}`));
-  }
-  return `${parts.join("\n")}\n`;
 }
 
 function prepareSchema(db: DatabaseSync): void {
@@ -1423,31 +1294,6 @@ function resolveEmbeddingDimensions(embedding: MemoryEmbeddingConfig, fallback: 
     return resolveDefaultLocalEmbeddingDimensions(embedding.model);
   }
   return fallback > 0 ? fallback : 1536;
-}
-
-function searchTaskMemoryFts(
-  db: DatabaseSync,
-  query: string,
-  limit: number,
-): MemorySearchResultEntry[] {
-  const rows = db
-    .prepare(
-      [
-        "SELECT source_path, kind, snippet(docs_fts, 2, '[', ']', ' ... ', 18) AS snippet, bm25(docs_fts) AS score",
-        "FROM docs_fts",
-        "WHERE docs_fts MATCH ?",
-        "ORDER BY score ASC",
-        "LIMIT ?",
-      ].join(" "),
-    )
-    .all(query, limit) as Array<{ source_path: string; kind: string; snippet: string; score: number }>;
-
-  return rows.map((row) => ({
-    sourcePath: row.source_path,
-    kind: row.kind,
-    snippet: row.snippet,
-    score: row.score,
-  }));
 }
 
 function searchProjectMemoryHybrid(
