@@ -2,6 +2,12 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.2.17] - 2026-08-09
+
+### Fixed
+
+- Session-scoped plans now complete directly without retrospective or key-decision prompts; project-scoped plans retain their document closeout contract across the CLI, Codex, and Cindy hosts.
+
 ## [0.2.12] - 2026-08-05
 
 ### Added
