@@ -278,10 +278,10 @@ const COMMAND_HELP: Record<string, HelpNode> = {
       done: {
         usage: ["{script} plan done --retrospective <text> [options]"],
         description:
-          "Shortcut for applying closeout fields and --status end.completed in one ordered plan edit; it retains the task for at least one hour, sweeps older completed tasks into the archive, and queues the async completion refresh.",
-        summary: "Shortcut for completing a plan with a retrospective and queueing completion refresh.",
+          "Shortcut for applying closeout fields and --status end.completed in one ordered plan edit; project scope requires a retrospective, while session scope completes without document deposition. It retains the task for at least one hour, sweeps older completed tasks into the archive, and queues the async completion refresh.",
+        summary: "Shortcut for completing a plan and queueing completion refresh.",
         options: [
-          { flag: "--retrospective <text>", detail: "Retrospective summary (required)." },
+          { flag: "--retrospective <text>", detail: "Retrospective summary (required for project scope)." },
           { flag: "--key-decision <text>", detail: "Append a durable key decision when one exists (repeatable)." },
           { flag: "--what-worked <text>", detail: "Append a retrospective success (repeatable)." },
           { flag: "--issue <text>", detail: "Append a retrospective issue (repeatable)." },
@@ -912,9 +912,6 @@ function parsePersistentSessionCommand(line: string): PersistentSessionCommand {
   }
   if (group === "plan" && action === "done") {
     const retrospectiveSummary = consumeSessionFlag(tokens, "--retrospective");
-    if (!retrospectiveSummary) {
-      throw new ClawError("RETROSPECTIVE_REQUIRED", "plan done requires --retrospective.");
-    }
     const keyDecisions = consumeAllSessionFlags(tokens, "--key-decision");
     const whatWorked = consumeAllSessionFlags(tokens, "--what-worked");
     const issues = consumeAllSessionFlags(tokens, "--issue");
@@ -925,7 +922,7 @@ function parsePersistentSessionCommand(line: string): PersistentSessionCommand {
       request: {
         operation: "plan.done",
         input: {
-          retrospectiveSummary,
+          ...(retrospectiveSummary ? { retrospectiveSummary } : {}),
           ...(keyDecisions.length ? { keyDecisions } : {}),
           ...(whatWorked.length ? { whatWorked } : {}),
           ...(issues.length ? { issues } : {}),
@@ -1513,14 +1510,8 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
     }
     case "done": {
       const retrospective = readOptionalFlag(args, "--retrospective");
-      if (!retrospective?.trim()) {
-        throw new ClawError(
-          "PROJECT_CONFIG_INVALID",
-          "plan done requires --retrospective.",
-        );
-      }
       const updates: PlanFieldUpdates = {
-        retrospectiveSummary: retrospective,
+        ...(retrospective?.trim() ? { retrospectiveSummary: retrospective } : {}),
         keyDecisions: readRepeatedFlag(args, "--key-decision"),
         whatWorked: readRepeatedFlag(args, "--what-worked"),
         issues: readRepeatedFlag(args, "--issue"),
@@ -1534,6 +1525,10 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
         ...target,
         ownerSessionKey,
       });
+      const currentProject = resolveWorkflowProjectContext(process.cwd(), ownerSessionKey);
+      if (currentProject.scope !== "session" && !retrospective?.trim()) {
+        throw new ClawError("RETROSPECTIVE_REQUIRED", "plan done requires --retrospective for project-scoped plans.");
+      }
       const project = tryResolveHookProject(process.cwd());
       const effectiveWriter = resolveKnowledgeWriterForHost(
         project
@@ -1648,6 +1643,7 @@ async function runPlanSync(args: string[], effectiveHost: ClawHost | undefined):
     plan: result.plan,
     projectRoot: project.projectRoot,
     projectConfig: project.projectConfig,
+    scope: project.scope,
     previousStatus: "process.wait",
     host: effectiveHost,
     recoveryResync: true,
@@ -3175,6 +3171,7 @@ async function tryResolveActiveWorkflowSnapshot(
         plan: result.plan,
         projectRoot: project.projectRoot,
         projectConfig: project.projectConfig,
+        scope: project.scope,
         host: effectiveHost,
       }),
     };

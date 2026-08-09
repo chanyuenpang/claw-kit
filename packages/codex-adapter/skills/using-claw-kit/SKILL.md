@@ -21,7 +21,7 @@ A plan is the task's container, not a frozen script: even while `process.active`
 - `process.discussing`: execution is paused for user discussion. It is a stable cross-turn state that can start a plan or be re-entered from `process.active`; do not implement, enter Goal Mode, convert it to `wait`, or close it before the discussion is settled.
 - `process.active`: downstream tasks are explicit and the user can hand off execution. Execute one task at a time and keep plan progress current through returned guidance.
 - `process.wait`: when execution becomes blocked on user input or an external dependency, proactively move the plan to `process.wait`, then stop until returned guidance resumes it.
-- `end.completed`: the canonical completed plan status. Its returned guidance uses stage `done`; record the retrospective and durable key decisions, then close the plan through that guidance.
+- `end.completed`: the canonical completed plan status. Its returned guidance uses stage `done`; for project scope, record the retrospective and durable key decisions before closing. Session scope is ephemeral and closes directly with `claw plan done`.
 
 ## Investigation
 Use `claw-kit:researcher` for bounded code or implementation investigations when it reduces main-thread context consumption.

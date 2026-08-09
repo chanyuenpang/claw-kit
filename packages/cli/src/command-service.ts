@@ -61,7 +61,7 @@ export type ClawCommandRequest =
   | { operation: "plan.show"; input: { simple?: boolean } }
   | { operation: "plan.edit"; input: { operations: PlanMutationOperation[] } }
   | { operation: "plan.wait"; input: Record<string, never> }
-  | { operation: "plan.done"; input: PlanFieldUpdates & { retrospectiveSummary: string } }
+  | { operation: "plan.done"; input: PlanFieldUpdates }
   | {
       operation: "subplan.create";
       input: Omit<SubplanWriteInput, "cwd" | "ownerSessionKey">;
@@ -186,8 +186,8 @@ export class ClawCommandService {
           "plan.edit",
         );
       case "plan.done": {
-        const commandInput = request.input as PlanFieldUpdates & { retrospectiveSummary: string };
-        if (!commandInput.retrospectiveSummary?.trim()) {
+        const commandInput = request.input as PlanFieldUpdates;
+        if (this.resolveProject(context).scope !== "session" && !commandInput.retrospectiveSummary?.trim()) {
           throw new ClawError("RETROSPECTIVE_REQUIRED", "plan.done requires retrospectiveSummary.");
         }
         return this.editCurrentPlan(context, [
@@ -596,6 +596,7 @@ export class ClawCommandService {
       plan: input.plan,
       projectRoot: project.projectRoot,
       projectConfig: resolvePlanEffectiveConfig(project.projectConfig, input.plan),
+      scope: project.scope,
       host: context.host,
       recoveryResync: input.recoveryResync,
     });

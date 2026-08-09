@@ -57,7 +57,7 @@ export type ClawSessionCommand =
   | {
       operation: "plan.done";
       input: {
-        retrospectiveSummary: string;
+        retrospectiveSummary?: string;
         keyDecisions?: string[];
         whatWorked?: string[];
         issues?: string[];

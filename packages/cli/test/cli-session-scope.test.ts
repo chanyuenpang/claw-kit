@@ -156,11 +156,12 @@ test("lightweight session plan completion skips Goal actions and queues no proje
   assert.equal("hostActions" in activated, false);
 
   const plan = JSON.parse(fs.readFileSync(planPath, "utf-8")) as { tasks: Array<{ id: number }> };
+  let closeoutGuidance: JsonRecord | undefined;
   for (const task of plan.tasks) {
-    runClaw(["task", "done", "--id", String(task.id), "--host", "codex"], root, env);
+    closeoutGuidance = runClaw(["task", "done", "--id", String(task.id), "--host", "codex"], root, env);
   }
   const completed = runClaw(
-    ["plan", "done", "--retrospective", "Session workflow completed.", "--host", "codex"],
+    ["plan", "done", "--host", "codex"],
     root,
     env,
   );
@@ -169,6 +170,8 @@ test("lightweight session plan completion skips Goal actions and queues no proje
   assert.equal((completed.achievement as JsonRecord).status, "end.completed");
   assert.equal((completed.nextsteps as string[]).some((step) => step.includes("using-claw-kit")), true);
   assert.equal((completed.nextsteps as string[]).some((step) => step.includes("update_goal")), true);
+  assert.deepEqual(closeoutGuidance?.commandHints, ["claw plan done"]);
+  assert.equal((closeoutGuidance?.nextsteps as string[]).some((step) => /retrospective|key-decision/i.test(step)), false);
   assert.equal("hostActions" in completed, false);
 
   const sessionRoot = path.dirname(path.dirname(path.dirname(planPath)));

@@ -213,6 +213,7 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
       commandSource: input.parentTaskId !== undefined ? "subplan.create" : "plan.create",
       projectRoot: project.projectRoot,
       projectConfig: resolvePlanEffectiveConfig(project.projectConfig, plan),
+      scope: project.scope,
       host: input.host,
     }),
     plan,
@@ -287,6 +288,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
     if (input.operations) {
       const chain = await applyPlanMutationOperations({
         projectRoot: task.project.projectRoot,
+        scope: task.project.scope,
         initialPlan: previous,
         operations: input.operations,
       });
@@ -487,7 +489,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
     });
 
     validatePlanDocument(next);
-    if (next.status === "end.completed" && !next.retrospective?.summary?.trim()) {
+    if (task.project.scope !== "session" && next.status === "end.completed" && !next.retrospective?.summary?.trim()) {
       throw new ClawError(
         "RETROSPECTIVE_REQUIRED",
         "end.completed requires retrospective.summary before the plan can be completed.",
@@ -627,6 +629,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
         commandSource,
         projectRoot: task.project.projectRoot,
         projectConfig: resolvePlanEffectiveConfig(task.project.projectConfig, resultPlan),
+        scope: task.project.scope,
         host: input.host,
         ...(completionHooks?.subplanClosureCandidate
           ? {}
@@ -844,6 +847,7 @@ function validatePlanTaskStatus(status: string): void {
 
 async function applyPlanMutationOperations(input: {
   projectRoot: string;
+  scope?: "project" | "session";
   initialPlan: PlanDocument;
   operations: PlanMutationOperation[];
 }): Promise<{ plan: PlanDocument; result: PlanMutationChainResult }> {
@@ -931,7 +935,7 @@ async function applyPlanMutationOperations(input: {
         nextPlan: candidate,
       });
       validatePlanDocument(candidate);
-      if (candidate.status === "end.completed" && !candidate.retrospective?.summary?.trim()) {
+      if (input.scope !== "session" && candidate.status === "end.completed" && !candidate.retrospective?.summary?.trim()) {
         throw new ClawError("RETROSPECTIVE_REQUIRED", "end.completed requires retrospective.summary before the plan can be completed.");
       }
       current = candidate;

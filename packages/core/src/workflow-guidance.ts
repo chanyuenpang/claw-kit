@@ -24,6 +24,22 @@ type GoalModeTemplate = {
   setWhen?: "on_enter_process_active" | "on_resume_process_active";
 };
 
+function sessionCompletionGuidance(guidance: WorkflowGuidance): WorkflowGuidance {
+  return {
+    ...guidance,
+    nextsteps: guidance.nextsteps.map((step) => step === "2. Run `claw plan done --retrospective` once. Add `--key-decision` only for real durable decisions not already recorded."
+      ? "2. Run `claw plan done` once."
+      : step),
+    notes: guidance.notes?.replace(
+      "Use `plan done --retrospective` and repeatable `--key-decision` values for full-plan closeout.",
+      "Use `plan done` for full-plan closeout.",
+    ),
+    commandHints: guidance.commandHints?.map((hint) => hint === "claw plan done --retrospective \"<summary>\" [--key-decision \"<durable decision>\"]"
+      ? "claw plan done"
+      : hint),
+  };
+}
+
 type GoalToolTemplate =
   | {
       tool: "create_goal";
@@ -311,6 +327,7 @@ export async function buildPlanWorkflowGuidance(params: {
   appendedTaskIds?: number[];
   completedTaskIds?: number[];
   host?: string;
+  scope?: "project" | "session";
   recoveryResync?: boolean;
 }): Promise<WorkflowGuidance> {
   const {
@@ -366,6 +383,9 @@ export async function buildPlanWorkflowGuidance(params: {
     taskDoneCommand,
     suggestedTruthTargetsNote,
   };
+  const adaptForScope = (guidance: WorkflowGuidance): WorkflowGuidance => params.scope === "session"
+    ? sessionCompletionGuidance(guidance)
+    : guidance;
 
   switch (plan.status) {
     case "prepare.requirements": {
@@ -402,13 +422,13 @@ export async function buildPlanWorkflowGuidance(params: {
           planFile,
           goalModeEnabled,
           suppressGoalFields,
-          guidance: {
+          guidance: adaptForScope({
             stage: template.stage as WorkflowGuidance["stage"],
             summary: template.summary,
             nextsteps: template.nextsteps,
             ...(template.notes ? { notes: template.notes } : {}),
             ...(template.commandHints ? { commandHints: template.commandHints } : {}),
-          },
+          }),
         });
       }
       const isInitialDiscussion = plan.status === "process.discussing"
@@ -446,26 +466,26 @@ export async function buildPlanWorkflowGuidance(params: {
     case "process.active": {
       if (allTasksDone) {
         const template = renderStateTemplate("process.allTasksDone", vars);
-        const guidance = {
+        const guidance = adaptForScope({
           stage: template.stage as WorkflowGuidance["stage"],
           summary: template.summary,
           nextsteps: template.nextsteps,
           ...(template.notes ? { notes: template.notes } : {}),
           ...(template.commandHints ? { commandHints: template.commandHints } : {}),
-        };
+        });
         return applyCreateGuidance({
           commandSource,
           plan,
           planFile,
         goalModeEnabled,
         suppressGoalFields,
-        guidance: await applyTemplateTaskDoneGuidance({
+        guidance: adaptForScope(await applyTemplateTaskDoneGuidance({
             projectRoot,
             projectConfig,
             plan,
             completedTaskIds,
             guidance,
-          }),
+          })),
         });
       }
 
@@ -480,7 +500,7 @@ export async function buildPlanWorkflowGuidance(params: {
             : "process.default";
       const template = renderStateTemplate(templateKey, vars);
 
-      const guidance = {
+      const guidance = adaptForScope({
         stage: template.stage as WorkflowGuidance["stage"],
         summary: template.summary,
         nextsteps: template.nextsteps,
@@ -502,7 +522,7 @@ export async function buildPlanWorkflowGuidance(params: {
           ? { goalTool: buildGoalTool(plan.goal.text, template.goalTool) }
           : {}),
         ...(template.commandHints ? { commandHints: template.commandHints } : {}),
-      };
+      });
       return applyCreateGuidance({
         commandSource,
         plan,
