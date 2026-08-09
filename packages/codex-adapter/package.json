@@ -1,6 +1,6 @@
 {
   "name": "@claw-kit/codex-adapter",
-  "version": "0.2.17.0",
+  "version": "0.2.17.1",
   "private": true,
   "type": "module",
   "description": "Codex adapter assets for landing the claw-kit .claw workflow inside Codex.",
