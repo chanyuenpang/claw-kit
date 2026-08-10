@@ -60,6 +60,7 @@ async function runClawPlanMutation({ argv, workdir, timeout_ms = 30000 }) {
 - The dispatched job already exists. Do not wait for that agent; immediately end the main turn after spawning it. In `subagent` mode, `knowledge claim` collects the existing parent-turn report and Stop does not capture, queue, launch, or amend the job. The bridge cannot call collaboration tools, and `background` never returns this dispatch.
 ## Hard boundaries
 - Strongly prefer running plan mutations through the code-mode bridge without splitting host calls, reconstructing `hostActions` or `goalTool`, or repeating canonical transitions as compensation; if it returns `goalRecovery.command`, immediately run that command in a new code-mode call before replying.
+- Codex has no direct-call fallback: every supported plan mutation goes through the bundled code-mode consumer.
 - Goal-state inspection belongs only to the fixed driver or bundled consumer program; the agent must never call `get_goal` separately.
 - Edit canonical plan state only through claw commands supplied or permitted by returned guidance.
 - If code mode, the driver, or a required host tool is unavailable, skip the claw workflow and continue the user's task directly; do not substitute an unsupported plan mutation.
