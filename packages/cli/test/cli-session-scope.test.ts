@@ -93,7 +93,7 @@ test("CLAW_SESSION_ID restores a Cindy session-scoped workflow", () => {
   assert.equal((context.activeWorkflow as JsonRecord).planPath, created.planPath);
 });
 
-test("an explicit template selects session storage automatically outside a claw project", () => {
+test("a template outside a claw project still requires an explicit session scope", () => {
   const cwd = createFixture("template-auto-session-cwd");
   const homeRoot = createFixture("template-auto-session-home");
   const runtimeDir = createFixture("template-auto-session-runtime");
@@ -111,13 +111,8 @@ test("an explicit template selects session storage automatically outside a claw 
     CODEX_THREAD_ID: "thread-template-session-scope",
     CLAW_SESSION_RUNTIME_DIR: runtimeDir,
   };
-  const created = runClaw(["plan", "create", "Session template harness", "--template", "session-harness"], cwd, env);
-  const context = runClaw(["context"], cwd, env);
-  const createdPlan = JSON.parse(fs.readFileSync(String(created.planPath), "utf-8")) as JsonRecord;
-
-  assert.equal((context.project as JsonRecord).scope, "session");
-  assert.equal(createdPlan.templateId, "session-harness");
-  assert.match(String(created.planPath), new RegExp(runtimeDir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  const result = runClawExpectFailure(["plan", "create", "Session template harness", "--template", "session-harness"], cwd, env);
+  assert.equal((result.error as JsonRecord).code, "PLAN_CREATE_SCOPE_DECISION_REQUIRED");
   assert.equal(fs.existsSync(path.join(cwd, ".claw")), false);
 });
 
@@ -139,6 +134,22 @@ test("explicit session scope overrides an initialized project and remains isolat
   );
   assert.equal((otherSession.error as JsonRecord).code, "PROJECT_CONFIG_INVALID");
 
+  runClaw(["session", "clean"], root, env);
+});
+
+test("a completed session workflow cannot make the next plan implicit session scope", () => {
+  const root = createFixture("session-scope-does-not-stick");
+  const runtimeDir = createFixture("session-scope-does-not-stick-runtime");
+  const env = { CODEX_THREAD_ID: "thread-session-does-not-stick", CLAW_SESSION_RUNTIME_DIR: runtimeDir };
+  runClaw(["init", "--name", "Project scope"], root);
+
+  const sessionPlan = runClaw(["plan", "create", "Explicit session", "--scope", "session"], root, env);
+  assert.match(String(sessionPlan.planPath), new RegExp(runtimeDir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+
+  const projectPlan = runClaw(["plan", "create", "Default project"], root, env);
+  assert.match(String(projectPlan.planPath), /\\.claw[\\/]tasks[\\/]/);
+  assert.doesNotMatch(String(projectPlan.planPath), new RegExp(runtimeDir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.equal((runClaw(["context"], root, env).project as JsonRecord).scope, undefined);
   runClaw(["session", "clean"], root, env);
 });
 
@@ -215,7 +226,7 @@ test("session scope supports subplans and expired-state cleanup", () => {
   assert.equal(fs.existsSync(staleDir), false);
 });
 
-test("cli plan create with an exact template file auto-selects session scope outside a claw project", () => {
+test("cli template-file creation outside a claw project requires explicit session scope", () => {
   const root = createFixture("cli-template-file-session-scope");
   const templatePath = path.join(root, "example-skill", "TEMPLATE.json");
   fs.mkdirSync(path.dirname(templatePath), { recursive: true });
@@ -228,15 +239,14 @@ test("cli plan create with an exact template file auto-selects session scope out
     "utf-8",
   );
 
-  const result = runClaw(
+  const result = runClawExpectFailure(
     ["plan", "create", "--title", "session-template", "--template-file", templatePath],
     root,
     { CODEX_THREAD_ID: "thread-template-file-session" },
   );
 
-  assert.equal(result.command, "plan.create");
+  assert.equal((result.error as JsonRecord).code, "PLAN_CREATE_SCOPE_DECISION_REQUIRED");
   assert.equal(fs.existsSync(path.join(root, ".claw")), false);
-  assert.match(String(result.planPath), new RegExp(moduleSessionRuntimeDir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 });
 
 test("plan create asks the agent to select scope without classifying an uninitialized workdir", () => {

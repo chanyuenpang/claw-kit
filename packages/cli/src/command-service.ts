@@ -246,7 +246,7 @@ export class ClawCommandService {
           ownerSessionKey: context.agentSessionId,
           host: commandInput.host ?? context.host,
         });
-        const project = this.resolveProject(context, commandInput.scope);
+        const project = this.resolveProject(context, created.scope);
         const createdRef = createPlanRef(project, created.taskName, created.planFile);
         const focus = await createPlanAndSwitchFocus({
           project,

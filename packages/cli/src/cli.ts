@@ -407,13 +407,14 @@ const COMMAND_HELP: Record<string, HelpNode> = {
     ],
   },
   search: {
-    usage: ["{script} search [<query>] [--dir <dir>] [--limit <n>]", "{script} search index --refresh"],
+    usage: ["{script} search [<query>] [--dir <dir>] [--limit <n>] [--json]", "{script} search index --refresh [--json]"],
     description:
       "Project-scoped recall over .claw memory, truth, ADR, and declared markdown docs. Use a positional query or --query. Task-local scope (--task/--scope) is rejected; put task materials in plan.references instead.",
     options: [
       { flag: "--query <text>", detail: "Search query (or pass the query positionally)." },
       { flag: "--dir <dir>", detail: "Override the project directory for this search only." },
       { flag: "--limit <n>", detail: "Max number of results." },
+      { flag: "--json", detail: "Compatibility flag; search output is always JSON." },
     ],
     subcommands: {
       index: {

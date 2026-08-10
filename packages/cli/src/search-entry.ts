@@ -6,9 +6,14 @@ import {
   searchMemoryAsync,
 } from "@veewo/claw-core/search";
 
+const SEARCH_USAGE = "claw search [<query>] [--query <text>] [--dir <dir>] [--limit <n>] [--json]";
+const SEARCH_SUPPORTED_OPTIONS = ["--query <text>", "--dir <dir>", "--limit <n>", "--json"];
+const SEARCH_RECOMMENDED_COMMAND = "claw search --query \"<topic>\" --limit 10";
+
 export async function runSearchEntry(args: string[]): Promise<void> {
   try {
     const searchArgs = [...args];
+    readBooleanFlag(searchArgs, "--json");
     const subcommand = searchArgs[0];
     if (subcommand === "index") {
       searchArgs.shift();
@@ -51,24 +56,50 @@ export async function runSearchEntry(args: string[]): Promise<void> {
 function readRequiredSearchQuery(args: string[]): string {
   const query = readOptionalFlag(args, "--query");
   if (query) {
-    assertNoRemainingArgs(args, "search");
+    assertNoRemainingSearchArgs(args);
     return query;
   }
   const unknownFlags = args.filter((arg) => arg.startsWith("--"));
   if (unknownFlags.length > 0) {
     throw new ClawError("PROJECT_CONFIG_INVALID", `Unknown arguments for search: ${args.join(" ")}`, {
-      command: "search",
+      ...searchHelpDetails(),
       remainingArgs: args,
+      unknownOptions: unknownFlags,
     });
   }
   if (args.length === 0) {
     throw new ClawError(
       "PROJECT_CONFIG_INVALID",
       "Missing search query. Use: `claw search --query \"<topic>\"`.",
-      { flag: "--query", recommendedCommand: "claw search --query \"<topic>\"" },
+      {
+        ...searchHelpDetails(),
+        flag: "--query",
+        recommendedCommand: "claw search --query \"<topic>\"",
+      },
     );
   }
   return args.join(" ").trim();
+}
+
+function assertNoRemainingSearchArgs(args: string[]): void {
+  if (args.length === 0) {
+    return;
+  }
+  throw new ClawError("PROJECT_CONFIG_INVALID", `Unknown arguments for search: ${args.join(" ")}`, {
+    ...searchHelpDetails(),
+    remainingArgs: args,
+    unknownOptions: args.filter((arg) => arg.startsWith("--")),
+  });
+}
+
+function searchHelpDetails(): Record<string, unknown> {
+  return {
+    command: "search",
+    usage: SEARCH_USAGE,
+    supportedOptions: SEARCH_SUPPORTED_OPTIONS,
+    recommendedCommand: SEARCH_RECOMMENDED_COMMAND,
+    helpCommand: "claw search --help",
+  };
 }
 
 function readOptionalFlag(args: string[], flag: string): string | undefined {

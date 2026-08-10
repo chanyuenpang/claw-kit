@@ -101,6 +101,36 @@ test("cli search accepts a positional query for project recall", () => {
   assert.ok(Array.isArray(searchResult.results));
 });
 
+test("cli search accepts --json as a compatibility no-op", () => {
+  const root = createFixture("search-json-compatibility");
+  const env = {
+    CLAW_EMBEDDING_MOCK: "1",
+  };
+
+  runClaw(["init", "--name", "Search JSON Compatibility"], root, env);
+  runClaw(["search", "index", "--refresh", "--json"], root, env);
+
+  const searchResult = runClaw(["search", "alpha", "--json"], root, env);
+  assert.equal(searchResult.command, "search");
+  assert.equal(searchResult.scope, "project");
+  assert.ok(Array.isArray(searchResult.results));
+});
+
+test("cli search unknown arguments include self-repair guidance", () => {
+  const root = createFixture("search-unknown-argument-guidance");
+  const result = runClawExpectFailure(["search", "--query", "alpha", "--bogus"], root);
+  const payload = result.error as JsonRecord;
+  const details = payload.details as JsonRecord;
+
+  assert.equal(payload.code, "PROJECT_CONFIG_INVALID");
+  assert.equal(details.command, "search");
+  assert.match(String(details.usage), /--query <text>/);
+  assert.deepEqual(details.supportedOptions, ["--query <text>", "--dir <dir>", "--limit <n>", "--json"]);
+  assert.equal(details.recommendedCommand, 'claw search --query "<topic>" --limit 10');
+  assert.equal(details.helpCommand, "claw search --help");
+  assert.deepEqual(details.unknownOptions, ["--bogus"]);
+});
+
 test("cli search --dir temporarily searches another project without changing cwd", () => {
   const sourceRoot = createFixture("search-dir-source");
   const targetRoot = createFixture("search-dir-target");

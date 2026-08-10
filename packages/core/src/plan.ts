@@ -66,18 +66,12 @@ async function resolveTemplateCreationScope(
   templateName: string | undefined,
   templateFile: string | undefined,
 ): Promise<"session" | undefined> {
-  if (!templateName?.trim() && !templateFile?.trim()) {
-    return undefined;
-  }
-  const template = await resolveSeedPlanTemplate({
-    projectRoot,
-    templateName,
-    templateFile,
-  });
-  if (template.scope === "session") {
-    return "session";
-  }
-  return projectRoot ? undefined : "session";
+  // Templates configure plan content, never storage scope. Session storage is
+  // an explicit caller choice so every Host follows the same boundary.
+  void projectRoot;
+  void templateName;
+  void templateFile;
+  return undefined;
 }
 
 export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult & { events: PlanEvent[] }> {
@@ -92,7 +86,11 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
   const scope = input.scope ?? await resolveTemplateCreationScope(templateProjectRoot, input.templateName, templateFile);
   let project: TaskContext["project"];
   try {
-    project = resolveWorkflowProjectContext(input.cwd, input.ownerSessionKey, scope);
+    // A new plan is project-scoped unless session storage was explicitly
+    // selected by the caller or its resolved template. An old session manifest
+    // may keep an existing session plan resumable, but must not silently turn a
+    // new plan in an initialized project into session work.
+    project = resolveWorkflowProjectContext(input.cwd, input.ownerSessionKey, scope ?? "project");
   } catch (error) {
     if (!(error instanceof ClawError) || error.code !== "CLAW_DIR_NOT_FOUND") {
       throw error;
@@ -196,6 +194,7 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
   });
 
   return {
+    scope: project.scope ?? "project",
     taskName,
     taskDir: task.taskDir,
     planPath,

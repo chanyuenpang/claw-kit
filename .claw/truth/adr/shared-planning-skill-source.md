@@ -129,7 +129,7 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 模板运行时采用单一 resolver 合同：
 
 - `claw plan create`、`claw subplan create` 与 `claw template validate --template` 必须共用 `resolveSeedPlanTemplate(...)` 完成模板发现、冲突处理、schema 判别和规范化。
-- 无 project root 时，显式 `claw plan create --template <id>` 自动使用 session scope；同一显式 template 在已有 `.claw` 项目内保持 project scope，普通不带显式 template 的 plan create 继续初始化项目。skill entry 不重复拥有这项 storage routing。
+- 无 project root 时，显式 `claw plan create --template <id>` 仍须调用方显式选择 `--scope session`；否则 Core 返回 scope-decision guidance。同一显式 template 在已有 `.claw` 项目内保持 project scope，普通不带显式 template 的 plan create 继续初始化项目。skill entry 不重复拥有这项 storage routing。
 - `resolveSeedPlanTemplate(...)` 同时兼容 legacy `SeedPlanTemplate` 与 skill-local full `PlanDocument`；不得把 full template 强制降格为旧 seed schema，也不得为 create、subplan 或 validate 复制平行 resolver。
 - root plan 与 subplan 的差异发生在统一模板实例化之后。subplan 只追加 `parentPlan`、`parentTaskId`，并更新父任务 execution linkage；模板内容及其运行时语义保持不变。
 - full template 的 `configOverride`、task `guidance.onDone` 与 `choiceId` 是运行时合同。choice 分支由 `claw task done --id <id> --choice <choice-id>` 或 `claw task edit --id <id> --status done --choice <choice-id>` 显式选择，CLI compact response 必须保留 `workflowGuidance.summary`；旧 `claw plan edit --choice-id` 不是 current surface。
@@ -160,7 +160,7 @@ Keep claw-kit runtime-specific workflow rules in `using-claw-kit`, not in generi
 - Future edits to config routing or override-format guidance should start from `shared/skills/config/SKILL.md`.
 - Edits to project-plan admission, status semantics, or workflowGuidance handling should start from the host-specific `using-claw-kit` entry skills.
 - root plan、subplan 与 template validation 不再因入口不同而漂移；新增模板来源或 schema 时只需扩展 `resolveSeedPlanTemplate(...)`。
-- Template-backed skills can use the same plan-create command inside or outside a project; core owns the storage distinction, while explicit `--scope session` and template-declared session scope remain override mechanisms.
+- Template-backed skills can use the same plan-create command inside or outside a project; Core owns the storage distinction, while explicit `--scope session` is the sole session-storage override mechanism.
 - legacy project-local seed template 继续兼容，同时 skill-local full template 可以原样保留 tasks、`configOverride` 和 completion guidance。
 - 父子 linkage 与模板解析职责分离，subplan 生命周期仍由 shared core ownership 管理。
 - 回归测试必须同时覆盖 root/subplan 模板实例化、legacy seed 兼容、缺失模板错误、父子 linkage，以及 `choiceId` 对 `workflowGuidance.summary` 的影响。

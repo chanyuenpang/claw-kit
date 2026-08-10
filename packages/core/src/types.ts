@@ -480,6 +480,7 @@ export type PlanWriteInput = {
 };
 
 export type PlanWriteResult = {
+  scope: "project" | "session";
   taskName: string;
   taskDir: string;
   planPath: string;

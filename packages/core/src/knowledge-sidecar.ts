@@ -244,6 +244,9 @@ export function tryRegisterKnowledgePlan(input: {
   writer?: KnowledgeWriterConfig;
   host?: KnowledgeFinalizationHost;
 }): KnowledgeSidecarResult {
+  if (input.project.scope === "session") {
+    return { ok: true };
+  }
   const sessionId = input.sessionId?.trim();
   if (!sessionId) {
     return { ok: true };
@@ -282,6 +285,9 @@ export function tryEndKnowledgePlan(input: {
   writer?: KnowledgeWriterConfig;
   host?: KnowledgeFinalizationHost;
 }): KnowledgePlanEndResult {
+  if (input.project.scope === "session") {
+    return { ok: true };
+  }
   const sessionId = input.sessionId?.trim();
   if (!sessionId) {
     return { ok: true };
@@ -400,6 +406,9 @@ export function tryCaptureKnowledgeStop(input: {
   host?: KnowledgeFinalizationHost;
   taskConclusions?: KnowledgeTaskConclusion[];
 }): KnowledgeStopResult {
+  if (input.project.scope === "session") {
+    return { ok: true, captured: false };
+  }
   const sessionId = input.sessionId?.trim();
   const turnId = input.turnId?.trim();
   const message = input.message?.trim();
@@ -597,6 +606,7 @@ export function listRetryableKnowledgeFinalizationJobs(
   project: ProjectContext,
   options: { excludeHosts?: KnowledgeFinalizationHost[] } = {},
 ): string[] {
+  if (project.scope === "session") return [];
   const excludedHosts = new Set(options.excludeHosts ?? []);
   return listKnowledgeFinalizationJobs(project)
     .filter((jobPath) => {
@@ -637,6 +647,7 @@ export function appendKnowledgeTaskConclusions(
 }
 
 export function listKnowledgeFinalizationJobs(project: ProjectContext): string[] {
+  if (project.scope === "session") return [];
   const taskJobs = listTaskDirectories(project)
     .flatMap((task) => listKnowledgeJobs(path.join(task.taskDir, ".runtime", "knowledge-finalization")));
   const archivedTaskJobs = listTaskDirectories({ tasksDir: path.join(project.clawDir, "archive", "tasks") } as ProjectContext)
