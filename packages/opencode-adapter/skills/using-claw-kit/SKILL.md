@@ -26,9 +26,11 @@ or Truth/ADR format.
 
 ## Lifecycle semantics
 
-A plan is the task's container, not a frozen script: even while `process.active` is advancing, adapt its requirements, scope, and tasks to new user needs. Keep the plan current rather than forcing changed work through stale tasks.
-
-- For a complex sub-task with an independently manageable scope, prefer `claw subplan create` to hand it off into a smaller task boundary instead of continually expanding the parent plan.
+Treat Claw-kit as an assistive workflow tool. Use plans and tasks to focus
+attention, coordinate work, and preserve progress; do not treat them as
+immutable authority. Adjust the goal, scope, and task breakdown promptly when
+user needs or new evidence require it. When an independently manageable scope
+would keep expanding a parent task, create a subplan instead.
 
 - `process.discussing`: execution is paused for user discussion. It is a stable cross-turn state that can start a plan or be re-entered from `process.active`; do not implement, enter Goal Mode, convert it to `wait`, or close it before the discussion is settled.
 - `process.active`: downstream tasks are explicit and the user can hand off execution. Execute one task at a time and keep plan progress current through returned guidance.

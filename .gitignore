@@ -31,6 +31,9 @@ Thumbs.db
 
 # Local packaging and Windows-shell leftovers. Keep the current Cindy bundle
 # explicitly tracked when it is intentionally released.
+/.codex-tmp/
+/release-*.patch.json
+/release-*.tasks.json
 /%SystemDrive%/
 /_patch1.ps1
 /veewo-*.tgz

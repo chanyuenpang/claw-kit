@@ -11,17 +11,20 @@ host-update, configuration, or Truth/ADR reference.
 ## First Action
 1. By default, run `claw plan create "<title>"`.
 2. If a template-backed workflow skill fully owns the request, follow that skill's entry route so it supplies its adjacent template file.
-3. Follow the returned `workflowGuidance` as the only lifecycle contract. Use its stage and current task to determine the current work; `commandHints` are command lookup aids, not required next mutations. When SessionStart recovers an active session-bound plan, run `plan sync` through the code-mode bridge once before continuing it; it restores Progress and creates a Goal only when none is nonterminal.
+3. Follow the returned `workflowGuidance` as the only lifecycle contract. Use its stage and current task to determine the current work; `commandHints` are command lookup aids, not required next mutations.
+4. When SessionStart recovers an active session-bound plan, first determine whether the current user request explicitly changes, replaces, or cancels its goal. Record that revision before proceeding; otherwise, run `plan sync` through the code-mode bridge once before continuing it. It restores Progress and creates a Goal only when none is nonterminal.
 
 ## Lifecycle semantics
-A plan is the task's container, not a frozen script: even while `process.active` is advancing, adapt its requirements, scope, and tasks to new user needs. Keep the plan current rather than forcing changed work through stale tasks.
-
-- For a complex sub-task with an independently manageable scope, prefer `claw subplan create` to hand it off into a smaller task boundary instead of continually expanding the parent plan.
+Treat Claw-kit as an assistive workflow tool. Use plans and tasks to focus
+attention, coordinate work, and preserve progress; do not treat them as
+immutable authority. Adjust the goal, scope, and task breakdown promptly when
+user needs or new evidence require it. When an independently manageable scope
+would keep expanding a parent task, create a subplan instead.
 
 - `process.discussing`: execution is paused for user discussion. It is a stable cross-turn state that can start a plan or be re-entered from `process.active`; do not implement, enter Goal Mode, convert it to `wait`, or close it before the discussion is settled.
 - `process.active`: downstream tasks are explicit and the user can hand off execution. Execute one task at a time and keep plan progress current through returned guidance.
 - `process.wait`: when execution becomes blocked on user input or an external dependency, proactively move the plan to `process.wait`, then stop until returned guidance resumes it.
-- `end.completed`: the canonical completed plan status. Its returned guidance uses stage `done`; for project scope, record the retrospective and durable key decisions before closing. Session scope is ephemeral, and its completion guidance has no document fields.
+- `end.completed`: the canonical completed plan status. Its returned guidance uses stage `done`; follow its required closeout before closing.
 
 ## Investigation
 Use `claw-kit:researcher` for bounded code or implementation investigations when it reduces main-thread context consumption.
@@ -55,11 +58,10 @@ async function runClawPlanMutation({ argv, workdir, timeout_ms = 30000 }) {
 ```
 
 ## Knowledge subagent dispatch
-- Session scope is temporary and does not persist project knowledge: it never returns a `knowledgeDispatch`; after its terminal mutation, finish the main turn without `spawn_agent`, `knowledge claim`, or any other knowledge-finalization step.
 - When a terminal plan mutation returns a valid `knowledgeDispatch` for `subagent`, call native `spawn_agent` directly with its complete prompt, `fork_turns: "none"`, task name `knowledge_writer_<first 12 finalizeId characters>`, and any supplied `model` and `reasoningEffort` mapped to native fields; never load a user-facing delegate skill.
 - The dispatched job already exists. Do not wait for that agent; immediately end the main turn after spawning it. In `subagent` mode, `knowledge claim` collects the existing parent-turn report and Stop does not capture, queue, launch, or amend the job. The bridge cannot call collaboration tools, and `background` never returns this dispatch.
 ## Hard boundaries
-- Strongly prefer running plan mutations through the code-mode bridge without splitting host calls, reconstructing `hostActions` or `goalTool`, or repeating canonical transitions as compensation; if it returns `goalRecovery.command`, immediately run that command in a new code-mode call before replying.
+- Run every supported plan mutation through the code-mode bridge without splitting host calls, reconstructing `hostActions` or `goalTool`, or repeating canonical transitions as compensation; if it returns `goalRecovery.command`, immediately run that command in a new code-mode call before replying.
 - Codex has no direct-call fallback: every supported plan mutation goes through the bundled code-mode consumer.
 - Goal-state inspection belongs only to the fixed driver or bundled consumer program; the agent must never call `get_goal` separately.
 - Edit canonical plan state only through claw commands supplied or permitted by returned guidance.

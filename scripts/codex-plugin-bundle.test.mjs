@@ -80,9 +80,8 @@ test("Codex entry keeps knowledge routing separate from Goal Mode readiness", as
   assert.match(contract, /handoff-ready|hand off execution/i);
   assert.match(skill, /stable cross-turn state/i);
   assert.match(skill, /convert it to `(?:process\.)?wait`/i);
-  assert.match(skill, /session scope/i);
-  assert.match(skill, /never returns a `knowledgeDispatch`/i);
-  assert.match(skill, /finish the main turn without `spawn_agent`/i);
+  assert.match(skill, /When a terminal plan mutation returns a valid `knowledgeDispatch`/i);
+  assert.doesNotMatch(skill, /session scope/i);
 });
 
 test("Codex entry stays compact without dropping guidance, lifecycle, or the mutation bridge", async () => {
@@ -102,7 +101,8 @@ test("Codex entry stays compact without dropping guidance, lifecycle, or the mut
   assert.doesNotMatch(skill, /current prompt contains/i);
   assert.match(skill, /Keep claw harness mechanics out of normal thread replies/i);
   assert.doesNotMatch(skill, /recovered `workflowGuidance`|If a recovered|workflow recovery|claw context|claw search/i);
-  assert.match(skill, /SessionStart recovers an active session-bound plan, run `plan sync`/i);
+  assert.match(skill, /SessionStart recovers an active session-bound plan, first determine whether the current user request explicitly changes, replaces, or cancels its goal/i);
+  assert.match(skill, /otherwise, run `plan sync`/i);
   for (const state of ["process.discussing", "process.active", "process.wait", "end.completed"]) {
     assert.match(skill, new RegExp(state.replace(".", "\\."), "i"));
   }
