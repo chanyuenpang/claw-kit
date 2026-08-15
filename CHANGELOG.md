@@ -2,6 +2,13 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.2.19] - 2026-08-15
+
+### Fixed
+
+- Subplans now retain the root plan Goal throughout focus changes and return explicit parent-plan continuation guidance when they complete.
+- Cindy preserves the root Goal while a subplan is focused and resumes the parent plan without treating child completion as workflow completion.
+
 ## [0.2.17] - 2026-08-09
 
 ### Fixed

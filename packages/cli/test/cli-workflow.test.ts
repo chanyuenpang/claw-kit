@@ -878,19 +878,11 @@ test("cli subplan create keeps task rootPlan stable and derives goal from the pa
   assert.equal(fs.existsSync(taskFile(root, "demo-task", "meta.json")), false);
   assert.equal(childPlan.title, "Implement child work");
   assert.equal(childPlan.status, "process.discussing");
-  assert.match(String((result.nextsteps as string[])[0] ?? ""), /^After the parent goal is completed by this subplan handoff,/);
+  assert.match(String((result.nextsteps as string[])[0] ?? ""), /^1\. Use claw-kit:planning /);
   assert.equal((result.commandHints as string[])[0], 'claw search --query "<topic>"');
-  assert.equal(
-    ((result.goalMode as JsonRecord).recommendedObjective),
-    "Follow the claw workflow guidance and finish your goal: Implement child work: Split the risky work into a subplan",
-  );
-  assert.equal(((result.goalMode as JsonRecord).allowOverwrite), true);
-  assert.match(String(result.notes), /completes the current parent goal first/i);
-  assert.deepEqual(result.goalTool, {
-    tool: "update_goal",
-    status: "complete",
-    reason: "Subplan creation must complete the active parent goal before the child plan creates its own goal.",
-  });
+  assert.equal("goalMode" in result, false);
+  assert.equal("goalTool" in result, false);
+  assert.match(String(result.notes), /parent\/root Goal remains active/i);
   assert.equal(((childPlan.goal as JsonRecord).text), "Implement child work: Split the risky work into a subplan");
 });
 

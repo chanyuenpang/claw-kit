@@ -133,15 +133,18 @@ test("cli plan done on a subplan resumes the parent plan instead of archiving th
   assert.equal("achievement" in doneResult, false);
   assert.match(String(doneResult.planPath), /tasks[\\/]\d{4}-\d{2}-\d{2}[\\/]demo-task[\\/]plan\.json$/);
   assert.deepEqual(doneResult.nextsteps, [
+    "Continue with parent task #2: Resume parent work.",
     "Sync thread progress with `update_plan`.",
     "Start with task #2.",
   ]);
+  assert.equal(doneResult.transition, "subplan_returned");
   assert.deepEqual(doneResult.nextTask, {
     id: 2,
     title: "Resume parent work",
     status: "pending",
   });
-  assert.equal((doneResult.goalMode as JsonRecord).setWhen, "on_enter_process_active");
+  assert.equal("goalMode" in doneResult, false);
+  assert.equal("goalTool" in doneResult, false);
   assert.equal("archivedPlanPath" in doneResult, false);
   assert.equal(registry.bindings["thread-subplan-done"], path.relative(path.join(root, ".claw"), String(doneResult.planPath)).replace(/\\/g, "/"));
   assert.equal(((parentPlan.tasks as JsonRecord[])[0] as JsonRecord).status, "done");
