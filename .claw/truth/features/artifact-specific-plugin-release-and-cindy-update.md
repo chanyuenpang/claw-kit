@@ -29,6 +29,12 @@ Accepted working truth for the current repository-maintainer release surfaces an
 <!-- state: history -->
 ## Evolution history
 
+<!-- dated: 2026-08-15 -->
+### 0.2.19 multi-artifact release batch
+
+- CLI/Core/Client `0.2.19` was published through npm with `v0.2.19` and a public GitHub Release. Codex `0.2.19.1` was released from committed main-repository marketplace source with `vcodex-0.2.19.1` and a zero-asset GitHub Release. Cindy `0.2.19.0` was released from independent marketplace `main` commit `064b790` with `vcindy-0.2.19.0`, with neither an archive nor GitHub Release.
+- Each artifact retained its own verified source and terminal evidence. The completed batch does not assert that any local CLI or plugin installation was refreshed.
+
 <!-- dated: 2026-08-10 -->
 ### 0.2.18 multi-artifact release batch
 
@@ -72,12 +78,6 @@ Accepted working truth for the current repository-maintainer release surfaces an
 
 - CLI/Core/Client `0.2.11` used npm plus `v0.2.11`; Cindy `0.2.11.1` used its independent marketplace `main` plus `vcindy-0.2.11.1` without an archive or GitHub Release; Codex `0.2.11.1` used the committed main-repository marketplace plus `vcodex-0.2.11.1` and a zero-asset GitHub Release.
 - Each line reached its own clean pushed exact-source boundary. None of these release proofs asserts that a local CLI or installed plugin was refreshed or loaded.
-
-<!-- dated: 2026-08-02 -->
-### Cindy 0.2.8.2 moved distribution to the repository marketplace
-
-- `vcindy-0.2.8.2` was published from clean `origin/main` with the tagged marketplace entry resolving `claw-kit-cindy` to the `0.2.8.2` plugin manifest.
-- This release deliberately created neither a `.cindy` archive nor a GitHub Release. It replaces the former immutable-installer-asset path; the retained local `0.2.8.1`/`0.2.7.6` archives are historical artifacts, not the current distribution contract.
 
 ## Search terms
 
