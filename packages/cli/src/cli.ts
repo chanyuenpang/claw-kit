@@ -3368,6 +3368,8 @@ function compactPlanCommandResult(
       planPath: resolvedPlanPath,
       ...(archivedPlanPath ? { archivedPlanPath } : {}),
       planStatus: result.planStatus,
+      ...(result.plan?.parentPlan ? { subplanParentPlan: result.plan.parentPlan } : {}),
+      ...(result.workflowGuidance.transition ? { transition: result.workflowGuidance.transition } : {}),
       ...(achievement ? { achievement } : {}),
       ...(knowledgeDispatch ? { knowledgeDispatch } : {}),
       ...(!codexResult && result.previousPlanStatus ? { previousPlanStatus: result.previousPlanStatus } : {}),

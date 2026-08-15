@@ -2506,20 +2506,11 @@ test("createSubplan uses the planning-aware default seed shape", async () => {
   assert.equal(result.plan.status, "process.discussing");
   assert.equal(result.plan.goal.text, "Implement child work: Split this into a subplan");
   assert.equal(result.plan.tasks.length, 1);
-  assert.match(result.workflowGuidance.nextsteps[0] ?? "", /^After the parent goal is completed by this subplan handoff,/);
   assert.equal(result.workflowGuidance.commandHints?.[0], 'claw search --query "<topic>"');
-  assert.equal(
-    result.workflowGuidance.goalMode?.recommendedObjective,
-    "Follow the claw workflow guidance and finish your goal: Implement child work: Split this into a subplan",
-  );
-  assert.equal(result.workflowGuidance.goalMode?.allowOverwrite, true);
-  assert.match(result.workflowGuidance.notes ?? "", /completes the current parent goal first/i);
-  assert.deepEqual(result.workflowGuidance.goalTool, {
-    tool: "update_goal",
-    status: "complete",
-    reason: "Subplan creation must complete the active parent goal before the child plan creates its own goal.",
-  });
-  assert.match(result.workflowGuidance.nextsteps[1] ?? "", /^1\. Use claw-kit:planning /);
+  assert.equal(result.workflowGuidance.goalMode, undefined);
+  assert.equal(result.workflowGuidance.goalTool, undefined);
+  assert.match(result.workflowGuidance.notes ?? "", /parent\/root Goal remains active/i);
+  assert.equal(result.workflowGuidance.nextsteps.some((step) => /^1\. Use claw-kit:planning /.test(step)), true);
 });
 
 test("createSubplan uses project defaultPlanTemplate when templateName is omitted", async () => {

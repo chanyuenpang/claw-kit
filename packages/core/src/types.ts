@@ -190,6 +190,7 @@ export type WorkflowGuidanceGoalTool =
 
 export type WorkflowGuidance = {
   stage: "requirements" | "review" | "discussion" | "execution" | "done" | "deposition" | "paused" | "left";
+  transition?: "subplan_returned";
   summary: string;
   nextsteps: string[];
   nextTask?: {

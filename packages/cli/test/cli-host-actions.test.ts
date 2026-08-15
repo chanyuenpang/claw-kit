@@ -682,7 +682,7 @@ test("cli routes host-neutral Goal guidance by paused and resumed plan status", 
   assert.equal("hostActions" in discussingResult, false);
 });
 
-test("Codex subplan create completes the parent goal before any child goal is created", () => {
+test("Codex subplan create preserves the parent Goal", () => {
   const root = createFixture("cli-subplan-create-goal-handoff");
   const env = { CODEX_THREAD_ID: "thread-subplan-goal-handoff" };
   runClaw(["init", "--name", "Subplan Goal Handoff", "--planning", "false"], root, env);
@@ -696,14 +696,13 @@ test("Codex subplan create completes the parent goal before any child goal is cr
     "subplan", "create", "--parent", "demo-task", "--task-id", "1", "--host", "codex",
   ], root, env);
   const actions = result.hostActions as JsonRecord[];
-  assert.deepEqual(actions.map((action) => action.tool), ["update_goal", "update_plan"]);
+  assert.deepEqual(actions.map((action) => action.tool), ["update_plan"]);
   assert.equal("planSummary" in result, false);
   assert.equal("plan" in result, true);
   assert.deepEqual(actions.map((action) => Object.keys(action).sort()), [
     ["id", "input", "schemaVersion", "tool"],
-    ["id", "input", "schemaVersion", "tool"],
   ]);
-  assert.equal(((actions[0]?.input as JsonRecord).status), "complete");
+  assert.equal(actions.some((action) => action.tool === "update_goal"), false);
   assert.equal(actions.some((action) => action.tool === "create_goal"), false);
 });
 

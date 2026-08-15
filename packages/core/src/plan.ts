@@ -35,7 +35,7 @@ import type {
   TaskContext,
 } from "./types.js";
 import type { PlanEvent } from "./plan-events.js";
-import { buildGoalModeObjective, buildPlanWorkflowGuidance } from "./workflow-guidance.js";
+import { appendSubplanReturnGuidance, buildGoalModeObjective, buildPlanWorkflowGuidance } from "./workflow-guidance.js";
 
 const PLAN_STATUSES: PlanStatus[] = [
   "prepare.requirements",
@@ -621,7 +621,22 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
       completedTaskIds,
       ...(completionHooks ? { completionHooks } : {}),
       ...(knowledgeFinalizeId ? { knowledgeFinalizeId } : {}),
-      workflowGuidance: await buildPlanWorkflowGuidance({
+      workflowGuidance: completionHooks?.subplanClosureCandidate
+        ? appendSubplanReturnGuidance({
+            guidance: await buildPlanWorkflowGuidance({
+              taskName: task.taskName,
+              planFile: resultPlanFile,
+              plan: resultPlan,
+              commandSource,
+              projectRoot: task.project.projectRoot,
+              projectConfig: resolvePlanEffectiveConfig(task.project.projectConfig, resultPlan),
+              host: input.host,
+            }),
+            completedPlanFile: planFile,
+            completedPlanTitle: next.title,
+            parentTaskId: completionHooks.subplanClosureCandidate.parentTaskId,
+          })
+        : await buildPlanWorkflowGuidance({
         taskName: task.taskName,
         planFile: resultPlanFile,
         plan: resultPlan,

@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   ClawError,
   activatePlan,
+  appendSubplanReturnGuidance,
   buildKnowledgeAtomicDispatch,
   buildKnowledgeDelegateDispatch,
   completeSubplanAndRestoreParent,
@@ -432,7 +433,7 @@ export class ClawCommandService {
         && result.plan.parentTaskId !== undefined
       ) {
         const parentRef = createPlanRef(project, current.taskName, result.plan.parentPlan);
-        await completeSubplanAndRestoreParent({
+        const focus = await completeSubplanAndRestoreParent({
           project,
           sessionKey,
           childPlan: current,
@@ -441,6 +442,66 @@ export class ClawCommandService {
           parentTaskId: result.plan.parentTaskId,
           sessionStore: this.focusStore,
         });
+        const parent = showPlan({
+          cwd: context.cwd,
+          taskName: parentRef.taskName,
+          planFile: parentRef.planFile,
+          ownerSessionKey: this.ownerSessionKey(context),
+        });
+        const parentGuidance = appendSubplanReturnGuidance({
+          guidance: await buildPlanWorkflowGuidance({
+            taskName: parent.taskName,
+            planFile: parent.planFile,
+            plan: parent.plan,
+            commandSource,
+            projectRoot: project.projectRoot,
+            projectConfig: resolvePlanEffectiveConfig(project.projectConfig, parent.plan),
+            previousStatus: "end.leave",
+            completedTaskIds: [result.plan.parentTaskId],
+            host: context.host,
+          }),
+          completedPlanFile: result.planFile,
+          completedPlanTitle: result.plan.title,
+          parentTaskId: result.plan.parentTaskId,
+        });
+        const resumedResult = {
+          taskName: parent.taskName,
+          planPath: parent.planPath,
+          planFile: parent.planFile,
+          planStatus: parent.plan.status,
+          previousPlanStatus: "end.leave" as const,
+          emittedEvents: result.emittedEvents,
+          changedTaskIds: [result.plan.parentTaskId],
+          appendedTaskIds: [],
+          completedTaskIds: [result.plan.parentTaskId],
+          workflowGuidance: parentGuidance,
+          plan: parent.plan,
+          planView: parent.planView,
+          events: result.events,
+          focusTransition: focus,
+          completedSubplan: {
+            taskName: result.taskName,
+            planPath: result.planPath,
+            planFile: result.planFile,
+            planStatus: result.planStatus,
+          },
+        };
+        const knowledgeDispatch = this.finalizeEnteredEnds(context, [{
+          ref: current,
+          plan: result.plan,
+          endedAt: result.plan.completedAt ?? new Date().toISOString(),
+        }]);
+        const hostActions = this.codexActionsFromMutation(context, commandSource, resumedResult);
+        return {
+          output: resumedResult,
+          ...(hostActions.length ? { hostActions } : {}),
+          postCommitEffects: [{
+            type: "completion.refresh",
+            taskName: result.taskName,
+            planStatus: result.planStatus,
+          }],
+          ...(knowledgeDispatch ? { knowledgeDispatch } : {}),
+        };
       } else {
         await releaseCurrentPlanFocus({
           project,

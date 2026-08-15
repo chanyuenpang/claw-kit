@@ -169,37 +169,41 @@ function applyCreateGuidance(params: {
       }
     : params.guidance;
 
-  if (
-    params.commandSource !== "subplan.create" ||
-    !params.plan.parentPlan ||
-    !params.goalModeEnabled ||
-    params.suppressGoalFields
-  ) {
+  if (params.commandSource !== "subplan.create" || !params.plan.parentPlan) {
     return guidance;
   }
 
-  const subplanObjective = buildGoalModeObjective(params.plan.goal.text);
-  const subplanNextstep = `After the parent goal is completed by this subplan handoff, start the subplan goal before doing target work: ${subplanObjective}`;
   const subplanNote =
     `Subplan "${params.planFile}" is now the active plan under parent plan "${params.plan.parentPlan}" task #${params.plan.parentTaskId}. ` +
-    "The handoff completes the current parent goal first; treat the parent/root plan as paused until the subplan completes.";
+    "The parent/root Goal remains active while this subplan is in focus.";
 
   return {
     ...guidance,
-    nextsteps: guidance.nextsteps.includes(subplanNextstep)
-      ? guidance.nextsteps
-      : [subplanNextstep, ...guidance.nextsteps],
     notes: guidance.notes ? `${subplanNote} ${guidance.notes}` : subplanNote,
-    goalTool: {
-      tool: "update_goal",
-      status: "complete",
-      reason: "Subplan creation must complete the active parent goal before the child plan creates its own goal.",
-    },
-    goalMode: {
-      ...guidance.goalMode,
-      recommendedObjective: subplanObjective,
-      allowOverwrite: true,
-    },
+  };
+}
+
+export function appendSubplanReturnGuidance(input: {
+  guidance: WorkflowGuidance;
+  completedPlanFile: string;
+  completedPlanTitle: string;
+  parentTaskId: number;
+}): WorkflowGuidance {
+  const { goalMode: _goalMode, goalTool: _goalTool, ...guidance } = input.guidance;
+  const continuation = guidance.nextTask
+    ? `Continue with parent task #${guidance.nextTask.id}: ${guidance.nextTask.title}.`
+    : "All parent tasks are complete; finish the parent plan through its canonical plan-done guidance.";
+  const note =
+    `Subplan "${input.completedPlanFile}" (${input.completedPlanTitle}) completed for parent task #${input.parentTaskId}. ` +
+    "The parent plan is now the active focus and its Goal remains active; do not treat this subplan completion as overall completion.";
+  return {
+    ...guidance,
+    transition: "subplan_returned",
+    summary: guidance.nextTask
+      ? "Subplan completed; parent plan execution continues."
+      : "Subplan completed; parent plan is ready for its canonical completion step.",
+    nextsteps: [continuation, ...guidance.nextsteps],
+    notes: guidance.notes ? `${note} ${guidance.notes}` : note,
   };
 }
 
@@ -213,7 +217,8 @@ export function buildGoalModeObjective(planGoal: string): string {
 
 /**
  * Keep lightweight default plans out of host-level Goal and progress synchronization.
- * Template-backed skills and subplans own lifecycle handoffs and always keep it enabled.
+ * Template-backed skills keep it enabled. Subplans deliberately retain the root
+ * plan's Goal instead of creating a second host-level Goal.
  */
 export function shouldUsePlanHostIntegration(plan: Pick<PlanDocument, "tasks" | "templateFile" | "templateId" | "parentPlan">): boolean {
   return Boolean(plan.parentPlan)
