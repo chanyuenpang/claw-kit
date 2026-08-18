@@ -2,6 +2,12 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.2.21] - 2026-08-19
+
+### Fixed
+
+- Codex active-plan mutations now reconcile a missing or terminal Goal and synchronize visible task Progress whenever its projected task list changes.
+
 ## [0.2.20] - 2026-08-18
 
 ### Changed
