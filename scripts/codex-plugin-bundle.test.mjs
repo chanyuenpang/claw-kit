@@ -171,6 +171,7 @@ test("hidden built-in knowledge contract enforces trusted evidence and cross-doc
     "Maintain canonical Truth",
     "Maintain canonical ADRs",
     "Run the cross-document consistency review",
+    "Refresh project search indexes",
   ]);
   assert.equal(template.tasks.every((task) => task.guidance?.onDone?.default), true);
   assert.equal(template.tasks.some((task) => task.guidance?.onDone?.choices), false);
