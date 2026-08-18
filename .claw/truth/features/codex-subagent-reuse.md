@@ -4,7 +4,7 @@
 
 Current
 
-本文当前只拥有 Codex `researcher` 的代码调查派发与复用规则；旧 `truth-writer` / `adr-writer` 复用仅是历史证据。knowledge finalization 的 policy-specific fresh executor 由 `codex-knowledge-capture-boundary.md` 拥有。
+本文当前只拥有 Codex `researcher` 的代码调查派发与复用规则；旧 `truth-writer` / `adr-writer` 复用仅是历史证据。knowledge finalization 的固定名 `knowledge_finalizer` 复用与 fallback 创建由 `codex-knowledge-capture-boundary.md` 拥有。
 
 - Codex adapter 只把代码调查交给 `researcher` subagent：代码库调查、源码/符号/依赖追踪、代码架构理解、当前实现行为追踪，以及 planning 或 implementation 前的代码证据收集。主 agent 不在自身上下文内联完成这类完整代码调查。
 - 普通项目 recall、canonical Truth/ADR lookup 与历史上下文查询由主 agent 直接运行 `claw search`；这些文档召回本身不触发或派发 `researcher`。

@@ -23,7 +23,7 @@ Codex adapter prompt 采用 contract-style wording：
 - 对 workflow、delegation、goal、truth、ADR、planning 的执行动作使用直接合同语气
 - 明确写出 `Codex has multi-agent capability.`
 - 当需要定位 agent-management 工具时，直接要求使用 `tool_search`
-- 对进入 `process.active`、researcher delegation 与 foreground/finalizer ownership boundary 写出明确触发条件和动作；main-agent prompt 只在 terminal `knowledgeDispatch` 存在时启动 fresh executor，不自行选择、复用或执行 Truth/ADR writer
+- 对进入 `process.active`、researcher delegation 与 foreground/finalizer ownership boundary 写出明确触发条件和动作；main-agent prompt 只在 terminal `knowledgeDispatch` 存在时按 immutable dispatch 复用固定名 `knowledge_finalizer`，不存在时创建同名 worker，不自行选择或执行 Truth/ADR writer
 - 只在真实边界描述中保留事实性限定，而不是把执行合同写成建议
 
 ## Consequences

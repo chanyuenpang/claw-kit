@@ -4,7 +4,7 @@
 
 Superseded
 
-Superseded by `hook-owned-two-phase-knowledge-finalization.md`. Knowledge writers now run as fresh host-aware finalizer phases and are not main-thread reusable specialists.
+Superseded by `hook-owned-two-phase-knowledge-finalization.md`. Knowledge finalization now uses the host-aware fixed-name `knowledge_finalizer` lifecycle: reuse that exact same-thread worker when present, otherwise create it; it is not a main-thread-selectable specialist.
 
 ## Context
 

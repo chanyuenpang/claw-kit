@@ -16,7 +16,7 @@ Current
 ## Workflow implications
 
 - `using-claw-kit` 的当前入口路由由 `using-claw-kit-session-entry.md` 与 `codex-plugin-workflow-mechanics.md` 拥有；本文件不再重复其 prompt guidance 检查、next-step 来源优先级或具体入口句子。
-- 代码调查与项目 recall 之间的 researcher 路由边界由 `.claw/truth/features/codex-subagent-reuse.md` 拥有，本文不重复其触发、派发或复用合同。完成期 Truth/ADR 由内部 delegate workflow 处理；`subagent` policy 下 main agent 只消费 terminal `knowledgeDispatch` 启动 fresh executor，不把它当作可复用 specialist。
+- 代码调查与项目 recall 之间的 researcher 路由边界由 `.claw/truth/features/codex-subagent-reuse.md` 拥有，本文不重复其触发、派发或复用合同。完成期 Truth/ADR 由内部 delegate workflow 处理；`subagent` policy 下 main agent 只消费 terminal `knowledgeDispatch`，按其 `preferReuse` 复用固定名 `knowledge_finalizer`，不存在时创建同名 worker；不把它当作可任意选择的 specialist。
 - task 相关 supporting docs 放在 `plan.references`，而不是依赖 task-local search。
 - `claw search` 负责 project-scope recall；GitNexus 调查入口通过 `tool_search` 定位对应工具。
 

@@ -30,7 +30,7 @@
 - finalization 成功路径的顺序是 writer 完成、changed-document evolution governance、Truth/ADR 编码归一化、启动 completion recall refresh、向相邻 report 写入 `knowledge_finalization` 结果、持久化 `succeeded` job。finalizer 不调用 Git；canonical 文档改动留在工作区，由正常开发流程审阅和提交。
 - report result writer 只接受 `.claw/tasks` 内的路径，并在文件锁下按 `finalizeId` 幂等写入。成功记录包含 result、recorded time、attempts、host、可用时的 writer thread，以及 Truth encoding 统计；重试命中已有同 id 结果时不得重复追加。
 - finalizer 不主动删除 report。report 随整个 task directory 归档，并只在 task retention 裁剪对应 archived task 时删除；这一 retention 生命周期及默认值由 `task-layout-and-session-bindings.md` 记录，决策理由由 `../adr/hook-owned-two-phase-knowledge-finalization.md` 拥有。
-- 主 agent 不判断 assignment、治理结果或 Truth→ADR 路由；仅在 Codex `subagent` policy 下消费终态 mutation 已物化 ready job 后返回的结构化 dispatch、启动一个 fresh executor 并立即让出回合。combined writer 的返回文本不控制 fixed Truth→ADR deposition sequence，异步知识采集也不能反向接管 plan lifecycle。
+- 主 agent 不判断 assignment、治理结果或 Truth→ADR 路由；仅在 Codex `subagent` policy 下消费终态 mutation 已物化 ready job 后返回的结构化 dispatch。它只优先复用同线程中名称为 `knowledge_finalizer` 的 worker，该 worker 不存在时才创建同名 worker，并立即让出回合。combined writer 的返回文本不控制 fixed Truth→ADR deposition sequence，异步知识采集也不能反向接管 plan lifecycle。
 - 前台 plan mutation 成功后，hook、report 或 SDK 的错误只能作为可观察的附加失败，不能回滚、阻塞或重写 canonical plan state。
 - `packages/codex-adapter/scripts/knowledge-finalizer.mjs` 在 capture、capture protocol 或 detached launch 失败时向 stderr 输出一条脱敏 JSON diagnostic，并把结果标记为 `failed-open`；诊断不得包含项目路径、用户内容或 transcript 内容，且不得把 sidecar 失败升级为前台 lifecycle 失败。
 - Codex host 的 SessionStart hook 显式调用 `claw context --host codex`。该 context 路径只检查 `%USERPROFILE%\.claw-kit\codex-runtime\<version>` 下用户级、版本化 SDK runtime 是否可用，不安装、不修复、不自动重试；非 Codex host 不承担这项检测。
@@ -95,7 +95,7 @@
 <!-- dated: 2026-08-01 -->
 ### Codex subagent 改为终态 ready job 与 claim-time capture
 
-- 早期 subagent launcher 会先启动 executor，让它等待下一次 Stop 创建 job；这使 job 物化依赖主线程及时结束，并让 final message 同时承担内容与机械触发职责。当前终态 mutation 在派发前直接创建 ready job，fresh executor 以 project root 与 finalize id claim；claim 在授予 token 前冻结父 transcript 已有的 task conclusions，Stop 不再捕获、排队、启动或修改 subagent job。
+- 早期 subagent launcher 会先启动 executor，让它等待下一次 Stop 创建 job；这使 job 物化依赖主线程及时结束，并让 final message 同时承担内容与机械触发职责。当前终态 mutation 在派发前直接创建 ready job，host 先复用同线程中固定名为 `knowledge_finalizer` 的 worker，不存在时才创建同名 worker；该 worker 以 project root 与 finalize id claim。claim 在授予 token 前冻结父 transcript 已有的 task conclusions，Stop 不再捕获、排队、启动或修改 subagent job。
 
 <!-- dated: 2026-07-18 -->
 ### 0.1.83 后置 writer 路由

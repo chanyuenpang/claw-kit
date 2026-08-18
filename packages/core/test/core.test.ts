@@ -456,6 +456,7 @@ test("knowledge claim owns execution and delegate prompt routing", () => {
       finalizeId,
       writer: { model: "test-model", reasoningEffort: "high" },
     });
+    assert.equal(delegateDispatch.preferReuse, true);
     assert.equal(delegateDispatch.policy, "subagent");
     assert.equal(delegateDispatch.model, "test-model");
     assert.equal(delegateDispatch.reasoningEffort, "high");
@@ -463,6 +464,7 @@ test("knowledge claim owns execution and delegate prompt routing", () => {
       "finalizeId",
       "model",
       "policy",
+      "preferReuse",
       "prompt",
       "reasoningEffort",
       "schemaVersion",
@@ -476,6 +478,7 @@ test("knowledge claim owns execution and delegate prompt routing", () => {
       finalizeId,
       writer: { model: "test-model", reasoningEffort: "high" },
     });
+    assert.equal(atomicDispatch.preferReuse, true);
     assert.equal(atomicDispatch.policy, "subagent");
     assert.equal(atomicDispatch.model, "test-model");
     assert.equal(atomicDispatch.reasoningEffort, "high");
@@ -516,9 +519,11 @@ test("knowledge claim owns execution and delegate prompt routing", () => {
       version: corePackageVersion,
     });
     assert.equal(builtinTemplate.scope, "session");
-    assert.equal(builtinTemplate.tasks.length, 7);
+    assert.equal(builtinTemplate.tasks.length, 8);
     assert.equal(builtinTemplate.tasks[5]?.title, "Update affected external documentation");
     assert.equal(builtinTemplate.tasks[6]?.title, "Run the cross-corpus consistency review");
+    assert.equal(builtinTemplate.tasks[7]?.title, "Refresh project search indexes");
+    assert.match(builtinTemplate.tasks[7]?.detail ?? "", /claw direct/);
     assert.ok(builtinTemplate.references?.every((reference) => path.isAbsolute(reference.path)));
 
     const externalAssignments = buildKnowledgeWriterAssignments({

@@ -19,7 +19,7 @@
 - Codex report 的目标语义是一条记录对应一个真实 agent turn 的最终 assistant message；`turn_id` 是 turn identity，`Stop` 是该 turn 的 flush 边界，Goal Mode 内部 commentary、工具批次、compaction 和 claw task checkpoint 都不增加 report 分段。捕获优先使用 Stop payload 的最终 assistant message，transcript 仅作为兼容回退；`task.done` 不再具有特殊捕获意义。
 - 当前保留 plan-done turn 的 final message，且不能按“通常重复”全局省略。Background 若未来实施内容去重，必须先让 finalization job 由显式、可持久化的 turn-stopped/coverage 状态触发而不依赖非空 message；所有 policy 仍需让 structured closeout 覆盖结果、失败与绕路、未验证项及遗留项，才可以只对确认没有内容增量的 final 停止持久化。
 - 上述 turn-level report 合同已经确定，但 2026-07-30 的工作仅完成只读调查，尚未修改产品代码。当前实现仍会在 `Stop` 时扫描同 turn 的成功 `task.done` 并写入 `task_conclusion`；实施状态与运行事实由 `../features/codex-knowledge-capture-boundary.md` 唯一拥有，不能把本 ADR 的目标合同表述为已交付行为。
-- Main agent 不决定 governance assignment、canonical owner 或 Truth→ADR 路由，也不等待 executor。Codex 终态 plan mutation 在 `executionPolicy = "subagent"` 时先创建 ready job，再返回结构化 `knowledgeDispatch`；main agent 直接启动一个 fresh native subagent 并结束回合。Stop 不再捕获、排队、启动或修改该 job，这项 launcher dispatch 也不恢复旧 `workflowGuidance` writer specialist 合同。
+- Main agent 不决定 governance assignment、canonical owner 或 Truth→ADR 路由，也不等待 executor。终态 plan mutation 在 `executionPolicy = "subagent"` 时先创建 ready job，再返回结构化 `knowledgeDispatch`（含 `preferReuse: true`）；Host 只按该 immutable dispatch 优先复用同线程中固定名为 `knowledge_finalizer` 的 worker，不存在时创建同名 worker 并结束回合。Stop 不再捕获、排队、启动或修改该 job，这项 launcher dispatch 也不恢复旧 `workflowGuidance` writer specialist 合同。
 - `knowledgeWriter.executionPolicy` 在支持多种 launcher 的 host 上选择执行方式：`background` 默认在 Stop 后启动独立 host agent，Codex 也支持 `subagent`。Cindy 当前只支持 Orca subagent，并在 host 边界把 `background | subagent` 都归一化为 `subagent`；这是能力约束，不是失败 fallback。所有 launcher 共享 immutable job、assignment builder、claim token 与 done protocol；Codex 与 Cindy 分别消费 Core 内部的 shell-bridge 和 Ghost delegate template，但两者都以 session parent + generated assignment subplan 承载同一生命周期。
 - Delegate orchestration template、built-in governance contract 与 dependent `doc-updater` 都是 Core 内部资源，不以 shared 或 adapter user skill 发布。未配置 `externalSkills` 时，claim 把隐藏 built-in contract 物化为 Truth→ADR 固定 workflow；配置 external skills 时，claim 物化真实 skill assignments。若 job 冻结了有效 external-document paths，claim 在任一路径后追加 `doc-updater` assignment；built-in template 把它插在 ADR 与跨语料一致性复查之间。source `plan.json`、相邻 report 与 finalize id 是 runtime materials，不是输入 schema；built-in contract 按内容解释材料并收敛一个 current owner。
 - `knowledgeWriter.executionPolicy`、`externalSkills`、`model`、`reasoningEffort` 与 `datedSectionsToKeep` 在 job 创建时快照。内置与外部 assignment 使用不同 prompt builder：内置 prompt 直接表达治理合同，外部 prompt 明确调用 skill 并要求无人值守、无交互。model 与 reasoning 由对应 launcher 传给 executor；runner 不替换 job 指定配置。
@@ -34,7 +34,7 @@
 
 ## Alternatives Considered
 
-- 由 main agent 选择或复用 writer specialist：拒绝，因为会把 assignment、模型替换和完成判断交回主线程。Codex `subagent` policy 只允许 main agent消费 Core 生成的 immutable launcher dispatch，并要求 fresh executor、`fork_turns: none` 与不等待。
+- 由 main agent 任意选择 writer specialist：拒绝，因为会把 assignment、模型替换和完成判断交回主线程。Host 只能消费 Core 生成的 immutable launcher dispatch，并且只可按固定名 `knowledge_finalizer` 复用同线程 worker；不存在时以 Host 原生创建方式启动同名 worker，且不等待。
 - 顺序运行 focused `truth-writer` 与 `adr-writer`：已取代。phase split 会让第二个 writer 重新发现候选与解释第一阶段输出，并可能留下跨 Truth/ADR 的竞争 current claim；combined stewardship pass 以同一份 freshness-qualified evidence 一次完成 owner reconciliation。
 - 在 combined writer 内先选择 Truth-only、ADR-only、both 或 no-op route：拒绝。route task 会把本应固定执行的两个知识面变成额外控制流；当前流程始终先评估 Truth、再评估 ADR，每一阶段自行记录 evidence-backed no-edit。
 - 让 built-in writer 依靠通用 skill discovery 或“可能产生可复用知识”的前台启发式自动触发：拒绝，因为这会在 hook-owned finalizer 之外形成第二个 invocation owner，并可能重复沉淀、提前沉淀或递归进入 writer harness。
@@ -94,7 +94,7 @@ The earlier completion gate applied to every writer session and the invocation i
 - Built-in governance 从所有提供材料中按内容提取明确结论；report 与 plan 只是 runtime materials。task status 只限定结论 scope，不把 task 列表本身当作执行事实。
 - 进入任一 `end.*` 才形成自动沉淀边界；process 状态中的 report 与 plan 明确结论可供后续终结评估，但不会单独触发 partial finalization。
 - Writer 递归隔离由内部 delegate session plan与 hook guard共同保证；job ownership 只由 claim token保证。external skill 即使未声明 session scope，也在 assignment subplan 中运行，不会回退到 project runtime。
-- `subagent` path 的 job 在 dispatch 前已经 ready，主线程结束不再是 job trigger；main agent仍必须立即让出回合，避免 foreground 被异步治理阻塞。background worker必须按 policy退出，避免抢占 fresh executor。该不等待边界仍是 lifecycle 隔离合同。
+- `subagent` path 的 job 在 dispatch 前已经 ready，主线程结束不再是 job trigger；main agent仍必须在复用或创建固定名 `knowledge_finalizer` 后立即让出回合，避免 foreground 被异步治理阻塞。background worker必须按 policy退出，避免抢占该 finalizer。该不等待边界仍是 lifecycle 隔离合同。
 - Job、report result、encoding、refresh 和持久化顺序成为可回归的完成证据；相邻 report 同时保留原始 turn 结论与可按 `finalizeId` 读取的 writer 结果。
 - 在 background 的独立 Stop/coverage trigger 与强制 structured closeout 尚未交付前，final message 继续同时承担用户可见的最终接受结论、内容安全网和 background job 创建令牌。Codex subagent 的 ready job 不再依赖 final message，但 claim-time capture 只拥有终态 mutation 前已存在的 task conclusions；不得把两条 policy 的覆盖边界混为一谈。
 - turn-level 合同实施后，单次 `Stop` 只保存其真实 agent turn 的最终 assistant message；同 turn 内多个 `task.done`、commentary 或工具批次不再制造额外 report entry。实施完成前的 checkpoint 捕获现状仍以 Truth owner 为准。

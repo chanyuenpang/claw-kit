@@ -28,7 +28,7 @@ Codex plugin hooks 不是 `claw-kit` 的可靠基础，因此适配器依赖 pro
 - writer 在 canonical 文档的正文、链接、证据和 Related Code 中记录仓库位置时，只使用项目根目录相对路径
 - 主 agent 只消费 `workflowGuidance` 派送契约、优先复用同类型 specialist、准备紧凑 bundle，并消费 canonical truth/ADR 结果；不读取或转述 writer 的完整执行规范
 - `truth-writer` 仅在主 agent 判断 completed work 含 reusable truth 时派发；`adr-writer` 继续作为 root-plan closeout 的必需派发步骤
-- 一旦选择 truth 派发或进入 required ADR closeout，`model`、`fork_context`、`waitForCompletion`、`preferReuseSameTypeInThread` 及 input/output contract 等结构化字段必须逐项遵守
+- 一旦选择 truth 派发或进入 required ADR closeout，`model`、`fork_context`、`waitForCompletion`、`preferReuse` 及 input/output contract 等结构化字段必须逐项遵守
 - 不把 generic docs 或执行日志当作默认完成产物
 
 ## Alternatives Considered

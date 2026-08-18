@@ -201,6 +201,7 @@ test("cli plan done emits host-specific subagent dispatch for Codex and Cindy an
   assert.deepEqual(Object.keys(dispatch).sort(), [
     "finalizeId",
     "policy",
+    "preferReuse",
     "prompt",
     "reasoningEffort",
     "schemaVersion",

@@ -17,6 +17,7 @@ export type KnowledgeDelegateDispatch = {
   schemaVersion: 1;
   policy: "background" | "subagent";
   finalizeId: string;
+  preferReuse: true;
   model?: string;
   reasoningEffort?: NonNullable<KnowledgeWriterConfig["reasoningEffort"]>;
   prompt: string;
@@ -42,6 +43,7 @@ export function buildKnowledgeDelegateDispatch(input: {
     schemaVersion: 1,
     policy: input.policy,
     finalizeId: input.finalizeId,
+    preferReuse: true,
     ...(input.writer?.model ? { model: input.writer.model } : {}),
     ...(input.writer?.reasoningEffort ? { reasoningEffort: input.writer.reasoningEffort } : {}),
     prompt: [
@@ -73,6 +75,7 @@ export function buildKnowledgeAtomicDispatch(input: {
     schemaVersion: 1,
     policy: "subagent",
     finalizeId: input.finalizeId,
+    preferReuse: true,
     ...(input.writer?.model ? { model: input.writer.model } : {}),
     ...(input.writer?.reasoningEffort ? { reasoningEffort: input.writer.reasoningEffort } : {}),
     prompt: [
@@ -197,8 +200,9 @@ function buildBuiltinKnowledgeTemplate(input: {
     const tasks = template.tasks as Array<Record<string, any>>;
     const adrTask = tasks.find((task) => task.id === 5);
     const reviewTask = tasks.find((task) => task.id === 6);
-    if (!adrTask || !reviewTask) {
-      throw new Error("Built-in knowledge template is missing the ADR or consistency-review task.");
+    const refreshTask = tasks.find((task) => task.id === 7);
+    if (!adrTask || !reviewTask || !refreshTask) {
+      throw new Error("Built-in knowledge template is missing the ADR, consistency-review, or index-refresh task.");
     }
     const next = adrTask?.guidance?.onDone?.default;
     if (next) {
@@ -212,6 +216,11 @@ function buildBuiltinKnowledgeTemplate(input: {
     reviewTask.id = 7;
     reviewTask.title = "Run the cross-corpus consistency review";
     reviewTask.detail = `${reviewTask.detail} Include every affected external document in the review and resolve any remaining material contradiction between its current-state claims, current implementation, Truth, and ADR.`;
+    const reviewNext = reviewTask.guidance?.onDone?.default;
+    if (reviewNext) {
+      reviewNext.nextTaskId = 8;
+    }
+    refreshTask.id = 8;
     tasks.splice(tasks.indexOf(reviewTask), 0, {
       id: 6,
       title: "Update affected external documentation",
