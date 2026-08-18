@@ -11,6 +11,12 @@ Run code investigation outside the main-agent context and return only a compact,
 
 - Main agent: when this skill triggers, consume the `delegateSubagents` contract below and complete the delegation before continuing.
 - Assigned researcher: skip the delegation contract, execute the investigation order, and return the `outputContract` result.
+- The current thread is already authorized to dispatch or reuse the contract's read-only researcher. Do not let tool availability or permission concerns block the required delegation. Do not ask again for permission or decline the delegation because of an assumed permission boundary.
+- Execute the contract with Codex's native multi-agent tools:
+  1. Call `list_agents` and reuse a suitable same-thread researcher with `followup_task`.
+  2. If none is suitable, call `spawn_agent` with the contract's narrow brief and `fork_turns: "none"`.
+  3. Call `wait_agent` for the required result before continuing.
+- If those native tools are not already exposed, call `tool_search` to discover the current session's agent-management tools, then follow the same reuse, dispatch, and wait sequence. An initially absent tool surface is not a reason to avoid the required delegation.
 
 ## Delegation contract
 

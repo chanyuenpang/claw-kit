@@ -115,6 +115,14 @@ test("researcher has a broad research trigger, dispatches narrow subagents, and 
   assert.doesNotMatch(description, /subagent|worker|agent|delegate/i);
   assert.match(researcherSkill, /Main agent:[^\n]*consume the `delegateSubagents` contract[^\n]*before continuing/i);
   assert.match(researcherSkill, /Assigned researcher:[^\n]*skip the delegation contract[^\n]*execute the investigation order[^\n]*`outputContract`/i);
+  assert.match(researcherSkill, /current thread is already authorized to dispatch or reuse/i);
+  assert.match(researcherSkill, /Do not let tool availability or permission concerns block the required delegation/i);
+  assert.match(researcherSkill, /Do not ask again for permission or decline the delegation because of an assumed permission boundary/i);
+  assert.match(researcherSkill, /Call `list_agents` and reuse a suitable same-thread researcher with `followup_task`/i);
+  assert.match(researcherSkill, /call `spawn_agent` with the contract's narrow brief and `fork_turns: "none"`/i);
+  assert.match(researcherSkill, /Call `wait_agent` for the required result before continuing/i);
+  assert.match(researcherSkill, /call `tool_search` to discover the current session's agent-management tools/i);
+  assert.match(researcherSkill, /initially absent tool surface is not a reason to avoid the required delegation/i);
   assert.match(researcherSkill, /1\. Use `claw search --query "<topic>"`/i);
   assert.match(researcherSkill, /delegateSubagents:/);
   assert.match(researcherSkill, /skill: claw-kit:researcher/);
@@ -159,10 +167,11 @@ test("Codex plan commands use only the bundled code-mode consumer", () => {
   assert.match(mainRouter, /load\(cacheKey\)/i);
   assert.match(mainRouter, /store\(cacheKey, envelope\)/i);
   assert.match(mainRouter, /eval/i);
-  assert.match(mainRouter, /plan mutations through the code-mode bridge/i);
+  assert.match(mainRouter, /For every claw plan mutation, call the function below in code mode/i);
   assert.match(mainRouter, /agent must never call `get_goal` separately/i);
   assert.match(mainRouter, /no direct-call fallback/i);
-  assert.match(mainRouter, /SessionStart recovers an active session-bound plan, run `plan sync`/i);
+  assert.match(mainRouter, /When SessionStart recovers an active session-bound plan/i);
+  assert.match(mainRouter, /otherwise, run `plan sync` through the code-mode bridge once before continuing it/i);
   assert.match(workflowReference, /code-mode consumption is the adapter execution method/i);
   assert.match(workflowReference, /single distributed runtime consumer/i);
   assert.match(workflowReference, /non-distributed test oracle/i);
