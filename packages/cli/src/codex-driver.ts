@@ -161,10 +161,10 @@ async function codexDriverRunner(
         ? goal as Record<string, unknown>
         : undefined;
       const goalStatus = goalRecord?.status;
-      const openGoal = Boolean(goalRecord && goalStatus !== "complete");
+      const openGoal = goalStatus === "active";
       if (tool === "create_goal" && openGoal) {
         goalRecovery = {
-          reason: "Retained the existing nonterminal Codex Goal; recovery creates a Goal only when none is active.",
+          reason: "Retained the existing active Codex Goal; recovery creates a Goal only when none is active.",
         };
         consumed.add(id);
         continue;

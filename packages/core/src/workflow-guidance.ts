@@ -216,9 +216,9 @@ export function buildGoalModeObjective(planGoal: string): string {
 }
 
 /**
- * Keep lightweight default plans out of host-level Goal and progress synchronization.
- * Template-backed skills keep it enabled. Subplans deliberately retain the root
- * plan's Goal instead of creating a second host-level Goal.
+ * Keep lightweight default plans out of host-level Progress projection. Goal Mode
+ * is governed solely by the effective `goalMode` setting, so even a one- or
+ * two-task default plan still creates or restores its Codex Goal.
  */
 export function shouldUsePlanHostIntegration(plan: Pick<PlanDocument, "tasks" | "templateFile" | "templateId" | "parentPlan">): boolean {
   return Boolean(plan.parentPlan)
@@ -360,7 +360,10 @@ export async function buildPlanWorkflowGuidance(params: {
   const hasChangedTasks = (changedTaskIds?.length ?? 0) > 0;
   const hasAppendedTasks = (appendedTaskIds?.length ?? 0) > 0;
   const hasCompletedTasks = (completedTaskIds?.length ?? 0) > 0;
-  const goalModeEnabled = isGoalModeEnabled(projectConfig) && shouldUsePlanHostIntegration(plan);
+  // Goal Mode and the visual Progress projection have separate contracts:
+  // goalMode creates/restores the durable Codex Goal for every active plan,
+  // while lightweight default plans deliberately omit the Progress UI.
+  const goalModeEnabled = isGoalModeEnabled(projectConfig);
   // Cindy owns any eventual Goal projection in its Ghost Host. The CLI must
   // not ask a Cindy Agent to operate another Host's Goal or progress tools.
   const suppressGoalFields = params.host === "opencode" || params.host === "cindy";
@@ -504,6 +507,16 @@ export async function buildPlanWorkflowGuidance(params: {
             ? "process.activeTask"
             : "process.default";
       const template = renderStateTemplate(templateKey, vars);
+      // Reconcile Goal state after every active plan mutation.  The fixed Codex
+      // driver makes this idempotent by retaining an already-active Goal, while
+      // recreating one that was lost or ended between mutations.
+      const shouldEnsureActiveGoal = goalModeEnabled
+        && hasGoal
+        && !suppressGoalFields
+        && (Boolean(commandSource) || params.recoveryResync === true);
+      const activeGoalTemplate = shouldEnsureActiveGoal
+        ? renderStateTemplate("process.justEntered", vars)
+        : undefined;
 
       const guidance = adaptForScope({
         stage: template.stage as WorkflowGuidance["stage"],
@@ -523,8 +536,8 @@ export async function buildPlanWorkflowGuidance(params: {
         ...(template.goalMode && goalModeEnabled && (justEnteredProcess || resumedIntoActive) && hasGoal && !suppressGoalFields
           ? { goalMode: buildGoalMode(plan.goal.text, template.goalMode) }
           : {}),
-        ...(template.goalTool && goalModeEnabled && (justEnteredProcess || resumedIntoActive) && hasGoal && !suppressGoalFields
-          ? { goalTool: buildGoalTool(plan.goal.text, template.goalTool) }
+        ...((template.goalTool ?? activeGoalTemplate?.goalTool) && shouldEnsureActiveGoal
+          ? { goalTool: buildGoalTool(plan.goal.text, (template.goalTool ?? activeGoalTemplate?.goalTool)!) }
           : {}),
         ...(template.commandHints ? { commandHints: template.commandHints } : {}),
       });
