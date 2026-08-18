@@ -100,8 +100,11 @@ test("main-agent Codex surfaces expose only the internal subagent dispatch contr
     assert.doesNotMatch(surface, forbidden);
   }
   assert.match(mainRouter, /knowledgeDispatch/);
+  assert.match(mainRouter, /honor `preferReuse: true`: call `list_agents`/);
+  assert.match(mainRouter, /reuse only the same-thread worker named `knowledge_finalizer` with `followup_task`/);
+  assert.match(mainRouter, /task name `knowledge_finalizer`/);
   assert.match(mainRouter, /spawn_agent/);
-  assert.match(mainRouter, /Do not wait for that agent/i);
+  assert.match(mainRouter, /Do not wait for the reused or new writer/i);
   assert.doesNotMatch(mainRouter, /claw-kit:delegate-writer/);
 });
 
@@ -129,7 +132,7 @@ test("researcher has a broad research trigger, dispatches narrow subagents, and 
   assert.match(researcherSkill, /worker: readonly/);
   assert.match(researcherSkill, /fork_context: false/);
   assert.match(researcherSkill, /waitForCompletion: true/);
-  assert.match(researcherSkill, /preferReuseSameTypeInThread: true/);
+  assert.match(researcherSkill, /preferReuse: true/);
   assert.match(researcherSkill, /inputContract:[\s\S]*question: concrete code question/);
   assert.match(researcherSkill, /outputContract:[\s\S]*exact code anchors/);
   assert.match(researcherSkill, /closePolicy: keep_open_for_reuse/);

@@ -27,7 +27,7 @@ delegateSubagents:
     worker: readonly
     fork_context: false
     waitForCompletion: true
-    preferReuseSameTypeInThread: true
+    preferReuse: true
     inputContract:
       question: concrete code question
       cwd: working directory

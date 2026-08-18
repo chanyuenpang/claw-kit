@@ -456,6 +456,7 @@ test("knowledge claim owns execution and delegate prompt routing", () => {
       finalizeId,
       writer: { model: "test-model", reasoningEffort: "high" },
     });
+    assert.equal(delegateDispatch.preferReuse, true);
     assert.equal(delegateDispatch.policy, "subagent");
     assert.equal(delegateDispatch.model, "test-model");
     assert.equal(delegateDispatch.reasoningEffort, "high");
@@ -463,6 +464,7 @@ test("knowledge claim owns execution and delegate prompt routing", () => {
       "finalizeId",
       "model",
       "policy",
+      "preferReuse",
       "prompt",
       "reasoningEffort",
       "schemaVersion",
@@ -476,6 +478,7 @@ test("knowledge claim owns execution and delegate prompt routing", () => {
       finalizeId,
       writer: { model: "test-model", reasoningEffort: "high" },
     });
+    assert.equal(atomicDispatch.preferReuse, true);
     assert.equal(atomicDispatch.policy, "subagent");
     assert.equal(atomicDispatch.model, "test-model");
     assert.equal(atomicDispatch.reasoningEffort, "high");

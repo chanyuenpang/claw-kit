@@ -46,7 +46,7 @@ Superseded for current knowledge deposition by `.claw/truth/adr/hook-owned-two-p
 - `process.allTasksDone` 同样把 truth deposition 定义为条件步骤，同时继续要求先写回 `retrospective` 与 `keyDecisions`，再执行 returned `adr-writer` contract 完成 root-plan closeout。
 - `delegateSubagents` 仍可返回 truth contract；“返回 contract”不等于“必须 dispatch”。一旦主 agent 选择 truth dispatch，或进入 required ADR closeout，就必须逐字段遵守对应结构化 contract。
 - `packages/core/src/workflow-guidance.config.json` 为 `truth-writer` 和 `adr-writer` 都定义 `model: "gpt-5.6-terra"` 与 `reasoning_effort: "medium"`。`WorkflowGuidanceSubagent` 显式暴露 `reasoning_effort`，`buildConfiguredDelegate(...)` 将该字段逐一传入 returned delegate；调用方派发时必须遵守它。
-- writer delegate 的 `model`、`reasoning_effort`、`fork_context`、`waitForCompletion`、`preferReuseSameTypeInThread`、input/output contract 与 keep-open reuse 策略都是结构化 contract 的组成部分。
+- writer delegate 的 `model`、`reasoning_effort`、`fork_context`、`waitForCompletion`、`preferReuse`、input/output contract 与 keep-open reuse 策略都是结构化 contract 的组成部分。
 
 ## Codex writer 编码与验证合同
 

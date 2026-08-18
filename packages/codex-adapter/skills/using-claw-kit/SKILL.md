@@ -58,8 +58,8 @@ async function runClawPlanMutation({ argv, workdir, timeout_ms = 30000 }) {
 ```
 
 ## Knowledge subagent dispatch
-- When a terminal plan mutation returns a valid `knowledgeDispatch` for `subagent`, call native `spawn_agent` directly with its complete prompt, `fork_turns: "none"`, task name `knowledge_writer_<first 12 finalizeId characters>`, and any supplied `model` and `reasoningEffort` mapped to native fields; never load a user-facing delegate skill.
-- The dispatched job already exists. Do not wait for that agent; immediately end the main turn after spawning it. In `subagent` mode, `knowledge claim` collects the existing parent-turn report and Stop does not capture, queue, launch, or amend the job. The bridge cannot call collaboration tools, and `background` never returns this dispatch.
+- When a terminal plan mutation returns a valid `knowledgeDispatch` for `subagent`, honor `preferReuse: true`: call `list_agents`, then reuse only the same-thread worker named `knowledge_finalizer` with `followup_task` and the complete unchanged prompt. Only when that worker does not exist, call `spawn_agent` with that prompt, `fork_turns: "none"`, task name `knowledge_finalizer`, and any supplied `model` and `reasoningEffort` mapped to native fields; never load a user-facing delegate skill.
+- The dispatched job already exists. Do not wait for the reused or new writer; immediately end the main turn after the accepted handoff. In `subagent` mode, `knowledge claim` collects the existing parent-turn report and Stop does not capture, queue, launch, or amend that job. The bridge cannot call collaboration tools, and `background` never returns this dispatch.
 ## Hard boundaries
 - Run every supported plan mutation through the code-mode bridge without splitting host calls, reconstructing `hostActions` or `goalTool`, or repeating canonical transitions as compensation; if it returns `goalRecovery.command`, immediately run that command in a new code-mode call before replying.
 - Codex has no direct-call fallback: every supported plan mutation goes through the bundled code-mode consumer.

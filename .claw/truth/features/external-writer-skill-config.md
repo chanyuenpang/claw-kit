@@ -7,7 +7,7 @@
 
 ## 核心事实
 
-- `.claw/project.json` 以 `knowledgeWriter` 对象保存 writer 配置：`executionPolicy`、`externalSkills`、`model`、`reasoningEffort` 与 `datedSectionsToKeep`。`executionPolicy` 接受 `background | subagent` 且默认 `background`；Codex 按配置选择 launcher，Cindy 当前只支持 subagent 并把两种配置值都归一化为 Orca `knowledge-finalizer`。它不改变 assignment 语义；host-specific orchestration 由各 adapter 拥有。
+- `.claw/project.json` 以 `knowledgeWriter` 对象保存 writer 配置：`executionPolicy`、`externalSkills`、`model`、`reasoningEffort` 与 `datedSectionsToKeep`。`executionPolicy` 接受 `background | subagent` 且默认 `background`；Codex 按配置选择 launcher，Cindy 当前只支持 subagent 并把两种配置值都归一化为 Orca `knowledge_finalizer`。它不改变 assignment 语义；host-specific orchestration 由各 adapter 拥有。
 - `externalSkills` 的非空有序列表选择真实外部 skill assignments；列表缺失或为空时选择 Core 内部 built-in governance assignment。该内置 contract 不以 `claw-kit:knowledge-writer` 用户 skill 发布。`datedSectionsToKeep` 的治理语义由 `truth-and-adr-corpus-semantics.md` 唯一拥有。
 - Background policy 在支持它的 host 上于 Stop/session-idle 创建 job；subagent policy 在终态 mutation 返回 dispatch 前创建 ready job。Cindy 总是采用后一条路径，并把归一化后的 `subagent` 快照写入 `KnowledgeFinalizationJob.writer`。后续重试使用该快照，不从变更后的项目配置重新推导 capability。
 - claim 把冻结配置解析为有序 assignments 与一次性 template。Codex 与 Cindy delegate 都在 session-scoped 动态 assignment subplan 中顺序执行；Cindy 通过 Ghost operations 消费专用内部 delegate template，而不是直接执行 assignment prompts。任一失败都会阻止后续 assignment 并以 claim token 写入失败终态。main agent 不根据 `keyDecisions` 拆分 Truth/ADR phase。
