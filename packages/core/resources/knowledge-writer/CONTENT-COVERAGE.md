@@ -12,7 +12,8 @@
 - On-write format inspection and repair without corpus-wide migration: `knowledge-format.md`, template tasks 3 through 6, acceptance criteria, and template rules.
 - Canonical-owner discovery and exhaustive search: template tasks 3 through 6 plus template rules.
 - One-owner stewardship and cross-document consistency: template task 6, template rules, and `non-claw-fallback.md`.
-- Writing constraints, encoding, exact identifiers, and return behavior: `non-claw-fallback.md`, template task 6, and template rules.
+- Post-write claw vector and optional GitNexus index refresh: template task 7 through `claw direct`.
+- Writing constraints, encoding, exact identifiers, and return behavior: `non-claw-fallback.md`, template tasks 6 and 7, and template rules.
 - Supplied-material immutability: template task 1, acceptance criteria, template rules, and `non-claw-fallback.md`.
 - Verification gate: template task 6 requires focused and exhaustive post-write review before completion.
 
@@ -21,6 +22,7 @@
 - [x] Important source triggers and inputs are represented.
 - [x] Conclusion-bearing content from every supplied material drives deposition; task status informs interpretation without turning task metadata into an execution record.
 - [x] The ordered workflow always performs the Truth pass before the ADR pass and has no route-choice task.
+- [x] The finalizer queues project-memory and enabled GitNexus refresh only after the canonical knowledge review succeeds.
 - [x] Search tools, ownership constraints, and safety boundaries are represented.
 - [x] Time-bounded authority, current-anchor checks, and unresolved-freshness no-edit behavior are represented.
 - [x] Writing and consistency verification requirements are represented.

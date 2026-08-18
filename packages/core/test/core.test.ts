@@ -519,9 +519,11 @@ test("knowledge claim owns execution and delegate prompt routing", () => {
       version: corePackageVersion,
     });
     assert.equal(builtinTemplate.scope, "session");
-    assert.equal(builtinTemplate.tasks.length, 7);
+    assert.equal(builtinTemplate.tasks.length, 8);
     assert.equal(builtinTemplate.tasks[5]?.title, "Update affected external documentation");
     assert.equal(builtinTemplate.tasks[6]?.title, "Run the cross-corpus consistency review");
+    assert.equal(builtinTemplate.tasks[7]?.title, "Refresh project search indexes");
+    assert.match(builtinTemplate.tasks[7]?.detail ?? "", /claw direct/);
     assert.ok(builtinTemplate.references?.every((reference) => path.isAbsolute(reference.path)));
 
     const externalAssignments = buildKnowledgeWriterAssignments({

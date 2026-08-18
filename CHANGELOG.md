@@ -2,6 +2,12 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.2.20] - 2026-08-18
+
+### Changed
+
+- Built-in knowledge finalization now queues project-memory vector refresh and, when enabled, GitNexus refresh only after its Truth/ADR consistency review completes.
+
 ## [0.2.19] - 2026-08-15
 
 ### Fixed
