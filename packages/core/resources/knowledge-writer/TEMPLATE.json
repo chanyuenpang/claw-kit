@@ -1,6 +1,6 @@
 {
   "id": "knowledge-writer",
-  "version": "0.2.22",
+  "version": "0.2.23",
   "scope": "session",
   "title": "knowledge-writer",
   "status": "process.active",
@@ -144,16 +144,16 @@
     },
     {
       "id": 7,
-      "title": "Refresh project search indexes",
-      "detail": "From the project root, run `claw direct` after the canonical Truth/ADR review is complete. Confirm that the returned `completionRefresh.asyncRefresh` is queued and includes `memory.reindex.project`; when the project's flat `gitnexus` setting is true, it must also include `gitnexus.refresh`. Do not wait for the detached refresh worker, but do not mark this task done if the command fails or does not queue the refresh.",
+      "title": "Prepare the final project index refresh",
+      "detail": "After the canonical Truth/ADR review is complete, mark this final task done and close this knowledge-writer plan through its canonical `claw plan done` transition. When the workflow originated in a claw project, that terminal transition queues the project's memory refresh and, when the flat `gitnexus` setting is true, its GitNexus refresh. Do not use a compatibility shortcut as a knowledge-writer workaround.",
       "status": "pending",
       "guidance": {
         "onDone": {
           "default": {
             "mergeMode": "override",
-            "summary": "Knowledge governance and the post-write project index refresh are queued.",
+            "summary": "Knowledge governance is complete; canonical plan completion will queue the post-write project index refresh.",
             "nextsteps": [
-              "Report only changed canonical paths, evidence-backed no-edit reasons, and the queued refresh status path when available.",
+              "Close the knowledge-writer plan through its canonical plan-done transition, then report changed canonical paths, evidence-backed no-edit reasons, and the queued refresh status path when available.",
               "Preserve exact identifiers, repository conventions, and valid Markdown encoding."
             ]
           }

@@ -45,6 +45,12 @@
 <!-- state: history -->
 ## 演进记录
 
+<!-- dated: 2026-08-20 -->
+### 0.2.22 CLI/Core/Client 发布完成态
+
+- `@veewo/claw-core`、`@veewo/claw-client` 与 `@veewo/claw` `0.2.22` 已发布；三个 npm 包的 `latest`、真实 tarball 取包、`v0.2.22` 和公开 GitHub Release 均已完成验证。
+- 该记录仅覆盖 npm artifact family。Codex `0.2.22.1` 和 Cindy `0.2.22.0` 保持各自独立的 marketplace source release 边界，且不包含任何本机安装刷新。
+
 <!-- dated: 2026-08-15 -->
 ### 0.2.19 CLI/Core/Client 发布完成态
 
@@ -56,12 +62,6 @@
 
 - `@veewo/claw-core` 与 `@veewo/claw` `0.2.17` 已发布并完成 npm 真实取包验证；immutable `v0.2.17` tag 与 GitHub Release 属于同一完成边界。
 - 该次 npm 证据不推断 Client 已发布，也不把 Codex `0.2.17.1`、Cindy `0.2.17.0` 的独立 marketplace 发布或任何本机安装刷新纳入 npm 完成态。
-
-<!-- dated: 2026-08-02 -->
-### 0.2.7 CLI、Core 与 Client 发布完成态
-
-- `0.2.7` 已完成 Core、Client 与 CLI 的 npm 发布；`@veewo/claw-core`、`@veewo/claw-client`、`@veewo/claw` 的 registry metadata 和 `dist-tags.latest` 均为 `0.2.7`。CLI 的 `claw` bin 仍存在，且其依赖精确指向 Core 与 Client `0.2.7`。
-- `v0.2.7` 是公开 GitHub Release，并指向 release commit `9574d3634cd44e5ba1c6aa112a931c7f1d258663`。该版本记录的是 CLI/npm artifact family；后续 Cindy 或 Codex artifact 发布仍须遵循各自独立边界。
 
 <!-- dated: 2026-08-03 -->
 ### 0.2.9 CLI/Core/Client 与独立 Cindy source release

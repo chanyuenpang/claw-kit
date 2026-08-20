@@ -66,12 +66,13 @@ async function resolveTemplateCreationScope(
   templateName: string | undefined,
   templateFile: string | undefined,
 ): Promise<"session" | undefined> {
-  // Templates configure plan content, never storage scope. Session storage is
-  // an explicit caller choice so every Host follows the same boundary.
-  void projectRoot;
-  void templateName;
-  void templateFile;
-  return undefined;
+  if (!templateName?.trim() && !templateFile?.trim()) return undefined;
+  const template = await resolveSeedPlanTemplate({
+    projectRoot,
+    templateName,
+    templateFile,
+  });
+  return template.scope;
 }
 
 export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult & { events: PlanEvent[] }> {

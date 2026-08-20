@@ -13,6 +13,12 @@ export type KnowledgeWriterAssignment = {
   prompt: string;
 };
 
+export type DirectKnowledgeAssignment = KnowledgeWriterAssignment & {
+  contractPath?: string;
+  formatPath?: string;
+  datedSectionsToKeep?: number;
+};
+
 export type KnowledgeDelegateDispatch = {
   schemaVersion: 1;
   policy: "background" | "subagent";
@@ -112,6 +118,42 @@ export function buildKnowledgeWriterAssignments(
       kind: "doc_updater",
       promptVersion: 1,
       prompt: buildDocUpdaterPrompt(job),
+    });
+  }
+  return assignments;
+}
+
+/** Builds the same configured assignment order for an explicit same-agent capture. */
+export function buildDirectKnowledgeAssignments(input: {
+  writer?: KnowledgeWriterConfig;
+  docUpdate?: { externalDocPaths: string[] };
+}): DirectKnowledgeAssignment[] {
+  const configured = input.writer?.externalSkills?.map((skill) => skill.trim()).filter(Boolean) ?? [];
+  const contractRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "resources", "knowledge-writer");
+  const assignments: DirectKnowledgeAssignment[] = configured.length === 0
+    ? [{
+      index: 0,
+      kind: "builtin",
+      promptVersion: 1,
+      prompt: buildDirectBuiltinKnowledgePrompt(input.writer),
+      contractPath: path.join(contractRoot, "non-claw-fallback.md"),
+      formatPath: path.join(contractRoot, "knowledge-format.md"),
+      datedSectionsToKeep: input.writer?.datedSectionsToKeep ?? 6,
+    }]
+    : configured.map((skill, index) => ({
+      index,
+      kind: "external_skill" as const,
+      skill,
+      promptVersion: 1,
+      prompt: buildDirectExternalSkillPrompt(skill),
+    }));
+  if (input.docUpdate) {
+    assignments.push({
+      index: assignments.length,
+      kind: "doc_updater",
+      promptVersion: 1,
+      prompt: buildDirectDocUpdaterPrompt(input.docUpdate.externalDocPaths),
+      contractPath: path.join(path.dirname(fileURLToPath(import.meta.url)), "resources", "doc-updater", "FALLBACK.md"),
     });
   }
   return assignments;
@@ -252,6 +294,35 @@ function buildBuiltinKnowledgePrompt(
     "Maintain canonical Truth first and ADR second from conclusion-bearing content in the supplied materials.",
     `For every canonical document changed by this pass, keep at most ${job.writer?.datedSectionsToKeep ?? 6} complete evolution sections marked by \`<!-- dated: YYYY-MM-DD -->\`; do not truncate current prose or untouched documents.`,
     commonMaterialPrompt(job),
+  ].join("\n");
+}
+
+function buildDirectBuiltinKnowledgePrompt(writer?: KnowledgeWriterConfig): string {
+  return [
+    "Execute the built-in knowledge-governance contract supplied by claw-kit for an explicit manual knowledge capture.",
+    "Use only conclusion-bearing content already present in the current agent memory before this invocation.",
+    "Do not read or create a report, transcript, plan, subplan, finalization job, or delegation.",
+    `For every canonical document changed by this pass, keep at most ${writer?.datedSectionsToKeep ?? 6} complete evolution sections marked by \`<!-- dated: YYYY-MM-DD -->\`; do not truncate current prose or untouched documents.`,
+    "Maintain canonical Truth first and ADR second. Treat this instruction as manual and same-agent only.",
+  ].join("\n");
+}
+
+function buildDirectExternalSkillPrompt(skill: string): string {
+  return [
+    `Invoke the ${skill} skill for this explicit manual knowledge capture.`,
+    "Use only conclusion-bearing content already present in the current agent memory before this invocation.",
+    "Run in the current agent only: do not read or create a report, transcript, plan, subplan, job, background worker, or collaboration subagent.",
+    "Run unattended and non-interactively. If a change is ambiguous or unsafe, skip it and report the reason.",
+  ].join("\n");
+}
+
+function buildDirectDocUpdaterPrompt(externalDocPaths: string[]): string {
+  return [
+    "Use the supplied doc-updater fallback for this dependent manual knowledge-capture stage.",
+    "Use only the current agent memory and the canonical Truth and ADR state produced by earlier assignments.",
+    "Do not read or create a report, transcript, plan, subplan, finalization job, or delegation.",
+    "Frozen external documentation paths:",
+    ...externalDocPaths.map((externalPath) => `- ${externalPath}`),
   ].join("\n");
 }
 

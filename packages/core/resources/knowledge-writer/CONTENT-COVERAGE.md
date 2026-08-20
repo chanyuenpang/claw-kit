@@ -12,7 +12,7 @@
 - On-write format inspection and repair without corpus-wide migration: `knowledge-format.md`, template tasks 3 through 6, acceptance criteria, and template rules.
 - Canonical-owner discovery and exhaustive search: template tasks 3 through 6 plus template rules.
 - One-owner stewardship and cross-document consistency: template task 6, template rules, and `non-claw-fallback.md`.
-- Post-write claw vector and optional GitNexus index refresh: template task 7 through `claw direct`.
+- Post-write claw vector and optional GitNexus index refresh: template task 7 followed by the knowledge-writer plan's canonical terminal transition.
 - Writing constraints, encoding, exact identifiers, and return behavior: `non-claw-fallback.md`, template tasks 6 and 7, and template rules.
 - Supplied-material immutability: template task 1, acceptance criteria, template rules, and `non-claw-fallback.md`.
 - Verification gate: template task 6 requires focused and exhaustive post-write review before completion.

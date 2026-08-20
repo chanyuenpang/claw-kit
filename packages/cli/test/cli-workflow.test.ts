@@ -120,8 +120,8 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   assert.equal("taskName" in writeResult, false);
   assert.equal("planFile" in writeResult, false);
   assert.equal(writeResult.planSummary, "0/1 e2e-task");
-  assert.equal("goalMode" in writeResult, false);
-  assert.equal("goalTool" in writeResult, false);
+  assert.equal((writeResult.goalMode as JsonRecord).setWhen, "on_enter_process_active");
+  assert.equal((writeResult.goalTool as JsonRecord).tool, "create_goal");
   assert.equal("nextAction" in writeResult, false);
   assert.equal("instruction" in writeResult, false);
   assert.equal("askUser" in writeResult, false);

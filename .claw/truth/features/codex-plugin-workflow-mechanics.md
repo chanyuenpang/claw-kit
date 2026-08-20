@@ -1,15 +1,12 @@
 ﻿# Codex plugin workflow mechanics
 
-## Status
-
-Current
-
-## Core facts
+<!-- state: current -->
+## Current behavior
 
 - `using-claw-kit` 的可见入口合同是 positive 且 entry-owned：第一句先让不预期产生可复用项目知识的请求跳过该 skill 并直接工作；其余请求进入 `First Action`，默认运行 `claw plan create "<title>"`。只有 template-backed workflow skill 完整承载请求时，才改为跟随该 skill 自己的 entry route，由已加载 skill 解析其目录并通过 `--template-file "<skill-dir>/TEMPLATE.json"` 提供精确模板来源；裸 `--template <id>` 只属于兼容发现面，通用所有权见 `.claw/truth/features/template-guidance-routing.md`。
 - Codex 与 OpenCode 的 `First Action` 在创建 plan 后把返回的 `workflowGuidance` 作为唯一 lifecycle contract，并用 stage 与 current task 判断当前工作；`commandHints` 只作为命令查找辅助，不是 required next mutations。入口不重建 recovery、context、search 或完整后续 lifecycle 路由；新 plan 从 `process.discussing` 开始。
 - `planning` 仍然是可见的 plan-entry skill，但它是由 `claw plan create` 之后种下的 planning task 调起的，不应该被插件 manifest 或 startup prompt 预读成前置工作流步骤。
-- Codex plugin manifest 的 `defaultPrompt` 只保留一条合并后的 session-entry 指令，统一指向 `using-claw-kit`、recovered `workflowGuidance`、project-plan admission 与固定 driver；不得用多条重复的 `Start with` 形成彼此竞争的入口。
+- Codex plugin manifest 的 `defaultPrompt` 只保留一条短调用指令：`Use $claw-kit:using-claw-kit to complete this task.`。它保持在 Codex 的 128 字符上限内，只负责调用唯一可见入口；recovered `workflowGuidance`、project-plan admission 与固定 driver 合同继续由 `using-claw-kit` skill 自身拥有，manifest 不复制这些动态细节。
 - 不预期产生可复用知识的请求在 `using-claw-kit` 入口处直接工作；入口 skill 不为已删除的 route 增加反向提示，也不复制 SessionStart、recall 或具体任务合同。
 - `process.discussing` 表示执行暂停并转入用户讨论，可以稳定跨轮次停留，也可以从 `process.active` 重新进入；plan 存在、方案已可执行或返回了 command hints 都不构成自动推进 lifecycle 的理由。
 - Default Task 1 先区分 action instruction 与 open-ended discussion，再用 effective planning skill 澄清 requirements 并准备 task list。用户已指定 solution，或既有 workflow / 证据充分确定路线时可以继续；采用另一条 solution 前必须让用户看到 decision-relevant content，并只在它引入 meaningful choice 时等待回应。

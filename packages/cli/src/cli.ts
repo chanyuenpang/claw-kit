@@ -13,6 +13,7 @@ import {
   buildKnowledgeAtomicDispatch,
   buildKnowledgeDelegateDispatch,
   buildKnowledgeAssignmentTemplate,
+  buildDirectKnowledgeAssignments,
   buildKnowledgeWriterAssignments,
   DEFAULT_MAX_TASKS_TO_KEEP,
   checkProjectProtocol,
@@ -56,6 +57,8 @@ import {
   listKnowledgeFinalizationJobs,
   listRetryableKnowledgeFinalizationJobs,
   normalizeTruthMarkdownEncoding,
+  governKnowledgeMarkdownPaths,
+  resolveKnowledgeDocUpdateSnapshot,
   recordKnowledgeFinalizationResult,
   unbindSession,
   writePlan,
@@ -437,8 +440,28 @@ const COMMAND_HELP: Record<string, HelpNode> = {
   },
   knowledge: {
     usage: ["{script} knowledge <subcommand> [options]"],
-    description: "Session-bound lifecycle commands for a queued knowledge finalization job.",
+    description: "Commands for queued knowledge finalization jobs and explicit same-agent knowledge capture.",
     subcommands: {
+      prepare: {
+        usage: ["{script} knowledge prepare --source agent-memory --project-root <path>"],
+        description: "Read the current project configuration and return the immutable assignment projection for one explicit manual knowledge capture. It never initializes, repairs, or mutates the project.",
+        summary: "Prepare explicit same-agent knowledge capture.",
+        options: [
+          { flag: "--source agent-memory", detail: "(required) Only source supported by the manual same-agent route." },
+          { flag: "--project-root <path>", detail: "(required) Project root used to resolve current team and personal configuration." },
+        ],
+      },
+      complete: {
+        usage: ["{script} knowledge complete --source agent-memory --project-root <path> --config-fingerprint <hash> [--changed-truth <absolute-path> ...]"],
+        description: "Validate the prepared configuration, govern declared canonical paths, normalize knowledge encoding, and queue the existing completion refresh without creating a report or job.",
+        summary: "Complete explicit same-agent knowledge capture.",
+        options: [
+          { flag: "--source agent-memory", detail: "(required) Only source supported by the manual same-agent route." },
+          { flag: "--project-root <path>", detail: "(required) Project root used to resolve current configuration." },
+          { flag: "--config-fingerprint <hash>", detail: "(required) Fingerprint returned by knowledge prepare." },
+          { flag: "--changed-truth <absolute-path>", detail: "Canonical Truth or ADR Markdown path changed by this capture (repeatable)." },
+        ],
+      },
       wait: {
         usage: ["{script} knowledge wait --project-root <path> --finalize-id <id> [--session-key <key>] [--timeout-ms <n>]"],
         description: "Wait for Stop capture to create a knowledge finalization job. This command does not create or inspect session bindings.",
@@ -1159,6 +1182,24 @@ function readCindyKnowledgeClaimCaptureInput(): {
 async function runKnowledge(args: string[]): Promise<void> {
   const subcommand = args.shift();
   switch (subcommand) {
+    case "prepare": {
+      const source = readRequiredFlag(args, "--source");
+      const projectRoot = path.resolve(readRequiredFlag(args, "--project-root"));
+      assertNoRemainingArgs(args, "knowledge prepare");
+      assertDirectKnowledgeSource(source);
+      printJson(prepareDirectKnowledgeCapture(projectRoot));
+      return;
+    }
+    case "complete": {
+      const source = readRequiredFlag(args, "--source");
+      const projectRoot = path.resolve(readRequiredFlag(args, "--project-root"));
+      const configFingerprint = readRequiredFlag(args, "--config-fingerprint");
+      const changedTruth = readRepeatedFlag(args, "--changed-truth");
+      assertNoRemainingArgs(args, "knowledge complete");
+      assertDirectKnowledgeSource(source);
+      printJson(completeDirectKnowledgeCapture({ projectRoot, configFingerprint, changedTruth }));
+      return;
+    }
     case "list": {
       const projectRoot = path.resolve(readRequiredFlag(args, "--project-root"));
       const sessionKey = readOptionalFlag(args, "--session-key");
@@ -1367,6 +1408,118 @@ async function runKnowledge(args: string[]): Promise<void> {
   }
 }
 
+function prepareDirectKnowledgeCapture(projectRoot: string) {
+  const project = resolveProjectContext(projectRoot);
+  const ownerSessionKey = resolveOwnerSessionKey() ?? undefined;
+  if (ownerSessionKey && resolveSessionBoundPlan(project, ownerSessionKey)) {
+    throw new ClawError(
+      "KNOWLEDGE_DIRECT_WORKFLOW_ACTIVE",
+      "Manual knowledge capture cannot run while this session has an active claw workflow.",
+    );
+  }
+  const writer = project.projectConfig?.knowledgeWriter;
+  const docUpdate = resolveKnowledgeDocUpdateSnapshot(project);
+  const assignments = buildDirectKnowledgeAssignments({ writer, ...(docUpdate ? { docUpdate } : {}) });
+  for (const assignment of assignments) {
+    for (const resourcePath of [assignment.contractPath, assignment.formatPath]) {
+      if (resourcePath && (!fs.existsSync(resourcePath) || !fs.statSync(resourcePath).isFile())) {
+        throw new ClawError("KNOWLEDGE_DIRECT_RESOURCE_MISSING", "A required knowledge-capture contract resource is unavailable.", { resourcePath });
+      }
+    }
+  }
+  const configFingerprint = directKnowledgeConfigFingerprint({ project, assignments, docUpdate });
+  return {
+    ok: true,
+    command: "knowledge.prepare",
+    schemaVersion: 1,
+    source: "agent-memory",
+    project: { projectRoot: project.projectRoot, truthDir: project.truthDir },
+    configFingerprint,
+    assignments,
+    refresh: {
+      operations: ["memory.reindex.project", ...(project.projectConfig?.gitnexus === true ? ["gitnexus.refresh"] : [])],
+    },
+  };
+}
+
+function completeDirectKnowledgeCapture(input: {
+  projectRoot: string;
+  configFingerprint: string;
+  changedTruth: string[];
+}) {
+  const prepared = prepareDirectKnowledgeCapture(input.projectRoot);
+  if (prepared.configFingerprint !== input.configFingerprint) {
+    throw new ClawError(
+      "KNOWLEDGE_DIRECT_CONFIG_CHANGED",
+      "Knowledge-capture configuration changed after prepare; run knowledge prepare again before completion.",
+      { expected: input.configFingerprint, actual: prepared.configFingerprint },
+    );
+  }
+  const project = resolveProjectContext(input.projectRoot);
+  const relativePaths = input.changedTruth.map((candidate) => relativeTruthPath(project.truthDir, candidate));
+  const builtin = prepared.assignments.find((assignment) => assignment.kind === "builtin");
+  const governance = builtin
+    ? governKnowledgeMarkdownPaths({
+      truthDir: project.truthDir,
+      relativePaths,
+      datedSectionsToKeep: builtin.datedSectionsToKeep ?? 6,
+    })
+    : { changedFiles: 0, compactedFiles: 0, removedSections: 0, files: [] };
+  const truthEncoding = normalizeTruthMarkdownEncoding(project);
+  const refresh = queueCompletionRefresh({
+    cwd: project.projectRoot,
+    taskName: "knowledge-capture",
+    includeTaskRetention: false,
+    statusLabel: "knowledge-capture",
+  });
+  return {
+    ok: true,
+    command: "knowledge.complete",
+    source: "agent-memory",
+    configFingerprint: prepared.configFingerprint,
+    changedTruth: relativePaths,
+    governance,
+    truthEncoding,
+    asyncRefresh: refresh.asyncRefresh,
+  };
+}
+
+function assertDirectKnowledgeSource(source: string): asserts source is "agent-memory" {
+  if (source !== "agent-memory") {
+    throw new ClawError("PROJECT_CONFIG_INVALID", 'Manual knowledge capture supports only --source agent-memory.');
+  }
+}
+
+function relativeTruthPath(truthDir: string, candidate: string): string {
+  const root = path.resolve(truthDir);
+  const target = path.resolve(candidate);
+  const relative = path.relative(root, target);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative) || !/\.md$/iu.test(relative)) {
+    throw new ClawError("KNOWLEDGE_DIRECT_PATH_INVALID", "Changed knowledge paths must be Markdown files inside the resolved truth directory.", { candidate, truthDir: root });
+  }
+  return relative.replaceAll("\\", "/");
+}
+
+function directKnowledgeConfigFingerprint(input: {
+  project: ProjectContext;
+  assignments: ReturnType<typeof buildDirectKnowledgeAssignments>;
+  docUpdate?: { externalDocPaths: string[] };
+}): string {
+  const payload = {
+    schemaVersion: 1,
+    truthDir: path.resolve(input.project.truthDir),
+    assignments: input.assignments.map((assignment) => ({
+      kind: assignment.kind,
+      skill: assignment.skill ?? null,
+      datedSectionsToKeep: assignment.datedSectionsToKeep ?? null,
+    })),
+    externalDocPaths: input.docUpdate?.externalDocPaths ?? [],
+    gitnexus: input.project.projectConfig?.gitnexus === true,
+    memoryRefresh: input.project.projectConfig?.memory?.enabled !== false,
+  };
+  return `sha256:${createHash("sha256").update(JSON.stringify(payload)).digest("hex")}`;
+}
+
 async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Promise<void> {
   const subcommand = args.shift();
   switch (subcommand) {
@@ -1388,7 +1541,7 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
         );
       }
       const ownerSessionKey = resolveOwnerSessionKey();
-      assertDirectRootPlanCreateAllowed(process.cwd(), ownerSessionKey);
+      assertDirectRootPlanCreateAllowed(process.cwd(), ownerSessionKey, scope);
       await preparePlanCreateWorkflow(process.cwd(), ownerSessionKey, effectiveHost, scope);
       const result = await writePlan({
         cwd: process.cwd(),
@@ -1400,6 +1553,15 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
         ownerSessionKey: ownerSessionKey ?? undefined,
         host: effectiveHost,
       });
+      if (ownerSessionKey && scope !== "session") {
+        const sessionProject = resolveSessionWorkflowContext(ownerSessionKey);
+        if (sessionProject) {
+          const relativePlanPath = path.relative(sessionProject.clawDir, result.planPath);
+          if (relativePlanPath.startsWith("..") || path.isAbsolute(relativePlanPath)) {
+            unbindSession(sessionProject, ownerSessionKey);
+          }
+        }
+      }
       assertNoRemainingArgs(args, "plan create");
       printJson(compactPlanCommandResult("plan.create", result, effectiveHost));
       return;
@@ -1434,8 +1596,8 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
           { host: effectiveHost ?? null },
         );
       }
-      const queuePlanEndFinalization = entersEndTerminal
-        ? preparePlanEndFinalization(process.cwd(), ownerSessionKey)
+      const terminalRefresh = entersEndTerminal
+        ? preparePlanTerminalRefresh(process.cwd(), ownerSessionKey)
         : undefined;
       const result = await editPlan({
         cwd: process.cwd(),
@@ -1459,7 +1621,7 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
             writer: effectiveWriter,
           })
         : undefined;
-      const completionRefresh = queuePlanEndFinalization?.(result.taskName);
+      const completionRefresh = queueTerminalRefreshIfEntered(result, terminalRefresh);
       printJson(compactPlanCommandResult("plan.edit", result, effectiveHost, completionRefresh, false, knowledgeDispatch));
       if (result.operationChain?.status === "partial") process.exitCode = 1;
       return;
@@ -1561,7 +1723,7 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
           { host: effectiveHost ?? null },
         );
       }
-      const queuePlanEndFinalization = preparePlanEndFinalization(process.cwd(), ownerSessionKey);
+      const terminalRefresh = preparePlanTerminalRefresh(process.cwd(), ownerSessionKey);
       const result = await editPlan({
         cwd: process.cwd(),
         ...target,
@@ -1582,7 +1744,7 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
             writer: effectiveWriter,
           })
         : undefined;
-      const completionRefresh = queuePlanEndFinalization?.(result.taskName);
+      const completionRefresh = queueTerminalRefreshIfEntered(result, terminalRefresh);
       printJson(compactPlanCommandResult(
         "plan.done",
         result,
@@ -1645,6 +1807,7 @@ async function runPlanLeave(args: string[], effectiveHost: ClawHost | undefined)
   const ownerSessionKey = resolveOwnerSessionKey() ?? undefined;
   const target = readPlanMutationTarget(args);
   assertNoRemainingArgs(args, "plan leave");
+  const terminalRefresh = preparePlanTerminalRefresh(process.cwd(), ownerSessionKey);
   const result = await editPlan({
     cwd: process.cwd(),
     ...target,
@@ -1653,7 +1816,8 @@ async function runPlanLeave(args: string[], effectiveHost: ClawHost | undefined)
     host: effectiveHost,
     ownerSessionKey,
   });
-  printJson(compactPlanCommandResult("plan.leave", result, effectiveHost, undefined, true));
+  const completionRefresh = queueTerminalRefreshIfEntered(result, terminalRefresh);
+  printJson(compactPlanCommandResult("plan.leave", result, effectiveHost, completionRefresh, true));
 }
 
 async function runPlanSync(args: string[], effectiveHost: ClawHost | undefined): Promise<void> {
@@ -1884,7 +2048,10 @@ async function runContextCommand(
   let fixedPaths: string[] = [];
 
   const sessionProject = resolveSessionWorkflowContext(ownerSessionKey ?? undefined);
-  if (sessionProject) {
+  const sessionPlanPath = sessionProject && ownerSessionKey
+    ? resolveSessionBoundPlan(sessionProject, ownerSessionKey)
+    : null;
+  if (sessionProject && sessionPlanPath) {
     const maintenance = effectiveHost
       ? null
       : runDailyMaintenance(sessionProject, {
@@ -2499,9 +2666,16 @@ async function preparePlanCreateWorkflow(
   await prepareProjectWorkflow(cwd, ownerSessionKey, effectiveHost, project);
 }
 
-function assertDirectRootPlanCreateAllowed(cwd: string, ownerSessionKey: string | null): void {
+function assertDirectRootPlanCreateAllowed(
+  cwd: string,
+  ownerSessionKey: string | null,
+  requestedScope: "session" | undefined,
+): void {
   if (!ownerSessionKey) return;
-  const project = resolveWorkflowProjectContext(cwd, ownerSessionKey);
+  const project = requestedScope === "session"
+    ? resolveSessionWorkflowContext(ownerSessionKey)
+    : tryResolveHookProject(cwd);
+  if (!project) return;
   const planPath = resolveSessionBoundPlan(project, ownerSessionKey);
   if (!planPath) return;
   const target = parseTaskPlanPath(project, planPath);
@@ -3874,10 +4048,31 @@ type CompletionRefreshFlightState = {
   startedAt?: string;
 };
 
-function preparePlanEndFinalization(cwd: string, ownerSessionKey: string | undefined): ((taskName: string) => CompletionRefreshResult) | undefined {
+type PreparedPlanTerminalRefresh = {
+  queue: (taskName: string) => CompletionRefreshResult;
+};
+
+function preparePlanTerminalRefresh(cwd: string, ownerSessionKey: string | undefined): PreparedPlanTerminalRefresh | undefined {
   const workflowProject = resolveWorkflowProjectContext(cwd, ownerSessionKey);
-  if (workflowProject.scope !== "project") return undefined;
-  return (taskName) => queueCompletionRefresh({ cwd, taskName });
+  const refreshProject = tryResolveHookProject(workflowProject.projectRoot);
+  if (!refreshProject) return undefined;
+  return {
+    queue: (taskName) => queueCompletionRefresh({
+      cwd: refreshProject.projectRoot,
+      taskName,
+      includeTaskRetention: workflowProject.scope !== "session",
+    }),
+  };
+}
+
+function queueTerminalRefreshIfEntered(
+  result: Pick<Awaited<ReturnType<typeof editPlan>>, "taskName" | "planStatus" | "previousPlanStatus">,
+  terminalRefresh: PreparedPlanTerminalRefresh | undefined,
+): CompletionRefreshResult | undefined {
+  if (!terminalRefresh || result.previousPlanStatus.startsWith("end.") || !result.planStatus.startsWith("end.")) {
+    return undefined;
+  }
+  return terminalRefresh.queue(result.taskName);
 }
 
 function queueCompletionRefresh(input: {

@@ -9,6 +9,7 @@ import {
   buildKnowledgeAtomicDispatch,
   buildKnowledgeDelegateDispatch,
   buildKnowledgeAssignmentTemplate,
+  buildDirectKnowledgeAssignments,
   buildKnowledgeWriterAssignments,
   activatePlan,
   completeSubplanAndRestoreParent,
@@ -523,8 +524,9 @@ test("knowledge claim owns execution and delegate prompt routing", () => {
     assert.equal(builtinTemplate.tasks.length, 8);
     assert.equal(builtinTemplate.tasks[5]?.title, "Update affected external documentation");
     assert.equal(builtinTemplate.tasks[6]?.title, "Run the cross-corpus consistency review");
-    assert.equal(builtinTemplate.tasks[7]?.title, "Refresh project search indexes");
-    assert.match(builtinTemplate.tasks[7]?.detail ?? "", /claw direct/);
+    assert.equal(builtinTemplate.tasks[7]?.title, "Prepare the final project index refresh");
+    assert.match(builtinTemplate.tasks[7]?.detail ?? "", /canonical `claw plan done`/);
+    assert.doesNotMatch(builtinTemplate.tasks[7]?.detail ?? "", /claw direct/);
     assert.ok(builtinTemplate.references?.every((reference) => path.isAbsolute(reference.path)));
 
     const externalAssignments = buildKnowledgeWriterAssignments({
@@ -566,6 +568,26 @@ test("knowledge claim owns execution and delegate prompt routing", () => {
     if (previousRuntimeDir === undefined) delete process.env.CLAW_SESSION_RUNTIME_DIR;
     else process.env.CLAW_SESSION_RUNTIME_DIR = previousRuntimeDir;
   }
+});
+
+test("direct knowledge assignments retain config order without report or delegation materials", () => {
+  const builtin = buildDirectKnowledgeAssignments({
+    writer: { datedSectionsToKeep: 3 },
+    docUpdate: { externalDocPaths: ["docs/handbook.md"] },
+  });
+  assert.equal(builtin[0]?.kind, "builtin");
+  assert.equal(builtin[0]?.datedSectionsToKeep, 3);
+  assert.match(builtin[0]?.prompt ?? "", /current agent memory/i);
+  assert.doesNotMatch(builtin[0]?.prompt ?? "", /reportPath|finalization id|Materials:/i);
+  assert.match(builtin[1]?.prompt ?? "", /Do not read or create a report/i);
+
+  const external = buildDirectKnowledgeAssignments({
+    writer: { externalSkills: ["first", "second"] },
+    docUpdate: { externalDocPaths: ["docs/handbook.md"] },
+  });
+  assert.deepEqual(external.map((assignment) => assignment.kind), ["external_skill", "external_skill", "doc_updater"]);
+  assert.match(external[0]?.prompt ?? "", /Run in the current agent only/i);
+  assert.doesNotMatch(external[0]?.prompt ?? "", /planPath|reportPath|finalizeId/i);
 });
 
 test("knowledge finalization post-processing normalizes truth encoding and records an observable result", () => {

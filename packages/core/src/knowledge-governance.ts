@@ -81,6 +81,43 @@ export function governChangedKnowledgeMarkdown(input: {
   };
 }
 
+/** Applies the built-in retention rule to an explicit, already-contained path list. */
+export function governKnowledgeMarkdownPaths(input: {
+  truthDir: string;
+  relativePaths: string[];
+  datedSectionsToKeep: number;
+}): KnowledgeGovernanceResult {
+  const files: KnowledgeGovernanceFileResult[] = [];
+  let changedFiles = 0;
+  const truthRoot = path.resolve(input.truthDir);
+  for (const relativePath of [...new Set(input.relativePaths)].sort((a, b) => a.localeCompare(b))) {
+    const filePath = path.resolve(truthRoot, relativePath);
+    if (path.relative(truthRoot, filePath).startsWith("..") || path.isAbsolute(path.relative(truthRoot, filePath)) || !/\.md$/iu.test(filePath)) {
+      throw new Error(`Knowledge document path must be a Markdown file inside the truth directory: ${relativePath}`);
+    }
+    if (!fs.existsSync(filePath)) continue;
+    changedFiles += 1;
+    const compacted = compactKnowledgeDocument(fs.readFileSync(filePath, "utf-8"), {
+      datedSectionsToKeep: input.datedSectionsToKeep,
+      sourcePath: filePath,
+    });
+    if (!compacted.changed) continue;
+    fs.writeFileSync(filePath, compacted.content, "utf-8");
+    files.push({
+      path: relativePath.replaceAll("\\", "/"),
+      datedSectionCountBefore: compacted.datedSectionCountBefore,
+      datedSectionCountAfter: compacted.datedSectionCountAfter,
+      removedSections: compacted.removedSections,
+    });
+  }
+  return {
+    changedFiles,
+    compactedFiles: files.length,
+    removedSections: files.reduce((sum, file) => sum + file.removedSections.length, 0),
+    files,
+  };
+}
+
 function listMarkdownFiles(root: string): string[] {
   if (!fs.existsSync(root)) {
     return [];

@@ -1,6 +1,6 @@
 {
   "name": "claw-kit",
-  "version": "0.2.22.1",
+  "version": "0.2.23.0",
   "description": "Thin Codex adapter for claw-kit with fixed code-mode plan and Goal synchronization.",
   "author": {
     "name": "chanyuenpang",
@@ -31,7 +31,7 @@
       "Write"
     ],
     "defaultPrompt": [
-      "Start with using-claw-kit. Follow recovered workflowGuidance before creating anything. When no task scope exists, create a plan only when reusable project knowledge is expected; keep it in process.discussing until downstream tasks are explicit and handoff-ready, then enter process.active. Run every Codex claw plan mutation through the fixed code-mode driver, which consumes hostActions without separate goalTool calls."
+      "Use $claw-kit:using-claw-kit to complete this task."
     ],
     "websiteURL": "https://github.com/chanyuenpang/claw-kit",
     "privacyPolicyURL": "https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement",

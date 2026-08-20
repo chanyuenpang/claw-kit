@@ -12,7 +12,7 @@ At the same time:
 
 - Codex does not need `contextPaths` because session bootstrap already relies on `AGENTS.md`, plugin skills, and CLI guidance.
 - memory indexing does need to respect project-declared extra documentation paths.
-- project-scope terminal plan finalization should refresh GitNexus only when the project explicitly enables it.
+- a terminal plan whose workflow origin resolves to a claw project should refresh GitNexus only when that project explicitly enables it; plan scope only controls knowledge finalization.
 - the earlier published `@veewo/gitnexus@1.5.8` CLI did not expose `--no-ai-context`, even though newer local source lines already supported it.
 - The version-bound 2026-07-19 `@veewo/gitnexus@1.5.9` investigation recorded in `../features/local-claw-cli.md` established both a narrow Windows force-rebuild recovery case and a high-confidence historical cause: overlapping analyze processes against the same LadybugDB files. The rebuilt files prevent byte-level forensics, so this does not make every access violation equivalent to index corruption.
 - A later GitNexus fix branch based on `nantas-dev` added its own cross-process per-repository analyze lock and strict LadybugDB artifact/schema/close failure handling. That implementation is owned in detail by `../features/local-claw-cli.md`; because it is fix-branch evidence rather than proof about the published `@veewo/gitnexus@1.5.9`, claw-kit still has to protect callers that run older published behavior.
@@ -30,7 +30,7 @@ At the same time:
 - Use `memory.externalDocPaths` to drive project memory indexing, including directory paths like `docs/`.
 - Default `memory.autoUpdate` to `true`, but make it effective only while memory is enabled and `memory.externalDocPaths` is non-empty. Freeze those effective paths into the finalization job so retries do not expand or shrink governance with later config edits.
 - Append one internal existing-document governance assignment after the selected built-in or external writer assignments. It may update only existing documents within the frozen paths and never creates a document; this decision is independent from the flat project-level `autoUpdate` version-update gate.
-- Make project-scope terminal plan finalization queue a GitNexus refresh only when `gitnexus` is `true`; `claw plan done` and `claw plan edit --status end.*` share this route.
+- Make every terminal plan transition whose workflow origin resolves to a valid claw project queue a GitNexus refresh only when `gitnexus` is `true`; `claw plan done`, `claw plan edit --status end.*`, and `claw plan leave` share this route. Session scope never creates knowledge-finalization jobs, but it does not suppress refresh for its origin project.
 - Keep terminal dispatch authoritative and synchronous: persist the completed plan and knowledge-finalization job and construct `knowledgeDispatch` before queueing detached completion refresh. GitNexus readiness and embedding-backed project/task memory indexing must not block or invalidate that result.
 - When `gitnexus` is `true`, the detached completion-refresh worker owns CLI readiness, automatic `npm install -g @veewo/gitnexus` plus `gitnexus setup --cli-spec @veewo/gitnexus`, and analyze. Installation, setup, or analyze failures are reported in the worker status file rather than the foreground terminal protocol result.
 - If GitNexus analyze options have not yet persisted embeddings, the worker should self-heal by running `gitnexus analyze --embeddings` so GitNexus records `embeddings=true` in `.gitnexus/meta.json`.

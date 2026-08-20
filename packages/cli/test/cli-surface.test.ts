@@ -96,6 +96,33 @@ test("cli <command> --help matches cli help <command>", () => {
   assert.equal(flagResult.stderr, commandResult.stderr);
 });
 
+test("knowledge capture prepares live configuration without a report and rejects stale completion", () => {
+  const root = createFixture("knowledge-capture");
+  runClaw(["init", "--name", "Knowledge Capture"], root);
+  const configPath = path.join(root, ".claw", "project.json");
+  const before = fs.readFileSync(configPath, "utf-8");
+  const prepared = runClaw([
+    "knowledge", "prepare",
+    "--source", "agent-memory",
+    "--project-root", root,
+  ], root);
+  assert.equal(prepared.command, "knowledge.prepare");
+  assert.equal(prepared.source, "agent-memory");
+  assert.equal((prepared.assignments as Array<{ kind: string }>)[0]?.kind, "builtin");
+  assert.equal(fs.readFileSync(configPath, "utf-8"), before);
+
+  const config = JSON.parse(before) as Record<string, unknown>;
+  config.knowledgeWriter = { datedSectionsToKeep: 2 };
+  fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf-8");
+  const stale = runClawExpectFailure([
+    "knowledge", "complete",
+    "--source", "agent-memory",
+    "--project-root", root,
+    "--config-fingerprint", String(prepared.configFingerprint),
+  ], root);
+  assert.equal((stale.error as { code: string }).code, "KNOWLEDGE_DIRECT_CONFIG_CHANGED");
+});
+
 test("every public help topic matches its --help form", () => {
   const root = createFixture("help-public-topic-consistency");
   const topics = [
@@ -108,7 +135,7 @@ test("every public help topic matches its --help form", () => {
     ["task"], ["task", "add"], ["task", "edit"], ["task", "remove"], ["task", "done"],
     ["subplan"], ["subplan", "create"], ["switch-task"],
     ["search"], ["search", "index"],
-    ["knowledge"], ["knowledge", "wait"], ["knowledge", "claim"], ["knowledge", "done"],
+    ["knowledge"], ["knowledge", "prepare"], ["knowledge", "complete"], ["knowledge", "wait"], ["knowledge", "claim"], ["knowledge", "done"],
     ["truth"], ["truth", "ingest"], ["hook"],
   ];
 

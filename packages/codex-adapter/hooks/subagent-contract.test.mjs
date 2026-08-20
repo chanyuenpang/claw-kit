@@ -19,14 +19,24 @@ test("Codex hooks recover through the adapter-owned context entry and run the ad
   const sessionStart = config.hooks.SessionStart[0].hooks[0];
   const stop = config.hooks.Stop[0].hooks[0];
 
-  assert.match(sessionStart.command, /\$PLUGIN_ROOT\/scripts\/session-start\.mjs/);
-  assert.match(sessionStart.commandWindows, /%PLUGIN_ROOT%\\scripts\\session-start\.mjs/);
+  assert.equal(sessionStart.command, 'node "$PLUGIN_ROOT/scripts/session-start.mjs"');
+  assert.equal(sessionStart.commandWindows, "node ${PLUGIN_ROOT}/scripts/session-start.mjs");
+  assert.doesNotMatch(sessionStart.commandWindows, /["']/);
   assert.match(sessionStart.statusMessage, /^claw context:/);
-  assert.match(stop.command, /\$PLUGIN_ROOT\/scripts\/knowledge-finalizer\.mjs/);
-  assert.match(stop.commandWindows, /%PLUGIN_ROOT%\\scripts\\knowledge-finalizer\.mjs/);
+  assert.equal(stop.command, 'node "$PLUGIN_ROOT/scripts/knowledge-finalizer.mjs"');
+  assert.equal(stop.commandWindows, "node ${PLUGIN_ROOT}/scripts/knowledge-finalizer.mjs");
+  assert.doesNotMatch(stop.commandWindows, /["']/);
   assert.match(stop.statusMessage, /^auto-doc:/);
   assert.match(strategy, /thread-scoped `SessionStart`/i);
   assert.match(strategy, /turn-scoped `Stop`/i);
+});
+
+test("Codex manifest keeps the using-claw-kit fallback prompt within the host limit", () => {
+  const manifest = JSON.parse(readPluginFile(path.join(".codex-plugin", "plugin.json")));
+  const [defaultPrompt] = manifest.interface.defaultPrompt;
+
+  assert.equal(defaultPrompt, "Use $claw-kit:using-claw-kit to complete this task.");
+  assert.ok(defaultPrompt.length <= 128);
 });
 
 test("Codex adapter owns the SDK and matching direct platform packages", () => {

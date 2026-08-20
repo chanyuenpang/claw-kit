@@ -224,7 +224,7 @@ export function resolveKnowledgeWriterForHost(
   };
 }
 
-function resolveKnowledgeDocUpdateSnapshot(
+export function resolveKnowledgeDocUpdateSnapshot(
   project: ProjectContext,
 ): KnowledgeDocUpdateSnapshot | undefined {
   const memory = project.projectConfig?.memory;

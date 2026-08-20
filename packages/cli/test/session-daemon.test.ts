@@ -165,38 +165,50 @@ test("daemon preserves post-commit host actions in the typed command envelope", 
   const opened = await new ClawClient({ runtimeRoot, host: "codex", clientKind: "adapter" })
     .open("agent-host-actions", projectRoot);
 
-  await opened.command({
-    operation: "plan.create",
-    input: {
+  try {
+    await opened.command({
+      operation: "plan.create",
+      input: {
+        taskName: "host-actions-plan",
+        title: "Host actions plan",
+        goalText: "Preserve effects",
+      },
+    });
+    await opened.command({
+      operation: "task.done",
+      input: { tasks: [{ id: 1 }] },
+    });
+    const done = await opened.commandEnvelope({
+      operation: "plan.done",
+      input: { retrospectiveSummary: "Complete" },
+    });
+
+    assert.equal(done.schemaVersion, 1);
+    const hostActions = done.hostActions as Array<{
+      schemaVersion?: number;
+      id?: string;
+      tool?: string;
+      input?: unknown;
+    }> | undefined;
+    assert.equal(hostActions?.length, 1);
+    assert.equal(hostActions?.[0]?.schemaVersion, 1);
+    assert.match(String(hostActions?.[0]?.id), /^[a-f0-9-]+:update_goal$/);
+    assert.equal(hostActions?.[0]?.tool, "update_goal");
+    assert.deepEqual(hostActions?.[0]?.input, { status: "complete" });
+    assert.deepEqual(done.postCommitEffects, [{
+      type: "completion.refresh",
       taskName: "host-actions-plan",
-      title: "Host actions plan",
-      goalText: "Preserve effects",
-    },
-  });
-  await opened.command({
-    operation: "task.done",
-    input: { tasks: [{ id: 1 }] },
-  });
-  const done = await opened.commandEnvelope({
-    operation: "plan.done",
-    input: { retrospectiveSummary: "Complete" },
-  });
-
-  assert.equal(done.schemaVersion, 1);
-  assert.equal(done.hostActions, undefined);
-  assert.deepEqual(done.postCommitEffects, [{
-    type: "completion.refresh",
-    taskName: "host-actions-plan",
-    planStatus: "end.completed",
-  }]);
-  assert.equal((done.knowledgeDispatch as { policy?: string } | undefined)?.policy, "subagent");
-  assert.match(
-    String((done.knowledgeDispatch as { finalizeId?: string } | undefined)?.finalizeId),
-    /^[a-f0-9]{64}$/,
-  );
-
-  await opened.close();
-  await daemon.close();
+      planStatus: "end.completed",
+    }]);
+    assert.equal((done.knowledgeDispatch as { policy?: string } | undefined)?.policy, "subagent");
+    assert.match(
+      String((done.knowledgeDispatch as { finalizeId?: string } | undefined)?.finalizeId),
+      /^[a-f0-9]{64}$/,
+    );
+  } finally {
+    await opened.close();
+    await daemon.close();
+  }
 });
 
 test("Cindy daemon sessions coerce background config to the templated no-Stop knowledge dispatch", async () => {

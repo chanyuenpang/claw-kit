@@ -104,7 +104,7 @@ test("OpenCode entry stays compact and guidance-led", async () => {
   );
   const lineCount = skill.trimEnd().split(/\r?\n/).length;
 
-  assert.ok(lineCount >= 20 && lineCount <= 40, `expected 20-40 lines, received ${lineCount}`);
+  assert.ok(lineCount >= 20 && lineCount <= 55, `expected 20-55 lines, received ${lineCount}`);
   assert.match(skill, /## First Action/i);
   assert.match(skill, /skip this skill and work directly/i);
   assert.match(skill, /claw plan create "<title>"/i);

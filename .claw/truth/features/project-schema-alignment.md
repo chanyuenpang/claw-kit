@@ -70,7 +70,7 @@
 - Task-scope memory search still uses the existing active-plan-plus-task-memory FTS path and does not participate in the hybrid/vector recall flow.
 - Codex-facing recall is `claw search --query "<topic>"`; this reads the indexed project context before planning or investigation, and it remains document recall rather than code search.
 - `claw memory ...` remains as legacy/debug and low-level index management, not the primary Codex workflow term.
-- project-scope terminal plan finalization queues detached project/task search reindexing and only queues GitNexus refresh when flat `gitnexus` is `true`; `claw plan done` and `claw plan edit --status end.*` use that same route.
+- any terminal plan whose workflow origin resolves to a valid claw project queues detached project search reindexing and only queues GitNexus refresh when flat `gitnexus` is `true`; `claw plan done`, `claw plan edit --status end.*`, and `claw plan leave` use that same route. Session scope suppresses knowledge finalization and task retention, not this project refresh.
 - canonical `gitnexus` is the sole gate for worker-side GitNexus install/setup, embeddings self-heal, and analyze; legacy `gitnexus.enabled` is not a normative field. Those operations occur after the terminal result and `knowledgeDispatch` are durable.
 - 本文只拥有 canonical `gitnexus` schema gate；GitNexus analyze 的 `--no-ai-context` fallback、Windows access-violation force rebuild 与错误边界由 `local-claw-cli.md` 统一拥有。
 - The hybrid project query path is adapted from the more mature `openclaw-dev` memory query design, but its current behavior and migration scope are maintained by `project-search-candidate-recall.md`.

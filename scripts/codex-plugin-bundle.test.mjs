@@ -52,7 +52,7 @@ test("readCodexPluginSource returns manifest metadata and stable payload list", 
   assert.deepEqual(plugin.payloadRelativePaths, CODEX_PLUGIN_PAYLOAD_PATHS);
 });
 
-test("Codex plugin manifest starts with the guidance contract instead of a static workflow", async () => {
+test("Codex plugin starter prompt invokes the main workflow skill", async () => {
   const manifestPath = new URL("../packages/codex-adapter/.codex-plugin/plugin.json", import.meta.url);
   const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
   const promptText = [
@@ -61,8 +61,11 @@ test("Codex plugin manifest starts with the guidance contract instead of a stati
   ].join("\n");
 
   assert.doesNotMatch(promptText, /first read the planning skill/i);
+  assert.deepEqual(manifest.interface?.defaultPrompt, [
+    "Use $claw-kit:using-claw-kit to complete this task.",
+  ]);
+  assert.ok(manifest.interface.defaultPrompt.every((prompt) => prompt.length <= 128));
   assert.doesNotMatch(promptText, /start by reading the planning skill/i);
-  assert.match(promptText, /When no task scope exists/i);
   assert.match(promptText, /workflowGuidance/i);
   assert.match(promptText, /code-mode driver/i);
   assert.doesNotMatch(promptText, /seeded planning task|claw plan start|claw task done|claw plan done/i);
@@ -137,6 +140,18 @@ test("Codex main-agent bundle exposes only structured internal closeout dispatch
   await assert.rejects(fs.access(new URL("skills/init/SKILL.md", adapterRoot)));
 });
 
+test("Codex plugin exposes an explicit same-agent knowledge-capture skill", async () => {
+  const adapterRoot = new URL("../packages/codex-adapter/", import.meta.url);
+  const skill = await fs.readFile(new URL("skills/knowledge-capture/SKILL.md", adapterRoot), "utf8");
+  assert.match(skill, /name: knowledge-capture/);
+  assert.match(skill, /user explicitly asks/i);
+  assert.match(skill, /Never invoke automatically/i);
+  assert.match(skill, /claw knowledge prepare --source agent-memory/i);
+  assert.match(skill, /claw knowledge complete --source agent-memory/i);
+  assert.match(skill, /Do not create a plan, report, subplan.*subagent/i);
+  assert.doesNotMatch(skill, /spawn_agent|create_thread|knowledgeDispatch/);
+});
+
 test("hidden built-in knowledge contract enforces trusted evidence and cross-document ownership", async () => {
   const skill = await fs.readFile(new URL("../packages/core/resources/knowledge-writer/SKILL.md", import.meta.url), "utf8");
   const template = JSON.parse(await fs.readFile(new URL("../packages/core/resources/knowledge-writer/TEMPLATE.json", import.meta.url), "utf8"));
@@ -171,7 +186,7 @@ test("hidden built-in knowledge contract enforces trusted evidence and cross-doc
     "Maintain canonical Truth",
     "Maintain canonical ADRs",
     "Run the cross-document consistency review",
-    "Refresh project search indexes",
+    "Prepare the final project index refresh",
   ]);
   assert.equal(template.tasks.every((task) => task.guidance?.onDone?.default), true);
   assert.equal(template.tasks.some((task) => task.guidance?.onDone?.choices), false);
@@ -206,6 +221,7 @@ test("exported Codex plugin contains every shared workflow and documentation ski
   for (const skillName of ["planning", "config", "update", "create-claw-skill", "claw-kit-doc"]) {
     await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", skillName, "SKILL.md")));
   }
+  await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "knowledge-capture", "SKILL.md")));
   for (const referenceName of ["update.md", "configuration.md", "knowledge-format.md"]) {
     await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "claw-kit-doc", "references", referenceName)));
   }

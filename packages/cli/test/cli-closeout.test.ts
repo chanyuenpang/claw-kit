@@ -1390,7 +1390,7 @@ test("knowledge wait remains a compatibility path while the internal delegate te
   assert.equal(fs.existsSync(String(claimed.templatePath)), false);
 });
 
-test("Cindy turn capture resolves the session workflow and queues its writer job", () => {
+test("Cindy turn capture keeps session workflows outside knowledge finalization", () => {
   const root = createFixture("cindy-session-capture");
   const runtimeDir = createFixture("cindy-session-capture-runtime");
   const sessionId = `cindy-capture-${path.basename(runtimeDir)}`;
@@ -1436,10 +1436,9 @@ test("Cindy turn capture resolves the session workflow and queues its writer job
       task_conclusions: [],
     }),
   );
-  assert.equal(captured.captured, true, JSON.stringify(captured));
-  assert.equal(typeof captured.jobPath, "string");
-  assert.equal((JSON.parse(fs.readFileSync(String(captured.jobPath), "utf-8")) as JsonRecord).host, "cindy");
-  assert.match(String(captured.finalizeId), /^[a-f0-9]{64}$/);
+  assert.equal(captured.captured, false, JSON.stringify(captured));
+  assert.equal("jobPath" in captured, false);
+  assert.equal("finalizeId" in captured, false);
 });
 
 test("background finalizer never claims a subagent-policy job", () => {

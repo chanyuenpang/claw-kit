@@ -137,6 +137,38 @@ test("explicit session scope overrides an initialized project and remains isolat
   runClaw(["session", "clean"], root, env);
 });
 
+test("session plan completion refreshes its claw-project origin without knowledge finalization or task retention", async () => {
+  const root = createFixture("session-scope-project-refresh");
+  const runtimeDir = createFixture("session-scope-project-refresh-runtime");
+  const shim = createGitnexusShim("primary");
+  const env = {
+    CODEX_THREAD_ID: "thread-session-project-refresh",
+    CLAW_SESSION_RUNTIME_DIR: runtimeDir,
+    CLAW_EMBEDDING_MOCK: "1",
+    PATH: `${shim.binDir}${path.delimiter}${process.env.PATH ?? ""}`,
+  };
+  runClaw(["init", "--name", "Session Refresh Origin", "--gitnexus", "true", "--planning", "false"], root, env);
+  const projectTasksBefore = fs.readdirSync(path.join(root, ".claw", "tasks"));
+  const created = runClaw(["plan", "create", "Session refresh", "--scope", "session"], root, env);
+  const sessionPlan = JSON.parse(fs.readFileSync(String(created.planPath), "utf-8")) as { tasks: Array<{ id: number }> };
+
+  for (const task of sessionPlan.tasks) {
+    runClaw(["task", "done", "--id", String(task.id)], root, env);
+  }
+  const completed = runClaw(["plan", "done"], root, env);
+
+  assert.equal(completed.planStatus, "end.completed");
+  assert.equal("knowledgeDispatch" in completed, false);
+  assert.deepEqual(fs.readdirSync(path.join(root, ".claw", "tasks")), projectTasksBefore);
+
+  const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
+  assert.equal(refreshStatus.ok, true);
+  assert.equal((refreshStatus.gitnexus as JsonRecord).enabled, true);
+  assert.match(fs.readFileSync(shim.logPath, "utf-8"), /analyze --embeddings --no-ai-context/);
+
+  runClaw(["session", "clean"], root, env);
+});
+
 test("a completed session workflow cannot make the next plan implicit session scope", () => {
   const root = createFixture("session-scope-does-not-stick");
   const runtimeDir = createFixture("session-scope-does-not-stick-runtime");

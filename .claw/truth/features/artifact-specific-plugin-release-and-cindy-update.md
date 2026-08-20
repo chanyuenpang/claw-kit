@@ -29,6 +29,12 @@ Accepted working truth for the current repository-maintainer release surfaces an
 <!-- state: history -->
 ## Evolution history
 
+<!-- dated: 2026-08-20 -->
+### 0.2.22 multi-artifact release batch
+
+- CLI/Core/Client `0.2.22` was published through npm with `v0.2.22` and a public GitHub Release. Codex `0.2.22.1` was released from the committed main-repository marketplace snapshot with `vcodex-0.2.22.1` and a zero-asset GitHub Release. Cindy `0.2.22.0` was released from its independent marketplace `main` with `vcindy-0.2.22.0`, without an archive or GitHub Release.
+- Each artifact retained independent source and acceptance evidence. This completed batch does not assert a local CLI or plugin installation refresh.
+
 <!-- dated: 2026-08-15 -->
 ### 0.2.19 multi-artifact release batch
 
@@ -72,12 +78,6 @@ Accepted working truth for the current repository-maintainer release surfaces an
 ### Cindy removed its globally published update skill
 
 - Cindy's skill slot is globally visible through `~/.agents/skills`, so its host-specific updater also appeared in standalone Codex. The `update` entry was removed; Cindy's adapter-owned `claw-kit-doc` entry now routes to the shared UI update reference without offering an executable updater. Other Cindy workflow entries were explicitly left outside this update-only scope.
-
-<!-- dated: 2026-08-04 -->
-### 0.2.11 independent artifact-family release set
-
-- CLI/Core/Client `0.2.11` used npm plus `v0.2.11`; Cindy `0.2.11.1` used its independent marketplace `main` plus `vcindy-0.2.11.1` without an archive or GitHub Release; Codex `0.2.11.1` used the committed main-repository marketplace plus `vcodex-0.2.11.1` and a zero-asset GitHub Release.
-- Each line reached its own clean pushed exact-source boundary. None of these release proofs asserts that a local CLI or installed plugin was refreshed or loaded.
 
 ## Search terms
 

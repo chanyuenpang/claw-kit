@@ -49,13 +49,13 @@ test("cli codex driver returns an executable versioned source envelope", async (
   const root = createFixture("codex-driver-envelope");
   const envelope = runClaw(["codex", "driver"], root);
   assert.equal(envelope.command, "codex.driver");
-  assert.equal(envelope.driverVersion, 12);
+  assert.equal(envelope.driverVersion, 13);
   assert.equal(envelope.hostActionSchemaVersion, 1);
-  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v12:s1");
+  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v13:s1");
   assert.match(String(envelope.sha256), /^[a-f0-9]{64}$/);
   assert.equal(
     envelope.sha256,
-    "34d77319c16ffb6c814debefe2085c07b70317be1bfd79308f17dd4a78576015",
+    "7f0be869a1471afc72c154769766ede4a88b628e95c45b10b74e12838a2448ae",
     "changing serialized driver source requires a driver version/cache-key bump",
   );
 
