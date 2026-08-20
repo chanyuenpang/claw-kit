@@ -5,11 +5,10 @@ description: Use first whenever the @claw-kit plugin is invoked in a Codex threa
 # using-claw-kit
 ## Availability boundary
 If claw-kit, its CLI, or its workflow bridge is unavailable, skip claw-kit and continue the user's task directly. Do not claim that the task cannot proceed solely because claw-kit is unavailable.
-If the request is not expected to produce reusable project knowledge, skip this skill and work directly.
 For usage questions, read `../claw-kit-doc/SKILL.md` and only the relevant
 host-update, configuration, or Truth/ADR reference.
 ## First Action
-1. By default, run `claw plan create "<title>"`.
+1. If the request is not expected to produce reusable project knowledge, skip this skill and work directly. Otherwise, run `claw plan create "<title>"`.
 2. If a template-backed workflow skill fully owns the request, follow that skill's entry route so it supplies its adjacent template file.
 3. Follow the returned `workflowGuidance` as the only lifecycle contract. Use its stage and current task to determine the current work; `commandHints` are command lookup aids, not required next mutations.
 4. When SessionStart recovers an active session-bound plan, first determine whether the current user request explicitly changes, replaces, or cancels its goal. Record that revision before proceeding; otherwise, run `plan sync` through the code-mode bridge once before continuing it. It restores Progress and creates a Goal only when none is nonterminal.

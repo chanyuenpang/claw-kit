@@ -1,11 +1,7 @@
 ﻿# Artifact-specific plugin release and Cindy update
 
-## Status
-
-Accepted working truth for the current repository-maintainer release surfaces and the Cindy user update surface.
-
 <!-- state: current -->
-## Core facts
+## Current behavior
 
 - `release-claw-kit` is a router only. It selects one artifact-specific release skill and does not itself edit versions, package, publish, install, or combine release acceptance across artifact families.
 - Repository-maintainer release ownership is split by artifact family: `release-claw-cli` owns the npm CLI/core/client release line; `release-codex-plugin`, `release-cindy-plugin`, `release-openclaw-plugin`, and `release-opencode-plugin` own their respective versioned plugin artifacts.
@@ -28,6 +24,12 @@ Accepted working truth for the current repository-maintainer release surfaces an
 
 <!-- state: history -->
 ## Evolution history
+
+<!-- dated: 2026-08-20 -->
+### 0.2.23 multi-artifact release batch
+
+- CLI/Core/Client `0.2.23` was published through npm with `v0.2.23` and a public GitHub Release. Codex `0.2.23.1` was released from the committed main-repository marketplace snapshot with `vcodex-0.2.23.1` and a zero-asset GitHub Release. Cindy `0.2.23.0` was released from its independent marketplace `main` with `vcindy-0.2.23.0`, without an archive or GitHub Release.
+- Each artifact retained its independent exact-source and terminal acceptance gate. The main repository and Cindy repository both finished clean on `main` and equal to `origin/main`; this release batch does not assert a local CLI or plugin installation refresh.
 
 <!-- dated: 2026-08-20 -->
 ### 0.2.22 multi-artifact release batch
@@ -73,11 +75,6 @@ Accepted working truth for the current repository-maintainer release surfaces an
   `vcindy-0.2.13.2` and no archive or GitHub Release.
 - Each artifact line retained its own exact-source and acceptance evidence.
   These releases do not imply any local CLI or plugin refresh.
-
-<!-- dated: 2026-08-05 -->
-### Cindy removed its globally published update skill
-
-- Cindy's skill slot is globally visible through `~/.agents/skills`, so its host-specific updater also appeared in standalone Codex. The `update` entry was removed; Cindy's adapter-owned `claw-kit-doc` entry now routes to the shared UI update reference without offering an executable updater. Other Cindy workflow entries were explicitly left outside this update-only scope.
 
 ## Search terms
 

@@ -12,15 +12,13 @@ solely because claw-kit is unavailable.
 
 > claw kit 并不是任何任务的前置条件，不允许声称 claw kit 不可用而无法推进任务。
 
-If the request is not expected to produce reusable project knowledge, skip this skill and work directly.
-
 For claw-kit usage questions, read the adjacent `../claw-kit-doc/SKILL.md`
 entry and only the relevant reference for host updates, project configuration,
 or Truth/ADR format.
 
 ## First Action
 
-1. By default, run `claw plan create "<title>"`.
+1. If the request is not expected to produce reusable project knowledge, skip this skill and work directly. Otherwise, run `claw plan create "<title>"`.
 2. If a template-backed workflow skill fully owns the request, follow that skill's entry route so it supplies its adjacent template file.
 3. Follow the returned `workflowGuidance` as the only lifecycle contract. Use its stage and current task to determine the current work; `commandHints` are command lookup aids, not required next mutations.
 
