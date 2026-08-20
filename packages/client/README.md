@@ -34,6 +34,9 @@ outcome together with the exact reopen command.
 Normal plan and task operations implicitly target the retained `currentPlan`.
 `plan.resume` resumes it, `plan.resume` with `planId` selects another resumable
 plan, and `plan.leave` enters the resumable terminal state `end.leave`.
+Root `plan.create` is rejected while that current plan is in any `process.*`
+state; call `plan.leave` before creating unrelated work, or call
+`subplan.create` for a scoped stage within the current plan.
 Application code normally uses `command()`. Host adapters use
 `commandEnvelope()` when they must consume native UI/Goal actions or schedule
 post-commit work without losing the canonical command result.

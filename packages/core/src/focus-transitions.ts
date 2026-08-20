@@ -11,6 +11,7 @@ import {
   writeJsonFileAtomic,
 } from "./io.js";
 import { ensureInsideDir, normalizePlanFile } from "./paths.js";
+import { isProcessStatus } from "./requirements-gate.js";
 import type { PlanDocument, PlanLeaveReason, ProjectContext } from "./types.js";
 
 const MISSING_RESOURCE_HASH = createHash("sha256").update("<missing>").digest("hex");
@@ -191,6 +192,23 @@ export function readFocusedPlan(
   return sessionStore.read(focusSessionKeyHash(sessionKey)).currentPlan;
 }
 
+/**
+ * Root plan creation must not implicitly end an executing session plan. This
+ * is intentionally separate from resume and subplan focus changes: both have
+ * explicit lifecycle intent and retain their existing transition semantics.
+ */
+export function assertRootPlanCreateAllowed(input: {
+  project: ProjectContext;
+  sessionKey: string;
+  sessionStore?: FocusSessionStore;
+}): void {
+  const sessionStore = input.sessionStore ?? new ProjectFocusSessionStore(input.project);
+  const currentPlan = readFocusedPlan(input.project, input.sessionKey, sessionStore);
+  if (!currentPlan) return;
+  const current = readPlanDocument(input.project, currentPlan);
+  assertRootPlanCreateAllowedForPlan(currentPlan, current);
+}
+
 export function readPlanFocusOwner(
   project: ProjectContext,
   ref: PlanRef,
@@ -352,6 +370,9 @@ export async function switchCurrentPlan(
           updates.get(planIdentityHash(input.project, currentPlan))?.content
             ?? requirePlan(plans, input.project, currentPlan),
         );
+        if (input.kind === "create") {
+          assertRootPlanCreateAllowedForPlan(currentPlan, current);
+        }
         if (!(input.preserveCurrentEndState && current.status.startsWith("end."))) {
           current.status = "end.leave";
           current.leaveReason = "switch_to_new_plan";
@@ -377,6 +398,19 @@ export async function switchCurrentPlan(
       };
     },
   });
+}
+
+export function assertRootPlanCreateAllowedForPlan(currentPlan: PlanRef, current: PlanDocument): void {
+  if (!isProcessStatus(current.status)) return;
+  throw new ClawError(
+    "PLAN_CREATE_BLOCKED_BY_PROCESS_PLAN",
+    "Cannot create a new plan while the current plan is in process. Run plan.leave to end the current plan, then retry plan.create; or use subplan.create for work within the current plan.",
+    {
+      currentPlan,
+      status: current.status,
+      allowedOperations: ["plan.leave", "subplan.create"],
+    },
+  );
 }
 
 export async function createPlanAndSwitchFocus(input: {

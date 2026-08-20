@@ -4,6 +4,7 @@ import {
   ClawError,
   activatePlan,
   appendSubplanReturnGuidance,
+  assertRootPlanCreateAllowed,
   buildKnowledgeAtomicDispatch,
   buildKnowledgeDelegateDispatch,
   completeSubplanAndRestoreParent,
@@ -241,6 +242,12 @@ export class ClawCommandService {
       case "plan.create": {
         const commandInput = request.input as Omit<PlanWriteInput, "cwd" | "ownerSessionKey">;
         const sessionKey = this.requireSessionKey(context);
+        const currentProject = this.resolveProject(context);
+        assertRootPlanCreateAllowed({
+          project: currentProject,
+          sessionKey,
+          sessionStore: this.focusStore,
+        });
         const created = await writePlan({
           ...commandInput,
           cwd,

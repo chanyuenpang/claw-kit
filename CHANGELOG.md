@@ -2,6 +2,13 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.2.22] - 2026-08-20
+
+### Fixed
+
+- Root `plan.create` now rejects while the session current plan is in any `process.*` state, preserving the active workflow and directing callers to `plan.leave` or `subplan.create`.
+- Cindy now exposes `plan.leave`, matching the shared session lifecycle contract.
+
 ## [0.2.21] - 2026-08-19
 
 ### Fixed

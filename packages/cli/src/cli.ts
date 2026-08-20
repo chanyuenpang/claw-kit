@@ -17,6 +17,7 @@ import {
   DEFAULT_MAX_TASKS_TO_KEEP,
   checkProjectProtocol,
   ClawError,
+  assertRootPlanCreateAllowedForPlan,
   buildPlanWorkflowGuidance,
   buildMemoryIndex,
   buildSessionStartDefaultPrompt,
@@ -45,6 +46,7 @@ import {
   warmProjectMemoryEmbedding,
   showPlan,
   createSubplan,
+  createPlanRef,
   switchTask,
   tryCaptureKnowledgeStop,
   claimKnowledgeFinalizationJob,
@@ -110,7 +112,7 @@ const TOP_LEVEL_COMMANDS: { name: string; summary: string }[] = [
   { name: "context [--task <name>]", summary: "Resolve project context, auto-initializing or correcting .claw state." },
   { name: "session clean [--expired]", summary: "Remove current or expired session workflow state." },
   { name: "check", summary: "Check and auto-correct .claw project protocol fields." },
-  { name: "plan <subcommand> [options]", summary: "Plan lifecycle: create, start, edit, remove, wait, resume, sync, show, done." },
+  { name: "plan <subcommand> [options]", summary: "Plan lifecycle: create, start, edit, remove, wait, resume, leave, sync, show, done." },
   { name: "codex driver", summary: "Return the versioned code-mode driver used by the Codex adapter." },
   { name: "template <subcommand> [options]", summary: "Plan template helpers such as validation." },
   { name: "task <subcommand> [options]", summary: "Task lifecycle helpers inside an existing plan." },
@@ -235,6 +237,11 @@ const COMMAND_HELP: Record<string, HelpNode> = {
           { flag: "--task-name <name>", detail: "Advanced: override the session-bound task scope." },
           { flag: "--plan-file <relative-path>", detail: "Advanced: override the session-bound plan file." },
         ],
+      },
+      leave: {
+        usage: ["{script} plan leave"],
+        description: "Explicitly leave the current plan and clear its session binding so a new root plan may be created.",
+        summary: "Leave the current plan without completing it.",
       },
       sync: {
         usage: ["{script} plan sync"],
@@ -1380,7 +1387,9 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
           "plan create requires a title. Use `claw plan create \"<title>\"` or `claw plan create --title \"<title>\"`.",
         );
       }
-      await preparePlanCreateWorkflow(process.cwd(), resolveOwnerSessionKey(), effectiveHost, scope);
+      const ownerSessionKey = resolveOwnerSessionKey();
+      assertDirectRootPlanCreateAllowed(process.cwd(), ownerSessionKey);
+      await preparePlanCreateWorkflow(process.cwd(), ownerSessionKey, effectiveHost, scope);
       const result = await writePlan({
         cwd: process.cwd(),
         scope,
@@ -1388,7 +1397,7 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
         templateFile: explicitTemplateFile ? path.resolve(process.cwd(), explicitTemplateFile) : undefined,
         title,
         goalText: readOptionalFlag(args, "--goal"),
-        ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
+        ownerSessionKey: ownerSessionKey ?? undefined,
         host: effectiveHost,
       });
       assertNoRemainingArgs(args, "plan create");
@@ -1481,6 +1490,9 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
       return;
     case "resume":
       await runPlanStatusAlias(args, "process.active", "plan.resume", effectiveHost);
+      return;
+    case "leave":
+      await runPlanLeave(args, effectiveHost);
       return;
     case "sync":
       await runPlanSync(args, effectiveHost);
@@ -1627,6 +1639,21 @@ async function runPlanStatusAlias(
   });
   assertNoRemainingArgs(args, command);
   printJson(compactPlanCommandResult(command, result, effectiveHost, undefined, true));
+}
+
+async function runPlanLeave(args: string[], effectiveHost: ClawHost | undefined): Promise<void> {
+  const ownerSessionKey = resolveOwnerSessionKey() ?? undefined;
+  const target = readPlanMutationTarget(args);
+  assertNoRemainingArgs(args, "plan leave");
+  const result = await editPlan({
+    cwd: process.cwd(),
+    ...target,
+    planStatus: "end.leave",
+    commandSource: "plan.edit",
+    host: effectiveHost,
+    ownerSessionKey,
+  });
+  printJson(compactPlanCommandResult("plan.leave", result, effectiveHost, undefined, true));
 }
 
 async function runPlanSync(args: string[], effectiveHost: ClawHost | undefined): Promise<void> {
@@ -2472,6 +2499,31 @@ async function preparePlanCreateWorkflow(
   await prepareProjectWorkflow(cwd, ownerSessionKey, effectiveHost, project);
 }
 
+function assertDirectRootPlanCreateAllowed(cwd: string, ownerSessionKey: string | null): void {
+  if (!ownerSessionKey) return;
+  const project = resolveWorkflowProjectContext(cwd, ownerSessionKey);
+  const planPath = resolveSessionBoundPlan(project, ownerSessionKey);
+  if (!planPath) return;
+  const target = parseTaskPlanPath(project, planPath);
+  if (!target) {
+    throw new ClawError("PLAN_TRANSITION_CONFLICT", `Invalid session-bound plan path: ${planPath}`);
+  }
+  const current = showPlan({
+    cwd,
+    taskName: target.taskName,
+    planFile: target.planFile,
+    ownerSessionKey,
+  });
+  if (current.plan.status.startsWith("end.")) {
+    unbindSession(project, ownerSessionKey);
+    return;
+  }
+  assertRootPlanCreateAllowedForPlan(
+    createPlanRef(project, current.taskName, current.planFile),
+    current.plan,
+  );
+}
+
 async function prepareProjectWorkflow(
   cwd: string,
   ownerSessionKey: string | null,
@@ -3296,7 +3348,7 @@ function buildKnowledgeDispatch(input: {
 }
 
 function compactPlanCommandResult(
-  command: "plan.create" | "plan.start" | "plan.edit" | "plan.remove" | "plan.wait" | "plan.resume" | "plan.sync" | "plan.done" | "task.add" | "task.edit" | "task.remove" | "task.done" | "subplan.create",
+  command: "plan.create" | "plan.start" | "plan.edit" | "plan.remove" | "plan.wait" | "plan.resume" | "plan.leave" | "plan.sync" | "plan.done" | "task.add" | "task.edit" | "task.remove" | "task.done" | "subplan.create",
   result: {
     taskName: string;
     planFile: string;

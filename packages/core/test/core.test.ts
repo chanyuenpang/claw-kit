@@ -13,6 +13,7 @@ import {
   activatePlan,
   completeSubplanAndRestoreParent,
   createSubplanAndSwitchFocus,
+  createPlanAndSwitchFocus,
   createPlanRef,
   focusOwnersPath,
   focusTransitionsDirectory,
@@ -3137,6 +3138,54 @@ test("focus coordinator enforces exclusive ownership and switches plans atomical
   assert.equal(showPlan({ cwd: root, taskName: "plan-b" }).plan.leaveReason, undefined);
   const noOp = await activatePlan({ project, sessionKey: "session-a" });
   assert.equal(noOp.changed, false);
+});
+
+test("root plan creation cannot replace a process plan", async () => {
+  const root = createEmptyFixture("focus-create-process-gate");
+  initProject({ cwd: root, projectName: "Focus Create Process Gate", planning: false });
+  const project = resolveProjectContext(root);
+
+  for (const status of ["process.active", "process.wait", "process.discussing"] as const) {
+    const suffix = status.replace("process.", "");
+    await writePlan({
+      cwd: root,
+      taskName: `current-${suffix}`,
+      title: `Current ${suffix}`,
+      goalText: "Keep this plan focused",
+      content: {
+        title: `Current ${suffix}`,
+        status,
+        goal: { text: "Keep this plan focused" },
+        tasks: [{ id: 1, title: "Continue", status: "pending" }],
+      },
+    });
+    await writePlan({
+      cwd: root,
+      taskName: `new-${suffix}`,
+      title: `New ${suffix}`,
+      goalText: "Must not replace the process plan",
+    });
+    const current = createPlanRef(project, `current-${suffix}`);
+    const created = createPlanRef(project, `new-${suffix}`);
+    const sessionKey = `create-gate-${suffix}`;
+    await activatePlan({ project, sessionKey, target: current });
+    if (status !== "process.active") {
+      await editPlan({ cwd: root, taskName: current.taskName, planStatus: status });
+    }
+
+    await assert.rejects(
+      () => createPlanAndSwitchFocus({ project, sessionKey, createdPlan: created }),
+      (error: unknown) => error instanceof Error
+        && "code" in error
+        && (error as { code: string }).code === "PLAN_CREATE_BLOCKED_BY_PROCESS_PLAN"
+        && error.message.includes("plan.leave")
+        && error.message.includes("subplan.create"),
+    );
+    assert.deepEqual(readFocusedPlan(project, sessionKey), current);
+    assert.equal(showPlan({ cwd: root, taskName: current.taskName }).plan.status, status);
+
+    await leaveCurrentPlan({ project, sessionKey });
+  }
 });
 
 test("focus coordinator keeps subplan linkage, leave, completion, and parent restore together", async () => {

@@ -99,6 +99,58 @@ test("typed command service implicitly targets current plan for plan and task mu
   assert.equal(registry.read(opened.identity.sessionKeyHash).currentPlan, undefined);
 });
 
+test("typed command service blocks root plan creation during process states until leave", async () => {
+  for (const status of ["process.active", "process.wait", "process.discussing"] as const) {
+    const runtimeRoot = fixture(`create-gate-runtime-${status}`);
+    const projectRoot = fixture(`create-gate-project-${status}`);
+    initProject({ cwd: projectRoot, projectName: "Create Gate", planning: false });
+    const registry = new SessionRegistryV2(runtimeRoot);
+    const opened = await registry.open(`agent-create-gate-${status}`, projectRoot, { kind: "node" });
+    const service = new ClawCommandService(registry);
+    const context = {
+      cwd: opened.identity.canonicalWorkdir,
+      agentSessionId: opened.identity.agentSessionId,
+      sessionKey: sessionFocusKey(opened.identity),
+      mode: "session" as const,
+    };
+    const currentTaskName = `current-${status.replace("process.", "")}`;
+    const blockedTaskName = `blocked-${status.replace("process.", "")}`;
+    await service.execute(context, {
+      operation: "plan.create",
+      input: { taskName: currentTaskName, title: "Current plan", goalText: "Keep working" },
+    });
+    if (status === "process.wait") {
+      await service.execute(context, { operation: "plan.wait", input: {} });
+    } else if (status === "process.discussing") {
+      await service.execute(context, {
+        operation: "plan.edit",
+        input: { operations: [{ type: "plan.status", status }] },
+      });
+    }
+
+    await assert.rejects(
+      () => service.execute(context, {
+        operation: "plan.create",
+        input: { taskName: blockedTaskName, title: "Blocked plan", goalText: "Must not be written" },
+      }),
+      (error: unknown) => error instanceof Error
+        && "code" in error
+        && (error as { code: string }).code === "PLAN_CREATE_BLOCKED_BY_PROCESS_PLAN"
+        && error.message.includes("plan.leave")
+        && error.message.includes("subplan.create"),
+    );
+    assert.equal(fs.existsSync(path.join(projectRoot, ".claw", "tasks", blockedTaskName)), false);
+    assert.equal(showPlan({ cwd: projectRoot, taskName: currentTaskName }).plan.status, status);
+
+    await service.execute(context, { operation: "plan.leave", input: {} });
+    await service.execute(context, {
+      operation: "plan.create",
+      input: { taskName: blockedTaskName, title: "Allowed after leave", goalText: "New root work" },
+    });
+    assert.equal(showPlan({ cwd: projectRoot, taskName: blockedTaskName }).plan.status, "process.active");
+  }
+});
+
 test("typed command service rejects unsupported operations without shell evaluation", async () => {
   const runtimeRoot = fixture("unsupported-runtime");
   const projectRoot = fixture("unsupported-project");
