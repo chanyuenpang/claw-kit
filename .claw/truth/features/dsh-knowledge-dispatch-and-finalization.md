@@ -27,6 +27,13 @@ DSH 知识终结 dispatch 流程：项目作用域 root plan 进入 `end.*` 且
 plan、跟随 workflowGuidance、`knowledge claim` 认领 job、顺序执行生成的 assignment
 subplan、并以 claim token 调用一次 `knowledge done`。
 
+终态 mutation 返回 `knowledgeDispatch` 时，DSH adapter 自动启动一次性 finalizer
+subagent（`subagents.start("spawn", ...)`，label
+`knowledge-finalizer-<finalizeId 前 12 位>`），并在 compact result 中返回
+`dispatch: { ok: true, runId, policy }` 确认；主模型不自行执行 writer，只消费该
+`dispatch.ok` 确认（与 delegate 只执行 claim → assignment subplan → 单次
+`knowledge done` 的边界一致）。
+
 端到端已验证（finalizeId `8a208046f490…`，task `Knowledge-dispatch-test`，goal
 `verify knowledgeDispatch`）：`plan done` → ready job 持久化 → delegate plan
 （`delegate-writer/TEMPLATE.json`）→ `claw knowledge claim --project-root . --finalize-id <id>`
@@ -83,6 +90,9 @@ native subagent）、claim-time capture 窗口过滤、以及 `claw_run search` 
 - `--host dsh` 被 CLI 接受；`plan.done` 在 subagent policy 下持久化 ready job 并返回
   `knowledgeDispatch`（policy `subagent`、prompt 指向 delegate-writer 模板）。
 - dispatch 的 subagent 能完成 delegate plan → claim → assignment subplan → done 全链路。
+- 终态 mutation 返回 `knowledgeDispatch` 时，`claw_run` compact result 含
+  `dispatch: { ok: true, runId, policy }` 确认（subagent 不可用时为
+  `{ ok: false, reason }`），主模型不执行 writer。
 - `knowledge claim` 的 DSH capture 分支在 dsh-capture 文件缺失或 session 不匹配时保持
   可复现、可报告；窗口过滤以 `reportCapture.startedAt` 为起点且空 capture 合法。
 - `claw_run search` 的召回列表对模型完全可见：`query` / `count` / `results[]` 的
