@@ -648,7 +648,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
         ...(completionHooks?.subplanClosureCandidate ? { resumedPlanPath: resultPlanPath } : {}),
         endedAt,
         ...(effectiveConfig?.knowledgeWriter ? { writer: effectiveConfig.knowledgeWriter } : {}),
-        ...(input.host === "codex" || input.host === "opencode" || input.host === "cindy"
+        ...(input.host === "codex" || input.host === "opencode" || input.host === "cindy" || input.host === "dsh"
           ? { host: input.host }
           : {}),
       });
@@ -660,7 +660,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
         sessionId: input.ownerSessionKey,
         planPath: resultPlanPath,
         ...(effectiveConfig?.knowledgeWriter ? { writer: effectiveConfig.knowledgeWriter } : {}),
-        ...(input.host === "codex" || input.host === "opencode" || input.host === "cindy"
+        ...(input.host === "codex" || input.host === "opencode" || input.host === "cindy" || input.host === "dsh"
           ? { host: input.host }
           : {}),
       });

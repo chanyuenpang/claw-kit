@@ -1,10 +1,31 @@
 import { ClawError } from "@veewo/claw-core";
 
-export const SUPPORTED_CLAW_HOSTS = ["codex", "opencode", "cindy"] as const;
+export const SUPPORTED_CLAW_HOSTS = ["codex", "opencode", "cindy", "dsh"] as const;
 
 export type ClawHost = (typeof SUPPORTED_CLAW_HOSTS)[number];
 
 const SUPPORTED_HOST_SET = new Set<string>(SUPPORTED_CLAW_HOSTS);
+
+/**
+ * Hosts whose CLI output carries the versioned `hostActions` protocol
+ * (`schemaVersion: 1`, tools `update_plan` / `create_goal` / `update_goal`).
+ * The Codex adapter consumes them through its fixed code-mode driver; the DSH
+ * adapter consumes them inside the `claw_run` tool's execute (same schema, no
+ * envelope needed).
+ */
+export function isHostActionsHost(host: ClawHost | undefined): boolean {
+  return host === "codex" || host === "dsh";
+}
+
+/**
+ * Hosts whose adapter can dispatch `knowledgeWriter.executionPolicy ===
+ * "subagent"` closeout through a native subagent (Codex SDK, Cindy Orca
+ * Worker, DSH `subagent`/`subagent_fork`). Other hosts reject that policy at
+ * configuration time instead of silently degrading.
+ */
+export function isSubagentPolicyHost(host: ClawHost | undefined): boolean {
+  return host === "codex" || host === "cindy" || host === "dsh";
+}
 
 function parseHost(value: string | undefined, source: "--host" | "CLAW_HOST"): ClawHost | undefined {
   const host = value?.trim();

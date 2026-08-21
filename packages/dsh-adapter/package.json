@@ -1,0 +1,50 @@
+{
+  "name": "@claw-kit/dsh-adapter",
+  "version": "0.2.21.18",
+  "private": true,
+  "type": "module",
+  "description": "DSH (DeepSeek Harness) adapter for the claw-kit .claw workflow model: one claw_run tool that executes operations through the claw session daemon, auto-consumes CLI hostActions (progress projection + native goal sync), and returns compact guidance.",
+  "keywords": [
+    "claw",
+    ".claw",
+    "dsh",
+    "deepseek-harness",
+    "agent-workflow",
+    "knowledge-capture",
+    "adapter"
+  ],
+  "homepage": "https://github.com/chanyuenpang/claw-kit",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chanyuenpang/claw-kit.git",
+    "directory": "packages/dsh-adapter"
+  },
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "skills",
+    "cordis.patch.yml"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test test/*.test.mjs"
+  }
+}

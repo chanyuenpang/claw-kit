@@ -1,0 +1,49 @@
+{
+  "id": "update",
+  "version": "0.2.21",
+  "title": "update",
+  "status": "process.active",
+  "goal": {
+    "text": "Update claw-kit on the DSH host to the latest published CLI and adapter."
+  },
+  "requirements": {
+    "summary": "Refresh the global claw CLI and the @claw-kit/dsh-adapter profile plugin as one update unit, then verify activation.",
+    "openQuestions": [],
+    "acceptanceCriteria": [
+      "The installed claw CLI is the target version and accepts --host dsh.",
+      "The DSH profile bundles @claw-kit/dsh-adapter at the target version.",
+      "After the Host restart the claw_run tool and the six bundled skills are present."
+    ]
+  },
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Detect the current and target versions",
+      "detail": "Run claw --version and read the installed adapter version (dsh --profile <name> --dump-config / profile package.json). Resolve the latest published @veewo/claw and @claw-kit/dsh-adapter versions from the npm registry.",
+      "status": "pending"
+    },
+    {
+      "id": 2,
+      "title": "Update the global claw CLI",
+      "detail": "npm install -g @veewo/claw@latest; confirm claw --version matches the target and that `claw context --host dsh` parses (the CLI must support the dsh host).",
+      "status": "pending"
+    },
+    {
+      "id": 3,
+      "title": "Update the DSH adapter in the profile",
+      "detail": "dsh plugin --profile <name> add @claw-kit/dsh-adapter@latest; confirm the profile bundles list carries @claw-kit/dsh-adapter and dsh --profile <name> --dump-config shows the claw-adapter row.",
+      "status": "pending"
+    },
+    {
+      "id": 4,
+      "title": "Restart the Host and verify activation",
+      "detail": "Restart the DSH Host (dsh --profile <name>), then verify the claw_run tool is present and the six bundled skills (using-claw-kit/researcher/planning/config/create-claw-skill/claw-kit-doc) are available; optionally run a plan.create smoke check.",
+      "status": "pending"
+    }
+  ],
+  "rules": [
+    "Never use unpublished workspace files as the update source.",
+    "CLI and adapter are one validation unit; do not report success until both are verified.",
+    "A new package version is not activation proof; require a real session with claw_run."
+  ]
+}

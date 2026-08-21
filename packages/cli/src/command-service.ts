@@ -36,6 +36,7 @@ import {
   resolveThreadGoalPlan,
 } from "@veewo/claw-core";
 import { buildCodexHostActions } from "./codex-host-actions.js";
+import { isHostActionsHost, type ClawHost } from "./invocation-host.js";
 import { RegistryFocusSessionStore, SessionRegistryV2 } from "./session-registry-v2.js";
 
 export type CommandContext = {
@@ -587,7 +588,7 @@ export class ClawCommandService {
         ...(resumedPath ? { resumedPlanPath: resumedPath } : {}),
         endedAt: ended.endedAt,
         ...(writer ? { writer } : {}),
-        ...(context.host === "codex" || context.host === "opencode" || context.host === "cindy"
+        ...(context.host === "codex" || context.host === "opencode" || context.host === "cindy" || context.host === "dsh"
           ? { host: context.host }
           : {}),
       });
@@ -630,7 +631,7 @@ export class ClawCommandService {
       focusTransition?: { transitionId?: string };
     },
   ): unknown[] {
-    if (context.host !== "codex") return [];
+    if (!isHostActionsHost(context.host as ClawHost | undefined)) return [];
     const actionIdPrefix = result.events?.at(-1)?.mutationId
       ?? result.focusTransition?.transitionId
       ?? createHash("sha256")
@@ -657,7 +658,7 @@ export class ClawCommandService {
       forceProjectionSync?: boolean;
     },
   ): Promise<unknown[]> {
-    if (context.host !== "codex") return [];
+    if (!isHostActionsHost(context.host as ClawHost | undefined)) return [];
     const project = this.resolveProject(context);
     const goalPlan = resolveThreadGoalPlan({
       cwd: context.cwd,

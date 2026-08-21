@@ -1,0 +1,11 @@
+# The claw-kit dsh-adapter bundle: one host row mounting the adapter plugin.
+#
+# Install into a profile with:
+#   dsh plugin --profile <name> add @claw-kit/dsh-adapter
+# then restart the Host. The row registers the claw_run tool and the
+# session-start / turn-stopping lifecycle hooks; per-session tool presence is
+# controlled by an agent preset that names this row (or by the process-wide
+# composition when a TUI profile mounts it).
+- insert:
+    - id: claw-adapter
+      name: '@claw-kit/dsh-adapter'

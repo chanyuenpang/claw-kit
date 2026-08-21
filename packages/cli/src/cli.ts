@@ -86,8 +86,9 @@ import {
   extractTaskDoneConclusions,
   findCodexTranscriptPath,
 } from "./codex-transcript.js";
+import { readDshKnowledgeCapture } from "./dsh-capture.js";
 import { consumeBufferedHookInput } from "./knowledge-hook-preflight.js";
-import { resolveInvocationHost, withoutInvocationHost, type ClawHost } from "./invocation-host.js";
+import { isSubagentPolicyHost, resolveInvocationHost, withoutInvocationHost, type ClawHost } from "./invocation-host.js";
 import { runOpencodeKnowledgeWriter } from "./opencode-runner.js";
 import {
   ClawClient,
@@ -1317,6 +1318,78 @@ async function runKnowledge(args: string[]): Promise<void> {
               },
             };
           }
+          if (queued.host === "dsh") {
+            // The dsh-adapter plugin reads the DSH session log at the terminal
+            // plan mutation and writes the extracted final message + task.done
+            // conclusions to a capture file (mirroring the Codex transcript
+            // hand-off). Only conclusions from THIS plan's window are used:
+            // the job's reportCapture.startedAt (registry activeStartedAt) is
+            // the authoritative window start, and each conclusion carries its
+            // event time.
+            const capture = readDshKnowledgeCapture(queued.sessionId);
+            if (!capture || capture.sessionId !== queued.sessionId) {
+              throw new Error(`DSH report capture is unavailable for knowledge session ${queued.sessionId}.`);
+            }
+            const startedAtMs = queued.reportCapture?.startedAt
+              ? Date.parse(queued.reportCapture.startedAt)
+              : Number.NaN;
+            const conclusions = (capture.taskConclusions ?? []).filter((conclusion) => {
+              const time = (conclusion as { time?: unknown }).time;
+              if (Number.isFinite(startedAtMs) && typeof time === "number") {
+                return time >= startedAtMs;
+              }
+              return true;
+            });
+            const capturedAt = new Date().toISOString();
+            appendKnowledgeTaskConclusions(
+              queued.reportPath,
+              queued.sessionId,
+              conclusions,
+              capturedAt,
+            );
+            return {
+              reportCapture: {
+                ...queued.reportCapture,
+                status: "captured" as const,
+                capturedAt,
+                messageCount: conclusions.length,
+              },
+            };
+          }
+          if (queued.host == null) {
+            // A job created by a pre-dsh-host build has host null. The
+            // dsh-adapter plugin is the only writer of the dsh-capture file,
+            // so its presence proves this is a DSH-originated session; route it
+            // through the dsh branch instead of failing as "host unknown".
+            const capture = readDshKnowledgeCapture(queued.sessionId);
+            if (capture && capture.sessionId === queued.sessionId) {
+              const startedAtMs = queued.reportCapture?.startedAt
+                ? Date.parse(queued.reportCapture.startedAt)
+                : Number.NaN;
+              const conclusions = (capture.taskConclusions ?? []).filter((conclusion) => {
+                const time = (conclusion as { time?: unknown }).time;
+                if (Number.isFinite(startedAtMs) && typeof time === "number") {
+                  return time >= startedAtMs;
+                }
+                return true;
+              });
+              const capturedAt = new Date().toISOString();
+              appendKnowledgeTaskConclusions(
+                queued.reportPath,
+                queued.sessionId,
+                conclusions,
+                capturedAt,
+              );
+              return {
+                reportCapture: {
+                  ...queued.reportCapture,
+                  status: "captured" as const,
+                  capturedAt,
+                  messageCount: conclusions.length,
+                },
+              };
+            }
+          }
           if (queued.host !== "codex") {
             throw new Error(`Claim-time report capture is unavailable for host ${queued.host ?? "unknown"}.`);
           }
@@ -1588,12 +1661,11 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
         current
         && !current.plan.parentPlan
         && effectiveWriter?.executionPolicy === "subagent"
-        && effectiveHost !== "codex"
-        && effectiveHost !== "cindy"
+        && !isSubagentPolicyHost(effectiveHost)
       ) {
         throw new ClawError(
           "PROJECT_CONFIG_INVALID",
-          'knowledgeWriter.executionPolicy "subagent" is supported only by the Codex or Cindy host.',
+          'knowledgeWriter.executionPolicy "subagent" is supported only by the Codex, Cindy, or DSH host.',
           { host: effectiveHost ?? null },
         );
       }
@@ -1611,13 +1683,14 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
       const knowledgeDispatch = (
         current
         && project
-        && (effectiveHost === "codex" || effectiveHost === "cindy")
+        && (isSubagentPolicyHost(effectiveHost))
         && !current.plan.parentPlan
         && effectiveWriter?.executionPolicy === "subagent"
         && result.knowledgeFinalizeId
       )
           ? buildKnowledgeDispatch({
-            host: effectiveHost,
+            // The isSubagentPolicyHost gate above guarantees this is codex | cindy | dsh.
+            host: effectiveHost as "codex" | "cindy" | "dsh",
             finalizeId: result.knowledgeFinalizeId,
             writer: effectiveWriter,
           })
@@ -1715,12 +1788,11 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
       if (
         !current.plan.parentPlan
         && effectiveWriter?.executionPolicy === "subagent"
-        && effectiveHost !== "codex"
-        && effectiveHost !== "cindy"
+        && !isSubagentPolicyHost(effectiveHost)
       ) {
         throw new ClawError(
           "PROJECT_CONFIG_INVALID",
-          'knowledgeWriter.executionPolicy "subagent" is supported only by the Codex or Cindy host.',
+          'knowledgeWriter.executionPolicy "subagent" is supported only by the Codex, Cindy, or DSH host.',
           { host: effectiveHost ?? null },
         );
       }
@@ -1734,13 +1806,14 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
         ownerSessionKey,
       });
       const knowledgeDispatch = (
-        (effectiveHost === "codex" || effectiveHost === "cindy")
+        isSubagentPolicyHost(effectiveHost)
         && !current.plan.parentPlan
         && effectiveWriter?.executionPolicy === "subagent"
         && result.knowledgeFinalizeId
       )
           ? buildKnowledgeDispatch({
-            host: effectiveHost,
+            // The isSubagentPolicyHost gate above guarantees this is codex | cindy | dsh.
+            host: effectiveHost as "codex" | "cindy" | "dsh",
             finalizeId: result.knowledgeFinalizeId,
             writer: effectiveWriter,
           })
@@ -3516,10 +3589,12 @@ function stripBom(content: string): string {
 }
 
 function buildKnowledgeDispatch(input: {
-  host: "codex" | "cindy";
+  host: "codex" | "cindy" | "dsh";
   finalizeId: string;
   writer?: KnowledgeFinalizationJob["writer"];
 }): KnowledgeDelegateDispatch {
+  // Cindy uses its Orca atomic dispatch; codex and dsh both dispatch through a
+  // native-subagent delegate (DSH: subagent / subagent_fork).
   if (input.host === "cindy") {
     return buildKnowledgeAtomicDispatch(input);
   }
@@ -3570,9 +3645,13 @@ function compactPlanCommandResult(
         ? completionRefresh.taskRetention.archivedCurrentTask.archivedPlanPath
         : undefined;
     const resolvedPlanPath = archivedPlanPath ?? result.planPath;
-    const codexResult = effectiveHost === "codex";
+    // codex and dsh share the same compact protocol and versioned hostActions
+    // (schemaVersion 1: update_plan / create_goal / update_goal). The Codex
+    // adapter consumes them via its fixed code-mode driver; the DSH adapter
+    // consumes them inside the claw_run tool's execute.
+    const hostActionsResult = effectiveHost === "codex" || effectiveHost === "dsh";
     const cindyResult = effectiveHost === "cindy";
-    const hostActions = codexResult ? buildCodexHostActions(result, { forceProjectionSync, actionIdPrefix: command === "plan.sync" ? `plan.sync:${createHash("sha256").update(result.planPath).digest("hex").slice(0, 16)}` : undefined }) : [];
+    const hostActions = hostActionsResult ? buildCodexHostActions(result, { forceProjectionSync, actionIdPrefix: command === "plan.sync" ? `plan.sync:${createHash("sha256").update(result.planPath).digest("hex").slice(0, 16)}` : undefined }) : [];
     const nextsteps = [
       ...result.workflowGuidance.nextsteps,
       ...(knowledgeDispatch
@@ -3583,7 +3662,7 @@ function compactPlanCommandResult(
     const includePlan = Boolean(
       (command === "plan.create" || command === "subplan.create")
       && result.plan
-      && (!codexResult || result.workflowGuidance.stage === "discussion"),
+      && (!hostActionsResult || result.workflowGuidance.stage === "discussion"),
     );
     const achievement = result.planStatus === "end.completed" && result.plan
       ? {
@@ -3607,11 +3686,11 @@ function compactPlanCommandResult(
       ...(result.workflowGuidance.transition ? { transition: result.workflowGuidance.transition } : {}),
       ...(achievement ? { achievement } : {}),
       ...(knowledgeDispatch ? { knowledgeDispatch } : {}),
-      ...(!codexResult && result.previousPlanStatus ? { previousPlanStatus: result.previousPlanStatus } : {}),
+      ...(!hostActionsResult && result.previousPlanStatus ? { previousPlanStatus: result.previousPlanStatus } : {}),
       ...(hostActions.length ? { hostActions } : {}),
-      ...(!codexResult && result.changedTaskIds?.length ? { changedTaskIds: result.changedTaskIds } : {}),
-      ...(!codexResult && result.appendedTaskIds?.length ? { appendedTaskIds: result.appendedTaskIds } : {}),
-      ...(codexResult ? { stage: result.workflowGuidance.stage } : {}),
+      ...(!hostActionsResult && result.changedTaskIds?.length ? { changedTaskIds: result.changedTaskIds } : {}),
+      ...(!hostActionsResult && result.appendedTaskIds?.length ? { appendedTaskIds: result.appendedTaskIds } : {}),
+      ...(hostActionsResult ? { stage: result.workflowGuidance.stage } : {}),
       nextsteps,
       ...(result.workflowGuidance.nextTask ? { nextTask: result.workflowGuidance.nextTask } : {}),
       ...(result.workflowGuidance.notes?.trim() && !cindyResult
@@ -3629,8 +3708,8 @@ function compactPlanCommandResult(
             failedOperation: result.operationChain.failedOperation,
           }
         : {}),
-      ...(!codexResult && !cindyResult && result.workflowGuidance.goalMode ? { goalMode: result.workflowGuidance.goalMode } : {}),
-      ...(!codexResult && !cindyResult && result.workflowGuidance.goalTool ? { goalTool: result.workflowGuidance.goalTool } : {}),
+      ...(!hostActionsResult && !cindyResult && result.workflowGuidance.goalMode ? { goalMode: result.workflowGuidance.goalMode } : {}),
+      ...(!hostActionsResult && !cindyResult && result.workflowGuidance.goalTool ? { goalTool: result.workflowGuidance.goalTool } : {}),
       ...(includePlan && result.plan ? { plan: result.plan } : {}),
       // Cindy's Ghost card is a Host-owned projection.  It needs the
       // canonical task list to render its expandable Todo view, but that
@@ -3646,7 +3725,7 @@ function compactPlanCommandResult(
             },
           }
         : {}),
-      ...(!codexResult || !includePlan ? { planSummary } : {}),
+      ...(!hostActionsResult || !includePlan ? { planSummary } : {}),
     };
 }
 
