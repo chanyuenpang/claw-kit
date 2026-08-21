@@ -539,6 +539,30 @@ storePath 之外仍隐藏），新增单测锁定，36/36 用例通过。
 adapter 自动派发链路（dispatch → writer one-shot subagent → claim dsh 分支 →
 capture 窗口过滤 → knowledge done），模型全程无感，无需 turn-stopping hook。
 
+### 5.6 三件套发布（0.2.25，2026-08-22）
+
+用户授权发布 CLI + DSH + Codex，全部完成：
+
+- **CLI 0.2.25**：本地 main 从 0.2.21 rebase 到 origin/main（0.2.24.2）之上，
+  叠加 2 个 dsh 提交；bump root/core/cli/client 到 0.2.25、adapter 重置 .0、
+  模板/shared skills 同步、CHANGELOG；`verify:release` 通过后发布
+  `@veewo/claw-core` / `@veewo/claw-client` / `@veewo/claw`（含 dsh host 支持），
+  tag `v0.2.25` + GitHub Release。
+- **DSH adapter 首发**：`@claw-kit` npm scope 无权限 → 全局改名 `@veewo/dsh-adapter`。
+  **npm 无 4 段正式版**：`0.2.25.0` 会被解析为 prerelease `0.2.2-5.0` 错误发布
+  （PUT 200 但 GET 404；granular token 无法 unpublish）。publish 脚本改为映射
+  npm 版本 `<cli-base>-rc.<n>`（`0.2.25-rc.0` / `0.2.25-rc.1`），git tag 保持
+  4 段 `vdsh-0.2.25.0` / `vdsh-0.2.25.1`。发布流程文档已记录该坑。
+- **plan.show --simple 空壳修复**（0.2.25-rc.1）：`compactClawOutput` 白名单缺
+  `{status, goal, tasks}` 字段，模型看不到计划投影 → 补白名单 + 单测（37/37）。
+  重启 Host 后 plan.show / search 恢复。
+- **Codex 0.2.25.1**：CLI 重置后 bump 第四段（无功能改动），marketplace 快照
+  验证通过，tag `vcodex-0.2.25.1` + GitHub Release。
+
+发布后验证：npm metadata 全部可检索；profile 安装 `@veewo/dsh-adapter@0.2.25-rc.1`
+后重启，claw_run plan.show 返回 release-claw-cli 计划（process.active + goal +
+tasks），search 返回真实知识召回。
+
 ## 六、证据索引
 
 - DSH 组合：`$DSH_HOME/profiles/web/cordis.yml`、`cordis.patch.yml`；
