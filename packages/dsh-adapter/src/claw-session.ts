@@ -100,7 +100,15 @@ export class ClawSession {
         graceMs: 8000,
       });
       this.handle = handle;
+      const reset = () => {
+        // A failed open must not poison the cached promise: the next request
+        // gets a fresh spawn instead of a dead handle.
+        this.openPromise = null;
+        this.pending = null;
+      };
       if (handle.stdout === undefined) {
+        reset();
+        void handle.terminate("pipe unavailable");
         reject(protocolError("SESSION_CONNECTION_LOST", "claw session pipe unavailable."));
         return;
       }
@@ -110,6 +118,7 @@ export class ClawSession {
       this.buffer = "";
       handle.stdout.on("data", (chunk: unknown) => this.ingest(String(chunk)));
       const timer = setTimeout(() => {
+        reset();
         this.failPending(protocolError("CLAW_SESSION_OPEN_TIMEOUT", "claw session open timed out."));
         void handle.terminate("open timeout");
       }, 15000);
@@ -117,6 +126,8 @@ export class ClawSession {
         resolve: (value) => {
           clearTimeout(timer);
           if (!value.ok || value.command !== "session.open") {
+            reset();
+            void handle.terminate("open failed");
             reject(protocolError("CLAW_SESSION_OPEN_FAILED", `claw session open failed: ${value.command ?? "unknown"}`));
             return;
           }
@@ -124,11 +135,13 @@ export class ClawSession {
         },
         reject: (error: Error) => {
           clearTimeout(timer);
+          reset();
           reject(error);
         },
         timer,
       };
       handle.done.catch((error: unknown) => {
+        reset();
         this.failPending(error instanceof Error ? error : new Error(String(error)));
       });
     });

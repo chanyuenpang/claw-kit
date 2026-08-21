@@ -290,6 +290,9 @@ export function apply(ctx: unknown): void {
         // rebuild the session once and retry the same operation.
         const message = error instanceof Error ? error.message : String(error);
         if (!/SESSION_CONNECTION_LOST|CLAW_SESSION_TIMEOUT|CLAW_SESSION_OPEN_TIMEOUT/.test(message)) throw error;
+        // Close the stale connection first so the daemon releases the session
+        // slot; otherwise the fresh open hits SESSION_BUSY and hangs.
+        try { await session.close(); } catch { /* best-effort */ }
         sessions.delete(agent.id);
         const fresh = new ClawSession(subprocess as SubprocessLike, workdir, agent.id);
         sessions.set(agent.id, fresh);
@@ -301,6 +304,7 @@ export function apply(ctx: unknown): void {
         const message = response.error?.message ?? "";
         if (/connection was interrupted|session connection/i.test(message) && retried === false) {
           retried = true;
+          try { await session.close(); } catch { /* best-effort */ }
           sessions.delete(agent.id);
           const fresh = new ClawSession(subprocess as SubprocessLike, workdir, agent.id);
           sessions.set(agent.id, fresh);
