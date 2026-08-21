@@ -131,5 +131,26 @@ export function compactClawOutput(output: Record<string, unknown> | undefined): 
     });
   }
   if (output.count !== undefined) visible.count = output.count as JsonValue;
+  // plan.show --simple returns a minimal projection {status, goal, tasks};
+  // keep it visible so the model can still read the plan at a glance.
+  if (typeof output.status === "string") visible.planStatus = output.status;
+  if (output.goal !== undefined && typeof output.goal === "object") {
+    const g = output.goal as Record<string, JsonValue>;
+    if (typeof g.text === "string") visible.goal = g.text;
+  }
+  if (Array.isArray(output.tasks)) {
+    visible.tasks = (output.tasks as JsonValue[]).map((task) => {
+      if (task && typeof task === "object") {
+        const t = task as Record<string, JsonValue>;
+        return {
+          ...(t.title !== undefined ? { title: t.title } : {}),
+          ...(t.status !== undefined ? { status: t.status } : {}),
+          ...(t.detail !== undefined ? { detail: t.detail } : {}),
+          ...(t.id !== undefined ? { id: t.id } : {}),
+        };
+      }
+      return task;
+    });
+  }
   return visible;
 }

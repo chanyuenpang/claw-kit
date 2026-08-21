@@ -161,3 +161,25 @@ test("compactClawOutput surfaces search recall verbatim", () => {
   assert.equal("storePath" in visible, false);
   assert.equal("extra" in visible.results[0], false);
 });
+
+test("compactClawOutput keeps plan.show --simple projection visible", () => {
+  const output = {
+    status: "process.active",
+    goal: { text: "Publish a release" },
+    tasks: [
+      { id: 1, title: "T1", status: "pending", detail: "d1", extra: "hidden" },
+      { title: "T2" },
+    ],
+    rules: [],
+  };
+  const visible = compactClawOutput(output);
+  assert.equal(visible.planStatus, "process.active");
+  assert.equal(visible.goal, "Publish a release");
+  assert.deepEqual(visible.tasks, [
+    { id: 1, title: "T1", status: "pending", detail: "d1" },
+    { title: "T2" },
+  ]);
+  // rules and per-task extras stay hidden.
+  assert.equal("rules" in visible, false);
+  assert.equal("extra" in visible.tasks[0], false);
+});
