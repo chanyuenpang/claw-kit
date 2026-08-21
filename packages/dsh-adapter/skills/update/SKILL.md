@@ -1,6 +1,6 @@
 ---
 name: update
-description: Use when a newer claw-kit version is available for DSH or the user asks to refresh the installed claw CLI and @claw-kit/dsh-adapter npm package.
+description: Use when a newer claw-kit version is available for DSH or the user asks to refresh the installed claw CLI and @veewo/dsh-adapter npm package.
 ---
 
 # update
@@ -31,11 +31,11 @@ Resolve `<skill-dir>` as the directory containing this loaded `SKILL.md`.
 
 ## Contract
 
-- Refresh the published global claw CLI first, then the `@claw-kit/dsh-adapter`
+- Refresh the published global claw CLI first, then the `@veewo/dsh-adapter`
   npm package into the DSH profile:
   ```powershell
   npm install -g @veewo/claw@latest
-  dsh plugin --profile <name> add @claw-kit/dsh-adapter@latest
+  dsh plugin --profile <name> add @veewo/dsh-adapter@latest
   ```
 - Treat the CLI and the adapter as **one update unit**; verify both before
   reporting success. The installed CLI must accept `--host dsh`

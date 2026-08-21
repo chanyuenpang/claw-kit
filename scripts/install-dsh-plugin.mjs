@@ -1,4 +1,4 @@
-// Install the exported @claw-kit/dsh-adapter tarball into a dsh profile via
+// Install the exported @veewo/dsh-adapter tarball into a dsh profile via
 // `dsh plugin --profile <name> add <tarball>`, then report the restart step.
 // The profile bundle layer activates only after the Host restarts.
 import { execFileSync } from "node:child_process";

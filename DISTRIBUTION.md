@@ -44,7 +44,7 @@ There are five independent artifact families. Select the requested artifact befo
 | CLI | core, CLI, or shared CLI/runtime | 3 segments | `@veewo/claw-core` then `@veewo/claw` | `v<version>` |
 | Codex plugin | codex-adapter | 4 segments | committed GitHub marketplace snapshot | `vcodex-<version>` |
 | Cindy plugin | independent `claw-kit-cindy-adapter` repository | 4 segments | Cindy-only Git marketplace | `vcindy-<version>` in the adapter repository |
-| DSH adapter | dsh-adapter | 4 segments | `@claw-kit/dsh-adapter` on the npm registry | `vdsh-<version>` |
+| DSH adapter | dsh-adapter | 4 segments in git; npm prerelease `<cli-base>-rc.<n>` | `@veewo/dsh-adapter` on the npm registry | `vdsh-<version>` |
 | OpenClaw plugin | openclaw-adapter | 4 segments | OpenClaw adapter GitHub release artifact | `vopenclaw-<version>` |
 | OpenCode plugin | opencode-adapter | 4 segments | OpenCode adapter GitHub release artifact | `vopencode-<version>` |
 
@@ -100,7 +100,7 @@ This repository uses direct maintainer publishing by default:
 | CLI + Core | `MAJOR.MINOR.PATCH` | `0.2.1` | Root `package.json`, `@veewo/claw-core`, `@veewo/claw` share this. |
 | Codex adapter | `CLI_VERSION.PATCH` | `0.2.1.0` | 4th segment for independent iteration. |
 | Cindy adapter | `CLI_VERSION.PATCH` | `0.2.1.0` | Same 4-segment rule. |
-| DSH adapter | `CLI_VERSION.PATCH` | `0.2.1.0` | Same 4-segment rule; published to npm. |
+| DSH adapter | `CLI_VERSION.PATCH` | `0.2.1.0` | Same 4-segment rule in git; published to npm as prerelease `<CLI_VERSION>-rc.PATCH` (`0.2.1.0` → `0.2.1-rc.0`) because npm has no four-segment release version. |
 | OpenClaw adapter | `CLI_VERSION.PATCH` | `0.2.1.0` | Same 4-segment rule. |
 | OpenCode adapter | `CLI_VERSION.PATCH` | `0.2.1.0` | Same 4-segment rule. |
 | Codex plugin manifest | `ADAPTER_VERSION` | `0.2.1.0` | Mirrors codex-adapter package version. No timestamp. |

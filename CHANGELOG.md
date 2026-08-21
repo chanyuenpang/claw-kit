@@ -8,7 +8,7 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 - DSH (DeepSeek Harness) is now a first-class invocation host: the CLI accepts
   `--host dsh` and emits hostActions for progress/goal sync on it.
-- New `@claw-kit/dsh-adapter` npm package: a Cordis plugin exposing the
+- New `@veewo/dsh-adapter` npm package: a Cordis plugin exposing the
   `claw_run` tool, bundled skills, hostActions consumption, deterministic
   report capture, and native-subagent knowledge finalization dispatch.
 - `knowledge claim` gains a `dsh` branch that reads the adapter-written

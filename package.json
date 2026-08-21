@@ -12,8 +12,8 @@
     "packages/opencode-adapter"
   ],
   "scripts": {
-    "build": "npm run build -w @veewo/claw-core && npm run build -w @veewo/claw-client && npm run build -w @veewo/claw && npm run build -w @claw-kit/openclaw-adapter && npm run build -w @claw-kit/codex-adapter && npm run build -w @claw-kit/opencode-adapter && npm run build -w @claw-kit/dsh-adapter",
-    "check": "npm run build -w @veewo/claw-core && npm run build -w @veewo/claw-client && npm run check -w @veewo/claw-client && npm run check -w @veewo/claw && npm run check -w @claw-kit/openclaw-adapter && npm run check -w @claw-kit/codex-adapter && npm run check -w @claw-kit/opencode-adapter && npm run check -w @claw-kit/dsh-adapter && node scripts/truth-encoding-audit.mjs --check",
+    "build": "npm run build -w @veewo/claw-core && npm run build -w @veewo/claw-client && npm run build -w @veewo/claw && npm run build -w @claw-kit/openclaw-adapter && npm run build -w @claw-kit/codex-adapter && npm run build -w @claw-kit/opencode-adapter && npm run build -w @veewo/dsh-adapter",
+    "check": "npm run build -w @veewo/claw-core && npm run build -w @veewo/claw-client && npm run check -w @veewo/claw-client && npm run check -w @veewo/claw && npm run check -w @claw-kit/openclaw-adapter && npm run check -w @claw-kit/codex-adapter && npm run check -w @claw-kit/opencode-adapter && npm run check -w @veewo/dsh-adapter && node scripts/truth-encoding-audit.mjs --check",
     "export:codex-plugin": "node .\\scripts\\export-codex-plugin.mjs",
     "export:dsh-plugin": "node .\\scripts\\export-dsh-plugin.mjs",
     "export:opencode-plugin": "node .\\scripts\\export-opencode-plugin.mjs",

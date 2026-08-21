@@ -1,4 +1,4 @@
-﻿# DSH knowledge dispatch and finalization
+# DSH knowledge dispatch and finalization
 
 <!-- state: current -->
 ## Current behavior
@@ -77,7 +77,7 @@ native subagent）、claim-time capture 窗口过滤、以及 `claw_run search` 
 
 ## 关联代码
 
-- `packages/dsh-adapter/`（`@claw-kit/dsh-adapter`，静态 Cordis bundle 插件）
+- `packages/dsh-adapter/`（`@veewo/dsh-adapter`，静态 Cordis bundle 插件）
 - `packages/cli/src/invocation-host.ts`（`isHostActionsHost` / `isSubagentPolicyHost`）
 - `packages/cli/src/cli.ts`（`buildKnowledgeDispatch` 的 dsh 分支、claim-time capture 的 dsh/host-null 分支）
 - `packages/cli/src/dsh-capture.ts`（`readDshKnowledgeCapture` / dsh-capture 文件路径）

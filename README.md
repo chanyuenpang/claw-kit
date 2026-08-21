@@ -173,7 +173,7 @@ The DSH adapter is an npm package installed into a DSH profile. From a
 published registry:
 
 ```powershell
-dsh plugin --profile web add @claw-kit/dsh-adapter@latest
+dsh plugin --profile web add @veewo/dsh-adapter@latest
 ```
 
 Restart the Host (`dsh --profile web`) to mount the `claw-adapter` row; then
@@ -202,7 +202,7 @@ DSH subagent; the model only drives the single `claw_run` tool. See
   - shared workflow primitives for project config, planning, search, truth ingestion, and retention
 - `@claw-kit/codex-adapter`
   - Codex-facing adapter assets, hooks, skills, and references for landing the workflow in Codex
-- `@claw-kit/dsh-adapter`
+- `@veewo/dsh-adapter`
   - DSH-facing Cordis plugin exposing the `claw_run` tool, automatic hostActions
     consumption (progress + native goal sync), auto-dispatched knowledge
     finalization, and seven bundled skills

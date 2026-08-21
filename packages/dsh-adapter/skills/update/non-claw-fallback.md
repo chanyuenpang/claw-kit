@@ -6,7 +6,7 @@ If claw planning is unavailable, update the DSH install directly:
    ```powershell
    claw --version
    npm view @veewo/claw version
-   npm view @claw-kit/dsh-adapter version
+   npm view @veewo/dsh-adapter version
    dsh --profile web --dump-config   # confirm the claw-adapter row
    ```
 
@@ -18,7 +18,7 @@ If claw planning is unavailable, update the DSH install directly:
 
 3. **Update the DSH adapter in the profile:**
    ```powershell
-   dsh plugin --profile web add @claw-kit/dsh-adapter@latest
+   dsh plugin --profile web add @veewo/dsh-adapter@latest
    dsh --profile web --dump-config   # claw-adapter row present
    ```
 

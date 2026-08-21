@@ -1,9 +1,23 @@
 # Releasing the DSH adapter
 
-`@claw-kit/dsh-adapter` is published to the npm registry; a DSH profile installs
-it with `dsh plugin --profile <name> add @claw-kit/dsh-adapter` and activates it
+`@veewo/dsh-adapter` is published to the npm registry; a DSH profile installs
+it with `dsh plugin --profile <name> add @veewo/dsh-adapter` and activates it
 on the next Host restart. Distribution is the npm package — there is no separate
 marketplace repository or ZIP artifact.
+
+> **npm version caveat (learned 2026-08-22):** npm/semver has no four-segment
+> release version. Publishing a `package.json` whose version is `<cli-base>.<n>`
+> (e.g. `0.2.25.0`) does NOT fail — npm silently re-parses it as a prerelease of
+> the first three segments (`0.2.25.0` → `0.2.2-5.0`) and publishes THAT as
+> `latest`. Always publish through `npm run publish:dsh-plugin`, which stages a
+> tarball whose package.json carries the npm-legal prerelease spelling
+> `<cli-base>-rc.<n>` (`0.2.25.0` → `0.2.25-rc.0`) while the git tag stays the
+> four-segment `vdsh-0.2.25.0`. Never run bare `npm publish -w @veewo/dsh-adapter`.
+>
+> A mistakenly published wrong-version tarball cannot be removed with a
+> granular token (bypass-2FA tokens cannot `unpublish`, E403); it lingers as a
+> non-`latest` version. Publish the corrected version with
+> `--tag latest` so consumers resolve the intended release.
 
 1. **Resolve the CLI base version before editing.** For a multi-artifact
    release, use its authorized CLI candidate; for a dsh-only release, use the
@@ -14,21 +28,20 @@ marketplace repository or ZIP artifact.
 
 2. **Run the focused adapter checks:**
    ```powershell
-   npm run build -w @claw-kit/dsh-adapter
-   npm test -w @claw-kit/dsh-adapter
-   npm run check -w @claw-kit/dsh-adapter
+   npm run build -w @veewo/dsh-adapter
+   npm test -w @veewo/dsh-adapter
+   npm run check -w @veewo/dsh-adapter
    ```
 
-3. **Publish the package:**
+3. **Publish the package** (this is the ONLY supported publish path):
    ```powershell
-   npm run publish:dsh-plugin        # builds, tests, exports, and publishes
-   # or step-by-step:
-   npm publish -w @claw-kit/dsh-adapter
-   npm run export:dsh-plugin         # local tarball for profile installs
+   npm run publish:dsh-plugin            # dry run: builds, tests, stages, packs
+   npm run publish:dsh-plugin -- --publish   # publish with version mapping
    ```
-   Verify the published tarball contains `lib/`, `skills/`, and
-   `cordis.patch.yml` (and no build junk). The first publication of a new
-   `<cli-base>` needs npm access for the `@claw-kit` scope.
+   The script maps `<cli-base>.<n>` → npm `<cli-base>-rc.<n>`, verifies the
+   tarball contains `lib/`, `skills/`, and `cordis.patch.yml` (no build junk),
+   and publishes with `--tag latest`. The first publication of a new
+   `<cli-base>` needs npm access for the `@veewo` scope.
 
 4. **Commit, push, and tag.** Commit the intended adapter changes on `main`,
    push `origin/main`, then create and push the immutable tag at that exact
@@ -41,7 +54,7 @@ marketplace repository or ZIP artifact.
 5. **Verify in a real DSH profile.** From an environment whose CLI carries the
    `dsh` host support:
    ```powershell
-   dsh plugin --profile web add @claw-kit/dsh-adapter
+   dsh plugin --profile web add @veewo/dsh-adapter
    # restart the Host, then confirm:
    # - the claw_run tool appears in the tool list
    # - the six bundled skills (using-claw-kit/researcher/planning/config/
@@ -58,3 +71,8 @@ The adapter shares the CLI's first three segments and owns only the fourth:
 `<cli-base>.<n>`. `0.2.21.14` means CLI base `0.2.21`, adapter revision 14.
 Bumping the CLI base (e.g. to `0.2.22`) starts a new adapter line at
 `0.2.22.0`.
+
+The git version is always the four-segment `<cli-base>.<n>` (tagged
+`vdsh-<cli-base>.<n>`); the npm version is the mapped prerelease
+`<cli-base>-rc.<n>`. They are two spellings of the same release — never publish
+the four-segment spelling directly.

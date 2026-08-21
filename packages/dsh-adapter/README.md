@@ -1,4 +1,4 @@
-# @claw-kit/dsh-adapter
+# @veewo/dsh-adapter
 
 DSH（DeepSeek Harness）的 claw-kit 适配器：一个 `claw_run` 工具，通过
 `claw session open --host dsh` 常驻 daemon 执行 `.claw` 工作流操作，自动消费
@@ -38,7 +38,7 @@ npm run install:dsh-plugin    # dsh plugin --profile web add <tarball>（可 --p
 # 重启 DSH Host 后生效；验证组合：dsh --profile web --dump-config
 ```
 
-发布到 npm 后直接：`dsh plugin --profile web add @claw-kit/dsh-adapter`。
+发布到 npm 后直接：`dsh plugin --profile web add @veewo/dsh-adapter`。
 
 前置条件：`claw` CLI 已安装且版本与仓库对齐（`claw --version`），
 CLI 需支持 `--host dsh`（见 claw-kit 仓库的 dsh host 支持）。
@@ -63,14 +63,14 @@ CLI 需支持 `--host dsh`（见 claw-kit 仓库的 dsh host 支持）。
   `researcher`（recall → code index → exact source 调查顺序 + 可选 subagent 委派）、
   `update`（CLI + adapter 联合升级，见 `skills/update/SKILL.md`）。
 
-更新安装时若 pnpm 报旧 tarball ENOENT，先 `dsh plugin --profile <name> remove @claw-kit/dsh-adapter`
+更新安装时若 pnpm 报旧 tarball ENOENT，先 `dsh plugin --profile <name> remove @veewo/dsh-adapter`
 再重新 `install:dsh-plugin`（版本号即更新信号）。
 
 ## 测试
 
 ```powershell
-npm run build -w @claw-kit/dsh-adapter
-npm test -w @claw-kit/dsh-adapter
+npm run build -w @veewo/dsh-adapter
+npm test -w @veewo/dsh-adapter
 ```
 
 覆盖：operation→daemon input 映射、hostActions 消费（含 fail-open）、
