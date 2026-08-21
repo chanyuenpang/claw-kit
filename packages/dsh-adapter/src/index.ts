@@ -127,7 +127,7 @@ export function apply(ctx: unknown): void {
     name: "tool:claw",
     order: 115,
     text: [
-      "claw-kit workflow: use the `claw_run` tool for plan, task, subplan, search, and context operations. Follow the recovered [claw workflow] guidance as the only next-step contract; commandHints returned by claw_run map 1:1 to its arguments. The adapter consumes progress projection and goal sync automatically — do not call goal tools or maintain a parallel task list for claw plans.",
+      "claw-kit workflow: load the `using-claw-kit` skill first whenever the adapter is enabled or its start prompt is present, then follow its claw_run execution route as the only next-step contract. The `claw_run` tool executes plan, task, subplan, search, and context operations; commandHints returned by claw_run map 1:1 to its arguments. The adapter consumes progress projection and goal sync automatically — do not call goal tools or maintain a parallel task list for claw plans.",
     ].join("\n"),
   });
 

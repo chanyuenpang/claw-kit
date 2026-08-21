@@ -162,7 +162,7 @@ export function renderGuidanceSnapshot(context) {
                 : typeof project.projectId === "string" && project.projectId.trim()
                     ? project.projectId.trim()
                     : "project";
-            lines.push(`This session started inside claw project ${projectName}. Use the claw_run tool for plan, task, subplan, and search operations.`);
+            lines.push(`This session started inside claw project ${projectName}. Load the using-claw-kit skill as the main workflow skill for this session.`);
         }
     }
     const searchGuidance = context.searchGuidance;
