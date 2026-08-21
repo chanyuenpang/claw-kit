@@ -250,7 +250,7 @@ test("cli plan done emits host-specific subagent dispatch for Codex and Cindy an
     unsupportedRoot,
     opencodeEnv,
   );
-  assert.match(String((failure.error as JsonRecord).message), /supported only by the Codex or Cindy host/);
+  assert.match(String((failure.error as JsonRecord).message), /supported only by the Codex, Cindy, or DSH host/);
   const current = runClaw(["plan", "show"], unsupportedRoot, opencodeEnv);
   assert.equal(current.planStatus, "process.active");
   const editFailure = runClawExpectFailure(
@@ -258,7 +258,7 @@ test("cli plan done emits host-specific subagent dispatch for Codex and Cindy an
     unsupportedRoot,
     opencodeEnv,
   );
-  assert.match(String((editFailure.error as JsonRecord).message), /supported only by the Codex or Cindy host/);
+  assert.match(String((editFailure.error as JsonRecord).message), /supported only by the Codex, Cindy, or DSH host/);
 });
 
 test("Codex subagent claim captures the Stop-style task report without waiting for Stop", () => {

@@ -1,6 +1,6 @@
 {
   "id": "doc-updater",
-  "version": "0.2.24",
+  "version": "0.2.25",
   "scope": "session",
   "title": "doc-updater",
   "status": "process.active",

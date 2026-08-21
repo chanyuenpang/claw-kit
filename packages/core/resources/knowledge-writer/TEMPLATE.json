@@ -1,6 +1,6 @@
 {
   "id": "knowledge-writer",
-  "version": "0.2.24",
+  "version": "0.2.25",
   "scope": "session",
   "title": "knowledge-writer",
   "status": "process.active",

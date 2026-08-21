@@ -2,6 +2,26 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.2.25] - 2026-08-22
+
+### Added
+
+- DSH (DeepSeek Harness) is now a first-class invocation host: the CLI accepts
+  `--host dsh` and emits hostActions for progress/goal sync on it.
+- New `@claw-kit/dsh-adapter` npm package: a Cordis plugin exposing the
+  `claw_run` tool, bundled skills, hostActions consumption, deterministic
+  report capture, and native-subagent knowledge finalization dispatch.
+- `knowledge claim` gains a `dsh` branch that reads the adapter-written
+  capture file and filters task conclusions by the plan window (`startedAt`).
+
+### Fixed
+
+- Knowledge finalization jobs queued from a `dsh` host now record
+  `host: "dsh"` instead of `null` (claim-time report capture was previously
+  unavailable for the DSH host).
+- Subagent invocations of `claw_run` resolve the workspace through the
+  session header `cwd` inherited from the parent agent.
+
 ## [0.2.22] - 2026-08-20
 
 ### Fixed
