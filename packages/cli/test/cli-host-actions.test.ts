@@ -727,6 +727,37 @@ test("Codex subplan create preserves the parent Goal", () => {
   assert.equal(actions.some((action) => action.tool === "create_goal"), false);
 });
 
+test("Codex child plan sync restores the root Goal while projecting child progress", () => {
+  const root = createFixture("cli-subplan-sync-root-goal");
+  const env = { CODEX_THREAD_ID: "thread-subplan-sync-root-goal" };
+  runClaw(["init", "--name", "Subplan Sync Root Goal", "--planning", "false"], root, env);
+  runClaw(["plan", "create", "--title", "demo-task", "--goal", "ROOT OBJECTIVE"], root, env);
+  runClaw([
+    "task", "edit", "--id", "1",
+    "--title", "Child work", "--detail", "CHILD OBJECTIVE DETAIL",
+  ], root, env);
+  const child = runClaw([
+    "subplan", "create", "--parent", "demo-task", "--task-id", "1", "--host", "codex",
+  ], root, env);
+  const childFile = path.basename(String(child.planPath));
+  const started = runClaw([
+    "plan", "start", "--plan-file", childFile,
+    "--requirements", "Implement child work safely.",
+    "--add-task", "Implement child work", "--host", "codex",
+  ], root, env);
+  const startGoal = (started.hostActions as JsonRecord[]).find((action) => action.tool === "create_goal");
+  assert.match(String((startGoal?.input as JsonRecord).objective), /ROOT OBJECTIVE/);
+  assert.doesNotMatch(String((startGoal?.input as JsonRecord).objective), /CHILD OBJECTIVE DETAIL/);
+
+  const sync = runClaw(["plan", "sync", "--host", "codex"], root, env);
+  const actions = sync.hostActions as JsonRecord[];
+  assert.deepEqual(actions.map((action) => action.tool), ["update_plan", "create_goal"]);
+  assert.equal((actions[0]?.input as JsonRecord).plan instanceof Array, true);
+  assert.equal(((actions[0]?.input as JsonRecord).plan as JsonRecord[])[0]?.step, "Complete planning with claw-kit:planning");
+  assert.match(String((actions[1]?.input as JsonRecord).objective), /ROOT OBJECTIVE/);
+  assert.doesNotMatch(String((actions[1]?.input as JsonRecord).objective), /CHILD OBJECTIVE DETAIL/);
+});
+
 test("parseOpencodeRunOutput reconstructs final assistant text from NDJSON", () => {
   const ndjson = [
     JSON.stringify({ type: "session.created", properties: { sessionID: "sess-abc" } }),

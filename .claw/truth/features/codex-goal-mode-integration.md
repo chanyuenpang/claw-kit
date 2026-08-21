@@ -38,8 +38,8 @@
 ## 0.1.83 knowledge-writer harness 历史边界与当前修复
 
 - `0.1.83` 的版本化实测曾确认：父 plan 已占用 thread Goal 时，`subplan.create` 的 canonical mutation 先成功落盘，随后同一次 driver 调用尝试 `create_goal` 才被 Host 拒绝。该结果仍是“host-action 失败不代表 plan mutation 回滚、不得盲目重放”的历史证据。
-- 当前 `applyCreateGuidance()` 把 `subplan.create` 投影成 parent-goal handoff：返回 `update_goal(status="complete")`，保留 child objective 供后续使用；`buildHostActions()` 按 `update_goal` → `update_plan` 排序消费，不在同一 mutation 内创建 child Goal。
-- child plan 后续进入或恢复 `process.active` 时，才由独立 mutation 返回 `create_goal`。因此 parent close 与 child create 跨 Host 结算边界，不覆盖仍活跃的父 Goal，也不会在同一 call 内把新 Goal 一并清除。
+- 当前 `subplan.create` 只切换 focused plan 与 Progress 投影，不关闭或创建 Goal；根 `plan.json` 的 goal.text 始终是同一 task 的 Codex thread Goal owner。
+- child plan 后续进入、继续或恢复 `process.active` 时，仍由 focused child 决定 lifecycle 和 Progress；若 Host Goal 缺失，独立 mutation 只会用 root objective 创建它，绝不使用 child goal.text。已有 active Goal 继续由 fixed driver 保留。
 - 对应决策 owner 是 `.claw/truth/adr/codex-goal-mode-thread-contract.md`。
 
 ## 0.1.86 installed Host 历史偏差与 0.1.99 发布修复
@@ -70,7 +70,7 @@
   - compact plan result 会把 `workflowGuidance.goalTool` 原样透传到 CLI JSON
   - `buildHostActions()` uses the same `shouldUsePlanHostIntegration()` predicate before projecting Codex progress.
   - `buildHostActions()` 根据 committed `planStatus` 把 wait/discussing 的 Codex native action 投影为 schema-v1 `update_goal({ status: "complete" })`，不改写 compatibility `goalTool.status = blocked`
-  - `subplan.create` 的 Codex hostActions 固定先执行 `update_goal(complete)`、再执行 `update_plan`，且本次 handoff 不生成 `create_goal`
+  - `subplan.create` 只切换 focused plan 并投影 child `update_plan`；它不生成 `update_goal` 或 `create_goal`，因此不会把根 Goal 当作 child handoff 的一部分
 - `packages/cli/src/codex-driver.ts`
 - fixed driver 在 `create_goal` / `update_goal` 前立即读取 Goal snapshot；`create_goal` 遇到非终态 Goal 时保留该 Goal、返回 recovery note 并将 action id 记为已消费；已无 active Goal 时跳过重复关闭
 - `packages/codex-adapter/scripts/code-mode-host-action-consumer.mjs`

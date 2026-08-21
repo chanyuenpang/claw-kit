@@ -26,6 +26,13 @@
 ## Evolution history
 
 <!-- dated: 2026-08-20 -->
+### Cindy 0.2.23.1 and Codex 0.2.23.2 release
+
+- Cindy `0.2.23.1` was released from its independent marketplace `main` commit `595edd0` with immutable tag `vcindy-0.2.23.1`; 32 focused tests passed. It has no archive or GitHub Release.
+- Codex `0.2.23.2` was released from the committed main-repository marketplace snapshot at `8384c5e` with immutable tag `vcodex-0.2.23.2` and a public zero-asset GitHub Release. Its 21 focused plugin/marketplace tests, template and shared-skill checks, and exact-source release gate passed.
+- Both release lines completed with their own clean `main == origin/main` boundary. These versioned release facts do not assert a local installation refresh.
+
+<!-- dated: 2026-08-20 -->
 ### 0.2.23 multi-artifact release batch
 
 - CLI/Core/Client `0.2.23` was published through npm with `v0.2.23` and a public GitHub Release. Codex `0.2.23.1` was released from the committed main-repository marketplace snapshot with `vcodex-0.2.23.1` and a zero-asset GitHub Release. Cindy `0.2.23.0` was released from its independent marketplace `main` with `vcindy-0.2.23.0`, without an archive or GitHub Release.
@@ -64,17 +71,6 @@
   marketplace artifacts and release evidence.
 - This batch is historical release evidence only. It does not assert that a
   maintainer's local CLI or installed plugin has been refreshed.
-
-<!-- dated: 2026-08-06 -->
-### 0.2.14 multi-artifact release batch
-
-- CLI/Core/Client `0.2.14` was published through npm with `v0.2.14` and a
-  GitHub Release; Codex `0.2.14.1` was released from the committed marketplace
-  snapshot with `vcodex-0.2.14.1` and a zero-asset GitHub Release; Cindy
-  `0.2.13.2` was released from its independent marketplace `main` with
-  `vcindy-0.2.13.2` and no archive or GitHub Release.
-- Each artifact line retained its own exact-source and acceptance evidence.
-  These releases do not imply any local CLI or plugin refresh.
 
 ## Search terms
 

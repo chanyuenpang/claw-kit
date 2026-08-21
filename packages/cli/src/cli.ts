@@ -34,6 +34,7 @@ import {
   getTemplateTaskDoneChoices,
   resolvePlanTemplateFile,
   resolvePlanEffectiveConfig,
+  resolveThreadGoalPlan,
   resolveKnowledgeWriterForHost,
   resolveProjectContext,
   resolveWorkflowProjectContext,
@@ -1829,12 +1830,20 @@ async function runPlanSync(args: string[], effectiveHost: ClawHost | undefined):
     return;
   }
   const project = resolveWorkflowProjectContext(process.cwd(), ownerSessionKey);
+  const goalPlan = resolveThreadGoalPlan({
+    cwd: process.cwd(),
+    taskName: result.taskName,
+    focusedPlan: result.plan,
+    ownerSessionKey,
+  });
   const workflowGuidance = await buildPlanWorkflowGuidance({
     taskName: result.taskName,
     planFile: result.planFile,
     plan: result.plan,
     projectRoot: project.projectRoot,
     projectConfig: project.projectConfig,
+    goalPlan,
+    goalProjectConfig: resolvePlanEffectiveConfig(project.projectConfig, goalPlan),
     scope: project.scope,
     previousStatus: "process.wait",
     host: effectiveHost,
@@ -3130,7 +3139,7 @@ function buildSessionStartAdditionalContext(
   if (activeWorkflow) {
     const prompt = buildRecoveredWorkflowAdditionalContext(activeWorkflow, versionSyncPrompt);
     const recoverySyncPrompt = effectiveHost === "codex" && activeWorkflow.planStatus === "process.active"
-      ? "Before continuing, run `claw plan sync` once through the fixed Codex driver to restore host progress and Goal Mode."
+      ? "Before continuing, run `claw plan sync` once through the fixed Codex driver to restore focused-plan progress and reconcile the root-plan Goal."
       : "";
     const promptWithSync = recoverySyncPrompt ? `${prompt}\n${recoverySyncPrompt}` : prompt;
     const promptWithSearch = searchGuidance ? `${promptWithSync}\n${searchGuidance}` : promptWithSync;

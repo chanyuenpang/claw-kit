@@ -33,6 +33,7 @@ import {
   type WorkflowGuidance,
   type KnowledgeDelegateDispatch,
   writePlan,
+  resolveThreadGoalPlan,
 } from "@veewo/claw-core";
 import { buildCodexHostActions } from "./codex-host-actions.js";
 import { RegistryFocusSessionStore, SessionRegistryV2 } from "./session-registry-v2.js";
@@ -658,12 +659,20 @@ export class ClawCommandService {
   ): Promise<unknown[]> {
     if (context.host !== "codex") return [];
     const project = this.resolveProject(context);
+    const goalPlan = resolveThreadGoalPlan({
+      cwd: context.cwd,
+      taskName: input.taskName,
+      focusedPlan: input.plan,
+      ownerSessionKey: this.ownerSessionKey(context),
+    });
     const workflowGuidance = await buildPlanWorkflowGuidance({
       taskName: input.taskName,
       planFile: input.planFile,
       plan: input.plan,
       projectRoot: project.projectRoot,
       projectConfig: resolvePlanEffectiveConfig(project.projectConfig, input.plan),
+      goalPlan,
+      goalProjectConfig: resolvePlanEffectiveConfig(project.projectConfig, goalPlan),
       scope: project.scope,
       host: context.host,
       recoveryResync: input.recoveryResync,

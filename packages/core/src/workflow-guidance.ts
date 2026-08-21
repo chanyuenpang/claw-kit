@@ -323,6 +323,10 @@ export async function buildPlanWorkflowGuidance(params: {
   taskName: string;
   planFile: string;
   plan: PlanDocument;
+  /** The root plan that owns the Codex thread Goal. Progress remains plan-owned. */
+  goalPlan?: PlanDocument;
+  /** Effective config for goalPlan; a child template must not change root Goal policy. */
+  goalProjectConfig?: ProjectConfig | null;
   commandSource?: "plan.create" | "subplan.create" | "plan.edit" | "plan.start" | "plan.done" | "task.add" | "task.edit" | "task.remove" | "task.done";
   projectRoot?: string;
   projectConfig?: ProjectConfig | null;
@@ -363,7 +367,8 @@ export async function buildPlanWorkflowGuidance(params: {
   // Goal Mode and the visual Progress projection have separate contracts:
   // goalMode creates/restores the durable Codex Goal for every active plan,
   // while lightweight default plans deliberately omit the Progress UI.
-  const goalModeEnabled = isGoalModeEnabled(projectConfig);
+  const goalPlan = params.goalPlan ?? plan;
+  const goalModeEnabled = isGoalModeEnabled(params.goalProjectConfig ?? projectConfig);
   // Cindy owns any eventual Goal projection in its Ghost Host. The CLI must
   // not ask a Cindy Agent to operate another Host's Goal or progress tools.
   const suppressGoalFields = params.host === "opencode" || params.host === "cindy" || params.scope === "session";
@@ -371,7 +376,7 @@ export async function buildPlanWorkflowGuidance(params: {
   const nextTask = nextUnfinishedTask(plan);
   const activeTask = currentActiveTask(plan);
   const shouldReturnNextTask = hasCompletedTasks || hasAppendedTasks || justEnteredProcess || (!hasChangedTasks && !activeTask);
-  const hasGoal = typeof plan.goal.text === "string" && plan.goal.text.trim().length > 0;
+  const hasGoal = typeof goalPlan.goal.text === "string" && goalPlan.goal.text.trim().length > 0;
   const nextTaskRef = nextTask ? formatTaskRef(nextTask) : "the next task";
   const processStage = plan.status === "process.discussing" ? "discussion" : "execution";
   const taskDoneCommand = activeTask && !hasCompletedTasks && !justEnteredProcess
@@ -534,10 +539,10 @@ export async function buildPlanWorkflowGuidance(params: {
           : {}),
         ...(template.notes ? { notes: template.notes } : {}),
         ...(template.goalMode && goalModeEnabled && (justEnteredProcess || resumedIntoActive) && hasGoal && !suppressGoalFields
-          ? { goalMode: buildGoalMode(plan.goal.text, template.goalMode) }
+          ? { goalMode: buildGoalMode(goalPlan.goal.text, template.goalMode) }
           : {}),
         ...((template.goalTool ?? activeGoalTemplate?.goalTool) && shouldEnsureActiveGoal
-          ? { goalTool: buildGoalTool(plan.goal.text, (template.goalTool ?? activeGoalTemplate?.goalTool)!) }
+          ? { goalTool: buildGoalTool(goalPlan.goal.text, (template.goalTool ?? activeGoalTemplate?.goalTool)!) }
           : {}),
         ...(template.commandHints ? { commandHints: template.commandHints } : {}),
       });
@@ -566,7 +571,7 @@ export async function buildPlanWorkflowGuidance(params: {
         nextsteps: template.nextsteps,
         ...(template.notes ? { notes: template.notes } : {}),
         ...(template.goalTool && goalModeEnabled && previousStatus === "process.active" && hasGoal && !suppressGoalFields
-          ? { goalTool: buildGoalTool(plan.goal.text, template.goalTool) }
+          ? { goalTool: buildGoalTool(goalPlan.goal.text, template.goalTool) }
           : {}),
         ...(template.commandHints ? { commandHints: template.commandHints } : {}),
       };

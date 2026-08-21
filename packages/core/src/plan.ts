@@ -61,6 +61,46 @@ const LEGACY_PLAN_STATUS_MAP: Record<LegacyPlanStatus, PlanStatus> = {
 
 const PLAN_TASK_STATUSES: PlanTaskStatus[] = ["pending", "in_progress", "subagent_running", "done", "blocked"];
 
+/**
+ * Resolve the plan that owns the single Codex thread Goal. A session may focus
+ * a descendant subplan, but its Progress projection must not change the root
+ * task objective. This is deliberately derived from canonical storage rather
+ * than copied into a child plan or the session registry.
+ */
+export function resolveThreadGoalPlan(input: {
+  cwd: string;
+  taskName: string;
+  focusedPlan: PlanDocument;
+  ownerSessionKey?: string;
+}): PlanDocument {
+  if (!input.focusedPlan.parentPlan) return input.focusedPlan;
+
+  const project = resolveWorkflowProjectContext(input.cwd, input.ownerSessionKey);
+  const task = resolveTaskContext(project, input.taskName, input.ownerSessionKey);
+  const rootPath = requireInsideTask(task, "plan.json");
+  if (!fs.existsSync(rootPath)) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "The root plan.json required to reconcile this subplan's Codex Goal is missing.", {
+      taskName: input.taskName,
+      rootPath,
+    });
+  }
+  const rootPlan = normalizePlanDocument(readJsonFile<PlanDocument>(rootPath));
+  if (rootPlan.parentPlan) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "The root plan.json must not itself be a subplan.", {
+      taskName: input.taskName,
+      rootPath,
+      parentPlan: rootPlan.parentPlan,
+    });
+  }
+  if (!rootPlan.goal.text.trim()) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "The root plan.json must contain a non-empty goal before a subplan can reconcile Codex Goal state.", {
+      taskName: input.taskName,
+      rootPath,
+    });
+  }
+  return rootPlan;
+}
+
 async function resolveTemplateCreationScope(
   projectRoot: string | undefined,
   templateName: string | undefined,
@@ -194,6 +234,12 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
     ...(existingStatus ? { previousStatus: existingStatus } : {}),
   });
 
+  const goalPlan = resolveThreadGoalPlan({
+    cwd: input.cwd,
+    taskName,
+    focusedPlan: plan,
+    ownerSessionKey: input.ownerSessionKey,
+  });
   return {
     scope: project.scope ?? "project",
     taskName,
@@ -213,6 +259,8 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
       commandSource: input.parentTaskId !== undefined ? "subplan.create" : "plan.create",
       projectRoot: project.projectRoot,
       projectConfig: resolvePlanEffectiveConfig(project.projectConfig, plan),
+      goalPlan,
+      goalProjectConfig: resolvePlanEffectiveConfig(project.projectConfig, goalPlan),
       scope: project.scope,
       host: input.host,
     }),
@@ -489,6 +537,17 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
     });
 
     validatePlanDocument(next);
+    // A child can emit Codex Goal actions after this mutation. Resolve its
+    // root owner before committing so an invalid root never leaves a committed
+    // child mutation with no valid reconciliation path.
+    if (next.parentPlan && next.status === "process.active") {
+      resolveThreadGoalPlan({
+        cwd: input.cwd,
+        taskName: task.taskName,
+        focusedPlan: next,
+        ownerSessionKey: input.ownerSessionKey,
+      });
+    }
     if (task.project.scope !== "session" && next.status === "end.completed" && !next.retrospective?.summary?.trim()) {
       throw new ClawError(
         "RETROSPECTIVE_REQUIRED",
@@ -609,6 +668,14 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
     if (input.ownerSessionKey) {
       removeLegacyTaskMeta(task);
     }
+    const goalPlan = resolveThreadGoalPlan({
+      cwd: input.cwd,
+      taskName: task.taskName,
+      focusedPlan: resultPlan,
+      ownerSessionKey: input.ownerSessionKey,
+    });
+    const focusedProjectConfig = resolvePlanEffectiveConfig(task.project.projectConfig, resultPlan);
+    const goalProjectConfig = resolvePlanEffectiveConfig(task.project.projectConfig, goalPlan);
 
     return {
       taskName: task.taskName,
@@ -630,7 +697,9 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
               plan: resultPlan,
               commandSource,
               projectRoot: task.project.projectRoot,
-              projectConfig: resolvePlanEffectiveConfig(task.project.projectConfig, resultPlan),
+              projectConfig: focusedProjectConfig,
+              goalPlan,
+              goalProjectConfig,
               host: input.host,
             }),
             completedPlanFile: planFile,
@@ -643,7 +712,9 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
         plan: resultPlan,
         commandSource,
         projectRoot: task.project.projectRoot,
-        projectConfig: resolvePlanEffectiveConfig(task.project.projectConfig, resultPlan),
+        projectConfig: focusedProjectConfig,
+        goalPlan,
+        goalProjectConfig,
         scope: task.project.scope,
         host: input.host,
         ...(completionHooks?.subplanClosureCandidate
