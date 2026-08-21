@@ -36,6 +36,31 @@ function run(args) {
 const publish = process.argv.includes("--publish");
 const skipBuild = process.argv.includes("--skip-build");
 
+function runGit(args) {
+  return execFileSync("git", args, { cwd: repoRoot, encoding: "utf8", shell: process.platform === "win32" }).trim();
+}
+
+// Exact-source gate (mirrors publish-release.mjs): publishing must run from a
+// clean main whose HEAD exactly matches origin/main, so the npm release always
+// corresponds to committed, pushed source. Learned 2026-08-22: the first
+// 0.2.25.x publishes ran before this gate existed.
+if (publish) {
+  const branch = runGit(["branch", "--show-current"]);
+  if (branch !== "main") {
+    throw new Error(`DSH publish must run from the repository owner's main branch; current branch is ${branch || "detached HEAD"}.`);
+  }
+  runGit(["fetch", "origin", "--prune"]);
+  const localHead = runGit(["rev-parse", "HEAD"]);
+  const remoteMain = runGit(["rev-parse", "origin/main"]);
+  if (localHead !== remoteMain) {
+    throw new Error("main must exactly match origin/main before publishing. Commit and push all useful release content first, then rerun.");
+  }
+  const dirty = runGit(["status", "--porcelain"]);
+  if (dirty !== "") {
+    throw new Error(`DSH publish requires a clean worktree. Classify every local change first; do not use a stash to bypass this gate.\n${dirty}`);
+  }
+}
+
 if (!skipBuild) {
   run(["run", "build", "-w", "@veewo/dsh-adapter"]);
   run(["test", "-w", "@veewo/dsh-adapter"]);
