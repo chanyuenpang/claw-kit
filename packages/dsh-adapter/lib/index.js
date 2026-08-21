@@ -312,10 +312,21 @@ export function apply(ctx) {
             try {
                 const agentWithSession = exec.agent;
                 if (agentWithSession?.session && typeof agentWithSession.session.append === "function") {
+                    // Prefer the update_plan hostAction's full plan document (present on
+                    // every plan mutation, including task.done); fall back to the compact
+                    // output's tasks array (plan.show --simple carries {status,goal,tasks}).
+                    const planInput = projection?.input;
+                    const planTasks = Array.isArray(planInput?.plan)
+                        ? planInput.plan.map((step) => ({
+                            title: typeof step.step === "string" ? step.step : "",
+                            status: typeof step.status === "string" ? step.status : "",
+                        }))
+                        : undefined;
                     const output = response.output;
-                    const tasks = Array.isArray(output?.tasks)
+                    const outputTasks = Array.isArray(output?.tasks)
                         ? output.tasks
                         : output?.planView?.tasks;
+                    const tasks = planTasks && planTasks.length > 0 ? planTasks : outputTasks;
                     if (Array.isArray(tasks) && tasks.length > 0) {
                         const todos = tasks
                             .map((task) => {

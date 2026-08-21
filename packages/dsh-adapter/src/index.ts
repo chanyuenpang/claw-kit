@@ -345,12 +345,23 @@ export function apply(ctx: unknown): void {
           | { session?: { append(type: string, data: unknown): unknown } }
           | undefined;
         if (agentWithSession?.session && typeof agentWithSession.session.append === "function") {
+          // Prefer the update_plan hostAction's full plan document (present on
+          // every plan mutation, including task.done); fall back to the compact
+          // output's tasks array (plan.show --simple carries {status,goal,tasks}).
+          const planInput = projection?.input as Record<string, unknown> | undefined;
+          const planTasks = Array.isArray(planInput?.plan)
+            ? (planInput.plan as Array<Record<string, unknown>>).map((step) => ({
+                title: typeof step.step === "string" ? step.step : "",
+                status: typeof step.status === "string" ? step.status : "",
+              }))
+            : undefined;
           const output = response.output as Record<string, unknown> | undefined;
-          const tasks = Array.isArray(output?.tasks)
+          const outputTasks = Array.isArray(output?.tasks)
             ? output.tasks as Array<Record<string, unknown>>
             : (output?.planView as Record<string, unknown> | undefined)?.tasks as
                 | Array<Record<string, unknown>>
                 | undefined;
+          const tasks = planTasks && planTasks.length > 0 ? planTasks : outputTasks;
           if (Array.isArray(tasks) && tasks.length > 0) {
             const todos = tasks
               .map((task) => {
