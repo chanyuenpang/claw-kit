@@ -213,7 +213,9 @@ export function apply(ctx: unknown): void {
   // Session-start: auto-claw equivalent — recover a bound plan and inject its
   // compact guidance snapshot. Fail-open.
   c.on("agent/session-start", (payload: unknown) => {
-    const agent = (payload as { agent?: { id?: string; session?: { cwd?: string; meta?: { cwd?: string } } } })?.agent;
+    const agent = (payload as {
+      agent?: { id?: string; session?: { cwd?: string; meta?: { cwd?: string }; header?: { cwd?: string } } };
+    })?.agent;
     if (!agent?.id) return;
     void (async () => {
       try {

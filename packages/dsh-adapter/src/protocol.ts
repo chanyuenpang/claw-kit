@@ -80,24 +80,78 @@ export function daemonInput(operation: string, args: Record<string, unknown>): u
   }
 }
 
-/** Render the compact `claw context --host dsh` snapshot injected at session
- * start. Empty text contributes nothing to the assembly. */
+/** Render the session-start guidance snapshot injected at session start.
+ * Aligns with the Codex adapter's session-start hook: consumes the full
+ * `claw context --host dsh` payload — activeWorkflow snapshot, version-sync
+ * notice, protocol check, search guidance, and a project fallback — so the
+ * model gets the same recovery and startup context on DSH that Codex
+ * receives. Empty text contributes nothing to the assembly. */
 export function renderGuidanceSnapshot(context: Record<string, unknown> | undefined): string {
   if (!context || typeof context !== "object") return "";
+  const lines: string[] = [];
+
+  // Version sync notice (startupRecovery.versionSync), same contract as Codex.
+  const startupRecovery = context.startupRecovery as Record<string, unknown> | undefined;
+  const versionSync = startupRecovery?.versionSync as Record<string, unknown> | undefined;
+  if (versionSync && typeof versionSync === "object") {
+    const cliVersion = typeof versionSync.cliVersion === "string" ? versionSync.cliVersion : "";
+    const latest = typeof versionSync.latestPublishedVersion === "string"
+      ? versionSync.latestPublishedVersion
+      : "";
+    const message = typeof versionSync.message === "string" ? versionSync.message : "";
+    if (versionSync.cliVersionLagging === true && versionSync.updateAvailable === true && cliVersion && latest) {
+      lines.push(
+        `A newer claw-kit version is available: installed CLI ${cliVersion}, published latest ${latest}. ` +
+        "Tell the user their installed claw-kit is out of date and must be updated before continuing; " +
+        "ask whether to update now and wait for the answer. After confirmation, use the update skill, " +
+        "then continue the original task.",
+      );
+    } else if (message) {
+      lines.push(`Startup note: ${message}`);
+    }
+  }
+
   const activeWorkflow = context.activeWorkflow as Record<string, unknown> | undefined;
   const guidance = activeWorkflow?.workflowGuidance as Record<string, unknown> | undefined;
-  if (!activeWorkflow || !guidance) return "";
-  const lines: string[] = ["[claw workflow]"];
-  if (typeof activeWorkflow.planSummary === "string") lines.push(`Plan: ${activeWorkflow.planSummary}`);
-  if (typeof activeWorkflow.planStatus === "string") lines.push(`Status: ${activeWorkflow.planStatus}`);
-  if (typeof guidance.stage === "string") lines.push(`Stage: ${guidance.stage}`);
-  if (guidance.nextTask && typeof guidance.nextTask === "object") {
-    const task = guidance.nextTask as Record<string, unknown>;
-    if (typeof task.title === "string") lines.push(`Current task: ${task.title}`);
+  if (activeWorkflow && guidance) {
+    const snapshot: string[] = ["[claw workflow]"];
+    if (typeof activeWorkflow.planSummary === "string") snapshot.push(`Plan: ${activeWorkflow.planSummary}`);
+    if (typeof activeWorkflow.planStatus === "string") snapshot.push(`Status: ${activeWorkflow.planStatus}`);
+    if (typeof guidance.stage === "string") snapshot.push(`Stage: ${guidance.stage}`);
+    if (guidance.nextTask && typeof guidance.nextTask === "object") {
+      const task = guidance.nextTask as Record<string, unknown>;
+      if (typeof task.title === "string") snapshot.push(`Current task: ${task.title}`);
+    }
+    if (Array.isArray(guidance.nextsteps)) {
+      snapshot.push("Next steps:");
+      for (const step of guidance.nextsteps) snapshot.push(`- ${String(step)}`);
+    }
+    lines.push(snapshot.join("\n"));
+    lines.push("Claw workflow snapshot is recovered. Treat the guidance as the only next-step contract.");
+  } else {
+    // No bound workflow: project fallback, mirroring the Codex hook.
+    const project = context.project as Record<string, unknown> | undefined;
+    if (project && typeof project === "object") {
+      const projectName = typeof project.projectName === "string" && project.projectName.trim()
+        ? project.projectName.trim()
+        : typeof project.projectId === "string" && project.projectId.trim()
+          ? project.projectId.trim()
+          : "project";
+      lines.push(
+        `This session started inside claw project ${projectName}. Use the claw_run tool for plan, task, subplan, and search operations.`,
+      );
+    }
   }
-  if (Array.isArray(guidance.nextsteps)) {
-    lines.push("Next steps:");
-    for (const step of guidance.nextsteps) lines.push(`- ${String(step)}`);
+
+  const searchGuidance = context.searchGuidance;
+  if (typeof searchGuidance === "string" && searchGuidance.trim()) {
+    lines.push(searchGuidance.trim());
   }
-  return lines.join("\n");
+
+  const protocolCheck = context.protocolCheck as Record<string, unknown> | undefined;
+  if (protocolCheck && protocolCheck.ok !== true) {
+    lines.push("Claw project protocol needs attention; run `claw check` to inspect and auto-correct.");
+  }
+
+  return lines.join("\n\n");
 }

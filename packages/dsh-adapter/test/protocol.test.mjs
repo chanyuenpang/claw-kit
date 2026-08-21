@@ -99,3 +99,38 @@ test("renderGuidanceSnapshot returns empty for absent workflow or guidance", () 
   assert.equal(renderGuidanceSnapshot({}), "");
   assert.equal(renderGuidanceSnapshot({ activeWorkflow: { planStatus: "process.wait" } }), "");
 });
+
+test("renderGuidanceSnapshot emits version-sync notice when CLI lags", () => {
+  const text = renderGuidanceSnapshot({
+    startupRecovery: {
+      versionSync: {
+        cliVersion: "0.2.24",
+        latestPublishedVersion: "0.2.25",
+        cliVersionLagging: true,
+        updateAvailable: true,
+        updateSkill: "claw-kit:update",
+      },
+    },
+    project: { projectName: "claw-kit" },
+  });
+  assert.match(text, /newer claw-kit version is available/);
+  assert.match(text, /installed CLI 0\.2\.24, published latest 0\.2\.25/);
+  assert.match(text, /claw project claw-kit/);
+});
+
+test("renderGuidanceSnapshot falls back to project context without a workflow", () => {
+  const text = renderGuidanceSnapshot({
+    project: { projectId: "p-123", projectName: "Sample" },
+    searchGuidance: "Use claw search before rg.",
+  });
+  assert.match(text, /claw project Sample/);
+  assert.match(text, /Use claw search before rg/);
+});
+
+test("renderGuidanceSnapshot flags protocol check failures", () => {
+  const text = renderGuidanceSnapshot({
+    project: { projectName: "P" },
+    protocolCheck: { ok: false },
+  });
+  assert.match(text, /protocol needs attention/);
+});
