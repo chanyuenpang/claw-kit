@@ -11,6 +11,7 @@ const templateRoots = [
   path.join("packages", "opencode-adapter", "skills"),
 ];
 const defaultTemplateSource = path.join("packages", "core", "src", "templates", "plans", "default.ts");
+const knowledgeCaptureRuntimeSpec = path.join("packages", "codex-adapter", "skills", "knowledge-capture", "runtime.json");
 
 export async function collectReleaseTemplatePaths(repoRoot = defaultRepoRoot) {
   const matches = [];
@@ -44,6 +45,11 @@ export async function inspectTemplateVersions({ repoRoot = defaultRepoRoot, expe
       actualVersion: defaultVersion,
       expectedVersion: releaseVersion,
     });
+  }
+
+  const runtime = JSON.parse(await fs.readFile(path.join(repoRoot, knowledgeCaptureRuntimeSpec), "utf8"));
+  if (runtime.version !== releaseVersion) {
+    issues.push({ path: knowledgeCaptureRuntimeSpec, actualVersion: typeof runtime.version === "string" ? runtime.version : null, expectedVersion: releaseVersion });
   }
 
   return { version: releaseVersion, templateCount: templatePaths.length, issues };
@@ -86,6 +92,14 @@ export async function updateTemplateVersions({ repoRoot = defaultRepoRoot, expec
     );
     await fs.writeFile(defaultPath, `${before}${templateSection}`, "utf8");
     updated.push(defaultTemplateSource);
+  }
+
+  const runtimePath = path.join(repoRoot, knowledgeCaptureRuntimeSpec);
+  const runtime = JSON.parse(await fs.readFile(runtimePath, "utf8"));
+  if (runtime.version !== releaseVersion) {
+    runtime.version = releaseVersion;
+    await fs.writeFile(runtimePath, `${JSON.stringify(runtime, null, 2)}\n`, "utf8");
+    updated.push(knowledgeCaptureRuntimeSpec);
   }
 
   return { version: releaseVersion, templateCount: templatePaths.length, updated };

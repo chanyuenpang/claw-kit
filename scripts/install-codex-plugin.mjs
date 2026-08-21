@@ -24,7 +24,8 @@ const result = await installCodexPluginBundle({
 });
 const identity = await activateOfficialCodexPluginIdentity({
   configPath: configPathOption ? path.resolve(process.cwd(), configPathOption) : undefined,
+  localCacheRoot: path.dirname(result.cacheRoot),
 });
 
 console.log(`Installed GitHub marketplace plugin cache at ${result.installDir}`);
-console.log(`Enabled ${identity.enabledIdentity} and disabled ${identity.disabledIdentities.join(" and ")}.`);
+console.log(`Enabled ${identity.enabledIdentity} and removed local identities: ${identity.removedIdentities.join(", ")}.`);

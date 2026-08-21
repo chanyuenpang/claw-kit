@@ -228,16 +228,42 @@ function setPluginEnabled(configText, identity, enabled) {
   return configText.replace(sectionPattern, `${match[1]}${nextBody}`);
 }
 
-export async function activateOfficialCodexPluginIdentity({ configPath = defaultCodexConfigPath } = {}) {
+function removeTomlSection(configText, sectionName) {
+  const escapedSectionName = sectionName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const sectionPattern = new RegExp(
+    `^\\[${escapedSectionName}\\][\\t ]*(?:\\r?\\n|$)[\\s\\S]*?(?=^\\[|(?![\\s\\S]))`,
+    "m",
+  );
+  return configText.replace(sectionPattern, "").replace(/\\r?\\n{3,}/gu, "\n\n").trimEnd() + "\n";
+}
+
+const localPluginIdentities = [
+  "claw-kit@claw-kit-local",
+  "claw-kit-local@personal",
+  "claw-kit@claw-kit-hookfix-local",
+];
+const localMarketplaceNames = ["claw-kit-hookfix-local"];
+const localCacheNames = ["claw-kit-hookfix-local", "claw-kit-local"];
+
+export async function activateOfficialCodexPluginIdentity({ configPath = defaultCodexConfigPath, localCacheRoot } = {}) {
   let configText = await fs.readFile(configPath, "utf8");
   if (!/^\[marketplaces\.claw-kit\]$/m.test(configText)) {
     throw new Error("The official claw-kit Git marketplace is not registered in Codex. Add chanyuenpang/claw-kit before installing the plugin.");
   }
   configText = setPluginEnabled(configText, "claw-kit@claw-kit", true);
-  const disabledIdentities = ["claw-kit@claw-kit-local", "claw-kit-local@personal"];
-  for (const identity of disabledIdentities) {
-    configText = setPluginEnabled(configText, identity, false);
+  for (const identity of localPluginIdentities) {
+    configText = removeTomlSection(configText, `plugins."${identity}"`);
+    configText = removeTomlSection(configText, `hooks.state."${identity}:hooks/hooks.json:session_start:0:0"`);
+    configText = removeTomlSection(configText, `hooks.state."${identity}:hooks/hooks.json:stop:0:0"`);
+  }
+  for (const marketplaceName of localMarketplaceNames) {
+    configText = removeTomlSection(configText, `marketplaces.${marketplaceName}`);
   }
   await fs.writeFile(configPath, configText, "utf8");
-  return { configPath, enabledIdentity: "claw-kit@claw-kit", disabledIdentities };
+  if (localCacheRoot) {
+    for (const cacheName of localCacheNames) {
+      await fs.rm(path.join(localCacheRoot, cacheName), { recursive: true, force: true });
+    }
+  }
+  return { configPath, enabledIdentity: "claw-kit@claw-kit", removedIdentities: localPluginIdentities };
 }

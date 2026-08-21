@@ -10,4 +10,8 @@
 - The immutable committed Git ref is the plugin artifact; do not attach a ZIP and
   do not publish npm packages.
 - Refresh the maintainer installation only when separately requested, after the
-  GitHub source is verified.
+  GitHub source is verified. That refresh must remove every local claw-kit
+  marketplace registration, plugin identity, hook configuration, and cache
+  tree; then update from the published GitHub source, enable only
+  `claw-kit@claw-kit`, and verify the official source/cache manifests. Do not
+  retain or enable a local claw-kit identity for normal Codex use.

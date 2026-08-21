@@ -6,7 +6,7 @@
 
 ## Decision
 
-提供一个仅由用户明确请求启动的 Codex `knowledge-capture` skill。该 skill 由发起它的同一 Agent 使用 `claw knowledge prepare --source agent-memory` 读取当前有效配置，按返回 assignment 执行治理，并用配置 fingerprint 调用 `claw knowledge complete`。该路径不得创建或消费 plan、task、subplan、report、knowledge job、background worker、thread 或 collaboration subagent，也不得从 transcript、旧 report 或重新调查中补造证据。
+提供一个仅由用户明确请求启动的 Codex `knowledge-capture` skill。该 skill 由发起它的同一 Agent 使用 adapter-local runner 执行 `knowledge prepare --source agent-memory`，按返回 assignment 执行治理，并用同一次 prepare 的 runtime binding 与配置 fingerprint 执行 `knowledge complete`。runner 以插件内 `runtime.json` 作为精确 CLI 合同：只有全局 `claw` 的版本和能力都匹配时才复用它，否则仅为当次调用使用固定 npm runtime；它不更新用户安装，也不向旧 CLI 回退。该路径不得创建或消费 plan、task、subplan、report、knowledge job、background worker、thread 或 collaboration subagent，也不得从 transcript、旧 report 或重新调查中补造证据。
 
 自动 finalization 与其内部 `delegate-writer` / `knowledge-writer` 资源继续保持不可发现；手动 skill 只提供受限的用户入口，不成为自动触发或替代自动 closeout 的第二个 lifecycle owner。
 
@@ -15,16 +15,20 @@
 - 让 Agent 在任务完成时自动建议或调用手动 capture：拒绝，因为会以推断替代用户授权，并与自动 closeout 的 ownership 重叠。
 - 复用 plan/report/job/subagent finalizer：拒绝，因为手动路径只需要治理已在当前 Agent memory 中存在的结论，额外 lifecycle 产物会扩大状态和递归风险。
 - 公开内部 writer skill：拒绝，因为 writer 的 assignment、token 与 finalization 编排仍由 Core 内部资源拥有。
+- 直接调用 PATH 上的全局 `claw`：拒绝，因为插件与 CLI 可独立发布；版本字符串或安装存在都不能证明旧 CLI 具有 prepare / complete capability。
 
 ## Consequences
 
 - 手动沉淀有清晰的授权与证据边界；上下文压缩导致证据不足时必须无编辑退出。
 - CLI 在 complete 时检测配置漂移，并只治理 prepare 所声明的 canonical 路径；已有编辑保持可见，调用方可在重新 prepare 后决定是否重试。
+- runner 的 runtime binding 与 CLI 的 config fingerprint 分别保护执行合同和项目治理配置；任一漂移都会显式停止 complete，不产生跨版本完成。
 - 公开插件 surface、CLI contract 和 focused tests 必须共同维持“显式、同 Agent、无 job/report/subagent”的约束。
 
 ## Related code
 
 - `packages/codex-adapter/skills/knowledge-capture/SKILL.md`
+- `packages/codex-adapter/skills/knowledge-capture/runtime.json`
+- `packages/codex-adapter/skills/knowledge-capture/scripts/run-knowledge-capture.mjs`
 - `packages/cli/src/cli.ts`
 - `packages/core/src/knowledge-assignments.ts`
 - `packages/cli/test/cli-surface.test.ts`
@@ -39,3 +43,5 @@
 - `knowledge complete`
 - `agent-memory`
 - `configFingerprint`
+- `captureRuntime.binding`
+- `KNOWLEDGE_CAPTURE_RUNTIME_CHANGED`

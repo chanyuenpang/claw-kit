@@ -17,12 +17,12 @@ This is an explicit, same-agent manual knowledge-capture flow. It is not a claw 
 
 ## Manual flow
 
-1. Run `claw knowledge prepare --source agent-memory --project-root "<project-root>"`.
+1. Resolve `<skill-dir>` as the directory containing this `SKILL.md`, then run `node "<skill-dir>/scripts/run-knowledge-capture.mjs" prepare --source agent-memory --project-root "<project-root>"`. Save the returned `captureRuntime.binding` in memory with the prepare result. The runner uses only the bundled exact CLI version; it may use a matching global CLI or a temporary pinned npm runtime, but never upgrades the user's installation or falls back to an incompatible `claw`.
 2. Treat the returned `assignments`, resource paths, assignment order, and `configFingerprint` as the only current configuration authority. Do not read `.claw/project.json` directly or use `claw context` as a substitute.
 3. Before writing, ensure every returned external skill is available and can run in the current agent without delegation. If any requires a subagent, thread, background worker, or confirmation, stop before all writes and report the incompatible assignment.
 4. Read every returned built-in contract and format resource in full. Follow its evidence, freshness, Truth-before-ADR, ownership, formatting, and consistency rules. For external assignments, follow the returned prompt in order. Do not copy or replace the project's configured assignment route.
 5. Keep an in-memory list of canonical Markdown files actually changed under the returned `truthDir`. Do not write a report or a separate memory note.
-6. Run `claw knowledge complete --source agent-memory --project-root "<project-root>" --config-fingerprint "<fingerprint>" --changed-truth "<absolute-truth-path>"` once for each changed Truth/ADR Markdown path. If none changed, do not run complete; report the evidence-backed no-edit outcome.
+6. Run `node "<skill-dir>/scripts/run-knowledge-capture.mjs" complete --source agent-memory --project-root "<project-root>" --runtime-binding "<binding>" --config-fingerprint "<fingerprint>" --changed-truth "<absolute-truth-path>"` once for each changed Truth/ADR Markdown path. If none changed, do not run complete; report the evidence-backed no-edit outcome.
 7. If complete reports configuration drift, governance failure, or refresh failure, leave existing edits visible, do not claim success, and ask the user whether to retry after a new prepare.
 
 ## Completion

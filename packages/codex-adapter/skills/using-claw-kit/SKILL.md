@@ -57,6 +57,7 @@ async function runClawPlanMutation({ argv, workdir, timeout_ms = 30000 }) {
 ```
 
 ## Knowledge subagent dispatch
+- **Terminal dispatch gate (subagent policy only):** A valid `knowledgeDispatch` is the highest-priority closeout obligation in the claw-kit workflow. Complete this handoff through the designated knowledge finalizer before the final reply, other work, or plan closeout. Do not skip the handoff because it was easy to miss, the work appears to contain no knowledge, a collaboration tool is not visible, or you believe you lack permission. The finalizer decides whether the job produces a knowledge update.
 - When a terminal plan mutation returns a valid `knowledgeDispatch` for `subagent`, honor `preferReuse: true`: call `list_agents`, then reuse only the same-thread worker named `knowledge_finalizer` with `followup_task` and the complete unchanged prompt. Only when that worker does not exist, call `spawn_agent` with that prompt, `fork_turns: "none"`, task name `knowledge_finalizer`, and any supplied `model` and `reasoningEffort` mapped to native fields; never load a user-facing delegate skill.
 - The dispatched job already exists. Do not wait for the reused or new writer; immediately end the main turn after the accepted handoff. In `subagent` mode, `knowledge claim` collects the existing parent-turn report and Stop does not capture, queue, launch, or amend that job. The bridge cannot call collaboration tools, and `background` never returns this dispatch.
 ## Hard boundaries

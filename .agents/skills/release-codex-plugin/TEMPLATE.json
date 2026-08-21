@@ -44,7 +44,7 @@
     {
       "id": 5,
       "title": "Verify the immutable Codex release",
-      "detail": "Verify tag, release, committed marketplace paths and manifests, repository cleanliness, and any separately authorized update from published GitHub source.",
+      "detail": "Verify tag, release, committed marketplace paths and manifests, and repository cleanliness. If a maintainer installation refresh is separately authorized, first remove every local claw-kit marketplace registration, plugin identity, hook configuration, and cache tree; then refresh only from the published GitHub source, enable claw-kit@claw-kit, and verify its source/cache manifests. Never leave or enable a local claw-kit identity as the normal runtime.",
       "status": "pending"
     }
   ],

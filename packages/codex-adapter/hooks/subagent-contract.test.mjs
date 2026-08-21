@@ -110,6 +110,10 @@ test("main-agent Codex surfaces expose only the internal subagent dispatch contr
     assert.doesNotMatch(surface, forbidden);
   }
   assert.match(mainRouter, /knowledgeDispatch/);
+  assert.match(mainRouter, /Terminal dispatch gate \(subagent policy only\)/);
+  assert.match(mainRouter, /highest-priority closeout obligation/);
+  assert.match(mainRouter, /Complete this handoff through the designated knowledge finalizer/);
+  assert.match(mainRouter, /Do not skip the handoff because it was easy to miss/);
   assert.match(mainRouter, /honor `preferReuse: true`: call `list_agents`/);
   assert.match(mainRouter, /reuse only the same-thread worker named `knowledge_finalizer` with `followup_task`/);
   assert.match(mainRouter, /task name `knowledge_finalizer`/);

@@ -146,8 +146,12 @@ test("Codex plugin exposes an explicit same-agent knowledge-capture skill", asyn
   assert.match(skill, /name: knowledge-capture/);
   assert.match(skill, /user explicitly asks/i);
   assert.match(skill, /Never invoke automatically/i);
-  assert.match(skill, /claw knowledge prepare --source agent-memory/i);
-  assert.match(skill, /claw knowledge complete --source agent-memory/i);
+  assert.match(skill, /run-knowledge-capture\.mjs" prepare --source agent-memory/i);
+  assert.match(skill, /run-knowledge-capture\.mjs" complete --source agent-memory/i);
+  assert.doesNotMatch(skill, /`claw knowledge (prepare|complete)/i);
+  const runtime = JSON.parse(await fs.readFile(new URL("skills/knowledge-capture/runtime.json", adapterRoot), "utf8"));
+  assert.deepEqual(runtime, { schemaVersion: 1, package: "@veewo/claw", version: "0.2.24" });
+  await fs.access(new URL("skills/knowledge-capture/scripts/run-knowledge-capture.mjs", adapterRoot));
   assert.match(skill, /Do not create a plan, report, subplan.*subagent/i);
   assert.doesNotMatch(skill, /spawn_agent|create_thread|knowledgeDispatch/);
 });
@@ -458,9 +462,12 @@ test("Codex cache activation is atomic and preserves the previous version on fai
   assert.deepEqual(leftovers, []);
 });
 
-test("official installer enables the GitHub identity and disables the local identity", async () => {
+test("official installer removes local identities, hooks, marketplaces, and caches", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "claw-kit-codex-identity-"));
   const configPath = path.join(root, "config.toml");
+  const cacheRoot = path.join(root, "plugins", "cache");
+  await fs.mkdir(path.join(cacheRoot, "claw-kit-hookfix-local"), { recursive: true });
+  await fs.mkdir(path.join(cacheRoot, "claw-kit-local"), { recursive: true });
   await fs.writeFile(configPath, [
     "[marketplaces.claw-kit]",
     'source_type = "git"',
@@ -475,16 +482,28 @@ test("official installer enables the GitHub identity and disables the local iden
     '[plugins."claw-kit-local@personal"]',
     "enabled = true",
     "",
+    "[marketplaces.claw-kit-hookfix-local]",
+    'source_type = "local"',
+    'source = "C:\\\\temp\\\\claw-kit-hookfix-local"',
+    "",
+    '[plugins."claw-kit@claw-kit-hookfix-local"]',
+    "enabled = true",
+    "",
+    '[hooks.state."claw-kit@claw-kit-hookfix-local:hooks/hooks.json:session_start:0:0"]',
+    'trusted_hash = "sha256:test"',
+    "enabled = true",
+    "",
   ].join("\n"));
 
-  const result = await activateOfficialCodexPluginIdentity({ configPath });
+  const result = await activateOfficialCodexPluginIdentity({ configPath, localCacheRoot: cacheRoot });
   const config = await fs.readFile(configPath, "utf8");
 
   assert.equal(result.enabledIdentity, "claw-kit@claw-kit");
-  assert.deepEqual(result.disabledIdentities, ["claw-kit@claw-kit-local", "claw-kit-local@personal"]);
+  assert.deepEqual(result.removedIdentities, ["claw-kit@claw-kit-local", "claw-kit-local@personal", "claw-kit@claw-kit-hookfix-local"]);
   assert.match(config, /\[plugins\."claw-kit@claw-kit"\]\nenabled = true/);
-  assert.match(config, /\[plugins\."claw-kit@claw-kit-local"\]\nenabled = false/);
-  assert.match(config, /\[plugins\."claw-kit-local@personal"\]\nenabled = false/);
+  assert.doesNotMatch(config, /claw-kit-local|claw-kit-hookfix-local/);
+  await assert.rejects(fs.access(path.join(cacheRoot, "claw-kit-hookfix-local")));
+  await assert.rejects(fs.access(path.join(cacheRoot, "claw-kit-local")));
 });
 
 test("official installer updates plugin identity sections idempotently", async () => {
@@ -511,8 +530,7 @@ test("official installer updates plugin identity sections idempotently", async (
   const config = await fs.readFile(configPath, "utf8");
 
   assert.equal((config.match(/\[plugins\."claw-kit@claw-kit"\]/g) ?? []).length, 1);
-  assert.equal((config.match(/\[plugins\."claw-kit@claw-kit-local"\]/g) ?? []).length, 1);
-  assert.equal((config.match(/\[plugins\."claw-kit-local@personal"\]/g) ?? []).length, 1);
+  assert.equal((config.match(/claw-kit-local/g) ?? []).length, 0);
   assert.equal((config.match(/^enabled = true$/gm) ?? []).length, 2);
-  assert.equal((config.match(/^enabled = false$/gm) ?? []).length, 2);
+  assert.equal((config.match(/^enabled = false$/gm) ?? []).length, 0);
 });
