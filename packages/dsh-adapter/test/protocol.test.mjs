@@ -134,3 +134,23 @@ test("renderGuidanceSnapshot flags protocol check failures", () => {
   });
   assert.match(text, /protocol needs attention/);
 });
+
+test("renderGuidanceSnapshot normalizes flat claw/execute output", () => {
+  // plan.start / task.done daemon output carries workflow fields at the top
+  // level; the renderer must treat it like an activeWorkflow snapshot so the
+  // injected [claw workflow] context stays current after every mutation.
+  const text = renderGuidanceSnapshot({
+    planSummary: "3/5 In progress",
+    planStatus: "process.active",
+    workflowGuidance: {
+      stage: "execution",
+      nextTask: { id: 4, title: "Verify Codex", status: "pending" },
+      nextsteps: ["Continue with task #4."],
+    },
+  });
+  assert.match(text, /Plan: 3\/5 In progress/);
+  assert.match(text, /Status: process\.active/);
+  assert.match(text, /Stage: execution/);
+  assert.match(text, /Current task: Verify Codex/);
+  assert.match(text, /Continue with task #4/);
+});

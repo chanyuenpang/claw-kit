@@ -111,7 +111,26 @@ export function renderGuidanceSnapshot(context: Record<string, unknown> | undefi
     }
   }
 
-  const activeWorkflow = context.activeWorkflow as Record<string, unknown> | undefined;
+  const activeWorkflow = (context.activeWorkflow as Record<string, unknown> | undefined)
+    // Flat claw/execute output (e.g. plan.start / task.done) carries the
+    // workflow fields at the top level; normalize it to the context shape so
+    // the same renderer serves both session-start and per-mutation refreshes.
+    ?? (context.workflowGuidance && typeof context.workflowGuidance === "object"
+      ? (() => {
+          const planView = context.planView && typeof context.planView === "object"
+            ? context.planView as Record<string, unknown>
+            : undefined;
+          return {
+            planSummary: typeof context.planSummary === "string"
+              ? context.planSummary
+              : typeof planView?.collapsedSummary === "string"
+                ? planView.collapsedSummary
+                : undefined,
+            planStatus: context.planStatus,
+            workflowGuidance: context.workflowGuidance,
+          };
+        })()
+      : undefined);
   const guidance = activeWorkflow?.workflowGuidance as Record<string, unknown> | undefined;
   if (activeWorkflow && guidance) {
     const snapshot: string[] = ["[claw workflow]"];

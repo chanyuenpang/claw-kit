@@ -326,6 +326,53 @@ export function apply(ctx: unknown): void {
       const visible = compactClawOutput(response.output);
       if (consumed.length) visible.goalSync = consumed as unknown as JsonValue;
       if (projection !== undefined) visible.projection = projection.input as unknown as JsonValue;
+      // Keep the injected [claw workflow] context current: every claw_run
+      // returns the latest plan snapshot, so refresh lastGuidance instead of
+      // leaving the session-start snapshot stale (progress otherwise freezes
+      // at the first plan state seen this session). Fail-open.
+      try {
+        const rendered = renderGuidanceSnapshot(response.output as Record<string, unknown> | undefined);
+        if (rendered) lastGuidance = rendered;
+      } catch {
+        // fail-open
+      }
+      // Drive the DSH-native todo dock (conversation.input.dock id=todo) from
+      // the claw plan: map plan tasks to todo/write items so the UI shows the
+      // plan's step progress bar. Whole-list replace, last-write-wins — the
+      // same seam the model-facing todo_write tool uses. Fail-open.
+      try {
+        const agentWithSession = exec.agent as
+          | { session?: { append(type: string, data: unknown): unknown } }
+          | undefined;
+        if (agentWithSession?.session && typeof agentWithSession.session.append === "function") {
+          const output = response.output as Record<string, unknown> | undefined;
+          const tasks = Array.isArray(output?.tasks)
+            ? output.tasks as Array<Record<string, unknown>>
+            : (output?.planView as Record<string, unknown> | undefined)?.tasks as
+                | Array<Record<string, unknown>>
+                | undefined;
+          if (Array.isArray(tasks) && tasks.length > 0) {
+            const todos = tasks
+              .map((task) => {
+                const title = typeof task.title === "string" ? task.title.trim() : "";
+                const status = typeof task.status === "string" ? task.status : "";
+                if (!title) return null;
+                const todoStatus = status === "done" || status === "completed"
+                  ? "completed"
+                  : status === "in_progress" || status === "active"
+                    ? "in_progress"
+                    : "pending";
+                return { content: title, status: todoStatus };
+              })
+              .filter((entry): entry is { content: string; status: "pending" | "in_progress" | "completed" } => entry !== null);
+            if (todos.length > 0) {
+              agentWithSession.session.append("todo/write", { todos });
+            }
+          }
+        }
+      } catch {
+        // fail-open: todo sync must never break a settled mutation
+      }
       // Knowledge closeout: the daemon returns a knowledgeDispatch on the
       // response envelope for a terminal plan transition. DSH has a native
       // subagent, so BOTH `subagent` and `background` policies run through one

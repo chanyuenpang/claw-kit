@@ -111,7 +111,26 @@ export function renderGuidanceSnapshot(context) {
             lines.push(`Startup note: ${message}`);
         }
     }
-    const activeWorkflow = context.activeWorkflow;
+    const activeWorkflow = context.activeWorkflow
+        // Flat claw/execute output (e.g. plan.start / task.done) carries the
+        // workflow fields at the top level; normalize it to the context shape so
+        // the same renderer serves both session-start and per-mutation refreshes.
+        ?? (context.workflowGuidance && typeof context.workflowGuidance === "object"
+            ? (() => {
+                const planView = context.planView && typeof context.planView === "object"
+                    ? context.planView
+                    : undefined;
+                return {
+                    planSummary: typeof context.planSummary === "string"
+                        ? context.planSummary
+                        : typeof planView?.collapsedSummary === "string"
+                            ? planView.collapsedSummary
+                            : undefined,
+                    planStatus: context.planStatus,
+                    workflowGuidance: context.workflowGuidance,
+                };
+            })()
+            : undefined);
     const guidance = activeWorkflow?.workflowGuidance;
     if (activeWorkflow && guidance) {
         const snapshot = ["[claw workflow]"];
