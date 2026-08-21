@@ -14,6 +14,7 @@ const LOCK_TIMEOUT_MS = 10_000;
 function defaultSkillAdapterDirs(repoRoot) {
   return [
     path.join(repoRoot, "packages", "codex-adapter"),
+    path.join(repoRoot, "packages", "dsh-adapter"),
     path.join(repoRoot, "packages", "opencode-adapter"),
   ];
 }

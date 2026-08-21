@@ -158,6 +158,39 @@ Restart OpenCode after installing so the new plugin, skills, and agents are pick
 
 Use `install:opencode-plugin` when you want this machine to start using the adapter immediately. Use `export:opencode-plugin` when you want a clean versioned bundle that can be attached to a release, copied to another machine, or used by another installer.
 
+## Install the Cindy plugin
+
+The Cindy adapter is distributed from its own Git marketplace repository. In
+Cindy, add `https://github.com/chanyuenpang/claw-kit-cindy-adapter.git` as a
+marketplace, install the `claw-kit-cindy` entry, review permissions, and enable
+it. The `claw` CLI remains a separate installation. For the full install and
+update sequence, see
+[packages/cindy-adapter/README.md](packages/cindy-adapter/README.md).
+
+## Install the DSH adapter
+
+The DSH adapter is an npm package installed into a DSH profile. From a
+published registry:
+
+```powershell
+dsh plugin --profile web add @claw-kit/dsh-adapter@latest
+```
+
+Restart the Host (`dsh --profile web`) to mount the `claw-adapter` row; then
+confirm the `claw_run` tool and the bundled skills appear. The installed `claw`
+CLI must support `--host dsh`. Maintainers working inside this repository have
+two commands:
+
+```powershell
+npm run export:dsh-plugin     # build + pack the installable tarball into dist/dsh-plugin/
+npm run install:dsh-plugin    # dsh plugin --profile web add <tarball> (--profile to override)
+```
+
+The adapter consumes CLI hostActions automatically (progress projection +
+native goal sync) and auto-dispatches knowledge finalization through a native
+DSH subagent; the model only drives the single `claw_run` tool. See
+[packages/dsh-adapter/README.md](packages/dsh-adapter/README.md) for details.
+
 ## Package map
 
 - `@veewo/claw`
@@ -169,6 +202,10 @@ Use `install:opencode-plugin` when you want this machine to start using the adap
   - shared workflow primitives for project config, planning, search, truth ingestion, and retention
 - `@claw-kit/codex-adapter`
   - Codex-facing adapter assets, hooks, skills, and references for landing the workflow in Codex
+- `@claw-kit/dsh-adapter`
+  - DSH-facing Cordis plugin exposing the `claw_run` tool, automatic hostActions
+    consumption (progress + native goal sync), auto-dispatched knowledge
+    finalization, and seven bundled skills
 - `@claw-kit/openclaw-adapter`
   - OpenClaw-facing adapter layer built on the same core workflow model
 - `@claw-kit/opencode-adapter`

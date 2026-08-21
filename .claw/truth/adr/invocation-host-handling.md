@@ -14,9 +14,9 @@ Codex 与 OpenCode 都需要把宿主语义传入 CLI，但把 `CLAW_HOST` 当�
 
 ## Decision
 
-- `--host` 与 `CLAW_HOST` 仅是单次 invocation 输入，并且只接受 `codex` 或 `opencode`。无效值或两个来源冲突必须以 `PROJECT_CONFIG_INVALID` 在任何项目写入前失败。
+- `--host` 与 `CLAW_HOST` 仅是单次 invocation 输入，并且只接受 `SUPPORTED_CLAW_HOSTS`（当前为 `codex`、`opencode`、`cindy`、`dsh`）。无效值或两个来源冲突必须以 `PROJECT_CONFIG_INVALID` 在任何项目写入前失败。
 - CLI 入口通过 `resolveInvocationHost()` 一次性解析不可变的 `effectiveHost`，并将它显式传给命令、guidance、hook 和结果投影；后续路径不得重新读取或修改 `process.env.CLAW_HOST` 来改变本次路由。
-- 只有 `effectiveHost === "codex"` 时构建和输出 `hostActions`。OpenCode 直接消费适用的 guidance，不通过先构建再过滤 Codex action 的方式实现隔离。
+- 只有 `effectiveHost` 属于 `isHostActionsHost`（`codex` | `dsh`）时构建和输出 `hostActions`。OpenCode 直接消费适用的 guidance，不通过先构建再过滤 Codex action 的方式实现隔离。
 - host 不写入 session binding 或 knowledge registry。Stop hook 的原生 host 是 finalization 的权威来源，必须快照到 `KnowledgeFinalizationJob.host`。
 - detached finalization 与 completion worker 在移除了 `CLAW_HOST` 的环境中启动，并只按 `job.host` 选择 Codex 或 OpenCode writer。旧 job 可兼容缺失 host，但不得放宽新 job 的快照要求。
 
