@@ -18,7 +18,10 @@
   { todos })`，与模型侧 `todo_write` 工具使用同一 seam；`exec.agent` 带 `session.append`
   时才写入。
 - 状态映射：`done`/`completed` → `completed`；`in_progress`/`active` → `in_progress`；
-  其余 → `pending`；空标题任务跳过；无有效 todo 时不写事件。
+  其余 → `pending`；空标题任务跳过；`todos` 始终整表写入，空列表同样写入——plan
+  完成/关闭（如 `plan.done`）后以空列表清空 dock，避免旧条目残留（2026-08-22
+  修复，提交 `0a15891`；此前仅 `todos.length > 0` 时写，plan.done 后 tasks 为空
+  导致 dock 残留）。
 - Fail-open：todo sync 的任何异常都不能破坏已落定的 mutation；`exec.agent` 缺失或
   session 无 append 时静默跳过，GUI 进度条不更新但 mutation 不受影响。
 - 无 CLI 改动：`update_plan` hostAction 已携带完整 plan 投影（完整数组合同由
@@ -32,6 +35,9 @@
 `plan.start` 后 `todo/write` 显示 3 步（1 completed + 1 in_progress + 1 pending）；
 `task.done` 后实时更新（T1 completed、T2 in_progress）；会话日志经多帧 zstd decode
 确认 16 次 `todo/write` 事件。决策与边界见 `../adr/dsh-adapter-drives-native-todo-dock.md`。
+
+2026-08-22 信号修复（`0a15891`）补充空列表清空语义：`plan.done` 后任务列表为空时
+同样写 `todo/write`，todo dock 无残留条目（verify-finalizer 验证）。
 
 ## Related code
 

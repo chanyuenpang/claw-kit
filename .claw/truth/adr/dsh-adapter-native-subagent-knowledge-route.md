@@ -52,6 +52,10 @@ DSH（DeepSeek Harness）需要与 claw-kit 既有的 ready-job / claim / done �
 
 - DSH 起源的 job 复用统一的 job/assignment/claim-token/done 协议；delegate 编排模板与
   built-in governance 仍为 Core 内部资源。
+- 自动派发的 finalizer subagent 以 fire-and-forget 运行（adapter 只消费 `dispatch.ok`
+  执行回执），使用专用 `AbortController` 而非 claw_run 工具信号，确保工具返回后子代理
+  存活（2026-08-22 修复 `0a15891`）；compact result 仅在存在 dispatch 时前置重插该
+  字段，避免 `undefined` 破坏 DSH lossless-JSON 校验（`cebd5b9`）。
 - `claw knowledge claim` 的 claim-time report capture 现在同时实现 `cindy`（stdin）、
   `codex`（transcript）与 `dsh`（`readDshKnowledgeCapture` 读取 adapter 写入的
   dsh-capture 文件）三个分支；DSH job（`host` 为 `"dsh"`，或 host-less closeout 的

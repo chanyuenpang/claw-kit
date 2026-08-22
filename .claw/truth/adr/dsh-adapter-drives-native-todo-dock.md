@@ -38,7 +38,8 @@ after rc.5`）确认 adapter 已把 plan 任务映射为 DSH 原生 todo dock �
 - DSH 用户直接在原生 todo dock 看到计划进度；plan/task 状态与 CLI canonical 状态一致
   （数据源同一份 `update_plan` 投影）。
 - 整表替换 last-write-wins：每次 mutation 后 UI 以最新完整投影为准，无增量合并语义；
-  状态收敛为 completed / in_progress / pending。
+  状态收敛为 completed / in_progress / pending；空任务列表（plan 完成/关闭）同样写入以
+  清空 dock，避免 plan.done 后残留旧条目（2026-08-22 修复 `0a15891`）。
 - 未来如需更丰富的宿主展示层，需作为新的显式架构决策提出；todo dock 路线不视为
   widget 路线的复活。
 

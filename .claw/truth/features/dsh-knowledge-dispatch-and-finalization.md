@@ -32,7 +32,15 @@ subagent（`subagents.start("spawn", ...)`，label
 `knowledge-finalizer-<finalizeId 前 12 位>`），并在 compact result 中返回
 `dispatch: { ok: true, runId, policy }` 确认；主模型不自行执行 writer，只消费该
 `dispatch.ok` 确认（与 delegate 只执行 claim → assignment subplan → 单次
-`knowledge done` 的边界一致）。
+`knowledge done` 的边界一致）。派发是 fire-and-forget：adapter 只取执行回执
+（`dispatch.ok`），不 await 子代理结果；子代理使用专用 `AbortController`，不复用
+claw_run 工具信号 `exec.signal`（工具调用返回时该信号会 abort，曾导致子代理在首
+个 turn 前被取消、`plan.done` 后 finalizer 从未运行——2026-08-22 修复，提交
+`0a15891`，锚点 `packages/dsh-adapter/src/index.ts`）。compact result 把
+`dispatch` 前置到 `command` 之后，且仅在实际存在 dispatch 时重插该字段：向对象
+写入 `undefined` 会破坏 DSH lossless-JSON 工具输出校验（0.2.26.0 加载后普通
+`plan.create` 曾报 "value is not lossless JSON"——2026-08-22 修复，提交
+`cebd5b9`）。
 
 端到端已验证（finalizeId `8a208046f490…`，task `Knowledge-dispatch-test`，goal
 `verify knowledgeDispatch`）：`plan done` → ready job 持久化 → delegate plan
@@ -60,6 +68,13 @@ automatic writer dispatch, report capture window, search recall`）在 0.2.21.18
 native subagent）、claim-time capture 窗口过滤、以及 `claw_run search` 召回
 可见性全部通过，与 `docs/dsh-plugin-integration-research.md` §5.5 验收一致。
 
+第五次验证（finalizeId `f7506ae1a528…`，plan `verify-finalizer`，goal
+`verify knowledge finalizer auto-dispatch after signal fix`）在信号修复（专用
+`AbortController` + fire-and-forget，`0a15891`；lossless-JSON 重插守卫，`cebd5b9`）
+后确认 `plan.done` 真正启动运行中的 finalizer subagent：auto-dispatch 的 knowledge
+job 被 claim 并走完 claim → assignment subplan → 单次 `knowledge done`，证明
+`exec.signal` abort 修复后自动派发端到端可用。
+
 ## 已知陷阱
 
 - `claw knowledge claim` 的 claim-time report capture 现在实现 `dsh` 分支：
@@ -74,6 +89,12 @@ native subagent）、claim-time capture 窗口过滤、以及 `claw_run search` 
 - 本机 claw_run 工具由 adapter 用 `agent.session?.cwd` 锻造 workdir；当 DSH 子代理会话
   cwd 不是项目根（如 `C:\Windows\System32`）时，`plan.create` 会报 "found no .claw
   project"。该环境问题可通过直接在项目根执行 claw CLI 绕过，canonical `.claw` 状态不变。
+- 自动派发的 finalizer subagent 必须使用专用 `AbortController`，不能复用 claw_run
+  工具信号 `exec.signal`：工具调用返回时信号 abort，子代理会在首个 turn 前被取消
+  （2026-08-22 修复，提交 `0a15891`）。
+- compact result 只在 dispatch 实际存在时前置重插 `dispatch` 字段；写入 `undefined`
+  会触发 DSH lossless-JSON 校验失败（"value is not lossless JSON"，2026-08-22
+  修复，提交 `cebd5b9`）。
 
 ## 关联代码
 
