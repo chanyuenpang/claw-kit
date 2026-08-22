@@ -474,12 +474,16 @@ export function apply(ctx: unknown): void {
       }
       // Move dispatch to the front so truncation cannot hide the dispatch
       // confirmation (large projections previously pushed it past the limit).
+      // Only re-insert when a dispatch actually exists: assigning undefined
+      // broke DSH's lossless-JSON tool-output validation (a plain plan.create
+      // returned "value is not lossless JSON" once 0.2.26.0 loaded — learned
+      // 2026-08-22).
       const dispatchValue = visible.dispatch;
       delete visible.dispatch;
       const reordered: Record<string, JsonValue> = {};
       for (const key of Object.keys(visible)) {
         reordered[key] = visible[key] as JsonValue;
-        if (key === "command") reordered.dispatch = dispatchValue;
+        if (key === "command" && dispatchValue !== undefined) reordered.dispatch = dispatchValue;
       }
       return reordered;
     },
