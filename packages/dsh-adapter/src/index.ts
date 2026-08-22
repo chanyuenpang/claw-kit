@@ -389,8 +389,11 @@ export function apply(ctx: unknown): void {
       // subagent, so BOTH `subagent` and `background` policies run through one
       // flow — the adapter starts a one-shot subagent with the dispatch's
       // self-contained prompt, and the model never touches the writer.
+      // NOTE: `dispatch` is surfaced FIRST (right after ok/command) so a
+      // large projection or dispatch prompt can never push the dispatch
+      // confirmation past a tool-result truncation (observed: dispatch was
+      // cut at ~1200 chars, which made the auto-dispatch look like it failed).
       if (response.knowledgeDispatch !== undefined) {
-        visible.knowledgeDispatch = response.knowledgeDispatch as unknown as JsonValue;
         // Deterministic report capture: a terminal plan mutation writes the
         // dsh-capture payload here (cross-turn extraction), so `knowledge
         // claim`'s dsh branch always has the report material regardless of
@@ -444,8 +447,25 @@ export function apply(ctx: unknown): void {
         } else if (subagents === undefined) {
           visible.dispatch = { ok: false, reason: "subagents service unavailable" } as unknown as JsonValue;
         }
+        // Keep only a compact dispatch summary in the model-visible output:
+        // the full writer prompt is consumed by the subagent, and a huge
+        // prompt was pushing `dispatch` past truncation. Never expose prompt.
+        visible.knowledgeDispatch = {
+          schemaVersion: 1,
+          policy: dispatch?.policy ?? "subagent",
+          finalizeId: dispatch?.finalizeId,
+        } as unknown as JsonValue;
       }
-      return visible;
+      // Move dispatch to the front so truncation cannot hide the dispatch
+      // confirmation (large projections previously pushed it past the limit).
+      const dispatchValue = visible.dispatch;
+      delete visible.dispatch;
+      const reordered: Record<string, JsonValue> = {};
+      for (const key of Object.keys(visible)) {
+        reordered[key] = visible[key] as JsonValue;
+        if (key === "command") reordered.dispatch = dispatchValue;
+      }
+      return reordered;
     },
     presentCall: (callArgs: { operation?: string }) => ({
       card: "generic",
