@@ -364,7 +364,7 @@ export function apply(ctx: unknown): void {
                 | Array<Record<string, unknown>>
                 | undefined;
           const tasks = planTasks && planTasks.length > 0 ? planTasks : outputTasks;
-          if (Array.isArray(tasks) && tasks.length > 0) {
+          if (Array.isArray(tasks)) {
             const todos = tasks
               .map((task) => {
                 const title = typeof task.title === "string" ? task.title.trim() : "";
@@ -378,9 +378,11 @@ export function apply(ctx: unknown): void {
                 return { content: title, status: todoStatus };
               })
               .filter((entry): entry is { content: string; status: "pending" | "in_progress" | "completed" } => entry !== null);
-            if (todos.length > 0) {
-              agentWithSession.session.append("todo/write", { todos });
-            }
+            // Whole-list replace, last-write-wins: an empty task list (plan
+            // completed/closed) must CLEAR the dock — writing only when
+            // todos.length > 0 left stale entries after plan.done
+            // (learned 2026-08-22).
+            agentWithSession.session.append("todo/write", { todos });
           }
         }
       } catch {
@@ -425,17 +427,31 @@ export function apply(ctx: unknown): void {
                   parent: unknown;
                   signal?: AbortSignal;
                 },
-              ): Promise<{ id: string }>;
+              ): Promise<{ id: string; result?: Promise<unknown>; dispose?: () => Promise<void> }>;
             }
           | undefined;
         if (subagents && dispatch && typeof dispatch.prompt === "string" && dispatch.prompt.length > 0) {
           try {
+            // Fire-and-forget dispatch: the finalizer only needs an execution
+            // receipt, it never replies. Pass a DEDICATED controller instead of
+            // exec.signal — the tool's signal aborts when this claw_run call
+            // returns, which cancelled the child before its first turn
+            // (learned 2026-08-22: plan.done auto-dispatch created the
+            // subagent session but the finalizer never ran). The dedicated
+            // controller keeps the child alive after the tool result is
+            // delivered; disposal is still driven by the run's own lifecycle.
+            const controller = new AbortController();
             const run = await subagents.start("spawn", {
               label: `knowledge-finalizer-${String(dispatch.finalizeId ?? "").slice(0, 12)}`,
               prompt: [{ type: "text", text: dispatch.prompt }],
               parent: exec.agent,
-              signal: exec.signal,
+              signal: controller.signal,
             });
+            if (run.dispose) {
+              // Keep a settled run's resources released without awaiting it:
+              // the writer is independent of this tool result.
+              void Promise.resolve(run.result).finally(() => run.dispose!()).catch(() => undefined);
+            }
             visible.dispatch = { ok: true, runId: String(run.id), policy: dispatch.policy ?? "subagent" } as unknown as JsonValue;
           } catch (error) {
             // fail-open: surface the dispatch for the model to retry manually
