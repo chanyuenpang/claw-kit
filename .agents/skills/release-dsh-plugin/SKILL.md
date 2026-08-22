@@ -1,3 +1,7 @@
+---
+name: release-dsh-plugin
+description: Release the claw-kit DSH adapter and the published @veewo/dsh-claw-kit npm package. Use only when the repository owner explicitly asks to publish or release the DSH adapter or a vdsh version.
+---
 # Release DSH adapter
 
 Run only inside the claw-kit repository. This skill owns only

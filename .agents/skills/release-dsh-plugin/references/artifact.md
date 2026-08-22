@@ -24,6 +24,13 @@
   version. Publish the corrected version with `--tag latest`.
 - The published npm package is the artifact; `export:dsh-plugin` additionally
   produces a local tarball for profile installs.
+- **Tag completeness rule:** every published npm version must have a matching
+  immutable `vdsh-<version>` git tag at the exact published commit. If a
+  previous release published npm `<cli-base>-rc.<n>` but left the `vdsh-*`
+  tag missing (learned 2026-08-22: `0.2.25-rc.8` was on npm before
+  `vdsh-0.2.25.8` existed), backfill the missing tag on the release commit
+  during the next release pass, before tagging the new version. Never repoint
+  or force-move an existing tag.
 - Verify the release in a real DSH profile only when separately authorized:
   `dsh plugin --profile web add @veewo/dsh-claw-kit` + restart + `claw_run`
   tool and the six bundled skills present. The CLI must accept `--host dsh`.
