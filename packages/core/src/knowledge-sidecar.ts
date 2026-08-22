@@ -94,16 +94,19 @@ export type KnowledgeFinalizationJob = {
 
 export type KnowledgeReportEntry = {
   schemaVersion: 1;
-  entryType?: "task_conclusion";
+  entryType?: "task_conclusion" | "final_answer";
   sessionId: string;
   turnId: string;
   capturedAt: string;
+  /** Timestamp emitted by the host transcript, when the host supplies one. */
+  occurredAt?: string;
   message: string;
 };
 
 export type KnowledgeTaskConclusion = {
   turnId: string;
   message: string;
+  occurredAt?: string;
 };
 
 export type KnowledgeFinalizationReportEntry = {
@@ -638,7 +641,35 @@ export function appendKnowledgeTaskConclusions(
       sessionId,
       turnId: conclusion.turnId,
       capturedAt,
+      occurredAt: conclusion.occurredAt,
       message: conclusion.message,
+    };
+    if (appendKnowledgeReportEntry(reportPath, entry)) duplicates += 1;
+    else written += 1;
+  }
+  return { written, duplicates };
+}
+
+/** Persist host final answers as distinct report events, preserving event time. */
+export function appendKnowledgeFinalAnswers(
+  reportPath: string,
+  sessionId: string,
+  answers: KnowledgeTaskConclusion[],
+  capturedAt = new Date().toISOString(),
+): { written: number; duplicates: number } {
+  fs.mkdirSync(path.dirname(reportPath), { recursive: true });
+  fs.closeSync(fs.openSync(reportPath, "a"));
+  let written = 0;
+  let duplicates = 0;
+  for (const answer of answers) {
+    const entry: KnowledgeReportEntry = {
+      schemaVersion: 1,
+      entryType: "final_answer",
+      sessionId,
+      turnId: answer.turnId,
+      capturedAt,
+      occurredAt: answer.occurredAt,
+      message: answer.message,
     };
     if (appendKnowledgeReportEntry(reportPath, entry)) duplicates += 1;
     else written += 1;
@@ -812,13 +843,13 @@ function readKnowledgeRegistry(registryPath: string, sessionId: string): Knowled
   return registry;
 }
 
-function appendKnowledgeReportEntry(reportPath: string, entry: KnowledgeReportEntry): boolean {
+function appendKnowledgeReportEntry(reportPath: string, entry: KnowledgeReportEntry | KnowledgeFinalizationReportEntry): boolean {
   return withFileLock(reportPath, () => {
-    if (fs.existsSync(reportPath)) {
-      const duplicate = fs.readFileSync(reportPath, "utf-8")
-        .split(/\r?\n/)
-        .filter(Boolean)
-        .some((line) => {
+    const existingLines = fs.existsSync(reportPath)
+      ? fs.readFileSync(reportPath, "utf-8").split(/\r?\n/).filter(Boolean)
+      : [];
+    if (existingLines.length > 0 && "sessionId" in entry && "turnId" in entry) {
+      const duplicate = existingLines.some((line) => {
           try {
             const existing = JSON.parse(line) as Partial<KnowledgeReportEntry>;
             if (existing.sessionId !== entry.sessionId || existing.turnId !== entry.turnId) {
@@ -827,8 +858,10 @@ function appendKnowledgeReportEntry(reportPath: string, entry: KnowledgeReportEn
             if (existing.entryType !== entry.entryType) {
               return false;
             }
-            return entry.entryType !== "task_conclusion"
-              || existing.message === entry.message;
+            if (entry.entryType === "task_conclusion" || entry.entryType === "final_answer") {
+              return existing.message === entry.message && existing.occurredAt === entry.occurredAt;
+            }
+            return true;
           } catch {
             return false;
           }
@@ -838,9 +871,27 @@ function appendKnowledgeReportEntry(reportPath: string, entry: KnowledgeReportEn
       }
     }
     fs.mkdirSync(path.dirname(reportPath), { recursive: true });
-    fs.appendFileSync(reportPath, `${JSON.stringify(entry)}\n`, "utf-8");
+    const ordered = [...existingLines.map((line, index) => ({ line, index })), {
+      line: JSON.stringify(entry),
+      index: existingLines.length,
+    }].sort((left, right) => reportEntryTime(left.line) - reportEntryTime(right.line) || left.index - right.index);
+    fs.writeFileSync(reportPath, `${ordered.map(({ line }) => line).join("\n")}\n`, "utf-8");
     return false;
   });
+}
+
+function reportEntryTime(line: string): number {
+  try {
+    const entry = JSON.parse(line) as { occurredAt?: unknown; capturedAt?: unknown; recordedAt?: unknown };
+    for (const candidate of [entry.occurredAt, entry.capturedAt, entry.recordedAt]) {
+      if (typeof candidate !== "string") continue;
+      const timestamp = Date.parse(candidate);
+      if (Number.isFinite(timestamp)) return timestamp;
+    }
+  } catch {
+    // Preserve malformed legacy lines in their relative position.
+  }
+  return Number.POSITIVE_INFINITY;
 }
 
 function toProjectRelativePlanPath(project: ProjectContext, planPath: string): string {

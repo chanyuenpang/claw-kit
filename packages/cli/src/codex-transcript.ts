@@ -50,6 +50,13 @@ export function findCodexTranscriptPath(
 export type TaskDoneConclusion = {
   turnId: string;
   message: string;
+  occurredAt?: string;
+};
+
+export type FinalAssistantMessage = {
+  turnId: string;
+  message: string;
+  occurredAt?: string;
 };
 
 export function extractTaskDoneConclusions(
@@ -129,10 +136,69 @@ export function extractTaskDoneConclusions(
       conclusions.push({
         turnId,
         message: conclusion,
+        occurredAt: typeof record.timestamp === "string" ? record.timestamp : undefined,
       });
     }
   }
   return conclusions;
+}
+
+/**
+ * Collect every Codex final answer produced while a plan owned the session.
+ * The transcript timestamp, rather than the way a message was collected, is
+ * the report ordering key. A subsequent successful plan.create closes the
+ * current plan's capture window.
+ */
+export function extractPlanFinalAssistantMessages(
+  transcriptPath: string,
+  startedAt?: string,
+  planPath?: string,
+): FinalAssistantMessage[] {
+  if (!transcriptPath.trim() || !fs.existsSync(transcriptPath)) {
+    return [];
+  }
+  const startedAtMs = startedAt ? Date.parse(startedAt) : Number.NaN;
+  const messages: Array<FinalAssistantMessage & { index: number; timestampMs: number }> = [];
+  const lines = fs.readFileSync(transcriptPath, "utf-8").split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]?.trim();
+    if (!line) continue;
+    let record: TranscriptRecord;
+    try {
+      record = JSON.parse(line) as TranscriptRecord;
+    } catch {
+      continue;
+    }
+    const timestamp = typeof record.timestamp === "string" ? record.timestamp : undefined;
+    const timestampMs = timestamp ? Date.parse(timestamp) : Number.NaN;
+    if (Number.isFinite(startedAtMs) && Number.isFinite(timestampMs) && timestampMs < startedAtMs) {
+      continue;
+    }
+    if (
+      (record.payload?.type === "custom_tool_call_output" || record.payload?.type === "function_call_output")
+      && containsNewPlanCreate(readOutputText(record.payload.output), planPath)
+    ) {
+      break;
+    }
+    if (
+      record.type !== "response_item"
+      || record.payload?.type !== "message"
+      || record.payload.role !== "assistant"
+      || record.payload.phase !== "final_answer"
+    ) {
+      continue;
+    }
+    const turnId = readTurnId(record);
+    const message = readTextItems(record.payload.content);
+    if (!turnId || !message) continue;
+    messages.push({ turnId, message, occurredAt: timestamp, index, timestampMs });
+  }
+  messages.sort((left, right) => {
+    const leftTime = Number.isFinite(left.timestampMs) ? left.timestampMs : Number.POSITIVE_INFINITY;
+    const rightTime = Number.isFinite(right.timestampMs) ? right.timestampMs : Number.POSITIVE_INFINITY;
+    return leftTime - rightTime || left.index - right.index;
+  });
+  return messages.map(({ turnId, message, occurredAt }) => ({ turnId, message, occurredAt }));
 }
 
 function containsNewPlanCreate(text: string, planPath?: string): boolean {

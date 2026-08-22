@@ -10,6 +10,7 @@ import { spawn, spawnSync } from "node:child_process";
 import {
   buildDirectWorkflowGuidance,
   appendKnowledgeTaskConclusions,
+  appendKnowledgeFinalAnswers,
   buildKnowledgeAtomicDispatch,
   buildKnowledgeDelegateDispatch,
   buildKnowledgeAssignmentTemplate,
@@ -83,6 +84,7 @@ import { buildCodexHostActions } from "./codex-host-actions.js";
 import { checkCodexRuntime, resolveCodexSdkEntryPath } from "./codex-runtime.js";
 import {
   extractLatestFinalAssistantMessage,
+  extractPlanFinalAssistantMessages,
   extractTaskDoneConclusions,
   findCodexTranscriptPath,
 } from "./codex-transcript.js";
@@ -1397,17 +1399,16 @@ async function runKnowledge(args: string[]): Promise<void> {
           if (!transcriptPath) {
             throw new Error(`Codex transcript is unavailable for knowledge session ${queued.sessionId}.`);
           }
-          const conclusions = extractTaskDoneConclusions(
+          const finalAnswers = extractPlanFinalAssistantMessages(
             transcriptPath,
-            undefined,
             queued.reportCapture.startedAt,
             queued.planPath,
           );
           const capturedAt = new Date().toISOString();
-          appendKnowledgeTaskConclusions(
+          appendKnowledgeFinalAnswers(
             queued.reportPath,
             queued.sessionId,
-            conclusions,
+            finalAnswers,
             capturedAt,
           );
           return {
@@ -1416,7 +1417,7 @@ async function runKnowledge(args: string[]): Promise<void> {
               status: "captured" as const,
               capturedAt,
               transcriptPath,
-              messageCount: conclusions.length,
+              messageCount: finalAnswers.length,
             },
           };
         },
@@ -3654,7 +3655,11 @@ function compactPlanCommandResult(
     const hostActions = hostActionsResult ? buildCodexHostActions(result, { forceProjectionSync, actionIdPrefix: command === "plan.sync" ? `plan.sync:${createHash("sha256").update(result.planPath).digest("hex").slice(0, 16)}` : undefined }) : [];
     const nextsteps = [
       ...result.workflowGuidance.nextsteps,
-      ...(knowledgeDispatch
+      // Manual-dispatch instruction for hosts WITHOUT automatic writer
+      // dispatch (codex/cindy/opencode). DSH's adapter auto-dispatches the
+      // writer subagent inside claw_run, so the model must NOT re-dispatch;
+      // injecting this line there would ask it to duplicate the dispatch.
+      ...(knowledgeDispatch && effectiveHost !== "dsh"
         ? ["A knowledgeDispatch is present: dispatch its unchanged prompt through the current Host's designated knowledge-finalizer now, then immediately end the Lead turn; do not wait for or poll that worker."]
         : []),
     ];

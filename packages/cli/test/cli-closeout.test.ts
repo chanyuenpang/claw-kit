@@ -305,8 +305,9 @@ test("Codex subagent claim captures the Stop-style task report without waiting f
   const transcriptDir = path.join(codexHome, "sessions", "2026", "08", "01");
   const transcriptPath = path.join(transcriptDir, `rollout-test-${sessionId}.jsonl`);
   fs.mkdirSync(transcriptDir, { recursive: true });
-  const responseItem = (payload: JsonRecord) => JSON.stringify({
-    timestamp: "2099-08-01T00:00:00.000Z",
+  let ordinal = 0;
+  const responseItem = (payload: JsonRecord, timestamp?: string) => JSON.stringify({
+    timestamp: timestamp ?? `2099-08-01T00:00:0${ordinal++}.000Z`,
     type: "response_item",
     payload,
   });
@@ -314,10 +315,24 @@ test("Codex subagent claim captures the Stop-style task report without waiting f
     responseItem({
       type: "message",
       role: "assistant",
+      phase: "final_answer",
+      content: [{ type: "output_text", text: "First completed plan answer." }],
+      internal_chat_message_metadata_passthrough: { turn_id: "turn-first" },
+    }, "2099-08-01T00:00:02.000Z"),
+    responseItem({
+      type: "message",
+      role: "assistant",
       phase: "commentary",
       content: [{ type: "output_text", text: "Implemented the ready-job lifecycle and verified its invariant." }],
       internal_chat_message_metadata_passthrough: { turn_id: "turn-work" },
     }),
+    responseItem({
+      type: "message",
+      role: "assistant",
+      phase: "final_answer",
+      content: [{ type: "output_text", text: "Second completed plan answer." }],
+      internal_chat_message_metadata_passthrough: { turn_id: "turn-second" },
+    }, "2099-08-01T00:00:01.000Z"),
     responseItem({
       type: "custom_tool_call_output",
       output: [{ type: "input_text", text: `Script completed\n${JSON.stringify({ ok: true, command: "task.done" })}` }],
@@ -328,6 +343,13 @@ test("Codex subagent claim captures the Stop-style task report without waiting f
       output: [{ type: "input_text", text: `Script completed\n${JSON.stringify({ ok: true, command: "plan.create", planPath: path.join(root, "next-plan.json") })}` }],
       internal_chat_message_metadata_passthrough: { turn_id: "turn-next" },
     }),
+    responseItem({
+      type: "message",
+      role: "assistant",
+      phase: "final_answer",
+      content: [{ type: "output_text", text: "Next plan answer must not enter the prior report." }],
+      internal_chat_message_metadata_passthrough: { turn_id: "turn-next" },
+    }, "2099-08-01T00:00:03.000Z"),
     responseItem({
       type: "message",
       role: "assistant",
@@ -361,12 +383,16 @@ test("Codex subagent claim captures the Stop-style task report without waiting f
   assert.equal(claimed.jobPath, jobPath);
   const entries = fs.readFileSync(reportPath, "utf-8").trim().split(/\r?\n/)
     .map((line) => JSON.parse(line) as JsonRecord);
-  assert.deepEqual(entries.map((entry) => entry.entryType), ["task_conclusion"]);
-  assert.equal(entries[0]?.message, "Implemented the ready-job lifecycle and verified its invariant.");
+  assert.deepEqual(entries.map((entry) => entry.entryType), ["final_answer", "final_answer"]);
+  assert.deepEqual(entries.map((entry) => entry.message), [
+    "Second completed plan answer.",
+    "First completed plan answer.",
+  ]);
+  assert.doesNotMatch(fs.readFileSync(reportPath, "utf-8"), /Next plan answer/i);
   const running = JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord;
   assert.equal(running.status, "running");
   assert.equal((running.reportCapture as JsonRecord).status, "captured");
-  assert.equal((running.reportCapture as JsonRecord).messageCount, 1);
+  assert.equal((running.reportCapture as JsonRecord).messageCount, 2);
 
   fs.appendFileSync(transcriptPath, `\n${responseItem({
     type: "message",
@@ -384,7 +410,7 @@ test("Codex subagent claim captures the Stop-style task report without waiting f
   }, env);
   assert.equal(laterStop.status, 0);
   const finalReport = fs.readFileSync(reportPath, "utf-8");
-  assert.equal(finalReport.trim().split(/\r?\n/).length, 1);
+  assert.equal(finalReport.trim().split(/\r?\n/).length, 2);
   assert.doesNotMatch(finalReport, /later final answer/i);
   assert.deepEqual(fs.readdirSync(path.dirname(jobPath)).filter((entry) => (
     entry.endsWith(".json") && !entry.endsWith(".assignments.json")
