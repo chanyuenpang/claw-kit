@@ -26,8 +26,9 @@ DSH 会话
 
 - `agent/session-start` → `claw context --host dsh`，恢复绑定计划并注入紧凑
   workflow 快照（`systemPrompt.context` 名 `claw:workflow`）；
-- 无 turn-stopping 钩子：turn 报告在终态 plan mutation（`plan.done`）内确定性
-  写入 dsh-capture 文件，knowledgeDispatch 经 DSH 原生 subagent 自动分发。
+- 无 turn-stopping 钩子：终态 plan mutation 写入 adapter 私有 final journal；统一的
+  claw-kit claim 流程随后调用 DSH collector 发布按时间排序的 report，knowledgeDispatch
+  经 DSH 原生 subagent 自动分发。
 
 ## 安装
 

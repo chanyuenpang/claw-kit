@@ -296,7 +296,7 @@ test("Codex subagent claim captures the Stop-style task report without waiting f
     "--project-root", root,
     "--finalize-id", finalizeId,
   ], root, env);
-  assert.match(String((missingTranscript.error as JsonRecord).message), /transcript is unavailable/i);
+  assert.match(String((missingTranscript.error as JsonRecord).message), /REPORT_COLLECTOR_UNREGISTERED: codex/i);
   const stillQueued = JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord;
   assert.equal(stillQueued.status, "queued");
   assert.equal(stillQueued.attempts, 0);
@@ -374,6 +374,14 @@ test("Codex subagent claim captures the Stop-style task report without waiting f
   assert.equal(stop.status, 0);
   assert.equal(fs.existsSync(reportPath), false);
 
+  runClaw([
+    "internal-report-collector-register",
+    "--project-root", root,
+    "--collector-host", "codex",
+    "--executable", process.execPath,
+    "--arg", path.resolve(thisDir, "../../codex-adapter/scripts/report-collector.mjs"),
+  ], root, env);
+
   const claimed = runClaw([
     "knowledge", "claim",
     "--project-root", root,
@@ -383,7 +391,6 @@ test("Codex subagent claim captures the Stop-style task report without waiting f
   assert.equal(claimed.jobPath, jobPath);
   const entries = fs.readFileSync(reportPath, "utf-8").trim().split(/\r?\n/)
     .map((line) => JSON.parse(line) as JsonRecord);
-  assert.deepEqual(entries.map((entry) => entry.entryType), ["final_answer", "final_answer"]);
   assert.deepEqual(entries.map((entry) => entry.message), [
     "Second completed plan answer.",
     "First completed plan answer.",
@@ -392,7 +399,6 @@ test("Codex subagent claim captures the Stop-style task report without waiting f
   const running = JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord;
   assert.equal(running.status, "running");
   assert.equal((running.reportCapture as JsonRecord).status, "captured");
-  assert.equal((running.reportCapture as JsonRecord).messageCount, 2);
 
   fs.appendFileSync(transcriptPath, `\n${responseItem({
     type: "message",
@@ -417,7 +423,7 @@ test("Codex subagent claim captures the Stop-style task report without waiting f
   )), [path.basename(jobPath)]);
 });
 
-test("Cindy subagent claim requires adapter input and atomically persists reports, including empty reports", () => {
+test("Cindy subagent claim uses its registered collector and atomically persists reports, including empty reports", () => {
   const root = createFixture("cindy-subagent-claim-report");
   const sessionId = "cindy-originating-session";
   const env = {
@@ -439,28 +445,38 @@ test("Cindy subagent claim requires adapter input and atomically persists report
   const missingCapture = runClawExpectFailure([
     "knowledge", "claim", "--project-root", root, "--finalize-id", finalizeId,
   ], root, env);
-  assert.match(String((missingCapture.error as JsonRecord).message), /Cindy report capture is unavailable/i);
+  assert.match(String((missingCapture.error as JsonRecord).message), /REPORT_COLLECTOR_UNREGISTERED: cindy/i);
   const queued = JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord;
   assert.equal(queued.status, "queued");
   assert.equal(queued.attempts, 0);
 
+  const collectorPath = path.join(root, "cindy-report-collector.cjs");
+  fs.writeFileSync(collectorPath, `
+const fs = require("node:fs");
+const path = require("node:path");
+const request = JSON.parse(fs.readFileSync(0, "utf8"));
+const events = request.planPath.includes("cindy-empty-report-task") ? [] : [{
+  collected_by: "cindy-fixture", text: "Implemented and verified Cindy no-Stop closeout."
+}];
+fs.mkdirSync(path.dirname(request.stagingReportPath), { recursive: true });
+fs.writeFileSync(request.stagingReportPath, events.length ? events.map((entry) => JSON.stringify(entry)).join("\\n") + "\\n" : "");
+`, "utf8");
+  runClaw([
+    "internal-report-collector-register", "--project-root", root,
+    "--collector-host", "cindy", "--executable", process.execPath, "--arg", collectorPath,
+  ], root, env);
+
   const claimed = runClaw([
     "knowledge", "claim", "--project-root", root, "--finalize-id", finalizeId,
-    "--cindy-report-stdin",
-  ], root, env, JSON.stringify({
-    session_id: sessionId,
-    turn_id: "cindy-turn-1",
-    task_conclusions: [{ turnId: "cindy-turn-1", message: "Implemented and verified Cindy no-Stop closeout." }],
-  }));
+  ], root, env);
   assert.equal(claimed.claimed, true);
   assert.equal(claimed.jobPath, jobPath);
   const entries = fs.readFileSync(reportPath, "utf-8").trim().split(/\r?\n/)
     .map((line) => JSON.parse(line) as JsonRecord);
-  assert.deepEqual(entries.map((entry) => entry.message), ["Implemented and verified Cindy no-Stop closeout."]);
+  assert.deepEqual(entries, [{ collected_by: "cindy-fixture", text: "Implemented and verified Cindy no-Stop closeout." }]);
   const running = JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord;
   assert.equal(running.status, "running");
   assert.equal((running.reportCapture as JsonRecord).status, "captured");
-  assert.equal((running.reportCapture as JsonRecord).messageCount, 1);
 
   runClaw(["plan", "create", "--title", "cindy-empty-report-task", "--goal", "Materialize an empty Cindy report"], root, env);
   const emptyDone = runClaw(["plan", "done", "--retrospective", "Ready without conclusions."], root, env);
@@ -469,12 +485,7 @@ test("Cindy subagent claim requires adapter input and atomically persists report
   const emptyReportPath = taskFile(root, "cindy-empty-report-task", "plan.report");
   const emptyClaimed = runClaw([
     "knowledge", "claim", "--project-root", root, "--finalize-id", emptyFinalizeId,
-    "--cindy-report-stdin",
-  ], root, env, JSON.stringify({
-    session_id: sessionId,
-    turn_id: "cindy-turn-2",
-    task_conclusions: [],
-  }));
+  ], root, env);
   assert.equal(emptyClaimed.claimed, true);
   assert.equal(emptyClaimed.jobPath, emptyJobPath);
   assert.equal(fs.existsSync(emptyReportPath), true);
@@ -482,7 +493,6 @@ test("Cindy subagent claim requires adapter input and atomically persists report
   const emptyRunning = JSON.parse(fs.readFileSync(emptyJobPath, "utf-8")) as JsonRecord;
   assert.equal(emptyRunning.status, "running");
   assert.equal((emptyRunning.reportCapture as JsonRecord).status, "captured");
-  assert.equal((emptyRunning.reportCapture as JsonRecord).messageCount, 0);
 });
 
 test("cli plan edit completion dispatches the same completion refresh as plan done", async () => {
@@ -972,35 +982,12 @@ test("Stop hook captures the latest final assistant message into exactly one act
   const sessionId = "thread-stop-demo";
   const env = { CODEX_THREAD_ID: sessionId };
   runClaw(["plan", "create", "--title", "demo-task", "--goal", "Capture turn report"], root, env);
-  const transcriptPath = path.join(root, "thread.jsonl");
-  fs.writeFileSync(
-    transcriptPath,
-    [
-      JSON.stringify({
-        type: "response_item",
-        payload: {
-          type: "message",
-          role: "assistant",
-          phase: "commentary",
-          content: [{ type: "output_text", text: "Working update" }],
-        },
-      }),
-      JSON.stringify({
-        type: "response_item",
-        payload: {
-          type: "message",
-          role: "assistant",
-          phase: "final_answer",
-          content: [{ type: "output_text", text: "Final report message" }],
-        },
-      }),
-    ].join("\n"),
-    "utf-8",
-  );
+  // Host adapters own history parsing (ADR: adapter-owned report collection):
+  // they resolve the turn's final assistant message and pass it inline.
   const payload = {
     session_id: sessionId,
     turn_id: "turn-1",
-    transcript_path: transcriptPath,
+    message: "Final report message",
     cwd: root,
     hook_event_name: "Stop",
   };
@@ -1019,79 +1006,26 @@ test("Stop hook captures the latest final assistant message into exactly one act
   assert.equal(fs.existsSync(path.join(root, ".claw", "runtime", "knowledge-finalization", "jobs")), false);
 });
 
-test("one Stop recovers successful task-done conclusions only from its current turn", () => {
+test("internal knowledge capture persists current-turn task conclusions and the final message", () => {
   const root = createFixture("hook-stop-task-done-history");
   runClaw(["init", "--name", "Hook Task History"], root);
   const sessionId = "thread-task-history";
   const env = { CODEX_THREAD_ID: sessionId };
   runClaw(["plan", "create", "--title", "demo-task", "--goal", "Capture task conclusions"], root, env);
-  const transcriptPath = path.join(root, "thread-history.jsonl");
-  const message = (turnId: string, text: string, phase = "commentary") => JSON.stringify({
-    type: "response_item",
-    payload: {
-      type: "message",
-      role: "assistant",
-      phase,
-      content: [{ type: "output_text", text }],
-      internal_chat_message_metadata_passthrough: { turn_id: turnId },
-    },
-  });
-  const turnContext = (turnId: string) => JSON.stringify({
-    type: "turn_context",
-    payload: { turn_id: turnId },
-  });
-  const checkpoint = (
-    turnId: string,
-    outputKind: "array" | "string" = "array",
-  ) => JSON.stringify({
-    type: "response_item",
-    payload: {
-      type: outputKind === "array" ? "custom_tool_call_output" : "function_call_output",
-      call_id: `call-${turnId}`,
-      output: outputKind === "array" ? [{
-        type: "input_text",
-        text: `Script completed\n${JSON.stringify({ ok: true, command: "task.done" })}`,
-      }] : `Script completed\n${JSON.stringify({ ok: true, command: "task.done" })}`,
-      internal_chat_message_metadata_passthrough: { turn_id: turnId },
-    },
-  });
-  fs.writeFileSync(
-    transcriptPath,
-    [
-      turnContext("turn-previous"),
-      message("turn-previous", "Previous turn conclusion."),
-      checkpoint("turn-previous"),
-      turnContext("turn-work"),
-      checkpoint("turn-work"),
-      message("turn-work", "Task one conclusion."),
-      JSON.stringify({
-        type: "response_item",
-        payload: {
-          type: "function_call_output",
-          output: "failed: claw task done --id 1; command text alone is not a successful result",
-          internal_chat_message_metadata_passthrough: { turn_id: "turn-work" },
-        },
-      }),
-      checkpoint("turn-work"),
-      checkpoint("turn-work", "string"),
-      turnContext("turn-work"),
-      message("turn-work", "Task two and three conclusion."),
-      checkpoint("turn-work", "string"),
-      message("turn-other", "Unrelated turn conclusion."),
-      checkpoint("turn-other"),
-      message("turn-work", "Final report message.", "final_answer"),
-    ].join("\n"),
-    "utf-8",
-  );
-
+  // Host adapters own history parsing (ADR: adapter-owned report collection);
+  // they resolve current-turn task.done conclusions and the final message and
+  // pass them inline through internal-knowledge-capture.
   const payload = {
     session_id: sessionId,
     turn_id: "turn-work",
-    transcript_path: transcriptPath,
+    message: "Final report message.",
+    task_conclusions: [
+      { message: "Task one conclusion." },
+      { message: "Task two and three conclusion." },
+    ],
     cwd: root,
-    hook_event_name: "Stop",
   };
-  assert.equal(runClawHook("auto-doc", root, payload, env).status, 0);
+  assert.equal(runClaw(["internal-knowledge-capture"], root, env, JSON.stringify(payload)).ok, true);
 
   const reportPath = taskFile(root, "demo-task", "plan.report");
   const entries = fs.readFileSync(reportPath, "utf-8").trim().split(/\r?\n/).map((line) => JSON.parse(line) as JsonRecord);
@@ -1109,7 +1043,7 @@ test("one Stop recovers successful task-done conclusions only from its current t
   ]);
   assert.equal(entries[2]!.message, "Final report message.");
 
-  assert.equal(runClawHook("auto-doc", root, payload, env).status, 0);
+  assert.equal(runClaw(["internal-knowledge-capture"], root, env, JSON.stringify(payload)).ok, true);
   assert.equal(fs.readFileSync(reportPath, "utf-8").trim().split(/\r?\n/).length, 3);
 });
 
@@ -1124,20 +1058,10 @@ test("end.closed Stop queues conclusion-based knowledge finalization", () => {
   runClaw(["plan", "create", "--title", "demo-task", "--goal", "Capture end-state conclusions"], root, env);
   runClaw(["plan", "edit", "--status", "end.closed"], root, env);
 
-  const transcriptPath = path.join(root, "thread-end.closed.jsonl");
-  fs.writeFileSync(transcriptPath, JSON.stringify({
-    type: "response_item",
-    payload: {
-      type: "message",
-      role: "assistant",
-      phase: "final_answer",
-      content: [{ type: "output_text", text: "Conclusion recorded at end.closed." }],
-    },
-  }), "utf-8");
   const stop = runClawHook("auto-doc", root, {
     session_id: sessionId,
     turn_id: "turn-end.closed",
-    transcript_path: transcriptPath,
+    message: "Conclusion recorded at end.closed.",
     cwd: root,
   }, env);
 
@@ -1161,20 +1085,10 @@ test("end.leave Stop queues knowledge finalization", () => {
   runClaw(["plan", "create", "--title", "demo-task", "--goal", "Leave without finalization"], root, env);
   runClaw(["plan", "edit", "--status", "end.leave"], root, env);
 
-  const transcriptPath = path.join(root, "thread-end.leave.jsonl");
-  fs.writeFileSync(transcriptPath, JSON.stringify({
-    type: "response_item",
-    payload: {
-      type: "message",
-      role: "assistant",
-      phase: "final_answer",
-      content: [{ type: "output_text", text: "This is not a completion conclusion." }],
-    },
-  }), "utf-8");
   const stop = runClawHook("auto-doc", root, {
     session_id: sessionId,
     turn_id: "turn-end.leave",
-    transcript_path: transcriptPath,
+    message: "This is not a completion conclusion.",
     cwd: root,
   }, env);
 
@@ -1207,20 +1121,10 @@ test("completed-plan Stop owns the final turn and queues a retryable SDK job", (
   runClaw(["task", "done", "--id", "1"], root, env);
   runClaw(["plan", "done", "--retrospective", "Completed."], root, env);
 
-  const transcriptPath = path.join(root, "thread-closeout.jsonl");
-  fs.writeFileSync(transcriptPath, JSON.stringify({
-    type: "response_item",
-    payload: {
-      type: "message",
-      role: "assistant",
-      phase: "final_answer",
-      content: [{ type: "output_text", text: "Root plan is complete." }],
-    },
-  }), "utf-8");
   const stop = runClawHook("auto-doc", root, {
     session_id: sessionId,
     turn_id: "turn-closeout",
-    transcript_path: transcriptPath,
+    message: "Root plan is complete.",
     cwd: root,
   }, env);
   assert.equal(stop.status, 0);

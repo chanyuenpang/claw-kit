@@ -1,74 +1,58 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { extractPlanCapture, extractTurnCapture, textFromContent } from "../lib/capture.js";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
+import { extractPlanFinalAnswers, textFromContent } from "../lib/capture.js";
 
 test("textFromContent concatenates text blocks and ignores others", () => {
   assert.equal(textFromContent([{ type: "text", text: "a" }, { type: "image", url: "x" }, { type: "text", text: "b" }]), "ab");
   assert.equal(textFromContent(undefined), "");
-  assert.equal(textFromContent([{ type: "tool", id: "t" }]), "");
 });
 
-test("extractTurnCapture picks the final assistant message and task.done conclusions", () => {
+test("DSH collector keeps only each turn's actual final assistant message", () => {
   const events = [
-    { type: "user/message", data: { turn: 1, message: { content: [{ type: "text", text: "do it" }] } } },
-    { type: "assistant/message", data: { turn: 1, message: { content: [{ type: "text", text: "I will start task A." }] } } },
-    { type: "tool/call", data: { turn: 1, name: "claw_run", arguments: '{"operation":"plan.start"}' } },
-    { type: "tool/result", data: { turn: 1, message: { content: [{ type: "text", text: "ok" }] } } },
-    { type: "assistant/message", data: { turn: 1, message: { content: [{ type: "text", text: "Task A done — evidence: tests pass." }] } } },
-    { type: "tool/call", data: { turn: 1, name: "claw_run", arguments: '{"operation":"task.done","args":{"id":1}}' } },
-    { type: "tool/result", data: { turn: 1, message: { content: [{ type: "text", text: "done" }] } } },
-    { type: "assistant/message", data: { turn: 1, message: { content: [{ type: "text", text: "Final summary of the turn." }] } } },
+    { type: "assistant/message", time: 1000, data: { turn: 1, message: { content: [{ type: "text", text: "intermediate" }] } } },
+    { type: "tool/call", time: 1001, data: { turn: 1, name: "claw_run", arguments: '{"operation":"task.done"}' } },
+    { type: "assistant/message", time: 1002, data: { turn: 1, message: { content: [{ type: "text", text: "turn one final" }] } } },
+    { type: "assistant/message", time: 2000, data: { turn: 2, message: { content: [{ type: "text", text: "turn two final" }] } } },
   ];
-  const capture = extractTurnCapture(events, 1);
-  assert.equal(capture.message, "Final summary of the turn.");
-  assert.deepEqual(capture.taskConclusions, [{ turnId: "1", message: "Task A done — evidence: tests pass." }]);
-});
-
-test("extractTurnCapture ignores other turns and empty messages", () => {
-  const events = [
-    { type: "assistant/message", data: { turn: 1, message: { content: [{ type: "text", text: "turn one" }] } } },
-    { type: "assistant/message", data: { turn: 2, message: { content: [{ type: "text", text: "turn two" }] } } },
-    { type: "tool/call", data: { turn: 2, name: "claw_run", arguments: '{"operation":"task.done"}' } },
-  ];
-  assert.equal(extractTurnCapture(events, 2).message, "turn two");
-  const noText = extractTurnCapture(
-    [{ type: "assistant/message", data: { turn: 3, message: { content: [] } } }],
-    3,
-  );
-  assert.equal(noText.message, undefined);
-  assert.deepEqual(noText.taskConclusions, []);
-});
-
-test("extractTurnCapture requires an assistant message before task.done", () => {
-  const events = [
-    { type: "tool/call", data: { turn: 1, name: "claw_run", arguments: '{"operation":"task.done"}' } },
-  ];
-  assert.deepEqual(extractTurnCapture(events, 1).taskConclusions, []);
-});
-
-test("extractPlanCapture collects every task.done conclusion and the final message", () => {
-  const events = [
-    { type: "assistant/message", data: { turn: 1, message: { content: [{ type: "text", text: "Task A complete — tests green." }] } }, time: 1000 },
-    { type: "tool/call", data: { turn: 1, name: "claw_run", arguments: '{"operation":"task.done","args":{"id":1}}' }, time: 1001 },
-    { type: "assistant/message", data: { turn: 2, message: { content: [{ type: "text", text: "Task B done — capture verified." }] } }, time: 2000 },
-    { type: "tool/call", data: { turn: 2, name: "claw_run", arguments: '{"operation":"task.done","args":{"id":2}}' }, time: 2001 },
-    { type: "assistant/message", data: { turn: 3, message: { content: [{ type: "text", text: "Final plan summary." }] } }, time: 3000 },
-  ];
-  const capture = extractPlanCapture(events);
-  assert.equal(capture.message, "Final plan summary.");
-  assert.deepEqual(capture.taskConclusions, [
-    { turnId: "1", message: "Task A complete — tests green.", time: 1001 },
-    { turnId: "2", message: "Task B done — capture verified.", time: 2001 },
+  const answers = extractPlanFinalAnswers(events, "session");
+  assert.deepEqual(answers.map(({ turnId, message }) => ({ turnId, message })), [
+    { turnId: "1", message: "turn one final" },
+    { turnId: "2", message: "turn two final" },
   ]);
 });
 
-test("extractPlanCapture filters conclusions by startedAt", () => {
+test("DSH collector honors the plan start boundary", () => {
   const events = [
-    { type: "assistant/message", data: { turn: 1, message: { content: [{ type: "text", text: "Old conclusion." }] } }, time: 100 },
-    { type: "tool/call", data: { turn: 1, name: "claw_run", arguments: '{"operation":"task.done"}' }, time: 101 },
-    { type: "assistant/message", data: { turn: 2, message: { content: [{ type: "text", text: "New conclusion." }] } }, time: 200 },
-    { type: "tool/call", data: { turn: 2, name: "claw_run", arguments: '{"operation":"task.done"}' }, time: 201 },
+    { type: "assistant/message", time: 100, data: { turn: 1, message: { content: [{ type: "text", text: "old" }] } } },
+    { type: "assistant/message", time: 200, data: { turn: 2, message: { content: [{ type: "text", text: "new" }] } } },
   ];
-  const capture = extractPlanCapture(events, 150);
-  assert.deepEqual(capture.taskConclusions, [{ turnId: "2", message: "New conclusion.", time: 201 }]);
+  assert.deepEqual(extractPlanFinalAnswers(events, "session", 150).map((entry) => entry.message), ["new"]);
+});
+
+test("DSH collector publishes a normalized chronological staging report", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "claw-dsh-report-"));
+  const journalDir = path.join(root, "journal");
+  const stagingPath = path.join(root, "staging.jsonl");
+  fs.mkdirSync(journalDir, { recursive: true });
+  const events = [
+    { turnId: "late", occurredAt: "2026-08-22T00:00:02.000Z", message: "late" },
+    { turnId: "early", occurredAt: "2026-08-22T00:00:01.000Z", message: "early" },
+  ];
+  fs.writeFileSync(path.join(journalDir, "session.json"), JSON.stringify({ sessionId: "session", events }));
+  try {
+    const result = spawnSync(process.execPath, [path.resolve("lib/report-collector-cli.js")], {
+      input: JSON.stringify({ host: "dsh", sessionId: "session", stagingReportPath: stagingPath }),
+      env: { ...process.env, CLAW_DSH_REPORT_JOURNAL_DIR: journalDir },
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const captured = fs.readFileSync(stagingPath, "utf8").trim().split(/\r?\n/).map((line) => JSON.parse(line));
+    assert.deepEqual(captured.map((entry) => entry.message), ["early", "late"]);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });

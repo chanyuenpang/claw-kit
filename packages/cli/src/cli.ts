@@ -10,7 +10,6 @@ import { spawn, spawnSync } from "node:child_process";
 import {
   buildDirectWorkflowGuidance,
   appendKnowledgeTaskConclusions,
-  appendKnowledgeFinalAnswers,
   buildKnowledgeAtomicDispatch,
   buildKnowledgeDelegateDispatch,
   buildKnowledgeAssignmentTemplate,
@@ -82,13 +81,7 @@ import {
 import { buildCodexDriverEnvelope } from "./codex-driver.js";
 import { buildCodexHostActions } from "./codex-host-actions.js";
 import { checkCodexRuntime, resolveCodexSdkEntryPath } from "./codex-runtime.js";
-import {
-  extractLatestFinalAssistantMessage,
-  extractPlanFinalAssistantMessages,
-  extractTaskDoneConclusions,
-  findCodexTranscriptPath,
-} from "./codex-transcript.js";
-import { readDshKnowledgeCapture } from "./dsh-capture.js";
+import { collectReport, registerReportCollector } from "./report-collector-registry.js";
 import { consumeBufferedHookInput } from "./knowledge-hook-preflight.js";
 import { isSubagentPolicyHost, resolveInvocationHost, withoutInvocationHost, type ClawHost } from "./invocation-host.js";
 import { runOpencodeKnowledgeWriter } from "./opencode-runner.js";
@@ -686,6 +679,9 @@ async function main(): Promise<void> {
       case "knowledge":
         await runKnowledge(args);
         return;
+      case "internal-report-collector-register":
+        runInternalReportCollectorRegister(args);
+        return;
       case "direct":
         runDirect(args, effectiveHost);
         return;
@@ -1145,42 +1141,18 @@ function serializeSessionError(error: unknown): Record<string, unknown> {
   return { code: "SESSION_COMMAND_FAILED", message: error instanceof Error ? error.message : String(error) };
 }
 
-type CindyKnowledgeClaimCaptureInput = {
-  session_id?: unknown;
-  turn_id?: unknown;
-  task_conclusions?: unknown;
-};
-
-function readCindyKnowledgeClaimCaptureInput(): {
-  sessionId: string;
-  turnId: string;
-  taskConclusions: Array<{ turnId: string; message: string }>;
-} {
-  const raw = fs.readFileSync(0, "utf8").trim();
-  if (!raw) {
-    throw new ClawError("PROJECT_CONFIG_INVALID", "Cindy knowledge claim report input is empty.");
+/** Adapter-only registration. The descriptor contains no host history schema. */
+function runInternalReportCollectorRegister(args: string[]): void {
+  const projectRoot = path.resolve(readRequiredFlag(args, "--project-root"));
+  const host = readRequiredFlag(args, "--collector-host");
+  const executable = readRequiredFlag(args, "--executable");
+  const collectorArgs = readRepeatedFlag(args, "--arg");
+  assertNoRemainingArgs(args, "internal-report-collector-register");
+  if (host !== "codex" && host !== "dsh" && host !== "cindy") {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "report collector host must be codex, dsh, or cindy.");
   }
-  let parsed: CindyKnowledgeClaimCaptureInput;
-  try {
-    parsed = JSON.parse(raw) as CindyKnowledgeClaimCaptureInput;
-  } catch {
-    throw new ClawError("PROJECT_CONFIG_INVALID", "Cindy knowledge claim report input is invalid JSON.");
-  }
-  const sessionId = typeof parsed.session_id === "string" ? parsed.session_id.trim() : "";
-  const turnId = typeof parsed.turn_id === "string" ? parsed.turn_id.trim() : "";
-  const taskConclusions = Array.isArray(parsed.task_conclusions)
-    ? parsed.task_conclusions.flatMap((entry) => {
-        if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
-        const item = entry as { turnId?: unknown; message?: unknown };
-        const itemTurnId = typeof item.turnId === "string" ? item.turnId.trim() : "";
-        const message = typeof item.message === "string" ? item.message.trim() : "";
-        return itemTurnId && message ? [{ turnId: itemTurnId, message }] : [];
-      })
-    : [];
-  if (!sessionId || !turnId) {
-    throw new ClawError("PROJECT_CONFIG_INVALID", "Cindy knowledge claim report input requires session_id and turn_id.");
-  }
-  return { sessionId, turnId, taskConclusions };
+  registerReportCollector(projectRoot, { host, executable, args: collectorArgs });
+  printJson({ ok: true, command: "internal-report-collector-register", host });
 }
 
 async function runKnowledge(args: string[]): Promise<void> {
@@ -1268,8 +1240,6 @@ async function runKnowledge(args: string[]): Promise<void> {
       const explicitJobPath = readOptionalFlag(args, "--job");
       const projectRoot = readOptionalFlag(args, "--project-root");
       const finalizeId = readOptionalFlag(args, "--finalize-id");
-      const captureCindyReport = readBooleanFlag(args, "--cindy-report-stdin");
-      const cindyCapture = captureCindyReport ? readCindyKnowledgeClaimCaptureInput() : undefined;
       if (explicitJobPath && (projectRoot || finalizeId)) {
         throw new ClawError("PROJECT_CONFIG_INVALID", "knowledge claim accepts either --job or --project-root with --finalize-id.");
       }
@@ -1285,9 +1255,6 @@ async function runKnowledge(args: string[]): Promise<void> {
         throw new Error(`Knowledge finalization ${finalizeId} is unavailable.`);
       }
       const queued = readKnowledgeFinalizationJob(jobPath);
-      if (queued.host === "codex" && queued.writer?.executionPolicy === "subagent" && queued.reportCapture?.mode === "claim" && queued.reportCapture.status !== "captured") {
-        await new Promise((resolve) => setTimeout(resolve, 10_000));
-      }
       const job = claimKnowledgeFinalizationJob(jobPath, {
         prepare: (queued) => {
           if (
@@ -1297,127 +1264,22 @@ async function runKnowledge(args: string[]): Promise<void> {
           ) {
             return;
           }
-          if (queued.host === "cindy") {
-            if (!cindyCapture) {
-              throw new Error(`Cindy report capture is unavailable for knowledge session ${queued.sessionId}.`);
-            }
-            if (cindyCapture.sessionId !== queued.sessionId) {
-              throw new Error("Cindy report capture does not match the originating knowledge session.");
-            }
-            const capturedAt = new Date().toISOString();
-            appendKnowledgeTaskConclusions(
-              queued.reportPath,
-              queued.sessionId,
-              cindyCapture.taskConclusions,
-              capturedAt,
-            );
-            return {
-              reportCapture: {
-                ...queued.reportCapture,
-                status: "captured" as const,
-                capturedAt,
-                messageCount: cindyCapture.taskConclusions.length,
-              },
-            };
-          }
-          if (queued.host === "dsh") {
-            // The dsh-claw-kit plugin reads the DSH session log at the terminal
-            // plan mutation and writes the extracted final message + task.done
-            // conclusions to a capture file (mirroring the Codex transcript
-            // hand-off). Only conclusions from THIS plan's window are used:
-            // the job's reportCapture.startedAt (registry activeStartedAt) is
-            // the authoritative window start, and each conclusion carries its
-            // event time.
-            const capture = readDshKnowledgeCapture(queued.sessionId);
-            if (!capture || capture.sessionId !== queued.sessionId) {
-              throw new Error(`DSH report capture is unavailable for knowledge session ${queued.sessionId}.`);
-            }
-            const startedAtMs = queued.reportCapture?.startedAt
-              ? Date.parse(queued.reportCapture.startedAt)
-              : Number.NaN;
-            const conclusions = (capture.taskConclusions ?? []).filter((conclusion) => {
-              const time = (conclusion as { time?: unknown }).time;
-              if (Number.isFinite(startedAtMs) && typeof time === "number") {
-                return time >= startedAtMs;
-              }
-              return true;
-            });
-            const capturedAt = new Date().toISOString();
-            appendKnowledgeTaskConclusions(
-              queued.reportPath,
-              queued.sessionId,
-              conclusions,
-              capturedAt,
-            );
-            return {
-              reportCapture: {
-                ...queued.reportCapture,
-                status: "captured" as const,
-                capturedAt,
-                messageCount: conclusions.length,
-              },
-            };
-          }
-          if (queued.host == null) {
-            // A job created by a pre-dsh-host build has host null. The
-            // dsh-claw-kit plugin is the only writer of the dsh-capture file,
-            // so its presence proves this is a DSH-originated session; route it
-            // through the dsh branch instead of failing as "host unknown".
-            const capture = readDshKnowledgeCapture(queued.sessionId);
-            if (capture && capture.sessionId === queued.sessionId) {
-              const startedAtMs = queued.reportCapture?.startedAt
-                ? Date.parse(queued.reportCapture.startedAt)
-                : Number.NaN;
-              const conclusions = (capture.taskConclusions ?? []).filter((conclusion) => {
-                const time = (conclusion as { time?: unknown }).time;
-                if (Number.isFinite(startedAtMs) && typeof time === "number") {
-                  return time >= startedAtMs;
-                }
-                return true;
-              });
-              const capturedAt = new Date().toISOString();
-              appendKnowledgeTaskConclusions(
-                queued.reportPath,
-                queued.sessionId,
-                conclusions,
-                capturedAt,
-              );
-              return {
-                reportCapture: {
-                  ...queued.reportCapture,
-                  status: "captured" as const,
-                  capturedAt,
-                  messageCount: conclusions.length,
-                },
-              };
-            }
-          }
-          if (queued.host !== "codex") {
+          if (queued.host !== "codex" && queued.host !== "dsh" && queued.host !== "cindy") {
             throw new Error(`Claim-time report capture is unavailable for host ${queued.host ?? "unknown"}.`);
           }
-          const transcriptPath = findCodexTranscriptPath(queued.sessionId);
-          if (!transcriptPath) {
-            throw new Error(`Codex transcript is unavailable for knowledge session ${queued.sessionId}.`);
-          }
-          const finalAnswers = extractPlanFinalAssistantMessages(
-            transcriptPath,
-            queued.reportCapture.startedAt,
-            queued.planPath,
-          );
-          const capturedAt = new Date().toISOString();
-          appendKnowledgeFinalAnswers(
-            queued.reportPath,
-            queued.sessionId,
-            finalAnswers,
-            capturedAt,
-          );
+          collectReport({
+            host: queued.host,
+            sessionId: queued.sessionId,
+            projectRoot: queued.projectRoot,
+            planPath: queued.planPath,
+            canonicalReportPath: queued.reportPath,
+            startedAt: queued.reportCapture.startedAt,
+          });
           return {
             reportCapture: {
               ...queued.reportCapture,
               status: "captured" as const,
-              capturedAt,
-              transcriptPath,
-              messageCount: finalAnswers.length,
+              capturedAt: new Date().toISOString(),
             },
           };
         },
@@ -2555,18 +2417,14 @@ async function runStopHook(effectiveHost: ClawHost | undefined): Promise<void> {
   const hookCwd = resolveHookCwd(payload);
   const sessionId = resolveOwnerSessionKey(payload);
   const turnId = readHookString(payload, "turn_id");
-  const transcriptPath = readHookString(payload, "transcript_path");
   const payloadMessage = readHookString(payload, "message");
   if (!hookCwd || !sessionId || !turnId || !containsClawDir(hookCwd)) {
     return;
   }
   try {
     const project = resolveProjectContext(hookCwd);
-    // Codex passes a transcript_path; opencode and other hosts without a file
-    // transcript pass the final assistant message inline. Either source is valid.
-    const message = payloadMessage ?? (
-      transcriptPath ? extractLatestFinalAssistantMessage(transcriptPath, turnId) : null
-    );
+    // Host adapters own history parsing and pass their current final inline.
+    const message = payloadMessage;
     if (!message) {
       return;
     }
@@ -2576,7 +2434,7 @@ async function runStopHook(effectiveHost: ClawHost | undefined): Promise<void> {
       turnId,
       message,
       host: effectiveHost,
-      taskConclusions: transcriptPath ? extractTaskDoneConclusions(transcriptPath, turnId) : [],
+      taskConclusions: [],
     });
     // Current named hosts own their runner in their adapters.  Keep the CLI
     // launcher only for jobs written by pre-adapter releases with no host.

@@ -1,6 +1,10 @@
 import { spawn, spawnSync } from "node:child_process";
+import path from "node:path";
+import fs from "node:fs";
 
 const payload = await readStdin();
+if (!payload.message && typeof payload.transcript_path === "string") payload.message = readLatestFinal(payload.transcript_path, payload.turn_id);
+registerCollector(payload);
 const capture = runClaw(["hook", "auto-doc", "--host", "codex"], payload, {
   CLAW_KNOWLEDGE_FINALIZER_DISABLE_LAUNCH: "1",
   CLAW_KNOWLEDGE_CAPTURE_RESULT: "1",
@@ -33,6 +37,32 @@ function reportFailure(stage) {
     stage,
     outcome: "failed-open",
   })}\n`);
+}
+
+function registerCollector(hookPayload) {
+  const cwd = typeof hookPayload?.cwd === "string" && hookPayload.cwd.trim() ? hookPayload.cwd : process.cwd();
+  runClaw([
+    "internal-report-collector-register",
+    "--project-root", cwd,
+    "--collector-host", "codex",
+    "--executable", process.execPath,
+    "--arg", path.join(path.dirname(process.argv[1]), "report-collector.mjs"),
+  ], undefined, {});
+}
+
+function readLatestFinal(transcriptPath, turnId) {
+  try {
+    const lines = fs.readFileSync(transcriptPath, "utf8").split(/\r?\n/);
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+      const record = JSON.parse(lines[index]);
+      const payload = record?.payload;
+      if (record?.type !== "response_item" || payload?.type !== "message" || payload?.role !== "assistant" || payload?.phase !== "final_answer") continue;
+      if (turnId && payload?.internal_chat_message_metadata_passthrough?.turn_id !== turnId) continue;
+      const message = Array.isArray(payload.content) ? payload.content.filter((item) => typeof item?.text === "string").map((item) => item.text).join("\n").trim() : "";
+      if (message) return message;
+    }
+  } catch { /* adapter failure remains fail-open */ }
+  return undefined;
 }
 
 function launchFinalizer(jobPath) {

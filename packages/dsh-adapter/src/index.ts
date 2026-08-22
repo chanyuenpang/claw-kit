@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { extractPlanCapture, type EventLike } from "./capture.js";
+import { fileURLToPath } from "node:url";
+import { extractPlanFinalAnswers, type EventLike } from "./capture.js";
 import { ClawSession, type ClawExecuteResult, type SubprocessLike } from "./claw-session.js";
 import {
   compactClawOutput,
@@ -189,23 +190,21 @@ export function apply(ctx: unknown): void {
     };
   }
 
-  // Write the claw-kit dsh-capture payload (final message + task.done
-  // conclusions) consumed by `knowledge claim`'s dsh branch.
-  function dshCaptureDir(): string {
+  // Persist adapter-owned final events for the registered DSH report collector.
+  function dshReportJournalDir(): string {
     const localAppData = process.env.LOCALAPPDATA
       ?? (process.platform === "win32"
         ? path.join(os.homedir(), "AppData", "Local")
         : path.join(os.homedir(), ".local", "share"));
-    return process.env.CLAW_DSH_CAPTURE_DIR ?? path.join(localAppData, "claw", "dsh-capture");
+    return process.env.CLAW_DSH_REPORT_JOURNAL_DIR ?? path.join(localAppData, "claw", "dsh-report-journal");
   }
 
-  function writeDshCapture(sessionId: string, turnId: string, capture: { message?: string; taskConclusions: unknown[] }): void {
-    if (!capture.message) return;
-    const dir = dshCaptureDir();
+  function writeDshReportJournal(sessionId: string, events: EventLike[]): void {
+    const dir = dshReportJournalDir();
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(
       path.join(dir, `${sessionId}.json`),
-      JSON.stringify({ sessionId, turnId, ...capture }, null, 2),
+      JSON.stringify({ sessionId, events: extractPlanFinalAnswers(events, sessionId) }, null, 2),
       "utf8",
     );
   }
@@ -221,6 +220,11 @@ export function apply(ctx: unknown): void {
       try {
         const workdir = await resolveWorkdir(agent, resolveRegistry());
         if (workdir === undefined) return;
+        await runOneOff([
+          "internal-report-collector-register", "--project-root", workdir, "--collector-host", "dsh",
+          "--executable", process.execPath,
+          "--arg", path.join(path.dirname(fileURLToPath(import.meta.url)), "report-collector-cli.js"),
+        ], workdir, agent.id!);
         const { text } = await runOneOff(["context", "--host", "dsh"], workdir, agent.id!);
         const parsed = parseProtocol(text);
         const rendered = renderGuidanceSnapshot(parsed ?? undefined);
@@ -231,10 +235,8 @@ export function apply(ctx: unknown): void {
     })();
   });
 
-  // No turn-stopping hook: report capture is deterministic at the terminal
-  // plan mutation (plan.done execute reads the full session history and writes
-  // the dsh-capture payload), so there is no per-turn hook or timing to depend
-  // on. See the knowledgeDispatch block in the claw_run execute.
+  // No turn-stopping hook: terminal plan mutation snapshots the adapter-owned
+  // journal, and the unified claim flow invokes the registered collector.
 
   c.on("dispose", () => {
     for (const session of sessions.values()) void session.close();
@@ -394,18 +396,16 @@ export function apply(ctx: unknown): void {
       // confirmation past a tool-result truncation (observed: dispatch was
       // cut at ~1200 chars, which made the auto-dispatch look like it failed).
       if (response.knowledgeDispatch !== undefined) {
-        // Deterministic report capture: a terminal plan mutation writes the
-        // dsh-capture payload here (cross-turn extraction), so `knowledge
-        // claim`'s dsh branch always has the report material regardless of
-        // turn-stopping timing. Fail-open.
+        // Deterministic report capture: snapshot adapter-owned final events
+        // before dispatch. The unified claim flow reads them through this
+        // adapter's registered collector. Fail-open.
         try {
           const sessionQuery = c.get("sessionQuery") as
             | { readSession(sessionId: string): Promise<{ events?: unknown[] }> }
             | undefined;
           if (sessionQuery) {
             const snapshot = await sessionQuery.readSession(agent.id);
-            const capture = extractPlanCapture((snapshot?.events ?? []) as EventLike[]);
-            writeDshCapture(agent.id, "plan.done", capture);
+            writeDshReportJournal(agent.id, (snapshot?.events ?? []) as EventLike[]);
           }
         } catch {
           // fail-open

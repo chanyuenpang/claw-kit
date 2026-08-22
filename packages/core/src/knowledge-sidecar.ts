@@ -64,7 +64,6 @@ export type KnowledgeFinalizationJob = {
     startedAt?: string;
     capturedAt?: string;
     transcriptPath?: string;
-    messageCount?: number;
   };
   status: "queued" | "running" | "succeeded" | "failed";
   attempts: number;
@@ -643,33 +642,6 @@ export function appendKnowledgeTaskConclusions(
       capturedAt,
       occurredAt: conclusion.occurredAt,
       message: conclusion.message,
-    };
-    if (appendKnowledgeReportEntry(reportPath, entry)) duplicates += 1;
-    else written += 1;
-  }
-  return { written, duplicates };
-}
-
-/** Persist host final answers as distinct report events, preserving event time. */
-export function appendKnowledgeFinalAnswers(
-  reportPath: string,
-  sessionId: string,
-  answers: KnowledgeTaskConclusion[],
-  capturedAt = new Date().toISOString(),
-): { written: number; duplicates: number } {
-  fs.mkdirSync(path.dirname(reportPath), { recursive: true });
-  fs.closeSync(fs.openSync(reportPath, "a"));
-  let written = 0;
-  let duplicates = 0;
-  for (const answer of answers) {
-    const entry: KnowledgeReportEntry = {
-      schemaVersion: 1,
-      entryType: "final_answer",
-      sessionId,
-      turnId: answer.turnId,
-      capturedAt,
-      occurredAt: answer.occurredAt,
-      message: answer.message,
     };
     if (appendKnowledgeReportEntry(reportPath, entry)) duplicates += 1;
     else written += 1;
