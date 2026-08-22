@@ -1,6 +1,6 @@
 {
   "name": "@veewo/dsh-claw-kit",
-  "version": "0.2.26.0",
+  "version": "0.2.26.1",
   "type": "module",
   "description": "DSH (DeepSeek Harness) adapter for the claw-kit .claw workflow model: one claw_run tool that executes operations through the claw session daemon, auto-consumes CLI hostActions (progress projection + native goal sync), and returns compact guidance.",
   "keywords": [
