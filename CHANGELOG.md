@@ -2,6 +2,35 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.2.26] - 2026-08-22
+
+### Added
+
+- Adapter-owned report collection (ADR: adapter-owned report collection):
+  each host adapter registers a versioned collector process that resolves its
+  own history, parses the real turn final, and writes the unified JSONL report
+  contract to a staging path; the CLI no longer interprets Codex transcripts,
+  DSH event caches, or Cindy SQLite rows.
+- CLI gains `internal-report-collector-register` and
+  `internal-knowledge-capture` machine-facing commands for adapter-owned
+  report capture.
+- `release-dsh-plugin` skill restored to the DSH skill catalog (its
+  SKILL.md was missing the required name/description frontmatter and was
+  silently dropped).
+
+### Changed
+
+- `hook auto-doc`/Stop accepts the final assistant message inline from the
+  calling adapter instead of parsing a transcript; legacy CLI host parsers
+  (`codex-transcript`, `dsh-capture`) are removed.
+- `knowledge claim` captures the plan report through the registered
+  adapter collector (host must be codex, dsh, or cindy; unregistered hosts
+  fail explicitly with `REPORT_COLLECTOR_UNREGISTERED`).
+- Release rules documented: CLI version selection (minor bump over published
+  `@veewo/claw`), skill catalog frontmatter integrity, DSH tag completeness
+  (every published npm version needs its `vdsh-*` tag), and the
+  npm-workspace verification run convention.
+
 ## [0.2.25] - 2026-08-22
 
 ### Added

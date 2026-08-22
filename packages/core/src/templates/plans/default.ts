@@ -63,7 +63,7 @@ export type PlanTemplateDocument = {
 
 export const defaultPlanTemplate: PlanTemplateDocument = {
   id: "default",
-  version: "0.2.25",
+  version: "0.2.26",
   status: "process.discussing",
   goal: {
     text: "",
