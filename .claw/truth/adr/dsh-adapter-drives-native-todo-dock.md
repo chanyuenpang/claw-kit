@@ -1,4 +1,4 @@
-# ADR: DSH adapter drives the native todo dock from the update_plan projection
+﻿# ADR: DSH adapter drives the native todo dock from the update_plan projection
 
 ## Status
 

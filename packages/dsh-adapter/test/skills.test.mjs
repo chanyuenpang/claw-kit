@@ -44,6 +44,7 @@ test("discoverBundledSkills finds the packaged claw-kit skills", () => {
   assert.ok(names.includes("claw-kit-doc"), "shared claw-kit-doc present");
   assert.ok(names.includes("config"), "shared config present");
   assert.ok(names.includes("create-claw-skill"), "shared create-claw-skill present");
+  assert.ok(names.includes("update"), "host-specific update present");
   for (const skill of skills) {
     assert.ok(skill.description.length > 0, `${skill.name} has a description`);
   }
@@ -62,7 +63,7 @@ test("registerBundledSkills provider lists candidates and loads bodies", async (
 
   const candidates = await registered.list({});
   assert.ok(Array.isArray(candidates), "list returns an array");
-  assert.ok(candidates.length >= 6, `expected >= 6 bundled skills, got ${candidates.length}`);
+  assert.ok(candidates.length >= 7, `expected >= 7 bundled skills, got ${candidates.length}`);
   const using = candidates.find((candidate) => candidate.name === "using-claw-kit");
   assert.ok(using, "using-claw-kit candidate present");
   assert.equal(using.rank, 600);

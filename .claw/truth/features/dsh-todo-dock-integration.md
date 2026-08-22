@@ -1,17 +1,19 @@
-# DSH native todo dock integration
+﻿# DSH native todo dock integration
 
 <!-- state: current -->
 ## Current behavior
 
-`@veewo/dsh-adapter` 的 `claw_run` 工具把 claw plan 的任务进度映射为 DSH 原生 todo dock
+`@veewo/dsh-claw-kit` 的 `claw_run` 工具把 claw plan 的任务进度映射为 DSH 原生 todo dock
 （`conversation.input.dock` id=`todo`）的 `todo/write` 事件，使 DSH GUI 显示计划步骤
 进度条。实现锚点：`packages/dsh-adapter/src/index.ts` 的 todo sync 块（提交
 `feat(dsh): drive DSH todo dock from claw plan progress` /
 `fix(dsh): drive todo from update_plan projection`）。
 
 - 数据源优先级：优先取 `update_plan` hostAction 的完整 plan 文档
-  （`projection.input.plan`，每次 plan mutation 包括 `task.done` 都携带）；回退到 compact
-  输出 `output.tasks`（`plan.show --simple` 携带 `{status, goal, tasks}`）。
+  （`projection.input.plan`；`update_plan` 的生成门禁由
+  `codex-workflow-guidance-consumption.md` 拥有——plan 投影变化时生成，`task.done`
+  改变任务状态因此携带）；投影缺失（如不改变投影的 mutation）时回退到 compact 输出
+  `output.tasks`（`plan.show --simple` 携带 `{status, goal, tasks}`）。
 - 写入方式：整表替换、last-write-wins；经 `exec.agent.session.append("todo/write",
   { todos })`，与模型侧 `todo_write` 工具使用同一 seam；`exec.agent` 带 `session.append`
   时才写入。
@@ -25,7 +27,7 @@
 
 ## Verification
 
-0.2.25-rc.5（现发布为 `@veewo/dsh-adapter@0.2.25.5`）端到端验证（plan
+0.2.25-rc.5（现发布为 `@veewo/dsh-claw-kit@0.2.25.5`）端到端验证（plan
 `Todo-driver-verification`，goal `verify todo-driven progress UI after rc.5`）：
 `plan.start` 后 `todo/write` 显示 3 步（1 completed + 1 in_progress + 1 pending）；
 `task.done` 后实时更新（T1 completed、T2 in_progress）；会话日志经多帧 zstd decode

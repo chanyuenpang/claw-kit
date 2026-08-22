@@ -1319,7 +1319,7 @@ async function runKnowledge(args: string[]): Promise<void> {
             };
           }
           if (queued.host === "dsh") {
-            // The dsh-adapter plugin reads the DSH session log at the terminal
+            // The dsh-claw-kit plugin reads the DSH session log at the terminal
             // plan mutation and writes the extracted final message + task.done
             // conclusions to a capture file (mirroring the Codex transcript
             // hand-off). Only conclusions from THIS plan's window are used:
@@ -1358,7 +1358,7 @@ async function runKnowledge(args: string[]): Promise<void> {
           }
           if (queued.host == null) {
             // A job created by a pre-dsh-host build has host null. The
-            // dsh-adapter plugin is the only writer of the dsh-capture file,
+            // dsh-claw-kit plugin is the only writer of the dsh-capture file,
             // so its presence proves this is a DSH-originated session; route it
             // through the dsh branch instead of failing as "host unknown".
             const capture = readDshKnowledgeCapture(queued.sessionId);

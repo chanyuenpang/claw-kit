@@ -6,7 +6,7 @@ import { ClawSession } from "./claw-session.js";
 import { compactClawOutput, consumeHostActions, } from "./host-actions.js";
 import { daemonInput, renderGuidanceSnapshot } from "./protocol.js";
 import { registerBundledSkills } from "./skills.js";
-export const name = "claw-adapter";
+export const name = "claw-kit";
 function isDirectory(candidate) {
     if (typeof candidate !== "string" || !candidate.trim())
         return false;
@@ -95,7 +95,7 @@ export function apply(ctx) {
         name: "tool:claw",
         order: 115,
         text: [
-            "claw-kit workflow: load the `using-claw-kit` skill first whenever the adapter is enabled or its start prompt is present, then follow its claw_run execution route as the only next-step contract. The `claw_run` tool executes plan, task, subplan, search, and context operations; commandHints returned by claw_run map 1:1 to its arguments. The adapter consumes progress projection and goal sync automatically — do not call goal tools or maintain a parallel task list for claw plans.",
+            "claw-kit workflow: load the `using-claw-kit` skill first whenever the adapter is enabled or its start prompt is present, then follow its claw_run execution route as the only next-step contract. The `claw_run` tool executes plan, task, subplan, and search operations; commandHints returned by claw_run map 1:1 to its arguments. The adapter consumes progress projection and goal sync automatically — do not call goal tools or maintain a parallel task list for claw plans.",
         ].join("\n"),
     });
     // Scan one-off CLI output for the first protocol JSON object.
@@ -241,7 +241,7 @@ export function apply(ctx) {
                 throw new Error("claw_run requires a valid session workspace; no workspace owns this session and agent.session.cwd resolved to none");
             }
             let session = sessions.get(agent.id);
-            if (!session || session === undefined) {
+            if (!session) {
                 session = new ClawSession(subprocess, workdir, agent.id);
                 sessions.set(agent.id, session);
             }

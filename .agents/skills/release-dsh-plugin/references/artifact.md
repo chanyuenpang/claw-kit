@@ -1,6 +1,6 @@
 # DSH adapter release contract
 
-- Scope: `packages/dsh-adapter` only, published as `@veewo/dsh-adapter` on
+- Scope: `packages/dsh-adapter` only, published as `@veewo/dsh-claw-kit` on
   the npm registry. There is no separate marketplace repository or archive.
 - Version: `<cli-base>.<next-fourth-segment>` in git; derive only the fourth
   segment from prior `vdsh-<cli-base>.*` tags. Never carry the first three
@@ -13,7 +13,7 @@
   The git tag stays the four-segment `vdsh-<cli-base>.<n>`.
 - Bump only the adapter fourth segment; keep CLI/core and other adapters
   unchanged.
-- Verify: `npm run build/test/check -w @veewo/dsh-adapter`, then
+- Verify: `npm run build/test/check -w @veewo/dsh-claw-kit`, then
   `npm run publish:dsh-plugin` (dry run) — the tarball must contain `lib/`,
   `skills/`, and `cordis.patch.yml` and no build junk, and its staged version
   must equal the npm mapping.
@@ -25,5 +25,5 @@
 - The published npm package is the artifact; `export:dsh-plugin` additionally
   produces a local tarball for profile installs.
 - Verify the release in a real DSH profile only when separately authorized:
-  `dsh plugin --profile web add @veewo/dsh-adapter` + restart + `claw_run`
+  `dsh plugin --profile web add @veewo/dsh-claw-kit` + restart + `claw_run`
   tool and the six bundled skills present. The CLI must accept `--host dsh`.

@@ -4,7 +4,7 @@
   "title": "release-dsh-plugin",
   "status": "process.active",
   "goal": {
-    "text": "Publish a verified @veewo/dsh-adapter npm release."
+    "text": "Publish a verified @veewo/dsh-claw-kit npm release."
   },
   "requirements": {
     "summary": "Release only the DSH adapter artifact family to the npm registry.",
@@ -13,7 +13,7 @@
       "Only the DSH adapter fourth segment and package.json version are bumped.",
       "Focused adapter build, tests, and checks pass; the tarball contains lib/, skills/, cordis.patch.yml.",
       "The exact vdsh-<version> tag points to clean origin/main.",
-      "@veewo/dsh-adapter@<version> is published to the npm registry and installable via `dsh plugin add`."
+      "@veewo/dsh-claw-kit@<version> is published to the npm registry and installable via `dsh plugin add`."
     ]
   },
   "tasks": [
@@ -32,7 +32,7 @@
     {
       "id": 3,
       "title": "Verify the DSH plugin candidate",
-      "detail": "Run npm run build/test/check -w @veewo/dsh-adapter, export the tarball, verify its contents, and run npm run publish:dsh-plugin (dry run) to confirm the artifact gate.",
+      "detail": "Run npm run build/test/check -w @veewo/dsh-claw-kit, export the tarball, verify its contents, and run npm run publish:dsh-plugin (dry run) to confirm the artifact gate.",
       "status": "pending"
     },
     {
@@ -44,7 +44,7 @@
     {
       "id": 5,
       "title": "Verify the immutable DSH release",
-      "detail": "Verify the published npm version, the vdsh-<version> tag, repository cleanliness, and (when separately authorized) a real-profile install: dsh plugin --profile web add @veewo/dsh-adapter + restart + claw_run/skills present.",
+      "detail": "Verify the published npm version, the vdsh-<version> tag, repository cleanliness, and (when separately authorized) a real-profile install: dsh plugin --profile web add @veewo/dsh-claw-kit + restart + claw_run/skills present.",
       "status": "pending"
     }
   ],
@@ -59,7 +59,7 @@
     }
   ],
   "rules": [
-    "Publish only @veewo/dsh-adapter to npm; never publish CLI/core or another adapter.",
+    "Publish only @veewo/dsh-claw-kit to npm; never publish CLI/core or another adapter.",
     "Never modify another artifact family without explicit batch authority.",
     "Stop at the first failed release boundary."
   ]

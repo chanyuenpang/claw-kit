@@ -1,4 +1,4 @@
-// Publish the @veewo/dsh-adapter npm package.
+// Publish the @veewo/dsh-claw-kit npm package.
 //
 // Flow: build → test → stage npm manifest → pack → (--publish) npm publish.
 // Without --publish this is a dry run that verifies the artifact.
@@ -62,8 +62,8 @@ if (publish) {
 }
 
 if (!skipBuild) {
-  run(["run", "build", "-w", "@veewo/dsh-adapter"]);
-  run(["test", "-w", "@veewo/dsh-adapter"]);
+  run(["run", "build", "-w", "@veewo/dsh-claw-kit"]);
+  run(["test", "-w", "@veewo/dsh-claw-kit"]);
 }
 
 // Stage an npm publishable manifest: only the tarball's package.json carries
@@ -108,11 +108,11 @@ if (tarballManifest.version !== npmVersion) {
   throw new Error(`tarball version ${tarballManifest.version} does not match npm version ${npmVersion}`);
 }
 
-console.log(`@veewo/dsh-adapter git ${gitVersion} → npm ${npmVersion} artifact: ${tarball}`);
+console.log(`@veewo/dsh-claw-kit git ${gitVersion} → npm ${npmVersion} artifact: ${tarball}`);
 
 if (publish) {
   run(["publish", tarball, "--access", "public", "--tag", distTag]);
-  console.log(`Published @veewo/dsh-adapter@${npmVersion} (dist-tag ${distTag}); git version ${gitVersion}`);
+  console.log(`Published @veewo/dsh-claw-kit@${npmVersion} (dist-tag ${distTag}); git version ${gitVersion}`);
   console.log(`Next: tag the commit \`vdsh-${gitVersion}\` and verify in a real DSH profile (see packages/dsh-adapter/RELEASING.md).`);
 } else {
   console.log("Dry run complete (no --publish). Run with --publish to publish to the npm registry.");

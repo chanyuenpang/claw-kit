@@ -1,4 +1,4 @@
-// Install the exported @veewo/dsh-adapter tarball into a dsh profile via
+// Install the exported @veewo/dsh-claw-kit tarball into a dsh profile via
 // `dsh plugin --profile <name> add <tarball>`, then report the restart step.
 // The profile bundle layer activates only after the Host restarts.
 import { execFileSync } from "node:child_process";
@@ -24,7 +24,7 @@ const tarballs = fs
   .filter((file) => file.endsWith(".tgz"))
   .sort();
 if (tarballs.length === 0) {
-  throw new Error(`No exported dsh-adapter tarball in ${outDir}; run "npm run export:dsh-plugin" first.`);
+  throw new Error(`No exported dsh-claw-kit tarball in ${outDir}; run "npm run export:dsh-plugin" first.`);
 }
 const tarball = path.join(outDir, tarballs.at(-1));
 
@@ -37,4 +37,4 @@ execFileSync("dsh", ["plugin", "--profile", profile, "add", tarball], {
 });
 
 console.log(`Installed ${path.basename(tarball)} into profile "${profile}".`);
-console.log("Restart the Host (dsh --profile " + profile + ") to mount the claw-adapter row; then verify with `dsh --profile " + profile + " --dump-config`.");
+console.log("Restart the Host (dsh --profile " + profile + ") to mount the claw-kit row; then verify with `dsh --profile " + profile + " --dump-config`.");

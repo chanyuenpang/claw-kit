@@ -2,9 +2,10 @@
  * DSH report-capture extraction: reads the DSH session event log and pulls the
  * current turn's final assistant message plus the assistant conclusions that
  * immediately preceded each claw_run `task.done` call — the same evidence the
- * Codex adapter extracts from its transcript. The turn-stopping hook writes
- * this into the claw-kit dsh-capture file consumed by `knowledge claim`'s dsh
- * branch (packages/cli/src/dsh-capture.ts).
+ * Codex adapter extracts from its transcript. The claw_run execute path
+ * writes this into the claw-kit dsh-capture file at the terminal plan
+ * mutation (deterministic, no turn-stopping hook), consumed by
+ * `knowledge claim`'s dsh branch (packages/cli/src/dsh-capture.ts).
  */
 
 export type TurnCapture = {

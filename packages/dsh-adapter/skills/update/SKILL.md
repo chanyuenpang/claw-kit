@@ -1,6 +1,6 @@
 ---
 name: update
-description: Use when a newer claw-kit version is available for DSH or the user asks to refresh the installed claw CLI and @veewo/dsh-adapter npm package.
+description: Use when a newer claw-kit version is available for DSH or the user asks to refresh the installed claw CLI and @veewo/dsh-claw-kit npm package.
 ---
 
 # update
@@ -31,11 +31,11 @@ Resolve `<skill-dir>` as the directory containing this loaded `SKILL.md`.
 
 ## Contract
 
-- Refresh the published global claw CLI first, then the `@veewo/dsh-adapter`
+- Refresh the published global claw CLI first, then the `@veewo/dsh-claw-kit`
   npm package into the DSH profile:
   ```powershell
   npm install -g @veewo/claw@latest
-  dsh plugin --profile <name> add @veewo/dsh-adapter@latest
+  dsh plugin --profile <name> add @veewo/dsh-claw-kit@latest
   ```
 - Treat the CLI and the adapter as **one update unit**; verify both before
   reporting success. The installed CLI must accept `--host dsh`
@@ -46,9 +46,9 @@ Resolve `<skill-dir>` as the directory containing this loaded `SKILL.md`.
 - A new package version alone is not activation proof. The adapter activates
   only after the DSH Host restarts and a real session mounts `claw_run`.
   Verify: `claw --version` is the target, `dsh --profile <name> --dump-config`
-  shows the `claw-adapter` row, and after restart the `claw_run` tool and the
-  six bundled skills (using-claw-kit / researcher / planning / config /
-  create-claw-skill / claw-kit-doc) are present.
+  shows the `claw-kit` row, and after restart the `claw_run` tool and the
+  seven bundled skills (using-claw-kit / researcher / planning / config /
+  create-claw-skill / claw-kit-doc / update) are present.
 - Keep execution details in `TEMPLATE.json`; use `non-claw-fallback.md`
   whenever the claw harness is unavailable.
 

@@ -1,4 +1,4 @@
-// Export the installable @veewo/dsh-adapter tarball into dist/dsh-plugin/.
+// Export the installable @veewo/dsh-claw-kit tarball into dist/dsh-plugin/.
 // The DSH plugin manager (`dsh plugin --profile <name> add <pkg>`) is a pnpm
 // forwarder, so the distribution surface is a plain npm tarball — no
 // marketplace cache or identity switching needed.
@@ -20,7 +20,7 @@ const outDir = readOption("--out-dir")
   : path.join(repoRoot, "dist", "dsh-plugin");
 
 fs.mkdirSync(outDir, { recursive: true });
-execFileSync("npm", ["pack", "-w", "@veewo/dsh-adapter", "--pack-destination", outDir], {
+execFileSync("npm", ["pack", "-w", "@veewo/dsh-claw-kit", "--pack-destination", outDir], {
   cwd: repoRoot,
   stdio: "inherit",
   shell: process.platform === "win32",

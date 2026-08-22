@@ -44,7 +44,7 @@ There are five independent artifact families. Select the requested artifact befo
 | CLI | core, CLI, or shared CLI/runtime | 3 segments | `@veewo/claw-core` then `@veewo/claw` | `v<version>` |
 | Codex plugin | codex-adapter | 4 segments | committed GitHub marketplace snapshot | `vcodex-<version>` |
 | Cindy plugin | independent `claw-kit-cindy-adapter` repository | 4 segments | Cindy-only Git marketplace | `vcindy-<version>` in the adapter repository |
-| DSH adapter | dsh-adapter | 4 segments in git; npm prerelease `<cli-base>-rc.<n>` | `@veewo/dsh-adapter` on the npm registry | `vdsh-<version>` |
+| DSH adapter | dsh-adapter | 4 segments in git; npm prerelease `<cli-base>-rc.<n>` | `@veewo/dsh-claw-kit` on the npm registry | `vdsh-<version>` |
 | OpenClaw plugin | openclaw-adapter | 4 segments | OpenClaw adapter GitHub release artifact | `vopenclaw-<version>` |
 | OpenCode plugin | opencode-adapter | 4 segments | OpenCode adapter GitHub release artifact | `vopencode-<version>` |
 
@@ -157,7 +157,10 @@ After changing version files:
 - `packages/cli` -> `@veewo/claw`
 - CLI pins `@veewo/claw-core` exactly (no range).
 - Core is always published before CLI.
-- Adapter packages are private and not published to npm.
+- Adapter packages are not published to npm except the DSH adapter
+  (`@veewo/dsh-claw-kit`); the other adapters release through their own
+  marketplace / GitHub artifacts (Codex, OpenCode, OpenClaw) or a separate
+  repository (Cindy).
 
 ## Release Checklist
 

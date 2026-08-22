@@ -1,7 +1,7 @@
-# Releasing the DSH adapter
+# Releasing the DSH claw-kit plugin
 
-`@veewo/dsh-adapter` is published to the npm registry; a DSH profile installs
-it with `dsh plugin --profile <name> add @veewo/dsh-adapter` and activates it
+`@veewo/dsh-claw-kit` is published to the npm registry; a DSH profile installs
+it with `dsh plugin --profile <name> add @veewo/dsh-claw-kit` and activates it
 on the next Host restart. Distribution is the npm package — there is no separate
 marketplace repository or ZIP artifact.
 
@@ -12,7 +12,7 @@ marketplace repository or ZIP artifact.
 > `latest`. Always publish through `npm run publish:dsh-plugin`, which stages a
 > tarball whose package.json carries the npm-legal prerelease spelling
 > `<cli-base>-rc.<n>` (`0.2.25.0` → `0.2.25-rc.0`) while the git tag stays the
-> four-segment `vdsh-0.2.25.0`. Never run bare `npm publish -w @veewo/dsh-adapter`.
+> four-segment `vdsh-0.2.25.0`. Never run bare `npm publish -w @veewo/dsh-claw-kit`.
 >
 > A mistakenly published wrong-version tarball cannot be removed with a
 > granular token (bypass-2FA tokens cannot `unpublish`, E403); it lingers as a
@@ -28,9 +28,9 @@ marketplace repository or ZIP artifact.
 
 2. **Run the focused adapter checks:**
    ```powershell
-   npm run build -w @veewo/dsh-adapter
-   npm test -w @veewo/dsh-adapter
-   npm run check -w @veewo/dsh-adapter
+   npm run build -w @veewo/dsh-claw-kit
+   npm test -w @veewo/dsh-claw-kit
+   npm run check -w @veewo/dsh-claw-kit
    ```
 
 3. **Publish the package** (this is the ONLY supported publish path):
@@ -54,11 +54,11 @@ marketplace repository or ZIP artifact.
 5. **Verify in a real DSH profile.** From an environment whose CLI carries the
    `dsh` host support:
    ```powershell
-   dsh plugin --profile web add @veewo/dsh-adapter
+   dsh plugin --profile web add @veewo/dsh-claw-kit
    # restart the Host, then confirm:
    # - the claw_run tool appears in the tool list
-   # - the six bundled skills (using-claw-kit/researcher/planning/config/
-   #   create-claw-skill/claw-kit-doc) appear in the skill catalog
+   # - the seven bundled skills (using-claw-kit/researcher/planning/config/
+   #   create-claw-skill/claw-kit-doc/update) appear in the skill catalog
    # - a project plan completes and its knowledgeDispatch is auto-dispatched
    ```
    Version alignment: the adapter and the installed CLI are one validation

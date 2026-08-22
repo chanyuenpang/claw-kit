@@ -1,4 +1,4 @@
-# ADR: DSH knowledge finalization uses the native-subagent delegate route
+﻿# ADR: DSH knowledge finalization uses the native-subagent delegate route
 
 ## Context
 
@@ -25,7 +25,7 @@ DSH（DeepSeek Harness）需要与 claw-kit 既有的 ready-job / claim / done �
   DSH 原生 subagent，subagent 创建 delegate plan、`knowledge claim` 认领 job、顺序执行
   assignment subplan、以 claim token 调用一次 `knowledge done`。不做 Cindy 式原子
   claim-time capture，也不用 `knowledge wait`。
-- DSH adapter（`@veewo/dsh-adapter`，静态 Cordis bundle 插件）注册**单个原生工具
+- DSH adapter（`@veewo/dsh-claw-kit`，静态 Cordis bundle 插件）注册**单个原生工具
   `claw_run`**：`execute` 内部经 `claw session open --host dsh` daemon 执行 mutation、
   消费 CLI 生成的 `hostActions`（`create_goal`/`update_goal` → DSH 原生 goals；
   `update_plan` → 进度投影）、按白名单返回 compact guidance。`isHostActionsHost`

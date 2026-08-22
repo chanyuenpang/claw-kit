@@ -11,7 +11,7 @@ the current request and does not perform updates or configuration mutations.
 - For updating claw-kit, read `references/update.md` for the CLI/version
   contract, then apply the DSH surface steps: re-export and reinstall the
   adapter (`npm run export:dsh-plugin` + `npm run install:dsh-plugin`, or
-  `dsh plugin --profile <name> add @veewo/dsh-adapter` from the registry),
+  `dsh plugin --profile <name> add @veewo/dsh-claw-kit` from the registry),
   and restart the Host so the bundle layer reloads. Verify the running
   `claw --version` matches the project's expected version — the CLI and the
   adapter are one validation unit.

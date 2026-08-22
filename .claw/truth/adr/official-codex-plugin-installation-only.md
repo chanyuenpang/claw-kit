@@ -1,4 +1,4 @@
-# ADR: Official Codex plugin installation only
+﻿# ADR: Official Codex plugin installation only
 
 ## Context
 

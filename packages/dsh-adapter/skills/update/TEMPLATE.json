@@ -7,19 +7,19 @@
     "text": "Update claw-kit on the DSH host to the latest published CLI and adapter."
   },
   "requirements": {
-    "summary": "Refresh the global claw CLI and the @veewo/dsh-adapter profile plugin as one update unit, then verify activation.",
+    "summary": "Refresh the global claw CLI and the @veewo/dsh-claw-kit profile plugin as one update unit, then verify activation.",
     "openQuestions": [],
     "acceptanceCriteria": [
       "The installed claw CLI is the target version and accepts --host dsh.",
-      "The DSH profile bundles @veewo/dsh-adapter at the target version.",
-      "After the Host restart the claw_run tool and the six bundled skills are present."
+      "The DSH profile bundles @veewo/dsh-claw-kit at the target version.",
+      "After the Host restart the claw_run tool and the seven bundled skills are present."
     ]
   },
   "tasks": [
     {
       "id": 1,
       "title": "Detect the current and target versions",
-      "detail": "Run claw --version and read the installed adapter version (dsh --profile <name> --dump-config / profile package.json). Resolve the latest published @veewo/claw and @veewo/dsh-adapter versions from the npm registry.",
+      "detail": "Run claw --version and read the installed adapter version (dsh --profile <name> --dump-config / profile package.json). Resolve the latest published @veewo/claw and @veewo/dsh-claw-kit versions from the npm registry.",
       "status": "pending"
     },
     {
@@ -31,13 +31,13 @@
     {
       "id": 3,
       "title": "Update the DSH adapter in the profile",
-      "detail": "dsh plugin --profile <name> add @veewo/dsh-adapter@latest; confirm the profile bundles list carries @veewo/dsh-adapter and dsh --profile <name> --dump-config shows the claw-adapter row.",
+      "detail": "dsh plugin --profile <name> add @veewo/dsh-claw-kit@latest; confirm the profile bundles list carries @veewo/dsh-claw-kit and dsh --profile <name> --dump-config shows the claw-kit row.",
       "status": "pending"
     },
     {
       "id": 4,
       "title": "Restart the Host and verify activation",
-      "detail": "Restart the DSH Host (dsh --profile <name>), then verify the claw_run tool is present and the six bundled skills (using-claw-kit/researcher/planning/config/create-claw-skill/claw-kit-doc) are available; optionally run a plan.create smoke check.",
+      "detail": "Restart the DSH Host (dsh --profile <name>), then verify the claw_run tool is present and the seven bundled skills (using-claw-kit/researcher/planning/config/create-claw-skill/claw-kit-doc/update) are available; optionally run a plan.create smoke check.",
       "status": "pending"
     }
   ],

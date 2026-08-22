@@ -1,5 +1,5 @@
 /**
- * Bundled skill provider for the dsh-adapter: discovers the package's
+ * Bundled skill provider for the dsh-claw-kit plugin: discovers the package's
  * `skills/` directory (shared-synced + host-specific skills) and registers
  * them into the DSH layered `ctx.skills` registry as a `bundled` source, so
  * installing the plugin is sufficient to expose the claw-kit skills — no

@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 /**
- * DSH report capture hand-off. The dsh-adapter plugin owns reading the DSH
+ * DSH report capture hand-off. The dsh-claw-kit plugin owns reading the DSH
  * session log; at turn stop it writes the extracted final message and task
  * conclusions to a capture file the CLI's `knowledge claim` dsh branch reads,
  * mirroring the Codex transcript hand-off but with an adapter-written JSON

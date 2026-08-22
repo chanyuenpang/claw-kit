@@ -362,7 +362,8 @@ claw-kit 侧（`dsh` host 支持）：
 
 - `cordis.patch.yml`：bundle 声明（`dsh.bundle.patch`），一行 `claw-adapter`；
 - `src/index.ts`：Cordis 插件（`claw_run` 工具 + `agent/session-start` 注入 +
-  `agent/turn-stopping` 报告捕获 + `systemPrompt` section/context，均 fail-open）；
+  `systemPrompt` section/context，均 fail-open）；后续演进：turn 报告改为终态
+  plan mutation 内确定性写入 dsh-capture，无 turn-stopping 钩子（见 §5.5）；
 - `src/claw-session.ts`：常驻 daemon 客户端（`claw session open --host dsh`，
   JSON-RPC over stdio，串行链，Windows `.cmd` 包装）；
 - `src/host-actions.ts`：hostActions 消费器（`create_goal`/`update_goal` →
@@ -562,6 +563,15 @@ capture 窗口过滤 → knowledge done），模型全程无感，无需 turn-st
 发布后验证：npm metadata 全部可检索；profile 安装 `@veewo/dsh-adapter@0.2.25-rc.1`
 后重启，claw_run plan.show 返回 release-claw-cli 计划（process.active + goal +
 tasks），search 返回真实知识召回。
+
+### 5.7 插件改名（2026-08-22 续）
+
+用户授权把 DSH 插件 npm 包从 `@veewo/dsh-adapter` 改名为 `@veewo/dsh-claw-kit`
+（GUI Settings → Plugins 的插件卡片名由 `moduleShortName(moduleName)` 派生：
+`@veewo/dsh-adapter` → "adapter"，改名后 `@veewo/dsh-claw-kit` → "claw-kit"）。
+同一提交把 cordis 行 id 从 `claw-adapter` 改为 `claw-kit`，导出名
+`export const name` 同步为 `"claw-kit"`；安装/更新/发布脚本与技能文档全部跟随
+新包名。历史记录（本节 5.6 及更早）保留原包名以如实记载当时发布内容。
 
 ## 六、证据索引
 
