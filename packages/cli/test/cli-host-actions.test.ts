@@ -49,13 +49,13 @@ test("cli codex driver returns an executable versioned source envelope", async (
   const root = createFixture("codex-driver-envelope");
   const envelope = runClaw(["codex", "driver"], root);
   assert.equal(envelope.command, "codex.driver");
-  assert.equal(envelope.driverVersion, 13);
+  assert.equal(envelope.driverVersion, 14);
   assert.equal(envelope.hostActionSchemaVersion, 1);
-  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v13:s1");
+  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v14:s1");
   assert.match(String(envelope.sha256), /^[a-f0-9]{64}$/);
   assert.equal(
     envelope.sha256,
-    "7f0be869a1471afc72c154769766ede4a88b628e95c45b10b74e12838a2448ae",
+    "29bee65bc7528d578c360b25bdf05a368568ef2cf1e0f7dfbb04892f48e01760",
     "changing serialized driver source requires a driver version/cache-key bump",
   );
 
@@ -243,6 +243,36 @@ test("Codex driver skips unrelated JSON diagnostics and validates native action 
       /invalid Codex hostAction input/,
     );
   }
+});
+
+test("Codex driver preserves structured CLI errors returned on stderr", async () => {
+  const root = createFixture("codex-driver-cli-error");
+  const envelope = runClaw(["codex", "driver"], root);
+  const runner = (0, eval)(`(${String(envelope.source)})`) as (
+    input: Record<string, unknown>,
+    runtime: Record<string, unknown>,
+  ) => Promise<JsonRecord>;
+
+  await assert.rejects(
+    runner(
+      { argv: ["plan", "sync"], workdir: root },
+      {
+        tools: {
+          shell_command: async () => ({
+            stdout: "",
+            stderr: JSON.stringify({
+              error: {
+                code: "PROJECT_CONFIG_INVALID",
+                message: "No plan is bound to this Codex session.",
+              },
+            }),
+          }),
+        },
+        text: () => {},
+      },
+    ),
+    /claw mutation failed \[PROJECT_CONFIG_INVALID\]: No plan is bound to this Codex session\./,
+  );
 });
 
 test("codex invoke preserves structured user values without shell interpretation", () => {

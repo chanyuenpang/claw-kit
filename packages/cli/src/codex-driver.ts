@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-export const CODEX_DRIVER_VERSION = 13;
+export const CODEX_DRIVER_VERSION = 14;
 export const CODEX_HOST_ACTION_SCHEMA_VERSION = 1;
 export const CODEX_DRIVER_CACHE_KEY =
   `claw-kit:codex-driver:v${CODEX_DRIVER_VERSION}:s${CODEX_HOST_ACTION_SCHEMA_VERSION}`;
@@ -44,17 +44,18 @@ async function codexDriverRunner(
     : typeof tools.exec_command === "function"
       ? await tools.exec_command({ cmd: codexCommand, workdir, yield_time_ms: timeout_ms })
       : (() => { throw new Error("Codex host has no supported command-execution tool"); })();
-  const outputText = typeof raw === "string"
-    ? raw
-    : ((raw as Record<string, unknown>).output
-      ?? (raw as Record<string, unknown>).stdout
-      ?? (raw as Record<string, unknown>).text
-      ?? "");
-  if (typeof outputText !== "string") {
+  const outputParts = typeof raw === "string"
+    ? [raw]
+    : ["output", "stdout", "stderr", "text"]
+      .map((key) => (raw as Record<string, unknown>)[key])
+      .filter((value): value is string => typeof value === "string" && value.length > 0);
+  const outputText = [...new Set(outputParts)].join("\n");
+  if (outputParts.length === 0) {
     throw new TypeError("claw command returned no text output");
   }
 
   let result: Record<string, unknown> | undefined;
+  let protocolError: Record<string, unknown> | undefined;
   for (let candidateStart = outputText.indexOf("{"); candidateStart >= 0; candidateStart = outputText.indexOf("{", candidateStart + 1)) {
     let depth = 0;
     let quoted = false;
@@ -70,14 +71,22 @@ async function codexDriverRunner(
       else if (character === "}" && --depth === 0) {
         try {
           const parsed = JSON.parse(outputText.slice(candidateStart, index + 1)) as unknown;
+          const parsedRecord = parsed && typeof parsed === "object" && !Array.isArray(parsed)
+            ? parsed as Record<string, unknown>
+            : undefined;
+          const error = parsedRecord?.error;
+          const errorRecord = error && typeof error === "object" && !Array.isArray(error)
+            ? error as Record<string, unknown>
+            : undefined;
+          if (typeof errorRecord?.code === "string" && typeof errorRecord.message === "string") {
+            protocolError = errorRecord;
+          }
           if (
-            parsed
-            && typeof parsed === "object"
-            && !Array.isArray(parsed)
-            && typeof (parsed as Record<string, unknown>).ok === "boolean"
-            && typeof (parsed as Record<string, unknown>).command === "string"
+            parsedRecord
+            && typeof parsedRecord.ok === "boolean"
+            && typeof parsedRecord.command === "string"
           ) {
-            result = parsed as Record<string, unknown>;
+            result = parsedRecord;
           }
         } catch {
           // Continue after unrelated shell diagnostics that happen to contain braces.
@@ -88,10 +97,16 @@ async function codexDriverRunner(
     if (result) break;
   }
   if (!result) {
+    if (protocolError) {
+      throw new Error(`claw mutation failed [${String(protocolError.code)}]: ${String(protocolError.message)}`);
+    }
     throw new Error("claw returned no valid JSON protocol result");
   }
 
   if (result.ok !== true) {
+    if (protocolError) {
+      throw new Error(`claw mutation failed [${String(protocolError.code)}]: ${String(protocolError.message)}`);
+    }
     throw new Error(`claw mutation failed: ${String(result.command ?? "unknown")}`);
   }
 

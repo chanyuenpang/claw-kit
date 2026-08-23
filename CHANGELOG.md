@@ -2,6 +2,15 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.2.27] - 2026-08-24
+
+### Fixed
+
+- Codex fixed driver v14 now preserves structured CLI failures from every
+  supported command-output channel, including stderr. Instead of collapsing
+  them into `claw returned no valid JSON protocol result`, it reports the
+  original CLI error code and message without consuming Host Actions.
+
 ## [0.2.26] - 2026-08-22
 
 ### Added
