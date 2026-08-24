@@ -14,7 +14,21 @@ import {
 test("platform-specific update skills are not shared-generated", () => {
   assert.equal(SHARED_SKILL_NAMES.includes("update"), false);
   assert.equal(SHARED_SKILL_NAMES.includes("claw-kit-doc"), false);
+  assert.equal(SHARED_SKILL_NAMES.includes("feature-architecture"), true);
   assert.deepEqual(SHARED_DOCUMENTATION_NAMES, ["claw-kit-doc"]);
+});
+
+test("feature-architecture keeps reports task-scoped and plan-referenced", async () => {
+  const skill = await fs.readFile(
+    new URL("../shared/skills/feature-architecture/SKILL.md", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(skill, /claw context/);
+  assert.match(skill, /activeWorkflow/);
+  assert.match(skill, /taskDir/);
+  assert.match(skill, /plan edit --reference/);
+  assert.doesNotMatch(skill, /docs\/feature-architecture/);
 });
 
 test("researcher adapters share one invocation description", async () => {
@@ -97,7 +111,7 @@ test("verifySharedSkillsSynced reports a missing materialized skill without rewr
   const result = await verifySharedSkillsSynced({ repoRoot: root, skillNames: ["demo"] });
 
   assert.equal(result.ok, false);
-  assert.equal(result.problems.length, 2);
+  assert.equal(result.problems.length, 3);
   assert.match(result.problems[0], /incomplete file set/);
   await assert.rejects(fs.access(codexSkillDir));
 });

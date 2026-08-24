@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const thisDir = path.dirname(fileURLToPath(import.meta.url));
 const defaultRepoRoot = path.resolve(thisDir, "..");
 
-export const SHARED_SKILL_NAMES = ["planning", "config", "create-claw-skill"];
+export const SHARED_SKILL_NAMES = ["planning", "config", "create-claw-skill", "feature-architecture"];
 export const SHARED_DOCUMENTATION_NAMES = ["claw-kit-doc"];
 let syncQueue = Promise.resolve();
 const LOCK_RETRY_MS = 50;

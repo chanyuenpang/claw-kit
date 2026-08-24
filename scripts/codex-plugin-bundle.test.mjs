@@ -150,7 +150,7 @@ test("Codex plugin exposes an explicit same-agent knowledge-capture skill", asyn
   assert.match(skill, /run-knowledge-capture\.mjs" complete --source agent-memory/i);
   assert.doesNotMatch(skill, /`claw knowledge (prepare|complete)/i);
   const runtime = JSON.parse(await fs.readFile(new URL("skills/knowledge-capture/runtime.json", adapterRoot), "utf8"));
-  assert.deepEqual(runtime, { schemaVersion: 1, package: "@veewo/claw", version: "0.2.24" });
+  assert.deepEqual(runtime, { schemaVersion: 1, package: "@veewo/claw", version: "0.2.27" });
   await fs.access(new URL("skills/knowledge-capture/scripts/run-knowledge-capture.mjs", adapterRoot));
   assert.match(skill, /Do not create a plan, report, subplan.*subagent/i);
   assert.doesNotMatch(skill, /spawn_agent|create_thread|knowledgeDispatch/);
@@ -222,7 +222,7 @@ test("exported Codex plugin contains every shared workflow and documentation ski
   const outDir = path.join(root, "dist");
   const result = await exportCodexPluginBundle({ outDir });
 
-  for (const skillName of ["planning", "config", "update", "create-claw-skill", "claw-kit-doc"]) {
+  for (const skillName of ["planning", "config", "update", "create-claw-skill", "feature-architecture", "claw-kit-doc"]) {
     await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", skillName, "SKILL.md")));
   }
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "knowledge-capture", "SKILL.md")));
@@ -363,9 +363,10 @@ test("official marketplace-style cache copy contains all shared skills and resou
   const sourceDir = fileURLToPath(new URL("../packages/codex-adapter", import.meta.url));
   const result = await installCodexPluginBundle({ sourceDir, cacheRoot });
 
-  for (const skillName of ["planning", "config", "update", "create-claw-skill"]) {
+  for (const skillName of ["planning", "config", "update", "create-claw-skill", "feature-architecture"]) {
     await assert.doesNotReject(fs.access(path.join(result.installDir, "skills", skillName, "SKILL.md")));
   }
+  await assert.doesNotReject(fs.access(path.join(result.installDir, "skills", "feature-architecture", "references", "design-artifacts.md")));
   await assert.doesNotReject(fs.access(path.join(result.installDir, "skills", "update", "TEMPLATE.json")));
   await assert.doesNotReject(fs.access(path.join(result.installDir, "skills", "create-claw-skill", "TEMPLATE.json")));
   await assert.doesNotReject(fs.access(path.join(result.installDir, "skills", "create-claw-skill", "FALLBACK.md")));

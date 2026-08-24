@@ -10,7 +10,7 @@ import { assertTemplateVersionsAligned } from "./update-template-versions.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publish = process.argv.includes("--publish");
-const requiredPluginSkills = ["planning", "config", "update", "create-claw-skill", "claw-kit-doc"];
+const requiredPluginSkills = ["planning", "config", "update", "create-claw-skill", "feature-architecture", "claw-kit-doc"];
 const npmExecPath = process.env.npm_execpath;
 
 function command(command, args) {
@@ -93,6 +93,8 @@ function assertRepositoryMarketplaceSnapshot({ pluginVersion }) {
     "skills/create-claw-skill/references/template-authoring.md",
     "skills/create-claw-skill/references/template-upgrade.md",
     "skills/create-claw-skill/scripts/create-claw-skill-stub.mjs",
+    "skills/feature-architecture/SKILL.md",
+    "skills/feature-architecture/references/design-artifacts.md",
   ]) {
     assertHeadPathExists(`${sourceRoot}/${relativePath}`);
   }

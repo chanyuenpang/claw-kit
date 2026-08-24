@@ -61,7 +61,7 @@ CLI 需支持 `--host dsh`（见 claw-kit 仓库的 dsh host 支持）。
 
 安装即投递 7 个 skills（`ctx.skills` bundled provider，无需手动复制）：
 
-- shared 同步：`planning`、`config`、`create-claw-skill`、`claw-kit-doc`
+- shared 同步：`planning`、`config`、`create-claw-skill`、`feature-architecture`、`claw-kit-doc`
   （`npm run sync:shared-skills` 维护，勿手改——AUTO-GENERATED banner）；
 - Host 特定（本包手写）：`using-claw-kit`（claw_run 单路线主入口）、
   `researcher`（recall → code index → exact source 调查顺序 + 可选 subagent 委派）、
