@@ -35,6 +35,7 @@
 
 - `npm run verify:release`
 - `npm run publish:release`
+- `verify:release` / `publish:release` now gate only Core, Client, and CLI. Coordinated marketplace, adapter-version, shared-skill, plugin-bundle, and cross-artifact template checks run only through explicit `verify:batch-release` / `publish:batch-release`.
 - `npm run check:template-versions`
 - `npm view @veewo/claw-core version dist-tags.latest --json`
 - `npm view @veewo/claw-client version dist-tags.latest --json`

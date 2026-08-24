@@ -1,5 +1,7 @@
 import { spawnSync } from "node:child_process";
 
+const CODEX_MUTATION_ROUTE_BANNER = "Codex route: every claw plan, task, or subplan mutation must use the fixed code-mode driver. commandHints provide argv syntax only; do not run them directly in the shell.";
+
 const payload = await readStdin();
 const contextResult = runClawContext(payload);
 if (!contextResult.ok || !contextResult.stdout.trim()) process.exit(0);
@@ -45,7 +47,7 @@ function renderCodexSessionStart(context) {
     const sync = workflow.planStatus === "process.active"
       ? "\nBefore continuing, run `claw plan sync` once through the fixed Codex driver to restore focused-plan progress and reconcile the root-plan Goal."
       : "";
-    return [runtimePrompt, versionNote, "Claw workflow snapshot is recovered. Treat `workflowGuidance` as the only next-step contract.", JSON.stringify(workflow), sync].filter(Boolean).join("\n\n");
+    return [runtimePrompt, versionNote, "Claw workflow snapshot is recovered. Treat `workflowGuidance` as the only next-step contract.", CODEX_MUTATION_ROUTE_BANNER, JSON.stringify(workflow), sync].filter(Boolean).join("\n\n");
   }
   const project = context?.project;
   if (!project || typeof project !== "object") return runtimePrompt || versionNote || null;

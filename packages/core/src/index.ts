@@ -5,6 +5,7 @@ export * from "./completion-hooks.js";
 export * from "./errors.js";
 export * from "./focus-transitions.js";
 export * from "./init.js";
+export * from "./integration-contract.js";
 export * from "./io.js";
 export * from "./knowledge-document.js";
 export * from "./knowledge-assignments.js";

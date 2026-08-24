@@ -1,6 +1,6 @@
 {
   "name": "claw-kit",
-  "version": "0.2.27",
+  "version": "0.2.28",
   "private": true,
   "workspaces": [
     "packages/cli",
@@ -22,11 +22,14 @@
     "install:dsh-plugin": "node .\\scripts\\install-dsh-plugin.mjs",
     "install:opencode-plugin": "powershell -ExecutionPolicy Bypass -File .\\scripts\\install-opencode-plugin.ps1",
     "publish:release": "node .\\scripts\\publish-release.mjs --publish",
+    "publish:batch-release": "node .\\scripts\\publish-release.mjs --batch --publish",
     "publish:dsh-plugin": "node .\\scripts\\publish-dsh-plugin.mjs",
     "sync:shared-skills": "node .\\scripts\\sync-shared-skills.mjs",
     "sync:template-versions": "node .\\scripts\\update-template-versions.mjs",
     "check:template-versions": "node .\\scripts\\update-template-versions.mjs --check",
     "verify:release": "node .\\scripts\\publish-release.mjs",
+    "verify:batch-release": "node .\\scripts\\publish-release.mjs --batch",
+    "verify:cli": "npm run build -w @veewo/claw-core && npm run build -w @veewo/claw-client && npm run check -w @veewo/claw-client && npm run build -w @veewo/claw && npm run check -w @veewo/claw",
     "repair:truth-encoding": "npm run build -w @veewo/claw-core && node scripts/truth-encoding-audit.mjs --write",
     "test:codex-plugin": "node --test .\\scripts\\codex-plugin-bundle.test.mjs",
     "test:opencode-plugin": "node --test .\\scripts\\opencode-plugin-bundle.test.mjs",

@@ -91,6 +91,7 @@ test("consumeHostActions: ignores non-v1 or malformed actions", () => {
 
 test("compactClawOutput keeps only the whitelist guidance fields", () => {
   const output = {
+    command: "task.edit",
     taskName: "t",
     planPath: "P",
     planStatus: "process.active",
@@ -114,6 +115,10 @@ test("compactClawOutput keeps only the whitelist guidance fields", () => {
   assert.equal(visible.planSummary, "1/3 T");
   assert.deepEqual(visible.nextsteps, ["Resume."]);
   assert.deepEqual(visible.commandHints, ["claw task done --id 2"]);
+  assert.equal(
+    visible.notes,
+    "DSH route: every claw plan, task, or subplan mutation must use claw_run(operation, args). commandHints map to its operation and args syntax only; do not run them directly in pwsh or a shell. Note.",
+  );
   assert.equal(visible.planPath, "P");
   // Non-whitelist fields never leak.
   assert.equal("hostActions" in visible, false);
@@ -131,6 +136,23 @@ test("compactClawOutput includes the plan document only in discussion", () => {
     plan: { title: "T" },
   };
   assert.equal(compactClawOutput(output).plan.title, "T");
+});
+
+test("compactClawOutput adds DSH route guidance without changing command hints", () => {
+  const visible = compactClawOutput({
+    command: "task.done",
+    workflowGuidance: { commandHints: ["claw plan done"] },
+  });
+  assert.equal(
+    visible.notes,
+    "DSH route: every claw plan, task, or subplan mutation must use claw_run(operation, args). commandHints map to its operation and args syntax only; do not run them directly in pwsh or a shell.",
+  );
+  assert.deepEqual(visible.commandHints, ["claw plan done"]);
+});
+
+test("compactClawOutput does not add DSH route guidance to read-only operations", () => {
+  const visible = compactClawOutput({ command: "plan.show", workflowGuidance: {} });
+  assert.equal("notes" in visible, false);
 });
 
 test("compactClawOutput handles undefined output", () => {

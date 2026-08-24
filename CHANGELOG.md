@@ -2,6 +2,20 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.2.28] - 2026-08-25
+
+### Changed
+
+- Core/CLI use a versioned host-integration profile; Codex and DSH consume the
+  same native effect contract while adapter-native runtime remains outside CLI.
+- CLI release readiness is independent of platform artifacts; coordinated
+  marketplace and adapter validation is now an explicit batch release gate.
+
+### Fixed
+
+- Codex and DSH workflow guidance consistently names their required native
+  mutation route so long-running agents retain the correct execution path.
+
 ## [0.2.27] - 2026-08-24
 
 ### Fixed

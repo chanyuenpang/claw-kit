@@ -30,6 +30,7 @@ The repository also needs one maintainer entry that can execute the accepted rel
 - before publishing, commit the release-ready source state so registry artifacts can be traced back to one source commit; the commit should include the version bump, generated plugin metadata, release docs/truth/ADR residue, and release-scoped runtime fixes
 - release verifier 与 `npm run publish:release` 只能在上述 release-ready commit 已推送、且本地 `main` 与 `origin/main` 精确一致后运行；不得先发布 artifact、再补推它的源码基线
 - 发布验证遵循根 `AGENTS.md` 的比例化原则：先按具体改动风险选择 focused checks，再由 `npm run verify:release` / `npm run publish:release` 执行稳定的版本对齐、shared-skill 同步、committed marketplace payload、隔离 template smoke、clean worktree 与 exact `main == origin/main` gate；只有现实回归风险足以支撑成本时，才扩展到完整测试、全部 adapter bundle tests 或额外安装验证
+- CLI/Core/Client npm release now retains its direct-main, clean-worktree, version, package-smoke and publish-order gates without requiring platform artifacts. Cross-artifact marketplace, adapter, shared-skill, bundle, and template consistency is an explicit coordinated `verify:batch-release` / `publish:batch-release` mode.
 - 当发布范围或风险要求检查真实 npm tarball 内容时，分别对 `@veewo/claw-core`、`@veewo/claw-client` 与 `@veewo/claw` 运行 `npm pack --dry-run`；不要仅为复制旧发布矩阵而机械运行与本轮风险无关的检查
 - npm 发布保持固定顺序：`@veewo/claw-core`、`@veewo/claw-client`、`@veewo/claw`
 - 在受管环境里，如果宿主机没有可直接调用的 `npm` CLI，也允许通过 bundled node、tar-based packaging 和 registry API 完成真实 publish

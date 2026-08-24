@@ -3,6 +3,7 @@
  * and the session-start guidance snapshot renderer. Kept free of Cordis and
  * process dependencies so they are directly unit-testable.
  */
+import { DSH_MUTATION_ROUTE_GUIDANCE } from "./route-guidance.js";
 /** Map one `claw_run` operation call (snake_case args) to the daemon's
  * canonical `claw/execute` input. Mirrors the Cindy adapter's sessionRequest
  * contract. Unknown operations pass args through and fail closed on the
@@ -152,6 +153,7 @@ export function renderGuidanceSnapshot(context) {
         }
         lines.push(snapshot.join("\n"));
         lines.push("Claw workflow snapshot is recovered. Treat the guidance as the only next-step contract.");
+        lines.push(DSH_MUTATION_ROUTE_GUIDANCE);
     }
     else {
         // No bound workflow: project fallback, mirroring the Codex hook.

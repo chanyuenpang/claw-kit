@@ -1,0 +1,1 @@
+export declare const DSH_MUTATION_ROUTE_GUIDANCE = "DSH route: every claw plan, task, or subplan mutation must use claw_run(operation, args). commandHints map to its operation and args syntax only; do not run them directly in pwsh or a shell.";

@@ -9,6 +9,8 @@
  * consumer error never fails the underlying mutation.
  */
 
+import { DSH_MUTATION_ROUTE_GUIDANCE } from "./route-guidance.js";
+
 /** Local structural JSON value type (independent of registry type versions). */
 export type JsonValue =
   | null
@@ -151,6 +153,14 @@ export function compactClawOutput(output: Record<string, unknown> | undefined): 
       }
       return task;
     });
+  }
+  const command = typeof output.command === "string" ? output.command : "";
+  const isWorkflowMutation = /^(plan|task|subplan)\.(?!show$)/.test(command);
+  if (isWorkflowMutation) {
+    const existingNotes = typeof visible.notes === "string" ? visible.notes.trim() : "";
+    visible.notes = existingNotes
+      ? `${DSH_MUTATION_ROUTE_GUIDANCE} ${existingNotes}`
+      : DSH_MUTATION_ROUTE_GUIDANCE;
   }
   return visible;
 }

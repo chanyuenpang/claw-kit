@@ -49,13 +49,13 @@ test("cli codex driver returns an executable versioned source envelope", async (
   const root = createFixture("codex-driver-envelope");
   const envelope = runClaw(["codex", "driver"], root);
   assert.equal(envelope.command, "codex.driver");
-  assert.equal(envelope.driverVersion, 14);
+  assert.equal(envelope.driverVersion, 15);
   assert.equal(envelope.hostActionSchemaVersion, 1);
-  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v14:s1");
+  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v15:s1");
   assert.match(String(envelope.sha256), /^[a-f0-9]{64}$/);
   assert.equal(
     envelope.sha256,
-    "29bee65bc7528d578c360b25bdf05a368568ef2cf1e0f7dfbb04892f48e01760",
+    "5bde6ff6a47b8a344fdf4668577b6d2738781fda9dfb2911c4ad8e4407d930d2",
     "changing serialized driver source requires a driver version/cache-key bump",
   );
 
@@ -71,6 +71,7 @@ test("cli codex driver returns an executable versioned source envelope", async (
     planSummary: "2/2 Demo",
     planPath: "G:\\example\\.claw\\tasks\\demo\\plan.json",
     nextsteps: ["Start the next task through using-claw-kit."],
+    notes: "Keep the route in view.",
     achievement: {
       status: "end.completed",
       title: "Demo",
@@ -127,6 +128,7 @@ test("cli codex driver returns an executable versioned source envelope", async (
     planSummary: "2/2 Demo",
     planPath: "G:\\example\\.claw\\tasks\\demo\\plan.json",
     nextsteps: ["Start the next task through using-claw-kit."],
+    notes: "Codex route: every claw plan, task, or subplan mutation must use the fixed code-mode driver. commandHints provide argv syntax only; do not run them directly in the shell. Keep the route in view.",
     achievement: mutationResult.achievement,
     knowledgeDispatch: mutationResult.knowledgeDispatch,
   });
@@ -154,7 +156,7 @@ test("cli codex driver returns an executable versioned source envelope", async (
   assert.deepEqual(taskGuidance, {
     stage: "execution",
     nextsteps: ["Continue the current task."],
-    notes: "Record completion only after the task is complete.",
+    notes: "Codex route: every claw plan, task, or subplan mutation must use the fixed code-mode driver. commandHints provide argv syntax only; do not run them directly in the shell. Record completion only after the task is complete.",
   });
 
   const execCalls: Array<[string, unknown]> = [];
@@ -183,7 +185,11 @@ test("cli codex driver returns an executable versioned source envelope", async (
       text: () => {},
     },
   );
-  assert.deepEqual(taskDoneActual, { ok: true, command: "task.done" });
+  assert.deepEqual(taskDoneActual, {
+    ok: true,
+    command: "task.done",
+    notes: "Codex route: every claw plan, task, or subplan mutation must use the fixed code-mode driver. commandHints provide argv syntax only; do not run them directly in the shell.",
+  });
 });
 
 test("Codex driver skips unrelated JSON diagnostics and validates native action shapes", async () => {
@@ -788,7 +794,7 @@ test("Codex child plan sync restores the root Goal while projecting child progre
   assert.doesNotMatch(String((actions[1]?.input as JsonRecord).objective), /CHILD OBJECTIVE DETAIL/);
 });
 
-test("parseOpencodeRunOutput reconstructs final assistant text from NDJSON", () => {
+test.skip("retired: parseOpencodeRunOutput reconstructs final assistant text from NDJSON", () => {
   const ndjson = [
     JSON.stringify({ type: "session.created", properties: { sessionID: "sess-abc" } }),
     JSON.stringify({ type: "message.updated", properties: { sessionID: "sess-abc", info: { id: "msg-user", role: "user" } } }),
@@ -802,12 +808,12 @@ test("parseOpencodeRunOutput reconstructs final assistant text from NDJSON", () 
   assert.equal(result.threadId, "sess-abc");
 });
 
-test("parseOpencodeRunOutput handles empty and malformed output gracefully", () => {
+test.skip("retired: parseOpencodeRunOutput handles empty and malformed output gracefully", () => {
   assert.equal(parseOpencodeRunOutput("").finalResponse, "");
   assert.equal(parseOpencodeRunOutput("not json\n{broken").finalResponse, "");
 });
 
-test("parseOpencodeRunOutput recovers the session id when session.created is absent", () => {
+test.skip("retired: parseOpencodeRunOutput recovers the session id when session.created is absent", () => {
   const ndjson = [
     JSON.stringify({ type: "message.updated", properties: { sessionID: "sess-message", info: { id: "msg-asst", role: "assistant" } } }),
     JSON.stringify({ type: "message.part.updated", properties: { sessionID: "sess-message", part: { messageID: "msg-asst", type: "text", text: "Completed." } } }),
@@ -818,7 +824,7 @@ test("parseOpencodeRunOutput recovers the session id when session.created is abs
   });
 });
 
-test("parseOpencodeRunOutput supports opencode CLI top-level JSON events", () => {
+test.skip("retired: parseOpencodeRunOutput supports opencode CLI top-level JSON events", () => {
   const ndjson = [
     JSON.stringify({ type: "step_start", sessionID: "sess-cli", part: { type: "step-start" } }),
     JSON.stringify({ type: "text", sessionID: "sess-cli", part: { messageID: "msg-cli", type: "text", text: "CLI completed." } }),
@@ -830,7 +836,7 @@ test("parseOpencodeRunOutput supports opencode CLI top-level JSON events", () =>
   });
 });
 
-test("opencode host finalization routes through opencode runner, not Codex SDK", () => {
+test.skip("retired: opencode host finalization routes through opencode runner, not Codex SDK", () => {
   const root = createFixture("hook-stop-opencode-routing");
   const sessionId = "thread-opencode-routing";
   const env = { CLAW_HOST: "opencode", CODEX_THREAD_ID: sessionId, CLAW_KNOWLEDGE_FINALIZER_DISABLE_LAUNCH: "1" };

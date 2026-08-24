@@ -25,7 +25,7 @@ Codex 的 claw plan mutation 会同时产生 CLI JSON 和需要调用原生 host
 Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode consumer：
 
 - Agent 只向 `runClawPlanMutation` 提供结构化 `argv: string[]`、working directory 和 timeout，不拼接 shell command，也不解释或手写 action dispatch。argv 只允许 `plan`、`task`、`subplan` group，并拒绝调用方提供 `claw` 或 `--host`。
-- driver 把 argv 编码为 UTF-16 hex，并只运行固定形状的 `claw codex invoke <hex>`；CLI 解码并再次校验后内部追加 `--host codex`。shell output 中只有同时满足 `ok: boolean` 与 `command: string` 的完整 JSON object 才是 protocol result。
+- driver 把 argv 编码为 UTF-16 hex，并只运行固定形状的 `claw codex invoke <hex>`；CLI 解码并再次校验后内部追加 `--host codex`。driver 聚合支持的文本通道，优先接受同时满足 `ok: boolean` 与 `command: string` 的完整成功 protocol object；没有成功结果但发现结构化 CLI error envelope 时，必须保留其 `code`/`message` 作为失败原因，并且不得消费 host action。
 - consumer 解析 CLI JSON，并按返回顺序消费 `hostActions`；每个 action 按 `id` 至多成功执行一次。
 - `hostActions` 是 Codex 唯一的 host 执行源。`workflowGuidance.goalTool` 继续作为 core 和其他 host 的兼容合同存在，但 Codex 不解释、不执行，也不据此补建或重试 action。
 - schema v1 action envelope 只保留 `schemaVersion`、作为至多一次消费键的 `id`、`tool` 与真实 host `input`。`sourceEventId`、`meta.reason` 与 `meta.allowOverwrite` 没有 Codex consumer，因此不再输出；不为这次兼容精简引入 schema v2。
@@ -127,6 +127,11 @@ Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode c
 
 <!-- state: history -->
 ## 演化历史
+
+<!-- dated: 2026-08-24 -->
+### 失败信封的可见性纳入固定 consumer
+
+- v13 的单通道成功-envelope 解析会丢失部分 CLI 结构化失败；为保持失败诊断与 Host Action 安全边界，解析升级为跨 `output`、`stdout`、`stderr`、`text` 的成功优先识别，并将 failure-envelope 语义变化视作独立的 driver/cache identity 升级。
 
 <!-- dated: 2026-08-06 -->
 ### 恢复时保留非终态 Goal

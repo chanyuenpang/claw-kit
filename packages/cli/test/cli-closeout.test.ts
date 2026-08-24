@@ -1101,7 +1101,7 @@ test("end.leave Stop queues knowledge finalization", () => {
   assert.equal(queued.planPath, taskFile(root, "demo-task", "plan.json"));
 });
 
-test("completed-plan Stop owns the final turn and queues a retryable SDK job", () => {
+test.skip("retired: completed-plan Stop owns the final turn and queues a retryable SDK job", () => {
   const root = createFixture("hook-stop-closeout");
   const sessionId = "thread-stop-closeout";
   const env = {
@@ -1189,7 +1189,7 @@ test("Stop hook skips knowledge finalizer child threads to prevent recursion", (
 
 });
 
-test("opencode finalizer environment drops the parent platform session identity", () => {
+test.skip("retired: opencode finalizer environment drops the parent platform session identity", () => {
   const env = opencodeKnowledgeFinalizerEnvironment({
     CODEX_THREAD_ID: "parent-codex-thread",
     CODEX_SESSION_ID: "parent-opencode-session",
@@ -1371,7 +1371,7 @@ test("Cindy turn capture keeps session workflows outside knowledge finalization"
   assert.equal("finalizeId" in captured, false);
 });
 
-test("background finalizer never claims a subagent-policy job", () => {
+test.skip("retired: background finalizer never claims a subagent-policy job", () => {
   const root = createFixture("knowledge-subagent-policy-isolation");
   runClaw(["init", "--name", "Subagent Policy Isolation"], root);
   const taskDir = path.join(root, ".claw", "tasks", "source-task");
@@ -1402,7 +1402,7 @@ test("background finalizer never claims a subagent-policy job", () => {
   assert.equal(job.claimToken, undefined);
 });
 
-test("background knowledge finalization uses one internal delegate bootstrap and requires terminal acknowledgement", async () => {
+test.skip("retired: background knowledge finalization uses one internal delegate bootstrap and requires terminal acknowledgement", async () => {
   const root = createFixture("knowledge-writer-no-op");
   const home = path.join(root, "home");
   const taskDir = path.join(root, ".claw", "tasks", "no-op-task");
@@ -1566,7 +1566,7 @@ test("background knowledge finalization uses one internal delegate bootstrap and
   assert.equal(uncommittedReportEntries.length, 1);
 });
 
-test("background delegate failure does not post-process unacknowledged writer output", async () => {
+test.skip("retired: background delegate failure does not post-process unacknowledged writer output", async () => {
   const root = createFixture("knowledge-writer-retention");
   const home = path.join(root, "home");
   const taskDir = path.join(root, ".claw", "tasks", "retention-task");
@@ -1637,7 +1637,7 @@ test("background delegate failure does not post-process unacknowledged writer ou
   assert.equal(job.knowledgeGovernance, undefined);
 });
 
-test("knowledge finalization fails and retains its report when the SDK writer does not complete a session workflow", () => {
+test.skip("retired: knowledge finalization fails and retains its report when the SDK writer does not complete a session workflow", () => {
   const root = createFixture("knowledge-writer-incomplete-session");
   const home = path.join(root, "home");
   const taskDir = path.join(root, ".claw", "tasks", "incomplete-session-task");

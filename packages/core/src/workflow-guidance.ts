@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { ClawError } from "./errors.js";
+import { resolveHostIntegrationProfile } from "./integration-contract.js";
 import {
   getTemplateTaskDoneChoices,
   getTemplateTaskDoneGuidanceRoute,
@@ -371,7 +372,7 @@ export async function buildPlanWorkflowGuidance(params: {
   const goalModeEnabled = isGoalModeEnabled(params.goalProjectConfig ?? projectConfig);
   // Cindy owns any eventual Goal projection in its Ghost Host. The CLI must
   // not ask a Cindy Agent to operate another Host's Goal or progress tools.
-  const suppressGoalFields = params.host === "opencode" || params.host === "cindy" || params.scope === "session";
+  const suppressGoalFields = resolveHostIntegrationProfile(params.host)?.suppressesAgentGoalGuidance === true || params.scope === "session";
   const startedGoalModeThisRound = goalModeEnabled && previousStatus === "process.active";
   const nextTask = nextUnfinishedTask(plan);
   const activeTask = currentActiveTask(plan);

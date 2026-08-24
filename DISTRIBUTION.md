@@ -89,7 +89,7 @@ This repository uses direct maintainer publishing by default:
 - before publishing, classify every local change: useful release content must be committed and pushed, disposable output must be removed, and intentional local-only files must be ignored;
 - do not use `git stash` to make a release gate pass; a release starts and ends with a clean worktree.
 
-`npm run verify:release` and `npm run publish:release` enforce these rules: they require the current branch to be `main`, `HEAD` to equal `origin/main`, and `git status --porcelain` to be empty. The publish command repeats the clean-worktree assertion after npm publishing.
+`npm run verify:release` and `npm run publish:release` validate or publish only Core, Client, and CLI. They require the current branch to be `main`, `HEAD` to equal `origin/main`, and `git status --porcelain` to be empty. Use `verify:batch-release` / `publish:batch-release` only for an explicitly coordinated CLI-plus-platform release; those commands additionally validate marketplace, adapter, shared-skill, and cross-artifact template contracts.
 
 ## Versioning Rules
 
@@ -116,16 +116,10 @@ Update these to the new `MAJOR.MINOR.PATCH` version:
 2. `package-lock.json`
 3. `packages/core/package.json` (version)
 4. `packages/cli/package.json` (version; dependency `@veewo/claw-core` pinned exactly)
-5. Reset the main-repository adapter versions to `<CLI_VERSION>.0`:
-   - `packages/codex-adapter/package.json`
-   - `packages/dsh-adapter/package.json`
-   - `packages/openclaw-adapter/package.json`
-   - `packages/opencode-adapter/package.json`
-6. `packages/codex-adapter/.codex-plugin/plugin.json` = `<CLI_VERSION>.0`
-7. `packages/openclaw-adapter/package.json` dependency `@veewo/claw-core` pinned exactly
-8. `packages/core/src/templates/plans/default.ts`
-9. Every release-tracked `TEMPLATE.json` under `.agents/skills`, `shared/skills`, `packages/codex-adapter/skills`, and `packages/opencode-adapter/skills`
-10. `CHANGELOG.md`
+5. `packages/core/src/templates/plans/default.ts` when its release-tracked version changes
+6. `CHANGELOG.md`
+
+Do not bump, validate, or publish platform adapter artifacts as part of a CLI-only release. A coordinated batch release makes that choice explicitly and then applies the corresponding adapter version and marketplace checks.
 
 #### Codex-only plugin release
 
@@ -169,23 +163,22 @@ After changing version files:
 1. Confirm the target artifact family: CLI, Codex, OpenClaw, or OpenCode; Cindy releases occur in the independent `claw-kit-cindy-adapter` repository; or record `prepare-only`.
 2. Classify all local changes; commit useful release content, remove disposable output, and ignore intentional local-only files. Do not stash changes to bypass this step.
 3. Ensure the checked-out branch is `main` and push the release commit directly to `origin/main`.
-4. Align package versions according to the version scheme, then run `npm run sync:template-versions`.
-5. Run `npm run sync:shared-skills`, followed by `npm run check:template-versions`; review the generated adapter files and include them in the release commit.
+4. Align only the selected artifact family's versions. Run `npm run sync:template-versions` and `npm run sync:shared-skills` only when the chosen artifact requires those generated payloads.
+5. For a coordinated batch release, review generated adapter files and run `npm run check:template-versions`.
 6. Run `npm install`.
 7. Run verification commands.
 8. Dry-run package artifacts.
 9. Create the release commit and push it directly to GitHub.
-10. Run `npm run verify:release`; it validates the clean tree, version alignment, exact `main`/`origin/main` parity, marketplace metadata, materialized Codex skills, exported payload, and isolated `claw template validate` execution from a marketplace-style cache.
+10. Run `npm run verify:release` for CLI/Core/Client release safety. Run `npm run verify:batch-release` only when the release deliberately includes platform artifacts; it adds marketplace metadata, materialized Codex skills, exported payload, and coordinated template validation.
 
 ### CLI release only
 
 11. Confirm npm auth.
 12. Publish `@veewo/claw-core` first (`npm run publish:release` handles this).
 13. Publish `@veewo/claw` second.
-14. Verify the worktree is still clean, verify published versions, and create the GitHub release with tag `v<version>` without a plugin ZIP asset.
-    The committed marketplace snapshot is the plugin artifact; create the GitHub release without a plugin ZIP asset.
-15. Refresh the locally installed CLI and maintainer development cache.
-16. Upgrade the Codex marketplace snapshot and verify installation from a clean machine.
+14. Verify the worktree is still clean and verify published versions.
+15. Refresh the locally installed CLI.
+16. If a platform artifact is part of an explicit batch release, run its separate release and installation verification.
 
 ### Codex plugin release only
 

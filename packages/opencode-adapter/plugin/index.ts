@@ -258,19 +258,34 @@ function invokeClawAutoDoc(
 }
 
 /**
- * Keep finalization detached from session.idle. The CLI owns the canonical
- * session-bound wait/claim/run/done lifecycle and selects the OpenCode runner
- * from the job's persisted host.
+ * Keep finalization detached from session.idle. The CLI supplies the canonical
+ * immutable dispatch; this adapter owns the native OpenCode runtime.
  */
 function dispatchOpenCodeKnowledgeWriter(projectDir: string, jobPath: string): void {
-  const command = process.platform === "win32" ? "claw.cmd" : "claw";
-  const child = spawn(command, ["internal-knowledge-finalize", "--job", jobPath], {
+  let handoff: { dispatch?: { prompt?: unknown }; projectRoot?: unknown; writer?: { model?: unknown; reasoningEffort?: unknown } | null };
+  try {
+    handoff = JSON.parse(execSync(`claw internal-knowledge-dispatch --job ${JSON.stringify(jobPath)}`, {
+      cwd: projectDir,
+      encoding: "utf8",
+      timeout: 30_000,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, CLAW_HOST: "opencode", CLAW_KNOWLEDGE_FINALIZER: "1" },
+    })) as typeof handoff;
+  } catch {
+    return;
+  }
+  if (typeof handoff.dispatch?.prompt !== "string" || typeof handoff.projectRoot !== "string") return;
+  const writer = handoff.writer ?? {};
+  const command = process.platform === "win32" ? "opencode.cmd" : "opencode";
+  const args = ["run", "--format", "json", "--dir", handoff.projectRoot, "--dangerously-skip-permissions", "--agent", "claw-knowledge-writer"];
+  if (typeof writer.model === "string" && writer.model) args.push("--model", writer.model);
+  if (typeof writer.reasoningEffort === "string" && writer.reasoningEffort) args.push("--variant", writer.reasoningEffort);
+  args.push(handoff.dispatch.prompt);
+  const child = spawn(command, args, {
     cwd: projectDir,
     env: {
       ...process.env,
-      CLAW_HOST: "opencode",
       CLAW_KNOWLEDGE_FINALIZER: "1",
-      CLAW_KNOWLEDGE_FINALIZER_DISABLE_RETRY: "1",
     },
     windowsHide: true,
     detached: process.platform !== "win32",

@@ -5,6 +5,7 @@ import { buildCompletionHooks } from "./completion-hooks.js";
 import { ensureTaskContext, findTaskDirectory, listTaskDirectories, removeLegacyTaskMeta, resolveTaskContext, resolveTaskName } from "./context.js";
 import { resolvePlanEffectiveConfig } from "./effective-config.js";
 import { ClawError } from "./errors.js";
+import { isIntegrationHost, resolveHostIntegrationProfile } from "./integration-contract.js";
 import { readJsonFile, withFileLock, withSerializedAccess, writeJsonFile } from "./io.js";
 import { tryEndKnowledgePlan, tryRegisterKnowledgePlan } from "./knowledge-sidecar.js";
 import { buildPlanEvent } from "./plan-events.js";
@@ -214,7 +215,7 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
       sessionId: input.ownerSessionKey,
       planPath,
       ...(effectiveConfig?.knowledgeWriter ? { writer: effectiveConfig.knowledgeWriter } : {}),
-      ...(input.host === "codex" || input.host === "opencode" || input.host === "cindy"
+      ...(isIntegrationHost(input.host) && resolveHostIntegrationProfile(input.host)?.registersKnowledgePlanOnCreation === true
         ? { host: input.host }
         : {}),
     });
@@ -648,7 +649,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
         ...(completionHooks?.subplanClosureCandidate ? { resumedPlanPath: resultPlanPath } : {}),
         endedAt,
         ...(effectiveConfig?.knowledgeWriter ? { writer: effectiveConfig.knowledgeWriter } : {}),
-        ...(input.host === "codex" || input.host === "opencode" || input.host === "cindy" || input.host === "dsh"
+        ...(isIntegrationHost(input.host) && resolveHostIntegrationProfile(input.host)?.tracksKnowledgeFinalization === true
           ? { host: input.host }
           : {}),
       });
@@ -660,7 +661,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
         sessionId: input.ownerSessionKey,
         planPath: resultPlanPath,
         ...(effectiveConfig?.knowledgeWriter ? { writer: effectiveConfig.knowledgeWriter } : {}),
-        ...(input.host === "codex" || input.host === "opencode" || input.host === "cindy" || input.host === "dsh"
+        ...(isIntegrationHost(input.host) && resolveHostIntegrationProfile(input.host)?.registersKnowledgePlanOnCreation === true
           ? { host: input.host }
           : {}),
       });
@@ -1325,7 +1326,7 @@ function buildActivationTaskDetail(params: {
   if (!goalModeEnabled) {
     return baseDetail;
   }
-  if (host === "opencode") {
+  if (resolveHostIntegrationProfile(host)?.usesGoalObjectiveInTaskDetail === false) {
     return `${baseDetail} ${goalModeDetail}`;
   }
   const normalizedGoalModeDetail = goalModeDetail.endsWith(".")

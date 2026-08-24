@@ -34,6 +34,8 @@ import {
   type KnowledgeDelegateDispatch,
   writePlan,
   resolveThreadGoalPlan,
+  resolveHostIntegrationProfile,
+  isIntegrationHost,
 } from "@veewo/claw-core";
 import { buildCodexHostActions } from "./codex-host-actions.js";
 import { isHostActionsHost, type ClawHost } from "./invocation-host.js";
@@ -588,12 +590,12 @@ export class ClawCommandService {
         ...(resumedPath ? { resumedPlanPath: resumedPath } : {}),
         endedAt: ended.endedAt,
         ...(writer ? { writer } : {}),
-        ...(context.host === "codex" || context.host === "opencode" || context.host === "cindy" || context.host === "dsh"
+        ...(isIntegrationHost(context.host)
           ? { host: context.host }
           : {}),
       });
       if (knowledgeEnd.finalizeId && knowledgeEnd.jobPath && writer?.executionPolicy === "subagent") {
-        dispatch = context.host === "cindy"
+        dispatch = resolveHostIntegrationProfile(context.host)?.usesAtomicKnowledgeDispatch === true
           ? buildKnowledgeAtomicDispatch({ finalizeId: knowledgeEnd.finalizeId, writer })
           : buildKnowledgeDelegateDispatch({
               policy: "subagent",

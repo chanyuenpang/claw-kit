@@ -4,7 +4,7 @@
 ## 当前行为
 
 - Codex adapter 应把 CLI 从 `workflowGuidance` 投影出的 stage-relevant contract 视为主合同，但 planning 自身现在负责计划质量，不再把 standalone `plan-review` 当成进入下一阶段的必经门。
-- 每次 claw plan mutation 都由固定 v13 code-mode driver 先消费 `hostActions`，再只向 Agent 返回当前阶段所需的 compact 字段，例如 `stage`、`planSummary`、`nextTask`、`commandHints`、`askUser`、`nextsteps`、`notes` 与需要时的 `completionRefresh`。每个 Codex batch invocation 都保留最终 mutation 的 workflow guidance；root `plan.done` 额外暴露 `planPath` 与 `achievement`，但普通 mutation 和 subplan parent-resume 不制造 terminal completion signal。
+- 每次 claw plan mutation 都由固定 v15 code-mode driver 先消费 `hostActions`，再只向 Agent 返回当前阶段所需的 compact 字段，例如 `stage`、`planSummary`、`nextTask`、`commandHints`、`askUser`、`nextsteps`、`notes` 与需要时的 `completionRefresh`。每个 Codex batch invocation 都保留最终 mutation 的 workflow guidance；root `plan.done` 额外暴露 `planPath` 与 `achievement`，但普通 mutation 和 subplan parent-resume 不制造 terminal completion signal。
 - `workflowGuidance.nextsteps` is a host-neutral lifecycle contract: compact results for Codex, Cindy, and OpenCode preserve the same ordered steps for the same plan state. A host may add execution mapping, but must not filter, replace, or reinterpret those steps.
 - When a terminal mutation includes `knowledgeDispatch`, its required immediate dispatch is appended to the shared `nextsteps`; this instruction remains visible to every host even when the actual launcher is host-specific.
 - `packages/cli/src/codex-host-actions.ts` 的 `buildCodexHostActions()` 是 stateless CLI 与 process-backed session command service 的唯一 Codex host-action projector。它生成 native schema-v1 `update_plan`、`create_goal` 与 `update_goal`；每个 action envelope 只保留 `schemaVersion`、用于至多一次消费的 `id`、`tool` 与真实 host `input`。
@@ -12,9 +12,9 @@
 - 恢复 active Codex plan 时，`SessionStart` 仍保持 host-tool-free：它只恢复 snapshot 并提示固定 driver 在继续工作前运行只读的 `claw plan sync`。`plan sync` 不修改 canonical plan；它只对 `process.active` plan 以 recovery resync 方式重建 workflow guidance，并经既有 `buildCodexHostActions()` / fixed code-mode driver 派发非空的完整 `update_plan` 投影。只有 effective project config 没有禁用 `goalMode` 时，该调用才额外派发 `create_goal`；`.claw/project-override.json` 的 `goalMode: false` 同样生效。零任务 plan 不派发空 `update_plan`。非 active plan 返回状态而不派发 host action；非 Codex host 不获得这些 action。该路径修复恢复期的 Goal Mode 和 host progress 缺口，而不把原生 host 调用放进 hook。
 - 当 plan 处于 `process.active` 时，`buildCodexPlanProjection()` 优先把实际标记为 `in_progress` 或 `subagent_running` 的 task 投影为 `in_progress`；只有不存在显式运行 task 时，才回退为首个非 `done` task。这样后续 task 先启动而前序 task 仍为 `pending` 时，host progress 仍与 canonical plan 同步。
 - Codex create 类 compact response 只在 `workflowGuidance.stage === "discussion"` 时返回完整 `plan`；返回完整 plan 时省略重复的 `planSummary`，其他阶段只保留紧凑摘要。该裁剪只影响 Codex 可见响应，不改变 canonical plan、非 Codex 输出或 host action 语义。
-- 当前 `packages/codex-adapter/skills/using-claw-kit/SKILL.md` 的 cold path 获取并校验完整 driver envelope，再以 `claw-kit:codex-driver:v13:s1` 缓存该 envelope；同线程后续 mutation 复用已验证 `source`。driver 只接受结构化 `argv: string[]`、`workdir` 与 timeout，且 `argv[0]` 仅允许 `plan`、`task` 或 `subplan`，禁止调用方传入 `claw` 或 `--host`。
-- v13 driver 把结构化 argv 编码为 UTF-16 hex，并只执行固定形状的 `claw codex invoke <hex>` shell command；CLI 解码、再次校验命令组与 host 参数，再内部追加 `--host codex` 并分派。driver 从 shell output 扫描完整 JSON candidates，只有同时包含 `ok: boolean` 与 `command: string` 的 protocol object 才可进入 host-action consumption。
-- v13 driver 在运行时优先使用 `tools.shell_command({ command, workdir, timeout_ms })`；仅有 `tools.exec_command` 时使用 `tools.exec_command({ cmd, workdir, yield_time_ms })`。两者都不可用时，以明确的 command-execution capability 错误停止。CLI mutation 与 native host action 仍在同一次 code-mode 调用内完成，未引入 Agent 拼接命令、direct-call 或 split-call fallback。
+- 当前 `packages/codex-adapter/skills/using-claw-kit/SKILL.md` 的 cold path 获取并校验完整 driver envelope，再以 `claw-kit:codex-driver:v15:s1` 缓存该 envelope；同线程后续 mutation 复用已验证 `source`。driver 只接受结构化 `argv: string[]`、`workdir` 与 timeout，且 `argv[0]` 仅允许 `plan`、`task` 或 `subplan`，禁止调用方传入 `claw` 或 `--host`。
+- v15 driver 把结构化 argv 编码为 UTF-16 hex，并只执行固定形状的 `claw codex invoke <hex>` shell command；CLI 解码、再次校验命令组与 host 参数，再内部追加 `--host codex` 并分派。driver 聚合 `output`、`stdout`、`stderr` 与 `text` 通道，优先识别完整成功 protocol object；若没有成功结果而识别到 CLI error envelope 的 `code` 与 `message`，则以 `claw mutation failed [CODE]: message` 终止，且不会消费 `hostActions`。
+- v15 driver 在运行时优先使用 `tools.shell_command({ command, workdir, timeout_ms })`；仅有 `tools.exec_command` 时使用 `tools.exec_command({ cmd, workdir, yield_time_ms })`。两者都不可用时，以明确的 command-execution capability 错误停止。CLI mutation 与 native host action 仍在同一次 code-mode 调用内完成，未引入 Agent 拼接命令、direct-call 或 split-call fallback。每个 plan、task 或 subplan mutation 的可见 `notes` 都附带固定 driver route 提醒：`commandHints` 只提供 argv 语法，不能直接在 shell 中执行；SessionStart 恢复的 prompt 同样显示该提醒。
 - Node adapter worker 可以通过 `@veewo/claw-client` 的持久 session 连接调用 `commandEnvelope()`，一次取得 `schemaVersion: 1`、业务 `output`、原生 `hostActions`、提交后的 `postCommitEffects` 与可选 `knowledgeDispatch`；普通 `command()` 只展开 `output`。当前 Codex code-mode surface 仍不能跨调用持有该 Node socket，因此继续使用一次 mutation 一个轻量兼容 CLI 进程的 structured-invoke transport，不能把 Node adapter 的持久连接能力误写成当前 Codex 已零进程调用。
 - `planSummary` 是聊天协作中可展示的紧凑计划状态；adapter 不应期待 render blocks、widget envelope、`claw plan app` 或 `claw plan render`。
 - code-investigation-first 可由 task shape 触发，不必等待 `workflowGuidance.delegateSubagents` 明确列出；普通项目 recall、Truth/ADR lookup 与历史上下文查询不是 researcher dispatch trigger。这只定义 guidance 的触发边界，不在本文重复拥有 researcher 的 agent type、派发、复用、等待或调查顺序。
@@ -74,6 +74,18 @@
 
 <!-- state: history -->
 ## 演化历史
+
+<!-- dated: 2026-08-24 -->
+### v15 持续 Codex route guidance
+
+- mutation 的 compact `notes` 与 recovered SessionStart prompt 都明确要求通过 fixed code-mode driver 运行 plan、task 与 subplan mutation；`commandHints` 仅为 argv 语法和查找辅助，不能直接复制到 shell 执行。
+- 该可见合同改变了 versioned driver source，因此 cache identity 升为 `claw-kit:codex-driver:v15:s1`；v14 的 failure-envelope 语义仍保持有效。
+
+<!-- dated: 2026-08-24 -->
+### v14 failure-envelope 可见性
+
+- v13 只从单一 shell output 文本扫描成功 protocol object，因而可能把 CLI 的结构化失败隐藏为泛化的无效协议结果。
+- v14 将 driver/cache identity 升为 `claw-kit:codex-driver:v14:s1`，聚合所有支持的文本通道并保留 CLI `code`/`message`；成功 envelope 仍优先，失败绝不消费 Host Action。
 
 <!-- dated: 2026-07-29 -->
 ### 修复 `exec_command` 的参数投影

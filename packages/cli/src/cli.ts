@@ -4,7 +4,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
-import { pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import {
@@ -60,6 +59,7 @@ import {
   normalizeTruthMarkdownEncoding,
   governKnowledgeMarkdownPaths,
   resolveKnowledgeDocUpdateSnapshot,
+  resolveHostIntegrationProfile,
   recordKnowledgeFinalizationResult,
   unbindSession,
   writePlan,
@@ -80,11 +80,9 @@ import {
 } from "@veewo/claw-core";
 import { buildCodexDriverEnvelope } from "./codex-driver.js";
 import { buildCodexHostActions } from "./codex-host-actions.js";
-import { checkCodexRuntime, resolveCodexSdkEntryPath } from "./codex-runtime.js";
-import { collectReport, registerReportCollector } from "./report-collector-registry.js";
+import { collectReport, registerReportCollector, type ReportCollectorHost } from "./report-collector-registry.js";
 import { consumeBufferedHookInput } from "./knowledge-hook-preflight.js";
 import { isSubagentPolicyHost, resolveInvocationHost, withoutInvocationHost, type ClawHost } from "./invocation-host.js";
-import { runOpencodeKnowledgeWriter } from "./opencode-runner.js";
 import {
   ClawClient,
   ClawSessionError,
@@ -537,9 +535,9 @@ const COMMAND_HELP: Record<string, HelpNode> = {
       { flag: "--status-file <path>", detail: "(required) Status file path to update." },
     ],
   },
-  "internal-knowledge-finalize": {
-    usage: ["{script} internal-knowledge-finalize --job <path>"],
-    description: "Internal: runs one queued knowledge deposition job through the host-aware finalization runner (Codex SDK for codex host, opencode run for opencode host).",
+  "internal-knowledge-dispatch": {
+    usage: ["{script} internal-knowledge-dispatch --job <path>"],
+    description: "Internal: returns the canonical background knowledge-writer dispatch for an adapter-owned native runner.",
     options: [{ flag: "--job <path>", detail: "(required) Finalization job JSON path." }],
   },
   "internal-embedding-warmup": {
@@ -697,8 +695,8 @@ async function main(): Promise<void> {
       case "internal-completion-refresh":
         runInternalCompletionRefresh(args);
         return;
-      case "internal-knowledge-finalize":
-        await runInternalKnowledgeFinalize(args);
+      case "internal-knowledge-dispatch":
+        runInternalKnowledgeDispatch(args);
         return;
       case "internal-knowledge-capture":
         await runInternalKnowledgeCapture(args, effectiveHost);
@@ -1148,10 +1146,10 @@ function runInternalReportCollectorRegister(args: string[]): void {
   const executable = readRequiredFlag(args, "--executable");
   const collectorArgs = readRepeatedFlag(args, "--arg");
   assertNoRemainingArgs(args, "internal-report-collector-register");
-  if (host !== "codex" && host !== "dsh" && host !== "cindy") {
+  if (resolveHostIntegrationProfile(host)?.supportsClaimTimeReportCapture !== true) {
     throw new ClawError("PROJECT_CONFIG_INVALID", "report collector host must be codex, dsh, or cindy.");
   }
-  registerReportCollector(projectRoot, { host, executable, args: collectorArgs });
+  registerReportCollector(projectRoot, { host: host as ReportCollectorHost, executable, args: collectorArgs });
   printJson({ ok: true, command: "internal-report-collector-register", host });
 }
 
@@ -1264,11 +1262,11 @@ async function runKnowledge(args: string[]): Promise<void> {
           ) {
             return;
           }
-          if (queued.host !== "codex" && queued.host !== "dsh" && queued.host !== "cindy") {
+          if (resolveHostIntegrationProfile(queued.host)?.supportsClaimTimeReportCapture !== true) {
             throw new Error(`Claim-time report capture is unavailable for host ${queued.host ?? "unknown"}.`);
           }
           collectReport({
-            host: queued.host,
+            host: queued.host as ReportCollectorHost,
             sessionId: queued.sessionId,
             projectRoot: queued.projectRoot,
             planPath: queued.planPath,
@@ -1339,6 +1337,13 @@ async function runKnowledge(args: string[]): Promise<void> {
         return;
       }
       throw new ClawError("PROJECT_CONFIG_INVALID", `Unsupported knowledge done status "${status}".`);
+    }
+    case "verify-session": {
+      const sessionId = readRequiredFlag(args, "--session-id");
+      assertNoRemainingArgs(args, "knowledge verify-session");
+      assertCompletedKnowledgeWriterSession(sessionId);
+      printJson({ ok: true, command: "knowledge.verify-session", sessionId });
+      return;
     }
     default:
       throw new ClawError("PROJECT_CONFIG_INVALID", `Unknown knowledge subcommand "${subcommand ?? ""}".`);
@@ -2009,15 +2014,10 @@ async function runContextCommand(
     const activeWorkflow = !taskName && ownerSessionKey
       ? await tryResolveActiveWorkflowSnapshot(cwd, ownerSessionKey, effectiveHost)
       : null;
-    const codexRuntime = effectiveHost === "codex" ? checkCodexRuntime() : null;
-    const codexRuntimeError = codexRuntime && !codexRuntime.ok
-      ? buildCodexRuntimeError(codexRuntime.detail)
-      : null;
     return {
       project: sessionProject,
       ...(activeWorkflow ? { activeWorkflow } : {}),
       ...(maintenance?.ran ? { maintenance } : {}),
-      ...(codexRuntimeError ? { error: codexRuntimeError } : {}),
     };
   }
 
@@ -2053,10 +2053,6 @@ async function runContextCommand(
     !taskName && ownerSessionKey
       ? await tryResolveActiveWorkflowSnapshot(cwd, ownerSessionKey, effectiveHost)
       : null;
-  const codexRuntime = effectiveHost === "codex" ? checkCodexRuntime() : null;
-  const codexRuntimeError = codexRuntime && !codexRuntime.ok
-    ? buildCodexRuntimeError(codexRuntime.detail)
-    : null;
 
   launchProjectEmbeddingWarmup(resolved.project);
 
@@ -2064,7 +2060,6 @@ async function runContextCommand(
     ...resolved,
     ...(maintenance?.ran ? { maintenance } : {}),
     ...(activeWorkflow ? { activeWorkflow } : {}),
-    ...(codexRuntimeError ? { error: codexRuntimeError } : {}),
     protocolCheck: checkProjectProtocol(cwd),
     startupRecovery: {
       initialized,
@@ -2784,57 +2779,27 @@ async function runInternalBackgroundMaintenance(args: string[]): Promise<void> {
   printJson({ command: "internal-background-maintenance", ok: true, maintenance, embedding, discovered, launched });
 }
 
-async function runInternalKnowledgeFinalize(args: string[]): Promise<void> {
+function runInternalKnowledgeDispatch(args: string[]): void {
   const jobPath = readRequiredFlag(args, "--job");
   const queued = readKnowledgeFinalizationJob(jobPath);
-  assertNoRemainingArgs(args, "internal-knowledge-finalize");
+  assertNoRemainingArgs(args, "internal-knowledge-dispatch");
   if ((queued.writer?.executionPolicy ?? "background") !== "background") {
-    return;
+    throw new ClawError("PROJECT_CONFIG_INVALID", "Knowledge dispatch requires a background writer job.");
   }
-  try {
-    const writerRun = await runKnowledgeDelegateForJob(queued);
-    const terminal = readKnowledgeFinalizationJob(jobPath);
-    if (terminal.status !== "succeeded" && terminal.status !== "failed") {
-      throw new Error("Knowledge delegate returned without acknowledging a terminal result.");
-    }
-    if (writerRun.threadId) {
-      assertCompletedKnowledgeWriterSession(writerRun.threadId);
-    }
-    printJson({
-      ok: terminal.status === "succeeded",
-      command: "internal-knowledge-finalize",
-      finalizeId: terminal.finalizeId,
-      status: terminal.status,
-      ...(writerRun.threadId ? { threadId: writerRun.threadId } : {}),
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    let failed = readKnowledgeFinalizationJob(jobPath);
-    if (failed.status === "running" && failed.claimToken) {
-      failed = doneKnowledgeFinalizationJob({
-        jobPath,
-        claimToken: failed.claimToken,
-        status: "failed",
-        error: message,
-      }).job;
-    } else if (failed.status === "queued") {
-      const supervisorClaim = claimKnowledgeFinalizationJob(jobPath);
-      if (supervisorClaim?.claimToken) {
-        failed = doneKnowledgeFinalizationJob({
-          jobPath,
-          claimToken: supervisorClaim.claimToken,
-          status: "failed",
-          error: message,
-        }).job;
-      }
-    }
-    if (failed.status === "failed") {
-      removeKnowledgeAssignmentTemplate(jobPath, failed.finalizeId);
-    }
-    if (failed.attempts < 3 && process.env.CLAW_KNOWLEDGE_FINALIZER_DISABLE_RETRY !== "1") {
-      launchKnowledgeFinalizationWorker(jobPath, failed.projectRoot);
-    }
-  }
+  const dispatch = buildKnowledgeDelegateDispatch({
+    policy: "background",
+    finalizeId: queued.finalizeId,
+    writer: queued.writer,
+  });
+  printJson({
+    ok: true,
+    command: "internal-knowledge-dispatch",
+    jobPath,
+    finalizeId: queued.finalizeId,
+    projectRoot: queued.projectRoot,
+    writer: queued.writer ?? null,
+    dispatch,
+  });
 }
 
 type KnowledgeWriterRunResult = {
@@ -2843,52 +2808,8 @@ type KnowledgeWriterRunResult = {
 };
 
 async function runKnowledgeDelegateForJob(running: KnowledgeFinalizationJob): Promise<KnowledgeWriterRunResult> {
-  const dispatch = buildKnowledgeDelegateDispatch({
-    policy: "background",
-    finalizeId: running.finalizeId,
-    writer: running.writer,
-  });
-  if (running.host === "opencode") {
-    return runOpencodeKnowledgeWriter({
-      prompt: dispatch.prompt,
-      projectRoot: running.projectRoot,
-      writer: running.writer ?? null,
-    });
-  }
-  if (running.host !== undefined && running.host !== null && running.host !== "codex") {
-    throw new Error(`Unsupported knowledge finalization job host "${String(running.host)}".`);
-  }
-  const sdk = await import(pathToFileURL(resolveCodexSdkEntryPath()).href) as {
-    Codex: new (options?: { env?: Record<string, string>; codexPathOverride?: string }) => {
-      startThread(options: Record<string, unknown>): {
-        id: string | null;
-        run(prompt: string): Promise<{ finalResponse: string }>;
-      };
-    };
-  };
-  const Codex = sdk.Codex;
-  const codex = new Codex({
-    env: knowledgeFinalizerEnvironment(),
-    ...(process.env.CLAW_CODEX_PATH_OVERRIDE
-      ? { codexPathOverride: process.env.CLAW_CODEX_PATH_OVERRIDE }
-      : {}),
-  });
-  const writer = running.writer ?? { model: null, reasoningEffort: "medium" as const };
-  const thread = codex.startThread({
-    workingDirectory: running.projectRoot,
-    sandboxMode: process.platform === "win32" ? "danger-full-access" : "workspace-write",
-    approvalPolicy: "never",
-    networkAccessEnabled: false,
-    ...(writer.model ? { model: writer.model } : {}),
-    ...(writer.reasoningEffort
-      ? { modelReasoningEffort: writer.reasoningEffort }
-      : {}),
-  });
-  const turn = await thread.run(dispatch.prompt);
-  return {
-    finalResponse: turn.finalResponse,
-    ...(thread.id ? { threadId: thread.id } : {}),
-  };
+  void running;
+  throw new Error("Platform knowledge writers must be launched by their adapter after requesting internal-knowledge-dispatch.");
 }
 
 function assertCompletedKnowledgeWriterSession(threadId: string | null): void {
@@ -3070,7 +2991,7 @@ function buildSessionStartAdditionalContext(
   const activeWorkflow = context.activeWorkflow as JsonRecord | undefined;
   if (activeWorkflow) {
     const prompt = buildRecoveredWorkflowAdditionalContext(activeWorkflow, versionSyncPrompt);
-    const recoverySyncPrompt = effectiveHost === "codex" && activeWorkflow.planStatus === "process.active"
+    const recoverySyncPrompt = resolveHostIntegrationProfile(effectiveHost)?.providesActiveWorkflowRecovery === true && activeWorkflow.planStatus === "process.active"
       ? "Before continuing, run `claw plan sync` once through the fixed Codex driver to restore focused-plan progress and reconcile the root-plan Goal."
       : "";
     const promptWithSync = recoverySyncPrompt ? `${prompt}\n${recoverySyncPrompt}` : prompt;
@@ -3454,7 +3375,7 @@ function buildKnowledgeDispatch(input: {
 }): KnowledgeDelegateDispatch {
   // Cindy uses its Orca atomic dispatch; codex and dsh both dispatch through a
   // native-subagent delegate (DSH: subagent / subagent_fork).
-  if (input.host === "cindy") {
+  if (resolveHostIntegrationProfile(input.host)?.usesAtomicKnowledgeDispatch === true) {
     return buildKnowledgeAtomicDispatch(input);
   }
   return buildKnowledgeDelegateDispatch({
@@ -3508,8 +3429,9 @@ function compactPlanCommandResult(
     // (schemaVersion 1: update_plan / create_goal / update_goal). The Codex
     // adapter consumes them via its fixed code-mode driver; the DSH adapter
     // consumes them inside the claw_run tool's execute.
-    const hostActionsResult = effectiveHost === "codex" || effectiveHost === "dsh";
-    const cindyResult = effectiveHost === "cindy";
+    const integration = resolveHostIntegrationProfile(effectiveHost);
+    const hostActionsResult = integration?.consumesPlanGoalEffects === true;
+    const cindyResult = integration?.omitsCompactNotes === true;
     const hostActions = hostActionsResult ? buildCodexHostActions(result, { forceProjectionSync, actionIdPrefix: command === "plan.sync" ? `plan.sync:${createHash("sha256").update(result.planPath).digest("hex").slice(0, 16)}` : undefined }) : [];
     const nextsteps = [
       ...result.workflowGuidance.nextsteps,

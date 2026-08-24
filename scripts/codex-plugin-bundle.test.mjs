@@ -272,19 +272,20 @@ test("repo marketplace points Codex at the materialized adapter source", async (
   assert.equal(plugin.category, "Developer Tools");
 });
 
-test("release protocol publishes the committed Git marketplace snapshot without a ZIP requirement", async () => {
+test("release protocol keeps CLI and coordinated platform gates distinct", async () => {
   const distribution = await fs.readFile(new URL("../DISTRIBUTION.md", import.meta.url), "utf8");
   const releaseScript = await fs.readFile(new URL("./publish-release.mjs", import.meta.url), "utf8");
 
   assert.match(distribution, /committed Git ref containing those paths -> official Codex plugin release artifact/);
-  assert.match(distribution, /create the GitHub release without a plugin ZIP asset/);
+  assert.match(distribution, /verify:batch-release/);
   assert.doesNotMatch(distribution, /attach the exported Codex plugin bundle to the GitHub release/);
   assert.match(releaseScript, /assertRepositoryMarketplaceSnapshot/);
   assert.match(releaseScript, /assertTemplateVersionsAligned/);
+  assert.match(releaseScript, /includePlatformArtifacts/);
+  assert.match(releaseScript, /--batch/);
   assert.doesNotMatch(releaseScript, /"delegate-writer"/);
   assert.doesNotMatch(releaseScript, /requiredPluginSkills[^\n]*release-claw-kit/);
-  assert.match(releaseScript, /no GitHub Release ZIP is required/);
-  assert.match(releaseScript, /Next: invoke the claw-kit update skill/);
+  assert.match(releaseScript, /Refresh a platform plugin only when that platform artifact was separately released/);
 });
 
 test("Codex update contract is platform-specific and supports only the official identity", async () => {

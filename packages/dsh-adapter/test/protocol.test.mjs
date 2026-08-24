@@ -92,6 +92,7 @@ test("renderGuidanceSnapshot renders the compact workflow snapshot", () => {
   assert.match(text, /Current task: Implement/);
   assert.match(text, /Next steps:/);
   assert.match(text, /Resume with task #2/);
+  assert.match(text, /every claw plan, task, or subplan mutation must use claw_run\(operation, args\)/);
 });
 
 test("renderGuidanceSnapshot returns empty for absent workflow or guidance", () => {
@@ -126,6 +127,7 @@ test("renderGuidanceSnapshot falls back to project context without a workflow", 
   assert.match(text, /claw project Sample/);
   assert.match(text, /Load the using-claw-kit skill as the main workflow skill/);
   assert.match(text, /Use claw search before rg/);
+  assert.doesNotMatch(text, /every claw plan, task, or subplan mutation must use claw_run/);
 });
 
 test("renderGuidanceSnapshot flags protocol check failures", () => {

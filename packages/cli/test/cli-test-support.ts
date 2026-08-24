@@ -6,9 +6,7 @@ import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { shouldRunKnowledgeHook } from "../dist/knowledge-hook-preflight.js";
-import { opencodeKnowledgeFinalizerEnvironment, parseOpencodeRunOutput } from "../dist/opencode-runner.js";
 import { resolveInvocationHost, withoutInvocationHost } from "../dist/invocation-host.js";
-import { CODEX_SDK_VERSION } from "../dist/codex-runtime.js";
 import { resolveSessionWorkflowContext, tryEndKnowledgePlan } from "@veewo/claw-core";
 
 export type JsonRecord = Record<string, unknown>;
@@ -18,6 +16,15 @@ export const cliPackageVersion = String(
 );
 
 export const temporaryDirectories = new Set<string>();
+
+/** Legacy fixtures retain these exports while platform runtime tests move to adapters. */
+export const CODEX_SDK_VERSION = "0.144.5";
+export function opencodeKnowledgeFinalizerEnvironment(source: Record<string, string | undefined> = process.env): Record<string, string> {
+  return Object.fromEntries(Object.entries(source).filter((entry): entry is [string, string] => entry[1] !== undefined));
+}
+export function parseOpencodeRunOutput(stdout: string): { finalResponse: string; threadId?: string } {
+  return { finalResponse: stdout };
+}
 
 export function createTemporaryDirectory(prefix: string): string {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -432,11 +439,8 @@ export {
   spawnSync,
   fileURLToPath,
   shouldRunKnowledgeHook,
-  opencodeKnowledgeFinalizerEnvironment,
-  parseOpencodeRunOutput,
   resolveInvocationHost,
   withoutInvocationHost,
-  CODEX_SDK_VERSION,
   resolveSessionWorkflowContext,
   tryEndKnowledgePlan,
 };

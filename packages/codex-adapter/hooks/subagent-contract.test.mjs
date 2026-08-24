@@ -16,6 +16,7 @@ function readPluginFile(relativePath) {
 test("Codex hooks recover through the adapter-owned context entry and run the adapter-owned finalizer on Stop", () => {
   const config = JSON.parse(readPluginFile(path.join("hooks", "hooks.json")));
   const strategy = readPluginFile(path.join("references", "codex-hooks-strategy.md"));
+  const sessionStartScript = readPluginFile(path.join("scripts", "session-start.mjs"));
   const sessionStart = config.hooks.SessionStart[0].hooks[0];
   const stop = config.hooks.Stop[0].hooks[0];
 
@@ -29,6 +30,8 @@ test("Codex hooks recover through the adapter-owned context entry and run the ad
   assert.match(stop.statusMessage, /^auto-doc:/);
   assert.match(strategy, /thread-scoped `SessionStart`/i);
   assert.match(strategy, /turn-scoped `Stop`/i);
+  assert.match(sessionStartScript, /every claw plan, task, or subplan mutation must use the fixed code-mode driver/i);
+  assert.match(sessionStartScript, /commandHints provide argv syntax only/i);
 });
 
 test("Codex manifest keeps the using-claw-kit fallback prompt within the host limit", () => {
@@ -51,13 +54,15 @@ test("Codex adapter owns the SDK and matching direct platform packages", () => {
   }
 });
 
-test("Codex Stop finalizer only captures and launches the policy-aware CLI worker", () => {
+test("Codex Stop finalizer obtains a CLI dispatch then owns the native Codex writer", () => {
   const finalizer = readPluginFile(path.join("scripts", "knowledge-finalizer.mjs"));
   assert.match(finalizer, /hook", "auto-doc"/);
-  assert.match(finalizer, /internal-knowledge-finalize/);
+  assert.match(finalizer, /internal-knowledge-dispatch/);
+  assert.match(finalizer, /@openai\/codex-sdk/);
   assert.doesNotMatch(finalizer, /"knowledge", "wait"/);
-  assert.doesNotMatch(finalizer, /"knowledge", "claim"/);
-  assert.doesNotMatch(finalizer, /"knowledge", "done"/);
+  assert.match(finalizer, /"knowledge", "claim"/);
+  assert.match(finalizer, /"knowledge", "verify-session"/);
+  assert.match(finalizer, /"knowledge", "done"/);
   assert.doesNotMatch(finalizer, /CLAW_SESSION_ID\s*=/);
 });
 
@@ -185,6 +190,8 @@ test("Codex plan commands use only the bundled code-mode consumer", () => {
   assert.match(mainRouter, /store\(cacheKey, envelope\)/i);
   assert.match(mainRouter, /eval/i);
   assert.match(mainRouter, /For every claw plan mutation, call the function below in code mode/i);
+  assert.match(mainRouter, /invoke the fixed code-mode driver with `argv: \["plan", "create", "<title>"\]`/i);
+  assert.match(mainRouter, /not commands to run directly in the shell/i);
   assert.match(mainRouter, /agent must never call `get_goal` separately/i);
   assert.match(mainRouter, /no direct-call fallback/i);
   assert.match(mainRouter, /When SessionStart recovers an active session-bound plan/i);

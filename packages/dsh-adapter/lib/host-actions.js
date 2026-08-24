@@ -8,6 +8,7 @@
  * execute instead of a model-evaluated envelope. Consumption is fail-open: a
  * consumer error never fails the underlying mutation.
  */
+import { DSH_MUTATION_ROUTE_GUIDANCE } from "./route-guidance.js";
 /**
  * Consume hostActions against DSH-native surfaces.
  *
@@ -139,6 +140,14 @@ export function compactClawOutput(output) {
             }
             return task;
         });
+    }
+    const command = typeof output.command === "string" ? output.command : "";
+    const isWorkflowMutation = /^(plan|task|subplan)\.(?!show$)/.test(command);
+    if (isWorkflowMutation) {
+        const existingNotes = typeof visible.notes === "string" ? visible.notes.trim() : "";
+        visible.notes = existingNotes
+            ? `${DSH_MUTATION_ROUTE_GUIDANCE} ${existingNotes}`
+            : DSH_MUTATION_ROUTE_GUIDANCE;
     }
     return visible;
 }

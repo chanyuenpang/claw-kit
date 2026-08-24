@@ -5,6 +5,7 @@ import { readJsonFile, withFileLock, writeJsonFile } from "./io.js";
 import { ensureInsideDir } from "./paths.js";
 import { listTaskDirectories } from "./context.js";
 import { ensureUtf8Bom, hasUtf8BomPrefix } from "./text-encoding.js";
+import { resolveHostIntegrationProfile } from "./integration-contract.js";
 import type { KnowledgeGovernanceResult } from "./knowledge-governance.js";
 import type { KnowledgeWriterConfig, ProjectContext } from "./types.js";
 
@@ -217,7 +218,7 @@ export function resolveKnowledgeWriterForHost(
   writer: KnowledgeWriterConfig | undefined,
   host?: string | null,
 ): KnowledgeWriterConfig | undefined {
-  if (host !== "cindy") {
+  if (resolveHostIntegrationProfile(host)?.forcesSubagentKnowledgeWriter !== true) {
     return writer;
   }
   return {

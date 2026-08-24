@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-export const CODEX_DRIVER_VERSION = 14;
+export const CODEX_DRIVER_VERSION = 15;
 export const CODEX_HOST_ACTION_SCHEMA_VERSION = 1;
 export const CODEX_DRIVER_CACHE_KEY =
   `claw-kit:codex-driver:v${CODEX_DRIVER_VERSION}:s${CODEX_HOST_ACTION_SCHEMA_VERSION}`;
@@ -224,6 +224,9 @@ async function codexDriverRunner(
   const visibleResult = Object.fromEntries(
     Object.entries(result).filter(([key]) => visibleKeys.has(key)),
   );
+  const routeNote = "Codex route: every claw plan, task, or subplan mutation must use the fixed code-mode driver. commandHints provide argv syntax only; do not run them directly in the shell.";
+  const existingNotes = typeof visibleResult.notes === "string" ? visibleResult.notes.trim() : "";
+  visibleResult.notes = existingNotes ? `${routeNote} ${existingNotes}` : routeNote;
   if (goalRecovery) visibleResult.goalRecovery = goalRecovery;
   text(JSON.stringify(visibleResult));
   return visibleResult;

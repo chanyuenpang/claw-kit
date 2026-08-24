@@ -257,19 +257,15 @@ test("Codex context keeps a healthy SDK runtime out of the minimal output", () =
   assert.deepEqual(Object.keys(result).sort(), ["project", "searchGuidance", "session"]);
 });
 
-test("Codex context returns an English consent error without repairing a missing runtime", () => {
+test("Codex context leaves SDK runtime ownership to the Codex adapter", () => {
   const root = createFixture("context-codex-runtime-missing");
   runClaw(["init", "--name", "Context Codex Runtime Missing"], root);
 
   const result = runClaw(["context", "--host", "codex"], root, {
     CLAW_CODEX_RUNTIME_MOCK: "missing",
   });
-  const error = result.error as JsonRecord;
-  assert.equal(error.code, "CODEX_SDK_RUNTIME_MISSING");
-  assert.equal(error.requiresUserConsent, true);
-  assert.equal("repairCommand" in error, false);
-  assert.match(String(error.prompt), /Tell the user.*Ask for permission.*Only after the user agrees.*choose a safe repair approach/is);
-  assert.doesNotMatch(JSON.stringify(error), /[\p{Script=Han}，：。；（）]/u);
+  assert.equal("error" in result, false);
+  assert.deepEqual(Object.keys(result).sort(), ["project", "searchGuidance", "session"]);
 });
 
 test("cli context generates search guidance from enabled embedding and GitNexus capabilities", () => {

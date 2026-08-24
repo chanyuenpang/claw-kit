@@ -1,8 +1,9 @@
-import { ClawError } from "@veewo/claw-core";
+import { ClawError, INTEGRATION_HOSTS, resolveHostIntegrationProfile as resolveCoreHostIntegrationProfile, type HostIntegrationProfile, type IntegrationHost } from "@veewo/claw-core";
 
-export const SUPPORTED_CLAW_HOSTS = ["codex", "opencode", "cindy", "dsh"] as const;
+export const SUPPORTED_CLAW_HOSTS = INTEGRATION_HOSTS;
 
-export type ClawHost = (typeof SUPPORTED_CLAW_HOSTS)[number];
+export type ClawHost = IntegrationHost;
+export type { HostIntegrationProfile };
 
 const SUPPORTED_HOST_SET = new Set<string>(SUPPORTED_CLAW_HOSTS);
 
@@ -14,7 +15,7 @@ const SUPPORTED_HOST_SET = new Set<string>(SUPPORTED_CLAW_HOSTS);
  * envelope needed).
  */
 export function isHostActionsHost(host: ClawHost | undefined): boolean {
-  return host === "codex" || host === "dsh";
+  return resolveCoreHostIntegrationProfile(host)?.consumesPlanGoalEffects === true;
 }
 
 /**
@@ -24,7 +25,12 @@ export function isHostActionsHost(host: ClawHost | undefined): boolean {
  * configuration time instead of silently degrading.
  */
 export function isSubagentPolicyHost(host: ClawHost | undefined): boolean {
-  return host === "codex" || host === "cindy" || host === "dsh";
+  return resolveCoreHostIntegrationProfile(host)?.supportsNativeSubagentFinalization === true;
+}
+
+/** Return the closed profile for a validated invocation host. */
+export function resolveHostIntegrationProfile(host: ClawHost | undefined): HostIntegrationProfile | undefined {
+  return resolveCoreHostIntegrationProfile(host);
 }
 
 function parseHost(value: string | undefined, source: "--host" | "CLAW_HOST"): ClawHost | undefined {
