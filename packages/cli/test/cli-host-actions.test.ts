@@ -49,13 +49,13 @@ test("cli codex driver returns an executable versioned source envelope", async (
   const root = createFixture("codex-driver-envelope");
   const envelope = runClaw(["codex", "driver"], root);
   assert.equal(envelope.command, "codex.driver");
-  assert.equal(envelope.driverVersion, 15);
+  assert.equal(envelope.driverVersion, 17);
   assert.equal(envelope.hostActionSchemaVersion, 1);
-  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v15:s1");
+  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v17:s1");
   assert.match(String(envelope.sha256), /^[a-f0-9]{64}$/);
   assert.equal(
     envelope.sha256,
-    "5bde6ff6a47b8a344fdf4668577b6d2738781fda9dfb2911c4ad8e4407d930d2",
+    "b78fd3905cb29127fc08f69d71799f843b03e6484de3306b7af377581b40cd7a",
     "changing serialized driver source requires a driver version/cache-key bump",
   );
 
@@ -301,7 +301,7 @@ test("codex invoke preserves structured user values without shell interpretation
   assert.equal(plan.title, title);
 });
 
-test("Codex driver preserves an active Goal and recreates terminal Goals", async () => {
+test("Codex driver preserves unfinished Goals, recreates completed Goals, and completes blocked Goals", async () => {
   const root = createFixture("codex-driver-goal-idempotency");
   const envelope = runClaw(["codex", "driver"], root);
   const runner = (0, eval)(`(${String(envelope.source)})`) as (
@@ -340,7 +340,7 @@ test("Codex driver preserves an active Goal and recreates terminal Goals", async
   const retained = await runner({ argv: ["plan", "resume"], workdir: root }, { tools, text: () => {} });
   assert.deepEqual(calls, ["update_plan"]);
   assert.deepEqual(retained.goalRecovery, {
-    reason: "Retained the existing active Codex Goal; recovery creates a Goal only when none is active.",
+    reason: "Retained the existing unfinished Codex Goal; recovery creates a Goal only when none is unfinished.",
   });
 
   commandResult = {
@@ -406,8 +406,83 @@ test("Codex driver preserves an active Goal and recreates terminal Goals", async
     { argv: ["plan", "resume"], workdir: root },
     { tools, text: () => {} },
   );
-  assert.deepEqual(calls, ["update_plan", "update_plan", "create_goal", "update_plan", "create_goal"]);
-  assert.equal(recovered.goalRecovery, undefined);
+  assert.deepEqual(calls, ["update_plan", "update_plan", "create_goal", "update_plan"]);
+  assert.deepEqual(recovered.goalRecovery, {
+    reason: "Retained the existing unfinished Codex Goal; recovery creates a Goal only when none is unfinished.",
+  });
+
+  commandResult = {
+    ok: true,
+    command: "plan.done",
+    stage: "done",
+    hostActions: [{
+      schemaVersion: 1,
+      id: "blocked-done:update_goal",
+      tool: "update_goal",
+      input: { status: "complete" },
+    }],
+  };
+  await runner({ argv: ["plan", "done", "--retrospective", "done"], workdir: root }, { tools, text: () => {} });
+  assert.deepEqual(calls, ["update_plan", "update_plan", "create_goal", "update_plan", "update_goal"]);
+
+  commandResult = {
+    ok: true,
+    command: "plan.blocked",
+    stage: "blocked",
+    hostActions: [{
+      schemaVersion: 1,
+      id: "blocked-again:update_goal",
+      tool: "update_goal",
+      input: { status: "blocked" },
+    }],
+  };
+  goalStatus = "blocked";
+  await runner({ argv: ["plan", "blocked"], workdir: root }, { tools, text: () => {} });
+  assert.deepEqual(calls, ["update_plan", "update_plan", "create_goal", "update_plan", "update_goal"]);
+
+  commandResult = {
+    ok: true,
+    command: "plan.done",
+    stage: "done",
+    hostActions: [{
+      schemaVersion: 1,
+      id: "unknown-done:update_goal",
+      tool: "update_goal",
+      input: { status: "complete" },
+    }],
+  };
+  goalStatus = "unknown_future_state";
+  await runner({ argv: ["plan", "done", "--retrospective", "done"], workdir: root }, { tools, text: () => {} });
+  assert.deepEqual(calls, ["update_plan", "update_plan", "create_goal", "update_plan", "update_goal"]);
+});
+
+test("Codex driver applies the active to blocked Goal transition", async () => {
+  const root = createFixture("codex-driver-active-to-blocked");
+  const envelope = runClaw(["codex", "driver"], root);
+  const runner = (0, eval)(`(${String(envelope.source)})`) as (
+    input: Record<string, unknown>,
+    runtime: Record<string, unknown>,
+  ) => Promise<JsonRecord>;
+  const calls: unknown[] = [];
+  const commandResult = {
+    ok: true,
+    command: "plan.blocked",
+    stage: "blocked",
+    hostActions: [{
+      schemaVersion: 1,
+      id: "active-blocked:update_goal",
+      tool: "update_goal",
+      input: { status: "blocked" },
+    }],
+  };
+  const tools = {
+    shell_command: async () => JSON.stringify(commandResult),
+    get_goal: async () => ({ goal: { status: "active" } }),
+    update_goal: async (input: unknown) => calls.push(input),
+  };
+
+  await runner({ argv: ["plan", "blocked"], workdir: root }, { tools, text: () => {} });
+  assert.deepEqual(calls, [{ status: "blocked" }]);
 });
 
 test("Codex lightweight plans create Goal Mode while omitting progress synchronization", () => {

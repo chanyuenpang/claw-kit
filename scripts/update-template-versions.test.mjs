@@ -39,9 +39,24 @@ test("template release updater aligns plugin and built-in template versions", as
     "utf8",
   );
 
+  const runtimePath = path.join(
+    repoRoot,
+    "packages",
+    "codex-adapter",
+    "skills",
+    "knowledge-capture",
+    "runtime.json",
+  );
+  await fs.mkdir(path.dirname(runtimePath), { recursive: true });
+  await fs.writeFile(
+    runtimePath,
+    '{"schemaVersion":1,"package":"@veewo/claw","version":"1.2.2"}\n',
+    "utf8",
+  );
+
   const before = await inspectTemplateVersions({ repoRoot });
   assert.equal(before.templateCount, 8);
-  assert.equal(before.issues.length, 9);
+  assert.equal(before.issues.length, 10);
   await assert.rejects(
     assertTemplateVersionsAligned({ repoRoot }),
     /sync:template-versions[\s\S]*sync:shared-skills/u,
@@ -49,13 +64,15 @@ test("template release updater aligns plugin and built-in template versions", as
 
   const update = await updateTemplateVersions({ repoRoot });
   assert.equal(update.version, "1.2.3");
-  assert.equal(update.updated.length, 9);
+  assert.equal(update.updated.length, 10);
   await assert.doesNotReject(assertTemplateVersionsAligned({ repoRoot }));
 
   for (const relativePath of templatePaths) {
     const template = JSON.parse(await fs.readFile(path.join(repoRoot, relativePath), "utf8"));
     assert.equal(template.version, "1.2.3");
   }
+  const runtime = JSON.parse(await fs.readFile(runtimePath, "utf8"));
+  assert.equal(runtime.version, "1.2.3");
   assert.match(await fs.readFile(defaultPath, "utf8"), /version: "1\.2\.3"/u);
 
   const second = await updateTemplateVersions({ repoRoot });
