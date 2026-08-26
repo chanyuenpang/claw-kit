@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-export const CODEX_DRIVER_VERSION = 15;
+export const CODEX_DRIVER_VERSION = 17;
 export const CODEX_HOST_ACTION_SCHEMA_VERSION = 1;
 export const CODEX_DRIVER_CACHE_KEY =
   `claw-kit:codex-driver:v${CODEX_DRIVER_VERSION}:s${CODEX_HOST_ACTION_SCHEMA_VERSION}`;
@@ -176,15 +176,21 @@ async function codexDriverRunner(
         ? goal as Record<string, unknown>
         : undefined;
       const goalStatus = goalRecord?.status;
-      const openGoal = goalStatus === "active";
-      if (tool === "create_goal" && openGoal) {
+      const unfinishedGoal = Boolean(goalRecord && goalStatus !== "complete");
+      if (tool === "create_goal" && unfinishedGoal) {
         goalRecovery = {
-          reason: "Retained the existing active Codex Goal; recovery creates a Goal only when none is active.",
+          reason: "Retained the existing unfinished Codex Goal; recovery creates a Goal only when none is unfinished.",
         };
         consumed.add(id);
         continue;
       }
-      if (tool === "update_goal" && goalStatus !== "active") {
+      const requestedGoalStatus = inputRecord.status;
+      const canApplyGoalUpdate = requestedGoalStatus === "blocked"
+        ? goalStatus === "active"
+        : requestedGoalStatus === "complete"
+          ? goalStatus === "active" || goalStatus === "blocked"
+          : false;
+      if (tool === "update_goal" && !canApplyGoalUpdate) {
         consumed.add(id);
         continue;
       }
