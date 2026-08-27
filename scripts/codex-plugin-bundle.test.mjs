@@ -97,7 +97,7 @@ test("Codex entry stays compact without dropping guidance, lifecycle, or the mut
   assert.ok(lineCount >= 50 && lineCount <= 70, `expected 50-70 lines, received ${lineCount}`);
   assert.match(skill, /## First Action/i);
   assert.match(skill, /skip this skill and work directly/i);
-  assert.match(skill, /claw plan create "<title>"/i);
+  assert.match(skill, /argv: \["plan", "create", "<title>"\]/i);
   assert.match(skill, /follow that skill's entry route so it supplies its adjacent template file/i);
   assert.equal((skill.match(/workflowGuidance/g) ?? []).length, 1);
   assert.match(skill, /`commandHints`/);
@@ -150,7 +150,8 @@ test("Codex plugin exposes an explicit same-agent knowledge-capture skill", asyn
   assert.match(skill, /run-knowledge-capture\.mjs" complete --source agent-memory/i);
   assert.doesNotMatch(skill, /`claw knowledge (prepare|complete)/i);
   const runtime = JSON.parse(await fs.readFile(new URL("skills/knowledge-capture/runtime.json", adapterRoot), "utf8"));
-  assert.deepEqual(runtime, { schemaVersion: 1, package: "@veewo/claw", version: "0.2.27" });
+  const rootPackage = JSON.parse(await fs.readFile(new URL("../package.json", import.meta.url), "utf8"));
+  assert.deepEqual(runtime, { schemaVersion: 1, package: "@veewo/claw", version: rootPackage.version });
   await fs.access(new URL("skills/knowledge-capture/scripts/run-knowledge-capture.mjs", adapterRoot));
   assert.match(skill, /Do not create a plan, report, subplan.*subagent/i);
   assert.doesNotMatch(skill, /spawn_agent|create_thread|knowledgeDispatch/);
