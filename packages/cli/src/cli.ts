@@ -127,6 +127,7 @@ function isHostlessCommand(command: string, args: string[]): boolean {
   return command === "init"
     || command === "check"
     || command === "search"
+    || command === "context"
     || command === "template"
     || command === "knowledge"
     || command === "truth"
@@ -3466,7 +3467,8 @@ function compactPlanCommandResult(
     // adapter consumes them via its fixed code-mode driver; the DSH adapter
     // consumes them inside the claw_run tool's execute.
     const integration = resolveHostIntegrationProfile(effectiveHost);
-    const hostActionsResult = integration?.consumesPlanGoalEffects === true;
+    const isSessionPlan = !result.planPath.includes(`${path.sep}.claw${path.sep}`);
+    const hostActionsResult = integration?.consumesPlanGoalEffects === true && !isSessionPlan;
     const cindyResult = integration?.omitsCompactNotes === true;
     const hostActions = hostActionsResult ? buildCodexHostActions(result, {
       forceProjectionSync,

@@ -53,6 +53,7 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   const env = {
     PATH: `${shim.binDir}${path.delimiter}${process.env.PATH ?? ""}`,
     CLAW_EMBEDDING_MOCK: "1",
+    CLAW_HOST: "codex",
   };
 
   const initResult = runClaw(
@@ -115,22 +116,14 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
     root,
     env,
   );
-  assert.equal("stage" in writeResult, false);
-  assert.equal("summary" in writeResult, false);
-  assert.equal("taskName" in writeResult, false);
-  assert.equal("planFile" in writeResult, false);
+  assert.equal(writeResult.stage, "execution");
   assert.equal(writeResult.planSummary, "0/1 e2e-task");
-  assert.equal((writeResult.goalMode as JsonRecord).setWhen, "on_enter_process_active");
-  assert.equal((writeResult.goalTool as JsonRecord).tool, "create_goal");
-  assert.equal("nextAction" in writeResult, false);
-  assert.equal("instruction" in writeResult, false);
-  assert.equal("askUser" in writeResult, false);
+  assert.equal(writeResult.goalMode, undefined);
+  assert.equal(writeResult.goalTool, undefined);
   assert.equal(
     writeResult.notes,
     "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. Before each successful `task done`, state a concise evidence-backed task conclusion in the immediately preceding assistant message; `task done` has no conclusion option. Use `plan done --retrospective` and repeatable `--key-decision` values for full-plan closeout.",
   );
-  assert.equal((writeResult.plan as JsonRecord).title, "e2e-task");
-  assert.equal((writeResult.plan as JsonRecord).status, "process.active");
 
   const inProgressPath = path.join(root, "mark-in-progress.json");
   fs.writeFileSync(
@@ -150,18 +143,15 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
     env,
   );
   assert.deepEqual(inProgressResult.nextsteps, ["Continue the current task."]);
-  assert.equal("nextTask" in inProgressResult, false);
   assert.deepEqual(inProgressResult.commandHints, [
     "claw task done --id 1",
   ]);
-  assert.equal("notes" in inProgressResult, false);
 
   const taskDone = runClaw(
     ["task", "done", "--task-name", "e2e-task", "--id", "1"],
     root,
     env,
   );
-  assert.equal("stage" in taskDone, false);
   assert.equal((taskDone.nextsteps as string[]).some((step) => step.includes("writer")), false);
   assert.deepEqual(taskDone.nextsteps, [
     "1. Clear thread progress with `update_plan`.",

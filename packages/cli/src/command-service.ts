@@ -636,6 +636,7 @@ export class ClawCommandService {
     },
   ): unknown[] {
     if (!isHostActionsHost(context.host as ClawHost | undefined)) return [];
+    if (this.resolveProject(context).scope === "session") return [];
     const actionIdPrefix = result.events?.at(-1)?.mutationId
       ?? result.focusTransition?.transitionId
       ?? createHash("sha256")
@@ -664,6 +665,7 @@ export class ClawCommandService {
   ): Promise<unknown[]> {
     if (!isHostActionsHost(context.host as ClawHost | undefined)) return [];
     const project = this.resolveProject(context);
+    if (project.scope === "session") return [];
     const goalPlan = resolveThreadGoalPlan({
       cwd: context.cwd,
       taskName: input.taskName,

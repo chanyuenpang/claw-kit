@@ -29,6 +29,7 @@ function runPersistentTerminal(
         CLAW_SESSION_DAEMON_RUNTIME_DIR: runtimeRoot,
         CLAW_SESSION_RUNTIME_DIR: path.join(runtimeRoot, "workflow"),
         CLAW_SESSION_DAEMON_IDLE_TTL_MS: "2000",
+        CLAW_HOST: "opencode",
       },
       input,
       encoding: "utf-8",

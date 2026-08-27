@@ -55,7 +55,7 @@ test("cli codex driver returns an executable versioned source envelope", async (
   assert.match(String(envelope.sha256), /^[a-f0-9]{64}$/);
   assert.equal(
     envelope.sha256,
-    "__UPDATE_AFTER_REBASE__",
+    "63c37181514d257d098cb782309ebe0c5efdce1d0441c094aaf9b3c814cd597b",
     "changing serialized driver source requires a driver version/cache-key bump",
   );
 

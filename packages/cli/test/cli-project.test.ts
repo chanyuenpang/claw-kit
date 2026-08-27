@@ -222,7 +222,7 @@ test("cli context honors project maintenance already started by plan-create prew
   fs.mkdirSync(staleSession, { recursive: true });
   fs.writeFileSync(path.join(staleSession, "session.json"), JSON.stringify({ version: 1, scope: "session", originCwd: root, createdAt: "2020-01-01T00:00:00.000Z", updatedAt: "2020-01-01T00:00:00.000Z" }), "utf-8");
 
-  runClaw(["context"], root, { CLAW_SESSION_RUNTIME_DIR: sessionRuntime });
+  runClaw(["context"], root, { CLAW_SESSION_RUNTIME_DIR: sessionRuntime, CLAW_HOST: "" });
   assert.equal(fs.existsSync(tmpFile), true);
   assert.equal(fs.existsSync(datedTaskDir), true);
   assert.equal(fs.existsSync(staleSession), false);
