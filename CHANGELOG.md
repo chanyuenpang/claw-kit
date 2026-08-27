@@ -2,6 +2,14 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.2.30] - 2026-08-27
+
+### Fixed
+
+- `claw context` is again host-bound: it cannot auto-initialize or launch
+  maintenance when invoked without the platform's driver route. Host-backed
+  context maintenance remains asynchronous.
+
 ## [0.2.29] - 2026-08-27
 
 ### Fixed

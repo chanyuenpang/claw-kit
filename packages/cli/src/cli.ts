@@ -127,7 +127,6 @@ function isHostlessCommand(command: string, args: string[]): boolean {
   return command === "init"
     || command === "check"
     || command === "search"
-    || command === "context"
     || command === "template"
     || command === "knowledge"
     || command === "truth"

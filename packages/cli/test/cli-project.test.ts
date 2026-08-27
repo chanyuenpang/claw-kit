@@ -199,7 +199,7 @@ test("cli context omits healthy matching version information", () => {
   assert.equal("projectConfig" in (result.project as JsonRecord), false);
 });
 
-test("cli context honors project maintenance already started by plan-create prewarm while cleaning a new session runtime", () => {
+test("cli context honors project maintenance already started by plan-create prewarm while cleaning a new session runtime", async () => {
   const root = createFixture("context-daily-maintenance");
   const sessionRuntime = path.join(root, "session-runtime");
   runClaw(["init", "--name", "Context Daily Maintenance"], root);
@@ -222,7 +222,13 @@ test("cli context honors project maintenance already started by plan-create prew
   fs.mkdirSync(staleSession, { recursive: true });
   fs.writeFileSync(path.join(staleSession, "session.json"), JSON.stringify({ version: 1, scope: "session", originCwd: root, createdAt: "2020-01-01T00:00:00.000Z", updatedAt: "2020-01-01T00:00:00.000Z" }), "utf-8");
 
-  runClaw(["context"], root, { CLAW_SESSION_RUNTIME_DIR: sessionRuntime, CLAW_HOST: "" });
+  runClaw(["context"], root, { CLAW_SESSION_RUNTIME_DIR: sessionRuntime });
+  await waitForCondition(
+    () => !fs.existsSync(staleSession)
+      && fs.existsSync(path.join(root, ".claw", "runtime", "maintenance.json"))
+      && fs.existsSync(path.join(sessionRuntime, ".maintenance.json")),
+    10_000,
+  );
   assert.equal(fs.existsSync(tmpFile), true);
   assert.equal(fs.existsSync(datedTaskDir), true);
   assert.equal(fs.existsSync(staleSession), false);
