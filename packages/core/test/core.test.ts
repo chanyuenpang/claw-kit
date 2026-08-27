@@ -472,6 +472,7 @@ test("knowledge claim owns execution and delegate prompt routing", () => {
       "schemaVersion",
     ]);
     assert.match(delegateDispatch.prompt, /claw plan create --template-file/);
+    assert.equal(delegateDispatch.leadInstruction, undefined);
     assert.match(delegateDispatch.prompt, /resources[\\/]delegate-writer[\\/]TEMPLATE\.json/);
     assert.doesNotMatch(delegateDispatch.prompt, /Project root:|Task:|working directory/i);
     assert.doesNotMatch(delegateDispatch.prompt, /claw-kit:delegate-writer/i);
@@ -485,6 +486,8 @@ test("knowledge claim owns execution and delegate prompt routing", () => {
     assert.equal(atomicDispatch.model, "test-model");
     assert.equal(atomicDispatch.reasoningEffort, "high");
     assert.match(atomicDispatch.prompt, /claw-kit Cindy Ghost tools/);
+    assert.match(String(atomicDispatch.leadInstruction), /Required, non-skippable closeout/);
+    assert.match(String(atomicDispatch.leadInstruction), /Do not skip it for any reason/);
     assert.match(atomicDispatch.prompt, /cindy-delegate-writer[\\/]TEMPLATE\.json/);
     assert.match(atomicDispatch.prompt, /session plan/i);
     assert.doesNotMatch(atomicDispatch.prompt, /did-turn-end|Stop hook|knowledge wait/i);

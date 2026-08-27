@@ -8,7 +8,7 @@
 - `workflowGuidance.nextsteps` is a host-neutral lifecycle contract: compact results for Codex, Cindy, and OpenCode preserve the same ordered steps for the same plan state. A host may add execution mapping, but must not filter, replace, or reinterpret those steps.
 - When a terminal mutation includes `knowledgeDispatch`, its required immediate dispatch is appended to the shared `nextsteps`; this instruction remains visible to every host even when the actual launcher is host-specific.
 - `packages/cli/src/codex-host-actions.ts` 的 `buildCodexHostActions()` 是 stateless CLI 与 process-backed session command service 的唯一 Codex host-action projector。它生成 native schema-v1 `update_plan`、`create_goal` 与 `update_goal`；每个 action envelope 只保留 `schemaVersion`、用于至多一次消费的 `id`、`tool` 与真实 host `input`。
-- `update_plan` 默认只在 mutation 前后的完整 Codex plan 投影实际变化时生成；metadata-only `plan.edit`、detail-only `task.edit` 与不改变任务投影的普通 `plan.done` 不重复同步。对于至少有一个 task 的 plan，`plan wait`、`plan resume` 与 recovery-only `plan sync` 是显式同步边界，强制输出完整投影，即使当前 task 在 wait 前后都保持 `in_progress`；零任务 plan 不生成空投影。只要生成 `update_plan`，`input.plan` 仍是完整数组，而不是增量 patch。
+- Codex 对每个非空 `process.*` plan 输出完整 `update_plan` 投影；status change、`plan wait`、`plan resume` 与 recovery-only `plan sync` 也是明确同步边界。wait/discussing 保留同一任务投影，不引入 paused task status。每个 `end.*` 用 action id 后缀 `:clear_progress` 的唯一许可空数组清除 Progress；其余 `update_plan` 始终是完整数组而非增量 patch。
 - 恢复 active Codex plan 时，`SessionStart` 仍保持 host-tool-free：它只恢复 snapshot 并提示固定 driver 在继续工作前运行只读的 `claw plan sync`。`plan sync` 不修改 canonical plan；它只对 `process.active` plan 以 recovery resync 方式重建 workflow guidance，并经既有 `buildCodexHostActions()` / fixed code-mode driver 派发非空的完整 `update_plan` 投影。只有 effective project config 没有禁用 `goalMode` 时，该调用才额外派发 `create_goal`；`.claw/project-override.json` 的 `goalMode: false` 同样生效。零任务 plan 不派发空 `update_plan`。非 active plan 返回状态而不派发 host action；非 Codex host 不获得这些 action。该路径修复恢复期的 Goal Mode 和 host progress 缺口，而不把原生 host 调用放进 hook。
 - 当 plan 处于 `process.active` 时，`buildCodexPlanProjection()` 优先把实际标记为 `in_progress` 或 `subagent_running` 的 task 投影为 `in_progress`；只有不存在显式运行 task 时，才回退为首个非 `done` task。这样后续 task 先启动而前序 task 仍为 `pending` 时，host progress 仍与 canonical plan 同步。
 - Codex create 类 compact response 只在 `workflowGuidance.stage === "discussion"` 时返回完整 `plan`；返回完整 plan 时省略重复的 `planSummary`，其他阶段只保留紧凑摘要。该裁剪只影响 Codex 可见响应，不改变 canonical plan、非 Codex 输出或 host action 语义。
@@ -21,7 +21,7 @@
 - researcher 的当前代码调查派发、相关同线程复用、窄 brief、阻塞等待与非递归合同统一由 `.claw/truth/features/codex-subagent-reuse.md` 拥有。
 - `workflowGuidance` 不再派发 Truth/ADR writer。completed plan、相邻 report 与 job snapshot 由 finalization executor 交给一次隐藏的 combined governance assignment；main agent 不在 closure 前自行读取材料或沉淀。
 - `workflowGuidance.delegateSubagents` 的历史 writer entries 已退出当前 lifecycle；该字段若用于其他 specialist，仍按 returned structured contract 消费。Codex `subagent` policy 使用的是 terminal mutation 顶层、由 fixed driver 保留的 `knowledgeDispatch`：main agent 只按 `preferReuse` 原生复用固定名 `knowledge_finalizer`，不存在时创建同名 worker，且不等待；这不是恢复旧 writer reuse 或 `workflowGuidance` dispatch。
-- `process.wait` 和 `process.discussing` 都是暂停型 guidance：cross-host `workflowGuidance.goalTool` 继续描述 `update_goal(status="blocked")`；Codex adapter 不直接执行该 compatibility metadata，而是消费 CLI `buildCodexHostActions` 按 committed `planStatus` 投影出的 schema-v1 `update_goal(status="complete")`，目标是在后续独立 mutation 恢复到 `process.active` 前结束当前 Goal。修复前的 `0.1.86` installed Host 偏差及当前 Goal-action 幂等行为由 `codex-goal-mode-integration.md` 拥有。
+- `process.wait` 和 `process.discussing` 都是暂停型 guidance：cross-host `workflowGuidance.goalTool` 描述 `update_goal(status="blocked")`，Codex `buildCodexHostActions` 也消费这一 Goal 状态，同时保留非空 Progress 投影。Progress 与 Goal Mode 不耦合；等待或讨论不会清空 Progress，也不会产生虚构的 paused 状态。
 - 当 `workflowGuidance` 在从 `process.wait` 或 `process.discussing` 恢复后返回 `goalMode` 时，adapter 应把它当成 `on_resume_process_active` 的重新激活，而不是 `plan write` 阶段的首次 Goal Mode 授权。
 - `prepare.requirements` 阶段如果 `goal.text` 缺失，adapter 应先补 goal，再补其余 plan 字段；如果需求已经完整，补完后应立即把 `plan.status` 切到 `process.active`，而不是继续停留在 requirements。
 - 启用 planning 的 `claw plan create` 会先返回 `process.discussing`，并只预置一个同时承担讨论完成门与 activation 边界的 planning bridge；adapter append downstream tasks 时必须保留该 current template task。该 task 的 title 与 detail 都显示 effective planning skill，先区分执行指令与开放讨论，并只在 solution 引入 meaningful choice 时等待用户回应。`claw plan start` 提交 planning 结果后应用它的 `guidance.onPlanStart`，不从 task 标题、语言或数量推断 lifecycle。
@@ -30,8 +30,8 @@
 - adapter 必须把“没有 `goal.text` 就不能进入 `process.active`”视为 harness hard gate，而不是可由 prompt 规避的建议。
 - `goalTool` 是 real-tool lifecycle 合同，不是冗余提示：
   - `process.active.firstEntry` 与 `process.active.resumedActive` 使用 `create_goal(objective=goalTool.objective)`
-  - `process.wait` 与 `process.discussing` 的 compatibility `goalTool` 使用 `update_goal(status="blocked")`；Codex hostActions 使用 `update_goal(status="complete")`
-  - `end.completed` 使用 `update_goal(status="complete")`
+  - `process.wait` 与 `process.discussing` 使用 `update_goal(status="blocked")`，同时保留 Progress
+  - 每个 `end.*` 先清空 Progress，再使用 `update_goal(status="complete")`
 - 已恢复 session 的未完成 plan 现在是显式用户面 gate：当 `SessionStart` / recovered `workflowGuidance` 发现当前线程已有 unfinished plan 时，adapter 必须先告诉用户“线程里已经有未完成计划”，并询问是关闭当前 plan 还是继续推进它，然后才能开始无关的新工作；这条恢复期 gate 同时落在 `packages/core/src/workflow-guidance.config.json`、`packages/core/src/workflow-guidance.ts` 的 fallback recovered prompt、`packages/opencode-adapter/workflow-guidance.opencode.json`，以及 `packages/opencode-adapter/plugin/index.ts` 的 recovered prompt fallback / idle continuation 注入上。
 - `end.completed` closeout 现在明确保留同线程 claw continuity：plan 完成后除了收尾当前 closeout，下一项工作仍应留在同一个 `claw-kit` 线程里，并重新经 `using-claw-kit` 做 project-plan/direct-work 判断，而不是把 completed-plan closeout 当成退出 claw-kit 的边界。
 - 当 task guidance 走 `guidance.onDone` / `guidance.onDone.choices` 时，host 不能把 `done` 视为无上下文的纯状态切换；如果返回结果要求 `choiceId`，adapter 必须把该值沿着 `claw task done --choice` 或 `claw task edit --status done --choice` 的 route-aware completion path 原样传递，并接受 template-bound 校验失败。
@@ -167,6 +167,6 @@
 ### 已验证证据
 
 - `packages/codex-adapter/hooks/code-mode-host-action-consumer.test.mjs` 使用 `node:vm` 隔离提取并执行 skill 中实际嵌入的 `runClawPlanMutation`；CLI driver tests 同时锁定 structured argv、固定 invoke command、protocol parser、host-action schema 和 source SHA/version bump。
-- 真实 unpublished-build Host 验证为：active → wait 输出 `update_goal complete`，下一次独立 `get_goal` 返回 `null`；wait → active 输出 `create_goal`，下一次独立 `get_goal` 返回 active Goal。
-- core tests 继续覆盖 wait/discussing 的 cross-host `workflowGuidance.goalTool.status = blocked`；CLI tests 同时覆盖该 compatibility metadata 保持 blocked，以及 Codex schema-v1 `hostActions.update_goal.input.status = complete` 的投影。完整测试通过，且发布后的 `0.1.75` registry、全局 CLI、Codex plugin source / cache 均已验证。
+- 旧的 unpublished-build Host complete-on-wait 验收仅是历史证据；当前本地 source contract 尚未替代为新的已发布 Host 验收。
+- core tests 覆盖 wait/discussing 的 cross-host `workflowGuidance.goalTool.status = blocked`；CLI tests 覆盖 Codex 同步 Progress、wait/discussing 的 `hostActions.update_goal.input.status = blocked`，以及所有 `end.*` 的清空 Progress 后完成 Goal。当前验证是源码合同测试，不宣称已发布 Host 行为。
 - skill/reference 固定 contract 要求 Agent 只触发 consumer，不检查 Goal state、不解析 Goal error，也不手写替代 action。

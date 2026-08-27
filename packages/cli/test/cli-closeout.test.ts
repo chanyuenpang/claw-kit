@@ -200,6 +200,7 @@ test("cli plan done emits host-specific subagent dispatch for Codex and Cindy an
   assert.equal(dispatch.policy, "subagent");
   assert.deepEqual(Object.keys(dispatch).sort(), [
     "finalizeId",
+    "leadInstruction",
     "policy",
     "preferReuse",
     "prompt",
@@ -211,6 +212,9 @@ test("cli plan done emits host-specific subagent dispatch for Codex and Cindy an
   assert.match(String(dispatch.prompt), /claw knowledge-finalization job/i);
   assert.match(String(dispatch.prompt), /resources[\\/]delegate-writer[\\/]TEMPLATE\.json/);
   assert.doesNotMatch(String(dispatch.prompt), /Project root:|Task:|working directory/i);
+  assert.match(String(dispatch.leadInstruction), /Required, non-skippable closeout/);
+  assert.match(String(dispatch.leadInstruction), /Do not skip it for any reason/);
+  assert.equal((done.nextsteps as string[]).some((step) => step.includes("non-skippable closeout")), false);
 
   const cindyRoot = createFixture("plan-done-subagent-cindy");
   const cindyEnv = {
@@ -232,6 +236,9 @@ test("cli plan done emits host-specific subagent dispatch for Codex and Cindy an
   assert.match(String(cindyDispatch.prompt), /session plan/i);
   assert.match(String(cindyDispatch.prompt), /assignment subplan/i);
   assert.doesNotMatch(String(cindyDispatch.prompt), /did-turn-end|Stop hook|knowledge wait/i);
+  assert.match(String(cindyDispatch.leadInstruction), /Required, non-skippable closeout/);
+  assert.match(String(cindyDispatch.leadInstruction), /Do not skip it for any reason/);
+  assert.equal((cindyDone.nextsteps as string[]).some((step) => step.includes("non-skippable closeout")), false);
 
   const unsupportedRoot = createFixture("plan-done-subagent-unsupported");
   const opencodeEnv = {
@@ -259,6 +266,35 @@ test("cli plan done emits host-specific subagent dispatch for Codex and Cindy an
     opencodeEnv,
   );
   assert.match(String((editFailure.error as JsonRecord).message), /supported only by the Codex, Cindy, or DSH host/);
+
+  const directCliRoot = createFixture("plan-done-subagent-direct-cli");
+  runClaw(["init", "--name", "Subagent Direct CLI", "--planning", "false"], directCliRoot);
+  const directCliProjectPath = path.join(directCliRoot, ".claw", "project.json");
+  const directCliConfig = JSON.parse(fs.readFileSync(directCliProjectPath, "utf-8")) as JsonRecord;
+  (directCliConfig.knowledgeWriter as JsonRecord).executionPolicy = "subagent";
+  fs.writeFileSync(directCliProjectPath, `${JSON.stringify(directCliConfig, null, 2)}\n`, "utf-8");
+  runClaw(["plan", "create", "--title", "direct-cli-task", "--goal", "Reject direct CLI"], directCliRoot);
+  const hostlessEnv = { CLAW_HOST: "" };
+
+  const directCliFailure = runClawExpectFailure(
+    ["plan", "done", "--retrospective", "Must use the host adapter."],
+    directCliRoot,
+    hostlessEnv,
+  );
+  assert.match(String((directCliFailure.error as JsonRecord).message), /requires a host-scoped invocation/);
+  assert.match(String((directCliFailure.error as JsonRecord).message), /claw codex driver/);
+  assert.match(String((directCliFailure.error as JsonRecord).message), /claw_run/);
+  assert.match(String((directCliFailure.error as JsonRecord).message), /Ghost `list_tools` then `call_tool`/);
+  assert.match(String((directCliFailure.error as JsonRecord).message), /must use `background`/);
+  assert.equal(((directCliFailure.error as JsonRecord).details as JsonRecord).host, null);
+
+  const directCliEditFailure = runClawExpectFailure(
+    ["plan", "edit", "--retrospective", "Must use the host adapter.", "--status", "end.completed"],
+    directCliRoot,
+    hostlessEnv,
+  );
+  assert.match(String((directCliEditFailure.error as JsonRecord).message), /claw codex driver/);
+  assert.equal(((directCliEditFailure.error as JsonRecord).details as JsonRecord).host, null);
 });
 
 test("Codex subagent claim captures the Stop-style task report without waiting for Stop", () => {

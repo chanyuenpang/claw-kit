@@ -11,6 +11,7 @@ import {
   appendKnowledgeTaskConclusions,
   buildKnowledgeAtomicDispatch,
   buildKnowledgeDelegateDispatch,
+  KNOWLEDGE_DISPATCH_LEAD_INSTRUCTION,
   buildKnowledgeAssignmentTemplate,
   buildDirectKnowledgeAssignments,
   buildKnowledgeWriterAssignments,
@@ -121,6 +122,39 @@ const TOP_LEVEL_COMMANDS: { name: string; summary: string }[] = [
   { name: "truth ingest [options]", summary: "Ingest a truth document under .claw/truth." },
   { name: "hook <event-name>", summary: "Emit host hook output (e.g. SessionStart)." },
 ];
+
+function isHostlessCommand(command: string, args: string[]): boolean {
+  return command === "init"
+    || command === "check"
+    || command === "search"
+    || command === "template"
+    || command === "knowledge"
+    || command === "truth"
+    || command === "codex"
+    || command === "help"
+    || command.startsWith("internal-")
+    || (command === "session" && args[0] === "clean" && args.includes("--expired"));
+}
+
+function assertForegroundInvocationHost(
+  command: string | undefined,
+  args: string[],
+  effectiveHost: ClawHost | undefined,
+): void {
+  if (!command || effectiveHost !== undefined || isHostlessCommand(command, args)) return;
+  throw new ClawError(
+    "PROJECT_CONFIG_INVALID",
+    [
+      `claw ${command} requires a host-scoped invocation; host is missing.`,
+      "Do not add `--host` to bypass the platform adapter.",
+      "Codex: run plan, task, or subplan mutations through the fixed code-mode runner loaded with `claw codex driver`; the adapter or hook owns other host lifecycle commands.",
+      "DSH: use `claw_run` with its operation and args.",
+      "Cindy: normally use Ghost `list_tools` then `call_tool`; only a runtime explicitly identified as GPT/Codex uses Cindy's Shell + bridge path.",
+      "OpenCode: invoke the CLI from its host integration so it supplies `CLAW_HOST=opencode`; `knowledgeWriter.executionPolicy: subagent` must use `background`.",
+    ].join(" "),
+    { command, host: null },
+  );
+}
 
 const COMMAND_HELP: Record<string, HelpNode> = {
   init: {
@@ -606,6 +640,7 @@ async function main(): Promise<void> {
   }
 
   try {
+    assertForegroundInvocationHost(command, args, effectiveHost);
     switch (command) {
       case "init":
         const initInput: InitProjectInput = {
@@ -1462,6 +1497,14 @@ function directKnowledgeConfigFingerprint(input: {
   return `sha256:${createHash("sha256").update(JSON.stringify(payload)).digest("hex")}`;
 }
 
+function throwUnsupportedSubagentExecutionHost(effectiveHost: ClawHost | undefined): never {
+  throw new ClawError(
+    "PROJECT_CONFIG_INVALID",
+    'knowledgeWriter.executionPolicy "subagent" is supported only by the Codex, Cindy, or DSH host.',
+    { host: effectiveHost ?? null },
+  );
+}
+
 async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Promise<void> {
   const subcommand = args.shift();
   switch (subcommand) {
@@ -1531,11 +1574,7 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
         && effectiveWriter?.executionPolicy === "subagent"
         && !isSubagentPolicyHost(effectiveHost)
       ) {
-        throw new ClawError(
-          "PROJECT_CONFIG_INVALID",
-          'knowledgeWriter.executionPolicy "subagent" is supported only by the Codex, Cindy, or DSH host.',
-          { host: effectiveHost ?? null },
-        );
+        throwUnsupportedSubagentExecutionHost(effectiveHost);
       }
       const terminalRefresh = entersEndTerminal
         ? preparePlanTerminalRefresh(process.cwd(), ownerSessionKey)
@@ -1658,11 +1697,7 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
         && effectiveWriter?.executionPolicy === "subagent"
         && !isSubagentPolicyHost(effectiveHost)
       ) {
-        throw new ClawError(
-          "PROJECT_CONFIG_INVALID",
-          'knowledgeWriter.executionPolicy "subagent" is supported only by the Codex, Cindy, or DSH host.',
-          { host: effectiveHost ?? null },
-        );
+        throwUnsupportedSubagentExecutionHost(effectiveHost);
       }
       const terminalRefresh = preparePlanTerminalRefresh(process.cwd(), ownerSessionKey);
       const result = await editPlan({
@@ -3382,6 +3417,7 @@ function buildKnowledgeDispatch(input: {
     policy: "subagent",
     finalizeId: input.finalizeId,
     writer: input.writer,
+    ...(input.host === "codex" ? { leadInstruction: KNOWLEDGE_DISPATCH_LEAD_INSTRUCTION } : {}),
   });
 }
 
@@ -3432,16 +3468,13 @@ function compactPlanCommandResult(
     const integration = resolveHostIntegrationProfile(effectiveHost);
     const hostActionsResult = integration?.consumesPlanGoalEffects === true;
     const cindyResult = integration?.omitsCompactNotes === true;
-    const hostActions = hostActionsResult ? buildCodexHostActions(result, { forceProjectionSync, actionIdPrefix: command === "plan.sync" ? `plan.sync:${createHash("sha256").update(result.planPath).digest("hex").slice(0, 16)}` : undefined }) : [];
+    const hostActions = hostActionsResult ? buildCodexHostActions(result, {
+      forceProjectionSync,
+      actionIdPrefix: command === "plan.sync" ? `plan.sync:${createHash("sha256").update(result.planPath).digest("hex").slice(0, 16)}` : undefined,
+      includeLightweightProcessProgress: effectiveHost === "codex",
+    }) : [];
     const nextsteps = [
       ...result.workflowGuidance.nextsteps,
-      // Manual-dispatch instruction for hosts WITHOUT automatic writer
-      // dispatch (codex/cindy/opencode). DSH's adapter auto-dispatches the
-      // writer subagent inside claw_run, so the model must NOT re-dispatch;
-      // injecting this line there would ask it to duplicate the dispatch.
-      ...(knowledgeDispatch && effectiveHost !== "dsh"
-        ? ["A knowledgeDispatch is present: dispatch its unchanged prompt through the current Host's designated knowledge-finalizer now, then immediately end the Lead turn; do not wait for or poll that worker."]
-        : []),
     ];
     const planSummary = result.planView.collapsedSummary;
     const includePlan = Boolean(

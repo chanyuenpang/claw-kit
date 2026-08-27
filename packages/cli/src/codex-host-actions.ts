@@ -13,13 +13,15 @@ export function buildCodexHostActions(
     workflowGuidance: WorkflowGuidance;
     events?: PlanEvent[];
   },
-  options: { forceProjectionSync?: boolean; actionIdPrefix?: string } = {},
+  options: { forceProjectionSync?: boolean; actionIdPrefix?: string; includeLightweightProcessProgress?: boolean } = {},
 ): Array<Record<string, unknown>> {
   const latestEvent = result.events?.at(-1);
   const actionIdPrefix = options.actionIdPrefix ?? latestEvent?.mutationId;
   if (!actionIdPrefix) return [];
 
   const actions: Array<Record<string, unknown>> = [];
+  const isProcessStatus = result.planStatus.startsWith("process.");
+  const isEndStatus = result.planStatus.startsWith("end.");
   const goalTool = result.workflowGuidance.goalTool;
   const isSubplanGoalHandoff = Boolean(
     result.plan?.parentPlan
@@ -34,12 +36,26 @@ export function buildCodexHostActions(
       input: { status: "complete" },
     });
   }
-  if (
+  if (isEndStatus && result.plan) {
+    actions.push({
+      schemaVersion: 1,
+      id: `${actionIdPrefix}:clear_progress`,
+      tool: "update_plan",
+      input: {
+        explanation: result.workflowGuidance.summary,
+        plan: [],
+      },
+    });
+  } else if (
     result.plan
-    && shouldUsePlanHostIntegration(result.plan)
     && result.plan.tasks.length > 0
     && (
+      shouldUsePlanHostIntegration(result.plan)
+      || (options.includeLightweightProcessProgress === true && isProcessStatus)
+    )
+    && (
       options.forceProjectionSync
+      || result.previousPlan?.status !== result.planStatus
       || codexPlanProjectionChanged(result.previousPlan, result.plan, result.planStatus)
     )
   ) {
@@ -53,7 +69,14 @@ export function buildCodexHostActions(
       },
     });
   }
-  if (goalTool && !isSubplanGoalHandoff) {
+  if (isEndStatus && !isSubplanGoalHandoff) {
+    actions.push({
+      schemaVersion: 1,
+      id: `${actionIdPrefix}:update_goal`,
+      tool: "update_goal",
+      input: { status: "complete" },
+    });
+  } else if (goalTool && !isSubplanGoalHandoff) {
     actions.push(goalTool.tool === "create_goal"
       ? {
           schemaVersion: 1,
@@ -65,11 +88,7 @@ export function buildCodexHostActions(
           schemaVersion: 1,
           id: `${actionIdPrefix}:update_goal`,
           tool: "update_goal",
-          input: {
-            status: result.planStatus === "process.wait" || result.planStatus === "process.discussing"
-              ? "complete"
-              : goalTool.status,
-          },
+          input: { status: goalTool.status },
         });
   }
   return actions;

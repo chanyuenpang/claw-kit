@@ -25,17 +25,17 @@ Treat Goal mode as a thread-level Codex feature. `claw-kit` supplies the plan-de
 
 Default policy:
 
-- host-level Goal and progress synchronization is enabled for default root plans only after they exceed two tasks (the complete task list, including planning tasks); template-backed plans and subplans retain it at every task count
+- Codex Progress synchronization applies to every nonempty `process.*` plan; its task projection is independent from optional Goal Mode policy
 - `prepare.requirements` does not emit an active-goal recommendation
 - only when a plan first enters `process.active`, expose a `goalMode` recommendation from canonical `plan.goal.text`
 - only entering or resuming `process.active` emits native schema-v1 `create_goal`
 - Goal 桥接由 CLI 按提交后的 plan 状态确定性路由原生 action；不引入 `ensure_goal`，也不匹配 host error text。固定 driver/consumer 可在 Goal mutation 紧前方读取 snapshot 以跳过已满足的目标状态
 - 不允许 Agent 判断当前或先前 Goal 状态，也不要求 Agent 重放或补偿先前的 Goal 状态转换；程序内幂等消费细节由 `codex-plan-mutations-use-fixed-code-mode-consumer.md` 唯一拥有
 - use `setWhen = on_enter_process_active` so `plan write` / `prepare.requirements` guidance does not claim Goal mode ownership before execution actually starts
-- when a plan moves into `process.wait` or `process.discussing`, Codex host projection emits `update_goal(status="complete")` so the old Goal is no longer unfinished
-- when a later mutation resumes execution into `process.active`, emit `create_goal`; never combine the preceding complete and the new create in one code-mode call
+- when a plan moves into `process.wait` or `process.discussing`, Codex keeps the existing Progress projection and emits `update_goal(status="blocked")` so Goal Mode stops without changing task projection
+- when a later mutation resumes execution into `process.active`, emit `create_goal` according to the existing active-entry contract; no Progress-specific pause state is introduced
 - treat `claw subplan create` as a focus handoff, not a Goal handoff: retain the root-plan Goal, project child tasks as Progress, and ensure every later child reconciliation uses the root-plan objective if the Host Goal is missing
-- when a plan reaches `end.completed`, return `goalTool.tool = update_goal` with `status = "complete"` instead of leaving completion to an implied host-side Goal mode gesture
+- on every `end.*` status, clear Progress with the driver-recognized `:clear_progress` `update_plan({ plan: [] })`, then complete the root Goal; this covers `end.completed`, `end.closed`, and `end.leave`
 - if `plan.goal.text` is missing, block the lifecycle from entering `process.active` instead of emitting a premature Goal mode recommendation
 - generated task detail is derived from program state, not inferred from prose: the default Codex/no-host path appends `Follow the claw workflow guidance and finish your goal: <planGoal>` when `goalMode` is enabled, explicit `host: "opencode"` preserves its host-specific activation detail, and disabled `goalMode` keeps only the base activation detail
 
@@ -48,7 +48,7 @@ Default policy:
 ## Consequences
 
 - The integration is honest about the host boundary.
-- Small, self-contained default plans avoid host Goal/progress overhead, while plans with three or more tasks and lifecycle-owning template or subplan flows preserve the existing synchronization and handoff contract.
+- Goal Mode remains policy-controlled, while every nonempty Codex process plan has a visible Progress projection.
 - Active execution can still align with Goal mode automatically in tool-capable environments.
 - Goal lifecycle changes are expressed through real Codex contracts, not adapter-invented pseudo-operations.
 - The same plan remains portable across hosts, because the canonical source stays in `.claw`, while Goal mode remains an optional Codex-host enhancement.
@@ -56,8 +56,8 @@ Default policy:
 - `goalMode` emission becomes a one-time activation boundary on first `process.active` entry, instead of a repeated `plan write` side effect.
 - resumed active execution requests a Goal in the resume mutation call；如果旧 Goal 仍 active，固定 consumer 复用它而不再次创建。修复前 `0.1.86` installed Host 反例仍是历史证据，当前 worktree 的程序行为与未完成的真实 Host 发布验收见 `../features/codex-goal-mode-integration.md`。
 - subplan creation no longer overwrites an unfinished parent Goal or relies on a failing `create_goal` as control flow; subplan focus keeps the root Goal, while child progress remains a separate projection.
-- paused execution has a durable, testable target rule: Codex projection uses `update_goal(status="complete")`, then a later cross-call `create_goal` must survive host settlement; release acceptance must not infer success from action shape alone.
-- completed execution has a durable target rule: use `update_goal(status="complete")` when the root plan reaches `end.completed`, while compact terminal guidance must not ask the caller to repeat an action already consumed by the fixed driver.
+- paused execution has a durable, testable target rule: Goal is blocked while Progress remains visible and unchanged; this preserves the canonical pause without inventing a paused Progress status.
+- terminal execution has a durable, testable target rule: every `end.*` clears Progress and completes the root Goal, while compact terminal guidance must not ask the caller to repeat actions already consumed by the fixed driver.
 - Goal 恢复成为 plan-status router 的程序合同；Agent 不再承担 Goal 状态探测、错误文本匹配、历史判断或状态重放责任。
 - 发布前必须用未发布的本地构建做真实 Host wait→active lifecycle 验收，确认 wait 后 Goal 为空、resume 后新 Goal 跨调用保持 active。
 - The default template activation detail no longer depends on agent-side interpretation of Goal Mode prose, which keeps Codex and opencode output aligned with their respective host contracts.
@@ -85,6 +85,15 @@ Default policy:
 - `Goal rebuild`
 - `wait resume lifecycle acceptance`
 
-## 2026-07-17 实测补充
+<!-- state: history -->
+## Decision evolution
+
+<!-- dated: 2026-08-26 -->
+### Separate Progress from paused Goal Mode
+
+Codex now preserves Progress in `process.wait` and `process.discussing`, blocks Goal Mode in those states, and clears Progress plus completes Goal for every `end.*` state. This replaces the former complete-on-pause routing.
+
+<!-- dated: 2026-07-17 -->
+### 实测补充
 
 `0.1.75` 指定完成 plan 的真实验收记录确认：`plan.wait` 返回 `update_goal(status="complete")`，后续 `plan.resume` 返回 `create_goal`；两步分属不同 mutation call，未要求 Agent 读取 Goal 状态或解释 `goalTool`。该段是版本化成功证据；后续偏差与当前 worktree 修复见 `../features/codex-goal-mode-integration.md`。

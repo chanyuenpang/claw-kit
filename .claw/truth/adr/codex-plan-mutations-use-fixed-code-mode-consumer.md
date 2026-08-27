@@ -37,7 +37,7 @@ Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode c
 - hot path 发现缓存缺失或版本不兼容时，只能重新进入完整 bootstrap，或以 `bootstrap required` 一类明确错误 fail closed；不能运行未验证 source、手工解释 `hostActions`，也不能把 CLI mutation 与 native host action 改成两个调用。
 - v4 曾只扩大 `plan.done` 的可见终结字段：`planPath`、`nextsteps` 与 `achievement`；v5 保留这些 compact-result 语义，并加入固定程序内的 Goal-action 幂等检查。普通 mutation 仍保持精简，subplan done 恢复 parent 时因为没有 root terminal `achievement` 而不会制造终结成就。
 - Goal action 继续使用 schema-v1 原生命令，不引入 `ensure_goal` pseudo-action，也不匹配 host error text。只有固定 driver 可以在 action 紧前方调用 `get_goal`；Agent 禁止单独检查 Goal 状态。
-- CLI 只按 mutation 提交后的 plan 状态路由 Goal action：`process.wait` / `process.discussing` 发出 `update_goal(status="complete")`，进入或恢复 `process.active` 发出 `create_goal`，`end.completed` 发出 `update_goal(status="complete")`。
+- CLI 只按 mutation 提交后的 plan 状态路由 host actions：每个非空 `process.*` plan 投影完整 Progress；`process.wait` / `process.discussing` 发出 `update_goal(status="blocked")`；进入或恢复 `process.active` 按既有合同发出 `create_goal`；每个 `end.*` 先以 `:clear_progress` action-id 输出 `update_plan({ plan: [] })`，再发出 `update_goal(status="complete")`。
 - consumer 逐条执行 CLI 返回的 action；每个 `create_goal` / `update_goal` 紧前方读取 Goal snapshot。`create_goal` 遇到任何 nonterminal Goal 时保留它、返回可见 recovery note 并将 action 记为已消费；只有不存在 nonterminal Goal 时才创建新 Goal。没有 active Goal 时跳过 `update_goal`。恢复 active plan 时，SessionStart 要求固定 driver 运行一次 `plan sync`，该调用恢复 progress projection，并仅在 Goal 缺失时创建 Goal；resume 的 canonical transition 不得重放。
 - 未知 `schemaVersion`、未知 tool、不兼容 input 或缺失 host tool 一律 fail closed。Codex 不提供 direct-call 或 split-call fallback。
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md` 内嵌固定 `runClawPlanMutation` driver，以便在 isolate 内直接执行；`packages/cli/src/codex-driver.ts` 是当前 source contract，并由 source SHA snapshot 强制 driver/cache identity 随序列化语义变化升级。旧的 `packages/codex-adapter/scripts/code-mode-host-action-consumer.mjs` 只保留为 repository test oracle，不进入 plugin payload。
@@ -83,7 +83,7 @@ Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode c
 - Goal action 的目标状态幂等性由固定程序拥有：设置 Goal 不覆盖任何 nonterminal Goal，而是在没有 nonterminal Goal 时才创建；已关闭或不存在的 Goal 不会被 completion 再次关闭。恢复 active plan 的 `plan sync` 同时恢复 progress projection。所有路径都保留 action-id 至多一次语义。
 - plan-status router 消除 Goal 桥接对 Agent 所见历史状态、错误文本和补偿判断的依赖；source 与 versioned cache 中的 consumer/driver 必须保持该合同一致。
 - app-server 的 Goal/MCP 能力不改变当前 owner：在公开协议出现客户端 plan setter、或 claw 成为连接当前 UI thread 的原生客户端之前，`update_plan` 继续由 agent 触发的固定 code-mode consumer 执行。
-- wait/discussing 的 complete 与后续 resume create 分处不同 mutation calls，符合 Codex 的调用结束结算语义。
+- wait/discussing 会保留 Progress 并阻塞 Goal；每个 terminal end 状态才清空 Progress 并完成 Goal。
 - 真实 Host lifecycle 成为 Goal action 发布门禁，避免仅靠 mock 或单元测试批准宿主时序错误。
 - host tool 不可用或合同不兼容时会显式停止；调用方必须修复程序或接口版本，而不能静默绕过合同。
 - command execution 兼容已支持的 host-tool variants，不把 adapter 绑定到单一 Codex tool name；不受支持的 host 仍须在任何 CLI mutation 或 host-action dispatch 前失败。
@@ -132,6 +132,11 @@ Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode c
 ### 失败信封的可见性纳入固定 consumer
 
 - v13 的单通道成功-envelope 解析会丢失部分 CLI 结构化失败；为保持失败诊断与 Host Action 安全边界，解析升级为跨 `output`、`stdout`、`stderr`、`text` 的成功优先识别，并将 failure-envelope 语义变化视作独立的 driver/cache identity 升级。
+
+<!-- dated: 2026-08-26 -->
+### Progress and Goal lifecycle are independent
+
+The fixed consumer accepts an empty `update_plan.plan` only for a `:clear_progress` action. The projector now synchronizes all nonempty Codex process plans, preserves that projection in wait/discussing while blocking Goal, and clears it for every terminal end status before completing Goal.
 
 <!-- dated: 2026-08-06 -->
 ### 恢复时保留非终态 Goal

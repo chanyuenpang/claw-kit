@@ -119,10 +119,10 @@ export function createPlanLikeTemplate(params: {
 }
 
 // Host adapter hooks (e.g. the opencode plugin shell.env) can inject CLAW_HOST
-// and CLAW_GUIDANCE_CONFIG into the test runner's environment. When these leak
-// into spawned `claw` processes, they alter workflow guidance behavior (host
-// gating, stale config) and pollute assertions. Strip them by default so tests
-// exercise core's bundled defaults unless a test explicitly opts in via `env`.
+// and CLAW_GUIDANCE_CONFIG into the test runner's environment. Isolate those
+// values, then default tests to OpenCode: it is the only direct-CLI host and
+// keeps ordinary CLI fixtures on a valid host-scoped route. Tests that exercise
+// the missing-host boundary explicitly override CLAW_HOST with an empty value.
 export const ISOLATED_ENV_KEYS = [
   "CLAW_HOST",
   "CLAW_GUIDANCE_CONFIG",
@@ -139,14 +139,24 @@ export function buildSpawnEnv(extra?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   for (const key of ISOLATED_ENV_KEYS) {
     delete env[key];
   }
-  return { ...env, ...extra };
+  return { ...env, CLAW_HOST: "opencode", ...extra };
+}
+
+function resolveTestInvocationEnv(args: string[], extra?: NodeJS.ProcessEnv): NodeJS.ProcessEnv | undefined {
+  if (extra?.CLAW_HOST !== undefined) return extra;
+  const hostFlag = args.indexOf("--host");
+  const explicitHost = hostFlag >= 0 ? args[hostFlag + 1] : undefined;
+  const codexTransport = args[0] === "codex" && args[1] === "invoke";
+  return explicitHost || codexTransport
+    ? { ...extra, CLAW_HOST: explicitHost ?? "codex" }
+    : extra;
 }
 
 export function runClaw(args: string[], cwd: string, env?: NodeJS.ProcessEnv, input?: string): JsonRecord {
   const cliPath = path.resolve(thisDir, "..", "dist", "bin.js");
   const result = spawnSync(process.execPath, [cliPath, ...args], {
     cwd,
-    env: buildSpawnEnv(env),
+    env: buildSpawnEnv(resolveTestInvocationEnv(args, env)),
     encoding: "utf-8",
     windowsHide: true,
     ...(input !== undefined ? { input } : {}),
@@ -163,7 +173,7 @@ export function runClawExpectFailure(args: string[], cwd: string, env?: NodeJS.P
   const cliPath = path.resolve(thisDir, "..", "dist", "bin.js");
   const result = spawnSync(process.execPath, [cliPath, ...args], {
     cwd,
-    env: buildSpawnEnv(env),
+    env: buildSpawnEnv(resolveTestInvocationEnv(args, env)),
     encoding: "utf-8",
     windowsHide: true,
     ...(input !== undefined ? { input } : {}),
@@ -185,7 +195,7 @@ export function runClawRaw(args: string[], cwd: string, env?: NodeJS.ProcessEnv)
   const cliPath = path.resolve(thisDir, "..", "dist", "bin.js");
   const result = spawnSync(process.execPath, [cliPath, ...args], {
     cwd,
-    env: buildSpawnEnv(env),
+    env: buildSpawnEnv(resolveTestInvocationEnv(args, env)),
     encoding: "utf-8",
     windowsHide: true,
   });
@@ -218,7 +228,7 @@ export function runClawHook(
   const cliPath = path.resolve(thisDir, "..", "dist", "bin.js");
   const result = spawnSync(process.execPath, [cliPath, "hook", eventName], {
     cwd,
-    env: buildSpawnEnv(env),
+    env: buildSpawnEnv(resolveTestInvocationEnv(["hook", eventName], env)),
     encoding: "utf-8",
     windowsHide: true,
     input: JSON.stringify(payload),

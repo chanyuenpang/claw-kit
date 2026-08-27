@@ -24,10 +24,18 @@ export type KnowledgeDelegateDispatch = {
   policy: "background" | "subagent";
   finalizeId: string;
   preferReuse: true;
+  leadInstruction?: string;
   model?: string;
   reasoningEffort?: NonNullable<KnowledgeWriterConfig["reasoningEffort"]>;
   prompt: string;
 };
+
+export const KNOWLEDGE_DISPATCH_LEAD_INSTRUCTION = [
+  "Required, non-skippable closeout: hand off this knowledge-finalization job through the current Host's designated route now.",
+  "Do not skip it for any reason, including an apparently empty result, plan completion, unavailable-looking collaboration tools, missing permission, or a final reply.",
+  "Pass prompt unchanged when the Host requires Lead dispatch; if the Host dispatches automatically, do not duplicate it.",
+  "After the handoff is accepted or automatically owned, immediately end the Lead turn and do not wait for or poll the worker.",
+].join(" ");
 
 export function knowledgeDelegateTemplatePath(): string {
   return path.join(
@@ -42,6 +50,7 @@ export function buildKnowledgeDelegateDispatch(input: {
   policy: "background" | "subagent";
   finalizeId: string;
   writer?: KnowledgeWriterConfig | null;
+  leadInstruction?: string;
 }): KnowledgeDelegateDispatch {
   const templatePath = knowledgeDelegateTemplatePath();
   const delegateTitle = `knowledge-finalizer-${input.finalizeId.slice(0, 12)}`;
@@ -50,6 +59,7 @@ export function buildKnowledgeDelegateDispatch(input: {
     policy: input.policy,
     finalizeId: input.finalizeId,
     preferReuse: true,
+    ...(input.leadInstruction ? { leadInstruction: input.leadInstruction } : {}),
     ...(input.writer?.model ? { model: input.writer.model } : {}),
     ...(input.writer?.reasoningEffort ? { reasoningEffort: input.writer.reasoningEffort } : {}),
     prompt: [
@@ -82,6 +92,7 @@ export function buildKnowledgeAtomicDispatch(input: {
     policy: "subagent",
     finalizeId: input.finalizeId,
     preferReuse: true,
+    leadInstruction: KNOWLEDGE_DISPATCH_LEAD_INSTRUCTION,
     ...(input.writer?.model ? { model: input.writer.model } : {}),
     ...(input.writer?.reasoningEffort ? { reasoningEffort: input.writer.reasoningEffort } : {}),
     prompt: [

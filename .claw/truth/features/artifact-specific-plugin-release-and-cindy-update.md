@@ -4,7 +4,7 @@
 ## Current behavior
 
 - `release-claw-kit` is a router only. It selects one artifact-specific release skill and does not itself edit versions, package, publish, install, or combine release acceptance across artifact families.
-- Repository-maintainer release ownership is split by artifact family: `release-claw-cli` owns the npm CLI/core/client release line; `release-codex-plugin`, `release-cindy-plugin`, `release-openclaw-plugin`, and `release-opencode-plugin` own their respective versioned plugin artifacts.
+- Repository-maintainer release ownership is split by artifact family: `release-claw-cli` owns the npm CLI/core/client release line; `release-codex-plugin`, `release-dsh-plugin`, `release-cindy-plugin`, `release-openclaw-plugin`, and `release-opencode-plugin` own their respective versioned plugin artifacts. `release-dsh-plugin` owns only `packages/dsh-adapter` and the published `@veewo/dsh-claw-kit` npm package.
 - A multi-family request creates independent parent tasks or subplans. Naming a platform does not select the CLI flow, and package-only validation continues to use `test-claw-kit` rather than any release skill.
 - `release-cindy-plugin` is scoped to the checked-out `packages/cindy-adapter` independent marketplace repository, its `main`, and the `vcindy-*` tag. It never publishes npm packages or changes another adapter version.
 - A Cindy release verifies the committed marketplace source tree and the tagged `ghost.json`; it does not build or upload a `.cindy` archive and does not create a GitHub Release. Cindy packages the marketplace source locally during install or update.
@@ -17,6 +17,7 @@
 - `.agents/skills/release-claw-kit/SKILL.md`
 - `.agents/skills/release-claw-cli/`
 - `.agents/skills/release-codex-plugin/`
+- `.agents/skills/release-dsh-plugin/`
 - `.agents/skills/release-cindy-plugin/`
 - `.agents/skills/release-openclaw-plugin/`
 - `.agents/skills/release-opencode-plugin/`
@@ -24,6 +25,14 @@
 
 <!-- state: history -->
 ## Evolution history
+
+<!-- dated: 2026-08-24 -->
+### Codex 0.2.27.1, DSH 0.2.27.1, and Cindy 0.2.27.0 release batch
+
+- Codex `0.2.27.1` was released from the main-repository marketplace source with immutable tag `vcodex-0.2.27.1` and a zero-asset GitHub Release.
+- DSH released immutable git tag `vdsh-0.2.27.1`; its independently distributed npm package `@veewo/dsh-claw-kit@0.2.27-rc.1` was published as `latest`.
+- Cindy `0.2.27.0` was released from its independent marketplace repository with immutable tag `vcindy-0.2.27.0` and source path `./plugin`; it has no archive or GitHub Release.
+- Each artifact retained its own source and terminal acceptance contract. The main repository and Cindy repository finished clean on `main` and equal to `origin/main`; this batch does not assert a local installation refresh.
 
 <!-- dated: 2026-08-20 -->
 ### Cindy 0.2.23.1 and Codex 0.2.23.2 release
@@ -61,16 +70,6 @@
 - Each artifact line passed its required release checks, remote-reference
   verification, and clean-worktree gate. This batch is historical evidence and
   does not claim any local CLI or plugin installation was refreshed.
-
-<!-- dated: 2026-08-09 -->
-### 0.2.17 multi-artifact release batch
-
-- CLI/Core `0.2.17`, Codex `0.2.17.1`, and Cindy `0.2.17.0` were released
-  from verified exact source. The CLI/Core release used the CLI three-segment
-  compatibility baseline; the Codex and Cindy releases retained their separate
-  marketplace artifacts and release evidence.
-- This batch is historical release evidence only. It does not assert that a
-  maintainer's local CLI or installed plugin has been refreshed.
 
 ## Search terms
 

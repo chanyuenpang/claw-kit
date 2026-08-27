@@ -7,6 +7,7 @@ import {
   assertRootPlanCreateAllowed,
   buildKnowledgeAtomicDispatch,
   buildKnowledgeDelegateDispatch,
+  KNOWLEDGE_DISPATCH_LEAD_INSTRUCTION,
   completeSubplanAndRestoreParent,
   createPlanAndSwitchFocus,
   createPlanRef,
@@ -601,6 +602,7 @@ export class ClawCommandService {
               policy: "subagent",
               finalizeId: knowledgeEnd.finalizeId,
               writer,
+              ...(context.host === "codex" ? { leadInstruction: KNOWLEDGE_DISPATCH_LEAD_INSTRUCTION } : {}),
             });
       }
     }
@@ -689,7 +691,11 @@ export class ClawCommandService {
       planStatus: input.plan.status,
       plan: input.plan,
       workflowGuidance,
-    }, { actionIdPrefix, forceProjectionSync: input.forceProjectionSync });
+    }, {
+      actionIdPrefix,
+      forceProjectionSync: input.forceProjectionSync,
+      includeLightweightProcessProgress: context.host === "codex",
+    });
   }
 }
 

@@ -135,11 +135,12 @@ async function codexDriverRunner(
     }
     const inputRecord = input as Record<string, unknown>;
     if (tool === "update_plan") {
+      const allowsEmptyPlan = id.endsWith(":clear_progress");
       if (
         Object.keys(inputRecord).some((key) => key !== "explanation" && key !== "plan")
         || (inputRecord.explanation !== undefined && typeof inputRecord.explanation !== "string")
         || !Array.isArray(inputRecord.plan)
-        || inputRecord.plan.length === 0
+        || (!allowsEmptyPlan && inputRecord.plan.length === 0)
         || inputRecord.plan.some((item) => {
           if (!item || typeof item !== "object" || Array.isArray(item)) return true;
           const planItem = item as Record<string, unknown>;
