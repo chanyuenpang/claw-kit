@@ -2,6 +2,19 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.2.29] - 2026-08-27
+
+### Fixed
+
+- Foreground plan/task/subplan commands now reject missing host context with the
+  platform-specific adapter route; Codex lifecycle mutations remain inside the
+  fixed code-mode driver.
+- Codex keeps Progress visible while plans are waiting or discussing, blocks
+  Goal in those paused states, and clears Progress before completing Goal for
+  every terminal `end.*` state.
+- Terminal knowledge dispatch marks its required host handoff as non-skippable
+  without putting that host-specific instruction in shared workflow guidance.
+
 ## [0.2.28] - 2026-08-25
 
 ### Changed
