@@ -25,7 +25,7 @@
     {
       "id": 2,
       "title": "Update the global claw CLI",
-      "detail": "npm install -g @veewo/claw@latest; confirm claw --version matches the target and that `claw context --host dsh` parses (the CLI must support the dsh host).",
+      "detail": "npm install -g @veewo/claw@latest; confirm claw --version matches the target. After restarting DSH, verify host-scoped recovery through claw_run(operation: context, args: {}).",
       "status": "pending"
     },
     {

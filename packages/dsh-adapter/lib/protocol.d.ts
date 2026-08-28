@@ -3,6 +3,12 @@
  * and the session-start guidance snapshot renderer. Kept free of Cordis and
  * process dependencies so they are directly unit-testable.
  */
+/**
+ * A transport break after a daemon request has been sent leaves the mutation
+ * outcome unknown: the daemon may have committed it before its response was
+ * lost. Such a request must never be automatically replayed.
+ */
+export declare function isUncertainConnectionFailure(message: string): boolean;
 /** Map one `claw_run` operation call (snake_case args) to the daemon's
  * canonical `claw/execute` input. Mirrors the Cindy adapter's sessionRequest
  * contract. Unknown operations pass args through and fail closed on the

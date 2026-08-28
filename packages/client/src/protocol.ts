@@ -90,12 +90,54 @@ export type ClawSessionCommandResult<T extends ClawSessionCommand> =
     ? SessionSimplePlanView
     : unknown;
 
+export type ClawHostActionV1 =
+  | {
+      schemaVersion: 1;
+      id: string;
+      tool: "update_plan";
+      input: {
+        explanation?: string;
+        plan: Array<{ step: string; status: "pending" | "in_progress" | "completed" }>;
+      };
+    }
+  | {
+      schemaVersion: 1;
+      id: string;
+      tool: "create_goal";
+      input: { objective: string };
+    }
+  | {
+      schemaVersion: 1;
+      id: string;
+      tool: "update_goal";
+      input: { status: "complete" | "blocked" };
+    };
+
+export type ClawPostCommitEffectV1 = {
+  type: "completion.refresh";
+  taskName: string;
+  planFile?: string;
+  planStatus: string;
+  endedAt?: string;
+};
+
+export type ClawKnowledgeDispatchV1 = {
+  schemaVersion: 1;
+  policy: "background" | "subagent";
+  finalizeId: string;
+  preferReuse: false;
+  leadInstruction?: string;
+  model?: string;
+  reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh";
+  prompt: string;
+};
+
 export type ClawSessionCommandEnvelope<T extends ClawSessionCommand = ClawSessionCommand> = {
   schemaVersion: 1;
   output: ClawSessionCommandResult<T>;
-  hostActions?: unknown[];
-  postCommitEffects?: unknown[];
-  knowledgeDispatch?: unknown;
+  hostActions?: ClawHostActionV1[];
+  postCommitEffects?: ClawPostCommitEffectV1[];
+  knowledgeDispatch?: ClawKnowledgeDispatchV1;
 };
 
 export type SessionProtocolRequest =

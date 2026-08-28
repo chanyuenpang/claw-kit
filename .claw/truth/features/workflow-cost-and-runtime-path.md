@@ -97,6 +97,7 @@
 - persistent daemon request timeout 也属于 terminal `PersistentEmbeddingModelError`，因为 daemon 超时后模型下载或推理可能仍在继续；客户端不得并发回退 one-shot 去争用同一份未完成缓存。默认 daemon request timeout 与外层 embedding worker timeout 现均为两小时，仍可分别通过 `CLAW_EMBEDDING_DAEMON_REQUEST_TIMEOUT_MS` 与 `CLAW_EMBEDDING_WORKER_TIMEOUT_MS` 显式覆盖。
 - runtime endpoint 按 user、install、Node runtime 与 protocol version 隔离，并有显式 runtime directory 的测试覆盖；这防止不同安装、Node 或协议实例误连同一 daemon。
 - daemon 生命周期与并发边界包括 startup lock、state 原子写入、`120s` idle TTL，以及默认容量为 `1` 的 session LRU。session fingerprint 包含 `projectCwd`、Transformers module path、model、cache directory、dimension、device、dtype 与 tokenizer policy；任一会影响加载或输出的条件变化时，都不会误复用旧 session。
+- `CLAW_EMBEDDING_DAEMON_TEST_MOCK=1` 的持久 worker 测试同时隔离 tokenizer 预处理与模型执行：mock 输入不进入真实 tokenizer window splitting，确保 daemon tests 保持 hermetic/offline，也不会把 tokenizer 下载或模型缓存状态误当成 transport/session 复用结果。
 - remote embedding provider 继续走 one-shot worker，不进入 local daemon。`packages/core/src/embedding-local.ts` 新增可复用 session surface；原有 wrapper 仍保持 create-run-dispose，兼容需要一次性生命周期的调用方。
 - 真实源码 CLI benchmark 使用两个不同且未缓存的语义 query：首次为 `3078ms`，第二次为 `452ms`；两次由同一 daemon PID 处理，daemon 内保持 `1` 个 session，并在 `120s` idle TTL 后正常退出。该样本证明收益来自模型 session 复用，而不是 query cache 命中。
 - 当前验证为 core `121/121`、CLI `64/64`，且完整 `npm run check` 通过。

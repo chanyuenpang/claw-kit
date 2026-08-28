@@ -207,7 +207,7 @@ export async function startSessionDaemon(options?: {
             sessionKeyHash: identity.sessionKeyHash,
           });
         }
-        const opened = await registry.open(
+        await registry.open(
           request.input.agentSessionId,
           request.input.workdir,
           request.input.client,
@@ -225,7 +225,15 @@ export async function startSessionDaemon(options?: {
         } catch (error) {
           if (error instanceof ClawError && error.code === "FOCUS_RECOVERY_CONFLICT") throw error;
         }
-        const currentPlan = !opened.created && opened.record.currentPlan
+        await service.reconcileCanonicalFocus({
+          cwd: identity.canonicalWorkdir,
+          agentSessionId: identity.agentSessionId,
+          sessionKey: sessionFocusKey(identity),
+          host: request.input.client.host,
+          mode: "session",
+        });
+        const sessionRecord = registry.read(identity.sessionKeyHash);
+        const currentPlan = sessionRecord.currentPlan
           ? (await service.execute({
               cwd: identity.canonicalWorkdir,
               agentSessionId: identity.agentSessionId,
@@ -239,7 +247,7 @@ export async function startSessionDaemon(options?: {
           : undefined;
         return successResponse(request.requestId, {
           sessionHandle: connection.sessionHandle,
-          session: opened.record,
+          session: sessionRecord,
           ...(currentPlan ? { currentPlan } : {}),
         });
       }

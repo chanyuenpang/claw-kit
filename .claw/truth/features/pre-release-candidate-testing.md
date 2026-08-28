@@ -8,6 +8,7 @@
 - The workflow always stops before version changes, commits, pushes, tags, npm or GitHub publication, and maintainer installation refresh. Starting a release requires a separate explicit task using `release-claw-kit`.
 - Candidate scope is classified before testing across CLI/core and each affected platform adapter. The workflow preserves the existing working tree and does not stash, clean, or discard user-owned changes to manufacture a passing candidate.
 - Build and static checks precede local installation. Changed-file testing supplies the ordinary route; version-level or cross-cutting candidates also use the full route.
+- DSH has a first-class `dsh` test-manager domain; both DSH source routing and the full suite run `@veewo/dsh-claw-kit` runtime tests rather than treating a successful root build as adapter verification.
 - A fail-fast suite does not make unexecuted tail domains disappear. Isolate the reported failure, rerun its focused domain, and explicitly run skipped tail domains before reaching a readiness conclusion.
 - Timing- or environment-sensitive failures remain evidence until isolated. Do not delete, skip, weaken, or arbitrarily extend a test to obtain a green result. A fixed discovery-count baseline changes only when an intentionally added test proves that the expected count changed.
 - Artifact verification is proportional to the candidate surface: CLI/core changes use package-content smoke checks, while adapter changes use the matching bundle export and bundle tests.

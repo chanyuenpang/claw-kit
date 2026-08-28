@@ -14,7 +14,7 @@ description: 为高风险或跨系统功能产出最小充分的领域架构设�
 
 ## 主代理路由
 
-- 主代理触发本技能时，先运行 `claw context`，只以返回的 `activeWorkflow` 判断当前会话是否已有绑定的 claw task；不得扫描或猜测其他 task。
+- 主代理触发本技能时，先通过当前 adapter 的受控恢复入口取得 context，只以返回的 `activeWorkflow` 判断当前会话是否已有绑定的 claw task；不得扫描或猜测其他 task。Codex 使用固定 code-mode driver 的 `argv: ["context"]`；DSH 使用 `claw_run(operation: "context", args: {})`；其他 adapter 使用其注入当前 host 的 context 入口。不得直接运行 CLI 或手工附加 `--host`。
 - 若存在 `activeWorkflow`，从 `planPath` 的父目录取得 `taskDir`，创建 `taskDir/feature-architecture/`，并把该绝对路径作为唯一报告目录传给架构子代理。报告文件名和一级标题使用 `YYYY-MM-DD-HHmm-内容摘要`。
 - 子代理成功返回 task 内报告后，主代理立即执行 `claw plan edit --reference <相对项目根目录的报告路径> --why "Feature architecture design for the active task."`。只有该 mutation 成功，才向用户称报告已纳入 plan。
 - 若 `claw context` 没有 `activeWorkflow`，仍可派发只读设计子代理，但不得创建、保存或要求任何 Markdown 文件，也不得向 plan 添加引用；子代理仅在最终消息返回 `status` 和紧凑的 `design` 内容。

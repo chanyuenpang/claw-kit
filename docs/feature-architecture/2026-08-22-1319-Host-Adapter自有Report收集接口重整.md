@@ -1,9 +1,10 @@
 # 2026-08-22 13:19 — Host Adapter 自有 Report 收集接口重整
 
-> 实现修订（2026-08-22）：report 的采集规则与产出形态只作为 adapter 需求规范，
-> 不构成 CLI/Core 校验合同。collector 在 staging 路径写出任意自身产物；统一流程
-> 仅检查 collector 成功产出文件并原样发布。本文下方关于 manifest、digest、固定
-> event 字段与通用排序/去重的细节为已放弃的设计探索，不是当前实现要求。
+> 实现修订（2026-08-28）：report 的采集规则与产出形态只作为 adapter 需求规范，
+> 不构成 CLI/Core 内容校验合同。collector 在固定 staging 路径写出任意自身产物；统一
+> 流程验证版本化 descriptor/request、普通文件、byte length 与 SHA-256 receipt，并通过
+> 同目录 rename 原子发布。本文下方关于 payload manifest、固定 event 字段与通用排序/
+> 去重的细节为已放弃的设计探索，不是当前实现要求。
 
 ## 结论摘要
 
@@ -13,7 +14,7 @@
 - Codex、DSH、Cindy adapter 各自拥有原始 history/transcript 的发现、解析、turn-final 判定和采集完备性；
 - CLI 只按 `host` 解析一个已注册的 collector capability，启动 adapter 自有 collector；
 - collector 不把 host message DTO 回传给 CLI，而是在 CLI 指定的 staging 路径产出 adapter 自有的 `.report` 文件；
-- CLI 只发布该文件，不再解释、校验、排序或要求其内容字段，也不再出现 Codex transcript、DSH capture、Cindy SQLite 的业务分支；
+- CLI 只把该文件当作 opaque bytes，校验 transport receipt 并原子发布；不再解释、排序或要求其内容字段，也不再出现 Codex transcript、DSH capture、Cindy SQLite 的业务分支；
 - 采集顺序与内容由 adapter 按 Host 的实际情况负责。
 
 因此，report 文件是采集交付边界；collector 进程退出码只表达“已产出 / 尚未完备 / 失败”，不承载采集内容。

@@ -15,8 +15,15 @@ runtimes and artifacts.
 
 - Core owns a closed, versioned v1 capability profile for supported integration
   hosts; Core and CLI resolve policy through that contract.
+- Context recovery can return host-neutral workflow state. The invoking
+  adapter, rather than stored session state, supplies the current host and
+  consumes the recovery result through its native route; agent-facing Codex
+  recovery uses its fixed code-mode driver rather than a naked CLI invocation.
 - CLI/Core own canonical workflow and immutable background-dispatch semantics,
   not native platform writer runtimes.
+- The shared Node envelope owns the versioned shape of Host actions, completion
+  effects, and knowledge dispatch. Adapter application remains fail-open after
+  commit, but failures must remain observable as structured diagnostics.
 - Each adapter owns its native finalizer/runtime implementation.
 - CLI release readiness uses the independent `verify:cli` gate; adapter gates
   remain separate.
@@ -29,13 +36,17 @@ runtimes and artifacts.
   ownership and ties CLI release to unrelated platform artifacts.
 - Replace the profile with permissive fallback behavior: rejected because an
   unknown integration must fail explicitly rather than silently inherit a host.
+- Persist and reuse the host from a prior session binding: rejected because a
+  historical adapter identity can be wrong for the current recovery caller.
 
 ## Consequences
 
 Host additions now require an explicit capability profile and an adapter-native
 implementation for every enabled effect. CLI/Core can evolve canonical protocol
 without importing platform runtimes, while adapters can validate and release on
-their own schedules.
+their own schedules. Recovery callers must use the adapter-owned entry point;
+they neither append `--host` manually nor inherit a host from an earlier
+session.
 
 ## Related code
 

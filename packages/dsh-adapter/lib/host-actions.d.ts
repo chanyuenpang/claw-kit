@@ -28,10 +28,36 @@ export type GoalsLike = {
     }): unknown;
 };
 export type HostAction = {
-    schemaVersion: number;
+    schemaVersion: 1;
     id: string;
-    tool: "update_plan" | "create_goal" | "update_goal" | string;
-    input: Record<string, unknown>;
+    tool: "update_plan";
+    input: {
+        explanation?: string;
+        plan: Array<{
+            step: string;
+            status: "pending" | "in_progress" | "completed";
+        }>;
+    };
+} | {
+    schemaVersion: 1;
+    id: string;
+    tool: "create_goal";
+    input: {
+        objective: string;
+    };
+} | {
+    schemaVersion: 1;
+    id: string;
+    tool: "update_goal";
+    input: {
+        status: "complete" | "blocked";
+    };
+};
+export type HostEffectFailure = {
+    actionId?: string;
+    tool?: string;
+    code: "INVALID_ACTION" | "UNSUPPORTED_SCHEMA" | "UNSUPPORTED_TOOL" | "SERVICE_UNAVAILABLE" | "APPLY_FAILED";
+    message: string;
 };
 /**
  * Consume hostActions against DSH-native surfaces.
@@ -44,9 +70,10 @@ export type HostAction = {
  *
  * @returns the list of consumed action ids, for the `goalSync` result field.
  */
-export declare function consumeHostActions(actions: HostAction[] | undefined, goals: GoalsLike | undefined, agent: unknown): {
+export declare function consumeHostActions(actions: unknown[] | undefined, goals: GoalsLike | undefined, agent: unknown): {
     consumed: string[];
     projection: HostAction | undefined;
+    failures: HostEffectFailure[];
 };
 /**
  * Whitelist-only compact view of a daemon `claw/execute` output — the same

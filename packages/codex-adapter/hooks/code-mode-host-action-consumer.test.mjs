@@ -72,6 +72,17 @@ test("native knowledge finalizer keeps lifecycle ownership in CLI and SDK owners
   assert.equal(calls.find(([name]) => name === "run")[1], "write knowledge");
 });
 
+test("native knowledge finalizer never starts a writer after its claim has expired", async () => {
+  const calls = [];
+  class FakeCodex { constructor() { calls.push("sdk"); } }
+  const runClawCommand = (argv) => {
+    calls.push(argv.slice(0, 2).join(" "));
+    return { ok: true, stdout: JSON.stringify({ ok: true, claimed: true, claimToken: "claim-token", expiresAt: "2000-01-01T00:00:00.000Z" }), stderr: "" };
+  };
+  await assert.rejects(() => runNativeFinalizer("G:\\project\\job.json", { CodexClass: FakeCodex, runClawCommand }), /expired before the writer could start/);
+  assert.deepEqual(calls, ["knowledge claim", "knowledge done"]);
+});
+
 test("program dispatches each native plan and Goal action exactly once", async () => {
   const calls = [];
   let goalStatus = "complete";
@@ -93,27 +104,23 @@ test("program dispatches each native plan and Goal action exactly once", async (
   assert.deepEqual(consumption.consumedActionIds, result.hostActions.map((action) => action.id));
 });
 
-test("native Goal tool failures propagate unchanged for Agent-level outcome handling", async () => {
-  await assert.rejects(
-    consumeCodexHostActions({
-      result: { hostActions: [makeActions()[1]] },
-      hostTools: {
-        get_goal: async () => ({ goal: null }),
-        create_goal: async () => { throw new Error("permission denied"); },
-      },
-    }),
-    /permission denied/,
-  );
-  await assert.rejects(
-    consumeCodexHostActions({
-      result: { hostActions: [makeActions()[2]] },
-      hostTools: {
-        get_goal: async () => ({ goal: { status: "active" } }),
-        update_goal: async () => { throw new Error("transport failed"); },
-      },
-    }),
-    /transport failed/,
-  );
+test("native Goal tool failures preserve the canonical mutation outcome as recoverable effect failures", async () => {
+  const createFailure = await consumeCodexHostActions({
+    result: { hostActions: [makeActions()[1]] },
+    hostTools: {
+      get_goal: async () => ({ goal: null }),
+      create_goal: async () => { throw new Error("permission denied"); },
+    },
+  });
+  assert.deepEqual(createFailure.hostEffectFailures, [{ id: "mutation:create_goal", tool: "create_goal", message: "permission denied", syncRequired: true }]);
+  const updateFailure = await consumeCodexHostActions({
+    result: { hostActions: [makeActions()[2]] },
+    hostTools: {
+      get_goal: async () => ({ goal: { status: "active" } }),
+      update_goal: async () => { throw new Error("transport failed"); },
+    },
+  });
+  assert.deepEqual(updateFailure.hostEffectFailures, [{ id: "mutation:update_goal", tool: "update_goal", message: "transport failed", syncRequired: true }]);
 });
 
 test("Goal actions preserve an active Goal and do not close an already closed Goal", async () => {
@@ -191,36 +198,18 @@ test("program consumes an action id at most once", async () => {
   assert.deepEqual([...consumedIds], [action.id]);
 });
 
-test("program rejects unsupported schema, tools, and invalid native Goal inputs", async () => {
-  await assert.rejects(
-    consumeCodexHostActions({ result: { hostActions: [{ ...makeActions()[0], schemaVersion: 2 }] }, hostTools: { update_plan: async () => {} } }),
-    /Unsupported hostAction schemaVersion/,
-  );
-  await assert.rejects(
-    consumeCodexHostActions({ result: { hostActions: [{ ...makeActions()[0], tool: "delete_plan" }] }, hostTools: {} }),
-    /Unsupported Codex hostAction tool/,
-  );
-  await assert.rejects(
-    consumeCodexHostActions({
-      result: { hostActions: [{ ...makeActions()[1], input: { objective: "work", priorStatus: "blocked" } }] },
-      hostTools: {},
-    }),
-    /unsupported input fields: priorStatus/,
-  );
-  await assert.rejects(
-    consumeCodexHostActions({
-      result: { hostActions: [{ ...makeActions()[1], input: {} }] },
-      hostTools: {},
-    }),
-    /objective must be a non-empty string/,
-  );
-  await assert.rejects(
-    consumeCodexHostActions({
-      result: { hostActions: [{ ...makeActions()[2], input: { status: "active" } }] },
-      hostTools: {},
-    }),
-    /status must be complete or blocked/,
-  );
+test("program records unsupported Host actions as recoverable projection failures", async () => {
+  const cases = [
+    [{ ...makeActions()[0], schemaVersion: 2 }, /Unsupported hostAction schemaVersion/],
+    [{ ...makeActions()[0], tool: "delete_plan" }, /Unsupported Codex hostAction tool/],
+    [{ ...makeActions()[1], input: { objective: "work", priorStatus: "blocked" } }, /unsupported input fields: priorStatus/],
+    [{ ...makeActions()[1], input: {} }, /objective must be a non-empty string/],
+    [{ ...makeActions()[2], input: { status: "active" } }, /status must be complete or blocked/],
+  ];
+  for (const [action, expected] of cases) {
+    const result = await consumeCodexHostActions({ result: { hostActions: [action] }, hostTools: { update_plan: async () => {} } });
+    assert.match(result.hostEffectFailures?.[0]?.message ?? "", expected);
+  }
 });
 
 test("runCodexPlanMutation keeps CLI mutation and direct host dispatch in one program", async () => {
@@ -267,8 +256,8 @@ test("the embedded bootstrap caches the CLI driver and dispatches native host ac
         if (options.command === "claw codex driver") {
           return JSON.stringify({
             ok: true,
-            cacheKey: "claw-kit:codex-driver:v15:s1",
-            driverVersion: 15,
+            cacheKey: "claw-kit:codex-driver:v18:s1",
+            driverVersion: 18,
             hostActionSchemaVersion: 1,
             source: driverSource,
           });
@@ -319,8 +308,8 @@ test("the embedded bootstrap uses exec_command when shell_command is unavailable
         if (options.cmd === "claw codex driver") {
           return JSON.stringify({
             ok: true,
-            cacheKey: "claw-kit:codex-driver:v15:s1",
-            driverVersion: 15,
+            cacheKey: "claw-kit:codex-driver:v18:s1",
+            driverVersion: 18,
             hostActionSchemaVersion: 1,
             source: driverSource,
           });

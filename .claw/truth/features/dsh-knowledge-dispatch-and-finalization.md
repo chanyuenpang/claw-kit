@@ -10,6 +10,9 @@
   （`update_plan` / `create_goal` / `update_goal`），由各自 adapter 自动消费。
 - `isSubagentPolicyHost`（`codex | cindy | dsh`）：这三个 host 支持
   `knowledgeWriter.executionPolicy = "subagent"`；其他 host 在配置时直接拒绝该 policy。
+- DSH 没有独立 background runner；Host capability 会把项目配置的
+  `background | subagent` 都归一为原生 subagent lifecycle。新项目保留通用默认值
+  `background`，但 DSH effective writer 必须生成 ready job 与 `knowledgeDispatch`。
 - `KnowledgeFinalizationHost` 增加 `"dsh"`（`packages/core/src/knowledge-sidecar.ts`）。
 - DSH 的 `claw_run` 工具把 `claw search` 召回结果完整暴露给模型：
   `compactClawOutput` 白名单包含 `query` / `results` / `count`，每条命中只保留

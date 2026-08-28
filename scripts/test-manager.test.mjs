@@ -28,6 +28,7 @@ test("functional paths select their focused test domains", () => {
     "cli-workflow",
   ]);
   assert.deepEqual(selectDomains(["shared/skills/planning/SKILL.md"]).domains, ["shared-skills"]);
+  assert.deepEqual(selectDomains(["packages/dsh-adapter/src/index.ts"]).domains, ["dsh"]);
 });
 
 test("explicit cross-boundary paths select every required domain", () => {
@@ -61,6 +62,12 @@ test("every declared domain produces at least one executable step", () => {
   assert.equal(Object.hasOwn(TEST_DOMAINS, "cli-compat"), false);
 });
 
+test("the full suite runs every workspace runtime adapter test gate", () => {
+  const commands = createExecutionPlan(["full"]).map((step) => step.args.join(" "));
+  assert.ok(commands.includes("run test -w @veewo/dsh-claw-kit"));
+  assert.ok(commands.includes("run test -w @claw-kit/openclaw-adapter"));
+});
+
 test("CLI domain files replace the monolith with unique discoverable tests", () => {
   const repoRoot = path.resolve(import.meta.dirname, "..");
   const testDir = path.join(repoRoot, "packages", "cli", "test");
@@ -85,7 +92,7 @@ test("CLI domain files replace the monolith with unique discoverable tests", () 
     }
   }
 
-  assert.equal(names.size, 150);
+  assert.equal(names.size, 143);
   const plannedFiles = createExecutionPlan(Object.keys(CLI_DOMAIN_TEST_FILES))
     .filter((step) => step.kind === "node" && step.args[0] === "--test")
     .map((step) => path.basename(step.args[1]))

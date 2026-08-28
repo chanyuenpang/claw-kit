@@ -64,7 +64,7 @@ Or use the one-shot install script:
 
 After the CLI is installed, project search still needs one-time setup inside each target project:
 
-1. Run `claw context` so `.claw/project.json` is normalized and the default local embedding config is present.
+1. Start the project through its host adapter so the adapter-owned context recovery normalizes `.claw/project.json` and supplies the current host identity. Do not run `claw context` directly or append `--host` manually.
 2. Run `claw search index --refresh` once so the sqlite recall store, embedding setup, and first vector index are created.
 
 Then use it from any project directory:
@@ -92,7 +92,7 @@ the live client but retains session metadata for seven days.
 
 `claw plan create` now routes through seed-plan templates. Explicit `--template` wins first; otherwise claw uses `defaultPlanTemplate` from `.claw/project.json` or `.claw/project-override.json`, then falls back to the built-in `default` template. Planning-enabled projects start in `process.discussing` with a planning task plus an activation bridge task; planning-disabled projects start directly in `process.active`. The planning task analyzes the request and uses the configured planning skill to fill executable tasks. `claw search --query "<topic>"` remains an optional command hint, not a mandatory planning step.
 
-`claw context` emits only the minimum public recovery surface: project identity and paths, an active workflow when one exists, recovery or version diagnostics only when action is needed, and optional search guidance derived from enabled embedding and GitNexus capabilities. The internal SessionStart path retains the full resolved context needed for recovery and protocol handling. Claw-generated guidance, return metadata, and host prompt text use English; user-supplied plan content and repository document language are preserved.
+`claw context` emits only the minimum public recovery surface: project identity and paths, an active workflow when one exists, recovery or version diagnostics only when action is needed, and optional search guidance derived from enabled embedding and GitNexus capabilities. It is an adapter-owned startup operation: adapters supply the current host and render or consume the result; agents do not invoke it as a naked CLI command. The internal SessionStart path retains the full resolved context needed for recovery and protocol handling. Claw-generated guidance, return metadata, and host prompt text use English; user-supplied plan content and repository document language are preserved.
 
 New project tasks are grouped under `.claw/tasks/YYYY-MM-DD/`. `claw context` performs a lock-protected lazy daily maintenance pass: it clears `.claw/runtime/tmp/` (and removes the legacy `.claw/tmp/`), moves date-scoped task folders from before yesterday into the archive (regardless of whether old plans have `completedAt`), archives legacy flat tasks by `plan.updatedAt` (falling back to the plan file timestamp), applies `maxTasksToKeep` to the archive, removes bindings to plans no longer under active tasks, and sweeps expired session workflows. It runs on the first context call of each local calendar day; it does not install a background scheduler.
 

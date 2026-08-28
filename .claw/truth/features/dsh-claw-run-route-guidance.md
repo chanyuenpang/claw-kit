@@ -7,6 +7,7 @@
 single native tool is `claw_run(operation, args)`; models do not run the
 command hints directly in pwsh or another shell.
 
+- `claw_run(operation: "context", args: {})` is the sole DSH startup-recovery route. The adapter supplies the current host identity; models must not invoke `claw context` directly or add `--host`.
 - `compactClawOutput()` prepends one adapter-owned route note to the visible
   `notes` of successful `plan.*`, `task.*`, and `subplan.*` workflow mutations.
   The note says that `commandHints` describe `operation` and `args` syntax only.

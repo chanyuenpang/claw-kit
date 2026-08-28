@@ -23,33 +23,77 @@ import { DSH_MUTATION_ROUTE_GUIDANCE } from "./route-guidance.js";
 export function consumeHostActions(actions, goals, agent) {
     const consumed = [];
     let projection;
+    const failures = [];
     for (const action of Array.isArray(actions) ? actions : []) {
-        if (action.schemaVersion !== 1 || typeof action.id !== "string")
+        const record = action && typeof action === "object" && !Array.isArray(action)
+            ? action
+            : undefined;
+        if (!record || typeof record.id !== "string" || !record.id || !record.input || typeof record.input !== "object" || Array.isArray(record.input)) {
+            failures.push({ code: "INVALID_ACTION", message: "Host action must contain a non-empty id and object input." });
             continue;
-        const input = action.input ?? {};
+        }
+        if (record.schemaVersion !== 1) {
+            failures.push({
+                actionId: record.id,
+                ...(typeof record.tool === "string" ? { tool: record.tool } : {}),
+                code: "UNSUPPORTED_SCHEMA",
+                message: `Unsupported host action schemaVersion: ${String(record.schemaVersion)}.`,
+            });
+            continue;
+        }
+        if (!['update_plan', 'create_goal', 'update_goal'].includes(String(record.tool))) {
+            failures.push({
+                actionId: record.id,
+                ...(typeof record.tool === "string" ? { tool: record.tool } : {}),
+                code: "UNSUPPORTED_TOOL",
+                message: `Unsupported host action tool: ${String(record.tool)}.`,
+            });
+            continue;
+        }
+        const typedAction = record;
+        const input = typedAction.input;
         try {
-            if (action.tool === "create_goal" && typeof input.objective === "string") {
-                if (goals) {
-                    goals.create(agent, { objective: input.objective });
-                    consumed.push(action.id);
+            if (typedAction.tool === "create_goal") {
+                if (!goals) {
+                    failures.push({ actionId: typedAction.id, tool: typedAction.tool, code: "SERVICE_UNAVAILABLE", message: "DSH goals service is unavailable." });
+                }
+                else if (typeof typedAction.input.objective !== "string" || !typedAction.input.objective) {
+                    failures.push({ actionId: typedAction.id, tool: typedAction.tool, code: "INVALID_ACTION", message: "create_goal requires a non-empty objective." });
+                }
+                else {
+                    goals.create(agent, { objective: typedAction.input.objective });
+                    consumed.push(typedAction.id);
                 }
             }
-            else if (action.tool === "update_goal" && goals) {
+            else if (typedAction.tool === "update_goal" && goals) {
                 const current = goals.get(agent);
-                if (current && (input.status === "complete" || input.status === "blocked")) {
+                if (current && (typedAction.input.status === "complete" || typedAction.input.status === "blocked")) {
                     goals.complete(agent, { id: current.id, revision: current.revision });
-                    consumed.push(action.id);
+                    consumed.push(typedAction.id);
                 }
             }
-            else if (action.tool === "update_plan") {
-                projection = action;
+            else if (typedAction.tool === "update_goal") {
+                failures.push({ actionId: typedAction.id, tool: typedAction.tool, code: "SERVICE_UNAVAILABLE", message: "DSH goals service is unavailable." });
+            }
+            else if (typedAction.tool === "update_plan") {
+                if (!Array.isArray(typedAction.input.plan)) {
+                    failures.push({ actionId: typedAction.id, tool: typedAction.tool, code: "INVALID_ACTION", message: "update_plan requires a plan array." });
+                }
+                else {
+                    projection = typedAction;
+                }
             }
         }
-        catch {
-            // fail-open: projection/goal sync must never break a settled mutation
+        catch (error) {
+            failures.push({
+                actionId: typedAction.id,
+                tool: typedAction.tool,
+                code: "APPLY_FAILED",
+                message: error instanceof Error ? error.message : String(error),
+            });
         }
     }
-    return { consumed, projection };
+    return { consumed, projection, failures };
 }
 /**
  * Whitelist-only compact view of a daemon `claw/execute` output — the same

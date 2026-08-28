@@ -43,6 +43,7 @@ import {
   createNpmShim,
   createClawUpdateNpmShim,
 } from "./cli-test-support.js";
+import { createHash } from "node:crypto";
 
 
 test("cli leaves completed-task deposition to automatic turn reporting", () => {
@@ -414,6 +415,7 @@ test("Codex subagent claim captures the Stop-style task report without waiting f
     "internal-report-collector-register",
     "--project-root", root,
     "--collector-host", "codex",
+    "--collector-version", "codex-test-v1",
     "--executable", process.execPath,
     "--arg", path.resolve(thisDir, "../../codex-adapter/scripts/report-collector.mjs"),
   ], root, env);
@@ -434,7 +436,19 @@ test("Codex subagent claim captures the Stop-style task report without waiting f
   assert.doesNotMatch(fs.readFileSync(reportPath, "utf-8"), /Next plan answer/i);
   const running = JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord;
   assert.equal(running.status, "running");
-  assert.equal((running.reportCapture as JsonRecord).status, "captured");
+  const capture = running.reportCapture as JsonRecord;
+  assert.equal(capture.status, "captured");
+  assert.deepEqual(capture.receipt, {
+    contractVersion: 1,
+    captureId: (capture.receipt as JsonRecord).captureId,
+    host: "codex",
+    sessionId,
+    payloadBytes: Buffer.byteLength(fs.readFileSync(reportPath)),
+    payloadSha256: createHash("sha256").update(fs.readFileSync(reportPath)).digest("hex"),
+    collectorVersion: "codex-test-v1",
+    completedAt: capture.capturedAt,
+  });
+  assert.match(String((capture.receipt as JsonRecord).captureId), /^[a-f0-9-]{36}$/);
 
   fs.appendFileSync(transcriptPath, `\n${responseItem({
     type: "message",
@@ -499,8 +513,10 @@ fs.writeFileSync(request.stagingReportPath, events.length ? events.map((entry) =
 `, "utf8");
   runClaw([
     "internal-report-collector-register", "--project-root", root,
-    "--collector-host", "cindy", "--executable", process.execPath, "--arg", collectorPath,
+    "--collector-host", "cindy", "--collector-version", "cindy-test-v1",
+    "--executable", process.execPath, "--arg", collectorPath,
   ], root, env);
+  fs.writeFileSync(reportPath, "stale report payload\n", "utf8");
 
   const claimed = runClaw([
     "knowledge", "claim", "--project-root", root, "--finalize-id", finalizeId,
@@ -512,7 +528,18 @@ fs.writeFileSync(request.stagingReportPath, events.length ? events.map((entry) =
   assert.deepEqual(entries, [{ collected_by: "cindy-fixture", text: "Implemented and verified Cindy no-Stop closeout." }]);
   const running = JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord;
   assert.equal(running.status, "running");
-  assert.equal((running.reportCapture as JsonRecord).status, "captured");
+  const capture = running.reportCapture as JsonRecord;
+  assert.equal(capture.status, "captured");
+  assert.equal((capture.receipt as JsonRecord).collectorVersion, "cindy-test-v1");
+  assert.equal((capture.receipt as JsonRecord).payloadBytes, Buffer.byteLength(fs.readFileSync(reportPath)));
+  assert.equal(
+    (capture.receipt as JsonRecord).payloadSha256,
+    createHash("sha256").update(fs.readFileSync(reportPath)).digest("hex"),
+  );
+  assert.deepEqual(
+    fs.readdirSync(path.dirname(reportPath)).filter((entry) => entry.endsWith(".tmp")),
+    [],
+  );
 
   runClaw(["plan", "create", "--title", "cindy-empty-report-task", "--goal", "Materialize an empty Cindy report"], root, env);
   const emptyDone = runClaw(["plan", "done", "--retrospective", "Ready without conclusions."], root, env);
@@ -528,7 +555,10 @@ fs.writeFileSync(request.stagingReportPath, events.length ? events.map((entry) =
   assert.equal(fs.readFileSync(emptyReportPath, "utf-8"), "");
   const emptyRunning = JSON.parse(fs.readFileSync(emptyJobPath, "utf-8")) as JsonRecord;
   assert.equal(emptyRunning.status, "running");
-  assert.equal((emptyRunning.reportCapture as JsonRecord).status, "captured");
+  const emptyCapture = emptyRunning.reportCapture as JsonRecord;
+  assert.equal(emptyCapture.status, "captured");
+  assert.equal((emptyCapture.receipt as JsonRecord).payloadBytes, 0);
+  assert.equal((emptyCapture.receipt as JsonRecord).payloadSha256, createHash("sha256").update("").digest("hex"));
 });
 
 test("cli plan edit completion dispatches the same completion refresh as plan done", async () => {

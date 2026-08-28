@@ -57,7 +57,7 @@ import {
   reconcileKnowledgeFinalizationJob,
   waitForKnowledgeFinalizationJobReady,
   listKnowledgeFinalizationJobs,
-  listRetryableKnowledgeFinalizationJobs,
+  reconcileKnowledgeFinalizationJobs,
   normalizeTruthMarkdownEncoding,
   governKnowledgeMarkdownPaths,
   resolveKnowledgeDocUpdateSnapshot,
@@ -789,13 +789,22 @@ async function runCodex(args: string[]): Promise<void> {
       !Array.isArray(invocation)
       || invocation.length === 0
       || invocation.some((value) => typeof value !== "string")
-      || !["plan", "task", "subplan"].includes(invocation[0] as string)
+      || (!["plan", "task", "subplan"].includes(invocation[0] as string)
+        && !(invocation[0] === "context" && invocation.length === 1))
       || invocation.some((value) => value === "--host")
     ) {
       throw new ClawError(
         "PROJECT_CONFIG_INVALID",
-        "codex invoke accepts only a structured plan, task, or subplan argv without --host.",
+        "codex invoke accepts only a structured context, plan, task, or subplan argv without --host.",
       );
+    }
+    if (invocation[0] === "context") {
+      printJson({
+        ok: true,
+        command: "context",
+        output: buildPublicContextOutput(await runContextCommand([], process.cwd(), resolveOwnerSessionKey(), "codex")),
+      });
+      return;
     }
     const originalArgv = process.argv;
     try {
@@ -1179,14 +1188,22 @@ function serializeSessionError(error: unknown): Record<string, unknown> {
 function runInternalReportCollectorRegister(args: string[]): void {
   const projectRoot = path.resolve(readRequiredFlag(args, "--project-root"));
   const host = readRequiredFlag(args, "--collector-host");
+  const collectorVersion = readRequiredFlag(args, "--collector-version");
   const executable = readRequiredFlag(args, "--executable");
   const collectorArgs = readRepeatedFlag(args, "--arg");
   assertNoRemainingArgs(args, "internal-report-collector-register");
   if (resolveHostIntegrationProfile(host)?.supportsClaimTimeReportCapture !== true) {
     throw new ClawError("PROJECT_CONFIG_INVALID", "report collector host must be codex, dsh, or cindy.");
   }
-  registerReportCollector(projectRoot, { host: host as ReportCollectorHost, executable, args: collectorArgs });
-  printJson({ ok: true, command: "internal-report-collector-register", host });
+  registerReportCollector(projectRoot, {
+    schemaVersion: 1,
+    contractVersion: 1,
+    host: host as ReportCollectorHost,
+    collectorVersion,
+    executable,
+    args: collectorArgs,
+  });
+  printJson({ ok: true, command: "internal-report-collector-register", host, contractVersion: 1, collectorVersion });
 }
 
 async function runKnowledge(args: string[]): Promise<void> {
@@ -1301,7 +1318,7 @@ async function runKnowledge(args: string[]): Promise<void> {
           if (resolveHostIntegrationProfile(queued.host)?.supportsClaimTimeReportCapture !== true) {
             throw new Error(`Claim-time report capture is unavailable for host ${queued.host ?? "unknown"}.`);
           }
-          collectReport({
+          const receipt = collectReport({
             host: queued.host as ReportCollectorHost,
             sessionId: queued.sessionId,
             projectRoot: queued.projectRoot,
@@ -1313,7 +1330,8 @@ async function runKnowledge(args: string[]): Promise<void> {
             reportCapture: {
               ...queued.reportCapture,
               status: "captured" as const,
-              capturedAt: new Date().toISOString(),
+              capturedAt: receipt.completedAt,
+              receipt,
             },
           };
         },
@@ -1343,6 +1361,7 @@ async function runKnowledge(args: string[]): Promise<void> {
           claimToken: job.claimToken,
           projectRoot: job.projectRoot,
           writer: job.writer ?? null,
+          expiresAt: job.expiresAt,
           planPath: job.planPath,
           reportPath: job.reportPath,
           assignments,
@@ -2759,20 +2778,15 @@ function runInternalKnowledgeSweep(args: string[]): void {
   assertNoRemainingArgs(args, "internal-knowledge-sweep");
   const project = tryResolveHookProject(cwd);
   if (!project) {
-    printJson({ command: "internal-knowledge-sweep", ok: true, launched: 0, skipped: true });
+    printJson({ command: "internal-knowledge-sweep", ok: true, reconciled: { checked: 0, failed: 0 }, skipped: true });
     return;
   }
-  const jobs = listRetryableKnowledgeFinalizationJobs(project, { excludeHosts: ["cindy"] });
-  let launched = 0;
-  for (const jobPath of jobs) {
-    try {
-      launchKnowledgeFinalizationWorker(jobPath, project.projectRoot);
-      launched += 1;
-    } catch {
-      // A later background sweep can retry a job that could not be launched.
-    }
-  }
-  printJson({ command: "internal-knowledge-sweep", ok: true, discovered: jobs.length, launched });
+  printJson({
+    command: "internal-knowledge-sweep",
+    ok: true,
+    reconciled: reconcileKnowledgeFinalizationJobs(project),
+    launched: 0,
+  });
 }
 
 async function runInternalBackgroundMaintenance(args: string[]): Promise<void> {
@@ -2796,23 +2810,13 @@ async function runInternalBackgroundMaintenance(args: string[]): Promise<void> {
     embedding = { warmed: false, reason: "failed", error: error instanceof Error ? error.message : String(error) };
   }
 
-  let discovered = 0;
-  let launched = 0;
+  let knowledgeReconciliation = { checked: 0, failed: 0 };
   const knowledgeProject = project ?? sessionProject;
   if (knowledgeProject) {
-    const jobs = listRetryableKnowledgeFinalizationJobs(knowledgeProject, { excludeHosts: ["cindy"] });
-    discovered = jobs.length;
-    for (const jobPath of jobs) {
-      try {
-        launchKnowledgeFinalizationWorker(jobPath, knowledgeProject.projectRoot);
-        launched += 1;
-      } catch {
-        // A later background sweep can retry a job that could not be launched.
-      }
-    }
+    knowledgeReconciliation = reconcileKnowledgeFinalizationJobs(knowledgeProject);
   }
 
-  printJson({ command: "internal-background-maintenance", ok: true, maintenance, embedding, discovered, launched });
+  printJson({ command: "internal-background-maintenance", ok: true, maintenance, embedding, knowledgeReconciliation });
 }
 
 function runInternalKnowledgeDispatch(args: string[]): void {
@@ -3502,6 +3506,7 @@ function compactPlanCommandResult(
       planPath: resolvedPlanPath,
       ...(archivedPlanPath ? { archivedPlanPath } : {}),
       planStatus: result.planStatus,
+      ...(result.events?.at(-1)?.mutationId ? { mutationId: result.events.at(-1)?.mutationId } : {}),
       ...(result.plan?.parentPlan ? { subplanParentPlan: result.plan.parentPlan } : {}),
       ...(result.workflowGuidance.transition ? { transition: result.workflowGuidance.transition } : {}),
       ...(achievement ? { achievement } : {}),

@@ -128,6 +128,11 @@ Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode c
 <!-- state: history -->
 ## 演化历史
 
+<!-- dated: 2026-08-28 -->
+### Committed mutations survive host projection failures
+
+The v16 bridge treats Goal and Progress projection failures as `hostEffectFailures` on an otherwise successful canonical mutation, returning the committed `planPath`, plan status, and mutation identity. Consumers must reconcile with `plan sync` when needed, never replay the originating mutation. This preserves the fixed consumer's schema and action safety boundaries while removing a host-side single point of failure from the canonical lifecycle.
+
 <!-- dated: 2026-08-24 -->
 ### 失败信封的可见性纳入固定 consumer
 

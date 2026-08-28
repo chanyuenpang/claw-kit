@@ -39,6 +39,7 @@ test("typed command service uses explicit context and keeps current plan in v2 s
 
   const left = await service.execute(context, { operation: "plan.leave", input: {} });
   assert.equal((left.postCommitEffects?.[0] as { planStatus?: string } | undefined)?.planStatus, "end.leave");
+  assert.equal("knowledgeDispatch" in left, false, "leave must detach without creating a knowledge finalizer job");
   await assert.rejects(
     () => service.execute(context, { operation: "plan.show", input: {} }),
     (error: unknown) => error instanceof Error

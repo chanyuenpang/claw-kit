@@ -4,6 +4,7 @@ import {
   type PlanEvent,
   type WorkflowGuidance,
 } from "@veewo/claw-core";
+import type { ClawHostActionV1 } from "@veewo/claw-client";
 
 export function buildCodexHostActions(
   result: {
@@ -14,12 +15,12 @@ export function buildCodexHostActions(
     events?: PlanEvent[];
   },
   options: { forceProjectionSync?: boolean; actionIdPrefix?: string; includeLightweightProcessProgress?: boolean } = {},
-): Array<Record<string, unknown>> {
+): ClawHostActionV1[] {
   const latestEvent = result.events?.at(-1);
   const actionIdPrefix = options.actionIdPrefix ?? latestEvent?.mutationId;
   if (!actionIdPrefix) return [];
 
-  const actions: Array<Record<string, unknown>> = [];
+  const actions: ClawHostActionV1[] = [];
   const isProcessStatus = result.planStatus.startsWith("process.");
   const isEndStatus = result.planStatus.startsWith("end.");
   const goalTool = result.workflowGuidance.goalTool;

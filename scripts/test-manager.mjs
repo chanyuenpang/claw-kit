@@ -143,6 +143,10 @@ export const TEST_DOMAINS = {
       npmStep("run", "test", "-w", "@claw-kit/openclaw-adapter"),
     ],
   },
+  dsh: {
+    description: "DSH adapter build, runtime protocol, native effects, and report collection",
+    steps: [build("@veewo/dsh-claw-kit"), workspaceTest("@veewo/dsh-claw-kit")],
+  },
   "shared-skills": {
     description: "Shared skill materialization, template versions, and skill scaffolding",
     steps: [nodeStep(
@@ -173,6 +177,7 @@ const FULL_STEPS = [
   workspaceTest("@veewo/claw-client"),
   workspaceTest("@veewo/claw"),
   workspaceTest("@claw-kit/openclaw-adapter"),
+  workspaceTest("@veewo/dsh-claw-kit"),
   nodeStep(
     "--test",
     "./packages/codex-adapter/hooks/code-mode-host-action-consumer.test.mjs",
@@ -218,6 +223,7 @@ const rules = [
   [["codex"], /^packages\/codex-adapter\//],
   [["opencode"], /^packages\/opencode-adapter\//],
   [["openclaw"], /^packages\/openclaw-adapter\//],
+  [["dsh"], /^packages\/dsh-adapter\//],
   [["shared-skills"], /^shared\/skills\//],
   [["shared-skills"], /^scripts\/(?:sync-shared-skills|update-template-versions|create-claw-skill-stub)(?:\.test)?\.mjs$/],
   [["docs-ui"], /^docs\/assets\//],

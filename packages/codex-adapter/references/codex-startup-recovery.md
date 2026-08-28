@@ -22,8 +22,8 @@ When `@claw-kit` is used in a real project thread:
 
 1. consume the recovered harness state from `SessionStart`
 2. if a session-bound active plan can be recovered, surface the claw workflow snapshot, the recomputed `workflowGuidance` contract, and the current plan content needed to resume safely
-3. otherwise run `claw context` from the current working directory to recover startup state for this explicit invocation
-4. when present, treat `claw context.startupRecovery` as the canonical init-or-correction result for that explicit recovery pass; healthy runs omit it
+3. otherwise run context recovery through the fixed code-mode driver with `argv: ["context"]` from the current working directory; do not invoke the CLI directly or supply `--host`
+4. when present, treat `context.output.startupRecovery` as the canonical init-or-correction result for that explicit recovery pass; healthy runs omit it
 5. tell the user what the next harness step should be
 
 ## Default routing
@@ -34,7 +34,7 @@ When `@claw-kit` is used in a real project thread:
   - include current plan content in the recovered JSON/additional prompt surface so the resumed agent can continue without reopening the plan first
   - do not repeat static project metadata such as project root or `.claw` path
 - no recovered harness state yet:
-  - run `claw context`
+  - run the fixed code-mode driver with `argv: ["context"]`
   - continue when it auto-initializes `.claw/` or corrects `project.json`
   - consume the minimum project identity, any actionable diagnostics, and optional capability-derived search guidance before normal conversation
 - no task scope:

@@ -38,7 +38,7 @@ import {
   knowledgeSessionRegistryPath,
   claimKnowledgeFinalizationJob,
   doneKnowledgeFinalizationJob,
-  listRetryableKnowledgeFinalizationJobs,
+  reconcileKnowledgeFinalizationJobs,
   leaveCurrentPlan,
   normalizeTruthMarkdownEncoding,
   recordKnowledgeFinalizationResult,
@@ -60,6 +60,7 @@ import {
   tryCaptureKnowledgeStop,
   tryCompleteKnowledgePlan,
   tryEndKnowledgePlan,
+  tryLeaveKnowledgePlan,
   tryRegisterKnowledgePlan,
   warmProjectMemoryEmbedding,
   writePlan,
@@ -224,7 +225,7 @@ test("knowledge sidecar derives adjacent report names and keeps one report owner
   assert.equal(job.taskName, "demo-task");
   assert.deepEqual(job.docUpdate, { externalDocPaths: ["docs"] });
   assert.equal(job.attempts, 0);
-  assert.deepEqual(listRetryableKnowledgeFinalizationJobs(project), []);
+  assert.deepEqual(reconcileKnowledgeFinalizationJobs(project), { checked: 1, failed: 0 });
   const claimed = claimKnowledgeFinalizationJob(firstStop.jobPath!);
   assert.equal(claimed?.status, "running");
   assert.equal(claimed?.attempts, 1);
@@ -235,15 +236,12 @@ test("knowledge sidecar derives adjacent report names and keeps one report owner
     finishedAt: new Date().toISOString(),
     error: { message: "transient" },
   });
-  assert.deepEqual(listRetryableKnowledgeFinalizationJobs(project), []);
+  assert.deepEqual(reconcileKnowledgeFinalizationJobs(project), { checked: 1, failed: 0 });
   writeKnowledgeFinalizationJob(firstStop.jobPath!, {
     ...readKnowledgeFinalizationJob(firstStop.jobPath!),
     host: "cindy",
   });
-  assert.deepEqual(
-    listRetryableKnowledgeFinalizationJobs(project, { excludeHosts: ["cindy"] }),
-    [],
-  );
+  assert.deepEqual(reconcileKnowledgeFinalizationJobs(project), { checked: 1, failed: 0 });
 
   const secondStop = tryCaptureKnowledgeStop({
     project,
@@ -400,50 +398,82 @@ test("expired knowledge jobs revoke their claim and never become retryable", () 
   }), /does not match the active claim/);
 });
 
-test("Cindy coerces a configured background writer to the subagent lifecycle", () => {
-  const root = createEmptyFixture("knowledge-cindy-subagent-only");
-  initProject({ cwd: root, projectName: "Knowledge Cindy Subagent Only" });
+test("leaving a plan revokes its queued knowledge job and removes its assignment claim", () => {
+  const root = createEmptyFixture("knowledge-leave-cancellation");
+  initProject({ cwd: root, projectName: "Knowledge Leave Cancellation" });
   const project = resolveProjectContext(root);
-  const taskDir = path.join(project.tasksDir, "demo");
+  const taskDir = path.join(project.tasksDir, "leave-task");
   const planPath = path.join(taskDir, "plan.json");
   fs.mkdirSync(taskDir, { recursive: true });
   fs.writeFileSync(planPath, "{}", "utf-8");
-  const writer = { executionPolicy: "background" as const, externalSkills: [] };
-
-  assert.equal(tryRegisterKnowledgePlan({
-    project,
-    sessionId: "cindy-subagent-only",
-    planPath,
-    writer,
-    host: "cindy",
-  }).ok, true);
-  const activeRegistry = JSON.parse(
-    fs.readFileSync(knowledgeSessionRegistryPath(project, "cindy-subagent-only"), "utf-8"),
-  ) as { activeWriter?: { executionPolicy?: string } };
-  assert.equal(activeRegistry.activeWriter?.executionPolicy, "subagent");
-
   const ended = tryEndKnowledgePlan({
     project,
-    sessionId: "cindy-subagent-only",
+    sessionId: "leave-session",
     endedPlanPath: planPath,
-    endedAt: "2026-08-01T00:00:00.000Z",
-    writer,
-    host: "cindy",
+    endedAt: "2026-08-28T00:00:00.000Z",
+    writer: { executionPolicy: "subagent" },
+    host: "codex",
   });
   assert.ok(ended.jobPath);
-  const queued = readKnowledgeFinalizationJob(ended.jobPath!);
-  assert.equal(queued.writer?.executionPolicy, "subagent");
-  assert.equal(queued.docUpdate, undefined);
-  assert.equal(queued.reportCapture?.mode, "claim");
-  assert.equal(queued.status, "queued");
-  assert.equal(tryCaptureKnowledgeStop({
-    project,
-    sessionId: "cindy-subagent-only",
-    turnId: "turn-after-end",
-    message: "Stop must not own Cindy knowledge capture.",
-    host: "cindy",
-  }).captured, false);
+  const queued = claimKnowledgeFinalizationJob(ended.jobPath!);
+  assert.ok(queued?.claimToken);
+  const assignmentPath = path.join(path.dirname(ended.jobPath!), `${queued!.finalizeId}.assignments.json`);
+  fs.writeFileSync(assignmentPath, "{}", "utf-8");
+
+  assert.equal(tryLeaveKnowledgePlan({ project, sessionId: "leave-session", leftPlanPath: planPath }).ok, true);
+  const cancelled = readKnowledgeFinalizationJob(ended.jobPath!);
+  assert.equal(cancelled.status, "expired");
+  assert.equal(cancelled.claimToken, undefined);
+  assert.equal(fs.existsSync(assignmentPath), false);
 });
+
+for (const host of ["cindy", "dsh"] as const) {
+  test(`${host} coerces a configured background writer to the subagent lifecycle`, () => {
+    const root = createEmptyFixture(`knowledge-${host}-subagent-only`);
+    initProject({ cwd: root, projectName: `Knowledge ${host} Subagent Only` });
+    const project = resolveProjectContext(root);
+    const taskDir = path.join(project.tasksDir, "demo");
+    const planPath = path.join(taskDir, "plan.json");
+    fs.mkdirSync(taskDir, { recursive: true });
+    fs.writeFileSync(planPath, "{}", "utf-8");
+    const writer = { executionPolicy: "background" as const, externalSkills: [] };
+    const sessionId = `${host}-subagent-only`;
+
+    assert.equal(tryRegisterKnowledgePlan({
+      project,
+      sessionId,
+      planPath,
+      writer,
+      host,
+    }).ok, true);
+    const activeRegistry = JSON.parse(
+      fs.readFileSync(knowledgeSessionRegistryPath(project, sessionId), "utf-8"),
+    ) as { activeWriter?: { executionPolicy?: string } };
+    assert.equal(activeRegistry.activeWriter?.executionPolicy, "subagent");
+
+    const ended = tryEndKnowledgePlan({
+      project,
+      sessionId,
+      endedPlanPath: planPath,
+      endedAt: "2026-08-01T00:00:00.000Z",
+      writer,
+      host,
+    });
+    assert.ok(ended.jobPath);
+    const queued = readKnowledgeFinalizationJob(ended.jobPath!);
+    assert.equal(queued.writer?.executionPolicy, "subagent");
+    assert.equal(queued.docUpdate, undefined);
+    assert.equal(queued.reportCapture?.mode, "claim");
+    assert.equal(queued.status, "queued");
+    assert.equal(tryCaptureKnowledgeStop({
+      project,
+      sessionId,
+      turnId: "turn-after-end",
+      message: "Stop must not own native subagent knowledge capture.",
+      host,
+    }).captured, false);
+  });
+}
 
 test("knowledge claim owns execution and delegate prompt routing", () => {
   const root = createEmptyFixture("knowledge-lifecycle");
@@ -895,21 +925,21 @@ test("daily maintenance cleans expired tmp, archives old dated tasks without com
   assert.equal(fs.existsSync(path.join(root, ".claw", "archive", "tasks", "2026-01-30", "completed-task", "plan.json")), true);
   assert.equal(fs.existsSync(yesterdayTaskDir), true);
   assert.equal(fs.existsSync(todayTaskDir), true);
-  assert.equal(fs.existsSync(legacyTaskDir), false);
+  assert.equal(fs.existsSync(legacyTaskDir), true);
   assert.equal(fs.existsSync(expiredIncompleteTaskDir), false);
-  assert.equal(fs.existsSync(path.join(root, ".claw", "archive", "tasks", "legacy-without-completed-at", "plan.json")), true);
-  assert.equal(first.staleBindingsRemoved, 1);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "archive", "tasks", "legacy-without-completed-at", "plan.json")), false);
+  assert.equal(first.staleBindingsRemoved, 0);
   assert.equal(first.expiredTaskDirectoriesRemoved, 1);
   assert.equal(first.legacyFinalizerJobsRemoved, 1);
   assert.equal(first.knowledgeSessionsRemoved, 1);
-  assert.equal(first.emptyDatedDirectoriesRemoved, 2);
+  assert.equal(first.emptyDatedDirectoriesRemoved, 3);
   assert.equal(first.logsRemoved, 1);
   assert.equal(fs.existsSync(emptyCurrentTaskDateDir), false);
   assert.equal(fs.existsSync(emptyArchivedTaskDateDir), false);
   assert.equal(fs.existsSync(oldLog), false);
   assert.equal(fs.existsSync(yesterdayLog), true);
   assert.equal(fs.existsSync(inflightLog), true);
-  assert.equal(fs.existsSync(path.join(root, ".claw", "runtime", "session-bindings.json")), false);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "runtime", "session-bindings.json")), true);
   assert.equal(fs.existsSync(path.join(legacyJobsDir, "succeeded.json")), false);
   assert.equal(fs.existsSync(path.join(knowledgeSessionsDir, "orphan.json")), false);
   assert.equal(fs.existsSync(staleSession), false);
@@ -3419,7 +3449,7 @@ for (const failAfterPlanWrites of [1, 2]) {
   });
 }
 
-test("focus recovery retains a journal on unexpected third-party plan content", async () => {
+test("focus recovery quarantines a conflicting journal without blocking later mutations", async () => {
   const root = createEmptyFixture("focus-recovery-conflict");
   initProject({ cwd: root, projectName: "Focus Recovery Conflict", planning: false });
   const created = await writePlan({
@@ -3450,18 +3480,18 @@ test("focus recovery retains a journal on unexpected third-party plan content", 
   thirdParty.summary = "Third-party change";
   fs.writeFileSync(created.planPath, `${JSON.stringify(thirdParty, null, 2)}\n`, "utf-8");
 
-  await assert.rejects(
-    () => recoverProjectFocusTransitions({ project }),
-    (error: unknown) => error instanceof Error
-      && "code" in error
-      && (error as { code: string }).code === "FOCUS_RECOVERY_CONFLICT",
-  );
+  const recovery = await recoverProjectFocusTransitions({ project });
+  assert.equal(recovery.quarantined.length, 1);
   assert.equal(
     fs.readdirSync(focusTransitionsDirectory(project))
       .filter((name) => /^[0-9a-f-]+\.json$/i.test(name)).length,
-    1,
+    0,
   );
+  assert.equal(fs.readdirSync(path.join(focusTransitionsDirectory(project), "quarantine"))
+    .filter((name) => /^[0-9a-f-]+\.json$/i.test(name)).length, 1);
   assert.equal(fs.existsSync(focusOwnersPath(project)), false);
+  await activatePlan({ project, sessionKey: "conflict-session", target: planRef });
+  assert.deepEqual(readFocusedPlan(project, "conflict-session"), planRef);
 });
 
 test("end.completed emits complete goal tool guidance", async () => {

@@ -86,7 +86,7 @@ async function buildLocalOutput(input: WorkerInput): Promise<WorkerOutput> {
     };
   }
 
-  const segments = input.splitIntoTokenWindows
+  const segments = input.splitIntoTokenWindows && process.env.CLAW_EMBEDDING_DAEMON_TEST_MOCK !== "1"
     ? await splitLocalEmbeddingTexts(input)
     : input.texts.map((text, sourceTextIndex) => ({ sourceTextIndex, text }));
   const texts = segments.map((segment) => segment.text);

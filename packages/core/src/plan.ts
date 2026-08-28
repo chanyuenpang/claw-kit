@@ -656,7 +656,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
       knowledgeFinalizeId = knowledgeEnd.finalizeId;
     } else if (enteredEndTerminal && next.status === "end.leave" && task.project.scope === "project") {
       // Leaving is best-effort detachment, never a prerequisite for a knowledge write.
-      tryLeaveKnowledgePlan({ project: task.project, sessionId: input.ownerSessionKey });
+      tryLeaveKnowledgePlan({ project: task.project, sessionId: input.ownerSessionKey, leftPlanPath: planPath });
     } else if (!resultPlan.status.startsWith("end.") && task.project.scope === "project") {
       const effectiveConfig = resolvePlanEffectiveConfig(task.project.projectConfig, resultPlan);
       tryRegisterKnowledgePlan({

@@ -6,6 +6,16 @@
 
 import { DSH_MUTATION_ROUTE_GUIDANCE } from "./route-guidance.js";
 
+/**
+ * A transport break after a daemon request has been sent leaves the mutation
+ * outcome unknown: the daemon may have committed it before its response was
+ * lost. Such a request must never be automatically replayed.
+ */
+export function isUncertainConnectionFailure(message: string): boolean {
+  return /SESSION_CONNECTION_LOST|CLAW_SESSION_(?:OPEN_)?TIMEOUT|claw session timeout|connection was interrupted|session connection/i
+    .test(message);
+}
+
 /** Map one `claw_run` operation call (snake_case args) to the daemon's
  * canonical `claw/execute` input. Mirrors the Cindy adapter's sessionRequest
  * contract. Unknown operations pass args through and fail closed on the

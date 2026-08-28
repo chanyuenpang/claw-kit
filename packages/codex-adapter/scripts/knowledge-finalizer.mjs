@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import path from "node:path";
 import fs from "node:fs";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { Codex } from "@openai/codex-sdk";
 
 let activePayload = {};
@@ -40,10 +40,15 @@ function reportFailure(stage) {
 
 function registerCollector(hookPayload) {
   const cwd = typeof hookPayload?.cwd === "string" && hookPayload.cwd.trim() ? hookPayload.cwd : process.cwd();
+  const collectorVersion = JSON.parse(fs.readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json"),
+    "utf8",
+  )).version;
   runClaw([
     "internal-report-collector-register",
     "--project-root", cwd,
     "--collector-host", "codex",
+    "--collector-version", collectorVersion,
     "--executable", process.execPath,
     "--arg", path.join(path.dirname(process.argv[1]), "report-collector.mjs"),
   ], undefined, {});
@@ -112,6 +117,10 @@ export async function runNativeFinalizer(jobPath, dependencies = {}) {
       CLAW_KNOWLEDGE_FINALIZER: "1",
     }), "Knowledge claim is unavailable.");
     if (claim.claimed !== true || typeof claim.claimToken !== "string") return;
+    const deadlineMs = typeof claim.expiresAt === "string" ? Date.parse(claim.expiresAt) : Number.NaN;
+    if (Number.isFinite(deadlineMs) && deadlineMs <= Date.now()) {
+      throw new Error("Knowledge finalization expired before the writer could start.");
+    }
 
     const handoff = readClawJson(runClawCommand(["internal-knowledge-dispatch", "--job", jobPath], undefined, {
       CLAW_KNOWLEDGE_FINALIZER: "1",
@@ -137,7 +146,7 @@ export async function runNativeFinalizer(jobPath, dependencies = {}) {
       ...(writer.model ? { model: writer.model } : {}),
       ...(writer.reasoningEffort ? { modelReasoningEffort: writer.reasoningEffort } : {}),
     });
-    const turn = await thread.run(handoff.dispatch.prompt);
+    const turn = await runBeforeDeadline(thread.run(handoff.dispatch.prompt), deadlineMs);
     if (!thread.id) throw new Error("Knowledge writer returned no host session id.");
     readClawJson(runClawCommand(["knowledge", "verify-session", "--session-id", thread.id], undefined, {
       CLAW_KNOWLEDGE_FINALIZER: "1",
@@ -154,6 +163,21 @@ export async function runNativeFinalizer(jobPath, dependencies = {}) {
       ], undefined, { CLAW_KNOWLEDGE_FINALIZER: "1" });
     }
     throw error;
+  }
+}
+
+async function runBeforeDeadline(run, deadlineMs) {
+  if (!Number.isFinite(deadlineMs)) return run;
+  const remainingMs = deadlineMs - Date.now();
+  if (remainingMs <= 0) throw new Error("Knowledge finalization expired before the writer could start.");
+  let timer;
+  try {
+    return await Promise.race([
+      run,
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("Knowledge finalization expired while the writer was running.")), remainingMs); }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 

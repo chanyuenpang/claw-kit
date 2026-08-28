@@ -1,6 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { daemonInput, renderGuidanceSnapshot } from "../lib/protocol.js";
+import { daemonInput, isUncertainConnectionFailure, renderGuidanceSnapshot } from "../lib/protocol.js";
+
+test("uncertain transport failures are identified so callers do not replay a mutation", () => {
+  assert.equal(isUncertainConnectionFailure("SESSION_CONNECTION_LOST: pipe closed"), true);
+  assert.equal(isUncertainConnectionFailure("claw session timeout"), true);
+  assert.equal(isUncertainConnectionFailure("connection was interrupted after request"), true);
+  assert.equal(isUncertainConnectionFailure("validation rejected the task id"), false);
+});
 
 test("plan.create maps title/goal/scope/template to daemon input", () => {
   assert.deepEqual(

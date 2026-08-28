@@ -9,6 +9,7 @@ import {
   buildKnowledgeDelegateDispatch,
   KNOWLEDGE_DISPATCH_LEAD_INSTRUCTION,
   completeSubplanAndRestoreParent,
+  bindSessionToPlan,
   createPlanAndSwitchFocus,
   createPlanRef,
   createSubplan,
@@ -20,10 +21,14 @@ import {
   readFocusedPlan,
   resolvePlanEffectiveConfig,
   resolveKnowledgeWriterForHost,
+  resolveSessionBoundPlan,
   resolveWorkflowProjectContext,
   searchMemoryAsync,
   showPlan,
+  switchCurrentPlan,
   tryEndKnowledgePlan,
+  tryLeaveKnowledgePlan,
+  unbindSession,
   type PlanDocument,
   type PlanEditInput,
   type PlanFieldUpdates,
@@ -38,6 +43,11 @@ import {
   resolveHostIntegrationProfile,
   isIntegrationHost,
 } from "@veewo/claw-core";
+import type {
+  ClawHostActionV1,
+  ClawKnowledgeDispatchV1,
+  ClawPostCommitEffectV1,
+} from "@veewo/claw-client";
 import { buildCodexHostActions } from "./codex-host-actions.js";
 import { isHostActionsHost, type ClawHost } from "./invocation-host.js";
 import { RegistryFocusSessionStore, SessionRegistryV2 } from "./session-registry-v2.js";
@@ -90,9 +100,9 @@ export type ClawCommandRequest =
 
 export type ClawCommandResult = {
   output: unknown;
-  hostActions?: unknown[];
-  postCommitEffects?: unknown[];
-  knowledgeDispatch?: KnowledgeDelegateDispatch;
+  hostActions?: ClawHostActionV1[];
+  postCommitEffects?: ClawPostCommitEffectV1[];
+  knowledgeDispatch?: ClawKnowledgeDispatchV1;
 };
 
 export class ClawCommandService {
@@ -102,6 +112,92 @@ export class ClawCommandService {
   constructor(registry: SessionRegistryV2) {
     this.registry = registry;
     this.focusStore = new RegistryFocusSessionStore(registry);
+  }
+
+  /** Repair the narrow crash window before a focus journal is prepared. */
+  async reconcileCanonicalFocus(context: CommandContext): Promise<void> {
+    if (!context.agentSessionId || !context.sessionKey) return;
+    const project = this.resolveProject(context);
+    const retained = readFocusedPlan(project, context.sessionKey, this.focusStore);
+    const boundPath = resolveSessionBoundPlan(project, context.agentSessionId);
+    if (boundPath) {
+      const boundRef = planRefFromAbsolutePath(project, boundPath);
+      const bound = showPlan({
+        cwd: context.cwd,
+        taskName: boundRef.taskName,
+        planFile: boundRef.planFile,
+        ownerSessionKey: context.agentSessionId,
+      });
+      if (bound.plan.status.startsWith("end.")) {
+        unbindSession(project, context.agentSessionId);
+        if (!retained) return;
+        const retainedPlan = showPlan({
+          cwd: context.cwd,
+          taskName: retained.taskName,
+          planFile: retained.planFile,
+          ownerSessionKey: context.agentSessionId,
+        });
+        if (!retainedPlan.plan.status.startsWith("end.")) {
+          bindSessionToPlan(project, context.agentSessionId, retainedPlan.planPath);
+          return;
+        }
+        await this.restoreOrReleaseEndedFocus(context, retained, retainedPlan.plan);
+        return;
+      }
+      if (retained && retained.taskName === boundRef.taskName && retained.planFile === boundRef.planFile) return;
+      if (bound.plan.parentPlan && bound.plan.parentTaskId !== undefined) {
+        const parentRef = createPlanRef(project, bound.taskName, bound.plan.parentPlan);
+        const parentAfterLink = structuredClone(showPlan({
+          cwd: context.cwd,
+          taskName: parentRef.taskName,
+          planFile: parentRef.planFile,
+          ownerSessionKey: context.agentSessionId,
+        }).plan);
+        const parentTask = parentAfterLink.tasks.find((task) => task.id === bound.plan.parentTaskId);
+        if (!parentTask) {
+          throw new ClawError("PLAN_TRANSITION_CONFLICT", `Parent task ${bound.plan.parentTaskId} is unavailable during focus recovery.`);
+        }
+        parentTask.execution = {
+          ...parentTask.execution,
+          type: "subplan",
+          subplan: bound.planFile,
+          planPath: bound.planFile,
+        };
+        if (parentTask.status === "pending") parentTask.status = "in_progress";
+        parentAfterLink.updatedAt = new Date().toISOString();
+        await createSubplanAndSwitchFocus({
+          project,
+          sessionKey: context.sessionKey,
+          parentPlan: parentRef,
+          parentAfterLink,
+          childPlan: boundRef,
+          sessionStore: this.focusStore,
+        });
+        return;
+      }
+      await switchCurrentPlan({
+        project,
+        sessionKey: context.sessionKey,
+        target: boundRef,
+        kind: "resume",
+        preserveTargetStatus: true,
+        preserveCurrentEndState: true,
+        sessionStore: this.focusStore,
+      });
+      return;
+    }
+    if (!retained) return;
+    const retainedPlan = showPlan({
+      cwd: context.cwd,
+      taskName: retained.taskName,
+      planFile: retained.planFile,
+      ownerSessionKey: context.agentSessionId,
+    });
+    if (!retainedPlan.plan.status.startsWith("end.")) {
+      bindSessionToPlan(project, context.agentSessionId, retainedPlan.planPath);
+      return;
+    }
+    await this.restoreOrReleaseEndedFocus(context, retained, retainedPlan.plan);
   }
 
   async execute(
@@ -159,6 +255,7 @@ export class ClawCommandService {
           sessionKey,
           sessionStore: this.focusStore,
         });
+        unbindSession(project, this.ownerSessionKey(context));
         const knowledgeDispatch = this.finalizeEnteredEnds(context, result.enteredEndPlans);
         const ended = result.enteredEndPlans.at(-1);
         const hostActions = ended
@@ -420,6 +517,40 @@ export class ClawCommandService {
     return context.mode === "session" ? context.agentSessionId : undefined;
   }
 
+  private async restoreOrReleaseEndedFocus(
+    context: CommandContext,
+    current: PlanRef,
+    completed: PlanDocument,
+  ): Promise<void> {
+    const project = this.resolveProject(context);
+    if (completed.parentPlan && completed.parentTaskId !== undefined) {
+      const parentRef = createPlanRef(project, current.taskName, completed.parentPlan);
+      await completeSubplanAndRestoreParent({
+        project,
+        sessionKey: this.requireSessionKey(context),
+        childPlan: current,
+        completedChild: completed,
+        parentPlan: parentRef,
+        parentTaskId: completed.parentTaskId,
+        sessionStore: this.focusStore,
+      });
+      const parent = showPlan({
+        cwd: context.cwd,
+        taskName: parentRef.taskName,
+        planFile: parentRef.planFile,
+        ownerSessionKey: context.agentSessionId,
+      });
+      bindSessionToPlan(project, context.agentSessionId, parent.planPath);
+      return;
+    }
+    await releaseCurrentPlanFocus({
+      project,
+      sessionKey: this.requireSessionKey(context),
+      expectedEnd: true,
+      sessionStore: this.focusStore,
+    });
+  }
+
   private async editCurrentPlan(
     context: CommandContext,
     operations: PlanMutationOperation[],
@@ -582,6 +713,10 @@ export class ClawCommandService {
         planFile: ended.ref.planFile,
         ownerSessionKey: this.ownerSessionKey(context),
       });
+      if (ended.plan.status === "end.leave") {
+        tryLeaveKnowledgePlan({ project, sessionId: context.agentSessionId, leftPlanPath: shown.planPath });
+        continue;
+      }
       const effectiveConfig = resolvePlanEffectiveConfig(project.projectConfig, ended.plan);
       const writer = resolveKnowledgeWriterForHost(effectiveConfig?.knowledgeWriter, context.host);
       const knowledgeEnd = tryEndKnowledgePlan({
@@ -611,9 +746,9 @@ export class ClawCommandService {
 
   private endPostCommitEffects(
     entered: Array<{ ref: PlanRef; plan: import("@veewo/claw-core").PlanDocument; endedAt: string }>,
-  ): unknown[] | undefined {
+  ): ClawPostCommitEffectV1[] | undefined {
     const actions = entered.map((ended) => ({
-      type: "completion.refresh",
+      type: "completion.refresh" as const,
       taskName: ended.ref.taskName,
       planFile: ended.ref.planFile,
       planStatus: ended.plan.status,
@@ -634,7 +769,7 @@ export class ClawCommandService {
       events?: Array<{ mutationId?: string }>;
       focusTransition?: { transitionId?: string };
     },
-  ): unknown[] {
+  ): ClawHostActionV1[] {
     if (!isHostActionsHost(context.host as ClawHost | undefined)) return [];
     if (this.resolveProject(context).scope === "session") return [];
     const actionIdPrefix = result.events?.at(-1)?.mutationId
@@ -662,7 +797,7 @@ export class ClawCommandService {
       recoveryResync?: boolean;
       forceProjectionSync?: boolean;
     },
-  ): Promise<unknown[]> {
+  ): Promise<ClawHostActionV1[]> {
     if (!isHostActionsHost(context.host as ClawHost | undefined)) return [];
     const project = this.resolveProject(context);
     if (project.scope === "session") return [];
@@ -713,4 +848,16 @@ function parsePlanId(
   return separator < 0
     ? createPlanRef(project, normalized)
     : createPlanRef(project, normalized.slice(0, separator), normalized.slice(separator + 1));
+}
+
+function planRefFromAbsolutePath(
+  project: ReturnType<typeof resolveWorkflowProjectContext>,
+  planPath: string,
+): PlanRef {
+  const relative = path.relative(project.tasksDir, path.resolve(planPath));
+  const segments = relative.split(path.sep).filter(Boolean);
+  if (relative.startsWith("..") || path.isAbsolute(relative) || segments.length < 2) {
+    throw new ClawError("PLAN_NOT_FOUND", `Bound plan is outside the active task layout: ${planPath}`);
+  }
+  return createPlanRef(project, segments.at(-2)!, segments.at(-1)!);
 }

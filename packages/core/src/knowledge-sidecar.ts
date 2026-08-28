@@ -65,6 +65,16 @@ export type KnowledgeFinalizationJob = {
     startedAt?: string;
     capturedAt?: string;
     transcriptPath?: string;
+    receipt?: {
+      contractVersion: 1;
+      captureId: string;
+      host: KnowledgeFinalizationHost;
+      sessionId: string;
+      payloadBytes: number;
+      payloadSha256: string;
+      collectorVersion: string;
+      completedAt: string;
+    };
   };
   status: "queued" | "running" | "succeeded" | "failed" | "expired";
   attempts: number;
@@ -397,6 +407,7 @@ export function tryEndKnowledgePlan(input: {
 export function tryLeaveKnowledgePlan(input: {
   project: ProjectContext;
   sessionId?: string;
+  leftPlanPath?: string;
 }): KnowledgeSidecarResult {
   if (input.project.scope === "session") {
     return { ok: true };
@@ -415,6 +426,30 @@ export function tryLeaveKnowledgePlan(input: {
       pendingTurnOwner: undefined,
       updatedAt: new Date().toISOString(),
     }));
+    if (input.leftPlanPath) {
+      const leftPlanPath = path.resolve(input.leftPlanPath);
+      for (const jobPath of listKnowledgeFinalizationJobs(input.project)) {
+        withFileLock(jobPath, () => {
+          const job = readJsonFile<KnowledgeFinalizationJob>(jobPath);
+          if (
+            job.sessionId !== sessionId
+            || path.resolve(job.planPath) !== leftPlanPath
+            || (job.status !== "queued" && job.status !== "running")
+          ) return;
+          const finishedAt = new Date().toISOString();
+          writeJsonFile(jobPath, {
+            ...job,
+            status: "expired",
+            expiresAt: finishedAt,
+            finishedAt,
+            claimToken: undefined,
+            claimedAt: undefined,
+            error: { message: "Knowledge finalization was cancelled because its plan left." },
+          });
+          fs.rmSync(path.join(path.dirname(jobPath), `${job.finalizeId}.assignments.json`), { force: true });
+        });
+      }
+    }
     return { ok: true };
   } catch (error) {
     return { ok: false, error: errorMessage(error) };
@@ -654,23 +689,22 @@ export function doneKnowledgeFinalizationJob(input: {
   });
 }
 
-export function listRetryableKnowledgeFinalizationJobs(
+export function reconcileKnowledgeFinalizationJobs(
   project: ProjectContext,
-  options: { excludeHosts?: KnowledgeFinalizationHost[] } = {},
-): string[] {
-  // Automatic retries are intentionally forbidden. Failed and expired input is
-  // no longer fresh enough to be deposited safely.
-  void options;
-  if (project.scope !== "session") {
-    for (const jobPath of listKnowledgeFinalizationJobs(project)) {
-      try {
-        reconcileKnowledgeFinalizationJob(jobPath);
-      } catch {
-        // Maintenance is fail-open; an unreadable job remains available for diagnosis.
-      }
+): { checked: number; failed: number } {
+  if (project.scope === "session") return { checked: 0, failed: 0 };
+  let checked = 0;
+  let failed = 0;
+  for (const jobPath of listKnowledgeFinalizationJobs(project)) {
+    checked += 1;
+    try {
+      reconcileKnowledgeFinalizationJob(jobPath);
+    } catch {
+      // Maintenance is fail-open; an unreadable job remains available for diagnosis.
+      failed += 1;
     }
   }
-  return [];
+  return { checked, failed };
 }
 
 export function appendKnowledgeTaskConclusions(

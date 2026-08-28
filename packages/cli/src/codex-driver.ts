@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-export const CODEX_DRIVER_VERSION = 15;
+export const CODEX_DRIVER_VERSION = 18;
 export const CODEX_HOST_ACTION_SCHEMA_VERSION = 1;
 export const CODEX_DRIVER_CACHE_KEY =
   `claw-kit:codex-driver:v${CODEX_DRIVER_VERSION}:s${CODEX_HOST_ACTION_SCHEMA_VERSION}`;
@@ -24,10 +24,11 @@ async function codexDriverRunner(
     !Array.isArray(argv)
     || argv.length === 0
     || argv.some((value) => typeof value !== "string")
-    || !["plan", "task", "subplan"].includes(argv[0] as string)
+    || (!["plan", "task", "subplan"].includes(argv[0] as string)
+      && !(argv[0] === "context" && argv.length === 1))
     || argv.some((value) => value === "--host")
   ) {
-    throw new TypeError("argv must be a structured plan, task, or subplan command without --host");
+    throw new TypeError("argv must be a structured context, plan, task, or subplan command without --host");
   }
   if (typeof workdir !== "string" || workdir.trim().length === 0) {
     throw new TypeError("workdir is required");
@@ -119,16 +120,17 @@ async function codexDriverRunner(
   const goalStatuses = new Set(["complete", "blocked"]);
   const consumed = new Set<string>();
   let goalRecovery: Record<string, string> | undefined;
+  const hostEffectFailures: Array<{ id: string; tool: string; message: string; syncRequired: true }> = [];
   const actions = Array.isArray(result.hostActions) ? result.hostActions : [];
   for (const candidate of actions) {
     const action = candidate as Record<string, unknown>;
     const tool = typeof action.tool === "string" ? action.tool : "";
     const id = typeof action.id === "string" ? action.id : "";
+    if (consumed.has(id)) continue;
     const handler = handlers[tool];
     if (action.schemaVersion !== 1 || !id || !handler) {
       throw new Error(`unsupported Codex hostAction: ${id || "unknown"}`);
     }
-    if (consumed.has(id)) continue;
     const input = action.input;
     if (!input || typeof input !== "object" || Array.isArray(input)) {
       throw new Error(`invalid Codex hostAction input: ${id}`);
@@ -148,50 +150,41 @@ async function codexDriverRunner(
             || typeof planItem.step !== "string"
             || !planStatuses.has(String(planItem.status));
         })
-      ) {
-        throw new Error(`invalid Codex hostAction input: ${id}`);
-      }
+      ) throw new Error(`invalid Codex hostAction input: ${id}`);
     } else if (tool === "create_goal") {
-      if (
-        Object.keys(inputRecord).some((key) => key !== "objective")
-        || typeof inputRecord.objective !== "string"
-        || inputRecord.objective.length === 0
-      ) {
+      if (Object.keys(inputRecord).some((key) => key !== "objective") || typeof inputRecord.objective !== "string" || inputRecord.objective.length === 0) {
         throw new Error(`invalid Codex hostAction input: ${id}`);
       }
-    } else if (
-      Object.keys(inputRecord).some((key) => key !== "status")
-      || !goalStatuses.has(String(inputRecord.status))
-    ) {
+    } else if (Object.keys(inputRecord).some((key) => key !== "status") || !goalStatuses.has(String(inputRecord.status))) {
       throw new Error(`invalid Codex hostAction input: ${id}`);
     }
-    if (tool === "create_goal" || tool === "update_goal") {
-      if (typeof tools.get_goal !== "function") {
-        throw new Error("Codex host tool is unavailable: get_goal");
+    try {
+      if (tool === "create_goal" || tool === "update_goal") {
+        if (typeof tools.get_goal !== "function") throw new Error("Codex host tool is unavailable: get_goal");
+        const snapshot = await tools.get_goal({});
+        const goal = snapshot && typeof snapshot === "object" && !Array.isArray(snapshot) ? (snapshot as Record<string, unknown>).goal : undefined;
+        const goalRecord = goal && typeof goal === "object" && !Array.isArray(goal) ? goal as Record<string, unknown> : undefined;
+        const goalStatus = goalRecord?.status;
+        if (tool === "create_goal" && goalStatus === "active") {
+          goalRecovery = { reason: "Retained the existing active Codex Goal; recovery creates a Goal only when none is active." };
+          consumed.add(id);
+          continue;
+        }
+        if (tool === "update_goal" && goalStatus !== "active") {
+          consumed.add(id);
+          continue;
+        }
       }
-      const snapshot = await tools.get_goal({});
-      const goal = snapshot && typeof snapshot === "object" && !Array.isArray(snapshot)
-        ? (snapshot as Record<string, unknown>).goal
-        : undefined;
-      const goalRecord = goal && typeof goal === "object" && !Array.isArray(goal)
-        ? goal as Record<string, unknown>
-        : undefined;
-      const goalStatus = goalRecord?.status;
-      const openGoal = goalStatus === "active";
-      if (tool === "create_goal" && openGoal) {
-        goalRecovery = {
-          reason: "Retained the existing active Codex Goal; recovery creates a Goal only when none is active.",
-        };
-        consumed.add(id);
-        continue;
-      }
-      if (tool === "update_goal" && goalStatus !== "active") {
-        consumed.add(id);
-        continue;
-      }
+      await handler(inputRecord);
+      consumed.add(id);
+    } catch (error) {
+      hostEffectFailures.push({
+        id: id || "unknown",
+        tool: tool || "unknown",
+        message: error instanceof Error ? error.message : String(error),
+        syncRequired: true,
+      });
     }
-    await handler(inputRecord);
-    consumed.add(id);
   }
   const visibleKeys = new Set([
     "stage",
@@ -218,17 +211,26 @@ async function codexDriverRunner(
   if (result.knowledgeDispatch) {
     visibleKeys.add("knowledgeDispatch");
   }
+  visibleKeys.add("planPath");
+  visibleKeys.add("planStatus");
+  visibleKeys.add("mutationId");
   if (result.command === "task.done") {
     visibleKeys.add("ok");
     visibleKeys.add("command");
   }
+  if (result.command === "context") {
+    visibleKeys.add("output");
+  }
   const visibleResult = Object.fromEntries(
     Object.entries(result).filter(([key]) => visibleKeys.has(key)),
   );
-  const routeNote = "Codex route: every claw plan, task, or subplan mutation must use the fixed code-mode driver. commandHints provide argv syntax only; do not run them directly in the shell.";
+  const routeNote = result.command === "context"
+    ? "Codex route: context recovery must use the fixed code-mode driver; do not run the CLI directly or supply --host."
+    : "Codex route: every claw plan, task, or subplan mutation must use the fixed code-mode driver. commandHints provide argv syntax only; do not run them directly in the shell.";
   const existingNotes = typeof visibleResult.notes === "string" ? visibleResult.notes.trim() : "";
   visibleResult.notes = existingNotes ? `${routeNote} ${existingNotes}` : routeNote;
   if (goalRecovery) visibleResult.goalRecovery = goalRecovery;
+  if (hostEffectFailures.length) visibleResult.hostEffectFailures = hostEffectFailures;
   text(JSON.stringify(visibleResult));
   return visibleResult;
 }

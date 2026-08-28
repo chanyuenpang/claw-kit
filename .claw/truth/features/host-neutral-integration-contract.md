@@ -10,8 +10,14 @@ mismatches fail explicitly.
 
 - Profiles cover Codex, OpenCode, Cindy, and DSH and declare plan/Goal effects,
   finalization, report capture, workflow recovery, and compact-output behavior.
+- Context recovery is host-neutral in Core; each adapter supplies its current host and consumes the returned recovery state through its native route. A recovery caller must not reuse a host persisted from an earlier session.
 - CLI/Core retain canonical plan, job, claim, done, and immutable dispatch
   semantics. They no longer embed Codex SDK or OpenCode writer runtimes.
+- The Node command envelope exposes typed v1 `hostActions`, completion-refresh
+  effects, and knowledge dispatch. Adapter-native effect failures are post-commit:
+  they never roll back canonical workflow state, but must be returned as structured
+  diagnostics rather than silently discarded. DSH surfaces them as
+  `hostEffectFailures` in the `claw_run` result.
 - Platform adapters own their native implementations. In particular, Codex and
   OpenCode obtain canonical immutable knowledge dispatch and run their own
   native finalizer/runtime rather than asking CLI to host it.

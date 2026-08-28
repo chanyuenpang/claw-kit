@@ -3,7 +3,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { initProject } from "@veewo/claw-core";
+import {
+  createSubplan,
+  editPlan,
+  initProject,
+  showPlan,
+  writePlan,
+} from "@veewo/claw-core";
 import {
   ClawClient,
   ClawSessionError,
@@ -57,6 +63,131 @@ test("daemon and lightweight client share authenticated persistent session comma
 
   await opened.close();
   await daemon.close();
+});
+
+test("session open reconciles a root plan written before the focus journal was prepared", async () => {
+  const runtimeRoot = fixture("pre-journal-root-runtime");
+  const projectRoot = fixture("pre-journal-root-project");
+  const agentSessionId = "pre-journal-root-agent";
+  initProject({ cwd: projectRoot, projectName: "Pre-journal Root", planning: false });
+  const daemon = await startSessionDaemon({ runtimeRoot, idleTtlMs: 0 });
+  const client = new ClawClient({ runtimeRoot, host: "codex", clientKind: "adapter" });
+  const initial = await client.open(agentSessionId, projectRoot);
+  await initial.close();
+
+  await writePlan({
+    cwd: projectRoot,
+    taskName: "pre-journal-root-plan",
+    title: "Pre-journal root plan",
+    goalText: "Recover canonical focus",
+    ownerSessionKey: agentSessionId,
+    host: "codex",
+  });
+
+  const reopened = await client.open(agentSessionId, projectRoot);
+  try {
+    const openResult = reopened.openResult as { currentPlan?: unknown; session?: { currentPlan?: unknown } };
+    assert.ok(openResult.currentPlan);
+    assert.ok(openResult.session?.currentPlan);
+    const shown = await reopened.command({ operation: "plan.show", input: {} }) as { taskName?: string };
+    assert.equal(shown.taskName, "pre-journal-root-plan");
+  } finally {
+    await reopened.close();
+    await daemon.close();
+  }
+});
+
+test("session open completes parent linkage for a subplan written before the focus journal", async () => {
+  const runtimeRoot = fixture("pre-journal-subplan-runtime");
+  const projectRoot = fixture("pre-journal-subplan-project");
+  const agentSessionId = "pre-journal-subplan-agent";
+  initProject({ cwd: projectRoot, projectName: "Pre-journal Subplan", planning: false });
+  const daemon = await startSessionDaemon({ runtimeRoot, idleTtlMs: 0 });
+  const client = new ClawClient({ runtimeRoot, host: "codex", clientKind: "adapter" });
+  const opened = await client.open(agentSessionId, projectRoot);
+  const created = await opened.command({
+    operation: "plan.create",
+    input: {
+      taskName: "pre-journal-subplan-plan",
+      title: "Pre-journal subplan plan",
+      goalText: "Recover child focus and parent linkage",
+    },
+  }) as { taskName: string; planFile: string };
+  await opened.close();
+
+  const child = await createSubplan({
+    cwd: projectRoot,
+    parentTaskName: created.taskName,
+    parentTaskId: 1,
+    ownerSessionKey: agentSessionId,
+    host: "codex",
+    deferParentMutation: true,
+  });
+
+  const reopened = await client.open(agentSessionId, projectRoot);
+  try {
+    const shown = await reopened.command({ operation: "plan.show", input: {} }) as { planFile?: string };
+    assert.equal(shown.planFile, child.planFile);
+    const parent = showPlan({
+      cwd: projectRoot,
+      taskName: created.taskName,
+      planFile: created.planFile,
+      ownerSessionKey: agentSessionId,
+    });
+    assert.equal(parent.plan.tasks[0]?.execution?.subplan, child.planFile);
+    assert.equal(parent.plan.tasks[0]?.status, "in_progress");
+  } finally {
+    await reopened.close();
+    await daemon.close();
+  }
+});
+
+test("session open releases retained focus after a terminal write completed before its focus journal", async () => {
+  const runtimeRoot = fixture("pre-journal-end-runtime");
+  const projectRoot = fixture("pre-journal-end-project");
+  const agentSessionId = "pre-journal-end-agent";
+  initProject({ cwd: projectRoot, projectName: "Pre-journal End", planning: false });
+  const daemon = await startSessionDaemon({ runtimeRoot, idleTtlMs: 0 });
+  const client = new ClawClient({ runtimeRoot, host: "codex", clientKind: "adapter" });
+  const opened = await client.open(agentSessionId, projectRoot);
+  const created = await opened.command({
+    operation: "plan.create",
+    input: {
+      taskName: "pre-journal-end-plan",
+      title: "Pre-journal end plan",
+      goalText: "Release stale retained focus",
+    },
+  }) as { taskName: string; planFile: string };
+  await opened.command({ operation: "task.done", input: { tasks: [{ id: 1 }] } });
+  await opened.close();
+
+  await editPlan({
+    cwd: projectRoot,
+    taskName: created.taskName,
+    planFile: created.planFile,
+    operations: [
+      { type: "plan.update", updates: { retrospectiveSummary: "Completed before focus journal." } },
+      { type: "plan.status", status: "end.completed" },
+    ],
+    commandSource: "plan.done",
+    ownerSessionKey: agentSessionId,
+    host: "codex",
+    deferSubplanClosure: true,
+  });
+
+  const reopened = await client.open(agentSessionId, projectRoot);
+  try {
+    const openResult = reopened.openResult as { currentPlan?: unknown; session?: { currentPlan?: unknown } };
+    assert.equal(openResult.currentPlan, undefined);
+    assert.equal(openResult.session?.currentPlan, undefined);
+    await assert.rejects(
+      () => reopened.command({ operation: "plan.show", input: {} }),
+      (error: unknown) => error instanceof ClawSessionError && error.code === "CURRENT_PLAN_REQUIRED",
+    );
+  } finally {
+    await reopened.close();
+    await daemon.close();
+  }
 });
 
 test("persistent session starts a planning plan through the typed protocol", async () => {
@@ -243,6 +374,42 @@ test("Cindy daemon sessions coerce background config to the templated no-Stop kn
     assert.match(String(dispatch?.prompt), /assignment subplan/i);
     assert.match(String(dispatch?.prompt), /claw-kit.*Ghost/is);
     assert.doesNotMatch(String(dispatch?.prompt), /did-turn-end|Stop hook|knowledge wait/i);
+  } finally {
+    await opened.close();
+    await daemon.close();
+  }
+});
+
+test("DSH daemon sessions coerce a fresh project's default background config to native subagent dispatch", async () => {
+  const runtimeRoot = fixture("dsh-default-dispatch-runtime");
+  const projectRoot = fixture("dsh-default-dispatch-project");
+  initProject({ cwd: projectRoot, projectName: "DSH Default Dispatch", planning: false });
+  const projectConfig = JSON.parse(
+    fs.readFileSync(path.join(projectRoot, ".claw", "project.json"), "utf8"),
+  ) as { knowledgeWriter?: { executionPolicy?: string } };
+  assert.equal(projectConfig.knowledgeWriter?.executionPolicy, "background");
+  const daemon = await startSessionDaemon({ runtimeRoot, idleTtlMs: 0 });
+  const opened = await new ClawClient({ runtimeRoot, host: "dsh", clientKind: "adapter" })
+    .open("dsh-default-dispatch", projectRoot);
+
+  try {
+    await opened.command({
+      operation: "plan.create",
+      input: {
+        taskName: "dsh-default-plan",
+        title: "DSH default plan",
+        goalText: "Dispatch with the default project configuration",
+      },
+    });
+    await opened.command({ operation: "task.done", input: { tasks: [{ id: 1 }] } });
+    const done = await opened.commandEnvelope({
+      operation: "plan.done",
+      input: { retrospectiveSummary: "Complete" },
+    });
+    const dispatch = done.knowledgeDispatch as { policy?: string; finalizeId?: string; prompt?: string } | undefined;
+    assert.equal(dispatch?.policy, "subagent");
+    assert.match(String(dispatch?.finalizeId), /^[a-f0-9]{64}$/);
+    assert.match(String(dispatch?.prompt), /resources[\\/]delegate-writer[\\/]TEMPLATE\.json/);
   } finally {
     await opened.close();
     await daemon.close();

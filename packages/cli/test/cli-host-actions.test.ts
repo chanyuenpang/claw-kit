@@ -49,13 +49,13 @@ test("cli codex driver returns an executable versioned source envelope", async (
   const root = createFixture("codex-driver-envelope");
   const envelope = runClaw(["codex", "driver"], root, { CLAW_HOST: "" });
   assert.equal(envelope.command, "codex.driver");
-  assert.equal(envelope.driverVersion, 15);
+  assert.equal(envelope.driverVersion, 18);
   assert.equal(envelope.hostActionSchemaVersion, 1);
-  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v15:s1");
+  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v18:s1");
   assert.match(String(envelope.sha256), /^[a-f0-9]{64}$/);
   assert.equal(
     envelope.sha256,
-    "63c37181514d257d098cb782309ebe0c5efdce1d0441c094aaf9b3c814cd597b",
+    "a0eb1e14d7824790a43fab04263be61b43eac74afc87c0e0f29ce790f985555e",
     "changing serialized driver source requires a driver version/cache-key bump",
   );
 
@@ -70,6 +70,8 @@ test("cli codex driver returns an executable versioned source envelope", async (
     stage: "done",
     planSummary: "2/2 Demo",
     planPath: "G:\\example\\.claw\\tasks\\demo\\plan.json",
+    planStatus: "end.completed",
+    mutationId: "mutation",
     nextsteps: ["Start the next task through using-claw-kit."],
     notes: "Keep the route in view.",
     achievement: {
@@ -127,6 +129,8 @@ test("cli codex driver returns an executable versioned source envelope", async (
     stage: "done",
     planSummary: "2/2 Demo",
     planPath: "G:\\example\\.claw\\tasks\\demo\\plan.json",
+    planStatus: "end.completed",
+    mutationId: "mutation",
     nextsteps: ["Start the next task through using-claw-kit."],
     notes: "Codex route: every claw plan, task, or subplan mutation must use the fixed code-mode driver. commandHints provide argv syntax only; do not run them directly in the shell. Keep the route in view.",
     achievement: mutationResult.achievement,
@@ -137,6 +141,34 @@ test("cli codex driver returns an executable versioned source envelope", async (
   assert.match(String((calls[0][1] as JsonRecord).command), /^claw codex invoke [a-f0-9]+$/);
   assert.deepEqual(calls.map(([name]) => name), ["shell_command", "update_plan", "get_goal", "create_goal", "text"]);
   assert.equal("hostActions" in JSON.parse(String(calls.at(-1)?.[1])), false);
+
+  const recoveredEffect = await runner(
+    { argv: ["plan", "edit", "--status", "process.active"], workdir: root },
+    {
+      tools: {
+        shell_command: async () => JSON.stringify({
+          ok: true,
+          command: "plan.edit",
+          stage: "execution",
+          planPath: "G:\\example\\.claw\\tasks\\demo\\plan.json",
+          planStatus: "process.active",
+          mutationId: "mutation-effect-failure",
+          hostActions: [{ schemaVersion: 1, id: "mutation-effect-failure:create_goal", tool: "create_goal", input: { objective: "continue" } }],
+        }),
+        get_goal: async () => ({ goal: null }),
+        create_goal: async () => { throw new Error("Goal transport failed"); },
+      },
+      text: () => undefined,
+    },
+  );
+  assert.deepEqual(recoveredEffect.hostEffectFailures, [{
+    id: "mutation-effect-failure:create_goal",
+    tool: "create_goal",
+    message: "Goal transport failed",
+    syncRequired: true,
+  }]);
+  assert.equal(recoveredEffect.planPath, "G:\\example\\.claw\\tasks\\demo\\plan.json");
+  assert.equal(recoveredEffect.planStatus, "process.active");
 
   const progressCloseCalls: Array<[string, unknown]> = [];
   await runner(

@@ -13,6 +13,7 @@
 - 同一项目维护还会移除指向 active tasks 之外或不存在 plan 的 session binding；清理遗留集中 finalizer jobs 时，删除已成功、损坏或不再关联 active plan 的记录，并删除缺少 active plan 的 knowledge session registry。仍关联 active plan 的 running 或可重试记录不在此清理范围内。
 - process-backed session runtime 以 `(canonicalWorkdir, agentSessionId)` 作为隔离键。每个 session 固定一个不可原地变更的 workdir，并保存零或一个 `currentPlan`；`claw session open <dir> <session-id>` 负责 create-or-open，调用方切换目录时打开另一复合键 session，而不是修改现有 session。
 - terminal 或 Node client 的 soft close 只结束 live attachment，不删除 retained session 或 canonical plan。retained record 按最后 `updatedAt` 保留七天；daemon 重启后仍可由同一 open 命令恢复。打开已有且需要恢复 current plan 的 session 时，`currentPlan` 只复用 `plan show --simple` 的最小 `{status, goal, tasks[].title, rules}` 投影；新 session、无 binding 或不需要恢复时省略该字段。
+- `session.open` 先恢复已经 prepared 的 focus journal，再以显式 project binding 对账 retained daemon focus。它只修复 journal 建立前已经持久化的 root/subplan create、parent linkage 或 terminal release，不扫描 task 目录、不重放 outcome-unknown mutation，也不引入第二套事务状态机；修复仍通过现有 focus transaction 提交 owner/session/plan after-images。
 - session 内 mutation 串行执行并隐式继承 workdir、agent session identity、host metadata 与 current-plan target。`search --dir <dir>` 只为单次搜索临时覆盖目录，不改变 session workdir、currentPlan 或 session identity。
 - 连接中断不自动重放 mutation，也不建立 durable response/host-action outbox。client 把 in-flight outcome 标记为 unknown，返回精确的 `claw session open <dir> <session-id>` 恢复命令；重连后由 agent 使用 conditional simple view 或 `plan show --simple` 检查 canonical state。
 
@@ -44,7 +45,7 @@
 - context/CLI routing：`packages/cli/src/cli.ts`
 - session protocol/client：`packages/client/src/protocol.ts`、`packages/client/src/index.ts`
 - session daemon、registry 与 command service：`packages/cli/src/session-daemon.ts`、`packages/cli/src/session-registry-v2.ts`、`packages/cli/src/command-service.ts`
-- core 与 CLI tests 覆盖日期 task 与旧平铺 task lookup、session lookup 不扫描 task、flat subplan collision、child/parent/root rebinding、`completedAt` retention/pruning、每日维护的空日期目录与日志清理、`inflight.lock` 保留，以及 `maintenance.json` 的 task-layout migration guard。
+- core 与 CLI tests 覆盖日期 task 与旧平铺 task lookup、session lookup 不扫描 task、flat subplan collision、child/parent/root rebinding、pre-journal root/subplan create 与 terminal release 对账、`completedAt` retention/pruning、每日维护的空日期目录与日志清理、`inflight.lock` 保留，以及 `maintenance.json` 的 task-layout migration guard。
 
 ## 关键检索词
 

@@ -5,9 +5,13 @@ import { fileURLToPath } from "node:url";
 import { extractPlanFinalAnswers } from "./capture.js";
 import { ClawSession } from "./claw-session.js";
 import { compactClawOutput, consumeHostActions, } from "./host-actions.js";
-import { daemonInput, renderGuidanceSnapshot } from "./protocol.js";
+import { daemonInput, isUncertainConnectionFailure, renderGuidanceSnapshot } from "./protocol.js";
 import { registerBundledSkills } from "./skills.js";
 export const name = "claw-kit";
+function collectorVersion() {
+    const packageJsonPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json");
+    return String(JSON.parse(fs.readFileSync(packageJsonPath, "utf8")).version ?? "unknown");
+}
 function isDirectory(candidate) {
     if (typeof candidate !== "string" || !candidate.trim())
         return false;
@@ -184,6 +188,7 @@ export function apply(ctx) {
                     return;
                 await runOneOff([
                     "internal-report-collector-register", "--project-root", workdir, "--collector-host", "dsh",
+                    "--collector-version", collectorVersion(),
                     "--executable", process.execPath,
                     "--arg", path.join(path.dirname(fileURLToPath(import.meta.url)), "report-collector-cli.js"),
                 ], workdir, agent.id);
@@ -208,7 +213,7 @@ export function apply(ctx) {
     tools.register({
         name: "claw_run",
         description: [
-            "Run one claw-kit workflow operation in the current session through the claw session daemon. Operation names use dot form: plan.create, plan.start, plan.wait, plan.resume, plan.edit, plan.done, plan.show, task.add, task.edit, task.done, subplan.create, search. Arguments are the operation's canonical fields (snake_case): e.g. plan.create takes title, goal, scope; plan.start takes requirements, acceptance (array), add_tasks (array of {title, detail}); task.done takes id or tasks (array of {id}).",
+            "Run one claw-kit workflow operation in the current session through the claw session daemon. Operation names use dot form: context, plan.create, plan.start, plan.wait, plan.resume, plan.edit, plan.done, plan.show, task.add, task.edit, task.done, subplan.create, search. `context` restores the current host-scoped startup snapshot with no arguments. Other arguments use canonical snake_case: e.g. plan.create takes title, goal, scope; plan.start takes requirements, acceptance (array), add_tasks (array of {title, detail}); task.done takes id or tasks (array of {id}).",
             "The adapter forges session identity and workspace from the calling agent — never pass session, host, or workdir arguments. It auto-consumes CLI hostActions: plan progress projection and native DSH goal sync happen inside the tool, so do not call goal tools for claw plans. The result is a compact guidance snapshot; follow it as the only next-step contract.",
         ].join(" "),
         parameters: {
@@ -241,6 +246,16 @@ export function apply(ctx) {
             if (workdir === undefined) {
                 throw new Error("claw_run requires a valid session workspace; no workspace owns this session and agent.session.cwd resolved to none");
             }
+            if (operation === "context") {
+                const { text } = await runOneOff(["context", "--host", "dsh"], workdir, agent.id);
+                const context = parseProtocol(text);
+                if (!context)
+                    throw new Error("claw context returned no valid JSON protocol result");
+                const rendered = renderGuidanceSnapshot(context);
+                if (rendered)
+                    lastGuidance = rendered;
+                return context;
+            }
             let session = sessions.get(agent.id);
             if (!session) {
                 session = new ClawSession(subprocess, workdir, agent.id);
@@ -248,52 +263,48 @@ export function apply(ctx) {
             }
             const input = daemonInput(operation, (args.args ?? {}));
             let response;
-            let retried = false;
             try {
                 response = await session.request(operation, input);
             }
             catch (error) {
-                // Connection-level failure (stale daemon, killed child, closed pipe):
-                // rebuild the session once and retry the same operation.
+                // The daemon may have committed before its response was lost. Reset the
+                // transport for the next request, but never replay this mutation.
                 const message = error instanceof Error ? error.message : String(error);
-                if (!/SESSION_CONNECTION_LOST|CLAW_SESSION_TIMEOUT|CLAW_SESSION_OPEN_TIMEOUT/.test(message))
+                if (!isUncertainConnectionFailure(message))
                     throw error;
-                // Close the stale connection first so the daemon releases the session
-                // slot; otherwise the fresh open hits SESSION_BUSY and hangs.
                 try {
                     await session.close();
                 }
                 catch { /* best-effort */ }
                 sessions.delete(agent.id);
-                const fresh = new ClawSession(subprocess, workdir, agent.id);
-                sessions.set(agent.id, fresh);
-                response = await fresh.request(operation, input);
+                throw new Error(`CLAW_OUTCOME_UNKNOWN: ${message}. The operation may already have committed; do not retry it. ` +
+                    "Open a fresh session and inspect or sync the current plan before continuing.");
             }
             if (response.ok !== true) {
-                // A stale daemon connection can surface as a business error instead of
-                // a protocol rejection; rebuild once and retry before failing.
+                // Some daemon failures report the same uncertain transport condition
+                // as a protocol error. Treat them identically: no automatic replay.
                 const message = response.error?.message ?? "";
-                if (/connection was interrupted|session connection/i.test(message) && retried === false) {
-                    retried = true;
+                if (isUncertainConnectionFailure(message)) {
                     try {
                         await session.close();
                     }
                     catch { /* best-effort */ }
                     sessions.delete(agent.id);
-                    const fresh = new ClawSession(subprocess, workdir, agent.id);
-                    sessions.set(agent.id, fresh);
-                    response = await fresh.request(operation, input);
+                    throw new Error(`CLAW_OUTCOME_UNKNOWN: ${message}. The operation may already have committed; do not retry it. ` +
+                        "Open a fresh session and inspect or sync the current plan before continuing.");
                 }
             }
             if (response.ok !== true) {
                 throw new Error(`claw operation failed: ${response.command ?? "unknown"} — ${response.error?.message ?? "no detail"}`);
             }
-            const { consumed, projection } = consumeHostActions(response.hostActions, goals, exec.agent);
+            const { consumed, projection, failures } = consumeHostActions(response.hostActions, goals, exec.agent);
             const visible = compactClawOutput(response.output);
             if (consumed.length)
                 visible.goalSync = consumed;
             if (projection !== undefined)
                 visible.projection = projection.input;
+            if (failures.length)
+                visible.hostEffectFailures = failures;
             // Keep the injected [claw workflow] context current: every claw_run
             // returns the latest plan snapshot, so refresh lastGuidance instead of
             // leaving the session-start snapshot stale (progress otherwise freezes

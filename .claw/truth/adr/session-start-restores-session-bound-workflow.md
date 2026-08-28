@@ -30,6 +30,7 @@ Accepted
 统一使用一条 `SessionStart` 恢复流来承接 `.claw` 项目的 startup recovery，并通过 project-level session registry 直接绑定计划：
 
 - session registry 直接把当前 host 的 `sessionKey` 映射到 `.claw`-relative `planPath`
+- process-backed session open 以 project session binding 作为 pre-journal crash recovery 的 canonical anchor，并与 retained daemon focus 对账：有效 binding 可以通过既有 focus transition 原语恢复 root/subplan focus 与 parent linkage；没有 binding 但 retained focus 仍指向 live plan 时补回 binding；terminal binding 则恢复 parent 或释放 focus。该修复不扫描 task 目录、不重放 outcome-unknown mutation，也不创建第二套 workflow 状态机。
 - `SessionStart` 不再按 hook source 区分 `startup`、`resume`、`compact` 的恢复逻辑
 - `SessionStart` 启动时只读取当前 `sessionKey` 的 direct plan binding，不扫描 task directories 推断 active workflow
 - subplan create 把 binding 切到 child，subplan done 切回 `parentPlan`，root plan done 删除 binding
@@ -52,6 +53,7 @@ Accepted
 - 检测到已发布新版本后立即调用 `claw-kit:update`。拒绝，因为它把执行动作放在用户授权之前。
 - 只报告版本落后而不建立继续使用 claw-kit 前的更新门槛。拒绝，因为它不能表达已确认的必需更新顺序。
 - 在 host guidance 中固定用户可见文案语言。拒绝，因为 guidance 应保持简洁自然的英文 Agent 指令，由 Agent 使用当前用户语言提出更新请求。
+- 为 journal 建立前的 crash window 增加 durable mutation replay、response outbox 或独立 recovery 状态机。拒绝，因为 project binding 已经给出 committed plan 的确定性锚点；自动重放会在 response 丢失时重复已提交 mutation，第二状态机则会与 canonical plan/binding 漂移。
 
 ## Consequences
 
@@ -62,6 +64,7 @@ Accepted
 - startup recovery 继续保持为 enhancement，而不是替代 `plan write`、`plan edit`、`plan done` 和 truth/ADR deposition 的 correctness 机制
 - workflow 恢复与 `workflowGuidance` lifecycle contract 保持一致，减少 adapter 在 compact 后自行发明下一步或把 `commandHints` 误当作必须立即执行动作的空间
 - direct `sessionKey -> planPath` binding 让恢复目标确定化；没有 binding 时不会从其他 task directory 猜测计划
+- session daemon retained focus 现在可以从 committed binding 修复，覆盖 focus journal 尚未 prepared 时的狭窄窗口；恢复仍复用现有 focus transaction，因此 canonical plan、binding 与 retained projection 不增加新的持久化 owner。
 - 没有 active workflow 时，系统仍然退回现有 `using-claw-kit` 入口，不增加新的恢复文案分支
 - 默认 startup prompt 现在也成为 adapter contract 的一部分：它负责声明 thread-local authorization，减少 Goal mode 与 delegated specialists 的误阻塞
 - project protocol 版本超前时，用户现在可以在同一轮 startup recovery 中明确看到 version-sync 结果；恢复流不会静默改写本地安装，而是把“仅提示版本落后”与“先请求授权、确认后更新”这两种分支稳定地绑定到 `autoUpdate` gate

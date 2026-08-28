@@ -21,46 +21,56 @@ export async function consumeCodexHostActions({ result, hostTools, consumedIds =
 
   const consumedActionIds = [];
   let goalRecovery;
+  const hostEffectFailures = [];
   for (const action of result?.hostActions ?? []) {
-    validateActionEnvelope(action);
-    if (consumedIds.has(action.id)) {
-      continue;
-    }
+    try {
+      validateActionEnvelope(action);
+      if (consumedIds.has(action.id)) {
+        continue;
+      }
 
-    const input = validateActionInput(action);
-    if (action.tool === "create_goal" || action.tool === "update_goal") {
-      const getGoal = hostTools.get_goal;
-      if (typeof getGoal !== "function") {
-        throw new Error("Codex host tool is unavailable: get_goal");
+      const input = validateActionInput(action);
+      if (action.tool === "create_goal" || action.tool === "update_goal") {
+        const getGoal = hostTools.get_goal;
+        if (typeof getGoal !== "function") {
+          throw new Error("Codex host tool is unavailable: get_goal");
+        }
+        const snapshot = await getGoal({});
+        const goalRecord = snapshot?.goal && typeof snapshot.goal === "object" ? snapshot.goal : undefined;
+        const goalStatus = goalRecord?.status;
+        const openGoal = Boolean(goalRecord && goalStatus !== "complete");
+        if (action.tool === "create_goal" && openGoal) {
+          goalRecovery = {
+            reason: "Retained the existing nonterminal Codex Goal; recovery creates a Goal only when none is active.",
+          };
+          consumedIds.add(action.id);
+          consumedActionIds.push(action.id);
+          continue;
+        }
+        if (action.tool === "update_goal" && goalStatus !== "active") {
+          consumedIds.add(action.id);
+          consumedActionIds.push(action.id);
+          continue;
+        }
       }
-      const snapshot = await getGoal({});
-      const goalRecord = snapshot?.goal && typeof snapshot.goal === "object" ? snapshot.goal : undefined;
-      const goalStatus = goalRecord?.status;
-      const openGoal = Boolean(goalRecord && goalStatus !== "complete");
-      if (action.tool === "create_goal" && openGoal) {
-        goalRecovery = {
-          reason: "Retained the existing nonterminal Codex Goal; recovery creates a Goal only when none is active.",
-        };
-        consumedIds.add(action.id);
-        consumedActionIds.push(action.id);
-        continue;
+      const hostTool = hostTools[action.tool];
+      if (typeof hostTool !== "function") {
+        throw new Error(`Codex host tool is unavailable: ${action.tool}`);
       }
-      if (action.tool === "update_goal" && goalStatus !== "active") {
-        consumedIds.add(action.id);
-        consumedActionIds.push(action.id);
-        continue;
-      }
+      await hostTool(input);
+      consumedIds.add(action.id);
+      consumedActionIds.push(action.id);
+    } catch (error) {
+      hostEffectFailures.push({
+        id: typeof action?.id === "string" ? action.id : "unknown",
+        tool: typeof action?.tool === "string" ? action.tool : "unknown",
+        message: error instanceof Error ? error.message : String(error),
+        syncRequired: true,
+      });
     }
-    const hostTool = hostTools[action.tool];
-    if (typeof hostTool !== "function") {
-      throw new Error(`Codex host tool is unavailable: ${action.tool}`);
-    }
-    await hostTool(input);
-    consumedIds.add(action.id);
-    consumedActionIds.push(action.id);
   }
 
-  return { consumedActionIds, consumedIds, ...(goalRecovery ? { goalRecovery } : {}) };
+  return { consumedActionIds, consumedIds, ...(goalRecovery ? { goalRecovery } : {}), ...(hostEffectFailures.length ? { hostEffectFailures } : {}) };
 }
 
 export async function runCodexPlanMutation({ command, runCommand, hostTools, consumedIds = new Set() }) {

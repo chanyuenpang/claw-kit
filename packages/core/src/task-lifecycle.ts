@@ -79,9 +79,11 @@ function archiveDatedTaskDirectoriesBefore(project: ProjectContext, cutoffDate: 
   for (const entry of fs.readdirSync(project.tasksDir, { withFileTypes: true })) {
     if (!entry.isDirectory() || !/^\d{4}-\d{2}-\d{2}$/.test(entry.name) || entry.name >= cutoffDate) continue;
     const sourceDateDir = path.join(project.tasksDir, entry.name);
-    const taskCount = fs.readdirSync(sourceDateDir, { withFileTypes: true }).filter((child) => child.isDirectory()).length;
-    moveDateDirectory(sourceDateDir, path.join(archiveRoot, entry.name));
-    archivedTaskCount += taskCount;
+    for (const child of fs.readdirSync(sourceDateDir, { withFileTypes: true })) {
+      if (!child.isDirectory() || !isTerminalTask(path.join(sourceDateDir, child.name))) continue;
+      moveDirectoryWithCollision(path.join(sourceDateDir, child.name), path.join(archiveRoot, entry.name, child.name));
+      archivedTaskCount += 1;
+    }
   }
   return archivedTaskCount;
 }
@@ -111,11 +113,19 @@ function archiveLegacyTaskDirectoriesBefore(project: ProjectContext, cutoffDate:
   for (const task of listTaskDirectories(project)) {
     if (/^\d{4}-\d{2}-\d{2}[\\/]/.test(task.relativePath)) continue;
     const updatedAt = readPlanUpdatedAt(path.join(task.taskDir, "plan.json"));
-    if (!updatedAt || localDate(new Date(updatedAt)) >= cutoffDate) continue;
+    if (!updatedAt || localDate(new Date(updatedAt)) >= cutoffDate || !isTerminalTask(task.taskDir)) continue;
     moveDirectoryWithCollision(task.taskDir, path.join(archiveRoot, task.relativePath));
     archivedTaskCount += 1;
   }
   return archivedTaskCount;
+}
+
+function isTerminalTask(taskDir: string): boolean {
+  try {
+    return readJsonFile<Pick<PlanDocument, "status">>(path.join(taskDir, "plan.json")).status.startsWith("end.");
+  } catch {
+    return false;
+  }
 }
 
 function readPlanUpdatedAt(planPath: string): number | null {

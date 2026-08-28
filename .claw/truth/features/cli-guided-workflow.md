@@ -6,7 +6,7 @@
 - planning 拥有 requirements / proposed-solution refinement、scope 与 task quality；default template 与 `plan start` 拥有从讨论态进入执行态的 lifecycle bridge，`plan-review` 不再是必须单独经过的 workflow gate。
 - `claw-kit` 主线是 CLI-driven `.claw` harness，而不是 Apps SDK / app / widget / chat-rendering surface。
 - `claw plan write`、`claw plan edit`、`claw plan done` 共享 compact result core：`ok`、`planPath`、`planStatus`、紧凑 guidance 字段、`planSummary`，以及适用时的 `completionRefresh`。
-- project-scope workflow 中，所有请求 `end.*` 状态的 `claw plan edit` 都会通过与 `claw plan done` 相同的 completion-finalization dispatcher 排队 retention、memory reindex 与适用的 GitNexus refresh；`end.completed`、`end.closed` 与 `end.leave` 不再因命令入口而拥有不同的收尾路径。`plan done` 只是在同一有序 edit 中写入 retrospective 相关字段并设置 `end.completed` 的快捷入口。
+- project-scope workflow 的终态 edit 共享 completion-refresh 与 retention 路径；`end.leave` 同时立即解绑 session，并撤销该 plan 遗留的 queued/running knowledge job、claim 与 assignment，不创建新的 knowledge finalization。`plan done` 只是在同一有序 edit 中写入 retrospective 相关字段并设置 `end.completed` 的快捷入口。
 - root `claw plan done` 进入 `end.completed` 时额外返回 `achievement`、完成后的 canonical `planPath` 与本线程继续使用 claw 的 `nextsteps`。`achievement` 汇总 title、task counts、`completedAt`、retrospective 与 key-decision 保存状态；它是 foreground lifecycle completion signal，不代表异步 knowledge finalization 已完成。
 - Terminal compact results preserve the same ordered `workflowGuidance.nextsteps` for every host, including any `update_goal` closeout guidance and the required immediate dispatch instruction when `knowledgeDispatch` is present. Codex host actions remain a separate fixed-driver concern; they do not authorize filtering shared lifecycle guidance. The anchors are `packages/core/src/workflow-guidance.config.json` and `packages/cli/src/cli.ts`.
 - subplan `plan done` 恢复 parent 时，结果状态和 `planPath` 属于恢复后的 parent，且不得返回 terminal `achievement`；只有真正完成 root plan 的 `plan.done` 才暴露该字段。
@@ -53,7 +53,7 @@
 
 - plan completion 现在把 `completedAt` 写入 canonical `plan.json`。它定义直接 retention 的无日期 legacy task 一小时延迟资格，并继续为 archived-task pruning 提供排序时间；每日维护归档无日期 legacy task 时改以 `updatedAt` 判断活跃度，缺失时回退 `plan.json` 修改时间。日期分组 task 的每日归档资格则由目录本地日决定。
 - `claw plan done` 完成 root plan 时保留当前 task path，不再立即把 task 移入 archive。completed plan 因此仍可从原 task 路径读取，给异步 closeout consumer 留出稳定窗口。
-- `packages/core/src/task-retention.ts` 只在无日期 legacy task 的 `completedAt` 距当前时间至少一小时时归档；归档资格不检查 plan `status`、是否为 current task，或 receipt 是否存在。`packages/core/src/daily-maintenance.ts` 则会将早于昨天的日期目录整体归档，并以无日期 legacy `plan.updatedAt`（缺失时 `plan.json` 修改时间）归档同样过期的旧任务。
+- `packages/core/src/task-retention.ts` 只在无日期 legacy 的 terminal (`end.*`) task 且 `completedAt` 距当前时间至少一小时时归档；`process.active` plan 不得被日常维护归档。`packages/core/src/daily-maintenance.ts` 以同一终态边界处理旧 task，避免 session binding 指向被移动的 active plan。
 - plan completion 不等待 hook-owned `knowledge-writer` 返回；直接 retention 的一小时延迟让异步 finalizer 能从原 task path 读取 completed plan，而 daily maintenance 的 legacy cleanup 以最后计划活动时间判断旧任务。
 - lifecycle 主锚点是 `packages/core/src/plan.ts`，legacy retention 资格与移动逻辑位于 `packages/core/src/task-retention.ts`，日期与 legacy daily maintenance 位于 `packages/core/src/daily-maintenance.ts`，job/writer orchestration 位于 `packages/core/src/knowledge-sidecar.ts` 与 `packages/cli/src/cli.ts`；对应 core/CLI tests 覆盖 `completedAt`、`updatedAt`、当前路径保留、日期目录归档和 legacy cleanup。
 
@@ -84,6 +84,13 @@
 
 <!-- state: history -->
 ## 演化历史
+
+<!-- dated: 2026-08-28 -->
+### 终态旁路与恢复故障隔离
+
+- Canonical plan mutation 一旦持久化，Goal、Progress、knowledge 与 adapter projection 的失败只作为可观察的后置 effect failure 返回，不能否定 mutation、诱导自动重放或阻断后续 lifecycle。
+- `end.leave` 现在是纯退出路径：立即解除 direct binding 并取消仍在运行的知识旁路，不能再把 leave 当作新的知识沉淀触发器。
+- focus 恢复遇到第三方 journal 冲突时隔离该故障 journal，保留可审计记录并继续处理后续 session mutation；DSH transport 在断连/超时后明确返回 outcome unknown，要求检查 canonical state，绝不自动重放 mutation。
 
 <!-- dated: 2026-08-02 -->
 ### 公开 CLI help 与结论字段边界审计

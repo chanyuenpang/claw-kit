@@ -17,13 +17,14 @@ function fakeGoal(create = () => undefined, complete = () => undefined) {
 test("consumeHostActions: create_goal calls goals.create and reports consumed", () => {
   const calls = [];
   const goals = fakeGoal((agent, request) => calls.push(["create", request]));
-  const { consumed, projection } = consumeHostActions(
+  const { consumed, projection, failures } = consumeHostActions(
     [{ schemaVersion: 1, id: "a:create_goal", tool: "create_goal", input: { objective: "O" } }],
     goals,
     { id: "agent-1" },
   );
   assert.deepEqual(consumed, ["a:create_goal"]);
   assert.equal(projection, undefined);
+  assert.deepEqual(failures, []);
   assert.deepEqual(calls, [["create", { objective: "O" }]]);
 });
 
@@ -54,31 +55,41 @@ test("consumeHostActions: update_plan returns the projection without consuming",
   assert.equal(projection, action);
 });
 
-test("consumeHostActions: no goals service degrades to no consumption", () => {
-  const { consumed } = consumeHostActions(
+test("consumeHostActions: no goals service reports a post-commit failure without throwing", () => {
+  const { consumed, failures } = consumeHostActions(
     [{ schemaVersion: 1, id: "a:create_goal", tool: "create_goal", input: { objective: "O" } }],
     undefined,
     {},
   );
   assert.deepEqual(consumed, []);
+  assert.deepEqual(failures, [{
+    actionId: "a:create_goal",
+    tool: "create_goal",
+    code: "SERVICE_UNAVAILABLE",
+    message: "DSH goals service is unavailable.",
+  }]);
 });
 
 test("consumeHostActions: consumer errors fail open", () => {
   const goals = fakeGoal(() => {
     throw new Error("boom");
   });
-  assert.doesNotThrow(() =>
-    consumeHostActions(
-      [{ schemaVersion: 1, id: "a:create_goal", tool: "create_goal", input: { objective: "O" } }],
-      goals,
-      {},
-    ),
+  const result = consumeHostActions(
+    [{ schemaVersion: 1, id: "a:create_goal", tool: "create_goal", input: { objective: "O" } }],
+    goals,
+    {},
   );
+  assert.deepEqual(result.failures, [{
+    actionId: "a:create_goal",
+    tool: "create_goal",
+    code: "APPLY_FAILED",
+    message: "boom",
+  }]);
 });
 
-test("consumeHostActions: ignores non-v1 or malformed actions", () => {
+test("consumeHostActions: reports non-v1 and unsupported actions", () => {
   const goals = fakeGoal();
-  const { consumed } = consumeHostActions(
+  const { consumed, failures } = consumeHostActions(
     [
       { schemaVersion: 2, id: "x", tool: "create_goal", input: { objective: "O" } },
       { schemaVersion: 1, id: "y", tool: "mystery", input: {} },
@@ -87,6 +98,10 @@ test("consumeHostActions: ignores non-v1 or malformed actions", () => {
     {},
   );
   assert.deepEqual(consumed, []);
+  assert.deepEqual(failures.map(({ code, actionId }) => ({ code, actionId })), [
+    { code: "UNSUPPORTED_SCHEMA", actionId: "x" },
+    { code: "UNSUPPORTED_TOOL", actionId: "y" },
+  ]);
 });
 
 test("compactClawOutput keeps only the whitelist guidance fields", () => {

@@ -37,7 +37,7 @@ GitHub Release ZIP assets are not part of the supported Codex installation path.
 
 ## Release Modes
 
-There are five independent artifact families. Select the requested artifact before choosing a version:
+There are six independent artifact families. Select the requested artifact before choosing a version:
 
 | Artifact family | Source scope | Version | Published artifact | Tag |
 |---|---|---|---|---|
@@ -52,15 +52,17 @@ Platform requests remain platform-only. CLI/core requests include core and CLI. 
 
 ### CLI release
 
-Triggered when core or CLI files changed. Publishes @veewo/claw-core then @veewo/claw to npm, creates a GitHub Release with tag <version>. Resets all adapter 4th segments to .0.
+Triggered when core or CLI files changed. Publishes `@veewo/claw-core` then `@veewo/claw` to npm, creates a GitHub Release with tag `v<version>`. Resets all adapter fourth segments to `.0` only in an explicitly coordinated batch.
 
 ### Codex plugin release
 
-Triggered when codex-adapter changed. Updates the committed marketplace snapshot, tags codex-<version>, creates a GitHub Release. No npm publish (adapter is private).
+Triggered when codex-adapter changed. Updates the committed marketplace snapshot, tags `vcodex-<version>`, and creates a GitHub Release. No npm publish.
 
-### Cindy, OpenClaw, or OpenCode adapter release
+### Platform adapter releases
 
-Triggered when exactly one platform adapter changed. Tag the relevant adapter release, create a GitHub Release, and do not publish npm packages.
+- Cindy releases only from the independent `claw-kit-cindy-adapter` repository.
+- DSH publishes `@veewo/dsh-claw-kit` to npm and tags `vdsh-<version>` in this repository.
+- OpenClaw and OpenCode create their artifact-specific GitHub releases and tags.
 
 ### Narrower modes
 
@@ -160,7 +162,7 @@ After changing version files:
 
 ### For any release mode
 
-1. Confirm the target artifact family: CLI, Codex, OpenClaw, or OpenCode; Cindy releases occur in the independent `claw-kit-cindy-adapter` repository; or record `prepare-only`.
+1. Confirm the target artifact family: CLI, Codex, Cindy, DSH, OpenClaw, or OpenCode; Cindy releases occur in the independent `claw-kit-cindy-adapter` repository; or record `prepare-only`.
 2. Classify all local changes; commit useful release content, remove disposable output, and ignore intentional local-only files. Do not stash changes to bypass this step.
 3. Ensure the checked-out branch is `main` and push the release commit directly to `origin/main`.
 4. Align only the selected artifact family's versions. Run `npm run sync:template-versions` and `npm run sync:shared-skills` only when the chosen artifact requires those generated payloads.
@@ -187,8 +189,8 @@ After changing version files:
 
 ### Platform adapter release only
 
-11. Create and push the tag e.g. `vcindy-<version>`. Create the GitHub Release.
-12. Verify the tag and the committed adapter source.
+11. Follow the selected artifact-specific release skill. DSH publishes npm plus `vdsh-<version>`; OpenClaw/OpenCode publish their GitHub artifacts; Cindy runs entirely in its independent repository.
+12. Verify the artifact, tag, and installed behavior using that skill's evidence contract.
 
 
 - `full-publish`: complete all 16 steps.

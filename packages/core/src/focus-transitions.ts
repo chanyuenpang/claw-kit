@@ -176,6 +176,10 @@ export function focusTransitionsDirectory(project: ProjectContext): string {
   return path.join(project.clawDir, "runtime", "focus-transitions");
 }
 
+function focusTransitionQuarantineDirectory(project: ProjectContext): string {
+  return path.join(focusTransitionsDirectory(project), "quarantine");
+}
+
 export function focusQueuePath(project: ProjectContext): string {
   return path.join(focusTransitionsDirectory(project), "queue.json");
 }
@@ -504,7 +508,7 @@ export async function completeSubplanAndRestoreParent(input: {
 export async function recoverProjectFocusTransitions(input: {
   project: ProjectContext;
   sessionStore?: FocusSessionStore;
-}): Promise<{ recovered: string[]; discarded: string[] }> {
+}): Promise<{ recovered: string[]; discarded: string[]; quarantined: string[] }> {
   const sessionStore = input.sessionStore ?? new ProjectFocusSessionStore(input.project);
   return withSerializedQueue(focusQueuePath(input.project), async () =>
     recoverProjectFocusTransitionsLocked(input.project, sessionStore));
@@ -636,10 +640,10 @@ async function commitFocusTransition(input: {
 async function recoverProjectFocusTransitionsLocked(
   project: ProjectContext,
   sessionStore: FocusSessionStore,
-): Promise<{ recovered: string[]; discarded: string[] }> {
+): Promise<{ recovered: string[]; discarded: string[]; quarantined: string[] }> {
   const directory = focusTransitionsDirectory(project);
   if (!fs.existsSync(directory)) {
-    return { recovered: [], discarded: [] };
+    return { recovered: [], discarded: [], quarantined: [] };
   }
   const journalPaths = fs.readdirSync(directory)
     .filter((name) => /^[0-9a-f-]+\.json$/i.test(name))
@@ -647,14 +651,16 @@ async function recoverProjectFocusTransitionsLocked(
     .sort();
   const recovered: string[] = [];
   const discarded: string[] = [];
+  const quarantined: string[] = [];
   for (const journalPath of journalPaths) {
-    const journal = readJsonFile<FocusTransitionJournal>(journalPath);
-    validateJournal(project, journal, journalPath);
-    const planPaths = journal.after.plans
-      .map(({ ref }) => resolvePlanRefPath(project, ref))
-      .sort((left, right) => left.localeCompare(right));
-    await withPlanQueues(planPaths, () =>
-      withSerializedQueue(sessionStore.queuePath(journal.sessionKeyHash), async () => {
+    try {
+      const journal = readJsonFile<FocusTransitionJournal>(journalPath);
+      validateJournal(project, journal, journalPath);
+      const planPaths = journal.after.plans
+        .map(({ ref }) => resolvePlanRefPath(project, ref))
+        .sort((left, right) => left.localeCompare(right));
+      await withPlanQueues(planPaths, () =>
+        withSerializedQueue(sessionStore.queuePath(journal.sessionKeyHash), async () => {
         if (journal.phase === "prepared") {
           assertResourceHash(
             focusOwnersPath(project),
@@ -716,9 +722,19 @@ async function recoverProjectFocusTransitionsLocked(
         verifyAfterState(project, sessionStore, journal);
         fs.unlinkSync(journalPath);
         recovered.push(journal.transitionId);
-      }));
+        }));
+    } catch (error) {
+      if (!(error instanceof ClawError) || error.code !== "FOCUS_RECOVERY_CONFLICT") throw error;
+      // A third-party edit means neither rollback nor roll-forward is safe.
+      // Preserve the complete journal for inspection, but remove it from the
+      // active recovery queue so one damaged transition cannot block every
+      // future claw operation in this project.
+      fs.mkdirSync(focusTransitionQuarantineDirectory(project), { recursive: true });
+      fs.renameSync(journalPath, path.join(focusTransitionQuarantineDirectory(project), path.basename(journalPath)));
+      quarantined.push(path.basename(journalPath, ".json"));
+    }
   }
-  return { recovered, discarded };
+  return { recovered, discarded, quarantined };
 }
 
 function verifyAfterState(

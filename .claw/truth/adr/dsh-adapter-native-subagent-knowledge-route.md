@@ -17,7 +17,9 @@ DSH（DeepSeek Harness）需要与 claw-kit 既有的 ready-job / claim / done �
 
 - DSH 是受支持的 invocation host 与 subagent-policy 知识 host：
   `isSubagentPolicyHost`（`codex | cindy | dsh`）取代逐 host 的 `!== "codex"` 检查；
-  `KnowledgeFinalizationHost` 增加 `"dsh"`。
+  `KnowledgeFinalizationHost` 增加 `"dsh"`。由于 DSH 没有独立 background runner，Host
+  capability 边界把项目配置的 `background | subagent` 都归一为原生 `subagent` lifecycle；
+  这与 Cindy 一样是 launcher 能力约束，不是失败 fallback。
 - DSH 知识终结复用与 Codex 相同的 native-subagent delegate 路线：终态 mutation 先持久化
   ready job（`job.host = "dsh"`、claim-mode report capture），再返回
   `knowledgeDispatch`（`buildKnowledgeDispatch` → `buildKnowledgeDelegateDispatch`，
