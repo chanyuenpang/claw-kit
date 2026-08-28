@@ -115,13 +115,15 @@ test("main-agent Codex surfaces expose only the internal subagent dispatch contr
     assert.doesNotMatch(surface, forbidden);
   }
   assert.match(mainRouter, /knowledgeDispatch/);
+  assert.match(mainRouter, /`end\.leave`/);
+  assert.match(mainRouter, /best-effort detach/);
   assert.match(mainRouter, /Terminal dispatch gate \(subagent policy only\)/);
   assert.match(mainRouter, /highest-priority closeout obligation/);
   assert.match(mainRouter, /Complete this handoff through the designated knowledge finalizer/);
   assert.match(mainRouter, /Do not skip the handoff because it was easy to miss/);
-  assert.match(mainRouter, /honor `preferReuse: true`: call `list_agents`/);
-  assert.match(mainRouter, /reuse only the same-thread worker named `knowledge_finalizer` with `followup_task`/);
-  assert.match(mainRouter, /task name `knowledge_finalizer`/);
+  assert.match(mainRouter, /launch one isolated worker for that exact `finalizeId`/);
+  assert.match(mainRouter, /Do not reuse a worker/);
+  assert.match(mainRouter, /knowledge_finalizer_<first 12 chars of finalizeId>/);
   assert.match(mainRouter, /spawn_agent/);
   assert.match(mainRouter, /Do not wait for the reused or new writer/i);
   assert.doesNotMatch(mainRouter, /claw-kit:delegate-writer/);

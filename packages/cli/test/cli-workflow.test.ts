@@ -154,9 +154,8 @@ test("cli lifecycle e2e covers plan, truth, goalMode, memory refresh, and gitnex
   );
   assert.equal((taskDone.nextsteps as string[]).some((step) => step.includes("writer")), false);
   assert.deepEqual(taskDone.nextsteps, [
-    "1. Clear thread progress with `update_plan`.",
-    "2. Run `claw plan done --retrospective` once. Add `--key-decision` only for real durable decisions not already recorded.",
-    "3. Stop after the canonical plan transition; no separate closeout action is required from the main agent.",
+    "1. Run `claw plan done --retrospective` once. Add `--key-decision` only for real durable decisions not already recorded.",
+    "2. Stop after the canonical plan transition; no separate closeout action is required from the main agent.",
   ]);
   assert.deepEqual(taskDone.commandHints, [
     "claw plan done --retrospective \"<summary>\" [--key-decision \"<durable decision>\"]",

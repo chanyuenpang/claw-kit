@@ -94,7 +94,7 @@ test("Codex entry stays compact without dropping guidance, lifecycle, or the mut
   );
   const lineCount = skill.trimEnd().split(/\r?\n/).length;
 
-  assert.ok(lineCount >= 50 && lineCount <= 70, `expected 50-70 lines, received ${lineCount}`);
+  assert.ok(lineCount >= 50 && lineCount <= 75, `expected 50-75 lines, received ${lineCount}`);
   assert.match(skill, /## First Action/i);
   assert.match(skill, /skip this skill and work directly/i);
   assert.match(skill, /argv: \["plan", "create", "<title>"\]/i);

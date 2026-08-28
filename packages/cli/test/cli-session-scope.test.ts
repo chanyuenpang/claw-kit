@@ -212,7 +212,7 @@ test("lightweight session plan completion skips Goal actions and queues no proje
   assert.equal(completed.planPath, planPath);
   assert.equal((completed.achievement as JsonRecord).status, "end.completed");
   assert.equal((completed.nextsteps as string[]).some((step) => step.includes("using-claw-kit")), true);
-  assert.equal((completed.nextsteps as string[]).some((step) => step.includes("update_goal")), true);
+  assert.equal((completed.nextsteps as string[]).some((step) => step.includes("update_goal")), false);
   assert.deepEqual(closeoutGuidance?.commandHints, ["claw plan done"]);
   assert.equal((closeoutGuidance?.nextsteps as string[]).some((step) => /retrospective|key-decision/i.test(step)), false);
   assert.equal("hostActions" in completed, false);

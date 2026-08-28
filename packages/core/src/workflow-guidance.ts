@@ -28,9 +28,13 @@ type GoalModeTemplate = {
 function sessionCompletionGuidance(guidance: WorkflowGuidance): WorkflowGuidance {
   return {
     ...guidance,
-    nextsteps: guidance.nextsteps.map((step) => step === "2. Run `claw plan done --retrospective` once. Add `--key-decision` only for real durable decisions not already recorded."
-      ? "2. Run `claw plan done` once."
-      : step),
+    nextsteps: guidance.nextsteps
+      .filter((step) => !step.includes("update_goal"))
+      .map((step) => {
+        if (!step.includes("claw plan done --retrospective")) return step;
+        const prefix = step.match(/^\d+\.\s*/)?.[0] ?? "";
+        return `${prefix}Run \`claw plan done\` once.`;
+      }),
     notes: guidance.notes?.replace(
       "Use `plan done --retrospective` and repeatable `--key-decision` values for full-plan closeout.",
       "Use `plan done` for full-plan closeout.",
@@ -57,7 +61,10 @@ type GuidanceStateTemplate = {
   stage: WorkflowGuidance["stage"] | "{{processStage}}";
   summary: string;
   nextsteps: string[];
+  /** Hosts that auto-consume native effects do not expose them as agent work. */
+  codexNextsteps?: string[];
   notes?: string;
+  codexNotes?: string;
   commandHints?: string[];
   goalMode?: GoalModeTemplate;
   goalTool?: GoalToolTemplate;
@@ -293,12 +300,18 @@ function renderTemplateValue<T>(value: T, vars: TemplateVars): T {
   return value;
 }
 
-function renderStateTemplate(key: string, vars: TemplateVars): GuidanceStateTemplate {
+function renderStateTemplate(key: string, vars: TemplateVars, host?: string): GuidanceStateTemplate {
   const template = workflowGuidanceConfig.states[key];
   if (!template) {
     throw new Error(`Unknown workflow guidance template: ${key}`);
   }
-  return renderTemplateValue(template, vars);
+  const rendered = renderTemplateValue(template, vars);
+  if (host !== "codex" && host !== "dsh") return rendered;
+  return {
+    ...rendered,
+    nextsteps: rendered.codexNextsteps ?? rendered.nextsteps,
+    ...(rendered.codexNotes !== undefined ? { notes: rendered.codexNotes } : {}),
+  };
 }
 
 function isGoalModeEnabled(projectConfig: ProjectConfig | null): boolean {
@@ -406,7 +419,7 @@ export async function buildPlanWorkflowGuidance(params: {
       const templateKey = hasGoal
         ? (goalModeEnabled ? "prepare.requirements.withGoal" : "prepare.requirements.withGoal.noGoalMode")
         : (goalModeEnabled ? "prepare.requirements.withoutGoal" : "prepare.requirements.withoutGoal.noGoalMode");
-      const template = renderStateTemplate(templateKey, vars);
+      const template = renderStateTemplate(templateKey, vars, params.host);
       return {
         stage: template.stage as WorkflowGuidance["stage"],
         summary: template.summary,
@@ -416,7 +429,7 @@ export async function buildPlanWorkflowGuidance(params: {
       };
     }
     case "prepare.review": {
-      const template = renderStateTemplate("prepare.review", vars);
+      const template = renderStateTemplate("prepare.review", vars, params.host);
       return {
         stage: template.stage as WorkflowGuidance["stage"],
         summary: template.summary,
@@ -429,7 +442,7 @@ export async function buildPlanWorkflowGuidance(params: {
     case "process.wait":
     case "process.discussing": {
       if (plan.status === "process.discussing" && allTasksDone) {
-        const template = renderStateTemplate("process.allTasksDone", vars);
+        const template = renderStateTemplate("process.allTasksDone", vars, params.host);
         return applyCreateGuidance({
           commandSource,
           plan,
@@ -457,7 +470,7 @@ export async function buildPlanWorkflowGuidance(params: {
         : startedGoalModeThisRound
           ? plan.status
           : `${plan.status}.noGoalMode`;
-      const template = renderStateTemplate(templateKey, vars);
+      const template = renderStateTemplate(templateKey, vars, params.host);
       const shouldEmitBlockedGoalTool = startedGoalModeThisRound;
       return applyCreateGuidance({
         commandSource,
@@ -479,7 +492,7 @@ export async function buildPlanWorkflowGuidance(params: {
     }
     case "process.active": {
       if (allTasksDone) {
-        const template = renderStateTemplate("process.allTasksDone", vars);
+        const template = renderStateTemplate("process.allTasksDone", vars, params.host);
         const guidance = adaptForScope({
           stage: template.stage as WorkflowGuidance["stage"],
           summary: template.summary,
@@ -512,7 +525,7 @@ export async function buildPlanWorkflowGuidance(params: {
           : activeTask
             ? "process.activeTask"
             : "process.default";
-      const template = renderStateTemplate(templateKey, vars);
+      const template = renderStateTemplate(templateKey, vars, params.host);
       // Reconcile Goal state after every active plan mutation.  The fixed Codex
       // driver makes this idempotent by retaining an already-active Goal, while
       // recreating one that was lost or ended between mutations.
@@ -521,7 +534,7 @@ export async function buildPlanWorkflowGuidance(params: {
         && !suppressGoalFields
         && (Boolean(commandSource) || params.recoveryResync === true);
       const activeGoalTemplate = shouldEnsureActiveGoal
-        ? renderStateTemplate("process.justEntered", vars)
+        ? renderStateTemplate("process.justEntered", vars, params.host)
         : undefined;
 
       const guidance = adaptForScope({
@@ -564,9 +577,9 @@ export async function buildPlanWorkflowGuidance(params: {
     }
     case "end.completed": {
       const template = workflowGuidanceConfig.states["end.completed"]
-        ? renderStateTemplate("end.completed", vars)
-        : renderStateTemplate("end.closed", vars);
-      return {
+        ? renderStateTemplate("end.completed", vars, params.host)
+        : renderStateTemplate("end.closed", vars, params.host);
+      return adaptForScope({
         stage: template.stage as WorkflowGuidance["stage"],
         summary: template.summary,
         nextsteps: template.nextsteps,
@@ -575,10 +588,10 @@ export async function buildPlanWorkflowGuidance(params: {
           ? { goalTool: buildGoalTool(goalPlan.goal.text, template.goalTool) }
           : {}),
         ...(template.commandHints ? { commandHints: template.commandHints } : {}),
-      };
+      });
     }
     case "end.closed": {
-      const template = renderStateTemplate("end.closed", vars);
+      const template = renderStateTemplate("end.closed", vars, params.host);
       return {
         stage: template.stage as WorkflowGuidance["stage"],
         summary: template.summary,
@@ -587,7 +600,7 @@ export async function buildPlanWorkflowGuidance(params: {
       };
     }
     case "end.leave": {
-      const template = renderStateTemplate("end.leave", vars);
+      const template = renderStateTemplate("end.leave", vars, params.host);
       return {
         stage: template.stage as WorkflowGuidance["stage"],
         summary: template.summary,

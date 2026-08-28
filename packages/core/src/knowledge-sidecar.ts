@@ -66,9 +66,11 @@ export type KnowledgeFinalizationJob = {
     capturedAt?: string;
     transcriptPath?: string;
   };
-  status: "queued" | "running" | "succeeded" | "failed";
+  status: "queued" | "running" | "succeeded" | "failed" | "expired";
   attempts: number;
   queuedAt: string;
+  /** Hard freshness deadline for automatic knowledge writes. */
+  expiresAt?: string;
   startedAt?: string;
   finishedAt?: string;
   /** Opaque ownership token issued by the exclusive claim operation. */
@@ -91,6 +93,8 @@ export type KnowledgeFinalizationJob = {
     message: string;
   };
 };
+
+export const KNOWLEDGE_FINALIZATION_TTL_MS = 2 * 60 * 60 * 1000;
 
 export type KnowledgeReportEntry = {
   schemaVersion: 1;
@@ -371,6 +375,7 @@ export function tryEndKnowledgePlan(input: {
           status: "queued",
           attempts: 0,
           queuedAt: new Date().toISOString(),
+          expiresAt: knowledgeFinalizationExpiresAt(),
         } satisfies KnowledgeFinalizationJob);
       }
       return subagentCommon;
@@ -379,6 +384,38 @@ export function tryEndKnowledgePlan(input: {
       return { ok: true };
     }
     return { ok: true, finalizeId, ...(jobPath ? { jobPath } : {}) };
+  } catch (error) {
+    return { ok: false, error: errorMessage(error) };
+  }
+}
+
+/**
+ * Leave is cancellation, not a deferred completion path.  Clear the session
+ * capture state without creating work that can keep an abandoned plan visible
+ * or claimable after its owner has detached.
+ */
+export function tryLeaveKnowledgePlan(input: {
+  project: ProjectContext;
+  sessionId?: string;
+}): KnowledgeSidecarResult {
+  if (input.project.scope === "session") {
+    return { ok: true };
+  }
+  const sessionId = input.sessionId?.trim();
+  if (!sessionId) {
+    return { ok: true };
+  }
+  try {
+    updateKnowledgeRegistry(input.project, sessionId, (registry) => ({
+      ...registry,
+      activePlanPath: undefined,
+      activeReportPath: undefined,
+      activeWriter: undefined,
+      activeStartedAt: undefined,
+      pendingTurnOwner: undefined,
+      updatedAt: new Date().toISOString(),
+    }));
+    return { ok: true };
   } catch (error) {
     return { ok: false, error: errorMessage(error) };
   }
@@ -502,6 +539,7 @@ export function tryCaptureKnowledgeStop(input: {
             status: "queued",
             attempts: 0,
             queuedAt: new Date().toISOString(),
+            expiresAt: knowledgeFinalizationExpiresAt(),
           };
           writeJsonFile(jobPath, job);
         }
@@ -532,6 +570,17 @@ export function readKnowledgeFinalizationJob(jobPath: string): KnowledgeFinaliza
   return readJsonFile<KnowledgeFinalizationJob>(jobPath);
 }
 
+/**
+ * Reconciles an automatic knowledge job before every state-sensitive operation.
+ * A late writer must never turn stale input into current project knowledge.
+ */
+export function reconcileKnowledgeFinalizationJob(
+  jobPath: string,
+  now = new Date(),
+): KnowledgeFinalizationJob {
+  return withFileLock(jobPath, () => reconcileKnowledgeFinalizationJobLocked(jobPath, now));
+}
+
 export function claimKnowledgeFinalizationJob(
   jobPath: string,
   options?: {
@@ -539,8 +588,8 @@ export function claimKnowledgeFinalizationJob(
   },
 ): KnowledgeFinalizationJob | null {
   return withFileLock(jobPath, () => {
-    const current = readJsonFile<KnowledgeFinalizationJob>(jobPath);
-    if (current.status === "succeeded" || current.status === "running" || current.attempts >= 3) {
+    const current = reconcileKnowledgeFinalizationJobLocked(jobPath, new Date());
+    if (current.status !== "queued") {
       return null;
     }
     const now = new Date().toISOString();
@@ -549,7 +598,7 @@ export function claimKnowledgeFinalizationJob(
       ...current,
       ...(prepared ?? {}),
       status: "running",
-      attempts: current.attempts + 1,
+      attempts: Math.max(1, current.attempts + 1),
       startedAt: now,
       claimedAt: now,
       claimToken: randomUUID(),
@@ -571,14 +620,14 @@ export function doneKnowledgeFinalizationJob(input: {
   patch?: Partial<KnowledgeFinalizationJob>;
 }): { job: KnowledgeFinalizationJob; alreadyDone: boolean } {
   return withFileLock(input.jobPath, () => {
-    const current = readJsonFile<KnowledgeFinalizationJob>(input.jobPath);
+    const current = reconcileKnowledgeFinalizationJobLocked(input.jobPath, new Date());
     if (
       !current.claimToken
       || current.claimToken !== input.claimToken
     ) {
       throw new Error("Knowledge finalization done does not match the active claim.");
     }
-    if (current.status === "succeeded" || current.status === "failed") {
+    if (current.status === "succeeded" || current.status === "failed" || current.status === "expired") {
       const sameResult = input.status === "succeeded"
         ? current.status === "succeeded" && current.finalResponse === (input.result ?? "")
         : current.status === "failed" && current.error?.message === (input.error ?? "");
@@ -609,19 +658,19 @@ export function listRetryableKnowledgeFinalizationJobs(
   project: ProjectContext,
   options: { excludeHosts?: KnowledgeFinalizationHost[] } = {},
 ): string[] {
-  if (project.scope === "session") return [];
-  const excludedHosts = new Set(options.excludeHosts ?? []);
-  return listKnowledgeFinalizationJobs(project)
-    .filter((jobPath) => {
+  // Automatic retries are intentionally forbidden. Failed and expired input is
+  // no longer fresh enough to be deposited safely.
+  void options;
+  if (project.scope !== "session") {
+    for (const jobPath of listKnowledgeFinalizationJobs(project)) {
       try {
-        const job = readKnowledgeFinalizationJob(jobPath);
-        return (job.status === "queued" || job.status === "failed")
-          && job.attempts < 3
-          && !excludedHosts.has(job.host as KnowledgeFinalizationHost);
+        reconcileKnowledgeFinalizationJob(jobPath);
       } catch {
-        return false;
+        // Maintenance is fail-open; an unreadable job remains available for diagnosis.
       }
-    });
+    }
+  }
+  return [];
 }
 
 export function appendKnowledgeTaskConclusions(
@@ -708,6 +757,42 @@ function listKnowledgeJobs(directory: string): string[] {
   return fs.readdirSync(directory)
     .filter((name) => name.endsWith(".json"))
     .map((name) => path.join(directory, name));
+}
+
+function knowledgeFinalizationExpiresAt(queuedAt = new Date()): string {
+  return new Date(queuedAt.getTime() + KNOWLEDGE_FINALIZATION_TTL_MS).toISOString();
+}
+
+function reconcileKnowledgeFinalizationJobLocked(
+  jobPath: string,
+  now: Date,
+): KnowledgeFinalizationJob {
+  const current = readJsonFile<KnowledgeFinalizationJob>(jobPath);
+  if (current.status !== "queued" && current.status !== "running") {
+    return current;
+  }
+  const queuedAt = new Date(current.queuedAt);
+  const expiresAt = current.expiresAt && !Number.isNaN(Date.parse(current.expiresAt))
+    ? new Date(current.expiresAt)
+    : Number.isNaN(queuedAt.getTime()) ? now : new Date(queuedAt.getTime() + KNOWLEDGE_FINALIZATION_TTL_MS);
+  if (now.getTime() < expiresAt.getTime()) {
+    if (current.expiresAt === expiresAt.toISOString()) return current;
+    const normalized = { ...current, expiresAt: expiresAt.toISOString() };
+    writeJsonFile(jobPath, normalized);
+    return normalized;
+  }
+  const expired: KnowledgeFinalizationJob = {
+    ...current,
+    status: "expired",
+    expiresAt: expiresAt.toISOString(),
+    finishedAt: now.toISOString(),
+    claimToken: undefined,
+    claimedAt: undefined,
+    error: { message: "Knowledge finalization expired before completion." },
+  };
+  writeJsonFile(jobPath, expired);
+  fs.rmSync(path.join(path.dirname(jobPath), `${current.finalizeId}.assignments.json`), { force: true });
+  return expired;
 }
 
 function knowledgeFinalizationJobPathForPlan(project: ProjectContext, planPath: string, finalizeId: string): string {

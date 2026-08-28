@@ -2,6 +2,17 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.2.31] - 2026-08-28
+
+### Fixed
+
+- Knowledge finalization claims are now isolated per `finalizeId`, expire after
+  a bounded lifetime, and are never retried or reused after failure, expiry, or
+  abandonment.
+- `end.leave` performs only best-effort detachment; it never queues knowledge
+  finalization work. Codex and DSH guidance no longer exposes host actions
+  already consumed by their native adapters.
+
 ## [0.2.30] - 2026-08-27
 
 ### Fixed

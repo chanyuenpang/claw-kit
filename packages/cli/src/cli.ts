@@ -54,6 +54,7 @@ import {
   claimKnowledgeFinalizationJob,
   doneKnowledgeFinalizationJob,
   readKnowledgeFinalizationJob,
+  reconcileKnowledgeFinalizationJob,
   waitForKnowledgeFinalizationJobReady,
   listKnowledgeFinalizationJobs,
   listRetryableKnowledgeFinalizationJobs,
@@ -1220,10 +1221,10 @@ async function runKnowledge(args: string[]): Promise<void> {
         ? [sessionProject, project]
         : [sessionProject ?? project];
       const jobs = candidates.flatMap((candidate) => listKnowledgeFinalizationJobs(candidate))
-        .map((jobPath) => ({ jobPath, job: readKnowledgeFinalizationJob(jobPath) }))
+        .map((jobPath) => ({ jobPath, job: reconcileKnowledgeFinalizationJob(jobPath) }))
         .filter(({ job }) => (
           job.status === "running"
-          || ((job.status === "queued" || job.status === "failed") && job.attempts < 3)
+          || job.status === "queued"
         ) && (!host || job.host === host))
         .map(({ jobPath, job }) => ({
           jobPath,
@@ -1259,7 +1260,7 @@ async function runKnowledge(args: string[]): Promise<void> {
         throw new Error(`Knowledge finalization ${finalizeId} is unavailable.`);
       }
       const jobPath = located;
-      const job = readKnowledgeFinalizationJob(jobPath);
+      const job = reconcileKnowledgeFinalizationJob(jobPath);
       printJson({
         ok: true,
         command: "knowledge.wait",
@@ -1287,7 +1288,7 @@ async function runKnowledge(args: string[]): Promise<void> {
       if (!jobPath) {
         throw new Error(`Knowledge finalization ${finalizeId} is unavailable.`);
       }
-      const queued = readKnowledgeFinalizationJob(jobPath);
+      const queued = reconcileKnowledgeFinalizationJob(jobPath);
       const job = claimKnowledgeFinalizationJob(jobPath, {
         prepare: (queued) => {
           if (
@@ -2554,8 +2555,8 @@ function runInternalKnowledgeFail(args: string[]): void {
 }
 
 function ensureLegacyKnowledgeClaim(jobPath: string): KnowledgeFinalizationJob | null {
-  const job = readKnowledgeFinalizationJob(jobPath);
-  if (job.status === "succeeded" || job.status === "failed" && job.attempts >= 3) {
+  const job = reconcileKnowledgeFinalizationJob(jobPath);
+  if (job.status === "succeeded" || job.status === "failed" || job.status === "expired") {
     return null;
   }
   if (job.status === "running") {
@@ -2569,7 +2570,7 @@ function completeKnowledgeFinalizationJob(
   result: string,
   claimToken: string,
 ): void {
-  const running = readKnowledgeFinalizationJob(jobPath);
+  const running = reconcileKnowledgeFinalizationJob(jobPath);
   if (running.status === "succeeded") {
     const terminal = doneKnowledgeFinalizationJob({
       jobPath,
@@ -2816,7 +2817,7 @@ async function runInternalBackgroundMaintenance(args: string[]): Promise<void> {
 
 function runInternalKnowledgeDispatch(args: string[]): void {
   const jobPath = readRequiredFlag(args, "--job");
-  const queued = readKnowledgeFinalizationJob(jobPath);
+  const queued = reconcileKnowledgeFinalizationJob(jobPath);
   assertNoRemainingArgs(args, "internal-knowledge-dispatch");
   if ((queued.writer?.executionPolicy ?? "background") !== "background") {
     throw new ClawError("PROJECT_CONFIG_INVALID", "Knowledge dispatch requires a background writer job.");

@@ -1110,7 +1110,7 @@ test("end.closed Stop queues conclusion-based knowledge finalization", () => {
   assert.equal(queued.planPath, taskFile(root, "demo-task", "plan.json"));
 });
 
-test("end.leave Stop queues knowledge finalization", () => {
+test("end.leave Stop does not queue knowledge finalization", () => {
   const root = createFixture("hook-stop-end-leave");
   const sessionId = "thread-end.leave";
   const env = {
@@ -1130,11 +1130,7 @@ test("end.leave Stop queues knowledge finalization", () => {
 
   assert.equal(stop.status, 0);
   const jobsDir = taskFinalizerJobsDirectory(root, "demo-task");
-  const jobFiles = fs.readdirSync(jobsDir).filter((name) => name.endsWith(".json"));
-  assert.equal(jobFiles.length, 1);
-  const queued = JSON.parse(fs.readFileSync(path.join(jobsDir, jobFiles[0]!), "utf-8")) as JsonRecord;
-  assert.equal(queued.status, "queued");
-  assert.equal(queued.planPath, taskFile(root, "demo-task", "plan.json"));
+  assert.equal(fs.existsSync(jobsDir), false);
 });
 
 test.skip("retired: completed-plan Stop owns the final turn and queues a retryable SDK job", () => {

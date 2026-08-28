@@ -7,7 +7,7 @@ import { resolvePlanEffectiveConfig } from "./effective-config.js";
 import { ClawError } from "./errors.js";
 import { isIntegrationHost, resolveHostIntegrationProfile } from "./integration-contract.js";
 import { readJsonFile, withFileLock, withSerializedAccess, writeJsonFile } from "./io.js";
-import { tryEndKnowledgePlan, tryRegisterKnowledgePlan } from "./knowledge-sidecar.js";
+import { tryEndKnowledgePlan, tryLeaveKnowledgePlan, tryRegisterKnowledgePlan } from "./knowledge-sidecar.js";
 import { buildPlanEvent } from "./plan-events.js";
 import {
   isProcessStatus,
@@ -640,7 +640,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
       bindSessionToPlan(task.project, input.ownerSessionKey, resultPlanPath);
     }
     let knowledgeFinalizeId: string | undefined;
-    if (enteredEndTerminal && endedAt && task.project.scope === "project") {
+    if (enteredEndTerminal && isCompletionTerminal(next.status) && endedAt && task.project.scope === "project") {
       const effectiveConfig = resolvePlanEffectiveConfig(task.project.projectConfig, next);
       const knowledgeEnd = tryEndKnowledgePlan({
         project: task.project,
@@ -654,6 +654,9 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
           : {}),
       });
       knowledgeFinalizeId = knowledgeEnd.finalizeId;
+    } else if (enteredEndTerminal && next.status === "end.leave" && task.project.scope === "project") {
+      // Leaving is best-effort detachment, never a prerequisite for a knowledge write.
+      tryLeaveKnowledgePlan({ project: task.project, sessionId: input.ownerSessionKey });
     } else if (!resultPlan.status.startsWith("end.") && task.project.scope === "project") {
       const effectiveConfig = resolvePlanEffectiveConfig(task.project.projectConfig, resultPlan);
       tryRegisterKnowledgePlan({

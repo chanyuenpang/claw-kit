@@ -6,6 +6,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import {
   buildDirectWorkflowGuidance,
+  buildPlanWorkflowGuidance,
   buildKnowledgeAtomicDispatch,
   buildKnowledgeDelegateDispatch,
   buildKnowledgeAssignmentTemplate,
@@ -41,6 +42,7 @@ import {
   leaveCurrentPlan,
   normalizeTruthMarkdownEncoding,
   recordKnowledgeFinalizationResult,
+  reconcileKnowledgeFinalizationJob,
   readKnowledgeFinalizationJob,
   readFocusedPlan,
   readPlanFocusOwner,
@@ -222,7 +224,7 @@ test("knowledge sidecar derives adjacent report names and keeps one report owner
   assert.equal(job.taskName, "demo-task");
   assert.deepEqual(job.docUpdate, { externalDocPaths: ["docs"] });
   assert.equal(job.attempts, 0);
-  assert.deepEqual(listRetryableKnowledgeFinalizationJobs(project), [firstStop.jobPath]);
+  assert.deepEqual(listRetryableKnowledgeFinalizationJobs(project), []);
   const claimed = claimKnowledgeFinalizationJob(firstStop.jobPath!);
   assert.equal(claimed?.status, "running");
   assert.equal(claimed?.attempts, 1);
@@ -233,7 +235,7 @@ test("knowledge sidecar derives adjacent report names and keeps one report owner
     finishedAt: new Date().toISOString(),
     error: { message: "transient" },
   });
-  assert.deepEqual(listRetryableKnowledgeFinalizationJobs(project), [firstStop.jobPath]);
+  assert.deepEqual(listRetryableKnowledgeFinalizationJobs(project), []);
   writeKnowledgeFinalizationJob(firstStop.jobPath!, {
     ...readKnowledgeFinalizationJob(firstStop.jobPath!),
     host: "cindy",
@@ -368,6 +370,36 @@ test("subagent plan end creates a ready job while Stop stays out of the lifecycl
   assert.equal(retryable.attempts, 0);
 });
 
+test("expired knowledge jobs revoke their claim and never become retryable", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "claw-knowledge-expiry-"));
+  const jobPath = path.join(root, "job.json");
+  writeKnowledgeFinalizationJob(jobPath, {
+    schemaVersion: 1,
+    finalizeId: "a".repeat(64),
+    sessionId: "session",
+    projectRoot: root,
+    taskName: "task",
+    planPath: path.join(root, "plan.json"),
+    reportPath: path.join(root, "plan.report"),
+    status: "running",
+    attempts: 1,
+    queuedAt: "2026-08-27T00:00:00.000Z",
+    expiresAt: "2026-08-27T02:00:00.000Z",
+    claimToken: "claim",
+    claimedAt: "2026-08-27T00:01:00.000Z",
+  });
+  const expired = reconcileKnowledgeFinalizationJob(jobPath, new Date("2026-08-27T02:00:00.000Z"));
+  assert.equal(expired.status, "expired");
+  assert.equal(expired.claimToken, undefined);
+  assert.equal(claimKnowledgeFinalizationJob(jobPath), null);
+  assert.throws(() => doneKnowledgeFinalizationJob({
+    jobPath,
+    claimToken: "claim",
+    status: "succeeded",
+    result: "late",
+  }), /does not match the active claim/);
+});
+
 test("Cindy coerces a configured background writer to the subagent lifecycle", () => {
   const root = createEmptyFixture("knowledge-cindy-subagent-only");
   initProject({ cwd: root, projectName: "Knowledge Cindy Subagent Only" });
@@ -458,7 +490,7 @@ test("knowledge claim owns execution and delegate prompt routing", () => {
       finalizeId,
       writer: { model: "test-model", reasoningEffort: "high" },
     });
-    assert.equal(delegateDispatch.preferReuse, true);
+    assert.equal(delegateDispatch.preferReuse, false);
     assert.equal(delegateDispatch.policy, "subagent");
     assert.equal(delegateDispatch.model, "test-model");
     assert.equal(delegateDispatch.reasoningEffort, "high");
@@ -481,7 +513,7 @@ test("knowledge claim owns execution and delegate prompt routing", () => {
       finalizeId,
       writer: { model: "test-model", reasoningEffort: "high" },
     });
-    assert.equal(atomicDispatch.preferReuse, true);
+    assert.equal(atomicDispatch.preferReuse, false);
     assert.equal(atomicDispatch.policy, "subagent");
     assert.equal(atomicDispatch.model, "test-model");
     assert.equal(atomicDispatch.reasoningEffort, "high");
@@ -3060,7 +3092,7 @@ test("end.leave finalizes the current end boundary and resumes directly", async 
   assert.equal(left.planStatus, "end.leave");
   assert.equal(left.plan.leaveReason, "manual_leave");
   assert.equal(left.plan.completedAt, undefined);
-  assert.match(left.knowledgeFinalizeId ?? "", /^[a-f0-9]{64}$/);
+  assert.equal(left.knowledgeFinalizeId, undefined);
   assert.equal(left.workflowGuidance.stage, "left");
   assert.equal(left.workflowGuidance.goalTool, undefined);
   assert.deepEqual(left.workflowGuidance.commandHints, [
@@ -3071,10 +3103,7 @@ test("end.leave finalizes the current end boundary and resumes directly", async 
     fs.readFileSync(knowledgeSessionRegistryPath(resolveProjectContext(root), ownerSessionKey), "utf-8"),
   ) as Record<string, unknown>;
   assert.equal(registry.activePlanPath, undefined);
-  assert.equal(
-    (registry.pendingTurnOwner as Record<string, unknown>).finalizeId,
-    left.knowledgeFinalizeId,
-  );
+  assert.equal(registry.pendingTurnOwner, undefined);
   assert.equal(resolveSessionBoundPlan(resolveProjectContext(root), ownerSessionKey), null);
 
   const resumed = await editPlan({
@@ -3473,6 +3502,49 @@ test("end.completed emits complete goal tool guidance", async () => {
     status: "complete",
     reason: "The plan has reached completion, so the active thread goal should be marked complete.",
   });
+});
+
+test("hosts that auto-consume native effects keep them out of visible guidance", async () => {
+  const basePlan = (status: PlanDocument["status"], tasks: PlanDocument["tasks"]): PlanDocument => ({
+    title: "Codex guidance",
+    status,
+    goal: { text: "Keep the host state synchronized" },
+    tasks,
+  });
+  const cases = [
+    { plan: basePlan("process.active", [{ id: 1, title: "Work", status: "pending" }]), previousStatus: "prepare.requirements" as const },
+    { plan: basePlan("process.active", [{ id: 1, title: "Finished", status: "done" }, { id: 2, title: "Next", status: "pending" }]), completedTaskIds: [1] },
+    { plan: basePlan("process.active", [{ id: 1, title: "Finished", status: "done" }]), completedTaskIds: [1] },
+    { plan: basePlan("process.wait", [{ id: 1, title: "Blocked", status: "in_progress" }]), previousStatus: "process.active" as const },
+    { plan: basePlan("process.discussing", [{ id: 1, title: "Discuss", status: "in_progress" }]), previousStatus: "process.active" as const },
+    { plan: basePlan("end.completed", [{ id: 1, title: "Finished", status: "done" }]), previousStatus: "process.active" as const },
+  ];
+
+  const guidance = await Promise.all(["codex", "dsh"].flatMap((host) => cases.map((entry) => buildPlanWorkflowGuidance({
+    taskName: "demo-task",
+    planFile: "plan.json",
+    plan: entry.plan,
+    host,
+    projectConfig: { goalMode: true },
+    ...("previousStatus" in entry ? { previousStatus: entry.previousStatus } : {}),
+    ...("completedTaskIds" in entry ? { completedTaskIds: entry.completedTaskIds } : {}),
+  }))));
+
+  for (const item of guidance) {
+    assert.doesNotMatch(item.nextsteps.join("\n"), /update_plan|update_goal|thread progress|Goal Mode/i);
+  }
+  assert.deepEqual(guidance[3]?.goalTool, {
+    tool: "update_goal",
+    status: "blocked",
+    reason: "Execution is paused in `process.wait`, so the current active thread goal should be ended as blocked until work resumes.",
+  });
+  assert.deepEqual(guidance[5]?.goalTool, {
+    tool: "update_goal",
+    status: "complete",
+    reason: "The plan has reached completion, so the active thread goal should be marked complete.",
+  });
+  assert.deepEqual(guidance[9]?.goalTool, guidance[3]?.goalTool);
+  assert.deepEqual(guidance[11]?.goalTool, guidance[5]?.goalTool);
 });
 
 test("process entry returns the first task and task completion returns the next lifecycle action", async () => {

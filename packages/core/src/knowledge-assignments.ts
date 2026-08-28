@@ -23,7 +23,7 @@ export type KnowledgeDelegateDispatch = {
   schemaVersion: 1;
   policy: "background" | "subagent";
   finalizeId: string;
-  preferReuse: true;
+  preferReuse: false;
   leadInstruction?: string;
   model?: string;
   reasoningEffort?: NonNullable<KnowledgeWriterConfig["reasoningEffort"]>;
@@ -58,7 +58,7 @@ export function buildKnowledgeDelegateDispatch(input: {
     schemaVersion: 1,
     policy: input.policy,
     finalizeId: input.finalizeId,
-    preferReuse: true,
+    preferReuse: false,
     ...(input.leadInstruction ? { leadInstruction: input.leadInstruction } : {}),
     ...(input.writer?.model ? { model: input.writer.model } : {}),
     ...(input.writer?.reasoningEffort ? { reasoningEffort: input.writer.reasoningEffort } : {}),
@@ -91,7 +91,7 @@ export function buildKnowledgeAtomicDispatch(input: {
     schemaVersion: 1,
     policy: "subagent",
     finalizeId: input.finalizeId,
-    preferReuse: true,
+    preferReuse: false,
     leadInstruction: KNOWLEDGE_DISPATCH_LEAD_INSTRUCTION,
     ...(input.writer?.model ? { model: input.writer.model } : {}),
     ...(input.writer?.reasoningEffort ? { reasoningEffort: input.writer.reasoningEffort } : {}),
