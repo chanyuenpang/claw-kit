@@ -115,6 +115,7 @@ export class ClawCommandService {
         const current = this.requireCurrentPlan(context);
         const shown = showPlan({
           cwd,
+          scope: current.scope,
           taskName: current.taskName,
           planFile: current.planFile,
           ownerSessionKey: this.ownerSessionKey(context),
@@ -136,6 +137,7 @@ export class ClawCommandService {
         const current = this.requireCurrentPlan(context);
         const result = await editPlan({
           cwd,
+          scope: current.scope,
           taskName: current.taskName,
           planFile: current.planFile,
           updates: hasUpdates ? commandInput.updates : undefined,
@@ -153,7 +155,7 @@ export class ClawCommandService {
       }
       case "plan.leave": {
         const sessionKey = this.requireSessionKey(context);
-        const project = this.resolveProject(context);
+        const project = this.resolveProject(context, this.currentPlanScope(context));
         const result = await leaveCurrentPlan({
           project,
           sessionKey,
@@ -285,11 +287,12 @@ export class ClawCommandService {
         const created = await createSubplan({
           ...commandInput,
           cwd,
+          scope: this.currentPlanScope(context),
           ownerSessionKey: this.ownerSessionKey(context),
           host: commandInput.host ?? context.host,
           deferParentMutation: true,
         });
-        const project = this.resolveProject(context);
+        const project = this.resolveProject(context, created.scope);
         const parentRef = createPlanRef(project, created.taskName, created.parentPlan ?? "plan.json");
         const childRef = createPlanRef(project, created.taskName, created.planFile);
         const parentAfterLink = structuredClone(showPlan({
@@ -342,6 +345,7 @@ export class ClawCommandService {
         const result = await editPlan({
           ...commandInput,
           cwd,
+          scope: current.scope,
           taskName: current.taskName,
           planFile: current.planFile,
           commandSource: "task.edit",
@@ -427,9 +431,10 @@ export class ClawCommandService {
   ): Promise<ClawCommandResult> {
     const current = this.requireCurrentPlan(context);
     const sessionKey = this.requireSessionKey(context);
-    const project = this.resolveProject(context);
+    const project = this.resolveProject(context, current.scope);
     const result = await editPlan({
       cwd: context.cwd,
+      scope: current.scope,
       taskName: current.taskName,
       planFile: current.planFile,
       operations,
@@ -456,6 +461,7 @@ export class ClawCommandService {
         });
         const parent = showPlan({
           cwd: context.cwd,
+          scope: parentRef.scope,
           taskName: parentRef.taskName,
           planFile: parentRef.planFile,
           ownerSessionKey: this.ownerSessionKey(context),
@@ -558,6 +564,26 @@ export class ClawCommandService {
     );
   }
 
+  /**
+   * Storage scope of the session's focused plan, when one exists. Plan
+   * operations must resolve their project context with this scope: a
+   * project-scoped plan stays in the project tasks directory even when the
+   * session also owns a session workflow manifest (which the ambient
+   * undefined-scope resolution would prefer, making the plan unreachable).
+   */
+  private currentPlanScope(context: CommandContext): "project" | "session" | undefined {
+    if (context.mode === "session") {
+      const sessionKey = context.sessionKey?.trim();
+      if (!sessionKey) return undefined;
+      try {
+        return readFocusedPlan(this.resolveProject(context), sessionKey, this.focusStore)?.scope;
+      } catch {
+        return undefined;
+      }
+    }
+    return context.currentPlan?.scope;
+  }
+
   private finalizeEnteredEnds(
     context: CommandContext,
     entered: Array<{ ref: PlanRef; plan: import("@veewo/claw-core").PlanDocument; endedAt: string }>,
@@ -569,6 +595,7 @@ export class ClawCommandService {
     const resumedPath = resumed
       ? showPlan({
           cwd: context.cwd,
+          scope: resumed.scope,
           taskName: resumed.taskName,
           planFile: resumed.planFile,
           ownerSessionKey: this.ownerSessionKey(context),
