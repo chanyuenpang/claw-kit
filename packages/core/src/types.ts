@@ -500,6 +500,13 @@ export type PlanWriteResult = {
 
 export type SubplanWriteInput = {
   cwd: string;
+  /**
+   * Storage scope of the parent plan. When omitted, resolution prefers a
+   * session workflow context if one exists — callers holding a PlanRef should
+   * pass ref.scope so project-scoped plans resolve against the project tasks
+   * directory instead of the session runtime.
+   */
+  scope?: "project" | "session";
   parentTaskName: string;
   parentTaskId: number;
   templateName?: string;
@@ -515,6 +522,12 @@ export type SubplanWriteInput = {
 
 export type PlanEditInput = {
   cwd: string;
+  /**
+   * Storage scope of the target plan; pass the PlanRef's scope when available
+   * so a project-scoped plan stays reachable from a session that also owns a
+   * session workflow manifest.
+   */
+  scope?: "project" | "session";
   taskName: string;
   planFile?: string;
   changeSummary?: string;
@@ -615,6 +628,8 @@ export type PlanEditResult = {
 
 export type PlanShowInput = {
   cwd: string;
+  /** Storage scope of the target plan; pass the PlanRef's scope when available. */
+  scope?: "project" | "session";
   taskName: string;
   planFile?: string;
   ownerSessionKey?: string;

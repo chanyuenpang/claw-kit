@@ -8,6 +8,7 @@ const templateRoots = [
   path.join("shared", "skills"),
   path.join("packages", "codex-adapter", "skills"),
   path.join("packages", "core", "resources"),
+  path.join("packages", "dsh-adapter", "skills"),
   path.join("packages", "opencode-adapter", "skills"),
 ];
 const defaultTemplateSource = path.join("packages", "core", "src", "templates", "plans", "default.ts");
@@ -47,9 +48,17 @@ export async function inspectTemplateVersions({ repoRoot = defaultRepoRoot, expe
     });
   }
 
-  const runtime = JSON.parse(await fs.readFile(path.join(repoRoot, knowledgeCaptureRuntimeSpec), "utf8"));
-  if (runtime.version !== releaseVersion) {
-    issues.push({ path: knowledgeCaptureRuntimeSpec, actualVersion: typeof runtime.version === "string" ? runtime.version : null, expectedVersion: releaseVersion });
+  const runtimePath = path.join(repoRoot, knowledgeCaptureRuntimeSpec);
+  try {
+    const runtime = JSON.parse(await fs.readFile(runtimePath, "utf8"));
+    if (runtime.version !== releaseVersion) {
+      issues.push({ path: knowledgeCaptureRuntimeSpec, actualVersion: typeof runtime.version === "string" ? runtime.version : null, expectedVersion: releaseVersion });
+    }
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+    // A missing spec stays visible as an issue instead of crashing the
+    // release check; regenerate it via sync:shared-skills.
+    issues.push({ path: knowledgeCaptureRuntimeSpec, actualVersion: null, expectedVersion: releaseVersion });
   }
 
   return { version: releaseVersion, templateCount: templatePaths.length, issues };
@@ -95,11 +104,17 @@ export async function updateTemplateVersions({ repoRoot = defaultRepoRoot, expec
   }
 
   const runtimePath = path.join(repoRoot, knowledgeCaptureRuntimeSpec);
-  const runtime = JSON.parse(await fs.readFile(runtimePath, "utf8"));
-  if (runtime.version !== releaseVersion) {
-    runtime.version = releaseVersion;
-    await fs.writeFile(runtimePath, `${JSON.stringify(runtime, null, 2)}\n`, "utf8");
-    updated.push(knowledgeCaptureRuntimeSpec);
+  try {
+    const runtime = JSON.parse(await fs.readFile(runtimePath, "utf8"));
+    if (runtime.version !== releaseVersion) {
+      runtime.version = releaseVersion;
+      await fs.writeFile(runtimePath, `${JSON.stringify(runtime, null, 2)}\n`, "utf8");
+      updated.push(knowledgeCaptureRuntimeSpec);
+    }
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+    // The updater cannot synthesize the knowledge-capture spec; the missing
+    // file is reported by inspectTemplateVersions until regenerated.
   }
 
   return { version: releaseVersion, templateCount: templatePaths.length, updated };

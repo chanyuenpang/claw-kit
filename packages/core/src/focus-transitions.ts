@@ -20,6 +20,11 @@ export type PlanRef = {
   projectRoot: string;
   taskName: string;
   planFile: string;
+  /**
+   * Storage scope the plan was created under. Old records may omit it; those
+   * keep the legacy ambient resolution (session workflow preferred).
+   */
+  scope?: "project" | "session";
 };
 
 export type PlanFocusOwner = {
@@ -161,6 +166,7 @@ export function createPlanRef(
     projectRoot: path.resolve(project.projectRoot),
     taskName,
     planFile: normalizePlanFile(planFile),
+    scope: project.scope,
   };
 }
 

@@ -41,6 +41,10 @@ test("template release updater aligns plugin and built-in template versions", as
   await fs.mkdir(path.dirname(runtimePath), { recursive: true });
   await fs.writeFile(runtimePath, '{"version":"1.2.2"}\n', "utf8");
 
+  const runtimeSpecPath = path.join(repoRoot, "packages", "codex-adapter", "skills", "knowledge-capture", "runtime.json");
+  await fs.mkdir(path.dirname(runtimeSpecPath), { recursive: true });
+  await fs.writeFile(runtimeSpecPath, '{"version":"1.2.2"}\n', "utf8");
+
   const defaultPath = path.join(repoRoot, "packages", "core", "src", "templates", "plans", "default.ts");
   await fs.mkdir(path.dirname(defaultPath), { recursive: true });
   await fs.writeFile(

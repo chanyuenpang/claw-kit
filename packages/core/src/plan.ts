@@ -73,10 +73,11 @@ export function resolveThreadGoalPlan(input: {
   taskName: string;
   focusedPlan: PlanDocument;
   ownerSessionKey?: string;
+  scope?: "project" | "session";
 }): PlanDocument {
   if (!input.focusedPlan.parentPlan) return input.focusedPlan;
 
-  const project = resolveWorkflowProjectContext(input.cwd, input.ownerSessionKey);
+  const project = resolveWorkflowProjectContext(input.cwd, input.ownerSessionKey, input.scope);
   const task = resolveTaskContext(project, input.taskName, input.ownerSessionKey);
   const rootPath = requireInsideTask(task, "plan.json");
   if (!fs.existsSync(rootPath)) {
@@ -308,7 +309,7 @@ function buildPlanCreateScopeGuidance(cwd: string, cause: ClawError): ClawError 
 
 export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & { events: PlanEvent[] }> {
   const task = resolveTaskContext(
-    resolveWorkflowProjectContext(input.cwd, input.ownerSessionKey),
+    resolveWorkflowProjectContext(input.cwd, input.ownerSessionKey, input.scope),
     input.taskName,
     input.ownerSessionKey,
   );
@@ -764,7 +765,7 @@ export function showPlan(input: PlanShowInput): PlanShowResult {
 
 export async function createSubplan(input: SubplanWriteInput): Promise<PlanWriteResult & { events: PlanEvent[] }> {
   const parentTask = resolveTaskContext(
-    resolveWorkflowProjectContext(input.cwd, input.ownerSessionKey),
+    resolveWorkflowProjectContext(input.cwd, input.ownerSessionKey, input.scope),
     input.parentTaskName,
     input.ownerSessionKey,
   );
@@ -1405,7 +1406,7 @@ function resolveShowPlanTarget(input: PlanShowInput): {
   planPath: string;
   archived: boolean;
 } {
-  const project = resolveWorkflowProjectContext(input.cwd, input.ownerSessionKey);
+  const project = resolveWorkflowProjectContext(input.cwd, input.ownerSessionKey, input.scope);
   try {
     const task = resolveTaskContext(project, input.taskName);
     const planFile = normalizePlanFile(input.planFile ?? task.activePlan);

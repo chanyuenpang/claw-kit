@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import type { Readable } from "node:stream";
 
 /**
@@ -50,6 +52,34 @@ function protocolError(code: string, message: string): Error {
 }
 
 /**
+ * Resolve a direct "node <claw>/dist/bin.js" invocation on Windows by locating
+ * the "claw.cmd" shim on PATH and checking for the adjacent npm package
+ * layout. Spawning node directly lets terminate() kill the real child instead
+ * of only the cmd.exe wrapper — the wrapper-only kill used to orphan the node
+ * process tree on every open timeout. Returns null when the layout cannot be
+ * resolved; callers then fall back to the legacy cmd.exe shape.
+ */
+export function resolveDirectClawInvocation(options: {
+  clawBinary: string;
+  pathValue: string | undefined;
+  nodeExecutable: string;
+  exists: (candidate: string) => boolean;
+}): { executable: string; script: string } | null {
+  const { clawBinary, pathValue, nodeExecutable, exists } = options;
+  if (!pathValue) return null;
+  for (const dir of pathValue.split(";")) {
+    const trimmed = dir.trim().replace(/^"|"$/g, "");
+    if (!trimmed) continue;
+    if (!exists(path.join(trimmed, clawBinary + ".cmd"))) continue;
+    const script = path.join(trimmed, "node_modules", "@veewo", "claw", "dist", "bin.js");
+    if (exists(script)) {
+      return { executable: nodeExecutable, script };
+    }
+  }
+  return null;
+}
+
+/**
  * A persistent `claw session open <workdir> <sessionId> --host dsh` JSON-RPC
  * connection over stdio, owned by one DSH session. Mirrors the Cindy
  * adapter's NativeClawSession, including the Windows `.cmd` invocation shape.
@@ -64,19 +94,32 @@ export class ClawSession {
   } | null = null;
   private openPromise: Promise<void> | null = null;
   private chain: Promise<unknown> = Promise.resolve();
+  private windowsEntry: { executable: string; script: string } | null | undefined;
 
   constructor(
     private readonly subprocess: SubprocessLike,
     private readonly workdir: string,
     private readonly sessionId: string,
     private readonly clawBinary = "claw",
+    private readonly openTimeoutMs = 15000,
   ) {}
 
   private invocation(argv: string[]): { executable: string; args: string[] } {
     if (process.platform === "win32") {
+      if (this.windowsEntry === undefined) {
+        this.windowsEntry = resolveDirectClawInvocation({
+          clawBinary: this.clawBinary,
+          pathValue: process.env.PATH,
+          nodeExecutable: process.execPath,
+          exists: (candidate) => fs.existsSync(candidate),
+        });
+      }
+      if (this.windowsEntry) {
+        return { executable: this.windowsEntry.executable, args: [this.windowsEntry.script, ...argv] };
+      }
       return {
         executable: process.env.ComSpec ?? "cmd.exe",
-        args: ["/d", "/s", "/c", `${this.clawBinary}.cmd`, ...argv],
+        args: ["/d", "/s", "/c", this.clawBinary + ".cmd", ...argv],
       };
     }
     return { executable: this.clawBinary, args: argv };
@@ -118,10 +161,14 @@ export class ClawSession {
       this.buffer = "";
       handle.stdout.on("data", (chunk: unknown) => this.ingest(String(chunk)));
       const timer = setTimeout(() => {
-        reset();
+        // Reject the pending open BEFORE reset() clears this.pending —
+        // otherwise failPending reads null and the open promise never
+        // settles, hanging claw_run forever with the retry path in
+        // index.ts unreachable.
         this.failPending(protocolError("CLAW_SESSION_OPEN_TIMEOUT", "claw session open timed out."));
+        reset();
         void handle.terminate("open timeout");
-      }, 15000);
+      }, this.openTimeoutMs);
       this.pending = {
         resolve: (value) => {
           clearTimeout(timer);
@@ -141,8 +188,10 @@ export class ClawSession {
         timer,
       };
       handle.done.catch((error: unknown) => {
-        reset();
+        // Same ordering rule as the open timer: reject before reset clears
+        // the pending slot, or a dead child leaves open() unsettled forever.
         this.failPending(error instanceof Error ? error : new Error(String(error)));
+        reset();
       });
     });
     return this.openPromise;
