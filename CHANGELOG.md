@@ -2,6 +2,25 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.2.32] - 2026-08-28
+
+### Changed
+
+- Adapter-owned reports remain opaque while transport now records a versioned
+  capture receipt with identity, byte length, SHA-256, and atomic publication.
+- DSH is a first-class changed/full test domain, and release routing is split by
+  artifact family.
+
+### Fixed
+
+- Fresh DSH projects normalize background knowledge closeout to the native
+  subagent route, and post-commit Host effect failures are structured and
+  observable without replaying canonical mutations.
+- Session open reconciles focused-plan state across pre-journal crashes and
+  resolves project plans against their own storage scope.
+- DSH session startup settles failed opens and launches the adjacent Node CLI
+  entry directly on Windows.
+
 ## [0.2.31] - 2026-08-28
 
 ### Fixed
