@@ -31,6 +31,10 @@ test("template release updater aligns plugin and built-in template versions", as
     await fs.writeFile(absolutePath, '{"id":"demo","version":"1.2.2","status":"process.active","tasks":[]}\n', "utf8");
   }
 
+  const runtimeSpecPath = path.join(repoRoot, "packages", "codex-adapter", "skills", "knowledge-capture", "runtime.json");
+  await fs.mkdir(path.dirname(runtimeSpecPath), { recursive: true });
+  await fs.writeFile(runtimeSpecPath, '{"version":"1.2.2"}\n', "utf8");
+
   const defaultPath = path.join(repoRoot, "packages", "core", "src", "templates", "plans", "default.ts");
   await fs.mkdir(path.dirname(defaultPath), { recursive: true });
   await fs.writeFile(
@@ -41,7 +45,7 @@ test("template release updater aligns plugin and built-in template versions", as
 
   const before = await inspectTemplateVersions({ repoRoot });
   assert.equal(before.templateCount, 8);
-  assert.equal(before.issues.length, 9);
+  assert.equal(before.issues.length, 10);
   await assert.rejects(
     assertTemplateVersionsAligned({ repoRoot }),
     /sync:template-versions[\s\S]*sync:shared-skills/u,
@@ -49,7 +53,7 @@ test("template release updater aligns plugin and built-in template versions", as
 
   const update = await updateTemplateVersions({ repoRoot });
   assert.equal(update.version, "1.2.3");
-  assert.equal(update.updated.length, 9);
+  assert.equal(update.updated.length, 10);
   await assert.doesNotReject(assertTemplateVersionsAligned({ repoRoot }));
 
   for (const relativePath of templatePaths) {
