@@ -65,6 +65,23 @@ export type ClawExecuteResult = {
     };
 };
 /**
+ * Resolve a direct "node <claw>/dist/bin.js" invocation on Windows by locating
+ * the "claw.cmd" shim on PATH and checking for the adjacent npm package
+ * layout. Spawning node directly lets terminate() kill the real child instead
+ * of only the cmd.exe wrapper — the wrapper-only kill used to orphan the node
+ * process tree on every open timeout. Returns null when the layout cannot be
+ * resolved; callers then fall back to the legacy cmd.exe shape.
+ */
+export declare function resolveDirectClawInvocation(options: {
+    clawBinary: string;
+    pathValue: string | undefined;
+    nodeExecutable: string;
+    exists: (candidate: string) => boolean;
+}): {
+    executable: string;
+    script: string;
+} | null;
+/**
  * A persistent `claw session open <workdir> <sessionId> --host dsh` JSON-RPC
  * connection over stdio, owned by one DSH session. Mirrors the Cindy
  * adapter's NativeClawSession, including the Windows `.cmd` invocation shape.
@@ -74,12 +91,14 @@ export declare class ClawSession {
     private readonly workdir;
     private readonly sessionId;
     private readonly clawBinary;
+    private readonly openTimeoutMs;
     private handle;
     private buffer;
     private pending;
     private openPromise;
     private chain;
-    constructor(subprocess: SubprocessLike, workdir: string, sessionId: string, clawBinary?: string);
+    private windowsEntry;
+    constructor(subprocess: SubprocessLike, workdir: string, sessionId: string, clawBinary?: string, openTimeoutMs?: number);
     private invocation;
     open(): Promise<void>;
     /** Consume raw stream chunks, splitting protocol JSON on newlines. */

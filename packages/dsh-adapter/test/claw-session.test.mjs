@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import path from "node:path";
 import { Readable } from "node:stream";
-import { ClawSession } from "../lib/claw-session.js";
+import { ClawSession, resolveDirectClawInvocation } from "../lib/claw-session.js";
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -103,6 +104,78 @@ test("requests are strictly serialized through the chain", async () => {
   pushLine(mock.handles[0], { ok: true, command: "task.done" });
   const result = await second;
   assert.equal(result.command, "task.done");
+});
+
+test("open() rejects with CLAW_SESSION_OPEN_TIMEOUT when the handshake never completes", async () => {
+  const subprocess = {
+    spawn() {
+      const stdout = new Readable({ read() {} });
+      return {
+        stdin: { write() { return true; } },
+        stdout,
+        done: new Promise(() => {}),
+        collected: {},
+        terminate: async () => {},
+      };
+    },
+  };
+  const session = new ClawSession(subprocess, "C:/work", "sess-1", "claw", 50);
+  await assert.rejects(
+    () => session.open(),
+    (error) => error.code === "CLAW_SESSION_OPEN_TIMEOUT",
+  );
+});
+
+test("open() rejects when the child dies before the handshake completes", async () => {
+  const subprocess = {
+    spawn() {
+      const stdout = new Readable({ read() {} });
+      return {
+        stdin: { write() { return true; } },
+        stdout,
+        done: Promise.reject(new Error("child killed")),
+        collected: {},
+        terminate: async () => {},
+      };
+    },
+  };
+  const session = new ClawSession(subprocess, "C:/work", "sess-1");
+  await assert.rejects(
+    () => session.open(),
+    (error) => /child killed/.test(error.message),
+  );
+});
+
+test("resolveDirectClawInvocation finds the adjacent npm layout and returns null otherwise", () => {
+  const exists = (candidate) =>
+    candidate.toLowerCase().includes("nvm4w")
+    && (candidate.endsWith("claw.cmd") || candidate.endsWith("bin.js"));
+  const resolved = resolveDirectClawInvocation({
+    clawBinary: "claw",
+    pathValue: "C:\\other\\bin;C:\\nvm4w\\nodejs",
+    nodeExecutable: "C:\\node\\node.exe",
+    exists,
+  });
+  assert.deepEqual(resolved, {
+    executable: "C:\\node\\node.exe",
+    script: path.join("C:\\nvm4w\\nodejs", "node_modules", "@veewo", "claw", "dist", "bin.js"),
+  });
+
+  const missing = resolveDirectClawInvocation({
+    clawBinary: "claw",
+    pathValue: "C:\\empty",
+    nodeExecutable: "node.exe",
+    exists: () => false,
+  });
+  assert.equal(missing, null);
+
+  const noPath = resolveDirectClawInvocation({
+    clawBinary: "claw",
+    pathValue: undefined,
+    nodeExecutable: "node.exe",
+    exists: () => true,
+  });
+  assert.equal(noPath, null);
 });
 
 test("non-protocol diagnostics on stdout are ignored", async () => {
