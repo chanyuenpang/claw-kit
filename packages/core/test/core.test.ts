@@ -1028,6 +1028,13 @@ test("daily maintenance leaves a persistently locked task for a later day withou
   const first = runDailyMaintenance(project, { now: new Date("2026-02-01T00:00:00.000Z") });
   assert.equal(first.ran, true);
   assert.equal(fs.existsSync(oldTaskDir), true);
+  const retention = enforceTaskRetention(project, undefined, Date.parse("2026-02-01T00:00:00.000Z"));
+  assert.deepEqual(retention.failures.map((failure) => ({
+    operation: failure.operation,
+    taskName: failure.taskName,
+    code: failure.code,
+    retryable: failure.retryable,
+  })), [{ operation: "archive", taskName: "completed-task", code: "EPERM", retryable: true }]);
   assert.equal(fs.existsSync(path.join(root, ".claw", "runtime", "maintenance.json")), true);
   assert.equal(runDailyMaintenance(project, { now: new Date("2026-02-01T12:00:00.000Z") }).ran, false);
 });

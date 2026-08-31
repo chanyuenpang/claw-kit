@@ -3,7 +3,7 @@ import path from "node:path";
 import { readJsonFile } from "./io.js";
 import { listTaskDirectories } from "./context.js";
 import { DEFAULT_MAX_TASKS_TO_KEEP } from "./project-defaults.js";
-import type { ArchivedTaskRecord, PlanDocument, ProjectContext, TaskRetentionResult } from "./types.js";
+import type { ArchivedTaskRecord, PlanDocument, ProjectContext, TaskRetentionFailure, TaskRetentionResult } from "./types.js";
 
 export const COMPLETED_TASK_ARCHIVE_DELAY_MS = 60 * 60 * 1000;
 
@@ -17,6 +17,7 @@ export function enforceTaskRetention(
   const archiveTasksRoot = path.join(project.clawDir, "archive", "tasks");
   const prunedArchivedTasks: ArchivedTaskRecord[] = [];
   const archivedTasks: ArchivedTaskRecord[] = [];
+  const failures: TaskRetentionFailure[] = [];
   let archivedCurrentTask: ArchivedTaskRecord | undefined;
 
   for (const task of listTaskDirectories(project)) {
@@ -26,7 +27,13 @@ export function enforceTaskRetention(
     if (options.includeLegacyTasks === false && !/^\d{4}-\d{2}-\d{2}[\\/]/.test(task.relativePath)) {
       continue;
     }
-    const archivedTask = archiveTaskDirectory(project, task, archiveTasksRoot, nowMs);
+    let archivedTask: ArchivedTaskRecord | undefined;
+    try {
+      archivedTask = archiveTaskDirectory(project, task, archiveTasksRoot, nowMs);
+    } catch (error) {
+      failures.push(toTaskRetentionFailure("archive", task.taskName, task.taskDir, error));
+      continue;
+    }
     if (archivedTask) archivedTasks.push(archivedTask);
     if (archivedTask && task.taskName === currentTaskName) {
       archivedCurrentTask = archivedTask;
@@ -41,8 +48,12 @@ export function enforceTaskRetention(
       .slice(0, overflow);
 
     for (const archivedTask of toPrune) {
-      removeDirectoryTreeSync(archivedTask.archivedTaskDir);
-      prunedArchivedTasks.push(archivedTask);
+      try {
+        removeDirectoryTreeSync(archivedTask.archivedTaskDir);
+        prunedArchivedTasks.push(archivedTask);
+      } catch (error) {
+        failures.push(toTaskRetentionFailure("prune", archivedTask.taskName, archivedTask.archivedTaskDir, error));
+      }
     }
   }
 
@@ -52,6 +63,25 @@ export function enforceTaskRetention(
     archivedTasks,
     ...(archivedCurrentTask ? { archivedCurrentTask } : {}),
     prunedArchivedTasks,
+    failures,
+  };
+}
+
+function toTaskRetentionFailure(
+  operation: TaskRetentionFailure["operation"],
+  taskName: string,
+  taskDir: string,
+  error: unknown,
+): TaskRetentionFailure {
+  const errno = error as NodeJS.ErrnoException;
+  const code = typeof errno?.code === "string" ? errno.code : undefined;
+  return {
+    operation,
+    taskName,
+    taskDir,
+    ...(code ? { code } : {}),
+    message: error instanceof Error ? error.message : "Unknown task-retention failure.",
+    retryable: code === "EPERM" || code === "EBUSY" || code === "EACCES",
   };
 }
 

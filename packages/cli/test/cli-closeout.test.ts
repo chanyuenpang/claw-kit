@@ -625,10 +625,14 @@ test("cli plan edit end.leave dispatches end-state finalization", async () => {
   assert.equal(plan.leaveReason, "manual_leave");
 });
 
-test("cli plan done sweeps another task only when completedAt is older than one hour", () => {
+test("cli plan done queues another task's retention sweep only when completedAt is older than one hour", async () => {
   const root = createFixture("plan-done-delayed-archive-sweep");
-  const env = { CLAW_EMBEDDING_MOCK: "1" };
+  const env = { CLAW_EMBEDDING_MOCK: "1", CLAW_HOST: "codex", CODEX_THREAD_ID: "thread-retention-sweep" };
   runClaw(["init", "--name", "Delayed Archive Sweep", "--max-tasks-to-keep", "99", "--planning", "false"], root, env);
+  const projectPath = path.join(root, ".claw", "project.json");
+  const projectConfig = JSON.parse(fs.readFileSync(projectPath, "utf-8")) as JsonRecord;
+  (projectConfig.knowledgeWriter as JsonRecord).executionPolicy = "subagent";
+  fs.writeFileSync(projectPath, `${JSON.stringify(projectConfig, null, 2)}\n`, "utf-8");
   runClaw(["plan", "create", "--title", "older-task", "--goal", "Older task"], root, env);
   runClaw(["plan", "done", "--task-name", "older-task", "--retrospective", "Older complete."], root, env);
 
@@ -638,8 +642,12 @@ test("cli plan done sweeps another task only when completedAt is older than one 
   fs.writeFileSync(olderPlanPath, `${JSON.stringify(olderPlan, null, 2)}\n`, "utf-8");
 
   runClaw(["plan", "create", "--title", "fresh-task", "--goal", "Fresh task"], root, env);
-  runClaw(["plan", "done", "--task-name", "fresh-task", "--retrospective", "Fresh complete."], root, env);
+  const done = runClaw(["plan", "done", "--task-name", "fresh-task", "--retrospective", "Fresh complete."], root, env);
 
+  assert.equal(done.planStatus, "end.completed");
+  assert.equal((done.knowledgeDispatch as JsonRecord).policy, "subagent");
+  const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
+  assert.equal(((refreshStatus.taskRetention as JsonRecord).failures as unknown[]).length, 0);
   assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "older-task")), false);
   assert.equal(fs.existsSync(path.join(root, ".claw", "archive", "tasks", path.basename(path.dirname(taskDirectory(root, "fresh-task"))), "older-task")), true);
   assert.equal(fs.existsSync(taskDirectory(root, "fresh-task")), true);

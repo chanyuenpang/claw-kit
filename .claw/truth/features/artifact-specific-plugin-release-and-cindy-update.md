@@ -27,6 +27,12 @@
 ## Evolution history
 
 <!-- dated: 2026-08-31 -->
+### CLI 0.2.34 与 Codex 0.2.34.0 release
+
+- CLI/Core/Client `0.2.34` 已通过 npm 发布，并以 immutable `v0.2.34` GitHub Release 完成核验。Codex `0.2.34.0` 已从 committed official marketplace source 发布为 immutable `vcodex-0.2.34.0` GitHub Release。
+- 两条 artifact 线在同一主仓提交 `5f8a599` 结束；本轮另有明确证据表明全局 CLI 与官方 `claw-kit@claw-kit` Codex plugin 都已更新，未对 Cindy 或其他平台 profile 作出安装断言。
+
+<!-- dated: 2026-08-31 -->
 ### Cindy 0.2.33.0 release
 
 - Cindy `0.2.33.0` was released from independent marketplace `main` commit `3d25875` with immutable tag `vcindy-0.2.33.0`; 32 focused tests passed.
@@ -58,12 +64,6 @@
 
 - CLI/Core/Client `0.2.23` was published through npm with `v0.2.23` and a public GitHub Release. Codex `0.2.23.1` was released from the committed main-repository marketplace snapshot with `vcodex-0.2.23.1` and a zero-asset GitHub Release. Cindy `0.2.23.0` was released from its independent marketplace `main` with `vcindy-0.2.23.0`, without an archive or GitHub Release.
 - Each artifact retained its independent exact-source and terminal acceptance gate. The main repository and Cindy repository both finished clean on `main` and equal to `origin/main`; this release batch does not assert a local CLI or plugin installation refresh.
-
-<!-- dated: 2026-08-20 -->
-### 0.2.22 multi-artifact release batch
-
-- CLI/Core/Client `0.2.22` was published through npm with `v0.2.22` and a public GitHub Release. Codex `0.2.22.1` was released from the committed main-repository marketplace snapshot with `vcodex-0.2.22.1` and a zero-asset GitHub Release. Cindy `0.2.22.0` was released from its independent marketplace `main` with `vcindy-0.2.22.0`, without an archive or GitHub Release.
-- Each artifact retained independent source and acceptance evidence. This completed batch does not assert a local CLI or plugin installation refresh.
 
 ## Search terms
 

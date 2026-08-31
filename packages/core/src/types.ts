@@ -786,10 +786,20 @@ export type ArchivedTaskRecord = {
   completedAt?: string;
 };
 
+export type TaskRetentionFailure = {
+  operation: "archive" | "prune";
+  taskName: string;
+  taskDir: string;
+  code?: string;
+  message: string;
+  retryable: boolean;
+};
+
 export type TaskRetentionResult = {
   enabled: boolean;
   maxTasksToKeep: number;
   archivedTasks: ArchivedTaskRecord[];
   archivedCurrentTask?: ArchivedTaskRecord;
   prunedArchivedTasks: ArchivedTaskRecord[];
+  failures: TaskRetentionFailure[];
 };

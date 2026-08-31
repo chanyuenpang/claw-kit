@@ -3887,7 +3887,7 @@ type CompletionRefreshResult = {
   };
 };
 
-type CompletionRefreshOperation = "memory.reindex.project" | "gitnexus.refresh";
+type CompletionRefreshOperation = "task.retention" | "memory.reindex.project" | "gitnexus.refresh";
 
 type CompletionRefreshStatus = {
   ok: true;
@@ -3922,6 +3922,7 @@ type CompletionRefreshStatus = {
   memory: {
     project: ReturnType<typeof buildMemoryIndex>;
   };
+  taskRetention?: ReturnType<typeof enforceTaskRetention>;
   gitnexus?: GitNexusRefreshResult;
   dirtyHash?: string;
   refreshCycles?: number;
@@ -3997,17 +3998,21 @@ function queueCompletionRefresh(input: {
 }): CompletionRefreshResult {
   const project = resolveProjectContext(input.cwd);
   const includeTaskRetention = input.includeTaskRetention ?? true;
-  const taskRetention = includeTaskRetention
-    ? enforceTaskRetention(project, input.taskName)
-    : {
-        enabled: false,
-        maxTasksToKeep: project.projectConfig?.maxTasksToKeep ?? DEFAULT_MAX_TASKS_TO_KEEP,
-        archivedTasks: [],
-        prunedArchivedTasks: [],
-      };
+  // Retention is deliberately a background effect. A locked old task must not
+  // sit between the durable terminal mutation and its knowledge dispatch.
+  const taskRetention = {
+    enabled: includeTaskRetention,
+    maxTasksToKeep: project.projectConfig?.maxTasksToKeep ?? DEFAULT_MAX_TASKS_TO_KEEP,
+    archivedTasks: [],
+    prunedArchivedTasks: [],
+    failures: [],
+  };
   const startedAt = new Date().toISOString();
   const statusFile = createCompletionRefreshStatusFile(project.clawDir, input.statusLabel ?? input.taskName, startedAt);
   const operations: CompletionRefreshResult["asyncRefresh"]["operations"] = ["memory.reindex.project"];
+  if (includeTaskRetention) {
+    operations.unshift("task.retention");
+  }
   if (project.projectConfig?.gitnexus === true && input.includeGitNexus !== false) {
     operations.push("gitnexus.refresh");
   }
@@ -4202,6 +4207,9 @@ function runInternalCompletionRefresh(args: string[]): void {
     );
     let projectMemory: ReturnType<typeof buildMemoryIndex> | undefined;
     let gitnexus: GitNexusRefreshResult | undefined;
+    const taskRetention = operations.includes("task.retention")
+      ? enforceTaskRetention(resolveProjectContext(cwd), taskName)
+      : undefined;
     let refreshCycles = 0;
     let dirtyHash = "";
     while (refreshCycles < 3) {
@@ -4237,6 +4245,7 @@ function runInternalCompletionRefresh(args: string[]): void {
       memory: {
         project: projectMemory!,
       },
+      ...(taskRetention ? { taskRetention } : {}),
       gitnexus,
       dirtyHash,
       refreshCycles,
@@ -4468,6 +4477,7 @@ function compactCompletionRefresh(completionRefresh: CompletionRefreshResult): R
   return {
     taskRetention: {
       enabled: completionRefresh.taskRetention.enabled,
+      status: completionRefresh.taskRetention.enabled ? "queued" : "disabled",
       maxTasksToKeep: completionRefresh.taskRetention.maxTasksToKeep,
       archivedCurrentTask: completionRefresh.taskRetention.archivedCurrentTask
         ? {
@@ -4483,6 +4493,7 @@ function compactCompletionRefresh(completionRefresh: CompletionRefreshResult): R
         taskName: task.taskName,
         archivedTaskDir: task.archivedTaskDir,
       })),
+      failures: completionRefresh.taskRetention.failures,
     },
     asyncRefresh: {
       queued: completionRefresh.asyncRefresh.queued,
