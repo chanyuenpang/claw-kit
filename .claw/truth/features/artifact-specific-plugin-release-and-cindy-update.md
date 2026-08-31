@@ -26,6 +26,12 @@
 <!-- state: history -->
 ## Evolution history
 
+<!-- dated: 2026-08-31 -->
+### Cindy 0.2.33.0 release
+
+- Cindy `0.2.33.0` was released from independent marketplace `main` commit `3d25875` with immutable tag `vcindy-0.2.33.0`; 32 focused tests passed.
+- The `claw-kit-cindy` marketplace entry remained on `./plugin`. No `.cindy` archive or GitHub Release was published, and the completed release does not assert a local installation refresh.
+
 <!-- dated: 2026-08-28 -->
 ### CLI 0.2.32, Codex 0.2.32.0, and DSH 0.2.32.0 release batch
 
@@ -58,12 +64,6 @@
 
 - CLI/Core/Client `0.2.22` was published through npm with `v0.2.22` and a public GitHub Release. Codex `0.2.22.1` was released from the committed main-repository marketplace snapshot with `vcodex-0.2.22.1` and a zero-asset GitHub Release. Cindy `0.2.22.0` was released from its independent marketplace `main` with `vcindy-0.2.22.0`, without an archive or GitHub Release.
 - Each artifact retained independent source and acceptance evidence. This completed batch does not assert a local CLI or plugin installation refresh.
-
-<!-- dated: 2026-08-15 -->
-### 0.2.19 multi-artifact release batch
-
-- CLI/Core/Client `0.2.19` was published through npm with `v0.2.19` and a public GitHub Release. Codex `0.2.19.1` was released from committed main-repository marketplace source with `vcodex-0.2.19.1` and a zero-asset GitHub Release. Cindy `0.2.19.0` was released from independent marketplace `main` commit `064b790` with `vcindy-0.2.19.0`, with neither an archive nor GitHub Release.
-- Each artifact retained its own verified source and terminal evidence. The completed batch does not assert that any local CLI or plugin installation was refreshed.
 
 ## Search terms
 
