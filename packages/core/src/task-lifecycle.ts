@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { readJsonFile } from "./io.js";
 import { listTaskDirectories } from "./context.js";
-import { enforceTaskRetention } from "./task-retention.js";
+import { enforceTaskRetention, moveTaskDirectoryWithCollisionAndRetry } from "./task-retention.js";
 import type { PlanDocument, ProjectContext } from "./types.js";
 
 const WORKFLOW_TASK_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -81,8 +81,13 @@ function archiveDatedTaskDirectoriesBefore(project: ProjectContext, cutoffDate: 
     const sourceDateDir = path.join(project.tasksDir, entry.name);
     for (const child of fs.readdirSync(sourceDateDir, { withFileTypes: true })) {
       if (!child.isDirectory() || !isTerminalTask(path.join(sourceDateDir, child.name))) continue;
-      moveDirectoryWithCollision(path.join(sourceDateDir, child.name), path.join(archiveRoot, entry.name, child.name));
-      archivedTaskCount += 1;
+      try {
+        moveTaskDirectoryWithCollisionAndRetry(path.join(sourceDateDir, child.name), path.join(archiveRoot, entry.name, child.name));
+        archivedTaskCount += 1;
+      } catch {
+        // Maintenance is best-effort: a persistent host lock must not block the
+        // workflow or prevent unrelated expired tasks from being maintained.
+      }
     }
   }
   return archivedTaskCount;
@@ -114,8 +119,12 @@ function archiveLegacyTaskDirectoriesBefore(project: ProjectContext, cutoffDate:
     if (/^\d{4}-\d{2}-\d{2}[\\/]/.test(task.relativePath)) continue;
     const updatedAt = readPlanUpdatedAt(path.join(task.taskDir, "plan.json"));
     if (!updatedAt || localDate(new Date(updatedAt)) >= cutoffDate || !isTerminalTask(task.taskDir)) continue;
-    moveDirectoryWithCollision(task.taskDir, path.join(archiveRoot, task.relativePath));
-    archivedTaskCount += 1;
+    try {
+      moveTaskDirectoryWithCollisionAndRetry(task.taskDir, path.join(archiveRoot, task.relativePath));
+      archivedTaskCount += 1;
+    } catch {
+      // Retry this task on a later maintenance pass without failing this one.
+    }
   }
   return archivedTaskCount;
 }
@@ -137,17 +146,6 @@ function readPlanUpdatedAt(planPath: string): number | null {
   } catch {
     return fs.statSync(planPath).mtimeMs;
   }
-}
-
-function moveDirectoryWithCollision(sourceDir: string, targetDir: string): void {
-  fs.mkdirSync(path.dirname(targetDir), { recursive: true });
-  let target = targetDir;
-  let suffix = 1;
-  while (fs.existsSync(target)) {
-    target = `${targetDir}--${suffix}`;
-    suffix += 1;
-  }
-  fs.renameSync(sourceDir, target);
 }
 
 function localDate(now: Date): string {

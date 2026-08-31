@@ -84,8 +84,7 @@ function archiveTaskDirectory(
   }
 
   fs.mkdirSync(archiveTasksRoot, { recursive: true });
-  const archivedTaskDir = uniqueArchiveTaskDir(archiveTasksRoot, task.relativePath);
-  renameDirectoryWithRetry(sourceTaskDir, archivedTaskDir);
+  const archivedTaskDir = moveTaskDirectoryWithCollisionAndRetry(sourceTaskDir, path.join(archiveTasksRoot, task.relativePath));
   const archivedPlanPath = activePlanPath
     ? path.join(archivedTaskDir, path.relative(sourceTaskDir, activePlanPath))
     : undefined;
@@ -99,12 +98,25 @@ function archiveTaskDirectory(
   };
 }
 
-function renameDirectoryWithRetry(sourceDir: string, targetDir: string): void {
+/**
+ * Moves one complete task directory to a collision-free archive destination.
+ * This is the single Windows-safe move boundary for both direct retention and
+ * lazy daily maintenance; task contents must never be split across locations.
+ */
+export function moveTaskDirectoryWithCollisionAndRetry(sourceDir: string, targetDir: string): string {
+  fs.mkdirSync(path.dirname(targetDir), { recursive: true });
+  let destination = targetDir;
+  let suffix = 1;
+  while (fs.existsSync(destination)) {
+    destination = `${targetDir}--${suffix}`;
+    suffix += 1;
+  }
+
   const retryDelaysMs = [0, 50, 150, 300];
   for (let attempt = 0; attempt < retryDelaysMs.length; attempt += 1) {
     try {
-      fs.renameSync(sourceDir, targetDir);
-      return;
+      fs.renameSync(sourceDir, destination);
+      return destination;
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       const retryable = code === "EPERM" || code === "EBUSY" || code === "EACCES";
@@ -115,6 +127,8 @@ function renameDirectoryWithRetry(sourceDir: string, targetDir: string): void {
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
     }
   }
+
+  throw new Error("Unreachable task directory move retry state.");
 }
 
 function listArchivedTasks(archiveTasksRoot: string): ArchivedTaskRecord[] {
@@ -185,22 +199,4 @@ function removeDirectoryTreeSync(targetDir: string): void {
     }
   }
   fs.rmdirSync(targetDir);
-}
-
-function uniqueArchiveTaskDir(archiveTasksRoot: string, relativePath: string): string {
-  const candidate = path.join(archiveTasksRoot, relativePath);
-  fs.mkdirSync(path.dirname(candidate), { recursive: true });
-  if (!fs.existsSync(candidate)) {
-    return candidate;
-  }
-
-  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-  let attempt = 1;
-  while (true) {
-    const suffixed = path.join(path.dirname(candidate), `${path.basename(candidate)}--${stamp}-${attempt}`);
-    if (!fs.existsSync(suffixed)) {
-      return suffixed;
-    }
-    attempt += 1;
-  }
 }

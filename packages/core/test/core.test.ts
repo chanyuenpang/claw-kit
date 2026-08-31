@@ -968,6 +968,70 @@ test("daily maintenance skips held project and session locks without blocking wo
   assert.equal(fs.existsSync(sessionLock), true);
 });
 
+test("daily maintenance retries a transient dated-task rename lock", async (t) => {
+  const root = createFixture("daily-maintenance-transient-archive-lock");
+  initProject({ cwd: root, projectName: "Transient archive lock", force: true });
+  const created = await writePlan({
+    cwd: root,
+    taskName: "completed-task",
+    title: "Completed task",
+    goalText: "Archive me",
+    content: { title: "Completed task", status: "end.completed", completedAt: "2026-01-01T00:00:00.000Z", goal: { text: "Archive me" }, tasks: [], retrospective: { summary: "Done" } },
+  });
+  const oldTaskDir = path.join(root, ".claw", "tasks", "2026-01-30", "completed-task");
+  fs.mkdirSync(path.dirname(oldTaskDir), { recursive: true });
+  fs.renameSync(created.taskDir, oldTaskDir);
+  fs.rmdirSync(path.dirname(created.taskDir));
+
+  const renameSync = fs.renameSync;
+  let attempts = 0;
+  t.mock.method(fs, "renameSync", ((source: fs.PathLike, target: fs.PathLike) => {
+    if (path.resolve(String(source)) === path.resolve(oldTaskDir) && attempts < 2) {
+      attempts += 1;
+      throw Object.assign(new Error("locked"), { code: "EPERM" });
+    }
+    attempts += 1;
+    return renameSync(source, target);
+  }) as typeof fs.renameSync);
+
+  const result = runDailyMaintenance(resolveProjectContext(root), { now: new Date("2026-02-01T00:00:00.000Z") });
+  assert.equal(result.ran, true);
+  assert.equal(attempts, 3);
+  assert.equal(fs.existsSync(oldTaskDir), false);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "archive", "tasks", "2026-01-30", "completed-task", "plan.json")), true);
+});
+
+test("daily maintenance leaves a persistently locked task for a later day without interrupting the workflow", async (t) => {
+  const root = createFixture("daily-maintenance-persistent-archive-lock");
+  initProject({ cwd: root, projectName: "Persistent archive lock", force: true });
+  const created = await writePlan({
+    cwd: root,
+    taskName: "completed-task",
+    title: "Completed task",
+    goalText: "Archive me later",
+    content: { title: "Completed task", status: "end.completed", completedAt: "2026-01-01T00:00:00.000Z", goal: { text: "Archive me later" }, tasks: [], retrospective: { summary: "Done" } },
+  });
+  const oldTaskDir = path.join(root, ".claw", "tasks", "2026-01-30", "completed-task");
+  fs.mkdirSync(path.dirname(oldTaskDir), { recursive: true });
+  fs.renameSync(created.taskDir, oldTaskDir);
+  fs.rmdirSync(path.dirname(created.taskDir));
+
+  const renameSync = fs.renameSync;
+  t.mock.method(fs, "renameSync", ((source: fs.PathLike, target: fs.PathLike) => {
+    if (path.resolve(String(source)) === path.resolve(oldTaskDir)) {
+      throw Object.assign(new Error("locked"), { code: "EPERM" });
+    }
+    return renameSync(source, target);
+  }) as typeof fs.renameSync);
+
+  const project = resolveProjectContext(root);
+  const first = runDailyMaintenance(project, { now: new Date("2026-02-01T00:00:00.000Z") });
+  assert.equal(first.ran, true);
+  assert.equal(fs.existsSync(oldTaskDir), true);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "runtime", "maintenance.json")), true);
+  assert.equal(runDailyMaintenance(project, { now: new Date("2026-02-01T12:00:00.000Z") }).ran, false);
+});
+
 test("dated tasks keep finalizer jobs inside the task directory", async () => {
   const root = createFixture("dated-finalizer-job");
   initProject({ cwd: root, projectName: "Dated finalizer", force: true });
