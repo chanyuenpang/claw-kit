@@ -26,6 +26,12 @@
 <!-- state: history -->
 ## Evolution history
 
+<!-- dated: 2026-08-28 -->
+### CLI 0.2.32, Codex 0.2.32.0, and DSH 0.2.32.0 release batch
+
+- CLI/Core/Client `0.2.32` was published through npm with immutable tag `v0.2.32` and a public GitHub Release. Codex `0.2.32.0` was released from committed marketplace source with immutable tag `vcodex-0.2.32.0` and a zero-asset GitHub Release.
+- DSH released immutable source tag `vdsh-0.2.32.0`; its npm package was published as `@veewo/dsh-claw-kit@0.2.32-rc.0`. All three tags resolve to main-repository commit `ca5ceaa`, and the completed batch does not assert a local CLI, Codex plugin, or DSH profile refresh.
+
 <!-- dated: 2026-08-24 -->
 ### Codex 0.2.27.1, DSH 0.2.27.1, and Cindy 0.2.27.0 release batch
 
@@ -58,18 +64,6 @@
 
 - CLI/Core/Client `0.2.19` was published through npm with `v0.2.19` and a public GitHub Release. Codex `0.2.19.1` was released from committed main-repository marketplace source with `vcodex-0.2.19.1` and a zero-asset GitHub Release. Cindy `0.2.19.0` was released from independent marketplace `main` commit `064b790` with `vcindy-0.2.19.0`, with neither an archive nor GitHub Release.
 - Each artifact retained its own verified source and terminal evidence. The completed batch does not assert that any local CLI or plugin installation was refreshed.
-
-<!-- dated: 2026-08-10 -->
-### 0.2.18 multi-artifact release batch
-
-- CLI/Core/Client `0.2.18` was published through npm with `v0.2.18` and a
-  GitHub Release. Codex `0.2.18.1` was released from the committed marketplace
-  snapshot with `vcodex-0.2.18.1` and a zero-asset GitHub Release. Cindy
-  `0.2.18.0` was released from its independent marketplace `main` with
-  `vcindy-0.2.18.0` and no archive or GitHub Release.
-- Each artifact line passed its required release checks, remote-reference
-  verification, and clean-worktree gate. This batch is historical evidence and
-  does not claim any local CLI or plugin installation was refreshed.
 
 ## Search terms
 

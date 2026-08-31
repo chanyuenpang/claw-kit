@@ -32,9 +32,11 @@ export type ResolvedPlanTemplate = {
   templatePath?: string;
 };
 
+// This is a compatibility contract for TEMPLATE.json, deliberately separate
+// from the claw-kit package version.  Routine CLI releases must not invalidate
+// installed, otherwise-valid skills.
+export const TEMPLATE_DRIVER_VERSION = "1.0.0";
 const PLAN_TEMPLATES: ResolvedPlanTemplate[] = [normalizePlanLikeTemplate(defaultPlanTemplate, { source: "builtin" })];
-const CURRENT_TEMPLATE_VERSION = defaultPlanTemplate.version;
-const CREATE_CLAW_SKILL = "claw-kit:create-claw-skill";
 type TemplateVersionPolicy = "require-current" | "ignore";
 
 export async function resolveSeedPlanTemplate(params: {
@@ -339,6 +341,7 @@ function validatePlanLikeTemplate(
   templatePath: string,
   versionPolicy: TemplateVersionPolicy,
 ): PlanTemplateDocument {
+  void versionPolicy;
   const candidate = raw as Record<string, unknown>;
   const allowedKeys = new Set([
     "id",
@@ -380,9 +383,11 @@ function validatePlanLikeTemplate(
       templatePath,
     });
   }
-  if (versionPolicy === "require-current") {
-    assertCompatibleTemplateVersion(candidate.version, templatePath);
-  }
+  // Template driver maintenance is intentionally non-blocking.  Older,
+  // missing, and malformed version stamps are normalized in memory below so a
+  // workflow can continue; the distributed skill carries the maintenance
+  // instructions needed to persist a refreshed stamp without involving its
+  // end user.
   if (candidate.title !== undefined && typeof candidate.title !== "string") {
     throw new ClawError("PROJECT_CONFIG_INVALID", `Invalid template title at ${templatePath}.`, {
       templatePath,
@@ -445,55 +450,15 @@ function validatePlanLikeTemplate(
   return raw as PlanTemplateDocument;
 }
 
-function assertCompatibleTemplateVersion(value: unknown, templatePath: string): asserts value is string {
-  const templateVersion = typeof value === "string" ? value.trim() : "";
-  const parsedTemplateVersion = parseTemplateSemver(templateVersion);
-  const currentVersion = parseTemplateSemver(CURRENT_TEMPLATE_VERSION);
-  if (parsedTemplateVersion && currentVersion && compareTemplateSemver(parsedTemplateVersion, currentVersion) >= 0) {
-    return;
-  }
-
-  const reason = !templateVersion
-    ? "missing_version"
-    : !parsedTemplateVersion
-      ? "invalid_version"
-      : "older_version";
-  throw new ClawError(
-    "PROJECT_CONFIG_INVALID",
-    `Template out of date. Use ${CREATE_CLAW_SKILL} to upgrade template.`,
-    {
-      templatePath,
-      reason,
-      templateVersion: templateVersion || null,
-      cliVersion: CURRENT_TEMPLATE_VERSION,
-      requiredSkill: CREATE_CLAW_SKILL,
-      prompt: `Use ${CREATE_CLAW_SKILL} to upgrade the template at ${templatePath}. Inspect and optimize the skill package before setting version to ${CURRENT_TEMPLATE_VERSION}.`,
-    },
-  );
-}
-
-function parseTemplateSemver(value: string): [number, number, number] | null {
-  const match = value.match(/^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/u);
-  return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
-}
-
-function compareTemplateSemver(left: [number, number, number], right: [number, number, number]): number {
-  for (let index = 0; index < left.length; index += 1) {
-    const delta = left[index]! - right[index]!;
-    if (delta !== 0) {
-      return delta;
-    }
-  }
-  return 0;
-}
-
 function normalizePlanLikeTemplate(
   template: PlanTemplateDocument,
   meta: { source: "builtin" | "project"; templatePath?: string },
 ): ResolvedPlanTemplate {
   return {
     id: template.id,
-    version: template.version,
+    // Runtime state always records the driver it is executing. Source-package
+    // maintenance remains an internal concern of create-claw-skill.
+    version: TEMPLATE_DRIVER_VERSION,
     scope: template.scope,
     configOverride: normalizeTemplateConfigOverride(template.configOverride),
     title: template.title,

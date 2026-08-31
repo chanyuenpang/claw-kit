@@ -2,6 +2,21 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.2.33] - 2026-08-31
+
+### Changed
+
+- Release templates for CLI, Codex, and DSH now require an explicit built-in
+  templated-skill compatibility check before publication.
+- Template driver compatibility uses the stable `1.0.0` contract rather than
+  the CLI release number.
+
+### Fixed
+
+- Goal transitions now follow the same contract across the Codex driver and
+  DSH: preserve unfinished Goals on creation, block only active Goals, and
+  allow blocked Goals to complete.
+
 ## [0.2.32] - 2026-08-28
 
 ### Changed

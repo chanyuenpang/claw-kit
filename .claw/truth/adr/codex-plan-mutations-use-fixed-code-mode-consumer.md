@@ -38,13 +38,13 @@ Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode c
 - v4 曾只扩大 `plan.done` 的可见终结字段：`planPath`、`nextsteps` 与 `achievement`；v5 保留这些 compact-result 语义，并加入固定程序内的 Goal-action 幂等检查。普通 mutation 仍保持精简，subplan done 恢复 parent 时因为没有 root terminal `achievement` 而不会制造终结成就。
 - Goal action 继续使用 schema-v1 原生命令，不引入 `ensure_goal` pseudo-action，也不匹配 host error text。只有固定 driver 可以在 action 紧前方调用 `get_goal`；Agent 禁止单独检查 Goal 状态。
 - CLI 只按 mutation 提交后的 plan 状态路由 host actions：每个非空 `process.*` plan 投影完整 Progress；`process.wait` / `process.discussing` 发出 `update_goal(status="blocked")`；进入或恢复 `process.active` 按既有合同发出 `create_goal`；每个 `end.*` 先以 `:clear_progress` action-id 输出 `update_plan({ plan: [] })`，再发出 `update_goal(status="complete")`。
-- consumer 逐条执行 CLI 返回的 action；每个 `create_goal` / `update_goal` 紧前方读取 Goal snapshot。`create_goal` 遇到任何 nonterminal Goal 时保留它、返回可见 recovery note 并将 action 记为已消费；只有不存在 nonterminal Goal 时才创建新 Goal。没有 active Goal 时跳过 `update_goal`。恢复 active plan 时，SessionStart 要求固定 driver 运行一次 `plan sync`，该调用恢复 progress projection，并仅在 Goal 缺失时创建 Goal；resume 的 canonical transition 不得重放。
+- consumer 逐条执行 CLI 返回的 action；每个 `create_goal` / `update_goal` 紧前方读取 Goal snapshot。`create_goal` 遇到任何 nonterminal Goal 时保留它、返回可见 recovery note 并将 action 记为已消费；只有不存在 nonterminal Goal 时才创建新 Goal。`update_goal(status="blocked")` 只允许从 active 状态执行，`update_goal(status="complete")` 允许从 active 或 blocked 状态执行；缺失、已 complete、未知或其他不匹配状态都作为 no-op。恢复 active plan 时，SessionStart 要求固定 driver 运行一次 `plan sync`，该调用恢复 progress projection，并仅在 Goal 缺失时创建 Goal；resume 的 canonical transition 不得重放。
 - 未知 `schemaVersion`、未知 tool、不兼容 input 或缺失 host tool 一律 fail closed。Codex 不提供 direct-call 或 split-call fallback。
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md` 内嵌固定 `runClawPlanMutation` driver，以便在 isolate 内直接执行；`packages/cli/src/codex-driver.ts` 是当前 source contract，并由 source SHA snapshot 强制 driver/cache identity 随序列化语义变化升级。旧的 `packages/codex-adapter/scripts/code-mode-host-action-consumer.mjs` 只保留为 repository test oracle，不进入 plugin payload。
 - Node adapter worker 走 `@veewo/claw-client` 的持久 session 时，使用 schema-v1 `commandEnvelope()` 接收 `output`、`hostActions`、`postCommitEffects` 与可选 `knowledgeDispatch`；普通 `command()` 只返回 `output`。当前 Codex code-mode 不能跨调用持有该 Node socket，因此仍用 structured-invoke compatibility transport，每次 mutation 启动一个轻量 CLI 进程。
 - Goal lifecycle 变更发布前必须用未发布的本地构建通过真实 Host wait→active 验收：wait 后 Goal 为空，resume 后新 Goal 在跨调用结算后仍保持 active；单元合同测试不能替代该门禁。
 
-## Alternatives Considered
+## Alternatives
 
 - 让 Agent 判断 `hostActions` 与 `goalTool`：拒绝，因为会把顺序、去重和重复 Goal Mode 调用风险重新交给提示词解释。
 - CLI 子进程直接调用 Codex host tools：拒绝，因为公开插件接口没有提供这条能力边界。
@@ -80,7 +80,7 @@ Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode c
 - structured argv、固定 invoke command 与 CLI 侧二次校验移除了 Agent-controlled shell quoting 和 host injection；protocol parser 不会把 shell diagnostics 中任意花括号误当 mutation result。
 - stateless CLI 与 session command service 共享同一个 host-action projector；Node adapter 得到原生 envelope，而 Codex code mode 保留兼容 transport。两者共享语义，但不虚构 Codex 已拥有持久 socket。
 - schema-v1 envelope 删除无人消费的事件与策略 metadata，保留 `id` 的至多一次语义和原生 host `input`；兼容精简不需要新增 schema 版本，也不改变 consumer 实现边界。
-- Goal action 的目标状态幂等性由固定程序拥有：设置 Goal 不覆盖任何 nonterminal Goal，而是在没有 nonterminal Goal 时才创建；已关闭或不存在的 Goal 不会被 completion 再次关闭。恢复 active plan 的 `plan sync` 同时恢复 progress projection。所有路径都保留 action-id 至多一次语义。
+- Goal action 的目标状态幂等性由固定程序拥有：设置 Goal 不覆盖任何 nonterminal Goal，而是在没有 nonterminal Goal 时才创建；`blocked` 只从 active 进入，`complete` 可从 active 或 blocked 进入，已关闭、不存在、未知或其他不匹配状态不会被重复转换。恢复 active plan 的 `plan sync` 同时恢复 progress projection。所有路径都保留 action-id 至多一次语义。
 - plan-status router 消除 Goal 桥接对 Agent 所见历史状态、错误文本和补偿判断的依赖；source 与 versioned cache 中的 consumer/driver 必须保持该合同一致。
 - app-server 的 Goal/MCP 能力不改变当前 owner：在公开协议出现客户端 plan setter、或 claw 成为连接当前 UI thread 的原生客户端之前，`update_plan` 继续由 agent 触发的固定 code-mode consumer 执行。
 - wait/discussing 会保留 Progress 并阻塞 Goal；每个 terminal end 状态才清空 Progress 并完成 Goal。

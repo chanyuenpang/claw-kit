@@ -21,7 +21,7 @@ A template should look close to a normal `plan.json`.
 Top-level fields:
 
 - `id`
-- `version` (required; the claw CLI version that last validated the template)
+- `version` (required; the template-driver version that last validated the template)
 - `scope`
 - `configOverride`
 - `title`
@@ -39,7 +39,7 @@ Important difference:
 - template tasks may include template-only fields like `guidance`
 - runtime tasks should not persist template-only guidance fields
 
-`version` is a compatibility gate, not decoration. It must equal the current CLI version after validation. When the field is missing, invalid, or older than the CLI, claw refuses to load the template with `Template out of date. Use claw-kit:create-claw-skill to upgrade template.` That workflow must inspect and optimize the whole skill package against the current contract before advancing the version; a blind field-only bump is not a valid migration. The distributed skill includes the concise checklist at `references/template-upgrade.md`.
+`version` records the independent template-driver contract, not the claw-kit release version. Its maintenance procedure is owned exclusively by the distributed `claw-kit:create-claw-skill` package at `references/template-upgrade.md`; generated skills retain only a concise owner reference.
 
 ## Creation Scope
 

@@ -28,9 +28,9 @@ Accepted working truth for the current template-backed skill conversion path.
 - 相邻 `FALLBACK.md` 保存 plan-independent 的直接转换行为，既用于 mixed stage 的局部能力消费，也用于 CLI/template 不可用时的 direct workflow。完成计划中的 “raw skill” 是这一职责的历史命名；当前 package 与 generator 使用 fallback 命名。
 - 生成或升级后的 templated skill 必须是自包含分发单元：`TEMPLATE.json.references` 只能指向 skill package 内可解析的相邻资源。当前 `create-claw-skill` 把运行时 authoring 合同放在 `references/template-authoring.md`，并用 `CONTENT-COVERAGE.md` 映射 entry、template、fallback、references 与 generator；仓库级 `docs/template-authoring-guide.md` 和 `docs/create-claw-skill-lessons.md` 只保留维护者补充说明，不是安装包运行时依赖。跨适配器完整目录物化与发布门禁由 `.claw/truth/features/shared-planning-skill-source.md` 统一拥有。
 - generator 的标准最短入口是 `node <create-claw-skill-dir>/scripts/create-claw-skill-stub.mjs --skill-name <skill-name> --out <target-skill-package>`；`--template-id`、`--target-work`、`--fallback-doc` 只在默认值不适用时添加，`--scope` 不是合法选项。
-- `TEMPLATE.json` 顶层 `version` 是必需的兼容性字段。当前 resolver 以 built-in default template 的版本作为 CLI template contract 版本；缺失、无法解析为 semver、或低于该版本的已选模板会以 `PROJECT_CONFIG_INVALID` 拒绝加载，主错误固定为 `Template out of date. Use claw-kit:create-claw-skill to upgrade template.`，并在错误 details 中返回 `requiredSkill: "claw-kit:create-claw-skill"`、模板版本、CLI 版本、`missing_version` / `invalid_version` / `older_version` 原因与完整检查提示。升级路径必须先用 `create-claw-skill` 检查并优化整个 skill package，不能只机械修改版本字段。
-- skill-root 具名发现先读取候选的 raw `id`，只对匹配当前请求 id 的模板执行完整 schema/version 校验；因此一个无关 skill 的旧缓存不会阻断 `default` 或其他已选模板。显式 `--template-file` 与 project/package template 路径仍会校验实际加载的目标文件。
-- `claw template validate` 的成功 JSON 返回规范化后的 `version`。stub generator 会沿自身目录向上读取最近的 `package.json` 或 `.codex-plugin/plugin.json`，抽取当前 semver 写入新 `TEMPLATE.json`；如果找不到版本则直接失败，而不是生成无版本模板。
+- `TEMPLATE.json` 顶层 `version` 是独立的 template-driver 合同字段；当前值为 `1.0.0`，不随 claw-kit 常规发版变化。`packages/core/src/plan-templates.ts` 是该 driver 版本的实现锚点。
+- 旧版本、缺失版本或无关缓存中的旧版本模板不会向最终用户暴露兼容性诊断，也不会自动阻断正常工作流。实际需要维护时，由 `claw-kit:create-claw-skill` 在技能包内检查、更新并验证后静默继续。
+- `claw template validate` 成功结果返回规范化的 template-driver `version`。stub generator 直接生成 `1.0.0`，不再从 package manifest 推导 claw-kit semver。
 - 源码开发态必须用 `claw template validate --file <target-skill-package>/TEMPLATE.json` 验证正在编辑的文件；只有 skill 已物化到受支持 registry 后，才用 `--template <id>` 做具名验证。
 - 对已有 skill，转换必须保留原始或等价的直接行为、必要 companion files 与相对链接；`SKILL.md` 只保留 ownership routing 和必要的非 template 补充，template 拥有 tasks、guidance、rules、references 与 verification gates。
 
@@ -41,6 +41,11 @@ Accepted working truth for the current template-backed skill conversion path.
 ### `0.1.86` 完成证据
 
 该 closeout 在其记录的 worktree 上验证了 CLI template tests `14/14`、core template tests `22/22`、stub generator tests `2/2`、仓库内八份模板 `8/8`、全部 template references 可解析、Codex bundle `17/17`、OpenCode bundle `11/11`、shared-skill synchronization 与 `git diff --check`。该结果只属于当时 revision；后续知识维护没有重跑这些测试。
+
+<!-- dated: 2026-08-31 -->
+### CLI-version compatibility gate was replaced
+
+模板曾以当前 claw-kit package semver 作为兼容性门槛，并对旧、缺失或无效版本显示 `create-claw-skill` 升级诊断。该机制会让常规发版使既有模板表面失效；现已由独立的 `1.0.0` template-driver 合同和技能包内静默维护取代。保留这段历史用于理解旧模板行为和迁移原因。
 
 <!-- dated: 2026-07-20 -->
 ### 引入需求驱动的计划适配

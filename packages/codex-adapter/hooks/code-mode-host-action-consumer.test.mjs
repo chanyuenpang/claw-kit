@@ -140,7 +140,7 @@ test("Goal actions preserve an active Goal and do not close an already closed Go
   assert.deepEqual(calls, []);
   assert.deepEqual(resume.consumedActionIds, ["mutation:create_goal"]);
   assert.deepEqual(resume.goalRecovery, {
-    reason: "Retained the existing nonterminal Codex Goal; recovery creates a Goal only when none is active.",
+    reason: "Retained the existing unfinished Codex Goal; recovery creates a Goal only when none is unfinished.",
   });
 
   hostTools.get_goal = async () => ({ goal: { status: "complete" } });
@@ -153,21 +153,25 @@ test("Goal actions preserve an active Goal and do not close an already closed Go
   assert.deepEqual(done.consumedActionIds, ["mutation:update_goal"]);
 });
 
-test("a blocked Goal is retained during recovery", async () => {
+test("a blocked Goal is retained during recovery and can be completed", async () => {
   const calls = [];
+  const hostTools = {
+    get_goal: async () => ({ goal: { status: "blocked" } }),
+    create_goal: async () => calls.push("create_goal"),
+    update_goal: async (input) => calls.push(["update_goal", input]),
+  };
   const result = await consumeCodexHostActions({
     result: { hostActions: [makeActions()[1]] },
-    hostTools: {
-      get_goal: async () => ({ goal: { status: "blocked" } }),
-      create_goal: async () => calls.push("create_goal"),
-      update_goal: async (input) => calls.push(["update_goal", input]),
-    },
+    hostTools,
   });
 
   assert.deepEqual(calls, []);
   assert.deepEqual(result.goalRecovery, {
-    reason: "Retained the existing nonterminal Codex Goal; recovery creates a Goal only when none is active.",
+    reason: "Retained the existing unfinished Codex Goal; recovery creates a Goal only when none is unfinished.",
   });
+
+  await consumeCodexHostActions({ result: { hostActions: [makeActions()[2]] }, hostTools });
+  assert.deepEqual(calls, [["update_goal", { status: "complete" }]]);
 });
 
 test("an unrecognized nonterminal Goal state is retained", async () => {
@@ -182,7 +186,29 @@ test("an unrecognized nonterminal Goal state is retained", async () => {
   });
 
   assert.deepEqual(calls, []);
-  assert.equal(result.goalRecovery.reason, "Retained the existing nonterminal Codex Goal; recovery creates a Goal only when none is active.");
+  assert.equal(result.goalRecovery.reason, "Retained the existing unfinished Codex Goal; recovery creates a Goal only when none is unfinished.");
+});
+
+test("Goal updates follow the allowed active and blocked transition matrix", async () => {
+  const calls = [];
+  let goalStatus = "active";
+  const hostTools = {
+    get_goal: async () => ({ goal: { status: goalStatus } }),
+    update_goal: async (input) => calls.push(["update_goal", input]),
+  };
+
+  const blocked = { schemaVersion: 1, id: "active-blocked:update_goal", tool: "update_goal", input: { status: "blocked" } };
+  await consumeCodexHostActions({ result: { hostActions: [blocked] }, hostTools });
+  assert.deepEqual(calls, [["update_goal", { status: "blocked" }]]);
+  calls.length = 0;
+
+  goalStatus = "blocked";
+  await consumeCodexHostActions({ result: { hostActions: [blocked] }, hostTools });
+  assert.deepEqual(calls, []);
+
+  goalStatus = "unknown_future_state";
+  await consumeCodexHostActions({ result: { hostActions: [makeActions()[2]] }, hostTools });
+  assert.deepEqual(calls, []);
 });
 
 test("program consumes an action id at most once", async () => {
@@ -256,8 +282,8 @@ test("the embedded bootstrap caches the CLI driver and dispatches native host ac
         if (options.command === "claw codex driver") {
           return JSON.stringify({
             ok: true,
-            cacheKey: "claw-kit:codex-driver:v18:s1",
-            driverVersion: 18,
+            cacheKey: "claw-kit:codex-driver:v19:s1",
+            driverVersion: 19,
             hostActionSchemaVersion: 1,
             source: driverSource,
           });
@@ -308,8 +334,8 @@ test("the embedded bootstrap uses exec_command when shell_command is unavailable
         if (options.cmd === "claw codex driver") {
           return JSON.stringify({
             ok: true,
-            cacheKey: "claw-kit:codex-driver:v18:s1",
-            driverVersion: 18,
+            cacheKey: "claw-kit:codex-driver:v19:s1",
+            driverVersion: 19,
             hostActionSchemaVersion: 1,
             source: driverSource,
           });

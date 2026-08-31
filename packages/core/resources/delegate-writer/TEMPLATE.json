@@ -1,6 +1,6 @@
 {
   "id": "internal-knowledge-delegate",
-  "version": "0.2.32",
+  "version": "1.0.0",
   "scope": "session",
   "title": "internal knowledge delegate",
   "status": "process.active",

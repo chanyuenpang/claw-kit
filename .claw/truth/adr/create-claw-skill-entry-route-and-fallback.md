@@ -29,9 +29,14 @@ The generated plan also needs to adapt to the user's actual requirements without
 - Keep the visible entry thin and let `TEMPLATE.json` own conversion tasks, guidance, rules, references, and verification.
 - Use `guidance.onDone.choices` only for a real route-selection event whose selected value changes the immediate downstream task or route. If all options continue to the same task and only alter advice, infer the shape from evidence and use default guidance.
 - Validate a template under development with `claw template validate --file <skill-dir>/TEMPLATE.json`; reserve named `--template <id>` validation for a template already materialized in a supported registry.
-- Make top-level `TEMPLATE.json.version` a compatibility gate tied to the current CLI template contract. The exact current rejection behavior and diagnostics are owned by `.claw/truth/features/create-claw-skill-entry-contract.md`; the decision here is that remediation requires a full package inspection and optimization before advancing the version, not a field-only bump.
-- Keep the primary compatibility error concise and actionable while retaining troubleshooting data in structured details. The exact current message and detail values remain owned by `.claw/truth/features/create-claw-skill-entry-contract.md`; the `create-claw-skill` package owns the upgrade procedure through its entry and adjacent `references/template-upgrade.md`, instead of expanding the runtime error into the procedure itself.
-- Have `create-claw-skill` generated templates inherit the current claw package semver, and expose the normalized version in successful `claw template validate` output so authoring and validation share an observable contract.
+- Make top-level `TEMPLATE.json.version` an independent template-driver contract, currently `1.0.0`, rather than a claw-kit package-semver compatibility gate.
+- Assign template-driver maintenance exclusively to the `create-claw-skill` package: it inspects, updates, and validates a selected package silently when actual maintenance is needed. Runtime users do not receive a version-mismatch diagnosis or upgrade instruction.
+- Have generated templates and successful `claw template validate` output use the same normalized template-driver version, independently of the claw-kit release version.
+
+## Alternatives
+
+- Retain the CLI-semver compatibility gate and user-facing upgrade error. Rejected because routine claw-kit releases would make existing templates appear incompatible even when their workflow contract had not changed.
+- Accept legacy templates without a maintenance owner. Rejected because genuine template-driver changes still need a single package-level inspection and validation route.
 - Generated packages must inherit the canonical route-aware completion contract from `template-guidance-routing-and-config-override.md`: real choices are discoverable only through `completionChoices`, guidance provides one parameterized `--choice <choice>` command template without repeating ids in `nextsteps`, and internal `choiceId` terminology is not presented as a CLI flag. This ADR does not create a second owner for the general choice semantics.
 
 ## Consequences
@@ -42,10 +47,9 @@ The generated plan also needs to adapt to the user's actual requirements without
 - The template no longer requires a `choiceId` for `simple`, `routing`, or `idea-first` labels that all enter the same execution task.
 - Generator and authoring guidance can present the short `--skill-name` plus `--out` path and omit manual scope routing.
 - Generated entries select the exact adjacent template even when another installed skill or cached version reuses the same template id.
-- Stale unrelated cached templates no longer block a different selected template, while an explicitly selected stale template cannot silently run against a newer CLI contract.
-- Template upgrades cost a deliberate package review, but avoid falsely blessing stale workflow, guidance, or validation semantics through a mechanical version edit.
-- Callers receive a short recovery route at the failure boundary, while machine-readable diagnostics and the maintained skill-local checklist preserve the detail needed for troubleshooting and migration.
-- New generated packages and file-based validation surface the same version contract, making compatibility drift visible before materialization into a runtime registry.
+- Stale, missing, or legacy template versions do not become a user-facing workflow failure; the owning skill absorbs compatible maintenance work and only genuine package maintenance remains an internal concern.
+- Template-driver changes still require a deliberate package review and validation rather than a field-only bump, but the contract does not drift with ordinary claw-kit releases.
+- New generated packages and file-based validation surface the same independent driver version, making authoring and validation consistent without coupling them to package semver.
 - Generated route-aware templates remain directly operable from compact guidance instead of requiring callers to inspect template JSON or translate `choiceId` into CLI syntax.
 - Storage-scope semantics remain owned by the shared plan/template resolver contract, and general choice semantics remain owned by the template-guidance contract.
 - Narrow requirement-driven changes can tailor a generated plan without breaking its id-based guidance, at the cost of retaining explicitly excluded tasks as visible placeholders.
@@ -58,6 +62,11 @@ The generated plan also needs to adapt to the user's actual requirements without
 ### Update-plan recovery moved to update ownership
 
 The `0.1.87` installation-update closeout supplied the first recorded evidence that an already-created plan can require the published CLI matching its retained template to finish. The current decision, constraints, and consequences now belong to `host-specific-update-skill-ownership.md`; this checkpoint remains only to explain why that update-specific recovery surfaced while the `create-claw-skill` template-version gate was being established. New or maintained skill packages still require package inspection before their template version advances.
+
+<!-- dated: 2026-08-31 -->
+### CLI-semver template gate was superseded
+
+The earlier decision tied `TEMPLATE.json.version` to the current claw-kit package semver and exposed an upgrade route for legacy versions. It is retained as compatibility history only. The accepted current decision fixes the template-driver contract at `1.0.0` and keeps maintenance inside `create-claw-skill`, so normal releases do not surface compatibility diagnostics to end users.
 
 <!-- dated: 2026-07-20 -->
 ### Requirement-driven plan adaptation gained a fallback boundary

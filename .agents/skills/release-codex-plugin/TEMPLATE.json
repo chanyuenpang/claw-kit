@@ -1,6 +1,6 @@
 {
   "id": "release-codex-plugin",
-  "version": "0.2.32",
+  "version": "1.0.0",
   "title": "release-codex-plugin",
   "status": "process.active",
   "goal": {
@@ -31,18 +31,24 @@
     },
     {
       "id": 3,
+      "title": "Verify built-in templated skill compatibility",
+      "detail": "Run `npm run check:template-versions` before candidate tests. It scans every built-in skill package that contains TEMPLATE.json and verifies that its version matches TEMPLATE_DRIVER_VERSION; stop and repair version drift before publishing.",
+      "status": "pending"
+    },
+    {
+      "id": 4,
       "title": "Verify the Codex plugin candidate",
       "detail": "Run focused adapter and marketplace bundle tests, template/shared-skill checks, git diff --check, and npm run verify:release prerequisites justified by the diff.",
       "status": "pending"
     },
     {
-      "id": 4,
+      "id": 5,
       "title": "Pass the exact-source gate and release",
       "detail": "Commit intended content on main, push origin/main, require an empty worktree and HEAD == origin/main, run npm run verify:release, create and push vcodex-<version>, and create the GitHub Release without a ZIP asset.",
       "status": "pending"
     },
     {
-      "id": 5,
+      "id": 6,
       "title": "Verify the immutable Codex release",
       "detail": "Verify tag, release, committed marketplace paths and manifests, and repository cleanliness. If a maintainer installation refresh is separately authorized, first remove every local claw-kit marketplace registration, plugin identity, hook configuration, and cache tree; then refresh only from the published GitHub source, enable claw-kit@claw-kit, and verify its source/cache manifests. Never leave or enable a local claw-kit identity as the normal runtime.",
       "status": "pending"

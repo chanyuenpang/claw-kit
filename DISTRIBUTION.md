@@ -143,8 +143,8 @@ Update only:
 After changing version files:
 
 - Run `npm install --package-lock-only --ignore-scripts` to keep `package-lock.json` consistent.
-- Run `npm run sync:template-versions`. This updates every project/plugin template plus the built-in default template.
-- Run `npm run sync:shared-skills` after template synchronization, then require `npm run check:template-versions` to pass.
+- Run `npm run sync:template-versions` only when changing the independent template driver. This updates every project/plugin template plus the built-in default template.
+- Run `npm run sync:shared-skills` after template-driver synchronization, then require `npm run check:template-versions` to pass.
 - Do not bump only one adapter copy of shared skills.
 
 ### Publishing rules
@@ -165,7 +165,7 @@ After changing version files:
 1. Confirm the target artifact family: CLI, Codex, Cindy, DSH, OpenClaw, or OpenCode; Cindy releases occur in the independent `claw-kit-cindy-adapter` repository; or record `prepare-only`.
 2. Classify all local changes; commit useful release content, remove disposable output, and ignore intentional local-only files. Do not stash changes to bypass this step.
 3. Ensure the checked-out branch is `main` and push the release commit directly to `origin/main`.
-4. Align only the selected artifact family's versions. Run `npm run sync:template-versions` and `npm run sync:shared-skills` only when the chosen artifact requires those generated payloads.
+4. Align only the selected artifact family's versions. A routine claw-kit version bump does not require template synchronization; run `npm run sync:template-versions` only when the template driver changes, then run `npm run sync:shared-skills` when shared skill payloads changed.
 5. For a coordinated batch release, review generated adapter files and run `npm run check:template-versions`.
 6. Run `npm install`.
 7. Run verification commands.

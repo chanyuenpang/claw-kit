@@ -13,5 +13,5 @@
 - [x] Broad user-driven changes route to fallback, while template plans preserve sub-task ids during narrower adaptations.
 - [x] Goal handoff and optional `guidance.onPlanStart` semantics are represented.
 - [x] Choice guidance and file-based validation requirements are represented.
-- [x] Missing or stale versions route through inspection and optimization before upgrade.
+- [x] Template-driver maintenance is defined once in this package; generated skills retain only a concise owner reference.
 - [x] Every runtime reference is contained in the installed skill package.

@@ -1,5 +1,27 @@
 export const SESSION_PROTOCOL_VERSION = 1;
 
+/**
+ * Shared lifecycle contract for `create_goal` and `update_goal` host actions.
+ *
+ * Hosts with a native blocked state retain it. Hosts such as DSH that only
+ * expose an active-or-complete Goal map `blocked` to native completion; a
+ * later active workflow state can then create a fresh native Goal. In either
+ * case, consumers must not create over an existing unfinished/native-active
+ * Goal, and must consume mismatched transitions as no-ops.
+ */
+export const PLAN_GOAL_TRANSITION_CONTRACT = {
+  version: 1,
+  createGoal: { allowedWhen: ["missing", "complete"] },
+  updateGoal: {
+    blocked: { allowedFrom: ["active"] },
+    complete: { allowedFrom: ["active", "blocked"] },
+  },
+  nativeBlockedMappings: {
+    retained: "blocked",
+    complete: "complete",
+  },
+} as const;
+
 export type SessionClientInfo = {
   kind: "terminal" | "node" | "adapter";
   host?: string;

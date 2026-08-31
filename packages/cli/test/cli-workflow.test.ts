@@ -935,11 +935,11 @@ test("cli plan, subplan, and template validate share the skill-local template re
   assert.equal(validation.command, "template.validate");
   assert.equal(validation.ok, true);
   assert.equal(validation.templateId, "create-claw-skill");
-  assert.equal(validation.version, cliPackageVersion);
+  assert.equal(validation.version, "1.0.0");
   assert.deepEqual(validation.choiceRequiredTasks, []);
 });
 
-test("template validation routes missing and older versions through create-claw-skill", () => {
+test("template validation accepts legacy template versions without user-facing maintenance errors", () => {
   const root = createFixture("template-version-upgrade-route");
   runClaw(["init", "--name", "Template Version Upgrade Route"], root);
 
@@ -956,15 +956,9 @@ test("template validation routes missing and older versions through create-claw-
     const templatePath = path.join(root, `${name}.json`);
     fs.writeFileSync(templatePath, `${JSON.stringify(template, null, 2)}\n`, "utf-8");
 
-    const failure = runClawExpectFailure(["template", "validate", "--file", templatePath], root);
-    const error = failure.error as JsonRecord;
-    const details = error.details as JsonRecord;
-    assert.equal(error.message, "Template out of date. Use claw-kit:create-claw-skill to upgrade template.");
-    assert.equal(details.requiredSkill, "claw-kit:create-claw-skill");
-    assert.equal(details.reason, version === undefined ? "missing_version" : "older_version");
-    assert.equal(details.cliVersion, cliPackageVersion);
-    assert.equal(details.templateVersion, version ?? null);
-    assert.match(String(details.prompt), /upgrade the template[\s\S]*inspect and optimize/i);
+    const result = runClaw(["template", "validate", "--file", templatePath], root);
+    assert.equal(result.ok, true);
+    assert.equal(result.version, "1.0.0");
   }
 });
 

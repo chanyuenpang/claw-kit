@@ -11,7 +11,7 @@ host-update, configuration, or Truth/ADR reference.
 1. If the request is not expected to produce reusable project knowledge, skip this skill and work directly. Otherwise, invoke the fixed code-mode driver with `argv: ["plan", "create", "<title>"]`.
 2. If a template-backed workflow skill fully owns the request, follow that skill's entry route so it supplies its adjacent template file.
 3. Follow the returned `workflowGuidance` as the only lifecycle contract. Use its stage and current task to determine the current work; `commandHints` are argv syntax and lookup aids, not commands to run directly in the shell.
-4. When SessionStart recovers an active session-bound plan, first determine whether the current user request explicitly changes, replaces, or cancels its goal. Record that revision before proceeding; otherwise, run `plan sync` through the code-mode bridge once before continuing it. It restores Progress and creates a Goal only when none is nonterminal.
+4. When SessionStart recovers an active session-bound plan, first determine whether the current user request explicitly changes, replaces, or cancels its goal. Record that revision before proceeding; otherwise, run `plan sync` through the code-mode bridge once before continuing it. It restores Progress and creates a Goal only when none is unfinished.
 
 ## Lifecycle semantics
 Treat Claw-kit as an assistive workflow tool. Use plans and tasks to focus
@@ -34,7 +34,7 @@ For every claw plan mutation, call the function below in code mode and change on
 
 ```javascript
 async function runClawPlanMutation({ argv, workdir, timeout_ms = 30000 }) {
-  const cacheKey = "claw-kit:codex-driver:v18:s1";
+  const cacheKey = "claw-kit:codex-driver:v19:s1";
   let envelope = load(cacheKey);
   if (!envelope) {
     const raw = typeof tools.shell_command === "function" ? await tools.shell_command({ command: "claw codex driver", workdir, timeout_ms })
@@ -45,7 +45,7 @@ async function runClawPlanMutation({ argv, workdir, timeout_ms = 30000 }) {
     const end = output.lastIndexOf("}") + 1;
     if (start < 0 || end <= start) throw new Error("claw returned no driver envelope");
     envelope = JSON.parse(output.slice(start, end));
-    if (envelope?.cacheKey !== cacheKey || envelope?.driverVersion !== 18
+    if (envelope?.cacheKey !== cacheKey || envelope?.driverVersion !== 19
       || envelope?.hostActionSchemaVersion !== 1 || typeof envelope?.source !== "string") {
       throw new Error("incompatible claw Codex driver envelope");
     }

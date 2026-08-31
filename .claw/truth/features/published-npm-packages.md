@@ -4,7 +4,7 @@
 ## 当前行为
 
 - `claw-kit` 发布三个 npm 包：`@veewo/claw-core` 提供核心 `.claw` harness 语义，`@veewo/claw-client` 提供 client API，`@veewo/claw` 提供 CLI 并精确依赖同版本的 Core 与 Client。
-- 当前本文已有完成证据的最新 CLI/Core/Client npm 发布版本为 `0.2.31`；`@veewo/claw-core`、`@veewo/claw-client` 与 `@veewo/claw` 均已发布。独立的 Codex `0.2.31.1` 官方 marketplace artifact 已发布；其本机安装结果仍不取代各 artifact 自身的发布完成边界。
+- 当前本文已有完成证据的最新 CLI/Core/Client npm 发布版本为 `0.2.32`；`@veewo/claw-core`、`@veewo/claw-client` 与 `@veewo/claw` 均已发布。独立的 Codex `0.2.32.0` 官方 marketplace artifact 与 DSH `0.2.32.0` source release（npm `0.2.32-rc.0`）也已发布；这些 artifact 的发布完成态不代表本机全局 CLI、Codex installation 或 DSH profile 已刷新。
 - CLI release version bump 覆盖 root、lockfile、Core、Client、CLI、各 adapter baseline、内部 `@veewo/claw-core` / `@veewo/claw-client` 依赖和 Codex plugin manifest。root `package.json.version` 同时是全部 plugin `TEMPLATE.json` 与 built-in default template 的版本权威。
 - 模板版本维护顺序固定为 `npm run sync:template-versions`、`npm run sync:shared-skills`、`npm run check:template-versions`。`npm run verify:release` 与 `npm run publish:release` 复用只读版本断言，禁止发布时隐式修复 stale template。
 - owner 直接从 `main` 交付。发布前必须提交并推送有价值内容，使本地 `main` 精确等于 `origin/main` 且 `git status --porcelain` 为空；不得用 stash、临时分支或 PR 绕过门禁。
@@ -47,6 +47,12 @@
 ## 演进记录
 
 <!-- dated: 2026-08-28 -->
+### 0.2.32 CLI/Core/Client、Codex 与 DSH 发布完成态
+
+- `@veewo/claw-core`、`@veewo/claw-client` 与 `@veewo/claw` `0.2.32` 已从主仓提交 `ca5ceaa` 发布；公开 npm 安装、CLI 执行、`v0.2.32` 与 GitHub Release 均已核验。
+- Codex `0.2.32.0` 已以无 ZIP 附件的 `vcodex-0.2.32.0` GitHub Release 发布。DSH `0.2.32.0` 已以 immutable `vdsh-0.2.32.0` source tag 和 npm `@veewo/dsh-claw-kit@0.2.32-rc.0` 发布；本轮没有刷新本机全局 CLI、Codex installation 或 DSH profile。
+
+<!-- dated: 2026-08-28 -->
 ### 0.2.31 CLI/Core/Client 与独立 Codex 发布完成态
 
 - `@veewo/claw-core`、`@veewo/claw-client` 与 `@veewo/claw` `0.2.31` 已从主仓 `d4e7868` 发布；focused verification、package smoke、registry retrieval、`v0.2.31` 和 GitHub Release 均已核验。
@@ -75,9 +81,3 @@
 
 - `@veewo/claw-core`、`@veewo/claw-client` 与 `@veewo/claw` `0.2.19` 已发布，三个 registry `latest`、真实安装的 `claw --version`、`v0.2.19` 和公开 GitHub Release 已完成验证。
 - 该记录只覆盖 npm artifact family；Codex `0.2.19.1` 与 Cindy `0.2.19.0` 的 marketplace source releases 保持各自独立完成边界，未包含任何本机安装刷新。
-
-<!-- dated: 2026-08-09 -->
-### 0.2.17 CLI/Core 发布完成态
-
-- `@veewo/claw-core` 与 `@veewo/claw` `0.2.17` 已发布并完成 npm 真实取包验证；immutable `v0.2.17` tag 与 GitHub Release 属于同一完成边界。
-- 该次 npm 证据不推断 Client 已发布，也不把 Codex `0.2.17.1`、Cindy `0.2.17.0` 的独立 marketplace 发布或任何本机安装刷新纳入 npm 完成态。

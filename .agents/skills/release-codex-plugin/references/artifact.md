@@ -3,7 +3,9 @@
 - Scope: `packages/codex-adapter` and `.agents/plugins/marketplace.json` only.
 - Bump only the adapter fourth segment; keep CLI/core and other adapters unchanged.
 - Keep `.codex-plugin/plugin.json` equal to the adapter package version.
-- Synchronize templates/shared skills, verify the exported marketplace payload,
+- Synchronize templates/shared skills, run `npm run check:template-versions` to
+  verify every built-in skill package with `TEMPLATE.json` matches
+  `TEMPLATE_DRIVER_VERSION`, verify the exported marketplace payload,
   and review the complete diff.
 - Require clean `main`, `HEAD == origin/main`, `npm run verify:release`, tag
   `vcodex-<version>`, and a GitHub Release.

@@ -4,7 +4,7 @@
  *
  * The DSH adapter consumes the exact same artifacts the Codex fixed code-mode
  * driver consumes — the CLI emits them host-neutrally for every
- * `isHostActionsHost` (codex | dsh) — but does it inside the claw_run tool's
+ * `isHostActionsHost` (Codex | DSH) — but does it inside the claw_run tool's
  * execute instead of a model-evaluated envelope. Consumption is fail-open: a
  * consumer error never fails the underlying mutation.
  */
@@ -64,7 +64,9 @@ export type HostEffectFailure = {
  *
  * - `create_goal` / `update_goal` → the native `goals` service, so DSH's own
  *   goal bar and `get_goal` reflect the claw plan lifecycle (the model never
- *   touches goal tools).
+ *   touches goal tools). DSH has no native blocked state: a legal `blocked`
+ *   transition completes the native Goal, and a later create action opens a
+ *   fresh one.
  * - `update_plan` → returned for the caller to project (progress projection is
  *   a P2 surface; the claw_run result already carries the compact guidance).
  *

@@ -4,7 +4,7 @@
  *
  * The DSH adapter consumes the exact same artifacts the Codex fixed code-mode
  * driver consumes — the CLI emits them host-neutrally for every
- * `isHostActionsHost` (codex | dsh) — but does it inside the claw_run tool's
+ * `isHostActionsHost` (Codex | DSH) — but does it inside the claw_run tool's
  * execute instead of a model-evaluated envelope. Consumption is fail-open: a
  * consumer error never fails the underlying mutation.
  */
@@ -52,7 +52,9 @@ export type HostEffectFailure = {
  *
  * - `create_goal` / `update_goal` → the native `goals` service, so DSH's own
  *   goal bar and `get_goal` reflect the claw plan lifecycle (the model never
- *   touches goal tools).
+ *   touches goal tools). DSH has no native blocked state: a legal `blocked`
+ *   transition completes the native Goal, and a later create action opens a
+ *   fresh one.
  * - `update_plan` → returned for the caller to project (progress projection is
  *   a P2 surface; the claw_run result already carries the compact guidance).
  *
@@ -64,6 +66,7 @@ export function consumeHostActions(
   agent: unknown,
 ): { consumed: string[]; projection: HostAction | undefined; failures: HostEffectFailure[] } {
   const consumed: string[] = [];
+  const consumedIds = new Set<string>();
   let projection: HostAction | undefined;
   const failures: HostEffectFailure[] = [];
   for (const action of Array.isArray(actions) ? actions : []) {
@@ -72,6 +75,9 @@ export function consumeHostActions(
       : undefined;
     if (!record || typeof record.id !== "string" || !record.id || !record.input || typeof record.input !== "object" || Array.isArray(record.input)) {
       failures.push({ code: "INVALID_ACTION", message: "Host action must contain a non-empty id and object input." });
+      continue;
+    }
+    if (consumedIds.has(record.id)) {
       continue;
     }
     if (record.schemaVersion !== 1) {
@@ -100,14 +106,27 @@ export function consumeHostActions(
           failures.push({ actionId: typedAction.id, tool: typedAction.tool, code: "SERVICE_UNAVAILABLE", message: "DSH goals service is unavailable." });
         } else if (typeof typedAction.input.objective !== "string" || !typedAction.input.objective) {
           failures.push({ actionId: typedAction.id, tool: typedAction.tool, code: "INVALID_ACTION", message: "create_goal requires a non-empty objective." });
+        } else if (goals.get(agent)) {
+          // The shared contract treats an existing native Goal as unfinished:
+          // recovery must retain it rather than overwrite it.
+          consumedIds.add(typedAction.id);
+          consumed.push(typedAction.id);
         } else {
           goals.create(agent, { objective: typedAction.input.objective });
+          consumedIds.add(typedAction.id);
           consumed.push(typedAction.id);
         }
       } else if (typedAction.tool === "update_goal" && goals) {
         const current = goals.get(agent);
         if (current && (typedAction.input.status === "complete" || typedAction.input.status === "blocked")) {
           goals.complete(agent, { id: current.id, revision: current.revision });
+          consumedIds.add(typedAction.id);
+          consumed.push(typedAction.id);
+        } else if (typedAction.input.status === "complete" || typedAction.input.status === "blocked") {
+          // A DSH Goal is either native-active or absent. Once `blocked` has
+          // mapped to native completion, a later `complete` is a consumed
+          // no-op under the shared transition contract.
+          consumedIds.add(typedAction.id);
           consumed.push(typedAction.id);
         }
       } else if (typedAction.tool === "update_goal") {

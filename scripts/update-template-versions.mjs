@@ -12,6 +12,7 @@ const templateRoots = [
   path.join("packages", "opencode-adapter", "skills"),
 ];
 const defaultTemplateSource = path.join("packages", "core", "src", "templates", "plans", "default.ts");
+const templateDriverSource = path.join("packages", "core", "src", "plan-templates.ts");
 const knowledgeCaptureRuntimeSpec = path.join("packages", "codex-adapter", "skills", "knowledge-capture", "runtime.json");
 
 export async function collectReleaseTemplatePaths(repoRoot = defaultRepoRoot) {
@@ -24,15 +25,16 @@ export async function collectReleaseTemplatePaths(repoRoot = defaultRepoRoot) {
 
 export async function inspectTemplateVersions({ repoRoot = defaultRepoRoot, expectedVersion } = {}) {
   const releaseVersion = expectedVersion ?? await readReleaseVersion(repoRoot);
+  const templateDriverVersion = await readTemplateDriverVersion(repoRoot);
   const issues = [];
   const templatePaths = await collectReleaseTemplatePaths(repoRoot);
   for (const templatePath of templatePaths) {
     const template = JSON.parse(await fs.readFile(templatePath, "utf8"));
-    if (template.version !== releaseVersion) {
+    if (template.version !== templateDriverVersion) {
       issues.push({
         path: path.relative(repoRoot, templatePath),
         actualVersion: typeof template.version === "string" ? template.version : null,
-        expectedVersion: releaseVersion,
+        expectedVersion: templateDriverVersion,
       });
     }
   }
@@ -40,11 +42,11 @@ export async function inspectTemplateVersions({ repoRoot = defaultRepoRoot, expe
   const defaultPath = path.join(repoRoot, defaultTemplateSource);
   const defaultSource = await fs.readFile(defaultPath, "utf8");
   const defaultVersion = readDefaultTemplateVersion(defaultSource, defaultPath);
-  if (defaultVersion !== releaseVersion) {
+  if (defaultVersion !== templateDriverVersion) {
     issues.push({
       path: defaultTemplateSource,
       actualVersion: defaultVersion,
-      expectedVersion: releaseVersion,
+      expectedVersion: templateDriverVersion,
     });
   }
 
@@ -61,7 +63,7 @@ export async function inspectTemplateVersions({ repoRoot = defaultRepoRoot, expe
     issues.push({ path: knowledgeCaptureRuntimeSpec, actualVersion: null, expectedVersion: releaseVersion });
   }
 
-  return { version: releaseVersion, templateCount: templatePaths.length, issues };
+  return { version: templateDriverVersion, releaseVersion, templateCount: templatePaths.length, issues };
 }
 
 export async function assertTemplateVersionsAligned(options = {}) {
@@ -79,12 +81,13 @@ export async function assertTemplateVersionsAligned(options = {}) {
 
 export async function updateTemplateVersions({ repoRoot = defaultRepoRoot, expectedVersion } = {}) {
   const releaseVersion = expectedVersion ?? await readReleaseVersion(repoRoot);
+  const templateDriverVersion = await readTemplateDriverVersion(repoRoot);
   const templatePaths = await collectReleaseTemplatePaths(repoRoot);
   const updated = [];
   for (const templatePath of templatePaths) {
     const template = JSON.parse(await fs.readFile(templatePath, "utf8"));
-    if (template.version === releaseVersion) continue;
-    template.version = releaseVersion;
+    if (template.version === templateDriverVersion) continue;
+    template.version = templateDriverVersion;
     await fs.writeFile(templatePath, `${JSON.stringify(template, null, 2)}\n`, "utf8");
     updated.push(path.relative(repoRoot, templatePath));
   }
@@ -92,12 +95,12 @@ export async function updateTemplateVersions({ repoRoot = defaultRepoRoot, expec
   const defaultPath = path.join(repoRoot, defaultTemplateSource);
   const defaultSource = await fs.readFile(defaultPath, "utf8");
   const defaultVersion = readDefaultTemplateVersion(defaultSource, defaultPath);
-  if (defaultVersion !== releaseVersion) {
+  if (defaultVersion !== templateDriverVersion) {
     const markerIndex = defaultSource.indexOf("export const defaultPlanTemplate");
     const before = defaultSource.slice(0, markerIndex);
     const templateSection = defaultSource.slice(markerIndex).replace(
       /version:\s*"[^"]+"/u,
-      `version: "${releaseVersion}"`,
+      `version: "${templateDriverVersion}"`,
     );
     await fs.writeFile(defaultPath, `${before}${templateSection}`, "utf8");
     updated.push(defaultTemplateSource);
@@ -117,7 +120,17 @@ export async function updateTemplateVersions({ repoRoot = defaultRepoRoot, expec
     // file is reported by inspectTemplateVersions until regenerated.
   }
 
-  return { version: releaseVersion, templateCount: templatePaths.length, updated };
+  return { version: templateDriverVersion, releaseVersion, templateCount: templatePaths.length, updated };
+}
+
+async function readTemplateDriverVersion(repoRoot) {
+  const sourcePath = path.join(repoRoot, templateDriverSource);
+  const source = await fs.readFile(sourcePath, "utf8");
+  const match = source.match(/TEMPLATE_DRIVER_VERSION\s*=\s*"([^"\\s]+)"/u);
+  if (!match) {
+    throw new Error(`Template driver version is missing from ${templateDriverSource}.`);
+  }
+  return match[1];
 }
 
 async function readReleaseVersion(repoRoot) {
@@ -159,13 +172,13 @@ const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPat
 if (isMain) {
   if (process.argv.includes("--check")) {
     const result = await assertTemplateVersionsAligned();
-    console.log(`Template versions match release ${result.version}: ${result.templateCount} TEMPLATE.json files plus the built-in default.`);
+    console.log(`Template versions match driver ${result.version}: ${result.templateCount} TEMPLATE.json files plus the built-in default.`);
   } else {
     const result = await updateTemplateVersions();
     if (result.updated.length === 0) {
-      console.log(`Template versions already match release ${result.version}.`);
+      console.log(`Template versions already match driver ${result.version}.`);
     } else {
-      console.log(`Updated template versions to ${result.version}:`);
+      console.log(`Updated template versions to driver ${result.version}:`);
       for (const relativePath of result.updated) console.log(`- ${relativePath}`);
     }
   }

@@ -9,7 +9,7 @@ const templateId = args["template-id"] ?? skillName;
 const targetWork = args["target-work"] ?? `complete <target-work> with ${skillName}`;
 const fallbackDoc = args["fallback-doc"] ?? "FALLBACK.md";
 const outputDir = args["out"];
-const templateVersion = await resolveTemplateVersion();
+const templateVersion = "1.0.0";
 
 const files = {
   "SKILL.md": buildSkillEntry({ skillName, templateId, fallbackDoc }),
@@ -187,7 +187,7 @@ function buildTemplate({ skillName, templateId, targetWork, templateVersion }) {
     ],
     rules: [
       "Follow returned workflowGuidance before advancing.",
-      "Keep the top-level TEMPLATE.json version equal to the current claw CLI version; when upgrading an older or unversioned template, inspect and optimize the whole package before advancing it.",
+      "Template-driver maintenance is owned by claw-kit:create-claw-skill; keep only this reference in generated skills.",
       "This executable template starts in process.active and does not need guidance.onPlanStart; add it only when a real discussion task deliberately bundles delivery into execution through the optional claw plan start shorthand.",
       "Keep structured execution information in template tasks, guidance, rules, and references.",
       "Keep task-ownership routing and non-template supplements in SKILL.md, and use skill-local references only when needed.",
@@ -209,7 +209,7 @@ function buildCoverage({ skillName, templateId, targetWork, fallbackDoc }) {
 - Mixed-stage entry: \`SKILL.md\` routes partial capability use to the fallback without creating this template.
 - Unavailable-tooling entry: \`SKILL.md\` routes to the same fallback when the claw CLI or template is unavailable.
 - Skill-local template: \`TEMPLATE.json\` with id \`${templateId}\`.
-- Template compatibility: top-level \`version\` is generated from the current claw package version; older or unversioned templates require a full create-claw-skill review before upgrade.
+- Template driver: top-level \`version\` is \`1.0.0\`; maintenance is owned by \`claw-kit:create-claw-skill\`.
 - Intended work: ${targetWork}.
 - Lifecycle handoff: TODO; keep the default active start, or document why a real discussion delivery task adopts optional \`guidance.onPlanStart\`.
 - Ordered workflow steps: TODO.
@@ -228,7 +228,7 @@ function buildCoverage({ skillName, templateId, targetWork, fallbackDoc }) {
 - [ ] Required tools, commands, helper files, and links are represented.
 - [ ] Information that does not fit template structure stays in \`SKILL.md\` or optional skill-local references.
 - [ ] Verification requirements are represented.
-- [ ] TEMPLATE.json declares the current claw CLI version after the package has been inspected and optimized.
+- [ ] TEMPLATE.json declares template driver 1.0.0 and references \`claw-kit:create-claw-skill\` as its maintenance owner.
 - [ ] Anything too long for the template is preserved in \`SKILL.md\`, optional skill-local references, or the fallback document.
 `;
 }
@@ -238,28 +238,4 @@ function buildFallback({ skillName }) {
 
 TODO: Preserve the original skill text or a direct, plan-independent version here. Use this fallback when the skill contributes only part of a mixed stage, or when the claw CLI/template is unavailable.
 `;
-}
-
-async function resolveTemplateVersion() {
-  let currentDir = path.dirname(fileURLToPath(import.meta.url));
-  while (true) {
-    for (const relativePath of ["package.json", path.join(".codex-plugin", "plugin.json")]) {
-      try {
-        const manifest = JSON.parse(await fs.readFile(path.join(currentDir, relativePath), "utf8"));
-        const version = typeof manifest.version === "string" ? manifest.version.match(/^\d+\.\d+\.\d+/u)?.[0] : null;
-        if (version) {
-          return version;
-        }
-      } catch (error) {
-        if (error?.code !== "ENOENT") {
-          throw error;
-        }
-      }
-    }
-    const parentDir = path.dirname(currentDir);
-    if (parentDir === currentDir) {
-      throw new Error("Unable to resolve the current claw CLI version for TEMPLATE.json.");
-    }
-    currentDir = parentDir;
-  }
 }

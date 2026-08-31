@@ -26,7 +26,7 @@
 - The recommended objective is still derived from canonical `plan.goal.text`.
 - `goalMode` 与 `goalTool` 只有在 `goal.text` 已存在时才成立，因为 harness 本身禁止没有 goal 的 plan 离开 `prepare.requirements`。
 - Active `@claw-kit` threads are still pre-authorized to use Goal mode when the workflow later returns these contracts, so no extra per-turn authorization gate should block it.
-- Codex agent 只运行固定 code-mode consumer，不自行检查 Goal state，也不解析 Goal tool error；CLI 仍根据已提交的 canonical plan status 决定请求哪一种 Goal action，而固定 driver/consumer 在每次真实 Goal mutation 前立即调用 `get_goal`：`create_goal` 只在没有 nonterminal Goal 时执行；若已有 Goal，则保留它并返回可见 recovery note，不改变 Goal 状态。`update_goal` 在无 active Goal 时跳过。恢复到 active 的 plan 由 SessionStart 指示固定 driver 运行一次 `plan sync`，以恢复 progress projection，并仅在没有 nonterminal Goal 时创建 Goal。普通 `process.active` 进度不产生 Goal action，只有首次进入或从暂停态恢复进入 `process.active` 才请求 `create_goal`。
+- Codex agent 只运行固定 code-mode consumer，不自行检查 Goal state，也不解析 Goal tool error；CLI 仍根据已提交的 canonical plan status 决定请求哪一种 Goal action，而固定 driver/consumer 在每次真实 Goal mutation 前立即调用 `get_goal`：`create_goal` 只在没有 nonterminal Goal 时执行；若已有 Goal，则保留它并返回可见 recovery note，不改变 Goal 状态。`update_goal(status="blocked")` 只在 active Goal 存在时执行；`update_goal(status="complete")` 可从 active 或 blocked Goal 执行，其他缺失、已 complete 或未知状态均作为 no-op。恢复到 active 的 plan 由 SessionStart 指示固定 driver 运行一次 `plan sync`，以恢复 progress projection，并仅在没有 nonterminal Goal 时创建 Goal。普通 `process.active` 进度不产生 Goal action，只有首次进入或从暂停态恢复进入 `process.active` 才请求 `create_goal`。
 
 ## 0.1.75 真实 Host 生命周期边界
 
@@ -72,7 +72,7 @@
   - `buildHostActions()` 保持 wait/discussing 的 native `update_goal({ status: "blocked" })`，并在所有 `end.*` 输出受 `:clear_progress` action-id 标记的空 Progress 投影后完成 Goal。
   - `subplan.create` 只切换 focused plan 并投影 child `update_plan`；它不生成 `update_goal` 或 `create_goal`，因此不会把根 Goal 当作 child handoff 的一部分
 - `packages/cli/src/codex-driver.ts`
-- fixed driver 在 `create_goal` / `update_goal` 前立即读取 Goal snapshot；`create_goal` 遇到非终态 Goal 时保留该 Goal、返回 recovery note 并将 action id 记为已消费；已无 active Goal 时跳过重复关闭
+- fixed driver 在 `create_goal` / `update_goal` 前立即读取 Goal snapshot；`create_goal` 遇到非终态 Goal 时保留该 Goal、返回 recovery note 并将 action id 记为已消费；`blocked` 只从 active 执行，`complete` 可从 active 或 blocked 执行，其他状态跳过重复转换
 - `packages/codex-adapter/scripts/code-mode-host-action-consumer.mjs`
   - bundled consumer 与 driver 保持相同的 Goal action 幂等规则，并在 `get_goal` 不可用时 fail closed
 - `packages/codex-adapter/references/workflow-guidance-consumption.md`

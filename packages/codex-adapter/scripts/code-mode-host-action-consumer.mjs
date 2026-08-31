@@ -38,16 +38,22 @@ export async function consumeCodexHostActions({ result, hostTools, consumedIds =
         const snapshot = await getGoal({});
         const goalRecord = snapshot?.goal && typeof snapshot.goal === "object" ? snapshot.goal : undefined;
         const goalStatus = goalRecord?.status;
-        const openGoal = Boolean(goalRecord && goalStatus !== "complete");
-        if (action.tool === "create_goal" && openGoal) {
+        const unfinishedGoal = Boolean(goalRecord && goalStatus !== "complete");
+        if (action.tool === "create_goal" && unfinishedGoal) {
           goalRecovery = {
-            reason: "Retained the existing nonterminal Codex Goal; recovery creates a Goal only when none is active.",
+            reason: "Retained the existing unfinished Codex Goal; recovery creates a Goal only when none is unfinished.",
           };
           consumedIds.add(action.id);
           consumedActionIds.push(action.id);
           continue;
         }
-        if (action.tool === "update_goal" && goalStatus !== "active") {
+        const requestedGoalStatus = input.status;
+        const canApplyGoalUpdate = requestedGoalStatus === "blocked"
+          ? goalStatus === "active"
+          : requestedGoalStatus === "complete"
+            ? goalStatus === "active" || goalStatus === "blocked"
+            : false;
+        if (action.tool === "update_goal" && !canApplyGoalUpdate) {
           consumedIds.add(action.id);
           consumedActionIds.push(action.id);
           continue;

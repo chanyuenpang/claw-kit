@@ -1,6 +1,6 @@
 {
   "id": "release-dsh-plugin",
-  "version": "0.2.32",
+  "version": "1.0.0",
   "title": "release-dsh-plugin",
   "status": "process.active",
   "goal": {
@@ -31,18 +31,24 @@
     },
     {
       "id": 3,
+      "title": "Verify built-in templated skill compatibility",
+      "detail": "Run `npm run check:template-versions` before candidate tests. It scans every built-in skill package that contains TEMPLATE.json and verifies that its version matches TEMPLATE_DRIVER_VERSION; stop and repair version drift before publishing.",
+      "status": "pending"
+    },
+    {
+      "id": 4,
       "title": "Verify the DSH plugin candidate",
       "detail": "Run npm run build/test/check -w @veewo/dsh-claw-kit, export the tarball, verify its contents, and run npm run publish:dsh-plugin (dry run) to confirm the artifact gate.",
       "status": "pending"
     },
     {
-      "id": 4,
+      "id": 5,
       "title": "Pass the exact-source gate and release",
       "detail": "Commit intended content on main, push origin/main, require an empty worktree and HEAD == origin/main, run npm run publish:dsh-plugin --publish, then create and push vdsh-<version>.",
       "status": "pending"
     },
     {
-      "id": 5,
+      "id": 6,
       "title": "Verify the immutable DSH release",
       "detail": "Verify the published npm version, the vdsh-<version> tag, repository cleanliness, and (when separately authorized) a real-profile install: dsh plugin --profile web add @veewo/dsh-claw-kit + restart + claw_run/skills present.",
       "status": "pending"

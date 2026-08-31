@@ -9,6 +9,11 @@ CLI 生成的 `hostActions`（进度投影 + DSH 原生 Goal 同步），并只�
 code-mode driver 信封消费，这里在 `claw_run` 工具内部消费——不需要信封、不需要
 模型 eval、工具面固定为一个工具。
 
+Goal 动作遵循共享状态转换合同：`create_goal` 只在没有原生未完成 Goal 时创建；
+`blocked` 只允许由 active 发起，`complete` 允许由 active 或 blocked 发起。DSH
+原生 Goals 没有 blocked 状态，因此将合法的 `blocked` 映射为原生完成；后续恢复会
+创建新的原生 Goal。重复 action ID 与不匹配的状态均为 no-op。
+
 ## 架构
 
 ```text

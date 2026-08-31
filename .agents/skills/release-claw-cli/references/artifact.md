@@ -29,7 +29,10 @@
 - Publish `@veewo/claw-core` before `@veewo/claw`, then create tag `v<version>`
   and the GitHub Release.
 - Before publishing, require clean `main`, `HEAD == origin/main`, focused checks,
-  package dry-runs, `npm run verify:release`, and reviewed release diff.
+  package dry-runs, `npm run check:template-versions`, `npm run verify:release`,
+  and reviewed release diff. The template check is a required gate for every
+  built-in skill package that contains `TEMPLATE.json`; its version must match
+  `TEMPLATE_DRIVER_VERSION`, rather than the release package version.
 - After publishing, verify npm metadata and real retrieval for both packages.
   Never reuse an already-published version or force-move an existing tag.
 - Refresh local installations only when separately requested and only from the

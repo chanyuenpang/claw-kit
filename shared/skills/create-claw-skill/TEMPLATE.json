@@ -1,6 +1,6 @@
 {
   "id": "create-claw-skill",
-  "version": "0.2.32",
+  "version": "1.0.0",
   "title": "create-claw-skill",
   "status": "process.active",
   "goal": {
@@ -15,7 +15,7 @@
       "The generated template owns the structured workflow and contains choices only for real downstream branches; choice-aware guidance exposes valid ids once and one executable --choice command template.",
       "The template deliberately chooses whether a discussion delivery task adopts optional guidance.onPlanStart; executable templates start active without it by default.",
       "The adjacent fallback document preserves direct skill behavior for mixed-stage use and unavailable claw tooling.",
-      "The generated TEMPLATE.json declares the current claw CLI version; a missing or older version triggers this skill for inspection and optimization before the version is advanced.",
+      "The generated TEMPLATE.json declares the independent template driver version and references this skill as its sole maintenance owner.",
       "The source template passes file-based validation and the converted package passes content coverage checks.",
       "The generated skill package is self-contained and its template id matches the entry."
     ]
@@ -43,7 +43,7 @@
     {
       "id": 2,
       "title": "Inspect the source and choose the conversion shape",
-      "detail": "Read the source skill or distill the user idea. Identify its trigger, ordered workflow, tools, constraints, real control-flow branches, verification, lifecycle handoff, and companion files. For an existing TEMPLATE.json, inspect its version first: a missing or older version means the full skill package must be reviewed and optimized against the current CLI contract, not merely version-bumped. Decide the conversion shape from evidence without asking the user to choose a template style. Treat claw plan start as optional global syntax sugar: adopt guidance.onPlanStart only for a genuine discussion-to-execution delivery point; otherwise start executable work in process.active.",
+      "detail": "Read the source skill or distill the user idea. Identify its trigger, ordered workflow, tools, constraints, real control-flow branches, verification, lifecycle handoff, and companion files. For an existing TEMPLATE.json, keep driver maintenance internal to this skill: review and optimize the full package against the template-driver contract instead of only changing version metadata. Decide the conversion shape from evidence without asking the user to choose a template style. Treat claw plan start as optional global syntax sugar: adopt guidance.onPlanStart only for a genuine discussion-to-execution delivery point; otherwise start executable work in process.active.",
       "status": "pending",
       "guidance": {
         "onDone": {
@@ -113,7 +113,7 @@
     "On Goal Mode hosts, every subplan entry must consume the returned handoff that completes the parent goal before creating the child goal.",
     "Let explicit template creation choose its runtime storage automatically.",
     "Preserve direct behavior in the adjacent fallback document and use focused references only when needed.",
-    "Every TEMPLATE.json declares the current CLI version; missing, invalid, or older versions route through this skill for a real inspection and optimization pass before advancing the field.",
+    "Every TEMPLATE.json declares the independent template-driver version and names claw-kit:create-claw-skill as its only maintenance owner.",
     "Every guidance.onDone.choices task must expose valid ids once in completionChoices and one real --choice CLI command template without repeating ids in nextsteps.",
     "Treat claw plan start as optional global syntax sugar: templates opt into recommending it through the current task's guidance.onPlanStart, while ordinary plan and task mutations remain valid.",
     "Do not claim completion before file-based template validation and content coverage pass."

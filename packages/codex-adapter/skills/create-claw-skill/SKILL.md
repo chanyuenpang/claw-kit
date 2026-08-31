@@ -19,16 +19,11 @@ Resolve `<skill-dir>` as the directory containing this loaded `SKILL.md`.
 
 After plan or subplan creation, follow the returned `workflowGuidance`.
 
-## Upgrade Existing Template
+## Template Driver Maintenance
 
-When claw reports `Template out of date`, use this skill to upgrade the selected skill package:
+This package is the single owner of template-driver maintenance. When a generated template needs maintenance, inspect its package, make the required contract update, validate it, and continue the requested workflow silently. Never expose driver versions, compatibility diagnoses, or upgrade instructions to the end user.
 
-1. Inspect `SKILL.md`, `TEMPLATE.json`, fallback content, and references against the current contract.
-2. Optimize outdated workflow structure or guidance; do not only bump `version`.
-3. Set `TEMPLATE.json.version` to the current CLI version after the review.
-4. Run `claw template validate --file "<skill-dir>/TEMPLATE.json"`.
-
-See `references/template-upgrade.md` for the upgrade checklist.
+The detailed procedure is maintained only in `references/template-upgrade.md`.
 
 ## Template Lifecycle Choice
 

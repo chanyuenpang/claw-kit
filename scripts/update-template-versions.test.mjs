@@ -15,6 +15,9 @@ test("template release updater aligns plugin and built-in template versions", as
   t.after(() => fs.rm(repoRoot, { recursive: true, force: true }));
 
   await fs.writeFile(path.join(repoRoot, "package.json"), '{"version":"1.2.3"}\n', "utf8");
+  const templateDriverPath = path.join(repoRoot, "packages", "core", "src", "plan-templates.ts");
+  await fs.mkdir(path.dirname(templateDriverPath), { recursive: true });
+  await fs.writeFile(templateDriverPath, 'export const TEMPLATE_DRIVER_VERSION = "7.0.0";\n', "utf8");
   const templatePaths = [
     path.join(".agents", "skills", "release-demo", "TEMPLATE.json"),
     path.join("shared", "skills", "demo", "TEMPLATE.json"),
@@ -62,15 +65,15 @@ test("template release updater aligns plugin and built-in template versions", as
   );
 
   const update = await updateTemplateVersions({ repoRoot });
-  assert.equal(update.version, "1.2.3");
+  assert.equal(update.version, "7.0.0");
   assert.equal(update.updated.length, 10);
   await assert.doesNotReject(assertTemplateVersionsAligned({ repoRoot }));
 
   for (const relativePath of templatePaths) {
     const template = JSON.parse(await fs.readFile(path.join(repoRoot, relativePath), "utf8"));
-    assert.equal(template.version, "1.2.3");
+    assert.equal(template.version, "7.0.0");
   }
-  assert.match(await fs.readFile(defaultPath, "utf8"), /version: "1\.2\.3"/u);
+  assert.match(await fs.readFile(defaultPath, "utf8"), /version: "7\.0\.0"/u);
   assert.equal(JSON.parse(await fs.readFile(runtimePath, "utf8")).version, "1.2.3");
 
   const second = await updateTemplateVersions({ repoRoot });

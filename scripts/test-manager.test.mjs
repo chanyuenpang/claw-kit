@@ -92,7 +92,7 @@ test("CLI domain files replace the monolith with unique discoverable tests", () 
     }
   }
 
-  assert.equal(names.size, 143);
+  assert.equal(names.size, 144);
   const plannedFiles = createExecutionPlan(Object.keys(CLI_DOMAIN_TEST_FILES))
     .filter((step) => step.kind === "node" && step.args[0] === "--test")
     .map((step) => path.basename(step.args[1]))

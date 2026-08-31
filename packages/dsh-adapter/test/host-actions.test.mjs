@@ -10,7 +10,10 @@ function fakeGoal(create = () => undefined, complete = () => undefined) {
       current = { id: "g-1", revision: 1 };
       return create(agent, request);
     },
-    complete: (agent, ref) => complete(agent, ref),
+    complete: (agent, ref) => {
+      current = undefined;
+      return complete(agent, ref);
+    },
   };
 }
 
@@ -28,24 +31,40 @@ test("consumeHostActions: create_goal calls goals.create and reports consumed", 
   assert.deepEqual(calls, [["create", { objective: "O" }]]);
 });
 
-test("consumeHostActions: update_goal complete/blocked completes the native goal", () => {
-  const goals = fakeGoal();
+test("consumeHostActions: blocked then complete maps to one native completion and a consumed no-op", () => {
+  const calls = [];
+  const goals = fakeGoal((agent, request) => calls.push(["create", request]), (agent, ref) => calls.push(["complete", ref]));
   goals.create({}, { objective: "O" }); // seed an active goal
   const { consumed } = consumeHostActions(
-    [{ schemaVersion: 1, id: "a:update_goal", tool: "update_goal", input: { status: "complete" } }],
+    [
+      { schemaVersion: 1, id: "a:blocked", tool: "update_goal", input: { status: "blocked" } },
+      { schemaVersion: 1, id: "a:complete", tool: "update_goal", input: { status: "complete" } },
+    ],
     goals,
     {},
   );
-  assert.deepEqual(consumed, ["a:update_goal"]);
+  assert.deepEqual(consumed, ["a:blocked", "a:complete"]);
+  assert.deepEqual(calls, [["create", { objective: "O" }], ["complete", { id: "g-1", revision: 1 }]]);
+  assert.equal(goals.get({}), undefined);
 });
 
-test("consumeHostActions: update_goal is skipped when no goal is active", () => {
+test("consumeHostActions: an existing native Goal retains create_goal and duplicate IDs are no-ops", () => {
+  const calls = [];
+  const goals = fakeGoal((agent, request) => calls.push(["create", request]));
+  goals.create({}, { objective: "existing" });
+  const action = { schemaVersion: 1, id: "a:create_goal", tool: "create_goal", input: { objective: "replacement" } };
+  const { consumed } = consumeHostActions([action, action], goals, {});
+  assert.deepEqual(consumed, ["a:create_goal"]);
+  assert.deepEqual(calls, [["create", { objective: "existing" }]]);
+});
+
+test("consumeHostActions: update_goal is a consumed no-op when no Goal is active", () => {
   const { consumed } = consumeHostActions(
     [{ schemaVersion: 1, id: "a:update_goal", tool: "update_goal", input: { status: "complete" } }],
     fakeGoal(),
     {},
   );
-  assert.deepEqual(consumed, []);
+  assert.deepEqual(consumed, ["a:update_goal"]);
 });
 
 test("consumeHostActions: update_plan returns the projection without consuming", () => {

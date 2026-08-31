@@ -13,7 +13,9 @@
   The git tag stays the four-segment `vdsh-<cli-base>.<n>`.
 - Bump only the adapter fourth segment; keep CLI/core and other adapters
   unchanged.
-- Verify: `npm run build/test/check -w @veewo/dsh-claw-kit`, then
+- Verify: run `npm run check:template-versions` to verify every built-in skill
+  package with `TEMPLATE.json` matches `TEMPLATE_DRIVER_VERSION`; then run
+  `npm run build/test/check -w @veewo/dsh-claw-kit`, then
   `npm run publish:dsh-plugin` (dry run) — the tarball must contain `lib/`,
   `skills/`, and `cordis.patch.yml` and no build junk, and its staged version
   must equal the npm mapping.

@@ -317,6 +317,7 @@ test("repository-local release skills split CLI and platform publication contrac
   const names = [
     "release-claw-cli",
     "release-codex-plugin",
+    "release-dsh-plugin",
     "release-cindy-plugin",
     "release-openclaw-plugin",
     "release-opencode-plugin",
@@ -337,13 +338,26 @@ test("repository-local release skills split CLI and platform publication contrac
   for (const payload of payloads) {
     assert.equal(payload.template.id, payload.name);
     assert.equal(payload.template.status, "process.active");
-    assert.equal(payload.template.tasks.length, 5);
+    const hasTemplateCompatibilityGate = [
+      "release-claw-cli",
+      "release-codex-plugin",
+      "release-dsh-plugin",
+    ].includes(payload.name);
+    assert.equal(payload.template.tasks.length, hasTemplateCompatibilityGate ? 6 : 5);
+    if (hasTemplateCompatibilityGate) {
+      const templateCompatibilityGate = payload.template.tasks.find(
+        (task) => task.title === "Verify built-in templated skill compatibility",
+      );
+      assert.ok(templateCompatibilityGate, `${payload.name} includes the template compatibility gate`);
+      assert.match(templateCompatibilityGate.detail, /npm run check:template-versions/);
+    }
     assert.doesNotMatch(JSON.stringify(payload.template), /"choices"/);
   }
 
   const combined = payloads.map(({ skill, template, fallback, artifact }) =>
     `${skill}\n${JSON.stringify(template)}\n${fallback}\n${artifact}`).join("\n");
   assert.match(combined, /npm run verify:release/);
+  assert.match(combined, /Verify built-in templated skill compatibility/);
   assert.match(combined, /@veewo\/claw-core.*before @veewo\/claw/is);
   assert.match(combined, /HEAD == origin\/main/);
   assert.match(combined, /vcodex-<version>/);
