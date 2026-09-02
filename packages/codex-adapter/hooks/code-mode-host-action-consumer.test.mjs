@@ -112,7 +112,7 @@ test("native Goal tool failures preserve the canonical mutation outcome as recov
       create_goal: async () => { throw new Error("permission denied"); },
     },
   });
-  assert.deepEqual(createFailure.hostEffectFailures, [{ id: "mutation:create_goal", tool: "create_goal", message: "permission denied", syncRequired: true }]);
+  assert.deepEqual(createFailure.hostEffectFailures, [{ id: "mutation:create_goal", tool: "create_goal", message: "permission denied" }]);
   const updateFailure = await consumeCodexHostActions({
     result: { hostActions: [makeActions()[2]] },
     hostTools: {
@@ -120,7 +120,7 @@ test("native Goal tool failures preserve the canonical mutation outcome as recov
       update_goal: async () => { throw new Error("transport failed"); },
     },
   });
-  assert.deepEqual(updateFailure.hostEffectFailures, [{ id: "mutation:update_goal", tool: "update_goal", message: "transport failed", syncRequired: true }]);
+  assert.deepEqual(updateFailure.hostEffectFailures, [{ id: "mutation:update_goal", tool: "update_goal", message: "transport failed" }]);
 });
 
 test("Goal actions preserve an active Goal and do not close an already closed Goal", async () => {
@@ -282,8 +282,8 @@ test("the embedded bootstrap caches the CLI driver and dispatches native host ac
         if (options.command === "claw codex driver") {
           return JSON.stringify({
             ok: true,
-            cacheKey: "claw-kit:codex-driver:v19:s1",
-            driverVersion: 19,
+            cacheKey: "claw-kit:codex-driver:v20:s1",
+            driverVersion: 20,
             hostActionSchemaVersion: 1,
             source: driverSource,
           });
@@ -334,8 +334,8 @@ test("the embedded bootstrap uses exec_command when shell_command is unavailable
         if (options.cmd === "claw codex driver") {
           return JSON.stringify({
             ok: true,
-            cacheKey: "claw-kit:codex-driver:v19:s1",
-            driverVersion: 19,
+            cacheKey: "claw-kit:codex-driver:v20:s1",
+            driverVersion: 20,
             hostActionSchemaVersion: 1,
             source: driverSource,
           });

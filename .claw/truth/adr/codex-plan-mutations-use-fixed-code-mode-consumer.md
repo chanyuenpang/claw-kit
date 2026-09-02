@@ -39,7 +39,7 @@ Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode c
 - Goal action 继续使用 schema-v1 原生命令，不引入 `ensure_goal` pseudo-action，也不匹配 host error text。只有固定 driver 可以在 action 紧前方调用 `get_goal`；Agent 禁止单独检查 Goal 状态。
 - CLI 只按 mutation 提交后的 plan 状态路由 host actions：每个非空 `process.*` plan 投影完整 Progress；`process.wait` / `process.discussing` 发出 `update_goal(status="blocked")`；进入或恢复 `process.active` 按既有合同发出 `create_goal`；每个 `end.*` 先以 `:clear_progress` action-id 输出 `update_plan({ plan: [] })`，再发出 `update_goal(status="complete")`。
 - consumer 逐条执行 CLI 返回的 action；每个 `create_goal` / `update_goal` 紧前方读取 Goal snapshot。`create_goal` 遇到任何 nonterminal Goal 时保留它、返回可见 recovery note 并将 action 记为已消费；只有不存在 nonterminal Goal 时才创建新 Goal。`update_goal(status="blocked")` 只允许从 active 状态执行，`update_goal(status="complete")` 允许从 active 或 blocked 状态执行；缺失、已 complete、未知或其他不匹配状态都作为 no-op。恢复 active plan 时，SessionStart 要求固定 driver 运行一次 `plan sync`，该调用恢复 progress projection，并仅在 Goal 缺失时创建 Goal；resume 的 canonical transition 不得重放。
-- 未知 `schemaVersion`、未知 tool、不兼容 input 或缺失 host tool 一律 fail closed。Codex 不提供 direct-call 或 split-call fallback。
+- 未知 `schemaVersion`、未知 tool 或不兼容 input 一律 fail closed。已知且已通过 input 校验的 host tool 若未注入或调用失败，固定 driver 返回通用 `{ id, tool, message }` `hostEffectFailures` 并继续后续 effect；它不回滚 canonical mutation、不会重放 action，也不写入 plan。Codex 不提供 direct-call 或 split-call fallback。
 - `packages/codex-adapter/skills/using-claw-kit/SKILL.md` 内嵌固定 `runClawPlanMutation` driver，以便在 isolate 内直接执行；`packages/cli/src/codex-driver.ts` 是当前 source contract，并由 source SHA snapshot 强制 driver/cache identity 随序列化语义变化升级。旧的 `packages/codex-adapter/scripts/code-mode-host-action-consumer.mjs` 只保留为 repository test oracle，不进入 plugin payload。
 - Node adapter worker 走 `@veewo/claw-client` 的持久 session 时，使用 schema-v1 `commandEnvelope()` 接收 `output`、`hostActions`、`postCommitEffects` 与可选 `knowledgeDispatch`；普通 `command()` 只返回 `output`。当前 Codex code-mode 不能跨调用持有该 Node socket，因此仍用 structured-invoke compatibility transport，每次 mutation 启动一个轻量 CLI 进程。
 - Goal lifecycle 变更发布前必须用未发布的本地构建通过真实 Host wait→active 验收：wait 后 Goal 为空，resume 后新 Goal 在跨调用结算后仍保持 active；单元合同测试不能替代该门禁。
@@ -85,7 +85,7 @@ Codex adapter 的所有 claw plan mutations 只走固定的单调用 code-mode c
 - app-server 的 Goal/MCP 能力不改变当前 owner：在公开协议出现客户端 plan setter、或 claw 成为连接当前 UI thread 的原生客户端之前，`update_plan` 继续由 agent 触发的固定 code-mode consumer 执行。
 - wait/discussing 会保留 Progress 并阻塞 Goal；每个 terminal end 状态才清空 Progress 并完成 Goal。
 - 真实 Host lifecycle 成为 Goal action 发布门禁，避免仅靠 mock 或单元测试批准宿主时序错误。
-- host tool 不可用或合同不兼容时会显式停止；调用方必须修复程序或接口版本，而不能静默绕过合同。
+- 合同不兼容会显式停止；已知可选 host tool 不可用会作为可见的通用 effect failure 返回，调用方可在需要 UI 恢复时显式运行 `plan sync`，但不得静默重放原 mutation。
 - command execution 兼容已支持的 host-tool variants，不把 adapter 绑定到单一 Codex tool name；不受支持的 host 仍须在任何 CLI mutation 或 host-action dispatch 前失败。
 - `exec_command` 不能复用 `shell_command` 的参数名称；bootstrap 与 driver source 都须将 timeout 投影为 `yield_time_ms`。v9 修复了该参数投影，当前 structured-argv/source-SHA 合同使用 v10 driver/cache identity。
 - 内嵌 driver 与独立 source contract 必须通过合同测试保持语义一致。

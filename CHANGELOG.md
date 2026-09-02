@@ -2,6 +2,15 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.2.36] - 2026-09-03
+
+### Fixed
+
+- Codex driver v20 now treats unavailable known host projection tools as
+  recoverable synchronization failures. Canonical claw mutations and remaining
+  Goal actions continue, so missing Progress tools cannot block workflow or
+  knowledge dispatch.
+
 ## [0.2.33] - 2026-08-31
 
 ### Changed

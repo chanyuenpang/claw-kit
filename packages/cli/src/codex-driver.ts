@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-export const CODEX_DRIVER_VERSION = 19;
+export const CODEX_DRIVER_VERSION = 20;
 export const CODEX_HOST_ACTION_SCHEMA_VERSION = 1;
 export const CODEX_DRIVER_CACHE_KEY =
   `claw-kit:codex-driver:v${CODEX_DRIVER_VERSION}:s${CODEX_HOST_ACTION_SCHEMA_VERSION}`;
@@ -120,7 +120,7 @@ async function codexDriverRunner(
   const goalStatuses = new Set(["complete", "blocked"]);
   const consumed = new Set<string>();
   let goalRecovery: Record<string, string> | undefined;
-  const hostEffectFailures: Array<{ id: string; tool: string; message: string; syncRequired: true }> = [];
+  const hostEffectFailures: Array<{ id: string; tool: string; message: string }> = [];
   const actions = Array.isArray(result.hostActions) ? result.hostActions : [];
   for (const candidate of actions) {
     const action = candidate as Record<string, unknown>;
@@ -128,7 +128,7 @@ async function codexDriverRunner(
     const id = typeof action.id === "string" ? action.id : "";
     if (consumed.has(id)) continue;
     const handler = handlers[tool];
-    if (action.schemaVersion !== 1 || !id || !handler) {
+    if (action.schemaVersion !== 1 || !id || !(tool in handlers)) {
       throw new Error(`unsupported Codex hostAction: ${id || "unknown"}`);
     }
     const input = action.input;
@@ -157,6 +157,14 @@ async function codexDriverRunner(
       }
     } else if (Object.keys(inputRecord).some((key) => key !== "status") || !goalStatuses.has(String(inputRecord.status))) {
       throw new Error(`invalid Codex hostAction input: ${id}`);
+    }
+    if (typeof handler !== "function") {
+      hostEffectFailures.push({
+        id,
+        tool,
+        message: `Codex host tool is unavailable: ${tool}`,
+      });
+      continue;
     }
     try {
       if (tool === "create_goal" || tool === "update_goal") {
@@ -189,7 +197,6 @@ async function codexDriverRunner(
         id: id || "unknown",
         tool: tool || "unknown",
         message: error instanceof Error ? error.message : String(error),
-        syncRequired: true,
       });
     }
   }

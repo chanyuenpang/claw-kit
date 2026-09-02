@@ -71,7 +71,6 @@ export async function consumeCodexHostActions({ result, hostTools, consumedIds =
         id: typeof action?.id === "string" ? action.id : "unknown",
         tool: typeof action?.tool === "string" ? action.tool : "unknown",
         message: error instanceof Error ? error.message : String(error),
-        syncRequired: true,
       });
     }
   }

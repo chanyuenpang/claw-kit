@@ -49,13 +49,13 @@ test("cli codex driver returns an executable versioned source envelope", async (
   const root = createFixture("codex-driver-envelope");
   const envelope = runClaw(["codex", "driver"], root, { CLAW_HOST: "" });
   assert.equal(envelope.command, "codex.driver");
-  assert.equal(envelope.driverVersion, 19);
+  assert.equal(envelope.driverVersion, 20);
   assert.equal(envelope.hostActionSchemaVersion, 1);
-  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v19:s1");
+  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v20:s1");
   assert.match(String(envelope.sha256), /^[a-f0-9]{64}$/);
   assert.equal(
     envelope.sha256,
-    "ffd511cb7cfded9c2cf76f960ecd137719a83796fca3618902a9162810d460e4",
+    "4dbd91fe385608d9632493f504b8a534ce50ddb2647e9ae447c6d60a4e06c764",
     "changing serialized driver source requires a driver version/cache-key bump",
   );
 
@@ -165,7 +165,6 @@ test("cli codex driver returns an executable versioned source envelope", async (
     id: "mutation-effect-failure:create_goal",
     tool: "create_goal",
     message: "Goal transport failed",
-    syncRequired: true,
   }]);
   assert.equal(recoveredEffect.planPath, "G:\\example\\.claw\\tasks\\demo\\plan.json");
   assert.equal(recoveredEffect.planStatus, "process.active");
@@ -281,6 +280,47 @@ test("Codex driver skips unrelated JSON diagnostics and validates native action 
   );
   assert.equal(actual.stage, "execution");
   assert.deepEqual(calls, ["update_plan"]);
+
+  const unavailableTool = await runner(
+    { argv: ["plan", "edit", "--summary", "ready"], workdir: root },
+    {
+      tools: {
+        shell_command: async () => JSON.stringify(validResult),
+      },
+      text: () => {},
+    },
+  );
+  assert.deepEqual(unavailableTool.hostEffectFailures, [{
+    id: "edit:update_plan",
+    tool: "update_plan",
+    message: "Codex host tool is unavailable: update_plan",
+  }]);
+  assert.equal(unavailableTool.stage, "execution");
+
+  const goalCalls: string[] = [];
+  const progressUnavailableGoalCreated = await runner(
+    { argv: ["plan", "sync"], workdir: root },
+    {
+      tools: {
+        shell_command: async () => JSON.stringify({
+          ...validResult,
+          hostActions: [
+            validResult.hostActions[0],
+            { schemaVersion: 1, id: "sync:create_goal", tool: "create_goal", input: { objective: "continue work" } },
+          ],
+        }),
+        get_goal: async () => ({ goal: null }),
+        create_goal: async () => goalCalls.push("create_goal"),
+      },
+      text: () => {},
+    },
+  );
+  assert.deepEqual(goalCalls, ["create_goal"]);
+  assert.deepEqual(progressUnavailableGoalCreated.hostEffectFailures, [{
+    id: "edit:update_plan",
+    tool: "update_plan",
+    message: "Codex host tool is unavailable: update_plan",
+  }]);
 
   for (const input of [
     { explanation: "sync", plan: [{ step: "work", status: "unknown" }] },
