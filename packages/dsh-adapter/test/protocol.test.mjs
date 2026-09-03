@@ -24,57 +24,145 @@ test("plan.create maps title/goal/scope/template to daemon input", () => {
   );
 });
 
-test("plan.start maps requirements/acceptance/add_tasks to updates/appendTasks", () => {
+test("plan.start maps the full plan field set and appended tasks", () => {
   assert.deepEqual(
-    daemonInput("plan.start", { requirements: "R", acceptance: ["A1", "A2"] }),
-    { updates: { requirementsSummary: "R", acceptanceCriteria: ["A1", "A2"] } },
-  );
-  assert.deepEqual(
-    daemonInput("plan.start", { add_tasks: [{ title: "X" }] }),
-    { appendTasks: [{ title: "X" }] },
+    daemonInput("plan.start", {
+      goal: "G",
+      requirements: "R",
+      questions: ["Q"],
+      acceptance: ["A1", "A2"],
+      rules: ["Rule"],
+      key_decisions: ["Decision"],
+      references: [{ path: "report.md", why: "Evidence" }],
+      add_tasks: [{ title: "X" }],
+    }),
+    {
+      updates: {
+        goalText: "G",
+        requirementsSummary: "R",
+        openQuestions: ["Q"],
+        acceptanceCriteria: ["A1", "A2"],
+        rules: ["Rule"],
+        keyDecisions: ["Decision"],
+        references: [{ path: "report.md", why: "Evidence" }],
+      },
+      appendTasks: [{ title: "X" }],
+    },
   );
   assert.deepEqual(daemonInput("plan.start", {}), {});
 });
 
-test("plan.resume restates the status operation; plan.wait is empty", () => {
-  assert.deepEqual(
-    daemonInput("plan.resume", {}),
-    { operations: [{ type: "plan.status", status: "process.active" }] },
-  );
+test("plan.resume maps an optional explicit plan id; plan.wait is empty", () => {
+  assert.deepEqual(daemonInput("plan.resume", {}), {});
+  assert.deepEqual(daemonInput("plan.resume", { plan_id: "task/child.json" }), { planId: "task/child.json" });
   assert.deepEqual(daemonInput("plan.wait", {}), {});
 });
 
-test("plan.edit builds plan.update / plan.status operations", () => {
+test("plan.edit maps all canonical plan fields and preserves explicit operation order", () => {
   assert.deepEqual(
-    daemonInput("plan.edit", { goal: "G", summary: "S" }),
-    { operations: [{ type: "plan.update", updates: { goalText: "G", planSummary: "S" } }] },
+    daemonInput("plan.edit", {
+      goal: "G",
+      requirements: "R",
+      question: "Q",
+      remove_questions: ["old Q"],
+      acceptance: ["A"],
+      remove_acceptance: ["old A"],
+      summary: "S",
+      rule: "Rule",
+      remove_rules: ["old rule"],
+      key_decision: "K",
+      remove_key_decisions: ["old K"],
+      reference: { path: "report.md", why: "Evidence" },
+      remove_references: ["old.md"],
+      retrospective: "Retro",
+      what_worked: ["Tests"],
+      issue: "Gap",
+      follow_up: "Ship",
+      status: "process.active",
+    }),
+    { operations: [
+      { type: "plan.update", updates: {
+        goalText: "G",
+        requirementsSummary: "R",
+        openQuestions: ["Q"],
+        removeOpenQuestions: ["old Q"],
+        acceptanceCriteria: ["A"],
+        removeAcceptanceCriteria: ["old A"],
+        planSummary: "S",
+        rules: ["Rule"],
+        removeRules: ["old rule"],
+        keyDecisions: ["K"],
+        removeKeyDecisions: ["old K"],
+        references: [{ path: "report.md", why: "Evidence" }],
+        removeReferencePaths: ["old.md"],
+        retrospectiveSummary: "Retro",
+        whatWorked: ["Tests"],
+        issues: ["Gap"],
+        followUps: ["Ship"],
+      } },
+      { type: "plan.status", status: "process.active" },
+    ] },
   );
-  assert.deepEqual(
-    daemonInput("plan.edit", { status: "process.active" }),
-    { operations: [{ type: "plan.status", status: "process.active" }] },
+  const operations = [
+    { type: "plan.update", updates: { references: [{ path: "a.md", why: "First" }] } },
+    { type: "plan.status", status: "process.wait" },
+    { type: "plan.update", updates: { planSummary: "After wait" } },
+  ];
+  assert.deepEqual(daemonInput("plan.edit", { operations }), { operations });
+  assert.throws(
+    () => daemonInput("plan.edit", { operations, reference: { path: "b.md", why: "mixed" } }),
+    (error) => error.message === "plan.edit operations cannot be combined with mapped field arguments: reference",
   );
 });
 
-test("plan.done maps retrospective and key_decision", () => {
+test("plan.done maps the complete closeout field set", () => {
   assert.deepEqual(
-    daemonInput("plan.done", { retrospective: "R", key_decision: "K" }),
-    { retrospectiveSummary: "R", keyDecisions: ["K"] },
+    daemonInput("plan.done", {
+      retrospective: "R",
+      key_decisions: ["K1", "K2"],
+      what_worked: ["W"],
+      issues: ["I"],
+      follow_ups: ["F"],
+    }),
+    {
+      retrospectiveSummary: "R",
+      keyDecisions: ["K1", "K2"],
+      whatWorked: ["W"],
+      issues: ["I"],
+      followUps: ["F"],
+    },
   );
 });
 
-test("task.done accepts single id or explicit tasks array", () => {
-  assert.deepEqual(daemonInput("task.done", { id: 3 }), { tasks: [{ id: 3 }] });
+test("task.done maps choice aliases for single and batch completion", () => {
+  assert.deepEqual(daemonInput("task.done", { id: 3, choice: "yes" }), { tasks: [{ id: 3, choiceId: "yes" }] });
   assert.deepEqual(
-    daemonInput("task.done", { tasks: [{ id: 1 }, { id: 2 }] }),
-    { tasks: [{ id: 1 }, { id: 2 }] },
+    daemonInput("task.done", { tasks: [{ id: 1, choice: "a" }, { id: 2, choice_id: "b" }] }),
+    { tasks: [{ id: 1, choiceId: "a" }, { id: 2, choiceId: "b" }] },
   );
 });
 
 test("task.add / task.edit / subplan.create / search map canonical fields", () => {
   assert.deepEqual(daemonInput("task.add", { title: "X", detail: "D" }), { tasks: [{ title: "X", detail: "D" }] });
+  assert.deepEqual(daemonInput("task.add", { tasks: [{ title: "X" }, { title: "Y" }] }), { tasks: [{ title: "X" }, { title: "Y" }] });
   assert.deepEqual(daemonInput("task.edit", { id: 2, title: "N" }), { taskId: 2, taskTitle: "N" });
   assert.deepEqual(daemonInput("subplan.create", { parent: "P", task_id: 5 }), { parentTaskName: "P", parentTaskId: 5 });
   assert.deepEqual(daemonInput("search", { query: "q" }), { query: "q" });
+});
+
+test("known mapped operations reject unsupported arguments instead of silently dropping them", () => {
+  assert.throws(
+    () => daemonInput("plan.edit", { reference_path: "report.md" }),
+    (error) => error.message === "Unsupported plan.edit argument(s): reference_path",
+  );
+  assert.throws(
+    () => daemonInput("task.add", { tasks: [{ title: "X" }], ignored: true }),
+    (error) => error.message === "Unsupported task.add argument(s): ignored",
+  );
+  assert.throws(
+    () => daemonInput("task.edit", { id: 1, stauts: "completed" }),
+    (error) => error.message === "Unsupported task.edit argument(s): stauts",
+  );
 });
 
 test("unknown operations pass args through untouched", () => {

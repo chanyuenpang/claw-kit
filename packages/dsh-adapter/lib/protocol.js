@@ -17,41 +17,147 @@ export function isUncertainConnectionFailure(message) {
  * canonical `claw/execute` input. Mirrors the Cindy adapter's sessionRequest
  * contract. Unknown operations pass args through and fail closed on the
  * daemon's validation. */
+function firstValue(args, ...keys) {
+    for (const key of keys) {
+        if (args[key] !== undefined)
+            return args[key];
+    }
+    return undefined;
+}
+function stringValue(args, ...keys) {
+    const value = firstValue(args, ...keys);
+    return typeof value === "string" ? value : undefined;
+}
+function stringValues(args, ...keys) {
+    const value = firstValue(args, ...keys);
+    if (typeof value === "string")
+        return [value];
+    if (!Array.isArray(value))
+        return undefined;
+    return value.filter((item) => typeof item === "string");
+}
+function referenceValues(args) {
+    const value = firstValue(args, "references", "reference");
+    if (Array.isArray(value))
+        return value;
+    return value && typeof value === "object" ? [value] : undefined;
+}
+const PLAN_FIELD_ARG_KEYS = [
+    "goal", "goal_text", "goalText",
+    "requirements", "requirements_summary", "requirementsSummary",
+    "questions", "open_questions", "question", "openQuestions",
+    "remove_questions", "remove_open_questions", "removeOpenQuestions",
+    "acceptance", "acceptance_criteria", "acceptanceCriteria",
+    "remove_acceptance", "remove_acceptance_criteria", "removeAcceptanceCriteria",
+    "summary", "plan_summary", "planSummary",
+    "rules", "rule", "remove_rules", "remove_rule", "removeRules",
+    "key_decisions", "key_decision", "keyDecisions",
+    "remove_key_decisions", "remove_key_decision", "removeKeyDecisions",
+    "references", "reference",
+    "remove_reference_paths", "remove_references", "remove_reference", "removeReferencePaths",
+    "retrospective", "retrospective_summary", "retrospectiveSummary",
+    "what_worked", "whatWorked", "issues", "issue", "follow_ups", "follow_up", "followUps",
+];
+function assertKnownArgs(operation, args, keys) {
+    const known = new Set(keys);
+    const unknown = Object.keys(args).filter((key) => !known.has(key));
+    if (unknown.length > 0) {
+        throw new Error("Unsupported " + operation + " argument(s): " + unknown.join(", "));
+    }
+}
+function planFieldUpdates(args) {
+    const updates = {};
+    const assignText = (target, ...keys) => {
+        const value = stringValue(args, ...keys);
+        if (value !== undefined)
+            updates[target] = value;
+    };
+    const assignStrings = (target, ...keys) => {
+        const value = stringValues(args, ...keys);
+        if (value !== undefined)
+            updates[target] = value;
+    };
+    assignText("goalText", "goal", "goal_text", "goalText");
+    assignText("requirementsSummary", "requirements", "requirements_summary", "requirementsSummary");
+    assignStrings("openQuestions", "questions", "open_questions", "question", "openQuestions");
+    assignStrings("removeOpenQuestions", "remove_questions", "remove_open_questions", "removeOpenQuestions");
+    assignStrings("acceptanceCriteria", "acceptance", "acceptance_criteria", "acceptanceCriteria");
+    assignStrings("removeAcceptanceCriteria", "remove_acceptance", "remove_acceptance_criteria", "removeAcceptanceCriteria");
+    assignText("planSummary", "summary", "plan_summary", "planSummary");
+    assignStrings("rules", "rules", "rule");
+    assignStrings("removeRules", "remove_rules", "remove_rule", "removeRules");
+    assignStrings("keyDecisions", "key_decisions", "key_decision", "keyDecisions");
+    assignStrings("removeKeyDecisions", "remove_key_decisions", "remove_key_decision", "removeKeyDecisions");
+    const references = referenceValues(args);
+    if (references !== undefined)
+        updates.references = references;
+    assignStrings("removeReferencePaths", "remove_reference_paths", "remove_references", "remove_reference", "removeReferencePaths");
+    assignText("retrospectiveSummary", "retrospective", "retrospective_summary", "retrospectiveSummary");
+    assignStrings("whatWorked", "what_worked", "whatWorked");
+    assignStrings("issues", "issues", "issue");
+    assignStrings("followUps", "follow_ups", "follow_up", "followUps");
+    return updates;
+}
+function taskDoneEntry(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value))
+        return value;
+    const entry = value;
+    const choice = stringValue(entry, "choice", "choice_id", "choiceId");
+    const { choice: _choice, choice_id: _choiceId, ...rest } = entry;
+    return {
+        ...rest,
+        ...(choice !== undefined ? { choiceId: choice } : {}),
+    };
+}
 export function daemonInput(operation, args) {
-    const str = (key) => typeof args[key] === "string" ? args[key] : undefined;
-    const arr = (key) => Array.isArray(args[key]) ? args[key] : undefined;
+    const str = (...keys) => stringValue(args, ...keys);
+    const arr = (...keys) => {
+        const value = firstValue(args, ...keys);
+        return Array.isArray(value) ? value : undefined;
+    };
     switch (operation) {
         case "plan.create":
+            assertKnownArgs(operation, args, ["title", "goal", "goal_text", "description", "scope", "template", "template_name", "template_file", "status", "force_planning"]);
             return {
                 title: str("title") ?? "",
-                ...(str("goal") !== undefined ? { goalText: str("goal") } : {}),
+                ...(str("goal", "goal_text") !== undefined ? { goalText: str("goal", "goal_text") } : {}),
+                ...(str("description") !== undefined ? { description: str("description") } : {}),
                 ...(args.scope === "session" ? { scope: "session" } : {}),
-                ...(str("template") !== undefined ? { templateName: str("template") } : {}),
+                ...(str("template", "template_name") !== undefined ? { templateName: str("template", "template_name") } : {}),
                 ...(str("template_file") !== undefined ? { templateFile: str("template_file") } : {}),
+                ...(str("status") !== undefined ? { planStatus: str("status") } : {}),
+                ...(typeof args.force_planning === "boolean" ? { forcePlanning: args.force_planning } : {}),
             };
         case "plan.start": {
-            const updates = {};
-            if (str("requirements") !== undefined)
-                updates.requirementsSummary = str("requirements");
-            if (arr("acceptance") !== undefined)
-                updates.acceptanceCriteria = arr("acceptance");
+            assertKnownArgs(operation, args, [...PLAN_FIELD_ARG_KEYS, "add_tasks", "tasks"]);
+            const updates = planFieldUpdates(args);
             return {
                 ...(Object.keys(updates).length ? { updates } : {}),
-                ...(arr("add_tasks") !== undefined ? { appendTasks: arr("add_tasks") } : {}),
+                ...(arr("add_tasks", "tasks") !== undefined ? { appendTasks: arr("add_tasks", "tasks") } : {}),
             };
         }
         case "plan.show":
+            assertKnownArgs(operation, args, ["simple"]);
             return { simple: args.simple === true };
         case "plan.wait":
+            assertKnownArgs(operation, args, []);
             return {};
-        case "plan.resume":
-            return { operations: [{ type: "plan.status", status: "process.active" }] };
+        case "plan.resume": {
+            assertKnownArgs(operation, args, ["plan_id", "planId", "id"]);
+            const planId = str("plan_id", "planId", "id");
+            return planId === undefined ? {} : { planId };
+        }
         case "plan.edit": {
-            const updates = {};
-            if (str("goal") !== undefined)
-                updates.goalText = str("goal");
-            if (str("summary") !== undefined)
-                updates.planSummary = str("summary");
+            assertKnownArgs(operation, args, [...PLAN_FIELD_ARG_KEYS, "status", "operations"]);
+            const explicitOperations = arr("operations");
+            if (explicitOperations !== undefined) {
+                const mixed = Object.keys(args).filter((key) => key !== "operations");
+                if (mixed.length > 0) {
+                    throw new Error("plan.edit operations cannot be combined with mapped field arguments: " + mixed.join(", "));
+                }
+                return { operations: explicitOperations };
+            }
+            const updates = planFieldUpdates(args);
             const operations = [];
             if (Object.keys(updates).length)
                 operations.push({ type: "plan.update", updates });
@@ -60,34 +166,43 @@ export function daemonInput(operation, args) {
             return { operations };
         }
         case "plan.done":
-            return {
-                ...(str("retrospective") !== undefined ? { retrospectiveSummary: str("retrospective") } : {}),
-                ...(str("key_decision") !== undefined ? { keyDecisions: [str("key_decision")] } : {}),
-            };
-        case "task.add":
-            return { tasks: [{ title: str("title") ?? "", ...(str("detail") !== undefined ? { detail: str("detail") } : {}) }] };
+            assertKnownArgs(operation, args, PLAN_FIELD_ARG_KEYS);
+            return planFieldUpdates(args);
+        case "task.add": {
+            assertKnownArgs(operation, args, ["title", "detail", "tasks", "add_tasks"]);
+            const tasks = arr("tasks", "add_tasks");
+            return tasks !== undefined
+                ? { tasks }
+                : { tasks: [{ title: str("title") ?? "", ...(str("detail") !== undefined ? { detail: str("detail") } : {}) }] };
+        }
         case "task.edit":
+            assertKnownArgs(operation, args, ["id", "task_id", "taskId", "title", "detail", "status", "choice", "choice_id", "choiceId"]);
             return {
-                taskId: Number(args.id),
+                taskId: Number(firstValue(args, "id", "task_id", "taskId")),
                 ...(str("title") !== undefined ? { taskTitle: str("title") } : {}),
                 ...(str("detail") !== undefined ? { taskDetail: str("detail") } : {}),
                 ...(str("status") !== undefined ? { taskStatus: str("status") } : {}),
-                ...(str("choice") !== undefined ? { taskChoiceId: str("choice") } : {}),
+                ...(str("choice", "choice_id", "choiceId") !== undefined ? { taskChoiceId: str("choice", "choice_id", "choiceId") } : {}),
             };
         case "task.done": {
-            const tasks = Array.isArray(args.tasks) ? args.tasks : [];
-            const entries = tasks.length ? tasks : [{ id: Number(args.id ?? 0) }];
+            assertKnownArgs(operation, args, ["id", "task_id", "taskId", "choice", "choice_id", "choiceId", "tasks"]);
+            const tasks = arr("tasks") ?? [];
+            const entries = tasks.length
+                ? tasks.map(taskDoneEntry)
+                : [taskDoneEntry({ id: Number(firstValue(args, "id", "task_id", "taskId") ?? 0), ...(str("choice", "choice_id", "choiceId") !== undefined ? { choiceId: str("choice", "choice_id", "choiceId") } : {}) })];
             return { tasks: entries };
         }
         case "subplan.create":
+            assertKnownArgs(operation, args, ["parent", "parent_task_name", "task_id", "taskId", "parent_task_id", "template", "template_name", "template_file"]);
             return {
-                parentTaskName: str("parent") ?? "",
-                parentTaskId: Number(args.task_id ?? args.taskId ?? 0),
-                ...(str("template") !== undefined ? { templateName: str("template") } : {}),
+                parentTaskName: str("parent", "parent_task_name") ?? "",
+                parentTaskId: Number(firstValue(args, "task_id", "taskId", "parent_task_id") ?? 0),
+                ...(str("template", "template_name") !== undefined ? { templateName: str("template", "template_name") } : {}),
                 ...(str("template_file") !== undefined ? { templateFile: str("template_file") } : {}),
             };
         case "search":
-            return { query: str("query") ?? "" };
+            assertKnownArgs(operation, args, ["query", "limit"]);
+            return { query: str("query") ?? "", ...(typeof args.limit === "number" ? { limit: args.limit } : {}) };
         default:
             return args;
     }

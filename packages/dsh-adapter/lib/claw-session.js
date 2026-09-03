@@ -5,6 +5,23 @@ function protocolError(code, message) {
     error.code = code;
     return error;
 }
+function sessionOpenFailure(stderr, fallback) {
+    const diagnostic = stderr.trim();
+    if (!diagnostic)
+        return protocolError("CLAW_SESSION_OPEN_FAILED", fallback);
+    try {
+        const parsed = JSON.parse(diagnostic);
+        const code = typeof parsed.error?.code === "string" ? parsed.error.code : undefined;
+        const message = typeof parsed.error?.message === "string" ? parsed.error.message : undefined;
+        if (message) {
+            return protocolError("CLAW_SESSION_OPEN_FAILED", "claw session open failed" + (code ? " [" + code + "]" : "") + ": " + message);
+        }
+    }
+    catch {
+        // Preserve non-JSON CLI diagnostics below.
+    }
+    return protocolError("CLAW_SESSION_OPEN_FAILED", "claw session open failed: " + diagnostic.slice(-4096));
+}
 /**
  * Resolve a direct "node <claw>/dist/bin.js" invocation on Windows by locating
  * the "claw.cmd" shim on PATH and checking for the adjacent npm package
@@ -43,6 +60,7 @@ export class ClawSession {
     openTimeoutMs;
     handle = null;
     buffer = "";
+    stderrBuffer = "";
     pending = null;
     openPromise = null;
     chain = Promise.resolve();
@@ -88,7 +106,7 @@ export class ClawSession {
                 stdio: {
                     stdin: "pipe",
                     stdout: "pipe",
-                    stderr: { mode: "collect", maxBytes: 131072 },
+                    stderr: "pipe",
                 },
                 graceMs: 8000,
             });
@@ -96,6 +114,8 @@ export class ClawSession {
             const reset = () => {
                 // A failed open must not poison the cached promise: the next request
                 // gets a fresh spawn instead of a dead handle.
+                if (this.handle === handle)
+                    this.handle = null;
                 this.openPromise = null;
                 this.pending = null;
             };
@@ -109,13 +129,18 @@ export class ClawSession {
             // subprocess seam hands back the raw child stdout, and readline-style
             // consumers were observed to miss lines on it; data events are reliable.
             this.buffer = "";
+            this.stderrBuffer = "";
             handle.stdout.on("data", (chunk) => this.ingest(String(chunk)));
+            handle.stderr?.on("data", (chunk) => {
+                this.stderrBuffer = (this.stderrBuffer + String(chunk)).slice(-131072);
+            });
             const timer = setTimeout(() => {
-                // Reject the pending open BEFORE reset() clears this.pending —
-                // otherwise failPending reads null and the open promise never
-                // settles, hanging claw_run forever with the retry path in
-                // index.ts unreachable.
-                this.failPending(protocolError("CLAW_SESSION_OPEN_TIMEOUT", "claw session open timed out."));
+                // Reject the pending open BEFORE reset() clears this.pending. A
+                // startup diagnostic is a deterministic failure, not a timeout.
+                const error = this.stderrBuffer.trim()
+                    ? sessionOpenFailure(this.stderrBuffer, "claw session exited before the handshake.")
+                    : protocolError("CLAW_SESSION_OPEN_TIMEOUT", "claw session open timed out.");
+                this.failPending(error);
                 reset();
                 void handle.terminate("open timeout");
             }, this.openTimeoutMs);
@@ -137,10 +162,28 @@ export class ClawSession {
                 },
                 timer,
             };
-            handle.done.catch((error) => {
-                // Same ordering rule as the open timer: reject before reset clears
-                // the pending slot, or a dead child leaves open() unsettled forever.
-                this.failPending(error instanceof Error ? error : new Error(String(error)));
+            void handle.done.then(async (outcome) => {
+                if (this.handle !== handle)
+                    return;
+                // Let the stderr stream deliver its final buffered chunk before
+                // classifying the resolved child exit.
+                await new Promise((resolveDrain) => setImmediate(resolveDrain));
+                if (this.handle !== handle)
+                    return;
+                // DSH reports normal and non-zero exits through the resolved done
+                // outcome. Either one before a handshake is an immediate failure.
+                const suffix = outcome && typeof outcome === "object" && "code" in outcome
+                    ? " (exit code " + String(outcome.code) + ")"
+                    : "";
+                this.failPending(sessionOpenFailure(this.stderrBuffer, "claw session exited before the handshake" + suffix + "."));
+                reset();
+            }, (error) => {
+                if (this.handle !== handle)
+                    return;
+                // Reject before reset clears the pending slot.
+                this.failPending(this.stderrBuffer.trim()
+                    ? sessionOpenFailure(this.stderrBuffer, "claw session exited before the handshake.")
+                    : error instanceof Error ? error : new Error(String(error)));
                 reset();
             });
         });

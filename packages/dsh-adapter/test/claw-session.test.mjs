@@ -23,7 +23,7 @@ function makeMockSubprocess() {
       const handle = {
         stdin,
         stdout,
-        done: Promise.resolve({ code: 0 }),
+        done: new Promise(() => {}),
         collected: {},
         terminate: async () => {},
       };
@@ -143,6 +143,58 @@ test("open() rejects when the child dies before the handshake completes", async 
   await assert.rejects(
     () => session.open(),
     (error) => /child killed/.test(error.message),
+  );
+});
+
+test("open() immediately surfaces structured CLI stderr on a resolved nonzero exit", async () => {
+  let finish;
+  const subprocess = {
+    spawn() {
+      const stdout = new Readable({ read() {} });
+      const stderr = new Readable({ read() {} });
+      const done = new Promise((resolve) => { finish = resolve; });
+      queueMicrotask(() => {
+        stderr.push(JSON.stringify({ error: { code: "UNEXPECTED_ERROR", message: 'Task "missing" does not exist.' } }));
+        finish({ code: 1 });
+      });
+      return {
+        stdin: { write() { return true; } },
+        stdout,
+        stderr,
+        done,
+        terminate: async () => {},
+      };
+    },
+  };
+  const session = new ClawSession(subprocess, "C:/work", "sess-1", "claw", 1000);
+  await assert.rejects(
+    () => session.open(),
+    (error) => error.code === "CLAW_SESSION_OPEN_FAILED"
+      && /UNEXPECTED_ERROR/.test(error.message)
+      && /Task "missing" does not exist/.test(error.message),
+  );
+});
+
+test("open() reports collected startup stderr instead of a timeout", async () => {
+  const subprocess = {
+    spawn() {
+      const stdout = new Readable({ read() {} });
+      const stderr = new Readable({ read() {} });
+      queueMicrotask(() => stderr.push("invalid session binding"));
+      return {
+        stdin: { write() { return true; } },
+        stdout,
+        stderr,
+        done: new Promise(() => {}),
+        terminate: async () => {},
+      };
+    },
+  };
+  const session = new ClawSession(subprocess, "C:/work", "sess-1", "claw", 50);
+  await assert.rejects(
+    () => session.open(),
+    (error) => error.code === "CLAW_SESSION_OPEN_FAILED"
+      && /invalid session binding/.test(error.message),
   );
 });
 

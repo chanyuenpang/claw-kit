@@ -18,23 +18,39 @@ command hints directly in pwsh or another shell.
 - The adapter stores the rendered workflow snapshot by DSH agent scope. Concurrent
   Web threads cannot overwrite each other's injected `[claw workflow]` context; a
   global last-writer snapshot is not a valid multi-session fallback.
-- This is adapter-local presentation guidance. It does not modify shared core
-  `workflowGuidance`, CLI protocol, or `hostActions` semantics.
+- DSH's snake_case operation catalog maps onto the complete shared daemon contract:
+  plan fields include requirements, questions, acceptance criteria, rules, key decisions,
+  references, closeout fields, and their removal forms; `plan.edit.operations` preserves
+  an explicit canonical mutation order, and `plan.resume.plan_id` selects a plan directly.
+- `task.add` accepts one task or a batch, while `task.done` normalizes `choice`/`choice_id`
+  to daemon `choiceId`. Known mapped operations reject catalog-external arguments instead of
+  silently dropping them; unknown operations continue to pass through for daemon validation.
+- `ClawSession` captures bounded startup stderr and rejects pre-handshake child exits as
+  `CLAW_SESSION_OPEN_FAILED`, preserving a structured CLI error code/message when present.
+  `CLAW_SESSION_OPEN_TIMEOUT` is reserved for a genuinely silent, still-running child.
+- Codex's fixed code-mode consumer, Plan Mode UI, and approval mechanics remain host-specific;
+  DSH parity applies to the shared mutation and hostActions contracts, not those surfaces.
+- These adapter changes do not modify shared core `workflowGuidance`, CLI protocol, or
+  `hostActions` semantics.
 
 ## Related code
 
 - `packages/dsh-adapter/src/route-guidance.ts`
 - `packages/dsh-adapter/src/host-actions.ts`
 - `packages/dsh-adapter/src/protocol.ts`
+- `packages/dsh-adapter/src/claw-session.ts`
 - `packages/dsh-adapter/test/host-actions.test.mjs`
+- `packages/dsh-adapter/test/claw-session.test.mjs`
 - `packages/dsh-adapter/test/protocol.test.mjs`
 
 ## Verification
 
 The completed DSH route-guidance plan recorded adapter build and type-check
-success plus 49 DSH tests. Focused coverage verifies mutation-note injection,
-the `plan.show` exclusion, recovered-workflow rendering, explicit empty Todo
-projection, per-agent snapshot isolation, and the unchanged fallback prompt.
+success plus 52 DSH tests. Focused coverage verifies complete plan-field mapping,
+explicit ordered mutations, plan-id resume, batch task and choice normalization, immediate
+startup-error propagation, real timeout classification, mutation-note injection, the
+`plan.show` exclusion, recovered-workflow rendering, explicit empty Todo projection,
+per-agent snapshot isolation, and the unchanged fallback prompt.
 
 ## Search terms
 

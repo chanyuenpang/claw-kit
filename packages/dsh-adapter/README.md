@@ -58,13 +58,22 @@ CLI 需支持 `--host dsh`（见 claw-kit 仓库的 dsh host 支持）。
 
 - `operation`：点号形式（`plan.create`、`plan.start`、`task.done`、`plan.done`、
   `plan.show`、`search` 等）；
-- `args`：操作字段（snake_case，与 Cindy 适配器的操作目录一致）；
+- `args`：操作字段（snake_case，与 daemon canonical contract 对齐）；
+  - `plan.start`：`goal`、`requirements`、`questions`、`acceptance`、`rules`、
+    `key_decisions`、`references: [{ path, why }]`、`add_tasks`；
+  - `plan.edit`：上述 plan 字段，以及 `summary`、对应的 `remove_*` 字段、
+    `retrospective`、`what_worked`、`issues`、`follow_ups`、`status`；需要保持
+    mutation 顺序时可直接传 canonical `operations` 数组；
+  - `plan.resume`：可选 `plan_id`；`plan.done`：完整 closeout 字段；
+  - `task.add`：单个 `title/detail` 或批量 `tasks`；`task.done`：单个
+    `id/choice` 或批量 `tasks`；
+- 已映射 operation 遇到目录外参数会立即报 `Unsupported ... argument(s)`，不再静默丢弃；
 - 会话身份与 workspace 由插件从 `exec.agent` 锻造，模型不得传 session/host/workdir；
 - 返回紧凑 guidance + `goalSync`（已自动消费的 goal hostAction 列表）。
 
 ## Skills
 
-安装即投递 7 个 skills（`ctx.skills` bundled provider，无需手动复制）：
+安装即投递 8 个 skills（`ctx.skills` bundled provider，无需手动复制）：
 
 - shared 同步：`planning`、`config`、`create-claw-skill`、`feature-architecture`、`claw-kit-doc`
   （`npm run sync:shared-skills` 维护，勿手改——AUTO-GENERATED banner）；
@@ -83,8 +92,8 @@ npm test -w @veewo/dsh-claw-kit
 ```
 
 覆盖：operation→daemon input 映射、hostActions 消费（含 fail-open）、Todo 投影与空表清理、
-按 agent 隔离的 workflow snapshot、白名单 compact、ClawSession 协议
-（open/request/串行化/诊断忽略）。
+按 agent 隔离的 workflow snapshot、完整 canonical mutation 映射、白名单 compact、
+ClawSession 协议（open/request/串行化/启动错误透传/真实 timeout）。
 
 ## 已知限制
 

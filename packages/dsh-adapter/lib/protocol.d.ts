@@ -9,10 +9,6 @@
  * lost. Such a request must never be automatically replayed.
  */
 export declare function isUncertainConnectionFailure(message: string): boolean;
-/** Map one `claw_run` operation call (snake_case args) to the daemon's
- * canonical `claw/execute` input. Mirrors the Cindy adapter's sessionRequest
- * contract. Unknown operations pass args through and fail closed on the
- * daemon's validation. */
 export declare function daemonInput(operation: string, args: Record<string, unknown>): unknown;
 /** Render the session-start guidance snapshot injected at session start.
  * Aligns with the Codex adapter's session-start hook: consumes the full

@@ -35,6 +35,7 @@ export type SubprocessHandleLike = {
         write(data: string): boolean;
     };
     readonly stdout?: Readable;
+    readonly stderr?: Readable;
     readonly collected?: {
         stdout?: {
             finalize(): {
@@ -94,6 +95,7 @@ export declare class ClawSession {
     private readonly openTimeoutMs;
     private handle;
     private buffer;
+    private stderrBuffer;
     private pending;
     private openPromise;
     private chain;
