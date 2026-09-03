@@ -82,12 +82,13 @@ npm run build -w @veewo/dsh-claw-kit
 npm test -w @veewo/dsh-claw-kit
 ```
 
-覆盖：operation→daemon input 映射、hostActions 消费（含 fail-open）、
-白名单 compact、ClawSession 协议（open/request/串行化/诊断忽略）。
+覆盖：operation→daemon input 映射、hostActions 消费（含 fail-open）、Todo 投影与空表清理、
+按 agent 隔离的 workflow snapshot、白名单 compact、ClawSession 协议
+（open/request/串行化/诊断忽略）。
 
 ## 已知限制
 
-- `systemPrompt.context` 注入的是「最近一次 session-start 快照」：单会话 TUI 精确，
-  并发 web 会话收敛到最后一个写入者；
+- `systemPrompt.context` 按 DSH agent scope 保存和读取 workflow snapshot，
+  并发 Web 会话不会共享全局 last-writer 状态；
 - 进度投影（`update_plan` → sessionProjections/UI）为 P2，当前以紧凑 guidance
   + DSH 原生 todo dock 承载。

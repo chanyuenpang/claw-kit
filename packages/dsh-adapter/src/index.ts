@@ -84,6 +84,54 @@ async function resolveWorkdir(
 // guard below silently returns, registering nothing.
 export const inject = ["subprocess", "tools", "systemPrompt", "skills", "goals"];
 
+export type DshTodo = { content: string; status: "pending" | "in_progress" | "completed" };
+
+export function createAgentGuidanceStore(): {
+  get(scope: object | undefined): string;
+  set(agent: object, guidance: string): void;
+} {
+  const values = new WeakMap<object, string>();
+  return {
+    get: (scope) => scope ? values.get(scope) ?? "" : "",
+    set: (agent, guidance) => values.set(agent, guidance),
+  };
+}
+
+export function projectTodos(
+  projection: HostAction | undefined,
+  output: Record<string, unknown> | undefined,
+): DshTodo[] | undefined {
+  const planInput = projection?.input as Record<string, unknown> | undefined;
+  const planTasks = Array.isArray(planInput?.plan)
+    ? (planInput.plan as Array<Record<string, unknown>>).map((step) => ({
+        title: typeof step.step === "string" ? step.step : "",
+        status: typeof step.status === "string" ? step.status : "",
+      }))
+    : undefined;
+  const outputTasks = Array.isArray(output?.tasks)
+    ? output.tasks as Array<Record<string, unknown>>
+    : (output?.planView as Record<string, unknown> | undefined)?.tasks as
+        | Array<Record<string, unknown>>
+        | undefined;
+  // An explicit empty projection means clear the dock; only an absent
+  // projection may fall back to compact output tasks.
+  const tasks = planTasks ?? outputTasks;
+  if (!Array.isArray(tasks)) return undefined;
+  return tasks
+    .map((task) => {
+      const title = typeof task.title === "string" ? task.title.trim() : "";
+      const status = typeof task.status === "string" ? task.status : "";
+      if (!title) return null;
+      const todoStatus = status === "done" || status === "completed"
+        ? "completed"
+        : status === "in_progress" || status === "active"
+          ? "in_progress"
+          : "pending";
+      return { content: title, status: todoStatus };
+    })
+    .filter((entry): entry is DshTodo => entry !== null);
+}
+
 // ── Cordis plugin ───────────────────────────────────────────────────────────
 export function apply(ctx: unknown): void {
   const c = ctx as {
@@ -120,14 +168,15 @@ export function apply(ctx: unknown): void {
   }
 
   const sessions = new Map<string, ClawSession>();
-  let lastGuidance = "";
+  const guidanceByAgent = createAgentGuidanceStore();
 
   systemPrompt.context({
     name: "claw:workflow",
     order: 60,
-    // Latest injected snapshot; empty text contributes nothing. Single-session
-    // TUI is exact; concurrent web sessions converge on the last writer.
-    text: () => lastGuidance,
+    // Prompt assembly is scoped by the calling agent. Keep each web thread's
+    // workflow snapshot on that exact scope key so concurrent sessions cannot
+    // overwrite one another with a global last-writer value.
+    text: (context: { scope?: object }) => guidanceByAgent.get(context.scope),
   });
   systemPrompt.section({
     name: "tool:claw",
@@ -234,7 +283,7 @@ export function apply(ctx: unknown): void {
         const { text } = await runOneOff(["context", "--host", "dsh"], workdir, agent.id!);
         const parsed = parseProtocol(text);
         const rendered = renderGuidanceSnapshot(parsed ?? undefined);
-        if (rendered) lastGuidance = rendered;
+        if (rendered) guidanceByAgent.set(agent, rendered);
       } catch {
         // fail-open
       }
@@ -290,7 +339,7 @@ export function apply(ctx: unknown): void {
         const context = parseProtocol(text);
         if (!context) throw new Error("claw context returned no valid JSON protocol result");
         const rendered = renderGuidanceSnapshot(context);
-        if (rendered) lastGuidance = rendered;
+        if (rendered) guidanceByAgent.set(agent, rendered);
         return context as Record<string, JsonValue>;
       }
       let session = sessions.get(agent.id);
@@ -347,7 +396,7 @@ export function apply(ctx: unknown): void {
       // at the first plan state seen this session). Fail-open.
       try {
         const rendered = renderGuidanceSnapshot(response.output as Record<string, unknown> | undefined);
-        if (rendered) lastGuidance = rendered;
+        if (rendered) guidanceByAgent.set(agent, rendered);
       } catch {
         // fail-open
       }
@@ -360,41 +409,13 @@ export function apply(ctx: unknown): void {
           | { session?: { append(type: string, data: unknown): unknown } }
           | undefined;
         if (agentWithSession?.session && typeof agentWithSession.session.append === "function") {
-          // Prefer the update_plan hostAction's full plan document (present on
-          // every plan mutation, including task.done); fall back to the compact
-          // output's tasks array (plan.show --simple carries {status,goal,tasks}).
-          const planInput = projection?.input as Record<string, unknown> | undefined;
-          const planTasks = Array.isArray(planInput?.plan)
-            ? (planInput.plan as Array<Record<string, unknown>>).map((step) => ({
-                title: typeof step.step === "string" ? step.step : "",
-                status: typeof step.status === "string" ? step.status : "",
-              }))
-            : undefined;
-          const output = response.output as Record<string, unknown> | undefined;
-          const outputTasks = Array.isArray(output?.tasks)
-            ? output.tasks as Array<Record<string, unknown>>
-            : (output?.planView as Record<string, unknown> | undefined)?.tasks as
-                | Array<Record<string, unknown>>
-                | undefined;
-          const tasks = planTasks && planTasks.length > 0 ? planTasks : outputTasks;
-          if (Array.isArray(tasks)) {
-            const todos = tasks
-              .map((task) => {
-                const title = typeof task.title === "string" ? task.title.trim() : "";
-                const status = typeof task.status === "string" ? task.status : "";
-                if (!title) return null;
-                const todoStatus = status === "done" || status === "completed"
-                  ? "completed"
-                  : status === "in_progress" || status === "active"
-                    ? "in_progress"
-                    : "pending";
-                return { content: title, status: todoStatus };
-              })
-              .filter((entry): entry is { content: string; status: "pending" | "in_progress" | "completed" } => entry !== null);
-            // Whole-list replace, last-write-wins: an empty task list (plan
-            // completed/closed) must CLEAR the dock — writing only when
-            // todos.length > 0 left stale entries after plan.done
-            // (learned 2026-08-22).
+          // Prefer an update_plan projection, including an explicit empty plan
+          // used to clear the dock; only a missing projection falls back.
+          const todos = projectTodos(
+            projection,
+            response.output as Record<string, unknown> | undefined,
+          );
+          if (todos !== undefined) {
             agentWithSession.session.append("todo/write", { todos });
           }
         }

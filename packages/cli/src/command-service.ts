@@ -798,7 +798,6 @@ export class ClawCommandService {
     },
   ): ClawHostActionV1[] {
     if (!isHostActionsHost(context.host as ClawHost | undefined)) return [];
-    if (this.resolveProject(context).scope === "session") return [];
     const actionIdPrefix = result.events?.at(-1)?.mutationId
       ?? result.focusTransition?.transitionId
       ?? createHash("sha256")
@@ -810,7 +809,10 @@ export class ClawCommandService {
       previousPlan: result.previousPlan,
       plan: result.plan,
       workflowGuidance: result.workflowGuidance,
-    }, { actionIdPrefix });
+    }, {
+      actionIdPrefix,
+      includeLightweightProcessProgress: context.host === "codex" || context.host === "dsh",
+    });
   }
 
   private async codexActionsForPlan(
@@ -827,7 +829,6 @@ export class ClawCommandService {
   ): Promise<ClawHostActionV1[]> {
     if (!isHostActionsHost(context.host as ClawHost | undefined)) return [];
     const project = this.resolveProject(context);
-    if (project.scope === "session") return [];
     const goalPlan = resolveThreadGoalPlan({
       cwd: context.cwd,
       taskName: input.taskName,
@@ -858,7 +859,7 @@ export class ClawCommandService {
     }, {
       actionIdPrefix,
       forceProjectionSync: input.forceProjectionSync,
-      includeLightweightProcessProgress: context.host === "codex",
+      includeLightweightProcessProgress: context.host === "codex" || context.host === "dsh",
     });
   }
 }

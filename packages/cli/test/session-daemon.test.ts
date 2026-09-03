@@ -239,6 +239,60 @@ test("persistent session starts a planning plan through the typed protocol", asy
   }
 });
 
+test("DSH daemon emits host actions for session-scoped workflows", async () => {
+  const runtimeRoot = fixture("dsh-session-actions-runtime");
+  const projectRoot = fixture("dsh-session-actions-project");
+  const agentSessionId = `dsh-session-actions-${path.basename(runtimeRoot)}`;
+  initProject({ cwd: projectRoot, projectName: "DSH Session Actions", planning: true });
+  const daemon = await startSessionDaemon({ runtimeRoot, idleTtlMs: 0 });
+  const opened = await new ClawClient({ runtimeRoot, host: "dsh", clientKind: "adapter" })
+    .open(agentSessionId, projectRoot);
+
+  try {
+    const created = await opened.commandEnvelope({
+      operation: "plan.create",
+      input: {
+        taskName: "dsh-session-actions",
+        title: "DSH session actions",
+        goalText: "Project native Todo and Goal state",
+        scope: "session",
+      },
+    });
+    assert.deepEqual(created.hostActions?.map((action) => action.tool), ["update_plan"]);
+    const started = await opened.commandEnvelope({
+      operation: "plan.start",
+      input: {
+        updates: {
+          requirementsSummary: "Verify DSH session projection.",
+          acceptanceCriteria: ["Todo and Goal actions are present."],
+        },
+        appendTasks: [{ title: "Verify projection", detail: "Inspect host actions." }],
+      },
+    });
+    assert.deepEqual(started.hostActions?.map((action) => action.tool), ["update_plan", "create_goal"]);
+
+    const taskDone = await opened.commandEnvelope({
+      operation: "task.done",
+      input: { tasks: [{ id: 2 }] },
+    });
+    assert.deepEqual(taskDone.hostActions?.map((action) => action.tool), ["update_plan"]);
+
+    const completed = await opened.commandEnvelope({
+      operation: "plan.done",
+      input: {},
+    });
+    assert.deepEqual(completed.hostActions?.map((action) => action.tool), ["update_plan", "update_goal"]);
+    assert.deepEqual(completed.hostActions?.[0]?.input, {
+      explanation: "The plan is completed and ready for closeout.",
+      plan: [],
+    });
+    assert.equal(completed.knowledgeDispatch, undefined);
+  } finally {
+    await opened.close();
+    await daemon.close();
+  }
+});
+
 test("session-scoped daemon completion omits knowledge dispatch and finalization jobs", async () => {
   const runtimeRoot = fixture("session-scope-closeout-runtime");
   const projectRoot = fixture("session-scope-closeout-project");

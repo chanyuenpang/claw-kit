@@ -1,6 +1,42 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { compactClawOutput, consumeHostActions } from "../lib/host-actions.js";
+import { createAgentGuidanceStore, projectTodos } from "../lib/index.js";
+
+
+test("projectTodos treats an explicit empty plan as a dock clear", () => {
+  const projection = { schemaVersion: 1, id: "clear", tool: "update_plan", input: { plan: [] } };
+  const todos = projectTodos(projection, {
+    tasks: [{ title: "stale fallback", status: "pending" }],
+  });
+  assert.deepEqual(todos, []);
+});
+
+test("projectTodos falls back only when update_plan is absent", () => {
+  assert.deepEqual(projectTodos(undefined, {
+    tasks: [
+      { title: "Done", status: "done" },
+      { title: "Active", status: "active" },
+      { title: "Later", status: "pending" },
+    ],
+  }), [
+    { content: "Done", status: "completed" },
+    { content: "Active", status: "in_progress" },
+    { content: "Later", status: "pending" },
+  ]);
+});
+
+test("agent guidance store isolates concurrent thread snapshots by object identity", () => {
+  const store = createAgentGuidanceStore();
+  const first = { id: "first" };
+  const second = { id: "second" };
+  store.set(first, "first workflow");
+  store.set(second, "second workflow");
+  assert.equal(store.get(first), "first workflow");
+  assert.equal(store.get(second), "second workflow");
+  assert.equal(store.get({ id: "first" }), "");
+  assert.equal(store.get(undefined), "");
+});
 
 function fakeGoal(create = () => undefined, complete = () => undefined) {
   let current;

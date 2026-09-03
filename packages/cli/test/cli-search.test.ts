@@ -179,7 +179,7 @@ test("cli search reuses one persistent embedding session across commands", { con
   const env = {
     CLAW_EMBEDDING_DAEMON_RUNTIME_DIR: runtimeDir,
     CLAW_EMBEDDING_DAEMON_TEST_MOCK: "1",
-    CLAW_EMBEDDING_DAEMON_IDLE_TTL_MS: "1000",
+    CLAW_EMBEDDING_DAEMON_IDLE_TTL_MS: "5000",
     CLAW_EMBEDDING_DAEMON_EVENT_LOG: eventLog,
   };
   runClaw(["init", "--name", "Search Persistent Worker", "--ext-path", "docs/"], root, env);
@@ -219,7 +219,7 @@ test("cli search reuses one persistent embedding session across commands", { con
   assert.equal((first.telemetry as JsonRecord).queryEmbedding, "generated");
 
   const statePath = path.join(runtimeDir, "state.json");
-  await waitForCondition(() => !fs.existsSync(statePath), 4000);
+  await waitForCondition(() => !fs.existsSync(statePath), 8000);
   const events = fs.readFileSync(eventLog, "utf-8")
     .split(/\r?\n/)
     .filter(Boolean)

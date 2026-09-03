@@ -185,7 +185,37 @@ test("a completed session workflow cannot make the next plan implicit session sc
   runClaw(["session", "clean"], root, env);
 });
 
-test("lightweight session plan completion skips Goal actions and queues no project refresh work", () => {
+test("DSH session workflows retain Todo and Goal host actions", () => {
+  const root = createFixture("dsh-session-host-actions");
+  const runtimeDir = createFixture("dsh-session-host-actions-runtime");
+  const env = { CODEX_THREAD_ID: "thread-dsh-session-actions", CLAW_SESSION_RUNTIME_DIR: runtimeDir };
+
+  const created = runClaw(
+    ["plan", "create", "DSH session projection", "--scope", "session", "--host", "dsh"],
+    root,
+    env,
+  );
+
+  assert.deepEqual(
+    (created.hostActions as JsonRecord[]).map((action) => action.tool),
+    ["update_plan"],
+  );
+  const started = runClaw([
+    "plan", "start",
+    "--requirements", "Verify DSH session projection.",
+    "--acceptance", "Todo and Goal actions are present.",
+    "--add-task", "Verify projection",
+    "--detail", "Inspect host actions.",
+    "--host", "dsh",
+  ], root, env);
+  assert.deepEqual(
+    (started.hostActions as JsonRecord[]).map((action) => action.tool),
+    ["update_plan", "create_goal"],
+  );
+  runClaw(["session", "clean"], root, env);
+});
+
+test("Codex session plan retains host actions but skips knowledge side effects", () => {
   const root = createFixture("session-scope-completion");
   const runtimeDir = createFixture("session-scope-completion-runtime");
   const env = { CODEX_THREAD_ID: "thread-session-completion", CLAW_SESSION_RUNTIME_DIR: runtimeDir };
@@ -196,7 +226,10 @@ test("lightweight session plan completion skips Goal actions and queues no proje
   );
   const planPath = String(created.planPath);
   const activated = runClaw(["plan", "edit", "--status", "process.active", "--host", "codex"], root, env);
-  assert.equal("hostActions" in activated, false);
+  assert.deepEqual(
+    (activated.hostActions as JsonRecord[]).map((action) => action.tool),
+    ["update_plan", "create_goal"],
+  );
 
   const plan = JSON.parse(fs.readFileSync(planPath, "utf-8")) as { tasks: Array<{ id: number }> };
   let closeoutGuidance: JsonRecord | undefined;
@@ -215,7 +248,10 @@ test("lightweight session plan completion skips Goal actions and queues no proje
   assert.equal((completed.nextsteps as string[]).some((step) => step.includes("update_goal")), false);
   assert.deepEqual(closeoutGuidance?.commandHints, ["claw plan done"]);
   assert.equal((closeoutGuidance?.nextsteps as string[]).some((step) => /retrospective|key-decision/i.test(step)), false);
-  assert.equal("hostActions" in completed, false);
+  assert.deepEqual(
+    (completed.hostActions as JsonRecord[]).map((action) => action.tool),
+    ["update_plan", "update_goal"],
+  );
 
   const sessionRoot = path.dirname(path.dirname(path.dirname(planPath)));
   assert.equal(fs.existsSync(path.join(sessionRoot, "runtime", "knowledge-sessions")), false);

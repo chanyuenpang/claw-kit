@@ -2,6 +2,15 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.2.37] - 2026-09-03
+
+### Fixed
+
+- Session-scoped workflows retain host-native plan and Goal actions while continuing
+  to isolate knowledge accumulation and closeout side effects.
+- DSH Todo projection now clears completed plans with an explicit empty list, and
+  concurrent Web threads keep workflow snapshots isolated by agent scope.
+
 ## [0.2.36] - 2026-09-03
 
 ### Fixed

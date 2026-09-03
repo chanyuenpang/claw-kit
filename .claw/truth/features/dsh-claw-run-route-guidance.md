@@ -15,6 +15,9 @@ command hints directly in pwsh or another shell.
   workflow-route noise. Search keeps its existing compact recall surface.
 - `renderGuidanceSnapshot()` appends the same route note only when it renders a
   recovered bound workflow. The no-workflow project fallback remains unchanged.
+- The adapter stores the rendered workflow snapshot by DSH agent scope. Concurrent
+  Web threads cannot overwrite each other's injected `[claw workflow]` context; a
+  global last-writer snapshot is not a valid multi-session fallback.
 - This is adapter-local presentation guidance. It does not modify shared core
   `workflowGuidance`, CLI protocol, or `hostActions` semantics.
 
@@ -29,9 +32,9 @@ command hints directly in pwsh or another shell.
 ## Verification
 
 The completed DSH route-guidance plan recorded adapter build and type-check
-success plus 41 DSH tests. Focused coverage verifies mutation-note injection,
-the `plan.show` exclusion, recovered-workflow rendering, and the unchanged
-fallback prompt.
+success plus 49 DSH tests. Focused coverage verifies mutation-note injection,
+the `plan.show` exclusion, recovered-workflow rendering, explicit empty Todo
+projection, per-agent snapshot isolation, and the unchanged fallback prompt.
 
 ## Search terms
 

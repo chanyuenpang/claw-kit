@@ -61,6 +61,44 @@ async function resolveWorkdir(agent, workspaceRegistry) {
 // activates immediately — before subprocess/tools/systemPrompt exist — and the
 // guard below silently returns, registering nothing.
 export const inject = ["subprocess", "tools", "systemPrompt", "skills", "goals"];
+export function createAgentGuidanceStore() {
+    const values = new WeakMap();
+    return {
+        get: (scope) => scope ? values.get(scope) ?? "" : "",
+        set: (agent, guidance) => values.set(agent, guidance),
+    };
+}
+export function projectTodos(projection, output) {
+    const planInput = projection?.input;
+    const planTasks = Array.isArray(planInput?.plan)
+        ? planInput.plan.map((step) => ({
+            title: typeof step.step === "string" ? step.step : "",
+            status: typeof step.status === "string" ? step.status : "",
+        }))
+        : undefined;
+    const outputTasks = Array.isArray(output?.tasks)
+        ? output.tasks
+        : output?.planView?.tasks;
+    // An explicit empty projection means clear the dock; only an absent
+    // projection may fall back to compact output tasks.
+    const tasks = planTasks ?? outputTasks;
+    if (!Array.isArray(tasks))
+        return undefined;
+    return tasks
+        .map((task) => {
+        const title = typeof task.title === "string" ? task.title.trim() : "";
+        const status = typeof task.status === "string" ? task.status : "";
+        if (!title)
+            return null;
+        const todoStatus = status === "done" || status === "completed"
+            ? "completed"
+            : status === "in_progress" || status === "active"
+                ? "in_progress"
+                : "pending";
+        return { content: title, status: todoStatus };
+    })
+        .filter((entry) => entry !== null);
+}
 // ── Cordis plugin ───────────────────────────────────────────────────────────
 export function apply(ctx) {
     const c = ctx;
@@ -88,13 +126,14 @@ export function apply(ctx) {
         }
     }
     const sessions = new Map();
-    let lastGuidance = "";
+    const guidanceByAgent = createAgentGuidanceStore();
     systemPrompt.context({
         name: "claw:workflow",
         order: 60,
-        // Latest injected snapshot; empty text contributes nothing. Single-session
-        // TUI is exact; concurrent web sessions converge on the last writer.
-        text: () => lastGuidance,
+        // Prompt assembly is scoped by the calling agent. Keep each web thread's
+        // workflow snapshot on that exact scope key so concurrent sessions cannot
+        // overwrite one another with a global last-writer value.
+        text: (context) => guidanceByAgent.get(context.scope),
     });
     systemPrompt.section({
         name: "tool:claw",
@@ -196,7 +235,7 @@ export function apply(ctx) {
                 const parsed = parseProtocol(text);
                 const rendered = renderGuidanceSnapshot(parsed ?? undefined);
                 if (rendered)
-                    lastGuidance = rendered;
+                    guidanceByAgent.set(agent, rendered);
             }
             catch {
                 // fail-open
@@ -253,7 +292,7 @@ export function apply(ctx) {
                     throw new Error("claw context returned no valid JSON protocol result");
                 const rendered = renderGuidanceSnapshot(context);
                 if (rendered)
-                    lastGuidance = rendered;
+                    guidanceByAgent.set(agent, rendered);
                 return context;
             }
             let session = sessions.get(agent.id);
@@ -312,7 +351,7 @@ export function apply(ctx) {
             try {
                 const rendered = renderGuidanceSnapshot(response.output);
                 if (rendered)
-                    lastGuidance = rendered;
+                    guidanceByAgent.set(agent, rendered);
             }
             catch {
                 // fail-open
@@ -324,40 +363,10 @@ export function apply(ctx) {
             try {
                 const agentWithSession = exec.agent;
                 if (agentWithSession?.session && typeof agentWithSession.session.append === "function") {
-                    // Prefer the update_plan hostAction's full plan document (present on
-                    // every plan mutation, including task.done); fall back to the compact
-                    // output's tasks array (plan.show --simple carries {status,goal,tasks}).
-                    const planInput = projection?.input;
-                    const planTasks = Array.isArray(planInput?.plan)
-                        ? planInput.plan.map((step) => ({
-                            title: typeof step.step === "string" ? step.step : "",
-                            status: typeof step.status === "string" ? step.status : "",
-                        }))
-                        : undefined;
-                    const output = response.output;
-                    const outputTasks = Array.isArray(output?.tasks)
-                        ? output.tasks
-                        : output?.planView?.tasks;
-                    const tasks = planTasks && planTasks.length > 0 ? planTasks : outputTasks;
-                    if (Array.isArray(tasks)) {
-                        const todos = tasks
-                            .map((task) => {
-                            const title = typeof task.title === "string" ? task.title.trim() : "";
-                            const status = typeof task.status === "string" ? task.status : "";
-                            if (!title)
-                                return null;
-                            const todoStatus = status === "done" || status === "completed"
-                                ? "completed"
-                                : status === "in_progress" || status === "active"
-                                    ? "in_progress"
-                                    : "pending";
-                            return { content: title, status: todoStatus };
-                        })
-                            .filter((entry) => entry !== null);
-                        // Whole-list replace, last-write-wins: an empty task list (plan
-                        // completed/closed) must CLEAR the dock — writing only when
-                        // todos.length > 0 left stale entries after plan.done
-                        // (learned 2026-08-22).
+                    // Prefer an update_plan projection, including an explicit empty plan
+                    // used to clear the dock; only a missing projection falls back.
+                    const todos = projectTodos(projection, response.output);
+                    if (todos !== undefined) {
                         agentWithSession.session.append("todo/write", { todos });
                     }
                 }

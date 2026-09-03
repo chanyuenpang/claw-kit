@@ -1,6 +1,6 @@
 {
   "name": "@claw-kit/openclaw-adapter",
-  "version": "0.2.36.0",
+  "version": "0.2.37.0",
   "private": true,
   "type": "module",
   "description": "OpenClaw adapter layer for the claw-kit .claw workflow model.",

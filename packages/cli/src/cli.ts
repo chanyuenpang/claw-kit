@@ -3471,13 +3471,14 @@ function compactPlanCommandResult(
     // adapter consumes them via its fixed code-mode driver; the DSH adapter
     // consumes them inside the claw_run tool's execute.
     const integration = resolveHostIntegrationProfile(effectiveHost);
-    const isSessionPlan = !result.planPath.includes(`${path.sep}.claw${path.sep}`);
-    const hostActionsResult = integration?.consumesPlanGoalEffects === true && !isSessionPlan;
+    // Session scope changes workflow storage and knowledge accumulation only;
+    // hosts that consume native plan/goal effects still receive hostActions.
+    const hostActionsResult = integration?.consumesPlanGoalEffects === true;
     const cindyResult = integration?.omitsCompactNotes === true;
     const hostActions = hostActionsResult ? buildCodexHostActions(result, {
       forceProjectionSync,
       actionIdPrefix: command === "plan.sync" ? `plan.sync:${createHash("sha256").update(result.planPath).digest("hex").slice(0, 16)}` : undefined,
-      includeLightweightProcessProgress: effectiveHost === "codex",
+      includeLightweightProcessProgress: effectiveHost === "codex" || effectiveHost === "dsh",
     }) : [];
     const nextsteps = [
       ...result.workflowGuidance.nextsteps,

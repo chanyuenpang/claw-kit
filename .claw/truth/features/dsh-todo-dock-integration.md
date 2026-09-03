@@ -9,6 +9,7 @@
 `feat(dsh): drive DSH todo dock from claw plan progress` /
 `fix(dsh): drive todo from update_plan projection`）。
 
+- Session scope 只改变 workflow 存储与知识积累边界，不改变 hostActions：凡宿主 profile 声明消费 plan/goal effects，session-scoped plan 仍生成 `update_plan` / `create_goal` / `update_goal`；DSH 因而继续投影当前线程的原生 Todo/Goal。
 - 数据源优先级：优先取 `update_plan` hostAction 的完整 plan 文档
   （`projection.input.plan`；`update_plan` 的生成门禁由
   `codex-workflow-guidance-consumption.md` 拥有——plan 投影变化时生成，`task.done`
@@ -24,9 +25,9 @@
   导致 dock 残留）。
 - Fail-open：todo sync 的任何异常都不能破坏已落定的 mutation；`exec.agent` 缺失或
   session 无 append 时静默跳过，GUI 进度条不更新但 mutation 不受影响。
-- 无 CLI 改动：`update_plan` hostAction 已携带完整 plan 投影（完整数组合同由
-  `codex-workflow-guidance-consumption.md` 拥有），adapter 直接消费，CLI 不输出独立
-  todo payload（`packages/cli` 无 todo 代码）。
+- CLI 不输出独立 todo payload：`update_plan` hostAction 携带完整 plan 投影（完整数组合同由
+  `codex-workflow-guidance-consumption.md` 拥有），adapter 直接消费。CLI 只负责按 host profile
+  与 plan lifecycle 生成通用 hostActions，不包含 DSH 专属 todo 写入代码。
 
 ## Verification
 
