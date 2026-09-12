@@ -258,7 +258,7 @@ test("cli plan done emits host-specific subagent dispatch for Codex and Cindy an
     unsupportedRoot,
     opencodeEnv,
   );
-  assert.match(String((failure.error as JsonRecord).message), /supported only by the Codex, Cindy, or DSH host/);
+  assert.match(String((failure.error as JsonRecord).message), /host-registered claim-time report collector/);
   const current = runClaw(["plan", "show"], unsupportedRoot, opencodeEnv);
   assert.equal(current.planStatus, "process.active");
   const editFailure = runClawExpectFailure(
@@ -266,36 +266,61 @@ test("cli plan done emits host-specific subagent dispatch for Codex and Cindy an
     unsupportedRoot,
     opencodeEnv,
   );
-  assert.match(String((editFailure.error as JsonRecord).message), /supported only by the Codex, Cindy, or DSH host/);
+  assert.match(String((editFailure.error as JsonRecord).message), /host-registered claim-time report collector/);
 
+  // The standard hostless flow also lacks a claim-time collector, so the
+  // subagent policy must be rejected there too: hostless closeout uses the
+  // background policy (inline capture + agent-executed writer).
   const directCliRoot = createFixture("plan-done-subagent-direct-cli");
-  runClaw(["init", "--name", "Subagent Direct CLI", "--planning", "false"], directCliRoot);
+  const directCliEnv = { CLAW_HOST: "", CLAW_SESSION_ID: "thread-standard-dispatch" };
+  runClaw(["init", "--name", "Subagent Direct CLI", "--planning", "false"], directCliRoot, directCliEnv);
   const directCliProjectPath = path.join(directCliRoot, ".claw", "project.json");
   const directCliConfig = JSON.parse(fs.readFileSync(directCliProjectPath, "utf-8")) as JsonRecord;
   (directCliConfig.knowledgeWriter as JsonRecord).executionPolicy = "subagent";
   fs.writeFileSync(directCliProjectPath, `${JSON.stringify(directCliConfig, null, 2)}\n`, "utf-8");
-  runClaw(["plan", "create", "--title", "direct-cli-task", "--goal", "Reject direct CLI"], directCliRoot);
-  const hostlessEnv = { CLAW_HOST: "" };
+  runClaw(["plan", "create", "--title", "direct-cli-task", "--goal", "Reject subagent hostless"], directCliRoot, directCliEnv);
 
   const directCliFailure = runClawExpectFailure(
-    ["plan", "done", "--retrospective", "Must use the host adapter."],
+    ["plan", "done", "--retrospective", "Must use the background policy."],
     directCliRoot,
-    hostlessEnv,
+    directCliEnv,
   );
-  assert.match(String((directCliFailure.error as JsonRecord).message), /requires a host-scoped invocation/);
-  assert.match(String((directCliFailure.error as JsonRecord).message), /claw codex driver/);
-  assert.match(String((directCliFailure.error as JsonRecord).message), /claw_run/);
-  assert.match(String((directCliFailure.error as JsonRecord).message), /Ghost `list_tools` then `call_tool`/);
-  assert.match(String((directCliFailure.error as JsonRecord).message), /must use `background`/);
-  assert.equal(((directCliFailure.error as JsonRecord).details as JsonRecord).host, null);
+  assert.match(String((directCliFailure.error as JsonRecord).message), /host-registered claim-time report collector/);
+  assert.match(String((directCliFailure.error as JsonRecord).message), /"background"/);
 
-  const directCliEditFailure = runClawExpectFailure(
-    ["plan", "edit", "--retrospective", "Must use the host adapter.", "--status", "end.completed"],
-    directCliRoot,
+  // With the default background policy, the hostless flow completes inline:
+  // plan done succeeds, inline capture creates the job, and the capture result
+  // points at the agent-owned dispatch command.
+  const hostlessRoot = createFixture("plan-done-hostless-background");
+  const hostlessEnv = { CLAW_HOST: "", CLAW_SESSION_ID: "thread-hostless-background" };
+  runClaw(["init", "--name", "Hostless Background", "--planning", "false"], hostlessRoot, hostlessEnv);
+  runClaw(["plan", "create", "--title", "hostless-task", "--goal", "Background closeout"], hostlessRoot, hostlessEnv);
+  const hostlessDone = runClaw(["plan", "done", "--retrospective", "Hostless background closeout."], hostlessRoot, hostlessEnv);
+  assert.equal(hostlessDone.planStatus, "end.completed");
+  assert.equal("knowledgeDispatch" in hostlessDone, false);
+
+  const captured = runClaw(
+    ["internal-knowledge-capture"],
+    hostlessRoot,
     hostlessEnv,
-  );
-  assert.match(String((directCliEditFailure.error as JsonRecord).message), /claw codex driver/);
-  assert.equal(((directCliEditFailure.error as JsonRecord).details as JsonRecord).host, null);
+    JSON.stringify({
+      cwd: hostlessRoot,
+      session_id: "thread-hostless-background",
+      turn_id: "turn-hostless-final",
+      message: "Implemented and verified the hostless background closeout chain.",
+      task_conclusions: [],
+    }),
+  ) as JsonRecord;
+  assert.equal(captured.captured, true);
+  assert.equal(captured.duplicate, false);
+  const nextStep = captured.nextStep as JsonRecord;
+  assert.match(String(nextStep.command), /internal-knowledge-dispatch --job <jobPath>/);
+  assert.equal(typeof nextStep.jobPath, "string");
+
+  const dispatched = runClaw(["internal-knowledge-dispatch", "--job", String(nextStep.jobPath)], hostlessRoot, hostlessEnv) as JsonRecord;
+  const dispatchPayload = dispatched.dispatch as JsonRecord;
+  assert.equal(dispatchPayload.policy, "background");
+  assert.match(String(dispatchPayload.prompt), /claw plan create --template-file/i);
 });
 
 test("Codex subagent claim captures the Stop-style task report without waiting for Stop", () => {

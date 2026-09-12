@@ -28,7 +28,7 @@ export type KnowledgeReportTarget = {
  * The host which owns execution of a queued writer job.  Core only persists
  * the lifecycle; each adapter supplies its own runner.
  */
-export type KnowledgeFinalizationHost = "codex" | "opencode" | "cindy" | "dsh";
+export type KnowledgeFinalizationHost = "codex" | "opencode" | "cindy" | "dsh" | "standard";
 
 export type KnowledgeSessionRegistry = {
   schemaVersion: 1;

@@ -2,7 +2,7 @@
  * Closed adapter integration capabilities. Core owns this host-neutral effect
  * contract; adapters own the native implementation of every enabled effect.
  */
-export const INTEGRATION_HOSTS = ["codex", "opencode", "cindy", "dsh"] as const;
+export const INTEGRATION_HOSTS = ["codex", "opencode", "cindy", "dsh", "standard"] as const;
 export type IntegrationHost = (typeof INTEGRATION_HOSTS)[number];
 
 export type HostIntegrationProfile = {
@@ -25,6 +25,7 @@ const PROFILES: Readonly<Record<IntegrationHost, HostIntegrationProfile>> = {
   opencode: { version: 1, consumesPlanGoalEffects: false, supportsNativeSubagentFinalization: false, registersKnowledgePlanOnCreation: true, tracksKnowledgeFinalization: true, suppressesAgentGoalGuidance: true, usesGoalObjectiveInTaskDetail: false, forcesSubagentKnowledgeWriter: false, usesAtomicKnowledgeDispatch: false, supportsClaimTimeReportCapture: false, providesActiveWorkflowRecovery: false, omitsCompactNotes: false },
   cindy: { version: 1, consumesPlanGoalEffects: false, supportsNativeSubagentFinalization: true, registersKnowledgePlanOnCreation: true, tracksKnowledgeFinalization: true, suppressesAgentGoalGuidance: true, usesGoalObjectiveInTaskDetail: true, forcesSubagentKnowledgeWriter: true, usesAtomicKnowledgeDispatch: true, supportsClaimTimeReportCapture: true, providesActiveWorkflowRecovery: false, omitsCompactNotes: true },
   dsh: { version: 1, consumesPlanGoalEffects: true, supportsNativeSubagentFinalization: true, registersKnowledgePlanOnCreation: false, tracksKnowledgeFinalization: true, suppressesAgentGoalGuidance: false, usesGoalObjectiveInTaskDetail: true, forcesSubagentKnowledgeWriter: true, usesAtomicKnowledgeDispatch: false, supportsClaimTimeReportCapture: true, providesActiveWorkflowRecovery: false, omitsCompactNotes: false },
+  standard: { version: 1, consumesPlanGoalEffects: false, supportsNativeSubagentFinalization: false, registersKnowledgePlanOnCreation: true, tracksKnowledgeFinalization: true, suppressesAgentGoalGuidance: true, usesGoalObjectiveInTaskDetail: false, forcesSubagentKnowledgeWriter: false, usesAtomicKnowledgeDispatch: false, supportsClaimTimeReportCapture: false, providesActiveWorkflowRecovery: false, omitsCompactNotes: false },
 };
 
 export function resolveHostIntegrationProfile(host?: string | null): HostIntegrationProfile | undefined {
