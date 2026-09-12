@@ -1,0 +1,22 @@
+{
+  "name": "@claw-kit/standard-adapter",
+  "version": "0.2.38.0",
+  "private": true,
+  "type": "module",
+  "description": "Standard hostless adapter assets: use the claw-kit .claw workflow from any agent platform that can run shell commands, without host registration or hooks.",
+  "keywords": [
+    "claw",
+    ".claw",
+    "standard",
+    "hostless",
+    "agent-workflow",
+    "knowledge-capture",
+    "adapter"
+  ],
+  "homepage": "https://github.com/chanyuenpang/claw-kit",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chanyuenpang/claw-kit.git",
+    "directory": "packages/standard-adapter"
+  }
+}
