@@ -2,6 +2,31 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [0.2.38] - 2026-09-12
+
+### Added
+
+- The standard hostless flow is now a first-class invocation shape: workflow
+  commands (`context`, `plan`, `task`, `subplan`, `switch-task`) run without
+  `--host` or `CLAW_HOST` under the new `standard` integration profile, so any
+  agent platform that can execute shell commands can adopt the workflow.
+- `internal-knowledge-capture` returns a `nextStep` (dispatch command and
+  `jobPath`) when it creates a new background job with no host-owned runner,
+  closing the agent-executed hostless closeout chain: capture →
+  `internal-knowledge-dispatch` → self-executed session-scoped writer plan.
+- Function-form plan templates: `.mjs`/`.cjs` templates may export
+  `(options) => document` and receive the effective `knowledgeWriter` config,
+  letting team writer templates adapt execution content from configuration.
+  The built-in knowledge-writer skill now ships a function-form `TEMPLATE.mjs`
+  alongside its static fallback.
+
+### Changed
+
+- `knowledgeWriter.executionPolicy: "subagent"` now fails fast with an
+  actionable error on hosts without a registered claim-time report collector
+  (including the standard hostless flow); the default `background` policy is
+  the supported hostless path.
+
 ## [0.2.37] - 2026-09-03
 
 ### Fixed
