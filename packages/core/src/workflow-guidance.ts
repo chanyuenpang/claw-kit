@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { ClawError } from "./errors.js";
-import { resolveHostIntegrationProfile } from "./integration-contract.js";
+import { resolveHostIntegrationProfile, resolveKnowledgeExecutionPolicyForHost } from "./integration-contract.js";
 import {
   getTemplateTaskDoneChoices,
   getTemplateTaskDoneGuidanceRoute,
@@ -579,7 +579,7 @@ export async function buildPlanWorkflowGuidance(params: {
       const template = workflowGuidanceConfig.states["end.completed"]
         ? renderStateTemplate("end.completed", vars, params.host)
         : renderStateTemplate("end.closed", vars, params.host);
-      return adaptForScope({
+      const guidance = adaptForScope({
         stage: template.stage as WorkflowGuidance["stage"],
         summary: template.summary,
         nextsteps: template.nextsteps,
@@ -588,6 +588,13 @@ export async function buildPlanWorkflowGuidance(params: {
           ? { goalTool: buildGoalTool(goalPlan.goal.text, template.goalTool) }
           : {}),
         ...(template.commandHints ? { commandHints: template.commandHints } : {}),
+      });
+      return applyMainAgentCloseoutGuidance({
+        guidance,
+        projectConfig,
+        host: params.host,
+        scope: params.scope,
+        projectRoot,
       });
     }
     case "end.closed": {
@@ -611,11 +618,57 @@ export async function buildPlanWorkflowGuidance(params: {
   }
 }
 
+/**
+ * Under the `main-agent` execution policy the terminal plan transition is the
+ * closeout vehicle: no report, job, or subagent exists, so the invoking agent
+ * itself must run the direct knowledge prepare/complete chain from its own
+ * memory. Append that chain to the end.completed guidance; other policies keep
+ * their existing closeout routes unchanged.
+ */
+function applyMainAgentCloseoutGuidance(params: {
+  guidance: WorkflowGuidance;
+  projectConfig?: ProjectConfig | null;
+  host?: string;
+  scope?: "project" | "session";
+  projectRoot?: string;
+}): WorkflowGuidance {
+  const { guidance, projectConfig, host, scope } = params;
+  if (scope === "session") {
+    return guidance;
+  }
+  const writer = projectConfig?.knowledgeWriter;
+  if (!writer) {
+    return guidance;
+  }
+  const byHost = projectConfig?.knowledgeWriterByHost;
+  const merged = host && byHost?.[host as keyof typeof byHost]
+    ? { ...writer, ...byHost[host as keyof typeof byHost] }
+    : writer;
+  const { policy } = resolveKnowledgeExecutionPolicyForHost(host, merged.executionPolicy);
+  if (policy !== "main-agent") {
+    return guidance;
+  }
+  const root = params.projectRoot ?? "<project-root>";
+  const closeoutSteps = [
+    `Complete the required main-agent knowledge closeout now: run \`claw knowledge prepare --source agent-memory --project-root ${root}\`.`,
+    "Execute the returned assignments yourself from your own conversation memory: do not read or create a report, transcript, job, or subagent.",
+    `Then run \`claw knowledge complete --source agent-memory --project-root ${root} --config-fingerprint <configFingerprint from prepare>\` with every changed canonical document passed via --changed-truth.`,
+  ];
+  const closeoutHints = [
+    "claw knowledge prepare --source agent-memory --project-root <path>",
+    "claw knowledge complete --source agent-memory --project-root <path> --config-fingerprint <hash> [--changed-truth <absolute-path> ...]",
+  ];
+  return {
+    ...guidance,
+    nextsteps: [...guidance.nextsteps, ...closeoutSteps],
+    commandHints: [...(guidance.commandHints ?? []), ...closeoutHints],
+  };
+}
+
 async function currentTemplateTaskRecommendsPlanStart(params: {
   projectRoot?: string;
   plan: PlanDocument;
-}): Promise<boolean> {
-  const { projectRoot, plan } = params;
+}): Promise<boolean> {  const { projectRoot, plan } = params;
   const task = currentActiveTask(plan) ?? nextUnfinishedTask(plan);
   if (!projectRoot || !plan.templateId?.trim() || !task) {
     return false;

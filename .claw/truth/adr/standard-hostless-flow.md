@@ -1,4 +1,4 @@
-<!-- state: current -->
+﻿<!-- state: current -->
 
 # ADR: Standard hostless flow as a first-class invocation shape
 
@@ -37,10 +37,18 @@ CLI, host-neutral by construction:
    capability flags off: no hostActions consumption, no native subagent
    finalization, no claim-time report capture, no active-workflow recovery
    sync. Named hosts are unaffected.
-3. **Background is the only knowledge-writer policy on this shape.** The
-   `subagent` policy's claim collects its report through a host-registered
-   claim-time collector; without one the claim fails, so the standard flow
-   rejects that policy at configuration time with an actionable error.
+3. **The hostless default policy is `main-agent`; `background` is an explicit
+   opt-in.** The host capability matrix (2026-09-13,
+   `adr/host-aware-knowledge-execution-policy.md`) resolves an omitted or
+   unsupported policy to the standard host's default `main-agent`: no
+   transcript capture, no finalization job — the invoking agent runs
+   `claw knowledge prepare/complete --source agent-memory` from its own
+   memory, and the plan terminal `workflowGuidance` carries that chain. A
+   project may still configure `background` explicitly for the durable
+   capture→dispatch→writer-plan chain. The `subagent` policy's claim collects
+   its report through a host-registered claim-time collector; without one the
+   claim fails, so the standard flow rejects that policy at configuration
+   time with an actionable error.
 4. The hostless closeout chain is executed by the invoking agent itself:
    `plan done` → inline capture (`internal-knowledge-capture`, which now
    returns a `nextStep` pointing at the job) → `internal-knowledge-dispatch`
@@ -65,6 +73,20 @@ CLI, host-neutral by construction:
 - `internal-knowledge-finalize` (the legacy detached Codex-SDK runner) is not
   the standard flow's writer engine; the agent itself executes the writer
   plan.
+
+## Decision evolution
+
+<!-- state: history -->
+
+<!-- dated: 2026-09-13 -->
+### Background 从唯一默认路径降为显式选项
+
+2026-09-13 之前，本 ADR 的 Decision 3 是 "Background is the only
+knowledge-writer policy on this shape"，且 hostless closeout 唯一链路是
+capture → dispatch → self-executed writer plan。host-aware policy matrix 引入
+`main-agent` 后，省略的 policy 解析为 standard 默认 `main-agent`（prepare/
+complete 自沉淀，零捕获、零 job），`background` 三步链保留为显式配置项。
+旧事实对理解 0.2.38 的 hostless 行为与未迁移项目的默认仍有用。
 
 ## Consequences
 
@@ -91,3 +113,9 @@ CLI, host-neutral by construction:
 - `scripts/probe-hostless-e2e.mjs` — 12-step hostless E2E probe against a
   real CLI build: init → context → plan → task → done → no inline dispatch →
   capture → dispatch → writer-plan binding → knowledge list → sweep.
+- Re-verified 2026-09-13 on the published global CLI `0.2.38`: the same
+  12/12 probe passes end to end (no `--host`, no `CLAW_HOST`). Known Windows
+  pitfall: probe teardown `rmSync` can hit a transient EPERM because the
+  session daemon briefly locks the probe workdir; the directory is deletable
+  moments later and mechanism verification is unaffected (documented
+  in-script at the teardown site).

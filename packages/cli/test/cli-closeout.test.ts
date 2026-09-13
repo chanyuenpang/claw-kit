@@ -288,12 +288,17 @@ test("cli plan done emits host-specific subagent dispatch for Codex and Cindy an
   assert.match(String((directCliFailure.error as JsonRecord).message), /host-registered claim-time report collector/);
   assert.match(String((directCliFailure.error as JsonRecord).message), /"background"/);
 
-  // With the default background policy, the hostless flow completes inline:
+  // With an explicit background policy, the hostless flow completes inline:
   // plan done succeeds, inline capture creates the job, and the capture result
-  // points at the agent-owned dispatch command.
+  // points at the agent-owned dispatch command. (The hostless default is now
+  // main-agent, so background must be configured explicitly.)
   const hostlessRoot = createFixture("plan-done-hostless-background");
   const hostlessEnv = { CLAW_HOST: "", CLAW_SESSION_ID: "thread-hostless-background" };
   runClaw(["init", "--name", "Hostless Background", "--planning", "false"], hostlessRoot, hostlessEnv);
+  const hostlessProjectPath = path.join(hostlessRoot, ".claw", "project.json");
+  const hostlessConfig = JSON.parse(fs.readFileSync(hostlessProjectPath, "utf-8")) as JsonRecord;
+  (hostlessConfig.knowledgeWriter as JsonRecord).executionPolicy = "background";
+  fs.writeFileSync(hostlessProjectPath, `${JSON.stringify(hostlessConfig, null, 2)}\n`, "utf-8");
   runClaw(["plan", "create", "--title", "hostless-task", "--goal", "Background closeout"], hostlessRoot, hostlessEnv);
   const hostlessDone = runClaw(["plan", "done", "--retrospective", "Hostless background closeout."], hostlessRoot, hostlessEnv);
   assert.equal(hostlessDone.planStatus, "end.completed");
@@ -1013,6 +1018,12 @@ test("knowledge hook preflight depends only on a valid session knowledge target"
   assert.equal(shouldRunKnowledgeHook(rawInput, root, {}), false);
 
   const env = { CODEX_THREAD_ID: sessionId };
+  // The hostless default is main-agent (no Stop capture), so pin background
+  // explicitly to keep this fixture on the transcript-capture route.
+  const preflightProjectPath = path.join(root, ".claw", "project.json");
+  const preflightConfig = JSON.parse(fs.readFileSync(preflightProjectPath, "utf-8")) as JsonRecord;
+  (preflightConfig.knowledgeWriter as JsonRecord).executionPolicy = "background";
+  fs.writeFileSync(preflightProjectPath, `${JSON.stringify(preflightConfig, null, 2)}\n`, "utf-8");
   runClaw(["plan", "create", "--title", "demo-task", "--goal", "Exercise hook preflight"], root, env);
   assert.equal(shouldRunKnowledgeHook(rawInput, root, {}), true);
 

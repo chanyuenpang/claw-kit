@@ -40,12 +40,13 @@ There is no host marketplace to register with. To adopt the standard flow:
   temporary task that deliberately skips knowledge deposition. The standard
   flow's root plans are project-scoped; only the knowledge-writer delegate
   plan is session-scoped, as a recursion guard.
-- **Background policy only.** `knowledgeWriter.executionPolicy: "subagent"`
-  requires a host-registered claim-time report collector (Codex, Cindy, DSH).
-  The hostless shape uses the default `background`: the agent captures its
-  final message inline (`claw internal-knowledge-capture`), takes the
-  dispatch (`claw internal-knowledge-dispatch --job <path>`), and executes
-  the writer plan itself.
+- **Main-agent policy by default.** The hostless shape resolves an omitted
+  `knowledgeWriter.executionPolicy` to `main-agent`: the agent itself runs the
+  `claw knowledge prepare/complete --source agent-memory` closeout from its own
+  memory with no transcript capture. `background` remains available as an
+  explicit opt-in (inline capture + agent-executed writer plan). `subagent`
+  requires a host-registered claim-time report collector (Codex, Cindy, DSH)
+  and is rejected on this shape.
 - **Recovery is durable.** Unfinished background jobs remain claimable; a
   later conversation resumes the chain from the dispatch step (or capture, if
   the report was never written).

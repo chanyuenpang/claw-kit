@@ -7,7 +7,8 @@
 
 ## 核心事实
 
-- `.claw/project.json` 以 `knowledgeWriter` 对象保存 writer 配置：`executionPolicy`、`externalSkills`、`model`、`reasoningEffort` 与 `datedSectionsToKeep`。`executionPolicy` 接受 `background | subagent` 且默认 `background`；Codex 按配置选择 launcher，Cindy 当前只支持 subagent 并把两种配置值都归一化为 Orca `knowledge_finalizer`。它不改变 assignment 语义；host-specific orchestration 由各 adapter 拥有。
+- `.claw/project.json` 以 `knowledgeWriter` 对象保存 writer 配置：`executionPolicy`、`externalSkills`、`model`、`reasoningEffort` 与 `datedSectionsToKeep`，并可用 sibling 键 `knowledgeWriterByHost` 按 host 做字段级覆盖（键 ∈ `codex | opencode | cindy | dsh | standard`，未指定字段继承 base writer；覆盖表只存在于解析点，不随 writer 快照写入 registry/job）。`executionPolicy` 接受 `main-agent | background | subagent` 且可整体省略：省略或 host 不支持时由 host capability matrix 的 `defaultKnowledgeExecutionPolicy` 兜底（codex → background，cindy/dsh → subagent，opencode → background，standard hostless → main-agent）；显式配置 host 不支持的 policy 在 plan closeout 前 fail-fast（错误指向 host-registered claim-time report collector），唯一例外是 cindy/dsh 的 `background` 仍按 legacy coercion 归一为 subagent。`claw init` 脚手架不再写入 `executionPolicy`。
+- `main-agent` policy 不收集任何 transcript/report、不创建 finalization job：`tryCaptureKnowledgeStop`/`internal-knowledge-capture` 返回 `captured:false, reason:"main-agent-policy"`，`tryEndKnowledgePlan` 不建 pendingTurnOwner/job，knowledge hook preflight 只为 `background` 加载。main agent 通过既有的 `claw knowledge prepare/complete --source agent-memory` 路由自行沉淀；root plan 终态的 `workflowGuidance` 携带该两步 closeout 链（`workflow-guidance.ts` 的 `applyMainAgentCloseoutGuidance`）。cindy adapter 的 turn-end capture 对 `main-agent-policy` 显式跳过（skipped 而非 capture-failed）。
 - `externalSkills` 的非空有序列表选择真实外部 skill assignments；列表缺失或为空时选择 Core 内部 built-in governance assignment。该内置 contract 不以 `claw-kit:knowledge-writer` 用户 skill 发布。`datedSectionsToKeep` 的治理语义由 `truth-and-adr-corpus-semantics.md` 唯一拥有。
 - Background policy 在支持它的 host 上于 Stop/session-idle 创建 job；subagent policy 在终态 mutation 返回 dispatch 前创建 ready job。Cindy 总是采用后一条路径，并把归一化后的 `subagent` 快照写入 `KnowledgeFinalizationJob.writer`。后续重试使用该快照，不从变更后的项目配置重新推导 capability。
 - claim 把冻结配置解析为有序 assignments 与一次性 template。Codex 与 Cindy delegate 都在 session-scoped 动态 assignment subplan 中顺序执行；Cindy 通过 Ghost operations 消费专用内部 delegate template，而不是直接执行 assignment prompts。任一失败都会阻止后续 assignment 并以 claim token 写入失败终态。main agent 不根据 `keyDecisions` 拆分 Truth/ADR phase。
@@ -25,6 +26,11 @@
 
 <!-- state: history -->
 ## Evolution history
+
+<!-- dated: 2026-09-13 -->
+### executionPolicy 从双值全局默认改为 host-aware 三值
+
+此前 `executionPolicy` 只接受 `background | subagent`，协议校验要求显式存在，缺省归一化为全局 `background`，cindy/dsh 通过 profile 的 `forcesSubagentKnowledgeWriter` 强制 subagent。当前为三值可选 + host capability matrix（`allowedKnowledgeExecutionPolicies` / `defaultKnowledgeExecutionPolicy`，见 `adr/host-aware-knowledge-execution-policy.md`）。旧事实对理解 0.2.38 及以前的行为与配置迁移仍有用。
 
 <!-- dated: 2026-08-06 -->
 ### Removed redundant receipt transport

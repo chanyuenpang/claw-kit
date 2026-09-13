@@ -249,9 +249,9 @@ function normalizeProjectConfig(projectConfig: ProjectConfig): ProjectConfig {
     autoUpdate: projectConfig.autoUpdate === true,
     goalMode: typeof projectConfig.goalMode === "boolean" ? projectConfig.goalMode : true,
     knowledgeWriter: {
-      executionPolicy: normalizeKnowledgeWriterExecutionPolicy(
-        projectConfig.knowledgeWriter?.executionPolicy,
-      ),
+      ...(projectConfig.knowledgeWriter?.executionPolicy
+        ? { executionPolicy: normalizeKnowledgeWriterExecutionPolicy(projectConfig.knowledgeWriter.executionPolicy) }
+        : {}),
       externalSkills: resolveExternalWriterSkills(legacyConfig),
       model: normalizeOptionalSkill(projectConfig.knowledgeWriter?.model),
       reasoningEffort: normalizeKnowledgeWriterReasoningEffort(
@@ -262,6 +262,9 @@ function normalizeProjectConfig(projectConfig: ProjectConfig): ProjectConfig {
         DEFAULT_KNOWLEDGE_DATED_SECTIONS_TO_KEEP,
       ),
     },
+    ...(projectConfig.knowledgeWriterByHost && Object.keys(projectConfig.knowledgeWriterByHost).length > 0
+      ? { knowledgeWriterByHost: projectConfig.knowledgeWriterByHost }
+      : {}),
     externalPlanningSkill: normalizeOptionalSkill(projectConfig.externalPlanningSkill),
     defaultPlanTemplate: normalizeOptionalTemplateName(projectConfig.defaultPlanTemplate),
     contextPaths: [...(projectConfig.contextPaths ?? [])],
@@ -318,8 +321,8 @@ function normalizeKnowledgeWriterReasoningEffort(value: unknown): KnowledgeWrite
     : "medium";
 }
 
-function normalizeKnowledgeWriterExecutionPolicy(value: unknown): KnowledgeWriterExecutionPolicy {
-  return value === "subagent" ? "subagent" : "background";
+function normalizeKnowledgeWriterExecutionPolicy(value: unknown): KnowledgeWriterExecutionPolicy | undefined {
+  return value === "main-agent" || value === "subagent" ? value : value === "background" ? "background" : undefined;
 }
 
 function deriveProjectId(projectRoot: string, projectConfig: ProjectConfig | null): string {

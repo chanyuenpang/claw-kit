@@ -706,7 +706,7 @@ function normalizeTemplateConfigOverride(value: unknown): TemplateConfigOverride
     ? truthSkill === adrSkill ? [truthSkill] : [truthSkill, adrSkill]
     : [truthSkill ?? adrSkill].filter((skill): skill is string => skill !== null);
   const normalizedWriter = {
-    ...(writer && (writer.executionPolicy === "background" || writer.executionPolicy === "subagent")
+    ...(writer && (writer.executionPolicy === "main-agent" || writer.executionPolicy === "background" || writer.executionPolicy === "subagent")
       ? { executionPolicy: writer.executionPolicy as KnowledgeWriterExecutionPolicy }
       : {}),
     ...(hasCanonicalExternalSkills
@@ -749,7 +749,7 @@ function isTemplateKnowledgeWriterConfig(value: unknown): boolean {
     || candidate.externalSkills.some((skill) => typeof skill !== "string"))) {
     return false;
   }
-  return (candidate.executionPolicy === undefined || candidate.executionPolicy === "background" || candidate.executionPolicy === "subagent")
+  return (candidate.executionPolicy === undefined || candidate.executionPolicy === "main-agent" || candidate.executionPolicy === "background" || candidate.executionPolicy === "subagent")
     && (candidate.reasoningEffort === undefined || isKnowledgeWriterReasoningEffort(candidate.reasoningEffort))
     && (candidate.datedSectionsToKeep === undefined
       || (Number.isInteger(candidate.datedSectionsToKeep) && (candidate.datedSectionsToKeep as number) >= 0));

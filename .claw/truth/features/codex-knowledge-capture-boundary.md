@@ -84,7 +84,7 @@
 - 分发面检查应确认 `delegate-writer` 与 `knowledge-writer` 均不存在于 shared 与 adapter skill discovery surface，Core package 保留两套内部资源，OpenCode primary agent 只消费内部 bootstrap prompt。
 - knowledge finalization 回归应覆盖 changed-file governance、无 BOM Markdown 的自动修复、重复运行幂等、governance 与编码归一化先于 refresh、result 先于 `succeeded` job 持久化，以及 report 保留。
 - lifecycle 回归应覆盖 readiness-only `wait` 不创建 binding、Codex delegate 不调用 `wait`、每次成功 claim 签发 token、`claim` 与 `done` 都不接受或读取 session identity、`done` 对相同终态结果幂等、动态 template 终态清理，以及任意 external skill assignment 仍只进入内部 session runtime。
-- policy 回归应覆盖默认 `background`、终态 `plan done` / `plan edit` 在 subagent policy 下先物化 ready job再返回 deterministic dispatch、driver 字段可见性、主 agent 原生派发后不等待、Stop 不捕获或修改 `subagent` job、background worker不 claim该 job，以及 model / reasoning 配置传入 launcher。
+- policy 回归应覆盖 codex host 上省略与显式策略的矩阵解析（枚举与默认值归 `host-aware-knowledge-execution-policy.md` 所有）、终态 `plan done` / `plan edit` 在 subagent policy 下先物化 ready job再返回 deterministic dispatch、driver 字段可见性、主 agent 原生派发后不等待、Stop 不捕获或修改 `subagent` job、background worker不 claim该 job，以及 model / reasoning 配置传入 launcher。
 - report result 回归应确认 `.claw/tasks` 内的 write、同 `finalizeId` 去重和原始 turn entry 保留；越界路径必须被拒绝，result 写回失败必须进入重试且不得伪造成功 job。
 - runtime 回归需要同时覆盖健康 context 静默、缺失时的英文 consent-required error、无固定 repair command、SessionStart 授权 prompt 前置、adapter 依赖归属和 hook 的 Codex host 标记。
 - sidecar 重试应能让先前因 runtime 发现失败的 finalization job 成功；使用同一 context runtime 再次执行时不得重复沉淀已有 truth / ADR。

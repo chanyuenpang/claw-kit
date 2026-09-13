@@ -441,7 +441,9 @@ test("DSH daemon sessions coerce a fresh project's default background config to 
   const projectConfig = JSON.parse(
     fs.readFileSync(path.join(projectRoot, ".claw", "project.json"), "utf8"),
   ) as { knowledgeWriter?: { executionPolicy?: string } };
-  assert.equal(projectConfig.knowledgeWriter?.executionPolicy, "background");
+  // Fresh scaffolds omit executionPolicy; the DSH capability matrix resolves
+  // the omitted policy to its subagent default at dispatch time.
+  assert.equal(projectConfig.knowledgeWriter?.executionPolicy, undefined);
   const daemon = await startSessionDaemon({ runtimeRoot, idleTtlMs: 0 });
   const opened = await new ClawClient({ runtimeRoot, host: "dsh", clientKind: "adapter" })
     .open("dsh-default-dispatch", projectRoot);

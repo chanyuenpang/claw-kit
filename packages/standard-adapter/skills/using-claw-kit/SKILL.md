@@ -44,40 +44,45 @@ would keep expanding a parent task, create a subplan instead.
 - `process.wait`: when execution is blocked on user input or an external dependency, move the plan to `process.wait`, then stop until returned guidance resumes it.
 - `end.completed`: the canonical completed plan status. Record the retrospective and durable key decisions, then run `claw plan done --retrospective "<summary>"`.
 
-## Knowledge closeout (background chain)
+## Knowledge closeout
 
-The standard hostless flow has no host-registered claim-time report collector,
-so `knowledgeWriter.executionPolicy` must keep its default `background` value.
-Closeout is a required, non-skippable three-step chain executed by you:
+The standard hostless flow resolves `knowledgeWriter.executionPolicy` to
+`main-agent` by default (no host-registered claim-time report collector
+exists). Closeout is required and non-skippable.
 
-1. **Capture the final answer inline.** After completing the root plan's work,
-   report the final assistant message for the task:
+**Default `main-agent` closeout (two steps):**
+
+1. **Prepare the assignment projection.** After completing the root plan's
+   work, run:
 
    ```
-   claw internal-knowledge-capture
+   claw knowledge prepare --source agent-memory --project-root <project root>
    ```
 
-   with stdin JSON `{"cwd": "<project root>", "session_id": "<CLAW_SESSION_ID>", "turn_id": "<turn id>", "message": "<final answer summary>", "task_conclusions": []}`.
-   A successful capture writes the report, creates the durable background
-   job, and returns `nextStep` with its `jobPath`.
+   It returns `configFingerprint` and the ordered `assignments`.
 
-2. **Take the writer dispatch.** Run
-   `claw internal-knowledge-dispatch --job <jobPath>` and use the returned
-   `dispatch.prompt` verbatim.
+2. **Execute and complete.** Execute each assignment yourself using only
+   conclusion-bearing content already in your conversation memory: read or
+   create no report, transcript, plan, subplan, job, or subagent. Then run:
 
-3. **Execute the writer plan yourself.** Run the prompt's
-   `claw plan create --template-file ... --title "knowledge-finalizer-<id>"`
-   command, then follow the returned `workflowGuidance` until that writer
-   plan completes. The writer plan is session-scoped by design: it claims the
-   job, executes the knowledge-writer assignments, and its terminal
-   transition records `knowledge done`. Do not wait for or poll an external
-   worker; do not invoke a subagent, background finalizer, or delegate skill.
+   ```
+   claw knowledge complete --source agent-memory --project-root <project root> --config-fingerprint <hash> [--changed-truth <absolute path> ...]
+   ```
 
-Do not skip the chain because the work appears to contain no knowledge — the
-writer plan itself decides whether a knowledge update is warranted. If the
-conversation ends before the chain completes, the durable job remains
-claimable; resume by running the chain from step 1 (capture) only if the
-report was not written, otherwise continue from step 2.
+   with every canonical Truth/ADR document you changed. If the configuration
+   changed after prepare, run prepare again before completing.
+
+**Explicit `background` closeout (three steps):** with
+`knowledgeWriter.executionPolicy: "background"` configured explicitly, run
+`claw internal-knowledge-capture` with stdin JSON `{"cwd": "<project root>",
+"session_id": "<CLAW_SESSION_ID>", "turn_id": "<turn id>", "message": "<final
+answer summary>", "task_conclusions": []}`, then `claw
+internal-knowledge-dispatch --job <jobPath>`, then execute the returned
+`dispatch.prompt` (its `claw plan create --template-file ...` command) and
+follow the writer plan's `workflowGuidance` to completion.
+
+Do not skip closeout because the work appears to contain no knowledge — the
+assignment contract itself decides whether a knowledge update is warranted.
 
 ## Investigation
 
@@ -89,6 +94,6 @@ native code search to locate exact files or symbols.
 
 - Edit canonical plan state only through claw commands supplied or permitted by returned guidance; never edit `plan.json` or job files directly.
 - Do not add `--host` or set `CLAW_HOST`; the hostless invocation shape is the supported path on platforms without a native adapter.
-- Do not switch `knowledgeWriter.executionPolicy` to `subagent`: without a host-registered collector the claim cannot collect its report and will fail.
+- Do not switch `knowledgeWriter.executionPolicy` to `subagent`: without a host-registered collector the claim cannot collect its report and will fail. Omit it (resolves to `main-agent`) or use `background` explicitly.
 - Keep claw harness mechanics out of normal replies unless the user asks about them or they are necessary to explain a blocker or result.
 - Keep claw-generated metadata in English while preserving user-supplied project content in its original language.

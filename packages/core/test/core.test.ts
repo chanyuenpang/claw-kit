@@ -171,6 +171,12 @@ test("context resolves nested cwd to project .claw", () => {
 test("knowledge sidecar derives adjacent report names and keeps one report owner per Stop", () => {
   const root = createEmptyFixture("knowledge-sidecar");
   initProject({ cwd: root, projectName: "Knowledge Sidecar", externalDocPaths: ["docs"] });
+  // This fixture exercises the background transcript-capture route; the
+  // hostless default resolves to main-agent, so pin background explicitly.
+  const sidecarProjectPath = path.join(root, ".claw", "project.json");
+  const sidecarConfig = JSON.parse(fs.readFileSync(sidecarProjectPath, "utf-8")) as Record<string, unknown>;
+  (sidecarConfig.knowledgeWriter as Record<string, unknown>).executionPolicy = "background";
+  fs.writeFileSync(sidecarProjectPath, JSON.stringify(sidecarConfig, null, 2), "utf-8");
   const project = resolveProjectContext(root);
   const taskDir = path.join(project.tasksDir, "2026-07-30", "demo-task");
   fs.mkdirSync(taskDir, { recursive: true });
@@ -789,7 +795,7 @@ test("initProject creates a minimal .claw project scaffold", () => {
     contextPaths: ["docs/project-guide.md"],
     goalMode: true,
     knowledgeWriter: {
-      executionPolicy: "background",
+      // executionPolicy omitted: the host capability matrix supplies the default.
       externalSkills: ["external-knowledge-writer"],
       model: null,
       reasoningEffort: "medium",
@@ -1042,6 +1048,11 @@ test("daily maintenance leaves a persistently locked task for a later day withou
 test("dated tasks keep finalizer jobs inside the task directory", async () => {
   const root = createFixture("dated-finalizer-job");
   initProject({ cwd: root, projectName: "Dated finalizer", force: true });
+  // Pin the background route: the hostless default is main-agent (no jobs).
+  const finalizerProjectPath = path.join(root, ".claw", "project.json");
+  const finalizerConfig = JSON.parse(fs.readFileSync(finalizerProjectPath, "utf-8")) as Record<string, unknown>;
+  (finalizerConfig.knowledgeWriter as Record<string, unknown>).executionPolicy = "background";
+  fs.writeFileSync(finalizerProjectPath, JSON.stringify(finalizerConfig, null, 2), "utf-8");
   const created = await writePlan({ cwd: root, taskName: "finalizer-task", title: "Finalizer task", goalText: "Keep job local" });
   const project = resolveProjectContext(root);
   tryRegisterKnowledgePlan({ project, sessionId: "thread-finalizer", planPath: created.planPath });
@@ -3785,7 +3796,6 @@ test("resolveContext deep-merges project-override.json and preserves explicit nu
   assert.deepEqual(result.project.projectConfig?.contextPaths, ["docs/personal.md"]);
   assert.equal(result.project.projectConfig?.goalMode, false);
   assert.deepEqual(result.project.projectConfig?.knowledgeWriter, {
-    executionPolicy: "background",
     externalSkills: [],
     model: "gpt-team-writer",
     reasoningEffort: "high",
@@ -6258,7 +6268,6 @@ test("ensureProjectProtocol rewrites project.json into explicit canonical protoc
   assert.deepEqual(projectConfig.contextPaths, []);
   assert.equal(projectConfig.goalMode, true);
   assert.deepEqual(projectConfig.knowledgeWriter, {
-    executionPolicy: "background",
     externalSkills: [],
     model: null,
     reasoningEffort: "medium",
@@ -6335,7 +6344,6 @@ test("ensureProjectProtocol removes legacy default local modelCacheDir so runtim
   assert.equal(result.changed, true);
   assert.equal(projectConfig.goalMode, true);
   assert.deepEqual(projectConfig.knowledgeWriter, {
-    executionPolicy: "background",
     externalSkills: [],
     model: null,
     reasoningEffort: "medium",

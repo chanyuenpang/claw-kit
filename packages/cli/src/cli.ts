@@ -1579,6 +1579,7 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
           ? resolvePlanEffectiveConfig(project.projectConfig, current.plan)?.knowledgeWriter
           : undefined,
         effectiveHost,
+        project?.projectConfig?.knowledgeWriterByHost,
       );
       if (
         current
@@ -1703,6 +1704,7 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
           ? resolvePlanEffectiveConfig(project.projectConfig, current.plan)?.knowledgeWriter
           : undefined,
         effectiveHost,
+        project?.projectConfig?.knowledgeWriterByHost,
       );
       if (
         !current.plan.parentPlan

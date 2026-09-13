@@ -29,26 +29,30 @@ in this package.
 
 ## Closeout rule
 
-When the root plan reaches `end.completed`, the required closeout chain is
-executed by the agent itself (no host worker exists):
+When the root plan reaches `end.completed`, the required closeout depends on
+the effective `knowledgeWriter.executionPolicy`:
 
-1. `claw internal-knowledge-capture` with stdin JSON reporting the final
-   answer (`cwd`, `session_id`, `turn_id`, `message`) — creates the durable
-   background job and returns `nextStep.jobPath`.
-2. `claw internal-knowledge-dispatch --job <jobPath>` — returns the writer
-   `dispatch.prompt`.
-3. Execute that prompt: its `claw plan create --template-file ...` command,
-   then follow the writer plan's `workflowGuidance` to completion. The writer
-   plan is session-scoped (recursion-safe: it does not deposit knowledge about
-   itself) and closes the durable job through its terminal transition.
+- **`main-agent` (default)**: run `claw knowledge prepare --source agent-memory
+  --project-root <path>`, execute the returned assignments yourself from your
+  own conversation memory (no reports, transcripts, jobs, or subagents), then
+  run `claw knowledge complete --source agent-memory --project-root <path>
+  --config-fingerprint <hash> [--changed-truth <path> ...]`. The plan
+  terminal `workflowGuidance` carries this chain.
+- **`background` (explicit opt-in)**: `claw internal-knowledge-capture` with
+  stdin JSON reporting the final answer (`cwd`, `session_id`, `turn_id`,
+  `message`) creates the durable background job and returns `nextStep.jobPath`;
+  then `claw internal-knowledge-dispatch --job <jobPath>` returns the writer
+  `dispatch.prompt`; execute that prompt's `claw plan create --template-file
+  ...` command and follow the writer plan's `workflowGuidance` to completion.
 
 The chain is non-skippable regardless of an apparently empty result; the
-writer plan decides whether a knowledge update is warranted.
+writer side decides whether a knowledge update is warranted.
 
 ## Boundaries
 
 - Never pass `--host` or set `CLAW_HOST` in the standard flow.
-- Keep `knowledgeWriter.executionPolicy` at its default `background`; the
-  `subagent` policy requires a host-registered claim-time report collector and
-  is rejected on this shape.
+- `knowledgeWriter.executionPolicy` may be omitted (the standard host resolves
+  it to `main-agent`), or set explicitly to `main-agent` or `background`.
+  The `subagent` policy requires a host-registered claim-time report collector
+  and is rejected on this shape.
 - Keep claw-generated metadata in English; user content keeps its language.

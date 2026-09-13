@@ -2,6 +2,38 @@
 
 All notable release-oriented changes for `claw-kit` should be recorded here.
 
+## [Unreleased]
+
+### Added
+
+- `knowledgeWriter.executionPolicy` is now host-aware with a new `main-agent`
+  policy: the invoking agent deposits knowledge itself through
+  `claw knowledge prepare/complete --source agent-memory` with no transcript
+  capture, report, or finalization job; the plan terminal `workflowGuidance`
+  carries the closeout chain.
+- Per-host capability matrix in the integration profile
+  (`allowedKnowledgeExecutionPolicies` / `defaultKnowledgeExecutionPolicy`):
+  Codex opens all three policies; Cindy and DSH open `main-agent` + `subagent`;
+  OpenCode and the standard hostless flow open `main-agent` + `background`.
+- `knowledgeWriterByHost` in project.json: per-host field-level overrides of
+  the base writer (e.g. a `main-agent` default with Codex opting into
+  `subagent`), merged before the capability matrix resolves the policy.
+- `knowledge prepare` / `knowledge complete` remain the same-agent manual
+  capture route and now double as the `main-agent` closeout vehicle.
+
+### Changed
+
+- `knowledgeWriter.executionPolicy` is optional in project.json: an omitted
+  policy resolves to the invoking host's matrix default (standard hostless →
+  `main-agent`, Codex → `background`, Cindy/DSH → `subagent`, OpenCode →
+  `background`) instead of the global `background`. `claw init` scaffolds no
+  longer write the field.
+- Explicitly requesting a policy the host cannot run still fails fast at plan
+  closeout (unchanged); the legacy Cindy/DSH background→subagent coercion is
+  preserved.
+- Knowledge hook preflight only loads for `background` capture; `main-agent`
+  sessions skip Stop-side capture entirely.
+
 ## [0.2.38] - 2026-09-12
 
 ### Added
