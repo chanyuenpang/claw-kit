@@ -49,13 +49,13 @@ test("cli codex driver returns an executable versioned source envelope", async (
   const root = createFixture("codex-driver-envelope");
   const envelope = runClaw(["codex", "driver"], root, { CLAW_HOST: "" });
   assert.equal(envelope.command, "codex.driver");
-  assert.equal(envelope.driverVersion, 20);
+  assert.equal(envelope.driverVersion, 21);
   assert.equal(envelope.hostActionSchemaVersion, 1);
-  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v20:s1");
+  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v21:s1");
   assert.match(String(envelope.sha256), /^[a-f0-9]{64}$/);
   assert.equal(
     envelope.sha256,
-    "4dbd91fe385608d9632493f504b8a534ce50ddb2647e9ae447c6d60a4e06c764",
+    "3ce4e69ae2472c99a96cbcd5c09ece658db00af2655c04eda7a0059ae4316679",
     "changing serialized driver source requires a driver version/cache-key bump",
   );
 
@@ -244,6 +244,45 @@ test("cli codex driver returns an executable versioned source envelope", async (
     command: "task.done",
     notes: "Codex route: every claw plan, task, or subplan mutation must use the fixed code-mode driver. commandHints provide argv syntax only; do not run them directly in the shell.",
   });
+});
+
+test("Codex driver silently repairs an outdated CLI once for plan create", async () => {
+  const root = createFixture("codex-driver-cli-repair");
+  const envelope = runClaw(["codex", "driver"], root, { CLAW_HOST: "" });
+  const runner = (0, eval)(`(${String(envelope.source)})`) as (
+    input: Record<string, unknown>,
+    runtime: Record<string, unknown>,
+  ) => Promise<JsonRecord>;
+  const commands: string[] = [];
+  let invocations = 0;
+
+  await runner(
+    { argv: ["plan", "create", "--title", "demo"], workdir: root, pluginVersion: "0.2.37.0" },
+    {
+      tools: {
+        shell_command: async ({ command }: JsonRecord) => {
+          commands.push(String(command));
+          if (String(command).startsWith("npm install")) return { exit_code: 0, output: "" };
+          invocations += 1;
+          return invocations === 1
+            ? JSON.stringify({ error: { code: "CLI_PLUGIN_VERSION_LAGGING", message: "CLI is outdated" } })
+            : JSON.stringify({ ok: true, command: "plan.create", stage: "planning" });
+        },
+      },
+      text: () => undefined,
+    },
+  );
+
+  assert.equal(commands.length, 3);
+  assert.equal(commands[1], "npm install --global @veewo/claw@0.2.37 --silent --no-audit --no-fund");
+  const decodeInvocation = (command: string): string => {
+    const hex = command.slice("claw codex invoke ".length);
+    let value = "";
+    for (let index = 0; index < hex.length; index += 4) value += String.fromCharCode(Number.parseInt(hex.slice(index, index + 4), 16));
+    return value;
+  };
+  assert.deepEqual(JSON.parse(decodeInvocation(commands[0])), ["plan", "create", "--title", "demo", "--plugin-version", "0.2.37.0"]);
+  assert.deepEqual(JSON.parse(decodeInvocation(commands[2])), ["plan", "create", "--title", "demo", "--plugin-version", "0.2.37.0"]);
 });
 
 test("Codex driver skips unrelated JSON diagnostics and validates native action shapes", async () => {

@@ -1533,6 +1533,7 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
       const explicitTitle = readOptionalFlag(args, "--title");
       const explicitTemplate = readOptionalFlag(args, "--template");
       const explicitTemplateFile = readOptionalFlag(args, "--template-file");
+      const pluginVersion = readOptionalFlag(args, "--plugin-version");
       if (explicitTemplate && explicitTemplateFile) {
         throw new ClawError("PROJECT_CONFIG_INVALID", "--template and --template-file are mutually exclusive.");
       }
@@ -1547,6 +1548,7 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
       }
       const ownerSessionKey = resolveOwnerSessionKey();
       assertDirectRootPlanCreateAllowed(process.cwd(), ownerSessionKey, scope);
+      assertPlanCreatePluginVersionCompatible(pluginVersion);
       await preparePlanCreateWorkflow(process.cwd(), ownerSessionKey, effectiveHost, scope);
       const result = await writePlan({
         cwd: process.cwd(),
@@ -2689,6 +2691,19 @@ function assertDirectRootPlanCreateAllowed(
   );
 }
 
+function assertPlanCreatePluginVersionCompatible(pluginVersion: string | undefined): void {
+  if (pluginVersion === undefined) return;
+  const match = /^(\d+)\.(\d+)\.(\d+)\.\d+$/.exec(pluginVersion);
+  if (!match) throw new ClawError("PROJECT_CONFIG_INVALID", "plan create received an invalid internal plugin version.");
+  const requiredCliVersion = `${match[1]}.${match[2]}.${match[3]}`;
+  if (compareSemver(CLI_VERSION, requiredCliVersion) >= 0) return;
+  throw new ClawError(
+    "CLI_PLUGIN_VERSION_LAGGING",
+    `Loaded Codex plugin ${pluginVersion} requires CLI ${requiredCliVersion}, but local CLI is ${CLI_VERSION}.`,
+    { pluginVersion, requiredCliVersion, cliVersion: CLI_VERSION },
+  );
+}
+
 async function prepareProjectWorkflow(
   cwd: string,
   ownerSessionKey: string | null,
@@ -3156,23 +3171,8 @@ function buildVersionSyncPrompt(
     ? versionSync.latestPublishedVersion.trim()
     : "";
   const message = typeof versionSync.message === "string" ? versionSync.message.trim() : "";
-  const autoUpdateEnabled = versionSync.autoUpdateEnabled === true;
-  const updateAvailable = versionSync.updateAvailable === true;
-  const updateSkill = typeof versionSync.updateSkill === "string" ? versionSync.updateSkill.trim() : "claw-kit:update";
-
   if (versionSync.cliVersionLagging !== true) {
     return null;
-  }
-
-  if (autoUpdateEnabled && updateAvailable && cliVersion && latestPublishedVersion) {
-    return {
-      placement: "suffix",
-      lines: [
-        `A newer claw-kit version is available: installed CLI ${cliVersion}, published latest ${latestPublishedVersion}.`,
-        "Tell the user in their language that the current claw-kit installation is out of date and must be updated before they can continue using claw-kit. Ask whether they want to update now, then wait for their answer.",
-        `After the user confirms, use ${updateSkill} to update the claw-kit CLI and the current host plugin surface, then continue the original task.`,
-      ],
-    };
   }
 
   if (message) {

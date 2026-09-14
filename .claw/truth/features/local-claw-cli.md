@@ -31,17 +31,15 @@
 - `claw direct` is a hidden compatibility command, not a current writer-dispatch surface. Direct work may use project recall, but canonical knowledge finalization belongs to completed project plans and the hook-owned `knowledge-writer` job.
 - Codex-facing recall should use `claw search --query "<topic>"` as project-scoped document recall for project memory, truth, ADR, and external docs; it is not code search.
 - `claw search index --refresh` is the explicit project index refresh entrypoint and returns `search.index.refresh`.
-- Version drift detection remains part of `claw context` / startup recovery, but local upgrade execution is no longer implicit there.
+- Version drift detection remains part of `claw context` / startup recovery, but `claw context` itself never performs a local upgrade.
 - `claw context` 的公开输出现在是最小恢复投影：始终保留 `project` 身份与关键路径；`activeWorkflow` 仅在当前 session 有显式绑定时返回；修正记录、协议诊断与版本诊断仅在实际修正、异常、落后或可更新时返回，健康版本不再输出版本信息。
 - `claw context --host <platform>` is the single host-neutral, structured startup-state CLI entrypoint. Platform adapters own event payload validation and their own prompt or Hook-envelope rendering; the CLI does not implement a SessionStart or `auto-claw` protocol.
 - SessionStart、协议修复与更新判断继续消费内部完整 context；公开投影精简不等于删除内部字段或削弱恢复能力。
 - `searchGuidance` 只按 effective config 中可用的 embedding 与 GitNexus 组合生成，不在每次 context 调用时做运行时健康探测：embedding 提示用 `claw search` 缩小文档范围，GitNexus 提示缩小代码范围，两者都有时同时给出两条路径，两者都未启用时省略该字段。
 - 默认 plan/template create 的单一 planning bridge 会显示并调用 effective config 解析出的 planning skill，先区分 action instruction 与 open-ended discussion，再澄清 requirements 并准备 downstream task list；只有采用的 solution 引入 meaningful choice 时才等待用户回应。完成该 bridge 会原子进入 `process.active`。`claw search` 不进入这个 readiness contract 或强制 `nextsteps`，只保留为可选 `commandHints`；bridge 与 skill fallback 的详细当前事实由 `cli-guided-workflow.md` 拥有。
-- `.claw/project.json` uses explicit `autoUpdate` gating for version drift. The field defaults to `true`; on the common SessionStart guidance path, a newer published version enters the user-authorization route unless the project has explicitly opted out.
+- `.claw/project.json` retains `autoUpdate` for version diagnostics, but SessionStart does not route to an update skill or run an installer.
 - When `autoUpdate = false`, startup recovery only reports the lagging-version note; it does not run a local install action.
-- When `autoUpdate = true` and a newer published version exists, startup recovery reports `startupRecovery.versionSync.updateSkill = "claw-kit:update"`, but SessionStart guidance first asks the user whether to update and waits. After confirmation, that skill becomes the update action and the original task resumes only after the update.
-- Any authorized update flow must refresh both local runtime surfaces together: the global CLI install and the current host plugin install surface. `.claw/truth/features/codex-session-entry-hardening.md` owns the Codex prompt-order details.
-- Each host now keeps that contract in its adapter-owned `skills/update/` package: `SKILL.md` is the entry, `TEMPLATE.json` carries the ordered host-specific workflow, `non-claw-fallback.md` covers no-`.claw` workspaces, and `CONTENT-COVERAGE.md` records the package mapping. See `.claw/truth/features/host-specific-update-skills.md`.
+- When a Codex `plan create` has the loaded plugin version and finds the CLI behind its first three segments, its driver silently installs that exact CLI version and retries once. Other calls, including context, remain diagnostic-only.
 - The 0.1.58 release closeout confirmed that version bumps can surface stale protocol-version expectations in `packages/core/test/core.test.ts`; when package versions advance, the `initProject` scaffold and `ensureProjectProtocol` rewrite assertions must be updated in the same change.
 - The update workflow is stable: the loaded adapter selects its own implementation without a platform-choice task, then refreshes and verifies the global CLI together with that host's plugin surfaces and reports exact per-surface status.
 - `claw search index --refresh` 现在会对当前项目的 markdown recall index 做增量同步，而不是每次都全量重建 sqlite store。

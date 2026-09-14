@@ -23,7 +23,7 @@ Accepted
 
 随着 Goal mode 与 delegated execution specialists 进入日常执行流，默认 startup prompt 需要保持最小化并恢复当前 plan contract。Knowledge writers 不属于 startup 授权或 main-agent delegation surface；它们由 hook-owned finalizer 独立运行。
 
-围绕 project protocol 版本超前的 startup recovery 还确认了另一组长期约束：`runContextCommand` 仍然负责检测版本漂移并生成 `startupRecovery.versionSync`，但恢复流本身不再隐式执行本地升级。旧的“直接把 update skill 提升为第一动作”会跳过用户授权，并可能使 Agent 把内部执行细节当成主要用户信息；`project.json.autoUpdate` 与已发布新版本现在只触发授权提示。CLI 与当前 host plugin 安装面的更新仍保持为同一个显式 contract，而不是把分发更新塞回 `context` 或 `patch` 语义。
+围绕 project protocol 版本超前的 startup recovery 还确认了另一组长期约束：`runContextCommand` 仍然负责检测版本漂移并生成 `startupRecovery.versionSync`，但恢复流本身不执行本地升级，也不路由 update skill。Codex driver 仅在 `plan create` 收到加载的插件版本且 CLI 落后时，精确静默安装 CLI 后重试一次；这不改变 plugin 分发面。
 
 ## Decision
 
@@ -37,10 +37,10 @@ Accepted
 - 恢复成功时，只注入最小 workflow snapshot 和基于当前 canonical state 重算得到的 `workflowGuidance`
 - 恢复成功时，额外把当前 plan content 放进 recovered JSON / additional prompt surface，但仍然保持最小化，不重复 project root、`.claw` 路径或 raw 计划历史
 - 对恢复出的 `process.active` Codex plan，`SessionStart` 仍然只注入文本，不直接调用原生 host tool；它必须要求固定 Codex driver 在继续前运行只读 `claw plan sync`。该命令从当前 canonical plan 和 effective project config 重建 recovery guidance，并通过既有 host-action consumer 同步非空 `update_plan`；只有 `goalMode` 未被 project 或个人 override 设为 `false` 时才创建 Goal。
-- `SessionStart` 生成 common additional prompt surface 时，必须消费 `startupRecovery.versionSync`。当 `autoUpdate = true` 且存在已发布新版本时，guidance 先要求 Agent 使用用户语言说明当前安装已落后、继续使用 claw-kit 前必须更新，询问是否立即更新并等待答复；用户确认后才执行 `claw-kit:update`，更新完成后再继续原任务
+- `SessionStart` 生成 common additional prompt surface 时，必须消费 `startupRecovery.versionSync`，但只呈现版本诊断，不调用 `claw-kit:update` 或安装 CLI
 - `runContextCommand` 保留版本漂移检测和 `startupRecovery.versionSync` 计算，但不再因为检测到版本落后就隐式执行本地升级；startup recovery 只负责把该结果 surface 给 prompt
-- `project.json.autoUpdate` 是显式布尔 gate，默认 `true`；项目若不希望 startup 触发更新授权提示，需要显式把它设为 `false`
-- `claw-kit:update` 表示一个跨 host 一致的更新结果合同：同一动作同时负责更新全局 CLI 与当前 host plugin 安装面；具体步骤由已加载 adapter 的专属 `update` skill 拥有，不在 workflow 内再次选择平台
+- `project.json.autoUpdate` 是版本诊断的显式布尔 gate，默认 `true`；它不授权 startup 安装或更新插件
+- Codex driver 的兼容性 repair 是 `plan create` 的窄边界：仅根据已加载 plugin manifest 的前三段精确安装全局 CLI，且永不更新插件安装面
 - 恢复成功且线程里已经存在 unfinished plan 时，startup contract 必须显式告诉 agent 当前线程已有未完成计划，并要求先向用户确认是关闭当前 plan 还是继续推进它，再开始不相关的新工作
 - 注入内容只包含继续执行所需的最小 contract，不重复 project root、`.claw` 路径或 raw `plan.json`
 - 如果没有可恢复的 active workflow，则保持精简版 startup 提示：保留 `.claw` 项目识别、`using-claw-kit` 入口、当前 thread 对 Goal mode / required delegated subagents 的显式授权，以及按 stage/current task 消费 `workflowGuidance` lifecycle contract 的要求
@@ -50,7 +50,7 @@ Accepted
 
 ## Alternatives considered
 
-- 检测到已发布新版本后立即调用 `claw-kit:update`。拒绝，因为它把执行动作放在用户授权之前。
+- 检测到已发布新版本后立即在 `claw context` 中安装。拒绝，因为 context 只拥有检测；兼容性 repair 仅属于带插件版本的 Codex `plan create`。
 - 只报告版本落后而不建立继续使用 claw-kit 前的更新门槛。拒绝，因为它不能表达已确认的必需更新顺序。
 - 在 host guidance 中固定用户可见文案语言。拒绝，因为 guidance 应保持简洁自然的英文 Agent 指令，由 Agent 使用当前用户语言提出更新请求。
 - 为 journal 建立前的 crash window 增加 durable mutation replay、response outbox 或独立 recovery 状态机。拒绝，因为 project binding 已经给出 committed plan 的确定性锚点；自动重放会在 response 丢失时重复已提交 mutation，第二状态机则会与 canonical plan/binding 漂移。
@@ -67,14 +67,14 @@ Accepted
 - session daemon retained focus 现在可以从 committed binding 修复，覆盖 focus journal 尚未 prepared 时的狭窄窗口；恢复仍复用现有 focus transaction，因此 canonical plan、binding 与 retained projection 不增加新的持久化 owner。
 - 没有 active workflow 时，系统仍然退回现有 `using-claw-kit` 入口，不增加新的恢复文案分支
 - 默认 startup prompt 现在也成为 adapter contract 的一部分：它负责声明 thread-local authorization，减少 Goal mode 与 delegated specialists 的误阻塞
-- project protocol 版本超前时，用户现在可以在同一轮 startup recovery 中明确看到 version-sync 结果；恢复流不会静默改写本地安装，而是把“仅提示版本落后”与“先请求授权、确认后更新”这两种分支稳定地绑定到 `autoUpdate` gate
+- project protocol 版本超前时，startup recovery 公开 version-sync 结果；恢复流不会在 context 内改写本地安装或路由 update skill
 - `end.completed` 不再意味着线程脱离 claw 语境；同一线程的后续任务会被明确拉回 `using-claw-kit` 入口，保持 round-to-round workflow continuity
 - 历史版本实跑对比进一步说明，startup feel 的风险不在于它“过重”本身，而在于一旦把 startup recovery 暴露成独立入口，它就会与 `plan write`、`process.active` 并列竞争主 agent 的注意力，稀释 task-scope 主流程
 - 因此较早版本也不应被概括成“普遍更轻”；durable 结论是 startup surface 必须收敛到恢复当前 workflow contract，而不能扩张成另一个显式 workflow 起点
 - active adapter surface 现已统一采用 `startupRecovery` 命名；这类恢复结果属于 hook/runtime 侧状态，而不是用户面前的另一条 workflow skill
-- `autoUpdate` 让项目拥有显式的升级策略开关：默认项目会在检测到可用发布更新时进入用户授权门槛，而选择退出的项目可以显式设为 `false`，把版本漂移保留为纯提示
-- CLI 与当前 host plugin surface 的更新结果合同被统一到 `claw-kit:update`；Codex 与 OpenCode 各自在 adapter-owned skill 中维护自己的安装与验证细节，而 startup 只负责先获得用户授权，再表达“更新后继续”的入口
-- 本地 plugin surface 是否真的升级，仍需沿用独立的 distribution/install 验证路径；startup recovery 只决定是否请求授权，用户确认后才路由到 `claw-kit:update`，且不把安装成功与恢复成功混成同一个判断
+- `autoUpdate` 让项目拥有显式的版本诊断开关；它不触发 startup 更新
+- CLI 与当前 host plugin surface 的分发更新保持独立；Codex `plan create` 的 CLI repair 不能升级插件
+- 本地 plugin surface 是否真的升级，仍需沿用独立的 distribution/install 验证路径；startup recovery 不参与该动作
 
 <!-- state: history -->
 ## Evolution history
@@ -83,6 +83,11 @@ Accepted
 ### 从立即更新改为先获得用户授权
 
 早期合同在 `autoUpdate = true` 且发现已发布新版本时，把 `claw-kit:update` 直接提升为第一动作。当前合同保留必须更新后才能继续使用 claw-kit 的顺序，但先要求 Agent 使用用户语言解释版本落后并询问是否立即更新；只有用户确认后才进入既有 update workflow。
+
+<!-- dated: 2026-09-04 -->
+### 弃用 startup update-skill 路由
+
+此前短暂尝试把 `claw-kit:update` 作为默认 startup 动作，现已弃用。`claw context` 继续只做版本检测；Codex `plan create` 仅在携带加载插件版本且收到 CLI 不兼容错误时，静默精确安装 CLI 后重试一次。
 
 ## Related Code
 

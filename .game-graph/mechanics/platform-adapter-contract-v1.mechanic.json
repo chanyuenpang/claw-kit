@@ -1,0 +1,1683 @@
+{
+  "schemaVersion": 6,
+  "kind": "mechanic",
+  "workspaceId": "claw-kit",
+  "id": "platform-adapter-contract-v1",
+  "name": "平台适配合同 v1",
+  "scope": "可信宿主上下文、能力合同、Bootstrap/Command/Effect/Finalizer/Conformance 端口、命令结果、生命周期、失败语义与准入门禁",
+  "nodeIds": [
+    "platform-adapter-contract",
+    "reusable-project-knowledge-intent",
+    "workflow-admission",
+    "capability-clause",
+    "host-integration-profile",
+    "host-adapter",
+    "session-identity",
+    "session-binding",
+    "bootstrap-port",
+    "recovery-snapshot",
+    "canonical-plan",
+    "workflow-guidance",
+    "workflow-command",
+    "command-port",
+    "plan-mutation",
+    "command-outcome",
+    "committed-outcome",
+    "partial-outcome",
+    "rejected-outcome",
+    "unknown-outcome",
+    "recovery-reconciliation",
+    "native-effect-intent",
+    "host-action",
+    "post-commit-effect",
+    "effect-port",
+    "effect-receipt",
+    "native-effect-failure",
+    "knowledge-dispatch",
+    "plan-leave",
+    "finalizer-port",
+    "dispatch-receipt",
+    "knowledge-writer",
+    "conformance-gate",
+    "native-smoke-evidence",
+    "adapter-gate-report",
+    "adapter-readiness"
+  ],
+  "edges": [
+    {
+      "id": "platform-adapter-contract-2-capability-clause",
+      "source": "platform-adapter-contract",
+      "target": "capability-clause",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：新增或审查平台适配。参与者：Core contract owner 与 adapter owner。状态变化：PAC v1 把平台差异表达为稳定命名的 required/forbidden capability clauses。条件/例外：条款只定义可观察语义，不包含工具名、进程模型或目录结构；未知 host/version 不允许 fallback。证据：架构报告§推荐决策；packages/core/src/integration-contract.ts。"
+    },
+    {
+      "id": "platform-adapter-contract-2-bootstrap-port",
+      "source": "platform-adapter-contract",
+      "target": "bootstrap-port",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：平台声明实现 PAC v1。参与者：adapter bootstrap owner。状态变化：必须提供可信会话启动与 active workflow 恢复端口。条件/例外：不具备可信 host/session/workdir 的平台只能声明受限集成，不能冒充完整兼容。证据：架构报告§问题、边界与不变量及 A1。"
+    },
+    {
+      "id": "platform-adapter-contract-2-command-port",
+      "source": "platform-adapter-contract",
+      "target": "command-port",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：平台声明实现 PAC v1。参与者：shared protocol 与 adapter transport。状态变化：必须实现受控 command envelope，并保留 Core 对 workflow 的唯一业务语义。条件/例外：transport 不解释状态机、不改写 guidance、不把所有结果压成 success/failure。证据：架构报告§五个逻辑端口；packages/client/src/protocol.ts。"
+    },
+    {
+      "id": "platform-adapter-contract-2-effect-port",
+      "source": "platform-adapter-contract",
+      "target": "effect-port",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：平台启用任一 native effect capability。参与者：Core effect schema owner 与 adapter native handler owner。状态变化：必须实现版本校验、action identity、按序消费和结构化失败回执。条件/例外：native failure 永不回滚 canonical plan。证据：架构报告§Effect Port；packages/cli/src/codex-driver.ts。"
+    },
+    {
+      "id": "platform-adapter-contract-2-finalizer-port",
+      "source": "platform-adapter-contract",
+      "target": "finalizer-port",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：平台 profile 允许知识收尾。参与者：Core job/dispatch owner 与 adapter native launcher。状态变化：必须实现 immutable dispatch 的一次性交接与回执。条件/例外：adapter 不修改 prompt/policy、不自行选 writer、不把 acceptance 当作 writer success。证据：架构报告§Finalizer Port；packages/core/src/knowledge-assignments.ts。"
+    },
+    {
+      "id": "platform-adapter-contract-2-conformance-gate",
+      "source": "platform-adapter-contract",
+      "target": "conformance-gate",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：平台准备声称兼容或发布。参与者：adapter delivery owner。状态变化：PAC v1 要求统一公共 fixtures 与各平台独立 native smoke 共同形成准入结论。条件/例外：CLI/Core gate 或文字声明单独通过都不足以证明 adapter ready。证据：架构报告§最小实施切片；.claw/truth/features/host-neutral-integration-contract.md。"
+    },
+    {
+      "id": "reusable-project-knowledge-intent-2-workflow-admission",
+      "source": "reusable-project-knowledge-intent",
+      "target": "workflow-admission",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：adapter 接收新的用户请求。参与者：入口 skill/agent。状态变化：按是否预期产生可复用事实、决策、约束、模式或项目上下文决定是否进入正式 workflow。条件/例外：文件数、步骤数或复杂度加总不是准入标准。证据：架构报告§正常数据流 Admission；.claw/truth/features/platform-skill-startup-gating.md。"
+    },
+    {
+      "id": "workflow-admission-2-bootstrap-port",
+      "source": "workflow-admission",
+      "target": "bootstrap-port",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "sourceQualifiers": [
+        {
+          "key": "decision",
+          "value": {
+            "kind": "literal",
+            "value": "admit"
+          }
+        }
+      ],
+      "ruleText": "触发：准入结果为 admit。参与者：当前 adapter。状态变化：进入 Bootstrap/Recovery，先检查同一可信会话是否已有 activeWorkflow。条件/例外：bypass 结果完全跳过 PAC workflow，不创建空计划。证据：架构报告§正常数据流 1–2。"
+    },
+    {
+      "id": "host-adapter-2-session-identity",
+      "source": "host-adapter",
+      "target": "session-identity",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：adapter 建立启动或命令调用。参与者：宿主可信 API/运行时。状态变化：adapter 锻造 hostId、sessionId、canonical workdir 与 contractVersion。条件/例外：模型输入、普通命令参数和历史 binding 中的 host 都不得覆盖当前宿主身份。证据：架构报告不变量 2；packages/dsh-adapter/src/index.ts；.claw/truth/features/host-neutral-integration-contract.md。"
+    },
+    {
+      "id": "session-identity-2-bootstrap-port",
+      "source": "session-identity",
+      "target": "bootstrap-port",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：需要新建、恢复或对账 workflow。参与者：adapter 与 Bootstrap Port。状态变化：TrustedSessionContext 成为唯一 lookup 隔离键与当前 host 来源。条件/例外：不得扫描 task 目录猜 session；workdir 变化应打开另一复合键。证据：架构报告§Bootstrap Port；.claw/truth/features/task-layout-and-session-bindings.md。"
+    },
+    {
+      "id": "bootstrap-port-2-recovery-snapshot",
+      "source": "bootstrap-port",
+      "target": "recovery-snapshot",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：Bootstrap Port 接收有效 TrustedSessionContext。参与者：context recovery 与 protocol check。状态变化：返回 project、protocolCheck、startupRecovery 与可选 activeWorkflow。条件/例外：快照是只读投影，不持久化第二状态机；恢复调用必须使用当前 host。证据：架构报告§Bootstrap Port；packages/cli/src/cli.ts context route。"
+    },
+    {
+      "id": "session-binding-2-recovery-snapshot",
+      "source": "session-binding",
+      "target": "recovery-snapshot",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：Bootstrap 查询 active workflow。参与者：project-level binding resolver。状态变化：只有显式 sessionKey→.claw-relative planPath 映射能把 activeWorkflow 放入快照。条件/例外：缺失或失效 binding 表示没有 active workflow，不能以目录扫描回退。证据：架构报告不变量 1–2；.claw/truth/features/task-layout-and-session-bindings.md。"
+    },
+    {
+      "id": "recovery-snapshot-2-canonical-plan",
+      "source": "recovery-snapshot",
+      "target": "canonical-plan",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：快照包含 activeWorkflow 或恢复对账需要读取状态。参与者：Core context reader。状态变化：返回 canonical plan 的当前状态与最小安全投影。条件/例外：快照与宿主 UI 都不能反向覆盖 plan；outcome unknown 时必须以这里读到的 canonical 事实为准。证据：架构报告§Bootstrap/Recovery；packages/cli/src/cli.ts；packages/client/src/index.ts。"
+    },
+    {
+      "id": "recovery-snapshot-2-workflow-command",
+      "source": "recovery-snapshot",
+      "target": "workflow-command",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：Bootstrap 返回快照。参与者：adapter/agent。状态变化：有 activeWorkflow 时先处理目标替换、取消或 returned guidance；无 activeWorkflow 时才选择 create。条件/例外：不能无条件新建计划覆盖现有绑定。证据：架构报告§正常数据流 2–3；using-claw-kit 恢复合同。"
+    },
+    {
+      "id": "workflow-guidance-2-workflow-command",
+      "source": "workflow-guidance",
+      "target": "workflow-command",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：上一命令或恢复返回 workflowGuidance。参与者：adapter/agent。状态变化：stage、nextTask 与 nextsteps 决定下一条生命周期命令；commandHints 仅辅助构造参数。条件/例外：不得从 raw plan、Goal UI 或旧提示词另推竞争状态机。证据：架构报告不变量 5；packages/core/src/workflow-guidance.ts。"
+    },
+    {
+      "id": "workflow-command-2-command-port",
+      "source": "workflow-command",
+      "target": "command-port",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：agent 选择合法 operation 并形成 input/requestId。参与者：adapter transport 与 shared protocol。状态变化：命令进入 Command Port，由 Core 解释业务语义。条件/例外：adapter 不改写 operation 或偷加 host/session/workdir；未知 operation 明确拒绝。证据：架构报告§Command Port；packages/client/src/protocol.ts。"
+    },
+    {
+      "id": "session-identity-2-command-port",
+      "source": "session-identity",
+      "target": "command-port",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：Command Port 执行任一 workflow command。参与者：adapter transport。状态变化：隐式附加当前可信 host/session/workdir，使 mutation target 与恢复 scope 一致。条件/例外：调用方切换 workdir 必须先建立新会话身份，不能修改既有复合键。证据：架构报告不变量 2；.claw/truth/features/task-layout-and-session-bindings.md。"
+    },
+    {
+      "id": "command-port-2-plan-mutation",
+      "source": "command-port",
+      "target": "plan-mutation",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "sourceQualifiers": [
+        {
+          "key": "validation",
+          "value": {
+            "kind": "literal",
+            "value": "accepted"
+          }
+        }
+      ],
+      "ruleText": "触发：Command Port 完成语法、身份、profile 与状态前置校验。参与者：Core command service。状态变化：只有 accepted 输入进入 canonical plan mutation。条件/例外：未注册 host、未知 contract version 或 capability handler 缺失必须在 commit 前 fail closed。证据：架构报告不变量 3–4；packages/cli/src/invocation-host.ts。"
+    },
+    {
+      "id": "command-port-2-command-outcome",
+      "source": "command-port",
+      "target": "command-outcome",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：一次受控命令得到业务响应、明确拒绝或 transport 失去结果。参与者：Command Port 与 adapter。状态变化：产出 committed、partial、rejected 或 unknown 中恰好一种结果。条件/例外：native effect 是否成功不改变 canonical result 分类。证据：架构报告§CommandOutcome。"
+    },
+    {
+      "id": "committed-outcome-2-command-outcome",
+      "source": "committed-outcome",
+      "target": "command-outcome",
+      "relation": "specializes",
+      "ruleText": "committed-outcome 是 command-outcome 的完整 canonical 提交子类。"
+    },
+    {
+      "id": "partial-outcome-2-command-outcome",
+      "source": "partial-outcome",
+      "target": "command-outcome",
+      "relation": "specializes",
+      "ruleText": "partial-outcome 是 command-outcome 的前缀已提交子类。"
+    },
+    {
+      "id": "rejected-outcome-2-command-outcome",
+      "source": "rejected-outcome",
+      "target": "command-outcome",
+      "relation": "specializes",
+      "ruleText": "rejected-outcome 是 command-outcome 的零提交明确拒绝子类。"
+    },
+    {
+      "id": "unknown-outcome-2-command-outcome",
+      "source": "unknown-outcome",
+      "target": "command-outcome",
+      "relation": "specializes",
+      "ruleText": "unknown-outcome 是 command-outcome 的 transport 未知子类。"
+    },
+    {
+      "id": "plan-mutation-2-committed-outcome",
+      "source": "plan-mutation",
+      "target": "committed-outcome",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "sourceQualifiers": [
+        {
+          "key": "result",
+          "value": {
+            "kind": "literal",
+            "value": "committed"
+          }
+        }
+      ],
+      "ruleText": "触发：合法 mutation 全部完成并持久化。参与者：Core plan owner。状态变化：返回 committed，携带 canonical planPath/planStatus、mutationId 与完整 guidance/effect envelope。条件/例外：随后 native effect 失败仍保持 committed。证据：架构报告§CommandOutcome committed；packages/core/src/plan.ts。"
+    },
+    {
+      "id": "plan-mutation-2-partial-outcome",
+      "source": "plan-mutation",
+      "target": "partial-outcome",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "sourceQualifiers": [
+        {
+          "key": "result",
+          "value": {
+            "kind": "literal",
+            "value": "partial"
+          }
+        }
+      ],
+      "ruleText": "触发：mutation chain 的若干前缀操作已提交，随后首个语义操作失败。参与者：Core mutation queue。状态变化：停止剩余操作并返回 completed/failed/remaining 计数和最新 canonical 摘要。条件/例外：调用方不得重放整条 chain。证据：架构报告§CommandOutcome partial；packages/core/src/plan.ts。"
+    },
+    {
+      "id": "workflow-command-2-rejected-outcome",
+      "source": "workflow-command",
+      "target": "rejected-outcome",
+      "relation": "influence",
+      "sign": -1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "sourceQualifiers": [
+        {
+          "key": "validation",
+          "value": {
+            "kind": "literal",
+            "value": "rejected"
+          }
+        }
+      ],
+      "ruleText": "触发：语法、身份、版本、能力或 plan transition 前置校验失败。参与者：Command Port/Core。状态变化：零提交并返回稳定 code/message/details。条件/例外：只有合同显式 retryable=true 的前置失败才允许原请求重试。证据：架构报告§CommandOutcome rejected。"
+    },
+    {
+      "id": "workflow-command-2-unknown-outcome",
+      "source": "workflow-command",
+      "target": "unknown-outcome",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "sourceQualifiers": [
+        {
+          "key": "transport-outcome",
+          "value": {
+            "kind": "literal",
+            "value": "unknown"
+          }
+        }
+      ],
+      "ruleText": "触发：请求已发出后连接丢失、超时或响应不可证明。参与者：adapter transport。状态变化：标记 outcome unknown、retryable false。条件/例外：unknown 不等于 rejected，也不能自动重发；必须先对账 canonical。证据：架构报告§CommandOutcome unknown；packages/client/src/index.ts；packages/dsh-adapter/src/protocol.ts。"
+    },
+    {
+      "id": "committed-outcome-2-workflow-guidance",
+      "source": "committed-outcome",
+      "target": "workflow-guidance",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：canonical commit 完成。参与者：Core guidance builder。状态变化：从 mutation 前后净状态归约一次完整 workflowGuidance，供 adapter/agent 继续生命周期。条件/例外：中间 chain 状态不单独产生 competing guidance 或虚假 Goal action。证据：架构报告不变量 4–5；.claw/truth/features/cli-guided-workflow.md。"
+    },
+    {
+      "id": "partial-outcome-2-recovery-reconciliation",
+      "source": "partial-outcome",
+      "target": "recovery-reconciliation",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：Command Port 返回 partial。参与者：adapter/agent。状态变化：以返回的最新 canonical 摘要或重新 Bootstrap 的快照决定剩余操作。条件/例外：不得把 whole chain 当作未执行而重放；已完成前缀保持事实。证据：架构报告§CommandOutcome partial。"
+    },
+    {
+      "id": "unknown-outcome-2-recovery-reconciliation",
+      "source": "unknown-outcome",
+      "target": "recovery-reconciliation",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：transport outcome unknown。参与者：adapter。状态变化：关闭旧连接、以同一 TrustedSessionContext 重新 Bootstrap 并读取 canonical plan。条件/例外：在确认状态前禁止自动 retry 或补发 mutation。证据：架构报告§关键失败语义；packages/client/src/index.ts。"
+    },
+    {
+      "id": "rejected-outcome-2-workflow-command",
+      "source": "rejected-outcome",
+      "target": "workflow-command",
+      "relation": "influence",
+      "sign": -1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：收到 rejected。参与者：adapter/agent。状态变化：停止当前命令路线并向用户或调用方暴露稳定诊断。条件/例外：只有 details 明确提供可修复输入且 retryable 时才构造新命令；不能吞错或 silent fallback。证据：架构报告§CommandOutcome rejected。"
+    },
+    {
+      "id": "recovery-reconciliation-2-bootstrap-port",
+      "source": "recovery-reconciliation",
+      "target": "bootstrap-port",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：partial、unknown 或投影修复需要重新确认事实。参与者：adapter recovery owner。状态变化：复用同一可信身份调用 Bootstrap Port，取得新的 RecoverySnapshot。条件/例外：对账只读，不通过额外 plan transition 猜测补偿。证据：架构报告§unknown 与关键失败路径。"
+    },
+    {
+      "id": "capability-clause-2-host-integration-profile",
+      "source": "capability-clause",
+      "target": "host-integration-profile",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：Core 注册或审查一个 host profile。参与者：Core integration contract owner。状态变化：每个稳定命名条款被映射为该 host 的 required/forbidden capability。条件/例外：adapter 自报不能覆盖 Core profile；未知条款/version 显式失败。证据：架构报告§推荐决策；packages/core/src/integration-contract.ts。"
+    },
+    {
+      "id": "committed-outcome-2-native-effect-intent",
+      "source": "committed-outcome",
+      "target": "native-effect-intent",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "sourceQualifiers": [
+        {
+          "key": "effects-present",
+          "value": {
+            "kind": "literal",
+            "value": true
+          }
+        }
+      ],
+      "ruleText": "触发：committed outcome 携带 hostActions 或 postCommitEffects。参与者：Core/CLI envelope producer。状态变化：生成已版本化、可排序且带稳定 identity 的 native effect intents。条件/例外：intent 只在 canonical commit 之后产生，adapter 成功与否不改变 committed。证据：架构报告不变量 4；packages/client/src/protocol.ts。"
+    },
+    {
+      "id": "host-action-2-native-effect-intent",
+      "source": "host-action",
+      "target": "native-effect-intent",
+      "relation": "specializes",
+      "ruleText": "host-action 是 native-effect-intent 中用于 Goal、Progress 或其他受限宿主动作的子类。"
+    },
+    {
+      "id": "post-commit-effect-2-native-effect-intent",
+      "source": "post-commit-effect",
+      "target": "native-effect-intent",
+      "relation": "specializes",
+      "ruleText": "post-commit-effect 是 native-effect-intent 中用于 completion refresh 等提交后工作的子类。"
+    },
+    {
+      "id": "native-effect-intent-2-effect-port",
+      "source": "native-effect-intent",
+      "target": "effect-port",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：CommandOutcome 含 effect intent。参与者：adapter Effect Port。状态变化：先校验 schemaVersion、id、tool/type 与 input 白名单，再按序调用 native handlers。条件/例外：未知 version/tool/input fail closed；已知 handler failure 记录诊断并继续可独立后续效果。证据：架构报告§关键失败路径；packages/cli/src/codex-driver.ts。"
+    },
+    {
+      "id": "effect-port-2-effect-receipt",
+      "source": "effect-port",
+      "target": "effect-receipt",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：Effect Port 处理一批已校验 intents。参与者：adapter native handlers。状态变化：为每项保留成功或结构化失败回执，并汇总 hostEffectFailures。条件/例外：回执属于 post-commit 可观察性，不能改写 plan status。证据：架构报告§Effect Port 与关键失败路径。"
+    },
+    {
+      "id": "native-effect-failure-2-effect-receipt",
+      "source": "native-effect-failure",
+      "target": "effect-receipt",
+      "relation": "specializes",
+      "ruleText": "native-effect-failure 是 effect-receipt 中包含 id、tool/type 与 message/code 的失败子类。"
+    },
+    {
+      "id": "native-effect-failure-2-recovery-reconciliation",
+      "source": "native-effect-failure",
+      "target": "recovery-reconciliation",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "sourceQualifiers": [
+        {
+          "key": "repair-required",
+          "value": {
+            "kind": "literal",
+            "value": true
+          }
+        }
+      ],
+      "ruleText": "触发：已知 native effect 失败且用户需要恢复投影。参与者：adapter recovery owner。状态变化：保留 canonical committed，先读当前快照，再执行明确的 full-projection sync 或定向补偿。条件/例外：不得重放原 mutation、回滚 plan 或创建第二次状态转换。证据：架构报告§关键失败路径；.claw/truth/adr/codex-plan-mutations-use-fixed-code-mode-consumer.md。"
+    },
+    {
+      "id": "committed-outcome-2-knowledge-dispatch",
+      "source": "committed-outcome",
+      "target": "knowledge-dispatch",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "sourceQualifiers": [
+        {
+          "key": "knowledge-dispatch-present",
+          "value": {
+            "kind": "literal",
+            "value": true
+          }
+        }
+      ],
+      "ruleText": "触发：project-scope 正常终态已提交、ready job 已持久化且 policy/host 需要原生派发。参与者：Core/CLI finalization producer。状态变化：committed outcome 附带 immutable knowledgeDispatch。条件/例外：foreground completion 不等待 writer；session scope 与 end.leave 不产生新 dispatch。证据：架构报告不变量 6；packages/core/src/knowledge-sidecar.ts。"
+    },
+    {
+      "id": "knowledge-dispatch-2-finalizer-port",
+      "source": "knowledge-dispatch",
+      "target": "finalizer-port",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：CommandOutcome 返回 immutable knowledgeDispatch。参与者：adapter Finalizer Port。状态变化：校验 finalizeId/policy 并把 prompt 原样交给宿主指定 native launcher。条件/例外：自动派发宿主不得重复启动；Lead handoff 被接受后不等待或轮询。证据：架构报告§Finalizer Port；packages/core/src/knowledge-assignments.ts。"
+    },
+    {
+      "id": "plan-leave-2-finalizer-port",
+      "source": "plan-leave",
+      "target": "finalizer-port",
+      "relation": "influence",
+      "sign": -1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：canonical plan 进入 end.leave。参与者：Core knowledge sidecar 与 adapter。状态变化：取消或过期关联 finalization 状态，并禁止为该 leave 创建或交给 Finalizer Port 的新 dispatch。条件/例外：leave 是取消/脱离，不是延迟完成。证据：架构报告不变量 6；packages/core/src/knowledge-sidecar.ts tryLeaveKnowledgePlan()。"
+    },
+    {
+      "id": "finalizer-port-2-dispatch-receipt",
+      "source": "finalizer-port",
+      "target": "dispatch-receipt",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：Finalizer Port 尝试一次 native handoff。参与者：adapter launcher。状态变化：返回 finalizeId、accepted/rejected 与可选 diagnostic。条件/例外：accepted 只证明派发被接管，不能声称 knowledge writer 已成功。证据：架构报告§Finalizer Port；.claw/truth/features/dsh-knowledge-dispatch-and-finalization.md。"
+    },
+    {
+      "id": "finalizer-port-2-knowledge-writer",
+      "source": "finalizer-port",
+      "target": "knowledge-writer",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：native handoff 被接受。参与者：宿主 finalizer runtime。状态变化：异步启动 claim→assignments→done 的 knowledge writer 生命周期。条件/例外：adapter 不选择 writer 内容、不修改 immutable prompt；fire-and-forget receipt 与最终 job result 分离。证据：架构报告§Finalizer Port；packages/core/src/knowledge-assignments.ts。"
+    },
+    {
+      "id": "host-integration-profile-2-conformance-gate",
+      "source": "host-integration-profile",
+      "target": "conformance-gate",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：adapter 进入发布或兼容性评估。参与者：Core profile owner 与 adapter gate。状态变化：profile version 与 required/forbidden capabilities 成为公共 fixtures 的期望值。条件/例外：未注册 host、version 不匹配或 required handler 缺失直接不就绪。证据：架构报告§Conformance Gate；packages/core/src/integration-contract.ts。"
+    },
+    {
+      "id": "effect-receipt-2-conformance-gate",
+      "source": "effect-receipt",
+      "target": "conformance-gate",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：公共 suite 或真实 smoke 执行 native effects。参与者：Effect Port 与 gate。状态变化：成功/失败回执证明 action identity、fail-closed 校验、post-commit 可见性和不回滚语义。条件/例外：只有日志无结构化 receipt 不满足门禁。证据：架构报告§最小实施切片 2–5。"
+    },
+    {
+      "id": "dispatch-receipt-2-conformance-gate",
+      "source": "dispatch-receipt",
+      "target": "conformance-gate",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：测试 normal completion、subagent policy 或禁止派发路径。参与者：Finalizer Port 与 gate。状态变化：回执证明最多一次 handoff、end.completed 可派发和 end.leave 零派发。条件/例外：accepted 不能替代最终 writer/job 验证。证据：架构报告§最小实施切片 2；.claw/truth/features/dsh-knowledge-dispatch-and-finalization.md。"
+    },
+    {
+      "id": "native-smoke-evidence-2-conformance-gate",
+      "source": "native-smoke-evidence",
+      "target": "conformance-gate",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：公共 fixtures 与包级检查已通过。参与者：真实宿主 operator。状态变化：至少一个正常全链路和一个关键失败路径 smoke 为 gate 提供 native 证据。条件/例外：模拟 transport、文档声明或 verify:cli 不能替代真实宿主行为。证据：架构报告§最小实施切片 4–5。"
+    },
+    {
+      "id": "conformance-gate-2-adapter-gate-report",
+      "source": "conformance-gate",
+      "target": "adapter-gate-report",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：profile mapping、公共 suite、包级验证和 native smoke 都有结果。参与者：adapter delivery owner。状态变化：生成含 contractVersion、capabilities、checks、evidence 和 ready 的门禁报告。条件/例外：任何 required 项缺证据时 ready=false，并保留具体失败项。证据：架构报告§Conformance Gate 与最小实施切片 5。"
+    },
+    {
+      "id": "adapter-gate-report-2-adapter-readiness",
+      "source": "adapter-gate-report",
+      "target": "adapter-readiness",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "sourceQualifiers": [
+        {
+          "key": "ready",
+          "value": {
+            "kind": "literal",
+            "value": true
+          }
+        }
+      ],
+      "ruleText": "触发：门禁报告 ready=true。参与者：adapter release owner。状态变化：允许声明 PAC v1 兼容并进入平台发布流程。条件/例外：CLI gate、单个 smoke 或代码评审不能单独建立 readiness；任一 required 证据失效应撤销结论。证据：架构报告§最小实施切片 5；.claw/truth/features/host-neutral-integration-contract.md。"
+    },
+    {
+      "id": "adapter-readiness-2-host-adapter",
+      "source": "adapter-readiness",
+      "target": "host-adapter",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：adapter 获得可追溯 PAC v1 readiness。参与者：平台维护者。状态变化：该 host adapter 可作为完整 claw workflow integration 交付和维护。条件/例外：readiness 不改变 Core canonical owner，也不允许 adapter 增加未声明 capability。证据：架构报告§推荐决策与门禁。"
+    }
+  ],
+  "positions": {
+    "session-identity": {
+      "x": 1740,
+      "y": 960
+    },
+    "session-binding": {
+      "x": 1200,
+      "y": 740
+    },
+    "canonical-plan": {
+      "x": 1200,
+      "y": 880
+    },
+    "plan-mutation": {
+      "x": 240,
+      "y": 1600
+    },
+    "workflow-guidance": {
+      "x": 4540,
+      "y": 1040
+    },
+    "host-integration-profile": {
+      "x": 340,
+      "y": 1460
+    },
+    "host-adapter": {
+      "x": 1980,
+      "y": 960
+    },
+    "host-action": {
+      "x": 1920,
+      "y": 160
+    },
+    "plan-leave": {
+      "x": 1460,
+      "y": 1200
+    },
+    "knowledge-dispatch": {
+      "x": 1960,
+      "y": 1460
+    },
+    "knowledge-writer": {
+      "x": 1460,
+      "y": 1320
+    },
+    "platform-adapter-contract": {
+      "x": 340,
+      "y": 1040
+    },
+    "reusable-project-knowledge-intent": {
+      "x": 480,
+      "y": 1600
+    },
+    "workflow-admission": {
+      "x": 680,
+      "y": 1600
+    },
+    "capability-clause": {
+      "x": 600,
+      "y": 1460
+    },
+    "bootstrap-port": {
+      "x": 640,
+      "y": 940
+    },
+    "recovery-snapshot": {
+      "x": 920,
+      "y": 860
+    },
+    "workflow-command": {
+      "x": 3520,
+      "y": 1040
+    },
+    "command-port": {
+      "x": 1480,
+      "y": 1040
+    },
+    "command-outcome": {
+      "x": 2720,
+      "y": 580
+    },
+    "committed-outcome": {
+      "x": 4280,
+      "y": 960
+    },
+    "partial-outcome": {
+      "x": 3020,
+      "y": 660
+    },
+    "rejected-outcome": {
+      "x": 3780,
+      "y": 980
+    },
+    "unknown-outcome": {
+      "x": 3020,
+      "y": 560
+    },
+    "recovery-reconciliation": {
+      "x": 2720,
+      "y": 460
+    },
+    "native-effect-intent": {
+      "x": 2200,
+      "y": 160
+    },
+    "post-commit-effect": {
+      "x": 2680,
+      "y": 40
+    },
+    "effect-port": {
+      "x": 820,
+      "y": 160
+    },
+    "effect-receipt": {
+      "x": 340,
+      "y": 140
+    },
+    "native-effect-failure": {
+      "x": 600,
+      "y": 40
+    },
+    "finalizer-port": {
+      "x": 980,
+      "y": 1320
+    },
+    "dispatch-receipt": {
+      "x": 340,
+      "y": 1340
+    },
+    "conformance-gate": {
+      "x": 40,
+      "y": 1040
+    },
+    "native-smoke-evidence": {
+      "x": 340,
+      "y": -120
+    },
+    "adapter-gate-report": {
+      "x": 340,
+      "y": 20
+    },
+    "adapter-readiness": {
+      "x": 2200,
+      "y": 960
+    }
+  },
+  "routeCache": {
+    "geometryKey": "v3//session-identity:1740,960|session-binding:1200,740|canonical-plan:1200,880|plan-mutation:240,1600|workflow-guidance:4540,1040|host-integration-profile:340,1460|host-adapter:1980,960|host-action:1920,160|plan-leave:1460,1200|knowledge-dispatch:1960,1460|knowledge-writer:1460,1320|platform-adapter-contract:340,1040|reusable-project-knowledge-intent:480,1600|workflow-admission:680,1600|capability-clause:600,1460|bootstrap-port:640,940|recovery-snapshot:920,860|workflow-command:3520,1040|command-port:1480,1040|command-outcome:2720,580|committed-outcome:4280,960|partial-outcome:3020,660|rejected-outcome:3780,980|unknown-outcome:3020,560|recovery-reconciliation:2720,460|native-effect-intent:2200,160|post-commit-effect:2680,40|effect-port:820,160|effect-receipt:340,140|native-effect-failure:600,40|finalizer-port:980,1320|dispatch-receipt:340,1340|conformance-gate:40,1040|native-smoke-evidence:340,-120|adapter-gate-report:340,20|adapter-readiness:2200,960|scope:adapter-gate-report:ready%3Dliteral%3Aboolean%3Atrue:2420,960|scope:command-port:validation%3Dliteral%3Astring%3A%22accepted%22:40,1600|scope:committed-outcome:knowledge-dispatch-present%3Dliteral%3Aboolean%3Atrue:1680,1460|scope:committed-outcome:effects-present%3Dliteral%3Aboolean%3Atrue:2680,280|scope:native-effect-failure:repair-required%3Dliteral%3Aboolean%3Atrue:3020,440|scope:plan-mutation:result%3Dliteral%3Astring%3A%22committed%22:4540,940|scope:plan-mutation:result%3Dliteral%3Astring%3A%22partial%22:3260,660|scope:workflow-admission:decision%3Dliteral%3Astring%3A%22admit%22:920,760|scope:workflow-command:validation%3Dliteral%3Astring%3A%22rejected%22:4020,980|scope:workflow-command:transport-outcome%3Dliteral%3Astring%3A%22unknown%22:3260,560//platform-adapter-contract-v1/adapter-gate-report-2-adapter-readiness:scope:adapter-gate-report:ready%3Dliteral%3Aboolean%3Atrue>adapter-readiness|platform-adapter-contract-v1/adapter-readiness-2-host-adapter:adapter-readiness>host-adapter|platform-adapter-contract-v1/bootstrap-port-2-recovery-snapshot:bootstrap-port>recovery-snapshot|platform-adapter-contract-v1/capability-clause-2-host-integration-profile:capability-clause>host-integration-profile|platform-adapter-contract-v1/command-port-2-command-outcome:command-port>command-outcome|platform-adapter-contract-v1/command-port-2-plan-mutation:scope:command-port:validation%3Dliteral%3Astring%3A%22accepted%22>plan-mutation|platform-adapter-contract-v1/committed-outcome-2-command-outcome:committed-outcome>command-outcome|platform-adapter-contract-v1/committed-outcome-2-knowledge-dispatch:scope:committed-outcome:knowledge-dispatch-present%3Dliteral%3Aboolean%3Atrue>knowledge-dispatch|platform-adapter-contract-v1/committed-outcome-2-native-effect-intent:scope:committed-outcome:effects-present%3Dliteral%3Aboolean%3Atrue>native-effect-intent|platform-adapter-contract-v1/committed-outcome-2-workflow-guidance:committed-outcome>workflow-guidance|platform-adapter-contract-v1/conformance-gate-2-adapter-gate-report:conformance-gate>adapter-gate-report|platform-adapter-contract-v1/dispatch-receipt-2-conformance-gate:dispatch-receipt>conformance-gate|platform-adapter-contract-v1/effect-port-2-effect-receipt:effect-port>effect-receipt|platform-adapter-contract-v1/effect-receipt-2-conformance-gate:effect-receipt>conformance-gate|platform-adapter-contract-v1/finalizer-port-2-dispatch-receipt:finalizer-port>dispatch-receipt|platform-adapter-contract-v1/finalizer-port-2-knowledge-writer:finalizer-port>knowledge-writer|platform-adapter-contract-v1/host-action-2-native-effect-intent:host-action>native-effect-intent|platform-adapter-contract-v1/host-adapter-2-session-identity:host-adapter>session-identity|platform-adapter-contract-v1/host-integration-profile-2-conformance-gate:host-integration-profile>conformance-gate|platform-adapter-contract-v1/knowledge-dispatch-2-finalizer-port:knowledge-dispatch>finalizer-port|platform-adapter-contract-v1/native-effect-failure-2-effect-receipt:native-effect-failure>effect-receipt|platform-adapter-contract-v1/native-effect-failure-2-recovery-reconciliation:scope:native-effect-failure:repair-required%3Dliteral%3Aboolean%3Atrue>recovery-reconciliation|platform-adapter-contract-v1/native-effect-intent-2-effect-port:native-effect-intent>effect-port|platform-adapter-contract-v1/native-smoke-evidence-2-conformance-gate:native-smoke-evidence>conformance-gate|platform-adapter-contract-v1/partial-outcome-2-command-outcome:partial-outcome>command-outcome|platform-adapter-contract-v1/partial-outcome-2-recovery-reconciliation:partial-outcome>recovery-reconciliation|platform-adapter-contract-v1/plan-leave-2-finalizer-port:plan-leave>finalizer-port|platform-adapter-contract-v1/plan-mutation-2-committed-outcome:scope:plan-mutation:result%3Dliteral%3Astring%3A%22committed%22>committed-outcome|platform-adapter-contract-v1/plan-mutation-2-partial-outcome:scope:plan-mutation:result%3Dliteral%3Astring%3A%22partial%22>partial-outcome|platform-adapter-contract-v1/platform-adapter-contract-2-bootstrap-port:platform-adapter-contract>bootstrap-port|platform-adapter-contract-v1/platform-adapter-contract-2-capability-clause:platform-adapter-contract>capability-clause|platform-adapter-contract-v1/platform-adapter-contract-2-command-port:platform-adapter-contract>command-port|platform-adapter-contract-v1/platform-adapter-contract-2-conformance-gate:platform-adapter-contract>conformance-gate|platform-adapter-contract-v1/platform-adapter-contract-2-effect-port:platform-adapter-contract>effect-port|platform-adapter-contract-v1/platform-adapter-contract-2-finalizer-port:platform-adapter-contract>finalizer-port|platform-adapter-contract-v1/post-commit-effect-2-native-effect-intent:post-commit-effect>native-effect-intent|platform-adapter-contract-v1/recovery-reconciliation-2-bootstrap-port:recovery-reconciliation>bootstrap-port|platform-adapter-contract-v1/recovery-snapshot-2-canonical-plan:recovery-snapshot>canonical-plan|platform-adapter-contract-v1/recovery-snapshot-2-workflow-command:recovery-snapshot>workflow-command|platform-adapter-contract-v1/rejected-outcome-2-command-outcome:rejected-outcome>command-outcome|platform-adapter-contract-v1/rejected-outcome-2-workflow-command:rejected-outcome>workflow-command|platform-adapter-contract-v1/reusable-project-knowledge-intent-2-workflow-admission:reusable-project-knowledge-intent>workflow-admission|platform-adapter-contract-v1/session-binding-2-recovery-snapshot:session-binding>recovery-snapshot|platform-adapter-contract-v1/session-identity-2-bootstrap-port:session-identity>bootstrap-port|platform-adapter-contract-v1/session-identity-2-command-port:session-identity>command-port|platform-adapter-contract-v1/unknown-outcome-2-command-outcome:unknown-outcome>command-outcome|platform-adapter-contract-v1/unknown-outcome-2-recovery-reconciliation:unknown-outcome>recovery-reconciliation|platform-adapter-contract-v1/workflow-admission-2-bootstrap-port:scope:workflow-admission:decision%3Dliteral%3Astring%3A%22admit%22>bootstrap-port|platform-adapter-contract-v1/workflow-command-2-command-port:workflow-command>command-port|platform-adapter-contract-v1/workflow-command-2-rejected-outcome:scope:workflow-command:validation%3Dliteral%3Astring%3A%22rejected%22>rejected-outcome|platform-adapter-contract-v1/workflow-command-2-unknown-outcome:scope:workflow-command:transport-outcome%3Dliteral%3Astring%3A%22unknown%22>unknown-outcome|platform-adapter-contract-v1/workflow-guidance-2-workflow-command:workflow-guidance>workflow-command",
+    "paths": {
+      "platform-adapter-contract-v1/adapter-gate-report-2-adapter-readiness": [
+        {
+          "x": 2420,
+          "y": 999.0266666666669
+        },
+        {
+          "x": 2366,
+          "y": 999.0266666666669
+        }
+      ],
+      "platform-adapter-contract-v1/adapter-readiness-2-host-adapter": [
+        {
+          "x": 2200,
+          "y": 999.0266666666669
+        },
+        {
+          "x": 2146,
+          "y": 999.0266666666669
+        }
+      ],
+      "platform-adapter-contract-v1/bootstrap-port-2-recovery-snapshot": [
+        {
+          "x": 806,
+          "y": 971.6566666666668
+        },
+        {
+          "x": 877,
+          "y": 971.6566666666668
+        },
+        {
+          "x": 877,
+          "y": 897.9416666666668
+        },
+        {
+          "x": 920,
+          "y": 897.9416666666668
+        }
+      ],
+      "platform-adapter-contract-v1/capability-clause-2-host-integration-profile": [
+        {
+          "x": 600,
+          "y": 1495.06
+        },
+        {
+          "x": 506,
+          "y": 1495.06
+        }
+      ],
+      "platform-adapter-contract-v1/command-port-2-command-outcome": [
+        {
+          "x": 1646,
+          "y": 1069.1766666666667
+        },
+        {
+          "x": 2638.7999999999997,
+          "y": 1069.1766666666667
+        },
+        {
+          "x": 2638.7999999999997,
+          "y": 618.9900000000001
+        },
+        {
+          "x": 2720,
+          "y": 618.9900000000001
+        }
+      ],
+      "platform-adapter-contract-v1/command-port-2-plan-mutation": [
+        {
+          "x": 206,
+          "y": 1629.6380952380955
+        },
+        {
+          "x": 240,
+          "y": 1629.6380952380955
+        }
+      ],
+      "platform-adapter-contract-v1/committed-outcome-2-command-outcome": [
+        {
+          "x": 4280,
+          "y": 981.201666666667
+        },
+        {
+          "x": 4225.799999999999,
+          "y": 981.201666666667
+        },
+        {
+          "x": 4225.799999999999,
+          "y": 761.6666666666667
+        },
+        {
+          "x": 2944.7,
+          "y": 761.6666666666669
+        },
+        {
+          "x": 2944.7,
+          "y": 626.1200000000001
+        },
+        {
+          "x": 2886,
+          "y": 626.1200000000001
+        }
+      ],
+      "platform-adapter-contract-v1/committed-outcome-2-knowledge-dispatch": [
+        {
+          "x": 1846,
+          "y": 1509.6266666666668
+        },
+        {
+          "x": 1960,
+          "y": 1509.6266666666668
+        }
+      ],
+      "platform-adapter-contract-v1/committed-outcome-2-native-effect-intent": [
+        {
+          "x": 2680,
+          "y": 318.91666666666674
+        },
+        {
+          "x": 2638.7999999999997,
+          "y": 318.91666666666674
+        },
+        {
+          "x": 2638.7999999999997,
+          "y": 210.24166666666673
+        },
+        {
+          "x": 2366,
+          "y": 210.24166666666673
+        }
+      ],
+      "platform-adapter-contract-v1/committed-outcome-2-workflow-guidance": [
+        {
+          "x": 4446,
+          "y": 993.085
+        },
+        {
+          "x": 4485.7,
+          "y": 993.085
+        },
+        {
+          "x": 4485.7,
+          "y": 1063.2350000000004
+        },
+        {
+          "x": 4540,
+          "y": 1063.2350000000004
+        }
+      ],
+      "platform-adapter-contract-v1/conformance-gate-2-adapter-gate-report": [
+        {
+          "x": 206,
+          "y": 1048.805238095238
+        },
+        {
+          "x": 267.5,
+          "y": 1048.805238095238
+        },
+        {
+          "x": 267.5,
+          "y": 42.14999999999998
+        },
+        {
+          "x": 340,
+          "y": 42.14999999999998
+        }
+      ],
+      "platform-adapter-contract-v1/dispatch-receipt-2-conformance-gate": [
+        {
+          "x": 340,
+          "y": 1368.56
+        },
+        {
+          "x": 267.5,
+          "y": 1368.56
+        },
+        {
+          "x": 267.5,
+          "y": 1079.362380952381
+        },
+        {
+          "x": 206,
+          "y": 1079.362380952381
+        }
+      ],
+      "platform-adapter-contract-v1/effect-port-2-effect-receipt": [
+        {
+          "x": 820,
+          "y": 180.53333333333336
+        },
+        {
+          "x": 506,
+          "y": 180.53333333333336
+        }
+      ],
+      "platform-adapter-contract-v1/effect-receipt-2-conformance-gate": [
+        {
+          "x": 340,
+          "y": 168.64999999999998
+        },
+        {
+          "x": 283.5999999999999,
+          "y": 168.64999999999998
+        },
+        {
+          "x": 283.5999999999999,
+          "y": 1058.9909523809524
+        },
+        {
+          "x": 206,
+          "y": 1058.9909523809524
+        }
+      ],
+      "platform-adapter-contract-v1/finalizer-port-2-dispatch-receipt": [
+        {
+          "x": 979.9999999999998,
+          "y": 1368.56
+        },
+        {
+          "x": 506,
+          "y": 1368.56
+        }
+      ],
+      "platform-adapter-contract-v1/finalizer-port-2-knowledge-writer": [
+        {
+          "x": 1145.9999999999998,
+          "y": 1356.6766666666667
+        },
+        {
+          "x": 1460,
+          "y": 1356.6766666666667
+        }
+      ],
+      "platform-adapter-contract-v1/host-action-2-native-effect-intent": [
+        {
+          "x": 2086,
+          "y": 218.86666666666673
+        },
+        {
+          "x": 2200,
+          "y": 218.86666666666673
+        }
+      ],
+      "platform-adapter-contract-v1/host-adapter-2-session-identity": [
+        {
+          "x": 1980,
+          "y": 999.0266666666669
+        },
+        {
+          "x": 1906,
+          "y": 999.0266666666669
+        }
+      ],
+      "platform-adapter-contract-v1/host-integration-profile-2-conformance-gate": [
+        {
+          "x": 340,
+          "y": 1495.06
+        },
+        {
+          "x": 251.39999999999998,
+          "y": 1495.06
+        },
+        {
+          "x": 251.39999999999998,
+          "y": 1089.5480952380954
+        },
+        {
+          "x": 206,
+          "y": 1089.5480952380954
+        }
+      ],
+      "platform-adapter-contract-v1/knowledge-dispatch-2-finalizer-port": [
+        {
+          "x": 1960,
+          "y": 1483.1766666666667
+        },
+        {
+          "x": 1884.3999999999996,
+          "y": 1483.1766666666667
+        },
+        {
+          "x": 1884.3999999999996,
+          "y": 1419.9266666666667
+        },
+        {
+          "x": 1193.48,
+          "y": 1419.9266666666667
+        },
+        {
+          "x": 1193.48,
+          "y": 1374.5016666666668
+        },
+        {
+          "x": 1145.9999999999998,
+          "y": 1374.5016666666668
+        }
+      ],
+      "platform-adapter-contract-v1/native-effect-failure-2-effect-receipt": [
+        {
+          "x": 600,
+          "y": 65.91666666666674
+        },
+        {
+          "x": 543.5,
+          "y": 65.91666666666674
+        },
+        {
+          "x": 543.5,
+          "y": 156.7666666666667
+        },
+        {
+          "x": 506,
+          "y": 156.7666666666667
+        }
+      ],
+      "platform-adapter-contract-v1/native-effect-failure-2-recovery-reconciliation": [
+        {
+          "x": 3020,
+          "y": 479.91666666666686
+        },
+        {
+          "x": 2886,
+          "y": 479.91666666666686
+        }
+      ],
+      "platform-adapter-contract-v1/native-effect-intent-2-effect-port": [
+        {
+          "x": 2200,
+          "y": 184.36666666666673
+        },
+        {
+          "x": 2135.6749999999997,
+          "y": 184.36666666666673
+        },
+        {
+          "x": 2135.6749999999997,
+          "y": 152.16666666666674
+        },
+        {
+          "x": 1027.2666666666664,
+          "y": 152.16666666666674
+        },
+        {
+          "x": 1027.2666666666664,
+          "y": 192.41666666666674
+        },
+        {
+          "x": 986,
+          "y": 192.41666666666674
+        }
+      ],
+      "platform-adapter-contract-v1/native-smoke-evidence-2-conformance-gate": [
+        {
+          "x": 340,
+          "y": -84.35
+        },
+        {
+          "x": 251.39999999999998,
+          "y": -84.35
+        },
+        {
+          "x": 251.39999999999998,
+          "y": 1040
+        },
+        {
+          "x": 206,
+          "y": 1040
+        }
+      ],
+      "platform-adapter-contract-v1/partial-outcome-2-command-outcome": [
+        {
+          "x": 3020,
+          "y": 703.4000000000002
+        },
+        {
+          "x": 2956.2,
+          "y": 703.4000000000002
+        },
+        {
+          "x": 2956.2,
+          "y": 611.8600000000001
+        },
+        {
+          "x": 2886,
+          "y": 611.8600000000001
+        }
+      ],
+      "platform-adapter-contract-v1/partial-outcome-2-recovery-reconciliation": [
+        {
+          "x": 3020,
+          "y": 679.6333333333334
+        },
+        {
+          "x": 2967.7,
+          "y": 679.6333333333334
+        },
+        {
+          "x": 2967.7,
+          "y": 515.5666666666668
+        },
+        {
+          "x": 2886,
+          "y": 515.5666666666668
+        }
+      ],
+      "platform-adapter-contract-v1/plan-leave-2-finalizer-port": [
+        {
+          "x": 1460,
+          "y": 1230.1766666666667
+        },
+        {
+          "x": 1408.3,
+          "y": 1230.1766666666667
+        },
+        {
+          "x": 1408.3,
+          "y": 1338.8516666666667
+        },
+        {
+          "x": 1145.9999999999998,
+          "y": 1338.8516666666667
+        }
+      ],
+      "platform-adapter-contract-v1/plan-mutation-2-committed-outcome": [
+        {
+          "x": 4540,
+          "y": 969.3183333333336
+        },
+        {
+          "x": 4446,
+          "y": 969.3183333333336
+        }
+      ],
+      "platform-adapter-contract-v1/plan-mutation-2-partial-outcome": [
+        {
+          "x": 3260,
+          "y": 691.5166666666668
+        },
+        {
+          "x": 3186,
+          "y": 691.5166666666668
+        }
+      ],
+      "platform-adapter-contract-v1/platform-adapter-contract-2-bootstrap-port": [
+        {
+          "x": 506,
+          "y": 1057.2933333333335
+        },
+        {
+          "x": 559.5999999999999,
+          "y": 1057.2933333333335
+        },
+        {
+          "x": 559.5999999999999,
+          "y": 964.5266666666669
+        },
+        {
+          "x": 640,
+          "y": 964.5266666666669
+        }
+      ],
+      "platform-adapter-contract-v1/platform-adapter-contract-2-capability-clause": [
+        {
+          "x": 506,
+          "y": 1092.9433333333336
+        },
+        {
+          "x": 543.5,
+          "y": 1092.9433333333336
+        },
+        {
+          "x": 543.5,
+          "y": 1471.2933333333335
+        },
+        {
+          "x": 600,
+          "y": 1471.2933333333335
+        }
+      ],
+      "platform-adapter-contract-v1/platform-adapter-contract-2-command-port": [
+        {
+          "x": 506,
+          "y": 1069.1766666666667
+        },
+        {
+          "x": 1480,
+          "y": 1069.1766666666667
+        }
+      ],
+      "platform-adapter-contract-v1/platform-adapter-contract-2-conformance-gate": [
+        {
+          "x": 340,
+          "y": 1069.1766666666667
+        },
+        {
+          "x": 206,
+          "y": 1069.1766666666667
+        }
+      ],
+      "platform-adapter-contract-v1/platform-adapter-contract-2-effect-port": [
+        {
+          "x": 506,
+          "y": 1045.41
+        },
+        {
+          "x": 543.5,
+          "y": 1045.41
+        },
+        {
+          "x": 543.5,
+          "y": 204.29999999999995
+        },
+        {
+          "x": 820,
+          "y": 204.29999999999995
+        }
+      ],
+      "platform-adapter-contract-v1/platform-adapter-contract-2-finalizer-port": [
+        {
+          "x": 506,
+          "y": 1081.06
+        },
+        {
+          "x": 559.5999999999999,
+          "y": 1081.06
+        },
+        {
+          "x": 559.5999999999999,
+          "y": 1344.7933333333335
+        },
+        {
+          "x": 979.9999999999998,
+          "y": 1344.7933333333335
+        }
+      ],
+      "platform-adapter-contract-v1/post-commit-effect-2-native-effect-intent": [
+        {
+          "x": 2680,
+          "y": 65.91666666666674
+        },
+        {
+          "x": 2638.7999999999997,
+          "y": 65.91666666666674
+        },
+        {
+          "x": 2638.7999999999997,
+          "y": 174.59166666666675
+        },
+        {
+          "x": 2366,
+          "y": 174.59166666666675
+        }
+      ],
+      "platform-adapter-contract-v1/recovery-reconciliation-2-bootstrap-port": [
+        {
+          "x": 2720,
+          "y": 497.7416666666668
+        },
+        {
+          "x": 1408.3,
+          "y": 497.7416666666668
+        },
+        {
+          "x": 1408.3,
+          "y": 703.0166666666665
+        },
+        {
+          "x": 854,
+          "y": 703.0166666666668
+        },
+        {
+          "x": 854,
+          "y": 943.1366666666668
+        },
+        {
+          "x": 806,
+          "y": 943.1366666666668
+        }
+      ],
+      "platform-adapter-contract-v1/recovery-snapshot-2-canonical-plan": [
+        {
+          "x": 1086,
+          "y": 915.7666666666669
+        },
+        {
+          "x": 1200,
+          "y": 915.7666666666669
+        }
+      ],
+      "platform-adapter-contract-v1/recovery-snapshot-2-workflow-command": [
+        {
+          "x": 1086,
+          "y": 897.9416666666668
+        },
+        {
+          "x": 1148.3999999999999,
+          "y": 897.9416666666668
+        },
+        {
+          "x": 1148.3999999999999,
+          "y": 844.4666666666668
+        },
+        {
+          "x": 3464.4999999999995,
+          "y": 844.4666666666666
+        },
+        {
+          "x": 3464.4999999999995,
+          "y": 1063.235
+        },
+        {
+          "x": 3520,
+          "y": 1063.235
+        }
+      ],
+      "platform-adapter-contract-v1/rejected-outcome-2-command-outcome": [
+        {
+          "x": 3780,
+          "y": 1003.8183333333332
+        },
+        {
+          "x": 3480.6,
+          "y": 1003.8183333333332
+        },
+        {
+          "x": 3480.6,
+          "y": 774.3166666666667
+        },
+        {
+          "x": 2933.2,
+          "y": 774.3166666666668
+        },
+        {
+          "x": 2933.2,
+          "y": 640.3800000000001
+        },
+        {
+          "x": 2886,
+          "y": 640.3800000000001
+        }
+      ],
+      "platform-adapter-contract-v1/rejected-outcome-2-workflow-command": [
+        {
+          "x": 3780,
+          "y": 1027.585
+        },
+        {
+          "x": 3740.4999999999995,
+          "y": 1027.585
+        },
+        {
+          "x": 3740.4999999999995,
+          "y": 1063.235
+        },
+        {
+          "x": 3686,
+          "y": 1063.235
+        }
+      ],
+      "platform-adapter-contract-v1/reusable-project-knowledge-intent-2-workflow-admission": [
+        {
+          "x": 646,
+          "y": 1629.6380952380955
+        },
+        {
+          "x": 680,
+          "y": 1629.6380952380955
+        }
+      ],
+      "platform-adapter-contract-v1/session-binding-2-recovery-snapshot": [
+        {
+          "x": 1200,
+          "y": 774.3166666666668
+        },
+        {
+          "x": 1136.8999999999999,
+          "y": 774.3166666666668
+        },
+        {
+          "x": 1136.8999999999999,
+          "y": 880.1166666666668
+        },
+        {
+          "x": 1086,
+          "y": 880.1166666666668
+        }
+      ],
+      "platform-adapter-contract-v1/session-identity-2-bootstrap-port": [
+        {
+          "x": 1740,
+          "y": 987.1433333333334
+        },
+        {
+          "x": 1408.3,
+          "y": 987.1433333333334
+        },
+        {
+          "x": 1408.3,
+          "y": 985.9166666666667
+        },
+        {
+          "x": 806,
+          "y": 985.9166666666667
+        }
+      ],
+      "platform-adapter-contract-v1/session-identity-2-command-port": [
+        {
+          "x": 1740,
+          "y": 1010.9100000000001
+        },
+        {
+          "x": 1702.6999999999998,
+          "y": 1010.9100000000001
+        },
+        {
+          "x": 1702.6999999999998,
+          "y": 1051.3516666666667
+        },
+        {
+          "x": 1646,
+          "y": 1051.3516666666667
+        }
+      ],
+      "platform-adapter-contract-v1/unknown-outcome-2-command-outcome": [
+        {
+          "x": 3020,
+          "y": 597.6000000000003
+        },
+        {
+          "x": 2886,
+          "y": 597.6000000000003
+        }
+      ],
+      "platform-adapter-contract-v1/unknown-outcome-2-recovery-reconciliation": [
+        {
+          "x": 3020,
+          "y": 573.8333333333335
+        },
+        {
+          "x": 2979.2,
+          "y": 573.8333333333335
+        },
+        {
+          "x": 2979.2,
+          "y": 497.7416666666668
+        },
+        {
+          "x": 2886,
+          "y": 497.7416666666668
+        }
+      ],
+      "platform-adapter-contract-v1/workflow-admission-2-bootstrap-port": [
+        {
+          "x": 920,
+          "y": 792.1416666666668
+        },
+        {
+          "x": 865.5,
+          "y": 792.1416666666668
+        },
+        {
+          "x": 865.5,
+          "y": 957.3966666666668
+        },
+        {
+          "x": 806,
+          "y": 957.3966666666668
+        }
+      ],
+      "platform-adapter-contract-v1/workflow-command-2-command-port": [
+        {
+          "x": 3520,
+          "y": 1087.0016666666668
+        },
+        {
+          "x": 1646,
+          "y": 1087.0016666666668
+        }
+      ],
+      "platform-adapter-contract-v1/workflow-command-2-rejected-outcome": [
+        {
+          "x": 4020,
+          "y": 1015.7016666666668
+        },
+        {
+          "x": 3946,
+          "y": 1015.7016666666668
+        }
+      ],
+      "platform-adapter-contract-v1/workflow-command-2-unknown-outcome": [
+        {
+          "x": 3260,
+          "y": 585.7166666666668
+        },
+        {
+          "x": 3186,
+          "y": 585.7166666666668
+        }
+      ],
+      "platform-adapter-contract-v1/workflow-guidance-2-workflow-command": [
+        {
+          "x": 4540,
+          "y": 1087.0016666666668
+        },
+        {
+          "x": 3686,
+          "y": 1087.0016666666668
+        }
+      ]
+    }
+  },
+  "projectionPositions": {
+    "scope:adapter-gate-report:ready%3Dliteral%3Aboolean%3Atrue": {
+      "x": 2420,
+      "y": 960
+    },
+    "scope:command-port:validation%3Dliteral%3Astring%3A%22accepted%22": {
+      "x": 40,
+      "y": 1600
+    },
+    "scope:committed-outcome:knowledge-dispatch-present%3Dliteral%3Aboolean%3Atrue": {
+      "x": 1680,
+      "y": 1460
+    },
+    "scope:committed-outcome:effects-present%3Dliteral%3Aboolean%3Atrue": {
+      "x": 2680,
+      "y": 280
+    },
+    "scope:native-effect-failure:repair-required%3Dliteral%3Aboolean%3Atrue": {
+      "x": 3020,
+      "y": 440
+    },
+    "scope:plan-mutation:result%3Dliteral%3Astring%3A%22committed%22": {
+      "x": 4540,
+      "y": 940
+    },
+    "scope:plan-mutation:result%3Dliteral%3Astring%3A%22partial%22": {
+      "x": 3260,
+      "y": 660
+    },
+    "scope:workflow-admission:decision%3Dliteral%3Astring%3A%22admit%22": {
+      "x": 920,
+      "y": 760
+    },
+    "scope:workflow-command:validation%3Dliteral%3Astring%3A%22rejected%22": {
+      "x": 4020,
+      "y": 980
+    },
+    "scope:workflow-command:transport-outcome%3Dliteral%3Astring%3A%22unknown%22": {
+      "x": 3260,
+      "y": 560
+    }
+  }
+}

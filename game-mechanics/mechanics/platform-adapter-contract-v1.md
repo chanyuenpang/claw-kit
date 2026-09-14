@@ -1,0 +1,56 @@
+# 平台适配合同 v1
+
+可信宿主上下文、能力合同、Bootstrap/Command/Effect/Finalizer/Conformance 端口、命令结果、生命周期、失败语义与准入门禁
+
+- 适配门禁报告（ready=true） → 适配就绪状态：触发：门禁报告 ready=true。参与者：adapter release owner。状态变化：允许声明 PAC v1 兼容并进入平台发布流程。条件/例外：CLI gate、单个 smoke 或代码评审不能单独建立 readiness；任一 required 证据失效应撤销结论。证据：架构报告§最小实施切片 5；.claw/truth/features/host-neutral-integration-contract.md。
+- 适配就绪状态 → 宿主适配器：触发：adapter 获得可追溯 PAC v1 readiness。参与者：平台维护者。状态变化：该 host adapter 可作为完整 claw workflow integration 交付和维护。条件/例外：readiness 不改变 Core canonical owner，也不允许 adapter 增加未声明 capability。证据：架构报告§推荐决策与门禁。
+- Bootstrap 端口 → 恢复快照：触发：Bootstrap Port 接收有效 TrustedSessionContext。参与者：context recovery 与 protocol check。状态变化：返回 project、protocolCheck、startupRecovery 与可选 activeWorkflow。条件/例外：快照是只读投影，不持久化第二状态机；恢复调用必须使用当前 host。证据：架构报告§Bootstrap Port；packages/cli/src/cli.ts context route。
+- 能力条款 → 宿主集成档案：触发：Core 注册或审查一个 host profile。参与者：Core integration contract owner。状态变化：每个稳定命名条款被映射为该 host 的 required/forbidden capability。条件/例外：adapter 自报不能覆盖 Core profile；未知条款/version 显式失败。证据：架构报告§推荐决策；packages/core/src/integration-contract.ts。
+- Command 端口 → 命令结果：触发：一次受控命令得到业务响应、明确拒绝或 transport 失去结果。参与者：Command Port 与 adapter。状态变化：产出 committed、partial、rejected 或 unknown 中恰好一种结果。条件/例外：native effect 是否成功不改变 canonical result 分类。证据：架构报告§CommandOutcome。
+- Command 端口（validation="accepted"） → 计划变更：触发：Command Port 完成语法、身份、profile 与状态前置校验。参与者：Core command service。状态变化：只有 accepted 输入进入 canonical plan mutation。条件/例外：未注册 host、未知 contract version 或 capability handler 缺失必须在 commit 前 fail closed。证据：架构报告不变量 3–4；packages/cli/src/invocation-host.ts。
+- 已提交结果 属于 命令结果
+- 已提交结果（knowledge-dispatch-present=true） → 知识派发：触发：project-scope 正常终态已提交、ready job 已持久化且 policy/host 需要原生派发。参与者：Core/CLI finalization producer。状态变化：committed outcome 附带 immutable knowledgeDispatch。条件/例外：foreground completion 不等待 writer；session scope 与 end.leave 不产生新 dispatch。证据：架构报告不变量 6；packages/core/src/knowledge-sidecar.ts。
+- 已提交结果（effects-present=true） → 原生效果意图：触发：committed outcome 携带 hostActions 或 postCommitEffects。参与者：Core/CLI envelope producer。状态变化：生成已版本化、可排序且带稳定 identity 的 native effect intents。条件/例外：intent 只在 canonical commit 之后产生，adapter 成功与否不改变 committed。证据：架构报告不变量 4；packages/client/src/protocol.ts。
+- 已提交结果 → 工作流指引：触发：canonical commit 完成。参与者：Core guidance builder。状态变化：从 mutation 前后净状态归约一次完整 workflowGuidance，供 adapter/agent 继续生命周期。条件/例外：中间 chain 状态不单独产生 competing guidance 或虚假 Goal action。证据：架构报告不变量 4–5；.claw/truth/features/cli-guided-workflow.md。
+- 适配一致性门禁 → 适配门禁报告：触发：profile mapping、公共 suite、包级验证和 native smoke 都有结果。参与者：adapter delivery owner。状态变化：生成含 contractVersion、capabilities、checks、evidence 和 ready 的门禁报告。条件/例外：任何 required 项缺证据时 ready=false，并保留具体失败项。证据：架构报告§Conformance Gate 与最小实施切片 5。
+- 派发回执 → 适配一致性门禁：触发：测试 normal completion、subagent policy 或禁止派发路径。参与者：Finalizer Port 与 gate。状态变化：回执证明最多一次 handoff、end.completed 可派发和 end.leave 零派发。条件/例外：accepted 不能替代最终 writer/job 验证。证据：架构报告§最小实施切片 2；.claw/truth/features/dsh-knowledge-dispatch-and-finalization.md。
+- Effect 端口 → 效果回执：触发：Effect Port 处理一批已校验 intents。参与者：adapter native handlers。状态变化：为每项保留成功或结构化失败回执，并汇总 hostEffectFailures。条件/例外：回执属于 post-commit 可观察性，不能改写 plan status。证据：架构报告§Effect Port 与关键失败路径。
+- 效果回执 → 适配一致性门禁：触发：公共 suite 或真实 smoke 执行 native effects。参与者：Effect Port 与 gate。状态变化：成功/失败回执证明 action identity、fail-closed 校验、post-commit 可见性和不回滚语义。条件/例外：只有日志无结构化 receipt 不满足门禁。证据：架构报告§最小实施切片 2–5。
+- Finalizer 端口 → 派发回执：触发：Finalizer Port 尝试一次 native handoff。参与者：adapter launcher。状态变化：返回 finalizeId、accepted/rejected 与可选 diagnostic。条件/例外：accepted 只证明派发被接管，不能声称 knowledge writer 已成功。证据：架构报告§Finalizer Port；.claw/truth/features/dsh-knowledge-dispatch-and-finalization.md。
+- Finalizer 端口 → 知识写入器：触发：native handoff 被接受。参与者：宿主 finalizer runtime。状态变化：异步启动 claim→assignments→done 的 knowledge writer 生命周期。条件/例外：adapter 不选择 writer 内容、不修改 immutable prompt；fire-and-forget receipt 与最终 job result 分离。证据：架构报告§Finalizer Port；packages/core/src/knowledge-assignments.ts。
+- 宿主动作 属于 原生效果意图
+- 宿主适配器 → 会话身份：触发：adapter 建立启动或命令调用。参与者：宿主可信 API/运行时。状态变化：adapter 锻造 hostId、sessionId、canonical workdir 与 contractVersion。条件/例外：模型输入、普通命令参数和历史 binding 中的 host 都不得覆盖当前宿主身份。证据：架构报告不变量 2；packages/dsh-adapter/src/index.ts；.claw/truth/features/host-neutral-integration-contract.md。
+- 宿主集成档案 → 适配一致性门禁：触发：adapter 进入发布或兼容性评估。参与者：Core profile owner 与 adapter gate。状态变化：profile version 与 required/forbidden capabilities 成为公共 fixtures 的期望值。条件/例外：未注册 host、version 不匹配或 required handler 缺失直接不就绪。证据：架构报告§Conformance Gate；packages/core/src/integration-contract.ts。
+- 知识派发 → Finalizer 端口：触发：CommandOutcome 返回 immutable knowledgeDispatch。参与者：adapter Finalizer Port。状态变化：校验 finalizeId/policy 并把 prompt 原样交给宿主指定 native launcher。条件/例外：自动派发宿主不得重复启动；Lead handoff 被接受后不等待或轮询。证据：架构报告§Finalizer Port；packages/core/src/knowledge-assignments.ts。
+- 原生效果失败 属于 效果回执
+- 原生效果失败（repair-required=true） → 恢复对账：触发：已知 native effect 失败且用户需要恢复投影。参与者：adapter recovery owner。状态变化：保留 canonical committed，先读当前快照，再执行明确的 full-projection sync 或定向补偿。条件/例外：不得重放原 mutation、回滚 plan 或创建第二次状态转换。证据：架构报告§关键失败路径；.claw/truth/adr/codex-plan-mutations-use-fixed-code-mode-consumer.md。
+- 原生效果意图 → Effect 端口：触发：CommandOutcome 含 effect intent。参与者：adapter Effect Port。状态变化：先校验 schemaVersion、id、tool/type 与 input 白名单，再按序调用 native handlers。条件/例外：未知 version/tool/input fail closed；已知 handler failure 记录诊断并继续可独立后续效果。证据：架构报告§关键失败路径；packages/cli/src/codex-driver.ts。
+- 真实宿主冒烟证据 → 适配一致性门禁：触发：公共 fixtures 与包级检查已通过。参与者：真实宿主 operator。状态变化：至少一个正常全链路和一个关键失败路径 smoke 为 gate 提供 native 证据。条件/例外：模拟 transport、文档声明或 verify:cli 不能替代真实宿主行为。证据：架构报告§最小实施切片 4–5。
+- 部分提交结果 属于 命令结果
+- 部分提交结果 → 恢复对账：触发：Command Port 返回 partial。参与者：adapter/agent。状态变化：以返回的最新 canonical 摘要或重新 Bootstrap 的快照决定剩余操作。条件/例外：不得把 whole chain 当作未执行而重放；已完成前缀保持事实。证据：架构报告§CommandOutcome partial。
+- 计划离开事件 → Finalizer 端口：触发：canonical plan 进入 end.leave。参与者：Core knowledge sidecar 与 adapter。状态变化：取消或过期关联 finalization 状态，并禁止为该 leave 创建或交给 Finalizer Port 的新 dispatch。条件/例外：leave 是取消/脱离，不是延迟完成。证据：架构报告不变量 6；packages/core/src/knowledge-sidecar.ts tryLeaveKnowledgePlan()。
+- 计划变更（result="committed"） → 已提交结果：触发：合法 mutation 全部完成并持久化。参与者：Core plan owner。状态变化：返回 committed，携带 canonical planPath/planStatus、mutationId 与完整 guidance/effect envelope。条件/例外：随后 native effect 失败仍保持 committed。证据：架构报告§CommandOutcome committed；packages/core/src/plan.ts。
+- 计划变更（result="partial"） → 部分提交结果：触发：mutation chain 的若干前缀操作已提交，随后首个语义操作失败。参与者：Core mutation queue。状态变化：停止剩余操作并返回 completed/failed/remaining 计数和最新 canonical 摘要。条件/例外：调用方不得重放整条 chain。证据：架构报告§CommandOutcome partial；packages/core/src/plan.ts。
+- 平台适配合同 v1 → Bootstrap 端口：触发：平台声明实现 PAC v1。参与者：adapter bootstrap owner。状态变化：必须提供可信会话启动与 active workflow 恢复端口。条件/例外：不具备可信 host/session/workdir 的平台只能声明受限集成，不能冒充完整兼容。证据：架构报告§问题、边界与不变量及 A1。
+- 平台适配合同 v1 → 能力条款：触发：新增或审查平台适配。参与者：Core contract owner 与 adapter owner。状态变化：PAC v1 把平台差异表达为稳定命名的 required/forbidden capability clauses。条件/例外：条款只定义可观察语义，不包含工具名、进程模型或目录结构；未知 host/version 不允许 fallback。证据：架构报告§推荐决策；packages/core/src/integration-contract.ts。
+- 平台适配合同 v1 → Command 端口：触发：平台声明实现 PAC v1。参与者：shared protocol 与 adapter transport。状态变化：必须实现受控 command envelope，并保留 Core 对 workflow 的唯一业务语义。条件/例外：transport 不解释状态机、不改写 guidance、不把所有结果压成 success/failure。证据：架构报告§五个逻辑端口；packages/client/src/protocol.ts。
+- 平台适配合同 v1 → 适配一致性门禁：触发：平台准备声称兼容或发布。参与者：adapter delivery owner。状态变化：PAC v1 要求统一公共 fixtures 与各平台独立 native smoke 共同形成准入结论。条件/例外：CLI/Core gate 或文字声明单独通过都不足以证明 adapter ready。证据：架构报告§最小实施切片；.claw/truth/features/host-neutral-integration-contract.md。
+- 平台适配合同 v1 → Effect 端口：触发：平台启用任一 native effect capability。参与者：Core effect schema owner 与 adapter native handler owner。状态变化：必须实现版本校验、action identity、按序消费和结构化失败回执。条件/例外：native failure 永不回滚 canonical plan。证据：架构报告§Effect Port；packages/cli/src/codex-driver.ts。
+- 平台适配合同 v1 → Finalizer 端口：触发：平台 profile 允许知识收尾。参与者：Core job/dispatch owner 与 adapter native launcher。状态变化：必须实现 immutable dispatch 的一次性交接与回执。条件/例外：adapter 不修改 prompt/policy、不自行选 writer、不把 acceptance 当作 writer success。证据：架构报告§Finalizer Port；packages/core/src/knowledge-assignments.ts。
+- 提交后效果 属于 原生效果意图
+- 恢复对账 → Bootstrap 端口：触发：partial、unknown 或投影修复需要重新确认事实。参与者：adapter recovery owner。状态变化：复用同一可信身份调用 Bootstrap Port，取得新的 RecoverySnapshot。条件/例外：对账只读，不通过额外 plan transition 猜测补偿。证据：架构报告§unknown 与关键失败路径。
+- 恢复快照 → Canonical 计划：触发：快照包含 activeWorkflow 或恢复对账需要读取状态。参与者：Core context reader。状态变化：返回 canonical plan 的当前状态与最小安全投影。条件/例外：快照与宿主 UI 都不能反向覆盖 plan；outcome unknown 时必须以这里读到的 canonical 事实为准。证据：架构报告§Bootstrap/Recovery；packages/cli/src/cli.ts；packages/client/src/index.ts。
+- 恢复快照 → 工作流命令：触发：Bootstrap 返回快照。参与者：adapter/agent。状态变化：有 activeWorkflow 时先处理目标替换、取消或 returned guidance；无 activeWorkflow 时才选择 create。条件/例外：不能无条件新建计划覆盖现有绑定。证据：架构报告§正常数据流 2–3；using-claw-kit 恢复合同。
+- 拒绝结果 属于 命令结果
+- 拒绝结果 → 工作流命令：触发：收到 rejected。参与者：adapter/agent。状态变化：停止当前命令路线并向用户或调用方暴露稳定诊断。条件/例外：只有 details 明确提供可修复输入且 retryable 时才构造新命令；不能吞错或 silent fallback。证据：架构报告§CommandOutcome rejected。
+- 可复用项目知识意图 → 工作流准入判定：触发：adapter 接收新的用户请求。参与者：入口 skill/agent。状态变化：按是否预期产生可复用事实、决策、约束、模式或项目上下文决定是否进入正式 workflow。条件/例外：文件数、步骤数或复杂度加总不是准入标准。证据：架构报告§正常数据流 Admission；.claw/truth/features/platform-skill-startup-gating.md。
+- 会话计划绑定 → 恢复快照：触发：Bootstrap 查询 active workflow。参与者：project-level binding resolver。状态变化：只有显式 sessionKey→.claw-relative planPath 映射能把 activeWorkflow 放入快照。条件/例外：缺失或失效 binding 表示没有 active workflow，不能以目录扫描回退。证据：架构报告不变量 1–2；.claw/truth/features/task-layout-and-session-bindings.md。
+- 会话身份 → Bootstrap 端口：触发：需要新建、恢复或对账 workflow。参与者：adapter 与 Bootstrap Port。状态变化：TrustedSessionContext 成为唯一 lookup 隔离键与当前 host 来源。条件/例外：不得扫描 task 目录猜 session；workdir 变化应打开另一复合键。证据：架构报告§Bootstrap Port；.claw/truth/features/task-layout-and-session-bindings.md。
+- 会话身份 → Command 端口：触发：Command Port 执行任一 workflow command。参与者：adapter transport。状态变化：隐式附加当前可信 host/session/workdir，使 mutation target 与恢复 scope 一致。条件/例外：调用方切换 workdir 必须先建立新会话身份，不能修改既有复合键。证据：架构报告不变量 2；.claw/truth/features/task-layout-and-session-bindings.md。
+- 未知结果 属于 命令结果
+- 未知结果 → 恢复对账：触发：transport outcome unknown。参与者：adapter。状态变化：关闭旧连接、以同一 TrustedSessionContext 重新 Bootstrap 并读取 canonical plan。条件/例外：在确认状态前禁止自动 retry 或补发 mutation。证据：架构报告§关键失败语义；packages/client/src/index.ts。
+- 工作流准入判定（decision="admit"） → Bootstrap 端口：触发：准入结果为 admit。参与者：当前 adapter。状态变化：进入 Bootstrap/Recovery，先检查同一可信会话是否已有 activeWorkflow。条件/例外：bypass 结果完全跳过 PAC workflow，不创建空计划。证据：架构报告§正常数据流 1–2。
+- 工作流命令 → Command 端口：触发：agent 选择合法 operation 并形成 input/requestId。参与者：adapter transport 与 shared protocol。状态变化：命令进入 Command Port，由 Core 解释业务语义。条件/例外：adapter 不改写 operation 或偷加 host/session/workdir；未知 operation 明确拒绝。证据：架构报告§Command Port；packages/client/src/protocol.ts。
+- 工作流命令（validation="rejected"） → 拒绝结果：触发：语法、身份、版本、能力或 plan transition 前置校验失败。参与者：Command Port/Core。状态变化：零提交并返回稳定 code/message/details。条件/例外：只有合同显式 retryable=true 的前置失败才允许原请求重试。证据：架构报告§CommandOutcome rejected。
+- 工作流命令（transport-outcome="unknown"） → 未知结果：触发：请求已发出后连接丢失、超时或响应不可证明。参与者：adapter transport。状态变化：标记 outcome unknown、retryable false。条件/例外：unknown 不等于 rejected，也不能自动重发；必须先对账 canonical。证据：架构报告§CommandOutcome unknown；packages/client/src/index.ts；packages/dsh-adapter/src/protocol.ts。
+- 工作流指引 → 工作流命令：触发：上一命令或恢复返回 workflowGuidance。参与者：adapter/agent。状态变化：stage、nextTask 与 nextsteps 决定下一条生命周期命令；commandHints 仅辅助构造参数。条件/例外：不得从 raw plan、Goal UI 或旧提示词另推竞争状态机。证据：架构报告不变量 5；packages/core/src/workflow-guidance.ts。

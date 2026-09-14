@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 10,
+  "kind": "workspace",
+  "id": "claw-kit",
+  "name": "Claw Kit",
+  "definitions": "definitions.graph.json",
+  "agentExportPath": "game-mechanics",
+  "compositions": [],
+  "lastView": {
+    "graphIds": [],
+    "activeLayerId": null,
+    "collapsedNodeIds": [],
+    "positions": {}
+  }
+}

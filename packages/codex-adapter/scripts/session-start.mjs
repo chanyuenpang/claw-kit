@@ -61,9 +61,6 @@ function renderCodexSessionStart(context) {
 
 function renderVersionNote(version) {
   if (!version || typeof version !== "object" || version.cliVersionLagging !== true) return "";
-  if (version.autoUpdateEnabled === true && version.updateAvailable === true && version.cliVersion && version.latestPublishedVersion) {
-    return `A newer claw-kit version is available: installed CLI ${version.cliVersion}, published latest ${version.latestPublishedVersion}. Tell the user in their language that the current claw-kit installation is out of date and must be updated before they can continue using claw-kit. Ask whether they want to update now, then wait for their answer. After the user confirms, use ${version.updateSkill || "claw-kit:update"} to update the claw-kit CLI and the current host plugin surface, then continue the original task.`;
-  }
   return typeof version.message === "string" ? `Startup note: ${version.message}` : "";
 }
 

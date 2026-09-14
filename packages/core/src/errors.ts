@@ -40,6 +40,7 @@ export type ClawErrorCode =
   | "KNOWLEDGE_DIRECT_RESOURCE_MISSING"
   | "KNOWLEDGE_DIRECT_PATH_INVALID"
   | "TRUTH_TARGET_INVALID"
+  | "CLI_PLUGIN_VERSION_LAGGING"
   | "INPUT_REQUIRED";
 
 export class ClawError extends Error {

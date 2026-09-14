@@ -1,0 +1,410 @@
+{
+  "schemaVersion": 5,
+  "kind": "definitions",
+  "workspaceId": "claw-kit",
+  "nodes": [
+    {
+      "id": "session-identity",
+      "label": "会话身份",
+      "description": "由当前宿主适配器从可信运行上下文锻造的 hostId、sessionId、canonical workdir 与 contractVersion；模型或普通命令参数不得覆盖，用于隔离会话运行时、计划绑定和知识作业归属。",
+      "agentLocked": false,
+      "customData": "角色：状态。证据：packages/core/src/session-workflows.ts；.claw/truth/features/task-layout-and-session-bindings.md。",
+      "tags": [
+        "session",
+        "state"
+      ],
+      "aliases": [
+        "Session Identity"
+      ]
+    },
+    {
+      "id": "session-binding",
+      "label": "会话计划绑定",
+      "description": "把 session key 显式映射到 .claw 相对 planPath 的 canonical lookup 状态；只保存零或一个当前计划，不扫描任务目录猜测。",
+      "agentLocked": false,
+      "customData": "角色：状态与判定输入。证据：packages/core/src/session-bindings.ts；.claw/truth/features/task-layout-and-session-bindings.md。",
+      "tags": [
+        "session",
+        "binding"
+      ],
+      "aliases": [
+        "Session Plan Binding"
+      ]
+    },
+    {
+      "id": "canonical-plan",
+      "label": "Canonical 计划",
+      "description": "持久化 goal、requirements、tasks、status、rules、decisions 与 retrospective 的前台工作流真源。",
+      "agentLocked": false,
+      "customData": "角色：核心状态。证据：packages/core/src/plan.ts；.claw/truth/features/cli-guided-workflow.md。",
+      "tags": [
+        "plan",
+        "canonical-state"
+      ],
+      "aliases": [
+        "Canonical Plan"
+      ]
+    },
+    {
+      "id": "plan-task",
+      "label": "计划任务",
+      "description": "计划内可独立推进和验证的有序检查点，拥有 pending、in_progress、subagent_running 或 done 等进度状态。",
+      "agentLocked": false,
+      "customData": "角色：状态与检查点。证据：packages/core/src/plan.ts；packages/core/src/workflow-guidance.ts。",
+      "tags": [
+        "plan",
+        "task",
+        "checkpoint"
+      ],
+      "aliases": [
+        "Plan Task"
+      ]
+    },
+    {
+      "id": "plan-mutation",
+      "label": "计划变更",
+      "description": "由 plan/task 命令产生、经过语法与状态迁移校验并写入 canonical plan 的变更事件。",
+      "agentLocked": false,
+      "customData": "角色：事件。证据：packages/core/src/plan.ts editPlan()；packages/cli/src/command-service.ts。",
+      "tags": [
+        "plan",
+        "event",
+        "mutation"
+      ],
+      "aliases": [
+        "Plan Mutation"
+      ]
+    },
+    {
+      "id": "workflow-guidance",
+      "label": "工作流指引",
+      "description": "依据计划状态、前一状态、任务进度、模板和 host profile 派生的结构化下一步合同。",
+      "agentLocked": false,
+      "customData": "角色：输出与判定。证据：packages/core/src/workflow-guidance.ts buildPlanWorkflowGuidance()；packages/core/src/workflow-guidance.config.json。",
+      "tags": [
+        "workflow",
+        "decision",
+        "output"
+      ],
+      "aliases": [
+        "Workflow Guidance"
+      ]
+    },
+    {
+      "id": "host-integration-profile",
+      "label": "宿主集成档案",
+      "description": "Core 拥有的封闭 v1 能力合同，把命名 capability clauses 映射为各宿主 required/forbidden 行为，覆盖 Goal 效果、工作流恢复、报告捕获与知识收尾。",
+      "agentLocked": false,
+      "customData": "角色：配置与判定。证据：packages/core/src/integration-contract.ts；.claw/truth/features/host-neutral-integration-contract.md。",
+      "tags": [
+        "host",
+        "capability",
+        "decision"
+      ],
+      "aliases": [
+        "Host Integration Profile"
+      ]
+    },
+    {
+      "id": "host-adapter",
+      "label": "宿主适配器",
+      "description": "平台侧实现，锻造可信会话身份并实现 PAC v1 的 Bootstrap、Command、Effect、Finalizer 与 Conformance 端口；消费 Core/CLI 合同但不拥有 canonical workflow。",
+      "agentLocked": false,
+      "customData": "角色：参与者。证据：.claw/truth/features/host-neutral-integration-contract.md；packages/*-adapter。",
+      "tags": [
+        "host",
+        "adapter",
+        "participant"
+      ],
+      "aliases": [
+        "Host Adapter"
+      ]
+    },
+    {
+      "id": "host-action",
+      "label": "宿主动作",
+      "description": "命令 envelope 中带幂等 action ID 的受限原生效果，目前包括 update_plan、create_goal 与 update_goal。",
+      "agentLocked": false,
+      "customData": "角色：输出与事件。证据：packages/cli/src/codex-host-actions.ts；packages/cli/src/command-service.ts。",
+      "tags": [
+        "host",
+        "event",
+        "effect"
+      ],
+      "aliases": [
+        "Host Action"
+      ]
+    },
+    {
+      "id": "host-goal-progress",
+      "label": "宿主目标与进度",
+      "description": "宿主侧 Goal 与 Progress 的投影状态；它帮助执行但不替代 canonical plan。",
+      "agentLocked": false,
+      "customData": "角色：宿主状态。证据：packages/cli/src/codex-host-actions.ts buildCodexPlanProjection()。",
+      "tags": [
+        "host",
+        "goal",
+        "progress"
+      ],
+      "aliases": [
+        "Host Goal And Progress"
+      ]
+    },
+    {
+      "id": "plan-completion",
+      "label": "计划完成事件",
+      "description": "计划从非终态进入 end.completed 的一次性事件；项目计划必须先保存 retrospective，并可携带 key decisions。",
+      "agentLocked": false,
+      "customData": "角色：终态事件。证据：packages/core/src/plan.ts；packages/cli/src/command-service.ts plan.done。",
+      "tags": [
+        "plan",
+        "completion",
+        "event"
+      ],
+      "aliases": [
+        "Plan Completion"
+      ]
+    },
+    {
+      "id": "plan-leave",
+      "label": "计划离开事件",
+      "description": "计划进入 end.leave 的取消或脱离事件；它解除当前绑定并撤销相关知识旁路，不代表成功完成。",
+      "agentLocked": false,
+      "customData": "角色：终态事件。证据：packages/cli/src/command-service.ts plan.leave；packages/core/src/knowledge-sidecar.ts tryLeaveKnowledgePlan()。",
+      "tags": [
+        "plan",
+        "cancellation",
+        "event"
+      ],
+      "aliases": [
+        "Plan Leave"
+      ]
+    },
+    {
+      "id": "execution-evidence",
+      "label": "执行证据",
+      "description": "由明确任务结论、最终回合内容、计划 retrospective 与 key decisions 构成的可沉淀证据；任务状态本身不证明结果。",
+      "agentLocked": false,
+      "customData": "角色：输入。证据：.claw/truth/features/codex-knowledge-capture-boundary.md；.claw/truth/features/cli-guided-workflow.md。",
+      "tags": [
+        "evidence",
+        "knowledge",
+        "input"
+      ],
+      "aliases": [
+        "Execution Evidence"
+      ]
+    },
+    {
+      "id": "knowledge-finalization-job",
+      "label": "知识收尾作业",
+      "description": "项目作用域计划正常完成时派生的可认领、可重试作业，冻结 plan/report 路径、writer 配置、host、capture 窗口与 finalizeId；end.leave 只取消关联作业。",
+      "agentLocked": false,
+      "customData": "角色：异步状态。证据：packages/core/src/knowledge-sidecar.ts tryEndKnowledgePlan()。",
+      "tags": [
+        "knowledge",
+        "job",
+        "state"
+      ],
+      "aliases": [
+        "Knowledge Finalization Job"
+      ]
+    },
+    {
+      "id": "knowledge-dispatch",
+      "label": "知识派发",
+      "description": "针对 subagent policy 生成的不可变派发合同，包含 finalizeId、模型配置与内部 delegate workflow prompt。",
+      "agentLocked": false,
+      "customData": "角色：输出与事件。证据：packages/core/src/knowledge-assignments.ts；packages/cli/src/command-service.ts finalizeEnteredEnds()。",
+      "tags": [
+        "knowledge",
+        "dispatch",
+        "event"
+      ],
+      "aliases": [
+        "Knowledge Dispatch"
+      ]
+    },
+    {
+      "id": "knowledge-writer",
+      "label": "知识写入器",
+      "description": "由宿主原生运行时执行的最终化参与者，认领作业、按固定 assignment 顺序审查证据并确认一次终态结果。",
+      "agentLocked": false,
+      "customData": "角色：参与者与判定。证据：packages/core/src/knowledge-assignments.ts；packages/core/src/knowledge-sidecar.ts。",
+      "tags": [
+        "knowledge",
+        "writer",
+        "participant"
+      ],
+      "aliases": [
+        "Knowledge Writer"
+      ]
+    },
+    {
+      "id": "project-knowledge",
+      "label": "项目知识",
+      "description": "经治理后保存在项目 Truth、ADR 或受管外部文档中的稳定事实、决策、约束与演化记录。",
+      "agentLocked": false,
+      "customData": "角色：持久化输出。证据：.claw/truth；.claw/truth/adr/hook-owned-two-phase-knowledge-finalization.md。",
+      "tags": [
+        "knowledge",
+        "truth",
+        "output"
+      ],
+      "aliases": [
+        "Project Knowledge"
+      ]
+    },
+    {
+      "id": "platform-adapter-contract",
+      "label": "平台适配合同 v1",
+      "description": "平台无关的聚合合同，规定 canonical owner、逻辑端口、输入输出、结果分类、失败语义、幂等责任与准入门禁，但不规定语言、进程、包目录、UI 或发布方式。",
+      "agentLocked": false
+    },
+    {
+      "id": "reusable-project-knowledge-intent",
+      "label": "可复用项目知识意图",
+      "description": "一次请求是否预期产生可复用事实、决策、约束、模式或项目上下文的输入判定；它只决定是否进入正式 claw workflow。",
+      "agentLocked": false
+    },
+    {
+      "id": "workflow-admission",
+      "label": "工作流准入判定",
+      "description": "在创建 claw workflow 前执行的边界判定；可复用知识请求进入 Bootstrap，普通即时任务完全绕过正式计划生命周期。",
+      "agentLocked": false
+    },
+    {
+      "id": "capability-clause",
+      "label": "能力条款",
+      "description": "PAC v1 中具有稳定名称的单项 required/forbidden 语义，例如 workflow.recovery、projection.plan、goal.lifecycle、finalization.native-subagent 与 report.claim-time-capture。",
+      "agentLocked": false
+    },
+    {
+      "id": "bootstrap-port",
+      "label": "Bootstrap 端口",
+      "description": "由适配器实现的可信启动与恢复端口，接收会话身份并返回项目、协议检查、启动恢复和可选 activeWorkflow 快照。",
+      "agentLocked": false
+    },
+    {
+      "id": "recovery-snapshot",
+      "label": "恢复快照",
+      "description": "Bootstrap 端口返回的只读事实，包含 project、protocolCheck、startupRecovery 与可选 activeWorkflow；它不创建第二套持久化状态。",
+      "agentLocked": false
+    },
+    {
+      "id": "workflow-command",
+      "label": "工作流命令",
+      "description": "带 operation、input 与 requestId 的受控输入；其语义由 Core 解释，transport 和 adapter 不自行改写生命周期。",
+      "agentLocked": false
+    },
+    {
+      "id": "command-port",
+      "label": "Command 端口",
+      "description": "接收可信会话身份与工作流命令、调用共享协议/Core 语义并返回明确 CommandOutcome 的逻辑端口。",
+      "agentLocked": false
+    },
+    {
+      "id": "command-outcome",
+      "label": "命令结果",
+      "description": "Command 端口的封闭结果分类；必须明确区分 committed、partial、rejected 与 unknown，不能压成模糊成功布尔值。",
+      "agentLocked": false
+    },
+    {
+      "id": "committed-outcome",
+      "label": "已提交结果",
+      "description": "canonical mutation 已成功提交的命令结果，返回 planPath、planStatus、可用的 mutationId、完整 workflowGuidance 与可选 effect/dispatch envelope。",
+      "agentLocked": false
+    },
+    {
+      "id": "partial-outcome",
+      "label": "部分提交结果",
+      "description": "mutation chain 的前缀已提交、后续在首个语义错误处停止的结果，携带 completedOperations、failedOperation、remainingOperations 与最新 canonical 摘要。",
+      "agentLocked": false
+    },
+    {
+      "id": "rejected-outcome",
+      "label": "拒绝结果",
+      "description": "Core 在 canonical mutation 前明确拒绝的结果，携带稳定 code、message、details，且只有显式 retryable 前置失败允许原请求重试。",
+      "agentLocked": false
+    },
+    {
+      "id": "unknown-outcome",
+      "label": "未知结果",
+      "description": "请求已发出但响应丢失或超时、无法证明是否提交的 transport 结果；它不是可重试失败，必须先恢复并对账 canonical 状态。",
+      "agentLocked": false
+    },
+    {
+      "id": "recovery-reconciliation",
+      "label": "恢复对账",
+      "description": "在 unknown、partial 或需要投影修复时，以同一可信会话身份重新 Bootstrap、读取 canonical 事实并决定下一步的恢复判定。",
+      "agentLocked": false
+    },
+    {
+      "id": "native-effect-intent",
+      "label": "原生效果意图",
+      "description": "Core/CLI 在 canonical commit 后产生、由 adapter 原生执行的版本化效果意图总类，包括 host actions 与 completion refresh 等 post-commit effects。",
+      "agentLocked": false
+    },
+    {
+      "id": "post-commit-effect",
+      "label": "提交后效果",
+      "description": "canonical commit 后触发的非业务真源效果，例如 completion refresh；失败必须可见但不得回滚或重放原 mutation。",
+      "agentLocked": false
+    },
+    {
+      "id": "effect-port",
+      "label": "Effect 端口",
+      "description": "校验并按序执行 native effect intents 的适配器逻辑端口，返回逐项 receipt 或结构化 hostEffectFailures。",
+      "agentLocked": false
+    },
+    {
+      "id": "effect-receipt",
+      "label": "效果回执",
+      "description": "Effect 端口对单项或一批原生效果的结构化执行证据，保留 action identity、处理状态与诊断。",
+      "agentLocked": false
+    },
+    {
+      "id": "native-effect-failure",
+      "label": "原生效果失败",
+      "description": "已知 handler 缺失、调用异常或已验证 native effect 未成功的失败回执；canonical mutation 仍保持 committed。",
+      "agentLocked": false
+    },
+    {
+      "id": "finalizer-port",
+      "label": "Finalizer 端口",
+      "description": "消费 immutable knowledgeDispatch、完成一次宿主原生 handoff 并返回接受/拒绝回执的逻辑端口；不等待 writer 完成。",
+      "agentLocked": false
+    },
+    {
+      "id": "dispatch-receipt",
+      "label": "派发回执",
+      "description": "Finalizer 端口返回的 finalizeId、accepted/rejected 与可选 diagnostic；只证明 handoff 结果，不证明 knowledge writer 成功。",
+      "agentLocked": false
+    },
+    {
+      "id": "conformance-gate",
+      "label": "适配一致性门禁",
+      "description": "以 Core profile、公共协议 fixtures、效果/派发回执和真实宿主 smoke 为输入，判断一个平台 adapter 是否满足 PAC v1。",
+      "agentLocked": false
+    },
+    {
+      "id": "native-smoke-evidence",
+      "label": "真实宿主冒烟证据",
+      "description": "在真实宿主环境执行正常路径和关键失败路径后留下的可追溯证据，证明 native transport、effect 与 finalizer 确实可运行。",
+      "agentLocked": false
+    },
+    {
+      "id": "adapter-gate-report",
+      "label": "适配门禁报告",
+      "description": "汇总 contractVersion、capabilities、公共检查、包级验证、真实 smoke 证据与 ready 结论的交付产物。",
+      "agentLocked": false
+    },
+    {
+      "id": "adapter-readiness",
+      "label": "适配就绪状态",
+      "description": "只有 profile、五端口、公共 conformance、包级验证与真实宿主正反路径证据同时满足时才能成立的平台交付状态。",
+      "agentLocked": false
+    }
+  ],
+  "positions": {}
+}

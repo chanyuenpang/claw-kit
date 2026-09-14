@@ -45,6 +45,29 @@ import {
 } from "./cli-test-support.js";
 
 
+test("plan create checks a supplied Codex plugin version before writing", () => {
+  const root = createFixture("plan-create-plugin-version-gate");
+  runClaw(["init", "--name", "Plan Create Plugin Version Gate", "--planning", "false"], root);
+
+  const failure = runClawExpectFailure(
+    ["plan", "create", "--title", "blocked", "--goal", "must not write", "--plugin-version", "99.0.0.7"],
+    root,
+  );
+  const error = failure.error as JsonRecord;
+  const details = error.details as JsonRecord;
+  assert.equal(error.code, "CLI_PLUGIN_VERSION_LAGGING");
+  assert.equal(details.pluginVersion, "99.0.0.7");
+  assert.equal(details.requiredCliVersion, "99.0.0");
+  assert.equal(details.cliVersion, cliPackageVersion);
+  assert.equal(
+    fs.existsSync(path.join(root, ".claw", "tasks", localDateDirectory(new Date()), "blocked")),
+    false,
+  );
+
+  const created = runClaw(["plan", "create", "--title", "legacy", "--goal", "does not check"], root);
+  assert.equal(created.command, "plan.create");
+});
+
 test("cli respects project override toggles for goal mode and final-only truth dispatch", () => {
   const root = createFixture("cli-project-override-toggles");
   runClaw(["init", "--name", "CLI Override Toggles", "--planning", "false"], root);
@@ -452,35 +475,6 @@ test.skip("retired: cli hook surfaces lagging prompt note when autoUpdate is dis
   assert.doesNotMatch(additionalContext, /First action: use claw-kit:update/i);
   assert.match(additionalContext, /Startup note: Project config version 9\.9\.9 is newer than CLI/i);
   assert.match(additionalContext, /npm latest is only 0\.9\.9/i);
-});
-
-test.skip("retired: cli hook asks for update confirmation when autoUpdate is enabled and a newer published version exists", () => {
-  const root = createFixture("hook-version-auto-update");
-  const npmShim = createClawUpdateNpmShim({
-    latestVersion: "99.0.0",
-  });
-  const env = {
-    PATH: `${npmShim.binDir}${path.delimiter}${process.env.PATH ?? ""}`,
-  };
-  runClaw(["init", "--name", "Hook Version Auto Update"], root, env);
-  const projectJsonPath = path.join(root, ".claw", "project.json");
-  const projectConfig = JSON.parse(fs.readFileSync(projectJsonPath, "utf-8")) as JsonRecord;
-  projectConfig.version = "9.9.9";
-  projectConfig.autoUpdate = true;
-  fs.writeFileSync(projectJsonPath, `${JSON.stringify(projectConfig, null, 2)}\n`, "utf-8");
-
-  const result = runClawRaw(["hook", "SessionStart"], root, env);
-  assert.equal(result.status, 0);
-  const payload = JSON.parse(result.stdout) as JsonRecord;
-  const hookSpecificOutput = payload.hookSpecificOutput as JsonRecord;
-  const additionalContext = String(hookSpecificOutput.additionalContext);
-  const npmLog = fs.readFileSync(npmShim.logPath, "utf-8");
-  assert.match(additionalContext, /A newer claw-kit version is available/i);
-  assert.match(additionalContext, /Tell the user in their language that the current claw-kit installation is out of date and must be updated before they can continue using claw-kit/i);
-  assert.match(additionalContext, /Ask whether they want to update now, then wait for their answer/i);
-  assert.match(additionalContext, /After the user confirms, use claw-kit:update to update the claw-kit CLI and the current host plugin surface, then continue the original task\./i);
-  assert.match(additionalContext, /When useful, use `claw search` to narrow the document search scope.*default search/i);
-  assert.doesNotMatch(npmLog, /install -g @veewo\/claw@latest/);
 });
 
 test("context suppresses the node:sqlite ExperimentalWarning banner", () => {

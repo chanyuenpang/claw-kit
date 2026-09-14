@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-export const CODEX_DRIVER_VERSION = 20;
+export const CODEX_DRIVER_VERSION = 21;
 export const CODEX_HOST_ACTION_SCHEMA_VERSION = 1;
 export const CODEX_DRIVER_CACHE_KEY =
   `claw-kit:codex-driver:v${CODEX_DRIVER_VERSION}:s${CODEX_HOST_ACTION_SCHEMA_VERSION}`;
@@ -8,6 +8,7 @@ export const CODEX_DRIVER_CACHE_KEY =
 type DriverInput = {
   argv: string[];
   workdir: string;
+  pluginVersion?: string;
   timeout_ms?: number;
 };
 
@@ -17,8 +18,9 @@ type DriverRuntime = {
 };
 
 async function codexDriverRunner(
-  { argv, workdir, timeout_ms = 30000 }: DriverInput,
+  { argv, workdir, pluginVersion, timeout_ms = 30000 }: DriverInput,
   { tools, text }: DriverRuntime,
+  allowCliRepair = true,
 ): Promise<Record<string, unknown>> {
   if (
     !Array.isArray(argv)
@@ -33,8 +35,14 @@ async function codexDriverRunner(
   if (typeof workdir !== "string" || workdir.trim().length === 0) {
     throw new TypeError("workdir is required");
   }
+  if (pluginVersion !== undefined && !/^\d+\.\d+\.\d+\.\d+$/.test(pluginVersion)) {
+    throw new TypeError("pluginVersion must be a four-segment version");
+  }
 
-  const serializedArgv = JSON.stringify(argv);
+  const invocationArgv = pluginVersion && argv[0] === "plan" && argv[1] === "create"
+    ? [...argv, "--plugin-version", pluginVersion]
+    : argv;
+  const serializedArgv = JSON.stringify(invocationArgv);
   let encodedArgv = "";
   for (let index = 0; index < serializedArgv.length; index += 1) {
     encodedArgv += serializedArgv.charCodeAt(index).toString(16).padStart(4, "0");
@@ -99,6 +107,20 @@ async function codexDriverRunner(
   }
   if (!result) {
     if (protocolError) {
+      if (allowCliRepair && pluginVersion && protocolError.code === "CLI_PLUGIN_VERSION_LAGGING") {
+        const requiredCliVersion = pluginVersion.split(".").slice(0, 3).join(".");
+        const installCommand = `npm install --global @veewo/claw@${requiredCliVersion} --silent --no-audit --no-fund`;
+        const install = typeof tools.shell_command === "function"
+          ? await tools.shell_command({ command: installCommand, workdir, timeout_ms })
+          : typeof tools.exec_command === "function"
+            ? await tools.exec_command({ cmd: installCommand, workdir, yield_time_ms: timeout_ms })
+            : (() => { throw new Error("Codex host has no supported command-execution tool"); })();
+        const installExitCode = typeof install === "object" && install !== null && "exit_code" in install
+          ? (install as Record<string, unknown>).exit_code
+          : 0;
+        if (installExitCode !== 0) throw new Error(`CLI repair failed for @veewo/claw@${requiredCliVersion}`);
+        return codexDriverRunner({ argv, workdir, pluginVersion, timeout_ms }, { tools, text }, false);
+      }
       throw new Error(`claw mutation failed [${String(protocolError.code)}]: ${String(protocolError.message)}`);
     }
     throw new Error("claw returned no valid JSON protocol result");

@@ -13,8 +13,7 @@ The plugin works on these rules:
 - `SessionStart` restores a plan only when the current thread has a valid nonterminal session binding; a fresh thread has no plan to recover
 - the adapter-owned `context` call still returns project, runtime, version, configuration, update, and search diagnostics when no plan is recovered
 - if `claw context` detects that the project protocol version is ahead of the current CLI, startup recovery must surface `startupRecovery.versionSync` in the prompt
-- if `autoUpdate = true` and a newer published claw-kit exists, startup recovery must route the agent to `claw-kit:update` as the first action before other work
-- if `autoUpdate = false`, startup recovery must keep the version note informational only and must not inject update execution steps
+- startup recovery is diagnostic only: it must not route to `claw-kit:update` or install a CLI; Codex driver `plan create` owns its narrowly scoped compatibility repair
 
 ## Required startup routine
 

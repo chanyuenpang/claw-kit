@@ -1,0 +1,919 @@
+{
+  "schemaVersion": 6,
+  "kind": "mechanic",
+  "workspaceId": "claw-kit",
+  "id": "claw-kit-core",
+  "name": "Claw Kit 核心工作流",
+  "scope": "会话、计划任务、宿主调度与知识收尾",
+  "nodeIds": [
+    "session-identity",
+    "session-binding",
+    "canonical-plan",
+    "plan-task",
+    "plan-mutation",
+    "workflow-guidance",
+    "host-integration-profile",
+    "host-adapter",
+    "host-action",
+    "host-goal-progress",
+    "plan-completion",
+    "plan-leave",
+    "execution-evidence",
+    "knowledge-finalization-job",
+    "knowledge-dispatch",
+    "knowledge-writer",
+    "project-knowledge"
+  ],
+  "edges": [
+    {
+      "id": "session-identity-2-session-binding",
+      "source": "session-identity",
+      "target": "session-binding",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：宿主以 canonical workdir 与 agent session identity 打开或恢复会话。参与者：session runtime 与 project binding store。状态变化：建立或读取该 session key 对应的零或一个 .claw 相对 planPath。条件/例外：workdir 不可在同一复合键内原地变更；连接中断不自动重放 mutation。证据：packages/core/src/session-workflows.ts；.claw/truth/features/task-layout-and-session-bindings.md。",
+      "customData": "rule=session-identity-establishes-binding"
+    },
+    {
+      "id": "session-binding-2-canonical-plan",
+      "source": "session-binding",
+      "target": "canonical-plan",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：context、session.open、plan sync 或 plan resume 需要恢复当前 workflow。参与者：session binding resolver。状态变化：按显式相对 planPath 读取唯一 canonical plan。条件/例外：缺失或失效 binding 表示无可恢复计划，绝不扫描 task 目录猜测。证据：packages/core/src/session-bindings.ts；.claw/truth/features/task-layout-and-session-bindings.md。",
+      "customData": "rule=explicit-binding-resolves-plan"
+    },
+    {
+      "id": "canonical-plan-2-plan-task",
+      "source": "canonical-plan",
+      "target": "plan-task",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：计划创建、start 或 task list 更新。参与者：plan document 与 planning contract。状态变化：计划保存有序、可验证的任务检查点及其进度。条件/例外：任务进度只能在 process.* 状态修改；task status 只表示流程进度，不证明业务结果。证据：packages/core/src/plan.ts；.claw/truth/features/cli-guided-workflow.md。",
+      "customData": "rule=plan-owns-ordered-checkpoints"
+    },
+    {
+      "id": "plan-task-2-plan-mutation",
+      "source": "plan-task",
+      "target": "plan-mutation",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：task add、edit、remove 或 done 针对计划任务执行。参与者：CLI command service 与 Core editPlan。状态变化：生成带 mutationId、affected task IDs 和可选完成事件的计划变更。条件/例外：route-aware task 完成必须带合法 choice；task.done 不接受 conclusion 字段。证据：packages/cli/src/command-service.ts；packages/core/src/plan.ts。",
+      "customData": "rule=task-command-produces-plan-mutation"
+    },
+    {
+      "id": "plan-mutation-2-canonical-plan",
+      "source": "plan-mutation",
+      "target": "canonical-plan",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：合法 plan/task mutation 进入持久化阶段。参与者：editPlan、ticket queue 与 file lock。状态变化：校验字段、状态迁移、retrospective 门和 stale snapshot 后更新 canonical plan，并产生初末状态归约事件。条件/例外：语法失败零提交；mutation chain 的首个语义失败保留此前成功步骤；后置宿主效果失败不回滚已提交计划。证据：packages/core/src/plan.ts editPlan()；.claw/truth/features/cli-guided-workflow.md。",
+      "customData": "rule=validated-mutation-commits-plan"
+    },
+    {
+      "id": "canonical-plan-2-workflow-guidance",
+      "source": "canonical-plan",
+      "target": "workflow-guidance",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：计划创建、变更、同步或恢复完成。参与者：buildPlanWorkflowGuidance。状态变化：根据当前/前一 plan status、未完成任务、template guidance、completion hooks 与 scope 派生 stage、nextsteps、nextTask、notes 和 commandHints。条件/例外：commandHints 仅是语法辅助；process.discussing 与 process.wait 均暂停执行；end.completed 和 end.leave 使用不同收尾语义。证据：packages/core/src/workflow-guidance.ts。",
+      "customData": "rule=plan-state-derives-guidance"
+    },
+    {
+      "id": "host-integration-profile-2-workflow-guidance",
+      "source": "host-integration-profile",
+      "target": "workflow-guidance",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：Core 为指定 invocation host 构造 guidance。参与者：resolveHostIntegrationProfile 与 guidance builder。状态变化：按 capability profile 决定是否抑制 agent Goal 字段、是否提供恢复和 compact notes 等宿主差异。条件/例外：profile 是封闭且版本化的 v1 合同；不支持的 host 或版本不匹配必须显式失败。证据：packages/core/src/integration-contract.ts；packages/core/src/workflow-guidance.ts。",
+      "customData": "rule=profile-shapes-guidance"
+    },
+    {
+      "id": "workflow-guidance-2-plan-task",
+      "source": "workflow-guidance",
+      "target": "plan-task",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "sourceQualifiers": [
+        {
+          "key": "stage",
+          "value": {
+            "kind": "literal",
+            "value": "execution"
+          }
+        }
+      ],
+      "ruleText": "触发：plan 位于 process.active 且仍有未完成任务。参与者：workflow guidance consumer。状态变化：返回当前或下一个可执行任务及其完成选择，使执行一次聚焦一个检查点。条件/例外：全部任务完成时不再选择新任务，而是进入 retrospective 与 plan.done 收尾。证据：packages/core/src/workflow-guidance.ts process.active 分支。",
+      "customData": "rule=execution-guidance-selects-task"
+    },
+    {
+      "id": "workflow-guidance-2-host-adapter",
+      "source": "workflow-guidance",
+      "target": "host-adapter",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：命令 envelope 返回结构化 workflowGuidance。参与者：当前平台 adapter 与主 agent。状态变化：adapter/agent 按 stage 和 nextsteps 延续生命周期。条件/例外：adapter 不应重新从 raw plan 推导一套竞争语义，也不能过滤共享的必需收尾步骤。证据：.claw/truth/adr/codex-adapter-follows-workflow-guidance.md；.claw/truth/features/host-neutral-integration-contract.md。",
+      "customData": "rule=adapter-consumes-guidance-contract"
+    },
+    {
+      "id": "host-integration-profile-2-host-adapter",
+      "source": "host-integration-profile",
+      "target": "host-adapter",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：adapter 接入 claw-kit 或处理一次命令效果。参与者：Core capability contract 与平台 adapter。状态变化：profile 声明允许的 Goal、恢复、report capture 和 knowledge finalization 能力，adapter 提供对应原生实现。条件/例外：CLI/Core 保留 canonical 语义，不嵌入平台 writer runtime。证据：packages/core/src/integration-contract.ts；.claw/truth/features/host-neutral-integration-contract.md。",
+      "customData": "rule=profile-bounds-adapter-capabilities"
+    },
+    {
+      "id": "host-adapter-2-host-action",
+      "source": "host-adapter",
+      "target": "host-action",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：command envelope 携带已验证的 v1 hostActions。参与者：支持 host actions 的 adapter。状态变化：adapter 按 action ID 至多一次消费 update_plan、create_goal 或 update_goal。条件/例外：没有 actionIdPrefix 时不生成动作；非能力宿主不消费；效果失败以结构化诊断返回。证据：packages/cli/src/codex-host-actions.ts；packages/cli/src/command-service.ts。",
+      "customData": "rule=adapter-consumes-versioned-host-actions"
+    },
+    {
+      "id": "host-action-2-host-goal-progress",
+      "source": "host-action",
+      "target": "host-goal-progress",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：adapter 成功执行受限宿主动作。参与者：宿主 Goal/Progress 工具。状态变化：process plan 创建或恢复 Goal 并投影任务进度；end.* 清空 progress 并完成 Goal。条件/例外：这是 canonical plan 的幂等投影；失败不能回滚或否定计划 mutation。证据：packages/cli/src/codex-host-actions.ts buildCodexHostActions()。",
+      "customData": "rule=host-actions-project-plan-state"
+    },
+    {
+      "id": "plan-mutation-2-plan-completion",
+      "source": "plan-mutation",
+      "target": "plan-completion",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "sourceQualifiers": [
+        {
+          "key": "requested-status",
+          "value": {
+            "kind": "literal",
+            "value": "end.completed"
+          }
+        }
+      ],
+      "ruleText": "触发：plan.done 或等价 edit 请求 end.completed。参与者：Core status validator 与 completion hooks。状态变化：在全部完成条件和 retrospective 校验通过后记录 completedAt、plan_completed 事件及 completion hooks。条件/例外：project-scope 缺少 retrospective 时拒绝；subplan 完成会恢复 parent，只有 root 完成暴露 achievement。证据：packages/core/src/plan.ts；packages/cli/src/command-service.ts。",
+      "customData": "rule=completed-status-emits-completion-event"
+    },
+    {
+      "id": "plan-mutation-2-plan-leave",
+      "source": "plan-mutation",
+      "target": "plan-leave",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "sourceQualifiers": [
+        {
+          "key": "requested-status",
+          "value": {
+            "kind": "literal",
+            "value": "end.leave"
+          }
+        }
+      ],
+      "ruleText": "触发：用户取消、替换目标或不可恢复失败请求 end.leave。参与者：focus transition 与 plan lifecycle。状态变化：计划成为离开终态并释放当前执行焦点。条件/例外：它不是正常完成或普通等待；不得要求任务完成、retrospective 或知识沉淀成功。证据：packages/cli/src/command-service.ts plan.leave；packages/core/src/plan.ts。",
+      "customData": "rule=leave-status-emits-detach-event"
+    },
+    {
+      "id": "plan-leave-2-session-binding",
+      "source": "plan-leave",
+      "target": "session-binding",
+      "relation": "influence",
+      "sign": -1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：计划进入 end.leave。参与者：focus/session binding store。状态变化：立即解除该 session 的当前 plan binding。条件/例外：soft close 只结束 live attachment，不等同于 leave；恢复到另一计划由显式 focus transition 另行建立。证据：packages/cli/src/command-service.ts；.claw/truth/features/task-layout-and-session-bindings.md。",
+      "customData": "rule=leave-clears-session-binding"
+    },
+    {
+      "id": "canonical-plan-2-execution-evidence",
+      "source": "canonical-plan",
+      "target": "execution-evidence",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：knowledge finalizer 审查结束计划。参与者：source plan reader。状态变化：goal、requirements、retrospective 与 key decisions 成为证据上下文。条件/例外：task 列表和状态只解释 scope，不单独证明实现结果；freshness 冲突必须形成 no-edit 或谨慎更新。证据：.claw/truth/features/codex-knowledge-capture-boundary.md。",
+      "customData": "rule=completed-plan-supplies-evidence-context"
+    },
+    {
+      "id": "plan-task-2-execution-evidence",
+      "source": "plan-task",
+      "target": "execution-evidence",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "sourceQualifiers": [
+        {
+          "key": "status",
+          "value": {
+            "kind": "literal",
+            "value": "done"
+          }
+        }
+      ],
+      "ruleText": "触发：task.done 成功且知识 capture 处理所属执行窗口。参与者：transcript/report capture。状态变化：把成功 task.done 前最近一条 assistant checkpoint 记录为 task_conclusion。条件/例外：task.done 命令本身没有 conclusion 参数；伪文本、失败调用、越界 turn 或纯状态列表不能成为结论。证据：.claw/truth/features/cli-guided-workflow.md；.claw/truth/features/codex-knowledge-capture-boundary.md。",
+      "customData": "rule=done-task-conclusion-becomes-evidence"
+    },
+    {
+      "id": "plan-completion-2-execution-evidence",
+      "source": "plan-completion",
+      "target": "execution-evidence",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：root plan 正常完成。参与者：foreground closeout。状态变化：plan retrospective、durable key decisions 与最终回合内容补充任务级结论，形成收尾证据集合。条件/例外：achievement 只是前台完成信号，不代表异步知识 writer 已成功。证据：.claw/truth/features/cli-guided-workflow.md。",
+      "customData": "rule=completion-adds-plan-level-evidence"
+    },
+    {
+      "id": "plan-completion-2-knowledge-finalization-job",
+      "source": "plan-completion",
+      "target": "knowledge-finalization-job",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "sourceQualifiers": [
+        {
+          "key": "scope",
+          "value": {
+            "kind": "literal",
+            "value": "project"
+          }
+        }
+      ],
+      "ruleText": "触发：project-scope plan 从非 end.* 进入 end.completed。参与者：tryEndKnowledgePlan 与 per-session registry。状态变化：派生稳定 finalizeId；background policy 记录 pending turn owner，subagent policy 立即持久化 queued、claim-mode ready job。条件/例外：session scope 不创建 job；subplan 完成并恢复 parent 时不为仍在运行的链路重复派发。证据：packages/core/src/knowledge-sidecar.ts tryEndKnowledgePlan()；.claw/truth/features/codex-knowledge-capture-boundary.md。",
+      "customData": "rule=project-completion-materializes-finalization"
+    },
+    {
+      "id": "plan-leave-2-knowledge-finalization-job",
+      "source": "plan-leave",
+      "target": "knowledge-finalization-job",
+      "relation": "influence",
+      "sign": -1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：plan 进入 end.leave。参与者：tryLeaveKnowledgePlan。状态变化：清除 active/pending capture，并把同 session、同 plan 的 queued 或 running job 标为 expired，移除 assignments。条件/例外：leave 不创建新的 knowledge finalization，也不把取消当作延迟完成。证据：packages/core/src/knowledge-sidecar.ts tryLeaveKnowledgePlan()；.claw/truth/features/cli-guided-workflow.md。",
+      "customData": "rule=leave-cancels-finalization"
+    },
+    {
+      "id": "session-identity-2-knowledge-finalization-job",
+      "source": "session-identity",
+      "target": "knowledge-finalization-job",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：项目计划注册，或正常完成路径已经触发知识收尾。参与者：knowledge session registry。状态变化：sessionId、origin host、activeStartedAt 与 plan/report 路径限定作业身份和 capture 窗口，finalizeId 由 session、planPath 与 endedAt 确定性派生。条件/例外：会话身份只限定作业归属，不单独创建作业；缺少 sessionId、session scope 或 end.leave 均不创建新的项目知识作业。证据：packages/core/src/knowledge-sidecar.ts。",
+      "customData": "rule=session-scopes-finalization-job"
+    },
+    {
+      "id": "host-integration-profile-2-knowledge-dispatch",
+      "source": "host-integration-profile",
+      "target": "knowledge-dispatch",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "sourceQualifiers": [
+        {
+          "key": "supports-native-subagent-finalization",
+          "value": {
+            "kind": "literal",
+            "value": true
+          }
+        }
+      ],
+      "ruleText": "触发：subagent knowledge job 已物化且当前 host 支持原生子代理收尾。参与者：resolveHostIntegrationProfile 与 dispatch builder。状态变化：profile 决定使用普通 delegate dispatch 或 atomic dispatch，并规范 Goal 指引、capture 与 compact 行为。条件/例外：不支持该能力的 host 必须拒绝 subagent policy，不能悄悄降级。证据：packages/core/src/integration-contract.ts；packages/cli/src/command-service.ts finalizeEnteredEnds()。",
+      "customData": "rule=profile-selects-dispatch-route"
+    },
+    {
+      "id": "knowledge-finalization-job-2-knowledge-dispatch",
+      "source": "knowledge-finalization-job",
+      "target": "knowledge-dispatch",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "sourceQualifiers": [
+        {
+          "key": "execution-policy",
+          "value": {
+            "kind": "literal",
+            "value": "subagent"
+          }
+        }
+      ],
+      "ruleText": "触发：终态 mutation 已持久化带 finalizeId 和 jobPath 的 subagent ready job。参与者：buildKnowledgeDelegateDispatch 或 buildKnowledgeAtomicDispatch。状态变化：生成 preferReuse=false、包含固定内部模板与原样 prompt 的 immutable knowledgeDispatch。条件/例外：background policy 不在终态 mutation 返回该 dispatch；dispatch 不承载 writer 结果。证据：packages/core/src/knowledge-assignments.ts；packages/cli/src/command-service.ts。",
+      "customData": "rule=ready-job-produces-immutable-dispatch"
+    },
+    {
+      "id": "knowledge-dispatch-2-host-adapter",
+      "source": "knowledge-dispatch",
+      "target": "host-adapter",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：终态 command envelope 返回 knowledgeDispatch。参与者：当前平台 adapter 或受合同约束的 Lead。状态变化：把 dispatch prompt 原样交给宿主指定的一次性 finalizer 路由。条件/例外：派发被接受后主线程立即结束，不等待或轮询 worker；自动派发宿主不得重复启动。证据：packages/core/src/knowledge-assignments.ts KNOWLEDGE_DISPATCH_LEAD_INSTRUCTION；.claw/truth/features/host-neutral-integration-contract.md。",
+      "customData": "rule=dispatch-hands-off-to-native-adapter"
+    },
+    {
+      "id": "host-adapter-2-knowledge-writer",
+      "source": "host-adapter",
+      "target": "knowledge-writer",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：adapter 接受有效 knowledge dispatch 或 background runner 获得可执行作业。参与者：宿主原生 subagent/runtime。状态变化：启动内部 delegate plan，依次执行 claim、assignment subplan 与单次 knowledge done。条件/例外：CLI/Core 不托管 Codex/OpenCode writer runtime；fire-and-forget 回执不等于 writer 成功。证据：.claw/truth/features/host-neutral-integration-contract.md；.claw/truth/features/dsh-knowledge-dispatch-and-finalization.md。",
+      "customData": "rule=adapter-runs-native-finalizer"
+    },
+    {
+      "id": "execution-evidence-2-knowledge-writer",
+      "source": "execution-evidence",
+      "target": "knowledge-writer",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：writer claim 成功并冻结 source plan/report 输入。参与者：builtin governance、external skill 与可选 doc updater assignments。状态变化：只用材料中的明确结论判断新增稳定知识、冲突与文档影响。条件/例外：无 durable conclusion、freshness 冲突或无新增知识时必须形成 evidence-backed no-edit；不能把任务状态当作事实。证据：.claw/truth/features/codex-knowledge-capture-boundary.md；packages/core/src/knowledge-assignments.ts。",
+      "customData": "rule=evidence-bounds-writer-decisions"
+    },
+    {
+      "id": "knowledge-writer-2-project-knowledge",
+      "source": "knowledge-writer",
+      "target": "project-knowledge",
+      "relation": "influence",
+      "sign": 1,
+      "inheritance": {
+        "mode": "none"
+      },
+      "ruleText": "触发：全部 knowledge assignments 在 claim token 下完成。参与者：knowledge writer 与 consistency-aware governance。状态变化：新增或更新受边界约束的 Truth、ADR、索引和受管外部文档，并持久化 job result 后标记 succeeded。条件/例外：允许幂等 no-edit；写回 result 失败必须保持可重试，不能伪造成功；知识收尾不自动 Git commit。证据：.claw/truth/adr/hook-owned-two-phase-knowledge-finalization.md；.claw/truth/features/codex-knowledge-capture-boundary.md。",
+      "customData": "rule=writer-governs-project-knowledge"
+    }
+  ],
+  "positions": {
+    "session-identity": {
+      "x": 580,
+      "y": 280
+    },
+    "session-binding": {
+      "x": 320,
+      "y": 260
+    },
+    "canonical-plan": {
+      "x": 40,
+      "y": 540
+    },
+    "plan-task": {
+      "x": 320,
+      "y": 540
+    },
+    "plan-mutation": {
+      "x": 580,
+      "y": 460
+    },
+    "workflow-guidance": {
+      "x": 820,
+      "y": 720
+    },
+    "host-integration-profile": {
+      "x": 1340,
+      "y": 720
+    },
+    "host-adapter": {
+      "x": 1600,
+      "y": 700
+    },
+    "host-action": {
+      "x": 1860,
+      "y": 720
+    },
+    "host-goal-progress": {
+      "x": 2100,
+      "y": 720
+    },
+    "plan-completion": {
+      "x": 1340,
+      "y": -120
+    },
+    "plan-leave": {
+      "x": 1100,
+      "y": 160
+    },
+    "execution-evidence": {
+      "x": 880,
+      "y": 0
+    },
+    "knowledge-finalization-job": {
+      "x": 820,
+      "y": 260
+    },
+    "knowledge-dispatch": {
+      "x": 1860,
+      "y": 580
+    },
+    "knowledge-writer": {
+      "x": 1340,
+      "y": 120
+    },
+    "project-knowledge": {
+      "x": 1600,
+      "y": 120
+    }
+  },
+  "routeCache": {
+    "geometryKey": "v3//session-identity:580,280|session-binding:320,260|canonical-plan:40,540|plan-task:320,540|plan-mutation:580,460|workflow-guidance:820,720|host-integration-profile:1340,720|host-adapter:1600,700|host-action:1860,720|host-goal-progress:2100,720|plan-completion:1340,-120|plan-leave:1100,160|execution-evidence:880,0|knowledge-finalization-job:820,260|knowledge-dispatch:1860,580|knowledge-writer:1340,120|project-knowledge:1600,120|scope:host-integration-profile:supports-native-subagent-finalization%3Dliteral%3Aboolean%3Atrue:2100,480|scope:knowledge-finalization-job:execution-policy%3Dliteral%3Astring%3A%22subagent%22:2100,600|scope:plan-completion:scope%3Dliteral%3Astring%3A%22project%22:1040,260|scope:plan-mutation:requested-status%3Dliteral%3Astring%3A%22end.completed%22:1600,-120|scope:plan-mutation:requested-status%3Dliteral%3Astring%3A%22end.leave%22:820,160|scope:plan-task:status%3Dliteral%3Astring%3A%22done%22:600,0|scope:workflow-guidance:stage%3Dliteral%3Astring%3A%22execution%22:580,560//claw-kit-core/canonical-plan-2-execution-evidence:canonical-plan>execution-evidence|claw-kit-core/canonical-plan-2-plan-task:canonical-plan>plan-task|claw-kit-core/canonical-plan-2-workflow-guidance:canonical-plan>workflow-guidance|claw-kit-core/execution-evidence-2-knowledge-writer:execution-evidence>knowledge-writer|claw-kit-core/host-action-2-host-goal-progress:host-action>host-goal-progress|claw-kit-core/host-adapter-2-host-action:host-adapter>host-action|claw-kit-core/host-adapter-2-knowledge-writer:host-adapter>knowledge-writer|claw-kit-core/host-integration-profile-2-host-adapter:host-integration-profile>host-adapter|claw-kit-core/host-integration-profile-2-knowledge-dispatch:scope:host-integration-profile:supports-native-subagent-finalization%3Dliteral%3Aboolean%3Atrue>knowledge-dispatch|claw-kit-core/host-integration-profile-2-workflow-guidance:host-integration-profile>workflow-guidance|claw-kit-core/knowledge-dispatch-2-host-adapter:knowledge-dispatch>host-adapter|claw-kit-core/knowledge-finalization-job-2-knowledge-dispatch:scope:knowledge-finalization-job:execution-policy%3Dliteral%3Astring%3A%22subagent%22>knowledge-dispatch|claw-kit-core/knowledge-writer-2-project-knowledge:knowledge-writer>project-knowledge|claw-kit-core/plan-completion-2-execution-evidence:plan-completion>execution-evidence|claw-kit-core/plan-completion-2-knowledge-finalization-job:scope:plan-completion:scope%3Dliteral%3Astring%3A%22project%22>knowledge-finalization-job|claw-kit-core/plan-leave-2-knowledge-finalization-job:plan-leave>knowledge-finalization-job|claw-kit-core/plan-leave-2-session-binding:plan-leave>session-binding|claw-kit-core/plan-mutation-2-canonical-plan:plan-mutation>canonical-plan|claw-kit-core/plan-mutation-2-plan-completion:scope:plan-mutation:requested-status%3Dliteral%3Astring%3A%22end.completed%22>plan-completion|claw-kit-core/plan-mutation-2-plan-leave:scope:plan-mutation:requested-status%3Dliteral%3Astring%3A%22end.leave%22>plan-leave|claw-kit-core/plan-task-2-execution-evidence:scope:plan-task:status%3Dliteral%3Astring%3A%22done%22>execution-evidence|claw-kit-core/plan-task-2-plan-mutation:plan-task>plan-mutation|claw-kit-core/session-binding-2-canonical-plan:session-binding>canonical-plan|claw-kit-core/session-identity-2-knowledge-finalization-job:session-identity>knowledge-finalization-job|claw-kit-core/session-identity-2-session-binding:session-identity>session-binding|claw-kit-core/workflow-guidance-2-host-adapter:workflow-guidance>host-adapter|claw-kit-core/workflow-guidance-2-plan-task:scope:workflow-guidance:stage%3Dliteral%3Astring%3A%22execution%22>plan-task",
+    "paths": {
+      "claw-kit-core/canonical-plan-2-execution-evidence": [
+        {
+          "x": 131.3,
+          "y": 540
+        },
+        {
+          "x": 131.3,
+          "y": 102.20000000000002
+        },
+        {
+          "x": 960.4250000000001,
+          "y": 102.20000000000002
+        },
+        {
+          "x": 960.4250000000001,
+          "y": 62
+        }
+      ],
+      "claw-kit-core/canonical-plan-2-plan-task": [
+        {
+          "x": 206,
+          "y": 578.5
+        },
+        {
+          "x": 320,
+          "y": 578.5
+        }
+      ],
+      "claw-kit-core/canonical-plan-2-workflow-guidance": [
+        {
+          "x": 206,
+          "y": 589.8666666666668
+        },
+        {
+          "x": 255.60000000000002,
+          "y": 589.8666666666668
+        },
+        {
+          "x": 255.60000000000002,
+          "y": 743.8666666666667
+        },
+        {
+          "x": 820,
+          "y": 743.8666666666667
+        }
+      ],
+      "claw-kit-core/execution-evidence-2-knowledge-writer": [
+        {
+          "x": 1046,
+          "y": 52.150000000000006
+        },
+        {
+          "x": 1278.325,
+          "y": 52.150000000000006
+        },
+        {
+          "x": 1278.325,
+          "y": 156.10000000000002
+        },
+        {
+          "x": 1340,
+          "y": 156.10000000000002
+        }
+      ],
+      "claw-kit-core/host-action-2-host-goal-progress": [
+        {
+          "x": 2026,
+          "y": 749.5500000000001
+        },
+        {
+          "x": 2100,
+          "y": 749.5500000000001
+        }
+      ],
+      "claw-kit-core/host-adapter-2-host-action": [
+        {
+          "x": 1766,
+          "y": 749.5500000000001
+        },
+        {
+          "x": 1860,
+          "y": 749.5500000000001
+        }
+      ],
+      "claw-kit-core/host-adapter-2-knowledge-writer": [
+        {
+          "x": 1600,
+          "y": 721.1333333333333
+        },
+        {
+          "x": 1564.325,
+          "y": 721.1333333333333
+        },
+        {
+          "x": 1564.325,
+          "y": 167.4666666666667
+        },
+        {
+          "x": 1506,
+          "y": 167.4666666666667
+        }
+      ],
+      "claw-kit-core/host-integration-profile-2-host-adapter": [
+        {
+          "x": 1506,
+          "y": 755.2333333333333
+        },
+        {
+          "x": 1600,
+          "y": 755.2333333333333
+        }
+      ],
+      "claw-kit-core/host-integration-profile-2-knowledge-dispatch": [
+        {
+          "x": 2100,
+          "y": 507.55000000000007
+        },
+        {
+          "x": 2061.525,
+          "y": 507.55000000000007
+        },
+        {
+          "x": 2061.525,
+          "y": 605.8166666666666
+        },
+        {
+          "x": 2026,
+          "y": 605.8166666666666
+        }
+      ],
+      "claw-kit-core/host-integration-profile-2-workflow-guidance": [
+        {
+          "x": 1340,
+          "y": 755.2333333333333
+        },
+        {
+          "x": 986,
+          "y": 755.2333333333333
+        }
+      ],
+      "claw-kit-core/knowledge-dispatch-2-host-adapter": [
+        {
+          "x": 1860,
+          "y": 617.1833333333334
+        },
+        {
+          "x": 1812.9250000000002,
+          "y": 617.1833333333334
+        },
+        {
+          "x": 1812.9250000000002,
+          "y": 726.8166666666666
+        },
+        {
+          "x": 1766,
+          "y": 726.8166666666666
+        }
+      ],
+      "claw-kit-core/knowledge-finalization-job-2-knowledge-dispatch": [
+        {
+          "x": 2100,
+          "y": 628.5500000000001
+        },
+        {
+          "x": 2026,
+          "y": 628.5500000000001
+        }
+      ],
+      "claw-kit-core/knowledge-writer-2-project-knowledge": [
+        {
+          "x": 1506,
+          "y": 144.73333333333332
+        },
+        {
+          "x": 1600,
+          "y": 144.73333333333332
+        }
+      ],
+      "claw-kit-core/plan-completion-2-execution-evidence": [
+        {
+          "x": 1340,
+          "y": -85.9
+        },
+        {
+          "x": 1278.325,
+          "y": -85.9
+        },
+        {
+          "x": 1278.325,
+          "y": 18.05000000000001
+        },
+        {
+          "x": 1046,
+          "y": 18.05000000000001
+        }
+      ],
+      "claw-kit-core/plan-completion-2-knowledge-finalization-job": [
+        {
+          "x": 1040,
+          "y": 290.3
+        },
+        {
+          "x": 986,
+          "y": 290.3
+        }
+      ],
+      "claw-kit-core/plan-leave-2-knowledge-finalization-job": [
+        {
+          "x": 1266,
+          "y": 211.83333333333337
+        },
+        {
+          "x": 1300.325,
+          "y": 211.83333333333337
+        },
+        {
+          "x": 1300.325,
+          "y": 249.14166666666665
+        },
+        {
+          "x": 783.6,
+          "y": 249.14166666666665
+        },
+        {
+          "x": 783.6,
+          "y": 278.93333333333334
+        },
+        {
+          "x": 820,
+          "y": 278.93333333333334
+        }
+      ],
+      "claw-kit-core/plan-leave-2-session-binding": [
+        {
+          "x": 1100,
+          "y": 200.46666666666675
+        },
+        {
+          "x": 1028.9,
+          "y": 200.46666666666675
+        },
+        {
+          "x": 1028.9,
+          "y": 235.94166666666666
+        },
+        {
+          "x": 535,
+          "y": 235.94166666666666
+        },
+        {
+          "x": 535,
+          "y": 278.93333333333334
+        },
+        {
+          "x": 486,
+          "y": 278.93333333333334
+        }
+      ],
+      "claw-kit-core/plan-mutation-2-canonical-plan": [
+        {
+          "x": 580,
+          "y": 477.29999999999995
+        },
+        {
+          "x": 286.40000000000003,
+          "y": 477.29999999999995
+        },
+        {
+          "x": 286.40000000000003,
+          "y": 567.1333333333333
+        },
+        {
+          "x": 206,
+          "y": 567.1333333333333
+        }
+      ],
+      "claw-kit-core/plan-mutation-2-plan-completion": [
+        {
+          "x": 1600,
+          "y": -85.9
+        },
+        {
+          "x": 1506,
+          "y": -85.9
+        }
+      ],
+      "claw-kit-core/plan-mutation-2-plan-leave": [
+        {
+          "x": 986,
+          "y": 175.16666666666674
+        },
+        {
+          "x": 1100,
+          "y": 175.16666666666674
+        }
+      ],
+      "claw-kit-core/plan-task-2-execution-evidence": [
+        {
+          "x": 766,
+          "y": 35.10000000000002
+        },
+        {
+          "x": 880,
+          "y": 35.10000000000002
+        }
+      ],
+      "claw-kit-core/plan-task-2-plan-mutation": [
+        {
+          "x": 486,
+          "y": 567.1333333333333
+        },
+        {
+          "x": 535,
+          "y": 567.1333333333333
+        },
+        {
+          "x": 535,
+          "y": 500.0333333333333
+        },
+        {
+          "x": 580,
+          "y": 500.0333333333333
+        }
+      ],
+      "claw-kit-core/session-binding-2-canonical-plan": [
+        {
+          "x": 320,
+          "y": 290.3
+        },
+        {
+          "x": 271,
+          "y": 290.3
+        },
+        {
+          "x": 271,
+          "y": 555.7666666666667
+        },
+        {
+          "x": 206,
+          "y": 555.7666666666667
+        }
+      ],
+      "claw-kit-core/session-identity-2-knowledge-finalization-job": [
+        {
+          "x": 746,
+          "y": 301.6666666666667
+        },
+        {
+          "x": 820,
+          "y": 301.6666666666667
+        }
+      ],
+      "claw-kit-core/session-identity-2-session-binding": [
+        {
+          "x": 580,
+          "y": 301.6666666666667
+        },
+        {
+          "x": 486,
+          "y": 301.6666666666667
+        }
+      ],
+      "claw-kit-core/workflow-guidance-2-host-adapter": [
+        {
+          "x": 986,
+          "y": 732.5000000000001
+        },
+        {
+          "x": 1278.325,
+          "y": 732.5000000000001
+        },
+        {
+          "x": 1278.325,
+          "y": 687.0333333333333
+        },
+        {
+          "x": 1548.9250000000002,
+          "y": 687.0333333333333
+        },
+        {
+          "x": 1548.9250000000002,
+          "y": 738.1833333333334
+        },
+        {
+          "x": 1600,
+          "y": 738.1833333333334
+        }
+      ],
+      "claw-kit-core/workflow-guidance-2-plan-task": [
+        {
+          "x": 580,
+          "y": 589.8666666666667
+        },
+        {
+          "x": 486,
+          "y": 589.8666666666667
+        }
+      ]
+    }
+  },
+  "projectionPositions": {
+    "scope:host-integration-profile:supports-native-subagent-finalization%3Dliteral%3Aboolean%3Atrue": {
+      "x": 2100,
+      "y": 480
+    },
+    "scope:knowledge-finalization-job:execution-policy%3Dliteral%3Astring%3A%22subagent%22": {
+      "x": 2100,
+      "y": 600
+    },
+    "scope:plan-completion:scope%3Dliteral%3Astring%3A%22project%22": {
+      "x": 1040,
+      "y": 260
+    },
+    "scope:plan-mutation:requested-status%3Dliteral%3Astring%3A%22end.completed%22": {
+      "x": 1600,
+      "y": -120
+    },
+    "scope:plan-mutation:requested-status%3Dliteral%3Astring%3A%22end.leave%22": {
+      "x": 820,
+      "y": 160
+    },
+    "scope:plan-task:status%3Dliteral%3Astring%3A%22done%22": {
+      "x": 600,
+      "y": 0
+    },
+    "scope:workflow-guidance:stage%3Dliteral%3Astring%3A%22execution%22": {
+      "x": 580,
+      "y": 560
+    }
+  }
+}

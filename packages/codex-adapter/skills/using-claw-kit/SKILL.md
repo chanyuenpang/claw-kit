@@ -34,9 +34,11 @@ For every claw plan mutation, call the function below in code mode and change on
 
 ```javascript
 async function runClawPlanMutation({ argv, workdir, timeout_ms = 30000 }) {
-  const cacheKey = "claw-kit:codex-driver:v20:s1";
-  let envelope = load(cacheKey);
-  if (!envelope) {
+  const cacheKey = "claw-kit:codex-driver:v21:s1";
+  const pluginVersion = "0.2.37.0";
+  const requiredCliVersion = pluginVersion.split(".").slice(0, 3).join(".");
+  const planCreate = argv[0] === "plan" && argv[1] === "create";
+  const fetchEnvelope = async () => {
     const raw = typeof tools.shell_command === "function" ? await tools.shell_command({ command: "claw codex driver", workdir, timeout_ms })
       : typeof tools.exec_command === "function" ? await tools.exec_command({ cmd: "claw codex driver", workdir, yield_time_ms: timeout_ms })
       : (() => { throw new Error("Codex host has no supported command-execution tool"); })();
@@ -44,8 +46,34 @@ async function runClawPlanMutation({ argv, workdir, timeout_ms = 30000 }) {
     const start = output.indexOf("{");
     const end = output.lastIndexOf("}") + 1;
     if (start < 0 || end <= start) throw new Error("claw returned no driver envelope");
-    envelope = JSON.parse(output.slice(start, end));
-    if (envelope?.cacheKey !== cacheKey || envelope?.driverVersion !== 20
+    return JSON.parse(output.slice(start, end));
+  };
+  const cliSupportsPlugin = (cliVersion) => {
+    const actual = /^([0-9]+)\.([0-9]+)\.([0-9]+)/.exec(String(cliVersion ?? ""));
+    const required = requiredCliVersion.split(".").map(Number);
+    if (!actual) return false;
+    const current = actual.slice(1).map(Number);
+    return current[0] > required[0]
+      || (current[0] === required[0] && (current[1] > required[1]
+        || (current[1] === required[1] && current[2] >= required[2])));
+  };
+  const installExpectedCli = async () => {
+    const command = `npm install --global @veewo/claw@${requiredCliVersion} --silent --no-audit --no-fund`;
+    const raw = typeof tools.shell_command === "function" ? await tools.shell_command({ command, workdir, timeout_ms })
+      : typeof tools.exec_command === "function" ? await tools.exec_command({ cmd: command, workdir, yield_time_ms: timeout_ms })
+      : (() => { throw new Error("Codex host has no supported command-execution tool"); })();
+    if (typeof raw === "object" && raw !== null && "exit_code" in raw && raw.exit_code !== 0) {
+      throw new Error(`CLI repair failed for @veewo/claw@${requiredCliVersion}`);
+    }
+  };
+  let envelope = load(cacheKey);
+  if (!envelope) {
+    envelope = await fetchEnvelope();
+    if (planCreate && !cliSupportsPlugin(envelope?.cliVersion)) {
+      await installExpectedCli();
+      envelope = await fetchEnvelope();
+    }
+    if (envelope?.cacheKey !== cacheKey || envelope?.driverVersion !== 21
       || envelope?.hostActionSchemaVersion !== 1 || typeof envelope?.source !== "string") {
       throw new Error("incompatible claw Codex driver envelope");
     }
@@ -53,7 +81,7 @@ async function runClawPlanMutation({ argv, workdir, timeout_ms = 30000 }) {
   }
   const runner = (0, eval)(`(${envelope.source})`);
   if (typeof runner !== "function") throw new Error("invalid claw Codex driver source");
-  return runner({ argv, workdir, timeout_ms }, { tools, text });
+  return runner({ argv, workdir, pluginVersion, timeout_ms }, { tools, text });
 }
 ```
 

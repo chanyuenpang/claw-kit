@@ -36,10 +36,12 @@ test("Codex hooks recover through the adapter-owned context entry and run the ad
 
 test("Codex manifest keeps the using-claw-kit fallback prompt within the host limit", () => {
   const manifest = JSON.parse(readPluginFile(path.join(".codex-plugin", "plugin.json")));
+  const mainRouter = readPluginFile(path.join("skills", "using-claw-kit", "SKILL.md"));
   const [defaultPrompt] = manifest.interface.defaultPrompt;
 
   assert.equal(defaultPrompt, "Use $claw-kit:using-claw-kit to complete this task.");
   assert.ok(defaultPrompt.length <= 128);
+  assert.match(mainRouter, new RegExp(`const pluginVersion = "${manifest.version.replaceAll(".", "\\.")}"`));
 });
 
 test("Codex adapter owns the SDK and matching direct platform packages", () => {

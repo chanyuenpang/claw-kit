@@ -20,8 +20,8 @@
 - Prompt-injected recovery guidance belongs to SessionStart. `using-claw-kit` does not inspect it in its default `First Action`; the entry route is owned by `codex-plugin-workflow-mechanics.md` and is not duplicated by this startup document.
 - When project `version` is ahead of the current CLI, SessionStart must distinguish the explicit `autoUpdate` gate:
 - `autoUpdate = false`: only surface an informational lagging-version note.
-- `autoUpdate = true` plus a newer published version: tell the agent to explain in the user's language that the installed claw-kit is out of date and must be updated before claw-kit work continues, ask whether to update now, and wait for the answer. Only after confirmation does the guidance route to `claw-kit:update`, refresh both the CLI and current host plugin surface, and then resume the original task.
-- This route is ordering-sensitive: user authorization precedes `claw-kit:update`; the update precedes resuming the original claw-kit task.
+- `autoUpdate = true` plus a newer published version: surface the diagnostic only. It neither invokes `claw-kit:update` nor installs software during startup recovery.
+- Codex `plan create` alone may repair a known plugin/CLI mismatch, using the loaded plugin version and an exact silent CLI install before one retry.
 - If no recoverable active workflow exists, startup falls back to the existing default prompt behavior without extra recovery text, except for any version-sync note that explains a stale or lagging CLI prompt surface.
 
 ## Workflow implications
@@ -33,7 +33,7 @@
 - 因而 `SessionStart` 的 durable 边界不是“多给一步入口”，而是最多恢复当前 workflow contract；真正的 task 建立由 `using-claw-kit` 选择的 `claw plan create` 承担，后续推进由返回的 `workflowGuidance` 与 `process.active` 生命周期承担。
 - 旧的 standalone workflow skills 移除后，`using-claw-kit` 拥有 project-plan versus direct-work 的默认入口判断；只有创建 project plan 后，`planning` 才承担计划内容的可见入口，且不再暴露 bootstrap / reference-loading 分支打断主线。
 - 当项目没有开启 `autoUpdate` 时，`SessionStart` 的 durable 责任只是报告 lagging-version 状态，而不是在恢复链路里替用户执行本地升级。
-- 当 `autoUpdate = true` 且存在更高的已发布版本时，prompt 合同必须先建立用户授权门槛；用户确认后才显式落到 `claw-kit:update`，而不是在 `claw context` 内部或 Agent 未获授权时启动更新。
+- 当 `autoUpdate = true` 且存在更高的已发布版本时，prompt 合同只报告诊断；不调用 `claw-kit:update`，也不在 `claw context` 内执行安装。Codex 的 `plan create` 会在带有加载插件版本且检测到不兼容时，精确静默安装 CLI 后仅重试一次。
 
 ## Related files
 
