@@ -49,15 +49,10 @@ test("cli codex driver returns an executable versioned source envelope", async (
   const root = createFixture("codex-driver-envelope");
   const envelope = runClaw(["codex", "driver"], root, { CLAW_HOST: "" });
   assert.equal(envelope.command, "codex.driver");
-  assert.equal(envelope.driverVersion, 21);
+  assert.equal(envelope.driverVersion, 22);
   assert.equal(envelope.hostActionSchemaVersion, 1);
-  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v21:s1");
+  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v22:s1");
   assert.match(String(envelope.sha256), /^[a-f0-9]{64}$/);
-  assert.equal(
-    envelope.sha256,
-    "3ce4e69ae2472c99a96cbcd5c09ece658db00af2655c04eda7a0059ae4316679",
-    "changing serialized driver source requires a driver version/cache-key bump",
-  );
 
   const runner = (0, eval)(`(${String(envelope.source)})`) as (
     input: Record<string, unknown>,
@@ -93,12 +88,6 @@ test("cli codex driver returns an executable versioned source envelope", async (
     hostActions: [
       {
         schemaVersion: 1,
-        id: "mutation:update_plan",
-        tool: "update_plan",
-        input: { explanation: "resume", plan: [{ step: "work", status: "in_progress" }] },
-      },
-      {
-        schemaVersion: 1,
         id: "mutation:create_goal",
         tool: "create_goal",
         input: { objective: "finish" },
@@ -113,7 +102,6 @@ test("cli codex driver returns an executable versioned source envelope", async (
           calls.push(["shell_command", input]);
           return JSON.stringify(mutationResult);
         },
-        update_plan: async (input: unknown) => calls.push(["update_plan", input]),
         get_goal: async (input: unknown) => {
           calls.push(["get_goal", input]);
           return { goal: null };
@@ -139,7 +127,7 @@ test("cli codex driver returns an executable versioned source envelope", async (
   assert.equal("hostActions" in actual, false);
   assert.equal("command" in actual, false);
   assert.match(String((calls[0][1] as JsonRecord).command), /^claw codex invoke [a-f0-9]+$/);
-  assert.deepEqual(calls.map(([name]) => name), ["shell_command", "update_plan", "get_goal", "create_goal", "text"]);
+  assert.deepEqual(calls.map(([name]) => name), ["shell_command", "get_goal", "create_goal", "text"]);
   assert.equal("hostActions" in JSON.parse(String(calls.at(-1)?.[1])), false);
 
   const recoveredEffect = await runner(
@@ -168,29 +156,6 @@ test("cli codex driver returns an executable versioned source envelope", async (
   }]);
   assert.equal(recoveredEffect.planPath, "G:\\example\\.claw\\tasks\\demo\\plan.json");
   assert.equal(recoveredEffect.planStatus, "process.active");
-
-  const progressCloseCalls: Array<[string, unknown]> = [];
-  await runner(
-    { argv: ["plan", "done"], workdir: root },
-    {
-      tools: {
-        shell_command: async () => JSON.stringify({
-          ok: true,
-          command: "plan.done",
-          stage: "done",
-          hostActions: [{
-            schemaVersion: 1,
-            id: "end-mutation:clear_progress",
-            tool: "update_plan",
-            input: { explanation: "Completed.", plan: [] },
-          }],
-        }),
-        update_plan: async (input: unknown) => progressCloseCalls.push(["update_plan", input]),
-      },
-      text: () => undefined,
-    },
-  );
-  assert.deepEqual(progressCloseCalls, [["update_plan", { explanation: "Completed.", plan: [] }]]);
 
   const taskGuidance = await runner(
     { argv: ["task", "edit", "--id", "2", "--status", "in_progress"], workdir: root },
@@ -285,7 +250,7 @@ test("Codex driver silently repairs an outdated CLI once for plan create", async
   assert.deepEqual(JSON.parse(decodeInvocation(commands[2])), ["plan", "create", "--title", "demo", "--plugin-version", "0.2.37.0"]);
 });
 
-test("Codex driver skips unrelated JSON diagnostics and validates native action shapes", async () => {
+test("Codex driver rejects legacy progress host actions", async () => {
   const root = createFixture("codex-driver-protocol-validation");
   const envelope = runClaw(["codex", "driver"], root);
   const runner = (0, eval)(`(${String(envelope.source)})`) as (
@@ -306,83 +271,18 @@ test("Codex driver skips unrelated JSON diagnostics and validates native action 
       },
     }],
   };
-  const calls: string[] = [];
-  const actual = await runner(
+  await assert.rejects(
+    runner(
     { argv: ["plan", "edit", "--summary", "ready"], workdir: root },
     {
       tools: {
         shell_command: async () => `warning: ${JSON.stringify({ diagnostic: true })}\n${JSON.stringify(validResult)}`,
-        update_plan: async () => calls.push("update_plan"),
       },
       text: () => {},
     },
+    ),
+    /unsupported Codex hostAction/,
   );
-  assert.equal(actual.stage, "execution");
-  assert.deepEqual(calls, ["update_plan"]);
-
-  const unavailableTool = await runner(
-    { argv: ["plan", "edit", "--summary", "ready"], workdir: root },
-    {
-      tools: {
-        shell_command: async () => JSON.stringify(validResult),
-      },
-      text: () => {},
-    },
-  );
-  assert.deepEqual(unavailableTool.hostEffectFailures, [{
-    id: "edit:update_plan",
-    tool: "update_plan",
-    message: "Codex host tool is unavailable: update_plan",
-  }]);
-  assert.equal(unavailableTool.stage, "execution");
-
-  const goalCalls: string[] = [];
-  const progressUnavailableGoalCreated = await runner(
-    { argv: ["plan", "sync"], workdir: root },
-    {
-      tools: {
-        shell_command: async () => JSON.stringify({
-          ...validResult,
-          hostActions: [
-            validResult.hostActions[0],
-            { schemaVersion: 1, id: "sync:create_goal", tool: "create_goal", input: { objective: "continue work" } },
-          ],
-        }),
-        get_goal: async () => ({ goal: null }),
-        create_goal: async () => goalCalls.push("create_goal"),
-      },
-      text: () => {},
-    },
-  );
-  assert.deepEqual(goalCalls, ["create_goal"]);
-  assert.deepEqual(progressUnavailableGoalCreated.hostEffectFailures, [{
-    id: "edit:update_plan",
-    tool: "update_plan",
-    message: "Codex host tool is unavailable: update_plan",
-  }]);
-
-  for (const input of [
-    { explanation: "sync", plan: [{ step: "work", status: "unknown" }] },
-    { explanation: "sync", plan: [{ step: "work", status: "pending", extra: true }] },
-    { explanation: 1, plan: [{ step: "work", status: "pending" }] },
-  ]) {
-    await assert.rejects(
-      runner(
-        { argv: ["plan", "edit", "--summary", "ready"], workdir: root },
-        {
-          tools: {
-            shell_command: async () => JSON.stringify({
-              ...validResult,
-              hostActions: [{ ...validResult.hostActions[0], input }],
-            }),
-            update_plan: async () => {},
-          },
-          text: () => {},
-        },
-      ),
-      /invalid Codex hostAction input/,
-    );
-  }
 });
 
 test("Codex driver preserves structured CLI errors returned on stderr", async () => {
@@ -451,12 +351,6 @@ test("Codex driver preserves unfinished Goals, recreates completed Goals, and co
     hostActions: [
       {
         schemaVersion: 1,
-        id: "resume:update_plan",
-        tool: "update_plan",
-        input: { plan: [{ step: "resume work", status: "in_progress" }] },
-      },
-      {
-        schemaVersion: 1,
         id: "resume:create_goal",
         tool: "create_goal",
         input: { objective: "resume work" },
@@ -466,14 +360,13 @@ test("Codex driver preserves unfinished Goals, recreates completed Goals, and co
   let goalStatus = "active";
   const tools = {
     shell_command: async () => JSON.stringify(commandResult),
-    update_plan: async () => calls.push("update_plan"),
     get_goal: async () => ({ goal: { status: goalStatus } }),
     create_goal: async () => { calls.push("create_goal"); goalStatus = "active"; },
     update_goal: async () => { calls.push("update_goal"); goalStatus = "complete"; },
   };
 
   const retained = await runner({ argv: ["plan", "resume"], workdir: root }, { tools, text: () => {} });
-  assert.deepEqual(calls, ["update_plan"]);
+  assert.deepEqual(calls, []);
   assert.deepEqual(retained.goalRecovery, {
     reason: "Retained the existing unfinished Codex Goal; recovery creates a Goal only when none is unfinished.",
   });
@@ -485,12 +378,6 @@ test("Codex driver preserves unfinished Goals, recreates completed Goals, and co
     hostActions: [
       {
         schemaVersion: 1,
-        id: "sync:update_plan",
-        tool: "update_plan",
-        input: { plan: [{ step: "resume work", status: "in_progress" }] },
-      },
-      {
-        schemaVersion: 1,
         id: "sync:create_goal",
         tool: "create_goal",
         input: { objective: "resume work" },
@@ -500,7 +387,7 @@ test("Codex driver preserves unfinished Goals, recreates completed Goals, and co
   goalStatus = "complete";
   const recreated = await runner({ argv: ["plan", "sync"], workdir: root }, { tools, text: () => {} });
   assert.equal(recreated.goalRecovery, undefined);
-  assert.deepEqual(calls, ["update_plan", "update_plan", "create_goal"]);
+  assert.deepEqual(calls, ["create_goal"]);
 
   commandResult = {
     ok: true,
@@ -515,19 +402,13 @@ test("Codex driver preserves unfinished Goals, recreates completed Goals, and co
   };
   goalStatus = "complete";
   await runner({ argv: ["plan", "done", "--retrospective", "done"], workdir: root }, { tools, text: () => {} });
-  assert.deepEqual(calls, ["update_plan", "update_plan", "create_goal"]);
+  assert.deepEqual(calls, ["create_goal"]);
 
   commandResult = {
     ok: true,
     command: "plan.resume",
     stage: "execution",
     hostActions: [
-      {
-        schemaVersion: 1,
-        id: "blocked:update_plan",
-        tool: "update_plan",
-        input: { plan: [{ step: "resume work", status: "in_progress" }] },
-      },
       {
         schemaVersion: 1,
         id: "blocked:create_goal",
@@ -541,7 +422,7 @@ test("Codex driver preserves unfinished Goals, recreates completed Goals, and co
     { argv: ["plan", "resume"], workdir: root },
     { tools, text: () => {} },
   );
-  assert.deepEqual(calls, ["update_plan", "update_plan", "create_goal", "update_plan"]);
+  assert.deepEqual(calls, ["create_goal"]);
   assert.deepEqual(recovered.goalRecovery, {
     reason: "Retained the existing unfinished Codex Goal; recovery creates a Goal only when none is unfinished.",
   });
@@ -558,7 +439,7 @@ test("Codex driver preserves unfinished Goals, recreates completed Goals, and co
     }],
   };
   await runner({ argv: ["plan", "done", "--retrospective", "done"], workdir: root }, { tools, text: () => {} });
-  assert.deepEqual(calls, ["update_plan", "update_plan", "create_goal", "update_plan", "update_goal"]);
+  assert.deepEqual(calls, ["create_goal", "update_goal"]);
 });
 
 test("Codex driver applies only active to blocked Goal updates", async () => {
@@ -593,7 +474,7 @@ test("Codex driver applies only active to blocked Goal updates", async () => {
   assert.deepEqual(calls, [{ status: "blocked" }]);
 });
 
-test("Codex lightweight process plans create Goal Mode and synchronize progress", () => {
+test("Codex lightweight process plans create Goal Mode without progress synchronization", () => {
   const root = createFixture("codex-stage-minimal-result");
   runClaw(["init", "--name", "Codex Minimal Result", "--planning", "false"], root);
   const result = runClaw(
@@ -609,7 +490,7 @@ test("Codex lightweight process plans create Goal Mode and synchronize progress"
   assert.equal("events" in result, false);
   assert.equal("changedTaskIds" in result, false);
   assert.equal("appendedTaskIds" in result, false);
-  assert.deepEqual((result.hostActions as JsonRecord[]).map((action) => action.tool), ["update_plan", "create_goal"]);
+  assert.deepEqual((result.hostActions as JsonRecord[]).map((action) => action.tool), ["create_goal"]);
   assert.equal("plan" in result, false);
   assert.equal(result.planSummary, "0/1 demo-task");
   assert.ok(Array.isArray(result.nextsteps));
@@ -617,7 +498,7 @@ test("Codex lightweight process plans create Goal Mode and synchronize progress"
   assert.ok(Array.isArray(result.commandHints));
 });
 
-test("Codex template-backed plans keep Goal and progress synchronization below the task threshold", () => {
+test("Codex template-backed plans keep Goal synchronization below the task threshold", () => {
   const root = createFixture("codex-template-host-integration");
   const templatePath = path.join(root, "template.json");
   fs.writeFileSync(templatePath, `${JSON.stringify(createPlanLikeTemplate({
@@ -632,7 +513,7 @@ test("Codex template-backed plans keep Goal and progress synchronization below t
     root,
   );
 
-  assert.deepEqual((result.hostActions as JsonRecord[]).map((action) => action.tool), ["update_plan", "create_goal"]);
+  assert.deepEqual((result.hostActions as JsonRecord[]).map((action) => action.tool), ["create_goal"]);
 });
 
 test("host-neutral and opencode plan results never expose Codex hostActions", () => {
@@ -719,7 +600,7 @@ test("background worker environments drop the foreground invocation host", () =>
   assert.equal(source.CLAW_HOST, "codex");
 });
 
-test("Codex lightweight process states retain Progress while pausing Goal Mode", () => {
+test("Codex lightweight process states pause and resume Goal Mode without progress synchronization", () => {
   const root = createFixture("codex-wait-resume-minimal-result");
   runClaw(["init", "--name", "Codex Wait Resume", "--planning", "false"], root);
   runClaw(["plan", "create", "--title", "demo-task", "--goal", "Pause and resume cleanly"], root);
@@ -733,7 +614,7 @@ test("Codex lightweight process states retain Progress while pausing Goal Mode",
   assert.equal("goalTool" in waitResult, false);
   assert.ok(Array.isArray(waitResult.nextsteps));
   assert.deepEqual(waitResult.commandHints, ["claw plan resume"]);
-  assert.deepEqual((waitResult.hostActions as JsonRecord[]).map((action) => action.tool), ["update_plan", "update_goal"]);
+  assert.deepEqual((waitResult.hostActions as JsonRecord[]).map((action) => action.tool), ["update_goal"]);
 
   const resumeResult = runClaw(["plan", "resume", "--task-name", "demo-task", "--host", "codex"], root);
   assert.equal(resumeResult.command, "plan.resume");
@@ -742,10 +623,10 @@ test("Codex lightweight process states retain Progress while pausing Goal Mode",
   assert.equal("goalMode" in resumeResult, false);
   assert.equal("goalTool" in resumeResult, false);
   assert.ok(Array.isArray(resumeResult.nextsteps));
-  assert.deepEqual((resumeResult.hostActions as JsonRecord[]).map((action) => action.tool), ["update_plan", "create_goal"]);
+  assert.deepEqual((resumeResult.hostActions as JsonRecord[]).map((action) => action.tool), ["create_goal"]);
 });
 
-test("Codex end statuses clear Progress and complete the Goal", () => {
+test("Codex end statuses complete the Goal without clearing progress", () => {
   for (const endStatus of ["end.closed", "end.leave"] as const) {
     const root = createFixture(`codex-${endStatus}-clears-host-state`);
     runClaw(["init", "--name", `Codex ${endStatus}`, "--planning", "false"], root);
@@ -755,9 +636,8 @@ test("Codex end statuses clear Progress and complete the Goal", () => {
 
     const result = runClaw(["plan", "edit", "--task-name", "demo-task", "--status", endStatus, "--host", "codex"], root);
     const actions = result.hostActions as JsonRecord[];
-    assert.deepEqual(actions.map((action) => action.tool), ["update_plan", "update_goal"]);
-    assert.deepEqual((actions[0]?.input as JsonRecord).plan, []);
-    assert.deepEqual(actions[1]?.input, { status: "complete" });
+    assert.deepEqual(actions.map((action) => action.tool), ["update_goal"]);
+    assert.deepEqual(actions[0]?.input, { status: "complete" });
   }
 
   const completedRoot = createFixture("codex-end-completed-clears-host-state");
@@ -770,12 +650,11 @@ test("Codex end statuses clear Progress and complete the Goal", () => {
     "plan", "done", "--task-name", "demo-task", "--retrospective", "Finished host-state lifecycle.", "--host", "codex",
   ], completedRoot);
   const completedActions = completed.hostActions as JsonRecord[];
-  assert.deepEqual(completedActions.map((action) => action.tool), ["update_plan", "update_goal"]);
-  assert.deepEqual((completedActions[0]?.input as JsonRecord).plan, []);
-  assert.deepEqual(completedActions[1]?.input, { status: "complete" });
+  assert.deepEqual(completedActions.map((action) => action.tool), ["update_goal"]);
+  assert.deepEqual(completedActions[0]?.input, { status: "complete" });
 });
 
-test("Codex lightweight plan sync restores Goal Mode and Progress", () => {
+test("Codex lightweight plan sync restores Goal Mode without progress synchronization", () => {
   const root = createFixture("codex-plan-sync");
   const env = { CODEX_THREAD_ID: "thread-plan-sync" };
   runClaw(["init", "--name", "Codex Plan Sync", "--planning", "false"], root, env);
@@ -783,13 +662,13 @@ test("Codex lightweight plan sync restores Goal Mode and Progress", () => {
     "plan", "create", "--title", "demo-task", "--goal", "Restore host state", "--host", "codex",
   ], root, env);
 
-  assert.deepEqual((created.hostActions as JsonRecord[]).map((action) => action.tool), ["update_plan", "create_goal"]);
+  assert.deepEqual((created.hostActions as JsonRecord[]).map((action) => action.tool), ["create_goal"]);
 
   const sync = runClaw(["plan", "sync", "--host", "codex"], root, env);
 
   assert.equal(sync.command, "plan.sync");
   assert.equal(sync.planStatus, "process.active");
-  assert.deepEqual((sync.hostActions as JsonRecord[]).map((action) => action.tool), ["update_plan", "create_goal"]);
+  assert.deepEqual((sync.hostActions as JsonRecord[]).map((action) => action.tool), ["create_goal"]);
 });
 
 test("Codex plan sync respects the project goalMode override above the task threshold", () => {
@@ -797,16 +676,16 @@ test("Codex plan sync respects the project goalMode override above the task thre
   const env = { CODEX_THREAD_ID: "thread-plan-sync-no-goal" };
   runClaw(["init", "--name", "Codex Plan Sync No Goal", "--planning", "false"], root, env);
   fs.writeFileSync(path.join(root, ".claw", "project-override.json"), JSON.stringify({ goalMode: false }), "utf-8");
-  runClaw(["plan", "create", "--title", "demo-task", "--goal", "Restore only progress"], root, env);
+  runClaw(["plan", "create", "--title", "demo-task", "--goal", "Restore host state"], root, env);
   runClaw(["task", "add", "--task-name", "demo-task", "--title", "Second task"], root, env);
   runClaw(["task", "add", "--task-name", "demo-task", "--title", "Third task"], root, env);
 
   const sync = runClaw(["plan", "sync", "--host", "codex"], root, env);
 
-  assert.deepEqual((sync.hostActions as JsonRecord[]).map((action) => action.tool), ["update_plan"]);
+  assert.deepEqual((sync.hostActions as JsonRecord[]).map((action) => action.tool), []);
 });
 
-test("Codex task additions synchronize visible Progress when they cross the visibility threshold", () => {
+test("Codex task additions do not synchronize progress", () => {
   const root = createFixture("codex-task-add-progress-reconciliation");
   runClaw(["init", "--name", "Codex Task Add Progress", "--planning", "false"], root);
   runClaw(["plan", "create", "--title", "demo-task", "--goal", "Reconcile task progress"], root);
@@ -817,15 +696,10 @@ test("Codex task additions synchronize visible Progress when they cross the visi
   ], root);
 
   const actions = added.hostActions as JsonRecord[];
-  assert.deepEqual(actions.map((action) => action.tool), ["update_plan", "create_goal"]);
-  assert.deepEqual((actions[0]!.input as JsonRecord).plan, [
-    { step: "Reconcile task progress", status: "in_progress" },
-    { step: "Second task", status: "pending" },
-    { step: "Third task", status: "pending" },
-  ]);
+  assert.deepEqual(actions.map((action) => action.tool), ["create_goal"]);
 });
 
-test("Codex emits update_plan only when the projected host plan changes", () => {
+test("Codex never emits update_plan when task details change", () => {
   const root = createFixture("codex-projected-plan-change");
   runClaw(["init", "--name", "Codex Projection", "--planning", "false"], root);
   runClaw(["plan", "create", "--title", "demo-task", "--goal", "Track projection"], root);
@@ -846,15 +720,10 @@ test("Codex emits update_plan only when the projected host plan changes", () => 
     "task", "edit", "--task-name", "demo-task", "--id", "1", "--title", "Renamed work", "--host", "codex",
   ], root);
   const actions = titleChanged.hostActions as JsonRecord[];
-  assert.deepEqual(actions.map((action) => action.tool), ["update_plan", "create_goal"]);
-  assert.deepEqual(((actions[0]!.input as JsonRecord).plan), [
-    { step: "Renamed work", status: "in_progress" },
-    { step: "Second task", status: "pending" },
-    { step: "Third task", status: "pending" },
-  ]);
+  assert.deepEqual(actions.map((action) => action.tool), ["create_goal"]);
 });
 
-test("Codex progress projection follows the task actually marked in progress", () => {
+test("Codex task transitions do not project progress", () => {
   const root = createFixture("codex-actual-in-progress-task");
   runClaw(["init", "--name", "Codex Actual Progress", "--planning", "false"], root);
   runClaw(["plan", "create", "--title", "demo-task", "--goal", "Track actual task"], root);
@@ -867,12 +736,7 @@ test("Codex progress projection follows the task actually marked in progress", (
   ], root);
 
   const actions = result.hostActions as JsonRecord[];
-  assert.deepEqual(actions.map((action) => action.tool), ["update_plan", "create_goal"]);
-  assert.deepEqual((actions[0]!.input as JsonRecord).plan, [
-    { step: "Track actual task", status: "pending" },
-    { step: "Second task", status: "in_progress" },
-    { step: "Third task", status: "pending" },
-  ]);
+  assert.deepEqual(actions.map((action) => action.tool), ["create_goal"]);
   assert.deepEqual(result.nextsteps, ["Continue the current task."]);
 });
 
@@ -963,7 +827,7 @@ test("Codex subplan create preserves the parent Goal", () => {
     "subplan", "create", "--parent", "demo-task", "--task-id", "1", "--host", "codex",
   ], root, env);
   const actions = result.hostActions as JsonRecord[];
-  assert.deepEqual(actions.map((action) => action.tool), ["update_plan"]);
+  assert.deepEqual(actions.map((action) => action.tool), []);
   assert.equal("planSummary" in result, false);
   assert.equal("plan" in result, true);
   assert.deepEqual(actions.map((action) => Object.keys(action).sort()), [
@@ -973,7 +837,7 @@ test("Codex subplan create preserves the parent Goal", () => {
   assert.equal(actions.some((action) => action.tool === "create_goal"), false);
 });
 
-test("Codex child plan sync restores the root Goal while projecting child progress", () => {
+test("Codex child plan sync restores the root Goal without projecting child progress", () => {
   const root = createFixture("cli-subplan-sync-root-goal");
   const env = { CODEX_THREAD_ID: "thread-subplan-sync-root-goal" };
   runClaw(["init", "--name", "Subplan Sync Root Goal", "--planning", "false"], root, env);
@@ -997,11 +861,9 @@ test("Codex child plan sync restores the root Goal while projecting child progre
 
   const sync = runClaw(["plan", "sync", "--host", "codex"], root, env);
   const actions = sync.hostActions as JsonRecord[];
-  assert.deepEqual(actions.map((action) => action.tool), ["update_plan", "create_goal"]);
-  assert.equal((actions[0]?.input as JsonRecord).plan instanceof Array, true);
-  assert.equal(((actions[0]?.input as JsonRecord).plan as JsonRecord[])[0]?.step, "Complete planning with claw-kit:planning");
-  assert.match(String((actions[1]?.input as JsonRecord).objective), /ROOT OBJECTIVE/);
-  assert.doesNotMatch(String((actions[1]?.input as JsonRecord).objective), /CHILD OBJECTIVE DETAIL/);
+  assert.deepEqual(actions.map((action) => action.tool), ["create_goal"]);
+  assert.match(String((actions[0]?.input as JsonRecord).objective), /ROOT OBJECTIVE/);
+  assert.doesNotMatch(String((actions[0]?.input as JsonRecord).objective), /CHILD OBJECTIVE DETAIL/);
 });
 
 test.skip("retired: parseOpencodeRunOutput reconstructs final assistant text from NDJSON", () => {

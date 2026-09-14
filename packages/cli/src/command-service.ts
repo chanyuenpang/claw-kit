@@ -811,7 +811,8 @@ export class ClawCommandService {
       workflowGuidance: result.workflowGuidance,
     }, {
       actionIdPrefix,
-      includeLightweightProcessProgress: context.host === "codex" || context.host === "dsh",
+      includeLightweightProcessProgress: resolveHostIntegrationProfile(context.host)?.consumesPlanProgress === true,
+      includePlanProgress: resolveHostIntegrationProfile(context.host)?.consumesPlanProgress === true,
     });
   }
 
@@ -859,7 +860,8 @@ export class ClawCommandService {
     }, {
       actionIdPrefix,
       forceProjectionSync: input.forceProjectionSync,
-      includeLightweightProcessProgress: context.host === "codex" || context.host === "dsh",
+      includeLightweightProcessProgress: resolveHostIntegrationProfile(context.host)?.consumesPlanProgress === true,
+      includePlanProgress: resolveHostIntegrationProfile(context.host)?.consumesPlanProgress === true,
     });
   }
 }

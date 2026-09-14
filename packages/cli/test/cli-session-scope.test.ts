@@ -228,7 +228,7 @@ test("Codex session plan retains host actions but skips knowledge side effects",
   const activated = runClaw(["plan", "edit", "--status", "process.active", "--host", "codex"], root, env);
   assert.deepEqual(
     (activated.hostActions as JsonRecord[]).map((action) => action.tool),
-    ["update_plan", "create_goal"],
+    ["create_goal"],
   );
 
   const plan = JSON.parse(fs.readFileSync(planPath, "utf-8")) as { tasks: Array<{ id: number }> };
@@ -250,7 +250,7 @@ test("Codex session plan retains host actions but skips knowledge side effects",
   assert.equal((closeoutGuidance?.nextsteps as string[]).some((step) => /retrospective|key-decision/i.test(step)), false);
   assert.deepEqual(
     (completed.hostActions as JsonRecord[]).map((action) => action.tool),
-    ["update_plan", "update_goal"],
+    ["update_goal"],
   );
 
   const sessionRoot = path.dirname(path.dirname(path.dirname(planPath)));

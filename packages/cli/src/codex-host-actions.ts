@@ -14,7 +14,12 @@ export function buildCodexHostActions(
     workflowGuidance: WorkflowGuidance;
     events?: PlanEvent[];
   },
-  options: { forceProjectionSync?: boolean; actionIdPrefix?: string; includeLightweightProcessProgress?: boolean } = {},
+  options: {
+    forceProjectionSync?: boolean;
+    actionIdPrefix?: string;
+    includeLightweightProcessProgress?: boolean;
+    includePlanProgress?: boolean;
+  } = {},
 ): ClawHostActionV1[] {
   const latestEvent = result.events?.at(-1);
   const actionIdPrefix = options.actionIdPrefix ?? latestEvent?.mutationId;
@@ -37,7 +42,7 @@ export function buildCodexHostActions(
       input: { status: "complete" },
     });
   }
-  if (isEndStatus && result.plan) {
+  if (options.includePlanProgress !== false && isEndStatus && result.plan) {
     actions.push({
       schemaVersion: 1,
       id: `${actionIdPrefix}:clear_progress`,
@@ -48,7 +53,8 @@ export function buildCodexHostActions(
       },
     });
   } else if (
-    result.plan
+    options.includePlanProgress !== false
+    && result.plan
     && result.plan.tasks.length > 0
     && (
       shouldUsePlanHostIntegration(result.plan)

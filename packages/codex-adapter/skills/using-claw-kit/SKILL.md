@@ -11,7 +11,7 @@ host-update, configuration, or Truth/ADR reference.
 1. If the request is not expected to produce reusable project knowledge, skip this skill and work directly. Otherwise, invoke the fixed code-mode driver with `argv: ["plan", "create", "<title>"]`.
 2. If a template-backed workflow skill fully owns the request, follow that skill's entry route so it supplies its adjacent template file.
 3. Follow the returned `workflowGuidance` as the only lifecycle contract. Use its stage and current task to determine the current work; `commandHints` are argv syntax and lookup aids, not commands to run directly in the shell.
-4. When SessionStart recovers an active session-bound plan, first determine whether the current user request explicitly changes, replaces, or cancels its goal. Record that revision before proceeding; otherwise, run `plan sync` through the code-mode bridge once before continuing it. It restores Progress and creates a Goal only when none is unfinished.
+4. When SessionStart recovers an active session-bound plan, first determine whether the current user request explicitly changes, replaces, or cancels its goal. Record that revision before proceeding; otherwise, run `plan sync` through the code-mode bridge once before continuing it. It creates a Goal only when none is unfinished.
 
 ## Lifecycle semantics
 Treat Claw-kit as an assistive workflow tool. Use plans and tasks to focus
@@ -21,7 +21,7 @@ user needs or new evidence require it. When an independently manageable scope
 would keep expanding a parent task, create a subplan instead.
 
 - `process.discussing`: execution is paused for user discussion. It is a stable cross-turn state that can start a plan or be re-entered from `process.active`; do not implement, enter Goal Mode, convert it to `wait`, or close it before the discussion is settled.
-- `process.active`: downstream tasks are explicit and the user can hand off execution. Execute one task at a time and keep plan progress current through returned guidance.
+- `process.active`: downstream tasks are explicit and the user can hand off execution. Execute one task at a time and keep the plan state current through returned guidance.
 - `process.wait`: when execution becomes blocked on user input or an external dependency, proactively move the plan to `process.wait`, then stop until returned guidance resumes it.
 - `end.completed`: the canonical completed plan status. Its returned guidance uses stage `done`; follow its required closeout before closing.
 - `end.leave`: when the user cancels/replaces the work, or an unrecoverable task failure ends this execution, mutate to `end.leave` before replying. It is a best-effort detach: do not require task completion, knowledge capture, or a successful finalizer. Do not use it for a normal user-input wait.
@@ -34,8 +34,8 @@ For every claw plan mutation, call the function below in code mode and change on
 
 ```javascript
 async function runClawPlanMutation({ argv, workdir, timeout_ms = 30000 }) {
-  const cacheKey = "claw-kit:codex-driver:v21:s1";
-  const pluginVersion = "0.2.37.0";
+  const cacheKey = "claw-kit:codex-driver:v22:s1";
+  const pluginVersion = "0.2.38.0";
   const requiredCliVersion = pluginVersion.split(".").slice(0, 3).join(".");
   const planCreate = argv[0] === "plan" && argv[1] === "create";
   const fetchEnvelope = async () => {
@@ -73,7 +73,7 @@ async function runClawPlanMutation({ argv, workdir, timeout_ms = 30000 }) {
       await installExpectedCli();
       envelope = await fetchEnvelope();
     }
-    if (envelope?.cacheKey !== cacheKey || envelope?.driverVersion !== 21
+    if (envelope?.cacheKey !== cacheKey || envelope?.driverVersion !== 22
       || envelope?.hostActionSchemaVersion !== 1 || typeof envelope?.source !== "string") {
       throw new Error("incompatible claw Codex driver envelope");
     }

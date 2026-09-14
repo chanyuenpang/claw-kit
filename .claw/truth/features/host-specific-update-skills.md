@@ -84,6 +84,11 @@ Accepted working truth for the current Codex, OpenCode, and DSH update surfaces.
 
 The `0.2.6.0` maintenance refresh found three gaps that candidate and marketplace tests had not exposed: early PowerShell pipeline closure made a successful `git ls-remote` look failed, official activation left a local identity enabled, and the cache payload omitted `assets/icon.png`. The installer now resolves refs without an early-closing pipe, disables local identities, and copies assets; the completed refresh compared all `27/27` official source and cache files. Restarting Codex and starting a new task remains a separate loaded-runtime check.
 
+<!-- dated: 2026-09-14 -->
+### Re-verified the DSH update activation boundary
+
+The DSH web profile was refreshed to global `@veewo/claw@0.2.38` and `@veewo/dsh-claw-kit@0.2.38-rc.0`. After a Host restart, `claw_run(operation: context)` recovered the original update plan in a real session and the session exposed the seven required bundled skills plus `feature-architecture`. This installation round confirms the same published-source, profile-row, restart, and loaded-session activation boundary; it does not turn the separate `0.2.38.0` release record into installation evidence.
+
 <!-- dated: 2026-09-02 -->
 ### Verified the first DSH-host update round
 

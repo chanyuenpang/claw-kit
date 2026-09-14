@@ -7,14 +7,11 @@
   "autoUpdate": true,
   "goalMode": true,
   "knowledgeWriter": {
-    "executionPolicy": "main-agent",
+    "executionPolicy": "background",
     "externalSkills": [],
     "model": null,
     "reasoningEffort": "medium",
     "datedSectionsToKeep": 6
-  },
-  "knowledgeWriterByHost": {
-    "codex": { "executionPolicy": "subagent" }
   },
   "externalPlanningSkill": null,
   "defaultPlanTemplate": null,

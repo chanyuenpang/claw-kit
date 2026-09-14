@@ -18,11 +18,6 @@ function makeActions() {
   return [
     {
       schemaVersion: 1,
-      id: "mutation:update_plan",
-      tool: "update_plan",
-      input: { explanation: "sync", plan: [{ step: "work", status: "in_progress" }] },
-    },
-    {
       schemaVersion: 1,
       id: "mutation:create_goal",
       tool: "create_goal",
@@ -83,12 +78,11 @@ test("native knowledge finalizer never starts a writer after its claim has expir
   assert.deepEqual(calls, ["knowledge claim", "knowledge done"]);
 });
 
-test("program dispatches each native plan and Goal action exactly once", async () => {
+test("program dispatches each native Goal action exactly once", async () => {
   const calls = [];
   let goalStatus = "complete";
   const result = { hostActions: makeActions() };
   const hostTools = {
-    update_plan: async (input) => calls.push(["update_plan", input]),
     get_goal: async () => ({ goal: { status: goalStatus } }),
     create_goal: async (input) => { calls.push(["create_goal", input]); goalStatus = "active"; },
     update_goal: async (input) => { calls.push(["update_goal", input]); goalStatus = "complete"; },
@@ -97,7 +91,6 @@ test("program dispatches each native plan and Goal action exactly once", async (
   const consumption = await consumeCodexHostActions({ result, hostTools });
 
   assert.deepEqual(calls, [
-    ["update_plan", result.hostActions[0].input],
     ["create_goal", { objective: "finish work" }],
     ["update_goal", { status: "complete" }],
   ]);
@@ -106,7 +99,7 @@ test("program dispatches each native plan and Goal action exactly once", async (
 
 test("native Goal tool failures preserve the canonical mutation outcome as recoverable effect failures", async () => {
   const createFailure = await consumeCodexHostActions({
-    result: { hostActions: [makeActions()[1]] },
+    result: { hostActions: [makeActions()[0]] },
     hostTools: {
       get_goal: async () => ({ goal: null }),
       create_goal: async () => { throw new Error("permission denied"); },
@@ -114,7 +107,7 @@ test("native Goal tool failures preserve the canonical mutation outcome as recov
   });
   assert.deepEqual(createFailure.hostEffectFailures, [{ id: "mutation:create_goal", tool: "create_goal", message: "permission denied" }]);
   const updateFailure = await consumeCodexHostActions({
-    result: { hostActions: [makeActions()[2]] },
+    result: { hostActions: [makeActions()[1]] },
     hostTools: {
       get_goal: async () => ({ goal: { status: "active" } }),
       update_goal: async () => { throw new Error("transport failed"); },
@@ -133,7 +126,7 @@ test("Goal actions preserve an active Goal and do not close an already closed Go
   };
 
   const resume = await consumeCodexHostActions({
-    result: { hostActions: [makeActions()[1]] },
+    result: { hostActions: [makeActions()[0]] },
     hostTools,
     consumedIds,
   });
@@ -145,7 +138,7 @@ test("Goal actions preserve an active Goal and do not close an already closed Go
 
   hostTools.get_goal = async () => ({ goal: { status: "complete" } });
   const done = await consumeCodexHostActions({
-    result: { hostActions: [makeActions()[2]] },
+    result: { hostActions: [makeActions()[1]] },
     hostTools,
     consumedIds,
   });
@@ -161,7 +154,7 @@ test("a blocked Goal is retained during recovery and can be completed", async ()
     update_goal: async (input) => calls.push(["update_goal", input]),
   };
   const result = await consumeCodexHostActions({
-    result: { hostActions: [makeActions()[1]] },
+    result: { hostActions: [makeActions()[0]] },
     hostTools,
   });
 
@@ -170,14 +163,14 @@ test("a blocked Goal is retained during recovery and can be completed", async ()
     reason: "Retained the existing unfinished Codex Goal; recovery creates a Goal only when none is unfinished.",
   });
 
-  await consumeCodexHostActions({ result: { hostActions: [makeActions()[2]] }, hostTools });
+  await consumeCodexHostActions({ result: { hostActions: [makeActions()[1]] }, hostTools });
   assert.deepEqual(calls, [["update_goal", { status: "complete" }]]);
 });
 
 test("an unrecognized nonterminal Goal state is retained", async () => {
   const calls = [];
   const result = await consumeCodexHostActions({
-    result: { hostActions: [makeActions()[1]] },
+    result: { hostActions: [makeActions()[0]] },
     hostTools: {
       get_goal: async () => ({ goal: { status: "unknown_future_state" } }),
       create_goal: async () => calls.push("create_goal"),
@@ -207,7 +200,7 @@ test("Goal updates follow the allowed active and blocked transition matrix", asy
   assert.deepEqual(calls, []);
 
   goalStatus = "unknown_future_state";
-  await consumeCodexHostActions({ result: { hostActions: [makeActions()[2]] }, hostTools });
+  await consumeCodexHostActions({ result: { hostActions: [makeActions()[1]] }, hostTools });
   assert.deepEqual(calls, []);
 });
 
@@ -215,7 +208,7 @@ test("program consumes an action id at most once", async () => {
   let calls = 0;
   const action = makeActions()[0];
   const consumedIds = new Set();
-  const hostTools = { update_plan: async () => { calls += 1; } };
+  const hostTools = { get_goal: async () => ({ goal: null }), create_goal: async () => { calls += 1; } };
 
   await consumeCodexHostActions({ result: { hostActions: [action, action] }, hostTools, consumedIds });
   await consumeCodexHostActions({ result: { hostActions: [action] }, hostTools, consumedIds });
@@ -228,12 +221,12 @@ test("program records unsupported Host actions as recoverable projection failure
   const cases = [
     [{ ...makeActions()[0], schemaVersion: 2 }, /Unsupported hostAction schemaVersion/],
     [{ ...makeActions()[0], tool: "delete_plan" }, /Unsupported Codex hostAction tool/],
-    [{ ...makeActions()[1], input: { objective: "work", priorStatus: "blocked" } }, /unsupported input fields: priorStatus/],
-    [{ ...makeActions()[1], input: {} }, /objective must be a non-empty string/],
-    [{ ...makeActions()[2], input: { status: "active" } }, /status must be complete or blocked/],
+    [{ ...makeActions()[0], input: { objective: "work", priorStatus: "blocked" } }, /unsupported input fields: priorStatus/],
+    [{ ...makeActions()[0], input: {} }, /objective must be a non-empty string/],
+    [{ ...makeActions()[1], input: { status: "active" } }, /status must be complete or blocked/],
   ];
   for (const [action, expected] of cases) {
-    const result = await consumeCodexHostActions({ result: { hostActions: [action] }, hostTools: { update_plan: async () => {} } });
+    const result = await consumeCodexHostActions({ result: { hostActions: [action] }, hostTools: {} });
     assert.match(result.hostEffectFailures?.[0]?.message ?? "", expected);
   }
 });
@@ -246,7 +239,6 @@ test("runCodexPlanMutation keeps CLI mutation and direct host dispatch in one pr
     command: "claw plan done --retrospective done",
     runCommand: async (command) => { calls.push(["command", command]); return JSON.stringify(result); },
     hostTools: {
-      update_plan: async () => calls.push(["host", "update_plan"]),
       get_goal: async () => ({ goal: { status: goalStatus } }),
       create_goal: async () => { calls.push(["host", "create_goal"]); goalStatus = "active"; },
       update_goal: async () => { calls.push(["host", "update_goal"]); goalStatus = "complete"; },
@@ -254,7 +246,7 @@ test("runCodexPlanMutation keeps CLI mutation and direct host dispatch in one pr
   });
 
   assert.deepEqual(calls.map((call) => call[0] === "command" ? call[0] : call[1]), [
-    "command", "update_plan", "create_goal", "update_goal",
+    "command", "create_goal", "update_goal",
   ]);
   assert.equal(run.result.command, "plan.done");
 });
@@ -282,15 +274,14 @@ test("the embedded bootstrap caches the CLI driver and dispatches native host ac
         if (options.command === "claw codex driver") {
           return JSON.stringify({
             ok: true,
-            cacheKey: "claw-kit:codex-driver:v20:s1",
-            driverVersion: 20,
+            cacheKey: "claw-kit:codex-driver:v22:s1",
+            driverVersion: 22,
             hostActionSchemaVersion: 1,
             source: driverSource,
           });
         }
         return JSON.stringify(result);
       },
-      update_plan: async (input) => calls.push(["update_plan", input]),
       create_goal: async (input) => calls.push(["create_goal", input]),
       update_goal: async (input) => calls.push(["update_goal", input]),
     },
@@ -307,8 +298,8 @@ test("the embedded bootstrap caches the CLI driver and dispatches native host ac
   assert.deepEqual(actual, { stage: "execution", planSummary: "1/2 example" });
   assert.equal("hostActions" in actual, false);
   assert.deepEqual(calls.map(([name]) => name), [
-    "command", "command", "update_plan", "create_goal", "update_goal", "text",
-    "command", "update_plan", "create_goal", "update_goal", "text",
+    "command", "command", "create_goal", "update_goal", "text",
+    "command", "create_goal", "update_goal", "text",
   ]);
   assert.equal(calls.filter(([name, input]) => name === "command" && input.command === "claw codex driver").length, 1);
 });
@@ -334,8 +325,8 @@ test("the embedded bootstrap uses exec_command when shell_command is unavailable
         if (options.cmd === "claw codex driver") {
           return JSON.stringify({
             ok: true,
-            cacheKey: "claw-kit:codex-driver:v20:s1",
-            driverVersion: 20,
+            cacheKey: "claw-kit:codex-driver:v22:s1",
+            driverVersion: 22,
             hostActionSchemaVersion: 1,
             source: driverSource,
           });

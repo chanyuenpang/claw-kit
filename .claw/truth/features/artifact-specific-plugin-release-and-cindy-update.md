@@ -52,12 +52,11 @@
 - Cindy `0.2.27.0` was released from its independent marketplace repository with immutable tag `vcindy-0.2.27.0` and source path `./plugin`; it has no archive or GitHub Release.
 - Each artifact retained its own source and terminal acceptance contract. The main repository and Cindy repository finished clean on `main` and equal to `origin/main`; this batch does not assert a local installation refresh.
 
-<!-- dated: 2026-08-20 -->
-### Cindy 0.2.23.1 and Codex 0.2.23.2 release
+<!-- dated: 2026-09-14 -->
+### DSH 0.2.38.0 release
 
-- Cindy `0.2.23.1` was released from its independent marketplace `main` commit `595edd0` with immutable tag `vcindy-0.2.23.1`; 32 focused tests passed. It has no archive or GitHub Release.
-- Codex `0.2.23.2` was released from the committed main-repository marketplace snapshot at `8384c5e` with immutable tag `vcodex-0.2.23.2` and a public zero-asset GitHub Release. Its 21 focused plugin/marketplace tests, template and shared-skill checks, and exact-source release gate passed.
-- Both release lines completed with their own clean `main == origin/main` boundary. These versioned release facts do not assert a local installation refresh.
+- The DSH adapter git version `0.2.38.0` was released as npm `@veewo/dsh-claw-kit@0.2.38-rc.0` and tagged `vdsh-0.2.38.0`; template compatibility, focused build/test/type-check, dry-run, tarball, exact-source, and registry checks were completed.
+- The registry recorded `0.2.38-rc.0` as `latest`; no live DSH Web profile installation or Host restart was authorized or asserted.
 
 <!-- dated: 2026-09-03 -->
 ### DSH 0.2.37.1 release

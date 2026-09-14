@@ -1,7 +1,6 @@
 // Test-only oracle for the CLI-provided versioned driver. This file is not
 // distributed in the Codex plugin payload.
 const SUPPORTED_SCHEMA_VERSION = 1;
-const PLAN_STATUSES = new Set(["pending", "in_progress", "completed"]);
 const GOAL_STATUSES = new Set(["complete", "blocked"]);
 
 export function parseClawCommandResult(rawResult) {
@@ -106,7 +105,7 @@ function validateActionEnvelope(action) {
   if (action.schemaVersion !== SUPPORTED_SCHEMA_VERSION) {
     throw new Error(`Unsupported hostAction schemaVersion: ${String(action.schemaVersion)}`);
   }
-  if (!["update_plan", "create_goal", "update_goal"].includes(action.tool)) {
+  if (!["create_goal", "update_goal"].includes(action.tool)) {
     throw new Error(`Unsupported Codex hostAction tool: ${String(action.tool)}`);
   }
 }
@@ -115,23 +114,6 @@ function validateActionInput(action) {
   const input = action.input;
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     throw new TypeError(`${action.tool}.input must be an object`);
-  }
-
-  if (action.tool === "update_plan") {
-    assertOnlyKeys(input, ["explanation", "plan"], action.tool);
-    if (input.explanation !== undefined && typeof input.explanation !== "string") {
-      throw new TypeError("update_plan.input.explanation must be a string when present");
-    }
-    if (!Array.isArray(input.plan) || input.plan.length === 0) {
-      throw new TypeError("update_plan.input.plan must be a non-empty array");
-    }
-    for (const item of input.plan) {
-      assertOnlyKeys(item, ["step", "status"], "update_plan plan item");
-      if (typeof item.step !== "string" || !PLAN_STATUSES.has(item.status)) {
-        throw new TypeError("update_plan plan items require step and a supported status");
-      }
-    }
-    return input;
   }
 
   if (action.tool === "create_goal") {

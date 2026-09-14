@@ -270,7 +270,7 @@ const COMMAND_HELP: Record<string, HelpNode> = {
       },
       sync: {
         usage: ["{script} plan sync"],
-        description: "Resynchronize a recovered active Codex plan with host progress and Goal Mode without mutating the plan.",
+        description: "Resynchronize a recovered active Codex plan with the host Goal without mutating the plan.",
         summary: "Resync a recovered active Codex plan.",
         options: [
           { flag: "--task-name <name>", detail: "Advanced: override the session-bound task scope." },
@@ -3055,7 +3055,7 @@ function buildSessionStartAdditionalContext(
   if (activeWorkflow) {
     const prompt = buildRecoveredWorkflowAdditionalContext(activeWorkflow, versionSyncPrompt);
     const recoverySyncPrompt = resolveHostIntegrationProfile(effectiveHost)?.providesActiveWorkflowRecovery === true && activeWorkflow.planStatus === "process.active"
-      ? "Before continuing, run `claw plan sync` once through the fixed Codex driver to restore focused-plan progress and reconcile the root-plan Goal."
+      ? "Before continuing, run `claw plan sync` once through the fixed Codex driver to reconcile the root-plan Goal."
       : "";
     const promptWithSync = recoverySyncPrompt ? `${prompt}\n${recoverySyncPrompt}` : prompt;
     const promptWithSearch = searchGuidance ? `${promptWithSync}\n${searchGuidance}` : promptWithSync;
@@ -3476,10 +3476,8 @@ function compactPlanCommandResult(
         ? completionRefresh.taskRetention.archivedCurrentTask.archivedPlanPath
         : undefined;
     const resolvedPlanPath = archivedPlanPath ?? result.planPath;
-    // codex and dsh share the same compact protocol and versioned hostActions
-    // (schemaVersion 1: update_plan / create_goal / update_goal). The Codex
-    // adapter consumes them via its fixed code-mode driver; the DSH adapter
-    // consumes them inside the claw_run tool's execute.
+    // Codex and DSH share the compact Goal protocol. DSH additionally consumes
+    // plan-progress actions inside the claw_run tool's execute.
     const integration = resolveHostIntegrationProfile(effectiveHost);
     // Session scope changes workflow storage and knowledge accumulation only;
     // hosts that consume native plan/goal effects still receive hostActions.
@@ -3488,7 +3486,8 @@ function compactPlanCommandResult(
     const hostActions = hostActionsResult ? buildCodexHostActions(result, {
       forceProjectionSync,
       actionIdPrefix: command === "plan.sync" ? `plan.sync:${createHash("sha256").update(result.planPath).digest("hex").slice(0, 16)}` : undefined,
-      includeLightweightProcessProgress: effectiveHost === "codex" || effectiveHost === "dsh",
+      includeLightweightProcessProgress: integration?.consumesPlanProgress === true,
+      includePlanProgress: integration?.consumesPlanProgress === true,
     }) : [];
     const nextsteps = [
       ...result.workflowGuidance.nextsteps,

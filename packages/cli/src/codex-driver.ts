@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-export const CODEX_DRIVER_VERSION = 21;
+export const CODEX_DRIVER_VERSION = 22;
 export const CODEX_HOST_ACTION_SCHEMA_VERSION = 1;
 export const CODEX_DRIVER_CACHE_KEY =
   `claw-kit:codex-driver:v${CODEX_DRIVER_VERSION}:s${CODEX_HOST_ACTION_SCHEMA_VERSION}`;
@@ -134,11 +134,9 @@ async function codexDriverRunner(
   }
 
   const handlers: Record<string, ((input: Record<string, unknown>) => Promise<unknown>) | undefined> = {
-    update_plan: tools.update_plan,
     create_goal: tools.create_goal,
     update_goal: tools.update_goal,
   };
-  const planStatuses = new Set(["pending", "in_progress", "completed"]);
   const goalStatuses = new Set(["complete", "blocked"]);
   const consumed = new Set<string>();
   let goalRecovery: Record<string, string> | undefined;
@@ -158,22 +156,7 @@ async function codexDriverRunner(
       throw new Error(`invalid Codex hostAction input: ${id}`);
     }
     const inputRecord = input as Record<string, unknown>;
-    if (tool === "update_plan") {
-      const allowsEmptyPlan = id.endsWith(":clear_progress");
-      if (
-        Object.keys(inputRecord).some((key) => key !== "explanation" && key !== "plan")
-        || (inputRecord.explanation !== undefined && typeof inputRecord.explanation !== "string")
-        || !Array.isArray(inputRecord.plan)
-        || (!allowsEmptyPlan && inputRecord.plan.length === 0)
-        || inputRecord.plan.some((item) => {
-          if (!item || typeof item !== "object" || Array.isArray(item)) return true;
-          const planItem = item as Record<string, unknown>;
-          return Object.keys(planItem).some((key) => key !== "step" && key !== "status")
-            || typeof planItem.step !== "string"
-            || !planStatuses.has(String(planItem.status));
-        })
-      ) throw new Error(`invalid Codex hostAction input: ${id}`);
-    } else if (tool === "create_goal") {
+    if (tool === "create_goal") {
       if (Object.keys(inputRecord).some((key) => key !== "objective") || typeof inputRecord.objective !== "string" || inputRecord.objective.length === 0) {
         throw new Error(`invalid Codex hostAction input: ${id}`);
       }

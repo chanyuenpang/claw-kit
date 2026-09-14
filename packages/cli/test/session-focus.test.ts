@@ -124,7 +124,7 @@ test("session subplan completion returns parent guidance without touching the ro
   assert.deepEqual(output.workflowGuidance.nextTask, { id: 2, title: "Resume parent work", status: "pending" });
   assert.equal(output.completedSubplan?.planFile, "child.json");
   assert.equal(output.completedSubplan?.planStatus, "end.completed");
-  assert.deepEqual((completed.hostActions as Array<{ tool: string }>).map((action) => action.tool), ["update_plan"]);
+  assert.deepEqual((completed.hostActions as Array<{ tool: string }>).map((action) => action.tool), []);
   assert.equal(registry.read(opened.identity.sessionKeyHash).currentPlan?.planFile, "plan.json");
 });
 
