@@ -10,7 +10,7 @@ import {
   type TemplateGuidanceRoute,
   type TemplateTaskGuidance,
 } from "./templates/plans/default.js";
-import type { KnowledgeWriterExecutionPolicy, PlanReference, PlanRequirements, PlanRetrospective, PlanStatus, TemplateConfigOverride } from "./types.js";
+import type { KnowledgeWriterConfig, KnowledgeWriterExecutionPolicy, PlanReference, PlanRequirements, PlanRetrospective, PlanStatus, TemplateConfigOverride } from "./types.js";
 
 export type ResolvedPlanTemplate = {
   id: string;
@@ -44,10 +44,11 @@ export async function resolveSeedPlanTemplate(params: {
   templateName?: string | null;
   templateFile?: string | null;
   versionPolicy?: TemplateVersionPolicy;
+  moduleOptions?: PlanTemplateModuleOptions;
 }): Promise<ResolvedPlanTemplate> {
   const versionPolicy = params.versionPolicy ?? "require-current";
   if (params.templateFile?.trim()) {
-    return resolvePlanTemplateFile(params.templateFile, versionPolicy);
+    return resolvePlanTemplateFile(params.templateFile, versionPolicy, params.moduleOptions);
   }
   const normalized = params.templateName?.trim().toLowerCase() || defaultPlanTemplate.id;
   const projectTemplate = params.projectRoot ? await loadProjectPlanTemplate(params.projectRoot, normalized, versionPolicy) : null;
@@ -89,15 +90,29 @@ export async function resolveSeedPlanTemplate(params: {
 export async function resolvePlanTemplateFile(
   templatePath: string,
   versionPolicy: TemplateVersionPolicy = "require-current",
+  moduleOptions?: PlanTemplateModuleOptions,
 ): Promise<ResolvedPlanTemplate> {
-  const raw = await loadPlanTemplateSource(templatePath);
+  const raw = await loadPlanTemplateSource(templatePath, moduleOptions);
   return validatePlanTemplateSource(raw, templatePath, "project", versionPolicy);
 }
 
-async function loadPlanTemplateSource(templatePath: string): Promise<unknown> {
-  return templatePath.endsWith(".json")
-    ? JSON.parse(fs.readFileSync(templatePath, "utf-8"))
-    : import(pathToFileURL(templatePath).href).then((module) => module.default ?? module);
+export type PlanTemplateModuleOptions = {
+  /** Effective knowledge-writer config resolved for the creating context. */
+  knowledgeWriter?: KnowledgeWriterConfig;
+  /** Template-scoped config override already merged into the plan. */
+  configOverride?: TemplateConfigOverride;
+  /** Unstructured context for template authors (template file path, finalize id when known). */
+  context?: Record<string, string>;
+};
+
+async function loadPlanTemplateSource(templatePath: string, moduleOptions?: PlanTemplateModuleOptions): Promise<unknown> {
+  if (templatePath.endsWith(".json")) {
+    return JSON.parse(fs.readFileSync(templatePath, "utf-8"));
+  }
+  const module = await import(pathToFileURL(templatePath).href).then((m) => m.default ?? m);
+  return typeof module === "function"
+    ? module(moduleOptions ?? {})
+    : module;
 }
 
 export function validatePlanTemplateSource(
@@ -691,7 +706,7 @@ function normalizeTemplateConfigOverride(value: unknown): TemplateConfigOverride
     ? truthSkill === adrSkill ? [truthSkill] : [truthSkill, adrSkill]
     : [truthSkill ?? adrSkill].filter((skill): skill is string => skill !== null);
   const normalizedWriter = {
-    ...(writer && (writer.executionPolicy === "background" || writer.executionPolicy === "subagent")
+    ...(writer && (writer.executionPolicy === "main-agent" || writer.executionPolicy === "background" || writer.executionPolicy === "subagent")
       ? { executionPolicy: writer.executionPolicy as KnowledgeWriterExecutionPolicy }
       : {}),
     ...(hasCanonicalExternalSkills
@@ -734,7 +749,7 @@ function isTemplateKnowledgeWriterConfig(value: unknown): boolean {
     || candidate.externalSkills.some((skill) => typeof skill !== "string"))) {
     return false;
   }
-  return (candidate.executionPolicy === undefined || candidate.executionPolicy === "background" || candidate.executionPolicy === "subagent")
+  return (candidate.executionPolicy === undefined || candidate.executionPolicy === "main-agent" || candidate.executionPolicy === "background" || candidate.executionPolicy === "subagent")
     && (candidate.reasoningEffort === undefined || isKnowledgeWriterReasoningEffort(candidate.reasoningEffort))
     && (candidate.datedSectionsToKeep === undefined
       || (Number.isInteger(candidate.datedSectionsToKeep) && (candidate.datedSectionsToKeep as number) >= 0));

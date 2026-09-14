@@ -64,7 +64,7 @@ Or use the one-shot install script:
 
 After the CLI is installed, project search still needs one-time setup inside each target project:
 
-1. Start the project through its host adapter so the adapter-owned context recovery normalizes `.claw/project.json` and supplies the current host identity. Do not run `claw context` directly or append `--host` manually.
+1. On a named host, start the project through its host adapter so adapter-owned context recovery normalizes `.claw/project.json` and supplies the current host identity. On the standard hostless flow, run `claw context` directly (no `--host`).
 2. Run `claw search index --refresh` once so the sqlite recall store, embedding setup, and first vector index are created.
 
 Then use it from any project directory:
@@ -92,13 +92,39 @@ the live client but retains session metadata for seven days.
 
 `claw plan create` now routes through seed-plan templates. Explicit `--template` wins first; otherwise claw uses `defaultPlanTemplate` from `.claw/project.json` or `.claw/project-override.json`, then falls back to the built-in `default` template. Planning-enabled projects start in `process.discussing` with a planning task plus an activation bridge task; planning-disabled projects start directly in `process.active`. The planning task analyzes the request and uses the configured planning skill to fill executable tasks. `claw search --query "<topic>"` remains an optional command hint, not a mandatory planning step.
 
-`claw context` emits only the minimum public recovery surface: project identity and paths, an active workflow when one exists, recovery or version diagnostics only when action is needed, and optional search guidance derived from enabled embedding and GitNexus capabilities. It is an adapter-owned startup operation: adapters supply the current host and render or consume the result; agents do not invoke it as a naked CLI command. The internal SessionStart path retains the full resolved context needed for recovery and protocol handling. Claw-generated guidance, return metadata, and host prompt text use English; user-supplied plan content and repository document language are preserved.
+`claw context` emits only the minimum public recovery surface: project identity and paths, an active workflow when one exists, recovery or version diagnostics only when action is needed, and optional search guidance derived from enabled embedding and GitNexus capabilities. Named-host adapters own startup recovery on their hosts and supply the current host identity; the standard hostless flow instead invokes `claw context` directly with no host, driven by the entry contract. The internal SessionStart path retains the full resolved context needed for recovery and protocol handling. Claw-generated guidance, return metadata, and host prompt text use English; user-supplied plan content and repository document language are preserved.
 
 New project tasks are grouped under `.claw/tasks/YYYY-MM-DD/`. `claw context` performs a lock-protected lazy daily maintenance pass: it clears `.claw/runtime/tmp/` (and removes the legacy `.claw/tmp/`), moves date-scoped task folders from before yesterday into the archive (regardless of whether old plans have `completedAt`), archives legacy flat tasks by `plan.updatedAt` (falling back to the plan file timestamp), applies `maxTasksToKeep` to the archive, removes bindings to plans no longer under active tasks, and sweeps expired session workflows. It runs on the first context call of each local calendar day; it does not install a background scheduler.
 
 Use `claw plan create "<title>" --scope session` when the work needs the full plan, task, subplan, SessionStart recovery, and host Goal workflow but must not create or depend on a project `.claw` directory. Session scope is keyed by the platform session id, follows the session across cwd changes, and deliberately skips Truth/ADR capture and project task retention. When its frozen origin is inside a valid claw project, its terminal transition still refreshes that project's memory and enabled GitNexus index; outside a claw project it creates no refresh state. Completed state is retained for seven days by default; `claw session clean` removes the current session immediately and `claw session clean --expired` performs an explicit TTL sweep. Session state does not persist invocation host metadata.
 
 Projects can define reusable templates directly under `.claw/templates` using `.json`, `.js`, `.mjs`, or `.cjs` files. Use `.claw/project.json` for a shared team `defaultPlanTemplate`, or `.claw/project-override.json` for a personal runtime override.
+
+## Use the standard hostless flow (any platform)
+
+Platforms without a native adapter — or any agent environment that can run
+shell commands — can use the full `.claw` workflow directly, with no `--host`
+flag, no `CLAW_HOST` registration, and no lifecycle hooks:
+
+1. Install the CLI (`npm install -g @veewo/claw`) and export a stable
+   `CLAW_SESSION_ID` for the conversation.
+2. Copy the skills from [packages/standard-adapter/skills](packages/standard-adapter/skills)
+   into the platform's skill discovery location.
+3. Paste the entry rules from
+   [packages/standard-adapter/docs/entry-contract.md](packages/standard-adapter/docs/entry-contract.md)
+   into the platform's persistent prompt surface (CLAUDE.md / AGENTS.md /
+   rules / custom instructions).
+
+The standard flow keeps the full loop — `claw context` recovers a
+session-bound plan, `claw plan create` starts a project-scoped plan, and at
+`plan done` the agent itself executes the three-step background closeout:
+inline capture (`claw internal-knowledge-capture`), dispatch
+(`claw internal-knowledge-dispatch`), and the session-scoped writer plan.
+Session scope remains what it always was — a temporary-task shape that
+deliberately skips knowledge deposition — and is used only by the writer
+plan as a recursion guard. See
+[packages/standard-adapter/README.md](packages/standard-adapter/README.md)
+for details.
 
 ## Install the Codex plugin
 
@@ -200,6 +226,10 @@ DSH subagent; the model only drives the single `claw_run` tool. See
     `claw session open`
 - `@veewo/claw-core`
   - shared workflow primitives for project config, planning, search, truth ingestion, and retention
+- `@claw-kit/standard-adapter`
+  - host-neutral adapter assets (entry contract + skills) for running the
+    workflow from any platform that can execute shell commands, without host
+    registration or hooks
 - `@claw-kit/codex-adapter`
   - Codex-facing adapter assets, hooks, skills, and references for landing the workflow in Codex
 - `@veewo/dsh-claw-kit`

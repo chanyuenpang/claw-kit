@@ -18,3 +18,13 @@ Account for the total cost of selecting, writing, running, debugging, and mainta
 - Do not freeze rapidly changing behavior or unsettled contracts behind brittle fine-grained tests. Use smoke checks, probes, or targeted manual verification until the contract stabilizes, then add durable coverage only when the remaining risk justifies it.
 - Prefer focused automated tests for high-risk stable behavior, reproduced defects, critical boundaries, and compatibility contracts where regressions would be costly or hard to notice.
 - ADRs preserve stable decisions, rationale, and tradeoffs so later changes do not silently reverse them. They complement executable regression tests but do not mechanically require tests for documentation changes or replace tests needed for risky runtime behavior.
+
+# Standard hostless claw workflow entry
+
+This repository runs the claw workflow through the standard hostless flow (no `--host`, no hooks). The full contract lives in `packages/standard-adapter/docs/entry-contract.md` and the `using-claw-kit` skill under `.agents/skills/`; the routing rules are:
+
+1. **Recovered workflow wins.** At the start of a task that may produce reusable project knowledge, run `claw context` (with `CLAW_SESSION_ID` exported for the conversation). If it returns `activeWorkflow`, do not create a plan; follow the recovered `workflowGuidance`.
+2. **No knowledge, no plan.** Work that will not deposit reusable knowledge (releases, chores, quick questions) runs directly. Use `--scope session` only for temporary tracked work.
+3. **Plan before execute.** Otherwise `claw plan create "<title>"` and follow the returned `workflowGuidance` as the only lifecycle contract. Never edit `plan.json` or job files directly.
+
+Closeout is required after `claw plan done`. The hostless default resolves `knowledgeWriter.executionPolicy` to `main-agent`: run `claw knowledge prepare --source agent-memory --project-root <path>`, execute the returned assignments from your own memory, then `claw knowledge complete --source agent-memory --project-root <path> --config-fingerprint <hash>`. With an explicit `background` policy, run the three-step chain instead: inline capture (`claw internal-knowledge-capture` with stdin JSON) → dispatch (`claw internal-knowledge-dispatch --job <jobPath>`) → execute the session-scoped writer plan to its terminal transition. Never add `--host`.

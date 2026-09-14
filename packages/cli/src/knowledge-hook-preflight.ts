@@ -172,12 +172,12 @@ function registryHasKnowledgeTarget(registryPath: string, sessionId: string): bo
     }
     const pendingEligible = Boolean(
       registry.pendingTurnOwner
-      && registry.pendingTurnOwner.writer?.executionPolicy !== "subagent",
+      && registry.pendingTurnOwner.writer?.executionPolicy === "background",
     );
     const activeEligible = Boolean(
       typeof registry.activePlanPath === "string"
       && typeof registry.activeReportPath === "string"
-      && registry.activeWriter?.executionPolicy !== "subagent",
+      && registry.activeWriter?.executionPolicy === "background",
     );
     return pendingEligible || activeEligible;
   } catch {

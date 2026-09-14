@@ -142,19 +142,11 @@ function assertForegroundInvocationHost(
   args: string[],
   effectiveHost: ClawHost | undefined,
 ): void {
-  if (!command || effectiveHost !== undefined || isHostlessCommand(command, args)) return;
-  throw new ClawError(
-    "PROJECT_CONFIG_INVALID",
-    [
-      `claw ${command} requires a host-scoped invocation; host is missing.`,
-      "Do not add `--host` to bypass the platform adapter.",
-      "Codex: run plan, task, or subplan mutations through the fixed code-mode runner loaded with `claw codex driver`; the adapter or hook owns other host lifecycle commands.",
-      "DSH: use `claw_run` with its operation and args.",
-      "Cindy: normally use Ghost `list_tools` then `call_tool`; only a runtime explicitly identified as GPT/Codex uses Cindy's Shell + bridge path.",
-      "OpenCode: invoke the CLI from its host integration so it supplies `CLAW_HOST=opencode`; `knowledgeWriter.executionPolicy: subagent` must use `background`.",
-    ].join(" "),
-    { command, host: null },
-  );
+  // The standard hostless flow is a first-class invocation shape: with no host
+  // at all, workflow commands run under the `standard` integration profile
+  // (pure guidance output, agent-owned knowledge closeout). The gate only
+  // fires when an explicit host is present but does not cover the command.
+  if (!command || effectiveHost === undefined || isHostlessCommand(command, args)) return;
 }
 
 const COMMAND_HELP: Record<string, HelpNode> = {
@@ -1520,7 +1512,7 @@ function directKnowledgeConfigFingerprint(input: {
 function throwUnsupportedSubagentExecutionHost(effectiveHost: ClawHost | undefined): never {
   throw new ClawError(
     "PROJECT_CONFIG_INVALID",
-    'knowledgeWriter.executionPolicy "subagent" is supported only by the Codex, Cindy, or DSH host.',
+    'knowledgeWriter.executionPolicy "subagent" requires a host-registered claim-time report collector (Codex, Cindy, or DSH). The standard hostless flow must use the default "background" policy, where the agent captures its final message inline and executes the writer itself.',
     { host: effectiveHost ?? null },
   );
 }
@@ -1589,6 +1581,7 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
           ? resolvePlanEffectiveConfig(project.projectConfig, current.plan)?.knowledgeWriter
           : undefined,
         effectiveHost,
+        project?.projectConfig?.knowledgeWriterByHost,
       );
       if (
         current
@@ -1713,6 +1706,7 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
           ? resolvePlanEffectiveConfig(project.projectConfig, current.plan)?.knowledgeWriter
           : undefined,
         effectiveHost,
+        project?.projectConfig?.knowledgeWriterByHost,
       );
       if (
         !current.plan.parentPlan
@@ -2528,7 +2522,21 @@ async function runInternalKnowledgeCapture(args: string[], effectiveHost: ClawHo
       host: effectiveHost === "cindy" ? "cindy" : effectiveHost,
       taskConclusions,
     });
-    printJson(result);
+    // Hostless standard flow: a newly created background job has no host-owned
+    // runner, so point the invoking agent at its own next step explicitly.
+    const createdNewJob = result.ok && result.captured === true && result.duplicate !== true && result.jobPath;
+    printJson({
+      ...result,
+      ...(createdNewJob && !effectiveHost
+        ? {
+            nextStep: {
+              command: "claw internal-knowledge-dispatch --job <jobPath>",
+              jobPath: result.jobPath,
+              instruction: "Run the dispatch command with the returned jobPath, then execute dispatch.prompt yourself until the writer plan completes.",
+            },
+          }
+        : {}),
+    });
   } catch (error) {
     // Capture is a non-blocking sidecar.  Return structured failure so the
     // owning adapter can surface/retry it without affecting the assistant turn.
@@ -3414,7 +3422,9 @@ function buildKnowledgeDispatch(input: {
   writer?: KnowledgeFinalizationJob["writer"];
 }): KnowledgeDelegateDispatch {
   // Cindy uses its Orca atomic dispatch; codex and dsh both dispatch through a
-  // native-subagent delegate (DSH: subagent / subagent_fork).
+  // native-subagent delegate (DSH: subagent / subagent_fork). The hostless
+  // standard flow never reaches this builder: it rejects the subagent policy
+  // at configuration time and uses the background closeout chain instead.
   if (resolveHostIntegrationProfile(input.host)?.usesAtomicKnowledgeDispatch === true) {
     return buildKnowledgeAtomicDispatch(input);
   }

@@ -1,3 +1,5 @@
+import type { IntegrationHost } from "./integration-contract.js";
+
 export type MemoryEmbeddingConfig = {
   provider: "openai" | "local";
   model: string;
@@ -14,7 +16,7 @@ export type MemoryEmbeddingConfig = {
 };
 
 export type KnowledgeWriterReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
-export type KnowledgeWriterExecutionPolicy = "background" | "subagent";
+export type KnowledgeWriterExecutionPolicy = "main-agent" | "background" | "subagent";
 
 export type KnowledgeWriterConfig = {
   executionPolicy?: KnowledgeWriterExecutionPolicy;
@@ -34,6 +36,12 @@ export type ProjectConfig = {
   autoUpdate?: boolean;
   goalMode?: boolean;
   knowledgeWriter?: KnowledgeWriterConfig;
+  /**
+   * Per-host field-level overrides of `knowledgeWriter`, keyed by integration
+   * host. Applied after the base writer and plan template override, before the
+   * host capability matrix resolves the effective execution policy.
+   */
+  knowledgeWriterByHost?: Partial<Record<IntegrationHost, KnowledgeWriterConfig>>;
   externalPlanningSkill?: string | null;
   defaultPlanTemplate?: string | null;
   contextPaths?: string[];

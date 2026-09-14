@@ -216,9 +216,16 @@ CLI 根据 canonical plan 生成 `hostActions`。Todo 项只使用
 4. 异步启动 `internal-knowledge-finalize`；
 5. 捕获和启动均 fail-open。
 
-`knowledgeWriter.executionPolicy=subagent` 则由主 Agent 按完整 dispatch prompt 创建原生
-subagent，之后 Stop 生成 awaited job。新 Host 没有原生 subagent 时必须在配置验证阶段
-拒绝该 policy，不能静默退回另一路径。
+`knowledgeWriter.executionPolicy` 现在是三值且 host-aware：`main-agent`（主
+Agent 通过 `claw knowledge prepare/complete --source agent-memory` 自行沉淀，
+无 transcript 捕获、无 finalization job，plan 终态 guidance 携带 closeout 链）、
+`background`（Stop 捕获 + 后台执行者）、`subagent`（原生子代理 + claim 时报告
+收集器）。每个 host 在集成 profile 中声明 `allowedKnowledgeExecutionPolicies`
+与 `defaultKnowledgeExecutionPolicy`：Codex 开放全部三种；Cindy/DSH 开放
+`main-agent` + `subagent`；OpenCode 与 standard hostless 开放 `main-agent` +
+`background`。project.json 可省略该字段（按 host 默认解析）或用
+`knowledgeWriterByHost` 做 per-host 字段级覆盖。新 Host 没有原生 subagent 时
+必须在配置验证阶段拒绝 `subagent` policy，不能静默退回另一路径。
 
 ### 4.6 Shared Skills
 

@@ -6,6 +6,7 @@ import {
 } from "./embedding-defaults.js";
 import { ClawError } from "./errors.js";
 import { resolveProjectContext } from "./context.js";
+import { INTEGRATION_HOSTS, isIntegrationHost, type IntegrationHost } from "./integration-contract.js";
 import { findProjectRoot, normalizeTaskName } from "./paths.js";
 import {
   DEFAULT_KNOWLEDGE_DATED_SECTIONS_TO_KEEP,
@@ -13,6 +14,7 @@ import {
 } from "./project-defaults.js";
 import { migrateLegacyTaskLayout } from "./task-layout-migration.js";
 import type {
+  KnowledgeWriterConfig,
   KnowledgeWriterExecutionPolicy,
   KnowledgeWriterReasoningEffort,
   MemoryEmbeddingConfig,
@@ -150,7 +152,6 @@ function normalizeProjectConfig(raw: unknown, projectRoot: string): ProjectConfi
     knowledgeWriter: {
       executionPolicy: readKnowledgeWriterExecutionPolicy(
         sourceKnowledgeWriter?.executionPolicy,
-        "background",
       ),
       externalSkills: resolveExternalWriterSkills(source, sourceKnowledgeWriter),
       model: normalizeOptionalSkill(sourceKnowledgeWriter?.model),
@@ -164,6 +165,9 @@ function normalizeProjectConfig(raw: unknown, projectRoot: string): ProjectConfi
         DEFAULT_KNOWLEDGE_DATED_SECTIONS_TO_KEEP,
       ),
     },
+    ...(normalizeKnowledgeWriterByHost(source?.knowledgeWriterByHost)
+      ? { knowledgeWriterByHost: normalizeKnowledgeWriterByHost(source?.knowledgeWriterByHost) }
+      : {}),
     externalPlanningSkill: normalizeOptionalSkill(source?.externalPlanningSkill),
     defaultPlanTemplate: normalizeOptionalTemplateName(source?.defaultPlanTemplate),
     contextPaths: normalizeStringArray(source?.contextPaths),
@@ -243,6 +247,36 @@ function validateProjectConfig(raw: unknown, issues: ProjectProtocolIssue[]): vo
       issues,
       "knowledgeWriter.datedSectionsToKeep",
     );
+  }
+  const knowledgeWriterByHost = asObject(config.knowledgeWriterByHost);
+  if (knowledgeWriterByHost !== null) {
+    for (const [host, entry] of Object.entries(knowledgeWriterByHost)) {
+      const label = `knowledgeWriterByHost.${host}`;
+      if (!isIntegrationHost(host)) {
+        issues.push({ path: label, message: `Unknown host "${host}". Expected one of: ${INTEGRATION_HOSTS.join(", ")}.` });
+        continue;
+      }
+      const hostWriter = asObject(entry);
+      if (!hostWriter) {
+        issues.push({ path: label, message: "Field must be an object." });
+        continue;
+      }
+      if ("executionPolicy" in hostWriter) {
+        requireKnowledgeWriterExecutionPolicy(hostWriter, "executionPolicy", issues, `${label}.executionPolicy`);
+      }
+      if ("externalSkills" in hostWriter) {
+        requireOptionalStringArray(hostWriter, "externalSkills", issues, `${label}.externalSkills`);
+      }
+      if ("model" in hostWriter && hostWriter.model !== null && typeof hostWriter.model !== "string") {
+        issues.push({ path: `${label}.model`, message: "Field must be a string or null." });
+      }
+      if ("reasoningEffort" in hostWriter) {
+        requireKnowledgeWriterReasoningEffort(hostWriter, "reasoningEffort", issues, `${label}.reasoningEffort`);
+      }
+      if ("datedSectionsToKeep" in hostWriter) {
+        requireIntegerAtLeast(hostWriter, "datedSectionsToKeep", 0, issues, `${label}.datedSectionsToKeep`);
+      }
+    }
   }
   requireNullableString(config, "externalPlanningSkill", issues);
   requireNullableString(config, "defaultPlanTemplate", issues);
@@ -361,12 +395,13 @@ function requireKnowledgeWriterExecutionPolicy(
   label = key,
 ): void {
   if (!(key in source)) {
-    issues.push({ path: label, message: "Field is required and must be explicitly present." });
+    // Optional since the host-aware policy matrix: an omitted policy resolves
+    // to the invoking host's default at runtime.
     return;
   }
   const value = source[key];
-  if (value !== "background" && value !== "subagent") {
-    issues.push({ path: label, message: 'Field must be "background" or "subagent".' });
+  if (value !== "main-agent" && value !== "background" && value !== "subagent") {
+    issues.push({ path: label, message: 'Field must be "main-agent", "background", or "subagent".' });
   }
 }
 
@@ -490,9 +525,51 @@ function readKnowledgeWriterReasoningEffort(
 
 function readKnowledgeWriterExecutionPolicy(
   value: unknown,
-  fallback: KnowledgeWriterExecutionPolicy,
-): KnowledgeWriterExecutionPolicy {
-  return value === "background" || value === "subagent" ? value : fallback;
+): KnowledgeWriterExecutionPolicy | undefined {
+  return value === "main-agent" || value === "background" || value === "subagent" ? value : undefined;
+}
+
+/**
+ * Normalize the per-host knowledgeWriterByHost map. Each entry is a partial
+ * writer keyed by integration host; unknown hosts and malformed entries are
+ * dropped (claw check reports them through validateProjectConfig).
+ */
+function normalizeKnowledgeWriterByHost(value: unknown): ProjectConfig["knowledgeWriterByHost"] {
+  const source = asObject(value);
+  if (!source) {
+    return undefined;
+  }
+  const normalized: NonNullable<ProjectConfig["knowledgeWriterByHost"]> = {};
+  for (const host of Object.keys(source)) {
+    if (!isIntegrationHost(host)) {
+      continue;
+    }
+    const entry = asObject(source[host]);
+    if (!entry) {
+      continue;
+    }
+    const writer: KnowledgeWriterConfig = {};
+    const executionPolicy = readKnowledgeWriterExecutionPolicy(entry.executionPolicy);
+    if (executionPolicy) {
+      writer.executionPolicy = executionPolicy;
+    }
+    if (Array.isArray(entry.externalSkills)) {
+      writer.externalSkills = normalizeStringArray(entry.externalSkills);
+    }
+    if ("model" in entry) {
+      writer.model = normalizeOptionalSkill(entry.model);
+    }
+    if (entry.reasoningEffort === "minimal" || entry.reasoningEffort === "low" || entry.reasoningEffort === "medium" || entry.reasoningEffort === "high" || entry.reasoningEffort === "xhigh") {
+      writer.reasoningEffort = entry.reasoningEffort;
+    }
+    if (Number.isInteger(entry.datedSectionsToKeep) && (entry.datedSectionsToKeep as number) >= 0) {
+      writer.datedSectionsToKeep = entry.datedSectionsToKeep as number;
+    }
+    if (Object.keys(writer).length > 0) {
+      normalized[host as IntegrationHost] = writer;
+    }
+  }
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
 }
 
 function normalizeMemoryEmbeddingConfig(value: unknown): MemoryEmbeddingConfig | null {

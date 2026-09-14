@@ -5,9 +5,9 @@ import { readJsonFile, withFileLock, writeJsonFile } from "./io.js";
 import { ensureInsideDir } from "./paths.js";
 import { listTaskDirectories } from "./context.js";
 import { ensureUtf8Bom, hasUtf8BomPrefix } from "./text-encoding.js";
-import { resolveHostIntegrationProfile } from "./integration-contract.js";
+import { fillKnowledgeExecutionPolicyDefault, resolveHostIntegrationProfile, resolveKnowledgeExecutionPolicyForHost, isIntegrationHost } from "./integration-contract.js";
 import type { KnowledgeGovernanceResult } from "./knowledge-governance.js";
-import type { KnowledgeWriterConfig, ProjectContext } from "./types.js";
+import type { KnowledgeWriterConfig, ProjectConfig, ProjectContext } from "./types.js";
 
 export type KnowledgeDocUpdateSnapshot = {
   externalDocPaths: string[];
@@ -28,7 +28,7 @@ export type KnowledgeReportTarget = {
  * The host which owns execution of a queued writer job.  Core only persists
  * the lifecycle; each adapter supplies its own runner.
  */
-export type KnowledgeFinalizationHost = "codex" | "opencode" | "cindy" | "dsh";
+export type KnowledgeFinalizationHost = "codex" | "opencode" | "cindy" | "dsh" | "standard";
 
 export type KnowledgeSessionRegistry = {
   schemaVersion: 1;
@@ -154,6 +154,7 @@ export type KnowledgePlanEndResult = KnowledgeSidecarResult & {
 export type KnowledgeStopResult = KnowledgeSidecarResult & {
   captured?: boolean;
   duplicate?: boolean;
+  reason?: string;
   reportPath?: string;
   jobPath?: string;
   finalizeId?: string;
@@ -231,14 +232,19 @@ export function deriveKnowledgeFinalizeId(input: {
 export function resolveKnowledgeWriterForHost(
   writer: KnowledgeWriterConfig | undefined,
   host?: string | null,
+  byHost?: ProjectConfig["knowledgeWriterByHost"],
 ): KnowledgeWriterConfig | undefined {
-  if (resolveHostIntegrationProfile(host)?.forcesSubagentKnowledgeWriter !== true) {
-    return writer;
-  }
-  return {
-    ...(writer ?? {}),
-    executionPolicy: "subagent",
-  };
+  const merged: KnowledgeWriterConfig | undefined = isIntegrationHost(host) && byHost?.[host]
+    ? { ...(writer ?? {}), ...byHost[host] }
+    : writer;
+  // Cindy and DSH cannot run background closeout; force their native subagent
+  // route regardless of an explicit background request (legacy coercion).
+  const forceSubagent = host === "cindy" || host === "dsh";
+  const requested = forceSubagent && merged?.executionPolicy !== "subagent"
+    ? "subagent" as const
+    : merged?.executionPolicy;
+  const policy = fillKnowledgeExecutionPolicyDefault(host, requested);
+  return { ...(merged ?? {}), executionPolicy: policy };
 }
 
 export function resolveKnowledgeDocUpdateSnapshot(
@@ -269,7 +275,11 @@ export function tryRegisterKnowledgePlan(input: {
     return { ok: true };
   }
   try {
-    const writer = resolveKnowledgeWriterForHost(input.writer, input.host);
+    const writer = resolveKnowledgeWriterForHost(
+      input.writer ?? input.project.projectConfig?.knowledgeWriter,
+      input.host,
+      input.project.projectConfig?.knowledgeWriterByHost,
+    );
     const planPath = toProjectRelativePlanPath(input.project, input.planPath);
     const reportPath = toProjectRelativeReportPath(input.project, deriveKnowledgeReportPath(input.planPath));
     updateKnowledgeRegistry(input.project, sessionId, (registry) => {
@@ -310,7 +320,11 @@ export function tryEndKnowledgePlan(input: {
     return { ok: true };
   }
   try {
-    const writer = resolveKnowledgeWriterForHost(input.writer, input.host);
+    const writer = resolveKnowledgeWriterForHost(
+      input.writer ?? input.project.projectConfig?.knowledgeWriter,
+      input.host,
+      input.project.projectConfig?.knowledgeWriterByHost,
+    );
     const docUpdate = resolveKnowledgeDocUpdateSnapshot(input.project);
     const endedPlanPath = toProjectRelativePlanPath(input.project, input.endedPlanPath);
     const reportPath = toProjectRelativeReportPath(
@@ -342,6 +356,14 @@ export function tryEndKnowledgePlan(input: {
           : { activePlanPath: undefined, activeReportPath: undefined, activeWriter: undefined, activeStartedAt: undefined }),
         updatedAt: new Date().toISOString(),
       };
+      if (writer?.executionPolicy === "main-agent") {
+        // Main-agent deposition needs no turn owner, report, or job: the
+        // invoking agent runs knowledge prepare/complete from its own memory.
+        return {
+          ...common,
+          pendingTurnOwner: undefined,
+        };
+      }
       if (writer?.executionPolicy !== "subagent") {
         return {
           ...common,
@@ -507,9 +529,17 @@ export function tryCaptureKnowledgeStop(input: {
       }
       if (
         target.writer?.executionPolicy === "subagent"
-        || (!target.writer && input.project.projectConfig?.knowledgeWriter?.executionPolicy === "subagent")
+        || (!target.writer && resolveKnowledgeExecutionPolicyForHost(input.host, input.project.projectConfig?.knowledgeWriter?.executionPolicy).policy === "subagent")
       ) {
         return { ok: true, captured: false };
+      }
+      if (
+        target.writer?.executionPolicy === "main-agent"
+        || (!target.writer && resolveKnowledgeExecutionPolicyForHost(input.host, input.project.projectConfig?.knowledgeWriter?.executionPolicy).policy === "main-agent")
+      ) {
+        // Main-agent deposition performs no transcript capture: the invoking
+        // agent deposits knowledge from its own memory via prepare/complete.
+        return { ok: true, captured: false, reason: "main-agent-policy" };
       }
       const reportPath = resolveProjectRelativeReportPath(input.project, target.reportPath);
       const capturedAt = new Date().toISOString();
@@ -546,7 +576,7 @@ export function tryCaptureKnowledgeStop(input: {
             writer: {
               executionPolicy:
                 registry.pendingTurnOwner.writer?.executionPolicy
-                ?? input.project.projectConfig?.knowledgeWriter?.executionPolicy
+                ?? resolveKnowledgeExecutionPolicyForHost(input.host, input.project.projectConfig?.knowledgeWriter?.executionPolicy).policy
                 ?? "background",
               externalSkills:
                 registry.pendingTurnOwner.writer?.externalSkills

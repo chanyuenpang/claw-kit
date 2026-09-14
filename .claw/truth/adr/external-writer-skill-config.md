@@ -12,7 +12,7 @@ Accepted
 
 Use one project-level object:
 
-- `knowledgeWriter.executionPolicy`: `background | subagent`, defaulting to `background`. Codex uses it to select the executor launcher. Cindy currently supports only its Orca subagent lifecycle and normalizes either configured value to `subagent`; this is a host capability rule, not a failure fallback. Host-specific orchestration is owned by `hook-owned-two-phase-knowledge-finalization.md`.
+- `knowledgeWriter.executionPolicy`: policy enumeration and host resolution are owned by `host-aware-knowledge-execution-policy.md` (three values, optional, per-host capability-matrix default). Within this ADR's scope the policy only selects the executor launcher: Codex uses it to select the executor launcher. Cindy currently supports only its Orca subagent lifecycle and normalizes either configured value to `subagent`; this is a host capability rule, not a failure fallback. Host-specific orchestration is owned by `hook-owned-two-phase-knowledge-finalization.md`.
 - `knowledgeWriter.externalSkills`: ordered external governance skills materialized as sequential assignment tasks. A failed assignment prevents later tasks from starting. An empty or absent list selects the hidden Core built-in governance contract rather than a discoverable skill.
 - `knowledgeWriter.model`: `null` uses the host runner default; a value is snapshotted into each finalization job.
 - `knowledgeWriter.reasoningEffort`: selects the supported worker effort and defaults to `medium`.

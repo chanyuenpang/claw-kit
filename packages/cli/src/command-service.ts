@@ -745,7 +745,7 @@ export class ClawCommandService {
         continue;
       }
       const effectiveConfig = resolvePlanEffectiveConfig(project.projectConfig, ended.plan);
-      const writer = resolveKnowledgeWriterForHost(effectiveConfig?.knowledgeWriter, context.host);
+      const writer = resolveKnowledgeWriterForHost(effectiveConfig?.knowledgeWriter, context.host, project.projectConfig?.knowledgeWriterByHost);
       const knowledgeEnd = tryEndKnowledgePlan({
         project,
         sessionId: context.agentSessionId,

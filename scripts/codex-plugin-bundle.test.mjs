@@ -257,7 +257,8 @@ test("shared claw-kit-doc references are materialized without replacing adapter 
     new URL("../shared/docs/claw-kit-doc/configuration.md", import.meta.url),
     "utf8",
   );
-  assert.match(configReference, /`subagent` is\s+supported by Codex and Cindy/);
+  assert.match(configReference, /accepts `main-agent`, `background`, or `subagent`/);
+  assert.match(configReference, /knowledgeWriterByHost/);
 });
 
 test("repo marketplace points Codex at the materialized adapter source", async () => {

@@ -28,6 +28,9 @@ Thumbs.db
 /packages/*/dist/
 /packages/*/dist-test/
 /packages/*/coverage/
+/packages/*/node_modules/
+/.cache/
+/.dart_tool/
 
 # Local packaging and Windows-shell leftovers. Keep the current Cindy bundle
 # explicitly tracked when it is intentionally released.

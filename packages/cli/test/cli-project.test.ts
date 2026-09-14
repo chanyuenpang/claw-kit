@@ -156,7 +156,6 @@ test("cli init writes maxTasksToKeep into project.json", () => {
   assert.equal(projectConfig.autoUpdate, true);
   assert.equal(projectConfig.goalMode, true);
   assert.deepEqual(projectConfig.knowledgeWriter, {
-    executionPolicy: "background",
     externalSkills: ["team-knowledge-writer"],
     model: null,
     reasoningEffort: "medium",
@@ -181,7 +180,6 @@ test("cli init writes default maxTasksToKeep into project.json", () => {
   assert.equal(projectConfig.maxTasksToKeep, 9);
   assert.equal(projectConfig.goalMode, true);
   assert.deepEqual(projectConfig.knowledgeWriter, {
-    executionPolicy: "background",
     externalSkills: [],
     model: null,
     reasoningEffort: "medium",
@@ -372,7 +370,6 @@ test("cli context auto-corrects malformed existing .claw state", () => {
   });
   assert.equal(projectConfig.goalMode, true);
   assert.deepEqual(projectConfig.knowledgeWriter, {
-    executionPolicy: "background",
     externalSkills: [],
     model: null,
     reasoningEffort: "medium",
@@ -523,7 +520,6 @@ test("cli check auto-corrects project.json into explicit protocol fields", () =>
   assert.deepEqual(projectConfig.contextPaths, []);
   assert.equal(projectConfig.goalMode, true);
   assert.deepEqual(projectConfig.knowledgeWriter, {
-    executionPolicy: "background",
     externalSkills: [],
     model: null,
     reasoningEffort: "medium",

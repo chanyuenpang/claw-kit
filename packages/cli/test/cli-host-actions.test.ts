@@ -695,21 +695,17 @@ test("invocation host rejects invalid and conflicting sources before project mut
   assert.equal(resolveInvocationHost("codex", "codex"), "codex");
 });
 
-test("foreground commands reject missing host before parsing or mutating, while hostless commands stay available", () => {
-  const root = createFixture("host-bound-command-gate");
+test("foreground commands run hostless under the standard flow, while hostless commands stay available", () => {
+  const root = createFixture("hostless-standard-command-gate");
   const hostlessEnv = { CLAW_HOST: "" };
-  for (const command of ["context", "session", "plan", "task", "subplan", "switch-task", "direct", "hook"]) {
-    const failure = runClawExpectFailure([command], root, hostlessEnv);
-    const error = failure.error as JsonRecord;
-    const details = error.details as JsonRecord;
-    assert.equal(error.code, "PROJECT_CONFIG_INVALID");
-    assert.equal(details.host, null);
-    assert.equal(details.command, command);
-    assert.match(String(error.message), new RegExp(`claw ${command} requires a host-scoped invocation`));
-  }
-
-  const hostlessInitRoot = createFixture("hostless-init-command");
-  runClaw(["init", "--name", "Hostless Initialization"], hostlessInitRoot, hostlessEnv);
+  runClaw(["init", "--name", "Hostless Standard Flow", "--planning", "false"], root, hostlessEnv);
+  // Workflow commands with no host are the standard hostless flow: they must
+  // parse and execute instead of rejecting with a missing-host error.
+  const created = runClaw(["plan", "create", "--title", "demo-task", "--goal", "Hostless standard flow"], root, hostlessEnv);
+  assert.equal(created.command, "plan.create");
+  assert.equal("hostActions" in created, false);
+  const context = runClaw(["context"], root, hostlessEnv);
+  assert.equal("error" in context, false);
   const searchHelp = runClawRaw(["search", "help"], root, hostlessEnv);
   assert.equal(searchHelp.status, 0);
 });

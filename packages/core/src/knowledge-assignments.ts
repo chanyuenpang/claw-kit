@@ -37,6 +37,20 @@ export const KNOWLEDGE_DISPATCH_LEAD_INSTRUCTION = [
   "After the handoff is accepted or automatically owned, immediately end the Lead turn and do not wait for or poll the worker.",
 ].join(" ");
 
+/**
+ * Lead instruction for the standard hostless flow: no host dispatch route or
+ * claim-time collector exists, so the invoking agent captures its own final
+ * message inline, then executes the background writer plan itself.
+ */
+export const KNOWLEDGE_DISPATCH_STANDARD_LEAD_INSTRUCTION = [
+  "Required, non-skippable closeout, executed by you in three ordered steps.",
+  "1) Report the final answer for this task now: call `claw internal-knowledge-capture` with stdin JSON {\"cwd\": \"<project root>\", \"session_id\": \"<session id>\", \"turn_id\": \"<turn id>\", \"message\": \"<final answer summary>\"}.",
+  "2) Run `claw internal-knowledge-dispatch --job <jobPath from step 1>` and take its dispatch.prompt verbatim.",
+  "3) Execute that prompt yourself: run its `claw plan create --template-file ...` command now, follow the returned workflowGuidance until the writer plan completes, and let its terminal `knowledge done` close the durable job.",
+  "Do not skip any step for any reason, including an apparently empty result or plan completion.",
+  "Do not wait for or poll an external worker; the durable job is claimed and completed through the writer plan's own terminal transition.",
+].join(" ");
+
 export function knowledgeDelegateTemplatePath(): string {
   return path.join(
     path.dirname(fileURLToPath(import.meta.url)),

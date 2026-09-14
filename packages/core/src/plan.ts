@@ -1175,10 +1175,14 @@ async function createSeedPlan(
   const effectiveTemplateName = templateFile
     ? undefined
     : templateName?.trim() || projectConfig?.defaultPlanTemplate?.trim() || defaultPlanTemplateName();
+  const configFallback = resolvePlanEffectiveConfig(projectConfig, { configOverride: undefined });
   const template = await resolveSeedPlanTemplate({
     projectRoot: templateProjectRoot ?? projectRoot,
     templateName: effectiveTemplateName,
     templateFile,
+    moduleOptions: {
+      ...(configFallback?.knowledgeWriter ? { knowledgeWriter: configFallback.knowledgeWriter } : {}),
+    },
   });
   const effectiveConfig = resolvePlanEffectiveConfig(projectConfig, {
     configOverride: template.configOverride,
