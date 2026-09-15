@@ -35,7 +35,7 @@ For every claw plan mutation, call the function below in code mode and change on
 ```javascript
 async function runClawPlanMutation({ argv, workdir, timeout_ms = 30000 }) {
   const cacheKey = "claw-kit:codex-driver:v22:s1";
-  const pluginVersion = "0.2.38.0";
+  const pluginVersion = "0.2.39.0";
   const requiredCliVersion = pluginVersion.split(".").slice(0, 3).join(".");
   const planCreate = argv[0] === "plan" && argv[1] === "create";
   const fetchEnvelope = async () => {

@@ -110,6 +110,16 @@ function isAdapterVersion(adapterVersion, cliVersion) {
   return adapterVersion.startsWith(prefix) && /^\d+\.\d+\.\d+\.\d+$/.test(adapterVersion) && adapterVersion.slice(prefix.length).length > 0;
 }
 
+async function assertCodexDriverCompatibility({ cliPath, cwd }) {
+  const skill = await fs.readFile(path.join(repoRoot, "packages", "codex-adapter", "skills", "using-claw-kit", "SKILL.md"), "utf8");
+  const expectedCacheKey = /const cacheKey = "([^"]+)"/.exec(skill)?.[1];
+  const expectedDriverVersion = Number(/driverVersion !== (\d+)/.exec(skill)?.[1]);
+  assert(expectedCacheKey && Number.isInteger(expectedDriverVersion), "Codex plugin must declare an explicit driver cache key and version.");
+  const driver = JSON.parse(execFileSync(process.execPath, [cliPath, "codex", "driver"], { cwd, encoding: "utf8" }));
+  assert(driver.cacheKey === expectedCacheKey && driver.driverVersion === expectedDriverVersion,
+    `Codex plugin requires ${expectedCacheKey} / driver v${expectedDriverVersion}, but the packaged CLI provides ${driver.cacheKey} / driver v${driver.driverVersion}. Publish a compatible CLI before releasing the Codex plugin.`);
+}
+
 async function assertPlatformArtifactReadiness(cliVersion) {
   const codex = await readJson("packages/codex-adapter/package.json");
   const openclaw = await readJson("packages/openclaw-adapter/package.json");
@@ -207,6 +217,7 @@ async function verifyReleaseReadiness() {
       execFileSync(process.execPath, [installedCliPath, "--version"], { cwd: installDir, encoding: "utf8" }).trim() === cliVersion,
       "Installed tarball CLI version smoke failed.",
     );
+    await assertCodexDriverCompatibility({ cliPath: installedCliPath, cwd: installDir });
     const installedSessionProject = path.join(outDir, "installed-session-project");
     const installedSessionRuntime = path.join(outDir, "installed-session-runtime");
     await fs.mkdir(installedSessionProject, { recursive: true });
