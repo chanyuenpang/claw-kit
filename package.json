@@ -28,6 +28,7 @@
     "sync:template-versions": "node .\\scripts\\update-template-versions.mjs",
     "check:template-versions": "node .\\scripts\\update-template-versions.mjs --check",
     "verify:release": "node .\\scripts\\publish-release.mjs",
+    "verify:codex-registry": "node .\\scripts\\verify-codex-registry-compatibility.mjs 0.2.39",
     "verify:batch-release": "node .\\scripts\\publish-release.mjs --batch",
     "verify:cli": "npm run build -w @veewo/claw-core && npm run build -w @veewo/claw-client && npm run check -w @veewo/claw-client && npm run build -w @veewo/claw && npm run check -w @veewo/claw",
     "repair:truth-encoding": "npm run build -w @veewo/claw-core && node scripts/truth-encoding-audit.mjs --write",
