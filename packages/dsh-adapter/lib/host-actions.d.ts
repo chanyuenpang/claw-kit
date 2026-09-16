@@ -17,6 +17,7 @@ export type GoalsLike = {
     get(agent: unknown): {
         id: string;
         revision: number;
+        phase?: string;
     } | undefined;
     create(agent: unknown, request: {
         objective: string;

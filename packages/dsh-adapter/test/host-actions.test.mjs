@@ -94,6 +94,25 @@ test("consumeHostActions: an existing native Goal retains create_goal and duplic
   assert.deepEqual(calls, [["create", { objective: "existing" }]]);
 });
 
+test("consumeHostActions: create_goal replaces a completed native Goal", () => {
+  const calls = [];
+  const goals = {
+    get: () => ({ id: "g-complete", revision: 2, phase: "complete" }),
+    create: (agent, request) => calls.push(["create", request]),
+    complete: () => undefined,
+  };
+
+  const { consumed, failures } = consumeHostActions(
+    [{ schemaVersion: 1, id: "a:create_goal", tool: "create_goal", input: { objective: "replacement" } }],
+    goals,
+    {},
+  );
+
+  assert.deepEqual(consumed, ["a:create_goal"]);
+  assert.deepEqual(failures, []);
+  assert.deepEqual(calls, [["create", { objective: "replacement" }]]);
+});
+
 test("consumeHostActions: update_goal is a consumed no-op when no Goal is active", () => {
   const { consumed } = consumeHostActions(
     [{ schemaVersion: 1, id: "a:update_goal", tool: "update_goal", input: { status: "complete" } }],

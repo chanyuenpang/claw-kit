@@ -1,4 +1,4 @@
-﻿# DSH claw_run route guidance
+# DSH claw_run route guidance
 
 <!-- state: current -->
 ## Current behavior
@@ -11,6 +11,9 @@ command hints directly in pwsh or another shell.
 - `compactClawOutput()` prepends one adapter-owned route note to the visible
   `notes` of successful `plan.*`, `task.*`, and `subplan.*` workflow mutations.
   The note says that `commandHints` describe `operation` and `args` syntax only.
+- Recovery: `consumeHostActions()` preserves an unfinished native Goal but uses
+  `create_goal` to replace a completed one. An active claw plan can therefore
+  restore its DSH Goal projection without a model-issued native Goal mutation.
 - Read-only `plan.show` is explicitly excluded, so viewing a plan does not add
   workflow-route noise. Search keeps its existing compact recall surface.
 - `renderGuidanceSnapshot()` appends the same route note only when it renders a

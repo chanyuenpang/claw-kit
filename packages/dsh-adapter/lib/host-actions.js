@@ -66,16 +66,21 @@ export function consumeHostActions(actions, goals, agent) {
                 else if (typeof typedAction.input.objective !== "string" || !typedAction.input.objective) {
                     failures.push({ actionId: typedAction.id, tool: typedAction.tool, code: "INVALID_ACTION", message: "create_goal requires a non-empty objective." });
                 }
-                else if (goals.get(agent)) {
-                    // The shared contract treats an existing native Goal as unfinished:
-                    // recovery must retain it rather than overwrite it.
-                    consumedIds.add(typedAction.id);
-                    consumed.push(typedAction.id);
-                }
                 else {
-                    goals.create(agent, { objective: typedAction.input.objective });
-                    consumedIds.add(typedAction.id);
-                    consumed.push(typedAction.id);
+                    const current = goals.get(agent);
+                    if (current && current.phase !== "complete") {
+                        // Preserve an unfinished native Goal during recovery rather than
+                        // overwriting it with the claw plan's projection.
+                        consumedIds.add(typedAction.id);
+                        consumed.push(typedAction.id);
+                    }
+                    else {
+                        // DSH permits create to replace a completed Goal, restoring the
+                        // active claw plan's native Goal projection.
+                        goals.create(agent, { objective: typedAction.input.objective });
+                        consumedIds.add(typedAction.id);
+                        consumed.push(typedAction.id);
+                    }
                 }
             }
             else if (typedAction.tool === "update_goal" && goals) {
