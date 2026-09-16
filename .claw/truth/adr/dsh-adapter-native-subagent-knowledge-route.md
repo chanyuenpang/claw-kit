@@ -35,6 +35,12 @@ DSH（DeepSeek Harness）需要与 claw-kit 既有的 ready-job / claim / done �
   Codex 共享同一版本化 hostActions 协议，无需 code-mode 信封。
 - `agent/session-start` 注入恢复的 workflow guidance；`agent/turn-stopping` 做 turn
   report 捕获（fail-open）；bundled skills 经 `ctx.skills` 分层注册表投递。
+- finalizer 派发的复用 owner 是 adapter，键是 `finalizeId`：同一 `finalizeId` 至多存在
+  一个未结算 writer child，派发前先判重（进程内记录 + 服务层 `listChildren` 的 durable
+  目录），命中即跳过 `start` 并返回 `reused: true`；失败派发标记 `retryable: false` 且
+  不留记录，自动重试交给下一次终态转换，模型不得手动重试。child 保持 one-shot `start`
+  不变。机制与查重来源的当前行为由
+  `.claw/truth/features/dsh-knowledge-dispatch-and-finalization.md` 拥有。
 
 ## Alternatives
 
@@ -66,6 +72,10 @@ DSH（DeepSeek Harness）需要与 claw-kit 既有的 ready-job / claim / done �
   文件缺失或 session 不匹配时 claim 仍会失败，finalizer 需先物化 capture。
 - `SUPPORTED_CLAW_HOSTS` 增加 `"dsh"`，`compactPlanCommandResult` 与 daemon 路径的
   hostActions 门控统一走 `isHostActionsHost`；Codex/DSH 的 compact 输出语义一致。
+- 复用判据只看 `finalizeId`，跨 `finalizeId` 复用是禁止行为（与 Codex 的固定名
+  `knowledge_finalizer` 合约一致）；判重不能走模型侧 `list_agents`，因为它是
+  `listChildren` 的 continuable 投影并显式丢弃 one-shot child，用它判重会静默失效并
+  重新产生第二个 writer child。
 - 端到端验证：finalizeId `8a208046f490…`（task `Knowledge-dispatch-test`）走完
   delegate plan → claim → built-in governance assignment subplan → `knowledge done`
   全链路，确认 DSH knowledge dispatch 生成与终结可用。第二次复验（finalizeId

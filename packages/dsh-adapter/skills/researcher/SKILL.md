@@ -60,21 +60,60 @@ initialized project.
   - when a configured code index is unavailable, proceed with the remaining
     route without it
 
-## DSH delegation (optional)
+## Host routing
 
-For large or clearly independent investigations, delegate to a DSH native
-subagent (`subagent`/`subagent_fork`) in the background:
+- Main agent: when this skill triggers on DSH, consume the `delegateSubagents`
+  contract below and complete the delegation before continuing. This section
+  carries the DSH tool mapping; the rest of the file carries the role.
+- Assigned researcher: skip the delegation contract, execute the investigation
+  order, and return the `outputContract` result.
+- Reuse first: call `list_agents`; when a `researcher:` child is `idle` or
+  `ready`, send it a narrow incremental brief with `send_message` instead of
+  starting another child.
+- Otherwise start a fresh child with the native `subagent` tool and
+  `description: "researcher: <3-5 word scope>"`, **omitting
+  `run_in_background`**.
+- Never pass `run_in_background: false`. On DSH that is a foreground one-shot
+  run: it returns `{kind: "foreground", runId}`, the child is disposed once its
+  result is collected, and it never appears in `list_agents` — nothing about it
+  can ever be reused. `waitForCompletion: true` below means "have the result
+  before continuing"; the durable child satisfies that through its settlement
+  notice, so it is never a reason to run in the foreground.
+- Reuse is session-scoped and best-effort: delivery is accepted only while the
+  child's durable parent session is this session. `UNAUTHORIZED` (another
+  parent session) and `NOT_RESUMABLE` (a child that cannot be continued) both
+  mean "start a new child" — never retry the same child id. Enumerable is not
+  reusable.
+- A `running` child queues your message as its next turn rather than
+  redirecting the current one; start a separate child when the work must
+  genuinely run in parallel.
 
-- make the prompt self-contained: question, known anchors, expected evidence
-  shape, and the required report fields (status / findings with exact
-  file:line anchors / uncertainty / nextStep);
-- prefer `run_in_background: true` and continue other work while it runs;
-- the child reports back; fold its findings into your own response with
-  attribution.
+## Delegation contract
 
-Do not delegate when the investigation is small enough to do inline — a
-subagent is for bounded, independent scopes, not a substitute for reading a
-file.
+`waitForCompletion: true` means the result must be available before you
+continue. On DSH that is satisfied by keeping the durable child and waiting
+for its settlement notice — never by forcing a foreground run.
+
+```yaml
+delegateSubagents:
+  - name: researcher
+    skill: researcher
+    worker: readonly
+    fork_context: false
+    waitForCompletion: true
+    preferReuse: true
+    inputContract:
+      question: concrete code question
+      cwd: working directory
+      targets: known files, modules, or symbols
+      constraints: relevant task boundaries
+    outputContract:
+      status: answered or unresolved
+      findings: concise evidence with exact code anchors
+      uncertainty: explicit gaps
+      nextStep: recommendation for the main agent
+    closePolicy: keep_open_for_reuse
+```
 
 ## Reporting
 

@@ -30,11 +30,11 @@ DSH 知识终结 dispatch 流程：项目作用域 root plan 进入 `end.*` 且
 plan、跟随 workflowGuidance、`knowledge claim` 认领 job、顺序执行生成的 assignment
 subplan、并以 claim token 调用一次 `knowledge done`。
 
-终态 mutation 返回 `knowledgeDispatch` 时，DSH adapter 自动启动一次性 finalizer
-subagent（`subagents.start("spawn", ...)`，label
-`knowledge-finalizer-<finalizeId 前 12 位>`），并在 compact result 中返回
-`dispatch: { ok: true, runId, policy }` 确认；主模型不自行执行 writer，只消费该
-`dispatch.ok` 确认（与 delegate 只执行 claim → assignment subplan → 单次
+终态 mutation 返回 `knowledgeDispatch` 时，DSH adapter 自动派发 writer child
+（`subagents.start("spawn", ...)`，label 由 `finalizerChildLabel` 生成，与 CLI
+delegate plan 标题同形：`knowledge-finalizer-<finalizeId 前 12 位>`），并在 compact
+result 中返回执行回执；主模型不自行执行 writer，只消费该回执
+（`dispatch.ok`）（与 delegate 只执行 claim → assignment subplan → 单次
 `knowledge done` 的边界一致）。派发是 fire-and-forget：adapter 只取执行回执
 （`dispatch.ok`），不 await 子代理结果；子代理使用专用 `AbortController`，不复用
 claw_run 工具信号 `exec.signal`（工具调用返回时该信号会 abort，曾导致子代理在首
@@ -44,6 +44,29 @@ claw_run 工具信号 `exec.signal`（工具调用返回时该信号会 abort，
 写入 `undefined` 会破坏 DSH lossless-JSON 工具输出校验（0.2.26.0 加载后普通
 `plan.create` 曾报 "value is not lossless JSON"——2026-08-22 修复，提交
 `cebd5b9`）。
+
+adapter 以 `finalizeId` 为键保证「同一 finalizeId 至多一个未结算 writer child」：
+派发前先经 `resolveFinalizerReuse` 查重，命中则跳过 `start` 并返回
+`dispatch: { ok: true, reused: true, runId, policy }`，未命中才 `start` 并返回
+`dispatch: { ok: true, runId, policy }`。查重有两条来源，由便宜到贵：
+
+- 进程内 `finalizerDispatches`（`Map<string, { runId, settled }>`）：本进程启动且尚未
+  观测到结算的 child 直接短路，无竞态，覆盖重复派发。child 的 `run.result` settle
+  （成功或失败皆可）后记录标记 `settled`，该 `finalizeId` 因此可再次派发——job 仍在
+  queued 时只有**新** child 能 claim 它。`run.result` 缺失时不保留任何记录，避免一条
+  永不结算的记录占住一个已死 child 的 job。
+- 服务层 durable 目录：`subagents.listChildren(agent.id)` 中 `kind === "child"`、
+  `activity === "running"` 且 `label` 等于本 finalizeId label 的条目，覆盖 adapter
+  进程重启后进程内 Map 丢失的场景。label 在 one-shot child 上同样耐久（runtime 为每个
+  child 快照 descriptor），因此 finalizer 保持 one-shot `start` 仍可被发现。该查询
+  fail-open：服务缺失、投影注册表缺失或 session store 抛错都不得阻塞派发，也不得被
+  报告为一次复用。
+
+失败路径返回 `dispatch: { ok: false, retryable: false, reason, guidance }` 且不保留
+记录：**自动**重试留给下一次终态转换；`retryable: false` 只约束模型，`guidance`
+（`FINALIZER_MANUAL_RETRY_GUIDANCE`）明说不得自行运行 finalizer、也不得手动重试派发，
+因为手动重试是唯一还能产生第二个 writer child 的路径。`subagents` 服务缺失时返回同形状
+的 `{ ok: false, retryable: false, reason: "subagents service unavailable", guidance }`。
 
 端到端已验证（finalizeId `8a208046f490…`，task `Knowledge-dispatch-test`，goal
 `verify knowledgeDispatch`）：`plan done` → ready job 持久化 → delegate plan
@@ -98,10 +121,21 @@ job 被 claim 并走完 claim → assignment subplan → 单次 `knowledge done`
 - compact result 只在 dispatch 实际存在时前置重插 `dispatch` 字段；写入 `undefined`
   会触发 DSH lossless-JSON 校验失败（"value is not lossless JSON"，2026-08-22
   修复，提交 `cebd5b9`）。
+- finalizer 判重不能走模型侧的 `list_agents`：它是服务层 `listChildren` 的 continuable
+  投影，显式丢弃 one-shot child（`@deepseek-ai/dsh-tool-subagent-control` 的
+  `lib/types/list-agents.js` 中 `project()` 对 `entry.mode !== "continuable"` 返回
+  `undefined`），而自动派发的 finalizer 是 one-shot。用它做"是否已有 writer child"的
+  判断会静默失效并重新产生第二个 child；判重必须在 adapter 内经服务层 `listChildren`
+  完成。
 
 ## 关联代码
 
 - `packages/dsh-adapter/`（`@veewo/dsh-claw-kit`，静态 Cordis bundle 插件）
+- `packages/dsh-adapter/src/index.ts`（`finalizerChildLabel` / `resolveFinalizerReuse` /
+  `finalizerDispatches` / `FINALIZER_MANUAL_RETRY_GUIDANCE`）
+- `packages/dsh-adapter/test/finalizer-execute.test.mjs`（execute 级：同一 finalizeId
+  只 `start` 一次）
+- `packages/dsh-adapter/test/finalizer-dispatch.test.mjs`（判重纯缝）
 - `packages/cli/src/invocation-host.ts`（`isHostActionsHost` / `isSubagentPolicyHost`）
 - `packages/cli/src/cli.ts`（`buildKnowledgeDispatch` 的 dsh 分支、claim-time capture 的 dsh/host-null 分支）
 - `packages/cli/src/dsh-capture.ts`（`readDshKnowledgeCapture` / dsh-capture 文件路径）
@@ -121,9 +155,26 @@ job 被 claim 并走完 claim → assignment subplan → 单次 `knowledge done`
   可复现、可报告；窗口过滤以 `reportCapture.startedAt` 为起点且空 capture 合法。
 - `claw_run search` 的召回列表对模型完全可见：`query` / `count` / `results[]` 的
   `sourcePath`/`kind`/`snippet`/`score`，内部字段不泄漏。
+- 同一 `finalizeId` 连续两次终态 mutation 后 `subagents.start` 恰好调用一次，第二次
+  返回 `dispatch.ok === true` 且 `reused === true`；child 结算后同一 `finalizeId` 可以
+  再次派发。
+- `subagents` 服务不可用或 `start` 抛错时 `dispatch.ok === false`、
+  `dispatch.retryable === false` 且带 `guidance`；下一次终态转换仍会自动重试。
+- 服务层 `listChildren` 缺失或抛错时判重 fail-open：不阻塞派发，也不误报复用。
 
 ## 关键检索词
 
 `dsh`、`DSH adapter`、`knowledgeDispatch`、`buildKnowledgeDelegateDispatch`、`claw_run`、
 `isSubagentPolicyHost`、`isHostActionsHost`、`delegate-writer`、`knowledge claim`、
 `search recall`、`compactClawOutput`
+
+<!-- state: history -->
+## Evolution history
+
+<!-- dated: 2026-09-16 -->
+### 按 finalizeId 去重的 writer child 复用
+
+此前 adapter 对每个 `knowledgeDispatch` 都无条件 `subagents.start("spawn", ...)` 一个新的
+one-shot writer child，不做判重；唯一能产生第二个 writer child 的路径是模型在
+`dispatch.ok === false` 后手动重试派发。该形态把"一个 finalizeId 一个 writer"完全交给模型
+自律。保留这段历史的用途是事故推理：出现重复 writer child 时先区分是判重失效还是手动重试。

@@ -18,6 +18,7 @@ description: 为高风险或跨系统功能产出最小充分的领域架构设�
 - 子代理成功返回 task 内报告后，主代理立即执行 `claw plan edit --reference <相对项目根目录的报告路径> --why "Feature architecture design for the active task."`。只有该 mutation 成功，才向用户称报告已纳入 plan。
 - 若 `claw context` 没有 `activeWorkflow`，仍可派发只读设计子代理，但不得创建、保存或要求任何 Markdown 文件，也不得向 plan 添加引用；子代理仅在最终消息返回 `status` 和紧凑的 `design` 内容。
 - 主代理必须按下方合同派发只读设计子代理；收到结果后继续 claw 流程。若本技能正在被安装、同步或维护，而非为一个功能请求产出设计，则不进入该子代理路由。
+- 派发只读设计子代理时按宿主提供的委派路由执行，并保持子代理可复用。Codex 用其原生 multi-agent 工具：`list_agents` 复用同线程角色 → `spawn_agent` 新建 → `wait_agent` 取结果。DSH 先 `list_agents`，命中同角色且 `idle`/`ready` 的 child 就用 `send_message` 投递增量简报；未命中才用原生 `subagent` 新建并**省略 `run_in_background`**（显式 `false` 是前台一次性运行，返回 `runId` 而非 durable id，child 收集结果后即被释放，之后无法复用；复用失败 `UNAUTHORIZED` / `NOT_RESUMABLE` 一律回退新建，不重试同一 id）。其他 adapter 按其注入的委派说明执行。宿主专属的工具名与参数形态以该宿主 adapter 的技能文本为准，本文件只给路由。
 
 ## Delegation contract
 

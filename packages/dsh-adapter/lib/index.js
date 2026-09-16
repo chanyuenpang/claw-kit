@@ -8,6 +8,55 @@ import { compactClawOutput, consumeHostActions, } from "./host-actions.js";
 import { daemonInput, isUncertainConnectionFailure, renderGuidanceSnapshot } from "./protocol.js";
 import { registerBundledSkills } from "./skills.js";
 export const name = "claw-kit";
+const finalizerDispatches = new Map();
+/** The label every writer child for one finalizeId carries. */
+export function finalizerChildLabel(finalizeId) {
+    return `knowledge-finalizer-${finalizeId.slice(0, 12)}`;
+}
+/**
+ * Decide whether a writer child for this finalizeId is already live, so the
+ * dispatch can be skipped instead of starting a second one.
+ *
+ * Two sources, cheapest first:
+ *  1. the in-process record — a writer child this process started and has
+ *     not seen settle. No race, covers repeated dispatches.
+ *  2. the durable child catalog — this parent's children, filtered to a
+ *     still-running child carrying the finalizeId label. Covers an adapter
+ *     process restart, where the in-process map is gone. The label is
+ *     durable for one-shot children too (the runtime snapshots a descriptor
+ *     for every child it starts), which is why the finalizer can stay
+ *     one-shot and still be found.
+ *
+ * Fail-open: an absent service, a missing projection registry, or a session
+ * store that throws must never block the dispatch — and must never be
+ * reported as a reuse.
+ */
+export async function resolveFinalizerReuse(input) {
+    const records = input.records ?? finalizerDispatches;
+    const record = records.get(input.finalizeId);
+    if (record !== undefined && !record.settled) {
+        return { runId: record.runId, source: "in-process" };
+    }
+    const subagents = input.subagents;
+    if (subagents === undefined || typeof subagents.listChildren !== "function")
+        return undefined;
+    try {
+        const children = await subagents.listChildren(input.parentSessionId);
+        for (const child of children ?? []) {
+            if (child?.kind === "child"
+                && child.activity === "running"
+                && child.label === input.label
+                && typeof child.id === "string") {
+                return { runId: child.id, source: "durable" };
+            }
+        }
+    }
+    catch {
+        // fail-open
+    }
+    return undefined;
+}
+const FINALIZER_MANUAL_RETRY_GUIDANCE = "Do not run the knowledge finalizer yourself and do not retry this dispatch manually: a manual retry is the only way to produce a second writer child. The durable job stays queued and the adapter retries it automatically on the next terminal plan transition.";
 function collectorVersion() {
     const packageJsonPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json");
     return String(JSON.parse(fs.readFileSync(packageJsonPath, "utf8")).version ?? "unknown");
@@ -400,39 +449,91 @@ export function apply(ctx) {
                 const dispatch = response.knowledgeDispatch;
                 const subagents = c.get("subagents");
                 if (subagents && dispatch && typeof dispatch.prompt === "string" && dispatch.prompt.length > 0) {
-                    try {
-                        // Fire-and-forget dispatch: the finalizer only needs an execution
-                        // receipt, it never replies. Pass a DEDICATED controller instead of
-                        // exec.signal — the tool's signal aborts when this claw_run call
-                        // returns, which cancelled the child before its first turn
-                        // (learned 2026-08-22: plan.done auto-dispatch created the
-                        // subagent session but the finalizer never ran). The dedicated
-                        // controller keeps the child alive after the tool result is
-                        // delivered; disposal is still driven by the run's own lifecycle.
-                        const controller = new AbortController();
-                        const run = await subagents.start("spawn", {
-                            label: `knowledge-finalizer-${String(dispatch.finalizeId ?? "").slice(0, 12)}`,
-                            prompt: [{ type: "text", text: dispatch.prompt }],
-                            parent: exec.agent,
-                            signal: controller.signal,
-                        });
-                        if (run.dispose) {
-                            // Keep a settled run's resources released without awaiting it:
-                            // the writer is independent of this tool result.
-                            void Promise.resolve(run.result).finally(() => run.dispose()).catch(() => undefined);
-                        }
-                        visible.dispatch = { ok: true, runId: String(run.id), policy: dispatch.policy ?? "subagent" };
-                    }
-                    catch (error) {
-                        // fail-open: surface the dispatch for the model to retry manually
+                    const finalizeId = String(dispatch.finalizeId ?? "");
+                    const finalizerLabel = finalizerChildLabel(finalizeId);
+                    // Reuse before starting: a live writer child for this exact
+                    // finalizeId means a second spawn would buy nothing but a duplicate
+                    // child and a refused claim.
+                    const reused = await resolveFinalizerReuse({
+                        finalizeId,
+                        parentSessionId: agent.id,
+                        label: finalizerLabel,
+                        subagents,
+                    });
+                    if (reused !== undefined) {
                         visible.dispatch = {
-                            ok: false,
-                            reason: error instanceof Error ? error.message : String(error),
+                            ok: true,
+                            reused: true,
+                            runId: reused.runId,
+                            policy: dispatch.policy ?? "subagent",
                         };
+                    }
+                    else {
+                        try {
+                            // Fire-and-forget dispatch: the finalizer only needs an execution
+                            // receipt, it never replies. Pass a DEDICATED controller instead of
+                            // exec.signal — the tool's signal aborts when this claw_run call
+                            // returns, which cancelled the child before its first turn
+                            // (learned 2026-08-22: plan.done auto-dispatch created the
+                            // subagent session but the finalizer never ran). The dedicated
+                            // controller keeps the child alive after the tool result is
+                            // delivered; disposal is still driven by the run's own lifecycle.
+                            const controller = new AbortController();
+                            const run = await subagents.start("spawn", {
+                                label: finalizerLabel,
+                                prompt: [{ type: "text", text: dispatch.prompt }],
+                                parent: exec.agent,
+                                signal: controller.signal,
+                            });
+                            const runId = String(run.id);
+                            const dispose = run.dispose;
+                            if (run.result === undefined) {
+                                // Defensive only: DSH's SubagentRun always carries both
+                                // `result` and `dispose` (dsh-subagent/lib/types/types.d.ts:240-265).
+                                // Without a settlement signal no record is kept at all,
+                                // because a record that can never settle would strand a job
+                                // whose child died before claiming it — only a NEW child can
+                                // claim a still-queued job.
+                                finalizerDispatches.delete(finalizeId);
+                            }
+                            else {
+                                finalizerDispatches.set(finalizeId, { runId, settled: false });
+                                const settle = () => {
+                                    const record = finalizerDispatches.get(finalizeId);
+                                    if (record !== undefined && record.runId === runId)
+                                        record.settled = true;
+                                };
+                                // Keep a settled run's resources released without awaiting it:
+                                // the writer is independent of this tool result.
+                                void Promise.resolve(run.result)
+                                    .then(settle, settle)
+                                    .finally(() => (dispose ? dispose() : undefined))
+                                    .catch(() => undefined);
+                            }
+                            visible.dispatch = { ok: true, runId, policy: dispatch.policy ?? "subagent" };
+                        }
+                        catch (error) {
+                            // Automatic retry stays enabled: no record is kept, so the next
+                            // terminal transition tries again. Manual retry does not — the
+                            // model is told explicitly, because doing it by hand is the one
+                            // remaining path to a second writer child.
+                            finalizerDispatches.delete(finalizeId);
+                            visible.dispatch = {
+                                ok: false,
+                                retryable: false,
+                                reason: error instanceof Error ? error.message : String(error),
+                                guidance: FINALIZER_MANUAL_RETRY_GUIDANCE,
+                            };
+                        }
                     }
                 }
                 else if (subagents === undefined) {
-                    visible.dispatch = { ok: false, reason: "subagents service unavailable" };
+                    visible.dispatch = {
+                        ok: false,
+                        retryable: false,
+                        reason: "subagents service unavailable",
+                        guidance: FINALIZER_MANUAL_RETRY_GUIDANCE,
+                    };
                 }
                 // Keep only a compact dispatch summary in the model-visible output:
                 // the full writer prompt is consumed by the subagent, and a huge
