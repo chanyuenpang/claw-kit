@@ -30,7 +30,7 @@ export function checkProjectProtocol(cwd: string): ProjectProtocolCheckResult {
   const projectJsonPath = path.join(projectRoot, ".claw", "project.json");
   const { raw, issues } = readRawProjectConfig(projectJsonPath);
   if (raw !== undefined) {
-    validateProjectConfig(raw, issues);
+    validateProjectConfigInto(raw, issues);
   }
 
   return {
@@ -46,7 +46,7 @@ export function ensureProjectProtocol(cwd: string): ProjectProtocolEnsureResult 
   const projectJsonPath = path.join(projectRoot, ".claw", "project.json");
   const { raw, issues } = readRawProjectConfig(projectJsonPath);
   if (raw !== undefined) {
-    validateProjectConfig(raw, issues);
+    validateProjectConfigInto(raw, issues);
   }
 
   const normalized = normalizeProjectConfig(raw, projectRoot);
@@ -210,7 +210,13 @@ function collectFixedPaths(issues: ProjectProtocolIssue[], changed: boolean): st
   return [...paths];
 }
 
-function validateProjectConfig(raw: unknown, issues: ProjectProtocolIssue[]): void {
+export function validateProjectConfig(raw: unknown): ProjectProtocolIssue[] {
+  const issues: ProjectProtocolIssue[] = [];
+  validateProjectConfigInto(raw, issues);
+  return issues;
+}
+
+function validateProjectConfigInto(raw: unknown, issues: ProjectProtocolIssue[]): void {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     issues.push({ path: "project.json", message: "project.json must contain a JSON object." });
     return;

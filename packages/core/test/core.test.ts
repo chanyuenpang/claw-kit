@@ -51,6 +51,7 @@ import {
   runDailyMaintenance,
   writeKnowledgeFinalizationJob,
   resolveContext,
+  ProjectConfigRepository,
   resolveProjectContext,
   resolveSessionBoundPlan,
   searchMemory,
@@ -166,6 +167,42 @@ test("context resolves nested cwd to project .claw", () => {
 
   assert.equal(result.project.projectRoot, root);
   assert.equal(result.project.projectId, "demo-project");
+});
+
+test("project configuration repository keeps layers isolated and fences stale writes", () => {
+  const root = createFixture("project-config-repository");
+  initProject({ cwd: root, projectName: "Project Config Repository", force: true });
+  const repository = new ProjectConfigRepository();
+  const first = repository.read(root);
+  assert.equal(first.personal, undefined);
+
+  const afterPersonal = repository.write({
+    projectRoot: root,
+    layer: "personal",
+    value: { goalMode: false, contextPaths: ["personal-docs"], memory: { autoUpdate: false } },
+    expectedRevision: first.revisions.personal,
+  });
+  assert.equal(afterPersonal.effective.goalMode, false);
+  assert.deepEqual(afterPersonal.effective.contextPaths, ["personal-docs"]);
+  assert.equal(afterPersonal.effective.memory?.autoUpdate, false);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "project-override.json")), true);
+
+  const beforeStaleWrite = fs.readFileSync(path.join(root, ".claw", "project-override.json"), "utf-8");
+  assert.throws(
+    () => repository.write({
+      projectRoot: root, layer: "personal", value: { goalMode: true }, expectedRevision: first.revisions.personal,
+    }),
+    (error: unknown) => Boolean(error && typeof error === "object" && "code" in error && error.code === "PROJECT_CONFIG_CONFLICT"),
+  );
+  assert.equal(fs.readFileSync(path.join(root, ".claw", "project-override.json"), "utf-8"), beforeStaleWrite);
+
+  assert.throws(
+    () => repository.write({
+      projectRoot: root, layer: "personal", value: { goalMode: "invalid" }, expectedRevision: afterPersonal.revisions.personal,
+    }),
+    (error: unknown) => Boolean(error && typeof error === "object" && "code" in error && error.code === "PROJECT_CONFIG_INVALID"),
+  );
+  assert.equal(fs.readFileSync(path.join(root, ".claw", "project-override.json"), "utf-8"), beforeStaleWrite);
 });
 
 test("knowledge sidecar derives adjacent report names and keeps one report owner per Stop", () => {
