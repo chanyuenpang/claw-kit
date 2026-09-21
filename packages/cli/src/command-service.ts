@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import {
   ClawError,
+  buildMemoryIndex,
   activatePlan,
   appendSubplanReturnGuidance,
   assertRootPlanCreateAllowed,
@@ -96,6 +97,7 @@ export type ClawCommandRequest =
       input: { tasks: Array<{ id: number; choiceId?: string }> };
     }
   | { operation: "search"; input: { query: string; limit?: number; dir?: string } }
+  | { operation: "search.index.refresh"; input: Record<string, never> }
   | { operation: string; input: unknown };
 
 export type ClawCommandResult = {
@@ -493,6 +495,9 @@ export class ClawCommandService {
           }),
         };
       }
+      case "search.index.refresh":
+        // The session daemon owns cwd; callers cannot target another project.
+        return { output: buildMemoryIndex({ cwd, scope: "project" }) };
       default:
         throw new ClawError(
           "SESSION_OPERATION_UNSUPPORTED",

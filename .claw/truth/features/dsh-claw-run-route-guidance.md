@@ -1,4 +1,4 @@
-# DSH claw_run route guidance
+﻿# DSH claw_run route guidance
 
 <!-- state: current -->
 ## Current behavior
@@ -28,6 +28,9 @@ command hints directly in pwsh or another shell.
 - `task.add` accepts one task or a batch, while `task.done` normalizes `choice`/`choice_id`
   to daemon `choiceId`. Known mapped operations reject catalog-external arguments instead of
   silently dropping them; unknown operations continue to pass through for daemon validation.
+- `search.index.refresh` is a mapped zero-argument operation. The adapter derives the refresh
+  target exclusively from the caller's resolved workspace and rejects caller-supplied target-path
+  arguments; it exposes the CLI's explicit project index refresh without widening DSH authority.
 - `ClawSession` captures bounded startup stderr and rejects pre-handshake child exits as
   `CLAW_SESSION_OPEN_FAILED`, preserving a structured CLI error code/message when present.
   `CLAW_SESSION_OPEN_TIMEOUT` is reserved for a genuinely silent, still-running child.

@@ -53,6 +53,31 @@ test("typed command service uses explicit context and keeps current plan in v2 s
   assert.equal(registry.read(opened.identity.sessionKeyHash).currentPlan?.taskName, "service-plan");
 });
 
+test("session command refreshes only its resolved project index", async () => {
+  const runtimeRoot = fixture("index-runtime");
+  const projectRoot = fixture("index-project");
+  initProject({ cwd: projectRoot, projectName: "Session Index", planning: false });
+  fs.mkdirSync(path.join(projectRoot, "docs"), { recursive: true });
+  fs.writeFileSync(path.join(projectRoot, "docs", "allowed.md"), "session setup documentation", "utf-8");
+  const registry = new SessionRegistryV2(runtimeRoot);
+  const opened = await registry.open("agent-index", projectRoot, { kind: "node" });
+  const service = new ClawCommandService(registry);
+  const previousMock = process.env.CLAW_EMBEDDING_MOCK;
+  process.env.CLAW_EMBEDDING_MOCK = "1";
+  try {
+    const result = await service.execute({
+      cwd: opened.identity.canonicalWorkdir,
+      agentSessionId: opened.identity.agentSessionId,
+      sessionKey: sessionFocusKey(opened.identity),
+      mode: "session",
+    }, { operation: "search.index.refresh", input: {} });
+    assert.equal((result.output as { scope: string }).scope, "project");
+  } finally {
+    if (previousMock === undefined) delete process.env.CLAW_EMBEDDING_MOCK;
+    else process.env.CLAW_EMBEDDING_MOCK = previousMock;
+  }
+});
+
 test("typed command service implicitly targets current plan for plan and task mutations", async () => {
   const runtimeRoot = fixture("mutations-runtime");
   const projectRoot = fixture("mutations-project");

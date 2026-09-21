@@ -513,7 +513,7 @@ test("Codex adapter sessions receive native plan and Goal actions without daemon
   }
 });
 
-test("daemon rejects a second live client and reopens retained state after restart", async () => {
+test("daemon lets a second live client attach and retains the session until the last client closes", async () => {
   const runtimeRoot = fixture("restart-runtime");
   const projectRoot = fixture("restart-project");
   initProject({ cwd: projectRoot, projectName: "Daemon Restart", planning: false });
@@ -530,14 +530,14 @@ test("daemon rejects a second live client and reopens retained state after resta
   });
 
   const competingClient = new ClawClient({ runtimeRoot });
-  await assert.rejects(
-    () => competingClient.open("agent-restart", projectRoot),
-    (error: unknown) => error instanceof ClawSessionError && error.code === "SESSION_BUSY",
-  );
+  const second = await competingClient.open("agent-restart", projectRoot);
+  await first.close();
+  const status = await second.status() as { session: { state: string } };
+  assert.equal(status.session.state, "live");
 
   await firstDaemon.close();
   await assert.rejects(
-    () => first.command({ operation: "plan.show", input: { simple: true } }),
+    () => second.command({ operation: "plan.show", input: { simple: true } }),
     (error: unknown) => error instanceof ClawSessionError
       && error.code === "SESSION_CONNECTION_LOST"
       && error.outcome === "unknown"

@@ -67,7 +67,7 @@ export async function startSessionDaemon(options?: {
   const focusStore = new RegistryFocusSessionStore(registry);
   const service = new ClawCommandService(registry);
   const token = randomBytes(32).toString("hex");
-  const activeSessions = new Map<string, ConnectionState>();
+  const activeSessions = new Map<string, Set<ConnectionState>>();
   const connections = new Set<ConnectionState>();
   const server = net.createServer();
   let idleTimer: NodeJS.Timeout | undefined;
@@ -112,7 +112,9 @@ export async function startSessionDaemon(options?: {
 
   const detach = async (connection: ConnectionState): Promise<void> => {
     if (!connection.sessionKeyHash) return;
-    if (activeSessions.get(connection.sessionKeyHash) === connection) {
+    const attached = activeSessions.get(connection.sessionKeyHash);
+    attached?.delete(connection);
+    if (attached?.size === 0) {
       activeSessions.delete(connection.sessionKeyHash);
       try {
         await registry.close(connection.sessionKeyHash);
@@ -200,13 +202,6 @@ export async function startSessionDaemon(options?: {
         await cleanupExpiredSessions();
         await detach(connection);
         const identity = createSessionIdentity(request.input.agentSessionId, request.input.workdir);
-        const active = activeSessions.get(identity.sessionKeyHash);
-        if (active && active !== connection) {
-          throw new ClawError("PLAN_TRANSITION_CONFLICT", "SESSION_BUSY", {
-            code: "SESSION_BUSY",
-            sessionKeyHash: identity.sessionKeyHash,
-          });
-        }
         await registry.open(
           request.input.agentSessionId,
           request.input.workdir,
@@ -218,7 +213,9 @@ export async function startSessionDaemon(options?: {
         connection.canonicalWorkdir = identity.canonicalWorkdir;
         connection.focusKey = sessionFocusKey(identity);
         connection.host = request.input.client.host;
-        activeSessions.set(identity.sessionKeyHash, connection);
+        const attached = activeSessions.get(identity.sessionKeyHash) ?? new Set<ConnectionState>();
+        attached.add(connection);
+        activeSessions.set(identity.sessionKeyHash, attached);
         try {
           const project = resolveProjectContext(identity.canonicalWorkdir);
           await recoverProjectFocusTransitions({ project, sessionStore: focusStore });
@@ -266,10 +263,9 @@ export async function startSessionDaemon(options?: {
         });
       }
       if (request.operation === "session.close") {
-        const closed = await registry.close(connection.sessionKeyHash!);
-        activeSessions.delete(connection.sessionKeyHash!);
-        connection.sessionKeyHash = undefined;
-        return successResponse(request.requestId, { session: closed });
+        const sessionKeyHash = connection.sessionKeyHash!;
+        await detach(connection);
+        return successResponse(request.requestId, { session: registry.read(sessionKeyHash) });
       }
       const result = await service.execute({
         cwd: connection.canonicalWorkdir!,
