@@ -2,6 +2,7 @@
   "id": "doc-updater",
   "version": "1.0.0",
   "scope": "session",
+  "knowledgeCapture": false,
   "title": "doc-updater",
   "status": "process.active",
   "goal": {

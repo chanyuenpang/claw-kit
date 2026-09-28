@@ -16,6 +16,7 @@ export type ResolvedPlanTemplate = {
   id: string;
   version: string;
   scope?: "session";
+  knowledgeCapture?: boolean;
   configOverride?: TemplateConfigOverride;
   title?: string;
   status: PlanStatus;
@@ -362,6 +363,7 @@ function validatePlanLikeTemplate(
     "id",
     "version",
     "scope",
+    "knowledgeCapture",
     "configOverride",
     "title",
     "status",
@@ -384,6 +386,11 @@ function validatePlanLikeTemplate(
 
   if (!isTemplateConfigOverride(candidate.configOverride)) {
     throw new ClawError("PROJECT_CONFIG_INVALID", `Invalid template configOverride at ${templatePath}.`, {
+      templatePath,
+    });
+  }
+  if (candidate.knowledgeCapture !== undefined && typeof candidate.knowledgeCapture !== "boolean") {
+    throw new ClawError("PROJECT_CONFIG_INVALID", `Invalid template knowledgeCapture at ${templatePath}.`, {
       templatePath,
     });
   }
@@ -475,6 +482,7 @@ function normalizePlanLikeTemplate(
     // maintenance remains an internal concern of create-claw-skill.
     version: TEMPLATE_DRIVER_VERSION,
     scope: template.scope,
+    knowledgeCapture: template.knowledgeCapture,
     configOverride: normalizeTemplateConfigOverride(template.configOverride),
     title: template.title,
     status: template.status,

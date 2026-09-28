@@ -17,6 +17,8 @@ Accepted
 
 Cross-host settings also need a durable owner without turning a plugin into a second configuration authority. The global layer therefore belongs to the CLI and must participate in the same runtime resolution path before repository-scoped layers.
 
+The DSH Settings surface needs project selection without granting browser clients arbitrary filesystem access. Its durable boundary is a registered `workspaceId` resolved by the Host, with configuration semantics remaining owned by the CLI/Core contract.
+
 ## Decision
 
 - 把项目级 workflow 行为纳入 canonical `.claw/project.json` schema。
@@ -26,10 +28,17 @@ Cross-host settings also need a durable owner without turning a plugin into a se
 - `.claw/project-override.json` 是完整的 personal overlay，可以覆盖 `.claw/project.json` 的任意字段，而不是只服务某个临时特例；其中 workflow / GitNexus 类简单开关应使用与 team config 相同的扁平 canonical 字段。
 - runtime project resolution deep-merges canonical `.claw/project.json` followed by `.claw/project-override.json`. Arrays replace and explicit `null` remains a real override value.
 - `.claw/project-override.json` 里的显式 `null` 是真实 override 值，不表示回退到 team config。
+- DSH project configuration uses a narrow Host RPC: the browser supplies only a registered `workspaceId`, layer, approved key path, JSON value when setting, and layer revision; the Host resolves the workspace and delegates `config get|set|unset` to CLI/Core. The UI must not write DSH global settings or accept project paths.
 - 只有 runtime project resolution 消费 `.claw/project-override.json`；canonical protocol repair 和 `claw init` 继续只拥有 team-facing `.claw/project.json`。
 - default vector indexing 可以保持 runtime-enabled，但 protocol repair 不能仅因默认值就把 `memory.embedding.store.vector.enabled = true` 写回 `.claw/project.json`；`store.vector` 只在显式 `enabled: false` 或 `extensionPath` 有意义时保留。
 - 当 effective config 设置 `goalMode=false` 时，workflow guidance 不再返回 `goalMode`。
 - Knowledge finalization 不由 project-level `truthDispatch` 或 workflow guidance delegation 控制；current writer configuration 由 `knowledgeWriter` object 和 hook-owned finalization job 快照拥有。
+
+## Alternatives
+
+- Reusing DSH global settings was rejected because it would create a second source of truth for project configuration.
+- Accepting a browser-supplied path or exposing generic file operations was rejected because browser requests must not select arbitrary Host files.
+- Reimplementing merge, schema validation, revision checks, and writes in the adapter was rejected because it would duplicate the Core configuration contract and risk divergence.
 
 ## Consequences
 

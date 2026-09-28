@@ -44,14 +44,14 @@ claw search index --refresh
 claw search "existing truth or ADR topic"
 claw plan create --title "My task" --goal "Define the first task"
 claw plan create "My templated task" --template default --goal "Route through the default template"
-claw plan create "Ephemeral harness" --scope session --goal "Use plan and Goal workflows without project deposition"
+claw plan create "Ephemeral harness" --scope session --no-knowledge-capture --goal "Use plan and Goal workflows without knowledge finalization"
 ```
 
 `claw plan create` uses explicit `--template` first, otherwise the project's configured `defaultPlanTemplate`, and finally falls back to the built-in `default` template. You can select a template explicitly with `claw plan create "<title>" --template <name>` or `claw plan create --template <name> --title "<title>"`.
 
 New project tasks are grouped under `.claw/tasks/YYYY-MM-DD/`. On the first `claw context` call of each local calendar day, claw performs a lock-protected maintenance pass: it removes expired entries from `.claw/runtime/tmp/`, removes workflow task directories that exceed the task TTL even when incomplete, moves eligible date-scoped task folders into the archive, applies `maxTasksToKeep` and archive TTL, removes expired or invalid bindings, and sweeps expired session workflows. This is lazy maintenance, not a background scheduler.
 
-`--scope session` stores the workflow in a user-level directory keyed by the platform session id, so it works without a project `.claw` directory and recovers across cwd changes. It preserves plan/task/subplan/Goal behavior while disabling project knowledge capture and project retention. When the session's frozen origin belongs to a valid claw project, its terminal transition refreshes that project's memory and enabled GitNexus index; otherwise it creates no refresh state. Use `claw session clean` for the current session or `claw session clean --expired` for the seven-day TTL sweep.
+`--scope session` stores the workflow in a user-level directory keyed by the platform session id, so it works without a project `.claw` directory and recovers across cwd changes. It preserves plan/task/subplan/Goal behavior and project retention remains separate. Knowledge capture is enabled by default; because session storage has no project task capture target, use `--no-knowledge-capture` explicitly with `--scope session`. When the session's frozen origin belongs to a valid claw project, its terminal transition refreshes that project's memory and enabled GitNexus index; otherwise it creates no refresh state. Use `claw session clean` for the current session or `claw session clean --expired` for the seven-day TTL sweep.
 
 Projects can add reusable templates directly under `.claw/templates` with `.json`, `.js`, `.mjs`, or `.cjs` files. Put `defaultPlanTemplate` in `.claw/project.json` for a shared team default, or in `.claw/project-override.json` for a local personal override.
 

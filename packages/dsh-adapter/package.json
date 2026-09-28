@@ -1,6 +1,6 @@
 {
   "name": "@veewo/dsh-claw-kit",
-  "version": "0.2.39.2",
+  "version": "0.2.39.3",
   "type": "module",
   "description": "DSH (DeepSeek Harness) adapter for the claw-kit .claw workflow model: one claw_run tool that executes operations through the claw session daemon, auto-consumes CLI hostActions (progress projection + native goal sync), and returns compact guidance.",
   "keywords": [
@@ -25,6 +25,7 @@
       "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
     },
+    "./client": "./lib/client.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
@@ -36,13 +37,20 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
     }
   },
   "devDependencies": {
     "typescript": "^5.8.3"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node ./scripts/copy-client.mjs",
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "tsc -p tsconfig.json && node --test test/*.test.mjs"
   }

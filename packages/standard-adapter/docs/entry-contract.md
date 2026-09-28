@@ -20,9 +20,9 @@ in this package.
    run `claw context`. If it returns `activeWorkflow`, do not create a plan;
    follow the recovered `workflowGuidance` and continue the current task.
 2. **No knowledge, no plan.** If the request will not produce reusable
-   project knowledge, work directly without creating a plan. Use
-   `--scope session` for temporary tracked work that must not deposit
-   knowledge; the default project scope is the full workflow.
+   project knowledge, work directly without creating a plan. For temporary
+   tracked work, use `--scope session --no-knowledge-capture`; capture is
+   enabled by default and is not a scope decision.
 3. **Plan before execute.** Otherwise run `claw plan create "<title>"` and
    follow the returned `workflowGuidance` as the only lifecycle contract.
    Never edit `plan.json` or job files directly.

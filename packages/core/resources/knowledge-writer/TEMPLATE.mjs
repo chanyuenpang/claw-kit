@@ -17,6 +17,7 @@ export default function knowledgeWriterTemplate(options = {}) {
     id: "knowledge-writer",
     version: "0.2.31",
     scope: "session",
+    knowledgeCapture: false,
     title: "knowledge-writer",
     status: "process.active",
     goal: {

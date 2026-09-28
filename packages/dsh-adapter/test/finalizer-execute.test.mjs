@@ -13,11 +13,16 @@ function makeMockSubprocess(respond) {
   const handles = [];
   const subprocess = {
     spawn() {
+      let finish;
       const handle = {
         stdin: {
           writes: [],
           write(line) {
             this.writes.push(line);
+            if (line === "session close\n") {
+              setTimeout(() => finish({ code: 0 }), 0);
+              return true;
+            }
             const request = JSON.parse(line);
             const reply = respond(request);
             if (reply !== undefined) {
@@ -27,7 +32,7 @@ function makeMockSubprocess(respond) {
           },
         },
         stdout: new Readable({ read() {} }),
-        done: new Promise(() => {}),
+        done: new Promise((resolve) => { finish = resolve; }),
         collected: {},
         terminate: async () => {},
       };
@@ -54,7 +59,7 @@ function makeHarness({ subagents, dispatch, extraService }) {
   const mock = makeMockSubprocess((request) => (
     request.operation === "plan.done"
       ? { ok: true, command: "plan.done", output: { planStatus: "end.completed" }, knowledgeDispatch: dispatch }
-      : undefined
+      : { ok: true, command: request.operation, output: { planStatus: "process.active" } }
   ));
   const harness = { ctx, mock, get tool() { return tool; } };
   harness.subprocess = mock.subprocess;
@@ -142,6 +147,50 @@ test("a settled writer child releases the record so a stranded job can be retrie
   const second = await harness.tool.execute({ operation: "plan.done", args: {} }, { agent: makeAgent("parent-3") });
   assert.equal(second.dispatch.reused, undefined, "a settled child must not block a job that is still queued");
   assert.equal(state.starts, 2);
+});
+
+test("plan.done releases only its own transport after dispatch, then same agent reopens", async () => {
+  const { service } = makeSubagents();
+  const harness = makeHarness({
+    subagents: service,
+    dispatch: { policy: "subagent", finalizeId: "finish-and-reopen", prompt: "writer independent of transport" },
+  });
+  apply(harness.ctx);
+  const agent = makeAgent("same-agent");
+  const done = await harness.tool.execute({ operation: "plan.done", args: {} }, { agent });
+  assert.equal(done.dispatch.ok, true);
+  assert.equal(harness.mock.handles[0].stdin.writes.at(-1), "session close\n");
+  await harness.tool.execute({ operation: "plan.create", args: { title: "next" } }, { agent });
+  assert.equal(harness.mock.handles.length, 2);
+  assert.equal(harness.mock.handles[1].stdin.writes.length, 1);
+  assert.equal(harness.mock.handles[1].stdin.writes[0].includes("plan.create"), true);
+});
+
+test("an already queued next-plan request prevents completed-plan eviction", async () => {
+  let unblock;
+  let entered;
+  const started = new Promise((resolve) => { entered = resolve; });
+  const { service } = makeSubagents({
+    onStart: async () => {
+      entered();
+      await new Promise((resolve) => { unblock = resolve; });
+      return { id: "writer", result: new Promise(() => {}), dispose: async () => {} };
+    },
+  });
+  const harness = makeHarness({
+    subagents: service,
+    dispatch: { policy: "subagent", finalizeId: "race-new-plan", prompt: "writer" },
+  });
+  apply(harness.ctx);
+  const agent = makeAgent("race-agent");
+  const finishing = harness.tool.execute({ operation: "plan.done", args: {} }, { agent });
+  await started;
+  const next = harness.tool.execute({ operation: "plan.create", args: { title: "next" } }, { agent });
+  await next;
+  unblock();
+  await finishing;
+  assert.equal(harness.mock.handles.length, 1);
+  assert.equal(harness.mock.handles[0].stdin.writes.includes("session close\n"), false);
 });
 
 test("an unavailable subagents service reports a non-retryable dispatch", async () => {

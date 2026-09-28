@@ -45,7 +45,7 @@ DSH 只有一条执行路线：**所有工作流操作都通过 `claw_run`**。
 
   | 操作 | 参数 | 用途 |
   | --- | --- | --- |
-  | `plan.create` | `title`, `goal`, `scope`("session") | 建计划（discussing 起步） |
+  | `plan.create` | `title`, `goal` | 在当前初始化项目建根计划（discussing 起步） |
   | `plan.start` | `requirements`, `acceptance`[], `add_tasks`[] | 进入执行 |
   | `task.done` | `id` 或 `tasks`[] | 完成任务 |
   | `plan.done` | `retrospective`, `key_decision` | 关闭计划 |
@@ -57,8 +57,8 @@ DSH 只有一条执行路线：**所有工作流操作都通过 `claw_run`**。
 ## Planning stance
 
 Treat claw-kit as an assistive workflow tool. Plans and tasks focus attention
-and preserve progress; they are not immutable authority. Adjust goal, scope,
-and task breakdown promptly when user needs or new evidence require it. When
+and preserve progress; they are not immutable authority. Adjust goal and task
+breakdown promptly when user needs or new evidence require it. When
 an independently manageable scope would keep expanding a parent task, create a
 subplan instead.
 

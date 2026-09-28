@@ -127,6 +127,9 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
   const templateProjectRoot = findProjectRoot(input.cwd) ?? undefined;
   const templateFile = input.templateFile ? path.resolve(input.cwd, input.templateFile) : undefined;
   const scope = input.scope ?? await resolveTemplateCreationScope(templateProjectRoot, input.templateName, templateFile);
+  if (scope === "session" && input.knowledgeCapture === true) {
+    throw new ClawError("KNOWLEDGE_CAPTURE_TARGET_REQUIRED", "Knowledge capture is enabled by default, but session storage has no project task capture target. Use project storage or add --no-knowledge-capture.", { scope, knowledgeCapture: true });
+  }
   let project: TaskContext["project"];
   try {
     // A new plan is project-scoped unless session storage was explicitly
@@ -173,6 +176,11 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
     ),
     effectiveStatus,
   );
+  const knowledgeCapture = input.knowledgeCapture ?? input.content?.knowledgeCapture ?? plan.knowledgeCapture ?? true;
+  if (project.scope === "session" && knowledgeCapture) {
+    throw new ClawError("KNOWLEDGE_CAPTURE_TARGET_REQUIRED", "Knowledge capture is enabled by default, but session storage has no project task capture target. Use project storage or add --no-knowledge-capture.", { scope: project.scope, knowledgeCapture });
+  }
+  plan.knowledgeCapture = knowledgeCapture;
 
   let parentPlanPath: string | undefined;
   if (input.parentTaskId !== undefined) {
@@ -209,12 +217,13 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
   });
 
   bindSessionToPlan(project, input.ownerSessionKey, planPath);
-  if (project.scope === "project") {
+  if (plan.knowledgeCapture) {
     const effectiveConfig = resolvePlanEffectiveConfig(project.projectConfig, plan);
     tryRegisterKnowledgePlan({
       project,
       sessionId: input.ownerSessionKey,
       planPath,
+      knowledgeCapture: plan.knowledgeCapture,
       ...(effectiveConfig?.knowledgeWriter ? { writer: effectiveConfig.knowledgeWriter } : {}),
       ...(isIntegrationHost(input.host) && resolveHostIntegrationProfile(input.host)?.registersKnowledgePlanOnCreation === true
         ? { host: input.host }
@@ -287,7 +296,7 @@ function buildPlanCreateScopeGuidance(cwd: string, cause: ClawError): ClawError 
         "No .claw project is available in this workdir.",
         "Decide the route from the user's intent and the workspace context; do not infer it from the directory path alone.",
         "Choose project scope only when this is the intended project root and claw state should persist there. Run `claw init`, then repeat `claw plan create <title>`.",
-        "Choose session scope when this is isolated or scratch work, or when project state must not be created here. Repeat `claw plan create <title> --scope session`.",
+        "Choose session scope when this is isolated or scratch work, or when project state must not be created here. Repeat `claw plan create <title> --scope session --no-knowledge-capture`.",
         "If the available evidence does not establish the intent, ask the user before running `claw init`.",
       ].join(" "),
       routeOptions: [
@@ -299,7 +308,7 @@ function buildPlanCreateScopeGuidance(cwd: string, cause: ClawError): ClawError 
         {
           scope: "session",
           when: "The workdir is isolated or scratch work, or must not receive claw project state.",
-          nextCommands: ["claw plan create <title> --scope session"],
+          nextCommands: ["claw plan create <title> --scope session --no-knowledge-capture"],
         },
       ],
       cause: cause.message,
@@ -641,7 +650,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
       bindSessionToPlan(task.project, input.ownerSessionKey, resultPlanPath);
     }
     let knowledgeFinalizeId: string | undefined;
-    if (enteredEndTerminal && isCompletionTerminal(next.status) && endedAt && task.project.scope === "project") {
+    if (enteredEndTerminal && isCompletionTerminal(next.status) && endedAt && next.knowledgeCapture) {
       const effectiveConfig = resolvePlanEffectiveConfig(task.project.projectConfig, next);
       const knowledgeEnd = tryEndKnowledgePlan({
         project: task.project,
@@ -649,21 +658,23 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
         endedPlanPath: planPath,
         ...(completionHooks?.subplanClosureCandidate ? { resumedPlanPath: resultPlanPath } : {}),
         endedAt,
+        knowledgeCapture: next.knowledgeCapture,
         ...(effectiveConfig?.knowledgeWriter ? { writer: effectiveConfig.knowledgeWriter } : {}),
         ...(isIntegrationHost(input.host) && resolveHostIntegrationProfile(input.host)?.tracksKnowledgeFinalization === true
           ? { host: input.host }
           : {}),
       });
       knowledgeFinalizeId = knowledgeEnd.finalizeId;
-    } else if (enteredEndTerminal && next.status === "end.leave" && task.project.scope === "project") {
+    } else if (enteredEndTerminal && next.status === "end.leave" && resultPlan.knowledgeCapture) {
       // Leaving is best-effort detachment, never a prerequisite for a knowledge write.
       tryLeaveKnowledgePlan({ project: task.project, sessionId: input.ownerSessionKey, leftPlanPath: planPath });
-    } else if (!resultPlan.status.startsWith("end.") && task.project.scope === "project") {
+    } else if (!resultPlan.status.startsWith("end.") && resultPlan.knowledgeCapture) {
       const effectiveConfig = resolvePlanEffectiveConfig(task.project.projectConfig, resultPlan);
       tryRegisterKnowledgePlan({
         project: task.project,
         sessionId: input.ownerSessionKey,
         planPath: resultPlanPath,
+        knowledgeCapture: resultPlan.knowledgeCapture,
         ...(effectiveConfig?.knowledgeWriter ? { writer: effectiveConfig.knowledgeWriter } : {}),
         ...(isIntegrationHost(input.host) && resolveHostIntegrationProfile(input.host)?.registersKnowledgePlanOnCreation === true
           ? { host: input.host }
@@ -805,6 +816,7 @@ export async function createSubplan(input: SubplanWriteInput): Promise<PlanWrite
     deferParentMutation: input.deferParentMutation,
     ownerSessionKey: input.ownerSessionKey,
     scope: parentTask.project.scope,
+    knowledgeCapture: parentPlan.knowledgeCapture,
     host: input.host,
   });
 }
@@ -832,6 +844,7 @@ function normalizePlanDocument(plan: PlanDocument, fallbackStatus?: PlanStatus):
     ...plan,
     status: effectiveStatus,
     goal: { text: plan.goal?.text ?? "" },
+    knowledgeCapture: plan.knowledgeCapture !== false,
     requirements: normalizePlanRequirements(plan.requirements),
     tasks: normalizePlanTasks(rawTasks),
   };
@@ -1192,6 +1205,7 @@ async function createSeedPlan(
   if (!planningEnabled) {
     return {
       title: title ?? taskName,
+      knowledgeCapture: template.knowledgeCapture ?? true,
       templateId: template.id,
       ...(template.templatePath ? { templateFile: template.templatePath } : {}),
       ...(template.configOverride ? { configOverride: template.configOverride } : {}),
@@ -1244,6 +1258,7 @@ async function createSeedPlan(
 
   return {
     title: effectiveTitle,
+    knowledgeCapture: template.knowledgeCapture ?? true,
     templateId: template.id,
     ...(template.templatePath ? { templateFile: template.templatePath } : {}),
     ...(template.configOverride ? { configOverride: template.configOverride } : {}),

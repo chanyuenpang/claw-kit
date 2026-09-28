@@ -65,6 +65,8 @@ import {
   recordKnowledgeFinalizationResult,
   unbindSession,
   writePlan,
+  ProjectConfigRepository,
+  findProjectRoot,
   type InitProjectInput,
   type InheritedFrom,
   type LeaveState,
@@ -75,6 +77,7 @@ import {
   type PlanTask,
   type PlanViewModel,
   type ProjectConfig,
+  type ProjectConfigLayer,
   type ProjectContext,
   type WorkflowGuidance,
   type KnowledgeFinalizationJob,
@@ -112,6 +115,7 @@ const TOP_LEVEL_COMMANDS: { name: string; summary: string }[] = [
   { name: "context [--task <name>]", summary: "Resolve project context, auto-initializing or correcting .claw state." },
   { name: "session clean [--expired]", summary: "Remove current or expired session workflow state." },
   { name: "check", summary: "Check and auto-correct .claw project protocol fields." },
+  { name: "config <get|set|unset> [options]", summary: "Read or change one team or personal project configuration key." },
   { name: "plan <subcommand> [options]", summary: "Plan lifecycle: create, start, edit, remove, wait, resume, leave, sync, show, done." },
   { name: "codex driver", summary: "Return the versioned code-mode driver used by the Codex adapter." },
   { name: "template <subcommand> [options]", summary: "Plan template helpers such as validation." },
@@ -127,6 +131,7 @@ const TOP_LEVEL_COMMANDS: { name: string; summary: string }[] = [
 function isHostlessCommand(command: string, args: string[]): boolean {
   return command === "init"
     || command === "check"
+    || command === "config"
     || command === "search"
     || command === "template"
     || command === "knowledge"
@@ -188,13 +193,34 @@ const COMMAND_HELP: Record<string, HelpNode> = {
     description:
       "Check the .claw project protocol and auto-correct any missing or malformed fields in project.json. Returns issues found and the paths that were fixed.",
   },
+  config: {
+    usage: ["{script} config <get|set|unset> --layer <team|personal> --key <path> [options]"],
+    description: "Read or mutate one supported configuration key from the project discovered at the current working directory.",
+    subcommands: {
+      get: {
+        usage: ["{script} config get --layer <team|personal> --key <path>"],
+        description: "Read one key and its layer revision without modifying configuration.",
+        options: [{ flag: "--layer team|personal", detail: "(required) Configuration layer." }, { flag: "--key <path>", detail: "(required) Supported dotted configuration key path." }],
+      },
+      set: {
+        usage: ["{script} config set --layer <team|personal> --key <path> --value <json> --revision <revision>"],
+        description: "Set one key using complete JSON text and an optimistic layer revision.",
+        options: [{ flag: "--layer team|personal", detail: "(required) Configuration layer." }, { flag: "--key <path>", detail: "(required) Supported dotted configuration key path." }, { flag: "--value <json>", detail: "(required) Complete JSON text." }, { flag: "--revision <revision>", detail: "(required) Expected layer revision." }],
+      },
+      unset: {
+        usage: ["{script} config unset --layer <team|personal> --key <path> --revision <revision>"],
+        description: "Remove one key using an optimistic layer revision.",
+        options: [{ flag: "--layer team|personal", detail: "(required) Configuration layer." }, { flag: "--key <path>", detail: "(required) Supported dotted configuration key path." }, { flag: "--revision <revision>", detail: "(required) Expected layer revision." }],
+      },
+    },
+  },
   plan: {
     usage: ["{script} plan <subcommand> [options]"],
     description: "Plan lifecycle commands for a task scope.",
     subcommands: {
       create: {
         usage: [
-          "{script} plan create \"<title>\" [--goal <text>] [--scope session]",
+          "{script} plan create \"<title>\" [--goal <text>] [--scope session] [--no-knowledge-capture]",
           "{script} plan create --title <text> [--goal <text>] [--template <name> | --template-file <path>] [--scope session]",
         ],
         description:
@@ -203,7 +229,8 @@ const COMMAND_HELP: Record<string, HelpNode> = {
         options: [
           { flag: "--title <text>", detail: "Task title (required unless a positional title is given)." },
           { flag: "--goal <text>", detail: "Optional goal text." },
-          { flag: "--scope session", detail: "Use ephemeral per-session storage and disable project knowledge side effects." },
+          { flag: "--scope session", detail: "Use ephemeral per-session storage." },
+          { flag: "--no-knowledge-capture", detail: "Disable knowledge finalization for this plan (enabled by default)." },
           { flag: "--template <name>", detail: "Optional plan template name. Overrides the project default and auto-selects session scope when no .claw project exists." },
           { flag: "--template-file <path>", detail: "Exact plan template file. Mutually exclusive with --template and auto-selects session scope when no .claw project exists." },
         ],
@@ -672,6 +699,9 @@ async function main(): Promise<void> {
           fixedPaths: checkResult.fixedPaths,
         });
         return;
+      case "config":
+        runConfig(args);
+        return;
       case "plan":
         await runPlan(args, effectiveHost);
         return;
@@ -756,6 +786,63 @@ async function main(): Promise<void> {
     }
   } catch (error) {
     handleError(error);
+  }
+}
+
+function runConfig(args: string[]): void {
+  const subcommand = args.shift();
+  const layer = readRequiredFlag(args, "--layer") as ProjectConfigLayer;
+  const keyPath = readRequiredFlag(args, "--key");
+  const repository = new ProjectConfigRepository();
+
+  switch (subcommand) {
+    case "get": {
+      assertNoRemainingArgs(args, "config get");
+      const projectRoot = findRequiredConfigProjectRoot();
+      printJson(repository.readKey(projectRoot, layer, keyPath));
+      return;
+    }
+    case "set": {
+      const value = parseConfigJson(readRequiredFlag(args, "--value"));
+      const expectedRevision = readConfigRevision(args, "config set");
+      assertNoRemainingArgs(args, "config set");
+      const projectRoot = findRequiredConfigProjectRoot();
+      printJson(repository.setKey({ projectRoot, layer, path: keyPath, value, expectedRevision }));
+      return;
+    }
+    case "unset": {
+      const expectedRevision = readConfigRevision(args, "config unset");
+      assertNoRemainingArgs(args, "config unset");
+      const projectRoot = findRequiredConfigProjectRoot();
+      printJson(repository.unsetKey({ projectRoot, layer, path: keyPath, expectedRevision }));
+      return;
+    }
+    default:
+      throw new ClawError("PROJECT_CONFIG_INVALID", `Unknown config subcommand \"${subcommand ?? ""}\".`);
+  }
+}
+
+function findRequiredConfigProjectRoot(): string {
+  const projectRoot = findProjectRoot(process.cwd());
+  if (!projectRoot) {
+    throw new ClawError("PROJECT_ROOT_NOT_FOUND", "No .claw project found from the current working directory.");
+  }
+  return projectRoot;
+}
+
+function readConfigRevision(args: string[], command: string): string {
+  const revision = readOptionalFlag(args, "--revision");
+  if (!revision) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", `${command} requires --revision.`, { flag: "--revision" });
+  }
+  return revision;
+}
+
+function parseConfigJson(raw: string): unknown {
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "config set --value must be complete JSON text.", { flag: "--value" });
   }
 }
 
@@ -1447,13 +1534,22 @@ function completeDirectKnowledgeCapture(input: {
   const project = resolveProjectContext(input.projectRoot);
   const relativePaths = input.changedTruth.map((candidate) => relativeTruthPath(project.truthDir, candidate));
   const builtin = prepared.assignments.find((assignment) => assignment.kind === "builtin");
-  const governance = builtin
-    ? governKnowledgeMarkdownPaths({
-      truthDir: project.truthDir,
-      relativePaths,
-      datedSectionsToKeep: builtin.datedSectionsToKeep ?? 6,
-    })
-    : { changedFiles: 0, compactedFiles: 0, removedSections: 0, files: [] };
+  let governance;
+  try {
+    governance = builtin
+      ? governKnowledgeMarkdownPaths({
+        truthDir: project.truthDir,
+        relativePaths,
+        datedSectionsToKeep: builtin.datedSectionsToKeep ?? 6,
+      })
+      : { changedFiles: 0, compactedFiles: 0, removedSections: 0, files: [] };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.startsWith("KNOWLEDGE_CANONICAL_FORMAT_INVALID:")) {
+      throw new ClawError("KNOWLEDGE_CANONICAL_FORMAT_INVALID", message);
+    }
+    throw error;
+  }
   const truthEncoding = normalizeTruthMarkdownEncoding(project);
   const refresh = queueCompletionRefresh({
     cwd: project.projectRoot,
@@ -1530,6 +1626,7 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
         throw new ClawError("PROJECT_CONFIG_INVALID", "--template and --template-file are mutually exclusive.");
       }
       const scope = readWorkflowScope(args);
+      const knowledgeCapture = readBooleanFlag(args, "--no-knowledge-capture") ? false : undefined;
       const title = explicitTitle ?? readOptionalPositionalArg(args);
       const templateName = explicitTemplate;
       if (!title) {
@@ -1545,6 +1642,7 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
       const result = await writePlan({
         cwd: process.cwd(),
         scope,
+        knowledgeCapture,
         templateName,
         templateFile: explicitTemplateFile ? path.resolve(process.cwd(), explicitTemplateFile) : undefined,
         title,
@@ -4295,7 +4393,7 @@ function claimCompletionRefreshFlight(input: {
   dirtyHash: string;
   operations: CompletionRefreshOperation[];
   queuedAt: string;
-}): { leader: boolean; leaderStatusFile: string } {
+}, staleRetries = 0): { leader: boolean; leaderStatusFile: string } {
   const flightDir = getCompletionRefreshFlightDir(input.clawDir);
   try {
     fs.mkdirSync(flightDir);
@@ -4318,7 +4416,23 @@ function claimCompletionRefreshFlight(input: {
   const existing = readCompletionRefreshFlightState(flightDir);
   if (!existing || isCompletionRefreshFlightStale(existing)) {
     fs.rmSync(flightDir, { recursive: true, force: true });
-    return claimCompletionRefreshFlight(input);
+    if (staleRetries >= 1) {
+      // Windows can retain a stale directory briefly when its old lock file was
+      // opened by a dead worker. Reclaim the directory in place rather than
+      // recursively retrying until the JavaScript stack overflows.
+      fs.rmSync(path.join(flightDir, "state.write.lock"), { force: true });
+      const reclaimed: CompletionRefreshFlightState = {
+        schemaVersion: 1,
+        queuedAt: input.queuedAt,
+        leaderStatusFile: input.statusFile,
+        statusFiles: [input.statusFile],
+        requestedDirtyHash: input.dirtyHash,
+        operations: input.operations,
+      };
+      writeCompletionRefreshFlightState(flightDir, reclaimed);
+      return { leader: true, leaderStatusFile: input.statusFile };
+    }
+    return claimCompletionRefreshFlight(input, staleRetries + 1);
   }
   const updated = updateCompletionRefreshFlightState(flightDir, (state) => ({
     ...state,
@@ -4377,7 +4491,25 @@ function updateCompletionRefreshFlightState(
     }
   }
   if (lockFd === undefined) {
-    throw new ClawError("PROJECT_CONFIG_INVALID", "Timed out updating completion refresh single-flight state.");
+    // A crashed worker can leave this zero-byte lock indefinitely on Windows.
+    // Reclaim only a lock that has remained unchanged beyond the full bounded
+    // wait; an active writer keeps its fresh mtime and remains protected.
+    try {
+      const ageMs = Date.now() - fs.statSync(lockPath).mtimeMs;
+      if (ageMs >= 500) {
+        fs.rmSync(lockPath, { force: true });
+        lockFd = fs.openSync(lockPath, "wx");
+      }
+    } catch (error) {
+      if (!isFileAlreadyExistsError(error)) throw error;
+    }
+  }
+  if (lockFd === undefined) {
+    throw new ClawError(
+      "PROJECT_CONFIG_INVALID",
+      "Completion refresh single-flight state is busy; retry knowledge completion without rewriting Truth or ADR.",
+      { lockPath },
+    );
   }
   try {
     const current = readCompletionRefreshFlightState(flightDir);

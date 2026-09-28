@@ -47,6 +47,7 @@ export type PlanTemplateDocument = {
   id: string;
   version: string;
   scope?: "session";
+  knowledgeCapture?: boolean;
   configOverride?: TemplateConfigOverride;
   title?: string;
   status: PlanStatus;

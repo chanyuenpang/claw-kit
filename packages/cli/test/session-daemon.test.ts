@@ -207,6 +207,7 @@ test("persistent session starts a planning plan through the typed protocol", asy
         title: "Plan start",
         goalText: "Start through JSONL",
         scope: "session",
+        knowledgeCapture: false,
       },
     });
     const started = await opened.commandEnvelope({
@@ -256,6 +257,7 @@ test("DSH daemon emits host actions for session-scoped workflows", async () => {
         title: "DSH session actions",
         goalText: "Project native Todo and Goal state",
         scope: "session",
+        knowledgeCapture: false,
       },
     });
     assert.deepEqual(created.hostActions?.map((action) => action.tool), ["update_plan"]);
@@ -310,6 +312,7 @@ test("session-scoped daemon completion omits knowledge dispatch and finalization
         title: "Session scope closeout",
         goalText: "Complete without project knowledge deposition",
         scope: "session",
+        knowledgeCapture: false,
       },
     });
     const planPath = String((created.output as { planPath?: string }).planPath);

@@ -89,6 +89,11 @@ The `0.2.6.0` maintenance refresh found three gaps that candidate and marketplac
 
 The DSH web profile was refreshed to global `@veewo/claw@0.2.38` and `@veewo/dsh-claw-kit@0.2.38-rc.0`. After a Host restart, `claw_run(operation: context)` recovered the original update plan in a real session and the session exposed the seven required bundled skills plus `feature-architecture`. This installation round confirms the same published-source, profile-row, restart, and loaded-session activation boundary; it does not turn the separate `0.2.38.0` release record into installation evidence.
 
+<!-- dated: 2026-09-16 -->
+### Re-verified DSH web-profile activation for 0.2.39-rc.2
+
+The DSH web profile was updated to `@veewo/dsh-claw-kit@0.2.39-rc.2` from the npm registry. After restarting the DSH Host, the real session restored its active subplan through `claw_run`, retained the `claw-kit` profile configuration row, and exposed all seven bundled skills. This is version-bound activation evidence, not a claim that the then-published package remains the current adapter version.
+
 <!-- dated: 2026-09-02 -->
 ### Verified the first DSH-host update round
 

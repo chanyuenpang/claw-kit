@@ -33,6 +33,7 @@ export type SubprocessLike = {
 export type SubprocessHandleLike = {
     readonly stdin?: {
         write(data: string): boolean;
+        on?(event: "error", listener: (error: Error) => void): unknown;
     };
     readonly stdout?: Readable;
     readonly stderr?: Readable;
@@ -49,6 +50,7 @@ export type SubprocessHandleLike = {
         };
     };
     readonly done: Promise<unknown>;
+    waitForExit?(): Promise<unknown>;
     terminate(reason?: string): Promise<unknown>;
 };
 /** One `claw/execute` protocol response (daemon, schemaVersion 1). */
@@ -93,6 +95,9 @@ export declare class ClawSession {
     private readonly sessionId;
     private readonly clawBinary;
     private readonly openTimeoutMs;
+    private readonly idleTimeoutMs;
+    private readonly onIdle?;
+    private readonly onExit?;
     private handle;
     private buffer;
     private stderrBuffer;
@@ -100,15 +105,35 @@ export declare class ClawSession {
     private openPromise;
     private chain;
     private windowsEntry;
-    constructor(subprocess: SubprocessLike, workdir: string, sessionId: string, clawBinary?: string, openTimeoutMs?: number);
+    private idleTimer;
+    private queued;
+    private requestsStarted;
+    private closing;
+    private closed;
+    private closeReason;
+    private lastActivityAt;
+    constructor(subprocess: SubprocessLike, workdir: string, sessionId: string, clawBinary?: string, openTimeoutMs?: number, idleTimeoutMs?: number, onIdle?: ((session: ClawSession) => void) | undefined, onExit?: ((session: ClawSession) => void) | undefined);
+    status(): {
+        workdir: string;
+        sessionId: string;
+        state: "active" | "idle" | "reclaiming" | "dead";
+        queued: number;
+        requestsStarted: number;
+        lastActivityAt: number;
+        closeReason: string | null;
+    };
+    private notifyDead;
+    private clearIdle;
+    private scheduleIdle;
     private invocation;
-    open(): Promise<void>;
+    open(allowClosing?: boolean): Promise<void>;
     /** Consume raw stream chunks, splitting protocol JSON on newlines. */
     private ingest;
     private consume;
     /** Execute one operation through the daemon, strictly serialized. */
     request(operation: string, input: unknown, timeoutMs?: number): Promise<ClawExecuteResult>;
     private writeStdin;
+    private dropHandle;
     private failPending;
-    close(): Promise<void>;
+    close(reason?: string): Promise<void>;
 }

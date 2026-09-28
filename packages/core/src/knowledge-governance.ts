@@ -53,6 +53,7 @@ export function governChangedKnowledgeMarkdown(input: {
       continue;
     }
     changedFiles += 1;
+    validateCanonicalKnowledgeStructure(raw.toString("utf-8"), filePath);
     const compacted = compactKnowledgeDocument(raw.toString("utf-8"), {
       datedSectionsToKeep: input.datedSectionsToKeep,
       sourcePath: filePath,
@@ -97,7 +98,9 @@ export function governKnowledgeMarkdownPaths(input: {
     }
     if (!fs.existsSync(filePath)) continue;
     changedFiles += 1;
-    const compacted = compactKnowledgeDocument(fs.readFileSync(filePath, "utf-8"), {
+    const raw = fs.readFileSync(filePath, "utf-8");
+    validateCanonicalKnowledgeStructure(raw, filePath);
+    const compacted = compactKnowledgeDocument(raw, {
       datedSectionsToKeep: input.datedSectionsToKeep,
       sourcePath: filePath,
     });
@@ -116,6 +119,31 @@ export function governKnowledgeMarkdownPaths(input: {
     removedSections: files.reduce((sum, file) => sum + file.removedSections.length, 0),
     files,
   };
+}
+
+function validateCanonicalKnowledgeStructure(content: string, sourcePath: string): void {
+  const lines = content.replace(/\r\n/g, "\n");
+  const isAdr = /(?:^|[\\/])adr(?:[\\/]|$)/iu.test(sourcePath);
+  const fail = (requirement: string) => {
+    throw new Error(`KNOWLEDGE_CANONICAL_FORMAT_INVALID: ${sourcePath} must ${requirement}. Follow knowledge-format.md before retrying completion.`);
+  };
+  if (!/^\uFEFF?#\s+.+/mu.test(lines)) fail("start with one level-one title");
+  if (isAdr) {
+    if (!/^\uFEFF?# ADR:\s+.+/mu.test(lines)) fail("use a '# ADR: …' title");
+    for (const heading of ["Context", "Decision", "Alternatives", "Consequences"]) {
+      if (!new RegExp(`^##\\s+${heading}\\s*$`, "mu").test(lines)) fail(`include a '## ${heading}' section`);
+    }
+    return;
+  }
+  if (/<!--\s*state:\s*historical\s*-->\s*\n##\s+Current behavior/iu.test(lines)) {
+    fail("not mark '## Current behavior' as historical; use '<!-- state: current -->' for that section and document-state only when needed");
+  }
+  if (!/<!--\s*state:\s*current\s*-->\s*\n##\s+Current behavior/iu.test(lines)) {
+    fail("include '<!-- state: current -->' immediately before '## Current behavior'");
+  }
+  if (/##\s+Evolution history/iu.test(lines) && !/<!--\s*state:\s*history\s*-->\s*\n##\s+Evolution history/iu.test(lines)) {
+    fail("place '<!-- state: history -->' immediately before '## Evolution history'");
+  }
 }
 
 function listMarkdownFiles(root: string): string[] {

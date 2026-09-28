@@ -1426,7 +1426,7 @@ test("knowledge wait remains a compatibility path while the internal delegate te
   assert.equal(fs.existsSync(String(claimed.templatePath)), false);
 });
 
-test("Cindy turn capture keeps session workflows outside knowledge finalization", () => {
+test("Cindy turn capture honors session knowledge opt-out", () => {
   const root = createFixture("cindy-session-capture");
   const runtimeDir = createFixture("cindy-session-capture-runtime");
   const sessionId = `cindy-capture-${path.basename(runtimeDir)}`;
@@ -1434,7 +1434,7 @@ test("Cindy turn capture keeps session workflows outside knowledge finalization"
   runClaw(["init", "--name", "Cindy Session Capture", "--planning", "false"], root);
   const created = runClaw([
     "plan", "create",
-    "--scope", "session",
+    "--scope", "session", "--no-knowledge-capture",
     "--title", "session-capture-plan",
     "--goal", "Capture the terminal turn",
     "--host", "cindy",

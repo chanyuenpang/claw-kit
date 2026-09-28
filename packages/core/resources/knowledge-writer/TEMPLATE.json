@@ -2,6 +2,7 @@
   "id": "knowledge-writer",
   "version": "1.0.0",
   "scope": "session",
+  "knowledgeCapture": false,
   "title": "knowledge-writer",
   "status": "process.active",
   "goal": {

@@ -148,6 +148,11 @@ test("task.add / task.edit / subplan.create / search map canonical fields", () =
   assert.deepEqual(daemonInput("task.edit", { id: 2, title: "N" }), { taskId: 2, taskTitle: "N" });
   assert.deepEqual(daemonInput("subplan.create", { parent: "P", task_id: 5 }), { parentTaskName: "P", parentTaskId: 5 });
   assert.deepEqual(daemonInput("search", { query: "q" }), { query: "q" });
+  assert.deepEqual(daemonInput("search.index.refresh", {}), {});
+  assert.throws(
+    () => daemonInput("search.index.refresh", { dir: "G:/Projects/other" }),
+    (error) => error.message === "Unsupported search.index.refresh argument(s): dir",
+  );
 });
 
 test("known mapped operations reject unsupported arguments instead of silently dropping them", () => {

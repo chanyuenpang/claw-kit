@@ -24,11 +24,18 @@ test("project-scoped plan stays reachable when the session owns a session workfl
   try {
     initProject({ cwd: root, projectName: "Scope Ref" });
 
+    // Session storage has no project-owned knowledge capture target.
+    await assert.rejects(
+      () => writePlan({ cwd: root, scope: "session", ownerSessionKey: sessionKey, title: "implicit-capture" }),
+      (error: unknown) => error instanceof Error && "code" in error && error.code === "KNOWLEDGE_CAPTURE_TARGET_REQUIRED",
+    );
+
     // 1. A session-scoped plan creates the session workflow manifest, which
     //    the ambient undefined-scope resolution prefers from then on.
     const sessionPlan = await writePlan({
       cwd: root,
       scope: "session",
+      knowledgeCapture: false,
       ownerSessionKey: sessionKey,
       title: "session-plan",
     });

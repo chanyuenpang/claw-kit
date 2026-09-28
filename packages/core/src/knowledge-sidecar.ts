@@ -264,10 +264,11 @@ export function tryRegisterKnowledgePlan(input: {
   project: ProjectContext;
   sessionId?: string;
   planPath: string;
+  knowledgeCapture?: boolean;
   writer?: KnowledgeWriterConfig;
   host?: KnowledgeFinalizationHost;
 }): KnowledgeSidecarResult {
-  if (input.project.scope === "session") {
+  if (input.knowledgeCapture === false) {
     return { ok: true };
   }
   const sessionId = input.sessionId?.trim();
@@ -309,10 +310,11 @@ export function tryEndKnowledgePlan(input: {
   endedPlanPath: string;
   resumedPlanPath?: string;
   endedAt: string;
+  knowledgeCapture?: boolean;
   writer?: KnowledgeWriterConfig;
   host?: KnowledgeFinalizationHost;
 }): KnowledgePlanEndResult {
-  if (input.project.scope === "session") {
+  if (input.knowledgeCapture === false) {
     return { ok: true };
   }
   const sessionId = input.sessionId?.trim();
@@ -430,8 +432,9 @@ export function tryLeaveKnowledgePlan(input: {
   project: ProjectContext;
   sessionId?: string;
   leftPlanPath?: string;
+  knowledgeCapture?: boolean;
 }): KnowledgeSidecarResult {
-  if (input.project.scope === "session") {
+  if (input.knowledgeCapture === false) {
     return { ok: true };
   }
   const sessionId = input.sessionId?.trim();

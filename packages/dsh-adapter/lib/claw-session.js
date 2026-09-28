@@ -44,6 +44,8 @@ export function resolveDirectClawInvocation(options) {
         if (exists(script)) {
             return { executable: nodeExecutable, script };
         }
+        // A non-npm shim earlier on PATH must win over a later npm install.
+        return null;
     }
     return null;
 }
@@ -58,6 +60,9 @@ export class ClawSession {
     sessionId;
     clawBinary;
     openTimeoutMs;
+    idleTimeoutMs;
+    onIdle;
+    onExit;
     handle = null;
     buffer = "";
     stderrBuffer = "";
@@ -65,12 +70,47 @@ export class ClawSession {
     openPromise = null;
     chain = Promise.resolve();
     windowsEntry;
-    constructor(subprocess, workdir, sessionId, clawBinary = "claw", openTimeoutMs = 15000) {
+    idleTimer = null;
+    queued = 0;
+    requestsStarted = 0;
+    closing = null;
+    closed = false;
+    closeReason = null;
+    lastActivityAt = Date.now();
+    constructor(subprocess, workdir, sessionId, clawBinary = "claw", openTimeoutMs = 15000, idleTimeoutMs = 300000, onIdle, onExit) {
         this.subprocess = subprocess;
         this.workdir = workdir;
         this.sessionId = sessionId;
         this.clawBinary = clawBinary;
         this.openTimeoutMs = openTimeoutMs;
+        this.idleTimeoutMs = idleTimeoutMs;
+        this.onIdle = onIdle;
+        this.onExit = onExit;
+    }
+    status() {
+        return { workdir: this.workdir, sessionId: this.sessionId,
+            state: this.closing ? "reclaiming" : this.queued ? "active" : this.handle ? "idle" : "dead",
+            queued: this.queued, requestsStarted: this.requestsStarted, lastActivityAt: this.lastActivityAt, closeReason: this.closeReason };
+    }
+    notifyDead() {
+        if (!this.closed && !this.queued && !this.handle)
+            this.onExit?.(this);
+    }
+    clearIdle() {
+        if (this.idleTimer)
+            clearTimeout(this.idleTimer);
+        this.idleTimer = null;
+    }
+    scheduleIdle() {
+        this.clearIdle();
+        if (this.closed || this.queued || !this.handle || !this.onIdle)
+            return;
+        this.idleTimer = setTimeout(() => {
+            this.idleTimer = null;
+            if (!this.closed && !this.queued && this.handle)
+                this.onIdle?.(this);
+        }, this.idleTimeoutMs);
+        this.idleTimer.unref?.();
     }
     invocation(argv) {
         if (process.platform === "win32") {
@@ -92,7 +132,9 @@ export class ClawSession {
         }
         return { executable: this.clawBinary, args: argv };
     }
-    open() {
+    open(allowClosing = false) {
+        if (this.closed && !allowClosing)
+            return Promise.reject(protocolError("SESSION_CONNECTION_LOST", "claw session transport is closed."));
         if (this.openPromise)
             return this.openPromise;
         this.openPromise = new Promise((resolve, reject) => {
@@ -111,6 +153,7 @@ export class ClawSession {
                 graceMs: 8000,
             });
             this.handle = handle;
+            let opened = false;
             const reset = () => {
                 // A failed open must not poison the cached promise: the next request
                 // gets a fresh spawn instead of a dead handle.
@@ -130,9 +173,20 @@ export class ClawSession {
             // consumers were observed to miss lines on it; data events are reliable.
             this.buffer = "";
             this.stderrBuffer = "";
-            handle.stdout.on("data", (chunk) => this.ingest(String(chunk)));
+            handle.stdin?.on?.("error", (error) => {
+                if (this.handle !== handle || this.closed)
+                    return;
+                this.dropHandle("stdin error");
+                this.failPending(protocolError("SESSION_CONNECTION_LOST", "claw session stdin failed: " + error.message));
+                this.notifyDead();
+            });
+            handle.stdout.on("data", (chunk) => {
+                if (this.handle === handle)
+                    this.ingest(String(chunk));
+            });
             handle.stderr?.on("data", (chunk) => {
-                this.stderrBuffer = (this.stderrBuffer + String(chunk)).slice(-131072);
+                if (this.handle === handle)
+                    this.stderrBuffer = (this.stderrBuffer + String(chunk)).slice(-131072);
             });
             const timer = setTimeout(() => {
                 // Reject the pending open BEFORE reset() clears this.pending. A
@@ -153,6 +207,8 @@ export class ClawSession {
                         reject(protocolError("CLAW_SESSION_OPEN_FAILED", `claw session open failed: ${value.command ?? "unknown"}`));
                         return;
                     }
+                    opened = true;
+                    this.scheduleIdle();
                     resolve();
                 },
                 reject: (error) => {
@@ -175,16 +231,22 @@ export class ClawSession {
                 const suffix = outcome && typeof outcome === "object" && "code" in outcome
                     ? " (exit code " + String(outcome.code) + ")"
                     : "";
-                this.failPending(sessionOpenFailure(this.stderrBuffer, "claw session exited before the handshake" + suffix + "."));
+                this.failPending(!opened
+                    ? sessionOpenFailure(this.stderrBuffer, "claw session exited before the handshake" + suffix + ".")
+                    : protocolError("SESSION_CONNECTION_LOST", "claw session process exited" + suffix + "."));
+                this.clearIdle();
                 reset();
+                this.notifyDead();
             }, (error) => {
                 if (this.handle !== handle)
                     return;
                 // Reject before reset clears the pending slot.
-                this.failPending(this.stderrBuffer.trim()
+                this.failPending(!opened && this.stderrBuffer.trim()
                     ? sessionOpenFailure(this.stderrBuffer, "claw session exited before the handshake.")
-                    : error instanceof Error ? error : new Error(String(error)));
+                    : protocolError("SESSION_CONNECTION_LOST", "claw session process exited: " + String(error)));
+                this.clearIdle();
                 reset();
+                this.notifyDead();
             });
         });
         return this.openPromise;
@@ -218,15 +280,20 @@ export class ClawSession {
     }
     /** Execute one operation through the daemon, strictly serialized. */
     request(operation, input, timeoutMs = 30000) {
+        if (this.closed)
+            return Promise.reject(protocolError("SESSION_CONNECTION_LOST", "claw session transport is closed."));
+        this.queued++;
+        this.requestsStarted++;
+        this.clearIdle();
         const execute = async () => {
-            await this.open();
+            await this.open(true);
             if (this.handle === null) {
                 throw protocolError("SESSION_CONNECTION_LOST", "claw session connection is unavailable.");
             }
             return await new Promise((resolve, reject) => {
                 const timer = setTimeout(() => {
                     this.pending = null;
-                    void this.handle?.terminate("request timeout");
+                    this.dropHandle("request timeout");
                     reject(protocolError("CLAW_SESSION_TIMEOUT", `claw operation timed out after ${timeoutMs}ms.`));
                 }, timeoutMs);
                 this.pending = {
@@ -241,11 +308,20 @@ export class ClawSession {
                     timer,
                 };
                 const line = `${JSON.stringify({ operation, input })}\n`;
-                this.writeStdin(line);
+                void this.writeStdin(line).catch((error) => {
+                    this.dropHandle("stdin write failure");
+                    this.failPending(protocolError("SESSION_CONNECTION_LOST", "claw session stdin write failed: " + String(error)));
+                });
             });
         };
         const result = this.chain.then(execute, execute);
         this.chain = result.catch(() => undefined);
+        void result.finally(() => {
+            this.queued--;
+            this.lastActivityAt = Date.now();
+            this.scheduleIdle();
+            this.notifyDead();
+        }).catch(() => undefined);
         return result;
     }
     writeStdin(line) {
@@ -260,13 +336,55 @@ export class ClawSession {
             resolve();
         });
     }
+    dropHandle(reason) {
+        const handle = this.handle;
+        this.handle = null;
+        this.openPromise = null;
+        this.clearIdle();
+        if (handle)
+            void handle.terminate(reason).catch(() => undefined);
+    }
     failPending(error) {
         const pending = this.pending;
         this.pending = null;
         pending?.reject(error);
     }
-    close() {
-        return this.writeStdin("session close\n").catch(() => undefined);
+    close(reason = "explicit") {
+        if (this.closing)
+            return this.closing;
+        this.closeReason = reason;
+        this.closed = true;
+        this.clearIdle();
+        this.closing = this.chain.then(async () => {
+            const handle = this.handle;
+            if (!handle)
+                return;
+            try {
+                await this.writeStdin("session close\n");
+            }
+            catch { /* broken pipe: terminate below */ }
+            // A soft close preserves the daemon registry and canonical plan. Only
+            // this session transport is force-stopped if graceful exit stalls.
+            let timer;
+            let settled = false;
+            try {
+                await Promise.race([
+                    Promise.resolve(handle.done).catch(() => undefined).then(() => { settled = true; }),
+                    new Promise((resolve) => { timer = setTimeout(resolve, 2000); timer.unref?.(); }),
+                ]);
+                if (!settled)
+                    await handle.terminate("close timeout");
+                await handle.waitForExit?.();
+            }
+            finally {
+                if (timer)
+                    clearTimeout(timer);
+                if (this.handle === handle)
+                    this.handle = null;
+                this.openPromise = null;
+            }
+        }).then(() => undefined);
+        return this.closing;
     }
 }
 //# sourceMappingURL=claw-session.js.map

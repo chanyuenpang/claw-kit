@@ -205,6 +205,48 @@ test("project configuration repository keeps layers isolated and fences stale wr
   assert.equal(fs.readFileSync(path.join(root, ".claw", "project-override.json"), "utf-8"), beforeStaleWrite);
 });
 
+test("project configuration key APIs preserve personal null and absence", () => {
+  const root = createFixture("project-config-keys");
+  initProject({ cwd: root, projectName: "Project Config Keys", force: true });
+  const repository = new ProjectConfigRepository();
+  const initial = repository.readKey(root, "personal", "externalPlanningSkill");
+  assert.equal(initial.present, false);
+
+  const set = repository.setKey({
+    projectRoot: root, layer: "personal", path: "externalPlanningSkill", value: null, expectedRevision: initial.revision,
+  });
+  const explicitNull = repository.readKey(root, "personal", "externalPlanningSkill");
+  assert.equal(explicitNull.present, true);
+  assert.equal(explicitNull.value, null);
+  assert.equal(set.effective.externalPlanningSkill, null);
+
+  repository.unsetKey({
+    projectRoot: root, layer: "personal", path: "externalPlanningSkill", expectedRevision: explicitNull.revision,
+  });
+  assert.equal(repository.readKey(root, "personal", "externalPlanningSkill").present, false);
+});
+
+test("project configuration key APIs reject stale, invalid, and ill-typed mutations without writes", () => {
+  const root = createFixture("project-config-key-errors");
+  initProject({ cwd: root, projectName: "Project Config Key Errors", force: true });
+  const repository = new ProjectConfigRepository();
+  const initial = repository.read(root);
+  const first = repository.setKey({
+    projectRoot: root, layer: "personal", path: "goalMode", value: false, expectedRevision: initial.revisions.personal,
+  });
+  const overridePath = path.join(root, ".claw", "project-override.json");
+  const before = fs.readFileSync(overridePath, "utf-8");
+
+  for (const input of [
+    { projectRoot: root, layer: "personal" as const, path: "goalMode", value: true, expectedRevision: initial.revisions.personal },
+    { projectRoot: root, layer: "personal" as const, path: "memory", value: {}, expectedRevision: first.revisions.personal },
+    { projectRoot: root, layer: "personal" as const, path: "goalMode", value: "invalid", expectedRevision: first.revisions.personal },
+  ]) {
+    assert.throws(() => repository.setKey(input));
+    assert.equal(fs.readFileSync(overridePath, "utf-8"), before);
+  }
+});
+
 test("knowledge sidecar derives adjacent report names and keeps one report owner per Stop", () => {
   const root = createEmptyFixture("knowledge-sidecar");
   initProject({ cwd: root, projectName: "Knowledge Sidecar", externalDocPaths: ["docs"] });

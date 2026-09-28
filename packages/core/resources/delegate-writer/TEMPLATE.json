@@ -2,6 +2,7 @@
   "id": "internal-knowledge-delegate",
   "version": "1.0.0",
   "scope": "session",
+  "knowledgeCapture": false,
   "title": "internal knowledge delegate",
   "status": "process.active",
   "goal": {

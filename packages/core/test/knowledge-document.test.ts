@@ -116,10 +116,10 @@ test("governChangedKnowledgeMarkdown trims only files changed after the snapshot
   const changedPath = path.join(root, "adr", "changed.md");
   fs.mkdirSync(path.dirname(changedPath), { recursive: true });
   fs.writeFileSync(unchangedPath, buildDocument(4), "utf-8");
-  fs.writeFileSync(changedPath, buildDocument(2), "utf-8");
+  fs.writeFileSync(changedPath, buildAdrDocument(2), "utf-8");
   const before = snapshotKnowledgeMarkdown(root);
 
-  fs.writeFileSync(changedPath, buildDocument(4), "utf-8");
+  fs.writeFileSync(changedPath, buildAdrDocument(4), "utf-8");
   const result = governChangedKnowledgeMarkdown({
     truthDir: root,
     before,
@@ -133,12 +133,33 @@ test("governChangedKnowledgeMarkdown trims only files changed after the snapshot
   assert.equal(analyzeKnowledgeDocument(fs.readFileSync(unchangedPath, "utf-8")).evolutionSections.length, 4);
 });
 
+test("governChangedKnowledgeMarkdown rejects malformed changed ADRs without compacting them", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "claw-knowledge-invalid-adr-"));
+  const adrPath = path.join(root, "adr", "invalid.md");
+  fs.mkdirSync(path.dirname(adrPath), { recursive: true });
+  const malformed = buildDocument(4);
+  fs.writeFileSync(adrPath, malformed, "utf-8");
+
+  assert.throws(
+    () => governChangedKnowledgeMarkdown({ truthDir: root, before: {}, datedSectionsToKeep: 2 }),
+    /KNOWLEDGE_CANONICAL_FORMAT_INVALID:.*ADR/u,
+  );
+  assert.equal(fs.readFileSync(adrPath, "utf-8"), malformed);
+});
+
 test("changedKnowledgeMarkdownPaths reports additions, edits, and deletions", () => {
   assert.deepEqual(changedKnowledgeMarkdownPaths(
     { "deleted.md": "old", "edited.md": "old", "same.md": "same" },
     { "added.md": "new", "edited.md": "new", "same.md": "same" },
   ), ["added.md", "deleted.md", "edited.md"]);
 });
+
+function buildAdrDocument(historyCount: number): string {
+  return buildDocument(historyCount)
+    .replace("# Topic", "# ADR: Topic\n\n## Context\n\nFixture context.\n\n## Decision\n\nFixture decision.\n\n## Alternatives\n\nFixture alternative.\n\n## Consequences\n\nFixture consequence.")
+    .replace("<!-- state: current -->\n## Current\n\nCurrent fact.\n", "")
+    .replace("## Evolution", "## Decision evolution");
+}
 
 function buildDocument(historyCount: number): string {
   const lines = [

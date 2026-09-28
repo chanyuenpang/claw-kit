@@ -12,7 +12,7 @@ test("host integration profiles preserve the current adapter capability matrix",
   assert.deepEqual(resolveHostIntegrationProfile("codex"), {
     version: 1,
     consumesPlanGoalEffects: true,
-    consumesPlanProgress: false,
+    consumesPlanProgress: true,
     supportsNativeSubagentFinalization: true,
     registersKnowledgePlanOnCreation: true,
     tracksKnowledgeFinalization: true,

@@ -213,6 +213,14 @@ test("resolveDirectClawInvocation finds the adjacent npm layout and returns null
     script: path.join("C:\\nvm4w\\nodejs", "node_modules", "@veewo", "claw", "dist", "bin.js"),
   });
 
+  const shadowed = resolveDirectClawInvocation({
+    clawBinary: "claw",
+    pathValue: "C:/custom;C:/nvm4w/nodejs",
+    nodeExecutable: "node.exe",
+    exists: (candidate) => candidate.endsWith("claw.cmd") || candidate.toLowerCase().includes("nvm4w"),
+  });
+  assert.equal(shadowed, null, "do not bypass the first PATH shim to reach another installation");
+
   const missing = resolveDirectClawInvocation({
     clawBinary: "claw",
     pathValue: "C:\\empty",
@@ -228,6 +236,136 @@ test("resolveDirectClawInvocation finds the adjacent npm layout and returns null
     exists: () => true,
   });
   assert.equal(noPath, null);
+});
+
+test("idle lease evicts only quiescent transports; a later session reopens retained identity", async () => {
+  const mock = makeMockSubprocess();
+  let evictions = 0;
+  const create = () => new ClawSession(mock.subprocess, "C:/work", "sess-1", "claw", 1000, 35, (session) => {
+    evictions++;
+    void session.close();
+  });
+  const session = create();
+  const first = session.request("plan.show", {});
+  await delay(5);
+  pushLine(mock.handles[0], { ok: true, command: "session.open" });
+  await delay(5);
+  assert.equal(session.status().state, "active");
+  await delay(55);
+  assert.equal(evictions, 0, "in-flight operation must protect the lease");
+  pushLine(mock.handles[0], { ok: true, command: "plan.show" });
+  await first;
+  await delay(55);
+  assert.equal(evictions, 1);
+  assert.equal(session.status().state, "reclaiming");
+  assert.ok(mock.handles[0].stdin.writes.includes("session close\n"));
+  const restored = create();
+  const opened = restored.open();
+  pushLine(mock.handles[1], { ok: true, command: "session.open" });
+  await opened;
+  assert.equal(mock.spawnCalls.length, 2);
+  await restored.close();
+});
+
+test("close is idempotent, drains queued requests, and joins graceful exit", async () => {
+  const mock = makeMockSubprocess();
+  let finish;
+  let terminations = 0;
+  mock.subprocess.spawn = (spec) => {
+    const handle = makeMockSubprocess().subprocess.spawn(spec);
+    handle.done = new Promise((resolve) => { finish = resolve; });
+    handle.terminate = async () => { terminations++; finish({ code: 1 }); };
+    mock.handles.push(handle);
+    return handle;
+  };
+  const session = new ClawSession(mock.subprocess, "C:/work", "sess-1");
+  const opened = session.open();
+  pushLine(mock.handles[0], { ok: true, command: "session.open" });
+  await opened;
+  const request = session.request("plan.show", {});
+  const close1 = session.close();
+  const close2 = session.close();
+  assert.equal(close1, close2);
+  await delay(5);
+  assert.equal(mock.handles[0].stdin.writes.length, 1);
+  pushLine(mock.handles[0], { ok: true, command: "plan.show" });
+  await request;
+  await delay(5);
+  assert.equal(mock.handles[0].stdin.writes.at(-1), "session close\n");
+  finish({ code: 0 });
+  await close1;
+  assert.equal(terminations, 0);
+  await assert.rejects(session.request("plan.show", {}), { code: "SESSION_CONNECTION_LOST" });
+});
+
+test("unexpected exit resets the connection and rejects in-flight work", async () => {
+  const mock = makeMockSubprocess();
+  let finish;
+  mock.subprocess.spawn = (spec) => {
+    const handle = makeMockSubprocess().subprocess.spawn(spec);
+    handle.done = new Promise((resolve) => { finish = resolve; });
+    mock.handles.push(handle);
+    return handle;
+  };
+  let deadNotifications = 0;
+  const session = new ClawSession(mock.subprocess, "C:/work", "sess-1", "claw", 15000, 300000, undefined, () => { deadNotifications++; });
+  const opened = session.open();
+  pushLine(mock.handles[0], { ok: true, command: "session.open" });
+  await opened;
+  const request = session.request("plan.show", {});
+  await delay(5);
+  finish({ code: 1 });
+  await assert.rejects(request, { code: "SESSION_CONNECTION_LOST" });
+  await delay(0);
+  assert.equal(deadNotifications, 1);
+  const reopened = session.open();
+  pushLine(mock.handles[1], { ok: true, command: "session.open" });
+  await reopened;
+  await session.close();
+});
+
+test("request timeout drops the stale handle before reconnect", async () => {
+  const mock = makeMockSubprocess();
+  let terminations = 0;
+  const spawn = mock.subprocess.spawn;
+  mock.subprocess.spawn = (spec) => {
+    const handle = spawn(spec);
+    handle.terminate = async () => { terminations++; };
+    return handle;
+  };
+  const session = new ClawSession(mock.subprocess, "C:/work", "sess-1");
+  const opened = session.open();
+  pushLine(mock.handles[0], { ok: true, command: "session.open" });
+  await opened;
+  const failed = session.request("plan.show", {}, 25);
+  await assert.rejects(failed, { code: "CLAW_SESSION_TIMEOUT" });
+  assert.equal(terminations, 1);
+  const next = session.request("plan.show", {}, 1000);
+  let settled = false;
+  void next.then(() => { settled = true; });
+  await delay(5);
+  pushLine(mock.handles[1], { ok: true, command: "session.open" });
+  await delay(5);
+  pushLine(mock.handles[0], { ok: true, command: "plan.show", output: { stale: true } });
+  await delay(5);
+  assert.equal(settled, false, "late old-process frame must not resolve the new request");
+  pushLine(mock.handles[1], { ok: true, command: "plan.show" });
+  await next;
+  assert.equal(mock.spawnCalls.length, 2);
+});
+
+test("broken stdin retires the connection instead of caching a dead pipe", async () => {
+  const mock = makeMockSubprocess();
+  const session = new ClawSession(mock.subprocess, "C:/work", "sess-1");
+  const opened = session.open();
+  pushLine(mock.handles[0], { ok: true, command: "session.open" });
+  await opened;
+  mock.handles[0].stdin.write = () => { throw new Error("pipe broken"); };
+  await assert.rejects(session.request("plan.show", {}), { code: "SESSION_CONNECTION_LOST" });
+  const reopened = session.open();
+  pushLine(mock.handles[1], { ok: true, command: "session.open" });
+  await reopened;
+  assert.equal(mock.spawnCalls.length, 2);
 });
 
 test("non-protocol diagnostics on stdout are ignored", async () => {

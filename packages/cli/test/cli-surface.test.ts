@@ -127,6 +127,7 @@ test("every public help topic matches its --help form", () => {
   const root = createFixture("help-public-topic-consistency");
   const topics = [
     ["init"], ["context"], ["session"], ["check"],
+    ["config"], ["config", "get"], ["config", "set"], ["config", "unset"],
     ["plan"], ["plan", "create"], ["plan", "edit"], ["plan", "remove"],
     ["plan", "wait"], ["plan", "resume"], ["plan", "sync"], ["plan", "start"],
     ["plan", "show"], ["plan", "done"],

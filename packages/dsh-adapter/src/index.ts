@@ -13,6 +13,7 @@ import {
 } from "./host-actions.js";
 import { daemonInput, isUncertainConnectionFailure, renderGuidanceSnapshot } from "./protocol.js";
 import { registerBundledSkills } from "./skills.js";
+import { handleProjectConfigRpc, type WorkspaceRegistry } from "./project-config-rpc.js";
 
 export const name = "claw-kit";
 
@@ -177,7 +178,7 @@ async function resolveWorkdir(
 // apply body reads is mounted. Without `inject`, a dependency-free row
 // activates immediately — before subprocess/tools/systemPrompt exist — and the
 // guard below silently returns, registering nothing.
-export const inject = ["subprocess", "tools", "systemPrompt", "skills", "goals"];
+export const inject = ["subprocess", "tools", "systemPrompt", "skills", "goals", "connection"];
 
 export type DshTodo = { content: string; status: "pending" | "in_progress" | "completed" };
 
@@ -262,7 +263,21 @@ export function apply(ctx: unknown): void {
     }
   }
 
+  // Match the CLI registry identity: an agent visiting a different workspace
+  // must never reuse a transport fixed to its previous workdir.
+  const sessionKey = (agentId: string, workdir: string): string =>
+    `${process.platform === "win32" ? path.resolve(workdir).toLowerCase() : path.resolve(workdir)}\0${agentId}`;
+  const SESSION_TRANSPORT_IDLE_MS = 10 * 60 * 1000;
   const sessions = new Map<string, ClawSession>();
+  const reclaiming = new Set<ClawSession>();
+  const release = (key: string, session: ClawSession, reason: string): void => {
+    if (sessions.get(key) !== session) return;
+    sessions.delete(key);
+    reclaiming.add(session);
+    void session.close(reason).catch((error: unknown) => {
+      console.warn(`[claw-kit] session transport close failed for ${session.status().workdir} ${session.status().sessionId}:`, error);
+    }).finally(() => reclaiming.delete(session));
+  };
   const guidanceByAgent = createAgentGuidanceStore();
 
   systemPrompt.context({
@@ -339,6 +354,25 @@ export function apply(ctx: unknown): void {
     };
   }
 
+  // Settings uses a dedicated browser RPC channel. Its payload contains only a registry
+  // workspace id and config operation fields: no browser-supplied filesystem paths.
+  const connection = c.get("connection") as {
+    rpc?: { handle(channel: string, handler: (endpoint: string, payload: unknown, signal: AbortSignal) => Promise<unknown>, options: { authority: "loopback" }): unknown };
+  } | undefined;
+  if (connection?.rpc?.handle) {
+    // Loopback-only, read-only transport census. The OS process tree maps
+    // runner/target PIDs via the session ID and workdir in their argv.
+    void connection.rpc.handle("/claw-session-lifecycle", async () => ({
+      schemaVersion: 1, idleTimeoutMs: SESSION_TRANSPORT_IDLE_MS,
+      sessions: [...new Set([...sessions.values(), ...reclaiming])].map((session) => session.status()),
+    }), { authority: "loopback" });
+    void connection.rpc.handle("/claw-project-config", async (endpoint, payload) => {
+      const registry = resolveRegistry() as WorkspaceRegistry | undefined;
+      if (!registry) return { ok: false, error: { code: "WORKSPACE_REGISTRY_UNAVAILABLE", message: "DSH workspace registry is unavailable." } };
+      return handleProjectConfigRpc(endpoint, payload, registry, (argv, cwd) => runOneOff(argv, cwd, "dsh-project-config"));
+    }, { authority: "loopback" });
+  }
+
   // Persist adapter-owned final events for the registered DSH report collector.
   function dshReportJournalDir(): string {
     const localAppData = process.env.LOCALAPPDATA
@@ -389,14 +423,13 @@ export function apply(ctx: unknown): void {
   // journal, and the unified claim flow invokes the registered collector.
 
   c.on("dispose", () => {
-    for (const session of sessions.values()) void session.close();
-    sessions.clear();
+    for (const [id, session] of sessions) release(id, session, "plugin-dispose");
   });
 
   tools.register({
     name: "claw_run",
     description: [
-      "Run one claw-kit workflow operation in the current session through the claw session daemon. Operation names use dot form: context, plan.create, plan.start, plan.wait, plan.resume, plan.edit, plan.done, plan.show, task.add, task.edit, task.done, subplan.create, search. `context` restores the current host-scoped startup snapshot with no arguments. Other arguments use canonical snake_case: plan.create takes title, goal, scope; plan.start takes goal, requirements, questions, acceptance, rules, key_decisions, references, and add_tasks; plan.edit accepts the same plan fields plus summary, removal fields, retrospective fields, status, or an ordered canonical operations array; plan.resume takes optional plan_id; plan.done takes retrospective, key_decisions, what_worked, issues, and follow_ups; task.add takes title/detail or tasks; task.done takes id/choice or tasks. References are arrays of {path, why}.",
+      "Run one claw-kit workflow operation in the current session through the claw session daemon. Operation names use dot form: context, plan.create, plan.start, plan.wait, plan.resume, plan.edit, plan.done, plan.show, task.add, task.edit, task.done, subplan.create, search, search.index.refresh. `search.index.refresh` takes no arguments and refreshes only the calling session's project vector index. `context` restores the current host-scoped startup snapshot with no arguments. Other arguments use canonical snake_case: plan.create takes title, goal, scope; plan.start takes goal, requirements, questions, acceptance, rules, key_decisions, references, and add_tasks; plan.edit accepts the same plan fields plus summary, removal fields, retrospective fields, status, or an ordered canonical operations array; plan.resume takes optional plan_id; plan.done takes retrospective, key_decisions, what_worked, issues, and follow_ups; task.add takes title/detail or tasks; task.done takes id/choice or tasks. References are arrays of {path, why}.",
       "The adapter forges session identity and workspace from the calling agent — never pass session, host, or workdir arguments. Unsupported arguments for mapped operations fail immediately instead of being silently dropped. It auto-consumes CLI hostActions: plan progress projection and native DSH goal sync happen inside the tool, so do not call goal tools for claw plans. The result is a compact guidance snapshot; follow it as the only next-step contract.",
     ].join(" "),
     parameters: {
@@ -437,22 +470,27 @@ export function apply(ctx: unknown): void {
         if (rendered) guidanceByAgent.set(agent, rendered);
         return context as Record<string, JsonValue>;
       }
-      let session = sessions.get(agent.id);
+      const key = sessionKey(agent.id, workdir);
+      let session = sessions.get(key);
       if (!session) {
-        session = new ClawSession(subprocess as SubprocessLike, workdir, agent.id);
-        sessions.set(agent.id, session);
+        session = new ClawSession(subprocess as SubprocessLike, workdir, agent.id, "claw", 15000, SESSION_TRANSPORT_IDLE_MS,
+          (idle) => release(key, idle, "idle-timeout"),
+          (dead) => release(key, dead, "child-exit"));
+        sessions.set(key, session);
       }
       const input = daemonInput(operation, (args.args ?? {}) as Record<string, unknown>);
       let response: ClawExecuteResult;
+      const request = session.request(operation, input);
+      const requestOrdinal = session.status().requestsStarted;
       try {
-        response = await session.request(operation, input);
+        response = await request;
       } catch (error) {
         // The daemon may have committed before its response was lost. Reset the
         // transport for the next request, but never replay this mutation.
         const message = error instanceof Error ? error.message : String(error);
         if (!isUncertainConnectionFailure(message)) throw error;
         try { await session.close(); } catch { /* best-effort */ }
-        sessions.delete(agent.id);
+        if (sessions.get(key) === session) sessions.delete(key);
         throw new Error(
           `CLAW_OUTCOME_UNKNOWN: ${message}. The operation may already have committed; do not retry it. ` +
           "Open a fresh session and inspect or sync the current plan before continuing.",
@@ -464,7 +502,7 @@ export function apply(ctx: unknown): void {
         const message = response.error?.message ?? "";
         if (isUncertainConnectionFailure(message)) {
           try { await session.close(); } catch { /* best-effort */ }
-          sessions.delete(agent.id);
+          if (sessions.get(key) === session) sessions.delete(key);
           throw new Error(
             `CLAW_OUTCOME_UNKNOWN: ${message}. The operation may already have committed; do not retry it. ` +
             "Open a fresh session and inspect or sync the current plan before continuing.",
@@ -650,6 +688,13 @@ export function apply(ctx: unknown): void {
       for (const key of Object.keys(visible)) {
         reordered[key] = visible[key] as JsonValue;
         if (key === "command" && dispatchValue !== undefined) reordered.dispatch = dispatchValue;
+      }
+      // A completed plan has no reason to keep its stdio transport resident.
+      // Dispatch/host effects above must finish first. A concurrent next-plan
+      // request wins the lease and prevents us from closing its live transport.
+      if (operation === "plan.done" && response.ok) {
+        const state = session.status();
+        if (state.queued === 0 && state.requestsStarted === requestOrdinal) release(key, session, "plan.done");
       }
       return reordered;
     },

@@ -746,7 +746,7 @@ export class ClawCommandService {
         ownerSessionKey: this.ownerSessionKey(context),
       });
       if (ended.plan.status === "end.leave") {
-        tryLeaveKnowledgePlan({ project, sessionId: context.agentSessionId, leftPlanPath: shown.planPath });
+        tryLeaveKnowledgePlan({ project, sessionId: context.agentSessionId, leftPlanPath: shown.planPath, knowledgeCapture: ended.plan.knowledgeCapture });
         continue;
       }
       const effectiveConfig = resolvePlanEffectiveConfig(project.projectConfig, ended.plan);
@@ -757,6 +757,7 @@ export class ClawCommandService {
         endedPlanPath: shown.planPath,
         ...(resumedPath ? { resumedPlanPath: resumedPath } : {}),
         endedAt: ended.endedAt,
+        knowledgeCapture: ended.plan.knowledgeCapture,
         ...(writer ? { writer } : {}),
         ...(isIntegrationHost(context.host)
           ? { host: context.host }

@@ -152,6 +152,8 @@ export type PlanDocument = {
   references?: PlanReference[];
   rules?: string[];
   retrospective?: PlanRetrospective;
+  /** Whether this plan participates in knowledge finalization. Defaults to true for legacy plans. */
+  knowledgeCapture?: boolean;
 };
 
 export type PlanReviewDimensions = {
@@ -469,6 +471,8 @@ export type ResolvedContext = {
 export type PlanWriteInput = {
   cwd: string;
   scope?: "project" | "session";
+  /** Disable knowledge finalization for this plan. Defaults to true. */
+  knowledgeCapture?: boolean;
   taskName?: string;
   filePath?: string;
   templateName?: string;

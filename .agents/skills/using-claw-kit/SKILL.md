@@ -27,7 +27,7 @@ conversation uses a new id.
 
 1. If the request is not expected to produce reusable project knowledge, skip this skill and work directly. Otherwise, run `claw context` first: it recovers a session-bound active plan when one exists, and reports project/version diagnostics only when action is needed.
 2. When `claw context` returns an `activeWorkflow`, do not create a new plan; follow its recovered `workflowGuidance` and continue the current task.
-3. Otherwise run `claw plan create "<title>"` (project scope: the full workflow with canonical knowledge deposition). Use `--scope session` only for temporary work that must not deposit knowledge.
+3. Otherwise run `claw plan create "<title>"` for the full workflow with canonical knowledge deposition.
 4. If a template-backed workflow skill fully owns the request, follow that skill's entry route so it supplies its adjacent template file.
 5. Follow the returned `workflowGuidance` as the only lifecycle contract. Use its stage and current task to determine the current work; `commandHints` are command lookup aids, not required next mutations.
 
@@ -35,7 +35,7 @@ conversation uses a new id.
 
 Treat claw-kit as an assistive workflow tool. Use plans and tasks to focus
 attention, coordinate work, and preserve progress; do not treat them as
-immutable authority. Adjust the goal, scope, and task breakdown promptly when
+immutable authority. Adjust the goal and task breakdown promptly when
 user needs or new evidence require it. When an independently manageable scope
 would keep expanding a parent task, create a subplan instead.
 

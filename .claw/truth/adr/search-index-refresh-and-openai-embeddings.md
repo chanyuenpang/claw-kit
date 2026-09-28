@@ -28,6 +28,7 @@
 ## Decision
 
 - 将手动重建入口固定为 `claw search index --refresh`，而不是新增另一套 top-level 命令。
+- DSH adapter 将该入口映射为零参数 `search.index.refresh`；refresh target 只能由调用会话的已解析 workspace 推导，拒绝 target-path 参数，以保留同一项目范围与宿主身份边界。
 - `claw search index --refresh` 对当前项目的 memory sqlite 执行增量同步，而不是每次全量重建。
 - 增量判定基于 markdown recall 文档的 `content_hash`：
 - 未变更文档复用既有 `docs` row 与 `doc_embeddings`
@@ -82,6 +83,12 @@
 - `claw context` / protocol auto-repair must backfill that default local embedding config into older project schemas instead of leaving `memory.embedding` empty.
 - `claw-kit` 自身项目不把仓库 `docs/` 目录加入 `memory.externalDocPaths`，这样 `claw search` 继续面向 `.claw` memory / truth / ADR 文档，而不是把实现文档目录默认并入 recall。
 - `memory.externalDocPaths` / `claw search` external memory paths 只纳入 `.md` 文件，保持 `claw search` 是文档 recall，而不是代码搜索。
+
+## Alternatives
+
+- Do not expose the refresh through DSH: rejected because an authorized DSH session then lacks the CLI's explicit index-maintenance operation.
+- Accept a caller-supplied target path: rejected because it would bypass the session-resolved workspace boundary.
+- Add a separate top-level refresh command: rejected in favor of the existing `claw search index --refresh` command family and its DSH mapping.
 
 ## Consequences
 
