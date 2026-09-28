@@ -26,6 +26,12 @@
 <!-- state: history -->
 ## Evolution history
 
+<!-- dated: 2026-09-28 -->
+### DSH 0.2.39.3 and Cindy 0.2.39.1 independent releases
+
+- DSH git version `0.2.39.3` was published as `@veewo/dsh-claw-kit@0.2.39-rc.3` and tagged `vdsh-0.2.39.3`; registry `latest` and tarball integrity, the immutable source tag, and remote commit were verified. Local release checks recorded DSH 77/77, Core 185/185, CLI 177 passed/18 skipped, plus repository/template checks and the final tarball dry-run.
+- Cindy `0.2.39.1` was released from its independent marketplace source with immutable tag `vcindy-0.2.39.1` and verified remote commit; 36/36 focused tests passed. Both repositories ended clean on `main`. This release did not publish CLI or Codex, install or update the Cindy runtime, install the DSH profile, or restart the DSH Host.
+
 <!-- dated: 2026-08-31 -->
 ### CLI 0.2.34 与 Codex 0.2.34.0 release
 
@@ -43,14 +49,6 @@
 
 - CLI/Core/Client `0.2.32` was published through npm with immutable tag `v0.2.32` and a public GitHub Release. Codex `0.2.32.0` was released from committed marketplace source with immutable tag `vcodex-0.2.32.0` and a zero-asset GitHub Release.
 - DSH released immutable source tag `vdsh-0.2.32.0`; its npm package was published as `@veewo/dsh-claw-kit@0.2.32-rc.0`. All three tags resolve to main-repository commit `ca5ceaa`, and the completed batch does not assert a local CLI, Codex plugin, or DSH profile refresh.
-
-<!-- dated: 2026-08-24 -->
-### Codex 0.2.27.1, DSH 0.2.27.1, and Cindy 0.2.27.0 release batch
-
-- Codex `0.2.27.1` was released from the main-repository marketplace source with immutable tag `vcodex-0.2.27.1` and a zero-asset GitHub Release.
-- DSH released immutable git tag `vdsh-0.2.27.1`; its independently distributed npm package `@veewo/dsh-claw-kit@0.2.27-rc.1` was published as `latest`.
-- Cindy `0.2.27.0` was released from its independent marketplace repository with immutable tag `vcindy-0.2.27.0` and source path `./plugin`; it has no archive or GitHub Release.
-- Each artifact retained its own source and terminal acceptance contract. The main repository and Cindy repository finished clean on `main` and equal to `origin/main`; this batch does not assert a local installation refresh.
 
 <!-- dated: 2026-09-14 -->
 ### DSH 0.2.38.0 release

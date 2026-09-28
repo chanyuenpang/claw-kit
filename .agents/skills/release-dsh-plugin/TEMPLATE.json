@@ -13,7 +13,7 @@
       "Only the DSH adapter fourth segment and package.json version are bumped.",
       "Focused adapter build, tests, and checks pass; the tarball contains lib/, skills/, cordis.patch.yml.",
       "The exact vdsh-<version> tag points to clean origin/main.",
-      "@veewo/dsh-claw-kit@<version> is published to the npm registry and installable via `dsh plugin add`."
+      "@veewo/dsh-claw-kit@<npm-version> is publicly available; for a known authorized target profile, the exact published version is installed and its on-disk manifest/config verified without an unapproved restart."
     ]
   },
   "tasks": [
@@ -44,13 +44,13 @@
     {
       "id": 5,
       "title": "Pass the exact-source gate and release",
-      "detail": "Commit intended content on main, push origin/main, require an empty worktree and HEAD == origin/main, run npm run publish:dsh-plugin --publish, then create and push vdsh-<version>.",
+      "detail": "Commit intended content on main, push origin/main, require an empty worktree and HEAD == origin/main, run npm run publish:dsh-plugin -- --publish, then create and push vdsh-<version>.",
       "status": "pending"
     },
     {
       "id": 6,
       "title": "Verify the immutable DSH release",
-      "detail": "Verify the published npm version, the vdsh-<version> tag, repository cleanliness, and (when separately authorized) a real-profile install: dsh plugin --profile web add @veewo/dsh-claw-kit + restart + claw_run/skills present.",
+      "detail": "Verify the exact npm version is publicly available and latest, the immutable vdsh-<version> tag matches clean origin/main, then install the exact published npm version into the known authorized DSH profile and verify installed package.json, compatible CLI, and dump-config. Ask for the target if unknown; do not restart without separate explicit authorization. Runtime claw_run/skills verification remains deferred until the owner restarts.",
       "status": "pending"
     }
   ],
@@ -67,6 +67,7 @@
   "rules": [
     "Publish only @veewo/dsh-claw-kit to npm; never publish CLI/core or another adapter.",
     "Never modify another artifact family without explicit batch authority.",
-    "Stop at the first failed release boundary."
+    "Stop at the first failed release boundary.",
+    "Install the exact published package into a known authorized target profile; never restart a running DSH Host without separate explicit authorization or claim runtime activation from an on-disk install."
   ]
 }

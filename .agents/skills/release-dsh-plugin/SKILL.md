@@ -5,7 +5,11 @@ description: Release the claw-kit DSH adapter and the published @veewo/dsh-claw-
 # Release DSH adapter
 
 Run only inside the claw-kit repository. This skill owns only
-`packages/dsh-adapter` and the published `@veewo/dsh-claw-kit` npm package.
+`packages/dsh-adapter` source changes and the published `@veewo/dsh-claw-kit`
+npm package. For a known authorized target DSH profile, release delivery also
+installs the exact published npm version into that profile after publication;
+ask for the target when it is unknown. Installation is not activation: never
+restart a running Host without separate explicit authorization.
 
 Resolve `<skill-dir>` as this file's directory. For a whole release, create the
 plan with `claw plan create --template-file "<skill-dir>/TEMPLATE.json" --title

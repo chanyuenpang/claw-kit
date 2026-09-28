@@ -1,9 +1,9 @@
 # Releasing the DSH claw-kit plugin
 
-`@veewo/dsh-claw-kit` is published to the npm registry; a DSH profile installs
-it with `dsh plugin --profile <name> add @veewo/dsh-claw-kit` and activates it
-on the next Host restart. Distribution is the npm package — there is no separate
-marketplace repository or ZIP artifact.
+`@veewo/dsh-claw-kit` is published to the npm registry. A release to a known
+DSH profile also installs that exact published npm version there; installation
+updates the profile on disk but activation waits for the next Host restart.
+Distribution is the npm package — there is no marketplace repository or ZIP.
 
 > **npm version caveat (learned 2026-08-22):** npm/semver has no four-segment
 > release version. Publishing a `package.json` whose version is `<cli-base>.<n>`
@@ -26,44 +26,63 @@ marketplace repository or ZIP artifact.
    `vdsh-<cli-base>.*` tags; never carry forward the first three segments from an
    older `vdsh-*` tag.
 
-2. **Run the focused adapter checks:**
+2. **Run local checks before upload:**
    ```powershell
+   npm run check:template-versions
    npm run build -w @veewo/dsh-claw-kit
    npm test -w @veewo/dsh-claw-kit
    npm run check -w @veewo/dsh-claw-kit
+   npm run publish:dsh-plugin  # dry run: builds, tests, stages, packs
    ```
+   The dry-run tarball must contain `lib/`, `skills/`, and
+   `cordis.patch.yml` without build junk; the staged npm version must be
+   `<cli-base>-rc.<n>`. Never run bare `npm publish -w`.
 
-3. **Publish the package** (this is the ONLY supported publish path):
-   ```powershell
-   npm run publish:dsh-plugin            # dry run: builds, tests, stages, packs
-   npm run publish:dsh-plugin -- --publish   # publish with version mapping
-   ```
-   The script maps `<cli-base>.<n>` → npm `<cli-base>-rc.<n>`, verifies the
-   tarball contains `lib/`, `skills/`, and `cordis.patch.yml` (no build junk),
-   and publishes with `--tag latest`. The first publication of a new
-   `<cli-base>` needs npm access for the `@veewo` scope.
+3. **Pass the exact-source gate before publishing.** Classify all worktree
+   changes, commit intended content on `main`, push `origin/main`, and require
+   an empty `git status --porcelain` with `HEAD == origin/main`. Do not stash
+   unrelated work to bypass this gate.
 
-4. **Commit, push, and tag.** Commit the intended adapter changes on `main`,
-   push `origin/main`, then create and push the immutable tag at that exact
-   commit:
+4. **Publish and tag the immutable source:**
    ```powershell
-   git tag vdsh-<version>
-   git push origin vdsh-<version>
+   npm run publish:dsh-plugin -- --publish
+   $gitVersion = (Get-Content .\packages\dsh-adapter\package.json | ConvertFrom-Json).version
+   git tag -a "vdsh-$gitVersion" -m "DSH plugin $gitVersion"
+   git push origin "vdsh-$gitVersion"
    ```
+   The publish script enforces the clean-source gate, maps the four-segment
+   git version to the npm prerelease spelling, and publishes with `latest`.
+   Verify the npm registry actually serves the exact version and `latest`
+   points to it (npm may initially report asynchronous processing), then
+   verify the remote tag resolves to the published commit.
 
-5. **Verify in a real DSH profile.** From an environment whose CLI carries the
-   `dsh` host support:
+5. **Install the published package into the known target profile.** A source
+   release is not a profile update. Use the exact npm version, not an
+   unpublished workspace build or an unpinned `latest` resolution. For the
+   existing `web` profile, for example (replace both profile and version for
+   another authorized target):
    ```powershell
-   dsh plugin --profile web add @veewo/dsh-claw-kit
-   # restart the Host, then confirm:
-   # - the claw_run tool appears in the tool list
-   # - the seven bundled skills (using-claw-kit/researcher/planning/config/
-   #   create-claw-skill/claw-kit-doc/update) appear in the skill catalog
-   # - a project plan completes and its knowledgeDispatch is auto-dispatched
+   $gitVersion = (Get-Content .\packages\dsh-adapter\package.json | ConvertFrom-Json).version
+   $parts = $gitVersion.Split('.')
+   $npmVersion = "$($parts[0]).$($parts[1]).$($parts[2])-rc.$($parts[3])"
+   claw --version  # must match the published CLI base and support --host dsh
+   dsh plugin --profile web add "@veewo/dsh-claw-kit@$npmVersion"
+   (Get-Content "$HOME\.dsh\profiles\web\node_modules\@veewo\dsh-claw-kit\package.json" | ConvertFrom-Json).version
+   dsh --profile web --dump-config  # confirm the claw-kit plugin row
    ```
-   Version alignment: the adapter and the installed CLI are one validation
-   unit — the CLI must accept `--host dsh` (SUPPORTED_CLAW_HOSTS includes
-   `dsh`).
+   Install only when the target profile is known and profile delivery is
+   authorized; ask which profile otherwise. If the installed CLI is behind
+   the published CLI base, update and verify it before the adapter install.
+   Record peer-dependency warnings rather than changing unrelated packages.
+
+6. **Leave activation to the Host owner unless restart is separately
+   authorized.** Installing changes files on disk, not the already-running
+   DSH Web process. Do not restart it or claim the live GUI uses the new
+   adapter merely because the package and dump-config look correct. After
+   the owner restarts, verify a real session mounts `claw_run`, the bundled
+   skills are present, and a project plan dispatches knowledge as expected.
+   Until that restart, report only the installed version and deferred
+   runtime verification.
 
 ## Versioning rule
 
