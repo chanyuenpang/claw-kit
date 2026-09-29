@@ -468,7 +468,10 @@ test("DSH daemon sessions coerce a fresh project's default background config to 
     const dispatch = done.knowledgeDispatch as { policy?: string; finalizeId?: string; prompt?: string } | undefined;
     assert.equal(dispatch?.policy, "subagent");
     assert.match(String(dispatch?.finalizeId), /^[a-f0-9]{64}$/);
-    assert.match(String(dispatch?.prompt), /resources[\\/]delegate-writer[\\/]TEMPLATE\.json/);
+    assert.match(String(dispatch?.prompt), /dsh-delegate-writer/);
+    assert.match(String(dispatch?.prompt), /claw_run.*plan.create/);
+    assert.match(String(dispatch?.prompt), /knowledge.claim.*subplan.create.*knowledge.done/);
+    assert.doesNotMatch(String(dispatch?.prompt), /claw plan create --template-file/);
   } finally {
     await opened.close();
     await daemon.close();

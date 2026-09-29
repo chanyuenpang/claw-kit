@@ -193,6 +193,17 @@ test("an already queued next-plan request prevents completed-plan eviction", asy
   assert.equal(harness.mock.handles[0].stdin.writes.includes("session close\n"), false);
 });
 
+test("claw_run keeps knowledge.done receipt when daemon omits command", async () => {
+  const harness = makeHarness({ subagents: undefined, dispatch: undefined });
+  apply(harness.ctx, {});
+  const result = await harness.tool.execute({ operation: "knowledge.done", args: { finalize_id: "a".repeat(64), claim_token: "token", status: "succeeded", result: "ok" } }, { agent: makeAgent("done-receipt") });
+  // This harness supplies only planStatus for other operations; a dedicated
+  // compact helper test verifies the daemon's commandless terminal payload.
+  assert.equal(result.command, "knowledge.done");
+  const request = JSON.parse(harness.mock.handles[0].stdin.writes[0]);
+  assert.deepEqual(request.input, { finalizeId: "a".repeat(64), claimToken: "token", status: "succeeded", result: "ok" });
+});
+
 test("an unavailable subagents service reports a non-retryable dispatch", async () => {
   const harness = makeHarness({
     subagents: undefined,

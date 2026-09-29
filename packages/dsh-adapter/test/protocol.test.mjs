@@ -170,6 +170,23 @@ test("known mapped operations reject unsupported arguments instead of silently d
   );
 });
 
+test("knowledge operations map strict snake_case arguments", () => {
+  const finalize_id = "a".repeat(64);
+  assert.deepEqual(daemonInput("knowledge.claim", { finalize_id }), { finalizeId: finalize_id });
+  assert.deepEqual(daemonInput("knowledge.done", { finalize_id, claim_token: "token", status: "succeeded", result: "ok" }),
+    { finalizeId: finalize_id, claimToken: "token", status: "succeeded", result: "ok" });
+  assert.deepEqual(daemonInput("knowledge.done", { finalize_id, claim_token: "token", status: "failed", error: "oops" }),
+    { finalizeId: finalize_id, claimToken: "token", status: "failed", error: "oops" });
+  for (const [operation, args] of [
+    ["knowledge.claim", { finalize_id, job: "outside" }],
+    ["knowledge.claim", { finalize_id: "../wrong" }],
+    ["knowledge.done", { finalize_id, claim_token: "", status: "succeeded", result: "ok" }],
+    ["knowledge.done", { finalize_id, claim_token: "token", status: "failed", result: "ok" }],
+    ["knowledge.done", { finalize_id, claim_token: "token", status: "succeeded", result: "ok", error: "bad" }],
+    ["knowledge.done", { finalize_id, claim_token: "token", status: "succeeded", result: "ok", job_path: "other" }],
+  ]) assert.throws(() => daemonInput(operation, args));
+});
+
 test("unknown operations pass args through untouched", () => {
   assert.deepEqual(daemonInput("knowledge.wait", { finalize_id: "f" }), { finalize_id: "f" });
 });

@@ -429,7 +429,7 @@ export function apply(ctx: unknown): void {
   tools.register({
     name: "claw_run",
     description: [
-      "Run one claw-kit workflow operation in the current session through the claw session daemon. Operation names use dot form: context, plan.create, plan.start, plan.wait, plan.resume, plan.edit, plan.done, plan.show, task.add, task.edit, task.done, subplan.create, search, search.index.refresh. `search.index.refresh` takes no arguments and refreshes only the calling session's project vector index. `context` restores the current host-scoped startup snapshot with no arguments. Other arguments use canonical snake_case: plan.create takes title, goal, scope; plan.start takes goal, requirements, questions, acceptance, rules, key_decisions, references, and add_tasks; plan.edit accepts the same plan fields plus summary, removal fields, retrospective fields, status, or an ordered canonical operations array; plan.resume takes optional plan_id; plan.done takes retrospective, key_decisions, what_worked, issues, and follow_ups; task.add takes title/detail or tasks; task.done takes id/choice or tasks. References are arrays of {path, why}.",
+      "Run one claw-kit workflow operation in the current session through the claw session daemon. Operation names use dot form: context, plan.create, plan.start, plan.wait, plan.resume, plan.edit, plan.done, plan.show, task.add, task.edit, task.done, subplan.create, knowledge.claim, knowledge.done, search, search.index.refresh. `search.index.refresh` takes no arguments and refreshes only the calling session's project vector index. `context` restores the current host-scoped startup snapshot with no arguments. Other arguments use canonical snake_case: plan.create takes title, goal, scope; plan.start takes goal, requirements, questions, acceptance, rules, key_decisions, references, and add_tasks; plan.edit accepts the same plan fields plus summary, removal fields, retrospective fields, status, or an ordered canonical operations array; plan.resume takes optional plan_id; plan.done takes retrospective, key_decisions, what_worked, issues, and follow_ups; task.add takes title/detail or tasks; task.done takes id/choice or tasks; knowledge.claim takes finalize_id and knowledge.done takes finalize_id, claim_token, status, plus result (succeeded) or error (failed). References are arrays of {path, why}.",
       "The adapter forges session identity and workspace from the calling agent — never pass session, host, or workdir arguments. Unsupported arguments for mapped operations fail immediately instead of being silently dropped. It auto-consumes CLI hostActions: plan progress projection and native DSH goal sync happen inside the tool, so do not call goal tools for claw plans. The result is a compact guidance snapshot; follow it as the only next-step contract.",
     ].join(" "),
     parameters: {
@@ -519,7 +519,7 @@ export function apply(ctx: unknown): void {
         goals,
         exec.agent,
       );
-      const visible = compactClawOutput(response.output);
+      const visible = compactClawOutput(response.output, operation);
       if (consumed.length) visible.goalSync = consumed as unknown as JsonValue;
       if (projection !== undefined) visible.projection = projection.input as unknown as JsonValue;
       if (failures.length) visible.hostEffectFailures = failures as unknown as JsonValue;

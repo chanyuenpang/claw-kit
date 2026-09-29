@@ -10,6 +10,7 @@ import {
   buildDirectWorkflowGuidance,
   appendKnowledgeTaskConclusions,
   buildKnowledgeAtomicDispatch,
+  buildDshKnowledgeDispatch,
   buildKnowledgeDelegateDispatch,
   KNOWLEDGE_DISPATCH_LEAD_INSTRUCTION,
   buildKnowledgeAssignmentTemplate,
@@ -85,7 +86,8 @@ import {
 } from "@veewo/claw-core";
 import { buildCodexDriverEnvelope } from "./codex-driver.js";
 import { buildCodexHostActions } from "./codex-host-actions.js";
-import { collectReport, registerReportCollector, type ReportCollectorHost } from "./report-collector-registry.js";
+import { registerReportCollector, type ReportCollectorHost } from "./report-collector-registry.js";
+import { claimKnowledgeCommand, doneKnowledgeCommand } from "./knowledge-command.js";
 import { consumeBufferedHookInput } from "./knowledge-hook-preflight.js";
 import { isSubagentPolicyHost, resolveInvocationHost, withoutInvocationHost, type ClawHost } from "./invocation-host.js";
 import {
@@ -1384,69 +1386,7 @@ async function runKnowledge(args: string[]): Promise<void> {
       if (!jobPath) {
         throw new Error(`Knowledge finalization ${finalizeId} is unavailable.`);
       }
-      const queued = reconcileKnowledgeFinalizationJob(jobPath);
-      const job = claimKnowledgeFinalizationJob(jobPath, {
-        prepare: (queued) => {
-          if (
-            queued.writer?.executionPolicy !== "subagent"
-            || queued.reportCapture?.mode !== "claim"
-            || queued.reportCapture.status === "captured"
-          ) {
-            return;
-          }
-          if (resolveHostIntegrationProfile(queued.host)?.supportsClaimTimeReportCapture !== true) {
-            throw new Error(`Claim-time report capture is unavailable for host ${queued.host ?? "unknown"}.`);
-          }
-          const receipt = collectReport({
-            host: queued.host as ReportCollectorHost,
-            sessionId: queued.sessionId,
-            projectRoot: queued.projectRoot,
-            planPath: queued.planPath,
-            canonicalReportPath: queued.reportPath,
-            startedAt: queued.reportCapture.startedAt,
-          });
-          return {
-            reportCapture: {
-              ...queued.reportCapture,
-              status: "captured" as const,
-              capturedAt: receipt.completedAt,
-              receipt,
-            },
-          };
-        },
-      });
-      const assignments = job ? buildKnowledgeWriterAssignments(job) : [];
-      const templatePath = job
-        ? path.join(path.dirname(jobPath), `${job.finalizeId}.assignments.json`)
-        : undefined;
-      if (job && templatePath) {
-        fs.writeFileSync(
-          templatePath,
-          `${JSON.stringify(buildKnowledgeAssignmentTemplate({
-            assignments,
-            finalizeId: job.finalizeId,
-            version: CLI_VERSION,
-          }), null, 2)}\n`,
-          "utf-8",
-        );
-      }
-      printJson({
-        ok: true,
-        command: "knowledge.claim",
-        claimed: Boolean(job),
-        ...(job ? {
-          finalizeId: job.finalizeId,
-          jobPath,
-          claimToken: job.claimToken,
-          projectRoot: job.projectRoot,
-          writer: job.writer ?? null,
-          expiresAt: job.expiresAt,
-          planPath: job.planPath,
-          reportPath: job.reportPath,
-          assignments,
-          templatePath,
-        } : {}),
-      });
+      printJson(claimKnowledgeCommand(jobPath, CLI_VERSION));
       return;
     }
     case "done": {
@@ -2692,61 +2632,15 @@ function ensureLegacyKnowledgeClaim(jobPath: string): KnowledgeFinalizationJob |
   return claimKnowledgeFinalizationJob(jobPath);
 }
 
-function completeKnowledgeFinalizationJob(
-  jobPath: string,
-  result: string,
-  claimToken: string,
-): void {
-  const running = reconcileKnowledgeFinalizationJob(jobPath);
-  if (running.status === "succeeded") {
-    const terminal = doneKnowledgeFinalizationJob({
-      jobPath,
-      claimToken,
-      status: "succeeded",
-      result,
-    });
-    removeKnowledgeAssignmentTemplate(jobPath, running.finalizeId);
-    printJson({ ok: true, completed: true, alreadyDone: terminal.alreadyDone, finalizeId: running.finalizeId });
-    return;
-  }
-  if (running.status !== "running") {
-    throw new Error("Knowledge finalization job must be claimed before successful completion.");
-  }
-  if (running.claimToken !== claimToken) {
-    throw new Error("Knowledge finalization completion does not match the active claim.");
-  }
-  const project = resolveKnowledgeJobProject(jobPath, running);
-  const finishedAt = new Date().toISOString();
-  const truthEncoding = normalizeTruthMarkdownEncoding(project);
-  recordKnowledgeFinalizationResult(project, running.reportPath, {
-    schemaVersion: 1,
-    entryType: "knowledge_finalization",
-    finalizeId: running.finalizeId,
-    taskName: running.taskName,
-    recordedAt: finishedAt,
-    status: "succeeded",
-    result,
-    attempts: running.attempts,
-    ...(running.host !== undefined ? { host: running.host } : {}),
-    truthEncoding,
-  });
-  const terminal = doneKnowledgeFinalizationJob({
-    jobPath,
-    claimToken,
-    status: "succeeded",
-    result,
-    finishedAt,
-    patch: { truthEncoding },
-  });
-  removeKnowledgeAssignmentTemplate(jobPath, running.finalizeId);
-  queueCompletionRefresh({
-    cwd: running.projectRoot,
-    taskName: running.taskName,
-    includeTaskRetention: false,
-    includeGitNexus: false,
-    statusLabel: `knowledge-${running.finalizeId.slice(0, 12)}`,
-  });
-  printJson({ ok: true, completed: true, alreadyDone: terminal.alreadyDone, finalizeId: running.finalizeId });
+function completeKnowledgeFinalizationJob(jobPath: string, result: string, claimToken: string): void {
+  printJson(doneKnowledgeCommand({
+    jobPath, result, claimToken, status: "succeeded",
+    onSuccess: (running) => queueCompletionRefresh({
+      cwd: running.projectRoot, taskName: running.taskName,
+      includeTaskRetention: false, includeGitNexus: false,
+      statusLabel: "knowledge-" + running.finalizeId.slice(0, 12),
+    }),
+  }));
 }
 
 async function preparePlanCreateWorkflow(
@@ -2826,38 +2720,8 @@ async function prepareProjectWorkflow(
   return runContextCommand([], cwd, ownerSessionKey, effectiveHost);
 }
 
-function resolveKnowledgeJobProject(
-  jobPath: string,
-  job: KnowledgeFinalizationJob,
-): ProjectContext {
-  const project = resolveProjectContext(job.projectRoot);
-  const sessionProject = resolveSessionWorkflowContext(job.sessionId);
-  for (const candidate of sessionProject ? [sessionProject, project] : [project]) {
-    const relative = path.relative(candidate.clawDir, path.resolve(jobPath));
-    if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) {
-      return candidate;
-    }
-  }
-  throw new Error("Knowledge finalization job is outside its project or session workflow.");
-}
-
-function failKnowledgeFinalizationJob(
-  jobPath: string,
-  message: string,
-  claimToken: string,
-): void {
-  const terminal = doneKnowledgeFinalizationJob({
-    jobPath,
-    claimToken,
-    status: "failed",
-    error: message,
-  });
-  removeKnowledgeAssignmentTemplate(jobPath, terminal.job.finalizeId);
-  printJson({ ok: true, failed: true, alreadyDone: terminal.alreadyDone, finalizeId: terminal.job.finalizeId });
-}
-
-function removeKnowledgeAssignmentTemplate(jobPath: string, finalizeId: string): void {
-  fs.rmSync(path.join(path.dirname(jobPath), `${finalizeId}.assignments.json`), { force: true });
+function failKnowledgeFinalizationJob(jobPath: string, message: string, claimToken: string): void {
+  printJson(doneKnowledgeCommand({ jobPath, claimToken, status: "failed", error: message }));
 }
 
 async function runInternalEmbeddingWarmup(args: string[]): Promise<void> {
@@ -3519,10 +3383,11 @@ function buildKnowledgeDispatch(input: {
   finalizeId: string;
   writer?: KnowledgeFinalizationJob["writer"];
 }): KnowledgeDelegateDispatch {
-  // Cindy uses its Orca atomic dispatch; codex and dsh both dispatch through a
-  // native-subagent delegate (DSH: subagent / subagent_fork). The hostless
+  // Cindy uses its Orca atomic dispatch; DSH uses native claw_run inside its
+  // spawned writer; Codex retains the CLI delegate route. The hostless
   // standard flow never reaches this builder: it rejects the subagent policy
   // at configuration time and uses the background closeout chain instead.
+  if (input.host === "dsh") return buildDshKnowledgeDispatch(input);
   if (resolveHostIntegrationProfile(input.host)?.usesAtomicKnowledgeDispatch === true) {
     return buildKnowledgeAtomicDispatch(input);
   }

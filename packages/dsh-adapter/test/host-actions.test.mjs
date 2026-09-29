@@ -244,6 +244,17 @@ test("compactClawOutput does not add DSH route guidance to read-only operations"
   assert.equal("notes" in visible, false);
 });
 
+test("compactClawOutput retains claim inputs and done receipts without leaking job internals", () => {
+  const assignments = [{ index: 0, kind: "builtin", prompt: "execute" }];
+  const claim = compactClawOutput({ command: "knowledge.claim", claimed: true, finalizeId: "id", claimToken: "secret", templatePath: "assignments.json", assignments, jobPath: "private", writer: { model: "x" } });
+  assert.deepEqual(claim, { ok: true, command: "knowledge.claim", claimed: true, finalizeId: "id", claimToken: "secret", templatePath: "assignments.json", assignments });
+  assert.deepEqual(compactClawOutput({ command: "knowledge.claim", claimed: false }), { ok: true, command: "knowledge.claim", claimed: false });
+  assert.deepEqual(compactClawOutput({ command: "knowledge.done", completed: true, alreadyDone: false, finalizeId: "id", jobPath: "private" }),
+    { ok: true, command: "knowledge.done", finalizeId: "id", completed: true, alreadyDone: false });
+  assert.deepEqual(compactClawOutput({ failed: true, alreadyDone: true, finalizeId: "id" }, "knowledge.done"),
+    { ok: true, command: "knowledge.done", finalizeId: "id", failed: true, alreadyDone: true });
+});
+
 test("compactClawOutput handles undefined output", () => {
   const visible = compactClawOutput(undefined);
   assert.equal(visible.ok, true);

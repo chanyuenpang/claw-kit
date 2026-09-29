@@ -160,7 +160,7 @@ export function consumeHostActions(
  * visible-field contract the Codex driver applies (stage, plan summary,
  * next steps, notes, next task, command hints, askUser, plan).
  */
-export function compactClawOutput(output: Record<string, unknown> | undefined): Record<string, JsonValue> {
+export function compactClawOutput(output: Record<string, unknown> | undefined, operation?: string): Record<string, JsonValue> {
   if (!output || typeof output !== "object") return { ok: true, command: "claw" };
   const guidance =
     output.workflowGuidance && typeof output.workflowGuidance === "object"
@@ -168,7 +168,7 @@ export function compactClawOutput(output: Record<string, unknown> | undefined): 
       : undefined;
   const visible: Record<string, JsonValue> = {
     ok: true,
-    command: typeof output.command === "string" ? output.command : "claw",
+    command: typeof output.command === "string" ? output.command : operation ?? "claw",
   };
   if (typeof output.planStatus === "string") visible.planStatus = output.planStatus;
   if (guidance) {
@@ -231,6 +231,18 @@ export function compactClawOutput(output: Record<string, unknown> | undefined): 
       }
       return task;
     });
+  }
+  if (visible.command === "knowledge.claim") {
+    visible.claimed = output.claimed as JsonValue;
+    if (output.claimed === true) {
+      for (const key of ["finalizeId", "claimToken", "templatePath", "assignments"] as const) {
+        if (output[key] !== undefined) visible[key] = output[key] as JsonValue;
+      }
+    }
+  } else if (visible.command === "knowledge.done") {
+    for (const key of ["finalizeId", "completed", "failed", "alreadyDone"] as const) {
+      if (output[key] !== undefined) visible[key] = output[key] as JsonValue;
+    }
   }
   const command = typeof output.command === "string" ? output.command : "";
   const isWorkflowMutation = /^(plan|task|subplan)\.(?!show$)/.test(command);

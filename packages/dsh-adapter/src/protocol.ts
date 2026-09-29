@@ -203,6 +203,20 @@ export function daemonInput(operation: string, args: Record<string, unknown>): u
         ...(str("template", "template_name") !== undefined ? { templateName: str("template", "template_name") } : {}),
         ...(str("template_file") !== undefined ? { templateFile: str("template_file") } : {}),
       };
+    case "knowledge.claim":
+      assertKnownArgs(operation, args, ["finalize_id"]);
+      if (typeof args.finalize_id !== "string" || !/^[a-f0-9]{64}$/i.test(args.finalize_id)) throw new Error("knowledge.claim requires a 64-character hexadecimal finalize_id");
+      return { finalizeId: args.finalize_id };
+    case "knowledge.done": {
+      assertKnownArgs(operation, args, ["finalize_id", "claim_token", "status", "result", "error"]);
+      if (typeof args.finalize_id !== "string" || !/^[a-f0-9]{64}$/i.test(args.finalize_id)) throw new Error("knowledge.done requires a 64-character hexadecimal finalize_id");
+      if (typeof args.claim_token !== "string" || !args.claim_token.trim()) throw new Error("knowledge.done requires claim_token");
+      if (args.status !== "succeeded" && args.status !== "failed") throw new Error("knowledge.done status must be succeeded or failed");
+      if (args.status === "succeeded" && typeof args.result !== "string") throw new Error("knowledge.done succeeded requires result");
+      if (args.status === "failed" && (typeof args.error !== "string" || !args.error.trim())) throw new Error("knowledge.done failed requires error");
+      if (args.status === "succeeded" && args.error !== undefined || args.status === "failed" && args.result !== undefined) throw new Error("knowledge.done cannot combine status with the opposite outcome field");
+      return { finalizeId: args.finalize_id, claimToken: args.claim_token, status: args.status, ...(args.status === "succeeded" ? { result: args.result } : { error: args.error }) };
+    }
     case "search":
       assertKnownArgs(operation, args, ["query", "limit"]);
       return { query: str("query") ?? "", ...(typeof args.limit === "number" ? { limit: args.limit } : {}) };

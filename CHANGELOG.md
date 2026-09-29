@@ -4,6 +4,12 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## [Unreleased]
 
+## [0.2.40] - 2026-09-29
+
+CLI/core GitHub source release; npm publication is deferred.
+
+- Fix DSH knowledge finalization: session daemon and `claw_run` now support project-bound `knowledge.claim`/`knowledge.done`, and a DSH-only delegate template uses that route instead of shell CLI commands.
+
 ### Added
 
 - `knowledgeWriter.executionPolicy` is now host-aware with a new `main-agent`

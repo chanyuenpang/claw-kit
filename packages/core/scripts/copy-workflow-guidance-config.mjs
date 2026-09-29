@@ -25,6 +25,11 @@ const delegateWriterDest = path.join(packageDir, "dist", "src", "resources", "de
 fs.rmSync(delegateWriterDest, { recursive: true, force: true });
 fs.cpSync(delegateWriterSource, delegateWriterDest, { recursive: true });
 
+const dshDelegateWriterSource = path.join(packageDir, "resources", "dsh-delegate-writer");
+const dshDelegateWriterDest = path.join(packageDir, "dist", "src", "resources", "dsh-delegate-writer");
+fs.rmSync(dshDelegateWriterDest, { recursive: true, force: true });
+fs.cpSync(dshDelegateWriterSource, dshDelegateWriterDest, { recursive: true });
+
 const cindyDelegateWriterSource = path.join(packageDir, "resources", "cindy-delegate-writer");
 const cindyDelegateWriterDest = path.join(packageDir, "dist", "src", "resources", "cindy-delegate-writer");
 fs.rmSync(cindyDelegateWriterDest, { recursive: true, force: true });

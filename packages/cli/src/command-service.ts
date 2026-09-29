@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import fs from "node:fs";
 import path from "node:path";
 import {
   ClawError,
@@ -7,6 +8,7 @@ import {
   appendSubplanReturnGuidance,
   assertRootPlanCreateAllowed,
   buildKnowledgeAtomicDispatch,
+  buildDshKnowledgeDispatch,
   buildKnowledgeDelegateDispatch,
   KNOWLEDGE_DISPATCH_LEAD_INSTRUCTION,
   completeSubplanAndRestoreParent,
@@ -52,6 +54,7 @@ import type {
 import { buildCodexHostActions } from "./codex-host-actions.js";
 import { isHostActionsHost, type ClawHost } from "./invocation-host.js";
 import { RegistryFocusSessionStore, SessionRegistryV2 } from "./session-registry-v2.js";
+import { claimKnowledgeCommand, doneKnowledgeCommand, findProjectKnowledgeJob } from "./knowledge-command.js";
 
 export type CommandContext = {
   cwd: string;
@@ -98,6 +101,8 @@ export type ClawCommandRequest =
     }
   | { operation: "search"; input: { query: string; limit?: number; dir?: string } }
   | { operation: "search.index.refresh"; input: Record<string, never> }
+  | { operation: "knowledge.claim"; input: { finalizeId: string } }
+  | { operation: "knowledge.done"; input: { finalizeId: string; claimToken: string; status: "succeeded" | "failed"; result?: string; error?: string } }
   | { operation: string; input: unknown };
 
 export type ClawCommandResult = {
@@ -498,6 +503,28 @@ export class ClawCommandService {
       case "search.index.refresh":
         // The session daemon owns cwd; callers cannot target another project.
         return { output: buildMemoryIndex({ cwd, scope: "project" }) };
+      case "knowledge.claim": {
+        const { finalizeId } = request.input as { finalizeId: string };
+        const project = this.resolveProject(context, "project");
+        const jobPath = findProjectKnowledgeJob(project.projectRoot, finalizeId);
+        const version = (JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }).version;
+        return { output: claimKnowledgeCommand(jobPath, version) };
+      }
+      case "knowledge.done": {
+        const input = request.input as { finalizeId: string; claimToken: string; status: "succeeded" | "failed"; result?: string; error?: string };
+        const project = this.resolveProject(context, "project");
+        const jobPath = findProjectKnowledgeJob(project.projectRoot, input.finalizeId);
+        if (input.status === "succeeded" && input.result === undefined) {
+          throw new ClawError("PROJECT_CONFIG_INVALID", "knowledge done --status succeeded requires --result.");
+        }
+        if (input.status === "failed" && !input.error) {
+          throw new ClawError("PROJECT_CONFIG_INVALID", "knowledge done --status failed requires --error.");
+        }
+        if (input.status !== "succeeded" && input.status !== "failed") {
+          throw new ClawError("PROJECT_CONFIG_INVALID", "Unsupported knowledge done status " + String(input.status) + ".");
+        }
+        return { output: doneKnowledgeCommand({ jobPath, ...input }) };
+      }
       default:
         throw new ClawError(
           "SESSION_OPERATION_UNSUPPORTED",
@@ -764,7 +791,9 @@ export class ClawCommandService {
           : {}),
       });
       if (knowledgeEnd.finalizeId && knowledgeEnd.jobPath && writer?.executionPolicy === "subagent") {
-        dispatch = resolveHostIntegrationProfile(context.host)?.usesAtomicKnowledgeDispatch === true
+        dispatch = context.host === "dsh"
+          ? buildDshKnowledgeDispatch({ finalizeId: knowledgeEnd.finalizeId, writer })
+          : resolveHostIntegrationProfile(context.host)?.usesAtomicKnowledgeDispatch === true
           ? buildKnowledgeAtomicDispatch({ finalizeId: knowledgeEnd.finalizeId, writer })
           : buildKnowledgeDelegateDispatch({
               policy: "subagent",

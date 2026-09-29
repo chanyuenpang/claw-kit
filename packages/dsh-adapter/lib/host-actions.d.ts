@@ -83,4 +83,4 @@ export declare function consumeHostActions(actions: unknown[] | undefined, goals
  * visible-field contract the Codex driver applies (stage, plan summary,
  * next steps, notes, next task, command hints, askUser, plan).
  */
-export declare function compactClawOutput(output: Record<string, unknown> | undefined): Record<string, JsonValue>;
+export declare function compactClawOutput(output: Record<string, unknown> | undefined, operation?: string): Record<string, JsonValue>;

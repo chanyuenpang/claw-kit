@@ -241,6 +241,18 @@ test("cli plan done emits host-specific subagent dispatch for Codex and Cindy an
   assert.match(String(cindyDispatch.leadInstruction), /Do not skip it for any reason/);
   assert.equal((cindyDone.nextsteps as string[]).some((step) => step.includes("non-skippable closeout")), false);
 
+  const dshRoot = createFixture("plan-done-subagent-dsh");
+  const dshEnv = { CLAW_HOST: "dsh", CLAW_SESSION_ID: "dsh-session-subagent-dispatch" };
+  runClaw(["init", "--name", "DSH Subagent Dispatch", "--planning", "false"], dshRoot, dshEnv);
+  runClaw(["plan", "create", "--title", "dsh-dispatch-task", "--goal", "Dispatch native writer"], dshRoot, dshEnv);
+  const dshDone = runClaw(["plan", "done", "--retrospective", "Ready for native knowledge finalization."], dshRoot, dshEnv);
+  const dshDispatch = dshDone.knowledgeDispatch as JsonRecord;
+  assert.equal(dshDispatch.policy, "subagent");
+  assert.match(String(dshDispatch.prompt), /dsh-delegate-writer/);
+  assert.match(String(dshDispatch.prompt), /claw_run.*plan.create/);
+  assert.match(String(dshDispatch.prompt), /knowledge.claim.*subplan.create.*knowledge.done/);
+  assert.doesNotMatch(String(dshDispatch.prompt), /claw plan create --template-file/);
+
   const unsupportedRoot = createFixture("plan-done-subagent-unsupported");
   const opencodeEnv = {
     CLAW_HOST: "opencode",

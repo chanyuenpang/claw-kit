@@ -86,6 +86,27 @@ export function buildKnowledgeDelegateDispatch(input: {
   };
 }
 
+/** DSH has a native claw_run route; its finalizer never invokes shell claw commands. */
+export function buildDshKnowledgeDispatch(input: {
+  finalizeId: string;
+  writer?: KnowledgeWriterConfig | null;
+}): KnowledgeDelegateDispatch {
+  const templatePath = path.join(path.dirname(fileURLToPath(import.meta.url)), "resources", "dsh-delegate-writer", "TEMPLATE.json");
+  const delegateTitle = `knowledge-finalizer-${input.finalizeId.slice(0, 12)}`;
+  return {
+    schemaVersion: 1, policy: "subagent", finalizeId: input.finalizeId, preferReuse: false,
+    ...(input.writer?.model ? { model: input.writer.model } : {}),
+    ...(input.writer?.reasoningEffort ? { reasoningEffort: input.writer.reasoningEffort } : {}),
+    prompt: [
+      "Execute this already-created claw knowledge-finalization job unattended using only claw_run for workflow and knowledge operations.",
+      `First call claw_run({operation: "plan.create", args: {title: "${delegateTitle}", template_file: ${JSON.stringify(templatePath)}}}).`,
+      "Follow the template workflow: claw_run knowledge.claim with finalize_id; create the assignment subplan using subplan.create with parent, task_id: 2, template_file from claim; then claw_run knowledge.done with finalize_id, claim_token, status, and result or error.",
+      `Finalization id: ${input.finalizeId}`,
+      "Translate any claw CLI commandHints or assignment-template lifecycle wording into the corresponding claw_run operation and snake_case args; never use shell or CLI claw commands and never start another finalizer or delegate agent.",
+    ].join("\n"),
+  };
+}
+
 export function cindyKnowledgeDelegateTemplatePath(): string {
   return path.join(
     path.dirname(fileURLToPath(import.meta.url)),

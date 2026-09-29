@@ -126,7 +126,7 @@ export function consumeHostActions(actions, goals, agent) {
  * visible-field contract the Codex driver applies (stage, plan summary,
  * next steps, notes, next task, command hints, askUser, plan).
  */
-export function compactClawOutput(output) {
+export function compactClawOutput(output, operation) {
     if (!output || typeof output !== "object")
         return { ok: true, command: "claw" };
     const guidance = output.workflowGuidance && typeof output.workflowGuidance === "object"
@@ -134,7 +134,7 @@ export function compactClawOutput(output) {
         : undefined;
     const visible = {
         ok: true,
-        command: typeof output.command === "string" ? output.command : "claw",
+        command: typeof output.command === "string" ? output.command : operation ?? "claw",
     };
     if (typeof output.planStatus === "string")
         visible.planStatus = output.planStatus;
@@ -210,6 +210,21 @@ export function compactClawOutput(output) {
             }
             return task;
         });
+    }
+    if (visible.command === "knowledge.claim") {
+        visible.claimed = output.claimed;
+        if (output.claimed === true) {
+            for (const key of ["finalizeId", "claimToken", "templatePath", "assignments"]) {
+                if (output[key] !== undefined)
+                    visible[key] = output[key];
+            }
+        }
+    }
+    else if (visible.command === "knowledge.done") {
+        for (const key of ["finalizeId", "completed", "failed", "alreadyDone"]) {
+            if (output[key] !== undefined)
+                visible[key] = output[key];
+        }
     }
     const command = typeof output.command === "string" ? output.command : "";
     const isWorkflowMutation = /^(plan|task|subplan)\.(?!show$)/.test(command);
