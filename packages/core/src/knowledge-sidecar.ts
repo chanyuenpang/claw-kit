@@ -1,7 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { readJsonFile, withFileLock, writeJsonFile } from "./io.js";
+import { readJsonFile, withFileLock, writeJsonFile, writeJsonFileAtomic } from "./io.js";
+import { buildKnowledgeWriterAssignments, buildKnowledgeAssignmentTemplate, type KnowledgeWriterAssignment } from "./knowledge-assignments.js";
+import type { PlanTemplateDocument } from "./templates/plans/default.js";
 import { ensureInsideDir } from "./paths.js";
 import { listTaskDirectories } from "./context.js";
 import { ensureUtf8Bom, hasUtf8BomPrefix } from "./text-encoding.js";
@@ -40,6 +42,27 @@ export type KnowledgeSessionRegistry = {
   pendingTurnOwner?: KnowledgeReportTarget;
   lastCollectedTurnId?: string;
   updatedAt: string;
+};
+
+/** Identity supplied by the trusted command context, never by model arguments. */
+export type KnowledgeClaimant = {
+  projectRoot: string;
+  host: string;
+  agentSessionId: string;
+};
+
+export type KnowledgeClaimReceipt = {
+  schemaVersion: 1;
+  finalizeId: string;
+  projectRoot: string;
+  host: "dsh";
+  parentSessionId: string;
+  agentSessionId: string;
+  claimToken: string;
+  claimedAt: string;
+  version: string;
+  assignments: KnowledgeWriterAssignment[];
+  template: PlanTemplateDocument;
 };
 
 export type KnowledgeFinalizationJob = {
@@ -86,6 +109,8 @@ export type KnowledgeFinalizationJob = {
   /** Opaque ownership token issued by the exclusive claim operation. */
   claimToken?: string;
   claimedAt?: string;
+  /** Immutable DSH first-claim snapshot; never regenerated on receipt recovery. */
+  claimReceipt?: KnowledgeClaimReceipt;
   truthThreadId?: string;
   adrThreadId?: string;
   truthResponse?: string;
@@ -653,11 +678,18 @@ export function claimKnowledgeFinalizationJob(
   jobPath: string,
   options?: {
     prepare?: (job: KnowledgeFinalizationJob) => Partial<KnowledgeFinalizationJob> | void;
+    claimant?: KnowledgeClaimant;
+    version?: string;
   },
 ): KnowledgeFinalizationJob | null {
   return withFileLock(jobPath, () => {
+    const observed = readKnowledgeFinalizationJob(jobPath);
+    if (observed.host === "dsh" || options?.claimant?.host === "dsh") {
+      assertDshKnowledgeClaimant(observed, options?.claimant);
+      if (!options?.version?.trim()) throw new Error("DSH knowledge claim requires a receipt version.");
+    }
     const current = reconcileKnowledgeFinalizationJobLocked(jobPath, new Date());
-    if (current.status !== "queued") {
+    if (current.status !== "queued" || current.claimReceipt) {
       return null;
     }
     const now = new Date().toISOString();
@@ -673,9 +705,43 @@ export function claimKnowledgeFinalizationJob(
       finishedAt: undefined,
       error: undefined,
     };
-    writeJsonFile(jobPath, running);
+    if (current.host === "dsh") {
+      const assignments = buildKnowledgeWriterAssignments(running);
+      running.claimReceipt = {
+        schemaVersion: 1, finalizeId: current.finalizeId, projectRoot: current.projectRoot,
+        host: "dsh", parentSessionId: current.sessionId,
+        agentSessionId: options!.claimant!.agentSessionId,
+        claimToken: running.claimToken!, claimedAt: now, version: options!.version!, assignments,
+        template: buildKnowledgeAssignmentTemplate({ assignments, finalizeId: current.finalizeId, version: options!.version! }),
+      };
+    }
+    // Token, owner and material commit together. A missing projection can be rebuilt;
+    // a failed template build must never leave a running job without its receipt.
+    writeJsonFileAtomic(jobPath, running);
     return running;
   });
+}
+
+function assertDshKnowledgeClaimant(job: KnowledgeFinalizationJob, claimant?: KnowledgeClaimant): asserts claimant is KnowledgeClaimant {
+  if (job.host !== "dsh" || claimant?.host !== "dsh" || !claimant.agentSessionId.trim()
+    || claimant.agentSessionId === job.sessionId
+    || path.resolve(claimant.projectRoot) !== path.resolve(job.projectRoot)) {
+    throw new Error("Knowledge claim receipt requires the trusted DSH child identity and exact project.");
+  }
+}
+
+/** Read-only reconciliation: no expiry writes, token issuance, attempt changes or collector. */
+export function readKnowledgeClaimReceipt(jobPath: string, claimant: KnowledgeClaimant): KnowledgeFinalizationJob | null {
+  const job = readKnowledgeFinalizationJob(jobPath);
+  assertDshKnowledgeClaimant(job, claimant);
+  const receipt = job.claimReceipt;
+  if (job.status !== "running" || !job.expiresAt || !(Date.parse(job.expiresAt) > Date.now())
+    || !receipt || receipt.schemaVersion !== 1
+    || receipt.host !== claimant.host || receipt.projectRoot !== job.projectRoot
+    || receipt.finalizeId !== job.finalizeId || receipt.parentSessionId !== job.sessionId
+    || receipt.agentSessionId !== claimant.agentSessionId
+    || !job.claimToken || receipt.claimToken !== job.claimToken || receipt.claimedAt !== job.claimedAt) return null;
+  return job;
 }
 
 export function doneKnowledgeFinalizationJob(input: {
@@ -711,13 +777,15 @@ export function doneKnowledgeFinalizationJob(input: {
     const terminal: KnowledgeFinalizationJob = {
       ...current,
       ...(input.patch ?? {}),
+      // Terminal result metadata cannot replace the immutable claim material.
+      ...(current.claimReceipt ? { claimReceipt: current.claimReceipt } : {}),
       status: input.status,
       finishedAt,
       ...(input.status === "succeeded"
         ? { finalResponse: input.result ?? "", error: undefined }
         : { error: { message: input.error ?? "Knowledge finalization failed." } }),
     };
-    writeJsonFile(input.jobPath, terminal);
+    writeJsonFileAtomic(input.jobPath, terminal);
     return { job: terminal, alreadyDone: false };
   });
 }
@@ -845,7 +913,7 @@ function reconcileKnowledgeFinalizationJobLocked(
   if (now.getTime() < expiresAt.getTime()) {
     if (current.expiresAt === expiresAt.toISOString()) return current;
     const normalized = { ...current, expiresAt: expiresAt.toISOString() };
-    writeJsonFile(jobPath, normalized);
+    writeJsonFileAtomic(jobPath, normalized);
     return normalized;
   }
   const expired: KnowledgeFinalizationJob = {
@@ -857,7 +925,7 @@ function reconcileKnowledgeFinalizationJobLocked(
     claimedAt: undefined,
     error: { message: "Knowledge finalization expired before completion." },
   };
-  writeJsonFile(jobPath, expired);
+  writeJsonFileAtomic(jobPath, expired);
   fs.rmSync(path.join(path.dirname(jobPath), `${current.finalizeId}.assignments.json`), { force: true });
   return expired;
 }
@@ -938,7 +1006,13 @@ export function recordKnowledgeFinalizationResult(
 }
 
 export function writeKnowledgeFinalizationJob(jobPath: string, job: KnowledgeFinalizationJob): void {
-  withFileLock(jobPath, () => writeJsonFile(jobPath, job));
+  withFileLock(jobPath, () => {
+    const current = fs.existsSync(jobPath) ? readKnowledgeFinalizationJob(jobPath) : undefined;
+    if (current?.claimReceipt && JSON.stringify(current.claimReceipt) !== JSON.stringify(job.claimReceipt)) {
+      throw new Error("Knowledge claim receipt is immutable.");
+    }
+    writeJsonFileAtomic(jobPath, job);
+  });
 }
 
 function updateKnowledgeRegistry(

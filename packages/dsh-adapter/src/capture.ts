@@ -32,15 +32,17 @@ export function extractPlanFinalAnswers(events: EventLike[], _sessionId: string,
   occurredAt?: string;
   message: string;
 }> {
-  const finals = new Map<number, { message: string; time?: number; sequence: number }>();
-  for (let sequence = 0; sequence < events.length; sequence += 1) {
-    const event = events[sequence]!;
+  const finals = new Map<number, { message: string; time?: number }>();
+  for (const event of events) {
     const turn = event.data?.turn;
     const time = event.time;
     if (startedAtMs !== undefined && time !== undefined && time < startedAtMs) continue;
-    if (event.type !== "assistant/message" || typeof turn !== "number") continue;
+    // The last assistant/message before a tool call is not a final answer.
+    // No Host turn-final hook is required: absence of a proven final is valid
+    // information loss, never a reason to delay the knowledge writer.
+    if (event.type !== "assistant/final" || typeof turn !== "number") continue;
     const message = textFromContent(event.data?.message?.content);
-    if (message) finals.set(turn, { message, ...(time !== undefined ? { time } : {}), sequence });
+    if (message) finals.set(turn, { message, ...(time !== undefined ? { time } : {}) });
   }
   return [...finals.entries()].map(([turn, final]) => ({
     schemaVersion: 1,

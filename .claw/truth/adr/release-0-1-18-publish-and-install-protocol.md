@@ -55,6 +55,10 @@ The repository also needs one maintainer entry that can execute the accepted rel
 - `0.1.58` 的 auto-update 特例是 release / update 分离的历史前身；从 `0.1.86` 起，本地 CLI 与 plugin refresh 一般性地属于发布后的独立用户端 workflow，release 本身仍必须完成 GitHub source/tag、当前 npm package set publish、registry verification、committed Codex payload 与 clean-worktree 收敛
 - 发布完成后删除本机临时 `npm token` 配置
 
+## Alternatives
+
+- `0.2.40` 的 GitHub source 与 npm 同步发布、以及随即刷新本机安装，均未获本次 owner 授权；该版本采用下面记录的一次性分阶段交付，不替代后续正式 npm publish gate。
+
 ## Consequences
 
 - 发布链路变成先验证、后发布，降低把未验证状态直接推向 npm 的风险
@@ -86,6 +90,11 @@ The repository also needs one maintainer entry that can execute the accepted rel
 
 <!-- state: history -->
 ## Decision evolution
+
+<!-- dated: 2026-09-29 -->
+### 0.2.40 staged GitHub source release
+
+Owner explicitly chose GitHub source/tag/Release first and deferred npm publication and local installation. The verified `v0.2.40` source checkpoint at `3058fd1` does not satisfy the ordinary npm release closeout, so later registry publication must retain its own verification boundary rather than repeating source preparation or inferring published packages from the GitHub tag. The version-scoped artifact state is owned by `.claw/truth/features/published-npm-packages.md`; this entry records only the publication decision and its protocol consequence.
 
 <!-- dated: 2026-07-20 -->
 ### 0.1.87 template-version bootstrap exception

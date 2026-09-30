@@ -4,6 +4,13 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## [Unreleased]
 
+## [0.2.41] - 2026-09-30
+
+- Publish CLI/Core/Client from the new main source after the earlier 0.2.40 GitHub-only checkpoint.
+- Refactor CLI command routing and recover interrupted completion refreshes; preserve terminal-only directory-scoped search.
+- Make DSH knowledge claims recoverable through immutable same-child receipts and route model commands through a strict daemon boundary.
+- Align Codex and DSH adapter compatibility with CLI 0.2.41; publish their artifacts independently.
+
 ## [0.2.40] - 2026-09-29
 
 CLI/core GitHub source release; npm publication is deferred.

@@ -318,8 +318,8 @@ if (args[0] === "analyze" && ${JSON.stringify(delayMs)} > 0) {
 }
 
 if (args[0] === "analyze" && ${JSON.stringify(mode)} === "require-completion-worker") {
-  const refreshDir = path.join(process.cwd(), ".claw", "logs", "completion-refresh");
-  const running = fs.existsSync(refreshDir) && fs.readdirSync(refreshDir)
+  const refreshRoots = ["runtime", "logs"].map((folder) => path.join(process.cwd(), ".claw", folder, "completion-refresh"));
+  const running = refreshRoots.some((refreshDir) => fs.existsSync(refreshDir) && fs.readdirSync(refreshDir)
     .filter((entry) => entry.endsWith(".json"))
     .some((entry) => {
       try {
@@ -327,7 +327,7 @@ if (args[0] === "analyze" && ${JSON.stringify(mode)} === "require-completion-wor
       } catch {
         return false;
       }
-    });
+    }));
   if (!running) {
     process.stderr.write("gitnexus analyze ran before detached completion refresh\\n");
     process.exit(1);

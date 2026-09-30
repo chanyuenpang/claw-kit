@@ -39,11 +39,19 @@ export type SubprocessHandleLike = {
     readonly stderr?: Readable;
     readonly collected?: {
         stdout?: {
+            readFrom?(offset: number): {
+                text: string;
+                lossy: boolean;
+            };
             finalize(): {
                 text: string;
             };
         };
         stderr?: {
+            readFrom?(offset: number): {
+                text: string;
+                lossy: boolean;
+            };
             finalize(): {
                 text: string;
             };
@@ -65,6 +73,7 @@ export type ClawExecuteResult = {
     error?: {
         code?: string;
         message?: string;
+        outcome?: "known" | "unknown";
     };
 };
 /**
@@ -131,7 +140,7 @@ export declare class ClawSession {
     private ingest;
     private consume;
     /** Execute one operation through the daemon, strictly serialized. */
-    request(operation: string, input: unknown, timeoutMs?: number): Promise<ClawExecuteResult>;
+    request(operation: string, input: unknown, timeoutMs?: number, route?: (send: () => Promise<ClawExecuteResult>) => Promise<ClawExecuteResult>): Promise<ClawExecuteResult>;
     private writeStdin;
     private dropHandle;
     private failPending;

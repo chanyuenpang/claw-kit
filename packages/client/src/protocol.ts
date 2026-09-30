@@ -40,72 +40,47 @@ export type SessionSimplePlanView = {
   rules: string[];
 };
 
+/** Closed model-allowed business domain; lifecycle/admin commands are separate. */
+export type ClawPlanFields = {
+  goalText?: string; requirementsSummary?: string; planSummary?: string; retrospectiveSummary?: string;
+  openQuestions?: string[]; removeOpenQuestions?: string[]; acceptanceCriteria?: string[];
+  removeAcceptanceCriteria?: string[]; rules?: string[]; removeRules?: string[];
+  keyDecisions?: string[]; removeKeyDecisions?: string[]; removeReferencePaths?: string[];
+  whatWorked?: string[]; issues?: string[]; followUps?: string[];
+  references?: Array<{ path: string; why: string }>;
+};
+export type ClawTaskStatus = "pending" | "in_progress" | "subagent_running" | "done" | "blocked";
+export type ClawPlanMutation =
+  | { type: "plan.update"; updates: ClawPlanFields }
+  | { type: "plan.status"; status: string }
+  | { type: "task.add"; title: string; detail?: string }
+  | { type: "task.edit"; id: number; title?: string; detail?: string; status?: ClawTaskStatus; choiceId?: string }
+  | { type: "task.remove"; id: number };
 export type ClawSessionCommand =
-  | {
-      operation: "plan.create";
-      input: {
-        title?: string;
-        goalText?: string;
-        taskName?: string;
-        scope?: "project" | "session";
-        templateName?: string;
-        templateFile?: string;
-      };
-    }
-  | {
-      operation: "plan.start";
-      input: {
-        updates?: {
-          goalText?: string;
-          requirementsSummary?: string;
-          acceptanceCriteria?: string[];
-        };
-        appendTasks?: Array<{ title: string; detail?: string }>;
-      };
-    }
+  | { operation: "plan.create"; input: {
+      title?: string; taskName?: string; goalText?: string; description?: string;
+      scope?: "project" | "session"; knowledgeCapture?: boolean; templateName?: string;
+      templateFile?: string; planStatus?: string; forcePlanning?: boolean;
+    } }
+  | { operation: "plan.start"; input: { updates?: ClawPlanFields; appendTasks?: Array<{ title: string; detail?: string }> } }
   | { operation: "plan.resume"; input: { planId?: string } }
   | { operation: "plan.leave"; input: Record<string, never> }
   | { operation: "plan.show"; input: { simple?: boolean } }
-  | {
-      operation: "plan.edit";
-      input: {
-        operations: Array<
-          | { type: "plan.update"; updates: Record<string, unknown> }
-          | { type: "plan.status"; status: string }
-        >;
-      };
-    }
+  | { operation: "plan.edit"; input: { operations: ClawPlanMutation[] } }
   | { operation: "plan.wait"; input: Record<string, never> }
-  | {
-      operation: "plan.done";
-      input: {
-        retrospectiveSummary?: string;
-        keyDecisions?: string[];
-        whatWorked?: string[];
-        issues?: string[];
-        followUps?: string[];
-      };
-    }
-  | { operation: "subplan.create"; input: { parentTaskName: string; parentTaskId: number } }
-  | {
-      operation: "task.edit";
-      input: {
-        taskId?: number;
-        taskStatus?: "pending" | "in_progress" | "subagent_running" | "done" | "blocked";
-        taskChoiceId?: string;
-        taskTitle?: string;
-        taskDetail?: string;
-      };
-    }
-  | {
-      operation: "task.add";
-      input: { tasks: Array<{ title: string; detail?: string }> };
-    }
-  | {
-      operation: "task.done";
-      input: { tasks: Array<{ id: number; choiceId?: string }> };
-    }
-  | { operation: "search"; input: { query: string; limit?: number; dir?: string } };
+  | { operation: "plan.done"; input: ClawPlanFields }
+  | { operation: "subplan.create"; input: { parentTaskName: string; parentTaskId: number; templateName?: string; templateFile?: string } }
+  | { operation: "task.edit"; input: { taskId?: number; taskTitle?: string; taskDetail?: string; taskStatus?: ClawTaskStatus; taskChoiceId?: string } }
+  | { operation: "task.add"; input: { tasks: Array<{ title: string; detail?: string }> } }
+  | { operation: "task.done"; input: { tasks: Array<{ id: number; choiceId?: string }> } }
+  | { operation: "search"; input: { query: string; limit?: number } }
+  | { operation: "search.index.refresh"; input: Record<string, never> }
+  | { operation: "knowledge.claim"; input: { finalizeId: string } }
+  /** Internal read-only receipt reconciliation, not a model operation. */
+  | { operation: "knowledge.claim.receipt"; input: { finalizeId: string } }
+  | { operation: "knowledge.done"; input: { finalizeId: string; claimToken: string } & (
+      { status: "succeeded"; result: string; error?: never } | { status: "failed"; error: string; result?: never }
+    ) };
 
 export type ClawSessionCommandResult<T extends ClawSessionCommand> =
   T extends { operation: "plan.show"; input: { simple: true } }

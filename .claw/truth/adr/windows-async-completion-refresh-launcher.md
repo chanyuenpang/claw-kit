@@ -17,6 +17,7 @@ project-scope terminal plan finalization（由 `claw plan done` 或 `claw plan e
 
 ## Decision
 
+- Plan-terminal 与成功 `knowledge.done` 的 refresh 都是系统拥有的必需副作用：先以已提交的 canonical facts 建立或重建 intent，随后由 detached worker 执行；进程在 enqueue 前终止时由下一次系统入口恢复，不能要求 Agent 或 Host turn-final 确认。
 - Windows 下的 completion refresh 不再由主 CLI 进程直接 `detached + unref`。
 - 主 CLI 改为先写 `queued` status file，再通过外部 PowerShell `Start-Process` launcher 启动 `internal-completion-refresh`。
 - `internal-completion-refresh` 启动后会先把 status file 更新为 `running`，完成后再写最终成功或失败 payload。
@@ -27,6 +28,12 @@ project-scope terminal plan finalization（由 `claw plan done` 或 `claw plan e
 - terminal plan finalization 在排队 refresh 前只持久化 terminal state 与 knowledge-finalization job 并构造 `knowledgeDispatch`；GitNexus readiness、project memory 和 task memory indexing 都不进入同步 terminal dispatch 路径。
 - GitNexus 自动安装/setup、cache seeding、embedding enablement 与 analyze 全部由 completion-refresh leader 执行；失败写入 status file，瞬时 busy / locked 按 `100ms`、`250ms` 有界退避重试。
 - Windows `.cmd` 子进程显式通过 `cmd.exe` 启动，不使用 `shell: true` 参数拼接。
+
+## Alternatives
+
+- 只返回 refresh hint 让 Agent 或 Host 执行：拒绝，因为 foreground 成功不能依赖后续模型参与或 turn-final 信号。
+- 因 enqueue 缺口而重放 terminal mutation 或 knowledge writer：拒绝，已提交的 plan/job 是恢复依据，未知结果的业务 mutation 不能重放。
+- 声称完全 idle 时按时恢复：拒绝；当前保证是下一次系统入口与可启动时的 detached runner，而非无入口的 wall-clock 进展。
 
 ## Consequences
 

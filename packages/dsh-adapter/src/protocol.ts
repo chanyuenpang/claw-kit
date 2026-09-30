@@ -18,8 +18,7 @@ export function isUncertainConnectionFailure(message: string): boolean {
 
 /** Map one `claw_run` operation call (snake_case args) to the daemon's
  * canonical `claw/execute` input. Mirrors the Cindy adapter's sessionRequest
- * contract. Unknown operations pass args through and fail closed on the
- * daemon's validation. */
+ * contract. Unknown operations fail closed before transport selection. */
 function firstValue(args: Record<string, unknown>, ...keys: string[]): unknown {
   for (const key of keys) {
     if (args[key] !== undefined) return args[key];
@@ -144,6 +143,8 @@ export function daemonInput(operation: string, args: Record<string, unknown>): u
     case "plan.show":
       assertKnownArgs(operation, args, ["simple"]);
       return { simple: args.simple === true };
+    case "context":
+    case "plan.leave":
     case "plan.wait":
       assertKnownArgs(operation, args, []);
       return {};
@@ -224,7 +225,7 @@ export function daemonInput(operation: string, args: Record<string, unknown>): u
       assertKnownArgs(operation, args, []);
       return {};
     default:
-      return args;
+      throw new Error("Operation is outside the model command contract: " + operation);
   }
 }
 

@@ -27,8 +27,8 @@ export type SubprocessHandleLike = {
   readonly stdout?: Readable;
   readonly stderr?: Readable;
   readonly collected?: {
-    stdout?: { finalize(): { text: string } };
-    stderr?: { finalize(): { text: string } };
+    stdout?: { readFrom?(offset: number): { text: string; lossy: boolean }; finalize(): { text: string } };
+    stderr?: { readFrom?(offset: number): { text: string; lossy: boolean }; finalize(): { text: string } };
   };
   readonly done: Promise<unknown>;
   waitForExit?(): Promise<unknown>;
@@ -44,7 +44,7 @@ export type ClawExecuteResult = {
   hostActions?: Array<Record<string, unknown>>;
   knowledgeDispatch?: unknown;
   postCommitEffects?: unknown[];
-  error?: { code?: string; message?: string };
+  error?: { code?: string; message?: string; outcome?: "known" | "unknown" };
 };
 
 function protocolError(code: string, message: string): Error {
@@ -62,7 +62,7 @@ function sessionOpenFailure(stderr: string, fallback: string): Error {
     const message = typeof parsed.error?.message === "string" ? parsed.error.message : undefined;
     if (message) {
       return protocolError(
-        "CLAW_SESSION_OPEN_FAILED",
+        code === "SESSION_DAEMON_UNAVAILABLE" ? code : "CLAW_SESSION_OPEN_FAILED",
         "claw session open failed" + (code ? " [" + code + "]" : "") + ": " + message,
       );
     }
@@ -325,13 +325,24 @@ export class ClawSession {
   }
 
   /** Execute one operation through the daemon, strictly serialized. */
-  request(operation: string, input: unknown, timeoutMs = 30000): Promise<ClawExecuteResult> {
-    if (this.closed) return Promise.reject(protocolError("SESSION_CONNECTION_LOST", "claw session transport is closed."));
+  request(operation: string, input: unknown, timeoutMs = 30000,
+    route?: (send: () => Promise<ClawExecuteResult>) => Promise<ClawExecuteResult>,
+  ): Promise<ClawExecuteResult> {
+    if (this.closed) return Promise.reject(Object.assign(
+      protocolError("SESSION_CONNECTION_LOST", "claw session transport is closed."), { beforeSend: true },
+    ));
     this.queued++;
     this.requestsStarted++;
     this.clearIdle();
     const execute = async (): Promise<ClawExecuteResult> => {
-      await this.open(true);
+      try {
+        await this.open(true);
+      } catch (error) {
+        // Business input has not been sent, even if opening this transport
+        // timed out. A separate baseline may safely execute it once.
+        if (error && typeof error === "object") Object.assign(error, { beforeSend: true });
+        throw error;
+      }
       if (this.handle === null) {
         throw protocolError("SESSION_CONNECTION_LOST", "claw session connection is unavailable.");
       }
@@ -359,7 +370,9 @@ export class ClawSession {
         });
       });
     };
-    const result = this.chain.then(execute, execute);
+    // Keep the trusted baseline inside this queue, not just the daemon send.
+    const routed = () => route ? route(execute) : execute();
+    const result = this.chain.then(routed, routed);
     this.chain = result.catch(() => undefined);
     void result.finally(() => {
       this.queued--;

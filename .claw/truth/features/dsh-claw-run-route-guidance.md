@@ -36,8 +36,8 @@ command hints directly in pwsh or another shell.
   `CLAW_SESSION_OPEN_TIMEOUT` is reserved for a genuinely silent, still-running child.
 - Codex's fixed code-mode consumer, Plan Mode UI, and approval mechanics remain host-specific;
   DSH parity applies to the shared mutation and hostActions contracts, not those surfaces.
-- These adapter changes do not modify shared core `workflowGuidance`, CLI protocol, or
-  `hostActions` semantics.
+- The model-allowed business operation domain now shares `ClawCommandService` and a typed contract across the daemon and trusted one-shot CLI session entry (`packages/cli/src/command-contract.ts`, `session-command.ts`, `command-entry.ts`). The adapter automatically falls back to that entry for a known unsupported daemon operation or a proven pre-send transport failure, using direct Node argv and bounded JSON stdin, not arbitrary CLI/shell forwarding. A timeout, disconnect, or other unknown-outcome mutation is never replayed. Both transports use session registry/focus preparation and the same command envelope and hostActions; internal/admin commands are outside the model operation domain.
+- `packages/dsh-adapter/src/command-route.ts` owns this transport decision; `packages/cli/test/session-commands.test.ts` and `packages/dsh-adapter/test/command-route.test.mjs` cover representative route parity. The completed installed DSH candidate exercised a normal plan through finalization, but did not destructively inject lost responses in the live host; fault-injection tests covered those windows. Shared core guidance and hostActions semantics remain the canonical output contract.
 
 ## Related code
 

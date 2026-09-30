@@ -9,10 +9,18 @@ import { apply } from "../lib/index.js";
 
 const WORKDIR = process.cwd();
 
-function makeMockSubprocess(respond) {
+function makeMockSubprocess(respond, pending) {
   const handles = [];
   const subprocess = {
-    spawn() {
+    spawn(spec) {
+      if (spec.argv.includes("internal-knowledge-pending") || spec.argv.includes("context")) {
+        const text = spec.argv.includes("context")
+          ? JSON.stringify({ project: { projectRoot: WORKDIR } })
+          : JSON.stringify({ ok: true, command: "internal-knowledge-pending", dispatches: pending() });
+        return { done: Promise.resolve({ exitCode: 0, signal: null }),
+          collected: { stdout: { readFrom: () => ({ text, lossy: false }) }, stderr: { readFrom: () => ({ text: "", lossy: false }) } },
+          terminate: async () => {} };
+      }
       let finish;
       const handle = {
         stdin: {
@@ -44,7 +52,7 @@ function makeMockSubprocess(respond) {
   return { subprocess, handles };
 }
 
-function makeHarness({ subagents, dispatch, extraService }) {
+function makeHarness({ subagents, dispatch, extraService, initialQueued = false, unknownClaim = false, receiptClaimed = true }) {
   let tool;
   const ctx = {
     get: (name) => {
@@ -56,11 +64,18 @@ function makeHarness({ subagents, dispatch, extraService }) {
     },
     on: () => () => {},
   };
-  const mock = makeMockSubprocess((request) => (
-    request.operation === "plan.done"
-      ? { ok: true, command: "plan.done", output: { planStatus: "end.completed" }, knowledgeDispatch: dispatch }
-      : { ok: true, command: request.operation, output: { planStatus: "process.active" } }
-  ));
+  let terminalCommitted = initialQueued;
+  const mock = makeMockSubprocess((request) => {
+    if (request.operation === "knowledge.claim" && unknownClaim) return { ok: false, command: "knowledge.claim",
+      error: { code: "SESSION_CONNECTION_LOST", message: "connection was interrupted", outcome: "unknown" } };
+    if (request.operation === "knowledge.claim.receipt") return { ok: true, command: "knowledge.claim.receipt", schemaVersion: 1,
+      output: { claimed: receiptClaimed, claimToken: receiptClaimed ? "frozen-token" : undefined, assignments: [] } };
+    if (request.operation === "plan.done") {
+      terminalCommitted = true;
+      return { ok: true, command: "plan.done", output: { planStatus: "end.completed" }, knowledgeDispatch: dispatch };
+    }
+    return { ok: true, command: request.operation, output: { planStatus: "process.active" } };
+  }, () => terminalCommitted && dispatch ? [dispatch] : []);
   const harness = { ctx, mock, get tool() { return tool; } };
   harness.subprocess = mock.subprocess;
   return harness;
@@ -89,11 +104,48 @@ function makeSubagents({ onStart, children = () => [] } = {}) {
   return { service, state };
 }
 
+test("a queued job recovers on next context without replaying its lost plan terminal", async () => {
+  const { service, state } = makeSubagents();
+  const harness = makeHarness({ subagents: service, initialQueued: true,
+    dispatch: { policy: "subagent", finalizeId: "d".repeat(64), prompt: "run recovered writer" } });
+  apply(harness.ctx);
+  const agent = makeAgent("recovered-parent");
+  await Promise.all([
+    harness.tool.execute({ operation: "context", args: {} }, { agent }),
+    harness.tool.execute({ operation: "context", args: {} }, { agent }),
+  ]);
+  assert.equal(state.starts, 1);
+  assert.equal(harness.mock.handles.length, 0, "only read-only one-off inspection ran, not plan.done");
+});
+
+test("lost claim response reads the frozen same-child receipt without second claim", async () => {
+  const harness = makeHarness({ subagents: undefined, dispatch: undefined, unknownClaim: true });
+  apply(harness.ctx);
+  const result = await harness.tool.execute({ operation: "knowledge.claim",
+    args: { finalize_id: "a".repeat(64) } }, { agent: makeAgent("writer-child") });
+  assert.equal(result.claimed, true);
+  assert.equal(result.claimToken, "frozen-token");
+  assert.equal(result.recovered, true);
+  const requests = harness.mock.handles.flatMap((handle) => handle.stdin.writes)
+    .filter((line) => line.startsWith("{")).map((line) => JSON.parse(line).operation);
+  assert.deepEqual(requests, ["knowledge.claim", "knowledge.claim.receipt"]);
+});
+
+test("unavailable claim receipt retains unknown outcome without mutation replay", async () => {
+  const harness = makeHarness({ subagents: undefined, dispatch: undefined, unknownClaim: true, receiptClaimed: false });
+  apply(harness.ctx);
+  await assert.rejects(harness.tool.execute({ operation: "knowledge.claim",
+    args: { finalize_id: "a".repeat(64) } }, { agent: makeAgent("writer-child") }), /CLAW_OUTCOME_UNKNOWN/);
+  const requests = harness.mock.handles.flatMap((handle) => handle.stdin.writes)
+    .filter((line) => line.startsWith("{")).map((line) => JSON.parse(line).operation);
+  assert.deepEqual(requests, ["knowledge.claim", "knowledge.claim.receipt"]);
+});
+
 test("a repeated dispatch for the same finalizeId starts exactly one writer child", async () => {
   const { service, state } = makeSubagents();
   const harness = makeHarness({
     subagents: service,
-    dispatch: { policy: "subagent", finalizeId: "aaaa1111bbbb", prompt: "run the finalizer" },
+    dispatch: { policy: "subagent", finalizeId: "a".repeat(64), prompt: "run the finalizer" },
   });
   apply(harness.ctx, {});
 
@@ -111,12 +163,12 @@ test("a repeated dispatch for the same finalizeId starts exactly one writer chil
 test("a running durable child with the finalizeId label is reused after an adapter restart", async () => {
   const { service, state } = makeSubagents({
     children: () => [
-      { kind: "child", id: "durable-child", activity: "running", mode: "one-shot", label: "knowledge-finalizer-cccc2222dddd" },
+      { kind: "child", id: "durable-child", activity: "running", mode: "one-shot", label: "knowledge-finalizer-" + "c".repeat(64) },
     ],
   });
   const harness = makeHarness({
     subagents: service,
-    dispatch: { policy: "subagent", finalizeId: "cccc2222dddd", prompt: "run the finalizer" },
+    dispatch: { policy: "subagent", finalizeId: "c".repeat(64), prompt: "run the finalizer" },
   });
   apply(harness.ctx, {});
 
@@ -134,7 +186,7 @@ test("a settled writer child releases the record so a stranded job can be retrie
   });
   const harness = makeHarness({
     subagents: service,
-    dispatch: { policy: "subagent", finalizeId: "eeee3333ffff", prompt: "run the finalizer" },
+    dispatch: { policy: "subagent", finalizeId: "e".repeat(64), prompt: "run the finalizer" },
   });
   apply(harness.ctx, {});
 
@@ -144,16 +196,16 @@ test("a settled writer child releases the record so a stranded job can be retrie
   settleRun("done");
   await new Promise((resolve) => setTimeout(resolve, 10));
 
-  const second = await harness.tool.execute({ operation: "plan.done", args: {} }, { agent: makeAgent("parent-3") });
-  assert.equal(second.dispatch.reused, undefined, "a settled child must not block a job that is still queued");
-  assert.equal(state.starts, 2);
+  const second = await harness.tool.execute({ operation: "plan.show", args: {} }, { agent: makeAgent("parent-3") });
+  assert.equal(second.command, "plan.show", "a read-only next entry recovers the queued writer");
+  assert.equal(state.starts, 2, "the settled child does not block an unclaimed queued job");
 });
 
 test("plan.done releases only its own transport after dispatch, then same agent reopens", async () => {
   const { service } = makeSubagents();
   const harness = makeHarness({
     subagents: service,
-    dispatch: { policy: "subagent", finalizeId: "finish-and-reopen", prompt: "writer independent of transport" },
+    dispatch: { policy: "subagent", finalizeId: "f".repeat(64), prompt: "writer independent of transport" },
   });
   apply(harness.ctx);
   const agent = makeAgent("same-agent");
@@ -179,7 +231,7 @@ test("an already queued next-plan request prevents completed-plan eviction", asy
   });
   const harness = makeHarness({
     subagents: service,
-    dispatch: { policy: "subagent", finalizeId: "race-new-plan", prompt: "writer" },
+    dispatch: { policy: "subagent", finalizeId: "b".repeat(64), prompt: "writer" },
   });
   apply(harness.ctx);
   const agent = makeAgent("race-agent");
@@ -207,12 +259,12 @@ test("claw_run keeps knowledge.done receipt when daemon omits command", async ()
 test("an unavailable subagents service reports a non-retryable dispatch", async () => {
   const harness = makeHarness({
     subagents: undefined,
-    dispatch: { policy: "subagent", finalizeId: "9999aaaa0000", prompt: "run the finalizer" },
+    dispatch: { policy: "subagent", finalizeId: "9".repeat(64), prompt: "run the finalizer" },
   });
   apply(harness.ctx, {});
 
   const result = await harness.tool.execute({ operation: "plan.done", args: {} }, { agent: makeAgent("parent-4") });
   assert.equal(result.dispatch.ok, false);
   assert.equal(result.dispatch.retryable, false);
-  assert.match(result.dispatch.guidance, /Do not run the knowledge finalizer yourself/);
+  assert.match(result.dispatch.guidance, /Do not run or retry the knowledge finalizer manually/);
 });

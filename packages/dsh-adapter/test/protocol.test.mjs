@@ -187,8 +187,8 @@ test("knowledge operations map strict snake_case arguments", () => {
   ]) assert.throws(() => daemonInput(operation, args));
 });
 
-test("unknown operations pass args through untouched", () => {
-  assert.deepEqual(daemonInput("knowledge.wait", { finalize_id: "f" }), { finalize_id: "f" });
+test("unknown operations are rejected at the model command boundary", () => {
+  assert.throws(() => daemonInput("knowledge.wait", { finalize_id: "f" }), /outside the model command contract/);
 });
 
 test("renderGuidanceSnapshot renders the compact workflow snapshot", () => {

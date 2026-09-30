@@ -10,12 +10,11 @@ import {
 } from "@veewo/claw-client";
 import {
   ClawError,
-  recoverProjectFocusTransitions,
   releaseCurrentPlanFocus,
   resolveProjectContext,
   writeJsonFileAtomic,
 } from "@veewo/claw-core";
-import { ClawCommandService } from "./command-service.js";
+import { SessionCommandExecutor } from "./session-command.js";
 import {
   RegistryFocusSessionStore,
   SessionRegistryV2,
@@ -63,9 +62,9 @@ export async function startSessionDaemon(options?: {
   const registry = new SessionRegistryV2(options?.runtimeRoot);
   ensurePrivateDirectory(path.join(registry.runtimeRoot, "daemon"));
   const releaseStartLock = acquireStartLock(registry.runtimeRoot);
-  registry.recover();
+  await registry.recover();
   const focusStore = new RegistryFocusSessionStore(registry);
-  const service = new ClawCommandService(registry);
+  const executor = new SessionCommandExecutor(registry);
   const token = randomBytes(32).toString("hex");
   const activeSessions = new Map<string, Set<ConnectionState>>();
   const connections = new Set<ConnectionState>();
@@ -76,7 +75,13 @@ export async function startSessionDaemon(options?: {
   const cleanupExpiredSessions = async (): Promise<void> => {
     const live = new Set(activeSessions.keys());
     for (const expired of registry.listExpiredRecords(new Date(), live)) {
-      if (expired.record.currentPlan) {
+      await registry.withExecution(expired.sessionKeyHash, async () => {
+      // Re-read after acquiring the cross-transport queue: a one-shot command
+      // may have refreshed this session since the expiry inventory was taken.
+      if (!fs.existsSync(registry.recordPath(expired.sessionKeyHash))) return;
+      const current = registry.read(expired.sessionKeyHash);
+      if (current.state !== "disconnected" || Date.parse(current.expiresAt) > Date.now()) return;
+      if (current.currentPlan) {
         const identity = createSessionIdentity(
           expired.record.agentSessionId,
           expired.record.canonicalWorkdir,
@@ -90,11 +95,12 @@ export async function startSessionDaemon(options?: {
             sessionStore: focusStore,
           });
         } catch (error) {
-          if (error instanceof ClawError) continue;
+          if (error instanceof ClawError) return;
           throw error;
         }
       }
       registry.removeReleasedExpired(expired.sessionKeyHash);
+      });
     }
   };
 
@@ -117,7 +123,7 @@ export async function startSessionDaemon(options?: {
     if (attached?.size === 0) {
       activeSessions.delete(connection.sessionKeyHash);
       try {
-        await registry.close(connection.sessionKeyHash);
+        await registry.withExecution(connection.sessionKeyHash, () => registry.close(connection.sessionKeyHash!));
       } catch {
         // Socket teardown must not be blocked by retained-state diagnostics.
       }
@@ -202,11 +208,7 @@ export async function startSessionDaemon(options?: {
         await cleanupExpiredSessions();
         await detach(connection);
         const identity = createSessionIdentity(request.input.agentSessionId, request.input.workdir);
-        await registry.open(
-          request.input.agentSessionId,
-          request.input.workdir,
-          request.input.client,
-        );
+        const opened = await executor.open(request.input);
         connection.sessionHandle = randomUUID();
         connection.sessionKeyHash = identity.sessionKeyHash;
         connection.agentSessionId = identity.agentSessionId;
@@ -216,36 +218,9 @@ export async function startSessionDaemon(options?: {
         const attached = activeSessions.get(identity.sessionKeyHash) ?? new Set<ConnectionState>();
         attached.add(connection);
         activeSessions.set(identity.sessionKeyHash, attached);
-        try {
-          const project = resolveProjectContext(identity.canonicalWorkdir);
-          await recoverProjectFocusTransitions({ project, sessionStore: focusStore });
-        } catch (error) {
-          if (error instanceof ClawError && error.code === "FOCUS_RECOVERY_CONFLICT") throw error;
-        }
-        await service.reconcileCanonicalFocus({
-          cwd: identity.canonicalWorkdir,
-          agentSessionId: identity.agentSessionId,
-          sessionKey: sessionFocusKey(identity),
-          host: request.input.client.host,
-          mode: "session",
-        });
-        const sessionRecord = registry.read(identity.sessionKeyHash);
-        const currentPlan = sessionRecord.currentPlan
-          ? (await service.execute({
-              cwd: identity.canonicalWorkdir,
-              agentSessionId: identity.agentSessionId,
-              sessionKey: sessionFocusKey(identity),
-              host: request.input.client.host,
-              mode: "session",
-            }, {
-              operation: "plan.show",
-              input: { simple: true },
-            })).output
-          : undefined;
         return successResponse(request.requestId, {
           sessionHandle: connection.sessionHandle,
-          session: sessionRecord,
-          ...(currentPlan ? { currentPlan } : {}),
+          ...opened,
         });
       }
       assertAttached(request, connection);
@@ -267,21 +242,12 @@ export async function startSessionDaemon(options?: {
         await detach(connection);
         return successResponse(request.requestId, { session: registry.read(sessionKeyHash) });
       }
-      const result = await service.execute({
-        cwd: connection.canonicalWorkdir!,
-        agentSessionId: connection.agentSessionId,
-        sessionKey: connection.focusKey,
-        host: connection.host,
-        mode: "session",
-      }, request.input as { operation: string; input: unknown });
-      await registry.touch(connection.sessionKeyHash!);
-      return successResponse(request.requestId, {
-        schemaVersion: 1,
-        output: result.output,
-        ...(result.hostActions?.length ? { hostActions: result.hostActions } : {}),
-        ...(result.postCommitEffects?.length ? { postCommitEffects: result.postCommitEffects } : {}),
-        ...(result.knowledgeDispatch ? { knowledgeDispatch: result.knowledgeDispatch } : {}),
-      });
+      const envelope = await executor.execute({
+        workdir: connection.canonicalWorkdir!,
+        agentSessionId: connection.agentSessionId!,
+        client: { kind: "adapter", host: connection.host },
+      }, request.input);
+      return successResponse(request.requestId, envelope);
     } catch (error) {
       if (error instanceof ClawError) {
         const code = error.details?.code === "SESSION_BUSY"

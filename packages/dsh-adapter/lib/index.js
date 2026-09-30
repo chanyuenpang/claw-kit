@@ -7,12 +7,14 @@ import { ClawSession } from "./claw-session.js";
 import { compactClawOutput, consumeHostActions, } from "./host-actions.js";
 import { daemonInput, isUncertainConnectionFailure, renderGuidanceSnapshot } from "./protocol.js";
 import { registerBundledSkills } from "./skills.js";
+import { routeCommand, runCommandBaseline, resolveCommandEntry } from "./command-route.js";
 import { handleProjectConfigRpc } from "./project-config-rpc.js";
 export const name = "claw-kit";
 const finalizerDispatches = new Map();
 /** The label every writer child for one finalizeId carries. */
 export function finalizerChildLabel(finalizeId) {
-    return `knowledge-finalizer-${finalizeId.slice(0, 12)}`;
+    // Native child labels use the full identifier; delegate plan titles stay short.
+    return `knowledge-finalizer-${finalizeId}`;
 }
 /**
  * Decide whether a writer child for this finalizeId is already live, so the
@@ -28,9 +30,8 @@ export function finalizerChildLabel(finalizeId) {
  *     for every child it starts), which is why the finalizer can stay
  *     one-shot and still be found.
  *
- * Fail-open: an absent service, a missing projection registry, or a session
- * store that throws must never block the dispatch — and must never be
- * reported as a reuse.
+ * A missing or damaged child catalog cannot prove absence. Defer dispatch
+ * instead of spawning a second child after an uncertain native start.
  */
 export async function resolveFinalizerReuse(input) {
     const records = input.records ?? finalizerDispatches;
@@ -39,25 +40,28 @@ export async function resolveFinalizerReuse(input) {
         return { runId: record.runId, source: "in-process" };
     }
     const subagents = input.subagents;
-    if (subagents === undefined || typeof subagents.listChildren !== "function")
-        return undefined;
+    if (subagents === undefined || typeof subagents.listChildren !== "function") {
+        return { deferred: true, reason: "native child catalog unavailable" };
+    }
     try {
         const children = await subagents.listChildren(input.parentSessionId);
-        for (const child of children ?? []) {
-            if (child?.kind === "child"
-                && child.activity === "running"
-                && child.label === input.label
-                && typeof child.id === "string") {
-                return { runId: child.id, source: "durable" };
-            }
+        if (!Array.isArray(children) || children.some((child) => child?.kind === "diagnostic")) {
+            return { deferred: true, reason: "native child catalog incomplete" };
         }
+        const legacyLabel = `knowledge-finalizer-${input.finalizeId.slice(0, 12)}`;
+        for (const child of children) {
+            if (child?.kind === "child" && child.activity === "running"
+                && (child.label === input.label || child.label === legacyLabel)
+                && typeof child.id === "string")
+                return { runId: child.id, source: "durable" };
+        }
+        return undefined;
     }
     catch {
-        // fail-open
+        return { deferred: true, reason: "native child catalog lookup failed" };
     }
-    return undefined;
 }
-const FINALIZER_MANUAL_RETRY_GUIDANCE = "Do not run the knowledge finalizer yourself and do not retry this dispatch manually: a manual retry is the only way to produce a second writer child. The durable job stays queued and the adapter retries it automatically on the next terminal plan transition.";
+const FINALIZER_MANUAL_RETRY_GUIDANCE = "Do not run or retry the knowledge finalizer manually. The durable queued job is reconciled by the adapter on the next system entry; an uncertain native child creation must be checked before another launch.";
 function collectorVersion() {
     const packageJsonPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "package.json");
     return String(JSON.parse(fs.readFileSync(packageJsonPath, "utf8")).version ?? "unknown");
@@ -246,7 +250,7 @@ export function apply(ctx) {
         // is lost, so rebind it.
         const sp = subprocess;
         const { executable, args } = process.platform === "win32"
-            ? { executable: process.env.ComSpec ?? "cmd.exe", args: ["/d", "/s", "/c", "claw.cmd", ...argv] }
+            ? { executable: process.execPath, args: [resolveCommandEntry(), ...argv] }
             : { executable: "claw", args: argv };
         const handle = sp.spawn({
             argv: [executable, ...args],
@@ -259,11 +263,152 @@ export function apply(ctx) {
             },
             graceMs: 10000,
         });
-        await handle.done;
-        return {
-            text: handle.collected?.stdout?.finalize().text ?? "",
-            errText: handle.collected?.stderr?.finalize().text ?? "",
+        const outcome = await handle.done;
+        const readOutput = (reader) => {
+            const collected = reader?.readFrom?.(0);
+            if (collected?.lossy)
+                throw new Error("claw one-off output was truncated");
+            return collected?.text ?? reader?.finalize().text ?? "";
         };
+        const text = readOutput(handle.collected?.stdout);
+        const errText = readOutput(handle.collected?.stderr);
+        if ((outcome.exitCode ?? outcome.code) !== 0 || outcome.signal) {
+            throw new Error("claw " + argv[0] + " exited without success: " + errText.slice(-4096));
+        }
+        return { text, errText };
+    }
+    const dispatchFlights = new Map();
+    const completedSweeps = new Set();
+    const pendingSweeps = new Map();
+    async function readPendingDispatches(parentId, workdir) {
+        const { text } = await runOneOff(["internal-knowledge-pending"], workdir, parentId);
+        const protocol = parseProtocol(text);
+        if (protocol?.ok !== true || !Array.isArray(protocol.dispatches)) {
+            throw new Error("Trusted queued-finalizer inspection returned no dispatch inventory.");
+        }
+        return protocol.dispatches;
+    }
+    async function dispatchOne(agent, workdir, dispatch) {
+        const finalizeId = String(dispatch.finalizeId ?? "");
+        if (!/^[a-f0-9]{64}$/i.test(finalizeId) || !dispatch.prompt) {
+            return { ok: false, retryable: false, reason: "Invalid canonical finalizer dispatch." };
+        }
+        const key = sessionKey(agent.id, workdir) + "\0" + finalizeId.toLowerCase();
+        const inFlight = dispatchFlights.get(key);
+        if (inFlight)
+            return inFlight;
+        const run = (async () => {
+            const subagents = c.get("subagents");
+            if (!subagents)
+                return { ok: false, retryable: false, reason: "Native subagent service unavailable", guidance: FINALIZER_MANUAL_RETRY_GUIDANCE };
+            const reused = await resolveFinalizerReuse({
+                finalizeId, parentSessionId: agent.id, label: finalizerChildLabel(finalizeId), subagents,
+            });
+            if (reused && "deferred" in reused) {
+                return { ok: false, reason: reused.reason, guidance: FINALIZER_MANUAL_RETRY_GUIDANCE };
+            }
+            if (reused)
+                return { ok: true, reused: true, runId: reused.runId, policy: dispatch.policy ?? "subagent" };
+            // The job may have been claimed or expired while native children were listed.
+            let pending;
+            try {
+                pending = await readPendingDispatches(agent.id, workdir);
+            }
+            catch (error) {
+                return { ok: false, reason: String(error), guidance: FINALIZER_MANUAL_RETRY_GUIDANCE };
+            }
+            if (!pending.some((item) => item.finalizeId === finalizeId)) {
+                return { ok: false, reason: "The canonical finalizer job is no longer queued." };
+            }
+            try {
+                const controller = new AbortController();
+                const child = await subagents.start("spawn", {
+                    label: finalizerChildLabel(finalizeId), prompt: [{ type: "text", text: dispatch.prompt }],
+                    parent: agent, signal: controller.signal,
+                });
+                const runId = String(child.id);
+                finalizerDispatches.set(finalizeId, { runId, settled: false });
+                if (child.result !== undefined) {
+                    const settle = () => {
+                        const record = finalizerDispatches.get(finalizeId);
+                        if (record?.runId === runId)
+                            record.settled = true;
+                    };
+                    void Promise.resolve(child.result).then(settle, settle)
+                        .finally(() => (child.dispose ? child.dispose() : undefined)).catch(() => undefined);
+                }
+                return { ok: true, runId, policy: dispatch.policy ?? "subagent" };
+            }
+            catch (error) {
+                // Native admission can have succeeded before its acknowledgement failed.
+                // The next entry must inspect the child catalog, not blindly start again.
+                return { ok: false, reason: error instanceof Error ? error.message : String(error),
+                    guidance: FINALIZER_MANUAL_RETRY_GUIDANCE };
+            }
+        })();
+        dispatchFlights.set(key, run);
+        try {
+            return await run;
+        }
+        finally {
+            if (dispatchFlights.get(key) === run)
+                dispatchFlights.delete(key);
+        }
+    }
+    async function sweepPending(agent, workdir, force = false) {
+        if (agent.session?.header?.parentSession)
+            return; // Never dispatch the parent's jobs from a writer child.
+        const key = sessionKey(agent.id, workdir);
+        const current = pendingSweeps.get(key);
+        if (current)
+            return current;
+        if (!force && completedSweeps.has(key))
+            return;
+        const sweep = (async () => {
+            try {
+                const pending = await readPendingDispatches(agent.id, workdir);
+                let deferred = false;
+                for (const dispatch of pending) {
+                    const result = await dispatchOne(agent, workdir, dispatch);
+                    if (result.ok !== true) {
+                        deferred = true;
+                        console.warn("[claw-kit] queued finalizer dispatch deferred:", result.reason);
+                    }
+                }
+                if (deferred)
+                    completedSweeps.delete(key);
+                else
+                    completedSweeps.add(key);
+            }
+            catch (error) {
+                console.warn("[claw-kit] queued finalizer reconciliation deferred:", error);
+            }
+        })();
+        pendingSweeps.set(key, sweep);
+        try {
+            await sweep;
+        }
+        finally {
+            if (pendingSweeps.get(key) === sweep)
+                pendingSweeps.delete(key);
+        }
+    }
+    async function recoverClaimReceipt(agentId, workdir, finalizeId) {
+        if (typeof finalizeId !== "string" || !/^[a-f0-9]{64}$/i.test(finalizeId))
+            return;
+        const key = sessionKey(agentId, workdir);
+        let recovery = sessions.get(key);
+        if (!recovery) {
+            recovery = new ClawSession(subprocess, workdir, agentId, "claw", 15000, SESSION_TRANSPORT_IDLE_MS, (idle) => release(key, idle, "idle-timeout"), (dead) => release(key, dead, "child-exit"));
+            sessions.set(key, recovery);
+        }
+        const input = { finalizeId };
+        const receipt = await recovery.request("knowledge.claim.receipt", input, 30000, (send) => routeCommand(send, () => runCommandBaseline(subprocess, workdir, agentId, "knowledge.claim.receipt", input)));
+        if (receipt.ok !== true || receipt.output?.claimed !== true)
+            return;
+        // Preserve the original model operation: this is its lost receipt, not a
+        // second claim or a new model-visible operation.
+        return { ...receipt, command: "knowledge.claim", output: { ...receipt.output, command: "knowledge.claim", recovered: true } };
     }
     // Settings uses a dedicated browser RPC channel. Its payload contains only a registry
     // workspace id and config operation fields: no browser-supplied filesystem paths.
@@ -306,17 +451,24 @@ export function apply(ctx) {
                 const workdir = await resolveWorkdir(agent, resolveRegistry());
                 if (workdir === undefined)
                     return;
-                await runOneOff([
-                    "internal-report-collector-register", "--project-root", workdir, "--collector-host", "dsh",
-                    "--collector-version", collectorVersion(),
-                    "--executable", process.execPath,
-                    "--arg", path.join(path.dirname(fileURLToPath(import.meta.url)), "report-collector-cli.js"),
-                ], workdir, agent.id);
-                const { text } = await runOneOff(["context", "--host", "dsh"], workdir, agent.id);
-                const parsed = parseProtocol(text);
-                const rendered = renderGuidanceSnapshot(parsed ?? undefined);
-                if (rendered)
-                    guidanceByAgent.set(agent, rendered);
+                try {
+                    await runOneOff([
+                        "internal-report-collector-register", "--project-root", workdir, "--collector-host", "dsh",
+                        "--collector-version", collectorVersion(),
+                        "--executable", process.execPath,
+                        "--arg", path.join(path.dirname(fileURLToPath(import.meta.url)), "report-collector-cli.js"),
+                    ], workdir, agent.id);
+                }
+                catch { /* Optional history registration cannot suppress queued dispatch. */ }
+                try {
+                    const { text } = await runOneOff(["context", "--host", "dsh"], workdir, agent.id);
+                    const parsed = parseProtocol(text);
+                    const rendered = renderGuidanceSnapshot(parsed ?? undefined);
+                    if (rendered)
+                        guidanceByAgent.set(agent, rendered);
+                }
+                catch { /* Context is fail-open; finalizer recovery is independent. */ }
+                await sweepPending(agent, workdir);
             }
             catch {
                 // fail-open
@@ -365,6 +517,10 @@ export function apply(ctx) {
             if (workdir === undefined) {
                 throw new Error("claw_run requires a valid session workspace; no workspace owns this session and agent.session.cwd resolved to none");
             }
+            const input = daemonInput(operation, (args.args ?? {}));
+            // Recover queued writers on the first trusted parent entry, independently
+            // of any later plan terminal response. Child sessions never own this sweep.
+            await sweepPending(agent, workdir);
             if (operation === "context") {
                 const { text } = await runOneOff(["context", "--host", "dsh"], workdir, agent.id);
                 const context = parseProtocol(text);
@@ -381,9 +537,8 @@ export function apply(ctx) {
                 session = new ClawSession(subprocess, workdir, agent.id, "claw", 15000, SESSION_TRANSPORT_IDLE_MS, (idle) => release(key, idle, "idle-timeout"), (dead) => release(key, dead, "child-exit"));
                 sessions.set(key, session);
             }
-            const input = daemonInput(operation, (args.args ?? {}));
             let response;
-            const request = session.request(operation, input);
+            const request = session.request(operation, input, 30000, (send) => routeCommand(send, () => runCommandBaseline(subprocess, workdir, agent.id, operation, input)));
             const requestOrdinal = session.status().requestsStarted;
             try {
                 response = await request;
@@ -392,7 +547,7 @@ export function apply(ctx) {
                 // The daemon may have committed before its response was lost. Reset the
                 // transport for the next request, but never replay this mutation.
                 const message = error instanceof Error ? error.message : String(error);
-                if (!isUncertainConnectionFailure(message))
+                if (!isUncertainConnectionFailure(message) && !message.startsWith("CLAW_OUTCOME_UNKNOWN:"))
                     throw error;
                 try {
                     await session.close();
@@ -400,22 +555,48 @@ export function apply(ctx) {
                 catch { /* best-effort */ }
                 if (sessions.get(key) === session)
                     sessions.delete(key);
-                throw new Error(`CLAW_OUTCOME_UNKNOWN: ${message}. The operation may already have committed; do not retry it. ` +
-                    "Open a fresh session and inspect or sync the current plan before continuing.");
+                completedSweeps.delete(key);
+                if (operation === "knowledge.claim") {
+                    let recovered;
+                    try {
+                        recovered = await recoverClaimReceipt(agent.id, workdir, input.finalizeId);
+                    }
+                    catch { /* An unavailable receipt cannot license replay of a claim. */ }
+                    if (!recovered)
+                        throw new Error("CLAW_OUTCOME_UNKNOWN: " + message + ". Claim receipt could not be authenticated; do not retry the claim.");
+                    response = recovered;
+                }
+                else {
+                    await sweepPending(agent, workdir, true);
+                    throw new Error("CLAW_OUTCOME_UNKNOWN: " + message + ". The operation may already have committed; do not retry it.");
+                }
             }
             if (response.ok !== true) {
                 // Some daemon failures report the same uncertain transport condition
                 // as a protocol error. Treat them identically: no automatic replay.
                 const message = response.error?.message ?? "";
-                if (isUncertainConnectionFailure(message)) {
+                if (response.error?.outcome === "unknown" || isUncertainConnectionFailure(message)) {
                     try {
                         await session.close();
                     }
                     catch { /* best-effort */ }
                     if (sessions.get(key) === session)
                         sessions.delete(key);
-                    throw new Error(`CLAW_OUTCOME_UNKNOWN: ${message}. The operation may already have committed; do not retry it. ` +
-                        "Open a fresh session and inspect or sync the current plan before continuing.");
+                    completedSweeps.delete(key);
+                    if (operation === "knowledge.claim") {
+                        let recovered;
+                        try {
+                            recovered = await recoverClaimReceipt(agent.id, workdir, input.finalizeId);
+                        }
+                        catch { /* Read-only recovery failed; never replay the original claim. */ }
+                        if (!recovered)
+                            throw new Error("CLAW_OUTCOME_UNKNOWN: " + message + ". Claim receipt is unavailable; do not retry the claim.");
+                        response = recovered;
+                    }
+                    else {
+                        await sweepPending(agent, workdir, true);
+                        throw new Error("CLAW_OUTCOME_UNKNOWN: " + message + ". The operation may already have committed; do not retry it.");
+                    }
                 }
             }
             if (response.ok !== true) {
@@ -423,6 +604,8 @@ export function apply(ctx) {
             }
             const { consumed, projection, failures } = consumeHostActions(response.hostActions, goals, exec.agent);
             const visible = compactClawOutput(response.output, operation);
+            if (operation === "knowledge.claim" && response.output?.recovered === true)
+                visible.recovered = true;
             if (consumed.length)
                 visible.goalSync = consumed;
             if (projection !== undefined)
@@ -483,94 +666,9 @@ export function apply(ctx) {
                     // fail-open
                 }
                 const dispatch = response.knowledgeDispatch;
-                const subagents = c.get("subagents");
-                if (subagents && dispatch && typeof dispatch.prompt === "string" && dispatch.prompt.length > 0) {
-                    const finalizeId = String(dispatch.finalizeId ?? "");
-                    const finalizerLabel = finalizerChildLabel(finalizeId);
-                    // Reuse before starting: a live writer child for this exact
-                    // finalizeId means a second spawn would buy nothing but a duplicate
-                    // child and a refused claim.
-                    const reused = await resolveFinalizerReuse({
-                        finalizeId,
-                        parentSessionId: agent.id,
-                        label: finalizerLabel,
-                        subagents,
-                    });
-                    if (reused !== undefined) {
-                        visible.dispatch = {
-                            ok: true,
-                            reused: true,
-                            runId: reused.runId,
-                            policy: dispatch.policy ?? "subagent",
-                        };
-                    }
-                    else {
-                        try {
-                            // Fire-and-forget dispatch: the finalizer only needs an execution
-                            // receipt, it never replies. Pass a DEDICATED controller instead of
-                            // exec.signal — the tool's signal aborts when this claw_run call
-                            // returns, which cancelled the child before its first turn
-                            // (learned 2026-08-22: plan.done auto-dispatch created the
-                            // subagent session but the finalizer never ran). The dedicated
-                            // controller keeps the child alive after the tool result is
-                            // delivered; disposal is still driven by the run's own lifecycle.
-                            const controller = new AbortController();
-                            const run = await subagents.start("spawn", {
-                                label: finalizerLabel,
-                                prompt: [{ type: "text", text: dispatch.prompt }],
-                                parent: exec.agent,
-                                signal: controller.signal,
-                            });
-                            const runId = String(run.id);
-                            const dispose = run.dispose;
-                            if (run.result === undefined) {
-                                // Defensive only: DSH's SubagentRun always carries both
-                                // `result` and `dispose` (dsh-subagent/lib/types/types.d.ts:240-265).
-                                // Without a settlement signal no record is kept at all,
-                                // because a record that can never settle would strand a job
-                                // whose child died before claiming it — only a NEW child can
-                                // claim a still-queued job.
-                                finalizerDispatches.delete(finalizeId);
-                            }
-                            else {
-                                finalizerDispatches.set(finalizeId, { runId, settled: false });
-                                const settle = () => {
-                                    const record = finalizerDispatches.get(finalizeId);
-                                    if (record !== undefined && record.runId === runId)
-                                        record.settled = true;
-                                };
-                                // Keep a settled run's resources released without awaiting it:
-                                // the writer is independent of this tool result.
-                                void Promise.resolve(run.result)
-                                    .then(settle, settle)
-                                    .finally(() => (dispose ? dispose() : undefined))
-                                    .catch(() => undefined);
-                            }
-                            visible.dispatch = { ok: true, runId, policy: dispatch.policy ?? "subagent" };
-                        }
-                        catch (error) {
-                            // Automatic retry stays enabled: no record is kept, so the next
-                            // terminal transition tries again. Manual retry does not — the
-                            // model is told explicitly, because doing it by hand is the one
-                            // remaining path to a second writer child.
-                            finalizerDispatches.delete(finalizeId);
-                            visible.dispatch = {
-                                ok: false,
-                                retryable: false,
-                                reason: error instanceof Error ? error.message : String(error),
-                                guidance: FINALIZER_MANUAL_RETRY_GUIDANCE,
-                            };
-                        }
-                    }
-                }
-                else if (subagents === undefined) {
-                    visible.dispatch = {
-                        ok: false,
-                        retryable: false,
-                        reason: "subagents service unavailable",
-                        guidance: FINALIZER_MANUAL_RETRY_GUIDANCE,
-                    };
-                }
+                visible.dispatch = await dispatchOne(agent, workdir, dispatch);
+                // A failed dispatch stays queued and is retried by the next trusted entry.
+                completedSweeps.delete(key);
                 // Keep only a compact dispatch summary in the model-visible output:
                 // the full writer prompt is consumed by the subagent, and a huge
                 // prompt was pushing `dispatch` past truncation. Never expose prompt.

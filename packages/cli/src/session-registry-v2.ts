@@ -178,15 +178,16 @@ export class SessionRegistryV2 {
     writeJsonFileAtomic(this.recordPath(sessionKeyHash), record);
   }
 
-  recover(now = new Date()): { normalized: string[]; removed: string[] } {
+  async recover(now = new Date()): Promise<{ normalized: string[]; removed: string[] }> {
     const normalized: string[] = [];
     const removed: string[] = [];
     for (const sessionKeyHash of this.listSessionKeys()) {
+      await this.withExecution(sessionKeyHash, async () => {
       let record: SessionRecordV2;
       try {
         record = this.read(sessionKeyHash);
       } catch {
-        continue;
+        return;
       }
       if (record.state === "live") {
         record = refreshRecord(record, now, { state: "disconnected", preserveExpiry: true });
@@ -199,6 +200,7 @@ export class SessionRegistryV2 {
           removed.push(sessionKeyHash);
         }
       }
+      });
     }
     return { normalized, removed };
   }
@@ -263,6 +265,10 @@ export class SessionRegistryV2 {
 
   recordPath(sessionKeyHash: string): string {
     return path.join(this.sessionDirectory(sessionKeyHash), "session.json");
+  }
+
+  withExecution<T>(sessionKeyHash: string, action: () => Promise<T>): Promise<T> {
+    return withSerializedQueue(path.join(this.sessionDirectory(sessionKeyHash), "execution.queue.json"), action);
   }
 
   commandQueuePath(sessionKeyHash: string): string {

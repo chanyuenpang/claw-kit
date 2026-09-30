@@ -14,7 +14,7 @@ function sessionOpenFailure(stderr, fallback) {
         const code = typeof parsed.error?.code === "string" ? parsed.error.code : undefined;
         const message = typeof parsed.error?.message === "string" ? parsed.error.message : undefined;
         if (message) {
-            return protocolError("CLAW_SESSION_OPEN_FAILED", "claw session open failed" + (code ? " [" + code + "]" : "") + ": " + message);
+            return protocolError(code === "SESSION_DAEMON_UNAVAILABLE" ? code : "CLAW_SESSION_OPEN_FAILED", "claw session open failed" + (code ? " [" + code + "]" : "") + ": " + message);
         }
     }
     catch {
@@ -279,14 +279,23 @@ export class ClawSession {
         pending?.resolve(value);
     }
     /** Execute one operation through the daemon, strictly serialized. */
-    request(operation, input, timeoutMs = 30000) {
+    request(operation, input, timeoutMs = 30000, route) {
         if (this.closed)
-            return Promise.reject(protocolError("SESSION_CONNECTION_LOST", "claw session transport is closed."));
+            return Promise.reject(Object.assign(protocolError("SESSION_CONNECTION_LOST", "claw session transport is closed."), { beforeSend: true }));
         this.queued++;
         this.requestsStarted++;
         this.clearIdle();
         const execute = async () => {
-            await this.open(true);
+            try {
+                await this.open(true);
+            }
+            catch (error) {
+                // Business input has not been sent, even if opening this transport
+                // timed out. A separate baseline may safely execute it once.
+                if (error && typeof error === "object")
+                    Object.assign(error, { beforeSend: true });
+                throw error;
+            }
             if (this.handle === null) {
                 throw protocolError("SESSION_CONNECTION_LOST", "claw session connection is unavailable.");
             }
@@ -314,7 +323,9 @@ export class ClawSession {
                 });
             });
         };
-        const result = this.chain.then(execute, execute);
+        // Keep the trusted baseline inside this queue, not just the daemon send.
+        const routed = () => route ? route(execute) : execute();
+        const result = this.chain.then(routed, routed);
         this.chain = result.catch(() => undefined);
         void result.finally(() => {
             this.queued--;

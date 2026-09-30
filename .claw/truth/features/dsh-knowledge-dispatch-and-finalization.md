@@ -63,7 +63,7 @@ adapter 以 `finalizeId` 为键保证「同一 finalizeId 至多一个未结算 
   报告为一次复用。
 
 失败路径返回 `dispatch: { ok: false, retryable: false, reason, guidance }` 且不保留
-记录：**自动**重试留给下一次终态转换；`retryable: false` 只约束模型，`guidance`
+记录：queued job 的系统级下一次入口 reconciliation 可恢复派发，终态再次转换亦可重新发现；`retryable: false` 只约束模型，`guidance`
 （`FINALIZER_MANUAL_RETRY_GUIDANCE`）明说不得自行运行 finalizer、也不得手动重试派发，
 因为手动重试是唯一还能产生第二个 writer child 的路径。`subagents` 服务缺失时返回同形状
 的 `{ ok: false, retryable: false, reason: "subagents service unavailable", guidance }`。
@@ -101,17 +101,11 @@ native subagent）、claim-time capture 窗口过滤、以及 `claw_run search` 
 job 被 claim 并走完 claim → assignment subplan → 单次 `knowledge done`，证明
 `exec.signal` abort 修复后自动派发端到端可用。
 
+DSH 当前的 claim-time report collector 只把可证明的 `assistant/final` 事件标为 `final_answer`；未证实的 assistant message 不得冒充最终答复。缺失 journal、空历史或 plan 窗口内没有 final event 以空报告继续 claim，而损坏或不可信路径仍受校验。Core 为同一 claim 保存不可变 receipt，响应丢失时只恢复同一 token，不能在结果未知时重做 assignment。adapter 在后续系统入口发现仍 queued 的同源 job 时按 finalizeId 与 native child 去重补派发；已领取但 child 遗失、或外部写入已提交而确认丢失，仍不能在没有目的地幂等/事务 outbox 证明时安全地重新分配。锚点：`packages/dsh-adapter/src/capture.ts`、`src/report-collector-cli.ts`、`src/index.ts`、`packages/cli/src/knowledge-pending.ts`、`packages/core/src/knowledge-sidecar.ts`。
+
 ## 已知陷阱
 
-- `claw knowledge claim` 的 claim-time report capture 现在实现 `dsh` 分支：
-  `packages/cli/src/dsh-capture.ts` 的 `readDshKnowledgeCapture` 读取 adapter 在终态
-  mutation 写入的 dsh-capture 文件。DSH 起源的 job（`host` 为 `"dsh"`，或 host-less
-  CLI closeout 产生的 `host: null`，后者在 dsh-capture 文件存在且 session 匹配时走
-  同一分支）在 claim 时按 `reportCapture.startedAt` 窗口过滤后写入相邻 report 并标记
-  captured。capture 文件缺失或 session 不匹配时仍会以 `DSH report capture is
-  unavailable for knowledge session ...` 失败；空 capture 有效（与 Cindy empty-report
-  合同一致：report 文件存在且为空、`reportCapture.status = "captured"`、
-  `messageCount = 0`）。
+- Claim-time capture 通过 adapter-owned DSH collector (`packages/dsh-adapter/src/report-collector-cli.ts`) 从可信 journal 按 `reportCapture.startedAt` 过滤并在 CLI 的 staging/receipt 合同内发布报告。缺失 journal、空历史或没有可证明的 final event 均不阻止 claim；空 capture 有效。损坏或不可信路径仍拒绝。
 - 本机 claw_run 工具由 adapter 用 `agent.session?.cwd` 锻造 workdir；当 DSH 子代理会话
   cwd 不是项目根（如 `C:\Windows\System32`）时，`plan.create` 会报 "found no .claw
   project"。该环境问题可通过直接在项目根执行 claw CLI 绕过，canonical `.claw` 状态不变。
@@ -138,7 +132,7 @@ job 被 claim 并走完 claim → assignment subplan → 单次 `knowledge done`
 - `packages/dsh-adapter/test/finalizer-dispatch.test.mjs`（判重纯缝）
 - `packages/cli/src/invocation-host.ts`（`isHostActionsHost` / `isSubagentPolicyHost`）
 - `packages/cli/src/cli.ts`（`buildKnowledgeDispatch` 的 dsh 分支、claim-time capture 的 dsh/host-null 分支）
-- `packages/cli/src/dsh-capture.ts`（`readDshKnowledgeCapture` / dsh-capture 文件路径）
+- `packages/dsh-adapter/src/report-collector-cli.ts`、`packages/cli/src/knowledge-command.ts`（claim-time collector 与 receipt）
 - `packages/core/src/knowledge-sidecar.ts`（`KnowledgeFinalizationHost` 增加 `"dsh"`）
 - `packages/core/dist/src/resources/delegate-writer/TEMPLATE.json`
 - `docs/dsh-plugin-integration-research.md`（调研与正式化记录）
@@ -151,15 +145,14 @@ job 被 claim 并走完 claim → assignment subplan → 单次 `knowledge done`
 - 终态 mutation 返回 `knowledgeDispatch` 时，`claw_run` compact result 含
   `dispatch: { ok: true, runId, policy }` 确认（subagent 不可用时为
   `{ ok: false, reason }`），主模型不执行 writer。
-- `knowledge claim` 的 DSH capture 分支在 dsh-capture 文件缺失或 session 不匹配时保持
-  可复现、可报告；窗口过滤以 `reportCapture.startedAt` 为起点且空 capture 合法。
+- `knowledge claim` 的 DSH capture 分支允许可信来源缺失或无 final event 时空 capture；窗口过滤以 `reportCapture.startedAt` 为起点。不可信/损坏路径与冲突 claim token 仍拒绝。
 - `claw_run search` 的召回列表对模型完全可见：`query` / `count` / `results[]` 的
   `sourcePath`/`kind`/`snippet`/`score`，内部字段不泄漏。
 - 同一 `finalizeId` 连续两次终态 mutation 后 `subagents.start` 恰好调用一次，第二次
   返回 `dispatch.ok === true` 且 `reused === true`；child 结算后同一 `finalizeId` 可以
   再次派发。
 - `subagents` 服务不可用或 `start` 抛错时 `dispatch.ok === false`、
-  `dispatch.retryable === false` 且带 `guidance`；下一次终态转换仍会自动重试。
+  `dispatch.retryable === false` 且带 `guidance`；下一次系统入口可调和 queued job 的派发。
 - 服务层 `listChildren` 缺失或抛错时判重 fail-open：不阻塞派发，也不误报复用。
 
 ## 关键检索词

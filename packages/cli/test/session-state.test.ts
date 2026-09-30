@@ -41,7 +41,7 @@ test("v2 session records recover live state and expire only disconnected v2 dire
   const old = new Date("2026-07-01T00:00:00.000Z");
   const opened = await registry.open("agent-expired", workdir, { kind: "node" }, old);
 
-  const recovered = registry.recover(new Date(old.getTime() + SESSION_RECORD_TTL_MS + 1));
+  const recovered = await registry.recover(new Date(old.getTime() + SESSION_RECORD_TTL_MS + 1));
 
   assert.deepEqual(recovered.normalized, [opened.identity.sessionKeyHash]);
   assert.deepEqual(recovered.removed, [opened.identity.sessionKeyHash]);

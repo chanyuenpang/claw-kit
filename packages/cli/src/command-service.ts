@@ -54,7 +54,7 @@ import type {
 import { buildCodexHostActions } from "./codex-host-actions.js";
 import { isHostActionsHost, type ClawHost } from "./invocation-host.js";
 import { RegistryFocusSessionStore, SessionRegistryV2 } from "./session-registry-v2.js";
-import { claimKnowledgeCommand, doneKnowledgeCommand, findProjectKnowledgeJob } from "./knowledge-command.js";
+import { claimKnowledgeCommand, knowledgeClaimReceiptCommand, doneKnowledgeCommand, findProjectKnowledgeJob } from "./knowledge-command.js";
 
 export type CommandContext = {
   cwd: string;
@@ -65,45 +65,7 @@ export type CommandContext = {
   mode: "stateless" | "session";
 };
 
-export type ClawCommandRequest =
-  | {
-      operation: "plan.create";
-      input: Omit<PlanWriteInput, "cwd" | "ownerSessionKey">;
-    }
-  | {
-      operation: "plan.start";
-      input: {
-        updates?: PlanFieldUpdates;
-        appendTasks?: Array<{ title: string; detail?: string }>;
-      };
-    }
-  | { operation: "plan.resume"; input: { planId?: string } }
-  | { operation: "plan.leave"; input: Record<string, never> }
-  | { operation: "plan.show"; input: { simple?: boolean } }
-  | { operation: "plan.edit"; input: { operations: PlanMutationOperation[] } }
-  | { operation: "plan.wait"; input: Record<string, never> }
-  | { operation: "plan.done"; input: PlanFieldUpdates }
-  | {
-      operation: "subplan.create";
-      input: Omit<SubplanWriteInput, "cwd" | "ownerSessionKey">;
-    }
-  | {
-      operation: "task.edit";
-      input: Omit<PlanEditInput, "cwd" | "taskName" | "planFile" | "ownerSessionKey">;
-    }
-  | {
-      operation: "task.add";
-      input: { tasks: Array<{ title: string; detail?: string }> };
-    }
-  | {
-      operation: "task.done";
-      input: { tasks: Array<{ id: number; choiceId?: string }> };
-    }
-  | { operation: "search"; input: { query: string; limit?: number; dir?: string } }
-  | { operation: "search.index.refresh"; input: Record<string, never> }
-  | { operation: "knowledge.claim"; input: { finalizeId: string } }
-  | { operation: "knowledge.done"; input: { finalizeId: string; claimToken: string; status: "succeeded" | "failed"; result?: string; error?: string } }
-  | { operation: string; input: unknown };
+export type ClawCommandRequest = import("@veewo/claw-client").ClawSessionCommand;
 
 export type ClawCommandResult = {
   output: unknown;
@@ -111,6 +73,8 @@ export type ClawCommandResult = {
   postCommitEffects?: ClawPostCommitEffectV1[];
   knowledgeDispatch?: ClawKnowledgeDispatchV1;
 };
+
+import { recoverCompletionRefreshBestEffort } from "./completion-refresh-recovery.js";
 
 export class ClawCommandService {
   readonly registry: SessionRegistryV2;
@@ -211,6 +175,14 @@ export class ClawCommandService {
     context: CommandContext,
     request: ClawCommandRequest,
   ): Promise<ClawCommandResult> {
+    // Receipt reconciliation must not run unrelated canonical recovery effects.
+    if (request.operation === "knowledge.claim.receipt") return this.executeCommand(context, request);
+    recoverCompletionRefreshBestEffort(context.cwd, context.agentSessionId);
+    try { return await this.executeCommand(context, request); }
+    finally { recoverCompletionRefreshBestEffort(context.cwd, context.agentSessionId); }
+  }
+
+  private async executeCommand(context: CommandContext, request: ClawCommandRequest): Promise<ClawCommandResult> {
     const cwd = path.resolve(context.cwd);
     switch (request.operation) {
       case "plan.show": {
@@ -253,7 +225,7 @@ export class ClawCommandService {
           ownerSessionKey: this.ownerSessionKey(context),
           host: context.host,
         });
-        const hostActions = this.codexActionsFromMutation(context, "plan.edit", result);
+        const hostActions = this.codexActionsFromMutation(context, "plan.start", result);
         return { output: result, ...(hostActions.length ? { hostActions } : {}) };
       }
       case "plan.leave": {
@@ -363,7 +335,7 @@ export class ClawCommandService {
           ...commandInput,
           cwd,
           ownerSessionKey: context.agentSessionId,
-          host: commandInput.host ?? context.host,
+          host: context.host,
         });
         const project = this.resolveProject(context, created.scope);
         const createdRef = createPlanRef(project, created.taskName, created.planFile);
@@ -393,7 +365,7 @@ export class ClawCommandService {
           cwd,
           scope: this.currentPlanScope(context),
           ownerSessionKey: this.ownerSessionKey(context),
-          host: commandInput.host ?? context.host,
+          host: context.host,
           deferParentMutation: true,
         });
         const project = this.resolveProject(context, created.scope);
@@ -454,7 +426,7 @@ export class ClawCommandService {
           planFile: current.planFile,
           commandSource: "task.edit",
           ownerSessionKey: this.ownerSessionKey(context),
-          host: commandInput.host ?? context.host,
+          host: context.host,
         });
         const hostActions = this.codexActionsFromMutation(context, "task.edit", result);
         return { output: result, ...(hostActions.length ? { hostActions } : {}) };
@@ -503,12 +475,17 @@ export class ClawCommandService {
       case "search.index.refresh":
         // The session daemon owns cwd; callers cannot target another project.
         return { output: buildMemoryIndex({ cwd, scope: "project" }) };
-      case "knowledge.claim": {
+      case "knowledge.claim":
+      case "knowledge.claim.receipt": {
         const { finalizeId } = request.input as { finalizeId: string };
         const project = this.resolveProject(context, "project");
-        const jobPath = findProjectKnowledgeJob(project.projectRoot, finalizeId);
+        const jobPath = findProjectKnowledgeJob(project.projectRoot, finalizeId, true);
+        const claimant = { projectRoot: project.projectRoot, host: context.host ?? "", agentSessionId: context.agentSessionId ?? "" };
+        if (request.operation === "knowledge.claim.receipt") {
+          return { output: knowledgeClaimReceiptCommand(jobPath, claimant) };
+        }
         const version = (JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }).version;
-        return { output: claimKnowledgeCommand(jobPath, version) };
+        return { output: claimKnowledgeCommand(jobPath, version, claimant) };
       }
       case "knowledge.done": {
         const input = request.input as { finalizeId: string; claimToken: string; status: "succeeded" | "failed"; result?: string; error?: string };
@@ -528,8 +505,7 @@ export class ClawCommandService {
       default:
         throw new ClawError(
           "SESSION_OPERATION_UNSUPPORTED",
-          `Session command operation "${request.operation}" is not supported.`,
-          { operation: request.operation },
+          "Operation is outside the model command contract.",
         );
     }
   }

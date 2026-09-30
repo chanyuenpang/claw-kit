@@ -43,9 +43,8 @@ export declare function finalizerChildLabel(finalizeId: string): string;
  *     for every child it starts), which is why the finalizer can stay
  *     one-shot and still be found.
  *
- * Fail-open: an absent service, a missing projection registry, or a session
- * store that throws must never block the dispatch — and must never be
- * reported as a reuse.
+ * A missing or damaged child catalog cannot prove absence. Defer dispatch
+ * instead of spawning a second child after an uncertain native start.
  */
 export declare function resolveFinalizerReuse(input: {
     finalizeId: string;
@@ -56,6 +55,9 @@ export declare function resolveFinalizerReuse(input: {
 }): Promise<{
     runId: string;
     source: "in-process" | "durable";
+} | {
+    deferred: true;
+    reason: string;
 } | undefined>;
 export declare const inject: string[];
 export type DshTodo = {

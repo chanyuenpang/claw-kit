@@ -6,9 +6,12 @@ const input = await readInput();
 if (!input || input.host !== "dsh") process.exit(2);
 const root = process.env.CLAW_DSH_REPORT_JOURNAL_DIR ?? path.join(process.env.LOCALAPPDATA ?? (process.platform === "win32" ? path.join(os.homedir(), "AppData", "Local") : path.join(os.homedir(), ".local", "share")), "claw", "dsh-report-journal");
 const journalPath = path.join(root, `${input.sessionId}.json`);
-if (!fs.existsSync(journalPath)) process.exit(3);
+// Missing history is not a missing claim: preserve earlier canonical evidence
+// and publish an empty capture rather than failing the writer handoff.
 const startedAt = typeof input.startedAt === "string" ? Date.parse(input.startedAt) : Number.NaN;
-const events: Array<Record<string, unknown> & { occurredAt?: string }> = (JSON.parse(fs.readFileSync(journalPath, "utf8")).events ?? []).filter((event: { occurredAt?: unknown }) => {
+const events: Array<Record<string, unknown> & { occurredAt?: string }> = (fs.existsSync(journalPath)
+  ? JSON.parse(fs.readFileSync(journalPath, "utf8")).events ?? []
+  : []).filter((event: { occurredAt?: unknown }) => {
   if (!Number.isFinite(startedAt) || typeof event?.occurredAt !== "string") return true;
   return Date.parse(event.occurredAt) >= startedAt;
 });
@@ -19,6 +22,10 @@ events.sort((left: { occurredAt?: string }, right: { occurredAt?: string }) => {
   return 0;
 });
 fs.mkdirSync(path.dirname(input.stagingReportPath), { recursive: true });
-fs.writeFileSync(input.stagingReportPath, events.length ? `${events.map((event) => JSON.stringify(event)).join("\n")}\n` : "", "utf8");
+const existing = typeof input.canonicalReportPath === "string" && fs.existsSync(input.canonicalReportPath)
+  ? fs.readFileSync(input.canonicalReportPath, "utf8") : "";
+const additions = events.map((event) => JSON.stringify(event)).filter((line) => !existing.split(/\r?\n/).includes(line));
+fs.writeFileSync(input.stagingReportPath, existing + (existing && !existing.endsWith("\n") && additions.length ? "\n" : "") +
+  (additions.length ? `${additions.join("\n")}\n` : ""), "utf8");
 
 async function readInput(): Promise<any> { const chunks: string[] = []; for await (const chunk of process.stdin) chunks.push(String(chunk)); try { return JSON.parse(chunks.join("")); } catch { return null; } }

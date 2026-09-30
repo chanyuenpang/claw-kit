@@ -7,6 +7,11 @@ import {
   doneKnowledgeFinalizationJob,
   findKnowledgeFinalizationJobPath,
   normalizeTruthMarkdownEncoding,
+  readKnowledgeClaimReceipt,
+  readKnowledgeFinalizationJob,
+  withFileLock,
+  writeJsonFileAtomic,
+  type KnowledgeClaimant,
   reconcileKnowledgeFinalizationJob,
   recordKnowledgeFinalizationResult,
   resolveHostIntegrationProfile,
@@ -18,8 +23,9 @@ import {
 import { collectReport, type ReportCollectorHost } from "./report-collector-registry.js";
 
 /** One claim/terminal transition shared by the CLI and authenticated session service. */
-export function claimKnowledgeCommand(jobPath: string, version: string) {
+export function claimKnowledgeCommand(jobPath: string, version: string, claimant?: KnowledgeClaimant) {
   const job = claimKnowledgeFinalizationJob(jobPath, {
+    claimant, version,
     prepare: (queued) => {
       if (queued.writer?.executionPolicy !== "subagent"
         || queued.reportCapture?.mode !== "claim"
@@ -27,17 +33,28 @@ export function claimKnowledgeCommand(jobPath: string, version: string) {
       if (resolveHostIntegrationProfile(queued.host)?.supportsClaimTimeReportCapture !== true) {
         throw new Error("Claim-time report capture is unavailable for host " + (queued.host ?? "unknown") + ".");
       }
-      const receipt = collectReport({
-        host: queued.host as ReportCollectorHost,
-        sessionId: queued.sessionId,
-        projectRoot: queued.projectRoot,
-        planPath: queued.planPath,
-        canonicalReportPath: queued.reportPath,
-        startedAt: queued.reportCapture.startedAt,
-      });
+      let receipt;
+      try {
+        receipt = collectReport({
+          host: queued.host as ReportCollectorHost,
+          sessionId: queued.sessionId,
+          projectRoot: queued.projectRoot,
+          planPath: queued.planPath,
+          canonicalReportPath: queued.reportPath,
+          startedAt: queued.reportCapture.startedAt,
+        });
+      } catch (error) {
+        // DSH history is optional. If session-start registration was unavailable,
+        // keep the receipt pending and let the writer claim; do not fabricate a
+        // captured report. Corrupt collector output and storage errors still fail.
+        if (queued.host === "dsh" && error instanceof Error && error.message === "REPORT_COLLECTOR_UNREGISTERED: dsh") return;
+        throw error;
+      }
       return { reportCapture: { ...queued.reportCapture, status: "captured" as const, capturedAt: receipt.completedAt, receipt } };
     },
   });
+  // DSH returns only its committed receipt, including on the first response.
+  if (job?.claimReceipt) return knowledgeClaimReceiptCommand(jobPath, claimant!, "knowledge.claim");
   const assignments = job ? buildKnowledgeWriterAssignments(job) : [];
   const templatePath = job ? path.join(path.dirname(jobPath), job.finalizeId + ".assignments.json") : undefined;
   if (job && templatePath) {
@@ -53,7 +70,27 @@ export function claimKnowledgeCommand(jobPath: string, version: string) {
   };
 }
 
-export function findProjectKnowledgeJob(projectRoot: string, finalizeId: string): string {
+/** Canonical job is read-only; only its disposable template projection may be repaired. */
+export function knowledgeClaimReceiptCommand(jobPath: string, claimant: KnowledgeClaimant, command = "knowledge.claim.receipt") {
+  return withFileLock(jobPath, () => {
+    const job = readKnowledgeClaimReceipt(jobPath, claimant);
+    if (!job) return { ok: true, command, claimed: false };
+    const receipt = job.claimReceipt!;
+    const templatePath = path.join(path.dirname(jobPath), job.finalizeId + ".assignments.json");
+    const serialized = JSON.stringify(receipt.template, null, 2) + "\n";
+    if (!fs.existsSync(templatePath) || fs.readFileSync(templatePath, "utf8") !== serialized) {
+      writeJsonFileAtomic(templatePath, receipt.template);
+    }
+    return {
+      ok: true, command, claimed: true,
+      finalizeId: job.finalizeId, jobPath, claimToken: receipt.claimToken, projectRoot: job.projectRoot,
+      writer: job.writer ?? null, expiresAt: job.expiresAt, planPath: job.planPath,
+      reportPath: job.reportPath, assignments: receipt.assignments, templatePath,
+    };
+  });
+}
+
+export function findProjectKnowledgeJob(projectRoot: string, finalizeId: string, readOnly = false): string {
   // Only the canonical project's task-local jobs may be reached by session commands.
   const jobPath = findKnowledgeFinalizationJobPath(resolveProjectContext(projectRoot), finalizeId);
   if (!jobPath) throw new Error("Knowledge finalization " + finalizeId + " is unavailable.");
@@ -64,7 +101,7 @@ export function findProjectKnowledgeJob(projectRoot: string, finalizeId: string)
     return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
   };
   if (!withinProject(jobPath)) throw new Error("Knowledge finalization job does not belong to the current project.");
-  const job = reconcileKnowledgeFinalizationJob(jobPath);
+  const job = readOnly ? readKnowledgeFinalizationJob(jobPath) : reconcileKnowledgeFinalizationJob(jobPath);
   if (path.resolve(job.projectRoot) !== path.resolve(projectRoot)
     || job.finalizeId.toLowerCase() !== finalizeId.toLowerCase()
     || !withinProject(jobPath)

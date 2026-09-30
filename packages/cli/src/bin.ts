@@ -15,6 +15,11 @@ void main();
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
+  if (args[0] === "internal-command") {
+    const { runCommandEntry } = await import("./command-entry.js");
+    await runCommandEntry();
+    return;
+  }
   if (!await shouldLoadCliForInvocation(args, process.cwd(), process.env)) {
     return;
   }

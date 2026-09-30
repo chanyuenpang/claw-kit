@@ -94,6 +94,11 @@ The DSH web profile was refreshed to global `@veewo/claw@0.2.38` and `@veewo/dsh
 
 The DSH web profile was updated to `@veewo/dsh-claw-kit@0.2.39-rc.2` from the npm registry. After restarting the DSH Host, the real session restored its active subplan through `claw_run`, retained the `claw-kit` profile configuration row, and exposed all seven bundled skills. This is version-bound activation evidence, not a claim that the then-published package remains the current adapter version.
 
+<!-- dated: 2026-09-29 -->
+### Verified a GitHub-source DSH update and knowledge route smoke test
+
+An authorized local update built the global CLI/core/client `0.2.40` and DSH web-profile adapter `0.2.40-rc.0` from the immutable GitHub `v0.2.40` source without publishing to npm. After a user-managed Host restart, a real web session ran `claw_run(context)` and reached the new daemon through `claw_run(knowledge.claim)`: a nonexistent finalization ID returned job unavailable rather than unsupported operation. This establishes version-bound installation and route activation, not a completed real-job assignment/finalization loop or a claim about the machine’s future installed version.
+
 <!-- dated: 2026-09-02 -->
 ### Verified the first DSH-host update round
 

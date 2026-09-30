@@ -2,16 +2,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { finalizerChildLabel, resolveFinalizerReuse } from "../lib/index.js";
 
-// The finalizer dedupe contract: at most one UNSETTLED writer child per
-// finalizeId. Duplicate children are harmless (the durable job's claim gate
-// refuses the second one), so this is a cost invariant, not a write mutex --
-// which is why the boundary cases below matter more than the happy path: a
-// record that never releases would strand a job that only a NEW child can claim.
+// One in-process flight and a trustworthy native child catalog prevent
+// duplicate starts. Core still owns the exclusive claim and assignment gate.
 
 const label = finalizerChildLabel("abcdef0123456789");
 
-test("finalizerChildLabel is the 12-char prefix the CLI delegate title uses", () => {
-  assert.equal(label, "knowledge-finalizer-abcdef012345");
+test("native finalizer label uses full ID so colliding title prefixes stay isolated", () => {
+  assert.equal(label, "knowledge-finalizer-abcdef0123456789");
+  assert.notEqual(finalizerChildLabel("abcdef012345aaaaaaaa"), finalizerChildLabel("abcdef012345bbbbbbbb"));
 });
 
 test("an unsettled in-process record reuses without touching the durable catalog", async () => {
@@ -90,25 +88,19 @@ test("the durable query ignores inactive, mislabelled and diagnostic rows", asyn
 
   assert.equal(await run([{ kind: "child", id: "gone", activity: "inactive", label }]), undefined);
   assert.equal(await run([{ kind: "child", id: "wrong", activity: "running", label: "other" }]), undefined);
-  assert.equal(await run([{ kind: "diagnostic", id: "damaged", reason: "corrupt" }]), undefined);
+  assert.deepEqual(await run([{ kind: "diagnostic", id: "damaged", reason: "corrupt" }]),
+    { deferred: true, reason: "native child catalog incomplete" });
   assert.equal(await run([]), undefined);
 });
 
-test("a throwing or absent child catalog fails open instead of blocking the dispatch", async () => {
+test("an unavailable child catalog defers rather than risking a duplicate start", async () => {
   const base = { finalizeId: "abcdef0123456789", parentSessionId: "parent", label, records: new Map() };
-
-  assert.equal(await resolveFinalizerReuse({ ...base }), undefined, "an absent service is not a reuse");
-  assert.equal(await resolveFinalizerReuse({
-    ...base,
-    subagents: { start: async () => ({ id: "unused" }) },
-  }), undefined, "a service without listChildren is not a reuse");
-  assert.equal(await resolveFinalizerReuse({
-    ...base,
-    subagents: {
-      start: async () => ({ id: "unused" }),
-      listChildren: async () => {
-        throw new Error("projection registry not mounted");
-      },
-    },
-  }), undefined, "a broken catalog must not surface as an error or as a reuse");
+  assert.deepEqual(await resolveFinalizerReuse({ ...base }), { deferred: true, reason: "native child catalog unavailable" });
+  assert.deepEqual(await resolveFinalizerReuse({
+    ...base, subagents: { start: async () => ({ id: "unused" }) },
+  }), { deferred: true, reason: "native child catalog unavailable" });
+  assert.deepEqual(await resolveFinalizerReuse({
+    ...base, subagents: { start: async () => ({ id: "unused" }),
+      listChildren: async () => { throw new Error("projection registry not mounted"); } },
+  }), { deferred: true, reason: "native child catalog lookup failed" });
 });

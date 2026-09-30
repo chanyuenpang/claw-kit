@@ -42,6 +42,8 @@
 - 当前 `claw plan wait` 只接受 plan target override，不接受 `--reason`；暂停原因不会由该 alias 写入 canonical plan。为 `plan view` 增加 alias 或让 wait 记录 reason 都只是 `0.1.86` 评估提出的改进建议，尚未成为已采纳合同。
 - 当所有当前任务完成时，foreground 只完成 retrospective 与 `claw plan done`；Stop/session-idle sidecar 随后从 completed plan 和相邻 report 排队一次异步 `knowledge-writer` pass。completed plan 会在当前 task path 保留至少一小时，之后才由 retention 归档。
 
+Project-scope terminal plans and successful `knowledge.done` each queue a system-owned completion refresh without waiting for an agent or a Host turn-final event. `packages/cli/src/completion-refresh-recovery.ts` reconstructs missing intent from committed terminal plans and succeeded jobs on a later system entry, then resumes durable status through the detached worker; failures remain observable without rolling back a committed mutation. Recovery does not replay domain commands, claims, or writer assignments. There is no guarantee of wall-clock progress while every process remains idle.
+
 ## Route-aware compact guidance
 
 - `0.1.83` 的 live harness 曾暴露出可操作性缺口：task 尚未完成时，compact guidance 只给通用 `claw task done --id <id>`，没有暴露 choices 或真实 `--choice` 命令；省略 route 的错误也曾使用内部字段名 `choiceId`。这是历史证据，不是当前行为。

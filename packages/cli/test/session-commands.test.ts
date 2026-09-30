@@ -5,7 +5,16 @@ import os from "node:os";
 import path from "node:path";
 import { initProject, showPlan } from "@veewo/claw-core";
 import { ClawCommandService } from "../dist/command-service.js";
+import { decodeClawCommand } from "../dist/command-contract.js";
+import { SessionCommandExecutor } from "../dist/session-command.js";
 import { SessionRegistryV2, sessionFocusKey } from "../dist/session-registry-v2.js";
+
+test("terminal search preserves --dir without exposing it to adapter commands", () => {
+  const request = { operation: "search", input: { query: "needle", dir: "docs" } };
+  assert.throws(() => decodeClawCommand(request), /Invalid or unsupported search input/);
+  assert.deepEqual(decodeClawCommand(request, { allowTerminalSearchDir: true }), request);
+  assert.throws(() => decodeClawCommand({ ...request, input: { ...request.input, unknown: true } }, { allowTerminalSearchDir: true }), /Invalid or unsupported search input/);
+});
 
 function fixture(name: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), `claw-session-commands-${name}-`));
@@ -177,6 +186,27 @@ test("typed command service blocks root plan creation during process states unti
   }
 });
 
+test("daemon and one-shot executors recover the same focused session", async () => {
+  const runtimeRoot = fixture("shared-runtime");
+  const projectRoot = fixture("shared-project");
+  initProject({ cwd: projectRoot, projectName: "Shared Command", planning: false });
+  const identity = { agentSessionId: "shared-session", workdir: projectRoot, client: { kind: "adapter" as const, host: "dsh" } };
+  const daemon = new SessionCommandExecutor(new SessionRegistryV2(runtimeRoot));
+  const baseline = new SessionCommandExecutor(new SessionRegistryV2(runtimeRoot));
+  const created = await daemon.execute(identity, { operation: "plan.create", input: { taskName: "shared", title: "Shared" } });
+  const recovered = await baseline.execute(identity, { operation: "plan.show", input: { simple: true } });
+  assert.equal(created.schemaVersion, 1);
+  assert.equal(recovered.schemaVersion, 1);
+  assert.equal((recovered.output as { status: string }).status, "process.active");
+  await Promise.all([
+    daemon.execute(identity, { operation: "task.add", input: { tasks: [{ title: "From daemon" }] } }),
+    baseline.execute(identity, { operation: "task.add", input: { tasks: [{ title: "From baseline" }] } }),
+  ]);
+  const settled = await baseline.execute(identity, { operation: "plan.show", input: { simple: true } });
+  assert.deepEqual((settled.output as { tasks: Array<{ title: string }> }).tasks.map((task) => task.title).sort(),
+    ["From baseline", "From daemon", "Shared"]);
+});
+
 test("typed command service rejects unsupported operations without shell evaluation", async () => {
   const runtimeRoot = fixture("unsupported-runtime");
   const projectRoot = fixture("unsupported-project");
@@ -187,7 +217,8 @@ test("typed command service rejects unsupported operations without shell evaluat
   await assert.rejects(
     () => service.execute(
       { cwd: projectRoot, mode: "stateless" },
-      { operation: "shell.exec", input: { command: "echo unsafe" } },
+      // Deliberately bypass the closed TypeScript union to test the runtime boundary.
+      { operation: "shell.exec", input: { command: "echo unsafe" } } as never,
     ),
     (error: unknown) => error instanceof Error
       && "code" in error

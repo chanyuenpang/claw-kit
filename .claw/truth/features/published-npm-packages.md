@@ -4,7 +4,7 @@
 ## 当前行为
 
 - `claw-kit` 发布三个 npm 包：`@veewo/claw-core` 提供核心 `.claw` harness 语义，`@veewo/claw-client` 提供 client API，`@veewo/claw` 提供 CLI 并精确依赖同版本的 Core 与 Client。
-- 当前本文已有完成证据的最新 CLI/Core/Client npm 发布版本为 `0.2.34`；`@veewo/claw-core`、`@veewo/claw-client` 与 `@veewo/claw` 均已发布。独立的 Codex `0.2.34.0` 官方 marketplace artifact 也已发布；这些 artifact 的发布完成态本身不代表本机安装已刷新，除非另有版本化完成证据。
+- 截至 2026-09-29 的完成证据，CLI/Core/Client npm registry 仍为 `0.2.39`；`0.2.40` 的 GitHub source tag 与 Release 已发布，但三个 npm 包尚未发布 `0.2.40`，本机 CLI 仍为 `0.2.39`。这是版本化快照，不把 GitHub source release 等同于 npm 或本机安装完成态。
 - CLI release version bump 覆盖 root、lockfile、Core、Client、CLI、各 adapter baseline、内部 `@veewo/claw-core` / `@veewo/claw-client` 依赖和 Codex plugin manifest。root `package.json.version` 同时是全部 plugin `TEMPLATE.json` 与 built-in default template 的版本权威。
 - 模板版本维护顺序固定为 `npm run sync:template-versions`、`npm run sync:shared-skills`、`npm run check:template-versions`。`npm run verify:release` 与 `npm run publish:release` 复用只读版本断言，禁止发布时隐式修复 stale template。
 - owner 直接从 `main` 交付。发布前必须提交并推送有价值内容，使本地 `main` 精确等于 `origin/main` 且 `git status --porcelain` 为空；不得用 stash、临时分支或 PR 绕过门禁。
@@ -46,6 +46,11 @@
 <!-- state: history -->
 ## 演进记录
 
+<!-- dated: 2026-09-29 -->
+### 0.2.40 GitHub source-first checkpoint
+
+- `v0.2.40` 与 GitHub Release 指向主仓提交 `3058fd1`；当时本地 `main` 与 `origin/main` 相同且工作区为空。owner 明确选择只发布 GitHub source，暂缓 npm 发布和本机安装；当时 registry 中 Core、Client、CLI 及本机 CLI 仍为 `0.2.39`。后续 npm 发布可复用已准备好的 source baseline，但不能把这次 source checkpoint 当作 npm 发布成功。
+
 <!-- dated: 2026-08-31 -->
 ### 0.2.34 CLI/Core/Client 与 Codex 发布完成态
 
@@ -75,9 +80,3 @@
 
 - `@veewo/claw-core`、`@veewo/claw-client` 与 `@veewo/claw` `0.2.23` 已发布；三个 npm 包的真实 registry 获取、`v0.2.23` 和公开 GitHub Release 均已完成验证。
 - 该记录仅覆盖 npm artifact family。Codex `0.2.23.1` 和 Cindy `0.2.23.0` 保持各自独立的 marketplace source release 边界，且不包含任何本机安装刷新。
-
-<!-- dated: 2026-08-20 -->
-### 0.2.22 CLI/Core/Client 发布完成态
-
-- `@veewo/claw-core`、`@veewo/claw-client` 与 `@veewo/claw` `0.2.22` 已发布；三个 npm 包的 `latest`、真实 tarball 取包、`v0.2.22` 和公开 GitHub Release 均已完成验证。
-- 该记录仅覆盖 npm artifact family。Codex `0.2.22.1` 和 Cindy `0.2.22.0` 保持各自独立的 marketplace source release 边界，且不包含任何本机安装刷新。

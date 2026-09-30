@@ -759,7 +759,7 @@ test("cli plan done returns terminal state before detached gitnexus analysis", a
   assert.equal(done.planStatus, "end.completed");
   assert.equal((done.knowledgeDispatch as JsonRecord).policy, "subagent");
   const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
-  assert.equal(refreshStatus.ok, true);
+  assert.equal(refreshStatus.ok, true, JSON.stringify(refreshStatus));
   assert.equal((refreshStatus.gitnexus as JsonRecord).enabled, true);
   assert.match(fs.readFileSync(shim.logPath, "utf-8"), /analyze --embeddings --no-ai-context/);
 });
