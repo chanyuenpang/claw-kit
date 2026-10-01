@@ -2,29 +2,15 @@
 
 ## DSH
 
-- Main agents delegate with native `subagent` and a self-contained narrow prompt,
-  not `subagent_fork`: the researcher must not inherit the whole conversation.
-  Prefer the default background route and continue only independent work while
-  waiting. Choose parameters from the current SDK, not the role YAML.
-- Handle the actual return kind. For `background`, retain `jobId` and collect
-  `job_output` before using the result or finishing; use `wait: true` only when
-  genuinely blocked. Do not poll or duplicate a running job. Cancel irrelevant
-  jobs with `job_kill`. For `continuable`, retain the returned `subagentId` and
-  reuse that known same-role child with `send_message` when supported. For
-  `foreground`, consume its result without assuming a reusable child exists.
-- Reuse is best-effort, not guaranteed by omitting `run_in_background`. If a
-  known child is no longer resumable or authorized, start a fresh bounded child
-  instead of retrying the stale id. A successful message is durable; do not
-  resend merely because it is queued. Follow current delivery semantics.
-- `list_agents` lists Agent Teams members, not ordinary subagent jobs. Use Agent
-  Teams only when the user explicitly asks for Agent Teams or teammates. In an
-  authorized Team, use returned member targets and actual availability
-  (`running`, `inactive`, `provisioning`, `failed`), not job ids. `inactive` is
-  not completion. Follow the session Team task/message/wait contract; do not
-  treat `wait_agent` as job collection or as a way to wake an inactive member.
-- Call `claw_run` through `run_code` as required by the SDK. Recall is
-  `tools.claw_run({operation: "search", args: {query: topic}})`. Do not run a
-  shell claw command, forge host/session identity, or mutate the parent plan.
+Use the native adapter's semantic delegation operations through run_code:
+
+- Main: tools.claw_run({operation: "delegate.start", args: {role: "researcher", brief: "<bounded question, targets and constraints>", output: "reply"}}).
+- Obtain the returned assignment with tools.claw_run({operation: "delegate.result", args: {assignment_id: "<returned id>"}}) before dependent work. Waiting is bounded; continue independent work when still pending, never redispatch the request to repair an unknown outcome.
+- The adapter owns Team/native selection, member reuse, identity, queueing and recovery. Do not operate Team/subagent handles or manage a finalizer for this assignment. Host permissions still apply.
+- Assigned researchers investigate directly, keep sources and all artifacts read-only, and use the supplied delegate.complete result contract once. Do not delegate again or mutate the parent plan.
+- Recall remains tools.claw_run({operation: "search", args: {query: topic}}); use read/glob/grep for source inspection, never shell claw commands or forged host/session arguments.
+
+These operations require the matching adapter version. If not advertised or rejected as unsupported, report that capability gap; do not reconstruct the orchestration in the model or switch hosts.
 
 ## Codex
 

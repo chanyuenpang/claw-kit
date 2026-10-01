@@ -24,6 +24,27 @@ function fixture(name: string) {
   return root;
 }
 
+test("Codex finalizer dispatch locates its job from another working directory", async () => {
+  const root = fixture("dispatch 中文 空格");
+  const other = fixture("worker-directory");
+  const registry = new SessionRegistryV2(fs.mkdtempSync(path.join(os.tmpdir(), "claw-dispatch-registry-")));
+  const opened = await registry.open("codex-dispatch-owner", root, { kind: "node" });
+  const context = { cwd: opened.identity.canonicalWorkdir, agentSessionId: opened.identity.agentSessionId,
+    sessionKey: sessionFocusKey(opened.identity), host: "codex", mode: "session" as const };
+  const service = new ClawCommandService(registry);
+  await service.execute(context, { operation: "plan.create", input: { title: "Dispatch project", goalText: "Keep the job project" } });
+  const ended = await service.execute(context, { operation: "plan.done", input: { retrospectiveSummary: "Project location verified." } });
+  const dispatch = ended.knowledgeDispatch as { projectRoot: string; finalizeId: string; prompt: string };
+  assert.equal(dispatch.projectRoot, path.resolve(root));
+  assert.ok(dispatch.prompt.includes(`Project root: ${JSON.stringify(path.resolve(root))}`));
+  assert.match(dispatch.prompt, /If your current working directory differs/);
+  assert.match(dispatch.prompt, /exact absolute path to --project-root/);
+  assert.equal(findKnowledgeFinalizationJobPath(resolveProjectContext(other), dispatch.finalizeId), null);
+  const jobPath = findKnowledgeFinalizationJobPath(resolveProjectContext(dispatch.projectRoot), dispatch.finalizeId);
+  assert.ok(jobPath);
+  assert.equal(JSON.parse(fs.readFileSync(jobPath, "utf8")).projectRoot, path.resolve(root));
+});
+
 test("session knowledge claim captures once and done shares CLI terminal behavior within its project", async () => {
   const root = fixture("owner");
   const other = fixture("other");
@@ -120,7 +141,7 @@ test("live DSH report capture preserves conclusions and is idempotent per parent
   const job = JSON.parse(fs.readFileSync(jobPath, "utf8"));
   const conclusion = JSON.stringify({ schemaVersion: 1, entryType: "task_conclusion", message: "keep" }) + "\n";
   fs.writeFileSync(job.reportPath, conclusion);
-  const event = { schemaVersion: 1, entryType: "final_answer", turnId: "2", message: "proven" };
+  const event = { schemaVersion: 1, entryType: "final_answer", turnId: "2", occurredAt: job.reportCapture.startedAt, message: "proven" };
   assert.throws(() => publishDshHostReport({ cwd: root, parentSessionId: "untrusted-sibling", finalizeId,
     collectorVersion: "desktop-v1", events: [event] }), /DENIED/);
   assert.equal(JSON.parse(fs.readFileSync(jobPath, "utf8")).attempts, 0);

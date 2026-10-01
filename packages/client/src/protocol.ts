@@ -122,7 +122,8 @@ export type ClawKnowledgeDispatchV1 = {
   schemaVersion: 1;
   policy: "background" | "subagent";
   finalizeId: string;
-  preferReuse: false;
+  preferReuse: boolean;
+  projectRoot?: string;
   leadInstruction?: string;
   model?: string;
   reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh";

@@ -204,6 +204,7 @@ test("cli plan done emits host-specific subagent dispatch for Codex and Cindy an
     "leadInstruction",
     "policy",
     "preferReuse",
+    "projectRoot",
     "prompt",
     "reasoningEffort",
     "schemaVersion",
@@ -212,7 +213,9 @@ test("cli plan done emits host-specific subagent dispatch for Codex and Cindy an
   assert.equal(dispatch.reasoningEffort, "medium");
   assert.match(String(dispatch.prompt), /claw knowledge-finalization job/i);
   assert.match(String(dispatch.prompt), /resources[\\/]delegate-writer[\\/]TEMPLATE\.json/);
-  assert.doesNotMatch(String(dispatch.prompt), /Project root:|Task:|working directory/i);
+  assert.equal(dispatch.projectRoot, path.resolve(root));
+  assert.ok(String(dispatch.prompt).includes("Project root: " + JSON.stringify(path.resolve(root))));
+  assert.match(String(dispatch.prompt), /If your current working directory differs/);
   assert.match(String(dispatch.leadInstruction), /Required, non-skippable closeout/);
   assert.match(String(dispatch.leadInstruction), /Do not skip it for any reason/);
   assert.equal((done.nextsteps as string[]).some((step) => step.includes("non-skippable closeout")), false);
@@ -250,7 +253,14 @@ test("cli plan done emits host-specific subagent dispatch for Codex and Cindy an
   assert.equal(dshDispatch.policy, "subagent");
   assert.match(String(dshDispatch.prompt), /dsh-delegate-writer/);
   assert.match(String(dshDispatch.prompt), /claw_run.*plan.create/);
-  assert.match(String(dshDispatch.prompt), /knowledge.claim.*subplan.create.*knowledge.done/);
+  assert.equal(dshDispatch.preferReuse, true);
+  assert.ok(String(dshDispatch.prompt).includes("knowledge-finalizer-" + String(dshDispatch.finalizeId)));
+  const dshTemplate = JSON.parse(fs.readFileSync(new URL("../../core/dist/src/resources/dsh-delegate-writer/TEMPLATE.json", import.meta.url), "utf8"));
+  assert.equal(dshTemplate.scope, "session");
+  assert.equal(dshTemplate.knowledgeCapture, false);
+  for (const operation of ["knowledge.claim", "subplan.create", "knowledge.done"]) {
+    assert.ok(dshTemplate.tasks.some((task: { detail: string }) => task.detail.includes(operation)));
+  }
   assert.doesNotMatch(String(dshDispatch.prompt), /claw plan create --template-file/);
 
   const unsupportedRoot = createFixture("plan-done-subagent-unsupported");

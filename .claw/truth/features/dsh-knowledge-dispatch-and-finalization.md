@@ -11,7 +11,7 @@
 - `isSubagentPolicyHost`（`codex | cindy | dsh`）：这三个 host 支持
   `knowledgeWriter.executionPolicy = "subagent"`；其他 host 在配置时直接拒绝该 policy。
 - DSH 没有独立 background runner；Host capability 会把项目配置的
-  `background | subagent` 都归一为原生 subagent lifecycle。新项目保留通用默认值
+  `background | subagent` 都归一为 subagent-policy lifecycle（实际 Team/native 路由由 adapter 能力判定）。新项目保留通用默认值
   `background`，但 DSH effective writer 必须生成 ready job 与 `knowledgeDispatch`。
 - `KnowledgeFinalizationHost` 增加 `"dsh"`（`packages/core/src/knowledge-sidecar.ts`）。
 - DSH 的 `claw_run` 工具把 `claw search` 召回结果完整暴露给模型：
@@ -25,12 +25,22 @@ DSH 知识终结 dispatch 流程：项目作用域 root plan 进入完成型终�
 `end.completed | end.closed` 且 effective `executionPolicy = "subagent"` 时，终态 mutation 先持久化 ready job
 （`job.host = "dsh"`、`reportCapture.mode = "claim"`、`status = "queued"`），再返回
 `knowledgeDispatch`（`buildKnowledgeDispatch` → `buildDshKnowledgeDispatch`，内部
-`resources/dsh-delegate-writer/TEMPLATE.json`）。DSH adapter 先完成父端可信 capture，再把
-immutable dispatch prompt 原样交给 DSH 原生 subagent（`subagents.start("spawn", ...)`）；该 subagent 创建 delegate
+`resources/dsh-delegate-writer/TEMPLATE.json`）。DSH adapter 先完成父端可信 capture，再按当前 scoped capability 选择执行路由并交付
+immutable dispatch prompt；writer 创建独立 delegate
 plan、跟随 workflowGuidance、`knowledge claim` 认领 job、顺序执行生成的 assignment
 subplan、并以 claim token 调用一次 `knowledge done`。`end.leave` 是取消而非派发边界；
 session-scoped delegate 不递归创建知识 job，通用终态 gate 由
 [finalization lifecycle ADR](<../adr/hook-owned-two-phase-knowledge-finalization.md>) 拥有。
+
+当前 source 的 capability-selected role 复用、逐 job 完整身份、未知投递不重发及 joint-terminal 队列推进，由 [delegation Truth](<dsh-subagent-delegation-contract.md>) 唯一拥有。已有 one-shot job 保持旧执行证据与 native 兼容路径；新路由需要匹配的 CLI/Core 协议，不能把旧短标题合同用于同一 reused session。主模型只消费 adapter 回执，不自行启动或重试 writer。source 与受控服务测试不证明当前运行 profile 已安装或激活该路径。
+
+<!-- state: history -->
+## Historical verification
+
+<!-- dated: 2026-10-02 -->
+### Native-only dispatch 的兼容基线
+
+以下完整旧路由说明仅保留为 one-shot 兼容、信号故障和重复投递排查的历史证据，不是新任务统一路由。
 
 终态 mutation 返回 `knowledgeDispatch` 时，DSH adapter 自动派发 writer child
 （`subagents.start("spawn", ...)`，label 由 `finalizerChildLabel` 生成：
@@ -68,13 +78,8 @@ capture、目录或 native admission 失败返回 `dispatch.ok: false` 与安全
 盲重派，已 claim job 不切换 writer。child 退出但尚无规范终态时仅记录安全告警，不能
 代替 `knowledge.done`。这些规则不承诺外部文档写入 exactly-once。
 
-当前仍是 native 路线，不存在已上线的 Team 常驻 runner；未来 Team 的已确认设计边界
-由 [delegation Truth](<dsh-subagent-delegation-contract.md>) 唯一记录，不能用成员复用建议
-放宽当前逐 finalizeId 的 native 去重。实现锚点：`packages/dsh-adapter/src/index.ts`
+此处记录引入 capability-selected role 之前的 native-only 行为，仅用于兼容和事故推理；不能据此否认当前 source 的 Team/native-continuable 复用。实现锚点：`packages/dsh-adapter/src/index.ts`
 中的 `finalizerChildLabel`、`resolveFinalizerReuse`、`dispatchOne`、`sweepPending`。
-
-<!-- state: history -->
-## Historical verification
 
 <!-- dated: 2026-08-22 -->
 ### 旧 native 与 claim-time capture 路线的验证记录
@@ -117,7 +122,7 @@ job 被 claim 并走完 claim → assignment subplan → 单次 `knowledge done`
 <!-- state: current -->
 ## Current capture and operational constraints
 
-DSH 的父会话在终态或未过期 queued 恢复入口通过当前宿主 `sessionQuery` 自动读取自身历史，并只把可信 `assistant/final` 规范化为 `final_answer`；没有可证明的最终答复时发布有效空采集，不冒充普通消息。受信 adapter 通过私有 stdin 将规范事件交给 CLI，CLI 保留既有 task conclusions 并在规范 job 锁内原子发布 report 与采集回执；writer claim 仅在真实回执存在时签发 token，不再读取 `.claw/runtime/report-collectors/dsh.json` 或启动旧 web 采集脚本。历史不可读、起点缺失或发布失败使未领取 job 保持 queued；Core job 锁内保存有界阶段、错误码、关联 ID 和次数（不保存报告正文或原始异常），父会话本次派发回执和后续 `claw_run context`/session-start 可查看安全诊断，成功采集与成功终结会消解旧告警。Core 为同一 child 保存不可变 claim receipt，结果未知时只读恢复，不重做 assignment；已领取但 child 遗失或外部写入确认丢失仍不可盲重派。锚点：`packages/dsh-adapter/src/capture.ts`、`src/index.ts`、`packages/cli/src/dsh-host-report.ts`、`src/dsh-finalizer-diagnostics.ts`、`src/knowledge-pending.ts`、`packages/core/src/knowledge-sidecar.ts`。
+DSH 的父会话在终态立即冻结该 job 的半开采集窗口 `[startedAt, endedAt)`；queued 恢复沿用原窗口，旧 job 的上界兼容回退为 `queuedAt`，不会把等待 role 期间的新内容归入旧任务。adapter 与 CLI 均按窗口过滤可信 final；缺少有效上界或可证明时间不能冒充空采集。父会话通过当前宿主 `sessionQuery` 自动读取自身历史，并只把可信 `assistant/final` 规范化为 `final_answer`；没有可证明的最终答复时发布有效空采集，不冒充普通消息。受信 adapter 通过私有 stdin 将规范事件交给 CLI，CLI 保留既有 task conclusions 并在规范 job 锁内原子发布 report 与采集回执；writer claim 仅在真实回执存在时签发 token，不再读取 `.claw/runtime/report-collectors/dsh.json` 或启动旧 web 采集脚本。历史不可读、起点缺失或发布失败使未领取 job 保持 queued；Core job 锁内保存有界阶段、错误码、关联 ID 和次数（不保存报告正文或原始异常），父会话本次派发回执和后续 `claw_run context`/session-start 可查看安全诊断，成功采集与成功终结会消解旧告警。Core 为同一 child 保存不可变 claim receipt，结果未知时只读恢复，不重做 assignment；已领取但 child 遗失或外部写入确认丢失仍不可盲重派。锚点：`packages/dsh-adapter/src/capture.ts`、`src/index.ts`、`packages/cli/src/dsh-host-report.ts`、`src/dsh-finalizer-diagnostics.ts`、`src/knowledge-pending.ts`、`packages/core/src/knowledge-sidecar.ts`。
 
 ## 已知陷阱
 
@@ -134,8 +139,8 @@ DSH 的父会话在终态或未过期 queued 恢复入口通过当前宿主 `ses
   修复，提交 `cebd5b9`）。
 - finalizer 判重不能走模型侧 `list_agents`：exact scope 可能提供 Team 清单或普通
   continuable 投影，均不能证明 native one-shot child 不存在。历史普通 control 投影曾
-  显式丢弃 one-shot child，错误枚举会产生第二个 writer；当前必须在 adapter 内经
-  服务层 `listChildren` 完成，不能从同名工具推断可用 schema。
+  显式丢弃 one-shot child，错误枚举会产生第二个 writer；native one-shot 兼容判重必须在 adapter 内经
+  服务层 `listChildren` 完成；Team role 使用其真实 membership/roster 服务。不能从同名模型工具推断可用 schema。
 
 ## 关联代码
 
@@ -161,14 +166,14 @@ DSH 的父会话在终态或未过期 queued 恢复入口通过当前宿主 `ses
 - 终态 mutation 返回 `knowledgeDispatch` 时，`claw_run` compact result 含
   `dispatch: { ok: true, runId, policy }` 确认（subagent 不可用时为
   `{ ok: false, reason }`），主模型不执行 writer。
-- DSH 父端成功读取历史但无可信 final event 时可发布空 capture；历史读取失败不能冒充空采集。窗口当前仅按 `reportCapture.startedAt` 下界过滤，未实现计划终态上界；Team 排队场景的立即冻结/上界隔离仍是建议。writer claim 必须有真实 capture receipt，冲突 claim token 仍拒绝。
+- DSH 父端成功读取历史但无可信 final event 时可发布空 capture；历史读取失败不能冒充空采集。窗口必须满足 `[startedAt, endedAt)`，queued 恢复不得扩大终态上界；验证需覆盖上界外事件排除与无有效时间的失败。writer claim 必须有真实 capture receipt，冲突 claim token 仍拒绝。
 - `claw_run search` 的召回列表对模型完全可见：`query` / `count` / `results[]` 的
   `sourcePath`/`kind`/`snippet`/`score`，内部字段不泄漏。
-- 同一 `finalizeId` 连续派发时 `subagents.start` 至多调用一次，running child 命中返回
+- Native one-shot 兼容路径中，同一 `finalizeId` 连续派发时 `subagents.start` 至多调用一次，running child 命中返回
   `dispatch.ok === true` 且 `reused === true`；child 结算不自动授权再派，仍须核对 queued job。
 - `subagents` 缺失、capture 失败或 `start` 抛错时 `dispatch.ok === false` 且带安全诊断与
   `guidance`；下一次系统入口只读核对规范 job 与 durable child，模型不得手动重试。
-- 服务层 `listChildren` 缺失、损坏或抛错时应 deferred，不启动第二个 child，不误报复用。
+- Native one-shot 兼容判重的服务层 `listChildren` 缺失、损坏或抛错时应 deferred，不启动第二个 child，不误报复用。
 
 ## 关键检索词
 
@@ -190,4 +195,4 @@ one-shot writer child，不做判重；唯一能产生第二个 writer child 的
 <!-- dated: 2026-10-01 -->
 ### 原生去重的身份与未知结果边界
 
-旧说明以 finalizeId 前 12 位作为 child label，并允许 child catalog 缺失或查询失败时 fail-open 启动。当前实现用完整 ID 标记 child，保留旧 label 识别，并在无法证明未投递时 deferred。保留此差异用于重启恢复和重复 writer 事故排查；delegate plan 的短标题不是 native 去重身份。未实施的 Team 复用仅涉及未来成员身份，不能据此重派旧 native job。
+旧说明以 finalizeId 前 12 位作为 child label，并允许 child catalog 缺失或查询失败时 fail-open 启动。当前实现用完整 ID 标记 child，保留旧 label 识别，并在无法证明未投递时 deferred。保留此差异用于重启恢复和重复 writer 事故排查；delegate plan 的短标题不是 native 去重身份。该历史阶段尚未实施 Team 复用；现有 capability-selected role 也不授权重派旧 native job。

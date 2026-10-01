@@ -44,6 +44,10 @@
 
 Project-scope terminal plans and successful `knowledge.done` each queue a system-owned completion refresh without waiting for an agent or a Host turn-final event. `packages/cli/src/completion-refresh-recovery.ts` reconstructs missing intent from committed terminal plans and succeeded jobs on a later system entry, then resumes durable status through the detached worker; failures remain observable without rolling back a committed mutation. Recovery does not replay domain commands, claims, or writer assignments. There is no guarantee of wall-clock progress while every process remains idle.
 
+## Project/session scope recovery
+
+The typed command service preserves the canonical focus scope when reading, editing, closing or returning from a subplan. Without retained focus, recovery considers the current session’s direct bindings in project and session scopes; it does not scan task directories or let an unrelated retained session manifest hide a bound project plan. Without authoritative retained focus, explicit plan-id resume rejects ambiguous matches across both scopes with `PLAN_TRANSITION_CONFLICT` instead of silently choosing one. One-shot context exposes the same recovered workflow rather than only project metadata. Anchors: [command service](<../../../packages/cli/src/command-service.ts>) (`currentPlanScope`, `resolveRecoveryProject`, `resolveResumeProject`) and [scope-recovery coverage](<../../../packages/cli/test/session-project-scope-recovery.test.ts>). The durable direct-binding rationale remains in the [recovery ADR](<../adr/session-start-restores-session-bound-workflow.md>).
+
 ## Route-aware compact guidance
 
 - `0.1.83` 的 live harness 曾暴露出可操作性缺口：task 尚未完成时，compact guidance 只给通用 `claw task done --id <id>`，没有暴露 choices 或真实 `--choice` 命令；省略 route 的错误也曾使用内部字段名 `choiceId`。这是历史证据，不是当前行为。

@@ -8,11 +8,14 @@ import { daemonInput, isUncertainConnectionFailure, renderGuidanceSnapshot } fro
 import { registerBundledSkills } from "./skills.js";
 import { routeCommand, runCommandBaseline, resolveCommandEntry } from "./command-route.js";
 import { handleProjectConfigRpc } from "./project-config-rpc.js";
+import { resolveDshDelegationCapability } from "./team-capability.js";
+import { FinalizerRoleDispatcher } from "./finalizer-roles.js";
+import { RoleDelegation } from "./delegation.js";
 export const name = "claw-kit";
 const finalizerDispatches = new Map();
 /** The label every writer child for one finalizeId carries. */
 export function finalizerChildLabel(finalizeId) {
-    // Native child labels use the full identifier; delegate plan titles stay short.
+    // Legacy job labels and reusable-session delegate titles both retain full ids.
     return `knowledge-finalizer-${finalizeId}`;
 }
 /**
@@ -165,8 +168,8 @@ export function apply(ctx) {
     // callbacks): it mounts later than subprocess/tools, so a snapshot taken
     // during apply may be undefined.
     const resolveRegistry = () => c.get("workspaceRegistry");
-    // Bundled skills: shared-synced (planning/config/create-claw-skill/
-    // claw-kit-doc) plus host-specific (using-claw-kit/researcher) register into
+    // Complete skills are assembled at packaging time with every host route;
+    // adapter-local payloads register into
     // the layered registry as a bundled source. Fail-open if the service is
     // absent or the provider errors.
     const skillsService = c.get("skills");
@@ -194,9 +197,9 @@ export function apply(ctx) {
         }).finally(() => reclaiming.delete(session));
     };
     const guidanceByAgent = createAgentGuidanceStore();
+    const finalizerAbort = new AbortController();
     systemPrompt.context({
-        name: "claw:workflow",
-        order: 60,
+        name: "claw:workflow", order: 60,
         // Prompt assembly is scoped by the calling agent. Keep each web thread's
         // workflow snapshot on that exact scope key so concurrent sessions cannot
         // overwrite one another with a global last-writer value.
@@ -283,6 +286,100 @@ export function apply(ctx) {
         }
         return { text, errText };
     }
+    function sessionFor(agentId, workdir) {
+        const key = sessionKey(agentId, workdir);
+        let session = sessions.get(key);
+        if (!session) {
+            session = new ClawSession(subprocess, workdir, agentId, "claw", 15000, SESSION_TRANSPORT_IDLE_MS, (idle) => release(key, idle, "idle-timeout"), (dead) => release(key, dead, "child-exit"));
+            sessions.set(key, session);
+        }
+        return session;
+    }
+    const foreground = new RoleDelegation({
+        getService: (name) => c.get(name), signal: finalizerAbort.signal,
+        resolveParent: async (actor) => {
+            const teams = c.get("agentTeams");
+            const membership = teams?.tryMembership?.(actor);
+            if (membership?.root && (membership.role === "lead" || membership.role === "teammate"))
+                return membership.root;
+            const parentId = actor.session?.header?.parentSession;
+            if (!parentId)
+                return actor;
+            const registry = c.get("agents");
+            const parent = registry?.get?.(parentId);
+            if (!parent || parent.id !== parentId)
+                throw new Error("DELEGATE_PARENT_UNAVAILABLE");
+            const native = c.get("subagents");
+            const children = await native?.listChildren?.(parentId);
+            if (!Array.isArray(children) || children.some(child => child.kind === "diagnostic"))
+                throw new Error("DELEGATE_PARENT_UNAVAILABLE");
+            return children.some(child => child.kind === "child" && child.id === actor.id) ? parent : actor;
+        },
+        readContext: async (actor) => {
+            const workdir = await resolveWorkdir(actor, resolveRegistry());
+            if (!workdir)
+                throw new Error("DELEGATE_WORKSPACE_UNAVAILABLE");
+            const response = await runOneOff(["context", "--host", "dsh"], workdir, actor.id);
+            const context = parseProtocol(response.text);
+            if (!context)
+                throw new Error("DELEGATE_CONTEXT_UNAVAILABLE");
+            return context;
+        },
+        registerReport: async (actor, expectedPlanPath, documentPath) => {
+            const workdir = await resolveWorkdir(actor, resolveRegistry());
+            if (!workdir)
+                return { status: "deferred", reason: "WORKSPACE_UNAVAILABLE" };
+            const samePath = (a, b) => process.platform === "win32"
+                ? path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase() : path.resolve(a) === path.resolve(b);
+            const inspect = async () => {
+                const context = parseProtocol((await runOneOff(["context", "--host", "dsh"], workdir, actor.id)).text);
+                return context?.activeWorkflow;
+            };
+            const current = await inspect();
+            if (!current?.planPath || !samePath(current.planPath, expectedPlanPath))
+                return { status: "deferred", reason: "PARENT_FOCUS_CHANGED" };
+            if (current.planContent?.references?.some(ref => ref.path === documentPath))
+                return { status: "registered" };
+            const input = { ...daemonInput("plan.edit", { references: [{ path: documentPath, why: "Feature architecture design for the active task." }] }), expectedPlanPath };
+            try {
+                const response = await sessionFor(actor.id, workdir).request("plan.edit", input, 30000, (send) => routeCommand(send, () => runCommandBaseline(subprocess, workdir, actor.id, "plan.edit", input)));
+                if (!response.ok)
+                    return { status: "deferred", reason: response.error?.code ?? "REFERENCE_REGISTRATION_DEFERRED" };
+                consumeHostActions(response.hostActions, goals, actor);
+                const guidance = renderGuidanceSnapshot(response.output);
+                if (guidance)
+                    guidanceByAgent.set(actor, guidance);
+                return { status: "registered" };
+            }
+            catch {
+                // Read-only evidence may recover a lost append response; never replay an
+                // unguarded mutation or switch the parent's current plan to register it.
+                const recovered = await inspect().catch(() => undefined);
+                return recovered?.planPath && samePath(recovered.planPath, expectedPlanPath)
+                    && recovered.planContent?.references?.some(ref => ref.path === documentPath)
+                    ? { status: "registered" } : { status: "deferred", reason: "REFERENCE_OUTCOME_UNKNOWN" };
+            }
+        },
+    });
+    const reusableFinalizers = new FinalizerRoleDispatcher({
+        getService: (name) => c.get(name), signal: finalizerAbort.signal,
+        command: async (operation, actorId, workdir, argv) => {
+            const response = await runOneOff(["internal-dsh-finalizer-" + operation, ...argv, "--host", "dsh"], workdir, actorId);
+            const result = parseProtocol(response.text);
+            if (!result || result.ok !== true)
+                throw new Error("DSH_EXECUTION_LEDGER_UNAVAILABLE");
+            return result;
+        },
+        readParentEvents: async (parentId) => {
+            const query = c.get("sessionQuery");
+            if (!query)
+                throw new Error("DSH_ROLE_HISTORY_UNAVAILABLE");
+            const snapshot = await query.readSession(parentId);
+            if (!Array.isArray(snapshot?.events))
+                throw new Error("DSH_ROLE_HISTORY_UNAVAILABLE");
+            return snapshot.events;
+        },
+    });
     const dispatchFlights = new Map();
     const completedSweeps = new Set();
     const pendingSweeps = new Map();
@@ -306,7 +403,10 @@ export function apply(ctx) {
         const snapshot = await sessionQuery.readSession(parentId);
         if (!snapshot || !Array.isArray(snapshot.events))
             throw new Error("DSH_REPORT_HISTORY_UNAVAILABLE");
-        const events = extractPlanFinalAnswers(snapshot.events, parentId, startedAt);
+        const endedAt = dispatch.endedAt ? Date.parse(dispatch.endedAt) : undefined;
+        if (endedAt !== undefined && (!Number.isFinite(endedAt) || endedAt < startedAt))
+            throw new Error("DSH_REPORT_BOUNDARY_UNAVAILABLE");
+        const events = extractPlanFinalAnswers(snapshot.events, parentId, startedAt, endedAt);
         const payload = JSON.stringify({ events });
         if (Buffer.byteLength(payload, "utf8") > 1024 * 1024)
             throw new Error("DSH_REPORT_TOO_LARGE");
@@ -386,19 +486,37 @@ export function apply(ctx) {
             }
             const current = pending.find((item) => item.finalizeId === finalizeId);
             if (!current) {
-                return { ok: false, reason: "The canonical finalizer job is no longer queued." };
+                const known = await reusableFinalizers.recoverAcknowledgement(agent, workdir, finalizeId).catch(() => undefined);
+                return known ?? { ok: false, reason: "The canonical finalizer job is no longer queued." };
             }
+            const capability = await resolveDshDelegationCapability({ getService: (name) => c.get(name), agent, role: "finalizer", provider: "spawn", requestedModel: current.model, requestedReasoningEffort: current.reasoningEffort });
             try {
+                if ((capability.reusable || capability.selectedRoute === "team") && !current.endedAt)
+                    throw new Error("DSH_REPORT_BOUNDARY_UNAVAILABLE");
                 await captureDshParentReport(agent.id, workdir, current);
             }
             catch (error) {
                 return deferred("capture", safeCaptureFailureCode(error));
             }
+            if (!capability.ready)
+                return deferred("dispatch", capability.reason ?? "DELEGATION_CAPABILITY_UNAVAILABLE");
+            if (capability.selectedRoute === "team" && current.preferReuse !== true)
+                return deferred("dispatch", "DSH_REUSABLE_PROTOCOL_UNAVAILABLE");
+            if (capability.reusable && current.preferReuse === true) {
+                const result = await reusableFinalizers.dispatch(agent, workdir, { ...current, finalizeId, prompt: current.prompt }, capability);
+                if (result.ok !== true)
+                    await recordDshIssue(agent.id, workdir, finalizeId, "dispatch", String(result.code ?? "REUSABLE_DISPATCH_DEFERRED"));
+                return result;
+            }
+            // An admitted reusable executor is immutable even if current capability selects native one-shot.
+            if (current.execution)
+                return deferred("dispatch", "DSH_FINALIZER_EXECUTOR_PINNED");
             try {
                 const controller = new AbortController();
                 const child = await subagents.start("spawn", {
-                    label: finalizerChildLabel(finalizeId), prompt: [{ type: "text", text: dispatch.prompt }],
+                    label: finalizerChildLabel(finalizeId), prompt: [{ type: "text", text: current.prompt }],
                     parent: agent, signal: controller.signal,
+                    ...((current.model || current.reasoningEffort) ? { agentOptions: { ...(current.model ? { model: current.model } : {}), ...(current.reasoningEffort ? { reasoningEffort: current.reasoningEffort } : {}) } } : {}),
                 });
                 const runId = String(child.id);
                 finalizerDispatches.set(finalizeId, { runId, settled: false });
@@ -431,8 +549,11 @@ export function apply(ctx) {
         }
     }
     async function sweepPending(agent, workdir, force = false) {
-        if (agent.session?.header?.parentSession)
-            return; // Never dispatch the parent's jobs from a writer child.
+        if (agent.session?.header?.parentSession) {
+            const teams = c.get("agentTeams");
+            if (teams?.tryMembership?.(agent)?.role !== "lead")
+                return; // No writer-child takeover; a real forked Lead may own its own Team.
+        }
         const key = sessionKey(agent.id, workdir);
         const current = pendingSweeps.get(key);
         if (current)
@@ -445,9 +566,10 @@ export function apply(ctx) {
                 let deferred = false;
                 for (const dispatch of pending) {
                     const result = await dispatchOne(agent, workdir, dispatch);
-                    if (result.ok !== true) {
+                    if (result.ok !== true || result.admitted === false) {
                         deferred = true;
-                        console.warn("[claw-kit] queued finalizer dispatch deferred:", result.code ?? result.reason);
+                        if (result.ok !== true)
+                            console.warn("[claw-kit] queued finalizer dispatch deferred:", result.code ?? result.reason);
                     }
                 }
                 if (deferred)
@@ -466,6 +588,116 @@ export function apply(ctx) {
         finally {
             if (pendingSweeps.get(key) === sweep)
                 pendingSweeps.delete(key);
+        }
+    }
+    const roleWakeups = new Map();
+    function parentOf(actor) {
+        const parentId = actor.session?.header?.parentSession;
+        if (!parentId)
+            return;
+        const registry = c.get("agents");
+        const registered = registry?.get?.(parentId);
+        if (registered?.id === parentId)
+            return registered;
+        const teams = c.get("agentTeams");
+        const member = teams?.tryMembership?.(actor);
+        if (member?.role === "teammate" && member.root?.id === parentId)
+            return member.root;
+    }
+    async function finishOwnedDelegate(actor, workdir, session, operation, input, output, internalFailures) {
+        const parent = parentOf(actor);
+        const finalizeId = input.finalizeId;
+        if (!parent || typeof finalizeId !== "string" || !/^[a-f0-9]{64}$/i.test(finalizeId))
+            return false;
+        if (operation !== "knowledge.done" && !(operation === "knowledge.claim" && output?.claimed === false))
+            return false;
+        const { text } = await runOneOff(["internal-dsh-finalizer-inspect", "--finalize-id", finalizeId, "--host", "dsh"], workdir, parent.id);
+        const inventory = parseProtocol(text);
+        const row = (Array.isArray(inventory?.executions) ? inventory.executions : []).find((value) => value !== null && typeof value === "object" && value.finalizeId === finalizeId);
+        if (row?.execution?.memberSessionId !== actor.id || !row.execution.delegatePlanPath || row.execution.releasedAt)
+            return false;
+        if (!["succeeded", "failed", "expired"].includes(row.status ?? ""))
+            return false;
+        const invoke = async (op, args) => {
+            const canonical = daemonInput(op, args);
+            const response = await session.request(op, canonical, 30000, (send) => routeCommand(send, () => runCommandBaseline(subprocess, workdir, actor.id, op, canonical)));
+            if (!response.ok)
+                throw new Error("DSH_DELEGATE_CLOSE_DEFERRED");
+            return response;
+        };
+        const shown = await invoke("plan.show", {});
+        const plan = shown.output?.plan;
+        if (typeof shown.output?.planPath !== "string" || path.resolve(shown.output.planPath) !== path.resolve(row.execution.delegatePlanPath)
+            || plan?.templateId !== "internal-dsh-knowledge-delegate" || plan.knowledgeCapture !== false || plan.status?.startsWith("end."))
+            return false;
+        // Never finish an unrelated/current-next plan or an unfinished assignment.
+        const pending = plan.tasks?.filter(task => task.status !== "done") ?? [];
+        const applyEffects = (response) => {
+            const effects = consumeHostActions(response.hostActions, goals, actor);
+            internalFailures.push(...effects.failures);
+            const guidance = renderGuidanceSnapshot(response.output);
+            if (guidance)
+                guidanceByAgent.set(actor, guidance);
+            const todos = projectTodos(effects.projection, response.output);
+            const target = actor;
+            if (todos) {
+                try {
+                    target.session?.append?.("todo/write", { todos });
+                }
+                catch {
+                    internalFailures.push({ kind: "update_plan", code: "PROGRESS_PROJECTION_FAILED" });
+                }
+            }
+        };
+        if (row.status === "succeeded") {
+            if (pending.some(task => task.id !== 3))
+                return false;
+            if (pending.length)
+                applyEffects(await invoke("task.done", { id: 3 }));
+            applyEffects(await invoke("plan.done", { retrospective: "Adapter confirmed this job's terminal receipt and completed its matching delegate." }));
+        }
+        else {
+            applyEffects(await invoke("plan.edit", { status: "end.leave" }));
+        }
+        return true;
+    }
+    async function releaseFinishedRole(actor, workdir) {
+        const parent = parentOf(actor);
+        if (!parent)
+            return;
+        const key = sessionKey(parent.id, workdir);
+        try {
+            const { text } = await runOneOff(["internal-dsh-finalizer-inspect", "--host", "dsh"], workdir, parent.id);
+            const inventory = parseProtocol(text);
+            if (inventory?.ok !== true || !Array.isArray(inventory.executions))
+                return;
+            const rows = inventory.executions;
+            const owned = rows.filter(row => row.execution?.memberSessionId === actor.id && !row.execution.releasedAt && /^[a-f0-9]{64}$/i.test(row.finalizeId ?? ""));
+            if (!owned.length)
+                return;
+            for (const row of owned) {
+                await runOneOff(["internal-dsh-finalizer-release", "--finalize-id", row.finalizeId, "--host", "dsh"], workdir, actor.id);
+            }
+            completedSweeps.delete(key);
+            // Never await the parent's active sweep from a child response: the sweep
+            // can itself be waiting for delivery to this child. Join it asynchronously.
+            if (!roleWakeups.has(key)) {
+                const wake = Promise.resolve().then(async () => {
+                    await pendingSweeps.get(key)?.catch(() => undefined);
+                    if (finalizerAbort.signal.aborted)
+                        return;
+                    const currentParent = parentOf(actor);
+                    if (currentParent)
+                        await sweepPending(currentParent, workdir, true);
+                }).catch(() => console.warn("[claw-kit] reusable finalizer queue wake deferred"));
+                roleWakeups.set(key, wake);
+                void wake.finally(() => { if (roleWakeups.get(key) === wake)
+                    roleWakeups.delete(key); });
+            }
+        }
+        catch {
+            completedSweeps.delete(key);
+            console.warn("[claw-kit] reusable finalizer release reconciliation deferred");
         }
     }
     async function recoverClaimReceipt(agentId, workdir, finalizeId) {
@@ -542,6 +774,7 @@ export function apply(ctx) {
     });
     // A parent snapshots proven history before writer dispatch; no project-global executable collector.
     c.on("dispose", () => {
+        finalizerAbort.abort();
         for (const [id, session] of sessions)
             release(id, session, "plugin-dispose");
     });
@@ -549,6 +782,7 @@ export function apply(ctx) {
         name: "claw_run",
         description: [
             "Run one claw-kit workflow operation in the current session through the claw session daemon. Operation names use dot form: context, plan.create, plan.start, plan.wait, plan.resume, plan.edit, plan.done, plan.show, task.add, task.edit, task.done, subplan.create, knowledge.claim, knowledge.done, search, search.index.refresh. `search.index.refresh` takes no arguments and refreshes only the calling session's project vector index. `context` restores the current host-scoped startup snapshot with no arguments. Other arguments use canonical snake_case: plan.create takes title, goal, scope; plan.start takes goal, requirements, questions, acceptance, rules, key_decisions, references, and add_tasks; plan.edit accepts the same plan fields plus summary, removal fields, retrospective fields, status, or an ordered canonical operations array; plan.resume takes optional plan_id; plan.done takes retrospective, key_decisions, what_worked, issues, and follow_ups; task.add takes title/detail or tasks; task.done takes id/choice or tasks; knowledge.claim takes finalize_id and knowledge.done takes finalize_id, claim_token, status, plus result (succeeded) or error (failed). References are arrays of {path, why}.",
+            "Semantic role work: delegate.start takes role (researcher or feature-architect), brief, and optional output (auto/reply/report); delegate.result takes assignment_id and optional wait_ms; assigned workers use delegate.complete with assignment_id, status (completed/failed), result or error, and optional document_path. The adapter selects Team/native, reuses members, queues and recovers assignments, and validates report registration. Do not manage underlying backend handles. Researcher never writes reports; architecture auto writes only when an active task exists.",
             "The adapter forges session identity and workspace from the calling agent — never pass session, host, or workdir arguments. Unsupported arguments for mapped operations fail immediately instead of being silently dropped. It auto-consumes CLI hostActions: plan progress projection and native DSH goal sync happen inside the tool, so do not call goal tools for claw plans. The result is a compact guidance snapshot; follow it as the only next-step contract.",
         ].join(" "),
         parameters: {
@@ -581,6 +815,12 @@ export function apply(ctx) {
             if (workdir === undefined) {
                 throw new Error("claw_run requires a valid session workspace; no workspace owns this session and agent.session.cwd resolved to none");
             }
+            if (operation === "delegate.start")
+                return foreground.start(agent, workdir, exec.callId ?? "", args.args ?? {});
+            if (operation === "delegate.result")
+                return foreground.result(agent, workdir, args.args ?? {}, exec.signal);
+            if (operation === "delegate.complete")
+                return foreground.complete(agent, workdir, args.args ?? {});
             const input = daemonInput(operation, (args.args ?? {}));
             // Recover queued writers on the first trusted parent entry, independently
             // of any later plan terminal response. Child sessions never own this sweep.
@@ -715,9 +955,9 @@ export function apply(ctx) {
             }
             // Knowledge closeout: the daemon returns a knowledgeDispatch on the
             // response envelope for a terminal plan transition. DSH has a native
-            // subagent, so BOTH `subagent` and `background` policies run through one
-            // flow — the adapter starts a one-shot subagent with the dispatch's
-            // self-contained prompt, and the model never touches the writer.
+            // executor service: BOTH policies use the same capability-selected flow.
+            // Reusable roles are adapter-owned; old one-shot jobs keep their original
+            // admission evidence. The parent model never manages a writer.
             // NOTE: `dispatch` is surfaced FIRST (right after ok/command) so a
             // large projection or dispatch prompt can never push the dispatch
             // confirmation past a tool-result truncation (observed: dispatch was
@@ -736,6 +976,21 @@ export function apply(ctx) {
                     policy: dispatch?.policy ?? "subagent",
                     finalizeId: dispatch?.finalizeId,
                 };
+            }
+            if (["knowledge.claim", "knowledge.done"].includes(operation) && agent.session?.header?.parentSession) {
+                const internalFailures = [];
+                try {
+                    if (await finishOwnedDelegate(agent, workdir, session, operation, input, response.output, internalFailures))
+                        visible.delegateClosed = true;
+                }
+                catch {
+                    visible.delegateCloseDeferred = true;
+                }
+                if (internalFailures.length)
+                    visible.hostEffectFailures = [...(Array.isArray(visible.hostEffectFailures) ? visible.hostEffectFailures : []), ...internalFailures];
+            }
+            if (["plan.done", "plan.edit", "knowledge.done", "knowledge.claim"].includes(operation) && agent.session?.header?.parentSession) {
+                await releaseFinishedRole(agent, workdir);
             }
             // Move dispatch to the front so truncation cannot hide the dispatch
             // confirmation (large projections previously pushed it past the limit).

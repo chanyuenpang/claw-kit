@@ -27,13 +27,13 @@
     {
       "id": 2,
       "title": "Execute the assignment subplan",
-      "detail": "Use claw_run operation subplan.create with args {parent: \"knowledge-finalizer-<first-12-finalize-id>\", task_id: 2, template_file: <templatePath from claim>}; follow the returned workflowGuidance and execute every assignment yourself in order.",
+      "detail": "Use claw_run operation subplan.create with args {parent: \"knowledge-finalizer-<full-finalize-id>\", task_id: 2, template_file: <templatePath from claim>}; follow the returned workflowGuidance and execute every assignment yourself in order.",
       "status": "pending"
     },
     {
       "id": 3,
       "title": "Persist the terminal result",
-      "detail": "After a successful claim use claw_run operation knowledge.done exactly once with args {finalize_id: <exact dispatch id>, claim_token: <claimToken>, status: \"succeeded\", result: <concise result>} if all assignments succeeded, or {finalize_id, claim_token, status: \"failed\", error: <remaining error>} otherwise. This is a finally-style obligation; then finish the delegate plan via claw_run.",
+      "detail": "After a successful claim use claw_run operation knowledge.done exactly once with args {finalize_id: <exact dispatch id>, claim_token: <claimToken>, status: \"succeeded\", result: <concise result>} if all assignments succeeded, or {finalize_id, claim_token, status: \"failed\", error: <remaining error>} otherwise. This is a finally-style obligation. If the adapter returns delegateClosed, stop; otherwise follow the returned workflow guidance to finish this delegate, never an unrelated plan.",
       "status": "pending"
     }
   ],

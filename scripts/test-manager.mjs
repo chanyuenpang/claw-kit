@@ -11,6 +11,9 @@ const coreBuild = build("@veewo/claw-core");
 const clientBuild = build("@veewo/claw-client");
 const cliBuild = build("@veewo/claw");
 const cliTestCompile = nodeStep("./node_modules/typescript/bin/tsc", "-p", "./packages/cli/tsconfig.test.json");
+const scopeRecoveryTest = nodeStep("--test", "./packages/cli/dist-test/session-project-scope-recovery.test.js");
+const guardedReferenceTest = nodeStep("--test", "./packages/cli/dist-test/guarded-plan-reference.test.js");
+const dshExecutionTest = nodeStep("--test", "./packages/cli/dist-test/dsh-finalizer-execution.test.js");
 
 function sessionTest(file, extraSteps = []) {
   return [
@@ -76,7 +79,7 @@ export const TEST_DOMAINS = {
   },
   "session-commands": {
     description: "Typed command service, implicit current-plan targeting, and command envelopes",
-    steps: sessionTest("session-commands"),
+    steps: sessionTest("session-commands", [scopeRecoveryTest, guardedReferenceTest]),
   },
   "session-protocol": {
     description: "Authenticated client/daemon protocol, serialization, reconnect, and lifecycle",
@@ -100,7 +103,7 @@ export const TEST_DOMAINS = {
   },
   "cli-session-scope": {
     description: "Stateless CLI compatibility for session-scoped workflow storage",
-    steps: cliDomainTest("cli-session-scope"),
+    steps: [...cliDomainTest("cli-session-scope"), scopeRecoveryTest],
   },
   "cli-search": {
     description: "CLI search, index refresh, embedding reuse, and directory override",
@@ -108,7 +111,7 @@ export const TEST_DOMAINS = {
   },
   "cli-closeout": {
     description: "CLI hooks, completion refresh, knowledge finalization, and closeout",
-    steps: cliDomainTest("cli-closeout"),
+    steps: [...cliDomainTest("cli-closeout"), dshExecutionTest],
   },
   "cli-host-actions": {
     description: "Host identity, Codex/Cindy/OpenCode actions, Goal, and projection",
@@ -116,7 +119,7 @@ export const TEST_DOMAINS = {
   },
   "cli-project": {
     description: "Project init/check/context, maintenance, configuration, and update reporting",
-    steps: cliDomainTest("cli-project"),
+    steps: [...cliDomainTest("cli-project"), scopeRecoveryTest],
   },
   "cli-surface": {
     description: "CLI help, version, usage, and argument surface",

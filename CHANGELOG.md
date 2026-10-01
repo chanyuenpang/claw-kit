@@ -4,9 +4,12 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## [Unreleased]
 
-## [0.2.42] - 2026-10-01 (local candidate; not published)
+## [0.2.42] - 2026-10-02
 
-- Prepare CLI/Core/Client 0.2.42 and Codex/Cindy 0.2.42.0 locally; no registry upload, Git push, remote release or installed-plugin refresh is part of this checkpoint.
+- Release CLI/Core/Client 0.2.42 with coordinated Codex, DSH and Cindy 0.2.42.0 artifacts; each plugin is assembled with its complete declared skill resources before publication.
+- Move DSH Team/native routing, foreground role queues, safe finalizer reuse and report registration into the adapter; retain per-job claims, bounded captures and native compatibility.
+- Recover project-bound workflows despite retained session storage and guard report references against changed parent focus.
+- Carry the exact project root in Codex finalizer dispatch so workers cannot claim from an unrelated working directory.
 - Retry bounded Windows sharing violations during final Cindy artifact activation without replacing existing outputs or hiding permanent failures.
 - Keep one canonical copy of public skills and assemble complete, unpruned multi-host packages only in isolated artifacts; preserve the existing installed plugin layouts.
 - Declare platform identity through supported host entry points and Cindy's native catalog/results; keep Cindy-hosted Codex models on the Cindy gateway.

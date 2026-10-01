@@ -1,40 +1,24 @@
 # Feature architecture host execution
 
-Use this note only for the active host. Dispatch controls belong to the main
-agent; an assigned architect only investigates and writes the explicitly
+Use this note only for the active host. The main agent requests a bounded
+design; on DSH the adapter owns dispatch mechanics. An assigned architect only
+investigates and writes the explicitly
 authorized report, never parent plan state. Current tool schemas and session
 permissions override examples. Before every new or reused assignment disclose
 the role and task to the user in one sentence.
 
 ## DSH
 
-Use `run_code` to call the SDK, not raw CLI or hand-forged session identity:
+Use run_code and the adapter's semantic role interface, not raw CLI or backend handles:
 
-- Context: `tools.claw_run({operation: "context", args: {}})`.
-- Recall: `tools.claw_run({operation: "search", args: {query: topic}})`.
-- Main-agent report registration: `tools.claw_run({operation: "plan.edit",
-  args: {references: [{path: documentPath, why: "Feature architecture design for the active task."}]}})`.
-  Preserve unrelated plan fields and existing references; consume returned
-  guidance. The adapter owns progress and goal synchronization.
-- Source inspection uses `read`, `glob`, `grep`; only the authorized report is
-  writable. No parent lifecycle or goal-tool calls from the architect.
+- Main: tools.claw_run({operation: "delegate.start", args: {role: "feature-architect", brief: "<full user request, constraints and relevant targets>", output: "auto"}}).
+- Obtain the assignment using tools.claw_run({operation: "delegate.result", args: {assignment_id: "<returned id>"}}) before adopting the design. Waiting is bounded; pending or unknown is not permission to submit the same work again.
+- The adapter derives taskDir/reportDir from actual activeWorkflow, grants one report path when a task exists, and validates/records the report reference against the original parent plan. Without activeWorkflow it requests an inline design and forbids report files. The main agent does not create directories, choose Team/native, manage member IDs or replay plan.edit for this assignment. Claim reference registration only from returned adapter evidence; changed parent focus remains explicit, not silently switched.
+- Assigned architects read the provided skill and sources, write only the granted report (if any), and submit the supplied delegate.complete contract with design status/result and document_path when applicable. Never delegate again or modify parent lifecycle.
+- Context: tools.claw_run({operation: "context", args: {}}). Recall: tools.claw_run({operation: "search", args: {query: topic}}). Source inspection uses read/glob/grep, not shell equivalents.
+- The adapter owns progress and goal synchronization as well as delegation mechanics. Host permissions and the report-only boundary remain authoritative.
 
-Delegate with native `subagent` and a self-contained prompt, not
-`subagent_fork`. Retain the actual result handle: `background` returns `jobId`
-for `job_output` collection (wait only when genuinely blocked; do not poll);
-`continuable` returns `subagentId` for supported same-role `send_message` reuse;
-`foreground` supplies its result without a reuse guarantee. Omitting
-`run_in_background` does not guarantee a durable child. Collect relevant jobs
-before using their results or finishing, and cancel irrelevant jobs with
-`job_kill`. Do not resend a successful queued message or retry stale child ids;
-start a fresh bounded child when reuse is no longer authorized or supported.
-
-`list_agents` lists Agent Teams members, not ordinary subagent jobs. Agent Teams
-require an explicit user request for Agent Teams or teammates. Within an
-authorized Team use returned member targets, current status and the session
-shared-task contract; reserve the reportDir write scope for this assignment.
-`inactive` is not completion; `wait_agent` neither collects jobs nor wakes a
-member. Do not use a Team to bypass the ordinary child API.
+These semantic operations require the matching adapter version. An unsupported interface is a capability gap, not permission to rebuild Team/native orchestration in the model or switch to hostless.
 
 ## Codex
 

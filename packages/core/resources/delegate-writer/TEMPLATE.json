@@ -12,7 +12,7 @@
     "summary": "Claim the ready job and collect its existing parent-turn report, execute its generated assignment subplan sequentially, and persist one terminal result.",
     "openQuestions": [],
     "acceptanceCriteria": [
-      "The ready job is located from the current project and supplied finalization id without waiting for Stop.",
+      "The ready job is located from the project root and finalization id supplied by dispatch without waiting for Stop.",
       "A successful claim collects and freezes the same task-conclusion report entries used by Stop before returning assignments.",
       "Only a successful claim can execute assignments.",
       "Every assignment runs sequentially in the generated session-scoped subplan.",
@@ -23,7 +23,7 @@
     {
       "id": 1,
       "title": "Claim the ready knowledge job",
-      "detail": "Run `claw knowledge claim --project-root . --finalize-id <finalize-id>` from the current project using the exact finalization id supplied by dispatch. Do not run knowledge wait. The claim collects and freezes the parent transcript's existing task conclusions before returning. Stop without executing assignments if claimed is false. Retain jobPath, claimToken, templatePath, assignments, and immutable writer configuration.",
+      "detail": "Run `claw knowledge claim --project-root \"<project-root>\" --finalize-id <finalize-id>` using the exact project root and finalization id supplied by dispatch. If your working directory differs, execute all workflow and knowledge commands with that project root as their working directory. Do not substitute the inherited directory or the internal session plan directory. Do not run knowledge wait. The claim collects and freezes the parent transcript's existing task conclusions before returning. Stop without executing assignments if claimed is false. Retain jobPath, claimToken, templatePath, assignments, and immutable writer configuration.",
       "status": "pending"
     },
     {

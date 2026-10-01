@@ -93,6 +93,7 @@ import { publishDshHostReport } from "./dsh-host-report.js";
 import { recordDshFinalizerIssue, listDshFinalizerAlerts } from "./dsh-finalizer-diagnostics.js";
 import { claimKnowledgeCommand, doneKnowledgeCommand } from "./knowledge-command.js";
 import { pendingDshKnowledgeDispatches } from "./knowledge-pending.js";
+import { reserveDshFinalizerExecutionCommand, markDshFinalizerDeliveryCommand, inspectDshFinalizerExecutionsCommand, releaseDshFinalizerExecutionCommand } from "./dsh-finalizer-execution.js";
 import { consumeBufferedHookInput } from "./knowledge-hook-preflight.js";
 import { isSubagentPolicyHost, resolveInvocationHost, withoutInvocationHost, type ClawHost } from "./invocation-host.js";
 import {
@@ -757,6 +758,12 @@ async function main(): Promise<void> {
       case "internal-dsh-finalizer-issue":
         runInternalDshFinalizerIssue(args);
         return;
+      case "internal-dsh-finalizer-reserve":
+      case "internal-dsh-finalizer-delivery":
+      case "internal-dsh-finalizer-inspect":
+      case "internal-dsh-finalizer-release":
+        runInternalDshFinalizerExecution(command, args);
+        return;
       case "internal-dsh-finalizer-alerts":
         runInternalDshFinalizerAlerts(args);
         return;
@@ -1356,6 +1363,42 @@ function runInternalDshFinalizerIssue(args: string[]): void {
   printJson({ ok: true, command: "internal-dsh-finalizer-issue", finalizeId, failure: failure ?? null });
 }
 
+/** Static adapter API only; never a model-visible claw_run operation. */
+function runInternalDshFinalizerExecution(command: string, args: string[]): void {
+  const actorSessionId = resolveOwnerSessionKey();
+  if (!actorSessionId) throw new ClawError("SESSION_IDENTITY_INVALID", "DSH execution admission requires a trusted host session.");
+  const cwd = process.cwd();
+  if (command === "internal-dsh-finalizer-inspect") {
+    const finalizeId = readOptionalFlag(args, "--finalize-id");
+    assertNoRemainingArgs(args, command);
+    printJson({ ok: true, command, ...inspectDshFinalizerExecutionsCommand({ cwd, parentSessionId: actorSessionId, finalizeId }) });
+    return;
+  }
+  const finalizeId = readRequiredFlag(args, "--finalize-id");
+  if (command === "internal-dsh-finalizer-release") {
+    assertNoRemainingArgs(args, command);
+    printJson({ ok: true, command, ...releaseDshFinalizerExecutionCommand({ cwd, actorSessionId, finalizeId }) });
+    return;
+  }
+  if (command === "internal-dsh-finalizer-reserve") {
+    const route = readRequiredFlag(args, "--route");
+    const memberSessionId = readRequiredFlag(args, "--member-session-id");
+    const teamId = readOptionalFlag(args, "--team-id");
+    const provider = readRequiredFlag(args, "--provider");
+    const configFingerprint = readRequiredFlag(args, "--config-fingerprint");
+    assertNoRemainingArgs(args, command);
+    if (route !== "team" && route !== "native-continuable") throw new ClawError("PROJECT_CONFIG_INVALID", "Unsupported reusable DSH executor route.");
+    printJson({ ok: true, command, ...reserveDshFinalizerExecutionCommand({ cwd, parentSessionId: actorSessionId, finalizeId, route, memberSessionId, teamId, provider, configFingerprint }) });
+    return;
+  }
+  const deliveryKey = readRequiredFlag(args, "--delivery-key");
+  const state = readRequiredFlag(args, "--state");
+  const receiptId = readOptionalFlag(args, "--receipt-id");
+  assertNoRemainingArgs(args, command);
+  if (state !== "attempted" && state !== "accepted" && state !== "uncertain") throw new ClawError("PROJECT_CONFIG_INVALID", "Unsupported DSH delivery evidence state.");
+  printJson({ ok: true, command, ...markDshFinalizerDeliveryCommand({ cwd, parentSessionId: actorSessionId, finalizeId, deliveryKey, state, receiptId }) });
+}
+
 function runInternalDshFinalizerAlerts(args: string[]): void {
   assertNoRemainingArgs(args, "internal-dsh-finalizer-alerts");
   const parentSessionId = resolveOwnerSessionKey();
@@ -1729,6 +1772,7 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
             // The isSubagentPolicyHost gate above guarantees this is codex | cindy | dsh.
             host: effectiveHost as "codex" | "cindy" | "dsh",
             finalizeId: result.knowledgeFinalizeId,
+            projectRoot: project.projectRoot,
             writer: effectiveWriter,
           })
         : undefined;
@@ -1849,6 +1893,7 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
             // The isSubagentPolicyHost gate above guarantees this is codex | cindy | dsh.
             host: effectiveHost as "codex" | "cindy" | "dsh",
             finalizeId: result.knowledgeFinalizeId,
+            projectRoot: currentProject.projectRoot,
             writer: effectiveWriter,
           })
         : undefined;
@@ -2178,7 +2223,7 @@ async function runContextCommand(
       launchDailyMaintenance(cwd, ownerSessionKey, true);
     }
     const activeWorkflow = !taskName && ownerSessionKey
-      ? await tryResolveActiveWorkflowSnapshot(cwd, ownerSessionKey, effectiveHost)
+      ? await tryResolveActiveWorkflowSnapshot(sessionProject, cwd, ownerSessionKey, effectiveHost)
       : null;
     return {
       project: sessionProject,
@@ -2217,7 +2262,7 @@ async function runContextCommand(
   }
   const activeWorkflow =
     !taskName && ownerSessionKey
-      ? await tryResolveActiveWorkflowSnapshot(cwd, ownerSessionKey, effectiveHost)
+      ? await tryResolveActiveWorkflowSnapshot(project, cwd, ownerSessionKey, effectiveHost)
       : null;
 
   launchProjectEmbeddingWarmup(resolved.project);
@@ -2887,6 +2932,7 @@ function runInternalKnowledgeDispatch(args: string[]): void {
   const dispatch = buildKnowledgeDelegateDispatch({
     policy: "background",
     finalizeId: queued.finalizeId,
+    projectRoot: queued.projectRoot,
     writer: queued.writer,
   });
   printJson({
@@ -3295,6 +3341,7 @@ function summarizeRecoveredPlanContent(planContent: JsonRecord): string[] {
 }
 
 async function tryResolveActiveWorkflowSnapshot(
+  project: ProjectContext,
   cwd: string,
   ownerSessionKey: string,
   effectiveHost: ClawHost | undefined,
@@ -3307,7 +3354,6 @@ async function tryResolveActiveWorkflowSnapshot(
   planContent: PlanDocument;
   workflowGuidance: WorkflowGuidance;
 } | null> {
-  const project = resolveWorkflowProjectContext(cwd, ownerSessionKey);
   const planPath = resolveSessionBoundPlan(project, ownerSessionKey);
   if (!planPath) {
     return null;
@@ -3321,6 +3367,7 @@ async function tryResolveActiveWorkflowSnapshot(
     }
     const result = showPlan({
       cwd,
+      scope: project.scope,
       taskName: target.taskName,
       planFile: target.planFile,
       ownerSessionKey,
@@ -3454,6 +3501,7 @@ function stripBom(content: string): string {
 function buildKnowledgeDispatch(input: {
   host: "codex" | "cindy" | "dsh";
   finalizeId: string;
+  projectRoot: string;
   writer?: KnowledgeFinalizationJob["writer"];
 }): KnowledgeDelegateDispatch {
   // Cindy uses its Orca atomic dispatch; DSH uses native claw_run inside its
@@ -3467,6 +3515,7 @@ function buildKnowledgeDispatch(input: {
   return buildKnowledgeDelegateDispatch({
     policy: "subagent",
     finalizeId: input.finalizeId,
+    projectRoot: input.projectRoot,
     writer: input.writer,
     ...(input.host === "codex" ? { leadInstruction: KNOWLEDGE_DISPATCH_LEAD_INSTRUCTION } : {}),
   });

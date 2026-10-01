@@ -23,7 +23,8 @@ export type KnowledgeDelegateDispatch = {
   schemaVersion: 1;
   policy: "background" | "subagent";
   finalizeId: string;
-  preferReuse: false;
+  preferReuse: boolean;
+  projectRoot?: string;
   leadInstruction?: string;
   model?: string;
   reasoningEffort?: NonNullable<KnowledgeWriterConfig["reasoningEffort"]>;
@@ -63,21 +64,29 @@ export function knowledgeDelegateTemplatePath(): string {
 export function buildKnowledgeDelegateDispatch(input: {
   policy: "background" | "subagent";
   finalizeId: string;
+  projectRoot?: string;
   writer?: KnowledgeWriterConfig | null;
   leadInstruction?: string;
 }): KnowledgeDelegateDispatch {
   const templatePath = knowledgeDelegateTemplatePath();
   const delegateTitle = `knowledge-finalizer-${input.finalizeId.slice(0, 12)}`;
+  const projectRoot = input.projectRoot ? path.resolve(input.projectRoot) : undefined;
   return {
     schemaVersion: 1,
     policy: input.policy,
     finalizeId: input.finalizeId,
     preferReuse: false,
+    ...(projectRoot ? { projectRoot } : {}),
     ...(input.leadInstruction ? { leadInstruction: input.leadInstruction } : {}),
     ...(input.writer?.model ? { model: input.writer.model } : {}),
     ...(input.writer?.reasoningEffort ? { reasoningEffort: input.writer.reasoningEffort } : {}),
     prompt: [
       "Execute this claw knowledge-finalization job directly and unattended.",
+      ...(projectRoot ? [
+        `Project root: ${JSON.stringify(projectRoot)}`,
+        "If your current working directory differs from this project root, use this project root as the working directory for every workflow and knowledge command, including the first plan creation.",
+        "For knowledge claim, pass this exact absolute path to --project-root; do not substitute the inherited working directory or the internal session plan directory.",
+      ] : []),
       `First run: claw plan create --template-file "${templatePath}" --title "${delegateTitle}"`,
       "Then follow the returned workflowGuidance until the internal session plan is complete.",
       `Finalization id: ${input.finalizeId}`,
@@ -92,15 +101,16 @@ export function buildDshKnowledgeDispatch(input: {
   writer?: KnowledgeWriterConfig | null;
 }): KnowledgeDelegateDispatch {
   const templatePath = path.join(path.dirname(fileURLToPath(import.meta.url)), "resources", "dsh-delegate-writer", "TEMPLATE.json");
-  const delegateTitle = `knowledge-finalizer-${input.finalizeId.slice(0, 12)}`;
+  // Reused members share one session namespace: no truncated per-job plan identity.
+  const delegateTitle = `knowledge-finalizer-${input.finalizeId}`;
   return {
-    schemaVersion: 1, policy: "subagent", finalizeId: input.finalizeId, preferReuse: false,
+    schemaVersion: 1, policy: "subagent", finalizeId: input.finalizeId, preferReuse: true,
     ...(input.writer?.model ? { model: input.writer.model } : {}),
     ...(input.writer?.reasoningEffort ? { reasoningEffort: input.writer.reasoningEffort } : {}),
     prompt: [
       "Execute this already-created claw knowledge-finalization job unattended using only claw_run for workflow and knowledge operations.",
       `First call claw_run({operation: "plan.create", args: {title: "${delegateTitle}", template_file: ${JSON.stringify(templatePath)}}}).`,
-      "Follow the template workflow: claw_run knowledge.claim with finalize_id; create the assignment subplan using subplan.create with parent, task_id: 2, template_file from claim; then claw_run knowledge.done with finalize_id, claim_token, status, and result or error.",
+      `Follow returned workflow guidance for this job. Assignment subplan parent: "${delegateTitle}". The adapter owns executor selection, queueing and safe delegate closeout.`,
       `Finalization id: ${input.finalizeId}`,
       "Translate any claw CLI commandHints or assignment-template lifecycle wording into the corresponding claw_run operation and snake_case args; never use shell or CLI claw commands and never start another finalizer or delegate agent.",
     ].join("\n"),

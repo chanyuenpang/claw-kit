@@ -65,6 +65,33 @@ export type KnowledgeClaimReceipt = {
   template: PlanTemplateDocument;
 };
 
+/** One immutable reusable-executor admission; the job remains the only ledger. */
+export type DshFinalizerExecution = {
+  schemaVersion: 1;
+  route: "team" | "native-continuable";
+  parentSessionId: string;
+  memberSessionId: string;
+  teamId?: string;
+  provider: string;
+  configFingerprint: string;
+  deliveryKey: string;
+  reservedAt: string;
+  delivery: { state: "reserved" | "attempted" | "accepted" | "uncertain"; attemptedAt?: string; receiptId?: string };
+  delegatePlanPath?: string;
+  /** Durable proof of both terminal states, before delegate retention removes it. */
+  releasedAt?: string;
+};
+
+export type DshFinalizerExecutionInspection = {
+  finalizeId: string;
+  status: KnowledgeFinalizationJob["status"];
+  expiresAt?: string;
+  execution?: DshFinalizerExecution;
+  delegatePlanStatus?: string;
+  readyForNext: boolean;
+  reason?: string;
+};
+
 export type KnowledgeFinalizationJob = {
   schemaVersion: 1;
   finalizeId: string;
@@ -86,6 +113,8 @@ export type KnowledgeFinalizationJob = {
     mode: "claim";
     status: "pending" | "captured";
     startedAt?: string;
+    /** Frozen parent-plan boundary; delayed executor reuse must not widen capture. */
+    endedAt?: string;
     capturedAt?: string;
     transcriptPath?: string;
     receipt?: {
@@ -111,6 +140,7 @@ export type KnowledgeFinalizationJob = {
   claimedAt?: string;
   /** Immutable DSH first-claim snapshot; never regenerated on receipt recovery. */
   claimReceipt?: KnowledgeClaimReceipt;
+  dshExecution?: DshFinalizerExecution;
   truthThreadId?: string;
   adrThreadId?: string;
   truthResponse?: string;
@@ -438,6 +468,7 @@ export function tryEndKnowledgePlan(input: {
           reportCapture: {
             mode: "claim",
             status: "pending",
+            endedAt: input.endedAt,
             ...(registry.activeStartedAt ? { startedAt: registry.activeStartedAt } : {}),
           },
           status: "queued",
@@ -745,12 +776,166 @@ export function recordDshOperationalFailure(input: {
   });
 }
 
+function assertDshExecutionParent(job: KnowledgeFinalizationJob, project: ProjectContext, parentSessionId: string): void {
+  if (project.scope !== "project" || job.host !== "dsh" || !parentSessionId.trim()
+    || job.sessionId !== parentSessionId || path.resolve(job.projectRoot) !== path.resolve(project.projectRoot)) {
+    throw new Error("DSH_EXECUTION_DENIED: exact project and parent identity required.");
+  }
+}
+
+function withDshRoleLock<T>(project: ProjectContext, parentSessionId: string, action: () => T): T {
+  const key = createHash("sha256").update(parentSessionId).digest("hex");
+  // Only an ephemeral mutex; no role DB, queue, or second canonical focus file.
+  return withFileLock(path.join(project.clawDir, "runtime", "dsh-finalizer-roles", key), action);
+}
+
+function inspectDshExecutionJob(job: KnowledgeFinalizationJob): DshFinalizerExecutionInspection {
+  const execution = job.dshExecution;
+  const row: DshFinalizerExecutionInspection = {
+    finalizeId: job.finalizeId, status: job.status, expiresAt: job.expiresAt,
+    ...(execution ? { execution } : {}), readyForNext: !execution || Boolean(execution.releasedAt),
+  };
+  if (!execution || execution.releasedAt) return row;
+  const terminal = ["succeeded", "failed", "expired"].includes(job.status);
+  if (execution.delegatePlanPath) {
+    try {
+      const plan = readJsonFile<{ status?: string; knowledgeCapture?: boolean; templateId?: string }>(execution.delegatePlanPath);
+      row.delegatePlanStatus = plan.status;
+      if (terminal && plan.status?.startsWith("end.") && plan.knowledgeCapture === false
+        && plan.templateId === "internal-dsh-knowledge-delegate") {
+        row.readyForNext = true;
+        return row;
+      }
+    } catch { /* Missing proof is not a terminal delegate. */ }
+  } else if (job.status === "expired" && execution.delivery.state === "reserved") {
+    row.readyForNext = true; // No delivery attempt and no delegate could have claimed.
+    return row;
+  }
+  row.reason = !terminal ? "previous-job-not-terminal" : "delegate-terminal-proof-required";
+  return row;
+}
+
+/** Read-only parent inventory, including terminal jobs retained for executor reuse. */
+export function inspectDshFinalizerExecutions(input: {
+  project: ProjectContext; parentSessionId: string; finalizeId?: string;
+}): DshFinalizerExecutionInspection[] {
+  if (input.project.scope !== "project" || !input.parentSessionId.trim()) throw new Error("DSH_EXECUTION_DENIED: project parent required.");
+  return listKnowledgeFinalizationJobs(input.project).map(readKnowledgeFinalizationJob)
+    .filter((job) => job.host === "dsh" && job.sessionId === input.parentSessionId
+      && path.resolve(job.projectRoot) === path.resolve(input.project.projectRoot)
+      && (!input.finalizeId || job.finalizeId === input.finalizeId))
+    .map(inspectDshExecutionJob);
+}
+
+function releaseDshExecutionLocked(jobPath: string, job: KnowledgeFinalizationJob): DshFinalizerExecutionInspection {
+  const row = inspectDshExecutionJob(job);
+  if (row.readyForNext && job.dshExecution && !job.dshExecution.releasedAt) {
+    job = { ...job, dshExecution: { ...job.dshExecution, releasedAt: new Date().toISOString() } };
+    writeJsonFileAtomic(jobPath, job);
+    return inspectDshExecutionJob(job);
+  }
+  return row;
+}
+
+export function reserveDshFinalizerExecution(input: {
+  project: ProjectContext; jobPath: string; parentSessionId: string;
+  route: DshFinalizerExecution["route"]; memberSessionId: string; teamId?: string;
+  provider: string; configFingerprint: string;
+}): { admitted: boolean; alreadyReserved?: boolean; execution?: DshFinalizerExecution; reason?: string; blockingFinalizeId?: string } {
+  if (!["team", "native-continuable"].includes(input.route) || !input.memberSessionId?.trim()
+    || input.memberSessionId === input.parentSessionId || !input.provider?.trim() || !input.configFingerprint?.trim()
+    || (input.route === "team" ? !input.teamId?.trim() : input.teamId !== undefined)) {
+    throw new Error("DSH_EXECUTION_INVALID: exact reusable executor identity required.");
+  }
+  return withDshRoleLock(input.project, input.parentSessionId, () => {
+    const observed = readKnowledgeFinalizationJob(input.jobPath);
+    assertDshExecutionParent(observed, input.project, input.parentSessionId);
+    for (const priorPath of listKnowledgeFinalizationJobs(input.project)) {
+      if (path.resolve(priorPath) === path.resolve(input.jobPath)) continue;
+      const prior = readKnowledgeFinalizationJob(priorPath);
+      if (prior.host !== "dsh" || prior.sessionId !== input.parentSessionId || !prior.dshExecution) continue;
+      const row = withFileLock(priorPath, () => releaseDshExecutionLocked(priorPath, reconcileKnowledgeFinalizationJobLocked(priorPath, new Date())));
+      if (!row.readyForNext) return { admitted: false, reason: row.reason, blockingFinalizeId: prior.finalizeId };
+    }
+    return withFileLock(input.jobPath, () => {
+      const job = reconcileKnowledgeFinalizationJobLocked(input.jobPath, new Date());
+      assertDshExecutionParent(job, input.project, input.parentSessionId);
+      const existing = job.dshExecution;
+      if (existing) {
+        if (existing.route !== input.route || existing.memberSessionId !== input.memberSessionId
+          || existing.teamId !== input.teamId || existing.provider !== input.provider
+          || existing.configFingerprint !== input.configFingerprint) throw new Error("DSH_EXECUTION_IMMUTABLE: admitted executor cannot change.");
+        return { admitted: !existing.releasedAt && ["queued", "running"].includes(job.status), alreadyReserved: true, execution: existing };
+      }
+      if (job.status !== "queued" || job.claimReceipt) return { admitted: false, reason: "job-not-queued" };
+      const execution: DshFinalizerExecution = {
+        schemaVersion: 1, route: input.route, parentSessionId: input.parentSessionId,
+        memberSessionId: input.memberSessionId, ...(input.teamId ? { teamId: input.teamId } : {}),
+        provider: input.provider, configFingerprint: input.configFingerprint, deliveryKey: job.finalizeId,
+        reservedAt: new Date().toISOString(), delivery: { state: "reserved" },
+      };
+      writeJsonFileAtomic(input.jobPath, { ...job, dshExecution: execution });
+      return { admitted: true, alreadyReserved: false, execution };
+    });
+  });
+}
+
+/** Commit attempted BEFORE external delivery. A repeated call never authorizes resend. */
+export function markDshFinalizerDelivery(input: {
+  project: ProjectContext; jobPath: string; parentSessionId: string; deliveryKey: string;
+  state: "attempted" | "accepted" | "uncertain"; receiptId?: string;
+}): { deliver: boolean; execution: DshFinalizerExecution } {
+  return withDshRoleLock(input.project, input.parentSessionId, () => withFileLock(input.jobPath, () => {
+    let job = readKnowledgeFinalizationJob(input.jobPath);
+    assertDshExecutionParent(job, input.project, input.parentSessionId);
+    const execution = job.dshExecution;
+    if (!execution || input.deliveryKey !== job.finalizeId || execution.deliveryKey !== input.deliveryKey) throw new Error("DSH_EXECUTION_DENIED: exact admitted delivery key required.");
+    if (!["attempted", "accepted", "uncertain"].includes(input.state)) throw new Error("DSH_EXECUTION_INVALID: invalid delivery state.");
+    if (input.state !== "accepted" && input.receiptId !== undefined) throw new Error("DSH_EXECUTION_INVALID: only accepted delivery carries a receipt.");
+    job = reconcileKnowledgeFinalizationJobLocked(input.jobPath, new Date());
+    if (input.state === "attempted") {
+      if (execution.delivery.state !== "reserved" || job.status !== "queued" || execution.releasedAt) return { deliver: false, execution };
+      const next = { ...execution, delivery: { state: "attempted" as const, attemptedAt: new Date().toISOString() } };
+      writeJsonFileAtomic(input.jobPath, { ...job, dshExecution: next });
+      return { deliver: true, execution: next };
+    }
+    if (execution.delivery.state === "reserved") throw new Error("DSH_EXECUTION_INVALID: delivery was not attempted.");
+    if (input.state === "accepted" && !input.receiptId?.trim()) throw new Error("DSH_EXECUTION_INVALID: positive delivery receipt required.");
+    if (execution.delivery.state === "accepted") {
+      if (input.state === "accepted" && execution.delivery.receiptId !== input.receiptId) throw new Error("DSH_EXECUTION_IMMUTABLE: delivery receipt cannot change.");
+      return { deliver: false, execution };
+    }
+    const next: DshFinalizerExecution = { ...execution, delivery: { ...execution.delivery, state: input.state,
+      ...(input.state === "accepted" ? { receiptId: input.receiptId } : {}) } };
+    writeJsonFileAtomic(input.jobPath, { ...job, dshExecution: next });
+    return { deliver: false, execution: next };
+  }));
+}
+
+/** Only canonical job+delegate completion (or never-attempted expiry) can release a role. */
+export function releaseDshFinalizerExecution(input: {
+  project: ProjectContext; jobPath: string; actorSessionId: string;
+}): { released: boolean; parentSessionId: string; execution?: DshFinalizerExecution; reason?: string } {
+  const observed = readKnowledgeFinalizationJob(input.jobPath);
+  return withDshRoleLock(input.project, observed.sessionId, () => withFileLock(input.jobPath, () => {
+    let job = readKnowledgeFinalizationJob(input.jobPath);
+    assertDshExecutionParent(job, input.project, observed.sessionId);
+    if (input.actorSessionId !== job.sessionId && input.actorSessionId !== job.dshExecution?.memberSessionId) throw new Error("DSH_EXECUTION_DENIED: release requires admitted child or parent.");
+    job = reconcileKnowledgeFinalizationJobLocked(input.jobPath, new Date());
+    const row = releaseDshExecutionLocked(input.jobPath, job);
+    return { released: Boolean(row.execution?.releasedAt), parentSessionId: job.sessionId,
+      ...(row.execution ? { execution: row.execution } : {}), ...(row.reason ? { reason: row.reason } : {}) };
+  }));
+}
+
 export function claimKnowledgeFinalizationJob(
   jobPath: string,
   options?: {
     prepare?: (job: KnowledgeFinalizationJob) => Partial<KnowledgeFinalizationJob> | void;
     claimant?: KnowledgeClaimant;
     version?: string;
+    /** Supplied only by trusted CLI context, never model arguments. */
+    resolveDelegatePlan?: () => { planPath: string; scope: "session"; projectRoot: string; ownerSessionId: string };
   },
 ): KnowledgeFinalizationJob | null {
   return withFileLock(jobPath, () => {
@@ -760,7 +945,30 @@ export function claimKnowledgeFinalizationJob(
       if (!options?.version?.trim()) throw new Error("DSH knowledge claim requires a receipt version.");
     }
     const current = reconcileKnowledgeFinalizationJobLocked(jobPath, new Date());
-    if (current.status !== "queued" || current.claimReceipt) {
+    if (current.claimReceipt) return null;
+    if (current.status !== "queued" && (!current.dshExecution || current.dshExecution.delegatePlanPath
+      || current.dshExecution.releasedAt || current.dshExecution.delivery.state === "reserved")) return null;
+    let execution = current.dshExecution;
+    if (execution) {
+      if (execution.delivery.state === "reserved" || execution.releasedAt) throw new Error("DSH_EXECUTION_NOT_DELIVERED: admitted job has no delivery attempt.");
+      const delegate = options?.resolveDelegatePlan?.();
+      if (!delegate || delegate.scope !== "session" || delegate.ownerSessionId !== execution.memberSessionId
+        || path.resolve(delegate.projectRoot) !== path.resolve(current.projectRoot) || !path.isAbsolute(delegate.planPath)) {
+        throw new Error("DSH_DELEGATE_PLAN_REQUIRED: trusted current session delegate required.");
+      }
+      if (execution.delegatePlanPath && path.resolve(execution.delegatePlanPath) !== path.resolve(delegate.planPath)) {
+        throw new Error("DSH_EXECUTION_IMMUTABLE: delegate plan cannot be rebound.");
+      }
+      const plan = readJsonFile<{ status?: string; templateId?: string; knowledgeCapture?: boolean }>(delegate.planPath);
+      if (plan.status !== "process.active" || plan.templateId !== "internal-dsh-knowledge-delegate" || plan.knowledgeCapture !== false) {
+        throw new Error("DSH_DELEGATE_PLAN_REQUIRED: active internal no-capture delegate required.");
+      }
+      execution = { ...execution, delegatePlanPath: path.resolve(delegate.planPath) };
+    }
+    if (current.status !== "queued") {
+      // An admitted child whose job expired before claim still needs a provable
+      // delegate end.leave before its reusable role can be released. No token is issued.
+      writeJsonFileAtomic(jobPath, { ...current, dshExecution: execution });
       return null;
     }
     const now = new Date().toISOString();
@@ -768,6 +976,7 @@ export function claimKnowledgeFinalizationJob(
     const running: KnowledgeFinalizationJob = {
       ...current,
       ...(prepared ?? {}),
+      ...(execution ? { dshExecution: execution } : {}),
       status: "running",
       attempts: Math.max(1, current.attempts + 1),
       startedAt: now,
@@ -799,6 +1008,11 @@ function assertDshKnowledgeClaimant(job: KnowledgeFinalizationJob, claimant?: Kn
     || claimant.agentSessionId === job.sessionId
     || path.resolve(claimant.projectRoot) !== path.resolve(job.projectRoot)) {
     throw new Error("Knowledge claim receipt requires the trusted DSH child identity and exact project.");
+  }
+  if (job.dshExecution && (job.dshExecution.parentSessionId !== job.sessionId
+    || job.dshExecution.memberSessionId !== claimant.agentSessionId
+    || job.dshExecution.deliveryKey !== job.finalizeId)) {
+    throw new Error("DSH_EXECUTION_CLAIM_DENIED: only the exact admitted member may claim this job.");
   }
 }
 
@@ -851,6 +1065,7 @@ export function doneKnowledgeFinalizationJob(input: {
       ...(input.patch ?? {}),
       // Terminal result metadata cannot replace the immutable claim material.
       ...(current.claimReceipt ? { claimReceipt: current.claimReceipt } : {}),
+      ...(current.dshExecution ? { dshExecution: current.dshExecution } : {}),
       status: input.status,
       finishedAt,
       ...(input.status === "succeeded"
@@ -1082,6 +1297,12 @@ export function writeKnowledgeFinalizationJob(jobPath: string, job: KnowledgeFin
     const current = fs.existsSync(jobPath) ? readKnowledgeFinalizationJob(jobPath) : undefined;
     if (current?.claimReceipt && JSON.stringify(current.claimReceipt) !== JSON.stringify(job.claimReceipt)) {
       throw new Error("Knowledge claim receipt is immutable.");
+    }
+    if (current?.reportCapture?.endedAt !== undefined && current.reportCapture.endedAt !== job.reportCapture?.endedAt) {
+      throw new Error("Knowledge report capture upper bound is immutable.");
+    }
+    if (current?.dshExecution && JSON.stringify(current.dshExecution) !== JSON.stringify(job.dshExecution)) {
+      throw new Error("DSH execution association is immutable outside admission/delivery/release.");
     }
     writeJsonFileAtomic(jobPath, job);
   });

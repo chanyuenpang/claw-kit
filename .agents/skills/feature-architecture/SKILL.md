@@ -16,9 +16,9 @@ description: 为高风险或跨系统功能产出最小充分的领域架构设�
 - 已受派的 feature-architect 直接执行下方子代理工作流；不得再次委派、恢复或修改主代理的 plan。安装、同步或维护本技能时，不执行设计委派。
 - 派发 subagent（包括向复用的子代理或 Worker 派送新任务）前，须用一句话向用户简单披露子代理的角色与任务；这是告知，不是额外请求授权。实际宿主授权与工具 schema 优先于本技能。
 - 以当前宿主注入的 `[claw host]` platform 声明或原生 adapter 身份判定宿主，并校验实际工具；不以模型、技能文件位置、旧会话或远程工具的宿主替换当前会话身份。身份冲突或能力缺失时明确报告，不切换其他平台。原生 adapter 优先于 hostless 副本。主代理先按下表取得 context，只以返回的 `activeWorkflow` 判断绑定 task，不扫描或猜测其他 task。
-- 有 `activeWorkflow` 时，`taskDir` 为返回的 `planPath` 的父目录；`reportDir` 为 `taskDir/feature-architecture/` 的绝对路径。主代理创建 reportDir，并把两个不同路径明确传入合同。无 activeWorkflow 时两者都为 null，不创建目录或文件，不添加 plan reference。
+- 有 `activeWorkflow` 时，`taskDir` 为返回的 `planPath` 的父目录；`reportDir` 为 `taskDir/feature-architecture/` 的绝对路径。DSH 由 adapter 通过语义委派入口派生并创建目录；其他宿主由主代理创建 reportDir，并把两个不同路径明确传入合同。无 activeWorkflow 时两者都为 null，不创建目录或文件，不添加 plan reference。
 - 主代理按当前宿主派发窄上下文设计子代理并取得结果。源代码和项目资料只读；有 task 时唯一允许的写入是一份 reportDir 内的设计报告（含必要的该目录创建），不是整个项目的写权限。宿主无法提供委派时说明限制，不虚构子代理；由用户或 owning workflow 明确决定是否改为主代理直接设计。
-- 成功返回报告后，主代理确认 documentPath 位于 reportDir 内，再通过同一 adapter 的 plan.edit 添加 reference，why 为 "Feature architecture design for the active task."；只有 mutation 成功才称报告已纳入 plan。不手工编辑 plan 文件或操纵宿主 goal。
+- 成功返回报告后，DSH 由 adapter 验证 documentPath 并自动登记 reference，主代理只确认返回的登记证据；其他宿主由主代理确认 documentPath 位于 reportDir 内，再通过同一 adapter 的 plan.edit 添加 reference，why 为 "Feature architecture design for the active task."；只有 mutation 成功才称报告已纳入 plan。不手工编辑 plan 文件或操纵宿主 goal。
 
 ## Host routing
 
@@ -26,7 +26,7 @@ description: 为高风险或跨系统功能产出最小充分的领域架构设�
 
 | 宿主 | claw 入口 | 委派 |
 | --- | --- | --- |
-| DSH | `claw_run` 的 `context` / `search` / `plan.edit` | 原生 `subagent`；按返回 kind 收集 job 或复用 continuable id；Agent Teams 仅限用户明确要求 |
+| DSH | `claw_run` 的 `context` / `search` | `delegate.start` / `delegate.result`；adapter 选择后端、复用成员并登记报告 |
 | Codex | context 与 mutation 用固定 code-mode driver；只读 search 用允许的 Codex shell tool | 当前原生 multi-agent 工具，窄上下文、同角色复用、取得结果后继续 |
 | Cindy | 当前 Cindy 入口提供的恢复结果及受控 search / plan.edit；模型为 Codex 也仍是 Cindy | 当前工具明确支持的 Orca 文档作者 Worker；先核对角色与报告写权限 |
 | OpenCode | 当前 adapter 注入的命令入口 | 当前原生 task/subagent 合同 |

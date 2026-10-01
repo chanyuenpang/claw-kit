@@ -31,10 +31,19 @@ is a separate non-workflow skill with its own same-agent runner and eligibility.
 - Use `search` for recall and `search.index.refresh` only when needed;
   the latter accepts no arguments and is scoped to this session's project.
 
+## Required role work
+
+For researcher/feature-architect work, use `claw_run` `delegate.start` with the
+role, bounded brief and output policy; use `delegate.result` for the returned
+assignment. The adapter owns backend selection, reuse, waiting, recovery and
+validated report registration. Workers submit their supplied `delegate.complete`
+contract, not parent lifecycle operations. Unsupported semantic operations require
+a matching adapter update, not manual Team/native choreography.
+
 ## Knowledge closeout
 
-The adapter, not the model, owns native subagent dispatch for the default
-subagent finalization route. The adapter owns report capture and worker
+The adapter, not the model, owns capability-selected Team/native finalizer
+dispatch and safe role reuse for the default finalization route. The adapter owns report capture and worker
 dispatch and returns compact evidence; follow that evidence rather than
 reconstructing collector internals or timing from this skill.
 Do not spawn another finalizer, run its prompt yourself, poll the worker, or

@@ -17,6 +17,7 @@ import {
   resolveHostIntegrationProfile,
   resolveProjectContext,
   resolveSessionWorkflowContext,
+  resolveSessionBoundPlan,
   type KnowledgeFinalizationJob,
   type ProjectContext,
 } from "@veewo/claw-core";
@@ -24,8 +25,22 @@ import { collectReport, type ReportCollectorHost } from "./report-collector-regi
 
 /** One claim/terminal transition shared by the CLI and authenticated session service. */
 export function claimKnowledgeCommand(jobPath: string, version: string, claimant?: KnowledgeClaimant) {
+  const observed = readKnowledgeFinalizationJob(jobPath);
+  if (observed.dshExecution && claimant && readKnowledgeClaimReceipt(jobPath, claimant)) {
+    return knowledgeClaimReceiptCommand(jobPath, claimant, "knowledge.claim");
+  }
   const job = claimKnowledgeFinalizationJob(jobPath, {
     claimant, version,
+    resolveDelegatePlan: () => {
+      if (!claimant) throw new Error("DSH_DELEGATE_PLAN_REQUIRED: trusted claimant is missing.");
+      const session = resolveSessionWorkflowContext(claimant.agentSessionId);
+      const planPath = session && resolveSessionBoundPlan(session, claimant.agentSessionId);
+      if (!session || session.scope !== "session" || !planPath
+        || path.resolve(session.projectRoot) !== path.resolve(claimant.projectRoot)) {
+        throw new Error("DSH_DELEGATE_PLAN_REQUIRED: no current session delegate for admitted child.");
+      }
+      return { planPath, scope: "session", projectRoot: session.projectRoot, ownerSessionId: claimant.agentSessionId };
+    },
     prepare: (queued) => {
       if ((queued.writer?.executionPolicy !== "subagent"
         && !(queued.host === "dsh" && queued.writer?.executionPolicy === "background"))

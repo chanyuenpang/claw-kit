@@ -28,6 +28,7 @@ import {
   editPlan,
   enforceTaskRetention,
   findTaskDirectory,
+  findKnowledgeFinalizationJobPath,
   ingestTruth,
   initProject,
   isCompletionTerminal,
@@ -561,7 +562,7 @@ for (const host of ["cindy", "dsh"] as const) {
 }
 
 test("knowledge claim owns execution and delegate prompt routing", () => {
-  const root = createEmptyFixture("knowledge-lifecycle");
+  const root = createEmptyFixture("knowledge-lifecycle 中文 空格");
   const runtimeDir = createEmptyFixture("knowledge-lifecycle-runtime");
   initProject({ cwd: root, projectName: "Knowledge Lifecycle" });
   const project = resolveProjectContext(root);
@@ -603,6 +604,7 @@ test("knowledge claim owns execution and delegate prompt routing", () => {
     const delegateDispatch = buildKnowledgeDelegateDispatch({
       policy: "subagent",
       finalizeId,
+      projectRoot: root,
       writer: { model: "test-model", reasoningEffort: "high" },
     });
     assert.equal(delegateDispatch.preferReuse, false);
@@ -614,6 +616,7 @@ test("knowledge claim owns execution and delegate prompt routing", () => {
       "model",
       "policy",
       "preferReuse",
+      "projectRoot",
       "prompt",
       "reasoningEffort",
       "schemaVersion",
@@ -621,7 +624,11 @@ test("knowledge claim owns execution and delegate prompt routing", () => {
     assert.match(delegateDispatch.prompt, /claw plan create --template-file/);
     assert.equal(delegateDispatch.leadInstruction, undefined);
     assert.match(delegateDispatch.prompt, /resources[\\/]delegate-writer[\\/]TEMPLATE\.json/);
-    assert.doesNotMatch(delegateDispatch.prompt, /Project root:|Task:|working directory/i);
+    assert.equal(delegateDispatch.projectRoot, path.resolve(root));
+    assert.ok(delegateDispatch.prompt.includes(`Project root: ${JSON.stringify(path.resolve(root))}`));
+    assert.match(delegateDispatch.prompt, /If your current working directory differs/);
+    assert.match(delegateDispatch.prompt, /exact absolute path to --project-root/);
+    assert.equal(findKnowledgeFinalizationJobPath(resolveProjectContext(delegateDispatch.projectRoot!), finalizeId), jobPath);
     assert.doesNotMatch(delegateDispatch.prompt, /claw-kit:delegate-writer/i);
 
     const atomicDispatch = buildKnowledgeAtomicDispatch({
@@ -651,7 +658,7 @@ test("knowledge claim owns execution and delegate prompt routing", () => {
     ) as { tasks: Array<{ id: number; detail?: string }> };
     assert.match(
       delegateTemplate.tasks.find((task) => task.id === 1)?.detail ?? "",
-      /knowledge claim --project-root \. --finalize-id/,
+      /knowledge claim --project-root "<project-root>" --finalize-id/,
     );
     assert.doesNotMatch(
       delegateTemplate.tasks.map((task) => task.detail ?? "").join("\n"),

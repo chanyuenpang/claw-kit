@@ -19,6 +19,10 @@ export type SubagentsLike = {
             text: string;
         }>;
         parent: unknown;
+        agentOptions?: {
+            model?: string;
+            reasoningEffort?: string;
+        };
         signal?: AbortSignal;
     }): Promise<{
         id: string;

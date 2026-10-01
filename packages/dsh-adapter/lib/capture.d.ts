@@ -13,7 +13,7 @@ export type EventLike = {
     };
 };
 /** Adapter-owned normalization of DSH history into the shared final-event contract. */
-export declare function extractPlanFinalAnswers(events: EventLike[], _sessionId: string, startedAtMs?: number): Array<{
+export declare function extractPlanFinalAnswers(events: EventLike[], _sessionId: string, startedAtMs?: number, endedAtMs?: number): Array<{
     turnId: string;
     occurredAt?: string;
     message: string;

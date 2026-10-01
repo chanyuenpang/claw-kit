@@ -14,7 +14,7 @@ export function textFromContent(content) {
     return text;
 }
 /** Adapter-owned normalization of DSH history into the shared final-event contract. */
-export function extractPlanFinalAnswers(events, _sessionId, startedAtMs) {
+export function extractPlanFinalAnswers(events, _sessionId, startedAtMs, endedAtMs) {
     const finals = new Map();
     for (const event of events) {
         const turn = event.data?.turn;
@@ -26,6 +26,12 @@ export function extractPlanFinalAnswers(events, _sessionId, startedAtMs) {
         // information loss, never a reason to delay the knowledge writer.
         if (event.type !== "assistant/final" || typeof turn !== "number")
             continue;
+        if (endedAtMs !== undefined) {
+            if (typeof time !== "number" || !Number.isFinite(time))
+                throw new Error("DSH_REPORT_BOUNDARY_UNAVAILABLE");
+            if (time >= endedAtMs)
+                continue;
+        }
         const message = textFromContent(event.data?.message?.content);
         if (message)
             finals.set(turn, { message, ...(time !== undefined ? { time } : {}) });

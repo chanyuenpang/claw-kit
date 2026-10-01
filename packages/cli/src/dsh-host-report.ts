@@ -17,22 +17,7 @@ export function publishDshHostReport(input: {
     || !input.collectorVersion.trim() || !Array.isArray(input.events)) {
     throw new Error("DSH_REPORT_CAPTURE_INVALID: invalid host capture request.");
   }
-  const events = input.events.map((event: unknown) => {
-    if (!event || typeof event !== "object" || Array.isArray(event)) {
-      throw new Error("DSH_REPORT_CAPTURE_INVALID: invalid final event.");
-    }
-    const entry = event as Record<string, unknown>;
-    if (entry.schemaVersion !== 1 || entry.entryType !== "final_answer"
-      || typeof entry.turnId !== "string" || typeof entry.message !== "string" || !entry.message.trim()
-      || (entry.occurredAt !== undefined && (typeof entry.occurredAt !== "string" || !Number.isFinite(Date.parse(entry.occurredAt))))) {
-      throw new Error("DSH_REPORT_CAPTURE_INVALID: unproven final event.");
-    }
-    return {
-      schemaVersion: 1 as const, entryType: "final_answer" as const,
-      turnId: entry.turnId, ...(entry.occurredAt ? { occurredAt: entry.occurredAt } : {}),
-      message: entry.message,
-    };
-  });
+  const suppliedEvents = input.events;
   const project = resolveProjectContext(input.cwd);
   if (project.scope !== "project") throw new Error("DSH_REPORT_CAPTURE_INVALID: project required.");
   const jobPath = findKnowledgeFinalizationJobPath(project, input.finalizeId);
@@ -45,6 +30,35 @@ export function publishDshHostReport(input: {
     if (path.dirname(reportPath) !== path.dirname(path.resolve(job.planPath))) {
       throw new Error("DSH_REPORT_CAPTURE_DENIED: report is outside its plan.");
     }
+    // Validate inside the Core callback: a captured receipt is immutable and
+    // must short-circuit without reevaluating a later Host payload.
+    const explicitEnd = job.reportCapture?.endedAt;
+    const endedAt = Date.parse(explicitEnd ?? job.queuedAt);
+    const startedAt = job.reportCapture?.startedAt === undefined ? Number.NEGATIVE_INFINITY
+      : Date.parse(job.reportCapture.startedAt);
+    if (!Number.isFinite(endedAt) || Number.isNaN(startedAt) || startedAt > endedAt) {
+      throw new Error("DSH_REPORT_CAPTURE_INVALID: invalid canonical capture bounds.");
+    }
+    const events = suppliedEvents.map((event: unknown) => {
+      if (!event || typeof event !== "object" || Array.isArray(event)) {
+        throw new Error("DSH_REPORT_CAPTURE_INVALID: invalid final event.");
+      }
+      const entry = event as Record<string, unknown>;
+      if (entry.schemaVersion !== 1 || entry.entryType !== "final_answer"
+        || typeof entry.turnId !== "string" || typeof entry.message !== "string" || !entry.message.trim()
+        || (entry.occurredAt !== undefined && (typeof entry.occurredAt !== "string" || !Number.isFinite(Date.parse(entry.occurredAt))))) {
+        throw new Error("DSH_REPORT_CAPTURE_INVALID: unproven final event.");
+      }
+      const occurredAt = typeof entry.occurredAt === "string" ? entry.occurredAt : undefined;
+      if (explicitEnd !== undefined && occurredAt === undefined) {
+        throw new Error("DSH_REPORT_CAPTURE_INVALID: bounded final events require occurredAt.");
+      }
+      return {
+        schemaVersion: 1 as const, entryType: "final_answer" as const,
+        turnId: entry.turnId, ...(occurredAt ? { occurredAt } : {}), message: entry.message,
+      };
+    }).filter((event) => event.occurredAt === undefined // Legacy jobs may predate timestamped capture.
+      || (Date.parse(event.occurredAt) >= startedAt && Date.parse(event.occurredAt) < endedAt));
     // Preserve task conclusions and retry after a crash between report publish and job receipt.
     const existing = fs.existsSync(reportPath) ? fs.readFileSync(reportPath, "utf8") : "";
     const known = new Set(existing.split(/\r?\n/).filter(Boolean));

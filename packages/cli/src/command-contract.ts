@@ -45,7 +45,8 @@ const checks = {
   "plan.resume": object({ planId: text }),
   "plan.leave": object({}),
   "plan.show": object({ simple: bool }),
-  "plan.edit": object({ operations: list(mutation) }, ["operations"]),
+  // Internal adapter precondition only; never mapped from model-facing arguments.
+  "plan.edit": object({ operations: list(mutation), expectedPlanPath: text }, ["operations"]),
   "plan.wait": object({}),
   "plan.done": object(fields),
   "subplan.create": object({ parentTaskName: text, parentTaskId: id, templateName: text, templateFile: text }, ["parentTaskName", "parentTaskId"]),

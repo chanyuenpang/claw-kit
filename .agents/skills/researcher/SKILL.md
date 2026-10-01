@@ -23,6 +23,7 @@ plan state, or research artifacts with this skill.
 - Reuse a suitable same-role worker only when the current host supports it and
   its identity is known. Do not infer a role from unrelated task text or reuse
   a knowledge-finalizer. Lack of reuse does not prevent a fresh bounded child.
+  On DSH this lookup and fallback belong to the adapter, not the main agent.
 
 ## Host routing
 
@@ -36,7 +37,7 @@ Read only the matching section of [Host execution](references/host-execution.md)
 
 | Host | Main-agent route | Project recall |
 | --- | --- | --- |
-| DSH | Native `subagent`; distinguish background jobs from continuable children. Agent Teams only on explicit user request. | `claw_run` operation `search`, args `{query}` |
+| DSH | `claw_run` `delegate.start` / `delegate.result`; adapter owns backend selection and reuse. | `claw_run` operation `search`, args `{query}` |
 | Codex | Native same-thread researcher reuse or fresh agent; wait for its result. | Read-only `claw search --query "<topic>"` through the permitted Codex shell tool; no forged host/session arguments |
 | Cindy | Exact-role Orca researcher Worker; after accepted dispatch end the Lead turn. | Cindy Ghost `list_tools` / `call_tool` search operation |
 | OpenCode | Direct investigation when invoked inline; use its task/explorer subagent when the owning workflow delegates. | Active OpenCode adapter injected command route |

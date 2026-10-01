@@ -9,12 +9,14 @@ import { apply } from "../lib/index.js";
 
 const WORKDIR = process.cwd();
 
-function makeMockSubprocess(respond, pending, captureError) {
+function makeMockSubprocess(respond, pending, captureError, override) {
   const handles = [];
   const captures = [];
   const issues = [];
   const subprocess = {
     spawn(spec) {
+      const custom = override?.(spec, { captures, issues });
+      if (custom) return custom;
       if (spec.argv.includes("internal-dsh-finalizer-issue") || spec.argv.includes("internal-dsh-finalizer-alerts")) {
         const recording = spec.argv.includes("internal-dsh-finalizer-issue");
         if (recording) issues.push({ finalizeId: spec.argv[spec.argv.indexOf("--finalize-id") + 1],
@@ -113,6 +115,7 @@ function makeAgent(id) {
 function makeSubagents({ onStart, children = () => [] } = {}) {
   const state = { starts: 0, listCalls: 0 };
   const service = {
+    getProvider: () => ({ name: "spawn", inheritsParentContext: false, start() {}, capabilities: { agentOptions: true } }),
     async start(_name, request) {
       state.starts += 1;
       // DSH's SubagentRun always carries `result` and `dispose`; a result
@@ -355,4 +358,140 @@ test("an unavailable subagents service reports a non-retryable dispatch", async 
   assert.equal(result.dispatch.ok, false);
   assert.equal(result.dispatch.retryable, false);
   assert.match(result.dispatch.guidance, /Do not run or retry the knowledge finalizer manually/);
+});
+
+test("actual adapter reuses one Team writer and wakes B after both A ends with no parent turn", async t => {
+  const parent = makeAgent("two-job-lead");
+  parent.options = { provider: "llm", model: "model", reasoningEffort: "medium" };
+  const actors = new Map([[parent.id, parent]]);
+  const members = [];
+  const sent = [];
+  let spawned = 0;
+  let tool, dispose;
+  let second;
+  const secondDelivered = new Promise(resolve => { second = resolve; });
+  const jobs = ["a", "b"].map((letter, i) => ({
+    finalizeId: (letter + "0").repeat(32), preferReuse: true, status: "queued", readyForNext: true, delegateEnded: false,
+    expiresAt: "2099-01-01T00:00:00Z", prompt: "perform frozen job " + letter,
+    startedAt: "2026-01-01T00:00:00Z", endedAt: i === 0 ? "2026-01-03T00:00:00Z" : "2026-01-05T00:00:00Z",
+  }));
+  const reply = value => ({ done: Promise.resolve({ exitCode: 0 }), collected: {
+    stdout: { readFrom: () => ({ text: JSON.stringify(value), lossy: false }) },
+    stderr: { readFrom: () => ({ text: "", lossy: false }) },
+  }, terminate: async () => {} });
+  const native = {
+    start() { throw new Error("must not use legacy native start in Team route"); },
+    listChildren: async () => [], startContinuable() {}, sendMessage() {},
+    getProvider: () => ({ name: "spawn", inheritsParentContext: false, start() {}, prepareContinuable() {} }),
+  };
+  const team = {
+    tryMembership: actor => actor === parent ? { root: parent, id: parent.id, role: "lead" }
+      : actors.get(actor.id) === actor ? { root: parent, id: parent.id, role: "teammate" } : undefined,
+    listMembers: () => members,
+    async spawnTeammate(actor, request) {
+      assert.equal(actor, parent); spawned++;
+      assert.doesNotMatch(request.prompt[0].text, /aaaaaaaaaaaaaaaa/);
+      const row = { id: "reused-member", name: request.name, description: request.description,
+        role: "teammate", status: "inactive", provider: request.provider, context: request.context, diagnostics: [] };
+      members.push(row);
+      const child = makeAgent(row.id);
+      child.session.header.parentSession = parent.id;
+      child.options = { ...parent.options };
+      actors.set(row.id, child);
+      return { member: row };
+    },
+    async sendMessage(actor, request) {
+      assert.equal(actor, parent);
+      const id = request.content[0].text.split("\n")[0].split(":").at(-1);
+      sent.push(id);
+      if (id === jobs[1].finalizeId) second();
+      return { messageId: "message-" + id, status: "queued" };
+    },
+  };
+  let shownPlan;
+  const internalOperations = [];
+  const mock = makeMockSubprocess(request => {
+    internalOperations.push(request.operation);
+    if (request.operation === "knowledge.claim") return { ok: true, command: request.operation, output: { claimed: false } };
+    if (request.operation === "plan.show") return { ok: true, command: request.operation, output: shownPlan };
+    if (shownPlan && request.operation === "task.done") shownPlan.plan.tasks.at(-1).status = "done";
+    if (shownPlan && ["plan.done", "plan.edit"].includes(request.operation)) {
+      shownPlan.plan.status = "end.completed";
+      jobs.find(job => job.execution?.delegatePlanPath === shownPlan.planPath).delegateEnded = true;
+    }
+    return { ok: true, command: request.operation, output: { planStatus: "end.completed" } };
+  },
+    () => jobs.filter(j => j.status === "queued").map(j => ({ ...j, policy: "background" })), undefined,
+    (spec, state) => {
+      const id = spec.argv[spec.argv.indexOf("--finalize-id") + 1];
+      const job = jobs.find(j => j.finalizeId === id);
+      if (spec.argv.includes("internal-dsh-host-report-capture")) {
+        return { ...reply({ ok: true, captured: true }), stdin: { end: payload => {
+          const capture = JSON.parse(payload); state.captures.push(capture);
+          job.captureStatus = "captured";
+        } } };
+      }
+      if (spec.argv.includes("internal-dsh-finalizer-inspect")) return reply({ ok: true,
+        executions: jobs.filter(j => !spec.argv.includes("--finalize-id") || j === job) });
+      if (spec.argv.includes("internal-dsh-finalizer-reserve")) {
+        assert.equal(jobs.some(j => j !== job && j.execution && !j.readyForNext), false);
+        job.readyForNext = false;
+        job.execution = { route: "team", parentSessionId: parent.id, memberSessionId: "reused-member", teamId: parent.id,
+          provider: "spawn", configFingerprint: spec.argv[spec.argv.indexOf("--config-fingerprint") + 1],
+          deliveryKey: id, delivery: { state: "reserved" } };
+        return reply({ ok: true, admitted: true, execution: job.execution });
+      }
+      if (spec.argv.includes("internal-dsh-finalizer-delivery")) {
+        const next = spec.argv[spec.argv.indexOf("--state") + 1];
+        const deliver = next === "attempted" && job.execution.delivery.state === "reserved";
+        job.execution.delivery = { state: next, ...(next === "accepted" ? { receiptId: spec.argv[spec.argv.indexOf("--receipt-id") + 1] } : {}) };
+        return reply({ ok: true, deliver, execution: job.execution });
+      }
+      if (spec.argv.includes("internal-dsh-finalizer-release")) {
+        const released = ["succeeded", "failed", "expired"].includes(job.status) && job.delegateEnded;
+        if (released) { job.readyForNext = true; job.execution.releasedAt = new Date().toISOString(); }
+        return reply({ ok: true, released, parentSessionId: parent.id });
+      }
+    });
+  const services = { subprocess: mock.subprocess, subagents: native, agentTeams: team,
+    agents: { get: id => actors.get(id) },
+    tools: { register: definition => { tool = definition; }, get: (name, actor) => name === "spawn_teammate" && actor === parent
+      ? { parameters: { type: "object", properties: { name: { type: "string" }, description: { type: "string" }, prompt: { type: "string" } } } } : undefined },
+    systemPrompt: { context() {}, section() {} },
+    sessionQuery: { readSession: async id => { assert.equal(id, parent.id); return { events: [
+      { type: "assistant/final", time: Date.parse("2026-01-02T00:00:00Z"), data: { turn: 1, message: { content: [{ type: "text", text: "A material" }] } } },
+      { type: "assistant/final", time: Date.parse("2026-01-04T00:00:00Z"), data: { turn: 2, message: { content: [{ type: "text", text: "B later material" }] } } },
+    ] }; } },
+  };
+  apply({ get: name => services[name], on: (name, callback) => { if (name === "dispose") dispose = callback; } });
+  t.after(() => dispose?.());
+  await tool.execute({ operation: "context" }, { agent: parent });
+  assert.equal(spawned, 1);
+  assert.deepEqual(sent, [jobs[0].finalizeId]);
+  assert.equal(mock.captures.length, 2, "B capture freezes even while A owns the role");
+  assert.deepEqual(mock.captures[0].events.map(e => e.message), ["A material"]);
+  const child = actors.get("reused-member");
+  jobs[0].status = "succeeded";
+  await tool.execute({ operation: "knowledge.done", args: { finalize_id: jobs[0].finalizeId, claim_token: "A-token", status: "succeeded", result: "A done" } }, { agent: child });
+  assert.deepEqual(sent, [jobs[0].finalizeId], "job terminal alone cannot release unfinished delegate");
+  jobs[0].delegateEnded = true;
+  await tool.execute({ operation: "plan.done", args: { retrospective: "A delegate ended" } }, { agent: child });
+  await secondDelivered;
+  assert.deepEqual(sent, jobs.map(j => j.finalizeId));
+  assert.equal(spawned, 1, "no new parent tool call or new member was needed");
+  assert.equal(mock.captures.length, 2, "queued B retains its frozen capture");
+  assert.equal(jobs[1].execution.memberSessionId, jobs[0].execution.memberSessionId);
+  assert.notEqual(jobs[1].execution.deliveryKey, jobs[0].execution.deliveryKey);
+  jobs[1].execution.delegatePlanPath = WORKDIR + "/B-delegate.json";
+  shownPlan = { planPath: jobs[1].execution.delegatePlanPath, plan: { templateId: "internal-dsh-knowledge-delegate", knowledgeCapture: false,
+    status: "process.active", tasks: [{ id: 1, status: "done" }, { id: 2, status: "done" }, { id: 3, status: "pending" }] } };
+  const stale = await tool.execute({ operation: "knowledge.claim", args: { finalize_id: jobs[0].finalizeId } }, { agent: child });
+  assert.notEqual(stale.delegateClosed, true);
+  assert.equal(shownPlan.plan.status, "process.active", "old A cannot close current B");
+  jobs[1].status = "succeeded";
+  const completed = await tool.execute({ operation: "knowledge.done", args: { finalize_id: jobs[1].finalizeId, claim_token: "B-token", status: "succeeded", result: "B done" } }, { agent: child });
+  assert.equal(completed.delegateClosed, true, "adapter completes only matching final bookkeeping, without another worker instruction");
+  assert.equal(jobs[1].delegateEnded, true);
+  assert.ok(jobs[1].execution.releasedAt);
+  assert.ok(internalOperations.includes("task.done"));
 });

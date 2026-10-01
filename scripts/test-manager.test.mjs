@@ -73,6 +73,14 @@ test("the full suite runs every workspace runtime adapter test gate", () => {
   assert.ok(commands.includes("run test -w @claw-kit/openclaw-adapter"));
 });
 
+test("focused command and closeout gates retain new ownership regressions", () => {
+  const commandSteps = JSON.stringify(createExecutionPlan(["session-commands"]));
+  assert.match(commandSteps, /session-project-scope-recovery/);
+  assert.match(commandSteps, /guarded-plan-reference/);
+  const closeoutSteps = JSON.stringify(createExecutionPlan(["cli-closeout"]));
+  assert.match(closeoutSteps, /dsh-finalizer-execution/);
+});
+
 test("CLI domain files replace the monolith with unique discoverable tests", () => {
   const repoRoot = path.resolve(import.meta.dirname, "..");
   const testDir = path.join(repoRoot, "packages", "cli", "test");
@@ -103,5 +111,6 @@ test("CLI domain files replace the monolith with unique discoverable tests", () 
     .filter((step) => step.kind === "node" && step.args[0] === "--test")
     .map((step) => path.basename(step.args[1]))
     .sort();
-  assert.deepEqual(plannedFiles, Object.values(CLI_DOMAIN_TEST_FILES).map((name) => `${name}.js`).sort());
+  assert.deepEqual(plannedFiles, [...Object.values(CLI_DOMAIN_TEST_FILES).map((name) => `${name}.js`),
+    "dsh-finalizer-execution.test.js", "session-project-scope-recovery.test.js"].sort());
 });

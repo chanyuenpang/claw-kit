@@ -37,15 +37,13 @@ test("role contracts preserve bounded assignment and prevent recursive dispatch"
   }
 });
 
-test("DSH distinguishes background jobs, continuable children and user-authorized Teams", () => {
+test("DSH role mechanics stay inside the adapter semantic interface", () => {
   for (const host of [researchHost, architectureHost]) {
     const dsh = dshSection(host);
-    for (const capability of ["background", "jobId", "job_output", "continuable", "subagentId", "send_message", "foreground"]) {
-      assert.ok(dsh.includes(capability), `missing result-kind handling: ${capability}`);
-    }
-    assert.match(dsh, /list_agents.*Agent Teams members/);
-    assert.match(dsh, /explicit(?:ly)?[\s\S]{0,40}(?:user request|asks for Agent Teams)/);
-    assert.doesNotMatch(dsh, /`idle`|`ready`|Never pass `run_in_background: false`/);
+    for (const operation of ["delegate.start", "delegate.result", "delegate.complete"]) assert.ok(dsh.includes(operation));
+    for (const backendHandle of ["job_output", "subagentId", "spawn_teammate", "send_message"]) assert.ok(!dsh.includes(backendHandle));
+    assert.match(dsh, /adapter/i);
+    assert.match(dsh, /unsupported|Unsupported/);
   }
 });
 
@@ -60,10 +58,10 @@ test("architecture keeps sources readonly and grants only the task report direct
 
 test("DSH context, recall and report references stay on the native adapter", () => {
   const dsh = dshSection(architectureHost);
-  for (const operation of ["context", "search", "plan.edit"]) {
+  for (const operation of ["context", "search", "delegate.start", "delegate.result"]) {
     assert.ok(dsh.includes(`operation: "${operation}"`), `missing native ${operation} route`);
   }
-  assert.match(dsh, /references: \[/);
+  assert.ok(dsh.includes("validates/records the report reference"));
   assert.match(dsh, /adapter owns progress and goal synchronization/);
   assert.match(dshSection(researchHost), /operation: "search"/);
   assert.doesNotMatch(dsh, /claw plan edit|claw context|claw search --query/);

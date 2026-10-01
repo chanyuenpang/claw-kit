@@ -22,6 +22,8 @@ import {
   leaveCurrentPlan,
   releaseCurrentPlanFocus,
   readFocusedPlan,
+  focusSessionKeyHash,
+  resolveSessionWorkflowContext,
   resolvePlanEffectiveConfig,
   resolveKnowledgeWriterForHost,
   resolveSessionBoundPlan,
@@ -88,13 +90,14 @@ export class ClawCommandService {
   /** Repair the narrow crash window before a focus journal is prepared. */
   async reconcileCanonicalFocus(context: CommandContext): Promise<void> {
     if (!context.agentSessionId || !context.sessionKey) return;
-    const project = this.resolveProject(context);
+    const project = this.resolveRecoveryProject(context);
     const retained = readFocusedPlan(project, context.sessionKey, this.focusStore);
     const boundPath = resolveSessionBoundPlan(project, context.agentSessionId);
     if (boundPath) {
       const boundRef = planRefFromAbsolutePath(project, boundPath);
       const bound = showPlan({
         cwd: context.cwd,
+        scope: boundRef.scope,
         taskName: boundRef.taskName,
         planFile: boundRef.planFile,
         ownerSessionKey: context.agentSessionId,
@@ -104,6 +107,7 @@ export class ClawCommandService {
         if (!retained) return;
         const retainedPlan = showPlan({
           cwd: context.cwd,
+          scope: retained.scope,
           taskName: retained.taskName,
           planFile: retained.planFile,
           ownerSessionKey: context.agentSessionId,
@@ -120,6 +124,7 @@ export class ClawCommandService {
         const parentRef = createPlanRef(project, bound.taskName, bound.plan.parentPlan);
         const parentAfterLink = structuredClone(showPlan({
           cwd: context.cwd,
+          scope: parentRef.scope,
           taskName: parentRef.taskName,
           planFile: parentRef.planFile,
           ownerSessionKey: context.agentSessionId,
@@ -160,6 +165,7 @@ export class ClawCommandService {
     if (!retained) return;
     const retainedPlan = showPlan({
       cwd: context.cwd,
+      scope: retained.scope,
       taskName: retained.taskName,
       planFile: retained.planFile,
       ownerSessionKey: context.agentSessionId,
@@ -242,6 +248,7 @@ export class ClawCommandService {
         const hostActions = ended
           ? await this.codexActionsForPlan(context, {
               command: "plan.leave",
+              scope: ended.ref.scope,
               taskName: ended.ref.taskName,
               planFile: ended.ref.planFile,
               plan: ended.plan,
@@ -258,9 +265,32 @@ export class ClawCommandService {
         };
       }
       case "plan.edit": {
-        const commandInput = request.input as { operations: PlanMutationOperation[] };
+        const commandInput = request.input as { operations: PlanMutationOperation[]; expectedPlanPath?: string };
         if (commandInput.operations.length === 0) {
           throw new ClawError("PROJECT_CONFIG_INVALID", "plan.edit requires at least one operation.");
+        }
+        if (commandInput.expectedPlanPath !== undefined) {
+          const expected = commandInput.expectedPlanPath;
+          if (typeof expected !== "string" || !expected.trim() || !path.isAbsolute(expected)) {
+            throw new ClawError("PROJECT_CONFIG_INVALID", "expectedPlanPath must be an absolute plan path.");
+          }
+          // SessionCommandExecutor holds its per-session execution lock across
+          // this precondition and editCurrentPlan: never resume or redirect here.
+          let current: PlanRef;
+          try { current = this.requireCurrentPlan(context); }
+          catch (error) {
+            if (!(error instanceof ClawError) || error.code !== "CURRENT_PLAN_REQUIRED") throw error;
+            throw new ClawError("PLAN_FOCUS_CHANGED", "The expected parent plan is no longer focused.");
+          }
+          const shown = showPlan({ cwd, scope: current.scope, taskName: current.taskName,
+            planFile: current.planFile, ownerSessionKey: this.ownerSessionKey(context) });
+          const normalizedPath = (value: string): string => process.platform === "win32"
+            ? path.resolve(value).toLowerCase() : path.resolve(value);
+          if (normalizedPath(shown.planPath) !== normalizedPath(expected)) {
+            throw new ClawError("PLAN_FOCUS_CHANGED", "The expected parent plan is no longer focused.", {
+              expectedPlanPath: path.resolve(expected), currentPlanPath: shown.planPath,
+            });
+          }
         }
         return this.editCurrentPlan(context, commandInput.operations, "plan.edit");
       }
@@ -283,7 +313,9 @@ export class ClawCommandService {
       case "plan.resume": {
         const commandInput = request.input as { planId?: string };
         const sessionKey = this.requireSessionKey(context);
-        const project = this.resolveProject(context);
+        const project = commandInput.planId
+          ? this.resolveResumeProject(context, commandInput.planId)
+          : this.resolveProject(context);
         const target = commandInput.planId
           ? parsePlanId(project, commandInput.planId)
           : undefined;
@@ -297,6 +329,7 @@ export class ClawCommandService {
         const shown = result.currentPlan
           ? showPlan({
               cwd,
+              scope: result.currentPlan.scope,
               taskName: result.currentPlan.taskName,
               planFile: result.currentPlan.planFile,
               ownerSessionKey: this.ownerSessionKey(context),
@@ -305,6 +338,7 @@ export class ClawCommandService {
         const hostActions = shown
           ? await this.codexActionsForPlan(context, {
               command: "plan.resume",
+              scope: result.currentPlan?.scope,
               taskName: shown.taskName,
               planFile: shown.planFile,
               plan: shown.plan,
@@ -373,6 +407,7 @@ export class ClawCommandService {
         const childRef = createPlanRef(project, created.taskName, created.planFile);
         const parentAfterLink = structuredClone(showPlan({
           cwd,
+          scope: created.scope,
           taskName: created.taskName,
           planFile: parentRef.planFile,
           ownerSessionKey: this.ownerSessionKey(context),
@@ -521,7 +556,7 @@ export class ClawCommandService {
     return resolveWorkflowProjectContext(
       context.cwd,
       context.mode === "session" ? context.agentSessionId : undefined,
-      requestedScope,
+      requestedScope ?? this.currentPlanScope(context),
     );
   }
 
@@ -534,7 +569,7 @@ export class ClawCommandService {
     current: PlanRef,
     completed: PlanDocument,
   ): Promise<void> {
-    const project = this.resolveProject(context);
+    const project = this.resolveProject(context, current.scope);
     if (completed.parentPlan && completed.parentTaskId !== undefined) {
       const parentRef = createPlanRef(project, current.taskName, completed.parentPlan);
       await completeSubplanAndRestoreParent({
@@ -548,6 +583,7 @@ export class ClawCommandService {
       });
       const parent = showPlan({
         cwd: context.cwd,
+        scope: parentRef.scope,
         taskName: parentRef.taskName,
         planFile: parentRef.planFile,
         ownerSessionKey: context.agentSessionId,
@@ -713,14 +749,55 @@ export class ClawCommandService {
   private currentPlanScope(context: CommandContext): "project" | "session" | undefined {
     if (context.mode === "session") {
       const sessionKey = context.sessionKey?.trim();
-      if (!sessionKey) return undefined;
-      try {
-        return readFocusedPlan(this.resolveProject(context), sessionKey, this.focusStore)?.scope;
-      } catch {
-        return undefined;
-      }
+      return sessionKey ? this.focusStore.read(focusSessionKeyHash(sessionKey)).currentPlan?.scope : undefined;
     }
     return context.currentPlan?.scope;
+  }
+
+  private availableProjects(context: CommandContext) {
+    const projects: Array<ReturnType<typeof resolveWorkflowProjectContext>> = [];
+    try { projects.push(this.resolveProject(context, "project")); }
+    catch (error) {
+      if (!(error instanceof ClawError) || error.code !== "PROJECT_ROOT_NOT_FOUND") throw error;
+    }
+    const session = resolveSessionWorkflowContext(this.ownerSessionKey(context));
+    if (session) projects.push(session);
+    return projects;
+  }
+
+  private resolveResumeProject(context: CommandContext, planId: string) {
+    // A current focus supplies scope authority. Without it, never let a retained
+    // session manifest silently choose between identically named plans.
+    if (this.currentPlanScope(context)) return this.resolveProject(context);
+    const matches = this.availableProjects(context).filter((project) => {
+      const ref = parsePlanId(project, planId);
+      try {
+        showPlan({ cwd: context.cwd, scope: project.scope, taskName: ref.taskName,
+          planFile: ref.planFile, ownerSessionKey: this.ownerSessionKey(context) });
+        return true;
+      } catch (error) {
+        if (error instanceof ClawError && ["TASK_NOT_FOUND", "PLAN_NOT_FOUND"].includes(error.code)) return false;
+        throw error;
+      }
+    });
+    if (matches.length > 1) throw new ClawError("PLAN_TRANSITION_CONFLICT",
+      "The plan id is ambiguous across project and session scopes.", { planId, scopes: matches.map((project) => project.scope) });
+    return matches[0] ?? this.resolveProject(context);
+  }
+
+  private resolveRecoveryProject(context: CommandContext) {
+    if (this.currentPlanScope(context)) return this.resolveProject(context);
+    const bound = this.availableProjects(context).filter((project) => {
+      const planPath = resolveSessionBoundPlan(project, context.agentSessionId);
+      if (!planPath) return false;
+      const ref = planRefFromAbsolutePath(project, planPath);
+      const shown = showPlan({ cwd: context.cwd, scope: project.scope, taskName: ref.taskName,
+        planFile: ref.planFile, ownerSessionKey: context.agentSessionId });
+      return !shown.plan.status.startsWith("end.");
+    });
+    if (bound.length > 1) throw new ClawError("PLAN_TRANSITION_CONFLICT",
+      "Session recovery is ambiguous: active bindings exist in both storage scopes.");
+    return bound[0] ?? this.resolveProject(context);
   }
 
   private finalizeEnteredEnds(
@@ -729,7 +806,7 @@ export class ClawCommandService {
     resumed?: PlanRef,
   ): KnowledgeDelegateDispatch | undefined {
     if (!context.agentSessionId || entered.length === 0) return undefined;
-    const project = this.resolveProject(context);
+    const project = this.resolveProject(context, entered[0]?.ref.scope);
     if (project.scope !== "project") return undefined;
     const resumedPath = resumed
       ? showPlan({
@@ -744,6 +821,7 @@ export class ClawCommandService {
     for (const ended of entered) {
       const shown = showPlan({
         cwd: context.cwd,
+        scope: ended.ref.scope,
         taskName: ended.ref.taskName,
         planFile: ended.ref.planFile,
         ownerSessionKey: this.ownerSessionKey(context),
@@ -774,6 +852,7 @@ export class ClawCommandService {
           : buildKnowledgeDelegateDispatch({
               policy: "subagent",
               finalizeId: knowledgeEnd.finalizeId,
+              projectRoot: project.projectRoot,
               writer,
               ...(context.host === "codex" ? { leadInstruction: KNOWLEDGE_DISPATCH_LEAD_INSTRUCTION } : {}),
             });
@@ -831,6 +910,7 @@ export class ClawCommandService {
     context: CommandContext,
     input: {
       command: string;
+      scope?: "project" | "session";
       taskName: string;
       planFile: string;
       plan: PlanDocument;
@@ -840,11 +920,12 @@ export class ClawCommandService {
     },
   ): Promise<ClawHostActionV1[]> {
     if (!isHostActionsHost(context.host as ClawHost | undefined)) return [];
-    const project = this.resolveProject(context);
+    const project = this.resolveProject(context, input.scope);
     const goalPlan = resolveThreadGoalPlan({
       cwd: context.cwd,
       taskName: input.taskName,
       focusedPlan: input.plan,
+      scope: project.scope,
       ownerSessionKey: this.ownerSessionKey(context),
     });
     const workflowGuidance = await buildPlanWorkflowGuidance({

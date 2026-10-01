@@ -1,4 +1,6 @@
-﻿# ADR: DSH knowledge finalization uses the native-subagent delegate route
+﻿# ADR: DSH knowledge finalization preserves the delegate lifecycle
+
+This ADR owns DSH host integration and the ready-job/claim/done lifecycle. Backend selection and reusable-role decisions belong to [delegation ownership](<dsh-delegation-contract-ownership.md>). Native one-shot remains a compatibility path, not the mandatory backend for new jobs. This source decision does not claim live profile activation.
 
 ## Context
 
@@ -18,13 +20,13 @@ DSH（DeepSeek Harness）需要与 claw-kit 既有的 ready-job / claim / done �
 - DSH 是受支持的 invocation host 与 subagent-policy 知识 host：
   `isSubagentPolicyHost`（`codex | cindy | dsh`）取代逐 host 的 `!== "codex"` 检查；
   `KnowledgeFinalizationHost` 增加 `"dsh"`。由于 DSH 没有独立 background runner，Host
-  capability 边界把项目配置的 `background | subagent` 都归一为原生 `subagent` lifecycle；
+  capability 边界把项目配置的 `background | subagent` 都归一为 `subagent` policy lifecycle；
   这与 Cindy 一样是 launcher 能力约束，不是失败 fallback。
-- DSH 知识终结复用与 Codex 相同的 native-subagent delegate 路线：终态 mutation 先持久化
+- DSH 知识终结保留统一的 delegate lifecycle，不把它绑定到某一种执行 backend：终态 mutation 先持久化
   ready job（`job.host = "dsh"`、claim-mode report capture），再返回
   `knowledgeDispatch`（`buildKnowledgeDispatch` → `buildDshKnowledgeDispatch`，
   内部 `dsh-delegate-writer/TEMPLATE.json`）；DSH adapter 先完成父端可信 capture，再把
-  immutable prompt 原样交给 DSH 原生 subagent，subagent 创建 delegate plan、`knowledge claim`
+  immutable prompt 交给能力选择的 writer，writer 创建逐 job 独立的 delegate plan、`knowledge claim`
   认领 job、顺序执行 assignment subplan、以 claim token 调用一次 `knowledge done`。
   采集边界由 [report-collection ADR](<adapter-owned-report-collection.md>) 拥有，不用 `knowledge wait`。
 - DSH adapter（`@veewo/dsh-claw-kit`，静态 Cordis bundle 插件）注册**单个原生工具
@@ -36,16 +38,10 @@ DSH（DeepSeek Harness）需要与 claw-kit 既有的 ready-job / claim / done �
 - `agent/session-start` 注入恢复的 workflow guidance，并对规范 queued job 做恢复；bundled
   skills 经 `ctx.skills` 分层注册表投递。DSH 不依赖 turn-stopping report hook，父端通过
   live `sessionQuery` 在派发前采集；采集失败保持 queued，不回滚前台 canonical plan。
-- finalizer 派发的复用 owner 是 adapter，键是 `finalizeId`：同一 `finalizeId` 至多存在
-  一个未结算 writer child，派发前先判重（进程内记录 + 服务层 `listChildren` 的 durable
-  目录），命中即跳过 `start` 并返回 `reused: true`；目录缺失/损坏或 admission 回执未知
-  则 deferred，不能把未知结果当未执行。queued job 由下一次系统入口调和，模型不得手动
-  重试；child 无结果 promise 也不是解除去重的依据。child 保持 one-shot `start`
-  不变。机制与查重来源的当前行为由
-  `.claw/truth/features/dsh-knowledge-dispatch-and-finalization.md` 拥有。
+- Adapter 统一拥有 finalizer 派发与恢复；不能把模型侧 Team 清单、成员 inactive 或投递 acceptance 当成工作完成。当前 role 复用决策见 [delegation ownership](<dsh-delegation-contract-ownership.md>)，native one-shot 去重只是兼容分支。Core 仍是 job、claim、材料与终态的唯一 owner。
 
 - Model-allowed business commands share the typed `ClawCommandService` contract and real registry/focus preparation across daemon and one-shot CLI baseline; only known unsupported or proven pre-send transport gaps authorize fallback. Unknown-outcome mutation must not be replayed. Internal/admin operations remain outside model authority. See `../features/dsh-claw-run-route-guidance.md` for the current route.
-- The adapter recovers queued dispatch on subsequent system entry with finalizeId/native-child deduplication; same-claim Core receipts recover a lost claim response without a second assignment run. A lost child after claim or lost external write acknowledgement remains outside exactly-once guarantees without destination idempotence.
+- The adapter recovers queued dispatch on subsequent system entry using canonical per-job execution evidence and backend-appropriate reconciliation; same-claim Core receipts recover a lost claim response without a second assignment run. A lost child after claim or lost external write acknowledgement remains outside exactly-once guarantees without destination idempotence.
 
 ## Alternatives
 
@@ -76,6 +72,25 @@ DSH（DeepSeek Harness）需要与 claw-kit 既有的 ready-job / claim / done �
   [report-collection ADR](<adapter-owned-report-collection.md>) 拥有，本文不再拥有另一套采集规则。
 - `SUPPORTED_CLAW_HOSTS` 增加 `"dsh"`，`compactPlanCommandResult` 与 daemon 路径的
   hostActions 门控统一走 `isHostActionsHost`；Codex/DSH 的 compact 输出语义一致。
+- Native one-shot job 不在执行中迁移；它继续使用自己的完整 finalizeId label、旧 label 兼容与 service-level child catalog。可复用 role 则必须使用匹配的 CLI/Core 完整 delegate 身份合同，不能从 one-shot 的短标题兼容行为推导跨 job 安全性。
+- 前台在父计划终态和 adapter 异步派发回执后即可答复，不把后台 finalizer 纳入前台必要结果的 Team 等待链。成功接收不代表知识写入成功；未知结果不能授权重发，source 测试也不能证明运行 profile 已激活。
+
+<!-- state: history -->
+## Decision evolution
+
+<!-- dated: 2026-10-02 -->
+### 将 native-only 决策收窄为兼容路线
+
+以下原决策保留用于旧 job 与重复投递排查；“尚未实施”仅描述当时的 Team 状态，已由 capability-selected adapter role source 取代。
+
+- finalizer 派发的复用 owner 是 adapter，键是 `finalizeId`：同一 `finalizeId` 至多存在
+  一个未结算 writer child，派发前先判重（进程内记录 + 服务层 `listChildren` 的 durable
+  目录），命中即跳过 `start` 并返回 `reused: true`；目录缺失/损坏或 admission 回执未知
+  则 deferred，不能把未知结果当未执行。queued job 由下一次系统入口调和，模型不得手动
+  重试；child 无结果 promise 也不是解除去重的依据。child 保持 one-shot `start`
+  不变。机制与查重来源的当前行为由
+  `.claw/truth/features/dsh-knowledge-dispatch-and-finalization.md` 拥有。
+
 - 本 ADR 的当前 native 路线按 `finalizeId` 去重，不跨 `finalizeId` 复用 writer child；
   child label 使用完整 ID，兼容旧短 label。判重经服务层 `listChildren`，不能用模型侧
   `list_agents` 的 Team/continuable 清单证明普通 one-shot child 不存在。
@@ -84,13 +99,10 @@ DSH（DeepSeek Harness）需要与 claw-kit 既有的 ready-job / claim / done �
   [delegation ownership ADR](<dsh-delegation-contract-ownership.md>) 维护。前台在父计划终态
   和异步派发回执后即可答复，不把后台 finalizer 纳入前台必要结果的 Team 等待链。
 
-<!-- state: history -->
-## Decision evolution
-
 <!-- dated: 2026-10-01 -->
 ### 旧 native 采集与复用说明的适用范围
 
-此前以短 child label、catalog fail-open 和 claim-time journal/collector 描述 native 路线；当前完整 ID 与 deferred admission 防止未知结果造成第二个 writer，采集已转为父端 live Host 回执。跨 finalizeId 不复用的约束仅属于当前 native child 路线，不禁止尚未实施的 Team-local 成员复用。以下验证记录保留用于旧版本兼容和事故推理，不证明新 Team runner 或当前安装版行为已验证。
+此前以短 child label、catalog fail-open 和 claim-time journal/collector 描述 native 路线；当前完整 ID 与 deferred admission 防止未知结果造成第二个 writer，采集已转为父端 live Host 回执。当时跨 finalizeId 不复用的约束仅属于 native one-shot child 路线，不是今天 reusable-role source 的限制。以下验证记录保留用于旧版本兼容和事故推理，不证明新 Team runner 或当前安装版行为已验证。
 
 - 端到端验证：finalizeId `8a208046f490…`（task `Knowledge-dispatch-test`）走完
   delegate plan → claim → built-in governance assignment subplan → `knowledge done`

@@ -31,9 +31,11 @@ DSH 会话
 
 - `agent/session-start` → `claw context --host dsh`，恢复绑定计划并注入紧凑
   workflow 快照（`systemPrompt.context` 名 `claw:workflow`）；
-- 无 turn-stopping 钩子：终态 plan mutation 写入 adapter 私有 final journal；统一的
-  claw-kit claim 流程随后调用 DSH collector 发布按时间排序的 report，knowledgeDispatch
-  经 DSH 原生 subagent 自动分发。
+- 无 turn-stopping 钩子：终态入口通过 Host sessionQuery 冻结有上界的父报告，
+  交受信 CLI 发布；adapter 自动选择 Team/native、复用 finalizer，并以每 job
+  独立的 claim 与 delegate 终态推进队列，主模型不手工管理 writer。
+- 前台 `delegate.start/result/complete` 是 adapter 本地语义入口，不转发成未知 CLI 命令。
+  详见 [委派合同与验证边界](<../../docs/dsh-delegation.md>)。
 
 ## 安装
 
@@ -73,13 +75,10 @@ CLI 需支持 `--host dsh`（见 claw-kit 仓库的 dsh host 支持）。
 
 ## Skills
 
-安装即投递 8 个 skills（`ctx.skills` bundled provider，无需手动复制）：
-
-- shared 同步：`planning`、`config`、`create-claw-skill`、`feature-architecture`、`claw-kit-doc`
-  （`npm run sync:shared-skills` 维护，勿手改——AUTO-GENERATED banner）；
-- Host 特定（本包手写）：`using-claw-kit`（claw_run 单路线主入口）、
-  `researcher`（recall → code index → exact source 调查顺序 + 可选 subagent 委派）、
-  `update`（CLI + adapter 联合升级，见 `skills/update/SKILL.md`）。
+安装投递由 [skill-inputs.json](<skill-inputs.json>) 声明的 9 个完整 skill 包。
+公共规范源只保留一份，打包时复制全套资源与所有宿主分支，不维护 adapter 源码镜像。
+`update` 保持本宿主所有权；手动 `knowledge-capture` 与自动 finalizer 分离。
+角色技能只提交语义任务和结果，DSH adapter 负责执行机制。
 
 更新安装时若 pnpm 报旧 tarball ENOENT，先 `dsh plugin --profile <name> remove @veewo/dsh-claw-kit`
 再重新 `install:dsh-plugin`（版本号即更新信号）。

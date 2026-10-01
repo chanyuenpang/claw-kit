@@ -2,15 +2,19 @@
 
 ## 范围与入口发现
 
-操作系统（Windows/macOS/Linux）与 adapter（Codex/DSH/Cindy/OpenCode/OpenClaw/standard）分别记录。在真实系统和真实 adapter 上执行，不能改 platform/host 参数模拟另一平台。以本轮公开支持合同确定适用组合；当前没有系统、凭证、宿主或加载条件的组合先尝试准备，仍不可执行才记 blocked/未覆盖。公开明确不支持才记 not-applicable。
+跨平台是同一套行为和断言可在不同平台执行。一次默认运行只记录并测试当前操作系统与当前真实 adapter，不遍历操作系统或宿主清单。由 using-claw-kit 按当前宿主标记和实际工具确定身份，不能根据模型、技能路径或先前会话猜宿主，也不能改 platform/host 参数模拟另一平台。
+
+只有用户明确指定多个目标时才分别准备真实平台环境；目标环境缺条件时先修复，仍不可执行才记 blocked。未指定的其他平台属于范围外，无需检查其安装、凭证或加载条件。公开明确不支持的目标才记 not-applicable。
 
 开始前，从锁定版本的公开 help、运行 skill 和工具 schema 建立“用户行为 → 实际入口 → 场景 ID → 默认覆盖/条件覆盖/不属冒烟及依据”清单，覆盖 plan、task、subplan 与绑定恢复/切换的公开基本操作。表内名称是行为，不是强制所有宿主提供同名命令；例如集合移除可能是独立命令，也可能通过公开 plan.edit mutation 表达。不得借用未发布源码中的参数或底层 CLI 绕过插件缺口。
 
-默认执行当前真实 adapter 和其他当前可准备的 adapter。每个平台共用下表的语义和状态断言，分别保存入口和证据；standard 成功不能代替插件成功。
+只通过当前 adapter 执行下表。其他 adapter 共用语义与断言，但在各自宿主执行时才读取其入口说明。Codex 默认运行不得启动 DSH Web profile 或追加 standard CLI lane；Codex 失败就保留 Codex 失败，不换宿主补通过。
 
 ## 一次小型工作流覆盖核心操作
 
 创建一个父计划，保留两个业务任务：一个用于 subplan，一个用于返回后继续执行；另加一个可删除的临时任务。使用唯一中文/空格 marker 与测试目录内的有效 reference 文件。尽量在同一计划中串行完成以下步骤，不为每个字段新建计划。
+
+场景编号不是执行顺序：先完成 SMOKE-09 的独立取消及适用切换，再执行父计划场景。SMOKE-08 的父计划 `plan done` 放在最后；证据和报告草稿提前保存，成功后立即结束测试会话，不在同一会话追加检查或等待后台 finalizer。
 
 | ID | 必测行为 | 最小核验 |
 | --- | --- | --- |
@@ -21,12 +25,12 @@
 | SMOKE-05 | plan wait/resume 与状态编辑 | 活跃父计划 wait 后为 wait，resume 后回到 active 和正确 task；核验必要宿主效果。若公开接口另支持直接 status 编辑，选择一个合法非终态转换验证其持久化，再按合同恢复；不枚举所有 status 或强制修改终态 |
 | SMOKE-06 | context 恢复、plan sync | 通过真实 adapter 的公开受控 context/恢复入口读取同一测试 session，核验原 plan/task 绑定；当恢复合同要求或支持 sync 时执行一次，确认没有重复任务或 canonical mutation，必要宿主投影正确。仅 plan show 不等于恢复；不为冒烟强制重启宿主，必要入口无法访问时列 blocked |
 | SMOKE-07 | subplan create → 执行 → 完成 → 返回 | 在真实父 task 下创建一层子计划，父子关系和绑定正确；完成一个子任务及子计划后恢复父计划。按返回合同核验父 task 是否已自动 done，继续另一个未完成父 task；root 不能提前变为终态，子计划必要收口也须真实执行 |
-| SMOKE-08 | 回顾编辑、plan done、默认收口 | 写 retrospective，及公开支持的 what-worked/issue/follow-up 各一项；完成剩余任务与 plan。核验 canonical completed、字段保真、绑定/必要宿主状态结束，真实 writer/finalizer 和异步完成回执符合默认合同 |
+| SMOKE-08 | 回顾编辑、plan done、立即结束会话、默认收口 | 写 retrospective，及公开支持的 what-worked/issue/follow-up 各一项；完成剩余任务，在 done 前核对字段并保存证据和报告草稿。最后提交父计划 plan done，按路由完成必要前台交接并立即结束本轮。终态 canonical、绑定及真实 writer/finalizer 回执由会话结束后的独立外层观察补核；无观察条件时记待观察，不在测试会话等待或 resume |
 | SMOKE-09 | plan leave、绑定切换（适用时） | 用独立测试计划验证 leave，canonical 为 leave、绑定释放；公开支持任务切换时，以两个可合法接管的测试计划验证一次有效切换，核验目标绑定和继承 marker，再 leave。只操作本轮计划，不能靠伪造 session/手工绑定文件制造条件 |
 
 SMOKE-04 的保留任务完成分布在子计划返回及 root 完成阶段，不能在创建 subplan 前全部 done。各阶段以公开 guidance 决定合法顺序；操作数量随模板必要步骤调整，不追求固定调用次数。字段不存在或公开明确不支持时逐项注明依据，不把整行无声跳过。
 
-对标量编辑检查新值，对集合检查新增与精确移除，对 task 检查 ID/状态/顺序，对生命周期检查 canonical/当前绑定/必要宿主效果。ID 和 plan 路径从真实回执/读取取得，不能固定数字或按标题猜路径。每组 mutation 后通过公开读取入口核验；可以只读 canonical 文件作独立佐证，但绝不能直接写文件代替操作。成功终态与取消终态用不同计划验证。
+对标量编辑检查新值，对集合检查新增与精确移除，对 task 检查 ID/状态/顺序，对生命周期检查 canonical/当前绑定/必要宿主效果。ID 和 plan 路径从真实回执/读取取得，不能固定数字或按标题猜路径。父计划 done 前的每组 mutation 通过公开读取入口核验；父计划 done 后立即结束会话，独立外层观察再核验终态，不恢复测试会话。可以只读 canonical 文件作独立佐证，但绝不能直接写文件代替操作。成功终态与取消终态用不同计划验证。
 
 表内字段是代表性基本内容，不要求枚举所有参数；以当版 schema 校准已有字段，不复制全命令手册。直接 status 编辑、sync、switch-task 按 adapter 的公开入口条件覆盖：CLI 有命令不等于该 adapter 暴露同名操作。例如 Codex 固定 driver 未开放 switch-task 时，不能裸 CLI 绕过，应在操作映射记录其公开入口边界；有公开入口而当前缺少访问条件则 blocked，入口宣称可用但行为错误则 failed。
 
@@ -46,8 +50,8 @@ SMOKE-04 的保留任务完成分布在子计划返回及 root 完成阶段，�
 ## 失败、停止与结论
 
 - 安装来源、加载条件不合格：先按 environment.md 修复并重验，再进入功能操作。不能以本地包修复验收结果。
-- 来源合格后 claw-kit 操作报错、partial chain、hostEffectFailures、状态/绑定/收口不一致：保存输入、原始返回及实际已提交范围，记 failed。未提交操作不能计通过；停止依赖错误状态的后续步骤，继续独立计划或其他 lane。
-- 异步收口按公开期限等待；没有期限时在执行前记录有限观察窗口。超窗保留未完成证据并按错误原因判 failed/blocked，不能先称成功后再后台等结果。
+- 来源合格后 claw-kit 操作报错、partial chain、hostEffectFailures、状态/绑定/收口不一致：保存输入、原始返回及实际已提交范围，记 failed。未提交操作不能计通过；停止依赖错误状态的后续步骤，继续当前目标中的独立步骤；仅显式多平台任务才继续其他目标。
+- 依赖 Stop 的异步收口必须先结束测试会话。不得在该会话等待、轮询或 resume 来推动 finalizer；会话尚未结束时没有回执不能判失败。结束后如有独立外层观察，可按公开期限或事先记录的有限窗口核验；没有该条件就明确记待观察，不能宣称完整通过。
 - 提交后宿主失败：先读取 canonical 和当前绑定，不重复创建、不回滚、不吞错误；清理时只 best-effort leave 本轮计划，清理成功不改变原失败。
 - 外部条件仍缺失：列出修复尝试和所需条件，记 blocked。插件入口失败不能用 CLI/SDK 成功覆盖。
 
