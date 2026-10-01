@@ -1,5 +1,5 @@
 param(
-  [string]$Ref = "main"
+  [string]$Ref = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -20,6 +20,13 @@ Assert-Command -Name "git"
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $scriptDir
+
+if (-not $Ref) {
+  $manifestPath = Join-Path $repoRoot "packages/codex-adapter/.codex-plugin/plugin.json"
+  $pluginVersion = (Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json).version
+  if ($pluginVersion -notmatch "^[0-9]+[.][0-9]+[.][0-9]+[.][0-9]+$") { throw "Invalid Codex plugin version." }
+  $Ref = "vcodex-$pluginVersion"
+}
 
 Write-Host "Resolving the published claw-kit GitHub marketplace ref..."
 $repositoryUrl = "https://github.com/chanyuenpang/claw-kit.git"
@@ -51,7 +58,7 @@ try {
   if ($LASTEXITCODE -ne 0) {
     throw "Unable to checkout immutable marketplace commit $resolvedCommit."
   }
-  node (Join-Path $scriptDir "install-codex-plugin.mjs") --source-root $tempRoot
+  node (Join-Path $scriptDir "install-codex-plugin.mjs") --source-dir (Join-Path $tempRoot "packages/codex-adapter")
   if ($LASTEXITCODE -ne 0) {
     throw "Codex plugin install failed."
   }

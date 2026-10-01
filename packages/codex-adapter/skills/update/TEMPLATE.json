@@ -26,7 +26,7 @@
     {
       "id": 2,
       "title": "Refresh the CLI and official Codex plugin",
-      "detail": "Refresh the global CLI first. Inside this repository use `npm run install:local-cli`, then `npm run install:codex-plugin`; the installer resolves the published GitHub `main` ref once and installs that immutable commit through atomic cache activation. On another Codex machine, add `chanyuenpang/claw-kit --ref main` for first setup or upgrade the `claw-kit` marketplace, then install or enable `claw-kit@claw-kit`. Disable `claw-kit@claw-kit-local`. Do not install from unpublished workspace files or a local marketplace.",
+      "detail": "Refresh the global CLI first. Inside this repository use `npm run install:local-cli`, then `npm run install:codex-plugin`; the installer resolves the published `vcodex-<plugin-version>` artifact tag once and installs its complete payload through atomic cache activation without rebuilding skills. On another Codex machine, register the official `chanyuenpang/claw-kit` marketplace at the target published vcodex tag (update an old pinned ref before refreshing), then install or enable `claw-kit@claw-kit`. Disable `claw-kit@claw-kit-local`. Do not install from unpublished workspace files or a local marketplace.",
       "status": "pending",
       "guidance": {
         "onDone": {

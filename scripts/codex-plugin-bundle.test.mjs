@@ -313,6 +313,9 @@ test("Codex update contract is platform-specific and supports only the official 
   assert.doesNotMatch(combined, /cache\\claw-kit-local/i);
   assert.doesNotMatch(combined, /OpenCode|conservative fallback|choose (?:the )?host route|"choices"/i);
   assert.match(installer, /github\.com\/chanyuenpang\/claw-kit\.git/i);
+  assert.ok(installer.includes('$Ref = "vcodex-$pluginVersion"'));
+  assert.ok(installer.includes('--source-dir (Join-Path $tempRoot "packages/codex-adapter")'));
+  assert.ok(!installer.includes("--source-root $tempRoot"));
   assert.match(installer, /git ls-remote \$repositoryUrl \$Ref/i);
   assert.match(installer, /\$resolvedLines = @\(git ls-remote \$repositoryUrl \$Ref\)/i);
   assert.match(installer, /\$gitExitCode = \$LASTEXITCODE/i);

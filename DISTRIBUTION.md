@@ -314,7 +314,7 @@ npm install -g @veewo/claw
 Official Codex plugin install on a remote machine:
 
 ```powershell
-codex plugin marketplace add chanyuenpang/claw-kit --ref main
+codex plugin marketplace add chanyuenpang/claw-kit --ref vcodex-0.2.42.0
 codex plugin marketplace list
 codex plugin add claw-kit@claw-kit
 ```
@@ -345,10 +345,10 @@ npm run install:codex-plugin
 Expected output and install locations:
 
 - export bundle: `dist/codex-plugin/claw-kit/<plugin-version>/`
-- published marketplace: `https://github.com/chanyuenpang/claw-kit.git` at `main`
+- published complete marketplace artifact: `https://github.com/chanyuenpang/claw-kit.git` at immutable `vcodex-<plugin-version>` (for example, `vcodex-0.2.42.0`)
 - official Codex cache install: `C:\Users\<you>\.codex\plugins\cache\claw-kit\claw-kit\<plugin-version>\`
 
-The maintained installer clones the published repository, writes only the official cache, enables `claw-kit@claw-kit`, and disables `claw-kit@claw-kit-local`. It must run after publication, never before it.
+The maintained installer resolves `vcodex-<plugin-version>` from the reviewed plugin manifest, fetches that immutable artifact commit, and installs its already-composed `packages/codex-adapter` payload into only the official cache. It enables `claw-kit@claw-kit` and disables `claw-kit@claw-kit-local`. It must run after artifact publication, never rebuild from incomplete source main.
 
 ## Post-publish Install Verification
 

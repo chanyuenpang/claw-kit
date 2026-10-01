@@ -13,8 +13,10 @@
 - Export the complete Git tree with `npm run export:codex-marketplace -- --out-dir <isolated-output>`.
   Publish that composed tree only to an explicitly authorized artifact Git target/ref;
   do not assume a raw source main/tag is installable or recreate source skill copies.
-  Record reviewed source revision and artifact identity separately. No target/ref is
-  selected by local export; ask at release if unknown. Do not attach a ZIP or publish npm packages.
+  The official repository uses its existing immutable `vcodex-<version>` artifact
+  tag namespace, not a new publication branch. Record the reviewed main source and
+  separate composed artifact commit; never move main to an artifact-only tree.
+  Local export authorizes no upload; ask before using a different repository/ref. Do not attach a ZIP or publish npm packages.
 - Refresh the maintainer installation only when separately requested, after the
   GitHub source is verified. That refresh must remove every local claw-kit
   marketplace registration, plugin identity, hook configuration, and cache

@@ -131,10 +131,10 @@ for details.
 The Codex plugin is a separate distribution surface from the CLI. On another machine, add the official repository marketplace first:
 
 ```powershell
-codex plugin marketplace add chanyuenpang/claw-kit --ref main
+codex plugin marketplace add chanyuenpang/claw-kit --ref vcodex-0.2.42.0
 ```
 
-Restart the ChatGPT desktop app, open the plugin directory, choose the **Claw Kit** marketplace, and install **Claw Kit**. Start a new task after installation so Codex discovers the bundled skills. Refresh the Git-backed marketplace later with:
+Restart the ChatGPT desktop app, open the plugin directory, choose the **Claw Kit** marketplace, and install **Claw Kit**. Start a new task after installation so Codex discovers the bundled skills. For a newer release, select its published `vcodex-*` ref in the marketplace registration first; a pinned old ref does not advance by itself. Refresh the selected Git-backed marketplace with:
 
 ```powershell
 codex plugin marketplace upgrade claw-kit
@@ -143,7 +143,7 @@ codex plugin add claw-kit@claw-kit
 
 An upgrade is complete only when `claw-kit@claw-kit` is the enabled identity and its installed manifest matches the target version. A newer directory under the Codex plugin cache is not sufficient: if an older same-name identity such as `claw-kit@claw-kit-local` remains enabled, Codex can continue loading that older marketplace source.
 
-The repository marketplace at `.agents/plugins/marketplace.json` points to the fully materialized `packages/codex-adapter` tree. Codex can therefore copy every shared skill and resource into its plugin cache without running repository or npm lifecycle scripts.
+The published `vcodex-*` artifact tag contains `.agents/plugins/marketplace.json` pointing to the fully materialized `packages/codex-adapter` tree; source `main` is not an installable marketplace after canonical skill migration. Codex can therefore copy every shared skill and resource into its plugin cache without running repository or npm lifecycle scripts.
 
 The committed Git marketplace snapshot is the Codex plugin release artifact. GitHub Release ZIP attachments are not required. Use a full repository checkout; a sparse checkout containing only `.agents/plugins` omits the referenced `packages/codex-adapter` payload.
 
@@ -157,7 +157,7 @@ npm run install:codex-plugin
 What they do:
 
 1. `npm run export:codex-plugin` copies the installable plugin payload into `dist/codex-plugin/claw-kit/<plugin-version>/`.
-2. `npm run install:codex-plugin` clones the published GitHub `main` marketplace, installs that payload into `%USERPROFILE%\.codex\plugins\cache\claw-kit\claw-kit\<plugin-version>\`, enables `claw-kit@claw-kit`, and disables `claw-kit@claw-kit-local`.
+2. `npm run install:codex-plugin` fetches the published immutable `vcodex-<plugin-version>` marketplace tag, installs that payload into `%USERPROFILE%\.codex\plugins\cache\claw-kit\claw-kit\<plugin-version>\`, enables `claw-kit@claw-kit`, and disables `claw-kit@claw-kit-local`.
 
 Release the new version before running `install:codex-plugin`; it deliberately refuses to install unpublished workspace content. Local marketplace installation is not a supported verification or update path.
 

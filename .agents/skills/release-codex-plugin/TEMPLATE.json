@@ -12,7 +12,7 @@
     "acceptanceCriteria": [
       "Only the Codex adapter fourth segment and matching manifest are bumped.",
       "The committed marketplace payload and metadata are complete and verified.",
-      "The exact vcodex-<version> tag and GitHub Release point to clean origin/main.",
+      "The immutable vcodex-<version> tag and GitHub Release identify the complete composed marketplace artifact and its reviewed clean origin/main source revision.",
       "No npm package or plugin ZIP is published."
     ]
   },
