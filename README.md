@@ -131,7 +131,7 @@ for details.
 The Codex plugin is a separate distribution surface from the CLI. On another machine, add the official repository marketplace first:
 
 ```powershell
-codex plugin marketplace add chanyuenpang/claw-kit --ref vcodex-0.2.42.0
+codex plugin marketplace add chanyuenpang/claw-kit --ref vcodex-0.2.42.1
 ```
 
 Restart the ChatGPT desktop app, open the plugin directory, choose the **Claw Kit** marketplace, and install **Claw Kit**. Start a new task after installation so Codex discovers the bundled skills. For a newer release, select its published `vcodex-*` ref in the marketplace registration first; a pinned old ref does not advance by itself. Refresh the selected Git-backed marketplace with:
