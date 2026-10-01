@@ -11,18 +11,12 @@ collector contract v1；当前实现事实由
 
 ## Decision
 
-- 每个 Host adapter 拥有其 Host history 的定位、解析、真实 turn final 判定、
-  capture-completeness 判断和 report payload 形态，并以已注册、版本化的 collector
-  process 提供能力。Core/CLI 不解释 Host message DTO，也不统一排序或 merge payload。
-- collector 只向 CLI 指定的 staging report 路径写入 adapter-owned opaque payload；stdout
-  不传递采集内容，adapter 不直接写 plan、knowledge job、claim token、Truth 或 ADR。
+- 每个 Host adapter 拥有其 Host history 的定位、解析、真实 turn final 判定和 report payload 形态。Codex/Cindy 保留版本化 collector process；DSH Desktop 在父会话终态或 queued 恢复入口使用当前 Host 的受信 `sessionQuery` 自动采集，通过私有 CLI stdin 提交规范 final 事件，不持久保存可执行 collector descriptor。Core/CLI 不解释 Host message DTO；DSH CLI 仅对已规范化的报告行去重并保留既有 task conclusions。
+- Codex/Cindy collector 仅向 CLI 指定的 staging report 路径写 opaque payload。DSH live adapter 经私有 stdin 向当前 CLI 进程提交已证明的 final 事件，由 CLI 在 plan.report 同目录完成暂存和原子发布。stdout、daemon JSON 与诊断不传递采集内容；adapter 不直接写 canonical report、knowledge job、claim token、Truth 或 ADR。
 - Core/CLI 继续拥有 canonical plan/report 路径、固定 staging containment、collector contract
   version、payload byte length/SHA-256 receipt、同目录原子发布、claim token 与最终化 lifecycle。
-- collector exit code 是 completeness 的 Host-owned 证明。空 payload 可以成功，但仍必须生成
-  相同的 capture receipt；history 不可用必须由 collector 返回失败并保持 job queued。
-- 这是一次协调的破坏性迁移：CLI 与 Codex、DSH、Cindy adapters 同步切换到
-  collector contract v1。descriptor 和 request 都显式携带 contract version；未升级
-  adapter 显式失败，绝不回退。
+- Codex/Cindy collector exit code 是 completeness 的 Host-owned 证明。DSH 的父会话历史读取成功但无可信 `assistant/final` 时，空 payload 仍发布真实 capture receipt；Host 历史不可读、规范化失败或 CLI 发布失败则保持 job queued、无 token 并报告原因，绝不伪造 final_answer。
+- Codex/Cindy 的 collector contract v1 与描述符不变。DSH Desktop 改用当前插件宿主的受信父会话采集和版本化 CLI 回执；既有项目级 `dsh.json` 即使指向旧 web 包也不执行、不隐式回退。没有 live capture receipt 时禁止 DSH writer claim。
 
 实施前的设计与验收切片记录在
 `docs/feature-architecture/2026-08-22-1319-Host-Adapter自有Report收集接口重整.md`。
@@ -40,9 +34,7 @@ collector contract v1；当前实现事实由
 
 ## Consequences
 
-- CLI 不再知道 Codex transcript records、DSH event/cache 或 Cindy SQLite rows；adapter
-  可独立演进其 parser 和 report payload，只需持续符合 process/receipt contract。
-- claim 只在 collector 成功退出、CLI 校验 staging 是普通文件、计算 receipt 并原子发布后
-  签发 token；失败不回滚已成功的 plan mutation，job 保持 queued。
-- 通用测试只断言 contract version、opaque bytes/digest、空 payload、失败保持 queued 与
-  atomic publish；Host-specific tests 独立验证多 turn、terminal final 和 owner boundary。
+- CLI 不再知道 Codex transcript records、DSH event/cache 或 Cindy SQLite rows；adapter 可独立演进其 Host history parser。DSH 的规范 final 事件只通过私有 stdin 交付，CLI 不持久化 adapter 安装路径。
+- DSH writer 的 token 仅在父端已发布可信 capture receipt 后由 Core 原子 claim 签发；Codex/Cindy 沿用 collector 成功与 staging 校验。任一采集失败不回滚已成功的 plan mutation，DSH job 保持 queued，不能靠模型重试。
+- DSH 的可恢复采集与派发错误只把有界 phase/code/correlation/count 存于 Core job，父会话即时回执和后续 context 展示安全摘要；异步子代理结束但无规范终态时只报警、不替模型写失败或重排队。报告、token、原始异常及绝对路径不进入告警。
+- 通用测试覆盖可信父会话、report 行去重和摘要、空 final、失败保持 queued、原子发布、告警去重与未知 claim 同子代理回执；Host-specific tests 验证多 turn 与真实终态来源。

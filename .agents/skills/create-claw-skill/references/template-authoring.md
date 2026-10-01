@@ -12,7 +12,7 @@ Use a plan-like `TEMPLATE.json` beside `SKILL.md`.
 ## Routing and lifecycle
 
 - Whole task: create a plan with the adjacent template file.
-- Independently owned stage, including one item in a batch: create a subplan and consume the Goal handoff before creating a child Goal.
+- Independently owned stage, including one item in a batch: create a subplan through the active host route and follow its handoff; do not manually duplicate adapter-owned Goal/progress effects.
 - Mixed stage: use the fallback inside the owning workflow instead of creating this template plan.
 - Add `guidance.onPlanStart` only when a discussion task deliberately owns the transition into execution.
 
@@ -22,7 +22,7 @@ Use `guidance.onDone.choices` only when the selection changes the immediate down
 
 ## Validation
 
-Run `claw template validate --file "<skill-dir>/TEMPLATE.json"`. Then check content coverage so important source behavior remains represented in `SKILL.md`, `TEMPLATE.json`, the fallback, or focused references.
+Use [host routing](host-routing.md) for the supported equivalent of `claw template validate --file "<skill-dir>/TEMPLATE.json"`. Then check content coverage so important source behavior remains represented in `SKILL.md`, `TEMPLATE.json`, the fallback, or focused references.
 
 ## Silent driver maintenance
 

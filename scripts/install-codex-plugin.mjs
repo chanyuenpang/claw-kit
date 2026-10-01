@@ -11,14 +11,16 @@ function readOption(name) {
 }
 
 const sourceDirOption = readOption("--source-dir");
+const sourceRootOption = readOption("--source-root");
 const cacheRootOption = readOption("--cache-root");
 const configPathOption = readOption("--config-path");
 
-if (!sourceDirOption) {
-  throw new Error("--source-dir must point at packages/codex-adapter from a freshly cloned GitHub marketplace checkout.");
+if (Boolean(sourceDirOption) === Boolean(sourceRootOption)) {
+  throw new Error("Supply --source-root for a source checkout or --source-dir for a composed Codex artifact, not both.");
 }
 
 const result = await installCodexPluginBundle({
+  sourceRoot: sourceRootOption ? path.resolve(process.cwd(), sourceRootOption) : undefined,
   sourceDir: sourceDirOption ? path.resolve(process.cwd(), sourceDirOption) : undefined,
   cacheRoot: cacheRootOption ? path.resolve(process.cwd(), cacheRootOption) : undefined,
 });

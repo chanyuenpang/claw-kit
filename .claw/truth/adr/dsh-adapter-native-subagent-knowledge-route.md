@@ -22,23 +22,25 @@ DSH（DeepSeek Harness）需要与 claw-kit 既有的 ready-job / claim / done �
   这与 Cindy 一样是 launcher 能力约束，不是失败 fallback。
 - DSH 知识终结复用与 Codex 相同的 native-subagent delegate 路线：终态 mutation 先持久化
   ready job（`job.host = "dsh"`、claim-mode report capture），再返回
-  `knowledgeDispatch`（`buildKnowledgeDispatch` → `buildKnowledgeDelegateDispatch`，
-  内部 `delegate-writer/TEMPLATE.json`）；DSH adapter 把 immutable prompt 原样交给
-  DSH 原生 subagent，subagent 创建 delegate plan、`knowledge claim` 认领 job、顺序执行
-  assignment subplan、以 claim token 调用一次 `knowledge done`。不做 Cindy 式原子
-  claim-time capture，也不用 `knowledge wait`。
+  `knowledgeDispatch`（`buildKnowledgeDispatch` → `buildDshKnowledgeDispatch`，
+  内部 `dsh-delegate-writer/TEMPLATE.json`）；DSH adapter 先完成父端可信 capture，再把
+  immutable prompt 原样交给 DSH 原生 subagent，subagent 创建 delegate plan、`knowledge claim`
+  认领 job、顺序执行 assignment subplan、以 claim token 调用一次 `knowledge done`。
+  采集边界由 [report-collection ADR](<adapter-owned-report-collection.md>) 拥有，不用 `knowledge wait`。
 - DSH adapter（`@veewo/dsh-claw-kit`，静态 Cordis bundle 插件）注册**单个原生工具
   `claw_run`**：`execute` 优先经 daemon 执行 mutation，并在可证明的预执行缺口自动使用同一 typed session service 的受信 CLI baseline；
   消费 CLI 生成的 `hostActions`（`create_goal`/`update_goal` → DSH 原生 goals；
   `update_plan` → 进度投影）、按白名单返回 compact guidance。`isHostActionsHost`
   （`codex | dsh`）取代 `effectiveHost === "codex"` 作为 hostActions 构建门控——DSH 与
   Codex 共享同一版本化 hostActions 协议，无需 code-mode 信封。
-- `agent/session-start` 注入恢复的 workflow guidance；`agent/turn-stopping` 做 turn
-  report 捕获（fail-open）；bundled skills 经 `ctx.skills` 分层注册表投递。
+- `agent/session-start` 注入恢复的 workflow guidance，并对规范 queued job 做恢复；bundled
+  skills 经 `ctx.skills` 分层注册表投递。DSH 不依赖 turn-stopping report hook，父端通过
+  live `sessionQuery` 在派发前采集；采集失败保持 queued，不回滚前台 canonical plan。
 - finalizer 派发的复用 owner 是 adapter，键是 `finalizeId`：同一 `finalizeId` 至多存在
   一个未结算 writer child，派发前先判重（进程内记录 + 服务层 `listChildren` 的 durable
-  目录），命中即跳过 `start` 并返回 `reused: true`；失败派发标记 `retryable: false` 且
-  不留记录，queued job 由下一次系统入口调和，模型不得手动重试。child 保持 one-shot `start`
+  目录），命中即跳过 `start` 并返回 `reused: true`；目录缺失/损坏或 admission 回执未知
+  则 deferred，不能把未知结果当未执行。queued job 由下一次系统入口调和，模型不得手动
+  重试；child 无结果 promise 也不是解除去重的依据。child 保持 one-shot `start`
   不变。机制与查重来源的当前行为由
   `.claw/truth/features/dsh-knowledge-dispatch-and-finalization.md` 拥有。
 
@@ -68,14 +70,28 @@ DSH（DeepSeek Harness）需要与 claw-kit 既有的 ready-job / claim / done �
   执行回执），使用专用 `AbortController` 而非 claw_run 工具信号，确保工具返回后子代理
   存活（2026-08-22 修复 `0a15891`）；compact result 仅在存在 dispatch 时前置重插该
   字段，避免 `undefined` 破坏 DSH lossless-JSON 校验（`cebd5b9`）。
-- `claw knowledge claim` 的 claim-time report capture 现在同时实现 `cindy`（stdin）、
-  `codex`（transcript）与 `dsh`（adapter-owned report collector）三个 Host 路径；DSH claim-time collector 按 `reportCapture.startedAt` 过滤可信 journal，CLI 发布 staging report 与 integrity receipt。缺失 journal、空历史或无可证 final event 不阻止 claim；损坏或不可信路径仍拒绝。
+- DSH claim 依赖父端已发布的可信 capture receipt，而不是 executable collector/journal；
+  历史读取成功但没有可信 final event 可发布真实空 capture，历史读取失败不能伪装空材料。
+  Codex/Cindy 的 collector 合同与 DSH 的父端采集差异由
+  [report-collection ADR](<adapter-owned-report-collection.md>) 拥有，本文不再拥有另一套采集规则。
 - `SUPPORTED_CLAW_HOSTS` 增加 `"dsh"`，`compactPlanCommandResult` 与 daemon 路径的
   hostActions 门控统一走 `isHostActionsHost`；Codex/DSH 的 compact 输出语义一致。
-- 复用判据只看 `finalizeId`，跨 `finalizeId` 复用是禁止行为（与 Codex 的固定名
-  `knowledge_finalizer` 合约一致）；判重不能走模型侧 `list_agents`，因为它是
-  `listChildren` 的 continuable 投影并显式丢弃 one-shot child，用它判重会静默失效并
-  重新产生第二个 writer child。
+- 本 ADR 的当前 native 路线按 `finalizeId` 去重，不跨 `finalizeId` 复用 writer child；
+  child label 使用完整 ID，兼容旧短 label。判重经服务层 `listChildren`，不能用模型侧
+  `list_agents` 的 Team/continuable 清单证明普通 one-shot child 不存在。
+- 尚未实施的 Team 设计允许同 Team 成员身份跨 job 复用，但不复用 job 材料、claim 或
+  plan，不改变当前 native 行为；其边界与角色 owner 由
+  [delegation ownership ADR](<dsh-delegation-contract-ownership.md>) 维护。前台在父计划终态
+  和异步派发回执后即可答复，不把后台 finalizer 纳入前台必要结果的 Team 等待链。
+
+<!-- state: history -->
+## Decision evolution
+
+<!-- dated: 2026-10-01 -->
+### 旧 native 采集与复用说明的适用范围
+
+此前以短 child label、catalog fail-open 和 claim-time journal/collector 描述 native 路线；当前完整 ID 与 deferred admission 防止未知结果造成第二个 writer，采集已转为父端 live Host 回执。跨 finalizeId 不复用的约束仅属于当前 native child 路线，不禁止尚未实施的 Team-local 成员复用。以下验证记录保留用于旧版本兼容和事故推理，不证明新 Team runner 或当前安装版行为已验证。
+
 - 端到端验证：finalizeId `8a208046f490…`（task `Knowledge-dispatch-test`）走完
   delegate plan → claim → built-in governance assignment subplan → `knowledge done`
   全链路，确认 DSH knowledge dispatch 生成与终结可用。第二次复验（finalizeId
@@ -97,7 +113,7 @@ DSH（DeepSeek Harness）需要与 claw-kit 既有的 ready-job / claim / done �
 - `packages/cli/src/cli.ts`（`buildKnowledgeDispatch` 的 dsh 分支、compact 门控）
 - `packages/cli/src/command-service.ts`（daemon 路径 hostActions 门控）
 - `packages/core/src/knowledge-sidecar.ts`（`KnowledgeFinalizationHost` 增加 `"dsh"`）
-- `packages/core/dist/src/resources/delegate-writer/TEMPLATE.json`
+- `packages/core/resources/dsh-delegate-writer/TEMPLATE.json`
 - `docs/dsh-plugin-integration-research.md`
 
 ## Search Terms

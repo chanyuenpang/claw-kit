@@ -28,10 +28,12 @@ Current publishable packages:
 
 Codex plugin distribution source:
 
-- `shared/skills` -> editable cross-host shared skill content
-- `packages/codex-adapter` -> fully materialized, committed Codex plugin payload
-- `.agents/plugins/marketplace.json` -> official Codex repository marketplace entry
-- the committed Git ref containing those paths -> official Codex plugin release artifact
+- `.agents/skills` -> seven canonical public skill packages alongside repository-only skills; the explicit catalog selects only public inputs
+- `shared/skills/knowledge-capture` -> canonical non-project-discovery manual capture package
+- `packages/codex-adapter` -> adapter runtime source plus host-owned update, not a complete installable plugin
+- `.agents/plugins/marketplace.json` -> marketplace packaging input with the unchanged plugin-relative path
+- `npm run export:codex-marketplace -- --out-dir <isolated-output>` -> complete Git marketplace artifact tree
+- an explicitly authorized published Git artifact ref containing that composed tree -> installable marketplace snapshot; never tag raw incomplete adapter source as if it were an artifact
 
 GitHub Release ZIP assets are not part of the supported Codex installation path. `npm run export:codex-plugin` remains a maintainer-only inspection and local-development tool.
 
@@ -43,7 +45,7 @@ There are six independent artifact families. Select the requested artifact befor
 |---|---|---|---|---|
 | CLI | core, CLI, or shared CLI/runtime | 3 segments | `@veewo/claw-core` then `@veewo/claw` | `v<version>` |
 | Codex plugin | codex-adapter | 4 segments | committed GitHub marketplace snapshot | `vcodex-<version>` |
-| Cindy plugin | independent `claw-kit-cindy-adapter` repository | 4 segments | Cindy-only Git marketplace | `vcindy-<version>` in the adapter repository |
+| Cindy plugin | main repository `packages/cindy-adapter` | 4 segments | composed tree delivered to existing independent artifact-only marketplace repository | `vcindy-<version>` in the artifact repository |
 | DSH adapter | dsh-adapter | 4 segments in git; npm prerelease `<cli-base>-rc.<n>` | `@veewo/dsh-claw-kit` on the npm registry | `vdsh-<version>` |
 | OpenClaw plugin | openclaw-adapter | 4 segments | OpenClaw adapter GitHub release artifact | `vopenclaw-<version>` |
 | OpenCode plugin | opencode-adapter | 4 segments | OpenCode adapter GitHub release artifact | `vopencode-<version>` |
@@ -60,7 +62,7 @@ Triggered when codex-adapter changed. Updates the committed marketplace snapshot
 
 ### Platform adapter releases
 
-- Cindy releases only from the independent `claw-kit-cindy-adapter` repository.
+- Cindy source lives in this main repository; only the isolated assembled artifact is delivered to the existing `claw-kit-cindy-adapter` marketplace repository.
 - DSH publishes `@veewo/dsh-claw-kit` to npm and tags `vdsh-<version>` in this repository.
 - OpenClaw and OpenCode create their artifact-specific GitHub releases and tags.
 
@@ -106,7 +108,7 @@ This repository uses direct maintainer publishing by default:
 | OpenClaw adapter | `CLI_VERSION.PATCH` | `0.2.1.0` | Same 4-segment rule. |
 | OpenCode adapter | `CLI_VERSION.PATCH` | `0.2.1.0` | Same 4-segment rule. |
 | Codex plugin manifest | `ADAPTER_VERSION` | `0.2.1.0` | Mirrors codex-adapter package version. No timestamp. |
-| Templates | `CLI_VERSION` | `0.2.1` | TEMPLATE.json `version` follows CLI version. |
+| Templates | independent template driver | `1.0.0` | TEMPLATE.json `version` is independent of package/release versions. |
 
 ### Version file checklist
 
@@ -144,7 +146,7 @@ After changing version files:
 
 - Run `npm install --package-lock-only --ignore-scripts` to keep `package-lock.json` consistent.
 - Run `npm run sync:template-versions` only when changing the independent template driver. This updates every project/plugin template plus the built-in default template.
-- Run `npm run sync:shared-skills` after template-driver synchronization, then require `npm run check:template-versions` to pass.
+- Run `npm run check:skill-sources` after template-driver synchronization, then require `npm run check:template-versions` to pass.
 - Do not bump only one adapter copy of shared skills.
 
 ### Publishing rules
@@ -165,13 +167,13 @@ After changing version files:
 1. Confirm the target artifact family: CLI, Codex, Cindy, DSH, OpenClaw, or OpenCode; Cindy releases occur in the independent `claw-kit-cindy-adapter` repository; or record `prepare-only`.
 2. Classify all local changes; commit useful release content, remove disposable output, and ignore intentional local-only files. Do not stash changes to bypass this step.
 3. Ensure the checked-out branch is `main` and push the release commit directly to `origin/main`.
-4. Align only the selected artifact family's versions. A routine claw-kit version bump does not require template synchronization; run `npm run sync:template-versions` only when the template driver changes, then run `npm run sync:shared-skills` when shared skill payloads changed.
+4. Align only the selected artifact family's versions. A routine claw-kit version bump does not require template synchronization; run `npm run sync:template-versions` only when the template driver changes, then run `npm run check:skill-sources` when shared skill payloads changed.
 5. For a coordinated batch release, review generated adapter files and run `npm run check:template-versions`.
 6. Run `npm install`.
 7. Run verification commands.
 8. Dry-run package artifacts.
 9. Create the release commit and push it directly to GitHub.
-10. Run `npm run verify:release` for CLI/Core/Client release safety. Run `npm run verify:batch-release` only when the release deliberately includes platform artifacts; it adds marketplace metadata, materialized Codex skills, exported payload, and coordinated template validation.
+10. Run `npm run verify:release` for CLI/Core/Client release safety. Run `npm run verify:batch-release` only when the release deliberately includes platform artifacts; it adds marketplace metadata, assembled Codex skills, exported payload, and coordinated template validation.
 
 ### CLI release only
 
@@ -206,7 +208,7 @@ npm run test:full
 npm run check
 npm run check:template-versions
 npm run test:codex-plugin
-node --test scripts/sync-shared-skills.test.mjs
+node --test scripts/skill-artifacts.test.mjs scripts/host-plugin-artifacts.test.mjs
 cd packages\core
 npm pack --dry-run
 cd ..\cli
@@ -317,7 +319,7 @@ codex plugin marketplace list
 codex plugin add claw-kit@claw-kit
 ```
 
-Use the full repository marketplace checkout. A sparse checkout that contains only `.agents/plugins` is incomplete because the marketplace entry resolves `source.path` to `packages/codex-adapter`.
+Use the complete composed Git marketplace artifact. Its catalog retains `source.path` to `packages/codex-adapter`, where the assembled skills are already present; selecting only the catalog is incomplete. A raw source checkout also requires assembly and is not itself a ready plugin. See docs/public-skill-sources.md; do not repopulate source directories to satisfy installation.
 
 Restart the ChatGPT desktop app, choose the **Claw Kit** marketplace in the plugin directory, install **Claw Kit**, and start a new task. Codex loads the installed copy from:
 
@@ -388,5 +390,5 @@ Expected outcome:
 - `@veewo/claw` depends on `@veewo/claw-core`, so publish order matters.
 - The local executable name remains `claw`.
 - `scripts/install-cli.ps1` now installs the published npm package directly.
-- `shared/skills` is the editable source for cross-host skills. The committed and published `packages/codex-adapter` tree is the canonical installable Codex plugin source; local unpublished payloads are not installable.
+- Public skills have one canonical source and are copied only into isolated build artifacts. Publish the composed complete Git marketplace tree, not raw adapter source; source revision, artifact revision and active installation remain separate evidence. Runtime plugin layout is unchanged.
 - GitHub Release notes and tags remain useful release records, but the Codex installation flow consumes the Git marketplace snapshot and does not require a ZIP attachment.

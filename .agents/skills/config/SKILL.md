@@ -2,7 +2,6 @@
 name: config
 description: Use when a user wants to inspect, explain, or change claw-kit project configuration, including team-owned .claw/project.json and personal .claw/project-override.json preferences.
 ---
-<!-- AUTO-GENERATED from shared/skills/config/SKILL.md. Edit the shared source instead. -->
 
 # config
 
@@ -24,8 +23,12 @@ at `../claw-kit-doc/references/configuration.md`.
    override in .claw/project-override.json?`
 4. Read the current target, preserve unrelated fields, and edit only the
    requested values.
-5. Keep JSON valid with two-space indentation and run `claw check` after a team
-   configuration change.
+5. Keep JSON valid with two-space indentation and validate after a team
+   configuration change: on Cindy use Ghost `list_tools` / `call_tool` to
+   discover its validation operation; on DSH use the supported configuration
+   surface or `claw_run` context for effective configuration diagnostics. On
+   CLI-capable hosts run `claw check`. If full validation is unavailable, report
+   that limitation; do not invent an operation or bypass a native workflow route.
 
 ## Guardrails
 

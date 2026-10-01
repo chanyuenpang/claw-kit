@@ -1,34 +1,14 @@
-// Export the installable @veewo/dsh-claw-kit tarball into dist/dsh-plugin/.
-// The DSH plugin manager (`dsh plugin --profile <name> add <pkg>`) is a pnpm
-// forwarder, so the distribution surface is a plain npm tarball — no
-// marketplace cache or identity switching needed.
-import { execFileSync } from "node:child_process";
-import fs from "node:fs";
+// Build an installable tarball from the same isolated stage used for publish.
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { packDshPluginArtifact } from "./host-plugin-artifacts.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-
-function readOption(name) {
+function option(name) {
   const index = process.argv.indexOf(name);
-  if (index === -1) return null;
-  return process.argv[index + 1] ?? null;
+  if (index < 0) return undefined;
+  if (!process.argv[index + 1] || process.argv[index + 1].startsWith("--")) throw new Error("Missing " + name + " value");
+  return path.resolve(process.argv[index + 1]);
 }
-
-const outDir = readOption("--out-dir")
-  ? path.resolve(process.cwd(), readOption("--out-dir"))
-  : path.join(repoRoot, "dist", "dsh-plugin");
-
-fs.mkdirSync(outDir, { recursive: true });
-execFileSync("npm", ["pack", "-w", "@veewo/dsh-claw-kit", "--pack-destination", outDir], {
-  cwd: repoRoot,
-  stdio: "inherit",
-  shell: process.platform === "win32",
-});
-
-const tarballs = fs.readdirSync(outDir).filter((file) => file.endsWith(".tgz"));
-if (tarballs.length === 0) {
-  throw new Error("npm pack produced no tarball.");
-}
-console.log(`Exported DSH plugin tarball(s) to ${outDir}:`);
-for (const file of tarballs) console.log(`  ${file}`);
+const result = await packDshPluginArtifact({ sourceRoot: option("--source-root") ?? repoRoot, outDir: option("--out-dir") ?? path.join(repoRoot, "dist", "dsh-plugin") });
+console.log("Exported DSH plugin " + result.gitVersion + " → npm " + result.npmVersion + ": " + result.tarball);

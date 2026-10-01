@@ -16,13 +16,13 @@ The former shared `shared/skills/update/` package encoded those differences as a
 - Scope that shared id to compatibility discovery. A loaded adapter skill must route through its own adjacent `TEMPLATE.json` with `--template-file`; a combined repository-root resolver may still reject bare `--template update` as ambiguous without requiring a cross-host route.
 - Codex independently owns `packages/codex-adapter/skills/update/`; OpenCode independently owns `packages/opencode-adapter/skills/update/`.
 - Each adapter owns its complete update package: entry skill, three-task template, no-`.claw` fallback, and coverage contract.
-- Remove `update` from `SHARED_SKILL_NAMES` and delete `shared/skills/update/`. Shared-skill synchronization must never generate or overwrite either adapter's update package.
+- Keep update out of shared canonical skill sources. Artifact declarations select the owning adapter's update package without creating source copies; distribution follows [shared-source ADR](<shared-planning-skill-source.md>).
 - Preserve the shared outcome contract—published CLI plus current-host plugin are one update unit—but express host commands, verification evidence, and restart boundaries only in the owning adapter.
 - For Codex only, preserve an already-created plan across a template-version handoff by running its remaining canonical mutations through the fixed Codex driver with the published CLI matching that retained template. Do not rewrite the old plan or template, use unpublished workspace content, or leave the older CLI installed; verify the global CLI still resolves to the update target afterward.
 - Reject workflow-time host selection. Neither update template may contain Codex/OpenCode/conservative route choices or a task that asks, infers, or confirms the platform.
-- Protect the boundary in shared-sync and adapter bundle tests so future synchronization or packaging changes cannot silently merge the implementations again.
+- Protect the boundary in source-ownership and adapter artifact tests so future synchronization or packaging changes cannot silently merge the implementations again.
 
-## Alternatives considered
+## Alternatives
 
 - Keep one shared template with a platform choice. Rejected because the adapter identity is already known and the choice recreates avoidable routing state.
 - Infer the host inside a shared workflow. Rejected because hidden inference still couples two installation contracts and makes the shared package the owner of platform-specific behavior.
@@ -36,7 +36,7 @@ The former shared `shared/skills/update/` package encoded those differences as a
 - The host-specific skill selects its exact adjacent file without a user-visible routing step. A bare id lookup remains available for compatibility where it is unambiguous, but it is not the authoritative update entry.
 - Codex can enforce official marketplace identity/source/cache evidence without carrying OpenCode deployment details; OpenCode can enforce its full installed-surface verification without carrying Codex identity rules.
 - A Codex update may temporarily invoke a matching older published CLI for only the remaining mutations of an in-flight plan, while the installed global CLI and official plugin still converge on the new published target.
-- Shared-skill synchronization remains the canonical materializer only for the skills listed in `SHARED_SKILL_NAMES`; `update` is an explicit adapter-owned exception.
+- Artifact assembly must preserve update as an adapter-owned exception; it cannot merge implementations or write generated copies back into source.
 - The canonical current behavior is documented in `.claw/truth/features/host-specific-update-skills.md`. Older shared-update records remain historical evidence only.
 
 <!-- state: history -->
@@ -51,8 +51,7 @@ The `0.1.90` release made the recovery part of the Codex update package after a 
 
 - `packages/codex-adapter/skills/update/`
 - `packages/opencode-adapter/skills/update/`
-- `scripts/sync-shared-skills.mjs`
-- `scripts/sync-shared-skills.test.mjs`
+- [Skill assembler](<../../../scripts/skill-artifacts.mjs>)
 - `scripts/codex-plugin-bundle.test.mjs`
 - `scripts/opencode-plugin-bundle.test.mjs`
 - `packages/opencode-adapter/references/opencode-plugin-update.md`

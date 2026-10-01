@@ -7,7 +7,7 @@ Use this note when claw-kit needs to refresh the OpenCode plugin install surface
 `npm run install:opencode-plugin` (inside the claw-kit repo) performs a full deploy via `scripts/install-opencode-plugin.ps1` → `scripts/install-opencode-plugin.mjs` → `installOpencodePlugin()`:
 
 1. **Builds** core (`@veewo/claw-core`) and CLI (`@veewo/claw`) from source.
-2. **Stages** the adapter source with `syncSharedSkills` — overwrites shared skill packages (`planning`, `config`, `create-claw-skill`, `knowledge-writer`) from `shared/skills/`. The OpenCode `update` skill remains adapter-owned because its workflow is host-specific.
+2. **Stages** allowlisted adapter runtime plus the canonical skill packages selected by `skill-inputs.json` in an isolated artifact. `assembleSkills` copies full packages into artifact `skills/`, never back into source. The installed flat layout is unchanged; OpenCode `update` remains host-owned.
 3. **Copies plugin payload** to `~/.config/opencode/plugins/claw-kit/`:
    - `plugin/` — the TypeScript plugin entry
    - `skills/` — all skill folders (shared + adapter-local)
@@ -33,7 +33,7 @@ The plugin payload in `plugins/claw-kit/` is a **copy**, not a symlink. Every co
 ## When to update
 
 - After `claw context` startup recovery detects a newer published version.
-- After pulling/merging changes to `packages/opencode-adapter/` or `shared/skills/`.
+- After pulling/merging changes to `packages/opencode-adapter/` or canonical public skill inputs.
 - After building new core/CLI artifacts that the plugin depends on.
 - Before validating a new workflow feature that relies on plugin event handlers.
 
@@ -55,7 +55,8 @@ After install, verify each surface:
    - `~/.config/opencode/agent/claw-knowledge-writer.md` (finalization worker)
    - `~/.config/opencode/plugins/claw-kit/agents/claw-knowledge-writer.md`
 4. **Key skills exist**:
-   - `~/.config/opencode/skills/knowledge-writer/SKILL.md`
+   - `~/.config/opencode/skills/feature-architecture/SKILL.md`
+   - Internal `knowledge-writer` and `delegate-writer` must not appear as public discovery skills; their governance resources are owned by Core.
    - `~/.config/opencode/skills/using-claw-kit/SKILL.md`
    - `~/.config/opencode/skills/update/SKILL.md`
 5. **Workflow guidance** — `~/.config/opencode/plugins/claw-kit/workflow-guidance.opencode.json` has no `delegates` field (removed in the new flow).

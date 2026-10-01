@@ -12,8 +12,11 @@ dispatch.
 
 Run two independent lanes:
 
-1. a Codex main session for the Shell + bridge path;
-2. a non-Codex main session, such as DeepSeek, for the Ghost path.
+1. a Cindy main session using a Codex model/provider;
+2. a Cindy main session using a non-Codex model/provider, such as DeepSeek.
+
+Both lanes must report `platform: cindy` and use the Cindy Ghost gateway. Model
+selection must never switch the workflow host to Codex or select its fixed driver.
 
 Dispatch both lanes in the same controller run. Do not end the controller turn
 after creating only the first lane. Give each lane a unique title, marker, and
@@ -125,8 +128,9 @@ After both lanes finish, or when the user references them:
 
 1. Read its session metadata and complete user, assistant, tool-use, and
    tool-result history with `cindy_helper.get_chat_history`.
-2. Confirm the Codex lane used the Codex route and the non-Codex lane used the
-   Ghost route. A different route invalidates that lane.
+2. Confirm both model lanes received the Cindy platform declaration and used
+   the Cindy Ghost route. A Codex model must not call `claw codex invoke` or
+   create a Codex-host plan; either wrong-host route invalidates that lane.
 3. Take `planPath` and `finalizeId` from real lifecycle results. Never derive
    or reconstruct them.
 4. Inspect that exact task directory:

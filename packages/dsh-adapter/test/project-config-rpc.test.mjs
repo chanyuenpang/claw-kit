@@ -34,3 +34,32 @@ test("project config RPC rejects path injection and delegates only resolved work
   assert.deepEqual(accepted, { ok: true, value: { ok: true, path: "var.flag" } });
   assert.deepEqual(received, { argv: ["config", "get", "--layer", "personal", "--key", "var.flag"], cwd: root });
 });
+
+test("project config RPC accepts the DSH 0.2 synchronous registry and direct get", async () => {
+  const root = project();
+  let listCalls = 0;
+  const registry = {
+    list: () => { listCalls++; return [{ id: "dsh-020", title: "DSH 0.2", path: root }]; },
+    get: (id) => id === "dsh-020" ? { id, title: "DSH 0.2", path: root } : undefined,
+  };
+  const listed = await handleProjectConfigRpc("list", {}, registry, async () => ({ text: "{}", errText: "" }));
+  assert.deepEqual(listed, { ok: true, value: { items: [{ workspaceId: "dsh-020", title: "DSH 0.2" }] } });
+  const fetched = await handleProjectConfigRpc("get", { workspaceId: "dsh-020", layer: "team", key: "planning" }, registry, async () => ({ text: "{}", errText: "" }));
+  assert.equal(fetched.ok, true);
+  assert.equal(listCalls, 1, "get should use the DSH 0.2 direct registry lookup");
+});
+
+test("project config RPC failures satisfy the DSH 0.2 error envelope", async () => {
+  const result = await handleProjectConfigRpc("get", { workspaceId: "missing", layer: "team", key: "planning" }, {
+    list: () => [],
+    get: () => undefined,
+  }, async () => ({ text: "{}", errText: "" }));
+  assert.deepEqual(result, {
+    ok: false,
+    error: {
+      code: "WORKSPACE_NOT_REGISTERED",
+      message: "The requested workspace is not registered.",
+      details: {},
+    },
+  });
+});

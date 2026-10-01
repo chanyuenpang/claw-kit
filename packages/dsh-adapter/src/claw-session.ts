@@ -23,7 +23,7 @@ export type SubprocessLike = {
 };
 
 export type SubprocessHandleLike = {
-  readonly stdin?: { write(data: string): boolean; on?(event: "error", listener: (error: Error) => void): unknown };
+  readonly stdin?: { write(data: string): boolean; end(data?: string): void; on?(event: "error", listener: (error: Error) => void): unknown };
   readonly stdout?: Readable;
   readonly stderr?: Readable;
   readonly collected?: {

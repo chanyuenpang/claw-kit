@@ -19,13 +19,12 @@ update from proceeding.
 
 Resolve `<skill-dir>` as the directory containing this loaded `SKILL.md`.
 
-- When claw-kit is available, direct request: run
-  `claw plan create --template-file "<skill-dir>/TEMPLATE.json" --title "update"`.
-- When claw-kit is available, active parent task: run
-  `claw subplan create --parent <parent-task-name> --task-id <id>
-  --template-file "<skill-dir>/TEMPLATE.json"` and consume its goal handoff so
-  the active parent goal completes before the update subplan creates its own
-  goal.
+- When claw-kit is available, direct request: call `claw_run` operation
+  `plan.create` with `template_file: "<skill-dir>/TEMPLATE.json"` and `title: "update"`.
+- When claw-kit is available, active parent task: call `claw_run` operation
+  `subplan.create` with `parent`, `task_id`, and the same absolute `template_file`.
+  The adapter consumes Goal/progress effects; do not call goal tools or run
+  plan/task/subplan mutations in a shell.
 - When claw-kit is available, batch request: create one root task per target
   and run this template as the update task's subplan.
 
@@ -43,12 +42,14 @@ Resolve `<skill-dir>` as the directory containing this loaded `SKILL.md`.
   cannot drive the adapter.
 - Never use unpublished workspace files as the update source; use the npm
   registry (or the published GitHub source when separately authorized).
-- A new package version alone is not activation proof. The adapter activates
-  only after the DSH Host restarts and a real session mounts `claw_run`.
+- Resolve the authorized current profile; ask if unknown rather than assuming `web`.
+- A new package version alone is not activation proof. Restart requires separate
+  explicit authorization; otherwise defer activation checks until the owner
+  restarts and a real session mounts `claw_run`.
   Verify: `claw --version` is the target, `dsh --profile <name> --dump-config`
   shows the `claw-kit` row, and after restart the `claw_run` tool and the
-  seven bundled skills (using-claw-kit / researcher / planning / config /
-  create-claw-skill / claw-kit-doc / update) are present.
+  bundled skills declared by the installed package are present, including
+  feature-architecture and knowledge-capture; do not rely on an old fixed count.
 - Keep execution details in `TEMPLATE.json`; use `non-claw-fallback.md`
   whenever the claw harness is unavailable.
 

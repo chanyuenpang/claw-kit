@@ -4,11 +4,12 @@ description: Handoff Cindy adapter releases to the independent claw-kit-cindy-ad
 ---
 # Release Cindy plugin
 
-The Cindy adapter is independently released from
-`https://github.com/chanyuenpang/claw-kit-cindy-adapter`. Its checked-out
-`packages/cindy-adapter` submodule is the normal local worktree for that
-repository; do not require or create a second parallel clone. Do not modify
-the main claw-kit repository for a Cindy-only release.
+The Cindy adapter source is owned by `packages/cindy-adapter` in the main
+claw-kit repository. The existing independent marketplace repository
+`https://github.com/chanyuenpang/claw-kit-cindy-adapter` is an artifact-only
+delivery target, not a source submodule. Build the complete flat plugin with
+`npm run export:cindy-plugin -- --output-root <fresh-artifact-root>`; never
+copy generated skills back into source or publish the incomplete source subtree.
 
 Independent distribution does **not** create an independent version line.
 Before editing Cindy, resolve the CLI base version: use the authorized CLI
@@ -19,11 +20,12 @@ candidate in a multi-artifact release, or the currently published
 an older Cindy tag. Stop if the CLI base is not known or the resulting manifest
 does not share its first three segments.
 
-Open that repository (normally the submodule), follow its `RELEASING.md`, and
-release only there. Classify and commit the intended adapter changes on its
-`main`, push `origin/main`, then create and push the immutable `vcindy-*` tag
-at that exact commit. The adapter repository owns the tag, its Cindy-only
-marketplace manifest, and focused adapter verification. Do not build or upload
+Follow `packages/cindy-adapter/RELEASING.md`. Commit/review the intended source
+in main claw-kit, assemble from that exact revision, and verify the detached
+artifact. Only with publication authorization, deliver that complete tree to
+the independent artifact repository's `main`, then tag its artifact commit
+with immutable `vcindy-*`. Record source revision and artifact hash separately.
+The artifact repository owns the published tag and Cindy-only marketplace. Do not build or upload
 a `.cindy` archive for marketplace installation; custom-marketplace refresh,
 permission review, installation/update, and enabled-runtime verification are a
 separate boundary.

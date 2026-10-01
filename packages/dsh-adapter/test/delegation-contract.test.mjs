@@ -1,77 +1,70 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
+import { assembleSkills } from "../../../scripts/skill-artifacts.mjs";
 import { fileURLToPath } from "node:url";
 
-// The DSH delegation contract belongs to the skills that actually delegate:
-// `researcher` and `feature-architecture`. The general workflow entry
-// (`using-claw-kit`) carries none of it -- on DSH the knowledge finalizer is
-// dispatched by the adapter, so the main workflow path needs no delegation
-// capability at all. These are text assertions on purpose: the contract IS
-// text, and the failure they protect against (a model reading a host-agnostic
-// "wait for completion" and choosing the one DSH form that destroys reuse) is
-// a wording failure.
+// Check the installed shape in a fresh artifact, not removed source mirrors.
+const sourceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const artifactRoot = fs.mkdtempSync(path.join(os.tmpdir(), "claw-dsh-delegation-"));
+after(() => fs.rmSync(artifactRoot, { recursive: true, force: true }));
+await assembleSkills({ sourceRoot, targetHost: "dsh", outputRoot: artifactRoot });
+const readSkill = (name, file = "SKILL.md") =>
+  fs.readFileSync(path.join(artifactRoot, "skills", name, file), "utf8");
+const researcher = readSkill("researcher");
+const architect = readSkill("feature-architecture");
+const researchHost = readSkill("researcher", "references/host-execution.md");
+const architectureHost = readSkill("feature-architecture", "references/host-execution.md");
+const dshSection = (text) => {
+  const section = text.split("## DSH\n")[1]?.split("\n## ")[0];
+  assert.ok(section, "the package must include a DSH execution route");
+  return section;
+};
 
-const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const read = (...segments) => fs.readFileSync(path.join(packageRoot, ...segments), "utf8");
-
-const researcher = read("skills", "researcher", "SKILL.md");
-const usingClawKit = read("skills", "using-claw-kit", "SKILL.md");
-const featureArchitecture = read("skills", "feature-architecture", "SKILL.md");
-const featureArchitectureSource = fs.readFileSync(
-  path.resolve(packageRoot, "..", "..", "shared", "skills", "feature-architecture", "SKILL.md"),
-  "utf8",
-);
-const builtPlugin = read("lib", "index.js");
-
-test("the researcher skill carries the DSH delegation contract itself", () => {
-  assert.match(researcher, /## Host routing/);
-  assert.match(researcher, /delegateSubagents:/);
-  assert.match(researcher, /preferReuse: true/);
-  assert.match(researcher, /closePolicy: keep_open_for_reuse/);
-  // The retired framing: delegation was "optional" and background was a
-  // preference, which is how a foreground run became the default.
-  assert.doesNotMatch(researcher, /DSH delegation \(optional\)/);
-  assert.doesNotMatch(researcher, /prefer `run_in_background: true`/);
+test("role contracts preserve bounded assignment and prevent recursive dispatch", () => {
+  assert.match(researcher, /worker: readonly/);
+  assert.match(researcher, /do not delegate again/);
+  assert.match(researcher, /Before every dispatch or reuse assignment/);
+  assert.match(architect, /不得再次委派/);
+  assert.match(architect, /包括向复用的子代理或 Worker 派送新任务/);
+  for (const skill of [researcher, architect]) {
+    assert.match(skill, /fork_context: false/);
+    assert.match(skill, /waitForCompletion: true/);
+    assert.match(skill, /skillPath:/);
+    assert.match(skill, /hostRoute:/);
+  }
 });
 
-test("the researcher contract names the durable form, the reuse sequence and the fallback", () => {
-  assert.match(researcher, /list_agents/);
-  assert.match(researcher, /send_message/);
-  assert.match(researcher, /omitting[\s\S]{0,24}run_in_background/);
-  assert.match(researcher, /Never pass `run_in_background: false`/);
-  assert.match(researcher, /session-scoped and best-effort/);
-  assert.match(researcher, /UNAUTHORIZED/);
-  assert.match(researcher, /NOT_RESUMABLE/);
-  assert.match(researcher, /Enumerable is not\s+reusable/);
+test("DSH distinguishes background jobs, continuable children and user-authorized Teams", () => {
+  for (const host of [researchHost, architectureHost]) {
+    const dsh = dshSection(host);
+    for (const capability of ["background", "jobId", "job_output", "continuable", "subagentId", "send_message", "foreground"]) {
+      assert.ok(dsh.includes(capability), `missing result-kind handling: ${capability}`);
+    }
+    assert.match(dsh, /list_agents.*Agent Teams members/);
+    assert.match(dsh, /explicit(?:ly)?[\s\S]{0,40}(?:user request|asks for Agent Teams)/);
+    assert.doesNotMatch(dsh, /`idle`|`ready`|Never pass `run_in_background: false`/);
+  }
 });
 
-test("feature-architecture routes delegation per host, naming the DSH form", () => {
-  assert.match(featureArchitectureSource, /list_agents/);
-  assert.match(featureArchitectureSource, /send_message/);
-  assert.match(featureArchitectureSource, /spawn_agent/);
-  assert.match(featureArchitectureSource, /wait_agent/);
-  assert.match(featureArchitectureSource, /run_in_background/);
-  assert.match(featureArchitectureSource, /UNAUTHORIZED/);
-  assert.match(featureArchitectureSource, /NOT_RESUMABLE/);
-  // The synced copy the model actually reads must carry the same routing.
-  assert.match(featureArchitecture, /list_agents/);
-  assert.match(featureArchitecture, /run_in_background/);
+test("architecture keeps sources readonly and grants only the task report directory", () => {
+  assert.match(architect, /taskDir:.*task 绝对目录/);
+  assert.match(architect, /reportDir: taskDir\/feature-architecture\//);
+  assert.match(architect, /无 activeWorkflow 时两者都为 null，不创建目录或文件/);
+  assert.match(architect, /源代码和项目资料只读/);
+  assert.match(architect, /唯一允许的写入是一份 reportDir 内的设计报告/);
+  assert.match(architect, /不要自动优先读取项目 \.agents 同名副本/);
 });
 
-test("the general workflow entry carries no delegation capability", () => {
-  assert.doesNotMatch(usingClawKit, /## 委派与复用/);
-  assert.doesNotMatch(usingClawKit, /dsh-delegation-contract/);
-  assert.doesNotMatch(usingClawKit, /run_in_background/);
-  assert.doesNotMatch(usingClawKit, /list_agents/);
-});
-
-test("no surface still points at the retired using-claw-kit references file", () => {
-  assert.doesNotMatch(builtPlugin, /dsh-delegation-contract/);
-  assert.equal(
-    fs.existsSync(path.join(packageRoot, "skills", "using-claw-kit", "references")),
-    false,
-    "the misplaced contract file must be gone",
-  );
+test("DSH context, recall and report references stay on the native adapter", () => {
+  const dsh = dshSection(architectureHost);
+  for (const operation of ["context", "search", "plan.edit"]) {
+    assert.ok(dsh.includes(`operation: "${operation}"`), `missing native ${operation} route`);
+  }
+  assert.match(dsh, /references: \[/);
+  assert.match(dsh, /adapter owns progress and goal synchronization/);
+  assert.match(dshSection(researchHost), /operation: "search"/);
+  assert.doesNotMatch(dsh, /claw plan edit|claw context|claw search --query/);
 });

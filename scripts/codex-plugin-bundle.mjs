@@ -4,19 +4,15 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const CODEX_PLUGIN_PAYLOAD_PATHS = [
-  ".codex-plugin",
-  "assets",
-  "hooks",
-  "references",
-  "scripts",
-  "skills",
-  "package.json",
-];
+import { assertArtifactOutput, assembleSkills } from "./skill-artifacts.mjs";
 
+export const CODEX_PLUGIN_PAYLOAD_PATHS = [
+  ".codex-plugin", "assets", "hooks", "references", "scripts", "skills",
+  "package.json", "skill-inputs.json",
+];
+const runtimePaths = CODEX_PLUGIN_PAYLOAD_PATHS.filter((entry) => entry !== "skills");
 const thisDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(thisDir, "..");
-const defaultSourceDir = path.join(repoRoot, "packages", "codex-adapter");
 const defaultBundleOutDir = path.join(repoRoot, "dist", "codex-plugin");
 const defaultCacheRoot = path.join(os.homedir(), ".codex", "plugins", "cache", "claw-kit");
 const defaultCodexConfigPath = path.join(os.homedir(), ".codex", "config.toml");
@@ -46,13 +42,13 @@ function shouldCopyEntry(sourcePath) {
     && path.basename(sourcePath) !== "code-mode-host-action-consumer.mjs";
 }
 
-async function copyDirectoryContents(sourceDir, destinationDir) {
+async function copyDirectoryContents(sourceDir, destinationDir, filterRuntime = true) {
   await fs.mkdir(destinationDir, { recursive: true });
   const entries = await fs.readdir(sourceDir, { withFileTypes: true });
 
   for (const entry of entries) {
     const sourcePath = path.join(sourceDir, entry.name);
-    if (!shouldCopyEntry(sourcePath)) {
+    if (filterRuntime && !shouldCopyEntry(sourcePath)) {
       continue;
     }
 
@@ -61,10 +57,11 @@ async function copyDirectoryContents(sourceDir, destinationDir) {
       throw new Error(`Codex plugin payload must not contain symbolic links: ${sourcePath}`);
     }
     if (entry.isDirectory()) {
-      await copyDirectoryContents(sourcePath, destinationPath);
+      await copyDirectoryContents(sourcePath, destinationPath, filterRuntime);
       continue;
     }
 
+    if (!entry.isFile()) throw new Error(`Codex payload must contain regular files: ${sourcePath}`);
     await fs.copyFile(sourcePath, destinationPath);
   }
 }
@@ -80,7 +77,7 @@ async function copyPayloadTree(sourceDir, destinationDir, payloadRelativePaths) 
       throw new Error(`Codex plugin payload must not contain symbolic links: ${sourcePath}`);
     }
     if (sourceStat.isDirectory()) {
-      await copyDirectoryContents(sourcePath, destinationPath);
+      await copyDirectoryContents(sourcePath, destinationPath, relativePath !== "skills");
       continue;
     }
 
@@ -103,11 +100,12 @@ async function collectPayloadHashes(rootDir, payloadRelativePaths) {
     if (stat.isDirectory()) {
       for (const entry of await fs.readdir(absolutePath, { withFileTypes: true })) {
         const childAbsolute = path.join(absolutePath, entry.name);
-        if (!shouldCopyEntry(childAbsolute)) continue;
+        if (relativePath.split(path.sep)[0] !== "skills" && !shouldCopyEntry(childAbsolute)) continue;
         await visit(childAbsolute, path.join(relativePath, entry.name));
       }
       return;
     }
+    if (!stat.isFile()) throw new Error(`Codex payload must contain regular files: ${absolutePath}`);
     const content = await fs.readFile(absolutePath);
     hashes.set(
       relativePath.replaceAll("\\", "/"),
@@ -122,7 +120,7 @@ async function collectPayloadHashes(rootDir, payloadRelativePaths) {
 
 async function validateCopiedPayload(plugin, destinationDir) {
   const manifest = await readJson(path.join(destinationDir, ".codex-plugin", "plugin.json"));
-  await readJson(path.join(destinationDir, "hooks", "hooks.json"));
+  await readCodexPluginSource({ sourceDir: destinationDir });
   if (manifest.name !== plugin.name || manifest.version !== plugin.version) {
     throw new Error("Copied Codex plugin manifest identity does not match its source.");
   }
@@ -169,46 +167,98 @@ async function replaceDirectoryAtomic(destinationDir, buildStaging, testHooks) {
   }
 }
 
-export async function readCodexPluginSource({ sourceDir = defaultSourceDir } = {}) {
+/** Read a complete detached artifact, never an adapter source mirror. */
+export async function readCodexPluginSource({ sourceDir } = {}) {
+  if (!sourceDir) throw new Error("sourceDir must name a composed Codex artifact; use sourceRoot with export/install to build from source.");
+  sourceDir = path.resolve(sourceDir);
+  for (const relativePath of CODEX_PLUGIN_PAYLOAD_PATHS) await assertPayloadExists(sourceDir, relativePath);
   const manifestPath = path.join(sourceDir, ".codex-plugin", "plugin.json");
   const manifest = await readJson(manifestPath);
-
-  for (const relativePath of CODEX_PLUGIN_PAYLOAD_PATHS) {
-    await assertPayloadExists(sourceDir, relativePath);
+  if (manifest.skills !== "./skills/") throw new Error("Codex artifact must retain the installed ./skills/ interface.");
+  if (!/^[a-z0-9-]+$/.test(manifest.name ?? "") || !/^[a-zA-Z0-9.+-]+$/.test(manifest.version ?? "")) throw new Error("Invalid Codex artifact identity.");
+  const declaration = await readJson(path.join(sourceDir, "skill-inputs.json"));
+  const actual = (await fs.readdir(path.join(sourceDir, "skills"))).sort();
+  if (declaration.schemaVersion !== 1 || declaration.host !== "codex" || !Array.isArray(declaration.skills) ||
+      declaration.skills.length !== 9 || new Set(declaration.skills).size !== 9 || JSON.stringify(actual) !== JSON.stringify([...declaration.skills].sort())) {
+    throw new Error("Codex artifact must contain exactly its nine declared skill packages.");
   }
-
-  return {
-    sourceDir,
-    manifestPath,
-    manifest,
-    name: manifest.name,
-    version: manifest.version,
-    payloadRelativePaths: [...CODEX_PLUGIN_PAYLOAD_PATHS],
-  };
+  for (const name of actual) await assertPayloadExists(sourceDir, `skills/${name}/SKILL.md`);
+  const hooks = await readJson(path.join(sourceDir, "hooks", "hooks.json"));
+  for (const [event, script] of [["SessionStart", "session-start.mjs"], ["Stop", "knowledge-finalizer.mjs"]]) {
+    const hook = hooks.hooks?.[event]?.[0]?.hooks?.[0];
+    if (hook?.command !== `node "$PLUGIN_ROOT/scripts/${script}"` || hook?.commandWindows !== "node ${PLUGIN_ROOT}/scripts/" + script) throw new Error(`Invalid installed Codex ${event} hook.`);
+    await assertPayloadExists(sourceDir, `scripts/${script}`);
+  }
+  await collectPayloadHashes(sourceDir, CODEX_PLUGIN_PAYLOAD_PATHS);
+  return { sourceDir, manifestPath, manifest, name: manifest.name, version: manifest.version, payloadRelativePaths: [...CODEX_PLUGIN_PAYLOAD_PATHS] };
 }
 
-export async function exportCodexPluginBundle({ sourceDir = defaultSourceDir, outDir = defaultBundleOutDir } = {}) {
-  const plugin = await readCodexPluginSource({ sourceDir });
-  const bundleDir = path.join(outDir, plugin.name, plugin.version);
-  await replaceDirectoryAtomic(bundleDir, async (stagingDir) => {
-    await copyPayloadTree(plugin.sourceDir, stagingDir, plugin.payloadRelativePaths);
-    await validateCopiedPayload(plugin, stagingDir);
+async function withArtifact({ sourceRoot = repoRoot, sourceDir }, run) {
+  if (sourceDir) return run(await readCodexPluginSource({ sourceDir }));
+  sourceRoot = path.resolve(sourceRoot);
+  const stageRoot = await fs.mkdtemp(path.join(os.tmpdir(), "claw-kit-codex-stage-"));
+  try {
+    await assertArtifactOutput({ sourceRoot, outputRoot: stageRoot });
+    const adapterDir = path.join(sourceRoot, "packages", "codex-adapter");
+    for (const relative of runtimePaths) await assertPayloadExists(adapterDir, relative);
+    await copyPayloadTree(adapterDir, stageRoot, runtimePaths);
+    await assembleSkills({ sourceRoot, targetHost: "codex", outputRoot: stageRoot });
+    return await run(await readCodexPluginSource({ sourceDir: stageRoot }));
+  } finally {
+    await fs.rm(stageRoot, { recursive: true, force: true });
+  }
+}
+
+export async function exportCodexPluginBundle({ sourceRoot = repoRoot, sourceDir, outDir = defaultBundleOutDir } = {}) {
+  return withArtifact({ sourceRoot, sourceDir }, async (plugin) => {
+    const bundleDir = path.join(outDir, plugin.name, plugin.version);
+    await assertArtifactOutput({ sourceRoot: sourceDir ?? sourceRoot, outputRoot: bundleDir });
+    await replaceDirectoryAtomic(bundleDir, async (stagingDir) => {
+      await copyPayloadTree(plugin.sourceDir, stagingDir, plugin.payloadRelativePaths);
+      await validateCopiedPayload(plugin, stagingDir);
+    });
+    return { ...plugin, manifestPath: path.join(bundleDir, ".codex-plugin", "plugin.json"), sourceDir: sourceDir ?? undefined, sourceRoot: sourceDir ? undefined : path.resolve(sourceRoot), outDir, bundleDir };
   });
-  return { ...plugin, outDir, bundleDir };
 }
 
-export async function installCodexPluginBundle({
-  sourceDir = defaultSourceDir,
-  cacheRoot = defaultCacheRoot,
-  testHooks,
-} = {}) {
-  const plugin = await readCodexPluginSource({ sourceDir });
-  const installDir = path.join(cacheRoot, plugin.name, plugin.version);
-  await replaceDirectoryAtomic(installDir, async (stagingDir) => {
-    await copyPayloadTree(plugin.sourceDir, stagingDir, plugin.payloadRelativePaths);
-    await validateCopiedPayload(plugin, stagingDir);
-  }, testHooks);
-  return { ...plugin, cacheRoot, installDir };
+export async function installCodexPluginBundle({ sourceRoot = repoRoot, sourceDir, cacheRoot = defaultCacheRoot, testHooks } = {}) {
+  return withArtifact({ sourceRoot, sourceDir }, async (plugin) => {
+    const installDir = path.join(cacheRoot, plugin.name, plugin.version);
+    await assertArtifactOutput({ sourceRoot: sourceDir ?? sourceRoot, outputRoot: installDir });
+    await replaceDirectoryAtomic(installDir, async (stagingDir) => {
+      await copyPayloadTree(plugin.sourceDir, stagingDir, plugin.payloadRelativePaths);
+      await validateCopiedPayload(plugin, stagingDir);
+    }, testHooks);
+    return { ...plugin, manifestPath: path.join(installDir, ".codex-plugin", "plugin.json"), sourceDir: sourceDir ?? undefined, sourceRoot: sourceDir ? undefined : path.resolve(sourceRoot), cacheRoot, installDir };
+  });
+}
+
+/** Compose the existing Git marketplace layout without choosing a publication target. */
+export async function exportCodexMarketplace({ sourceRoot = repoRoot, outDir } = {}) {
+  if (!outDir) throw new Error("outDir is required for the isolated Codex marketplace artifact.");
+  const guarded = await assertArtifactOutput({ sourceRoot, outputRoot: outDir });
+  sourceRoot = guarded.sourceRoot;
+  outDir = guarded.outputRoot;
+  const catalogPath = path.join(sourceRoot, ".agents", "plugins", "marketplace.json");
+  for (let current = catalogPath; current !== sourceRoot; current = path.dirname(current)) {
+    if ((await fs.lstat(current)).isSymbolicLink()) throw new Error("Marketplace catalog path must not contain symbolic links.");
+  }
+  const catalog = await readJson(catalogPath);
+  const entry = catalog.plugins?.[0];
+  if (catalog.plugins?.length !== 1 || entry?.name !== "claw-kit" || entry.source?.source !== "local" || entry.source?.path !== "./packages/codex-adapter") {
+    throw new Error("Codex marketplace must retain its existing local adapter path.");
+  }
+  return withArtifact({ sourceRoot }, async (plugin) => {
+    await replaceDirectoryAtomic(outDir, async (stageRoot) => {
+      const catalogOutput = path.join(stageRoot, ".agents", "plugins", "marketplace.json");
+      await fs.mkdir(path.dirname(catalogOutput), { recursive: true });
+      await fs.copyFile(catalogPath, catalogOutput);
+      const pluginOutput = path.join(stageRoot, "packages", "codex-adapter");
+      await copyPayloadTree(plugin.sourceDir, pluginOutput, plugin.payloadRelativePaths);
+      await validateCopiedPayload(plugin, pluginOutput);
+    });
+    return { marketplaceDir: outDir, pluginDir: path.join(outDir, "packages", "codex-adapter"), version: plugin.version };
+  });
 }
 
 function setPluginEnabled(configText, identity, enabled) {

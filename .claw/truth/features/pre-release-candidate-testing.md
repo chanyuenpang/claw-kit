@@ -12,7 +12,7 @@
 - A fail-fast suite does not make unexecuted tail domains disappear. Isolate the reported failure, rerun its focused domain, and explicitly run skipped tail domains before reaching a readiness conclusion.
 - Timing- or environment-sensitive failures remain evidence until isolated. Do not delete, skip, weaken, or arbitrarily extend a test to obtain a green result. A fixed discovery-count baseline changes only when an intentionally added test proves that the expected count changed.
 - Artifact verification is proportional to the candidate surface: CLI/core changes use package-content smoke checks, while adapter changes use the matching bundle export and bundle tests.
-- Local candidate installation is optional and requires explicit user authorization. It uses a development identity: a workspace CLI link may represent the tested CLI, and Codex uses a local marketplace identity such as `claw-kit-local` while the official installation is preserved in disabled state.
+- Local candidate installation is optional and requires explicit user authorization. A workspace CLI link may represent the tested CLI. DSH package identity is immutable across published, unpublished, local, dirty, and development builds: npm name, bundle id and client factory id remain `@veewo/dsh-claw-kit`, and no export/build/install path may rewrite them to a `-dev` alias. Candidate provenance is carried by version/build metadata, absolute artifact path and digest, and the named local Profile. Codex may use a separate local marketplace identity such as `claw-kit-local` while its official marketplace installation remains preserved.
 - Local Codex verification compares source and cache manifests plus critical-file hashes. The current task cannot claim that a refreshed bundle is loaded; that requires a Codex restart and a new task.
 - The final result records the commands and affected domains, failure disposition, relevant artifacts or hashes, residual risk, and an explicit ready or not-ready conclusion without starting release.
 
@@ -36,11 +36,19 @@
 - `scripts/codex-plugin-bundle.mjs`
 - `scripts/codex-plugin-bundle.test.mjs`
 
+<!-- state: history -->
+## Evolution history
+
+<!-- dated: 2026-10-01 -->
+### Package-name mutation prohibited after collector outage
+
+A `@veewo/dsh-claw-kit-dev` local package left project-scoped report collectors pointing at the discarded canonical path, causing repeated knowledge finalizer claim failures. Candidate distinction moved entirely to provenance and version metadata; package identity is no longer a development-isolation mechanism.
+
 ## Search terms
 
 - `test-claw-kit`
 - `pre-release candidate testing`
 - `fail-fast tail domains`
-- `local development identity`
+- `canonical DSH npm identity`
 - `claw-kit-local`
 - `candidate readiness`

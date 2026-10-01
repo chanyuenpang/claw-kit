@@ -2,7 +2,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { syncSharedSkills } from "./sync-shared-skills.mjs";
+import { loadSkillInputs } from "./skill-artifacts.mjs";
+import { assertArtifactOutput, buildHostPluginArtifact, exportHostPluginArtifact, HOST_RUNTIME_PATHS } from "./host-plugin-artifacts.mjs";
 
 export const OPENCODE_PLUGIN_PAYLOAD_PATHS = [
   "plugin",
@@ -16,7 +17,6 @@ export const OPENCODE_PLUGIN_PAYLOAD_PATHS = [
 
 const thisDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(thisDir, "..");
-const defaultSourceDir = path.join(repoRoot, "packages", "opencode-adapter");
 const defaultBundleOutDir = path.join(repoRoot, "dist", "opencode-plugin");
 const defaultInstallDir = path.join(os.homedir(), ".config", "opencode");
 
@@ -49,6 +49,7 @@ async function copyDirectoryContents(sourceDir, destinationDir) {
   const entries = await fs.readdir(sourceDir, { withFileTypes: true });
   for (const entry of entries) {
     const sourcePath = path.join(sourceDir, entry.name);
+    if (entry.isSymbolicLink()) throw new Error("OpenCode payload contains a symlink: " + sourcePath);
     if (!shouldCopyEntry(sourcePath)) {
       continue;
     }
@@ -71,6 +72,7 @@ async function copyPayloadTree(sourceDir, destinationDir, payloadRelativePaths) 
     const sourcePath = path.join(sourceDir, relativePath);
     const destinationPath = path.join(destinationDir, relativePath);
     const sourceStat = await fs.lstat(sourcePath);
+    if (sourceStat.isSymbolicLink()) throw new Error("OpenCode payload contains a symlink: " + sourcePath);
     if (sourceStat.isDirectory()) {
       await copyDirectoryContents(sourcePath, destinationPath);
       continue;
@@ -85,42 +87,43 @@ async function copyPayloadTree(sourceDir, destinationDir, payloadRelativePaths) 
   }
 }
 
-export async function readOpencodePluginSource({ sourceDir = defaultSourceDir } = {}) {
+function resolveSource({ sourceRoot, sourceDir } = {}) {
+  const root = path.resolve(sourceRoot ?? repoRoot);
+  const expected = path.join(root, "packages", "opencode-adapter");
+  if (sourceDir && path.resolve(sourceDir) !== expected) {
+    throw new Error("Custom OpenCode sourceDir must match <sourceRoot>/packages/opencode-adapter; provide its explicit canonical --source-root.");
+  }
+  return { sourceRoot: root, sourceDir: expected };
+}
+
+export async function readOpencodePluginSource(options = {}) {
+  const { sourceRoot, sourceDir } = resolveSource(options);
   const manifestPath = path.join(sourceDir, "package.json");
   const manifest = await readJson(manifestPath);
-
-  for (const relativePath of OPENCODE_PLUGIN_PAYLOAD_PATHS) {
-    await assertPayloadExists(sourceDir, relativePath);
-  }
-
-  return {
-    sourceDir,
-    manifestPath,
-    manifest,
-    name: manifest.name,
-    version: manifest.version,
-    payloadRelativePaths: [...OPENCODE_PLUGIN_PAYLOAD_PATHS],
-  };
+  for (const relativePath of HOST_RUNTIME_PATHS.opencode) await assertPayloadExists(sourceDir, relativePath);
+  const inputs = await loadSkillInputs({ sourceRoot, targetHost: "opencode" });
+  return { sourceRoot, sourceDir, manifestPath, manifest, name: manifest.name, version: manifest.version, payloadRelativePaths: [...OPENCODE_PLUGIN_PAYLOAD_PATHS], skills: inputs.skills };
 }
 
-async function materializeOpencodePluginSource(sourceDir) {
+async function materializeOpencodePluginSource(options) {
+  const { sourceRoot } = resolveSource(options);
   const stagingRoot = await fs.mkdtemp(path.join(os.tmpdir(), "claw-kit-opencode-plugin-source-"));
   const stagedSourceDir = path.join(stagingRoot, "opencode-adapter");
-  await fs.cp(sourceDir, stagedSourceDir, { recursive: true });
-  await syncSharedSkills({ adapterDirs: [stagedSourceDir] });
-  return { stagedSourceDir, cleanup: () => fs.rm(stagingRoot, { recursive: true, force: true }) };
+  try {
+    const artifact = await buildHostPluginArtifact({ sourceRoot, targetHost: "opencode", outputRoot: stagedSourceDir });
+    return { stagedSourceDir, artifact, cleanup: () => fs.rm(stagingRoot, { recursive: true, force: true }) };
+  } catch (error) {
+    await fs.rm(stagingRoot, { recursive: true, force: true });
+    throw error;
+  }
 }
 
-export async function exportOpencodePluginBundle({ sourceDir = defaultSourceDir, outDir = defaultBundleOutDir } = {}) {
-  const staged = await materializeOpencodePluginSource(sourceDir);
-  try {
-    const plugin = await readOpencodePluginSource({ sourceDir: staged.stagedSourceDir });
-    const bundleDir = path.join(outDir, "claw-kit", plugin.version);
-    await copyPayloadTree(plugin.sourceDir, bundleDir, plugin.payloadRelativePaths);
-    return { ...plugin, outDir, bundleDir };
-  } finally {
-    await staged.cleanup();
-  }
+export async function exportOpencodePluginBundle({ sourceRoot, sourceDir, outDir = defaultBundleOutDir } = {}) {
+  const source = resolveSource({ sourceRoot, sourceDir });
+  const plugin = await readOpencodePluginSource(source);
+  const bundleDir = path.join(outDir, "claw-kit", plugin.version);
+  const artifact = await exportHostPluginArtifact({ sourceRoot: source.sourceRoot, targetHost: "opencode", outputRoot: bundleDir });
+  return { ...plugin, ...artifact, sourceDir: bundleDir, outDir, bundleDir };
 }
 
 const PLUGIN_DIR_NAME = "claw-kit";
@@ -181,10 +184,12 @@ async function installSkillsToDiscoveryDir(installDir, sourceDir) {
   return skillsDir;
 }
 
-export async function installOpencodePlugin({ sourceDir = defaultSourceDir, installDir = defaultInstallDir } = {}) {
-  const staged = await materializeOpencodePluginSource(sourceDir);
+export async function installOpencodePlugin({ sourceRoot, sourceDir, installDir = defaultInstallDir } = {}) {
+  const source = resolveSource({ sourceRoot, sourceDir });
+  await assertArtifactOutput({ sourceRoot: source.sourceRoot, outputRoot: installDir });
+  const staged = await materializeOpencodePluginSource(source);
   try {
-    const plugin = await readOpencodePluginSource({ sourceDir: staged.stagedSourceDir });
+    const plugin = { ...staged.artifact, sourceDir: staged.stagedSourceDir, name: staged.artifact.manifest.name, payloadRelativePaths: [...OPENCODE_PLUGIN_PAYLOAD_PATHS] };
 
     // Plugin directory: ~/.config/opencode/plugins/claw-kit/
     const pluginDir = path.join(installDir, "plugins", PLUGIN_DIR_NAME);
@@ -211,7 +216,7 @@ export async function installOpencodePlugin({ sourceDir = defaultSourceDir, inst
       }
     }
 
-    return { ...plugin, installDir, pluginDir, shimPath, skillsDir, agentDir };
+    return { ...plugin, sourceDir: pluginDir, outputRoot: pluginDir, installDir, pluginDir, shimPath, skillsDir, agentDir };
   } finally {
     await staged.cleanup();
   }

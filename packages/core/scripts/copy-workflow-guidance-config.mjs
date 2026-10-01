@@ -14,6 +14,9 @@ const knowledgeWriterSource = path.join(packageDir, "resources", "knowledge-writ
 const knowledgeWriterDest = path.join(packageDir, "dist", "src", "resources", "knowledge-writer");
 fs.rmSync(knowledgeWriterDest, { recursive: true, force: true });
 fs.cpSync(knowledgeWriterSource, knowledgeWriterDest, { recursive: true });
+// Public canonical format is an input, not a second generated source file.
+const knowledgeFormatSource = path.resolve(packageDir, "..", "..", ".agents", "skills", "claw-kit-doc", "references", "knowledge-format.md");
+fs.copyFileSync(knowledgeFormatSource, path.join(knowledgeWriterDest, "knowledge-format.md"));
 
 const docUpdaterSource = path.join(packageDir, "resources", "doc-updater");
 const docUpdaterDest = path.join(packageDir, "dist", "src", "resources", "doc-updater");

@@ -8,9 +8,11 @@ function readOption(name) {
 }
 
 const sourceDirOption = readOption("--source-dir");
+const sourceRootOption = readOption("--source-root");
 const installDirOption = readOption("--install-dir");
 
 const result = await installOpencodePlugin({
+  sourceRoot: sourceRootOption ? path.resolve(process.cwd(), sourceRootOption) : undefined,
   sourceDir: sourceDirOption ? path.resolve(process.cwd(), sourceDirOption) : undefined,
   installDir: installDirOption ? path.resolve(process.cwd(), installDirOption) : undefined,
 });

@@ -29,18 +29,16 @@ selection because a newer release can belong to another artifact family.
   version baseline does not complete or select another family.
 - Route testing, local packaging, and dry-run work to `test-claw-kit` unless
   publication authority is explicit.
-- Give Cindy release ownership to `release-cindy-plugin`: verify the committed
-  independent marketplace repository checked out at `packages/cindy-adapter`,
-  push its `main`, then tag that exact commit with `vcindy-*`; do not build an
-  archive or create a GitHub Release.
+- Give Cindy release ownership to release-cindy-plugin: maintain source in the main repository, assemble a complete detached ./plugin marketplace, and publish only that artifact to the existing claw-kit-cindy-adapter remote. Preserve its market URL and vcindy-* versioned delivery; never copy generated skills back into source. No archive or GitHub Release is required. Source commit, artifact commit and installed activation are distinct proof boundaries.
 - Do not publish a Cindy-specific update skill through Cindy's
   cross-application skill slot. Keep existing workflow entries unchanged in
-  this update-only decision. Keep Cindy's `claw-kit-doc` entry adapter-owned;
-  it selects the Cindy section from the shared documentation corpus and directs
+  this update-only decision. Keep Cindy's documentation route without adding an update registration;
+  entry ownership now follows the [shared-source decision](<shared-planning-skill-source.md>).
+  The complete multi-host documentation selects the actual host and directs
   users through Plugins → Market → Installed Markets → refresh, then back to
   Plugins for the confirmation-gated update.
 
-## Alternatives considered
+## Alternatives
 
 - Keep one combined release skill with per-platform rule files. Rejected because
   the entry contract would still own incompatible artifact and verification
@@ -48,6 +46,9 @@ selection because a newer release can belong to another artifact family.
 - Use a GitHub Release or prebuilt `.cindy` asset for Cindy update. Rejected
   because the current distribution owner is the repository marketplace and
   Cindy already packages verified source locally.
+
+- Keep Cindy source independent and choose a new artifact Git target/ref: rejected in favor of main-repository source consolidation and the existing artifact remote, avoiding a marketplace URL migration.
+- Treat local source migration/export as publication: rejected; the implemented migration did not alter remote history or activate a host.
 
 ## Consequences
 
@@ -64,6 +65,11 @@ selection because a newer release can belong to another artifact family.
 
 <!-- state: history -->
 ## Decision evolution
+
+<!-- dated: 2026-10-01 -->
+### Source consolidation without remote publication
+
+Cindy was formerly an independent source submodule. Source is now main-repository-owned while the existing remote is reserved for artifact-only delivery. Original Git metadata was preserved; the ownership change did not authorize or perform publication. Keeping the market URL avoids an installation migration while separating authoring from complete Git delivery.
 
 <!-- dated: 2026-08-05 -->
 ### Removed the Cindy-only updater from the global skill slot
@@ -90,7 +96,8 @@ The checked-out Cindy submodule is the independent marketplace repository worktr
 
 - `.agents/skills/release-claw-kit/SKILL.md`
 - `.agents/skills/release-cindy-plugin/`
-- `packages/cindy-adapter/plugin/skills/claw-kit-doc/references/update.md`
+- [Documentation source](<../../../.agents/skills/claw-kit-doc/references/update.md>)
+- [Artifact builder](<../../../scripts/cindy-plugin-artifact.mjs>)
 
 ## Search terms
 

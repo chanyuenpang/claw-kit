@@ -9,36 +9,29 @@ import {
   CODEX_PLUGIN_PAYLOAD_PATHS,
   activateOfficialCodexPluginIdentity,
   exportCodexPluginBundle,
+  exportCodexMarketplace,
   installCodexPluginBundle,
   readCodexPluginSource,
 } from "./codex-plugin-bundle.mjs";
-import { verifySharedSkillsSynced } from "./sync-shared-skills.mjs";
+import { loadSkillInputs } from "./skill-artifacts.mjs";
+
+const ADAPTER = "packages/codex-adapter";
+const sourceSkillPath = (name) => name === "update" ? `${ADAPTER}/skills/update`
+  : name === "knowledge-capture" ? "shared/skills/knowledge-capture" : `.agents/skills/${name}`;
+const artifactSkill = (root, name, ...parts) => path.join(root, "skills", name, ...parts);
+const skillUrl = (relative, root) => {
+  const [name, ...parts] = relative.split("/");
+  return new URL(`${sourceSkillPath(name)}/${parts.join("/")}`, root);
+};
 
 async function makeFixture() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "claw-kit-codex-plugin-"));
-  const sourceDir = path.join(root, "packages", "codex-adapter");
-
-  await fs.mkdir(path.join(sourceDir, ".codex-plugin"), { recursive: true });
-  await fs.mkdir(path.join(sourceDir, "assets"), { recursive: true });
-  await fs.mkdir(path.join(sourceDir, "hooks"), { recursive: true });
-  await fs.mkdir(path.join(sourceDir, "references"), { recursive: true });
-  await fs.mkdir(path.join(sourceDir, "scripts"), { recursive: true });
-  await fs.mkdir(path.join(sourceDir, "skills"), { recursive: true });
-
-  await fs.writeFile(
-    path.join(sourceDir, ".codex-plugin", "plugin.json"),
-    JSON.stringify({ name: "claw-kit", version: "0.1.41+codex.test" }, null, 2),
-  );
-  await fs.writeFile(path.join(sourceDir, "assets", "icon.png"), "fixture icon");
-  await fs.writeFile(path.join(sourceDir, "hooks", "hooks.json"), '{"ok":true}');
-  await fs.writeFile(path.join(sourceDir, "references", "note.md"), "# note");
-  await fs.writeFile(path.join(sourceDir, "scripts", "helper.mjs"), "export const ok = true;\n");
-  await fs.writeFile(path.join(sourceDir, "skills", "SKILL.md"), "# skill");
-  await fs.mkdir(path.join(sourceDir, "skills", "config"), { recursive: true });
-  await fs.writeFile(path.join(sourceDir, "skills", "config", "SKILL.md"), "# config skill");
-  await fs.writeFile(path.join(sourceDir, "skills", "config", "TEMPLATE.json"), '{"id":"config-default","status":"process.active","tasks":[]}');
-  await fs.writeFile(path.join(sourceDir, "package.json"), '{"name":"@claw-kit/codex-adapter"}');
-
+  const result = await exportCodexPluginBundle({ outDir: path.join(root, "composed") });
+  const sourceDir = result.bundleDir;
+  const manifest = JSON.parse(await fs.readFile(path.join(sourceDir, ".codex-plugin/plugin.json"), "utf8"));
+  await fs.writeFile(path.join(sourceDir, ".codex-plugin/plugin.json"), JSON.stringify({ ...manifest, version: "0.1.41+codex.test" }, null, 2));
+  await fs.writeFile(artifactSkill(sourceDir, "config", "SKILL.md"), "# config skill");
+  await fs.writeFile(artifactSkill(sourceDir, "config", "TEMPLATE.json"), JSON.stringify({ id: "config-default", status: "process.active", tasks: [] }));
   return { root, sourceDir };
 }
 
@@ -71,88 +64,103 @@ test("Codex plugin starter prompt invokes the main workflow skill", async () => 
   assert.doesNotMatch(promptText, /seeded planning task|claw plan start|claw task done|claw plan done/i);
 });
 
-test("Codex entry keeps knowledge routing separate from Goal Mode readiness", async () => {
-  const adapterRoot = new URL("../packages/codex-adapter/", import.meta.url);
-  const skill = await fs.readFile(new URL("skills/using-claw-kit/SKILL.md", adapterRoot), "utf8");
-  const manifest = await fs.readFile(new URL(".codex-plugin/plugin.json", adapterRoot), "utf8");
-  const contract = `${skill}\n${manifest}`;
+test("Codex shared entry orders recovery, template ownership and new planning", async () => {
+  const adapterRoot = new URL("../", import.meta.url);
+  const entry = await fs.readFile(skillUrl("using-claw-kit/SKILL.md", adapterRoot), "utf8");
+  const host = await fs.readFile(skillUrl("using-claw-kit/references/hosts/codex.md", adapterRoot), "utf8");
 
-  assert.match(contract, /reusable project knowledge/i);
-  assert.match(contract, /process\.discussing/i);
-  assert.match(contract, /downstream tasks are explicit/i);
-  assert.match(contract, /handoff-ready|hand off execution/i);
-  assert.match(skill, /stable cross-turn state/i);
-  assert.match(skill, /convert it to `(?:process\.)?wait`/i);
-  assert.match(skill, /When a terminal plan mutation returns a valid `knowledgeDispatch`/i);
-  assert.doesNotMatch(skill, /session scope/i);
+  assert.match(entry, /references\/hosts\/codex\.md/);
+  assert.match(entry, /active adapter and actual tools/i);
+  assert.match(entry, /do not\s+create another plan/i);
+  const recovery = entry.indexOf("Recovery first");
+  const template = entry.indexOf("Template owner before generic plan");
+  const creation = entry.indexOf("Otherwise create a plan");
+  assert.ok(recovery >= 0 && template > recovery && creation > template, "recover before selecting template or generic plan");
+  assert.match(entry, /reusable project\s+knowledge/i);
+  assert.match(entry, /workflowGuidance/);
+  assert.match(entry, /commandHints/);
+  assert.match(host, /SessionStart recovery before creating any plan/);
+  assert.match(host, /explicit user goal\s+change\/replacement\/cancellation/);
+  assert.match(host, /Otherwise run `plan sync` through the bridge/);
 });
 
-test("Codex entry stays compact without dropping guidance, lifecycle, or the mutation bridge", async () => {
-  const skill = await fs.readFile(
-    new URL("../packages/codex-adapter/skills/using-claw-kit/SKILL.md", import.meta.url),
-    "utf8",
-  );
-  const lineCount = skill.trimEnd().split(/\r?\n/).length;
+test("Codex routed reference preserves lifecycle and the exact mutation bridge", async () => {
+  const adapterRoot = new URL("../", import.meta.url);
+  const entry = await fs.readFile(skillUrl("using-claw-kit/SKILL.md", adapterRoot), "utf8");
+  const host = await fs.readFile(skillUrl("using-claw-kit/references/hosts/codex.md", adapterRoot), "utf8");
+  const manifest = JSON.parse(await fs.readFile(new URL("packages/codex-adapter/.codex-plugin/plugin.json", adapterRoot), "utf8"));
 
-  assert.ok(lineCount >= 50 && lineCount <= 105, `expected 50-105 lines, received ${lineCount}`);
-  assert.match(skill, /## First Action/i);
-  assert.match(skill, /skip this skill and work directly/i);
-  assert.match(skill, /argv: \["plan", "create", "<title>"\]/i);
-  assert.match(skill, /follow that skill's entry route so it supplies its adjacent template file/i);
-  assert.equal((skill.match(/workflowGuidance/g) ?? []).length, 1);
-  assert.match(skill, /`commandHints`/);
-  assert.doesNotMatch(skill, /current prompt contains/i);
-  assert.match(skill, /Keep claw harness mechanics out of normal thread replies/i);
-  assert.doesNotMatch(skill, /recovered `workflowGuidance`|If a recovered|workflow recovery|claw context|claw search/i);
-  assert.match(skill, /SessionStart recovers an active session-bound plan, first determine whether the current user request explicitly changes, replaces, or cancels its goal/i);
-  assert.match(skill, /otherwise, run `plan sync`/i);
   for (const state of ["process.discussing", "process.active", "process.wait", "end.completed"]) {
-    assert.match(skill, new RegExp(state.replace(".", "\\."), "i"));
+    assert.ok(entry.includes(state), `missing shared lifecycle boundary: ${state}`);
   }
-  assert.doesNotMatch(skill, /^\s*-\s*`?done`?:/im);
-  assert.match(skill, /```javascript[\s\S]*runClawPlanMutation[\s\S]*```/i);
-  assert.doesNotMatch(skill, /Core execution chain|Detailed call flow|claw plan start|claw task done|claw plan done/i);
+  assert.match(entry, /do not implement, enter Goal Mode, convert\s+discussion to wait, or close before it is settled/);
+  assert.match(entry, /Keep harness mechanics out of normal replies/);
+  assert.match(host, /argv: \["plan", "create", "<title>"\]/);
+  assert.match(host, /```javascript[\s\S]*runClawPlanMutation[\s\S]*```/);
+  assert.match(host, /claw-kit:codex-driver:v22:s1/);
+  assert.match(host, /envelope\?\.driverVersion !== 22/);
+  assert.match(host, /envelope\?\.hostActionSchemaVersion !== 1/);
+  assert.ok(host.includes(`const pluginVersion = "${manifest.version}";`), "bridge pins its published adapter version");
+  assert.match(host, /no direct-call fallback/);
+  assert.match(host, /must never call `get_goal` separately/);
+  assert.match(host, /goalRecovery\.command/);
 });
 
 test("Codex main-agent bundle exposes only structured internal closeout dispatch", async () => {
-  const adapterRoot = new URL("../packages/codex-adapter/", import.meta.url);
-  const skill = await fs.readFile(
-    new URL("skills/using-claw-kit/SKILL.md", adapterRoot),
-    "utf8",
-  );
+  const adapterRoot = new URL("../", import.meta.url);
+  const entry = await fs.readFile(skillUrl("using-claw-kit/SKILL.md", adapterRoot), "utf8");
+  const host = await fs.readFile(skillUrl("using-claw-kit/references/hosts/codex.md", adapterRoot), "utf8");
+  const skill = `${entry}\n${host}`;
   const reference = await fs.readFile(
-    new URL("references/workflow-guidance-consumption.md", adapterRoot),
+    new URL("packages/codex-adapter/references/workflow-guidance-consumption.md", adapterRoot),
     "utf8",
   );
-  const manifest = await fs.readFile(new URL(".codex-plugin/plugin.json", adapterRoot), "utf8");
+  const manifest = await fs.readFile(new URL("packages/codex-adapter/.codex-plugin/plugin.json", adapterRoot), "utf8");
   const forbidden = /truth-writer|adr-writer|knowledge-writer|writer delegation|deposition|delegated subagents?|dispatch[^\n]*subagent/i;
 
-  assert.doesNotMatch(skill, /truth-writer|adr-writer|claw-kit:knowledge-writer|claw-kit:delegate-writer|deposition/i);
+  assert.doesNotMatch(skill, /truth-writer|adr-writer|claw-kit:knowledge-writer|claw-kit:delegate-writer/i);
   assert.match(skill, /knowledgeDispatch/);
-  assert.match(skill, /spawn_agent/);
+  assert.match(host, /spawn_agent/);
+  assert.match(host, /for that exact `finalizeId`/);
+  assert.match(host, /Do not reuse a worker/);
+  assert.match(host, /immediately end the main turn after the accepted handoff/);
+  assert.match(host, /Do not wait for the new writer/);
   assert.doesNotMatch(reference, forbidden);
   assert.doesNotMatch(manifest, forbidden);
-  await assert.rejects(fs.access(new URL("skills/delegate-writer/SKILL.md", adapterRoot)));
-  await assert.rejects(fs.access(new URL("skills/knowledge-writer/SKILL.md", adapterRoot)));
-  await assert.rejects(fs.access(new URL("skills/truth-writer/SKILL.md", adapterRoot)));
-  await assert.rejects(fs.access(new URL("skills/adr-writer/SKILL.md", adapterRoot)));
-  await assert.rejects(fs.access(new URL("skills/search-workflow/SKILL.md", adapterRoot)));
-  await assert.rejects(fs.access(new URL("skills/init/SKILL.md", adapterRoot)));
+  await assert.rejects(fs.access(skillUrl("delegate-writer/SKILL.md", adapterRoot)));
+  await assert.rejects(fs.access(skillUrl("knowledge-writer/SKILL.md", adapterRoot)));
+  await assert.rejects(fs.access(skillUrl("truth-writer/SKILL.md", adapterRoot)));
+  await assert.rejects(fs.access(skillUrl("adr-writer/SKILL.md", adapterRoot)));
+  await assert.rejects(fs.access(skillUrl("search-workflow/SKILL.md", adapterRoot)));
+  await assert.rejects(fs.access(skillUrl("init/SKILL.md", adapterRoot)));
+});
+
+test("Codex role recall does not send search through the mutation driver", async () => {
+  const adapterRoot = new URL("../", import.meta.url);
+  for (const role of ["researcher", "feature-architecture"]) {
+    const host = await fs.readFile(skillUrl(`${role}/references/host-execution.md`, adapterRoot), "utf8");
+    const codex = host.split("## Codex\n")[1]?.split("\n## ")[0];
+    assert.ok(codex, `${role} has a Codex route`);
+    assert.match(codex, /claw search --query/);
+    assert.match(codex, /permitted Codex shell tool/);
+    assert.match(codex, /not search/);
+    assert.doesNotMatch(codex, /argv: \["search"/);
+  }
 });
 
 test("Codex plugin exposes an explicit same-agent knowledge-capture skill", async () => {
-  const adapterRoot = new URL("../packages/codex-adapter/", import.meta.url);
-  const skill = await fs.readFile(new URL("skills/knowledge-capture/SKILL.md", adapterRoot), "utf8");
+  const adapterRoot = new URL("../", import.meta.url);
+  const skill = await fs.readFile(skillUrl("knowledge-capture/SKILL.md", adapterRoot), "utf8");
   assert.match(skill, /name: knowledge-capture/);
   assert.match(skill, /user explicitly asks/i);
   assert.match(skill, /Never invoke automatically/i);
   assert.match(skill, /run-knowledge-capture\.mjs" prepare --source agent-memory/i);
   assert.match(skill, /run-knowledge-capture\.mjs" complete --source agent-memory/i);
   assert.doesNotMatch(skill, /`claw knowledge (prepare|complete)/i);
-  const runtime = JSON.parse(await fs.readFile(new URL("skills/knowledge-capture/runtime.json", adapterRoot), "utf8"));
+  const runtime = JSON.parse(await fs.readFile(skillUrl("knowledge-capture/runtime.json", adapterRoot), "utf8"));
   const rootPackage = JSON.parse(await fs.readFile(new URL("../package.json", import.meta.url), "utf8"));
   assert.deepEqual(runtime, { schemaVersion: 1, package: "@veewo/claw", version: rootPackage.version });
-  await fs.access(new URL("skills/knowledge-capture/scripts/run-knowledge-capture.mjs", adapterRoot));
+  await fs.access(skillUrl("knowledge-capture/scripts/run-knowledge-capture.mjs", adapterRoot));
   assert.match(skill, /Do not create a plan, report, subplan.*subagent/i);
   assert.doesNotMatch(skill, /spawn_agent|create_thread|knowledgeDispatch/);
 });
@@ -209,7 +217,7 @@ test("hidden built-in knowledge contract enforces trusted evidence and cross-doc
 });
 
 test("Codex plugin source includes the config skill entrypoint", async () => {
-  const skillPath = new URL("../shared/skills/config/SKILL.md", import.meta.url);
+  const skillPath = new URL("../.agents/skills/config/SKILL.md", import.meta.url);
   const skillText = await fs.readFile(skillPath, "utf8");
 
   assert.match(skillText, /name: config/);
@@ -224,44 +232,44 @@ test("exported Codex plugin contains every shared workflow and documentation ski
   const result = await exportCodexPluginBundle({ outDir });
 
   for (const skillName of ["planning", "config", "update", "create-claw-skill", "feature-architecture", "claw-kit-doc"]) {
-    await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", skillName, "SKILL.md")));
+    await assert.doesNotReject(fs.access(artifactSkill(result.bundleDir, skillName, "SKILL.md")));
   }
-  await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "knowledge-capture", "SKILL.md")));
+  await assert.doesNotReject(fs.access(artifactSkill(result.bundleDir, "knowledge-capture", "SKILL.md")));
   for (const referenceName of ["update.md", "configuration.md", "knowledge-format.md"]) {
-    await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "claw-kit-doc", "references", referenceName)));
+    await assert.doesNotReject(fs.access(artifactSkill(result.bundleDir, "claw-kit-doc", "references", referenceName)));
   }
-  await assert.rejects(fs.access(path.join(result.bundleDir, "skills", "delegate-writer", "SKILL.md")));
-  await assert.rejects(fs.access(path.join(result.bundleDir, "skills", "knowledge-writer", "SKILL.md")));
-  await assert.rejects(fs.access(path.join(result.bundleDir, "skills", "truth-writer", "SKILL.md")));
-  await assert.rejects(fs.access(path.join(result.bundleDir, "skills", "adr-writer", "SKILL.md")));
-  await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "update", "TEMPLATE.json")));
-  await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "create-claw-skill", "TEMPLATE.json")));
-  await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "create-claw-skill", "FALLBACK.md")));
+  await assert.rejects(fs.access(artifactSkill(result.bundleDir, "delegate-writer", "SKILL.md")));
+  await assert.rejects(fs.access(artifactSkill(result.bundleDir, "knowledge-writer", "SKILL.md")));
+  await assert.rejects(fs.access(artifactSkill(result.bundleDir, "truth-writer", "SKILL.md")));
+  await assert.rejects(fs.access(artifactSkill(result.bundleDir, "adr-writer", "SKILL.md")));
+  await assert.doesNotReject(fs.access(artifactSkill(result.bundleDir, "update", "TEMPLATE.json")));
+  await assert.doesNotReject(fs.access(artifactSkill(result.bundleDir, "create-claw-skill", "TEMPLATE.json")));
+  await assert.doesNotReject(fs.access(artifactSkill(result.bundleDir, "create-claw-skill", "FALLBACK.md")));
+  await fs.access(artifactSkill(result.bundleDir, "using-claw-kit", "references", "hosts", "codex.md"));
+  await fs.access(artifactSkill(result.bundleDir, "researcher", "references", "host-execution.md"));
+  await fs.access(artifactSkill(result.bundleDir, "feature-architecture", "references", "host-execution.md"));
   for (const skillName of ["release-claw-kit", "release-claw-cli", "release-codex-plugin", "release-cindy-plugin", "release-openclaw-plugin", "release-opencode-plugin"]) {
-    await assert.rejects(fs.access(path.join(result.bundleDir, "skills", skillName, "SKILL.md")));
+    await assert.rejects(fs.access(artifactSkill(result.bundleDir, skillName, "SKILL.md")));
   }
   await assert.rejects(fs.access(path.join(result.bundleDir, "scripts", "code-mode-host-action-consumer.mjs")));
 });
 
-test("repository Codex plugin source is fully materialized from shared skills", async () => {
-  const adapterDir = fileURLToPath(new URL("../packages/codex-adapter", import.meta.url));
-  const result = await verifySharedSkillsSynced({ adapterDirs: [adapterDir] });
-  assert.deepEqual(result, { ok: true, problems: [] });
+test("composed Codex artifact selects exactly the declared skill packages", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "claw-codex-catalog-"));
+  const result = await exportCodexPluginBundle({ outDir: root });
+  const inputs = await loadSkillInputs({ sourceRoot: fileURLToPath(new URL("../", import.meta.url)), targetHost: "codex" });
+  assert.deepEqual((await fs.readdir(path.join(result.bundleDir, "skills"))).sort(), inputs.skills.map(({ id }) => id).sort());
+  const artifact = await readCodexPluginSource({ sourceDir: result.bundleDir });
+  assert.equal(artifact.manifest.skills, "./skills/");
 });
 
-test("shared claw-kit-doc references are materialized without replacing adapter entries", async () => {
-  const result = await verifySharedSkillsSynced();
-  assert.deepEqual(result, { ok: true, problems: [] });
-
-  const configReference = await fs.readFile(
-    new URL("../shared/docs/claw-kit-doc/configuration.md", import.meta.url),
-    "utf8",
-  );
+test("canonical documentation entry contains adjacent references", async () => {
+  const configReference = await fs.readFile(new URL("../.agents/skills/claw-kit-doc/references/configuration.md", import.meta.url), "utf8");
   assert.match(configReference, /accepts `main-agent`, `background`, or `subagent`/);
   assert.match(configReference, /knowledgeWriterByHost/);
 });
 
-test("repo marketplace points Codex at the materialized adapter source", async () => {
+test("source marketplace retains the established adapter path", async () => {
   const marketplace = JSON.parse(
     await fs.readFile(new URL("../.agents/plugins/marketplace.json", import.meta.url), "utf8"),
   );
@@ -278,10 +286,12 @@ test("release protocol keeps CLI and coordinated platform gates distinct", async
   const distribution = await fs.readFile(new URL("../DISTRIBUTION.md", import.meta.url), "utf8");
   const releaseScript = await fs.readFile(new URL("./publish-release.mjs", import.meta.url), "utf8");
 
-  assert.match(distribution, /committed Git ref containing those paths -> official Codex plugin release artifact/);
+  assert.match(distribution, /published Git artifact ref containing that composed tree/);
+  assert.match(distribution, /never tag raw incomplete adapter source as if it were an artifact/);
   assert.match(distribution, /verify:batch-release/);
   assert.doesNotMatch(distribution, /attach the exported Codex plugin bundle to the GitHub release/);
-  assert.match(releaseScript, /assertRepositoryMarketplaceSnapshot/);
+  assert.match(releaseScript, /assertRepositorySourceSnapshot/);
+  assert.match(releaseScript, /never certify raw adapter source as a complete marketplace payload/);
   assert.match(releaseScript, /assertTemplateVersionsAligned/);
   assert.match(releaseScript, /includePlatformArtifacts/);
   assert.match(releaseScript, /--batch/);
@@ -377,21 +387,24 @@ test("repository-local release skills split CLI and platform publication contrac
 test("official marketplace-style cache copy contains all shared skills and resources", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "claw-kit-codex-marketplace-install-"));
   const cacheRoot = path.join(root, ".codex", "plugins", "cache", "claw-kit");
-  const sourceDir = fileURLToPath(new URL("../packages/codex-adapter", import.meta.url));
-  const result = await installCodexPluginBundle({ sourceDir, cacheRoot });
+  const sourceRoot = fileURLToPath(new URL("../", import.meta.url));
+  const result = await installCodexPluginBundle({ sourceRoot, cacheRoot });
 
   for (const skillName of ["planning", "config", "update", "create-claw-skill", "feature-architecture"]) {
-    await assert.doesNotReject(fs.access(path.join(result.installDir, "skills", skillName, "SKILL.md")));
+    await assert.doesNotReject(fs.access(artifactSkill(result.installDir, skillName, "SKILL.md")));
   }
-  await assert.doesNotReject(fs.access(path.join(result.installDir, "skills", "feature-architecture", "references", "design-artifacts.md")));
-  await assert.doesNotReject(fs.access(path.join(result.installDir, "skills", "update", "TEMPLATE.json")));
-  await assert.doesNotReject(fs.access(path.join(result.installDir, "skills", "create-claw-skill", "TEMPLATE.json")));
-  await assert.doesNotReject(fs.access(path.join(result.installDir, "skills", "create-claw-skill", "FALLBACK.md")));
+  await assert.doesNotReject(fs.access(artifactSkill(result.installDir, "feature-architecture", "references", "design-artifacts.md")));
+  await assert.doesNotReject(fs.access(artifactSkill(result.installDir, "update", "TEMPLATE.json")));
+  await assert.doesNotReject(fs.access(artifactSkill(result.installDir, "create-claw-skill", "TEMPLATE.json")));
+  await assert.doesNotReject(fs.access(artifactSkill(result.installDir, "create-claw-skill", "FALLBACK.md")));
+  await fs.access(artifactSkill(result.installDir, "using-claw-kit", "references", "hosts", "codex.md"));
+  await fs.access(artifactSkill(result.installDir, "researcher", "references", "host-execution.md"));
+  await fs.access(artifactSkill(result.installDir, "feature-architecture", "references", "host-execution.md"));
   for (const skillName of ["release-claw-kit", "release-claw-cli", "release-codex-plugin", "release-cindy-plugin", "release-openclaw-plugin", "release-opencode-plugin"]) {
-    await assert.rejects(fs.access(path.join(result.installDir, "skills", skillName, "SKILL.md")));
+    await assert.rejects(fs.access(artifactSkill(result.installDir, skillName, "SKILL.md")));
   }
   await assert.doesNotReject(
-    fs.access(path.join(result.installDir, "skills", "create-claw-skill", "scripts", "create-claw-skill-stub.mjs")),
+    fs.access(artifactSkill(result.installDir, "create-claw-skill", "scripts", "create-claw-skill-stub.mjs")),
   );
 });
 
@@ -408,8 +421,8 @@ test("exportCodexPluginBundle copies the expected payload into a versioned bundl
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, ".codex-plugin", "plugin.json")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "assets", "icon.png")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "hooks", "hooks.json")));
-  await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "config", "SKILL.md")));
-  await assert.doesNotReject(fs.access(path.join(result.bundleDir, "skills", "config", "TEMPLATE.json")));
+  await assert.doesNotReject(fs.access(artifactSkill(result.bundleDir, "config", "SKILL.md")));
+  await assert.doesNotReject(fs.access(artifactSkill(result.bundleDir, "config", "TEMPLATE.json")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "package.json")));
   await assert.doesNotReject(fs.access(path.join(result.bundleDir, "hooks", "session-start-recovery.mjs")));
   await assert.rejects(fs.access(path.join(result.bundleDir, "hooks", "session-start-recovery.test.mjs")));
@@ -433,11 +446,11 @@ test("installCodexPluginBundle copies a payload source into the versioned Codex 
     const manifest = JSON.parse(await fs.readFile(path.join(result.installDir, ".codex-plugin", "plugin.json"), "utf8"));
     assert.equal(manifest.version, "0.1.41+codex.test");
     await assert.doesNotReject(fs.access(path.join(result.installDir, "assets", "icon.png")));
-    const installedSkill = await fs.readFile(path.join(result.installDir, "skills", "SKILL.md"), "utf8");
-    assert.equal(installedSkill, "# skill");
+    const installedSkill = await fs.readFile(artifactSkill(result.installDir, "config", "SKILL.md"), "utf8");
+    assert.equal(installedSkill, "# config skill");
     await assert.doesNotReject(fs.access(path.join(result.installDir, "hooks", "session-start-recovery.mjs")));
     await assert.rejects(fs.access(path.join(result.installDir, "hooks", "session-start-recovery.test.mjs")));
-    await assert.doesNotReject(fs.access(path.join(result.installDir, "skills", "config", "TEMPLATE.json")));
+    await assert.doesNotReject(fs.access(artifactSkill(result.installDir, "config", "TEMPLATE.json")));
     await assert.rejects(fs.access(path.join(root, ".claw", "templates", "team-default.json")));
   } finally {
     if (previousHome === undefined) {
@@ -551,4 +564,59 @@ test("official installer updates plugin identity sections idempotently", async (
   assert.equal((config.match(/claw-kit-local/g) ?? []).length, 0);
   assert.equal((config.match(/^enabled = true$/gm) ?? []).length, 2);
   assert.equal((config.match(/^enabled = false$/gm) ?? []).length, 0);
+});
+
+test("Codex flat export is relocatable, complete and does not mutate canonical sources", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "claw-codex-detached-"));
+  const sourceRoot = fileURLToPath(new URL("../", import.meta.url));
+  const before = await loadSkillInputs({ sourceRoot, targetHost: "codex" });
+  const result = await exportCodexPluginBundle({ sourceRoot, outDir: path.join(root, "export") });
+  const after = await loadSkillInputs({ sourceRoot, targetHost: "codex" });
+  assert.equal(after.sourceHash, before.sourceHash);
+  const detached = path.join(root, "detached");
+  assert.equal(path.dirname(detached), root);
+  await fs.rename(result.bundleDir, detached);
+  const plugin = await readCodexPluginSource({ sourceDir: detached });
+  assert.equal(plugin.manifest.skills, "./skills/");
+  assert.deepEqual((await fs.readdir(path.join(detached, "skills"))).sort(), before.skills.map(({ id }) => id).sort());
+  for (const excluded of [".claw", "node_modules", ".agents", ".git", "packages", "shared", "skills/release-claw-kit"]) {
+    await assert.rejects(fs.access(path.join(detached, excluded)));
+  }
+  for (const relative of ["skills/knowledge-capture/runtime.json", "skills/knowledge-capture/scripts/run-knowledge-capture.mjs", "skills/create-claw-skill/TEMPLATE.json", "skills/create-claw-skill/FALLBACK.md", "skills/claw-kit-doc/references/knowledge-format.md"]) await fs.access(path.join(detached, relative));
+  // Artifact-to-artifact copying works without consulting a repository catalog.
+  const copied = await exportCodexPluginBundle({ sourceDir: detached, sourceRoot: path.join(root, "nonexistent-source"), outDir: path.join(root, "copied") });
+  await readCodexPluginSource({ sourceDir: copied.bundleDir });
+});
+
+test("Codex export refuses source writes, raw-source installation and extra skill exposure", async () => {
+  const sourceRoot = fileURLToPath(new URL("../", import.meta.url));
+  await assert.rejects(exportCodexPluginBundle({ sourceRoot, outDir: path.join(sourceRoot, "packages/codex-adapter") }), /output|source/i);
+  await assert.rejects(readCodexPluginSource({ sourceDir: path.join(sourceRoot, "packages/codex-adapter") }), /missing|exactly/i);
+  const { sourceDir } = await makeFixture();
+  await fs.mkdir(path.join(sourceDir, "skills", "release-claw-kit"));
+  await assert.rejects(readCodexPluginSource({ sourceDir }), /exactly its nine declared skill packages/);
+});
+
+test("Codex Git marketplace artifact resolves a detached flat plugin without source copies", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "claw-codex-marketplace-"));
+  const sourceRoot = fileURLToPath(new URL("../", import.meta.url));
+  const before = await loadSkillInputs({ sourceRoot, targetHost: "codex" });
+  const catalogBefore = await fs.readFile(path.join(sourceRoot, ".agents/plugins/marketplace.json"), "utf8");
+  const result = await exportCodexMarketplace({ sourceRoot, outDir: path.join(root, "marketplace") });
+  const detached = path.join(root, "detached-marketplace");
+  assert.equal(path.dirname(detached), root);
+  await fs.rename(result.marketplaceDir, detached);
+  const catalog = JSON.parse(await fs.readFile(path.join(detached, ".agents/plugins/marketplace.json"), "utf8"));
+  const entry = catalog.plugins.find(({ name }) => name === "claw-kit");
+  assert.equal(entry.source.path, "./packages/codex-adapter");
+  const pluginDir = path.resolve(detached, entry.source.path);
+  assert.ok(pluginDir.startsWith(detached + path.sep));
+  const plugin = await readCodexPluginSource({ sourceDir: pluginDir });
+  assert.equal(plugin.manifest.skills, "./skills/");
+  assert.equal((await fs.readdir(path.join(pluginDir, "skills"))).length, 9);
+  await fs.access(path.join(pluginDir, "skills/create-claw-skill/TEMPLATE.json"));
+  await assert.rejects(fs.access(path.join(detached, ".agents/skills")));
+  await assert.rejects(fs.access(path.join(detached, "shared")));
+  assert.equal((await loadSkillInputs({ sourceRoot, targetHost: "codex" })).sourceHash, before.sourceHash);
+  assert.equal(await fs.readFile(path.join(sourceRoot, ".agents/plugins/marketplace.json"), "utf8"), catalogBefore);
 });

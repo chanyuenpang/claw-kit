@@ -10,9 +10,11 @@ const targetWork = args["target-work"] ?? `complete <target-work> with ${skillNa
 const fallbackDoc = args["fallback-doc"] ?? "FALLBACK.md";
 const outputDir = args["out"];
 const templateVersion = "1.0.0";
+const hostRouting = await fs.readFile(new URL("../references/host-routing.md", import.meta.url), "utf8");
 
 const files = {
   "SKILL.md": buildSkillEntry({ skillName, templateId, fallbackDoc }),
+  "CLAW-ROUTING.md": hostRouting,
   "TEMPLATE.json": buildTemplate({ skillName, templateId, targetWork, templateVersion }),
   "CONTENT-COVERAGE.md": buildCoverage({ skillName, templateId, targetWork, fallbackDoc }),
   [fallbackDoc]: buildFallback({ skillName }),
@@ -97,10 +99,10 @@ TODO: Replace this sentence with the skill's concise purpose.
 
 ## Route By Task Ownership
 
-Resolve \`<skill-dir>\` as the directory containing this loaded \`SKILL.md\`.
+Resolve \`<skill-dir>\` as the directory containing this loaded \`SKILL.md\`. Read [host routing](CLAW-ROUTING.md) first; CLI spellings below are semantic equivalents, not permission to bypass the active adapter.
 
 - Whole task: when this skill fully owns the current task, use \`claw plan create --template-file "<skill-dir>/TEMPLATE.json" --title "${skillName}"\`.
-- Independent stage: when this skill fully owns one stage of a broader plan, use \`claw subplan create --parent <parent-task-name> --task-id <id> --template-file "<skill-dir>/TEMPLATE.json"\`. On hosts with Goal Mode, consume the returned goal handoff so the active parent goal completes before the child plan creates its own goal; never overwrite the parent goal. A batch is a repeated-stage case: invoke this skill once as a subplan for each stage.
+- Independent stage: when this skill fully owns one stage of a broader plan, use \`claw subplan create --parent <parent-task-name> --task-id <id> --template-file "<skill-dir>/TEMPLATE.json"\`. Follow the owning host's handoff; on DSH the adapter consumes Goal/progress effects automatically, so never call goal tools or overwrite the parent goal. A batch is a repeated-stage case: invoke this skill once as a subplan for each stage.
 - Mixed stage: when this skill only contributes part of a stage that mixes multiple skills, do not create its template plan. Read \`${fallbackDoc}\` and apply the relevant fallback guidance inside the owning workflow.
 - Unavailable claw tooling: when the claw CLI or this template is unavailable, read \`${fallbackDoc}\` and run the direct workflow.
 

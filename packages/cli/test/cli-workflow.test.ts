@@ -912,7 +912,7 @@ test("cli plan, subplan, and template validate share the skill-local template re
   const skillDir = path.join(root, "packages", "test-adapter", "skills", "create-claw-skill");
   fs.mkdirSync(skillDir, { recursive: true });
   fs.copyFileSync(
-    path.resolve(thisDir, "..", "..", "..", "shared", "skills", "create-claw-skill", "TEMPLATE.json"),
+    path.resolve(thisDir, "..", "..", "..", ".agents", "skills", "create-claw-skill", "TEMPLATE.json"),
     path.join(skillDir, "TEMPLATE.json"),
   );
   runClaw(["init", "--name", "Shared Template Resolver"], root);

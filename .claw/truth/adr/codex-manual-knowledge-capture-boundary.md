@@ -1,4 +1,4 @@
-﻿# ADR: Codex 显式手动知识采集边界
+﻿# ADR: Codex 与 DSH 显式手动知识采集边界
 
 ## Context
 
@@ -6,7 +6,9 @@
 
 ## Decision
 
-提供一个仅由用户明确请求启动的 Codex `knowledge-capture` skill。该 skill 由发起它的同一 Agent 使用 adapter-local runner 执行 `knowledge prepare --source agent-memory`，按返回 assignment 执行治理，并用同一次 prepare 的 runtime binding 与配置 fingerprint 执行 `knowledge complete`。runner 以插件内 `runtime.json` 作为精确 CLI 合同：只有全局 `claw` 的版本和能力都匹配时才复用它，否则仅为当次调用使用固定 npm runtime；它不更新用户安装，也不向旧 CLI 回退。该路径不得创建或消费 plan、task、subplan、report、knowledge job、background worker、thread 或 collaboration subagent，也不得从 transcript、旧 report 或重新调查中补造证据。
+Codex 与 DSH 提供仅由用户明确请求启动的 `knowledge-capture` skill。其规范整包与 runner/pin 统一位于 `shared/skills/knowledge-capture/`，adapter 仅分发生成副本；该 skill 由发起它的同一 Agent 使用随包 runner 执行 `knowledge prepare --source agent-memory`，按返回 assignment 执行治理，并用同一次 prepare 的 runtime binding 与配置 fingerprint 执行 `knowledge complete`。runner 以插件内 `runtime.json` 作为精确 CLI 合同：只有全局 `claw` 的版本和能力都匹配时才复用它，否则仅为当次调用使用固定 npm runtime；它不更新用户安装，也不向旧 CLI 回退。该路径不得创建或消费 plan、task、subplan、report、knowledge job、background worker、thread 或 collaboration subagent，也不得从 transcript、旧 report 或重新调查中补造证据。
+
+所有实际改动路径在同一次 complete 中批量提交；没有改动则不调用 complete。整包共享防止两个宿主的 runner/pin 漂移，但不扩大手动入口授权，更不能用于弥补 native 自动 closeout 的 transport 缺口。
 
 自动 finalization 与其内部 `delegate-writer` / `knowledge-writer` 资源继续保持不可发现；手动 skill 只提供受限的用户入口，不成为自动触发或替代自动 closeout 的第二个 lifecycle owner。
 

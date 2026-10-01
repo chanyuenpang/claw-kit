@@ -1,9 +1,8 @@
-﻿<!-- state: current -->
+﻿# ADR: Standard hostless flow as a first-class invocation shape
 
-# ADR: Standard hostless flow as a first-class invocation shape
+## Status
 
-- Status: current
-- Date: 2026-09-12
+Accepted
 
 ## Context
 
@@ -69,24 +68,15 @@ CLI, host-neutral by construction:
 - The named adapters are not deprecated. They remain the enhanced paths on
   their hosts (native plan/Goal projection, subagent dispatch, hooks,
   claim-time collectors). The standard flow is the floor every platform gets
-  for free and the fallback when a native integration is unavailable.
+  when explicitly established without an active native adapter. A native capability failure is not permission to switch host or transport; [session-entry ADR](<using-claw-kit-session-entry.md>) owns that boundary.
 - `internal-knowledge-finalize` (the legacy detached Codex-SDK runner) is not
   the standard flow's writer engine; the agent itself executes the writer
   plan.
 
-## Decision evolution
+## Alternatives
 
-<!-- state: history -->
-
-<!-- dated: 2026-09-13 -->
-### Background 从唯一默认路径降为显式选项
-
-2026-09-13 之前，本 ADR 的 Decision 3 是 "Background is the only
-knowledge-writer policy on this shape"，且 hostless closeout 唯一链路是
-capture → dispatch → self-executed writer plan。host-aware policy matrix 引入
-`main-agent` 后，省略的 policy 解析为 standard 默认 `main-agent`（prepare/
-complete 自沉淀，零捕获、零 job），`background` 三步链保留为显式配置项。
-旧事实对理解 0.2.38 的 hostless 行为与未迁移项目的默认仍有用。
+- Require a named adapter for every platform: rejected because the host-neutral CLI can supply an explicit baseline route without native integration.
+- Borrow hostless invocation after native failure: rejected because it changes host/session ownership instead of reporting a missing capability.
 
 ## Consequences
 
@@ -119,3 +109,15 @@ complete 自沉淀，零捕获、零 job），`background` 三步链保留为显
   session daemon briefly locks the probe workdir; the directory is deletable
   moments later and mechanism verification is unaffected (documented
   in-script at the teardown site).
+<!-- state: history -->
+## Decision evolution
+
+<!-- dated: 2026-09-13 -->
+### Background 从唯一默认路径降为显式选项
+
+2026-09-13 之前，本 ADR 的 Decision 3 是 "Background is the only
+knowledge-writer policy on this shape"，且 hostless closeout 唯一链路是
+capture → dispatch → self-executed writer plan。host-aware policy matrix 引入
+`main-agent` 后，省略的 policy 解析为 standard 默认 `main-agent`（prepare/
+complete 自沉淀，零捕获、零 job），`background` 三步链保留为显式配置项。
+旧事实对理解 0.2.38 的 hostless 行为与未迁移项目的默认仍有用。

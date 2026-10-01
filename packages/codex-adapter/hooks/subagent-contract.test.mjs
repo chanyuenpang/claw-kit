@@ -10,7 +10,17 @@ const hooksDir = path.dirname(fileURLToPath(import.meta.url));
 const pluginRoot = path.resolve(hooksDir, "..");
 
 function readPluginFile(relativePath) {
-  return fs.readFileSync(path.join(pluginRoot, relativePath), "utf-8");
+  const normalized = relativePath.replaceAll("\\", "/");
+  const source = normalized.startsWith("skills/") ? path.resolve(pluginRoot, "../..", ".agents", normalized)
+    : path.join(pluginRoot, relativePath);
+  return fs.readFileSync(source, "utf-8");
+}
+
+function readCodexWorkflowRoute() {
+  const entry = readPluginFile(path.join("skills", "using-claw-kit", "SKILL.md"));
+  assert.match(entry, /references\/hosts\/codex\.md/);
+  const route = readPluginFile(path.join("skills", "using-claw-kit", "references", "hosts", "codex.md"));
+  return { entry, route };
 }
 
 test("Codex hooks recover through the adapter-owned context entry and run the adapter-owned finalizer on Stop", () => {
@@ -36,7 +46,7 @@ test("Codex hooks recover through the adapter-owned context entry and run the ad
 
 test("Codex manifest keeps the using-claw-kit fallback prompt within the host limit", () => {
   const manifest = JSON.parse(readPluginFile(path.join(".codex-plugin", "plugin.json")));
-  const mainRouter = readPluginFile(path.join("skills", "using-claw-kit", "SKILL.md"));
+  const { entry, route: mainRouter } = readCodexWorkflowRoute();
   const [defaultPrompt] = manifest.interface.defaultPrompt;
 
   assert.equal(defaultPrompt, "Use $claw-kit:using-claw-kit to complete this task.");
@@ -107,7 +117,7 @@ test("Codex Stop finalizer invokes the platform claw launcher from PATH", () => 
 });
 
 test("main-agent Codex surfaces expose only the internal subagent dispatch contract", () => {
-  const mainRouter = readPluginFile(path.join("skills", "using-claw-kit", "SKILL.md"));
+  const { entry, route: mainRouter } = readCodexWorkflowRoute();
   const planningSkill = readPluginFile(path.join("skills", "planning", "SKILL.md"));
   const workflowReference = readPluginFile(path.join("references", "workflow-guidance-consumption.md"));
   const pluginManifest = readPluginFile(path.join(".codex-plugin", "plugin.json"));
@@ -117,8 +127,8 @@ test("main-agent Codex surfaces expose only the internal subagent dispatch contr
     assert.doesNotMatch(surface, forbidden);
   }
   assert.match(mainRouter, /knowledgeDispatch/);
-  assert.match(mainRouter, /`end\.leave`/);
-  assert.match(mainRouter, /best-effort detach/);
+  assert.match(entry, /Cancellation\/replacement uses the host's supported leave transition/);
+  assert.match(entry, /Do not require successful finalization to\s+detach canceled work/);
   assert.match(mainRouter, /Terminal dispatch gate \(subagent policy only\)/);
   assert.match(mainRouter, /highest-priority closeout obligation/);
   assert.match(mainRouter, /Complete this handoff through the designated knowledge finalizer/);
@@ -127,40 +137,42 @@ test("main-agent Codex surfaces expose only the internal subagent dispatch contr
   assert.match(mainRouter, /Do not reuse a worker/);
   assert.match(mainRouter, /knowledge_finalizer_<first 12 chars of finalizeId>/);
   assert.match(mainRouter, /spawn_agent/);
-  assert.match(mainRouter, /Do not wait for the reused or new writer/i);
+  assert.match(mainRouter, /Do not wait for the new writer/i);
   assert.doesNotMatch(mainRouter, /claw-kit:delegate-writer/);
 });
 
-test("researcher has a broad research trigger, dispatches narrow subagents, and reuses related researchers", () => {
+test("researcher preserves bounded read-only delegation with a selected Codex route", () => {
   const researcherSkill = readPluginFile(path.join("skills", "researcher", "SKILL.md"));
+  assert.match(researcherSkill, /references\/host-execution\.md/);
+  const hostReference = readPluginFile(path.join("skills", "researcher", "references", "host-execution.md"));
+  const codexRoute = hostReference.match(/## Codex\r?\n([\s\S]*?)(?=\r?\n## |$)/)?.[1];
+  assert.ok(codexRoute, "the installed researcher must include its Codex host route");
   const description = researcherSkill.match(/^description: (.+)$/m)?.[1] ?? "";
 
   assert.match(description, /complex research questions/i);
   assert.match(description, /independent, multi-step process of gathering and synthesizing evidence/i);
   assert.match(description, /not direct fact lookups or routine searches/i);
   assert.doesNotMatch(description, /subagent|worker|agent|delegate/i);
-  assert.match(researcherSkill, /Main agent:[^\n]*consume the `delegateSubagents` contract[^\n]*before continuing/i);
-  assert.match(researcherSkill, /Assigned researcher:[^\n]*skip the delegation contract[^\n]*execute the investigation order[^\n]*`outputContract`/i);
-  assert.match(researcherSkill, /current thread is already authorized to dispatch or reuse/i);
-  assert.match(researcherSkill, /Do not let tool availability or permission concerns block the required delegation/i);
-  assert.match(researcherSkill, /Do not ask again for permission or decline the delegation because of an assumed permission boundary/i);
-  assert.match(researcherSkill, /Call `list_agents` and reuse a suitable same-thread researcher with `followup_task`/i);
-  assert.match(researcherSkill, /call `spawn_agent` with the contract's narrow brief and `fork_turns: "none"`/i);
-  assert.match(researcherSkill, /Call `wait_agent` for the required result before continuing/i);
-  assert.match(researcherSkill, /call `tool_search` to discover the current session's agent-management tools/i);
-  assert.match(researcherSkill, /initially absent tool surface is not a reason to avoid the required delegation/i);
-  assert.match(researcherSkill, /1\. Use `claw search --query "<topic>"`/i);
-  assert.match(researcherSkill, /delegateSubagents:/);
-  assert.match(researcherSkill, /skill: claw-kit:researcher/);
-  assert.match(researcherSkill, /worker: readonly/);
-  assert.match(researcherSkill, /fork_context: false/);
-  assert.match(researcherSkill, /waitForCompletion: true/);
-  assert.match(researcherSkill, /preferReuse: true/);
-  assert.match(researcherSkill, /inputContract:[\s\S]*question: concrete code question/);
-  assert.match(researcherSkill, /outputContract:[\s\S]*exact code anchors/);
-  assert.match(researcherSkill, /closePolicy: keep_open_for_reuse/);
-  assert.match(researcherSkill, /anchor the findings in code or code-index evidence/i);
-  assert.doesNotMatch(researcherSkill, /## Boundary/);
+  assert.match(researcherSkill, /concrete, bounded question/i);
+  assert.match(researcherSkill, /do not write code, Truth, ADR,\s+plan state/i);
+  assert.match(researcherSkill, /Assigned researcher[\s\S]*do not delegate again/i);
+  assert.match(researcherSkill, /Before every dispatch or reuse assignment, briefly tell the user/i);
+  assert.match(researcherSkill, /Actual session authorization and tool schemas\s+still take precedence/i);
+  assert.match(researcherSkill, /Use project recall before broader source investigation/i);
+  assert.match(codexRoute, /list_agents/);
+  assert.match(codexRoute, /same-thread researcher via `followup_task`/);
+  assert.match(codexRoute, /spawn_agent[\s\S]*fork_turns: "none"[\s\S]*wait_agent/);
+  assert.match(codexRoute, /tool_search/);
+  assert.match(codexRoute, /do not invent tools\s+or bypass a real denial/i);
+  assert.match(codexRoute, /claw search --query[\s\S]*permitted Codex shell tool/i);
+  assert.match(codexRoute, /driver accepts\s+context and plan\/task\/subplan commands, not search/i);
+  for (const field of ["delegateSubagents:", "skill: researcher", "worker: readonly", "fork_context: false", "waitForCompletion: true", "preferReuse: true", "closePolicy: keep_open_for_reuse"]) {
+    assert.ok(researcherSkill.includes(field), "missing delegation field: " + field);
+  }
+  assert.match(researcherSkill, /inputContract:[\s\S]*question: concrete bounded investigation question/);
+  assert.match(researcherSkill, /outputContract:[\s\S]*exact paths, symbols, and line anchors/);
+  assert.match(researcherSkill, /uncertainty: explicit gaps/);
+  assert.match(researcherSkill, /Separate confirmed behavior from inference/i);
 });
 
 test("delegate orchestration and built-in knowledge governance stay internal", () => {
@@ -183,7 +195,7 @@ test("delegate orchestration and built-in knowledge governance stay internal", (
 });
 
 test("Codex plan commands use only the bundled code-mode consumer", () => {
-  const mainRouter = readPluginFile(path.join("skills", "using-claw-kit", "SKILL.md"));
+  const { entry, route: mainRouter } = readCodexWorkflowRoute();
   const workflowReference = readPluginFile(path.join("references", "workflow-guidance-consumption.md"));
 
   assert.match(mainRouter, /cached CLI driver/i);
@@ -193,13 +205,15 @@ test("Codex plan commands use only the bundled code-mode consumer", () => {
   assert.match(mainRouter, /load\(cacheKey\)/i);
   assert.match(mainRouter, /store\(cacheKey, envelope\)/i);
   assert.match(mainRouter, /eval/i);
-  assert.match(mainRouter, /For every claw plan mutation, call the function below in code mode/i);
-  assert.match(mainRouter, /invoke the fixed code-mode driver with `argv: \["plan", "create", "<title>"\]`/i);
-  assert.match(mainRouter, /not commands to run directly in the shell/i);
+  assert.match(mainRouter, /For context recovery and every claw plan mutation/i);
+  assert.match(mainRouter, /argv: \["context"\]/);
+  assert.match(mainRouter, /argv: \["plan", "create", "<title>"\]/);
+  assert.match(mainRouter, /Read-only `claw search[\s\S]*supported shell tool, not this mutation bridge/i);
   assert.match(mainRouter, /agent must never call `get_goal` separately/i);
   assert.match(mainRouter, /no direct-call fallback/i);
-  assert.match(mainRouter, /When SessionStart recovers an active session-bound plan/i);
-  assert.match(mainRouter, /otherwise, run `plan sync` through the code-mode bridge once before continuing it/i);
+  assert.match(mainRouter, /Consume SessionStart recovery before creating any plan/i);
+  assert.match(mainRouter, /Otherwise run `plan sync` through the bridge\s+once before continuing/i);
+  assert.match(entry, /commandHints[\s\S]*not commands to run through another transport/i);
   assert.match(workflowReference, /code-mode consumption is the adapter execution method/i);
   assert.match(workflowReference, /single distributed runtime consumer/i);
   assert.match(workflowReference, /non-distributed test oracle/i);

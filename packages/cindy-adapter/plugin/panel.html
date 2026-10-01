@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>claw 配置说明</title>
+<style>:root{color:var(--foreground,#202124);background:var(--panel-bg,#fff);font:14px/1.55 ui-sans-serif,"Microsoft YaHei",sans-serif;--line:color-mix(in srgb,var(--foreground,#202124) 15%,transparent);--muted:color-mix(in srgb,var(--foreground,#202124) 60%,transparent);--accent:#356fd6}body{margin:0;padding:18px;max-width:640px}.eyebrow{color:var(--accent);font-size:11px;font-weight:700;letter-spacing:.12em}.order{margin:12px 0;padding:10px 12px;border-left:3px solid var(--accent);background:color-mix(in srgb,var(--accent) 7%,transparent)}section{border-top:1px solid var(--line);padding-top:14px;margin-top:18px}h1{margin:4px 0 8px;font-size:22px}h2{font-size:15px;margin:0 0 6px}p{margin:6px 0}code{padding:1px 4px;border-radius:4px;background:color-mix(in srgb,var(--foreground,#202124) 8%,transparent)}pre{overflow:auto;padding:10px;border:1px solid var(--line);border-radius:8px;background:color-mix(in srgb,var(--foreground,#202124) 4%,transparent)}.muted{color:var(--muted)}</style>
+<div class="eyebrow">CLAW / CONFIGURATION</div><h1>项目配置说明</h1><p class="muted">claw-kit 不维护用户全局配置。配置只属于当前项目，避免跨宿主和跨仓库的隐式覆盖。</p>
+<div class="order"><b>团队配置</b> <code>.claw/project.json</code> → <b>个人配置</b> <code>.claw/project-override.json</code></div>
+<section><h2>团队配置</h2><p>提交 <code>.claw/project.json</code>，用于团队共享的工作流、记忆、知识收尾和 GitNexus 设置。</p><pre>{
+  "planning": true,
+  "goalMode": true,
+  "memory": { "enabled": true }
+}</pre></section>
+<section><h2>个人配置</h2><p><code>.claw/project-override.json</code> 仅在当前工作区生效，默认被 Git 忽略；它自动覆盖同名团队字段，不应提交。</p><pre>{
+  "knowledgeWriter": { "reasoningEffort": "high" }
+}</pre></section>
+<section><h2>编辑与校验</h2><p>使用编辑器修改对应 JSON；修改团队配置后运行 <code>claw check</code> 校验和规范化。数组会整体替换，个人层中的显式 <code>null</code> 是真实覆盖值。</p></section>
+<section data-claw-update-guide><h2>更新 claw-kit</h2><p>Cindy 不提供 claw-kit update skill。请按以下顺序操作：</p><ol><li data-update-step="plugins">打开插件页面</li><li data-update-step="market">点击右上角“市场”</li><li data-update-step="installed-markets">打开“已安装市场”并刷新 claw-kit 市场源</li><li data-update-step="return-plugins">返回插件页面</li><li data-update-step="update-claw-kit">在 claw-kit 插件项中确认更新</li></ol><p class="muted">刷新市场只更新可用版本信息，不会自动安装插件更新。</p></section>
+</html>

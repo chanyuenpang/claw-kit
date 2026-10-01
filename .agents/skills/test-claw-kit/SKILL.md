@@ -19,7 +19,7 @@ After plan or subplan creation, follow the returned `workflowGuidance`.
 
 ## Hard Boundary
 
-This skill never changes versions, commits, pushes, tags, publishes npm or GitHub artifacts, invokes `release-claw-kit` or an artifact-specific `release-*` skill, or claims published-source verification. Local candidate installation is allowed only when the user explicitly requests it, and must use a development identity without deleting the official installation.
+This skill never changes versions, commits, pushes, tags, publishes npm or GitHub artifacts, invokes `release-claw-kit` or an artifact-specific `release-*` skill, or claims published-source verification. Local candidate installation is allowed only when the user explicitly requests it. DSH candidates retain the canonical `@veewo/dsh-claw-kit` npm package and loader identity, with an isolated local profile and explicit artifact provenance; Codex may use a separate local marketplace identity while preserving the official installation. Never treat a local candidate as published-source verification.
 
 ## References
 

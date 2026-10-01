@@ -12,14 +12,11 @@
 - `memory.embedding` remains nested because it has real provider/model substructure; default vector indexing is runtime-enabled, but default config examples and protocol repair must not persist `store.vector.enabled = true`.
 - `store.vector` is retained only for explicit user intent: `enabled: false` to disable vector indexing, or `extensionPath` to point at a custom vector extension.
 - `memory.enabled` is not a canonical config field.
-- `config` skill 的共享源位于 `shared/skills/config/SKILL.md`，并同步生成到 Codex 和 OpenCode adapter skill directories。
+- config 的源码与整包分发由 [shared-source Truth](<shared-planning-skill-source.md>) 统一拥有；本文只拥有配置入口。
 
 ## 代码锚点
 
-- `shared/skills/config/SKILL.md`
-- `packages/codex-adapter/skills/config/SKILL.md`
-- `packages/opencode-adapter/skills/config/SKILL.md`
-- `scripts/sync-shared-skills.mjs`
+- [config source](<../../../.agents/skills/config/SKILL.md>)
 - `docs/project-json-reference.md`
 - `packages/codex-adapter/references/project-config-reference.md`
 - `packages/opencode-adapter/references/project-config-reference.md`

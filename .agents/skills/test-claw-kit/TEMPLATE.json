@@ -15,7 +15,7 @@
       "The release-quality test route completes, and every failure is either reproduced and fixed or retained as an explicit unresolved blocker.",
       "Timing or environment-sensitive failures are isolated and rerun through their focused domain; they are never hidden by deleting, skipping, or weakening a test.",
       "Affected packages and plugin bundles receive dry-run or export smoke checks proportional to their artifact risk.",
-      "Any explicitly requested local install uses a development identity, verifies source-to-cache parity, and preserves the official installation.",
+      "Any explicitly requested local install records artifact provenance and verifies source parity; DSH retains the canonical npm package identity, while Codex may use a separate local marketplace identity without deleting its official installation.",
       "The final report lists exact commands, counts, artifacts, hashes or paths when relevant, residual risks, and a ready or not-ready conclusion without starting release."
     ]
   },
@@ -80,7 +80,7 @@
     {
       "id": 4,
       "title": "Smoke artifacts and optional local runtimes",
-      "detail": "For CLI/core package changes, inspect `npm pack --dry-run` output or equivalent isolated package contents. For adapter changes, run the matching bundle export and bundle tests. If and only if local validation was requested, install from the tested workspace through an existing development route: make the global CLI resolve to the workspace when CLI behavior is under test, install Codex through a local marketplace identity such as `claw-kit-local`, disable rather than delete the official identity, and compare source/cache manifests plus critical-file hashes. Do not use published-source update or release workflows for a local candidate.",
+      "detail": "For CLI/core package changes, inspect `npm pack --dry-run` output or equivalent isolated package contents. For adapter changes, run the matching bundle export and bundle tests. If and only if local validation was requested, install from the tested workspace: make the global CLI resolve to the workspace when CLI behavior is under test; install DSH only under its canonical `@veewo/dsh-claw-kit` npm/loader identity in the explicitly authorized local profile and record the artifact digest; install Codex through a separate local marketplace identity such as `claw-kit-local` without deleting its official installation; compare source/cache manifests and critical hashes. Do not use published-source update or release workflows for a local candidate.",
       "status": "pending",
       "guidance": {
         "onDone": {
@@ -118,7 +118,7 @@
     "Use the test manager's domain selection as evidence, and use the full route for version-level or cross-cutting pre-release validation.",
     "Diagnose failures before fixing them; distinguish candidate regressions from timing or environmental failures with isolated reproduction.",
     "Do not weaken or skip a gate merely to obtain a green result.",
-    "Install locally only with explicit authorization and through a development identity that preserves the official installation.",
+    "Install locally only with explicit authorization; preserve canonical DSH npm identity and local artifact provenance, and preserve the official Codex marketplace installation when using its separate local identity.",
     "Do not claim the currently running Codex task loaded a refreshed plugin; require restart and a new task for that assertion.",
     "Do not claim completion until the evidence report states ready or not-ready and every required test surface is accounted for."
   ]

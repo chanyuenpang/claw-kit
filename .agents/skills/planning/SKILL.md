@@ -2,7 +2,6 @@
 name: planning
 description: Use when a planning step needs to refine a user request into clear requirements, scope, completion criteria, dependencies, and executable tasks, especially when task boundaries or an evidence-dependent route still need judgment.
 ---
-<!-- AUTO-GENERATED from shared/skills/planning/SKILL.md. Edit the shared source instead. -->
 # planning
 
 This skill turns the user's request into high-quality plan content.
@@ -42,8 +41,7 @@ Host runtime flow, lifecycle transitions, goal mode, and closeout remain the res
 
 ## Entry assumption
 
-By the time this skill is invoked, `using-claw-kit` has already decided that the request should enter the formal claw planning workflow.
-If a request had no expected reusable project knowledge and therefore skipped that workflow, it should have bypassed this skill entirely.
+The owning workflow invokes this skill when it needs plan content. Admission, recovery, temporary tracking, and knowledge-capture eligibility belong to `using-claw-kit` and returned guidance; do not decide them again here.
 
 ## Required plan content
 

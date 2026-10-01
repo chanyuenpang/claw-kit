@@ -9,7 +9,7 @@
 - Build, static, encoding, template, shared-skill, and manifest checks: template task 2 and fallback step 2.
 - Changed/full test selection, fail-fast tail coverage, isolation, and root-cause handling: template task 3 and fallback steps 3-4.
 - Package and plugin artifact smoke checks: template task 4 and fallback step 5.
-- Explicit-only local CLI/plugin candidate installation, development identity, source/cache parity, and restart boundary: template task 4, template rules, and fallback step 6.
+- Explicit-only local CLI/plugin candidate installation, canonical DSH npm identity, distinct Codex marketplace identity, source/cache parity, and restart boundary: template task 4, template rules, and fallback step 6.
 - Evidence-backed ready or not-ready result: template task 5 and fallback step 7.
 - Skill-local executable workflow: `TEMPLATE.json` with id `test-claw-kit` and current CLI version.
 

@@ -252,9 +252,11 @@ test("runCodexPlanMutation keeps CLI mutation and direct host dispatch in one pr
 });
 
 test("the embedded bootstrap caches the CLI driver and dispatches native host actions", async () => {
-  const skill = await fs.readFile(path.resolve(hooksDir, "..", "skills", "using-claw-kit", "SKILL.md"), "utf8");
-  const match = skill.match(/```javascript\r?\n([\s\S]*?)\r?\n```/);
-  assert.ok(match, "using-claw-kit must embed the short code-mode bootstrap");
+  const entry = await fs.readFile(path.resolve(hooksDir, "../../..", ".agents", "skills", "using-claw-kit", "SKILL.md"), "utf8");
+  assert.match(entry, /references\/hosts\/codex\.md/);
+  const route = await fs.readFile(path.resolve(hooksDir, "../../..", ".agents", "skills", "using-claw-kit", "references", "hosts", "codex.md"), "utf8");
+  const match = route.match(/```javascript\r?\n([\s\S]*?)\r?\n```/);
+  assert.ok(match, "the packaged Codex route must embed the executable code-mode bootstrap");
 
   const calls = [];
   const result = { ok: true, command: "plan.start", stage: "execution", planSummary: "1/2 example", hostActions: makeActions() };
@@ -305,9 +307,11 @@ test("the embedded bootstrap caches the CLI driver and dispatches native host ac
 });
 
 test("the embedded bootstrap uses exec_command when shell_command is unavailable", async () => {
-  const skill = await fs.readFile(path.resolve(hooksDir, "..", "skills", "using-claw-kit", "SKILL.md"), "utf8");
-  const match = skill.match(/```javascript\r?\n([\s\S]*?)\r?\n```/);
-  assert.ok(match, "using-claw-kit must embed the short code-mode bootstrap");
+  const entry = await fs.readFile(path.resolve(hooksDir, "../../..", ".agents", "skills", "using-claw-kit", "SKILL.md"), "utf8");
+  assert.match(entry, /references\/hosts\/codex\.md/);
+  const route = await fs.readFile(path.resolve(hooksDir, "../../..", ".agents", "skills", "using-claw-kit", "references", "hosts", "codex.md"), "utf8");
+  const match = route.match(/```javascript\r?\n([\s\S]*?)\r?\n```/);
+  assert.ok(match, "the packaged Codex route must embed the executable code-mode bootstrap");
 
   const calls = [];
   const driverSource = `async ({ argv, workdir, timeout_ms }, { tools, text }) => {

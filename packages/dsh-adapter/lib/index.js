@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { extractPlanFinalAnswers } from "./capture.js";
@@ -201,7 +200,7 @@ export function apply(ctx) {
         // Prompt assembly is scoped by the calling agent. Keep each web thread's
         // workflow snapshot on that exact scope key so concurrent sessions cannot
         // overwrite one another with a global last-writer value.
-        text: (context) => guidanceByAgent.get(context.scope),
+        text: (context) => guidanceByAgent.get(context.scope) || renderGuidanceSnapshot(undefined),
     });
     systemPrompt.section({
         name: "tool:claw",
@@ -245,7 +244,7 @@ export function apply(ctx) {
         }
         return null;
     }
-    async function runOneOff(argv, workdir, sessionId) {
+    async function runOneOff(argv, workdir, sessionId, stdinPayload) {
         // After the guard above, subprocess is always present; closure narrowing
         // is lost, so rebind it.
         const sp = subprocess;
@@ -257,12 +256,19 @@ export function apply(ctx) {
             cwd: workdir,
             env: { CLAW_SESSION_ID: sessionId },
             stdio: {
-                stdin: "ignore",
+                stdin: stdinPayload === undefined ? "ignore" : "pipe",
                 stdout: { mode: "collect", maxBytes: 262144, spill: { maxBytes: 1048576 } },
                 stderr: { mode: "collect", maxBytes: 131072 },
             },
             graceMs: 10000,
         });
+        if (stdinPayload !== undefined) {
+            if (!handle.stdin) {
+                void handle.terminate("host-report-stdin-unavailable").catch(() => undefined);
+                throw new Error("DSH_REPORT_TRANSPORT_UNAVAILABLE: private CLI stdin is unavailable.");
+            }
+            handle.stdin.end(stdinPayload);
+        }
         const outcome = await handle.done;
         const readOutput = (reader) => {
             const collected = reader?.readFrom?.(0);
@@ -288,6 +294,63 @@ export function apply(ctx) {
         }
         return protocol.dispatches;
     }
+    async function captureDshParentReport(parentId, workdir, dispatch) {
+        if (dispatch.captureStatus === "captured")
+            return;
+        const startedAt = dispatch.startedAt ? Date.parse(dispatch.startedAt) : Number.NaN;
+        if (!Number.isFinite(startedAt))
+            throw new Error("DSH_REPORT_BOUNDARY_UNAVAILABLE");
+        const sessionQuery = c.get("sessionQuery");
+        if (!sessionQuery)
+            throw new Error("DSH_REPORT_HOST_UNAVAILABLE");
+        const snapshot = await sessionQuery.readSession(parentId);
+        if (!snapshot || !Array.isArray(snapshot.events))
+            throw new Error("DSH_REPORT_HISTORY_UNAVAILABLE");
+        const events = extractPlanFinalAnswers(snapshot.events, parentId, startedAt);
+        const payload = JSON.stringify({ events });
+        if (Buffer.byteLength(payload, "utf8") > 1024 * 1024)
+            throw new Error("DSH_REPORT_TOO_LARGE");
+        const { text } = await runOneOff(["internal-dsh-host-report-capture",
+            "--finalize-id", String(dispatch.finalizeId), "--collector-version", collectorVersion()], workdir, parentId, payload);
+        const result = parseProtocol(text);
+        if (result?.ok !== true || result.captured !== true)
+            throw new Error("DSH_REPORT_COMMIT_FAILED");
+    }
+    async function recordDshIssue(parentId, workdir, finalizeId, phase, code) {
+        const correlationId = finalizeId.slice(0, 12) + "_" + Date.now().toString(36);
+        try {
+            const { text } = await runOneOff(["internal-dsh-finalizer-issue", "--finalize-id", finalizeId,
+                "--phase", phase, "--code", code, "--correlation-id", correlationId], workdir, parentId);
+            if (parseProtocol(text)?.ok !== true)
+                throw new Error("status not acknowledged");
+        }
+        catch {
+            console.warn("[claw-kit] finalizer diagnostic storage unavailable:", phase, code);
+        }
+    }
+    async function readDshAlerts(parentId, workdir) {
+        try {
+            const { text } = await runOneOff(["internal-dsh-finalizer-alerts"], workdir, parentId);
+            const result = parseProtocol(text);
+            if (result?.ok !== true || !Array.isArray(result.alerts))
+                throw new Error("invalid alert inventory");
+            return { alerts: result.alerts };
+        }
+        catch {
+            return { alerts: [], error: "FINALIZER_ALERTS_UNAVAILABLE" };
+        }
+    }
+    function safeCaptureFailureCode(error) {
+        const known = new Set(["DSH_REPORT_BOUNDARY_UNAVAILABLE", "DSH_REPORT_HOST_UNAVAILABLE",
+            "DSH_REPORT_HISTORY_UNAVAILABLE", "DSH_REPORT_TOO_LARGE", "DSH_REPORT_TRANSPORT_UNAVAILABLE",
+            "DSH_REPORT_CAPTURE_INVALID", "DSH_REPORT_CAPTURE_DENIED", "DSH_REPORT_CAPTURE_UNAVAILABLE",
+            "DSH_REPORT_COMMIT_FAILED"]);
+        for (const code of String(error).match(/DSH_REPORT_[A-Z_]+/g) ?? []) {
+            if (known.has(code))
+                return code;
+        }
+        return "DSH_REPORT_HOST_FAILURE";
+    }
     async function dispatchOne(agent, workdir, dispatch) {
         const finalizeId = String(dispatch.finalizeId ?? "");
         if (!/^[a-f0-9]{64}$/i.test(finalizeId) || !dispatch.prompt) {
@@ -298,14 +361,18 @@ export function apply(ctx) {
         if (inFlight)
             return inFlight;
         const run = (async () => {
+            const deferred = async (phase, code) => {
+                await recordDshIssue(agent.id, workdir, finalizeId, phase, code);
+                return { ok: false, phase, code, guidance: FINALIZER_MANUAL_RETRY_GUIDANCE };
+            };
             const subagents = c.get("subagents");
             if (!subagents)
-                return { ok: false, retryable: false, reason: "Native subagent service unavailable", guidance: FINALIZER_MANUAL_RETRY_GUIDANCE };
+                return { ...await deferred("dispatch", "NATIVE_SUBAGENTS_UNAVAILABLE"), retryable: false };
             const reused = await resolveFinalizerReuse({
                 finalizeId, parentSessionId: agent.id, label: finalizerChildLabel(finalizeId), subagents,
             });
             if (reused && "deferred" in reused) {
-                return { ok: false, reason: reused.reason, guidance: FINALIZER_MANUAL_RETRY_GUIDANCE };
+                return deferred("dispatch", "CHILD_CATALOG_UNAVAILABLE");
             }
             if (reused)
                 return { ok: true, reused: true, runId: reused.runId, policy: dispatch.policy ?? "subagent" };
@@ -314,11 +381,18 @@ export function apply(ctx) {
             try {
                 pending = await readPendingDispatches(agent.id, workdir);
             }
-            catch (error) {
-                return { ok: false, reason: String(error), guidance: FINALIZER_MANUAL_RETRY_GUIDANCE };
+            catch {
+                return deferred("dispatch", "QUEUED_INVENTORY_UNAVAILABLE");
             }
-            if (!pending.some((item) => item.finalizeId === finalizeId)) {
+            const current = pending.find((item) => item.finalizeId === finalizeId);
+            if (!current) {
                 return { ok: false, reason: "The canonical finalizer job is no longer queued." };
+            }
+            try {
+                await captureDshParentReport(agent.id, workdir, current);
+            }
+            catch (error) {
+                return deferred("capture", safeCaptureFailureCode(error));
             }
             try {
                 const controller = new AbortController();
@@ -333,6 +407,8 @@ export function apply(ctx) {
                         const record = finalizerDispatches.get(finalizeId);
                         if (record?.runId === runId)
                             record.settled = true;
+                        // Core ignores this if knowledge.done already committed a terminal result.
+                        void recordDshIssue(agent.id, workdir, finalizeId, "writer", "WRITER_CHILD_EXITED");
                     };
                     void Promise.resolve(child.result).then(settle, settle)
                         .finally(() => (child.dispose ? child.dispose() : undefined)).catch(() => undefined);
@@ -342,8 +418,7 @@ export function apply(ctx) {
             catch (error) {
                 // Native admission can have succeeded before its acknowledgement failed.
                 // The next entry must inspect the child catalog, not blindly start again.
-                return { ok: false, reason: error instanceof Error ? error.message : String(error),
-                    guidance: FINALIZER_MANUAL_RETRY_GUIDANCE };
+                return deferred("dispatch", "NATIVE_ADMISSION_UNKNOWN");
             }
         })();
         dispatchFlights.set(key, run);
@@ -372,7 +447,7 @@ export function apply(ctx) {
                     const result = await dispatchOne(agent, workdir, dispatch);
                     if (result.ok !== true) {
                         deferred = true;
-                        console.warn("[claw-kit] queued finalizer dispatch deferred:", result.reason);
+                        console.warn("[claw-kit] queued finalizer dispatch deferred:", result.code ?? result.reason);
                     }
                 }
                 if (deferred)
@@ -380,8 +455,8 @@ export function apply(ctx) {
                 else
                     completedSweeps.add(key);
             }
-            catch (error) {
-                console.warn("[claw-kit] queued finalizer reconciliation deferred:", error);
+            catch {
+                console.warn("[claw-kit] queued finalizer reconciliation deferred: QUEUED_INVENTORY_UNAVAILABLE");
             }
         })();
         pendingSweeps.set(key, sweep);
@@ -414,31 +489,24 @@ export function apply(ctx) {
     // workspace id and config operation fields: no browser-supplied filesystem paths.
     const connection = c.get("connection");
     if (connection?.rpc?.handle) {
-        // Loopback-only, read-only transport census. The OS process tree maps
+        // Authenticated, read-only transport census. The OS process tree maps
         // runner/target PIDs via the session ID and workdir in their argv.
         void connection.rpc.handle("/claw-session-lifecycle", async () => ({
-            schemaVersion: 1, idleTimeoutMs: SESSION_TRANSPORT_IDLE_MS,
-            sessions: [...new Set([...sessions.values(), ...reclaiming])].map((session) => session.status()),
-        }), { authority: "loopback" });
+            ok: true,
+            value: {
+                schemaVersion: 1, idleTimeoutMs: SESSION_TRANSPORT_IDLE_MS,
+                sessions: [...new Set([...sessions.values(), ...reclaiming])].map((session) => session.status()),
+            },
+        }));
         void connection.rpc.handle("/claw-project-config", async (endpoint, payload) => {
             const registry = resolveRegistry();
             if (!registry)
-                return { ok: false, error: { code: "WORKSPACE_REGISTRY_UNAVAILABLE", message: "DSH workspace registry is unavailable." } };
+                return {
+                    ok: false,
+                    error: { code: "WORKSPACE_REGISTRY_UNAVAILABLE", message: "DSH workspace registry is unavailable.", details: {} },
+                };
             return handleProjectConfigRpc(endpoint, payload, registry, (argv, cwd) => runOneOff(argv, cwd, "dsh-project-config"));
-        }, { authority: "loopback" });
-    }
-    // Persist adapter-owned final events for the registered DSH report collector.
-    function dshReportJournalDir() {
-        const localAppData = process.env.LOCALAPPDATA
-            ?? (process.platform === "win32"
-                ? path.join(os.homedir(), "AppData", "Local")
-                : path.join(os.homedir(), ".local", "share"));
-        return process.env.CLAW_DSH_REPORT_JOURNAL_DIR ?? path.join(localAppData, "claw", "dsh-report-journal");
-    }
-    function writeDshReportJournal(sessionId, events) {
-        const dir = dshReportJournalDir();
-        fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(path.join(dir, `${sessionId}.json`), JSON.stringify({ sessionId, events: extractPlanFinalAnswers(events, sessionId) }, null, 2), "utf8");
+        });
     }
     // Session-start: auto-claw equivalent — recover a bound plan and inject its
     // compact guidance snapshot. Fail-open.
@@ -452,15 +520,6 @@ export function apply(ctx) {
                 if (workdir === undefined)
                     return;
                 try {
-                    await runOneOff([
-                        "internal-report-collector-register", "--project-root", workdir, "--collector-host", "dsh",
-                        "--collector-version", collectorVersion(),
-                        "--executable", process.execPath,
-                        "--arg", path.join(path.dirname(fileURLToPath(import.meta.url)), "report-collector-cli.js"),
-                    ], workdir, agent.id);
-                }
-                catch { /* Optional history registration cannot suppress queued dispatch. */ }
-                try {
                     const { text } = await runOneOff(["context", "--host", "dsh"], workdir, agent.id);
                     const parsed = parseProtocol(text);
                     const rendered = renderGuidanceSnapshot(parsed ?? undefined);
@@ -469,14 +528,19 @@ export function apply(ctx) {
                 }
                 catch { /* Context is fail-open; finalizer recovery is independent. */ }
                 await sweepPending(agent, workdir);
+                if (!agent.session?.header?.parentSession) {
+                    const status = await readDshAlerts(agent.id, workdir);
+                    if (status.alerts.length)
+                        guidanceByAgent.set(agent, (guidanceByAgent.get(agent) ?? "")
+                            + "\nFinalizer alerts (canonical job status, do not manually retry): " + JSON.stringify(status.alerts));
+                }
             }
             catch {
                 // fail-open
             }
         })();
     });
-    // No turn-stopping hook: terminal plan mutation snapshots the adapter-owned
-    // journal, and the unified claim flow invokes the registered collector.
+    // A parent snapshots proven history before writer dispatch; no project-global executable collector.
     c.on("dispose", () => {
         for (const [id, session] of sessions)
             release(id, session, "plugin-dispose");
@@ -526,9 +590,16 @@ export function apply(ctx) {
                 const context = parseProtocol(text);
                 if (!context)
                     throw new Error("claw context returned no valid JSON protocol result");
+                const alerts = agent.session?.header?.parentSession ? { alerts: [] }
+                    : await readDshAlerts(agent.id, workdir);
+                if (alerts.alerts.length)
+                    context.finalizationAlerts = alerts.alerts;
+                if (alerts.error)
+                    context.finalizationAlertError = alerts.error;
                 const rendered = renderGuidanceSnapshot(context);
                 if (rendered)
-                    guidanceByAgent.set(agent, rendered);
+                    guidanceByAgent.set(agent, rendered + (alerts.alerts.length
+                        ? "\nFinalizer alerts (canonical job status, do not manually retry): " + JSON.stringify(alerts.alerts) : ""));
                 return context;
             }
             const key = sessionKey(agent.id, workdir);
@@ -652,19 +723,7 @@ export function apply(ctx) {
             // confirmation past a tool-result truncation (observed: dispatch was
             // cut at ~1200 chars, which made the auto-dispatch look like it failed).
             if (response.knowledgeDispatch !== undefined) {
-                // Deterministic report capture: snapshot adapter-owned final events
-                // before dispatch. The unified claim flow reads them through this
-                // adapter's registered collector. Fail-open.
-                try {
-                    const sessionQuery = c.get("sessionQuery");
-                    if (sessionQuery) {
-                        const snapshot = await sessionQuery.readSession(agent.id);
-                        writeDshReportJournal(agent.id, (snapshot?.events ?? []));
-                    }
-                }
-                catch {
-                    // fail-open
-                }
+                // Dispatch first captures available parent history through the live Host.
                 const dispatch = response.knowledgeDispatch;
                 visible.dispatch = await dispatchOne(agent, workdir, dispatch);
                 // A failed dispatch stays queued and is retried by the next trusted entry.

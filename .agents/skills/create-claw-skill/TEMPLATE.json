@@ -11,7 +11,7 @@
     "openQuestions": [],
     "acceptanceCriteria": [
       "The generated entry routes by whole-task, independent-stage, and mixed-stage ownership semantics without exposing storage scope.",
-      "Independent-stage entries preserve the Goal handoff: complete the active parent goal before the child plan creates its own goal.",
+      "Independent-stage entries preserve the host-owned subplan handoff without duplicating adapter-owned Goal or progress effects.",
       "The generated template owns the structured workflow and contains choices only for real downstream branches; choice-aware guidance exposes valid ids once and one executable --choice command template.",
       "The template deliberately chooses whether a discussion delivery task adopts optional guidance.onPlanStart; executable templates start active without it by default.",
       "The adjacent fallback document preserves direct skill behavior for mixed-stage use and unavailable claw tooling.",
@@ -64,7 +64,7 @@
     {
       "id": 3,
       "title": "Generate and complete the claw skill package",
-      "detail": "Start with `node <create-claw-skill-dir>/scripts/create-claw-skill-stub.mjs --skill-name <skill-name> --out <target-skill-package>`. Add optional flags only when defaults do not fit. Replace generated TODOs, preserve companion files and links, and keep the entry focused on task-ownership routing while TEMPLATE.json owns execution. The stub writes the current CLI version. For an existing package, set its template version to the current CLI version only after the inspection and optimization pass is complete.",
+      "detail": "Start with `node <create-claw-skill-dir>/scripts/create-claw-skill-stub.mjs --skill-name <skill-name> --out <target-skill-package>`. Add optional flags only when defaults do not fit. Replace generated TODOs, preserve companion files and links, and keep the entry focused on task-ownership routing while TEMPLATE.json owns execution. The stub writes the current template driver version. For an existing package, set its template version to the current template driver version only after the inspection and optimization pass is complete.",
       "status": "pending",
       "guidance": {
         "onDone": {
@@ -83,11 +83,15 @@
     {
       "id": 4,
       "title": "Validate structure and content coverage",
-      "detail": "Run `claw template validate --file <target-skill-package>/TEMPLATE.json` and confirm the returned version equals the current CLI version. Validate the skill package structure, and map important source behavior to entry, template tasks/guidance/rules/references, or the fallback document. For every task listed in choiceRequiredTasks, exercise its live workflow guidance and confirm completionChoices contains the valid ids while commandHints contains exactly one claw task done --id <id> --choice <choice> template and nextsteps does not repeat the ids. Use named `--template <id>` validation only after the skill is materialized in a supported runtime registry.",
+      "detail": "Use the host route in references/host-routing.md for validation and all workflow mutations; do not bypass a native adapter. Run the supported equivalent of `claw template validate --file <target-skill-package>/TEMPLATE.json` and confirm the returned version equals the current template driver version. Validate the skill package structure, and map important source behavior to entry, template tasks/guidance/rules/references, or the fallback document. For every task listed in choiceRequiredTasks, exercise its live workflow guidance and confirm completionChoices contains the valid ids while commandHints contains exactly one claw task done --id <id> --choice <choice> template and nextsteps does not repeat the ids. Use named `--template <id>` validation only after the skill is materialized in a supported runtime registry.",
       "status": "pending"
     }
   ],
   "references": [
+    {
+      "path": "references/host-routing.md",
+      "why": "Maps workflow and validation operations to the actual native adapter or hostless route."
+    },
     {
       "path": "FALLBACK.md",
       "why": "Plan-independent conversion workflow for mixed-stage use or unavailable claw tooling."
@@ -102,7 +106,7 @@
     },
     {
       "path": "references/template-upgrade.md",
-      "why": "Short checklist for upgrading a template rejected as out of date."
+      "why": "Review and maintain the independent template-driver contract without treating old stamps as runtime rejection."
     }
   ],
   "rules": [
@@ -110,7 +114,7 @@
     "Adapt the generated plan to confirmed user requirements without deleting sub-tasks or changing task ids; mark excluded work in the task description instead.",
     "Route by whether the skill owns the whole task, one independent stage, or only part of a mixed stage.",
     "Treat each batch item as a stage-level subplan when the skill owns that stage.",
-    "On Goal Mode hosts, every subplan entry must consume the returned handoff that completes the parent goal before creating the child goal.",
+    "For every subplan use references/host-routing.md and follow the owning host handoff; never manually duplicate adapter-owned Goal/progress effects.",
     "Let explicit template creation choose its runtime storage automatically.",
     "Preserve direct behavior in the adjacent fallback document and use focused references only when needed.",
     "Every TEMPLATE.json declares the independent template-driver version and names claw-kit:create-claw-skill as its only maintenance owner.",

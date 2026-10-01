@@ -2,19 +2,16 @@ import { spawnSync } from "node:child_process";
 
 const CODEX_MUTATION_ROUTE_BANNER = "Codex route: every claw plan, task, or subplan mutation must use the fixed code-mode driver. commandHints provide argv syntax only; do not run them directly in the shell.";
 
+const CODEX_HOST_IDENTITY = "[claw host]\nplatform: codex\nAdapter-owned host identity, independent of model/provider or skill path. Host/session arguments remain adapter-owned.";
+
 const payload = await readStdin();
 const contextResult = runClawContext(payload);
-if (!contextResult.ok || !contextResult.stdout.trim()) process.exit(0);
-
 let context;
-try {
-  context = JSON.parse(contextResult.stdout);
-} catch {
-  process.exit(0);
+if (contextResult.ok && contextResult.stdout.trim()) {
+  try { context = JSON.parse(contextResult.stdout); } catch { /* Identity does not depend on CLI recovery. */ }
 }
 
-const additionalContext = renderCodexSessionStart(context);
-if (!additionalContext) process.exit(0);
+const additionalContext = [CODEX_HOST_IDENTITY, renderCodexSessionStart(context)].filter(Boolean).join("\n\n");
 process.stdout.write(`${JSON.stringify({
   hookSpecificOutput: { hookEventName: "SessionStart", additionalContext },
 })}\n`);

@@ -4,14 +4,13 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { exportCodexPluginBundle, installCodexPluginBundle } from "./codex-plugin-bundle.mjs";
-import { assertSharedSkillsSynced } from "./sync-shared-skills.mjs";
+import { exportCodexPluginBundle, installCodexPluginBundle, readCodexPluginSource } from "./codex-plugin-bundle.mjs";
+import { loadSkillInputs } from "./skill-artifacts.mjs";
 import { assertTemplateVersionsAligned } from "./update-template-versions.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publish = process.argv.includes("--publish");
 const includePlatformArtifacts = process.argv.includes("--batch");
-const requiredPluginSkills = ["planning", "config", "update", "create-claw-skill", "feature-architecture", "claw-kit-doc"];
 const npmExecPath = process.env.npm_execpath;
 
 function command(command, args) {
@@ -63,41 +62,22 @@ function assertHeadPathExists(relativePath) {
   assert(result.status === 0, `Committed repository marketplace payload is missing ${normalizedPath}.`);
 }
 
-function assertRepositoryMarketplaceSnapshot({ pluginVersion }) {
-  const marketplace = readHeadJson(".agents/plugins/marketplace.json");
-  const entry = marketplace.plugins?.find((candidate) => candidate.name === "claw-kit");
-  assert(entry?.source?.source === "local", "Committed Codex marketplace entry must use a local repository source.");
-  assert(entry?.source?.path === "./packages/codex-adapter", "Committed Codex marketplace must point claw-kit at ./packages/codex-adapter.");
-
-  const sourceRoot = entry.source.path.replace(/^\.\//, "");
-  const committedManifest = readHeadJson(`${sourceRoot}/.codex-plugin/plugin.json`);
-  assert(committedManifest.version === pluginVersion, "Committed Codex plugin manifest must match the release plugin version.");
-
-  for (const relativePath of [
-    ".codex-plugin/plugin.json",
-    "hooks/hooks.json",
-    "package.json",
-    "skills/using-claw-kit/SKILL.md",
-    "skills/planning/SKILL.md",
-    "skills/config/SKILL.md",
-    "skills/claw-kit-doc/SKILL.md",
-    "skills/claw-kit-doc/agents/openai.yaml",
-    "skills/claw-kit-doc/references/update.md",
-    "skills/claw-kit-doc/references/configuration.md",
-    "skills/claw-kit-doc/references/knowledge-format.md",
-    "skills/update/SKILL.md",
-    "skills/update/TEMPLATE.json",
-    "skills/create-claw-skill/SKILL.md",
-    "skills/create-claw-skill/TEMPLATE.json",
-    "skills/create-claw-skill/FALLBACK.md",
-    "skills/create-claw-skill/CONTENT-COVERAGE.md",
-    "skills/create-claw-skill/references/template-authoring.md",
-    "skills/create-claw-skill/references/template-upgrade.md",
-    "skills/create-claw-skill/scripts/create-claw-skill-stub.mjs",
-    "skills/feature-architecture/SKILL.md",
-    "skills/feature-architecture/references/design-artifacts.md",
-  ]) {
-    assertHeadPathExists(`${sourceRoot}/${relativePath}`);
+async function assertRepositorySourceSnapshot({ pluginVersion }) {
+  // This validates committed build inputs, not a directly installable Git tree.
+  // Codex Git delivery must publish the composed artifact through an authorized
+  // target; never certify raw adapter source as a complete marketplace payload.
+  const committedManifest = readHeadJson("packages/codex-adapter/.codex-plugin/plugin.json");
+  assert(committedManifest.version === pluginVersion && committedManifest.skills === "./skills/", "Committed Codex manifest must preserve the installed interface and release version.");
+  const inputs = await loadSkillInputs({ sourceRoot: repoRoot, targetHost: "codex" });
+  assertHeadPathExists("packages/codex-adapter/skill-inputs.json");
+  for (const skill of inputs.skills) {
+    for (const file of skill.files) assertHeadPathExists(`${skill.relativeSource}/${file}`);
+  }
+  for (const relativePath of [".codex-plugin", "hooks", "assets", "scripts", "references", "package.json"]) {
+    const sourcePath = `packages/codex-adapter/${relativePath}`;
+    assertHeadPathExists(sourcePath);
+    const tree = command("git", ["ls-tree", "-r", "HEAD", "--", sourcePath]);
+    assert(!tree.split(/\r?\n/).some((line) => line.startsWith("120000 ")), `Committed Codex payload contains symlinks: ${sourcePath}`);
   }
 }
 
@@ -111,7 +91,7 @@ function isAdapterVersion(adapterVersion, cliVersion) {
 }
 
 async function assertCodexDriverCompatibility({ cliPath, cwd }) {
-  const skill = await fs.readFile(path.join(repoRoot, "packages", "codex-adapter", "skills", "using-claw-kit", "SKILL.md"), "utf8");
+  const skill = await fs.readFile(path.join(repoRoot, ".agents", "skills", "using-claw-kit", "references", "hosts", "codex.md"), "utf8");
   const expectedCacheKey = /const cacheKey = "([^"]+)"/.exec(skill)?.[1];
   const expectedDriverVersion = Number(/driverVersion !== (\d+)/.exec(skill)?.[1]);
   assert(expectedCacheKey && Number.isInteger(expectedDriverVersion), "Codex plugin must declare an explicit driver cache key and version.");
@@ -125,7 +105,6 @@ async function assertPlatformArtifactReadiness(cliVersion) {
   const openclaw = await readJson("packages/openclaw-adapter/package.json");
   const openclawManifest = await readJson("packages/openclaw-adapter/openclaw.plugin.json");
   const opencode = await readJson("packages/opencode-adapter/package.json");
-  const marketplace = await readJson(".agents/plugins/marketplace.json");
   const plugin = await readJson("packages/codex-adapter/.codex-plugin/plugin.json");
   assert(openclaw.dependencies?.["@veewo/claw-core"] === cliVersion, "OpenClaw adapter must pin the exact @veewo/claw-core version.");
   assert(openclawManifest.id === "claw-kit" && openclawManifest.version === openclaw.version, "OpenClaw adapter manifest must match its package.");
@@ -134,10 +113,8 @@ async function assertPlatformArtifactReadiness(cliVersion) {
     assert(isAdapterVersion(pkg.version, cliVersion), `${name} version ${pkg.version} must start with ${cliVersion}. and use four segments.`);
   }
   assert(plugin.version === codex.version, "Codex plugin manifest version must match codex-adapter version.");
-  assert(marketplace.plugins?.some((entry) => entry.name === "claw-kit" && entry.source?.path === "./packages/codex-adapter"), "Codex marketplace must point claw-kit at ./packages/codex-adapter.");
   await assertTemplateVersionsAligned({ repoRoot, expectedVersion: cliVersion });
-  await assertSharedSkillsSynced({ adapterDirs: [path.join(repoRoot, "packages", "codex-adapter")] });
-  assertRepositoryMarketplaceSnapshot({ pluginVersion: plugin.version });
+  await assertRepositorySourceSnapshot({ pluginVersion: plugin.version });
 }
 
 async function verifyReleaseReadiness() {
@@ -164,15 +141,7 @@ async function verifyReleaseReadiness() {
   try {
     if (includePlatformArtifacts) {
     const bundle = await exportCodexPluginBundle({ outDir });
-    for (const skillName of requiredPluginSkills) {
-      await fs.access(path.join(bundle.bundleDir, "skills", skillName, "SKILL.md"));
-    }
-    await fs.access(path.join(bundle.bundleDir, "skills", "update", "TEMPLATE.json"));
-    for (const referenceName of ["update.md", "configuration.md", "knowledge-format.md"]) {
-      await fs.access(path.join(bundle.bundleDir, "skills", "claw-kit-doc", "references", referenceName));
-    }
-    await fs.access(path.join(bundle.bundleDir, "skills", "create-claw-skill", "TEMPLATE.json"));
-    await fs.access(path.join(bundle.bundleDir, "skills", "create-claw-skill", "FALLBACK.md"));
+    await readCodexPluginSource({ sourceDir: bundle.bundleDir });
 
     }
 
@@ -275,7 +244,7 @@ async function verifyReleaseReadiness() {
     const smokeProject = path.join(outDir, "project");
     await fs.mkdir(smokeProject, { recursive: true });
     await installCodexPluginBundle({
-      sourceDir: path.join(repoRoot, "packages", "codex-adapter"),
+      sourceRoot: repoRoot,
       cacheRoot: path.join(smokeHome, ".codex", "plugins", "cache", "claw-kit"),
     });
     const cliPath = path.join(repoRoot, "packages", "cli", "dist", "bin.js");

@@ -2,10 +2,13 @@ import fs from "node:fs";
 import path from "node:path";
 
 export type WorkspaceRecord = { id?: string; title?: string; path?: string };
-export type WorkspaceRegistry = { list(): Promise<WorkspaceRecord[]> };
+export type WorkspaceRegistry = {
+  list(): readonly WorkspaceRecord[] | Promise<readonly WorkspaceRecord[]>;
+  get?(id: string): WorkspaceRecord | undefined;
+};
 export type RunConfig = (argv: string[], cwd: string) => Promise<{ text: string; errText: string }>;
 
-type RpcResult = { ok: true; value: unknown } | { ok: false; error: { code: string; message: string } };
+type RpcResult = { ok: true; value: unknown } | { ok: false; error: { code: string; message: string; details: object } };
 
 const LAYERS = new Set(["team", "personal"]);
 
@@ -31,7 +34,9 @@ export async function handleProjectConfigRpc(
 
     const request = asObject(payload);
     const workspaceId = requiredString(request, "workspaceId");
-    const workspace = (await registry.list()).find((candidate) => candidate.id === workspaceId);
+    const workspace = typeof registry.get === "function"
+      ? registry.get(workspaceId)
+      : (await registry.list()).find((candidate) => candidate.id === workspaceId);
     if (!workspace?.path) return failure("WORKSPACE_NOT_REGISTERED", "The requested workspace is not registered.");
     if (!isClawProject(workspace.path)) return failure("WORKSPACE_NOT_PROJECT", "The requested workspace does not contain .claw/project.json.");
 
@@ -100,5 +105,5 @@ async function invoke(argv: string[], cwd: string, runConfig: RunConfig): Promis
 }
 
 function failure(code: string, message: string): RpcResult {
-  return { ok: false, error: { code, message } };
+  return { ok: false, error: { code, message, details: {} } };
 }

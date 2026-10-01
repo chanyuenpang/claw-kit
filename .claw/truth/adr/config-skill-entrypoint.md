@@ -22,8 +22,12 @@ The final `0.1.49` release line made this entrypoint part of the published adapt
 - Personal override examples use the current flat canonical fields, not legacy nested workflow/GitNexus shapes.
 - Default local vector indexing remains runtime-enabled, but default config examples and repair output do not write `store.vector.enabled = true`.
 - `store.vector` remains in config only for explicit intent: `enabled: false` or `extensionPath`.
-- Maintain the config skill from a shared source at `shared/skills/config/SKILL.md`, then sync generated copies into both Codex and OpenCode adapter skill directories.
-- Rename the active sync entrypoint to `scripts/sync-shared-skills.mjs`; keep `scripts/sync-planning-skill.mjs` as a compatibility wrapper.
+- Keep configuration semantics in the canonical config package; [shared-source ADR](<shared-planning-skill-source.md>) owns source roots and artifact-only assembly, not this entry decision.
+
+## Alternatives
+
+- Keep configuration advice scattered or let agents guess team versus personal scope: rejected because it risks persisting personal preferences in the shared declaration.
+- Maintain adapter-local config copies: rejected; distribution follows the shared-source owner.
 
 ## Consequences
 
@@ -36,15 +40,10 @@ The final `0.1.49` release line made this entrypoint part of the published adapt
 
 ## Related Code
 
-- `shared/skills/config/SKILL.md`
-- `scripts/sync-shared-skills.mjs`
-- `scripts/sync-planning-skill.mjs`
-- `packages/codex-adapter/skills/config/SKILL.md`
-- `packages/opencode-adapter/skills/config/SKILL.md`
+- [Config source](<../../../.agents/skills/config/SKILL.md>)
 - `docs/project-json-reference.md`
 - `scripts/codex-plugin-bundle.test.mjs`
 - `scripts/opencode-plugin-bundle.test.mjs`
-- `.claw/tasks/Publish-claw-kit-release-and-refresh-local-Codex-plugin/plan.json`
 
 ## Search Terms
 

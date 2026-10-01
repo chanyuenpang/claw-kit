@@ -7,7 +7,7 @@ Accepted working truth for the current template-backed skill conversion path.
 <!-- state: current -->
 ## 当前入口合同
 
-- `shared/skills/create-claw-skill/SKILL.md` 是把现有 skill 或用户想法转换成 claw-template-backed skill 的 canonical 共享入口；Codex 与 OpenCode adapter 中的同名目录是同步物化副本。
+- create-claw-skill 是把现有 skill 或用户想法转换成 claw-template-backed skill 的共享入口；源码与整包分发由 [shared-source Truth](<shared-planning-skill-source.md>) 拥有。
 - 当用户需求会要求大幅改变本 skill 的 template workflow 时，不创建它的 plan 或 subplan；直接读取相邻 `FALLBACK.md`，按 plan-independent workflow 完成这次转换。
 - 入口按当前 skill 能否完整拥有工作结果路由，而不是按 direct、parent、batch 或 mixed 等调用形态分类：
   - 先把 `<skill-dir>` 解析为当前已加载 `SKILL.md` 所在目录。
@@ -20,7 +20,7 @@ Accepted working truth for the current template-backed skill conversion path.
 
 ## 转换产物
 
-- `shared/skills/create-claw-skill/TEMPLATE.json` 当前是四任务流程：先确认用户需求并据此适配生成的计划，再分析来源并确定形态、生成完整 package、按文件路径验证 template 并检查内容覆盖。
+- `.agents/skills/create-claw-skill/TEMPLATE.json` 当前是四任务流程：先确认用户需求并据此适配生成的计划，再分析来源并确定形态、生成完整 package、按文件路径验证 template 并检查内容覆盖。
 - 计划适配必须保留所有 sub-task id，因为 template guidance 依赖这些稳定 id；不适用的工作保留原 task，并在 task description 中标记为移出范围，而不是删除 task 或改 id。
 - 分析来源的 task 使用 `guidance.onDone.default`，不再用 `simple`、`routing`、`idea-first` 等最终都进入同一 task 的伪 choices。通用 choice 语义由 `.claw/truth/features/template-guidance-routing.md` 拥有。
 - `create-claw-skill` 的模板、fallback、generator stub 与 authoring docs 都要求：只有真实 downstream 分支才生成 `guidance.onDone.choices`；一旦生成 choices，就遵循 canonical route-aware contract，以 `completionChoices` 作为唯一合法值列表、只提供一条参数化的 `claw task done --id <id> --choice <choice>` 命令模板，并让 `nextsteps` 不重复枚举 ids。该 skill 不另建平行 choice 合同。
@@ -54,12 +54,12 @@ Accepted working truth for the current template-backed skill conversion path.
 
 ## 相关锚点
 
-- `shared/skills/create-claw-skill/SKILL.md`
-- `shared/skills/create-claw-skill/TEMPLATE.json`
-- `shared/skills/create-claw-skill/FALLBACK.md`
-- `shared/skills/create-claw-skill/CONTENT-COVERAGE.md`
-- `shared/skills/create-claw-skill/references/template-authoring.md`
-- `shared/skills/create-claw-skill/scripts/create-claw-skill-stub.mjs`
+- `.agents/skills/create-claw-skill/SKILL.md`
+- `.agents/skills/create-claw-skill/TEMPLATE.json`
+- `.agents/skills/create-claw-skill/FALLBACK.md`
+- `.agents/skills/create-claw-skill/CONTENT-COVERAGE.md`
+- `.agents/skills/create-claw-skill/references/template-authoring.md`
+- `.agents/skills/create-claw-skill/scripts/create-claw-skill-stub.mjs`
 - `docs/create-claw-skill-lessons.md`
 - `docs/template-authoring-guide.md`
 - `packages/core/src/plan.ts`

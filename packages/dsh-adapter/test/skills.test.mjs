@@ -1,11 +1,20 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { buildHostPluginArtifact } from "../../../scripts/host-plugin-artifacts.mjs";
 import assert from "node:assert/strict";
-import {
+const sourceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const temporary = await fs.mkdtemp(path.join(os.tmpdir(), "claw-dsh-skill-provider-"));
+after(() => fs.rm(temporary, { recursive: true, force: true }));
+const artifact = await buildHostPluginArtifact({ sourceRoot, targetHost: "dsh", outputRoot: path.join(temporary, "package") });
+const {
   discoverBundledSkills,
   parseSkillFrontmatter,
   registerBundledSkills,
   stripFrontmatter,
-} from "../lib/skills.js";
+} = await import(pathToFileURL(path.join(artifact.outputRoot, "lib", "skills.js")).href);
 
 test("parseSkillFrontmatter extracts name/description", () => {
   const content = `---
@@ -38,7 +47,8 @@ line two`;
 test("discoverBundledSkills finds the packaged claw-kit skills", () => {
   const skills = discoverBundledSkills();
   const names = skills.map((skill) => skill.name).sort();
-  assert.ok(names.includes("using-claw-kit"), "host-specific using-claw-kit present");
+  assert.deepEqual(names, artifact.skills.map((skill) => skill.id).sort());
+  assert.ok(names.includes("using-claw-kit"), "shared using-claw-kit present");
   assert.ok(names.includes("researcher"), "host-specific researcher present");
   assert.ok(names.includes("planning"), "shared planning present");
   assert.ok(names.includes("claw-kit-doc"), "shared claw-kit-doc present");
@@ -63,7 +73,7 @@ test("registerBundledSkills provider lists candidates and loads bodies", async (
 
   const candidates = await registered.list({});
   assert.ok(Array.isArray(candidates), "list returns an array");
-  assert.ok(candidates.length >= 7, `expected >= 7 bundled skills, got ${candidates.length}`);
+  assert.equal(candidates.length, artifact.skills.length);
   const using = candidates.find((candidate) => candidate.name === "using-claw-kit");
   assert.ok(using, "using-claw-kit candidate present");
   assert.equal(using.rank, 600);
@@ -75,4 +85,8 @@ test("registerBundledSkills provider lists candidates and loads bodies", async (
   assert.equal(loaded.name, "using-claw-kit");
   assert.match(loaded.content, /claw_run/);
   assert.equal(loaded.resourceBase.kind, "directory");
+});
+
+test("provider never falls back to repository skills when its explicit root is absent", () => {
+  assert.deepEqual(discoverBundledSkills(path.join(temporary, "absent", "skills")), []);
 });

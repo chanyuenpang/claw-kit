@@ -20,7 +20,7 @@ test("create-claw-skill stub generator writes standard fill-in surfaces", async 
   await execFileAsync(
     process.execPath,
     [
-      "shared/skills/create-claw-skill/scripts/create-claw-skill-stub.mjs",
+      ".agents/skills/create-claw-skill/scripts/create-claw-skill-stub.mjs",
       "--skill-name",
       "demo-skill",
       "--out",
@@ -36,7 +36,11 @@ test("create-claw-skill stub generator writes standard fill-in surfaces", async 
   assert.match(skillText, /Resolve `<skill-dir>` as the directory containing this loaded `SKILL\.md`/);
   assert.match(skillText, /Whole task:[\s\S]*claw plan create --template-file "<skill-dir>\/TEMPLATE\.json"/);
   assert.match(skillText, /Independent stage:[\s\S]*claw subplan create --parent <parent-task-name> --task-id <id> --template-file "<skill-dir>\/TEMPLATE\.json"/);
-  assert.match(skillText, /active parent goal completes before the child plan creates its own goal/i);
+  assert.match(skillText, /CLAW-ROUTING\.md/);
+  const routing = await fs.readFile(path.join(outDir, "CLAW-ROUTING.md"), "utf8");
+  assert.equal(routing, await fs.readFile(path.join(repoRoot, ".agents/skills/create-claw-skill/references/host-routing.md"), "utf8"));
+  assert.match(routing, /claw_run[\s\S]*template_file/);
+  assert.match(skillText, /adapter consumes Goal\/progress effects automatically/);
   assert.match(skillText, /batch is a repeated-stage case/i);
   assert.match(skillText, /Mixed stage:[\s\S]*Read `FALLBACK\.md`/);
   assert.doesNotMatch(skillText, /Recommended batch task|Batch or mixed request/);
@@ -67,7 +71,7 @@ test("create-claw-skill stub generator does not expose manual scope routing", as
     execFileAsync(
       process.execPath,
       [
-        "shared/skills/create-claw-skill/scripts/create-claw-skill-stub.mjs",
+        ".agents/skills/create-claw-skill/scripts/create-claw-skill-stub.mjs",
         "--skill-name",
         "demo-skill",
         "--scope",

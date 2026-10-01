@@ -127,6 +127,15 @@ export type KnowledgeFinalizationJob = {
   error?: {
     message: string;
   };
+  /** Bounded safe operational alert; canonical status remains authoritative. */
+  operationalFailure?: {
+    phase: "capture" | "dispatch" | "writer";
+    code: string;
+    correlationId: string;
+    firstAt: string;
+    lastAt: string;
+    count: number;
+  };
 };
 
 export const KNOWLEDGE_FINALIZATION_TTL_MS = 2 * 60 * 60 * 1000;
@@ -674,6 +683,68 @@ export function reconcileKnowledgeFinalizationJob(
   return withFileLock(jobPath, () => reconcileKnowledgeFinalizationJobLocked(jobPath, now));
 }
 
+/** Freeze a trusted Host report receipt before writer admission; Core alone owns job state. */
+export function captureDshKnowledgeReport(input: {
+  jobPath: string;
+  parentSessionId: string;
+  publish: (job: KnowledgeFinalizationJob) => NonNullable<NonNullable<KnowledgeFinalizationJob["reportCapture"]>["receipt"]>;
+}): NonNullable<NonNullable<KnowledgeFinalizationJob["reportCapture"]>["receipt"]> {
+  return withFileLock(input.jobPath, () => {
+    const job = readKnowledgeFinalizationJob(input.jobPath);
+    if (job.host !== "dsh" || job.sessionId !== input.parentSessionId) {
+      throw new Error("DSH_REPORT_CAPTURE_DENIED: parent or host mismatch.");
+    }
+    if (job.reportCapture?.status === "captured" && job.reportCapture.receipt) {
+      return job.reportCapture.receipt;
+    }
+    if (job.status !== "queued" || !job.expiresAt || Date.parse(job.expiresAt) <= Date.now()
+      || job.reportCapture?.status !== "pending") {
+      throw new Error("DSH_REPORT_CAPTURE_UNAVAILABLE: job is not queued for capture.");
+    }
+    const receipt = input.publish(job);
+    if (receipt.host !== "dsh" || receipt.sessionId !== input.parentSessionId) {
+      throw new Error("DSH_REPORT_CAPTURE_INVALID: wrong Host receipt identity.");
+    }
+    writeJsonFileAtomic(input.jobPath, { ...job, operationalFailure: undefined, reportCapture: {
+      ...job.reportCapture, status: "captured", capturedAt: receipt.completedAt, receipt,
+    } });
+    return receipt;
+  });
+}
+
+/** Record only preclassified, non-sensitive Host failure facts on the canonical job. */
+export function recordDshOperationalFailure(input: {
+  jobPath: string;
+  parentSessionId: string;
+  phase: "capture" | "dispatch" | "writer";
+  code: string;
+  correlationId: string;
+}): KnowledgeFinalizationJob["operationalFailure"] {
+  if (!/^[A-Z][A-Z0-9_]{2,63}$/.test(input.code)
+    || !/^[a-zA-Z0-9_-]{1,96}$/.test(input.correlationId)) {
+    throw new Error("DSH_OPERATIONAL_FAILURE_INVALID: unsafe diagnostic identifier.");
+  }
+  return withFileLock(input.jobPath, () => {
+    const job = readKnowledgeFinalizationJob(input.jobPath);
+    if (job.host !== "dsh" || job.sessionId !== input.parentSessionId) {
+      throw new Error("DSH_OPERATIONAL_FAILURE_DENIED: parent mismatch.");
+    }
+    if (job.status !== "queued" && job.status !== "running") return job.operationalFailure;
+    const now = new Date().toISOString();
+    const last = job.operationalFailure;
+    if (last?.phase === input.phase && last.code === input.code
+      && last.correlationId === input.correlationId) return last;
+    const failure = {
+      phase: input.phase, code: input.code, correlationId: input.correlationId,
+      firstAt: last?.phase === input.phase && last.code === input.code ? last.firstAt : now,
+      lastAt: now, count: last?.phase === input.phase && last.code === input.code
+        ? Math.min(100, last.count + 1) : 1,
+    };
+    writeJsonFileAtomic(input.jobPath, { ...job, operationalFailure: failure });
+    return failure;
+  });
+}
+
 export function claimKnowledgeFinalizationJob(
   jobPath: string,
   options?: {
@@ -704,6 +775,7 @@ export function claimKnowledgeFinalizationJob(
       claimToken: randomUUID(),
       finishedAt: undefined,
       error: undefined,
+      operationalFailure: undefined,
     };
     if (current.host === "dsh") {
       const assignments = buildKnowledgeWriterAssignments(running);
@@ -782,7 +854,7 @@ export function doneKnowledgeFinalizationJob(input: {
       status: input.status,
       finishedAt,
       ...(input.status === "succeeded"
-        ? { finalResponse: input.result ?? "", error: undefined }
+        ? { finalResponse: input.result ?? "", error: undefined, operationalFailure: undefined }
         : { error: { message: input.error ?? "Knowledge finalization failed." } }),
     };
     writeJsonFileAtomic(input.jobPath, terminal);

@@ -9,7 +9,7 @@ Accepted working truth for the current Codex, OpenCode, and DSH update surfaces.
 
 - `update` is a host-selected skill name, not a cross-platform router. The loaded adapter determines which implementation is available, and the workflow must not ask the user to choose Codex, OpenCode, or a conservative route.
 - Codex owns `packages/codex-adapter/skills/update/`; OpenCode owns `packages/opencode-adapter/skills/update/`; DSH owns `packages/dsh-adapter/skills/update/`. Each package independently maintains `SKILL.md`, `TEMPLATE.json`, and `non-claw-fallback.md`; only Codex and OpenCode additionally carry `CONTENT-COVERAGE.md`.
-- `scripts/sync-shared-skills.mjs` deliberately excludes `update` from `SHARED_SKILL_NAMES`. `shared/skills/update/` no longer exists, and shared-skill synchronization must not overwrite either adapter-owned implementation.
+- The assembler selects update from the target adapter's own package; there is no shared update source or sync-back step. [Shared-source Truth](<shared-planning-skill-source.md>) owns artifact assembly; it must not merge host-specific update implementations.
 - All three implementations keep the same high-level update unit: confirm the published target, refresh the global CLI together with the current host plugin, verify both surfaces, and report exact per-surface success or failure.
 - The Codex and OpenCode `TEMPLATE.json` files are fixed three-task `process.active` plans; the DSH template is a fixed four-task plan (detect versions, update CLI, update profile adapter, restart and verify activation). No template has a host-selection task or `guidance.onDone.choices` for platform routing.
 - Each loaded host-specific update skill resolves its own directory and invokes the adjacent `TEMPLATE.json` through `--template-file`. Repository-root discovery may still reject the compatibility lookup `claw plan create --template update` as ambiguous, but the normal skill entry no longer depends on that combined-root lookup and must not restore a shared platform router.
@@ -35,7 +35,7 @@ Accepted working truth for the current Codex, OpenCode, and DSH update surfaces.
 
 - Refresh the published global CLI first (`npm install -g @veewo/claw@latest`), then install the adapter into the DSH profile with `dsh plugin --profile <name> add @veewo/dsh-claw-kit@latest`. The installed CLI must accept `--host dsh`; a CLI without dsh host support cannot drive the adapter.
 - Unpublished workspace files are not valid update sources; the npm registry is the default source, and the published GitHub source only when separately authorized.
-- A new package version alone is not activation proof. The adapter activates only after the DSH Host restarts and a real session mounts `claw_run` with the seven bundled skills (`using-claw-kit`, `researcher`, `planning`, `config`, `create-claw-skill`, `claw-kit-doc`, `update`). Verification covers `claw --version` at the target, the `claw-kit` row in `dsh --profile <name> --dump-config`, and the post-restart session surface.
+- A new package version alone is not activation proof. The adapter activates only after the DSH Host restarts and a real session mounts `claw_run` with the bundled skills declared by the installed package, including feature-architecture and knowledge-capture; do not rely on a historical fixed count. Verification covers `claw --version` at the target, the `claw-kit` row in `dsh --profile <name> --dump-config`, and the post-restart session surface.
 - An update plan paused at the restart boundary survives the Host restart: the new session resumes it via host-scoped recovery and closes it out without recreating the plan.
 
 ## Maintenance and verification anchors
@@ -51,8 +51,7 @@ Accepted working truth for the current Codex, OpenCode, and DSH update surfaces.
 - `packages/opencode-adapter/skills/update/TEMPLATE.json`
 - `packages/opencode-adapter/skills/update/non-claw-fallback.md`
 - `packages/opencode-adapter/skills/update/CONTENT-COVERAGE.md`
-- `scripts/sync-shared-skills.mjs`
-- `scripts/sync-shared-skills.test.mjs`
+- [Skill assembler](<../../../scripts/skill-artifacts.mjs>)
 - `scripts/codex-plugin-bundle.test.mjs`
 - `scripts/codex-plugin-bundle.mjs`
 - `scripts/install-codex-plugin.ps1`
@@ -65,7 +64,7 @@ Accepted working truth for the current Codex, OpenCode, and DSH update surfaces.
 - `adapter-owned update`
 - `ambiguous update template at repository root`
 - `no host route choice`
-- `SHARED_SKILL_NAMES excludes update`
+- `adapter-owned update inputs`
 - `Codex update official marketplace`
 - `existing-plan template-version handoff`
 - `matching published CLI remaining mutations`

@@ -27,6 +27,7 @@ import type { Part } from "@opencode-ai/sdk";
 
 const ADAPTER_DIR = import.meta.dirname ?? path.dirname(new URL("", import.meta.url).pathname);
 const GUIDANCE_CONFIG_PATH = path.join(ADAPTER_DIR, "..", "workflow-guidance.opencode.json");
+const OPENCODE_HOST_IDENTITY = "[claw host]\nplatform: opencode\nAdapter-owned host identity, independent of model/provider or skill path. Host/session arguments remain adapter-owned.";
 
 let inClawProject = false;
 let projectInfo: { projectId: string; projectName: string; clawDir: string } | null = null;
@@ -200,21 +201,23 @@ function invokeClawSessionStart(projectDir: string): string | null {
   }
 }
 
-function renderClawSessionStart(context: Record<string, unknown>): string | null {
+function renderClawSessionStart(context: Record<string, unknown>): string {
   const error = context.error as { prompt?: unknown } | undefined;
   const runtimePrompt = typeof error?.prompt === "string" ? error.prompt.trim() : "";
   const workflow = context.activeWorkflow;
   if (workflow && typeof workflow === "object") {
     return [
+      OPENCODE_HOST_IDENTITY,
       runtimePrompt,
       "Claw workflow snapshot is recovered. Treat `workflowGuidance` as the only next-step contract.",
       JSON.stringify(workflow),
     ].filter(Boolean).join("\n\n");
   }
   const project = context.project as { projectName?: unknown; projectId?: unknown } | undefined;
-  if (!project) return runtimePrompt || null;
+  if (!project) return [OPENCODE_HOST_IDENTITY, runtimePrompt].filter(Boolean).join("\n\n");
   const projectName = typeof project.projectName === "string" ? project.projectName : project.projectId;
   return [
+    OPENCODE_HOST_IDENTITY,
     runtimePrompt,
     `This session started inside claw project ${projectName || "project"}. Load claw-kit:using-claw-kit as the main workflow skill for this session.`,
     typeof context.searchGuidance === "string" ? context.searchGuidance : "",
@@ -522,8 +525,11 @@ export const ClawKitPlugin: Plugin = async ({ directory, client }) => {
 
     // (4) Inject recovered state into system prompt — compaction fallback
     "experimental.chat.system.transform": async (_input, output) => {
-      // Unconditional: inject claw workflow context whenever inside a .claw project
-      if (!isClawProject()) return;
+      // The mounted adapter identifies its host even outside a claw project.
+      if (!isClawProject()) {
+        output.system.push(OPENCODE_HOST_IDENTITY);
+        return;
+      }
 
       // Prefer full claw context (includes workflow recovery,
       // workflowGuidance, and plan recovery)
@@ -534,7 +540,7 @@ export const ClawKitPlugin: Plugin = async ({ directory, client }) => {
 
       // Fallback: static text when claw context was unavailable
       const info = projectInfo;
-      const lines: string[] = [];
+      const lines: string[] = [OPENCODE_HOST_IDENTITY];
       lines.push("## claw-kit project context");
       lines.push("");
       if (info) {

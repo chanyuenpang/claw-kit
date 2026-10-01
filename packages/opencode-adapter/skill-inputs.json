@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "host": "opencode",
+  "skills": [
+    "planning",
+    "config",
+    "create-claw-skill",
+    "feature-architecture",
+    "researcher",
+    "using-claw-kit",
+    "claw-kit-doc",
+    "update"
+  ]
+}

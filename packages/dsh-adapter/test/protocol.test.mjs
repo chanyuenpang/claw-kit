@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { daemonInput, isUncertainConnectionFailure, renderGuidanceSnapshot } from "../lib/protocol.js";
 
 test("uncertain transport failures are identified so callers do not replay a mutation", () => {
@@ -212,10 +213,27 @@ test("renderGuidanceSnapshot renders the compact workflow snapshot", () => {
   assert.match(text, /every claw plan, task, or subplan mutation must use claw_run\(operation, args\)/);
 });
 
-test("renderGuidanceSnapshot returns empty for absent workflow or guidance", () => {
-  assert.equal(renderGuidanceSnapshot(undefined), "");
-  assert.equal(renderGuidanceSnapshot({}), "");
-  assert.equal(renderGuidanceSnapshot({ activeWorkflow: { planStatus: "process.wait" } }), "");
+test("DSH prompt registration retains identity before context recovery succeeds", () => {
+  const source = fs.readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
+  assert.match(source, /text:[^\n]*=>\s*guidanceByAgent\.get\(context\.scope\)\s*\|\|\s*renderGuidanceSnapshot\(undefined\)/);
+  assert.match(renderGuidanceSnapshot(undefined), /^\[claw host\]\nplatform: dsh\n/);
+});
+
+test("renderGuidanceSnapshot retains adapter identity without a workflow", () => {
+  for (const context of [undefined, {}, { activeWorkflow: { planStatus: "process.wait" } }]) {
+    const text = renderGuidanceSnapshot(context);
+    assert.match(text, /^\[claw host\]\nplatform: dsh\n/);
+    assert.doesNotMatch(text, /\[claw workflow\]|snapshot is recovered/);
+  }
+});
+
+test("DSH identity is fixed by the adapter, not model provider or stale skill paths", () => {
+  const context = { model: "codex", provider: "openai", platform: "cindy", skillPath: ".agents/skills/using-claw-kit", project: { projectName: "P" } };
+  const before = JSON.stringify(context);
+  const first = renderGuidanceSnapshot(context);
+  assert.match(first, /^\[claw host\]\nplatform: dsh\n/);
+  assert.equal(renderGuidanceSnapshot(context), first);
+  assert.equal(JSON.stringify(context), before);
 });
 
 test("renderGuidanceSnapshot emits version-sync notice when CLI lags", () => {

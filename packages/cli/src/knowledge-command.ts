@@ -27,29 +27,24 @@ export function claimKnowledgeCommand(jobPath: string, version: string, claimant
   const job = claimKnowledgeFinalizationJob(jobPath, {
     claimant, version,
     prepare: (queued) => {
-      if (queued.writer?.executionPolicy !== "subagent"
+      if ((queued.writer?.executionPolicy !== "subagent"
+        && !(queued.host === "dsh" && queued.writer?.executionPolicy === "background"))
         || queued.reportCapture?.mode !== "claim"
         || queued.reportCapture.status === "captured") return;
+      // DSH captures through its live parent adapter before dispatch. An empty
+      // proven history has a valid receipt; a missing Host handoff is not proof of emptiness.
+      if (queued.host === "dsh") throw new Error("DSH_REPORT_CAPTURE_REQUIRED: dsh");
       if (resolveHostIntegrationProfile(queued.host)?.supportsClaimTimeReportCapture !== true) {
         throw new Error("Claim-time report capture is unavailable for host " + (queued.host ?? "unknown") + ".");
       }
-      let receipt;
-      try {
-        receipt = collectReport({
-          host: queued.host as ReportCollectorHost,
-          sessionId: queued.sessionId,
-          projectRoot: queued.projectRoot,
-          planPath: queued.planPath,
-          canonicalReportPath: queued.reportPath,
-          startedAt: queued.reportCapture.startedAt,
-        });
-      } catch (error) {
-        // DSH history is optional. If session-start registration was unavailable,
-        // keep the receipt pending and let the writer claim; do not fabricate a
-        // captured report. Corrupt collector output and storage errors still fail.
-        if (queued.host === "dsh" && error instanceof Error && error.message === "REPORT_COLLECTOR_UNREGISTERED: dsh") return;
-        throw error;
-      }
+      const receipt = collectReport({
+        host: queued.host as ReportCollectorHost,
+        sessionId: queued.sessionId,
+        projectRoot: queued.projectRoot,
+        planPath: queued.planPath,
+        canonicalReportPath: queued.reportPath,
+        startedAt: queued.reportCapture.startedAt,
+      });
       return { reportCapture: { ...queued.reportCapture, status: "captured" as const, capturedAt: receipt.completedAt, receipt } };
     },
   });

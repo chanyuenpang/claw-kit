@@ -238,11 +238,12 @@ export function daemonInput(operation, args) {
  * `claw context --host dsh` payload — activeWorkflow snapshot, version-sync
  * notice, protocol check, search guidance, and a project fallback — so the
  * model gets the same recovery and startup context on DSH that Codex
- * receives. Empty text contributes nothing to the assembly. */
+ * receives. Host identity remains available even without recovered context. */
 export function renderGuidanceSnapshot(context) {
+    const hostIdentity = "[claw host]\nplatform: dsh\nAdapter-owned host identity, independent of model/provider or skill path. Host/session arguments remain adapter-owned.";
     if (!context || typeof context !== "object")
-        return "";
-    const lines = [];
+        return hostIdentity;
+    const lines = [hostIdentity];
     // Version sync notice (startupRecovery.versionSync), same contract as Codex.
     const startupRecovery = context.startupRecovery;
     const versionSync = startupRecovery?.versionSync;

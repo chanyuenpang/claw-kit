@@ -18,7 +18,9 @@ export async function handleProjectConfigRpc(endpoint, payload, registry, runCon
         }
         const request = asObject(payload);
         const workspaceId = requiredString(request, "workspaceId");
-        const workspace = (await registry.list()).find((candidate) => candidate.id === workspaceId);
+        const workspace = typeof registry.get === "function"
+            ? registry.get(workspaceId)
+            : (await registry.list()).find((candidate) => candidate.id === workspaceId);
         if (!workspace?.path)
             return failure("WORKSPACE_NOT_REGISTERED", "The requested workspace is not registered.");
         if (!isClawProject(workspace.path))
@@ -88,6 +90,6 @@ async function invoke(argv, cwd, runConfig) {
     }
 }
 function failure(code, message) {
-    return { ok: false, error: { code, message } };
+    return { ok: false, error: { code, message, details: {} } };
 }
 //# sourceMappingURL=project-config-rpc.js.map

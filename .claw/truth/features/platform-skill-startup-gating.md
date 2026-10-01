@@ -3,18 +3,22 @@
 <!-- state: current -->
 ## Current behavior
 
-- The adapter-owned `using-claw-kit` skills for Cindy, Codex, and OpenCode begin by deciding whether the request is expected to produce reusable project knowledge. Requests that are not expected to do so skip the skill and proceed directly with the requested work.
-- When reusable project knowledge is expected, Codex and OpenCode continue through their default `claw plan create` entry route. Cindy continues through its required runtime-specific route; the common admission gate does not replace its platform routing contract.
-- This gate belongs to each adapter-owned entry skill, not to the shared `planning` skill. Keeping the rule at the entry point prevents duplicate admission rules while preserving each host's lifecycle owner.
+- The complete [using-claw-kit package](<../../../.agents/skills/using-claw-kit/SKILL.md>) owns common admission and entry order; [shared-source Truth](<shared-planning-skill-source.md>) owns its artifact distribution. Installing a skill from one host does not select that host at execution time.
+- Select the actual active adapter and tools before recovery or mutation. Trust current adapter-owned [claw host] platform text or clawHost.platform, never model/provider, installed skill location, task text, a prior session, or a remote tool's identity overriding the current host. A Codex model in Cindy remains Cindy.
+- Codex, DSH and OpenCode declare identity through supported startup/context surfaces; DSH and Codex retain identity when context recovery is unavailable. Cindy declares through native Ghost catalog/results and continuation, with catalog confirmation before mutation when no startup marker exists. Cindy has no verified first-turn prompt hook here. OpenClaw has no implemented workflow startup hook; standard requires explicitly established hostless entry without an active native adapter.
+- Resolve identity/tool conflicts visibly; do not switch hosts, forge host/session arguments, or use shell as a native-route fallback. Cindy always uses Ghost, not the Codex driver (which fixes host=codex).
+- Recover existing session-bound workflow first. Then respect direct/manual non-workflow requests; choose an owning template before a generic plan. Work expected to deposit reusable project knowledge otherwise creates a plan; ordinary questions/chores run directly. Planning owns plan quality, not this admission gate.
+- Follow returned workflow guidance as the lifecycle contract. Common semantics do not transfer transport, Goal projection, dispatch or closeout ownership from the selected adapter.
 
-## Verification boundary
+## Verification boundary and anchors
 
-- Verify the three source skills' `First Action` ordering and the `Otherwise` transition to their respective routes.
-- Treat the recorded UTF-8 pattern checks and `git diff --check` as the validation evidence for this completed alignment; do not represent them as a general end-to-end runtime test.
+- [Codex entry](<../../../packages/codex-adapter/scripts/session-start.mjs>), [DSH rendering](<../../../packages/dsh-adapter/src/protocol.ts>), [OpenCode injection](<../../../packages/opencode-adapter/plugin/index.ts>), [Cindy metadata](<../../../packages/cindy-adapter/plugin/ghost.json>) and [result wrapper](<../../../packages/cindy-adapter/plugin/main.js>) are implementation anchors.
+- [Host references](<../../../.agents/skills/using-claw-kit/references/hosts/>) describe supported transports and gaps. Read-only source checks and isolated tests do not establish live-host activation or universal first-turn injection.
 
-## Evidence
+<!-- state: history -->
+## Evolution history
 
-- `packages/cindy-adapter/plugin/skills/using-claw-kit/SKILL.md`
-- `packages/codex-adapter/skills/using-claw-kit/SKILL.md`
-- `packages/opencode-adapter/skills/using-claw-kit/SKILL.md`
-- `.claw/truth/adr/using-claw-kit-session-entry.md`
+<!-- dated: 2026-10-01 -->
+### Replaced adapter-local minimal entry with trusted host selection
+
+The former entry checked reusable knowledge before the default plan-create route in separate adapter-owned skills. Complete portable skills now select a trusted host, recover workflow state, then apply template/admission rules. This avoids mistaking a Cindy-hosted Codex model or another host's installed skill for the current execution platform.

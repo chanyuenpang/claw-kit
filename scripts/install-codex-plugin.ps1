@@ -51,7 +51,7 @@ try {
   if ($LASTEXITCODE -ne 0) {
     throw "Unable to checkout immutable marketplace commit $resolvedCommit."
   }
-  node (Join-Path $scriptDir "install-codex-plugin.mjs") --source-dir (Join-Path $tempRoot "packages\\codex-adapter")
+  node (Join-Path $scriptDir "install-codex-plugin.mjs") --source-root $tempRoot
   if ($LASTEXITCODE -ne 0) {
     throw "Codex plugin install failed."
   }

@@ -27,8 +27,13 @@ test("functional paths select their focused test domains", () => {
     "cli-surface",
     "cli-workflow",
   ]);
-  assert.deepEqual(selectDomains(["shared/skills/planning/SKILL.md"]).domains, ["shared-skills"]);
+  assert.deepEqual(selectDomains([".agents/skills/planning/SKILL.md"]).domains, ["shared-skills"]);
+  assert.deepEqual(selectDomains(["scripts/skill-artifacts.mjs"]).domains, ["shared-skills"]);
+  assert.deepEqual(selectDomains(["packages/dsh-adapter/skill-inputs.json"]).domains, ["shared-skills"]);
   assert.deepEqual(selectDomains(["packages/dsh-adapter/src/index.ts"]).domains, ["dsh"]);
+  assert.deepEqual(selectDomains(["packages/cindy-adapter/plugin/main.js"]).domains, ["cindy"]);
+  assert.ok(createExecutionPlan(["codex"]).some(step => step.args.includes("./packages/codex-adapter/hooks/session-start-host.test.mjs")));
+  assert.ok(createExecutionPlan(["opencode"]).some(step => step.args.includes("./packages/opencode-adapter/test/host-identity.test.mjs")));
 });
 
 test("explicit cross-boundary paths select every required domain", () => {
@@ -92,7 +97,8 @@ test("CLI domain files replace the monolith with unique discoverable tests", () 
     }
   }
 
-  assert.equal(names.size, 144);
+  // Includes the release candidate's additional Codex/DSH host-contract regressions.
+  assert.equal(names.size, 148);
   const plannedFiles = createExecutionPlan(Object.keys(CLI_DOMAIN_TEST_FILES))
     .filter((step) => step.kind === "node" && step.args[0] === "--test")
     .map((step) => path.basename(step.args[1]))

@@ -12,7 +12,7 @@ test("host integration profiles preserve the current adapter capability matrix",
   assert.deepEqual(resolveHostIntegrationProfile("codex"), {
     version: 1,
     consumesPlanGoalEffects: true,
-    consumesPlanProgress: true,
+    consumesPlanProgress: false,
     supportsNativeSubagentFinalization: true,
     registersKnowledgePlanOnCreation: true,
     tracksKnowledgeFinalization: true,
@@ -27,6 +27,9 @@ test("host integration profiles preserve the current adapter capability matrix",
   });
   assert.equal(isHostActionsHost("dsh"), true);
   assert.equal(resolveHostIntegrationProfile("dsh")?.consumesPlanProgress, true);
+  for (const host of ["cindy", "opencode", "standard"] as const) {
+    assert.equal(resolveHostIntegrationProfile(host)?.consumesPlanProgress, false);
+  }
   assert.equal(isHostActionsHost("cindy"), false);
   assert.equal(isSubagentPolicyHost("cindy"), true);
   assert.equal(isSubagentPolicyHost("opencode"), false);

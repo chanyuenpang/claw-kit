@@ -1,6 +1,6 @@
 /**
  * Bundled skill provider for the dsh-claw-kit plugin: discovers the package's
- * `skills/` directory (shared-synced + host-specific skills) and registers
+ * artifact-local `skills/` directory (assembled at package time) and registers
  * them into the DSH layered `ctx.skills` registry as a `bundled` source, so
  * installing the plugin is sufficient to expose the claw-kit skills — no
  * manual copy into ~/.agents/skills needed.

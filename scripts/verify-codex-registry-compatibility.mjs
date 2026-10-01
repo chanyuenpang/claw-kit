@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cliVersion = process.argv[2];
 if (!/^\d+\.\d+\.\d+$/.test(cliVersion ?? "")) throw new Error("Usage: node scripts/verify-codex-registry-compatibility.mjs <cli-version>");
-const skill = await fs.readFile(path.join(root, "packages/codex-adapter/skills/using-claw-kit/SKILL.md"), "utf8");
+const skill = await fs.readFile(path.join(root, ".agents/skills/using-claw-kit/references/hosts/codex.md"), "utf8");
 const cacheKey = /const cacheKey = "([^"]+)"/.exec(skill)?.[1];
 const driverVersion = Number(/driverVersion !== (\d+)/.exec(skill)?.[1]);
 if (!cacheKey || !Number.isInteger(driverVersion)) throw new Error("Codex plugin does not declare a driver contract.");

@@ -1,14 +1,16 @@
-﻿# Codex 显式手动知识采集
+﻿# Codex 与 DSH 显式手动知识采集
 
 <!-- state: current -->
 ## 当前行为
 
-- Codex 插件公开 `knowledge-capture` skill，但它只响应用户对非 claw 工作中既有结论的明确手动沉淀请求；Agent 不得因任务完成、代码变更或推断出的知识价值自动调用或推荐它。
+- Codex 与 DSH 插件公开 `knowledge-capture` skill，但它只响应用户对非 claw 工作中既有结论的明确手动沉淀请求；Agent 不得因任务完成、代码变更或推断出的知识价值自动调用或推荐它。
 - 该入口与 claw workflow、自动 closeout、report、transcript、finalization job 和 delegated agent 隔离。它不创建 plan、task、subplan、report、job、background worker、thread 或 collaboration subagent，并且只使用本 Agent 在启动前已持有的结论性材料；证据不足时不编辑。
-- 同一 Agent 先通过 skill 自带的 `run-knowledge-capture.mjs` 运行 `prepare`，再按返回的 assignment 和资源路径治理 Truth/ADR，并以 prepare 返回的 `captureRuntime.binding` 与配置 fingerprint 对每个实际改动的 canonical Markdown 路径运行一次 `complete`。runner 只使用 `runtime.json` 钉定的精确 CLI：全局 `claw` 版本和能力匹配时复用它，否则仅为本次调用使用固定 npm runtime；它不会更新用户安装，也不会回退到不兼容 CLI。`prepare` 只读地投影当前有效配置；`complete` 在调用 CLI 前拒绝 runtime binding 漂移，随后仍检测配置漂移、治理声明的 canonical 路径、归一化编码并排队既有 completion refresh，且不创建 report 或 knowledge job。
+- 同一 Agent 先通过 skill 自带的 `run-knowledge-capture.mjs` 运行 `prepare`，再按返回的 assignment 和资源路径治理 Truth/ADR，并以 prepare 返回的 `captureRuntime.binding` 与配置 fingerprint 将所有实际改动的 canonical Markdown 路径以重复 `--changed-truth` 参数合并到同一次 `complete`；没有改动时不调用 complete。runner 只使用 `runtime.json` 钉定的精确 CLI：全局 `claw` 版本和能力匹配时复用它，否则仅为本次调用使用固定 npm runtime；它不会更新用户安装，也不会回退到不兼容 CLI。`prepare` 只读地投影当前有效配置；`complete` 在调用 CLI 前拒绝 runtime binding 漂移，随后仍检测配置漂移、治理声明的 canonical 路径、归一化编码并排队既有 completion refresh，且不创建 report 或 knowledge job。
 - 手动入口不改变自动 knowledge finalization 的隐藏 writer 边界：`delegate-writer` 和 `knowledge-writer` 仍是 Core 内部资源，不属于插件可发现的 skill surface。
 
 ## 实现与验证锚点
+
+- 规范整包为 `shared/skills/knowledge-capture/`（入口、runner 与 runtime pin）；Codex/DSH 安装目录均为生成副本，不独立维护。分发矩阵见 [shared-source Truth](<shared-planning-skill-source.md>)。
 
 - `packages/codex-adapter/skills/knowledge-capture/SKILL.md`：显式用户调用、同 Agent prepare → 写入 → complete 合同和禁止项。
 - `packages/codex-adapter/skills/knowledge-capture/runtime.json` 与 `scripts/run-knowledge-capture.mjs`：精确 CLI runtime spec、能力探测、临时 pinned runtime 选择及两阶段 runtime binding 校验。

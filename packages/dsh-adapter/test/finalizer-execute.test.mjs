@@ -9,14 +9,37 @@ import { apply } from "../lib/index.js";
 
 const WORKDIR = process.cwd();
 
-function makeMockSubprocess(respond, pending) {
+function makeMockSubprocess(respond, pending, captureError) {
   const handles = [];
+  const captures = [];
+  const issues = [];
   const subprocess = {
     spawn(spec) {
+      if (spec.argv.includes("internal-dsh-finalizer-issue") || spec.argv.includes("internal-dsh-finalizer-alerts")) {
+        const recording = spec.argv.includes("internal-dsh-finalizer-issue");
+        if (recording) issues.push({ finalizeId: spec.argv[spec.argv.indexOf("--finalize-id") + 1],
+          phase: spec.argv[spec.argv.indexOf("--phase") + 1], code: spec.argv[spec.argv.indexOf("--code") + 1] });
+        const text = JSON.stringify({ ok: true, ...(recording ? {} : { alerts: issues }) });
+        return { done: Promise.resolve({ exitCode: 0, signal: null }),
+          collected: { stdout: { readFrom: () => ({ text, lossy: false }) },
+            stderr: { readFrom: () => ({ text: "", lossy: false }) } }, terminate: async () => {} };
+      }
+      if (spec.argv.includes("internal-dsh-host-report-capture")) {
+        if (captureError) return { stdin: { end: (payload) => captures.push(JSON.parse(payload)) },
+          done: Promise.resolve({ exitCode: 1, signal: null }),
+          collected: { stdout: { readFrom: () => ({ text: "", lossy: false }) },
+            stderr: { readFrom: () => ({ text: captureError, lossy: false }) } }, terminate: async () => {} };
+        return { stdin: { end: (payload) => captures.push(JSON.parse(payload)) },
+          done: Promise.resolve({ exitCode: 0, signal: null }),
+          collected: { stdout: { readFrom: () => ({ text: JSON.stringify({ ok: true, captured: true }), lossy: false }) },
+            stderr: { readFrom: () => ({ text: "", lossy: false }) } }, terminate: async () => {} };
+      }
       if (spec.argv.includes("internal-knowledge-pending") || spec.argv.includes("context")) {
         const text = spec.argv.includes("context")
           ? JSON.stringify({ project: { projectRoot: WORKDIR } })
-          : JSON.stringify({ ok: true, command: "internal-knowledge-pending", dispatches: pending() });
+          : JSON.stringify({ ok: true, command: "internal-knowledge-pending", dispatches: pending().map((item) =>
+            ({ ...item, startedAt: item.startedAt ?? "2026-01-01T00:00:00.000Z",
+              captureStatus: item.captureStatus ?? "pending" })) });
         return { done: Promise.resolve({ exitCode: 0, signal: null }),
           collected: { stdout: { readFrom: () => ({ text, lossy: false }) }, stderr: { readFrom: () => ({ text: "", lossy: false }) } },
           terminate: async () => {} };
@@ -49,10 +72,10 @@ function makeMockSubprocess(respond, pending) {
       return handle;
     },
   };
-  return { subprocess, handles };
+  return { subprocess, handles, captures, issues };
 }
 
-function makeHarness({ subagents, dispatch, extraService, initialQueued = false, unknownClaim = false, receiptClaimed = true }) {
+function makeHarness({ subagents, dispatch, extraService, initialQueued = false, unknownClaim = false, receiptClaimed = true, captureError }) {
   let tool;
   const ctx = {
     get: (name) => {
@@ -60,6 +83,8 @@ function makeHarness({ subagents, dispatch, extraService, initialQueued = false,
       if (name === "tools") return { register: (definition) => { if (definition.name === "claw_run") tool = definition; return () => {}; } };
       if (name === "systemPrompt") return { context: () => () => {}, section: () => () => {} };
       if (name === "subagents") return subagents;
+      if (name === "sessionQuery") return extraService && Object.hasOwn(extraService, "sessionQuery")
+        ? extraService.sessionQuery : { readSession: async () => ({ events: [] }) };
       return extraService?.[name];
     },
     on: () => () => {},
@@ -75,7 +100,7 @@ function makeHarness({ subagents, dispatch, extraService, initialQueued = false,
       return { ok: true, command: "plan.done", output: { planStatus: "end.completed" }, knowledgeDispatch: dispatch };
     }
     return { ok: true, command: request.operation, output: { planStatus: "process.active" } };
-  }, () => terminalCommitted && dispatch ? [dispatch] : []);
+  }, () => terminalCommitted && dispatch ? [dispatch] : [], captureError);
   const harness = { ctx, mock, get tool() { return tool; } };
   harness.subprocess = mock.subprocess;
   return harness;
@@ -116,6 +141,69 @@ test("a queued job recovers on next context without replaying its lost plan term
   ]);
   assert.equal(state.starts, 1);
   assert.equal(harness.mock.handles.length, 0, "only read-only one-off inspection ran, not plan.done");
+});
+
+test("live parent capture sends only proven in-plan finals before child dispatch", async () => {
+  const { service, state } = makeSubagents();
+  const harness = makeHarness({ subagents: service, initialQueued: true,
+    dispatch: { policy: "subagent", finalizeId: "6".repeat(64), prompt: "writer" },
+    extraService: { sessionQuery: { readSession: async (id) => {
+      assert.equal(id, "parent-capture");
+      return { events: [
+        { type: "assistant/final", time: Date.parse("2025-12-31T23:00:00Z"), data: { turn: 1, message: { content: [{ type: "text", text: "old" }] } } },
+        { type: "assistant/message", time: Date.parse("2026-01-02T00:00:00Z"), data: { turn: 2, message: { content: [{ type: "text", text: "commentary" }] } } },
+        { type: "assistant/final", time: Date.parse("2026-01-02T01:00:00Z"), data: { turn: 2, message: { content: [{ type: "text", text: "verified" }] } } },
+      ] };
+    } } },
+  });
+  apply(harness.ctx);
+  await harness.tool.execute({ operation: "context", args: {} }, { agent: makeAgent("parent-capture") });
+  assert.equal(state.starts, 1);
+  assert.deepEqual(harness.mock.captures.flatMap((x) => x.events.map((event) => event.message)), ["verified"]);
+});
+
+test("missing parent history blocks writer before claim without fabricating empty capture", async () => {
+  const { service, state } = makeSubagents();
+  const harness = makeHarness({ subagents: service,
+    dispatch: { policy: "subagent", finalizeId: "f".repeat(64), prompt: "writer" },
+    extraService: { sessionQuery: undefined },
+  });
+  apply(harness.ctx);
+  const result = await harness.tool.execute({ operation: "plan.done", args: {} }, { agent: makeAgent("parent-no-history") });
+  assert.equal(result.dispatch.ok, false);
+  assert.equal(result.dispatch.phase, "capture");
+  assert.equal(result.dispatch.code, "DSH_REPORT_HOST_UNAVAILABLE");
+  assert.equal(state.starts, 0);
+  assert.equal(harness.mock.captures.length, 0);
+  const context = await harness.tool.execute({ operation: "context", args: {} }, { agent: makeAgent("parent-no-history") });
+  assert.equal(context.finalizationAlerts[0].code, "DSH_REPORT_HOST_UNAVAILABLE");
+  assert.equal(state.starts, 0);
+});
+
+test("collector stderr yields only a safe error code in parent receipts", async () => {
+  const { service, state } = makeSubagents();
+  const harness = makeHarness({ subagents: service,
+    dispatch: { policy: "subagent", finalizeId: "8".repeat(64), prompt: "writer" },
+    captureError: "DSH_REPORT_CAPTURE_DENIED: private path C:\\secret\\plan.report",
+  });
+  apply(harness.ctx);
+  const result = await harness.tool.execute({ operation: "plan.done", args: {} }, { agent: makeAgent("parent-sensitive") });
+  assert.equal(result.dispatch.code, "DSH_REPORT_CAPTURE_DENIED");
+  assert.equal(state.starts, 0);
+  assert.equal(harness.mock.issues[0].code, "DSH_REPORT_CAPTURE_DENIED");
+  assert.ok(!JSON.stringify(result).includes("secret"));
+});
+
+test("queued job with durable capture receipt resumes without another Host history read", async () => {
+  const { service, state } = makeSubagents();
+  const harness = makeHarness({ subagents: service, initialQueued: true,
+    dispatch: { policy: "subagent", finalizeId: "7".repeat(64), prompt: "writer", captureStatus: "captured" },
+    extraService: { sessionQuery: undefined },
+  });
+  apply(harness.ctx);
+  await harness.tool.execute({ operation: "context", args: {} }, { agent: makeAgent("recovered-captured-parent") });
+  assert.equal(state.starts, 1);
+  assert.equal(harness.mock.captures.length, 0);
 });
 
 test("lost claim response reads the frozen same-child receipt without second claim", async () => {

@@ -5,15 +5,18 @@ import { fileURLToPath } from "node:url";
 const defaultRepoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const templateRoots = [
   path.join(".agents", "skills"),
-  path.join("shared", "skills"),
-  path.join("packages", "codex-adapter", "skills"),
+  path.join("shared", "skills", "knowledge-capture"),
+  path.join("packages", "codex-adapter", "skills", "update"),
   path.join("packages", "core", "resources"),
-  path.join("packages", "dsh-adapter", "skills"),
-  path.join("packages", "opencode-adapter", "skills"),
+  path.join("packages", "dsh-adapter", "skills", "update"),
+  path.join("packages", "opencode-adapter", "skills", "update"),
 ];
 const defaultTemplateSource = path.join("packages", "core", "src", "templates", "plans", "default.ts");
 const templateDriverSource = path.join("packages", "core", "src", "plan-templates.ts");
-const knowledgeCaptureRuntimeSpec = path.join("packages", "codex-adapter", "skills", "knowledge-capture", "runtime.json");
+// Only canonical source pins are edited. Artifact assembly copies this file verbatim.
+const knowledgeCaptureRuntimeSpecs = [
+  path.join("shared", "skills", "knowledge-capture", "runtime.json"),
+];
 
 export async function collectReleaseTemplatePaths(repoRoot = defaultRepoRoot) {
   const matches = [];
@@ -50,17 +53,18 @@ export async function inspectTemplateVersions({ repoRoot = defaultRepoRoot, expe
     });
   }
 
-  const runtimePath = path.join(repoRoot, knowledgeCaptureRuntimeSpec);
-  try {
-    const runtime = JSON.parse(await fs.readFile(runtimePath, "utf8"));
-    if (runtime.version !== releaseVersion) {
-      issues.push({ path: knowledgeCaptureRuntimeSpec, actualVersion: typeof runtime.version === "string" ? runtime.version : null, expectedVersion: releaseVersion });
+  for (const knowledgeCaptureRuntimeSpec of knowledgeCaptureRuntimeSpecs) {
+    const runtimePath = path.join(repoRoot, knowledgeCaptureRuntimeSpec);
+    try {
+      const runtime = JSON.parse(await fs.readFile(runtimePath, "utf8"));
+      if (runtime.version !== releaseVersion) {
+        issues.push({ path: knowledgeCaptureRuntimeSpec, actualVersion: typeof runtime.version === "string" ? runtime.version : null, expectedVersion: releaseVersion });
+      }
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+      // A missing canonical pin is an issue; artifact assembly cannot repair it.
+      issues.push({ path: knowledgeCaptureRuntimeSpec, actualVersion: null, expectedVersion: releaseVersion });
     }
-  } catch (error) {
-    if (error?.code !== "ENOENT") throw error;
-    // A missing spec stays visible as an issue instead of crashing the
-    // release check; regenerate it via sync:shared-skills.
-    issues.push({ path: knowledgeCaptureRuntimeSpec, actualVersion: null, expectedVersion: releaseVersion });
   }
 
   return { version: templateDriverVersion, releaseVersion, templateCount: templatePaths.length, issues };
@@ -73,7 +77,7 @@ export async function assertTemplateVersionsAligned(options = {}) {
       .map((issue) => `- ${issue.path}: ${issue.actualVersion ?? "missing"} (expected ${issue.expectedVersion})`)
       .join("\n");
     throw new Error(
-      `Release template versions are out of date:\n${details}\nRun npm run sync:template-versions, then npm run sync:shared-skills, review the generated files, and rerun release verification.`,
+      `Release template versions are out of date:\n${details}\nRun npm run sync:template-versions, review the canonical source changes, then rebuild and verify the selected artifact.`,
     );
   }
   return result;
@@ -106,18 +110,20 @@ export async function updateTemplateVersions({ repoRoot = defaultRepoRoot, expec
     updated.push(defaultTemplateSource);
   }
 
-  const runtimePath = path.join(repoRoot, knowledgeCaptureRuntimeSpec);
-  try {
-    const runtime = JSON.parse(await fs.readFile(runtimePath, "utf8"));
-    if (runtime.version !== releaseVersion) {
-      runtime.version = releaseVersion;
-      await fs.writeFile(runtimePath, `${JSON.stringify(runtime, null, 2)}\n`, "utf8");
-      updated.push(knowledgeCaptureRuntimeSpec);
+  for (const knowledgeCaptureRuntimeSpec of knowledgeCaptureRuntimeSpecs) {
+    const runtimePath = path.join(repoRoot, knowledgeCaptureRuntimeSpec);
+    try {
+      const runtime = JSON.parse(await fs.readFile(runtimePath, "utf8"));
+      if (runtime.version !== releaseVersion) {
+        runtime.version = releaseVersion;
+        await fs.writeFile(runtimePath, `${JSON.stringify(runtime, null, 2)}\n`, "utf8");
+        updated.push(knowledgeCaptureRuntimeSpec);
+      }
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+      // The updater cannot synthesize a missing canonical specification;
+      // inspectTemplateVersions keeps that authoring error visible.
     }
-  } catch (error) {
-    if (error?.code !== "ENOENT") throw error;
-    // The updater cannot synthesize the knowledge-capture spec; the missing
-    // file is reported by inspectTemplateVersions until regenerated.
   }
 
   return { version: templateDriverVersion, releaseVersion, templateCount: templatePaths.length, updated };
@@ -170,6 +176,9 @@ function readDefaultTemplateVersion(source, sourcePath) {
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
+  for (const arg of process.argv.slice(2)) {
+    if (arg !== "--check") throw new Error("Unknown template-version option: " + arg);
+  }
   if (process.argv.includes("--check")) {
     const result = await assertTemplateVersionsAligned();
     console.log(`Template versions match driver ${result.version}: ${result.templateCount} TEMPLATE.json files plus the built-in default.`);

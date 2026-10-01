@@ -8,18 +8,17 @@ It exists because the claw CLI already owns the canonical workflow state
 machine. The standard flow simply removes the host layer: session identity
 comes from `CLAW_SESSION_ID`, recovery comes from `claw context`, and
 knowledge closeout is executed by the invoking agent itself through the
-background chain.
+default main-agent prepare/complete route (or the explicitly selected background chain).
 
 ## What's here
 
 - `docs/entry-contract.md` — the entry rules to paste into any platform's
   system-prompt surface (CLAUDE.md / AGENTS.md / rules / custom instructions).
-- `skills/` — the skill set:
+- `skill-inputs.json` — the declared skill inputs, assembled into artifact `skills/`:
   - `using-claw-kit` — main entry: host identity, first action, lifecycle,
-    and the three-step background closeout chain.
+    and policy-specific closeout (main-agent by default).
   - `planning`, `researcher`, `config`, `feature-architecture`,
-    `create-claw-skill` — host-neutral workflow skills generated from the
-    shared source.
+    `create-claw-skill` — canonical shared workflow packages; no source mirrors.
   - `claw-kit-doc` — documentation entry (configuration, knowledge format).
 - `package.json` — package metadata.
 
@@ -28,18 +27,19 @@ background chain.
 There is no host marketplace to register with. To adopt the standard flow:
 
 1. Install the CLI: `npm install -g @veewo/claw`.
-2. Copy (or vendor) the `skills/` directories into the platform's skill
-   discovery location, or reference them from the project's skill config.
+2. Build the complete standard artifact with `npm run export:standard-skills`.
+   Copy its `skills/` into the platform's discovery location, or explicitly
+   reference the canonical source packages in development; the adapter source
+   tree intentionally contains no generated skill copies.
 3. Paste `docs/entry-contract.md` into the platform's persistent prompt
    surface for the project.
 4. Ensure the conversation exports a stable `CLAW_SESSION_ID`.
 
 ## Key semantics
 
-- **Session scope is not the standard flow.** `--scope session` marks a
-  temporary task that deliberately skips knowledge deposition. The standard
-  flow's root plans are project-scoped; only the knowledge-writer delegate
-  plan is session-scoped, as a recursion guard.
+- **Scope and capture are independent.** `--scope session` selects temporary
+  storage; use the explicit `--no-knowledge-capture` opt-out when no deposition
+  is intended. Internal writer templates disable recursive capture explicitly.
 - **Main-agent policy by default.** The hostless shape resolves an omitted
   `knowledgeWriter.executionPolicy` to `main-agent`: the agent itself runs the
   `claw knowledge prepare/complete --source agent-memory` closeout from its own

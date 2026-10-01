@@ -5,7 +5,9 @@ description: Release the claw-kit Codex adapter and official GitHub marketplace 
 # Release Codex plugin
 
 Run only inside the claw-kit repository. This skill owns only
-`packages/codex-adapter` and the committed Codex marketplace metadata.
+`packages/codex-adapter`, its declared canonical skill inputs, and Codex
+marketplace packaging metadata. Skills are assembled into the existing flat
+plugin layout only at build time, never synchronized back into source.
 
 Resolve `<skill-dir>` as this file's directory. For a whole release, create the
 plan with `claw plan create --template-file "<skill-dir>/TEMPLATE.json" --title

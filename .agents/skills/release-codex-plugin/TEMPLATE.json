@@ -26,7 +26,7 @@
     {
       "id": 2,
       "title": "Prepare the Codex adapter version and payload",
-      "detail": "Bump only the Codex adapter fourth segment, align .codex-plugin/plugin.json, synchronize generated content, and review the full diff.",
+      "detail": "Bump only the Codex adapter fourth segment, align its plugin manifest and canonical driver pin, validate source inputs, and assemble the unchanged flat runtime with complete skills into isolated output. Review the source and artifact diffs separately.",
       "status": "pending"
     },
     {
@@ -44,7 +44,7 @@
     {
       "id": 5,
       "title": "Pass the exact-source gate and release",
-      "detail": "Commit intended content on main, push origin/main, require an empty worktree and HEAD == origin/main, run npm run verify:release, create and push vcodex-<version>, and create the GitHub Release without a ZIP asset.",
+      "detail": "Commit intended source on main, push origin/main, require clean source equality and run the relevant release gate. Export a complete Git marketplace artifact and obtain the explicitly authorized publication target/ref before publishing it. Never publish the raw incomplete adapter directory or restore source copies. Tag the artifact release immutably as vcodex-<version>; record its source revision and artifact identity. No npm or ZIP publication.",
       "status": "pending"
     },
     {

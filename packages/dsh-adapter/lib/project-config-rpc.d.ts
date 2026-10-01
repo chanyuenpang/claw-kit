@@ -4,7 +4,8 @@ export type WorkspaceRecord = {
     path?: string;
 };
 export type WorkspaceRegistry = {
-    list(): Promise<WorkspaceRecord[]>;
+    list(): readonly WorkspaceRecord[] | Promise<readonly WorkspaceRecord[]>;
+    get?(id: string): WorkspaceRecord | undefined;
 };
 export type RunConfig = (argv: string[], cwd: string) => Promise<{
     text: string;
@@ -18,6 +19,7 @@ type RpcResult = {
     error: {
         code: string;
         message: string;
+        details: object;
     };
 };
 /**

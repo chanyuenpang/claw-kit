@@ -7,6 +7,16 @@ Paste the rules below into the platform's system-prompt surface (CLAUDE.md,
 AGENTS.md, rules files, custom instructions) together with the skills shipped
 in this package.
 
+## Explicit host identity
+
+Activate this entry only when the current runtime explicitly has no native
+claw-kit adapter. In that case the entry owner declares `[claw host]` with
+`platform: standard`; this means hostless CLI, not a model/provider name. Merely
+reading this document or installing a standard skill does not override an active
+Cindy, Codex, DSH or OpenCode platform declaration. With a native adapter use its
+trusted host marker and route; conflicting or missing identity is not permission
+to guess or append host flags.
+
 ## Prerequisites
 
 - The `claw` CLI is installed (`npm install -g @veewo/claw`) and on PATH.
@@ -23,8 +33,10 @@ in this package.
    project knowledge, work directly without creating a plan. For temporary
    tracked work, use `--scope session --no-knowledge-capture`; capture is
    enabled by default and is not a scope decision.
-3. **Plan before execute.** Otherwise run `claw plan create "<title>"` and
-   follow the returned `workflowGuidance` as the only lifecycle contract.
+3. **Template owner before generic plan.** If a template-backed skill owns the
+   request, use its adjacent template entry instead of first creating a generic
+   root plan. Otherwise run `claw plan create "<title>"` and follow the returned
+   `workflowGuidance` as the only lifecycle contract.
    Never edit `plan.json` or job files directly.
 
 ## Closeout rule

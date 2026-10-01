@@ -1,0 +1,11 @@
+# Host-safe workflow invocation
+
+Use the installed `using-claw-kit` identity contract: prefer the current host-injected `[claw host]` platform marker, then verify the actual host tool surface. A mismatch is a capability error, not permission to select another host. A model name or a workspace-local skill path does not prove the host. Native adapter routing wins over a local hostless copy.
+
+- **DSH:** call `claw_run` with dot-form operation and snake_case args. Whole task: `plan.create` with `template_file` (absolute adjacent template) and `title`. Independent stage: `subplan.create` with `parent`, `task_id`, and `template_file`. Do not pass session/host/workdir; the adapter owns them and consumes Goal/progress effects. Do not execute plan/task/subplan commands in a shell. Static file validation may use the standalone `claw template validate --file <absolute-template>` command; it does not create or mutate a workflow. Do not invent a `template.validate` tool operation.
+- **Codex:** use the current fixed code-mode driver from the installed `using-claw-kit` skill for context and plan/task/subplan operations, with their argv equivalents. Read-only search and static `claw template validate --file` use the supported shell tool, not the mutation driver (which rejects them). Consume only handoffs owned by that route; never use shell as a failed-mutation fallback.
+- **Cindy:** discover the current Ghost operations with `list_tools` / `call_tool` for plan, subplan, task and template validation. Follow the selected Cindy runtime contract; do not translate Ghost operations into shell commands. If validation is not exposed, report it as unverified rather than claiming success.
+- **OpenCode:** use its installed adapter command route; keep host injection and session identity owned by that adapter.
+- **Standard hostless:** export one stable `CLAW_SESSION_ID` for the conversation and use the CLI without `--host` or `CLAW_HOST`.
+
+After every mutation follow returned `workflowGuidance`. Unknown/unavailable operations are not permission to edit canonical plan JSON or bypass the adapter. If tooling is unavailable, use the skill's direct fallback for its ordinary work and do not pretend a workflow mutation occurred. Template validation is not publication or installation authority.

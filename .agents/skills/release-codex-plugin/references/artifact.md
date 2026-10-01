@@ -1,16 +1,20 @@
 # Codex plugin release contract
 
-- Scope: `packages/codex-adapter` and `.agents/plugins/marketplace.json` only.
+- Scope: Codex runtime source, its declared canonical skill inputs, and marketplace packaging metadata. The raw adapter source is not a complete installed plugin.
 - Bump only the adapter fourth segment; keep CLI/core and other adapters unchanged.
 - Keep `.codex-plugin/plugin.json` equal to the adapter package version.
-- Synchronize templates/shared skills, run `npm run check:template-versions` to
+- Validate canonical inputs with `npm run check:skill-sources`, assemble the flat
+  plugin/marketplace artifacts, and run `npm run check:template-versions` to
   verify every built-in skill package with `TEMPLATE.json` matches
   `TEMPLATE_DRIVER_VERSION`, verify the exported marketplace payload,
   and review the complete diff.
 - Require clean `main`, `HEAD == origin/main`, `npm run verify:release`, tag
   `vcodex-<version>`, and a GitHub Release.
-- The immutable committed Git ref is the plugin artifact; do not attach a ZIP and
-  do not publish npm packages.
+- Export the complete Git tree with `npm run export:codex-marketplace -- --out-dir <isolated-output>`.
+  Publish that composed tree only to an explicitly authorized artifact Git target/ref;
+  do not assume a raw source main/tag is installable or recreate source skill copies.
+  Record reviewed source revision and artifact identity separately. No target/ref is
+  selected by local export; ask at release if unknown. Do not attach a ZIP or publish npm packages.
 - Refresh the maintainer installation only when separately requested, after the
   GitHub source is verified. That refresh must remove every local claw-kit
   marketplace registration, plugin identity, hook configuration, and cache

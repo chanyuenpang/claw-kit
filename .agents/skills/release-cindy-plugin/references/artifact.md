@@ -1,23 +1,10 @@
-# Cindy plugin release handoff
+# Cindy plugin artifact delivery
 
-The Cindy plugin is published from the independent
-`chanyuenpang/claw-kit-cindy-adapter` repository, not this superproject.
-
-- Its marketplace manifest is `.agents/plugins/marketplace.json` and its only
-  entry, `claw-kit-cindy`, points to `./plugin`.
-- Its release scope is limited to its `package.json`, `plugin/ghost.json`, and
-  Cindy plugin payload. The adapter repository owns `vcindy-<version>` tags.
-- The independent repository owns distribution, not the release line: both
-  manifests must use `<cli-base>.<fourth>`. Resolve `cli-base` from the
-  authorized batch candidate, or from the published `@veewo/claw` version for
-  a Cindy-only release. Increment only `<fourth>` within that exact CLI base;
-  never reuse an older Cindy prefix.
-- Users configure Cindy with the adapter repository URL, without a pinned ref.
-- Run its focused tests before tagging; do not publish an archive or GitHub
-  Release for marketplace installation.
-- Verify that the public skill manifest omits the Cindy `update` entry and that
-  the portable `claw-kit-doc` reference contains the manual update route.
-
-The `packages/cindy-adapter` path in this repository is only the pinned
-submodule checkout. Updating that pointer is a separate, reviewable main-repo
-change and is not part of an adapter-only release.
+- Source owner: main claw-kit repository, `packages/cindy-adapter`; no Git submodule.
+- Artifact target: existing independent `chanyuenpang/claw-kit-cindy-adapter` repository; retain its marketplace URL and `claw-kit-cindy` identity.
+- Version is not a separate three-segment version line. Resolve the authorized CLI candidate or published `@veewo/claw` version, and set package/Ghost manifests to `<cli-base>.<next-fourth>`.
+- Build with `npm run export:cindy-plugin -- --output-root <fresh-artifact-root>` from reviewed source. The output includes `.agents/plugins/marketplace.json` with local `./plugin`, the unchanged Ghost runtime paths, six full skill resource packages and four registered skills, plus source/payload hashes.
+- Shared skills are canonical inputs, not files to vendor into source. Build/validate the artifact before any publication.
+- With explicit release authority, commit intended main-repository source and push main, then deliver the validated artifact to a separate checkout of artifact main, preserving its Git history. Tag the artifact commit `vcindy-<version>`; never force-move an existing tag. Source commit and artifact commit need not match; record both with the artifact hash.
+- No .cindy archive, npm package or GitHub Release is required for Git marketplace installation.
+- Refresh/permission review/install/activation is a separate authorized boundary. Installation does not prove the running host loaded the new version.

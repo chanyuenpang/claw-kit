@@ -21,18 +21,20 @@
   闭环断裂；该版本补上 search 字段后，`claw_run search` 的知识召回列表
   （truth_doc/adr 命中）全可见。
 
-DSH 知识终结 dispatch 流程：项目作用域 root plan 进入 `end.*` 且
-`executionPolicy = "subagent"` 时，终态 mutation 先持久化 ready job
+DSH 知识终结 dispatch 流程：项目作用域 root plan 进入完成型终态
+`end.completed | end.closed` 且 effective `executionPolicy = "subagent"` 时，终态 mutation 先持久化 ready job
 （`job.host = "dsh"`、`reportCapture.mode = "claim"`、`status = "queued"`），再返回
-`knowledgeDispatch`（`buildKnowledgeDispatch` → `buildKnowledgeDelegateDispatch`，内部
-`resources/delegate-writer/TEMPLATE.json`）。DSH adapter 把 immutable dispatch prompt
-原样交给 DSH 原生 subagent（`subagent` / `subagent_fork`）；该 subagent 创建 delegate
+`knowledgeDispatch`（`buildKnowledgeDispatch` → `buildDshKnowledgeDispatch`，内部
+`resources/dsh-delegate-writer/TEMPLATE.json`）。DSH adapter 先完成父端可信 capture，再把
+immutable dispatch prompt 原样交给 DSH 原生 subagent（`subagents.start("spawn", ...)`）；该 subagent 创建 delegate
 plan、跟随 workflowGuidance、`knowledge claim` 认领 job、顺序执行生成的 assignment
-subplan、并以 claim token 调用一次 `knowledge done`。
+subplan、并以 claim token 调用一次 `knowledge done`。`end.leave` 是取消而非派发边界；
+session-scoped delegate 不递归创建知识 job，通用终态 gate 由
+[finalization lifecycle ADR](<../adr/hook-owned-two-phase-knowledge-finalization.md>) 拥有。
 
 终态 mutation 返回 `knowledgeDispatch` 时，DSH adapter 自动派发 writer child
-（`subagents.start("spawn", ...)`，label 由 `finalizerChildLabel` 生成，与 CLI
-delegate plan 标题同形：`knowledge-finalizer-<finalizeId 前 12 位>`），并在 compact
+（`subagents.start("spawn", ...)`，label 由 `finalizerChildLabel` 生成：
+`knowledge-finalizer-<完整 finalizeId>`；CLI delegate plan 标题仍仅使用前 12 位），并在 compact
 result 中返回执行回执；主模型不自行执行 writer，只消费该回执
 （`dispatch.ok`）（与 delegate 只执行 claim → assignment subplan → 单次
 `knowledge done` 的边界一致）。派发是 fire-and-forget：adapter 只取执行回执
@@ -51,22 +53,33 @@ adapter 以 `finalizeId` 为键保证「同一 finalizeId 至多一个未结算 
 `dispatch: { ok: true, runId, policy }`。查重有两条来源，由便宜到贵：
 
 - 进程内 `finalizerDispatches`（`Map<string, { runId, settled }>`）：本进程启动且尚未
-  观测到结算的 child 直接短路，无竞态，覆盖重复派发。child 的 `run.result` settle
-  （成功或失败皆可）后记录标记 `settled`，该 `finalizeId` 因此可再次派发——job 仍在
-  queued 时只有**新** child 能 claim 它。`run.result` 缺失时不保留任何记录，避免一条
-  永不结算的记录占住一个已死 child 的 job。
+  观测到结算的 child 直接短路，覆盖重复派发。记录在 `start` 返回后即保存；`run.result`
+  存在并 settle（成功或失败皆可）后标记 `settled`，但只有规范 job 仍 queued 且目录
+  证明没有 running child 才可重新派发。缺失 result 不等于已结算，不能据此解除去重。
 - 服务层 durable 目录：`subagents.listChildren(agent.id)` 中 `kind === "child"`、
-  `activity === "running"` 且 `label` 等于本 finalizeId label 的条目，覆盖 adapter
-  进程重启后进程内 Map 丢失的场景。label 在 one-shot child 上同样耐久（runtime 为每个
-  child 快照 descriptor），因此 finalizer 保持 one-shot `start` 仍可被发现。该查询
-  fail-open：服务缺失、投影注册表缺失或 session store 抛错都不得阻塞派发，也不得被
-  报告为一次复用。
+  `activity === "running"` 且 `label` 匹配完整 finalizeId label 的条目，覆盖 adapter
+  重启；兼容识别旧的前 12 位 label。one-shot child 的 descriptor 同样可耐久发现。
+  缺失 `listChildren`、非数组结果、diagnostic 条目或查询抛错都不能证明未投递，返回
+  deferred，不再新建 child；这不是一次成功复用，也不是 fail-open admission。
 
-失败路径返回 `dispatch: { ok: false, retryable: false, reason, guidance }` 且不保留
-记录：queued job 的系统级下一次入口 reconciliation 可恢复派发，终态再次转换亦可重新发现；`retryable: false` 只约束模型，`guidance`
-（`FINALIZER_MANUAL_RETRY_GUIDANCE`）明说不得自行运行 finalizer、也不得手动重试派发，
-因为手动重试是唯一还能产生第二个 writer child 的路径。`subagents` 服务缺失时返回同形状
-的 `{ ok: false, retryable: false, reason: "subagents service unavailable", guidance }`。
+capture、目录或 native admission 失败返回 `dispatch.ok: false` 与安全的 phase/code/guidance；
+服务缺失另带 `retryable: false`。`FINALIZER_MANUAL_RETRY_GUIDANCE` 明说模型不得自行
+运行 finalizer 或手动重试。queued job 由后续系统入口只读对账后恢复；未知 start 回执不能
+盲重派，已 claim job 不切换 writer。child 退出但尚无规范终态时仅记录安全告警，不能
+代替 `knowledge.done`。这些规则不承诺外部文档写入 exactly-once。
+
+当前仍是 native 路线，不存在已上线的 Team 常驻 runner；未来 Team 的已确认设计边界
+由 [delegation Truth](<dsh-subagent-delegation-contract.md>) 唯一记录，不能用成员复用建议
+放宽当前逐 finalizeId 的 native 去重。实现锚点：`packages/dsh-adapter/src/index.ts`
+中的 `finalizerChildLabel`、`resolveFinalizerReuse`、`dispatchOne`、`sweepPending`。
+
+<!-- state: history -->
+## Historical verification
+
+<!-- dated: 2026-08-22 -->
+### 旧 native 与 claim-time capture 路线的验证记录
+
+以下记录属于各自版本与当时的采集路线，不证明当前安装版 Team 能力、HMR、模型覆盖或跨 job 复用已经验证。
 
 端到端已验证（finalizeId `8a208046f490…`，task `Knowledge-dispatch-test`，goal
 `verify knowledgeDispatch`）：`plan done` → ready job 持久化 → delegate plan
@@ -101,26 +114,28 @@ native subagent）、claim-time capture 窗口过滤、以及 `claw_run search` 
 job 被 claim 并走完 claim → assignment subplan → 单次 `knowledge done`，证明
 `exec.signal` abort 修复后自动派发端到端可用。
 
-DSH 当前的 claim-time report collector 只把可证明的 `assistant/final` 事件标为 `final_answer`；未证实的 assistant message 不得冒充最终答复。缺失 journal、空历史或 plan 窗口内没有 final event 以空报告继续 claim，而损坏或不可信路径仍受校验。Core 为同一 claim 保存不可变 receipt，响应丢失时只恢复同一 token，不能在结果未知时重做 assignment。adapter 在后续系统入口发现仍 queued 的同源 job 时按 finalizeId 与 native child 去重补派发；已领取但 child 遗失、或外部写入已提交而确认丢失，仍不能在没有目的地幂等/事务 outbox 证明时安全地重新分配。锚点：`packages/dsh-adapter/src/capture.ts`、`src/report-collector-cli.ts`、`src/index.ts`、`packages/cli/src/knowledge-pending.ts`、`packages/core/src/knowledge-sidecar.ts`。
+<!-- state: current -->
+## Current capture and operational constraints
+
+DSH 的父会话在终态或未过期 queued 恢复入口通过当前宿主 `sessionQuery` 自动读取自身历史，并只把可信 `assistant/final` 规范化为 `final_answer`；没有可证明的最终答复时发布有效空采集，不冒充普通消息。受信 adapter 通过私有 stdin 将规范事件交给 CLI，CLI 保留既有 task conclusions 并在规范 job 锁内原子发布 report 与采集回执；writer claim 仅在真实回执存在时签发 token，不再读取 `.claw/runtime/report-collectors/dsh.json` 或启动旧 web 采集脚本。历史不可读、起点缺失或发布失败使未领取 job 保持 queued；Core job 锁内保存有界阶段、错误码、关联 ID 和次数（不保存报告正文或原始异常），父会话本次派发回执和后续 `claw_run context`/session-start 可查看安全诊断，成功采集与成功终结会消解旧告警。Core 为同一 child 保存不可变 claim receipt，结果未知时只读恢复，不重做 assignment；已领取但 child 遗失或外部写入确认丢失仍不可盲重派。锚点：`packages/dsh-adapter/src/capture.ts`、`src/index.ts`、`packages/cli/src/dsh-host-report.ts`、`src/dsh-finalizer-diagnostics.ts`、`src/knowledge-pending.ts`、`packages/core/src/knowledge-sidecar.ts`。
 
 ## 已知陷阱
 
-- Claim-time capture 通过 adapter-owned DSH collector (`packages/dsh-adapter/src/report-collector-cli.ts`) 从可信 journal 按 `reportCapture.startedAt` 过滤并在 CLI 的 staging/receipt 合同内发布报告。缺失 journal、空历史或没有可证明的 final event 均不阻止 claim；空 capture 有效。损坏或不可信路径仍拒绝。
-- 本机 claw_run 工具由 adapter 用 `agent.session?.cwd` 锻造 workdir；当 DSH 子代理会话
-  cwd 不是项目根（如 `C:\Windows\System32`）时，`plan.create` 会报 "found no .claw
-  project"。该环境问题可通过直接在项目根执行 claw CLI 绕过，canonical `.claw` 状态不变。
+- 原项目级 `dsh.json` executable collector 和本地 journal 不再是 DSH writer claim 的依赖。父端自动采集成功但没有可信 final event 是合法空 report；Host 历史读取或 CLI 发布失败则不启动 writer、不签 token，job 保持 queued，恢复入口继续根据规范 job 与原生 child catalog 对账。
+- `claw_run` 的 workspace 与 session 由 adapter 锻造。`resolveWorkdir` 优先采用
+  durable session header cwd，再兼容旧 session cwd/meta，最后按 exact session 的 workspace
+  registry 解析；不能从宿主启动目录推导项目根。旧 child cwd 落到 `C:\Windows\System32`
+  曾导致项目发现失败，当前应诊断真实绑定，不让模型用 shell/CLI 绕过 `claw_run`。
 - 自动派发的 finalizer subagent 必须使用专用 `AbortController`，不能复用 claw_run
   工具信号 `exec.signal`：工具调用返回时信号 abort，子代理会在首个 turn 前被取消
   （2026-08-22 修复，提交 `0a15891`）。
 - compact result 只在 dispatch 实际存在时前置重插 `dispatch` 字段；写入 `undefined`
   会触发 DSH lossless-JSON 校验失败（"value is not lossless JSON"，2026-08-22
   修复，提交 `cebd5b9`）。
-- finalizer 判重不能走模型侧的 `list_agents`：它是服务层 `listChildren` 的 continuable
-  投影，显式丢弃 one-shot child（`@deepseek-ai/dsh-tool-subagent-control` 的
-  `lib/types/list-agents.js` 中 `project()` 对 `entry.mode !== "continuable"` 返回
-  `undefined`），而自动派发的 finalizer 是 one-shot。用它做"是否已有 writer child"的
-  判断会静默失效并重新产生第二个 child；判重必须在 adapter 内经服务层 `listChildren`
-  完成。
+- finalizer 判重不能走模型侧 `list_agents`：exact scope 可能提供 Team 清单或普通
+  continuable 投影，均不能证明 native one-shot child 不存在。历史普通 control 投影曾
+  显式丢弃 one-shot child，错误枚举会产生第二个 writer；当前必须在 adapter 内经
+  服务层 `listChildren` 完成，不能从同名工具推断可用 schema。
 
 ## 关联代码
 
@@ -131,10 +146,11 @@ DSH 当前的 claim-time report collector 只把可证明的 `assistant/final` �
   只 `start` 一次）
 - `packages/dsh-adapter/test/finalizer-dispatch.test.mjs`（判重纯缝）
 - `packages/cli/src/invocation-host.ts`（`isHostActionsHost` / `isSubagentPolicyHost`）
-- `packages/cli/src/cli.ts`（`buildKnowledgeDispatch` 的 dsh 分支、claim-time capture 的 dsh/host-null 分支）
-- `packages/dsh-adapter/src/report-collector-cli.ts`、`packages/cli/src/knowledge-command.ts`（claim-time collector 与 receipt）
-- `packages/core/src/knowledge-sidecar.ts`（`KnowledgeFinalizationHost` 增加 `"dsh"`）
-- `packages/core/dist/src/resources/delegate-writer/TEMPLATE.json`
+- `packages/cli/src/cli.ts`（DSH dispatch 与受信内部操作接入）
+- `packages/dsh-adapter/src/capture.ts`、`packages/cli/src/dsh-host-report.ts`（父端规范化与报告发布）
+- `packages/cli/src/knowledge-command.ts`（DSH claim receipt 与 token）
+- `packages/core/src/knowledge-sidecar.ts`（Host、capture、claim、done 的规范 owner）
+- `packages/core/resources/dsh-delegate-writer/TEMPLATE.json`
 - `docs/dsh-plugin-integration-research.md`（调研与正式化记录）
 
 ## 验证标准
@@ -145,15 +161,14 @@ DSH 当前的 claim-time report collector 只把可证明的 `assistant/final` �
 - 终态 mutation 返回 `knowledgeDispatch` 时，`claw_run` compact result 含
   `dispatch: { ok: true, runId, policy }` 确认（subagent 不可用时为
   `{ ok: false, reason }`），主模型不执行 writer。
-- `knowledge claim` 的 DSH capture 分支允许可信来源缺失或无 final event 时空 capture；窗口过滤以 `reportCapture.startedAt` 为起点。不可信/损坏路径与冲突 claim token 仍拒绝。
+- DSH 父端成功读取历史但无可信 final event 时可发布空 capture；历史读取失败不能冒充空采集。窗口当前仅按 `reportCapture.startedAt` 下界过滤，未实现计划终态上界；Team 排队场景的立即冻结/上界隔离仍是建议。writer claim 必须有真实 capture receipt，冲突 claim token 仍拒绝。
 - `claw_run search` 的召回列表对模型完全可见：`query` / `count` / `results[]` 的
   `sourcePath`/`kind`/`snippet`/`score`，内部字段不泄漏。
-- 同一 `finalizeId` 连续两次终态 mutation 后 `subagents.start` 恰好调用一次，第二次
-  返回 `dispatch.ok === true` 且 `reused === true`；child 结算后同一 `finalizeId` 可以
-  再次派发。
-- `subagents` 服务不可用或 `start` 抛错时 `dispatch.ok === false`、
-  `dispatch.retryable === false` 且带 `guidance`；下一次系统入口可调和 queued job 的派发。
-- 服务层 `listChildren` 缺失或抛错时判重 fail-open：不阻塞派发，也不误报复用。
+- 同一 `finalizeId` 连续派发时 `subagents.start` 至多调用一次，running child 命中返回
+  `dispatch.ok === true` 且 `reused === true`；child 结算不自动授权再派，仍须核对 queued job。
+- `subagents` 缺失、capture 失败或 `start` 抛错时 `dispatch.ok === false` 且带安全诊断与
+  `guidance`；下一次系统入口只读核对规范 job 与 durable child，模型不得手动重试。
+- 服务层 `listChildren` 缺失、损坏或抛错时应 deferred，不启动第二个 child，不误报复用。
 
 ## 关键检索词
 
@@ -171,3 +186,8 @@ DSH 当前的 claim-time report collector 只把可证明的 `assistant/final` �
 one-shot writer child，不做判重；唯一能产生第二个 writer child 的路径是模型在
 `dispatch.ok === false` 后手动重试派发。该形态把"一个 finalizeId 一个 writer"完全交给模型
 自律。保留这段历史的用途是事故推理：出现重复 writer child 时先区分是判重失效还是手动重试。
+
+<!-- dated: 2026-10-01 -->
+### 原生去重的身份与未知结果边界
+
+旧说明以 finalizeId 前 12 位作为 child label，并允许 child catalog 缺失或查询失败时 fail-open 启动。当前实现用完整 ID 标记 child，保留旧 label 识别，并在无法证明未投递时 deferred。保留此差异用于重启恢复和重复 writer 事故排查；delegate plan 的短标题不是 native 去重身份。未实施的 Team 复用仅涉及未来成员身份，不能据此重派旧 native job。

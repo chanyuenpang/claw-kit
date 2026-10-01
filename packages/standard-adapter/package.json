@@ -1,6 +1,6 @@
 {
   "name": "@claw-kit/standard-adapter",
-  "version": "0.2.41.0",
+  "version": "0.2.42.0",
   "private": true,
   "type": "module",
   "description": "Standard hostless adapter assets: use the claw-kit .claw workflow from any agent platform that can run shell commands, without host registration or hooks.",

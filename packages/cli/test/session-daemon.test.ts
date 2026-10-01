@@ -378,14 +378,11 @@ test("daemon preserves post-commit host actions in the typed command envelope", 
       tool?: string;
       input?: unknown;
     }> | undefined;
-    assert.equal(hostActions?.length, 2);
+    assert.equal(hostActions?.length, 1);
     assert.equal(hostActions?.[0]?.schemaVersion, 1);
-    assert.match(String(hostActions?.[0]?.id), /^[a-f0-9-]+:clear_progress$/);
-    assert.equal(hostActions?.[0]?.tool, "update_plan");
-    assert.deepEqual(hostActions?.[0]?.input, { explanation: "The plan is completed and ready for closeout.", plan: [] });
-    assert.match(String(hostActions?.[1]?.id), /^[a-f0-9-]+:update_goal$/);
-    assert.equal(hostActions?.[1]?.tool, "update_goal");
-    assert.deepEqual(hostActions?.[1]?.input, { status: "complete" });
+    assert.match(String(hostActions?.[0]?.id), /^[a-f0-9-]+:update_goal$/);
+    assert.equal(hostActions?.[0]?.tool, "update_goal");
+    assert.deepEqual(hostActions?.[0]?.input, { status: "complete" });
     assert.deepEqual(done.postCommitEffects, [{
       type: "completion.refresh",
       taskName: "host-actions-plan",
@@ -478,7 +475,7 @@ test("DSH daemon sessions coerce a fresh project's default background config to 
   }
 });
 
-test("Codex adapter sessions receive native plan and Goal actions without daemon loss", async () => {
+test("Codex adapter sessions receive native Goal actions without progress projection", async () => {
   const runtimeRoot = fixture("codex-actions-runtime");
   const projectRoot = fixture("codex-actions-project");
   initProject({ cwd: projectRoot, projectName: "Daemon Codex Actions", planning: true });
@@ -511,7 +508,7 @@ test("Codex adapter sessions receive native plan and Goal actions without daemon
     });
     assert.deepEqual(
       activated.hostActions?.map((action) => (action as { tool?: string }).tool),
-      ["update_plan", "create_goal"],
+      ["create_goal"],
     );
   } finally {
     await opened.close();

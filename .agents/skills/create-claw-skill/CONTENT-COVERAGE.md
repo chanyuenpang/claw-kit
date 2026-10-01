@@ -6,6 +6,7 @@
 - Current authoring, lifecycle, routing, choice, and validation contract: `references/template-authoring.md`.
 - Out-of-date template upgrade checklist: `references/template-upgrade.md`.
 - Version-aware package generation: `scripts/create-claw-skill-stub.mjs`.
+- Native adapter routing and hostless fallback: `references/host-routing.md`, copied verbatim as `CLAW-ROUTING.md` into generated packages.
 
 ## Coverage result
 

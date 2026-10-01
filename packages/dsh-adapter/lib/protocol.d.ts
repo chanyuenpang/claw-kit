@@ -15,5 +15,5 @@ export declare function daemonInput(operation: string, args: Record<string, unkn
  * `claw context --host dsh` payload — activeWorkflow snapshot, version-sync
  * notice, protocol check, search guidance, and a project fallback — so the
  * model gets the same recovery and startup context on DSH that Codex
- * receives. Empty text contributes nothing to the assembly. */
+ * receives. Host identity remains available even without recovered context. */
 export declare function renderGuidanceSnapshot(context: Record<string, unknown> | undefined): string;

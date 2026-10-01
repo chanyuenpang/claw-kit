@@ -75,12 +75,11 @@ The earlier three-task template assumed its generated plan already matched the r
 
 ## Related Code
 
-- `shared/skills/create-claw-skill/SKILL.md`
-- `shared/skills/create-claw-skill/TEMPLATE.json`
-- `shared/skills/create-claw-skill/FALLBACK.md`
-- `shared/skills/create-claw-skill/scripts/create-claw-skill-stub.mjs`
-- `packages/codex-adapter/skills/create-claw-skill/`
-- `packages/opencode-adapter/skills/create-claw-skill/`
+- `.agents/skills/create-claw-skill/SKILL.md`
+- `.agents/skills/create-claw-skill/TEMPLATE.json`
+- `.agents/skills/create-claw-skill/FALLBACK.md`
+- `.agents/skills/create-claw-skill/scripts/create-claw-skill-stub.mjs`
+- [Shared distribution owner](<shared-planning-skill-source.md>)
 - `packages/core/src/plan.ts`
 - `packages/core/src/plan-templates.ts`
 - `packages/core/src/templates/plans/default.ts`

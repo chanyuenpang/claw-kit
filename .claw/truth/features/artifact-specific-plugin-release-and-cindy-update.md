@@ -7,10 +7,9 @@
 - Repository-maintainer release ownership is split by artifact family: `release-claw-cli` owns the npm CLI/core/client release line; `release-codex-plugin`, `release-dsh-plugin`, `release-cindy-plugin`, `release-openclaw-plugin`, and `release-opencode-plugin` own their respective versioned plugin artifacts. `release-dsh-plugin` owns DSH adapter source and publication, with delivery of that published package to a known authorized DSH profile; it does not own CLI/core or another adapter release.
 - A multi-family request creates independent parent tasks or subplans. Naming a platform does not select the CLI flow, and package-only validation continues to use `test-claw-kit` rather than any release skill.
 - For a DSH release targeting a known authorized profile, publish from clean committed `main` source and confirm the exact npm version is available before installing that published version into the target profile. Verify the installed package version, compatible published CLI base, and `claw-kit` dump-config row. An unknown target requires clarification; a workspace build or unpinned `latest` is not profile-delivery evidence. Profile installation changes disk state only: the running DSH Host needs separately authorized restart and subsequent real-session `claw_run` verification before activation can be claimed. See `packages/dsh-adapter/RELEASING.md` and `.agents/skills/release-dsh-plugin/`.
-- `release-cindy-plugin` is scoped to the checked-out `packages/cindy-adapter` independent marketplace repository, its `main`, and the `vcindy-*` tag. It never publishes npm packages or changes another adapter version.
-- A Cindy release verifies the committed marketplace source tree and the tagged `ghost.json`; it does not build or upload a `.cindy` archive and does not create a GitHub Release. Cindy packages the marketplace source locally during install or update.
-- The marketplace entry points at `packages/cindy-adapter/plugin`; a changed plugin requires a new manifest version before release, and the source/tag must reach `origin/main` before the tag is pushed.
-- Cindy intentionally exposes no claw-kit `update` skill. Existing workflow entries remain available, and Cindy's adapter-owned `claw-kit-doc` entry selects the Cindy section from the shared documentation corpus. Users update from the UI: Plugins → Market → Installed Markets → refresh the market source, then return to Plugins and confirm the claw-kit update.
+- Cindy source is main-repository-owned under [its package](<../../../packages/cindy-adapter/>), no longer an independent submodule worktree. Its existing claw-kit-cindy-adapter remote is the artifact-only marketplace delivery target, preserving the market URL. The migration preserved the original Git database/link backup and did not publish or rewrite remote history.
+- An authorized Cindy release reviews source, assembles a detached complete marketplace with [the builder](<../../../scripts/cindy-plugin-artifact.mjs>), and publishes its ./plugin tree to the artifact remote with a matching manifest version and vcindy-* tag. Source commit, artifact commit and activated host version are separate evidence. It never publishes npm, a .cindy archive or a GitHub Release, nor changes another adapter version. Cindy packages the marketplace payload locally during install/update.
+- Cindy intentionally exposes no claw-kit `update` skill. Existing workflow entries remain available, and the complete claw-kit-doc package routes using the actual host rather than pruning content for Cindy; shared entry/package ownership is defined by [shared-source Truth](<shared-planning-skill-source.md>). Users update from the UI: Plugins → Market → Installed Markets → refresh the market source, then return to Plugins and confirm the claw-kit update.
 - Refreshing the Cindy marketplace source only updates available source metadata. It is not installation proof; the separate plugin-page update remains user-confirmed, and the flow must not download or open a `.cindy` archive.
 
 ## Maintenance anchors
@@ -22,7 +21,7 @@
 - `.agents/skills/release-cindy-plugin/`
 - `.agents/skills/release-openclaw-plugin/`
 - `.agents/skills/release-opencode-plugin/`
-- `packages/cindy-adapter/plugin/skills/claw-kit-doc/references/update.md`
+- [Documentation source](<../../../.agents/skills/claw-kit-doc/references/update.md>)
 
 <!-- state: history -->
 ## Evolution history

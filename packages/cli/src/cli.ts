@@ -89,6 +89,8 @@ import {
 import { buildCodexDriverEnvelope } from "./codex-driver.js";
 import { buildCodexHostActions } from "./codex-host-actions.js";
 import { registerReportCollector, type ReportCollectorHost } from "./report-collector-registry.js";
+import { publishDshHostReport } from "./dsh-host-report.js";
+import { recordDshFinalizerIssue, listDshFinalizerAlerts } from "./dsh-finalizer-diagnostics.js";
 import { claimKnowledgeCommand, doneKnowledgeCommand } from "./knowledge-command.js";
 import { pendingDshKnowledgeDispatches } from "./knowledge-pending.js";
 import { consumeBufferedHookInput } from "./knowledge-hook-preflight.js";
@@ -749,6 +751,15 @@ async function main(): Promise<void> {
       case "internal-report-collector-register":
         runInternalReportCollectorRegister(args);
         return;
+      case "internal-dsh-host-report-capture":
+        await runInternalDshHostReportCapture(args);
+        return;
+      case "internal-dsh-finalizer-issue":
+        runInternalDshFinalizerIssue(args);
+        return;
+      case "internal-dsh-finalizer-alerts":
+        runInternalDshFinalizerAlerts(args);
+        return;
       case "direct":
         runDirect(args, effectiveHost);
         return;
@@ -1310,6 +1321,47 @@ function runInternalReportCollectorRegister(args: string[]): void {
     args: collectorArgs,
   });
   printJson({ ok: true, command: "internal-report-collector-register", host, contractVersion: 1, collectorVersion });
+}
+
+/** Adapter-only, private-stdin report delivery; never exposed through claw_run. */
+async function runInternalDshHostReportCapture(args: string[]): Promise<void> {
+  const finalizeId = readRequiredFlag(args, "--finalize-id");
+  const collectorVersion = readRequiredFlag(args, "--collector-version");
+  assertNoRemainingArgs(args, "internal-dsh-host-report-capture");
+  const parentSessionId = resolveOwnerSessionKey();
+  if (!parentSessionId) throw new ClawError("SESSION_IDENTITY_INVALID", "DSH capture requires a trusted parent session.");
+  const input = await readStdinJson();
+  if (!input || typeof input !== "object" || Array.isArray(input)
+    || !Array.isArray((input as { events?: unknown }).events)) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "DSH host capture requires final events on private stdin.");
+  }
+  const capture = publishDshHostReport({ cwd: process.cwd(), parentSessionId, finalizeId, collectorVersion,
+    events: (input as { events: unknown[] }).events });
+  printJson({ ok: true, command: "internal-dsh-host-report-capture", finalizeId, captured: capture.captured,
+    receipt: capture.receipt });
+}
+
+function runInternalDshFinalizerIssue(args: string[]): void {
+  const finalizeId = readRequiredFlag(args, "--finalize-id");
+  const phase = readRequiredFlag(args, "--phase");
+  const code = readRequiredFlag(args, "--code");
+  const correlationId = readRequiredFlag(args, "--correlation-id");
+  assertNoRemainingArgs(args, "internal-dsh-finalizer-issue");
+  if (phase !== "capture" && phase !== "dispatch" && phase !== "writer") {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "Invalid finalizer diagnostic phase.");
+  }
+  const parentSessionId = resolveOwnerSessionKey();
+  if (!parentSessionId) throw new ClawError("SESSION_IDENTITY_INVALID", "Finalizer diagnostic requires a trusted parent.");
+  const failure = recordDshFinalizerIssue({ cwd: process.cwd(), parentSessionId, finalizeId, phase, code, correlationId });
+  printJson({ ok: true, command: "internal-dsh-finalizer-issue", finalizeId, failure: failure ?? null });
+}
+
+function runInternalDshFinalizerAlerts(args: string[]): void {
+  assertNoRemainingArgs(args, "internal-dsh-finalizer-alerts");
+  const parentSessionId = resolveOwnerSessionKey();
+  if (!parentSessionId) throw new ClawError("SESSION_IDENTITY_INVALID", "Finalizer alerts require a trusted parent.");
+  printJson({ ok: true, command: "internal-dsh-finalizer-alerts",
+    alerts: listDshFinalizerAlerts(process.cwd(), parentSessionId) });
 }
 
 async function runKnowledge(args: string[]): Promise<void> {
