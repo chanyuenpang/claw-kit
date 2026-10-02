@@ -30,14 +30,13 @@ Structured settings remain nested:
 ```json
 {
   "knowledgeWriter": {
-    "executionPolicy": "background",
     "externalSkills": [],
     "model": null,
     "reasoningEffort": "medium",
     "datedSectionsToKeep": 6
   },
   "knowledgeWriterByHost": {
-    "codex": { "executionPolicy": "subagent" }
+    "codex": { "model": null }
   },
   "memory": {
     "autoUpdate": true,
@@ -59,7 +58,7 @@ Supported project surfaces include:
 - `contextPaths` and `gitnexus`;
 - `memory.enabled`, `memory.autoUpdate`, `memory.externalDocPaths`, and
   `memory.embedding`;
-- `knowledgeWriter.externalSkills`, `executionPolicy`, `model`,
+- `knowledgeWriter.externalSkills`, `model`,
   `reasoningEffort`, and `datedSectionsToKeep`;
 - `knowledgeWriterByHost` per-host field overrides (see below).
 
@@ -69,24 +68,11 @@ after the selected Truth/ADR writer assignments; it is distinct from the
 top-level `autoUpdate` version-guidance toggle.
 
 `knowledgeWriter.externalSkills` replaces the built-in writer assignment when
-non-empty. `executionPolicy` accepts `main-agent`, `background`, or `subagent`
-and may be omitted entirely. Each host resolves an omitted or unsupported
-policy against its capability matrix default: Codex defaults to `background`
-(all three policies available); Cindy and DSH default to `subagent` with
-`main-agent` also available; OpenCode and the standard hostless flow default
-to `background` and `main-agent` respectively. `main-agent` collects no
-transcripts or reports and never creates a finalization job: the invoking
-agent itself runs the `claw knowledge prepare/complete --source agent-memory`
-closeout from its own memory. Explicitly requesting a policy the host cannot
-run fails fast at plan closeout instead of silently degrading, except the
-legacy Cindy/DSH background-to-subagent coercion. A null model uses the host
-default.
+non-empty. Each host owns one fixed execution flow: Codex/Cindy/DSH native finalizer, OpenCode idle capture and adapter writer, standard direct agent-memory prepare/complete. A null model uses the host default.
 
 `knowledgeWriterByHost` overrides the base `knowledgeWriter` per integration
 host (`codex`, `opencode`, `cindy`, `dsh`, `standard`) with field-level
-merging; unspecified fields inherit the base writer. It lets one repository
-serve hosts with different capabilities, for example a `main-agent` default
-with Codex opting into `subagent`.
+merging; unspecified fields inherit the base writer. Content settings can differ per host while the execution flow stays fixed.
 
 `version` is the project's expected claw protocol version. `claw context`
 aligns an older project version upward and reports when the installed CLI lags

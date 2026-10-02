@@ -1,3 +1,5 @@
+The execution-policy sections below are historical and superseded by [fixed host knowledge closeout](2026-10-02-fixed-host-knowledge-closeout.md).
+
 # Knowledge finalization execution design
 
 ## Status

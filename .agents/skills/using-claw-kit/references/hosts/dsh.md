@@ -55,6 +55,6 @@ as completed Truth/ADR deposition. Do not replay plan.done to repair dispatch.
 but the current `claw_run` contract does not expose knowledge.prepare or
 knowledge.complete. If terminal guidance requests this chain, surface the
 unsupported adapter route and leave closeout visibly incomplete. Do not invent
-these operations, shell-bypass the adapter, silently change the policy, or use
+these operations, shell-bypass the adapter, change the executor, or use
 the public manual capture skill. A separate runtime fix is required before
-this route can execute that policy.
+this route can execute finalization.

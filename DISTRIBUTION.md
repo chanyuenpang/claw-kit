@@ -2,6 +2,14 @@
 
 This document is the maintainer release and npm distribution handbook for this repository.
 
+## Local beta and formal promotion
+
+The default CLI + Codex release route is [local beta → unchanged promotion](docs/beta-release.md).
+Commit source locally, freeze final-version artifacts, and test the batch for seven
+days without pushing. Use `npm run publish:release -- --candidate <directory>` to
+publish its exact npm tarballs before pushing source and releasing the stored
+Codex artifact. Version preparation applies before freezing, never during promotion.
+
 Current release baseline should be derived from the repository at runtime instead of trusted from static prose:
 
 ```powershell
@@ -28,7 +36,7 @@ Current publishable packages:
 
 Codex plugin distribution source:
 
-- `.agents/skills` -> seven canonical public skill packages alongside repository-only skills; the explicit catalog selects only public inputs
+- `.agents/skills` -> canonical public skill packages alongside repository-only skills; each artifact's declaration selects its public inputs without a fixed count
 - `shared/skills/knowledge-capture` -> canonical non-project-discovery manual capture package
 - `packages/codex-adapter` -> adapter runtime source plus host-owned update, not a complete installable plugin
 - `.agents/plugins/marketplace.json` -> marketplace packaging input with the unchanged plugin-relative path
@@ -75,25 +83,28 @@ If the user does not explicitly identify an artifact and the diff spans multiple
 
 ## Template-driven maintainer release
 
-The supported maintainer orchestration entrypoint is the repository-local `.agents/skills/release-claw-kit` template. It is project governance for this repository and is not part of the published Codex plugin:
-
-```powershell
-claw plan create --template release-claw-kit --title release-claw-kit
-```
-
-Follow its returned `workflowGuidance` through preparation, direct-main delivery, guarded publish, release evidence, and the subsequent published-source Codex update. The template sequences the release and update workflows for convenience, but preserves their separate completion boundaries: GitHub/npm/plugin artifact evidence completes the release before local CLI and Codex installation evidence begins.
+The repository-local `release-claw-kit` skill routes to artifact-specific release
+skills; it has no template of its own. `beta-claw-kit` owns local beta preparation.
+Follow the selected skill's host workflow. Release and local update remain separate
+completion boundaries.
 
 ## Repository-owner policy
 
 This repository uses direct maintainer publishing by default:
 
 - work from the checked-out `main` branch;
-- commit the release content and push it directly to `origin/main`;
+- commit beta source locally; during formal promotion publish npm first, then push directly to `origin/main`;
 - do **not** create a feature branch or pull request unless the repository owner explicitly asks for review;
-- before publishing, classify every local change: useful release content must be committed and pushed, disposable output must be removed, and intentional local-only files must be ignored;
+- before freezing beta, classify every local change: commit useful content locally, remove disposable output and ignore local-only files;
 - do not use `git stash` to make a release gate pass; a release starts and ends with a clean worktree.
 
-`npm run verify:release` and `npm run publish:release` validate or publish only Core, Client, and CLI. They require the current branch to be `main`, `HEAD` to equal `origin/main`, and `git status --porcelain` to be empty. Use `verify:batch-release` / `publish:batch-release` only for an explicitly coordinated CLI-plus-platform release; those commands additionally validate marketplace, adapter, shared-skill, and cross-artifact template contracts.
+With `--candidate`, `verify:release` and `publish:release` use clean local main at
+the candidate revision; remote equality is required after publication, not before
+npm upload. `publish:batch-release` also requires a candidate and leaves platform
+tag/Release creation to the corresponding skills. Without a candidate,
+`verify:release` retains its historical clean origin/main diagnostic gate, and
+`verify:batch-release` adds coordinated platform checks. Neither diagnostic path
+replaces beta promotion.
 
 ## Versioning Rules
 
@@ -162,140 +173,28 @@ After changing version files:
 
 ## Release Checklist
 
-### For any release mode
+Use [the beta workflow](docs/beta-release.md) for the complete maintained commands.
 
-1. Confirm the target artifact family: CLI, Codex, Cindy, DSH, OpenClaw, or OpenCode; Cindy releases occur in the independent `claw-kit-cindy-adapter` repository; or record `prepare-only`.
-2. Classify all local changes; commit useful release content, remove disposable output, and ignore intentional local-only files. Do not stash changes to bypass this step.
-3. Ensure the checked-out branch is `main` and push the release commit directly to `origin/main`.
-4. Align only the selected artifact family's versions. A routine claw-kit version bump does not require template synchronization; run `npm run sync:template-versions` only when the template driver changes, then run `npm run check:skill-sources` when shared skill payloads changed.
-5. For a coordinated batch release, review generated adapter files and run `npm run check:template-versions`.
-6. Run `npm install`.
-7. Run verification commands.
-8. Dry-run package artifacts.
-9. Create the release commit and push it directly to GitHub.
-10. Run `npm run verify:release` for CLI/Core/Client release safety. Run `npm run verify:batch-release` only when the release deliberately includes platform artifacts; it adds marketplace metadata, assembled Codex skills, exported payload, and coordinated template validation.
+1. Prepare the intended stable version, classify changes, run proportionate checks,
+   and commit locally on main. Do not push during beta.
+2. Run `npm run beta:pack`; install that batch and confirm CLI/plugin versions.
+3. Record the start with `npm run beta:start-test -- --candidate <directory>` and
+   test it locally for seven days. Use smoke-test-claw-kit with that beta batch.
+4. For formal release run `npm run verify:release -- --candidate <directory>`,
+   then `npm run publish:release -- --candidate <directory>`. This publishes
+   frozen Core/Client/CLI tarballs, verifies retrieval, and only then pushes main.
+5. Finish immutable source and adapter tags/Releases using the artifact-specific
+   skills. Codex reuses the saved composed marketplace tree without rebuilding.
+6. Confirm local main equals origin/main and the worktree is clean. Refresh local
+   installations separately when requested.
 
-### CLI release only
+Other adapter-only releases keep their own artifact-specific contracts. Never
+push an adapter requiring a CLI that cannot yet be retrieved from npm. Do not use
+raw workspace npm publish to bypass the beta path.
 
-11. Confirm npm auth.
-12. Publish `@veewo/claw-core` first (`npm run publish:release` handles this).
-13. Publish `@veewo/claw` second.
-14. Verify the worktree is still clean and verify published versions.
-15. Refresh the locally installed CLI.
-16. If a platform artifact is part of an explicit batch release, run its separate release and installation verification.
-
-### Codex plugin release only
-
-11. Create and push the tag `vcodex-<version>`. Create the GitHub Release for the committed marketplace snapshot.
-12. Upgrade the Codex marketplace snapshot and verify installation from a clean machine.
-
-### Platform adapter release only
-
-11. Follow the selected artifact-specific release skill. DSH publishes npm plus `vdsh-<version>`; OpenClaw/OpenCode publish their GitHub artifacts; Cindy runs entirely in its independent repository.
-12. Verify the artifact, tag, and installed behavior using that skill's evidence contract.
-
-
-- `full-publish`: complete all 16 steps.
-- `prepare-only`: complete through step 6 only.
-- `publish-only`: complete steps 7-12 only.
-
-## Verification Commands
-
-Run these from the repository root unless noted:
-
-```powershell
-npm run test:full
-npm run check
-npm run check:template-versions
-npm run test:codex-plugin
-node --test scripts/skill-artifacts.test.mjs scripts/host-plugin-artifacts.test.mjs
-cd packages\core
-npm pack --dry-run
-cd ..\cli
-npm pack --dry-run
-cd ..\..
-git status --short
-git show --no-patch --decorate --oneline HEAD
-```
-
-For ordinary development, `npm test` selects test domains from staged,
-unstaged, and untracked paths. Use `npm run test:domain -- <domain>` to select a
-known area explicitly, `npm run test:list` to inspect available domains, or
-`npm run test:changed -- --base <ref>` to include committed changes since a
-branch or tag. Unclassified and cross-cutting files conservatively select the
-full suite; documentation-only changes select no executable tests. Release and
-broad integration validation must use `npm run test:full` explicitly.
-
-The CLI suite is split by product responsibility into `cli-workflow`,
-`cli-session-scope`, `cli-search`, `cli-closeout`, `cli-host-actions`,
-`cli-project`, and `cli-surface`. Dedicated CLI source and test files select
-their exact domain. The shared `cli.ts` entrypoint explicitly selects all CLI
-domains because it still owns all parsing routes; it does not use a hidden
-monolithic compatibility suite. Shared test support also selects all CLI
-domains, while unknown paths continue to escalate to `full`.
-
-Recommended extra release checks:
-
-```powershell
-node -p "require('./packages/core/package.json').version"
-node -p "require('./packages/cli/package.json').version"
-node -p "require('./packages/codex-adapter/.codex-plugin/plugin.json').version"
-npm run check:template-versions
-rg -n "\"version\":|@veewo/claw|@veewo/claw-core" package.json package-lock.json CHANGELOG.md packages -g "!**/node_modules/**"
-```
-
-Expected outcome:
-
-- tests and checks pass
-- both `npm pack --dry-run` commands succeed
-- release versions are aligned where expected
-- every plugin template and the built-in default template match the CLI release version
-- no unexpected dirty changes remain before publish
-
-## Auth and Permission Checks
-
-Before publishing, this machine must be logged in to npm:
-
-```powershell
-npm login
-npm whoami
-```
-
-If publish is scoped through the `@veewo` organization, the current account must have permission to publish under that scope.
-
-Common blockers:
-
-- `ENEEDAUTH`: not logged in
-- `403 Forbidden`: missing scope permission or package ownership
-- version already exists: bump the version before retrying
-
-## Publish Sequence
-
-Publish order matters because `@veewo/claw` depends on `@veewo/claw-core`.
-
-```powershell
-cd packages\core
-npm publish --access public
-cd ..\cli
-npm publish --access public
-cd ..\..
-```
-
-Verify the registry after publish:
-
-```powershell
-npm view @veewo/claw-core version --registry=https://registry.npmjs.org
-npm view @veewo/claw version --registry=https://registry.npmjs.org
-```
-
-The supported guarded entrypoint is:
-
-```powershell
-npm run verify:release
-npm run publish:release
-```
-
-Both commands intentionally fail if the release worktree is dirty, the current branch is not `main`, or the local and remote `main` commits differ. Do not use direct `npm publish` as a substitute: it can create a registry release with no corresponding GitHub source commit.
+For ordinary development, `npm test` selects affected test domains. Use
+`npm run test:list` to inspect them and run focused checks proportionate to the
+change. `npm run test:release-candidate` checks beta packing and promotion.
 
 ## Remote Install Paths
 

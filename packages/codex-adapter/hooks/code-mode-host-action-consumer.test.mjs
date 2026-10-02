@@ -10,7 +10,6 @@ import {
   parseClawCommandResult,
   runCodexPlanMutation,
 } from "../scripts/code-mode-host-action-consumer.mjs";
-import { runNativeFinalizer } from "../scripts/knowledge-finalizer.mjs";
 
 const hooksDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -37,46 +36,7 @@ test("parseClawCommandResult extracts the first complete CLI JSON object", () =>
   assert.deepEqual(parsed, { ok: true, command: "plan.edit" });
 });
 
-test("native knowledge finalizer keeps lifecycle ownership in CLI and SDK ownership in the adapter", async () => {
-  const calls = [];
-  class FakeCodex {
-    constructor(options) { calls.push(["sdk", options]); }
-    startThread(options) {
-      calls.push(["thread", options]);
-      return { id: "writer-session", run: async (prompt) => { calls.push(["run", prompt]); return { finalResponse: "deposited" }; } };
-    }
-  }
-  const runClawCommand = (argv) => {
-    calls.push(["claw", argv]);
-    const command = argv[0] === "internal-knowledge-dispatch" ? argv[0] : argv.slice(0, 2).join(" ");
-    const body = command === "knowledge claim"
-      ? { ok: true, claimed: true, claimToken: "claim-token" }
-      : command === "internal-knowledge-dispatch"
-        ? { ok: true, projectRoot: "G:\\project", writer: { reasoningEffort: "medium" }, dispatch: { prompt: "write knowledge" } }
-        : { ok: true };
-    return { ok: true, stdout: JSON.stringify(body), stderr: "" };
-  };
 
-  await runNativeFinalizer("G:\\project\\job.json", { CodexClass: FakeCodex, runClawCommand });
-
-  assert.deepEqual(calls.filter(([name]) => name === "claw").map(([, argv]) => argv[0] === "internal-knowledge-dispatch" ? argv[0] : argv.slice(0, 2).join(" ")), [
-    "knowledge claim", "internal-knowledge-dispatch", "knowledge verify-session", "knowledge done",
-  ]);
-  const done = calls.find(([name, argv]) => name === "claw" && argv[0] === "knowledge" && argv[1] === "done")[1];
-  assert.deepEqual(done.slice(-4), ["--status", "succeeded", "--result", "deposited"]);
-  assert.equal(calls.find(([name]) => name === "run")[1], "write knowledge");
-});
-
-test("native knowledge finalizer never starts a writer after its claim has expired", async () => {
-  const calls = [];
-  class FakeCodex { constructor() { calls.push("sdk"); } }
-  const runClawCommand = (argv) => {
-    calls.push(argv.slice(0, 2).join(" "));
-    return { ok: true, stdout: JSON.stringify({ ok: true, claimed: true, claimToken: "claim-token", expiresAt: "2000-01-01T00:00:00.000Z" }), stderr: "" };
-  };
-  await assert.rejects(() => runNativeFinalizer("G:\\project\\job.json", { CodexClass: FakeCodex, runClawCommand }), /expired before the writer could start/);
-  assert.deepEqual(calls, ["knowledge claim", "knowledge done"]);
-});
 
 test("program dispatches each native Goal action exactly once", async () => {
   const calls = [];
@@ -276,8 +236,8 @@ test("the embedded bootstrap caches the CLI driver and dispatches native host ac
         if (options.command === "claw codex driver") {
           return JSON.stringify({
             ok: true,
-            cacheKey: "claw-kit:codex-driver:v22:s1",
-            driverVersion: 22,
+            cacheKey: "claw-kit:codex-driver:v23:s1",
+            driverVersion: 23,
             hostActionSchemaVersion: 1,
             source: driverSource,
           });
@@ -329,8 +289,8 @@ test("the embedded bootstrap uses exec_command when shell_command is unavailable
         if (options.cmd === "claw codex driver") {
           return JSON.stringify({
             ok: true,
-            cacheKey: "claw-kit:codex-driver:v22:s1",
-            driverVersion: 22,
+            cacheKey: "claw-kit:codex-driver:v23:s1",
+            driverVersion: 23,
             hostActionSchemaVersion: 1,
             source: driverSource,
           });

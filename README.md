@@ -204,13 +204,24 @@ dsh plugin --profile web add @veewo/dsh-claw-kit@latest
 
 Restart the Host (`dsh --profile web`) to mount the `claw-kit` row; then
 confirm the `claw_run` tool and the bundled skills appear. The installed `claw`
-CLI must support `--host dsh`. Maintainers working inside this repository have
-two commands:
+CLI must support `--host dsh`.
+
+The Electron-managed `desktop` profile is the exception: the global `dsh` on
+`PATH` refuses it with `profile "desktop" is managed exclusively by the Electron
+application`, so install through the profile's own plugin manager —
+`plugin_manager(action: "install_bundle", target: "@veewo/dsh-claw-kit@<version>")`
+or the exported tarball path — and never by writing profile files directly. See
+[the desktop profile write boundary](packages/dsh-adapter/skills/update/references/desktop-profile-write-boundary.md).
+
+Maintainers working inside this repository have two commands:
 
 ```powershell
 npm run export:dsh-plugin     # build + pack the installable tarball into dist/dsh-plugin/
 npm run install:dsh-plugin    # dsh plugin --profile web add <tarball> (--profile to override)
 ```
+
+`install:dsh-plugin` runs the global `dsh` on `PATH`, so it works for
+non-Electron profiles only; use the `plugin_manager` path above for `desktop`.
 
 The adapter consumes CLI hostActions automatically (progress projection +
 native goal sync) and auto-dispatches knowledge finalization through a native

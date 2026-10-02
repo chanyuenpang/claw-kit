@@ -31,7 +31,7 @@ lifecycle.
 
 ## Knowledge finalizer dispatch
 
-For subagent policy, Cindy
+Cindy
 uses one knowledge-closeout execution model: a persistent, UI-visible Orca
 Worker. When a terminal plan mutation returns a valid `knowledgeDispatch`,
 dispatch that Worker directly.
@@ -159,12 +159,3 @@ When all plan tasks are complete:
 Knowledge closeout must remain bounded to the current project and plan. A
 failure must be visible and recoverable; never silently mark a failed closeout
 as complete.
-
-## Main-agent policy boundary
-
-A main-agent closeout is not an Orca dispatch and creates no job/report/worker.
-Follow the returned assignment route only if it is supported by the selected
-transport. In particular, do not invent missing Ghost prepare/complete
-operations or switch to shell to satisfy CLI-shaped guidance. Surface an
-unsupported route without claiming closeout success. Never substitute the
-public manual knowledge-capture skill for automatic finalization.

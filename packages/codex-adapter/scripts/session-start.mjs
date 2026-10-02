@@ -1,4 +1,8 @@
 import { spawnSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const pluginRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 const CODEX_MUTATION_ROUTE_BANNER = "Codex route: every claw plan, task, or subplan mutation must use the fixed code-mode driver. commandHints provide argv syntax only; do not run them directly in the shell.";
 
@@ -8,7 +12,8 @@ const payload = await readStdin();
 const contextResult = runClawContext(payload);
 let context;
 if (contextResult.ok && contextResult.stdout.trim()) {
-  try { context = JSON.parse(contextResult.stdout); } catch { /* Identity does not depend on CLI recovery. */ }
+  try { context = JSON.parse(contextResult.stdout);
+    if (context?.command === "context") context = context.output; } catch { /* Identity does not depend on CLI recovery. */ }
 }
 
 const additionalContext = [CODEX_HOST_IDENTITY, renderCodexSessionStart(context)].filter(Boolean).join("\n\n");
@@ -28,9 +33,11 @@ function runClawContext(hookPayload) {
   }
   const isWindows = process.platform === "win32";
   const command = isWindows ? (process.env.ComSpec || "cmd.exe") : "claw";
+  const encode = (value) => value.split("").map((character) => character.charCodeAt(0).toString(16).padStart(4, "0")).join("");
+  const invocation = ["codex", "invoke", encode(JSON.stringify(["context"])), encode(pluginRoot)];
   const args = isWindows
-    ? ["/d", "/s", "/c", "claw.cmd", "context", "--host", "codex"]
-    : ["context", "--host", "codex"];
+    ? ["/d", "/s", "/c", "claw.cmd", ...invocation]
+    : invocation;
   const result = spawnSync(command, args, { cwd, encoding: "utf8", windowsHide: true, env });
   return { ok: !result.error && result.status === 0, stdout: result.stdout ?? "" };
 }

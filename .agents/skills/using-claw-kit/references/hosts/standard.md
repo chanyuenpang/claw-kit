@@ -22,11 +22,9 @@ workflowGuidance. Do not add `--host` or set `CLAW_HOST`.
 
 ## Knowledge closeout
 
-The standard hostless flow resolves `knowledgeWriter.executionPolicy` to
-`main-agent` by default (no host-registered claim-time report collector
-exists). When terminal guidance requires capture, closeout is non-skippable.
+The standard hostless flow always uses direct agent-memory assignments. When terminal guidance requires capture, closeout is non-skippable.
 
-**Default `main-agent` closeout (two steps):**
+**Closeout (two steps):**
 
 1. **Prepare the assignment projection.** After the root plan's canonical completion, run:
 
@@ -47,26 +45,4 @@ exists). When terminal guidance requires capture, closeout is non-skippable.
    with every canonical Truth/ADR document you changed. If the configuration
    changed after prepare, run prepare again before completing.
 
-**Explicit `background` closeout (three steps):** with
-`knowledgeWriter.executionPolicy: "background"` configured explicitly:
-
-1. Run `claw internal-knowledge-capture` with stdin JSON:
-   ```json
-   {"cwd": "<project root>", "session_id": "<CLAW_SESSION_ID>", "turn_id": "<turn id>", "message": "<final answer summary>", "task_conclusions": []}
-   ```
-2. Run `claw internal-knowledge-dispatch --job <jobPath>` using the returned
-   job path.
-3. Execute the returned `dispatch.prompt` verbatim (its
-   `claw plan create --template-file ...` command), then follow the writer
-   plan's `workflowGuidance` to completion.
-
-Do not skip closeout because the work appears to contain no knowledge — the
-assignment contract itself decides whether a knowledge update is warranted.
-
-The background writer plan claims and completes its durable job; do not wait
-for an external worker, invoke a subagent, or launch another finalizer. If
-interrupted, resume capture only if no report exists; otherwise resume from
-dispatch using the returned job path. Do not fabricate a job path.
-
-Do not choose subagent policy here: no host-registered claim-time collector
-exists. Omit executionPolicy (main-agent) or explicitly use background.
+Do not skip closeout because the work appears to contain no knowledge; the assignment contract decides whether an update is warranted.

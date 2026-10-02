@@ -70,20 +70,13 @@ Together, the canonical config plus local override model gives longer-running pr
 ### Knowledge writer
 
 - `knowledgeWriter.externalSkills`
-- `knowledgeWriter.executionPolicy`
-  - accepts `main-agent`, `background`, or `subagent`, and may be omitted entirely
-  - when omitted, each host resolves the policy against its capability-matrix default: Codex → `background`, Cindy and DSH → `subagent`, OpenCode → `background`, standard hostless → `main-agent`
-  - `main-agent` performs no transcript capture and creates no finalization job: the invoking agent runs `claw knowledge prepare/complete --source agent-memory` from its own memory; the plan terminal `workflowGuidance` carries that chain
-  - `background` launches a detached host agent after Stop capture where that host supports the background lifecycle
-  - `subagent` asks the active main agent to dispatch a native collaboration subagent before the final response; unsupported hosts reject this policy before plan completion
-  - Cindy and DSH normalize a configured `background` to `subagent` (legacy coercion): the active Lead dispatches the native `knowledge-finalizer` worker, and these hosts do not use Stop capture or errand execution for knowledge finalization
-  - Codex and Cindy both use packaged session delegate templates and the generated assignment subplan; Cindy performs claim and done through Ghost operations
+  - The host owns its fixed closeout: Codex/Cindy/DSH native finalizer, OpenCode idle capture and adapter writer, standard direct agent-memory prepare/complete.
   - `externalSkills` is an ordered documentation-governance skill sequence; each custom skill receives an explicit unattended, non-interactive invocation prompt in a separate sequential assignment
   - use an empty array for claw-kit's hidden built-in consistency-aware governance contract, whose direct prompt is distinct from custom skill invocation wording
 - `knowledgeWriterByHost`
   - optional per-host field overrides of `knowledgeWriter`, keyed by `codex`, `opencode`, `cindy`, `dsh`, or `standard`
   - each entry merges at field level over the base writer; unspecified fields inherit the base
-  - lets one repository serve hosts with different capabilities, e.g. a `main-agent` base with Codex opting into `subagent`
+  - override content settings such as model or external skills; the host execution flow is fixed
 
 ### Context and memory
 

@@ -2,6 +2,8 @@
 
 ## 范围与入口发现
 
+产物来源由 SKILL.md 选择。beta 模式沿用全部场景与收口规则；下文“公开/官方”入口以已经核验的 beta 所提供的真实入口为准，不能拿仓库源码或其他版本补齐能力。
+
 跨平台是同一套行为和断言可在不同平台执行。一次默认运行只记录并测试当前操作系统与当前真实 adapter，不遍历操作系统或宿主清单。由 using-claw-kit 按当前宿主标记和实际工具确定身份，不能根据模型、技能路径或先前会话猜宿主，也不能改 platform/host 参数模拟另一平台。
 
 只有用户明确指定多个目标时才分别准备真实平台环境；目标环境缺条件时先修复，仍不可执行才记 blocked。未指定的其他平台属于范围外，无需检查其安装、凭证或加载条件。公开明确不支持的目标才记 not-applicable。
@@ -12,13 +14,15 @@
 
 ## 一次小型工作流覆盖核心操作
 
+默认使用当前项目和当前真实 session。context 返回仓库项目只说明正常项目身份，不等于已有业务计划；是否占用当前工作流只看 activeWorkflow。没有业务计划时直接创建专用测试计划，不因缺少项目/session 切换入口而 blocked。有业务计划时先保留它，通过已授权的独立会话或专用测试子计划承载测试；不得冒烟前自动退出或完成业务计划。使用子计划承载时，完成对象是该测试子计划，不完成业务 root；不具备安全执行条件的 root create/leave 等步骤分别报告受阻，其他步骤可继续。
+
 创建一个父计划，保留两个业务任务：一个用于 subplan，一个用于返回后继续执行；另加一个可删除的临时任务。使用唯一中文/空格 marker 与测试目录内的有效 reference 文件。尽量在同一计划中串行完成以下步骤，不为每个字段新建计划。
 
 场景编号不是执行顺序：先完成 SMOKE-09 的独立取消及适用切换，再执行父计划场景。SMOKE-08 的父计划 `plan done` 放在最后；证据和报告草稿提前保存，成功后立即结束测试会话，不在同一会话追加检查或等待后台 finalizer。
 
 | ID | 必测行为 | 最小核验 |
 | --- | --- | --- |
-| SMOKE-01 | 公开安装、加载、init/context | 来源门禁通过，实际入口可用，当前 project/session 正确；不污染用户真实项目 |
+| SMOKE-01 | 安装、版本确认、init/context | 目标版本安装正确，实际入口可用，当前 project/session 正确；已有项目无需另建或反复 init，不覆盖项目配置 |
 | SMOKE-02 | plan create/show | 讨论期计划存在且可读，title/goal 保真，canonical 路径和绑定一致；不提前进入执行 |
 | SMOKE-03 | plan edit/remove | 修改 goal、requirements、summary；向公开支持的 question、acceptance、rule、key decision、reference+why 各写一项。再精确移除这些集合的临时项，保留正式要求/reference；重新读取核对增改删和其他字段未丢失。remove 是移除集合值，不是删除计划文件 |
 | SMOKE-04 | plan start、task add/edit/remove/done | 按公开规划合同进入 active；增加临时任务、编辑 title/detail、移除它；对保留任务执行实际状态修改和完成。核对稳定 ID、顺序、状态与 nextTask；有规划任务时按 guidance 完成，不自行跳过 |

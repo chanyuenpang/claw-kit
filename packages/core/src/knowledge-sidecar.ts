@@ -4,10 +4,11 @@ import path from "node:path";
 import { readJsonFile, withFileLock, writeJsonFile, writeJsonFileAtomic } from "./io.js";
 import { buildKnowledgeWriterAssignments, buildKnowledgeAssignmentTemplate, type KnowledgeWriterAssignment } from "./knowledge-assignments.js";
 import type { PlanTemplateDocument } from "./templates/plans/default.js";
+import { pickKnowledgeWriterFields } from "./effective-config.js";
 import { ensureInsideDir } from "./paths.js";
 import { listTaskDirectories } from "./context.js";
 import { ensureUtf8Bom, hasUtf8BomPrefix } from "./text-encoding.js";
-import { fillKnowledgeExecutionPolicyDefault, resolveHostIntegrationProfile, resolveKnowledgeExecutionPolicyForHost, isIntegrationHost } from "./integration-contract.js";
+import { resolveHostIntegrationProfile, isIntegrationHost } from "./integration-contract.js";
 import type { KnowledgeGovernanceResult } from "./knowledge-governance.js";
 import type { KnowledgeWriterConfig, ProjectConfig, ProjectContext } from "./types.js";
 
@@ -104,7 +105,7 @@ export type KnowledgeFinalizationJob = {
   docUpdate?: KnowledgeDocUpdateSnapshot;
   /**
    * Host that queued the job, so the finalization worker can pick the correct runner.
-   * Older jobs queued without this field fall back to the Codex SDK runner.
+   * Legacy jobs without an execution owner are rejected before a new claim.
    */
   host?: KnowledgeFinalizationHost | null;
   planPath: string;
@@ -301,14 +302,7 @@ export function resolveKnowledgeWriterForHost(
   const merged: KnowledgeWriterConfig | undefined = isIntegrationHost(host) && byHost?.[host]
     ? { ...(writer ?? {}), ...byHost[host] }
     : writer;
-  // Cindy and DSH cannot run background closeout; force their native subagent
-  // route regardless of an explicit background request (legacy coercion).
-  const forceSubagent = host === "cindy" || host === "dsh";
-  const requested = forceSubagent && merged?.executionPolicy !== "subagent"
-    ? "subagent" as const
-    : merged?.executionPolicy;
-  const policy = fillKnowledgeExecutionPolicyDefault(host, requested);
-  return { ...(merged ?? {}), executionPolicy: policy };
+  return pickKnowledgeWriterFields(merged);
 }
 
 export function resolveKnowledgeDocUpdateSnapshot(
@@ -332,7 +326,7 @@ export function tryRegisterKnowledgePlan(input: {
   writer?: KnowledgeWriterConfig;
   host?: KnowledgeFinalizationHost;
 }): KnowledgeSidecarResult {
-  if (input.knowledgeCapture === false) {
+  if (input.knowledgeCapture === false || !input.host || input.host === "standard") {
     return { ok: true };
   }
   const sessionId = input.sessionId?.trim();
@@ -349,8 +343,7 @@ export function tryRegisterKnowledgePlan(input: {
     const reportPath = toProjectRelativeReportPath(input.project, deriveKnowledgeReportPath(input.planPath));
     updateKnowledgeRegistry(input.project, sessionId, (registry) => {
       const samePlan = registry.activePlanPath === planPath;
-      const continuingSubagentCapture = writer?.executionPolicy === "subagent"
-        && registry.activeWriter?.executionPolicy === "subagent";
+      const continuingSubagentCapture = resolveHostIntegrationProfile(input.host)?.supportsNativeSubagentFinalization === true;
       return {
         ...registry,
         activePlanPath: planPath,
@@ -359,6 +352,7 @@ export function tryRegisterKnowledgePlan(input: {
         activeStartedAt: (samePlan || continuingSubagentCapture) && registry.activeStartedAt
           ? registry.activeStartedAt
           : new Date().toISOString(),
+        ...(input.host !== "opencode" ? { pendingTurnOwner: undefined } : {}),
         updatedAt: new Date().toISOString(),
       };
     });
@@ -378,7 +372,7 @@ export function tryEndKnowledgePlan(input: {
   writer?: KnowledgeWriterConfig;
   host?: KnowledgeFinalizationHost;
 }): KnowledgePlanEndResult {
-  if (input.knowledgeCapture === false) {
+  if (input.knowledgeCapture === false || !input.host || input.host === "standard") {
     return { ok: true };
   }
   const sessionId = input.sessionId?.trim();
@@ -422,15 +416,7 @@ export function tryEndKnowledgePlan(input: {
           : { activePlanPath: undefined, activeReportPath: undefined, activeWriter: undefined, activeStartedAt: undefined }),
         updatedAt: new Date().toISOString(),
       };
-      if (writer?.executionPolicy === "main-agent") {
-        // Main-agent deposition needs no turn owner, report, or job: the
-        // invoking agent runs knowledge prepare/complete from its own memory.
-        return {
-          ...common,
-          pendingTurnOwner: undefined,
-        };
-      }
-      if (writer?.executionPolicy !== "subagent") {
+      if (input.host === "opencode") {
         return {
           ...common,
           pendingTurnOwner: {
@@ -479,7 +465,7 @@ export function tryEndKnowledgePlan(input: {
       }
       return subagentCommon;
     });
-    if (writer?.executionPolicy === "subagent" && resumedPlanPath) {
+    if (resolveHostIntegrationProfile(input.host)?.supportsNativeSubagentFinalization && resumedPlanPath) {
       return { ok: true };
     }
     return { ok: true, finalizeId, ...(jobPath ? { jobPath } : {}) };
@@ -520,7 +506,7 @@ export function tryLeaveKnowledgePlan(input: {
       const leftPlanPath = path.resolve(input.leftPlanPath);
       for (const jobPath of listKnowledgeFinalizationJobs(input.project)) {
         withFileLock(jobPath, () => {
-          const job = readJsonFile<KnowledgeFinalizationJob>(jobPath);
+          const job = readKnowledgeFinalizationJob(jobPath);
           if (
             job.sessionId !== sessionId
             || path.resolve(job.planPath) !== leftPlanPath
@@ -553,6 +539,7 @@ export function tryCompleteKnowledgePlan(input: {
   completedPlanPath: string;
   resumedPlanPath?: string;
   completedAt?: string;
+  host?: KnowledgeFinalizationHost;
 }): KnowledgeSidecarResult {
   return tryEndKnowledgePlan({
     project: input.project,
@@ -560,6 +547,7 @@ export function tryCompleteKnowledgePlan(input: {
     endedPlanPath: input.completedPlanPath,
     resumedPlanPath: input.resumedPlanPath,
     endedAt: input.completedAt ?? new Date().toISOString(),
+    host: input.host,
   });
 }
 
@@ -595,19 +583,8 @@ export function tryCaptureKnowledgeStop(input: {
       if (!target) {
         return { ok: true, captured: false };
       }
-      if (
-        target.writer?.executionPolicy === "subagent"
-        || (!target.writer && resolveKnowledgeExecutionPolicyForHost(input.host, input.project.projectConfig?.knowledgeWriter?.executionPolicy).policy === "subagent")
-      ) {
+      if (input.host !== "opencode") {
         return { ok: true, captured: false };
-      }
-      if (
-        target.writer?.executionPolicy === "main-agent"
-        || (!target.writer && resolveKnowledgeExecutionPolicyForHost(input.host, input.project.projectConfig?.knowledgeWriter?.executionPolicy).policy === "main-agent")
-      ) {
-        // Main-agent deposition performs no transcript capture: the invoking
-        // agent deposits knowledge from its own memory via prepare/complete.
-        return { ok: true, captured: false, reason: "main-agent-policy" };
       }
       const reportPath = resolveProjectRelativeReportPath(input.project, target.reportPath);
       const capturedAt = new Date().toISOString();
@@ -642,10 +619,6 @@ export function tryCaptureKnowledgeStop(input: {
             projectRoot: input.project.projectRoot,
             taskName: taskNameFromPlanPath(registry.pendingTurnOwner.planPath),
             writer: {
-              executionPolicy:
-                registry.pendingTurnOwner.writer?.executionPolicy
-                ?? resolveKnowledgeExecutionPolicyForHost(input.host, input.project.projectConfig?.knowledgeWriter?.executionPolicy).policy
-                ?? "background",
               externalSkills:
                 registry.pendingTurnOwner.writer?.externalSkills
                 ?? input.project.projectConfig?.knowledgeWriter?.externalSkills
@@ -700,7 +673,8 @@ export function tryCaptureKnowledgeStop(input: {
 }
 
 export function readKnowledgeFinalizationJob(jobPath: string): KnowledgeFinalizationJob {
-  return readJsonFile<KnowledgeFinalizationJob>(jobPath);
+  const job = readJsonFile<KnowledgeFinalizationJob>(jobPath);
+  return { ...job, ...(job.writer ? { writer: pickKnowledgeWriterFields(job.writer) } : {}) };
 }
 
 /**
@@ -831,7 +805,7 @@ function releaseDshExecutionLocked(jobPath: string, job: KnowledgeFinalizationJo
   const row = inspectDshExecutionJob(job);
   if (row.readyForNext && job.dshExecution && !job.dshExecution.releasedAt) {
     job = { ...job, dshExecution: { ...job.dshExecution, releasedAt: new Date().toISOString() } };
-    writeJsonFileAtomic(jobPath, job);
+    writeJsonFileAtomic(jobPath, { ...job, ...(job.writer ? { writer: pickKnowledgeWriterFields(job.writer) } : {}) });
     return inspectDshExecutionJob(job);
   }
   return row;
@@ -969,6 +943,16 @@ export function claimKnowledgeFinalizationJob(
       // An admitted child whose job expired before claim still needs a provable
       // delegate end.leave before its reusable role can be released. No token is issued.
       writeJsonFileAtomic(jobPath, { ...current, dshExecution: execution });
+      return null;
+    }
+    const native = resolveHostIntegrationProfile(current.host)?.supportsNativeSubagentFinalization;
+    if (!(native && current.reportCapture?.mode === "claim") && current.host !== "opencode") {
+      writeJsonFileAtomic(jobPath, {
+        ...current,
+        status: "failed",
+        finishedAt: new Date().toISOString(),
+        error: { message: "Knowledge executor is unavailable: legacy job has no supported host/capture ownership." },
+      });
       return null;
     }
     const now = new Date().toISOString();
@@ -1189,7 +1173,7 @@ function reconcileKnowledgeFinalizationJobLocked(
   jobPath: string,
   now: Date,
 ): KnowledgeFinalizationJob {
-  const current = readJsonFile<KnowledgeFinalizationJob>(jobPath);
+  const current = readKnowledgeFinalizationJob(jobPath);
   if (current.status !== "queued" && current.status !== "running") {
     return current;
   }

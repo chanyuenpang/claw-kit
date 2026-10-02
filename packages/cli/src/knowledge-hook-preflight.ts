@@ -13,6 +13,8 @@ export async function shouldLoadCliForInvocation(
   if (!isKnowledgeHookInvocation(args)) {
     return true;
   }
+  const hostIndex = args.indexOf("--host");
+  if ((hostIndex >= 0 ? args[hostIndex + 1] : env.CLAW_HOST) !== "opencode") return false;
   if (env.CLAW_KNOWLEDGE_FINALIZER === "1") {
     return false;
   }
@@ -21,7 +23,7 @@ export async function shouldLoadCliForInvocation(
   }
 
   const rawInput = await readStdin();
-  if (!shouldRunKnowledgeHook(rawInput, cwd, env)) {
+  if (!shouldRunKnowledgeHook(rawInput, cwd, { ...env, CLAW_HOST: "opencode" })) {
     return false;
   }
 
@@ -34,6 +36,7 @@ export function shouldRunKnowledgeHook(
   cwd: string,
   env: NodeJS.ProcessEnv,
 ): boolean {
+  if (env.CLAW_HOST !== "opencode") return false;
   const payload = parseHookPayload(rawInput);
   const hookCwd = readHookString(payload, "cwd") ?? cwd.trim();
   const sessionId = resolveSessionId(payload, env);
@@ -164,20 +167,18 @@ function registryHasKnowledgeTarget(registryPath: string, sessionId: string): bo
       sessionId?: unknown;
       activePlanPath?: unknown;
       activeReportPath?: unknown;
-      activeWriter?: { executionPolicy?: unknown };
-      pendingTurnOwner?: { writer?: { executionPolicy?: unknown } };
+
+      pendingTurnOwner?: unknown;
     };
     if (registry.sessionId !== sessionId) {
       return false;
     }
     const pendingEligible = Boolean(
-      registry.pendingTurnOwner
-      && registry.pendingTurnOwner.writer?.executionPolicy === "background",
+      registry.pendingTurnOwner,
     );
     const activeEligible = Boolean(
       typeof registry.activePlanPath === "string"
-      && typeof registry.activeReportPath === "string"
-      && registry.activeWriter?.executionPolicy === "background",
+      && typeof registry.activeReportPath === "string",
     );
     return pendingEligible || activeEligible;
   } catch {

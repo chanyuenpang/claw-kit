@@ -1,6 +1,7 @@
 # Codex plugin release contract
 
 - Scope: Codex runtime source, its declared canonical skill inputs, and marketplace packaging metadata. The raw adapter source is not a complete installed plugin.
+- A supplied beta candidate overrides preparation steps: verify its seven-day trial, hashes and source, preserve its version, reuse the composed marketplace without export, and verify matching CLI npm retrieval before any GitHub push. See `docs/beta-release.md`.
 - Bump only the adapter fourth segment; keep CLI/core and other adapters unchanged.
 - Keep `.codex-plugin/plugin.json` equal to the adapter package version.
 - Validate canonical inputs with `npm run check:skill-sources`, assemble the flat

@@ -152,6 +152,6 @@ test('Goal continuation keeps structured events out of the visible prompt', asyn
   assert.match(source, /state: workflowCardState\(projection\)/);
   assert.doesNotMatch(source, /will-assistant-message/);
   assert.match(source, /msg\.name === 'did-turn-end'/);
-  assert.match(source, /function captureTurnEndReport\(msg\)/);
-  assert.match(source, /capturedTurnKeys/);
+  assert.doesNotMatch(source, /function captureTurnEndReport\(msg\)/);
+  assert.doesNotMatch(source, /capturedTurnKeys/);
 });

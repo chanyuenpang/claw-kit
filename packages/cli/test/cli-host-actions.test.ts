@@ -49,9 +49,9 @@ test("cli codex driver returns an executable versioned source envelope", async (
   const root = createFixture("codex-driver-envelope");
   const envelope = runClaw(["codex", "driver"], root, { CLAW_HOST: "" });
   assert.equal(envelope.command, "codex.driver");
-  assert.equal(envelope.driverVersion, 22);
+  assert.equal(envelope.driverVersion, 23);
   assert.equal(envelope.hostActionSchemaVersion, 1);
-  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v22:s1");
+  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v23:s1");
   assert.match(String(envelope.sha256), /^[a-f0-9]{64}$/);
 
   const runner = (0, eval)(`(${String(envelope.source)})`) as (
@@ -81,7 +81,6 @@ test("cli codex driver returns an executable versioned source envelope", async (
     },
     knowledgeDispatch: {
       schemaVersion: 1,
-      policy: "subagent",
       finalizeId: "finalize-demo",
       prompt: "Use the internal knowledge delegate.",
     },

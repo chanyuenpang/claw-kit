@@ -26,7 +26,7 @@
     {
       "id": 2,
       "title": "Prepare the Codex adapter version and payload",
-      "detail": "Bump only the Codex adapter fourth segment, align its plugin manifest and canonical driver pin, validate source inputs, and assemble the unchanged flat runtime with complete skills into isolated output. Review the source and artifact diffs separately.",
+      "detail": "For beta promotion, select the candidate directory and preserve its version and artifacts/marketplace tree; no bump/build/export. For an independently requested adapter-only release without a candidate, bump only the fourth segment, align manifest/driver pin, and assemble the complete flat artifact. Never publish incomplete raw adapter source.",
       "status": "pending"
     },
     {
@@ -38,13 +38,13 @@
     {
       "id": 4,
       "title": "Verify the Codex plugin candidate",
-      "detail": "Run focused adapter and marketplace bundle tests, template/shared-skill checks, git diff --check, and npm run verify:release prerequisites justified by the diff.",
+      "detail": "For a beta run verify:release -- --candidate <dir> and review trial results, without rebuilding. Otherwise run proportionate adapter/marketplace checks. Before GitHub publication verify the required CLI is retrievable from npm.",
       "status": "pending"
     },
     {
       "id": 5,
       "title": "Pass the exact-source gate and release",
-      "detail": "Commit intended source on main, push origin/main, require clean source equality and run the relevant release gate. Export a complete Git marketplace artifact and obtain the explicitly authorized publication target/ref before publishing it. Never publish the raw incomplete adapter directory or restore source copies. Tag the artifact release immutably as vcodex-<version>; record its source revision and artifact identity. No npm or ZIP publication.",
+      "detail": "Require matching CLI npm retrieval before any push. For beta use its unchanged recorded source and stored artifacts/marketplace; never re-export. Otherwise use the reviewed assembled tree. Publish only to the authorized existing target/ref, record source and artifact commits, and create immutable vcodex-<version> plus GitHub Release. Keep source main clean and equal origin/main at completion. No npm or ZIP publication through this skill.",
       "status": "pending"
     },
     {

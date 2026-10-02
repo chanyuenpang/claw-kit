@@ -12,7 +12,6 @@ export function pendingDshKnowledgeDispatches(cwd: string, parentSessionId: stri
     try {
       const job = readKnowledgeFinalizationJob(jobPath);
       if (job.host !== "dsh" || job.sessionId !== parentSessionId || job.status !== "queued"
-        || !["subagent", "background"].includes(job.writer?.executionPolicy ?? "")
         || path.resolve(job.projectRoot) !== projectRoot
         || !/^[a-f0-9]{64}$/i.test(job.finalizeId)
         || !Number.isFinite(Date.parse(job.queuedAt))

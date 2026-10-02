@@ -23,23 +23,19 @@ function readCodexWorkflowRoute() {
   return { entry, route };
 }
 
-test("Codex hooks recover through the adapter-owned context entry and run the adapter-owned finalizer on Stop", () => {
+test("Codex hooks recover through the adapter-owned context entry and omit Stop", () => {
   const config = JSON.parse(readPluginFile(path.join("hooks", "hooks.json")));
   const strategy = readPluginFile(path.join("references", "codex-hooks-strategy.md"));
   const sessionStartScript = readPluginFile(path.join("scripts", "session-start.mjs"));
   const sessionStart = config.hooks.SessionStart[0].hooks[0];
-  const stop = config.hooks.Stop[0].hooks[0];
+  assert.equal(config.hooks.Stop, undefined);
 
   assert.equal(sessionStart.command, 'node "$PLUGIN_ROOT/scripts/session-start.mjs"');
   assert.equal(sessionStart.commandWindows, "node ${PLUGIN_ROOT}/scripts/session-start.mjs");
   assert.doesNotMatch(sessionStart.commandWindows, /["']/);
   assert.match(sessionStart.statusMessage, /^claw context:/);
-  assert.equal(stop.command, 'node "$PLUGIN_ROOT/scripts/knowledge-finalizer.mjs"');
-  assert.equal(stop.commandWindows, "node ${PLUGIN_ROOT}/scripts/knowledge-finalizer.mjs");
-  assert.doesNotMatch(stop.commandWindows, /["']/);
-  assert.match(stop.statusMessage, /^auto-doc:/);
   assert.match(strategy, /thread-scoped `SessionStart`/i);
-  assert.match(strategy, /turn-scoped `Stop`/i);
+  assert.match(strategy, /collector/i);
   assert.match(sessionStartScript, /every claw plan, task, or subplan mutation must use the fixed code-mode driver/i);
   assert.match(sessionStartScript, /commandHints provide argv syntax only/i);
 });
@@ -54,67 +50,8 @@ test("Codex manifest keeps the using-claw-kit fallback prompt within the host li
   assert.match(mainRouter, new RegExp(`const pluginVersion = "${manifest.version.replaceAll(".", "\\.")}"`));
 });
 
-test("Codex adapter owns the SDK and matching direct platform packages", () => {
-  const packageJson = JSON.parse(readPluginFile("package.json"));
-  const sdkVersion = packageJson.dependencies["@openai/codex-sdk"];
-  assert.equal(sdkVersion, "0.144.5");
-  for (const target of ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "win32-arm64", "win32-x64"]) {
-    assert.equal(
-      packageJson.optionalDependencies[`@openai/codex-${target}`],
-      `npm:@openai/codex@${sdkVersion}-${target}`,
-    );
-  }
-});
 
-test("Codex Stop finalizer obtains a CLI dispatch then owns the native Codex writer", () => {
-  const finalizer = readPluginFile(path.join("scripts", "knowledge-finalizer.mjs"));
-  assert.match(finalizer, /hook", "auto-doc"/);
-  assert.match(finalizer, /internal-knowledge-dispatch/);
-  assert.match(finalizer, /@openai\/codex-sdk/);
-  assert.doesNotMatch(finalizer, /"knowledge", "wait"/);
-  assert.match(finalizer, /"knowledge", "claim"/);
-  assert.match(finalizer, /"knowledge", "verify-session"/);
-  assert.match(finalizer, /"knowledge", "done"/);
-  assert.doesNotMatch(finalizer, /CLAW_SESSION_ID\s*=/);
-});
 
-test("Codex Stop finalizer invokes the platform claw launcher from PATH", () => {
-  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-codex-stop-"));
-  const capturePath = path.join(fixtureDir, "capture.txt");
-  const finalizerPath = path.join(pluginRoot, "scripts", "knowledge-finalizer.mjs");
-  try {
-    if (process.platform === "win32") {
-      fs.writeFileSync(
-        path.join(fixtureDir, "claw.cmd"),
-        '@echo off\r\n> "%CLAW_TEST_CAPTURE%" echo %*\r\necho {"ok":true,"captured":false}\r\n',
-      );
-    } else {
-      const launcherPath = path.join(fixtureDir, "claw");
-      fs.writeFileSync(
-        launcherPath,
-        '#!/bin/sh\nprintf "%s\\n" "$*" > "$CLAW_TEST_CAPTURE"\nprintf "%s\\n" \'{"ok":true,"captured":false}\'\n',
-      );
-      fs.chmodSync(launcherPath, 0o755);
-    }
-
-    const result = spawnSync(process.execPath, [finalizerPath], {
-      cwd: fixtureDir,
-      env: {
-        ...process.env,
-        PATH: `${fixtureDir}${path.delimiter}${process.env.PATH || ""}`,
-        CLAW_TEST_CAPTURE: capturePath,
-      },
-      input: JSON.stringify({ cwd: fixtureDir }),
-      encoding: "utf8",
-      windowsHide: true,
-    });
-
-    assert.equal(result.status, 0, result.stderr);
-    assert.equal(fs.readFileSync(capturePath, "utf8").trim(), "hook auto-doc --host codex");
-  } finally {
-    fs.rmSync(fixtureDir, { recursive: true, force: true });
-  }
-});
 
 test("main-agent Codex surfaces expose only the internal subagent dispatch contract", () => {
   const { entry, route: mainRouter } = readCodexWorkflowRoute();
@@ -129,7 +66,7 @@ test("main-agent Codex surfaces expose only the internal subagent dispatch contr
   assert.match(mainRouter, /knowledgeDispatch/);
   assert.match(entry, /Cancellation\/replacement uses the host's supported leave transition/);
   assert.match(entry, /Do not require successful finalization to\s+detach canceled work/);
-  assert.match(mainRouter, /Terminal dispatch gate \(subagent policy only\)/);
+  assert.match(mainRouter, /Terminal dispatch gate \(Codex\)/);
   assert.match(mainRouter, /highest-priority closeout obligation/);
   assert.match(mainRouter, /Complete this handoff through the designated knowledge finalizer/);
   assert.match(mainRouter, /Do not skip the handoff because it was easy to miss/);

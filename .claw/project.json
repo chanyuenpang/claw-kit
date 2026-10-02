@@ -7,7 +7,6 @@
   "autoUpdate": true,
   "goalMode": true,
   "knowledgeWriter": {
-    "executionPolicy": "subagent",
     "externalSkills": [],
     "model": null,
     "reasoningEffort": "medium",

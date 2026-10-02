@@ -48,16 +48,30 @@ const TOP_LEVEL_LEAVES = new Set([
   "version", "id", "name", "maxTasksToKeep", "planning", "autoUpdate", "goalMode",
   "externalPlanningSkill", "defaultPlanTemplate", "contextPaths", "gitnexus",
 ]);
-const WRITER_LEAVES = new Set(["executionPolicy", "externalSkills", "model", "reasoningEffort", "datedSectionsToKeep"]);
+const WRITER_LEAVES = new Set(["externalSkills", "model", "reasoningEffort", "datedSectionsToKeep"]);
 const HOSTS = new Set(["codex", "dsh", "cindy", "opencode", "openclaw"]);
 const MEMORY_LEAVES = new Set(["enabled", "autoUpdate", "externalDocPaths", "embedding"]);
+
+function dropLegacyWriterPolicy(layer: JsonObject): JsonObject {
+  const cleanWriter = (value: unknown): unknown => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+    return Object.fromEntries(Object.entries(value).filter(([key]) => key !== "executionPolicy"));
+  };
+  return { ...layer,
+    ...(layer.knowledgeWriter !== undefined ? { knowledgeWriter: cleanWriter(layer.knowledgeWriter) } : {}),
+    ...(layer.knowledgeWriterByHost && typeof layer.knowledgeWriterByHost === "object" && !Array.isArray(layer.knowledgeWriterByHost)
+      ? { knowledgeWriterByHost: Object.fromEntries(Object.entries(layer.knowledgeWriterByHost).map(([host, writer]) => [host, cleanWriter(writer)])) } : {}),
+  };
+}
 
 /** The sole mutable boundary for the two project configuration layers. */
 export class ProjectConfigRepository {
   read(projectRoot: string): ProjectConfigSnapshot {
     const paths = configPaths(projectRoot);
-    const team = readObject(paths.team, "team");
-    const personal = fs.existsSync(paths.personal) ? readObject(paths.personal, "personal") : undefined;
+    const teamRaw = readObject(paths.team, "team");
+    const team = dropLegacyWriterPolicy(teamRaw);
+    const personalRaw = fs.existsSync(paths.personal) ? readObject(paths.personal, "personal") : undefined;
+    const personal = personalRaw ? dropLegacyWriterPolicy(personalRaw) : undefined;
     const effectiveRaw = deepMerge(team, personal);
     const issues = validateProjectConfig(effectiveRaw);
     if (issues.length > 0) throw invalidConfigError(paths.team, issues);
@@ -66,7 +80,7 @@ export class ProjectConfigRepository {
       team,
       ...(personal === undefined ? {} : { personal }),
       effective: effectiveRaw as ProjectConfig,
-      revisions: { team: revision(team), personal: revision(personal ?? {}) },
+      revisions: { team: revision(teamRaw), personal: revision(personalRaw ?? {}) },
     };
   }
 

@@ -26,6 +26,7 @@ type ReportCollectionRequest = {
   canonicalReportPath: string;
   stagingReportPath: string;
   startedAt?: string;
+  endedAt?: string;
 };
 
 export type ReportCaptureReceipt = {

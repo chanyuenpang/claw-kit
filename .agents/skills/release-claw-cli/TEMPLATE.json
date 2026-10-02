@@ -10,9 +10,9 @@
     "summary": "Release only the CLI/core artifact family, preserving repository gates and verifying npm retrieval.",
     "openQuestions": [],
     "acceptanceCriteria": [
-      "Root, core, CLI, dependency pins, adapter resets, templates, and lockfile are version-aligned.",
-      "Focused checks, package dry-runs, and npm run verify:release pass from clean origin/main.",
-      "@veewo/claw-core is published before @veewo/claw and both are retrievable.",
+      "The selected final-version beta has completed seven days and its artifacts remain unchanged.",
+      "npm run verify:release -- --candidate <dir> passes from clean local main at the candidate source revision.",
+      "Core, Client and CLI are published from their frozen tarballs in order and retrievable before GitHub push.",
       "The immutable v<version> tag and GitHub Release are verified."
     ]
   },
@@ -25,32 +25,32 @@
     },
     {
       "id": 2,
-      "title": "Prepare the CLI and core version baseline",
-      "detail": "Set the authorized three-segment root/core/CLI version, exact dependency pins, adapter <cli>.0 resets, template/shared-skill versions, changelog, and lockfile. Review the complete diff.",
+      "title": "Select the tested local beta",
+      "detail": "Read docs/beta-release.md and select its candidate directory. Preserve the candidate version, source commit and artifacts. If no beta exists, prepare one through beta-claw-kit and stop before publication until testing completes. Do not bump, rebuild or repack a tested candidate.",
       "status": "pending"
     },
     {
       "id": 3,
       "title": "Verify built-in templated skill compatibility",
-      "detail": "Run `npm run check:template-versions` before candidate tests. It scans every built-in skill package that contains TEMPLATE.json and verifies that its version matches TEMPLATE_DRIVER_VERSION; stop and repair version drift before publishing.",
+      "detail": "Review preparation checks and run the read-only npm run check:template-versions if needed. Repairs require a new beta batch; never modify the selected tested artifact.",
       "status": "pending"
     },
     {
       "id": 4,
       "title": "Verify the CLI release candidate",
-      "detail": "Run risk-proportionate focused checks, template/shared-skill validation, git diff --check, npm pack dry-runs for core and CLI, and any checks justified by the diff.",
+      "detail": "Review the beta test results and run npm run verify:release -- --candidate <dir>. Require seven days, unchanged artifacts and clean local main at its recorded source revision. Do not run workspace builds or packing.",
       "status": "pending"
     },
     {
       "id": 5,
       "title": "Pass the exact-source gate and publish",
-      "detail": "Commit intended content on main, push origin/main, require an empty worktree and HEAD == origin/main, run npm run verify:release, publish @veewo/claw-core before @veewo/claw, then create and push v<version> plus its GitHub Release.",
+      "detail": "Run npm run publish:release -- --candidate <dir>. It rejects remote divergence, publishes exact Core/Client/CLI tarballs, verifies registry retrieval, then pushes source main. Create the immutable v<version> tag and GitHub Release from the candidate source. Never push before npm retrieval succeeds.",
       "status": "pending"
     },
     {
       "id": 6,
       "title": "Verify npm and GitHub evidence",
-      "detail": "Verify both package metadata and real retrieval, tag and release targets, final repository cleanliness, and any separately authorized published-source installation refresh.",
+      "detail": "Verify all three packages, immutable tag and release targets, clean main == origin/main, and any separately authorized installation refresh. Preserve candidate files through completion.",
       "status": "pending"
     }
   ],

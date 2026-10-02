@@ -844,13 +844,12 @@ export class ClawCommandService {
           ? { host: context.host }
           : {}),
       });
-      if (knowledgeEnd.finalizeId && knowledgeEnd.jobPath && writer?.executionPolicy === "subagent") {
+      if (knowledgeEnd.finalizeId && knowledgeEnd.jobPath && resolveHostIntegrationProfile(context.host)?.supportsNativeSubagentFinalization) {
         dispatch = context.host === "dsh"
           ? buildDshKnowledgeDispatch({ finalizeId: knowledgeEnd.finalizeId, writer })
           : resolveHostIntegrationProfile(context.host)?.usesAtomicKnowledgeDispatch === true
           ? buildKnowledgeAtomicDispatch({ finalizeId: knowledgeEnd.finalizeId, writer })
           : buildKnowledgeDelegateDispatch({
-              policy: "subagent",
               finalizeId: knowledgeEnd.finalizeId,
               projectRoot: project.projectRoot,
               writer,

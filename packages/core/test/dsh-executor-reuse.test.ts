@@ -29,8 +29,9 @@ function fixture(t: TestContext) {
     fs.writeFileSync(planPath, JSON.stringify({ title: "Source", status: "end.completed", goal: { text: "Source" }, tasks: [] }));
     const value: KnowledgeFinalizationJob = { schemaVersion: 1, finalizeId: id, host: "dsh", sessionId: parent,
       projectRoot: root, taskName: id, planPath, reportPath: path.join(taskDir, "plan.report"),
-      status: "queued", attempts: 0, queuedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60000).toISOString(),
-      writer: { executionPolicy: "subagent", externalSkills: ["fixture-writer"] } };
+      reportCapture: { mode: "claim", status: "pending" },
+    status: "queued", attempts: 0, queuedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60000).toISOString(),
+      writer: { externalSkills: ["fixture-writer"] } };
     fs.writeFileSync(jobPath, JSON.stringify(value));
     return jobPath;
   }
@@ -147,7 +148,7 @@ test("queue freezes the parent report upper bound instead of delayed writer time
   const planPath = readKnowledgeFinalizationJob(original).planPath;
   const endedAt = new Date(Date.now() - 2000).toISOString();
   const result = tryEndKnowledgePlan({ project: f.project, sessionId: "capture-parent", endedPlanPath: planPath,
-    endedAt, host: "dsh", writer: { executionPolicy: "subagent" } });
+    endedAt, host: "dsh", writer: {  } });
   assert.equal(result.ok, true);
   assert.equal(readKnowledgeFinalizationJob(result.jobPath!).reportCapture?.endedAt, endedAt);
 });

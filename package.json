@@ -1,6 +1,6 @@
 {
   "name": "claw-kit",
-  "version": "0.2.42",
+  "version": "0.2.43",
   "private": true,
   "workspaces": [
     "packages/cli",
@@ -23,6 +23,11 @@
     "install:dsh-plugin": "node .\\scripts\\install-dsh-plugin.mjs",
     "install:opencode-plugin": "powershell -ExecutionPolicy Bypass -File .\\scripts\\install-opencode-plugin.ps1",
     "publish:release": "node .\\scripts\\publish-release.mjs --publish",
+    "beta:pack": "node ./scripts/release-candidate.mjs pack",
+    "beta:verify": "node ./scripts/release-candidate.mjs verify",
+    "beta:install": "node ./scripts/release-candidate.mjs install",
+    "beta:start-test": "node ./scripts/release-candidate.mjs start-test",
+    "test:release-candidate": "node --test ./scripts/release-candidate.test.mjs",
     "publish:batch-release": "node .\\scripts\\publish-release.mjs --batch --publish",
     "publish:dsh-plugin": "node .\\scripts\\publish-dsh-plugin.mjs",
     "build:skills": "node ./scripts/skill-artifacts.mjs",
@@ -33,7 +38,7 @@
     "sync:template-versions": "node .\\scripts\\update-template-versions.mjs",
     "check:template-versions": "node .\\scripts\\update-template-versions.mjs --check",
     "verify:release": "node .\\scripts\\publish-release.mjs",
-    "verify:codex-registry": "node .\\scripts\\verify-codex-registry-compatibility.mjs 0.2.42",
+    "verify:codex-registry": "node .\\scripts\\verify-codex-registry-compatibility.mjs 0.2.43",
     "verify:batch-release": "node .\\scripts\\publish-release.mjs --batch",
     "verify:cli": "npm run build -w @veewo/claw-core && npm run build -w @veewo/claw-client && npm run check -w @veewo/claw-client && npm run build -w @veewo/claw && npm run check -w @veewo/claw",
     "repair:truth-encoding": "npm run build -w @veewo/claw-core && node scripts/truth-encoding-audit.mjs --write",

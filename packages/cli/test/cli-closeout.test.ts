@@ -183,7 +183,7 @@ test("cli plan done records completedAt and retains the current task path", asyn
   assert.equal("activeWorkflow" in runClaw(["context"], root, env), false);
 });
 
-test("cli plan done emits host-specific subagent dispatch for Codex and Cindy and rejects unsupported hosts", () => {
+test("cli plan done uses fixed native dispatch and standard/OpenCode closeout", () => {
   const root = createFixture("plan-done-subagent-dispatch");
   const codexEnv = {
     CLAW_HOST: "codex",
@@ -198,11 +198,10 @@ test("cli plan done emits host-specific subagent dispatch for Codex and Cindy an
 
   const done = runClaw(["plan", "done", "--retrospective", "Ready for knowledge finalization."], root, codexEnv);
   const dispatch = done.knowledgeDispatch as JsonRecord;
-  assert.equal(dispatch.policy, "subagent");
+  assert.equal("policy" in (dispatch ?? {}), false);
   assert.deepEqual(Object.keys(dispatch).sort(), [
     "finalizeId",
     "leadInstruction",
-    "policy",
     "preferReuse",
     "projectRoot",
     "prompt",
@@ -234,7 +233,7 @@ test("cli plan done emits host-specific subagent dispatch for Codex and Cindy an
     cindyEnv,
   );
   const cindyDispatch = cindyDone.knowledgeDispatch as JsonRecord;
-  assert.equal(cindyDispatch.policy, "subagent");
+  assert.equal("policy" in (cindyDispatch ?? {}), false);
   assert.match(String(cindyDispatch.prompt), /claw-kit Cindy Ghost tools/);
   assert.match(String(cindyDispatch.prompt), /resources[\\/]cindy-delegate-writer[\\/]TEMPLATE\.json/);
   assert.match(String(cindyDispatch.prompt), /session plan/i);
@@ -250,7 +249,7 @@ test("cli plan done emits host-specific subagent dispatch for Codex and Cindy an
   runClaw(["plan", "create", "--title", "dsh-dispatch-task", "--goal", "Dispatch native writer"], dshRoot, dshEnv);
   const dshDone = runClaw(["plan", "done", "--retrospective", "Ready for native knowledge finalization."], dshRoot, dshEnv);
   const dshDispatch = dshDone.knowledgeDispatch as JsonRecord;
-  assert.equal(dshDispatch.policy, "subagent");
+  assert.equal("policy" in (dshDispatch ?? {}), false);
   assert.match(String(dshDispatch.prompt), /dsh-delegate-writer/);
   assert.match(String(dshDispatch.prompt), /claw_run.*plan.create/);
   assert.equal(dshDispatch.preferReuse, true);
@@ -263,94 +262,21 @@ test("cli plan done emits host-specific subagent dispatch for Codex and Cindy an
   }
   assert.doesNotMatch(String(dshDispatch.prompt), /claw plan create --template-file/);
 
-  const unsupportedRoot = createFixture("plan-done-subagent-unsupported");
-  const opencodeEnv = {
-    CLAW_HOST: "opencode",
-    CODEX_THREAD_ID: "thread-subagent-unsupported",
-  };
-  runClaw(["init", "--name", "Subagent Unsupported", "--planning", "false"], unsupportedRoot, opencodeEnv);
-  const unsupportedProjectPath = path.join(unsupportedRoot, ".claw", "project.json");
-  const unsupportedConfig = JSON.parse(fs.readFileSync(unsupportedProjectPath, "utf-8")) as JsonRecord;
-  (unsupportedConfig.knowledgeWriter as JsonRecord).executionPolicy = "subagent";
-  fs.writeFileSync(unsupportedProjectPath, `${JSON.stringify(unsupportedConfig, null, 2)}\n`, "utf-8");
-  runClaw(["plan", "create", "--title", "unsupported-task", "--goal", "Reject writer"], unsupportedRoot, opencodeEnv);
 
-  const failure = runClawExpectFailure(
-    ["plan", "done", "--retrospective", "Must not complete."],
-    unsupportedRoot,
-    opencodeEnv,
-  );
-  assert.match(String((failure.error as JsonRecord).message), /host-registered claim-time report collector/);
-  const current = runClaw(["plan", "show"], unsupportedRoot, opencodeEnv);
-  assert.equal(current.planStatus, "process.active");
-  const editFailure = runClawExpectFailure(
-    ["plan", "edit", "--retrospective", "Must not complete.", "--status", "end.completed"],
-    unsupportedRoot,
-    opencodeEnv,
-  );
-  assert.match(String((editFailure.error as JsonRecord).message), /host-registered claim-time report collector/);
+  for (const host of ["standard", "opencode"]) {
+    const fixedRoot = createFixture("fixed-closeout-" + host);
+    const env = { CLAW_HOST: host, CLAW_SESSION_ID: "fixed-" + host };
+    runClaw(["init", "--name", "Fixed " + host, "--planning", "false"], fixedRoot, env);
+    runClaw(["plan", "create", "--title", "fixed-task", "--goal", "Fixed route"], fixedRoot, env);
+    const completed = runClaw(["plan", "done", "--retrospective", "Fixed closeout."], fixedRoot, env);
+    assert.equal(completed.planStatus, "end.completed");
+    assert.equal("knowledgeDispatch" in completed, false);
+    if (host === "standard") assert.match(JSON.stringify(completed), /knowledge prepare/);
+  }
 
-  // The standard hostless flow also lacks a claim-time collector, so the
-  // subagent policy must be rejected there too: hostless closeout uses the
-  // background policy (inline capture + agent-executed writer).
-  const directCliRoot = createFixture("plan-done-subagent-direct-cli");
-  const directCliEnv = { CLAW_HOST: "", CLAW_SESSION_ID: "thread-standard-dispatch" };
-  runClaw(["init", "--name", "Subagent Direct CLI", "--planning", "false"], directCliRoot, directCliEnv);
-  const directCliProjectPath = path.join(directCliRoot, ".claw", "project.json");
-  const directCliConfig = JSON.parse(fs.readFileSync(directCliProjectPath, "utf-8")) as JsonRecord;
-  (directCliConfig.knowledgeWriter as JsonRecord).executionPolicy = "subagent";
-  fs.writeFileSync(directCliProjectPath, `${JSON.stringify(directCliConfig, null, 2)}\n`, "utf-8");
-  runClaw(["plan", "create", "--title", "direct-cli-task", "--goal", "Reject subagent hostless"], directCliRoot, directCliEnv);
-
-  const directCliFailure = runClawExpectFailure(
-    ["plan", "done", "--retrospective", "Must use the background policy."],
-    directCliRoot,
-    directCliEnv,
-  );
-  assert.match(String((directCliFailure.error as JsonRecord).message), /host-registered claim-time report collector/);
-  assert.match(String((directCliFailure.error as JsonRecord).message), /"background"/);
-
-  // With an explicit background policy, the hostless flow completes inline:
-  // plan done succeeds, inline capture creates the job, and the capture result
-  // points at the agent-owned dispatch command. (The hostless default is now
-  // main-agent, so background must be configured explicitly.)
-  const hostlessRoot = createFixture("plan-done-hostless-background");
-  const hostlessEnv = { CLAW_HOST: "", CLAW_SESSION_ID: "thread-hostless-background" };
-  runClaw(["init", "--name", "Hostless Background", "--planning", "false"], hostlessRoot, hostlessEnv);
-  const hostlessProjectPath = path.join(hostlessRoot, ".claw", "project.json");
-  const hostlessConfig = JSON.parse(fs.readFileSync(hostlessProjectPath, "utf-8")) as JsonRecord;
-  (hostlessConfig.knowledgeWriter as JsonRecord).executionPolicy = "background";
-  fs.writeFileSync(hostlessProjectPath, `${JSON.stringify(hostlessConfig, null, 2)}\n`, "utf-8");
-  runClaw(["plan", "create", "--title", "hostless-task", "--goal", "Background closeout"], hostlessRoot, hostlessEnv);
-  const hostlessDone = runClaw(["plan", "done", "--retrospective", "Hostless background closeout."], hostlessRoot, hostlessEnv);
-  assert.equal(hostlessDone.planStatus, "end.completed");
-  assert.equal("knowledgeDispatch" in hostlessDone, false);
-
-  const captured = runClaw(
-    ["internal-knowledge-capture"],
-    hostlessRoot,
-    hostlessEnv,
-    JSON.stringify({
-      cwd: hostlessRoot,
-      session_id: "thread-hostless-background",
-      turn_id: "turn-hostless-final",
-      message: "Implemented and verified the hostless background closeout chain.",
-      task_conclusions: [],
-    }),
-  ) as JsonRecord;
-  assert.equal(captured.captured, true);
-  assert.equal(captured.duplicate, false);
-  const nextStep = captured.nextStep as JsonRecord;
-  assert.match(String(nextStep.command), /internal-knowledge-dispatch --job <jobPath>/);
-  assert.equal(typeof nextStep.jobPath, "string");
-
-  const dispatched = runClaw(["internal-knowledge-dispatch", "--job", String(nextStep.jobPath)], hostlessRoot, hostlessEnv) as JsonRecord;
-  const dispatchPayload = dispatched.dispatch as JsonRecord;
-  assert.equal(dispatchPayload.policy, "background");
-  assert.match(String(dispatchPayload.prompt), /claw plan create --template-file/i);
 });
 
-test("Codex subagent claim captures the Stop-style task report without waiting for Stop", () => {
+test("Codex claim captures its parent report without Stop", () => {
   const root = createFixture("subagent-claim-report-capture");
   const codexHome = createTemporaryDirectory("subagent-claim-codex-home");
   const sessionId = "019fbbe1-subagent-claim-report";
@@ -394,6 +320,10 @@ test("Codex subagent claim captures the Stop-style task report without waiting f
   const transcriptDir = path.join(codexHome, "sessions", "2026", "08", "01");
   const transcriptPath = path.join(transcriptDir, `rollout-test-${sessionId}.jsonl`);
   fs.mkdirSync(transcriptDir, { recursive: true });
+  const fixtureJob = JSON.parse(fs.readFileSync(jobPath, "utf8"));
+  delete fixtureJob.reportCapture.startedAt;
+  fixtureJob.reportCapture.endedAt = "2099-08-01T00:00:03.000Z";
+  fs.writeFileSync(jobPath, JSON.stringify(fixtureJob));
   let ordinal = 0;
   const responseItem = (payload: JsonRecord, timestamp?: string) => JSON.stringify({
     timestamp: timestamp ?? `2099-08-01T00:00:0${ordinal++}.000Z`,
@@ -633,7 +563,7 @@ test("cli plan edit completion dispatches the same completion refresh as plan do
   const achievement = result.achievement as JsonRecord;
   assert.equal(achievement.status, "end.completed");
   assert.equal(achievement.retrospectiveSaved, true);
-  assert.equal((result.knowledgeDispatch as JsonRecord).policy, "subagent");
+  assert.equal("policy" in (result.knowledgeDispatch as JsonRecord), false);
   const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
   const memory = refreshStatus.memory as JsonRecord;
   assert.equal(memory.task, undefined);
@@ -697,7 +627,7 @@ test("cli plan done queues another task's retention sweep only when completedAt 
   const done = runClaw(["plan", "done", "--task-name", "fresh-task", "--retrospective", "Fresh complete."], root, env);
 
   assert.equal(done.planStatus, "end.completed");
-  assert.equal((done.knowledgeDispatch as JsonRecord).policy, "subagent");
+  assert.equal("policy" in (done.knowledgeDispatch as JsonRecord), false);
   const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
   assert.equal(((refreshStatus.taskRetention as JsonRecord).failures as unknown[]).length, 0);
   assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "older-task")), false);
@@ -767,7 +697,7 @@ test("cli plan done returns terminal state before detached gitnexus analysis", a
   );
 
   assert.equal(done.planStatus, "end.completed");
-  assert.equal((done.knowledgeDispatch as JsonRecord).policy, "subagent");
+  assert.equal("policy" in (done.knowledgeDispatch as JsonRecord), false);
   const refreshStatus = await waitForLatestCompletionRefreshStatus(root);
   assert.equal(refreshStatus.ok, true, JSON.stringify(refreshStatus));
   assert.equal((refreshStatus.gitnexus as JsonRecord).enabled, true);
@@ -1037,9 +967,9 @@ test("knowledge hook preflight depends only on a valid session knowledge target"
     cwd: root,
   });
 
-  assert.equal(shouldRunKnowledgeHook(rawInput, root, {}), false);
+  assert.equal(shouldRunKnowledgeHook(rawInput, root, { CLAW_HOST: "opencode" }), false);
 
-  const env = { CODEX_THREAD_ID: sessionId };
+  const env = { CODEX_THREAD_ID: sessionId, CLAW_HOST: "opencode" };
   // The hostless default is main-agent (no Stop capture), so pin background
   // explicitly to keep this fixture on the transcript-capture route.
   const preflightProjectPath = path.join(root, ".claw", "project.json");
@@ -1047,7 +977,7 @@ test("knowledge hook preflight depends only on a valid session knowledge target"
   (preflightConfig.knowledgeWriter as JsonRecord).executionPolicy = "background";
   fs.writeFileSync(preflightProjectPath, `${JSON.stringify(preflightConfig, null, 2)}\n`, "utf-8");
   runClaw(["plan", "create", "--title", "demo-task", "--goal", "Exercise hook preflight"], root, env);
-  assert.equal(shouldRunKnowledgeHook(rawInput, root, {}), true);
+  assert.equal(shouldRunKnowledgeHook(rawInput, root, { CLAW_HOST: "opencode" }), true);
 
   const nestedCwd = path.join(root, "packages", "nested");
   fs.mkdirSync(nestedCwd, { recursive: true });
@@ -1055,14 +985,14 @@ test("knowledge hook preflight depends only on a valid session knowledge target"
     session_id: sessionId,
     turn_id: "turn-nested-preflight",
     cwd: nestedCwd,
-  }), nestedCwd, {}), true);
+  }), nestedCwd, { CLAW_HOST: "opencode" }), true);
 
   const knowledgeSessionsDir = path.join(root, ".claw", "runtime", "knowledge-sessions");
   for (const entry of fs.readdirSync(knowledgeSessionsDir)) {
     fs.unlinkSync(path.join(knowledgeSessionsDir, entry));
   }
   assert.equal(fs.existsSync(path.join(root, ".claw", "runtime", "session-bindings.json")), true);
-  assert.equal(shouldRunKnowledgeHook(rawInput, root, {}), false);
+  assert.equal(shouldRunKnowledgeHook(rawInput, root, { CLAW_HOST: "opencode" }), false);
 
   const subagentRoot = createFixture("hook-knowledge-preflight-subagent");
   const subagentSessionId = "thread-knowledge-preflight-subagent";
@@ -1074,7 +1004,7 @@ test("knowledge hook preflight depends only on a valid session knowledge target"
   runClaw(
     ["plan", "create", "--title", "subagent-task", "--goal", "Skip Stop preflight"],
     subagentRoot,
-    { CODEX_THREAD_ID: subagentSessionId },
+    { CODEX_THREAD_ID: subagentSessionId, CLAW_HOST: "codex" },
   );
   assert.equal(shouldRunKnowledgeHook(JSON.stringify({
     session_id: subagentSessionId,
@@ -1229,66 +1159,6 @@ test("end.leave Stop does not queue knowledge finalization", () => {
   assert.equal(fs.existsSync(jobsDir), false);
 });
 
-test.skip("retired: completed-plan Stop owns the final turn and queues a retryable SDK job", () => {
-  const root = createFixture("hook-stop-closeout");
-  const sessionId = "thread-stop-closeout";
-  const env = {
-    CODEX_THREAD_ID: sessionId,
-    CLAW_KNOWLEDGE_FINALIZER_DISABLE_LAUNCH: "1",
-  };
-  runClaw(["init", "--name", "Hook Closeout", "--planning", "false"], root, env);
-  const projectJsonPath = path.join(root, ".claw", "project.json");
-  const projectConfig = JSON.parse(fs.readFileSync(projectJsonPath, "utf-8")) as JsonRecord;
-  projectConfig.knowledgeWriter = {
-    externalSkills: ["truth-writer", "adr-writer"],
-    model: "gpt-test-writer",
-    reasoningEffort: "high",
-  };
-  fs.writeFileSync(projectJsonPath, `${JSON.stringify(projectConfig, null, 2)}\n`, "utf-8");
-  runClaw(["plan", "create", "--title", "demo-task", "--goal", "Close out automatically"], root, env);
-  runClaw(["task", "done", "--id", "1"], root, env);
-  runClaw(["plan", "done", "--retrospective", "Completed."], root, env);
-
-  const stop = runClawHook("auto-doc", root, {
-    session_id: sessionId,
-    turn_id: "turn-closeout",
-    message: "Root plan is complete.",
-    cwd: root,
-  }, env);
-  assert.equal(stop.status, 0);
-  const reportPath = taskFile(root, "demo-task", "plan.report");
-  assert.equal((JSON.parse(fs.readFileSync(reportPath, "utf-8")) as { turnId: string }).turnId, "turn-closeout");
-  const jobsDir = taskFinalizerJobsDirectory(root, "demo-task");
-  const jobFiles = fs.readdirSync(jobsDir).filter((name) => name.endsWith(".json"));
-  assert.equal(jobFiles.length, 1);
-  const jobPath = path.join(jobsDir, jobFiles[0]!);
-  const queued = JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord;
-  assert.equal(queued.status, "queued");
-  assert.equal(queued.attempts, 0);
-  assert.deepEqual(queued.writer, {
-    executionPolicy: "background",
-    externalSkills: ["truth-writer", "adr-writer"],
-    model: "gpt-test-writer",
-    reasoningEffort: "high",
-    datedSectionsToKeep: 6,
-  });
-  assert.equal(queued.planPath, taskFile(root, "demo-task", "plan.json"));
-  assert.equal(queued.reportPath, reportPath);
-
-  delete queued.writer;
-  fs.writeFileSync(jobPath, `${JSON.stringify(queued, null, 2)}\n`, "utf-8");
-
-  const failed = runClawRaw(["internal-knowledge-finalize", "--job", jobPath], root, {
-    ...env,
-    CLAW_KNOWLEDGE_FINALIZER_DISABLE_RETRY: "1",
-    CLAW_CODEX_PATH_OVERRIDE: path.join(root, "missing-codex.exe"),
-  });
-  assert.equal(failed.status, 0);
-  const failedJob = JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord;
-  assert.equal(failedJob.status, "failed");
-  assert.equal(failedJob.attempts, 1);
-  assert.match(String((failedJob.error as JsonRecord).message), /missing-codex|ENOENT|spawn/i);
-});
 
 test("Stop hook skips knowledge finalizer child threads to prevent recursion", () => {
   const root = createFixture("hook-stop-recursion");
@@ -1317,19 +1187,6 @@ test("Stop hook skips knowledge finalizer child threads to prevent recursion", (
 
 });
 
-test.skip("retired: opencode finalizer environment drops the parent platform session identity", () => {
-  const env = opencodeKnowledgeFinalizerEnvironment({
-    CODEX_THREAD_ID: "parent-codex-thread",
-    CODEX_SESSION_ID: "parent-opencode-session",
-    CLAW_SESSION_ID: "parent-claw-session",
-    PATH: "preserved",
-  });
-  assert.equal(env.CODEX_THREAD_ID, undefined);
-  assert.equal(env.CODEX_SESSION_ID, undefined);
-  assert.equal(env.CLAW_KNOWLEDGE_FINALIZER, "1");
-  assert.equal(env.CLAW_SESSION_ID, undefined);
-  assert.equal(env.PATH, "preserved");
-});
 
 test("knowledge wait remains a compatibility path while the internal delegate template owns session scope", () => {
   const root = createFixture("knowledge-session-lifecycle");
@@ -1343,6 +1200,7 @@ test("knowledge wait remains a compatibility path while the internal delegate te
   fs.writeFileSync(jobPath, JSON.stringify({
     schemaVersion: 1,
     finalizeId,
+    host: "opencode",
     sessionId: "owner-thread",
     projectRoot: root,
     taskName: "source-task",
@@ -1499,329 +1357,9 @@ test("Cindy turn capture honors session knowledge opt-out", () => {
   assert.equal("finalizeId" in captured, false);
 });
 
-test.skip("retired: background finalizer never claims a subagent-policy job", () => {
-  const root = createFixture("knowledge-subagent-policy-isolation");
-  runClaw(["init", "--name", "Subagent Policy Isolation"], root);
-  const taskDir = path.join(root, ".claw", "tasks", "source-task");
-  const jobPath = path.join(taskDir, ".runtime", "knowledge-finalization", "subagent.json");
-  fs.mkdirSync(path.dirname(jobPath), { recursive: true });
-  fs.writeFileSync(jobPath, JSON.stringify({
-    schemaVersion: 1,
-    finalizeId: "subagent-policy",
-    sessionId: "owner-thread",
-    projectRoot: root,
-    taskName: "source-task",
-    host: "codex",
-    planPath: path.join(taskDir, "plan.json"),
-    reportPath: path.join(taskDir, "plan.report"),
-    writer: { executionPolicy: "subagent", externalSkills: [] },
-    status: "queued",
-    attempts: 0,
-    queuedAt: new Date().toISOString(),
-  }), "utf-8");
 
-  const finalized = runClawRaw(["internal-knowledge-finalize", "--job", jobPath], root, {
-    CLAW_CODEX_PATH_OVERRIDE: path.join(root, "must-not-launch.exe"),
-  });
-  assert.equal(finalized.status, 0);
-  const job = JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord;
-  assert.equal(job.status, "queued");
-  assert.equal(job.attempts, 0);
-  assert.equal(job.claimToken, undefined);
-});
 
-test.skip("retired: background knowledge finalization uses one internal delegate bootstrap and requires terminal acknowledgement", async () => {
-  const root = createFixture("knowledge-writer-no-op");
-  const home = path.join(root, "home");
-  const taskDir = path.join(root, ".claw", "tasks", "no-op-task");
-  runClaw(["init", "--name", "Knowledge Writer No-op"], root, { HOME: home, USERPROFILE: home });
-  fs.mkdirSync(taskDir, { recursive: true });
-  const planPath = path.join(taskDir, "plan.json");
-  const reportPath = path.join(taskDir, "plan.report");
-  fs.writeFileSync(planPath, JSON.stringify({ title: "No-op", status: "end.completed" }), "utf-8");
-  fs.writeFileSync(reportPath, "{}\n", "utf-8");
 
-  const sdkRoot = path.join(
-    home, ".claw-kit", "codex-runtime", CODEX_SDK_VERSION,
-    "node_modules", "@openai", "codex-sdk",
-  );
-  fs.mkdirSync(path.join(sdkRoot, "dist"), { recursive: true });
-  fs.writeFileSync(path.join(sdkRoot, "package.json"), JSON.stringify({ type: "module" }), "utf-8");
-  const promptLog = path.join(root, "writer-prompts.log");
-  const optionsLog = path.join(root, "writer-options.json");
-  const sessionRuntimeDir = path.join(root, "session-runtime");
-  const knowledgePath = path.join(root, ".claw", "truth", "features", "custom-writer.md");
-  const customKnowledge = [
-    "# Custom writer", "",
-    "<!-- state: history -->", "## Evolution", "",
-    "<!-- dated: 2026-07-20 -->", "### First", "", "First state.", "",
-    "<!-- dated: 2026-07-20 -->", "### Second", "", "Second state.", "",
-    "<!-- dated: 2026-07-20 -->", "### Third", "", "Third state.", "",
-    "<!-- dated: 2026-07-20 -->", "### Fourth", "", "Fourth state.", "",
-  ].join("\n");
-  fs.writeFileSync(
-    path.join(sdkRoot, "dist", "index.js"),
-    `import fs from "node:fs";\nimport path from "node:path";\nexport class Codex { startThread(options) { fs.writeFileSync(${JSON.stringify(optionsLog)}, JSON.stringify(options)); return { id: "thread-knowledge", run: async (prompt) => { fs.appendFileSync(${JSON.stringify(promptLog)}, prompt + "\\n---PASS---\\n"); fs.mkdirSync(path.dirname(${JSON.stringify(knowledgePath)}), { recursive: true }); fs.writeFileSync(${JSON.stringify(knowledgePath)}, ${JSON.stringify(customKnowledge)}, "utf-8"); return { finalResponse: "Custom knowledge updated." }; } }; } }\n`,
-    "utf-8",
-  );
-
-  const jobsDir = path.join(taskDir, ".runtime", "knowledge-finalization");
-  fs.mkdirSync(jobsDir, { recursive: true });
-  const jobPath = path.join(jobsDir, "no-op.json");
-  fs.writeFileSync(jobPath, JSON.stringify({
-    schemaVersion: 1,
-    finalizeId: "no-op",
-    sessionId: "thread-no-op",
-    projectRoot: root,
-    taskName: "no-op-task",
-    host: "codex",
-    planPath,
-    reportPath,
-    writer: {
-      externalSkills: ["team:truth-writer", "team:adr-writer"],
-      model: null,
-      reasoningEffort: "medium",
-      datedSectionsToKeep: 2,
-    },
-    status: "queued",
-    attempts: 0,
-    queuedAt: new Date().toISOString(),
-  }), "utf-8");
-
-  runGit(["init"], root);
-  runGit(["config", "user.name", "Claw Test"], root);
-  runGit(["config", "user.email", "claw@example.test"], root);
-  runGit(["add", "."], root);
-  runGit(["commit", "-m", "baseline"], root);
-
-  const finalized = runClawRaw(["internal-knowledge-finalize", "--job", jobPath], root, {
-    HOME: home,
-    USERPROFILE: home,
-    CLAW_SESSION_RUNTIME_DIR: path.join(root, "session-runtime"),
-    CLAW_KNOWLEDGE_FINALIZER_DISABLE_RETRY: "1",
-    CLAW_EMBEDDING_PERSISTENT_WORKER: "0",
-  });
-  assert.equal(finalized.status, 0);
-  const job = JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord;
-  assert.equal(job.status, "failed");
-  assert.equal(job.sdkThreadId, undefined);
-  assert.equal(job.sdkThreadIds, undefined);
-  assert.equal(job.truthThreadId, undefined);
-  assert.equal(job.adrThreadId, undefined);
-  assert.equal(job.finalResponse, undefined);
-  assert.equal(job.knowledgeGovernance, undefined);
-  assert.equal(runGit(["log", "-1", "--pretty=%B"], root).trim(), "baseline");
-  assert.match(runGit(["status", "--short", "--", knowledgePath], root), /\?\?/u);
-  const knowledge = fs.readFileSync(knowledgePath, "utf-8");
-  assert.match(knowledge, /First state/u);
-  assert.match(knowledge, /Second state/u);
-  assert.match(knowledge, /Third state/u);
-  assert.match(knowledge, /Fourth state/u);
-  const prompts = fs.readFileSync(promptLog, "utf-8").split("---PASS---").filter((item) => item.trim());
-  assert.equal(prompts.length, 1);
-  for (const prompt of prompts) {
-    assert.match(prompt, /claw plan create --template-file/i);
-    assert.match(prompt, /internal session plan/i);
-    assert.doesNotMatch(prompt, /claw-kit:delegate-writer/i);
-    assert.doesNotMatch(prompt, /team:truth-writer|team:adr-writer/i);
-  }
-  const writerOptions = JSON.parse(fs.readFileSync(optionsLog, "utf-8")) as JsonRecord;
-  assert.equal(writerOptions.sandboxMode, process.platform === "win32" ? "danger-full-access" : "workspace-write");
-  assert.equal(fs.existsSync(reportPath), true);
-  const reportEntries = fs.readFileSync(reportPath, "utf-8").trim().split(/\r?\n/).map((line) => JSON.parse(line) as JsonRecord);
-  assert.equal(reportEntries.length, 1);
-  const repeated = runClawRaw(["internal-knowledge-finalize", "--job", jobPath], root, {
-    HOME: home,
-    USERPROFILE: home,
-    CLAW_SESSION_RUNTIME_DIR: sessionRuntimeDir,
-    CLAW_KNOWLEDGE_FINALIZER_DISABLE_RETRY: "1",
-    CLAW_EMBEDDING_PERSISTENT_WORKER: "0",
-  });
-  assert.equal(repeated.status, 0);
-  assert.equal(fs.readFileSync(reportPath, "utf-8").trim().split(/\r?\n/).length, 1);
-
-  const uncommittedTaskDir = path.join(root, ".claw", "tasks", "uncommitted-task");
-  const uncommittedPlanPath = path.join(uncommittedTaskDir, "plan.json");
-  const uncommittedReportPath = path.join(uncommittedTaskDir, "plan.report");
-  const uncommittedKnowledgePath = path.join(root, ".claw", "truth", "features", "uncommitted-writer.md");
-  fs.mkdirSync(uncommittedTaskDir, { recursive: true });
-  fs.writeFileSync(uncommittedPlanPath, JSON.stringify({ title: "Uncommitted", status: "end.completed" }), "utf-8");
-  fs.writeFileSync(uncommittedReportPath, "{}\n", "utf-8");
-  fs.writeFileSync(
-    path.join(sdkRoot, "dist", "index.js"),
-    `import fs from "node:fs";\nimport path from "node:path";\nimport { createHash } from "node:crypto";\nexport class Codex { startThread() { return { id: "thread-uncommitted", run: async () => { fs.mkdirSync(path.dirname(${JSON.stringify(uncommittedKnowledgePath)}), { recursive: true }); fs.writeFileSync(${JSON.stringify(uncommittedKnowledgePath)}, "# Uncommitted knowledge\\n", "utf-8"); const digest = createHash("sha256").update("thread-uncommitted").digest("hex"); const workflowDir = path.join(process.env.CLAW_SESSION_RUNTIME_DIR, digest); const taskDir = path.join(workflowDir, "tasks", "custom-writer-run"); fs.mkdirSync(taskDir, { recursive: true }); fs.writeFileSync(path.join(workflowDir, "session.json"), JSON.stringify({ version: 1, scope: "session", originCwd: ${JSON.stringify(root)}, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })); fs.writeFileSync(path.join(taskDir, "plan.json"), JSON.stringify({ title: "custom writer", status: "end.completed", tasks: [{ id: 1, status: "done" }] })); return { finalResponse: "Uncommitted knowledge updated." }; } }; } }\n`,
-    "utf-8",
-  );
-  const uncommittedJobsDir = path.join(uncommittedTaskDir, ".runtime", "knowledge-finalization");
-  fs.mkdirSync(uncommittedJobsDir, { recursive: true });
-  const uncommittedJobPath = path.join(uncommittedJobsDir, "uncommitted.json");
-  fs.writeFileSync(uncommittedJobPath, JSON.stringify({
-    schemaVersion: 1,
-    finalizeId: "uncommitted",
-    sessionId: "thread-uncommitted-owner",
-    projectRoot: root,
-    taskName: "uncommitted-task",
-    host: "codex",
-    planPath: uncommittedPlanPath,
-    reportPath: uncommittedReportPath,
-    writer: {
-      externalSkills: ["team:custom-knowledge-writer"],
-      model: null,
-      reasoningEffort: "medium",
-      datedSectionsToKeep: 2,
-    },
-    status: "queued",
-    attempts: 0,
-    queuedAt: new Date().toISOString(),
-  }), "utf-8");
-  const headBeforeDisabledFinalization = runGit(["rev-parse", "HEAD"], root).trim();
-
-  const uncommittedFinalized = runClawRaw(["internal-knowledge-finalize", "--job", uncommittedJobPath], root, {
-    HOME: home,
-    USERPROFILE: home,
-    CLAW_SESSION_RUNTIME_DIR: sessionRuntimeDir,
-    CLAW_KNOWLEDGE_FINALIZER_DISABLE_RETRY: "1",
-    CLAW_EMBEDDING_PERSISTENT_WORKER: "0",
-  });
-  assert.equal(uncommittedFinalized.status, 0);
-  const uncommittedJob = JSON.parse(fs.readFileSync(uncommittedJobPath, "utf-8")) as JsonRecord;
-  assert.equal(uncommittedJob.status, "failed");
-  assert.equal(uncommittedJob.finalResponse, undefined);
-  assert.equal(runGit(["rev-parse", "HEAD"], root).trim(), headBeforeDisabledFinalization);
-  assert.equal(fs.readFileSync(uncommittedKnowledgePath, "utf-8"), "# Uncommitted knowledge\n");
-  assert.match(runGit(["status", "--short", "--", uncommittedKnowledgePath], root), /\?\?/u);
-  const uncommittedReportEntries = fs.readFileSync(uncommittedReportPath, "utf-8").trim().split(/\r?\n/);
-  assert.equal(uncommittedReportEntries.length, 1);
-});
-
-test.skip("retired: background delegate failure does not post-process unacknowledged writer output", async () => {
-  const root = createFixture("knowledge-writer-retention");
-  const home = path.join(root, "home");
-  const taskDir = path.join(root, ".claw", "tasks", "retention-task");
-  runClaw(["init", "--name", "Knowledge Writer Retention"], root, { HOME: home, USERPROFILE: home });
-  fs.mkdirSync(taskDir, { recursive: true });
-  const planPath = path.join(taskDir, "plan.json");
-  const reportPath = path.join(taskDir, "plan.report");
-  fs.writeFileSync(planPath, JSON.stringify({ title: "Retention", status: "end.completed" }), "utf-8");
-  fs.writeFileSync(reportPath, "{}\n", "utf-8");
-
-  const sdkRoot = path.join(
-    home, ".claw-kit", "codex-runtime", CODEX_SDK_VERSION,
-    "node_modules", "@openai", "codex-sdk",
-  );
-  fs.mkdirSync(path.join(sdkRoot, "dist"), { recursive: true });
-  fs.writeFileSync(path.join(sdkRoot, "package.json"), JSON.stringify({ type: "module" }), "utf-8");
-  const knowledgePath = path.join(root, ".claw", "truth", "features", "evolving.md");
-  const writtenKnowledge = [
-    "# Evolving", "",
-    "<!-- state: current -->", "## Current", "", "Current behavior remains intact.", "",
-    "<!-- state: history -->", "## Evolution", "",
-    "<!-- dated: 2026-07-20 -->", "### First", "", "First historical state.", "",
-    "<!-- dated: 2026-07-20 -->", "### Second", "", "Second historical state.", "",
-    "<!-- dated: 2026-07-20 -->", "### Third", "", "Third historical state.", "",
-    "<!-- dated: 2026-07-20 -->", "### Fourth", "", "Fourth historical state.", "",
-  ].join("\n");
-  fs.writeFileSync(
-    path.join(sdkRoot, "dist", "index.js"),
-    `import fs from "node:fs";\nimport path from "node:path";\nimport { createHash } from "node:crypto";\nexport class Codex { constructor(options) { this.env = options.env; } startThread() { const env = this.env; return { id: "thread-retention", run: async () => { fs.mkdirSync(path.dirname(${JSON.stringify(knowledgePath)}), { recursive: true }); fs.writeFileSync(${JSON.stringify(knowledgePath)}, ${JSON.stringify(writtenKnowledge)}, "utf-8"); const digest = createHash("sha256").update(env.CLAW_SESSION_ID).digest("hex"); const workflowDir = path.join(env.CLAW_SESSION_RUNTIME_DIR, digest); const workflowTaskDir = path.join(workflowDir, "tasks", "knowledge-writer"); fs.mkdirSync(workflowTaskDir, { recursive: true }); fs.writeFileSync(path.join(workflowDir, "session.json"), JSON.stringify({ version: 1, scope: "session", originCwd: ${JSON.stringify(root)}, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })); fs.writeFileSync(path.join(workflowTaskDir, "plan.json"), JSON.stringify({ title: "knowledge-writer", templateId: "knowledge-writer", status: "end.completed", tasks: [{ id: 1, status: "done" }] })); return { finalResponse: "Knowledge updated." }; } }; } }\n`,
-    "utf-8",
-  );
-
-  const jobsDir = path.join(taskDir, ".runtime", "knowledge-finalization");
-  fs.mkdirSync(jobsDir, { recursive: true });
-  const jobPath = path.join(jobsDir, "retention.json");
-  fs.writeFileSync(jobPath, JSON.stringify({
-    schemaVersion: 1,
-    finalizeId: "retention",
-    sessionId: "thread-retention-owner",
-    projectRoot: root,
-    taskName: "retention-task",
-    host: "codex",
-    planPath,
-    reportPath,
-    writer: { datedSectionsToKeep: 2 },
-    status: "queued",
-    attempts: 0,
-    queuedAt: new Date().toISOString(),
-  }), "utf-8");
-
-  const finalized = runClawRaw(["internal-knowledge-finalize", "--job", jobPath], root, {
-    HOME: home,
-    USERPROFILE: home,
-    CLAW_SESSION_RUNTIME_DIR: path.join(root, "session-runtime"),
-    CLAW_KNOWLEDGE_FINALIZER_DISABLE_RETRY: "1",
-    CLAW_EMBEDDING_PERSISTENT_WORKER: "0",
-  });
-  assert.equal(finalized.status, 0);
-  const content = fs.readFileSync(knowledgePath, "utf-8");
-  assert.match(content, /Current behavior remains intact/u);
-  assert.match(content, /First historical state/u);
-  assert.match(content, /Second historical state/u);
-  assert.match(content, /Third historical state/u);
-  assert.match(content, /Fourth historical state/u);
-
-  const job = JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord;
-  assert.equal(job.status, "failed");
-  assert.equal(job.knowledgeGovernance, undefined);
-});
-
-test.skip("retired: knowledge finalization fails and retains its report when the SDK writer does not complete a session workflow", () => {
-  const root = createFixture("knowledge-writer-incomplete-session");
-  const home = path.join(root, "home");
-  const taskDir = path.join(root, ".claw", "tasks", "incomplete-session-task");
-  runClaw(["init", "--name", "Knowledge Writer Incomplete Session"], root, { HOME: home, USERPROFILE: home });
-  fs.mkdirSync(taskDir, { recursive: true });
-  const planPath = path.join(taskDir, "plan.json");
-  const reportPath = path.join(taskDir, "plan.report");
-  fs.writeFileSync(planPath, JSON.stringify({ title: "Incomplete session", status: "end.completed" }), "utf-8");
-  fs.writeFileSync(reportPath, "{}\n", "utf-8");
-
-  const sdkRoot = path.join(
-    home, ".claw-kit", "codex-runtime", CODEX_SDK_VERSION,
-    "node_modules", "@openai", "codex-sdk",
-  );
-  fs.mkdirSync(path.join(sdkRoot, "dist"), { recursive: true });
-  fs.writeFileSync(path.join(sdkRoot, "package.json"), JSON.stringify({ type: "module" }), "utf-8");
-  const promptLog = path.join(root, "built-in-writer-prompt.log");
-  fs.writeFileSync(
-    path.join(sdkRoot, "dist", "index.js"),
-    `import fs from "node:fs";\nexport class Codex { startThread() { return { id: "thread-incomplete", run: async (prompt) => { fs.writeFileSync(${JSON.stringify(promptLog)}, prompt, "utf-8"); return { finalResponse: "Could not read the inputs." }; } }; } }\n`,
-    "utf-8",
-  );
-
-  const jobsDir = path.join(taskDir, ".runtime", "knowledge-finalization");
-  fs.mkdirSync(jobsDir, { recursive: true });
-  const jobPath = path.join(jobsDir, "incomplete-session.json");
-  fs.writeFileSync(jobPath, JSON.stringify({
-    schemaVersion: 1,
-    finalizeId: "incomplete-session",
-    sessionId: "thread-incomplete-owner",
-    projectRoot: root,
-    taskName: "incomplete-session-task",
-    host: "codex",
-    planPath,
-    reportPath,
-    status: "queued",
-    attempts: 0,
-    queuedAt: new Date().toISOString(),
-  }), "utf-8");
-
-  const finalized = runClawRaw(["internal-knowledge-finalize", "--job", jobPath], root, {
-    HOME: home,
-    USERPROFILE: home,
-    CLAW_SESSION_RUNTIME_DIR: path.join(root, "session-runtime"),
-    CLAW_KNOWLEDGE_FINALIZER_DISABLE_RETRY: "1",
-  });
-  assert.equal(finalized.status, 0);
-  const job = JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord;
-  assert.equal(job.status, "failed");
-  assert.match(String((job.error as JsonRecord).message), /without acknowledging a terminal result/i);
-  const builtInPrompt = fs.readFileSync(promptLog, "utf-8");
-  assert.match(builtInPrompt, /claw plan create --template-file/i);
-  assert.match(builtInPrompt, /internal session plan/i);
-  assert.doesNotMatch(builtInPrompt, /claw-kit:knowledge-writer|claw-kit:delegate-writer/i);
-  assert.equal(fs.existsSync(reportPath), true);
-});
 
 test("opencode Stop hook captures inline message payload and writes host to job", () => {
   const root = createFixture("hook-stop-opencode-message");

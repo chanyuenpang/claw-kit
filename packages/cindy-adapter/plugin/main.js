@@ -10,7 +10,6 @@ function withCindyHostIdentity(result) {
 
 const workdirs = new Map();
 const reconcilingSessions = new Set();
-const capturedTurnKeys = new Set();
 const projections = new Map();
 // Cindy has no public native Goal API. This is the adapter-owned continuation
 // state: the .claw plan remains canonical, while the hook uses it to decide
@@ -65,9 +64,6 @@ async function refreshSessionStart(sessionId, workdir) {
   const result = await nodeRequest('claw/session-start', { sessionId, workdir }, 12000);
   if (result?.projection?.planStatus) {
     await applyProjection(sessionId, { projection: result.projection }, undefined);
-  }
-  for (const job of Array.isArray(result?.knowledgeJobs) ? result.knowledgeJobs : []) {
-    await dispatchKnowledgeWriter(sessionId, job);
   }
   return {
     failed: result?.ok === false,
@@ -128,7 +124,6 @@ async function reconcileFocusedSession(sessionId, workdir) {
   try {
     workdirs.set(sessionId, workdir);
     await refreshSessionStart(sessionId, workdir);
-    await captureTurnEndReport({ data: { sessionId } });
   } finally {
     reconcilingSessions.delete(sessionId);
   }
@@ -292,120 +287,8 @@ async function applyProjection(sessionId, execution, callId) {
     cindy.send({ type: 'card-update', callId: cardId, v: 2, state: workflowCardState(mergedProjection), html: renderWorkflowCard(mergedProjection, expanded, goalAuthorizationCards.get(cardId) === true), height: workflowCardHeight(mergedProjection, expanded) });
   }
   // Cindy closeout is already durable here: the terminal mutation returns an
-  // Orca Worker dispatch using the compatibility policy value "subagent".
+  // Orca Worker dispatch.
   // Turn-end hooks do not create or claim Cindy knowledge jobs.
-}
-
-async function dispatchKnowledgeWriter(sessionId, job) {
-  const finalizeId = typeof job?.finalizeId === 'string' ? job.finalizeId : '';
-  const jobPath = typeof job?.jobPath === 'string' ? job.jobPath : '';
-  if (!finalizeId || !jobPath) return { started: false, reason: 'invalid-job' };
-  const inspected = await nodeRequest('claw/inspect-knowledge-writer', {
-    sessionId,
-    finalizeId,
-    workdir: workdirs.get(sessionId),
-    jobPath,
-  });
-  if (!inspected?.ok) {
-    traceHook('knowledge-writer', {
-      sessionId,
-      finalizeId,
-      phase: 'dispatch-skipped',
-      reason: inspected?.reason || inspected?.error || 'writer-policy-unavailable',
-    });
-    return { started: false, reason: 'writer-policy-unavailable' };
-  }
-  if (inspected.executionPolicy !== 'subagent') {
-    traceHook('knowledge-writer', {
-      sessionId,
-      finalizeId,
-      phase: 'legacy-background-skipped',
-      reason: 'cindy-subagent-only',
-      jobPath,
-    });
-    return { started: false, disposition: 'unsupported-legacy-background' };
-  }
-  traceHook('knowledge-writer', {
-    sessionId,
-    finalizeId,
-    phase: 'orca-owned',
-    jobPath,
-  });
-  return { started: false, disposition: 'orca-owned' };
-}
-
-async function captureTurnEndReport(msg) {
-  const cindySessionId = typeof msg.data?.sessionId === 'string' ? msg.data.sessionId : '';
-  traceHook('did-turn-end', {
-    sessionId: cindySessionId || null,
-    phase: 'received',
-    hasCachedWorkdir: Boolean(cindySessionId && workdirs.get(cindySessionId)),
-  });
-  if (!cindySessionId) {
-    traceHook('did-turn-end', {
-      sessionId: null,
-      phase: 'capture-skipped',
-      reason: 'missing-session-id',
-    });
-    return { status: 'skipped' };
-  }
-  const context = await nodeRequest('claw/resolve-session-context', { sessionId: cindySessionId }, 10000);
-  if (!context?.ok || !context.workdir || !context.clawSessionId) {
-    traceHook('did-turn-end', {
-      sessionId: cindySessionId,
-      phase: 'capture-skipped',
-      reason: context?.status || context?.reason || 'session-context-unavailable',
-      errorCode: context?.errorCode || null,
-    });
-    return { status: 'skipped', reason: context?.status || 'session-context-unavailable' };
-  }
-  const workdir = context.workdir;
-  const clawSessionId = context.clawSessionId;
-  workdirs.set(cindySessionId, workdir);
-  traceHook('did-turn-end', {
-    sessionId: cindySessionId,
-    phase: 'context-resolved',
-    clawSessionId,
-    planPath: context.planPath || null,
-  });
-  const capture = await nodeRequest('claw/capture-report', {
-    sessionId: cindySessionId,
-    clawSessionId,
-    workdir,
-  }, 30000);
-  const turnId = typeof capture?.turnId === 'string' ? capture.turnId : '';
-  if (!turnId) {
-    traceHook('did-turn-end', { sessionId: cindySessionId, clawSessionId, phase: 'capture-failed', reason: capture?.error || capture?.reason || 'missing-database-turn-id' });
-    return { status: 'capture-failed' };
-  }
-  // The main-agent execution policy performs no transcript capture at all:
-  // the invoking agent deposits knowledge itself. This is a supported skip,
-  // not a capture failure.
-  if (capture?.ok && capture.captured === false && capture.reason === 'main-agent-policy') {
-    traceHook('did-turn-end', { sessionId: cindySessionId, clawSessionId, phase: 'capture-skipped', reason: 'main-agent-policy', turnId });
-    return { status: 'skipped', reason: 'main-agent-policy' };
-  }
-  const captureKey = `${cindySessionId}:${turnId}`;
-  if (capturedTurnKeys.has(captureKey)) return { status: 'duplicate' };
-  if (capture?.ok && capture.captured) {
-    capturedTurnKeys.add(captureKey);
-  }
-  if (capture?.ok && capture.jobPath && capture.finalizeId) {
-    traceHook('did-turn-end', { sessionId: cindySessionId, clawSessionId, phase: 'capture-succeeded', turnId, finalizeId: capture.finalizeId, jobPath: capture.jobPath });
-    await dispatchKnowledgeWriter(cindySessionId, capture);
-    return { status: 'captured', finalizeId: capture.finalizeId };
-  }
-  if (capture?.ok && capture.captured) {
-    traceHook('did-turn-end', { sessionId: cindySessionId, clawSessionId, phase: 'capture-succeeded', turnId, reportPath: capture.reportPath || null });
-    return { status: 'captured' };
-  }
-  traceHook('did-turn-end', {
-    sessionId: cindySessionId,
-    clawSessionId,
-    phase: 'capture-failed',
-    reason: capture?.error || capture?.reason || 'capture-report-did-not-return-job',
-  });
-  return { status: 'capture-failed' };
 }
 
 async function pauseGoalAfterRetries(sessionId, goal) {
@@ -580,7 +463,6 @@ cindy.onHostMessage(async (msg) => {
   }
 
   if (msg.name === 'did-turn-end') {
-    void captureTurnEndReport(msg);
     await continueGoalAfterTurnEnd(msg);
     return;
   }

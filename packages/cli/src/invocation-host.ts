@@ -18,17 +18,8 @@ export function isHostActionsHost(host: ClawHost | undefined): boolean {
   return resolveCoreHostIntegrationProfile(host)?.consumesPlanGoalEffects === true;
 }
 
-/**
- * Hosts whose adapter can dispatch `knowledgeWriter.executionPolicy ===
- * "subagent"` closeout through a native subagent (Codex SDK, Cindy Orca
- * Worker, DSH `subagent`/`subagent_fork`). Subagent claims collect the parent
- * report through a host-registered claim-time collector, so the standard
- * hostless flow cannot use that policy: it uses the background policy where
- * the agent captures its own final message and executes the writer itself.
- * Other hosts reject that policy at configuration time instead of silently
- * degrading.
- */
-export function isSubagentPolicyHost(host: ClawHost | undefined): boolean {
+/** Hosts whose adapter owns native knowledge-finalizer dispatch and capture. */
+export function isNativeKnowledgeFinalizationHost(host: ClawHost | undefined): boolean {
   return resolveCoreHostIntegrationProfile(host)?.supportsNativeSubagentFinalization === true;
 }
 

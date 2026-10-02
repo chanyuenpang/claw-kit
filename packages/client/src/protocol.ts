@@ -120,7 +120,6 @@ export type ClawPostCommitEffectV1 = {
 
 export type ClawKnowledgeDispatchV1 = {
   schemaVersion: 1;
-  policy: "background" | "subagent";
   finalizeId: string;
   preferReuse: boolean;
   projectRoot?: string;

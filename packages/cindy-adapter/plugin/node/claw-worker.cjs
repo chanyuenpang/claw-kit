@@ -4,7 +4,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {
   candidateUserDataDirs,
-  readTurnCaptureWithRetry,
   resolveCindySessionContext,
 } = require('./cindy-sqlite-reader.cjs');
 const sessions = new Map();
@@ -1059,50 +1058,6 @@ rpcInput.on('line', async (line) => {
     reply(request.id, result.ok ? { ok: true } : { ok: false, error: result.error });
     return;
   }
-  if (request.method === 'claw/capture-report') {
-    const cindySessionId = typeof params.sessionId === 'string' ? params.sessionId : '';
-    const clawSessionId = typeof params.clawSessionId === 'string' && params.clawSessionId.trim()
-      ? params.clawSessionId.trim()
-      : cindySessionId;
-    const workdir = typeof params.workdir === 'string' ? params.workdir : '';
-    traceWorker('capture-report', {
-      phase: 'received',
-      cindySessionId: cindySessionId || null,
-      clawSessionId: clawSessionId || null,
-    });
-    const captureInput = await readTurnCaptureWithRetry(cindySessionId);
-    if (!captureInput) {
-      traceWorker('capture-report', {
-        phase: 'capture-failed',
-        cindySessionId: cindySessionId || null,
-        clawSessionId: clawSessionId || null,
-        errorCode: 'CINDY_TURN_NOT_PERSISTED',
-      });
-      reply(request.id, { ok: true, captured: false, error: 'Cindy SQLite did not expose a completed assistant message yet.' });
-      return;
-    }
-    const { turnId, message, taskConclusions } = captureInput;
-    const result = await runClaw(
-      ['internal-knowledge-capture', '--host', 'cindy'],
-      workdir,
-      JSON.stringify({ cwd: workdir, session_id: clawSessionId, turn_id: turnId, message, task_conclusions: taskConclusions }),
-      10000,
-      clawSessionId,
-    );
-    traceWorker('capture-report', {
-      phase: result.ok && result.output?.captured ? 'captured' : 'capture-failed',
-      cindySessionId,
-      clawSessionId,
-      turnId,
-      errorCode: result.ok ? null : (result.errorCode || 'CLAW_CAPTURE_FAILED'),
-      finalizeId: result.output?.finalizeId || null,
-      reportPath: result.output?.reportPath || null,
-    });
-    reply(request.id, result.ok
-      ? { ok: true, turnId, message, ...(result.output || {}), cindySessionId, clawSessionId }
-      : { ok: false, error: result.error, cindySessionId, clawSessionId });
-    return;
-  }
   if (request.method === 'claw/register-knowledge-writer') {
     const finalizeId = typeof params.finalizeId === 'string' ? params.finalizeId : '';
     const jobPath = typeof params.jobPath === 'string' ? params.jobPath : '';
@@ -1149,7 +1104,6 @@ rpcInput.on('line', async (line) => {
       finalizeId,
       status: job.status,
       attempts: job.attempts,
-      executionPolicy: job.writer?.executionPolicy || 'background',
       ...(typeof job.result === 'string' ? { result: job.result } : {}),
       ...(typeof job.error?.message === 'string' ? { error: job.error.message } : {}),
     });

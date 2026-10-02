@@ -95,7 +95,7 @@ import { claimKnowledgeCommand, doneKnowledgeCommand } from "./knowledge-command
 import { pendingDshKnowledgeDispatches } from "./knowledge-pending.js";
 import { reserveDshFinalizerExecutionCommand, markDshFinalizerDeliveryCommand, inspectDshFinalizerExecutionsCommand, releaseDshFinalizerExecutionCommand } from "./dsh-finalizer-execution.js";
 import { consumeBufferedHookInput } from "./knowledge-hook-preflight.js";
-import { isSubagentPolicyHost, resolveInvocationHost, withoutInvocationHost, type ClawHost } from "./invocation-host.js";
+import { isNativeKnowledgeFinalizationHost, resolveInvocationHost, withoutInvocationHost, type ClawHost } from "./invocation-host.js";
 import {
   ClawClient,
   ClawSessionError,
@@ -891,6 +891,7 @@ async function runCodex(args: string[]): Promise<void> {
   }
   if (subcommand === "invoke") {
     const encoded = args.shift();
+    const encodedPluginRoot = args.shift();
     assertNoRemainingArgs(args, "codex invoke");
     if (!encoded || !/^(?:[a-f0-9]{4})+$/i.test(encoded)) {
       throw new ClawError("PROJECT_CONFIG_INVALID", "codex invoke requires one UTF-16 hex argv payload.");
@@ -900,6 +901,21 @@ async function runCodex(args: string[]): Promise<void> {
       json += String.fromCharCode(Number.parseInt(encoded.slice(index, index + 4), 16));
     }
     const invocation = JSON.parse(json) as unknown;
+    let pluginRoot: string | undefined;
+    if (encodedPluginRoot) {
+      if (!/^(?:[a-f0-9]{4})+$/i.test(encodedPluginRoot)) throw new ClawError("PROJECT_CONFIG_INVALID", "Invalid Codex adapter root payload.");
+      pluginRoot = encodedPluginRoot.match(/.{4}/g)!.map((value) => String.fromCharCode(Number.parseInt(value, 16))).join("");
+      if (!path.isAbsolute(pluginRoot)) throw new ClawError("PROJECT_CONFIG_INVALID", "Codex adapter root must be absolute.");
+    }
+    const registerCollector = () => {
+      if (!pluginRoot) return;
+      const project = tryResolveHookProject(process.cwd());
+      if (!project || project.scope === "session") return;
+      const manifest = JSON.parse(fs.readFileSync(path.join(pluginRoot, ".codex-plugin", "plugin.json"), "utf8")) as { name?: string; version?: string };
+      const collector = path.join(pluginRoot, "scripts", "report-collector.mjs");
+      if (manifest.name !== "claw-kit" || !manifest.version || !fs.existsSync(collector)) throw new ClawError("PROJECT_CONFIG_INVALID", "Codex adapter report collector is unavailable.");
+      registerReportCollector(project.projectRoot, { schemaVersion: 1, contractVersion: 1, host: "codex", collectorVersion: manifest.version, executable: process.execPath, args: [collector] });
+    };
     if (
       !Array.isArray(invocation)
       || invocation.length === 0
@@ -914,17 +930,21 @@ async function runCodex(args: string[]): Promise<void> {
       );
     }
     if (invocation[0] === "context") {
+      const output = buildPublicContextOutput(await runContextCommand([], process.cwd(), resolveOwnerSessionKey(), "codex"));
+      registerCollector();
       printJson({
         ok: true,
         command: "context",
-        output: buildPublicContextOutput(await runContextCommand([], process.cwd(), resolveOwnerSessionKey(), "codex")),
+        output,
       });
       return;
     }
     const originalArgv = process.argv;
     try {
+      registerCollector();
       process.argv = [originalArgv[0]!, originalArgv[1]!, ...invocation, "--host", "codex"];
       await main();
+      registerCollector();
     } finally {
       process.argv = originalArgv;
     }
@@ -1665,14 +1685,6 @@ function directKnowledgeConfigFingerprint(input: {
   return `sha256:${createHash("sha256").update(JSON.stringify(payload)).digest("hex")}`;
 }
 
-function throwUnsupportedSubagentExecutionHost(effectiveHost: ClawHost | undefined): never {
-  throw new ClawError(
-    "PROJECT_CONFIG_INVALID",
-    'knowledgeWriter.executionPolicy "subagent" requires a host-registered claim-time report collector (Codex, Cindy, or DSH). The standard hostless flow must use the default "background" policy, where the agent captures its final message inline and executes the writer itself.',
-    { host: effectiveHost ?? null },
-  );
-}
-
 async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Promise<void> {
   const subcommand = args.shift();
   switch (subcommand) {
@@ -1741,14 +1753,6 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
         effectiveHost,
         project?.projectConfig?.knowledgeWriterByHost,
       );
-      if (
-        current
-        && !current.plan.parentPlan
-        && effectiveWriter?.executionPolicy === "subagent"
-        && !isSubagentPolicyHost(effectiveHost)
-      ) {
-        throwUnsupportedSubagentExecutionHost(effectiveHost);
-      }
       const terminalRefresh = entersEndTerminal
         ? preparePlanTerminalRefresh(process.cwd(), ownerSessionKey)
         : undefined;
@@ -1763,13 +1767,12 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
       const knowledgeDispatch = (
         current
         && project
-        && (isSubagentPolicyHost(effectiveHost))
+        && (isNativeKnowledgeFinalizationHost(effectiveHost))
         && !current.plan.parentPlan
-        && effectiveWriter?.executionPolicy === "subagent"
         && result.knowledgeFinalizeId
       )
           ? buildKnowledgeDispatch({
-            // The isSubagentPolicyHost gate above guarantees this is codex | cindy | dsh.
+            // The isNativeKnowledgeFinalizationHost gate above guarantees this is codex | cindy | dsh.
             host: effectiveHost as "codex" | "cindy" | "dsh",
             finalizeId: result.knowledgeFinalizeId,
             projectRoot: project.projectRoot,
@@ -1867,13 +1870,6 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
         effectiveHost,
         project?.projectConfig?.knowledgeWriterByHost,
       );
-      if (
-        !current.plan.parentPlan
-        && effectiveWriter?.executionPolicy === "subagent"
-        && !isSubagentPolicyHost(effectiveHost)
-      ) {
-        throwUnsupportedSubagentExecutionHost(effectiveHost);
-      }
       const terminalRefresh = preparePlanTerminalRefresh(process.cwd(), ownerSessionKey);
       const result = await editPlan({
         cwd: process.cwd(),
@@ -1884,13 +1880,12 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
         ownerSessionKey,
       });
       const knowledgeDispatch = (
-        isSubagentPolicyHost(effectiveHost)
+        isNativeKnowledgeFinalizationHost(effectiveHost)
         && !current.plan.parentPlan
-        && effectiveWriter?.executionPolicy === "subagent"
         && result.knowledgeFinalizeId
       )
           ? buildKnowledgeDispatch({
-            // The isSubagentPolicyHost gate above guarantees this is codex | cindy | dsh.
+            // The isNativeKnowledgeFinalizationHost gate above guarantees this is codex | cindy | dsh.
             host: effectiveHost as "codex" | "cindy" | "dsh",
             finalizeId: result.knowledgeFinalizeId,
             projectRoot: currentProject.projectRoot,
@@ -2613,7 +2608,7 @@ async function runHook(args: string[], effectiveHost: ClawHost | undefined): Pro
 async function runStopHook(effectiveHost: ClawHost | undefined): Promise<void> {
   // Cindy owns task-completion closeout in its Host worker path. The CLI sidecar
   // must not enqueue a job that it cannot execute with a Cindy session runner.
-  if (effectiveHost === "cindy") {
+  if (effectiveHost !== "opencode") {
     return;
   }
   if (process.env.CLAW_KNOWLEDGE_FINALIZER === "1") {
@@ -2642,11 +2637,6 @@ async function runStopHook(effectiveHost: ClawHost | undefined): Promise<void> {
       host: effectiveHost,
       taskConclusions: [],
     });
-    // Current named hosts own their runner in their adapters.  Keep the CLI
-    // launcher only for jobs written by pre-adapter releases with no host.
-    if (result.ok && result.jobPath && !effectiveHost && process.env.CLAW_KNOWLEDGE_FINALIZER_DISABLE_LAUNCH !== "1") {
-      launchKnowledgeFinalizationWorker(result.jobPath, project.projectRoot);
-    }
     if (process.env.CLAW_KNOWLEDGE_CAPTURE_RESULT === "1") {
       printJson(result);
     }
@@ -2682,21 +2672,7 @@ async function runInternalKnowledgeCapture(args: string[], effectiveHost: ClawHo
       host: effectiveHost === "cindy" ? "cindy" : effectiveHost,
       taskConclusions,
     });
-    // Hostless standard flow: a newly created background job has no host-owned
-    // runner, so point the invoking agent at its own next step explicitly.
-    const createdNewJob = result.ok && result.captured === true && result.duplicate !== true && result.jobPath;
-    printJson({
-      ...result,
-      ...(createdNewJob && !effectiveHost
-        ? {
-            nextStep: {
-              command: "claw internal-knowledge-dispatch --job <jobPath>",
-              jobPath: result.jobPath,
-              instruction: "Run the dispatch command with the returned jobPath, then execute dispatch.prompt yourself until the writer plan completes.",
-            },
-          }
-        : {}),
-    });
+    printJson(result);
   } catch (error) {
     // Capture is a non-blocking sidecar.  Return structured failure so the
     // owning adapter can surface/retry it without affecting the assistant turn.
@@ -2926,11 +2902,10 @@ function runInternalKnowledgeDispatch(args: string[]): void {
   const jobPath = readRequiredFlag(args, "--job");
   const queued = reconcileKnowledgeFinalizationJob(jobPath);
   assertNoRemainingArgs(args, "internal-knowledge-dispatch");
-  if ((queued.writer?.executionPolicy ?? "background") !== "background") {
-    throw new ClawError("PROJECT_CONFIG_INVALID", "Knowledge dispatch requires a background writer job.");
+  if (queued.host !== "opencode") {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "Knowledge dispatch requires an OpenCode-owned writer job.");
   }
   const dispatch = buildKnowledgeDelegateDispatch({
-    policy: "background",
     finalizeId: queued.finalizeId,
     projectRoot: queued.projectRoot,
     writer: queued.writer,
@@ -2944,16 +2919,6 @@ function runInternalKnowledgeDispatch(args: string[]): void {
     writer: queued.writer ?? null,
     dispatch,
   });
-}
-
-type KnowledgeWriterRunResult = {
-  finalResponse: string;
-  threadId?: string;
-};
-
-async function runKnowledgeDelegateForJob(running: KnowledgeFinalizationJob): Promise<KnowledgeWriterRunResult> {
-  void running;
-  throw new Error("Platform knowledge writers must be launched by their adapter after requesting internal-knowledge-dispatch.");
 }
 
 function assertCompletedKnowledgeWriterSession(threadId: string | null): void {
@@ -2985,54 +2950,6 @@ function assertCompletedKnowledgeWriterSession(threadId: string | null): void {
   if (!completed) {
     throw new Error("Knowledge writer did not complete its required session workflow.");
   }
-}
-
-function knowledgeFinalizerEnvironment(): Record<string, string> {
-  const env: Record<string, string> = {};
-  for (const [key, value] of Object.entries(withoutInvocationHost())) {
-    if (value !== undefined) {
-      env[key] = value;
-    }
-  }
-  env.CLAW_KNOWLEDGE_FINALIZER = "1";
-  delete env.CLAW_SESSION_ID;
-  delete env.CODEX_THREAD_ID;
-  delete env.CODEX_SESSION_ID;
-  return env;
-}
-
-function launchKnowledgeFinalizationWorker(jobPath: string, cwd: string): void {
-  if (process.platform === "win32") {
-    const launcherScript = [
-      "$node = $env:CLAW_KNOWLEDGE_NODE",
-      "$entry = $env:CLAW_KNOWLEDGE_ENTRY",
-      "$job = $env:CLAW_KNOWLEDGE_JOB",
-      "$cwd = $env:CLAW_KNOWLEDGE_CWD",
-      "Start-Process -FilePath $node -ArgumentList @($entry, 'internal-knowledge-finalize', '--job', $job) -WorkingDirectory $cwd -WindowStyle Hidden",
-    ].join("; ");
-    const launcher = spawnSync("powershell.exe", ["-NoProfile", "-Command", launcherScript], {
-      cwd,
-      stdio: "ignore",
-      windowsHide: true,
-      env: {
-        ...withoutInvocationHost(),
-        CLAW_KNOWLEDGE_NODE: process.execPath,
-        CLAW_KNOWLEDGE_ENTRY: resolveCliEntryPath(),
-        CLAW_KNOWLEDGE_JOB: jobPath,
-        CLAW_KNOWLEDGE_CWD: cwd,
-      },
-    });
-    if (launcher.error || (launcher.status ?? 0) !== 0) {
-      throw launcher.error ?? new Error(`Knowledge finalizer launcher exited with ${launcher.status ?? 1}.`);
-    }
-    return;
-  }
-  const child = spawn(
-    process.execPath,
-    [resolveCliEntryPath(), "internal-knowledge-finalize", "--job", jobPath],
-    { cwd, detached: true, stdio: "ignore", windowsHide: true, env: withoutInvocationHost() },
-  );
-  child.unref();
 }
 
 function tryResolveHookProject(cwd: string): ReturnType<typeof resolveProjectContext> | null {
@@ -3513,7 +3430,6 @@ function buildKnowledgeDispatch(input: {
     return buildKnowledgeAtomicDispatch(input);
   }
   return buildKnowledgeDelegateDispatch({
-    policy: "subagent",
     finalizeId: input.finalizeId,
     projectRoot: input.projectRoot,
     writer: input.writer,

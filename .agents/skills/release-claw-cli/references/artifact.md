@@ -29,9 +29,13 @@
 - Reset every adapter version to `<cli>.0`; this does not publish an adapter.
 - Publish `@veewo/claw-core`, then `@veewo/claw-client`, then `@veewo/claw`; create tag `v<version>`
   and the GitHub Release.
-- Before publishing, require clean `main`, `HEAD == origin/main`, focused checks,
-  package dry-runs, `npm run check:template-versions`, `npm run verify:release`,
-  and reviewed release diff. The template check is a required gate for every
+- Prepare and commit beta source locally without pushing. Before formal publication
+  require the frozen candidate, seven-day local trial, clean local main at its
+  source revision and no remote divergence. Verify/publish with `--candidate <dir>`;
+  preserve its version and bytes, skipping bumps/builds/packing. Verify npm retrieval
+  before pushing main, and require `HEAD == origin/main` at completion. Preparation
+  includes proportionate checks and `npm run check:template-versions`.
+  The template check is a required gate for every
   built-in skill package that contains `TEMPLATE.json`; its version must match
   `TEMPLATE_DRIVER_VERSION`, rather than the release package version.
 - After publishing, verify npm metadata and real retrieval for all three packages.

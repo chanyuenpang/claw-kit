@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-export const CODEX_DRIVER_VERSION = 22;
+export const CODEX_DRIVER_VERSION = 23;
 export const CODEX_HOST_ACTION_SCHEMA_VERSION = 1;
 export const CODEX_DRIVER_CACHE_KEY =
   `claw-kit:codex-driver:v${CODEX_DRIVER_VERSION}:s${CODEX_HOST_ACTION_SCHEMA_VERSION}`;
@@ -9,6 +9,7 @@ type DriverInput = {
   argv: string[];
   workdir: string;
   pluginVersion?: string;
+  pluginRoot?: string;
   timeout_ms?: number;
 };
 
@@ -18,7 +19,7 @@ type DriverRuntime = {
 };
 
 async function codexDriverRunner(
-  { argv, workdir, pluginVersion, timeout_ms = 30000 }: DriverInput,
+  { argv, workdir, pluginVersion, pluginRoot, timeout_ms = 30000 }: DriverInput,
   { tools, text }: DriverRuntime,
   allowCliRepair = true,
 ): Promise<Record<string, unknown>> {
@@ -47,7 +48,11 @@ async function codexDriverRunner(
   for (let index = 0; index < serializedArgv.length; index += 1) {
     encodedArgv += serializedArgv.charCodeAt(index).toString(16).padStart(4, "0");
   }
-  const codexCommand = `claw codex invoke ${encodedArgv}`;
+  let encodedPluginRoot = "";
+  for (let index = 0; index < (pluginRoot?.length ?? 0); index += 1) {
+    encodedPluginRoot += pluginRoot!.charCodeAt(index).toString(16).padStart(4, "0");
+  }
+  const codexCommand = `claw codex invoke ${encodedArgv}${encodedPluginRoot ? ` ${encodedPluginRoot}` : ""}`;
   const raw = typeof tools.shell_command === "function"
     ? await tools.shell_command({ command: codexCommand, workdir, timeout_ms })
     : typeof tools.exec_command === "function"
@@ -119,7 +124,7 @@ async function codexDriverRunner(
           ? (install as Record<string, unknown>).exit_code
           : 0;
         if (installExitCode !== 0) throw new Error(`CLI repair failed for @veewo/claw@${requiredCliVersion}`);
-        return codexDriverRunner({ argv, workdir, pluginVersion, timeout_ms }, { tools, text }, false);
+        return codexDriverRunner({ argv, workdir, pluginVersion, pluginRoot, timeout_ms }, { tools, text }, false);
       }
       throw new Error(`claw mutation failed [${String(protocolError.code)}]: ${String(protocolError.message)}`);
     }

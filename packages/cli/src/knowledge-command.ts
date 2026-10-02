@@ -42,9 +42,7 @@ export function claimKnowledgeCommand(jobPath: string, version: string, claimant
       return { planPath, scope: "session", projectRoot: session.projectRoot, ownerSessionId: claimant.agentSessionId };
     },
     prepare: (queued) => {
-      if ((queued.writer?.executionPolicy !== "subagent"
-        && !(queued.host === "dsh" && queued.writer?.executionPolicy === "background"))
-        || queued.reportCapture?.mode !== "claim"
+      if (queued.reportCapture?.mode !== "claim"
         || queued.reportCapture.status === "captured") return;
       // DSH captures through its live parent adapter before dispatch. An empty
       // proven history has a valid receipt; a missing Host handoff is not proof of emptiness.
@@ -59,6 +57,7 @@ export function claimKnowledgeCommand(jobPath: string, version: string, claimant
         planPath: queued.planPath,
         canonicalReportPath: queued.reportPath,
         startedAt: queued.reportCapture.startedAt,
+        endedAt: queued.reportCapture.endedAt,
       });
       return { reportCapture: { ...queued.reportCapture, status: "captured" as const, capturedAt: receipt.completedAt, receipt } };
     },

@@ -30,7 +30,7 @@ function flushAsyncWork() {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
-function createHarness({ queryResults, executionPolicy = 'background', inspectedStatus = 'succeeded', inspectedError, knowledgeDispatch, executions = [] }) {
+function createHarness({ queryResults, inspectedStatus = 'succeeded', inspectedError, knowledgeDispatch, executions = [] }) {
   const hostMessages = [];
   const nodeRequests = [];
   const agentRequests = [];
@@ -99,12 +99,12 @@ function createHarness({ queryResults, executionPolicy = 'background', inspected
               projectRoot: 'D:\\repo',
               planPath: projection.planPath,
               reportPath: 'C:\\runtime\\task\\plan.report',
-              writer: { executionPolicy, externalSkills: [] },
+              writer: {  externalSkills: [] },
             },
           };
         }
         if (method === 'claw/inspect-knowledge-writer') {
-          return { ok: true, result: { ok: true, finalizeId, status: inspectedStatus, attempts: 1, executionPolicy, ...(inspectedError ? { error: inspectedError } : {}) } };
+          return { ok: true, result: { ok: true, finalizeId, status: inspectedStatus, attempts: 1,  ...(inspectedError ? { error: inspectedError } : {}) } };
         }
         if (method === 'claw/fail-knowledge-writer') {
           return { ok: true, result: { ok: true } };
@@ -270,7 +270,7 @@ test('legacy Cindy background jobs are visible but never launched through errand
   assert.equal(harness.errandRequests.length, 0);
   assert.equal(harness.errandQueries.length, 0);
   assert.equal(harness.agentRequests.length, 0);
-  assert.ok(harness.nodeRequests.some(({ method }) => method === 'claw/inspect-knowledge-writer'));
+  assert.equal(harness.nodeRequests.some(({ method }) => method === 'claw/inspect-knowledge-writer'), false);
   assert.equal(harness.nodeRequests.some(({ method }) => method === 'claw/register-knowledge-writer'), false);
   assert.equal(harness.nodeRequests.some(({ method }) => method === 'claw/fail-knowledge-writer'), false);
 
@@ -285,15 +285,13 @@ test('legacy Cindy background jobs are visible but never launched through errand
 
 });
 
-test('subagent policy returns its Orca dispatch without waiting for did-turn-end', async () => {
+test('Cindy returns its Orca dispatch without waiting for did-turn-end', async () => {
   const knowledgeDispatch = {
     schemaVersion: 1,
-    policy: 'subagent',
     finalizeId: 'a'.repeat(64),
     prompt: 'Use the claw-kit Ghost knowledge.claim operation for ' + 'a'.repeat(64),
   };
   const harness = createHarness({
-    executionPolicy: 'subagent',
     knowledgeDispatch,
     queryResults: [],
   });

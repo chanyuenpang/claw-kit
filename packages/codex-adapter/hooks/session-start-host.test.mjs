@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import vm from "node:vm";
 
 const source = (await fs.readFile(new URL("../scripts/session-start.mjs", import.meta.url), "utf8"))
-  .replace(/^import .*?;\r?\n/gm, "");
+  .replace(/^import .*?;\r?\n/gm, "").replace("import.meta.url", JSON.stringify(new URL("../scripts/session-start.mjs", import.meta.url).href));
 
 async function invoke(context, { status = 0, raw, payload = {} } = {}) {
   const calls = [];
@@ -16,6 +16,8 @@ async function invoke(context, { status = 0, raw, payload = {} } = {}) {
   };
   const run = vm.runInNewContext("(async () => {\n" + source + "\n})", {
     process: fakeProcess,
+    path: (await import("node:path")).default,
+    fileURLToPath: (await import("node:url")).fileURLToPath,
     spawnSync(command, args, options) {
       calls.push({ command, args: [...args], options });
       return { status, stdout: raw ?? JSON.stringify(context), stderr: "" };
@@ -39,7 +41,10 @@ for (const [name, context, options] of [
     const text = result.hookSpecificOutput.additionalContext;
     assert.match(text, /^\[claw host\]\nplatform: codex\n/);
     assert.equal(text.match(/\[claw host\]/g).length, 1);
-    assert.deepEqual(calls[0].args, ["context", "--host", "codex"]);
+    assert.deepEqual(calls[0].args.slice(0, 2), ["codex", "invoke"]);
+    const decode = value => value.match(/.{4}/g).map(chunk => String.fromCharCode(parseInt(chunk, 16))).join("");
+    assert.deepEqual(JSON.parse(decode(calls[0].args[2])), ["context"]);
+    assert.match(decode(calls[0].args[3]), /codex-adapter$/);
     if (!context.activeWorkflow) assert.doesNotMatch(text, /snapshot is recovered/);
   });
 }

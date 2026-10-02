@@ -22,7 +22,4 @@ report, or worker failure must remain observable but cannot roll back a settled
 canonical transition. Do not repeat plan completion as compensation. Async
 writer completion and successful foreground plan.done are different evidence.
 
-For explicitly configured main-agent policy, execute the returned
-prepare/complete assignments yourself from memory, with no report, transcript,
-job, or delegation. This is automatic closeout, not the public manual capture
-skill. OpenCode does not support the native subagent finalization policy.
+OpenCode always captures at idle and launches its adapter-owned writer.

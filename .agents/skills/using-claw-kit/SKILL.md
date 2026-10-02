@@ -80,7 +80,7 @@ independently manageable scope rather than letting a parent task grow forever.
 - `process.wait`: record the wait when blocked on input/dependencies and stop
   until supported guidance resumes it.
 - `end.completed`: record the retrospective and durable decisions, complete
-  the canonical transition, then obey the effective host/policy closeout.
+  the canonical transition, then obey the fixed host closeout.
 - Cancellation/replacement uses the host's supported leave transition, not a
   fabricated successful completion. Do not require successful finalization to
   detach canceled work; a normal user-input wait is not cancellation.

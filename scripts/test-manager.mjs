@@ -180,9 +180,14 @@ export const TEST_DOMAINS = {
     description: "Functional-area test selection and command planning",
     steps: [nodeStep("--test", "./scripts/test-manager.test.mjs")],
   },
+  "release-candidate": {
+    description: "Local beta packing and unchanged formal promotion",
+    steps: [npmStep("run", "test:release-candidate")],
+  },
 };
 
 const FULL_STEPS = [
+  npmStep("run", "test:release-candidate"),
   npmStep("run", "build"),
   workspaceTest("@veewo/claw-core"),
   workspaceTest("@veewo/claw-client"),
@@ -215,6 +220,7 @@ const FULL_STEPS = [
 ];
 
 const rules = [
+  [["release-candidate"], /^scripts\/release-candidate(?:\.test)?\.mjs$/],
   [["test-management"], /^scripts\/test-manager(?:\.test)?\.mjs$/],
   [["embeddings"], /^packages\/core\/(?:src|test)\/embedding-/],
   [["embeddings"], /^packages\/core\/src\/(?:search-daemon|search-daemon-protocol)\.ts$/],

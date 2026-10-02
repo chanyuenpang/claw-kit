@@ -12,7 +12,7 @@
     "acceptanceCriteria": [
       "The published global `@veewo/claw` CLI and official Codex plugin are both refreshed.",
       "Codex uses the `chanyuenpang/claw-kit` repository marketplace and only `claw-kit@claw-kit` remains enabled.",
-      "CLI, marketplace source, enabled identity, source manifest, and cache manifest are verified against the target version.",
+      "Installed CLI and plugin versions match the target version.",
       "The result reports exact success or failure for each surface."
     ]
   },
@@ -35,7 +35,7 @@
             "summary": "The CLI and Codex plugin refresh commands completed; verify both installed surfaces.",
             "nextsteps": [
               "Verify the global CLI version.",
-              "Verify the official Codex marketplace source, enabled identity, and matching manifests."
+              "Confirm the installed Codex plugin version."
             ],
             "nextTaskId": 3
           }
@@ -45,7 +45,7 @@
     {
       "id": 3,
       "title": "Verify the CLI and Codex plugin",
-      "detail": "Run `claw --version` and `npm list -g @veewo/claw --depth=0`. Verify `claw-kit@claw-kit` is enabled, `claw-kit@claw-kit-local` is disabled, and the official marketplace source manifest plus matching cache manifest equal the published target version. Confirm the active cache contains planning, researcher, config, update, and create-claw-skill, while repository-local release-claw-kit and artifact-specific release-* skills, internal delegate-writer and knowledge-writer, and retired truth-writer and adr-writer remain absent. Restart Codex and start a new task before validating the loaded skill version. Report exact success or failure for both surfaces.",
+      "detail": "Confirm `claw --version` and the installed Codex plugin version match their targets. Report success or failure for each. Do not audit installed files/cache, require a fixed skill count/list, or demand a separate loaded-session proof. The artifact installer checks skills against that artifact's skill-inputs.json. Run functional smoke separately only when requested.",
       "status": "pending"
     }
   ],

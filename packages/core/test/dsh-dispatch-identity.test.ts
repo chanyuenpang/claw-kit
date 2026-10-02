@@ -12,5 +12,5 @@ test("reused DSH session uses the full per-job delegate identity, not a shared p
   assert.ok(second.prompt.includes("knowledge-finalizer-" + b));
   assert.ok(!first.prompt.includes("knowledge-finalizer-" + b));
   assert.notEqual(first.prompt, second.prompt);
-  assert.equal(buildKnowledgeDelegateDispatch({ policy: "subagent", finalizeId: a }).preferReuse, false);
+  assert.equal(buildKnowledgeDelegateDispatch({ finalizeId: a }).preferReuse, false);
 });

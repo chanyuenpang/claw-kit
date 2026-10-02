@@ -29,7 +29,7 @@ test("trusted parent finds only its own queued DSH dispatch without replaying te
   assert.deepEqual((runClaw(["internal-knowledge-pending"], root, { CLAW_SESSION_ID: "parent-session" }).dispatches as Array<{ finalizeId: string }>).map((entry) => entry.finalizeId), [id]);
   assert.equal(fs.readFileSync(jobPath, "utf8"), before, "discovery cannot rewrite job state");
   const background = readKnowledgeFinalizationJob(jobPath);
-  background.writer = { ...background.writer, executionPolicy: "background" };
+  background.writer = { ...background.writer,  };
   fs.writeFileSync(jobPath, JSON.stringify(background));
   assert.equal(pendingDshKnowledgeDispatches(root, "parent-session").length, 1, "background also uses the native DSH writer");
   const expired = { ...background, expiresAt: "2000-01-01T00:00:00.000Z" };

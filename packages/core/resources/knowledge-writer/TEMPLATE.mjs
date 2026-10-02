@@ -4,8 +4,6 @@
 //   - options.knowledgeWriter.datedSectionsToKeep tunes the retention rule;
 //   - options.context.finalizeId, when present, marks the assignment as
 //     claim-owned and is echoed into task 1 detail;
-//   - options.knowledgeWriter.executionPolicy is NOT interpreted here; the
-//     dispatcher owns execution routing.
 // Falls back to the static document values for every missing option.
 export default function knowledgeWriterTemplate(options = {}) {
   const writer = options.knowledgeWriter ?? {};

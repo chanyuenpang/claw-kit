@@ -439,7 +439,7 @@ export function apply(ctx: unknown): void {
     },
   });
 
-  type PendingDispatch = { finalizeId?: string; policy?: string; prompt?: string;
+  type PendingDispatch = { finalizeId?: string; prompt?: string;
     model?: string | null; reasoningEffort?: string | null; preferReuse?: boolean; execution?: Record<string, unknown>;
     startedAt?: string; endedAt?: string; queuedAt?: string; captureStatus?: "pending" | "captured" };
   const reusableFinalizers = new FinalizerRoleDispatcher({
@@ -545,7 +545,7 @@ export function apply(ctx: unknown): void {
       if (reused && "deferred" in reused) {
         return deferred("dispatch", "CHILD_CATALOG_UNAVAILABLE");
       }
-      if (reused) return { ok: true, reused: true, runId: reused.runId, policy: dispatch.policy ?? "subagent" };
+      if (reused) return { ok: true, reused: true, runId: reused.runId };
       // The job may have been claimed or expired while native children were listed.
       let pending: PendingDispatch[];
       try { pending = await readPendingDispatches(agent.id, workdir); }
@@ -590,7 +590,7 @@ export function apply(ctx: unknown): void {
           void Promise.resolve(child.result).then(settle, settle)
             .finally(() => (child.dispose ? child.dispose() : undefined)).catch(() => undefined);
         }
-        return { ok: true, runId, policy: dispatch.policy ?? "subagent" };
+        return { ok: true, runId };
       } catch (error) {
         // Native admission can have succeeded before its acknowledgement failed.
         // The next entry must inspect the child catalog, not blindly start again.
@@ -969,7 +969,7 @@ export function apply(ctx: unknown): void {
       // cut at ~1200 chars, which made the auto-dispatch look like it failed).
       if (response.knowledgeDispatch !== undefined) {
         // Dispatch first captures available parent history through the live Host.
-        const dispatch = response.knowledgeDispatch as { policy?: string; finalizeId?: string; prompt?: string };
+        const dispatch = response.knowledgeDispatch as { finalizeId?: string; prompt?: string };
         visible.dispatch = await dispatchOne(agent as { id: string }, workdir, dispatch) as unknown as JsonValue;
         // A failed dispatch stays queued and is retried by the next trusted entry.
         completedSweeps.delete(key);
@@ -978,7 +978,6 @@ export function apply(ctx: unknown): void {
         // prompt was pushing `dispatch` past truncation. Never expose prompt.
         visible.knowledgeDispatch = {
           schemaVersion: 1,
-          policy: dispatch?.policy ?? "subagent",
           finalizeId: dispatch?.finalizeId,
         } as unknown as JsonValue;
       }

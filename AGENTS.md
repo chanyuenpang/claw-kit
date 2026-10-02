@@ -7,6 +7,12 @@ The repository owner uses direct delivery by default.
 - Before a release or direct push, classify every local change. Commit useful repository content; remove disposable output; ignore intentional local-only artifacts. Do not use a stash to bypass a clean-worktree check.
 - A release is complete only after local `main` equals `origin/main` and `git status --porcelain` is empty.
 
+## Local beta and promotion
+
+- Beta uses the intended stable package version. Commit source on local `main`, then freeze npm tarballs and composed adapter artifacts with a batch ID and hashes. Beta must never push a branch/tag or publish npm/GitHub artifacts.
+- After installation and version confirmation, test the batch locally for seven days. Changed artifacts require a new batch and trial. Never reuse a published version for different bytes.
+- Formal promotion publishes the frozen npm tarballs and verifies retrieval before pushing source and releasing the stored adapter tree. Before npm publication require clean local `main` at the candidate revision and no remote divergence; require `main == origin/main` at completion. Do not rebuild or bump versions during promotion. See `docs/beta-release.md`.
+
 # Repository proportional verification and testing policy
 
 Verification and testing should not outweigh the work they protect. Spend more on them only when a concrete and realistically costly regression risk justifies the additional cost.

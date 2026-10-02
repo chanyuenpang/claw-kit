@@ -183,8 +183,10 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
   plan.knowledgeCapture = knowledgeCapture;
 
   let parentPlanPath: string | undefined;
-  if (input.parentTaskId !== undefined) {
-    const subplanContext = resolveSubplanContext(task, input.parentTaskId, input.parentPlanFile);
+  const subplanContext = input.parentTaskId !== undefined
+    ? resolveSubplanContext(task, input.parentTaskId, input.parentPlanFile)
+    : undefined;
+  if (subplanContext) {
     parentPlanPath = subplanContext.parentPlanPath;
     plan = normalizePlanDocument({
       ...plan,
@@ -193,6 +195,17 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
       rules: mergeStringLists(subplanContext.parentPlan.rules, plan.rules),
       references: mergeReferences(subplanContext.parentPlan.references, plan.references),
     });
+  }
+  // Root ownership must be validated in the resolved storage scope before
+  // linking the parent, writing the child, or changing the session binding.
+  const goalPlan = resolveThreadGoalPlan({
+    cwd: input.cwd,
+    taskName,
+    focusedPlan: plan,
+    ownerSessionKey: input.ownerSessionKey,
+    scope: project.scope,
+  });
+  if (subplanContext) {
     if (!input.deferParentMutation) {
       subplanContext.parentTask.execution = {
         ...subplanContext.parentTask.execution,
@@ -245,12 +258,6 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
     ...(existingStatus ? { previousStatus: existingStatus } : {}),
   });
 
-  const goalPlan = resolveThreadGoalPlan({
-    cwd: input.cwd,
-    taskName,
-    focusedPlan: plan,
-    ownerSessionKey: input.ownerSessionKey,
-  });
   return {
     scope: project.scope ?? "project",
     taskName,
@@ -548,15 +555,15 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
     });
 
     validatePlanDocument(next);
-    // A child can emit Codex Goal actions after this mutation. Resolve its
-    // root owner before committing so an invalid root never leaves a committed
-    // child mutation with no valid reconciliation path.
-    if (next.parentPlan && next.status === "process.active") {
+    // Child response guidance resolves root ownership in every status, not
+    // just active. Validate it before committing, in the canonical task scope.
+    if (next.parentPlan) {
       resolveThreadGoalPlan({
         cwd: input.cwd,
         taskName: task.taskName,
         focusedPlan: next,
         ownerSessionKey: input.ownerSessionKey,
+        scope: task.project.scope,
       });
     }
     if (task.project.scope !== "session" && next.status === "end.completed" && !next.retrospective?.summary?.trim()) {
@@ -689,6 +696,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
       taskName: task.taskName,
       focusedPlan: resultPlan,
       ownerSessionKey: input.ownerSessionKey,
+      scope: task.project.scope,
     });
     const focusedProjectConfig = resolvePlanEffectiveConfig(task.project.projectConfig, resultPlan);
     const goalProjectConfig = resolvePlanEffectiveConfig(task.project.projectConfig, goalPlan);

@@ -44,7 +44,14 @@ DSH 会话
 dsh plugin --profile web add @veewo/dsh-claw-kit
 ```
 
-仓库内本地开发可用 tarball 流程（等价安装面）：
+Electron 独占的 `desktop` profile 不接受上面这条命令：PATH 上的全局 `dsh`
+会以 `profile "desktop" is managed exclusively by the Electron application`
+拒绝它。该 profile 只能通过它自己的插件管理器写入——应用内 Plugins 页，或
+agent 工具 `plugin_manager(action: "install_bundle", target: "<spec 或 tarball 路径>")`
+——不得用文件系统工具、脚本或 shell 直接改写 profile 文件。完整边界与命令见
+[desktop profile 写入边界](<skills/update/references/desktop-profile-write-boundary.md>)。
+
+仓库内本地开发可用 tarball 流程（等价安装面，仅适用于非 Electron profile）：
 
 ```powershell
 npm run export:dsh-plugin     # 生成 dist/dsh-plugin/veewo-dsh-claw-kit-<v>.tgz

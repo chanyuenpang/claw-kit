@@ -135,7 +135,7 @@ function makeSubagents({ onStart, children = () => [] } = {}) {
 test("a queued job recovers on next context without replaying its lost plan terminal", async () => {
   const { service, state } = makeSubagents();
   const harness = makeHarness({ subagents: service, initialQueued: true,
-    dispatch: { policy: "subagent", finalizeId: "d".repeat(64), prompt: "run recovered writer" } });
+    dispatch: { finalizeId: "d".repeat(64), prompt: "run recovered writer" } });
   apply(harness.ctx);
   const agent = makeAgent("recovered-parent");
   await Promise.all([
@@ -149,7 +149,7 @@ test("a queued job recovers on next context without replaying its lost plan term
 test("live parent capture sends only proven in-plan finals before child dispatch", async () => {
   const { service, state } = makeSubagents();
   const harness = makeHarness({ subagents: service, initialQueued: true,
-    dispatch: { policy: "subagent", finalizeId: "6".repeat(64), prompt: "writer" },
+    dispatch: { finalizeId: "6".repeat(64), prompt: "writer" },
     extraService: { sessionQuery: { readSession: async (id) => {
       assert.equal(id, "parent-capture");
       return { events: [
@@ -168,7 +168,7 @@ test("live parent capture sends only proven in-plan finals before child dispatch
 test("missing parent history blocks writer before claim without fabricating empty capture", async () => {
   const { service, state } = makeSubagents();
   const harness = makeHarness({ subagents: service,
-    dispatch: { policy: "subagent", finalizeId: "f".repeat(64), prompt: "writer" },
+    dispatch: { finalizeId: "f".repeat(64), prompt: "writer" },
     extraService: { sessionQuery: undefined },
   });
   apply(harness.ctx);
@@ -186,7 +186,7 @@ test("missing parent history blocks writer before claim without fabricating empt
 test("collector stderr yields only a safe error code in parent receipts", async () => {
   const { service, state } = makeSubagents();
   const harness = makeHarness({ subagents: service,
-    dispatch: { policy: "subagent", finalizeId: "8".repeat(64), prompt: "writer" },
+    dispatch: { finalizeId: "8".repeat(64), prompt: "writer" },
     captureError: "DSH_REPORT_CAPTURE_DENIED: private path C:\\secret\\plan.report",
   });
   apply(harness.ctx);
@@ -200,7 +200,7 @@ test("collector stderr yields only a safe error code in parent receipts", async 
 test("queued job with durable capture receipt resumes without another Host history read", async () => {
   const { service, state } = makeSubagents();
   const harness = makeHarness({ subagents: service, initialQueued: true,
-    dispatch: { policy: "subagent", finalizeId: "7".repeat(64), prompt: "writer", captureStatus: "captured" },
+    dispatch: { finalizeId: "7".repeat(64), prompt: "writer", captureStatus: "captured" },
     extraService: { sessionQuery: undefined },
   });
   apply(harness.ctx);
@@ -236,7 +236,7 @@ test("a repeated dispatch for the same finalizeId starts exactly one writer chil
   const { service, state } = makeSubagents();
   const harness = makeHarness({
     subagents: service,
-    dispatch: { policy: "subagent", finalizeId: "a".repeat(64), prompt: "run the finalizer" },
+    dispatch: { finalizeId: "a".repeat(64), prompt: "run the finalizer" },
   });
   apply(harness.ctx, {});
 
@@ -259,7 +259,7 @@ test("a running durable child with the finalizeId label is reused after an adapt
   });
   const harness = makeHarness({
     subagents: service,
-    dispatch: { policy: "subagent", finalizeId: "c".repeat(64), prompt: "run the finalizer" },
+    dispatch: { finalizeId: "c".repeat(64), prompt: "run the finalizer" },
   });
   apply(harness.ctx, {});
 
@@ -277,7 +277,7 @@ test("a settled writer child releases the record so a stranded job can be retrie
   });
   const harness = makeHarness({
     subagents: service,
-    dispatch: { policy: "subagent", finalizeId: "e".repeat(64), prompt: "run the finalizer" },
+    dispatch: { finalizeId: "e".repeat(64), prompt: "run the finalizer" },
   });
   apply(harness.ctx, {});
 
@@ -296,7 +296,7 @@ test("plan.done releases only its own transport after dispatch, then same agent 
   const { service } = makeSubagents();
   const harness = makeHarness({
     subagents: service,
-    dispatch: { policy: "subagent", finalizeId: "f".repeat(64), prompt: "writer independent of transport" },
+    dispatch: { finalizeId: "f".repeat(64), prompt: "writer independent of transport" },
   });
   apply(harness.ctx);
   const agent = makeAgent("same-agent");
@@ -322,7 +322,7 @@ test("an already queued next-plan request prevents completed-plan eviction", asy
   });
   const harness = makeHarness({
     subagents: service,
-    dispatch: { policy: "subagent", finalizeId: "b".repeat(64), prompt: "writer" },
+    dispatch: { finalizeId: "b".repeat(64), prompt: "writer" },
   });
   apply(harness.ctx);
   const agent = makeAgent("race-agent");
@@ -350,7 +350,7 @@ test("claw_run keeps knowledge.done receipt when daemon omits command", async ()
 test("an unavailable subagents service reports a non-retryable dispatch", async () => {
   const harness = makeHarness({
     subagents: undefined,
-    dispatch: { policy: "subagent", finalizeId: "9".repeat(64), prompt: "run the finalizer" },
+    dispatch: { finalizeId: "9".repeat(64), prompt: "run the finalizer" },
   });
   apply(harness.ctx, {});
 
@@ -421,7 +421,7 @@ test("actual adapter reuses one Team writer and wakes B after both A ends with n
     }
     return { ok: true, command: request.operation, output: { planStatus: "end.completed" } };
   },
-    () => jobs.filter(j => j.status === "queued").map(j => ({ ...j, policy: "background" })), undefined,
+    () => jobs.filter(j => j.status === "queued").map(j => ({ ...j })), undefined,
     (spec, state) => {
       const id = spec.argv[spec.argv.indexOf("--finalize-id") + 1];
       const job = jobs.find(j => j.finalizeId === id);

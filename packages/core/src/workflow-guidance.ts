@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { ClawError } from "./errors.js";
-import { resolveHostIntegrationProfile, resolveKnowledgeExecutionPolicyForHost } from "./integration-contract.js";
+import { resolveHostIntegrationProfile } from "./integration-contract.js";
 import {
   getTemplateTaskDoneChoices,
   getTemplateTaskDoneGuidanceRoute,
@@ -618,13 +618,7 @@ export async function buildPlanWorkflowGuidance(params: {
   }
 }
 
-/**
- * Under the `main-agent` execution policy the terminal plan transition is the
- * closeout vehicle: no report, job, or subagent exists, so the invoking agent
- * itself must run the direct knowledge prepare/complete chain from its own
- * memory. Append that chain to the end.completed guidance; other policies keep
- * their existing closeout routes unchanged.
- */
+/** Standard hostless closeout uses agent memory and never creates a report/job. */
 function applyMainAgentCloseoutGuidance(params: {
   guidance: WorkflowGuidance;
   projectConfig?: ProjectConfig | null;
@@ -632,20 +626,11 @@ function applyMainAgentCloseoutGuidance(params: {
   knowledgeCapture?: boolean;
   projectRoot?: string;
 }): WorkflowGuidance {
-  const { guidance, projectConfig, host, knowledgeCapture } = params;
+  const { guidance, host, knowledgeCapture } = params;
   if (knowledgeCapture === false) {
     return guidance;
   }
-  const writer = projectConfig?.knowledgeWriter;
-  if (!writer) {
-    return guidance;
-  }
-  const byHost = projectConfig?.knowledgeWriterByHost;
-  const merged = host && byHost?.[host as keyof typeof byHost]
-    ? { ...writer, ...byHost[host as keyof typeof byHost] }
-    : writer;
-  const { policy } = resolveKnowledgeExecutionPolicyForHost(host, merged.executionPolicy);
-  if (policy !== "main-agent") {
+  if (host && host !== "standard") {
     return guidance;
   }
   const root = params.projectRoot ?? "<project-root>";

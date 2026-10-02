@@ -269,16 +269,19 @@ test("knowledge sidecar derives adjacent report names and keeps one report owner
   assert.equal(deriveKnowledgeReportPath(subplanPath), path.join(taskDir, "design.report"));
   assert.equal(tryRegisterKnowledgePlan({
     project,
+    host: "opencode",
     sessionId: "thread-demo",
     planPath: rootPlanPath,
   }).ok, true);
   assert.equal(tryRegisterKnowledgePlan({
     project,
+    host: "opencode",
     sessionId: "thread-demo",
     planPath: subplanPath,
   }).ok, true);
   assert.equal(tryCompleteKnowledgePlan({
     project,
+    host: "opencode",
     sessionId: "thread-demo",
     completedPlanPath: subplanPath,
     resumedPlanPath: rootPlanPath,
@@ -291,6 +294,7 @@ test("knowledge sidecar derives adjacent report names and keeps one report owner
 
   const firstStop = tryCaptureKnowledgeStop({
     project,
+    host: "opencode",
     sessionId: "thread-demo",
     turnId: "turn-subplan",
     message: "Subplan completed.",
@@ -331,6 +335,7 @@ test("knowledge sidecar derives adjacent report names and keeps one report owner
 
   const secondStop = tryCaptureKnowledgeStop({
     project,
+    host: "opencode",
     sessionId: "thread-demo",
     turnId: "turn-parent",
     message: "Parent continued.",
@@ -340,6 +345,7 @@ test("knowledge sidecar derives adjacent report names and keeps one report owner
 
   const duplicateStop = tryCaptureKnowledgeStop({
     project,
+    host: "opencode",
     sessionId: "thread-demo",
     turnId: "turn-parent",
     message: "Parent continued.",
@@ -355,6 +361,7 @@ test("knowledge sidecar failures stay fail-open for plan lifecycle callers", () 
   const project = resolveProjectContext(root);
   const result = tryRegisterKnowledgePlan({
     project,
+    host: "opencode",
     sessionId: "thread-demo",
     planPath: path.join(root, "outside.json"),
   });
@@ -372,10 +379,11 @@ test("subagent plan end creates a ready job while Stop stays out of the lifecycl
   fs.mkdirSync(taskDir, { recursive: true });
   fs.writeFileSync(planPath, "{}", "utf-8");
   fs.writeFileSync(subplanPath, "{}", "utf-8");
-  const writer = { executionPolicy: "subagent" as const, externalSkills: [] };
+  const writer = { externalSkills: [] };
 
   assert.equal(tryRegisterKnowledgePlan({
     project,
+    host: "codex",
     sessionId: "thread-subagent-ready",
     planPath,
     writer,
@@ -385,6 +393,7 @@ test("subagent plan end creates a ready job while Stop stays out of the lifecycl
   ) as Record<string, unknown>;
   assert.equal(tryRegisterKnowledgePlan({
     project,
+    host: "codex",
     sessionId: "thread-subagent-ready",
     planPath: subplanPath,
     writer,
@@ -395,12 +404,12 @@ test("subagent plan end creates a ready job while Stop stays out of the lifecycl
   assert.equal(subplanRegistry.activeStartedAt, rootRegistry.activeStartedAt);
   const subplanEnded = tryEndKnowledgePlan({
     project,
+    host: "codex",
     sessionId: "thread-subagent-ready",
     endedPlanPath: subplanPath,
     resumedPlanPath: planPath,
     endedAt: "2026-08-01T00:00:00.000Z",
     writer,
-    host: "codex",
   });
   assert.deepEqual(subplanEnded, { ok: true });
   const resumedRegistry = JSON.parse(
@@ -408,15 +417,15 @@ test("subagent plan end creates a ready job while Stop stays out of the lifecycl
   ) as Record<string, unknown>;
   assert.equal(resumedRegistry.activePlanPath, "tasks/demo/plan.json");
   assert.equal(resumedRegistry.activeStartedAt, rootRegistry.activeStartedAt);
-  assert.equal((resumedRegistry.activeWriter as Record<string, unknown>).executionPolicy, "subagent");
+  assert.equal("executionPolicy" in (resumedRegistry.activeWriter as Record<string, unknown>), false);
   assert.equal(resumedRegistry.pendingTurnOwner, undefined);
   const ended = tryEndKnowledgePlan({
     project,
+    host: "codex",
     sessionId: "thread-subagent-ready",
     endedPlanPath: planPath,
     endedAt: "2026-08-01T00:00:00.000Z",
     writer,
-    host: "codex",
   });
 
   assert.equal(ended.ok, true);
@@ -436,10 +445,10 @@ test("subagent plan end creates a ready job while Stop stays out of the lifecycl
 
   const stop = tryCaptureKnowledgeStop({
     project,
+    host: "codex",
     sessionId: "thread-subagent-ready",
     turnId: "turn-final",
     message: "This final answer must not be captured by Stop.",
-    host: "codex",
   });
   assert.equal(stop.captured, false);
   assert.equal(fs.existsSync(queued.reportPath), false);
@@ -497,7 +506,7 @@ test("leaving a plan revokes its queued knowledge job and removes its assignment
     sessionId: "leave-session",
     endedPlanPath: planPath,
     endedAt: "2026-08-28T00:00:00.000Z",
-    writer: { executionPolicy: "subagent" },
+    writer: {  },
     host: "codex",
   });
   assert.ok(ended.jobPath);
@@ -514,7 +523,7 @@ test("leaving a plan revokes its queued knowledge job and removes its assignment
 });
 
 for (const host of ["cindy", "dsh"] as const) {
-  test(`${host} coerces a configured background writer to the subagent lifecycle`, () => {
+  test(`${host} uses the fixed native finalizer lifecycle`, () => {
     const root = createEmptyFixture(`knowledge-${host}-subagent-only`);
     initProject({ cwd: root, projectName: `Knowledge ${host} Subagent Only` });
     const project = resolveProjectContext(root);
@@ -522,7 +531,7 @@ for (const host of ["cindy", "dsh"] as const) {
     const planPath = path.join(taskDir, "plan.json");
     fs.mkdirSync(taskDir, { recursive: true });
     fs.writeFileSync(planPath, "{}", "utf-8");
-    const writer = { executionPolicy: "background" as const, externalSkills: [] };
+    const writer = { externalSkills: [] };
     const sessionId = `${host}-subagent-only`;
 
     assert.equal(tryRegisterKnowledgePlan({
@@ -535,7 +544,7 @@ for (const host of ["cindy", "dsh"] as const) {
     const activeRegistry = JSON.parse(
       fs.readFileSync(knowledgeSessionRegistryPath(project, sessionId), "utf-8"),
     ) as { activeWriter?: { executionPolicy?: string } };
-    assert.equal(activeRegistry.activeWriter?.executionPolicy, "subagent");
+    assert.equal("executionPolicy" in (activeRegistry.activeWriter ?? {}), false);
 
     const ended = tryEndKnowledgePlan({
       project,
@@ -547,7 +556,7 @@ for (const host of ["cindy", "dsh"] as const) {
     });
     assert.ok(ended.jobPath);
     const queued = readKnowledgeFinalizationJob(ended.jobPath!);
-    assert.equal(queued.writer?.executionPolicy, "subagent");
+    assert.equal("executionPolicy" in (queued.writer ?? {}), false);
     assert.equal(queued.docUpdate, undefined);
     assert.equal(queued.reportCapture?.mode, "claim");
     assert.equal(queued.status, "queued");
@@ -573,12 +582,13 @@ test("knowledge claim owns execution and delegate prompt routing", () => {
   fs.writeFileSync(jobPath, JSON.stringify({
     schemaVersion: 1,
     finalizeId,
+    host: "opencode",
     sessionId: "owner-thread",
     projectRoot: root,
     taskName: "demo",
     planPath: path.join(taskDir, "plan.json"),
     reportPath: path.join(taskDir, "plan.report"),
-    writer: { executionPolicy: "background", externalSkills: [] },
+    writer: { externalSkills: [] },
     docUpdate: { externalDocPaths: ["docs", ".agents/skills"] },
     status: "queued",
     attempts: 0,
@@ -602,19 +612,17 @@ test("knowledge claim owns execution and delegate prompt routing", () => {
     assert.doesNotMatch(builtinAssignments[0]!.prompt, /request confirmation or review/i);
     assert.match(builtinAssignments[0]!.prompt, /keep at most 6 complete evolution sections/i);
     const delegateDispatch = buildKnowledgeDelegateDispatch({
-      policy: "subagent",
       finalizeId,
       projectRoot: root,
       writer: { model: "test-model", reasoningEffort: "high" },
     });
     assert.equal(delegateDispatch.preferReuse, false);
-    assert.equal(delegateDispatch.policy, "subagent");
+    assert.equal("policy" in delegateDispatch, false);
     assert.equal(delegateDispatch.model, "test-model");
     assert.equal(delegateDispatch.reasoningEffort, "high");
     assert.deepEqual(Object.keys(delegateDispatch).sort(), [
       "finalizeId",
       "model",
-      "policy",
       "preferReuse",
       "projectRoot",
       "prompt",
@@ -636,7 +644,7 @@ test("knowledge claim owns execution and delegate prompt routing", () => {
       writer: { model: "test-model", reasoningEffort: "high" },
     });
     assert.equal(atomicDispatch.preferReuse, false);
-    assert.equal(atomicDispatch.policy, "subagent");
+    assert.equal("policy" in atomicDispatch, false);
     assert.equal(atomicDispatch.model, "test-model");
     assert.equal(atomicDispatch.reasoningEffort, "high");
     assert.match(atomicDispatch.prompt, /claw-kit Cindy Ghost tools/);
@@ -1141,9 +1149,9 @@ test("dated tasks keep finalizer jobs inside the task directory", async () => {
   fs.writeFileSync(finalizerProjectPath, JSON.stringify(finalizerConfig, null, 2), "utf-8");
   const created = await writePlan({ cwd: root, taskName: "finalizer-task", title: "Finalizer task", goalText: "Keep job local" });
   const project = resolveProjectContext(root);
-  tryRegisterKnowledgePlan({ project, sessionId: "thread-finalizer", planPath: created.planPath });
-  tryCompleteKnowledgePlan({ project, sessionId: "thread-finalizer", completedPlanPath: created.planPath, completedAt: "2026-01-01T00:00:00.000Z" });
-  const stopped = tryCaptureKnowledgeStop({ project, sessionId: "thread-finalizer", turnId: "turn-finalizer", message: "Finalize." });
+  tryRegisterKnowledgePlan({ project, host: "opencode", sessionId: "thread-finalizer", planPath: created.planPath });
+  tryCompleteKnowledgePlan({ project, host: "opencode", sessionId: "thread-finalizer", completedPlanPath: created.planPath, completedAt: "2026-01-01T00:00:00.000Z" });
+  const stopped = tryCaptureKnowledgeStop({ project, host: "opencode", sessionId: "thread-finalizer", turnId: "turn-finalizer", message: "Finalize." });
   assert.equal(stopped.jobPath?.startsWith(created.taskDir), true);
   assert.match(stopped.jobPath ?? "", /\.runtime[\\/]knowledge-finalization[\\/][a-f0-9]+\.json$/);
   assert.equal(fs.existsSync(path.join(root, ".claw", "runtime", "knowledge-finalization", "jobs")), false);
@@ -3690,7 +3698,7 @@ test("end.completed emits complete goal tool guidance", async () => {
 
   assert.equal(result.workflowGuidance.stage, "done");
   assert.match(showPlan({ cwd: root, taskName: "demo-task" }).plan.completedAt ?? "", /^\d{4}-\d{2}-\d{2}T/);
-  assert.deepEqual(result.workflowGuidance.nextsteps, [
+  assert.deepEqual(result.workflowGuidance.nextsteps.slice(0, 3), [
     "1. Use `update_goal(status=\"complete\")` to close the active thread goal for this plan.",
     "2. Finish any remaining workflow-guided closeout work such as archive or parent-plan resumption.",
     "3. Do not continue ad hoc in this thread. Start the next task only through `using-claw-kit`, then follow the returned `workflowGuidance`.",

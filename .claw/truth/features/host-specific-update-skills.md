@@ -5,7 +5,7 @@
 Accepted working truth for the current Codex, OpenCode, and DSH update surfaces.
 
 <!-- state: current -->
-## Core facts
+## Current behavior
 
 - `update` is a host-selected skill name, not a cross-platform router. The loaded adapter determines which implementation is available, and the workflow must not ask the user to choose Codex, OpenCode, or a conservative route.
 - Codex owns `packages/codex-adapter/skills/update/`; OpenCode owns `packages/opencode-adapter/skills/update/`; DSH owns `packages/dsh-adapter/skills/update/`. Each package independently maintains `SKILL.md`, `TEMPLATE.json`, and `non-claw-fallback.md`; only Codex and OpenCode additionally carry `CONTENT-COVERAGE.md`.
@@ -33,9 +33,10 @@ Accepted working truth for the current Codex, OpenCode, and DSH update surfaces.
 
 ## DSH contract
 
-- Refresh the published global CLI first (`npm install -g @veewo/claw@latest`), then install the adapter into the DSH profile with `dsh plugin --profile <name> add @veewo/dsh-claw-kit@latest`. The installed CLI must accept `--host dsh`; a CLI without dsh host support cannot drive the adapter.
-- Unpublished workspace files are not valid update sources; the npm registry is the default source, and the published GitHub source only when separately authorized.
-- A new package version alone is not activation proof. The adapter activates only after the DSH Host restarts and a real session mounts `claw_run` with the bundled skills declared by the installed package, including feature-architecture and knowledge-capture; do not rely on a historical fixed count. Verification covers `claw --version` at the target, the `claw-kit` row in `dsh --profile <name> --dump-config`, and the post-restart session surface.
+- Refresh the published global CLI first (`npm install -g @veewo/claw@latest`), then install the adapter into the DSH profile. A non-Electron profile takes `dsh plugin --profile <name> add @veewo/dsh-claw-kit@latest`; for the Electron-managed `desktop` profile that command is refused (below) and the equivalent is `plugin_manager(action: "install_bundle", target: "@veewo/dsh-claw-kit@<exact-version>")` or the exported tarball path. The installed CLI must accept `--host dsh`; a CLI without dsh host support cannot drive the adapter.
+- The profile-aware `dsh plugin --profile ... add ...` command is the supported write path for a non-Electron DSH profile. The Electron-managed `desktop` profile is reserved to the Desktop application: the installed global `dsh` on `PATH` refuses every operation on it with `profile "desktop" is managed exclusively by the Electron application`, including `plugin`, and it forwards to the PATH pnpm rather than the app runtime's pnpm. Write that profile only through its own plugin manager (`plugin_manager` `install_bundle`, the same service as the in-app Plugins page) or, with the app fully quit, the packaged Desktop CLI invoked as the app with `ELECTRON_RUN_AS_NODE=1`. Agents must not directly write profile files with filesystem tools, scripts, or a shell; when a rejection names Electron, stop attempting direct file mutations instead of retrying another file write. Read-only inspection (bundle listing, package-manifest version, and `dsh --profile <name> --dump-config` for profiles that command accepts) remains valid. The canonical boundary and verified commands are `packages/dsh-adapter/skills/update/references/desktop-profile-write-boundary.md`.
+- Unpublished workspace files are not valid update sources; the npm registry is the default source, and the published GitHub source only when separately authorized. A local tarball is a valid delivery artifact only when the release workflow authorizes that exact artifact for the target profile; it also skips the profile's registry release-age quarantine.
+- A new package version alone is not activation proof. The adapter activates only after the DSH Host restarts and a real session mounts `claw_run` with the bundled skills declared by the installed package, including feature-architecture and knowledge-capture; do not rely on a historical fixed count. Verification covers `claw --version` at the target, the new profile bundle version (`plugin_manager` `list_bundles` for `desktop`; the `claw-kit` row in `dsh --profile <name> --dump-config` for profiles that command accepts), and the post-restart session surface.
 - An update plan paused at the restart boundary survives the Host restart: the new session resumes it via host-scoped recovery and closes it out without recreating the plan.
 
 ## Maintenance and verification anchors
@@ -47,6 +48,7 @@ Accepted working truth for the current Codex, OpenCode, and DSH update surfaces.
 - `packages/dsh-adapter/skills/update/SKILL.md`
 - `packages/dsh-adapter/skills/update/TEMPLATE.json`
 - `packages/dsh-adapter/skills/update/non-claw-fallback.md`
+- `packages/dsh-adapter/skills/update/references/desktop-profile-write-boundary.md`
 - `packages/opencode-adapter/skills/update/SKILL.md`
 - `packages/opencode-adapter/skills/update/TEMPLATE.json`
 - `packages/opencode-adapter/skills/update/non-claw-fallback.md`
@@ -72,11 +74,21 @@ Accepted working truth for the current Codex, OpenCode, and DSH update surfaces.
 - `index-pack stall recovery`
 - `OpenCode update maintained installer`
 - `DSH update profile plugin`
+- `DSH desktop profile write boundary`
+- `plugin_manager install_bundle`
+- `profile managed exclusively by the Electron application`
+- `ELECTRON_RUN_AS_NODE packaged desktop CLI`
+- `registry release-age quarantine`
 - `Host restart activation proof`
 - `update plan survives Host restart`
 
 <!-- state: history -->
 ## Evolution history
+
+<!-- dated: 2026-10-02 -->
+### Verified the Electron-managed DSH desktop profile write boundary
+
+The DSH Desktop app (`@deepseek-ai/dsh-desktop` `0.2.0-rc.2`, bundled pnpm `11.7.0`) reserves its `desktop` profile. The installed global `dsh` on `PATH` (`0.1.5-rc.2`) rejects every operation on that profile with `error: profile "desktop" is managed exclusively by the Electron application`, including `dsh plugin --profile desktop …`; its packaged CLI is the only entry that permits package operations, and only because it forwards `manageDesktopProfile: true` into the shared launcher while continuing to refuse `--profile desktop --dump-config`. The supported agent path is therefore the profile's own plugin manager: `plugin_manager(action: install_bundle, target: <exact spec, absolute package path, or tarball>)`, which is the same service as the in-app Plugins page, uses the app runtime's pnpm, and rolls `package.json` and the lockfile back on failure. This round installed `@veewo/dsh-claw-kit@0.2.42-rc.0` from the repository tarball into `desktop` with `application: restart-required`; `list_bundles` reported the new version and the `claw-kit` row, while the running Host kept the `0.2.41.0` module in memory. A local path or tarball also bypasses the profile's `minimumReleaseAge: 1440` registry quarantine, which a just-published registry version would otherwise hit. Direct profile file writes remain invalid: they bypass bundle reconciliation and rollback. This is installation evidence only; activation still waits for an authorized restart and a real session.
 
 <!-- dated: 2026-08-01 -->
 ### Hardened the official Codex install path with real Windows evidence

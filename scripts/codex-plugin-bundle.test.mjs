@@ -97,8 +97,8 @@ test("Codex routed reference preserves lifecycle and the exact mutation bridge",
   assert.match(entry, /Keep harness mechanics out of normal replies/);
   assert.match(host, /argv: \["plan", "create", "<title>"\]/);
   assert.match(host, /```javascript[\s\S]*runClawPlanMutation[\s\S]*```/);
-  assert.match(host, /claw-kit:codex-driver:v22:s1/);
-  assert.match(host, /envelope\?\.driverVersion !== 22/);
+  assert.match(host, /claw-kit:codex-driver:v23:s1/);
+  assert.match(host, /envelope\?\.driverVersion !== 23/);
   assert.match(host, /envelope\?\.hostActionSchemaVersion !== 1/);
   assert.ok(host.includes(`const pluginVersion = "${manifest.version}";`), "bridge pins its published adapter version");
   assert.match(host, /no direct-call fallback/);
@@ -265,7 +265,8 @@ test("composed Codex artifact selects exactly the declared skill packages", asyn
 
 test("canonical documentation entry contains adjacent references", async () => {
   const configReference = await fs.readFile(new URL("../.agents/skills/claw-kit-doc/references/configuration.md", import.meta.url), "utf8");
-  assert.match(configReference, /accepts `main-agent`, `background`, or `subagent`/);
+  assert.match(configReference, /Each host owns one fixed execution flow/);
+  assert.doesNotMatch(configReference, /executionPolicy/);
   assert.match(configReference, /knowledgeWriterByHost/);
 });
 
@@ -297,7 +298,8 @@ test("release protocol keeps CLI and coordinated platform gates distinct", async
   assert.match(releaseScript, /--batch/);
   assert.doesNotMatch(releaseScript, /"delegate-writer"/);
   assert.doesNotMatch(releaseScript, /requiredPluginSkills[^\n]*release-claw-kit/);
-  assert.match(releaseScript, /Refresh a platform plugin only when that platform artifact was separately released/);
+  assert.match(releaseScript, /promoteCandidate\(directory, \{ publish \}\)/);
+  assert.match(releaseScript, /Publishing requires --candidate/);
 });
 
 test("Codex update contract is platform-specific and supports only the official identity", async () => {
@@ -372,7 +374,7 @@ test("repository-local release skills split CLI and platform publication contrac
     `${skill}\n${JSON.stringify(template)}\n${fallback}\n${artifact}`).join("\n");
   assert.match(combined, /npm run verify:release/);
   assert.match(combined, /Verify built-in templated skill compatibility/);
-  assert.match(combined, /@veewo\/claw-core.*before @veewo\/claw/is);
+  assert.match(combined, /@veewo\/claw-core.*, then `@veewo\/claw-client`, then `@veewo\/claw`/);
   assert.match(combined, /HEAD == origin\/main/);
   assert.match(combined, /vcodex-<version>/);
   assert.match(combined, /vcindy-<version>/);
@@ -502,6 +504,7 @@ test("official installer removes local identities, hooks, marketplaces, and cach
   const cacheRoot = path.join(root, "plugins", "cache");
   await fs.mkdir(path.join(cacheRoot, "claw-kit-hookfix-local"), { recursive: true });
   await fs.mkdir(path.join(cacheRoot, "claw-kit-local"), { recursive: true });
+  await fs.mkdir(path.join(cacheRoot, "claw-kit-beta"), { recursive: true });
   await fs.writeFile(configPath, [
     "[marketplaces.claw-kit]",
     'source_type = "git"',
@@ -533,11 +536,12 @@ test("official installer removes local identities, hooks, marketplaces, and cach
   const config = await fs.readFile(configPath, "utf8");
 
   assert.equal(result.enabledIdentity, "claw-kit@claw-kit");
-  assert.deepEqual(result.removedIdentities, ["claw-kit@claw-kit-local", "claw-kit-local@personal", "claw-kit@claw-kit-hookfix-local"]);
+  assert.deepEqual(result.removedIdentities, ["claw-kit@claw-kit-beta", "claw-kit@claw-kit-local", "claw-kit-local@personal", "claw-kit@claw-kit-hookfix-local"]);
   assert.match(config, /\[plugins\."claw-kit@claw-kit"\]\nenabled = true/);
   assert.doesNotMatch(config, /claw-kit-local|claw-kit-hookfix-local/);
   await assert.rejects(fs.access(path.join(cacheRoot, "claw-kit-hookfix-local")));
   await assert.rejects(fs.access(path.join(cacheRoot, "claw-kit-local")));
+  await assert.rejects(fs.access(path.join(cacheRoot, "claw-kit-beta")));
 });
 
 test("official installer updates plugin identity sections idempotently", async () => {
@@ -597,7 +601,30 @@ test("Codex export refuses source writes, raw-source installation and extra skil
   await assert.rejects(readCodexPluginSource({ sourceDir: path.join(sourceRoot, "packages/codex-adapter") }), /missing|exactly/i);
   const { sourceDir } = await makeFixture();
   await fs.mkdir(path.join(sourceDir, "skills", "release-claw-kit"));
-  await assert.rejects(readCodexPluginSource({ sourceDir }), /exactly its nine declared skill packages/);
+  await assert.rejects(readCodexPluginSource({ sourceDir }), /skill-inputs.json declaration exactly/);
+});
+
+test("Codex artifact accepts declared skill additions/removals and rejects duplicates or missing files", async (t) => {
+  const { root, sourceDir } = await makeFixture();
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const declarationPath = path.join(sourceDir, "skill-inputs.json");
+  const declaration = JSON.parse(await fs.readFile(declarationPath, "utf8"));
+  declaration.skills.push("extra-skill");
+  await fs.mkdir(path.join(sourceDir, "skills", "extra-skill"));
+  await fs.writeFile(path.join(sourceDir, "skills", "extra-skill", "SKILL.md"), "# Extra skill");
+  await fs.writeFile(declarationPath, JSON.stringify(declaration));
+  await readCodexPluginSource({ sourceDir });
+  for (const name of ["extra-skill", "researcher"]) {
+    declaration.skills = declaration.skills.filter((skill) => skill !== name);
+    await fs.rm(path.join(sourceDir, "skills", name), { recursive: true });
+  }
+  await fs.writeFile(declarationPath, JSON.stringify(declaration));
+  await readCodexPluginSource({ sourceDir });
+  await fs.writeFile(declarationPath, JSON.stringify({ ...declaration, skills: [...declaration.skills, declaration.skills[0]] }));
+  await assert.rejects(readCodexPluginSource({ sourceDir }), /without duplicates/);
+  await fs.writeFile(declarationPath, JSON.stringify(declaration));
+  await fs.rm(path.join(sourceDir, "skills", declaration.skills[0], "SKILL.md"));
+  await assert.rejects(readCodexPluginSource({ sourceDir }), /Missing/);
 });
 
 test("Codex Git marketplace artifact resolves a detached flat plugin without source copies", async () => {
@@ -616,7 +643,7 @@ test("Codex Git marketplace artifact resolves a detached flat plugin without sou
   assert.ok(pluginDir.startsWith(detached + path.sep));
   const plugin = await readCodexPluginSource({ sourceDir: pluginDir });
   assert.equal(plugin.manifest.skills, "./skills/");
-  assert.equal((await fs.readdir(path.join(pluginDir, "skills"))).length, 9);
+  assert.deepEqual((await fs.readdir(path.join(pluginDir, "skills"))).sort(), before.skills.map(({ id }) => id).sort());
   await fs.access(path.join(pluginDir, "skills/create-claw-skill/TEMPLATE.json"));
   await assert.rejects(fs.access(path.join(detached, ".agents/skills")));
   await assert.rejects(fs.access(path.join(detached, "shared")));

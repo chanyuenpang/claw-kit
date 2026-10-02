@@ -4,6 +4,15 @@ description: Release the claw-kit CLI and core npm packages. Use only when the r
 ---
 # Release claw CLI
 
+## Beta promotion
+
+Follow `docs/beta-release.md` with the tested candidate directory. Preserve its
+version and source commit; skip new version bumps, builds and packing. After
+seven days run `verify:release -- --candidate <dir>` and
+`publish:release -- --candidate <dir>`. This publishes the exact tarballs before
+pushing source main. Finish immutable source tags and GitHub Release verification.
+If no beta exists, prepare it with beta-claw-kit and stop before publication.
+
 Run only inside the claw-kit repository. This skill owns the CLI/core artifact
 family; it never publishes a platform adapter as an independent plugin release.
 

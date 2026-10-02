@@ -82,9 +82,6 @@ export function initProject(input: InitProjectInput): InitProjectResult {
     autoUpdate: true,
     goalMode: true,
     knowledgeWriter: {
-      // executionPolicy omitted on purpose: the host capability matrix supplies
-      // the per-host default (standard -> main-agent, codex -> background,
-      // cindy/dsh -> subagent) at resolution time.
       externalSkills: externalWriterSkill ? [externalWriterSkill] : [],
       model: null,
       reasoningEffort: "medium",

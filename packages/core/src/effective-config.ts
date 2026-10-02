@@ -1,4 +1,11 @@
-import type { PlanDocument, ProjectConfig } from "./types.js";
+import type { KnowledgeWriterConfig, PlanDocument, ProjectConfig } from "./types.js";
+
+/** Project/template/job readers share the same content-only writer projection. */
+export function pickKnowledgeWriterFields(writer?: KnowledgeWriterConfig | null): KnowledgeWriterConfig {
+  return Object.fromEntries(Object.entries(writer ?? {}).filter(([key]) =>
+    ["externalSkills", "model", "reasoningEffort", "datedSectionsToKeep"].includes(key),
+  ));
+}
 
 export function resolvePlanEffectiveConfig(
   projectConfig: ProjectConfig | null,
@@ -13,8 +20,8 @@ export function resolvePlanEffectiveConfig(
     ...((projectConfig?.knowledgeWriter || plan.configOverride?.knowledgeWriter)
       ? {
           knowledgeWriter: {
-            ...(projectConfig?.knowledgeWriter ?? {}),
-            ...(plan.configOverride?.knowledgeWriter ?? {}),
+            ...pickKnowledgeWriterFields(projectConfig?.knowledgeWriter),
+            ...pickKnowledgeWriterFields(plan.configOverride?.knowledgeWriter),
           },
         }
       : {}),

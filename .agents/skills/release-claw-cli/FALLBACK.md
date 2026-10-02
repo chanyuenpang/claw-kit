@@ -1,7 +1,8 @@
 # CLI release fallback
 
-When claw planning is unavailable, execute the six template stages in order:
-inspect and classify; prepare the three-segment CLI/core baseline; run focused
-checks and dry-runs; verify every built-in templated skill with
-`npm run check:template-versions`; commit/push and pass the exact-source gate;
-publish core then CLI and verify npm/GitHub evidence. Stop at the first failed boundary.
+When claw planning is unavailable, follow `docs/beta-release.md` directly.
+Preparation commits locally and freezes a final-version batch for seven days of
+testing without pushing. Formal promotion preserves its version and bytes:
+verify/publish with `--candidate <dir>`, check Core/Client/CLI retrieval before
+pushing main, then finish immutable source tag/Release and clean main equality.
+Stop at the first failed boundary; do not rebuild during promotion.

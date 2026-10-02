@@ -34,7 +34,7 @@ function fixture(t: TestContext) {
   const endedAt = new Date(Date.now() - 5000).toISOString();
   const job: KnowledgeFinalizationJob = { schemaVersion: 1, finalizeId, projectRoot: root, sessionId: parentSessionId, host: "dsh",
     taskName: "job", planPath, reportPath, status: "queued", attempts: 0, queuedAt: new Date().toISOString(),
-    expiresAt: new Date(Date.now() + 60000).toISOString(), writer: { executionPolicy: "subagent", externalSkills: ["writer"] },
+    expiresAt: new Date(Date.now() + 60000).toISOString(), writer: { externalSkills: ["writer"] },
     reportCapture: { mode: "claim", status: "captured", endedAt } };
   fs.writeFileSync(jobPath, JSON.stringify(job));
   const common = { cwd: root, parentSessionId, finalizeId };

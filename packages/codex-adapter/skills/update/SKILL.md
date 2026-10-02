@@ -25,9 +25,10 @@ Resolve `<skill-dir>` as the directory containing this loaded `SKILL.md`.
 
 - Refresh the published global CLI first, then the official Codex plugin from the `chanyuenpang/claw-kit` GitHub marketplace.
 - Treat the CLI and Codex plugin as one update unit; verify both before reporting success.
-- Require `claw-kit@claw-kit` to be enabled and any `claw-kit@claw-kit-local` identity to be disabled.
+- Enable `claw-kit@claw-kit` and disable local/beta identities when switching back to the published version.
 - Never use unpublished workspace files or a local marketplace as the Codex update source.
-- A cache directory alone is not activation proof. Verify the marketplace source, enabled identity, and matching manifest versions.
+- Confirm installed CLI and plugin versions; no separate cache audit or loaded-session proof is required for update completion.
+- Artifact installation validates skills against that artifact's `skill-inputs.json`, including declared SKILL.md files, without a fixed count. Update itself needs only download, installation and CLI/plugin version confirmation; do not add a per-file installation audit.
 - During release closeout, publish and verify the target version before invoking this skill.
 - Keep execution details in `TEMPLATE.json`; use `non-claw-fallback.md` whenever
   the claw harness is unavailable.

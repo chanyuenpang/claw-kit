@@ -7,11 +7,24 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { exportCodexPluginBundle, installCodexPluginBundle, readCodexPluginSource } from "./codex-plugin-bundle.mjs";
 import { loadSkillInputs } from "./skill-artifacts.mjs";
 import { assertTemplateVersionsAligned } from "./update-template-versions.mjs";
+import { promoteCandidate } from "./release-candidate.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publish = process.argv.includes("--publish");
 const includePlatformArtifacts = process.argv.includes("--batch");
 const npmExecPath = process.env.npm_execpath;
+
+const candidateIndex = process.argv.indexOf("--candidate");
+if (candidateIndex !== -1) {
+  const directory = process.argv[candidateIndex + 1];
+  assert(directory && !directory.startsWith("--"), "Supply --candidate <directory>.");
+  assert(process.argv.slice(2).every((arg, index, args) => ["--publish", "--batch", "--candidate"].includes(arg) || args[index - 1] === "--candidate"), "Unknown release option.");
+  const { candidate, directory: candidateDir } = await promoteCandidate(directory, { publish });
+  console.log(`${publish ? "Published npm packages and pushed source main for" : "Verified"} beta ${candidate.batch} (${candidate.version}).`);
+  console.log(`For the separately authorized GitHub release, reuse ${path.join(candidateDir, "artifacts", "marketplace")} unchanged. Create immutable source/artifact tags and Releases through the release skills; do not rebuild.`);
+  process.exit(0);
+}
+assert(!publish, "Publishing requires --candidate <directory> after seven days of local beta testing. See docs/beta-release.md. No build, push or publish was performed.");
 
 function command(command, args) {
   return execFileSync(command, args, { cwd: repoRoot, encoding: "utf8" }).trim();
@@ -294,19 +307,6 @@ console.log(`Release CLI ${release.cliVersion} is committed, pushed, version-ali
 if (includePlatformArtifacts) console.log("The coordinated platform-artifact gate also passed.");
 
 if (!publish) {
-  console.log("Dry run complete. Re-run with --publish to publish @veewo/claw-core, @veewo/claw-client, and @veewo/claw.");
+  console.log("Diagnostic verification complete. Formal publication requires a tested beta: npm run publish:release -- --candidate <directory>.");
   process.exit(0);
 }
-
-for (const workspace of ["@veewo/claw-core", "@veewo/claw-client", "@veewo/claw"]) {
-  assert(npmExecPath, "Release publishing must run through an npm script so npm_execpath is available.");
-  const result = spawnSync(process.execPath, [npmExecPath, "publish", "--workspace", workspace, "--access", "public"], {
-    cwd: repoRoot,
-    stdio: "inherit",
-  });
-  if (result.status !== 0) process.exit(result.status ?? 1);
-}
-
-assertCleanWorktree("After publishing");
-console.log(`Published @veewo/claw-core, @veewo/claw-client, and @veewo/claw ${release.cliVersion}.`);
-console.log("Next: refresh the global CLI. Refresh a platform plugin only when that platform artifact was separately released.");

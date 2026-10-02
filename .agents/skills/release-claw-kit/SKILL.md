@@ -7,6 +7,11 @@ description: Route an explicit claw-kit release request to the one artifact-spec
 This skill routes only; it does not change versions, build, commit, push, tag,
 publish, or install artifacts.
 
+Local beta requests route to `beta-claw-kit`, which permits local main commits
+but no push/publication. For formal promotion, read `docs/beta-release.md` and
+pass the frozen candidate directory to the artifact skills. Preserve versions
+and bytes; verify npm retrieval before any GitHub push.
+
 Choose exactly one artifact skill from the user's named product and changed
 scope:
 

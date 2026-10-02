@@ -16,10 +16,8 @@ export type MemoryEmbeddingConfig = {
 };
 
 export type KnowledgeWriterReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
-export type KnowledgeWriterExecutionPolicy = "main-agent" | "background" | "subagent";
 
 export type KnowledgeWriterConfig = {
-  executionPolicy?: KnowledgeWriterExecutionPolicy;
   /** Ordered external finalizer skills. Each runs in sequence. */
   externalSkills?: string[];
   model?: string | null;
@@ -39,7 +37,7 @@ export type ProjectConfig = {
   /**
    * Per-host field-level overrides of `knowledgeWriter`, keyed by integration
    * host. Applied after the base writer and plan template override, before the
-   * host capability matrix resolves the effective execution policy.
+   * host executes its fixed knowledge-finalization flow.
    */
   knowledgeWriterByHost?: Partial<Record<IntegrationHost, KnowledgeWriterConfig>>;
   externalPlanningSkill?: string | null;

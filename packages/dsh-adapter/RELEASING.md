@@ -58,9 +58,12 @@ Distribution is the npm package — there is no marketplace repository or ZIP.
 
 5. **Install the published package into the known target profile.** A source
    release is not a profile update. Use the exact npm version, not an
-   unpublished workspace build or an unpinned `latest` resolution. For the
-   existing `web` profile, for example (replace both profile and version for
-   another authorized target):
+   unpublished workspace build or an unpinned `latest` resolution. The write
+   path depends on who owns the profile.
+
+   For a non-Electron profile such as the existing `web` profile (replace both
+   profile and version for another authorized target):
+
    ```powershell
    $gitVersion = (Get-Content .\packages\dsh-adapter\package.json | ConvertFrom-Json).version
    $parts = $gitVersion.Split('.')
@@ -70,6 +73,26 @@ Distribution is the npm package — there is no marketplace repository or ZIP.
    (Get-Content "$HOME\.dsh\profiles\web\node_modules\@veewo\dsh-claw-kit\package.json" | ConvertFrom-Json).version
    dsh --profile web --dump-config  # confirm the claw-kit plugin row
    ```
+
+   For the Electron-managed `desktop` profile the global `dsh` on `PATH`
+   refuses every command, so no `dsh plugin --profile desktop …` form works.
+   Install through the profile's own plugin manager — the same service the
+   Desktop app's **Plugins** page uses:
+
+   ```text
+   plugin_manager(action: "install_bundle", target: "@veewo/dsh-claw-kit@<npm-version>")
+   plugin_manager(action: "install_bundle", target: "<absolute path to the exported or released tarball>")
+   ```
+
+   A local tarball skips the registry release-age quarantine in the profile's
+   `pnpm-workspace.yaml`; a registry spec published less than
+   `minimumReleaseAge` (1440 minutes) ago is quarantined. Verify the result with
+   `plugin_manager(action: "list_bundles")`, which must report the new version
+   for `@veewo/dsh-claw-kit`; `dsh --profile desktop --dump-config` stays
+   refused. Do not write profile files with a filesystem tool, script, or shell.
+   See
+   [the desktop profile write boundary](skills/update/references/desktop-profile-write-boundary.md).
+
    Install only when the target profile is known and profile delivery is
    authorized; ask which profile otherwise. If the installed CLI is behind
    the published CLI base, update and verify it before the adapter install.
@@ -90,6 +113,22 @@ The adapter shares the CLI's first three segments and owns only the fourth:
 `<cli-base>.<n>`. `0.2.21.14` means CLI base `0.2.21`, adapter revision 14.
 Bumping the CLI base (e.g. to `0.2.22`) starts a new adapter line at
 `0.2.22.0`.
+
+## DSH desktop profile write boundary
+
+The Electron-managed `desktop` profile is written only through its own plugin
+manager: `plugin_manager(action: "install_bundle", target: "<spec>")` in a
+session, or the Desktop app's **Plugins** page. The installed global `dsh` on
+`PATH` refuses every operation on it with `profile "desktop" is managed
+exclusively by the Electron application`, including `plugin`; only the app's
+packaged CLI, invoked as the app with `ELECTRON_RUN_AS_NODE=1`, opens that
+profile's package operations. Never edit profile files with Agent filesystem
+tools, scripts, or shell commands — that bypasses bundle reconciliation and
+rollback, and a rejection naming Electron is this boundary rather than a broken
+command. Read-only package-manifest checks and
+`plugin_manager(action: "list_bundles")` remain valid. The verified commands,
+the app-quit CLI fallback, and the verification steps live in
+[the desktop profile write boundary](skills/update/references/desktop-profile-write-boundary.md).
 
 The git version is always the four-segment `<cli-base>.<n>` (tagged
 `vdsh-<cli-base>.<n>`); the npm version is the mapped prerelease

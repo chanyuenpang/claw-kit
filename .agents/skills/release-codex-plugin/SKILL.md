@@ -4,6 +4,15 @@ description: Release the claw-kit Codex adapter and official GitHub marketplace 
 ---
 # Release Codex plugin
 
+## Promoting a tested beta
+
+For a supplied candidate, follow `docs/beta-release.md`. Preserve its version and
+`artifacts/marketplace` tree; skip bumps and export/build steps in this template.
+Verify hashes, seven-day trial and source revision. Require matching CLI npm
+retrieval before any GitHub push; publish the stored tree to the existing immutable
+artifact tag and compare its files against the candidate. A beta request itself
+authorizes no remote writes.
+
 Run only inside the claw-kit repository. This skill owns only
 `packages/codex-adapter`, its declared canonical skill inputs, and Codex
 marketplace packaging metadata. Skills are assembled into the existing flat

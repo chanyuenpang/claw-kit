@@ -19,7 +19,7 @@
     {
       "id": 1,
       "title": "Detect the current and target versions",
-      "detail": "Resolve the current authorized profile; ask if unknown and never default to web. Run claw --version and read the installed adapter version (dsh --profile <name> --dump-config / profile package.json). Resolve the latest published @veewo/claw and @veewo/dsh-claw-kit versions from the npm registry.",
+      "detail": "Resolve the current authorized profile; ask if unknown and never default to web. Run claw --version and read the installed adapter version (plugin_manager list_bundles for the Electron-managed desktop profile; dsh --profile <name> --dump-config or the profile package.json for profiles that command accepts). Resolve the latest published @veewo/claw and @veewo/dsh-claw-kit versions from the npm registry.",
       "status": "pending"
     },
     {
@@ -31,7 +31,7 @@
     {
       "id": 3,
       "title": "Update the DSH adapter in the profile",
-      "detail": "dsh plugin --profile <name> add @veewo/dsh-claw-kit@latest; confirm the profile bundles list carries @veewo/dsh-claw-kit and dsh --profile <name> --dump-config shows the claw-kit row.",
+      "detail": "Non-Electron profile: dsh plugin --profile <name> add @veewo/dsh-claw-kit@<exact-version>. Electron-managed desktop profile: the global dsh refuses it with 'profile \"desktop\" is managed exclusively by the Electron application', so install through the profile's own plugin manager instead — plugin_manager(action: install_bundle, target: '<exact version, local tarball path, or package path>') — and never write profile files with a filesystem tool, script, or shell. Then confirm the profile bundles list carries @veewo/dsh-claw-kit at the target version. See references/desktop-profile-write-boundary.md.",
       "status": "pending"
     },
     {
@@ -44,6 +44,13 @@
   "rules": [
     "Never use unpublished workspace files as the update source.",
     "CLI and adapter are one validation unit; do not report success until both are verified.",
-    "A new package version is not activation proof; require a real session with claw_run."
+    "A new package version is not activation proof; require a real session with claw_run.",
+    "Never mutate the Electron-managed desktop profile with filesystem tools, scripts, or a shell; use plugin_manager install_bundle (or the in-app plugin page) and never restart a running Host without separate explicit authorization."
+  ],
+  "references": [
+    {
+      "path": "references/desktop-profile-write-boundary.md",
+      "why": "Owns the verified write path and verification steps for the Electron-managed desktop profile."
+    }
   ]
 }

@@ -388,7 +388,7 @@ test("daemon preserves post-commit host actions in the typed command envelope", 
       taskName: "host-actions-plan",
       planStatus: "end.completed",
     }]);
-    assert.equal((done.knowledgeDispatch as { policy?: string } | undefined)?.policy, "subagent");
+    assert.equal("policy" in (done.knowledgeDispatch as object), false);
     assert.match(
       String((done.knowledgeDispatch as { finalizeId?: string } | undefined)?.finalizeId),
       /^[a-f0-9]{64}$/,
@@ -422,7 +422,7 @@ test("Cindy daemon sessions coerce background config to the templated no-Stop kn
       input: { retrospectiveSummary: "Complete" },
     });
     const dispatch = done.knowledgeDispatch as { policy?: string; prompt?: string } | undefined;
-    assert.equal(dispatch?.policy, "subagent");
+    assert.equal("policy" in (dispatch ?? {}), false);
     assert.match(String(dispatch?.prompt), /resources[\\/]cindy-delegate-writer[\\/]TEMPLATE\.json/);
     assert.match(String(dispatch?.prompt), /session plan/i);
     assert.match(String(dispatch?.prompt), /assignment subplan/i);
@@ -463,7 +463,7 @@ test("DSH daemon sessions coerce a fresh project's default background config to 
       input: { retrospectiveSummary: "Complete" },
     });
     const dispatch = done.knowledgeDispatch as { policy?: string; finalizeId?: string; prompt?: string; preferReuse?: boolean } | undefined;
-    assert.equal(dispatch?.policy, "subagent");
+    assert.equal("policy" in (dispatch ?? {}), false);
     assert.match(String(dispatch?.finalizeId), /^[a-f0-9]{64}$/);
     assert.match(String(dispatch?.prompt), /dsh-delegate-writer/);
     assert.match(String(dispatch?.prompt), /claw_run.*plan.create/);

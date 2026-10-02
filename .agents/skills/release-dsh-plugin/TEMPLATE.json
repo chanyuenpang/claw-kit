@@ -50,7 +50,7 @@
     {
       "id": 6,
       "title": "Verify the immutable DSH release",
-      "detail": "Verify the exact npm version is publicly available and latest, the immutable vdsh-<version> tag matches clean origin/main, then install the exact published npm version into the known authorized DSH profile and verify installed package.json, compatible CLI, and dump-config. Ask for the target if unknown; do not restart without separate explicit authorization. Runtime claw_run/skills verification remains deferred until the owner restarts.",
+      "detail": "Verify the exact npm version is publicly available and latest, the immutable vdsh-<version> tag matches clean origin/main, then install the exact published npm version into the known authorized DSH profile. A non-Electron profile takes `dsh plugin --profile <name> add @veewo/dsh-claw-kit@<npm-version>`; the Electron-managed desktop profile refuses that command and takes `plugin_manager(action: install_bundle, target: <exact spec or tarball>)` instead — never a direct profile file write. Then verify installed package.json, compatible CLI, the new bundle version, and (where the CLI accepts the profile) dump-config. Ask for the target if unknown; do not restart without separate explicit authorization. Runtime claw_run/skills verification remains deferred until the owner restarts.",
       "status": "pending"
     }
   ],
@@ -68,6 +68,7 @@
     "Publish only @veewo/dsh-claw-kit to npm; never publish CLI/core or another adapter.",
     "Never modify another artifact family without explicit batch authority.",
     "Stop at the first failed release boundary.",
-    "Install the exact published package into a known authorized target profile; never restart a running DSH Host without separate explicit authorization or claim runtime activation from an on-disk install."
+    "Install the exact published package into a known authorized target profile; never restart a running DSH Host without separate explicit authorization or claim runtime activation from an on-disk install.",
+    "Write a profile only through its owner: the profile-scoped `dsh plugin` CLI for non-Electron profiles, and `plugin_manager` install_bundle (or the in-app Plugins page) for the Electron-managed desktop profile. Never write Electron-managed profile files with an Agent, filesystem tool, script, or shell."
   ]
 }

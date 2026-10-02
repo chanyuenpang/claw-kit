@@ -475,7 +475,7 @@ export function apply(ctx) {
                 return deferred("dispatch", "CHILD_CATALOG_UNAVAILABLE");
             }
             if (reused)
-                return { ok: true, reused: true, runId: reused.runId, policy: dispatch.policy ?? "subagent" };
+                return { ok: true, reused: true, runId: reused.runId };
             // The job may have been claimed or expired while native children were listed.
             let pending;
             try {
@@ -531,7 +531,7 @@ export function apply(ctx) {
                     void Promise.resolve(child.result).then(settle, settle)
                         .finally(() => (child.dispose ? child.dispose() : undefined)).catch(() => undefined);
                 }
-                return { ok: true, runId, policy: dispatch.policy ?? "subagent" };
+                return { ok: true, runId };
             }
             catch (error) {
                 // Native admission can have succeeded before its acknowledgement failed.
@@ -973,7 +973,6 @@ export function apply(ctx) {
                 // prompt was pushing `dispatch` past truncation. Never expose prompt.
                 visible.knowledgeDispatch = {
                     schemaVersion: 1,
-                    policy: dispatch?.policy ?? "subagent",
                     finalizeId: dispatch?.finalizeId,
                 };
             }

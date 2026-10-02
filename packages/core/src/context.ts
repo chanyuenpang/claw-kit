@@ -11,8 +11,9 @@ import {
   DEFAULT_LOCAL_EMBEDDING_MODEL,
   resolveDefaultLocalEmbeddingDimensions,
 } from "./embedding-defaults.js";
+import { pickKnowledgeWriterFields } from "./effective-config.js";
 import { resolveSessionBoundPlan } from "./session-bindings.js";
-import type { KnowledgeWriterExecutionPolicy, KnowledgeWriterReasoningEffort, MemoryEmbeddingConfig, ProjectConfig, ProjectContext, ResolvedContext, TaskContext, TaskMeta } from "./types.js";
+import type { KnowledgeWriterReasoningEffort, MemoryEmbeddingConfig, ProjectConfig, ProjectContext, ResolvedContext, TaskContext, TaskMeta } from "./types.js";
 
 const CORE_VERSION = readCoreVersion();
 const CONFIG_CACHE_LIMIT = 64;
@@ -249,9 +250,6 @@ function normalizeProjectConfig(projectConfig: ProjectConfig): ProjectConfig {
     autoUpdate: projectConfig.autoUpdate === true,
     goalMode: typeof projectConfig.goalMode === "boolean" ? projectConfig.goalMode : true,
     knowledgeWriter: {
-      ...(projectConfig.knowledgeWriter?.executionPolicy
-        ? { executionPolicy: normalizeKnowledgeWriterExecutionPolicy(projectConfig.knowledgeWriter.executionPolicy) }
-        : {}),
       externalSkills: resolveExternalWriterSkills(legacyConfig),
       model: normalizeOptionalSkill(projectConfig.knowledgeWriter?.model),
       reasoningEffort: normalizeKnowledgeWriterReasoningEffort(
@@ -263,7 +261,7 @@ function normalizeProjectConfig(projectConfig: ProjectConfig): ProjectConfig {
       ),
     },
     ...(projectConfig.knowledgeWriterByHost && Object.keys(projectConfig.knowledgeWriterByHost).length > 0
-      ? { knowledgeWriterByHost: projectConfig.knowledgeWriterByHost }
+      ? { knowledgeWriterByHost: Object.fromEntries(Object.entries(projectConfig.knowledgeWriterByHost).map(([host, writer]) => [host, pickKnowledgeWriterFields(writer)]).filter(([, writer]) => Object.keys(writer as object).length > 0)) }
       : {}),
     externalPlanningSkill: normalizeOptionalSkill(projectConfig.externalPlanningSkill),
     defaultPlanTemplate: normalizeOptionalTemplateName(projectConfig.defaultPlanTemplate),
@@ -319,10 +317,6 @@ function normalizeKnowledgeWriterReasoningEffort(value: unknown): KnowledgeWrite
   return value === "minimal" || value === "low" || value === "high" || value === "xhigh"
     ? value
     : "medium";
-}
-
-function normalizeKnowledgeWriterExecutionPolicy(value: unknown): KnowledgeWriterExecutionPolicy | undefined {
-  return value === "main-agent" || value === "subagent" ? value : value === "background" ? "background" : undefined;
 }
 
 function deriveProjectId(projectRoot: string, projectConfig: ProjectConfig | null): string {

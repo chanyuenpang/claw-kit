@@ -44,10 +44,7 @@ test("Cindy session focus reconciliation preheats transport and recovers writer 
   assert.match(mainSource, /msg\.name === 'did-session-switched'/);
   assert.match(mainSource, /reconcilingSessions\.has\(sessionId\)/);
   assert.match(mainSource, /reconcileFocusedSession\(data\.sessionId, workdir\)/);
-  assert.match(mainSource, /await captureTurnEndReport\(\{ data: \{ sessionId \} \}\)/);
-  assert.match(mainSource, /claw\/resolve-session-context/);
-  assert.match(mainSource, /cindySessionId/);
-  assert.match(mainSource, /clawSessionId/);
+  assert.doesNotMatch(mainSource, /captureTurnEndReport/);
   assert.match(workerSource, /await ensureSession\(params\.sessionId, params\.workdir\)/);
   assert.match(workerSource, /'knowledge', 'list'/);
   assert.match(workerSource, /'--job-host', 'cindy'/);
@@ -1110,56 +1107,6 @@ test("session-start turns an unavailable CLI into an installation prompt", { ski
   }
 });
 
-test("worker captures a final Cindy report through the host-neutral CLI hand-off", { skip: process.platform !== "win32" }, async () => {
-  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-report-capture-"));
-  const db = new DatabaseSync(path.join(fixtureDir, "cindy-reader.db"));
-  db.exec(`
-    CREATE TABLE sessions (id TEXT PRIMARY KEY);
-    CREATE TABLE messages (
-      id TEXT PRIMARY KEY, client_id TEXT, session_id TEXT NOT NULL, role TEXT NOT NULL,
-      content TEXT NOT NULL, tool_use_id TEXT, created_at INTEGER NOT NULL,
-      rewind_at INTEGER
-    );
-  `);
-  db.prepare("INSERT INTO sessions (id) VALUES (?)").run("cindy-report-session");
-  db.prepare("INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)")
-    .run("assistant-final", "cindy-report-session", "assistant", JSON.stringify("Completed the requested change."), 1);
-  db.close();
-  fs.writeFileSync(
-    path.join(fixtureDir, "claw.cmd"),
-    '@echo off\r\necho {"ok":true,"captured":true,"finalizeId":"finalize-1","jobPath":"C:\\\\jobs\\\\finalize-1.json","sessionId":"%CLAW_SESSION_ID%","args":"%*"}\r\n',
-  );
-  const child = spawn(process.execPath, [workerPath], {
-    cwd: fixtureDir,
-    env: { ...process.env, CINDY_USER_DATA: fixtureDir, PATH: `${fixtureDir}${path.delimiter}${process.env.PATH || ""}` },
-    stdio: ["pipe", "pipe", "pipe"],
-    windowsHide: true,
-  });
-
-  try {
-    const response = await requestWorker(child, {
-      jsonrpc: "2.0",
-      id: 1,
-      method: "claw/capture-report",
-      params: {
-        sessionId: "cindy-report-session",
-        clawSessionId: "sdk-report-session",
-        workdir: fixtureDir,
-      },
-    });
-    assert.equal(response.result.ok, true);
-    assert.equal(response.result.captured, true);
-    assert.equal(response.result.finalizeId, "finalize-1");
-    assert.equal(response.result.sessionId, "sdk-report-session");
-    assert.equal(response.result.cindySessionId, "cindy-report-session");
-    assert.equal(response.result.clawSessionId, "sdk-report-session");
-    assert.match(response.result.args, /internal-knowledge-capture/);
-    assert.match(response.result.args, /--host cindy/);
-  } finally {
-    await stopWorker(child);
-    fs.rmSync(fixtureDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
-  }
-});
 
 test("dispatched Worker claims knowledge atomically without rechecking stale host or policy snapshots", { skip: process.platform !== "win32" }, async () => {
   const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-atomic-knowledge-"));

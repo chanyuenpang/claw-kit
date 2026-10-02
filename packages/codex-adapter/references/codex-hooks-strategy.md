@@ -1,58 +1,7 @@
 # Codex Hooks Strategy
 
-## Current posture
+Codex registers only a thread-scoped `SessionStart` hook. It recovers the current workflow and registers the report collector from the actual adapter directory. The fixed code-mode driver also registers the collector before mutations and after first project initialization, so finalization does not depend on hook delivery.
 
-`claw-kit` does not depend on Codex hooks for correctness. Subagent knowledge finalization does not use Stop at all.
+The terminal root-plan mutation creates a durable queued job and returns a native isolated-finalizer dispatch. The main agent accepts that handoff before ending its turn. Claim captures the parent transcript within the frozen plan interval, including successful task.done checkpoints' preceding assistant conclusions and prior final answers, before granting a claim token.
 
-The active adapter registers a thread-scoped `SessionStart` hook for startup recovery and a turn-scoped `Stop` hook for report capture.
-
-The core workflow works without hooks. Hooks are an enhancement layer for:
-
-- lightweight startup recovery nudges
-- one report append when each main-agent turn stops
-- tool-level observability
-
-## Why this matters
-
-Plugin-level hooks execute in some Codex builds, but support is still uneven enough that canonical harness semantics do not bind to them.
-
-Current active use:
-
-- `SessionStart` calls the Codex-host recovery entry, which lets `claw context` detect whether the versioned user-level Codex SDK runtime is available before returning project recovery context.
-- A missing or invalid runtime produces an English consent-required error prompt for the agent. The CLI does not install, repair, or automatically retry the runtime.
-- `SessionStart` runs at thread scope and listens to startup, resume, clear, and compact sources.
-- With `knowledgeWriter.executionPolicy: "background"`, `Stop` runs at turn scope, receives `turn_id` and `transcript_path`, and invokes the Codex-host `auto-doc` entry after the assistant turn stops. The capture is composite rather than final-message-only: it records each successful `task.done` checkpoint's preceding assistant conclusion as a `task_conclusion`, then records the turn's `final_answer` as the turn report. The hook writes `codex` directly into a queued finalization job, and the detached worker routes from that snapshot without inheriting a foreground `CLAW_HOST`.
-- With `knowledgeWriter.executionPolicy: "subagent"`, the terminal plan transition creates the queued job before dispatch. Stop exits without capturing, queuing, launching, or amending that job. `knowledge claim` reuses the Stop task-conclusion extractor against the parent transcript, freezes those report entries without requiring the not-yet-produced final message, and only then grants claim ownership.
-- `SessionStart` runs when `cwd` resolves into a `.claw` project or the platform session id resolves to an explicit session-scoped workflow. `Stop` remains project-only: it requires `.claw` directly under hook `cwd` plus a valid session knowledge target; it neither reads plan bindings nor inherits a parent directory's `.claw`, and an uninterested session exits before transcript or project-config work. Session-scoped workflows recover guidance; those created with `--no-knowledge-capture` do not trigger knowledge capture.
-- When that gate is met, the entry gathers current project startup state and injects developer-visible startup guidance.
-- When a session-bound active task is recovered, that guidance also carries the current plan content needed to resume safely.
-- The injected guidance tells the agent to use `[@claw-kit](plugin://claw-kit@claw-kit)` for the rest of the task flow.
-
-## Testing strategy
-
-The previous local hook lab used:
-
-- `../../scripts/log-hook-event.mjs`
-- `../../references/codex-hook-lab.md`
-- active recovery entry: the adapter-owned `scripts/session-start.mjs`, which calls `claw context --host codex` and renders the Codex Hook envelope
-
-The first question is not "can hooks automate the harness?" but "which events fire at all in this runtime?"
-
-## Candidate events
-
-- `SessionStart`
-- `PermissionRequest`
-- `UserPromptSubmit`
-- `Stop`
-- `PreToolUse`
-- `PostToolUse`
-- `PreCompact`
-- `PostCompact`
-- `SubagentStart`
-- `SubagentStop`
-
-## Decision rule
-
-- `SessionStart` is for attach-free startup recovery hints only.
-- `Stop` is the fail-open turn report collector; it never owns canonical plan or session transitions.
-- `PreToolUse` and `PostToolUse` are for diagnostics or validation, not core task binding.
+Codex has no Stop hook, SDK writer, or configurable execution flow. Failed capture leaves the job queued without granting execution ownership. Canonical plan completion and asynchronous knowledge completion remain separate.

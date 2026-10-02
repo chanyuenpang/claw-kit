@@ -35,12 +35,21 @@
   or force-move an existing tag.
 - Profile delivery is a separate required checkpoint for a release targeting
   a known DSH profile: after npm visibility, install the exact published npm
-  version with `dsh plugin --profile web add
-  @veewo/dsh-claw-kit@<npm-version>` (substitute the authorized target). If
-  the target is unknown, ask; do not silently skip installation or install
+  version into that profile. A non-Electron target accepts
+  `dsh plugin --profile web add @veewo/dsh-claw-kit@<npm-version>` (substitute
+  the authorized target). The Electron-managed `desktop` profile does not: the
+  global `dsh` refuses it with `profile "desktop" is managed exclusively by the
+  Electron application`, so use
+  `plugin_manager(action: "install_bundle", target: "@veewo/dsh-claw-kit@<npm-version>")`
+  or the exported/released tarball path instead, then confirm the new version
+  through `plugin_manager(action: "list_bundles")`. Never write Electron-managed
+  profile files with Agent filesystem tools, scripts, or shell commands; the
+  canonical boundary is
+  `packages/dsh-adapter/skills/update/references/desktop-profile-write-boundary.md`.
+  If the target is unknown, ask; do not silently skip installation or install
   from workspace files. Verify installed `package.json`, `claw --version`
-  compatibility (`--host dsh`), and the `claw-kit` row in
-  `dsh --profile web --dump-config`.
+  compatibility (`--host dsh`), and — for profiles that command accepts — the
+  `claw-kit` row in `dsh --profile <name> --dump-config`.
 - Installation does not activate a running Host. Restart requires separate
   explicit authorization; if the owner will restart, report on-disk checks
   and defer runtime verification. After restart, verify `claw_run` and the

@@ -12,9 +12,10 @@ function fixture() {
   const job: KnowledgeFinalizationJob = {
     schemaVersion: 1, finalizeId: "a".repeat(64), host: "dsh", sessionId: "parent", projectRoot,
     taskName: "task", planPath: path.join(projectRoot, "plan.json"), reportPath: path.join(projectRoot, "plan.report"),
+    reportCapture: { mode: "claim", status: "pending" },
     status: "queued", attempts: 0, queuedAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + 60000).toISOString(),
-    writer: { executionPolicy: "subagent", externalSkills: ["writer-v1"] },
+    writer: { externalSkills: ["writer-v1"] },
   };
   fs.writeFileSync(jobPath, JSON.stringify(job));
   return { jobPath, job, claimant: { host: "dsh", agentSessionId: "child", projectRoot } };
@@ -72,7 +73,7 @@ test("receipt denies stale and all terminal jobs without changing canonical byte
 
 test("template failure cannot commit a running job without its first-claim receipt", (t) => {
   const { jobPath, job, claimant } = fixture();
-  job.writer = { executionPolicy: "subagent" };
+  job.writer = {  };
   fs.writeFileSync(jobPath, JSON.stringify(job));
   const read = fs.readFileSync;
   t.mock.method(fs, "readFileSync", (...args: Parameters<typeof read>) => {

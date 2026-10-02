@@ -179,12 +179,13 @@ export async function readCodexPluginSource({ sourceDir } = {}) {
   const declaration = await readJson(path.join(sourceDir, "skill-inputs.json"));
   const actual = (await fs.readdir(path.join(sourceDir, "skills"))).sort();
   if (declaration.schemaVersion !== 1 || declaration.host !== "codex" || !Array.isArray(declaration.skills) ||
-      declaration.skills.length !== 9 || new Set(declaration.skills).size !== 9 || JSON.stringify(actual) !== JSON.stringify([...declaration.skills].sort())) {
-    throw new Error("Codex artifact must contain exactly its nine declared skill packages.");
+      declaration.skills.length === 0 || declaration.skills.some((name) => typeof name !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name)) ||
+      new Set(declaration.skills).size !== declaration.skills.length || JSON.stringify(actual) !== JSON.stringify([...declaration.skills].sort())) {
+    throw new Error("Codex artifact skills must match its skill-inputs.json declaration exactly, without duplicates.");
   }
   for (const name of actual) await assertPayloadExists(sourceDir, `skills/${name}/SKILL.md`);
   const hooks = await readJson(path.join(sourceDir, "hooks", "hooks.json"));
-  for (const [event, script] of [["SessionStart", "session-start.mjs"], ["Stop", "knowledge-finalizer.mjs"]]) {
+  for (const [event, script] of [["SessionStart", "session-start.mjs"]]) {
     const hook = hooks.hooks?.[event]?.[0]?.hooks?.[0];
     if (hook?.command !== `node "$PLUGIN_ROOT/scripts/${script}"` || hook?.commandWindows !== "node ${PLUGIN_ROOT}/scripts/" + script) throw new Error(`Invalid installed Codex ${event} hook.`);
     await assertPayloadExists(sourceDir, `scripts/${script}`);
@@ -288,12 +289,13 @@ function removeTomlSection(configText, sectionName) {
 }
 
 const localPluginIdentities = [
+  "claw-kit@claw-kit-beta",
   "claw-kit@claw-kit-local",
   "claw-kit-local@personal",
   "claw-kit@claw-kit-hookfix-local",
 ];
-const localMarketplaceNames = ["claw-kit-hookfix-local"];
-const localCacheNames = ["claw-kit-hookfix-local", "claw-kit-local"];
+const localMarketplaceNames = ["claw-kit-hookfix-local", "claw-kit-beta"];
+const localCacheNames = ["claw-kit-hookfix-local", "claw-kit-local", "claw-kit-beta"];
 
 export async function activateOfficialCodexPluginIdentity({ configPath = defaultCodexConfigPath, localCacheRoot } = {}) {
   let configText = await fs.readFile(configPath, "utf8");

@@ -15,7 +15,6 @@ import {
 import { migrateLegacyTaskLayout } from "./task-layout-migration.js";
 import type {
   KnowledgeWriterConfig,
-  KnowledgeWriterExecutionPolicy,
   KnowledgeWriterReasoningEffort,
   MemoryEmbeddingConfig,
   ProjectConfig,
@@ -150,9 +149,6 @@ function normalizeProjectConfig(raw: unknown, projectRoot: string): ProjectConfi
     autoUpdate: readBooleanConfig(source?.autoUpdate, true),
     goalMode: readBooleanConfig(source?.goalMode, true),
     knowledgeWriter: {
-      executionPolicy: readKnowledgeWriterExecutionPolicy(
-        sourceKnowledgeWriter?.executionPolicy,
-      ),
       externalSkills: resolveExternalWriterSkills(source, sourceKnowledgeWriter),
       model: normalizeOptionalSkill(sourceKnowledgeWriter?.model),
       reasoningEffort: readKnowledgeWriterReasoningEffort(
@@ -232,12 +228,7 @@ function validateProjectConfigInto(raw: unknown, issues: ProjectProtocolIssue[])
   requireBoolean(config, "goalMode", issues);
   const knowledgeWriter = requireObject(config, "knowledgeWriter", issues);
   if (knowledgeWriter) {
-    requireKnowledgeWriterExecutionPolicy(
-      knowledgeWriter,
-      "executionPolicy",
-      issues,
-      "knowledgeWriter.executionPolicy",
-    );
+    rejectRemovedWriterField(knowledgeWriter, "knowledgeWriter", issues);
     requireOptionalStringArray(knowledgeWriter, "externalSkills", issues, "knowledgeWriter.externalSkills");
     requireNullableString(knowledgeWriter, "model", issues, "knowledgeWriter.model");
     requireKnowledgeWriterReasoningEffort(
@@ -267,9 +258,7 @@ function validateProjectConfigInto(raw: unknown, issues: ProjectProtocolIssue[])
         issues.push({ path: label, message: "Field must be an object." });
         continue;
       }
-      if ("executionPolicy" in hostWriter) {
-        requireKnowledgeWriterExecutionPolicy(hostWriter, "executionPolicy", issues, `${label}.executionPolicy`);
-      }
+      rejectRemovedWriterField(hostWriter, label, issues);
       if ("externalSkills" in hostWriter) {
         requireOptionalStringArray(hostWriter, "externalSkills", issues, `${label}.externalSkills`);
       }
@@ -300,6 +289,12 @@ function validateProjectConfigInto(raw: unknown, issues: ProjectProtocolIssue[])
     requireNullableEmbeddingConfig(memory, "embedding", issues, "memory.embedding");
   }
 
+}
+
+function rejectRemovedWriterField(writer: Record<string, unknown>, label: string, issues: ProjectProtocolIssue[]): void {
+  if ("executionPolicy" in writer) {
+    issues.push({ path: `${label}.executionPolicy`, message: "Field was removed; the invoking host owns its fixed knowledge-finalization flow." });
+  }
 }
 
 function resolveExternalWriterSkills(
@@ -391,23 +386,6 @@ function requireKnowledgeWriterReasoningEffort(
   const value = source[key];
   if (value !== "minimal" && value !== "low" && value !== "medium" && value !== "high" && value !== "xhigh") {
     issues.push({ path: label, message: 'Field must be "minimal", "low", "medium", "high", or "xhigh".' });
-  }
-}
-
-function requireKnowledgeWriterExecutionPolicy(
-  source: Record<string, unknown>,
-  key: string,
-  issues: ProjectProtocolIssue[],
-  label = key,
-): void {
-  if (!(key in source)) {
-    // Optional since the host-aware policy matrix: an omitted policy resolves
-    // to the invoking host's default at runtime.
-    return;
-  }
-  const value = source[key];
-  if (value !== "main-agent" && value !== "background" && value !== "subagent") {
-    issues.push({ path: label, message: 'Field must be "main-agent", "background", or "subagent".' });
   }
 }
 
@@ -529,12 +507,6 @@ function readKnowledgeWriterReasoningEffort(
   return fallback;
 }
 
-function readKnowledgeWriterExecutionPolicy(
-  value: unknown,
-): KnowledgeWriterExecutionPolicy | undefined {
-  return value === "main-agent" || value === "background" || value === "subagent" ? value : undefined;
-}
-
 /**
  * Normalize the per-host knowledgeWriterByHost map. Each entry is a partial
  * writer keyed by integration host; unknown hosts and malformed entries are
@@ -555,10 +527,6 @@ function normalizeKnowledgeWriterByHost(value: unknown): ProjectConfig["knowledg
       continue;
     }
     const writer: KnowledgeWriterConfig = {};
-    const executionPolicy = readKnowledgeWriterExecutionPolicy(entry.executionPolicy);
-    if (executionPolicy) {
-      writer.executionPolicy = executionPolicy;
-    }
     if (Array.isArray(entry.externalSkills)) {
       writer.externalSkills = normalizeStringArray(entry.externalSkills);
     }
