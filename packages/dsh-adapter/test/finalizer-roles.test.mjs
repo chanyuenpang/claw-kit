@@ -42,7 +42,8 @@ function fixture(route = "native") {
   const rows = new Map([[A, { finalizeId: A, status: "queued", readyForNext: false }],
     [B, { finalizeId: B, status: "queued", readyForNext: false }]]);
   const controller = new AbortController();
-  const state = { failSend: false, failAcceptance: false, projectedSpawn: false, onCommand: undefined, releaseReady: true };
+  const state = { failSend: false, failAcceptance: false, projectedSpawn: false,
+    replaceNativeProxy: false, onCommand: undefined, releaseReady: true };
   function eventFor(id, memberId, messageId = "receipt-" + id) {
     return { type: "team/message/queued", data: { version: 2, teamId: agent.id, message: {
       id: messageId, senderId: agent.id, targetId: memberId,
@@ -105,7 +106,8 @@ function fixture(route = "native") {
       },
     },
   };
-  const getService = (name) => services[name];
+  const getService = (name) => name === "subagents" && state.replaceNativeProxy
+    ? { ...services.subagents } : services[name];
   const capability = (dispatch = dispatchFor(A)) => resolveDshDelegationCapability({ getService, agent, role: "finalizer", provider: "spawn",
     requestedModel: dispatch.model, requestedReasoningEffort: dispatch.reasoningEffort });
   const fingerprint = finalizerConfigFingerprint(agent, workdir, dispatchFor(A), "spawn");
@@ -214,6 +216,38 @@ test("concurrent admissions serialize and accepted duplicates never resend", asy
   assert.equal(f.sends.length, 1);
 });
 
+test("replaceable equivalent native service proxies do not fail capability rechecks", async () => {
+  const f = fixture();
+  f.state.replaceNativeProxy = true;
+  const result = await f.run();
+  assert.equal(result.ok, true);
+  assert.equal(result.executor, "native-continuable");
+  assert.equal(f.creates.length, 1);
+  assert.equal(f.sends.length, 1);
+});
+
+test("a child appearing in the reacquired catalog is reused instead of started twice", async () => {
+  const f = fixture();
+  const selection = { requested: { intent: "low-cost" }, applied: { mode: "inherit", options: {},
+    inheritanceBasis: { provider: "llm-provider", model: "model-a", reasoningEffort: "high" } },
+    resolved: { known: false }, reason: "catalog-unavailable" };
+  const fingerprint = finalizerConfigFingerprint(f.agent, workdir, { ...dispatchFor(A), selection }, "spawn");
+  const childId = nativeFinalizerRoleId(f.agent.id, fingerprint);
+  let reads = 0;
+  const original = f.services.subagents.listChildren;
+  f.services.subagents.listChildren = async id => {
+    reads++;
+    if (reads === 2) f.children.push({ kind: "child", id: childId, label: LABEL + fingerprint.slice(0, 16),
+      mode: "continuable", activity: "inactive", provider: "spawn" });
+    return original(id);
+  };
+  const result = await f.run();
+  assert.equal(result.ok, true);
+  assert.equal(result.reused, true);
+  assert.equal(f.creates.length, 0);
+  assert.equal(f.sends.length, 1);
+});
+
 test("native admission persists the best-effort selection used by its launch recipe", async () => {
   const f = fixture();
   const result = await f.run();
@@ -315,7 +349,7 @@ test("capability loss after attempted marker stays uncertain and never switches 
   f.state.onCommand = async (operation, args) => {
     if (operation === "delivery" && flag(args, "--state") === "attempted") f.services.subagents.getProvider = () => undefined;
   };
-  assert.equal((await f.run()).code, "DSH_FINALIZER_CAPABILITY_CHANGED");
+  assert.equal((await f.run()).code, "DSH_NATIVE_CAPABILITY_CHANGED");
   assert.equal(f.rows.get(A).execution.route, "native-continuable");
   assert.equal(f.rows.get(A).execution.delivery.state, "uncertain");
   assert.equal(f.sends.length, 0);

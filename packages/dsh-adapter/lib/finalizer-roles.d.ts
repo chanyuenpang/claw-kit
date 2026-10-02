@@ -37,6 +37,9 @@ export declare class FinalizerRoleDispatcher {
     dispatch(agent: FinalizerAgent, workdir: string, dispatch: ReusableDispatch, capability: DshDelegationCapability): Promise<Json>;
     private call;
     private fresh;
+    private nativeService;
+    private freshNative;
+    private nativeMember;
     private acknowledged;
     recoverAcknowledgement(agent: FinalizerAgent, workdir: string, finalizeId: string): Promise<Json | undefined>;
     private recoverTeamReceipt;

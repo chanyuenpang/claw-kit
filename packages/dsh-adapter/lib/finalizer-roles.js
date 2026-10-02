@@ -79,6 +79,33 @@ export class FinalizerRoleDispatcher {
             && next.teamId === previous.teamId && next.leadId === previous.leadId
             && (!creating || !needsOptions || next.supportsOptions === true);
     }
+    nativeService() {
+        const service = this.deps.getService("subagents");
+        if (!service || typeof service.listChildren !== "function" || typeof service.startContinuable !== "function"
+            || typeof service.sendMessage !== "function")
+            throw new Error("DSH_NATIVE_SERVICE_UNAVAILABLE");
+        return service;
+    }
+    async freshNative(agent, dispatch, capability, creating = false) {
+        if (!await this.fresh(agent, dispatch, capability, creating))
+            throw new Error("DSH_NATIVE_CAPABILITY_CHANGED");
+        return this.nativeService();
+    }
+    async nativeMember(service, agent, id, label, provider) {
+        const rows = await service.listChildren(agent.id);
+        if (!Array.isArray(rows) || rows.some(x => x.kind === "diagnostic"))
+            throw new Error("DSH_NATIVE_ROLE_CATALOG_UNAVAILABLE");
+        const candidates = rows.filter(x => x.kind === "child" && (x.id === id || x.label === label));
+        if (candidates.length > 1)
+            throw new Error("DSH_FINALIZER_ROLE_AMBIGUOUS");
+        const row = candidates[0];
+        if (!row)
+            return undefined;
+        if (row.id !== id || row.label !== label || row.mode !== "continuable" || row.provider !== provider
+            || !["inactive", "running"].includes(row.activity ?? ""))
+            throw new Error("DSH_FINALIZER_ROLE_INCOMPATIBLE");
+        return { id, target: id, created: false };
+    }
     acknowledged(execution, status) {
         return { ok: true, reused: true, queued: status === "queued", runId: execution.memberSessionId, executor: execution.route, deliveryKey: execution.deliveryKey, deliveryState: execution.delivery.state, ...(execution.delivery.receiptId ? { messageId: execution.delivery.receiptId } : {}),
             ...(execution.modelSelection ? { modelSelection: parseRoleSelection(execution.modelSelection) } : {}) };
@@ -139,25 +166,21 @@ export class FinalizerRoleDispatcher {
                 throw new Error("DSH_FINALIZER_ROLE_CREATION_UNCERTAIN");
             return { id: row.id, target: row.name, created: true };
         }
-        const service = this.deps.getService("subagents");
         const id = nativeFinalizerRoleId(agent.id, fingerprint);
         const label = LABEL_PREFIX + fingerprint.slice(0, 16);
-        const rows = await service.listChildren(agent.id);
-        if (!Array.isArray(rows) || rows.some(x => x.kind === "diagnostic"))
-            throw new Error("DSH_NATIVE_ROLE_CATALOG_UNAVAILABLE");
-        const candidates = rows.filter(x => x.kind === "child" && (x.id === id || x.label === label));
-        if (candidates.length > 1)
-            throw new Error("DSH_FINALIZER_ROLE_AMBIGUOUS");
-        if (candidates.length) {
-            const row = candidates[0];
-            if (row.id !== id || row.label !== label || row.mode !== "continuable" || row.provider !== provider || !["inactive", "running"].includes(row.activity ?? ""))
-                throw new Error("DSH_FINALIZER_ROLE_INCOMPATIBLE");
-            return { id, target: id, created: false };
-        }
+        let service = await this.freshNative(agent, dispatch, capability);
+        const found = await this.nativeMember(service, agent, id, label, provider);
+        if (found)
+            return found;
         if (existing && !existing.modelSelection)
             throw new Error("DSH_FINALIZER_EXECUTOR_PINNED");
-        if (!await this.fresh(agent, dispatch, capability, true) || this.deps.getService("subagents") !== service)
-            throw new Error("DSH_NATIVE_CAPABILITY_CHANGED");
+        // Service handles are replaceable Cordis views, not durable authority
+        // credentials. Recheck capability, reacquire the current service, then
+        // re-read its catalog before a single start attempt.
+        service = await this.freshNative(agent, dispatch, capability, true);
+        const raced = await this.nativeMember(service, agent, id, label, provider);
+        if (raced)
+            return raced;
         const agentOptions = dispatch.selection?.applied.options ?? {};
         const started = await service.startContinuable({ childId: id, provider, label, signal: this.deps.signal, request: { parent: agent, prompt: text(bootstrap()), ...(Object.keys(agentOptions).length ? { agentOptions } : {}) } });
         if (started.childId !== id)
@@ -231,13 +254,15 @@ export class FinalizerRoleDispatcher {
             if (!await this.fresh(agent, dispatch, capability))
                 return deferred("DSH_FINALIZER_CAPABILITY_CHANGED", "capability");
             const team = route === "team" ? this.deps.getService("agentTeams") : undefined;
-            const native = route === "native-continuable" ? this.deps.getService("subagents") : undefined;
+            let native = route === "native-continuable" ? this.nativeService() : undefined;
             const attempt = await this.call("delivery", agent, workdir, ["--finalize-id", dispatch.finalizeId, "--delivery-key", dispatch.finalizeId, "--state", "attempted"]);
             if (attempt.deliver !== true)
                 return deferred("DSH_FINALIZER_DELIVERY_UNCERTAIN", "reconcile");
             let receiptId;
             try {
-                if (!await this.fresh(agent, dispatch, capability) || (team && this.deps.getService("agentTeams") !== team) || (native && this.deps.getService("subagents") !== native))
+                if (native)
+                    native = await this.freshNative(agent, dispatch, capability);
+                else if (!await this.fresh(agent, dispatch, capability) || (team && this.deps.getService("agentTeams") !== team))
                     throw new Error("DSH_FINALIZER_CAPABILITY_CHANGED");
                 const content = text(marker(dispatch.finalizeId) + dispatch.prompt);
                 receiptId = team
