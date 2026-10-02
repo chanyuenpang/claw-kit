@@ -20,6 +20,7 @@ export type SubagentsLike = {
         }>;
         parent: unknown;
         agentOptions?: {
+            provider?: string;
             model?: string;
             reasoningEffort?: string;
         };

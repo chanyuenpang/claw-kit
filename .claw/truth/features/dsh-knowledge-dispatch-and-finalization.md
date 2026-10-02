@@ -8,11 +8,8 @@
 - `SUPPORTED_CLAW_HOSTS = ["codex", "opencode", "cindy", "dsh"]`（`packages/cli/src/invocation-host.ts`）。
 - `isHostActionsHost`（`codex | dsh`）：这两个 host 的 CLI 输出携带版本化 `hostActions`
   （`update_plan` / `create_goal` / `update_goal`），由各自 adapter 自动消费。
-- `isSubagentPolicyHost`（`codex | cindy | dsh`）：这三个 host 支持
-  `knowledgeWriter.executionPolicy = "subagent"`；其他 host 在配置时直接拒绝该 policy。
-- DSH 没有独立 background runner；Host capability 会把项目配置的
-  `background | subagent` 都归一为 subagent-policy lifecycle（实际 Team/native 路由由 adapter 能力判定）。新项目保留通用默认值
-  `background`，但 DSH effective writer 必须生成 ready job 与 `knowledgeDispatch`。
+- DSH 自动知识执行路线由 adapter 固定拥有，不再通过 `knowledgeWriter.executionPolicy` 选择；writer 的内容、model 和 reasoningEffort 配置仍保留。
+- DSH 没有独立 background runner；root completion 生成 ready job 与 `knowledgeDispatch`，实际 Team/native admission 由 adapter 能力合同拥有，不是主模型的失败后 fallback。
 - `KnowledgeFinalizationHost` 增加 `"dsh"`（`packages/core/src/knowledge-sidecar.ts`）。
 - DSH 的 `claw_run` 工具把 `claw search` 召回结果完整暴露给模型：
   `compactClawOutput` 白名单包含 `query` / `results` / `count`，每条命中只保留
@@ -22,7 +19,7 @@
   （truth_doc/adr 命中）全可见。
 
 DSH 知识终结 dispatch 流程：项目作用域 root plan 进入完成型终态
-`end.completed | end.closed` 且 effective `executionPolicy = "subagent"` 时，终态 mutation 先持久化 ready job
+`end.completed | end.closed` 且默认 capture 开启时，终态 mutation 先持久化 ready job
 （`job.host = "dsh"`、`reportCapture.mode = "claim"`、`status = "queued"`），再返回
 `knowledgeDispatch`（`buildKnowledgeDispatch` → `buildDshKnowledgeDispatch`，内部
 `resources/dsh-delegate-writer/TEMPLATE.json`）。DSH adapter 先完成父端可信 capture，再按当前 scoped capability 选择执行路由并交付
@@ -31,6 +28,10 @@ plan、跟随 workflowGuidance、`knowledge claim` 认领 job、顺序执行生�
 subplan、并以 claim token 调用一次 `knowledge done`。`end.leave` 是取消而非派发边界；
 session-scoped delegate 不递归创建知识 job，通用终态 gate 由
 [finalization lifecycle ADR](<../adr/hook-owned-two-phase-knowledge-finalization.md>) 拥有。
+
+Core source 在 DSH 创建计划时登记可信 capture 起点；同一 root 的父子切换与返回保留该窗口，返回父计划不建立独立 child writer。CLI service 在成功返回父焦点回执前同步 project binding，context 与 v2 focus 必须一致。manual leave 只清理匹配计划的捕获，不能清空另一个 active plan；不同 root 的新捕获窗口不得继承旧起点。上述源码合同和定向回归不证明旧安装 Beta 已通过真实冒烟。
+
+新 background finalizer 固定使用 DSH native subagent 家族，即使当前 Agent 暴露 Team 工具；可复用 continuable 时复用相同 applied recipe，仅有 one-shot 时仍允许正常执行。低成本 model/effort 是尽力偏好：adapter 通过真实 llm/subagents 能力在 admission 前解析 applied explicit/inherit/default recipe，记录 requested/applied/resolved-or-unknown；目录、options 或精确 effort 不可用不阻塞。发送后 outcome unknown、已 admitted executor、claim/capture/权限失败仍沿用硬边界，绝不换模型/route 重发。旧 Team/native execution 保留原 pin，不迁移。
 
 当前 source 的 capability-selected role 复用、逐 job 完整身份、未知投递不重发及 joint-terminal 队列推进，由 [delegation Truth](<dsh-subagent-delegation-contract.md>) 唯一拥有。已有 one-shot job 保持旧执行证据与 native 兼容路径；新路由需要匹配的 CLI/Core 协议，不能把旧短标题合同用于同一 reused session。主模型只消费 adapter 回执，不自行启动或重试 writer。source 与受控服务测试不证明当前运行 profile 已安装或激活该路径。
 
@@ -122,7 +123,7 @@ job 被 claim 并走完 claim → assignment subplan → 单次 `knowledge done`
 <!-- state: current -->
 ## Current capture and operational constraints
 
-DSH 的父会话在终态立即冻结该 job 的半开采集窗口 `[startedAt, endedAt)`；queued 恢复沿用原窗口，旧 job 的上界兼容回退为 `queuedAt`，不会把等待 role 期间的新内容归入旧任务。adapter 与 CLI 均按窗口过滤可信 final；缺少有效上界或可证明时间不能冒充空采集。父会话通过当前宿主 `sessionQuery` 自动读取自身历史，并只把可信 `assistant/final` 规范化为 `final_answer`；没有可证明的最终答复时发布有效空采集，不冒充普通消息。受信 adapter 通过私有 stdin 将规范事件交给 CLI，CLI 保留既有 task conclusions 并在规范 job 锁内原子发布 report 与采集回执；writer claim 仅在真实回执存在时签发 token，不再读取 `.claw/runtime/report-collectors/dsh.json` 或启动旧 web 采集脚本。历史不可读、起点缺失或发布失败使未领取 job 保持 queued；Core job 锁内保存有界阶段、错误码、关联 ID 和次数（不保存报告正文或原始异常），父会话本次派发回执和后续 `claw_run context`/session-start 可查看安全诊断，成功采集与成功终结会消解旧告警。Core 为同一 child 保存不可变 claim receipt，结果未知时只读恢复，不重做 assignment；已领取但 child 遗失或外部写入确认丢失仍不可盲重派。锚点：`packages/dsh-adapter/src/capture.ts`、`src/index.ts`、`packages/cli/src/dsh-host-report.ts`、`src/dsh-finalizer-diagnostics.ts`、`src/knowledge-pending.ts`、`packages/core/src/knowledge-sidecar.ts`。
+DSH 的父会话在终态立即冻结该 job 的半开采集窗口 `[startedAt, endedAt)`；queued 恢复沿用原窗口，旧 job 的上界兼容回退为 `queuedAt`，不会把等待 role 期间的新内容归入旧任务。adapter 与 CLI 均按窗口过滤可信 final；缺少有效上界或可证明时间不能冒充空采集。父会话通过当前宿主 `sessionQuery` 自动读取自身历史，按当前 Host 的 `assistant/message` 与 `turn/end(reason.kind=completed)` 证明同 turn 最后一条非 interrupted、无 tool-call 的 assistant 消息，并规范化为 `final_answer`；消息和完成证明都必须位于冻结窗口内，时间反序或不可证明时拒绝。旧 Host 显式 `assistant/final` 仅保留兼容。未结束的当前 turn 没有可证明 final 时可以发布有效空采集，不把 commentary 冒充 final，也不等待 Stop 或扩大窗口。受信 adapter 通过私有 stdin 将规范事件交给 CLI，CLI 保留既有 task conclusions 并在规范 job 锁内原子发布 report 与采集回执；writer claim 仅在真实回执存在时签发 token，不再读取 `.claw/runtime/report-collectors/dsh.json` 或启动旧 web 采集脚本。历史不可读、起点缺失或发布失败使未领取 job 保持 queued；Core job 锁内保存有界阶段、错误码、关联 ID 和次数（不保存报告正文或原始异常），父会话本次派发回执和后续 `claw_run context`/session-start 可查看安全诊断，成功采集与成功终结会消解旧告警。Core 为同一 child 保存不可变 claim receipt，结果未知时只读恢复，不重做 assignment；已领取但 child 遗失或外部写入确认丢失仍不可盲重派。锚点：`packages/dsh-adapter/src/capture.ts`、`src/index.ts`、`packages/cli/src/dsh-host-report.ts`、`src/dsh-finalizer-diagnostics.ts`、`src/knowledge-pending.ts`、`packages/core/src/knowledge-sidecar.ts`。
 
 ## 已知陷阱
 

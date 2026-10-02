@@ -14,8 +14,8 @@ Use one project-level object:
 
 - `knowledgeWriter.executionPolicy`: policy enumeration and host resolution are owned by `host-aware-knowledge-execution-policy.md` (three values, optional, per-host capability-matrix default). Within this ADR's scope the policy only selects the executor launcher: Codex uses it to select the executor launcher. Cindy currently supports only its Orca subagent lifecycle and normalizes either configured value to `subagent`; this is a host capability rule, not a failure fallback. Host-specific orchestration is owned by `hook-owned-two-phase-knowledge-finalization.md`.
 - `knowledgeWriter.externalSkills`: ordered external governance skills materialized as sequential assignment tasks. A failed assignment prevents later tasks from starting. An empty or absent list selects the hidden Core built-in governance contract rather than a discoverable skill.
-- `knowledgeWriter.model`: `null` uses the host runner default; a value is snapshotted into each finalization job.
-- `knowledgeWriter.reasoningEffort`: selects the supported worker effort and defaults to `medium`.
+- `knowledgeWriter.model`: `null` uses the host runner default; a value is snapshotted into each finalization job as a best-effort model preference, not an exact-match execution requirement.
+- `knowledgeWriter.reasoningEffort`: defaults to `medium` and is snapshotted as a best-effort effort preference. A launcher may omit or adapt an unsupported effort/model before admission, provided it records the applied recipe honestly; this cannot relax permission, capture, claim, or unknown-delivery safety.
 - `knowledgeWriter.datedSectionsToKeep`: a non-negative integer snapshotted into each finalization job; the built-in retention decision and default are owned by `bounded-truth-and-adr-evolution-governance.md`.
 
 Background Stop/session-idle on supporting hosts and subagent terminal mutation both snapshot the effective configuration into `KnowledgeFinalizationJob.writer`. Cindy always takes the terminal-mutation path and snapshots the normalized `subagent` policy. All launchers share the immutable job, assignment builders, claim ownership and done protocol. Codex and Cindy use separate internal delegate templates because one invokes the shell bridge and the other invokes Host-forged Ghost operations, but both templates own claim, dynamic assignment subplan, and terminal acknowledgement.
@@ -33,7 +33,7 @@ Legacy `externalTruthSkill` and `externalAdrSkill` may be normalized only as bac
 - Projects can compose ordered writer capabilities without changing foreground plan workflow; adapters may use distinct launcher orchestration while preserving the shared job protocol.
 - External skills use their own governance model without inheriting built-in semantic or retention policy, while the host executor still provides one ordered completion boundary.
 - Job snapshots make retries reproducible even if project configuration changes after job creation.
-- `model = null` keeps host defaults available; explicit model and reasoning effort are preserved by either launcher.
+- `model = null` keeps host defaults available; explicit model and reasoning effort remain frozen requested preferences, while the launcher records the supported applied recipe and does not invent resolved child facts.
 - Default built-in behavior is one hidden governance assignment that reconciles Truth and ADR together.
 - Optional existing-document governance composes after either writer route rather than becoming another external-skill replacement branch.
 - Existing-document governance is audited through the job, generated assignment plan, tracked subplan, and report without a second receipt transport.

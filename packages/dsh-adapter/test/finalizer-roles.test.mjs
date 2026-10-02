@@ -9,8 +9,12 @@ const moduleURL = (source) => "data:text/javascript;base64," + Buffer.from(ts.tr
 }).outputText).toString("base64");
 const capabilityURL = moduleURL(await fs.readFile(new URL("../src/team-capability.ts", import.meta.url), "utf8"));
 const { resolveDshDelegationCapability } = await import(capabilityURL);
+const rolePreferencesURL = new URL("../lib/role-preferences.js", import.meta.url).href;
+const modelSelectionURL = new URL("../lib/model-selection.js", import.meta.url).href;
 const dispatcherSource = (await fs.readFile(new URL("../src/finalizer-roles.ts", import.meta.url), "utf8"))
-  .replace('"./team-capability.js"', JSON.stringify(capabilityURL));
+  .replace('"./team-capability.js"', JSON.stringify(capabilityURL))
+  .replace('"../lib/role-preferences.js"', JSON.stringify(rolePreferencesURL))
+  .replace('"./model-selection.js"', JSON.stringify(modelSelectionURL));
 const { FinalizerRoleDispatcher, finalizerConfigFingerprint, nativeFinalizerRoleId } = await import(moduleURL(dispatcherSource));
 
 const A = "a".repeat(63) + "1";
@@ -22,7 +26,7 @@ const dispatchFor = (finalizeId) => ({ finalizeId, prompt: "Execute only job " +
 const flag = (args, name) => args[args.indexOf(name) + 1];
 const clone = (value) => structuredClone(value);
 
-function fixture(route = "team") {
+function fixture(route = "native") {
   const agent = { id: "lead-session", options: { provider: "llm-provider", model: "model-a", reasoningEffort: "high" } };
   const provider = { name: "spawn", inheritsParentContext: false, capabilities: { agentOptions: true },
     start() {}, prepareContinuable() {} };
@@ -129,7 +133,9 @@ function fixture(route = "team") {
         const blocker = [...rows.values()].find((candidate) => candidate.finalizeId !== id && candidate.execution && !candidate.readyForNext);
         if (blocker) return { ok: true, admitted: false, blockingFinalizeId: blocker.finalizeId };
         row.execution ??= execution(id, { route: flag(args, "--route"), memberSessionId: flag(args, "--member-session-id"),
-          ...(args.includes("--team-id") ? { teamId: flag(args, "--team-id") } : {}), provider: flag(args, "--provider"), configFingerprint: flag(args, "--config-fingerprint") });
+          ...(args.includes("--team-id") ? { teamId: flag(args, "--team-id") } : {}), provider: flag(args, "--provider"),
+          configFingerprint: flag(args, "--config-fingerprint"),
+          ...(args.includes("--model-selection") ? { modelSelection: JSON.parse(flag(args, "--model-selection")) } : {}) });
         return { ok: true, admitted: true, execution: clone(row.execution) };
       }
       if (operation === "release") {
@@ -162,7 +168,7 @@ function fixture(route = "team") {
     fingerprint, execution, dispatcher, run, eventFor, seedMember };
 }
 
-test("Team service wrapped raw member creates one executor for two independent full-id jobs", async () => {
+test("native background role creates one executor for two independent full-id jobs", async () => {
   const f = fixture();
   const first = await f.run(A);
   assert.equal(first.delivered, true);
@@ -186,7 +192,7 @@ test("inactive member is not readiness: queued or unfinished delegate blocks ano
     f.rows.get(A).status = status;
     f.rows.get(A).readyForNext = false;
     f.state.releaseReady = false;
-    assert.equal(f.members[0].status, "inactive");
+    assert.equal(f.children[0].activity, "inactive");
     const next = await f.run(B);
     assert.equal(next.phase, "waiting-for-role");
     assert.equal(next.blockingFinalizeId, A);
@@ -204,82 +210,69 @@ test("concurrent admissions serialize and accepted duplicates never resend", asy
   assert.equal(f.creates.length, 1);
   assert.equal(f.sends.length, 1);
   const recovered = await f.dispatcher.recoverAcknowledgement(f.agent, workdir, A);
-  assert.equal(recovered.messageId, "team-receipt-" + A);
+  assert.equal(recovered.messageId, "native-receipt-" + A);
   assert.equal(f.sends.length, 1);
 });
 
-test("model-projected member target cannot replace raw service member id and name", async () => {
+test("native admission persists the best-effort selection used by its launch recipe", async () => {
   const f = fixture();
-  f.state.projectedSpawn = true;
   const result = await f.run();
-  assert.equal(result.ok, false);
-  assert.equal(result.code, "DSH_FINALIZER_ROLE_CREATION_UNCERTAIN");
-  assert.equal(f.sends.length, 0);
-  assert.equal(f.commands.some((call) => call.operation === "reserve"), false);
+  assert.equal(result.ok, true);
+  assert.equal(result.executor, "native-continuable");
+  assert.equal(result.modelSelection.requested.intent, "low-cost");
+  const reserve = f.commands.find(call => call.operation === "reserve");
+  assert.ok(reserve.args.includes("--model-selection"));
+  assert.equal(f.creates[0].route, "native");
 });
 
-test("uncertain delivery requires an exact durable Team queue receipt, never replay", async () => {
+test("uncertain native delivery never changes recipe or resends", async () => {
   const f = fixture();
   f.state.failSend = true;
-  assert.equal((await f.run()).ok, false);
+  const first = await f.run();
+  assert.equal(first.ok, false);
   assert.equal(f.rows.get(A).execution.delivery.state, "uncertain");
-  const exact = f.events.pop();
-  for (const modify of [
-    (event) => { event.data.teamId = "foreign-team"; },
-    (event) => { event.data.message.senderId = "foreign-parent"; },
-    (event) => { event.data.message.targetId = "foreign-member"; },
-    (event) => { event.data.version = 1; },
-    (event) => { event.data.message.content[0].text = "claw-finalizer-dispatch:v1:" + B + "\n"; },
-  ]) { const wrong = clone(exact); modify(wrong); f.events.push(wrong); }
-  assert.equal((await f.run()).code, "DSH_FINALIZER_DELIVERY_UNCERTAIN");
+  const pinned = clone(f.rows.get(A).execution);
+  const repeated = await f.run();
+  assert.equal(repeated.code, "DSH_FINALIZER_DELIVERY_UNCERTAIN");
+  assert.deepEqual(f.rows.get(A).execution, pinned);
   assert.equal(f.sends.length, 1);
-  f.events.push(exact);
-  const acknowledged = await f.run();
-  assert.equal(acknowledged.ok, true);
-  assert.equal(acknowledged.messageId, exact.data.message.id);
-  assert.equal(f.rows.get(A).execution.delivery.state, "accepted");
-  assert.equal(f.sends.length, 1);
+  assert.equal(f.creates.length, 1);
 });
 
-test("post-send acceptance write failure reconciles queued receipt without sending twice", async () => {
+test("post-send native acknowledgement loss stays uncertain without sending twice", async () => {
   const f = fixture();
   f.state.failAcceptance = true;
   assert.equal((await f.run()).code, "SIMULATED_ACK_WRITE_FAILURE");
-  assert.equal(f.rows.get(A).execution.delivery.state, "attempted");
-  assert.equal((await f.run()).deliveryState, "accepted");
+  assert.equal(f.rows.get(A).execution.delivery.state, "uncertain");
+  assert.equal((await f.run()).code, "DSH_FINALIZER_DELIVERY_UNCERTAIN");
   assert.equal(f.sends.length, 1);
 });
 
-test("multiple distinct matching queued receipts diagnose rather than choose one", async () => {
-  const f = fixture();
+test("legacy Team execution diagnoses multiple durable receipts rather than choosing one", async () => {
+  const f = fixture("team");
   f.rows.get(A).execution = f.execution(A, { delivery: { state: "uncertain" } });
   f.events.push(f.eventFor(A, "member-session", "first"), f.eventFor(A, "member-session", "second"));
   assert.equal((await f.run()).code, "DSH_FINALIZER_MULTIPLE_DELIVERY_RECEIPTS");
   assert.equal(f.sends.length, 0);
 });
 
-test("foreign Team/member pins and occupied role names cannot be reassigned", async () => {
-  for (const change of [
-    (f) => { f.rows.get(A).execution = f.execution(A, { teamId: "foreign-team" }); },
-    (f) => { f.rows.get(A).execution = f.execution(A, { memberSessionId: "foreign-member" }); f.seedMember(); },
-    (f) => { f.seedMember({ description: "another role owns this name" }); },
-    (f) => { f.seedMember({ provider: "other-provider" }); },
-    (f) => { f.seedMember({ context: "fork" }); },
-    (f) => { f.seedMember(); f.seedMember({ id: "second-member" }); },
-  ]) {
-    const f = fixture(); change(f);
-    assert.equal((await f.run()).ok, false);
-    assert.equal(f.creates.length, 0);
-    assert.equal(f.sends.length, 0);
-    assert.equal(f.commands.some((call) => call.operation === "delivery"), false);
-  }
+test("legacy admitted Team executor is not migrated to the new native route", async () => {
+  const f = fixture("team");
+  f.rows.get(A).execution = f.execution(A);
+  const pinned = clone(f.rows.get(A).execution);
+  const result = await f.run();
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "DSH_FINALIZER_EXECUTOR_PINNED");
+  assert.deepEqual(f.rows.get(A).execution, pinned);
+  assert.equal(f.creates.length, 0);
+  assert.equal(f.sends.length, 0);
 });
 
 test("native continuable route reuses one deterministic child across full-id jobs", async () => {
   const f = fixture("native");
   const first = await f.run(A);
   assert.equal(first.executor, "native-continuable");
-  assert.equal(first.runId, nativeFinalizerRoleId(f.agent.id, f.fingerprint));
+  assert.match(first.runId, /^[0-9a-f-]{36}$/);
   f.rows.get(A).status = "succeeded";
   f.rows.get(A).readyForNext = true;
   const second = await f.run(B);
@@ -320,13 +313,13 @@ test("provider/config/route capability loss cannot move an existing executor", a
 test("capability loss after attempted marker stays uncertain and never switches transport", async () => {
   const f = fixture();
   f.state.onCommand = async (operation, args) => {
-    if (operation === "delivery" && flag(args, "--state") === "attempted") f.definitions.clear();
+    if (operation === "delivery" && flag(args, "--state") === "attempted") f.services.subagents.getProvider = () => undefined;
   };
   assert.equal((await f.run()).code, "DSH_FINALIZER_CAPABILITY_CHANGED");
-  assert.equal(f.rows.get(A).execution.route, "team");
+  assert.equal(f.rows.get(A).execution.route, "native-continuable");
   assert.equal(f.rows.get(A).execution.delivery.state, "uncertain");
   assert.equal(f.sends.length, 0);
-  assert.equal((await f.run()).code, "DSH_FINALIZER_EXECUTOR_PINNED");
+  assert.equal((await f.run()).code, "PROVIDER_UNAVAILABLE");
   assert.equal(f.creates.length, 1);
 });
 

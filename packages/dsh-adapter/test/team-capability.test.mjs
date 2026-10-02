@@ -38,7 +38,7 @@ function fixture() {
     subagents: { getProvider: (name) => name === provider.name ? provider : undefined, start: never, startContinuable: never, sendMessage: never },
     tools: { get(name, scope) { assert.equal(scope, agent); return definitions.get(name); } },
   };
-  const input = { agent, role: "finalizer", provider: "spawn", getService(name) { requestedServices.push(name); return services[name]; } };
+  const input = { agent, role: "managed", provider: "spawn", getService(name) { requestedServices.push(name); return services[name]; } };
   return { agent, provider, definitions, requestedServices, services, input };
 }
 
@@ -57,13 +57,13 @@ async function expectFailure(input, selectedRoute, reason) {
   return result;
 }
 
-test("active Team selects exact implicit Lead and explicit reusable finalizer backend", async () => {
+test("managed foreground role selects exact implicit Lead and reusable backend", async () => {
   const f = fixture();
   assert.deepEqual(await resolve(f.input), { selectedRoute: "team", ready: true, teamId: "lead-id", leadId: "lead-id", provider: "spawn", reusable: true });
   assert.deepEqual(f.requestedServices, ["tools", "agentTeams", "subagents"]);
 });
 
-test("finalizer only needs effective spawn signal and Team business APIs, not model coordination tools", async () => {
+test("managed role only needs effective spawn signal and Team business APIs", async () => {
   const f = fixture();
   const spawn = f.definitions.get("spawn_teammate");
   f.definitions.clear();
@@ -78,7 +78,7 @@ test("finalizer only needs effective spawn signal and Team business APIs, not mo
   await expectFailure(f.input, "team", "TEAM_SERVICE_UNAVAILABLE");
 });
 
-test("finalizer rejects partial or malformed enablement signals without probing execution", async () => {
+test("managed role rejects partial or malformed enablement signals without probing execution", async () => {
   const f = fixture();
   f.definitions.delete("spawn_teammate");
   await expectFailure(f.input, "team", "TEAM_FINALIZER_SIGNAL_INVALID");
@@ -171,7 +171,7 @@ test("nonmember, teammate and stale root identity are not admitted as exact Lead
   await expectFailure(f.input, "team", "TEAM_MEMBERSHIP_INVALID");
 });
 
-test("Team finalizer requires fresh continuable backend and does not probe it", async () => {
+test("managed Team role requires fresh continuable backend and does not probe it", async () => {
   const cases = [
     [(f) => { delete f.services.subagents; }, "NATIVE_PROVIDER_CATALOG_UNAVAILABLE"],
     [(f) => { f.services.subagents.getProvider = () => undefined; }, "PROVIDER_UNAVAILABLE"],
@@ -192,23 +192,34 @@ test("foreground rejects native-child send schema and absent Team observation to
   await expectFailure({ ...f.input, role: "foreground" }, "team", "TEAM_FOREGROUND_TOOLS_UNAVAILABLE");
 });
 
-test("Team refuses unsupported or unknown explicit model/effort overrides", async () => {
+test("model and effort preferences are syntactic hints, not capability admission gates", async () => {
   const f = fixture();
-  assert.equal((await resolve({ ...f.input, requestedModel: "model-a", requestedReasoningEffort: "high" })).ready, true);
-  await expectFailure({ ...f.input, requestedModel: "model-b" }, "team", "TEAM_MODEL_OVERRIDE_UNSUPPORTED");
-  await expectFailure({ ...f.input, requestedReasoningEffort: "low" }, "team", "TEAM_REASONING_EFFORT_OVERRIDE_UNSUPPORTED");
+  for (const input of [
+    { requestedModel: "model-a", requestedReasoningEffort: "high" },
+    { requestedModel: "model-b" },
+    { requestedReasoningEffort: "low" },
+  ]) assert.equal((await resolve({ ...f.input, ...input })).ready, true);
   delete f.agent.options.model;
-  await expectFailure({ ...f.input, requestedModel: "model-a" }, "team", "TEAM_MODEL_INHERITANCE_UNKNOWN");
+  assert.equal((await resolve({ ...f.input, requestedModel: "model-a" })).ready, true);
+  await expectFailure({ ...f.input, requestedModel: "" }, "team", "INVALID_REQUESTED_MODEL");
 });
 
-test("native explicit overrides require supported agentOptions, matching inheritance does not", async () => {
+test("native option support is reported to finalizer selection without blocking hints", async () => {
   const f = fixture();
   exposeNativeOnly(f);
   f.provider.capabilities.agentOptions = false;
-  assert.equal((await resolve({ ...f.input, requestedModel: "model-a" })).ready, true);
-  await expectFailure({ ...f.input, requestedModel: "model-b" }, "native", "NATIVE_MODEL_OPTIONS_UNSUPPORTED");
+  assert.deepEqual(await resolve({ ...f.input, role: "finalizer", requestedModel: "model-b" }),
+    { selectedRoute: "native", ready: true, provider: "spawn", reusable: true, supportsOptions: false });
   f.provider.capabilities.agentOptions = true;
-  assert.equal((await resolve({ ...f.input, requestedModel: "model-b" })).ready, true);
+  assert.deepEqual(await resolve({ ...f.input, role: "finalizer", requestedModel: "model-b" }),
+    { selectedRoute: "native", ready: true, provider: "spawn", reusable: true, supportsOptions: true });
+});
+
+test("background finalizer stays native even while Team tools are exposed", async () => {
+  const f = fixture();
+  assert.deepEqual(await resolve({ ...f.input, role: "finalizer" }),
+    { selectedRoute: "native", ready: true, provider: "spawn", reusable: true, supportsOptions: true });
+  assert.equal(f.requestedServices.includes("agentTeams"), false);
 });
 
 test("native foreground requires scoped subagent route and every admission rechecks services", async () => {

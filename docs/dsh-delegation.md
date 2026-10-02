@@ -25,7 +25,7 @@ The adapter derives report paths, chooses Team/native, locates the correct role,
 
 Team selection uses the exact Agent's exposed Team interface as a signal. Adapter execution checks the required business services and provider capabilities, not the full set of model-side wait/task tools or a pluginManager/UI matrix. Team remains optional. Host authorization still applies; capability inspection does not grant new permission.
 
-The adapter explicitly uses the native spawn backend; it does not claim to read the Team tool plugin's private provider configuration. Team's current service does not accept per-member model/effort overrides: incompatible explicit finalizer settings are diagnosed, not silently ignored. Native providers must support requested overrides before use.
+Execution carrier and model preference are separate. Foreground architecture may use Team; researcher inherits the caller; new background finalizers always use the native subagent family. Architect high-capability/high and finalizer low-cost model/effort values are best-effort preferences, not exact-match admission gates. The adapter reads only supported Host model/provider metadata before admission, submits only validated options, and otherwise uses inherit/default with an honest requested/applied/resolved-or-unknown receipt. It does not read private Team configuration, infer capability or price from a model name, or weaken permissions. Once delivery is attempted, a missing acknowledgement remains outcome-unknown and cannot trigger a different model or backend resend.
 
 ## Foreground receipts
 
@@ -37,7 +37,7 @@ Receipts use immutable owner envelopes, private atomic replacement and a bounded
 
 Finalizers are never dispatched by the main model. At a parent terminal transition the adapter freezes only proven parent finals in the canonical half-open capture window. Empty proven captures remain valid; unreadable or unbounded material is not fabricated as empty.
 
-A reusable writer gets one role identity but a full, distinct finalization ID, delegate plan, claim and material set for every job. Core reserves the exact member and permits only one delivery attempt. Positive durable receipt evidence can repair a lost acknowledgement; an unknown outcome cannot justify a second send. Legacy one-shot jobs keep their original evidence and native fallback.
+A reusable native writer gets one role identity per compatible applied launch recipe but a full, distinct finalization ID, delegate plan, claim and material set for every job. Core reserves the exact member and permits only one delivery attempt. Positive durable receipt evidence can repair a lost acknowledgement; an unknown outcome cannot justify a second send. Legacy one-shot jobs keep their original evidence and native fallback.
 
 A later job waits for both the previous job and its delegate to end. The durable releasedAt proof prevents later delegate-file retention from blocking an already-verified release. The adapter completes matching final bookkeeping when safe and wakes the parent queue without requiring another parent turn. It never closes an unrelated or newer delegate.
 

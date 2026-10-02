@@ -110,7 +110,7 @@ test("OpenCode routed reference retains lifecycle and host-owned closeout", asyn
   assert.match(host, /opencode run --agent claw-knowledge-writer/);
   assert.match(host, /Do not manually judge, duplicate, or dispatch the background writer/);
   assert.match(host, /Do not repeat plan completion as compensation/);
-  assert.match(host, /OpenCode does not support the native subagent finalization policy/);
+  assert.match(host, /OpenCode always captures at idle and launches its adapter-owned writer/);
 });
 
 test("OpenCode researcher includes the search query syntax", async () => {

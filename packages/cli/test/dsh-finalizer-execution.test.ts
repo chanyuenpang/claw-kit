@@ -170,14 +170,19 @@ test("internal CLI accepts only host-forged parent identity and dispatches full-
   const bin = fileURLToPath(new URL("../dist/bin.js", import.meta.url));
   const run = (args: string[]) => spawnSync(process.execPath, [bin, ...args], { cwd: f.root, encoding: "utf8",
     env: { ...process.env, CLAW_SESSION_ID: f.common.parentSessionId, CLAW_EMBEDDING_MOCK: "1" } });
-  const args = ["internal-dsh-finalizer-reserve", "--finalize-id", f.job.finalizeId, "--route", "team", "--team-id", "actual-team",
-    "--member-session-id", f.memberSessionId, "--provider", "spawn", "--config-fingerprint", "config-v1"];
+  const selection = { requested: { intent: "low-cost", model: "preferred-small" },
+    applied: { mode: "inherit", options: {}, inheritanceBasis: { provider: "caller", model: "caller-model" } },
+    resolved: { known: false }, reason: "catalog-unavailable" };
+  const args = ["internal-dsh-finalizer-reserve", "--finalize-id", f.job.finalizeId, "--route", "native-continuable",
+    "--member-session-id", f.memberSessionId, "--provider", "spawn", "--config-fingerprint", "config-v1",
+    "--model-selection", JSON.stringify(selection)];
   const rejected = run([...args, "--parent-session-id", "spoofed-parent"]);
   assert.notEqual(rejected.status, 0);
   assert.equal(readKnowledgeFinalizationJob(f.jobPath).dshExecution, undefined);
   const reserved = run(args);
   assert.equal(reserved.status, 0, reserved.stdout + reserved.stderr);
   assert.equal(JSON.parse(reserved.stdout).execution.memberSessionId, f.memberSessionId);
+  assert.deepEqual(JSON.parse(reserved.stdout).execution.modelSelection, selection);
   const mark = ["internal-dsh-finalizer-delivery", "--finalize-id", f.job.finalizeId, "--delivery-key", f.job.finalizeId, "--state", "attempted"];
   assert.equal(JSON.parse(run(mark).stdout).deliver, true);
   assert.equal(JSON.parse(run(mark).stdout).deliver, false);

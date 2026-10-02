@@ -50,8 +50,8 @@
     "typescript": "^5.8.3"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && node ./scripts/copy-client.mjs",
-    "check": "tsc -p tsconfig.json --noEmit",
-    "test": "tsc -p tsconfig.json && node --test test/*.test.mjs"
+    "build": "npm run build -w @veewo/claw-core && node ./scripts/copy-role-preferences.mjs && tsc -p tsconfig.json && node ./scripts/copy-client.mjs",
+    "check": "npm run build -w @veewo/claw-core && node ./scripts/copy-role-preferences.mjs --check && tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/*.test.mjs"
   }
 }

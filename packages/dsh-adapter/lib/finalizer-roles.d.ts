@@ -1,4 +1,5 @@
 import { type DshDelegationCapability } from "./team-capability.js";
+import { type RoleSelection } from "../lib/role-preferences.js";
 export type FinalizerAgent = {
     id: string;
     options?: {
@@ -17,6 +18,7 @@ export type ReusableDispatch = {
     prompt: string;
     model?: string | null;
     reasoningEffort?: string | null;
+    selection?: RoleSelection;
 };
 type Json = Record<string, unknown>;
 export type FinalizerRoleDependencies = {

@@ -17,6 +17,7 @@ export * from "./project-check.js";
 export * from "./project-config.js";
 export * from "./project-defaults.js";
 export * from "./requirements-gate.js";
+export * from "./role-preferences.js";
 export * from "./session-bindings.js";
 export * from "./session-workflows.js";
 export * from "./task-layout-migration.js";

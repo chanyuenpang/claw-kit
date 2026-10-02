@@ -17,10 +17,10 @@ test("mid-turn assistant messages never masquerade as final answers", () => {
     { type: "tool/call", time: 1001, data: { turn: 1, name: "claw_run", arguments: '{"operation":"task.done"}' } },
     { type: "assistant/message", time: 1002, data: { turn: 1, message: { content: [{ type: "text", text: "unverified last message" }] } } },
   ];
-  assert.deepEqual(extractPlanFinalAnswers(events, "session"), []);
+  assert.deepEqual(extractPlanFinalAnswers(events, "session", 900, 1100), []);
 });
 
-test("only an explicit final event can produce final_answer", () => {
+test("legacy explicit final events remain supported", () => {
   const events = [
     { type: "assistant/message", time: 1000, data: { turn: 1, message: { content: [{ type: "text", text: "commentary" }] } } },
     { type: "assistant/final", time: 1002, data: { turn: 1, message: { content: [{ type: "text", text: "proven final" }] } } },
@@ -35,6 +35,56 @@ test("DSH collector honors the plan start boundary", () => {
     { type: "assistant/final", time: 200, data: { turn: 2, message: { content: [{ type: "text", text: "new" }] } } },
   ];
   assert.deepEqual(extractPlanFinalAnswers(events, "session", 150).map((entry) => entry.message), ["new"]);
+});
+
+test("completed Host turns prove their last non-tool assistant message", () => {
+  const events = [
+    { type: "assistant/message", time: 1000, data: { turn: 1, message: { content: [{ type: "text", text: "commentary" }] } } },
+    { type: "tool/call", time: 1001, data: { turn: 1 } },
+    { type: "assistant/message", time: 1002, data: { turn: 1, message: { content: [{ type: "text", text: "real final" }] } } },
+    { type: "turn/end", time: 1003, data: { turn: 1, reason: { kind: "completed" } } },
+  ];
+  assert.deepEqual(extractPlanFinalAnswers(events, "session", 900, 1100), [
+    { schemaVersion: 1, entryType: "final_answer", turnId: "1", occurredAt: new Date(1002).toISOString(), message: "real final" },
+  ]);
+});
+
+test("interrupted, aborted, and tool-only endings cannot prove commentary as final", () => {
+  for (const invalid of [
+    { type: "assistant/message", time: 1002, data: { turn: 1, interrupted: true, message: { content: [{ type: "text", text: "partial" }] } } },
+    { type: "assistant/message", time: 1002, data: { turn: 1, message: { content: [{ type: "tool-call", name: "read" }] } } },
+    { type: "tool/call", time: 1002, data: { turn: 1 } },
+  ]) {
+    assert.deepEqual(extractPlanFinalAnswers([
+      { type: "assistant/message", time: 1000, data: { turn: 1, message: { content: [{ type: "text", text: "commentary" }] } } },
+      invalid, { type: "turn/end", time: 1003, data: { turn: 1, reason: { kind: "completed" } } },
+    ], "session", 900, 1100), []);
+  }
+  assert.deepEqual(extractPlanFinalAnswers([
+    { type: "assistant/message", time: 1000, data: { turn: 1, message: { content: [{ type: "text", text: "partial" }] } } },
+    { type: "turn/end", time: 1003, data: { turn: 1, reason: { kind: "aborted" } } },
+  ], "session", 900, 1100), []);
+});
+
+test("both Host final message and completion proof must fit the frozen window", () => {
+  const answer = (turn, time) => ({ type: "assistant/message", time, data: { turn, message: { content: [{ type: "text", text: String(turn) }] } } });
+  const end = (turn, time) => ({ type: "turn/end", time, data: { turn, reason: { kind: "completed" } } });
+  assert.deepEqual(extractPlanFinalAnswers([
+    answer(1, 899), end(1, 901), answer(2, 950), end(2, 1100),
+    answer(3, 1000), end(3, 1001), answer(4, 1200), end(4, 1201),
+  ], "session", 900, 1100).map(entry => entry.message), ["3"]);
+});
+
+test("bounded Host final proof refuses missing, non-finite, or backwards timestamps", () => {
+  const answer = { type: "assistant/message", time: 1000, data: { turn: 1, message: { content: [{ type: "text", text: "final" }] } } };
+  for (const time of [undefined, NaN, 999]) {
+    assert.throws(() => extractPlanFinalAnswers([
+      answer, { type: "turn/end", time, data: { turn: 1, reason: { kind: "completed" } } },
+    ], "session", 900, 1100), /DSH_REPORT_BOUNDARY_UNAVAILABLE/);
+  }
+  assert.throws(() => extractPlanFinalAnswers([
+    { ...answer, time: undefined }, { type: "turn/end", time: 1003, data: { turn: 1, reason: { kind: "completed" } } },
+  ], "session", 900, 1100), /DSH_REPORT_BOUNDARY_UNAVAILABLE/);
 });
 
 test("missing journal still stages existing task conclusions and permits claim", () => {

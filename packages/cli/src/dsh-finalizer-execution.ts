@@ -8,7 +8,7 @@ import { findProjectKnowledgeJob } from "./knowledge-command.js";
 export function reserveDshFinalizerExecutionCommand(input: {
   cwd: string; parentSessionId: string; finalizeId: string;
   route: DshFinalizerExecution["route"]; memberSessionId: string; teamId?: string;
-  provider: string; configFingerprint: string;
+  provider: string; configFingerprint: string; modelSelection?: unknown;
 }) {
   const project = resolveProjectContext(input.cwd);
   const jobPath = findProjectKnowledgeJob(project.projectRoot, input.finalizeId, true);

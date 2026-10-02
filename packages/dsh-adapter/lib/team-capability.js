@@ -4,21 +4,15 @@ const method = (value, name) => {
     return typeof candidate === "function" ? candidate : undefined;
 };
 const text = (value) => typeof value === "string" && value.trim() ? value : undefined;
-function inheritedRequestReason(input) {
-    const options = record(record(input.agent)?.options);
-    for (const [requested, field, label] of [
-        [input.requestedModel, "model", "MODEL"],
-        [input.requestedReasoningEffort, "reasoningEffort", "REASONING_EFFORT"],
+function requestShapeReason(input) {
+    for (const [requested, label] of [
+        [input.requestedModel, "MODEL"],
+        [input.requestedReasoningEffort, "REASONING_EFFORT"],
     ]) {
         if (requested === undefined || requested === null)
             continue;
         if (!text(requested))
             return "INVALID_REQUESTED_" + label;
-        const inherited = text(options?.[field]);
-        if (inherited === undefined)
-            return "TEAM_" + label + "_INHERITANCE_UNKNOWN";
-        if (requested !== inherited)
-            return "TEAM_" + label + "_OVERRIDE_UNSUPPORTED";
     }
     return undefined;
 }
@@ -118,22 +112,18 @@ function inspectBackend(subagents, input, team) {
     const reusable = Boolean(method(subagents, "startContinuable") && method(subagents, "sendMessage") && method(provider, "prepareContinuable"));
     if (team && !reusable)
         return no("PROVIDER_CONTINUABLE_UNSUPPORTED");
-    if (!team && (!method(subagents, "start") || !method(provider, "start")))
+    if (!team && !reusable && (!method(subagents, "start") || !method(provider, "start")))
         return no("NATIVE_START_UNAVAILABLE");
-    const options = record(record(input.agent)?.options);
-    const needsOverrides = (input.requestedModel != null && input.requestedModel !== options?.model) ||
-        (input.requestedReasoningEffort != null && input.requestedReasoningEffort !== options?.reasoningEffort);
-    if (!team && needsOverrides && record(record(provider)?.capabilities)?.agentOptions !== true)
-        return no("NATIVE_MODEL_OPTIONS_UNSUPPORTED");
-    return { reusable };
+    return { reusable, supportsOptions: record(record(provider)?.capabilities)?.agentOptions === true };
 }
 /**
  * Current-Agent scoped Team tool exposure selects Team, not profile inventory
  * or chat declarations. No Team surface selects native, even if a residual
  * agentTeams service exists. Partial/invalid exposure is diagnosed, not used.
  * Foreground readiness checks the caller's dispatch surface, not the private
- * provider selected inside the host tool. Finalizers require only the scoped
- * spawn signal plus exact Team business services and the explicit backend.
+ * provider selected inside the host tool. New background finalizers use the
+ * native service family; model/effort hints are resolved separately as soft
+ * preferences, not an exact-match permission gate.
  * Call again immediately before admission; this snapshot is not authorization
  * for replaying or switching an already admitted job.
  */
@@ -142,7 +132,11 @@ export async function resolveDshDelegationCapability(input) {
     const fail = (reason) => ({ ...snapshot, ready: false, reason });
     let stage = "SCOPED_TOOL_INSPECTION_FAILED";
     try {
-        const view = inspectTools(input.getService("tools"), input.agent, input.role === "foreground");
+        // New background finalizers use the native service family even when Team
+        // tools are mounted. Foreground Team authorization remains unchanged.
+        const view = input.role === "finalizer"
+            ? { available: true, definitions: new Map() }
+            : inspectTools(input.getService("tools"), input.agent, input.role === "foreground");
         if (view.reason)
             return fail(view.reason);
         const team = teamExposed(view);
@@ -172,7 +166,7 @@ export async function resolveDshDelegationCapability(input) {
             if (!leadId || teamId !== leadId)
                 return fail("TEAM_MEMBERSHIP_INVALID");
             snapshot = { ...snapshot, teamId, leadId };
-            const requestReason = inheritedRequestReason(input);
+            const requestReason = requestShapeReason(input);
             if (requestReason)
                 return fail(requestReason);
         }
@@ -180,6 +174,8 @@ export async function resolveDshDelegationCapability(input) {
             stage = "NATIVE_PROVIDER_INSPECTION_FAILED";
             snapshot = { ...snapshot, provider: input.provider };
             const backend = inspectBackend(input.getService("subagents"), input, team);
+            if (input.role === "finalizer")
+                snapshot = { ...snapshot, supportsOptions: backend.supportsOptions === true };
             if (input.role !== "foreground")
                 snapshot = { ...snapshot, reusable: backend.reusable };
             if (backend.reason)

@@ -14,7 +14,14 @@ async function compile(file, imports = {}) {
 }
 const capability = await compile("team-capability.ts");
 const receipts = await compile("delegation-receipts.ts");
-const { RoleDelegation } = await import(await compile("delegation.ts", { "./team-capability.js": capability, "./delegation-receipts.js": receipts }));
+const rolePreferences = new URL("../lib/role-preferences.js", import.meta.url).href;
+const modelSelection = await compile("model-selection.ts", { "../lib/role-preferences.js": rolePreferences });
+const { RoleDelegation } = await import(await compile("delegation.ts", {
+  "./team-capability.js": capability,
+  "./delegation-receipts.js": receipts,
+  "./model-selection.js": modelSelection,
+  "../lib/role-preferences.js": rolePreferences,
+}));
 const copy = (v) => v === undefined ? undefined : structuredClone(v);
 const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
 
@@ -165,7 +172,11 @@ test("invalid and foreign calls never mutate receipts or dispatch", async (t) =>
 test("researcher auto never creates report artifacts and missing installed skills do not fall back", async (t) => {
   const f = await fixture(t);
   const a = await f.api.start(f.parent, f.workdir, "read", { role: "researcher", brief: "q" });
-  assert.equal(a.output, "reply"); await assert.rejects(fs.access(path.join(path.dirname(f.planPath), "feature-architecture")));
+  assert.equal(a.output, "reply");
+  assert.equal(a.model_selection.requested.intent, "inherit");
+  assert.equal(a.model_selection.applied.mode, "inherit");
+  assert.deepEqual(a.model_selection.applied.inheritanceBasis, f.parent.options);
+  await assert.rejects(fs.access(path.join(path.dirname(f.planPath), "feature-architecture")));
   const absent = new RoleDelegation({ ...f.dependencies, skillRoot: path.join(f.root, "missing-skills") });
   assert.equal((await absent.start(f.parent, f.workdir, "absent", { role: "feature-architect", brief: "q", output: "reply" })).ok, false);
   assert.equal(f.state.starts, 1);
@@ -175,6 +186,9 @@ test("architect report is exact, scoped and registered only against its captured
   const f = await fixture(t);
   const a = await f.api.start(f.parent, f.workdir, "report", { role: "feature-architect", brief: "design boundary" });
   const r = f.store.receipt(a.assignment_id); assert.equal(a.output, "report");
+  assert.equal(a.model_selection.requested.intent, "high-capability");
+  assert.equal(a.model_selection.requested.reasoningEffort, "high");
+  assert.equal(a.model_selection.applied.mode, "inherit");
   const other = path.join(f.workdir, "unrelated.md"); await fs.writeFile(other, "other");
   const before = f.store.writes;
   assert.equal((await finish(f, a.assignment_id, { document_path: other })).code, "DELEGATE_REPORT_PATH_INVALID"); assert.equal(f.store.writes, before);

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { initProject, showPlan } from "@veewo/claw-core";
+import { initProject, knowledgeSessionRegistryPath, resolveProjectContext, resolveSessionBoundPlan, showPlan } from "@veewo/claw-core";
 import { runClaw } from "./cli-test-support.js";
 import { ClawCommandService } from "../dist/command-service.js";
 import { SessionRegistryV2, sessionFocusKey } from "../dist/session-registry-v2.js";
@@ -29,6 +29,11 @@ test("DSH parent-child lifecycle and closeout survive a retained session manifes
       { code: "KNOWLEDGE_CAPTURE_TARGET_REQUIRED" });
     await service.execute(context, { operation: "plan.create", input: {
       taskName: "冒烟父计划", title: "Parent", goalText: "Root objective", scope: "project" } });
+    const project = resolveProjectContext(projectRoot);
+    const captureRegistryPath = knowledgeSessionRegistryPath(project, context.agentSessionId);
+    const readCapture = (): { activePlanPath?: string; activeStartedAt?: string } =>
+      fs.existsSync(captureRegistryPath) ? JSON.parse(fs.readFileSync(captureRegistryPath, "utf8")) : {};
+    const rootStartedAt = readCapture().activeStartedAt;
     await service.execute(context, { operation: "plan.start", input: { appendTasks: [{ title: "Child work" }] } });
     const result = await service.execute(context, { operation: "subplan.create", input: {
       parentTaskName: "冒烟父计划", parentTaskId: 2 } });
@@ -65,6 +70,15 @@ test("DSH parent-child lifecycle and closeout survive a retained session manifes
     assert.equal(restored.completedSubplan.planFile, output.planFile);
     assert.equal(restored.completedSubplan.planStatus, "end.completed");
     assert.equal(registry.read(opened.identity.sessionKeyHash).currentPlan?.planFile, "plan.json");
+    const parentPath = showPlan({ cwd: projectRoot, scope: "project", taskName: "冒烟父计划" }).planPath;
+    assert.equal(resolveSessionBoundPlan(project, context.agentSessionId), parentPath,
+      "successful return must publish the binding used by true context recovery");
+    const recovered = runClaw(["context"], projectRoot, { CLAW_HOST: "dsh", CLAW_SESSION_ID: context.agentSessionId,
+      CLAW_SESSION_RUNTIME_DIR: process.env.CLAW_SESSION_RUNTIME_DIR });
+    assert.equal((recovered.activeWorkflow as { planPath: string })?.planPath, parentPath);
+    assert.equal(childDone.knowledgeDispatch, undefined, "resumed child does not finalize the root capture window");
+    assert.ok(rootStartedAt, "DSH creation must register the capture start");
+    assert.equal(readCapture().activeStartedAt, rootStartedAt, "child switch and return retain the root interval");
     assert.equal(showPlan({ cwd: projectRoot, scope: "project", taskName: "冒烟父计划" }).plan.tasks
       .find((task) => task.id === 2)?.status, "done");
     const parentDone = await service.execute(context, { operation: "plan.done", input: {
@@ -72,6 +86,15 @@ test("DSH parent-child lifecycle and closeout survive a retained session manifes
     assert.equal((parentDone.output as { planStatus: string }).planStatus, "end.completed");
     assert.equal(registry.read(opened.identity.sessionKeyHash).currentPlan, undefined);
     assert.ok(parentDone.knowledgeDispatch, "default knowledge closeout must return a dispatch contract");
+    const jobsDir = path.join(path.dirname(parentPath), ".runtime", "knowledge-finalization");
+    const jobs = fs.readdirSync(jobsDir).filter(name => /^[a-f0-9]{64}\.json$/.test(name));
+    assert.equal(jobs.length, 1, "only the completed root owns a new finalizer job");
+    const job = JSON.parse(fs.readFileSync(path.join(jobsDir, jobs[0]!), "utf8"));
+    assert.equal(job.planPath, parentPath);
+    assert.equal(job.reportCapture.startedAt, rootStartedAt);
+    assert.ok(Date.parse(job.reportCapture.endedAt) >= Date.parse(job.reportCapture.startedAt));
+    assert.equal(readCapture().activeStartedAt, undefined);
+    assert.equal(resolveSessionBoundPlan(project, context.agentSessionId), null);
   } finally {
     if (previousRuntime === undefined) delete process.env.CLAW_SESSION_RUNTIME_DIR;
     else process.env.CLAW_SESSION_RUNTIME_DIR = previousRuntime;

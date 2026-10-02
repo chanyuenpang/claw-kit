@@ -5,6 +5,10 @@ export type EventLike = {
     type?: string;
     data?: {
         turn?: number;
+        interrupted?: boolean;
+        reason?: {
+            kind?: string;
+        };
         message?: {
             content?: unknown;
         };

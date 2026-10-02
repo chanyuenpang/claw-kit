@@ -360,7 +360,7 @@ test("an unavailable subagents service reports a non-retryable dispatch", async 
   assert.match(result.dispatch.guidance, /Do not run or retry the knowledge finalizer manually/);
 });
 
-test("actual adapter reuses one Team writer and wakes B after both A ends with no parent turn", async t => {
+test("actual adapter reuses one native finalizer and wakes B after both A ends with no parent turn", async t => {
   const parent = makeAgent("two-job-lead");
   parent.options = { provider: "llm", model: "model", reasoningEffort: "medium" };
   const actors = new Map([[parent.id, parent]]);
@@ -379,10 +379,26 @@ test("actual adapter reuses one Team writer and wakes B after both A ends with n
     stdout: { readFrom: () => ({ text: JSON.stringify(value), lossy: false }) },
     stderr: { readFrom: () => ({ text: "", lossy: false }) },
   }, terminate: async () => {} });
+  const children = [];
   const native = {
-    start() { throw new Error("must not use legacy native start in Team route"); },
-    listChildren: async () => [], startContinuable() {}, sendMessage() {},
-    getProvider: () => ({ name: "spawn", inheritsParentContext: false, start() {}, prepareContinuable() {} }),
+    start() { throw new Error("reusable provider should use continuable native role"); },
+    async listChildren(id) { assert.equal(id, parent.id); return children; },
+    async startContinuable(spec) {
+      assert.equal(spec.request.parent, parent); spawned++;
+      const child = makeAgent(spec.childId);
+      child.session.header.parentSession = parent.id;
+      child.options = { ...parent.options, ...(spec.request.agentOptions ?? {}) };
+      actors.set(child.id, child);
+      children.push({ kind: "child", id: child.id, label: spec.label, mode: "continuable", activity: "inactive", provider: spec.provider });
+      return { childId: child.id, messageId: "bootstrap-message" };
+    },
+    async sendMessage(actor, childId, content) {
+      assert.equal(actor, parent); assert.ok(actors.has(childId));
+      const id = content[0].text.split("\n")[0].split(":").at(-1);
+      sent.push(id); if (id === jobs[1].finalizeId) second();
+      return "native-message-" + id;
+    },
+    getProvider: () => ({ name: "spawn", inheritsParentContext: false, capabilities: { agentOptions: true }, start() {}, prepareContinuable() {} }),
   };
   const team = {
     tryMembership: actor => actor === parent ? { root: parent, id: parent.id, role: "lead" }
@@ -436,8 +452,10 @@ test("actual adapter reuses one Team writer and wakes B after both A ends with n
       if (spec.argv.includes("internal-dsh-finalizer-reserve")) {
         assert.equal(jobs.some(j => j !== job && j.execution && !j.readyForNext), false);
         job.readyForNext = false;
-        job.execution = { route: "team", parentSessionId: parent.id, memberSessionId: "reused-member", teamId: parent.id,
+        job.execution = { route: spec.argv[spec.argv.indexOf("--route") + 1], parentSessionId: parent.id,
+          memberSessionId: spec.argv[spec.argv.indexOf("--member-session-id") + 1],
           provider: "spawn", configFingerprint: spec.argv[spec.argv.indexOf("--config-fingerprint") + 1],
+          ...(spec.argv.includes("--model-selection") ? { modelSelection: JSON.parse(spec.argv[spec.argv.indexOf("--model-selection") + 1]) } : {}),
           deliveryKey: id, delivery: { state: "reserved" } };
         return reply({ ok: true, admitted: true, execution: job.execution });
       }
@@ -470,7 +488,7 @@ test("actual adapter reuses one Team writer and wakes B after both A ends with n
   assert.deepEqual(sent, [jobs[0].finalizeId]);
   assert.equal(mock.captures.length, 2, "B capture freezes even while A owns the role");
   assert.deepEqual(mock.captures[0].events.map(e => e.message), ["A material"]);
-  const child = actors.get("reused-member");
+  const child = actors.get(jobs[0].execution.memberSessionId);
   jobs[0].status = "succeeded";
   await tool.execute({ operation: "knowledge.done", args: { finalize_id: jobs[0].finalizeId, claim_token: "A-token", status: "succeeded", result: "A done" } }, { agent: child });
   assert.deepEqual(sent, [jobs[0].finalizeId], "job terminal alone cannot release unfinished delegate");

@@ -19,7 +19,7 @@ Keeping backend choreography in model-facing skills is superseded for DSH. Retai
 
 ## Consequences
 
-Capability inspection does not promise support for explicit Team model/effort overrides. Unsupported requests remain visible. Existing one-shot jobs are not migrated mid-execution. Source/integration tests are not evidence that a running DSH profile loaded the new artifact.
+模型与 reasoning effort 是按角色解释的尽力偏好，而非 admission 资格门禁：feature-architect 倾向高能力/high，researcher 直接继承 caller，background finalizer 倾向低成本；目录、options 或精确 effort 不可用时使用受支持的 inherit/default/替代 recipe，并诚实记录 requested/applied/resolved-or-unknown。DSH 前台 architect 的 Team 授权不因 options 缺失改路；新 finalizer 固定走普通 native subagent 家族。权限、capture、claim、身份和投递保护仍是硬合同。已 admitted 或投递未知的执行不因偏好变化迁移或重发；旧 one-shot/Team 记录保留原身份。Source/integration tests 不是运行 profile 已加载新 artifact 的证据。
 
 ## Owners and evidence
 

@@ -11,6 +11,7 @@ import { ensureUtf8Bom, hasUtf8BomPrefix } from "./text-encoding.js";
 import { resolveHostIntegrationProfile, isIntegrationHost } from "./integration-contract.js";
 import type { KnowledgeGovernanceResult } from "./knowledge-governance.js";
 import type { KnowledgeWriterConfig, ProjectConfig, ProjectContext } from "./types.js";
+import { parseRoleSelection, type RoleSelection } from "./role-preferences.js";
 
 export type KnowledgeDocUpdateSnapshot = {
   externalDocPaths: string[];
@@ -75,6 +76,8 @@ export type DshFinalizerExecution = {
   teamId?: string;
   provider: string;
   configFingerprint: string;
+  /** Requested preference and immutable submitted recipe; absence is legacy-unknown. */
+  modelSelection?: RoleSelection;
   deliveryKey: string;
   reservedAt: string;
   delivery: { state: "reserved" | "attempted" | "accepted" | "uncertain"; attemptedAt?: string; receiptId?: string };
@@ -343,7 +346,9 @@ export function tryRegisterKnowledgePlan(input: {
     const reportPath = toProjectRelativeReportPath(input.project, deriveKnowledgeReportPath(input.planPath));
     updateKnowledgeRegistry(input.project, sessionId, (registry) => {
       const samePlan = registry.activePlanPath === planPath;
-      const continuingSubagentCapture = resolveHostIntegrationProfile(input.host)?.supportsNativeSubagentFinalization === true;
+      const continuingSubagentCapture = resolveHostIntegrationProfile(input.host)?.supportsNativeSubagentFinalization === true
+        && typeof registry.activePlanPath === "string"
+        && path.posix.dirname(registry.activePlanPath) === path.posix.dirname(planPath);
       return {
         ...registry,
         activePlanPath: planPath,
@@ -493,13 +498,21 @@ export function tryLeaveKnowledgePlan(input: {
     return { ok: true };
   }
   try {
+    const leftPlan = input.leftPlanPath
+      ? toProjectRelativePlanPath(input.project, input.leftPlanPath)
+      : undefined;
     updateKnowledgeRegistry(input.project, sessionId, (registry) => ({
       ...registry,
-      activePlanPath: undefined,
-      activeReportPath: undefined,
-      activeWriter: undefined,
-      activeStartedAt: undefined,
-      pendingTurnOwner: undefined,
+      // A switched-out parent must not erase the already registered child (or
+      // another workflow). Cancellation only clears the capture it owns.
+      ...(!leftPlan || registry.activePlanPath === leftPlan ? {
+        activePlanPath: undefined,
+        activeReportPath: undefined,
+        activeWriter: undefined,
+        activeStartedAt: undefined,
+      } : {}),
+      ...(!leftPlan || registry.pendingTurnOwner?.planPath === leftPlan
+        ? { pendingTurnOwner: undefined } : {}),
       updatedAt: new Date().toISOString(),
     }));
     if (input.leftPlanPath) {
@@ -814,13 +827,15 @@ function releaseDshExecutionLocked(jobPath: string, job: KnowledgeFinalizationJo
 export function reserveDshFinalizerExecution(input: {
   project: ProjectContext; jobPath: string; parentSessionId: string;
   route: DshFinalizerExecution["route"]; memberSessionId: string; teamId?: string;
-  provider: string; configFingerprint: string;
+  provider: string; configFingerprint: string; modelSelection?: unknown;
 }): { admitted: boolean; alreadyReserved?: boolean; execution?: DshFinalizerExecution; reason?: string; blockingFinalizeId?: string } {
   if (!["team", "native-continuable"].includes(input.route) || !input.memberSessionId?.trim()
     || input.memberSessionId === input.parentSessionId || !input.provider?.trim() || !input.configFingerprint?.trim()
     || (input.route === "team" ? !input.teamId?.trim() : input.teamId !== undefined)) {
     throw new Error("DSH_EXECUTION_INVALID: exact reusable executor identity required.");
   }
+  const modelSelection = input.modelSelection === undefined ? undefined : parseRoleSelection(input.modelSelection);
+  if (modelSelection && modelSelection.requested.intent !== "low-cost") throw new Error("DSH_EXECUTION_INVALID: finalizer role selection required.");
   return withDshRoleLock(input.project, input.parentSessionId, () => {
     const observed = readKnowledgeFinalizationJob(input.jobPath);
     assertDshExecutionParent(observed, input.project, input.parentSessionId);
@@ -838,7 +853,8 @@ export function reserveDshFinalizerExecution(input: {
       if (existing) {
         if (existing.route !== input.route || existing.memberSessionId !== input.memberSessionId
           || existing.teamId !== input.teamId || existing.provider !== input.provider
-          || existing.configFingerprint !== input.configFingerprint) throw new Error("DSH_EXECUTION_IMMUTABLE: admitted executor cannot change.");
+          || existing.configFingerprint !== input.configFingerprint
+          || JSON.stringify(existing.modelSelection) !== JSON.stringify(modelSelection)) throw new Error("DSH_EXECUTION_IMMUTABLE: admitted executor cannot change.");
         return { admitted: !existing.releasedAt && ["queued", "running"].includes(job.status), alreadyReserved: true, execution: existing };
       }
       if (job.status !== "queued" || job.claimReceipt) return { admitted: false, reason: "job-not-queued" };
@@ -847,6 +863,7 @@ export function reserveDshFinalizerExecution(input: {
         memberSessionId: input.memberSessionId, ...(input.teamId ? { teamId: input.teamId } : {}),
         provider: input.provider, configFingerprint: input.configFingerprint, deliveryKey: job.finalizeId,
         reservedAt: new Date().toISOString(), delivery: { state: "reserved" },
+        ...(modelSelection ? { modelSelection } : {}),
       };
       writeJsonFileAtomic(input.jobPath, { ...job, dshExecution: execution });
       return { admitted: true, alreadyReserved: false, execution };

@@ -7,11 +7,11 @@
 
 ## 核心事实
 
-- `.claw/project.json` 以 `knowledgeWriter` 对象保存 writer 配置：`executionPolicy`、`externalSkills`、`model`、`reasoningEffort` 与 `datedSectionsToKeep`，并可用 sibling 键 `knowledgeWriterByHost` 按 host 做字段级覆盖（键 ∈ `codex | opencode | cindy | dsh | standard`，未指定字段继承 base writer；覆盖表只存在于解析点，不随 writer 快照写入 registry/job）。`executionPolicy` 接受 `main-agent | background | subagent` 且可整体省略：省略或 host 不支持时由 host capability matrix 的 `defaultKnowledgeExecutionPolicy` 兜底（codex → background，cindy/dsh → subagent，opencode → background，standard hostless → main-agent）；显式配置 host 不支持的 policy 在 plan closeout 前 fail-fast（错误指向 host-registered claim-time report collector），唯一例外是 cindy/dsh 的 `background` 仍按 legacy coercion 归一为 subagent。`claw init` 脚手架不再写入 `executionPolicy`。
-- `main-agent` policy 不收集任何 transcript/report、不创建 finalization job：`tryCaptureKnowledgeStop`/`internal-knowledge-capture` 返回 `captured:false, reason:"main-agent-policy"`，`tryEndKnowledgePlan` 不建 pendingTurnOwner/job，knowledge hook preflight 只为 `background` 加载。main agent 通过既有的 `claw knowledge prepare/complete --source agent-memory` 路由自行沉淀；root plan 终态的 `workflowGuidance` 携带该两步 closeout 链（`workflow-guidance.ts` 的 `applyMainAgentCloseoutGuidance`）。cindy adapter 的 turn-end capture 对 `main-agent-policy` 显式跳过（skipped 而非 capture-failed）。
+- `.claw/project.json` 以 `knowledgeWriter` 对象保存 writer 内容配置：`externalSkills`、`model`、`reasoningEffort` 与 `datedSectionsToKeep`，并可用 sibling 键 `knowledgeWriterByHost` 按 host 做字段级覆盖（键 ∈ `codex | opencode | cindy | dsh | standard`，未指定字段继承 base writer；覆盖表只存在于解析点，不随 writer 快照写入 registry/job）。执行路线由 invoking adapter 固定拥有，不再由 `executionPolicy` 选择；旧字段只作为兼容输入被丢弃，新写入拒绝。`model`/`reasoningEffort` 是冻结的尽力偏好，不是 exact-match 门禁：launcher 在发送前解析受支持的 applied recipe 并记录真实选择或 unknown，不能因软偏好缺失阻塞，也不能借此放宽权限/capture/claim 与未知投递保护。
+- 固定宿主路线见 `docs/2026-10-02-fixed-host-knowledge-closeout.md`：Codex/Cindy/DSH 由各自 adapter 派发原生 writer，OpenCode 走其 idle capture，standard/hostless 由 main agent 执行 agent-memory prepare/complete。旧 policy 事实只保留在历史段，不应驱动当前路由。
 - `externalSkills` 的非空有序列表选择真实外部 skill assignments；列表缺失或为空时选择 Core 内部 built-in governance assignment。该内置 contract 不以 `claw-kit:knowledge-writer` 用户 skill 发布。`datedSectionsToKeep` 的治理语义由 `truth-and-adr-corpus-semantics.md` 唯一拥有。
-- Background policy 在支持它的 host 上于 Stop/session-idle 创建 job；subagent policy 在终态 mutation 返回 dispatch 前创建 ready job。Cindy 总是采用后一条路径，并把归一化后的 `subagent` 快照写入 `KnowledgeFinalizationJob.writer`。后续重试使用该快照，不从变更后的项目配置重新推导 capability。
-- claim 把冻结配置解析为有序 assignments 与一次性 template。Codex 与 Cindy delegate 都在 session-scoped 动态 assignment subplan 中顺序执行；Cindy 通过 Ghost operations 消费专用内部 delegate template，而不是直接执行 assignment prompts。任一失败都会阻止后续 assignment 并以 claim token 写入失败终态。main agent 不根据 `keyDecisions` 拆分 Truth/ADR phase。
+- 终态 owner 按固定宿主合同冻结 job/材料；后续重试使用该快照，不从变更后的项目配置重新推导 governance。模型软偏好可以在新的、未发送 admission 前按当前宿主能力解析；一旦 admitted 或投递未知，执行 identity 与 applied recipe 不迁移。
+- claim 把冻结配置解析为有序 assignments 与一次性 template。宿主 delegate 在 session-scoped 动态 assignment subplan 中顺序执行；任一失败都会阻止后续 assignment 并以 claim token 写入失败终态。main agent 不根据 `keyDecisions` 拆分 Truth/ADR phase。
 - `memory.autoUpdate` 有效时，冻结 external-document assignment 会在内置或 external skill assignments 之后追加；因此配置 external skills 只替换 built-in Truth/ADR governance，不会替换同一 job 的 existing-document governance stage。existing job、generated assignment plan、其 tracked subplan 与相邻 report 共同构成审计边界；`knowledge done` 保持既有协议，不接收或要求独立 doc-update receipt。doc-updater 是 Core 内部 template-backed resource：作为 active parent plan 的 stage 时创建 subplan；被显式独立调用时创建 own plan，模板或 CLI 不可用时按 fallback 运行。
 - 内置与外部 assignment 使用不同 prompt builder。内置 prompt 直接展开隐藏治理 contract；外部 prompt 明确调用配置的 skill、要求无人值守且禁止询问、确认或等待交互。两者都要求使用 task status 区分已完成 scope 与 pending / blocked intent，禁止把 requirements 或 intentions 写成结果，也禁止在 governed docs 中引用会被销毁的 supplied materials。
 - 外部 skill 自己拥有输出语义与文档治理。finalizer 不为外部 writer 建立 canonical Markdown 写前快照，也不执行 `datedSectionsToKeep` 裁剪；通用的编码归一化、recall refresh、report result 与 job lifecycle 仍继续运行。
@@ -22,7 +22,7 @@
 ## 影响
 
 - 项目替换内建治理时，通过 `.claw/project.json` 的 `knowledgeWriter.externalSkills` 配置有序 skill 链，不在适配器里硬编码治理分支。
-- `executionPolicy` 在支持多种策略的 host 上只改变 launcher；Cindy 目前固定为 subagent。所有路径共享 immutable job、assignment builder、claim ownership 与 done protocol。Codex 与 Cindy 各自加载内部 delegate template，并通过各自 host route 建立 assignment subplan；不能把 shell bridge 或 Ghost operation 细节描述为所有 host 的共同步骤。
+- 固定 host 路线共享 immutable job、assignment builder、claim ownership 与 done protocol；各 adapter 通过自己的 route 建立 assignment subplan。不能把某一宿主的 shell、Ghost、Team 或 native subagent 细节描述成所有 host 的共同步骤。
 
 <!-- state: history -->
 ## Evolution history

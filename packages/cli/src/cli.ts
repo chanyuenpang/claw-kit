@@ -1406,9 +1406,15 @@ function runInternalDshFinalizerExecution(command: string, args: string[]): void
     const teamId = readOptionalFlag(args, "--team-id");
     const provider = readRequiredFlag(args, "--provider");
     const configFingerprint = readRequiredFlag(args, "--config-fingerprint");
+    const selectionJson = readOptionalFlag(args, "--model-selection");
+    let modelSelection: unknown;
+    if (selectionJson !== undefined) {
+      try { modelSelection = JSON.parse(selectionJson); }
+      catch { throw new ClawError("PROJECT_CONFIG_INVALID", "Invalid DSH model selection metadata."); }
+    }
     assertNoRemainingArgs(args, command);
     if (route !== "team" && route !== "native-continuable") throw new ClawError("PROJECT_CONFIG_INVALID", "Unsupported reusable DSH executor route.");
-    printJson({ ok: true, command, ...reserveDshFinalizerExecutionCommand({ cwd, parentSessionId: actorSessionId, finalizeId, route, memberSessionId, teamId, provider, configFingerprint }) });
+    printJson({ ok: true, command, ...reserveDshFinalizerExecutionCommand({ cwd, parentSessionId: actorSessionId, finalizeId, route, memberSessionId, teamId, provider, configFingerprint, modelSelection }) });
     return;
   }
   const deliveryKey = readRequiredFlag(args, "--delivery-key");

@@ -17,6 +17,7 @@ import { handleProjectConfigRpc, type WorkspaceRegistry } from "./project-config
 import { resolveDshDelegationCapability } from "./team-capability.js";
 import { FinalizerRoleDispatcher, type FinalizerAgent } from "./finalizer-roles.js";
 import { RoleDelegation, type DelegationActor } from "./delegation.js";
+import { selectDshRoleModel } from "./model-selection.js";
 
 export const name = "claw-kit";
 
@@ -51,7 +52,7 @@ export type SubagentsLike = {
       label?: string;
       prompt: Array<{ type: string; text: string }>;
       parent: unknown;
-      agentOptions?: { model?: string; reasoningEffort?: string };
+      agentOptions?: { provider?: string; model?: string; reasoningEffort?: string };
       signal?: AbortSignal;
     },
   ): Promise<{ id: string; result?: Promise<unknown>; dispose?: () => Promise<void> }>;
@@ -563,9 +564,11 @@ export function apply(ctx: unknown): void {
         return deferred("capture", safeCaptureFailureCode(error));
       }
       if (!capability.ready) return deferred("dispatch", capability.reason ?? "DELEGATION_CAPABILITY_UNAVAILABLE");
-      if (capability.selectedRoute === "team" && current.preferReuse !== true) return deferred("dispatch", "DSH_REUSABLE_PROTOCOL_UNAVAILABLE");
+      const selection = await selectDshRoleModel({ agent: agent as FinalizerAgent, role: "finalizer",
+        supportsOptions: capability.supportsOptions === true, getService: (name) => c.get(name),
+        hints: { model: current.model, reasoningEffort: current.reasoningEffort } });
       if (capability.reusable && current.preferReuse === true) {
-        const result = await reusableFinalizers.dispatch(agent as FinalizerAgent, workdir, { ...current, finalizeId, prompt: current.prompt! }, capability);
+        const result = await reusableFinalizers.dispatch(agent as FinalizerAgent, workdir, { ...current, finalizeId, prompt: current.prompt!, selection }, capability);
         if (result.ok !== true) await recordDshIssue(agent.id, workdir, finalizeId, "dispatch", String(result.code ?? "REUSABLE_DISPATCH_DEFERRED"));
         return result as Record<string, JsonValue>;
       }
@@ -576,7 +579,7 @@ export function apply(ctx: unknown): void {
         const child = await subagents.start("spawn", {
           label: finalizerChildLabel(finalizeId), prompt: [{ type: "text", text: current.prompt! }],
           parent: agent, signal: controller.signal,
-          ...((current.model || current.reasoningEffort) ? { agentOptions: { ...(current.model ? { model: current.model } : {}), ...(current.reasoningEffort ? { reasoningEffort: current.reasoningEffort } : {}) } } : {}),
+          ...(Object.keys(selection.applied.options).length ? { agentOptions: selection.applied.options } : {}),
         });
         const runId = String(child.id);
         finalizerDispatches.set(finalizeId, { runId, settled: false });
@@ -590,7 +593,7 @@ export function apply(ctx: unknown): void {
           void Promise.resolve(child.result).then(settle, settle)
             .finally(() => (child.dispose ? child.dispose() : undefined)).catch(() => undefined);
         }
-        return { ok: true, runId };
+        return { ok: true, runId, executor: "native-one-shot", modelSelection: JSON.parse(JSON.stringify(selection)) as JsonValue };
       } catch (error) {
         // Native admission can have succeeded before its acknowledgement failed.
         // The next entry must inspect the child catalog, not blindly start again.

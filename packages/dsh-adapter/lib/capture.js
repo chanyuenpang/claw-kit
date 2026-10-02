@@ -16,25 +16,66 @@ export function textFromContent(content) {
 /** Adapter-owned normalization of DSH history into the shared final-event contract. */
 export function extractPlanFinalAnswers(events, _sessionId, startedAtMs, endedAtMs) {
     const finals = new Map();
+    const candidates = new Map();
+    const boundaryError = () => new Error("DSH_REPORT_BOUNDARY_UNAVAILABLE");
+    if ((startedAtMs !== undefined && !Number.isFinite(startedAtMs))
+        || (endedAtMs !== undefined && !Number.isFinite(endedAtMs))
+        || (startedAtMs !== undefined && endedAtMs !== undefined && endedAtMs < startedAtMs))
+        throw boundaryError();
+    const inWindow = (event) => {
+        const time = event.time;
+        if (time === undefined) {
+            if (startedAtMs !== undefined || endedAtMs !== undefined)
+                throw boundaryError();
+            return true; // Legacy unbounded history only.
+        }
+        if (typeof time !== "number" || !Number.isFinite(time) || !Number.isFinite(new Date(time).getTime()))
+            throw boundaryError();
+        return (startedAtMs === undefined || time >= startedAtMs)
+            && (endedAtMs === undefined || time < endedAtMs);
+    };
+    const finalText = (event) => {
+        const content = event.data?.message?.content;
+        if (event.data?.interrupted || (Array.isArray(content) && content.some(block => block && typeof block === "object" && block.type === "tool-call")))
+            return "";
+        return textFromContent(content);
+    };
     for (const event of events) {
         const turn = event.data?.turn;
-        const time = event.time;
-        if (startedAtMs !== undefined && time !== undefined && time < startedAtMs)
+        if (typeof turn !== "number" || !Number.isSafeInteger(turn))
             continue;
-        // The last assistant/message before a tool call is not a final answer.
-        // No Host turn-final hook is required: absence of a proven final is valid
-        // information loss, never a reason to delay the knowledge writer.
-        if (event.type !== "assistant/final" || typeof turn !== "number")
-            continue;
-        if (endedAtMs !== undefined) {
-            if (typeof time !== "number" || !Number.isFinite(time))
-                throw new Error("DSH_REPORT_BOUNDARY_UNAVAILABLE");
-            if (time >= endedAtMs)
-                continue;
+        if (event.type === "assistant/message") {
+            // Track the actual last message, including disqualifying messages; never
+            // fall back to older commentary when the last response was interrupted.
+            if (finalText(event))
+                candidates.set(turn, event);
+            else
+                candidates.delete(turn);
         }
-        const message = textFromContent(event.data?.message?.content);
-        if (message)
-            finals.set(turn, { message, ...(time !== undefined ? { time } : {}) });
+        else if (event.type === "tool/call") {
+            candidates.delete(turn);
+        }
+        else if (event.type === "assistant/final") {
+            // Compatibility with older Hosts that emitted an explicit final event.
+            const message = finalText(event);
+            if (message && inWindow(event))
+                finals.set(turn, { message, time: event.time });
+        }
+        else if (event.type === "turn/end") {
+            const candidate = candidates.get(turn);
+            candidates.delete(turn);
+            if (event.data?.reason?.kind !== "completed") {
+                finals.delete(turn);
+                continue;
+            }
+            // A still-open turn has no proof and legitimately contributes no final;
+            // report capture never waits for Stop or expands the frozen upper bound.
+            if (!candidate || !inWindow(event) || !inWindow(candidate))
+                continue;
+            if (event.time !== undefined && candidate.time !== undefined && event.time < candidate.time)
+                throw boundaryError();
+            finals.set(turn, { message: finalText(candidate), time: candidate.time });
+        }
     }
     return [...finals.entries()].map(([turn, final]) => ({
         schemaVersion: 1,

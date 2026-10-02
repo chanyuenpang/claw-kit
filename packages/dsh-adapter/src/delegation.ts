@@ -4,6 +4,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveDshDelegationCapability, type DshDelegationCapability } from "./team-capability.js";
 import { DelegationReceiptStore, type DelegationReceiptTransaction, type JsonValue } from "./delegation-receipts.js";
+import { selectDshRoleModel } from "./model-selection.js";
+import { parseRoleSelection, roleLaunchRecipe, type RoleSelection } from "../lib/role-preferences.js";
 
 type Json = Record<string, JsonValue>;
 type Obj = Record<string, unknown>;
@@ -31,6 +33,8 @@ type Receipt = {
   memberId?: string; memberName?: string; memberAttempted?: boolean; messageId?: string; runId?: string;
   planPath?: string; taskDir?: string; reportDir?: string; reportPath?: string;
   result?: string; error?: string; registration?: "pending" | "registered" | "deferred";
+  /** Optional best-effort preference receipt; absence means legacy-unknown. */
+  modelSelection?: RoleSelection;
 };
 const object = (v: unknown): Obj | undefined => v !== null && typeof v === "object" && !Array.isArray(v) ? v as Obj : undefined;
 const string = (v: unknown): string | undefined => typeof v === "string" && v.length > 0 ? v : undefined;
@@ -67,6 +71,10 @@ function parseReceipt(value: unknown, parent: DelegationActor, workdir: string):
       !["reserved", "attempted", "accepted", "unknown"].includes(String(r.delivery)) || !string(r.callId) || !string(r.requestHash) || !string(r.label) || !string(r.skillPath) || !string(r.fingerprint) || !string(r.brief) || !Number.isSafeInteger(r.ordinal) || Number(r.ordinal) < 1 || typeof r.admitted !== "boolean" ||
       (r.status === "completed" && !string(r.result)) || (r.status === "failed" && !string(r.error)) ||
       (r.output === "report" && (r.role !== "feature-architect" || !string(r.planPath) || !string(r.taskDir) || !string(r.reportDir) || !string(r.reportPath)))) reject("DELEGATE_RECEIPT_INVALID");
+  if (r.modelSelection !== undefined) {
+    try { parseRoleSelection(r.modelSelection); }
+    catch { reject("DELEGATE_RECEIPT_INVALID"); }
+  }
   return r as unknown as Receipt;
 }
 function nativeRoleId(parentId: string, fingerprint: string): string {
@@ -113,6 +121,7 @@ export class RoleDelegation {
   }
   private view(r: Receipt): Json {
     return json({ ok: true, assignment_id: r.id, status: r.status, role: r.role, output: r.output,
+      ...(r.modelSelection ? { model_selection: r.modelSelection } : {}),
       ...(r.result !== undefined ? { result: r.result } : {}), ...(r.error ? { error: r.error } : {}),
       ...(r.status === "completed" && r.output === "report" ? { document_path: r.reportPath, registration: r.registration ?? "pending" } : {}) });
   }
@@ -161,8 +170,11 @@ export class RoleDelegation {
       try {
         if (!(await fs.stat(skillPath)).isFile() || normalize(await fs.realpath(skillPath)) !== normalize(skillPath)) reject("DELEGATE_SKILL_RESOURCE_INVALID");
       } catch { reject("DELEGATE_SKILL_RESOURCE_UNAVAILABLE"); }
-      const fingerprint = hash([parent.id, workdir, role, "spawn", parent.options ?? {}]);
       const backend: Backend = capability.selectedRoute === "team" ? "team" : capability.reusable ? "native-continuable" : "native-one-shot";
+      const modelSelection = await selectDshRoleModel({ agent: parent, role,
+        supportsOptions: backend !== "team" && capability.supportsOptions === true,
+        getService: this.deps.getService });
+      const fingerprint = hash([parent.id, workdir, role, "spawn", roleLaunchRecipe(modelSelection)]);
       let report: Pick<Receipt, "planPath" | "taskDir" | "reportDir" | "reportPath"> = {};
       if (output === "report") {
         if (!planPath || !path.isAbsolute(planPath) || !(await fs.stat(planPath)).isFile()) reject("DELEGATE_PLAN_PATH_INVALID");
@@ -173,7 +185,7 @@ export class RoleDelegation {
         const summary = [...brief.normalize("NFKC").replace(/[^\p{L}\p{N}]+/gu, "-")].slice(0, 32).join("").replace(/^-+|-+$/g, "") || "feature-architecture";
         report = { planPath: capturedPlan, taskDir, reportDir, reportPath: path.join(reportDir, stamp + "-" + summary + "-" + id + ".md") };
       }
-      const initial: Receipt = { version: 1, id, parentId: parent.id, workdir, callId, requestHash, role, brief, output, skillPath, fingerprint, backend,
+      const initial: Receipt = { version: 1, id, parentId: parent.id, workdir, callId, requestHash, role, brief, output, skillPath, fingerprint, backend, modelSelection,
         ...(capability.teamId ? { teamId: capability.teamId } : {}), label: backend === "native-one-shot" ? "claw-kit:delegate-once:" + id : "claw-kit:delegate:" + role + ":" + fingerprint,
         status: "pending", delivery: "reserved", ordinal: 1, admitted: false, ...report };
       const reserved = await this.receipts().withParent(parent.id, workdir, async (tx: DelegationReceiptTransaction) => {
@@ -279,7 +291,9 @@ export class RoleDelegation {
       if (typeof native?.listChildren !== "function") reject("DELEGATE_NATIVE_CATALOG_UNAVAILABLE");
       await this.update(parent, r.workdir, r.id, (v) => ({ ...v, delivery: "attempted" }));
       await this.fresh(parent, r);
-      const run = await native.start("spawn", { parent, label: r.label, prompt: text(this.prompt(r)), signal: this.signal });
+      const options = r.modelSelection?.applied.options ?? {};
+      const run = await native.start("spawn", { parent, label: r.label, prompt: text(this.prompt(r)), signal: this.signal,
+        ...(Object.keys(options).length ? { agentOptions: options } : {}) });
       await this.update(parent, r.workdir, r.id, (v) => ({ ...v, delivery: "accepted", ...(string(run?.id) ? { runId: run.id } : {}), status: terminal(v) ? v.status : "running" }));
       if (run?.result && typeof run.result.then === "function") {
         const settled = async () => {
@@ -322,7 +336,9 @@ export class RoleDelegation {
       if (!member) {
         await this.update(parent, r.workdir, r.id, (v) => ({ ...v, memberAttempted: true }));
         await this.fresh(parent, r);
-        const created = await native.startContinuable({ childId: id, provider: "spawn", label: r.label, request: { parent, prompt: text(this.bootstrap(r)) }, signal: this.signal });
+        const options = r.modelSelection?.applied.options ?? {};
+        const created = await native.startContinuable({ childId: id, provider: "spawn", label: r.label,
+          request: { parent, prompt: text(this.bootstrap(r)), ...(Object.keys(options).length ? { agentOptions: options } : {}) }, signal: this.signal });
         if (created?.childId !== id) reject("DELEGATE_MEMBER_CREATION_UNCERTAIN");
       }
       memberId = id;

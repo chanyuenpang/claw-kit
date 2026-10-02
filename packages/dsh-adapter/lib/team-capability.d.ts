@@ -9,6 +9,8 @@ export type DshDelegationCapability = {
     provider?: string;
     /** Managed continuation surface is present; actual starts can still fail. */
     reusable?: boolean;
+    /** Optional launch knobs; missing support degrades preferences, not admission. */
+    supportsOptions?: boolean;
 };
 export type DshDelegationCapabilityInput = {
     getService: (name: string) => unknown;
@@ -23,8 +25,9 @@ export type DshDelegationCapabilityInput = {
  * or chat declarations. No Team surface selects native, even if a residual
  * agentTeams service exists. Partial/invalid exposure is diagnosed, not used.
  * Foreground readiness checks the caller's dispatch surface, not the private
- * provider selected inside the host tool. Finalizers require only the scoped
- * spawn signal plus exact Team business services and the explicit backend.
+ * provider selected inside the host tool. New background finalizers use the
+ * native service family; model/effort hints are resolved separately as soft
+ * preferences, not an exact-match permission gate.
  * Call again immediately before admission; this snapshot is not authorization
  * for replaying or switching an already admitted job.
  */

@@ -25,6 +25,12 @@ plan state, or research artifacts with this skill.
   a knowledge-finalizer. Lack of reuse does not prevent a fresh bounded child.
   On DSH this lookup and fallback belong to the adapter, not the main agent.
 
+Researcher inherits the calling agent's model and reasoning capability; do not
+independently select a cheaper or more powerful model, or force a new effort.
+Use the host's caller-inheritance contract when explicit caller options cannot
+be observed or passed. Report unknown actual settings honestly. Model
+inheritance does not expand the read-only role or require copying full history.
+
 ## Host routing
 
 Select the active adapter from its current trusted `[claw host]` platform marker

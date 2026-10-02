@@ -39,6 +39,7 @@ import {
   type PlanFieldUpdates,
   type PlanMutationOperation,
   type PlanRef,
+  type ProjectContext,
   type PlanWriteInput,
   type SubplanWriteInput,
   type WorkflowGuidance,
@@ -564,6 +565,19 @@ export class ClawCommandService {
     return context.mode === "session" ? context.agentSessionId : undefined;
   }
 
+  /** Publish the canonical binding only after the parent focus commit. */
+  private publishParentBinding(context: CommandContext, project: ProjectContext, parentRef: PlanRef) {
+    const parent = showPlan({
+      cwd: context.cwd,
+      scope: parentRef.scope,
+      taskName: parentRef.taskName,
+      planFile: parentRef.planFile,
+      ownerSessionKey: this.ownerSessionKey(context),
+    });
+    bindSessionToPlan(project, this.ownerSessionKey(context), parent.planPath);
+    return parent;
+  }
+
   private async restoreOrReleaseEndedFocus(
     context: CommandContext,
     current: PlanRef,
@@ -581,14 +595,7 @@ export class ClawCommandService {
         parentTaskId: completed.parentTaskId,
         sessionStore: this.focusStore,
       });
-      const parent = showPlan({
-        cwd: context.cwd,
-        scope: parentRef.scope,
-        taskName: parentRef.taskName,
-        planFile: parentRef.planFile,
-        ownerSessionKey: context.agentSessionId,
-      });
-      bindSessionToPlan(project, context.agentSessionId, parent.planPath);
+      this.publishParentBinding(context, project, parentRef);
       return;
     }
     await releaseCurrentPlanFocus({
@@ -634,13 +641,7 @@ export class ClawCommandService {
           parentTaskId: result.plan.parentTaskId,
           sessionStore: this.focusStore,
         });
-        const parent = showPlan({
-          cwd: context.cwd,
-          scope: parentRef.scope,
-          taskName: parentRef.taskName,
-          planFile: parentRef.planFile,
-          ownerSessionKey: this.ownerSessionKey(context),
-        });
+        const parent = this.publishParentBinding(context, project, parentRef);
         const parentGuidance = appendSubplanReturnGuidance({
           guidance: await buildPlanWorkflowGuidance({
             taskName: parent.taskName,
@@ -683,7 +684,7 @@ export class ClawCommandService {
           ref: current,
           plan: result.plan,
           endedAt: result.plan.completedAt ?? new Date().toISOString(),
-        }]);
+        }], parentRef);
         const hostActions = this.codexActionsFromMutation(context, commandSource, resumedResult);
         return {
           output: resumedResult,
@@ -827,6 +828,10 @@ export class ClawCommandService {
         ownerSessionKey: this.ownerSessionKey(context),
       });
       if (ended.plan.status === "end.leave") {
+        // Internal parent/child focus transfer is not cancellation of this
+        // workflow's capture interval or of its existing finalization jobs.
+        if (ended.plan.leaveReason === "switch_to_new_plan"
+          && resumed?.taskName === ended.ref.taskName) continue;
         tryLeaveKnowledgePlan({ project, sessionId: context.agentSessionId, leftPlanPath: shown.planPath, knowledgeCapture: ended.plan.knowledgeCapture });
         continue;
       }

@@ -34,6 +34,8 @@ description: 为高风险或跨系统功能产出最小充分的领域架构设�
 
 技能从哪个安装包或项目目录加载不限制当前宿主路由；同一项目中的 Cindy 和 Codex 使用者分别走自己的分支。Cindy 不从 researcher 的 Orca 授权推导架构 Worker 授权，必须以当前工具 schema 和本次设计任务的明确权限为准。未知宿主或缺失能力要明确报告，不猜工具、不切换其他平台。
 
+架构角色尽力优先使用高能力模型及高思考档位（例如环境中可用的 Astra）；这些是偏好，不是精确型号或 effort 的资格门禁。只传实际接口支持并已前置确认有效的参数；无法满足时使用其他可用高能力 route，或本宿主继承/默认设置，并如实记录实际选择或 unknown。不要猜模型价格/等级、伪造已匹配，也不因型号目录缺失改用另一个宿主。权限、报告边界和投递未知不重发规则不因软偏好放宽。
+
 ## Delegation contract
 
 这是语义合同，不是可直接传给工具的参数；以当前宿主 schema 映射。
@@ -43,7 +45,9 @@ delegateSubagents:
   - name: feature-architect
     skill: feature-architecture
     worker: document-author
+    model_intent: high-capability
     reasoning_effort: high
+    selection_policy: best-effort
     fork_context: false
     waitForCompletion: true
     preferReuse: true
