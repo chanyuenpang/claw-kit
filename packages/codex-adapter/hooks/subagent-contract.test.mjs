@@ -149,13 +149,13 @@ test("Codex plan commands use only the bundled code-mode consumer", () => {
   assert.match(mainRouter, /agent must never call `get_goal` separately/i);
   assert.match(mainRouter, /no direct-call fallback/i);
   assert.match(mainRouter, /Consume SessionStart recovery before creating any plan/i);
-  assert.match(mainRouter, /Otherwise run `plan sync` through the bridge\s+once before continuing/i);
+  assert.match(mainRouter, /Do not run a\s+ceremonial `plan sync`/i);
   assert.match(entry, /commandHints[\s\S]*not commands to run through another transport/i);
   assert.match(workflowReference, /code-mode consumption is the adapter execution method/i);
   assert.match(workflowReference, /single distributed runtime consumer/i);
   assert.match(workflowReference, /non-distributed test oracle/i);
   assert.match(workflowReference, /Codex has no separate host-call fallback/i);
-  assert.match(workflowReference, /schema v1 native `create_goal` or `update_goal`/i);
+  assert.match(workflowReference, /recognized native `create_goal` or `update_goal`/i);
   assert.match(workflowReference, /exactly once/i);
   assert.match(workflowReference, /inspects `get_goal`/i);
   assert.match(workflowReference, /`create_goal` executes only when there is no unfinished Goal/i);
@@ -165,8 +165,8 @@ test("Codex plan commands use only the bundled code-mode consumer", () => {
   assert.match(workflowReference, /missing, already complete, unknown, or otherwise mismatched Goal consumes the action as a no-op/i);
   assert.match(workflowReference, /agent must never inspect Goal state through a separate `get_goal` call/i);
   assert.match(workflowReference, /do not parse host error wording/i);
-  assert.match(workflowReference, /recovered active session runs `plan sync` once through the bridge/i);
-  assert.match(workflowReference, /fail closed/i);
+  assert.match(workflowReference, /without a ceremonial `plan sync`/i);
+  assert.match(workflowReference, /schema drift fails open into `hostEffectFailures`/i);
   assert.match(workflowReference, /Codex compact results do not return `goalMode` or `goalTool`/i);
-  assert.match(workflowReference, /explicit stage-aware allowlist/i);
+  assert.match(workflowReference, /explicit mutation allowlist/i);
 });

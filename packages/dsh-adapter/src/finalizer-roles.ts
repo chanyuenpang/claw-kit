@@ -210,7 +210,6 @@ export class FinalizerRoleDispatcher {
   }
   private async dispatchSerial(agent: FinalizerAgent, workdir: string, dispatch: ReusableDispatch, capability: DshDelegationCapability): Promise<Json> {
     try {
-      if (!capability.ready || !capability.reusable) return deferred(capability.reason ?? "DSH_REUSABLE_FINALIZER_UNAVAILABLE", "capability");
       const inspection = await this.call("inspect", agent, workdir, []);
       if (!Array.isArray(inspection.executions)) return deferred("DSH_EXECUTION_LEDGER_INVALID");
       let rows = inspection.executions as Inspection[];
@@ -239,6 +238,7 @@ export class FinalizerRoleDispatcher {
         await this.call("delivery", agent, workdir, ["--finalize-id", dispatch.finalizeId, "--delivery-key", dispatch.finalizeId, "--state", "accepted", "--receipt-id", receiptId]);
         return this.acknowledged({ ...execution, delivery: { state: "accepted", receiptId } }, current.status);
       }
+      if (!capability.ready || !capability.reusable) return deferred(capability.reason ?? "DSH_REUSABLE_FINALIZER_UNAVAILABLE", "capability");
       // Legacy admissions are never reinterpreted as new soft preferences.
       if (execution && !persistedSelection) dispatch = { ...dispatch, selection: undefined };
       const fingerprint = execution && !persistedSelection ? execution.configFingerprint
@@ -248,7 +248,6 @@ export class FinalizerRoleDispatcher {
         || execution.provider !== (capability.provider ?? "spawn") || execution.configFingerprint !== fingerprint)) return deferred("DSH_FINALIZER_EXECUTOR_PINNED");
       const blocker = rows.find(x => x.finalizeId !== dispatch.finalizeId && x.execution && !x.readyForNext);
       if (blocker) return { ok: true, queued: true, admitted: false, delivered: false, phase: "waiting-for-role", blockingFinalizeId: blocker.finalizeId };
-      if (!await this.fresh(agent, dispatch, capability)) return deferred("DSH_FINALIZER_CAPABILITY_CHANGED", "capability");
       const member = await this.member(agent, dispatch, capability, fingerprint, execution);
       if (execution && execution.memberSessionId !== member.id) return deferred("DSH_FINALIZER_EXECUTOR_PINNED");
       if (!execution) {
@@ -265,8 +264,6 @@ export class FinalizerRoleDispatcher {
       if (attempt.deliver !== true) return deferred("DSH_FINALIZER_DELIVERY_UNCERTAIN", "reconcile");
       let receiptId: string;
       try {
-        if (native) native = await this.freshNative(agent, dispatch, capability);
-        else if (!await this.fresh(agent, dispatch, capability) || (team && this.deps.getService("agentTeams") !== team)) throw new Error("DSH_FINALIZER_CAPABILITY_CHANGED");
         const content = text(marker(dispatch.finalizeId) + dispatch.prompt);
         receiptId = team
           ? (await team.sendMessage(agent, { target: member.target, content, signal: this.deps.signal })).messageId

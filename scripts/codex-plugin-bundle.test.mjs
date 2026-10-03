@@ -81,7 +81,7 @@ test("Codex shared entry orders recovery, template ownership and new planning", 
   assert.match(entry, /commandHints/);
   assert.match(host, /SessionStart recovery before creating any plan/);
   assert.match(host, /explicit user goal\s+change\/replacement\/cancellation/);
-  assert.match(host, /Otherwise run `plan sync` through the bridge/);
+  assert.match(host, /Do not run a\s+ceremonial `plan sync`/);
 });
 
 test("Codex routed reference preserves lifecycle and the exact mutation bridge", async () => {
@@ -98,12 +98,13 @@ test("Codex routed reference preserves lifecycle and the exact mutation bridge",
   assert.match(host, /argv: \["plan", "create", "<title>"\]/);
   assert.match(host, /```javascript[\s\S]*runClawPlanMutation[\s\S]*```/);
   assert.match(host, /claw-kit:codex-driver:v23:s1/);
-  assert.match(host, /envelope\?\.driverVersion !== 23/);
-  assert.match(host, /envelope\?\.hostActionSchemaVersion !== 1/);
+  assert.match(host, /typeof envelope\?\.source !== "string"/);
+  assert.doesNotMatch(host, /npm install --global @veewo\/claw/);
+  assert.doesNotMatch(host, /CLI repair failed/);
   assert.ok(host.includes(`const pluginVersion = "${manifest.version}";`), "bridge pins its published adapter version");
   assert.match(host, /no direct-call fallback/);
   assert.match(host, /must never call `get_goal` separately/);
-  assert.match(host, /goalRecovery\.command/);
+  assert.match(host, /never authorize replaying the canonical mutation/);
 });
 
 test("Codex main-agent bundle exposes only structured internal closeout dispatch", async () => {

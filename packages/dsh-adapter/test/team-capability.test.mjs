@@ -60,7 +60,7 @@ async function expectFailure(input, selectedRoute, reason) {
 test("managed foreground role selects exact implicit Lead and reusable backend", async () => {
   const f = fixture();
   assert.deepEqual(await resolve(f.input), { selectedRoute: "team", ready: true, teamId: "lead-id", leadId: "lead-id", provider: "spawn", reusable: true });
-  assert.deepEqual(f.requestedServices, ["tools", "agentTeams", "subagents"]);
+  assert.deepEqual(f.requestedServices, ["tools", "agentTeams"]);
 });
 
 test("managed role only needs effective spawn signal and Team business APIs", async () => {
@@ -73,19 +73,19 @@ test("managed role only needs effective spawn signal and Team business APIs", as
   assert.deepEqual(await resolve(f.input), { selectedRoute: "team", ready: true, teamId: "lead-id", leadId: "lead-id", provider: "spawn", reusable: true });
   assert.equal(inspected.includes("wait_agent"), false);
   assert.equal(inspected.includes("list_agents"), false);
-  await expectFailure({ ...f.input, role: "foreground" }, "team", "TEAM_FOREGROUND_TOOL_SCHEMA_MISMATCH");
+  assert.equal((await resolve({ ...f.input, role: "foreground" })).ready, true);
   delete f.services.agentTeams.sendMessage;
   await expectFailure(f.input, "team", "TEAM_SERVICE_UNAVAILABLE");
 });
 
-test("managed role rejects partial or malformed enablement signals without probing execution", async () => {
+test("managed role treats partial schemas as route hints and lets business services decide", async () => {
   const f = fixture();
-  f.definitions.delete("spawn_teammate");
-  await expectFailure(f.input, "team", "TEAM_FINALIZER_SIGNAL_INVALID");
   f.definitions.set("spawn_teammate", { parameters: null });
-  await expectFailure(f.input, "team", "TEAM_FINALIZER_SIGNAL_INVALID");
+  assert.equal((await resolve(f.input)).ready, true);
   f.services.tools.get = never;
-  await expectFailure(f.input, "unknown", "SCOPED_TOOL_INSPECTION_FAILED");
+  const native = await resolve(f.input);
+  assert.equal(native.selectedRoute, "native");
+  assert.equal(native.ready, true);
 });
 
 test("foreground uses exact scoped definitions even when outer PTC only exposes run_code", async () => {
@@ -115,14 +115,15 @@ test("pluginManager presence, declarations and failures never select the route",
   assert.equal(f.requestedServices.includes("pluginManager"), false);
 });
 
-test("unreadable and ambiguous scoped schemas diagnose instead of guessing", async () => {
+test("unreadable schemas fall back to callable native service and ambiguous hints do not block Team", async () => {
   const f = fixture();
   f.services.tools = { get: never };
-  await expectFailure(f.input, "unknown", "SCOPED_TOOL_INSPECTION_FAILED");
+  assert.deepEqual(await resolve(f.input), { selectedRoute: "native", ready: true, provider: "spawn", reusable: true });
   f.services.tools = { schemas: () => ({ tools: [] }) };
-  await expectFailure(f.input, "unknown", "SCOPED_TOOL_SCHEMAS_INVALID");
+  assert.deepEqual(await resolve(f.input), { selectedRoute: "native", ready: true, provider: "spawn", reusable: true });
   f.services.tools = { schemas: () => [{ name: "spawn_teammate", parameters: {} }, { name: "spawn_teammate", parameters: {} }] };
-  await expectFailure(f.input, "unknown", "SCOPED_TOOL_SCHEMAS_AMBIGUOUS");
+  assert.equal((await resolve(f.input)).ready, true);
+  assert.equal((await resolve(f.input)).selectedRoute, "team");
 });
 
 test("absent Team surface selects native despite a residual Team service", async () => {
@@ -148,15 +149,17 @@ test("native preserves a valid one-shot route when continuation is absent", asyn
   await expectFailure(f.input, "native", "NATIVE_START_UNAVAILABLE");
 });
 
-test("foreground partial or malformed exposed Team surface remains a Team diagnosis", async () => {
-  const cases = [
-    [(f) => { f.definitions.delete("spawn_teammate"); }, "TEAM_FOREGROUND_TOOL_SCHEMA_MISMATCH"],
-    [(f) => { f.definitions.delete("send_message"); }, "TEAM_FOREGROUND_TOOL_SCHEMA_MISMATCH"],
-    [(f) => { f.definitions.set("spawn_teammate", { parameters: null }); }, "SCOPED_TOOL_SCHEMAS_INVALID"],
-    [(f) => { f.definitions.delete("list_agents"); }, "TEAM_FOREGROUND_TOOLS_UNAVAILABLE"],
-    [(f) => { delete f.services.agentTeams; }, "TEAM_SERVICE_UNAVAILABLE"],
-  ];
-  for (const [change, reason] of cases) { const f = fixture(); change(f); await expectFailure({ ...f.input, role: "foreground" }, "team", reason); }
+test("foreground Team hints tolerate partial schemas while missing business service still fails", async () => {
+  for (const change of [
+    (f) => { f.definitions.delete("send_message"); },
+    (f) => { f.definitions.set("spawn_teammate", { parameters: null }); },
+    (f) => { f.definitions.delete("list_agents"); },
+  ]) {
+    const f = fixture(); change(f);
+    assert.equal((await resolve({ ...f.input, role: "foreground" })).ready, true);
+  }
+  const missing = fixture(); delete missing.services.agentTeams;
+  await expectFailure({ ...missing.input, role: "foreground" }, "team", "TEAM_SERVICE_UNAVAILABLE");
 });
 
 test("nonmember, teammate and stale root identity are not admitted as exact Lead", async () => {
@@ -171,25 +174,28 @@ test("nonmember, teammate and stale root identity are not admitted as exact Lead
   await expectFailure(f.input, "team", "TEAM_MEMBERSHIP_INVALID");
 });
 
-test("managed Team role requires fresh continuable backend and does not probe it", async () => {
-  const cases = [
-    [(f) => { delete f.services.subagents; }, "NATIVE_PROVIDER_CATALOG_UNAVAILABLE"],
-    [(f) => { f.services.subagents.getProvider = () => undefined; }, "PROVIDER_UNAVAILABLE"],
-    [(f) => { f.provider.name = "different"; f.services.subagents.getProvider = () => f.provider; }, "PROVIDER_IDENTITY_MISMATCH"],
-    [(f) => { f.provider.inheritsParentContext = true; }, "PROVIDER_FRESH_CONTEXT_UNSUPPORTED"],
-    [(f) => { delete f.provider.prepareContinuable; }, "PROVIDER_CONTINUABLE_UNSUPPORTED"],
-    [(f) => { delete f.services.subagents.sendMessage; }, "PROVIDER_CONTINUABLE_UNSUPPORTED"],
-  ];
-  for (const [change, reason] of cases) { const f = fixture(); change(f); await expectFailure(f.input, "team", reason); }
+test("managed Team role relies on Team business service, not a shadow native provider audit", async () => {
+  for (const change of [
+    (f) => { delete f.services.subagents; },
+    (f) => { f.services.subagents.getProvider = () => undefined; },
+    (f) => { f.provider.name = "different"; f.services.subagents.getProvider = () => f.provider; },
+    (f) => { f.provider.inheritsParentContext = true; },
+    (f) => { delete f.provider.prepareContinuable; },
+    (f) => { delete f.services.subagents.sendMessage; },
+  ]) {
+    const f = fixture(); change(f);
+    assert.equal((await resolve(f.input)).ready, true);
+    assert.equal(f.requestedServices.includes("subagents"), false);
+  }
 });
 
-test("foreground rejects native-child send schema and absent Team observation tools", async () => {
+test("foreground does not require unrelated observation tools or exact parameter projections", async () => {
   const f = fixture();
   f.definitions.set("send_message", { parameters: parameters("agent_id", "message") });
-  await expectFailure({ ...f.input, role: "foreground" }, "team", "TEAM_FOREGROUND_TOOL_SCHEMA_MISMATCH");
-  f.definitions.set("send_message", { parameters: parameters("target", "message") });
+  assert.equal((await resolve({ ...f.input, role: "foreground" })).ready, true);
   f.definitions.delete("wait_agent");
-  await expectFailure({ ...f.input, role: "foreground" }, "team", "TEAM_FOREGROUND_TOOLS_UNAVAILABLE");
+  f.definitions.delete("list_agents");
+  assert.equal((await resolve({ ...f.input, role: "foreground" })).ready, true);
 });
 
 test("model and effort preferences are syntactic hints, not capability admission gates", async () => {
@@ -201,7 +207,7 @@ test("model and effort preferences are syntactic hints, not capability admission
   ]) assert.equal((await resolve({ ...f.input, ...input })).ready, true);
   delete f.agent.options.model;
   assert.equal((await resolve({ ...f.input, requestedModel: "model-a" })).ready, true);
-  await expectFailure({ ...f.input, requestedModel: "" }, "team", "INVALID_REQUESTED_MODEL");
+  assert.equal((await resolve({ ...f.input, requestedModel: "" })).ready, true);
 });
 
 test("native option support is reported to finalizer selection without blocking hints", async () => {
@@ -230,7 +236,7 @@ test("native foreground requires scoped subagent route and every admission reche
   f.definitions.delete("subagent");
   await expectFailure({ ...f.input, role: "foreground" }, "native", "NATIVE_FOREGROUND_TOOLS_UNAVAILABLE");
   f.services.tools.get = () => { throw new Error("disposed scope"); };
-  await expectFailure({ ...f.input, role: "foreground" }, "unknown", "SCOPED_TOOL_INSPECTION_FAILED");
+  await expectFailure({ ...f.input, role: "foreground" }, "native", "SCOPED_TOOLS_UNAVAILABLE");
 });
 
 test("managed foreground facade uses business capability without model coordination tools", async () => {

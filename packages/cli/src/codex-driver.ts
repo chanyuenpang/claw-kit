@@ -21,7 +21,6 @@ type DriverRuntime = {
 async function codexDriverRunner(
   { argv, workdir, pluginVersion, pluginRoot, timeout_ms = 30000 }: DriverInput,
   { tools, text }: DriverRuntime,
-  allowCliRepair = true,
 ): Promise<Record<string, unknown>> {
   if (
     !Array.isArray(argv)
@@ -36,12 +35,11 @@ async function codexDriverRunner(
   if (typeof workdir !== "string" || workdir.trim().length === 0) {
     throw new TypeError("workdir is required");
   }
-  if (pluginVersion !== undefined && !/^\d+\.\d+\.\d+\.\d+$/.test(pluginVersion)) {
-    throw new TypeError("pluginVersion must be a four-segment version");
-  }
+  const usablePluginVersion = typeof pluginVersion === "string" && /^\d+\.\d+\.\d+\.\d+$/.test(pluginVersion)
+    ? pluginVersion : undefined;
 
-  const invocationArgv = pluginVersion && argv[0] === "plan" && argv[1] === "create"
-    ? [...argv, "--plugin-version", pluginVersion]
+  const invocationArgv = usablePluginVersion && argv[0] === "plan" && argv[1] === "create"
+    ? [...argv, "--plugin-version", usablePluginVersion]
     : argv;
   const serializedArgv = JSON.stringify(invocationArgv);
   let encodedArgv = "";
@@ -112,20 +110,6 @@ async function codexDriverRunner(
   }
   if (!result) {
     if (protocolError) {
-      if (allowCliRepair && pluginVersion && protocolError.code === "CLI_PLUGIN_VERSION_LAGGING") {
-        const requiredCliVersion = pluginVersion.split(".").slice(0, 3).join(".");
-        const installCommand = `npm install --global @veewo/claw@${requiredCliVersion} --silent --no-audit --no-fund`;
-        const install = typeof tools.shell_command === "function"
-          ? await tools.shell_command({ command: installCommand, workdir, timeout_ms })
-          : typeof tools.exec_command === "function"
-            ? await tools.exec_command({ cmd: installCommand, workdir, yield_time_ms: timeout_ms })
-            : (() => { throw new Error("Codex host has no supported command-execution tool"); })();
-        const installExitCode = typeof install === "object" && install !== null && "exit_code" in install
-          ? (install as Record<string, unknown>).exit_code
-          : 0;
-        if (installExitCode !== 0) throw new Error(`CLI repair failed for @veewo/claw@${requiredCliVersion}`);
-        return codexDriverRunner({ argv, workdir, pluginVersion, pluginRoot, timeout_ms }, { tools, text }, false);
-      }
       throw new Error(`claw mutation failed [${String(protocolError.code)}]: ${String(protocolError.message)}`);
     }
     throw new Error("claw returned no valid JSON protocol result");
@@ -152,31 +136,27 @@ async function codexDriverRunner(
     const tool = typeof action.tool === "string" ? action.tool : "";
     const id = typeof action.id === "string" ? action.id : "";
     if (consumed.has(id)) continue;
-    const handler = handlers[tool];
-    if (action.schemaVersion !== 1 || !id || !(tool in handlers)) {
-      throw new Error(`unsupported Codex hostAction: ${id || "unknown"}`);
-    }
-    const input = action.input;
-    if (!input || typeof input !== "object" || Array.isArray(input)) {
-      throw new Error(`invalid Codex hostAction input: ${id}`);
-    }
-    const inputRecord = input as Record<string, unknown>;
-    if (tool === "create_goal") {
-      if (Object.keys(inputRecord).some((key) => key !== "objective") || typeof inputRecord.objective !== "string" || inputRecord.objective.length === 0) {
+    try {
+      const handler = handlers[tool];
+      if (action.schemaVersion !== 1 || !id || !(tool in handlers)) {
+        throw new Error(`unsupported Codex hostAction: ${id || "unknown"}`);
+      }
+      const input = action.input;
+      if (!input || typeof input !== "object" || Array.isArray(input)) {
         throw new Error(`invalid Codex hostAction input: ${id}`);
       }
-    } else if (Object.keys(inputRecord).some((key) => key !== "status") || !goalStatuses.has(String(inputRecord.status))) {
-      throw new Error(`invalid Codex hostAction input: ${id}`);
-    }
-    if (typeof handler !== "function") {
-      hostEffectFailures.push({
-        id,
-        tool,
-        message: `Codex host tool is unavailable: ${tool}`,
-      });
-      continue;
-    }
-    try {
+      const inputRecord = input as Record<string, unknown>;
+      let effectInput: Record<string, unknown>;
+      if (tool === "create_goal") {
+        if (typeof inputRecord.objective !== "string" || inputRecord.objective.length === 0) {
+          throw new Error(`invalid Codex hostAction input: ${id}`);
+        }
+        effectInput = { objective: inputRecord.objective };
+      } else {
+        if (!goalStatuses.has(String(inputRecord.status))) throw new Error(`invalid Codex hostAction input: ${id}`);
+        effectInput = { status: inputRecord.status };
+      }
+      if (typeof handler !== "function") throw new Error(`Codex host tool is unavailable: ${tool}`);
       if (tool === "create_goal" || tool === "update_goal") {
         if (typeof tools.get_goal !== "function") throw new Error("Codex host tool is unavailable: get_goal");
         const snapshot = await tools.get_goal({});
@@ -189,7 +169,7 @@ async function codexDriverRunner(
           consumed.add(id);
           continue;
         }
-        const requestedGoalStatus = inputRecord.status;
+        const requestedGoalStatus = effectInput.status;
         const canApplyGoalUpdate = requestedGoalStatus === "blocked"
           ? goalStatus === "active"
           : requestedGoalStatus === "complete"
@@ -200,7 +180,7 @@ async function codexDriverRunner(
           continue;
         }
       }
-      await handler(inputRecord);
+      await handler(effectInput);
       consumed.add(id);
     } catch (error) {
       hostEffectFailures.push({

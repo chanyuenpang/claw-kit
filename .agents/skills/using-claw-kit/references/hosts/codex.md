@@ -5,8 +5,9 @@
 Use the Codex adapter only in an actual Codex plugin session, not merely because
 the model is GPT/Codex. Consume SessionStart recovery before creating any plan.
 When a session-bound plan is recovered, first record any explicit user goal
-change/replacement/cancellation. Otherwise run `plan sync` through the bridge
-once before continuing; it creates a Goal only when none is unfinished.
+change/replacement/cancellation, then follow its current guidance. Do not run a
+ceremonial `plan sync`; the fixed driver consumes real Host effects on the
+business operation that produces them.
 If the startup snapshot is unavailable, invoke the bridge below with
 `argv: ["context"]` and consume its recovery result before continuing. Never
 create a second root plan to probe for existing work.
@@ -32,8 +33,6 @@ not accept them. This does not permit a shell fallback for plan mutations.
 async function runClawPlanMutation({ argv, workdir, pluginRoot, timeout_ms = 30000 }) {
   const cacheKey = "claw-kit:codex-driver:v23:s1";
   const pluginVersion = "0.2.43.0";
-  const requiredCliVersion = pluginVersion.split(".").slice(0, 3).join(".");
-  const planCreate = argv[0] === "plan" && argv[1] === "create";
   const fetchEnvelope = async () => {
     const raw = typeof tools.shell_command === "function" ? await tools.shell_command({ command: "claw codex driver", workdir, timeout_ms })
       : typeof tools.exec_command === "function" ? await tools.exec_command({ cmd: "claw codex driver", workdir, yield_time_ms: timeout_ms })
@@ -44,35 +43,10 @@ async function runClawPlanMutation({ argv, workdir, pluginRoot, timeout_ms = 300
     if (start < 0 || end <= start) throw new Error("claw returned no driver envelope");
     return JSON.parse(output.slice(start, end));
   };
-  const cliSupportsPlugin = (cliVersion) => {
-    const actual = /^([0-9]+)\.([0-9]+)\.([0-9]+)/.exec(String(cliVersion ?? ""));
-    const required = requiredCliVersion.split(".").map(Number);
-    if (!actual) return false;
-    const current = actual.slice(1).map(Number);
-    return current[0] > required[0]
-      || (current[0] === required[0] && (current[1] > required[1]
-        || (current[1] === required[1] && current[2] >= required[2])));
-  };
-  const installExpectedCli = async () => {
-    const command = `npm install --global @veewo/claw@${requiredCliVersion} --silent --no-audit --no-fund`;
-    const raw = typeof tools.shell_command === "function" ? await tools.shell_command({ command, workdir, timeout_ms })
-      : typeof tools.exec_command === "function" ? await tools.exec_command({ cmd: command, workdir, yield_time_ms: timeout_ms })
-      : (() => { throw new Error("Codex host has no supported command-execution tool"); })();
-    if (typeof raw === "object" && raw !== null && "exit_code" in raw && raw.exit_code !== 0) {
-      throw new Error(`CLI repair failed for @veewo/claw@${requiredCliVersion}`);
-    }
-  };
   let envelope = load(cacheKey);
-  if (!envelope) {
+  if (!envelope || typeof envelope.source !== "string") {
     envelope = await fetchEnvelope();
-    if (planCreate && !cliSupportsPlugin(envelope?.cliVersion)) {
-      await installExpectedCli();
-      envelope = await fetchEnvelope();
-    }
-    if (envelope?.cacheKey !== cacheKey || envelope?.driverVersion !== 23
-      || envelope?.hostActionSchemaVersion !== 1 || typeof envelope?.source !== "string") {
-      throw new Error("incompatible claw Codex driver envelope");
-    }
+    if (typeof envelope?.source !== "string") throw new Error("claw Codex driver source is unavailable");
     store(cacheKey, envelope);
   }
   const runner = (0, eval)(`(${envelope.source})`);
@@ -86,7 +60,7 @@ async function runClawPlanMutation({ argv, workdir, pluginRoot, timeout_ms = 300
 - When a terminal plan mutation returns a valid `knowledgeDispatch` for Codex, launch one isolated worker for that exact `finalizeId`. Do not reuse a worker that may still hold an earlier claim: call `spawn_agent` with the complete unchanged prompt, `fork_turns: "none"`, task name `knowledge_finalizer_<first 12 chars of finalizeId>`, and any supplied `model` and `reasoningEffort` mapped to native fields; never load a user-facing delegate skill. A failed, expired, or unavailable claim is terminal for that worker and must not be sent to another job.
 - The dispatched job already exists. Do not wait for the new writer; immediately end the main turn after the accepted handoff. On Codex, `knowledge claim` collects the existing parent-turn report. The bridge cannot call collaboration tools.
 ## Hard boundaries
-- Run every supported plan mutation through the code-mode bridge without splitting host calls, reconstructing `hostActions` or `goalTool`, or repeating canonical transitions as compensation; if it returns `goalRecovery.command`, immediately run that command in a new code-mode call before replying.
+- Run every supported plan mutation through the code-mode bridge without splitting host calls, reconstructing `hostActions` or `goalTool`, or repeating canonical transitions as compensation. Goal/effect failures remain visible but never authorize replaying the canonical mutation.
 - Codex has no direct-call fallback: every supported plan mutation goes through the bundled code-mode consumer.
 - Goal-state inspection belongs only to the fixed driver or bundled consumer program; the agent must never call `get_goal` separately.
 - Edit canonical plan state only through claw commands supplied or permitted by returned guidance.

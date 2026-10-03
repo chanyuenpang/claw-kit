@@ -20,6 +20,15 @@ function fixture(name: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), `claw-session-commands-${name}-`));
 }
 
+test("session open outside a claw project skips project recovery without hiding integrity errors", async () => {
+  const runtimeRoot = fixture("outside-runtime");
+  const workdir = fixture("outside-project");
+  const executor = new SessionCommandExecutor(new SessionRegistryV2(runtimeRoot));
+  const opened = await executor.open({ agentSessionId: "outside", workdir,
+    client: { kind: "adapter", host: "dsh" } });
+  assert.equal(opened.session.canonicalWorkdir, fs.realpathSync(workdir));
+});
+
 test("typed command service uses explicit context and keeps current plan in v2 session state", async () => {
   const runtimeRoot = fixture("command-runtime");
   const projectRoot = fixture("command-project");

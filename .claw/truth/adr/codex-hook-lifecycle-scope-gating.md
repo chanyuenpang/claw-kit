@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Superseded by `execute-first-validation-ownership.md` and the current `codex-fixed-host-closeout.md` Truth. The historical hook-scope rationale remains useful.
 
 ## Context
 

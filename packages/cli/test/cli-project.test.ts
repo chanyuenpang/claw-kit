@@ -30,7 +30,6 @@ import {
   ISOLATED_ENV_KEYS,
   buildSpawnEnv,
   runClaw,
-  runClawExpectFailure,
   runClawRaw,
   runGit,
   runClawHook,
@@ -45,27 +44,19 @@ import {
 } from "./cli-test-support.js";
 
 
-test("plan create checks a supplied Codex plugin version before writing", () => {
-  const root = createFixture("plan-create-plugin-version-gate");
-  runClaw(["init", "--name", "Plan Create Plugin Version Gate", "--planning", "false"], root);
+test("plan create treats a supplied Codex plugin version as advisory metadata", () => {
+  const root = createFixture("plan-create-plugin-version-advisory");
+  runClaw(["init", "--name", "Plan Create Plugin Version Advisory", "--planning", "false"], root);
 
-  const failure = runClawExpectFailure(
-    ["plan", "create", "--title", "blocked", "--goal", "must not write", "--plugin-version", "99.0.0.7"],
+  const created = runClaw(
+    ["plan", "create", "--title", "allowed", "--goal", "let the real owner decide", "--plugin-version", "99.0.0.7"],
     root,
   );
-  const error = failure.error as JsonRecord;
-  const details = error.details as JsonRecord;
-  assert.equal(error.code, "CLI_PLUGIN_VERSION_LAGGING");
-  assert.equal(details.pluginVersion, "99.0.0.7");
-  assert.equal(details.requiredCliVersion, "99.0.0");
-  assert.equal(details.cliVersion, cliPackageVersion);
-  assert.equal(
-    fs.existsSync(path.join(root, ".claw", "tasks", localDateDirectory(new Date()), "blocked")),
-    false,
-  );
-
-  const created = runClaw(["plan", "create", "--title", "legacy", "--goal", "does not check"], root);
   assert.equal(created.command, "plan.create");
+  assert.equal(
+    fs.existsSync(path.join(root, ".claw", "tasks", localDateDirectory(new Date()), "allowed", "plan.json")),
+    true,
+  );
 });
 
 test("cli respects project override toggles for goal mode and final-only truth dispatch", () => {

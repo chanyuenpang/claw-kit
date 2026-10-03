@@ -21,14 +21,16 @@ export class SessionCommandExecutor {
       await this.registry.open(canonical.agentSessionId, canonical.canonicalWorkdir, identity.client);
       const context: CommandContext = { cwd: canonical.canonicalWorkdir, agentSessionId: canonical.agentSessionId,
         sessionKey: sessionFocusKey(canonical), host: identity.client.host, mode: "session" };
+      let projectAvailable = true;
       try {
         const project = resolveProjectContext(context.cwd);
         await recoverProjectFocusTransitions({ project, sessionStore: this.service.focusStore });
       } catch (error) {
         // Opening outside a project is supported. Integrity failures are not.
-        if (!(error instanceof ClawError) || error.code !== "PROJECT_ROOT_NOT_FOUND") throw error;
+        if (!(error instanceof ClawError) || error.code !== "CLAW_DIR_NOT_FOUND") throw error;
+        projectAvailable = false;
       }
-      await this.service.reconcileCanonicalFocus(context);
+      if (projectAvailable) await this.service.reconcileCanonicalFocus(context);
       return action(context, canonical.sessionKeyHash);
     });
   }

@@ -33,25 +33,6 @@ const method = (value: unknown, name: string): Method | undefined => {
 const text = (value: unknown): string | undefined =>
   typeof value === "string" && value.trim() ? value : undefined;
 
-function requestShapeReason(input: DshDelegationCapabilityInput): string | undefined {
-  for (const [requested, label] of [
-    [input.requestedModel, "MODEL"],
-    [input.requestedReasoningEffort, "REASONING_EFFORT"],
-  ] as const) {
-    if (requested === undefined || requested === null) continue;
-    if (!text(requested)) return "INVALID_REQUESTED_" + label;
-  }
-  return undefined;
-}
-
-/** Accept JSON-schema parameters or the DSH definition's parameter-spec shape. */
-function hasParameters(definition: unknown, names: readonly string[]): boolean {
-  const parameters = record(record(definition)?.parameters);
-  if (!parameters) return false;
-  const properties = record(parameters.properties) ?? parameters;
-  return names.every((name) => record(properties[name])?.type === "string");
-}
-
 type ToolView = { available: boolean; definitions: Map<string, unknown>; reason?: string };
 const TEAM_CORE = ["spawn_teammate", "send_message", "list_agents", "wait_agent"];
 const TEAM_TASKS = ["team_task_create", "team_task_list", "team_task_get", "team_task_update"];
@@ -66,13 +47,17 @@ function inspectTools(tools: unknown, agent: object, foreground: boolean): ToolV
   const names = foreground ? [...TEAM_CORE, ...TEAM_TASKS, "subagent"]
     : ["spawn_teammate", "send_message", ...TEAM_TASKS];
   if (get) {
-    for (const name of names) {
-      const definition = get.call(tools, name, agent);
-      if (definition !== undefined) definitions.set(name, definition);
-    }
+    try {
+      for (const name of names) {
+        const definition = get.call(tools, name, agent);
+        if (definition !== undefined) definitions.set(name, definition);
+      }
+    } catch { return { available: false, definitions, reason: "SCOPED_TOOL_INSPECTION_FAILED" }; }
   } else {
-    const visible = schemas!.call(tools, agent);
-    if (!Array.isArray(visible)) return { available: true, definitions, reason: "SCOPED_TOOL_SCHEMAS_INVALID" };
+    let visible: unknown;
+    try { visible = schemas!.call(tools, agent); }
+    catch { return { available: false, definitions, reason: "SCOPED_TOOL_INSPECTION_FAILED" }; }
+    if (!Array.isArray(visible)) return { available: false, definitions, reason: "SCOPED_TOOL_SCHEMAS_INVALID" };
     for (const definition of visible) {
       const name = text(record(definition)?.name);
       if (!name) return { available: true, definitions, reason: "SCOPED_TOOL_SCHEMAS_INVALID" };
@@ -85,48 +70,33 @@ function inspectTools(tools: unknown, agent: object, foreground: boolean): ToolV
 }
 
 function teamExposed(view: ToolView): boolean {
-  if (["spawn_teammate", ...TEAM_TASKS].some((name) => view.definitions.has(name))) return true;
+  if (view.definitions.has("spawn_teammate")) return true;
   const parameters = record(record(view.definitions.get("send_message"))?.parameters);
   const properties = record(parameters?.properties) ?? parameters;
   return properties !== undefined && Object.hasOwn(properties, "target");
 }
 
 function surfaceReason(view: ToolView, team: boolean, foreground: boolean): string | undefined {
-  const lookup = (name: string) => view.definitions.get(name);
-  if (team && !foreground) {
-    // A valid exact-Agent spawn interface is the enablement signal only.
-    // Dispatch/list/reuse are subsequently verified on agentTeams itself.
-    return hasParameters(lookup("spawn_teammate"), ["name", "description", "prompt"])
-      ? undefined : "TEAM_FINALIZER_SIGNAL_INVALID";
-  }
-  for (const definition of view.definitions.values()) {
-    if (!record(definition) || !record(record(definition)?.parameters)) return "SCOPED_TOOL_SCHEMAS_INVALID";
-  }
-  if (!team) {
-    if (!foreground) return undefined;
-    if (!view.available) return "SCOPED_TOOLS_UNAVAILABLE";
-    return hasParameters(lookup("subagent"), ["prompt", "description"])
-      ? undefined : "NATIVE_FOREGROUND_TOOLS_UNAVAILABLE";
-  }
-  if (!hasParameters(lookup("spawn_teammate"), ["name", "description", "prompt"]) ||
-      !hasParameters(lookup("send_message"), ["target", "message"])) return "TEAM_FOREGROUND_TOOL_SCHEMA_MISMATCH";
-  const required = [...TEAM_CORE, ...TEAM_TASKS];
-  if (required.some((name) => !record(lookup(name)))) return "TEAM_FOREGROUND_TOOLS_UNAVAILABLE";
-  return undefined;
+  // Tool schemas are route hints, not business authorization. The actual Team
+  // or subagent method owns argument and permission validation.
+  if (!foreground) return undefined;
+  if (!view.available) return "SCOPED_TOOLS_UNAVAILABLE";
+  if (!team) return view.definitions.has("subagent") ? undefined : "NATIVE_FOREGROUND_TOOLS_UNAVAILABLE";
+  return view.definitions.has("spawn_teammate") || view.definitions.has("send_message")
+    ? undefined : "TEAM_FOREGROUND_TOOLS_UNAVAILABLE";
 }
 
-function inspectBackend(subagents: unknown, input: DshDelegationCapabilityInput, team: boolean): { reason?: string; reusable: boolean; supportsOptions?: boolean } {
+function inspectBackend(subagents: unknown, input: DshDelegationCapabilityInput): { reason?: string; reusable: boolean; supportsOptions?: boolean } {
   const no = (reason: string) => ({ reason, reusable: false });
-  const getProvider = method(subagents, "getProvider");
-  if (!getProvider) return no("NATIVE_PROVIDER_CATALOG_UNAVAILABLE");
   if (!text(input.provider)) return no("INVALID_PROVIDER");
-  const provider = getProvider.call(subagents, input.provider);
-  if (!record(provider)) return no("PROVIDER_UNAVAILABLE");
-  if (record(provider)?.name !== input.provider) return no("PROVIDER_IDENTITY_MISMATCH");
-  if (record(provider)?.inheritsParentContext !== false) return no("PROVIDER_FRESH_CONTEXT_UNSUPPORTED");
-  const reusable = Boolean(method(subagents, "startContinuable") && method(subagents, "sendMessage") && method(provider, "prepareContinuable"));
-  if (team && !reusable) return no("PROVIDER_CONTINUABLE_UNSUPPORTED");
-  if (!team && !reusable && (!method(subagents, "start") || !method(provider, "start"))) return no("NATIVE_START_UNAVAILABLE");
+  const continuationMethods = Boolean(method(subagents, "startContinuable") && method(subagents, "sendMessage"));
+  const oneShot = Boolean(method(subagents, "start"));
+  if (!continuationMethods && !oneShot) return no("NATIVE_START_UNAVAILABLE");
+  // Provider metadata is a route preference only. If both carriers exist and
+  // continuation is not advertised, choose one-shot; if it is the only
+  // callable carrier, let the owner method accept or reject the real call.
+  const provider = method(subagents, "getProvider")?.call(subagents, input.provider);
+  const reusable = continuationMethods && (Boolean(method(provider, "prepareContinuable")) || !oneShot);
   return { reusable, supportsOptions: record(record(provider)?.capabilities)?.agentOptions === true };
 }
 
@@ -151,13 +121,10 @@ export async function resolveDshDelegationCapability(input: DshDelegationCapabil
     const view: ToolView = input.role === "finalizer"
       ? { available: true, definitions: new Map() }
       : inspectTools(input.getService("tools"), input.agent, input.role === "foreground");
-    if (view.reason) return fail(view.reason);
     const team = teamExposed(view);
     snapshot = { selectedRoute: team ? "team" : "native", ready: false };
     const surface = surfaceReason(view, team, input.role === "foreground");
     if (surface) return fail(surface);
-    if (input.requestedModel != null && !text(input.requestedModel)) return fail("INVALID_REQUESTED_MODEL");
-    if (input.requestedReasoningEffort != null && !text(input.requestedReasoningEffort)) return fail("INVALID_REQUESTED_REASONING_EFFORT");
     if (team) {
       stage = "TEAM_SERVICE_UNAVAILABLE";
       const service = input.getService("agentTeams");
@@ -173,15 +140,14 @@ export async function resolveDshDelegationCapability(input: DshDelegationCapabil
       const teamId = text(membership.id);
       if (!leadId || teamId !== leadId) return fail("TEAM_MEMBERSHIP_INVALID");
       snapshot = { ...snapshot, teamId, leadId };
-      const requestReason = requestShapeReason(input);
-      if (requestReason) return fail(requestReason);
+      if (input.role !== "foreground") snapshot = { ...snapshot, provider: input.provider, reusable: true };
     }
-    if (input.role !== "foreground" || !team) {
+    if (!team && input.role !== "foreground") {
       stage = "NATIVE_PROVIDER_INSPECTION_FAILED";
       snapshot = { ...snapshot, provider: input.provider };
-      const backend = inspectBackend(input.getService("subagents"), input, team);
+      const backend = inspectBackend(input.getService("subagents"), input);
       if (input.role === "finalizer") snapshot = { ...snapshot, supportsOptions: backend.supportsOptions === true };
-      if (input.role !== "foreground") snapshot = { ...snapshot, reusable: backend.reusable };
+      snapshot = { ...snapshot, reusable: backend.reusable };
       if (backend.reason) return fail(backend.reason);
     }
     return { ...snapshot, ready: true };

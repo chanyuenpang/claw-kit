@@ -1,6 +1,6 @@
 ﻿# Codex 异步知识采集边界
 
-<!-- state: current -->
+<!-- document-state: historical -->
 ## 结论
 
 计划和 session binding 是 `claw-kit` 的前台 canonical lifecycle，必须独立于 Codex hooks。hook、report 或 SDK 的失败一律 fail-open：不能改变 `claw plan write`、`claw plan edit`、`claw plan done`、subplan 完成后的 parent 恢复，或 session binding 的语义。
@@ -120,7 +120,7 @@
 - 旧 preflight 只检查 hook cwd 直属 `.claw`，曾使 nested cwd 的整轮 report 与 finalization 漏收。当前实现改为解析祖先项目根，并保留临时目录停止边界；旧抽样中的漏收只作为历史 incident 证据。
 - Stop sidecar 继续 fail-open，但 capture、protocol 与 launch 失败不再静默：finalizer 输出不含路径或用户内容的结构化 stderr diagnostic，供 agent/operator 定位失败而不改变 canonical lifecycle。
 
-<!-- state: current -->
+<!-- state: history -->
 ## 当前沉淀边界
 
 - 当前 writer 以所有提供材料中的明确结论为证据边界；plan 与 report 只是当前 finalizer 的具体输入，不定义 writer schema。task status 仅解释结论 scope，task 列表本身不证明执行结果。没有 durable conclusion、存在 freshness 冲突或没有新增 durable knowledge 时形成 evidence-backed no-edit。

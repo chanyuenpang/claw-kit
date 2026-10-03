@@ -854,8 +854,7 @@ export function reserveDshFinalizerExecution(input: {
       if (existing) {
         if (existing.route !== input.route || existing.memberSessionId !== input.memberSessionId
           || existing.teamId !== input.teamId || existing.provider !== input.provider
-          || existing.configFingerprint !== input.configFingerprint
-          || JSON.stringify(existing.modelSelection) !== JSON.stringify(modelSelection)) throw new Error("DSH_EXECUTION_IMMUTABLE: admitted executor cannot change.");
+          || existing.configFingerprint !== input.configFingerprint) throw new Error("DSH_EXECUTION_IMMUTABLE: admitted executor cannot change.");
         return { admitted: !existing.releasedAt && ["queued", "running"].includes(job.status), alreadyReserved: true, execution: existing };
       }
       if (job.status !== "queued" || job.claimReceipt) return { admitted: false, reason: "job-not-queued" };

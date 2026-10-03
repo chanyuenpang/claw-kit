@@ -100,16 +100,17 @@ export async function resolveFinalizerReuse(input: {
   }
   try {
     const children = await subagents.listChildren(input.parentSessionId);
-    if (!Array.isArray(children) || children.some((child) => child?.kind === "diagnostic")) {
-      return { deferred: true, reason: "native child catalog incomplete" };
-    }
+    if (!Array.isArray(children)) return { deferred: true, reason: "native child catalog incomplete" };
     const legacyLabel = `knowledge-finalizer-${input.finalizeId.slice(0, 12)}`;
     for (const child of children) {
       if (child?.kind === "child" && child.activity === "running"
         && (child.label === input.label || child.label === legacyLabel)
         && typeof child.id === "string") return { runId: child.id, source: "durable" };
     }
-    return undefined;
+    // Without positive target evidence, a diagnostic may hide the exact legacy
+    // one-shot child; do not start a duplicate. It does not override a match.
+    return children.some((child) => child?.kind === "diagnostic")
+      ? { deferred: true, reason: "native child catalog incomplete" } : undefined;
   } catch {
     return { deferred: true, reason: "native child catalog lookup failed" };
   }
@@ -397,7 +398,8 @@ export function apply(ctx: unknown): void {
       if (!parent || parent.id !== parentId) throw new Error("DELEGATE_PARENT_UNAVAILABLE");
       const native = c.get("subagents") as SubagentsLike | undefined;
       const children = await native?.listChildren?.(parentId);
-      if (!Array.isArray(children) || children.some(child => child.kind === "diagnostic")) throw new Error("DELEGATE_PARENT_UNAVAILABLE");
+      if (!Array.isArray(children)
+        || children.some(child => child.kind === "diagnostic" && child.id === actor.id)) throw new Error("DELEGATE_PARENT_UNAVAILABLE");
       return children.some(child => child.kind === "child" && child.id === actor.id) ? parent : actor;
     },
     readContext: async (actor) => {
@@ -417,9 +419,8 @@ export function apply(ctx: unknown): void {
         const context = parseProtocol((await runOneOff(["context", "--host", "dsh"], workdir, actor.id)).text);
         return context?.activeWorkflow as { planPath?: string; planContent?: { references?: Array<{ path?: string }> } } | undefined;
       };
-      const current = await inspect();
-      if (!current?.planPath || !samePath(current.planPath, expectedPlanPath)) return { status: "deferred", reason: "PARENT_FOCUS_CHANGED" };
-      if (current.planContent?.references?.some(ref => ref.path === documentPath)) return { status: "registered" };
+      // The CLI's expectedPlanPath guard is the atomic authority. A separate
+      // context read is only recovery evidence after an unknown response.
       const input = { ...(daemonInput("plan.edit", { references: [{ path: documentPath, why: "Feature architecture design for the active task." }] }) as Record<string, unknown>), expectedPlanPath };
       try {
         const response = await sessionFor(actor.id, workdir).request("plan.edit", input, 30000, (send) => routeCommand(send,

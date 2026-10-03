@@ -7,8 +7,8 @@ Use this note when checking whether a fresh Codex thread entering a `.claw` proj
 When a session starts and its `cwd` resolves inside a `.claw` project:
 
 1. Codex uses `using-claw-kit`.
-2. `SessionStart` has already recovered startup harness state before `using-claw-kit` continues the workflow.
-3. The first meaningful assistant message mentions recovered `.claw` state or explains that no reusable project knowledge is expected, so the request will skip the claw planning workflow.
+2. `SessionStart` recovery is consumed when present; if it is missing or diagnostic-only, `using-claw-kit` performs context recovery through the fixed driver.
+3. The assistant follows the recovered guidance without a ceremonial status message or extra `plan sync`.
 
 When `@claw-kit` is explicitly invoked outside an existing `.claw` project:
 
@@ -18,8 +18,8 @@ When `@claw-kit` is explicitly invoked outside an existing `.claw` project:
 
 ## Good signs
 
-- the first reply mentions `.claw`, task, or active plan
-- the first reply distinguishes direct work from an explicit `--no-knowledge-capture` opt-out: no reusable project knowledge bypasses the formal workflow, while session storage remains a separate lifecycle decision
+- the agent performs the necessary owner call without extra status ceremony
+- the agent distinguishes direct work from an explicit `--no-knowledge-capture` opt-out: no reusable project knowledge bypasses the formal workflow, while session storage remains a separate lifecycle decision
 - the agent recommends `claw plan create` when reusable project knowledge is expected and no task scope exists
 - the agent allows a created plan to remain in `process.discussing` until downstream tasks are explicit and handoff-ready
 - the agent reports current task state when a task already exists
@@ -27,7 +27,7 @@ When `@claw-kit` is explicitly invoked outside an existing `.claw` project:
 
 ## Bad signs
 
-- generic greeting with no harness state
-- starting normal chat before startup recovery completes
+- performing a plan mutation before recovery establishes the canonical target
+- treating SessionStart/version/projection diagnostics as permission to replay or replace a canonical mutation
 - saying claw-kit cannot proceed because `.claw` is missing or malformed
 - suggesting an alternate task-binding mechanism unrelated to `plan create` for work that still needs the formal claw workflow

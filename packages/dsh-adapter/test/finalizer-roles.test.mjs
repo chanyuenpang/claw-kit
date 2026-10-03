@@ -385,16 +385,19 @@ test("provider/config/route capability loss cannot move an existing executor", a
   }
 });
 
-test("capability loss after attempted marker stays uncertain and never switches transport", async () => {
+test("advisory provider loss after attempted does not manufacture a false uncertain send", async () => {
   const f = fixture();
   f.state.onCommand = async (operation, args) => {
     if (operation === "delivery" && flag(args, "--state") === "attempted") f.services.subagents.getProvider = () => undefined;
   };
-  assert.equal((await f.run()).code, "DSH_NATIVE_CAPABILITY_CHANGED");
+  const first = await f.run();
+  assert.equal(first.ok, true);
   assert.equal(f.rows.get(A).execution.route, "native-continuable");
-  assert.equal(f.rows.get(A).execution.delivery.state, "uncertain");
-  assert.equal(f.sends.length, 0);
-  assert.equal((await f.run()).code, "PROVIDER_UNAVAILABLE");
+  assert.equal(f.rows.get(A).execution.delivery.state, "accepted");
+  assert.equal(f.sends.length, 1);
+  const recovered = await f.run();
+  assert.equal(recovered.ok, true);
+  assert.equal(f.sends.length, 1, "accepted delivery is never resent");
   assert.equal(f.creates.length, 1);
 });
 

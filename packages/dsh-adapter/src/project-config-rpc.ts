@@ -1,6 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
-
 export type WorkspaceRecord = { id?: string; title?: string; path?: string };
 export type WorkspaceRegistry = {
   list(): readonly WorkspaceRecord[] | Promise<readonly WorkspaceRecord[]>;
@@ -24,9 +21,9 @@ export async function handleProjectConfigRpc(
 ): Promise<RpcResult> {
   try {
     if (endpoint === "list") {
-      assertExactKeys(payload, []);
+      asObject(payload);
       const items = (await registry.list()).flatMap((workspace) => {
-        if (!isClawProject(workspace.path) || typeof workspace.id !== "string") return [];
+        if (typeof workspace.path !== "string" || typeof workspace.id !== "string") return [];
         return [{ workspaceId: workspace.id, title: typeof workspace.title === "string" ? workspace.title : workspace.id }];
       });
       return { ok: true, value: { items } };
@@ -38,21 +35,17 @@ export async function handleProjectConfigRpc(
       ? registry.get(workspaceId)
       : (await registry.list()).find((candidate) => candidate.id === workspaceId);
     if (!workspace?.path) return failure("WORKSPACE_NOT_REGISTERED", "The requested workspace is not registered.");
-    if (!isClawProject(workspace.path)) return failure("WORKSPACE_NOT_PROJECT", "The requested workspace does not contain .claw/project.json.");
 
     if (endpoint === "get") {
-      assertExactKeys(request, ["workspaceId", "layer", "key"]);
       return invoke(["config", "get", "--layer", layer(request), "--key", requiredString(request, "key")], workspace.path, runConfig);
     }
     if (endpoint === "set") {
-      assertExactKeys(request, ["workspaceId", "layer", "key", "value", "revision"]);
       return invoke([
         "config", "set", "--layer", layer(request), "--key", requiredString(request, "key"),
         "--value", JSON.stringify(request.value), "--revision", requiredString(request, "revision"),
       ], workspace.path, runConfig);
     }
     if (endpoint === "unset") {
-      assertExactKeys(request, ["workspaceId", "layer", "key", "revision"]);
       return invoke([
         "config", "unset", "--layer", layer(request), "--key", requiredString(request, "key"),
         "--revision", requiredString(request, "revision"),
@@ -64,18 +57,9 @@ export async function handleProjectConfigRpc(
   }
 }
 
-function isClawProject(workspacePath: unknown): workspacePath is string {
-  return typeof workspacePath === "string" && fs.existsSync(path.join(workspacePath, ".claw", "project.json"));
-}
-
 function asObject(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Request payload must be an object.");
   return value as Record<string, unknown>;
-}
-
-function assertExactKeys(value: unknown, allowed: string[]): void {
-  const source = asObject(value);
-  for (const key of Object.keys(source)) if (!allowed.includes(key)) throw new Error(`Unexpected request field "${key}".`);
 }
 
 function requiredString(source: Record<string, unknown>, key: string): string {
@@ -94,11 +78,14 @@ async function invoke(argv: string[], cwd: string, runConfig: RunConfig): Promis
   const text = result.text.trim();
   try {
     const parsed = JSON.parse(text) as unknown;
-    if (parsed && typeof parsed === "object" && "ok" in parsed && (parsed as { ok?: unknown }).ok === false) {
-      const error = (parsed as { error?: { code?: unknown; message?: unknown } }).error;
-      return failure(typeof error?.code === "string" ? error.code : "PROJECT_CONFIG_COMMAND_FAILED", typeof error?.message === "string" ? error.message : "claw config failed.");
+    if (parsed && typeof parsed === "object" && "ok" in parsed) {
+      if ((parsed as { ok?: unknown }).ok === true) return { ok: true, value: parsed };
+      if ((parsed as { ok?: unknown }).ok === false) {
+        const error = (parsed as { error?: { code?: unknown; message?: unknown } }).error;
+        return failure(typeof error?.code === "string" ? error.code : "PROJECT_CONFIG_COMMAND_FAILED", typeof error?.message === "string" ? error.message : "claw config failed.");
+      }
     }
-    return { ok: true, value: parsed };
+    return failure("PROJECT_CONFIG_COMMAND_FAILED", result.errText || "claw config returned no trusted result envelope.");
   } catch {
     return failure("PROJECT_CONFIG_COMMAND_FAILED", result.errText || "claw config returned invalid JSON.");
   }

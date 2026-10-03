@@ -911,10 +911,22 @@ async function runCodex(args: string[]): Promise<void> {
       if (!pluginRoot) return;
       const project = tryResolveHookProject(process.cwd());
       if (!project || project.scope === "session") return;
-      const manifest = JSON.parse(fs.readFileSync(path.join(pluginRoot, ".codex-plugin", "plugin.json"), "utf8")) as { name?: string; version?: string };
-      const collector = path.join(pluginRoot, "scripts", "report-collector.mjs");
-      if (manifest.name !== "claw-kit" || !manifest.version || !fs.existsSync(collector)) throw new ClawError("PROJECT_CONFIG_INVALID", "Codex adapter report collector is unavailable.");
-      registerReportCollector(project.projectRoot, { schemaVersion: 1, contractVersion: 1, host: "codex", collectorVersion: manifest.version, executable: process.execPath, args: [collector] });
+      const root = fs.realpathSync(pluginRoot);
+      const collector = fs.realpathSync(path.join(root, "scripts", "report-collector.mjs"));
+      const relative = path.relative(root, collector);
+      if (relative.startsWith("..") || path.isAbsolute(relative) || !fs.statSync(collector).isFile()) {
+        throw new Error("Codex report collector escapes the loaded plugin root.");
+      }
+      let collectorVersion = "unknown";
+      try {
+        const manifest = JSON.parse(fs.readFileSync(path.join(root, ".codex-plugin", "plugin.json"), "utf8")) as { version?: unknown };
+        if (typeof manifest.version === "string" && manifest.version) collectorVersion = manifest.version;
+      } catch { /* version metadata is advisory */ }
+      registerReportCollector(project.projectRoot, { schemaVersion: 1, contractVersion: 1, host: "codex", collectorVersion, executable: process.execPath, args: [collector] });
+    };
+    const registerCollectorBestEffort = () => {
+      try { registerCollector(); }
+      catch { process.stderr.write(JSON.stringify({ code: "CODEX_COLLECTOR_REGISTRATION_DEFERRED" }) + "\n"); }
     };
     if (
       !Array.isArray(invocation)
@@ -931,7 +943,7 @@ async function runCodex(args: string[]): Promise<void> {
     }
     if (invocation[0] === "context") {
       const output = buildPublicContextOutput(await runContextCommand([], process.cwd(), resolveOwnerSessionKey(), "codex"));
-      registerCollector();
+      registerCollectorBestEffort();
       printJson({
         ok: true,
         command: "context",
@@ -941,10 +953,9 @@ async function runCodex(args: string[]): Promise<void> {
     }
     const originalArgv = process.argv;
     try {
-      registerCollector();
       process.argv = [originalArgv[0]!, originalArgv[1]!, ...invocation, "--host", "codex"];
       await main();
-      registerCollector();
+      registerCollectorBestEffort();
     } finally {
       process.argv = originalArgv;
     }
@@ -1699,7 +1710,7 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
       const explicitTitle = readOptionalFlag(args, "--title");
       const explicitTemplate = readOptionalFlag(args, "--template");
       const explicitTemplateFile = readOptionalFlag(args, "--template-file");
-      const pluginVersion = readOptionalFlag(args, "--plugin-version");
+      readOptionalFlag(args, "--plugin-version"); // advisory compatibility metadata
       if (explicitTemplate && explicitTemplateFile) {
         throw new ClawError("PROJECT_CONFIG_INVALID", "--template and --template-file are mutually exclusive.");
       }
@@ -1715,7 +1726,6 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
       }
       const ownerSessionKey = resolveOwnerSessionKey();
       assertDirectRootPlanCreateAllowed(process.cwd(), ownerSessionKey, scope);
-      assertPlanCreatePluginVersionCompatible(pluginVersion);
       await preparePlanCreateWorkflow(process.cwd(), ownerSessionKey, effectiveHost, scope);
       const result = await writePlan({
         cwd: process.cwd(),
@@ -2788,19 +2798,6 @@ function assertDirectRootPlanCreateAllowed(
   assertRootPlanCreateAllowedForPlan(
     createPlanRef(project, current.taskName, current.planFile),
     current.plan,
-  );
-}
-
-function assertPlanCreatePluginVersionCompatible(pluginVersion: string | undefined): void {
-  if (pluginVersion === undefined) return;
-  const match = /^(\d+)\.(\d+)\.(\d+)\.\d+$/.exec(pluginVersion);
-  if (!match) throw new ClawError("PROJECT_CONFIG_INVALID", "plan create received an invalid internal plugin version.");
-  const requiredCliVersion = `${match[1]}.${match[2]}.${match[3]}`;
-  if (compareSemver(CLI_VERSION, requiredCliVersion) >= 0) return;
-  throw new ClawError(
-    "CLI_PLUGIN_VERSION_LAGGING",
-    `Loaded Codex plugin ${pluginVersion} requires CLI ${requiredCliVersion}, but local CLI is ${CLI_VERSION}.`,
-    { pluginVersion, requiredCliVersion, cliVersion: CLI_VERSION },
   );
 }
 

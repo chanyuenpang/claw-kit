@@ -126,6 +126,13 @@ test("invalid or future selection metadata degrades to legacy-unknown", (t) => {
     modelSelection: { futureShape: true } });
   assert.equal(reserved.admitted, true);
   assert.equal(reserved.execution?.modelSelection, undefined);
+  const repeated = reserveDshFinalizerExecutionCommand({ ...f.common, route: "native-continuable",
+    memberSessionId: f.memberSessionId, provider: "spawn", configFingerprint: "stable-recipe",
+    modelSelection: { requested: { intent: "low-cost" }, applied: { mode: "inherit", options: {} },
+      resolved: { known: false }, reason: "reuse-existing" } });
+  assert.equal(repeated.alreadyReserved, true);
+  assert.equal(repeated.execution?.modelSelection, undefined,
+    "first audit metadata remains frozen but is not executor identity");
 });
 
 test("private ledger facade isolates parent/member and freezes pending capture upper bound", (t) => {

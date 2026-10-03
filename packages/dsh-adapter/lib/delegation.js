@@ -468,11 +468,12 @@ export class RoleDelegation {
             }
             memberId = id;
         }
-        await this.update(parent, r.workdir, r.id, (v) => ({ ...v, memberId, ...(memberName ? { memberName } : {}), delivery: "attempted" }));
         await this.fresh(parent, r);
+        const deliveryService = this.deps.getService(r.backend === "team" ? "agentTeams" : "subagents");
+        await this.update(parent, r.workdir, r.id, (v) => ({ ...v, memberId, ...(memberName ? { memberName } : {}), delivery: "attempted" }));
         const receipt = r.backend === "team"
-            ? (await this.deps.getService("agentTeams").sendMessage(parent, { target: memberName, content: text(this.prompt(r)), signal: this.signal }))?.messageId
-            : await this.deps.getService("subagents").sendMessage(parent, memberId, text(this.prompt(r)), { signal: this.signal });
+            ? (await deliveryService.sendMessage(parent, { target: memberName, content: text(this.prompt(r)), signal: this.signal }))?.messageId
+            : await deliveryService.sendMessage(parent, memberId, text(this.prompt(r)), { signal: this.signal });
         if (!string(receipt))
             reject("DELEGATE_DELIVERY_UNCERTAIN");
         await this.update(parent, r.workdir, r.id, (v) => ({ ...v, messageId: receipt, delivery: "accepted", status: terminal(v) ? v.status : "running" }));

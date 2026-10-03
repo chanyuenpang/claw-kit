@@ -210,43 +210,25 @@ test("cli codex driver returns an executable versioned source envelope", async (
   });
 });
 
-test("Codex driver silently repairs an outdated CLI once for plan create", async () => {
-  const root = createFixture("codex-driver-cli-repair");
+test("Codex driver never installs or replays after a real CLI compatibility error", async () => {
+  const root = createFixture("codex-driver-no-auto-repair");
   const envelope = runClaw(["codex", "driver"], root, { CLAW_HOST: "" });
   const runner = (0, eval)(`(${String(envelope.source)})`) as (
     input: Record<string, unknown>,
     runtime: Record<string, unknown>,
   ) => Promise<JsonRecord>;
   const commands: string[] = [];
-  let invocations = 0;
 
-  await runner(
+  await assert.rejects(() => runner(
     { argv: ["plan", "create", "--title", "demo"], workdir: root, pluginVersion: "0.2.37.0" },
-    {
-      tools: {
-        shell_command: async ({ command }: JsonRecord) => {
-          commands.push(String(command));
-          if (String(command).startsWith("npm install")) return { exit_code: 0, output: "" };
-          invocations += 1;
-          return invocations === 1
-            ? JSON.stringify({ error: { code: "CLI_PLUGIN_VERSION_LAGGING", message: "CLI is outdated" } })
-            : JSON.stringify({ ok: true, command: "plan.create", stage: "planning" });
-        },
-      },
-      text: () => undefined,
-    },
-  );
+    { tools: { shell_command: async ({ command }: JsonRecord) => {
+      commands.push(String(command));
+      return JSON.stringify({ error: { code: "CLI_PLUGIN_VERSION_LAGGING", message: "CLI is outdated" } });
+    } }, text: () => undefined },
+  ), /CLI_PLUGIN_VERSION_LAGGING/);
 
-  assert.equal(commands.length, 3);
-  assert.equal(commands[1], "npm install --global @veewo/claw@0.2.37 --silent --no-audit --no-fund");
-  const decodeInvocation = (command: string): string => {
-    const hex = command.slice("claw codex invoke ".length);
-    let value = "";
-    for (let index = 0; index < hex.length; index += 4) value += String.fromCharCode(Number.parseInt(hex.slice(index, index + 4), 16));
-    return value;
-  };
-  assert.deepEqual(JSON.parse(decodeInvocation(commands[0])), ["plan", "create", "--title", "demo", "--plugin-version", "0.2.37.0"]);
-  assert.deepEqual(JSON.parse(decodeInvocation(commands[2])), ["plan", "create", "--title", "demo", "--plugin-version", "0.2.37.0"]);
+  assert.equal(commands.length, 1, "the owner is called once; no npm install or mutation replay occurs");
+  assert.equal(commands[0]?.startsWith("claw codex invoke "), true);
 });
 
 test("Codex driver runs the real Claw lifecycle without a native update_plan tool", async () => {
@@ -315,7 +297,7 @@ test("Codex driver runs the real Claw lifecycle without a native update_plan too
   assert.deepEqual(goalCalls, ["create_goal", "update_goal:blocked", "update_goal:complete", "create_goal", "update_goal:complete"]);
 });
 
-test("Codex driver rejects legacy progress host actions", async () => {
+test("Codex driver preserves canonical success when an unsupported host effect is projected", async () => {
   const root = createFixture("codex-driver-protocol-validation");
   const envelope = runClaw(["codex", "driver"], root);
   const runner = (0, eval)(`(${String(envelope.source)})`) as (
@@ -336,18 +318,15 @@ test("Codex driver rejects legacy progress host actions", async () => {
       },
     }],
   };
-  await assert.rejects(
-    runner(
+  const result = await runner(
     { argv: ["plan", "edit", "--summary", "ready"], workdir: root },
-    {
-      tools: {
-        shell_command: async () => `warning: ${JSON.stringify({ diagnostic: true })}\n${JSON.stringify(validResult)}`,
-      },
-      text: () => {},
-    },
-    ),
-    /unsupported Codex hostAction/,
+    { tools: { shell_command: async () => `warning: ${JSON.stringify({ diagnostic: true })}\n${JSON.stringify(validResult)}` }, text: () => {} },
   );
+  assert.equal(result.stage, "execution");
+  assert.equal("command" in result, false);
+  assert.deepEqual(result.hostEffectFailures, [{
+    id: "edit:update_plan", tool: "update_plan", message: "unsupported Codex hostAction: edit:update_plan",
+  }]);
 });
 
 test("Codex driver preserves structured CLI errors returned on stderr", async () => {
@@ -418,7 +397,7 @@ test("Codex driver preserves unfinished Goals, recreates completed Goals, and co
         schemaVersion: 1,
         id: "resume:create_goal",
         tool: "create_goal",
-        input: { objective: "resume work" },
+        input: { objective: "resume work", futureMetadata: "ignored" },
       },
     ],
   };
