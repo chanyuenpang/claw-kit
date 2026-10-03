@@ -16,7 +16,7 @@ The DSH adapter owns execution mechanics; shared role skills own the meaning of 
 
 Exact-Agent Team exposure is only the enablement signal. Actual business calls check their own service/provider/identity needs; no model-side wait/taskboard choreography is required. Team stays optional and host authorization is not bypassed.
 
-Per-invocation receipts are stored in the host user's .claw/runtime/adapters/dsh/delegation namespace, partitioned by real workspace and opaque parent. They are not role roster or claw plan records. DSH owns member/transport facts. Unknown sends are not replayed or moved across routes; inactive is not success.
+Per-invocation receipts are stored in the host user's .claw/runtime/adapters/dsh/delegation namespace, partitioned by real workspace and opaque parent. They are not role roster or claw plan records. DSH owns member/transport facts. Unknown sends are not replayed or moved across routes; inactive is not success. Existing role compatibility ignores description/model/display drift and unrelated diagnostics; exact member name/id/membership, unique target and output boundary remain authoritative. Team spawn projections recover from one roster reread. Native roster/catalog and parent-history reads get at most one immediate read-only retry; target diagnostic or persistent ambiguity still blocks.
 
 Architecture report completion verifies the assigned actor and exact realpath boundary. The adapter registers references only against the captured current parent plan, using the CLI's internal expectedPlanPath guard. Focus changes defer registration without altering another plan. Only returned registration evidence permits a success claim.
 

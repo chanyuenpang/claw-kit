@@ -51,6 +51,9 @@ export declare class RoleDelegation {
     private notify;
     private capability;
     private fresh;
+    private teamRoster;
+    private nativeCatalog;
+    private targetDiagnostic;
     start(actor: DelegationActor, workdir: string, callId: string, raw: unknown): Promise<Json>;
     private runAdmitted;
     private advance;

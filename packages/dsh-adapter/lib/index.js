@@ -362,6 +362,22 @@ export function apply(ctx) {
             }
         },
     });
+    async function readParentSessionEvents(parentId, code, missingCode = code) {
+        let serviceObserved = false;
+        for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+                const query = c.get("sessionQuery");
+                if (!query)
+                    continue;
+                serviceObserved = true;
+                const snapshot = await query.readSession(parentId);
+                if (Array.isArray(snapshot?.events))
+                    return snapshot.events;
+            }
+            catch { /* one read-only retry; never retry a report commit */ }
+        }
+        throw new Error(serviceObserved ? code : missingCode);
+    }
     const reusableFinalizers = new FinalizerRoleDispatcher({
         getService: (name) => c.get(name), signal: finalizerAbort.signal,
         command: async (operation, actorId, workdir, argv) => {
@@ -371,15 +387,7 @@ export function apply(ctx) {
                 throw new Error("DSH_EXECUTION_LEDGER_UNAVAILABLE");
             return result;
         },
-        readParentEvents: async (parentId) => {
-            const query = c.get("sessionQuery");
-            if (!query)
-                throw new Error("DSH_ROLE_HISTORY_UNAVAILABLE");
-            const snapshot = await query.readSession(parentId);
-            if (!Array.isArray(snapshot?.events))
-                throw new Error("DSH_ROLE_HISTORY_UNAVAILABLE");
-            return snapshot.events;
-        },
+        readParentEvents: (parentId) => readParentSessionEvents(parentId, "DSH_ROLE_HISTORY_UNAVAILABLE"),
     });
     const dispatchFlights = new Map();
     const completedSweeps = new Set();
@@ -398,16 +406,11 @@ export function apply(ctx) {
         const startedAt = dispatch.startedAt ? Date.parse(dispatch.startedAt) : Number.NaN;
         if (!Number.isFinite(startedAt))
             throw new Error("DSH_REPORT_BOUNDARY_UNAVAILABLE");
-        const sessionQuery = c.get("sessionQuery");
-        if (!sessionQuery)
-            throw new Error("DSH_REPORT_HOST_UNAVAILABLE");
-        const snapshot = await sessionQuery.readSession(parentId);
-        if (!snapshot || !Array.isArray(snapshot.events))
-            throw new Error("DSH_REPORT_HISTORY_UNAVAILABLE");
+        const eventsSnapshot = await readParentSessionEvents(parentId, "DSH_REPORT_HISTORY_UNAVAILABLE", "DSH_REPORT_HOST_UNAVAILABLE");
         const endedAt = dispatch.endedAt ? Date.parse(dispatch.endedAt) : undefined;
         if (endedAt !== undefined && (!Number.isFinite(endedAt) || endedAt < startedAt))
             throw new Error("DSH_REPORT_BOUNDARY_UNAVAILABLE");
-        const events = extractPlanFinalAnswers(snapshot.events, parentId, startedAt, endedAt);
+        const events = extractPlanFinalAnswers(eventsSnapshot, parentId, startedAt, endedAt);
         const payload = JSON.stringify({ events });
         if (Buffer.byteLength(payload, "utf8") > 1024 * 1024)
             throw new Error("DSH_REPORT_TOO_LARGE");
@@ -490,7 +493,14 @@ export function apply(ctx) {
                 const known = await reusableFinalizers.recoverAcknowledgement(agent, workdir, finalizeId).catch(() => undefined);
                 return known ?? { ok: false, reason: "The canonical finalizer job is no longer queued." };
             }
-            const capability = await resolveDshDelegationCapability({ getService: (name) => c.get(name), agent, role: "finalizer", provider: "spawn", requestedModel: current.model, requestedReasoningEffort: current.reasoningEffort });
+            let capability;
+            for (let attempt = 0; attempt < 2; attempt++) {
+                capability = await resolveDshDelegationCapability({ getService: (name) => c.get(name), agent, role: "finalizer", provider: "spawn", requestedModel: current.model, requestedReasoningEffort: current.reasoningEffort });
+                if (capability.ready)
+                    break;
+            }
+            if (!capability)
+                return deferred("dispatch", "DELEGATION_CAPABILITY_UNAVAILABLE");
             try {
                 if ((capability.reusable || capability.selectedRoute === "team") && !current.endedAt)
                     throw new Error("DSH_REPORT_BOUNDARY_UNAVAILABLE");

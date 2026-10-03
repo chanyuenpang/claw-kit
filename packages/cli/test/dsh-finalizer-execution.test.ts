@@ -119,6 +119,15 @@ test("parent pending dispatches use queued chronology then the full finalization
   assert.deepEqual(paths.map((file) => fs.readFileSync(file, "utf8")), before);
 });
 
+test("invalid or future selection metadata degrades to legacy-unknown", (t) => {
+  const f = fixture(t);
+  const reserved = reserveDshFinalizerExecutionCommand({ ...f.common, route: "native-continuable",
+    memberSessionId: f.memberSessionId, provider: "spawn", configFingerprint: "stable-recipe",
+    modelSelection: { futureShape: true } });
+  assert.equal(reserved.admitted, true);
+  assert.equal(reserved.execution?.modelSelection, undefined);
+});
+
 test("private ledger facade isolates parent/member and freezes pending capture upper bound", (t) => {
   const f = fixture(t);
   assert.throws(() => reserveDshFinalizerExecutionCommand({ ...f.common, parentSessionId: "sibling", route: "team",

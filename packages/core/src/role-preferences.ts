@@ -8,7 +8,7 @@ export type RoleSelection = {
   // Applied options are not proof of what the child actually ran.
   resolved: { known: false } | ({ known: true } & RoleModelOptions);
   reason: "preferred" | "inherit-role" | "options-unavailable" | "catalog-unavailable"
-    | "model-unavailable" | "model-alternative" | "effort-unavailable" | "host-default";
+    | "model-unavailable" | "model-alternative" | "effort-unavailable" | "host-default" | "reuse-existing";
 };
 export type RoleSelectionInput = {
   role: DelegationRole;
@@ -59,7 +59,6 @@ export function selectRoleModelPreference(input: RoleSelectionInput): RoleSelect
     requested, applied: { mode: "inherit", options: {}, ...basis },
     resolved: { known: false }, reason,
   });
-  // Researcher inherits the caller; it never optimizes a new model or effort.
   if (intent === "inherit") {
     if (input.supportsOptions && Object.keys(inheritanceBasis).length) return {
       requested: { intent }, applied: { mode: "explicit", options: { ...inheritanceBasis } },
@@ -86,46 +85,62 @@ export function selectRoleModelPreference(input: RoleSelectionInput): RoleSelect
     resolved: { known: false }, reason };
 }
 
-/** Compatibility depends on submitted parameters, not unfulfilled preferences. */
-export function roleLaunchRecipe(selection: RoleSelection): RoleSelection["applied"] {
-  return { mode: selection.applied.mode, options: optionsFrom(selection.applied.options),
-    ...(selection.applied.inheritanceBasis ? { inheritanceBasis: optionsFrom(selection.applied.inheritanceBasis) } : {}) };
+/** Reusing an existing role submits no new model options; never claim otherwise. */
+export function reuseExistingRoleSelection(selection: RoleSelection): RoleSelection {
+  return { requested: { ...selection.requested }, applied: { mode: "inherit", options: {} },
+    resolved: { known: false }, reason: "reuse-existing" };
 }
 
-/** Validate optional operational metadata at a persistence/protocol boundary. */
+/** Compatibility depends on submitted parameters, not unfulfilled preferences. */
+export function roleLaunchRecipe(selection: RoleSelection): RoleSelection["applied"] {
+  // Only submitted child options define compatibility. Caller observations are
+  // audit context, not part of the worker identity.
+  return { mode: selection.applied.mode, options: optionsFrom(selection.applied.options) };
+}
+
+/** Normalize optional operational metadata; unknown fields are forward-compatible. */
 export function parseRoleSelection(value: unknown): RoleSelection {
-  const object = (input: unknown, keys: readonly string[]): Record<string, unknown> => {
-    if (!input || typeof input !== "object" || Array.isArray(input)
-      || Object.keys(input).some(key => !keys.includes(key))) throw new TypeError("Invalid role selection metadata");
+  const object = (input: unknown): Record<string, unknown> => {
+    if (!input || typeof input !== "object" || Array.isArray(input)) throw new TypeError("Invalid role selection metadata");
     return input as Record<string, unknown>;
   };
   const readOptions = (input: unknown): RoleModelOptions => {
-    const row = object(input, ["provider", "model", "reasoningEffort"]);
-    if (Object.values(row).some(item => typeof item !== "string" || !item.trim())) throw new TypeError("Invalid role selection options");
-    return optionsFrom(row as RoleModelOptions);
+    const row = object(input);
+    const known: RoleModelOptions = {};
+    for (const key of ["provider", "model", "reasoningEffort"] as const) {
+      if (!Object.hasOwn(row, key)) continue;
+      if (typeof row[key] !== "string" || !(row[key] as string).trim()) throw new TypeError("Invalid role selection options");
+      known[key] = row[key] as string;
+    }
+    return known;
   };
-  const root = object(value, ["requested", "applied", "resolved", "reason"]);
-  const requested = object(root.requested, ["intent", "model", "reasoningEffort"]);
+  const root = object(value);
+  const requested = object(root.requested);
   if (typeof requested.intent !== "string" || !["high-capability", "inherit", "low-cost"].includes(requested.intent)) throw new TypeError("Invalid role intent");
   for (const key of ["model", "reasoningEffort"]) {
     if (Object.hasOwn(requested, key) && (typeof requested[key] !== "string" || !(requested[key] as string).trim())) throw new TypeError("Invalid requested role preference");
   }
-  const applied = object(root.applied, ["mode", "options", "inheritanceBasis"]);
+  const applied = object(root.applied);
   if (applied.mode !== "explicit" && applied.mode !== "inherit") throw new TypeError("Invalid role launch mode");
   const options = readOptions(applied.options);
   if ((applied.mode === "inherit") !== (Object.keys(options).length === 0)) throw new TypeError("Invalid role launch recipe");
-  const resolved = object(root.resolved, ["known", "provider", "model", "reasoningEffort"]);
+  const resolved = object(root.resolved);
   if (typeof resolved.known !== "boolean") throw new TypeError("Invalid resolved model evidence");
-  const { known, ...actual } = resolved;
-  const actualOptions = readOptions(actual);
-  if (!known && Object.keys(actualOptions).length) throw new TypeError("Unknown model cannot claim actual settings");
-  if (known && !Object.keys(actualOptions).length) throw new TypeError("Resolved model requires actual evidence fields");
-  const reasons = ["preferred", "inherit-role", "options-unavailable", "catalog-unavailable", "model-unavailable", "model-alternative", "effort-unavailable", "host-default"];
+  const actualOptions = readOptions(resolved);
+  if (!resolved.known && Object.keys(actualOptions).length) throw new TypeError("Unknown model cannot claim actual settings");
+  if (resolved.known && !Object.keys(actualOptions).length) throw new TypeError("Resolved model requires actual evidence fields");
+  const reasons = ["preferred", "inherit-role", "options-unavailable", "catalog-unavailable", "model-unavailable", "model-alternative", "effort-unavailable", "host-default", "reuse-existing"];
   if (typeof root.reason !== "string" || !reasons.includes(root.reason)) throw new TypeError("Invalid role selection reason");
   const model = optionalHint(requested.model), reasoningEffort = optionalHint(requested.reasoningEffort);
   return {
     requested: { intent: requested.intent as RoleModelIntent, ...(model ? { model } : {}), ...(reasoningEffort ? { reasoningEffort } : {}) },
     applied: { mode: applied.mode, options, ...(applied.inheritanceBasis !== undefined ? { inheritanceBasis: readOptions(applied.inheritanceBasis) } : {}) },
-    resolved: known ? { known: true, ...actualOptions } : { known: false }, reason: root.reason as RoleSelection["reason"],
+    resolved: resolved.known ? { known: true, ...actualOptions } : { known: false }, reason: root.reason as RoleSelection["reason"],
   };
+}
+
+/** Optional soft metadata must never become an execution availability gate. */
+export function tryParseRoleSelection(value: unknown): RoleSelection | undefined {
+  try { return value === undefined ? undefined : parseRoleSelection(value); }
+  catch { return undefined; }
 }

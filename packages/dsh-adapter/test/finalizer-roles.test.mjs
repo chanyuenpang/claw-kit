@@ -43,7 +43,7 @@ function fixture(route = "native") {
     [B, { finalizeId: B, status: "queued", readyForNext: false }]]);
   const controller = new AbortController();
   const state = { failSend: false, failAcceptance: false, projectedSpawn: false,
-    replaceNativeProxy: false, onCommand: undefined, releaseReady: true };
+    replaceNativeProxy: false, failCatalogReads: 0, onCommand: undefined, releaseReady: true };
   function eventFor(id, memberId, messageId = "receipt-" + id) {
     return { type: "team/message/queued", data: { version: 2, teamId: agent.id, message: {
       id: messageId, senderId: agent.id, targetId: memberId,
@@ -87,7 +87,9 @@ function fixture(route = "native") {
     },
     subagents: {
       getProvider(name) { return name === provider.name ? provider : undefined; }, start() {},
-      async listChildren(parentId) { assert.equal(parentId, agent.id); return clone(children); },
+      async listChildren(parentId) { assert.equal(parentId, agent.id);
+        if (state.failCatalogReads-- > 0) throw new Error("transient catalog read");
+        return clone(children); },
       async startContinuable(spec) {
         assert.equal(spec.signal, controller.signal);
         assert.equal(spec.request.parent, agent);
@@ -213,6 +215,45 @@ test("concurrent admissions serialize and accepted duplicates never resend", asy
   assert.equal(f.sends.length, 1);
   const recovered = await f.dispatcher.recoverAcknowledgement(f.agent, workdir, A);
   assert.equal(recovered.messageId, "native-receipt-" + A);
+  assert.equal(f.sends.length, 1);
+});
+
+test("finalizer catalog tolerates one read failure and unrelated diagnostics", async () => {
+  const f = fixture();
+  f.state.failCatalogReads = 1;
+  f.children.push({ kind: "diagnostic", id: "unrelated", reason: "corrupt" });
+  const result = await f.run();
+  assert.equal(result.ok, true);
+  assert.equal(f.creates.length, 1);
+  assert.equal(f.sends.length, 1);
+});
+
+test("finalizer target diagnostic remains a hard identity failure", async () => {
+  const f = fixture();
+  const selection = { requested: { intent: "low-cost" }, applied: { mode: "inherit", options: {},
+    inheritanceBasis: { provider: "llm-provider", model: "model-a", reasoningEffort: "high" } },
+    resolved: { known: false }, reason: "catalog-unavailable" };
+  const fingerprint = finalizerConfigFingerprint(f.agent, workdir, { ...dispatchFor(A), selection }, "spawn");
+  f.children.push({ kind: "diagnostic", id: nativeFinalizerRoleId(f.agent.id, fingerprint), reason: "corrupt" });
+  const result = await f.run();
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "DSH_NATIVE_ROLE_CATALOG_UNAVAILABLE");
+  assert.equal(f.creates.length, 0);
+  assert.equal(f.sends.length, 0);
+});
+
+test("existing native role tolerates omitted provider and activity observations", async () => {
+  const f = fixture();
+  const selection = { requested: { intent: "low-cost" }, applied: { mode: "inherit", options: {},
+    inheritanceBasis: { provider: "llm-provider", model: "model-a", reasoningEffort: "high" } },
+    resolved: { known: false }, reason: "catalog-unavailable" };
+  const fingerprint = finalizerConfigFingerprint(f.agent, workdir, { ...dispatchFor(A), selection }, "spawn");
+  f.children.push({ kind: "child", id: nativeFinalizerRoleId(f.agent.id, fingerprint),
+    label: LABEL + fingerprint.slice(0, 16), mode: "continuable" });
+  const result = await f.run();
+  assert.equal(result.ok, true);
+  assert.equal(result.reused, true);
+  assert.equal(f.creates.length, 0);
   assert.equal(f.sends.length, 1);
 });
 

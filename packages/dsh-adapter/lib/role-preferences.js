@@ -38,7 +38,6 @@ export function selectRoleModelPreference(input) {
         requested, applied: { mode: "inherit", options: {}, ...basis },
         resolved: { known: false }, reason,
     });
-    // Researcher inherits the caller; it never optimizes a new model or effort.
     if (intent === "inherit") {
         if (input.supportsOptions && Object.keys(inheritanceBasis).length)
             return {
@@ -69,55 +68,74 @@ export function selectRoleModelPreference(input) {
     return { requested, applied: { mode: "explicit", options, ...(!candidateModel ? basis : {}) },
         resolved: { known: false }, reason };
 }
+/** Reusing an existing role submits no new model options; never claim otherwise. */
+export function reuseExistingRoleSelection(selection) {
+    return { requested: { ...selection.requested }, applied: { mode: "inherit", options: {} },
+        resolved: { known: false }, reason: "reuse-existing" };
+}
 /** Compatibility depends on submitted parameters, not unfulfilled preferences. */
 export function roleLaunchRecipe(selection) {
-    return { mode: selection.applied.mode, options: optionsFrom(selection.applied.options),
-        ...(selection.applied.inheritanceBasis ? { inheritanceBasis: optionsFrom(selection.applied.inheritanceBasis) } : {}) };
+    // Only submitted child options define compatibility. Caller observations are
+    // audit context, not part of the worker identity.
+    return { mode: selection.applied.mode, options: optionsFrom(selection.applied.options) };
 }
-/** Validate optional operational metadata at a persistence/protocol boundary. */
+/** Normalize optional operational metadata; unknown fields are forward-compatible. */
 export function parseRoleSelection(value) {
-    const object = (input, keys) => {
-        if (!input || typeof input !== "object" || Array.isArray(input)
-            || Object.keys(input).some(key => !keys.includes(key)))
+    const object = (input) => {
+        if (!input || typeof input !== "object" || Array.isArray(input))
             throw new TypeError("Invalid role selection metadata");
         return input;
     };
     const readOptions = (input) => {
-        const row = object(input, ["provider", "model", "reasoningEffort"]);
-        if (Object.values(row).some(item => typeof item !== "string" || !item.trim()))
-            throw new TypeError("Invalid role selection options");
-        return optionsFrom(row);
+        const row = object(input);
+        const known = {};
+        for (const key of ["provider", "model", "reasoningEffort"]) {
+            if (!Object.hasOwn(row, key))
+                continue;
+            if (typeof row[key] !== "string" || !row[key].trim())
+                throw new TypeError("Invalid role selection options");
+            known[key] = row[key];
+        }
+        return known;
     };
-    const root = object(value, ["requested", "applied", "resolved", "reason"]);
-    const requested = object(root.requested, ["intent", "model", "reasoningEffort"]);
+    const root = object(value);
+    const requested = object(root.requested);
     if (typeof requested.intent !== "string" || !["high-capability", "inherit", "low-cost"].includes(requested.intent))
         throw new TypeError("Invalid role intent");
     for (const key of ["model", "reasoningEffort"]) {
         if (Object.hasOwn(requested, key) && (typeof requested[key] !== "string" || !requested[key].trim()))
             throw new TypeError("Invalid requested role preference");
     }
-    const applied = object(root.applied, ["mode", "options", "inheritanceBasis"]);
+    const applied = object(root.applied);
     if (applied.mode !== "explicit" && applied.mode !== "inherit")
         throw new TypeError("Invalid role launch mode");
     const options = readOptions(applied.options);
     if ((applied.mode === "inherit") !== (Object.keys(options).length === 0))
         throw new TypeError("Invalid role launch recipe");
-    const resolved = object(root.resolved, ["known", "provider", "model", "reasoningEffort"]);
+    const resolved = object(root.resolved);
     if (typeof resolved.known !== "boolean")
         throw new TypeError("Invalid resolved model evidence");
-    const { known, ...actual } = resolved;
-    const actualOptions = readOptions(actual);
-    if (!known && Object.keys(actualOptions).length)
+    const actualOptions = readOptions(resolved);
+    if (!resolved.known && Object.keys(actualOptions).length)
         throw new TypeError("Unknown model cannot claim actual settings");
-    if (known && !Object.keys(actualOptions).length)
+    if (resolved.known && !Object.keys(actualOptions).length)
         throw new TypeError("Resolved model requires actual evidence fields");
-    const reasons = ["preferred", "inherit-role", "options-unavailable", "catalog-unavailable", "model-unavailable", "model-alternative", "effort-unavailable", "host-default"];
+    const reasons = ["preferred", "inherit-role", "options-unavailable", "catalog-unavailable", "model-unavailable", "model-alternative", "effort-unavailable", "host-default", "reuse-existing"];
     if (typeof root.reason !== "string" || !reasons.includes(root.reason))
         throw new TypeError("Invalid role selection reason");
     const model = optionalHint(requested.model), reasoningEffort = optionalHint(requested.reasoningEffort);
     return {
         requested: { intent: requested.intent, ...(model ? { model } : {}), ...(reasoningEffort ? { reasoningEffort } : {}) },
         applied: { mode: applied.mode, options, ...(applied.inheritanceBasis !== undefined ? { inheritanceBasis: readOptions(applied.inheritanceBasis) } : {}) },
-        resolved: known ? { known: true, ...actualOptions } : { known: false }, reason: root.reason,
+        resolved: resolved.known ? { known: true, ...actualOptions } : { known: false }, reason: root.reason,
     };
+}
+/** Optional soft metadata must never become an execution availability gate. */
+export function tryParseRoleSelection(value) {
+    try {
+        return value === undefined ? undefined : parseRoleSelection(value);
+    }
+    catch {
+        return undefined;
+    }
 }

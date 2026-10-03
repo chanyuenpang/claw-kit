@@ -33,11 +33,13 @@ Operational invocation receipts live under the host user's .claw/runtime/adapter
 
 Receipts use immutable owner envelopes, private atomic replacement and a bounded cross-process lock. The adapter does not steal a live lock by age. SDK calls and report registration happen outside the receipt transaction. Unknown delivery remains pinned and is never automatically resubmitted or moved to another backend. Normal completion advances the next queued assignment for that role; inactive is not a completion receipt.
 
+Compatibility deliberately excludes soft observations. Long-lived foreground role identity uses parent/workspace/role/carrier, not model preference or Team description. A unique teammate with the expected role name and exact membership remains reusable when description, provider/context display fields, diagnostics or caller model change; the receipt records `reuse-existing/unknown` instead of claiming new options were applied. Spawn projections missing raw id recover from one authoritative roster reread. Native catalogs similarly ignore unrelated diagnostic rows and tolerate one read failure; target-id corruption, duplicate targets and exact actor/membership failures remain hard errors.
+
 ## Automatic finalizer
 
 Finalizers are never dispatched by the main model. At a parent terminal transition the adapter freezes only proven parent finals in the canonical half-open capture window. Empty proven captures remain valid; unreadable or unbounded material is not fabricated as empty.
 
-A reusable native writer gets one role identity per compatible applied launch recipe but a full, distinct finalization ID, delegate plan, claim and material set for every job. Core reserves the exact member and permits only one delivery attempt. Positive durable receipt evidence can repair a lost acknowledgement; an unknown outcome cannot justify a second send. Legacy one-shot jobs keep their original evidence and native fallback.
+A reusable native writer gets one role identity per actually submitted options recipe (caller observations and unfulfilled preferences are excluded) but a full, distinct finalization ID, delegate plan, claim and material set for every job. Core reserves the exact member and permits only one delivery attempt. Positive durable receipt evidence can repair a lost acknowledgement; an unknown outcome cannot justify a second send. Legacy one-shot jobs keep their original evidence and native fallback.
 
 A later job waits for both the previous job and its delegate to end. The durable releasedAt proof prevents later delegate-file retention from blocking an already-verified release. The adapter completes matching final bookkeeping when safe and wakes the parent queue without requiring another parent turn. It never closes an unrelated or newer delegate.
 

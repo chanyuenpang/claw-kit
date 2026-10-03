@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseRoleSelection, roleLaunchRecipe, roleModelIntent, selectRoleModelPreference } from "../src/role-preferences.js";
+import { parseRoleSelection, reuseExistingRoleSelection, roleLaunchRecipe, roleModelIntent, selectRoleModelPreference, tryParseRoleSelection } from "../src/role-preferences.js";
 
 test("role intent separates high capability, caller inheritance, and low cost", () => {
   assert.equal(roleModelIntent("feature-architect"), "high-capability");
@@ -70,14 +70,31 @@ test("unfulfilled preferences do not change a compatible launch recipe", () => {
   assert.deepEqual(roleLaunchRecipe(select("preferred-a")), roleLaunchRecipe(select("preferred-b")));
 });
 
+test("caller inheritance observations do not change the compatible launch recipe", () => {
+  const select = (model: string) => selectRoleModelPreference({ role: "finalizer", supportsOptions: false,
+    inherited: { provider: "caller", model } });
+  assert.deepEqual(roleLaunchRecipe(select("parent-a")), roleLaunchRecipe(select("parent-b")));
+});
+
 test("selection metadata round-trips and unknown actual settings cannot be invented", () => {
   const selection = selectRoleModelPreference({ role: "finalizer", supportsOptions: false,
     hints: { model: "preferred" }, inherited: { provider: "caller", model: "actual-parent" } });
   assert.deepEqual(parseRoleSelection(JSON.parse(JSON.stringify(selection))), selection);
   assert.throws(() => parseRoleSelection({ ...selection,
     resolved: { known: false, model: "fabricated-child" } }), /Unknown model/);
-  assert.throws(() => parseRoleSelection({ ...selection,
-    requested: { ...selection.requested, extra: true } }), /Invalid role selection metadata/);
+  assert.deepEqual(parseRoleSelection({ ...selection, futureRootField: true,
+    requested: { ...selection.requested, futureHint: "ignored" } }), selection);
+  assert.equal(tryParseRoleSelection({ ...selection,
+    resolved: { known: false, model: "fabricated-child" } }), undefined);
+});
+
+test("reused role records that no new model options were applied", () => {
+  const selected = selectRoleModelPreference({ role: "feature-architect", supportsOptions: true,
+    candidate: { provider: "provider", model: "advanced", reasoningEffort: "high" } });
+  assert.deepEqual(reuseExistingRoleSelection(selected), {
+    requested: selected.requested, applied: { mode: "inherit", options: {} },
+    resolved: { known: false }, reason: "reuse-existing",
+  });
 });
 
 test("soft preferences do not turn malformed payloads into valid requests", () => {

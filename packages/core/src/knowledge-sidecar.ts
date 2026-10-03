@@ -11,7 +11,7 @@ import { ensureUtf8Bom, hasUtf8BomPrefix } from "./text-encoding.js";
 import { resolveHostIntegrationProfile, isIntegrationHost } from "./integration-contract.js";
 import type { KnowledgeGovernanceResult } from "./knowledge-governance.js";
 import type { KnowledgeWriterConfig, ProjectConfig, ProjectContext } from "./types.js";
-import { parseRoleSelection, type RoleSelection } from "./role-preferences.js";
+import { tryParseRoleSelection, type RoleSelection } from "./role-preferences.js";
 
 export type KnowledgeDocUpdateSnapshot = {
   externalDocPaths: string[];
@@ -834,8 +834,9 @@ export function reserveDshFinalizerExecution(input: {
     || (input.route === "team" ? !input.teamId?.trim() : input.teamId !== undefined)) {
     throw new Error("DSH_EXECUTION_INVALID: exact reusable executor identity required.");
   }
-  const modelSelection = input.modelSelection === undefined ? undefined : parseRoleSelection(input.modelSelection);
-  if (modelSelection && modelSelection.requested.intent !== "low-cost") throw new Error("DSH_EXECUTION_INVALID: finalizer role selection required.");
+  const modelSelection = tryParseRoleSelection(input.modelSelection);
+  // Selection metadata is advisory. Invalid/future metadata degrades to
+  // legacy-unknown; execution identity and fingerprint remain authoritative.
   return withDshRoleLock(input.project, input.parentSessionId, () => {
     const observed = readKnowledgeFinalizationJob(input.jobPath);
     assertDshExecutionParent(observed, input.project, input.parentSessionId);

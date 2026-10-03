@@ -23,7 +23,7 @@ export type RoleSelection = {
     } | ({
         known: true;
     } & RoleModelOptions);
-    reason: "preferred" | "inherit-role" | "options-unavailable" | "catalog-unavailable" | "model-unavailable" | "model-alternative" | "effort-unavailable" | "host-default";
+    reason: "preferred" | "inherit-role" | "options-unavailable" | "catalog-unavailable" | "model-unavailable" | "model-alternative" | "effort-unavailable" | "host-default" | "reuse-existing";
 };
 export type RoleSelectionInput = {
     role: DelegationRole;
@@ -41,7 +41,11 @@ export type RoleSelectionInput = {
 export declare function roleModelIntent(role: DelegationRole): RoleModelIntent;
 /** Pure best-effort selection; permission and delivery are separate hard checks. */
 export declare function selectRoleModelPreference(input: RoleSelectionInput): RoleSelection;
+/** Reusing an existing role submits no new model options; never claim otherwise. */
+export declare function reuseExistingRoleSelection(selection: RoleSelection): RoleSelection;
 /** Compatibility depends on submitted parameters, not unfulfilled preferences. */
 export declare function roleLaunchRecipe(selection: RoleSelection): RoleSelection["applied"];
-/** Validate optional operational metadata at a persistence/protocol boundary. */
+/** Normalize optional operational metadata; unknown fields are forward-compatible. */
 export declare function parseRoleSelection(value: unknown): RoleSelection;
+/** Optional soft metadata must never become an execution availability gate. */
+export declare function tryParseRoleSelection(value: unknown): RoleSelection | undefined;

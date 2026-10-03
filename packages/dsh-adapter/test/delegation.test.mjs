@@ -58,7 +58,9 @@ async function fixture(t, backend = "team") {
   const parent = { id: "parent", options: { model: "m", reasoningEffort: "high" }, session: { header: { cwd: workdir } } };
   const actors = new Map([[parent.id, parent]]);
   const members = []; const children = []; const runs = [];
-  const state = { context: { activeWorkflow: { planPath } }, starts: 0, sends: 0, registrations: 0, onSend: undefined, onStart: undefined, messages: [] };
+  const state = { context: { activeWorkflow: { planPath } }, starts: 0, sends: 0, registrations: 0,
+    failRosterReads: 0, failCatalogReads: 0, projectSpawn: false,
+    onSend: undefined, onStart: undefined, messages: [] };
   const outsideLock = () => assert.equal(store.locked, false, "external IO must not run under receipt lock");
   const child = (id) => { const actor = { id, options: parent.options, session: { header: { cwd: workdir, parentSession: parent.id } } }; actors.set(id, actor); return actor; };
   const provider = { name: "spawn", inheritsParentContext: false, capabilities: { agentOptions: true }, start() {}, ...(backend !== "one-shot" ? { prepareContinuable() {} } : {}) };
@@ -66,7 +68,9 @@ async function fixture(t, backend = "team") {
     tools: { get(name, actor) { assert.equal(actor, parent); return backend === "team" && name === "spawn_teammate" ? { parameters: params("name", "description", "prompt") } : undefined; } },
     subagents: {
       getProvider(name) { return name === "spawn" ? provider : undefined; },
-      async listChildren(id) { outsideLock(); assert.equal(id, parent.id); return copy(children); },
+      async listChildren(id) { outsideLock(); assert.equal(id, parent.id);
+        if (state.failCatalogReads-- > 0) throw new Error("transient catalog read");
+        return copy(children); },
       async startContinuable(spec) {
         outsideLock(); state.starts++; child(spec.childId);
         children.push({ kind: "child", id: spec.childId, label: spec.label, mode: "continuable", activity: "inactive", provider: "spawn" });
@@ -87,11 +91,14 @@ async function fixture(t, backend = "team") {
     },
     agentTeams: {
       tryMembership(actor) { return actor === parent ? { id: parent.id, root: parent, role: "lead" } : members.some((m) => m.id === actor.id) ? { id: parent.id, root: parent, role: "teammate" } : undefined; },
-      listMembers(actor) { outsideLock(); assert.equal(actor, parent); return copy(members); },
+      listMembers(actor) { outsideLock(); assert.equal(actor, parent);
+        if (state.failRosterReads-- > 0) throw new Error("transient roster read");
+        return copy(members); },
       async spawnTeammate(actor, request) {
         outsideLock(); assert.equal(actor, parent); state.starts++;
         const member = { id: "team-child-" + state.starts, name: request.name, description: request.description, role: "teammate", status: "inactive", provider: request.provider, context: request.context, diagnostics: [] };
-        members.push(member); child(member.id); return { member: copy(member) };
+        members.push(member); child(member.id);
+        return { member: state.projectSpawn ? { target: member.name, role: member.role, status: member.status } : copy(member) };
       },
       async sendMessage(actor, request) {
         outsideLock(); assert.equal(actor, parent); state.sends++; state.messages.push(request.content[0].text);
@@ -206,6 +213,51 @@ test("architect without active workflow returns reply or rejects explicit report
   assert.equal((await f.api.start(f.parent, f.workdir, "report", { role: "feature-architect", brief: "q", output: "report" })).code, "DELEGATE_REPORT_REQUIRES_ACTIVE_PLAN");
   assert.equal(f.store.writes, 0);
   assert.equal((await f.api.start(f.parent, f.workdir, "reply", { role: "feature-architect", brief: "q" })).output, "reply");
+});
+
+test("Team role reuse tolerates description, provider, context and diagnostic drift", async (t) => {
+  const f = await fixture(t);
+  const first = await f.api.start(f.parent, f.workdir, "team-a", { role: "researcher", brief: "q" });
+  await finish(f, first.assignment_id);
+  Object.assign(f.members[0], { description: "old soft fingerprint", provider: "other-view", context: "fork",
+    diagnostics: [{ reason: "display-warning" }], status: "inactive" });
+  const second = await f.api.start(f.parent, f.workdir, "team-b", { role: "researcher", brief: "q2" });
+  assert.equal(second.status, "running");
+  assert.equal(second.model_selection.reason, "reuse-existing");
+  assert.equal(f.state.starts, 1);
+  assert.equal(f.state.sends, 2);
+});
+
+test("Team spawn projection and one transient roster failure recover from the roster", async (t) => {
+  const f = await fixture(t);
+  f.state.projectSpawn = true;
+  f.state.failRosterReads = 1;
+  const result = await f.api.start(f.parent, f.workdir, "projected", { role: "researcher", brief: "q" });
+  assert.equal(result.status, "running");
+  assert.equal(f.state.starts, 1);
+  assert.equal(f.state.sends, 1);
+});
+
+test("native catalog tolerates one read failure and unrelated diagnostics", async (t) => {
+  const f = await fixture(t, "continuable");
+  f.state.failCatalogReads = 1;
+  f.children.push({ kind: "diagnostic", id: "unrelated", reason: "corrupt" });
+  const result = await f.api.start(f.parent, f.workdir, "native-soft", { role: "researcher", brief: "q" });
+  assert.equal(result.status, "running");
+  assert.equal(f.state.starts, 1);
+});
+
+test("native target diagnostic remains a hard identity failure", async (t) => {
+  const f = await fixture(t, "continuable");
+  // Stable role id is derived from parent/workspace/role/backend.
+  const probe = await f.api.start(f.parent, f.workdir, "seed", { role: "researcher", brief: "q" });
+  await finish(f, probe.assignment_id);
+  const receipt = f.store.receipt(probe.assignment_id);
+  f.children.splice(0, f.children.length, { kind: "diagnostic", id: receipt.memberId, reason: "corrupt" });
+  const failed = await f.api.start(f.parent, f.workdir, "target-diagnostic", { role: "researcher", brief: "q2" });
+  assert.equal(failed.status, "failed");
+  assert.equal(failed.error, "DELEGATE_NATIVE_CATALOG_UNAVAILABLE");
+  assert.equal(f.state.starts, 1);
 });
 
 test("native continuable roles reuse exact catalog identity", async (t) => {

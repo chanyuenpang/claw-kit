@@ -443,6 +443,19 @@ export function apply(ctx: unknown): void {
   type PendingDispatch = { finalizeId?: string; prompt?: string;
     model?: string | null; reasoningEffort?: string | null; preferReuse?: boolean; execution?: Record<string, unknown>;
     startedAt?: string; endedAt?: string; queuedAt?: string; captureStatus?: "pending" | "captured" };
+  async function readParentSessionEvents(parentId: string, code: string, missingCode = code): Promise<unknown[]> {
+    let serviceObserved = false;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const query = c.get("sessionQuery") as { readSession(id: string): Promise<{ events?: unknown[] }> } | undefined;
+        if (!query) continue;
+        serviceObserved = true;
+        const snapshot = await query.readSession(parentId);
+        if (Array.isArray(snapshot?.events)) return snapshot.events;
+      } catch { /* one read-only retry; never retry a report commit */ }
+    }
+    throw new Error(serviceObserved ? code : missingCode);
+  }
   const reusableFinalizers = new FinalizerRoleDispatcher({
     getService: (name) => c.get(name), signal: finalizerAbort.signal,
     command: async (operation, actorId, workdir, argv) => {
@@ -451,13 +464,7 @@ export function apply(ctx: unknown): void {
       if (!result || result.ok !== true) throw new Error("DSH_EXECUTION_LEDGER_UNAVAILABLE");
       return result;
     },
-    readParentEvents: async (parentId) => {
-      const query = c.get("sessionQuery") as { readSession(id: string): Promise<{ events?: unknown[] }> } | undefined;
-      if (!query) throw new Error("DSH_ROLE_HISTORY_UNAVAILABLE");
-      const snapshot = await query.readSession(parentId);
-      if (!Array.isArray(snapshot?.events)) throw new Error("DSH_ROLE_HISTORY_UNAVAILABLE");
-      return snapshot.events;
-    },
+    readParentEvents: (parentId) => readParentSessionEvents(parentId, "DSH_ROLE_HISTORY_UNAVAILABLE"),
   });
   const dispatchFlights = new Map<string, Promise<Record<string, JsonValue>>>();
   const completedSweeps = new Set<string>();
@@ -474,14 +481,10 @@ export function apply(ctx: unknown): void {
     if (dispatch.captureStatus === "captured") return;
     const startedAt = dispatch.startedAt ? Date.parse(dispatch.startedAt) : Number.NaN;
     if (!Number.isFinite(startedAt)) throw new Error("DSH_REPORT_BOUNDARY_UNAVAILABLE");
-    const sessionQuery = c.get("sessionQuery") as
-      | { readSession(sessionId: string): Promise<{ events?: unknown[] }> } | undefined;
-    if (!sessionQuery) throw new Error("DSH_REPORT_HOST_UNAVAILABLE");
-    const snapshot = await sessionQuery.readSession(parentId);
-    if (!snapshot || !Array.isArray(snapshot.events)) throw new Error("DSH_REPORT_HISTORY_UNAVAILABLE");
+    const eventsSnapshot = await readParentSessionEvents(parentId, "DSH_REPORT_HISTORY_UNAVAILABLE", "DSH_REPORT_HOST_UNAVAILABLE");
     const endedAt = dispatch.endedAt ? Date.parse(dispatch.endedAt) : undefined;
     if (endedAt !== undefined && (!Number.isFinite(endedAt) || endedAt < startedAt)) throw new Error("DSH_REPORT_BOUNDARY_UNAVAILABLE");
-    const events = extractPlanFinalAnswers(snapshot.events as EventLike[], parentId, startedAt, endedAt);
+    const events = extractPlanFinalAnswers(eventsSnapshot as EventLike[], parentId, startedAt, endedAt);
     const payload = JSON.stringify({ events });
     if (Buffer.byteLength(payload, "utf8") > 1024 * 1024) throw new Error("DSH_REPORT_TOO_LARGE");
     const { text } = await runOneOff(["internal-dsh-host-report-capture",
@@ -556,7 +559,12 @@ export function apply(ctx: unknown): void {
         const known = await reusableFinalizers.recoverAcknowledgement(agent as FinalizerAgent, workdir, finalizeId).catch(() => undefined);
         return known as Record<string, JsonValue> | undefined ?? { ok: false, reason: "The canonical finalizer job is no longer queued." };
       }
-      const capability = await resolveDshDelegationCapability({ getService: (name) => c.get(name), agent, role: "finalizer", provider: "spawn", requestedModel: current.model, requestedReasoningEffort: current.reasoningEffort });
+      let capability;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        capability = await resolveDshDelegationCapability({ getService: (name) => c.get(name), agent, role: "finalizer", provider: "spawn", requestedModel: current.model, requestedReasoningEffort: current.reasoningEffort });
+        if (capability.ready) break;
+      }
+      if (!capability) return deferred("dispatch", "DELEGATION_CAPABILITY_UNAVAILABLE");
       try {
         if ((capability.reusable || capability.selectedRoute === "team") && !current.endedAt) throw new Error("DSH_REPORT_BOUNDARY_UNAVAILABLE");
         await captureDshParentReport(agent.id, workdir, current);

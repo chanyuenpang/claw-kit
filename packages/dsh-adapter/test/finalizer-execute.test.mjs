@@ -165,6 +165,23 @@ test("live parent capture sends only proven in-plan finals before child dispatch
   assert.deepEqual(harness.mock.captures.flatMap((x) => x.events.map((event) => event.message)), ["verified"]);
 });
 
+test("one transient parent history failure is retried before dispatch", async () => {
+  const { service, state } = makeSubagents();
+  let reads = 0;
+  const harness = makeHarness({ subagents: service,
+    dispatch: { finalizeId: "1".repeat(64), prompt: "writer" },
+    extraService: { sessionQuery: { readSession: async () => {
+      if (reads++ === 0) throw new Error("transient history read");
+      return { events: [] };
+    } } },
+  });
+  apply(harness.ctx);
+  const result = await harness.tool.execute({ operation: "plan.done", args: {} }, { agent: makeAgent("parent-history-retry") });
+  assert.equal(result.dispatch.ok, true);
+  assert.ok(reads >= 2, "capture retries once; later read-only selection may also inspect parent facts");
+  assert.equal(state.starts, 1);
+});
+
 test("missing parent history blocks writer before claim without fabricating empty capture", async () => {
   const { service, state } = makeSubagents();
   const harness = makeHarness({ subagents: service,
@@ -282,7 +299,8 @@ test("a settled writer child releases the record so a stranded job can be retrie
   apply(harness.ctx, {});
 
   const first = await harness.tool.execute({ operation: "plan.done", args: {} }, { agent: makeAgent("parent-3") });
-  assert.equal(first.dispatch.reused, undefined);
+  assert.equal(first.dispatch.ok, true);
+  assert.equal(state.starts, 1);
 
   settleRun("done");
   await new Promise((resolve) => setTimeout(resolve, 10));
