@@ -11,6 +11,7 @@ Repository development follows execute-first validation engineering.
 - **Authority Guard** is the only normal preflight hard gate. It protects host-owned identity/workspace/operation scope, path containment, canonical compare-and-set/claim/delivery identity, and proven duplicate irreversible effects. The side-effect owner performs the check whenever possible.
 - **Recovery Adapter** maps actual results to committed/rejected/partial/unknown and reconciles only the exact resource. Read-only evidence may be retried once; mutations and sends are never replayed after unknown.
 - **Advisory Observation** covers capabilities, catalogs, descriptions, provider/model preferences, versions, projected schemas, UI state, diagnostics, caches, and optional metadata. It may guide routing or emit bounded diagnostics but cannot become shadow authorization or success evidence.
+- **Error Fidelity** preserves the business owner's safe structured code, operation phase, and correlation while redacting content, paths and tokens. Phase-specific fallbacks are permitted only when no structured code exists. Generic failure collapse, preflights added to hide runtime errors, and free-text-driven retries are rejected.
 
 Every new hard preflight has the burden of proving its protected fact, unique owner, authoritative evidence, false-negative harm, false-positive harm, inability to defer to the owner/postcondition, and minimal failure scope. Without that proof it is removed or downgraded.
 

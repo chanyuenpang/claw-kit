@@ -403,7 +403,7 @@ test("actual adapter reuses one native finalizer and wakes B after both A ends w
     async listChildren(id) { assert.equal(id, parent.id); return children; },
     async startContinuable(spec) {
       assert.equal(spec.request.parent, parent); spawned++;
-      const child = makeAgent(spec.childId);
+      const child = makeAgent(spec.childId ?? "host-continuable-child");
       child.session.header.parentSession = parent.id;
       child.options = { ...parent.options, ...(spec.request.agentOptions ?? {}) };
       actors.set(child.id, child);

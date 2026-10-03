@@ -34,6 +34,7 @@ Validation false positives are first-class usability defects: they can block a c
 - Every new or tightened hard gate must document its protected fact, unique owner, authoritative evidence, false-negative harm, false-positive harm, why it cannot be deferred to the owner/postcondition, and its smallest failure scope. Without that proof, remove or downgrade it.
 - Keep mutation/send critical sections short: establish identity and target, reserve when needed, acquire the current owner method, persist `attempted`, call exactly once, then persist accepted/rejected/unknown. Never insert advisory capability/catalog/model/version checks after `attempted`.
 - Read-only recovery may retry once when proportionate. Never replay a mutation or send after an unknown outcome. Unknown must block only the exact affected resource, not unrelated work.
+- Execute-first requires error fidelity: preserve the business owner's structured code and operation phase, redact sensitive details, and use a stable phase-specific fallback only when no safe code exists. Do not collapse actionable rejections into generic `*_FAILED`, add preflights to hide runtime errors, or parse free-form error text as retry authorization.
 - Prefer tests that prove owner call counts, canonical outcomes, zero side effects for authority violations, advisory drift tolerance, and no resend. Do not replace removed ceremony with an equal number of brittle metadata snapshots.
 
 See `docs/validation-engineering.md` and `.claw/truth/adr/execute-first-validation-ownership.md`.

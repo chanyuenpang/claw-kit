@@ -95,8 +95,9 @@ function fixture(route = "native") {
         assert.equal(spec.request.parent, agent);
         assert.match(spec.request.prompt[0].text, /initializes the role ONLY/);
         creates.push({ route: "native", spec });
-        children.push({ kind: "child", id: spec.childId, label: spec.label, mode: "continuable", activity: "inactive", provider: spec.provider });
-        return { childId: spec.childId, messageId: "bootstrap-message" };
+        const childId = spec.childId ?? "host-child-" + creates.length;
+        children.push({ kind: "child", id: childId, label: spec.label, mode: "continuable", activity: "inactive", provider: spec.provider });
+        return { childId, messageId: "bootstrap-message" };
       },
       async sendMessage(parent, childId, content, options) {
         assert.equal(parent, agent);
@@ -234,7 +235,9 @@ test("finalizer target diagnostic remains a hard identity failure", async () => 
     inheritanceBasis: { provider: "llm-provider", model: "model-a", reasoningEffort: "high" } },
     resolved: { known: false }, reason: "catalog-unavailable" };
   const fingerprint = finalizerConfigFingerprint(f.agent, workdir, { ...dispatchFor(A), selection }, "spawn");
-  f.children.push({ kind: "diagnostic", id: nativeFinalizerRoleId(f.agent.id, fingerprint), reason: "corrupt" });
+  const targetId = "persisted-child";
+  f.rows.get(A).execution = f.execution(A, { memberSessionId: targetId, configFingerprint: fingerprint, modelSelection: selection });
+  f.children.push({ kind: "diagnostic", id: targetId, reason: "corrupt" });
   const result = await f.run();
   assert.equal(result.ok, false);
   assert.equal(result.code, "DSH_NATIVE_ROLE_CATALOG_UNAVAILABLE");
@@ -257,13 +260,25 @@ test("existing native role tolerates omitted provider and activity observations"
   assert.equal(f.sends.length, 1);
 });
 
+test("structured Host start rejection keeps a safe actionable code", async () => {
+  const f = fixture();
+  f.services.subagents.startContinuable = async () => { throw { code: "subagent/session-conflict" }; };
+  const result = await f.run();
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "DSH_HOST_SUBAGENT_SESSION_CONFLICT");
+  assert.equal(f.rows.get(A).execution, undefined);
+  assert.equal(f.sends.length, 0);
+});
+
 test("replaceable equivalent native service proxies do not fail capability rechecks", async () => {
   const f = fixture();
   f.state.replaceNativeProxy = true;
   const result = await f.run();
   assert.equal(result.ok, true);
   assert.equal(result.executor, "native-continuable");
+  assert.equal(result.runId, "host-child-1");
   assert.equal(f.creates.length, 1);
+  assert.equal(f.creates[0].spec.childId, undefined, "Host owns durable child identity");
   assert.equal(f.sends.length, 1);
 });
 
@@ -343,11 +358,11 @@ test("legacy admitted Team executor is not migrated to the new native route", as
   assert.equal(f.sends.length, 0);
 });
 
-test("native continuable route reuses one deterministic child across full-id jobs", async () => {
+test("native continuable route reuses one Host-owned child across full-id jobs", async () => {
   const f = fixture("native");
   const first = await f.run(A);
   assert.equal(first.executor, "native-continuable");
-  assert.match(first.runId, /^[0-9a-f-]{36}$/);
+  assert.equal(first.runId, "host-child-1");
   f.rows.get(A).status = "succeeded";
   f.rows.get(A).readyForNext = true;
   const second = await f.run(B);

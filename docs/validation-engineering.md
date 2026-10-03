@@ -31,6 +31,12 @@ Recovery translates a real result into `committed`, `rejected`, `partial`, or `u
 - Unknown affects only the exact operation/resource; unrelated reads and work continue.
 - Positive canonical evidence may recover a lost acknowledgement.
 
+### Error Fidelity
+
+Execute-first depends on preserving the real owner's rejection. Normalize structured failures into a safe code, operation phase, and correlation identity; redact user content, paths, tokens, and unbounded exception text. When the owner supplies no safe code, use a stable phase-specific category such as `MEMBER_START_REJECTED`, not a generic catch-all. Investigate the owner failure before changing routing or validation.
+
+Error text is diagnostic data, never retry authorization. A mutation or send is not replayed because its message looks transient. Do not add a preflight merely to hide a runtime rejection; fix the call, downgrade an advisory dependency, or retain the actionable owner error.
+
 ### Advisory Observation
 
 Capabilities, catalogs, descriptions, versions, model preferences, projected schemas, UI state, caches, diagnostics, and optional metadata are advisory unless their owner explicitly makes them authoritative.
