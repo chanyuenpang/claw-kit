@@ -132,11 +132,16 @@ async function codexDriverRunner(
   const hostEffectFailures: Array<{ id: string; tool: string; message: string }> = [];
   const actions = Array.isArray(result.hostActions) ? result.hostActions : [];
   for (const candidate of actions) {
-    const action = candidate as Record<string, unknown>;
-    const tool = typeof action.tool === "string" ? action.tool : "";
-    const id = typeof action.id === "string" ? action.id : "";
-    if (consumed.has(id)) continue;
+    let tool = "";
+    let id = "";
     try {
+      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+        throw new Error("unsupported Codex hostAction: unknown");
+      }
+      const action = candidate as Record<string, unknown>;
+      tool = typeof action.tool === "string" ? action.tool : "";
+      id = typeof action.id === "string" ? action.id : "";
+      if (consumed.has(id)) continue;
       const handler = handlers[tool];
       if (action.schemaVersion !== 1 || !id || !(tool in handlers)) {
         throw new Error(`unsupported Codex hostAction: ${id || "unknown"}`);

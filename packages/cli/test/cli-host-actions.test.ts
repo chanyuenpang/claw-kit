@@ -308,7 +308,7 @@ test("Codex driver preserves canonical success when an unsupported host effect i
     ok: true,
     command: "plan.edit",
     stage: "execution",
-    hostActions: [{
+    hostActions: [null, {
       schemaVersion: 1,
       id: "edit:update_plan",
       tool: "update_plan",
@@ -324,9 +324,10 @@ test("Codex driver preserves canonical success when an unsupported host effect i
   );
   assert.equal(result.stage, "execution");
   assert.equal("command" in result, false);
-  assert.deepEqual(result.hostEffectFailures, [{
-    id: "edit:update_plan", tool: "update_plan", message: "unsupported Codex hostAction: edit:update_plan",
-  }]);
+  assert.deepEqual(result.hostEffectFailures, [
+    { id: "unknown", tool: "unknown", message: "unsupported Codex hostAction: unknown" },
+    { id: "edit:update_plan", tool: "update_plan", message: "unsupported Codex hostAction: edit:update_plan" },
+  ]);
 });
 
 test("Codex driver preserves structured CLI errors returned on stderr", async () => {

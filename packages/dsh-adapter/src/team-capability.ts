@@ -95,7 +95,9 @@ function inspectBackend(subagents: unknown, input: DshDelegationCapabilityInput)
   // Provider metadata is a route preference only. If both carriers exist and
   // continuation is not advertised, choose one-shot; if it is the only
   // callable carrier, let the owner method accept or reject the real call.
-  const provider = method(subagents, "getProvider")?.call(subagents, input.provider);
+  let provider: unknown;
+  try { provider = method(subagents, "getProvider")?.call(subagents, input.provider); }
+  catch { provider = undefined; }
   const reusable = continuationMethods && (Boolean(method(provider, "prepareContinuable")) || !oneShot);
   return { reusable, supportsOptions: record(record(provider)?.capabilities)?.agentOptions === true };
 }

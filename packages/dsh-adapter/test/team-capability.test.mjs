@@ -210,6 +210,15 @@ test("model and effort preferences are syntactic hints, not capability admission
   assert.equal((await resolve({ ...f.input, requestedModel: "" })).ready, true);
 });
 
+test("provider catalog failure degrades route metadata without blocking a callable carrier", async () => {
+  const f = fixture();
+  exposeNativeOnly(f);
+  f.services.subagents.getProvider = () => { throw new Error("catalog unavailable"); };
+  assert.deepEqual(await resolve(f.input), { selectedRoute: "native", ready: true, provider: "spawn", reusable: false });
+  assert.deepEqual(await resolve({ ...f.input, role: "finalizer" }),
+    { selectedRoute: "native", ready: true, provider: "spawn", reusable: false, supportsOptions: false });
+});
+
 test("native option support is reported to finalizer selection without blocking hints", async () => {
   const f = fixture();
   exposeNativeOnly(f);
