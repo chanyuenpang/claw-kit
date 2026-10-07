@@ -9,6 +9,16 @@
  * lost. Such a request must never be automatically replayed.
  */
 export declare function isUncertainConnectionFailure(message: string): boolean;
+type CommandFailure = {
+    code?: string;
+    message?: string;
+    outcome?: "known" | "unknown";
+    phase?: string;
+    effect?: string;
+};
+/** Structured owner outcomes take precedence over legacy transport text. */
+export declare function isUnknownCommandOutcome(error?: CommandFailure): boolean;
+export declare function operationFailureError(operation: string, error?: CommandFailure): Error;
 export declare function daemonInput(operation: string, args: Record<string, unknown>): unknown;
 /** Render the session-start guidance snapshot injected at session start.
  * Aligns with the Codex adapter's session-start hook: consumes the full
@@ -17,3 +27,4 @@ export declare function daemonInput(operation: string, args: Record<string, unkn
  * model gets the same recovery and startup context on DSH that Codex
  * receives. Host identity remains available even without recovered context. */
 export declare function renderGuidanceSnapshot(context: Record<string, unknown> | undefined): string;
+export {};

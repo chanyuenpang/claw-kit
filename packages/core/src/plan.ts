@@ -2,9 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { buildCompletionHooks } from "./completion-hooks.js";
-import { ensureTaskContext, findTaskDirectory, listTaskDirectories, removeLegacyTaskMeta, resolveTaskContext, resolveTaskName } from "./context.js";
+import { ensureTaskContext, findTaskDirectory, listTaskDirectories, removeLegacyTaskMeta, resolveProjectContext, resolveTaskContext, resolveTaskName } from "./context.js";
 import { resolvePlanEffectiveConfig } from "./effective-config.js";
-import { ClawError } from "./errors.js";
+import { ClawError, withExecutionFailure, type ClawExecutionFailure } from "./errors.js";
+import { commitSubplanCreation, completeSubplanAndRestoreParent, createPlanRef, ProjectFocusSessionStore, readFocusedPlan } from "./focus-transitions.js";
+import { assertSingleTaskActivation, currentPlanTask } from "./task-focus.js";
 import { isIntegrationHost, resolveHostIntegrationProfile } from "./integration-contract.js";
 import { readJsonFile, withFileLock, withSerializedAccess, writeJsonFile } from "./io.js";
 import { tryEndKnowledgePlan, tryLeaveKnowledgePlan, tryRegisterKnowledgePlan } from "./knowledge-sidecar.js";
@@ -13,10 +15,10 @@ import {
   isProcessStatus,
 } from "./requirements-gate.js";
 import { buildPlanViewModel, buildSimplePlanView } from "./plan-view.js";
-import { getTemplateTaskDoneChoices, getTemplateTaskPlanStartGuidance, renderSeedTemplateText, resolveSeedPlanTemplate } from "./plan-templates.js";
+import { getTemplateTaskDoneChoices, getTemplateTaskDoneGuidanceRoute, getTemplateTaskPlanStartGuidance, renderSeedTemplateText, resolveSeedPlanTemplate } from "./plan-templates.js";
 import { ensureInsideDir, findProjectRoot, normalizePlanFile, slugFromFilePath } from "./paths.js";
-import { bindSessionToPlan, unbindSession } from "./session-bindings.js";
-import { resolveWorkflowProjectContext } from "./session-workflows.js";
+import { bindSessionToPlan, resolveSessionBoundPlan, unbindSession } from "./session-bindings.js";
+import { resolveSessionWorkflowContext, resolveWorkflowProjectContext } from "./session-workflows.js";
 import type {
   LegacyPlanStatus,
   PlanDocument,
@@ -71,6 +73,7 @@ const PLAN_TASK_STATUSES: PlanTaskStatus[] = ["pending", "in_progress", "subagen
 export function resolveThreadGoalPlan(input: {
   cwd: string;
   taskName: string;
+  taskPath?: string;
   focusedPlan: PlanDocument;
   ownerSessionKey?: string;
   scope?: "project" | "session";
@@ -78,7 +81,7 @@ export function resolveThreadGoalPlan(input: {
   if (!input.focusedPlan.parentPlan) return input.focusedPlan;
 
   const project = resolveWorkflowProjectContext(input.cwd, input.ownerSessionKey, input.scope);
-  const task = resolveTaskContext(project, input.taskName, input.ownerSessionKey);
+  const task = resolveTaskContext(project, input.taskName, input.ownerSessionKey, input.taskPath);
   const rootPath = requireInsideTask(task, "plan.json");
   if (!fs.existsSync(rootPath)) {
     throw new ClawError("PROJECT_CONFIG_INVALID", "The root plan.json required to reconcile this subplan's Codex Goal is missing.", {
@@ -118,6 +121,12 @@ async function resolveTemplateCreationScope(
 }
 
 export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult & { events: PlanEvent[] }> {
+  const execution: ClawExecutionFailure = { phase: "prepare", outcome: "known", effect: "none" };
+  try { return await writePlanWithOutcome(input, execution); }
+  catch (error) { throw withExecutionFailure(error, execution); }
+}
+
+async function writePlanWithOutcome(input: PlanWriteInput, execution: ClawExecutionFailure): Promise<PlanWriteResult & { events: PlanEvent[] }> {
   if (input.templateName?.trim() && input.templateFile?.trim()) {
     throw new ClawError("PROJECT_CONFIG_INVALID", "templateName and templateFile are mutually exclusive.", {
       templateName: input.templateName,
@@ -145,7 +154,7 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
   }
   const taskName = deriveTaskName(input);
   const createdTask = !findTaskDirectory(project, taskName);
-  const task = ensureTaskContext(project, taskName);
+  const task = ensureTaskContext(project, taskName, input.ownerSessionKey);
   const planFile = derivePlanFile(task, input.filePath, input.parentTaskId);
   const planPath = requireInsideTask(task, planFile);
   const createdPlan = !fs.existsSync(planPath);
@@ -181,6 +190,7 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
     throw new ClawError("KNOWLEDGE_CAPTURE_TARGET_REQUIRED", "Knowledge capture is enabled by default, but session storage has no project task capture target. Use project storage or add --no-knowledge-capture.", { scope: project.scope, knowledgeCapture });
   }
   plan.knowledgeCapture = knowledgeCapture;
+  assertSingleTaskActivation(existing, plan);
 
   let parentPlanPath: string | undefined;
   const subplanContext = input.parentTaskId !== undefined
@@ -201,35 +211,29 @@ export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult 
   const goalPlan = resolveThreadGoalPlan({
     cwd: input.cwd,
     taskName,
+    taskPath: path.relative(project.tasksDir, task.taskDir),
     focusedPlan: plan,
     ownerSessionKey: input.ownerSessionKey,
     scope: project.scope,
   });
-  if (subplanContext) {
-    if (!input.deferParentMutation) {
-      subplanContext.parentTask.execution = {
-        ...subplanContext.parentTask.execution,
-        type: "subplan",
-        subplan: planFile,
-        planPath: planFile,
-      };
-      if (subplanContext.parentTask.status === "pending") {
-        subplanContext.parentTask.status = "in_progress";
-      }
-      subplanContext.parentPlan.updatedAt = new Date().toISOString();
-      withFileLock(subplanContext.parentPlanPath, () => {
-        writeJsonFile(subplanContext.parentPlanPath, subplanContext.parentPlan);
-      });
-    }
-  }
-
   plan.updatedAt = new Date().toISOString();
-  fs.mkdirSync(path.dirname(planPath), { recursive: true });
-  withFileLock(planPath, () => {
-    writeJsonFile(planPath, plan);
-  });
-
-  bindSessionToPlan(project, input.ownerSessionKey, planPath);
+  Object.assign(execution, { phase: "commit", outcome: "unknown", effect: "unknown" });
+  if (input.commitSubplan) {
+    if (!subplanContext) throw new ClawError("PROJECT_CONFIG_INVALID", "A prepared subplan commit requires a parent.");
+    await input.commitSubplan({ task, plan, planFile, planPath, parentBefore: structuredClone(subplanContext.parentPlan) });
+  } else {
+    if (subplanContext && !input.deferParentMutation) {
+      subplanContext.parentTask.execution = { ...subplanContext.parentTask.execution,
+        type: "subplan", subplan: planFile, planPath: planFile };
+      if (subplanContext.parentTask.status === "pending") subplanContext.parentTask.status = "in_progress";
+      subplanContext.parentPlan.updatedAt = new Date().toISOString();
+      withFileLock(subplanContext.parentPlanPath, () => writeJsonFile(subplanContext.parentPlanPath, subplanContext.parentPlan));
+    }
+    fs.mkdirSync(path.dirname(planPath), { recursive: true });
+    withFileLock(planPath, () => writeJsonFile(planPath, plan));
+    bindSessionToPlan(project, input.ownerSessionKey, planPath);
+  }
+  Object.assign(execution, { phase: "post-commit", outcome: "known", effect: "committed" });
   if (plan.knowledgeCapture) {
     const effectiveConfig = resolvePlanEffectiveConfig(project.projectConfig, plan);
     tryRegisterKnowledgePlan({
@@ -324,10 +328,17 @@ function buildPlanCreateScopeGuidance(cwd: string, cause: ClawError): ClawError 
 }
 
 export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & { events: PlanEvent[] }> {
+  const execution: ClawExecutionFailure = { phase: "prepare", outcome: "known", effect: "none" };
+  try { return await editPlanWithOutcome(input, execution); }
+  catch (error) { throw withExecutionFailure(error, execution); }
+}
+
+async function editPlanWithOutcome(input: PlanEditInput, execution: ClawExecutionFailure): Promise<PlanEditResult & { events: PlanEvent[] }> {
   const task = resolveTaskContext(
     resolveWorkflowProjectContext(input.cwd, input.ownerSessionKey, input.scope),
     input.taskName,
     input.ownerSessionKey,
+    input.taskPath,
   );
   const planFile = normalizePlanFile(input.planFile ?? task.activePlan);
   const planPath = requireInsideTask(task, planFile);
@@ -506,8 +517,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
     }
 
     if (input.applyPlanStartGuidance) {
-      const currentTask = previous.tasks.find((taskItem) => taskItem.status === "in_progress")
-        ?? previous.tasks.find((taskItem) => taskItem.status === "pending");
+      const currentTask = currentPlanTask(previous);
       const startGuidance = currentTask && previous.templateId
         ? getTemplateTaskPlanStartGuidance(
             await resolveSeedPlanTemplate({
@@ -554,6 +564,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
       nextPlan: next,
     });
 
+    assertSingleTaskActivation(previous, next);
     validatePlanDocument(next);
     // Child response guidance resolves root ownership in every status, not
     // just active. Validate it before committing, in the canonical task scope.
@@ -561,6 +572,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
       resolveThreadGoalPlan({
         cwd: input.cwd,
         taskName: task.taskName,
+        taskPath: path.relative(task.project.tasksDir, task.taskDir),
         focusedPlan: next,
         ownerSessionKey: input.ownerSessionKey,
         scope: task.project.scope,
@@ -588,7 +600,9 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
           },
         );
       }
+      Object.assign(execution, { phase: "commit", outcome: "unknown", effect: "unknown" });
       writeJsonFile(planPath, next);
+      Object.assign(execution, { phase: "post-commit", outcome: "known", effect: "committed" });
     });
     if (previousStatus !== next.status || input.updates || changedTaskIds.length > 0 || input.appendTasks?.length || input.removeTaskIds?.length || (operationChain?.completedOperations ?? 0) > 0) {
       events.unshift(
@@ -642,8 +656,9 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
     let resultPlan = next;
 
     if (completionHooks?.subplanClosureCandidate && !input.deferSubplanClosure) {
-      const resumedParent = completeSubplanAndResumeParent({
+      const resumedParent = await completeSubplanAndResumeParent({
         task,
+        ownerSessionKey: input.ownerSessionKey, childPlanFile: planFile, completedChild: next,
         closure: completionHooks.subplanClosureCandidate,
       });
       resultPlanFile = resumedParent.planFile;
@@ -694,6 +709,7 @@ export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & {
     const goalPlan = resolveThreadGoalPlan({
       cwd: input.cwd,
       taskName: task.taskName,
+      taskPath: path.relative(task.project.tasksDir, task.taskDir),
       focusedPlan: resultPlan,
       ownerSessionKey: input.ownerSessionKey,
       scope: task.project.scope,
@@ -782,20 +798,52 @@ export function showPlan(input: PlanShowInput): PlanShowResult {
   };
 }
 
+function resolveSubplanProject(input: SubplanWriteInput): TaskContext["project"] {
+  if (input.scope || !input.ownerSessionKey) {
+    return resolveWorkflowProjectContext(input.cwd, input.ownerSessionKey, input.scope);
+  }
+  const candidates: TaskContext["project"][] = [];
+  try { candidates.push(resolveProjectContext(input.cwd)); }
+  catch (error) { if (!(error instanceof ClawError) || error.code !== "CLAW_DIR_NOT_FOUND") throw error; }
+  const session = resolveSessionWorkflowContext(input.ownerSessionKey);
+  if (session) candidates.push(session);
+  const bound = candidates.filter((project) => resolveSessionBoundPlan(project, input.ownerSessionKey));
+  if (bound.length > 1) throw new ClawError("PLAN_TRANSITION_CONFLICT", "Session has bindings in more than one storage scope.");
+  if (bound[0]) return bound[0];
+  throw new ClawError("CURRENT_PLAN_REQUIRED", "Create or resume a plan before creating a subplan.");
+}
+
 export async function createSubplan(input: SubplanWriteInput): Promise<PlanWriteResult & { events: PlanEvent[] }> {
-  const parentTask = resolveTaskContext(
-    resolveWorkflowProjectContext(input.cwd, input.ownerSessionKey, input.scope),
-    input.parentTaskName,
-    input.ownerSessionKey,
-  );
+  try { return await createSubplanFromFocus(input); }
+  catch (error) { throw withExecutionFailure(error, { phase: "prepare", outcome: "known", effect: "none" }); }
+}
+
+async function createSubplanFromFocus(input: SubplanWriteInput): Promise<PlanWriteResult & { events: PlanEvent[] }> {
+  const project = resolveSubplanProject(input);
+  const boundPath = resolveSessionBoundPlan(project, input.ownerSessionKey);
+  const boundTaskName = boundPath ? path.basename(path.dirname(boundPath)) : undefined;
+  if (boundTaskName && input.parentTaskName && input.parentTaskName !== boundTaskName) {
+    throw new ClawError("PLAN_FOCUS_CHANGED", "The supplied parent does not match the session's current plan.");
+  }
+  const parentName = boundTaskName ?? input.parentTaskName;
+  if (!parentName || (input.ownerSessionKey && !boundPath)) {
+    throw new ClawError("CURRENT_PLAN_REQUIRED", "Create or resume a plan before creating a subplan.");
+  }
+  const parentTask = resolveTaskContext(project, parentName, input.ownerSessionKey);
   const parentPlanFile = parentTask.activePlan;
   const parentPlanPath = requireInsideTask(parentTask, parentPlanFile);
   const parentPlan = normalizePlanDocument(readJsonFile<PlanDocument>(parentPlanPath));
-  const parentPlanTask = parentPlan.tasks.find((task) => task.id === input.parentTaskId);
+  const focusedTask = currentPlanTask(parentPlan);
+  const parentTaskId = input.parentTaskId ?? focusedTask?.id;
+  if (boundPath && input.parentTaskId !== undefined && focusedTask?.id !== input.parentTaskId) {
+    throw new ClawError("PLAN_FOCUS_CHANGED", "The supplied task is not the session's current task.");
+  }
+  const parentPlanTask = parentPlan.tasks.find((task) => task.id === parentTaskId);
   if (!parentPlanTask) {
     throw new ClawError(
       "PROJECT_CONFIG_INVALID",
-      `Parent task id ${input.parentTaskId} does not exist in ${parentPlanFile}.`,
+      parentTaskId === undefined ? "The current plan has no unfinished task to expand."
+        : `Parent task id ${parentTaskId} does not exist in ${parentPlanFile}.`,
       {
         taskName: parentTask.taskName,
         planFile: parentPlanFile,
@@ -819,9 +867,18 @@ export async function createSubplan(input: SubplanWriteInput): Promise<PlanWrite
     templateName: input.templateName,
     templateFile: input.templateFile,
     forcePlanning: true,
-    parentTaskId: input.parentTaskId,
+    parentTaskId: parentPlanTask.id,
     parentPlanFile,
     deferParentMutation: input.deferParentMutation,
+    commitSubplan: input.commitSubplan ?? (input.ownerSessionKey ? async (prepared) => {
+      await commitSubplanCreation({ project: prepared.task.project, sessionKey: input.ownerSessionKey!,
+        bindingSessionKey: input.ownerSessionKey!,
+        parentPlan: createPlanRef(prepared.task.project, prepared.task.taskName, parentPlanFile, prepared.task.taskDir),
+        parentBefore: prepared.parentBefore,
+        childPlan: createPlanRef(prepared.task.project, prepared.task.taskName, prepared.planFile, prepared.task.taskDir),
+        childContent: prepared.plan,
+      });
+    } : undefined),
     ownerSessionKey: input.ownerSessionKey,
     scope: parentTask.project.scope,
     knowledgeCapture: parentPlan.knowledgeCapture,
@@ -1046,6 +1103,7 @@ async function applyPlanMutationOperations(input: {
         previousPlan: current,
         nextPlan: candidate,
       });
+      assertSingleTaskActivation(current, candidate);
       validatePlanDocument(candidate);
       if (input.scope !== "session" && candidate.status === "end.completed" && !candidate.retrospective?.summary?.trim()) {
         throw new ClawError("RETROSPECTIVE_REQUIRED", "end.completed requires retrospective.summary before the plan can be completed.");
@@ -1306,12 +1364,16 @@ async function validateDoneTransitions(params: {
     versionPolicy: "ignore",
   });
   const previousTasks = new Map(previousPlan.tasks.map((task) => [task.id, task]));
+  let routedTaskId: number | undefined;
 
   for (const task of nextPlan.tasks) {
     const previousTask = previousTasks.get(task.id);
     const choices = getTemplateTaskDoneChoices(template, task.id);
     const availableChoices = choices ? Object.keys(choices) : [];
     const isDoneTransition = previousTask?.status !== "done" && task.status === "done";
+    if (isDoneTransition) {
+      routedTaskId = getTemplateTaskDoneGuidanceRoute(template, task.id, task.choiceId)?.nextTaskId;
+    }
 
     if (isDoneTransition && choices && !task.choiceId) {
       throw new ClawError(
@@ -1338,6 +1400,24 @@ async function validateDoneTransitions(params: {
           availableChoices,
         },
       );
+    }
+  }
+
+  // A template route is workflow state, not a one-response UI hint. Persist
+  // the selected task using the existing status field so recovery and implicit
+  // subplan creation see the same focus without another task registry.
+  if (routedTaskId !== undefined) {
+    const target = nextPlan.tasks.find((task) => task.id === routedTaskId);
+    if (!target) throw new ClawError("PROJECT_CONFIG_INVALID", `Template route task ${routedTaskId} does not exist.`);
+    if (target.status === "done") {
+      if (previousTasks.get(target.id)?.status === "done") {
+        throw new ClawError("PROJECT_CONFIG_INVALID", `Template route task ${routedTaskId} is already done.`);
+      }
+      return; // A batch already completed this intermediate route.
+    }
+    const current = currentPlanTask(nextPlan);
+    if (!current || current.id === target.id || current.status === "pending" || current.status === "blocked") {
+      if (target.status === "pending") target.status = "in_progress";
     }
   }
 }
@@ -1435,8 +1515,11 @@ function resolveShowPlanTarget(input: PlanShowInput): {
 } {
   const project = resolveWorkflowProjectContext(input.cwd, input.ownerSessionKey, input.scope);
   try {
-    const task = resolveTaskContext(project, input.taskName);
-    const planFile = normalizePlanFile(input.planFile ?? task.activePlan);
+    const task = resolveTaskContext(project, input.taskName, input.ownerSessionKey, input.taskPath);
+    // An explicit named show retains its root-plan default; the session owner
+    // supplies planFile when showing its current child. Binding only selects
+    // the exact container here, not a different public show target.
+    const planFile = normalizePlanFile(input.planFile ?? task.legacyMeta?.activePlan ?? "plan.json");
     const planPath = requireInsideTask(task, planFile);
     if (!fs.existsSync(planPath)) {
       throw new ClawError("PLAN_NOT_FOUND", `Plan "${planFile}" does not exist for task "${task.taskName}".`, {
@@ -1653,17 +1736,20 @@ function resolveSubplanContext(task: TaskContext, parentTaskId: number, parentPl
   };
 }
 
-function completeSubplanAndResumeParent(params: {
+async function completeSubplanAndResumeParent(params: {
   task: TaskContext;
+  ownerSessionKey?: string;
+  childPlanFile: string;
+  completedChild: PlanDocument;
   closure: {
     parentPlan: string;
     parentTaskId: number;
   };
-}): {
+}): Promise<{
   planFile: string;
   planPath: string;
   plan: PlanDocument;
-} {
+}> {
   const parentPlanFile = normalizePlanFile(params.closure.parentPlan);
   const parentPlanPath = requireInsideTask(params.task, parentPlanFile);
   const parentPlan = normalizePlanDocument(readJsonFile<PlanDocument>(parentPlanPath));
@@ -1675,6 +1761,24 @@ function completeSubplanAndResumeParent(params: {
     );
   }
 
+  if (params.ownerSessionKey) {
+    const project = params.task.project;
+    const store = new ProjectFocusSessionStore(project);
+    const focused = readFocusedPlan(project, params.ownerSessionKey, store);
+    if (focused) {
+      if (focused.planFile !== params.childPlanFile) throw new ClawError("PLAN_FOCUS_CHANGED", "Focus changed before parent restoration.");
+      await completeSubplanAndRestoreParent({ project, sessionKey: params.ownerSessionKey,
+        bindingSessionKey: params.ownerSessionKey,
+        childPlan: createPlanRef(project, params.task.taskName, params.childPlanFile, params.task.taskDir),
+        completedChild: params.completedChild,
+        parentPlan: createPlanRef(project, params.task.taskName, parentPlanFile, params.task.taskDir),
+        parentTaskId: params.closure.parentTaskId, sessionStore: store,
+      });
+      return { planFile: parentPlanFile, planPath: parentPlanPath, plan: readJsonFile<PlanDocument>(parentPlanPath) };
+    }
+  }
+  parentPlan.status = "process.active";
+  delete parentPlan.leaveReason;
   parentTask.status = "done";
   if (parentTask.execution?.type === "subplan" && parentTask.execution?.subplan) {
     parentTask.execution = {

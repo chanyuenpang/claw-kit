@@ -11,8 +11,11 @@ import {
   resolveProjectContext,
   showPlan,
   writePlan,
+  unbindSession,
+  resolveSessionBoundPlan,
 } from "@veewo/claw-core";
 import { ClawCommandService } from "../dist/command-service.js";
+import { SessionCommandExecutor } from "../dist/session-command.js";
 import {
   SessionRegistryV2,
   RegistryFocusSessionStore,
@@ -42,14 +45,41 @@ test("session subplan creation journals parent linkage together with focus trans
   });
   const created = await service.execute(context, {
     operation: "subplan.create",
-    input: { parentTaskName: "subplan-task", parentTaskId: 1 },
+    input: {},
   });
   const parent = showPlan({ cwd: projectRoot, taskName: "subplan-task" }).plan;
   const childFile = (created.output as { planFile: string }).planFile;
   assert.equal(parent.status, "end.leave");
+  assert.equal(parent.leaveReason, "switch_to_new_plan");
   assert.equal(parent.tasks[0]?.execution?.subplan, childFile);
   assert.equal(registry.read(opened.identity.sessionKeyHash).currentPlan?.planFile, childFile);
   assert.equal((created.postCommitEffects?.[0] as { planStatus?: string } | undefined)?.planStatus, "end.leave");
+  assert.equal(created.knowledgeDispatch, undefined, "temporary parent leave must not dispatch knowledge finalization");
+});
+
+test("unfinished preparation also owns the session root focus", async () => {
+  const projectRoot = fixture("preparing-project");
+  initProject({ cwd: projectRoot, projectName: "Preparing", planning: false });
+  const registry = new SessionRegistryV2(fixture("preparing-runtime"));
+  const opened = await registry.open("preparing-agent", projectRoot, { kind: "node" });
+  const service = new ClawCommandService(registry);
+  const context = { cwd: projectRoot, agentSessionId: opened.identity.agentSessionId,
+    sessionKey: sessionFocusKey(opened.identity), mode: "session" as const };
+  const templateFile = path.join(projectRoot, "preparing-template.json");
+  fs.writeFileSync(templateFile, JSON.stringify({ id: "preparing", version: "1.0.0",
+    status: "prepare.requirements", goal: { text: "Prepare" },
+    tasks: [{ id: 1, title: "Clarify", status: "pending" }],
+  }));
+  await service.execute(context, { operation: "plan.create", input: {
+    taskName: "preparing", title: "Preparing", goalText: "Prepare", templateFile, forcePlanning: true,
+  } });
+  assert.equal(showPlan({ cwd: projectRoot, taskName: "preparing" }).plan.status, "prepare.requirements");
+  const before = registry.read(opened.identity.sessionKeyHash).currentPlan;
+  await assert.rejects(service.execute(context, { operation: "plan.create", input: {
+    taskName: "other-root", title: "Other", goalText: "Must not replace unfinished work",
+  } }), { code: "PLAN_CREATE_BLOCKED_BY_PROCESS_PLAN" });
+  assert.deepEqual(registry.read(opened.identity.sessionKeyHash).currentPlan, before);
+  assert.throws(() => showPlan({ cwd: projectRoot, taskName: "other-root" }), { code: "TASK_NOT_FOUND" });
 });
 
 test("session subplan completion returns parent guidance without touching the root Goal", async () => {
@@ -126,6 +156,37 @@ test("session subplan completion returns parent guidance without touching the ro
   assert.equal(output.completedSubplan?.planStatus, "end.completed");
   assert.equal(completed.hostActions, undefined);
   assert.equal(registry.read(opened.identity.sessionKeyHash).currentPlan?.planFile, "plan.json");
+});
+
+test("session recovery and child return retain the original dated container", async () => {
+  const cwd = fixture("dated-project");
+  initProject({ cwd, projectName: "Dated focus", planning: false });
+  const registry = new SessionRegistryV2(fixture("dated-runtime"));
+  const executor = new SessionCommandExecutor(registry);
+  const identity = { agentSessionId: "dated-agent", workdir: cwd, client: { kind: "adapter" as const, host: "dsh" } };
+  const created = await executor.execute(identity, { operation: "plan.create", input: {
+    taskName: "duplicate", title: "Original", goalText: "Original root objective", knowledgeCapture: false,
+  } });
+  const root = created.output as { taskDir: string; planPath: string };
+  const original = fs.readFileSync(root.planPath, "utf8");
+  const project = resolveProjectContext(cwd);
+  const other = path.join(project.tasksDir, "9999-01-01", "duplicate");
+  fs.mkdirSync(other, { recursive: true });
+  fs.writeFileSync(path.join(other, "plan.json"), original);
+  // Exercise retained focus recovery without help from the live binding.
+  unbindSession(project, identity.agentSessionId);
+  await executor.open(identity);
+  assert.equal(resolveSessionBoundPlan(project, identity.agentSessionId), root.planPath);
+  const result = await executor.execute(identity, { operation: "subplan.create", input: {} });
+  const child = result.output as { taskDir: string; planPath: string; planFile: string };
+  assert.equal(child.taskDir, root.taskDir);
+  await executor.execute(identity, { operation: "plan.start", input: { appendTasks: [{ title: "Finish child" }] } });
+  await executor.execute(identity, { operation: "task.done", input: { tasks: [{ id: 2 }] } });
+  await executor.execute(identity, { operation: "plan.done", input: { retrospectiveSummary: "Child finished" } });
+  assert.equal(resolveSessionBoundPlan(project, identity.agentSessionId), root.planPath);
+  assert.equal(JSON.parse(fs.readFileSync(root.planPath, "utf8")).status, "process.active");
+  assert.equal(fs.readFileSync(path.join(other, "plan.json"), "utf8"), original);
+  assert.equal(fs.existsSync(path.join(other, child.planFile)), false);
 });
 
 test("v2 session store uses exact persisted after-images during focus recovery", async () => {

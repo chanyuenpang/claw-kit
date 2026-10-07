@@ -106,7 +106,7 @@ Lifecycle is also a template-author decision. `claw plan start` remains global o
 Every generated claw skill should ask what the skill completely owns:
 
 - Whole task: resolve the loaded skill directory and use `claw plan create --template-file "<skill-dir>/TEMPLATE.json"` when the skill owns the task from inputs through verification.
-- Independent stage: use `claw subplan create --parent <parent-task-name> --task-id <id> --template-file "<skill-dir>/TEMPLATE.json"` when the skill owns one complete stage of a broader plan. On hosts with Goal Mode, consume the returned goal handoff so the active parent goal completes before the child plan creates its own goal; never overwrite the active parent goal.
+- Independent stage: use `claw subplan create --template-file "<skill-dir>/TEMPLATE.json"` when the skill owns one complete stage of a broader plan. Session focus supplies the parent plan and task. Preserve the root objective and let the host route manage Goal/progress effects while focus descends and returns.
 - Mixed stage: use the adjacent fallback when the skill only contributes part of a stage whose owning workflow mixes multiple skills.
 
 Batch belongs to the independent-stage route, not to a separate batch route. A batch is a broader plan with repeated stages; each stage calls the skill once as a subplan. The parent owns ordering and shared constraints, and each subplan owns one stage's complete result.

@@ -221,7 +221,7 @@ export function compactClawOutput(output, operation) {
         }
     }
     else if (visible.command === "knowledge.done") {
-        for (const key of ["finalizeId", "completed", "failed", "alreadyDone"]) {
+        for (const key of ["finalizeId", "completed", "failed", "alreadyDone", "delegateClosed", "delegateCloseDeferred", "delegateCloseError", "templateCleanupDeferred"]) {
             if (output[key] !== undefined)
                 visible[key] = output[key];
         }

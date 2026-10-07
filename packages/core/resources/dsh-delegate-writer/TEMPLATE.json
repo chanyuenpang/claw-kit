@@ -9,12 +9,12 @@
     "text": "Complete one dispatched DSH knowledge finalization through claw_run."
   },
   "requirements": {
-    "summary": "Claim the durable job, execute its generated assignment subplan, and persist one terminal result.",
+    "summary": "Claim the dispatched job, deliver its knowledge outcomes through the supplied template, and report the result. The runtime owns canonical binding and matching delegate closeout.",
     "openQuestions": [],
     "acceptanceCriteria": [
-      "Claim captures the parent report and returns the assignment template.",
-      "Assignments run sequentially in a session-scoped subplan.",
-      "Every successful claim receives a matching terminal knowledge.done result."
+      "Only a successful claim authorizes work on this job.",
+      "Assignments meet their evidence, scope and outcome contracts; partial and no-edit results are reported honestly.",
+      "The canonical result is persisted and the runtime confirms matching delegate closure or reports why closure is deferred."
     ]
   },
   "tasks": [
@@ -27,13 +27,17 @@
     {
       "id": 2,
       "title": "Execute the assignment subplan",
-      "detail": "Use claw_run operation subplan.create with args {parent: \"knowledge-finalizer-<full-finalize-id>\", task_id: 2, template_file: <templatePath from claim>}; follow the returned workflowGuidance and execute every assignment yourself in order.",
+      "detail": "Use claw_run operation subplan.create with args {template_file: <templatePath from claim>}. Session focus supplies the parent plan and current task. Follow returned guidance and carry out the assignment outcomes yourself.",
       "status": "pending"
     },
     {
       "id": 3,
       "title": "Persist the terminal result",
-      "detail": "After a successful claim use claw_run operation knowledge.done exactly once with args {finalize_id: <exact dispatch id>, claim_token: <claimToken>, status: \"succeeded\", result: <concise result>} if all assignments succeeded, or {finalize_id, claim_token, status: \"failed\", error: <remaining error>} otherwise. This is a finally-style obligation. If the adapter returns delegateClosed, stop; otherwise follow the returned workflow guidance to finish this delegate, never an unrelated plan.",
+      "execution": {
+        "type": "default",
+        "lifecycle": "knowledge.result"
+      },
+      "detail": "Submit claw_run knowledge.done with finalize_id, claim_token, and status plus result (succeeded) or error (failed). Report success only for completed outcomes; a corrected no-effect command error is not an unresolved failure. The runtime persists the result and closes this claim-owned delegate when safe. If delegateClosed is true, stop without additional lifecycle calls. If closure is deferred, inspect the reported canonical state; do not replay an accepted or outcome-unknown mutation or finish an unrelated plan.",
       "status": "pending"
     }
   ],
@@ -42,7 +46,7 @@
     "Use only claw_run for all claw workflow and knowledge operations; never run claw in pwsh or a shell.",
     "Never modify supplied plan or report materials.",
     "Never start another finalizer or delegate assignment execution.",
-    "Do not continue later assignments after a failure."
+    "Correct known no-effect errors within the current work. An unresolved prerequisite blocks dependent writes, not read-only inspection or an honest partial-result report. Never replay accepted or outcome-unknown mutations."
   ],
   "keyDecisions": [],
   "retrospective": {

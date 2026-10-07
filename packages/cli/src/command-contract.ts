@@ -49,7 +49,7 @@ const checks = {
   "plan.edit": object({ operations: list(mutation), expectedPlanPath: text }, ["operations"]),
   "plan.wait": object({}),
   "plan.done": object(fields),
-  "subplan.create": object({ parentTaskName: text, parentTaskId: id, templateName: text, templateFile: text }, ["parentTaskName", "parentTaskId"]),
+  "subplan.create": object({ parentTaskName: text, parentTaskId: id, templateName: text, templateFile: text }),
   "task.edit": object({ taskId: id, taskTitle: text, taskDetail: text, taskStatus, taskChoiceId: text }, ["taskId"]),
   "task.add": object({ tasks: list(task) }, ["tasks"]),
   "task.done": object({ tasks: list(object({ id, choiceId: text }, ["id"])) }, ["tasks"]),

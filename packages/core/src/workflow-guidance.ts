@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { ClawError } from "./errors.js";
+import { activePlanTask, currentPlanTask, unfinishedPlanTask } from "./task-focus.js";
 import { resolveHostIntegrationProfile } from "./integration-contract.js";
 import {
   getTemplateTaskDoneChoices,
@@ -235,11 +236,11 @@ export function shouldUsePlanHostIntegration(plan: Pick<PlanDocument, "tasks" | 
 }
 
 function nextUnfinishedTask(plan: PlanDocument): PlanTask | undefined {
-  return plan.tasks.find((task) => task.status !== "done");
+  return unfinishedPlanTask(plan);
 }
 
 function currentActiveTask(plan: PlanDocument): PlanTask | undefined {
-  return plan.tasks.find((task) => task.status === "in_progress" || task.status === "subagent_running");
+  return activePlanTask(plan);
 }
 
 function formatTaskRef(task: PlanTask): string {
@@ -387,7 +388,7 @@ export async function buildPlanWorkflowGuidance(params: {
   // not ask a Cindy Agent to operate another Host's Goal or progress tools.
   const suppressGoalFields = resolveHostIntegrationProfile(params.host)?.suppressesAgentGoalGuidance === true;
   const startedGoalModeThisRound = goalModeEnabled && previousStatus === "process.active";
-  const nextTask = nextUnfinishedTask(plan);
+  const nextTask = currentPlanTask(plan);
   const activeTask = currentActiveTask(plan);
   const shouldReturnNextTask = hasCompletedTasks || hasAppendedTasks || justEnteredProcess || (!hasChangedTasks && !activeTask);
   const hasGoal = typeof goalPlan.goal.text === "string" && goalPlan.goal.text.trim().length > 0;

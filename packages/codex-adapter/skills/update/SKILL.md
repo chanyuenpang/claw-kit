@@ -18,7 +18,7 @@ the update from proceeding.
 Resolve `<skill-dir>` as the directory containing this loaded `SKILL.md`.
 
 - When claw-kit is available, direct request: run `claw plan create --template-file "<skill-dir>/TEMPLATE.json" --title "update"`.
-- When claw-kit is available, active parent task: run `claw subplan create --parent <parent-task-name> --task-id <id> --template-file "<skill-dir>/TEMPLATE.json"` and consume its goal handoff so the active parent goal completes before the update subplan creates its own goal.
+- When claw-kit is available, active parent task: run `claw subplan create --template-file "<skill-dir>/TEMPLATE.json"` and let canonical session focus supply its parent plan/task; preserve the root objective and consume the driver-owned Goal/progress effects.
 - When claw-kit is available, batch request: create one root task per target and run this template as the update task's subplan.
 
 ## Contract

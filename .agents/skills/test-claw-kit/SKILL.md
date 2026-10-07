@@ -11,7 +11,7 @@ Verify the current claw-kit workspace as a release candidate, preserve exact fai
 Resolve `<skill-dir>` as the directory containing this loaded `SKILL.md`.
 
 - Whole task: when this skill fully owns the candidate test, use `claw plan create --template-file "<skill-dir>/TEMPLATE.json" --title "test-claw-kit"`.
-- Independent stage: when candidate testing is one independently owned stage of a broader workflow, use `claw subplan create --parent <parent-task-name> --task-id <id> --template-file "<skill-dir>/TEMPLATE.json"`. On Goal Mode hosts, consume the returned handoff so the active parent goal completes before the child plan creates its own goal.
+- Independent stage: when candidate testing is one independently owned stage of a broader workflow, use `claw subplan create --template-file "<skill-dir>/TEMPLATE.json"`. Session focus supplies the parent plan and current task; preserve the root objective and follow the owning host’s Goal/progress effects.
 - Mixed stage: when this skill contributes only part of another stage, do not create its template plan. Read `FALLBACK.md` and apply the relevant checks inside the owning workflow.
 - Unavailable claw tooling: read `FALLBACK.md` and run the direct workflow.
 

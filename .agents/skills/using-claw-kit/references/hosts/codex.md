@@ -31,7 +31,7 @@ not accept them. This does not permit a shell fallback for plan mutations.
 
 ```javascript
 async function runClawPlanMutation({ argv, workdir, pluginRoot, timeout_ms = 30000 }) {
-  const cacheKey = "claw-kit:codex-driver:v23:s1";
+  const cacheKey = "claw-kit:codex-driver:v24:s1";
   const pluginVersion = "0.2.43.0";
   const fetchEnvelope = async () => {
     const raw = typeof tools.shell_command === "function" ? await tools.shell_command({ command: "claw codex driver", workdir, timeout_ms })

@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { findTaskDirectory } from "./context.js";
-import { ClawError } from "./errors.js";
+import { listTaskDirectories } from "./context.js";
+import { ClawError, withExecutionFailure, type ClawExecutionFailure } from "./errors.js";
+import { applySessionBindingTransition, readSessionBoundPlanPath } from "./session-bindings.js";
 import {
   readJsonFile,
   serializeJsonFile,
@@ -11,7 +12,6 @@ import {
   writeJsonFileAtomic,
 } from "./io.js";
 import { ensureInsideDir, normalizePlanFile } from "./paths.js";
-import { isProcessStatus } from "./requirements-gate.js";
 import type { PlanDocument, PlanLeaveReason, ProjectContext } from "./types.js";
 
 const MISSING_RESOURCE_HASH = createHash("sha256").update("<missing>").digest("hex");
@@ -20,6 +20,8 @@ export type PlanRef = {
   projectRoot: string;
   taskName: string;
   planFile: string;
+  /** Exact task directory relative to tasksDir, including its date when present. */
+  taskPath?: string;
   /**
    * Storage scope the plan was created under. Old records may omit it; those
    * keep the legacy ambient resolution (session workflow preferred).
@@ -68,6 +70,8 @@ export type FocusTransitionJournal = {
   transitionId: string;
   kind: FocusTransitionKind;
   sessionKeyHash: string;
+  /** Optional per-entry binding write; legacy journals do not contain it. */
+  binding?: { sessionKey: string; before: string | null; after: string | null };
   phase: "prepared" | "applying" | "committed";
   createdAt: string;
   updatedAt: string;
@@ -102,6 +106,7 @@ export type FocusFailurePoint =
   | "after_applying"
   | "after_plan"
   | "after_owners"
+  | "after_binding"
   | "after_session"
   | "after_committed";
 
@@ -161,13 +166,16 @@ export function createPlanRef(
   project: ProjectContext,
   taskName: string,
   planFile = "plan.json",
+  taskDirectory?: string,
 ): PlanRef {
-  return {
-    projectRoot: path.resolve(project.projectRoot),
-    taskName,
-    planFile: normalizePlanFile(planFile),
-    scope: project.scope,
-  };
+  const ref: PlanRef = { projectRoot: path.resolve(project.projectRoot), taskName,
+    planFile: normalizePlanFile(planFile), scope: project.scope };
+  const directory = taskDirectory ?? resolveLegacyTaskDirectory(project, ref);
+  if (directory) {
+    ref.taskPath = path.relative(project.tasksDir, path.resolve(directory)).replace(/\\/g, "/");
+    resolveReferenceTaskDirectory(project, ref);
+  }
+  return ref;
 }
 
 export function focusSessionKeyHash(sessionKey: string): string {
@@ -348,6 +356,7 @@ export async function switchCurrentPlan(
     additionalPlanUpdates?: Array<{ ref: PlanRef; content: PlanDocument }>;
     preserveTargetStatus?: boolean;
     preserveCurrentEndState?: boolean;
+    binding?: FocusTransitionJournal["binding"];
     sessionStore?: FocusSessionStore;
     testHooks?: FocusTransitionTestHooks;
   },
@@ -366,6 +375,7 @@ export async function switchCurrentPlan(
     kind: input.kind ?? "resume",
     sessionStore,
     involvedRefs: refs,
+    binding: input.binding,
     testHooks: input.testHooks,
     buildAfter: ({ plans }) => {
       const updates = new Map<string, { ref: PlanRef; content: PlanDocument }>();
@@ -411,15 +421,16 @@ export async function switchCurrentPlan(
 }
 
 export function assertRootPlanCreateAllowedForPlan(currentPlan: PlanRef, current: PlanDocument): void {
-  if (!isProcessStatus(current.status)) return;
+  if (current.status.startsWith("end.")) return;
   throw new ClawError(
     "PLAN_CREATE_BLOCKED_BY_PROCESS_PLAN",
-    "Cannot create a new plan while the current plan is in process. Run plan.leave to end the current plan, then retry plan.create; or use subplan.create for work within the current plan.",
+    "Cannot create a new plan while the current plan is unfinished. Run plan.leave to end the current plan, then retry plan.create; or use subplan.create for work within the current plan.",
     {
       currentPlan,
       status: current.status,
       allowedOperations: ["plan.leave", "subplan.create"],
     },
+    { phase: "prepare", outcome: "known", effect: "none" },
   );
 }
 
@@ -438,6 +449,54 @@ export async function createPlanAndSwitchFocus(input: {
     preserveTargetStatus: true,
     sessionStore: input.sessionStore,
     testHooks: input.testHooks,
+  });
+}
+
+/** Commit the child, parent relationship, focus and binding under one journal. */
+export async function commitSubplanCreation(input: {
+  project: ProjectContext;
+  sessionKey: string;
+  bindingSessionKey: string;
+  parentPlan: PlanRef;
+  parentBefore: PlanDocument;
+  childPlan: PlanRef;
+  childContent: PlanDocument;
+  sessionStore?: FocusSessionStore;
+  testHooks?: FocusTransitionTestHooks;
+}): Promise<FocusTransitionResult> {
+  const sessionStore = input.sessionStore ?? new ProjectFocusSessionStore(input.project);
+  const parentPath = resolvePlanRefPath(input.project, input.parentPlan);
+  const childPath = resolvePlanRefPath(input.project, input.childPlan);
+  return commitFocusTransition({
+    project: input.project, sessionKeyHash: focusSessionKeyHash(input.sessionKey),
+    kind: "subplan_create", sessionStore, involvedRefs: [input.parentPlan],
+    createdPlans: [{ ref: input.childPlan, content: input.childContent }],
+    binding: { sessionKey: input.bindingSessionKey, before: parentPath, after: childPath },
+    testHooks: input.testHooks,
+    buildAfter: ({ plans, session, owners }) => {
+      if (session.currentPlan && !samePlanRef(input.project, session.currentPlan, input.parentPlan)) {
+        throw new ClawError("PLAN_FOCUS_CHANGED", "Current focus changed before subplan creation.");
+      }
+      validateTargetOwnership(input.project, focusSessionKeyHash(input.sessionKey), input.parentPlan, owners);
+      const parent = structuredClone(requirePlan(plans, input.project, input.parentPlan));
+      if (hashJson(parent) !== hashJson(input.parentBefore)) {
+        throw new ClawError("PLAN_STALE_EDIT", "Parent plan changed while the subplan template was prepared.");
+      }
+      const task = parent.tasks.find((item) => item.id === input.childContent.parentTaskId);
+      if (!task || input.childContent.parentPlan !== input.parentPlan.planFile) {
+        throw new ClawError("PLAN_TRANSITION_CONFLICT", "Prepared child does not belong to the current parent task.");
+      }
+      task.execution = { ...task.execution, type: "subplan", subplan: input.childPlan.planFile, planPath: input.childPlan.planFile };
+      if (task.status === "pending") task.status = "in_progress";
+      parent.status = "end.leave";
+      parent.leaveReason = "switch_to_new_plan";
+      delete parent.completedAt;
+      parent.updatedAt = new Date().toISOString();
+      return { currentPlan: input.childPlan, plans: [
+        { ref: input.childPlan, content: input.childContent },
+        { ref: input.parentPlan, content: parent },
+      ] };
+    },
   });
 }
 
@@ -472,6 +531,7 @@ export async function completeSubplanAndRestoreParent(input: {
   completedChild: PlanDocument;
   parentPlan: PlanRef;
   parentTaskId: number;
+  bindingSessionKey?: string;
   sessionStore?: FocusSessionStore;
   testHooks?: FocusTransitionTestHooks;
 }): Promise<FocusTransitionResult> {
@@ -501,6 +561,9 @@ export async function completeSubplanAndRestoreParent(input: {
     sessionKey: input.sessionKey,
     target: input.parentPlan,
     kind: "subplan_complete",
+    ...(input.bindingSessionKey ? { binding: { sessionKey: input.bindingSessionKey,
+      before: readSessionBoundPlanPath(input.project, input.bindingSessionKey),
+      after: resolvePlanRefPath(input.project, input.parentPlan) } } : {}),
     additionalPlanUpdates: [
       { ref: input.childPlan, content: input.completedChild },
       { ref: input.parentPlan, content: parent },
@@ -526,6 +589,8 @@ async function commitFocusTransition(input: {
   kind: FocusTransitionKind;
   sessionStore: FocusSessionStore;
   involvedRefs: PlanRef[];
+  createdPlans?: Array<{ ref: PlanRef; content: PlanDocument }>;
+  binding?: { sessionKey: string; before: string | null; after: string | null };
   testHooks?: FocusTransitionTestHooks;
   buildAfter: (context: {
     plans: Map<string, PlanDocument>;
@@ -536,9 +601,12 @@ async function commitFocusTransition(input: {
     plans: Array<{ ref: PlanRef; content: PlanDocument }>;
   };
 }): Promise<FocusTransitionResult> {
-  return withSerializedQueue(focusQueuePath(input.project), async () => {
+  const execution: ClawExecutionFailure = { phase: "prepare", outcome: "known", effect: "none" };
+  try {
+  return await withSerializedQueue(focusQueuePath(input.project), async () => {
     await recoverProjectFocusTransitionsLocked(input.project, input.sessionStore);
-    const planPaths = input.involvedRefs
+    const allRefs = uniquePlanRefs(input.project, [...input.involvedRefs, ...(input.createdPlans?.map((item) => item.ref) ?? [])]);
+    const planPaths = allRefs
       .map((ref) => resolvePlanRefPath(input.project, ref))
       .sort((left, right) => left.localeCompare(right));
     return withPlanQueues(planPaths, () =>
@@ -552,6 +620,13 @@ async function commitFocusTransition(input: {
             readPlanDocument(input.project, ref),
           ]),
         );
+        for (const created of input.createdPlans ?? []) {
+          const createdPath = resolvePlanRefPath(input.project, created.ref);
+          if (fs.existsSync(createdPath)) throw new ClawError("PLAN_ALREADY_EXISTS", "Subplan already exists; creation will not overwrite it.", { planPath: createdPath });
+        }
+        if (input.binding && readSessionBoundPlanPath(input.project, input.binding.sessionKey) !== input.binding.before) {
+          throw new ClawError("PLAN_FOCUS_CHANGED", "Session binding changed before subplan creation.");
+        }
         const built = input.buildAfter({ plans, session, owners });
         const normalizedAfterPlans = uniqueAfterPlans(input.project, built.plans);
         validateTargetOwnership(input.project, input.sessionKeyHash, built.currentPlan, owners);
@@ -598,12 +673,15 @@ async function commitFocusTransition(input: {
             ...(built.currentPlan ? { sessionCurrentPlan: built.currentPlan } : {}),
             plans: normalizedAfterPlans,
           },
+          ...(input.binding ? { binding: input.binding } : {}),
         };
         writeJsonFileAtomic(journalPath, journal);
         failAt(input.testHooks, "after_prepared");
+        Object.assign(execution, { phase: "commit", outcome: "unknown", effect: "unknown" });
         journal.phase = "applying";
         journal.updatedAt = new Date().toISOString();
         writeJsonFileAtomic(journalPath, journal);
+        Object.assign(execution, { phase: "commit", outcome: "known", effect: "partial" });
         failAt(input.testHooks, "after_applying");
         let writtenPlanCount = 0;
         for (const afterPlan of normalizedAfterPlans) {
@@ -619,11 +697,16 @@ async function commitFocusTransition(input: {
         }
         writeJsonFileAtomic(focusOwnersPath(input.project), afterOwners);
         failAt(input.testHooks, "after_owners");
+        if (journal.binding) {
+          applySessionBindingTransition(input.project, journal.binding.sessionKey, journal.binding.before, journal.binding.after);
+          failAt(input.testHooks, "after_binding");
+        }
         input.sessionStore.writePersistedAtomic(input.sessionKeyHash, persistedAfterSession);
         failAt(input.testHooks, "after_session");
         journal.phase = "committed";
         journal.updatedAt = new Date().toISOString();
         writeJsonFileAtomic(journalPath, journal);
+        Object.assign(execution, { phase: "post-commit", outcome: "known", effect: "committed" });
         failAt(input.testHooks, "after_committed");
         fs.unlinkSync(journalPath);
         const previousCurrentPlan = session.currentPlan;
@@ -641,6 +724,7 @@ async function commitFocusTransition(input: {
         };
       }));
   });
+  } catch (error) { throw withExecutionFailure(error, execution); }
 }
 
 async function recoverProjectFocusTransitionsLocked(
@@ -667,6 +751,7 @@ async function recoverProjectFocusTransitionsLocked(
         .sort((left, right) => left.localeCompare(right));
       await withPlanQueues(planPaths, () =>
         withSerializedQueue(sessionStore.queuePath(journal.sessionKeyHash), async () => {
+        verifyBindingState(project, journal, journal.phase);
         if (journal.phase === "prepared") {
           assertResourceHash(
             focusOwnersPath(project),
@@ -714,6 +799,7 @@ async function recoverProjectFocusTransitionsLocked(
             journal.after.ownerRegistry,
             journal,
           );
+          if (journal.binding) applySessionBindingTransition(project, journal.binding.sessionKey, journal.binding.before, journal.binding.after);
           rollForwardSession(
             sessionStore,
             journal.sessionKeyHash,
@@ -743,11 +829,21 @@ async function recoverProjectFocusTransitionsLocked(
   return { recovered, discarded, quarantined };
 }
 
+function verifyBindingState(project: ProjectContext, journal: FocusTransitionJournal, phase: FocusTransitionJournal["phase"]): void {
+  if (!journal.binding) return;
+  const { sessionKey, before, after } = journal.binding;
+  const current = readSessionBoundPlanPath(project, sessionKey);
+  const valid = phase === "prepared" ? current === before
+    : phase === "committed" ? current === after : current === before || current === after;
+  if (!valid) throw new ClawError("FOCUS_RECOVERY_CONFLICT", "Journaled session binding conflicts with a later change.", { transitionId: journal.transitionId });
+}
+
 function verifyAfterState(
   project: ProjectContext,
   sessionStore: FocusSessionStore,
   journal: FocusTransitionJournal,
 ): void {
+  verifyBindingState(project, journal, "committed");
   for (const afterPlan of journal.after.plans) {
     assertResourceHash(
       resolvePlanRefPath(project, afterPlan.ref),
@@ -834,6 +930,15 @@ function validateJournal(project: ProjectContext, journal: FocusTransitionJourna
   for (const entry of [...journal.before.plans, ...journal.after.plans]) {
     resolvePlanRefPath(project, entry.ref);
   }
+  if (journal.binding) {
+    if (!journal.binding.sessionKey?.trim()) throw new ClawError("FOCUS_RECOVERY_CONFLICT", "Journal binding owner is missing.");
+    for (const locator of [journal.binding.before, journal.binding.after]) {
+      if (locator === null) continue;
+      if (typeof locator !== "string" || ensureInsideDir(project.tasksDir, path.relative(project.tasksDir, locator)) !== path.resolve(locator)) {
+        throw new ClawError("FOCUS_RECOVERY_CONFLICT", "Journal binding escapes active task storage.");
+      }
+    }
+  }
 }
 
 function validateRegistryConsistency(
@@ -869,6 +974,11 @@ function validateTargetOwnership(
   owners: PlanFocusRegistry,
 ): void {
   if (!target) return;
+  const unresolvedLegacy = owners.owners[legacyPlanIdentityHash(project, target)];
+  if (unresolvedLegacy) {
+    resolveReferenceTaskDirectory(project, unresolvedLegacy.planRef);
+    throw new ClawError("PLAN_TRANSITION_CONFLICT", "Legacy focus ownership needs exact reconciliation.");
+  }
   const owner = owners.owners[planIdentityHash(project, target)];
   if (owner && owner.sessionKeyHash !== sessionKeyHash) {
     throw new ClawError(
@@ -914,11 +1024,28 @@ function readOwnerRegistry(project: ProjectContext): PlanFocusRegistry {
   if (registry.schemaVersion !== 1 || !registry.owners || typeof registry.owners !== "object") {
     throw new ClawError("PLAN_TRANSITION_CONFLICT", `Invalid plan focus registry: ${registryPath}`);
   }
-  return registry;
+  // Re-key unambiguous legacy owners in memory. An ambiguous legacy record
+  // remains under its old key and blocks only operations touching that name.
+  const owners: PlanFocusRegistry["owners"] = {};
+  for (const [oldKey, owner] of Object.entries(registry.owners)) {
+    let key = oldKey;
+    try { key = planIdentityHash(project, owner.planRef); }
+    catch (error) {
+      if (owner.planRef.taskPath !== undefined || !(error instanceof ClawError)
+        || !["PLAN_TRANSITION_CONFLICT", "PLAN_NOT_FOUND"].includes(error.code)) throw error;
+    }
+    if (owners[key] && owners[key]!.sessionKeyHash !== owner.sessionKeyHash) {
+      throw new ClawError("PLAN_FOCUS_CONFLICT", "Two retained sessions own the same exact plan.");
+    }
+    owners[key] = owner;
+  }
+  return { ...registry, owners };
 }
 
 function readPlanDocument(project: ProjectContext, ref: PlanRef): PlanDocument {
-  return readJsonFile<PlanDocument>(resolvePlanRefPath(project, ref));
+  const planPath = resolvePlanRefPath(project, ref);
+  if (!fs.existsSync(planPath)) throw new ClawError("PLAN_NOT_FOUND", "Referenced plan does not exist.", { planRef: ref });
+  return readJsonFile<PlanDocument>(planPath);
 }
 
 function requirePlan(
@@ -950,6 +1077,27 @@ function assertResumable(plan: PlanDocument, ref: PlanRef): void {
   }
 }
 
+function resolveLegacyTaskDirectory(project: ProjectContext, ref: PlanRef): string | undefined {
+  const matches = listTaskDirectories(project).filter((task) => task.taskName === ref.taskName);
+  if (matches.length > 1) {
+    throw new ClawError("PLAN_TRANSITION_CONFLICT", "Legacy plan reference is ambiguous; an exact task path is required.",
+      { taskName: ref.taskName, candidates: matches.map((task) => task.relativePath) });
+  }
+  return matches[0]?.taskDir;
+}
+
+function resolveReferenceTaskDirectory(project: ProjectContext, ref: PlanRef): string | undefined {
+  if (ref.scope && project.scope && ref.scope !== project.scope) {
+    throw new ClawError("PLAN_TRANSITION_CONFLICT", "PlanRef belongs to a different storage scope.");
+  }
+  if (ref.taskPath === undefined) return resolveLegacyTaskDirectory(project, ref);
+  const directory = ensureInsideDir(project.tasksDir, ref.taskPath);
+  if (!directory || path.basename(directory) !== ref.taskName || path.resolve(directory) === path.resolve(project.tasksDir)) {
+    throw new ClawError("PLAN_TRANSITION_CONFLICT", "PlanRef task path is outside its canonical container.", { planRef: ref });
+  }
+  return directory;
+}
+
 function resolvePlanRefPath(project: ProjectContext, ref: PlanRef): string {
   if (path.resolve(ref.projectRoot) !== path.resolve(project.projectRoot)) {
     throw new ClawError("PLAN_TRANSITION_CONFLICT", "PlanRef belongs to a different project.", {
@@ -957,21 +1105,30 @@ function resolvePlanRefPath(project: ProjectContext, ref: PlanRef): string {
       projectRoot: project.projectRoot,
     });
   }
-  const taskDirectory = findTaskDirectory(project, ref.taskName);
+  const taskDirectory = resolveReferenceTaskDirectory(project, ref);
   if (!taskDirectory) {
     throw new ClawError("PLAN_NOT_FOUND", `Task "${ref.taskName}" does not exist.`, { planRef: ref });
   }
   const normalizedPlanFile = normalizePlanFile(ref.planFile);
   const planPath = ensureInsideDir(taskDirectory, normalizedPlanFile);
-  if (!planPath || !fs.existsSync(planPath)) {
+  if (!planPath) {
     throw new ClawError("PLAN_NOT_FOUND", `Plan "${normalizedPlanFile}" does not exist.`, { planRef: ref });
   }
   return planPath;
 }
 
-function planIdentityHash(project: ProjectContext, ref: PlanRef): string {
+function legacyPlanIdentityHash(project: ProjectContext, ref: PlanRef): string {
   return createHash("sha256")
     .update(`${path.resolve(project.projectRoot)}\0${ref.taskName}\0${normalizePlanFile(ref.planFile)}`)
+    .digest("hex");
+}
+
+function planIdentityHash(project: ProjectContext, ref: PlanRef): string {
+  const directory = resolveReferenceTaskDirectory(project, ref);
+  if (!directory) throw new ClawError("PLAN_NOT_FOUND", `Task "${ref.taskName}" does not exist.`);
+  return createHash("sha256")
+    .update(JSON.stringify([path.resolve(project.clawDir), ref.scope ?? project.scope,
+      path.relative(project.tasksDir, directory).replace(/\\/g, "/"), normalizePlanFile(ref.planFile)]))
     .digest("hex");
 }
 

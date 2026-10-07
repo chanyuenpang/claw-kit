@@ -255,6 +255,17 @@ test("compactClawOutput retains claim inputs and done receipts without leaking j
     { ok: true, command: "knowledge.done", finalizeId: "id", failed: true, alreadyDone: true });
 });
 
+test("compactClawOutput keeps runtime closeout and deferred recovery visible", () => {
+  const closed = compactClawOutput({ completed: true, delegateClosed: true, planStatus: "end.completed" }, "knowledge.done");
+  assert.equal(closed.delegateClosed, true);
+  assert.equal(closed.planStatus, "end.completed");
+  const error = { code: "PLAN_FOCUS_CHANGED", phase: "prepare", effect: "none" };
+  const deferred = compactClawOutput({ completed: true, delegateCloseDeferred: true, delegateCloseError: error, jobPath: "private" }, "knowledge.done");
+  assert.equal(deferred.delegateCloseDeferred, true);
+  assert.deepEqual(deferred.delegateCloseError, error);
+  assert.equal(deferred.jobPath, undefined);
+});
+
 test("compactClawOutput handles undefined output", () => {
   const visible = compactClawOutput(undefined);
   assert.equal(visible.ok, true);

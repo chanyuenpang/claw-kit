@@ -1,5 +1,5 @@
 import { createInterface } from "node:readline";
-import { ClawError } from "@veewo/claw-core";
+import { serializeCommandFailure } from "./command-failure.js";
 import { SessionCommandExecutor } from "./session-command.js";
 import { SessionRegistryV2 } from "./session-registry-v2.js";
 
@@ -32,11 +32,9 @@ export async function runCommandEntry(): Promise<void> {
     const envelope = await executor.execute({ agentSessionId, workdir: process.cwd(), client: { kind: "adapter", host: "dsh" } }, request);
     process.stdout.write(JSON.stringify({ ok: true, command, ...envelope }) + "\n");
   } catch (error) {
-    process.stdout.write(JSON.stringify({ ok: false, command, error: {
-      code: error instanceof ClawError ? error.code : "SESSION_COMMAND_FAILED",
-      message: error instanceof Error ? error.message : String(error),
-      outcome: executionStarted ? "unknown" : "known", retryable: false,
-    } }) + "\n");
+    process.stdout.write(JSON.stringify({ ok: false, command,
+      error: serializeCommandFailure(error, executionStarted ? "unknown" : "known"),
+    }) + "\n");
     process.exitCode = 1;
   }
 }

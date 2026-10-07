@@ -88,6 +88,8 @@ import {
 } from "@veewo/claw-core";
 import { buildCodexDriverEnvelope } from "./codex-driver.js";
 import { buildCodexHostActions } from "./codex-host-actions.js";
+import { SessionCommandExecutor } from "./session-command.js";
+import { SessionRegistryV2 } from "./session-registry-v2.js";
 import { registerReportCollector, type ReportCollectorHost } from "./report-collector-registry.js";
 import { publishDshHostReport } from "./dsh-host-report.js";
 import { recordDshFinalizerIssue, listDshFinalizerAlerts } from "./dsh-finalizer-diagnostics.js";
@@ -448,13 +450,11 @@ const COMMAND_HELP: Record<string, HelpNode> = {
     description: "Subplan lifecycle commands nested under a parent task.",
     subcommands: {
       create: {
-        usage: ["{script} subplan create --parent <task-name> --task-id <number> [--template <name> | --template-file <path>]"],
+        usage: ["{script} subplan create [--template <name> | --template-file <path>]"],
         description:
           "Create a flat subplan file under the task directory. Uses explicit `--template` first, otherwise the project's configured `defaultPlanTemplate`, and finally falls back to the built-in `default`. The current session binding switches to the subplan and returns to its parent when the subplan ends.",
         summary: "Create a subplan under a parent task's task item.",
         options: [
-          { flag: "--parent <task-name>", detail: "(required) Parent task directory name (`taskName`), not its plan title." },
-          { flag: "--task-id <number>", detail: "(required) Parent task item id to split into a subplan." },
           { flag: "--template <name>", detail: "Optional plan template name. Overrides the project's configured default template." },
           { flag: "--template-file <path>", detail: "Exact plan template file. Mutually exclusive with --template." },
         ],
@@ -747,7 +747,7 @@ async function main(): Promise<void> {
         await runSearch(args);
         return;
       case "knowledge":
-        await runKnowledge(args);
+        await runKnowledge(args, effectiveHost);
         return;
       case "internal-report-collector-register":
         runInternalReportCollectorRegister(args);
@@ -1320,12 +1320,14 @@ function serializeSessionError(error: unknown): Record<string, unknown> {
       message: error.message,
       retryable: error.retryable,
       outcome: error.outcome,
+      ...(error.phase ? { phase: error.phase } : {}),
+      ...(error.effect ? { effect: error.effect } : {}),
       ...(error.recoveryCommand ? { recoveryCommand: error.recoveryCommand } : {}),
       ...(error.details ? { details: error.details } : {}),
     };
   }
   if (error instanceof ClawError) {
-    return { code: error.code, message: error.message, ...(error.details ? { details: error.details } : {}) };
+    return { code: error.code, message: error.message, ...(error.execution ?? {}), ...(error.details ? { details: error.details } : {}) };
   }
   return { code: "SESSION_COMMAND_FAILED", message: error instanceof Error ? error.message : String(error) };
 }
@@ -1444,7 +1446,7 @@ function runInternalDshFinalizerAlerts(args: string[]): void {
     alerts: listDshFinalizerAlerts(process.cwd(), parentSessionId) });
 }
 
-async function runKnowledge(args: string[]): Promise<void> {
+async function runKnowledge(args: string[], effectiveHost?: ClawHost): Promise<void> {
   const subcommand = args.shift();
   switch (subcommand) {
     case "prepare": {
@@ -1543,7 +1545,14 @@ async function runKnowledge(args: string[]): Promise<void> {
       if (!jobPath) {
         throw new Error(`Knowledge finalization ${finalizeId} is unavailable.`);
       }
-      printJson(claimKnowledgeCommand(jobPath, CLI_VERSION));
+      const ownerSessionKey = resolveOwnerSessionKey();
+      if (ownerSessionKey) {
+        const job = readKnowledgeFinalizationJob(jobPath);
+        const envelope = await new SessionCommandExecutor(new SessionRegistryV2()).execute({
+          agentSessionId: ownerSessionKey, workdir: process.cwd(), client: { kind: "terminal", host: effectiveHost },
+        }, { operation: "knowledge.claim", input: { finalizeId: job.finalizeId } });
+        printJson({ ...(envelope.output as Record<string, unknown>), ...(envelope.hostActions ? { hostActions: envelope.hostActions } : {}) });
+      } else printJson(claimKnowledgeCommand(jobPath, CLI_VERSION));
       return;
     }
     case "done": {
@@ -1553,6 +1562,17 @@ async function runKnowledge(args: string[]): Promise<void> {
       const result = readOptionalFlag(args, "--result");
       const error = readOptionalFlag(args, "--error");
       assertNoRemainingArgs(args, "knowledge done");
+      const ownerSessionKey = resolveOwnerSessionKey();
+      if (ownerSessionKey) {
+        const job = readKnowledgeFinalizationJob(jobPath);
+        const input = { finalizeId: job.finalizeId, claimToken, status,
+          ...(result !== undefined ? { result } : {}), ...(error !== undefined ? { error } : {}) };
+        const envelope = await new SessionCommandExecutor(new SessionRegistryV2()).execute({
+          agentSessionId: ownerSessionKey, workdir: process.cwd(), client: { kind: "terminal", host: effectiveHost },
+        }, { operation: "knowledge.done", input });
+        printJson({ ...(envelope.output as Record<string, unknown>), ...(envelope.hostActions ? { hostActions: envelope.hostActions } : {}) });
+        return;
+      }
       if (status === "succeeded") {
         if (result === undefined) {
           throw new ClawError("PROJECT_CONFIG_INVALID", "knowledge done --status succeeded requires --result.");
@@ -3329,16 +3349,21 @@ async function runSubplan(args: string[], effectiveHost: ClawHost | undefined): 
       if (templateName && templateFile) {
         throw new ClawError("PROJECT_CONFIG_INVALID", "--template and --template-file are mutually exclusive.");
       }
-      const result = await createSubplan({
-        cwd: process.cwd(),
-        parentTaskName: readRequiredFlag(args, "--parent"),
-        parentTaskId: readOptionalNumber(args, "--task-id") ?? failMissingNumericFlag("--task-id"),
-        templateName,
-        templateFile: templateFile ? path.resolve(process.cwd(), templateFile) : undefined,
-        ownerSessionKey: resolveOwnerSessionKey() ?? undefined,
-        host: effectiveHost,
-      });
+      const parentTaskName = readOptionalFlag(args, "--parent");
+      const parentTaskId = readOptionalNumber(args, "--task-id");
+      const input = {
+        ...(parentTaskName !== undefined && parentTaskName !== null ? { parentTaskName } : {}),
+        ...(parentTaskId !== undefined && parentTaskId !== null ? { parentTaskId } : {}),
+        ...(templateName ? { templateName } : {}),
+        ...(templateFile ? { templateFile: path.resolve(process.cwd(), templateFile) } : {}),
+      };
       assertNoRemainingArgs(args, "subplan create");
+      const ownerSessionKey = resolveOwnerSessionKey();
+      const result = ownerSessionKey
+        ? (await new SessionCommandExecutor(new SessionRegistryV2()).execute({
+            agentSessionId: ownerSessionKey, workdir: process.cwd(), client: { kind: "terminal", host: effectiveHost },
+          }, { operation: "subplan.create", input })).output as Awaited<ReturnType<typeof createSubplan>>
+        : await createSubplan({ ...input, cwd: process.cwd(), host: effectiveHost });
       printJson(compactPlanCommandResult("subplan.create", result, effectiveHost));
       return;
     }
@@ -4174,6 +4199,7 @@ function handleError(error: unknown): void {
           error: {
             code: error.code,
             message: error.message,
+            ...(error.execution ?? {}),
             ...(error.details ? { details: error.details } : {}),
           },
         },

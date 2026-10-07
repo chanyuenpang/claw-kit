@@ -32,13 +32,18 @@ export function claimKnowledgeCommand(jobPath: string, version: string, claimant
   const job = claimKnowledgeFinalizationJob(jobPath, {
     claimant, version,
     resolveDelegatePlan: () => {
-      if (!claimant) throw new Error("DSH_DELEGATE_PLAN_REQUIRED: trusted claimant is missing.");
+      if (!claimant) return undefined;
       const session = resolveSessionWorkflowContext(claimant.agentSessionId);
       const planPath = session && resolveSessionBoundPlan(session, claimant.agentSessionId);
       if (!session || session.scope !== "session" || !planPath
         || path.resolve(session.projectRoot) !== path.resolve(claimant.projectRoot)) {
-        throw new Error("DSH_DELEGATE_PLAN_REQUIRED: no current session delegate for admitted child.");
+        if (observed.dshExecution) throw new Error("DSH_DELEGATE_PLAN_REQUIRED: no current session delegate for admitted child.");
+        return undefined;
       }
+      const plan = JSON.parse(fs.readFileSync(planPath, "utf8")) as { templateId?: string; knowledgeCapture?: boolean };
+      const delegateTemplate = ["internal-knowledge-delegate", "internal-cindy-knowledge-delegate", "internal-dsh-knowledge-delegate"].includes(plan.templateId ?? "");
+      // This selects an optional closeout target, not permission to claim.
+      if (!observed.dshExecution && (!delegateTemplate || plan.knowledgeCapture !== false)) return undefined;
       return { planPath, scope: "session", projectRoot: session.projectRoot, ownerSessionId: claimant.agentSessionId };
     },
     prepare: (queued) => {
@@ -134,17 +139,19 @@ function resolveKnowledgeJobProject(jobPath: string, job: KnowledgeFinalizationJ
 export function doneKnowledgeCommand(input: {
   jobPath: string; claimToken: string; status: "succeeded" | "failed"; result?: string; error?: string;
   onSuccess?: (job: KnowledgeFinalizationJob) => void;
+  /** Keep the frozen template while the runtime closes or recovers its plan. */
+  retainTemplate?: boolean;
 }) {
   const { jobPath, claimToken } = input;
   if (input.status === "failed") {
     const terminal = doneKnowledgeFinalizationJob({ jobPath, claimToken, status: "failed", error: input.error });
-    removeKnowledgeAssignmentTemplate(jobPath, terminal.job.finalizeId);
+    if (!input.retainTemplate) removeKnowledgeAssignmentTemplate(jobPath, terminal.job.finalizeId);
     return { ok: true, failed: true, alreadyDone: terminal.alreadyDone, finalizeId: terminal.job.finalizeId };
   }
   const running = reconcileKnowledgeFinalizationJob(jobPath);
   if (running.status === "succeeded") {
     const terminal = doneKnowledgeFinalizationJob({ jobPath, claimToken, status: "succeeded", result: input.result });
-    removeKnowledgeAssignmentTemplate(jobPath, running.finalizeId);
+    if (!input.retainTemplate) removeKnowledgeAssignmentTemplate(jobPath, running.finalizeId);
     return { ok: true, completed: true, alreadyDone: terminal.alreadyDone, finalizeId: running.finalizeId };
   }
   if (running.status !== "running") throw new Error("Knowledge finalization job must be claimed before successful completion.");
@@ -161,11 +168,17 @@ export function doneKnowledgeCommand(input: {
   const terminal = doneKnowledgeFinalizationJob({
     jobPath, claimToken, status: "succeeded", result: input.result, finishedAt, patch: { truthEncoding },
   });
-  removeKnowledgeAssignmentTemplate(jobPath, running.finalizeId);
+  if (!input.retainTemplate) removeKnowledgeAssignmentTemplate(jobPath, running.finalizeId);
   input.onSuccess?.(running);
   return { ok: true, completed: true, alreadyDone: terminal.alreadyDone, finalizeId: running.finalizeId };
 }
 
-function removeKnowledgeAssignmentTemplate(jobPath: string, finalizeId: string): void {
-  fs.rmSync(path.join(path.dirname(jobPath), finalizeId + ".assignments.json"), { force: true });
+export function removeKnowledgeAssignmentTemplate(jobPath: string, finalizeId: string): { error?: string } {
+  try {
+    fs.rmSync(path.join(path.dirname(jobPath), finalizeId + ".assignments.json"), { force: true });
+    return {};
+  } catch (error) {
+    // Disposal is a projection effect, never a reason to replay knowledge.done.
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
 }

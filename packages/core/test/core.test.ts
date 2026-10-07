@@ -672,13 +672,11 @@ test("knowledge claim owns execution and delegate prompt routing", () => {
       delegateTemplate.tasks.map((task) => task.detail ?? "").join("\n"),
       /`claw knowledge wait/i,
     );
-    assert.match(
-      delegateTemplate.tasks.find((task) => task.id === 2)?.detail ?? "",
-      /--parent "knowledge-finalizer-<first-12-finalize-id>"/,
-    );
+    assert.match(delegateTemplate.tasks.find((task) => task.id === 2)?.detail ?? "", /subplan create --template-file/);
+    assert.doesNotMatch(delegateTemplate.tasks.find((task) => task.id === 2)?.detail ?? "", /--parent|--task-id/);
     assert.match(
       delegateTemplate.tasks.find((task) => task.id === 3)?.detail ?? "",
-      /recovered orchestration command error does not make the job fail/i,
+      /corrected no-effect command error is not an unresolved failure/i,
     );
     const builtinTemplate = buildKnowledgeAssignmentTemplate({
       assignments: builtinAssignments,
@@ -686,12 +684,10 @@ test("knowledge claim owns execution and delegate prompt routing", () => {
       version: corePackageVersion,
     });
     assert.equal(builtinTemplate.scope, "session");
-    assert.equal(builtinTemplate.tasks.length, 8);
-    assert.equal(builtinTemplate.tasks[5]?.title, "Update affected external documentation");
-    assert.equal(builtinTemplate.tasks[6]?.title, "Run the cross-corpus consistency review");
-    assert.equal(builtinTemplate.tasks[7]?.title, "Prepare the final project index refresh");
-    assert.match(builtinTemplate.tasks[7]?.detail ?? "", /canonical `claw plan done`/);
-    assert.doesNotMatch(builtinTemplate.tasks[7]?.detail ?? "", /claw direct/);
+    assert.deepEqual(builtinTemplate.tasks.map((task) => task.id), [1, 2, 3]);
+    assert.equal(builtinTemplate.tasks[1]?.title, "Update affected external documentation");
+    assert.match(builtinTemplate.tasks[2]?.detail ?? "", /affected external documentation/);
+    assert.equal(builtinTemplate.tasks.some((task) => /prepare.*index refresh/i.test(task.title)), false);
     assert.ok(builtinTemplate.references?.every((reference) => path.isAbsolute(reference.path)));
 
     const externalAssignments = buildKnowledgeWriterAssignments({

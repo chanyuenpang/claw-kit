@@ -38,6 +38,11 @@ Core source 在 DSH 创建计划时登记可信 capture 起点；同一 root 的
 <!-- state: history -->
 ## Historical verification
 
+<!-- dated: 2026-10-03 -->
+### Cross-host execute-first Beta verification boundary
+
+The final cross-host source batch `2026-10-03T08-37-10-134Z-cb88ae90` supersedes the earlier v1 batch after live DSH architect acceptance exposed two narrow false positives. The v2 changes fixed provider-catalog exception handling for callable carriers and localized invalid/null Codex effect candidates as host-effect failures. Focused verification recorded DSH 37/37, Codex driver 26 pass plus 5 retired skips, and repository checks passing. After restarting onto the frozen v2 installation, real DSH semantic architect reuse and root/subplan return passed. This is evidence for that frozen batch and those exercised paths, not for later bytes or a Codex live Host: this session did not have a live Codex Host, and the seven-day local trial remains incomplete. No remote push or publication occurred. A restart is still required to load subsequently installed changes; the installed v2 path's real DSH test was performed after its restart.
+
 <!-- dated: 2026-10-02 -->
 ### Native-only dispatch 的兼容基线
 

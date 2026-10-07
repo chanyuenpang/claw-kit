@@ -25,6 +25,8 @@ export class ClawSessionError extends Error {
   readonly code: string;
   readonly retryable: boolean;
   readonly outcome: "known" | "unknown";
+  readonly phase?: "prepare" | "commit" | "post-commit";
+  readonly effect?: "none" | "partial" | "committed" | "unknown";
   readonly recoveryCommand?: string;
   readonly details?: Record<string, unknown>;
 
@@ -33,6 +35,8 @@ export class ClawSessionError extends Error {
     message: string;
     retryable: boolean;
     outcome: "known" | "unknown";
+    phase?: "prepare" | "commit" | "post-commit";
+    effect?: "none" | "partial" | "committed" | "unknown";
     recoveryCommand?: string;
     details?: Record<string, unknown>;
   }) {
@@ -41,6 +45,8 @@ export class ClawSessionError extends Error {
     this.code = input.code;
     this.retryable = input.retryable;
     this.outcome = input.outcome;
+    this.phase = input.phase;
+    this.effect = input.effect;
     this.recoveryCommand = input.recoveryCommand;
     this.details = input.details;
   }
@@ -390,6 +396,7 @@ function withExactRecovery(error: unknown, agentSessionId: string, workdir: stri
     message: `${error.message.replace(/\s*Run `claw session open <dir> <session-id>`.*$/u, "")} Run \`${recoveryCommand}\` to reconnect, then use \`plan show --simple\` to inspect the current plan.`,
     retryable: false,
     outcome: "unknown",
+    phase: error.phase, effect: error.effect,
     recoveryCommand,
     ...(error.details ? { details: error.details } : {}),
   });

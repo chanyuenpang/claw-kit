@@ -251,7 +251,7 @@ Named validation uses the same resolver as `claw plan create` and `claw subplan 
 Route a template-backed claw skill by what it completely owns:
 
 - Whole task: if the skill fully carries the current task from inputs through verification, resolve the directory containing its loaded `SKILL.md` and create a root plan with `claw plan create --template-file "<skill-dir>/TEMPLATE.json"`.
-- Independent stage: if the skill fully carries one stage of a broader plan, create a subplan with `claw subplan create --parent <parent-task-name> --task-id <id> --template-file "<skill-dir>/TEMPLATE.json"` when that stage starts. On hosts with Goal Mode, consume the returned goal handoff: complete the active parent goal before creating the child-plan goal, never overwrite it.
+- Independent stage: if the skill fully carries one stage of a broader plan, create a subplan with `claw subplan create --template-file "<skill-dir>/TEMPLATE.json"` when that stage starts. The current session supplies the parent plan and task. Subplan entry temporarily leaves the parent and returns to it on completion; follow host-owned Goal/progress effects without replacing the root objective.
 - Mixed stage: if the skill only contributes some instructions inside a stage that mixes multiple skills, do not create its template plan. Apply its adjacent fallback inside the owning workflow.
 
 Batch is not a fourth route. Treat a batch as a broader plan containing repeated stages; each stage that is fully owned by the skill invokes one subplan. The parent plan owns ordering and shared constraints, while each subplan owns its stage from inputs through verification.

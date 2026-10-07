@@ -926,7 +926,7 @@ test("worker keeps the root Goal during a subplan and guides the resumed parent 
   try {
     const childFocus = await requestWorker(child, {
       jsonrpc: "2.0", id: 1, method: "claw/execute",
-      params: { operation: "subplan.create", args: { parent: "root-plan", taskId: 1 }, sessionId: "cindy-session", workdir: fixtureDir },
+      params: { operation: "subplan.create", args: {}, sessionId: "cindy-session", workdir: fixtureDir },
     });
     assert.equal(childFocus.result.projection.goal, "preserve");
     assert.equal(childFocus.result.projection.planStatus, "process.discussing");
@@ -950,7 +950,7 @@ test("worker keeps the root Goal during a subplan and guides the resumed parent 
 test("worker preserves a structured CLI failure code and reason", { skip: process.platform !== "win32" }, async () => {
   const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-worker-error-"));
   writePersistentClawFixture(fixtureDir, `() => process.stdout.write(JSON.stringify({ ok: false, error: {
-    code: 'PROJECT_CONFIG_INVALID', message: 'No plan is bound to the current session.', outcome: 'known'
+    code: 'PROJECT_CONFIG_INVALID', message: 'No plan is bound to the current session.', outcome: 'known', phase: 'prepare', effect: 'none'
   } }) + '\\n')`);
   const child = spawn(process.execPath, [workerPath], {
     cwd: fixtureDir,
@@ -980,6 +980,7 @@ test("worker preserves a structured CLI failure code and reason", { skip: proces
       operation: "plan.show",
       errorCode: "PROJECT_CONFIG_INVALID",
       reason: "No plan is bound to the current session.",
+      outcome: "known", phase: "prepare", effect: "none",
     });
   } finally {
     await stopWorker(child);
@@ -1162,7 +1163,7 @@ if (args[0] === 'knowledge' && args[1] === 'claim') {
   process.exit(0);
 }
 if (args[0] === 'knowledge' && args[1] === 'done') {
-  process.stdout.write(JSON.stringify({ ok: true, command: 'knowledge.done', finalizeId: ${JSON.stringify(finalizeId)}, status: 'succeeded' }) + '\\n');
+  process.stdout.write(JSON.stringify({ ok: true, command: 'knowledge.done', finalizeId: ${JSON.stringify(finalizeId)}, status: 'succeeded', delegateClosed: true, planStatus: 'end.completed', planPath: 'delegate/plan.json' }) + '\\n');
   process.exit(0);
 }
 process.stderr.write('unexpected command: ' + args.join(' '));
@@ -1212,6 +1213,8 @@ process.exit(2);
     });
     assert.equal(done.result.ok, true);
     assert.equal(done.result.result.status, "succeeded");
+    assert.equal(done.result.result.delegateClosed, true);
+    assert.equal(done.result.projection.goal, "complete");
     const commandsAfterDone = fs.readFileSync(commandLogPath, "utf8").trim().split(/\r?\n/).map((line) => JSON.parse(line));
     const doneCommand = commandsAfterDone.find(({ args }) => args[0] === "knowledge" && args[1] === "done");
     assert.ok(doneCommand);

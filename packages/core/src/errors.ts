@@ -50,14 +50,31 @@ export type ClawErrorCode =
   | "CLI_PLUGIN_VERSION_LAGGING"
   | "INPUT_REQUIRED";
 
+export type ClawExecutionFailure = {
+  phase: "prepare" | "commit" | "post-commit";
+  outcome: "known" | "unknown";
+  effect: "none" | "partial" | "committed" | "unknown";
+};
+
 export class ClawError extends Error {
   readonly code: ClawErrorCode;
   readonly details: Record<string, unknown> | undefined;
+  readonly execution?: ClawExecutionFailure;
 
-  constructor(code: ClawErrorCode, message: string, details?: Record<string, unknown>) {
+  constructor(code: ClawErrorCode, message: string, details?: Record<string, unknown>, execution?: ClawExecutionFailure) {
     super(message);
     this.name = "ClawError";
     this.code = code;
     this.details = details;
+    this.execution = execution;
   }
+}
+
+/** Only the business write owner may attach phase/effect evidence. */
+export function withExecutionFailure(error: unknown, execution: ClawExecutionFailure): ClawError {
+  if (error instanceof ClawError && error.execution
+    && !(execution.effect === "committed" && error.execution.effect === "none")) return error;
+  return new ClawError(error instanceof ClawError ? error.code : "SESSION_COMMAND_FAILED",
+    error instanceof Error ? error.message : String(error),
+    error instanceof ClawError ? error.details : undefined, { ...execution });
 }

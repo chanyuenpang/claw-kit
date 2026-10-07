@@ -10,7 +10,7 @@ import {
   type HostAction,
   type JsonValue,
 } from "./host-actions.js";
-import { daemonInput, isUncertainConnectionFailure, renderGuidanceSnapshot } from "./protocol.js";
+import { daemonInput, isUncertainConnectionFailure, isUnknownCommandOutcome, operationFailureError, renderGuidanceSnapshot } from "./protocol.js";
 import { registerBundledSkills } from "./skills.js";
 import { routeCommand, runCommandBaseline, resolveCommandEntry } from "./command-route.js";
 import { handleProjectConfigRpc, type WorkspaceRegistry } from "./project-config-rpc.js";
@@ -658,6 +658,10 @@ export function apply(ctx: unknown): void {
     const finalizeId = input.finalizeId;
     if (!parent || typeof finalizeId !== "string" || !/^[a-f0-9]{64}$/i.test(finalizeId)) return false;
     if (operation !== "knowledge.done" && !(operation === "knowledge.claim" && output?.claimed === false)) return false;
+    // Modern claims close through the shared application owner. Do not run a
+    // second close sequence after it succeeded or reported a deferred outcome.
+    if (output?.delegateClosed === true) return true;
+    if (output?.delegateCloseDeferred === true) return false;
     const { text } = await runOneOff(["internal-dsh-finalizer-inspect", "--finalize-id", finalizeId, "--host", "dsh"], workdir, parent.id);
     const inventory = parseProtocol(text);
     const row = (Array.isArray(inventory?.executions) ? inventory.executions : []).find((value: unknown) => value !== null && typeof value === "object" && (value as Record<string, unknown>).finalizeId === finalizeId) as {
@@ -907,7 +911,7 @@ export function apply(ctx: unknown): void {
         // Some daemon failures report the same uncertain transport condition
         // as a protocol error. Treat them identically: no automatic replay.
         const message = response.error?.message ?? "";
-        if (response.error?.outcome === "unknown" || isUncertainConnectionFailure(message)) {
+        if (isUnknownCommandOutcome(response.error)) {
           try { await session.close(); } catch { /* best-effort */ }
           if (sessions.get(key) === session) sessions.delete(key);
           completedSweeps.delete(key);
@@ -924,9 +928,15 @@ export function apply(ctx: unknown): void {
         }
       }
       if (response.ok !== true) {
-        throw new Error(
-          `claw operation failed: ${response.command ?? "unknown"} — ${response.error?.message ?? "no detail"}`,
-        );
+        if (response.error?.outcome === "known" && response.error.phase && response.error.effect) {
+          // Preserve owner evidence as tool data; an SDK may strip custom Error
+          // properties and leave the agent with unsafe text-only retry advice.
+          return { ok: false, command: response.command ?? operation, error: { ...response.error },
+            notes: response.error.effect === "none"
+              ? "The owner rejected this request before business writes. Correct the request using canonical context."
+              : "The operation has durable effects. Inspect canonical state; do not replay the mutation." } as Record<string, JsonValue>;
+        }
+        throw operationFailureError(response.command ?? "unknown", response.error);
       }
       const { consumed, projection, failures } = consumeHostActions(
         response.hostActions as HostAction[] | undefined,

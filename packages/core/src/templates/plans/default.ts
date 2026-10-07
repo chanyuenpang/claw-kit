@@ -37,6 +37,7 @@ export type PlanTemplateTask = {
   goalModeDetail?: string;
   execution?: {
     type?: "default" | "subagent" | "subplan";
+    lifecycle?: "knowledge.result";
     subplan?: string;
     planPath?: string;
   };

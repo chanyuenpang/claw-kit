@@ -112,7 +112,7 @@ const OPERATION_CATALOG = {
       name: 'subplan.create',
       description: 'Create a subplan for a parent task.',
       mutates: true,
-      parameters: objectParameters({ parent: { type: 'string', description: 'Parent task directory name (taskName), not the plan title.' }, taskId: { type: 'number', description: 'Parent task id.' }, template: stringParameter('Optional template name.'), templateFile: stringParameter('Optional template file path.') }, ['parent', 'taskId']),
+      parameters: objectParameters({ template: stringParameter('Optional template name.'), templateFile: stringParameter('Optional template file path.') }),
     },
   ],
   search: [
@@ -393,10 +393,12 @@ class NativeClawSession {
   }
 }
 
-function sessionError(code, message, outcome) {
+function sessionError(code, message, outcome, evidence) {
   const error = new Error(message);
   error.code = code;
   error.outcome = outcome;
+  if (typeof evidence?.phase === "string") error.phase = evidence.phase;
+  if (typeof evidence?.effect === "string") error.effect = evidence.effect;
   return error;
 }
 
@@ -406,7 +408,7 @@ function sessionResponseError(response, fallbackCode) {
     return sessionError(
       typeof raw.code === 'string' ? raw.code : fallbackCode,
       typeof raw.message === 'string' ? raw.message : fallbackCode,
-      raw.outcome === 'unknown' ? 'unknown' : 'known',
+      raw.outcome === 'unknown' ? 'unknown' : 'known', raw,
     );
   }
   return sessionError(fallbackCode, typeof raw === 'string' ? raw : fallbackCode, 'known');
@@ -516,8 +518,8 @@ function sessionRequest(name, args, workdir) {
     } };
     case 'task.done': return { operation: name, input: { tasks: [{ id: requiredNumber(args, 'id'), ...(typeof args.choice === 'string' ? { choiceId: args.choice } : {}) }] } };
     case 'subplan.create': return { operation: name, input: {
-      parentTaskName: requiredString(args, 'parent'),
-      parentTaskId: requiredNumber(args, 'taskId'),
+      ...(typeof args.parent === 'string' ? { parentTaskName: args.parent } : {}),
+      ...(typeof args.taskId === 'number' ? { parentTaskId: args.taskId } : {}),
       ...(typeof args.template === 'string' ? { templateName: args.template } : {}),
       ...(typeof args.templateFile === 'string' ? { templateFile: path.resolve(args.templateFile) } : {}),
     } };
@@ -711,7 +713,9 @@ function operationCommand(name, args) {
       return command;
     }
     case 'subplan.create': {
-      const command = ['subplan', 'create', '--parent', requiredString(args, 'parent'), '--task-id', String(requiredNumber(args, 'taskId'))];
+      const command = ['subplan', 'create'];
+      appendOption(command, '--parent', args.parent);
+      appendOption(command, '--task-id', args.taskId);
       appendOption(command, '--template', args.template);
       appendOption(command, '--template-file', args.templateFile);
       return command;
@@ -844,7 +848,7 @@ function cindyAgentResult(output, operation) {
   }
   if (operation === 'knowledge.claim') {
     return {
-      ...(output.claimed === true ? { claimed: true } : {}),
+      claimed: output.claimed === true,
       ...(typeof output.finalizeId === 'string' ? { finalizeId: output.finalizeId } : {}),
       ...(typeof output.claimToken === 'string' ? { claimToken: output.claimToken } : {}),
       ...(Array.isArray(output.assignments) ? { assignments: output.assignments } : {}),
@@ -856,6 +860,12 @@ function cindyAgentResult(output, operation) {
       ...(typeof output.finalizeId === 'string' ? { finalizeId: output.finalizeId } : {}),
       ...(typeof output.status === 'string' ? { status: output.status } : {}),
       ...(output.completed === true ? { completed: true } : {}),
+      ...(output.failed === true ? { failed: true } : {}),
+      ...(typeof output.alreadyDone === "boolean" ? { alreadyDone: output.alreadyDone } : {}),
+      ...(typeof output.delegateClosed === "boolean" ? { delegateClosed: output.delegateClosed } : {}),
+      ...(output.delegateCloseDeferred ? { delegateCloseDeferred: true } : {}),
+      ...(output.delegateCloseError ? { delegateCloseError: output.delegateCloseError } : {}),
+      ...(output.templateCleanupDeferred ? { templateCleanupDeferred: output.templateCleanupDeferred } : {}),
     };
   }
   if (operation === 'plan.show') {
@@ -1338,7 +1348,10 @@ rpcInput.on('line', async (line) => {
       }
     } catch (error) {
       const structured = typeof error?.code === 'string'
-        ? { errorCode: error.code, reason: error.message }
+        ? { errorCode: error.code, reason: error.message,
+          ...(error.outcome ? { outcome: error.outcome } : {}),
+          ...(error.phase ? { phase: error.phase } : {}),
+          ...(error.effect ? { effect: error.effect } : {}) }
         : operationFailure(error instanceof Error ? error.message : String(error), 'INVALID_OPERATION_ARGUMENTS');
       reply(request.id, {
         ok: false,

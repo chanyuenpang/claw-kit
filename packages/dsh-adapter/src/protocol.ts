@@ -16,6 +16,25 @@ export function isUncertainConnectionFailure(message: string): boolean {
     .test(message);
 }
 
+type CommandFailure = { code?: string; message?: string; outcome?: "known" | "unknown";
+  phase?: string; effect?: string };
+
+/** Structured owner outcomes take precedence over legacy transport text. */
+export function isUnknownCommandOutcome(error?: CommandFailure): boolean {
+  return error?.outcome !== undefined ? error.outcome === "unknown" : isUncertainConnectionFailure(error?.message ?? "");
+}
+
+export function operationFailureError(operation: string, error?: CommandFailure): Error {
+  const evidence = [error?.phase && "phase=" + error.phase, error?.effect && "effect=" + error.effect,
+    error?.outcome && "outcome=" + error.outcome].filter(Boolean).join(", ");
+  const recovery = error?.effect === "partial" || error?.effect === "committed"
+    ? " Inspect canonical state; do not replay the mutation." : "";
+  return Object.assign(new Error("claw operation failed: " + operation + " — "
+    + (error?.code ?? "CLAW_COMMAND_FAILED") + ": " + (error?.message ?? "no detail")
+    + (evidence ? " [" + evidence + "]" : "") + recovery),
+    { code: error?.code, outcome: error?.outcome, phase: error?.phase, effect: error?.effect });
+}
+
 /** Map one `claw_run` operation call (snake_case args) to the daemon's
  * canonical `claw/execute` input. Mirrors the Cindy adapter's sessionRequest
  * contract. Unknown operations fail closed before transport selection. */
@@ -199,8 +218,9 @@ export function daemonInput(operation: string, args: Record<string, unknown>): u
     case "subplan.create":
       assertKnownArgs(operation, args, ["parent", "parent_task_name", "task_id", "taskId", "parent_task_id", "template", "template_name", "template_file"]);
       return {
-        parentTaskName: str("parent", "parent_task_name") ?? "",
-        parentTaskId: Number(firstValue(args, "task_id", "taskId", "parent_task_id") ?? 0),
+        ...(str("parent", "parent_task_name") !== undefined ? { parentTaskName: str("parent", "parent_task_name") } : {}),
+        ...(firstValue(args, "task_id", "taskId", "parent_task_id") !== undefined
+          ? { parentTaskId: Number(firstValue(args, "task_id", "taskId", "parent_task_id")) } : {}),
         ...(str("template", "template_name") !== undefined ? { templateName: str("template", "template_name") } : {}),
         ...(str("template_file") !== undefined ? { templateFile: str("template_file") } : {}),
       };

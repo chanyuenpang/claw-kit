@@ -15,6 +15,7 @@ import {
   writeJsonFileAtomic,
 } from "@veewo/claw-core";
 import { SessionCommandExecutor } from "./session-command.js";
+import { serializeCommandFailure } from "./command-failure.js";
 import {
   RegistryFocusSessionStore,
   SessionRegistryV2,
@@ -24,19 +25,6 @@ import {
 } from "./session-registry-v2.js";
 
 const MAX_PROTOCOL_LINE_BYTES = 1024 * 1024;
-const SESSION_PASSTHROUGH_ERRORS = new Set([
-  "SESSION_NOT_FOUND",
-  "SESSION_EXPIRED",
-  "SESSION_IDENTITY_INVALID",
-  "CURRENT_PLAN_REQUIRED",
-  "PLAN_CREATE_BLOCKED_BY_PROCESS_PLAN",
-  "PLAN_NOT_FOUND",
-  "PLAN_NOT_RESUMABLE",
-  "PLAN_FOCUS_CONFLICT",
-  "PLAN_TRANSITION_CONFLICT",
-  "FOCUS_RECOVERY_CONFLICT",
-  "SESSION_OPERATION_UNSUPPORTED",
-]);
 
 type ConnectionState = {
   socket: net.Socket;
@@ -249,22 +237,10 @@ export async function startSessionDaemon(options?: {
       }, request.input);
       return successResponse(request.requestId, envelope);
     } catch (error) {
-      if (error instanceof ClawError) {
-        const code = error.details?.code === "SESSION_BUSY"
-          ? "SESSION_BUSY"
-          : SESSION_PASSTHROUGH_ERRORS.has(error.code)
-            ? error.code
-            : "SESSION_COMMAND_FAILED";
-        return errorResponse(request.requestId, code, error.message, {
-          ...(error.details ?? {}),
-          ...(code === "SESSION_COMMAND_FAILED" ? { coreCode: error.code } : {}),
-        });
-      }
-      return errorResponse(
-        request.requestId,
-        "SESSION_INTERNAL_ERROR",
-        error instanceof Error ? error.message : String(error),
-      );
+      return { ok: false, requestId: request.requestId, error: {
+        ...serializeCommandFailure(error, "known", "SESSION_INTERNAL_ERROR"),
+        ...(error instanceof ClawError && error.details ? { details: error.details } : {}),
+      } };
     }
   };
 

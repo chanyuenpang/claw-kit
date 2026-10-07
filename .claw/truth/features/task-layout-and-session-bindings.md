@@ -1,4 +1,4 @@
-﻿# Task layout 与 session bindings
+# Task layout 与 session bindings
 
 <!-- state: current -->
 ## 结论
@@ -6,6 +6,8 @@
 - active workflow 的 canonical lookup 是 project-level binding：由 `sessionKey` 映射到 `.claw`-relative `planPath`。`claw context` 必须只按这条显式绑定恢复当前 workflow，不能扫描 task 目录来猜测 active plan。
 - 新建 project task 的 canonical layout 是 `.claw/tasks/YYYY-MM-DD/<task>/` 下的 root `plan.json`，以及与它同层的 flat subplan JSON files；不再使用每个 task 下的 `plans/` 子目录。读取、session binding、归档、finalization 与 retention 都必须兼容旧的平铺 `.claw/tasks/<task>/` layout。目标 subplan 文件名发生碰撞时必须显式失败，不能覆盖已有 plan。
 - session binding 跟随执行焦点切换：`subplan create` 绑定 child plan；child 完成后绑定其 `parentPlan`；root plan 完成后解除当前 session binding。
+- `subplan create` 在 session 已绑定当前 plan 时由 Core 通过共享 current-task 规则隐式选择父 task；调用者不传父容器名或 task ID。显式父值若与当前焦点矛盾则拒绝，不猜目录或改绑。内部 PlanRef 保留相对当前 storage `tasksDir` 的完整 `taskPath`（含日期目录）与 storage `scope`，避免跨日期同名 task 重新解析到错误目录；旧 PlanRef 仅在唯一可定位时兼容。
+- 带 session owner 的 subplan 创建由 Core focus-transition journal 覆盖 child plan 写入、父子关联、focus 与 session binding。`prepared` 未开始应用时可丢弃；`applying` 按 before/after 状态恢复同一提交；冲突 journal 隔离而不猜测或重放另一 mutation。执行结果区分 phase、outcome 与 effect，已知无写入拒绝保持可纠正，真实未知或部分提交不盲目重试。锚点：`packages/core/src/plan.ts`、`packages/core/src/focus-transitions.ts`、`packages/cli/src/command-service.ts`。
 - 对日期分组 task，daily maintenance 按目录日期决定归档：每个本地日首次 `claw context` 会移动早于昨天的整个 `.claw/tasks/YYYY-MM-DD/` 目录，保留今天和昨天的目录；该路径不读取 `completedAt`，因此也会归档缺少该字段的旧日期目录。无日期的 legacy flat task 则按 `plan.updatedAt` 判断是否早于昨天；缺少或无效字段时回退到 `plan.json` 的修改时间。直接 retention 仍以 `completedAt` 的一小时延迟处理 eligible legacy task，archive pruning 按归档记录的 `completedAt` 排序。
 - task archive 以整个 task directory 为单位，并保留日期分组；source plan 的相邻 `.report` 与 task 私有 `.runtime/knowledge-finalization/` jobs 会随计划一起移入 `.claw/archive/tasks/`，并仅在该 archived task 被 retention pruning 时删除。新的 finalization job 不写入集中 runtime jobs 目录；读取仍兼容旧路径中的可重试 job。`maxTasksToKeep` 的共享默认值是 `9`，新项目和缺失/无效字段的配置归一化必须使用同一默认值。
 - legacy `meta.json` 与 `plans/` layout 的迁移只运行一次；完成状态存入 `.claw/runtime/maintenance.json` 的 `migrations.taskLayoutV2At`。迁移与 daily maintenance 共用该文件锁，写入时保留对方字段。旧版 `.claw/runtime/task-layout-v2.complete` 会在下次 protocol ensure 时自动收敛到该字段并删除。该 guard 防止后续 context/CLI 调用重复搬运已经迁移的 task 文件。

@@ -4,7 +4,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
-  createSubplan,
   editPlan,
   initProject,
   showPlan,
@@ -97,7 +96,7 @@ test("session open reconciles a root plan written before the focus journal was p
   }
 });
 
-test("session open completes parent linkage for a subplan written before the focus journal", async () => {
+test("session open completes parent linkage for a legacy subplan written before the focus journal", async (t) => {
   const runtimeRoot = fixture("pre-journal-subplan-runtime");
   const projectRoot = fixture("pre-journal-subplan-project");
   const agentSessionId = "pre-journal-subplan-agent";
@@ -115,10 +114,14 @@ test("session open completes parent linkage for a subplan written before the foc
   }) as { taskName: string; planFile: string };
   await opened.close();
 
-  const child = await createSubplan({
+  t.after(() => daemon.close());
+  // Reconstruct the old pre-journal state explicitly. createSubplan now commits
+  // the full write set and must no longer be used to manufacture this gap.
+  const child = await writePlan({
     cwd: projectRoot,
-    parentTaskName: created.taskName,
-    parentTaskId: 1,
+    taskName: created.taskName,
+    filePath: "legacy-child.json", title: "Legacy child", goalText: "Recover legacy child",
+    parentPlanFile: created.planFile, parentTaskId: 1,
     ownerSessionKey: agentSessionId,
     host: "codex",
     deferParentMutation: true,

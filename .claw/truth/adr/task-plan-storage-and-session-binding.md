@@ -1,4 +1,4 @@
-﻿# ADR: Task plan storage and direct session binding
+# ADR: Task plan storage and direct session binding
 
 ## Status
 
@@ -15,6 +15,8 @@ Accepted
 - project-level session registry 直接把 `sessionKey` 映射到 `.claw`-relative `planPath`；registry value 不复制 `taskName`、`planFile`、`boundAt`、`activePlan` 或更新时间。
 - `claw context` 只读取当前 session binding；没有 binding 时不扫描 task directories，也不推断 active plan。
 - 创建 subplan 后把 session binding 切到 child；subplan 完成后切回 `parentPlan`，一级 subplan 的 parent 是 `plan.json`；root plan 完成后删除 binding。
+- 已绑定 session 的正常 `subplan.create` 由 Core 根据当前 plan 与共享 current-task 规则解析父任务，不要求调用者重复传 task 容器名或 parent task ID；内部 PlanRef 保留相对当前 storage `tasksDir` 的完整 task path（含日期目录）与 storage scope。若显式兼容输入与当前焦点冲突，则拒绝而非改用另一个父任务。
+- Child 文件、父任务关联、focus 与 session binding 的创建提交由同一个可恢复 focus-transition journal 拥有；prepared/applying/committed 阶段对账 before/after state，冲突被隔离。已知未写入拒绝可纠正；unknown 或 partial effect 不得盲目重放。
 - 每次 plan 写入都会刷新 `updatedAt`，它表示计划活跃度；daily maintenance 用它归档早于昨天的无日期 legacy task，缺失或无效时回退 `plan.json` 修改时间。`completedAt` 仍表示完成事件，并定义直接 retention 的一小时延迟资格；日期分组 task 的每日归档资格由目录本地日决定。
 - legacy `meta.json` 与 `plans/*.json` 只在 protocol recovery 中迁移一次。迁移先检查平铺名称冲突，不长期双写；完成状态写入 `.claw/runtime/maintenance.json` 的 `migrations.taskLayoutV2At`。迁移与 daily maintenance 共用该文件锁，合并写入时保留彼此字段；旧 `task-layout-v2.complete` marker 会自动收敛并删除，避免后续启动重复扫描 task directories。
 
@@ -23,6 +25,7 @@ Accepted
 - 保留 `meta.json` 作为 plan 状态镜像：拒绝，因为同一 lifecycle state 会出现多个写入源并产生漂移。
 - 在缺少 session binding 时扫描 task directories 猜测 active plan：拒绝，因为恢复不再是 session-scoped 的确定性映射。
 - subplan 重名时覆盖或自动加后缀：拒绝，因为会隐藏调用方命名冲突并破坏稳定 `planPath`。
+- 把并发焦点模型或强制 TaskRef/generation 引入正常 subplan 调用：拒绝。产品工作流保持每个 session 单一当前 plan/task；内部精确路径和同一提交 journal 修复定位与可恢复性，不让 agent 再传存储容器或重复身份。
 
 ## Consequences
 
@@ -37,6 +40,7 @@ Accepted
 
 - `packages/core/src/context.ts`
 - `packages/core/src/plan.ts`
+- `packages/core/src/focus-transitions.ts`
 - `packages/cli/src/cli.ts`
 - `packages/core/src/task-retention.ts`
 - `packages/core/src/task-layout-migration.ts`

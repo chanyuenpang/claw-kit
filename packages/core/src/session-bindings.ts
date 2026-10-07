@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { ClawError } from "./errors.js";
 import { readJsonFile, withFileLock, writeJsonFile } from "./io.js";
 import { ensureInsideDir } from "./paths.js";
 import type { ProjectContext } from "./types.js";
@@ -65,6 +66,34 @@ export function pruneStaleSessionBindings(project: ProjectContext, nowMs = Date.
     }
   });
   return removed;
+}
+
+/** Read the canonical locator without existence repair or freshness writes. */
+export function readSessionBoundPlanPath(project: ProjectContext, sessionKey: string | undefined): string | null {
+  const normalizedKey = bindingKey(project, sessionKey);
+  if (!normalizedKey) return null;
+  const relative = readRegistry(project).bindings[normalizedKey];
+  if (!relative) return null;
+  const normalized = relative.replace(/\\/g, "/");
+  const taskRelative = normalized.startsWith("tasks/") ? normalized.slice(6) : "";
+  const checked = taskRelative ? ensureInsideDir(project.tasksDir, taskRelative) : null;
+  if (!checked) throw new Error("Canonical session binding escapes active task storage.");
+  return checked;
+}
+
+/** Apply one journaled binding entry without overwriting unrelated sessions. */
+export function applySessionBindingTransition(project: ProjectContext, sessionKey: string, before: string | null, after: string | null): void {
+  const key = bindingKey(project, sessionKey);
+  if (!key) throw new Error("Session binding transition requires an owner.");
+  const expected = before ? toBoundPlanPath(project, before) : undefined;
+  const desired = after ? toBoundPlanPath(project, after) : undefined;
+  updateRegistry(project, (registry) => {
+    const current = registry.bindings[key];
+    if (current === desired) return;
+    if (current !== expected) throw new ClawError("FOCUS_RECOVERY_CONFLICT", "Session binding changed outside the prepared transition.");
+    if (desired) registry.bindings[key] = desired;
+    else delete registry.bindings[key];
+  });
 }
 
 export function resolveSessionBoundPlan(project: ProjectContext, sessionKey: string | undefined): string | null {

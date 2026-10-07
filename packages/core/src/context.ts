@@ -45,9 +45,18 @@ export function resolveProjectContext(cwd: string): ProjectContext {
   };
 }
 
-export function resolveTaskContext(project: ProjectContext, taskName: string, ownerSessionKey?: string): TaskContext {
+export function resolveTaskContext(project: ProjectContext, taskName: string, ownerSessionKey?: string, taskPath?: string): TaskContext {
   const resolvedTaskName = resolveTaskName(taskName);
-  const taskDir = findTaskDirectory(project, resolvedTaskName);
+  const boundPlanPath = resolveSessionBoundPlan(project, ownerSessionKey);
+  // A session binding is already an exact locator; never reduce it to a
+  // display name and accidentally select a newer same-named task directory.
+  const boundTaskDir = boundPlanPath ? path.dirname(boundPlanPath) : undefined;
+  const explicitDir = taskPath === undefined ? undefined : ensureInsideDir(project.tasksDir, taskPath);
+  if (taskPath !== undefined && (!explicitDir || path.basename(explicitDir) !== resolvedTaskName)) {
+    throw new ClawError("PLAN_TRANSITION_CONFLICT", "Exact task path is outside its canonical container.");
+  }
+  const taskDir = explicitDir ?? (boundTaskDir && path.basename(boundTaskDir) === resolvedTaskName
+    ? boundTaskDir : findTaskDirectory(project, resolvedTaskName));
   if (!taskDir) {
     throw new ClawError("TASK_NOT_FOUND", `Task "${resolvedTaskName}" does not exist.`, { taskName: resolvedTaskName });
   }
@@ -56,7 +65,6 @@ export function resolveTaskContext(project: ProjectContext, taskName: string, ow
   const legacyMeta = fs.existsSync(metaPath) ? readJsonFile<TaskMeta>(metaPath) : undefined;
   if (!fs.existsSync(rootPlanPath) && !legacyMeta) throw new ClawError("TASK_NOT_FOUND", `Task "${resolvedTaskName}" does not exist.`, { taskName: resolvedTaskName });
 
-  const boundPlanPath = resolveSessionBoundPlan(project, ownerSessionKey);
   const boundPlanInsideTask = boundPlanPath ? path.relative(taskDir, boundPlanPath) : undefined;
   const activePlan = normalizePlanFile(
     boundPlanInsideTask && !boundPlanInsideTask.startsWith("..") && !path.isAbsolute(boundPlanInsideTask)
@@ -100,7 +108,12 @@ export function resolveContext(cwd: string, taskName?: string): ResolvedContext 
 export function ensureTaskContext(
   project: ProjectContext,
   taskName: string,
+  ownerSessionKey?: string,
 ): TaskContext {
+  const bound = resolveSessionBoundPlan(project, ownerSessionKey);
+  if (bound && path.basename(path.dirname(bound)) === resolveTaskName(taskName)) {
+    return resolveTaskContext(project, taskName, ownerSessionKey);
+  }
   const resolvedTaskName = resolveTaskName(taskName);
   const taskDir = findTaskDirectory(project, resolvedTaskName) ?? path.join(project.tasksDir, currentTaskDate(), resolvedTaskName);
   const metaPath = path.join(taskDir, "meta.json");

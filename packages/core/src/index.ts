@@ -27,6 +27,7 @@ export * from "./plan-view.js";
 export * from "./paths.js";
 export * from "./switch-task.js";
 export * from "./task-retention.js";
+export * from "./task-focus.js";
 export * from "./text-encoding.js";
 export * from "./truth.js";
 export * from "./types.js";

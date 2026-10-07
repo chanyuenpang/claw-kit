@@ -236,8 +236,8 @@ test("the embedded bootstrap caches the CLI driver and dispatches native host ac
         if (options.command === "claw codex driver") {
           return JSON.stringify({
             ok: true,
-            cacheKey: "claw-kit:codex-driver:v23:s1",
-            driverVersion: 23,
+            cacheKey: "claw-kit:codex-driver:v24:s1",
+            driverVersion: 24,
             hostActionSchemaVersion: 1,
             source: driverSource,
           });
@@ -289,8 +289,8 @@ test("the embedded bootstrap uses exec_command when shell_command is unavailable
         if (options.cmd === "claw codex driver") {
           return JSON.stringify({
             ok: true,
-            cacheKey: "claw-kit:codex-driver:v23:s1",
-            driverVersion: 23,
+            cacheKey: "claw-kit:codex-driver:v24:s1",
+            driverVersion: 24,
             hostActionSchemaVersion: 1,
             source: driverSource,
           });

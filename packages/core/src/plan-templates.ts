@@ -626,6 +626,7 @@ function isPlanTemplateTask(value: unknown): value is PlanTemplateTask {
     ) {
       return false;
     }
+    if (execution.lifecycle !== undefined && execution.lifecycle !== "knowledge.result") return false;
     if (execution.subplan !== undefined && typeof execution.subplan !== "string") {
       return false;
     }

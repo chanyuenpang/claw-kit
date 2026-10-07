@@ -145,6 +145,8 @@ export type KnowledgeFinalizationJob = {
   /** Immutable DSH first-claim snapshot; never regenerated on receipt recovery. */
   claimReceipt?: KnowledgeClaimReceipt;
   dshExecution?: DshFinalizerExecution;
+  /** Immutable claim-time association for optional, host-neutral delegate closeout. */
+  delegateWorkflow?: { ownerSessionId: string; planPath: string; projectRoot: string };
   truthThreadId?: string;
   adrThreadId?: string;
   truthResponse?: string;
@@ -926,7 +928,7 @@ export function claimKnowledgeFinalizationJob(
     claimant?: KnowledgeClaimant;
     version?: string;
     /** Supplied only by trusted CLI context, never model arguments. */
-    resolveDelegatePlan?: () => { planPath: string; scope: "session"; projectRoot: string; ownerSessionId: string };
+    resolveDelegatePlan?: () => { planPath: string; scope: "session"; projectRoot: string; ownerSessionId: string } | undefined;
   },
 ): KnowledgeFinalizationJob | null {
   return withFileLock(jobPath, () => {
@@ -940,9 +942,9 @@ export function claimKnowledgeFinalizationJob(
     if (current.status !== "queued" && (!current.dshExecution || current.dshExecution.delegatePlanPath
       || current.dshExecution.releasedAt || current.dshExecution.delivery.state === "reserved")) return null;
     let execution = current.dshExecution;
+    const delegate = options?.resolveDelegatePlan?.();
     if (execution) {
       if (execution.delivery.state === "reserved" || execution.releasedAt) throw new Error("DSH_EXECUTION_NOT_DELIVERED: admitted job has no delivery attempt.");
-      const delegate = options?.resolveDelegatePlan?.();
       if (!delegate || delegate.scope !== "session" || delegate.ownerSessionId !== execution.memberSessionId
         || path.resolve(delegate.projectRoot) !== path.resolve(current.projectRoot) || !path.isAbsolute(delegate.planPath)) {
         throw new Error("DSH_DELEGATE_PLAN_REQUIRED: trusted current session delegate required.");
@@ -978,6 +980,9 @@ export function claimKnowledgeFinalizationJob(
       ...current,
       ...(prepared ?? {}),
       ...(execution ? { dshExecution: execution } : {}),
+      ...(delegate && options?.claimant && delegate.ownerSessionId === options.claimant.agentSessionId
+        && path.resolve(delegate.projectRoot) === path.resolve(current.projectRoot)
+        ? { delegateWorkflow: { ownerSessionId: delegate.ownerSessionId, planPath: path.resolve(delegate.planPath), projectRoot: current.projectRoot } } : {}),
       status: "running",
       attempts: Math.max(1, current.attempts + 1),
       startedAt: now,
@@ -1067,6 +1072,7 @@ export function doneKnowledgeFinalizationJob(input: {
       // Terminal result metadata cannot replace the immutable claim material.
       ...(current.claimReceipt ? { claimReceipt: current.claimReceipt } : {}),
       ...(current.dshExecution ? { dshExecution: current.dshExecution } : {}),
+      ...(current.delegateWorkflow ? { delegateWorkflow: current.delegateWorkflow } : {}),
       status: input.status,
       finishedAt,
       ...(input.status === "succeeded"
@@ -1298,6 +1304,9 @@ export function writeKnowledgeFinalizationJob(jobPath: string, job: KnowledgeFin
     const current = fs.existsSync(jobPath) ? readKnowledgeFinalizationJob(jobPath) : undefined;
     if (current?.claimReceipt && JSON.stringify(current.claimReceipt) !== JSON.stringify(job.claimReceipt)) {
       throw new Error("Knowledge claim receipt is immutable.");
+    }
+    if (current?.delegateWorkflow && JSON.stringify(current.delegateWorkflow) !== JSON.stringify(job.delegateWorkflow)) {
+      throw new Error("Knowledge delegate workflow association is immutable.");
     }
     if (current?.reportCapture?.endedAt !== undefined && current.reportCapture.endedAt !== job.reportCapture?.endedAt) {
       throw new Error("Knowledge report capture upper bound is immutable.");

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-export const CODEX_DRIVER_VERSION = 23;
+export const CODEX_DRIVER_VERSION = 24;
 export const CODEX_HOST_ACTION_SCHEMA_VERSION = 1;
 export const CODEX_DRIVER_CACHE_KEY =
   `claw-kit:codex-driver:v${CODEX_DRIVER_VERSION}:s${CODEX_HOST_ACTION_SCHEMA_VERSION}`;
@@ -108,16 +108,27 @@ async function codexDriverRunner(
     }
     if (result) break;
   }
+  if (result?.ok !== true && protocolError?.outcome === "known" && protocolError.phase && protocolError.effect) {
+    const failure = { ok: false, command: result?.command ?? argv.slice(0, 2).join("."),
+      error: { code: protocolError.code, message: protocolError.message, outcome: protocolError.outcome,
+        phase: protocolError.phase, effect: protocolError.effect } };
+    text(JSON.stringify(failure));
+    return failure;
+  }
   if (!result) {
     if (protocolError) {
-      throw new Error(`claw mutation failed [${String(protocolError.code)}]: ${String(protocolError.message)}`);
+      throw Object.assign(new Error(`claw mutation failed [${String(protocolError.code)}]: ${String(protocolError.message)} [phase=${String(protocolError.phase ?? "unspecified")}, effect=${String(protocolError.effect ?? "unspecified")}, outcome=${String(protocolError.outcome ?? "unspecified")}]`), {
+        code: protocolError.code, phase: protocolError.phase, effect: protocolError.effect, outcome: protocolError.outcome,
+      });
     }
     throw new Error("claw returned no valid JSON protocol result");
   }
 
   if (result.ok !== true) {
     if (protocolError) {
-      throw new Error(`claw mutation failed [${String(protocolError.code)}]: ${String(protocolError.message)}`);
+      throw Object.assign(new Error(`claw mutation failed [${String(protocolError.code)}]: ${String(protocolError.message)} [phase=${String(protocolError.phase ?? "unspecified")}, effect=${String(protocolError.effect ?? "unspecified")}, outcome=${String(protocolError.outcome ?? "unspecified")}]`), {
+        code: protocolError.code, phase: protocolError.phase, effect: protocolError.effect, outcome: protocolError.outcome,
+      });
     }
     throw new Error(`claw mutation failed: ${String(result.command ?? "unknown")}`);
   }

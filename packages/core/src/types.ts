@@ -121,6 +121,8 @@ export type PlanTask = {
   choiceId?: string;
   execution?: {
     type?: "default" | "subagent" | "subplan";
+    /** Core-owned acknowledgement, not an agent content task. */
+    lifecycle?: "knowledge.result";
     subplan?: string;
     planPath?: string;
   };
@@ -466,6 +468,15 @@ export type ResolvedContext = {
   task?: TaskContext;
 };
 
+/** Prepared, validated child content passed to the existing workflow commit owner. */
+export type PreparedSubplanWrite = {
+  task: TaskContext;
+  plan: PlanDocument;
+  planFile: string;
+  planPath: string;
+  parentBefore: PlanDocument;
+};
+
 export type PlanWriteInput = {
   cwd: string;
   scope?: "project" | "session";
@@ -485,6 +496,8 @@ export type PlanWriteInput = {
   parentTaskId?: number;
   parentPlanFile?: string;
   deferParentMutation?: boolean;
+  /** Internal application owner hook; never accepted as a wire argument. */
+  commitSubplan?: (prepared: PreparedSubplanWrite) => Promise<void>;
   reviewer?: PlanReviewer;
   workflowDefinitions?: string;
   host?: string;
@@ -517,8 +530,9 @@ export type SubplanWriteInput = {
    * directory instead of the session runtime.
    */
   scope?: "project" | "session";
-  parentTaskName: string;
-  parentTaskId: number;
+  /** Deprecated compatibility assertions; normal calls use session focus. */
+  parentTaskName?: string;
+  parentTaskId?: number;
   templateName?: string;
   templateFile?: string;
   ownerSessionKey?: string;
@@ -528,6 +542,8 @@ export type SubplanWriteInput = {
    * coordination uses this to journal parent linkage and focus as one commit.
    */
   deferParentMutation?: boolean;
+  /** Internal application owner hook; never accepted as a wire argument. */
+  commitSubplan?: (prepared: PreparedSubplanWrite) => Promise<void>;
 };
 
 export type PlanEditInput = {
@@ -539,6 +555,8 @@ export type PlanEditInput = {
    */
   scope?: "project" | "session";
   taskName: string;
+  /** Internal canonical locator supplied by the workflow owner, not model input. */
+  taskPath?: string;
   planFile?: string;
   changeSummary?: string;
   updates?: PlanFieldUpdates;
@@ -641,6 +659,8 @@ export type PlanShowInput = {
   /** Storage scope of the target plan; pass the PlanRef's scope when available. */
   scope?: "project" | "session";
   taskName: string;
+  /** Internal canonical locator supplied by the workflow owner, not model input. */
+  taskPath?: string;
   planFile?: string;
   ownerSessionKey?: string;
 };

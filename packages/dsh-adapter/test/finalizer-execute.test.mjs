@@ -77,7 +77,7 @@ function makeMockSubprocess(respond, pending, captureError, override) {
   return { subprocess, handles, captures, issues };
 }
 
-function makeHarness({ subagents, dispatch, extraService, initialQueued = false, unknownClaim = false, receiptClaimed = true, captureError }) {
+function makeHarness({ subagents, dispatch, extraService, initialQueued = false, unknownClaim = false, receiptClaimed = true, captureError, businessFailure }) {
   let tool;
   const ctx = {
     get: (name) => {
@@ -93,6 +93,7 @@ function makeHarness({ subagents, dispatch, extraService, initialQueued = false,
   };
   let terminalCommitted = initialQueued;
   const mock = makeMockSubprocess((request) => {
+    if (request.operation === "subplan.create" && businessFailure) return { ok: false, command: request.operation, error: businessFailure };
     if (request.operation === "knowledge.claim" && unknownClaim) return { ok: false, command: "knowledge.claim",
       error: { code: "SESSION_CONNECTION_LOST", message: "connection was interrupted", outcome: "unknown" } };
     if (request.operation === "knowledge.claim.receipt") return { ok: true, command: "knowledge.claim.receipt", schemaVersion: 1,
@@ -131,6 +132,16 @@ function makeSubagents({ onStart, children = () => [] } = {}) {
   };
   return { service, state };
 }
+
+test("known owner rejection is returned as structured tool data without resending", async () => {
+  const businessFailure = { code: "PLAN_FOCUS_CHANGED", message: "session connection rejected this target", outcome: "known", phase: "prepare", effect: "none" };
+  const harness = makeHarness({ businessFailure });
+  apply(harness.ctx);
+  const result = await harness.tool.execute({ operation: "subplan.create", args: {} }, { agent: makeAgent("known-rejection") });
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.error, businessFailure);
+  assert.equal(harness.mock.handles.flatMap(handle => handle.stdin.writes).filter(line => line.includes("subplan.create")).length, 1);
+});
 
 test("a queued job recovers on next context without replaying its lost plan terminal", async () => {
   const { service, state } = makeSubagents();

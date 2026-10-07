@@ -45,13 +45,31 @@ import {
 } from "./cli-test-support.js";
 
 
+test("codex driver returns known owner rejection as data without running goal effects", async () => {
+  const root = createFixture("codex-driver-rejection");
+  const envelope = runClaw(["codex", "driver"], root, { CLAW_HOST: "" });
+  const runner = (0, eval)("(" + String(envelope.source) + ")") as (input: Record<string, unknown>, runtime: Record<string, unknown>) => Promise<JsonRecord>;
+  const error = { code: "PLAN_FOCUS_CHANGED", message: "Wrong target", outcome: "known", phase: "prepare", effect: "none" };
+  const emitted: string[] = [];
+  let calls = 0;
+  const result = await runner({ argv: ["subplan", "create"], workdir: root }, {
+    tools: { shell_command: async () => { calls++; return JSON.stringify({ error }); },
+      get_goal: async () => { throw new Error("A rejected mutation must not update Goal state"); } },
+    text: (value: unknown) => emitted.push(String(value)),
+  });
+  assert.equal(calls, 1);
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.error, error);
+  assert.deepEqual(JSON.parse(emitted[0]!).error, error);
+});
+
 test("cli codex driver returns an executable versioned source envelope", async () => {
   const root = createFixture("codex-driver-envelope");
   const envelope = runClaw(["codex", "driver"], root, { CLAW_HOST: "" });
   assert.equal(envelope.command, "codex.driver");
-  assert.equal(envelope.driverVersion, 23);
+  assert.equal(envelope.driverVersion, 24);
   assert.equal(envelope.hostActionSchemaVersion, 1);
-  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v23:s1");
+  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v24:s1");
   assert.match(String(envelope.sha256), /^[a-f0-9]{64}$/);
 
   const runner = (0, eval)(`(${String(envelope.source)})`) as (

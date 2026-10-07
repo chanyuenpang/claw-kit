@@ -10,7 +10,7 @@ Resolve `<skill-dir>` as the directory containing this file.
 Use this skill only when it owns the external-document stage of an active
 knowledge-finalization plan.
 
-- When this skill owns the supplied finalization assignment as a stage of an active plan, run `claw subplan create --parent <parent-task-name> --task-id <id> --template-file "<skill-dir>/TEMPLATE.json"`.
+- When this skill owns the supplied finalization assignment as a stage of an active plan, run `claw subplan create --template-file "<skill-dir>/TEMPLATE.json"`.
 - When explicitly invoked with supplied materials outside an active parent plan, run `claw plan create --template-file "<skill-dir>/TEMPLATE.json" --title "doc-updater"`.
 
 The parent stage supplies the frozen external documentation paths, finalization

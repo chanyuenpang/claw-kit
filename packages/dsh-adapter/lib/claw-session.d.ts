@@ -75,6 +75,8 @@ export type ClawExecuteResult = {
         code?: string;
         message?: string;
         outcome?: "known" | "unknown";
+        phase?: "prepare" | "commit" | "post-commit";
+        effect?: "none" | "partial" | "committed" | "unknown";
     };
 };
 /**

@@ -31,6 +31,9 @@ export type SessionPlanRef = {
   projectRoot: string;
   taskName: string;
   planFile: string;
+  /** Internal exact storage locator; never supplied by model-facing commands. */
+  taskPath?: string;
+  scope?: "project" | "session";
 };
 
 export type SessionSimplePlanView = {
@@ -69,7 +72,7 @@ export type ClawSessionCommand =
   | { operation: "plan.edit"; input: { operations: ClawPlanMutation[] } }
   | { operation: "plan.wait"; input: Record<string, never> }
   | { operation: "plan.done"; input: ClawPlanFields }
-  | { operation: "subplan.create"; input: { parentTaskName: string; parentTaskId: number; templateName?: string; templateFile?: string } }
+  | { operation: "subplan.create"; input: { parentTaskName?: string; parentTaskId?: number; templateName?: string; templateFile?: string } }
   | { operation: "task.edit"; input: { taskId?: number; taskTitle?: string; taskDetail?: string; taskStatus?: ClawTaskStatus; taskChoiceId?: string } }
   | { operation: "task.add"; input: { tasks: Array<{ title: string; detail?: string }> } }
   | { operation: "task.done"; input: { tasks: Array<{ id: number; choiceId?: string }> } }
@@ -180,6 +183,8 @@ export type SessionProtocolResponse =
         message: string;
         retryable: boolean;
         outcome: "known" | "unknown";
+        phase?: "prepare" | "commit" | "post-commit";
+        effect?: "none" | "partial" | "committed" | "unknown";
         recoveryCommand?: string;
         details?: Record<string, unknown>;
       };

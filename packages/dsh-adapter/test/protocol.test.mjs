@@ -1,13 +1,24 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { daemonInput, isUncertainConnectionFailure, renderGuidanceSnapshot } from "../lib/protocol.js";
+import { daemonInput, isUncertainConnectionFailure, isUnknownCommandOutcome, operationFailureError, renderGuidanceSnapshot } from "../lib/protocol.js";
 
 test("uncertain transport failures are identified so callers do not replay a mutation", () => {
   assert.equal(isUncertainConnectionFailure("SESSION_CONNECTION_LOST: pipe closed"), true);
   assert.equal(isUncertainConnectionFailure("claw session timeout"), true);
   assert.equal(isUncertainConnectionFailure("connection was interrupted after request"), true);
   assert.equal(isUncertainConnectionFailure("validation rejected the task id"), false);
+});
+
+test("owner outcomes override transport-looking text and retain partial-effect evidence", () => {
+  assert.equal(isUnknownCommandOutcome({ outcome: "known", message: "session connection rejected this task" }), false);
+  assert.equal(isUnknownCommandOutcome({ outcome: "unknown", message: "opaque failure" }), true);
+  assert.equal(isUnknownCommandOutcome({ message: "SESSION_CONNECTION_LOST" }), true);
+  const error = operationFailureError("subplan.create", { code: "PLAN_STALE_EDIT", message: "changed", outcome: "known", phase: "commit", effect: "partial" });
+  assert.equal(error.code, "PLAN_STALE_EDIT");
+  assert.equal(error.effect, "partial");
+  assert.match(error.message, /phase=commit/);
+  assert.match(error.message, /do not replay/);
 });
 
 test("plan.create maps title/goal/scope/template to daemon input", () => {
@@ -141,6 +152,12 @@ test("task.done maps choice aliases for single and batch completion", () => {
     daemonInput("task.done", { tasks: [{ id: 1, choice: "a" }, { id: 2, choice_id: "b" }] }),
     { tasks: [{ id: 1, choiceId: "a" }, { id: 2, choiceId: "b" }] },
   );
+});
+
+test("implicit subplan input never invents a parent name or task zero", () => {
+  assert.deepEqual(daemonInput("subplan.create", {}), {});
+  assert.deepEqual(daemonInput("subplan.create", { template_file: "writer.json" }), { templateFile: "writer.json" });
+  assert.throws(() => daemonInput("subplan.create", { session_id: "other" }), /Unsupported/);
 });
 
 test("task.add / task.edit / subplan.create / search map canonical fields", () => {

@@ -93,7 +93,7 @@ export function buildDshKnowledgeDispatch(input: {
     prompt: [
       "Execute this already-created claw knowledge-finalization job unattended using only claw_run for workflow and knowledge operations.",
       `First call claw_run({operation: "plan.create", args: {title: "${delegateTitle}", template_file: ${JSON.stringify(templatePath)}}}).`,
-      `Follow returned workflow guidance for this job. Assignment subplan parent: "${delegateTitle}". The adapter owns executor selection, queueing and safe delegate closeout.`,
+      "Follow returned workflow guidance. Session focus supplies subplan parents; the runtime owns executor selection, durable results and safe delegate closeout.",
       `Finalization id: ${input.finalizeId}`,
       "Translate any claw CLI commandHints or assignment-template lifecycle wording into the corresponding claw_run operation and snake_case args; never use shell or CLI claw commands and never start another finalizer or delegate agent.",
     ].join("\n"),
@@ -222,7 +222,7 @@ export function buildKnowledgeAssignmentTemplate(input: {
       openQuestions: [],
       acceptanceCriteria: [
         "Assignments run sequentially in their configured order.",
-        "Every assignment follows its supplied prompt exactly.",
+        "Every assignment satisfies its supplied scope and outcome contract.",
         "No assignment launches another finalizer or writer agent.",
       ],
     },
@@ -277,49 +277,15 @@ function buildBuiltinKnowledgeTemplate(input: {
   }));
   const docAssignment = input.assignments.find((assignment) => assignment.kind === "doc_updater");
   if (docAssignment) {
-    const tasks = template.tasks as Array<Record<string, any>>;
-    const adrTask = tasks.find((task) => task.id === 5);
-    const reviewTask = tasks.find((task) => task.id === 6);
-    const refreshTask = tasks.find((task) => task.id === 7);
-    if (!adrTask || !reviewTask || !refreshTask) {
-      throw new Error("Built-in knowledge template is missing the ADR, consistency-review, or index-refresh task.");
-    }
-    const next = adrTask?.guidance?.onDone?.default;
-    if (next) {
-      next.summary = "The ordered Truth and ADR passes are complete; update affected external documentation next.";
-      next.nextsteps = [
-        "Use the resulting canonical knowledge state to qualify current-state claims in existing external documentation.",
-        "Preserve requirements, future design, and useful history when their scope remains accurate.",
-      ];
-      next.nextTaskId = 6;
-    }
-    reviewTask.id = 7;
-    reviewTask.title = "Run the cross-corpus consistency review";
-    reviewTask.detail = `${reviewTask.detail} Include every affected external document in the review and resolve any remaining material contradiction between its current-state claims, current implementation, Truth, and ADR.`;
-    const reviewNext = reviewTask.guidance?.onDone?.default;
-    if (reviewNext) {
-      reviewNext.nextTaskId = 8;
-    }
-    refreshTask.id = 8;
-    tasks.splice(tasks.indexOf(reviewTask), 0, {
-      id: 6,
-      title: "Update affected external documentation",
-      detail: docAssignment.prompt,
-      status: "pending",
-      guidance: {
-        onDone: {
-          default: {
-            mergeMode: "override",
-            summary: "Affected existing external documentation is governed; review canonical knowledge and external documentation together.",
-            nextsteps: [
-              "Review related Truth, ADR, and affected external documents as one current-state corpus.",
-              "Resolve any remaining material competing claim before completion.",
-            ],
-            nextTaskId: 7,
-          },
-        },
-      },
+    const reviewTask = template.tasks.at(-1);
+    if (!reviewTask) throw new Error("Built-in knowledge template is missing its verification outcome.");
+    reviewTask.detail = (reviewTask.detail ?? "") + " Include affected external documentation in this consistency review.";
+    template.tasks.splice(template.tasks.length - 1, 0, {
+      id: 0, title: "Update affected external documentation", detail: docAssignment.prompt, status: "pending",
     });
+    // Position expresses the linear outcome order. Do not couple the builder to
+    // historical micro-task IDs or remap nextTaskId graphs by hand.
+    template.tasks = template.tasks.map((task, index) => ({ ...task, id: index + 1 }));
   }
   return template;
 }
@@ -329,7 +295,7 @@ function buildBuiltinKnowledgePrompt(
 ): string {
   return [
     "Execute the built-in knowledge-governance contract supplied by claw-kit.",
-    "Maintain canonical Truth first and ADR second from conclusion-bearing content in the supplied materials.",
+    "Maintain coherent canonical Truth and ADR from conclusion-bearing evidence; choose and revisit the investigation, editing and review method as needed.",
     `For every canonical document changed by this pass, keep at most ${job.writer?.datedSectionsToKeep ?? 6} complete evolution sections marked by \`<!-- dated: YYYY-MM-DD -->\`; do not truncate current prose or untouched documents.`,
     commonMaterialPrompt(job),
   ].join("\n");
@@ -341,7 +307,7 @@ function buildDirectBuiltinKnowledgePrompt(writer?: KnowledgeWriterConfig): stri
     "Use only conclusion-bearing content already present in the current agent memory before this invocation.",
     "Do not read or create a report, transcript, plan, subplan, finalization job, or delegation.",
     `For every canonical document changed by this pass, keep at most ${writer?.datedSectionsToKeep ?? 6} complete evolution sections marked by \`<!-- dated: YYYY-MM-DD -->\`; do not truncate current prose or untouched documents.`,
-    "Maintain canonical Truth first and ADR second. Treat this instruction as manual and same-agent only.",
+    "Maintain coherent canonical Truth and ADR. Treat this instruction as manual and same-agent only.",
   ].join("\n");
 }
 
