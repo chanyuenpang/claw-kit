@@ -3,8 +3,10 @@ import path from "node:path";
 import {
   DEFAULT_LOCAL_EMBEDDING_MODEL,
 } from "./embedding-defaults.js";
-import { ClawError } from "./errors.js";
-import { normalizeTaskName } from "./paths.js";
+import { ClawError, withExecutionFailure } from "./errors.js";
+import { previewProjectConfig, resolveProjectContext } from "./context.js";
+import { withFileLock, writeJsonFileAtomic } from "./io.js";
+import { findProjectRoot, normalizeTaskName } from "./paths.js";
 import {
   DEFAULT_KNOWLEDGE_DATED_SECTIONS_TO_KEEP,
   DEFAULT_MAX_TASKS_TO_KEEP,
@@ -49,31 +51,15 @@ const CLAW_GITIGNORE_BLOCK = [
   ".claw/project-override.json",
 ].join("\n");
 
-export function initProject(input: InitProjectInput): InitProjectResult {
+/** Default configuration has one owner for explicit init and automatic setup. */
+export function buildDefaultProjectConfig(input: InitProjectInput): ProjectConfig & { id: string; name: string } {
   const projectRoot = path.resolve(input.cwd);
-  const clawDir = path.join(projectRoot, ".claw");
-  const projectJsonPath = path.join(clawDir, "project.json");
-  const gitignorePath = path.join(projectRoot, ".gitignore");
-  const memoryPath = path.join(clawDir, "memory.md");
-  const truthDir = path.join(clawDir, "truth");
-  const tasksDir = path.join(clawDir, "tasks");
-  const runtimeTmpDir = path.join(clawDir, "runtime", "tmp");
-  const knowledgeDir = path.join(clawDir, ".knowledge");
-
-  const createdPaths: string[] = [];
-  const exists = fs.existsSync(clawDir);
-  if (exists && !input.force) {
-    throw new ClawError("PROJECT_ALREADY_INITIALIZED", `Project already contains .claw at ${clawDir}.`, {
-      clawDir,
-    });
-  }
-
   const projectName = input.projectName?.trim() || path.basename(projectRoot);
   const projectId = normalizeProjectId(input.projectId ?? projectName, projectRoot);
   const maxTasksToKeep = input.maxTasksToKeep ?? DEFAULT_MAX_TASKS_TO_KEEP;
   const externalWriterSkill = normalizeOptionalSkill(input.externalWriterSkill);
   validateMaxTasksToKeep(maxTasksToKeep, projectRoot);
-  const projectConfig: ProjectConfig = {
+  return {
     version: normalizeVersion(input.version),
     id: projectId,
     name: projectName,
@@ -101,6 +87,80 @@ export function initProject(input: InitProjectInput): InitProjectResult {
     },
     gitnexus: input.gitnexusEnabled ?? false,
   };
+}
+
+/** Complete only missing local project scaffolding. Call after request and
+ * canonical-focus validation; this never installs tools or rewrites existing
+ * project configuration, overrides, memory, or Truth. */
+export function ensureProjectEnvironment(cwd: string): InitProjectResult {
+  const projectRoot = findProjectRoot(cwd) ?? path.resolve(cwd);
+  const clawDir = path.join(projectRoot, ".claw");
+  const projectJsonPath = path.join(clawDir, "project.json");
+  const existed = fs.existsSync(clawDir);
+  const defaults = buildDefaultProjectConfig({ cwd: projectRoot });
+  // Validate existing configuration before any scaffolding/lock-file writes.
+  try { previewProjectConfig(projectRoot, defaults); }
+  catch (error) { throw withExecutionFailure(error, { phase: "prepare", outcome: "known", effect: "none" }); }
+  const createdPaths: string[] = [];
+  let entered = false;
+  try {
+    return withFileLock(projectJsonPath, () => {
+      entered = true;
+      const tasksDir = path.join(clawDir, "tasks");
+      const hadTasks = fs.existsSync(tasksDir);
+      if (!existed) createdPaths.push(clawDir);
+      if (!fs.existsSync(projectJsonPath)) {
+        writeJsonFileAtomic(projectJsonPath, defaults);
+        createdPaths.push(projectJsonPath);
+      }
+      // Re-read under the same owner lock, including a concurrently created file.
+      const project = resolveProjectContext(projectRoot);
+      for (const dir of [project.truthDir, tasksDir, path.join(clawDir, "runtime", "tmp"), path.join(clawDir, ".knowledge")]) {
+        ensureDir(dir, createdPaths);
+      }
+      writeMissingFile(path.join(clawDir, "memory.md"), "# Project Memory\n\n- Project initialized for claw-kit.\n", createdPaths);
+      if (!hadTasks) createdPaths.push(markTaskLayoutMigrationComplete(clawDir));
+      ensureClawGitignoreRules(path.join(projectRoot, ".gitignore"), createdPaths);
+      return { projectRoot, clawDir, projectJsonPath, created: !existed,
+        projectId: project.projectId, projectName: project.projectName ?? defaults.name, createdPaths };
+    });
+  } catch (error) {
+    if (!entered && existed && error instanceof ClawError && error.code === "PLAN_WRITE_CONFLICT") {
+      throw withExecutionFailure(error, { phase: "initialize", outcome: "known", effect: "none" });
+    }
+    const cause = error instanceof ClawError ? error : new ClawError("PROJECT_INITIALIZATION_FAILED",
+      error instanceof Error ? error.message : String(error), { projectRoot, createdPaths });
+    throw withExecutionFailure(cause, { phase: "initialize", outcome: "unknown", effect: "unknown" });
+  }
+}
+
+function writeMissingFile(filePath: string, content: string, createdPaths: string[]): void {
+  const next = /\.md$/i.test(filePath) ? ensureUtf8Bom(content) : content;
+  try { fs.writeFileSync(filePath, next, { encoding: "utf8", flag: "wx" }); createdPaths.push(filePath); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
+}
+
+export function initProject(input: InitProjectInput): InitProjectResult {
+  const projectRoot = path.resolve(input.cwd);
+  const clawDir = path.join(projectRoot, ".claw");
+  const projectJsonPath = path.join(clawDir, "project.json");
+  const gitignorePath = path.join(projectRoot, ".gitignore");
+  const memoryPath = path.join(clawDir, "memory.md");
+  const truthDir = path.join(clawDir, "truth");
+  const tasksDir = path.join(clawDir, "tasks");
+  const runtimeTmpDir = path.join(clawDir, "runtime", "tmp");
+  const knowledgeDir = path.join(clawDir, ".knowledge");
+
+  const createdPaths: string[] = [];
+  const exists = fs.existsSync(clawDir);
+  if (exists && !input.force) {
+    throw new ClawError("PROJECT_ALREADY_INITIALIZED", `Project already contains .claw at ${clawDir}.`, {
+      clawDir,
+    });
+  }
+
+  const projectConfig = buildDefaultProjectConfig(input);
+  const { id: projectId, name: projectName } = projectConfig;
 
   ensureDir(clawDir, createdPaths);
   ensureDir(truthDir, createdPaths);

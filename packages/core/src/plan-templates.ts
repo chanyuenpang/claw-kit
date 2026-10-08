@@ -15,6 +15,7 @@ import type { KnowledgeWriterConfig, PlanReference, PlanRequirements, PlanRetros
 export type ResolvedPlanTemplate = {
   id: string;
   version: string;
+  /** Legacy stored-template metadata only; new public creation must omit it. */
   scope?: "session";
   knowledgeCapture?: boolean;
   configOverride?: TemplateConfigOverride;
@@ -39,6 +40,12 @@ export type ResolvedPlanTemplate = {
 export const TEMPLATE_DRIVER_VERSION = "1.0.0";
 const PLAN_TEMPLATES: ResolvedPlanTemplate[] = [normalizePlanLikeTemplate(defaultPlanTemplate, { source: "builtin" })];
 type TemplateVersionPolicy = "require-current" | "ignore";
+
+export function assertCurrentTemplateCreation(template: ResolvedPlanTemplate): void {
+  if (template.scope !== undefined) {
+    throw new ClawError("PLAN_SCOPE_REMOVED", "New plan templates must not select scope. Use knowledgeCapture for the knowledge policy.");
+  }
+}
 
 export async function resolveSeedPlanTemplate(params: {
   projectRoot?: string;

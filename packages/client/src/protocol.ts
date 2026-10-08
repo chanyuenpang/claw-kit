@@ -62,7 +62,7 @@ export type ClawPlanMutation =
 export type ClawSessionCommand =
   | { operation: "plan.create"; input: {
       title?: string; taskName?: string; goalText?: string; description?: string;
-      scope?: "project" | "session"; knowledgeCapture?: boolean; templateName?: string;
+      knowledgeCapture?: boolean; templateName?: string;
       templateFile?: string; planStatus?: string; forcePlanning?: boolean;
     } }
   | { operation: "plan.start"; input: { updates?: ClawPlanFields; appendTasks?: Array<{ title: string; detail?: string }> } }
@@ -183,7 +183,7 @@ export type SessionProtocolResponse =
         message: string;
         retryable: boolean;
         outcome: "known" | "unknown";
-        phase?: "prepare" | "commit" | "post-commit";
+        phase?: "prepare" | "initialize" | "commit" | "post-commit";
         effect?: "none" | "partial" | "committed" | "unknown";
         recoveryCommand?: string;
         details?: Record<string, unknown>;

@@ -411,7 +411,7 @@ export async function buildPlanWorkflowGuidance(params: {
     taskDoneCommand,
     suggestedTruthTargetsNote,
   };
-  const adaptForKnowledgeCapture = (guidance: WorkflowGuidance): WorkflowGuidance => params.scope === "session" || plan.knowledgeCapture === false
+  const adaptLegacySessionGuidance = (guidance: WorkflowGuidance): WorkflowGuidance => params.scope === "session"
     ? sessionCompletionGuidance(guidance)
     : guidance;
 
@@ -450,7 +450,7 @@ export async function buildPlanWorkflowGuidance(params: {
           planFile,
           goalModeEnabled,
           suppressGoalFields,
-          guidance: adaptForKnowledgeCapture({
+          guidance: adaptLegacySessionGuidance({
             stage: template.stage as WorkflowGuidance["stage"],
             summary: template.summary,
             nextsteps: template.nextsteps,
@@ -494,7 +494,7 @@ export async function buildPlanWorkflowGuidance(params: {
     case "process.active": {
       if (allTasksDone) {
         const template = renderStateTemplate("process.allTasksDone", vars, params.host);
-        const guidance = adaptForKnowledgeCapture({
+        const guidance = adaptLegacySessionGuidance({
           stage: template.stage as WorkflowGuidance["stage"],
           summary: template.summary,
           nextsteps: template.nextsteps,
@@ -507,7 +507,7 @@ export async function buildPlanWorkflowGuidance(params: {
           planFile,
         goalModeEnabled,
         suppressGoalFields,
-        guidance: adaptForKnowledgeCapture(await applyTemplateTaskDoneGuidance({
+        guidance: adaptLegacySessionGuidance(await applyTemplateTaskDoneGuidance({
             projectRoot,
             projectConfig,
             plan,
@@ -538,7 +538,7 @@ export async function buildPlanWorkflowGuidance(params: {
         ? renderStateTemplate("process.justEntered", vars, params.host)
         : undefined;
 
-      const guidance = adaptForKnowledgeCapture({
+      const guidance = adaptLegacySessionGuidance({
         stage: template.stage as WorkflowGuidance["stage"],
         summary: template.summary,
         nextsteps: template.nextsteps,
@@ -580,7 +580,7 @@ export async function buildPlanWorkflowGuidance(params: {
       const template = workflowGuidanceConfig.states["end.completed"]
         ? renderStateTemplate("end.completed", vars, params.host)
         : renderStateTemplate("end.closed", vars, params.host);
-      const guidance = adaptForKnowledgeCapture({
+      const guidance = adaptLegacySessionGuidance({
         stage: template.stage as WorkflowGuidance["stage"],
         summary: template.summary,
         nextsteps: template.nextsteps,

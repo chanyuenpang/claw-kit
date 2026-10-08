@@ -47,6 +47,7 @@ export type PlanTemplateTask = {
 export type PlanTemplateDocument = {
   id: string;
   version: string;
+  /** Retained only for old frozen receipts/templates; not a new authoring option. */
   scope?: "session";
   knowledgeCapture?: boolean;
   configOverride?: TemplateConfigOverride;

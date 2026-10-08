@@ -26,7 +26,7 @@ DSH 知识终结 dispatch 流程：项目作用域 root plan 进入完成型终�
 immutable dispatch prompt；writer 创建独立 delegate
 plan、跟随 workflowGuidance、`knowledge claim` 认领 job、顺序执行生成的 assignment
 subplan、并以 claim token 调用一次 `knowledge done`。`end.leave` 是取消而非派发边界；
-session-scoped delegate 不递归创建知识 job，通用终态 gate 由
+`knowledgeCapture:false` 辅助 delegate 不递归创建知识 job（新计划统一项目流程；session 身份仍负责绑定，旧 session 存储仅保留恢复兼容），通用终态 gate 由
 [finalization lifecycle ADR](<../adr/hook-owned-two-phase-knowledge-finalization.md>) 拥有。
 
 Core source 在 DSH 创建计划时登记可信 capture 起点；同一 root 的父子切换与返回保留该窗口，返回父计划不建立独立 child writer。CLI service 在成功返回父焦点回执前同步 project binding，context 与 v2 focus 必须一致。manual leave 只清理匹配计划的捕获，不能清空另一个 active plan；不同 root 的新捕获窗口不得继承旧起点。上述源码合同和定向回归不证明旧安装 Beta 已通过真实冒烟。

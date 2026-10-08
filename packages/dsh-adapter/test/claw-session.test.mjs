@@ -64,10 +64,10 @@ test("request writes {operation, input} JSON and resolves the protocol response"
   pushLine(mock.handles[0], { ok: true, command: "session.open" });
   await opened;
 
-  const pending = session.request("plan.create", { title: "T", scope: "session" });
+  const pending = session.request("plan.create", { title: "T", knowledgeCapture: false });
   await delay(10);
   const written = JSON.parse(mock.handles[0].stdin.writes[0]);
-  assert.deepEqual(written, { operation: "plan.create", input: { title: "T", scope: "session" } });
+  assert.deepEqual(written, { operation: "plan.create", input: { title: "T", knowledgeCapture: false } });
 
   pushLine(mock.handles[0], {
     ok: true,

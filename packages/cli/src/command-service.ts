@@ -14,6 +14,7 @@ import {
   completeSubplanAndRestoreParent,
   bindSessionToPlan,
   createPlanAndSwitchFocus,
+  createProjectPlan,
   createPlanRef,
   createSubplan,
   commitSubplanCreation,
@@ -27,6 +28,7 @@ import {
   ensureInsideDir,
   focusSessionKeyHash,
   resolveSessionWorkflowContext,
+  resolveProjectContext,
   resolvePlanEffectiveConfig,
   resolveKnowledgeWriterForHost,
   resolveSessionBoundPlan,
@@ -362,19 +364,16 @@ export class ClawCommandService {
         };
       }
       case "plan.create": {
-        const commandInput = request.input as Omit<PlanWriteInput, "cwd" | "ownerSessionKey">;
+        const commandInput = request.input as Parameters<typeof createProjectPlan>[0];
         const sessionKey = this.requireSessionKey(context);
-        const currentProject = this.resolveProject(context);
-        assertRootPlanCreateAllowed({
-          project: currentProject,
-          sessionKey,
-          sessionStore: this.focusStore,
-        });
-        const created = await writePlan({
-          ...commandInput,
-          cwd,
-          ownerSessionKey: context.agentSessionId,
-          host: context.host,
+        const created = await createProjectPlan(commandInput, {
+          cwd, ownerSessionKey: context.agentSessionId, host: context.host,
+          checkFocus: () => {
+            const current = this.focusStore.read(focusSessionKeyHash(sessionKey)).currentPlan;
+            if (current) assertRootPlanCreateAllowed({
+              project: this.resolveProject(context, current.scope), sessionKey, sessionStore: this.focusStore,
+            });
+          },
         });
         const project = this.resolveProject(context, created.scope);
         const createdRef = createPlanRef(project, created.taskName, created.planFile, created.taskDir);
@@ -500,7 +499,15 @@ export class ClawCommandService {
           return { output: knowledgeClaimReceiptCommand(jobPath, claimant) };
         }
         const version = (JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }).version;
-        return { output: claimKnowledgeCommand(jobPath, version, claimant) };
+        return { output: claimKnowledgeCommand(jobPath, version, claimant, () => {
+          const current = this.focusStore.read(focusSessionKeyHash(this.requireSessionKey(context))).currentPlan;
+          if (!current) return undefined;
+          const target = this.resolveProject(context, current.scope);
+          const shown = showPlan({ cwd: context.cwd, scope: target.scope, taskName: current.taskName,
+            taskPath: current.taskPath, planFile: current.planFile, ownerSessionKey: context.agentSessionId });
+          return { planPath: shown.planPath, scope: target.scope ?? "project", projectRoot: target.projectRoot,
+            ownerSessionId: claimant.agentSessionId };
+        }) };
       }
       case "knowledge.done": {
         const input = request.input as { finalizeId: string; claimToken: string; status: "succeeded" | "failed"; result?: string; error?: string };
@@ -540,12 +547,14 @@ export class ClawCommandService {
       const job = readKnowledgeFinalizationJob(jobPath);
       const owner = job.delegateWorkflow;
       if (!owner || owner.ownerSessionId !== context.agentSessionId || !["succeeded", "failed", "expired"].includes(job.status)) return { output };
-      const project = resolveSessionWorkflowContext(owner.ownerSessionId);
+      const project = owner.scope === "project"
+        ? resolveProjectContext(owner.projectRoot)
+        : resolveSessionWorkflowContext(owner.ownerSessionId, { readOnly: true });
       if (!project || path.resolve(project.projectRoot) !== path.resolve(owner.projectRoot)) return { output };
       const delegatePath = ensureInsideDir(project.tasksDir, path.relative(project.tasksDir, owner.planPath));
       if (!delegatePath || delegatePath !== path.resolve(owner.planPath)) return { output };
       const retained = readFocusedPlan(project, this.requireSessionKey(context), this.focusStore);
-      if (retained?.scope === "project") return { output };
+      if (retained?.scope && retained.scope !== project.scope) return { output };
       const boundPath = resolveSessionBoundPlan(project, owner.ownerSessionId);
       const delegate = JSON.parse(fs.readFileSync(delegatePath, "utf8")) as PlanDocument;
       if (!boundPath) {
@@ -833,7 +842,7 @@ export class ClawCommandService {
     const projects: Array<ReturnType<typeof resolveWorkflowProjectContext>> = [];
     try { projects.push(this.resolveProject(context, "project")); }
     catch (error) {
-      if (!(error instanceof ClawError) || error.code !== "PROJECT_ROOT_NOT_FOUND") throw error;
+      if (!(error instanceof ClawError) || !["PROJECT_ROOT_NOT_FOUND", "CLAW_DIR_NOT_FOUND"].includes(error.code)) throw error;
     }
     const session = resolveSessionWorkflowContext(this.ownerSessionKey(context));
     if (session) projects.push(session);

@@ -45,7 +45,7 @@ export type ClawExecuteResult = {
   knowledgeDispatch?: unknown;
   postCommitEffects?: unknown[];
   error?: { code?: string; message?: string; outcome?: "known" | "unknown";
-    phase?: "prepare" | "commit" | "post-commit"; effect?: "none" | "partial" | "committed" | "unknown" };
+    phase?: "prepare" | "initialize" | "commit" | "post-commit"; effect?: "none" | "partial" | "committed" | "unknown" };
 };
 
 function protocolError(code: string, message: string): Error {

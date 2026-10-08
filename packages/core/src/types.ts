@@ -477,8 +477,13 @@ export type PreparedSubplanWrite = {
   parentBefore: PlanDocument;
 };
 
+/** Public creation intent. Storage is resolved by the workflow owner. */
+export type PlanCreateIntent = Pick<PlanWriteInput, "taskName" | "title" | "description" | "goalText" | "templateName" | "templateFile" | "knowledgeCapture" | "planStatus" | "forcePlanning">;
+
+/** Low-level persistence/legacy recovery input. Public creation uses PlanCreateIntent. */
 export type PlanWriteInput = {
   cwd: string;
+  /** Internal resolved storage; never a public plan.create argument. */
   scope?: "project" | "session";
   /** Disable knowledge finalization for this plan. Defaults to true. */
   knowledgeCapture?: boolean;

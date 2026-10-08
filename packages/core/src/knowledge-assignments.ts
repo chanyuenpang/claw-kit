@@ -68,10 +68,10 @@ export function buildKnowledgeDelegateDispatch(input: {
       ...(projectRoot ? [
         `Project root: ${JSON.stringify(projectRoot)}`,
         "If your current working directory differs from this project root, use this project root as the working directory for every workflow and knowledge command, including the first plan creation.",
-        "For knowledge claim, pass this exact absolute path to --project-root; do not substitute the inherited working directory or the internal session plan directory.",
+        "For knowledge claim, pass this exact absolute path to --project-root; do not substitute the inherited working directory or the auxiliary workflow directory.",
       ] : []),
       `First run: claw plan create --template-file "${templatePath}" --title "${delegateTitle}"`,
-      "Then follow the returned workflowGuidance until the internal session plan is complete.",
+      "Then follow the returned workflowGuidance until the non-capturing auxiliary plan is complete.",
       `Finalization id: ${input.finalizeId}`,
       "Do not invoke a user-facing delegate skill, background finalizer, writer proxy, or collaboration subagent.",
     ].join("\n"),
@@ -124,7 +124,7 @@ export function buildKnowledgeAtomicDispatch(input: {
     ...(input.writer?.reasoningEffort ? { reasoningEffort: input.writer.reasoningEffort } : {}),
     prompt: [
       "Execute this already-created claw knowledge-finalization job unattended through the claw-kit Cindy Ghost tools.",
-      `Use the claw-kit Ghost plan.create operation to create the session plan titled "${delegateTitle}" with templateFile "${templatePath}".`,
+      `Use the claw-kit Ghost plan.create operation to create a non-capturing auxiliary plan in your own session titled "${delegateTitle}" with templateFile "${templatePath}".`,
       "The template owns the claim, assignment subplan, and terminal acknowledgement stages.",
       `Finalization id: ${input.finalizeId}`,
       "Use Ghost operations rather than the claw CLI, and do not invoke another finalizer or delegate agent.",
@@ -211,7 +211,6 @@ export function buildKnowledgeAssignmentTemplate(input: {
   return {
     id: `knowledge-assignments-${input.finalizeId.slice(0, 12)}`,
     version: input.version,
-    scope: "session",
     title: "knowledge-writer assignments",
     status: "process.active",
     goal: {
@@ -264,7 +263,6 @@ function buildBuiltinKnowledgeTemplate(input: {
   const template = structuredClone(source);
   template.id = `knowledge-assignments-${input.finalizeId.slice(0, 12)}`;
   template.version = input.version;
-  template.scope = "session";
   template.title = "built-in knowledge governance";
   template.status = "process.active";
   const firstTask = template.tasks[0];

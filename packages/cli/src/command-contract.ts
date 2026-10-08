@@ -39,7 +39,7 @@ const mutation: Check = (v) => {
 const finalizeId: Check = (v) => typeof v === "string" && /^[a-f0-9]{64}$/i.test(v);
 const checks = {
   "plan.create": object({ title: text, taskName: text, goalText: text, description: text,
-    scope: oneOf("project", "session"), knowledgeCapture: bool, templateName: text,
+    knowledgeCapture: bool, templateName: text,
     templateFile: text, planStatus: text, forcePlanning: bool }),
   "plan.start": object({ updates: object(fields), appendTasks: list(task) }),
   "plan.resume": object({ planId: text }),

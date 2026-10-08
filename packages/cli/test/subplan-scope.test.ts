@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { initProject, knowledgeSessionRegistryPath, resolveProjectContext, resolveSessionBoundPlan, showPlan } from "@veewo/claw-core";
+import { createSessionWorkflowContext, initProject, knowledgeSessionRegistryPath, resolveProjectContext, resolveSessionBoundPlan, showPlan } from "@veewo/claw-core";
 import { runClaw } from "./cli-test-support.js";
 import { ClawCommandService } from "../dist/command-service.js";
 import { SessionRegistryV2, sessionFocusKey } from "../dist/session-registry-v2.js";
@@ -24,11 +24,13 @@ test("DSH parent-child lifecycle and closeout survive a retained session manifes
     const context = { cwd: opened.identity.canonicalWorkdir,
       agentSessionId: opened.identity.agentSessionId, sessionKey: sessionFocusKey(opened.identity),
       mode: "session" as const, host: "dsh" };
+    // Preserve the old manifest as recovery data, not as a public create mode.
+    createSessionWorkflowContext(projectRoot, context.agentSessionId);
     await assert.rejects(service.execute(context, { operation: "plan.create", input: {
-      taskName: "rejected-session", title: "Rejected", goalText: "No target", scope: "session" } }),
-      { code: "KNOWLEDGE_CAPTURE_TARGET_REQUIRED" });
+      taskName: "rejected-session", title: "Rejected", goalText: "No target", scope: "session" } } as any),
+      { code: "PLAN_SCOPE_REMOVED" });
     await service.execute(context, { operation: "plan.create", input: {
-      taskName: "冒烟父计划", title: "Parent", goalText: "Root objective", scope: "project" } });
+      taskName: "冒烟父计划", title: "Parent", goalText: "Root objective" } });
     const project = resolveProjectContext(projectRoot);
     const captureRegistryPath = knowledgeSessionRegistryPath(project, context.agentSessionId);
     const readCapture = (): { activePlanPath?: string; activeStartedAt?: string } =>

@@ -97,7 +97,7 @@ test("Codex routed reference preserves lifecycle and the exact mutation bridge",
   assert.match(entry, /Keep harness mechanics out of normal replies/);
   assert.match(host, /argv: \["plan", "create", "<title>"\]/);
   assert.match(host, /```javascript[\s\S]*runClawPlanMutation[\s\S]*```/);
-  assert.match(host, /claw-kit:codex-driver:v24:s1/);
+  assert.match(host, /claw-kit:codex-driver:v25:s1/);
   assert.match(host, /typeof envelope\?\.source !== "string"/);
   assert.doesNotMatch(host, /npm install --global @veewo\/claw/);
   assert.doesNotMatch(host, /CLI repair failed/);
@@ -166,55 +166,34 @@ test("Codex plugin exposes an explicit same-agent knowledge-capture skill", asyn
   assert.doesNotMatch(skill, /spawn_agent|create_thread|knowledgeDispatch/);
 });
 
-test("hidden built-in knowledge contract enforces trusted evidence and cross-document ownership", async () => {
-  const skill = await fs.readFile(new URL("../packages/core/resources/knowledge-writer/SKILL.md", import.meta.url), "utf8");
-  const template = JSON.parse(await fs.readFile(new URL("../packages/core/resources/knowledge-writer/TEMPLATE.json", import.meta.url), "utf8"));
-  const fallback = await fs.readFile(new URL("../packages/core/resources/knowledge-writer/non-claw-fallback.md", import.meta.url), "utf8");
-  const contract = `${JSON.stringify(template)}\n${fallback}`;
-  assert.doesNotMatch(skill, /end\.\*|session-scoped|parent-plan|source plan/i);
-  assert.match(skill, /Use only when explicitly invoked with supplied materials; do not trigger this skill implicitly/i);
-  assert.match(skill, /plan create --template-file/i);
-  assert.match(skill, /subplan create --parent/i);
-  await assert.rejects(fs.access(new URL("../packages/core/resources/knowledge-writer/agents/openai.yaml", import.meta.url)));
-  assert.match(contract, /knowledge-base steward/i);
-  assert.match(contract, /filename, field, record shape, or serialization format/i);
-  assert.match(contract, /retrospective lessons, key decisions/i);
-  assert.match(contract, /task status is present/i);
-  assert.match(contract, /task titles or descriptions as an execution log/i);
-  assert.match(contract, /Truth and ADR are one knowledge system/i);
-  assert.match(contract, /Maintain Truth first and ADR second|Truth is maintained before ADR/i);
-  assert.match(contract, /one current owner/i);
-  assert.match(contract, /open every plausible/i);
-  assert.match(contract, /exhaustive text search/i);
-  assert.match(contract, /Do not report completion while/i);
-  assert.match(contract, /Re-run focused and exhaustive searches/i);
-  assert.match(contract, /Trusted means the evidence was verified at the revision or worktree state it describes/i);
-  assert.match(contract, /read-only freshness check/i);
-  assert.match(contract, /Current implementation outranks older material wording/i);
-  assert.match(contract, /add(?:s)? no durable reusable knowledge/i);
-  assert.match(contract, /repair nonconforming structure in the same edit/i);
-  assert.deepEqual(template.tasks.map((task) => task.title), [
-    "Read all supplied materials and extract conclusions",
-    "Qualify evidence and resolve freshness",
-    "Locate canonical Truth and ADR owners",
-    "Maintain canonical Truth",
-    "Maintain canonical ADRs",
-    "Run the cross-document consistency review",
-    "Prepare the final project index refresh",
-  ]);
-  assert.equal(template.tasks.every((task) => task.guidance?.onDone?.default), true);
-  assert.equal(template.tasks.some((task) => task.guidance?.onDone?.choices), false);
+test("hidden knowledge packages preserve outcome and write-scope boundaries without orchestration microsteps", async () => {
+  const base = new URL("../packages/core/resources/", import.meta.url);
+  const skill = await fs.readFile(new URL("knowledge-writer/SKILL.md", base), "utf8");
+  const template = JSON.parse(await fs.readFile(new URL("knowledge-writer/TEMPLATE.json", base), "utf8"));
+  const fallback = await fs.readFile(new URL("knowledge-writer/non-claw-fallback.md", base), "utf8");
+  assert.match(skill, /Use only when explicitly invoked with supplied materials/i);
+  assert.match(skill, /subplan create --template-file/i);
+  assert.doesNotMatch(skill, /--parent|--task-id|--scope/);
+  await assert.rejects(fs.access(new URL("knowledge-writer/agents/openai.yaml", base)));
+  assert.equal(template.knowledgeCapture, false);
+  assert.equal(template.scope, undefined);
+  assert.equal(template.tasks.some(task => /prepare.*index refresh/i.test(task.title)), false);
+  assert.match(fallback, /read-only/i);
+  assert.match(fallback, /not execution evidence/i);
+  assert.match(fallback, /existing owner/i);
+  assert.match(fallback, /current-state claims.*implementation/i);
+  assert.match(fallback, /unresolved conflicts/i);
 
-  const docSkill = await fs.readFile(new URL("../packages/core/resources/doc-updater/SKILL.md", import.meta.url), "utf8");
-  const docTemplate = JSON.parse(await fs.readFile(new URL("../packages/core/resources/doc-updater/TEMPLATE.json", import.meta.url), "utf8"));
-  const docContract = `${docSkill}\n${JSON.stringify(docTemplate)}`;
-  assert.match(docSkill, /subplan create --parent/i);
-  assert.match(docSkill, /claw plan create --template-file/i);
-  assert.match(docSkill, /FALLBACK\.md/i);
-  assert.match(docContract, /existing documents/i);
-  assert.match(docContract, /never create, move, or rename/i);
-  assert.match(docContract, /requirement, future design/i);
-  assert.match(docContract, /Do not assume an owner/i);
+  const docSkill = await fs.readFile(new URL("doc-updater/SKILL.md", base), "utf8");
+  const docs = JSON.parse(await fs.readFile(new URL("doc-updater/TEMPLATE.json", base), "utf8"));
+  assert.match(docSkill, /subplan create --template-file/i);
+  assert.equal(docs.knowledgeCapture, false);
+  assert.equal(docs.scope, undefined);
+  const contract = JSON.stringify(docs);
+  assert.match(contract, /existing documents/i);
+  assert.match(contract, /never create, move or rename/i);
+  assert.match(contract, /requirements.*history.*future design/i);
+  assert.match(contract, /no-edit reason/i);
 });
 
 test("Codex plugin source includes the config skill entrypoint", async () => {

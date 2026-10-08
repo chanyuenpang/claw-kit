@@ -43,6 +43,7 @@ import {
   createNpmShim,
   createClawUpdateNpmShim,
 } from "./cli-test-support.js";
+import { resolveProjectContext } from "@veewo/claw-core";
 import { createHash } from "node:crypto";
 
 
@@ -236,7 +237,7 @@ test("cli plan done uses fixed native dispatch and standard/OpenCode closeout", 
   assert.equal("policy" in (cindyDispatch ?? {}), false);
   assert.match(String(cindyDispatch.prompt), /claw-kit Cindy Ghost tools/);
   assert.match(String(cindyDispatch.prompt), /resources[\\/]cindy-delegate-writer[\\/]TEMPLATE\.json/);
-  assert.match(String(cindyDispatch.prompt), /session plan/i);
+  assert.match(String(cindyDispatch.prompt), /non-capturing auxiliary plan/i);
   assert.match(String(cindyDispatch.prompt), /assignment subplan/i);
   assert.doesNotMatch(String(cindyDispatch.prompt), /did-turn-end|Stop hook|knowledge wait/i);
   assert.match(String(cindyDispatch.leadInstruction), /Required, non-skippable closeout/);
@@ -255,7 +256,7 @@ test("cli plan done uses fixed native dispatch and standard/OpenCode closeout", 
   assert.equal(dshDispatch.preferReuse, true);
   assert.ok(String(dshDispatch.prompt).includes("knowledge-finalizer-" + String(dshDispatch.finalizeId)));
   const dshTemplate = JSON.parse(fs.readFileSync(new URL("../../core/dist/src/resources/dsh-delegate-writer/TEMPLATE.json", import.meta.url), "utf8"));
-  assert.equal(dshTemplate.scope, "session");
+  assert.equal(dshTemplate.scope, undefined);
   assert.equal(dshTemplate.knowledgeCapture, false);
   for (const operation of ["knowledge.claim", "subplan.create", "knowledge.done"]) {
     assert.ok(dshTemplate.tasks.some((task: { detail: string }) => task.detail.includes(operation)));
@@ -321,7 +322,7 @@ test("Codex claim captures its parent report without Stop", () => {
   const transcriptPath = path.join(transcriptDir, `rollout-test-${sessionId}.jsonl`);
   fs.mkdirSync(transcriptDir, { recursive: true });
   const fixtureJob = JSON.parse(fs.readFileSync(jobPath, "utf8"));
-  delete fixtureJob.reportCapture.startedAt;
+  fixtureJob.reportCapture.startedAt = "2099-08-01T00:00:00.000Z";
   fixtureJob.reportCapture.endedAt = "2099-08-01T00:00:03.000Z";
   fs.writeFileSync(jobPath, JSON.stringify(fixtureJob));
   let ordinal = 0;
@@ -615,7 +616,7 @@ test("cli plan done queues another task's retention sweep only when completedAt 
   const projectConfig = JSON.parse(fs.readFileSync(projectPath, "utf-8")) as JsonRecord;
   (projectConfig.knowledgeWriter as JsonRecord).executionPolicy = "subagent";
   fs.writeFileSync(projectPath, `${JSON.stringify(projectConfig, null, 2)}\n`, "utf-8");
-  runClaw(["plan", "create", "--title", "older-task", "--goal", "Older task"], root, env);
+  runClaw(["plan", "create", "--title", "older-task", "--goal", "Older task", "--no-knowledge-capture"], root, env);
   runClaw(["plan", "done", "--task-name", "older-task", "--retrospective", "Older complete."], root, env);
 
   const olderPlanPath = taskFile(root, "older-task", "plan.json");
@@ -1188,12 +1189,14 @@ test("Stop hook skips knowledge finalizer child threads to prevent recursion", (
 });
 
 
-test("knowledge wait remains a compatibility path while the internal delegate template owns session scope", () => {
+test("knowledge wait remains compatible while the delegate uses the unified non-capture flow", () => {
   const root = createFixture("knowledge-session-lifecycle");
   const runtimeDir = createFixture("knowledge-session-lifecycle-runtime");
   runClaw(["init", "--name", "Knowledge Session Lifecycle"], root);
   const taskDir = path.join(root, ".claw", "tasks", "source-task");
   fs.mkdirSync(taskDir, { recursive: true });
+  fs.writeFileSync(path.join(taskDir, "plan.json"), JSON.stringify({ title: "Source", goal: { text: "Source" }, status: "end.completed", tasks: [] }));
+  fs.writeFileSync(path.join(taskDir, "plan.report"), "");
   const finalizeId = "a".repeat(64);
   const jobPath = path.join(taskDir, ".runtime", "knowledge-finalization", `${finalizeId}.json`);
   fs.mkdirSync(path.dirname(jobPath), { recursive: true });
@@ -1232,8 +1235,9 @@ test("knowledge wait remains a compatibility path while the internal delegate te
     "--template-file", internalTemplate,
   ], root, env);
   const dynamicContext = runClaw(["context"], root, env);
-  assert.equal((dynamicContext.project as JsonRecord).scope, "session");
-  assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "dynamic-writer-plan")), false);
+  assert.equal((dynamicContext.project as JsonRecord).scope, undefined);
+  assert.ok(String((dynamicContext.activeWorkflow as JsonRecord).planPath).startsWith(path.join(root, ".claw", "tasks")));
+  assert.equal(((dynamicContext.activeWorkflow as JsonRecord).planContent as JsonRecord).knowledgeCapture, false);
   const sessionFinalizeId = "b".repeat(64);
   const sessionTaskDir = path.dirname(
     String((dynamicContext.activeWorkflow as JsonRecord).planPath),
@@ -1288,8 +1292,9 @@ test("knowledge wait remains a compatibility path while the internal delegate te
     "--task-id", "2",
     "--template-file", String(claimed.templatePath),
   ], root, env);
-  for (const taskId of ["1", "2", "3", "4", "5", "6"]) {
-    runClaw(["task", "done", "--id", taskId], root, env);
+  const assignmentTemplate = JSON.parse(fs.readFileSync(String(claimed.templatePath), "utf8"));
+  for (const task of assignmentTemplate.tasks) {
+    runClaw(["task", "done", "--id", String(task.id)], root, env);
   }
   runClaw(["plan", "done", "--retrospective", "Assignments executed."], root, env);
   const done = runClaw([
@@ -1300,8 +1305,8 @@ test("knowledge wait remains a compatibility path while the internal delegate te
     "--error", "intentional test failure",
   ], root, env);
   assert.equal(done.failed, true);
-  runClaw(["task", "done", "--id", "3"], root, env);
-  runClaw(["plan", "done", "--retrospective", "Delegate lifecycle completed."], root, env);
+  assert.equal(done.delegateClosed, true);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(sessionTaskDir, "plan.json"), "utf8")).status, "end.leave");
   assert.equal((JSON.parse(fs.readFileSync(jobPath, "utf-8")) as JsonRecord).status, "failed");
   assert.equal(fs.existsSync(String(claimed.templatePath)), false);
 });
@@ -1314,7 +1319,7 @@ test("Cindy turn capture honors session knowledge opt-out", () => {
   runClaw(["init", "--name", "Cindy Session Capture", "--planning", "false"], root);
   const created = runClaw([
     "plan", "create",
-    "--scope", "session", "--no-knowledge-capture",
+    "--no-knowledge-capture",
     "--title", "session-capture-plan",
     "--goal", "Capture the terminal turn",
     "--host", "cindy",
@@ -1328,10 +1333,9 @@ test("Cindy turn capture honors session knowledge opt-out", () => {
   const previousRuntimeDir = process.env.CLAW_SESSION_RUNTIME_DIR;
   process.env.CLAW_SESSION_RUNTIME_DIR = runtimeDir;
   try {
-    const sessionProject = resolveSessionWorkflowContext(sessionId);
-    assert.ok(sessionProject);
+    const project = resolveProjectContext(root);
     assert.equal(tryEndKnowledgePlan({
-      project: sessionProject,
+      project,
       sessionId,
       endedPlanPath: String(created.planPath),
       endedAt: new Date().toISOString(),

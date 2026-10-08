@@ -21,7 +21,7 @@ import {
   DEFAULT_MAX_TASKS_TO_KEEP,
   checkProjectProtocol,
   ClawError,
-  assertRootPlanCreateAllowedForPlan,
+  withExecutionFailure,
   buildPlanWorkflowGuidance,
   buildMemoryIndex,
   buildSessionStartDefaultPrompt,
@@ -36,6 +36,7 @@ import {
   initProject,
   getTemplateTaskDoneChoices,
   resolvePlanTemplateFile,
+  assertCurrentTemplateCreation,
   resolvePlanEffectiveConfig,
   resolveThreadGoalPlan,
   resolveKnowledgeWriterForHost,
@@ -67,7 +68,7 @@ import {
   resolveHostIntegrationProfile,
   recordKnowledgeFinalizationResult,
   unbindSession,
-  writePlan,
+  createProjectPlan,
   ProjectConfigRepository,
   findProjectRoot,
   type InitProjectInput,
@@ -230,19 +231,19 @@ const COMMAND_HELP: Record<string, HelpNode> = {
     subcommands: {
       create: {
         usage: [
-          "{script} plan create \"<title>\" [--goal <text>] [--scope session] [--no-knowledge-capture]",
-          "{script} plan create --title <text> [--goal <text>] [--template <name> | --template-file <path>] [--scope session]",
+          "{script} plan create \"<title>\" [--goal <text>] [--knowledge-capture true|false]",
+          "{script} plan create --title <text> [--goal <text>] [--template <name> | --template-file <path>] [--knowledge-capture true|false]",
         ],
         description:
-          "Create the task scope and initial plan from a template. Outside a .claw project, explicit `--template` automatically uses session scope while plain plan creation keeps the project-initializing behavior. Template resolution uses explicit `--template` first, otherwise the project's configured `defaultPlanTemplate`, and finally the built-in `default`; planning-enabled projects start in process.discussing with one default planning task, while planning-disabled projects start directly in process.active with one executable task.",
+          "Create the initial plan in the current or ancestor project, automatically initializing missing local claw environment and default configuration. Knowledge capture controls accumulation only, not storage or the plan lifecycle. Template resolution uses explicit `--template` first, otherwise the project's configured `defaultPlanTemplate`, and finally the built-in `default`; planning-enabled projects start in process.discussing with one default planning task, while planning-disabled projects start directly in process.active with one executable task.",
         summary: "Create the task scope and initial plan.",
         options: [
           { flag: "--title <text>", detail: "Task title (required unless a positional title is given)." },
           { flag: "--goal <text>", detail: "Optional goal text." },
-          { flag: "--scope session", detail: "Use ephemeral per-session storage." },
+          { flag: "--knowledge-capture <true|false>", detail: "Control knowledge accumulation; defaults to the template setting or true. Does not change storage." },
           { flag: "--no-knowledge-capture", detail: "Disable knowledge finalization for this plan (enabled by default)." },
-          { flag: "--template <name>", detail: "Optional plan template name. Overrides the project default and auto-selects session scope when no .claw project exists." },
-          { flag: "--template-file <path>", detail: "Exact plan template file. Mutually exclusive with --template and auto-selects session scope when no .claw project exists." },
+          { flag: "--template <name>", detail: "Optional plan template name. Overrides the project default." },
+          { flag: "--template-file <path>", detail: "Exact plan template file. Mutually exclusive with --template." },
         ],
       },
       edit: {
@@ -1725,51 +1726,22 @@ function directKnowledgeConfigFingerprint(input: {
 async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Promise<void> {
   const subcommand = args.shift();
   switch (subcommand) {
-    case "create":
-      rejectFlags(args, ["--task", "--plan", "--content", "--status", "--parent-task-id", "--description"]);
-      const explicitTitle = readOptionalFlag(args, "--title");
-      const explicitTemplate = readOptionalFlag(args, "--template");
-      const explicitTemplateFile = readOptionalFlag(args, "--template-file");
-      readOptionalFlag(args, "--plugin-version"); // advisory compatibility metadata
-      if (explicitTemplate && explicitTemplateFile) {
-        throw new ClawError("PROJECT_CONFIG_INVALID", "--template and --template-file are mutually exclusive.");
-      }
-      const scope = readWorkflowScope(args);
-      const knowledgeCapture = readBooleanFlag(args, "--no-knowledge-capture") ? false : undefined;
-      const title = explicitTitle ?? readOptionalPositionalArg(args);
-      const templateName = explicitTemplate;
-      if (!title) {
-        throw new ClawError(
-          "PROJECT_CONFIG_INVALID",
-          "plan create requires a title. Use `claw plan create \"<title>\"` or `claw plan create --title \"<title>\"`.",
-        );
-      }
+    case "create": {
+      const input = readPlanCreateIntent(args);
       const ownerSessionKey = resolveOwnerSessionKey();
-      assertDirectRootPlanCreateAllowed(process.cwd(), ownerSessionKey, scope);
-      await preparePlanCreateWorkflow(process.cwd(), ownerSessionKey, effectiveHost, scope);
-      const result = await writePlan({
-        cwd: process.cwd(),
-        scope,
-        knowledgeCapture,
-        templateName,
-        templateFile: explicitTemplateFile ? path.resolve(process.cwd(), explicitTemplateFile) : undefined,
-        title,
-        goalText: readOptionalFlag(args, "--goal"),
-        ownerSessionKey: ownerSessionKey ?? undefined,
-        host: effectiveHost,
-      });
-      if (ownerSessionKey && scope !== "session") {
-        const sessionProject = resolveSessionWorkflowContext(ownerSessionKey);
-        if (sessionProject) {
-          const relativePlanPath = path.relative(sessionProject.clawDir, result.planPath);
-          if (relativePlanPath.startsWith("..") || path.isAbsolute(relativePlanPath)) {
-            unbindSession(sessionProject, ownerSessionKey);
-          }
-        }
+      if (ownerSessionKey) {
+        const response = await new SessionCommandExecutor(new SessionRegistryV2()).execute({
+          agentSessionId: ownerSessionKey, workdir: process.cwd(), client: { kind: "terminal", host: effectiveHost },
+        }, { operation: "plan.create", input });
+        const result = response.output as Awaited<ReturnType<typeof createProjectPlan>>;
+        printJson({ ...compactPlanCommandResult("plan.create", result, effectiveHost),
+          ...(response.hostActions ? { hostActions: response.hostActions } : {}) });
+      } else {
+        const result = await createProjectPlan(input, { cwd: process.cwd(), host: effectiveHost });
+        printJson(compactPlanCommandResult("plan.create", result, effectiveHost));
       }
-      assertNoRemainingArgs(args, "plan create");
-      printJson(compactPlanCommandResult("plan.create", result, effectiveHost));
       return;
+    }
     case "edit": {
       const target = readPlanMutationTarget(args);
       const operations = readOrderedPlanEditOperations(args);
@@ -1815,8 +1787,11 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
             writer: effectiveWriter,
           })
         : undefined;
+      const focusReconciliationFailure = result.planStatus.startsWith("end.")
+        ? await reconcileCliTerminalFocus(ownerSessionKey, effectiveHost) : undefined;
       const completionRefresh = queueTerminalRefreshIfEntered(result, terminalRefresh);
-      printJson(compactPlanCommandResult("plan.edit", result, effectiveHost, completionRefresh, false, knowledgeDispatch));
+      printJson({ ...compactPlanCommandResult("plan.edit", result, effectiveHost, completionRefresh, false, knowledgeDispatch),
+        ...(focusReconciliationFailure ? { focusReconciliationFailure } : {}) });
       if (result.operationChain?.status === "partial") process.exitCode = 1;
       return;
     }
@@ -1928,15 +1903,16 @@ async function runPlan(args: string[], effectiveHost: ClawHost | undefined): Pro
             writer: effectiveWriter,
           })
         : undefined;
+      const focusReconciliationFailure = await reconcileCliTerminalFocus(ownerSessionKey, effectiveHost);
       const completionRefresh = queueTerminalRefreshIfEntered(result, terminalRefresh);
-      printJson(compactPlanCommandResult(
+      printJson({ ...compactPlanCommandResult(
         "plan.done",
         result,
         effectiveHost,
         completionRefresh,
         false,
         knowledgeDispatch,
-      ));
+      ), ...(focusReconciliationFailure ? { focusReconciliationFailure } : {}) });
       return;
     }
     case "show": {
@@ -2004,6 +1980,22 @@ async function runPlanLeave(args: string[], effectiveHost: ClawHost | undefined)
   printJson(compactPlanCommandResult("plan.leave", result, effectiveHost, completionRefresh, true));
 }
 
+/** Direct CLI mutations may finish plans registered by the shared creation
+ * owner. Reconcile before retention can move the terminal file; a projection
+ * failure must never turn the committed transition into a retryable command. */
+async function reconcileCliTerminalFocus(ownerSessionKey: string | undefined, host: ClawHost | undefined) {
+  if (!ownerSessionKey) return undefined;
+  try {
+    await new SessionCommandExecutor(new SessionRegistryV2()).open({
+      agentSessionId: ownerSessionKey, workdir: process.cwd(), client: { kind: "terminal", host },
+    });
+    return undefined;
+  } catch (error) {
+    return { code: error instanceof ClawError ? error.code : "FOCUS_RECONCILIATION_FAILED",
+      message: error instanceof Error ? error.message : String(error), phase: "post-commit", effect: "committed" };
+  }
+}
+
 async function runPlanSync(args: string[], effectiveHost: ClawHost | undefined): Promise<void> {
   const ownerSessionKey = resolveOwnerSessionKey() ?? undefined;
   const result = showPlan({ cwd: process.cwd(), ...readPlanMutationTarget(args), ownerSessionKey });
@@ -2061,13 +2053,14 @@ async function runTemplate(args: string[]): Promise<void> {
       }
       assertNoRemainingArgs(args, "template validate");
 
-      const project = resolveProjectContext(process.cwd());
+      const projectRoot = findProjectRoot(process.cwd()) ?? process.cwd();
       const template = templateFile
         ? await resolvePlanTemplateFile(path.resolve(process.cwd(), templateFile))
         : await resolveSeedPlanTemplate({
-            projectRoot: project.projectRoot,
+            projectRoot,
             templateName,
           });
+      assertCurrentTemplateCreation(template);
       const choiceRequiredTasks = template.tasks.flatMap((task) => {
         const choiceIds = Object.keys(getTemplateTaskDoneChoices(template, task.id) ?? {});
         return choiceIds.length > 0 ? [{ taskId: task.id, choiceIds }] : [];
@@ -2078,7 +2071,7 @@ async function runTemplate(args: string[]): Promise<void> {
         ok: true,
         templateId: template.id,
         version: template.version,
-        ...(template.scope ? { scope: template.scope } : {}),
+        knowledgeCapture: template.knowledgeCapture ?? true,
         source: template.source,
         ...(template.templatePath ? { templatePath: template.templatePath } : {}),
         status: template.status,
@@ -2771,54 +2764,6 @@ function completeKnowledgeFinalizationJob(jobPath: string, result: string, claim
     jobPath, result, claimToken, status: "succeeded",
     onSuccess: (running) => recoverCompletionRefreshBestEffort(running.projectRoot, running.sessionId),
   }));
-}
-
-async function preparePlanCreateWorkflow(
-  cwd: string,
-  ownerSessionKey: string | null,
-  effectiveHost: ClawHost | undefined,
-  requestedScope: "session" | undefined,
-): Promise<void> {
-  if (requestedScope === "session" || resolveSessionWorkflowContext(ownerSessionKey ?? undefined)) {
-    return;
-  }
-  const project = tryResolveHookProject(cwd);
-  if (!project) {
-    return;
-  }
-  await prepareProjectWorkflow(cwd, ownerSessionKey, effectiveHost, project);
-}
-
-function assertDirectRootPlanCreateAllowed(
-  cwd: string,
-  ownerSessionKey: string | null,
-  requestedScope: "session" | undefined,
-): void {
-  if (!ownerSessionKey) return;
-  const project = requestedScope === "session"
-    ? resolveSessionWorkflowContext(ownerSessionKey)
-    : tryResolveHookProject(cwd);
-  if (!project) return;
-  const planPath = resolveSessionBoundPlan(project, ownerSessionKey);
-  if (!planPath) return;
-  const target = parseTaskPlanPath(project, planPath);
-  if (!target) {
-    throw new ClawError("PLAN_TRANSITION_CONFLICT", `Invalid session-bound plan path: ${planPath}`);
-  }
-  const current = showPlan({
-    cwd,
-    taskName: target.taskName,
-    planFile: target.planFile,
-    ownerSessionKey,
-  });
-  if (current.plan.status.startsWith("end.")) {
-    unbindSession(project, ownerSessionKey);
-    return;
-  }
-  assertRootPlanCreateAllowedForPlan(
-    createPlanRef(project, current.taskName, current.planFile),
-    current.plan,
-  );
 }
 
 async function prepareProjectWorkflow(
@@ -4041,17 +3986,35 @@ function normalizeVersionString(value: unknown): string | null {
   return trimmed ? trimmed : null;
 }
 
-function readWorkflowScope(args: string[]): "session" | undefined {
-  const value = readOptionalFlag(args, "--scope");
-  if (value === undefined) {
-    return undefined;
-  }
-  if (value === "session") {
-    return "session";
-  }
-  throw new ClawError("PROJECT_CONFIG_INVALID", "--scope currently accepts only session; omit it for project scope.", {
-    scope: value,
-  });
+/** Decode the whole command before opening a session or initializing a project. */
+function readPlanCreateIntent(args: string[]): Parameters<typeof createProjectPlan>[0] {
+  try {
+    if (args.some((arg) => arg === "--scope" || arg.startsWith("--scope="))) {
+      throw new ClawError("PLAN_SCOPE_REMOVED", "--scope has been removed. Use --knowledge-capture true|false to control knowledge accumulation.");
+    }
+    rejectFlags(args, ["--task", "--plan", "--content", "--status", "--parent-task-id", "--description"]);
+    const explicitTitle = readOptionalFlag(args, "--title");
+    const templateName = readOptionalFlag(args, "--template");
+    const templateFile = readOptionalFlag(args, "--template-file");
+    const goalText = readOptionalFlag(args, "--goal");
+    readOptionalFlag(args, "--plugin-version"); // advisory only
+    const capture = readOptionalFlag(args, "--knowledge-capture");
+    const noCapture = readBooleanFlag(args, "--no-knowledge-capture");
+    if (capture !== undefined && capture !== "true" && capture !== "false") {
+      throw new ClawError("PROJECT_CONFIG_INVALID", "--knowledge-capture accepts true or false.");
+    }
+    if (noCapture && capture === "true") throw new ClawError("PROJECT_CONFIG_INVALID", "Conflicting knowledge capture flags.");
+    if (templateName && templateFile) throw new ClawError("PROJECT_CONFIG_INVALID", "--template and --template-file are mutually exclusive.");
+    const title = explicitTitle ?? readOptionalPositionalArg(args);
+    if (!title) throw new ClawError("TASK_NAME_INVALID", "plan create requires a title.");
+    assertNoRemainingArgs(args, "plan create");
+    return { title,
+      ...(goalText !== undefined ? { goalText } : {}),
+      ...(templateName ? { templateName } : {}),
+      ...(templateFile ? { templateFile: path.resolve(process.cwd(), templateFile) } : {}),
+      ...(capture !== undefined || noCapture ? { knowledgeCapture: capture === "true" } : {}),
+    };
+  } catch (error) { throw withExecutionFailure(error, { phase: "prepare", outcome: "known", effect: "none" }); }
 }
 
 function readOptionalFlag(args: string[], flag: string): string | undefined {

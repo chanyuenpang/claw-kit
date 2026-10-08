@@ -1,16 +1,18 @@
+import { runTaskLifecycleMaintenance } from "../../core/dist/src/task-lifecycle.js";
 import test, { type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { initProject, knowledgeDelegateTemplatePath, readKnowledgeFinalizationJob,
-  resolveSessionWorkflowContext, resolveSessionBoundPlan, withExecutionFailure, type KnowledgeFinalizationJob } from "@veewo/claw-core";
+  enforceTaskRetention, resolveProjectContext, resolveSessionWorkflowContext, resolveSessionBoundPlan, writePlan, inspectDshFinalizerExecutions, withExecutionFailure, type KnowledgeFinalizationJob } from "@veewo/claw-core";
 import { SessionCommandExecutor } from "../dist/session-command.js";
 import { SessionRegistryV2 } from "../dist/session-registry-v2.js";
-import { reserveDshFinalizerExecutionCommand, markDshFinalizerDeliveryCommand } from "../dist/dsh-finalizer-execution.js";
+import { reserveDshFinalizerExecutionCommand, markDshFinalizerDeliveryCommand, releaseDshFinalizerExecutionCommand } from "../dist/dsh-finalizer-execution.js";
 
 type Host = "codex" | "cindy" | "dsh" | "opencode";
-async function fixture(t: TestContext, host: Host, builtin = false) {
+async function fixture(t: TestContext, host: Host, options: { builtin?: boolean; legacy?: boolean; templateId?: string } = {}) {
+  const { builtin = false, legacy = false, templateId } = options;
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "claw-delegate-close-"));
   const previous = process.env.CLAW_SESSION_RUNTIME_DIR;
   process.env.CLAW_SESSION_RUNTIME_DIR = path.join(cwd, "sessions");
@@ -36,19 +38,35 @@ async function fixture(t: TestContext, host: Host, builtin = false) {
   }
   const executor = new SessionCommandExecutor(new SessionRegistryV2(path.join(cwd, "registry")));
   const identity = { agentSessionId: actor, workdir: cwd, client: { kind: "adapter" as const, host } };
-  const templateFile = host === "cindy" || host === "dsh"
+  let templateFile = host === "cindy" || host === "dsh"
     ? path.resolve(path.dirname(knowledgeDelegateTemplatePath()), "..", host + "-delegate-writer", "TEMPLATE.json")
     : knowledgeDelegateTemplatePath();
-  const root = (await executor.execute(identity, { operation: "plan.create", input: { title: "Owned delegate", templateFile, forcePlanning: true } })).output as any;
+  if (templateId) {
+    const template = JSON.parse(fs.readFileSync(templateFile, "utf8")); template.id = templateId;
+    templateFile = path.join(cwd, "custom-delegate.json"); fs.writeFileSync(templateFile, JSON.stringify(template));
+  }
+  const root = legacy
+    ? await writePlan({ cwd, ownerSessionKey: actor, host, title: "Owned delegate", templateFile, forcePlanning: true, scope: "session", knowledgeCapture: false })
+    : (await executor.execute(identity, { operation: "plan.create", input: { title: "Owned delegate", templateFile, forcePlanning: true } })).output as any;
+  if (legacy) await executor.open(identity);
   const claim = (await executor.execute(identity, { operation: "knowledge.claim", input: { finalizeId } })).output as any;
   assert.equal(claim.claimed, true);
   assert.equal(readKnowledgeFinalizationJob(jobPath).delegateWorkflow?.planPath, root.planPath);
+  if (legacy) {
+    // Fixture bytes representing an already-claimed pre-upgrade job/receipt.
+    const old = readKnowledgeFinalizationJob(jobPath); delete old.delegateWorkflow!.scope;
+    if (old.claimReceipt) old.claimReceipt.template.scope = "session";
+    fs.writeFileSync(jobPath, JSON.stringify(old));
+    const assignment = JSON.parse(fs.readFileSync(claim.templatePath, "utf8")); assignment.scope = "session";
+    fs.writeFileSync(claim.templatePath, JSON.stringify(assignment, null, 2) + "\n");
+  }
   await executor.execute(identity, { operation: "task.done", input: { tasks: [{ id: 1 }] } });
   const child = (await executor.execute(identity, { operation: "subplan.create", input: { templateFile: claim.templatePath } })).output as any;
   const done = (status: "succeeded" | "failed") => executor.execute(identity, { operation: "knowledge.done", input: {
     finalizeId, claimToken: claim.claimToken, status, ...(status === "succeeded" ? { result: "Fixture result" } : { error: "Remaining conflict" }),
   } });
-  return { cwd, executor, identity, root, child, claim, jobPath, done };
+  const workflow = legacy ? resolveSessionWorkflowContext(actor)! : resolveProjectContext(cwd);
+  return { cwd, executor, identity, root, child, claim, jobPath, done, workflow };
 }
 
 for (const host of ["codex", "cindy", "dsh", "opencode"] as Host[]) {
@@ -60,13 +78,68 @@ for (const host of ["codex", "cindy", "dsh", "opencode"] as Host[]) {
     assert.equal(JSON.parse(fs.readFileSync(f.root.planPath, "utf8")).status, "end.completed");
     assert.equal(JSON.parse(fs.readFileSync(f.child.planPath, "utf8")).status, "end.completed");
     assert.equal(readKnowledgeFinalizationJob(f.jobPath).attempts, 1);
-    assert.equal(resolveSessionBoundPlan(resolveSessionWorkflowContext(f.identity.agentSessionId)!, f.identity.agentSessionId), null);
+    assert.equal(resolveSessionBoundPlan(f.workflow, f.identity.agentSessionId), null);
     assert.equal(fs.existsSync(f.claim.templatePath), false);
   });
 }
 
+test("legacy session delegate and frozen receipt resume without creating a replacement", async (t) => {
+  const f = await fixture(t, "dsh", { legacy: true });
+  const before = fs.readFileSync(f.jobPath, "utf8");
+  const receipt = (await f.executor.execute(f.identity, { operation: "knowledge.claim.receipt", input: { finalizeId: "a".repeat(64) } })).output as any;
+  assert.equal(receipt.claimToken, f.claim.claimToken);
+  assert.equal(fs.readFileSync(f.jobPath, "utf8"), before);
+  assert.equal(readKnowledgeFinalizationJob(f.jobPath).claimReceipt?.template.scope, "session");
+  await f.executor.execute(f.identity, { operation: "task.done", input: { tasks: [{ id: 1 }] } });
+  const result = (await f.done("succeeded")).output as any;
+  assert.equal(result.delegateClosed, true, JSON.stringify(result));
+  assert.equal(readKnowledgeFinalizationJob(f.jobPath).attempts, 1);
+  assert.equal(readKnowledgeFinalizationJob(f.jobPath).delegateWorkflow?.scope, undefined);
+});
+
+test("canonical admitted identity, not a template label, owns claim and release", async (t) => {
+  const f = await fixture(t, "dsh", { templateId: "renamed-auxiliary-template" });
+  await f.executor.execute(f.identity, { operation: "task.done", input: { tasks: [{ id: 1 }] } });
+  assert.equal((await f.done("succeeded")).output && readKnowledgeFinalizationJob(f.jobPath).status, "succeeded");
+  const [row] = inspectDshFinalizerExecutions({ project: resolveProjectContext(f.cwd), parentSessionId: "parent", finalizeId: "a".repeat(64) });
+  assert.equal(row?.readyForNext, true);
+});
+
+test("unreleased finalizer evidence survives archive and expiration until canonical release", async (t) => {
+  const f = await fixture(t, "dsh");
+  await f.executor.execute(f.identity, { operation: "task.done", input: { tasks: [{ id: 1 }] } });
+  await f.done("succeeded");
+  const project = resolveProjectContext(f.cwd);
+  const now = Date.now() + 40 * 86400000;
+  enforceTaskRetention(project, undefined, now);
+  runTaskLifecycleMaintenance(project, new Date(now));
+  assert.ok(fs.existsSync(f.root.planPath), "delegate proof must remain until release");
+  assert.ok(fs.existsSync(f.jobPath), "the source job is the only lease ledger");
+  const old = readKnowledgeFinalizationJob(f.jobPath);
+  assert.equal(releaseDshFinalizerExecutionCommand({ cwd: f.cwd, actorSessionId: f.identity.agentSessionId, finalizeId: old.finalizeId }).released, true);
+  enforceTaskRetention(project, undefined, now);
+  assert.equal(fs.existsSync(f.root.planPath), false, "protection must end after release");
+  const nextId = "b".repeat(64);
+  const nextPath = path.join(project.tasksDir, "next", ".runtime", "knowledge-finalization", nextId + ".json");
+  const next = { ...old, finalizeId: nextId, status: "queued", expiresAt: new Date(Date.now() + 120000).toISOString() } as any;
+  delete next.dshExecution; delete next.delegateWorkflow; delete next.claimReceipt; delete next.claimToken;
+  fs.mkdirSync(path.dirname(nextPath), { recursive: true }); fs.writeFileSync(nextPath, JSON.stringify(next));
+  const admitted = reserveDshFinalizerExecutionCommand({ cwd: f.cwd, parentSessionId: "parent", finalizeId: nextId,
+    route: "native-continuable", memberSessionId: f.identity.agentSessionId, provider: "spawn", configFingerprint: "test" });
+  assert.equal(admitted.admitted, true);
+});
+
+test("temporarily left parent with a running child cannot release the finalizer role", async (t) => {
+  const f = await fixture(t, "dsh");
+  const result = (await f.done("succeeded")).output as any;
+  assert.equal(result.delegateCloseDeferred, true);
+  const [row] = inspectDshFinalizerExecutions({ project: resolveProjectContext(f.cwd), parentSessionId: "parent", finalizeId: "a".repeat(64) });
+  assert.equal(row?.delegatePlanStatus, "end.leave");
+  assert.equal(row?.readyForNext, false);
+});
+
 test("built-in no-edit workflow preserves external docs and closes its real nested doc plan", async (t) => {
-  const f = await fixture(t, "codex", true);
+  const f = await fixture(t, "codex", { builtin: true });
   fs.mkdirSync(path.join(f.cwd, "docs"), { recursive: true });
   const documentPath = path.join(f.cwd, "docs", "existing.md");
   fs.writeFileSync(documentPath, "# Existing\nNo new facts in the supplied fixture.\n");
@@ -106,20 +179,20 @@ test("terminal receipt cannot close an unrelated current plan", async (t) => {
   const f = await fixture(t, "cindy");
   await f.executor.execute(f.identity, { operation: "plan.leave", input: {} });
   const other = (await f.executor.execute(f.identity, { operation: "plan.create", input: {
-    title: "Unrelated current work", goalText: "Do not close", scope: "session", knowledgeCapture: false,
+    title: "Unrelated current work", goalText: "Do not close", knowledgeCapture: false,
   } })).output as any;
   const before = fs.readFileSync(other.planPath, "utf8");
   const result = (await f.done("failed")).output as any;
   assert.notEqual(result.delegateClosed, true);
   assert.equal(fs.readFileSync(other.planPath, "utf8"), before);
-  assert.equal(resolveSessionBoundPlan(resolveSessionWorkflowContext(f.identity.agentSessionId)!, f.identity.agentSessionId), other.planPath);
+  assert.equal(resolveSessionBoundPlan(f.workflow, f.identity.agentSessionId), other.planPath);
 });
 
 test("a receipt for an old session delegate does not project completion onto new project work", async (t) => {
-  const f = await fixture(t, "cindy");
+  const f = await fixture(t, "cindy", { legacy: true });
   await f.executor.execute(f.identity, { operation: "plan.leave", input: {} });
   const other = (await f.executor.execute(f.identity, { operation: "plan.create", input: {
-    title: "New project work", goalText: "Preserve project focus", scope: "project", knowledgeCapture: false,
+    title: "New project work", goalText: "Preserve project focus", knowledgeCapture: false,
   } })).output as any;
   const before = fs.readFileSync(other.planPath, "utf8");
   const result = (await f.done("failed")).output as any;

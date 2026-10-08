@@ -33,7 +33,13 @@ function fixture(t: { after: (fn: () => void) => void }) {
   const identity = { agentSessionId: "guard-parent", workdir: cwd, client: { kind: "adapter" as const, host: "dsh" } };
   const execute = (operation: string, input: Record<string, unknown> = {}) => executor.execute(identity, { operation, input });
   const create = async (taskName: string, scope: "project" | "session" = "project") => {
-    const result = await execute("plan.create", { taskName, title: taskName, scope, knowledgeCapture: false,
+    if (scope === "session") {
+      const legacy = await writePlan({ cwd, scope, taskName, title: taskName, knowledgeCapture: false,
+        ownerSessionKey: identity.agentSessionId, goalText: "Guard legacy report registration", planStatus: "process.active" });
+      await executor.open(identity);
+      return legacy.planPath;
+    }
+    const result = await execute("plan.create", { taskName, title: taskName, knowledgeCapture: false,
       goalText: "Guard report registration", planStatus: "process.active" });
     return (result.output as { planPath: string }).planPath;
   };

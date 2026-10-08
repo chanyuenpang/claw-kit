@@ -25,7 +25,7 @@ export class ClawSessionError extends Error {
   readonly code: string;
   readonly retryable: boolean;
   readonly outcome: "known" | "unknown";
-  readonly phase?: "prepare" | "commit" | "post-commit";
+  readonly phase?: "prepare" | "initialize" | "commit" | "post-commit";
   readonly effect?: "none" | "partial" | "committed" | "unknown";
   readonly recoveryCommand?: string;
   readonly details?: Record<string, unknown>;
@@ -35,7 +35,7 @@ export class ClawSessionError extends Error {
     message: string;
     retryable: boolean;
     outcome: "known" | "unknown";
-    phase?: "prepare" | "commit" | "post-commit";
+    phase?: "prepare" | "initialize" | "commit" | "post-commit";
     effect?: "none" | "partial" | "committed" | "unknown";
     recoveryCommand?: string;
     details?: Record<string, unknown>;

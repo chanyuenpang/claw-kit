@@ -60,9 +60,11 @@ unavailable. A closeout failure must remain visible, not be reported as success.
    use its entry and supplied adjacent template through the selected host
    route. Do not first create a generic root plan.
 4. Otherwise create a plan for work expected to produce reusable project
-   knowledge. Temporary tracking and knowledge capture are separate choices:
-   session scope alone does not disable capture. Use an explicit opt-out only
-   through an operation actually supported by the host.
+   knowledge. New plans automatically initialize the local project environment
+   and default configuration when needed. There is no public storage-scope
+   choice. Use knowledge_capture:false (CLI: --no-knowledge-capture) for work
+   that needs tracking without knowledge accumulation; it keeps the same plan
+   lifecycle. Finalizer auxiliary plans always opt out of recursive capture.
 5. Follow returned `workflowGuidance` (Cindy Ghost: `guidance`) as the only
    lifecycle contract. Stage/current task determine work; `commandHints` are
    route-specific lookup aids, not commands to run through another transport.

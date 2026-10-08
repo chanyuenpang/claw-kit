@@ -12,6 +12,7 @@ import {
   withFileLock,
   writeJsonFileAtomic,
   type KnowledgeClaimant,
+  type KnowledgeDelegatePlan,
   reconcileKnowledgeFinalizationJob,
   recordKnowledgeFinalizationResult,
   resolveHostIntegrationProfile,
@@ -23,8 +24,22 @@ import {
 } from "@veewo/claw-core";
 import { collectReport, type ReportCollectorHost } from "./report-collector-registry.js";
 
+function resolveDirectDelegate(claimant: KnowledgeClaimant): KnowledgeDelegatePlan | undefined {
+  const project = resolveProjectContext(claimant.projectRoot);
+  const legacy = resolveSessionWorkflowContext(claimant.agentSessionId, { readOnly: true });
+  const candidates = [project, legacy].flatMap((target) => {
+    if (!target || path.resolve(target.projectRoot) !== path.resolve(claimant.projectRoot)) return [];
+    const planPath = resolveSessionBoundPlan(target, claimant.agentSessionId);
+    if (!planPath) return [];
+    const plan = JSON.parse(fs.readFileSync(planPath, "utf8")) as { status?: string };
+    return plan.status?.startsWith("end.") ? [] : [{ planPath, scope: target.scope ?? "project", projectRoot: target.projectRoot, ownerSessionId: claimant.agentSessionId }];
+  });
+  if (candidates.length > 1) throw new Error("KNOWLEDGE_DELEGATE_CONFLICT: more than one current workflow.");
+  return candidates[0];
+}
+
 /** One claim/terminal transition shared by the CLI and authenticated session service. */
-export function claimKnowledgeCommand(jobPath: string, version: string, claimant?: KnowledgeClaimant) {
+export function claimKnowledgeCommand(jobPath: string, version: string, claimant?: KnowledgeClaimant, currentDelegate?: () => KnowledgeDelegatePlan | undefined) {
   const observed = readKnowledgeFinalizationJob(jobPath);
   if (observed.dshExecution && claimant && readKnowledgeClaimReceipt(jobPath, claimant)) {
     return knowledgeClaimReceiptCommand(jobPath, claimant, "knowledge.claim");
@@ -33,18 +48,16 @@ export function claimKnowledgeCommand(jobPath: string, version: string, claimant
     claimant, version,
     resolveDelegatePlan: () => {
       if (!claimant) return undefined;
-      const session = resolveSessionWorkflowContext(claimant.agentSessionId);
-      const planPath = session && resolveSessionBoundPlan(session, claimant.agentSessionId);
-      if (!session || session.scope !== "session" || !planPath
-        || path.resolve(session.projectRoot) !== path.resolve(claimant.projectRoot)) {
-        if (observed.dshExecution) throw new Error("DSH_DELEGATE_PLAN_REQUIRED: no current session delegate for admitted child.");
+      // Session-command callers supply exact current focus. The fallback only
+      // serves legacy direct CLI callers without that application context.
+      const delegate = currentDelegate ? currentDelegate() : resolveDirectDelegate(claimant);
+      if (!delegate) {
+        if (observed.dshExecution) throw new Error("DSH_DELEGATE_PLAN_REQUIRED: no current delegate for admitted child.");
         return undefined;
       }
-      const plan = JSON.parse(fs.readFileSync(planPath, "utf8")) as { templateId?: string; knowledgeCapture?: boolean };
-      const delegateTemplate = ["internal-knowledge-delegate", "internal-cindy-knowledge-delegate", "internal-dsh-knowledge-delegate"].includes(plan.templateId ?? "");
-      // This selects an optional closeout target, not permission to claim.
-      if (!observed.dshExecution && (!delegateTemplate || plan.knowledgeCapture !== false)) return undefined;
-      return { planPath, scope: "session", projectRoot: session.projectRoot, ownerSessionId: claimant.agentSessionId };
+      const plan = JSON.parse(fs.readFileSync(delegate.planPath, "utf8")) as { knowledgeCapture?: boolean };
+      if (plan.knowledgeCapture !== false) throw new Error("KNOWLEDGE_DELEGATE_CAPTURE_REQUIRED: the current workflow must opt out of recursive capture.");
+      return delegate;
     },
     prepare: (queued) => {
       if (queued.reportCapture?.mode !== "claim"

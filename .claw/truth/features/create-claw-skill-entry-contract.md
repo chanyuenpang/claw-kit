@@ -15,7 +15,7 @@ Accepted working truth for the current template-backed skill conversion path.
   - 完整拥有更大计划中的一个独立阶段时，创建 subplan：`claw subplan create --template-file "<skill-dir>/TEMPLATE.json"`。已绑定 session 的当前 plan 与 task 由 Core 按单焦点合同隐式定位；不要传 task 容器名或父 task ID。
   - 只能在同一阶段内提供局部能力、无法独立产出阶段结果时，不创建 template plan；读取相邻 `FALLBACK.md`，在该阶段的 owning workflow 内使用。
 - Batch 不是第四条入口。它是 broader plan 中重复出现的独立阶段；父计划拥有排序与共享约束，每个阶段各调用一次 `create-claw-skill` subplan。
-- 无 `.claw` cwd 也不是 skill-level 路由。显式 `--template-file`（以及兼容的 `--template <id>`）的 `claw plan create` 由 core 自动选择 session scope；skill 不暴露或要求手工 `--scope session`。普通 `claw plan create "<title>"` 仍保留初始化项目的行为。
+- 无 `.claw` cwd 也不是 skill-level 路由。显式模板与普通 `plan create` 统一由 Core 自动初始化本项目环境和默认配置；不再提供 `scope` 选择。辅助工作用 `knowledgeCapture:false` 关闭自身知识积累，不改变存储与完成规则。
 - 创建 plan 或 subplan 后，后续只跟随返回的 `workflowGuidance`；template 拥有结构化执行流程。
 
 ## 转换产物

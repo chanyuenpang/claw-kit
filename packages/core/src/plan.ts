@@ -2,10 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { buildCompletionHooks } from "./completion-hooks.js";
-import { ensureTaskContext, findTaskDirectory, listTaskDirectories, removeLegacyTaskMeta, resolveProjectContext, resolveTaskContext, resolveTaskName } from "./context.js";
+import { allocateTaskContext, ensureTaskContext, findTaskDirectory, listTaskDirectories, previewProjectConfig, removeLegacyTaskMeta, resolveProjectContext, resolveTaskContext, resolveTaskName } from "./context.js";
 import { resolvePlanEffectiveConfig } from "./effective-config.js";
 import { ClawError, withExecutionFailure, type ClawExecutionFailure } from "./errors.js";
 import { commitSubplanCreation, completeSubplanAndRestoreParent, createPlanRef, ProjectFocusSessionStore, readFocusedPlan } from "./focus-transitions.js";
+import { buildDefaultProjectConfig, ensureProjectEnvironment } from "./init.js";
+import { assertRootPlanCreateAllowedForPlan } from "./focus-transitions.js";
 import { assertSingleTaskActivation, currentPlanTask } from "./task-focus.js";
 import { isIntegrationHost, resolveHostIntegrationProfile } from "./integration-contract.js";
 import { readJsonFile, withFileLock, withSerializedAccess, writeJsonFile } from "./io.js";
@@ -15,12 +17,13 @@ import {
   isProcessStatus,
 } from "./requirements-gate.js";
 import { buildPlanViewModel, buildSimplePlanView } from "./plan-view.js";
-import { getTemplateTaskDoneChoices, getTemplateTaskDoneGuidanceRoute, getTemplateTaskPlanStartGuidance, renderSeedTemplateText, resolveSeedPlanTemplate } from "./plan-templates.js";
+import { assertCurrentTemplateCreation, getTemplateTaskDoneChoices, getTemplateTaskDoneGuidanceRoute, getTemplateTaskPlanStartGuidance, renderSeedTemplateText, resolveSeedPlanTemplate } from "./plan-templates.js";
 import { ensureInsideDir, findProjectRoot, normalizePlanFile, slugFromFilePath } from "./paths.js";
-import { bindSessionToPlan, resolveSessionBoundPlan, unbindSession } from "./session-bindings.js";
+import { bindSessionToPlan, readSessionBoundPlanPath, resolveSessionBoundPlan, unbindSession } from "./session-bindings.js";
 import { resolveSessionWorkflowContext, resolveWorkflowProjectContext } from "./session-workflows.js";
 import type {
   LegacyPlanStatus,
+  PlanCreateIntent,
   PlanDocument,
   PlanEditInput,
   PlanEditResult,
@@ -120,6 +123,63 @@ async function resolveTemplateCreationScope(
   return template.scope;
 }
 
+/** Shared public creation owner. Capture intent never selects a storage root. */
+export async function createProjectPlan(
+  intent: PlanCreateIntent,
+  context: Pick<PlanWriteInput, "cwd" | "ownerSessionKey" | "host"> & { checkFocus?: () => void },
+): Promise<PlanWriteResult & { events: PlanEvent[] }> {
+  const execution: ClawExecutionFailure = { phase: "prepare", outcome: "known", effect: "none" };
+  try {
+    if (Object.prototype.hasOwnProperty.call(intent, "scope")) {
+      throw new ClawError("PLAN_SCOPE_REMOVED", "scope is no longer a plan creation parameter. Use knowledgeCapture to control knowledge accumulation.");
+    }
+    if (intent.knowledgeCapture !== undefined && typeof intent.knowledgeCapture !== "boolean") {
+      throw new ClawError("PROJECT_CONFIG_INVALID", "knowledgeCapture must be a boolean.");
+    }
+    if (intent.forcePlanning !== undefined && typeof intent.forcePlanning !== "boolean") {
+      throw new ClawError("PROJECT_CONFIG_INVALID", "forcePlanning must be a boolean.");
+    }
+    if (intent.templateName?.trim() && intent.templateFile?.trim()) {
+      throw new ClawError("PROJECT_CONFIG_INVALID", "templateName and templateFile are mutually exclusive.");
+    }
+    const taskName = deriveTaskName({ ...intent, cwd: context.cwd });
+    const existingRoot = findProjectRoot(context.cwd);
+    const projectRoot = existingRoot ?? path.resolve(context.cwd);
+    const legacy = resolveSessionWorkflowContext(context.ownerSessionKey, { readOnly: true });
+    context.checkFocus?.();
+    if (context.ownerSessionKey) {
+      const contexts = [existingRoot ? resolveProjectContext(existingRoot) : null, legacy];
+      for (const project of contexts) {
+        if (!project) continue;
+        const bound = readSessionBoundPlanPath(project, context.ownerSessionKey);
+        if (!bound || !fs.existsSync(bound)) continue;
+        const current = normalizePlanDocument(readJsonFile<PlanDocument>(bound));
+        assertRootPlanCreateAllowedForPlan(createPlanRef(project, path.basename(path.dirname(bound)), path.basename(bound), path.dirname(bound)), current);
+      }
+    }
+    const config = previewProjectConfig(projectRoot, buildDefaultProjectConfig({ cwd: projectRoot }));
+    const templateFile = intent.templateFile ? path.resolve(context.cwd, intent.templateFile) : undefined;
+    const status = intent.planStatus === undefined ? "prepare.requirements" : normalizePlanStatus(intent.planStatus);
+    if (!status) throw new ClawError("PLAN_STATUS_INVALID", "Invalid initial plan status.");
+    const plan = normalizePlanDocument(await createSeedPlan(projectRoot, config, intent.templateName, templateFile,
+      taskName, intent.title, intent.goalText, status, intent.forcePlanning, context.host, existingRoot ?? undefined, true), status);
+    const delegate = plan.tasks.some((task) => task.execution?.lifecycle === "knowledge.result");
+    if (delegate && (intent.knowledgeCapture ?? plan.knowledgeCapture) !== false) {
+      throw new ClawError("PROJECT_CONFIG_INVALID", "A knowledge-result workflow must not recursively capture itself.");
+    }
+    plan.knowledgeCapture = intent.knowledgeCapture ?? plan.knowledgeCapture;
+    const initialized = ensureProjectEnvironment(projectRoot);
+    if (initialized.createdPaths.length) Object.assign(execution, { phase: "initialize", outcome: "known", effect: "committed" });
+    Object.assign(execution, { phase: "commit", outcome: "unknown", effect: "unknown" });
+    const allocated = allocateTaskContext(resolveProjectContext(projectRoot), taskName);
+    const result = await writePlan({ ...intent, ...context, cwd: projectRoot, taskName: allocated.taskName, scope: "project", content: plan });
+    result.createdTask = true;
+    Object.assign(execution, { phase: "post-commit", outcome: "known", effect: "committed" });
+    if (legacy && context.ownerSessionKey) unbindSession(legacy, context.ownerSessionKey);
+    return result;
+  } catch (error) { throw withExecutionFailure(error, execution); }
+}
+
 export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult & { events: PlanEvent[] }> {
   const execution: ClawExecutionFailure = { phase: "prepare", outcome: "known", effect: "none" };
   try { return await writePlanWithOutcome(input, execution); }
@@ -190,6 +250,9 @@ async function writePlanWithOutcome(input: PlanWriteInput, execution: ClawExecut
     throw new ClawError("KNOWLEDGE_CAPTURE_TARGET_REQUIRED", "Knowledge capture is enabled by default, but session storage has no project task capture target. Use project storage or add --no-knowledge-capture.", { scope: project.scope, knowledgeCapture });
   }
   plan.knowledgeCapture = knowledgeCapture;
+  if (knowledgeCapture && plan.tasks.some((task) => task.execution?.lifecycle === "knowledge.result")) {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "A knowledge-result workflow must not recursively capture itself.");
+  }
   assertSingleTaskActivation(existing, plan);
 
   let parentPlanPath: string | undefined;
@@ -1250,6 +1313,7 @@ async function createSeedPlan(
   forcePlanning = false,
   host?: string,
   templateProjectRoot?: string,
+  publicCreation = false,
 ): Promise<PlanDocument> {
   const effectiveTemplateName = templateFile
     ? undefined
@@ -1263,6 +1327,7 @@ async function createSeedPlan(
       ...(configFallback?.knowledgeWriter ? { knowledgeWriter: configFallback.knowledgeWriter } : {}),
     },
   });
+  if (publicCreation) assertCurrentTemplateCreation(template);
   const effectiveConfig = resolvePlanEffectiveConfig(projectConfig, {
     configOverride: template.configOverride,
   });

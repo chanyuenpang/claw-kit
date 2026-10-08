@@ -227,6 +227,18 @@ export function assertRootPlanCreateAllowed(input: {
   assertRootPlanCreateAllowedForPlan(currentPlan, current);
 }
 
+/** Maintenance must retain the backing files until the canonical focus owner
+ * releases them, including a terminal plan awaiting projection reconciliation. */
+export function focusedTaskDirectories(project: ProjectContext): string[] {
+  return Object.values(readOwnerRegistry(project).owners).flatMap(({ planRef }) => {
+    if (planRef.taskPath) {
+      const directory = ensureInsideDir(project.tasksDir, planRef.taskPath);
+      return directory ? [directory] : [];
+    }
+    return listTaskDirectories(project).filter((task) => task.taskName === planRef.taskName).map((task) => task.taskDir);
+  });
+}
+
 export function readPlanFocusOwner(
   project: ProjectContext,
   ref: PlanRef,

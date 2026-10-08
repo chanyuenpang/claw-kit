@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { readJsonFile } from "./io.js";
+import { taskMaintenanceProtection } from "./task-maintenance-protection.js";
 import { listTaskDirectories } from "./context.js";
 import { DEFAULT_MAX_TASKS_TO_KEEP } from "./project-defaults.js";
 import type { ArchivedTaskRecord, PlanDocument, ProjectContext, TaskRetentionFailure, TaskRetentionResult } from "./types.js";
@@ -13,6 +14,7 @@ export function enforceTaskRetention(
   nowMs = Date.now(),
   options: { includeDatedTasks?: boolean; includeLegacyTasks?: boolean } = {},
 ): TaskRetentionResult {
+  const protectedTask = taskMaintenanceProtection(project);
   const maxTasksToKeep = project.projectConfig?.maxTasksToKeep ?? DEFAULT_MAX_TASKS_TO_KEEP;
   const archiveTasksRoot = path.join(project.clawDir, "archive", "tasks");
   const prunedArchivedTasks: ArchivedTaskRecord[] = [];
@@ -21,6 +23,7 @@ export function enforceTaskRetention(
   let archivedCurrentTask: ArchivedTaskRecord | undefined;
 
   for (const task of listTaskDirectories(project)) {
+    if (protectedTask(task.taskDir)) continue;
     if (options.includeDatedTasks === false && /^\d{4}-\d{2}-\d{2}[\\/]/.test(task.relativePath)) {
       continue;
     }
@@ -44,6 +47,7 @@ export function enforceTaskRetention(
   if (retainedArchivedTasks.length > maxTasksToKeep) {
     const overflow = retainedArchivedTasks.length - maxTasksToKeep;
     const toPrune = retainedArchivedTasks
+      .filter((task) => !protectedTask(task.archivedTaskDir))
       .sort(compareArchivedTasksByCompletedAt)
       .slice(0, overflow);
 

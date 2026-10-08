@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { ClawError } from "./errors.js";
-import { readJsonFile, writeJsonFileAtomic } from "./io.js";
+import { readJsonFile, withFileLock, writeJsonFileAtomic } from "./io.js";
 import { ensureInsideDir, findProjectRoot, isValidTaskName, normalizePlanFile, normalizeTaskName } from "./paths.js";
 import {
   DEFAULT_KNOWLEDGE_DATED_SECTIONS_TO_KEEP,
@@ -105,6 +105,19 @@ export function resolveContext(cwd: string, taskName?: string): ResolvedContext 
   };
 }
 
+/** Allocate a fresh container for public root creation, including auxiliary
+ * delegates. Identical display titles across actors must not overwrite work. */
+export function allocateTaskContext(project: ProjectContext, taskName: string): TaskContext {
+  const base = resolveTaskName(taskName);
+  return withFileLock(path.join(project.tasksDir, ".root-create"), () => {
+    let name = base, ordinal = 2;
+    while (findTaskDirectory(project, name)) name = base + "-" + ordinal++;
+    const taskDir = path.join(project.tasksDir, currentTaskDate(), name);
+    fs.mkdirSync(taskDir, { recursive: true });
+    return { project, taskName: name, taskDir, activePlan: "plan.json", activePlanPath: path.join(taskDir, "plan.json") };
+  });
+}
+
 export function ensureTaskContext(
   project: ProjectContext,
   taskName: string,
@@ -182,19 +195,26 @@ export function resolveTaskName(taskName: string): string {
   return normalized;
 }
 
-function readProjectConfig(projectJsonPath: string): ProjectConfig {
+/** Read effective defaults plus an existing personal override without writing. */
+export function previewProjectConfig(projectRoot: string, defaults: ProjectConfig): ProjectConfig {
+  return readProjectConfig(path.join(projectRoot, ".claw", "project.json"), defaults);
+}
+
+function readProjectConfig(projectJsonPath: string, defaults?: ProjectConfig): ProjectConfig {
   try {
     const projectOverridePath = path.join(path.dirname(projectJsonPath), "project-override.json");
     const stamps: [FileStamp, FileStamp] = [fileStamp(projectJsonPath), fileStamp(projectOverridePath)];
     const cacheKey = path.resolve(projectJsonPath);
     const cached = configCache.get(cacheKey);
-    if (cached && sameStamps(cached.stamps, stamps)) return cached.config;
-    const projectConfig = readJsonFile<ProjectConfig>(projectJsonPath);
+    const useDefaults = !stamps[0].exists && defaults !== undefined;
+    if (!useDefaults && cached && sameStamps(cached.stamps, stamps)) return cached.config;
+    const projectConfig = useDefaults ? defaults : readJsonFile<ProjectConfig>(projectJsonPath);
     const projectOverride = stamps[1].exists ? readJsonFile<ProjectConfig>(projectOverridePath) : undefined;
     const config = normalizeProjectConfig(mergeProjectConfig(
       migrateLegacyWriterConfigLayer(projectConfig),
       migrateLegacyWriterConfigLayer(projectOverride),
     ));
+    if (useDefaults) return config;
     configCache.delete(cacheKey);
     configCache.set(cacheKey, { stamps, config });
     if (configCache.size > CONFIG_CACHE_LIMIT) configCache.delete(configCache.keys().next().value!);

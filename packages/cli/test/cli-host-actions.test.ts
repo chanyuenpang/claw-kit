@@ -67,9 +67,9 @@ test("cli codex driver returns an executable versioned source envelope", async (
   const root = createFixture("codex-driver-envelope");
   const envelope = runClaw(["codex", "driver"], root, { CLAW_HOST: "" });
   assert.equal(envelope.command, "codex.driver");
-  assert.equal(envelope.driverVersion, 24);
+  assert.equal(envelope.driverVersion, 25);
   assert.equal(envelope.hostActionSchemaVersion, 1);
-  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v24:s1");
+  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v25:s1");
   assert.match(String(envelope.sha256), /^[a-f0-9]{64}$/);
 
   const runner = (0, eval)(`(${String(envelope.source)})`) as (
@@ -252,7 +252,7 @@ test("Codex driver never installs or replays after a real CLI compatibility erro
 test("Codex driver runs the real Claw lifecycle without a native update_plan tool", async () => {
   const root = createFixture("codex-driver-claw-lifecycle");
   const env = { CODEX_THREAD_ID: "codex-driver-claw-lifecycle" };
-  runClaw(["init", "--name", "Codex Driver Lifecycle", "--planning", "false"], root, env);
+  runClaw(["init", "--name", "Codex Driver Lifecycle", "--planning", "true"], root, env);
   const envelope = runClaw(["codex", "driver"], root, env);
   const runner = (0, eval)(`(${String(envelope.source)})`) as (
     input: Record<string, unknown>,
@@ -284,7 +284,7 @@ test("Codex driver runs the real Claw lifecycle without a native update_plan too
     assert.equal(result.hostEffectFailures, undefined);
     return result;
   };
-  const created = await mutate(["plan", "create", "--title", "driver-lifecycle", "--scope", "session", "--no-knowledge-capture"]);
+  const created = await mutate(["plan", "create", "--title", "driver-lifecycle", "--no-knowledge-capture"]);
   const planPath = String(created.planPath);
   const readPlan = () => JSON.parse(fs.readFileSync(planPath, "utf8")) as {
     status: string;
@@ -302,12 +302,12 @@ test("Codex driver runs the real Claw lifecycle without a native update_plan too
   await mutate(["plan", "resume"]);
   await mutate(["plan", "sync"]);
   for (const task of readPlan().tasks) await mutate(["task", "done", "--id", String(task.id)]);
-  const completed = await mutate(["plan", "done"]);
+  const completed = await mutate(["plan", "done", "--retrospective", "Driver lifecycle verified without knowledge accumulation."]);
   assert.equal(completed.planStatus, "end.completed");
   assert.equal(readPlan().status, "end.completed");
   assert.equal(readPlan().tasks.every((task) => task.status === "done"), true);
   assert.equal(goal?.status, "complete");
-  await mutate(["plan", "create", "--title", "driver-leave", "--scope", "session", "--no-knowledge-capture"]);
+  await mutate(["plan", "create", "--title", "driver-leave", "--no-knowledge-capture"]);
   await mutate(["plan", "start", "--requirements", "Verify cancellation through the driver.", "--add-task", "Cancelled task"]);
   const left = await mutate(["plan", "edit", "--status", "end.leave"]);
   assert.equal(left.planStatus, "end.leave");

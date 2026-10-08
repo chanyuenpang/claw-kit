@@ -1,7 +1,6 @@
 {
   "id": "internal-cindy-knowledge-delegate",
   "version": "1.0.0",
-  "scope": "session",
   "knowledgeCapture": false,
   "title": "internal Cindy knowledge delegate",
   "status": "process.active",

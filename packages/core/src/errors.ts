@@ -48,10 +48,12 @@ export type ClawErrorCode =
   | "KNOWLEDGE_CANONICAL_FORMAT_INVALID"
   | "TRUTH_TARGET_INVALID"
   | "CLI_PLUGIN_VERSION_LAGGING"
+  | "PLAN_SCOPE_REMOVED"
+  | "PROJECT_INITIALIZATION_FAILED"
   | "INPUT_REQUIRED";
 
 export type ClawExecutionFailure = {
-  phase: "prepare" | "commit" | "post-commit";
+  phase: "prepare" | "initialize" | "commit" | "post-commit";
   outcome: "known" | "unknown";
   effect: "none" | "partial" | "committed" | "unknown";
 };

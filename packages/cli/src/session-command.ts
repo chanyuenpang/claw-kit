@@ -1,4 +1,4 @@
-import { ClawError, recoverProjectFocusTransitions, resolveProjectContext } from "@veewo/claw-core";
+import { ClawError, recoverProjectFocusTransitions, resolveProjectContext, resolveSessionWorkflowContext } from "@veewo/claw-core";
 import { ClawCommandService, type CommandContext } from "./command-service.js";
 import { decodeClawCommand } from "./command-contract.js";
 import { SessionRegistryV2, createSessionIdentity, sessionFocusKey, type SessionClientInfo } from "./session-registry-v2.js";
@@ -30,7 +30,9 @@ export class SessionCommandExecutor {
         if (!(error instanceof ClawError) || error.code !== "CLAW_DIR_NOT_FOUND") throw error;
         projectAvailable = false;
       }
-      if (projectAvailable) await this.service.reconcileCanonicalFocus(context);
+      const legacySession = resolveSessionWorkflowContext(context.agentSessionId, { readOnly: true });
+      if (legacySession) await recoverProjectFocusTransitions({ project: legacySession, sessionStore: this.service.focusStore });
+      if (projectAvailable || legacySession) await this.service.reconcileCanonicalFocus(context);
       return action(context, canonical.sessionKeyHash);
     });
   }

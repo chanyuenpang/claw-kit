@@ -50,7 +50,7 @@ export function createSessionWorkflowContext(cwd: string, sessionKey: string): P
   return buildSessionContext(workflowDir, originCwd);
 }
 
-export function resolveSessionWorkflowContext(sessionKey: string | undefined): ProjectContext | null {
+export function resolveSessionWorkflowContext(sessionKey: string | undefined, options: { readOnly?: boolean } = {}): ProjectContext | null {
   const normalizedKey = sessionKey?.trim();
   if (!normalizedKey) {
     return null;
@@ -64,7 +64,7 @@ export function resolveSessionWorkflowContext(sessionKey: string | undefined): P
   if (!manifest) {
     return null;
   }
-  writeJsonFile(manifestPath, { ...manifest, updatedAt: new Date().toISOString() });
+  if (!options.readOnly) writeJsonFile(manifestPath, { ...manifest, updatedAt: new Date().toISOString() });
   return buildSessionContext(workflowDir, manifest.originCwd);
 }
 

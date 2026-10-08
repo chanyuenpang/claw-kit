@@ -209,7 +209,6 @@ test("persistent session starts a planning plan through the typed protocol", asy
         taskName: "plan-start",
         title: "Plan start",
         goalText: "Start through JSONL",
-        scope: "session",
         knowledgeCapture: false,
       },
     });
@@ -259,7 +258,6 @@ test("DSH daemon emits host actions for session-scoped workflows", async () => {
         taskName: "dsh-session-actions",
         title: "DSH session actions",
         goalText: "Project native Todo and Goal state",
-        scope: "session",
         knowledgeCapture: false,
       },
     });
@@ -284,7 +282,7 @@ test("DSH daemon emits host actions for session-scoped workflows", async () => {
 
     const completed = await opened.commandEnvelope({
       operation: "plan.done",
-      input: {},
+      input: { retrospectiveSummary: "Non-capturing workflow and Goal projection verified." },
     });
     assert.deepEqual(completed.hostActions?.map((action) => action.tool), ["update_plan", "update_goal"]);
     assert.deepEqual(completed.hostActions?.[0]?.input, {
@@ -298,7 +296,7 @@ test("DSH daemon emits host actions for session-scoped workflows", async () => {
   }
 });
 
-test("session-scoped daemon completion omits knowledge dispatch and finalization jobs", async () => {
+test("non-capturing daemon completion omits knowledge dispatch and finalization jobs", async () => {
   const runtimeRoot = fixture("session-scope-closeout-runtime");
   const projectRoot = fixture("session-scope-closeout-project");
   const agentSessionId = `session-scope-closeout-${path.basename(runtimeRoot)}`;
@@ -314,7 +312,6 @@ test("session-scoped daemon completion omits knowledge dispatch and finalization
         taskName: "session-scope-closeout-plan",
         title: "Session scope closeout",
         goalText: "Complete without project knowledge deposition",
-        scope: "session",
         knowledgeCapture: false,
       },
     });
@@ -427,7 +424,7 @@ test("Cindy daemon sessions coerce background config to the templated no-Stop kn
     const dispatch = done.knowledgeDispatch as { policy?: string; prompt?: string } | undefined;
     assert.equal("policy" in (dispatch ?? {}), false);
     assert.match(String(dispatch?.prompt), /resources[\\/]cindy-delegate-writer[\\/]TEMPLATE\.json/);
-    assert.match(String(dispatch?.prompt), /session plan/i);
+    assert.match(String(dispatch?.prompt), /non-capturing auxiliary plan/i);
     assert.match(String(dispatch?.prompt), /assignment subplan/i);
     assert.match(String(dispatch?.prompt), /claw-kit.*Ghost/is);
     assert.doesNotMatch(String(dispatch?.prompt), /did-turn-end|Stop hook|knowledge wait/i);
@@ -473,7 +470,8 @@ test("DSH daemon sessions coerce a fresh project's default background config to 
     assert.equal(dispatch?.preferReuse, true);
     assert.ok(String(dispatch?.prompt).includes("knowledge-finalizer-" + String(dispatch?.finalizeId)));
     const template = JSON.parse(fs.readFileSync(new URL("../../core/dist/src/resources/dsh-delegate-writer/TEMPLATE.json", import.meta.url), "utf8"));
-    assert.equal(template.scope, "session");
+    assert.equal(template.scope, undefined);
+    assert.equal(template.knowledgeCapture, false);
     assert.equal(template.knowledgeCapture, false);
     for (const operation of ["knowledge.claim", "subplan.create", "knowledge.done"]) {
       assert.ok(template.tasks.some((task: { detail: string }) => task.detail.includes(operation)));

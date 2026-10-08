@@ -43,9 +43,24 @@ import {
   createNpmShim,
   createClawUpdateNpmShim,
 } from "./cli-test-support.js";
+import { writePlan } from "@veewo/claw-core";
+
+/** Materialize pre-upgrade storage, never call the removed public selector. */
+async function legacySession(title: string, cwd: string, env: NodeJS.ProcessEnv, host = "opencode") {
+  const previous = process.env.CLAW_SESSION_RUNTIME_DIR;
+  process.env.CLAW_SESSION_RUNTIME_DIR = env.CLAW_SESSION_RUNTIME_DIR ?? moduleSessionRuntimeDir;
+  try {
+    const result = await writePlan({ cwd, title, scope: "session", knowledgeCapture: false,
+      ownerSessionKey: env.CLAW_SESSION_ID ?? env.CODEX_THREAD_ID ?? env.CODEX_SESSION_ID, host });
+    return { ...result, ok: true };
+  } finally {
+    if (previous === undefined) delete process.env.CLAW_SESSION_RUNTIME_DIR;
+    else process.env.CLAW_SESSION_RUNTIME_DIR = previous;
+  }
+}
 
 
-test("session scope restores through context across cwd and cleans without project side effects", () => {
+test("session scope restores through context across cwd and cleans without project side effects", async () => {
   const firstCwd = createFixture("session-scope-first");
   const secondCwd = createFixture("session-scope-second");
   const runtimeDir = createFixture("session-scope-runtime");
@@ -54,7 +69,7 @@ test("session scope restores through context across cwd and cleans without proje
     CLAW_SESSION_RUNTIME_DIR: runtimeDir,
   };
 
-  const created = runClaw(["plan", "create", "Session harness", "--scope", "session", "--no-knowledge-capture"], firstCwd, env);
+  const created = await legacySession("Session harness", firstCwd, env);
   assert.equal(created.ok, true);
   assert.match(String(created.planPath), new RegExp(runtimeDir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.equal(fs.existsSync(path.join(firstCwd, ".claw")), false);
@@ -76,7 +91,7 @@ test("session scope restores through context across cwd and cleans without proje
   assert.equal(fs.existsSync(path.join(secondCwd, ".claw")), false);
 });
 
-test("CLAW_SESSION_ID restores a Cindy session-scoped workflow", () => {
+test("CLAW_SESSION_ID restores a Cindy session-scoped workflow", async () => {
   const firstCwd = createFixture("cindy-session-scope-first");
   const secondCwd = createFixture("cindy-session-scope-second");
   const runtimeDir = createFixture("cindy-session-scope-runtime");
@@ -85,7 +100,7 @@ test("CLAW_SESSION_ID restores a Cindy session-scoped workflow", () => {
     CLAW_SESSION_RUNTIME_DIR: runtimeDir,
   };
 
-  const created = runClaw(["plan", "create", "Cindy session", "--scope", "session", "--no-knowledge-capture"], firstCwd, env);
+  const created = await legacySession("Cindy session", firstCwd, env);
   const context = runClaw(["context"], secondCwd, env);
 
   assert.equal(created.ok, true);
@@ -93,7 +108,7 @@ test("CLAW_SESSION_ID restores a Cindy session-scoped workflow", () => {
   assert.equal((context.activeWorkflow as JsonRecord).planPath, created.planPath);
 });
 
-test("a template outside a claw project still requires an explicit session scope", () => {
+test("a named template outside a claw project uses automatic project setup", () => {
   const cwd = createFixture("template-auto-session-cwd");
   const homeRoot = createFixture("template-auto-session-home");
   const runtimeDir = createFixture("template-auto-session-runtime");
@@ -111,19 +126,19 @@ test("a template outside a claw project still requires an explicit session scope
     CODEX_THREAD_ID: "thread-template-session-scope",
     CLAW_SESSION_RUNTIME_DIR: runtimeDir,
   };
-  const result = runClawExpectFailure(["plan", "create", "Session template harness", "--template", "session-harness"], cwd, env);
-  assert.equal((result.error as JsonRecord).code, "PLAN_CREATE_SCOPE_DECISION_REQUIRED");
-  assert.equal(fs.existsSync(path.join(cwd, ".claw")), false);
+  const result = runClaw(["plan", "create", "Template harness", "--template", "session-harness"], cwd, env);
+  assert.ok(String(result.planPath).startsWith(path.join(cwd, ".claw", "tasks")));
+  assert.equal(fs.existsSync(path.join(cwd, ".claw", "project.json")), true);
 });
 
-test("explicit session scope overrides an initialized project and remains isolated by session id", () => {
+test("legacy session storage remains isolated from project tasks and other session ids", async () => {
   const root = createFixture("session-scope-project-override");
   const runtimeDir = createFixture("session-scope-project-runtime");
   runClaw(["init", "--name", "Project scope"], root);
   const projectTasksBefore = fs.readdirSync(path.join(root, ".claw", "tasks"));
   const env = { CODEX_THREAD_ID: "thread-session-project", CLAW_SESSION_RUNTIME_DIR: runtimeDir };
 
-  const created = runClaw(["plan", "create", "Ephemeral override", "--scope", "session", "--no-knowledge-capture"], root, env);
+  const created = await legacySession("Ephemeral override", root, env);
   assert.match(String(created.planPath), new RegExp(runtimeDir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.deepEqual(fs.readdirSync(path.join(root, ".claw", "tasks")), projectTasksBefore);
 
@@ -149,7 +164,7 @@ test("session plan completion refreshes its claw-project origin without knowledg
   };
   runClaw(["init", "--name", "Session Refresh Origin", "--gitnexus", "true", "--planning", "false"], root, env);
   const projectTasksBefore = fs.readdirSync(path.join(root, ".claw", "tasks"));
-  const created = runClaw(["plan", "create", "Session refresh", "--scope", "session", "--no-knowledge-capture"], root, env);
+  const created = await legacySession("Session refresh", root, env);
   const sessionPlan = JSON.parse(fs.readFileSync(String(created.planPath), "utf-8")) as { tasks: Array<{ id: number }> };
 
   for (const task of sessionPlan.tasks) {
@@ -169,15 +184,17 @@ test("session plan completion refreshes its claw-project origin without knowledg
   runClaw(["session", "clean"], root, env);
 });
 
-test("a completed session workflow cannot make the next plan implicit session scope", () => {
+test("a completed session workflow cannot make the next plan implicit session scope", async () => {
   const root = createFixture("session-scope-does-not-stick");
   const runtimeDir = createFixture("session-scope-does-not-stick-runtime");
   const env = { CODEX_THREAD_ID: "thread-session-does-not-stick", CLAW_SESSION_RUNTIME_DIR: runtimeDir };
   runClaw(["init", "--name", "Project scope"], root);
 
-  const sessionPlan = runClaw(["plan", "create", "Explicit session", "--scope", "session", "--no-knowledge-capture"], root, env);
+  const sessionPlan = await legacySession("Explicit session", root, env);
   assert.match(String(sessionPlan.planPath), new RegExp(runtimeDir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 
+  runClaw(["task", "done", "--id", "1"], root, env);
+  runClaw(["plan", "done"], root, env);
   const projectPlan = runClaw(["plan", "create", "Default project"], root, env);
   assert.match(String(projectPlan.planPath), /\\.claw[\\/]tasks[\\/]/);
   assert.doesNotMatch(String(projectPlan.planPath), new RegExp(runtimeDir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
@@ -185,21 +202,14 @@ test("a completed session workflow cannot make the next plan implicit session sc
   runClaw(["session", "clean"], root, env);
 });
 
-test("DSH session workflows retain Todo and Goal host actions", () => {
+test("DSH session workflows retain Todo and Goal host actions", async () => {
   const root = createFixture("dsh-session-host-actions");
   const runtimeDir = createFixture("dsh-session-host-actions-runtime");
   const env = { CODEX_THREAD_ID: "thread-dsh-session-actions", CLAW_SESSION_RUNTIME_DIR: runtimeDir };
 
-  const created = runClaw(
-    ["plan", "create", "DSH session projection", "--scope", "session", "--no-knowledge-capture", "--host", "dsh"],
-    root,
-    env,
-  );
-
-  assert.deepEqual(
-    (created.hostActions as JsonRecord[]).map((action) => action.tool),
-    ["update_plan"],
-  );
+  await legacySession("DSH session projection", root, env, "dsh");
+  // Creation is historical fixture data; verify the real restored transition,
+  // not a fabricated creation projection.
   const started = runClaw([
     "plan", "start",
     "--requirements", "Verify DSH session projection.",
@@ -215,15 +225,11 @@ test("DSH session workflows retain Todo and Goal host actions", () => {
   runClaw(["session", "clean"], root, env);
 });
 
-test("Codex session plan retains host actions but skips knowledge side effects", () => {
+test("Codex session plan retains host actions but skips knowledge side effects", async () => {
   const root = createFixture("session-scope-completion");
   const runtimeDir = createFixture("session-scope-completion-runtime");
   const env = { CODEX_THREAD_ID: "thread-session-completion", CLAW_SESSION_RUNTIME_DIR: runtimeDir };
-  const created = runClaw(
-    ["plan", "create", "Session completion", "--scope", "session", "--no-knowledge-capture", "--host", "codex"],
-    root,
-    env,
-  );
+  const created = await legacySession("Session completion", root, env, "codex");
   const planPath = String(created.planPath);
   const activated = runClaw(["plan", "edit", "--status", "process.active", "--host", "codex"], root, env);
   assert.deepEqual(
@@ -261,12 +267,12 @@ test("Codex session plan retains host actions but skips knowledge side effects",
   runClaw(["session", "clean"], root, env);
 });
 
-test("session scope supports subplans and expired-state cleanup", () => {
+test("session scope supports subplans and expired-state cleanup", async () => {
   const root = createFixture("session-scope-subplan");
   const otherCwd = createFixture("session-scope-subplan-other");
   const runtimeDir = createFixture("session-scope-subplan-runtime");
   const env = { CODEX_THREAD_ID: "thread-session-subplan", CLAW_SESSION_RUNTIME_DIR: runtimeDir };
-  const created = runClaw(["plan", "create", "Session subplan", "--scope", "session", "--no-knowledge-capture"], root, env);
+  const created = await legacySession("Session subplan", root, env);
   const planPath = String(created.planPath);
   const plan = JSON.parse(fs.readFileSync(planPath, "utf-8")) as { tasks: Array<{ id: number }> };
   const taskName = path.basename(path.dirname(planPath));
@@ -294,7 +300,7 @@ test("session scope supports subplans and expired-state cleanup", () => {
   assert.equal(fs.existsSync(staleDir), false);
 });
 
-test("cli template-file creation outside a claw project requires explicit session scope", () => {
+test("CLI template-file creation outside a project initializes it automatically", () => {
   const root = createFixture("cli-template-file-session-scope");
   const templatePath = path.join(root, "example-skill", "TEMPLATE.json");
   fs.mkdirSync(path.dirname(templatePath), { recursive: true });
@@ -307,44 +313,25 @@ test("cli template-file creation outside a claw project requires explicit sessio
     "utf-8",
   );
 
-  const result = runClawExpectFailure(
+  const result = runClaw(
     ["plan", "create", "--title", "session-template", "--template-file", templatePath],
     root,
     { CODEX_THREAD_ID: "thread-template-file-session" },
   );
 
-  assert.equal((result.error as JsonRecord).code, "PLAN_CREATE_SCOPE_DECISION_REQUIRED");
-  assert.equal(fs.existsSync(path.join(root, ".claw")), false);
+  assert.ok(String(result.planPath).startsWith(path.join(root, ".claw", "tasks")));
+  assert.equal(fs.existsSync(path.join(root, ".claw", "project.json")), true);
 });
 
-test("plan create asks the agent to select scope without classifying an uninitialized workdir", () => {
-  const scratchCwd = createFixture("plan-create-scope-decision");
-  const projectLikeCwd = fs.mkdtempSync(path.join(thisDir, "..", "..", "..", "..", "claw-project-scope-decision-"));
+test("plan create initializes without asking users to select a storage mode", () => {
+  const scratchCwd = createFixture("auto-project-setup");
+  const projectLikeCwd = fs.mkdtempSync(path.join(thisDir, "..", "..", "..", "..", "claw-auto-project-"));
   temporaryDirectories.add(projectLikeCwd);
-
   for (const cwd of [scratchCwd, projectLikeCwd]) {
-    const result = runClawExpectFailure(["plan", "create", "Scope decision task"], cwd);
-    const error = result.error as JsonRecord;
-    const details = error.details as JsonRecord;
-
-    assert.equal(error.code, "PLAN_CREATE_SCOPE_DECISION_REQUIRED");
-    assert.equal(typeof details.prompt, "string");
-    assert.match(String(details.prompt), /do not infer it from the directory path alone/i);
-    assert.equal("workdirKind" in details, false);
-    assert.equal("recommendedScope" in details, false);
-    assert.deepEqual(details.routeOptions, [
-      {
-        scope: "project",
-        when: "The workdir is the intended project root and should retain claw project state.",
-        nextCommands: ["claw init", "claw plan create <title>"],
-      },
-      {
-        scope: "session",
-        when: "The workdir is isolated or scratch work, or must not receive claw project state.",
-        nextCommands: ["claw plan create <title> --scope session --no-knowledge-capture"],
-      },
-    ]);
-    assert.equal(fs.existsSync(path.join(cwd, ".claw")), false);
+    const result = runClaw(["plan", "create", "Automatic setup"], cwd);
+    assert.equal(result.ok, true);
+    assert.ok(String(result.planPath).startsWith(path.join(cwd, ".claw", "tasks")));
+    assert.ok(fs.existsSync(path.join(cwd, ".claw", "project.json")));
   }
 });
 

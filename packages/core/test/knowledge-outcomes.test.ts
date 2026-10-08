@@ -20,7 +20,7 @@ test("writer module reuses outcome template and preserves configured retention",
 test("external docs remain a real dependent outcome, without procedural task-id rewrites", async () => {
   const job = { finalizeId: "b".repeat(64), planPath: "source/plan.json", reportPath: "source/plan.report", writer: {}, docUpdate: { externalDocPaths: ["docs"] } };
   const template = buildKnowledgeAssignmentTemplate({ assignments: buildKnowledgeWriterAssignments(job), finalizeId: job.finalizeId, version: "1.0.0" });
-  assert.equal(template.scope, "session");
+  assert.equal(template.scope, undefined);
   assert.equal(template.knowledgeCapture, false);
   assert.equal(template.tasks.length, 3);
   assert.match(template.tasks[1]?.detail ?? "", /doc-updater/);

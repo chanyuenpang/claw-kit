@@ -30,18 +30,23 @@ function fixture(t: { after: (fn: () => void) => void }) {
   const executor = new SessionCommandExecutor(registry);
   const identity = { agentSessionId: "same-agent", workdir: cwd, client: { kind: "adapter" as const, host: "dsh" } };
   const execute = (operation: string, input: Record<string, unknown> = {}) => executor.execute(identity, { operation, input });
-  return { cwd, registry, executor, identity, execute };
+  const legacyCreate = async (input: Omit<Parameters<typeof writePlan>[0], "cwd" | "scope" | "ownerSessionKey">) => {
+    const output = await writePlan({ ...input, cwd, scope: "session", ownerSessionKey: identity.agentSessionId });
+    await executor.open(identity);
+    return { output };
+  };
+  return { cwd, registry, executor, identity, execute, legacyCreate };
 }
 
-async function finishSessionPlan(execute: (operation: string, input?: Record<string, unknown>) => Promise<unknown>) {
-  await execute("plan.create", { title: "Temporary release", taskName: "temporary-release", scope: "session", knowledgeCapture: false, goalText: "Finish release", planStatus: "process.active" });
+async function finishSessionPlan(legacyCreate: ReturnType<typeof fixture>["legacyCreate"], execute: (operation: string, input?: Record<string, unknown>) => Promise<unknown>) {
+  await legacyCreate({ title: "Temporary release", taskName: "temporary-release", knowledgeCapture: false, goalText: "Finish release", planStatus: "process.active" });
   await execute("task.done", { tasks: [{ id: 1 }] });
   await execute("plan.done", {});
 }
 
 test("completed session storage cannot strand the next project plan on open, start or resume", async (t) => {
-  const { cwd, registry, executor, identity, execute } = fixture(t);
-  await finishSessionPlan(execute);
+  const { cwd, registry, executor, identity, execute, legacyCreate } = fixture(t);
+  await finishSessionPlan(legacyCreate, execute);
   assert.ok(resolveSessionWorkflowContext(identity.agentSessionId), "retained session manifest reproduces the original trigger");
   const created = await execute("plan.create", { title: "Project work", taskName: "project-work", goalText: "Implement project work", knowledgeCapture: false, forcePlanning: true });
   const output = created.output as { planPath: string; scope: string };
@@ -70,8 +75,8 @@ test("completed session storage cannot strand the next project plan on open, sta
 });
 
 test("explicit resume finds an unfocused project draft despite an old session manifest", async (t) => {
-  const { cwd, registry, identity, execute } = fixture(t);
-  await finishSessionPlan(execute);
+  const { cwd, registry, identity, execute, legacyCreate } = fixture(t);
+  await finishSessionPlan(legacyCreate, execute);
   await writePlan({ cwd, scope: "project", taskName: "unfocused-project", title: "Recover draft", knowledgeCapture: false,
     content: { title: "Recover draft", goal: { text: "Recover draft" }, status: "process.discussing", tasks: [{ id: 1, title: "Implement", status: "pending" }] } });
   await execute("plan.resume", { planId: "unfocused-project" });
@@ -82,8 +87,8 @@ test("explicit resume finds an unfocused project draft despite an old session ma
 });
 
 test("unfocused same-name plans in both scopes remain ambiguous and unmodified", async (t) => {
-  const { cwd, registry, identity, execute } = fixture(t);
-  await finishSessionPlan(execute);
+  const { cwd, registry, identity, execute, legacyCreate } = fixture(t);
+  await finishSessionPlan(legacyCreate, execute);
   for (const scope of ["project", "session"] as const) {
     await writePlan({ cwd, scope, ownerSessionKey: identity.agentSessionId, taskName: "same-name", title: scope, knowledgeCapture: false,
       content: { title: scope, goal: { text: "Inspect scope" }, status: "process.discussing", tasks: [{ id: 1, title: "Inspect", status: "pending" }] } });
@@ -99,8 +104,8 @@ test("unfocused same-name plans in both scopes remain ambiguous and unmodified",
 });
 
 test("canonical project binding repairs a lost focus despite retained session storage", async (t) => {
-  const { cwd, registry, executor, identity, execute } = fixture(t);
-  await finishSessionPlan(execute);
+  const { cwd, registry, executor, identity, execute, legacyCreate } = fixture(t);
+  await finishSessionPlan(legacyCreate, execute);
   await writePlan({ cwd, scope: "project", ownerSessionKey: identity.agentSessionId,
     taskName: "bound-project", title: "Bound project", knowledgeCapture: false,
     content: { title: "Bound project", goal: { text: "Restore bound project" }, status: "process.discussing", tasks: [{ id: 1, title: "Work", status: "pending" }] } });
@@ -112,8 +117,8 @@ test("canonical project binding repairs a lost focus despite retained session st
 });
 
 test("unfocused session-only resume still resolves its own storage", async (t) => {
-  const { cwd, registry, identity, execute } = fixture(t);
-  await finishSessionPlan(execute);
+  const { cwd, registry, identity, execute, legacyCreate } = fixture(t);
+  await finishSessionPlan(legacyCreate, execute);
   await writePlan({ cwd, scope: "session", ownerSessionKey: identity.agentSessionId,
     taskName: "session-draft", title: "Session draft", knowledgeCapture: false,
     content: { title: "Session draft", goal: { text: "Resume temporary work" }, status: "process.discussing", tasks: [{ id: 1, title: "Temporary work", status: "pending" }] } });
@@ -145,8 +150,8 @@ function oneOffContext(cwd: string, agentSessionId: string) {
 }
 
 test("one-off context returns project binding and 3/6 progress with a retained session manifest", async (t) => {
-  const { cwd, identity, execute } = fixture(t);
-  await finishSessionPlan(execute);
+  const { cwd, identity, execute, legacyCreate } = fixture(t);
+  await finishSessionPlan(legacyCreate, execute);
   const created = await writePlan({ cwd, scope: "project", ownerSessionKey: identity.agentSessionId,
     taskName: "context-project", title: "Context project", knowledgeCapture: false,
     content: { title: "Context project", goal: { text: "Recover exact progress" }, status: "process.active",
@@ -162,9 +167,9 @@ test("one-off context returns project binding and 3/6 progress with a retained s
 });
 
 test("one-off context preserves an active session-bound workflow", async (t) => {
-  const { cwd, identity, execute } = fixture(t);
-  const created = await execute("plan.create", { title: "Session context", taskName: "context-session",
-    scope: "session", knowledgeCapture: false, goalText: "Continue session work", planStatus: "process.active" });
+  const { cwd, identity, execute, legacyCreate } = fixture(t);
+  const created = await legacyCreate({ title: "Session context", taskName: "context-session",
+    knowledgeCapture: false, goalText: "Continue session work", planStatus: "process.active" });
   const context = oneOffContext(cwd, identity.agentSessionId);
   assert.equal(context.project.scope, "session");
   assert.equal(context.session, undefined);

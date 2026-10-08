@@ -33,13 +33,14 @@ const OPERATION_CATALOG = {
   plan: [
     {
       name: 'plan.create',
-      description: 'Create a claw plan for the current Cindy session. This is unavailable while the current plan is in process; use plan.leave first, or subplan.create for work within the current plan.',
+      description: 'Create a claw plan with automatic project setup. An unfinished current plan blocks a new root; use subplan.create within it, or explicitly leave/resume.',
       mutates: true,
       parameters: {
         type: 'object',
         properties: {
           title: { type: 'string', description: 'Plan title.' },
           goal: { type: 'string', description: 'Optional plan goal.' },
+          knowledge_capture: { type: 'boolean', description: 'Knowledge accumulation only; defaults to the template setting or true. False does not change storage or lifecycle.' },
           template: { type: 'string', description: 'Optional template name.' },
           templateFile: { type: 'string', description: 'Optional template file path.' },
         },
@@ -79,7 +80,7 @@ const OPERATION_CATALOG = {
     },
     {
       name: 'plan.done',
-      description: 'Complete the current plan. Project-scoped plans require a retrospective; session-scoped plans do not persist project documentation.',
+      description: 'Complete the current plan following its returned retrospective requirements; opting out of knowledge capture does not change the plan lifecycle.',
       mutates: true,
       parameters: objectParameters({
         retrospective: { type: 'string', description: 'Retrospective summary, required for project-scoped plans.' },
@@ -162,21 +163,8 @@ function stringParameter(description) {
   return { type: 'string', description };
 }
 
-function hasClawProject(workdir) {
-  if (typeof workdir !== 'string' || !workdir.trim()) return false;
-  return fs.existsSync(path.join(path.resolve(workdir), '.claw', 'project.json'));
-}
-
-function catalogForWorkdir(workdir) {
-  const categories = structuredClone(OPERATION_CATALOG);
-  if (typeof workdir === 'string' && workdir.trim() && !hasClawProject(workdir)) {
-    const create = categories.plan.find((operation) => operation.name === 'plan.create');
-    create.parameters.properties.scope = {
-      type: 'string', enum: ['session'],
-      description: 'Only for isolated work outside a .claw project after choosing the session route.',
-    };
-  }
-  return categories;
+function catalogForWorkdir(_workdir) {
+  return structuredClone(OPERATION_CATALOG);
 }
 
 function objectParameters(properties, required = []) {
@@ -471,12 +459,21 @@ async function shutdownWorker() {
 process.on('SIGINT', () => { void shutdownWorker(); });
 process.on('SIGTERM', () => { void shutdownWorker(); });
 
+function validateCreateArguments(args) {
+  if (Object.hasOwn(args, 'scope')) throw sessionError('PLAN_SCOPE_REMOVED', 'scope is removed; use knowledge_capture for accumulation.', 'known', { phase: 'prepare', effect: 'none' });
+  // Keep the boolean wire value intact across JSON and CLI transports; never
+  // coerce an invalid value into a valid creation flag or silently enable capture.
+  if (args.knowledge_capture !== undefined && typeof args.knowledge_capture !== 'boolean') {
+    throw sessionError('SESSION_COMMAND_INVALID', 'knowledge_capture must be a boolean.', 'known', { phase: 'prepare', effect: 'none' });
+  }
+}
+
 function sessionRequest(name, args, workdir) {
+  if (name === 'plan.create') validateCreateArguments(args);
   switch (name) {
     case 'plan.create': return { operation: name, input: {
       title: requiredString(args, 'title'),
       ...(typeof args.goal === 'string' ? { goalText: args.goal } : {}),
-      ...(args.scope === 'session' ? { scope: 'session' } : {}),
       ...(typeof args.knowledge_capture === 'boolean' ? { knowledgeCapture: args.knowledge_capture } : {}),
       ...(typeof args.template === 'string' ? { templateName: args.template } : {}),
       ...(typeof args.templateFile === 'string' ? { templateFile: path.resolve(args.templateFile) } : {}),
@@ -659,11 +656,12 @@ function operationFailure(rawReason, fallbackCode = 'CLAW_OPERATION_FAILED') {
 }
 
 function operationCommand(name, args) {
+  if (name === 'plan.create') validateCreateArguments(args);
   switch (name) {
     case 'plan.create': {
       const command = ['plan', 'create', '--title', requiredString(args, 'title')];
       appendOption(command, '--goal', args.goal);
-      appendOption(command, '--scope', args.scope);
+      if (args.knowledge_capture !== undefined) command.push('--knowledge-capture', String(args.knowledge_capture));
       appendOption(command, '--template', args.template);
       appendOption(command, '--template-file', args.templateFile);
       return command;
@@ -1319,8 +1317,9 @@ rpcInput.on('line', async (line) => {
         }
         output = result.output;
       } else {
+        const mapped = sessionRequest(operation, operationArgs, params.workdir);
         const session = await ensureSession(params.sessionId, params.workdir);
-        const command = session.request(sessionRequest(operation, operationArgs, params.workdir));
+        const command = session.request(mapped);
         const ordinal = session.requestsStarted;
         const response = await command;
         if (operation === 'plan.done') { completedSession = session; completedOrdinal = ordinal; }

@@ -1,5 +1,7 @@
 The execution-policy sections below are historical and superseded by [fixed host knowledge closeout](2026-10-02-fixed-host-knowledge-closeout.md).
 
+> Historical design/incident record. Its storage-scope creation recommendations are superseded by the [current creation contract](<template-authoring-guide.md#knowledge-capture-and-automatic-setup>): new plans initialize the project automatically, and knowledgeCapture controls accumulation only. Do not use the older scope examples for new workflows.
+
 # Knowledge finalization execution design
 
 ## Status

@@ -88,7 +88,7 @@ function marker(id: string): string { return "claw-finalizer-dispatch:v1:" + id 
 function bootstrap(): string {
   return "You are claw-kit's reusable background knowledge-finalizer role, not a foreground Team dependency. " +
     "This message initializes the role ONLY: do not create a plan, claim a job, scan jobs, or write files yet. Wait for an adapter-owned claw-finalizer-dispatch message. " +
-    "For each later assignment use only its exact finalizeId, fresh claim and new session-scoped knowledgeCapture:false delegate plan; never reuse old claims, task conclusions, reports, delegate plans or completion tokens. " +
+    "For each later assignment use only its exact finalizeId, fresh claim and new knowledgeCapture:false auxiliary plan bound to your own session; never reuse old claims, task conclusions, reports, delegate plans or completion tokens. " +
     "Reread current canonical Truth/ADR and this job's frozen materials. Retained memory is not evidence for a new job. " +
     "Execute assignments yourself through claw_run; do not start teammates/subagents or send a peer message to the Lead. " +
     "Persist the current job's terminal result; the adapter closes a matching finished delegate when safe. Follow returned workflow guidance if closure remains deferred, never act on an unrelated plan. " +

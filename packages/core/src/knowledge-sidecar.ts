@@ -10,7 +10,7 @@ import { listTaskDirectories } from "./context.js";
 import { ensureUtf8Bom, hasUtf8BomPrefix } from "./text-encoding.js";
 import { resolveHostIntegrationProfile, isIntegrationHost } from "./integration-contract.js";
 import type { KnowledgeGovernanceResult } from "./knowledge-governance.js";
-import type { KnowledgeWriterConfig, ProjectConfig, ProjectContext } from "./types.js";
+import type { KnowledgeWriterConfig, PlanDocument, ProjectConfig, ProjectContext } from "./types.js";
 import { tryParseRoleSelection, type RoleSelection } from "./role-preferences.js";
 
 export type KnowledgeDocUpdateSnapshot = {
@@ -52,6 +52,9 @@ export type KnowledgeClaimant = {
   host: string;
   agentSessionId: string;
 };
+
+/** Canonical current workflow supplied by the shared command owner, never model input. */
+export type KnowledgeDelegatePlan = { planPath: string; scope: "project" | "session"; projectRoot: string; ownerSessionId: string };
 
 export type KnowledgeClaimReceipt = {
   schemaVersion: 1;
@@ -146,7 +149,7 @@ export type KnowledgeFinalizationJob = {
   claimReceipt?: KnowledgeClaimReceipt;
   dshExecution?: DshFinalizerExecution;
   /** Immutable claim-time association for optional, host-neutral delegate closeout. */
-  delegateWorkflow?: { ownerSessionId: string; planPath: string; projectRoot: string };
+  delegateWorkflow?: { ownerSessionId: string; planPath: string; projectRoot: string; scope?: "project" | "session" };
   truthThreadId?: string;
   adrThreadId?: string;
   truthResponse?: string;
@@ -778,6 +781,18 @@ function withDshRoleLock<T>(project: ProjectContext, parentSessionId: string, ac
   return withFileLock(path.join(project.clawDir, "runtime", "dsh-finalizer-roles", key), action);
 }
 
+function delegateChildrenInactive(directory: string, plan: Pick<PlanDocument, "tasks">, visited: Set<string>): boolean {
+  for (const task of plan.tasks ?? []) {
+    if (task.status === "done" || task.execution?.type !== "subplan" || !task.execution.subplan) continue;
+    const childPath = ensureInsideDir(directory, task.execution.subplan);
+    if (!childPath || visited.has(childPath)) return false;
+    visited.add(childPath);
+    const child = readJsonFile<PlanDocument>(childPath);
+    if (!child.status?.startsWith("end.") || !delegateChildrenInactive(directory, child, visited)) return false;
+  }
+  return true;
+}
+
 function inspectDshExecutionJob(job: KnowledgeFinalizationJob): DshFinalizerExecutionInspection {
   const execution = job.dshExecution;
   const row: DshFinalizerExecutionInspection = {
@@ -788,10 +803,10 @@ function inspectDshExecutionJob(job: KnowledgeFinalizationJob): DshFinalizerExec
   const terminal = ["succeeded", "failed", "expired"].includes(job.status);
   if (execution.delegatePlanPath) {
     try {
-      const plan = readJsonFile<{ status?: string; knowledgeCapture?: boolean; templateId?: string }>(execution.delegatePlanPath);
+      const plan = readJsonFile<PlanDocument>(execution.delegatePlanPath);
       row.delegatePlanStatus = plan.status;
       if (terminal && plan.status?.startsWith("end.") && plan.knowledgeCapture === false
-        && plan.templateId === "internal-dsh-knowledge-delegate") {
+        && delegateChildrenInactive(path.dirname(execution.delegatePlanPath), plan, new Set([execution.delegatePlanPath]))) {
         row.readyForNext = true;
         return row;
       }
@@ -928,7 +943,7 @@ export function claimKnowledgeFinalizationJob(
     claimant?: KnowledgeClaimant;
     version?: string;
     /** Supplied only by trusted CLI context, never model arguments. */
-    resolveDelegatePlan?: () => { planPath: string; scope: "session"; projectRoot: string; ownerSessionId: string } | undefined;
+    resolveDelegatePlan?: () => KnowledgeDelegatePlan | undefined;
   },
 ): KnowledgeFinalizationJob | null {
   return withFileLock(jobPath, () => {
@@ -945,15 +960,15 @@ export function claimKnowledgeFinalizationJob(
     const delegate = options?.resolveDelegatePlan?.();
     if (execution) {
       if (execution.delivery.state === "reserved" || execution.releasedAt) throw new Error("DSH_EXECUTION_NOT_DELIVERED: admitted job has no delivery attempt.");
-      if (!delegate || delegate.scope !== "session" || delegate.ownerSessionId !== execution.memberSessionId
+      if (!delegate || delegate.ownerSessionId !== execution.memberSessionId
         || path.resolve(delegate.projectRoot) !== path.resolve(current.projectRoot) || !path.isAbsolute(delegate.planPath)) {
-        throw new Error("DSH_DELEGATE_PLAN_REQUIRED: trusted current session delegate required.");
+        throw new Error("DSH_DELEGATE_PLAN_REQUIRED: trusted current no-capture delegate required.");
       }
       if (execution.delegatePlanPath && path.resolve(execution.delegatePlanPath) !== path.resolve(delegate.planPath)) {
         throw new Error("DSH_EXECUTION_IMMUTABLE: delegate plan cannot be rebound.");
       }
       const plan = readJsonFile<{ status?: string; templateId?: string; knowledgeCapture?: boolean }>(delegate.planPath);
-      if (plan.status !== "process.active" || plan.templateId !== "internal-dsh-knowledge-delegate" || plan.knowledgeCapture !== false) {
+      if (plan.status !== "process.active" || plan.knowledgeCapture !== false) {
         throw new Error("DSH_DELEGATE_PLAN_REQUIRED: active internal no-capture delegate required.");
       }
       execution = { ...execution, delegatePlanPath: path.resolve(delegate.planPath) };
@@ -982,7 +997,7 @@ export function claimKnowledgeFinalizationJob(
       ...(execution ? { dshExecution: execution } : {}),
       ...(delegate && options?.claimant && delegate.ownerSessionId === options.claimant.agentSessionId
         && path.resolve(delegate.projectRoot) === path.resolve(current.projectRoot)
-        ? { delegateWorkflow: { ownerSessionId: delegate.ownerSessionId, planPath: path.resolve(delegate.planPath), projectRoot: current.projectRoot } } : {}),
+        ? { delegateWorkflow: { ownerSessionId: delegate.ownerSessionId, planPath: path.resolve(delegate.planPath), projectRoot: current.projectRoot, scope: delegate.scope } } : {}),
       status: "running",
       attempts: Math.max(1, current.attempts + 1),
       startedAt: now,
@@ -1137,6 +1152,24 @@ export function listKnowledgeFinalizationJobs(project: ProjectContext): string[]
   // Read legacy central jobs so an upgrade does not strand retryable work. New jobs are never written there.
   const legacyJobs = listKnowledgeJobs(path.join(project.clawDir, "runtime", "knowledge-finalization", "jobs"));
   return [...taskJobs, ...archivedTaskJobs, ...legacyJobs];
+}
+
+/** Existing job/lease facts are the retention authority; no parallel pin ledger. */
+export function knowledgeRecoveryPaths(project: ProjectContext): string[] {
+  const retained: string[] = [];
+  for (const jobPath of listKnowledgeFinalizationJobs(project)) {
+    const job = readKnowledgeFinalizationJob(jobPath);
+    const delegatePath = job.delegateWorkflow?.planPath ?? job.dshExecution?.delegatePlanPath;
+    let pending = ["queued", "running"].includes(job.status)
+      || Boolean(job.dshExecution && !job.dshExecution.releasedAt);
+    if (!pending && delegatePath && fs.existsSync(delegatePath)) {
+      const plan = readJsonFile<PlanDocument>(delegatePath);
+      pending = !plan.status?.startsWith("end.")
+        || !delegateChildrenInactive(path.dirname(delegatePath), plan, new Set([delegatePath]));
+    }
+    if (pending) retained.push(jobPath, job.planPath, ...(delegatePath ? [delegatePath] : []));
+  }
+  return retained;
 }
 
 /** Remove obsolete legacy runtime records left by releases before task-local jobs. */

@@ -651,13 +651,13 @@ test("knowledge claim owns execution and delegate prompt routing", () => {
     assert.match(String(atomicDispatch.leadInstruction), /Required, non-skippable closeout/);
     assert.match(String(atomicDispatch.leadInstruction), /Do not skip it for any reason/);
     assert.match(atomicDispatch.prompt, /cindy-delegate-writer[\\/]TEMPLATE\.json/);
-    assert.match(atomicDispatch.prompt, /session plan/i);
+    assert.match(atomicDispatch.prompt, /non-capturing auxiliary plan/i);
     assert.doesNotMatch(atomicDispatch.prompt, /did-turn-end|Stop hook|knowledge wait/i);
     assert.doesNotMatch(atomicDispatch.prompt, /execute each returned assignment prompt yourself/i);
     const cindyDelegateTemplate = JSON.parse(
       fs.readFileSync(cindyKnowledgeDelegateTemplatePath(), "utf-8"),
     ) as { scope: string; tasks: Array<{ id: number; detail?: string }> };
-    assert.equal(cindyDelegateTemplate.scope, "session");
+    assert.equal(cindyDelegateTemplate.scope, undefined);
     assert.match(cindyDelegateTemplate.tasks.find((task) => task.id === 1)?.detail ?? "", /knowledge\.claim/);
     assert.match(cindyDelegateTemplate.tasks.find((task) => task.id === 2)?.detail ?? "", /subplan\.create/);
     assert.match(cindyDelegateTemplate.tasks.find((task) => task.id === 3)?.detail ?? "", /knowledge\.done/);
@@ -683,7 +683,8 @@ test("knowledge claim owns execution and delegate prompt routing", () => {
       finalizeId,
       version: corePackageVersion,
     });
-    assert.equal(builtinTemplate.scope, "session");
+    assert.equal(builtinTemplate.scope, undefined);
+    assert.equal(builtinTemplate.knowledgeCapture, false);
     assert.deepEqual(builtinTemplate.tasks.map((task) => task.id), [1, 2, 3]);
     assert.equal(builtinTemplate.tasks[1]?.title, "Update affected external documentation");
     assert.match(builtinTemplate.tasks[2]?.detail ?? "", /affected external documentation/);

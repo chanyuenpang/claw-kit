@@ -72,7 +72,8 @@ test("session knowledge claim captures once and done shares CLI terminal behavio
   const claim = (await service.execute(context, { operation: "knowledge.claim", input: { finalizeId: id } })).output as Record<string, any>;
   assert.equal(claim.claimed, true);
   assert.equal(claim.assignments.length > 0, true);
-  assert.equal(JSON.parse(fs.readFileSync(claim.templatePath, "utf8")).scope, "session");
+  assert.equal(JSON.parse(fs.readFileSync(claim.templatePath, "utf8")).scope, undefined);
+  assert.equal(JSON.parse(fs.readFileSync(claim.templatePath, "utf8")).knowledgeCapture, false);
   assert.equal(fs.readFileSync(claim.reportPath, "utf8"), "captured\n");
   assert.equal((JSON.parse(fs.readFileSync(claim.jobPath, "utf8")).reportCapture.receipt as Record<string, unknown>).collectorVersion, "fixture-v1");
   assert.equal(((await service.execute(context, { operation: "knowledge.claim", input: { finalizeId: id } })).output as any).claimed, false);

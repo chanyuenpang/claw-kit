@@ -31,8 +31,8 @@ to guess or append host flags.
    follow the recovered `workflowGuidance` and continue the current task.
 2. **No knowledge, no plan.** If the request will not produce reusable
    project knowledge, work directly without creating a plan. For temporary
-   tracked work, use `--scope session --no-knowledge-capture`; capture is
-   enabled by default and is not a scope decision.
+   tracked work, use `--no-knowledge-capture`. New plans use the same automatic
+   project setup and lifecycle; capture does not select storage. Never pass `--scope`.
 3. **Template owner before generic plan.** If a template-backed skill owns the
    request, use its adjacent template entry instead of first creating a generic
    root plan. Otherwise run `claw plan create "<title>"` and follow the returned

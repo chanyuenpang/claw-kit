@@ -37,9 +37,11 @@ There is no host marketplace to register with. To adopt the standard flow:
 
 ## Key semantics
 
-- **Scope and capture are independent.** `--scope session` selects temporary
-  storage; use the explicit `--no-knowledge-capture` opt-out when no deposition
-  is intended. Internal writer templates disable recursive capture explicitly.
+- **One creation flow, optional capture.** Core initializes missing local project
+  structure/defaults automatically. Use `--knowledge-capture false` or
+  `--no-knowledge-capture` when no deposition is intended; this does not change
+  storage or completion rules. Internal writer templates prevent recursive capture.
+  Old session-stored workflows remain recoverable; `--scope` is not a new input.
 - **Direct knowledge closeout.** The agent runs `claw knowledge prepare/complete --source agent-memory` from conversation memory. No job, transcript capture, or worker is involved.
 
 ## Relationship to the named adapters

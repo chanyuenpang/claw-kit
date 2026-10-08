@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { readJsonFile } from "./io.js";
 import { listTaskDirectories } from "./context.js";
+import { taskMaintenanceProtection } from "./task-maintenance-protection.js";
 import { enforceTaskRetention, moveTaskDirectoryWithCollisionAndRetry } from "./task-retention.js";
 import type { PlanDocument, ProjectContext } from "./types.js";
 
@@ -20,14 +21,15 @@ export type TaskLifecycleMaintenanceResult = {
  * that order so archived work gets a recovery window before final deletion.
  */
 export function runTaskLifecycleMaintenance(project: ProjectContext, now: Date): TaskLifecycleMaintenanceResult {
+  const protectedTask = taskMaintenanceProtection(project);
   const cutoffDate = previousLocalDate(now);
-  const archivedDatedTasks = archiveDatedTaskDirectoriesBefore(project, cutoffDate);
-  const archivedLegacyTasks = archiveLegacyTaskDirectoriesBefore(project, cutoffDate);
+  const archivedDatedTasks = archiveDatedTaskDirectoriesBefore(project, cutoffDate, protectedTask);
+  const archivedLegacyTasks = archiveLegacyTaskDirectoriesBefore(project, cutoffDate, protectedTask);
   const retention = enforceTaskRetention(project, undefined, now.getTime(), {
     includeDatedTasks: false,
     includeLegacyTasks: false,
   });
-  const expiredTaskDirectoriesRemoved = pruneExpiredTaskDirectories(project, now.getTime());
+  const expiredTaskDirectoriesRemoved = pruneExpiredTaskDirectories(project, now.getTime(), protectedTask);
   const emptyDatedDirectoriesRemoved = removeEmptyDatedTaskDirectories(project);
   return {
     archivedTasks: archivedDatedTasks + archivedLegacyTasks + retention.archivedTasks.length,
@@ -37,10 +39,11 @@ export function runTaskLifecycleMaintenance(project: ProjectContext, now: Date):
   };
 }
 
-function pruneExpiredTaskDirectories(project: ProjectContext, nowMs: number): number {
+function pruneExpiredTaskDirectories(project: ProjectContext, nowMs: number, protectedTask: (directory: string) => boolean): number {
   let removed = 0;
   for (const root of [project.tasksDir, path.join(project.clawDir, "archive", "tasks")]) {
     for (const task of listTaskDirectories({ tasksDir: root } as ProjectContext)) {
+      if (protectedTask(task.taskDir)) continue;
       const updatedAt = readPlanUpdatedAt(path.join(task.taskDir, "plan.json"));
       if (updatedAt === null || nowMs - updatedAt < WORKFLOW_TASK_TTL_MS) continue;
       try {
@@ -72,7 +75,7 @@ function removeEmptyDatedDirectories(root: string): number {
   return removed;
 }
 
-function archiveDatedTaskDirectoriesBefore(project: ProjectContext, cutoffDate: string): number {
+function archiveDatedTaskDirectoriesBefore(project: ProjectContext, cutoffDate: string, protectedTask: (directory: string) => boolean): number {
   if (!fs.existsSync(project.tasksDir)) return 0;
   const archiveRoot = path.join(project.clawDir, "archive", "tasks");
   let archivedTaskCount = 0;
@@ -80,7 +83,7 @@ function archiveDatedTaskDirectoriesBefore(project: ProjectContext, cutoffDate: 
     if (!entry.isDirectory() || !/^\d{4}-\d{2}-\d{2}$/.test(entry.name) || entry.name >= cutoffDate) continue;
     const sourceDateDir = path.join(project.tasksDir, entry.name);
     for (const child of fs.readdirSync(sourceDateDir, { withFileTypes: true })) {
-      if (!child.isDirectory() || !isTerminalTask(path.join(sourceDateDir, child.name))) continue;
+      if (!child.isDirectory() || protectedTask(path.join(sourceDateDir, child.name)) || !isTerminalTask(path.join(sourceDateDir, child.name))) continue;
       try {
         moveTaskDirectoryWithCollisionAndRetry(path.join(sourceDateDir, child.name), path.join(archiveRoot, entry.name, child.name));
         archivedTaskCount += 1;
@@ -112,10 +115,11 @@ function moveDateDirectory(sourceDateDir: string, targetDateDir: string): void {
   fs.rmdirSync(sourceDateDir);
 }
 
-function archiveLegacyTaskDirectoriesBefore(project: ProjectContext, cutoffDate: string): number {
+function archiveLegacyTaskDirectoriesBefore(project: ProjectContext, cutoffDate: string, protectedTask: (directory: string) => boolean): number {
   const archiveRoot = path.join(project.clawDir, "archive", "tasks");
   let archivedTaskCount = 0;
   for (const task of listTaskDirectories(project)) {
+    if (protectedTask(task.taskDir)) continue;
     if (/^\d{4}-\d{2}-\d{2}[\\/]/.test(task.relativePath)) continue;
     const updatedAt = readPlanUpdatedAt(path.join(task.taskDir, "plan.json"));
     if (!updatedAt || localDate(new Date(updatedAt)) >= cutoffDate || !isTerminalTask(task.taskDir)) continue;

@@ -113,7 +113,7 @@ Batch belongs to the independent-stage route, not to a separate batch route. A b
 
 Mixed-skill work is different. If multiple skills must interleave inside the same stage and the current skill cannot produce a coherent stage result by itself, do not create a subplan for it. Keep one stage owner and consume the current skill's fallback there.
 
-No-context execution does not need a separate entry route. When `cwd` has no `.claw`, explicit `--template-file` or compatibility `--template` plan creation automatically selects session scope. Plain `claw plan create "<title>"` retains its existing behavior and initializes `.claw`.
+No-context execution does not need a separate entry route. Named and file templates use the same project creation owner as plain plans; missing local claw environment and defaults are initialized automatically. A template may default knowledgeCapture to false for auxiliary work, but it must not select a storage scope.
 
 ## Choices Need Observable Control Flow
 

@@ -1,4 +1,4 @@
-# ADR: Task plan storage and direct session binding
+﻿# ADR: Task plan storage and direct session binding
 
 ## Status
 

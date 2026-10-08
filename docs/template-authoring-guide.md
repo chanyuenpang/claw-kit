@@ -22,7 +22,7 @@ Top-level fields:
 
 - `id`
 - `version` (required; the template-driver version that last validated the template)
-- `scope`
+- `knowledgeCapture`
 - `configOverride`
 - `title`
 - `status`
@@ -41,20 +41,14 @@ Important difference:
 
 `version` records the independent template-driver contract, not the claw-kit release version. Its maintenance procedure is owned exclusively by the distributed `claw-kit:create-claw-skill` package at `references/template-upgrade.md`; generated skills retain only a concise owner reference.
 
-## Creation Scope
+## Knowledge Capture and Automatic Setup
 
-Set top-level `scope` to `"session"` when the template is an ephemeral workflow harness that must run without a project `.claw` directory and must not trigger project knowledge deposition.
+New public templates must omit `scope`. All new root plans use the current or ancestor project; missing local claw environment/default configuration is initialized by Core after input and focus validation. Existing user settings are preserved.
 
-Creation scope is resolved before the plan store exists, so it is a top-level template field rather than part of `configOverride`. When `claw plan create --template <id>` selects such a template, claw automatically uses the current platform session store. An explicit `--scope session` remains supported and takes precedence. Subplans inherit their parent plan's scope instead of switching stores from their own template declaration.
+Use top-level `knowledgeCapture: false` for auxiliary work that must not produce its own knowledge finalization. Ordinary roots resolve explicit capture input, then template default, then true. CLI uses `--knowledge-capture true|false`, with `--no-knowledge-capture` retained as the false alias. Capture does not change storage or normal completion requirements.
 
-Omit `scope` for ordinary project-backed templates. `"session"` is currently the only accepted declared value.
+Subplans inherit their parent’s resolved storage and capture policy. Knowledge-result lifecycle templates must remain non-capturing to prevent recursion. Old stored session workflows and frozen templates remain readable for recovery; they are not new authoring options.
 
-The CLI also fills scope from the creation context:
-
-- `claw plan create "<title>"` keeps the ordinary behavior and initializes `.claw` when needed.
-- `claw plan create "<title>" --template <id>` automatically uses session scope when `cwd` is outside a `.claw` project.
-- The same explicit template command remains project-scoped when `cwd` is inside a `.claw` project.
-- Explicit `--scope session` and a template-declared `scope: "session"` still force session scope.
 
 ## Task Rules
 
@@ -256,7 +250,7 @@ Route a template-backed claw skill by what it completely owns:
 
 Batch is not a fourth route. Treat a batch as a broader plan containing repeated stages; each stage that is fully owned by the skill invokes one subplan. The parent plan owns ordering and shared constraints, while each subplan owns its stage from inputs through verification.
 
-Outside a `.claw` project, use the same explicit template command. The CLI automatically selects session scope, so generated entries do not need a separate no-context command or a fallback-only route.
+Outside an initialized project, use the same explicit template command. Core initializes the local claw environment automatically; generated entries need neither a storage selector nor a separate no-context route.
 
 Call something an independent stage only when the skill can produce a coherent stage result. If several skills must interleave inside the same stage, keep one owning workflow and consume the others through their fallbacks. The same fallback must also remain directly executable when the claw CLI or template is unavailable.
 

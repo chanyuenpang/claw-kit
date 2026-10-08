@@ -154,11 +154,13 @@ test("claim derives actual bound session delegate and recovers same child's orig
   const f = fixture(t); f.reserve();
   markDshFinalizerDeliveryCommand({ ...f.common, deliveryKey: f.job.finalizeId, state: "attempted" });
   assert.throws(() => claimKnowledgeCommand(f.jobPath, "v1", f.claimant), /DELEGATE_PLAN_REQUIRED/);
-  f.delegate("wrong-template");
+  const pausedPath = f.delegate("non-authority-label");
+  const paused = JSON.parse(fs.readFileSync(pausedPath, "utf8")); paused.status = "process.wait";
+  fs.writeFileSync(pausedPath, JSON.stringify(paused));
   assert.throws(() => claimKnowledgeCommand(f.jobPath, "v1", f.claimant), /DELEGATE_PLAN_REQUIRED/);
   f.delegate("internal-dsh-knowledge-delegate", true);
-  assert.throws(() => claimKnowledgeCommand(f.jobPath, "v1", f.claimant), /DELEGATE_PLAN_REQUIRED/);
-  const delegatePlanPath = f.delegate();
+  assert.throws(() => claimKnowledgeCommand(f.jobPath, "v1", f.claimant), /CAPTURE_REQUIRED/);
+  const delegatePlanPath = f.delegate("non-authority-label");
   assert.throws(() => claimKnowledgeCommand(f.jobPath, "v1", { ...f.claimant, agentSessionId: "wrong-member" }), /CLAIM_DENIED/);
   const first = claimKnowledgeCommand(f.jobPath, "v1", f.claimant) as any;
   assert.equal(first.claimed, true);

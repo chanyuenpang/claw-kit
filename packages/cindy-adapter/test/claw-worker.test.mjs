@@ -59,7 +59,7 @@ test("Cindy tool dispatch preserves Node broker failures with an exact reason", 
   assert.match(source, /CLAW_TOOL_DISPATCH_FAILED/);
 });
 
-test("Cindy catalog reveals explicit session scope only for a known workspace without .claw", async () => {
+test("Cindy catalog exposes capture consistently inside and outside initialized projects", async () => {
   const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-catalog-"));
   const projectDir = path.join(fixtureDir, "project");
   const scratchDir = path.join(fixtureDir, "scratch");
@@ -79,11 +79,10 @@ test("Cindy catalog reveals explicit session scope only for a known workspace wi
     const scratch = await requestWorker(child, { jsonrpc: "2.0", id: 33, method: "claw/catalog", params: { workdir: scratchDir } });
     assert.equal(scopeParameter(unknown), undefined);
     assert.equal(scopeParameter(project), undefined);
-    assert.deepEqual(scopeParameter(scratch), {
-      type: "string",
-      enum: ["session"],
-      description: "Only for isolated work outside a .claw project after choosing the session route.",
-    });
+    assert.equal(scopeParameter(scratch), undefined);
+    for (const response of [unknown, project, scratch]) {
+      assert.equal(planOperation(response, "plan.create").parameters.properties.knowledge_capture.type, "boolean");
+    }
     assert.deepEqual(planOperation(project, "plan.leave"), {
       name: "plan.leave",
       description: "Explicitly leave the current plan so a new root plan can be created.",
@@ -1042,6 +1041,7 @@ test("worker rejects a missing session workdir before spawning claw", async () =
       ok: false,
       operation: "plan.show",
       errorCode: "SESSION_WORKDIR_UNAVAILABLE",
+      outcome: "known",
       reason: "Cindy did not provide a workdir for this session.",
     });
   } finally {
@@ -1073,6 +1073,7 @@ test("worker distinguishes a vanished session workdir from a missing CLI", async
       ok: false,
       operation: "plan.show",
       errorCode: "SESSION_WORKDIR_INVALID",
+      outcome: "known",
       reason: `Cindy session workdir is not an accessible directory: ${vanishedWorkdir}`,
     });
   } finally {

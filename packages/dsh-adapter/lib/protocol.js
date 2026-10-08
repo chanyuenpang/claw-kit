@@ -129,13 +129,12 @@ export function daemonInput(operation, args) {
     };
     switch (operation) {
         case "plan.create":
-            assertKnownArgs(operation, args, ["title", "goal", "goal_text", "description", "scope", "knowledge_capture", "template", "template_name", "template_file", "status", "force_planning"]);
+            assertKnownArgs(operation, args, ["title", "goal", "goal_text", "description", "knowledge_capture", "template", "template_name", "template_file", "status", "force_planning"]);
             return {
                 title: str("title") ?? "",
                 ...(str("goal", "goal_text") !== undefined ? { goalText: str("goal", "goal_text") } : {}),
                 ...(str("description") !== undefined ? { description: str("description") } : {}),
-                ...(args.scope === "session" ? { scope: "session" } : {}),
-                ...(typeof args.knowledge_capture === "boolean" ? { knowledgeCapture: args.knowledge_capture } : {}),
+                ...(args.knowledge_capture !== undefined ? { knowledgeCapture: args.knowledge_capture } : {}),
                 ...(str("template", "template_name") !== undefined ? { templateName: str("template", "template_name") } : {}),
                 ...(str("template_file") !== undefined ? { templateFile: str("template_file") } : {}),
                 ...(str("status") !== undefined ? { planStatus: str("status") } : {}),

@@ -10,7 +10,7 @@ The GitHub Pages product deck lives in [docs/index.html](docs/index.html) and is
 
 ## What it gives a project
 
-- Project-scoped planning and task lifecycle around `.claw`, with workflow entry turning on automatically only after a project has been initialized
+- Project-scoped planning and task lifecycle around `.claw`, with automatic local project initialization when a plan is first created
 - Truth and ADR deposition so useful knowledge survives across sessions
 - Recall-oriented search over project docs before broader investigation
 - Closeout workflows that keep tasks, notes, and decisions aligned
@@ -73,7 +73,7 @@ Then use it from any project directory:
 claw init --max-tasks-to-keep 20 --planning true --external-planning-skill team-planning-skill --external-writer-skill external-knowledge-writer
 claw plan create --title "My task" --goal "Define the first task"
 claw plan create "My templated task" --template default --goal "Use the default template"
-claw plan create "Ephemeral harness" --scope session --goal "Run the full workflow without project deposition"
+claw plan create "Auxiliary workflow" --no-knowledge-capture --goal "Run the full workflow without project deposition"
 ```
 
 For a persistent terminal session, open the immutable project workdir together
@@ -96,7 +96,7 @@ the live client but retains session metadata for seven days.
 
 New project tasks are grouped under `.claw/tasks/YYYY-MM-DD/`. `claw context` performs a lock-protected lazy daily maintenance pass: it clears `.claw/runtime/tmp/` (and removes the legacy `.claw/tmp/`), moves date-scoped task folders from before yesterday into the archive (regardless of whether old plans have `completedAt`), archives legacy flat tasks by `plan.updatedAt` (falling back to the plan file timestamp), applies `maxTasksToKeep` to the archive, removes bindings to plans no longer under active tasks, and sweeps expired session workflows. It runs on the first context call of each local calendar day; it does not install a background scheduler.
 
-Use `claw plan create "<title>" --scope session` when the work needs the full plan, task, subplan, SessionStart recovery, and host Goal workflow but must not create or depend on a project `.claw` directory. Session scope is keyed by the platform session id, follows the session across cwd changes, and deliberately skips Truth/ADR capture and project task retention. When its frozen origin is inside a valid claw project, its terminal transition still refreshes that project's memory and enabled GitNexus index; outside a claw project it creates no refresh state. Completed state is retained for seven days by default; `claw session clean` removes the current session immediately and `claw session clean --expired` performs an explicit TTL sweep. Session state does not persist invocation host metadata.
+New plans use the current or ancestor project and automatically create missing local claw structure and default configuration. `--knowledge-capture false` (or `--no-knowledge-capture`) disables knowledge accumulation only; it does not select another store, discard existing configuration, attach a session TTL, or waive normal completion requirements. `--scope` is no longer accepted. Existing session-stored workflows remain recoverable in place; session identity still binds focus and authorizes work.
 
 Projects can define reusable templates directly under `.claw/templates` using `.json`, `.js`, `.mjs`, or `.cjs` files. Use `.claw/project.json` for a shared team `defaultPlanTemplate`, or `.claw/project-override.json` for a personal runtime override.
 
@@ -117,12 +117,11 @@ flag, no `CLAW_HOST` registration, and no lifecycle hooks:
 
 The standard flow keeps the full loop — `claw context` recovers a
 session-bound plan, `claw plan create` starts a project-scoped plan, and at
-`plan done` the agent itself executes the three-step background closeout:
-inline capture (`claw internal-knowledge-capture`), dispatch
-(`claw internal-knowledge-dispatch`), and the session-scoped writer plan.
-Session scope remains what it always was — a temporary-task shape that
-deliberately skips knowledge deposition — and is used only by the writer
-plan as a recursion guard. See
+`plan done` capture-enabled work follows the standard closeout owner: by default,
+same-agent `knowledge prepare/complete --source agent-memory`. An explicitly
+configured background route uses its supplied capture/dispatch steps and a
+non-capturing auxiliary writer plan. `knowledgeCapture: false` prevents recursive
+knowledge accumulation; no public storage-scope choice is needed. See
 [packages/standard-adapter/README.md](packages/standard-adapter/README.md)
 for details.
 

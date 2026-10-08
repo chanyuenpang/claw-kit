@@ -98,12 +98,12 @@ if (planCreate.status === 0) {
       dispatch.stdout.slice(0, 300));
   }
 
-  // 6. can a session-scope writer plan bind the same session key now?
+  // 6. can a non-capturing auxiliary plan bind the same session key now?
   const writerCreate = runClaw([
-    "plan", "create", "--scope", "session", "--title", "knowledge-writer",
+    "plan", "create", "--no-knowledge-capture", "--title", "knowledge-writer",
     "--template", "default",
   ]);
-  record("session-scope writer plan after root terminal", writerCreate.status === 0,
+  record("non-capturing auxiliary plan after root terminal", writerCreate.status === 0,
     writerCreate.status === 0 ? writerCreate.stdout.slice(0, 260) : writerCreate.stderr.slice(0, 400));
 
   // 7. knowledge list (hostless command) — observe queued jobs

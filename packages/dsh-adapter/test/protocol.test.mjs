@@ -21,10 +21,10 @@ test("owner outcomes override transport-looking text and retain partial-effect e
   assert.match(error.message, /do not replay/);
 });
 
-test("plan.create maps title/goal/scope/template to daemon input", () => {
+test("plan.create maps capture intent and rejects removed scope", () => {
   assert.deepEqual(
-    daemonInput("plan.create", { title: "T", goal: "G", scope: "session" }),
-    { title: "T", goalText: "G", scope: "session" },
+    daemonInput("plan.create", { title: "T", goal: "G", knowledge_capture: false }),
+    { title: "T", goalText: "G", knowledgeCapture: false },
   );
   assert.deepEqual(
     daemonInput("plan.create", { title: "T", template: "default" }),
@@ -34,6 +34,11 @@ test("plan.create maps title/goal/scope/template to daemon input", () => {
     daemonInput("plan.create", { title: "T", template_file: "x.json" }),
     { title: "T", templateFile: "x.json" },
   );
+});
+
+test("removed scope is not silently converted and invalid capture reaches owner validation", () => {
+  assert.throws(() => daemonInput("plan.create", { title: "T", scope: "session" }), /scope/);
+  assert.deepEqual(daemonInput("plan.create", { title: "T", knowledge_capture: "false" }), { title: "T", knowledgeCapture: "false" });
 });
 
 test("plan.start maps the full plan field set and appended tasks", () => {
