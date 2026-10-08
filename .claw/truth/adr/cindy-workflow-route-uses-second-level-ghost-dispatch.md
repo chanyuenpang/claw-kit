@@ -13,7 +13,7 @@ The claw-kit Cindy plugin exposes only `list_tools` and `call_tool` at the top l
 - All claw workflow operations in the Cindy host are second-level dispatch through `call_tool` with `name` and `args`; operation names are resolved from the categories returned by `list_tools`.
 - `list_tools` with a category is the discovery surface for operation names and argument schemas; `call_tool` is the single execution entry.
 - Plan state remains canonical in `.claw` `plan.json`; the Cindy Ghost progress card is a presentation projection and never becomes a second plan store.
-- The normal Cindy `plan.create` catalog does not offer caller-selected `scope`; templates select plan content rather than storage scope, so Core defaults new plans in an initialized project to project scope unless the caller explicitly selects `--scope session`.
+- The normal Cindy `plan.create` catalog does not offer caller-selected storage scope. New public plans use the unified project workflow; `knowledge_capture` controls accumulation rather than storage. Core retains internal session scope for legacy recovery including legacy delegate workflows.
 - Cindy returns a minimal workflow contract rather than raw CLI/Host internals: actionable status/path fields, complete lifecycle next steps, current task or question, local guidance, and any required `knowledgeDispatch` are retained; raw plan/event/request data, completion hooks, host actions, and duplicate guidance are excluded.
 - Knowledge finalization uses the plugin's own claim/done protocol: `knowledge.claim` atomically freezes the originating task conclusions, then exactly one `knowledge.done` completes the job with the returned `claimToken`.
 
