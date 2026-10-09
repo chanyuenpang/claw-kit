@@ -1,51 +1,73 @@
-# 本地 beta 与原样正式发布
+# 本地候选递增与原样正式发布
 
-beta 使用预定正式版本号，例如 CLI `0.2.43`、Codex `0.2.43.0`。批次与校验值独立记录，包内不添加 `-beta`。同版本允许多个未发布批次，只有实际测试通过的批次可以转正。
+每个新的可安装测试候选都使用一个新的正式目标版本号，不加 beta 后缀。本地未发布候选同样占用号码。批次 ID 和哈希用于识别产物、来源与试用，不再代替版本递增。
 
-## 准备并冻结
+## 版本与准备 owner
 
-按目标 artifact 的版本规则准备版本、依赖和 lockfile，运行与风险相称的检查。分类所有改动，把有价值内容提交到本地 `main`，清理临时输出并忽略本地目录。**beta 允许本地 commit，禁止 push、npm publish、GitHub Release 或上传 tag。** 此时不要求与 origin/main 相等。
+- CLI/Core/Client 同步三段版本，按当前已知版本高水位递增第三段；更新准确依赖、lockfile，以及 CLI 基线涉及的 adapter manifests。
+- 单独 Codex/DSH/OpenCode/OpenClaw/Cindy 只升该 family 的第四段，保留所选 CLI base。CLI 基线更新不授权打包/发布未选中的 adapter。
+- DSH 沿既有正式映射 A.B.C.N → npm A.B.C-rc.N；rc.N 是四段到 npm 的编码，测试与正式相同，不新增 -beta 版本线。
+- Cindy 的 vcindy tag 属于独立 artifact 仓库，不能用源码 origin 的 tag 代替。prepare 默认读取既有官方 artifact 仓库，也可传 --cindy-artifact-root <已授权checkout>；--known-versions <JSON> 可补充明确已知的 family→正式版本数组。
+- 选号复用 source manifests、已有 candidate/dsh-beta 清单及已知 npm/tag 事实。只看公开 latest 会复用尚未发布的本地号码；准备记录也必须计入。读取远端失败不构成第二套发布授权，保留已知本地高水位并报告限制。
 
-```text
-npm run beta:pack
-```
+## 准备、提交与冻结
 
-当前批次覆盖 Core、Client、CLI 和 Codex。命令检查干净的本地 main、内部版本、模板与 skill 来源，构建后保存三份 tgz 和完整 Codex marketplace 到 `dist/beta/<version>/<batch>/`。candidate.json 记录源码提交、版本、时间和全部产物 SHA-256。dist 已被 Git 忽略；保留候选目录直至正式发布完成。
+分类源码改动并提交本地 main，然后运行：
 
-失败的输出不具备有效 candidate.json，不能转正。重复打包生成新批次，不覆盖旧批次。其他 adapter 沿用各自 artifact 合同；这个 Codex 批次不构成它们的测试或发布证据。
+~~~text
+npm run beta:prepare -- --artifacts cli,codex,dsh
+~~~
 
-## 安装并试用一周
+不带 artifacts 默认 CLI+Codex；例如只准备 DSH 用 --artifacts dsh。用户明确指定正式目标号时，--versions 接受选中 family→版本的 JSON（例如 cli=0.3.0、dsh=0.3.0.2），仍须超过已分配高水位；不猜 major/minor 跳号、不复用旧号。命令在现有候选目录先独占写入 schema2 preparing 清单，保留目标号并更新版本/依赖；不自动 commit、build、publish 或安装。复核并提交这些变更至本地 main 后：
 
-```text
-npm run beta:verify -- --candidate <批次目录>
-npm run beta:install -- --candidate <批次目录>
-```
+~~~text
+npm run beta:pack -- --candidate <准备目录>
+npm run beta:verify -- --candidate <准备目录>
+~~~
 
-install 从三份 tarball 安装本地 runtime，检查 CLI 版本，并准备 claw-kit-beta 本地 marketplace。通过宿主正常的本地插件入口安装它，再确认插件版本即可。
+pack 检查确切准备输入与干净源码，构建所选产物，并将同一清单封为 frozen，记录 sourceRevision、版本、npm映射、完整 tree/tgz 和 SHA-256。组合产物来自同一次提交。冻结后再 pack 只校验返回原件，零重建。不存在 beta:pack 不升号生成另一个新同号批次的入口。
 
-使用输出的 binDirectory 运行 beta CLI，启用 `claw-kit@claw-kit-beta`，避免同时启用两份 claw-kit。安装只需取包、安装、确认 CLI 和插件版本；不用逐文件比对、路径审计或额外加载证明。
+进程中断遗留本地准备/打包锁时，beta:recover --candidate <目录> 只释放可证明进程已退出的锁；活进程或无法识别的 owner 不抢占。上传锁不按此办法重获发送许可：已有 receipt 的恢复只下载核对，不删除 possibly-live 上传锁或重发。
 
-安装后记录试用起点。基本冒烟另用 smoke-test-claw-kit 并明确指定 beta 批次，不作为额外安装门禁：
+构建失败时 preparing 不可安装/转正。原输入的版本写入中断可以 beta:resume --candidate <目录> 恢复，再本地提交并 pack；输入改变须创建新候选，不可覆写已冻结内容。锁冲突影响该准备/打包操作，不能以覆盖文件绕过。新候选可以有版本间隙，不回收曾分配的号。
 
-```text
-npm run beta:start-test -- --candidate <批次目录>
-```
+记录仍放在 dist/beta 中，不创建第二版本数据库；清理大产物时保留小清单与号码证据。旧 schema1 冻结候选保持只读可校验，不修改其版本/hash/trial，不自动把它们转换成新的候选。
 
-trial.json 记录该批次的起点，不可覆盖或倒填。修复代码需重新提交、打包并从新批次重新计时。产物摘要只用于确认正式上传时没有换包，不增加安装检查步骤。
+**beta 允许本地 commit，禁止 push、npm publish、GitHub Release 或上传 tag。** 本地 beta 不要求 main=origin/main。任何安装、Host重启或试用开始都不是打包的隐含步骤。
 
-## 正式转正
+## 安装与七天试用
 
-满七天后检查试用结果，选择该批次。干净的本地 main 必须指向其源码提交；origin/main 必须是该提交的祖先或相同提交。发生分叉先解决，不能强推。不要再改版本、构建、打包或导出 adapter。
+CLI+Codex 候选沿既有入口：
 
-```text
-npm run verify:release -- --candidate <批次目录>
-npm run publish:release -- --candidate <批次目录>
-```
+~~~text
+npm run beta:install -- --candidate <冻结目录>
+npm run beta:start-test -- --candidate <冻结目录>
+~~~
 
-verify 只验证产物、七天试用、源码和 Codex 结构。publish 预检三份 npm 包：同版本同 integrity 可继续，不同字节或非 E404 错误立即停止。按 Core → Client → CLI 发布固定 tgz，禁用发布 lifecycle scripts，逐包真实下载比对字节与 latest，全部通过才 push origin/main 并核对远程提交。
+adapter-only 通过该宿主正常安装入口消费冻结 tree/tgz，再记录同一候选的试用。确认 CLI/plugin 版本即可；不添加额外逐文件安装审计。trial.json 绑定冻结 candidate hash，不覆盖、不倒填。新字节必须新号并重新试用；安装、验证和恢复原件不升号。
 
-此命令完成 npm 与 source main。**GitHub tag/Release 仍由对应发布 skill 完成**：source 使用不可变 `v<version>`；Codex 使用批次 `artifacts/marketplace` 的完整 Git tree，按既有 `vcodex-<version>` namespace 创建 artifact commit/tag 和 Release，记录 source/artifact 两个提交。禁止重新 export，禁止把 raw source main 当插件。发布前后核验候选，并比较公开 tree 与冻结文件。
+## 原样转正
 
-部分发布失败时保留批次，修复后原样重试；禁止同版本换包或移动已存在 tag。最终 main = origin/main 且工作区为空才算完整发布。另行执行 update 时切回官方安装并清除 beta identity；skill 集合按目标 artifact 的 skill-inputs.json 核验，不固定数量。
+七天后明确选择精确候选并授权发布。正式时版本不变，产物字节也不变：禁止从 workspace 再 build、pack 或 export。CLI：
 
-不带 candidate 的 verify:release 可继续用于旧有公开源码的诊断；publish:release 必须带 candidate。本流程不自动安排一周后的发布或通知。
+~~~text
+npm run verify:release -- --candidate <冻结目录>
+npm run publish:release -- --candidate <冻结目录>
+~~~
+
+DSH：
+
+~~~text
+npm run publish:dsh-plugin -- --candidate <冻结目录>
+npm run publish:dsh-plugin -- --candidate <冻结目录> --publish
+~~~
+
+CLI owner 依次上传 Core→Client→CLI 的原 tgz，核验真实下载和 latest 后才 push 源码；DSH owner 上传所选冻结 tgz 并核验下载，随后按 release-dsh-plugin 完成源码/tag及授权交付。一个组合清单不意味着 CLI 发布入口自动发布 DSH。
+
+Codex 发布冻结 marketplace 完整 Git tree；Cindy 交独立 artifact 仓库 owner；OpenCode/OpenClaw 保留其既有 tag namespace。artifact commit 可以与 source commit 不同，但 tree/hash不能变。不得移动已有 tag，也不得把 raw source main冒充合成插件。
+
+每个 npm 坐标的尝试回执在候选旁路记录 attempted/accepted/unknown/verified；已接受或未知上传只能精确下载对账，不自动重发。不同远端字节阻止该坐标及其依赖交付，不以目录/catalog/version查询代替发布 owner。元数据查询失败不能解释为前次上传不存在。最终正式交付仍要求 main=origin/main且工作树干净，不以只上传 npm冒充全套完成。
+
+## 旧同号批次
+
+保留此前同版本不同批次作为历史，不覆盖、改号或重写摘要。继续测试当前源码时按新流程分配下一正式目标号，重新冻结与试用。历史候选仅能在另行明确选择精确 hash 时按旧产物处理；不能把旧试用记到新号上。

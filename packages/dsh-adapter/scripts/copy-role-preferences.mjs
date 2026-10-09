@@ -7,10 +7,10 @@ const adapterRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 const coreOutput = path.resolve(adapterRoot, "../core/dist/src");
 const check = process.argv.includes("--check");
 await fs.mkdir(path.join(adapterRoot, "lib"), { recursive: true });
-for (const suffix of ["js", "d.ts"]) {
-  const name = `role-preferences.${suffix}`;
+for (const contract of ["role-preferences", "errors"]) for (const suffix of ["js", "d.ts"]) {
+  const name = `${contract}.${suffix}`;
   const content = await fs.readFile(path.join(coreOutput, name), "utf8");
-  const expected = "// Generated from packages/core/src/role-preferences.ts; do not edit this artifact.\n"
+  const expected = `// Generated from packages/core/src/${contract}.ts; do not edit this artifact.\n`
     + content.replace(/^\/\/# sourceMappingURL=.*$/gm, "");
   const target = path.join(adapterRoot, "lib", name);
   if (check) {

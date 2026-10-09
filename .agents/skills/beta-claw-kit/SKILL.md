@@ -1,13 +1,15 @@
 ---
 name: beta-claw-kit
-description: Prepare a local claw-kit beta using the intended stable version, locally committed source, frozen npm and Codex artifacts, and a seven-day trial, without remote publication.
+description: Prepare version-incremented local claw-kit candidates with frozen artifacts and unchanged-version promotion, without remote publication.
 ---
 # beta-claw-kit
 
 Read [the beta workflow](../../../docs/beta-release.md). Follow using-claw-kit for the current host lifecycle; use a generic plan when this owns the task, or contribute to the active task.
 
-- Prepare the intended stable version and local main commit; classify every existing change. Local commit is allowed. Never push a branch/tag or publish npm/GitHub artifacts during beta.
-- Run proportionate checks and beta:pack to freeze Core/Client/CLI and Codex with source revision and hashes. This batch does not cover other adapters.
-- For requested local testing, install the batch and confirm CLI/plugin versions, then record the start with beta:start-test. No per-file installation audit or loaded-runtime proof is needed. Use smoke-test-claw-kit separately in beta mode.
-- Changed artifacts require a new batch and seven-day trial. Report batch path, versions and trial start; preserve bytes and version through promotion.
-- A later explicit formal-release request routes to the artifact release skills with this directory. They verify npm retrieval before any GitHub push. Do not automatically schedule or initiate publication.
+- Every new installable candidate gets a new formal target version, using the selected artifact's existing three-/four-segment rule. Local unpublished candidates reserve their numbers. No beta suffix is added.
+- Classify and commit useful source locally on main. Run beta:prepare with the requested artifact set, review/commit the version and dependency changes, then beta:pack --candidate the returned directory. Default is CLI+Codex; add DSH explicitly for a same-source combined candidate. Independent adapter-only work increments only that adapter's fourth segment.
+- A failed same-input unfinished preparation uses beta:resume --candidate; it does not allocate a second number. Frozen candidates are reused, never overwritten or rebuilt. New code/inputs require a new candidate and new version.
+- Beta is local only: never push/tag/publish. Preserve old candidate/history manifests even when pruning large local artifacts; do not erase allocated version identity.
+- For requested testing, install the exact batch, confirm versions and record the seven-day trial with beta:start-test. Installation/restart remain separately authorized. Do not start trial automatically after packaging.
+- Formal promotion consumes original tested bytes with unchanged versions: no bump/build/pack/export. CLI/Codex follows its candidate path; DSH uses publish:dsh-plugin -- --candidate <dir> [--publish]. Other artifact owners consume their frozen tree through their existing immutable tag/repository route.
+- Report versions, candidate path, source revision and trial status. Never infer published/installed/active state from a successful local pack.

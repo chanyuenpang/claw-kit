@@ -35,6 +35,8 @@ Thumbs.db
 # Local packaging and Windows-shell leftovers. Keep the current Cindy bundle
 # explicitly tracked when it is intentionally released.
 /.codex-tmp/
+# Intentional local-only runtime/install investigations; never candidate inputs.
+/.tmp/
 /release-*.patch.json
 /release-*.tasks.json
 /%SystemDrive%/

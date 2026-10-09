@@ -6,6 +6,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { exportCodexMarketplace } from "./codex-plugin-bundle.mjs";
+import { prepareCandidateVersions } from "./candidate-versions.mjs";
 import { inventory, verifyCandidate, startTrial, promoteCandidate, packCandidate, installCandidate, packageNames, WEEK_MS } from "./release-candidate.mjs";
 
 const repo = fileURLToPath(new URL("../", import.meta.url));
@@ -35,6 +36,13 @@ async function fixture(t) {
   await write(path.join(directory, "candidate.json"), candidate);
   return { root, source, directory, candidate };
 }
+
+test("legacy frozen candidate pack is reuse, not a new same-version batch", async t => {
+  const { directory } = await fixture(t);
+  const before = await fs.readFile(path.join(directory, "candidate.json"));
+  assert.equal(await packCandidate({ sourceRoot: "nonexistent-checkout", directory }), directory);
+  assert.deepEqual(await fs.readFile(path.join(directory, "candidate.json")), before);
+});
 
 test("trial starts without installation evidence and enforces seven days", async (t) => {
   const { directory } = await fixture(t);
@@ -101,7 +109,6 @@ else {throw Error('unexpected command '+args.join(' '));}`);
   await assert.rejects(promoteCandidate(directory, { sourceRoot: source, publish: true }), /Registry bytes differ/);
   assert.notEqual(git(remote, "rev-parse", "main"), candidate.sourceRevision);
   await fs.rm(path.join(root, "corrupt"));
-  await fs.rm(path.join(root, "calls.jsonl"));
   await promoteCandidate(directory, { sourceRoot: source, publish: true });
   assert.equal(git(remote, "rev-parse", "main"), candidate.sourceRevision);
   const calls = (await fs.readFile(path.join(root, "calls.jsonl"), "utf8")).trim().split("\n").map(JSON.parse);
@@ -114,26 +121,39 @@ test("real npm packing and local installation preserve candidate bytes without a
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "claw-beta-pack-"));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   // Small npm workspaces exercise real pack/install; Codex uses actual source inputs.
-  for (const relative of [".agents/skills", ".agents/plugins", "shared", "packages/codex-adapter"]) {
+  for (const relative of [".agents/skills", ".agents/plugins", "shared", "packages/codex-adapter", "packages/dsh-adapter"]) {
     await fs.cp(path.join(repo, relative), path.join(root, relative), { recursive: true, filter: (name) => !["node_modules", "dist", ".git"].includes(path.basename(name)) });
   }
   const { version } = JSON.parse(await fs.readFile(path.join(repo, "package.json")));
   const noop = 'node -e ""';
-  await write(path.join(root, "package.json"), { name: "beta-fixture", private: true, version, workspaces: ["packages/core", "packages/client", "packages/cli"], scripts: { "check:template-versions": noop, "check:skill-sources": noop } });
+  await write(path.join(root, "package.json"), { name: "beta-fixture", private: true, version, workspaces: ["packages/core", "packages/client", "packages/cli", "packages/dsh-adapter"], scripts: { "check:template-versions": noop, "check:skill-sources": noop } });
   await write(path.join(root, ".gitignore"), "dist/\nnode_modules/\n");
   for (const [index, folder] of ["core", "client", "cli"].entries()) {
     await write(path.join(root, "packages", folder, "package.json"), { name: packageNames[index], version, scripts: { build: noop }, ...(folder === "client" ? { peerDependencies: { "@veewo/claw": version }, peerDependenciesMeta: { "@veewo/claw": { optional: true } } } : {}), ...(folder === "cli" ? { bin: { claw: "dist/bin.js" }, dependencies: { "@veewo/claw-core": version, "@veewo/claw-client": version } } : {}) });
     if (folder === "cli") await write(path.join(root, "packages", folder, "dist", "bin.js"), `#!/usr/bin/env node\nconsole.log(${JSON.stringify(version)});\n`);
   }
+  const dshPath = path.join(root, "packages/dsh-adapter/package.json");
+  const dshManifest = JSON.parse(await fs.readFile(dshPath, "utf8"));
+  dshManifest.scripts.build = noop; await write(dshPath, dshManifest);
   git(root, "init", "-b", "main");
   git(root, "config", "user.email", "beta-test@example.invalid");
   git(root, "config", "user.name", "Beta test");
   git(root, "add", ".");
   git(root, "commit", "-m", "fixture");
-  const directory = await packCandidate({ sourceRoot: root });
-  const before = (await verifyCandidate(directory)).candidate.files;
+  const prepared = await prepareCandidateVersions({ sourceRoot: root, artifacts: ["cli", "codex", "dsh"] });
+  const next = prepared.record.versions.cli.version;
+  // The tiny compiled fixture derives its version from the package manifest.
+  await fs.writeFile(path.join(root, "packages/cli/dist/bin.js"), `#!/usr/bin/env node\nimport fs from 'node:fs'; console.log(JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url))).version);\n`);
+  // dist is ignored and not candidate source; source version changes are committed.
+  git(root, "add", "."); git(root, "commit", "-m", "prepare next version");
+  const directory = await packCandidate({ sourceRoot: root, directory: prepared.directory });
+  const frozen = (await verifyCandidate(directory)).candidate;
+  assert.equal(frozen.artifacts.dsh.version, next + ".0");
+  assert.equal(frozen.artifacts.dsh.npmVersion, next + "-rc.0");
+  assert.ok(frozen.files[frozen.artifacts.dsh.file]);
+  const before = frozen.files;
   const installed = await installCandidate(directory);
-  assert.equal(installed.version, version);
+  assert.equal(installed.version, next);
   assert.deepEqual((await verifyCandidate(directory)).candidate.files, before);
   assert.equal(git(root, "remote"), "");
 });

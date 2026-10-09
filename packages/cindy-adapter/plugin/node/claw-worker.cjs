@@ -1,3 +1,4 @@
+const { serializeFailure } = require('./failure-diagnostics.cjs');
 const { spawn } = require('node:child_process');
 const readline = require('node:readline');
 const fs = require('node:fs');
@@ -131,17 +132,20 @@ const OPERATION_CATALOG = {
       mutates: true,
       parameters: objectParameters({ finalizeId: stringParameter('Finalization id returned by plan completion.') }, ['finalizeId']),
     },
+    { name: 'knowledge.done.receipt', description: 'Read the authenticated canonical completion result without mutation.', mutates: false,
+      parameters: objectParameters({ finalizeId: stringParameter('Exact finalization id.'), claimToken: stringParameter('Optional legacy credential.'),
+        expectedStatus: { type: 'string', enum: ['succeeded', 'failed'] }, expectedResult: stringParameter('Expected outcome text for receipt matching.') }, ['finalizeId']) },
     {
       name: 'knowledge.done',
       description: 'Complete a claimed knowledge-finalization job exactly once.',
       mutates: true,
       parameters: objectParameters({
         finalizeId: stringParameter('Finalization id returned by plan completion.'),
-        claimToken: stringParameter('Claim token returned by knowledge.claim.'),
+        claimToken: stringParameter('Optional legacy credential; Core resolves the canonical session claim and rejects a wrong explicit value.'),
         status: { type: 'string', enum: ['succeeded', 'failed'], description: 'Terminal finalization status.' },
         result: stringParameter('Concise success result.'),
         error: stringParameter('Concise failure reason.'),
-      }, ['finalizeId', 'claimToken', 'status']),
+      }, ['finalizeId', 'status']),
     },
   ],
 };
@@ -189,7 +193,7 @@ function invocation(args) {
 }
 
 class NativeClawSession {
-  constructor(sessionId, workdir, onIdle, onExit, idleMs = SESSION_IDLE_MS) {
+  constructor(sessionId, workdir, onIdle, onExit, idleMs = SESSION_IDLE_MS, receiptOnly = false) {
     this.sessionId = sessionId;
     this.workdir = path.resolve(workdir);
     this.child = null;
@@ -207,6 +211,7 @@ class NativeClawSession {
     this.onIdle = onIdle;
     this.onExit = onExit;
     this.idleMs = idleMs;
+    this.receiptOnly = receiptOnly;
     this.lastActivityAt = Date.now();
     this.closeReason = null;
   }
@@ -235,7 +240,7 @@ class NativeClawSession {
   open() {
     if (this.openPromise) return this.openPromise;
     this.openPromise = new Promise((resolve, reject) => {
-      const command = invocation(['session', 'open', this.workdir, this.sessionId, '--host', 'cindy']);
+      const command = invocation(['session', 'open', this.workdir, this.sessionId, '--host', 'cindy', ...(this.receiptOnly ? ['--receipt-only'] : [])]);
       const child = spawn(command.executable, command.args, {
         cwd: this.workdir,
         env: process.env,
@@ -268,7 +273,7 @@ class NativeClawSession {
         this.stderr = (this.stderr + String(chunk)).slice(-8192);
       });
       child.stdin.on('error', (error) => {
-        this.failPending(sessionError('SESSION_CONNECTION_LOST', error.message, 'unknown'));
+        this.failPending(sessionError('SESSION_CONNECTION_LOST', error.message, 'unknown', error));
       });
       child.on('error', (error) => {
         this.closed = true;
@@ -382,12 +387,10 @@ class NativeClawSession {
 }
 
 function sessionError(code, message, outcome, evidence) {
-  const error = new Error(message);
-  error.code = code;
-  error.outcome = outcome;
-  if (typeof evidence?.phase === "string") error.phase = evidence.phase;
-  if (typeof evidence?.effect === "string") error.effect = evidence.effect;
-  return error;
+  const value = { ...(evidence && typeof evidence === "object" ? evidence : {}), code, message, outcome,
+    ...(evidence?.code && evidence.code !== code ? { cause: evidence } : {}) };
+  const failure = serializeFailure(value, { fallbackCode: code, origin: "cindy.session", fallbackOutcome: outcome });
+  return Object.assign(new Error(failure.message), failure);
 }
 
 function sessionResponseError(response, fallbackCode) {
@@ -428,7 +431,7 @@ function releaseSession(key, session, reason) {
   }).finally(() => reclaiming.delete(session));
 }
 
-async function ensureSession(sessionId, workdir) {
+async function ensureSession(sessionId, workdir, receiptOnly = false) {
   const identity = validateSessionIdentity(sessionId, workdir);
   const key = `${identity.workdir}\0${identity.sessionId}`;
   let session = sessions.get(key);
@@ -437,7 +440,7 @@ async function ensureSession(sessionId, workdir) {
       releaseSession(key, idle, 'idle-timeout');
     }, (exited) => {
       if (sessions.get(key) === exited) sessions.delete(key);
-    });
+    }, SESSION_IDLE_MS, receiptOnly);
     sessions.set(key, session);
     try {
       await session.open();
@@ -478,6 +481,8 @@ function sessionRequest(name, args, workdir) {
       ...(typeof args.template === 'string' ? { templateName: args.template } : {}),
       ...(typeof args.templateFile === 'string' ? { templateFile: path.resolve(args.templateFile) } : {}),
     } };
+    case 'knowledge.done':
+    case 'knowledge.done.receipt': return { operation: name, input: { ...args } };
     case 'plan.leave': return { operation: name, input: {} };
     case 'plan.show': return { operation: name, input: { simple: false } };
     case 'plan.start': {
@@ -568,8 +573,7 @@ function runClaw(args, cwd, input, timeoutMs, sessionId) {
       child.kill();
       finish({
         ok: false,
-        errorCode: 'CLAW_CLI_TIMEOUT',
-        reason: `claw CLI timed out after ${timeoutMs}ms.`,
+        ...operationFailure({ code: 'ETIMEDOUT', message: `claw CLI timed out after ${timeoutMs}ms.`, operation: 'cli.invoke', phase: 'response-wait', outcome: 'unknown', effect: 'unknown' }, 'CLAW_CLI_TIMEOUT'),
       });
     }, timeoutMs);
     child.stdout.on('data', (chunk) => { stdout += String(chunk); });
@@ -577,8 +581,7 @@ function runClaw(args, cwd, input, timeoutMs, sessionId) {
     child.on('error', (error) => {
       finish({
         ok: false,
-        errorCode: 'CLAW_CLI_UNAVAILABLE',
-        reason: `claw CLI is unavailable: ${error.message}`,
+        ...operationFailure(error, 'CLAW_CLI_UNAVAILABLE'),
       });
     });
     child.on('close', (code) => {
@@ -587,7 +590,7 @@ function runClaw(args, cwd, input, timeoutMs, sessionId) {
         const failure = operationFailure(stderr, 'CLAW_CLI_EXITED');
         finish({
           ok: false,
-          errorCode: failure.errorCode,
+          ...failure,
           reason: failure.errorCode === 'CLAW_CLI_EXITED'
             ? (stderr.trim()
               ? `claw CLI exited with code ${code}: ${failure.reason}`
@@ -636,23 +639,12 @@ function requiredNumber(args, name) {
   return value;
 }
 
-function operationFailure(rawReason, fallbackCode = 'CLAW_OPERATION_FAILED') {
-  const reason = typeof rawReason === 'string' && rawReason.trim()
-    ? rawReason.trim()
-    : 'claw-kit operation failed.';
-  try {
-    const parsed = JSON.parse(reason);
-    const error = parsed?.error;
-    const errorCode = typeof error?.code === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(error.code)
-      ? error.code
-      : fallbackCode;
-    const message = typeof error?.message === 'string' && error.message.trim()
-      ? error.message.trim()
-      : reason;
-    return { errorCode, reason: message };
-  } catch {
-    return { errorCode: fallbackCode, reason };
-  }
+function operationFailure(rawReason, fallbackCode) {
+  let value;
+  try { value = JSON.parse(typeof rawReason === 'string' ? rawReason : ''); }
+  catch { value = typeof rawReason === 'string' ? new Error(rawReason) : rawReason; }
+  const failure = serializeFailure(value, { fallbackCode, origin: 'cindy.cli', fallbackOutcome: 'unknown' });
+  return { ...failure, errorCode: failure.code, reason: failure.message };
 }
 
 function operationCommand(name, args) {
@@ -853,8 +845,13 @@ function cindyAgentResult(output, operation) {
       ...(typeof output.templatePath === 'string' ? { templatePath: output.templatePath } : {}),
     };
   }
+  if (operation === 'knowledge.done.receipt') return Object.fromEntries(['finalizeId', 'claimId', 'status', 'canonicalStatus', 'terminal', 'finishedAt', 'resultDigest', 'matches', 'postCommitEffectsVerified'].filter(key => output[key] !== undefined).map(key => [key, output[key]]));
   if (operation === 'knowledge.done') {
     return {
+      ...(output.completionRecovered === true ? { completionRecovered: true } : {}),
+      ...(typeof output.postCommitEffectsVerified === "boolean" ? { postCommitEffectsVerified: output.postCommitEffectsVerified } : {}),
+      ...(Array.isArray(output.postCommitFailures) ? { postCommitFailures: output.postCommitFailures } : {}),
+      ...(output.completionEffect ? { completionEffect: output.completionEffect } : {}),
       ...(typeof output.finalizeId === 'string' ? { finalizeId: output.finalizeId } : {}),
       ...(typeof output.status === 'string' ? { status: output.status } : {}),
       ...(output.completed === true ? { completed: true } : {}),
@@ -1228,58 +1225,6 @@ rpcInput.on('line', async (line) => {
           return;
         }
         output = claimed.output;
-      } else if (operation === 'knowledge.done') {
-        const finalizeId = requiredString(operationArgs, 'finalizeId');
-        const claimToken = requiredString(operationArgs, 'claimToken');
-        const status = requiredString(operationArgs, 'status');
-        if (status !== 'succeeded' && status !== 'failed') throw new Error('status must be succeeded or failed.');
-        const messageFlag = status === 'succeeded' ? '--result' : '--error';
-        const message = requiredString(operationArgs, status === 'succeeded' ? 'result' : 'error');
-        const located = await runClaw([
-          'knowledge', 'wait',
-          '--project-root', params.workdir,
-          '--finalize-id', finalizeId,
-          '--timeout-ms', '0',
-          '--host', 'cindy',
-        ], params.workdir, undefined, 10000, params.sessionId);
-        const jobPath = typeof located.output?.jobPath === 'string' ? located.output.jobPath : '';
-        let job;
-        try { job = JSON.parse(fs.readFileSync(jobPath, 'utf8')); } catch {
-          reply(request.id, {
-            ok: false,
-            operation,
-            errorCode: located.errorCode || 'KNOWLEDGE_JOB_UNAVAILABLE',
-            reason: located.reason || 'Knowledge finalization job is unavailable.',
-          });
-          return;
-        }
-        if (job.finalizeId !== finalizeId) {
-          reply(request.id, {
-            ok: false,
-            operation,
-            errorCode: 'KNOWLEDGE_JOB_MISMATCH',
-            reason: 'Knowledge finalization job does not match the dispatched finalizer.',
-          });
-          return;
-        }
-        const completed = await runClaw([
-          'knowledge', 'done',
-          '--job', jobPath,
-          '--claim-token', claimToken,
-          '--status', status,
-          messageFlag, message,
-          '--host', 'cindy',
-        ], params.workdir, undefined, 30000, params.sessionId);
-        if (!completed.ok) {
-          reply(request.id, {
-            ok: false,
-            operation,
-            errorCode: completed.errorCode || 'KNOWLEDGE_DONE_FAILED',
-            reason: completed.reason || 'Knowledge finalization completion failed.',
-          });
-          return;
-        }
-        output = completed.output || { ok: true, finalizeId, status };
       } else if (operation === 'knowledge.complete') {
         const finalizeId = requiredString(operationArgs, 'finalizeId');
         const resultText = requiredString(operationArgs, 'result');
@@ -1318,10 +1263,34 @@ rpcInput.on('line', async (line) => {
         output = result.output;
       } else {
         const mapped = sessionRequest(operation, operationArgs, params.workdir);
-        const session = await ensureSession(params.sessionId, params.workdir);
+        const session = await ensureSession(params.sessionId, params.workdir, ["knowledge.done", "knowledge.done.receipt"].includes(operation));
         const command = session.request(mapped);
         const ordinal = session.requestsStarted;
-        const response = await command;
+        let response;
+        try { response = await command; }
+        catch (error) {
+          if (operation !== 'knowledge.done' || error?.outcome !== 'unknown') throw error;
+          releaseSession(session.workdir + '\0' + session.sessionId, session, 'completion-unknown');
+          const original = mapped.input;
+          let receipt;
+          try {
+            const recovery = await ensureSession(params.sessionId, params.workdir, true);
+            receipt = await recovery.request({ operation: 'knowledge.done.receipt', input: {
+            finalizeId: original.finalizeId, expectedStatus: original.status,
+            expectedResult: original.status === 'succeeded' ? original.result : original.error,
+            ...(original.claimToken !== undefined ? { claimToken: original.claimToken } : {}),
+          } });
+            if (receipt.ok === false) { const detail = serializeFailure(receipt.error ?? receipt, { fallbackCode: "COMPLETION_RECEIPT_FAILED", operation: "knowledge.done.receipt", origin: "cindy" }); throw Object.assign(new Error(detail.message), detail); }
+          } catch (diagnostic) {
+            error.diagnostics = [...(Array.isArray(error.diagnostics) ? error.diagnostics : []), serializeFailure(diagnostic, {
+              fallbackCode: 'COMPLETION_RECEIPT_FAILED', origin: 'cindy', operation: 'knowledge.done.receipt', fallbackOutcome: 'unknown' })].slice(0, 3);
+            throw error;
+          }
+          if (receipt.output?.terminal !== true || receipt.output?.matches !== true) throw error;
+          response = { ok: true, output: { command: 'knowledge.done', finalizeId: original.finalizeId,
+            ...(original.status === 'succeeded' ? { completed: true } : { failed: true }),
+            alreadyDone: true, completionRecovered: true, delegateCloseDeferred: true, postCommitEffectsVerified: false } };
+        }
         if (operation === 'plan.done') { completedSession = session; completedOrdinal = ordinal; }
         output = response.output;
         envelope = {
@@ -1333,7 +1302,7 @@ rpcInput.on('line', async (line) => {
       reply(request.id, {
         ok: true,
         operation,
-        result: cindyAgentResult(output, operation),
+        result: { ...cindyAgentResult(output, operation), ...(Array.isArray(output?.postCommandFailures) ? { postCommandFailures: output.postCommandFailures } : {}) },
         ...(projectionFor(output) ? { projection: projectionFor(output) } : {}),
         ...envelope,
       });
@@ -1346,12 +1315,8 @@ rpcInput.on('line', async (line) => {
         releaseSession(key, completedSession, 'plan.done');
       }
     } catch (error) {
-      const structured = typeof error?.code === 'string'
-        ? { errorCode: error.code, reason: error.message,
-          ...(error.outcome ? { outcome: error.outcome } : {}),
-          ...(error.phase ? { phase: error.phase } : {}),
-          ...(error.effect ? { effect: error.effect } : {}) }
-        : operationFailure(error instanceof Error ? error.message : String(error), 'INVALID_OPERATION_ARGUMENTS');
+      const failure = serializeFailure(error, { fallbackCode: 'WORKER_OPERATION_FAILED', origin: 'cindy', operation, fallbackOutcome: 'unknown' });
+      const structured = { ...failure, errorCode: failure.code, reason: failure.message };
       reply(request.id, {
         ok: false,
         operation,

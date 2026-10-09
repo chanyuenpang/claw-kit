@@ -1,9 +1,12 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { prepareCandidateVersions, resumeCandidatePreparation, readPreparedCandidate, recoverCandidatePreparation, families } from "./candidate-versions.mjs";
+import { packDshPluginArtifact, exportHostPluginArtifact, npmVersionOf } from "./host-plugin-artifacts.mjs";
+import { publishFrozenNpmResource } from "./frozen-npm-promotion.mjs";
+import { buildCindyPluginArtifact } from "./cindy-plugin-artifact.mjs";
 import { exportCodexMarketplace, readCodexPluginSource } from "./codex-plugin-bundle.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -46,16 +49,32 @@ export async function verifyCandidate(directory, { ready = false, now = Date.now
   directory = path.resolve(directory);
   const manifestBytes = await fs.readFile(path.join(directory, "candidate.json"));
   const candidate = JSON.parse(manifestBytes);
-  assert(candidate.schemaVersion === 1 && /^\d+\.\d+\.\d+$/.test(candidate.version), "Invalid candidate format/version.");
+  assert([1, 2].includes(candidate.schemaVersion) && /^\d+\.\d+\.\d+$/.test(candidate.version), "Invalid candidate format/version.");
+  if (candidate.schemaVersion === 2) assert(candidate.state === "frozen", "Preparation is not a frozen, installable candidate.");
   assert(/^[a-f0-9]{40,64}$/.test(candidate.sourceRevision), "Invalid source revision.");
-  assert(candidate.packages?.length === packageNames.length && candidate.packages.every((pkg, i) => pkg.name === packageNames[i] && pkg.file === `npm/${pkg.name.split("/")[1]}-${candidate.version}.tgz`), "Invalid candidate package list.");
-  assert(candidate.codex?.directory === "marketplace" && /^\d+\.\d+\.\d+\.\d+$/.test(candidate.codex.version) && candidate.codex.version.startsWith(`${candidate.version}.`), "Invalid Codex candidate.");
+  const hasCli = candidate.schemaVersion === 1 || candidate.selected?.includes("cli");
+  assert(candidate.packages?.length === (hasCli ? packageNames.length : 0) && candidate.packages.every((pkg, i) => pkg.name === packageNames[i] && pkg.file === `npm/${pkg.name.split("/")[1]}-${candidate.version}.tgz`), "Invalid candidate package list.");
+  if (candidate.schemaVersion === 1 || candidate.codex) assert(candidate.codex?.directory === "marketplace" && /^\d+\.\d+\.\d+\.\d+$/.test(candidate.codex.version) && candidate.codex.version.startsWith(`${candidate.version}.`), "Invalid Codex candidate.");
   const actual = await inventory(path.join(directory, "artifacts"));
   assert(JSON.stringify(actual) === JSON.stringify(candidate.files), "Candidate artifacts changed. Create a new beta batch and restart testing.");
   for (const pkg of candidate.packages) assert(actual[pkg.file], `Missing ${pkg.file}`);
-  const pluginDir = path.join(directory, "artifacts", "marketplace", "packages", "codex-adapter");
-  const plugin = await json(path.join(pluginDir, ".codex-plugin", "plugin.json"));
-  assert(plugin.version === candidate.codex.version, "Codex version does not match candidate.");
+  if (candidate.codex) {
+    const pluginDir = path.join(directory, "artifacts", "marketplace", "packages", "codex-adapter");
+    const plugin = await json(path.join(pluginDir, ".codex-plugin", "plugin.json"));
+    assert(plugin.version === candidate.codex.version, "Codex version does not match candidate.");
+  }
+  if (candidate.schemaVersion === 2) {
+    assert(Array.isArray(candidate.selected) && candidate.selected.length && candidate.selected.every(f => families.includes(f)) && new Set(candidate.selected).size === candidate.selected.length, "Invalid selected artifacts.");
+    assert(Object.keys(candidate.artifacts ?? {}).length === candidate.selected.length, "Missing artifact owner entries.");
+    for (const family of candidate.selected) {
+      const entry = candidate.artifacts[family];
+      assert(entry && entry.version === candidate.versions?.[family]?.version, "Artifact version differs: " + family);
+      if (family !== "cli") assert(entry.version.startsWith(candidate.version + ".") && /^\d+\.\d+\.\d+\.\d+$/.test(entry.version), "Invalid adapter version.");
+      if (entry.directory) assert(Object.keys(actual).some(file => file.startsWith(entry.directory + "/")), "Missing frozen artifact directory.");
+      if (family === "cli") assert(entry.version === candidate.version, "CLI artifact baseline differs.");
+      if (family === "dsh") assert(entry.npmVersion === npmVersionOf(entry.version) && actual[entry.file], "Invalid frozen DSH identity.");
+    }
+  }
   const manifestHash = digest(manifestBytes);
   if (ready) {
     const trial = await json(path.join(directory, "trial.json"));
@@ -73,49 +92,92 @@ export async function startTrial(directory, evidence = "Versions confirmed; loca
   return trial;
 }
 
-export async function packCandidate({ sourceRoot = repoRoot } = {}) {
+export async function packCandidate({ sourceRoot = repoRoot, directory } = {}) {
+  assert(directory, "Prepare and commit a new version first; supply pack --candidate <directory>.");
+  directory = path.resolve(directory);
+  const existing = await json(path.join(directory, "candidate.json"));
+  if (existing.state === "frozen" || existing.schemaVersion === 1) { await verifyCandidate(directory); return directory; }
   const sourceRevision = cleanMain(sourceRoot);
-  const manifests = await Promise.all(["package.json", "packages/core/package.json", "packages/client/package.json", "packages/cli/package.json"].map((name) => json(path.join(sourceRoot, name))));
-  const [root, core, client, cli] = manifests;
-  const version = root.version;
-  assert(/^\d+\.\d+\.\d+$/.test(version) && manifests.every((pkg) => pkg.version === version), "Beta must use the intended aligned stable version, without a prerelease suffix.");
-  assert(core.name === packageNames[0] && client.name === packageNames[1] && cli.name === packageNames[2], "Unexpected package identity.");
-  assert(cli.dependencies?.[packageNames[0]] === version && cli.dependencies?.[packageNames[1]] === version && client.peerDependencies?.[packageNames[2]] === version, "Internal version pins must match the candidate.");
-  npm(["run", "check:template-versions"], sourceRoot);
-  npm(["run", "check:skill-sources"], sourceRoot);
-  for (const name of packageNames) npm(["run", "build", "-w", name], sourceRoot);
-  const batch = `${new Date().toISOString().replaceAll(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}`;
-  const directory = path.join(sourceRoot, "dist", "beta", version, batch);
+  const preparation = await readPreparedCandidate(directory, sourceRoot);
+  const selected = preparation.selected, versions = preparation.versions;
+  const version = (await json(path.join(sourceRoot, "package.json"))).version;
   const artifacts = path.join(directory, "artifacts");
-  await fs.mkdir(path.join(artifacts, "npm"), { recursive: true });
-  // A failed build/export leaves no candidate.json, so it can never be promoted.
-  const packages = [];
-  for (const name of packageNames) {
-    const [packed] = JSON.parse(npm(["pack", "--workspace", name, "--ignore-scripts", "--json", "--pack-destination", path.join(artifacts, "npm")], sourceRoot));
-    assert(packed.name === name && packed.version === version, `Unexpected packed identity: ${name}`);
-    const filename = `${name.split("/")[1]}-${version}.tgz`;
-    await fs.rename(path.join(artifacts, "npm", packed.filename), path.join(artifacts, "npm", filename));
-    packages.push({ name, file: `npm/${filename}` });
-  }
-  const codex = await exportCodexMarketplace({ sourceRoot, outDir: path.join(artifacts, "marketplace") });
-  assert(codex.version.startsWith(`${version}.`), "Codex must target the beta CLI version.");
-  cleanMain(sourceRoot, sourceRevision);
-  const candidate = { schemaVersion: 1, batch, version, sourceRevision, createdAt: new Date().toISOString(), packages, codex: { version: codex.version, directory: "marketplace" }, files: await inventory(artifacts) };
-  await fs.writeFile(path.join(directory, "candidate.json"), `${JSON.stringify(candidate, null, 2)}\n`, { flag: "wx" });
-  await verifyCandidate(directory);
-  return directory;
+  const lockPath = path.join(directory, ".pack.lock");
+  const lock = await fs.open(lockPath, "wx");
+  try {
+    await lock.writeFile(JSON.stringify({ schemaVersion: 1, pid: process.pid, token: directory + ":" + process.pid + ":" + Date.now() }));
+    await lock.sync();
+    const lockedRecord = await json(path.join(directory, "candidate.json"));
+    if (lockedRecord.state === "frozen") { await verifyCandidate(directory); return directory; }
+    assert(JSON.stringify(lockedRecord) === JSON.stringify(preparation), "Candidate preparation changed while acquiring its pack lock.");
+    // Only an unfinished, exact-input preparation may reconstruct partial output.
+    assert(path.dirname(artifacts) === directory, "Invalid candidate output.");
+    await fs.rm(artifacts, { recursive: true, force: true });
+    await fs.mkdir(artifacts, { recursive: true });
+    npm(["run", "check:template-versions"], sourceRoot);
+    npm(["run", "check:skill-sources"], sourceRoot);
+    const packages = [], outputs = {};
+    if (selected.includes("cli")) {
+      const manifests = await Promise.all(["package.json", "packages/core/package.json", "packages/client/package.json", "packages/cli/package.json"].map(name => json(path.join(sourceRoot, name))));
+      const [, core, client, cli] = manifests;
+      assert(version === versions.cli.version && manifests.every(pkg => pkg.version === version), "Prepared CLI versions differ.");
+      assert(core.name === packageNames[0] && client.name === packageNames[1] && cli.name === packageNames[2], "Unexpected package identity.");
+      assert(cli.dependencies?.[packageNames[0]] === version && cli.dependencies?.[packageNames[1]] === version && client.peerDependencies?.[packageNames[2]] === version, "Internal pins differ.");
+      await fs.mkdir(path.join(artifacts, "npm"));
+      for (const name of packageNames) {
+        npm(["run", "build", "-w", name], sourceRoot);
+        const [packed] = JSON.parse(npm(["pack", "--workspace", name, "--ignore-scripts", "--json", "--pack-destination", path.join(artifacts, "npm")], sourceRoot));
+        assert(packed.name === name && packed.version === version, "Unexpected packed identity.");
+        const file = "npm/" + name.split("/")[1] + "-" + version + ".tgz";
+        await fs.rename(path.join(artifacts, "npm", packed.filename), path.join(artifacts, file));
+        packages.push({ name, file });
+      }
+      outputs.cli = { version, packages };
+    }
+    if (selected.includes("codex")) {
+      const codex = await exportCodexMarketplace({ sourceRoot, outDir: path.join(artifacts, "marketplace") });
+      assert(codex.version === versions.codex.version, "Prepared Codex version differs.");
+      outputs.codex = { version: codex.version, directory: "marketplace" };
+    }
+    for (const family of selected.filter(f => !["cli", "codex"].includes(f))) {
+      const manifest = await json(path.join(sourceRoot, "packages", family + "-adapter", "package.json"));
+      assert(manifest.version === versions[family].version, "Prepared adapter version differs: " + family);
+      if (family === "dsh") {
+        npm(["run", "build", "-w", "@veewo/dsh-claw-kit"], sourceRoot);
+        const packed = await packDshPluginArtifact({ sourceRoot, outDir: path.join(artifacts, "dsh") });
+        outputs.dsh = { version: packed.gitVersion, npmVersion: packed.npmVersion, file: "dsh/" + path.basename(packed.tarball) };
+      } else {
+        if (family !== "cindy") npm(["run", "build", "-w", "@claw-kit/" + family + "-adapter"], sourceRoot);
+        const outputRoot = path.join(artifacts, family);
+        if (family === "cindy") await buildCindyPluginArtifact({ sourceRoot, outputRoot });
+        else await exportHostPluginArtifact({ sourceRoot, targetHost: family, outputRoot });
+        outputs[family] = { version: manifest.version, directory: family };
+      }
+    }
+    cleanMain(sourceRoot, sourceRevision);
+    await readPreparedCandidate(directory, sourceRoot);
+    const candidate = { schemaVersion: 2, state: "frozen", batch: preparation.batch, version, versions, selected,
+      sourceRevision, createdAt: new Date().toISOString(), packages,
+      ...(outputs.codex ? { codex: outputs.codex } : {}), artifacts: outputs, files: await inventory(artifacts) };
+    const temporary = path.join(directory, "candidate.json.tmp-" + process.pid + "-" + Date.now());
+    await fs.writeFile(temporary, JSON.stringify(candidate, null, 2) + "\n", { flag: "wx" });
+    await fs.rename(temporary, path.join(directory, "candidate.json"));
+    await verifyCandidate(directory);
+    return directory;
+  } finally { await lock.close(); await fs.unlink(lockPath); }
 }
 
 export async function installCandidate(directory) {
   directory = path.resolve(directory);
-  const candidate = await json(path.join(directory, "candidate.json"));
-  assert(/^\d+\.\d+\.\d+$/.test(candidate.version), "Invalid candidate version.");
+  const { candidate } = await verifyCandidate(directory);
+  assert(candidate.packages.length === packageNames.length, "Use the host installer for adapter-only candidates.");
   const runtime = path.join(directory, "runtime");
   await fs.mkdir(runtime, { recursive: true });
   await fs.writeFile(path.join(runtime, "package.json"), JSON.stringify({ private: true, dependencies: Object.fromEntries(packageNames.map((name) => [name, `file:${path.join(directory, "artifacts", "npm", `${name.split("/")[1]}-${candidate.version}.tgz`).replaceAll("\\", "/")}`])) }, null, 2));
   npm(["install", "--ignore-scripts", "--no-audit", "--no-fund"], runtime);
   const bin = path.join(runtime, "node_modules", "@veewo", "claw", "dist", "bin.js");
   assert(run(process.execPath, [bin, "--version"], runtime) === candidate.version, "Installed beta CLI version mismatch.");
+  if (!candidate.codex) return { version: candidate.version, binDirectory: path.join(runtime, "node_modules", ".bin"), next: "Confirm CLI version; no Codex artifact was selected." };
   // The test registration has its own identity; preserve the frozen official catalog.
   const localMarketplace = path.join(runtime, "marketplace");
   await fs.cp(path.join(directory, "artifacts", "marketplace"), localMarketplace, { recursive: true });
@@ -131,35 +193,21 @@ export async function promoteCandidate(directory, { publish = false, sourceRoot 
   const verified = await verifyCandidate(directory, { ready: true });
   const { candidate } = verified;
   cleanMain(sourceRoot, candidate.sourceRevision);
-  await readCodexPluginSource({ sourceDir: path.join(verified.directory, "artifacts", "marketplace", "packages", "codex-adapter") });
+  if (candidate.codex) await readCodexPluginSource({ sourceDir: path.join(verified.directory, "artifacts", "marketplace", "packages", "codex-adapter") });
   if (!publish) return verified;
+  assert(candidate.packages.length === packageNames.length, "Use the artifact-specific promotion owner for adapter-only candidates.");
   assert(process.env.npm_execpath, "Run publication through npm run publish:release.");
   run("git", ["fetch", "origin", "main"], sourceRoot);
   run("git", ["merge-base", "--is-ancestor", "origin/main", "HEAD"], sourceRoot);
-  // Preflight every package before mutating the registry. E404 alone means absent.
-  const published = [];
-  for (const pkg of candidate.packages) {
-    try {
-      const metadata = JSON.parse(execFileSync(process.execPath, [process.env.npm_execpath, "view", `${pkg.name}@${candidate.version}`, "dist.integrity", "--json", `--registry=${registry}`], { cwd: sourceRoot, encoding: "utf8", stdio: "pipe" }));
-      const bytes = await fs.readFile(path.join(verified.directory, "artifacts", pkg.file));
-      assert(metadata === `sha512-${createHash("sha512").update(bytes).digest("base64")}`, `${pkg.name}@${candidate.version} already exists with different bytes. Select a new version and beta batch.`);
-      published.push(pkg.name);
-    } catch (error) {
-      let code;
-      try { code = JSON.parse(String(error.stdout)).error?.code; } catch { /* Preserve the original error. */ }
-      if (code !== "E404") throw error;
-    }
-  }
   for (const pkg of candidate.packages) {
     await verifyCandidate(directory, { ready: true });
-    if (!published.includes(pkg.name)) npm(["publish", path.join(verified.directory, "artifacts", pkg.file), "--ignore-scripts", "--access", "public", "--tag", "latest", `--registry=${registry}`], sourceRoot);
-    // Retrieval is checked before any GitHub push. Exact matches allow safe resume.
-    const temp = await fs.mkdtemp(path.join(os.tmpdir(), "claw-beta-retrieval-"));
-    try {
-      const [packed] = JSON.parse(npm(["pack", `${pkg.name}@${candidate.version}`, "--ignore-scripts", "--json", "--pack-destination", temp, `--registry=${registry}`], temp));
-      assert(digest(await fs.readFile(path.join(temp, packed.filename))) === candidate.files[pkg.file], `Registry bytes differ for ${pkg.name}. Stop before GitHub publication.`);
-      assert(JSON.parse(npm(["view", pkg.name, "dist-tags.latest", "--json", `--registry=${registry}`], temp)) === candidate.version, `latest differs for ${pkg.name}; resolve explicitly before GitHub publication.`);
-    } finally { await fs.rm(temp, { recursive: true, force: true }); }
+    await publishFrozenNpmResource({ directory: verified.directory, candidateHash: verified.manifestHash,
+      identity: pkg.name + "@" + candidate.version,
+      tarball: path.join(verified.directory, "artifacts", pkg.file), expectedHash: candidate.files[pkg.file],
+      receiptName: "promotion-" + pkg.name.split("/")[1] + ".json",
+      runNpm: args => npm(args, sourceRoot) });
+    assert(JSON.parse(npm(["view", pkg.name, "dist-tags.latest", "--json", "--registry=" + registry], sourceRoot)) === candidate.version,
+      "latest differs; resolve explicitly before GitHub publication.");
   }
   cleanMain(sourceRoot, candidate.sourceRevision);
   run("git", ["push", "origin", "main"], sourceRoot);
@@ -170,15 +218,61 @@ export async function promoteCandidate(directory, { publish = false, sourceRoot 
 
 export async function main(args = process.argv.slice(2)) {
   const [operation, ...options] = args;
-  const allowed = operation === "start-test" ? ["--candidate", "--evidence"] : ["--candidate"];
+  const allowed = operation === "prepare" ? ["--artifacts", "--versions", "--known-versions", "--cindy-artifact-root"] : operation === "start-test" ? ["--candidate", "--evidence"] : ["--candidate"];
   const parsed = {};
   for (let i = 0; i < options.length; i += 2) {
     assert(allowed.includes(options[i]) && options[i + 1] && !options[i + 1].startsWith("--") && !(options[i] in parsed), "Invalid beta arguments.");
     parsed[options[i]] = options[i + 1];
   }
+  if (operation === "prepare") {
+    const selected = parsed["--artifacts"]?.split(",") ?? ["cli", "codex"];
+    const published = parsed["--known-versions"] ? await json(path.resolve(parsed["--known-versions"])) : {};
+    assert(published && typeof published === "object" && !Array.isArray(published) && Object.entries(published).every(([family, values]) => families.includes(family) && Array.isArray(values) && values.every(value => /^\d+\.\d+\.\d+(?:\.\d+)?$/.test(value))), "Known version facts must map artifact families to formal version arrays.");
+    // Published versions are allocation facts, not permission preflights.
+    // Owner/local candidates still provide a high water if a read is unavailable.
+    for (const family of ["cli", ...(selected.includes("dsh") ? ["dsh"] : [])]) {
+      try {
+        const name = family === "cli" ? "@veewo/claw" : "@veewo/dsh-claw-kit";
+        const values = JSON.parse(npm(["view", name, "versions", "--json", "--registry=" + registry]));
+        published[family] = [...(published[family] ?? []), ...(Array.isArray(values) ? values : [values]).map(value => family === "dsh"
+          ? String(value).replace(/^(\d+\.\d+\.\d+)-rc\.(\d+)$/, "$1.$2") : value)];
+      } catch { console.warn("Published " + family + " version read unavailable; allocating from known source/local history, not authorizing any publication."); }
+    }
+    try {
+      const remoteTags = run("git", ["ls-remote", "--tags", "origin"], repoRoot).split(/\r?\n/);
+      for (const family of selected.filter(f => !["cli", "cindy"].includes(f))) {
+        const prefix = "refs/tags/v" + family + "-";
+        published[family] = [...(published[family] ?? []), ...remoteTags.map(line => line.split("\t")[1]).filter(ref => ref?.startsWith(prefix) && !ref.endsWith("^{}" )).map(ref => ref.slice(prefix.length))];
+      }
+    } catch { console.warn("Remote tag read unavailable; known local candidate numbers remain reserved."); }
+    if (selected.includes("cindy")) {
+      try {
+        // vcindy belongs to its artifact repository, not source origin.
+        const refs = parsed["--cindy-artifact-root"]
+          ? run("git", ["tag", "--list", "vcindy-*"], path.resolve(parsed["--cindy-artifact-root"])).split(/\r?\n/)
+          : run("git", ["ls-remote", "--tags", "https://github.com/chanyuenpang/claw-kit-cindy-adapter.git"], repoRoot).split(/\r?\n/).map(line => line.split("\t")[1]?.replace("refs/tags/", ""));
+        published.cindy = [...(published.cindy ?? []), ...refs.filter(ref => ref?.startsWith("vcindy-") && !ref.endsWith("^{}" )).map(ref => ref.slice("vcindy-".length))];
+      } catch { console.warn("Cindy artifact tag read unavailable; supply --known-versions or --cindy-artifact-root to include additional known artifact allocations."); }
+    }
+    const targets = parsed["--versions"] ? JSON.parse(parsed["--versions"]) : {};
+    const prepared = await prepareCandidateVersions({ sourceRoot: repoRoot, artifacts: selected, published, targets });
+    console.log(JSON.stringify({ directory: prepared.directory, versions: prepared.record.versions, next: prepared.next }, null, 2));
+    return;
+  }
+  if (operation === "recover") {
+    assert(parsed["--candidate"], "Supply --candidate <directory>.");
+    console.log(JSON.stringify(await recoverCandidatePreparation(parsed["--candidate"], { sourceRoot: repoRoot }), null, 2));
+    return;
+  }
+  if (operation === "resume") {
+    assert(parsed["--candidate"], "Supply --candidate <preparing-directory>.");
+    const prepared = await resumeCandidatePreparation(parsed["--candidate"], { sourceRoot: repoRoot });
+    console.log(JSON.stringify({ directory: prepared.directory, versions: prepared.record.versions, next: prepared.next }, null, 2));
+    return;
+  }
   if (operation === "pack") {
-    assert(options.length === 0, "pack takes no arguments; output is dist/beta/<version>/<batch>.");
-    console.log(await packCandidate());
+    assert(parsed["--candidate"], "Prepare and commit a new version first; supply --candidate <directory>.");
+    console.log(await packCandidate({ directory: parsed["--candidate"] }));
     return;
   }
   assert(parsed["--candidate"], "Supply --candidate <directory>.");

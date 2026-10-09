@@ -1,3 +1,4 @@
+import { serializeFailure } from "../lib/errors.js";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,7 +11,7 @@ import {
   type HostAction,
   type JsonValue,
 } from "./host-actions.js";
-import { daemonInput, isUncertainConnectionFailure, isUnknownCommandOutcome, operationFailureError, renderGuidanceSnapshot } from "./protocol.js";
+import { daemonInput, unknownOperationError, isUncertainConnectionFailure, isUnknownCommandOutcome, operationFailureError, renderGuidanceSnapshot } from "./protocol.js";
 import { registerBundledSkills } from "./skills.js";
 import { routeCommand, runCommandBaseline, resolveCommandEntry } from "./command-route.js";
 import { handleProjectConfigRpc, type WorkspaceRegistry } from "./project-config-rpc.js";
@@ -370,7 +371,10 @@ export function apply(ctx: unknown): void {
     const text = readOutput(handle.collected?.stdout);
     const errText = readOutput(handle.collected?.stderr);
     if ((outcome.exitCode ?? outcome.code) !== 0 || outcome.signal) {
-      throw new Error("claw " + argv[0] + " exited without success: " + errText.slice(-4096));
+      let diagnostic: unknown;
+      try { diagnostic = JSON.parse(errText); } catch { diagnostic = new Error(errText ? errText.slice(-4096) : "CLI process exited without a diagnostic"); }
+      const failure = serializeFailure(diagnostic, { fallbackCode: "CLI_OWNER_FAILED", fallbackOutcome: "unknown", operation: argv[0], origin: "cli" });
+      throw Object.assign(new Error(failure.message), failure);
     }
     return { text, errText };
   }
@@ -455,14 +459,17 @@ export function apply(ctx: unknown): void {
         if (Array.isArray(snapshot?.events)) return snapshot.events;
       } catch { /* one read-only retry; never retry a report commit */ }
     }
-    throw new Error(serviceObserved ? code : missingCode);
+    throw Object.assign(new Error(serviceObserved ? code : missingCode), { code: serviceObserved ? code : missingCode, operation: "parent.history.read", phase: "capture", outcome: "known", effect: "none" });
   }
   const reusableFinalizers = new FinalizerRoleDispatcher({
     getService: (name) => c.get(name), signal: finalizerAbort.signal,
     command: async (operation, actorId, workdir, argv) => {
       const response = await runOneOff(["internal-dsh-finalizer-" + operation, ...argv, "--host", "dsh"], workdir, actorId);
       const result = parseProtocol(response.text);
-      if (!result || result.ok !== true) throw new Error("DSH_EXECUTION_LEDGER_UNAVAILABLE");
+      if (!result || result.ok !== true) {
+        const failure = serializeFailure(result?.error ?? result, { fallbackCode: "DSH_EXECUTION_LEDGER_UNAVAILABLE", operation: "finalizer." + operation, origin: "cli", fallbackOutcome: "unknown" });
+        throw Object.assign(new Error(failure.message), failure);
+      }
       return result;
     },
     readParentEvents: (parentId) => readParentSessionEvents(parentId, "DSH_ROLE_HISTORY_UNAVAILABLE"),
@@ -481,29 +488,33 @@ export function apply(ctx: unknown): void {
   async function captureDshParentReport(parentId: string, workdir: string, dispatch: PendingDispatch): Promise<void> {
     if (dispatch.captureStatus === "captured") return;
     const startedAt = dispatch.startedAt ? Date.parse(dispatch.startedAt) : Number.NaN;
-    if (!Number.isFinite(startedAt)) throw new Error("DSH_REPORT_BOUNDARY_UNAVAILABLE");
+    if (!Number.isFinite(startedAt)) throw Object.assign(new Error("DSH_REPORT_BOUNDARY_UNAVAILABLE"), { code: "DSH_REPORT_BOUNDARY_UNAVAILABLE" });
     const eventsSnapshot = await readParentSessionEvents(parentId, "DSH_REPORT_HISTORY_UNAVAILABLE", "DSH_REPORT_HOST_UNAVAILABLE");
     const endedAt = dispatch.endedAt ? Date.parse(dispatch.endedAt) : undefined;
-    if (endedAt !== undefined && (!Number.isFinite(endedAt) || endedAt < startedAt)) throw new Error("DSH_REPORT_BOUNDARY_UNAVAILABLE");
+    if (endedAt !== undefined && (!Number.isFinite(endedAt) || endedAt < startedAt)) throw Object.assign(new Error("DSH_REPORT_BOUNDARY_UNAVAILABLE"), { code: "DSH_REPORT_BOUNDARY_UNAVAILABLE" });
     const events = extractPlanFinalAnswers(eventsSnapshot as EventLike[], parentId, startedAt, endedAt);
     const payload = JSON.stringify({ events });
-    if (Buffer.byteLength(payload, "utf8") > 1024 * 1024) throw new Error("DSH_REPORT_TOO_LARGE");
+    if (Buffer.byteLength(payload, "utf8") > 1024 * 1024) throw Object.assign(new Error("DSH_REPORT_TOO_LARGE"), { code: "DSH_REPORT_TOO_LARGE" });
     const { text } = await runOneOff(["internal-dsh-host-report-capture",
       "--finalize-id", String(dispatch.finalizeId), "--collector-version", collectorVersion()],
     workdir, parentId, payload);
     const result = parseProtocol(text);
-    if (result?.ok !== true || result.captured !== true) throw new Error("DSH_REPORT_COMMIT_FAILED");
+    if (result?.ok !== true || result.captured !== true) throw Object.assign(new Error("DSH_REPORT_COMMIT_FAILED"), { code: "DSH_REPORT_COMMIT_FAILED" });
   }
 
   async function recordDshIssue(parentId: string, workdir: string, finalizeId: string,
-    phase: "capture" | "dispatch" | "writer", code: string): Promise<void> {
-    const correlationId = finalizeId.slice(0, 12) + "_" + Date.now().toString(36);
+    phase: "capture" | "dispatch" | "writer", code: string, diagnostic?: unknown): Promise<Record<string, JsonValue> | undefined> {
+    const supplied = diagnostic && typeof diagnostic === "object" ? (diagnostic as { correlationId?: unknown }).correlationId : undefined;
+    const correlationId = typeof supplied === "string" && /^[a-zA-Z0-9_-]{1,96}$/.test(supplied) ? supplied : finalizeId.slice(0, 12) + "_" + Date.now().toString(36);
+    const failure = diagnostic !== undefined ? serializeFailure(diagnostic, { fallbackCode: code, resource: finalizeId, correlationId }) : undefined;
     try {
       const { text } = await runOneOff(["internal-dsh-finalizer-issue", "--finalize-id", finalizeId,
-        "--phase", phase, "--code", code, "--correlation-id", correlationId], workdir, parentId);
+        "--phase", phase, "--code", code, "--correlation-id", correlationId, ...(failure ? ["--failure", JSON.stringify(failure)] : [])], workdir, parentId);
       if (parseProtocol(text)?.ok !== true) throw new Error("status not acknowledged");
-    } catch {
-      console.warn("[claw-kit] finalizer diagnostic storage unavailable:", phase, code);
+    } catch (error) {
+      const secondary = serializeFailure(error, { fallbackCode: "FINALIZER_DIAGNOSTIC_STORE_FAILED", operation: "finalizer.diagnostic.persist", origin: "cli", resource: finalizeId, correlationId });
+      console.warn("[claw-kit] finalizer diagnostic storage unavailable:", JSON.stringify(secondary));
+      return JSON.parse(JSON.stringify(secondary)) as Record<string, JsonValue>;
     }
   }
 
@@ -519,14 +530,7 @@ export function apply(ctx: unknown): void {
   }
 
   function safeCaptureFailureCode(error: unknown): string {
-    const known = new Set(["DSH_REPORT_BOUNDARY_UNAVAILABLE", "DSH_REPORT_HOST_UNAVAILABLE",
-      "DSH_REPORT_HISTORY_UNAVAILABLE", "DSH_REPORT_TOO_LARGE", "DSH_REPORT_TRANSPORT_UNAVAILABLE",
-      "DSH_REPORT_CAPTURE_INVALID", "DSH_REPORT_CAPTURE_DENIED", "DSH_REPORT_CAPTURE_UNAVAILABLE",
-      "DSH_REPORT_COMMIT_FAILED"]);
-    for (const code of String(error).match(/DSH_REPORT_[A-Z_]+/g) ?? []) {
-      if (known.has(code)) return code;
-    }
-    return "DSH_REPORT_HOST_FAILURE";
+    return serializeFailure(error, { fallbackCode: "DSH_REPORT_HOST_FAILURE" }).code;
   }
 
   async function dispatchOne(agent: { id: string }, workdir: string, dispatch: PendingDispatch): Promise<Record<string, JsonValue>> {
@@ -538,9 +542,11 @@ export function apply(ctx: unknown): void {
     const inFlight = dispatchFlights.get(key);
     if (inFlight) return inFlight;
     const run = (async (): Promise<Record<string, JsonValue>> => {
-      const deferred = async (phase: "capture" | "dispatch", code: string): Promise<Record<string, JsonValue>> => {
-        await recordDshIssue(agent.id, workdir, finalizeId, phase, code);
-        return { ok: false, phase, code, guidance: FINALIZER_MANUAL_RETRY_GUIDANCE };
+      const deferred = async (phase: "capture" | "dispatch", code: string, primary?: unknown): Promise<Record<string, JsonValue>> => {
+        const detail = serializeFailure(primary ?? { code, message: code }, { fallbackCode: code, origin: "dsh", operation: phase === "capture" ? "report.capture" : "native.admission", resource: finalizeId, fallbackOutcome: "unknown" });
+        const secondary = await recordDshIssue(agent.id, workdir, finalizeId, phase, detail.code, detail);
+        return JSON.parse(JSON.stringify({ ok: false, ...detail, phase: detail.phase ?? phase, category: phase, guidance: FINALIZER_MANUAL_RETRY_GUIDANCE,
+          ...(secondary ? { diagnostics: [...(detail.diagnostics ?? []), secondary].slice(0, 3) } : {}) })) as Record<string, JsonValue>;
       };
       const subagents = c.get("subagents") as SubagentsLike | undefined;
       if (!subagents) return { ...await deferred("dispatch", "NATIVE_SUBAGENTS_UNAVAILABLE"), retryable: false };
@@ -567,10 +573,10 @@ export function apply(ctx: unknown): void {
       }
       if (!capability) return deferred("dispatch", "DELEGATION_CAPABILITY_UNAVAILABLE");
       try {
-        if ((capability.reusable || capability.selectedRoute === "team") && !current.endedAt) throw new Error("DSH_REPORT_BOUNDARY_UNAVAILABLE");
+        if ((capability.reusable || capability.selectedRoute === "team") && !current.endedAt) throw Object.assign(new Error("DSH_REPORT_BOUNDARY_UNAVAILABLE"), { code: "DSH_REPORT_BOUNDARY_UNAVAILABLE" });
         await captureDshParentReport(agent.id, workdir, current);
       } catch (error) {
-        return deferred("capture", safeCaptureFailureCode(error));
+        return deferred("capture", safeCaptureFailureCode(error), error);
       }
       if (!capability.ready) return deferred("dispatch", capability.reason ?? "DELEGATION_CAPABILITY_UNAVAILABLE");
       const selection = await selectDshRoleModel({ agent: agent as FinalizerAgent, role: "finalizer",
@@ -578,7 +584,10 @@ export function apply(ctx: unknown): void {
         hints: { model: current.model, reasoningEffort: current.reasoningEffort } });
       if (capability.reusable && current.preferReuse === true) {
         const result = await reusableFinalizers.dispatch(agent as FinalizerAgent, workdir, { ...current, finalizeId, prompt: current.prompt!, selection }, capability);
-        if (result.ok !== true) await recordDshIssue(agent.id, workdir, finalizeId, "dispatch", String(result.code ?? "REUSABLE_DISPATCH_DEFERRED"));
+        if (result.ok !== true) {
+          const secondary = await recordDshIssue(agent.id, workdir, finalizeId, "dispatch", String(result.code ?? "REUSABLE_DISPATCH_DEFERRED"), result);
+          if (secondary) return { ...result, diagnostics: [...(Array.isArray(result.diagnostics) ? result.diagnostics : []), secondary] } as Record<string, JsonValue>;
+        }
         return result as Record<string, JsonValue>;
       }
       // An admitted reusable executor is immutable even if current capability selects native one-shot.
@@ -606,7 +615,7 @@ export function apply(ctx: unknown): void {
       } catch (error) {
         // Native admission can have succeeded before its acknowledgement failed.
         // The next entry must inspect the child catalog, not blindly start again.
-        return deferred("dispatch", "NATIVE_ADMISSION_UNKNOWN");
+        return deferred("dispatch", "NATIVE_ADMISSION_UNKNOWN", error);
       }
     })();
     dispatchFlights.set(key, run);
@@ -673,7 +682,7 @@ export function apply(ctx: unknown): void {
       const canonical = daemonInput(op, args);
       const response = await session.request(op, canonical, 30000, (send) => routeCommand(send,
         () => runCommandBaseline(subprocess as SubprocessLike, workdir, actor.id, op, canonical)));
-      if (!response.ok) throw new Error("DSH_DELEGATE_CLOSE_DEFERRED");
+      if (!response.ok) throw Object.assign(new Error("DSH_DELEGATE_CLOSE_DEFERRED"), { code: "DSH_DELEGATE_CLOSE_DEFERRED" });
       return response;
     };
     const shown = await invoke("plan.show", {});
@@ -742,7 +751,7 @@ export function apply(ctx: unknown): void {
     let recovery = sessions.get(key);
     if (!recovery) {
       recovery = new ClawSession(subprocess as SubprocessLike, workdir, agentId, "claw", 15000, SESSION_TRANSPORT_IDLE_MS,
-        (idle) => release(key, idle, "idle-timeout"), (dead) => release(key, dead, "child-exit"));
+        (idle) => release(key, idle, "idle-timeout"), (dead) => release(key, dead, "child-exit"), true);
       sessions.set(key, recovery);
     }
     const input = { finalizeId };
@@ -753,6 +762,31 @@ export function apply(ctx: unknown): void {
     // Preserve the original model operation: this is its lost receipt, not a
     // second claim or a new model-visible operation.
     return { ...receipt, command: "knowledge.claim", output: { ...receipt.output, command: "knowledge.claim", recovered: true } };
+  }
+
+  async function recoverDoneReceipt(agentId: string, workdir: string, originalInput: unknown): Promise<ClawExecuteResult | undefined> {
+    if (!originalInput || typeof originalInput !== "object" || Array.isArray(originalInput)) return;
+    const original = originalInput as Record<string, unknown>;
+    if (typeof original.finalizeId !== "string" || (original.status !== "succeeded" && original.status !== "failed")) return;
+    const key = sessionKey(agentId, workdir);
+    let recovery = sessions.get(key);
+    if (!recovery) {
+      recovery = new ClawSession(subprocess as SubprocessLike, workdir, agentId, "claw", 15000, SESSION_TRANSPORT_IDLE_MS,
+        idle => release(key, idle, "idle-timeout"), dead => release(key, dead, "child-exit"), true);
+      sessions.set(key, recovery);
+    }
+    const input = { finalizeId: original.finalizeId, expectedStatus: original.status,
+      expectedResult: original.status === "succeeded" ? original.result : original.error,
+      ...(original.claimToken !== undefined ? { claimToken: original.claimToken } : {}) };
+    const receipt = await recovery.request("knowledge.done.receipt", input, 30000, send => routeCommand(
+      send, () => runCommandBaseline(subprocess as SubprocessLike, workdir, agentId, "knowledge.done.receipt", input)));
+    if (receipt.ok !== true || receipt.output?.terminal !== true || receipt.output?.matches !== true) return;
+    // This authenticates the original commit only. Receipt reads must never
+    // repeat completion effects or silently close another focused workflow.
+    return { ...receipt, command: "knowledge.done", output: { ok: true, command: "knowledge.done", finalizeId: original.finalizeId,
+      ...(original.status === "succeeded" ? { completed: true } : { failed: true }), alreadyDone: true,
+      completionRecovered: true, delegateCloseDeferred: true, postCommitEffectsVerified: false,
+      notes: "Canonical terminal receipt matched; report/encoding/delegate effects remain unverified. No completion mutation or closeout effect was replayed." } };
   }
 
   // Settings uses a dedicated browser RPC channel. Its payload contains only a registry
@@ -819,7 +853,7 @@ export function apply(ctx: unknown): void {
   tools.register({
     name: "claw_run",
     description: [
-      "Run one claw-kit workflow operation in the current session through the claw session daemon. Operation names use dot form: context, plan.create, plan.start, plan.wait, plan.resume, plan.edit, plan.done, plan.show, task.add, task.edit, task.done, subplan.create, knowledge.claim, knowledge.done, search, search.index.refresh. `search.index.refresh` takes no arguments and refreshes only the calling session's project vector index. `context` restores the current host-scoped startup snapshot with no arguments. Other arguments use canonical snake_case: plan.create takes title, goal, knowledge_capture (optional boolean, defaults to the template setting or true; false disables knowledge accumulation); project setup is automatic and scope is not accepted; plan.start takes goal, requirements, questions, acceptance, rules, key_decisions, references, and add_tasks; plan.edit accepts the same plan fields plus summary, removal fields, retrospective fields, status, or an ordered canonical operations array; plan.resume takes optional plan_id; plan.done takes retrospective, key_decisions, what_worked, issues, and follow_ups; task.add takes title/detail or tasks; task.done takes id/choice or tasks; knowledge.claim takes finalize_id and knowledge.done takes finalize_id, claim_token, status, plus result (succeeded) or error (failed). References are arrays of {path, why}.",
+      "Run one claw-kit workflow operation in the current session through the claw session daemon. Operation names use dot form: context, plan.create, plan.start, plan.wait, plan.resume, plan.edit, plan.done, plan.show, task.add, task.edit, task.done, subplan.create, knowledge.claim, knowledge.done, knowledge.done.receipt, search, search.index.refresh. `search.index.refresh` takes no arguments and refreshes only the calling session's project vector index. `context` restores the current host-scoped startup snapshot with no arguments. Other arguments use canonical snake_case: plan.create takes title, goal, knowledge_capture (optional boolean, defaults to the template setting or true; false disables knowledge accumulation); project setup is automatic and scope is not accepted; plan.start takes goal, requirements, questions, acceptance, rules, key_decisions, references, and add_tasks; plan.edit accepts the same plan fields plus summary, removal fields, retrospective fields, status, or an ordered canonical operations array; plan.resume takes optional plan_id; plan.done takes retrospective, key_decisions, what_worked, issues, and follow_ups; task.add takes title/detail or tasks; task.done takes id/choice or tasks; knowledge.claim takes finalize_id and knowledge.done takes finalize_id, status, plus result (succeeded) or error (failed); trusted claim credentials are resolved by Core, claim_token is optional legacy input and must match if supplied. knowledge.done.receipt reads the canonical result with finalize_id and optional expected_status/expected_result, without mutation. References are arrays of {path, why}.",
       "Semantic role work: delegate.start takes role (researcher or feature-architect), brief, and optional output (auto/reply/report); delegate.result takes assignment_id and optional wait_ms; assigned workers use delegate.complete with assignment_id, status (completed/failed), result or error, and optional document_path. The adapter selects Team/native, reuses members, queues and recovers assignments, and validates report registration. Do not manage underlying backend handles. Researcher never writes reports; architecture auto writes only when an active task exists.",
       "The adapter forges session identity and workspace from the calling agent — never pass session, host, or workdir arguments. Unsupported arguments for mapped operations fail immediately instead of being silently dropped. It auto-consumes CLI hostActions: plan progress projection and native DSH goal sync happen inside the tool, so do not call goal tools for claw plans. The result is a compact guidance snapshot; follow it as the only next-step contract.",
     ].join(" "),
@@ -859,7 +893,9 @@ export function apply(ctx: unknown): void {
       const input = daemonInput(operation, (args.args ?? {}) as Record<string, unknown>);
       // Recover queued writers on the first trusted parent entry, independently
       // of any later plan terminal response. Child sessions never own this sweep.
-      await sweepPending(agent as { id: string; session?: { header?: { parentSession?: string } } }, workdir);
+      if (!["knowledge.done", "knowledge.done.receipt"].includes(operation)) {
+        await sweepPending(agent as { id: string; session?: { header?: { parentSession?: string } } }, workdir);
+      }
       if (operation === "context") {
         const { text } = await runOneOff(["context", "--host", "dsh"], workdir, agent.id);
         const context = parseProtocol(text);
@@ -878,7 +914,7 @@ export function apply(ctx: unknown): void {
       if (!session) {
         session = new ClawSession(subprocess as SubprocessLike, workdir, agent.id, "claw", 15000, SESSION_TRANSPORT_IDLE_MS,
           (idle) => release(key, idle, "idle-timeout"),
-          (dead) => release(key, dead, "child-exit"));
+          (dead) => release(key, dead, "child-exit"), ["knowledge.done", "knowledge.done.receipt"].includes(operation));
         sessions.set(key, session);
       }
       let response: ClawExecuteResult;
@@ -886,47 +922,26 @@ export function apply(ctx: unknown): void {
         send, () => runCommandBaseline(subprocess as SubprocessLike, workdir, agent.id!, operation, input),
       ));
       const requestOrdinal = session.status().requestsStarted;
-      try {
-        response = await request;
-      } catch (error) {
-        // The daemon may have committed before its response was lost. Reset the
-        // transport for the next request, but never replay this mutation.
-        const message = error instanceof Error ? error.message : String(error);
-        if (!isUncertainConnectionFailure(message) && !message.startsWith("CLAW_OUTCOME_UNKNOWN:")) throw error;
-        try { await session.close(); } catch { /* best-effort */ }
+      const recoverUnknown = async (primary: unknown): Promise<ClawExecuteResult> => {
+        const diagnostics: unknown[] = [];
+        try { await session!.close(); } catch (error) { diagnostics.push(error); }
         if (sessions.get(key) === session) sessions.delete(key);
         completedSweeps.delete(key);
-        if (operation === "knowledge.claim") {
-          let recovered: ClawExecuteResult | undefined;
-          try { recovered = await recoverClaimReceipt(agent.id, workdir, (input as { finalizeId?: unknown }).finalizeId); }
-          catch { /* An unavailable receipt cannot license replay of a claim. */ }
-          if (!recovered) throw new Error("CLAW_OUTCOME_UNKNOWN: " + message + ". Claim receipt could not be authenticated; do not retry the claim.");
-          response = recovered;
-        } else {
-          await sweepPending(agent as { id: string; session?: { header?: { parentSession?: string } } }, workdir, true);
-          throw new Error("CLAW_OUTCOME_UNKNOWN: " + message + ". The operation may already have committed; do not retry it.");
-        }
+        let recovered: ClawExecuteResult | undefined;
+        try {
+          if (operation === "knowledge.claim") recovered = await recoverClaimReceipt(agent.id!, workdir, (input as { finalizeId?: unknown }).finalizeId);
+          else if (operation === "knowledge.done") recovered = await recoverDoneReceipt(agent.id!, workdir, input);
+        } catch (error) { diagnostics.push(error); }
+        if (!recovered) throw unknownOperationError(operation, primary, diagnostics);
+        return recovered;
+      };
+      try { response = await request; }
+      catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!isUnknownCommandOutcome(error as { outcome?: "known" | "unknown"; message?: string }) && !message.startsWith("CLAW_OUTCOME_UNKNOWN:")) throw error;
+        response = await recoverUnknown(error);
       }
-      if (response.ok !== true) {
-        // Some daemon failures report the same uncertain transport condition
-        // as a protocol error. Treat them identically: no automatic replay.
-        const message = response.error?.message ?? "";
-        if (isUnknownCommandOutcome(response.error)) {
-          try { await session.close(); } catch { /* best-effort */ }
-          if (sessions.get(key) === session) sessions.delete(key);
-          completedSweeps.delete(key);
-          if (operation === "knowledge.claim") {
-            let recovered: ClawExecuteResult | undefined;
-            try { recovered = await recoverClaimReceipt(agent.id, workdir, (input as { finalizeId?: unknown }).finalizeId); }
-            catch { /* Read-only recovery failed; never replay the original claim. */ }
-            if (!recovered) throw new Error("CLAW_OUTCOME_UNKNOWN: " + message + ". Claim receipt is unavailable; do not retry the claim.");
-            response = recovered;
-          } else {
-            await sweepPending(agent as { id: string; session?: { header?: { parentSession?: string } } }, workdir, true);
-            throw new Error("CLAW_OUTCOME_UNKNOWN: " + message + ". The operation may already have committed; do not retry it.");
-          }
-        }
-      }
+      if (response.ok !== true && isUnknownCommandOutcome(response.error)) response = await recoverUnknown(response.error);
       if (response.ok !== true) {
         if (response.error?.outcome === "known" && response.error.phase && response.error.effect) {
           // Preserve owner evidence as tool data; an SDK may strip custom Error

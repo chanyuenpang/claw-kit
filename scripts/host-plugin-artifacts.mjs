@@ -1,3 +1,4 @@
+import { checkFailureContracts } from "./failure-contracts.mjs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -61,6 +62,7 @@ export async function buildHostPluginArtifact({ sourceRoot, targetHost, outputRo
   if (!runtimePaths) throw new Error("Unsupported staged host: " + targetHost);
   const output = await assertArtifactOutput({ sourceRoot, outputRoot });
   const source = path.resolve(sourceRoot);
+  if (targetHost === "opencode") await checkFailureContracts(source, "opencode");
   const adapterRoot = path.join(source, "packages", targetHost + "-adapter");
   const inputs = await loadSkillInputs({ sourceRoot: source, targetHost });
   await rejectSymlinkAncestors(adapterRoot);

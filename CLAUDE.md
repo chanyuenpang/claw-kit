@@ -7,6 +7,10 @@ The repository owner uses direct delivery by default.
 - Before a release or direct push, classify every local change. Commit useful repository content; remove disposable output; ignore intentional local-only artifacts. Do not use a stash to bypass a clean-worktree check.
 - A release is complete only after local `main` equals `origin/main` and `git status --porcelain` is empty.
 
+## Candidate version and promotion policy
+
+Every new installable candidate increments the selected artifact’s normal formal version (including local unpublished allocations), without a beta suffix. Use beta:prepare, commit the prepared manifests locally, then beta:pack --candidate. Same-input unfinished preparation may resume; frozen candidates are reused and never rebuilt. Promotion retains the tested version and exact bytes; it must not bump/build/pack/export. Beta never pushes, tags or publishes. See docs/beta-release.md.
+
 # Repository proportional verification and testing policy
 
 Verification and testing should not outweigh the work they protect. Spend more on them only when a concrete and realistically costly regression risk justifies the additional cost.

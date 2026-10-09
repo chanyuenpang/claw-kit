@@ -8,6 +8,7 @@
  * execute instead of a model-evaluated envelope. Consumption is fail-open: a
  * consumer error never fails the underlying mutation.
  */
+import { serializeFailure } from "../lib/errors.js";
 import { DSH_MUTATION_ROUTE_GUIDANCE } from "./route-guidance.js";
 /**
  * Consume hostActions against DSH-native surfaces.
@@ -114,8 +115,7 @@ export function consumeHostActions(actions, goals, agent) {
             failures.push({
                 actionId: typedAction.id,
                 tool: typedAction.tool,
-                code: "APPLY_FAILED",
-                message: error instanceof Error ? error.message : String(error),
+                ...serializeFailure(error, { fallbackCode: "APPLY_FAILED", origin: "dsh.host", operation: typedAction.tool, resource: typedAction.id, fallbackOutcome: "unknown" }),
             });
         }
     }
@@ -163,6 +163,8 @@ export function compactClawOutput(output, operation) {
     if (output.plan !== undefined && output.planStatus === "process.discussing") {
         visible.plan = output.plan;
     }
+    if (Array.isArray(output.postCommandFailures))
+        visible.postCommandFailures = output.postCommandFailures;
     if (output.planPath !== undefined)
         visible.planPath = output.planPath;
     if (output.achievement !== undefined)
@@ -221,7 +223,13 @@ export function compactClawOutput(output, operation) {
         }
     }
     else if (visible.command === "knowledge.done") {
-        for (const key of ["finalizeId", "completed", "failed", "alreadyDone", "delegateClosed", "delegateCloseDeferred", "delegateCloseError", "templateCleanupDeferred"]) {
+        for (const key of ["finalizeId", "completed", "failed", "alreadyDone", "delegateClosed", "delegateCloseDeferred", "delegateCloseError", "templateCleanupDeferred", "completionRecovered", "completionEffect", "postCommitFailures", "postCommitEffectsVerified"]) {
+            if (output[key] !== undefined)
+                visible[key] = output[key];
+        }
+    }
+    if (visible.command === "knowledge.done.receipt") {
+        for (const key of ["finalizeId", "claimId", "status", "canonicalStatus", "terminal", "finishedAt", "resultDigest", "matches", "postCommitEffectsVerified"]) {
             if (output[key] !== undefined)
                 visible[key] = output[key];
         }

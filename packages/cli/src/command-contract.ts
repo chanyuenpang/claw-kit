@@ -58,8 +58,9 @@ const checks = {
   "knowledge.claim": object({ finalizeId }, ["finalizeId"]),
   // Internal transport reconciliation only; no model-facing argument mapping.
   "knowledge.claim.receipt": object({ finalizeId }, ["finalizeId"]),
+  "knowledge.done.receipt": object({ finalizeId, claimToken: text, expectedStatus: oneOf("succeeded", "failed"), expectedResult: text }, ["finalizeId"]),
   "knowledge.done": (v: unknown) => object({ finalizeId, claimToken: text,
-    status: oneOf("succeeded", "failed"), result: text, error: text }, ["finalizeId", "claimToken", "status"])(v)
+    status: oneOf("succeeded", "failed"), result: text, error: text }, ["finalizeId", "status"])(v)
     && ((v as { status: string }).status === "succeeded"
       ? object({ finalizeId, claimToken: text, status: text, result: text }, ["result"])(v)
       : object({ finalizeId, claimToken: text, status: text, error: text }, ["error"])(v)),

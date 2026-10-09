@@ -25,7 +25,7 @@ DSH 知识终结 dispatch 流程：项目作用域 root plan 进入完成型终�
 `resources/dsh-delegate-writer/TEMPLATE.json`）。DSH adapter 先完成父端可信 capture，再按当前 scoped capability 选择执行路由并交付
 immutable dispatch prompt；writer 创建独立 delegate
 plan、跟随 workflowGuidance、`knowledge claim` 认领 job、顺序执行生成的 assignment
-subplan、并以 claim token 调用一次 `knowledge done`。`end.leave` 是取消而非派发边界；
+subplan、由 Core 核对真实 claim actor 并解析凭据后调用一次 `knowledge done`，不由模型抄写 token。显式 manual `end.leave` 是取消边界；父计划下潜暂离等待 resume 不是取消。
 `knowledgeCapture:false` 辅助 delegate 不递归创建知识 job（新计划统一项目流程；session 身份仍负责绑定，旧 session 存储仅保留恢复兼容），通用终态 gate 由
 [finalization lifecycle ADR](<../adr/hook-owned-two-phase-knowledge-finalization.md>) 拥有。
 
@@ -34,6 +34,13 @@ Core source 在 DSH 创建计划时登记可信 capture 起点；同一 root 的
 新 background finalizer 固定使用 DSH native subagent 家族，即使当前 Agent 暴露 Team 工具；可复用 continuable 时复用相同 applied recipe，仅有 one-shot 时仍允许正常执行。低成本 model/effort 是尽力偏好：adapter 通过真实 llm/subagents 能力在 admission 前解析 applied explicit/inherit/default recipe，记录 requested/applied/resolved-or-unknown；目录、options 或精确 effort 不可用不阻塞。发送后 outcome unknown、已 admitted executor、claim/capture/权限失败仍沿用硬边界，绝不换模型/route 重发。旧 Team/native execution 保留原 pin，不迁移。
 
 当前 source 的 capability-selected role 复用、逐 job 完整身份、未知投递不重发及 joint-terminal 队列推进，由 [delegation Truth](<dsh-subagent-delegation-contract.md>) 唯一拥有。已有 one-shot job 保持旧执行证据与 native 兼容路径；新路由需要匹配的 CLI/Core 协议，不能把旧短标题合同用于同一 reused session。主模型只消费 adapter 回执，不自行启动或重试 writer。source 与受控服务测试不证明当前运行 profile 已安装或激活该路径。
+
+## Completion evidence and recovery
+
+- Source knowledge.done accepts native finalize_id/status/result-or-error; optional legacy token is checked, never overwritten. Wrong credential/actor/project is prepare/known/none before job/TTL/report/template/Truth writes.
+- Terminal commits once before report/encoding/cleanup/delegate effects. Errors remain separately visible. Authenticated receipts expose no token and do not mutate canonical state; terminal proof keeps post-commit effects explicitly unverified.
+- Unknown delivery only queries a receipt, never a second done/failed completion. Cold queries/reconnects use registry-only session.open.receipt, without focus, expiry, refresh or retention recovery. Missing/running/expired does not authorize replay.
+- The 491b4e95 incident was a wrong copied credential plus missing owner phase. Source/tests do not update an old loaded runtime or authorize replay of its now-expired job. Packaging/install/activation remain separate boundaries.
 
 <!-- state: history -->
 ## Historical verification

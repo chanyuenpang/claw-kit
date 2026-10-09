@@ -15,10 +15,17 @@ type CommandFailure = {
     outcome?: "known" | "unknown";
     phase?: string;
     effect?: string;
+    origin?: string;
+    operation?: string;
+    resource?: string;
+    correlationId?: string;
+    cause?: unknown;
+    diagnostics?: unknown[];
 };
 /** Structured owner outcomes take precedence over legacy transport text. */
 export declare function isUnknownCommandOutcome(error?: CommandFailure): boolean;
 export declare function operationFailureError(operation: string, error?: CommandFailure): Error;
+export declare function unknownOperationError(operation: string, primary: unknown, diagnostics?: unknown[]): Error;
 export declare function daemonInput(operation: string, args: Record<string, unknown>): unknown;
 /** Render the session-start guidance snapshot injected at session start.
  * Aligns with the Codex adapter's session-start hook: consumes the full

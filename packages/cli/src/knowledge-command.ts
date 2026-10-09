@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
+  ClawError, withExecutionFailure,
   buildKnowledgeAssignmentTemplate,
   buildKnowledgeWriterAssignments,
   claimKnowledgeFinalizationJob,
@@ -11,6 +12,7 @@ import {
   readKnowledgeFinalizationJob,
   withFileLock,
   writeJsonFileAtomic,
+  type KnowledgeCompletionCredentials,
   type KnowledgeClaimant,
   type KnowledgeDelegatePlan,
   reconcileKnowledgeFinalizationJob,
@@ -118,25 +120,30 @@ export function knowledgeClaimReceiptCommand(jobPath: string, claimant: Knowledg
 }
 
 export function findProjectKnowledgeJob(projectRoot: string, finalizeId: string, readOnly = false): string {
+  try {
   // Only the canonical project's task-local jobs may be reached by session commands.
   const jobPath = findKnowledgeFinalizationJobPath(resolveProjectContext(projectRoot), finalizeId);
-  if (!jobPath) throw new Error("Knowledge finalization " + finalizeId + " is unavailable.");
+  if (!jobPath) throw new ClawError("KNOWLEDGE_JOB_UNAVAILABLE", "Knowledge finalization " + finalizeId + " is unavailable.");
   const project = resolveProjectContext(projectRoot);
   const withinProject = (target: string) => {
     const resolved = fs.realpathSync(target);
     const relative = path.relative(fs.realpathSync(project.clawDir), resolved);
     return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
   };
-  if (!withinProject(jobPath)) throw new Error("Knowledge finalization job does not belong to the current project.");
+  if (!withinProject(jobPath)) throw new ClawError("KNOWLEDGE_JOB_SCOPE_INVALID", "Knowledge finalization job does not belong to the current project.");
   const job = readOnly ? readKnowledgeFinalizationJob(jobPath) : reconcileKnowledgeFinalizationJob(jobPath);
   if (path.resolve(job.projectRoot) !== path.resolve(projectRoot)
     || job.finalizeId.toLowerCase() !== finalizeId.toLowerCase()
     || !withinProject(jobPath)
     || !withinProject(job.planPath)
     || !withinProject(path.dirname(job.reportPath))) {
-    throw new Error("Knowledge finalization job does not belong to the current project.");
+    throw new ClawError("KNOWLEDGE_JOB_SCOPE_INVALID", "Knowledge finalization job does not belong to the current project.");
   }
   return jobPath;
+  } catch (error) {
+    if (readOnly) throw withExecutionFailure(error, { phase: "prepare", outcome: "known", effect: "none" });
+    throw error;
+  }
 }
 
 function resolveKnowledgeJobProject(jobPath: string, job: KnowledgeFinalizationJob): ProjectContext {
@@ -149,41 +156,38 @@ function resolveKnowledgeJobProject(jobPath: string, job: KnowledgeFinalizationJ
   throw new Error("Knowledge finalization job is outside its project or session workflow.");
 }
 
-export function doneKnowledgeCommand(input: {
-  jobPath: string; claimToken: string; status: "succeeded" | "failed"; result?: string; error?: string;
+export function doneKnowledgeCommand(input: KnowledgeCompletionCredentials & {
+  jobPath: string; status: "succeeded" | "failed"; result?: string; error?: string;
   onSuccess?: (job: KnowledgeFinalizationJob) => void;
   /** Keep the frozen template while the runtime closes or recovers its plan. */
   retainTemplate?: boolean;
 }) {
-  const { jobPath, claimToken } = input;
-  if (input.status === "failed") {
-    const terminal = doneKnowledgeFinalizationJob({ jobPath, claimToken, status: "failed", error: input.error });
-    if (!input.retainTemplate) removeKnowledgeAssignmentTemplate(jobPath, terminal.job.finalizeId);
-    return { ok: true, failed: true, alreadyDone: terminal.alreadyDone, finalizeId: terminal.job.finalizeId };
+  // Exactly one authoritative owner call; no pre-validation reconcile, report
+  // or document encoding mutation can turn a credential refusal into unknown.
+  const terminal = doneKnowledgeFinalizationJob(input);
+  const job = terminal.job;
+  const postCommitFailures: Array<{ effect: string; message: string }> = [];
+  if (input.status === "succeeded" && !terminal.alreadyDone) {
+    try {
+      const project = resolveKnowledgeJobProject(input.jobPath, job);
+      const truthEncoding = normalizeTruthMarkdownEncoding(project);
+      recordKnowledgeFinalizationResult(project, job.reportPath, {
+        schemaVersion: 1, entryType: "knowledge_finalization", finalizeId: job.finalizeId,
+        taskName: job.taskName, recordedAt: job.finishedAt ?? new Date().toISOString(), status: "succeeded",
+        result: job.finalResponse ?? "", attempts: job.attempts,
+        ...(job.host !== undefined ? { host: job.host } : {}), truthEncoding,
+      });
+    } catch (error) { postCommitFailures.push({ effect: "knowledge.report", message: error instanceof Error ? error.message : String(error) }); }
+    try { input.onSuccess?.(job); }
+    catch (error) { postCommitFailures.push({ effect: "knowledge.success", message: error instanceof Error ? error.message : String(error) }); }
   }
-  const running = reconcileKnowledgeFinalizationJob(jobPath);
-  if (running.status === "succeeded") {
-    const terminal = doneKnowledgeFinalizationJob({ jobPath, claimToken, status: "succeeded", result: input.result });
-    if (!input.retainTemplate) removeKnowledgeAssignmentTemplate(jobPath, running.finalizeId);
-    return { ok: true, completed: true, alreadyDone: terminal.alreadyDone, finalizeId: running.finalizeId };
+  if (!input.retainTemplate) {
+    const cleanup = removeKnowledgeAssignmentTemplate(input.jobPath, job.finalizeId);
+    if (cleanup.error) postCommitFailures.push({ effect: "knowledge.template-cleanup", message: cleanup.error });
   }
-  if (running.status !== "running") throw new Error("Knowledge finalization job must be claimed before successful completion.");
-  if (running.claimToken !== claimToken) throw new Error("Knowledge finalization completion does not match the active claim.");
-  const project = resolveKnowledgeJobProject(jobPath, running);
-  const finishedAt = new Date().toISOString();
-  const truthEncoding = normalizeTruthMarkdownEncoding(project);
-  recordKnowledgeFinalizationResult(project, running.reportPath, {
-    schemaVersion: 1, entryType: "knowledge_finalization", finalizeId: running.finalizeId,
-    taskName: running.taskName, recordedAt: finishedAt, status: "succeeded",
-    result: input.result ?? "", attempts: running.attempts,
-    ...(running.host !== undefined ? { host: running.host } : {}), truthEncoding,
-  });
-  const terminal = doneKnowledgeFinalizationJob({
-    jobPath, claimToken, status: "succeeded", result: input.result, finishedAt, patch: { truthEncoding },
-  });
-  if (!input.retainTemplate) removeKnowledgeAssignmentTemplate(jobPath, running.finalizeId);
-  input.onSuccess?.(running);
-  return { ok: true, completed: true, alreadyDone: terminal.alreadyDone, finalizeId: running.finalizeId };
+  return { ok: true, ...(input.status === "succeeded" ? { completed: true } : { failed: true }),
+    alreadyDone: terminal.alreadyDone, finalizeId: job.finalizeId,
+    ...(postCommitFailures.length ? { postCommitFailures, completionEffect: "committed" } : {}) };
 }
 
 export function removeKnowledgeAssignmentTemplate(jobPath: string, finalizeId: string): { error?: string } {

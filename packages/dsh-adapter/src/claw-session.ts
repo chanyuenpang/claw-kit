@@ -1,3 +1,4 @@
+import { serializeFailure } from "../lib/errors.js";
 import fs from "node:fs";
 import path from "node:path";
 import type { Readable } from "node:stream";
@@ -45,32 +46,20 @@ export type ClawExecuteResult = {
   knowledgeDispatch?: unknown;
   postCommitEffects?: unknown[];
   error?: { code?: string; message?: string; outcome?: "known" | "unknown";
-    phase?: "prepare" | "initialize" | "commit" | "post-commit"; effect?: "none" | "partial" | "committed" | "unknown" };
+    phase?: string; origin?: string; operation?: string; resource?: string; correlationId?: string; cause?: unknown; diagnostics?: unknown[]; effect?: "none" | "partial" | "committed" | "unknown" };
 };
 
-function protocolError(code: string, message: string): Error {
-  const error = new Error(message);
-  (error as Error & { code?: string }).code = code;
-  return error;
+function protocolError(code: string, message: string, primary?: unknown): Error {
+  const failure = serializeFailure({ code, message, outcome: "unknown", ...(primary !== undefined ? { cause: primary } : {}) }, { origin: "dsh.transport", operation: "session.transport", fallbackCode: code });
+  const description = failure.message + (failure.cause ? "; cause " + failure.cause.code + ": " + failure.cause.message : "");
+  return Object.assign(new Error(description), { ...failure, message: description });
 }
 
 function sessionOpenFailure(stderr: string, fallback: string): Error {
-  const diagnostic = stderr.trim();
-  if (!diagnostic) return protocolError("CLAW_SESSION_OPEN_FAILED", fallback);
-  try {
-    const parsed = JSON.parse(diagnostic) as { error?: { code?: unknown; message?: unknown } };
-    const code = typeof parsed.error?.code === "string" ? parsed.error.code : undefined;
-    const message = typeof parsed.error?.message === "string" ? parsed.error.message : undefined;
-    if (message) {
-      return protocolError(
-        code === "SESSION_DAEMON_UNAVAILABLE" ? code : "CLAW_SESSION_OPEN_FAILED",
-        "claw session open failed" + (code ? " [" + code + "]" : "") + ": " + message,
-      );
-    }
-  } catch {
-    // Preserve non-JSON CLI diagnostics below.
-  }
-  return protocolError("CLAW_SESSION_OPEN_FAILED", "claw session open failed: " + diagnostic.slice(-4096));
+  let value: unknown;
+  try { value = JSON.parse(stderr.trim()); } catch { value = new Error(stderr.trim() || fallback); }
+  const failure = serializeFailure(value, { fallbackCode: "CLAW_SESSION_OPEN_FAILED", origin: "cli", operation: "session.open", fallbackOutcome: "known" });
+  return Object.assign(new Error(failure.message), { ...failure, beforeSend: true });
 }
 
 /**
@@ -137,6 +126,7 @@ export class ClawSession {
     private readonly idleTimeoutMs = 300000,
     private readonly onIdle?: (session: ClawSession) => void,
     private readonly onExit?: (session: ClawSession) => void,
+    private readonly receiptOnly = false,
   ) {}
 
   status(): { workdir: string; sessionId: string; state: "active" | "idle" | "reclaiming" | "dead"; queued: number; requestsStarted: number; lastActivityAt: number; closeReason: string | null } {
@@ -190,7 +180,7 @@ export class ClawSession {
     if (this.openPromise) return this.openPromise;
     this.openPromise = new Promise<void>((resolve, reject) => {
       const { executable, args } = this.invocation([
-        "session", "open", this.workdir, this.sessionId, "--host", "dsh",
+        "session", "open", this.workdir, this.sessionId, "--host", "dsh", ...(this.receiptOnly ? ["--receipt-only"] : []),
       ]);
       const handle = this.subprocess.spawn({
         argv: [executable, ...args],
@@ -226,7 +216,7 @@ export class ClawSession {
       handle.stdin?.on?.("error", (error: Error) => {
         if (this.handle !== handle || this.closed) return;
         this.dropHandle("stdin error");
-        this.failPending(protocolError("SESSION_CONNECTION_LOST", "claw session stdin failed: " + error.message));
+        this.failPending(protocolError("SESSION_CONNECTION_LOST", "claw session stdin failed", error));
         this.notifyDead();
       });
       handle.stdout.on("data", (chunk: unknown) => {
@@ -289,7 +279,7 @@ export class ClawSession {
           // Reject before reset clears the pending slot.
           this.failPending(!opened && this.stderrBuffer.trim()
             ? sessionOpenFailure(this.stderrBuffer, "claw session exited before the handshake.")
-            : protocolError("SESSION_CONNECTION_LOST", "claw session process exited: " + String(error)));
+            : protocolError("SESSION_CONNECTION_LOST", "claw session process exited", error));
           this.clearIdle();
           reset();
           this.notifyDead();
@@ -367,7 +357,7 @@ export class ClawSession {
         const line = `${JSON.stringify({ operation, input })}\n`;
         void this.writeStdin(line).catch((error: unknown) => {
           this.dropHandle("stdin write failure");
-          this.failPending(protocolError("SESSION_CONNECTION_LOST", "claw session stdin write failed: " + String(error)));
+          this.failPending(protocolError("SESSION_CONNECTION_LOST", "claw session stdin write failed", error));
         });
       });
     };

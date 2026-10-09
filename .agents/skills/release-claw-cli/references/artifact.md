@@ -1,5 +1,12 @@
 # CLI release contract
 
+## Candidate preparation versus promotion
+
+Each new installable candidate allocates a fresh formal target number under this artifact family’s existing three-/four-segment rules; local unpublished/preparing candidates count as used. Use `beta:prepare -- --artifacts <selected-families>`, commit the prepared manifests locally, then `beta:pack -- --candidate <directory>`. No beta suffix is added. A failed same-input preparation may resume; a frozen candidate is reused, not rebuilt.
+
+A tested candidate takes precedence over all bump/build/export instructions below: promotion preserves its exact version and frozen tgz/tree, consumes the candidate hash and trial, and performs zero workspace rebuild/pack/export. DSH npm mapping remains `<cli-base>-rc.<N>` in both testing and formal publication. Formal release authority does not arise from candidate preparation. See `docs/beta-release.md` for the shared contract.
+
+
 - Scope: root `package.json`, `packages/core`, `packages/cli`, shared CLI/runtime
   code, lockfile, synchronized templates/shared skills, and compatibility version
   resets required by the CLI baseline.
@@ -7,8 +14,8 @@
   `@veewo/claw-client`, and `@veewo/claw`. Pin Core and Client exactly from CLI,
   pin the CLI peer from Client, and pin Core from OpenClaw.
 - **Version selection rule:** unless the owner explicitly names a version, the
-  CLI release bumps the third segment by one minor over the currently published
-  `@veewo/claw` (e.g. published 0.2.25 → 0.2.26). Never guess a major/minor
+  new CLI candidate increments the third segment beyond known source/local allocated
+  and published `@veewo/claw` versions (e.g. published 0.2.25 → 0.2.26). Never guess a major/minor
   jump or reuse an already-published version; when the published version is
   unknown, resolve it from npm (`npm view @veewo/claw version`) before bumping.
 - **Skill catalog integrity rule:** before releasing, every SKILL.md under

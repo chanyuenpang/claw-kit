@@ -169,8 +169,8 @@ test("open() immediately surfaces structured CLI stderr on a resolved nonzero ex
   const session = new ClawSession(subprocess, "C:/work", "sess-1", "claw", 1000);
   await assert.rejects(
     () => session.open(),
-    (error) => error.code === "CLAW_SESSION_OPEN_FAILED"
-      && /UNEXPECTED_ERROR/.test(error.message)
+    (error) => error.code === "UNEXPECTED_ERROR"
+      && error.beforeSend === true
       && /Task "missing" does not exist/.test(error.message),
   );
 });

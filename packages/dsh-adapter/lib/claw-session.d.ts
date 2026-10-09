@@ -75,7 +75,13 @@ export type ClawExecuteResult = {
         code?: string;
         message?: string;
         outcome?: "known" | "unknown";
-        phase?: "prepare" | "initialize" | "commit" | "post-commit";
+        phase?: string;
+        origin?: string;
+        operation?: string;
+        resource?: string;
+        correlationId?: string;
+        cause?: unknown;
+        diagnostics?: unknown[];
         effect?: "none" | "partial" | "committed" | "unknown";
     };
 };
@@ -110,6 +116,7 @@ export declare class ClawSession {
     private readonly idleTimeoutMs;
     private readonly onIdle?;
     private readonly onExit?;
+    private readonly receiptOnly;
     private handle;
     private buffer;
     private stderrBuffer;
@@ -124,7 +131,7 @@ export declare class ClawSession {
     private closed;
     private closeReason;
     private lastActivityAt;
-    constructor(subprocess: SubprocessLike, workdir: string, sessionId: string, clawBinary?: string, openTimeoutMs?: number, idleTimeoutMs?: number, onIdle?: ((session: ClawSession) => void) | undefined, onExit?: ((session: ClawSession) => void) | undefined);
+    constructor(subprocess: SubprocessLike, workdir: string, sessionId: string, clawBinary?: string, openTimeoutMs?: number, idleTimeoutMs?: number, onIdle?: ((session: ClawSession) => void) | undefined, onExit?: ((session: ClawSession) => void) | undefined, receiptOnly?: boolean);
     status(): {
         workdir: string;
         sessionId: string;

@@ -63,7 +63,7 @@ async function fixture(t: TestContext, host: Host, options: { builtin?: boolean;
   await executor.execute(identity, { operation: "task.done", input: { tasks: [{ id: 1 }] } });
   const child = (await executor.execute(identity, { operation: "subplan.create", input: { templateFile: claim.templatePath } })).output as any;
   const done = (status: "succeeded" | "failed") => executor.execute(identity, { operation: "knowledge.done", input: {
-    finalizeId, claimToken: claim.claimToken, status, ...(status === "succeeded" ? { result: "Fixture result" } : { error: "Remaining conflict" }),
+    finalizeId, status, ...(status === "succeeded" ? { result: "Fixture result" } : { error: "Remaining conflict" }),
   } });
   const workflow = legacy ? resolveSessionWorkflowContext(actor)! : resolveProjectContext(cwd);
   return { cwd, executor, identity, root, child, claim, jobPath, done, workflow };

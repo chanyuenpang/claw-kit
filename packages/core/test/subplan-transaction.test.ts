@@ -28,10 +28,10 @@ for (const failAt of ["after_prepared", "after_applying", "after_plan", "after_o
     }), (error: unknown) => {
       assert.match(String(error), new RegExp(failAt));
       assert.deepEqual((error as { execution: unknown }).execution, failAt === "after_prepared"
-        ? { phase: "prepare", outcome: "known", effect: "none" }
+        ? { operation: "focus.subplan_create", phase: "prepare", outcome: "known", effect: "none" }
         : failAt === "after_committed"
-          ? { phase: "post-commit", outcome: "known", effect: "committed" }
-          : { phase: "commit", outcome: "known", effect: "partial" });
+          ? { operation: "focus.subplan_create", phase: "post-commit", outcome: "known", effect: "committed" }
+          : { operation: "focus.subplan_create", phase: "commit", outcome: "known", effect: "partial" });
       return true;
     });
     const recovered = await recoverProjectFocusTransitions({ project, sessionStore: store });

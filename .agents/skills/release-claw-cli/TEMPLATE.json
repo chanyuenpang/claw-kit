@@ -20,7 +20,7 @@
     {
       "id": 1,
       "title": "Inspect and classify the CLI release baseline",
-      "detail": "Read AGENTS.md and references/artifact.md; inspect branch, remotes, tags, npm latest versions, manifests, lockfile, and every worktree change. Stop if another artifact family is mixed without explicit batch authority.",
+      "detail": "Select the authorized tested frozen candidate and verify its artifact family, sourceRevision and trial; absent a candidate, use candidate preparation and stop before publication. Read AGENTS.md and references/artifact.md; inspect branch, remotes, tags, npm latest versions, manifests, lockfile, and every worktree change. Stop if another artifact family is mixed without explicit batch authority.",
       "status": "pending"
     },
     {
@@ -65,6 +65,7 @@
     }
   ],
   "rules": [
+    "Formal promotion requires the explicitly selected tested frozen candidate. Preserve its version and hashes; never bump, build, pack or export again. If no tested candidate exists, prepare a new version through beta:prepare and stop before publication.",
     "Never publish a platform plugin through this skill.",
     "Never stash or discard user work to satisfy a release gate.",
     "Stop at the first failed release boundary."

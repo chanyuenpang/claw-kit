@@ -1,3 +1,4 @@
+import { serializeFailure, type SafeFailure } from "../lib/errors.js";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -32,7 +33,7 @@ type Receipt = {
   ordinal: number; admitted: boolean; started?: boolean;
   memberId?: string; memberName?: string; memberAttempted?: boolean; messageId?: string; runId?: string;
   planPath?: string; taskDir?: string; reportDir?: string; reportPath?: string;
-  result?: string; error?: string; registration?: "pending" | "registered" | "deferred";
+  result?: string; error?: string; failure?: SafeFailure; registration?: "pending" | "registered" | "deferred";
   /** Optional best-effort preference receipt; absence means legacy-unknown. */
   modelSelection?: RoleSelection;
 };
@@ -45,7 +46,7 @@ const normalize = (v: string): string => process.platform === "win32" ? path.res
 const json = (v: unknown): Json => JSON.parse(JSON.stringify(v)) as Json;
 class DelegationError extends Error { constructor(readonly code: string) { super(code); } }
 function reject(code: string): never { throw new DelegationError(code); }
-function failure(error: unknown): Json { return { ok: false, code: error instanceof DelegationError ? error.code : "DELEGATE_OPERATION_FAILED" }; }
+function failure(error: unknown): Json { return json({ ok: false, ...serializeFailure(error, { fallbackCode: "DELEGATE_OPERATION_FAILED", operation: "delegate", origin: "dsh", fallbackOutcome: "unknown" }) }); }
 function args(value: unknown, keys: string[]): Obj {
   const v = object(value);
   if (!v || Object.keys(v).some((key) => !keys.includes(key))) reject("DELEGATE_INVALID_ARGUMENTS");
@@ -119,7 +120,7 @@ export class RoleDelegation {
   private view(r: Receipt): Json {
     return json({ ok: true, assignment_id: r.id, status: r.status, role: r.role, output: r.output,
       ...(r.modelSelection ? { model_selection: r.modelSelection } : {}),
-      ...(r.result !== undefined ? { result: r.result } : {}), ...(r.error ? { error: r.error } : {}),
+      ...(r.result !== undefined ? { result: r.result } : {}), ...(r.error ? { error: r.error } : {}), ...(r.failure ? { failure: r.failure } : {}),
       ...(r.status === "completed" && r.output === "report" ? { document_path: r.reportPath, registration: r.registration ?? "pending" } : {}) });
   }
   private notify(id: string): void { for (const wake of this.waiters.get(id) ?? []) wake(); }
@@ -250,9 +251,11 @@ export class RoleDelegation {
         await this.dispatch(parent, r);
         return await this.read(parent, r.workdir, r.id);
       } catch (error) {
+        const detail = serializeFailure(error, { fallbackCode: "DELEGATE_DISPATCH_FAILED", operation: "delegate.dispatch", origin: "dsh", resource: r.id, fallbackOutcome: "unknown" });
         const final = await this.update(parent, r.workdir, r.id, (current) => terminal(current) ? current : { ...current,
           status: current.memberAttempted || current.delivery !== "reserved" ? "unknown" : "failed",
-          error: error instanceof DelegationError ? error.code : "DELEGATE_DISPATCH_UNKNOWN" });
+          error: detail.code, failure: detail,
+          ...(object(error)?.deliveryAccepted === true && string(object(error)?.acceptedReceiptId) ? { messageId: string(object(error)?.acceptedReceiptId), delivery: "accepted" as const } : {}) });
         this.notify(r.id);
         return final;
       }
@@ -345,16 +348,21 @@ export class RoleDelegation {
         await this.update(parent, r.workdir, r.id, (v) => ({ ...v, memberAttempted: true }));
         await this.fresh(parent, r);
         team = this.deps.getService("agentTeams") as any;
+        let startFailure: unknown;
         try {
           member = (await team.spawnTeammate(parent, { name, description: r.label, prompt: text(this.bootstrap(r)), context: "fresh", provider: "spawn", signal: this.signal }))?.member;
-        } catch {
-          member = undefined;
-        }
+        } catch (error) { startFailure = error; member = undefined; }
         if (!string(member?.id) || member.name !== name) {
-          rows = await this.teamRoster(team, parent);
+          try { rows = await this.teamRoster(team, parent); }
+          catch (diagnostic) {
+            if (!startFailure) throw diagnostic;
+            const primary = serializeFailure(startFailure, { fallbackCode: "DELEGATE_MEMBER_START_FAILED", operation: "team.member.start", origin: "host" });
+            throw Object.assign(new Error(primary.message), { ...primary, diagnostics: [serializeFailure(diagnostic, { fallbackCode: "DELEGATE_CATALOG_FAILED", operation: "team.catalog.read" })] });
+          }
           matches = rows.filter((m: any) => m.name === name);
           if (matches.length > 1) reject("DELEGATE_ROLE_AMBIGUOUS");
           member = matches[0];
+          if (!member && startFailure) { const primary = serializeFailure(startFailure, { fallbackCode: "DELEGATE_MEMBER_START_FAILED", operation: "team.member.start", origin: "host" }); throw Object.assign(new Error(primary.message), primary); }
         }
       }
       if (!string(member?.id) || member.name !== name || member.role !== "teammate" || member.status === "failed") reject("DELEGATE_MEMBER_CREATION_UNCERTAIN");
@@ -382,6 +390,7 @@ export class RoleDelegation {
         if (member && (member.id !== id || member.label !== r.label || member.mode !== "continuable")) reject("DELEGATE_ROLE_INCOMPATIBLE");
         if (!member) {
           const options = r.modelSelection?.applied.options ?? {};
+          await this.update(parent, r.workdir, r.id, (v) => ({ ...v, memberAttempted: true }));
           try {
             const created = await native.startContinuable({ childId: id, provider: "spawn", label: r.label,
               request: { parent, prompt: text(this.bootstrap(r)), ...(Object.keys(options).length ? { agentOptions: options } : {}) }, signal: this.signal });
@@ -391,11 +400,11 @@ export class RoleDelegation {
             }
           } catch (error) {
             if (error instanceof DelegationError) throw error;
-            // startContinuable rejects before publishing a new child. A single
-            // exact catalog reread may recover a concurrently existing role.
-            rows = await this.nativeCatalog(this.deps.getService("subagents"), parent.id);
+            const primary = serializeFailure(error, { fallbackCode: "DELEGATE_MEMBER_START_FAILED", operation: "native.member.start", origin: "host" });
+            try { rows = await this.nativeCatalog(this.deps.getService("subagents"), parent.id); }
+            catch (diagnostic) { throw Object.assign(new Error(primary.message), { ...primary, diagnostics: [serializeFailure(diagnostic, { fallbackCode: "DELEGATE_CATALOG_FAILED", operation: "native.catalog.read" })] }); }
             const recovered = rows.filter((m: any) => m.kind === "child" && m.id === id && m.label === r.label && m.mode === "continuable");
-            if (recovered.length !== 1) reject("DELEGATE_MEMBER_CREATION_FAILED");
+            if (recovered.length !== 1) throw Object.assign(new Error(primary.message), primary);
           }
         }
       }
@@ -408,7 +417,9 @@ export class RoleDelegation {
       ? (await deliveryService.sendMessage(parent, { target: memberName, content: text(this.prompt(r)), signal: this.signal }))?.messageId
       : await deliveryService.sendMessage(parent, memberId, text(this.prompt(r)), { signal: this.signal });
     if (!string(receipt)) reject("DELEGATE_DELIVERY_UNCERTAIN");
-    await this.update(parent, r.workdir, r.id, (v) => ({ ...v, messageId: receipt, delivery: "accepted", status: terminal(v) ? v.status : "running" }));
+    try { await this.update(parent, r.workdir, r.id, (v) => ({ ...v, messageId: receipt, delivery: "accepted", status: terminal(v) ? v.status : "running" })); }
+    catch (error) { const primary = serializeFailure(error, { fallbackCode: "DELEGATE_RECEIPT_PERSIST_FAILED", operation: "delegate.delivery.persist", origin: "dsh" });
+      throw Object.assign(new Error(primary.message), { ...primary, deliveryAccepted: true, acceptedReceiptId: receipt }); }
   }
   private async proveWorker(parent: DelegationActor, actor: DelegationActor, r: Receipt): Promise<void> {
     if (r.delivery === "reserved") reject("DELEGATE_NOT_DELIVERED");

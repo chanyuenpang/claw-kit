@@ -1,16 +1,15 @@
-import { ClawError } from "@veewo/claw-core";
+import { serializeFailure, redactFailureMessage } from "@veewo/claw-core";
 
-/** Shared envelope: business owners supply effect evidence; transports do not infer it from text. */
+/** Cause identity is independent from owner outcome/effect evidence. */
 export function serializeCommandFailure(error: unknown, fallbackOutcome: "known" | "unknown", fallbackCode = "SESSION_COMMAND_FAILED") {
-  const owner = error instanceof ClawError ? error : undefined;
-  const code = owner?.details?.code === "SESSION_BUSY" ? "SESSION_BUSY" : owner?.code ?? fallbackCode;
-  return {
-    code,
-    message: error instanceof Error ? error.message : String(error),
-    retryable: code === "SESSION_BUSY"
-      && (owner?.execution?.outcome ?? fallbackOutcome) === "known"
-      && (!owner?.execution || owner.execution.effect === "none"),
-    outcome: owner?.execution?.outcome ?? fallbackOutcome,
-    ...(owner?.execution ? { phase: owner.execution.phase, effect: owner.execution.effect } : {}),
-  };
+  const value = serializeFailure(error, { fallbackOutcome, fallbackCode, origin: "cli" });
+  const details = error && typeof error === "object" ? (error as { details?: { code?: unknown } }).details : undefined;
+  if (details?.code === "SESSION_BUSY") value.code = "SESSION_BUSY";
+  const safeDetails: Record<string, unknown> = {};
+  if (details) for (const [key, item] of Object.entries(details)) {
+    if (/token|key|secret|password|authorization|payload|prompt/i.test(key)) continue;
+    if (typeof item === "number" || typeof item === "boolean" || item === null) safeDetails[key] = item;
+    else if (["code", "field", "scope", "reason", "path", "planPath", "operation", "resource"].includes(key) && typeof item === "string") safeDetails[key] = redactFailureMessage(item);
+  }
+  return { ...value, ...(Object.keys(safeDetails).length ? { details: safeDetails } : {}), retryable: value.code === "SESSION_BUSY" && value.outcome === "known" && (!value.effect || value.effect === "none") };
 }

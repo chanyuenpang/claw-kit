@@ -77,7 +77,7 @@ function makeMockSubprocess(respond, pending, captureError, override) {
   return { subprocess, handles, captures, issues };
 }
 
-function makeHarness({ subagents, dispatch, extraService, initialQueued = false, unknownClaim = false, receiptClaimed = true, captureError, businessFailure }) {
+function makeHarness({ subagents, dispatch, extraService, initialQueued = false, unknownClaim = false, receiptClaimed = true, unknownDone = false, receiptCompleted = true, captureError, businessFailure }) {
   let tool;
   const ctx = {
     get: (name) => {
@@ -94,6 +94,9 @@ function makeHarness({ subagents, dispatch, extraService, initialQueued = false,
   let terminalCommitted = initialQueued;
   const mock = makeMockSubprocess((request) => {
     if (request.operation === "subplan.create" && businessFailure) return { ok: false, command: request.operation, error: businessFailure };
+    if (request.operation === "knowledge.done" && businessFailure) return { ok: false, command: request.operation, error: businessFailure };
+    if (request.operation === "knowledge.done" && unknownDone) return { ok: false, command: "knowledge.done", error: { code: "SESSION_CONNECTION_LOST", message: "lost completion response", outcome: "unknown" } };
+    if (request.operation === "knowledge.done.receipt") return { ok: true, command: "knowledge.done.receipt", output: { terminal: receiptCompleted, matches: receiptCompleted, status: receiptCompleted ? "succeeded" : "running" } };
     if (request.operation === "knowledge.claim" && unknownClaim) return { ok: false, command: "knowledge.claim",
       error: { code: "SESSION_CONNECTION_LOST", message: "connection was interrupted", outcome: "unknown" } };
     if (request.operation === "knowledge.claim.receipt") return { ok: true, command: "knowledge.claim.receipt", schemaVersion: 1,
@@ -215,7 +218,7 @@ test("collector stderr yields only a safe error code in parent receipts", async 
   const { service, state } = makeSubagents();
   const harness = makeHarness({ subagents: service,
     dispatch: { finalizeId: "8".repeat(64), prompt: "writer" },
-    captureError: "DSH_REPORT_CAPTURE_DENIED: private path C:\\secret\\plan.report",
+    captureError: JSON.stringify({ error: { code: "DSH_REPORT_CAPTURE_DENIED", message: "private path C:/secret/plan.report", outcome: "known", phase: "capture", effect: "none" } }),
   });
   apply(harness.ctx);
   const result = await harness.tool.execute({ operation: "plan.done", args: {} }, { agent: makeAgent("parent-sensitive") });
@@ -541,4 +544,31 @@ test("actual adapter reuses one native finalizer and wakes B after both A ends w
   assert.equal(jobs[1].delegateEnded, true);
   assert.ok(jobs[1].execution.releasedAt);
   assert.ok(internalOperations.includes("task.done"));
+});
+
+test("lost completion response reads the canonical terminal receipt without a second done", async () => {
+  const harness = makeHarness({ unknownDone: true }); apply(harness.ctx);
+  const result = await harness.tool.execute({ operation: "knowledge.done", args: { finalize_id: "a".repeat(64), status: "succeeded", result: "done" } }, { agent: makeAgent("owned-done") });
+  assert.equal(result.completed, true); assert.equal(result.completionRecovered, true);
+  assert.equal(result.postCommitEffectsVerified, false);
+  const requests = harness.mock.handles.flatMap(handle => handle.stdin.writes).filter(line => line.startsWith("{")).map(line => JSON.parse(line));
+  assert.deepEqual(requests.map(request => request.operation), ["knowledge.done", "knowledge.done.receipt"]);
+  assert.equal("claimToken" in requests[0].input, false);
+  assert.equal(requests[1].input.expectedResult, "done");
+});
+
+test("unconfirmed completion remains unknown without retry or failure completion", async () => {
+  const harness = makeHarness({ unknownDone: true, receiptCompleted: false }); apply(harness.ctx);
+  await assert.rejects(harness.tool.execute({ operation: "knowledge.done", args: { finalize_id: "a".repeat(64), status: "succeeded", result: "done" } }, { agent: makeAgent("unconfirmed-done") }), /CLAW_OUTCOME_UNKNOWN/);
+  const requests = harness.mock.handles.flatMap(handle => handle.stdin.writes).filter(line => line.startsWith("{")).map(line => JSON.parse(line).operation);
+  assert.deepEqual(requests, ["knowledge.done", "knowledge.done.receipt"]);
+});
+
+test("credential mismatch returns known/no-write evidence and never queries to bypass it", async () => {
+  const error = { code: "KNOWLEDGE_CLAIM_MISMATCH", message: "claim credential mismatch", phase: "prepare", outcome: "known", effect: "none" };
+  const harness = makeHarness({ businessFailure: error }); apply(harness.ctx);
+  const result = await harness.tool.execute({ operation: "knowledge.done", args: { finalize_id: "a".repeat(64), claim_token: "wrong", status: "succeeded", result: "done" } }, { agent: makeAgent("wrong-token") });
+  assert.deepEqual(result.error, error);
+  const requests = harness.mock.handles.flatMap(handle => handle.stdin.writes).filter(line => line.startsWith("{")).map(line => JSON.parse(line).operation);
+  assert.deepEqual(requests, ["knowledge.done"]);
 });

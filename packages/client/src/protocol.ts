@@ -81,7 +81,8 @@ export type ClawSessionCommand =
   | { operation: "knowledge.claim"; input: { finalizeId: string } }
   /** Internal read-only receipt reconciliation, not a model operation. */
   | { operation: "knowledge.claim.receipt"; input: { finalizeId: string } }
-  | { operation: "knowledge.done"; input: { finalizeId: string; claimToken: string } & (
+  | { operation: "knowledge.done.receipt"; input: { finalizeId: string; claimToken?: string; expectedStatus?: "succeeded" | "failed"; expectedResult?: string } }
+  | { operation: "knowledge.done"; input: { finalizeId: string; claimToken?: string } & (
       { status: "succeeded"; result: string; error?: never } | { status: "failed"; error: string; result?: never }
     ) };
 
@@ -156,6 +157,17 @@ export type SessionProtocolRequest =
       protocolVersion: 1;
       requestId: string;
       token: string;
+      operation: "session.open.receipt";
+      input: {
+        agentSessionId: string;
+        workdir: string;
+        client: SessionClientInfo;
+      };
+    }
+  | {
+      protocolVersion: 1;
+      requestId: string;
+      token: string;
       operation: "session.command";
       sessionHandle: string;
       input: ClawSessionCommand;
@@ -168,6 +180,13 @@ export type SessionProtocolRequest =
       sessionHandle: string;
       input: Record<string, never>;
     };
+
+export type FailureDiagnostic = {
+  code: string; message: string; outcome: "known" | "unknown"; phase?: string;
+  effect?: "none" | "partial" | "committed" | "unknown";
+  origin?: string; operation?: string; resource?: string; correlationId?: string;
+  cause?: FailureDiagnostic; diagnostics?: FailureDiagnostic[];
+};
 
 export type SessionProtocolResponse =
   | {
@@ -183,9 +202,11 @@ export type SessionProtocolResponse =
         message: string;
         retryable: boolean;
         outcome: "known" | "unknown";
-        phase?: "prepare" | "initialize" | "commit" | "post-commit";
+        phase?: string;
         effect?: "none" | "partial" | "committed" | "unknown";
         recoveryCommand?: string;
+        origin?: string; operation?: string; resource?: string; correlationId?: string;
+        cause?: FailureDiagnostic; diagnostics?: FailureDiagnostic[];
         details?: Record<string, unknown>;
       };
     };

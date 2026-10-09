@@ -3,6 +3,7 @@
  * and the session-start guidance snapshot renderer. Kept free of Cordis and
  * process dependencies so they are directly unit-testable.
  */
+import { serializeFailure } from "../lib/errors.js";
 import { DSH_MUTATION_ROUTE_GUIDANCE } from "./route-guidance.js";
 /**
  * A transport break after a daemon request has been sent leaves the mutation
@@ -18,13 +19,18 @@ export function isUnknownCommandOutcome(error) {
     return error?.outcome !== undefined ? error.outcome === "unknown" : isUncertainConnectionFailure(error?.message ?? "");
 }
 export function operationFailureError(operation, error) {
-    const evidence = [error?.phase && "phase=" + error.phase, error?.effect && "effect=" + error.effect,
-        error?.outcome && "outcome=" + error.outcome].filter(Boolean).join(", ");
-    const recovery = error?.effect === "partial" || error?.effect === "committed"
-        ? " Inspect canonical state; do not replay the mutation." : "";
-    return Object.assign(new Error("claw operation failed: " + operation + " — "
-        + (error?.code ?? "CLAW_COMMAND_FAILED") + ": " + (error?.message ?? "no detail")
-        + (evidence ? " [" + evidence + "]" : "") + recovery), { code: error?.code, outcome: error?.outcome, phase: error?.phase, effect: error?.effect });
+    const failure = serializeFailure(error, { fallbackCode: "CLAW_COMMAND_FAILED", operation, origin: "dsh", fallbackOutcome: "unknown" });
+    const evidence = [failure.phase && "phase=" + failure.phase, failure.effect && "effect=" + failure.effect, "outcome=" + failure.outcome].filter(Boolean).join(", ");
+    const message = "claw operation failed: " + operation + " — " + failure.code + ": " + failure.message + " [" + evidence + "]"
+        + (failure.effect === "partial" || failure.effect === "committed" || failure.outcome === "unknown" ? " Inspect canonical state; do not replay the operation." : "");
+    return Object.assign(new Error(message), { ...failure, message });
+}
+export function unknownOperationError(operation, primary, diagnostics = []) {
+    const failure = serializeFailure(primary, { fallbackCode: "CLAW_OPERATION_OUTCOME_UNKNOWN", operation, origin: "dsh", fallbackOutcome: "unknown" });
+    const secondary = diagnostics.slice(0, 3).map(value => serializeFailure(value, { fallbackCode: "RECEIPT_DIAGNOSTIC_FAILED", operation: operation + ".receipt.read", origin: "dsh", fallbackOutcome: "unknown" }));
+    const message = "CLAW_OUTCOME_UNKNOWN: " + failure.code + ": " + failure.message + ". Commit is not confirmed; do not replay this operation."
+        + (secondary.length ? " Read-only diagnosis: " + secondary.map(e => e.code + ": " + e.message).join("; ") : "");
+    return Object.assign(new Error(message), { ...failure, message, outcome: "unknown", diagnostics: [...(failure.diagnostics ?? []), ...secondary].slice(0, 3) });
 }
 /** Map one `claw_run` operation call (snake_case args) to the daemon's
  * canonical `claw/execute` input. Mirrors the Cindy adapter's sessionRequest
@@ -220,12 +226,26 @@ export function daemonInput(operation, args) {
             if (typeof args.finalize_id !== "string" || !/^[a-f0-9]{64}$/i.test(args.finalize_id))
                 throw new Error("knowledge.claim requires a 64-character hexadecimal finalize_id");
             return { finalizeId: args.finalize_id };
+        case "knowledge.done.receipt": {
+            assertKnownArgs(operation, args, ["finalize_id", "claim_token", "expected_status", "expected_result"]);
+            if (typeof args.finalize_id !== "string" || !/^[a-f0-9]{64}$/i.test(args.finalize_id))
+                throw new Error("knowledge.done.receipt requires finalize_id");
+            if (args.claim_token !== undefined && (typeof args.claim_token !== "string" || !args.claim_token.trim()))
+                throw new Error("claim_token must be nonempty text when supplied");
+            if (args.expected_status !== undefined && args.expected_status !== "succeeded" && args.expected_status !== "failed")
+                throw new Error("Invalid expected_status");
+            if (args.expected_result !== undefined && typeof args.expected_result !== "string")
+                throw new Error("expected_result must be text");
+            return { finalizeId: args.finalize_id, ...(args.claim_token !== undefined ? { claimToken: args.claim_token } : {}),
+                ...(args.expected_status !== undefined ? { expectedStatus: args.expected_status } : {}),
+                ...(args.expected_result !== undefined ? { expectedResult: args.expected_result } : {}) };
+        }
         case "knowledge.done": {
             assertKnownArgs(operation, args, ["finalize_id", "claim_token", "status", "result", "error"]);
             if (typeof args.finalize_id !== "string" || !/^[a-f0-9]{64}$/i.test(args.finalize_id))
                 throw new Error("knowledge.done requires a 64-character hexadecimal finalize_id");
-            if (typeof args.claim_token !== "string" || !args.claim_token.trim())
-                throw new Error("knowledge.done requires claim_token");
+            if (args.claim_token !== undefined && (typeof args.claim_token !== "string" || !args.claim_token.trim()))
+                throw new Error("claim_token must be nonempty text when supplied");
             if (args.status !== "succeeded" && args.status !== "failed")
                 throw new Error("knowledge.done status must be succeeded or failed");
             if (args.status === "succeeded" && typeof args.result !== "string")
@@ -234,7 +254,7 @@ export function daemonInput(operation, args) {
                 throw new Error("knowledge.done failed requires error");
             if (args.status === "succeeded" && args.error !== undefined || args.status === "failed" && args.result !== undefined)
                 throw new Error("knowledge.done cannot combine status with the opposite outcome field");
-            return { finalizeId: args.finalize_id, claimToken: args.claim_token, status: args.status, ...(args.status === "succeeded" ? { result: args.result } : { error: args.error }) };
+            return { finalizeId: args.finalize_id, ...(args.claim_token !== undefined ? { claimToken: args.claim_token } : {}), status: args.status, ...(args.status === "succeeded" ? { result: args.result } : { error: args.error }) };
         }
         case "search":
             assertKnownArgs(operation, args, ["query", "limit"]);

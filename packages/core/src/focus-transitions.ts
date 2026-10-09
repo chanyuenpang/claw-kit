@@ -613,7 +613,7 @@ async function commitFocusTransition(input: {
     plans: Array<{ ref: PlanRef; content: PlanDocument }>;
   };
 }): Promise<FocusTransitionResult> {
-  const execution: ClawExecutionFailure = { phase: "prepare", outcome: "known", effect: "none" };
+  const execution: ClawExecutionFailure = { operation: "focus." + input.kind, phase: "prepare", outcome: "known", effect: "none" };
   try {
   return await withSerializedQueue(focusQueuePath(input.project), async () => {
     await recoverProjectFocusTransitionsLocked(input.project, input.sessionStore);

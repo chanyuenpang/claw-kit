@@ -1,5 +1,20 @@
 # Execute-first validation engineering
 
+## Error fidelity after execution
+
+Error cause and execution disposition are independent. A safe original code such as EACCES or ECONNRESET identifies an observed failure; it is not evidence that the business operation did not commit. Only the mutation owner or its exact canonical receipt supplies phase/outcome/effect evidence. Parent and child operations carry their own operation/resource/correlation, so a child no-write refusal cannot erase a parent's partial or committed effects.
+
+Use the Core pure failure codec for Core/CLI and distributed Host diagnostics. Preserve safe owner code spelling and bounded message/cause; do not require constructor identity, prefix-renormalize codes, or mine uppercase words from free text as authority. A missing code gets a stable operation-specific fallback and an honest reason, not a guessed root cause. Existing JSON/identity/path/claim checks remain with their owners; this is not a new preflight or capability gate.
+
+A failed readonly recovery is a secondary diagnostic. Reopening, parsing, catalog reads and persistence warnings must not replace the primary send failure. Successful business replies remain successful when activity bookkeeping or a Host projection fails, with a separately visible post-command/effect warning. Accepted delivery and uncertain receipt persistence are separate facts. Unknown/accepted never licenses resending; a known rejection permits a fallback only when the existing owner explicitly rejected before effects, not merely because its outcome is known.
+
+Diagnostic normalization is bounded before string processing (4096 input characters, 768 message characters, depth 3, total 12 nodes, at most 3 secondary entries). Getter/cycle/formatting failures remain diagnostics, not replacements for readable primary facts. Credentials, inline prompt/payload bodies, URLs and personal/UNC paths are redacted. Execution context uses the same redaction and limits; scope/correlation identifiers remain useful, and no raw transcript is persisted.
+
+Standalone Host artifacts bundle the same codec, not their own business rules. Fresh source build/check/composition verifies generated contract drift; frozen tested candidates are not regenerated. The Codex serialized driver has its own cache revision and embeds that same pure codec. This engineering check is not runtime shadow authorization.
+
+Regression checks emphasize one owner call, same cause with different outcomes, parent/child scope, no fallback after partial/unknown/accepted, redaction and diagnostics that fail without hiding the original. Historic generic-only records may have permanently lost their cause; do not replay production to manufacture evidence.
+
+
 This policy applies to every package, host adapter, CLI entry, service, hook, and tool in this repository. Validation is not automatically beneficial: a false positive can discard a correct operation, lose one unit of progress, strand durable state, and force unnecessary user recovery.
 
 ## Default rule

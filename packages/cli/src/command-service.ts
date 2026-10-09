@@ -25,6 +25,7 @@ import {
   releaseCurrentPlanFocus,
   readFocusedPlan,
   readKnowledgeFinalizationJob,
+  readKnowledgeCompletionReceipt,
   ensureInsideDir,
   focusSessionKeyHash,
   resolveSessionWorkflowContext,
@@ -189,7 +190,12 @@ export class ClawCommandService {
     request: ClawCommandRequest,
   ): Promise<ClawCommandResult> {
     // Receipt reconciliation must not run unrelated canonical recovery effects.
-    if (request.operation === "knowledge.claim.receipt") return this.executeCommand(context, request);
+    if (["knowledge.claim.receipt", "knowledge.done.receipt"].includes(request.operation)) return this.executeCommand(context, request);
+    if (request.operation === "knowledge.done") {
+      const result = await this.executeCommand(context, request);
+      recoverCompletionRefreshBestEffort(context.cwd, context.agentSessionId);
+      return result;
+    }
     recoverCompletionRefreshBestEffort(context.cwd, context.agentSessionId);
     try { return await this.executeCommand(context, request); }
     finally { recoverCompletionRefreshBestEffort(context.cwd, context.agentSessionId); }
@@ -494,7 +500,7 @@ export class ClawCommandService {
         const { finalizeId } = request.input as { finalizeId: string };
         const project = this.resolveProject(context, "project");
         const jobPath = findProjectKnowledgeJob(project.projectRoot, finalizeId, true);
-        const claimant = { projectRoot: project.projectRoot, host: context.host ?? "", agentSessionId: context.agentSessionId ?? "" };
+        const claimant = { projectRoot: project.projectRoot, host: context.host ?? "standard", agentSessionId: context.agentSessionId ?? "" };
         if (request.operation === "knowledge.claim.receipt") {
           return { output: knowledgeClaimReceiptCommand(jobPath, claimant) };
         }
@@ -509,10 +515,17 @@ export class ClawCommandService {
             ownerSessionId: claimant.agentSessionId };
         }) };
       }
-      case "knowledge.done": {
-        const input = request.input as { finalizeId: string; claimToken: string; status: "succeeded" | "failed"; result?: string; error?: string };
+      case "knowledge.done.receipt": {
+        const input = request.input as { finalizeId: string; claimToken?: string; expectedStatus?: "succeeded" | "failed"; expectedResult?: string };
         const project = this.resolveProject(context, "project");
-        const jobPath = findProjectKnowledgeJob(project.projectRoot, input.finalizeId);
+        const jobPath = findProjectKnowledgeJob(project.projectRoot, input.finalizeId, true);
+        return { output: { ok: true, command: "knowledge.done.receipt", ...readKnowledgeCompletionReceipt({ jobPath, ...input,
+          claimant: { projectRoot: project.projectRoot, host: context.host ?? "standard", agentSessionId: context.agentSessionId ?? "" } }) } };
+      }
+      case "knowledge.done": {
+        const input = request.input as { finalizeId: string; claimToken?: string; status: "succeeded" | "failed"; result?: string; error?: string };
+        const project = this.resolveProject(context, "project");
+        const jobPath = findProjectKnowledgeJob(project.projectRoot, input.finalizeId, true);
         if (input.status === "succeeded" && input.result === undefined) {
           throw new ClawError("PROJECT_CONFIG_INVALID", "knowledge done --status succeeded requires --result.");
         }
@@ -522,8 +535,16 @@ export class ClawCommandService {
         if (input.status !== "succeeded" && input.status !== "failed") {
           throw new ClawError("PROJECT_CONFIG_INVALID", "Unsupported knowledge done status " + String(input.status) + ".");
         }
-        const output = doneKnowledgeCommand({ jobPath, ...input, retainTemplate: true });
-        const result = await this.finishKnowledgeDelegate(context, jobPath, output);
+        const output = doneKnowledgeCommand({ jobPath, ...input, retainTemplate: true,
+          claimant: { projectRoot: project.projectRoot, host: context.host ?? "standard", agentSessionId: context.agentSessionId ?? "" } });
+        let result: ClawCommandResult;
+        try {
+          await this.reconcileCanonicalFocus(context);
+          result = await this.finishKnowledgeDelegate(context, jobPath, output);
+        }
+        catch (error) { return { output: { ...output, completionEffect: "committed", delegateCloseDeferred: true,
+          delegateCloseError: { code: error instanceof ClawError ? error.code : "KNOWLEDGE_DELEGATE_CLOSE_DEFERRED",
+            message: error instanceof Error ? error.message : String(error), phase: "post-commit", outcome: "known", effect: "committed" } } }; }
         if ((result.output as { delegateClosed?: boolean }).delegateClosed || !readKnowledgeFinalizationJob(jobPath).delegateWorkflow) {
           const cleanup = removeKnowledgeAssignmentTemplate(jobPath, input.finalizeId);
           if (cleanup.error) result.output = { ...(result.output as Record<string, unknown>), templateCleanupDeferred: cleanup.error };

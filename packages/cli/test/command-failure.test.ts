@@ -13,7 +13,7 @@ import { SessionRegistryV2 } from "../dist/session-registry-v2.js";
 test("one-shot and daemon serialize authoritative rejection identically", () => {
   const error = withExecutionFailure(new ClawError("TASK_NOT_FOUND", "session connection task missing"),
     { phase: "prepare", outcome: "known", effect: "none" });
-  const expected = { code: "TASK_NOT_FOUND", message: error.message, retryable: false,
+  const expected = { code: "TASK_NOT_FOUND", message: error.message, retryable: false, name: "ClawError", origin: "cli",
     phase: "prepare", outcome: "known", effect: "none" };
   assert.deepEqual(serializeCommandFailure(error, "unknown"), expected);
   assert.deepEqual(serializeCommandFailure(error, "known"), expected);
@@ -56,4 +56,22 @@ test("real one-shot parent rejection remains known and leaves the parent unchang
   assert.equal(failure.outcome, "known");
   assert.equal(failure.effect, "none");
   assert.equal(fs.readFileSync(planPath, "utf8"), before);
+});
+
+test("all structured owner failures keep cause and phase regardless of Error class", () => {
+  const value = { code: "host.reserve-denied", message: "quota rejected", origin: "host", operation: "finalizer.reserve", phase: "admission", outcome: "unknown", effect: "unknown",
+    cause: { code: "EACCES", message: "write denied", outcome: "known", effect: "none", operation: "ledger.open" } };
+  const result = serializeCommandFailure(value, "known");
+  assert.equal(result.code, "host.reserve-denied"); assert.equal(result.operation, "finalizer.reserve"); assert.equal(result.phase, "admission");
+  assert.equal(result.outcome, "unknown"); assert.equal(result.cause?.code, "EACCES"); assert.equal(result.retryable, false);
+});
+
+test("ordinary CLI preserves native I/O code instead of UNEXPECTED_ERROR", () => {
+  const missing = path.join(os.tmpdir(), "claw-missing-" + Date.now(), "job.json");
+  const result = spawnSync(process.execPath, [fileURLToPath(new URL("../dist/bin.js", import.meta.url)), "knowledge", "done-receipt", "--job", missing, "--claim-token", "fixture"], {
+    encoding: "utf8", env: { ...process.env, CLAW_SESSION_ID: "", CODEX_THREAD_ID: "", CODEX_SESSION_ID: "", CINDY_SESSION_ID: "", OPENCODE_SESSION_ID: "" }, timeout: 30000,
+  });
+  assert.equal(result.status, 1); const error = JSON.parse(result.stderr).error;
+  assert.equal(error.code, "ENOENT"); assert.match(error.message, /open.*ENOENT/); assert.equal(error.retryable, false);
+  assert.doesNotMatch(JSON.stringify(error), /job.json/);
 });

@@ -68,7 +68,7 @@ test("one exact full-id admission permits only one delivery attempt and never re
   assert.throws(() => f.mark(jobPath, "accepted", "another-receipt"), /IMMUTABLE/);
 });
 
-test("first claim requires admitted child and active no-capture internal delegate", (t) => {
+test("first claim requires admitted child and active no-capture owned delegate, not a template label", (t) => {
   const f = fixture(t), jobPath = f.job("b".repeat(64));
   f.reserve(jobPath);
   const delegate = f.delegate("B");
@@ -77,10 +77,11 @@ test("first claim requires admitted child and active no-capture internal delegat
   f.mark(jobPath, "attempted");
   assert.throws(() => claimKnowledgeFinalizationJob(jobPath, { ...options, claimant: { ...f.claimant, agentSessionId: "sibling" } }), /CLAIM_DENIED/);
   assert.throws(() => claimKnowledgeFinalizationJob(jobPath, { claimant: f.claimant, version: "v1" }), /DELEGATE_PLAN_REQUIRED/);
-  fs.writeFileSync(delegate.planPath, JSON.stringify({ status: "process.active", templateId: "another", knowledgeCapture: false }));
+  fs.writeFileSync(delegate.planPath, JSON.stringify({ status: "process.active", templateId: "another", knowledgeCapture: true }));
   assert.throws(() => claimKnowledgeFinalizationJob(jobPath, options), /DELEGATE_PLAN_REQUIRED/);
   assert.equal(readKnowledgeFinalizationJob(jobPath).attempts, 0);
   const valid = f.delegate("B");
+  fs.writeFileSync(valid.planPath, JSON.stringify({ status: "process.active", templateId: "another", knowledgeCapture: false }));
   const claimed = claimKnowledgeFinalizationJob(jobPath, { ...options, resolveDelegatePlan: () => valid })!;
   assert.equal(claimed.dshExecution?.delegatePlanPath, valid.planPath);
   assert.equal(claimed.claimReceipt?.agentSessionId, f.member);

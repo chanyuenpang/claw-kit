@@ -10,7 +10,7 @@
     "summary": "Release only the OpenClaw adapter artifact family without npm publication.",
     "openQuestions": [],
     "acceptanceCriteria": [
-      "Only the OpenClaw adapter fourth segment is bumped and its core dependency remains exact.",
+      "Candidate preparation allocated the family-specific target version; promotion preserves it unchanged.",
       "Focused OpenClaw checks and the guarded release verifier pass.",
       "The exact vopenclaw-<version> tag and GitHub Release are verified."
     ]
@@ -19,25 +19,25 @@
     {
       "id": 1,
       "title": "Inspect and classify the OpenClaw baseline",
-      "detail": "Read AGENTS.md and references/artifact.md; inspect branch, remotes, tags, manifests, dependency pins, and every worktree change.",
+      "detail": "Select the authorized tested frozen candidate and verify its artifact family, sourceRevision and trial; absent a candidate, use candidate preparation and stop before publication. Read AGENTS.md and references/artifact.md; inspect branch, remotes, tags, manifests, dependency pins, and every worktree change.",
       "status": "pending"
     },
     {
       "id": 2,
-      "title": "Prepare the OpenClaw adapter",
-      "detail": "Bump only the adapter fourth segment, preserve the exact core dependency, synchronize required content, and review the complete diff.",
+      "title": "Confirm the frozen candidate version and source",
+      "detail": "Read the selected candidate and its source manifest mirrors, exact dependency pins and sourceRevision. Verify the allocated family-specific version; do not bump, regenerate or synchronize workspace content during promotion. Any mismatch requires a new candidate/version, not an in-place repair.",
       "status": "pending"
     },
     {
       "id": 3,
       "title": "Verify the OpenClaw candidate",
-      "detail": "Run focused adapter checks, package/build validation, template/shared-skill checks, and git diff --check.",
+      "detail": "Require the selected frozen candidate inventory/hash, exact clean source revision, retained test evidence and seven-day trial. Read-only checks may verify template driver compatibility, but never build, export, bump or repair source during promotion. A changed input requires a new candidate.",
       "status": "pending"
     },
     {
       "id": 4,
       "title": "Pass the exact-source gate and release",
-      "detail": "Commit intended content on main, push origin/main, require an empty worktree and HEAD == origin/main, run npm run verify:release, create and push vopenclaw-<version>, and create the GitHub Release.",
+      "detail": "With explicit publication authority, require clean source main at the tested candidate revision and complete authorized source push without divergence. Publish the exact frozen OpenClaw artifact tree to the existing immutable vopenclaw-<candidate-version> tag and GitHub Release through its artifact owner. Record source and artifact commits separately and compare the public tree with the candidate. Never tag raw source as an installable artifact or regenerate the selected tree.",
       "status": "pending"
     },
     {
@@ -58,6 +58,7 @@
     }
   ],
   "rules": [
+    "Formal promotion requires the explicitly selected tested frozen candidate. Preserve its version and hashes; never bump, build, pack or export again. If no tested candidate exists, prepare a new version through beta:prepare and stop before publication.",
     "Never publish npm packages or modify another artifact family.",
     "Stop at the first failed release boundary."
   ]

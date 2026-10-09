@@ -12,8 +12,8 @@
     "packages/opencode-adapter"
   ],
   "scripts": {
-    "build": "npm run build -w @veewo/claw-core && npm run build -w @veewo/claw-client && npm run build -w @veewo/claw && npm run build -w @claw-kit/openclaw-adapter && npm run build -w @claw-kit/codex-adapter && npm run build -w @claw-kit/opencode-adapter && npm run build -w @veewo/dsh-claw-kit",
-    "check": "npm run build -w @veewo/claw-core && npm run build -w @veewo/claw-client && npm run check -w @veewo/claw-client && npm run check -w @veewo/claw && npm run check -w @claw-kit/openclaw-adapter && npm run check -w @claw-kit/codex-adapter && npm run check -w @claw-kit/opencode-adapter && npm run check -w @veewo/dsh-claw-kit && node scripts/truth-encoding-audit.mjs --check",
+    "build": "npm run check:failure-contracts && npm run build -w @veewo/claw-core && npm run build -w @veewo/claw-client && npm run build -w @veewo/claw && npm run build -w @claw-kit/openclaw-adapter && npm run build -w @claw-kit/codex-adapter && npm run build -w @claw-kit/opencode-adapter && npm run build -w @veewo/dsh-claw-kit",
+    "check": "npm run check:failure-contracts && npm run build -w @veewo/claw-core && npm run build -w @veewo/claw-client && npm run check -w @veewo/claw-client && npm run check -w @veewo/claw && npm run check -w @claw-kit/openclaw-adapter && npm run check -w @claw-kit/codex-adapter && npm run check -w @claw-kit/opencode-adapter && npm run check -w @veewo/dsh-claw-kit && node scripts/truth-encoding-audit.mjs --check",
     "export:codex-plugin": "node .\\scripts\\export-codex-plugin.mjs",
     "export:codex-marketplace": "node ./scripts/export-codex-marketplace.mjs",
     "export:dsh-plugin": "node .\\scripts\\export-dsh-plugin.mjs",
@@ -23,6 +23,9 @@
     "install:dsh-plugin": "node .\\scripts\\install-dsh-plugin.mjs",
     "install:opencode-plugin": "powershell -ExecutionPolicy Bypass -File .\\scripts\\install-opencode-plugin.ps1",
     "publish:release": "node .\\scripts\\publish-release.mjs --publish",
+    "beta:prepare": "node ./scripts/release-candidate.mjs prepare",
+    "beta:recover": "node ./scripts/release-candidate.mjs recover",
+    "beta:resume": "node ./scripts/release-candidate.mjs resume",
     "beta:pack": "node ./scripts/release-candidate.mjs pack",
     "beta:verify": "node ./scripts/release-candidate.mjs verify",
     "beta:install": "node ./scripts/release-candidate.mjs install",
@@ -31,6 +34,7 @@
     "publish:batch-release": "node .\\scripts\\publish-release.mjs --batch --publish",
     "publish:dsh-plugin": "node .\\scripts\\publish-dsh-plugin.mjs",
     "build:skills": "node ./scripts/skill-artifacts.mjs",
+    "check:failure-contracts": "node scripts/failure-contracts.mjs --check",
     "check:skill-sources": "node ./scripts/skill-artifacts.mjs --check-source",
     "export:cindy-plugin": "node ./scripts/export-cindy-plugin.mjs",
     "export:openclaw-plugin": "node ./scripts/export-openclaw-plugin.mjs",

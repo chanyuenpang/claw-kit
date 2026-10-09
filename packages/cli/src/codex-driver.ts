@@ -1,6 +1,8 @@
+import fs from "node:fs";
+import { serializeFailure } from "@veewo/claw-core";
 import { createHash } from "node:crypto";
 
-export const CODEX_DRIVER_VERSION = 25;
+export const CODEX_DRIVER_VERSION = 26;
 export const CODEX_HOST_ACTION_SCHEMA_VERSION = 1;
 export const CODEX_DRIVER_CACHE_KEY =
   `claw-kit:codex-driver:v${CODEX_DRIVER_VERSION}:s${CODEX_HOST_ACTION_SCHEMA_VERSION}`;
@@ -140,7 +142,7 @@ async function codexDriverRunner(
   const goalStatuses = new Set(["complete", "blocked"]);
   const consumed = new Set<string>();
   let goalRecovery: Record<string, string> | undefined;
-  const hostEffectFailures: Array<{ id: string; tool: string; message: string }> = [];
+  const hostEffectFailures: Array<Record<string, unknown>> = [];
   const actions = Array.isArray(result.hostActions) ? result.hostActions : [];
   for (const candidate of actions) {
     let tool = "";
@@ -202,12 +204,13 @@ async function codexDriverRunner(
       hostEffectFailures.push({
         id: id || "unknown",
         tool: tool || "unknown",
-        message: error instanceof Error ? error.message : String(error),
+        ...serializeFailure(error, { fallbackCode: "HOST_EFFECT_FAILED", origin: "codex.host", operation: tool || "host.effect", resource: id || "unknown", fallbackOutcome: "unknown" }),
       });
     }
   }
   const visibleKeys = new Set([
     "stage",
+    "postCommandFailures",
     "planSummary",
     "nextsteps",
     "notes",
@@ -257,7 +260,8 @@ async function codexDriverRunner(
 }
 
 export function buildCodexDriverEnvelope(cliVersion: string): Record<string, unknown> {
-  const source = codexDriverRunner.toString();
+  const codec = fs.readFileSync(new URL("./errors.js", import.meta.resolve("@veewo/claw-core")), "utf8").replace(/^export /gm, "").replace(/^\/\/# sourceMappingURL=.*$/gm, "");
+  const source = "(() => {\n" + codec + "\nreturn " + codexDriverRunner.toString() + ";\n})()";
   return {
     ok: true,
     command: "codex.driver",

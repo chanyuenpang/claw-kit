@@ -61,3 +61,12 @@ test("trusted baseline passes JSON via stdin and preserves host effects", async 
   assert.deepEqual(request, { operation: "plan.show", input: { simple: true } });
   assert.deepEqual(result.hostActions, output.hostActions);
 });
+
+test("known unsupported response with existing or uncertain effects never calls fallback owner", async () => {
+  for (const effect of ["partial", "committed", "unknown"]) {
+    let baseline = 0;
+    const original = { ok: false, command: "plan.done", error: { code: "SESSION_OPERATION_UNSUPPORTED", outcome: "known", effect, phase: "commit", operation: "plan.done" } };
+    const result = await routeCommand(async () => original, async () => { baseline++; return { ok: true }; });
+    assert.equal(result, original); assert.equal(baseline, 0);
+  }
+});

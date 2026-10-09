@@ -192,11 +192,12 @@ export async function startSessionDaemon(options?: {
       return errorResponse(request.requestId, "SESSION_AUTH_FAILED", "Invalid session daemon token.");
     }
     try {
-      if (request.operation === "session.open") {
-        await cleanupExpiredSessions();
+      if (request.operation === "session.open" || request.operation === "session.open.receipt") {
+        const receiptOnly = request.operation === "session.open.receipt";
+        if (!receiptOnly) await cleanupExpiredSessions();
         await detach(connection);
         const identity = createSessionIdentity(request.input.agentSessionId, request.input.workdir);
-        const opened = await executor.open(request.input);
+        const opened = await executor.open(request.input, receiptOnly);
         connection.sessionHandle = randomUUID();
         connection.sessionKeyHash = identity.sessionKeyHash;
         connection.agentSessionId = identity.agentSessionId;
@@ -238,7 +239,7 @@ export async function startSessionDaemon(options?: {
       return successResponse(request.requestId, envelope);
     } catch (error) {
       return { ok: false, requestId: request.requestId, error: {
-        ...serializeCommandFailure(error, "known", "SESSION_INTERNAL_ERROR"),
+        ...serializeCommandFailure(error, "unknown", "SESSION_INTERNAL_ERROR"),
         ...(error instanceof ClawError && error.details ? { details: error.details } : {}),
       } };
     }
@@ -277,7 +278,7 @@ export async function startSessionDaemon(options?: {
 }
 
 function assertAttached(
-  request: Exclude<SessionProtocolRequest, { operation: "session.open" }>,
+  request: Exclude<SessionProtocolRequest, { operation: "session.open" | "session.open.receipt" }>,
   connection: ConnectionState,
 ): void {
   if (!connection.sessionHandle || request.sessionHandle !== connection.sessionHandle) {

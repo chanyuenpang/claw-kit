@@ -1,3 +1,4 @@
+import { serializeFailure, safeFailureCode } from "../lib/errors.js";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { resolveDshDelegationCapability, type DshDelegationCapability } from "./team-capability.js";
@@ -47,21 +48,15 @@ const LABEL_PREFIX = "claw-kit:knowledge-finalizer:v1:";
 const record = (v: unknown): Json | undefined => v !== null && typeof v === "object" && !Array.isArray(v) ? v as Json : undefined;
 const string = (v: unknown): string | undefined => typeof v === "string" && v.length > 0 ? v : undefined;
 function safeErrorCode(error: unknown, fallback: string): string {
-  const row = record(error);
-  const nested = record(row?.error);
-  const structured = string(row?.code) ?? string(nested?.code);
-  if (structured) {
-    const normalized = structured.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 72);
-    if (normalized) return normalized.startsWith("DSH_") ? normalized : "DSH_HOST_" + normalized;
-  }
-  const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
-  const code = message.match(/\b[A-Z][A-Z0-9_]{2,95}\b/)?.[0];
-  return code ?? fallback;
+  return serializeFailure(error, { fallbackCode: fallback }).code;
 }
+
 const text = (s: string): { type: "text"; text: string }[] => [{ type: "text", text: s }];
-const deferred = (code: string, phase = "admission"): Json => ({
-  ok: false, deferred: true, code: /^[A-Z][A-Z0-9_]{0,95}$/.test(code) ? code : "DSH_FINALIZER_EXECUTION_FAILED", phase,
-});
+const deferred = (error: unknown, phase = "admission", operation = "finalizer.admission"): Json => {
+  const input = typeof error === "string" && safeFailureCode(error) ? { code: error, message: error } : error;
+  const failure = serializeFailure(input, { fallbackCode: operation.toUpperCase().replace(/[^A-Z0-9]/g, "_") + "_FAILED", fallbackOutcome: "unknown", origin: "dsh", operation });
+  return { ok: false, deferred: true, ...failure, phase: failure.phase ?? phase };
+};
 const terminal = (status: string): boolean => ["succeeded", "failed", "expired"].includes(status);
 export function finalizerConfigFingerprint(agent: FinalizerAgent, workdir: string, dispatch: ReusableDispatch, provider: string): string {
   const workspace = path.resolve(workdir);
@@ -115,7 +110,10 @@ export class FinalizerRoleDispatcher {
   }
   private async call(operation: "inspect" | "reserve" | "delivery" | "release", agent: FinalizerAgent, workdir: string, args: string[]): Promise<Json> {
     const result = await this.deps.command(operation, agent.id, workdir, args);
-    if (result.ok !== true) throw new Error(string(record(result.error)?.code) ?? string(result.code) ?? "DSH_EXECUTION_LEDGER_UNAVAILABLE");
+    if (result.ok !== true) {
+      const failure = serializeFailure(result.error ?? result, { fallbackCode: "DSH_EXECUTION_LEDGER_UNAVAILABLE", operation: "finalizer." + operation, origin: "cli", fallbackOutcome: "unknown" });
+      throw Object.assign(new Error(failure.message), failure);
+    }
     return result;
   }
   private async fresh(agent: FinalizerAgent, dispatch: ReusableDispatch, previous: DshDelegationCapability, creating = false): Promise<boolean> {
@@ -132,12 +130,12 @@ export class FinalizerRoleDispatcher {
   private nativeService(): NativeRuntime {
     const service = this.deps.getService("subagents") as NativeRuntime | undefined;
     if (!service || typeof service.listChildren !== "function" || typeof service.startContinuable !== "function"
-      || typeof service.sendMessage !== "function") throw new Error("DSH_NATIVE_SERVICE_UNAVAILABLE");
+      || typeof service.sendMessage !== "function") throw Object.assign(new Error("DSH_NATIVE_SERVICE_UNAVAILABLE"), { code: "DSH_NATIVE_SERVICE_UNAVAILABLE" });
     return service;
   }
   private async freshNative(agent: FinalizerAgent, dispatch: ReusableDispatch,
     capability: DshDelegationCapability, creating = false): Promise<NativeRuntime> {
-    if (!await this.fresh(agent, dispatch, capability, creating)) throw new Error("DSH_NATIVE_CAPABILITY_CHANGED");
+    if (!await this.fresh(agent, dispatch, capability, creating)) throw Object.assign(new Error("DSH_NATIVE_CAPABILITY_CHANGED"), { code: "DSH_NATIVE_CAPABILITY_CHANGED" });
     return this.nativeService();
   }
   private async nativeMember(service: NativeRuntime, agent: FinalizerAgent, label: string,
@@ -147,16 +145,16 @@ export class FinalizerRoleDispatcher {
       try { const observed = await service.listChildren(agent.id); if (Array.isArray(observed)) rows = observed; }
       catch { /* one bounded read retry; no start/send has occurred */ }
     }
-    if (!rows || expectedId && rows.some(x => x.kind === "diagnostic" && x.id === expectedId)) throw new Error("DSH_NATIVE_ROLE_CATALOG_UNAVAILABLE");
+    if (!rows || expectedId && rows.some(x => x.kind === "diagnostic" && x.id === expectedId)) throw Object.assign(new Error("DSH_NATIVE_ROLE_CATALOG_UNAVAILABLE"), { code: "DSH_NATIVE_ROLE_CATALOG_UNAVAILABLE" });
     const candidates = rows.filter(x => x.kind === "child" && x.label === label);
-    if (candidates.length > 1) throw new Error("DSH_FINALIZER_ROLE_AMBIGUOUS");
+    if (candidates.length > 1) throw Object.assign(new Error("DSH_FINALIZER_ROLE_AMBIGUOUS"), { code: "DSH_FINALIZER_ROLE_AMBIGUOUS" });
     const row = candidates[0];
     if (!row) return undefined;
     // The Host owns durable child IDs. Stable label + exact persisted member ID
     // identify reuse; provider/activity remain advisory observations.
     const rowId = string(row.id);
     if (!rowId || row.label !== label || row.mode !== "continuable"
-      || expectedId && rowId !== expectedId) throw new Error("DSH_FINALIZER_ROLE_INCOMPATIBLE");
+      || expectedId && rowId !== expectedId) throw Object.assign(new Error("DSH_FINALIZER_ROLE_INCOMPATIBLE"), { code: "DSH_FINALIZER_ROLE_INCOMPATIBLE" });
     return { id: rowId, target: rowId, created: false };
   }
   private acknowledged(execution: Execution, status?: string): Json {
@@ -182,7 +180,7 @@ export class FinalizerRoleDispatcher {
       if (first?.type !== "text" || !string(first.text)?.startsWith(marker(execution.deliveryKey))) continue;
       const id = string(message.id); if (id) ids.add(id);
     }
-    if (ids.size > 1) throw new Error("DSH_FINALIZER_MULTIPLE_DELIVERY_RECEIPTS");
+    if (ids.size > 1) throw Object.assign(new Error("DSH_FINALIZER_MULTIPLE_DELIVERY_RECEIPTS"), { code: "DSH_FINALIZER_MULTIPLE_DELIVERY_RECEIPTS" });
     return ids.values().next().value;
   }
   private async member(agent: FinalizerAgent, dispatch: ReusableDispatch, capability: DshDelegationCapability, fingerprint: string, existing?: Execution): Promise<{ id: string; target: string; created: boolean }> {
@@ -191,25 +189,25 @@ export class FinalizerRoleDispatcher {
       const service = this.deps.getService("agentTeams") as TeamRuntime;
       const description = LABEL_PREFIX + fingerprint + " background";
       const rows = await service.listMembers(agent);
-      if (!Array.isArray(rows)) throw new Error("DSH_TEAM_ROSTER_UNAVAILABLE");
+      if (!Array.isArray(rows)) throw Object.assign(new Error("DSH_TEAM_ROSTER_UNAVAILABLE"), { code: "DSH_TEAM_ROSTER_UNAVAILABLE" });
       const candidates = rows.filter(x => x.name === ROLE);
-      if (candidates.length > 1) throw new Error("DSH_FINALIZER_ROLE_AMBIGUOUS");
+      if (candidates.length > 1) throw Object.assign(new Error("DSH_FINALIZER_ROLE_AMBIGUOUS"), { code: "DSH_FINALIZER_ROLE_AMBIGUOUS" });
       if (candidates.length) {
         const row = candidates[0]!;
-        if (row.description !== description || row.role !== "teammate" || row.provider !== provider || row.context !== "fresh" || !["inactive", "running"].includes(row.status) || row.diagnostics?.length) throw new Error("DSH_FINALIZER_ROLE_INCOMPATIBLE");
+        if (row.description !== description || row.role !== "teammate" || row.provider !== provider || row.context !== "fresh" || !["inactive", "running"].includes(row.status) || row.diagnostics?.length) throw Object.assign(new Error("DSH_FINALIZER_ROLE_INCOMPATIBLE"), { code: "DSH_FINALIZER_ROLE_INCOMPATIBLE" });
         return { id: row.id, target: row.name, created: false };
       }
-      if (!await this.fresh(agent, dispatch, capability) || this.deps.getService("agentTeams") !== service) throw new Error("DSH_TEAM_CAPABILITY_CHANGED");
+      if (!await this.fresh(agent, dispatch, capability) || this.deps.getService("agentTeams") !== service) throw Object.assign(new Error("DSH_TEAM_CAPABILITY_CHANGED"), { code: "DSH_TEAM_CAPABILITY_CHANGED" });
       const spawned = await service.spawnTeammate(agent, { name: ROLE, description, prompt: text(bootstrap()), context: "fresh", provider, signal: this.deps.signal });
       const row = spawned?.member;
-      if (!row || !string(row.id) || row.name !== ROLE || row.status === "failed") throw new Error("DSH_FINALIZER_ROLE_CREATION_UNCERTAIN");
+      if (!row || !string(row.id) || row.name !== ROLE || row.status === "failed") throw Object.assign(new Error("DSH_FINALIZER_ROLE_CREATION_UNCERTAIN"), { code: "DSH_FINALIZER_ROLE_CREATION_UNCERTAIN" });
       return { id: row.id, target: row.name, created: true };
     }
     const label = LABEL_PREFIX + fingerprint.slice(0, 16);
     let service = await this.freshNative(agent, dispatch, capability);
     const found = await this.nativeMember(service, agent, label, existing?.memberSessionId);
     if (found) return found;
-    if (existing && !tryParseRoleSelection(existing.modelSelection)) throw new Error("DSH_FINALIZER_EXECUTOR_PINNED");
+    if (existing && !tryParseRoleSelection(existing.modelSelection)) throw Object.assign(new Error("DSH_FINALIZER_EXECUTOR_PINNED"), { code: "DSH_FINALIZER_EXECUTOR_PINNED" });
     // Service handles are replaceable Cordis views, not durable authority
     // credentials. Recheck capability, reacquire the current service, then
     // re-read its catalog before a single start attempt.
@@ -221,12 +219,14 @@ export class FinalizerRoleDispatcher {
     try {
       started = await service.startContinuable({ provider, label, signal: this.deps.signal, request: { parent: agent, prompt: text(bootstrap()), ...(Object.keys(agentOptions).length ? { agentOptions } : {}) } });
     } catch (error) {
-      throw new Error(safeErrorCode(error, "DSH_FINALIZER_MEMBER_START_REJECTED"));
+      const failure = serializeFailure(error, { fallbackCode: "DSH_FINALIZER_MEMBER_START_REJECTED", operation: "native.member.start", origin: "host", fallbackOutcome: "unknown" });
+      throw Object.assign(new Error(failure.message), failure);
     }
-    if (!string(started.childId)) throw new Error("DSH_FINALIZER_ROLE_ID_MISSING");
+    if (!string(started.childId)) throw Object.assign(new Error("DSH_FINALIZER_ROLE_ID_MISSING"), { code: "DSH_FINALIZER_ROLE_ID_MISSING" });
     return { id: started.childId, target: started.childId, created: true };
   }
   private async dispatchSerial(agent: FinalizerAgent, workdir: string, dispatch: ReusableDispatch, capability: DshDelegationCapability): Promise<Json> {
+    let operation = "finalizer.inspect", phase = "inspect";
     try {
       const inspection = await this.call("inspect", agent, workdir, []);
       if (!Array.isArray(inspection.executions)) return deferred("DSH_EXECUTION_LEDGER_INVALID");
@@ -234,6 +234,7 @@ export class FinalizerRoleDispatcher {
       let reconciled = false;
       for (const row of rows) {
         if (row.execution && !row.readyForNext && (terminal(row.status) || (row.expiresAt && Date.parse(row.expiresAt) <= Date.now()))) {
+          operation = "finalizer.release"; phase = "release";
           await this.call("release", agent, workdir, ["--finalize-id", row.finalizeId]);
           reconciled = true;
         }
@@ -266,9 +267,11 @@ export class FinalizerRoleDispatcher {
         || execution.provider !== (capability.provider ?? "spawn") || execution.configFingerprint !== fingerprint)) return deferred("DSH_FINALIZER_EXECUTOR_PINNED");
       const blocker = rows.find(x => x.finalizeId !== dispatch.finalizeId && x.execution && !x.readyForNext);
       if (blocker) return { ok: true, queued: true, admitted: false, delivered: false, phase: "waiting-for-role", blockingFinalizeId: blocker.finalizeId };
+      operation = "finalizer.member"; phase = "admission";
       const member = await this.member(agent, dispatch, capability, fingerprint, execution);
       if (execution && execution.memberSessionId !== member.id) return deferred("DSH_FINALIZER_EXECUTOR_PINNED");
       if (!execution) {
+        operation = "finalizer.reserve"; phase = "reserve";
         const reserved = await this.call("reserve", agent, workdir, ["--finalize-id", dispatch.finalizeId, "--route", route, "--member-session-id", member.id, ...(capability.teamId ? ["--team-id", capability.teamId] : []), "--provider", capability.provider ?? "spawn", "--config-fingerprint", fingerprint,
           ...(dispatch.selection ? ["--model-selection", JSON.stringify(dispatch.selection)] : [])]);
         if (reserved.admitted !== true) return { ok: true, queued: true, admitted: false, delivered: false, phase: "waiting-for-role", reason: reserved.reason, blockingFinalizeId: reserved.blockingFinalizeId };
@@ -286,21 +289,25 @@ export class FinalizerRoleDispatcher {
         receiptId = team
           ? (await team.sendMessage(agent, { target: member.target, content, signal: this.deps.signal })).messageId
           : await native!.sendMessage(agent, member.id, content, { signal: this.deps.signal });
-        if (!string(receiptId)) throw new Error("DSH_FINALIZER_DELIVERY_RECEIPT_MISSING");
+        if (!string(receiptId)) throw Object.assign(new Error("DSH_FINALIZER_DELIVERY_RECEIPT_MISSING"), { code: "DSH_FINALIZER_DELIVERY_RECEIPT_MISSING" });
       } catch (error) {
-        await this.call("delivery", agent, workdir, ["--finalize-id", dispatch.finalizeId, "--delivery-key", dispatch.finalizeId, "--state", "uncertain"]).catch(() => undefined);
-        return deferred(safeErrorCode(error, "DSH_FINALIZER_DELIVERY_UNCERTAIN"), "dispatch");
+        const failure = deferred(error, "dispatch", "native.send");
+        try { await this.call("delivery", agent, workdir, ["--finalize-id", dispatch.finalizeId, "--delivery-key", dispatch.finalizeId, "--state", "uncertain"]); }
+        catch (secondary) { failure.diagnostics = [serializeFailure(secondary, { fallbackCode: "DELIVERY_UNCERTAIN_PERSIST_FAILED", operation: "delivery.uncertain.persist", origin: "cli" })]; }
+        return failure;
       }
       try {
         await this.call("delivery", agent, workdir, ["--finalize-id", dispatch.finalizeId, "--delivery-key", dispatch.finalizeId, "--state", "accepted", "--receipt-id", receiptId]);
       } catch (error) {
-        await this.call("delivery", agent, workdir, ["--finalize-id", dispatch.finalizeId, "--delivery-key", dispatch.finalizeId, "--state", "uncertain"]).catch(() => undefined);
-        return deferred(safeErrorCode(error, "DSH_FINALIZER_DELIVERY_UNCERTAIN"), "dispatch");
+        const failure = { ...deferred(error, "receipt-persist", "finalizer.delivery.persist"), admitted: true, deliveryAccepted: true, receiptId } as Json;
+        try { await this.call("delivery", agent, workdir, ["--finalize-id", dispatch.finalizeId, "--delivery-key", dispatch.finalizeId, "--state", "uncertain"]); }
+        catch (secondary) { failure.diagnostics = [serializeFailure(secondary, { fallbackCode: "DELIVERY_UNCERTAIN_PERSIST_FAILED", operation: "delivery.uncertain.persist", origin: "cli" })]; }
+        return failure;
       }
       return { ok: true, queued: true, admitted: true, delivered: true, runId: member.id, reused: !member.created, executor: route, messageId: receiptId, deliveryKey: dispatch.finalizeId,
         ...(dispatch.selection ? { modelSelection: dispatch.selection } : {}) };
     } catch (error) {
-      return deferred(safeErrorCode(error, "DSH_FINALIZER_EXECUTION_FAILED"));
+      return deferred(error, phase, operation);
     }
   }
 }

@@ -153,12 +153,10 @@ test("consumeHostActions: consumer errors fail open", () => {
     goals,
     {},
   );
-  assert.deepEqual(result.failures, [{
-    actionId: "a:create_goal",
-    tool: "create_goal",
-    code: "APPLY_FAILED",
-    message: "boom",
-  }]);
+  assert.equal(result.failures.length, 1);
+  assert.equal(result.failures[0].actionId, "a:create_goal"); assert.equal(result.failures[0].tool, "create_goal");
+  assert.equal(result.failures[0].code, "APPLY_FAILED"); assert.equal(result.failures[0].message, "boom");
+  assert.equal(result.failures[0].outcome, "unknown"); assert.equal(result.failures[0].operation, "create_goal");
 });
 
 test("consumeHostActions: reports non-v1 and unsupported actions", () => {

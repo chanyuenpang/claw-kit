@@ -9,6 +9,7 @@
  * consumer error never fails the underlying mutation.
  */
 
+import { serializeFailure, type SafeFailure } from "../lib/errors.js";
 import { DSH_MUTATION_ROUTE_GUIDANCE } from "./route-guidance.js";
 
 /** Local structural JSON value type (independent of registry type versions). */
@@ -40,10 +41,10 @@ export type HostAction =
   | { schemaVersion: 1; id: string; tool: "create_goal"; input: { objective: string } }
   | { schemaVersion: 1; id: string; tool: "update_goal"; input: { status: "complete" | "blocked" } };
 
-export type HostEffectFailure = {
+export type HostEffectFailure = Partial<SafeFailure> & {
   actionId?: string;
   tool?: string;
-  code: "INVALID_ACTION" | "UNSUPPORTED_SCHEMA" | "UNSUPPORTED_TOOL" | "SERVICE_UNAVAILABLE" | "APPLY_FAILED";
+  code: string;
   message: string;
 };
 
@@ -147,8 +148,7 @@ export function consumeHostActions(
       failures.push({
         actionId: typedAction.id,
         tool: typedAction.tool,
-        code: "APPLY_FAILED",
-        message: error instanceof Error ? error.message : String(error),
+        ...serializeFailure(error, { fallbackCode: "APPLY_FAILED", origin: "dsh.host", operation: typedAction.tool, resource: typedAction.id, fallbackOutcome: "unknown" }),
       });
     }
   }
@@ -190,6 +190,7 @@ export function compactClawOutput(output: Record<string, unknown> | undefined, o
   if (output.plan !== undefined && output.planStatus === "process.discussing") {
     visible.plan = output.plan as JsonValue;
   }
+  if (Array.isArray(output.postCommandFailures)) visible.postCommandFailures = output.postCommandFailures as JsonValue;
   if (output.planPath !== undefined) visible.planPath = output.planPath as JsonValue;
   if (output.achievement !== undefined) visible.achievement = output.achievement as JsonValue;
   // Search recall must be fully visible: the model needs the result list to
@@ -240,7 +241,12 @@ export function compactClawOutput(output: Record<string, unknown> | undefined, o
       }
     }
   } else if (visible.command === "knowledge.done") {
-    for (const key of ["finalizeId", "completed", "failed", "alreadyDone", "delegateClosed", "delegateCloseDeferred", "delegateCloseError", "templateCleanupDeferred"] as const) {
+    for (const key of ["finalizeId", "completed", "failed", "alreadyDone", "delegateClosed", "delegateCloseDeferred", "delegateCloseError", "templateCleanupDeferred", "completionRecovered", "completionEffect", "postCommitFailures", "postCommitEffectsVerified"] as const) {
+      if (output[key] !== undefined) visible[key] = output[key] as JsonValue;
+    }
+  }
+  if (visible.command === "knowledge.done.receipt") {
+    for (const key of ["finalizeId", "claimId", "status", "canonicalStatus", "terminal", "finishedAt", "resultDigest", "matches", "postCommitEffectsVerified"] as const) {
       if (output[key] !== undefined) visible[key] = output[key] as JsonValue;
     }
   }

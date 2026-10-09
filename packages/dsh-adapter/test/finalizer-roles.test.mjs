@@ -14,7 +14,8 @@ const modelSelectionURL = new URL("../lib/model-selection.js", import.meta.url).
 const dispatcherSource = (await fs.readFile(new URL("../src/finalizer-roles.ts", import.meta.url), "utf8"))
   .replace('"./team-capability.js"', JSON.stringify(capabilityURL))
   .replace('"../lib/role-preferences.js"', JSON.stringify(rolePreferencesURL))
-  .replace('"./model-selection.js"', JSON.stringify(modelSelectionURL));
+  .replace('"./model-selection.js"', JSON.stringify(modelSelectionURL))
+  .replace('"../lib/errors.js"', JSON.stringify(new URL("../lib/errors.js", import.meta.url).href));
 const { FinalizerRoleDispatcher, finalizerConfigFingerprint, nativeFinalizerRoleId } = await import(moduleURL(dispatcherSource));
 
 const A = "a".repeat(63) + "1";
@@ -160,7 +161,7 @@ function fixture(route = "native") {
         row.execution.delivery = { state: "attempted" };
         return { ok: true, deliver: true };
       }
-      if (next === "accepted" && state.failAcceptance) { state.failAcceptance = false; throw new Error("SIMULATED_ACK_WRITE_FAILURE"); }
+      if (next === "accepted" && state.failAcceptance) { state.failAcceptance = false; throw Object.assign(new Error("SIMULATED_ACK_WRITE_FAILURE"), state.acceptanceCode ? { code: state.acceptanceCode } : {}); }
       row.execution.delivery = { state: next, ...(args.includes("--receipt-id") ? { receiptId: flag(args, "--receipt-id") } : {}) };
       return { ok: true };
     },
@@ -265,7 +266,9 @@ test("structured Host start rejection keeps a safe actionable code", async () =>
   f.services.subagents.startContinuable = async () => { throw { code: "subagent/session-conflict" }; };
   const result = await f.run();
   assert.equal(result.ok, false);
-  assert.equal(result.code, "DSH_HOST_SUBAGENT_SESSION_CONFLICT");
+  assert.equal(result.code, "subagent/session-conflict");
+  assert.equal(result.operation, "native.member.start");
+  assert.equal(result.outcome, "unknown");
   assert.equal(f.rows.get(A).execution, undefined);
   assert.equal(f.sends.length, 0);
 });
@@ -332,7 +335,11 @@ test("uncertain native delivery never changes recipe or resends", async () => {
 test("post-send native acknowledgement loss stays uncertain without sending twice", async () => {
   const f = fixture();
   f.state.failAcceptance = true;
-  assert.equal((await f.run()).code, "SIMULATED_ACK_WRITE_FAILURE");
+  const failed = await f.run();
+  assert.equal(failed.code, "FINALIZER_DELIVERY_PERSIST_FAILED");
+  assert.equal(failed.deliveryAccepted, true); assert.equal(failed.phase, "receipt-persist");
+  assert.equal(failed.message, "SIMULATED_ACK_WRITE_FAILURE");
+  assert.equal(failed.outcome, "unknown");
   assert.equal(f.rows.get(A).execution.delivery.state, "uncertain");
   assert.equal((await f.run()).code, "DSH_FINALIZER_DELIVERY_UNCERTAIN");
   assert.equal(f.sends.length, 1);
@@ -430,4 +437,13 @@ test("expired prior reservation is reconciled through canonical release before n
   assert.ok(release >= 0 && reserve > release);
   assert.deepEqual(f.commands[release].args, ["--finalize-id", A]);
   assert.deepEqual(f.sends.map((send) => send.id), [B]);
+});
+
+test("known ledger I/O cause remains visible while post-send persistence is uncertain", async () => {
+  const f = fixture(); f.state.failAcceptance = true; f.state.acceptanceCode = "EACCES";
+  const failure = await f.run();
+  assert.equal(failure.code, "EACCES"); assert.equal(failure.outcome, "unknown");
+  assert.equal(failure.deliveryAccepted, true); assert.equal(failure.operation, "finalizer.delivery.persist");
+  assert.equal(f.rows.get(A).execution.delivery.state, "uncertain");
+  await f.run(); assert.equal(f.sends.length, 1); assert.equal(f.creates.length, 1);
 });

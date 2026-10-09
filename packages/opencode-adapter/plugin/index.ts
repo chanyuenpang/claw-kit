@@ -1,3 +1,4 @@
+import { serializeFailure } from "./failure-diagnostics.js";
 import { execSync, spawn } from "node:child_process";
 import path from "node:path";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -254,8 +255,8 @@ function invokeClawAutoDoc(
       ...(typeof parsed.jobPath === "string" ? { jobPath: parsed.jobPath } : {}),
       ...(typeof parsed.finalizeId === "string" ? { finalizeId: parsed.finalizeId } : {}),
     };
-  } catch {
-    // Knowledge report capture is a fail-open sidecar and must never block session.idle.
+  } catch (error) {
+    console.warn("[claw-kit] report capture warning:", JSON.stringify(serializeFailure(error, { fallbackCode: "OPENCODE_CAPTURE_FAILED", origin: "opencode", operation: "report.capture", fallbackOutcome: "unknown" })));
     return null;
   }
 }
@@ -274,7 +275,8 @@ function dispatchOpenCodeKnowledgeWriter(projectDir: string, jobPath: string): v
       stdio: ["ignore", "pipe", "pipe"],
       env: { ...process.env, CLAW_HOST: "opencode", CLAW_KNOWLEDGE_FINALIZER: "1" },
     })) as typeof handoff;
-  } catch {
+  } catch (error) {
+    console.warn("[claw-kit] dispatch preparation warning:", JSON.stringify(serializeFailure(error, { fallbackCode: "OPENCODE_DISPATCH_FAILED", origin: "opencode", operation: "knowledge.dispatch", fallbackOutcome: "unknown" })));
     return;
   }
   if (typeof handoff.dispatch?.prompt !== "string" || typeof handoff.projectRoot !== "string") return;
@@ -294,8 +296,9 @@ function dispatchOpenCodeKnowledgeWriter(projectDir: string, jobPath: string): v
     detached: process.platform !== "win32",
     stdio: "ignore",
   });
-  child.on("error", () => {
-    // The queued job remains available for a later adapter retry.
+  child.on("error", (error) => {
+    console.warn("[claw-kit] writer admission warning:", JSON.stringify(serializeFailure(error, { fallbackCode: "OPENCODE_ADMISSION_FAILED", origin: "opencode", operation: "writer.spawn", fallbackOutcome: "unknown" })));
+    // A launch/acknowledgement failure is not permission to spawn again.
   });
   child.unref();
 }

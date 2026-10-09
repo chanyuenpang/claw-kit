@@ -1,3 +1,4 @@
+import { checkFailureContracts } from "./failure-contracts.mjs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -51,6 +52,7 @@ export async function buildCindyPluginArtifact({ sourceRoot, outputRoot } = {}) 
   ({ sourceRoot, outputRoot } = await assertArtifactOutput({ sourceRoot, outputRoot }));
   try { await fs.lstat(outputRoot); throw new Error("Cindy output already exists: " + outputRoot); }
   catch (error) { if (error?.code !== "ENOENT") throw error; }
+  await checkFailureContracts(sourceRoot, "cindy");
   const adapter = path.join(sourceRoot, "packages", "cindy-adapter");
   const manifest = JSON.parse(await fs.readFile(path.join(adapter, "plugin", "ghost.json"), "utf8"));
   const pkg = JSON.parse(await fs.readFile(path.join(adapter, "package.json"), "utf8"));

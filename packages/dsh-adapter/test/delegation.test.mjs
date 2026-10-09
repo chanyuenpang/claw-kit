@@ -21,6 +21,7 @@ const { RoleDelegation } = await import(await compile("delegation.ts", {
   "./delegation-receipts.js": receipts,
   "./model-selection.js": modelSelection,
   "../lib/role-preferences.js": rolePreferences,
+  "../lib/errors.js": new URL("../lib/errors.js", import.meta.url).href,
 }));
 const copy = (v) => v === undefined ? undefined : structuredClone(v);
 const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };

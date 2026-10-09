@@ -1,4 +1,4 @@
-import { ClawError, recoverProjectFocusTransitions, resolveProjectContext, resolveSessionWorkflowContext } from "@veewo/claw-core";
+import { ClawError, withExecutionFailure, serializeFailure, recoverProjectFocusTransitions, resolveProjectContext, resolveSessionWorkflowContext } from "@veewo/claw-core";
 import { ClawCommandService, type CommandContext } from "./command-service.js";
 import { decodeClawCommand } from "./command-contract.js";
 import { SessionRegistryV2, createSessionIdentity, sessionFocusKey, type SessionClientInfo } from "./session-registry-v2.js";
@@ -15,12 +15,15 @@ export class SessionCommandExecutor {
     this.service = new ClawCommandService(registry);
   }
 
-  async withSession<T>(identity: SessionCommandIdentity, action: (context: CommandContext, hash: string) => Promise<T>): Promise<T> {
+  async withSession<T>(identity: SessionCommandIdentity, action: (context: CommandContext, hash: string) => Promise<T>, skipBusinessRecovery = false): Promise<T> {
     const canonical = createSessionIdentity(identity.agentSessionId, identity.workdir);
     return this.registry.withExecution(canonical.sessionKeyHash, async () => {
       await this.registry.open(canonical.agentSessionId, canonical.canonicalWorkdir, identity.client);
       const context: CommandContext = { cwd: canonical.canonicalWorkdir, agentSessionId: canonical.agentSessionId,
         sessionKey: sessionFocusKey(canonical), host: identity.client.host, mode: "session" };
+      // Completion/receipt authority comes from the canonical claim, not focus.
+      // Do not run business/focus recovery before that owner authenticates.
+      if (skipBusinessRecovery) return action(context, canonical.sessionKeyHash);
       let projectAvailable = true;
       try {
         const project = resolveProjectContext(context.cwd);
@@ -37,22 +40,28 @@ export class SessionCommandExecutor {
     });
   }
 
-  async open(identity: SessionCommandIdentity) {
+  async open(identity: SessionCommandIdentity, receiptOnly = false) {
     return this.withSession(identity, async (context, hash) => {
       const session = this.registry.read(hash);
-      const currentPlan = session.currentPlan
+      const currentPlan = !receiptOnly && session.currentPlan
         ? (await this.service.execute(context, { operation: "plan.show", input: { simple: true } })).output
         : undefined;
       return { session, ...(currentPlan ? { currentPlan } : {}) };
-    });
+    }, receiptOnly);
   }
 
   async execute(identity: SessionCommandIdentity, value: unknown) {
-    const request = decodeClawCommand(value, { allowTerminalSearchDir: identity.client.kind === "terminal" }); // unsupported is strictly pre-execution
+    let request;
+    try { request = decodeClawCommand(value, { allowTerminalSearchDir: identity.client.kind === "terminal" }); }
+    catch (error) { throw withExecutionFailure(error, { operation: "command.decode", phase: "prepare", outcome: "known", effect: "none" }); }
     return this.withSession(identity, async (context, hash) => {
       const result = await this.service.execute(context, request);
-      await this.registry.touch(hash);
+      try { await this.registry.touch(hash); }
+      catch (error) {
+        const warning = serializeFailure(error, { fallbackCode: "SESSION_ACTIVITY_UPDATE_FAILED", operation: "session.activity.touch", origin: "cli", fallbackOutcome: "unknown" });
+        if (result.output && typeof result.output === "object") result.output = { ...result.output, postCommandFailures: [warning] };
+      }
       return { schemaVersion: 1 as const, ...result };
-    });
+    }, request.operation === "knowledge.done" || request.operation === "knowledge.done.receipt" || request.operation === "knowledge.claim.receipt");
   }
 }

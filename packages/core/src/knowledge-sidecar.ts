@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
+import { ClawError, withExecutionFailure, serializeFailure, safeFailureCode, type SafeFailure, type ClawErrorCode, type ClawExecutionFailure } from "./errors.js";
 import path from "node:path";
 import { readJsonFile, withFileLock, writeJsonFile, writeJsonFileAtomic } from "./io.js";
 import { buildKnowledgeWriterAssignments, buildKnowledgeAssignmentTemplate, type KnowledgeWriterAssignment } from "./knowledge-assignments.js";
@@ -60,7 +61,7 @@ export type KnowledgeClaimReceipt = {
   schemaVersion: 1;
   finalizeId: string;
   projectRoot: string;
-  host: "dsh";
+  host: KnowledgeFinalizationHost;
   parentSessionId: string;
   agentSessionId: string;
   claimToken: string;
@@ -168,7 +169,9 @@ export type KnowledgeFinalizationJob = {
   };
   /** Bounded safe operational alert; canonical status remains authoritative. */
   operationalFailure?: {
-    phase: "capture" | "dispatch" | "writer";
+    phase: string;
+    category?: "capture" | "dispatch" | "writer";
+    failure?: SafeFailure;
     code: string;
     correlationId: string;
     firstAt: string;
@@ -742,8 +745,9 @@ export function recordDshOperationalFailure(input: {
   phase: "capture" | "dispatch" | "writer";
   code: string;
   correlationId: string;
+  failure?: unknown;
 }): KnowledgeFinalizationJob["operationalFailure"] {
-  if (!/^[A-Z][A-Z0-9_]{2,63}$/.test(input.code)
+  if (!safeFailureCode(input.code)
     || !/^[a-zA-Z0-9_-]{1,96}$/.test(input.correlationId)) {
     throw new Error("DSH_OPERATIONAL_FAILURE_INVALID: unsafe diagnostic identifier.");
   }
@@ -755,13 +759,14 @@ export function recordDshOperationalFailure(input: {
     if (job.status !== "queued" && job.status !== "running") return job.operationalFailure;
     const now = new Date().toISOString();
     const last = job.operationalFailure;
-    if (last?.phase === input.phase && last.code === input.code
-      && last.correlationId === input.correlationId) return last;
+    const detail = input.failure !== undefined ? serializeFailure(input.failure, { fallbackCode: input.code, resource: job.finalizeId, correlationId: input.correlationId }) : undefined;
+    const same = !!last && (last.category ?? last.phase) === input.phase && last.phase === (detail?.phase ?? input.phase) && last.code === (detail?.code ?? input.code);
+    if (same && last!.correlationId === (detail?.correlationId ?? input.correlationId)) return last;
     const failure = {
-      phase: input.phase, code: input.code, correlationId: input.correlationId,
-      firstAt: last?.phase === input.phase && last.code === input.code ? last.firstAt : now,
-      lastAt: now, count: last?.phase === input.phase && last.code === input.code
-        ? Math.min(100, last.count + 1) : 1,
+      phase: detail?.phase ?? input.phase, category: input.phase, code: detail?.code ?? input.code, correlationId: detail?.correlationId ?? input.correlationId,
+      ...(detail ? { failure: detail } : {}),
+      firstAt: same ? last!.firstAt : now,
+      lastAt: now, count: same ? Math.min(100, last!.count + 1) : 1,
     };
     writeJsonFileAtomic(input.jobPath, { ...job, operationalFailure: failure });
     return failure;
@@ -952,6 +957,10 @@ export function claimKnowledgeFinalizationJob(
       assertDshKnowledgeClaimant(observed, options?.claimant);
       if (!options?.version?.trim()) throw new Error("DSH knowledge claim requires a receipt version.");
     }
+    if (options?.claimant?.agentSessionId.trim() && observed.host !== "dsh"
+      && ((options.claimant.host || "standard") !== (observed.host ?? "standard") || path.resolve(options.claimant.projectRoot) !== path.resolve(observed.projectRoot))) {
+      completionRejection("KNOWLEDGE_CLAIM_OWNER_MISMATCH", "Claim identity must match the canonical host and project.");
+    }
     const current = reconcileKnowledgeFinalizationJobLocked(jobPath, new Date());
     if (current.claimReceipt) return null;
     if (current.status !== "queued" && (!current.dshExecution || current.dshExecution.delegatePlanPath
@@ -1007,11 +1016,11 @@ export function claimKnowledgeFinalizationJob(
       error: undefined,
       operationalFailure: undefined,
     };
-    if (current.host === "dsh") {
+    if (options?.claimant?.agentSessionId.trim() && options.version?.trim()) {
       const assignments = buildKnowledgeWriterAssignments(running);
       running.claimReceipt = {
         schemaVersion: 1, finalizeId: current.finalizeId, projectRoot: current.projectRoot,
-        host: "dsh", parentSessionId: current.sessionId,
+        host: current.host ?? "standard", parentSessionId: current.sessionId,
         agentSessionId: options!.claimant!.agentSessionId,
         claimToken: running.claimToken!, claimedAt: now, version: options!.version!, assignments,
         template: buildKnowledgeAssignmentTemplate({ assignments, finalizeId: current.finalizeId, version: options!.version! }),
@@ -1040,63 +1049,130 @@ function assertDshKnowledgeClaimant(job: KnowledgeFinalizationJob, claimant?: Kn
 /** Read-only reconciliation: no expiry writes, token issuance, attempt changes or collector. */
 export function readKnowledgeClaimReceipt(jobPath: string, claimant: KnowledgeClaimant): KnowledgeFinalizationJob | null {
   const job = readKnowledgeFinalizationJob(jobPath);
-  assertDshKnowledgeClaimant(job, claimant);
+  if (job.host === "dsh" || claimant.host === "dsh") assertDshKnowledgeClaimant(job, claimant);
+  else if ((claimant.host || "standard") !== (job.host ?? "standard") || !claimant.agentSessionId.trim() || path.resolve(claimant.projectRoot) !== path.resolve(job.projectRoot)) {
+    completionRejection("KNOWLEDGE_CLAIM_OWNER_MISMATCH", "Claim receipt requires the canonical host and project.");
+  }
   const receipt = job.claimReceipt;
   if (job.status !== "running" || !job.expiresAt || !(Date.parse(job.expiresAt) > Date.now())
     || !receipt || receipt.schemaVersion !== 1
-    || receipt.host !== claimant.host || receipt.projectRoot !== job.projectRoot
+    || receipt.host !== (claimant.host || "standard") || receipt.projectRoot !== job.projectRoot
     || receipt.finalizeId !== job.finalizeId || receipt.parentSessionId !== job.sessionId
     || receipt.agentSessionId !== claimant.agentSessionId
     || !job.claimToken || receipt.claimToken !== job.claimToken || receipt.claimedAt !== job.claimedAt) return null;
   return job;
 }
 
-export function doneKnowledgeFinalizationJob(input: {
-  jobPath: string;
-  claimToken: string;
-  status: "succeeded" | "failed";
-  result?: string;
-  error?: string;
-  finishedAt?: string;
-  patch?: Partial<KnowledgeFinalizationJob>;
-}): { job: KnowledgeFinalizationJob; alreadyDone: boolean } {
-  return withFileLock(input.jobPath, () => {
-    const current = reconcileKnowledgeFinalizationJobLocked(input.jobPath, new Date());
-    if (
-      !current.claimToken
-      || current.claimToken !== input.claimToken
-    ) {
-      throw new Error("Knowledge finalization done does not match the active claim.");
+export type KnowledgeCompletionCredentials = {
+  /** Legacy bearer credential. If supplied in trusted mode, it must still match. */
+  claimToken?: string;
+  /** Trusted command-owner identity, never model-provided. */
+  claimant?: KnowledgeClaimant;
+};
+
+function completionRejection(code: ClawErrorCode, message: string): never {
+  throw new ClawError(code, message, undefined, { phase: "prepare", outcome: "known", effect: "none" });
+}
+
+function authorizeKnowledgeCompletion(job: KnowledgeFinalizationJob, credentials: KnowledgeCompletionCredentials): string {
+  const receipt = job.claimReceipt;
+  const token = job.claimToken ?? (job.status === "expired" ? receipt?.claimToken : undefined);
+  if (credentials.claimant) {
+    const actor = credentials.claimant;
+    const exactProject = path.resolve(actor.projectRoot) === path.resolve(job.projectRoot);
+    const receiptOwner = receipt && receipt.finalizeId === job.finalizeId && receipt.parentSessionId === job.sessionId
+      && path.resolve(receipt.projectRoot) === path.resolve(job.projectRoot)
+      && receipt.host === (job.host ?? "standard") && receipt.agentSessionId === actor.agentSessionId
+      && receipt.claimToken === token
+      && (job.status === "expired" || receipt.claimedAt === job.claimedAt);
+    // Legacy job association is acceptable only if that exact actor/project was
+    // durably recorded. Focus or a template name alone never supplies authority.
+    const legacyOwner = !receipt && job.delegateWorkflow
+      && job.delegateWorkflow.ownerSessionId === actor.agentSessionId
+      && path.resolve(job.delegateWorkflow.projectRoot) === path.resolve(job.projectRoot);
+    const admitted = !job.dshExecution || (job.dshExecution.memberSessionId === actor.agentSessionId
+      && job.dshExecution.parentSessionId === job.sessionId);
+    if (!actor.agentSessionId.trim() || (actor.host || "standard") !== (job.host ?? "standard") || !exactProject || !admitted || !(receiptOwner || legacyOwner)) {
+      completionRejection("KNOWLEDGE_CLAIM_OWNER_MISMATCH", "Completion requires the canonical claim owner and exact project.");
     }
-    if (current.status === "succeeded" || current.status === "failed" || current.status === "expired") {
-      const sameResult = input.status === "succeeded"
+  }
+  if (credentials.claimToken !== undefined && (!token || credentials.claimToken !== token)) {
+    completionRejection("KNOWLEDGE_CLAIM_MISMATCH", "Knowledge finalization completion does not match the active claim.");
+  }
+  if (!credentials.claimant && credentials.claimToken === undefined) {
+    completionRejection("KNOWLEDGE_CLAIM_OWNER_MISMATCH", "Completion requires an explicit claim credential or trusted claim owner.");
+  }
+  if (!token) completionRejection("KNOWLEDGE_JOB_NOT_CLAIMED", "Knowledge finalization has no authenticated claim.");
+  return token;
+}
+
+function knowledgeCompletionDeadline(job: KnowledgeFinalizationJob): number {
+  const explicit = job.expiresAt ? Date.parse(job.expiresAt) : Number.NaN;
+  if (Number.isFinite(explicit)) return explicit;
+  const queued = Date.parse(job.queuedAt);
+  return Number.isFinite(queued) ? queued + KNOWLEDGE_FINALIZATION_TTL_MS : Date.now();
+}
+
+export function doneKnowledgeFinalizationJob(input: KnowledgeCompletionCredentials & {
+  jobPath: string; status: "succeeded" | "failed"; result?: string; error?: string;
+  finishedAt?: string; patch?: Partial<KnowledgeFinalizationJob>;
+}): { job: KnowledgeFinalizationJob; alreadyDone: boolean } {
+  let execution: ClawExecutionFailure = { operation: "knowledge.done", phase: "prepare", outcome: "known", effect: "none" };
+  try { return withFileLock(input.jobPath, () => {
+    // Authentication precedes all reconciliation/expiry/template/report writes.
+    const current = readKnowledgeFinalizationJob(input.jobPath);
+    authorizeKnowledgeCompletion(current, input);
+    if (input.status !== "succeeded" && input.status !== "failed") {
+      completionRejection("KNOWLEDGE_COMPLETION_INVALID", "Unsupported knowledge completion status.");
+    }
+    if (current.status === "succeeded" || current.status === "failed") {
+      const same = input.status === "succeeded"
         ? current.status === "succeeded" && current.finalResponse === (input.result ?? "")
         : current.status === "failed" && current.error?.message === (input.error ?? "");
-      if (!sameResult) {
-        throw new Error("Knowledge finalization job already has a different terminal result.");
-      }
+      if (!same) completionRejection("KNOWLEDGE_TERMINAL_RESULT_CONFLICT", "Knowledge finalization already has a different terminal result.");
       return { job: current, alreadyDone: true };
     }
-    if (current.status !== "running") {
-      throw new Error("Knowledge finalization job must be claimed before done.");
+    const deadline = knowledgeCompletionDeadline(current);
+    if (current.status === "expired" || (Number.isFinite(deadline) && Date.now() >= deadline)) {
+      completionRejection("KNOWLEDGE_CLAIM_EXPIRED", "Knowledge claim expired before completion; this request does not renew or clean up the claim.");
     }
-    const finishedAt = input.finishedAt ?? new Date().toISOString();
+    if (current.status !== "running") completionRejection("KNOWLEDGE_JOB_NOT_CLAIMED", "Knowledge finalization must be claimed before completion.");
     const terminal: KnowledgeFinalizationJob = {
-      ...current,
-      ...(input.patch ?? {}),
-      // Terminal result metadata cannot replace the immutable claim material.
-      ...(current.claimReceipt ? { claimReceipt: current.claimReceipt } : {}),
-      ...(current.dshExecution ? { dshExecution: current.dshExecution } : {}),
-      ...(current.delegateWorkflow ? { delegateWorkflow: current.delegateWorkflow } : {}),
-      status: input.status,
-      finishedAt,
-      ...(input.status === "succeeded"
-        ? { finalResponse: input.result ?? "", error: undefined, operationalFailure: undefined }
+      ...current, ...(input.patch ?? {}),
+      // Patches cannot replace canonical claim/admission/identity facts.
+      schemaVersion: current.schemaVersion, finalizeId: current.finalizeId, projectRoot: current.projectRoot,
+      sessionId: current.sessionId, host: current.host, taskName: current.taskName,
+      planPath: current.planPath, reportPath: current.reportPath, attempts: current.attempts,
+      claimToken: current.claimToken, claimedAt: current.claimedAt, expiresAt: current.expiresAt,
+      claimReceipt: current.claimReceipt, dshExecution: current.dshExecution, delegateWorkflow: current.delegateWorkflow,
+      status: input.status, finishedAt: input.finishedAt ?? new Date().toISOString(),
+      ...(input.status === "succeeded" ? { finalResponse: input.result ?? "", error: undefined, operationalFailure: undefined }
         : { error: { message: input.error ?? "Knowledge finalization failed." } }),
     };
+    execution = { operation: "knowledge.done", phase: "commit", outcome: "unknown", effect: "unknown" };
     writeJsonFileAtomic(input.jobPath, terminal);
+    execution = { operation: "knowledge.done", phase: "post-commit", outcome: "known", effect: "committed" };
     return { job: terminal, alreadyDone: false };
-  });
+  }); } catch (error) { throw withExecutionFailure(error, execution); }
+}
+
+/** Canonical, strictly read-only result view. Never returns a credential. */
+export function readKnowledgeCompletionReceipt(input: KnowledgeCompletionCredentials & {
+  jobPath: string; expectedStatus?: "succeeded" | "failed"; expectedResult?: string;
+}) {
+  const job = readKnowledgeFinalizationJob(input.jobPath);
+  const token = authorizeKnowledgeCompletion(job, input);
+  const terminal = job.status === "succeeded" || job.status === "failed";
+  const payload = job.status === "succeeded" ? job.finalResponse ?? "" : job.error?.message ?? "";
+  const deadline = knowledgeCompletionDeadline(job);
+  return { finalizeId: job.finalizeId, claimId: createHash("sha256").update(token).digest("hex"),
+    status: !terminal && Number.isFinite(deadline) && Date.now() >= deadline ? "expired" : job.status,
+    canonicalStatus: job.status, terminal, finishedAt: job.finishedAt,
+    postCommitEffectsVerified: false,
+    notes: "This receipt proves canonical terminal state only; report, encoding and delegate effects are not verified by this read.",
+    ...(terminal ? { resultDigest: createHash("sha256").update(payload).digest("hex") } : {}),
+    ...(input.expectedStatus ? { matches: terminal && job.status === input.expectedStatus
+      && (input.expectedResult === undefined || payload === input.expectedResult) } : {}) };
 }
 
 export function reconcileKnowledgeFinalizationJobs(

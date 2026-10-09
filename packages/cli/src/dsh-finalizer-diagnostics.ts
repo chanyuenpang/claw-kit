@@ -6,7 +6,7 @@ import {
 
 export function recordDshFinalizerIssue(input: {
   cwd: string; parentSessionId: string; finalizeId: string;
-  phase: "capture" | "dispatch" | "writer"; code: string; correlationId: string;
+  phase: "capture" | "dispatch" | "writer"; code: string; correlationId: string; failure?: unknown;
 }) {
   const project = resolveProjectContext(input.cwd);
   if (project.scope !== "project" || !/^[a-f0-9]{64}$/i.test(input.finalizeId)) {
@@ -19,7 +19,7 @@ export function recordDshFinalizerIssue(input: {
     throw new Error("DSH_FINALIZER_DIAGNOSTIC_DENIED: project mismatch.");
   }
   return recordDshOperationalFailure({ jobPath, parentSessionId: input.parentSessionId,
-    phase: input.phase, code: input.code, correlationId: input.correlationId });
+    phase: input.phase, code: input.code, correlationId: input.correlationId, failure: input.failure });
 }
 
 function nextAction(status: string, code: string): string {
@@ -34,7 +34,7 @@ function nextAction(status: string, code: string): string {
   if (code === "NATIVE_SUBAGENTS_UNAVAILABLE" || code === "CHILD_CATALOG_UNAVAILABLE") {
     return "Check native child service/catalog availability; never spawn a second child while admission is uncertain.";
   }
-  return "System retries at the next trusted parent entry; do not replay the plan mutation or claim manually.";
+  return "At the next trusted entry inspect the same resource and receipts; unknown/accepted operations must not be replayed. Restore the recorded owner cause, not a guessed retry.";
 }
 
 /** Only bounded categorical facts, never report bytes, exception messages, paths or tokens. */
@@ -42,7 +42,7 @@ export function listDshFinalizerAlerts(cwd: string, parentSessionId: string) {
   const project = resolveProjectContext(cwd);
   if (project.scope !== "project" || !parentSessionId.trim()) return [];
   const alerts = [] as Array<{ finalizeId: string; status: string; phase: string; code: string;
-    lastAt: string; count: number; nextAction: string }>;
+    lastAt: string; count: number; nextAction: string; category?: string; failure?: unknown }>;
   for (const jobPath of listKnowledgeFinalizationJobs(project)) {
     try {
       const job = readKnowledgeFinalizationJob(jobPath);
@@ -53,6 +53,7 @@ export function listDshFinalizerAlerts(cwd: string, parentSessionId: string) {
       const code = failure?.code ?? (job.status === "expired" ? "KNOWLEDGE_JOB_EXPIRED" : "KNOWLEDGE_WRITER_FAILED");
       alerts.push({ finalizeId: job.finalizeId, status: job.status,
         phase: failure?.phase ?? (job.status === "failed" ? "writer" : "dispatch"), code,
+        ...(failure?.category ? { category: failure.category } : {}), ...(failure?.failure ? { failure: failure.failure } : {}),
         lastAt: failure?.lastAt ?? job.finishedAt ?? job.queuedAt, count: failure?.count ?? 1,
         nextAction: nextAction(job.status, code) });
     } catch { /* Unrelated damaged jobs must not hide intact alerts. */ }

@@ -1,3 +1,4 @@
+import { serializeFailure } from "../lib/errors.js";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,7 +16,10 @@ export async function routeCommand(
     if (failure?.beforeSend === true && !["SESSION_IDENTITY_INVALID", "PROJECT_CONFIG_INVALID"].includes(failure.code ?? "")) return baseline();
     throw error;
   }
-  if (!response.ok && response.error?.code === "SESSION_OPERATION_UNSUPPORTED" && response.error.outcome === "known") {
+  if (!response.ok && response.error?.code === "SESSION_OPERATION_UNSUPPORTED" && response.error.outcome === "known"
+    && (response.error.effect === undefined || response.error.effect === "none")
+    && (response.error.phase === undefined || response.error.phase === "prepare")
+    && (response.error.operation === undefined || response.error.operation === "command.decode")) {
     return baseline();
   }
   return response;
@@ -69,7 +73,7 @@ export async function runCommandBaseline(
     sent = true; // A failed write may have delivered a prefix; never retry it.
     handle.stdin.write(JSON.stringify({ operation, input }) + "\n");
     const outcome = await Promise.race([handle.done, stdinFailure, new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error("structured command timed out")), 30000);
+      timer = setTimeout(() => reject(Object.assign(new Error("structured command timed out"), { code: "ETIMEDOUT" })), 30000);
     })]) as { exitCode?: number | null; code?: number | null; signal?: string | null } | undefined;
     const reader = handle.collected?.stdout;
     const read = reader?.readFrom?.(0);
@@ -87,6 +91,9 @@ export async function runCommandBaseline(
     return response;
   } catch (error) {
     await handle.terminate("structured command failed").catch(() => undefined);
-    throw new Error((sent ? "CLAW_OUTCOME_UNKNOWN: " : "CLAW_BASELINE_UNAVAILABLE: ") + String(error));
+    const failure = serializeFailure(error, { fallbackCode: sent ? "CLAW_COMMAND_RESPONSE_FAILED" : "CLAW_BASELINE_UNAVAILABLE", operation, origin: "dsh.baseline",
+      execution: { operation, phase: sent ? "commit" : "prepare", outcome: sent ? "unknown" : "known", effect: sent ? "unknown" : "none" } });
+    const message = (sent ? "CLAW_OUTCOME_UNKNOWN: " : "CLAW_BASELINE_UNAVAILABLE: ") + failure.message;
+    throw Object.assign(new Error(message), { ...failure, message, beforeSend: !sent });
   } finally { if (timer) clearTimeout(timer); }
 }

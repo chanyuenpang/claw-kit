@@ -67,9 +67,9 @@ test("cli codex driver returns an executable versioned source envelope", async (
   const root = createFixture("codex-driver-envelope");
   const envelope = runClaw(["codex", "driver"], root, { CLAW_HOST: "" });
   assert.equal(envelope.command, "codex.driver");
-  assert.equal(envelope.driverVersion, 25);
+  assert.equal(envelope.driverVersion, 26);
   assert.equal(envelope.hostActionSchemaVersion, 1);
-  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v25:s1");
+  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v26:s1");
   assert.match(String(envelope.sha256), /^[a-f0-9]{64}$/);
 
   const runner = (0, eval)(`(${String(envelope.source)})`) as (
@@ -166,11 +166,10 @@ test("cli codex driver returns an executable versioned source envelope", async (
       text: () => undefined,
     },
   );
-  assert.deepEqual(recoveredEffect.hostEffectFailures, [{
-    id: "mutation-effect-failure:create_goal",
-    tool: "create_goal",
-    message: "Goal transport failed",
-  }]);
+  const effectFailure = (recoveredEffect.hostEffectFailures as Array<Record<string, unknown>>)[0];
+  assert.equal(effectFailure.id, "mutation-effect-failure:create_goal"); assert.equal(effectFailure.tool, "create_goal");
+  assert.equal(effectFailure.code, "HOST_EFFECT_FAILED"); assert.equal(effectFailure.message, "Goal transport failed");
+  assert.equal(effectFailure.outcome, "unknown"); assert.equal(effectFailure.operation, "create_goal");
   assert.equal(recoveredEffect.planPath, "G:\\example\\.claw\\tasks\\demo\\plan.json");
   assert.equal(recoveredEffect.planStatus, "process.active");
 
@@ -342,7 +341,7 @@ test("Codex driver preserves canonical success when an unsupported host effect i
   );
   assert.equal(result.stage, "execution");
   assert.equal("command" in result, false);
-  assert.deepEqual(result.hostEffectFailures, [
+  assert.deepEqual((result.hostEffectFailures as Array<Record<string, unknown>>).map(({ id, tool, message }) => ({ id, tool, message })), [
     { id: "unknown", tool: "unknown", message: "unsupported Codex hostAction: unknown" },
     { id: "edit:update_plan", tool: "update_plan", message: "unsupported Codex hostAction: edit:update_plan" },
   ]);

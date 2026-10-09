@@ -1,15 +1,11 @@
 # Codex plugin release fallback
 
-For a supplied beta candidate, follow `docs/beta-release.md` first: verify trial,
-hashes and source, require matching CLI npm retrieval before any push, and reuse
-the stored marketplace without bump/build/export. Then perform the immutable
-artifact tag/Release and published-source verification steps below.
+When claw planning is unavailable:
 
-When claw planning is unavailable, execute the six template stages in order:
-inspect and classify; bump only Codex; assemble and verify the complete marketplace
-artifact from canonical inputs without writing source copies; verify every built-in templated skill with `npm run check:template-versions`;
-commit/push and pass the exact-source gate; tag/release and verify the immutable
-Git ref. If a maintainer refresh is separately authorized, remove all
-local claw-kit marketplace registrations, identities, hooks, and caches before
-refreshing only from the official GitHub marketplace and enabling
-`claw-kit@claw-kit`. Stop at the first failed boundary.
+1. Select the explicitly authorized tested frozen candidate for this artifact family. If absent, beta:prepare allocates a new formal version (adapter fourth segment only); review/commit locally, beta:pack --candidate and stop before publication until testing completes. No beta suffix or same-version different bytes.
+2. Verify the exact sourceRevision, original artifact hash, manifest version/pins and seven-day trial. No bump/build/pack/export or workspace-content repair during promotion; errors requiring new inputs go through a new candidate/version.
+3. Require clean source main at the tested revision and no divergence. Complete authorized source delivery without force. Matching CLI npm retrieval must precede any GitHub push.
+4. Publish the exact frozen codex tree through its existing immutable vcodex tag and GitHub Release; record source and artifact commits separately and compare public content with the candidate. Never use raw source main as an installable tree, move an existing tag, or publish npm through this artifact skill. Require main == origin/main and a clean worktree at completion.
+5. Installation or maintainer refresh must be separately authorized. Preserve the host-specific official installation boundaries in references/artifact.md; installation is not activation and restart needs separate authority.
+
+Follow docs/beta-release.md and references/artifact.md. Stop at the first failed boundary; an accepted/unknown remote write is reconciled rather than blindly resent.

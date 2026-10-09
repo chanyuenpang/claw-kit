@@ -58,6 +58,7 @@ import {
   claimKnowledgeFinalizationJob,
   doneKnowledgeFinalizationJob,
   readKnowledgeFinalizationJob,
+  readKnowledgeCompletionReceipt,
   reconcileKnowledgeFinalizationJob,
   waitForKnowledgeFinalizationJobReady,
   listKnowledgeFinalizationJobs,
@@ -94,6 +95,7 @@ import { SessionRegistryV2 } from "./session-registry-v2.js";
 import { registerReportCollector, type ReportCollectorHost } from "./report-collector-registry.js";
 import { publishDshHostReport } from "./dsh-host-report.js";
 import { recordDshFinalizerIssue, listDshFinalizerAlerts } from "./dsh-finalizer-diagnostics.js";
+import { serializeCommandFailure } from "./command-failure.js";
 import { claimKnowledgeCommand, doneKnowledgeCommand } from "./knowledge-command.js";
 import { pendingDshKnowledgeDispatches } from "./knowledge-pending.js";
 import { reserveDshFinalizerExecutionCommand, markDshFinalizerDeliveryCommand, inspectDshFinalizerExecutionsCommand, releaseDshFinalizerExecutionCommand } from "./dsh-finalizer-execution.js";
@@ -546,17 +548,28 @@ const COMMAND_HELP: Record<string, HelpNode> = {
       },
       done: {
         usage: [
-          "{script} knowledge done --job <path> --claim-token <token> --status succeeded --result <text>",
-          "{script} knowledge done --job <path> --claim-token <token> --status failed --error <text>",
+          "{script} knowledge done --job <path> [--claim-token <token>] --status succeeded --result <text>",
+          "{script} knowledge done --job <path> [--claim-token <token>] --status failed --error <text>",
         ],
-        description: "Persist the terminal result for a claimed knowledge finalization job.",
+        description: "Persist canonical terminal state before report/encoding/cleanup effects. After unknown delivery query done-receipt; do not resend done or infer success from a running/expired view.",
         summary: "Complete a claimed finalization job.",
         options: [
           { flag: "--job <path>", detail: "(required) Finalization job JSON path." },
-          { flag: "--claim-token <token>", detail: "(required) Token returned by knowledge claim." },
+          { flag: "--claim-token <token>", detail: "Required for standalone bearer mode; optional in a trusted session, where Core authenticates the canonical claim owner. Wrong explicit values are rejected." },
           { flag: "--status succeeded|failed", detail: "(required) Terminal execution status." },
           { flag: "--result <text>", detail: "Required when status is succeeded." },
           { flag: "--error <text>", detail: "Required when status is failed." },
+        ],
+      },
+      "done-receipt": {
+        usage: ["{script} knowledge done-receipt --job <path> [--claim-token <token>] [--expected-status succeeded|failed] [--expected-result <text>]"],
+        description: "Read authenticated canonical completion state without expiry, focus or completion effects.",
+        summary: "Read a completion receipt; never replay knowledge done.",
+        options: [
+          { flag: "--job <path>", detail: "Exact finalization job path." },
+          { flag: "--claim-token <token>", detail: "Required only in standalone bearer mode." },
+          { flag: "--expected-status succeeded|failed", detail: "Match a lost completion outcome." },
+          { flag: "--expected-result <text>", detail: "Match the exact terminal outcome text." },
         ],
       },
     },
@@ -970,6 +983,7 @@ async function runSession(args: string[], effectiveHost: ClawHost | undefined): 
   if (subcommand === "open") {
     const workdir = args.shift();
     const agentSessionId = args.shift();
+    const receiptOnly = readBooleanFlag(args, "--receipt-only");
     assertNoRemainingArgs(args, "session open");
     if (!workdir || !agentSessionId) {
       throw new ClawError(
@@ -977,7 +991,7 @@ async function runSession(args: string[], effectiveHost: ClawHost | undefined): 
         "session open requires <dir> <session-id> in that order.",
       );
     }
-    await runPersistentSession(workdir, agentSessionId, effectiveHost);
+    await runPersistentSession(workdir, agentSessionId, effectiveHost, receiptOnly);
     return;
   }
   if (subcommand !== "clean") {
@@ -1005,8 +1019,10 @@ async function runPersistentSession(
   workdir: string,
   agentSessionId: string,
   effectiveHost: ClawHost | undefined,
+  receiptOnly = false,
 ): Promise<void> {
   const opened = await new ClawClient({
+    receiptOnly,
     clientKind: "terminal",
     ...(effectiveHost ? { host: effectiveHost } : {}),
   }).open(agentSessionId, path.resolve(workdir));
@@ -1387,14 +1403,15 @@ function runInternalDshFinalizerIssue(args: string[]): void {
   const phase = readRequiredFlag(args, "--phase");
   const code = readRequiredFlag(args, "--code");
   const correlationId = readRequiredFlag(args, "--correlation-id");
+  const failure = readOptionalFlag(args, "--failure");
   assertNoRemainingArgs(args, "internal-dsh-finalizer-issue");
   if (phase !== "capture" && phase !== "dispatch" && phase !== "writer") {
     throw new ClawError("PROJECT_CONFIG_INVALID", "Invalid finalizer diagnostic phase.");
   }
   const parentSessionId = resolveOwnerSessionKey();
   if (!parentSessionId) throw new ClawError("SESSION_IDENTITY_INVALID", "Finalizer diagnostic requires a trusted parent.");
-  const failure = recordDshFinalizerIssue({ cwd: process.cwd(), parentSessionId, finalizeId, phase, code, correlationId });
-  printJson({ ok: true, command: "internal-dsh-finalizer-issue", finalizeId, failure: failure ?? null });
+  const recorded = recordDshFinalizerIssue({ cwd: process.cwd(), parentSessionId, finalizeId, phase, code, correlationId, ...(failure !== undefined ? { failure: JSON.parse(failure) } : {}) });
+  printJson({ ok: true, command: "internal-dsh-finalizer-issue", finalizeId, failure: recorded ?? null });
 }
 
 /** Static adapter API only; never a model-visible claw_run operation. */
@@ -1558,7 +1575,7 @@ async function runKnowledge(args: string[], effectiveHost?: ClawHost): Promise<v
     }
     case "done": {
       const jobPath = readRequiredFlag(args, "--job");
-      const claimToken = readRequiredFlag(args, "--claim-token");
+      const claimToken = readOptionalFlag(args, "--claim-token");
       const status = readRequiredFlag(args, "--status");
       const result = readOptionalFlag(args, "--result");
       const error = readOptionalFlag(args, "--error");
@@ -1566,7 +1583,7 @@ async function runKnowledge(args: string[], effectiveHost?: ClawHost): Promise<v
       const ownerSessionKey = resolveOwnerSessionKey();
       if (ownerSessionKey) {
         const job = readKnowledgeFinalizationJob(jobPath);
-        const input = { finalizeId: job.finalizeId, claimToken, status,
+        const input = { finalizeId: job.finalizeId, ...(claimToken !== undefined ? { claimToken } : {}), status,
           ...(result !== undefined ? { result } : {}), ...(error !== undefined ? { error } : {}) };
         const envelope = await new SessionCommandExecutor(new SessionRegistryV2()).execute({
           agentSessionId: ownerSessionKey, workdir: process.cwd(), client: { kind: "terminal", host: effectiveHost },
@@ -1574,6 +1591,7 @@ async function runKnowledge(args: string[], effectiveHost?: ClawHost): Promise<v
         printJson({ ...(envelope.output as Record<string, unknown>), ...(envelope.hostActions ? { hostActions: envelope.hostActions } : {}) });
         return;
       }
+      if (!claimToken) throw new ClawError("KNOWLEDGE_COMPLETION_INVALID", "Standalone knowledge done requires --claim-token; token-free completion requires trusted session identity.", undefined, { phase: "prepare", outcome: "known", effect: "none" });
       if (status === "succeeded") {
         if (result === undefined) {
           throw new ClawError("PROJECT_CONFIG_INVALID", "knowledge done --status succeeded requires --result.");
@@ -1589,6 +1607,28 @@ async function runKnowledge(args: string[], effectiveHost?: ClawHost): Promise<v
         return;
       }
       throw new ClawError("PROJECT_CONFIG_INVALID", `Unsupported knowledge done status "${status}".`);
+    }
+    case "done-receipt": {
+      const jobPath = readRequiredFlag(args, "--job");
+      const claimToken = readOptionalFlag(args, "--claim-token");
+      const expectedStatus = readOptionalFlag(args, "--expected-status");
+      const expectedResult = readOptionalFlag(args, "--expected-result");
+      assertNoRemainingArgs(args, "knowledge done-receipt");
+      const ownerSessionKey = resolveOwnerSessionKey();
+      if (ownerSessionKey) {
+        const job = readKnowledgeFinalizationJob(jobPath);
+        const envelope = await new SessionCommandExecutor(new SessionRegistryV2()).execute({
+          agentSessionId: ownerSessionKey, workdir: process.cwd(), client: { kind: "terminal", host: effectiveHost },
+        }, { operation: "knowledge.done.receipt", input: { finalizeId: job.finalizeId,
+          ...(claimToken !== undefined ? { claimToken } : {}), ...(expectedStatus !== undefined ? { expectedStatus } : {}),
+          ...(expectedResult !== undefined ? { expectedResult } : {}) } });
+        printJson(envelope.output);
+      } else {
+        if (!claimToken) throw new ClawError("KNOWLEDGE_COMPLETION_INVALID", "Standalone completion receipt requires --claim-token.", undefined, { phase: "prepare", outcome: "known", effect: "none" });
+        if (expectedStatus !== undefined && expectedStatus !== "succeeded" && expectedStatus !== "failed") throw new ClawError("KNOWLEDGE_COMPLETION_INVALID", "Invalid expected terminal status.");
+        printJson({ ok: true, command: "knowledge.done.receipt", ...readKnowledgeCompletionReceipt({ jobPath, claimToken, expectedStatus, expectedResult }) });
+      }
+      return;
     }
     case "verify-session": {
       const sessionId = readRequiredFlag(args, "--session-id");
@@ -4155,37 +4195,7 @@ function printJson(value: unknown): void {
 }
 
 function handleError(error: unknown): void {
-  if (error instanceof ClawError) {
-    process.stderr.write(
-      `${JSON.stringify(
-        {
-          error: {
-            code: error.code,
-            message: error.message,
-            ...(error.execution ?? {}),
-            ...(error.details ? { details: error.details } : {}),
-          },
-        },
-        null,
-        2,
-      )}\n`,
-    );
-    process.exitCode = 1;
-    return;
-  }
-  const message = error instanceof Error ? error.message : String(error);
-  process.stderr.write(
-    `${JSON.stringify(
-      {
-        error: {
-          code: "UNEXPECTED_ERROR",
-          message,
-        },
-      },
-      null,
-      2,
-    )}\n`,
-  );
+  process.stderr.write(JSON.stringify({ error: serializeCommandFailure(error, "unknown", "CLI_COMMAND_FAILED") }, null, 2) + "\n");
   process.exitCode = 1;
 }
 

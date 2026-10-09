@@ -25,4 +25,13 @@ The detailed review and test contract is [Execute-first validation engineering](
 
 ## Consequences
 
+### Known cause does not settle unknown effects
+
+The current source uses one Core-owned pure failure codec through CLI and generated Host contracts. Codes/messages identify safe observed reasons; phase/outcome/effect come from the actual scoped write owner or an exact receipt. An outer operation cannot borrow an inner operation's known-none disposition, or discard its possibly durable effects. Resource/correlation and nested cause keep scope visible without adding a registry or state machine.
+
+Adapters do not add preflight qualification. They execute once, preserve owner evidence, and use only bounded after-failure readonly diagnosis. Unsupported-operation fallback must not replay an operation whose returned evidence is partial/unknown/committed. Cause recognition never authorizes retry by exception type or message text. Confirmed accepted send survives acknowledgement persistence failure; post-command bookkeeping and Host effects do not undo canonical success.
+
+Generated codecs are checked by fresh artifact/build owners, not runtime gates. Diagnostic getters, cause cycles, credentials/private paths and inline payloads are handled at the sole codec, keeping primary evidence intact and secondary failures visible. The older 4791 admission record retained only a generic code/category and cannot prove the original reason or absence of external effects; no production replay is used to fill that gap.
+
+
 Code review evaluates both missed-invalid and rejected-valid behavior. Normal tests prefer owner call counts, canonical outcomes, zero side effects for authority violations, and no resend after accepted/unknown; they do not freeze every advisory field. Existing host-specific checks must be classified and migrated incrementally. A `deferred` label is not sufficient if the real owner is never called without an irreversible-risk justification. This policy applies to all current and future hosts and features.

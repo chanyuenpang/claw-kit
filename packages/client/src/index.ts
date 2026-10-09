@@ -25,8 +25,13 @@ export class ClawSessionError extends Error {
   readonly code: string;
   readonly retryable: boolean;
   readonly outcome: "known" | "unknown";
-  readonly phase?: "prepare" | "initialize" | "commit" | "post-commit";
+  readonly phase?: string;
   readonly effect?: "none" | "partial" | "committed" | "unknown";
+  readonly origin?: string;
+  readonly operation?: string;
+  readonly resource?: string;
+  readonly correlationId?: string;
+  readonly diagnostics?: unknown[];
   readonly recoveryCommand?: string;
   readonly details?: Record<string, unknown>;
 
@@ -35,8 +40,10 @@ export class ClawSessionError extends Error {
     message: string;
     retryable: boolean;
     outcome: "known" | "unknown";
-    phase?: "prepare" | "initialize" | "commit" | "post-commit";
+    phase?: string;
     effect?: "none" | "partial" | "committed" | "unknown";
+    origin?: string; operation?: string; resource?: string; correlationId?: string;
+    cause?: unknown; diagnostics?: unknown[];
     recoveryCommand?: string;
     details?: Record<string, unknown>;
   }) {
@@ -47,6 +54,8 @@ export class ClawSessionError extends Error {
     this.outcome = input.outcome;
     this.phase = input.phase;
     this.effect = input.effect;
+    this.origin = input.origin; this.operation = input.operation; this.resource = input.resource; this.correlationId = input.correlationId;
+    this.cause = input.cause; this.diagnostics = input.diagnostics;
     this.recoveryCommand = input.recoveryCommand;
     this.details = input.details;
   }
@@ -59,6 +68,8 @@ export type ClawClientOptions = {
   startupTimeoutMs?: number;
   requestTimeoutMs?: number;
   clientKind?: SessionClientInfo["kind"];
+  /** Registry-only handshake; an older owner must reject, never downgrade. */
+  receiptOnly?: boolean;
 };
 
 export class ClawClient {
@@ -68,6 +79,7 @@ export class ClawClient {
   readonly startupTimeoutMs: number;
   readonly requestTimeoutMs: number;
   readonly clientKind: SessionClientInfo["kind"];
+  readonly receiptOnly: boolean;
 
   constructor(options: ClawClientOptions = {}) {
     this.runtimeRoot = path.resolve(options.runtimeRoot ?? resolveSessionDaemonRuntimeRoot());
@@ -76,6 +88,7 @@ export class ClawClient {
     this.startupTimeoutMs = options.startupTimeoutMs ?? 5000;
     this.requestTimeoutMs = options.requestTimeoutMs ?? 30_000;
     this.clientKind = options.clientKind ?? "node";
+    this.receiptOnly = options.receiptOnly === true;
   }
 
   async open(agentSessionId: string, workdir: string): Promise<ClawSession> {
@@ -88,7 +101,7 @@ export class ClawClient {
         protocolVersion: SESSION_PROTOCOL_VERSION,
         requestId: randomUUID(),
         token: connection.state.token,
-        operation: "session.open",
+        operation: this.receiptOnly ? "session.open.receipt" : "session.open",
         input: {
           agentSessionId,
           workdir: canonicalWorkdir,
@@ -145,7 +158,9 @@ export class ClawClient {
     }
     throw new ClawSessionError({
       code: "SESSION_DAEMON_UNAVAILABLE",
-      message: `Timed out starting the claw session daemon${lastError ? `: ${String(lastError)}` : "."}`,
+      message: "Timed out starting the claw session daemon.",
+      ...(lastError ? { cause: { code: typeof (lastError as { code?: unknown }).code === "string" && /^[A-Za-z][A-Za-z0-9_.:/-]{0,95}$/.test((lastError as { code: string }).code) ? (lastError as { code: string }).code : "DAEMON_START_OBSERVATION_FAILED",
+        message: "Daemon startup observation failed; private transport detail omitted", operation: "daemon.start.observe", origin: "client", outcome: "known" } } : {}),
       retryable: true,
       outcome: "known",
     });
@@ -384,7 +399,8 @@ function disconnectedError(cause?: unknown): ClawSessionError {
     retryable: false,
     outcome: "unknown",
     recoveryCommand: "claw session open <dir> <session-id>",
-    ...(cause ? { details: { cause: String(cause) } } : {}),
+    ...(cause ? { cause: { code: typeof (cause as { code?: unknown }).code === "string" && /^[A-Za-z][A-Za-z0-9_.:-]{0,95}$/.test((cause as { code: string }).code) ? (cause as { code: string }).code : "TRANSPORT_INTERRUPTED",
+      message: "Transport connection interrupted; sensitive transport detail omitted", origin: "client.transport", operation: "connection.read", outcome: "unknown" } } : {}),
   });
 }
 
@@ -396,7 +412,8 @@ function withExactRecovery(error: unknown, agentSessionId: string, workdir: stri
     message: `${error.message.replace(/\s*Run `claw session open <dir> <session-id>`.*$/u, "")} Run \`${recoveryCommand}\` to reconnect, then use \`plan show --simple\` to inspect the current plan.`,
     retryable: false,
     outcome: "unknown",
-    phase: error.phase, effect: error.effect,
+    phase: error.phase, effect: error.effect, origin: error.origin, operation: error.operation, resource: error.resource,
+    correlationId: error.correlationId, cause: error.cause, diagnostics: error.diagnostics,
     recoveryCommand,
     ...(error.details ? { details: error.details } : {}),
   });

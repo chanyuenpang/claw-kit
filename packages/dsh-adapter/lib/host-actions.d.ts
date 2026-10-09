@@ -8,6 +8,7 @@
  * execute instead of a model-evaluated envelope. Consumption is fail-open: a
  * consumer error never fails the underlying mutation.
  */
+import { type SafeFailure } from "../lib/errors.js";
 /** Local structural JSON value type (independent of registry type versions). */
 export type JsonValue = null | boolean | number | string | JsonValue[] | {
     [key: string]: JsonValue;
@@ -54,10 +55,10 @@ export type HostAction = {
         status: "complete" | "blocked";
     };
 };
-export type HostEffectFailure = {
+export type HostEffectFailure = Partial<SafeFailure> & {
     actionId?: string;
     tool?: string;
-    code: "INVALID_ACTION" | "UNSUPPORTED_SCHEMA" | "UNSUPPORTED_TOOL" | "SERVICE_UNAVAILABLE" | "APPLY_FAILED";
+    code: string;
     message: string;
 };
 /**

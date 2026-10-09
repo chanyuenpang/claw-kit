@@ -12,6 +12,15 @@
 
 ## Decision
 
+### Completion authority and evidence
+
+- Core owns the canonical claim and one terminal result. Native completion resolves credentials from the exact job's durable claimant/admission. The model supplies finalizeId and semantic outcome, not a copied token; supplied compatibility credentials still must match. Focus/template names never substitute for claim ownership.
+- Authentication occurs under the job lock before expiry reconciliation, template deletion, report or encoding writes. Credential/actor/project/expiry refusal is prepare/known/none. Atomic write uncertainty stays commit/unknown; a known post-commit failure does not undo the result.
+- Canonical terminal commits before ancillary report/encoding/cleanup/delegate effects. Effects are separately reportable and never authorize resending completion.
+- knowledge.done.receipt authenticates and reads that claim without mutation. Reconnect uses registry-only session.open.receipt, not ordinary open/focus/refresh recovery; unsupported older owners reject, never downgrade. A terminal receipt proves commit only, with post-commit effects explicitly unverified. Running/expired is not replay permission.
+- This is the shared CLI/session completion contract for DSH/Cindy and other controlled runners, not a change to standard agent-memory capture. Source/tests do not prove old installed CLI/Host activation.
+
+
 - Foreground `claw plan done`、session binding 与 Goal Mode lifecycle 独立于知识采集；hook、report、runner 或 writer 失败一律 fail-open，不回滚 canonical plan state。
 - `scope: "session"` 表示临时隔离 workflow，而非 project closeout 的另一种 launcher：它的任何 `end.*` mutation 都不得创建 finalization job、返回 `knowledgeDispatch` 或在 guidance 中暴露 claim / finalizer / subagent 路径。该 gate 必须位于 shared finalization creation，不能由 host launcher 事后过滤；project scope 继续遵循下列 lifecycle。
 - Knowledge finalization 的 lifecycle trigger 属于完成型终态转换：`end.completed` 与 `end.closed` 登记一次 finalization；`end.leave` 是显式退出，必须解绑并撤销该 plan 的 queued/running knowledge state，而不启动沉淀。`process.active`、`process.wait` 与 `process.discussing` 只累计 report，不登记或启动沉淀。`packages/core/src/plan.ts` 以终态与 leave 分流识别该边界，并为 sidecar 提供独立 `endedAt`；`end.completed` 专属的 completion hooks 仍只拥有 completion event、subplan resume 与 `completedAt` 等完成语义。
@@ -23,11 +32,11 @@
 - `knowledgeWriter.executionPolicy` 在支持多种 launcher 的 host 上选择执行方式：`background` 默认在 Stop 后启动独立 host agent，Codex 也支持 `subagent`。Cindy 当前只支持 Orca subagent，并在 host 边界把 `background | subagent` 都归一化为 `subagent`；这是能力约束，不是失败 fallback。所有 launcher 共享 immutable job、assignment builder、claim token 与 done protocol；Codex 与 Cindy 分别消费 Core 内部的 shell-bridge 和 Ghost delegate template，但两者都以 session parent + generated assignment subplan 承载同一生命周期。
 - Delegate orchestration template、built-in governance contract 与 dependent `doc-updater` 都是 Core 内部资源，不以 shared 或 adapter user skill 发布。未配置 `externalSkills` 时，claim 把隐藏 built-in contract 物化为 Truth→ADR 固定 workflow；配置 external skills 时，claim 物化真实 skill assignments。若 job 冻结了有效 external-document paths，claim 在任一路径后追加 `doc-updater` assignment；built-in template 把它插在 ADR 与跨语料一致性复查之间。source `plan.json`、相邻 report 与 finalize id 是 runtime materials，不是输入 schema；built-in contract 按内容解释材料并收敛一个 current owner。
 - `knowledgeWriter.executionPolicy`、`externalSkills`、`model`、`reasoningEffort` 与 `datedSectionsToKeep` 在 job 创建时快照。内置与外部 assignment 使用不同 prompt builder：内置 prompt 直接表达治理合同，外部 prompt 明确调用 skill 并要求无人值守、无交互。model 与 reasoning 由对应 launcher 传给 executor；runner 不替换 job 指定配置。
-- Codex internal delegate template 先建立 session-scoped parent workflow，再以 `projectRoot + finalizeId` 直接 claim 已由终态 mutation 创建的 ready job；不运行 `knowledge wait`。claim 在授予 ownership token 前冻结父 transcript 中已有的 task conclusions，并返回动态 template；同一 executor 顺序完成 assignment subplan；`done` 只凭 token 写入匹配终态并清理动态 template。claim job 与 plan lifecycle 保持为两个明确状态机，避免 claim 内部直接创建 subplan 的跨事务失败。Cindy 的专用 delegate template 通过 Ghost operations 建立同样的 parent/subplan/done 边界，而不是直接执行 returned prompts。
-- Cindy 只使用相同 ready-job 时序，report source 由插件原子操作拥有：Orca Writer 的 session delegate 通过 Host-forged workspace 调 `knowledge.claim(finalizeId)`；插件从 job 读取 originating session identity，固定等待十秒让对应 `knowledgeDispatch` tool result 进入 Cindy SQLite，再从 `reportCapture.startedAt` 扫描到下一个 plan-create 边界，提取成功 `task.done` 的前置结论。它们在同一 job lock 内写入相邻 report、标记 captured、最后签发 token。delegate 再用 claim 返回的 `templatePath` 创建 assignment subplan，并以 token 调用一次 `knowledge.done`。Lead 的 final response 与 `did-turn-end` 不创建、补写或解锁该 job；旧 Cindy background job 只保留诊断可见性，不再通过 errand 启动。
+- Codex internal delegate template 先建立 session-scoped parent workflow，再以 `projectRoot + finalizeId` 直接 claim 已由终态 mutation 创建的 ready job；不运行 `knowledge wait`。claim 在授予 ownership token 前冻结父 transcript 中已有的 task conclusions，并返回动态 template；同一 executor 顺序完成 assignment subplan；`done` 由 Core 核对精确 claim actor 或独立 CLI bearer 后写入终态；动态 template 清理是后置效果。claim job 与 plan lifecycle 保持为两个明确状态机，避免 claim 内部直接创建 subplan 的跨事务失败。Cindy 的专用 delegate template 通过 Ghost operations 建立同样的 parent/subplan/done 边界，而不是直接执行 returned prompts。
+- Cindy 只使用相同 ready-job 时序，report source 由插件原子操作拥有：Orca Writer 的 session delegate 通过 Host-forged workspace 调 `knowledge.claim(finalizeId)`；插件从 job 读取 originating session identity，固定等待十秒让对应 `knowledgeDispatch` tool result 进入 Cindy SQLite，再从 `reportCapture.startedAt` 扫描到下一个 plan-create 边界，提取成功 `task.done` 的前置结论。它们在同一 job lock 内写入相邻 report、标记 captured、最后签发 token。delegate 再用 claim 返回的 `templatePath` 创建 assignment subplan，并以真实 claim 身份调用一次 `knowledge.done`，不由模型抄写 token。Lead 的 final response 与 `did-turn-end` 不创建、补写或解锁该 job；旧 Cindy background job 只保留诊断可见性，不再通过 errand 启动。
 - A returned `knowledgeDispatch` is the authorization for that Worker to execute the matching finalizer. In Cindy's dispatched Worker path, `finalizeId` identifies the job; persisted `job.host` and `writer.executionPolicy` are immutable provenance and launcher snapshots, not a second eligibility gate. Capture, claim, and token-completion failures remain reportable.
 - Codex background、OpenCode 与 Cindy subagent 复用这个 lifecycle owner；Codex `subagent` 是另一种 launcher。所有 executor 都使用同一内部 bootstrap，而不是为 background 与 subagent 维护两套 writer prompt 或 assignment 编排。
-- 内置 writer 成功后，worker 对该 pass 改动的 canonical Markdown 执行 dated-section governance 并记录裁剪结果；external skill 跳过治理快照与 dated compaction。两条路径随后都依次归一化 `.claw/truth/**/*.md` 编码、请求 completion recall refresh、向相邻 report追加一条以 `finalizeId` 幂等去重的 `knowledge_finalization` JSONL 结果，最后持久化 `succeeded` job。writer、适用的 governance、编码、refresh 或结果写回失败都进入既有重试路径；重复尝试不得伪造或追加第二条成功结果。Governance 的语义与取舍由 `bounded-truth-and-adr-evolution-governance.md` 拥有。
+- 内容治理成功后，Core 先持久化 succeeded canonical job；适用的编码、刷新、finalizeId 去重报告和 delegate 收口是后置效果。失败单列，不撤销终态或重发 knowledge.done；回执恢复明确标注后置效果未核实。内置/external 内容治理边界仍由 bounded-truth-and-adr-evolution-governance.md 拥有。
 - `succeeded` result 与 job 持久化后，finalizer 不调用 Git。Truth/ADR 写入与治理、成功记录和 index refresh 完成后，canonical 文档改动留在工作区，由正常开发流程审阅和提交。
 - Finalizer 不再主动删除 report。report 与 source plan 同属 task directory，归档时一起移动到 `.claw/archive/tasks/`，仅在 task retention 超过 `maxTasksToKeep` 并裁剪整个 archived task 时删除。新项目与缺失配置统一使用共享默认值 `9`；通用 task layout 与 retention 事实由 `../features/task-layout-and-session-bindings.md` 记录。
 - Hidden built-in governance 统一拥有 conclusion-evidence qualification、Truth→ADR 固定顺序、候选阅读、freshness qualification 与 one-owner consistency；response format 与自然语言总结不参与控制流。delegate 与 assignment workflow 必须完成到 `end.completed`，tasks 非空且全部 `done`，才可写入成功终态。
@@ -40,7 +49,7 @@
 - 让 built-in writer 依靠通用 skill discovery 或“可能产生可复用知识”的前台启发式自动触发：拒绝，因为这会在 hook-owned finalizer 之外形成第二个 invocation owner，并可能重复沉淀、提前沉淀或递归进入 writer harness。
 - 仅设置 launch-disable 环境变量跳过 job：拒绝，因为 queued/failed job 会在后续 SessionStart 被重新发现；真正的 no-deposition workflow 应由显式 session scope 或持久化 policy 表达。
 - 只要求每个 external skill template 声明 `scope: "session"`：拒绝，因为动态 skill 未必使用 claw template；session isolation 由内部 delegate parent/subplan统一拥有。
-- 让 `wait` 建立 executor binding，或让 `claim` / `done` 读取 session identity：拒绝。session workflow scope 与 job ownership 是不同状态机；内部 template 负责前者，claim token 负责后者。
+- 让 `wait` 建立 executor binding，或用 current focus/template 名称替代 claim authority：拒绝。可信会话身份可以在 Core 核对既有 claim owner，但不能猜最近 job、绕过代次或自动续租；普通 CLI 保留明确 bearer 凭据。
 - 让 `claim` 内部直接创建 subplan：拒绝。claim 成功而 plan 创建失败会把 job 卡在 running 并制造跨事务回滚；claim只返回 token、assignments、template path 与下一步参数。
 - 让 foreground 等待 writer：拒绝，因为 knowledge sidecar 失败不能阻塞 plan lifecycle。
 - finalization 成功后主动删除 report：拒绝，因为这会丢失原始 turn 结论和 writer 的结构化完成结果，使异步 closeout 难以观察；report 应遵循已有 task archive/retention lifecycle。
@@ -52,6 +61,11 @@
 
 <!-- state: history -->
 ## Evolution history
+
+<!-- dated: 2026-10-08 -->
+### Wrong copied token must not masquerade as an uncertain commit
+
+A finalizer supplied a token differing from its immutable claim at two positions before lease expiry. A plain credential error lacked phase/effect and surfaced as unknown. Authentication now precedes reconciliation, canonical commit precedes ancillary effects, and native completion authenticates the recorded claimant. Earlier token-only/report-first wording describes history, not the current contract. The historical incident was read-only inspected; no replay, lease renewal or fabricated success occurred.
 
 <!-- dated: 2026-08-28 -->
 ### Leave no longer creates a writer job

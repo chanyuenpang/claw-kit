@@ -16,6 +16,15 @@
 - Local Codex verification compares source and cache manifests plus critical-file hashes. The current task cannot claim that a refreshed bundle is loaded; that requires a Codex restart and a new task.
 - The final result records the commands and affected domains, failure disposition, relevant artifacts or hashes, residual risk, and an explicit ready or not-ready conclusion without starting release.
 
+## Versioned local candidate preparation
+
+- Every new installable candidate allocates a new formal version under its artifact family's normal numbering rule, counting local allocations as well as published versions. CLI/core uses its three-segment line; standalone adapters advance their own compatible adapter version, while combined candidates keep the selected family versions/dependencies aligned. No beta suffix is added; DSH retains its existing four-segment-to-npm rc mapping.
+- `beta:prepare` is the version-allocation owner: it records preparing inputs and supports same-input resume; prepared manifests/dependencies are committed before `beta:pack --candidate` freezes the exact source revision and selected artifacts. A frozen candidate is reused, never rebuilt for promotion.
+- Promotion preserves the tested version and exact frozen bytes: publish the original CLI/DSH tarball or corresponding frozen adapter tree, with no bump, build, pack, or export. Unknown/accepted upload outcomes are reconciled against the exact registry resource and never blindly resent. Trial duration binds the exact candidate hash.
+- Old same-version batches remain historical and are not overwritten. A failed or changed post-freeze candidate requires a newly numbered candidate; routine validation, retry, install, and promotion do not allocate a new number.
+
+- Versioned beta preparation is a separate authorized route from read-only/test-claw-kit readiness checks; it does not grant publication, installation, restart, or trial-start authority. A frozen schema2 candidate records selected families, exact source revision, and artifact hashes; legacy frozen schema1 remains readable.
+
 ## Ownership boundaries
 
 - `.agents/skills/test-claw-kit/SKILL.md` owns entry routing and the no-release boundary.

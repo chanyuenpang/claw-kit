@@ -120,8 +120,11 @@ test("DSH writer claims after the live Host proves empty final history", async (
   assert.equal(claim.claimed, true);
   assert.ok(claim.assignments.length > 0);
   assert.equal(JSON.parse(fs.readFileSync(claim.jobPath, "utf8")).reportCapture.status, "captured");
-  const done = (await service.execute(context, { operation: "knowledge.done", input: {
-    finalizeId, claimToken: claim.claimToken, status: "succeeded", result: "Deposited from available plan evidence."
+  await assert.rejects(service.execute(context, { operation: "knowledge.done", input: {
+    finalizeId, claimToken: claim.claimToken, status: "succeeded", result: "Parent must not borrow native completion authority."
+  } }), { code: "KNOWLEDGE_CLAIM_OWNER_MISMATCH" });
+  const done = (await service.execute(child, { operation: "knowledge.done", input: {
+    finalizeId, status: "succeeded", result: "Deposited from available plan evidence."
   } })).output as any;
   assert.equal(done.completed, true);
   assert.equal(JSON.parse(fs.readFileSync(claim.jobPath, "utf8")).status, "succeeded");
@@ -191,9 +194,10 @@ test("DSH parent sees bounded errors, and successful capture clears stale warnin
   publishDshHostReport({ cwd: root, parentSessionId: context.agentSessionId, finalizeId,
     collectorVersion: "desktop-v1", events: [] });
   assert.deepEqual(listDshFinalizerAlerts(root, context.agentSessionId), []);
-  const claim = (await service.execute({ ...context, agentSessionId: "error-writer" },
+  const writer = { ...context, agentSessionId: "error-writer" };
+  const claim = (await service.execute(writer,
     { operation: "knowledge.claim", input: { finalizeId } })).output as any;
-  await service.execute(context, { operation: "knowledge.done", input: {
+  await service.execute(writer, { operation: "knowledge.done", input: {
     finalizeId, claimToken: claim.claimToken, status: "failed", error: "contains private path C:\\secret" } });
   alerts = listDshFinalizerAlerts(root, context.agentSessionId);
   assert.equal(alerts[0]?.code, "KNOWLEDGE_WRITER_FAILED");
@@ -294,4 +298,22 @@ test("lost DSH claim response reattaches only the same child through shared daem
   assert.equal(((await executor.execute(child, receiptRequest)).output as any).claimed, false);
   assert.equal(fs.readFileSync(jobPath, "utf8"), terminal);
   assert.equal(fs.existsSync(templatePath), false);
+});
+
+test("durable finalizer diagnostics preserve owner phase, cause, correlation and no-resend guidance", async () => {
+  const root = fixture("rich-diagnostics"), registry = new SessionRegistryV2(fs.mkdtempSync(path.join(os.tmpdir(), "claw-rich-registry-")));
+  const opened = await registry.open("diagnostic-parent", root, { kind: "adapter", host: "dsh" });
+  const context = { cwd: root, agentSessionId: opened.identity.agentSessionId, sessionKey: sessionFocusKey(opened.identity), host: "dsh", mode: "session" as const };
+  const service = new ClawCommandService(registry);
+  await service.execute(context, { operation: "plan.create", input: { taskName: "diagnostic-source", title: "Diagnostic source" } });
+  const end = await service.execute(context, { operation: "plan.done", input: { retrospectiveSummary: "Diagnostic source" } });
+  const finalizeId = end.knowledgeDispatch!.finalizeId;
+  const diagnostic = { code: "host/reserve-denied", message: "ledger write denied", origin: "host", operation: "finalizer.reserve", phase: "reserve", outcome: "unknown", effect: "unknown",
+    correlationId: "same-request", cause: { code: "EACCES", message: "open failed", operation: "ledger.open", outcome: "known", effect: "none" } };
+  for (let i = 0; i < 2; i++) recordDshFinalizerIssue({ cwd: root, parentSessionId: context.agentSessionId, finalizeId, phase: "dispatch", code: diagnostic.code, correlationId: "same-request", failure: diagnostic });
+  const alert = listDshFinalizerAlerts(root, context.agentSessionId).find(value => value.finalizeId === finalizeId)!;
+  assert.equal(alert.phase, "reserve"); assert.equal(alert.category, "dispatch"); assert.equal(alert.code, "host/reserve-denied");
+  const failure = alert.failure as any; assert.equal(failure.operation, "finalizer.reserve"); assert.equal(failure.correlationId, "same-request");
+  assert.equal(failure.cause.code, "EACCES"); assert.equal(failure.outcome, "unknown"); assert.equal(alert.count, 1);
+  assert.doesNotMatch(alert.nextAction, /System retries/); assert.match(alert.nextAction, /must not be replayed/);
 });

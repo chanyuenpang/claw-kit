@@ -10,7 +10,7 @@
     "summary": "Release only the DSH adapter artifact family to the npm registry.",
     "openQuestions": [],
     "acceptanceCriteria": [
-      "Only the DSH adapter fourth segment and package.json version are bumped.",
+      "Candidate preparation allocated the family-specific target version; promotion preserves it unchanged.",
       "Focused adapter build, tests, and checks pass; the tarball contains lib/, skills/, cordis.patch.yml.",
       "The exact vdsh-<version> tag points to clean origin/main.",
       "@veewo/dsh-claw-kit@<npm-version> is publicly available; for a known authorized target profile, the exact published version is installed and its on-disk manifest/config verified without an unapproved restart."
@@ -20,31 +20,31 @@
     {
       "id": 1,
       "title": "Inspect and classify the DSH release baseline",
-      "detail": "Read AGENTS.md and references/artifact.md; inspect branch, remotes, vdsh-* tags, package.json, and every worktree change. Resolve the CLI base version (authorized CLI candidate or current published @veewo/claw). Reject unapproved cross-family changes.",
+      "detail": "Select the authorized tested frozen candidate and verify its artifact family, sourceRevision and trial; absent a candidate, use candidate preparation and stop before publication. Read AGENTS.md and references/artifact.md; inspect branch, remotes, vdsh-* tags, package.json, and every worktree change. Resolve the CLI base version (authorized CLI candidate or current published @veewo/claw). Reject unapproved cross-family changes.",
       "status": "pending"
     },
     {
       "id": 2,
-      "title": "Prepare the DSH adapter version",
-      "detail": "Set packages/dsh-adapter/package.json to <cli-base>.<next-fourth-segment> derived from prior vdsh-<cli-base>.* tags; review the full diff.",
+      "title": "Confirm the frozen candidate version",
+      "detail": "Read the chosen frozen candidate and its source manifests; verify the family-specific three/four-segment version, dependencies and npm mapping. Candidate preparation already allocated the number. Do not change versions, dependencies or lockfiles during promotion.",
       "status": "pending"
     },
     {
       "id": 3,
       "title": "Verify built-in templated skill compatibility",
-      "detail": "Run `npm run check:template-versions` before candidate tests. It scans every built-in skill package that contains TEMPLATE.json and verifies that its version matches TEMPLATE_DRIVER_VERSION; stop and repair version drift before publishing.",
+      "detail": "Review the candidate preparation evidence and, if needed, run the read-only npm run check:template-versions. Do not repair a selected frozen candidate in place; any required source/input repair needs a new candidate version and trial.",
       "status": "pending"
     },
     {
       "id": 4,
       "title": "Verify the DSH plugin candidate",
-      "detail": "Run npm run build/test/check -w @veewo/dsh-claw-kit, export the tarball, verify its contents, and run npm run publish:dsh-plugin (dry run) to confirm the artifact gate.",
+      "detail": "Verify the frozen candidate inventory, hashes, exact sourceRevision, prior test evidence and seven-day trial. For DSH use npm run publish:dsh-plugin -- --candidate <directory> in verification-only mode; other families consume their recorded frozen tree through their artifact owner. Do not run workspace builds, package export or repacking. If evidence or content is wrong, prepare a new version rather than modifying this candidate.",
       "status": "pending"
     },
     {
       "id": 5,
       "title": "Pass the exact-source gate and release",
-      "detail": "Commit intended content on main, push origin/main, require an empty worktree and HEAD == origin/main, run npm run publish:dsh-plugin -- --publish, then create and push vdsh-<version>.",
+      "detail": "Require clean local main at the tested candidate sourceRevision and no remote divergence. Publish only the frozen DSH tgz using npm run publish:dsh-plugin -- --candidate <directory> --publish; verify exact registry retrieval. Only then complete authorized source push and immutable vdsh-<candidate-version> tag, requiring HEAD == origin/main and a clean worktree. Never rebuild the package or resend an accepted/unknown upload.",
       "status": "pending"
     },
     {
@@ -65,6 +65,7 @@
     }
   ],
   "rules": [
+    "Formal promotion requires the explicitly selected tested frozen candidate. Preserve its version and hashes; never bump, build, pack or export again. If no tested candidate exists, prepare a new version through beta:prepare and stop before publication.",
     "Publish only @veewo/dsh-claw-kit to npm; never publish CLI/core or another adapter.",
     "Never modify another artifact family without explicit batch authority.",
     "Stop at the first failed release boundary.",

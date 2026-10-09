@@ -128,7 +128,7 @@ export async function createProjectPlan(
   intent: PlanCreateIntent,
   context: Pick<PlanWriteInput, "cwd" | "ownerSessionKey" | "host"> & { checkFocus?: () => void },
 ): Promise<PlanWriteResult & { events: PlanEvent[] }> {
-  const execution: ClawExecutionFailure = { phase: "prepare", outcome: "known", effect: "none" };
+  const execution: ClawExecutionFailure = { operation: "plan.create", phase: "prepare", outcome: "known", effect: "none" };
   try {
     if (Object.prototype.hasOwnProperty.call(intent, "scope")) {
       throw new ClawError("PLAN_SCOPE_REMOVED", "scope is no longer a plan creation parameter. Use knowledgeCapture to control knowledge accumulation.");
@@ -181,7 +181,7 @@ export async function createProjectPlan(
 }
 
 export async function writePlan(input: PlanWriteInput): Promise<PlanWriteResult & { events: PlanEvent[] }> {
-  const execution: ClawExecutionFailure = { phase: "prepare", outcome: "known", effect: "none" };
+  const execution: ClawExecutionFailure = { operation: "plan.write", phase: "prepare", outcome: "known", effect: "none" };
   try { return await writePlanWithOutcome(input, execution); }
   catch (error) { throw withExecutionFailure(error, execution); }
 }
@@ -391,7 +391,7 @@ function buildPlanCreateScopeGuidance(cwd: string, cause: ClawError): ClawError 
 }
 
 export async function editPlan(input: PlanEditInput): Promise<PlanEditResult & { events: PlanEvent[] }> {
-  const execution: ClawExecutionFailure = { phase: "prepare", outcome: "known", effect: "none" };
+  const execution: ClawExecutionFailure = { operation: "plan.edit", phase: "prepare", outcome: "known", effect: "none" };
   try { return await editPlanWithOutcome(input, execution); }
   catch (error) { throw withExecutionFailure(error, execution); }
 }
@@ -878,7 +878,7 @@ function resolveSubplanProject(input: SubplanWriteInput): TaskContext["project"]
 
 export async function createSubplan(input: SubplanWriteInput): Promise<PlanWriteResult & { events: PlanEvent[] }> {
   try { return await createSubplanFromFocus(input); }
-  catch (error) { throw withExecutionFailure(error, { phase: "prepare", outcome: "known", effect: "none" }); }
+  catch (error) { throw withExecutionFailure(error, { operation: "subplan.create", phase: "prepare", outcome: "known", effect: "none" }); }
 }
 
 async function createSubplanFromFocus(input: SubplanWriteInput): Promise<PlanWriteResult & { events: PlanEvent[] }> {
