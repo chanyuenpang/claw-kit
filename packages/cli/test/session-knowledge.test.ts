@@ -37,8 +37,9 @@ test("Codex finalizer dispatch locates its job from another working directory", 
   const dispatch = ended.knowledgeDispatch as { projectRoot: string; finalizeId: string; prompt: string };
   assert.equal(dispatch.projectRoot, path.resolve(root));
   assert.ok(dispatch.prompt.includes(`Project root: ${JSON.stringify(path.resolve(root))}`));
-  assert.match(dispatch.prompt, /If your current working directory differs/);
-  assert.match(dispatch.prompt, /exact absolute path to --project-root/);
+  assert.match(dispatch.prompt, /\[claw host\]\nplatform: codex/);
+  assert.match(dispatch.prompt, /Use this exact project root as workdir/);
+  assert.match(dispatch.prompt, /First driver argv/);
   assert.equal(findKnowledgeFinalizationJobPath(resolveProjectContext(other), dispatch.finalizeId), null);
   const jobPath = findKnowledgeFinalizationJobPath(resolveProjectContext(dispatch.projectRoot), dispatch.finalizeId);
   assert.ok(jobPath);

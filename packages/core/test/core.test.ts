@@ -7,8 +7,7 @@ import { DatabaseSync } from "node:sqlite";
 import {
   buildDirectWorkflowGuidance,
   buildPlanWorkflowGuidance,
-  buildKnowledgeAtomicDispatch,
-  buildKnowledgeDelegateDispatch,
+  buildKnowledgeFinalizationTask,
   buildKnowledgeAssignmentTemplate,
   buildDirectKnowledgeAssignments,
   buildKnowledgeWriterAssignments,
@@ -611,49 +610,16 @@ test("knowledge claim owns execution and delegate prompt routing", () => {
     assert.doesNotMatch(builtinAssignments[0]!.prompt, /invoke the .* skill/i);
     assert.doesNotMatch(builtinAssignments[0]!.prompt, /request confirmation or review/i);
     assert.match(builtinAssignments[0]!.prompt, /keep at most 6 complete evolution sections/i);
-    const delegateDispatch = buildKnowledgeDelegateDispatch({
-      finalizeId,
-      projectRoot: root,
+    const task = buildKnowledgeFinalizationTask({
+      host: "codex", finalizeId, projectRoot: root,
       writer: { model: "test-model", reasoningEffort: "high" },
     });
-    assert.equal(delegateDispatch.preferReuse, false);
-    assert.equal("policy" in delegateDispatch, false);
-    assert.equal(delegateDispatch.model, "test-model");
-    assert.equal(delegateDispatch.reasoningEffort, "high");
-    assert.deepEqual(Object.keys(delegateDispatch).sort(), [
-      "finalizeId",
-      "model",
-      "preferReuse",
-      "projectRoot",
-      "prompt",
-      "reasoningEffort",
-      "schemaVersion",
-    ]);
-    assert.match(delegateDispatch.prompt, /claw plan create --template-file/);
-    assert.equal(delegateDispatch.leadInstruction, undefined);
-    assert.match(delegateDispatch.prompt, /resources[\\/]delegate-writer[\\/]TEMPLATE\.json/);
-    assert.equal(delegateDispatch.projectRoot, path.resolve(root));
-    assert.ok(delegateDispatch.prompt.includes(`Project root: ${JSON.stringify(path.resolve(root))}`));
-    assert.match(delegateDispatch.prompt, /If your current working directory differs/);
-    assert.match(delegateDispatch.prompt, /exact absolute path to --project-root/);
-    assert.equal(findKnowledgeFinalizationJobPath(resolveProjectContext(delegateDispatch.projectRoot!), finalizeId), jobPath);
-    assert.doesNotMatch(delegateDispatch.prompt, /claw-kit:delegate-writer/i);
-
-    const atomicDispatch = buildKnowledgeAtomicDispatch({
-      finalizeId,
-      writer: { model: "test-model", reasoningEffort: "high" },
-    });
-    assert.equal(atomicDispatch.preferReuse, false);
-    assert.equal("policy" in atomicDispatch, false);
-    assert.equal(atomicDispatch.model, "test-model");
-    assert.equal(atomicDispatch.reasoningEffort, "high");
-    assert.match(atomicDispatch.prompt, /claw-kit Cindy Ghost tools/);
-    assert.match(String(atomicDispatch.leadInstruction), /Required, non-skippable closeout/);
-    assert.match(String(atomicDispatch.leadInstruction), /Do not skip it for any reason/);
-    assert.match(atomicDispatch.prompt, /cindy-delegate-writer[\\/]TEMPLATE\.json/);
-    assert.match(atomicDispatch.prompt, /non-capturing auxiliary plan/i);
-    assert.doesNotMatch(atomicDispatch.prompt, /did-turn-end|Stop hook|knowledge wait/i);
-    assert.doesNotMatch(atomicDispatch.prompt, /execute each returned assignment prompt yourself/i);
+    assert.equal(task.kind, "knowledge.finalize");
+    assert.equal(task.host, "codex");
+    assert.equal(task.projectRoot, path.resolve(root));
+    assert.equal(task.writer?.model, "test-model");
+    assert.equal("prompt" in task, false, "Core does not prescribe a host command");
+    assert.equal(findKnowledgeFinalizationJobPath(resolveProjectContext(task.projectRoot), finalizeId), jobPath);
     const cindyDelegateTemplate = JSON.parse(
       fs.readFileSync(cindyKnowledgeDelegateTemplatePath(), "utf-8"),
     ) as { scope: string; tasks: Array<{ id: number; detail?: string }> };

@@ -11,6 +11,9 @@ const source = await fs.readFile(pluginUrl, "utf8");
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText
   .replaceAll("import.meta.dirname", "__dirname")
   .replaceAll("import.meta.url", "__filenameUrl");
+const failureSource = await fs.readFile(new URL("../plugin/failure-diagnostics.ts", import.meta.url), "utf8");
+const failureExports = {};
+vm.runInNewContext(ts.transpileModule(failureSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, { exports: failureExports });
 
 async function harness({ project = true, context = {}, fail = false } = {}) {
   const calls = [];
@@ -19,6 +22,7 @@ async function harness({ project = true, context = {}, fail = false } = {}) {
     exports, __dirname: path.dirname(fileURLToPath(pluginUrl)), __filenameUrl: pluginUrl.href,
     process: { env: {} }, console,
     require(name) {
+      if (name === "./failure-diagnostics.js") return failureExports;
       if (name === "node:path") return path;
       if (name === "node:fs") return {
         existsSync: (file) => project && (file.endsWith(".claw") || file.endsWith("project.json")),
@@ -33,8 +37,24 @@ async function harness({ project = true, context = {}, fail = false } = {}) {
     },
   });
   const hooks = await exports.ClawKitPlugin({ directory: "/fixture", client: {}, model: "codex", provider: "openai" });
-  return { hooks, calls };
+  return { hooks, calls, exports };
 }
+
+test("OpenCode writer clears inherited identity and shell injects the child session", async () => {
+  const { hooks, exports } = await harness();
+  const inherited = { CLAW_HOST: "codex", CLAW_SESSION_ID: "parent", CODEX_THREAD_ID: "parent-thread", CODEX_SESSION_ID: "parent-codex", PATH: "keep" };
+  const writer = exports.openCodeWriterEnvironment(inherited);
+  assert.equal(writer.CLAW_HOST, "opencode");
+  assert.equal(writer.PATH, "keep");
+  for (const key of ["CLAW_SESSION_ID", "CODEX_THREAD_ID", "CODEX_SESSION_ID"]) assert.equal(writer[key], undefined);
+  const output = { env: { ...inherited } };
+  await hooks["shell.env"]({ sessionID: "child" }, output);
+  assert.equal(output.env.CLAW_SESSION_ID, "child");
+  assert.equal(output.env.CLAW_HOST, "opencode");
+  assert.equal(output.env.CODEX_THREAD_ID, undefined);
+  assert.equal(output.env.CODEX_SESSION_ID, undefined);
+  assert.equal(inherited.CLAW_SESSION_ID, "parent");
+});
 
 for (const [name, options] of [
   ["non-project", { project: false }],

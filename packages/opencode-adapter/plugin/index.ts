@@ -30,6 +30,15 @@ const ADAPTER_DIR = import.meta.dirname ?? path.dirname(new URL("", import.meta.
 const GUIDANCE_CONFIG_PATH = path.join(ADAPTER_DIR, "..", "workflow-guidance.opencode.json");
 const OPENCODE_HOST_IDENTITY = "[claw host]\nplatform: opencode\nAdapter-owned host identity, independent of model/provider or skill path. Host/session arguments remain adapter-owned.";
 
+/** A new writer runtime must not inherit the foreground or another host's session. */
+export function openCodeWriterEnvironment(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...source, CLAW_HOST: "opencode", CLAW_KNOWLEDGE_FINALIZER: "1" };
+  delete env.CLAW_SESSION_ID;
+  delete env.CODEX_THREAD_ID;
+  delete env.CODEX_SESSION_ID;
+  return env;
+}
+
 let inClawProject = false;
 let projectInfo: { projectId: string; projectName: string; clawDir: string } | null = null;
 let recoveredState: string | null = null;
@@ -288,10 +297,7 @@ function dispatchOpenCodeKnowledgeWriter(projectDir: string, jobPath: string): v
   args.push(handoff.dispatch.prompt);
   const child = spawn(command, args, {
     cwd: projectDir,
-    env: {
-      ...process.env,
-      CLAW_KNOWLEDGE_FINALIZER: "1",
-    },
+    env: openCodeWriterEnvironment(process.env),
     windowsHide: true,
     detached: process.platform !== "win32",
     stdio: "ignore",
@@ -390,7 +396,9 @@ export const ClawKitPlugin: Plugin = async ({ directory, client }) => {
       // plan create/done and other lifecycle operations can resolve the
       // session owner key for knowledge capture.
       if (input.sessionID) {
-        output.env.CODEX_SESSION_ID = input.sessionID;
+        output.env.CLAW_SESSION_ID = input.sessionID;
+        delete output.env.CODEX_THREAD_ID;
+        delete output.env.CODEX_SESSION_ID;
       }
     },
 
@@ -475,7 +483,7 @@ export const ClawKitPlugin: Plugin = async ({ directory, client }) => {
             else goal.retryCount = 0;
             if (goal.retryCount >= 2) {
               goal.pausing = true;
-              if (invokeOpenCodePlanWait(projectDir, sessionID)) goalSessions.delete(sessionID);
+              console.warn("[claw-kit] automatic continuation paused for this session; canonical plan state is unchanged.");
               return;
             }
           }
@@ -490,7 +498,7 @@ export const ClawKitPlugin: Plugin = async ({ directory, client }) => {
             goal.retryCount += 1;
             if (goal.retryCount >= 2) {
               goal.pausing = true;
-              if (invokeOpenCodePlanWait(projectDir, sessionID)) goalSessions.delete(sessionID);
+              console.warn("[claw-kit] automatic continuation paused for this session; canonical plan state is unchanged.");
             }
           }
         }

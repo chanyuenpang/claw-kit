@@ -16,13 +16,14 @@ For a genuinely new generic plan, pass `argv: ["plan", "create", "<title>"]`
 through the bridge below; a template-owning skill supplies its template instead.
 
 ## Codex mutation bridge
-For context recovery and every claw plan mutation, call the function below in
+For context recovery and every claw workflow or knowledge operation, call the function below in
 code mode and change only `argv`, `workdir`, and `timeout_ms`; supply `pluginRoot` from the actual loaded plugin directory (the ancestor containing `.codex-plugin/plugin.json`). `argv` is exactly
 `["context"]` for recovery, or starts with `plan`, `task`, or `subplan` for
-supported plan operations. It excludes the `claw` executable and `--host`, and
+workflow operations, or `knowledge` with `claim`, `claim-receipt`, `done` or
+`done-receipt`. It excludes the `claw` executable and `--host`, and
 keeps every user value as a separate array item. The cached CLI driver validates
 results, consumes native host actions exactly once, and returns only
-stage-relevant fields.
+stage-relevant plan fields and the complete knowledge business result.
 
 Read-only `claw search --query "<topic>"` and standalone static authoring
 utilities use the host's supported shell tool, not this mutation bridge. Do not
@@ -31,8 +32,8 @@ not accept them. This does not permit a shell fallback for plan mutations.
 
 ```javascript
 async function runClawPlanMutation({ argv, workdir, pluginRoot, timeout_ms = 30000 }) {
-  const cacheKey = "claw-kit:codex-driver:v26:s1";
-  const pluginVersion = "0.2.43.0";
+  const cacheKey = "claw-kit:codex-driver:v27:s1";
+  const pluginVersion = "0.2.45.0";
   const fetchEnvelope = async () => {
     const raw = typeof tools.shell_command === "function" ? await tools.shell_command({ command: "claw codex driver", workdir, timeout_ms })
       : typeof tools.exec_command === "function" ? await tools.exec_command({ cmd: "claw codex driver", workdir, yield_time_ms: timeout_ms })
@@ -60,7 +61,7 @@ async function runClawPlanMutation({ argv, workdir, pluginRoot, timeout_ms = 300
 - When a terminal plan mutation returns a valid `knowledgeDispatch` for Codex, launch one isolated worker for that exact `finalizeId`. Do not reuse a worker that may still hold an earlier claim: call `spawn_agent` with the complete unchanged prompt, `fork_turns: "none"`, task name `knowledge_finalizer_<first 12 chars of finalizeId>`, and any supplied `model` and `reasoningEffort` mapped to native fields; never load a user-facing delegate skill. A failed, expired, or unavailable claim is terminal for that worker and must not be sent to another job.
 - The dispatched job already exists. Do not wait for the new writer; immediately end the main turn after the accepted handoff. On Codex, `knowledge claim` collects the existing parent-turn report. The bridge cannot call collaboration tools.
 ## Hard boundaries
-- Run every supported plan mutation through the code-mode bridge without splitting host calls, reconstructing `hostActions` or `goalTool`, or repeating canonical transitions as compensation. Goal/effect failures remain visible but never authorize replaying the canonical mutation.
+- Run every supported workflow and knowledge operation through the code-mode bridge without splitting host calls, reconstructing `hostActions` or `goalTool`, or repeating canonical transitions as compensation. Goal/effect failures remain visible but never authorize replaying the canonical mutation. After an unknown claim/done response, use the matching claim-receipt/done-receipt through this same bridge; never resend the mutation.
 - Codex has no direct-call fallback: every supported plan mutation goes through the bundled code-mode consumer.
 - Goal-state inspection belongs only to the fixed driver or bundled consumer program; the agent must never call `get_goal` separately.
 - Edit canonical plan state only through claw commands supplied or permitted by returned guidance.

@@ -1,3 +1,4 @@
+import { buildKnowledgeDispatch } from "./knowledge-dispatch.js";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -7,10 +8,6 @@ import {
   activatePlan,
   appendSubplanReturnGuidance,
   assertRootPlanCreateAllowed,
-  buildKnowledgeAtomicDispatch,
-  buildDshKnowledgeDispatch,
-  buildKnowledgeDelegateDispatch,
-  KNOWLEDGE_DISPATCH_LEAD_INSTRUCTION,
   completeSubplanAndRestoreParent,
   bindSessionToPlan,
   createPlanAndSwitchFocus,
@@ -222,12 +219,7 @@ export class ClawCommandService {
           appendTasks?: Array<{ title: string; detail?: string }>;
         };
         const hasUpdates = Boolean(commandInput.updates && Object.keys(commandInput.updates).length > 0);
-        if (!hasUpdates && !commandInput.appendTasks?.length) {
-          throw new ClawError(
-            "PROJECT_CONFIG_INVALID",
-            "plan.start requires plan fields or at least one task.",
-          );
-        }
+        // Existing initialized work can start without resubmitting its fields or tasks.
         const current = this.requireCurrentPlan(context);
         const result = await editPlan({
           cwd,
@@ -955,16 +947,10 @@ export class ClawCommandService {
           : {}),
       });
       if (knowledgeEnd.finalizeId && knowledgeEnd.jobPath && resolveHostIntegrationProfile(context.host)?.supportsNativeSubagentFinalization) {
-        dispatch = context.host === "dsh"
-          ? buildDshKnowledgeDispatch({ finalizeId: knowledgeEnd.finalizeId, writer })
-          : resolveHostIntegrationProfile(context.host)?.usesAtomicKnowledgeDispatch === true
-          ? buildKnowledgeAtomicDispatch({ finalizeId: knowledgeEnd.finalizeId, writer })
-          : buildKnowledgeDelegateDispatch({
-              finalizeId: knowledgeEnd.finalizeId,
-              projectRoot: project.projectRoot,
-              writer,
-              ...(context.host === "codex" ? { leadInstruction: KNOWLEDGE_DISPATCH_LEAD_INSTRUCTION } : {}),
-            });
+        dispatch = buildKnowledgeDispatch({
+          host: context.host as "codex" | "cindy" | "dsh",
+          finalizeId: knowledgeEnd.finalizeId, projectRoot: project.projectRoot, writer,
+        });
       }
     }
     return dispatch;

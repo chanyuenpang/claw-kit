@@ -7,7 +7,7 @@ import {
   getTemplateTaskDoneChoices,
   getTemplateTaskDoneGuidanceRoute,
   getTemplateTaskPlanStartGuidance,
-  resolveSeedPlanTemplate,
+  resolveSeedPlanTemplate, resolvePlanWorkflowTemplate,
 } from "./plan-templates.js";
 import workflowGuidanceConfigJson from "./workflow-guidance.config.json" with { type: "json" };
 import type {
@@ -659,11 +659,7 @@ async function currentTemplateTaskRecommendsPlanStart(params: {
   if (!projectRoot || !plan.templateId?.trim() || !task) {
     return false;
   }
-  const template = await resolveSeedPlanTemplate({
-    projectRoot,
-    templateName: plan.templateId,
-    templateFile: plan.templateFile,
-  });
+  const template = await resolvePlanWorkflowTemplate(projectRoot, plan);
   return getTemplateTaskPlanStartGuidance(template, task.id) !== undefined;
 }
 
@@ -680,12 +676,13 @@ async function applyTemplateTaskDoneGuidance(params: {
     return guidance;
   }
 
-  const template = await resolveSeedPlanTemplate({
-    projectRoot,
-    templateName: plan.templateId,
-    templateFile: plan.templateFile,
-    versionPolicy: "ignore",
-  });
+  let template: Awaited<ReturnType<typeof resolveSeedPlanTemplate>>;
+  try { template = await resolvePlanWorkflowTemplate(projectRoot, plan); }
+  catch (error) {
+    // This is guidance after the business write, not a second source-template permission gate.
+    const reason = error && typeof error === "object" && "code" in error ? String(error.code) : "TEMPLATE_GUIDANCE_UNAVAILABLE";
+    return { ...guidance, notes: [guidance.notes, "Source template guidance unavailable (" + reason + "); canonical work is preserved. Correct template routing only if this operation needs it."].filter(Boolean).join(" ") };
+  }
   let mergedGuidance = guidance;
   const completedTask = completedTaskId === undefined
     ? undefined

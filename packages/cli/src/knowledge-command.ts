@@ -82,7 +82,7 @@ export function claimKnowledgeCommand(jobPath: string, version: string, claimant
       return { reportCapture: { ...queued.reportCapture, status: "captured" as const, capturedAt: receipt.completedAt, receipt } };
     },
   });
-  // DSH returns only its committed receipt, including on the first response.
+  // All trusted hosts return the committed claim materials, including the first response.
   if (job?.claimReceipt) return knowledgeClaimReceiptCommand(jobPath, claimant!, "knowledge.claim");
   const assignments = job ? buildKnowledgeWriterAssignments(job) : [];
   const templatePath = job ? path.join(path.dirname(jobPath), job.finalizeId + ".assignments.json") : undefined;
@@ -185,7 +185,7 @@ export function doneKnowledgeCommand(input: KnowledgeCompletionCredentials & {
     const cleanup = removeKnowledgeAssignmentTemplate(input.jobPath, job.finalizeId);
     if (cleanup.error) postCommitFailures.push({ effect: "knowledge.template-cleanup", message: cleanup.error });
   }
-  return { ok: true, ...(input.status === "succeeded" ? { completed: true } : { failed: true }),
+  return { ok: true, command: "knowledge.done", ...(input.status === "succeeded" ? { completed: true } : { failed: true }),
     alreadyDone: terminal.alreadyDone, finalizeId: job.finalizeId,
     ...(postCommitFailures.length ? { postCommitFailures, completionEffect: "committed" } : {}) };
 }

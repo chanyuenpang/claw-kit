@@ -89,7 +89,25 @@ export type ClawSessionCommand =
 export type ClawSessionCommandResult<T extends ClawSessionCommand> =
   T extends { operation: "plan.show"; input: { simple: true } }
     ? SessionSimplePlanView
-    : unknown;
+    : T extends { operation: `knowledge.${string}` } ? ClawKnowledgeResult : unknown;
+
+/** Owner-produced business payload. Adapters preserve additive fields, including claim material. */
+export type ClawKnowledgeResult = {
+  ok: boolean;
+  command: `knowledge.${string}`;
+  finalizeId?: string;
+  claimed?: boolean;
+  claimToken?: string;
+  jobPath?: string;
+  templatePath?: string;
+  assignments?: unknown[];
+  completed?: boolean;
+  alreadyDone?: boolean;
+  failed?: boolean;
+  terminal?: boolean;
+  matches?: boolean;
+  [field: string]: unknown;
+};
 
 export type ClawHostActionV1 =
   | {
@@ -124,6 +142,9 @@ export type ClawPostCommitEffectV1 = {
 
 export type ClawKnowledgeDispatchV1 = {
   schemaVersion: 1;
+  /** Additive fields; legacy envelopes may omit them. New dispatches always carry the host. */
+  kind?: "knowledge.finalize";
+  host?: "codex" | "cindy" | "dsh" | "opencode";
   finalizeId: string;
   preferReuse: boolean;
   projectRoot?: string;

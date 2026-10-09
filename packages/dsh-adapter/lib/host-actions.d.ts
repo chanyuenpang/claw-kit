@@ -80,8 +80,9 @@ export declare function consumeHostActions(actions: unknown[] | undefined, goals
     failures: HostEffectFailure[];
 };
 /**
- * Whitelist-only compact view of a daemon `claw/execute` output — the same
+ * Compact workflow view of a daemon `claw/execute` output — the same
  * visible-field contract the Codex driver applies (stage, plan summary,
  * next steps, notes, next task, command hints, askUser, plan).
+ * Knowledge payloads belong to the business owner and pass through intact.
  */
 export declare function compactClawOutput(output: Record<string, unknown> | undefined, operation?: string): Record<string, JsonValue>;

@@ -43,6 +43,72 @@ import {
   createNpmShim,
   createClawUpdateNpmShim,
 } from "./cli-test-support.js";
+import { registerReportCollector } from "../dist/report-collector-registry.js";
+
+test("Codex driver claims and completes with child identity and preserves receipt material", async () => {
+  const root = createFixture("codex-finalizer-driver");
+  let session = "codex-parent";
+  const env = () => ({ CODEX_THREAD_ID: session, CLAW_SESSION_ID: "" });
+  runClaw(["init", "--name", "Driver finalizer", "--planning", "false"], root, env());
+  const collector = path.join(root, "collector.cjs");
+  const captures = path.join(root, "capture-count");
+  fs.writeFileSync(collector, `const fs = require('node:fs'); const r = JSON.parse(fs.readFileSync(0,'utf8')); fs.appendFileSync(${JSON.stringify(captures)},'1'); fs.writeFileSync(r.stagingReportPath,'captured\\n');`);
+  registerReportCollector(root, { schemaVersion: 1, contractVersion: 1, host: "codex", collectorVersion: "fixture", executable: process.execPath, args: [collector] });
+  const envelope = runClaw(["codex", "driver"], root, env());
+  const runner = (0, eval)(`(${String(envelope.source)})`);
+  const calls: string[][] = [];
+  const tools = { exec_command: async ({ cmd }: { cmd: string }) => {
+    const match = /^claw codex invoke ([a-f0-9]+)$/.exec(cmd);
+    assert.ok(match);
+    const raw = runClawRaw(["codex", "invoke", match[1]!], root, env());
+    calls.push([session, cmd]);
+    return { output: raw.stdout, stderr: raw.stderr };
+  }, get_goal: async () => ({ goal: null }), create_goal: async () => {}, update_goal: async () => {} };
+  const invoke = (argv: string[]) => runner({ argv, workdir: root }, { tools, text: () => {} });
+  await invoke(["plan", "create", "--title", "Parent"]);
+  const ended = await invoke(["plan", "done", "--retrospective", "Ready for finalization"]);
+  assert.equal(ended.knowledgeDispatch.host, "codex");
+  assert.match(ended.knowledgeDispatch.prompt, /\[claw host\]\nplatform: codex/);
+  const id = ended.knowledgeDispatch.finalizeId;
+  session = "codex-child";
+  const bootstrapLine = ended.knowledgeDispatch.prompt.split("\n").find((line: string) => line.startsWith("First driver argv: "));
+  const delegate = await invoke(JSON.parse(bootstrapLine.slice("First driver argv: ".length)));
+  assert.equal(delegate.planStatus, "process.active");
+  assert.equal(JSON.parse(fs.readFileSync(delegate.planPath, "utf8")).tasks.length, 3, JSON.stringify(delegate));
+  const wrongHost = runClawExpectFailure(["knowledge", "claim", "--project-root", root, "--finalize-id", id], root, { ...env(), CLAW_HOST: "" });
+  assert.equal((wrongHost.error as JsonRecord).code, "KNOWLEDGE_CLAIM_OWNER_MISMATCH");
+  assert.equal(fs.existsSync(captures), false);
+  const claim = await invoke(["knowledge", "claim", "--project-root", root, "--finalize-id", id]);
+  assert.equal(claim.claimed, true, JSON.stringify(claim));
+  assert.ok(claim.templatePath);
+  assert.ok(claim.reportPath);
+  assert.ok(claim.assignments.length);
+  const jobBefore = fs.readFileSync(claim.jobPath, "utf8");
+  assert.equal(JSON.parse(jobBefore).delegateWorkflow?.planPath, delegate.planPath, jobBefore);
+  const receipt = await invoke(["knowledge", "claim-receipt", "--project-root", root, "--finalize-id", id]);
+  assert.equal(receipt.claimToken, claim.claimToken);
+  assert.equal(receipt.jobPath, claim.jobPath);
+  assert.equal(fs.readFileSync(claim.jobPath, "utf8"), jobBefore);
+  assert.equal(fs.readFileSync(captures, "utf8"), "1");
+  const claimedTask = await invoke(["task", "done", "--id", "1"]);
+  assert.equal(claimedTask.planPath, delegate.planPath, JSON.stringify(claimedTask));
+  assert.equal(JSON.parse(fs.readFileSync(delegate.planPath, "utf8")).tasks.filter((task: { status: string }) => task.status !== "done").length, 2);
+  const assignment = await invoke(["subplan", "create", "--template-file", claim.templatePath]);
+  assert.ok(assignment.planPath, JSON.stringify(assignment));
+  const assignmentPlan = JSON.parse(fs.readFileSync(assignment.planPath, "utf8"));
+  for (const task of assignmentPlan.tasks) await invoke(["task", "done", "--id", String(task.id)]);
+  const done = await invoke(["knowledge", "done", "--job", claim.jobPath, "--claim-token", claim.claimToken, "--status", "succeeded", "--result", "Verified"]);
+  assert.equal(done.command, "knowledge.done");
+  assert.equal(done.completed, true, JSON.stringify(done));
+  assert.equal(done.delegateClosed, true, JSON.stringify(done));
+  assert.equal(JSON.parse(fs.readFileSync(delegate.planPath, "utf8")).status, "end.completed");
+  const doneReceipt = await invoke(["knowledge", "done-receipt", "--job", claim.jobPath, "--claim-token", claim.claimToken]);
+  assert.equal(doneReceipt.terminal, true, JSON.stringify(doneReceipt));
+  const job = JSON.parse(fs.readFileSync(claim.jobPath, "utf8"));
+  assert.equal(job.attempts, 1);
+  assert.equal(job.status, "succeeded");
+  assert.equal(calls.length, 9 + assignmentPlan.tasks.length);
+});
 
 
 test("codex driver returns known owner rejection as data without running goal effects", async () => {
@@ -67,9 +133,9 @@ test("cli codex driver returns an executable versioned source envelope", async (
   const root = createFixture("codex-driver-envelope");
   const envelope = runClaw(["codex", "driver"], root, { CLAW_HOST: "" });
   assert.equal(envelope.command, "codex.driver");
-  assert.equal(envelope.driverVersion, 26);
+  assert.equal(envelope.driverVersion, 27);
   assert.equal(envelope.hostActionSchemaVersion, 1);
-  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v26:s1");
+  assert.equal(envelope.cacheKey, "claw-kit:codex-driver:v27:s1");
   assert.match(String(envelope.sha256), /^[a-f0-9]{64}$/);
 
   const runner = (0, eval)(`(${String(envelope.source)})`) as (
@@ -137,7 +203,7 @@ test("cli codex driver returns an executable versioned source envelope", async (
     planStatus: "end.completed",
     mutationId: "mutation",
     nextsteps: ["Start the next task through using-claw-kit."],
-    notes: "Codex route: every claw plan, task, or subplan mutation must use the fixed code-mode driver. commandHints provide argv syntax only; do not run them directly in the shell. Keep the route in view.",
+    notes: "Codex route: every claw workflow and knowledge lifecycle/receipt operation must use the fixed code-mode driver. commandHints provide argv syntax only; do not run them directly in the shell. Keep the route in view.",
     achievement: mutationResult.achievement,
     knowledgeDispatch: mutationResult.knowledgeDispatch,
   });
@@ -191,7 +257,7 @@ test("cli codex driver returns an executable versioned source envelope", async (
   assert.deepEqual(taskGuidance, {
     stage: "execution",
     nextsteps: ["Continue the current task."],
-    notes: "Codex route: every claw plan, task, or subplan mutation must use the fixed code-mode driver. commandHints provide argv syntax only; do not run them directly in the shell. Record completion only after the task is complete.",
+    notes: "Codex route: every claw workflow and knowledge lifecycle/receipt operation must use the fixed code-mode driver. commandHints provide argv syntax only; do not run them directly in the shell. Record completion only after the task is complete.",
   });
 
   const execCalls: Array<[string, unknown]> = [];
@@ -223,7 +289,7 @@ test("cli codex driver returns an executable versioned source envelope", async (
   assert.deepEqual(taskDoneActual, {
     ok: true,
     command: "task.done",
-    notes: "Codex route: every claw plan, task, or subplan mutation must use the fixed code-mode driver. commandHints provide argv syntax only; do not run them directly in the shell.",
+    notes: "Codex route: every claw workflow and knowledge lifecycle/receipt operation must use the fixed code-mode driver. commandHints provide argv syntax only; do not run them directly in the shell.",
   });
 });
 

@@ -10,7 +10,7 @@ import {
   type TemplateGuidanceRoute,
   type TemplateTaskGuidance,
 } from "./templates/plans/default.js";
-import type { KnowledgeWriterConfig, PlanReference, PlanRequirements, PlanRetrospective, PlanStatus, TemplateConfigOverride } from "./types.js";
+import type { PlanDocument, KnowledgeWriterConfig, PlanReference, PlanRequirements, PlanRetrospective, PlanStatus, TemplateConfigOverride } from "./types.js";
 
 export type ResolvedPlanTemplate = {
   id: string;
@@ -503,6 +503,15 @@ function normalizePlanLikeTemplate(
     source: meta.source,
     templatePath: meta.templatePath,
   };
+}
+
+/** Resolve initialized routes from the canonical plan, with legacy source fallback only. */
+export async function resolvePlanWorkflowTemplate(projectRoot: string, plan: PlanDocument): Promise<ResolvedPlanTemplate> {
+  if (plan.templateGuidance !== undefined) return {
+    id: plan.templateId ?? "compiled", version: TEMPLATE_DRIVER_VERSION, status: plan.status, source: "builtin",
+    tasks: plan.tasks.map(task => ({ id: task.id, title: task.title, status: task.status, ...(plan.templateGuidance?.[String(task.id)] ? { guidance: plan.templateGuidance[String(task.id)] } : {}) })),
+  };
+  return resolveSeedPlanTemplate({ projectRoot, templateName: plan.templateId, templateFile: plan.templateFile, versionPolicy: "ignore" });
 }
 
 export function getTemplateTaskDoneChoices(template: ResolvedPlanTemplate, taskId: number): Record<string, TemplateGuidanceRoute> | undefined {

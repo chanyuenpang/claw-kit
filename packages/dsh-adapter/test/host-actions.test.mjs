@@ -3,6 +3,13 @@ import assert from "node:assert/strict";
 import { compactClawOutput, consumeHostActions } from "../lib/host-actions.js";
 import { createAgentGuidanceStore, projectTodos } from "../lib/index.js";
 
+test("knowledge projection preserves owner claim material and additive receipt fields", () => {
+  for (const command of ["knowledge.claim", "knowledge.claim.receipt", "knowledge.done", "knowledge.done.receipt"]) {
+    const result = { ok: true, command, finalizeId: "id", jobPath: "job", reportPath: "report", writer: { model: "model" }, extraReceipt: { version: 2 } };
+    assert.deepEqual(compactClawOutput({ ...result, hostActions: [] }), result);
+  }
+});
+
 
 test("projectTodos treats an explicit empty plan as a dock clear", () => {
   const projection = { schemaVersion: 1, id: "clear", tool: "update_plan", input: { plan: [] } };
@@ -242,13 +249,13 @@ test("compactClawOutput does not add DSH route guidance to read-only operations"
   assert.equal("notes" in visible, false);
 });
 
-test("compactClawOutput retains claim inputs and done receipts without leaking job internals", () => {
+test("compactClawOutput retains the complete claim and done business result", () => {
   const assignments = [{ index: 0, kind: "builtin", prompt: "execute" }];
   const claim = compactClawOutput({ command: "knowledge.claim", claimed: true, finalizeId: "id", claimToken: "secret", templatePath: "assignments.json", assignments, jobPath: "private", writer: { model: "x" } });
-  assert.deepEqual(claim, { ok: true, command: "knowledge.claim", claimed: true, finalizeId: "id", claimToken: "secret", templatePath: "assignments.json", assignments });
+  assert.deepEqual(claim, { ok: true, command: "knowledge.claim", claimed: true, finalizeId: "id", claimToken: "secret", templatePath: "assignments.json", assignments, jobPath: "private", writer: { model: "x" } });
   assert.deepEqual(compactClawOutput({ command: "knowledge.claim", claimed: false }), { ok: true, command: "knowledge.claim", claimed: false });
   assert.deepEqual(compactClawOutput({ command: "knowledge.done", completed: true, alreadyDone: false, finalizeId: "id", jobPath: "private" }),
-    { ok: true, command: "knowledge.done", finalizeId: "id", completed: true, alreadyDone: false });
+    { ok: true, command: "knowledge.done", finalizeId: "id", completed: true, alreadyDone: false, jobPath: "private" });
   assert.deepEqual(compactClawOutput({ failed: true, alreadyDone: true, finalizeId: "id" }, "knowledge.done"),
     { ok: true, command: "knowledge.done", finalizeId: "id", failed: true, alreadyDone: true });
 });
@@ -261,7 +268,7 @@ test("compactClawOutput keeps runtime closeout and deferred recovery visible", (
   const deferred = compactClawOutput({ completed: true, delegateCloseDeferred: true, delegateCloseError: error, jobPath: "private" }, "knowledge.done");
   assert.equal(deferred.delegateCloseDeferred, true);
   assert.deepEqual(deferred.delegateCloseError, error);
-  assert.equal(deferred.jobPath, undefined);
+  assert.equal(deferred.jobPath, "private");
 });
 
 test("compactClawOutput handles undefined output", () => {

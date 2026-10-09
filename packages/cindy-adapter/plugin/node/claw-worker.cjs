@@ -132,6 +132,8 @@ const OPERATION_CATALOG = {
       mutates: true,
       parameters: objectParameters({ finalizeId: stringParameter('Finalization id returned by plan completion.') }, ['finalizeId']),
     },
+    { name: 'knowledge.claim.receipt', description: 'Recover the authenticated claim materials without claiming again.', mutates: false,
+      parameters: objectParameters({ finalizeId: stringParameter('Exact finalization id.') }, ['finalizeId']) },
     { name: 'knowledge.done.receipt', description: 'Read the authenticated canonical completion result without mutation.', mutates: false,
       parameters: objectParameters({ finalizeId: stringParameter('Exact finalization id.'), claimToken: stringParameter('Optional legacy credential.'),
         expectedStatus: { type: 'string', enum: ['succeeded', 'failed'] }, expectedResult: stringParameter('Expected outcome text for receipt matching.') }, ['finalizeId']) },
@@ -481,6 +483,8 @@ function sessionRequest(name, args, workdir) {
       ...(typeof args.template === 'string' ? { templateName: args.template } : {}),
       ...(typeof args.templateFile === 'string' ? { templateFile: path.resolve(args.templateFile) } : {}),
     } };
+    case 'knowledge.claim':
+    case 'knowledge.claim.receipt':
     case 'knowledge.done':
     case 'knowledge.done.receipt': return { operation: name, input: { ...args } };
     case 'plan.leave': return { operation: name, input: {} };
@@ -836,33 +840,9 @@ function cindyAgentResult(output, operation) {
   if (operation === 'search') {
     return { results: Array.isArray(output.results) ? output.results : [] };
   }
-  if (operation === 'knowledge.claim') {
-    return {
-      claimed: output.claimed === true,
-      ...(typeof output.finalizeId === 'string' ? { finalizeId: output.finalizeId } : {}),
-      ...(typeof output.claimToken === 'string' ? { claimToken: output.claimToken } : {}),
-      ...(Array.isArray(output.assignments) ? { assignments: output.assignments } : {}),
-      ...(typeof output.templatePath === 'string' ? { templatePath: output.templatePath } : {}),
-    };
-  }
-  if (operation === 'knowledge.done.receipt') return Object.fromEntries(['finalizeId', 'claimId', 'status', 'canonicalStatus', 'terminal', 'finishedAt', 'resultDigest', 'matches', 'postCommitEffectsVerified'].filter(key => output[key] !== undefined).map(key => [key, output[key]]));
-  if (operation === 'knowledge.done') {
-    return {
-      ...(output.completionRecovered === true ? { completionRecovered: true } : {}),
-      ...(typeof output.postCommitEffectsVerified === "boolean" ? { postCommitEffectsVerified: output.postCommitEffectsVerified } : {}),
-      ...(Array.isArray(output.postCommitFailures) ? { postCommitFailures: output.postCommitFailures } : {}),
-      ...(output.completionEffect ? { completionEffect: output.completionEffect } : {}),
-      ...(typeof output.finalizeId === 'string' ? { finalizeId: output.finalizeId } : {}),
-      ...(typeof output.status === 'string' ? { status: output.status } : {}),
-      ...(output.completed === true ? { completed: true } : {}),
-      ...(output.failed === true ? { failed: true } : {}),
-      ...(typeof output.alreadyDone === "boolean" ? { alreadyDone: output.alreadyDone } : {}),
-      ...(typeof output.delegateClosed === "boolean" ? { delegateClosed: output.delegateClosed } : {}),
-      ...(output.delegateCloseDeferred ? { delegateCloseDeferred: true } : {}),
-      ...(output.delegateCloseError ? { delegateCloseError: output.delegateCloseError } : {}),
-      ...(output.templateCleanupDeferred ? { templateCleanupDeferred: output.templateCleanupDeferred } : {}),
-    };
-  }
+  // Preserve shared business results, including additive receipt/material and
+  // deferred-closeout fields. Only plan presentation needs a compact projection.
+  if (operation.startsWith('knowledge.')) return output;
   if (operation === 'plan.show') {
     const plan = output.plan && typeof output.plan === 'object' ? output.plan : {};
     const planStatus = typeof plan.status === 'string' ? plan.status : '';
@@ -1181,51 +1161,7 @@ rpcInput.on('line', async (line) => {
       let envelope = {};
       let completedSession;
       let completedOrdinal;
-      if (operation === 'knowledge.claim') {
-        const finalizeId = requiredString(operationArgs, 'finalizeId');
-        const located = await runClaw([
-          'knowledge', 'wait',
-          '--project-root', params.workdir,
-          '--finalize-id', finalizeId,
-          '--timeout-ms', '0',
-          '--host', 'cindy',
-        ], params.workdir, undefined, 10000, params.sessionId);
-        const jobPath = typeof located.output?.jobPath === 'string' ? located.output.jobPath : '';
-        let job;
-        try { job = JSON.parse(fs.readFileSync(jobPath, 'utf8')); } catch {
-          reply(request.id, {
-            ok: false,
-            operation,
-            errorCode: located.errorCode || 'KNOWLEDGE_JOB_UNAVAILABLE',
-            reason: located.reason || 'Knowledge finalization job is unavailable.',
-          });
-          return;
-        }
-        if (job.finalizeId !== finalizeId) {
-          reply(request.id, {
-            ok: false,
-            operation,
-            errorCode: 'KNOWLEDGE_JOB_MISMATCH',
-            reason: 'Knowledge finalization job does not match the dispatched finalizer.',
-          });
-          return;
-        }
-        const claimed = await runClaw([
-          'knowledge', 'claim',
-          '--job', jobPath,
-          '--host', 'cindy',
-        ], params.workdir, undefined, 30000, params.sessionId);
-        if (!claimed.ok) {
-          reply(request.id, {
-            ok: false,
-            operation,
-            errorCode: claimed.errorCode || 'KNOWLEDGE_CLAIM_FAILED',
-            reason: claimed.reason || 'Knowledge finalization claim failed.',
-          });
-          return;
-        }
-        output = claimed.output;
-      } else if (operation === 'knowledge.complete') {
+      if (operation === 'knowledge.complete') {
         const finalizeId = requiredString(operationArgs, 'finalizeId');
         const resultText = requiredString(operationArgs, 'result');
         const located = await runClaw([
@@ -1263,33 +1199,40 @@ rpcInput.on('line', async (line) => {
         output = result.output;
       } else {
         const mapped = sessionRequest(operation, operationArgs, params.workdir);
-        const session = await ensureSession(params.sessionId, params.workdir, ["knowledge.done", "knowledge.done.receipt"].includes(operation));
+        const session = await ensureSession(params.sessionId, params.workdir, ["knowledge.done", "knowledge.done.receipt", "knowledge.claim.receipt"].includes(operation));
         const command = session.request(mapped);
         const ordinal = session.requestsStarted;
         let response;
         try { response = await command; }
         catch (error) {
-          if (operation !== 'knowledge.done' || error?.outcome !== 'unknown') throw error;
-          releaseSession(session.workdir + '\0' + session.sessionId, session, 'completion-unknown');
+          if (!['knowledge.claim', 'knowledge.done'].includes(operation) || error?.outcome !== 'unknown') throw error;
+          releaseSession(session.workdir + '\0' + session.sessionId, session, 'knowledge-unknown');
           const original = mapped.input;
           let receipt;
           try {
             const recovery = await ensureSession(params.sessionId, params.workdir, true);
-            receipt = await recovery.request({ operation: 'knowledge.done.receipt', input: {
-            finalizeId: original.finalizeId, expectedStatus: original.status,
-            expectedResult: original.status === 'succeeded' ? original.result : original.error,
-            ...(original.claimToken !== undefined ? { claimToken: original.claimToken } : {}),
-          } });
-            if (receipt.ok === false) { const detail = serializeFailure(receipt.error ?? receipt, { fallbackCode: "COMPLETION_RECEIPT_FAILED", operation: "knowledge.done.receipt", origin: "cindy" }); throw Object.assign(new Error(detail.message), detail); }
+            receipt = await recovery.request(operation === 'knowledge.claim'
+              ? { operation: 'knowledge.claim.receipt', input: { finalizeId: original.finalizeId } }
+              : { operation: 'knowledge.done.receipt', input: {
+                  finalizeId: original.finalizeId, expectedStatus: original.status,
+                  expectedResult: original.status === 'succeeded' ? original.result : original.error,
+                  ...(original.claimToken !== undefined ? { claimToken: original.claimToken } : {}),
+                } });
+            if (receipt.ok === false) { const detail = serializeFailure(receipt.error ?? receipt, { fallbackCode: "KNOWLEDGE_RECEIPT_FAILED", operation: operation + ".receipt", origin: "cindy" }); throw Object.assign(new Error(detail.message), detail); }
           } catch (diagnostic) {
             error.diagnostics = [...(Array.isArray(error.diagnostics) ? error.diagnostics : []), serializeFailure(diagnostic, {
-              fallbackCode: 'COMPLETION_RECEIPT_FAILED', origin: 'cindy', operation: 'knowledge.done.receipt', fallbackOutcome: 'unknown' })].slice(0, 3);
+              fallbackCode: 'KNOWLEDGE_RECEIPT_FAILED', origin: 'cindy', operation: operation + '.receipt', fallbackOutcome: 'unknown' })].slice(0, 3);
             throw error;
           }
-          if (receipt.output?.terminal !== true || receipt.output?.matches !== true) throw error;
-          response = { ok: true, output: { command: 'knowledge.done', finalizeId: original.finalizeId,
-            ...(original.status === 'succeeded' ? { completed: true } : { failed: true }),
-            alreadyDone: true, completionRecovered: true, delegateCloseDeferred: true, postCommitEffectsVerified: false } };
+          if (operation === 'knowledge.claim') {
+            if (receipt.output?.claimed !== true) throw error;
+            response = { ok: true, output: { ...receipt.output, command: 'knowledge.claim', claimRecovered: true } };
+          } else {
+            if (receipt.output?.terminal !== true || receipt.output?.matches !== true) throw error;
+            response = { ok: true, output: { command: 'knowledge.done', finalizeId: original.finalizeId,
+              ...(original.status === 'succeeded' ? { completed: true } : { failed: true }),
+              alreadyDone: true, completionRecovered: true, delegateCloseDeferred: true, postCommitEffectsVerified: false } };
+          }
         }
         if (operation === 'plan.done') { completedSession = session; completedOrdinal = ordinal; }
         output = response.output;

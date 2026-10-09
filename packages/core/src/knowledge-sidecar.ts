@@ -146,7 +146,7 @@ export type KnowledgeFinalizationJob = {
   /** Opaque ownership token issued by the exclusive claim operation. */
   claimToken?: string;
   claimedAt?: string;
-  /** Immutable DSH first-claim snapshot; never regenerated on receipt recovery. */
+  /** Immutable first-claim snapshot for every trusted host; never regenerated on recovery. */
   claimReceipt?: KnowledgeClaimReceipt;
   dshExecution?: DshFinalizerExecution;
   /** Immutable claim-time association for optional, host-neutral delegate closeout. */

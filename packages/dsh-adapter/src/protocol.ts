@@ -230,6 +230,7 @@ export function daemonInput(operation: string, args: Record<string, unknown>): u
         ...(str("template_file") !== undefined ? { templateFile: str("template_file") } : {}),
       };
     case "knowledge.claim":
+    case "knowledge.claim.receipt":
       assertKnownArgs(operation, args, ["finalize_id"]);
       if (typeof args.finalize_id !== "string" || !/^[a-f0-9]{64}$/i.test(args.finalize_id)) throw new Error("knowledge.claim requires a 64-character hexadecimal finalize_id");
       return { finalizeId: args.finalize_id };

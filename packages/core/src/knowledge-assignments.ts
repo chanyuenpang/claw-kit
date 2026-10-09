@@ -19,16 +19,30 @@ export type DirectKnowledgeAssignment = KnowledgeWriterAssignment & {
   datedSectionsToKeep?: number;
 };
 
-export type KnowledgeDelegateDispatch = {
+export type KnowledgeFinalizationTask = {
   schemaVersion: 1;
+  kind: "knowledge.finalize";
+  /** Supplied by the current adapter; this is routing information, not a claim credential. */
+  host: "codex" | "dsh" | "cindy" | "opencode";
   finalizeId: string;
+  projectRoot: string;
+  writer?: KnowledgeWriterConfig | null;
+};
+
+export type KnowledgeDelegateDispatch = KnowledgeFinalizationTask & {
   preferReuse: boolean;
-  projectRoot?: string;
   leadInstruction?: string;
   model?: string;
   reasoningEffort?: NonNullable<KnowledgeWriterConfig["reasoningEffort"]>;
   prompt: string;
 };
+
+/** Domain task only. Adapters own executable instructions and transport identity. */
+export function buildKnowledgeFinalizationTask(
+  input: Omit<KnowledgeFinalizationTask, "schemaVersion" | "kind">,
+): KnowledgeFinalizationTask {
+  return { schemaVersion: 1, kind: "knowledge.finalize", ...input, projectRoot: path.resolve(input.projectRoot) };
+}
 
 export const KNOWLEDGE_DISPATCH_LEAD_INSTRUCTION = [
   "Required, non-skippable closeout: hand off this knowledge-finalization job through the current Host's designated route now.",
@@ -38,98 +52,15 @@ export const KNOWLEDGE_DISPATCH_LEAD_INSTRUCTION = [
 ].join(" ");
 
 export function knowledgeDelegateTemplatePath(): string {
-  return path.join(
-    path.dirname(fileURLToPath(import.meta.url)),
-    "resources",
-    "delegate-writer",
-    "TEMPLATE.json",
-  );
-}
-
-export function buildKnowledgeDelegateDispatch(input: {
-  finalizeId: string;
-  projectRoot?: string;
-  writer?: KnowledgeWriterConfig | null;
-  leadInstruction?: string;
-}): KnowledgeDelegateDispatch {
-  const templatePath = knowledgeDelegateTemplatePath();
-  const delegateTitle = `knowledge-finalizer-${input.finalizeId.slice(0, 12)}`;
-  const projectRoot = input.projectRoot ? path.resolve(input.projectRoot) : undefined;
-  return {
-    schemaVersion: 1,
-    finalizeId: input.finalizeId,
-    preferReuse: false,
-    ...(projectRoot ? { projectRoot } : {}),
-    ...(input.leadInstruction ? { leadInstruction: input.leadInstruction } : {}),
-    ...(input.writer?.model ? { model: input.writer.model } : {}),
-    ...(input.writer?.reasoningEffort ? { reasoningEffort: input.writer.reasoningEffort } : {}),
-    prompt: [
-      "Execute this claw knowledge-finalization job directly and unattended.",
-      ...(projectRoot ? [
-        `Project root: ${JSON.stringify(projectRoot)}`,
-        "If your current working directory differs from this project root, use this project root as the working directory for every workflow and knowledge command, including the first plan creation.",
-        "For knowledge claim, pass this exact absolute path to --project-root; do not substitute the inherited working directory or the auxiliary workflow directory.",
-      ] : []),
-      `First run: claw plan create --template-file "${templatePath}" --title "${delegateTitle}"`,
-      "Then follow the returned workflowGuidance until the non-capturing auxiliary plan is complete.",
-      `Finalization id: ${input.finalizeId}`,
-      "Do not invoke a user-facing delegate skill, background finalizer, writer proxy, or collaboration subagent.",
-    ].join("\n"),
-  };
-}
-
-/** DSH has a native claw_run route; its finalizer never invokes shell claw commands. */
-export function buildDshKnowledgeDispatch(input: {
-  finalizeId: string;
-  writer?: KnowledgeWriterConfig | null;
-}): KnowledgeDelegateDispatch {
-  const templatePath = path.join(path.dirname(fileURLToPath(import.meta.url)), "resources", "dsh-delegate-writer", "TEMPLATE.json");
-  // Reused members share one session namespace: no truncated per-job plan identity.
-  const delegateTitle = `knowledge-finalizer-${input.finalizeId}`;
-  return {
-    schemaVersion: 1, finalizeId: input.finalizeId, preferReuse: true,
-    ...(input.writer?.model ? { model: input.writer.model } : {}),
-    ...(input.writer?.reasoningEffort ? { reasoningEffort: input.writer.reasoningEffort } : {}),
-    prompt: [
-      "Execute this already-created claw knowledge-finalization job unattended using only claw_run for workflow and knowledge operations.",
-      `First call claw_run({operation: "plan.create", args: {title: "${delegateTitle}", template_file: ${JSON.stringify(templatePath)}}}).`,
-      "Follow returned workflow guidance. Session focus supplies subplan parents; the runtime owns executor selection, durable results and safe delegate closeout.",
-      `Finalization id: ${input.finalizeId}`,
-      "Translate any claw CLI commandHints or assignment-template lifecycle wording into the corresponding claw_run operation and snake_case args; never use shell or CLI claw commands and never start another finalizer or delegate agent.",
-    ].join("\n"),
-  };
+  return path.join(path.dirname(fileURLToPath(import.meta.url)), "resources", "delegate-writer", "TEMPLATE.json");
 }
 
 export function cindyKnowledgeDelegateTemplatePath(): string {
-  return path.join(
-    path.dirname(fileURLToPath(import.meta.url)),
-    "resources",
-    "cindy-delegate-writer",
-    "TEMPLATE.json",
-  );
+  return path.join(path.dirname(fileURLToPath(import.meta.url)), "resources", "cindy-delegate-writer", "TEMPLATE.json");
 }
 
-export function buildKnowledgeAtomicDispatch(input: {
-  finalizeId: string;
-  writer?: KnowledgeWriterConfig | null;
-}): KnowledgeDelegateDispatch {
-  const templatePath = cindyKnowledgeDelegateTemplatePath();
-  const delegateTitle = `knowledge-finalizer-${input.finalizeId.slice(0, 12)}`;
-  return {
-    schemaVersion: 1,
-    finalizeId: input.finalizeId,
-    preferReuse: false,
-    leadInstruction: KNOWLEDGE_DISPATCH_LEAD_INSTRUCTION,
-    ...(input.writer?.model ? { model: input.writer.model } : {}),
-    ...(input.writer?.reasoningEffort ? { reasoningEffort: input.writer.reasoningEffort } : {}),
-    prompt: [
-      "Execute this already-created claw knowledge-finalization job unattended through the claw-kit Cindy Ghost tools.",
-      `Use the claw-kit Ghost plan.create operation to create a non-capturing auxiliary plan in your own session titled "${delegateTitle}" with templateFile "${templatePath}".`,
-      "The template owns the claim, assignment subplan, and terminal acknowledgement stages.",
-      `Finalization id: ${input.finalizeId}`,
-      "Use Ghost operations rather than the claw CLI, and do not invoke another finalizer or delegate agent.",
-    ].join("\n"),
-  };
+export function dshKnowledgeDelegateTemplatePath(): string {
+  return path.join(path.dirname(fileURLToPath(import.meta.url)), "resources", "dsh-delegate-writer", "TEMPLATE.json");
 }
 
 export function buildKnowledgeWriterAssignments(

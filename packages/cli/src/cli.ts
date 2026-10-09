@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { buildKnowledgeDispatch } from "./knowledge-dispatch.js";
 
 import fs from "node:fs";
 import os from "node:os";
@@ -11,10 +12,6 @@ import { spawn, spawnSync } from "node:child_process";
 import {
   buildDirectWorkflowGuidance,
   appendKnowledgeTaskConclusions,
-  buildKnowledgeAtomicDispatch,
-  buildDshKnowledgeDispatch,
-  buildKnowledgeDelegateDispatch,
-  KNOWLEDGE_DISPATCH_LEAD_INSTRUCTION,
   buildKnowledgeAssignmentTemplate,
   buildDirectKnowledgeAssignments,
   buildKnowledgeWriterAssignments,
@@ -88,7 +85,7 @@ import {
   type KnowledgeFinalizationJob,
   type KnowledgeDelegateDispatch,
 } from "@veewo/claw-core";
-import { buildCodexDriverEnvelope } from "./codex-driver.js";
+import { buildCodexDriverEnvelope, isCodexWorkflowArgv } from "./codex-driver.js";
 import { buildCodexHostActions } from "./codex-host-actions.js";
 import { SessionCommandExecutor } from "./session-command.js";
 import { SessionRegistryV2 } from "./session-registry-v2.js";
@@ -561,6 +558,16 @@ const COMMAND_HELP: Record<string, HelpNode> = {
           { flag: "--error <text>", detail: "Required when status is failed." },
         ],
       },
+      "claim-receipt": {
+        usage: ["{script} knowledge claim-receipt --project-root <path> --finalize-id <id>", "{script} knowledge claim-receipt --job <path>"],
+        description: "Read the authenticated claim materials through the current session without claiming again or collecting reports.",
+        summary: "Recover a claim receipt; never replay an unknown claim.",
+        options: [
+          { flag: "--job <path>", detail: "Exact finalization job path." },
+          { flag: "--project-root <path>", detail: "Project that owns the job." },
+          { flag: "--finalize-id <id>", detail: "Finalization id used with --project-root." },
+        ],
+      },
       "done-receipt": {
         usage: ["{script} knowledge done-receipt --job <path> [--claim-token <token>] [--expected-status succeeded|failed] [--expected-result <text>]"],
         description: "Read authenticated canonical completion state without expiry, focus or completion effects.",
@@ -942,17 +949,10 @@ async function runCodex(args: string[]): Promise<void> {
       try { registerCollector(); }
       catch { process.stderr.write(JSON.stringify({ code: "CODEX_COLLECTOR_REGISTRATION_DEFERRED" }) + "\n"); }
     };
-    if (
-      !Array.isArray(invocation)
-      || invocation.length === 0
-      || invocation.some((value) => typeof value !== "string")
-      || (!["plan", "task", "subplan"].includes(invocation[0] as string)
-        && !(invocation[0] === "context" && invocation.length === 1))
-      || invocation.some((value) => value === "--host")
-    ) {
+    if (!isCodexWorkflowArgv(invocation)) {
       throw new ClawError(
         "PROJECT_CONFIG_INVALID",
-        "codex invoke accepts only a structured context, plan, task, or subplan argv without --host.",
+        "codex invoke accepts structured context, workflow or knowledge lifecycle/receipt argv without --host.",
       );
     }
     if (invocation[0] === "context") {
@@ -1545,7 +1545,8 @@ async function runKnowledge(args: string[], effectiveHost?: ClawHost): Promise<v
       });
       return;
     }
-    case "claim": {
+    case "claim":
+    case "claim-receipt": {
       const explicitJobPath = readOptionalFlag(args, "--job");
       const projectRoot = readOptionalFlag(args, "--project-root");
       const finalizeId = readOptionalFlag(args, "--finalize-id");
@@ -1555,7 +1556,7 @@ async function runKnowledge(args: string[], effectiveHost?: ClawHost): Promise<v
       if (!explicitJobPath && (!projectRoot || !finalizeId)) {
         throw new ClawError("PROJECT_CONFIG_INVALID", "knowledge claim requires --job or both --project-root and --finalize-id.");
       }
-      assertNoRemainingArgs(args, "knowledge claim");
+      assertNoRemainingArgs(args, "knowledge " + subcommand);
       const jobPath = explicitJobPath ?? findKnowledgeFinalizationJobPath(
         resolveProjectContext(path.resolve(projectRoot!)),
         finalizeId!,
@@ -1568,9 +1569,12 @@ async function runKnowledge(args: string[], effectiveHost?: ClawHost): Promise<v
         const job = readKnowledgeFinalizationJob(jobPath);
         const envelope = await new SessionCommandExecutor(new SessionRegistryV2()).execute({
           agentSessionId: ownerSessionKey, workdir: process.cwd(), client: { kind: "terminal", host: effectiveHost },
-        }, { operation: "knowledge.claim", input: { finalizeId: job.finalizeId } });
-        printJson({ ...(envelope.output as Record<string, unknown>), ...(envelope.hostActions ? { hostActions: envelope.hostActions } : {}) });
-      } else printJson(claimKnowledgeCommand(jobPath, CLI_VERSION));
+        }, { operation: subcommand === "claim-receipt" ? "knowledge.claim.receipt" : "knowledge.claim", input: { finalizeId: job.finalizeId } });
+        printJson({ ...(envelope.output as Record<string, unknown>), ...(envelope.hostActions ? { hostActions: envelope.hostActions } : {}), ...(envelope.postCommitEffects ? { postCommitEffects: envelope.postCommitEffects } : {}) });
+      } else {
+        if (subcommand === "claim-receipt") throw new ClawError("KNOWLEDGE_COMPLETION_INVALID", "Claim receipt requires trusted session identity.", undefined, { phase: "prepare", outcome: "known", effect: "none" });
+        printJson(claimKnowledgeCommand(jobPath, CLI_VERSION));
+      }
       return;
     }
     case "done": {
@@ -1588,7 +1592,7 @@ async function runKnowledge(args: string[], effectiveHost?: ClawHost): Promise<v
         const envelope = await new SessionCommandExecutor(new SessionRegistryV2()).execute({
           agentSessionId: ownerSessionKey, workdir: process.cwd(), client: { kind: "terminal", host: effectiveHost },
         }, { operation: "knowledge.done", input });
-        printJson({ ...(envelope.output as Record<string, unknown>), ...(envelope.hostActions ? { hostActions: envelope.hostActions } : {}) });
+        printJson({ ...(envelope.output as Record<string, unknown>), ...(envelope.hostActions ? { hostActions: envelope.hostActions } : {}), ...(envelope.postCommitEffects ? { postCommitEffects: envelope.postCommitEffects } : {}) });
         return;
       }
       if (!claimToken) throw new ClawError("KNOWLEDGE_COMPLETION_INVALID", "Standalone knowledge done requires --claim-token; token-free completion requires trusted session identity.", undefined, { phase: "prepare", outcome: "known", effect: "none" });
@@ -2913,7 +2917,8 @@ function runInternalKnowledgeDispatch(args: string[]): void {
   if (queued.host !== "opencode") {
     throw new ClawError("PROJECT_CONFIG_INVALID", "Knowledge dispatch requires an OpenCode-owned writer job.");
   }
-  const dispatch = buildKnowledgeDelegateDispatch({
+  const dispatch = buildKnowledgeDispatch({
+    host: "opencode",
     finalizeId: queued.finalizeId,
     projectRoot: queued.projectRoot,
     writer: queued.writer,
@@ -3426,28 +3431,6 @@ function readJson<T>(filePath: string): T {
 
 function stripBom(content: string): string {
   return content.charCodeAt(0) === 0xfeff ? content.slice(1) : content;
-}
-
-function buildKnowledgeDispatch(input: {
-  host: "codex" | "cindy" | "dsh";
-  finalizeId: string;
-  projectRoot: string;
-  writer?: KnowledgeFinalizationJob["writer"];
-}): KnowledgeDelegateDispatch {
-  // Cindy uses its Orca atomic dispatch; DSH uses native claw_run inside its
-  // spawned writer; Codex retains the CLI delegate route. The hostless
-  // standard flow never reaches this builder: it rejects the subagent policy
-  // at configuration time and uses the background closeout chain instead.
-  if (input.host === "dsh") return buildDshKnowledgeDispatch(input);
-  if (resolveHostIntegrationProfile(input.host)?.usesAtomicKnowledgeDispatch === true) {
-    return buildKnowledgeAtomicDispatch(input);
-  }
-  return buildKnowledgeDelegateDispatch({
-    finalizeId: input.finalizeId,
-    projectRoot: input.projectRoot,
-    writer: input.writer,
-    ...(input.host === "codex" ? { leadInstruction: KNOWLEDGE_DISPATCH_LEAD_INSTRUCTION } : {}),
-  });
 }
 
 function compactPlanCommandResult(

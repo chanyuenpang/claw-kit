@@ -133,6 +133,8 @@ export type PlanTask = {
 export type PlanDocument = {
   title: string;
   templateId?: string;
+  /** Compiled workflow routes owned by this plan; source template is initialization input only. */
+  templateGuidance?: Record<string, import("./templates/plans/default.js").TemplateTaskGuidance>;
   templateFile?: string;
   configOverride?: TemplateConfigOverride;
   status: PlanStatus;

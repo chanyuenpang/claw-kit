@@ -97,7 +97,7 @@ test("Codex routed reference preserves lifecycle and the exact mutation bridge",
   assert.match(entry, /Keep harness mechanics out of normal replies/);
   assert.match(host, /argv: \["plan", "create", "<title>"\]/);
   assert.match(host, /```javascript[\s\S]*runClawPlanMutation[\s\S]*```/);
-  assert.match(host, /claw-kit:codex-driver:v26:s1/);
+  assert.match(host, /claw-kit:codex-driver:v27:s1/);
   assert.match(host, /typeof envelope\?\.source !== "string"/);
   assert.doesNotMatch(host, /npm install --global @veewo\/claw/);
   assert.doesNotMatch(host, /CLI repair failed/);

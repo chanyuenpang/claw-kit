@@ -1,5 +1,6 @@
+import { buildKnowledgeDispatch } from "./knowledge-dispatch.js";
 import path from "node:path";
-import { buildDshKnowledgeDispatch, listKnowledgeFinalizationJobs, readKnowledgeFinalizationJob,
+import { listKnowledgeFinalizationJobs, readKnowledgeFinalizationJob,
   resolveProjectContext, type DshFinalizerExecution, type KnowledgeDelegateDispatch } from "@veewo/claw-core";
 
 /** Inspect canonical queued jobs without changing the business command or job. */
@@ -18,7 +19,7 @@ export function pendingDshKnowledgeDispatches(cwd: string, parentSessionId: stri
         || !job.expiresAt || !Number.isFinite(Date.parse(job.expiresAt)) || Date.parse(job.expiresAt) <= Date.now()) continue;
       const relative = path.relative(project.clawDir, path.resolve(job.planPath));
       if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) continue;
-      result.push({ ...buildDshKnowledgeDispatch({ finalizeId: job.finalizeId, writer: job.writer }),
+      result.push({ ...buildKnowledgeDispatch({ host: "dsh", projectRoot, finalizeId: job.finalizeId, writer: job.writer }),
         endedAt: job.reportCapture?.endedAt ?? job.queuedAt, queuedAt: job.queuedAt,
         ...(job.dshExecution ? { execution: job.dshExecution } : {}),
         ...(job.reportCapture?.startedAt ? { startedAt: job.reportCapture.startedAt } : {}),

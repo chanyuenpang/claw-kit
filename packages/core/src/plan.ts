@@ -17,7 +17,7 @@ import {
   isProcessStatus,
 } from "./requirements-gate.js";
 import { buildPlanViewModel, buildSimplePlanView } from "./plan-view.js";
-import { assertCurrentTemplateCreation, getTemplateTaskDoneChoices, getTemplateTaskDoneGuidanceRoute, getTemplateTaskPlanStartGuidance, renderSeedTemplateText, resolveSeedPlanTemplate } from "./plan-templates.js";
+import { assertCurrentTemplateCreation, getTemplateTaskDoneChoices, getTemplateTaskDoneGuidanceRoute, getTemplateTaskPlanStartGuidance, renderSeedTemplateText, resolveSeedPlanTemplate, resolvePlanWorkflowTemplate } from "./plan-templates.js";
 import { ensureInsideDir, findProjectRoot, normalizePlanFile, slugFromFilePath } from "./paths.js";
 import { bindSessionToPlan, readSessionBoundPlanPath, resolveSessionBoundPlan, unbindSession } from "./session-bindings.js";
 import { resolveSessionWorkflowContext, resolveWorkflowProjectContext } from "./session-workflows.js";
@@ -583,12 +583,7 @@ async function editPlanWithOutcome(input: PlanEditInput, execution: ClawExecutio
       const currentTask = currentPlanTask(previous);
       const startGuidance = currentTask && previous.templateId
         ? getTemplateTaskPlanStartGuidance(
-            await resolveSeedPlanTemplate({
-              projectRoot: task.project.projectRoot,
-              templateName: previous.templateId,
-              templateFile: previous.templateFile,
-              versionPolicy: "ignore",
-            }),
+            await resolvePlanWorkflowTemplate(task.project.projectRoot, previous),
             currentTask.id,
           )
         : undefined;
@@ -1289,14 +1284,7 @@ function applyPlanFieldUpdates(target: PlanDocument, updates: NonNullable<PlanEd
 
 function removeRequiredStrings(current: string[], requested: string[], label: string): string[] {
   const requestedValues = [...new Set(requested)];
-  const missing = requestedValues.filter((value) => !current.includes(value));
-  if (missing.length > 0) {
-    throw new ClawError(
-      "PROJECT_CONFIG_INVALID",
-      `Cannot remove ${label}; exact value not found: ${missing.map((value) => JSON.stringify(value)).join(", ")}.`,
-      { label, missing },
-    );
-  }
+  // Removing an already absent prose value is an idempotent success, not a permission failure.
   const removed = new Set(requestedValues);
   return current.filter((value) => !removed.has(value));
 }
@@ -1333,11 +1321,15 @@ async function createSeedPlan(
   });
   const planningEnabled = forcePlanning || effectiveConfig?.planning !== false;
   const planningSkill = effectiveConfig?.externalPlanningSkill?.trim() || "claw-kit:planning";
-  if (!planningEnabled) {
+  // Lightweight defaults may omit planning; an explicitly selected workflow
+  // owns its tasks and lifecycle contract, including internal finalizers.
+  if (!planningEnabled && !templateName?.trim() && !templateFile?.trim()
+    && template.source === "builtin" && template.id === defaultPlanTemplateName()) {
     return {
       title: title ?? taskName,
       knowledgeCapture: template.knowledgeCapture ?? true,
       templateId: template.id,
+      templateGuidance: {},
       ...(template.templatePath ? { templateFile: template.templatePath } : {}),
       ...(template.configOverride ? { configOverride: template.configOverride } : {}),
       status: "process.active",
@@ -1391,6 +1383,7 @@ async function createSeedPlan(
     title: effectiveTitle,
     knowledgeCapture: template.knowledgeCapture ?? true,
     templateId: template.id,
+    templateGuidance: Object.fromEntries(template.tasks.filter(task => task.guidance).map(task => [String(task.id), structuredClone(task.guidance!)])),
     ...(template.templatePath ? { templateFile: template.templatePath } : {}),
     ...(template.configOverride ? { configOverride: template.configOverride } : {}),
     status: template.status ?? status,
@@ -1418,20 +1411,17 @@ async function validateDoneTransitions(params: {
   nextPlan: PlanDocument;
 }): Promise<void> {
   const { projectRoot, previousPlan, nextPlan } = params;
-  if (!nextPlan.templateId?.trim()) {
+  const previousTasks = new Map(previousPlan.tasks.map((task) => [task.id, task]));
+  const doneTransitions = nextPlan.tasks.filter((task) => task.status === "done" && previousTasks.get(task.id)?.status !== "done");
+  // Text/reference corrections must not depend on the continued availability of a source template.
+  if (!doneTransitions.length || !nextPlan.templateId?.trim()) {
     return;
   }
 
-  const template = await resolveSeedPlanTemplate({
-    projectRoot,
-    templateName: nextPlan.templateId,
-    templateFile: nextPlan.templateFile,
-    versionPolicy: "ignore",
-  });
-  const previousTasks = new Map(previousPlan.tasks.map((task) => [task.id, task]));
+  const template = await resolvePlanWorkflowTemplate(projectRoot, nextPlan);
   let routedTaskId: number | undefined;
 
-  for (const task of nextPlan.tasks) {
+  for (const task of doneTransitions) {
     const previousTask = previousTasks.get(task.id);
     const choices = getTemplateTaskDoneChoices(template, task.id);
     const availableChoices = choices ? Object.keys(choices) : [];

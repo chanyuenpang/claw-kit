@@ -1100,7 +1100,9 @@ test("session-start turns an unavailable CLI into an installation prompt", { ski
 });
 
 
-for (const unknownDone of [false, true]) test("dispatched Worker uses canonical completion and no resend; lost response=" + unknownDone, { skip: process.platform !== "win32" }, async () => {
+for (const lost of ["none", "claim", "done"]) test("dispatched Worker uses canonical completion and no resend; lost response=" + lost, { skip: process.platform !== "win32" }, async () => {
+  const unknownDone = lost === "done";
+  const unknownClaim = lost === "claim";
   const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-atomic-knowledge-"));
   const finalizeId = "c".repeat(64);
   const originatingSessionId = "originating-cindy-session";
@@ -1149,6 +1151,8 @@ if (args[0] === 'session') {
   require('node:readline').createInterface({input:process.stdin}).on('line', line => {
     if(line === 'session close'){process.exit(0);return;}
     const request = JSON.parse(line); fs.appendFileSync(${JSON.stringify(commandLogPath)}, JSON.stringify({request})+'\\n');
+    if(request.operation==='knowledge.claim' && ${unknownClaim}) { process.stdout.write(JSON.stringify({ok:false,error:{code:'SESSION_CONNECTION_LOST',message:'lost claim response',outcome:'unknown'}})+'\\n'); return; }
+    if(request.operation==='knowledge.claim' || request.operation==='knowledge.claim.receipt') { process.stdout.write(JSON.stringify({ok:true,output:{ok:true,command:request.operation,claimed:true,finalizeId:${JSON.stringify(finalizeId)},jobPath:${JSON.stringify(jobPath)},claimToken:'claim-atomic',templatePath:'delegate-template.json',writer:{model:'fixture'},assignments:[{index:0,prompt:'Update Truth.'}]}})+'\\n'); return; }
     if(request.operation==='knowledge.done' && ${unknownDone}) { process.stdout.write(JSON.stringify({ok:false,error:{code:'SESSION_CONNECTION_LOST',message:'lost completion response',outcome:'unknown'}})+'\\n'); return; }
     if(request.operation==='knowledge.done.receipt') { process.stdout.write(JSON.stringify({ok:true,output:{terminal:true,matches:true}})+'\\n'); return; }
     process.stdout.write(JSON.stringify({ok:true,command:request.operation,output:{command:request.operation,finalizeId:${JSON.stringify(finalizeId)},completed:true,delegateClosed:true,planStatus:'end.completed',planPath:'delegate/plan.json'}})+'\\n');
@@ -1193,10 +1197,12 @@ process.exit(2);
     assert.equal(claim.result.result.claimed, true);
     assert.equal(claim.result.result.claimToken, "claim-atomic");
     const commandsAfterClaim = fs.readFileSync(commandLogPath, "utf8").trim().split(/\r?\n/).map((line) => JSON.parse(line));
-    const claimCommand = commandsAfterClaim.find(({ args }) => args[0] === "knowledge" && args[1] === "claim");
-    assert.ok(claimCommand);
-    assert.doesNotMatch(claimCommand.args.join(" "), /report-stdin|cindy-report/i);
-    assert.equal(claimCommand.input, "");
+    assert.equal(claim.result.result.jobPath, jobPath);
+    assert.equal(claim.result.result.writer.model, "fixture");
+    assert.equal(claim.result.result.templatePath, "delegate-template.json");
+    assert.equal(commandsAfterClaim.filter(row => row.request?.operation === "knowledge.claim").length, 1);
+    assert.equal(commandsAfterClaim.filter(row => row.request?.operation === "knowledge.claim.receipt").length, unknownClaim ? 1 : 0);
+    if (unknownClaim) assert.equal(claim.result.result.claimRecovered, true);
 
     const done = await requestWorker(child, {
       jsonrpc: "2.0",
@@ -1223,7 +1229,7 @@ process.exit(2);
     assert.equal(commandsAfterDone.filter(row => row.request?.operation === "knowledge.done").length, 1);
     assert.equal(commandsAfterDone.filter(row => row.request?.operation === "knowledge.done.receipt").length, unknownDone ? 1 : 0);
     if (unknownDone) assert.ok(commandsAfterDone.some(row => row.openArgs?.includes("--receipt-only")));
-    assert.equal(commandsAfterDone.filter(row => row.args?.[0] === "knowledge" && row.args?.[1] === "wait").length, 1, "only claim discovery may wait; done must not reconcile before authorization");
+    assert.equal(commandsAfterDone.filter(row => row.args?.[0] === "knowledge" && row.args?.[1] === "wait").length, 0, "claim and done use the session owner directly");
   } finally {
     await stopWorker(child);
     fs.rmSync(fixtureDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });

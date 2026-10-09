@@ -234,3 +234,16 @@ test("typed command service rejects unsupported operations without shell evaluat
       && (error as { code: string }).code === "SESSION_OPERATION_UNSUPPORTED",
   );
 });
+
+test("existing work starts with no repeated hydration and repeat start preserves work", async () => {
+  const cwd = fixture("empty-start"), runtime = fixture("empty-start-runtime");
+  initProject({ cwd, projectName: "Start", planning: true });
+  const executor = new SessionCommandExecutor(new SessionRegistryV2(runtime));
+  const identity = { agentSessionId: "start-once", workdir: cwd, client: { kind: "adapter" as const, host: "dsh" as const } };
+  await executor.execute(identity, { operation: "plan.create", input: { title: "Existing work", knowledgeCapture: false } });
+  const started = await executor.execute(identity, { operation: "plan.start", input: {} });
+  assert.equal((started.output as { plan: { status: string } }).plan.status, "process.active");
+  const repeated = await executor.execute(identity, { operation: "plan.start", input: {} });
+  assert.equal((repeated.output as { plan: { status: string } }).plan.status, "process.active");
+  assert.deepEqual((repeated.output as { plan: { tasks: unknown[] } }).plan.tasks, (started.output as { plan: { tasks: unknown[] } }).plan.tasks);
+});

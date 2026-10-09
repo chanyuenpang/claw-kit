@@ -156,12 +156,17 @@ export function consumeHostActions(
 }
 
 /**
- * Whitelist-only compact view of a daemon `claw/execute` output — the same
+ * Compact workflow view of a daemon `claw/execute` output — the same
  * visible-field contract the Codex driver applies (stage, plan summary,
  * next steps, notes, next task, command hints, askUser, plan).
+ * Knowledge payloads belong to the business owner and pass through intact.
  */
 export function compactClawOutput(output: Record<string, unknown> | undefined, operation?: string): Record<string, JsonValue> {
   if (!output || typeof output !== "object") return { ok: true, command: "claw" };
+  if (String(output.command ?? operation ?? "").startsWith("knowledge.")) {
+    const { hostActions: _hostActions, ...businessResult } = output;
+    return { ok: true, command: operation ?? "claw", ...businessResult } as Record<string, JsonValue>;
+  }
   const guidance =
     output.workflowGuidance && typeof output.workflowGuidance === "object"
       ? (output.workflowGuidance as Record<string, unknown>)
@@ -232,23 +237,6 @@ export function compactClawOutput(output: Record<string, unknown> | undefined, o
       }
       return task;
     });
-  }
-  if (visible.command === "knowledge.claim") {
-    visible.claimed = output.claimed as JsonValue;
-    if (output.claimed === true) {
-      for (const key of ["finalizeId", "claimToken", "templatePath", "assignments"] as const) {
-        if (output[key] !== undefined) visible[key] = output[key] as JsonValue;
-      }
-    }
-  } else if (visible.command === "knowledge.done") {
-    for (const key of ["finalizeId", "completed", "failed", "alreadyDone", "delegateClosed", "delegateCloseDeferred", "delegateCloseError", "templateCleanupDeferred", "completionRecovered", "completionEffect", "postCommitFailures", "postCommitEffectsVerified"] as const) {
-      if (output[key] !== undefined) visible[key] = output[key] as JsonValue;
-    }
-  }
-  if (visible.command === "knowledge.done.receipt") {
-    for (const key of ["finalizeId", "claimId", "status", "canonicalStatus", "terminal", "finishedAt", "resultDigest", "matches", "postCommitEffectsVerified"] as const) {
-      if (output[key] !== undefined) visible[key] = output[key] as JsonValue;
-    }
   }
   const command = typeof output.command === "string" ? output.command : "";
   const isWorkflowMutation = /^(plan|task|subplan)\.(?!show$)/.test(command);

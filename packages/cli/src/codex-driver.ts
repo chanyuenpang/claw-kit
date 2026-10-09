@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { serializeFailure } from "@veewo/claw-core";
 import { createHash } from "node:crypto";
 
-export const CODEX_DRIVER_VERSION = 26;
+export const CODEX_DRIVER_VERSION = 27;
 export const CODEX_HOST_ACTION_SCHEMA_VERSION = 1;
 export const CODEX_DRIVER_CACHE_KEY =
   `claw-kit:codex-driver:v${CODEX_DRIVER_VERSION}:s${CODEX_HOST_ACTION_SCHEMA_VERSION}`;
@@ -20,19 +20,21 @@ type DriverRuntime = {
   text: (value: unknown) => void;
 };
 
+/** Transport routing only. Business validation and authorization belong to the owner. */
+export function isCodexWorkflowArgv(argv: unknown): argv is string[] {
+  return Array.isArray(argv) && argv.length > 0 && argv.every(value => typeof value === "string")
+    && !argv.includes("--host")
+    && (["plan", "task", "subplan"].includes(argv[0])
+      || (argv[0] === "context" && argv.length === 1)
+      || (argv[0] === "knowledge" && ["claim", "claim-receipt", "done", "done-receipt"].includes(argv[1])));
+}
+
 async function codexDriverRunner(
   { argv, workdir, pluginVersion, pluginRoot, timeout_ms = 30000 }: DriverInput,
   { tools, text }: DriverRuntime,
 ): Promise<Record<string, unknown>> {
-  if (
-    !Array.isArray(argv)
-    || argv.length === 0
-    || argv.some((value) => typeof value !== "string")
-    || (!["plan", "task", "subplan"].includes(argv[0] as string)
-      && !(argv[0] === "context" && argv.length === 1))
-    || argv.some((value) => value === "--host")
-  ) {
-    throw new TypeError("argv must be a structured context, plan, task, or subplan command without --host");
+  if (!isCodexWorkflowArgv(argv)) {
+    throw new TypeError("argv must be structured context, workflow or knowledge lifecycle/receipt syntax without --host");
   }
   if (typeof workdir !== "string" || workdir.trim().length === 0) {
     throw new TypeError("workdir is required");
@@ -245,12 +247,20 @@ async function codexDriverRunner(
   if (result.command === "context") {
     visibleKeys.add("output");
   }
-  const visibleResult = Object.fromEntries(
-    Object.entries(result).filter(([key]) => visibleKeys.has(key)),
-  );
+  // Knowledge results are business payloads, not plan presentation. Preserve
+  // additive owner fields, receipts and deferred closeout diagnostics intact.
+  const knowledgeResult = typeof result.command === "string" && result.command.startsWith("knowledge.");
+  const visibleResult = Object.fromEntries(Object.entries(result).filter(([key]) =>
+    knowledgeResult ? key !== "hostActions" : visibleKeys.has(key)));
+  if (result.knowledgeDispatch && pluginRoot && typeof result.knowledgeDispatch === "object") {
+    const dispatch = result.knowledgeDispatch as Record<string, unknown>;
+    visibleResult.knowledgeDispatch = { ...dispatch,
+      prompt: "Read the loaded Codex execution reference: " + pluginRoot.replace(/[\\/]+$/, "")
+        + "/skills/using-claw-kit/references/hosts/codex.md\n" + String(dispatch.prompt ?? "") };
+  }
   const routeNote = result.command === "context"
     ? "Codex route: context recovery must use the fixed code-mode driver; do not run the CLI directly or supply --host."
-    : "Codex route: every claw plan, task, or subplan mutation must use the fixed code-mode driver. commandHints provide argv syntax only; do not run them directly in the shell.";
+    : "Codex route: every claw workflow and knowledge lifecycle/receipt operation must use the fixed code-mode driver. commandHints provide argv syntax only; do not run them directly in the shell.";
   const existingNotes = typeof visibleResult.notes === "string" ? visibleResult.notes.trim() : "";
   visibleResult.notes = existingNotes ? `${routeNote} ${existingNotes}` : routeNote;
   if (goalRecovery) visibleResult.goalRecovery = goalRecovery;
@@ -261,7 +271,7 @@ async function codexDriverRunner(
 
 export function buildCodexDriverEnvelope(cliVersion: string): Record<string, unknown> {
   const codec = fs.readFileSync(new URL("./errors.js", import.meta.resolve("@veewo/claw-core")), "utf8").replace(/^export /gm, "").replace(/^\/\/# sourceMappingURL=.*$/gm, "");
-  const source = "(() => {\n" + codec + "\nreturn " + codexDriverRunner.toString() + ";\n})()";
+  const source = "(() => {\n" + codec + "\n" + isCodexWorkflowArgv.toString() + "\nreturn " + codexDriverRunner.toString() + ";\n})()";
   return {
     ok: true,
     command: "codex.driver",

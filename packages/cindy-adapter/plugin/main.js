@@ -348,9 +348,13 @@ async function continueGoalAfterTurnEnd(msg) {
   }
 }
 
-function toolFailure(callId, reason, errorCode = 'CLAW_OPERATION_FAILED') {
+function toolFailure(callId, reason, errorCode = 'CLAW_OPERATION_FAILED', failure = {}) {
   reason = CINDY_HOST_IDENTITY + '\n\n' + reason;
-  cindy.send({ type: 'tool-result', callId, ok: false, errorCode, message: reason });
+  const details = {};
+  for (const key of ['outcome', 'phase', 'effect', 'operation', 'recoveryCommand', 'diagnostics']) {
+    if (failure[key] !== undefined) details[key] = failure[key];
+  }
+  cindy.send({ type: 'tool-result', callId, ok: false, errorCode, message: reason, ...details });
 }
 
 async function dispatchToolCall(msg) {
@@ -397,6 +401,7 @@ async function dispatchToolCall(msg) {
       msg.callId,
       execution?.reason || execution?.error || 'claw-kit operation failed.',
       execution?.errorCode || 'CLAW_OPERATION_FAILED',
+      execution,
     );
     return;
   }
