@@ -5,7 +5,7 @@
   "description": "[claw host]\nplatform: cindy\nAdapter-owned host identity, independent of model/provider or skill path. Host/session arguments remain adapter-owned.\nCindy workflow tools, lifecycle guidance, and Skills for claw-kit.",
   "whenToUse": "Use for Cindy sessions that need claw-kit plan, task, subplan, or workflow operations.",
   "command": "claw-kit",
-  "version": "0.2.50.0",
+  "version": "0.2.50.1",
   "kind": "chip",
   "entry": "main.js",
   "launch": "resident",
