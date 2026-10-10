@@ -77,6 +77,7 @@ export type ClawSessionCommand =
   | { operation: "task.edit"; input: { taskId?: number; taskTitle?: string; taskDetail?: string; taskStatus?: ClawTaskStatus; taskChoiceId?: string } }
   | { operation: "task.add"; input: { tasks: Array<{ title: string; detail?: string }> } }
   | { operation: "task.done"; input: { tasks: Array<{ id: number; choiceId?: string }> } }
+  | { operation: "task.remove"; input: { taskId?: number; tasks?: Array<{ id: number }> } }
   | { operation: "search"; input: { query: string; limit?: number } }
   | { operation: "search.index.refresh"; input: Record<string, never> }
   | { operation: "knowledge.claim"; input: { finalizeId: string } }

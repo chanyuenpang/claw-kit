@@ -250,3 +250,13 @@ test("session create accepts explicit initial tasks without a start ceremony", a
   assert.equal(output.plan.status, "process.active");
   assert.deepEqual(output.plan.tasks.map((task) => task.title), ["Implement", "Verify"]);
 });
+test("typed session command removes a temporary task without a shell round trip", async () => {
+  const cwd = fixture("task-remove"), runtime = fixture("task-remove-runtime");
+  initProject({ cwd, projectName: "Remove", planning: false });
+  const executor = new SessionCommandExecutor(new SessionRegistryV2(runtime));
+  const identity = { agentSessionId: "task-remove", workdir: cwd, client: { kind: "adapter" as const, host: "dsh" } };
+  await executor.execute(identity, { operation: "plan.create", input: { title: "Temporary work", tasks: [{ title: "Keep" }, { title: "Throwaway" }] } });
+  const removed = await executor.execute(identity, { operation: "task.remove", input: { taskId: 2 } });
+  assert.equal((removed.output as { plan: { tasks: Array<{ title: string }> } }).plan.tasks.map((task) => task.title).includes("Throwaway"), false);
+  assert.deepEqual((removed.output as { plan: { tasks: Array<{ title: string }> } }).plan.tasks.map((task) => task.title), ["Keep"]);
+});

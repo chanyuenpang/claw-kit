@@ -31,6 +31,13 @@ Artifact assembly and release tooling own complete skill/manifest/hook payloads,
 <!-- state: history -->
 ## Evolution history
 
+<!-- dated: 2026-10-10 -->
+### Windows Codex local candidate smoke evidence
+
+The local CLI 0.2.49 / loaded Codex plugin 0.2.49.1 smoke exercised the fixed code-mode driver in a real Windows Codex session. Observed successful foreground behavior covered Chinese and space-containing values, plan field and collection edits, stable task IDs and removal, wait/discussion recovery, context and explicit recovery sync, one-level subplan completion returning to the active parent and completing its owning task, and cancellation releasing the session binding. The core parent plan reached `end.completed` with its retrospective preserved.
+
+This is scoped local-candidate evidence. The foreground report left post-turn knowledge finalization and final binding-release observation pending; it does not establish a complete background-closeout pass, other-host compatibility, public release, or the required seven-day trial. Explicit sync was one tested recovery operation, not a new prerequisite for ordinary recovery. No new architecture decision follows from this smoke run.
+
 <!-- dated: 2026-10-03 -->
 ### Removed runtime rituals
 

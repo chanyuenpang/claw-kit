@@ -205,6 +205,16 @@ export function daemonInput(operation, args) {
                 ...(str("status") !== undefined ? { taskStatus: str("status") } : {}),
                 ...(str("choice", "choice_id", "choiceId") !== undefined ? { taskChoiceId: str("choice", "choice_id", "choiceId") } : {}),
             };
+        case "task.remove": {
+            assertKnownArgs(operation, args, ["id", "task_id", "taskId", "tasks", "task_ids"]);
+            const list = arr("tasks", "task_ids");
+            const ids = list !== undefined
+                ? list.map((entry) => Number(entry && typeof entry === "object" ? entry.id : entry))
+                : [Number(firstValue(args, "id", "task_id", "taskId"))];
+            if (ids.some((id) => !Number.isInteger(id)))
+                throw new Error("task.remove requires integer task id(s)");
+            return { tasks: ids.map((id) => ({ id })) };
+        }
         case "task.done": {
             assertKnownArgs(operation, args, ["id", "task_id", "taskId", "choice", "choice_id", "choiceId", "tasks"]);
             const tasks = arr("tasks") ?? [];

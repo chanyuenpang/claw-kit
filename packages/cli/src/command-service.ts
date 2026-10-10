@@ -448,6 +448,15 @@ export class ClawCommandService {
           "task.add",
         );
       }
+      case "task.remove": {
+        const commandInput = request.input as { taskId?: number; tasks?: Array<{ id: number }> };
+        const ids = commandInput.tasks?.map((task) => Number(task.id))
+          ?? (commandInput.taskId === undefined ? [] : [Number(commandInput.taskId)]);
+        if (!ids.length || ids.some((id) => !Number.isInteger(id))) {
+          throw new ClawError("PROJECT_CONFIG_INVALID", "task.remove requires at least one integer task id.");
+        }
+        return this.editCurrentPlan(context, ids.map((id) => ({ type: "task.remove", id })), "task.remove");
+      }
       case "task.done": {
         const commandInput = request.input as { tasks: Array<{ id: number; choiceId?: string }> };
         if (!commandInput.tasks?.length) {
@@ -745,7 +754,7 @@ export class ClawCommandService {
   private async editCurrentPlan(
     context: CommandContext,
     operations: PlanMutationOperation[],
-    commandSource: "plan.edit" | "plan.done" | "task.add" | "task.done",
+    commandSource: "plan.edit" | "plan.done" | "task.add" | "task.remove" | "task.done",
   ): Promise<ClawCommandResult> {
     const current = this.requireCurrentPlan(context);
     const sessionKey = this.requireSessionKey(context);

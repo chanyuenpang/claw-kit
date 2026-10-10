@@ -103,6 +103,12 @@ const OPERATION_CATALOG = {
       parameters: objectParameters({ id: { type: 'number', description: 'Task id.' }, title: stringParameter('Optional task title.'), detail: stringParameter('Optional task detail.'), status: stringParameter('Optional task status.'), choice: stringParameter('Optional route choice when completing.'), taskName: stringParameter('Optional task name.') }, ['id']),
     },
     {
+      name: 'task.remove',
+      description: 'Remove one or more task items from the current plan.',
+      mutates: true,
+      parameters: objectParameters({ id: { type: 'number', description: 'Task id to remove.' }, taskName: stringParameter('Optional task name.') }, ['id']),
+    },
+    {
       name: 'task.done',
       description: 'Mark one task done.',
       mutates: true,
@@ -522,6 +528,7 @@ function sessionRequest(name, args, workdir) {
       ...(typeof args.status === 'string' ? { taskStatus: args.status } : {}),
       ...(typeof args.choice === 'string' ? { taskChoiceId: args.choice } : {}),
     } };
+    case 'task.remove': return { operation: name, input: { tasks: [{ id: requiredNumber(args, 'id') }] } };
     case 'task.done': return { operation: name, input: { tasks: [{ id: requiredNumber(args, 'id'), ...(typeof args.choice === 'string' ? { choiceId: args.choice } : {}) }] } };
     case 'subplan.create': return { operation: name, input: {
       ...(typeof args.parent === 'string' ? { parentTaskName: args.parent } : {}),
@@ -697,6 +704,11 @@ function operationCommand(name, args) {
       appendOption(command, '--detail', args.detail);
       appendOption(command, '--status', args.status);
       appendOption(command, '--choice', args.choice);
+      appendOption(command, '--task-name', args.taskName);
+      return command;
+    }
+    case 'task.remove': {
+      const command = ['task', 'remove', '--id', String(requiredNumber(args, 'id'))];
       appendOption(command, '--task-name', args.taskName);
       return command;
     }

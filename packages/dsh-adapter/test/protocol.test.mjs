@@ -171,6 +171,9 @@ test("task.add / task.edit / subplan.create / search map canonical fields", () =
   assert.deepEqual(daemonInput("task.add", { tasks: [{ title: "X" }, { title: "Y" }] }), { tasks: [{ title: "X" }, { title: "Y" }] });
   assert.deepEqual(daemonInput("task.edit", { id: 2, title: "N" }), { taskId: 2, taskTitle: "N" });
   assert.deepEqual(daemonInput("subplan.create", { parent: "P", task_id: 5 }), { parentTaskName: "P", parentTaskId: 5 });
+  assert.deepEqual(daemonInput("task.remove", { id: 3 }), { tasks: [{ id: 3 }] });
+  assert.deepEqual(daemonInput("task.remove", { task_ids: [1, "2"] }), { tasks: [{ id: 1 }, { id: 2 }] });
+  assert.throws(() => daemonInput("task.remove", { id: "x" }), /integer task id/);
   assert.deepEqual(daemonInput("search", { query: "q" }), { query: "q" });
   assert.deepEqual(daemonInput("search.index.refresh", {}), {});
   assert.throws(

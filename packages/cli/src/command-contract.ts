@@ -52,6 +52,7 @@ const checks = {
   "subplan.create": object({ parentTaskName: text, parentTaskId: id, templateName: text, templateFile: text }),
   "task.edit": object({ taskId: id, taskTitle: text, taskDetail: text, taskStatus, taskChoiceId: text }, ["taskId"]),
   "task.add": object({ tasks: list(task) }, ["tasks"]),
+  "task.remove": object({ taskId: id, tasks: list(object({ id }, ["id"])) }),
   "task.done": object({ tasks: list(object({ id, choiceId: text }, ["id"])) }, ["tasks"]),
   "search": object({ query: text, limit: id }, ["query"]),
   "search.index.refresh": object({}),

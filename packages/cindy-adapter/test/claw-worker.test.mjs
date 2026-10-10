@@ -82,6 +82,9 @@ test("Cindy catalog exposes capture consistently inside and outside initialized 
     assert.equal(scopeParameter(scratch), undefined);
     for (const response of [unknown, project, scratch]) {
       assert.equal(planOperation(response, "plan.create").parameters.properties.knowledge_capture.type, "boolean");
+      // Removal is a first-class task mutation for typed hosts too, not only CLI argv.
+      assert.equal(response.result.categories.find((category) => category.name === "task").operations
+        .some((operation) => operation.name === "task.remove"), true);
     }
     assert.deepEqual(planOperation(project, "plan.leave"), {
       name: "plan.leave",
