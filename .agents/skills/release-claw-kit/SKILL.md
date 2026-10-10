@@ -12,6 +12,8 @@ but no push/publication. For formal promotion, read `docs/beta-release.md` and
 pass the frozen candidate directory to the artifact skills. Preserve versions
 and bytes; verify npm retrieval before any GitHub push.
 
+Before routing beta or formal release, resolve the target CLI base and show all platforms' source, selected frozen, known-public versions and exact pins using docs/beta-release.md and npm run audit:release-versions. Partial beta is valid, but formal scope must be reconciled anew. Missing/stale authorized platforms need fresh preparation and freezing before promotion; never ship an older beta or publish an old CLI just to hide mismatch. Inventory unselected platforms and ask before expanding scope; do not automatically release them.
+
 Choose exactly one artifact skill from the user's named product and changed
 scope:
 

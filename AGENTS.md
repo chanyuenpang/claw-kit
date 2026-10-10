@@ -13,6 +13,12 @@ The repository owner uses direct delivery by default.
 - After installation and version confirmation, test the batch locally for seven days. Changed artifacts require a new batch and trial. Never reuse a published version for different bytes.
 - Formal promotion publishes the frozen npm tarballs and verifies retrieval before pushing source and releasing the stored adapter tree. Before npm publication require clean local `main` at the candidate revision and no remote divergence; require `main == origin/main` at completion. Do not rebuild or bump versions during promotion. See `docs/beta-release.md`.
 
+## Release version reconciliation
+
+Before both beta preparation and formal publication, resolve the target CLI base and show a per-family version worksheet (source, selected frozen candidate, known published version, exact CLI pins and DSH npm mapping). Adapter first three segments must match that base; fourth segments remain independent. Run the read-only audit:release-versions command with the beta/release phase and explicitly authorized artifact families; pass each selected frozen candidate with --candidate.
+
+Beta may test only selected platforms. Formal release must re-evaluate the authorized platform scope rather than promote each platform's last beta blindly: prepare and freeze a fresh candidate for a missing/stale selected platform, then promote its unchanged bytes after its own trial or an explicit owner waiver. Never relabel frozen bytes or publish an older CLI merely to hide a stale adapter. Inventory other platforms and request scope expansion before publishing them; unknown remote metadata is not authorization or a publication blocker for unrelated families. See docs/beta-release.md.
+
 # Repository proportional verification and testing policy
 
 Verification and testing should not outweigh the work they protect. Spend more on them only when a concrete and realistically costly regression risk justifies the additional cost.

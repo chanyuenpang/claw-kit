@@ -22,6 +22,8 @@ async function fixture(t) {
   await write("packages/openclaw-adapter/openclaw.plugin.json", { version: "0.2.43.0" });
   await write("packages/cindy-adapter/plugin/ghost.json", { version: "0.2.43.0" });
   await write("package-lock.json", { version: "0.2.43", packages: { "": { version: "0.2.43" }, "packages/cli": { version: "0.2.43" } } });
+  await fs.mkdir(path.join(root, ".agents/skills/using-claw-kit/references/hosts"), { recursive: true });
+  await fs.writeFile(path.join(root, ".agents/skills/using-claw-kit/references/hosts/codex.md"), 'const pluginVersion = "0.2.43.0";\n');
   await fs.writeFile(path.join(root, "implementation.txt"), "same inputs");
   await fs.writeFile(path.join(root, ".gitignore"), "dist/\n");
   git(root, "init", "-b", "main"); git(root, "config", "user.email", "test@example.invalid"); git(root, "config", "user.name", "Test");
@@ -43,6 +45,9 @@ test("new combined preparations increment CLI and mirror dependencies, resume do
   assert.equal(cli.dependencies["@veewo/claw-core"], "0.2.44");
   assert.equal((await json(path.join(root, "shared/skills/knowledge-capture/runtime.json"))).version, "0.2.44");
   assert.ok(first.record.versionWrites["shared/skills/knowledge-capture/runtime.json"], "pin participates in same-input resume and candidate identity");
+  const bridge = ".agents/skills/using-claw-kit/references/hosts/codex.md";
+  assert.match(await fs.readFile(path.join(root, bridge), "utf8"), /const pluginVersion = "0\.2\.44\.0";/);
+  assert.ok(first.record.versionWrites[bridge], "bridge pin participates in resumable candidate bytes");
   assert.equal((await json(path.join(root, "packages/openclaw-adapter/package.json"))).dependencies["@veewo/claw-core"], "0.2.44");
   assert.equal((await json(path.join(root, "package-lock.json"))).packages["packages/cli"].version, "0.2.44");
   commit();

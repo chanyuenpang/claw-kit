@@ -2,6 +2,25 @@
 
 每个新的可安装测试候选都使用一个新的正式目标版本号，不加 beta 后缀。本地未发布候选同样占用号码。批次 ID 和哈希用于识别产物、来源与试用，不再代替版本递增。
 
+## 每次 beta / 正式发布都先校对版本
+
+1. **先确定目标 CLI base 和授权范围。** 多产物发布使用本次授权的 CLI 候选版本；平台补发使用当前已发布 CLI 的 base，并与源码目标对照。三段 CLI/Core/Client 版本一致，平台版本的前三段必须一致；各平台第四段独立递增，不要求全部相同。DSH 额外核对四段版本与 npm rc 映射。历史版本回发必须另行明确选择，不能冒充最新补发。
+2. **展示全平台版本盘点。** CLI、Codex、DSH、Cindy、OpenClaw、OpenCode 分别列出源码目标、选中冻结候选（版本/hash/sourceRevision）、已知公开版本、固定 CLI runtime pin、是否选中及待补齐状态。源码 manifest 重置为新 base 的 .0 不代表该平台已有可发布候选；各平台“最后一个 beta”也不代表同一基线。公共信息读取失败记为 unknown，不猜版本，也不以未知信息阻止不相关产物。
+3. **beta 允许部分平台。** 只对本次选择的产物准备/冻结/测试，但仍核对它们的 manifest 和依赖基线，说明其他平台未进入本批次。beta 不新增远端发布授权。
+4. **正式发布重新核对本次范围。** 不能把一个旧平台 beta 搭配新 CLI 静默转正。选中平台没有当前 base 的候选、版本落后于最新源码目标或固定 pin 不一致时，先准备新号、提交最新输入并冻结，再进入原样 promotion；已冻结包不改号、不重建。新候选有自己的试用；只有仓库 owner 明确豁免才可提前转正，记录授权但不倒填 trial。不得为了“让旧插件可下载”补发旧 CLI 来掩盖基线错配。
+5. **补齐不扩大权限。** 正式版必须指出未选平台的落后/缺失状态；只有已授权的平台可以准备与发布。若需要补发其他平台，先向 owner 列出建议并取得范围授权。一个平台请求不自动授权 CLI 或其他平台发布。
+
+只读版本工作表入口（不会 build、分配版本、上传、安装或推导发布权限）：
+
+~~~text
+# prepare 后、commit/pack 前校对本批次源码目标
+npm run audit:release-versions -- --phase beta --artifacts cli,codex,dsh
+# 冻结后再次校对；不同平台批次可重复 --candidate
+npm run audit:release-versions -- --phase release --cli-base <target-cli> --artifacts codex --candidate <frozen-dir>
+~~~
+
+工作表读取所有平台的源码 manifest；只核对明确选中的候选，并验证其原始 inventory/hash、已声明 knowledge-capture CLI pin 和 Codex mutation bridge 的 pluginVersion。候选准备 owner 负责原子同步桥接版本，并将其纳入同输入恢复/冻结记录。它不自动选择“最新”批次，不把 manifest 当作公开发布证明，也不替代七天试用、npm 下载核验或实际激活验证。选中项需要准备/复核时返回非零并列明原因；未选项只盘点，不能阻断不相关交付。正式发布的 owner 在上传前处理选中项的实际版本不一致；不要把这份工作表移植成 Host/adapter 的影子授权 gate。
+
 ## 版本与准备 owner
 
 - CLI/Core/Client 同步三段版本，按当前已知版本高水位递增第三段；更新准确依赖、lockfile，以及 CLI 基线涉及的 adapter manifests。

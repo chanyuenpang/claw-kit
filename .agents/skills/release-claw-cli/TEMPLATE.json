@@ -10,6 +10,7 @@
     "summary": "Release only the CLI/core artifact family, preserving repository gates and verifying npm retrieval.",
     "openQuestions": [],
     "acceptanceCriteria": [
+      "Selected candidates, source manifests, exact CLI runtime pins and DSH mapping agree with the target CLI base; missing/stale authorized platforms were prepared and frozen before promotion, not silently shipped at an older base.",
       "The selected final-version beta has completed seven days and its artifacts remain unchanged.",
       "npm run verify:release -- --candidate <dir> passes from clean local main at the candidate source revision.",
       "Core, Client and CLI are published from their frozen tarballs in order and retrievable before GitHub push.",
@@ -20,13 +21,13 @@
     {
       "id": 1,
       "title": "Inspect and classify the CLI release baseline",
-      "detail": "Select the authorized tested frozen candidate and verify its artifact family, sourceRevision and trial; absent a candidate, use candidate preparation and stop before publication. Read AGENTS.md and references/artifact.md; inspect branch, remotes, tags, npm latest versions, manifests, lockfile, and every worktree change. Stop if another artifact family is mixed without explicit batch authority.",
+      "detail": "Before selecting any beta or formal candidate, read docs/beta-release.md and resolve the target CLI base and authorized families. Run npm run audit:release-versions with --phase beta|release, --artifacts <authorized-families>, and each frozen --candidate when applicable. Show source/candidate/known-public versions and exact CLI pins for all families. A selected platform with a missing/stale candidate needs fresh latest-source preparation and freezing at that base before promotion; never relabel frozen artifacts or publish an older CLI to disguise mismatch. Other platforms are inventory only until scope expansion is authorized. Each new candidate requires its own trial or explicit owner waiver. Select the authorized tested frozen candidate and verify its artifact family, sourceRevision and trial; absent a candidate, use candidate preparation and wait for its own trial or an explicitly recorded owner waiver before publication. Read AGENTS.md and references/artifact.md; inspect branch, remotes, tags, npm latest versions, manifests, lockfile, and every worktree change. Stop if another artifact family is mixed without explicit batch authority.",
       "status": "pending"
     },
     {
       "id": 2,
       "title": "Select the tested local beta",
-      "detail": "Read docs/beta-release.md and select its candidate directory. Preserve the candidate version, source commit and artifacts. If no beta exists, prepare one through beta-claw-kit and stop before publication until testing completes. Do not bump, rebuild or repack a tested candidate.",
+      "detail": "Read docs/beta-release.md and select its candidate directory. Preserve the candidate version, source commit and artifacts. If no beta exists, prepare one through beta-claw-kit and wait for its own trial or an explicitly recorded owner waiver before publication. Do not bump, rebuild or repack a tested candidate.",
       "status": "pending"
     },
     {
@@ -65,7 +66,8 @@
     }
   ],
   "rules": [
-    "Formal promotion requires the explicitly selected tested frozen candidate. Preserve its version and hashes; never bump, build, pack or export again. If no tested candidate exists, prepare a new version through beta:prepare and stop before publication.",
+    "Inventory every platform, but never publish or prepare an unselected family without explicit authorization. Each selected candidate must align with the target CLI base; fourth segments remain independent.",
+    "Formal promotion requires the explicitly selected tested frozen candidate. Preserve its version and hashes; never bump, build, pack or export again. If no tested candidate exists, prepare a new version through beta:prepare and wait for its own trial or an explicitly recorded owner waiver before publication.",
     "Never publish a platform plugin through this skill.",
     "Never stash or discard user work to satisfy a release gate.",
     "Stop at the first failed release boundary."

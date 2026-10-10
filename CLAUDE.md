@@ -11,6 +11,12 @@ The repository owner uses direct delivery by default.
 
 Every new installable candidate increments the selected artifact’s normal formal version (including local unpublished allocations), without a beta suffix. Use beta:prepare, commit the prepared manifests locally, then beta:pack --candidate. Same-input unfinished preparation may resume; frozen candidates are reused and never rebuilt. Promotion retains the tested version and exact bytes; it must not bump/build/pack/export. Beta never pushes, tags or publishes. See docs/beta-release.md.
 
+## Release version reconciliation
+
+Before both beta preparation and formal publication, resolve the target CLI base and show a per-family version worksheet (source, selected frozen candidate, known published version, exact CLI pins and DSH npm mapping). Adapter first three segments must match that base; fourth segments remain independent. Run the read-only audit:release-versions command with the beta/release phase and explicitly authorized artifact families; pass each selected frozen candidate with --candidate.
+
+Beta may test only selected platforms. Formal release must re-evaluate the authorized platform scope rather than promote each platform's last beta blindly: prepare and freeze a fresh candidate for a missing/stale selected platform, then promote its unchanged bytes after its own trial or an explicit owner waiver. Never relabel frozen bytes or publish an older CLI merely to hide a stale adapter. Inventory other platforms and request scope expansion before publishing them; unknown remote metadata is not authorization or a publication blocker for unrelated families. See docs/beta-release.md.
+
 # Repository proportional verification and testing policy
 
 Verification and testing should not outweigh the work they protect. Spend more on them only when a concrete and realistically costly regression risk justifies the additional cost.

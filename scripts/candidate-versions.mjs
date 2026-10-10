@@ -187,6 +187,18 @@ export async function prepareCandidateVersions({ sourceRoot, artifacts = ["cli",
       for (const file of adapterFiles[family]) await update(file, data => { data.version = version;
         if (family === "openclaw" && data.dependencies?.["@veewo/claw-core"]) data.dependencies["@veewo/claw-core"] = base;
       });
+      if (family === "codex") {
+        // The routed bridge declares the adapter version too. Freeze and resume
+        // its stamped bytes with the same preparation, not a manual post-pack edit.
+        const name = ".agents/skills/using-claw-kit/references/hosts/codex.md";
+        let before;
+        try { before = await fs.readFile(path.join(root, name), "utf8"); }
+        catch (error) { if (error.code !== "ENOENT") throw error; }
+        if (before !== undefined) {
+          const after = before.replace(/const pluginVersion = "[^"]+";/g, 'const pluginVersion = "' + version + '";');
+          if (after !== before) documents[name] = { before, after };
+        }
+      }
     }
     await update("package-lock.json", data => {
       if (versions.cli) data.version = base;

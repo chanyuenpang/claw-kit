@@ -10,6 +10,7 @@
     "summary": "Verify reviewed main-repository Cindy source and publish only its complete isolated artifact to the existing independent marketplace repository.",
     "openQuestions": [],
     "acceptanceCriteria": [
+      "Selected candidates, source manifests, exact CLI runtime pins and DSH mapping agree with the target CLI base; missing/stale authorized platforms were prepared and frozen before promotion, not silently shipped at an older base.",
       "Both Cindy manifests use the resolved CLI three-segment base plus a newly incremented fourth segment; the independent repository does not own a separate three-segment version line.",
       "The claw-kit-cindy marketplace entry points at plugin.",
       "The tagged adapter-repository ghost manifest is valid and matches vcindy-<version>.",
@@ -20,7 +21,7 @@
     {
       "id": 1,
       "title": "Inspect and classify the Cindy release baseline",
-      "detail": "Select the authorized tested frozen candidate and verify its artifact family, sourceRevision and trial; absent a candidate, use candidate preparation and stop before publication. Read packages/cindy-adapter/RELEASING.md in main claw-kit. Resolve authorized CLI candidate or published @veewo/claw base, inspect both source manifests and intended changes. Separately identify authorized artifact-repository checkout; do not treat source as a submodule or publish raw plugin directory.",
+      "detail": "Before selecting any beta or formal candidate, read docs/beta-release.md and resolve the target CLI base and authorized families. Run npm run audit:release-versions with --phase beta|release, --artifacts <authorized-families>, and each frozen --candidate when applicable. Show source/candidate/known-public versions and exact CLI pins for all families. A selected platform with a missing/stale candidate needs fresh latest-source preparation and freezing at that base before promotion; never relabel frozen artifacts or publish an older CLI to disguise mismatch. Other platforms are inventory only until scope expansion is authorized. Each new candidate requires its own trial or explicit owner waiver. Select the authorized tested frozen candidate and verify its artifact family, sourceRevision and trial; absent a candidate, use candidate preparation and wait for its own trial or an explicitly recorded owner waiver before publication. Read packages/cindy-adapter/RELEASING.md in main claw-kit. Resolve authorized CLI candidate or published @veewo/claw base, inspect both source manifests and intended changes. Separately identify authorized artifact-repository checkout; do not treat source as a submodule or publish raw plugin directory.",
       "status": "pending"
     },
     {
@@ -32,7 +33,7 @@
     {
       "id": 3,
       "title": "Pass the exact-source release gate",
-      "detail": "Require the selected frozen candidate inventory/hash, exact clean source revision, retained test evidence and seven-day trial. Read-only checks may verify template driver compatibility, but never build, export, bump or repair source during promotion. A changed input requires a new candidate.",
+      "detail": "Require the selected frozen candidate inventory/hash, exact clean source revision, retained test evidence and seven-day trial or explicitly recorded owner waiver. Read-only checks may verify template driver compatibility, but never build, export, bump or repair source during promotion. A changed input requires a new candidate.",
       "status": "pending"
     },
     {
@@ -59,7 +60,8 @@
     }
   ],
   "rules": [
-    "Formal promotion requires the explicitly selected tested frozen candidate. Preserve its version and hashes; never bump, build, pack or export again. If no tested candidate exists, prepare a new version through beta:prepare and stop before publication.",
+    "Inventory every platform, but never publish or prepare an unselected family without explicit authorization. Each selected candidate must align with the target CLI base; fourth segments remain independent.",
+    "Formal promotion requires the explicitly selected tested frozen candidate. Preserve its version and hashes; never bump, build, pack or export again. If no tested candidate exists, prepare a new version through beta:prepare and wait for its own trial or an explicitly recorded owner waiver before publication.",
     "Never publish npm packages or modify another adapter.",
     "Never build or upload a .cindy archive for a marketplace release.",
     "Never publish changed Cindy plugin bytes without increasing the manifest version.",
