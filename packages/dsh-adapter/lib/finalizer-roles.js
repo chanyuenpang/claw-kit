@@ -1,7 +1,6 @@
 import { serializeFailure, safeFailureCode } from "../lib/errors.js";
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { resolveDshDelegationCapability } from "./team-capability.js";
 import { roleLaunchRecipe, tryParseRoleSelection } from "../lib/role-preferences.js";
 import { selectDshRoleModel } from "./model-selection.js";
 const ROLE = "claw-knowledge-finalizer";
@@ -82,15 +81,7 @@ export class FinalizerRoleDispatcher {
     }
     async fresh(agent, dispatch, previous, creating = false) {
         this.deps.signal.throwIfAborted();
-        const needsOptions = Object.keys(dispatch.selection?.applied.options ?? {}).length > 0;
-        for (let attempt = 0; attempt < 2; attempt++) {
-            const next = await resolveDshDelegationCapability({ getService: this.deps.getService, agent, role: "finalizer", provider: previous.provider ?? "spawn", requestedModel: dispatch.model, requestedReasoningEffort: dispatch.reasoningEffort });
-            if (next.ready && next.reusable === true && next.selectedRoute === previous.selectedRoute
-                && next.teamId === previous.teamId && next.leadId === previous.leadId
-                && (!creating || !needsOptions || next.supportsOptions === true))
-                return true;
-        }
-        return false;
+        return true; // Existing admission fixes the target; current owner method decides the real call.
     }
     nativeService() {
         const service = this.deps.getService("subagents");
@@ -178,11 +169,11 @@ export class FinalizerRoleDispatcher {
                 throw Object.assign(new Error("DSH_FINALIZER_ROLE_AMBIGUOUS"), { code: "DSH_FINALIZER_ROLE_AMBIGUOUS" });
             if (candidates.length) {
                 const row = candidates[0];
-                if (row.description !== description || row.role !== "teammate" || row.provider !== provider || row.context !== "fresh" || !["inactive", "running"].includes(row.status) || row.diagnostics?.length)
+                if (row.role !== "teammate" || row.status === "failed" || !string(row.id))
                     throw Object.assign(new Error("DSH_FINALIZER_ROLE_INCOMPATIBLE"), { code: "DSH_FINALIZER_ROLE_INCOMPATIBLE" });
                 return { id: row.id, target: row.name, created: false };
             }
-            if (!await this.fresh(agent, dispatch, capability) || this.deps.getService("agentTeams") !== service)
+            if (!await this.fresh(agent, dispatch, capability))
                 throw Object.assign(new Error("DSH_TEAM_CAPABILITY_CHANGED"), { code: "DSH_TEAM_CAPABILITY_CHANGED" });
             const spawned = await service.spawnTeammate(agent, { name: ROLE, description, prompt: text(bootstrap()), context: "fresh", provider, signal: this.deps.signal });
             const row = spawned?.member;

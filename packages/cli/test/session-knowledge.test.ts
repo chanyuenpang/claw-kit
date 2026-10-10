@@ -78,6 +78,7 @@ test("session knowledge claim captures once and done shares CLI terminal behavio
   assert.equal(fs.readFileSync(claim.reportPath, "utf8"), "captured\n");
   assert.equal((JSON.parse(fs.readFileSync(claim.jobPath, "utf8")).reportCapture.receipt as Record<string, unknown>).collectorVersion, "fixture-v1");
   assert.equal(((await service.execute(context, { operation: "knowledge.claim", input: { finalizeId: id } })).output as any).claimed, false);
+  assert.equal(JSON.parse(fs.readFileSync(claim.jobPath, "utf8")).attempts, 1, "repeat claim must not mint a second claim; receipt is the read-only recovery route");
   await assert.rejects(() => service.execute(context, { operation: "knowledge.done", input: { finalizeId: id, claimToken: "wrong", status: "succeeded", result: "Done" } }), /active claim/);
   const input = { finalizeId: id, claimToken: claim.claimToken, status: "succeeded" as const, result: "Done" };
   const result = (await service.execute(context, { operation: "knowledge.done", input })).output as any;
@@ -220,7 +221,7 @@ test("DSH ignores obsolete executable collectors but requires a live Host receip
   const end = await service.execute(context, { operation: "plan.done", input: { retrospectiveSummary: "Collector failure must be explicit." } });
   const finalizeId = (end.knowledgeDispatch as { finalizeId: string }).finalizeId;
   await assert.rejects(() => service.execute({ ...context, agentSessionId: "dsh-corrupt-child" },
-    { operation: "knowledge.claim", input: { finalizeId } }), /DSH_REPORT_CAPTURE_REQUIRED/);
+    { operation: "knowledge.claim", input: { finalizeId } }), (error: any) => error.code === "DSH_REPORT_CAPTURE_REQUIRED" && error.execution.outcome === "known" && error.execution.effect === "none");
   const jobPath = findKnowledgeFinalizationJobPath(resolveProjectContext(root), finalizeId)!;
   assert.equal(JSON.parse(fs.readFileSync(jobPath, "utf8")).attempts, 0);
   publishDshHostReport({ cwd: root, parentSessionId: context.agentSessionId, finalizeId,

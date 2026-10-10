@@ -74,12 +74,15 @@ test("unfinished preparation also owns the session root focus", async () => {
     taskName: "preparing", title: "Preparing", goalText: "Prepare", templateFile, forcePlanning: true,
   } });
   assert.equal(showPlan({ cwd: projectRoot, taskName: "preparing" }).plan.status, "prepare.requirements");
-  const before = registry.read(opened.identity.sessionKeyHash).currentPlan;
-  await assert.rejects(service.execute(context, { operation: "plan.create", input: {
-    taskName: "other-root", title: "Other", goalText: "Must not replace unfinished work",
-  } }), { code: "PLAN_CREATE_BLOCKED_BY_PROCESS_PLAN" });
-  assert.deepEqual(registry.read(opened.identity.sessionKeyHash).currentPlan, before);
-  assert.throws(() => showPlan({ cwd: projectRoot, taskName: "other-root" }), { code: "TASK_NOT_FOUND" });
+  // Switching to an explicit new root is one owner mutation; the unfinished
+  // preparation plan is left resumable rather than blocking the switch.
+  await service.execute(context, { operation: "plan.create", input: {
+    taskName: "other-root", title: "Other", goalText: "Replace unfinished work",
+  } });
+  assert.equal(showPlan({ cwd: projectRoot, taskName: "other-root" }).plan.status, "process.active");
+  assert.equal(showPlan({ cwd: projectRoot, taskName: "preparing" }).plan.status, "end.leave");
+  await service.execute(context, { operation: "plan.resume", input: { planId: "preparing" } });
+  assert.equal(showPlan({ cwd: projectRoot, taskName: "preparing" }).plan.status, "process.active");
 });
 
 test("session subplan completion returns parent guidance without touching the root Goal", async () => {

@@ -64,6 +64,7 @@ export type ClawSessionCommand =
       title?: string; taskName?: string; goalText?: string; description?: string;
       knowledgeCapture?: boolean; templateName?: string;
       templateFile?: string; planStatus?: string; forcePlanning?: boolean;
+      tasks?: Array<{ title: string; detail?: string }>;
     } }
   | { operation: "plan.start"; input: { updates?: ClawPlanFields; appendTasks?: Array<{ title: string; detail?: string }> } }
   | { operation: "plan.resume"; input: { planId?: string } }

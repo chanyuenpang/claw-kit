@@ -143,7 +143,7 @@ test("typed command service implicitly targets current plan for plan and task mu
   assert.equal(registry.read(opened.identity.sessionKeyHash).currentPlan, undefined);
 });
 
-test("typed command service blocks root plan creation during process states until leave", async () => {
+test("creating a root plan atomically leaves the unfinished current plan", async () => {
   for (const status of ["process.active", "process.wait", "process.discussing"] as const) {
     const runtimeRoot = fixture(`create-gate-runtime-${status}`);
     const projectRoot = fixture(`create-gate-project-${status}`);
@@ -172,26 +172,19 @@ test("typed command service blocks root plan creation during process states unti
       });
     }
 
-    await assert.rejects(
-      () => service.execute(context, {
-        operation: "plan.create",
-        input: { taskName: blockedTaskName, title: "Blocked plan", goalText: "Must not be written" },
-      }),
-      (error: unknown) => error instanceof Error
-        && "code" in error
-        && (error as { code: string }).code === "PLAN_CREATE_BLOCKED_BY_PROCESS_PLAN"
-        && error.message.includes("plan.leave")
-        && error.message.includes("subplan.create"),
-    );
-    assert.equal(fs.existsSync(path.join(projectRoot, ".claw", "tasks", blockedTaskName)), false);
-    assert.equal(showPlan({ cwd: projectRoot, taskName: currentTaskName }).plan.status, status);
-
-    await service.execute(context, { operation: "plan.leave", input: {} });
+    const nextTaskName = `next-${status.replace("process.", "")}`;
+    // An explicit new root request switches focus in one mutation; the previous
+    // plan stays resumable instead of forcing a separate plan.leave ceremony.
     await service.execute(context, {
       operation: "plan.create",
-      input: { taskName: blockedTaskName, title: "Allowed after leave", goalText: "New root work" },
+      input: { taskName: nextTaskName, title: "Next root work", goalText: "Switch focus" },
     });
-    assert.equal(showPlan({ cwd: projectRoot, taskName: blockedTaskName }).plan.status, "process.active");
+    assert.equal(showPlan({ cwd: projectRoot, taskName: nextTaskName }).plan.status, "process.active");
+    assert.equal(showPlan({ cwd: projectRoot, taskName: currentTaskName }).plan.status, "end.leave");
+
+    await service.execute(context, { operation: "plan.resume", input: { planId: currentTaskName } });
+    assert.equal(showPlan({ cwd: projectRoot, taskName: currentTaskName }).plan.status, "process.active");
+    assert.equal(showPlan({ cwd: projectRoot, taskName: nextTaskName }).plan.status, "end.leave");
   }
 });
 
@@ -246,4 +239,14 @@ test("existing work starts with no repeated hydration and repeat start preserves
   const repeated = await executor.execute(identity, { operation: "plan.start", input: {} });
   assert.equal((repeated.output as { plan: { status: string } }).plan.status, "process.active");
   assert.deepEqual((repeated.output as { plan: { tasks: unknown[] } }).plan.tasks, (started.output as { plan: { tasks: unknown[] } }).plan.tasks);
+});
+test("session create accepts explicit initial tasks without a start ceremony", async () => {
+  const cwd = fixture("direct-work"), runtime = fixture("direct-work-runtime");
+  initProject({ cwd, projectName: "Direct", planning: true });
+  const executor = new SessionCommandExecutor(new SessionRegistryV2(runtime));
+  const created = await executor.execute({ agentSessionId: "direct-work", workdir: cwd, client: { kind: "adapter" as const, host: "dsh" } },
+    { operation: "plan.create", input: { title: "Direct work", tasks: [{ title: "Implement" }, { title: "Verify" }] } });
+  const output = created.output as { plan: { status: string; tasks: Array<{ title: string }> } };
+  assert.equal(output.plan.status, "process.active");
+  assert.deepEqual(output.plan.tasks.map((task) => task.title), ["Implement", "Verify"]);
 });

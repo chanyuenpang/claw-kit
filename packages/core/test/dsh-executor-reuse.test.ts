@@ -68,24 +68,25 @@ test("one exact full-id admission permits only one delivery attempt and never re
   assert.throws(() => f.mark(jobPath, "accepted", "another-receipt"), /IMMUTABLE/);
 });
 
-test("first claim requires admitted child and active no-capture owned delegate, not a template label", (t) => {
-  const f = fixture(t), jobPath = f.job("b".repeat(64));
-  f.reserve(jobPath);
-  const delegate = f.delegate("B");
-  const options = { claimant: f.claimant, version: "v1", resolveDelegatePlan: () => delegate };
-  assert.throws(() => claimKnowledgeFinalizationJob(jobPath, options), /NOT_DELIVERED/);
-  f.mark(jobPath, "attempted");
-  assert.throws(() => claimKnowledgeFinalizationJob(jobPath, { ...options, claimant: { ...f.claimant, agentSessionId: "sibling" } }), /CLAIM_DENIED/);
-  assert.throws(() => claimKnowledgeFinalizationJob(jobPath, { claimant: f.claimant, version: "v1" }), /DELEGATE_PLAN_REQUIRED/);
-  fs.writeFileSync(delegate.planPath, JSON.stringify({ status: "process.active", templateId: "another", knowledgeCapture: true }));
-  assert.throws(() => claimKnowledgeFinalizationJob(jobPath, options), /DELEGATE_PLAN_REQUIRED/);
-  assert.equal(readKnowledgeFinalizationJob(jobPath).attempts, 0);
-  const valid = f.delegate("B");
-  fs.writeFileSync(valid.planPath, JSON.stringify({ status: "process.active", templateId: "another", knowledgeCapture: false }));
-  const claimed = claimKnowledgeFinalizationJob(jobPath, { ...options, resolveDelegatePlan: () => valid })!;
-  assert.equal(claimed.dshExecution?.delegatePlanPath, valid.planPath);
-  assert.equal(claimed.claimReceipt?.agentSessionId, f.member);
-  assert.throws(() => writeKnowledgeFinalizationJob(jobPath, { ...claimed, dshExecution: undefined }), /immutable/);
+test("claim owns execution independently from auxiliary phase or existence", (t) => {
+  for (const [i, phase] of ["process.discussing", "process.active", "process.wait", undefined].entries()) {
+    const f = fixture(t), jobPath = f.job(String(i + 1).repeat(64)); f.reserve(jobPath);
+    const delegate = phase ? f.delegate("phase-" + i, phase) : undefined;
+    const options = { claimant: f.claimant, version: "v1", resolveDelegatePlan: () => delegate };
+    const before = fs.readFileSync(jobPath, "utf8");
+    assert.throws(() => claimKnowledgeFinalizationJob(jobPath, options), (error: any) => {
+      assert.equal(error.code, "DSH_EXECUTION_NOT_DELIVERED"); assert.equal(error.execution.outcome, "known"); assert.equal(error.execution.effect, "none"); return true;
+    }); assert.equal(fs.readFileSync(jobPath, "utf8"), before);
+    f.mark(jobPath, "attempted"); const admitted = fs.readFileSync(jobPath, "utf8");
+    assert.throws(() => claimKnowledgeFinalizationJob(jobPath, { ...options, claimant: { ...f.claimant, agentSessionId: "sibling" } }), (error: any) => {
+      assert.equal(error.code, "DSH_EXECUTION_CLAIM_DENIED"); assert.equal(error.execution.effect, "none"); return true;
+    }); assert.equal(fs.readFileSync(jobPath, "utf8"), admitted);
+    const claimed = claimKnowledgeFinalizationJob(jobPath, options)!;
+    assert.equal(claimed.claimReceipt?.agentSessionId, f.member); assert.equal(claimed.attempts, 1);
+    assert.equal(claimed.dshExecution?.delegatePlanPath, delegate?.planPath);
+    if (delegate) assert.equal(JSON.parse(fs.readFileSync(delegate.planPath, "utf8")).status, phase, "claim does not normalize real workflow stages");
+    assert.throws(() => writeKnowledgeFinalizationJob(jobPath, { ...claimed, dshExecution: undefined }), /immutable/);
+  }
 });
 
 test("role locking is per parent; next job waits for job and delegate then durable release survives retention", (t) => {

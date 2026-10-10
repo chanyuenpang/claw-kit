@@ -7,7 +7,6 @@ import {
   buildMemoryIndex,
   activatePlan,
   appendSubplanReturnGuidance,
-  assertRootPlanCreateAllowed,
   completeSubplanAndRestoreParent,
   bindSessionToPlan,
   createPlanAndSwitchFocus,
@@ -21,7 +20,7 @@ import {
   leaveCurrentPlan,
   releaseCurrentPlanFocus,
   readFocusedPlan,
-  readKnowledgeFinalizationJob,
+  readKnowledgeFinalizationJob, attachKnowledgeDelegateWorkflow, dshKnowledgeDelegateTemplatePath, cindyKnowledgeDelegateTemplatePath, knowledgeDelegateTemplatePath, serializeFailure,
   readKnowledgeCompletionReceipt,
   ensureInsideDir,
   focusSessionKeyHash,
@@ -364,14 +363,9 @@ export class ClawCommandService {
       case "plan.create": {
         const commandInput = request.input as Parameters<typeof createProjectPlan>[0];
         const sessionKey = this.requireSessionKey(context);
+        // The focus owner below leaves any unfinished plan resumable in the same mutation.
         const created = await createProjectPlan(commandInput, {
           cwd, ownerSessionKey: context.agentSessionId, host: context.host,
-          checkFocus: () => {
-            const current = this.focusStore.read(focusSessionKeyHash(sessionKey)).currentPlan;
-            if (current) assertRootPlanCreateAllowed({
-              project: this.resolveProject(context, current.scope), sessionKey, sessionStore: this.focusStore,
-            });
-          },
         });
         const project = this.resolveProject(context, created.scope);
         const createdRef = createPlanRef(project, created.taskName, created.planFile, created.taskDir);
@@ -497,7 +491,7 @@ export class ClawCommandService {
           return { output: knowledgeClaimReceiptCommand(jobPath, claimant) };
         }
         const version = (JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }).version;
-        return { output: claimKnowledgeCommand(jobPath, version, claimant, () => {
+        const output = claimKnowledgeCommand(jobPath, version, claimant, () => {
           const current = this.focusStore.read(focusSessionKeyHash(this.requireSessionKey(context))).currentPlan;
           if (!current) return undefined;
           const target = this.resolveProject(context, current.scope);
@@ -505,7 +499,18 @@ export class ClawCommandService {
             taskPath: current.taskPath, planFile: current.planFile, ownerSessionKey: context.agentSessionId });
           return { planPath: shown.planPath, scope: target.scope ?? "project", projectRoot: target.projectRoot,
             ownerSessionId: claimant.agentSessionId };
-        }) };
+        });
+        if (!output.claimed) return { output };
+        // A session finishing its own job keeps its own focus: only a delegated
+        // writer gets a runtime-created auxiliary workflow.
+        if (claimant.agentSessionId === readKnowledgeFinalizationJob(jobPath).sessionId) return { output };
+        try {
+          const prepared = await this.prepareClaimWorkflow(context, jobPath, claimant);
+          return { ...prepared, output: { ...output, ...(prepared.output as Record<string, unknown>) } };
+        } catch (error) {
+          const warning = serializeFailure(error, { fallbackCode: "KNOWLEDGE_WORKFLOW_PREPARATION_FAILED", operation: "knowledge.workflow.prepare", origin: "cli" });
+          return { output: { ...output, claimCommitted: true, workflowPrepared: false, workflowDeferred: true, workflowFailure: warning } };
+        }
       }
       case "knowledge.done.receipt": {
         const input = request.input as { finalizeId: string; claimToken?: string; expectedStatus?: "succeeded" | "failed"; expectedResult?: string };
@@ -540,6 +545,10 @@ export class ClawCommandService {
         if ((result.output as { delegateClosed?: boolean }).delegateClosed || !readKnowledgeFinalizationJob(jobPath).delegateWorkflow) {
           const cleanup = removeKnowledgeAssignmentTemplate(jobPath, input.finalizeId);
           if (cleanup.error) result.output = { ...(result.output as Record<string, unknown>), templateCleanupDeferred: cleanup.error };
+        } else {
+          // The frozen material is still needed by the open auxiliary workflow.
+          result.output = { ...(result.output as Record<string, unknown>),
+            templateCleanupDeferred: "The auxiliary finalizer workflow is still open; its frozen assignment template is retained until closeout." };
         }
         return result;
       }
@@ -554,6 +563,39 @@ export class ClawCommandService {
   /** Optional post-commit automation shared by every session-command host.
    * Claim ownership selects the exact delegate; a terminal job never licenses
    * completing unrelated or unfinished content work. No failed close is replayed. */
+  private async prepareClaimWorkflow(context: CommandContext, jobPath: string, claimant: { projectRoot: string; host: string; agentSessionId: string }): Promise<ClawCommandResult> {
+    const job = readKnowledgeFinalizationJob(jobPath);
+    const focus = this.focusStore.read(focusSessionKeyHash(this.requireSessionKey(context))).currentPlan;
+    const actions: ClawHostActionV1[] = [];
+    let shown: ReturnType<typeof showPlan>;
+    if (job.delegateWorkflow) {
+      const owner = job.delegateWorkflow;
+      if (!focus) {
+        const target = this.resolveProject(context, owner.scope ?? "project");
+        const exact = planRefFromAbsolutePath(target, owner.planPath);
+        await activatePlan({ project: target, sessionKey: this.requireSessionKey(context), target: exact, sessionStore: this.focusStore });
+      }
+      const current = this.requireCurrentPlan(context);
+      shown = showPlan({ cwd: context.cwd, scope: current.scope, taskName: current.taskName, taskPath: current.taskPath, planFile: current.planFile, ownerSessionKey: claimant.agentSessionId });
+      if (path.resolve(shown.planPath) !== path.resolve(owner.planPath)) throw new ClawError("KNOWLEDGE_WORKFLOW_FOCUS_IN_USE", "Claim is committed; unrelated work keeps its focus.");
+    } else {
+      if (focus) throw new ClawError("KNOWLEDGE_WORKFLOW_FOCUS_IN_USE", "Claim is committed; prepare its workflow after explicitly leaving unrelated work.");
+      const templateFile = claimant.host === "dsh" ? dshKnowledgeDelegateTemplatePath() : claimant.host === "cindy" ? cindyKnowledgeDelegateTemplatePath() : knowledgeDelegateTemplatePath();
+      const created = await this.executeCommand(context, { operation: "plan.create", input: { title: "knowledge-finalizer-" + job.finalizeId, templateFile, knowledgeCapture: false } });
+      actions.push(...(created.hostActions ?? []));
+      const current = this.requireCurrentPlan(context);
+      shown = showPlan({ cwd: context.cwd, scope: current.scope, taskName: current.taskName, taskPath: current.taskPath, planFile: current.planFile, ownerSessionKey: claimant.agentSessionId });
+      attachKnowledgeDelegateWorkflow(jobPath, claimant, { planPath: shown.planPath, scope: current.scope ?? "project", projectRoot: claimant.projectRoot, ownerSessionId: claimant.agentSessionId });
+    }
+    if (shown.plan.templateId?.startsWith("internal-") && shown.plan.tasks.find(task => task.id === 1)?.status !== "done") {
+      const progress = await this.executeCommand(context, { operation: "task.done", input: { tasks: [{ id: 1 }] } });
+      actions.push(...(progress.hostActions ?? []));
+      const current = this.requireCurrentPlan(context);
+      shown = showPlan({ cwd: context.cwd, scope: current.scope, taskName: current.taskName, taskPath: current.taskPath, planFile: current.planFile, ownerSessionKey: claimant.agentSessionId });
+    }
+    return { output: { claimCommitted: true, workflowPrepared: true, auxiliaryPlanPath: shown.planPath, workflowGuidance: await buildPlanWorkflowGuidance({ taskName: shown.taskName, plan: shown.plan, planFile: shown.planFile, projectRoot: claimant.projectRoot, projectConfig: this.resolveProject(context, this.requireCurrentPlan(context).scope).projectConfig, host: context.host }) }, ...(actions.length ? { hostActions: actions } : {}) };
+  }
+
   private async finishKnowledgeDelegate(context: CommandContext, jobPath: string, output: Record<string, unknown>): Promise<ClawCommandResult> {
     const actions: ClawHostActionV1[] = [];
     try {

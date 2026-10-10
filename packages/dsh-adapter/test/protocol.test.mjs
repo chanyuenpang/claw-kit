@@ -37,6 +37,7 @@ test("plan.create maps capture intent and rejects removed scope", () => {
 });
 
 test("removed scope is not silently converted and invalid capture reaches owner validation", () => {
+  assert.deepEqual(daemonInput("plan.create", { title: "T", tasks: [{ title: "Do it" }] }), { title: "T", tasks: [{ title: "Do it" }] });
   assert.throws(() => daemonInput("plan.create", { title: "T", scope: "session" }), /scope/);
   assert.deepEqual(daemonInput("plan.create", { title: "T", knowledge_capture: "false" }), { title: "T", knowledgeCapture: "false" });
 });

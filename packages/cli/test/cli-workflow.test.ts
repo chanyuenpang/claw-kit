@@ -507,11 +507,9 @@ test("cli plan edit applies explicit field and collection flags", () => {
   assert.deepEqual(reducedPlan.references, []);
   assert.deepEqual((reducedPlan.tasks as JsonRecord[]).map((task) => task.id), [1]);
 
-  const missing = runClawExpectFailure(
-    ["plan", "remove", "--task-name", "demo-task", "--rule", "Missing rule"],
-    root,
-  );
-  assert.match(String((missing.error as JsonRecord).message), /exact value not found/i);
+  // Removing an already absent prose value is an idempotent no-op, not a permission failure.
+  runClaw(["plan", "remove", "--task-name", "demo-task", "--rule", "Missing rule"], root);
+  assert.deepEqual((JSON.parse(fs.readFileSync(taskFile(root, "demo-task", "plan.json"), "utf-8")) as JsonRecord).rules, []);
 });
 
 test("cli task commands accept repeated groups without cross-command edit syntax", () => {

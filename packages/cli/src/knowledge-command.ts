@@ -53,23 +53,23 @@ export function claimKnowledgeCommand(jobPath: string, version: string, claimant
       // Session-command callers supply exact current focus. The fallback only
       // serves legacy direct CLI callers without that application context.
       const delegate = currentDelegate ? currentDelegate() : resolveDirectDelegate(claimant);
-      if (!delegate) {
-        if (observed.dshExecution) throw new Error("DSH_DELEGATE_PLAN_REQUIRED: no current delegate for admitted child.");
-        return undefined;
-      }
-      const plan = JSON.parse(fs.readFileSync(delegate.planPath, "utf8")) as { knowledgeCapture?: boolean };
-      if (plan.knowledgeCapture !== false) throw new Error("KNOWLEDGE_DELEGATE_CAPTURE_REQUIRED: the current workflow must opt out of recursive capture.");
+      if (!delegate) return undefined;
+      const plan = JSON.parse(fs.readFileSync(delegate.planPath, "utf8")) as { knowledgeCapture?: boolean; title?: string; tasks?: Array<{ execution?: { lifecycle?: string } }> };
+      if (plan.knowledgeCapture !== false) return undefined; // Unrelated capturing work is not claim authorization or auxiliary association.
+      // The admitted child's canonical binding selects the association; template label,
+      // phase and content heuristics are not authorization.
       return delegate;
     },
-    prepare: (queued) => {
+    prepare: (queued, evidence) => {
       if (queued.reportCapture?.mode !== "claim"
         || queued.reportCapture.status === "captured") return;
       // DSH captures through its live parent adapter before dispatch. An empty
       // proven history has a valid receipt; a missing Host handoff is not proof of emptiness.
-      if (queued.host === "dsh") throw new Error("DSH_REPORT_CAPTURE_REQUIRED: dsh");
+      if (queued.host === "dsh") throw new ClawError("DSH_REPORT_CAPTURE_REQUIRED", "The DSH parent report capture has not been handed off.");
       if (resolveHostIntegrationProfile(queued.host)?.supportsClaimTimeReportCapture !== true) {
-        throw new Error("Claim-time report capture is unavailable for host " + (queued.host ?? "unknown") + ".");
+        throw new ClawError("KNOWLEDGE_REPORT_COLLECTOR_UNAVAILABLE", "Claim-time report capture is unavailable for host " + (queued.host ?? "unknown") + ".");
       }
+      Object.assign(evidence, { phase: "report-capture", outcome: "unknown", effect: "unknown" });
       const receipt = collectReport({
         host: queued.host as ReportCollectorHost,
         sessionId: queued.sessionId,
@@ -79,6 +79,7 @@ export function claimKnowledgeCommand(jobPath: string, version: string, claimant
         startedAt: queued.reportCapture.startedAt,
         endedAt: queued.reportCapture.endedAt,
       });
+      Object.assign(evidence, { phase: "prepare", outcome: "known", effect: "partial" });
       return { reportCapture: { ...queued.reportCapture, status: "captured" as const, capturedAt: receipt.completedAt, receipt } };
     },
   });

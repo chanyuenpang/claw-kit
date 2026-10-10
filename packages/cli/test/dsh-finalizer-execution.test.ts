@@ -150,21 +150,17 @@ test("private ledger facade isolates parent/member and freezes pending capture u
   assert.equal(fs.readFileSync(f.jobPath, "utf8"), before);
 });
 
-test("claim derives actual bound session delegate and recovers same child's original receipt", (t) => {
+test("claim adopts the bound session delegate regardless of phase and recovers the same child's receipt", (t) => {
   const f = fixture(t); f.reserve();
   markDshFinalizerDeliveryCommand({ ...f.common, deliveryKey: f.job.finalizeId, state: "attempted" });
-  assert.throws(() => claimKnowledgeCommand(f.jobPath, "v1", f.claimant), /DELEGATE_PLAN_REQUIRED/);
-  const pausedPath = f.delegate("non-authority-label");
-  const paused = JSON.parse(fs.readFileSync(pausedPath, "utf8")); paused.status = "process.wait";
-  fs.writeFileSync(pausedPath, JSON.stringify(paused));
-  assert.throws(() => claimKnowledgeCommand(f.jobPath, "v1", f.claimant), /DELEGATE_PLAN_REQUIRED/);
-  f.delegate("internal-dsh-knowledge-delegate", true);
-  assert.throws(() => claimKnowledgeCommand(f.jobPath, "v1", f.claimant), /CAPTURE_REQUIRED/);
   const delegatePlanPath = f.delegate("non-authority-label");
+  const paused = JSON.parse(fs.readFileSync(delegatePlanPath, "utf8")); paused.status = "process.wait";
+  fs.writeFileSync(delegatePlanPath, JSON.stringify(paused));
   assert.throws(() => claimKnowledgeCommand(f.jobPath, "v1", { ...f.claimant, agentSessionId: "wrong-member" }), /CLAIM_DENIED/);
   const first = claimKnowledgeCommand(f.jobPath, "v1", f.claimant) as any;
   assert.equal(first.claimed, true);
   assert.equal(readKnowledgeFinalizationJob(f.jobPath).dshExecution?.delegatePlanPath, delegatePlanPath);
+  assert.equal(JSON.parse(fs.readFileSync(delegatePlanPath, "utf8")).status, "process.wait", "claim must not rewrite the workflow's real phase");
   const bytes = fs.readFileSync(f.jobPath, "utf8");
   const session = createSessionWorkflowContext(f.root, f.memberSessionId);
   const childPlan = path.join(session.tasksDir, "assignment", "plan.json");
@@ -181,6 +177,17 @@ test("claim derives actual bound session delegate and recovers same child's orig
   const released = releaseDshFinalizerExecutionCommand({ cwd: f.root, actorSessionId: f.memberSessionId, finalizeId: f.job.finalizeId });
   assert.equal(released.released, true);
   assert.equal(released.parentSessionId, f.common.parentSessionId);
+});
+
+test("a capturing workflow is never adopted as this job's auxiliary association", (t) => {
+  const f = fixture(t); f.reserve();
+  markDshFinalizerDeliveryCommand({ ...f.common, deliveryKey: f.job.finalizeId, state: "attempted" });
+  const capturingPath = f.delegate("internal-dsh-knowledge-delegate", true);
+  const before = fs.readFileSync(capturingPath, "utf8");
+  const claimed = claimKnowledgeCommand(f.jobPath, "v1", f.claimant) as any;
+  assert.equal(claimed.claimed, true);
+  assert.equal(readKnowledgeFinalizationJob(f.jobPath).delegateWorkflow, undefined);
+  assert.equal(fs.readFileSync(capturingPath, "utf8"), before);
 });
 
 test("internal CLI accepts only host-forged parent identity and dispatches full-id attempt once", (t) => {

@@ -2,7 +2,7 @@ import type { PlanDocument, PlanReviewInput, PlanReviewResult, PlanReviewer, Pla
 
 export const REQUIREMENTS_NEXT_ACTION = "collect_requirements" as const;
 export const REQUIREMENTS_INSTRUCTION =
-  "Enter goal mode first. Then review whether requirements are clear enough to execute; clarify scope only if needed, otherwise move directly to process.active/process.wait/process.discussing.";
+  "Review whether requirements are clear enough to execute; clarify only a material unresolved decision, otherwise continue directly. Goal/progress projection is owned by the Host and is not an execution prerequisite.";
 export const REVIEW_NEXT_ACTION = "revise_plan_from_review" as const;
 export const REVIEW_INSTRUCTION =
   "Plan review found actionable feedback. Revise goal, rules, references, and tasks using planReview, then move to process.active/process.wait/process.discussing.";
@@ -47,7 +47,7 @@ export async function runPlanReview(params: {
   }
 
   return {
-    nextStatus: "prepare.review",
+    nextStatus: params.targetStatus, // Reviewer feedback is advisory, not a second execution permission owner.
     planReview: review,
     nextAction: "revise_plan_from_review",
     instruction: REVIEW_INSTRUCTION,

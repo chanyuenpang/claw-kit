@@ -93,8 +93,8 @@ export class RoleDelegation {
   private async scope(actor: DelegationActor, workdir: string, parentOnly: boolean): Promise<{ parent: DelegationActor; workdir: string }> {
     if (!actor || !string(actor.id) || !path.isAbsolute(workdir)) reject("DELEGATE_ACTOR_INVALID");
     const parent = await this.deps.resolveParent(actor);
-    if (!parent || !string(parent.id) || (parentOnly && parent !== actor)) reject("DELEGATE_PARENT_REQUIRED");
-    if (!parentOnly && (parent === actor || actor.session?.header?.parentSession !== parent.id)) reject("DELEGATE_WORKER_REQUIRED");
+    if (!parent || !string(parent.id) || (parentOnly && parent.id !== actor.id)) reject("DELEGATE_PARENT_REQUIRED");
+    if (!parentOnly && (parent.id === actor.id || actor.session?.header?.parentSession !== parent.id)) reject("DELEGATE_WORKER_REQUIRED");
     const canonical = normalize(await fs.realpath(workdir));
     if (parent.session?.header?.cwd && normalize(await fs.realpath(parent.session.header.cwd)) !== canonical) reject("DELEGATE_WORKSPACE_MISMATCH");
     return { parent, workdir: canonical };
@@ -134,9 +134,8 @@ export class RoleDelegation {
   }
   private async fresh(parent: DelegationActor, r: Receipt): Promise<void> {
     this.signal.throwIfAborted();
-    const c = await this.capability(parent);
-    if (!c.ready || (r.backend === "team" ? c.selectedRoute !== "team" || c.teamId !== r.teamId : c.selectedRoute !== "native") ||
-        (r.backend !== "native-one-shot" && !c.reusable)) reject("DELEGATE_CAPABILITY_CHANGED");
+    // The admitted backend and actor remain fixed in the receipt. Acquire its current
+    // owner method at the call site; optional catalog/options drift is not authorization.
   }
   private async teamRoster(team: any, parent: DelegationActor): Promise<any[]> {
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -426,7 +425,7 @@ export class RoleDelegation {
     if (r.backend === "team") {
       const team = this.deps.getService("agentTeams") as any;
       const membership = team?.tryMembership?.(actor);
-      if (r.memberId !== actor.id || membership?.root !== parent || membership?.id !== r.teamId || membership?.role !== "teammate") reject("DELEGATE_FOREIGN_WORKER");
+      if (r.memberId !== actor.id || membership?.root?.id !== parent.id || membership?.id !== r.teamId || membership?.role !== "teammate") reject("DELEGATE_FOREIGN_WORKER");
       return;
     }
     const native = this.deps.getService("subagents") as any;

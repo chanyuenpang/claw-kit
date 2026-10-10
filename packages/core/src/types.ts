@@ -480,7 +480,7 @@ export type PreparedSubplanWrite = {
 };
 
 /** Public creation intent. Storage is resolved by the workflow owner. */
-export type PlanCreateIntent = Pick<PlanWriteInput, "taskName" | "title" | "description" | "goalText" | "templateName" | "templateFile" | "knowledgeCapture" | "planStatus" | "forcePlanning">;
+export type PlanCreateIntent = Pick<PlanWriteInput, "taskName" | "title" | "description" | "goalText" | "templateName" | "templateFile" | "knowledgeCapture" | "tasks" | "planStatus" | "forcePlanning">;
 
 /** Low-level persistence/legacy recovery input. Public creation uses PlanCreateIntent. */
 export type PlanWriteInput = {
@@ -496,6 +496,8 @@ export type PlanWriteInput = {
   title?: string;
   description?: string;
   goalText?: string;
+  /** Explicit initial tasks for an action request; no planning meta task is injected. */
+  tasks?: Array<{ title: string; detail?: string }>;
   planStatus?: string;
   forcePlanning?: boolean;
   ownerSessionKey?: string;

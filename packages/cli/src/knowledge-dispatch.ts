@@ -10,7 +10,7 @@ export function renderKnowledgeDispatch(task: KnowledgeFinalizationTask): Knowle
   const title = "knowledge-finalizer-" + (task.host === "dsh" ? task.finalizeId : task.finalizeId.slice(0, 12));
   const template = task.host === "dsh" ? dshKnowledgeDelegateTemplatePath()
     : task.host === "cindy" ? cindyKnowledgeDelegateTemplatePath() : knowledgeDelegateTemplatePath();
-  const bootstrap = ["plan", "create", "--template-file", template, "--title", title];
+  const bootstrap = ["knowledge", "claim", "--project-root", task.projectRoot, "--finalize-id", task.finalizeId];
   const common = [
     "Execute this already-created claw knowledge-finalization job unattended.",
     "[claw host]",
@@ -19,24 +19,26 @@ export function renderKnowledgeDispatch(task: KnowledgeFinalizationTask): Knowle
     "Project root: " + JSON.stringify(task.projectRoot),
     "Use this exact project root as workdir for every operation. Use your own actual child session; never copy the parent session identity.",
     "Finalization id: " + task.finalizeId,
+    "The shared owner prepares the non-capturing auxiliary workflow and claim bookkeeping. Do not create or start a plan to qualify for claim; follow the returned actual workflow or a specific deferred preparation failure.",
   ];
   const route = task.host === "codex" ? [
     "Read the actual loaded claw-kit:using-claw-kit Codex execution reference before the first operation.",
     "Use its fixed code-mode driver for ALL context, plan, task, subplan and knowledge operations, including claim, done and receipts.",
     "First driver argv: " + JSON.stringify(bootstrap),
+    "If your current working directory differs from the project root, keep the explicit --project-root argument shown above.",
     "CLI-looking commandHints and template text describe business syntax only: translate them to driver argv without the claw executable or --host.",
     "Never execute workflow or knowledge mutations through bare shell CLI. The Codex adapter injects host identity and consumes native effects.",
   ] : task.host === "dsh" ? [
     "Use only the native claw_run route, never shell claw commands.",
-    "First call claw_run({operation: \"plan.create\", args: {title: " + JSON.stringify(title) + ", template_file: " + JSON.stringify(template) + "}}).",
+    "First call claw_run({operation: \"knowledge.claim\", args: {finalize_id: " + JSON.stringify(task.finalizeId) + "}}).",
     "Translate CLI-looking commandHints and template lifecycle text into claw_run operations and snake_case args.",
   ] : task.host === "cindy" ? [
     "Use the claw-kit Cindy Ghost tools, never shell claw commands.",
-    "First use Ghost plan.create with title " + JSON.stringify(title) + " and templateFile " + JSON.stringify(template) + ".",
+    "First use Ghost knowledge.claim with finalizeId " + JSON.stringify(task.finalizeId) + ".",
     "The current Ghost route supplies your Cindy session_context and workspace.",
   ] : [
     "Use the OpenCode adapter CLI route. Its shell.env supplies host=opencode and your current session.",
-    "First run: claw plan create --template-file " + JSON.stringify(template) + " --title " + JSON.stringify(title),
+    "First run: claw knowledge claim --finalize-id " + JSON.stringify(task.finalizeId),
     "Do not set host or session flags yourself and do not reuse inherited parent or Codex session variables.",
   ];
   return {

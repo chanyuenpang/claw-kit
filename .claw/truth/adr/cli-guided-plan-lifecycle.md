@@ -58,6 +58,10 @@ Accepted
 - plan/task 批处理采用按 argv 从左到右的 mutation chain：整条 chain 先做语法预校验，语法错误零提交；语义执行逐步持久化，在首个失败处停止，并保留此前成功 operation。
 - chain 中间步骤不生成 lifecycle side effect；`workflowGuidance`、completed-task 事件、session binding、completion hooks、plan mirror 与 Goal action 仅根据 chain 初始和最终 plan 状态归约一次。
 - `claw plan edit` 继续只拥有 plan 字段与状态，集合删除不进入该命令；task mutation 继续隔离在 `claw task add/edit/remove/done`，避免 plan 与 task ownership 因批处理耦合。
+- 显式重开是一次 owner mutation：`plan edit --status process.*` 或 `plan.resume` 可直接把 `end.completed`/`end.closed` 计划重开为 `process.active` 并清除 `completedAt`；不再要求先回到 `prepare.requirements`。重开不重放已完成的 knowledge finalization，也不改写终态回执。
+- 显式的新 root 创建在当前 plan 未结束时由焦点 owner 原子完成：旧 plan 转为可 resume 的 `end.leave`，新 plan 成为当前焦点；不再要求先执行 `plan.leave`，`PLAN_CREATE_BLOCKED_BY_PROCESS_PLAN` 不再是创建路径的一部分。单焦点语义不变。
+- `plan.create` 可携带初始 `tasks`：明确行动请求直接以 `process.active` 建立给定任务，不注入 planning meta task；真实讨论与证据不足仍停留在 `process.discussing`。
+- `plan.done` 仍要求真实 `retrospective`；重开、原子切换与携带初始任务都不放宽该完成条件。
 
 ## Consequences
 
@@ -100,6 +104,11 @@ Accepted
 ### Replaced blanket solution confirmation with a meaningful-choice gate
 
 早期合同把 planning bridge 描述成一律“讨论并确认 requirements 与 proposed solution”，并把 `recommendedCommands` 命令列表放在当前 guidance 旁边，容易把复杂工作变成审批仪式。新合同保留 solution disclosure，但只在存在 meaningful choice 时等待用户；`commandHints` 与 stage/current task 的职责分离，并明确不触发 lifecycle 自动推进。
+
+<!-- dated: 2026-10-09 -->
+### Single-step reopen, atomic root switch and initial tasks
+
+证据驱动的流程摩擦审查（51 项 inventory）确认三处状态门槛并不保护任何真实 authority：终态重开被拆成 `prepare.requirements` 再 `process.active` 两步、未结束 plan 阻塞新 root 创建并要求先 `plan.leave`、明确行动请求仍先建立 planning meta task。三者都只是让调用者表演机械状态转换，owner 侧 CAS、单焦点与 identity 边界不受影响，因此收敛为一次显式 mutation。`plan.done` 的 retrospective 必填与知识终态回执的不可重放性保持不变。
 
 <!-- state: current -->
 ## Related Code

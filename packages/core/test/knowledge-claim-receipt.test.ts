@@ -96,3 +96,15 @@ test("done preserves the frozen receipt but no longer makes it recoverable", () 
   assert.deepEqual(done.job.claimReceipt, claimed.claimReceipt);
   assert.equal(readKnowledgeClaimReceipt(jobPath, claimant), null);
 });
+
+test("pure claim material refusal remains known/no-effect; capture callback records its actual partial effects", () => {
+  const f = fixture(); const before = fs.readFileSync(f.jobPath, "utf8");
+  assert.throws(() => claimKnowledgeFinalizationJob(f.jobPath, { claimant: f.claimant, version: "v1", prepare: () => { throw Object.assign(new Error("input refused"), { code: "OWNER_INPUT_REFUSED" }); } }), (error: any) => {
+    assert.equal(error.code, "OWNER_INPUT_REFUSED"); assert.equal(error.execution.operation, "knowledge.claim"); assert.equal(error.execution.outcome, "known"); assert.equal(error.execution.effect, "none"); return true;
+  }); assert.equal(fs.readFileSync(f.jobPath, "utf8"), before);
+  assert.throws(() => claimKnowledgeFinalizationJob(f.jobPath, { claimant: f.claimant, version: "v1", prepare: (_job, evidence) => {
+    Object.assign(evidence, { phase: "report-capture", outcome: "known", effect: "partial" });
+    throw Object.assign(new Error("report write failed"), { code: "EACCES" });
+  } }), (error: any) => { assert.equal(error.code, "EACCES"); assert.equal(error.execution.phase, "report-capture"); assert.equal(error.execution.effect, "partial"); return true; });
+  assert.equal(fs.readFileSync(f.jobPath, "utf8"), before, "partial report evidence does not invent a committed claim");
+});

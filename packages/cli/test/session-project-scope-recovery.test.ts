@@ -60,7 +60,11 @@ test("completed session storage cannot strand the next project plan on open, sta
   await execute("plan.resume");
   await execute("plan.resume", { planId: "project-work" });
   assert.equal(showPlan({ cwd, scope: "project", taskName: "project-work" }).plan.status, "process.active");
-  await assert.rejects(execute("plan.create", { title: "Do not replace active work", knowledgeCapture: false }), /Cannot create a new plan/);
+  // An explicit new root switches focus atomically and the previous plan stays resumable.
+  await execute("plan.create", { title: "Temporary second root", taskName: "temporary-second", knowledgeCapture: false });
+  assert.equal(showPlan({ cwd, scope: "project", taskName: "project-work" }).plan.status, "end.leave");
+  await execute("plan.resume", { planId: "project-work" });
+  assert.equal(showPlan({ cwd, scope: "project", taskName: "project-work" }).plan.status, "process.active");
   assert.equal(registry.read(hash).currentPlan?.taskName, "project-work");
   const temporary = showPlan({ cwd, scope: "session", ownerSessionKey: identity.agentSessionId, taskName: "temporary-release" });
   assert.equal(temporary.plan.status, "end.completed");

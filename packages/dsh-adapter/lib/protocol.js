@@ -135,7 +135,7 @@ export function daemonInput(operation, args) {
     };
     switch (operation) {
         case "plan.create":
-            assertKnownArgs(operation, args, ["title", "goal", "goal_text", "description", "knowledge_capture", "template", "template_name", "template_file", "status", "force_planning"]);
+            assertKnownArgs(operation, args, ["title", "goal", "goal_text", "description", "knowledge_capture", "template", "template_name", "template_file", "status", "force_planning", "tasks", "add_tasks"]);
             return {
                 title: str("title") ?? "",
                 ...(str("goal", "goal_text") !== undefined ? { goalText: str("goal", "goal_text") } : {}),
@@ -145,6 +145,7 @@ export function daemonInput(operation, args) {
                 ...(str("template_file") !== undefined ? { templateFile: str("template_file") } : {}),
                 ...(str("status") !== undefined ? { planStatus: str("status") } : {}),
                 ...(typeof args.force_planning === "boolean" ? { forcePlanning: args.force_planning } : {}),
+                ...(arr("tasks", "add_tasks") !== undefined ? { tasks: arr("tasks", "add_tasks") } : {}),
             };
         case "plan.start": {
             assertKnownArgs(operation, args, [...PLAN_FIELD_ARG_KEYS, "add_tasks", "tasks"]);

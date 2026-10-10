@@ -135,7 +135,7 @@ test("absent Team surface selects native despite a residual Team service", async
   delete f.services.tools;
   assert.equal((await resolve(f.input)).selectedRoute, "native");
   assert.equal((await resolve(f.input)).ready, true);
-  await expectFailure({ ...f.input, role: "foreground" }, "native", "SCOPED_TOOLS_UNAVAILABLE");
+  assert.equal((await resolve({ ...f.input, role: "foreground" })).ready, true, "missing tool projection cannot deny actual owner");
 });
 
 test("native preserves a valid one-shot route when continuation is absent", async () => {
@@ -162,16 +162,16 @@ test("foreground Team hints tolerate partial schemas while missing business serv
   await expectFailure({ ...missing.input, role: "foreground" }, "team", "TEAM_SERVICE_UNAVAILABLE");
 });
 
-test("nonmember, teammate and stale root identity are not admitted as exact Lead", async () => {
+test("membership projections do not shadow the actual dispatch owner permission", async () => {
   const f = fixture();
   f.services.agentTeams.tryMembership = () => undefined;
-  await expectFailure(f.input, "team", "TEAM_CALLER_NOT_MEMBER");
+  assert.equal((await resolve(f.input)).ready, true);
   f.services.agentTeams.tryMembership = () => ({ id: "lead-id", root: f.agent, role: "teammate" });
-  await expectFailure(f.input, "team", "TEAM_LEAD_REQUIRED");
+  assert.equal((await resolve(f.input)).ready, true);
   f.services.agentTeams.tryMembership = () => ({ id: "lead-id", root: { ...f.agent }, role: "lead" });
-  await expectFailure(f.input, "team", "TEAM_LEAD_REQUIRED");
+  assert.equal((await resolve(f.input)).ready, true);
   f.services.agentTeams.tryMembership = () => ({ id: "other-team", root: f.agent, role: "lead" });
-  await expectFailure(f.input, "team", "TEAM_MEMBERSHIP_INVALID");
+  assert.equal((await resolve(f.input)).ready, true);
 });
 
 test("managed Team role relies on Team business service, not a shadow native provider audit", async () => {
@@ -237,15 +237,15 @@ test("background finalizer stays native even while Team tools are exposed", asyn
   assert.equal(f.requestedServices.includes("agentTeams"), false);
 });
 
-test("native foreground requires scoped subagent route and every admission rechecks services", async () => {
+test("native foreground catalog drift does not become a permission gate", async () => {
   const f = fixture();
   assert.equal((await resolve(f.input)).selectedRoute, "team");
   exposeNativeOnly(f);
   assert.equal((await resolve({ ...f.input, role: "foreground" })).ready, true);
   f.definitions.delete("subagent");
-  await expectFailure({ ...f.input, role: "foreground" }, "native", "NATIVE_FOREGROUND_TOOLS_UNAVAILABLE");
+  assert.equal((await resolve({ ...f.input, role: "foreground" })).ready, true);
   f.services.tools.get = () => { throw new Error("disposed scope"); };
-  await expectFailure({ ...f.input, role: "foreground" }, "native", "SCOPED_TOOLS_UNAVAILABLE");
+  assert.equal((await resolve({ ...f.input, role: "foreground" })).ready, true, "missing tool projection cannot deny actual owner");
 });
 
 test("managed foreground facade uses business capability without model coordination tools", async () => {

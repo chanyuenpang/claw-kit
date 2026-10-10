@@ -61,14 +61,7 @@ function teamExposed(view) {
 function surfaceReason(view, team, foreground) {
     // Tool schemas are route hints, not business authorization. The actual Team
     // or subagent method owns argument and permission validation.
-    if (!foreground)
-        return undefined;
-    if (!view.available)
-        return "SCOPED_TOOLS_UNAVAILABLE";
-    if (!team)
-        return view.definitions.has("subagent") ? undefined : "NATIVE_FOREGROUND_TOOLS_UNAVAILABLE";
-    return view.definitions.has("spawn_teammate") || view.definitions.has("send_message")
-        ? undefined : "TEAM_FOREGROUND_TOOLS_UNAVAILABLE";
+    return undefined; // A catalog is a transport hint, never the Host permission owner.
 }
 function inspectBackend(subagents, input) {
     const no = (reason) => ({ reason, reusable: false });
@@ -121,20 +114,18 @@ export async function resolveDshDelegationCapability(input) {
             stage = "TEAM_SERVICE_UNAVAILABLE";
             const service = input.getService("agentTeams");
             const tryMembership = method(service, "tryMembership");
-            if (!tryMembership || !method(service, "listMembers") || !method(service, "spawnTeammate") || !method(service, "sendMessage")) {
+            if (!method(service, "listMembers") || !method(service, "spawnTeammate") || !method(service, "sendMessage")) {
                 return fail("TEAM_SERVICE_UNAVAILABLE");
             }
             stage = "TEAM_MEMBERSHIP_UNAVAILABLE";
-            const membership = record(tryMembership.call(service, input.agent));
-            if (!membership)
-                return fail("TEAM_CALLER_NOT_MEMBER");
-            if (membership.role !== "lead" || membership.root !== input.agent)
-                return fail("TEAM_LEAD_REQUIRED");
+            let membership;
+            try {
+                membership = record(tryMembership?.call(service, input.agent));
+            }
+            catch { /* owner dispatch will expose permission failures */ }
             const leadId = text(record(input.agent)?.id);
-            const teamId = text(membership.id);
-            if (!leadId || teamId !== leadId)
-                return fail("TEAM_MEMBERSHIP_INVALID");
-            snapshot = { ...snapshot, teamId, leadId };
+            const teamId = text(membership?.id);
+            snapshot = { ...snapshot, ...(teamId ? { teamId } : {}), ...(leadId ? { leadId } : {}) };
             if (input.role !== "foreground")
                 snapshot = { ...snapshot, provider: input.provider, reusable: true };
         }

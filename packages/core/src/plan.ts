@@ -7,7 +7,6 @@ import { resolvePlanEffectiveConfig } from "./effective-config.js";
 import { ClawError, withExecutionFailure, type ClawExecutionFailure } from "./errors.js";
 import { commitSubplanCreation, completeSubplanAndRestoreParent, createPlanRef, ProjectFocusSessionStore, readFocusedPlan } from "./focus-transitions.js";
 import { buildDefaultProjectConfig, ensureProjectEnvironment } from "./init.js";
-import { assertRootPlanCreateAllowedForPlan } from "./focus-transitions.js";
 import { assertSingleTaskActivation, currentPlanTask } from "./task-focus.js";
 import { isIntegrationHost, resolveHostIntegrationProfile } from "./integration-contract.js";
 import { readJsonFile, withFileLock, withSerializedAccess, writeJsonFile } from "./io.js";
@@ -146,23 +145,14 @@ export async function createProjectPlan(
     const existingRoot = findProjectRoot(context.cwd);
     const projectRoot = existingRoot ?? path.resolve(context.cwd);
     const legacy = resolveSessionWorkflowContext(context.ownerSessionKey, { readOnly: true });
-    context.checkFocus?.();
-    if (context.ownerSessionKey) {
-      const contexts = [existingRoot ? resolveProjectContext(existingRoot) : null, legacy];
-      for (const project of contexts) {
-        if (!project) continue;
-        const bound = readSessionBoundPlanPath(project, context.ownerSessionKey);
-        if (!bound || !fs.existsSync(bound)) continue;
-        const current = normalizePlanDocument(readJsonFile<PlanDocument>(bound));
-        assertRootPlanCreateAllowedForPlan(createPlanRef(project, path.basename(path.dirname(bound)), path.basename(bound), path.dirname(bound)), current);
-      }
-    }
     const config = previewProjectConfig(projectRoot, buildDefaultProjectConfig({ cwd: projectRoot }));
     const templateFile = intent.templateFile ? path.resolve(context.cwd, intent.templateFile) : undefined;
-    const status = intent.planStatus === undefined ? "prepare.requirements" : normalizePlanStatus(intent.planStatus);
+    const status = intent.planStatus === undefined
+      ? (intent.tasks?.length ? "process.active" : "prepare.requirements")
+      : normalizePlanStatus(intent.planStatus);
     if (!status) throw new ClawError("PLAN_STATUS_INVALID", "Invalid initial plan status.");
     const plan = normalizePlanDocument(await createSeedPlan(projectRoot, config, intent.templateName, templateFile,
-      taskName, intent.title, intent.goalText, status, intent.forcePlanning, context.host, existingRoot ?? undefined, true), status);
+      taskName, intent.title, intent.goalText, status, intent.forcePlanning, context.host, existingRoot ?? undefined, true, intent.tasks), status);
     const delegate = plan.tasks.some((task) => task.execution?.lifecycle === "knowledge.result");
     if (delegate && (intent.knowledgeCapture ?? plan.knowledgeCapture) !== false) {
       throw new ClawError("PROJECT_CONFIG_INVALID", "A knowledge-result workflow must not recursively capture itself.");
@@ -227,7 +217,8 @@ async function writePlanWithOutcome(input: PlanWriteInput, execution: ClawExecut
   }
   const existing = createdPlan ? undefined : readJsonFile<PlanDocument>(planPath);
   const existingStatus = existing ? normalizePlanDocument(existing).status : undefined;
-  const effectiveStatus = normalizePlanStatus(input.planStatus) ?? input.content?.status ?? existingStatus ?? "prepare.requirements";
+  const effectiveStatus = normalizePlanStatus(input.planStatus) ?? input.content?.status
+    ?? (input.tasks?.length ? "process.active" : undefined) ?? existingStatus ?? "prepare.requirements";
 
   let plan = normalizePlanDocument(
     input.content ?? await createSeedPlan(
@@ -242,6 +233,8 @@ async function writePlanWithOutcome(input: PlanWriteInput, execution: ClawExecut
       input.forcePlanning,
       input.host,
       templateProjectRoot,
+      false,
+      input.tasks,
     ),
     effectiveStatus,
   );
@@ -1302,6 +1295,7 @@ async function createSeedPlan(
   host?: string,
   templateProjectRoot?: string,
   publicCreation = false,
+  explicitTasks?: Array<{ title: string; detail?: string }>,
 ): Promise<PlanDocument> {
   const effectiveTemplateName = templateFile
     ? undefined
@@ -1319,8 +1313,28 @@ async function createSeedPlan(
   const effectiveConfig = resolvePlanEffectiveConfig(projectConfig, {
     configOverride: template.configOverride,
   });
-  const planningEnabled = forcePlanning || effectiveConfig?.planning !== false;
+  const planningEnabled = forcePlanning || template.source === "project" || template.id !== "default" || effectiveConfig?.planning !== false; // Explicit workflow tasks are never erased by a global planning preference.
   const planningSkill = effectiveConfig?.externalPlanningSkill?.trim() || "claw-kit:planning";
+  if (explicitTasks?.length) {
+    // An explicit action request owns its tasks; no planning meta task is injected.
+    return {
+      title: title ?? taskName,
+      knowledgeCapture: template.knowledgeCapture ?? true,
+      templateId: template.id,
+      templateGuidance: {},
+      ...(template.templatePath ? { templateFile: template.templatePath } : {}),
+      ...(template.configOverride ? { configOverride: template.configOverride } : {}),
+      status,
+      goal: { text: goalText ?? title ?? taskName },
+      requirements: { summary: "", openQuestions: [], acceptanceCriteria: [] },
+      tasks: explicitTasks.map((taskItem, index) => ({ id: index + 1, title: taskItem.title,
+        ...(taskItem.detail ? { detail: taskItem.detail } : {}), status: "pending" as const })),
+      references: [],
+      rules: [],
+      keyDecisions: [],
+      retrospective: { summary: "" },
+    };
+  }
   // Lightweight defaults may omit planning; an explicitly selected workflow
   // owns its tasks and lifecycle contract, including internal finalizers.
   if (!planningEnabled && !templateName?.trim() && !templateFile?.trim()
@@ -1638,13 +1652,13 @@ function resolveShowPlanTarget(input: PlanShowInput): {
 function canSetPlanStatus(
   from: PlanStatus | undefined,
   to: PlanStatus,
-): { ok: true } | { ok: false; code: "PLAN_STATUS_NOT_SETTABLE" | "PLAN_STATUS_TRANSITION_FORBIDDEN" | "PLAN_STATUS_REOPEN_REQUIRED"; error: string } {
+): { ok: true } | { ok: false; code: "PLAN_STATUS_NOT_SETTABLE" | "PLAN_STATUS_TRANSITION_FORBIDDEN"; error: string } {
   if (to === "prepare.review") {
     return {
       ok: false,
       code: "PLAN_STATUS_NOT_SETTABLE",
       error:
-        "planStatus=prepare.review is an internal review gate and cannot be set directly. Revise the plan content, then set process.active/process.wait/process.discussing, or reopen an ended plan with prepare.requirements.",
+        "planStatus=prepare.review is an internal review gate and cannot be set directly. Revise the plan content, then set process.active/process.wait/process.discussing, or set process.active to reopen an ended plan.",
     };
   }
   if (!from) {
@@ -1680,12 +1694,9 @@ function canSetPlanStatus(
     return { ok: true };
   }
   if (isEnd(from) && isProcess(to)) {
-    return {
-      ok: false,
-      code: "PLAN_STATUS_REOPEN_REQUIRED",
-      error:
-        "Cannot move directly from end.* to process.*. First reopen with planStatus=prepare.requirements, update the plan, then set process.active/process.wait/process.discussing.",
-    };
+    // Setting a process status on a canonical ended plan is the reopen intent.
+    // The former intermediate prepare.requirements step added no validation.
+    return { ok: true };
   }
   if (isEnd(from) && isEnd(to)) {
     return { ok: true };
@@ -1724,7 +1735,7 @@ function applyPlanStatusMetadata(
 ): void {
   if (previousStatus !== "end.completed" && nextStatus === "end.completed") {
     target.completedAt = new Date().toISOString();
-  } else if (previousStatus === "end.completed" && nextStatus !== "end.completed") {
+  } else if (isCompletionTerminal(previousStatus) && !isCompletionTerminal(nextStatus)) {
     delete target.completedAt;
   }
 

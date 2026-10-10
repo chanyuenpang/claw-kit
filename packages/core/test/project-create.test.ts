@@ -56,13 +56,14 @@ test("removed template scope is rejected before project initialization", async (
   assert.deepEqual(fs.readdirSync(cwd), ["TEMPLATE.json"]);
 });
 
-test("legacy session focus blocks a new root before project bootstrap", async () => {
+test("legacy session focus no longer blocks an unrelated new root", async () => {
   const cwd = fixture(), ownerSessionKey = randomUUID();
   const old = await writePlan({ cwd, scope: "session", knowledgeCapture: false, title: "Old work", ownerSessionKey });
   const before = fs.readFileSync(old.planPath, "utf8");
-  await assert.rejects(createProjectPlan({ title: "New work", knowledgeCapture: false }, { cwd, ownerSessionKey }),
-    (error: any) => { assert.equal(error.execution.effect, "none"); return true; });
-  assert.equal(fs.existsSync(path.join(cwd, ".claw")), false);
+  // A focused legacy session plan no longer refuses an unrelated root creation;
+  // the focus owner switches, and the old plan bytes stay untouched.
+  const created = await createProjectPlan({ title: "New work", knowledgeCapture: false }, { cwd, ownerSessionKey });
+  assert.ok(created.planPath);
   assert.equal(fs.readFileSync(old.planPath, "utf8"), before);
 });
 

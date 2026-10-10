@@ -50,8 +50,10 @@ test("all session adapters share bootstrap and no-capture storage semantics", as
     const result = await executor.execute(identity, { operation: "plan.create", input: { title: "Shared plan", knowledgeCapture: false } });
     const output = result.output as any;
     assert.equal(output.scope, "project"); assert.equal(output.plan.knowledgeCapture, false);
-    const before = fs.readFileSync(output.planPath, "utf8");
-    await assert.rejects(executor.execute(identity, { operation: "plan.create", input: { title: "Second root" } }));
-    assert.equal(fs.readFileSync(output.planPath, "utf8"), before);
+    // A second explicit root switches focus atomically; the replaced plan is
+    // left resumable instead of requiring a plan.leave ceremony.
+    const second = await executor.execute(identity, { operation: "plan.create", input: { title: "Second root" } });
+    assert.ok((second.output as { planPath: string }).planPath);
+    assert.equal(JSON.parse(fs.readFileSync(output.planPath, "utf8")).status, "end.leave");
   }
 });

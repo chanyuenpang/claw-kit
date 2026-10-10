@@ -944,52 +944,55 @@ export function releaseDshFinalizerExecution(input: {
 export function claimKnowledgeFinalizationJob(
   jobPath: string,
   options?: {
-    prepare?: (job: KnowledgeFinalizationJob) => Partial<KnowledgeFinalizationJob> | void;
+    prepare?: (job: KnowledgeFinalizationJob, evidence: ClawExecutionFailure) => Partial<KnowledgeFinalizationJob> | void;
     claimant?: KnowledgeClaimant;
     version?: string;
     /** Supplied only by trusted CLI context, never model arguments. */
     resolveDelegatePlan?: () => KnowledgeDelegatePlan | undefined;
   },
 ): KnowledgeFinalizationJob | null {
-  return withFileLock(jobPath, () => {
+  const evidence: ClawExecutionFailure = { operation: "knowledge.claim", phase: "prepare", outcome: "known", effect: "none" };
+  const version = options?.version?.trim() || "unspecified"; // receipt metadata, not a permission credential
+  try { return withFileLock(jobPath, () => {
     const observed = readKnowledgeFinalizationJob(jobPath);
     if (observed.host === "dsh" || options?.claimant?.host === "dsh") {
       assertDshKnowledgeClaimant(observed, options?.claimant);
-      if (!options?.version?.trim()) throw new Error("DSH knowledge claim requires a receipt version.");
+
     }
     if (options?.claimant?.agentSessionId.trim() && observed.host !== "dsh"
       && ((options.claimant.host || "standard") !== (observed.host ?? "standard") || path.resolve(options.claimant.projectRoot) !== path.resolve(observed.projectRoot))) {
       completionRejection("KNOWLEDGE_CLAIM_OWNER_MISMATCH", "Claim identity must match the canonical host and project.");
     }
+    if (observed.dshExecution && (observed.dshExecution.delivery.state === "reserved" || observed.dshExecution.releasedAt)) {
+      throw new ClawError("DSH_EXECUTION_NOT_DELIVERED", "The admitted job has no live delivery attempt.");
+    }
+    if (observed.claimReceipt) return null;
+    Object.assign(evidence, { phase: "reconcile", outcome: "unknown", effect: "unknown" });
     const current = reconcileKnowledgeFinalizationJobLocked(jobPath, new Date());
+    Object.assign(evidence, { phase: "prepare", outcome: "known", effect: JSON.stringify(current) === JSON.stringify(observed) ? "none" : "committed" });
     if (current.claimReceipt) return null;
     if (current.status !== "queued" && (!current.dshExecution || current.dshExecution.delegatePlanPath
       || current.dshExecution.releasedAt || current.dshExecution.delivery.state === "reserved")) return null;
     let execution = current.dshExecution;
     const delegate = options?.resolveDelegatePlan?.();
-    if (execution) {
-      if (execution.delivery.state === "reserved" || execution.releasedAt) throw new Error("DSH_EXECUTION_NOT_DELIVERED: admitted job has no delivery attempt.");
-      if (!delegate || delegate.ownerSessionId !== execution.memberSessionId
-        || path.resolve(delegate.projectRoot) !== path.resolve(current.projectRoot) || !path.isAbsolute(delegate.planPath)) {
-        throw new Error("DSH_DELEGATE_PLAN_REQUIRED: trusted current no-capture delegate required.");
+    // Auxiliary stage/template/capture are work orchestration, never claim authority.
+    if (execution && delegate) {
+      if (delegate.ownerSessionId !== execution.memberSessionId || path.resolve(delegate.projectRoot) !== path.resolve(current.projectRoot) || !path.isAbsolute(delegate.planPath)) {
+        throw new ClawError("KNOWLEDGE_DELEGATE_OWNER_MISMATCH", "Auxiliary workflow association must match the exact admitted actor and project.");
       }
-      if (execution.delegatePlanPath && path.resolve(execution.delegatePlanPath) !== path.resolve(delegate.planPath)) {
-        throw new Error("DSH_EXECUTION_IMMUTABLE: delegate plan cannot be rebound.");
-      }
-      const plan = readJsonFile<{ status?: string; templateId?: string; knowledgeCapture?: boolean }>(delegate.planPath);
-      if (plan.status !== "process.active" || plan.knowledgeCapture !== false) {
-        throw new Error("DSH_DELEGATE_PLAN_REQUIRED: active internal no-capture delegate required.");
-      }
+      if (execution.delegatePlanPath && path.resolve(execution.delegatePlanPath) !== path.resolve(delegate.planPath)) throw new ClawError("DSH_EXECUTION_IMMUTABLE", "Delegate workflow association cannot be rebound.");
       execution = { ...execution, delegatePlanPath: path.resolve(delegate.planPath) };
     }
     if (current.status !== "queued") {
       // An admitted child whose job expired before claim still needs a provable
       // delegate end.leave before its reusable role can be released. No token is issued.
+      Object.assign(evidence, { phase: "commit", outcome: "unknown", effect: "unknown" });
       writeJsonFileAtomic(jobPath, { ...current, dshExecution: execution });
       return null;
     }
     const native = resolveHostIntegrationProfile(current.host)?.supportsNativeSubagentFinalization;
     if (!(native && current.reportCapture?.mode === "claim") && current.host !== "opencode") {
+      Object.assign(evidence, { phase: "commit", outcome: "unknown", effect: "unknown" });
       writeJsonFileAtomic(jobPath, {
         ...current,
         status: "failed",
@@ -999,7 +1002,7 @@ export function claimKnowledgeFinalizationJob(
       return null;
     }
     const now = new Date().toISOString();
-    const prepared = options?.prepare?.(structuredClone(current));
+    const prepared = options?.prepare?.(structuredClone(current), evidence);
     const running: KnowledgeFinalizationJob = {
       ...current,
       ...(prepared ?? {}),
@@ -1016,33 +1019,35 @@ export function claimKnowledgeFinalizationJob(
       error: undefined,
       operationalFailure: undefined,
     };
-    if (options?.claimant?.agentSessionId.trim() && options.version?.trim()) {
+    if (options?.claimant?.agentSessionId.trim()) {
       const assignments = buildKnowledgeWriterAssignments(running);
       running.claimReceipt = {
         schemaVersion: 1, finalizeId: current.finalizeId, projectRoot: current.projectRoot,
         host: current.host ?? "standard", parentSessionId: current.sessionId,
         agentSessionId: options!.claimant!.agentSessionId,
-        claimToken: running.claimToken!, claimedAt: now, version: options!.version!, assignments,
-        template: buildKnowledgeAssignmentTemplate({ assignments, finalizeId: current.finalizeId, version: options!.version! }),
+        claimToken: running.claimToken!, claimedAt: now, version: version, assignments,
+        template: buildKnowledgeAssignmentTemplate({ assignments, finalizeId: current.finalizeId, version: version }),
       };
     }
     // Token, owner and material commit together. A missing projection can be rebuilt;
     // a failed template build must never leave a running job without its receipt.
+    Object.assign(evidence, { phase: "commit", outcome: "unknown", effect: "unknown" });
     writeJsonFileAtomic(jobPath, running);
+    Object.assign(evidence, { phase: "post-commit", outcome: "known", effect: "committed" });
     return running;
-  });
+  }); } catch (error) { throw withExecutionFailure(error, evidence); }
 }
 
 function assertDshKnowledgeClaimant(job: KnowledgeFinalizationJob, claimant?: KnowledgeClaimant): asserts claimant is KnowledgeClaimant {
   if (job.host !== "dsh" || claimant?.host !== "dsh" || !claimant.agentSessionId.trim()
     || claimant.agentSessionId === job.sessionId
     || path.resolve(claimant.projectRoot) !== path.resolve(job.projectRoot)) {
-    throw new Error("Knowledge claim receipt requires the trusted DSH child identity and exact project.");
+    throw new ClawError("KNOWLEDGE_CLAIM_OWNER_MISMATCH", "Knowledge claim receipt requires the trusted DSH child identity and exact project.", undefined, { operation: "knowledge.claim", phase: "prepare", outcome: "known", effect: "none" });
   }
   if (job.dshExecution && (job.dshExecution.parentSessionId !== job.sessionId
     || job.dshExecution.memberSessionId !== claimant.agentSessionId
     || job.dshExecution.deliveryKey !== job.finalizeId)) {
-    throw new Error("DSH_EXECUTION_CLAIM_DENIED: only the exact admitted member may claim this job.");
+    throw new ClawError("DSH_EXECUTION_CLAIM_DENIED", "DSH_EXECUTION_CLAIM_DENIED: only the exact admitted member may claim this job.", undefined, { operation: "knowledge.claim", phase: "prepare", outcome: "known", effect: "none" });
   }
 }
 
@@ -1406,6 +1411,21 @@ export function recordKnowledgeFinalizationResult(
     fs.appendFileSync(resolved, `${JSON.stringify(entry)}\n`, "utf-8");
     return { written: true, duplicate: false };
   });
+}
+
+/** Attach orchestration after claim; the immutable receipt, not plan phase, authorizes this write. */
+export function attachKnowledgeDelegateWorkflow(jobPath: string, claimant: KnowledgeClaimant, delegate: KnowledgeDelegatePlan): KnowledgeFinalizationJob {
+  const evidence: ClawExecutionFailure = { operation: "knowledge.workflow.attach", phase: "prepare", outcome: "known", effect: "none" };
+  try { return withFileLock(jobPath, () => {
+    const job = readKnowledgeClaimReceipt(jobPath, claimant);
+    if (!job) throw new ClawError("KNOWLEDGE_CLAIM_OWNER_MISMATCH", "A live canonical claim is required to attach its workflow.");
+    if (delegate.ownerSessionId !== claimant.agentSessionId || path.resolve(delegate.projectRoot) !== path.resolve(job.projectRoot) || !path.isAbsolute(delegate.planPath)) throw new ClawError("KNOWLEDGE_DELEGATE_OWNER_MISMATCH", "Workflow association must match this claim actor and project.");
+    if (job.delegateWorkflow && path.resolve(job.delegateWorkflow.planPath) !== path.resolve(delegate.planPath) || job.dshExecution?.delegatePlanPath && path.resolve(job.dshExecution.delegatePlanPath) !== path.resolve(delegate.planPath)) throw new ClawError("DSH_EXECUTION_IMMUTABLE", "An existing exact workflow association cannot be replaced.");
+    if (job.delegateWorkflow?.planPath === delegate.planPath) return job;
+    const next = { ...job, delegateWorkflow: { ...delegate, projectRoot: job.projectRoot }, ...(job.dshExecution ? { dshExecution: { ...job.dshExecution, delegatePlanPath: path.resolve(delegate.planPath) } } : {}) };
+    Object.assign(evidence, { phase: "commit", outcome: "unknown", effect: "unknown" });
+    writeJsonFileAtomic(jobPath, next); return next;
+  }); } catch (error) { throw withExecutionFailure(error, evidence); }
 }
 
 export function writeKnowledgeFinalizationJob(jobPath: string, job: KnowledgeFinalizationJob): void {

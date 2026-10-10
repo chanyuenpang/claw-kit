@@ -210,23 +210,6 @@ export function readFocusedPlan(
   return sessionStore.read(focusSessionKeyHash(sessionKey)).currentPlan;
 }
 
-/**
- * Root plan creation must not implicitly end an executing session plan. This
- * is intentionally separate from resume and subplan focus changes: both have
- * explicit lifecycle intent and retain their existing transition semantics.
- */
-export function assertRootPlanCreateAllowed(input: {
-  project: ProjectContext;
-  sessionKey: string;
-  sessionStore?: FocusSessionStore;
-}): void {
-  const sessionStore = input.sessionStore ?? new ProjectFocusSessionStore(input.project);
-  const currentPlan = readFocusedPlan(input.project, input.sessionKey, sessionStore);
-  if (!currentPlan) return;
-  const current = readPlanDocument(input.project, currentPlan);
-  assertRootPlanCreateAllowedForPlan(currentPlan, current);
-}
-
 /** Maintenance must retain the backing files until the canonical focus owner
  * releases them, including a terminal plan awaiting projection reconciliation. */
 export function focusedTaskDirectories(project: ProjectContext): string[] {
@@ -402,9 +385,8 @@ export async function switchCurrentPlan(
           updates.get(planIdentityHash(input.project, currentPlan))?.content
             ?? requirePlan(plans, input.project, currentPlan),
         );
-        if (input.kind === "create") {
-          assertRootPlanCreateAllowedForPlan(currentPlan, current);
-        }
+        // An explicit new root request switches focus: the previous plan is left
+        // resumable (end.leave) instead of forcing a separate plan.leave ceremony.
         if (!(input.preserveCurrentEndState && current.status.startsWith("end."))) {
           current.status = "end.leave";
           current.leaveReason = "switch_to_new_plan";
@@ -420,6 +402,7 @@ export async function switchCurrentPlan(
       if (!input.preserveTargetStatus) {
         assertResumable(target, input.target);
         target.status = "process.active";
+        delete target.completedAt;
       }
       delete target.leaveReason;
       target.updatedAt = new Date().toISOString();
@@ -430,20 +413,6 @@ export async function switchCurrentPlan(
       };
     },
   });
-}
-
-export function assertRootPlanCreateAllowedForPlan(currentPlan: PlanRef, current: PlanDocument): void {
-  if (current.status.startsWith("end.")) return;
-  throw new ClawError(
-    "PLAN_CREATE_BLOCKED_BY_PROCESS_PLAN",
-    "Cannot create a new plan while the current plan is unfinished. Run plan.leave to end the current plan, then retry plan.create; or use subplan.create for work within the current plan.",
-    {
-      currentPlan,
-      status: current.status,
-      allowedOperations: ["plan.leave", "subplan.create"],
-    },
-    { phase: "prepare", outcome: "known", effect: "none" },
-  );
 }
 
 export async function createPlanAndSwitchFocus(input: {
@@ -1077,6 +1046,8 @@ function requirePlan(
 function assertResumable(plan: PlanDocument, ref: PlanRef): void {
   if (
     plan.status !== "end.leave"
+    && plan.status !== "end.completed"
+    && plan.status !== "end.closed"
     && plan.status !== "process.wait"
     && plan.status !== "process.discussing"
     && plan.status !== "process.active"

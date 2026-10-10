@@ -202,17 +202,21 @@ test("cli plan done uses fixed native dispatch and standard/OpenCode closeout", 
   assert.equal("policy" in (dispatch ?? {}), false);
   assert.deepEqual(Object.keys(dispatch).sort(), [
     "finalizeId",
+    "host",
+    "kind",
     "leadInstruction",
     "preferReuse",
     "projectRoot",
     "prompt",
     "reasoningEffort",
     "schemaVersion",
+    "writer",
   ]);
   assert.match(String(dispatch.finalizeId), /^[a-f0-9]{64}$/);
   assert.equal(dispatch.reasoningEffort, "medium");
   assert.match(String(dispatch.prompt), /claw knowledge-finalization job/i);
-  assert.match(String(dispatch.prompt), /resources[\\/]delegate-writer[\\/]TEMPLATE\.json/);
+  assert.match(String(dispatch.prompt), /knowledge.*claim/i);
+  assert.doesNotMatch(String(dispatch.prompt), /plan\.create/);
   assert.equal(dispatch.projectRoot, path.resolve(root));
   assert.ok(String(dispatch.prompt).includes("Project root: " + JSON.stringify(path.resolve(root))));
   assert.match(String(dispatch.prompt), /If your current working directory differs/);
@@ -236,7 +240,7 @@ test("cli plan done uses fixed native dispatch and standard/OpenCode closeout", 
   const cindyDispatch = cindyDone.knowledgeDispatch as JsonRecord;
   assert.equal("policy" in (cindyDispatch ?? {}), false);
   assert.match(String(cindyDispatch.prompt), /claw-kit Cindy Ghost tools/);
-  assert.match(String(cindyDispatch.prompt), /resources[\\/]cindy-delegate-writer[\\/]TEMPLATE\.json/);
+  assert.match(String(cindyDispatch.prompt), /knowledge\.claim/);
   assert.match(String(cindyDispatch.prompt), /non-capturing auxiliary plan/i);
   assert.match(String(cindyDispatch.prompt), /assignment subplan/i);
   assert.doesNotMatch(String(cindyDispatch.prompt), /did-turn-end|Stop hook|knowledge wait/i);
@@ -251,10 +255,11 @@ test("cli plan done uses fixed native dispatch and standard/OpenCode closeout", 
   const dshDone = runClaw(["plan", "done", "--retrospective", "Ready for native knowledge finalization."], dshRoot, dshEnv);
   const dshDispatch = dshDone.knowledgeDispatch as JsonRecord;
   assert.equal("policy" in (dshDispatch ?? {}), false);
-  assert.match(String(dshDispatch.prompt), /dsh-delegate-writer/);
-  assert.match(String(dshDispatch.prompt), /claw_run.*plan.create/);
+  assert.match(String(dshDispatch.prompt), /knowledge\.claim/);
+  assert.doesNotMatch(String(dshDispatch.prompt), /plan\.create/);
+  assert.match(String(dshDispatch.prompt), /claw_run.*knowledge\.claim/);
   assert.equal(dshDispatch.preferReuse, true);
-  assert.ok(String(dshDispatch.prompt).includes("knowledge-finalizer-" + String(dshDispatch.finalizeId)));
+  assert.ok(String(dshDispatch.prompt).includes(String(dshDispatch.finalizeId)));
   const dshTemplate = JSON.parse(fs.readFileSync(new URL("../../core/dist/src/resources/dsh-delegate-writer/TEMPLATE.json", import.meta.url), "utf8"));
   assert.equal(dshTemplate.scope, undefined);
   assert.equal(dshTemplate.knowledgeCapture, false);

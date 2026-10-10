@@ -423,7 +423,7 @@ test("Cindy daemon sessions coerce background config to the templated no-Stop kn
     });
     const dispatch = done.knowledgeDispatch as { policy?: string; prompt?: string } | undefined;
     assert.equal("policy" in (dispatch ?? {}), false);
-    assert.match(String(dispatch?.prompt), /resources[\\/]cindy-delegate-writer[\\/]TEMPLATE\.json/);
+    assert.match(String(dispatch?.prompt), /knowledge\.claim/);
     assert.match(String(dispatch?.prompt), /non-capturing auxiliary plan/i);
     assert.match(String(dispatch?.prompt), /assignment subplan/i);
     assert.match(String(dispatch?.prompt), /claw-kit.*Ghost/is);
@@ -465,10 +465,10 @@ test("DSH daemon sessions coerce a fresh project's default background config to 
     const dispatch = done.knowledgeDispatch as { policy?: string; finalizeId?: string; prompt?: string; preferReuse?: boolean } | undefined;
     assert.equal("policy" in (dispatch ?? {}), false);
     assert.match(String(dispatch?.finalizeId), /^[a-f0-9]{64}$/);
-    assert.match(String(dispatch?.prompt), /dsh-delegate-writer/);
-    assert.match(String(dispatch?.prompt), /claw_run.*plan.create/);
+    assert.match(String(dispatch?.prompt), /claw_run.*knowledge\.claim/);
+    assert.doesNotMatch(String(dispatch?.prompt), /plan\.create/);
     assert.equal(dispatch?.preferReuse, true);
-    assert.ok(String(dispatch?.prompt).includes("knowledge-finalizer-" + String(dispatch?.finalizeId)));
+    assert.ok(String(dispatch?.prompt).includes(String(dispatch?.finalizeId)));
     const template = JSON.parse(fs.readFileSync(new URL("../../core/dist/src/resources/dsh-delegate-writer/TEMPLATE.json", import.meta.url), "utf8"));
     assert.equal(template.scope, undefined);
     assert.equal(template.knowledgeCapture, false);

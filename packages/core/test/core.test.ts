@@ -3363,7 +3363,7 @@ test("focus coordinator enforces exclusive ownership and switches plans atomical
   assert.equal(noOp.changed, false);
 });
 
-test("root plan creation cannot replace a process plan", async () => {
+test("root plan creation atomically replaces focus and leaves the process plan resumable", async () => {
   const root = createEmptyFixture("focus-create-process-gate");
   initProject({ cwd: root, projectName: "Focus Create Process Gate", planning: false });
   const project = resolveProjectContext(root);
@@ -3396,16 +3396,15 @@ test("root plan creation cannot replace a process plan", async () => {
       await editPlan({ cwd: root, taskName: current.taskName, planStatus: status });
     }
 
-    await assert.rejects(
-      () => createPlanAndSwitchFocus({ project, sessionKey, createdPlan: created }),
-      (error: unknown) => error instanceof Error
-        && "code" in error
-        && (error as { code: string }).code === "PLAN_CREATE_BLOCKED_BY_PROCESS_PLAN"
-        && error.message.includes("plan.leave")
-        && error.message.includes("subplan.create"),
-    );
+    // An explicit new root switches focus in one mutation; the previous plan is
+    // left resumable instead of requiring a separate plan.leave ceremony.
+    await createPlanAndSwitchFocus({ project, sessionKey, createdPlan: created });
+    assert.deepEqual(readFocusedPlan(project, sessionKey), created);
+    assert.equal(showPlan({ cwd: root, taskName: created.taskName }).plan.status, "process.active");
+    assert.equal(showPlan({ cwd: root, taskName: current.taskName }).plan.status, "end.leave");
+
+    await activatePlan({ project, sessionKey, target: current });
     assert.deepEqual(readFocusedPlan(project, sessionKey), current);
-    assert.equal(showPlan({ cwd: root, taskName: current.taskName }).plan.status, status);
 
     await leaveCurrentPlan({ project, sessionKey });
   }
