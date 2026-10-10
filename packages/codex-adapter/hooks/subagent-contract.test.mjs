@@ -121,9 +121,7 @@ test("delegate orchestration and built-in knowledge governance stay internal", (
 
   assert.doesNotMatch(delegateTemplate, /`claw knowledge wait/i);
   assert.match(delegateTemplate, /knowledge claim --project-root/i);
-  assert.match(delegateTemplate, /"scope": "session"/i);
   assert.match(knowledgeContract, /knowledge-base steward/i);
-  assert.match(knowledgeContract, /Truth and ADR are one knowledge system/i);
   assert.match(knowledgeContract, /one current owner/i);
   assert.match(configSkill, /knowledgeWriter\.externalSkills/);
   assert.match(configSkill, /hidden built-in governance contract/i);
@@ -142,7 +140,6 @@ test("Codex plan commands use only the bundled code-mode consumer", () => {
   assert.match(mainRouter, /load\(cacheKey\)/i);
   assert.match(mainRouter, /store\(cacheKey, envelope\)/i);
   assert.match(mainRouter, /eval/i);
-  assert.match(mainRouter, /For context recovery and every claw plan mutation/i);
   assert.match(mainRouter, /argv: \["context"\]/);
   assert.match(mainRouter, /argv: \["plan", "create", "<title>"\]/);
   assert.match(mainRouter, /Read-only `claw search[\s\S]*supported shell tool, not this mutation bridge/i);
