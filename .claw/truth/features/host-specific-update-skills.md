@@ -85,6 +85,11 @@ Accepted working truth for the current Codex, OpenCode, and DSH update surfaces.
 <!-- state: history -->
 ## Evolution history
 
+<!-- dated: 2026-10-10 -->
+### Verified DSH desktop update and activation for 0.2.50
+
+The DSH desktop profile was updated through its plugin manager from `@veewo/dsh-claw-kit@0.2.49-rc.0` to `0.2.50-rc.0`; the global `@veewo/claw` was already at published `0.2.50`, so no CLI reinstall was needed. After the owner explicitly authorized changing the desktop profile's `minimumReleaseAge` policy from 1440 minutes to 0 to permit installation, the plugin manager reported installation success and restart-required. Following Host restart, a real DSH session recovered workflow state through `claw_run`; the installed bundle version and required runtime skills, including `feature-architecture` and `knowledge-capture`, were verified. This records activation evidence for this update, not a claim about the machine's future installed version.
+
 <!-- dated: 2026-10-02 -->
 ### Verified the Electron-managed DSH desktop profile write boundary
 
@@ -109,8 +114,3 @@ The DSH web profile was updated to `@veewo/dsh-claw-kit@0.2.39-rc.2` from the np
 ### Verified a GitHub-source DSH update and knowledge route smoke test
 
 An authorized local update built the global CLI/core/client `0.2.40` and DSH web-profile adapter `0.2.40-rc.0` from the immutable GitHub `v0.2.40` source without publishing to npm. After a user-managed Host restart, a real web session ran `claw_run(context)` and reached the new daemon through `claw_run(knowledge.claim)`: a nonexistent finalization ID returned job unavailable rather than unsupported operation. This establishes version-bound installation and route activation, not a completed real-job assignment/finalization loop or a claim about the machine’s future installed version.
-
-<!-- dated: 2026-09-02 -->
-### Verified the first DSH-host update round
-
-The DSH web profile was refreshed from `@veewo/claw@0.2.27` + `@veewo/dsh-claw-kit@0.2.32-rc.0` to `@veewo/claw@0.2.36` (npm latest) + `@veewo/dsh-claw-kit@0.2.36-rc.0` as one update unit. The CLI accepted `--host dsh`, dump-config carried the claw-kit row, and after the Host restart a real session mounted `claw_run` with all seven bundled skills; the update plan paused at the restart boundary was resumed in the new session and closed out. This round established the DSH activation boundary recorded above — a package version bump alone was never accepted as completion.

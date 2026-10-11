@@ -166,7 +166,14 @@
 
 ### 已验证证据
 
+<!-- dated: 2026-10-10 -->
+#### Windows / Codex 公开版本前台冒烟
+
+- CLI `0.2.50` 与实际加载的 Codex plugin `0.2.50.2` 经固定 code-mode driver 验证：中文空格字段及集合精确增删、任务增改删与完成、wait/discussing 后恢复、context/sync、独立取消，以及一层子计划创建、完成并返回父计划均成功。子计划完成后父任务自动 done，父计划恢复 active 并推进下一任务，无需重复完成父任务；这一行为与 `packages/core/src/plan.ts` 的 parent restoration 实现一致。
+- 最终父计划与全部任务已完成，已观察操作回执未见 `hostEffectFailures`。这是 Windows 当前真实 Codex session 的前台证据，不覆盖其他平台、操作系统或缺失的原生工具效果。`plan show` 的紧凑结果仅用于路径与状态，字段保真通过 context 与只读 canonical 内容确认。
+- 默认后台知识收口仍需独立观察其终态回执；前台完成及成功派发不能证明后台完成，不将本轮记为完整端到端通过。该验证不引入新的架构决策。
+
 - `packages/codex-adapter/hooks/code-mode-host-action-consumer.test.mjs` 使用 `node:vm` 隔离提取并执行 skill 中实际嵌入的 `runClawPlanMutation`；CLI driver tests 同时锁定 structured argv、固定 invoke command、protocol parser、host-action schema 和 source SHA/version bump。
-- 旧的 unpublished-build Host complete-on-wait 验收仅是历史证据；当前本地 source contract 尚未替代为新的已发布 Host 验收。
-- core tests 覆盖 wait/discussing 的 cross-host `workflowGuidance.goalTool.status = blocked`；CLI tests 覆盖 Codex 同步 Progress、wait/discussing 的 `hostActions.update_goal.input.status = blocked`，以及所有 `end.*` 的清空 Progress 后完成 Goal。当前验证是源码合同测试，不宣称已发布 Host 行为。
+- 旧的 unpublished-build Host complete-on-wait 验收仅是历史证据；本次公开版本前台冒烟不替代完整原生 Goal/Progress 效果验收。
+- core tests 覆盖 wait/discussing 的 cross-host `workflowGuidance.goalTool.status = blocked`；CLI tests 覆盖 Codex 同步 Progress、wait/discussing 的 `hostActions.update_goal.input.status = blocked`，以及所有 `end.*` 的清空 Progress 后完成 Goal。这些断言属于源码合同测试；本次公开版本前台证据不扩大其原生工具效果覆盖范围。
 - skill/reference 固定 contract 要求 Agent 只触发 consumer，不检查 Goal state、不解析 Goal error，也不手写替代 action。
