@@ -9,7 +9,7 @@ import {
   type PlanRef,
   readJsonFile,
   withSerializedQueue,
-  writeJsonFileAtomic,
+  writeJsonFile,
 } from "@veewo/claw-core";
 
 export const SESSION_RECORD_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -175,7 +175,7 @@ export class SessionRegistryV2 {
     if (expected !== sessionKeyHash) {
       throw new ClawError("PLAN_TRANSITION_CONFLICT", "Session record does not match its composite identity.");
     }
-    writeJsonFileAtomic(this.recordPath(sessionKeyHash), record);
+    writeJsonFile(this.recordPath(sessionKeyHash), record);
   }
 
   async recover(now = new Date()): Promise<{ normalized: string[]; removed: string[] }> {
@@ -337,7 +337,7 @@ export class RegistryFocusSessionStore implements FocusSessionStore {
     } satisfies SessionRecordV2;
   }
 
-  writePersistedAtomic(sessionKeyHash: string, persistedRecord: unknown): void {
+  writePersisted(sessionKeyHash: string, persistedRecord: unknown): void {
     this.registry.write(sessionKeyHash, persistedRecord as SessionRecordV2);
   }
 

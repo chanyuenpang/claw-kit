@@ -9,8 +9,9 @@ export function readJsonFile<T>(filePath: string): T {
 }
 
 export function writeJsonFile(filePath: string, value: unknown): void {
+  const content = serializeJsonFile(value);
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf-8");
+  fs.writeFileSync(filePath, content, "utf-8");
 }
 
 export function serializeJsonFile(value: unknown): string {

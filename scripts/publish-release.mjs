@@ -18,8 +18,11 @@ const candidateIndex = process.argv.indexOf("--candidate");
 if (candidateIndex !== -1) {
   const directory = process.argv[candidateIndex + 1];
   assert(directory && !directory.startsWith("--"), "Supply --candidate <directory>.");
-  assert(process.argv.slice(2).every((arg, index, args) => ["--publish", "--batch", "--candidate"].includes(arg) || args[index - 1] === "--candidate"), "Unknown release option.");
-  const { candidate, directory: candidateDir } = await promoteCandidate(directory, { publish });
+  const waiverIndex = process.argv.indexOf("--trial-waiver");
+  const trialWaiver = waiverIndex < 0 ? undefined : process.argv[waiverIndex + 1];
+  assert(waiverIndex < 0 || trialWaiver?.trim() && !trialWaiver.startsWith("--"), "--trial-waiver requires explicit owner authorization evidence.");
+  assert(process.argv.slice(2).every((arg, index, args) => ["--publish", "--batch", "--candidate", "--trial-waiver"].includes(arg) || ["--candidate", "--trial-waiver"].includes(args[index - 1])), "Unknown release option.");
+  const { candidate, directory: candidateDir } = await promoteCandidate(directory, { publish, trialWaiver });
   console.log(`${publish ? "Published npm packages and pushed source main for" : "Verified"} beta ${candidate.batch} (${candidate.version}).`);
   console.log(`For the separately authorized GitHub release, reuse ${path.join(candidateDir, "artifacts", "marketplace")} unchanged. Create immutable source/artifact tags and Releases through the release skills; do not rebuild.`);
   process.exit(0);

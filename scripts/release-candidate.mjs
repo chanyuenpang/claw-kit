@@ -189,8 +189,30 @@ export async function installCandidate(directory) {
 }
 
 // Remote publication is reachable only from the explicit formal-release entrypoint.
-export async function promoteCandidate(directory, { publish = false, sourceRoot = repoRoot } = {}) {
-  const verified = await verifyCandidate(directory, { ready: true });
+export async function verifyCliPromotionCandidate(directory, { trialWaiver } = {}) {
+  assert(trialWaiver === undefined || typeof trialWaiver === "string" && trialWaiver.trim().length > 0,
+    "Trial waiver requires the owner's explicit authorization evidence.");
+  const verified = await verifyCandidate(directory, { ready: trialWaiver === undefined });
+  assert(verified.candidate.packages.length === packageNames.length, "CLI promotion requires the CLI artifact family.");
+  if (trialWaiver !== undefined) {
+    const waiverPath = path.join(verified.directory, "trial-waiver-cli.json");
+    const waiver = { schemaVersion: 1, candidateHash: verified.manifestHash,
+      identities: packageNames.map(name => name + "@" + verified.candidate.version),
+      authorizedAt: new Date().toISOString(), evidence: trialWaiver.trim() };
+    try { await fs.writeFile(waiverPath, JSON.stringify(waiver, null, 2) + "\n", { flag: "wx" }); }
+    catch (error) {
+      if (error.code !== "EEXIST") throw error;
+      const existing = await json(waiverPath);
+      assert(existing.candidateHash === waiver.candidateHash && existing.evidence === waiver.evidence
+        && JSON.stringify(existing.identities) === JSON.stringify(waiver.identities),
+        "Existing CLI trial waiver differs from this candidate or authorization.");
+    }
+  }
+  return verified;
+}
+
+export async function promoteCandidate(directory, { publish = false, sourceRoot = repoRoot, trialWaiver } = {}) {
+  const verified = await verifyCliPromotionCandidate(directory, { trialWaiver });
   const { candidate } = verified;
   cleanMain(sourceRoot, candidate.sourceRevision);
   if (candidate.codex) await readCodexPluginSource({ sourceDir: path.join(verified.directory, "artifacts", "marketplace", "packages", "codex-adapter") });
@@ -200,7 +222,7 @@ export async function promoteCandidate(directory, { publish = false, sourceRoot 
   run("git", ["fetch", "origin", "main"], sourceRoot);
   run("git", ["merge-base", "--is-ancestor", "origin/main", "HEAD"], sourceRoot);
   for (const pkg of candidate.packages) {
-    await verifyCandidate(directory, { ready: true });
+    await verifyCliPromotionCandidate(directory, { trialWaiver });
     await publishFrozenNpmResource({ directory: verified.directory, candidateHash: verified.manifestHash,
       identity: pkg.name + "@" + candidate.version,
       tarball: path.join(verified.directory, "artifacts", pkg.file), expectedHash: candidate.files[pkg.file],

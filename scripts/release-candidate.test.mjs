@@ -7,7 +7,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { exportCodexMarketplace } from "./codex-plugin-bundle.mjs";
 import { prepareCandidateVersions } from "./candidate-versions.mjs";
-import { inventory, verifyCandidate, startTrial, promoteCandidate, packCandidate, installCandidate, packageNames, WEEK_MS } from "./release-candidate.mjs";
+import { inventory, verifyCandidate, verifyCliPromotionCandidate, startTrial, promoteCandidate, packCandidate, installCandidate, packageNames, WEEK_MS } from "./release-candidate.mjs";
 
 const repo = fileURLToPath(new URL("../", import.meta.url));
 const git = (cwd, ...args) => execFileSync("git", args, { cwd, encoding: "utf8", stdio: "pipe" }).trim();
@@ -51,6 +51,25 @@ test("trial starts without installation evidence and enforces seven days", async
   await assert.rejects(verifyCandidate(directory, { ready: true, now: start + WEEK_MS - 1 }), /seven days/);
   await verifyCandidate(directory, { ready: true, now: start + WEEK_MS });
   await assert.rejects(startTrial(directory), /EEXIST/);
+});
+
+test("explicit CLI waiver binds frozen identity without manufacturing a trial", async t => {
+  const { directory, candidate } = await fixture(t);
+  const options = { trialWaiver: "Owner explicitly waives this CLI candidate trial." };
+  await assert.rejects(verifyCliPromotionCandidate(directory), /ENOENT/);
+  await assert.rejects(verifyCliPromotionCandidate(directory, { trialWaiver: " " }), /authorization evidence/);
+  const verified = await verifyCliPromotionCandidate(directory, options);
+  const waiverPath = path.join(directory, "trial-waiver-cli.json");
+  const bytes = await fs.readFile(waiverPath, "utf8");
+  const waiver = JSON.parse(bytes);
+  assert.equal(waiver.candidateHash, verified.manifestHash);
+  assert.deepEqual(waiver.identities, packageNames.map(name => name + "@" + candidate.version));
+  await verifyCliPromotionCandidate(directory, options);
+  assert.equal(await fs.readFile(waiverPath, "utf8"), bytes);
+  await assert.rejects(fs.stat(path.join(directory, "trial.json")), /ENOENT/);
+  await assert.rejects(verifyCliPromotionCandidate(directory, { trialWaiver: "Different authority" }), /differs/);
+  await write(path.join(directory, "candidate.json"), { ...candidate, batch: "changed" });
+  await assert.rejects(verifyCliPromotionCandidate(directory, options), /differs/);
 });
 
 test("changed, missing and added artifacts cannot be promoted", async (t) => {

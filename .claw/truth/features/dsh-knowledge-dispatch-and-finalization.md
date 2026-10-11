@@ -1,4 +1,4 @@
-# DSH knowledge dispatch and finalization
+﻿# DSH knowledge dispatch and finalization
 
 <!-- state: current -->
 ## Current behavior
@@ -40,6 +40,8 @@ Core source 在 DSH 创建计划时登记可信 capture 起点；同一 root 的
 DSH `subagents.listChildren(parentId)` returns durable `{id, createdAt, mode, label}` catalog entries, not the UI `kind: "child"` / `activity` projection. Finalizer reuse accepts this catalog and legacy tagged children. The old mandatory `kind` filter silently missed existing continuable roles and created a new child for every job; the fishing-design session showed four distinct continuable IDs with the same role label. Tests now use the actual untagged catalog shape.
 
 New jobs reuse the first compatible role in Host catalog order after canonical joint-terminal reconciliation; this also recovers parents already containing duplicate labels without creating or deleting members. Existing reservations retain their exact member ID; a missing pinned child never authorizes another creation. Legacy per-job finalizer discovery treats matching durable identity with absent activity as already dispatched, not proof of settlement or permission to resend. Accepted/unknown deliveries keep their existing no-replay boundary. Runtime activation still requires installing and loading the fixed package.
+
+The 2026-10-11 DSH-only promotion delivered adapter 0.2.50.1 (`@veewo/dsh-claw-kit` npm 0.2.50-rc.1) from source `0dd59e6a7974ccd75f55a29b097d94ac37644539`. The frozen candidate was `2026-10-11T14-15-32-207Z-4e05fa0e`; the owner explicitly waived its seven-day trial. After an accepted upload returned asynchronous processing, reconciliation verified the exact downloaded archive SHA-256 `ac6270d3d81b6f4bb529443415d7cce652d7f22c33f998b681b033c61ff17b3a` and latest version. Source and release verification reported `main`, `origin/main`, and `vdsh-0.2.50.1` aligned with a clean worktree. The public package was installed through the desktop plugin manager, but activation was not claimed: a restart remains required, and no restart was performed.
 
 ## Completion evidence and recovery
 

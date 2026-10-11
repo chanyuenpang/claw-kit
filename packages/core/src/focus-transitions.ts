@@ -9,7 +9,7 @@ import {
   serializeJsonFile,
   withSerializedAccess,
   withSerializedQueue,
-  writeJsonFileAtomic,
+  writeJsonFile,
 } from "./io.js";
 import { ensureInsideDir, normalizePlanFile } from "./paths.js";
 import type { PlanDocument, PlanLeaveReason, ProjectContext } from "./types.js";
@@ -51,7 +51,8 @@ export type FocusSessionRecord = {
 export interface FocusSessionStore {
   read(sessionKeyHash: string): FocusSessionRecord;
   buildPersistedRecord(sessionKeyHash: string, record: FocusSessionRecord): unknown;
-  writePersistedAtomic(sessionKeyHash: string, persistedRecord: unknown): void;
+  /** Persist ordinary low-frequency state directly; no atomic-replace contract. */
+  writePersisted(sessionKeyHash: string, persistedRecord: unknown): void;
   queuePath(sessionKeyHash: string): string;
   resourcePath(sessionKeyHash: string): string;
 }
@@ -145,12 +146,12 @@ export class ProjectFocusSessionStore implements FocusSessionStore {
     return record;
   }
 
-  writePersistedAtomic(sessionKeyHash: string, persistedRecord: unknown): void {
+  writePersisted(sessionKeyHash: string, persistedRecord: unknown): void {
     const record = persistedRecord as FocusSessionRecord;
     if (record.sessionKeyHash !== sessionKeyHash) {
       throw new ClawError("PLAN_TRANSITION_CONFLICT", "Focus session record key mismatch.");
     }
-    writeJsonFileAtomic(this.resourcePath(sessionKeyHash), record);
+    writeJsonFile(this.resourcePath(sessionKeyHash), record);
   }
 
   queuePath(sessionKeyHash: string): string {
@@ -656,17 +657,17 @@ async function commitFocusTransition(input: {
           },
           ...(input.binding ? { binding: input.binding } : {}),
         };
-        writeJsonFileAtomic(journalPath, journal);
+        writeJsonFile(journalPath, journal);
         failAt(input.testHooks, "after_prepared");
         Object.assign(execution, { phase: "commit", outcome: "unknown", effect: "unknown" });
         journal.phase = "applying";
         journal.updatedAt = new Date().toISOString();
-        writeJsonFileAtomic(journalPath, journal);
+        writeJsonFile(journalPath, journal);
         Object.assign(execution, { phase: "commit", outcome: "known", effect: "partial" });
         failAt(input.testHooks, "after_applying");
         let writtenPlanCount = 0;
         for (const afterPlan of normalizedAfterPlans) {
-          writeJsonFileAtomic(resolvePlanRefPath(input.project, afterPlan.ref), afterPlan.content);
+          writeJsonFile(resolvePlanRefPath(input.project, afterPlan.ref), afterPlan.content);
           writtenPlanCount += 1;
           if (
             input.testHooks?.failAt === "after_plan"
@@ -676,17 +677,17 @@ async function commitFocusTransition(input: {
             failAt(input.testHooks, "after_plan");
           }
         }
-        writeJsonFileAtomic(focusOwnersPath(input.project), afterOwners);
+        writeJsonFile(focusOwnersPath(input.project), afterOwners);
         failAt(input.testHooks, "after_owners");
         if (journal.binding) {
           applySessionBindingTransition(input.project, journal.binding.sessionKey, journal.binding.before, journal.binding.after);
           failAt(input.testHooks, "after_binding");
         }
-        input.sessionStore.writePersistedAtomic(input.sessionKeyHash, persistedAfterSession);
+        input.sessionStore.writePersisted(input.sessionKeyHash, persistedAfterSession);
         failAt(input.testHooks, "after_session");
         journal.phase = "committed";
         journal.updatedAt = new Date().toISOString();
-        writeJsonFileAtomic(journalPath, journal);
+        writeJsonFile(journalPath, journal);
         Object.assign(execution, { phase: "post-commit", outcome: "known", effect: "committed" });
         failAt(input.testHooks, "after_committed");
         fs.unlinkSync(journalPath);
@@ -790,7 +791,7 @@ async function recoverProjectFocusTransitionsLocked(
           );
           journal.phase = "committed";
           journal.updatedAt = new Date().toISOString();
-          writeJsonFileAtomic(journalPath, journal);
+          writeJsonFile(journalPath, journal);
         }
         verifyAfterState(project, sessionStore, journal);
         fs.unlinkSync(journalPath);
@@ -859,7 +860,7 @@ function rollForwardResource(
   if (currentHash !== beforeHash) {
     throwRecoveryConflict(resourcePath, currentHash, beforeHash, afterHash, journal);
   }
-  writeJsonFileAtomic(resourcePath, afterValue);
+  writeJsonFile(resourcePath, afterValue);
 }
 
 function rollForwardSession(
@@ -876,7 +877,7 @@ function rollForwardSession(
   if (currentHash !== beforeHash) {
     throwRecoveryConflict(resourcePath, currentHash, beforeHash, afterHash, journal);
   }
-  store.writePersistedAtomic(sessionKeyHash, afterValue);
+  store.writePersisted(sessionKeyHash, afterValue);
 }
 
 function assertResourceHash(

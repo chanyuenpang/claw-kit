@@ -83,7 +83,9 @@ npm run publish:dsh-plugin -- --candidate <冻结目录> --publish
 npm run publish:dsh-plugin -- --candidate <冻结目录> --publish --trial-waiver "<本次明确授权记录>"
 ~~~
 
-DSH 的显式豁免保存在候选旁的 `trial-waiver-dsh.json`，绑定 candidate hash 与 npm 坐标；不修改、伪造或倒填 `trial.json`，未传豁免时仍要求完整七天试用。
+CLI 的 `verify:release` / `publish:release` 同样接受 `--trial-waiver "<本次明确授权记录>"`，记录在候选旁的 `trial-waiver-cli.json`，绑定 candidate hash 与 Core/Client/CLI 三个 npm 坐标；不授权任何插件发布。DSH 的显式豁免保存在 `trial-waiver-dsh.json`，绑定 candidate hash 与该 npm 坐标。两者都不修改、伪造或倒填 `trial.json`，未传豁免时仍要求完整七天试用。
+
+CLI 补丁允许只选择 `--artifacts cli`：源码中 adapter 基线按既有规则同步，不代表发布这些插件。已发布插件保留原号；运行兼容性按实际协议和依赖检查，不能只靠前三段不同就判为不兼容。PATH 调用的宿主需更新对应 CLI 安装并重新建立进程；固定 CLI/Core pin 的旧入口继续使用原版本，不因此自动获得补丁。
 
 CLI owner 依次上传 Core→Client→CLI 的原 tgz，核验真实下载和 latest 后才 push 源码；DSH owner 上传所选冻结 tgz 并核验下载，随后按 release-dsh-plugin 完成源码/tag及授权交付。一个组合清单不意味着 CLI 发布入口自动发布 DSH。
 

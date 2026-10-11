@@ -19,6 +19,12 @@
 - session 内 mutation 串行执行并隐式继承 workdir、agent session identity、host metadata 与 current-plan target。`search --dir <dir>` 只为单次搜索临时覆盖目录，不改变 session workdir、currentPlan 或 session identity。
 - 连接中断不自动重放 mutation，也不建立 durable response/host-action outbox。client 把 in-flight outcome 标记为 unknown，返回精确的 `claw session open <dir> <session-id>` 恢复命令；重连后由 agent 使用 conditional simple view 或 `plan show --simple` 检查 canonical state。
 
+## Low-frequency focus persistence
+
+Core focus commit/roll-forward writes (plans, owners, journal and built-in focus sessions) and CLI `SessionRegistryV2` records use direct JSON writes, not temporary-file replacement. Serialization completes before opening/truncating the destination. `FocusSessionStore.writePersisted` names the actual contract; serialization queues, identity checks, before/after hashes and no-replay rules remain unchanged. This removes rename-specific interruption points from ordinary create/end/session synchronization without adding retries, preflights or fallback branches.
+
+The owner explicitly prefers lower operational interruption cost over theoretical crash safety for this low-frequency local state. A process/disk failure during direct writes can still leave partial JSON (including a journal) requiring manual recovery; current hash-based recovery does not repair arbitrary truncated content. No measured failure rate is available, and historical finalizer rename targets were redacted, so this is a verified focus-path optimization rather than proof that every finalizer EPERM has the same origin. Knowledge claim/delivery receipts and the global atomic helper are not changed. The CLI regression checks create → task completion → plan completion → focus release with replacement denied and confirms the terminal Host goal-sync action is still returned; it does not claim to repair already-orphaned Host goals.
+
 ## 长期行为与边界
 
 - session binding 保存的是 `.claw`-relative path，不能把 checkout-specific absolute path 写成 canonical identity。

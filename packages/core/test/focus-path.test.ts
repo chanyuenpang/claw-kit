@@ -40,7 +40,7 @@ test("unambiguous legacy owner keys remain usable without a global migration", a
   const sessionKeyHash = focusSessionKeyHash("legacy");
   const store = new ProjectFocusSessionStore(project);
   const now = new Date().toISOString();
-  store.writePersistedAtomic(sessionKeyHash, { schemaVersion: 1, sessionKeyHash, currentPlan: ref, updatedAt: now });
+  store.writePersisted(sessionKeyHash, { schemaVersion: 1, sessionKeyHash, currentPlan: ref, updatedAt: now });
   const separator = String.fromCharCode(0);
   const oldKey = createHash("sha256").update([path.resolve(project.projectRoot), ref.taskName, ref.planFile].join(separator)).digest("hex");
   fs.writeFileSync(focusOwnersPath(project), JSON.stringify({ schemaVersion: 1, owners: {
