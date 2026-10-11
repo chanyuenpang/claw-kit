@@ -421,7 +421,7 @@ test("actual adapter reuses one native finalizer and wakes B after both A ends w
       child.session.header.parentSession = parent.id;
       child.options = { ...parent.options, ...(spec.request.agentOptions ?? {}) };
       actors.set(child.id, child);
-      children.push({ kind: "child", id: child.id, label: spec.label, mode: "continuable", activity: "inactive", provider: spec.provider });
+      children.push({ id: child.id, label: spec.label, mode: "continuable", createdAt: Date.now() });
       return { childId: child.id, messageId: "bootstrap-message" };
     },
     async sendMessage(actor, childId, content) {

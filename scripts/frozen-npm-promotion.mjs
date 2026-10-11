@@ -14,8 +14,9 @@ async function save(file, value) {
 
 /** Publish an already-tested DSH artifact. This owner never builds, exports or
  * packs workspace source. 'pack name@version' below is registry retrieval only. */
-export async function promoteFrozenDsh(directory, { publish = false, runNpm, now = Date.now(), validateSource } = {}) {
-  const verified = await verifyCandidate(directory, { ready: publish, now });
+export async function promoteFrozenDsh(directory, { publish = false, runNpm, now = Date.now(), validateSource, trialWaiver } = {}) {
+  assert(trialWaiver === undefined || typeof trialWaiver === "string" && trialWaiver.trim().length > 0, "Trial waiver requires the owner's explicit authorization evidence.");
+  const verified = await verifyCandidate(directory, { ready: publish && trialWaiver === undefined, now });
   const { candidate, manifestHash } = verified;
   const artifact = candidate.artifacts?.dsh;
   assert(artifact?.file && artifact.npmVersion, "Select a frozen candidate containing DSH.");
@@ -26,6 +27,19 @@ export async function promoteFrozenDsh(directory, { publish = false, runNpm, now
   if (!publish) return { ...verified, artifact, tarball, identity };
   assert(typeof runNpm === "function" && typeof validateSource === "function", "Publication requires the owning source validator and npm transport.");
   await validateSource(candidate.sourceRevision);
+  if (trialWaiver !== undefined) {
+    // Separate owner authorization, never a backdated or overwritten trial.
+    const waiverPath = path.join(verified.directory, "trial-waiver-dsh.json");
+    const waiver = { schemaVersion: 1, candidateHash: manifestHash, identity,
+      authorizedAt: new Date(now).toISOString(), evidence: trialWaiver.trim() };
+    try { await fs.writeFile(waiverPath, JSON.stringify(waiver, null, 2) + "\n", { flag: "wx" }); }
+    catch (error) {
+      if (error.code !== "EEXIST") throw error;
+      const existing = JSON.parse(await fs.readFile(waiverPath, "utf8"));
+      assert(existing.candidateHash === manifestHash && existing.identity === identity && existing.evidence === waiver.evidence,
+        "Existing DSH trial waiver differs from this candidate or authorization.");
+    }
+  }
   const receipt = await publishFrozenNpmResource({ directory: verified.directory, candidateHash: manifestHash, identity, tarball,
     expectedHash: candidate.files[artifact.file], receiptName: "promotion-dsh.json", runNpm });
   return { ...verified, artifact, tarball, identity, receipt };

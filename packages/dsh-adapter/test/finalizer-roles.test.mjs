@@ -97,7 +97,8 @@ function fixture(route = "native") {
         assert.match(spec.request.prompt[0].text, /initializes the role ONLY/);
         creates.push({ route: "native", spec });
         const childId = spec.childId ?? "host-child-" + creates.length;
-        children.push({ kind: "child", id: childId, label: spec.label, mode: "continuable", activity: "inactive", provider: spec.provider });
+        // Match the Host listChildren catalog, not the UI list-entry projection.
+        children.push({ id: childId, label: spec.label, mode: "continuable", createdAt: creates.length });
         return { childId, messageId: "bootstrap-message" };
       },
       async sendMessage(parent, childId, content, options) {
@@ -191,6 +192,41 @@ test("native background role creates one executor for two independent full-id jo
   assert.deepEqual(f.commands.filter((call) => call.operation === "delivery" && flag(call.args, "--state") === "attempted").map((call) => flag(call.args, "--finalize-id")), [A, B]);
 });
 
+test("duplicate roles from older adapters reuse the first compatible child without new creation", async () => {
+  const f = fixture();
+  const first = await f.run(A);
+  f.rows.get(A).status = "succeeded";
+  f.rows.get(A).readyForNext = true;
+  f.children.push({ ...f.children[0], id: "old-duplicate" });
+  const second = await f.run(B);
+  assert.equal(second.reused, true);
+  assert.equal(second.runId, first.runId);
+  assert.equal(f.creates.length, 1);
+  assert.deepEqual(f.sends.map(send => send.id), [A, B]);
+});
+
+test("reserved executor wins over duplicate label and missing pinned child never creates", async () => {
+  for (const missing of [false, true]) {
+    const f = fixture();
+    await f.run(A);
+    const row = f.rows.get(A);
+    row.execution.delivery = { state: "reserved" }; // Simulate pre-send reservation recovery.
+    f.sends.length = 0;
+    f.children.unshift({ ...f.children[0], id: "different-child" });
+    if (missing) f.children.pop();
+    const result = await f.run(A);
+    assert.equal(f.creates.length, 1);
+    if (missing) {
+      assert.equal(result.code, "DSH_FINALIZER_EXECUTOR_PINNED");
+      assert.equal(f.sends.length, 0);
+    } else {
+      assert.equal(result.runId, "host-child-1");
+      assert.equal(f.sends[0].childId, "host-child-1");
+      assert.equal(f.sends.length, 1);
+    }
+  }
+});
+
 test("inactive member is not readiness: queued or unfinished delegate blocks another job", async () => {
   for (const status of ["queued", "running", "succeeded"]) {
     const f = fixture();
@@ -198,7 +234,7 @@ test("inactive member is not readiness: queued or unfinished delegate blocks ano
     f.rows.get(A).status = status;
     f.rows.get(A).readyForNext = false;
     f.state.releaseReady = false;
-    assert.equal(f.children[0].activity, "inactive");
+    f.children[0].activity = "inactive"; // Even legacy activity is not job readiness.
     const next = await f.run(B);
     assert.equal(next.phase, "waiting-for-role");
     assert.equal(next.blockingFinalizeId, A);

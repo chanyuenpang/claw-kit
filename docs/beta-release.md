@@ -79,7 +79,11 @@ DSH：
 ~~~text
 npm run publish:dsh-plugin -- --candidate <冻结目录>
 npm run publish:dsh-plugin -- --candidate <冻结目录> --publish
+# 仅当 owner 已明确豁免此候选试用时：
+npm run publish:dsh-plugin -- --candidate <冻结目录> --publish --trial-waiver "<本次明确授权记录>"
 ~~~
+
+DSH 的显式豁免保存在候选旁的 `trial-waiver-dsh.json`，绑定 candidate hash 与 npm 坐标；不修改、伪造或倒填 `trial.json`，未传豁免时仍要求完整七天试用。
 
 CLI owner 依次上传 Core→Client→CLI 的原 tgz，核验真实下载和 latest 后才 push 源码；DSH owner 上传所选冻结 tgz 并核验下载，随后按 release-dsh-plugin 完成源码/tag及授权交付。一个组合清单不意味着 CLI 发布入口自动发布 DSH。
 

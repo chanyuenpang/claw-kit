@@ -33,7 +33,7 @@ type TeamRuntime = {
   sendMessage(agent: FinalizerAgent, request: { target: string; content: { type: "text"; text: string }[]; signal: AbortSignal }): Promise<{ messageId: string; status?: string }>;
 };
 type NativeRuntime = {
-  listChildren(parentId: string): Promise<Array<{ kind: string; id?: string; label?: string; mode?: string; activity?: string; provider?: string }>>;
+  listChildren(parentId: string): Promise<Array<{ kind?: string; id?: string; label?: string; mode?: string; createdAt?: number; activity?: string; provider?: string }>>;
   startContinuable(spec: { childId?: string; provider: string; label: string; signal: AbortSignal; request: { parent: FinalizerAgent; prompt: { type: "text"; text: string }[]; agentOptions?: { provider?: string; model?: string; reasoningEffort?: string } } }): Promise<{ childId: string; messageId: string }>;
   sendMessage(parent: FinalizerAgent, childId: string, content: { type: "text"; text: string }[], options: { signal: AbortSignal }): Promise<string>;
 };
@@ -139,10 +139,19 @@ export class FinalizerRoleDispatcher {
       catch { /* one bounded read retry; no start/send has occurred */ }
     }
     if (!rows || expectedId && rows.some(x => x.kind === "diagnostic" && x.id === expectedId)) throw Object.assign(new Error("DSH_NATIVE_ROLE_CATALOG_UNAVAILABLE"), { code: "DSH_NATIVE_ROLE_CATALOG_UNAVAILABLE" });
-    const candidates = rows.filter(x => x.kind === "child" && x.label === label);
-    if (candidates.length > 1) throw Object.assign(new Error("DSH_FINALIZER_ROLE_AMBIGUOUS"), { code: "DSH_FINALIZER_ROLE_AMBIGUOUS" });
-    const row = candidates[0];
-    if (!row) return undefined;
+    // listChildren returns catalog entries without kind/activity. Older Hosts
+    // returned tagged UI entries; retain those without requiring that projection.
+    const candidates = rows.filter(x => (x.kind === undefined || x.kind === "child") && x.label === label);
+    // Prior adapter versions could create several identical roles by filtering
+    // out every untagged entry. New jobs reuse the first compatible catalog row
+    // (Host event order); an existing reservation ALWAYS retains its exact ID.
+    // dispatchSerial has already reconciled the canonical joint-terminal blocker.
+    const row = expectedId ? candidates.find(x => x.id === expectedId)
+      : candidates.find(x => string(x.id) && x.mode === "continuable") ?? candidates[0];
+    if (!row) {
+      if (expectedId) throw Object.assign(new Error("DSH_FINALIZER_EXECUTOR_PINNED"), { code: "DSH_FINALIZER_EXECUTOR_PINNED" });
+      return undefined;
+    }
     // The Host owns durable child IDs. Stable label + exact persisted member ID
     // identify reuse; provider/activity remain advisory observations.
     const rowId = string(row.id);

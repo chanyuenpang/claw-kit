@@ -53,7 +53,10 @@ export async function resolveFinalizerReuse(input) {
             return { deferred: true, reason: "native child catalog incomplete" };
         const legacyLabel = `knowledge-finalizer-${input.finalizeId.slice(0, 12)}`;
         for (const child of children) {
-            if (child?.kind === "child" && child.activity === "running"
+            // Current catalogs have neither kind nor activity. Positive durable
+            // identity still prevents replay; missing activity never proves settlement.
+            if (child && (child.kind === undefined || child.kind === "child")
+                && (child.activity === undefined || child.activity === "running")
                 && (child.label === input.label || child.label === legacyLabel)
                 && typeof child.id === "string")
                 return { runId: child.id, source: "durable" };

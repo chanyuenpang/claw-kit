@@ -45,6 +45,28 @@ test("DSH promotion sends frozen tgz and never builds, versions or exports works
   assert.equal(f.calls.filter(args => args[0] === "publish").length, 1);
 });
 
+test("explicit DSH owner waiver binds frozen identity without fabricating trial time", async t => {
+  const f = await fixture(t);
+  const trialPath = path.join(f.dir, "trial.json");
+  const trial = JSON.parse(await fs.readFile(trialPath, "utf8"));
+  trial.startedAt = new Date().toISOString();
+  const trialBytes = JSON.stringify(trial);
+  await fs.writeFile(trialPath, trialBytes);
+  const options = { publish: true, runNpm: f.runNpm, validateSource: f.validateSource };
+  await assert.rejects(promoteFrozenDsh(f.dir, options), /seven days/);
+  assert.equal(f.calls.length, 0);
+  await assert.rejects(promoteFrozenDsh(f.dir, { ...options, trialWaiver: " " }), /authorization evidence/);
+  const result = await promoteFrozenDsh(f.dir, { ...options, trialWaiver: "Owner explicitly waived this repair trial." });
+  assert.equal(result.receipt.state, "verified");
+  const waiver = JSON.parse(await fs.readFile(path.join(f.dir, "trial-waiver-dsh.json"), "utf8"));
+  assert.equal(waiver.candidateHash, result.manifestHash);
+  assert.equal(waiver.identity, result.identity);
+  assert.equal(await fs.readFile(trialPath, "utf8"), trialBytes);
+  await promoteFrozenDsh(f.dir, { ...options, trialWaiver: waiver.evidence });
+  assert.equal(f.calls.filter(args => args[0] === "publish").length, 1);
+  await assert.rejects(promoteFrozenDsh(f.dir, { ...options, trialWaiver: "different authorization" }), /waiver differs/);
+});
+
 test("unknown upload is recovered by exact registry bytes, never resent", async t => {
   const f = await fixture(t); f.lose();
   await assert.rejects(promoteFrozenDsh(f.dir, { publish: true, runNpm: f.runNpm, validateSource: f.validateSource }), /lost response/);

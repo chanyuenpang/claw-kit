@@ -77,6 +77,15 @@ test("a still-running durable child with the finalizeId label is reused", async 
   assert.deepEqual(reused, { runId: "child-1", source: "durable" });
 });
 
+test("current durable catalog without kind/activity prevents replay after restart", async () => {
+  const reused = await resolveFinalizerReuse({
+    finalizeId: "abcdef0123456789", parentSessionId: "parent", label, records: new Map(),
+    subagents: { start: async () => { throw new Error("must not start"); },
+      listChildren: async () => [{ id: "existing", mode: "one-shot", label, createdAt: 1 }] },
+  });
+  assert.deepEqual(reused, { runId: "existing", source: "durable" });
+});
+
 test("the durable query ignores inactive, mislabelled and diagnostic rows", async () => {
   const run = async (children) => resolveFinalizerReuse({
     finalizeId: "abcdef0123456789",

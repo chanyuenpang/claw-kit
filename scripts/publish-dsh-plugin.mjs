@@ -10,10 +10,14 @@ const candidateIndex = args.indexOf("--candidate");
 if (candidateIndex < 0 || !args[candidateIndex + 1] || args[candidateIndex + 1].startsWith("--")) {
   throw new Error("Prepare and test a candidate first, then use publish:dsh-plugin -- --candidate <directory> [--publish]. No workspace rebuild is permitted for promotion.");
 }
-if (args.some((arg, index) => index !== candidateIndex + 1 && !["--candidate", "--publish"].includes(arg))) throw new Error("Unsupported DSH promotion argument.");
+const waiverIndex = args.indexOf("--trial-waiver");
+const trialWaiver = waiverIndex < 0 ? undefined : args[waiverIndex + 1];
+if (waiverIndex >= 0 && (!trialWaiver?.trim() || trialWaiver.startsWith("--"))) throw new Error("--trial-waiver requires explicit owner authorization evidence.");
+if (args.some((arg, index) => index !== candidateIndex + 1 && (waiverIndex < 0 || index !== waiverIndex + 1) && !["--candidate", "--publish", "--trial-waiver"].includes(arg))) throw new Error("Unsupported DSH promotion argument.");
 const git = args => execFileSync("git", args, { cwd: repoRoot, encoding: "utf8" }).trim();
 const result = await promoteFrozenDsh(args[candidateIndex + 1], {
   publish,
+  trialWaiver,
   validateSource: revision => {
     if (git(["branch", "--show-current"]) !== "main" || git(["status", "--porcelain"]) !== "" || git(["rev-parse", "HEAD"]) !== revision) {
       throw new Error("DSH promotion requires clean local main at the exact tested source revision.");

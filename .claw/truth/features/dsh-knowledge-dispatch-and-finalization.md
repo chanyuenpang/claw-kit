@@ -1,4 +1,4 @@
-﻿# DSH knowledge dispatch and finalization
+# DSH knowledge dispatch and finalization
 
 <!-- state: current -->
 ## Current behavior
@@ -35,6 +35,12 @@ Core source 在 DSH 创建计划时登记可信 capture 起点；同一 root 的
 
 当前 source 的 capability-selected role 复用、逐 job 完整身份、未知投递不重发及 joint-terminal 队列推进，由 [delegation Truth](<dsh-subagent-delegation-contract.md>) 唯一拥有。已有 one-shot job 保持旧执行证据与 native 兼容路径；新路由需要匹配的 CLI/Core 协议，不能把旧短标题合同用于同一 reused session。主模型只消费 adapter 回执，不自行启动或重试 writer。source 与受控服务测试不证明当前运行 profile 已安装或激活该路径。
 
+## Native catalog compatibility
+
+DSH `subagents.listChildren(parentId)` returns durable `{id, createdAt, mode, label}` catalog entries, not the UI `kind: "child"` / `activity` projection. Finalizer reuse accepts this catalog and legacy tagged children. The old mandatory `kind` filter silently missed existing continuable roles and created a new child for every job; the fishing-design session showed four distinct continuable IDs with the same role label. Tests now use the actual untagged catalog shape.
+
+New jobs reuse the first compatible role in Host catalog order after canonical joint-terminal reconciliation; this also recovers parents already containing duplicate labels without creating or deleting members. Existing reservations retain their exact member ID; a missing pinned child never authorizes another creation. Legacy per-job finalizer discovery treats matching durable identity with absent activity as already dispatched, not proof of settlement or permission to resend. Accepted/unknown deliveries keep their existing no-replay boundary. Runtime activation still requires installing and loading the fixed package.
+
 ## Completion evidence and recovery
 
 - Source knowledge.done accepts native finalize_id/status/result-or-error; optional legacy token is checked, never overwritten. Wrong credential/actor/project is prepare/known/none before job/TTL/report/template/Truth writes.
@@ -44,6 +50,11 @@ Core source 在 DSH 创建计划时登记可信 capture 起点；同一 root 的
 
 <!-- state: history -->
 ## Historical verification
+
+<!-- dated: 2026-10-10 -->
+### Windows DSH 0.2.50 workflow smoke scope
+
+A Windows DSH session using public CLI 0.2.50 and adapter 0.2.50-rc.0 recorded successful core workflow checks: parent plan/task operations, context and focus recovery, wait/resume, direct state edits, and a one-level subplan that completed parent task #2 and restored focus at task #3. The plan retrospective reports no observed core-operation failures and all parent tasks complete. The accompanying plan report was empty, and its own retrospective explicitly left post-`plan.done` background finalization unobserved; this is evidence only for the exercised session and operations, not proof of finalizer completion, other profiles, or later artifacts.
 
 <!-- dated: 2026-10-03 -->
 ### Cross-host execute-first Beta verification boundary
