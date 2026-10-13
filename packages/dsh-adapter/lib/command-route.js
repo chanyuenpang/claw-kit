@@ -2,7 +2,7 @@ import { serializeFailure } from "../lib/errors.js";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveDirectClawInvocation } from "./claw-session.js";
+import { terminateForCleanup, resolveDirectClawInvocation } from "./claw-session.js";
 /** No message matching: retry permission must be explicit and pre-execution. */
 export async function routeCommand(daemon, baseline) {
     let response;
@@ -93,7 +93,7 @@ export async function runCommandBaseline(subprocess, workdir, sessionId, operati
         return response;
     }
     catch (error) {
-        await handle.terminate("structured command failed").catch(() => undefined);
+        terminateForCleanup(handle);
         const failure = serializeFailure(error, { fallbackCode: sent ? "CLAW_COMMAND_RESPONSE_FAILED" : "CLAW_BASELINE_UNAVAILABLE", operation, origin: "dsh.baseline",
             execution: { operation, phase: sent ? "commit" : "prepare", outcome: sent ? "unknown" : "known", effect: sent ? "unknown" : "none" } });
         const message = (sent ? "CLAW_OUTCOME_UNKNOWN: " : "CLAW_BASELINE_UNAVAILABLE: ") + failure.message;

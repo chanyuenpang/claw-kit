@@ -33,8 +33,13 @@ export type SubprocessHandleLike = {
   };
   readonly done: Promise<unknown>;
   waitForExit?(): Promise<unknown>;
-  terminate(reason?: string): Promise<unknown>;
+  terminate(): void;
 };
+
+/** Termination starts synchronously; cleanup must not mask the primary failure. */
+export function terminateForCleanup(handle: SubprocessHandleLike): void {
+  try { handle.terminate(); } catch { /* preserve the transport/owner error */ }
+}
 
 /** One `claw/execute` protocol response (daemon, schemaVersion 1). */
 export type ClawExecuteResult = {
@@ -204,7 +209,7 @@ export class ClawSession {
       };
       if (handle.stdout === undefined) {
         reset();
-        void handle.terminate("pipe unavailable");
+        terminateForCleanup(handle);
         reject(protocolError("SESSION_CONNECTION_LOST", "claw session pipe unavailable."));
         return;
       }
@@ -215,7 +220,7 @@ export class ClawSession {
       this.stderrBuffer = "";
       handle.stdin?.on?.("error", (error: Error) => {
         if (this.handle !== handle || this.closed) return;
-        this.dropHandle("stdin error");
+        this.dropHandle();
         this.failPending(protocolError("SESSION_CONNECTION_LOST", "claw session stdin failed", error));
         this.notifyDead();
       });
@@ -233,14 +238,14 @@ export class ClawSession {
           : protocolError("CLAW_SESSION_OPEN_TIMEOUT", "claw session open timed out.");
         this.failPending(error);
         reset();
-        void handle.terminate("open timeout");
+        terminateForCleanup(handle);
       }, this.openTimeoutMs);
       this.pending = {
         resolve: (value) => {
           clearTimeout(timer);
           if (!value.ok || value.command !== "session.open") {
             reset();
-            void handle.terminate("open failed");
+            terminateForCleanup(handle);
             reject(protocolError("CLAW_SESSION_OPEN_FAILED", `claw session open failed: ${value.command ?? "unknown"}`));
             return;
           }
@@ -340,7 +345,7 @@ export class ClawSession {
       return await new Promise<ClawExecuteResult>((resolve, reject) => {
         const timer = setTimeout(() => {
           this.pending = null;
-          this.dropHandle("request timeout");
+          this.dropHandle();
           reject(protocolError("CLAW_SESSION_TIMEOUT", `claw operation timed out after ${timeoutMs}ms.`));
         }, timeoutMs);
         this.pending = {
@@ -356,7 +361,7 @@ export class ClawSession {
         };
         const line = `${JSON.stringify({ operation, input })}\n`;
         void this.writeStdin(line).catch((error: unknown) => {
-          this.dropHandle("stdin write failure");
+          this.dropHandle();
           this.failPending(protocolError("SESSION_CONNECTION_LOST", "claw session stdin write failed", error));
         });
       });
@@ -387,12 +392,12 @@ export class ClawSession {
     });
   }
 
-  private dropHandle(reason: string): void {
+  private dropHandle(): void {
     const handle = this.handle;
     this.handle = null;
     this.openPromise = null;
     this.clearIdle();
-    if (handle) void handle.terminate(reason).catch(() => undefined);
+    if (handle) terminateForCleanup(handle);
   }
 
   private failPending(error: Error): void {
@@ -419,7 +424,7 @@ export class ClawSession {
           Promise.resolve(handle.done).catch(() => undefined).then(() => { settled = true; }),
           new Promise<void>((resolve) => { timer = setTimeout(resolve, 2000); timer.unref?.(); }),
         ]);
-        if (!settled) await handle.terminate("close timeout");
+        if (!settled) handle.terminate();
         await handle.waitForExit?.();
       } finally {
         if (timer) clearTimeout(timer);

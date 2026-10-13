@@ -62,6 +62,26 @@ test("trusted baseline passes JSON via stdin and preserves host effects", async 
   assert.deepEqual(result.hostActions, output.hostActions);
 });
 
+test("baseline cleanup with void or throwing terminate preserves an unknown sent outcome", async () => {
+  for (const cleanupThrows of [false, true]) {
+    let sends = 0, terminations = 0;
+    const subprocess = { spawn() {
+      return {
+        stdin: { write() { sends++; throw Object.assign(new Error("pipe broken"), { code: "EPIPE" }); } },
+        done: new Promise(() => {}),
+        terminate() { terminations++; if (cleanupThrows) throw new Error("cleanup failed"); },
+      };
+    } };
+    await assert.rejects(
+      runCommandBaseline(subprocess, "C:/work", "session-id", "plan.done", {}, "bin.js"),
+      (error) => error.code === "EPIPE" && error.outcome === "unknown"
+        && error.beforeSend === false && /pipe broken/.test(error.message),
+    );
+    assert.equal(sends, 1);
+    assert.equal(terminations, 1);
+  }
+});
+
 test("known unsupported response with existing or uncertain effects never calls fallback owner", async () => {
   for (const effect of ["partial", "committed", "unknown"]) {
     let baseline = 0;

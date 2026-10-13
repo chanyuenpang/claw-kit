@@ -60,8 +60,10 @@ export type SubprocessHandleLike = {
     };
     readonly done: Promise<unknown>;
     waitForExit?(): Promise<unknown>;
-    terminate(reason?: string): Promise<unknown>;
+    terminate(): void;
 };
+/** Termination starts synchronously; cleanup must not mask the primary failure. */
+export declare function terminateForCleanup(handle: SubprocessHandleLike): void;
 /** One `claw/execute` protocol response (daemon, schemaVersion 1). */
 export type ClawExecuteResult = {
     ok: boolean;

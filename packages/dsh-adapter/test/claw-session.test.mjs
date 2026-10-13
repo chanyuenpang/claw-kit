@@ -25,7 +25,7 @@ function makeMockSubprocess() {
         stdout,
         done: new Promise(() => {}),
         collected: {},
-        terminate: async () => {},
+        terminate: () => {},
       };
       handles.push(handle);
       return handle;
@@ -115,7 +115,7 @@ test("open() rejects with CLAW_SESSION_OPEN_TIMEOUT when the handshake never com
         stdout,
         done: new Promise(() => {}),
         collected: {},
-        terminate: async () => {},
+        terminate: () => {},
       };
     },
   };
@@ -135,7 +135,7 @@ test("open() rejects when the child dies before the handshake completes", async 
         stdout,
         done: Promise.reject(new Error("child killed")),
         collected: {},
-        terminate: async () => {},
+        terminate: () => {},
       };
     },
   };
@@ -162,7 +162,7 @@ test("open() immediately surfaces structured CLI stderr on a resolved nonzero ex
         stdout,
         stderr,
         done,
-        terminate: async () => {},
+        terminate: () => {},
       };
     },
   };
@@ -186,7 +186,7 @@ test("open() reports collected startup stderr instead of a timeout", async () =>
         stdout,
         stderr,
         done: new Promise(() => {}),
-        terminate: async () => {},
+        terminate: () => {},
       };
     },
   };
@@ -324,22 +324,24 @@ test("unexpected exit resets the connection and rejects in-flight work", async (
   await session.close();
 });
 
-test("request timeout drops the stale handle before reconnect", async () => {
+test("void termination preserves mutation timeout without replay and drops stale frames", async () => {
   const mock = makeMockSubprocess();
   let terminations = 0;
   const spawn = mock.subprocess.spawn;
   mock.subprocess.spawn = (spec) => {
     const handle = spawn(spec);
-    handle.terminate = async () => { terminations++; };
+    handle.terminate = () => { terminations++; };
     return handle;
   };
   const session = new ClawSession(mock.subprocess, "C:/work", "sess-1");
   const opened = session.open();
   pushLine(mock.handles[0], { ok: true, command: "session.open" });
   await opened;
-  const failed = session.request("plan.show", {}, 25);
-  await assert.rejects(failed, { code: "CLAW_SESSION_TIMEOUT" });
+  const failed = session.request("plan.done", { retrospective: "done" }, 25);
+  await assert.rejects(failed, { code: "CLAW_SESSION_TIMEOUT", outcome: "unknown" });
   assert.equal(terminations, 1);
+  assert.equal(mock.handles[0].stdin.writes.length, 1, "sent mutation must not be replayed");
+  assert.equal(mock.spawnCalls.length, 1);
   const next = session.request("plan.show", {}, 1000);
   let settled = false;
   void next.then(() => { settled = true; });

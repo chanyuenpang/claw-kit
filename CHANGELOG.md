@@ -4,6 +4,8 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## [Unreleased]
 
+- Fix DSH subprocess cleanup to honor synchronous `terminate(): void`; preserve timeout/disconnection errors and unknown mutation outcomes instead of throwing on `.catch`, without replaying sent operations.
+
 - Remove the residual `claw switch-task` command and its core export; it returned a transient result without changing any binding or state.
 - Keep agent guidance host-neutral: no Codex `update_plan` / `update_goal` / Goal Mode wording for hostless, Cindy or OpenCode; Goal fields remain only for Codex and DSH.
 - Make hostless pre-completion guidance point at the required main-agent knowledge closeout.

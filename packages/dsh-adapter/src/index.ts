@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { extractPlanFinalAnswers, type EventLike } from "./capture.js";
-import { ClawSession, type ClawExecuteResult, type SubprocessLike } from "./claw-session.js";
+import { terminateForCleanup, ClawSession, type ClawExecuteResult, type SubprocessLike } from "./claw-session.js";
 import {
   compactClawOutput,
   consumeHostActions,
@@ -360,7 +360,7 @@ export function apply(ctx: unknown): void {
     });
     if (stdinPayload !== undefined) {
       if (!handle.stdin) {
-        void handle.terminate("host-report-stdin-unavailable").catch(() => undefined);
+        terminateForCleanup(handle);
         throw new Error("DSH_REPORT_TRANSPORT_UNAVAILABLE: private CLI stdin is unavailable.");
       }
       handle.stdin.end(stdinPayload);

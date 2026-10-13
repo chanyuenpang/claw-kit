@@ -1,6 +1,13 @@
 import { serializeFailure } from "../lib/errors.js";
 import fs from "node:fs";
 import path from "node:path";
+/** Termination starts synchronously; cleanup must not mask the primary failure. */
+export function terminateForCleanup(handle) {
+    try {
+        handle.terminate();
+    }
+    catch { /* preserve the transport/owner error */ }
+}
 function protocolError(code, message, primary) {
     const failure = serializeFailure({ code, message, outcome: "unknown", ...(primary !== undefined ? { cause: primary } : {}) }, { origin: "dsh.transport", operation: "session.transport", fallbackCode: code });
     const description = failure.message + (failure.cause ? "; cause " + failure.cause.code + ": " + failure.cause.message : "");
@@ -161,7 +168,7 @@ export class ClawSession {
             };
             if (handle.stdout === undefined) {
                 reset();
-                void handle.terminate("pipe unavailable");
+                terminateForCleanup(handle);
                 reject(protocolError("SESSION_CONNECTION_LOST", "claw session pipe unavailable."));
                 return;
             }
@@ -173,7 +180,7 @@ export class ClawSession {
             handle.stdin?.on?.("error", (error) => {
                 if (this.handle !== handle || this.closed)
                     return;
-                this.dropHandle("stdin error");
+                this.dropHandle();
                 this.failPending(protocolError("SESSION_CONNECTION_LOST", "claw session stdin failed", error));
                 this.notifyDead();
             });
@@ -193,14 +200,14 @@ export class ClawSession {
                     : protocolError("CLAW_SESSION_OPEN_TIMEOUT", "claw session open timed out.");
                 this.failPending(error);
                 reset();
-                void handle.terminate("open timeout");
+                terminateForCleanup(handle);
             }, this.openTimeoutMs);
             this.pending = {
                 resolve: (value) => {
                     clearTimeout(timer);
                     if (!value.ok || value.command !== "session.open") {
                         reset();
-                        void handle.terminate("open failed");
+                        terminateForCleanup(handle);
                         reject(protocolError("CLAW_SESSION_OPEN_FAILED", `claw session open failed: ${value.command ?? "unknown"}`));
                         return;
                     }
@@ -299,7 +306,7 @@ export class ClawSession {
             return await new Promise((resolve, reject) => {
                 const timer = setTimeout(() => {
                     this.pending = null;
-                    this.dropHandle("request timeout");
+                    this.dropHandle();
                     reject(protocolError("CLAW_SESSION_TIMEOUT", `claw operation timed out after ${timeoutMs}ms.`));
                 }, timeoutMs);
                 this.pending = {
@@ -315,7 +322,7 @@ export class ClawSession {
                 };
                 const line = `${JSON.stringify({ operation, input })}\n`;
                 void this.writeStdin(line).catch((error) => {
-                    this.dropHandle("stdin write failure");
+                    this.dropHandle();
                     this.failPending(protocolError("SESSION_CONNECTION_LOST", "claw session stdin write failed", error));
                 });
             });
@@ -344,13 +351,13 @@ export class ClawSession {
             resolve();
         });
     }
-    dropHandle(reason) {
+    dropHandle() {
         const handle = this.handle;
         this.handle = null;
         this.openPromise = null;
         this.clearIdle();
         if (handle)
-            void handle.terminate(reason).catch(() => undefined);
+            terminateForCleanup(handle);
     }
     failPending(error) {
         const pending = this.pending;
@@ -381,7 +388,7 @@ export class ClawSession {
                     new Promise((resolve) => { timer = setTimeout(resolve, 2000); timer.unref?.(); }),
                 ]);
                 if (!settled)
-                    await handle.terminate("close timeout");
+                    handle.terminate();
                 await handle.waitForExit?.();
             }
             finally {
