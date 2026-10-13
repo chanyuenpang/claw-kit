@@ -61,11 +61,12 @@ type GoalToolTemplate =
 type GuidanceStateTemplate = {
   stage: WorkflowGuidance["stage"] | "{{processStage}}";
   summary: string;
+  /**
+   * Host-neutral agent work only. Native Goal/Progress effects are never
+   * agent steps: capable hosts consume `goalTool`/`goalMode` themselves.
+   */
   nextsteps: string[];
-  /** Hosts that auto-consume native effects do not expose them as agent work. */
-  codexNextsteps?: string[];
   notes?: string;
-  codexNotes?: string;
   commandHints?: string[];
   goalMode?: GoalModeTemplate;
   goalTool?: GoalToolTemplate;
@@ -113,7 +114,10 @@ type GuidanceConfig = {
     recommendedCommand: string;
   };
   states: Record<string, GuidanceStateTemplate>;
+  /** Standard, host-neutral session-start wording. */
   sessionStart?: SessionStartTemplate;
+  /** A host replaces the standard wording only where it has native semantics. */
+  hostOverrides?: Record<string, { sessionStart?: Partial<SessionStartTemplate> }>;
 };
 
 type TemplateVars = Record<string, string>;
@@ -123,7 +127,11 @@ function loadGuidanceConfig(): GuidanceConfig {
   if (externalPath) {
     try {
       const content = readFileSync(externalPath, "utf8");
-      return JSON.parse(content) as GuidanceConfig;
+      const external = JSON.parse(content) as GuidanceConfig;
+      // A host variant may lag behind new states; a missing template must not
+      // fail a command after its canonical mutation has committed.
+      const bundled = workflowGuidanceConfigJson as GuidanceConfig;
+      return { ...bundled, ...external, states: { ...bundled.states, ...external.states } };
     } catch {
       // If external config fails to load, fall back to bundled config
     }
@@ -183,8 +191,8 @@ function applyCreateGuidance(params: {
   }
 
   const subplanNote =
-    `Subplan "${params.planFile}" is now the active plan under parent plan "${params.plan.parentPlan}" task #${params.plan.parentTaskId}. ` +
-    "The parent/root Goal remains active while this subplan is in focus.";
+    `Subplan "${params.planFile}" is now the active plan under parent plan "${params.plan.parentPlan}" task #${params.plan.parentTaskId}.` +
+    (params.goalModeEnabled ? " The parent/root Goal remains active while this subplan is in focus." : "");
 
   return {
     ...guidance,
@@ -197,14 +205,18 @@ export function appendSubplanReturnGuidance(input: {
   completedPlanFile: string;
   completedPlanTitle: string;
   parentTaskId: number;
+  host?: string;
 }): WorkflowGuidance {
   const { goalMode: _goalMode, goalTool: _goalTool, ...guidance } = input.guidance;
+  const focus = hostProjectsGoal(input.host)
+    ? "The parent plan is now the active focus and its Goal remains active"
+    : "The parent plan is now the active focus";
   const continuation = guidance.nextTask
     ? `Continue with parent task #${guidance.nextTask.id}: ${guidance.nextTask.title}.`
     : "All parent tasks are complete; finish the parent plan through its canonical plan-done guidance.";
   const note =
     `Subplan "${input.completedPlanFile}" (${input.completedPlanTitle}) completed for parent task #${input.parentTaskId}. ` +
-    "The parent plan is now the active focus and its Goal remains active; do not treat this subplan completion as overall completion.";
+    `${focus}; do not treat this subplan completion as overall completion.`;
   return {
     ...guidance,
     transition: "subplan_returned",
@@ -301,22 +313,29 @@ function renderTemplateValue<T>(value: T, vars: TemplateVars): T {
   return value;
 }
 
-function renderStateTemplate(key: string, vars: TemplateVars, host?: string): GuidanceStateTemplate {
+function renderStateTemplate(key: string, vars: TemplateVars): GuidanceStateTemplate {
   const template = workflowGuidanceConfig.states[key];
   if (!template) {
     throw new Error(`Unknown workflow guidance template: ${key}`);
   }
-  const rendered = renderTemplateValue(template, vars);
-  if (host !== "codex" && host !== "dsh") return rendered;
-  return {
-    ...rendered,
-    nextsteps: rendered.codexNextsteps ?? rendered.nextsteps,
-    ...(rendered.codexNotes !== undefined ? { notes: rendered.codexNotes } : {}),
-  };
+  return renderTemplateValue(template, vars);
 }
 
 function isGoalModeEnabled(projectConfig: ProjectConfig | null): boolean {
   return projectConfig?.goalMode !== false;
+}
+
+/** The hostless invocation shape: no host, or the explicit `standard` profile. */
+function isStandardHostless(host?: string): boolean {
+  return !host || host === "standard";
+}
+
+/**
+ * Only hosts whose adapter projects a native Goal may see Goal fields or Goal
+ * wording. Hostless, Cindy and OpenCode guidance must never mention them.
+ */
+function hostProjectsGoal(host?: string): boolean {
+  return resolveHostIntegrationProfile(host)?.suppressesAgentGoalGuidance === false;
 }
 
 export function buildDirectWorkflowGuidance(params: {
@@ -383,10 +402,15 @@ export async function buildPlanWorkflowGuidance(params: {
   // goalMode creates/restores the durable Codex Goal for every active plan,
   // while lightweight default plans deliberately omit the Progress UI.
   const goalPlan = params.goalPlan ?? plan;
-  const goalModeEnabled = isGoalModeEnabled(params.goalProjectConfig ?? projectConfig);
+  const standardHostless = isStandardHostless(params.host);
+  const goalModeEnabled = hostProjectsGoal(params.host) && isGoalModeEnabled(params.goalProjectConfig ?? projectConfig);
+  const requiresMainAgentCloseout = standardHostless
+    && params.scope !== "session"
+    && !plan.parentPlan
+    && plan.knowledgeCapture !== false;
   // Cindy owns any eventual Goal projection in its Ghost Host. The CLI must
   // not ask a Cindy Agent to operate another Host's Goal or progress tools.
-  const suppressGoalFields = resolveHostIntegrationProfile(params.host)?.suppressesAgentGoalGuidance === true;
+  const suppressGoalFields = !hostProjectsGoal(params.host);
   const startedGoalModeThisRound = goalModeEnabled && previousStatus === "process.active";
   const nextTask = currentPlanTask(plan);
   const activeTask = currentActiveTask(plan);
@@ -420,7 +444,7 @@ export async function buildPlanWorkflowGuidance(params: {
       const templateKey = hasGoal
         ? (goalModeEnabled ? "prepare.requirements.withGoal" : "prepare.requirements.withGoal.noGoalMode")
         : (goalModeEnabled ? "prepare.requirements.withoutGoal" : "prepare.requirements.withoutGoal.noGoalMode");
-      const template = renderStateTemplate(templateKey, vars, params.host);
+      const template = renderStateTemplate(templateKey, vars);
       return {
         stage: template.stage as WorkflowGuidance["stage"],
         summary: template.summary,
@@ -430,7 +454,7 @@ export async function buildPlanWorkflowGuidance(params: {
       };
     }
     case "prepare.review": {
-      const template = renderStateTemplate("prepare.review", vars, params.host);
+      const template = renderStateTemplate("prepare.review", vars);
       return {
         stage: template.stage as WorkflowGuidance["stage"],
         summary: template.summary,
@@ -443,7 +467,7 @@ export async function buildPlanWorkflowGuidance(params: {
     case "process.wait":
     case "process.discussing": {
       if (plan.status === "process.discussing" && allTasksDone) {
-        const template = renderStateTemplate("process.allTasksDone", vars, params.host);
+        const template = renderAllTasksDoneTemplate(vars, requiresMainAgentCloseout);
         return applyCreateGuidance({
           commandSource,
           plan,
@@ -471,7 +495,7 @@ export async function buildPlanWorkflowGuidance(params: {
         : startedGoalModeThisRound
           ? plan.status
           : `${plan.status}.noGoalMode`;
-      const template = renderStateTemplate(templateKey, vars, params.host);
+      const template = renderStateTemplate(templateKey, vars);
       const shouldEmitBlockedGoalTool = startedGoalModeThisRound;
       return applyCreateGuidance({
         commandSource,
@@ -493,7 +517,7 @@ export async function buildPlanWorkflowGuidance(params: {
     }
     case "process.active": {
       if (allTasksDone) {
-        const template = renderStateTemplate("process.allTasksDone", vars, params.host);
+        const template = renderAllTasksDoneTemplate(vars, requiresMainAgentCloseout);
         const guidance = adaptLegacySessionGuidance({
           stage: template.stage as WorkflowGuidance["stage"],
           summary: template.summary,
@@ -526,7 +550,7 @@ export async function buildPlanWorkflowGuidance(params: {
           : activeTask
             ? "process.activeTask"
             : "process.default";
-      const template = renderStateTemplate(templateKey, vars, params.host);
+      const template = renderStateTemplate(templateKey, vars);
       // Reconcile Goal state after every active plan mutation.  The fixed Codex
       // driver makes this idempotent by retaining an already-active Goal, while
       // recreating one that was lost or ended between mutations.
@@ -535,7 +559,7 @@ export async function buildPlanWorkflowGuidance(params: {
         && !suppressGoalFields
         && (Boolean(commandSource) || params.recoveryResync === true);
       const activeGoalTemplate = shouldEnsureActiveGoal
-        ? renderStateTemplate("process.justEntered", vars, params.host)
+        ? renderStateTemplate("process.justEntered", vars)
         : undefined;
 
       const guidance = adaptLegacySessionGuidance({
@@ -578,8 +602,8 @@ export async function buildPlanWorkflowGuidance(params: {
     }
     case "end.completed": {
       const template = workflowGuidanceConfig.states["end.completed"]
-        ? renderStateTemplate("end.completed", vars, params.host)
-        : renderStateTemplate("end.closed", vars, params.host);
+        ? renderStateTemplate("end.completed", vars)
+        : renderStateTemplate("end.closed", vars);
       const guidance = adaptLegacySessionGuidance({
         stage: template.stage as WorkflowGuidance["stage"],
         summary: template.summary,
@@ -599,7 +623,7 @@ export async function buildPlanWorkflowGuidance(params: {
       });
     }
     case "end.closed": {
-      const template = renderStateTemplate("end.closed", vars, params.host);
+      const template = renderStateTemplate("end.closed", vars);
       return {
         stage: template.stage as WorkflowGuidance["stage"],
         summary: template.summary,
@@ -608,7 +632,7 @@ export async function buildPlanWorkflowGuidance(params: {
       };
     }
     case "end.leave": {
-      const template = renderStateTemplate("end.leave", vars, params.host);
+      const template = renderStateTemplate("end.leave", vars);
       return {
         stage: template.stage as WorkflowGuidance["stage"],
         summary: template.summary,
@@ -617,6 +641,23 @@ export async function buildPlanWorkflowGuidance(params: {
       };
     }
   }
+}
+
+/**
+ * A standard hostless root plan with knowledge capture still owes the
+ * main-agent closeout after `plan done`; do not tell the agent to stop there.
+ */
+function renderAllTasksDoneTemplate(vars: TemplateVars, requiresMainAgentCloseout: boolean): GuidanceStateTemplate {
+  const template = renderStateTemplate("process.allTasksDone", vars);
+  if (!requiresMainAgentCloseout) return template;
+  return {
+    ...template,
+    nextsteps: [
+      "1. Run `claw plan done --retrospective` once. Add `--key-decision` only for real durable decisions not already recorded.",
+      "2. Then complete the main-agent knowledge closeout returned by `plan done`; it is required even when no knowledge update seems warranted.",
+    ],
+    notes: "The plan is not closed out until the returned `claw knowledge prepare` / `claw knowledge complete` chain has run.",
+  };
 }
 
 /** Standard hostless closeout uses agent memory and never creates a report/job. */
@@ -646,7 +687,7 @@ function applyMainAgentCloseoutGuidance(params: {
   ];
   return {
     ...guidance,
-    nextsteps: [...guidance.nextsteps, ...closeoutSteps],
+    nextsteps: normalizeGuidanceSteps([...closeoutSteps, ...guidance.nextsteps]),
     commandHints: [...(guidance.commandHints ?? []), ...closeoutHints],
   };
 }
@@ -829,19 +870,17 @@ export interface SessionStartRecoveredParams {
 const FALLBACK_SESSION_START_DEFAULT_LINES: string[] = [
   "This session started inside a .claw project: {{projectName}} ({{projectId}}).",
   ".claw directory: {{clawDir}}",
-  "You can use goal mode in this thread when required by the claw workflow; don't ask me again.",
   "Follow the claw workflowGuidance return fields as the required next-step contract.",
   "Load claw-kit:using-claw-kit as the main workflow skill for this session.",
 ];
 
 const FALLBACK_SESSION_START_RECOVERED: SessionStartRecoveredTemplate = {
   header: [
-    "Use @claw-kit for this session.",
+    "Use claw-kit for this session.",
     "Claw workflow snapshot is recovered.",
     "Treat returned claw workflowGuidance as the only next-step contract.",
     "There is already an unfinished plan in this thread.",
     "Tell the user and ask whether to close the current plan or continue advancing it before starting unrelated work.",
-    "You can use goal mode in this thread when required by the claw workflow; don't ask me again.",
     "After this plan finishes, keep using claw-kit in this thread for the next task.",
     "",
   ],
@@ -855,13 +894,19 @@ const FALLBACK_SESSION_START_RECOVERED: SessionStartRecoveredTemplate = {
     commandHints: "- command hints: {{commandHints}}",
     notes: "- notes: {{notes}}",
     askUser: "- ask user: {{askUser}}",
-    goalMode: "- goal mode: {{goalMode}}",
   },
   planContentHeader: "Current plan content:",
 };
 
-export function buildSessionStartDefaultPrompt(params: SessionStartDefaultParams): string {
-  const template = workflowGuidanceConfig.sessionStart?.default;
+function resolveSessionStartTemplate(host?: string): Partial<SessionStartTemplate> {
+  return {
+    ...workflowGuidanceConfig.sessionStart,
+    ...(host ? workflowGuidanceConfig.hostOverrides?.[host]?.sessionStart : undefined),
+  };
+}
+
+export function buildSessionStartDefaultPrompt(params: SessionStartDefaultParams, host?: string): string {
+  const template = resolveSessionStartTemplate(host).default;
   const lines = template?.lines ?? FALLBACK_SESSION_START_DEFAULT_LINES;
   const vars: TemplateVars = {
     projectName: params.projectName,
@@ -872,8 +917,8 @@ export function buildSessionStartDefaultPrompt(params: SessionStartDefaultParams
   return lines.map((line) => renderTemplateString(line, vars)).join("\n");
 }
 
-export function buildSessionStartRecoveredPrompt(params: SessionStartRecoveredParams): string {
-  const template = workflowGuidanceConfig.sessionStart?.recovered ?? FALLBACK_SESSION_START_RECOVERED;
+export function buildSessionStartRecoveredPrompt(params: SessionStartRecoveredParams, host?: string): string {
+  const template = resolveSessionStartTemplate(host).recovered ?? FALLBACK_SESSION_START_RECOVERED;
   const fields = template.snapshotFields;
   const baseVars: TemplateVars = {
     taskName: params.taskName,

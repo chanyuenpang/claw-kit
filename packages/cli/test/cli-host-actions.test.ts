@@ -904,7 +904,7 @@ test("cli plan edit executes repeated options in order and emits only net Goal g
   assert.equal("hostActions" in inactiveRoundTrip, false);
 });
 
-test("OpenCode keeps paused-plan guidance separate from Codex Goal actions", () => {
+test("OpenCode paused-plan guidance carries no Codex Goal steps or actions", () => {
   const root = createFixture("plan-edit-wait-and-resume-guidance");
   runClaw(["init", "--name", "Wait And Resume Guidance", "--planning", "false"], root);
   runClaw(["plan", "create", "--title", "demo-task", "--goal", "Pause and resume cleanly"], root);
@@ -926,9 +926,7 @@ test("OpenCode keeps paused-plan guidance separate from Codex Goal actions", () 
   assert.equal(waitResult.command, "plan.wait");
   assert.equal(waitResult.planStatus, "process.wait");
   assert.deepEqual(waitResult.nextsteps, [
-    "1. Use `update_goal(status=\"blocked\")` to end the current active thread goal.",
-    "2. When resuming the plan, restore the active thread goal after re-entering `process.active`.",
-    "3. Resume through `process.active` when execution should continue.",
+    "1. Resume through `process.active` when execution should continue.",
   ]);
   assert.equal(waitResult.goalTool, undefined);
   assert.equal("hostActions" in waitResult, false);
@@ -947,6 +945,46 @@ test("OpenCode keeps paused-plan guidance separate from Codex Goal actions", () 
   );
   assert.equal(discussingResult.planStatus, "process.discussing");
   assert.equal("hostActions" in discussingResult, false);
+});
+
+test("Cindy and OpenCode never receive Codex Goal or progress tool wording", () => {
+  const opencodeGuidance = path.resolve(process.cwd(), "..", "opencode-adapter", "workflow-guidance.opencode.json");
+  assert.equal(fs.existsSync(opencodeGuidance), true);
+  const hosts: Array<[string, NodeJS.ProcessEnv]> = [
+    ["cindy", { CLAW_HOST: "cindy", CLAW_SESSION_ID: "neutral-cindy" }],
+    ["opencode", { CLAW_HOST: "opencode", CLAW_SESSION_ID: "neutral-opencode-bundled" }],
+    ["opencode", { CLAW_HOST: "opencode", CLAW_SESSION_ID: "neutral-opencode-variant", CLAW_GUIDANCE_CONFIG: opencodeGuidance }],
+  ];
+  for (const [host, env] of hosts) {
+    const root = createFixture(`neutral-guidance-${env.CLAW_SESSION_ID}`);
+    runClaw(["init", "--name", `Neutral ${host}`], root, env);
+    const outputs = [
+      runClaw(["plan", "create", "--title", "neutral-parent", "--goal", "Stay host neutral"], root, env),
+      runClaw(["plan", "start", "--requirements", "r", "--add-task", "A", "--add-task", "B", "--add-task", "C"], root, env),
+      runClaw(["task", "edit", "--id", "2", "--status", "in_progress"], root, env),
+      runClaw(["plan", "wait"], root, env),
+      runClaw(["plan", "resume"], root, env),
+      runClaw(["plan", "edit", "--status", "process.discussing"], root, env),
+      runClaw(["plan", "resume"], root, env),
+      runClaw(["context"], root, env),
+      runClaw(["subplan", "create"], root, env),
+      runClaw(["plan", "start", "--requirements", "r", "--add-task", "child"], root, env),
+      runClaw(["task", "done", "--id", "2"], root, env),
+      runClaw(["plan", "done", "--retrospective", "child done"], root, env),
+      runClaw(["task", "done", "--id", "3"], root, env),
+      runClaw(["task", "done", "--id", "4"], root, env),
+      runClaw(["plan", "done", "--retrospective", "done"], root, env),
+      runClaw(["plan", "create", "--title", "neutral-leave"], root, env),
+      runClaw(["plan", "leave"], root, env),
+    ];
+    for (const output of outputs) {
+      assert.doesNotMatch(
+        JSON.stringify(output),
+        /update_plan|update_goal|create_goal|goalTool|goalMode|Goal Mode|goal mode|thread goal|Goal remains|Codex/,
+        `${host} ${String(output.command)}`,
+      );
+    }
+  }
 });
 
 test("Codex subplan create preserves the parent Goal", () => {

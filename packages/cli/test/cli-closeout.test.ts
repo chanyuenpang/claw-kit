@@ -79,8 +79,7 @@ test("cli leaves completed-task deposition to automatic turn reporting", () => {
   assert.equal("stage" in taskDone, false);
   assert.equal("summary" in taskDone, false);
   assert.deepEqual(taskDone.nextsteps, [
-    "1. Sync thread progress with `update_plan`.",
-    "2. Continue with task #2.",
+    "Continue with task #2.",
   ]);
   assert.equal(
     taskDone.notes,
@@ -136,7 +135,6 @@ test("cli plan done on a subplan resumes the parent plan instead of archiving th
   assert.match(String(doneResult.planPath), /tasks[\\/]\d{4}-\d{2}-\d{2}[\\/]demo-task[\\/]plan\.json$/);
   assert.deepEqual(doneResult.nextsteps, [
     "Continue with parent task #2: Resume parent work.",
-    "Sync thread progress with `update_plan`.",
     "Start with task #2.",
   ]);
   assert.equal(doneResult.transition, "subplan_returned");
@@ -171,7 +169,7 @@ test("cli plan done records completedAt and retains the current task path", asyn
   assert.match(String(doneResult.planPath), /\.claw[\\/]tasks[\\/]\d{4}-\d{2}-\d{2}[\\/]archive-task[\\/].*plan\.json$/);
   assert.equal("archivedPlanPath" in doneResult, false);
   assert.equal("hostActions" in doneResult, false);
-  assert.equal((doneResult.nextsteps as string[]).some((step) => step.includes("update_goal")), true);
+  assert.equal((doneResult.nextsteps as string[]).some((step) => /update_goal|update_plan|Goal/.test(step)), false);
   const completedPlan = JSON.parse(fs.readFileSync(String(doneResult.planPath), "utf-8")) as JsonRecord;
   assert.match(String(completedPlan.completedAt), /^\d{4}-\d{2}-\d{2}T/);
   const refreshStatus = await waitForLatestCompletionRefreshStatus(root);

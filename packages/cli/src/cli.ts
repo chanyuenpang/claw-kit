@@ -50,7 +50,6 @@ import {
   showPlan,
   createSubplan,
   createPlanRef,
-  switchTask,
   tryCaptureKnowledgeStop,
   claimKnowledgeFinalizationJob,
   doneKnowledgeFinalizationJob,
@@ -70,8 +69,6 @@ import {
   ProjectConfigRepository,
   findProjectRoot,
   type InitProjectInput,
-  type InheritedFrom,
-  type LeaveState,
   type PlanDocument,
   type PlanEvent,
   type PlanFieldUpdates,
@@ -131,7 +128,6 @@ const TOP_LEVEL_COMMANDS: { name: string; summary: string }[] = [
   { name: "template <subcommand> [options]", summary: "Plan template helpers such as validation." },
   { name: "task <subcommand> [options]", summary: "Task lifecycle helpers inside an existing plan." },
   { name: "subplan create [options]", summary: "Create a subplan nested under a parent task item." },
-  { name: "switch-task --from <task> --to <task>", summary: "Switch the active task, carrying inherited context." },
   { name: "search [<query>] [options]", summary: "Recall project memory, truth, ADR, and declared docs." },
   { name: "knowledge <subcommand> [options]", summary: "Knowledge finalization lifecycle: wait, claim, done." },
   { name: "truth ingest [options]", summary: "Ingest a truth document under .claw/truth." },
@@ -307,8 +303,8 @@ const COMMAND_HELP: Record<string, HelpNode> = {
       },
       sync: {
         usage: ["{script} plan sync"],
-        description: "Resynchronize a recovered active Codex plan with the host Goal without mutating the plan.",
-        summary: "Resync a recovered active Codex plan.",
+        description: "Resynchronize a recovered active plan with host-owned Goal and progress projection without mutating the plan.",
+        summary: "Resync a recovered active plan with its host projection.",
         options: [
           { flag: "--task-name <name>", detail: "Advanced: override the session-bound task scope." },
           { flag: "--plan-file <relative-path>", detail: "Advanced: override the session-bound plan file." },
@@ -460,18 +456,6 @@ const COMMAND_HELP: Record<string, HelpNode> = {
         ],
       },
     },
-  },
-  "switch-task": {
-    usage: ["{script} switch-task --from <task> --to <task> [options]"],
-    description:
-      "Switch the active task from one to another, carrying inherited context and recording the leave state.",
-    options: [
-      { flag: "--from <task>", detail: "(required) Current task to leave." },
-      { flag: "--to <task>", detail: "(required) Task to switch to." },
-      { flag: "--reason <reason>", detail: "Leave reason (recorded in leave state)." },
-      { flag: "--mode <mode>", detail: "Inheritance mode for context carried over." },
-      { flag: "--history-limit <n>", detail: "Max history items to carry." },
-    ],
   },
   search: {
     usage: ["{script} search [<query>] [--dir <dir>] [--limit <n>] [--json]", "{script} search index --refresh [--json]"],
@@ -751,18 +735,6 @@ async function main(): Promise<void> {
         return;
       case "subplan":
         await runSubplan(args, effectiveHost);
-        return;
-      case "switch-task":
-        printJson(
-          switchTask({
-            cwd: process.cwd(),
-            fromTask: readRequiredFlag(args, "--from"),
-            toTask: readRequiredFlag(args, "--to"),
-            reason: readOptionalFlag(args, "--reason") as LeaveState["reason"] | undefined,
-            mode: readOptionalFlag(args, "--mode") as InheritedFrom["mode"] | undefined,
-            historyLimit: readOptionalNumber(args, "--history-limit"),
-          }),
-        );
         return;
       case "search":
         await runSearch(args);
@@ -2654,7 +2626,7 @@ async function runHook(args: string[], effectiveHost: ClawHost | undefined): Pro
     });
     return;
   }
-  const logPath = path.join(process.env.USERPROFILE ?? process.env.HOME ?? process.cwd(), ".codex", "claw-kit-hook.log");
+  const logPath = resolveHookLogPath(effectiveHost);
   const record = {
     timestamp: new Date().toISOString(),
     eventName,
@@ -2676,6 +2648,18 @@ async function runHook(args: string[], effectiveHost: ClawHost | undefined): Pro
     clawDir: project.clawDir,
     logPath,
   });
+}
+
+/**
+ * Each platform keeps its own hook log. Codex keeps its established location
+ * inside the Codex home; every other platform, and the hostless standard flow,
+ * logs under the claw-owned home directory.
+ */
+function resolveHookLogPath(effectiveHost: ClawHost | undefined): string {
+  const home = process.env.USERPROFILE ?? process.env.HOME ?? process.cwd();
+  return effectiveHost === "codex"
+    ? path.join(home, ".codex", "claw-kit-hook.log")
+    : path.join(home, ".claw", "logs", "hooks", `${effectiveHost ?? "standard"}.log`);
 }
 
 async function runStopHook(effectiveHost: ClawHost | undefined): Promise<void> {
@@ -3064,7 +3048,7 @@ function buildSessionStartAdditionalContext(
   const runtimeErrorPrompt = buildCodexRuntimeErrorPrompt(context);
   const activeWorkflow = context.activeWorkflow as JsonRecord | undefined;
   if (activeWorkflow) {
-    const prompt = buildRecoveredWorkflowAdditionalContext(activeWorkflow, versionSyncPrompt);
+    const prompt = buildRecoveredWorkflowAdditionalContext(activeWorkflow, versionSyncPrompt, effectiveHost);
     const recoverySyncPrompt = resolveHostIntegrationProfile(effectiveHost)?.providesActiveWorkflowRecovery === true && activeWorkflow.planStatus === "process.active"
       ? "Before continuing, run `claw plan sync` once through the fixed Codex driver to reconcile the root-plan Goal."
       : "";
@@ -3087,7 +3071,7 @@ function buildSessionStartAdditionalContext(
   const projectId = typeof project.projectId === "string" ? project.projectId : projectName;
   const clawDir = typeof project.clawDir === "string" ? project.clawDir : path.join(projectRoot, ".claw");
   const protocolOk = (context.protocolCheck as JsonRecord | undefined)?.ok === true ? "ok" : "needs attention";
-  const prompt = buildSessionStartDefaultPrompt({ projectName, projectId, clawDir, protocolOk });
+  const prompt = buildSessionStartDefaultPrompt({ projectName, projectId, clawDir, protocolOk }, effectiveHost);
   const promptWithVersion = !versionSyncPrompt
     ? prompt
     : versionSyncPrompt.placement === "prefix"
@@ -3099,10 +3083,8 @@ function buildSessionStartAdditionalContext(
 
 /**
  * Cindy Agents use the Ghost Tool gateway, not shell commands or Host actions.
- * Match the Codex session-start wording and structure. Cindy's static entry
- * prompt supplies the shared skill and guidance lines; this dynamic context
- * supplies project identity or a recovered workflow snapshot. Goal Mode is
- * intentionally omitted because Cindy does not expose that Host surface.
+ * Cindy's static entry prompt supplies the shared skill and guidance lines;
+ * this dynamic context supplies only project repair, version and search notes.
  */
 function buildCindySessionStartContext(
   context: Record<string, unknown>,
@@ -3123,13 +3105,6 @@ function buildCindySessionStartContext(
   return lines.length > 0 ? lines.join("\n") : null;
 }
 
-function stripCindyGoalModeLines(prompt: string): string {
-  return prompt
-    .split("\n")
-    .filter((line) => !/goal mode/i.test(line))
-    .join("\n");
-}
-
 function buildCodexRuntimeErrorPrompt(context: Record<string, unknown>): string | null {
   const error = asJsonRecord(context.error);
   if (error?.code !== "CODEX_SDK_RUNTIME_MISSING") {
@@ -3141,6 +3116,7 @@ function buildCodexRuntimeErrorPrompt(context: Record<string, unknown>): string 
 function buildRecoveredWorkflowAdditionalContext(
   activeWorkflow: JsonRecord,
   versionSyncPrompt: { placement: "prefix" | "suffix"; lines: string[] } | null,
+  effectiveHost: ClawHost | undefined,
 ): string {
   const taskName = String(activeWorkflow.taskName ?? "");
   const planFile = String(activeWorkflow.planFile ?? "plan.json");
@@ -3166,7 +3142,7 @@ function buildRecoveredWorkflowAdditionalContext(
     askUser: askUser ?? "",
     goalMode: goalMode ?? "",
     planContentLines,
-  });
+  }, effectiveHost);
   if (!versionSyncPrompt) {
     return prompt;
   }

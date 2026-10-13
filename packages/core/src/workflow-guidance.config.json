@@ -9,7 +9,7 @@
   "states": {
     "prepare.requirements.withGoal": {
       "stage": "requirements",
-      "summary": "Task scope is bound. Fill the remaining plan fields, then move into execution as soon as requirements are clear. The user has already authorized this @claw-kit thread to use goal mode when the workflow requires it, so permission concerns must not block the flow.",
+      "summary": "Task scope is bound. Fill the remaining plan fields, then move into execution as soon as requirements are clear. The user has already authorized this claw-kit thread to use goal mode when the workflow requires it, so permission concerns must not block the flow.",
       "nextsteps": [
         "1. Fill the missing plan fields.",
         "2. Move into `process.active` once requirements are clear."
@@ -37,7 +37,7 @@
     },
     "prepare.requirements.withoutGoal": {
       "stage": "requirements",
-      "summary": "Task scope is bound. Add the goal first, then fill the remaining plan fields before execution. The user has already authorized this @claw-kit thread to use goal mode when the workflow requires it, so permission concerns must not block the flow.",
+      "summary": "Task scope is bound. Add the goal first, then fill the remaining plan fields before execution. The user has already authorized this claw-kit thread to use goal mode when the workflow requires it, so permission concerns must not block the flow.",
       "nextsteps": [
         "1. Fill `goal.text`.",
         "2. Fill the missing plan fields.",
@@ -82,11 +82,6 @@
       "stage": "done",
       "summary": "All plan tasks are done. Finish the plan record, then complete the canonical plan lifecycle.",
       "nextsteps": [
-        "1. Clear thread progress with `update_plan`.",
-        "2. Run `claw plan done --retrospective` once. Add `--key-decision` only for real durable decisions not already recorded.",
-        "3. Stop after the canonical plan transition; no separate closeout action is required from the main agent."
-      ],
-      "codexNextsteps": [
         "1. Run `claw plan done --retrospective` once. Add `--key-decision` only for real durable decisions not already recorded.",
         "2. Stop after the canonical plan transition; no separate closeout action is required from the main agent."
       ],
@@ -99,10 +94,6 @@
       "stage": "{{processStage}}",
       "summary": "Execution is in progress.",
       "nextsteps": [
-        "1. Sync thread progress with `update_plan`.",
-        "2. Continue with {{nextTaskRef}}."
-      ],
-      "codexNextsteps": [
         "Continue with {{nextTaskRef}}."
       ],
       "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. Before each successful `task done`, state a concise evidence-backed task conclusion in the immediately preceding assistant message; `task done` has no conclusion option. Use `plan done --retrospective` and repeatable `--key-decision` values for full-plan closeout.",
@@ -115,10 +106,6 @@
       "stage": "{{processStage}}",
       "summary": "Execution is starting.",
       "nextsteps": [
-        "Sync thread progress with `update_plan`.",
-        "Start with {{nextTaskRef}}."
-      ],
-      "codexNextsteps": [
         "Start with {{nextTaskRef}}."
       ],
       "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. Before each successful `task done`, state a concise evidence-backed task conclusion in the immediately preceding assistant message; `task done` has no conclusion option. Use `plan done --retrospective` and repeatable `--key-decision` values for full-plan closeout.",
@@ -129,7 +116,7 @@
       "goalTool": {
         "tool": "create_goal",
         "allowOverwrite": true,
-        "reason": "Execution is entering an active process state, so the thread should have an active Codex goal tied to the plan goal."
+        "reason": "Execution is entering an active process state, so the thread should have an active goal tied to the plan goal."
       },
       "goalMode": {
         "allowOverwrite": true,
@@ -140,10 +127,6 @@
       "stage": "{{processStage}}",
       "summary": "Execution is starting.",
       "nextsteps": [
-        "Sync thread progress with `update_plan`.",
-        "Start with {{nextTaskRef}}."
-      ],
-      "codexNextsteps": [
         "Start with {{nextTaskRef}}."
       ],
       "notes": "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. Before each successful `task done`, state a concise evidence-backed task conclusion in the immediately preceding assistant message; `task done` has no conclusion option. Use `plan done --retrospective` and repeatable `--key-decision` values for full-plan closeout.",
@@ -156,15 +139,9 @@
       "stage": "execution",
       "summary": "Execution is resuming.",
       "nextsteps": [
-        "Sync thread progress with `update_plan`.",
-        "Restore Goal Mode to the active state.",
         "Resume with {{nextTaskRef}}."
       ],
-      "codexNextsteps": [
-        "Resume with {{nextTaskRef}}."
-      ],
-      "notes": "The plan is moving back from a paused status into active execution, so Goal Mode should be restored to the active state before work resumes. Before each successful `task done`, state a concise evidence-backed task conclusion in the immediately preceding assistant message; `task done` has no conclusion option. Use `plan done --retrospective` and repeatable `--key-decision` values for full-plan closeout.",
-      "codexNotes": "The plan is moving back from a paused status into active execution. Before each successful `task done`, state a concise evidence-backed task conclusion in the immediately preceding assistant message; `task done` has no conclusion option. Use `plan done --retrospective` and repeatable `--key-decision` values for full-plan closeout.",
+      "notes": "The plan is moving back from a paused status into active execution. Before each successful `task done`, state a concise evidence-backed task conclusion in the immediately preceding assistant message; `task done` has no conclusion option. Use `plan done --retrospective` and repeatable `--key-decision` values for full-plan closeout.",
       "commandHints": [
         "{{taskDoneCommand}}",
         "{{doneBase}} --retrospective \"<summary>\" [--key-decision \"<durable decision>\"]"
@@ -172,7 +149,7 @@
       "goalTool": {
         "tool": "create_goal",
         "allowOverwrite": true,
-        "reason": "Execution is resuming from a paused process state, so the thread should restore an active Codex goal for the plan goal."
+        "reason": "Execution is resuming from a paused process state, so the thread should restore an active goal for the plan goal."
       },
       "goalMode": {
         "allowOverwrite": true,
@@ -183,10 +160,6 @@
       "stage": "execution",
       "summary": "Execution is resuming.",
       "nextsteps": [
-        "Sync the thread progress with our tasks.",
-        "Resume with {{nextTaskRef}}."
-      ],
-      "codexNextsteps": [
         "Resume with {{nextTaskRef}}."
       ],
       "notes": "The plan is moving back from a paused status into active execution. Before each successful `task done`, state a concise evidence-backed task conclusion in the immediately preceding assistant message; `task done` has no conclusion option. Use `plan done --retrospective` and repeatable `--key-decision` values for full-plan closeout.",
@@ -199,11 +172,6 @@
       "stage": "paused",
       "summary": "Execution is paused.",
       "nextsteps": [
-        "1. Use `update_goal(status=\"blocked\")` to end the current active thread goal.",
-        "2. When resuming the plan, restore the active thread goal after re-entering `process.active`.",
-        "3. Resume through `process.active` when execution should continue."
-      ],
-      "codexNextsteps": [
         "Resume through `process.active` when execution should continue."
       ],
       "notes": "Use `process.wait` for a real blocker or a deliberate hold. Do not keep executing while the plan is paused.",
@@ -231,11 +199,6 @@
       "stage": "discussion",
       "summary": "The plan is paused for discussion.",
       "nextsteps": [
-        "1. Use `update_goal(status=\"blocked\")` to end the current active thread goal.",
-        "2. When resuming the plan, restore the active thread goal after re-entering `process.active`.",
-        "3. Resolve the discussion, then resume through `process.active`."
-      ],
-      "codexNextsteps": [
         "Resolve the discussion, then resume through `process.active`."
       ],
       "notes": "Use `process.discussing` for route discussion or decision-making. Resume execution only after the discussion is settled.",
@@ -305,13 +268,8 @@
       "stage": "done",
       "summary": "The plan is completed and ready for closeout.",
       "nextsteps": [
-        "1. Use `update_goal(status=\"complete\")` to close the active thread goal for this plan.",
-        "2. Finish any remaining workflow-guided closeout work such as archive or parent-plan resumption.",
-        "3. Do not continue ad hoc in this thread. Start the next task only through `using-claw-kit`, then follow the returned `workflowGuidance`."
-      ],
-      "codexNextsteps": [
         "1. Finish any remaining workflow-guided closeout work such as archive or parent-plan resumption.",
-        "2. Do not continue ad hoc in this thread. Start the next task only through `using-claw-kit`, then follow the returned `workflowGuidance`."
+        "2. Do not continue ad hoc in this thread. Start the next task only through `claw-kit:using-claw-kit`, then follow the returned `workflowGuidance`."
       ],
       "goalTool": {
         "tool": "update_goal",
@@ -346,19 +304,17 @@
       "lines": [
         "This session started inside a .claw project: {{projectName}} ({{projectId}}).",
         ".claw directory: {{clawDir}}",
-        "You can use goal mode in this thread when required by the claw workflow; don't ask me again.",
         "Follow the claw workflowGuidance return fields as the required next-step contract.",
         "Load claw-kit:using-claw-kit as the main workflow skill for this session."
       ]
     },
     "recovered": {
       "header": [
-        "Use @claw-kit for this session.",
+        "Use claw-kit for this session.",
         "Claw workflow snapshot is recovered.",
         "Treat returned claw workflowGuidance as the only next-step contract.",
         "There is already an unfinished plan in this thread.",
         "Tell the user and ask whether to close the current plan or continue advancing it before starting unrelated work.",
-        "You can use goal mode in this thread when required by the claw workflow; don't ask me again.",
         "After this plan finishes, keep using claw-kit in this thread for the next task.",
         ""
       ],
@@ -371,10 +327,49 @@
         "nextSteps": "- next steps: {{nextSteps}}",
         "commandHints": "- command hints: {{commandHints}}",
         "notes": "- notes: {{notes}}",
-        "askUser": "- ask user: {{askUser}}",
-        "goalMode": "- goal mode: {{goalMode}}"
+        "askUser": "- ask user: {{askUser}}"
       },
       "planContentHeader": "Current plan content:"
+    }
+  },
+  "hostOverrides": {
+    "codex": {
+      "sessionStart": {
+        "default": {
+          "lines": [
+            "This session started inside a .claw project: {{projectName}} ({{projectId}}).",
+            ".claw directory: {{clawDir}}",
+            "You can use goal mode in this thread when required by the claw workflow; don't ask me again.",
+            "Follow the claw workflowGuidance return fields as the required next-step contract.",
+            "Load claw-kit:using-claw-kit as the main workflow skill for this session."
+          ]
+        },
+        "recovered": {
+          "header": [
+            "Use @claw-kit for this session.",
+            "Claw workflow snapshot is recovered.",
+            "Treat returned claw workflowGuidance as the only next-step contract.",
+            "There is already an unfinished plan in this thread.",
+            "Tell the user and ask whether to close the current plan or continue advancing it before starting unrelated work.",
+            "You can use goal mode in this thread when required by the claw workflow; don't ask me again.",
+            "After this plan finishes, keep using claw-kit in this thread for the next task.",
+            ""
+          ],
+          "snapshotHeader": "Current claw workflow snapshot:",
+          "snapshotFields": {
+            "task": "- task: {{taskName}}",
+            "plan": "- plan: {{planFile}}",
+            "planStatus": "- plan status: {{planStatus}}",
+            "planSummary": "- plan summary: {{planSummary}}",
+            "nextSteps": "- next steps: {{nextSteps}}",
+            "commandHints": "- command hints: {{commandHints}}",
+            "notes": "- notes: {{notes}}",
+            "askUser": "- ask user: {{askUser}}",
+            "goalMode": "- goal mode: {{goalMode}}"
+          },
+          "planContentHeader": "Current plan content:"
+        }
+      }
     }
   }
 }

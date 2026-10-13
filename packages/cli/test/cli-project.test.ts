@@ -248,7 +248,7 @@ test("CLI context owns daily maintenance after creation performs only necessary 
   assert.equal(fs.existsSync(path.join(sessionRuntime, ".maintenance.json")), true);
 });
 
-test("Codex omits adapter-consumed nextsteps while Cindy keeps its runner work visible", () => {
+test("Codex and Cindy both receive host-neutral nextsteps without native tool work", () => {
   const codexRoot = createFixture("nextsteps-codex");
   const cindyRoot = createFixture("nextsteps-cindy");
   for (const [root, host] of [[codexRoot, "codex"], [cindyRoot, "cindy"]] as const) {
@@ -261,7 +261,7 @@ test("Codex omits adapter-consumed nextsteps while Cindy keeps its runner work v
   const cindy = runClaw(["plan", "create", "--title", "same-workflow", "--host", "cindy"], cindyRoot);
 
   assert.deepEqual(codex.nextsteps, ["Start with task #1."]);
-  assert.deepEqual(cindy.nextsteps, ["Sync thread progress with `update_plan`.", "Start with task #1."]);
+  assert.deepEqual(cindy.nextsteps, ["Start with task #1."]);
   assert.equal(Array.isArray(cindy.nextsteps), true);
 });
 

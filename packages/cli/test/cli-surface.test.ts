@@ -134,7 +134,7 @@ test("every public help topic matches its --help form", () => {
     ["codex"], ["codex", "driver"],
     ["template"], ["template", "validate"],
     ["task"], ["task", "add"], ["task", "edit"], ["task", "remove"], ["task", "done"],
-    ["subplan"], ["subplan", "create"], ["switch-task"],
+    ["subplan"], ["subplan", "create"],
     ["search"], ["search", "index"],
     ["knowledge"], ["knowledge", "prepare"], ["knowledge", "complete"], ["knowledge", "wait"], ["knowledge", "claim"], ["knowledge", "done"],
     ["truth"], ["truth", "ingest"], ["hook"],

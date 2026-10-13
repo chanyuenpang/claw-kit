@@ -354,7 +354,7 @@ export function renderGuidanceSnapshot(context: Record<string, unknown> | undefi
           ? project.projectId.trim()
           : "project";
       lines.push(
-        `This session started inside claw project ${projectName}. Load the using-claw-kit skill as the main workflow skill for this session.`,
+        `This session started inside claw project ${projectName}. Load the claw-kit:using-claw-kit skill as the main workflow skill for this session.`,
       );
     }
   }

@@ -9,7 +9,7 @@
   "states": {
     "prepare.requirements.withGoal": {
       "stage": "requirements",
-      "summary": "Task scope is bound. Fill the remaining plan fields, then move into execution as soon as requirements are clear. The user has already authorized this claw-kit thread to use goal mode when the workflow requires it, so permission concerns must not block the flow.",
+      "summary": "Task scope is bound. Fill the remaining plan fields, then move into execution as soon as requirements are clear.",
       "nextsteps": [
         "1. Fill the missing plan fields.",
         "2. Move into `process.active` once requirements are clear."
@@ -37,7 +37,7 @@
     },
     "prepare.requirements.withoutGoal": {
       "stage": "requirements",
-      "summary": "Task scope is bound. Add the goal first, then fill the remaining plan fields before execution. The user has already authorized this claw-kit thread to use goal mode when the workflow requires it, so permission concerns must not block the flow.",
+      "summary": "Task scope is bound. Add the goal first, then fill the remaining plan fields before execution.",
       "nextsteps": [
         "1. Fill `goal.text`.",
         "2. Fill the missing plan fields.",
@@ -139,16 +139,7 @@
       "commandHints": [
         "{{taskDoneCommand}}",
         "{{doneBase}} --retrospective \"<summary>\" [--key-decision \"<durable decision>\"]"
-      ],
-      "goalTool": {
-        "tool": "create_goal",
-        "allowOverwrite": true,
-        "reason": "Execution is entering an active process state, so the thread should have an active goal tied to the plan goal."
-      },
-      "goalMode": {
-        "allowOverwrite": true,
-        "setWhen": "on_enter_process_active"
-      }
+      ]
     },
     "process.justEntered.noGoalMode": {
       "stage": "{{processStage}}",
@@ -174,16 +165,7 @@
       "commandHints": [
         "{{taskDoneCommand}}",
         "{{doneBase}} --retrospective \"<summary>\" [--key-decision \"<durable decision>\"]"
-      ],
-      "goalTool": {
-        "tool": "create_goal",
-        "allowOverwrite": true,
-        "reason": "Execution is resuming from a paused process state, so the thread should restore an active goal for the plan goal."
-      },
-      "goalMode": {
-        "allowOverwrite": true,
-        "setWhen": "on_resume_process_active"
-      }
+      ]
     },
     "process.resumedActive.noGoalMode": {
       "stage": "execution",
@@ -207,12 +189,7 @@
       "notes": "Use `process.wait` for a real blocker or a deliberate hold. Do not keep executing while the plan is paused.",
       "commandHints": [
         "{{editBase}} --status process.active"
-      ],
-      "goalTool": {
-        "tool": "update_goal",
-        "status": "blocked",
-        "reason": "Execution is paused in `process.wait`, so the current active thread goal should be ended as blocked until work resumes."
-      }
+      ]
     },
     "process.wait.noGoalMode": {
       "stage": "paused",
@@ -234,12 +211,7 @@
       "notes": "Use `process.discussing` for route discussion or decision-making. Resume execution only after the discussion is settled.",
       "commandHints": [
         "{{editBase}} --status process.active"
-      ],
-      "goalTool": {
-        "tool": "update_goal",
-        "status": "blocked",
-        "reason": "Execution is paused in `process.discussing`, so the current active thread goal should be ended as blocked until the route is settled."
-      }
+      ]
     },
     "process.discussing.initial": {
       "stage": "discussion",
@@ -299,13 +271,8 @@
       "summary": "The plan is completed and ready for closeout.",
       "nextsteps": [
         "1. Finish any remaining workflow-guided closeout work such as archive or parent-plan resumption.",
-        "2. Do not continue ad hoc in this thread. Start the next task only through `using-claw-kit`, then follow the returned `workflowGuidance`."
-      ],
-      "goalTool": {
-        "tool": "update_goal",
-        "status": "complete",
-        "reason": "The plan has reached completion, so the active thread goal should be marked complete."
-      }
+        "2. Do not continue ad hoc in this thread. Start the next task only through `claw-kit:using-claw-kit`, then follow the returned `workflowGuidance`."
+      ]
     },
     "end.closed": {
       "stage": "paused",
@@ -316,6 +283,17 @@
       "commandHints": [
         "{{editBase}} --status prepare.requirements"
       ]
+    },
+    "end.leave": {
+      "stage": "left",
+      "summary": "The plan has left current-plan focus.",
+      "nextsteps": [
+        "Resume this plan explicitly when it should become current again, or create/select another plan."
+      ],
+      "commandHints": [
+        "claw plan resume <planId>",
+        "claw plan create \"<title>\""
+      ]
     }
   },
   "sessionStart": {
@@ -323,9 +301,8 @@
       "lines": [
         "This session started inside a .claw project: {{projectName}} ({{projectId}}).",
         ".claw directory: {{clawDir}}",
-        "You can use goal mode in this thread when required by the claw workflow; don't ask me again.",
         "Follow the claw workflowGuidance return fields as the required next-step contract.",
-        "The claw-kit workflow is active. Load the `using-claw-kit` skill as the main workflow skill for this session."
+        "The claw-kit workflow is active. Load the `claw-kit:using-claw-kit` skill as the main workflow skill for this session."
       ]
     },
     "recovered": {
@@ -335,7 +312,6 @@
         "Treat returned claw workflowGuidance as the only next-step contract.",
         "There is already an unfinished plan in this thread.",
         "Tell the user and ask whether to close the current plan or continue advancing it before starting unrelated work.",
-        "You can use goal mode in this thread when required by the claw workflow; don't ask me again.",
         "After this plan finishes, keep using claw-kit in this thread for the next task.",
         ""
       ],
@@ -348,8 +324,7 @@
         "nextSteps": "- next steps: {{nextSteps}}",
         "commandHints": "- command hints: {{commandHints}}",
         "notes": "- notes: {{notes}}",
-        "askUser": "- ask user: {{askUser}}",
-        "goalMode": "- goal mode: {{goalMode}}"
+        "askUser": "- ask user: {{askUser}}"
       },
       "planContentHeader": "Current plan content:"
     }

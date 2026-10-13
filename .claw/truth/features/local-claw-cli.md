@@ -23,7 +23,6 @@
   - `claw plan write`
   - `claw plan edit`
   - `claw direct`
-  - `claw switch-task`
   - `claw memory index/search/get` for legacy/debug and low-level index management
   - `claw truth ingest`
 - Normal planned work should enter through `claw plan create`; when project context recall is useful, run `claw search --query "<topic>"` after task scope exists.

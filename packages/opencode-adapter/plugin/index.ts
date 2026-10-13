@@ -561,8 +561,8 @@ export const ClawKitPlugin: Plugin = async ({ directory, client }) => {
         lines.push("This session started inside a .claw project.");
       }
       lines.push("");
-      lines.push("Load the using-claw-kit skill as the main workflow skill for this session.");
-      lines.push("If no task scope exists yet, let using-claw-kit create a plan when reusable project knowledge is expected, then keep it discussing until downstream tasks are explicit and handoff-ready.");
+      lines.push("Load the claw-kit:using-claw-kit skill as the main workflow skill for this session.");
+      lines.push("If no task scope exists yet, let claw-kit:using-claw-kit create a plan when reusable project knowledge is expected, then keep it discussing until downstream tasks are explicit and handoff-ready.");
       lines.push("Low-complexity work can bypass claw plan create, claw search, and workflowGuidance entirely.");
       lines.push("For higher-complexity work, use claw plan create, then follow the claw workflowGuidance return fields as the required next-step contract.");
       lines.push("Use claw search for project recall after plan creation when the formal claw workflow is active.");

@@ -684,23 +684,6 @@ export type PlanShowResult = {
   simplePlanView: SimplePlanView;
 };
 
-export type SwitchTaskInput = {
-  cwd: string;
-  fromTask: string;
-  toTask: string;
-  reason?: LeaveState["reason"];
-  mode?: InheritedFrom["mode"];
-  historyLimit?: number;
-};
-
-export type SwitchTaskResult = {
-  fromTask: string;
-  toTask: string;
-  sourcePlanPath: string;
-  targetPlanPath?: string;
-  leaveState: LeaveState;
-};
-
 export type MemoryScope = "project";
 
 export type MemoryIndexInput = {

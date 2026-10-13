@@ -7,6 +7,8 @@ import { DatabaseSync } from "node:sqlite";
 import {
   buildDirectWorkflowGuidance,
   buildPlanWorkflowGuidance,
+  buildSessionStartDefaultPrompt,
+  buildSessionStartRecoveredPrompt,
   buildKnowledgeFinalizationTask,
   buildKnowledgeAssignmentTemplate,
   buildDirectKnowledgeAssignments,
@@ -57,7 +59,6 @@ import {
   searchMemory,
   showPlan,
   switchCurrentPlan,
-  switchTask,
   tryCaptureKnowledgeStop,
   tryCompleteKnowledgePlan,
   tryEndKnowledgePlan,
@@ -1896,8 +1897,7 @@ test("completed task guidance stays focused on the next lifecycle action", async
   });
 
   assert.deepEqual(taskDone.workflowGuidance.nextsteps, [
-    "1. Sync thread progress with `update_plan`.",
-    "2. Continue with task #2.",
+    "Continue with task #2.",
   ]);
   assert.deepEqual(taskDone.workflowGuidance.commandHints, [
     "claw task done --id <id>",
@@ -2741,7 +2741,8 @@ test("createSubplan uses the planning-aware default seed shape", async () => {
   assert.equal(result.workflowGuidance.commandHints?.[0], 'claw search --query "<topic>"');
   assert.equal(result.workflowGuidance.goalMode, undefined);
   assert.equal(result.workflowGuidance.goalTool, undefined);
-  assert.match(result.workflowGuidance.notes ?? "", /parent\/root Goal remains active/i);
+  assert.match(result.workflowGuidance.notes ?? "", /is now the active plan under parent plan/);
+  assert.doesNotMatch(result.workflowGuidance.notes ?? "", /Goal/);
   assert.equal(result.workflowGuidance.nextsteps.some((step) => /^1\. Use claw-kit:planning /.test(step)), true);
 });
 
@@ -3033,10 +3034,9 @@ test("plan edit can move from requirements to process.active without a separate 
   assert.equal(activated.workflowGuidance.stage, "execution");
   assert.equal(activated.workflowGuidance.nextTask?.id, 1);
   assert.equal(activated.workflowGuidance.nextTask?.title, "Implement work");
-  assert.ok(activated.workflowGuidance.goalMode?.recommendedObjective?.includes("Ship the first plan"));
-  assert.equal(activated.workflowGuidance.goalMode?.setWhen, "on_enter_process_active");
-  assert.ok(activated.workflowGuidance.nextsteps.includes("Sync thread progress with `update_plan`."));
-  assert.ok(activated.workflowGuidance.nextsteps.includes("Start with task #1."));
+  assert.equal(activated.workflowGuidance.goalMode, undefined);
+  assert.equal(activated.workflowGuidance.goalTool, undefined);
+  assert.deepEqual(activated.workflowGuidance.nextsteps, ["Start with task #1."]);
 
   const result = await editPlan({
     cwd: root,
@@ -3064,12 +3064,11 @@ test("plan edit can move from requirements to process.active without a separate 
   );
   assert.equal(
     result.workflowGuidance.notes,
-    "Background maintenance is fail-open and requires no main-agent action; it must not change plan completion or subplan resume.",
+    "The plan is not closed out until the returned `claw knowledge prepare` / `claw knowledge complete` chain has run.",
   );
   assert.deepEqual(result.workflowGuidance.nextsteps, [
-    "1. Clear thread progress with `update_plan`.",
-    "2. Run `claw plan done --retrospective` once. Add `--key-decision` only for real durable decisions not already recorded.",
-    "3. Stop after the canonical plan transition; no separate closeout action is required from the main agent.",
+    "1. Run `claw plan done --retrospective` once. Add `--key-decision` only for real durable decisions not already recorded.",
+    "2. Then complete the main-agent knowledge closeout returned by `plan done`; it is required even when no knowledge update seems warranted.",
   ]);
   assert.deepEqual(result.workflowGuidance.commandHints, [
     "claw plan done --retrospective \"<summary>\" [--key-decision \"<durable decision>\"]",
@@ -3123,14 +3122,13 @@ test("plan edit process.wait guidance pauses goal mode and points resume back to
     cwd: root,
     taskName: "demo-task",
     planStatus: "process.wait",
+    host: "codex",
   });
 
   assert.equal(paused.planStatus, "process.wait");
   assert.equal(paused.workflowGuidance.stage, "paused");
   assert.deepEqual(paused.workflowGuidance.nextsteps, [
-    "1. Use `update_goal(status=\"blocked\")` to end the current active thread goal.",
-    "2. When resuming the plan, restore the active thread goal after re-entering `process.active`.",
-    "3. Resume through `process.active` when execution should continue.",
+    "Resume through `process.active` when execution should continue.",
   ]);
   assert.deepEqual(paused.workflowGuidance.commandHints, [
     "claw plan resume",
@@ -3166,14 +3164,13 @@ test("plan edit process.discussing guidance pauses goal mode and waits for discu
     cwd: root,
     taskName: "demo-task",
     planStatus: "process.discussing",
+    host: "codex",
   });
 
   assert.equal(discussing.planStatus, "process.discussing");
   assert.equal(discussing.workflowGuidance.stage, "discussion");
   assert.deepEqual(discussing.workflowGuidance.nextsteps, [
-    "1. Use `update_goal(status=\"blocked\")` to end the current active thread goal.",
-    "2. When resuming the plan, restore the active thread goal after re-entering `process.active`.",
-    "3. Resolve the discussion, then resume through `process.active`.",
+    "Resolve the discussion, then resume through `process.active`.",
   ]);
   assert.deepEqual(discussing.workflowGuidance.commandHints, [
     "claw plan resume",
@@ -3209,6 +3206,7 @@ test("resuming from process.wait to process.active re-emits goal mode guidance",
     cwd: root,
     taskName: "demo-task",
     planStatus: "process.active",
+    host: "codex",
   });
 
   assert.equal(resumed.planStatus, "process.active");
@@ -3219,18 +3217,15 @@ test("resuming from process.wait to process.active re-emits goal mode guidance",
     tool: "create_goal",
     objective: "Follow the claw workflow guidance and finish your goal: Resume execution with goal mode",
     allowOverwrite: true,
-    reason: "Execution is resuming from a paused process state, so the thread should restore an active Codex goal for the plan goal.",
+    reason: "Execution is resuming from a paused process state, so the thread should restore an active goal for the plan goal.",
   });
   assert.equal(
     resumed.workflowGuidance.notes,
-    "The plan is moving back from a paused status into active execution, so Goal Mode should be restored to the active state before work resumes. Before each successful `task done`, state a concise evidence-backed task conclusion in the immediately preceding assistant message; `task done` has no conclusion option. Use `plan done --retrospective` and repeatable `--key-decision` values for full-plan closeout.",
+    "The plan is moving back from a paused status into active execution. Before each successful `task done`, state a concise evidence-backed task conclusion in the immediately preceding assistant message; `task done` has no conclusion option. Use `plan done --retrospective` and repeatable `--key-decision` values for full-plan closeout.",
   );
   assert.deepEqual(resumed.workflowGuidance.nextsteps, [
-    "Sync thread progress with `update_plan`.",
-    "Restore Goal Mode to the active state.",
     "Resume with task #1.",
   ]);
-  assert.ok(resumed.workflowGuidance.nextsteps.includes("Sync thread progress with `update_plan`."));
 });
 
 test("end.leave finalizes the current end boundary and resumes directly", async () => {
@@ -3632,6 +3627,63 @@ test("focus recovery quarantines a conflicting journal without blocking later mu
   assert.deepEqual(readFocusedPlan(project, "conflict-session"), planRef);
 });
 
+test("session-start wording is standard by default and only Codex overrides it", () => {
+  const params = { projectName: "Demo", projectId: "demo", clawDir: "/demo/.claw", protocolOk: "ok" };
+  const recovered = {
+    taskName: "t", planFile: "plan.json", planStatus: "process.active", planSummary: "0/1 t",
+    nextsteps: [], commandHints: [], notes: "", askUser: "", goalMode: "objective", planContentLines: [],
+  };
+  for (const host of [undefined, "standard", "cindy", "opencode", "dsh"]) {
+    const text = `${buildSessionStartDefaultPrompt(params, host)} ${buildSessionStartRecoveredPrompt(recovered, host)}`;
+    assert.doesNotMatch(text, /goal mode|@claw-kit|Codex/i, String(host));
+    assert.match(text, /Load claw-kit:using-claw-kit as the main workflow skill/);
+  }
+  const codex = `${buildSessionStartDefaultPrompt(params, "codex")} ${buildSessionStartRecoveredPrompt(recovered, "codex")}`;
+  assert.match(codex, /You can use goal mode in this thread/);
+  assert.match(codex, /Use @claw-kit for this session\./);
+  assert.match(codex, /- goal mode: objective/);
+});
+
+test("standard hostless guidance never asks for native Goal or Progress tools", async () => {
+  const root = createFixture("standard-hostless-guidance");
+  await writePlan({
+    cwd: root,
+    taskName: "demo-task",
+    title: "Demo task",
+    goalText: "Run hostless",
+    content: {
+      title: "Demo task",
+      status: "process.active",
+      goal: { text: "Run hostless" },
+      tasks: [
+        { id: 1, title: "Implement work", status: "in_progress" },
+        { id: 2, title: "Prior work", status: "done" },
+        { id: 3, title: "Prior review", status: "done" },
+      ],
+      retrospective: { summary: "Done." },
+    },
+  });
+
+  const steps = [
+    await editPlan({ cwd: root, taskName: "demo-task", planStatus: "process.wait" }),
+    await editPlan({ cwd: root, taskName: "demo-task", planStatus: "process.active" }),
+    await editPlan({ cwd: root, taskName: "demo-task", taskId: 1, taskStatus: "done" }),
+    await editPlan({ cwd: root, taskName: "demo-task", planStatus: "end.completed" }),
+  ];
+  for (const { workflowGuidance } of steps) {
+    assert.equal(workflowGuidance.goalTool, undefined);
+    assert.equal(workflowGuidance.goalMode, undefined);
+    assert.doesNotMatch(
+      [...workflowGuidance.nextsteps, workflowGuidance.notes ?? ""].join(" "),
+      /update_plan|update_goal|Goal|no separate closeout action|requires no main-agent action/,
+    );
+  }
+  assert.deepEqual(steps[0].workflowGuidance.nextsteps, ["1. Resume through `process.active` when execution should continue."]);
+  assert.deepEqual(steps[1].workflowGuidance.nextsteps, ["Resume with task #1."]);
+  assert.match(steps[2].workflowGuidance.nextsteps[1], /^2\. Then complete the main-agent knowledge closeout/);
+  assert.match(steps[3].workflowGuidance.nextsteps[0], /^1\. Complete the required main-agent knowledge closeout now/);
+});
+
 test("end.completed emits complete goal tool guidance", async () => {
   const root = createFixture("end-completed-goal-tool");
   await writePlan({
@@ -3656,14 +3708,14 @@ test("end.completed emits complete goal tool guidance", async () => {
     cwd: root,
     taskName: "demo-task",
     planStatus: "end.completed",
+    host: "codex",
   });
 
   assert.equal(result.workflowGuidance.stage, "done");
   assert.match(showPlan({ cwd: root, taskName: "demo-task" }).plan.completedAt ?? "", /^\d{4}-\d{2}-\d{2}T/);
-  assert.deepEqual(result.workflowGuidance.nextsteps.slice(0, 3), [
-    "1. Use `update_goal(status=\"complete\")` to close the active thread goal for this plan.",
-    "2. Finish any remaining workflow-guided closeout work such as archive or parent-plan resumption.",
-    "3. Do not continue ad hoc in this thread. Start the next task only through `using-claw-kit`, then follow the returned `workflowGuidance`.",
+  assert.deepEqual(result.workflowGuidance.nextsteps, [
+    "1. Finish any remaining workflow-guided closeout work such as archive or parent-plan resumption.",
+    "2. Do not continue ad hoc in this thread. Start the next task only through `claw-kit:using-claw-kit`, then follow the returned `workflowGuidance`.",
   ]);
   assert.deepEqual(result.workflowGuidance.goalTool, {
     tool: "update_goal",
@@ -3789,8 +3841,7 @@ test("process entry returns the first task and task completion returns the next 
     "In `process.active`, keep moving unless there is a real blocker or explicit user interruption. Before each successful `task done`, state a concise evidence-backed task conclusion in the immediately preceding assistant message; `task done` has no conclusion option. Use `plan done --retrospective` and repeatable `--key-decision` values for full-plan closeout.",
   );
   assert.deepEqual(taskDone.workflowGuidance.nextsteps, [
-    "1. Sync thread progress with `update_plan`.",
-    "2. Continue with task #2.",
+    "Continue with task #2.",
   ]);
 });
 
@@ -4464,24 +4515,6 @@ test("plan show falls back to archived tasks when the active task no longer exis
   assert.match(result.planPath, /archive[\\/]tasks[\\/]\d{4}-\d{2}-\d{2}[\\/]archived-task[\\/].*plan\.json$/);
   assert.equal(result.plan.title, "Archived task");
   assert.equal(result.planView.collapsedSummary, "1/1 Archived task");
-});
-
-test("switch-task returns transient lineage without writing task metadata", async () => {
-  const root = createFixture("switch-task");
-  await writePlan({ cwd: root, taskName: "source-task", title: "Source", goalText: "Source goal" });
-  await writePlan({ cwd: root, taskName: "target-task", title: "Target", goalText: "Target goal" });
-
-  const result = switchTask({
-    cwd: root,
-    fromTask: "source-task",
-    toTask: "target-task",
-  });
-
-  assert.equal(result.leaveState.toTask, "target-task");
-  assert.match(result.sourcePlanPath, /source-task[\\/]plan\.json$/);
-  assert.match(result.targetPlanPath ?? "", /target-task[\\/]plan\.json$/);
-  assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "source-task", "meta.json")), false);
-  assert.equal(fs.existsSync(path.join(root, ".claw", "tasks", "target-task", "meta.json")), false);
 });
 
 test("memory search indexes only project-scoped recall sources", async () => {
@@ -6177,6 +6210,7 @@ test("Codex workflow guidance ignores legacy external writer routing", async () 
     taskName: "demo-task",
     taskId: 1,
     taskStatus: "done",
+    host: "codex",
   });
   assert.equal(
     taskDone.workflowGuidance.notes,

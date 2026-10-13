@@ -869,7 +869,7 @@ test("cli subplan create keeps task rootPlan stable and derives goal from the pa
   assert.equal((result.commandHints as string[])[0], 'claw search --query "<topic>"');
   assert.equal("goalMode" in result, false);
   assert.equal("goalTool" in result, false);
-  assert.match(String(result.notes), /parent\/root Goal remains active/i);
+  assert.match(String(result.notes), /is now the active plan under parent plan/);
   assert.equal(((childPlan.goal as JsonRecord).text), "Implement child work: Split the risky work into a subplan");
 });
 

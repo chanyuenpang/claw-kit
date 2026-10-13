@@ -286,7 +286,7 @@ test("renderGuidanceSnapshot falls back to project context without a workflow", 
     searchGuidance: "Use claw search before rg.",
   });
   assert.match(text, /claw project Sample/);
-  assert.match(text, /Load the using-claw-kit skill as the main workflow skill/);
+  assert.match(text, /Load the claw-kit:using-claw-kit skill as the main workflow skill/);
   assert.match(text, /Use claw search before rg/);
   assert.doesNotMatch(text, /every claw plan, task, or subplan mutation must use claw_run/);
 });

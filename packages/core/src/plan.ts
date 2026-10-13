@@ -86,7 +86,7 @@ export function resolveThreadGoalPlan(input: {
   const task = resolveTaskContext(project, input.taskName, input.ownerSessionKey, input.taskPath);
   const rootPath = requireInsideTask(task, "plan.json");
   if (!fs.existsSync(rootPath)) {
-    throw new ClawError("PROJECT_CONFIG_INVALID", "The root plan.json required to reconcile this subplan's Codex Goal is missing.", {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "The root plan.json that owns this subplan's goal is missing.", {
       taskName: input.taskName,
       rootPath,
     });
@@ -100,7 +100,7 @@ export function resolveThreadGoalPlan(input: {
     });
   }
   if (!rootPlan.goal.text.trim()) {
-    throw new ClawError("PROJECT_CONFIG_INVALID", "The root plan.json must contain a non-empty goal before a subplan can reconcile Codex Goal state.", {
+    throw new ClawError("PROJECT_CONFIG_INVALID", "The root plan.json must contain a non-empty goal before its subplan can continue.", {
       taskName: input.taskName,
       rootPath,
     });
@@ -796,6 +796,7 @@ async function editPlanWithOutcome(input: PlanEditInput, execution: ClawExecutio
             completedPlanFile: planFile,
             completedPlanTitle: next.title,
             parentTaskId: completionHooks.subplanClosureCandidate.parentTaskId,
+            host: input.host,
           })
         : await buildPlanWorkflowGuidance({
         taskName: task.taskName,

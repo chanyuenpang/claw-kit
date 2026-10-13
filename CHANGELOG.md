@@ -4,6 +4,12 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## [Unreleased]
 
+- Remove the residual `claw switch-task` command and its core export; it returned a transient result without changing any binding or state.
+- Keep agent guidance host-neutral: no Codex `update_plan` / `update_goal` / Goal Mode wording for hostless, Cindy or OpenCode; Goal fields remain only for Codex and DSH.
+- Make hostless pre-completion guidance point at the required main-agent knowledge closeout.
+- Use the standard wording as the session-start baseline with a Codex-only override, name skills as `claw-kit:<skill>` in guidance on every platform, and write hook logs per platform (`~/.claw/logs/hooks/<platform>.log`; Codex keeps `~/.codex/claw-kit-hook.log`).
+- Fix OpenCode `plan leave` failing after commit because its guidance variant lacked the `end.leave` state; variants now fall back to bundled states.
+
 ## [0.2.42] - 2026-10-02
 
 - Release CLI/Core/Client 0.2.42 with coordinated Codex, DSH and Cindy 0.2.42.0 artifacts; each plugin is assembled with its complete declared skill resources before publication.

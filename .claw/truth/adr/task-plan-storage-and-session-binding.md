@@ -45,7 +45,6 @@ Accepted
 - `packages/core/src/task-retention.ts`
 - `packages/core/src/task-layout-migration.ts`
 - `packages/core/src/daily-maintenance.ts`
-- `packages/core/src/switch-task.ts`
 - `.claw/tasks/精简-task-目录并移除-meta.json/plan.json`
 
 ## Search Terms

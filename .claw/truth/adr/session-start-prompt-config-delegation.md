@@ -19,7 +19,7 @@ SessionStart prompt 原本硬编码在 `packages/cli/src/cli.ts` 的两个 build
 - `sessionStart` 含 `default`（无 active plan）和 `recovered`（有 active plan）两个分支
 - `recovered` 分支的结构化字段（`snapshotFields`）用数组定义顺序，运行时按 plan 状态条件填充
 - core 新增 `buildSessionStartDefaultPrompt` 和 `buildSessionStartRecoveredPrompt` 两个 export 函数
-- 两个 config 文件（`workflow-guidance.config.json` Codex 默认 + `workflow-guidance.opencode.json` OpenCode 变体）各自维护 sessionStart 模板
+- 两个 config 文件（`workflow-guidance.config.json` 标准基线 + `workflow-guidance.opencode.json` OpenCode 变体）各自维护 sessionStart 模板；自 2026-10-12 起内置 `sessionStart` 是宿主中立的标准文案，Codex 专属措辞（goal mode、`@claw-kit`）只存在于同文件的 `hostOverrides.codex.sessionStart`，其他平台不再靠过滤 Codex 文案得到自己的版本
 - 复用已有 `CLAW_GUIDANCE_CONFIG` 环境变量切换机制
 - config 缺失 `sessionStart` 时，用与原硬编码逐字一致的 fallback 常量保持向后兼容
 
@@ -63,7 +63,7 @@ env: { ...process.env, CLAW_HOST: "opencode", CLAW_GUIDANCE_CONFIG: <opencode co
 ## Related Code
 
 - `packages/core/src/workflow-guidance.ts` — `GuidanceConfig` 类型扩展、两个 builder export 函数、fallback 常量
-- `packages/core/src/workflow-guidance.config.json` — Codex 默认 sessionStart 模板
+- `packages/core/src/workflow-guidance.config.json` — 标准 sessionStart 模板与 `hostOverrides.codex` 覆盖
 - `packages/opencode-adapter/workflow-guidance.opencode.json` — OpenCode 变体 sessionStart 模板
 - `packages/opencode-adapter/plugin/index.ts` — `invokeClawSessionStart()` 函数，含显式环境变量传递
 - `packages/cli/src/cli.ts` — 两个 builder 改为调用 core export

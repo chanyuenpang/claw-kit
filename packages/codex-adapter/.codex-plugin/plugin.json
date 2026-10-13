@@ -22,7 +22,7 @@
   "interface": {
     "displayName": "Claw Kit",
     "shortDescription": "Prompt-driven .claw harness with compact workflowGuidance and hook-collected plan reports.",
-    "longDescription": "Use using-claw-kit as the main-agent guidance and lifecycle contract. Follow recovered workflowGuidance as the only next-step contract, create a plan when reusable project knowledge is expected, and keep it discussing until downstream tasks are explicit and handoff-ready. On Codex, every plan mutation runs through the fixed code-mode driver.",
+    "longDescription": "Use claw-kit:using-claw-kit as the main-agent guidance and lifecycle contract. Follow recovered workflowGuidance as the only next-step contract, create a plan when reusable project knowledge is expected, and keep it discussing until downstream tasks are explicit and handoff-ready. On Codex, every plan mutation runs through the fixed code-mode driver.",
     "developerName": "chanyuenpang",
     "category": "Developer Tools",
     "capabilities": [

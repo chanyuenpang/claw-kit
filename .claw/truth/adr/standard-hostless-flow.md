@@ -72,6 +72,24 @@ CLI, host-neutral by construction:
 - `internal-knowledge-finalize` (the legacy detached Codex-SDK runner) is not
   the standard flow's writer engine; the agent itself executes the writer
   plan.
+- **Agent guidance never names another host's native tools.** The bundled
+  guidance config has a single host-neutral variant: no `update_plan` /
+  `update_goal` / Goal Mode steps for any host. `goalTool`/`goalMode` fields
+  and Goal wording appear only for hosts whose profile projects a native Goal
+  (`suppressesAgentGoalGuidance: false`, i.e. Codex and DSH); hostless, Cindy
+  and OpenCode never receive them, regardless of the project `goalMode`
+  setting. A host variant (`CLAW_GUIDANCE_CONFIG`) may add its own native
+  wording and falls back to bundled states it does not define.
+- **Standard is the baseline; hosts override it.** Bundled session-start
+  wording is the standard text, and Codex-only semantics live in
+  `hostOverrides.codex`; no platform derives its text by filtering Codex
+  wording. Guidance names skills as `claw-kit:<skill>` on every platform.
+  Hook logs are per platform: Codex keeps `~/.codex/claw-kit-hook.log`,
+  everything else writes `~/.claw/logs/hooks/<platform>.log` (`standard` when
+  hostless).
+- A capturing hostless root plan's all-tasks-done guidance points at the
+  required `knowledge prepare/complete` chain instead of telling the agent to
+  stop after `plan done` (`packages/core/src/workflow-guidance.ts`, 2026-10-12).
 
 ## Alternatives
 

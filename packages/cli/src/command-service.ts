@@ -803,6 +803,7 @@ export class ClawCommandService {
           completedPlanFile: result.planFile,
           completedPlanTitle: result.plan.title,
           parentTaskId: result.plan.parentTaskId,
+          host: context.host,
         });
         const resumedResult = {
           taskName: parent.taskName,
