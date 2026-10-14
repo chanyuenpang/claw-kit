@@ -13,6 +13,8 @@ It gives agents and developers a concrete way to plan work, recall project knowl
 
 ## Install
 
+Requires Node.js 22.13 or newer.
+
 ```bash
 npm install -g @veewo/claw
 ```

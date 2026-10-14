@@ -56,6 +56,8 @@ DeepSeek Harness、Codex、Cindy 稳定可用，已有团队每天在用它写�
 
 ### 1. 安装
 
+`@veewo/claw` 需要 Node.js 22.13 或更高版本。
+
 ```bash
 npm install -g @veewo/claw
 ```
@@ -152,7 +154,7 @@ GitHub Pages 产品介绍在 [docs/index.html](docs/index.html)，是一份中�
 
 <h2 id="install-the-cli">安装 CLI</h2>
 
-用下面的命令安装已发布的 CLI：
+用 Node.js 22.13 或更高版本安装已发布的 CLI：
 
 ```powershell
 npm install -g @veewo/claw

@@ -56,6 +56,8 @@ Install, initialize the project once, then talk to your agent as usual. You do n
 
 ### 1. Install
 
+`@veewo/claw` needs Node.js 22.13 or newer.
+
 ```bash
 npm install -g @veewo/claw
 ```
@@ -153,7 +155,7 @@ That loop is the core product idea: a reusable project workflow instead of a one
 
 ## Install the CLI
 
-Install the published CLI with:
+Install the published CLI with Node.js 22.13 or newer:
 
 ```powershell
 npm install -g @veewo/claw

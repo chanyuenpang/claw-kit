@@ -19,6 +19,9 @@
     "directory": "packages/core"
   },
   "license": "MIT",
+  "engines": {
+    "node": ">=22.13"
+  },
   "publishConfig": {
     "access": "public"
   },
