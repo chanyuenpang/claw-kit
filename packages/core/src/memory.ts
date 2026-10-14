@@ -1,11 +1,11 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { resolveProjectContext } from "./context.js";
+import { resolveEmbeddingOutputDirectory } from "./runtime-directory.js";
 import { resolveDefaultLocalEmbeddingDimensions } from "./embedding-defaults.js";
 import { requestPersistentEmbedding } from "./embedding-daemon-protocol.js";
 import { ClawError } from "./errors.js";
@@ -124,6 +124,7 @@ export function buildMemoryIndex(input: MemoryIndexInput): MemoryIndexResult {
       sources,
       embedding ?? null,
       input.maxFiles ?? DEFAULT_PROJECT_REFRESH_FILE_LIMIT,
+      project.projectRoot,
     );
     upsertMetadata(db, "scope", "project");
     upsertMetadata(db, "indexed_at", new Date().toISOString());
@@ -157,7 +158,8 @@ function syncProjectMemoryIndex(
   db: DatabaseSync,
   sources: MemorySourceEntry[],
   embedding: MemoryEmbeddingConfig | null,
-  maxFiles?: number,
+  maxFiles: number | undefined,
+  projectRoot: string,
 ): {
   vectorIndex: MemoryIndexResult["vectorIndex"];
   processedFileCount: number;
@@ -221,7 +223,7 @@ function syncProjectMemoryIndex(
   }
 
   if (shouldIndexVectors && embedding) {
-    const generatedEmbeddings = generateDocEmbeddings(listDocsMissingEmbeddings(db), embedding);
+    const generatedEmbeddings = generateDocEmbeddings(listDocsMissingEmbeddings(db), embedding, projectRoot);
     db.exec("BEGIN");
     try {
       insertDocEmbeddings(db, generatedEmbeddings);
@@ -749,6 +751,7 @@ function isExternalDocFile(filePath: string): boolean {
 function generateDocEmbeddings(
   docs: Array<{ docId: number; sourcePath: string; kind: string; content: string }>,
   embedding: MemoryEmbeddingConfig | null,
+  projectRoot: string,
 ): Array<{
   docId: number;
   chunkIndex: number;
@@ -791,7 +794,7 @@ function generateDocEmbeddings(
       ? { textPrefixes: chunks.map((chunk) => chunk.contextPrefix) }
       : {}),
     splitIntoTokenWindows: embedding.provider === "local",
-  });
+  }, projectRoot);
   const segments = output.segments ?? chunks.map((chunk, sourceTextIndex) => ({
     sourceTextIndex,
     text: joinChunkContext(chunk.contextPrefix, chunk.bodyText),
@@ -1202,7 +1205,7 @@ function runEmbeddingWorker(input: {
   texts: string[];
   textPrefixes?: string[];
   splitIntoTokenWindows?: boolean;
-}): {
+}, projectRoot: string): {
   dimensions: number;
   vectors: number[][];
   segments?: Array<{ sourceTextIndex: number; text: string }>;
@@ -1210,7 +1213,7 @@ function runEmbeddingWorker(input: {
 } {
   const workerPath = fileURLToPath(new URL("./embedding-worker.js", import.meta.url));
   const outputPath = path.join(
-    os.tmpdir(),
+    resolveEmbeddingOutputDirectory(projectRoot),
     `claw-embedding-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.json`,
   );
   const result = spawnSync(
@@ -1372,6 +1375,7 @@ function searchProjectMemoryHybrid(
     db,
     embedding,
     queryIntent.embeddingText || query,
+    project.projectRoot,
   );
 
   const bestVectorBySource = new Map<string, {
@@ -1658,6 +1662,7 @@ function resolveProjectQueryEmbedding(
   db: DatabaseSync,
   embedding: MemoryEmbeddingConfig,
   queryText: string,
+  projectRoot: string,
 ): {
   vector: number[];
   cacheHit: boolean;
@@ -1672,7 +1677,7 @@ function resolveProjectQueryEmbedding(
   const generated = runEmbeddingWorker({
     embedding,
     texts: [identity.normalizedQueryText],
-  });
+  }, projectRoot);
   const vector = generated.vectors[0];
   if (!vector?.length) {
     throw new ClawError("MEMORY_VECTOR_INDEX_REQUIRED", "Unable to generate a query embedding for project search.");

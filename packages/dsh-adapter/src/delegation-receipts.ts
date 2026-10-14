@@ -71,6 +71,7 @@ async function readRegularJson(file: string): Promise<unknown> {
 }
 
 function ownerAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
   try { process.kill(pid, 0); return true; }
   catch (error) {
     if (errorCode(error) === "ESRCH") return false;
@@ -177,8 +178,23 @@ export class DelegationReceiptStore {
     if (!(await fs.stat(real)).isDirectory()) throw invalid("workspace must be a directory");
     const normalized = process.platform === "win32" ? real.toLowerCase() : real;
     const scope = createHash("sha256").update(JSON.stringify([normalized, parentId])).digest("hex");
-    await privateDirectory(this.root);
-    const directory = path.join(this.root, scope), lockParent = path.join(this.root, ".locks");
+    let root = this.root;
+    try {
+      await privateDirectory(root);
+    } catch (error) {
+      const code = errorCode(error);
+      if (!code || !["EROFS", "EACCES", "EPERM", "ENOTDIR"].includes(code)) throw error;
+      root = path.join(real, ".claw", "runtime", "adapters", "dsh", "delegation");
+      try { await privateDirectory(root); }
+      catch (fallbackError) {
+        const fallback = errorCode(fallbackError);
+        if (fallback && ["EROFS", "EACCES", "EPERM", "ENOTDIR"].includes(fallback)) {
+          throw invalid("delegation receipt directory is not writable. The home runtime and the project runtime both rejected the store.");
+        }
+        throw fallbackError;
+      }
+    }
+    const directory = path.join(root, scope), lockParent = path.join(root, ".locks");
     await privateDirectory(directory);
     await privateDirectory(lockParent);
     const unlock = await acquire(lockParent, scope);

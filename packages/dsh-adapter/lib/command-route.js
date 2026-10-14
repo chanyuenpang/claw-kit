@@ -59,7 +59,7 @@ export function resolveCommandEntry() {
     throw new Error("CLAW_BASELINE_UNAVAILABLE: installed CLI has no trusted structured command entry; update it before continuing.");
 }
 /** Values travel as JSON on stdin, never as shell text or user-controlled argv. */
-export async function runCommandBaseline(subprocess, workdir, sessionId, operation, input, entry = resolveCommandEntry()) {
+export async function runCommandBaseline(subprocess, workdir, sessionId, operation, input, entry = resolveCommandEntry(), timeoutMs = 30_000) {
     const handle = subprocess.spawn({ argv: [process.execPath, entry, "internal-command"], cwd: workdir,
         env: { CLAW_SESSION_ID: sessionId }, stdio: { stdin: "pipe",
             stdout: { mode: "collect", maxBytes: 1048576 }, stderr: { mode: "collect", maxBytes: 131072 } }, graceMs: 10000 });
@@ -74,7 +74,7 @@ export async function runCommandBaseline(subprocess, workdir, sessionId, operati
         sent = true; // A failed write may have delivered a prefix; never retry it.
         handle.stdin.write(JSON.stringify({ operation, input }) + "\n");
         const outcome = await Promise.race([handle.done, stdinFailure, new Promise((_, reject) => {
-                timer = setTimeout(() => reject(Object.assign(new Error("structured command timed out"), { code: "ETIMEDOUT" })), 30000);
+                timer = setTimeout(() => reject(Object.assign(new Error("structured command timed out"), { code: "ETIMEDOUT" })), timeoutMs);
             })]);
         const reader = handle.collected?.stdout;
         const read = reader?.readFrom?.(0);

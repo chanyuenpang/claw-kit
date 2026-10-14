@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { ClawError } from "./errors.js";
 import { readJsonFile, writeJsonFile } from "./io.js";
 import { resolveProjectContext } from "./context.js";
+import { projectRuntimeDirectory, resolveWritableRuntimeDirectory } from "./runtime-directory.js";
 import type { ProjectContext } from "./types.js";
 
 type SessionWorkflowManifest = {
@@ -18,23 +19,69 @@ type SessionWorkflowManifest = {
 const MANIFEST_FILE = "session.json";
 const DEFAULT_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+function workflowDigest(sessionKey: string): string {
+  return createHash("sha256").update(requireSessionKey(sessionKey)).digest("hex");
+}
+
+function sessionBaseCandidates(
+  env: NodeJS.ProcessEnv = process.env,
+  homeDir: string = os.homedir(),
+  projectDir?: string,
+  includeProcessCwd = false,
+): string[] {
+  const explicit = env.CLAW_SESSION_RUNTIME_DIR?.trim();
+  if (explicit) return [path.resolve(explicit)];
+  const bases = [path.join(homeDir, ".claw", "runtime", "sessions")];
+  const projects = new Set<string>();
+  if (projectDir) projects.add(path.resolve(projectDir));
+  if (includeProcessCwd) projects.add(path.resolve(process.cwd()));
+  for (const project of projects) bases.push(projectRuntimeDirectory(project, "sessions"));
+  return bases;
+}
+
 export function sessionWorkflowBaseDir(
   env: NodeJS.ProcessEnv = process.env,
   homeDir: string = os.homedir(),
+  projectDir?: string,
 ): string {
-  const explicit = env.CLAW_SESSION_RUNTIME_DIR?.trim();
-  return explicit ? path.resolve(explicit) : path.join(homeDir, ".claw", "runtime", "sessions");
+  return resolveWritableRuntimeDirectory({
+    explicitPath: env.CLAW_SESSION_RUNTIME_DIR,
+    explicitEnvName: "CLAW_SESSION_RUNTIME_DIR",
+    candidates: [path.join(homeDir, ".claw", "runtime", "sessions")],
+    projectFallback: projectDir ? projectRuntimeDirectory(projectDir, "sessions") : projectRuntimeDirectory(process.cwd(), "sessions"),
+    purpose: "Session workflow",
+  });
 }
 
-export function sessionWorkflowDir(sessionKey: string, env: NodeJS.ProcessEnv = process.env): string {
-  const normalizedKey = requireSessionKey(sessionKey);
-  const digest = createHash("sha256").update(normalizedKey).digest("hex");
-  return path.join(sessionWorkflowBaseDir(env), digest);
+function findExistingWorkflowDir(
+  sessionKey: string,
+  env: NodeJS.ProcessEnv = process.env,
+  projectDir?: string,
+): string | null {
+  const digest = workflowDigest(sessionKey);
+  for (const base of sessionBaseCandidates(env, os.homedir(), projectDir, true)) {
+    const workflowDir = path.join(base, digest);
+    try {
+      if (fs.existsSync(path.join(workflowDir, MANIFEST_FILE))) return workflowDir;
+    } catch {
+      // An unreadable candidate is not a session workflow.
+    }
+  }
+  return null;
+}
+
+export function sessionWorkflowDir(
+  sessionKey: string,
+  env: NodeJS.ProcessEnv = process.env,
+  projectDir?: string,
+): string {
+  return findExistingWorkflowDir(sessionKey, env, projectDir)
+    ?? path.join(sessionWorkflowBaseDir(env, os.homedir(), projectDir), workflowDigest(sessionKey));
 }
 
 export function createSessionWorkflowContext(cwd: string, sessionKey: string): ProjectContext {
-  sweepExpiredSessionWorkflows({ excludeSessionKey: sessionKey });
-  const workflowDir = sessionWorkflowDir(sessionKey);
+  sweepExpiredSessionWorkflows({ excludeSessionKey: sessionKey, projectDir: cwd });
+  const workflowDir = sessionWorkflowDir(sessionKey, process.env, cwd);
   const manifestPath = path.join(workflowDir, MANIFEST_FILE);
   const now = new Date().toISOString();
   const existing = fs.existsSync(manifestPath) ? readManifest(manifestPath) : null;
@@ -50,21 +97,25 @@ export function createSessionWorkflowContext(cwd: string, sessionKey: string): P
   return buildSessionContext(workflowDir, originCwd);
 }
 
-export function resolveSessionWorkflowContext(sessionKey: string | undefined, options: { readOnly?: boolean } = {}): ProjectContext | null {
+export function resolveSessionWorkflowContext(
+  sessionKey: string | undefined,
+  options: { readOnly?: boolean; cwd?: string } = {},
+): ProjectContext | null {
   const normalizedKey = sessionKey?.trim();
   if (!normalizedKey) {
     return null;
   }
-  const workflowDir = sessionWorkflowDir(normalizedKey);
+  const workflowDir = findExistingWorkflowDir(normalizedKey, process.env, options.cwd);
+  if (!workflowDir) return null;
   const manifestPath = path.join(workflowDir, MANIFEST_FILE);
-  if (!fs.existsSync(manifestPath)) {
-    return null;
-  }
   const manifest = readManifest(manifestPath);
   if (!manifest) {
     return null;
   }
-  if (!options.readOnly) writeJsonFile(manifestPath, { ...manifest, updatedAt: new Date().toISOString() });
+  if (!options.readOnly) {
+    try { writeJsonFile(manifestPath, { ...manifest, updatedAt: new Date().toISOString() }); }
+    catch { /* A readable manifest still restores the workflow when its directory cannot be updated. */ }
+  }
   return buildSessionContext(workflowDir, manifest.originCwd);
 }
 
@@ -77,7 +128,7 @@ export function resolveWorkflowProjectContext(
     return createSessionWorkflowContext(cwd, requireSessionKey(ownerSessionKey));
   }
   if (requestedScope !== "project") {
-    const session = resolveSessionWorkflowContext(ownerSessionKey);
+    const session = resolveSessionWorkflowContext(ownerSessionKey, { cwd });
     if (session) {
       return session;
     }
@@ -86,12 +137,15 @@ export function resolveWorkflowProjectContext(
 }
 
 export function deleteSessionWorkflow(sessionKey: string): boolean {
-  const workflowDir = sessionWorkflowDir(sessionKey);
-  if (!fs.existsSync(workflowDir)) {
-    return false;
+  const digest = workflowDigest(sessionKey);
+  let removed = false;
+  for (const base of sessionBaseCandidates(process.env, os.homedir(), process.cwd())) {
+    const workflowDir = path.join(base, digest);
+    if (!fs.existsSync(workflowDir)) continue;
+    fs.rmSync(workflowDir, { recursive: true, force: true });
+    removed = true;
   }
-  fs.rmSync(workflowDir, { recursive: true, force: true });
-  return true;
+  return removed;
 }
 
 export function sweepExpiredSessionWorkflows(options: {
@@ -99,28 +153,31 @@ export function sweepExpiredSessionWorkflows(options: {
   ttlMs?: number;
   excludeSessionKey?: string;
   env?: NodeJS.ProcessEnv;
+  projectDir?: string;
 } = {}): string[] {
-  const baseDir = sessionWorkflowBaseDir(options.env);
-  if (!fs.existsSync(baseDir)) {
-    return [];
-  }
-  const excludedDir = options.excludeSessionKey ? sessionWorkflowDir(options.excludeSessionKey, options.env) : null;
+  const env = options.env ?? process.env;
   const now = options.now ?? Date.now();
   const ttlMs = options.ttlMs ?? DEFAULT_SESSION_TTL_MS;
+  const excludedDigest = options.excludeSessionKey ? workflowDigest(options.excludeSessionKey) : null;
   const removed: string[] = [];
-  for (const entry of fs.readdirSync(baseDir, { withFileTypes: true })) {
-    if (!entry.isDirectory()) {
+  for (const baseDir of sessionBaseCandidates(env, os.homedir(), options.projectDir)) {
+    let entries: fs.Dirent[];
+    try {
+      if (!fs.existsSync(baseDir)) continue;
+      entries = fs.readdirSync(baseDir, { withFileTypes: true });
+    } catch {
       continue;
     }
-    const workflowDir = path.join(baseDir, entry.name);
-    if (excludedDir && path.resolve(workflowDir) === path.resolve(excludedDir)) {
-      continue;
-    }
-    const manifest = readManifest(path.join(workflowDir, MANIFEST_FILE));
-    const updatedAt = manifest ? Date.parse(manifest.updatedAt) : Number.NaN;
-    if (!Number.isFinite(updatedAt) || now - updatedAt > ttlMs) {
-      fs.rmSync(workflowDir, { recursive: true, force: true });
-      removed.push(workflowDir);
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (excludedDigest && entry.name === excludedDigest) continue;
+      const workflowDir = path.join(baseDir, entry.name);
+      const manifest = readManifest(path.join(workflowDir, MANIFEST_FILE));
+      const updatedAt = manifest ? Date.parse(manifest.updatedAt) : Number.NaN;
+      if (!Number.isFinite(updatedAt) || now - updatedAt > ttlMs) {
+        fs.rmSync(workflowDir, { recursive: true, force: true });
+        removed.push(workflowDir);
+      }
     }
   }
   return removed;

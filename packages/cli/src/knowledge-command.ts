@@ -28,7 +28,7 @@ import { collectReport, type ReportCollectorHost } from "./report-collector-regi
 
 function resolveDirectDelegate(claimant: KnowledgeClaimant): KnowledgeDelegatePlan | undefined {
   const project = resolveProjectContext(claimant.projectRoot);
-  const legacy = resolveSessionWorkflowContext(claimant.agentSessionId, { readOnly: true });
+  const legacy = resolveSessionWorkflowContext(claimant.agentSessionId, { readOnly: true, cwd: claimant.projectRoot });
   const candidates = [project, legacy].flatMap((target) => {
     if (!target || path.resolve(target.projectRoot) !== path.resolve(claimant.projectRoot)) return [];
     const planPath = resolveSessionBoundPlan(target, claimant.agentSessionId);

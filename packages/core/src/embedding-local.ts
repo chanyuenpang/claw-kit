@@ -91,6 +91,11 @@ export function resolveLocalExecutionDevice(
   if (platform === "win32") {
     return "dml";
   }
+  // Automatic CUDA init can hang ONNX on Linux and never fall back to CPU.
+  // An explicit env or config device above still selects cuda.
+  if (platform === "linux") {
+    return "cpu";
+  }
   return options.cudaAvailable ? "cuda" : "cpu";
 }
 

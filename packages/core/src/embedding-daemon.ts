@@ -26,6 +26,8 @@ type SessionEntry = {
   lastUsedAt: number;
 };
 
+if (process.platform !== "win32") process.on("SIGHUP", () => {});
+
 const DEFAULT_IDLE_TTL_MS = 10 * 60 * 1000;
 const DEFAULT_SESSION_LIMIT = 2;
 const runtimeDir = resolveRuntimeDirFromArgs(process.argv.slice(2));
@@ -42,6 +44,7 @@ fs.mkdirSync(runtimeDir, { recursive: true, mode: 0o700 });
 
 const server = net.createServer((socket) => {
   resetIdleTimer();
+  socket.setNoDelay(true);
   socket.setEncoding("utf-8");
   let payload = "";
   let handled = false;

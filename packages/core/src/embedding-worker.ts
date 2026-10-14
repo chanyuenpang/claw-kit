@@ -103,6 +103,10 @@ async function buildLocalOutput(input: WorkerInput): Promise<WorkerOutput> {
     if (error instanceof PersistentEmbeddingModelError) {
       throw error;
     }
+    const code = error && typeof error === "object" && "code" in error ? String((error as { code?: unknown }).code) : "";
+    if (code === "RUNTIME_DIR_NOT_WRITABLE" && process.env.CLAW_EMBEDDING_DAEMON_RUNTIME_DIR?.trim()) {
+      throw error;
+    }
     // Transport and startup failures fall back to the original one-shot path.
   }
 

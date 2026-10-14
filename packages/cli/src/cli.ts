@@ -2256,7 +2256,7 @@ async function runContextCommand(
   let corrected = false;
   let fixedPaths: string[] = [];
 
-  const sessionProject = resolveSessionWorkflowContext(ownerSessionKey ?? undefined);
+  const sessionProject = resolveSessionWorkflowContext(ownerSessionKey ?? undefined, { cwd });
   const sessionPlanPath = sessionProject && ownerSessionKey
     ? resolveSessionBoundPlan(sessionProject, ownerSessionKey)
     : null;
@@ -2808,7 +2808,7 @@ async function prepareProjectWorkflow(
   effectiveHost: ClawHost | undefined,
   project = tryResolveHookProject(cwd),
 ): Promise<Record<string, unknown> | null> {
-  const sessionProject = resolveSessionWorkflowContext(ownerSessionKey ?? undefined);
+  const sessionProject = resolveSessionWorkflowContext(ownerSessionKey ?? undefined, { cwd });
   if (sessionProject) {
     return runContextCommand([], cwd, ownerSessionKey, effectiveHost);
   }
