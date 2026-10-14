@@ -42,7 +42,12 @@ DSH 会话
 ```powershell
 # 已发布到 npm：直接安装（重启 DSH Host 后生效；验证组合：dsh --profile web --dump-config）
 dsh plugin --profile web add @veewo/dsh-claw-kit
+# headless 用同一包：dsh plugin --profile headless add @veewo/dsh-claw-kit
 ```
+
+Headless and other non-web profiles load this same host plugin. Browser settings
+RPC attaches only when the web profile's `connection` service is present, and
+that wait does not block `claw_run`.
 
 Electron 独占的 `desktop` profile 不接受上面这条命令：PATH 上的全局 `dsh`
 会以 `profile "desktop" is managed exclusively by the Electron application`

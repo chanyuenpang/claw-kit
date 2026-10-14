@@ -119,11 +119,14 @@ async function resolveWorkdir(agent, workspaceRegistry) {
     }
     return undefined;
 }
-// Hard dependencies: the loader must delay activation until every service the
-// apply body reads is mounted. Without `inject`, a dependency-free row
-// activates immediately — before subprocess/tools/systemPrompt exist — and the
-// guard below silently returns, registering nothing.
-export const inject = ["subprocess", "tools", "systemPrompt", "skills", "goals", "connection"];
+// Hard dependencies: the loader delays activation until every service claw_run
+// needs is mounted. Without `inject`, a dependency-free row activates before
+// subprocess/tools/systemPrompt exist, the guard below returns, and nothing is
+// registered. `connection` is not listed: that browser RPC service is mounted
+// only on the web profile, and a hard inject leaves this entry pending in
+// headless ("waiting for service: connection") so claw_run never registers.
+// apply() subscribes with ctx.inject when the host actually provides it.
+export const inject = ["subprocess", "tools", "systemPrompt", "skills", "goals"];
 export function createAgentGuidanceStore() {
     const values = new WeakMap();
     return {
@@ -777,8 +780,12 @@ export function apply(ctx) {
     }
     // Settings uses a dedicated browser RPC channel. Its payload contains only a registry
     // workspace id and config operation fields: no browser-supplied filesystem paths.
-    const connection = c.get("connection");
-    if (connection?.rpc?.handle) {
+    // The channel exists only on the web profile. Subscribe without putting
+    // `connection` in the hard inject list, or headless stays pending forever.
+    const attachConnectionServices = (scope) => {
+        const connection = scope.get("connection");
+        if (!connection?.rpc?.handle)
+            return;
         // Authenticated, read-only transport census. The OS process tree maps
         // runner/target PIDs via the session ID and workdir in their argv.
         void connection.rpc.handle("/claw-session-lifecycle", async () => ({
@@ -797,6 +804,20 @@ export function apply(ctx) {
                 };
             return handleProjectConfigRpc(endpoint, payload, registry, (argv, cwd) => runOneOff(argv, cwd, "dsh-project-config"));
         });
+    };
+    const cordis = c;
+    if (typeof cordis.inject === "function") {
+        try {
+            void Promise.resolve(cordis.inject(["connection"], attachConnectionServices)).catch(() => {
+                // Browser RPC is optional. A connection startup failure must not unload claw_run.
+            });
+        }
+        catch {
+            // A synchronous inject failure is the same optional boundary.
+        }
+    }
+    else {
+        attachConnectionServices(c);
     }
     // Session-start: auto-claw equivalent — recover a bound plan and inject its
     // compact guidance snapshot. Fail-open.

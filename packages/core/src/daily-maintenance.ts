@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { readJsonFile, tryWithFileLock, writeJsonFile } from "./io.js";
+import { blockedRuntimeWrite } from "./runtime-directory.js";
 import { pruneStaleSessionBindings } from "./session-bindings.js";
 import { pruneLegacyKnowledgeRuntime } from "./knowledge-sidecar.js";
 import { sessionWorkflowBaseDir, sweepExpiredSessionWorkflows } from "./session-workflows.js";
@@ -17,6 +18,7 @@ type MaintenanceStamp = {
 export type DailyMaintenanceResult = {
   ran: boolean;
   skippedLockedScopes: Array<"project" | "session">;
+  skippedUnwritableScopes?: Array<"session">;
   tmpCleared: boolean;
   tmpEntriesRemoved: number;
   legacyTmpRemoved: boolean;
@@ -64,19 +66,31 @@ export function runDailyMaintenance(project: ProjectContext, options: {
     };
   });
   const sessionBase = sessionWorkflowBaseDir(options.env);
-  const sessionResult = runOncePerDay(path.join(sessionBase, ".maintenance.json"), date, () => ({
-    expiredSessionsRemoved: sweepExpiredSessionWorkflows({
-      now: now.getTime(),
-      excludeSessionKey: options.excludeSessionKey,
-      env: options.env,
-    }).length,
-  }));
+  // Session workflows live under the user runtime root. A sandboxed shell can
+  // leave that root read-only while the project workspace stays writable.
+  // Cleanup is fail-open: skip the session stamp instead of failing the command.
+  let sessionUnwritable = false;
+  let sessionResult: { ran: boolean; skippedLocked: boolean; value?: { expiredSessionsRemoved: number } };
+  try {
+    sessionResult = runOncePerDay(path.join(sessionBase, ".maintenance.json"), date, () => ({
+      expiredSessionsRemoved: sweepExpiredSessionWorkflows({
+        now: now.getTime(),
+        excludeSessionKey: options.excludeSessionKey,
+        env: options.env,
+      }).length,
+    }));
+  } catch (error) {
+    if (!blockedRuntimeWrite(error).blocked) throw error;
+    sessionUnwritable = true;
+    sessionResult = { ran: false, skippedLocked: false };
+  }
   return {
     ran: projectResult.ran || sessionResult.ran,
     skippedLockedScopes: [
       ...(projectResult.skippedLocked ? ["project" as const] : []),
       ...(sessionResult.skippedLocked ? ["session" as const] : []),
     ],
+    ...(sessionUnwritable ? { skippedUnwritableScopes: ["session" as const] } : {}),
     tmpCleared: projectResult.value?.tmpCleared ?? false,
     tmpEntriesRemoved: projectResult.value?.tmpEntriesRemoved ?? 0,
     legacyTmpRemoved: projectResult.value?.legacyTmpRemoved ?? false,

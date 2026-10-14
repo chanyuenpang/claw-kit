@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   ClawError,
+  ensureWritableDirectory,
   type FocusSessionRecord,
   type FocusSessionStore,
   type PlanRef,
@@ -302,12 +303,11 @@ export class SessionRegistryV2 {
 }
 
 export function ensurePrivateDirectory(directory: string): void {
-  fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
-  try {
-    fs.chmodSync(directory, 0o700);
-  } catch {
-    // Windows uses the current user's inherited ACL.
-  }
+  ensureWritableDirectory(
+    directory,
+    "session daemon runtime directory",
+    "Set CLAW_SESSION_DAEMON_RUNTIME_DIR to a writable directory and retry.",
+  );
 }
 
 export class RegistryFocusSessionStore implements FocusSessionStore {

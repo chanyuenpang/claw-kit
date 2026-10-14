@@ -4,6 +4,7 @@ import {
   DEFAULT_LOCAL_EMBEDDING_MODEL,
 } from "./embedding-defaults.js";
 import { ClawError, withExecutionFailure } from "./errors.js";
+import { blockedRuntimeWrite, runtimeDirectoryNotWritable } from "./runtime-directory.js";
 import { previewProjectConfig, resolveProjectContext } from "./context.js";
 import { withFileLock, writeJsonFileAtomic } from "./io.js";
 import { findProjectRoot, normalizeTaskName } from "./paths.js";
@@ -141,6 +142,21 @@ function writeMissingFile(filePath: string, content: string, createdPaths: strin
 }
 
 export function initProject(input: InitProjectInput): InitProjectResult {
+  try {
+    return initProjectFiles(input);
+  } catch (error) {
+    const blocked = blockedRuntimeWrite(error);
+    if (!blocked.blocked) throw error;
+    throw runtimeDirectoryNotWritable(
+      "project directory",
+      error,
+      "The project workspace must be writable.",
+      blocked.filesystemCode,
+    );
+  }
+}
+
+function initProjectFiles(input: InitProjectInput): InitProjectResult {
   const projectRoot = path.resolve(input.cwd);
   const clawDir = path.join(projectRoot, ".claw");
   const projectJsonPath = path.join(clawDir, "project.json");

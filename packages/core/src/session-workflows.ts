@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { ClawError } from "./errors.js";
+import { blockedRuntimeWrite, isUnwritableFilesystemError, runtimeDirectoryNotWritable } from "./runtime-directory.js";
 import { readJsonFile, writeJsonFile } from "./io.js";
 import { resolveProjectContext } from "./context.js";
 import type { ProjectContext } from "./types.js";
@@ -39,14 +40,26 @@ export function createSessionWorkflowContext(cwd: string, sessionKey: string): P
   const now = new Date().toISOString();
   const existing = fs.existsSync(manifestPath) ? readManifest(manifestPath) : null;
   const originCwd = existing?.originCwd ?? path.resolve(cwd);
-  fs.mkdirSync(workflowDir, { recursive: true });
-  writeJsonFile(manifestPath, {
+  const manifest: SessionWorkflowManifest = {
     version: 1,
     scope: "session",
     originCwd,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
-  } satisfies SessionWorkflowManifest);
+  };
+  try {
+    fs.mkdirSync(workflowDir, { recursive: true });
+    writeJsonFile(manifestPath, manifest);
+  } catch (error) {
+    const blocked = blockedRuntimeWrite(error);
+    if (!blocked.blocked) throw error;
+    throw runtimeDirectoryNotWritable(
+      "session runtime directory",
+      error,
+      "Set CLAW_SESSION_RUNTIME_DIR to a writable directory and retry.",
+      blocked.filesystemCode,
+    );
+  }
   return buildSessionContext(workflowDir, originCwd);
 }
 
@@ -64,7 +77,13 @@ export function resolveSessionWorkflowContext(sessionKey: string | undefined, op
   if (!manifest) {
     return null;
   }
-  if (!options.readOnly) writeJsonFile(manifestPath, { ...manifest, updatedAt: new Date().toISOString() });
+  if (!options.readOnly) {
+    try {
+      writeJsonFile(manifestPath, { ...manifest, updatedAt: new Date().toISOString() });
+    } catch (error) {
+      if (!isUnwritableFilesystemError(error)) throw error;
+    }
+  }
   return buildSessionContext(workflowDir, manifest.originCwd);
 }
 
@@ -108,7 +127,14 @@ export function sweepExpiredSessionWorkflows(options: {
   const now = options.now ?? Date.now();
   const ttlMs = options.ttlMs ?? DEFAULT_SESSION_TTL_MS;
   const removed: string[] = [];
-  for (const entry of fs.readdirSync(baseDir, { withFileTypes: true })) {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(baseDir, { withFileTypes: true });
+  } catch (error) {
+    if (isUnwritableFilesystemError(error)) return [];
+    throw error;
+  }
+  for (const entry of entries) {
     if (!entry.isDirectory()) {
       continue;
     }
@@ -119,7 +145,12 @@ export function sweepExpiredSessionWorkflows(options: {
     const manifest = readManifest(path.join(workflowDir, MANIFEST_FILE));
     const updatedAt = manifest ? Date.parse(manifest.updatedAt) : Number.NaN;
     if (!Number.isFinite(updatedAt) || now - updatedAt > ttlMs) {
-      fs.rmSync(workflowDir, { recursive: true, force: true });
+      try {
+        fs.rmSync(workflowDir, { recursive: true, force: true });
+      } catch (error) {
+        if (isUnwritableFilesystemError(error)) break;
+        throw error;
+      }
       removed.push(workflowDir);
     }
   }
