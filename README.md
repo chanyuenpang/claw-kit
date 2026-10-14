@@ -17,7 +17,7 @@ An out-of-the-box, beginner-friendly, professional-grade harness for coding agen
 
 ### Project memory
 
-The plan and the findings stay in the repo. `claw plan create` writes the workflow under `.claw/tasks/`. A later `claw context` returns that `activeWorkflow` when the session still has one. Closeout writes reusable Truth notes and ADRs into the project. After one `claw search index --refresh`, `claw search` recalls them. `claw session open` keeps the same workdir and current plan for the rest of that terminal session.
+The plan and the findings stay in the repo. The agent writes the workflow under `.claw/tasks/` and recovers it on a later session. Closeout writes reusable Truth notes and ADRs into the project, and the agent searches those notes when it needs them. A persistent session keeps the same workdir and current plan.
 
 ### Code-quality skills
 
@@ -39,7 +39,7 @@ The harness joins a repository after that repository is initialized for `.claw`.
 
 | Where the agent runs | What you use | Where to start |
 | --- | --- | --- |
-| Any platform that can run a shell | `claw` CLI plus the standard skills and entry rules. Same plan, recall, and closeout loop. | Universal |
+| Any platform that can run a shell | `claw` CLI plus the standard skills. `claw init` writes an `AGENTS.md` bootstrap, so no hook is required. | Universal |
 | DeepSeek Harness (DSH) | Dedicated adapter. One `claw_run` tool, progress and native goal sync, knowledge closeout dispatched by the adapter. npm: `@veewo/dsh-claw-kit`. | Start here |
 | Codex | Dedicated adapter. Marketplace plugin with skills, hooks, and the same workflow. | Start here |
 | Cindy | Dedicated adapter. Install `claw-kit-cindy` from the Cindy marketplace. | Dedicated |
@@ -49,52 +49,55 @@ DSH and Codex are the adapters to install first. Each bundles nine skills, inclu
 
 ## Quick start
 
-Node.js and npm are enough to begin.
+Install, initialize the project once, then talk to your agent as usual. You do not run workflow commands, set a session id, or paste a startup prompt.
 
-### On DeepSeek Harness or Codex
-
-Install the CLI, then the adapter. The plugin brings the skills with it.
+### 1. Install
 
 ```bash
 npm install -g @veewo/claw
 ```
 
-- **DeepSeek Harness:** run `dsh plugin --profile web add @veewo/dsh-claw-kit@latest`, then restart the host. Walkthrough: [Install the DSH adapter](#install-the-dsh-adapter).
-- **Codex:** add the marketplace and install **Claw Kit**. Walkthrough: [Install the Codex plugin](#install-the-codex-plugin).
+On DeepSeek Harness, Codex, Cindy, or OpenCode, also install that adapter. It brings the `using-claw-kit` skill with it.
 
-Open the project and ask in ordinary language, for example: "Plan a fix for the login bug."
+- **DeepSeek Harness:** `dsh plugin --profile web add @veewo/dsh-claw-kit@latest`, then restart the host. [Install the DSH adapter](#install-the-dsh-adapter).
+- **Codex:** add the marketplace and install **Claw Kit**. [Install the Codex plugin](#install-the-codex-plugin).
+- **Cindy** and **OpenCode** have their own install sections below.
 
-### On any other agent
+On any other agent, install the CLI and copy the standard skills into the folder that agent scans for skills. See [packages/standard-adapter/README.md](packages/standard-adapter/README.md).
+
+### 2. Initialize the project
 
 ```bash
-npm install -g @veewo/claw
 cd your-project
-export CLAW_SESSION_ID=my-first-session
 claw init
-claw plan create "Fix the login bug" --goal "Find why login fails and patch it"
 ```
 
-What those lines do:
+`claw init` creates `.claw/` and writes a bootstrap block into `AGENTS.md`, between `<!-- claw-kit:bootstrap:start -->` and `<!-- claw-kit:bootstrap:end -->`. That block tells the agent to load and follow `using-claw-kit` when it starts project work or restores context. The skill picks the host entry, resumes an existing workflow, and decides whether a plan is needed. A casual question does not become a plan.
 
-1. `npm install -g @veewo/claw` puts the `claw` command on your PATH.
-2. `CLAW_SESSION_ID` is any stable name for this conversation. Reuse it and the next turn finds the same plan.
-3. `claw init` creates `.claw/` in this repo.
-4. `claw plan create` writes the first plan and prints the steps the agent should follow.
+### 3. Talk
 
-Two one-time steps so the agent runs that loop on its own:
+Ask in ordinary language, for example: "Plan a fix for the login bug."
 
-1. Copy the skills named in [packages/standard-adapter/README.md](packages/standard-adapter/README.md) into the folder your agent scans for skills.
-2. Paste [the entry rules](packages/standard-adapter/docs/entry-contract.md) into the agent's standing instructions (CLAUDE.md, AGENTS.md, or custom instructions).
+### How it starts
 
-Cindy and OpenCode have their own install sections below.
+That is the whole setup. Where the host has a startup hook, that hook runs by itself and points the agent at `using-claw-kit`. Everywhere else, the `AGENTS.md` bootstrap does that job.
 
-### Remember this repo (once)
+| Host | What starts the flow |
+| --- | --- |
+| Codex | The plugin's `SessionStart` hook runs context recovery and tells the agent to load `using-claw-kit`. |
+| DeepSeek Harness (DSH) | The `agent/session-start` hook runs context recovery and injects the same instruction. The agent then calls `claw_run`. |
+| OpenCode | The plugin handles `session.created` and `session.compacted` (OpenCode has no `hooks.json`). It recovers context and sets the session id for later claw commands. |
+| Cindy | Ghost session and turn hooks refresh session state and can continue an active plan. They do not inject a first-turn prompt. The agent follows the installed `using-claw-kit` skill, which the `AGENTS.md` bootstrap also names. |
+| Any other agent | No hook. The `AGENTS.md` bootstrap is the startup path. |
 
-```bash
-claw search index --refresh
-```
+## What the agent does under the hood
 
-That builds the local search index. Afterward, `claw search "login"` looks up Truth notes and ADRs already in the project.
+This is not part of setup. After install and `claw init`, the agent follows `using-claw-kit` and runs these itself:
+
+- **`claw context`** recovers an active workflow, or reports that none is bound. Codex, DSH, and OpenCode also run this from the startup hook or plugin event above.
+- **Session id.** Codex's `SessionStart` hook and OpenCode's plugin copy the host session id into `CLAW_SESSION_ID`. DSH and Cindy forge session identity inside the adapter. On a host with no adapter, the skill sets a stable `CLAW_SESSION_ID` for the conversation.
+- **`claw search index --refresh`** runs only when project recall needs a vector index. **`claw search`** then reads Truth notes and ADRs.
+- **`claw plan create`** runs only when the skill decides the work should become a plan.
 
 `claw-kit` is a project-level workflow and knowledge layer for agentic work.
 
@@ -158,12 +161,9 @@ Or use the one-shot install script:
 .\scripts\install-cli.ps1
 ```
 
-After the CLI is installed, project search still needs one-time setup inside each target project:
+In each project, run `claw init` once. That is the user command. The snippets below are what the agent runs through `using-claw-kit`; see [What the agent does under the hood](#what-the-agent-does-under-the-hood). Do not run `claw context`, `claw search index --refresh`, or set `CLAW_SESSION_ID` yourself.
 
-1. On a named host, start the project through its host adapter so adapter-owned context recovery normalizes `.claw/project.json` and supplies the current host identity. On the standard hostless flow, run `claw context` directly (no `--host`).
-2. Run `claw search index --refresh` once so the sqlite recall store, embedding setup, and first vector index are created.
-
-Then use it from any project directory:
+Reference commands the agent uses:
 
 ```powershell
 claw init --max-tasks-to-keep 20 --planning true --external-planning-skill team-planning-skill --external-writer-skill external-knowledge-writer
@@ -200,19 +200,18 @@ Projects can define reusable templates directly under `.claw/templates` using `.
 
 Platforms without a native adapter — or any agent environment that can run
 shell commands — can use the full `.claw` workflow directly, with no `--host`
-flag, no `CLAW_HOST` registration, and no lifecycle hooks:
+flag, no `CLAW_HOST` registration, and no lifecycle hooks. `claw init` is what
+starts it there: the bootstrap block it writes into `AGENTS.md` tells the agent
+to load `using-claw-kit`.
 
-1. Install the CLI (`npm install -g @veewo/claw`) and export a stable
-   `CLAW_SESSION_ID` for the conversation.
-2. Copy the skills from [packages/standard-adapter/skills](packages/standard-adapter/skills)
+1. Install the CLI (`npm install -g @veewo/claw`).
+2. Copy the standard skills described in
+   [packages/standard-adapter/README.md](packages/standard-adapter/README.md)
    into the platform's skill discovery location.
-3. Paste the entry rules from
-   [packages/standard-adapter/docs/entry-contract.md](packages/standard-adapter/docs/entry-contract.md)
-   into the platform's persistent prompt surface (CLAUDE.md / AGENTS.md /
-   rules / custom instructions).
+3. In the project, run `claw init`.
 
-The standard flow keeps the full loop — `claw context` recovers a
-session-bound plan, `claw plan create` starts a project-scoped plan, and at
+The agent then keeps the full loop. It runs `claw context` to recover a
+session-bound plan, `claw plan create` when a plan is warranted, and at
 `plan done` capture-enabled work follows the standard closeout owner: by default,
 same-agent `knowledge prepare/complete --source agent-memory`. An explicitly
 configured background route uses its supplied capture/dispatch steps and a

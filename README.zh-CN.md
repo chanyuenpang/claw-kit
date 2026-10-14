@@ -17,7 +17,7 @@
 
 ### 项目记忆
 
-计划和结论留在仓库里。`claw plan create` 把工作流写到 `.claw/tasks/`。之后的 `claw context` 会在会话仍绑定该计划时返回这个 `activeWorkflow`。收口把可复用的 Truth 笔记和 ADR 写进项目。跑过一次 `claw search index --refresh` 之后，`claw search` 就能把它们找回来。`claw session open` 会在这次终端会话里一直沿用同一个工作目录和当前计划。
+计划和结论留在仓库里。agent 把工作流写到 `.claw/tasks/`，下次会话再把它找回来。收口把可复用的 Truth 笔记和 ADR 写进项目，需要时由 agent 自己去搜这些笔记。持久会话会一直沿用同一个工作目录和当前计划。
 
 ### 代码质量 skills
 
@@ -39,7 +39,7 @@
 
 | agent 跑在哪里 | 你用什么 | 从哪开始 |
 | --- | --- | --- |
-| 任何能跑 shell 的平台 | `claw` CLI，加上标准 skills 和入口规则。同一套计划、回忆、收口。 | 通用 |
+| 任何能跑 shell 的平台 | `claw` CLI，加上标准 skills。`claw init` 会写入 `AGENTS.md` 引导块，所以不需要钩子。 | 通用 |
 | DeepSeek Harness (DSH) | 专用适配器。一个 `claw_run` 工具，进度和原生 goal 同步，知识收口由适配器分发。npm：`@veewo/dsh-claw-kit`。 | 优先从这里开始 |
 | Codex | 专用适配器。Marketplace 插件，带 skills、钩子和同一套工作流。 | 优先从这里开始 |
 | Cindy | 专用适配器。从 Cindy marketplace 安装 `claw-kit-cindy`。 | 专用适配器 |
@@ -49,52 +49,55 @@
 
 ## 快速开始
 
-有 Node.js 和 npm 就可以开始。
+安装，在项目里初始化一次，然后照常和 agent 说话。你不用自己跑工作流命令，不用设置会话 id，也不用粘贴启动提示。
 
-### 在 DeepSeek Harness 或 Codex 上
-
-先装 CLI，再装适配器。插件会把 skills 一起带上。
+### 1. 安装
 
 ```bash
 npm install -g @veewo/claw
 ```
 
-- **DeepSeek Harness：** 运行 `dsh plugin --profile web add @veewo/dsh-claw-kit@latest`，然后重启 Host。逐步说明：[安装 DSH 适配器](#install-the-dsh-adapter)。
-- **Codex：** 添加 marketplace 并安装 **Claw Kit**。逐步说明：[安装 Codex 插件](#install-the-codex-plugin)。
+如果 agent 跑在 DeepSeek Harness、Codex、Cindy 或 OpenCode 上，再装对应的适配器。适配器会带上 `using-claw-kit` skill。
 
-打开项目，用平常的话说一句就行，例如：「帮我计划怎么修登录 bug。」
+- **DeepSeek Harness：** `dsh plugin --profile web add @veewo/dsh-claw-kit@latest`，然后重启 Host。[安装 DSH 适配器](#install-the-dsh-adapter)。
+- **Codex：** 添加 marketplace 并安装 **Claw Kit**。[安装 Codex 插件](#install-the-codex-plugin)。
+- **Cindy** 和 **OpenCode** 的安装在下面各自的章节里。
 
-### 在其他 agent 上
+其他 agent：安装 CLI，并把标准 skills 复制到该 agent 扫描 skill 的文件夹。见 [packages/standard-adapter/README.md](packages/standard-adapter/README.md)。
+
+### 2. 初始化项目
 
 ```bash
-npm install -g @veewo/claw
 cd your-project
-export CLAW_SESSION_ID=my-first-session
 claw init
-claw plan create "Fix the login bug" --goal "Find why login fails and patch it"
 ```
 
-这几行分别做什么：
+`claw init` 会创建 `.claw/`，并在 `AGENTS.md` 里写下引导块，夹在 `<!-- claw-kit:bootstrap:start -->` 和 `<!-- claw-kit:bootstrap:end -->` 之间。这段文字告诉 agent：开始项目工作或恢复上下文时，加载并遵循 `using-claw-kit`。这个 skill 自己选择宿主入口，恢复已有工作流，并决定要不要建计划。随口一问不会变成一份计划。
 
-1. `npm install -g @veewo/claw` 把 `claw` 命令放到 PATH 上。
-2. `CLAW_SESSION_ID` 是这次对话的一个固定名字，你自己起。下次沿用同一个名字，就能找到同一份计划。
-3. `claw init` 在这个仓库里创建 `.claw/`。
-4. `claw plan create` 写下第一份计划，并打印 agent 该跟着走的步骤。
+### 3. 直接说
 
-让 agent 自己把这套循环跑起来，还要做一次这两步：
+用平常的话说就行，例如：「帮我计划怎么修登录 bug。」
 
-1. 把 [packages/standard-adapter/README.md](packages/standard-adapter/README.md) 里点名的 skills 复制到你的 agent 扫描 skill 的文件夹。
-2. 把 [入口规则](packages/standard-adapter/docs/entry-contract.md) 贴进 agent 的常驻说明（CLAUDE.md、AGENTS.md 或自定义说明）。
+### 它怎么自己启动
 
-Cindy 和 OpenCode 的安装在下面各自的章节里。
+到这里就设置完了。宿主有启动钩子时，钩子自己跑，并把 agent 指向 `using-claw-kit`。没有钩子的地方，由 `AGENTS.md` 里的引导块来做这件事。
 
-### 让这个仓库被记住（每个仓库一次）
+| 宿主 | 谁把流程拉起来 |
+| --- | --- |
+| Codex | 插件的 `SessionStart` 钩子做上下文恢复，并告诉 agent 加载 `using-claw-kit`。 |
+| DeepSeek Harness (DSH) | `agent/session-start` 钩子做同样的上下文恢复并注入同一句说明。之后 agent 调用 `claw_run`。 |
+| OpenCode | 插件处理 `session.created` 和 `session.compacted`（OpenCode 没有 `hooks.json`）。它恢复上下文，并为后续 claw 命令设置会话 id。 |
+| Cindy | Ghost 的 session 与 turn 钩子会刷新会话状态，也可以续上一个活动计划。它们不注入首轮提示。agent 遵循已安装的 `using-claw-kit` skill，`AGENTS.md` 引导块也会点名这个 skill。 |
+| 其他 agent | 没有钩子。启动路径就是 `AGENTS.md` 引导块。 |
 
-```bash
-claw search index --refresh
-```
+<h2 id="under-the-hood">底层：agent 自己做什么</h2>
 
-这会建好本地搜索索引。之后 `claw search "login"` 会去查项目里已有的 Truth 笔记和 ADR。
+这不是安装步骤。安装并执行 `claw init` 之后，agent 遵循 `using-claw-kit`，自己去跑这些命令：
+
+- **`claw context`** 恢复活动工作流，或说明当前没有绑定的工作流。Codex、DSH 和 OpenCode 还会在上面的启动钩子或插件事件里跑这一步。
+- **会话 id。** Codex 的 `SessionStart` 钩子和 OpenCode 插件把宿主会话 id 写入 `CLAW_SESSION_ID`。DSH 和 Cindy 在适配器内部锻造会话身份。没有适配器的宿主上，由 skill 为这次对话设置一个稳定的 `CLAW_SESSION_ID`。
+- **`claw search index --refresh`** 只在项目回忆需要向量索引时才跑。然后 **`claw search`** 去读 Truth 笔记和 ADR。
+- **`claw plan create`** 只在 skill 判断这次工作需要一份计划时才跑。
 
 `claw-kit` 是面向 agent 工作的项目级工作流与知识层。
 
@@ -157,12 +160,9 @@ npm install -g @veewo/claw
 .\scripts\install-cli.ps1
 ```
 
-CLI 装好之后，每个目标项目的搜索仍需要一次设置：
+每个项目里运行一次 `claw init`。这是用户要跑的命令。下面的片段是 agent 通过 `using-claw-kit` 去跑的；见 [底层：agent 自己做什么](#under-the-hood)。不要自己运行 `claw context`、`claw search index --refresh`，也不要自己设置 `CLAW_SESSION_ID`。
 
-1. 在有名字的宿主上，通过该宿主的适配器启动项目，让适配器负责的上下文恢复去规范化 `.claw/project.json` 并提供当前宿主身份。标准无宿主流程则直接运行 `claw context`（不要加 `--host`）。
-2. 运行一次 `claw search index --refresh`，创建 sqlite 回忆库、embedding 设置和第一份向量索引。
-
-然后可以在任意项目目录里使用：
+agent 会用到的参考命令：
 
 ```powershell
 claw init --max-tasks-to-keep 20 --planning true --external-planning-skill team-planning-skill --external-writer-skill external-knowledge-writer
@@ -191,13 +191,13 @@ claw session open G:\Projects\my-project agent-session-id
 
 ## 使用标准无宿主流程（任意平台）
 
-没有原生适配器的平台，或者任何能跑 shell 命令的 agent 环境，都可以直接使用完整的 `.claw` 工作流：不需要 `--host` 标志，不需要注册 `CLAW_HOST`，也不需要生命周期钩子。
+没有原生适配器的平台，或者任何能跑 shell 命令的 agent 环境，都可以直接使用完整的 `.claw` 工作流：不需要 `--host` 标志，不需要注册 `CLAW_HOST`，也不需要生命周期钩子。在这些环境里，`claw init` 就是启动方式：它写进 `AGENTS.md` 的引导块会告诉 agent 加载 `using-claw-kit`。
 
-1. 安装 CLI（`npm install -g @veewo/claw`），并为这次对话导出一个稳定的 `CLAW_SESSION_ID`。
-2. 把 [packages/standard-adapter/skills](packages/standard-adapter/skills) 里的 skills 复制到该平台的 skill 发现位置。
-3. 把 [packages/standard-adapter/docs/entry-contract.md](packages/standard-adapter/docs/entry-contract.md) 里的入口规则贴到该平台的持久提示面（CLAUDE.md / AGENTS.md / rules / 自定义说明）。
+1. 安装 CLI（`npm install -g @veewo/claw`）。
+2. 把 [packages/standard-adapter/README.md](packages/standard-adapter/README.md) 里说明的标准 skills 复制到该平台的 skill 发现位置。
+3. 在项目里运行 `claw init`。
 
-标准流程保留完整循环：`claw context` 恢复会话绑定的计划，`claw plan create` 启动项目级计划，`plan done` 时开启了沉淀的工作走标准收口负责人。默认是同一 agent 上的 `knowledge prepare/complete --source agent-memory`。显式配置的后台路线使用它提供的 capture/dispatch 步骤，以及一份不捕获知识的辅助 writer 计划。`knowledgeCapture: false` 阻止递归的知识累积；不需要公开的存储范围选择。详见 [packages/standard-adapter/README.md](packages/standard-adapter/README.md)。
+然后由 agent 把完整循环跑下去。它运行 `claw context` 恢复会话绑定的计划，在需要计划时运行 `claw plan create`，`plan done` 时开启了沉淀的工作走标准收口负责人。默认是同一 agent 上的 `knowledge prepare/complete --source agent-memory`。显式配置的后台路线使用它提供的 capture/dispatch 步骤，以及一份不捕获知识的辅助 writer 计划。`knowledgeCapture: false` 阻止递归的知识累积；不需要公开的存储范围选择。详见 [packages/standard-adapter/README.md](packages/standard-adapter/README.md)。
 
 <h2 id="install-the-codex-plugin">安装 Codex 插件</h2>
 
