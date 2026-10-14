@@ -5,18 +5,23 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildCindyPluginArtifact } from '../../../scripts/cindy-plugin-artifact.mjs';
+import { buildSharedSkillsArtifact } from '../../../scripts/shared-skills-artifact.mjs';
 
 const sourceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const fixture = await mkdtemp(path.join(os.tmpdir(), 'claw-cindy-surface-'));
 const built = await buildCindyPluginArtifact({ sourceRoot, outputRoot: path.join(fixture, 'artifact') });
 after(() => rm(fixture, { recursive: true, force: true }));
 const root = pathToFileURL(built.pluginDir + path.sep);
+const shared = await buildSharedSkillsArtifact({ sourceRoot, outputRoot: path.join(fixture, 'shared') });
+const sharedRoot = pathToFileURL(shared.outputRoot + path.sep);
 
-test('Cindy plugin preserves its explicit public skill surface and adjacent resources', async () => {
+test('Cindy plugin delegates complete skill distribution to the independent shared package', async () => {
   const manifest = JSON.parse(await readFile(new URL('ghost.json', root), 'utf8'));
-  const names = manifest.skill.items.map((item) => item.name).sort();
-  assert.deepEqual(names, ['claw-kit-doc', 'planning', 'researcher', 'using-claw-kit']);
-  assert.equal(manifest.skill.items.some((item) => item.dir === 'skills/update'), false);
+  assert.equal(manifest.skill, undefined);
+  assert.equal(manifest.sessionContext, true);
+  assert.equal(manifest.notify, true);
+  await assert.rejects(readFile(new URL('skills/planning/SKILL.md', root)), { code: 'ENOENT' });
+  assert.deepEqual(JSON.parse(await readFile(new URL('node/shared-skills-contract.json', root))), shared.manifest);
 
   for (const entry of [
     'skills/using-claw-kit/SKILL.md',
@@ -31,7 +36,7 @@ test('Cindy plugin preserves its explicit public skill surface and adjacent reso
     'skills/claw-kit-doc/references/configuration.md',
     'skills/claw-kit-doc/references/knowledge-format.md',
   ]) {
-    await readFile(new URL(entry, root), 'utf8');
+    await readFile(new URL(entry, sharedRoot), 'utf8');
   }
 
   for (const name of ['update', 'feature-architecture', 'knowledge-capture', 'delegate-writer', 'knowledge-writer']) {
@@ -43,7 +48,7 @@ test('Cindy marketplace remains source-based and documents the UI update path', 
   const [marketplaceSource, readme, updateReference] = await Promise.all([
     readFile(new URL('../.agents/plugins/marketplace.json', import.meta.url), 'utf8'),
     readFile(new URL('../README.md', import.meta.url), 'utf8'),
-    readFile(new URL('skills/claw-kit-doc/references/update.md', root), 'utf8'),
+    readFile(new URL('skills/claw-kit-doc/references/update.md', sharedRoot), 'utf8'),
   ]);
 
   const marketplace = JSON.parse(marketplaceSource);
@@ -72,11 +77,11 @@ test('Cindy release version follows the CLI base rather than an older Cindy tag'
   assert.match(releasing, /not a separate three-segment version line/);
 });
 
-test('Cindy omits WUM prompt injection and keeps session-start work asynchronous', async () => {
+test('Cindy uses the supported entry rewrite and keeps session-start work asynchronous', async () => {
   const [source, entry, host, manifestSource, worker] = await Promise.all([
     readFile(new URL('main.js', root), 'utf8'),
-    readFile(new URL('skills/using-claw-kit/SKILL.md', root), 'utf8'),
-    readFile(new URL('skills/using-claw-kit/references/hosts/cindy.md', root), 'utf8'),
+    readFile(new URL('skills/using-claw-kit/SKILL.md', sharedRoot), 'utf8'),
+    readFile(new URL('skills/using-claw-kit/references/hosts/cindy.md', sharedRoot), 'utf8'),
     readFile(new URL('ghost.json', root), 'utf8'),
     readFile(new URL('node/claw-worker.cjs', root), 'utf8'),
   ]);
@@ -85,7 +90,7 @@ test('Cindy omits WUM prompt injection and keeps session-start work asynchronous
   assert.deepEqual(manifest.agent, { background: true });
   assert.doesNotMatch(source, /CINDY_CLAW_ENTRY_PROMPT|Use claw-kit:using-claw-kit/);
   assert.doesNotMatch(source, /First call the Ghost tool/);
-  assert.doesNotMatch(source, /will-user-message/);
+  assert.match(source, /will-user-message/);
   assert.doesNotMatch(source, /sessionPrompts|injectedSessions|preparedSessions|preparingSessions/);
   assert.match(source, /msg\.name === 'did-session-created'/);
   assert.match(source, /scheduleSessionBackground\(data\.sessionId, data\.workdir\)/);
@@ -101,8 +106,8 @@ test('Cindy omits WUM prompt injection and keeps session-start work asynchronous
   assert.match(source, /claw\/session-background/);
   assert.match(source, /Promise\.all\(\[\s*refreshSessionStart\(sessionId, workdir\),\s*runSessionMaintenance\(sessionId, workdir\)/);
   assert.doesNotMatch(source, /cindy\.agent\.errand|cindy\.agent\.queryErrand/);
-  assert.equal('hooks' in manifest.subscribe, false);
-  assert.match(source, /function toolFailure\(callId, reason, errorCode = 'CLAW_OPERATION_FAILED'\)/);
+  assert.deepEqual(manifest.subscribe.hooks, ['will-user-message']);
+  assert.match(source, /function toolFailure\(callId, reason, errorCode = 'CLAW_OPERATION_FAILED', failure = \{\}\)/);
   assert.match(source, /tool-result', callId, ok: false, errorCode, message: reason/);
   assert.doesNotMatch(source, /sessionModels|CINDY_CLAW_ENTRY_PROMPT_GPT|data\.model/);
   assert.match(entry, /references\/hosts\/cindy\.md/);
@@ -111,7 +116,7 @@ test('Cindy omits WUM prompt injection and keeps session-start work asynchronous
   assert.match(host, /never fall back from a failed Ghost call to shell/i);
   assert.match(host, /A Codex model inside Cindy is still\s+platform cindy/);
   assert.match(host, /clawHost\.platform/);
-  assert.match(host, /no verified first-turn hook prompt injection/);
+  assert.match(host, /will-user-message/);
   assert.doesNotMatch(host, /runClawPlanMutation|cacheKey|driverVersion|```javascript/);
   assert.match(manifest.description, /^\[claw host\]\nplatform: cindy\n/);
   assert.match(skill, /Use the Ghost tools in this exact order/);

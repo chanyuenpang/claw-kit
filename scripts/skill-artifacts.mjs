@@ -3,7 +3,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
-export const SKILL_HOSTS = ["codex", "dsh", "opencode", "openclaw", "standard", "cindy"];
+export const SKILL_HOSTS = ["codex", "dsh", "opencode", "openclaw", "standard"];
 export const CANONICAL_SKILL_SOURCES = Object.freeze({
   planning: ".agents/skills/planning",
   config: ".agents/skills/config",
@@ -158,7 +158,7 @@ export async function verifySkillSourceLayout({ sourceRoot } = {}) {
     .filter(([, location]) => location.startsWith(".agents/"))
     .map(([id]) => path.join(sourceRoot, "shared", "skills", id));
   forbidden.push(path.join(sourceRoot, "shared", "docs", "claw-kit-doc"));
-  for (const host of SKILL_HOSTS) {
+  for (const host of [...SKILL_HOSTS, "cindy"]) {
     const adapter = path.join(sourceRoot, "packages", host + "-adapter");
     for (const dir of [path.join(adapter, "skills"), ...(host === "cindy" ? [path.join(adapter, "plugin", "skills")] : [])]) {
       let entries;

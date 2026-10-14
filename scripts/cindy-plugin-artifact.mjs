@@ -3,7 +3,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
-import { assembleSkills, assertArtifactOutput } from "./skill-artifacts.mjs";
+import { loadSkillInputs, assertArtifactOutput } from "./skill-artifacts.mjs";
+import skillInstaller from "../packages/shared-skills/installer.cjs";
 
 const pluginAssets = ["ghost.json", "main.js", "panel.html", "assets", "node"];
 
@@ -62,16 +63,16 @@ export async function buildCindyPluginArtifact({ sourceRoot, outputRoot } = {}) 
   const stage = await fs.mkdtemp(path.join(parent, ".cindy-artifact-"));
   try {
     const pluginDir = path.join(stage, "plugin");
-    const assembly = await assembleSkills({ sourceRoot, targetHost: "cindy", outputRoot: pluginDir });
+    const assembly = await loadSkillInputs({ sourceRoot, targetHost: "standard" });
     for (const asset of pluginAssets) await copyTree(path.join(adapter, "plugin", asset), path.join(pluginDir, asset));
-    const declared = new Set(assembly.skills.map(skill => skill.id));
-    const registered = new Set();
-    for (const item of manifest.skill?.items ?? []) {
-      if (!declared.has(item.name) || item.dir !== "skills/" + item.name || registered.has(item.name)) throw new Error("Cindy registered skill is outside assembled inputs.");
-      registered.add(item.name);
-      await fs.access(path.join(pluginDir, item.dir, "SKILL.md"));
-    }
-    if ([...registered].sort().join(",") !== "claw-kit-doc,planning,researcher,using-claw-kit") throw new Error("Cindy public registration set changed.");
+    await copyTree(path.join(sourceRoot, "packages/shared-skills/installer.cjs"), path.join(pluginDir, "node/shared-skills.cjs"));
+    if (manifest.skill || manifest.slots?.includes("skill")) throw new Error("Cindy must load shared skills, not register bundled skills.");
+    const sharedPackage = JSON.parse(await fs.readFile(path.join(sourceRoot, "packages/shared-skills/package.json"), "utf8"));
+    const skills = {};
+    for (const skill of assembly.skills) skills[skill.id] = await skillInstaller.fingerprint(skill.sourcePath);
+    const contract = { schemaVersion: 1, name: sharedPackage.name, version: sharedPackage.version, sourceHash: assembly.sourceHash, skills };
+    if ((await loadSkillInputs({ sourceRoot, targetHost: "standard" })).sourceHash !== assembly.sourceHash) throw new Error("Shared skill inputs changed during assembly.");
+    await fs.writeFile(path.join(pluginDir, "node/shared-skills-contract.json"), JSON.stringify(contract, null, 2) + "\n");
     await copyTree(path.join(adapter, ".agents", "plugins", "marketplace.json"), path.join(stage, ".agents", "plugins", "marketplace.json"));
     const market = JSON.parse(await fs.readFile(path.join(stage, ".agents", "plugins", "marketplace.json"), "utf8"));
     if (!market.plugins?.some(item => item.name === "claw-kit-cindy" && item.source?.source === "local" && item.source.path === "./plugin")) throw new Error("Invalid Cindy artifact marketplace.");

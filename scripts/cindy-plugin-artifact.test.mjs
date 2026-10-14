@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 import { buildCindyPluginArtifact } from "./cindy-plugin-artifact.mjs";
 import { loadSkillInputs } from "./skill-artifacts.mjs";
 const sourceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -11,23 +12,24 @@ const sourceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".
 test("Cindy assembles the existing flat runtime and Git marketplace without source writes", async t => {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "claw-cindy-artifact-"));
   t.after(() => fs.rm(temp, { recursive: true, force: true }));
-  const before = await loadSkillInputs({ sourceRoot, targetHost: "cindy" });
+  const before = await loadSkillInputs({ sourceRoot, targetHost: "standard" });
   const result = await buildCindyPluginArtifact({ sourceRoot, outputRoot: path.join(temp, "candidate") });
-  assert.equal((await loadSkillInputs({ sourceRoot, targetHost: "cindy" })).sourceHash, before.sourceHash);
+  assert.equal((await loadSkillInputs({ sourceRoot, targetHost: "standard" })).sourceHash, before.sourceHash);
   assert.equal(result.skillSourceHash, before.sourceHash);
   assert.match(result.payloadHash, /^[a-f0-9]{64}$/);
   const manifest = JSON.parse(await fs.readFile(path.join(result.pluginDir, "ghost.json"), "utf8"));
   assert.equal(manifest.entry, "main.js");
   assert.equal(manifest.node.entry, "node/claw-worker.cjs");
-  assert.deepEqual(manifest.skill.items.map(s => s.name).sort(), ["claw-kit-doc", "planning", "researcher", "using-claw-kit"]);
-  assert.equal((await fs.readdir(path.join(result.pluginDir, "skills"))).length, 6);
+  assert.equal(manifest.skill, undefined);
+  await assert.rejects(fs.readdir(path.join(result.pluginDir, "skills")), { code: 'ENOENT' });
   await assert.rejects(fs.access(path.join(sourceRoot, "packages/cindy-adapter/plugin/skills/researcher/SKILL.md")));
   const moved = path.join(temp, "detached");
   await fs.rename(result.artifactRoot, moved);
-  for (const item of manifest.skill.items) await fs.access(path.join(moved, "plugin", item.dir, "SKILL.md"));
-  for (const skill of before.skills) for (const relative of skill.files) {
-    assert.deepEqual(await fs.readFile(path.join(moved, "plugin", "skills", skill.id, relative)), await fs.readFile(path.join(skill.sourcePath, relative)));
-  }
+  const contract = JSON.parse(await fs.readFile(path.join(moved, "plugin/node/shared-skills-contract.json"), 'utf8'));
+  assert.equal(contract.sourceHash, before.sourceHash);
+  assert.deepEqual(Object.keys(contract.skills), before.skills.map(skill => skill.id));
+  const installer = createRequire(import.meta.url)(path.join(moved, 'plugin/node/shared-skills.cjs'));
+  assert.equal((await installer.status({ homeDir: path.join(temp, 'isolated-home'), expected: contract })).status, 'missing');
   const marketplace = JSON.parse(await fs.readFile(path.join(moved, ".agents/plugins/marketplace.json"), "utf8"));
   assert.equal(marketplace.plugins[0].source.path, "./plugin");
   await assert.rejects(buildCindyPluginArtifact({ sourceRoot, outputRoot: moved }), /already exists/);

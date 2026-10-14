@@ -39,7 +39,7 @@ test("Cindy native metadata identifies its adapter independently of model", () =
     assert.match(text, /independent of model\/provider/);
   }
   assert.deepEqual(manifest.subscribe.topics, ["session", "turn"]);
-  assert.equal("hooks" in manifest.subscribe, false);
+  assert.deepEqual(manifest.subscribe.hooks, ['will-user-message']);
 });
 
 test("Cindy catalogs and repeated operation results override stale host hints without changing model", async () => {
@@ -88,5 +88,5 @@ test("Cindy continuation identifies host but session-created does not invent pro
   assert.equal(result, undefined);
   assert.equal(h.sent.length, 0);
   assert.equal(h.timers.length, 1);
-  assert.doesNotMatch(source, /will-user-message|additionalContext/);
+  assert.doesNotMatch(source, /additionalContext/);
 });

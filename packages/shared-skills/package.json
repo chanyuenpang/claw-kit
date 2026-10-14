@@ -1,0 +1,9 @@
+{
+  "name": "@veewo/claw-skills",
+  "version": "0.2.51",
+  "private": true,
+  "description": "Complete canonical claw-kit skills for shared agent discovery.",
+  "license": "MIT",
+  "files": ["skills", "skills-manifest.json", "installer.cjs", "README.md"],
+  "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org" }
+}

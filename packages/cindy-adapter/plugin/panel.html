@@ -13,4 +13,5 @@
 }</pre></section>
 <section><h2>编辑与校验</h2><p>使用编辑器修改对应 JSON；修改团队配置后运行 <code>claw check</code> 校验和规范化。数组会整体替换，个人层中的显式 <code>null</code> 是真实覆盖值。</p></section>
 <section data-claw-update-guide><h2>更新 claw-kit</h2><p>Cindy 不提供 claw-kit update skill。请按以下顺序操作：</p><ol><li data-update-step="plugins">打开插件页面</li><li data-update-step="market">点击右上角“市场”</li><li data-update-step="installed-markets">打开“已安装市场”并刷新 claw-kit 市场源</li><li data-update-step="return-plugins">返回插件页面</li><li data-update-step="update-claw-kit">在 claw-kit 插件项中确认更新</li></ol><p class="muted">刷新市场只更新可用版本信息，不会自动安装插件更新。</p></section>
+<section><h2>共享技能</h2><p>插件更新与共享技能安装是两个独立操作。调用 <code>skills_status</code> 检查本地状态，显式调用 <code>install_skills</code> 从 npm 安装插件固定版本的完整技能包。启动检查不会联网或自动更新。</p><p>旧插件技能由 Cindy 更新流程撤销注册；同名用户技能或用户修改会保留并提示处理。安装成功后请新建会话验证技能是否加载，未出现时重启 Cindy。</p></section>
 </html>

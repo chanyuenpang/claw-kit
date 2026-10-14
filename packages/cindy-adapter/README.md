@@ -42,9 +42,14 @@ workflow, failure policy, permission boundary, and acceptance scenarios.
 
 The Ghost runtime source is under [plugin](plugin). Build the installable tree
 with `npm run export:cindy-plugin -- --output-root <fresh-output-directory>`
-from the main repository: it combines these unchanged runtime assets and the
-declared canonical skill packages without writing generated source copies.
-The artifact keeps the existing `plugin/skills/` and manifest paths. Cindy normalizes either
+from the main repository: it combines runtime assets with an exact shared-skill
+package contract, without bundling or registering public skills. The plugin uses
+manifest v3 (Cindy >= 0.1.61) to retain its existing capabilities and declare the
+startup repair notification. `skills_status` checks only local files;
+`install_skills` explicitly installs the pinned `@veewo/claw-skills` npm version.
+See [shared installation and migration](../shared-skills/README.md).
+The separate skill artifact must be built and published under explicit release
+authorization before the online installation can succeed. Cindy normalizes either
 configured knowledge execution policy to the compatibility value `subagent`; the active
 Lead pre-dispatches one persistent, sidebar-visible Orca `knowledge_finalizer` Worker after the terminal
 mutation has created the durable job. The Worker creates the packaged session
@@ -55,10 +60,17 @@ acknowledges completion through `knowledge.done`. Cindy does not use an
 errand or a Stop hook for knowledge finalization; legacy background jobs are
 diagnostic-only and are not launched.
 The Ghost Node worker owns a separate persistent CLI session transport per workdir/session ID. A successful `plan.done` releases that CLI after sending its response (including any knowledge-dispatch envelope), unless a newer request already began; quiescent unfinished-plan transports expire after 10 minutes without queued or running commands. The same session ID then reopens against retained CLI state. This does not stop the independent Orca finalizer Worker. `claw/session-transports` is a read-only worker RPC reporting workspace/session ID, direct child PID, active/idle/reclaiming state, pending count and close reason; `session-transport-*` events in the worker log record opens, exits and reclamation. `CLAW_CINDY_SESSION_IDLE_MS` may set a positive integer of at least 1000 ms for controlled tests or deployment tuning.
-Cindy does not inject `additionalContext` into user messages. The plugin starts
+Cindy's `will-user-message` hook appends an explicit Cindy Host identity and
+instruction to use the claw development workflow once per session, through the supported
+`event-verdict` rewrite. The user text is preserved; when appending would exceed
+the Host's 16,000-character limit, the hook allows it unchanged and catalog
+identity remains the fallback. It performs no network or workflow calls and
+never blocks a message. A session receipt under `~/.agents/.claw-kit-cindy-hooks`
+prevents repeat insertion after plugin restart. Reservation precedes the verdict;
+if delivery is unknown, the adapter keeps the native catalog fallback instead of
+resending the introduction. Cindy does not inject `additionalContext`. The plugin starts
 session-state refresh, cleanup, and embedding warmup asynchronously from
-`did-session-created`; it will reconsider prompt delivery only when a future
-Cindy Host version supplies suitable trusted message context. It provides structured Agent Tool calls that execute workflow commands with
+`did-session-created`. It provides structured Agent Tool calls that execute workflow commands with
 Cindy-owned host and session identity, and maintains a live workflow card
 updated by those Tool calls. It does not recover a plan during session creation
 or poll `claw context` at turn end. The Ghost Hook consumes the latest

@@ -153,13 +153,14 @@ export const TEST_DOMAINS = {
   },
   cindy: {
     description: "Cindy artifact source, native gateway and host identity",
-    steps: [nodeStep("--test", "./packages/cindy-adapter/test/cindy-skill-surface.test.mjs", "./packages/cindy-adapter/test/plugin-main.test.mjs", "./packages/cindy-adapter/test/claw-worker.test.mjs", "./packages/cindy-adapter/test/host-identity.test.mjs", "./scripts/cindy-plugin-artifact.test.mjs")],
+    steps: [nodeStep("--test", "./packages/cindy-adapter/test/cindy-skill-surface.test.mjs", "./packages/cindy-adapter/test/plugin-main.test.mjs", "./packages/cindy-adapter/test/claw-worker.test.mjs", "./packages/cindy-adapter/test/host-identity.test.mjs", "./packages/cindy-adapter/test/shared-skills-hook.test.mjs", "./scripts/shared-skills.test.mjs", "./scripts/cindy-plugin-artifact.test.mjs")],
   },
   "shared-skills": {
     description: "Shared skill materialization, template versions, and skill scaffolding",
     steps: [nodeStep(
       "--test",
       "./scripts/skill-artifacts.test.mjs",
+      "./scripts/shared-skills.test.mjs",
       "./scripts/host-plugin-artifacts.test.mjs",
       "./scripts/cindy-plugin-artifact.test.mjs",
       "./scripts/sync-shared-skills.test.mjs",
@@ -206,6 +207,8 @@ const FULL_STEPS = [
     "./packages/cindy-adapter/test/plugin-main.test.mjs",
     "./packages/cindy-adapter/test/claw-worker.test.mjs",
     "./packages/cindy-adapter/test/host-identity.test.mjs",
+    "./packages/cindy-adapter/test/shared-skills-hook.test.mjs",
+    "./scripts/shared-skills.test.mjs",
     "./scripts/skill-artifacts.test.mjs",
       "./scripts/host-plugin-artifacts.test.mjs",
       "./scripts/cindy-plugin-artifact.test.mjs",
@@ -253,6 +256,8 @@ const rules = [
   [["dsh"], /^packages\/dsh-adapter\//],
   [["cindy"], /^packages\/cindy-adapter\//],
   [["shared-skills"], /^shared\/skills\//],
+  [["shared-skills"], /^packages\/shared-skills\//],
+  [["shared-skills"], /^scripts\/shared-skills(?:-artifact|\.test)?\.mjs$/],
   [["shared-skills"], /^\.agents\/skills\/(?:planning|config|create-claw-skill|feature-architecture|researcher|using-claw-kit|claw-kit-doc)\//],
   [["shared-skills"], /^scripts\/(?:skill-artifacts|host-plugin-artifacts|cindy-plugin-artifact)(?:\.test)?\.mjs$/],
   [["shared-skills"], /^scripts\/(?:sync-shared-skills|update-template-versions|create-claw-skill-stub)(?:\.test)?\.mjs$/],

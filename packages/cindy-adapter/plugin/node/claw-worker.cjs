@@ -971,6 +971,24 @@ rpcInput.on('line', async (line) => {
   let request;
   try { request = JSON.parse(line); } catch { return; }
   const params = request.params || {};
+  if (request.method === 'claw/claim-entry-hook') {
+    try { reply(request.id, require('./entry-hook.cjs').claimEntryHook(params.sessionId)); }
+    catch (error) { reply(request.id, { ok: false, errorCode: error.code || 'ENTRY_HOOK_CLAIM_FAILED', reason: error.message }); }
+    return;
+  }
+  if (request.method === 'claw/skills-status' || request.method === 'claw/skills-install') {
+    try {
+      const installer = require('./shared-skills.cjs');
+      const expected = require('./shared-skills-contract.json');
+      const result = request.method === 'claw/skills-status'
+        ? await installer.status({ expected })
+        : await installer.downloadAndInstall({ expected });
+      reply(request.id, { ok: true, ...result });
+    } catch (error) {
+      reply(request.id, { ok: false, errorCode: error.code || 'SKILLS_INSTALL_FAILED', phase: error.phase || request.method, reason: error.message, ...(error.recovery ? { recovery: error.recovery } : {}) });
+    }
+    return;
+  }
   if (request.method === 'claw/session-transports') {
     reply(request.id, { idleTimeoutMs: SESSION_IDLE_MS, sessions: [...new Set([...sessions.values(), ...reclaiming])].map((session) => session.status()) });
     return;

@@ -13,7 +13,7 @@ const matrix = {
   codex: [...common, "knowledge-capture", "update"],
   dsh: [...common, "knowledge-capture", "update"],
   opencode: [...common, "update"], standard: common,
-  openclaw: ["claw-kit-doc"], cindy: common.filter((id) => id !== "feature-architecture"),
+  openclaw: ["claw-kit-doc"],
 };
 
 async function fixture(t) {

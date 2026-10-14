@@ -1,9 +1,10 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
+  "minCindyVersion": "0.1.61",
   "id": "claw-kit",
   "name": "claw-kit",
-  "description": "[claw host]\nplatform: cindy\nAdapter-owned host identity, independent of model/provider or skill path. Host/session arguments remain adapter-owned.\nCindy workflow tools, lifecycle guidance, and Skills for claw-kit.",
-  "whenToUse": "Use for Cindy sessions that need claw-kit plan, task, subplan, or workflow operations.",
+  "description": "[claw host]\nplatform: cindy\nHost/session identity remains adapter-owned, independent of model/provider. Workflow tools and explicit shared skill installation. Resolve claw-kit:<skill> references by the original global skill name (for example planning).",
+  "whenToUse": "当前是 Cindy Host，本次会话的开发工作需走 claw 流程。先读取 using-claw-kit，通过 Cindy 原生 Ghost 恢复计划并按 guidance 推进；不可用时说明原因并继续用户任务。",
   "command": "claw-kit",
   "version": "0.2.51.0",
   "kind": "chip",
@@ -11,30 +12,35 @@
   "launch": "resident",
   "icon": "assets/icon.png",
   "settingsHtml": "panel.html",
-  "slots": [
-    "agent",
-    "node",
-    "session-context",
-    "skill",
-    "subscribe",
-    "tool",
-    "card"
-  ],
+  "sessionContext": true,
+  "card": {},
   "agent": {
     "background": true
   },
+  "notify": true,
   "node": {
     "entry": "node/claw-worker.cjs",
     "protocol": "json-rpc-stdio",
     "lifecycle": "resident"
   },
   "subscribe": {
+    "hooks": ["will-user-message"],
     "topics": [
       "session",
       "turn"
     ]
   },
   "tools": [
+    {
+      "name": "skills_status",
+      "description": "[claw host]\nplatform: cindy\nHost identity is independent of model/provider. Check shared skills locally without network access. Installation and current-session loading are separate.",
+      "parameters": { "type": "object", "properties": {} }
+    },
+    {
+      "name": "install_skills",
+      "description": "[claw host]\nplatform: cindy\nHost identity is independent of model/provider. Explicitly install/update complete global @veewo/claw-skills at this plugin's pinned version. Downloads from npm only on this call; preserves user files. Requires a local writable session. Start a new session afterwards.",
+      "parameters": { "type": "object", "properties": {} }
+    },
     {
       "name": "list_tools",
       "description": "[claw host]\nplatform: cindy\nAdapter-owned host identity, independent of model/provider or skill path. Host/session arguments remain adapter-owned.\nList the available claw-kit workflow operations. Omit category for an overview, or pass a category to see operation names, descriptions, and argument schemas.",
@@ -68,29 +74,5 @@
         ]
       }
     }
-  ],
-  "skill": {
-    "items": [
-      {
-        "dir": "skills/using-claw-kit",
-        "name": "using-claw-kit",
-        "description": "Use first whenever the claw-kit Cindy plugin is enabled or its start prompt is present; check your available tools and follow the matching execution route."
-      },
-      {
-        "dir": "skills/planning",
-        "name": "planning",
-        "description": "Use when a planning step needs to refine a user request into clear requirements, scope, completion criteria, dependencies, and executable tasks, especially when task boundaries or an evidence-dependent route still need judgment."
-      },
-      {
-        "dir": "skills/researcher",
-        "name": "researcher",
-        "description": "Use for complex research questions that require an independent, multi-step process of gathering and synthesizing evidence—not direct fact lookups or routine searches."
-      },
-      {
-        "dir": "skills/claw-kit-doc",
-        "name": "claw-kit-doc",
-        "description": "Use when a user needs claw-kit documentation for updates, project configuration, or Truth and ADR formats."
-      }
-    ]
-  }
+  ]
 }

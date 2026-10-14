@@ -14,7 +14,7 @@
       "Both Cindy manifests use the resolved CLI three-segment base plus a newly incremented fourth segment; the independent repository does not own a separate three-segment version line.",
       "The claw-kit-cindy marketplace entry points at plugin.",
       "The tagged adapter-repository ghost manifest is valid and matches vcindy-<version>.",
-      "No .cindy archive, GitHub Release, or npm package is published."
+      "No .cindy archive or GitHub Release is published. The required shared skills npm package is frozen with Cindy and published only within the owner's authorized dependency scope before plugin delivery."
     ]
   },
   "tasks": [
@@ -62,7 +62,7 @@
   "rules": [
     "Inventory every platform, but never publish or prepare an unselected family without explicit authorization. Each selected candidate must align with the target CLI base; fourth segments remain independent.",
     "Formal promotion requires the explicitly selected tested frozen candidate. Preserve its version and hashes; never bump, build, pack or export again. If no tested candidate exists, prepare a new version through beta:prepare and wait for its own trial or an explicitly recorded owner waiver before publication.",
-    "Never publish npm packages or modify another adapter.",
+    "Do not publish CLI or other adapter packages. The required @veewo/claw-skills dependency may be published only within the owner's authorized Cindy delivery scope, using its frozen tarball and verified retrieval before plugin delivery.",
     "Never build or upload a .cindy archive for a marketplace release.",
     "Never publish changed Cindy plugin bytes without increasing the manifest version.",
     "Stop at the first failed release boundary."

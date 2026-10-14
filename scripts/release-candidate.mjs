@@ -7,6 +7,7 @@ import { prepareCandidateVersions, resumeCandidatePreparation, readPreparedCandi
 import { packDshPluginArtifact, exportHostPluginArtifact, npmVersionOf } from "./host-plugin-artifacts.mjs";
 import { publishFrozenNpmResource } from "./frozen-npm-promotion.mjs";
 import { buildCindyPluginArtifact } from "./cindy-plugin-artifact.mjs";
+import { buildSharedSkillsArtifact } from "./shared-skills-artifact.mjs";
 import { exportCodexMarketplace, readCodexPluginSource } from "./codex-plugin-bundle.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -73,6 +74,11 @@ export async function verifyCandidate(directory, { ready = false, now = Date.now
       if (entry.directory) assert(Object.keys(actual).some(file => file.startsWith(entry.directory + "/")), "Missing frozen artifact directory.");
       if (family === "cli") assert(entry.version === candidate.version, "CLI artifact baseline differs.");
       if (family === "dsh") assert(entry.npmVersion === npmVersionOf(entry.version) && actual[entry.file], "Invalid frozen DSH identity.");
+      if (family === "cindy" && entry.sharedSkills) {
+        assert(entry.sharedSkills.name === "@veewo/claw-skills" && actual[entry.sharedSkills.file], "Missing frozen shared skills package.");
+        const contract = await json(path.join(directory, "artifacts", entry.directory, "plugin/node/shared-skills-contract.json"));
+        assert(contract.version === entry.sharedSkills.version && contract.sourceHash === entry.sharedSkills.sourceHash, "Cindy shared skills contract differs from frozen package.");
+      }
     }
   }
   const manifestHash = digest(manifestBytes);
@@ -152,6 +158,12 @@ export async function packCandidate({ sourceRoot = repoRoot, directory } = {}) {
         if (family === "cindy") await buildCindyPluginArtifact({ sourceRoot, outputRoot });
         else await exportHostPluginArtifact({ sourceRoot, targetHost: family, outputRoot });
         outputs[family] = { version: manifest.version, directory: family };
+        if (family === "cindy") {
+          const sharedRoot = path.join(artifacts, "shared-skills");
+          const shared = await buildSharedSkillsArtifact({ sourceRoot, outputRoot: sharedRoot });
+          const [packed] = JSON.parse(npm(["pack", sharedRoot, "--ignore-scripts", "--json", "--pack-destination", artifacts], sourceRoot));
+          outputs.cindy.sharedSkills = { name: shared.manifest.name, version: shared.manifest.version, file: packed.filename, sourceHash: shared.manifest.sourceHash };
+        }
       }
     }
     cleanMain(sourceRoot, sourceRevision);

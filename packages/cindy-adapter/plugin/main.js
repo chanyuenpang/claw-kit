@@ -2,10 +2,29 @@
 // The claw CLI remains user-installed; this resident process only orchestrates
 // the CLI through the declared Node worker and uses Cindy's public Agent slot.
 
-const CINDY_HOST_IDENTITY = "[claw host]\nplatform: cindy\nAdapter-owned host identity, independent of model/provider or skill path. Host/session arguments remain adapter-owned.";
+const CINDY_HOST_IDENTITY = "[claw host]\nplatform: cindy\nAdapter-owned host identity, independent of model/provider or skill path. Host/session arguments remain adapter-owned.\nPublic skills come from the global shared package. Resolve claw-kit:planning as the installed planning skill (and other claw-kit:<skill> references by their original skill name).";
+const CINDY_DEVELOPMENT_ENTRY = '\n\n[claw-kit Cindy hook]\n[claw host]\nplatform: cindy\n当前是 Cindy Host，与本次使用的模型无关。本次会话的开发工作需走 claw 流程：先读取全局 using-claw-kit 及其 Cindy 路由，恢复已有会话计划，再按 guidance 推进开发、记录任务状态并收口。通过 Cindy 原生 claw-kit Ghost 的 list_tools / call_tool 操作；宿主和会话身份由适配器提供，不切换到 Codex driver 或 hostless 路由。claw-kit 不可用时说明原因并继续用户任务，不伪造恢复或流程完成。\n[/claw-kit Cindy hook]';
+const entryHookSessions = new Set();
+async function developmentEntryVerdict(msg) {
+  const original = msg.data?.text;
+  const sessionId = msg.data?.sessionId;
+  const allow = { type: 'event-verdict', hookId: msg.hookId, action: 'allow' };
+  if (!sessionId || entryHookSessions.has(sessionId)) return allow;
+  // The Host truncates rewrite text at 16,000 UTF-16 code units. Never risk
+  // truncating user content to add an advisory instruction. Catalog fallback
+  // remains available when the message exceeds this actual transport limit.
+  if (typeof original !== 'string' || original.length + CINDY_DEVELOPMENT_ENTRY.length > 16000) {
+    traceHook('will-user-message', { phase: 'entry-skipped', reason: 'message-not-rewritable-without-truncation' });
+    return allow;
+  }
+  entryHookSessions.add(sessionId);
+  const claim = await nodeRequest('claw/claim-entry-hook', { sessionId }, 1500);
+  if (!claim?.ok || !claim.claimed) return allow;
+  return { type: 'event-verdict', hookId: msg.hookId, action: 'rewrite', text: original + CINDY_DEVELOPMENT_ENTRY };
+}
 function withCindyHostIdentity(result) {
   const body = result && typeof result === "object" && !Array.isArray(result) ? result : { value: result };
-  return { ...body, clawHost: { platform: "cindy" } };
+  return { ...body, clawHost: { platform: "cindy" }, skillResolution: 'Resolve claw-kit:<skill> references by the original global skill name, e.g. planning. Missing skills are advisory; use skills_status and explicitly install_skills to repair.' };
 }
 
 const workdirs = new Map();
@@ -88,6 +107,8 @@ async function runSessionMaintenance(sessionId, workdir) {
 
 async function prepareSessionBackground(sessionId, workdir) {
   if (!sessionId) return;
+  // Advisory and independent of workflow recovery. Never install/download in a hook.
+  void checkSharedSkills();
   if (workdir) workdirs.set(sessionId, workdir);
   try {
     if (!workdir) {
@@ -109,6 +130,20 @@ async function prepareSessionBackground(sessionId, workdir) {
       phase: 'background-failed',
       reason: error instanceof Error ? error.message : String(error),
     });
+  }
+}
+
+let sharedSkillsNotice = '';
+async function checkSharedSkills() {
+  try {
+    const result = await nodeRequest('claw/skills-status', {});
+    if (result?.compatible) { sharedSkillsNotice = ''; return; }
+    const key = result?.status || result?.errorCode || 'unavailable';
+    if (sharedSkillsNotice === key) return;
+    sharedSkillsNotice = key;
+    await cindy.send({ type: 'notify', tone: 'warning', text: 'claw-kit 共享技能需要修复。请调用 skills_status 查看原因，再显式调用 install_skills。安装后新建会话验证；正常工作流可继续。' });
+  } catch (error) {
+    traceHook('skills-check', { reason: String(error) });
   }
 }
 
@@ -351,13 +386,28 @@ async function continueGoalAfterTurnEnd(msg) {
 function toolFailure(callId, reason, errorCode = 'CLAW_OPERATION_FAILED', failure = {}) {
   reason = CINDY_HOST_IDENTITY + '\n\n' + reason;
   const details = {};
-  for (const key of ['outcome', 'phase', 'effect', 'operation', 'recoveryCommand', 'diagnostics']) {
+  for (const key of ['outcome', 'phase', 'effect', 'operation', 'recoveryCommand', 'diagnostics', 'recovery']) {
     if (failure[key] !== undefined) details[key] = failure[key];
   }
   cindy.send({ type: 'tool-result', callId, ok: false, errorCode, message: reason, ...details });
 }
 
 async function dispatchToolCall(msg) {
+  if (msg.tool === 'skills_status' || msg.tool === 'install_skills') {
+    const context = msg.args?.session_context;
+    if (!context?.session_id || !context?.workdir || !context.workdir_is_local) {
+      toolFailure(msg.callId, '共享技能操作需要 Cindy 提供本地会话身份。', 'LOCAL_WORKSPACE_REQUIRED');
+      return;
+    }
+    if (msg.tool === 'install_skills' && context.workdir_is_read_only) {
+      toolFailure(msg.callId, '当前会话只读，无法安装全局技能。请在可写的本地会话中执行。', 'WORKSPACE_READ_ONLY');
+      return;
+    }
+    const result = await nodeRequest(msg.tool === 'skills_status' ? 'claw/skills-status' : 'claw/skills-install', {}, 120000);
+    if (!result?.ok) { toolFailure(msg.callId, result?.reason || '共享技能操作失败。', result?.errorCode || 'SKILLS_INSTALL_FAILED', result); return; }
+    cindy.send({ type: 'tool-result', callId: msg.callId, ok: true, result: withCindyHostIdentity(result) });
+    return;
+  }
   if (msg.tool === 'list_tools') {
     const catalog = await nodeRequest('claw/catalog', { workdir: msg.args?.session_context?.workdir });
     if (!catalog?.categories) {
@@ -433,6 +483,11 @@ cindy.onHostMessage(async (msg) => {
     return;
   }
   if (msg.type !== 'event') return;
+
+  if (msg.name === 'will-user-message') {
+    cindy.send(await developmentEntryVerdict(msg));
+    return;
+  }
 
   const actionId = typeof msg.actionId === 'string' ? msg.actionId : msg.data?.actionId;
   if (msg.name === 'card-action' && (actionId === 'claw-toggle-tasks' || actionId === 'claw-continue-goal')) {

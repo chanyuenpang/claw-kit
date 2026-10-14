@@ -14,7 +14,7 @@ test('Cindy settings panel documents the two project-owned configuration layers'
   const panel = fs.readFileSync(path.join(testDir, '..', 'plugin', 'panel.html'), 'utf8');
   const updateReference = fs.readFileSync(path.resolve(testDir, '../../..', '.agents', 'skills', 'claw-kit-doc', 'references', 'update.md'), 'utf8');
   assert.equal(manifest.settingsHtml, 'panel.html');
-  assert.equal(manifest.slots.includes('panel'), false);
+  assert.equal(manifest.panel, undefined);
   assert.match(panel, /\.claw\/project\.json/);
   assert.match(panel, /\.claw\/project-override\.json/);
   assert.match(panel, /claw check/);

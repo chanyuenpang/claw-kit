@@ -39,6 +39,7 @@
     "export:cindy-plugin": "node ./scripts/export-cindy-plugin.mjs",
     "export:openclaw-plugin": "node ./scripts/export-openclaw-plugin.mjs",
     "export:standard-skills": "node ./scripts/export-standard-skills.mjs",
+    "export:shared-skills": "node ./scripts/shared-skills-artifact.mjs",
     "sync:template-versions": "node .\\scripts\\update-template-versions.mjs",
     "check:template-versions": "node .\\scripts\\update-template-versions.mjs --check",
     "audit:release-versions": "node ./scripts/release-version-audit.mjs",

@@ -17,10 +17,15 @@ When no startup marker is available, confirm that native catalog before the firs
 workflow mutation. Do not use a remotely connected tool to override a different
 current session's trusted host marker.
 
-The current Cindy adapter has no verified first-turn hook prompt injection
-channel: session-created work is asynchronous and does not deliver model prompt
-context. Use the supported native catalog/result declaration; do not invent a
-will-user-message/additionalContext response or claim startup injection occurred.
+The Cindy adapter uses the supported `will-user-message` hook's `event-verdict`
+rewrite to append its host identity and requirement to use the claw workflow for
+development only on the first eligible message in each session. A persistent
+session receipt prevents repetition after plugin restart; later messages pass
+unchanged. It preserves the user text and performs no network or workflow
+operations in this hook. If the rewritten text would exceed the
+Host's 16,000-character limit, it allows the original message unchanged; use the
+native catalog/result identity in that case. Session-created background work is
+still asynchronous. There is no `additionalContext` injection channel here.
 
 ## Cindy Orca agents
 
