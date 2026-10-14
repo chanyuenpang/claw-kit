@@ -4,14 +4,12 @@
 
 An out-of-the-box, beginner-friendly, professional-grade harness for coding agents.
 
+![claw-kit demo: assemble step by step](docs/assets/claw-kit-demo-en.gif)
+
 [![npm version](https://img.shields.io/npm/v/@veewo/claw)](https://www.npmjs.com/package/@veewo/claw)
 [![npm downloads](https://img.shields.io/npm/dm/@veewo/claw)](https://www.npmjs.com/package/@veewo/claw)
 [![license](https://img.shields.io/npm/l/@veewo/claw)](./LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/chanyuenpang/claw-kit)](https://github.com/chanyuenpang/claw-kit/stargazers)
-
-<!-- DEMO GIF/SCREENSHOT: replace this comment with a rendered image of plan → recall → closeout, for example:
-![claw-kit demo](docs/assets/claw-kit-demo.gif)
--->
 
 ## What you get
 

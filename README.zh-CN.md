@@ -4,14 +4,12 @@
 
 开箱即用、小白也能上手的专业级 harness，给 coding agent 用。
 
+![claw-kit 演示：看一步装一步](docs/assets/claw-kit-demo-zh.gif)
+
 [![npm version](https://img.shields.io/npm/v/@veewo/claw)](https://www.npmjs.com/package/@veewo/claw)
 [![npm downloads](https://img.shields.io/npm/dm/@veewo/claw)](https://www.npmjs.com/package/@veewo/claw)
 [![license](https://img.shields.io/npm/l/@veewo/claw)](./LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/chanyuenpang/claw-kit)](https://github.com/chanyuenpang/claw-kit/stargazers)
-
-<!-- DEMO GIF/SCREENSHOT: 把这条注释换成 plan → recall → closeout 的动图或截图，例如：
-![claw-kit demo](docs/assets/claw-kit-demo.gif)
--->
 
 ## 你会得到什么
 
