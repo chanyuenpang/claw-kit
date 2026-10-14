@@ -42,17 +42,17 @@ export function createFixture(name: string): string {
 }
 
 after(() => {
-  for (const directory of temporaryDirectories) {
+  const failures: unknown[] = [];
+  // The shared runtime is created first: remove it last, after project fixtures.
+  for (const directory of [...temporaryDirectories].reverse()) {
     try {
       fs.rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EPERM" && (error as NodeJS.ErrnoException).code !== "EBUSY") {
-        throw error;
-      }
-      // Detached completion workers can briefly retain a Windows directory
-      // handle after all behavioral assertions have completed.
+      failures.push(error);
     }
   }
+  // Do not silently report a passing suite while leaving its temporary files.
+  if (failures.length) throw new AggregateError(failures, "CLI test fixture cleanup failed");
 });
 
 export function localDateDirectory(date: Date): string {
@@ -135,6 +135,7 @@ export function buildSpawnEnv(extra?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     ...process.env,
     CLAW_EMBEDDING_WARMUP_DISABLE_LAUNCH: "1",
     CLAW_SESSION_RUNTIME_DIR: moduleSessionRuntimeDir,
+    CLAW_SESSION_DAEMON_RUNTIME_DIR: path.join(moduleSessionRuntimeDir, "v2"),
   };
   for (const key of ISOLATED_ENV_KEYS) {
     delete env[key];

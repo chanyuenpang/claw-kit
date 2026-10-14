@@ -1,4 +1,4 @@
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -84,14 +84,27 @@ const corePackageVersion = String(
   (JSON.parse(fs.readFileSync(new URL("../../package.json", import.meta.url), "utf-8")) as { version: string }).version,
 );
 
+const temporaryFixtures: string[] = [];
+after(() => {
+  const failures: unknown[] = [];
+  for (const root of temporaryFixtures.reverse()) {
+    try { fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); }
+    catch (error) { failures.push(error); }
+  }
+  if (failures.length) throw new AggregateError(failures, "Core test fixture cleanup failed");
+});
+
 function createFixture(name: string): string {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), `claw-kit-${name}-`));
+  temporaryFixtures.push(root);
   fs.mkdirSync(path.join(root, ".claw", "truth"), { recursive: true });
   return root;
 }
 
 function createEmptyFixture(name: string): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), `claw-kit-${name}-`));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), `claw-kit-${name}-`));
+  temporaryFixtures.push(root);
+  return root;
 }
 
 function taskFile(root: string, taskName: string, ...parts: string[]): string {

@@ -1,4 +1,4 @@
-import test from "node:test";
+import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -20,9 +20,15 @@ import {
 } from "../dist/session-registry-v2.js";
 import { ClawCommandService } from "../dist/command-service.js";
 
+const temporaryRoots: string[] = [];
 function fixture(name: string): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), `claw-daemon-${name}-`));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), `claw-daemon-${name}-`));
+  temporaryRoots.push(root);
+  return root;
 }
+after(() => {
+  for (const root of temporaryRoots) fs.rmSync(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+});
 
 test("daemon and lightweight client share authenticated persistent session commands", async () => {
   const runtimeRoot = fixture("shared-runtime");

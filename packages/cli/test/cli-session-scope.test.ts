@@ -44,6 +44,24 @@ import {
   createClawUpdateNpmShim,
 } from "./cli-test-support.js";
 import { writePlan } from "@veewo/claw-core";
+import { resolveSessionDaemonRuntimeRoot } from "@veewo/claw-client";
+import { SessionRegistryV2 } from "../dist/session-registry-v2.js";
+
+test("CLI fixtures isolate both legacy and v2 records from the user runtime", () => {
+  const env = buildSpawnEnv();
+  assert.equal(env.CLAW_SESSION_RUNTIME_DIR, moduleSessionRuntimeDir);
+  const runtime = resolveSessionDaemonRuntimeRoot(env);
+  assert.equal(runtime, path.join(moduleSessionRuntimeDir, "v2"));
+  // Exercise a real CLI command, not just an environment-string assertion.
+  const cwd = createFixture("runtime-isolation");
+  runClaw(["plan", "create", "--title", "Runtime isolation", "--no-knowledge-capture"], cwd,
+    { CLAW_HOST: "cindy", CLAW_SESSION_ID: "isolated-runtime-probe" });
+  const registry = new SessionRegistryV2(runtime);
+  const records = fs.readdirSync(path.join(runtime, "sessions"))
+    .map(key => registry.read(key));
+  assert.ok(records.some(record => record.agentSessionId === "isolated-runtime-probe"
+    && record.canonicalWorkdir === cwd), JSON.stringify(records));
+});
 
 /** Materialize pre-upgrade storage, never call the removed public selector. */
 async function legacySession(title: string, cwd: string, env: NodeJS.ProcessEnv, host = "opencode") {
