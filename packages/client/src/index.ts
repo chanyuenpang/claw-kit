@@ -73,7 +73,8 @@ export type ClawClientOptions = {
 };
 
 export class ClawClient {
-  readonly runtimeRoot: string;
+  private runtimeRootValue: string;
+  private runtimeRootPinned: boolean;
   readonly daemonEntryPath?: string;
   readonly host?: string;
   readonly startupTimeoutMs: number;
@@ -81,17 +82,37 @@ export class ClawClient {
   readonly clientKind: SessionClientInfo["kind"];
   readonly receiptOnly: boolean;
 
+  get runtimeRoot(): string {
+    return this.runtimeRootValue;
+  }
+
   constructor(options: ClawClientOptions = {}) {
-    this.runtimeRoot = path.resolve(options.runtimeRoot ?? resolveSessionDaemonRuntimeRoot());
     this.daemonEntryPath = options.daemonEntryPath;
     this.host = options.host;
     this.startupTimeoutMs = options.startupTimeoutMs ?? 5000;
     this.requestTimeoutMs = options.requestTimeoutMs ?? 30_000;
     this.clientKind = options.clientKind ?? "node";
     this.receiptOnly = options.receiptOnly === true;
+    if (options.runtimeRoot) {
+      this.runtimeRootValue = path.resolve(options.runtimeRoot);
+      this.runtimeRootPinned = true;
+      return;
+    }
+    try {
+      this.runtimeRootValue = resolveSessionDaemonRuntimeRoot();
+      this.runtimeRootPinned = true;
+    } catch {
+      // Home and XDG locations are not writable. open() retries with the project.
+      this.runtimeRootValue = "";
+      this.runtimeRootPinned = false;
+    }
   }
 
   async open(agentSessionId: string, workdir: string): Promise<ClawSession> {
+    if (!this.runtimeRootPinned) {
+      this.runtimeRootValue = resolveSessionDaemonRuntimeRoot(process.env, workdir);
+      this.runtimeRootPinned = true;
+    }
     const startedAt = performance.now();
     const warm = Boolean(readDaemonState(this.runtimeRoot));
     const canonicalWorkdir = path.resolve(workdir);
@@ -268,6 +289,7 @@ class JsonlConnection {
   static connect(state: SessionDaemonState, requestTimeoutMs: number): Promise<JsonlConnection> {
     return new Promise((resolve, reject) => {
       const socket = net.createConnection({ host: state.host, port: state.port });
+      socket.setNoDelay(true);
       const onError = (error: Error) => reject(error);
       socket.once("error", onError);
       socket.once("connect", () => {

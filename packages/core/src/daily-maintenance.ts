@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { readJsonFile, tryWithFileLock, writeJsonFile } from "./io.js";
 import { pruneStaleSessionBindings } from "./session-bindings.js";
@@ -63,12 +64,13 @@ export function runDailyMaintenance(project: ProjectContext, options: {
       knowledgeSessionsRemoved: legacyRuntime.sessionsRemoved,
     };
   });
-  const sessionBase = sessionWorkflowBaseDir(options.env);
+  const sessionBase = sessionWorkflowBaseDir(options.env, os.homedir(), project.projectRoot);
   const sessionResult = runOncePerDay(path.join(sessionBase, ".maintenance.json"), date, () => ({
     expiredSessionsRemoved: sweepExpiredSessionWorkflows({
       now: now.getTime(),
       excludeSessionKey: options.excludeSessionKey,
       env: options.env,
+      projectDir: project.projectRoot,
     }).length,
   }));
   return {

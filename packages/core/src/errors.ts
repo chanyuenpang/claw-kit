@@ -56,6 +56,7 @@ export type ClawErrorCode =
   | "CLI_PLUGIN_VERSION_LAGGING"
   | "PLAN_SCOPE_REMOVED"
   | "PROJECT_INITIALIZATION_FAILED"
+  | "RUNTIME_DIR_NOT_WRITABLE"
   | "INPUT_REQUIRED";
 
 export type ClawExecutionFailure = {

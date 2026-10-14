@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { MemoryEmbeddingConfig } from "./types.js";
+import { projectRuntimeDirectory, resolveWritableRuntimeDirectory, safeRuntimeUser } from "./runtime-directory.js";
 
 export const EMBEDDING_DAEMON_PROTOCOL_VERSION = 1;
 export const EMBEDDING_DAEMON_MAX_MESSAGE_BYTES = 10 * 1024 * 1024;
@@ -70,15 +71,25 @@ const START_LOCK_FILE_NAME = "startup.lock";
 const DEFAULT_START_TIMEOUT_MS = 5000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 2 * 60 * 60 * 1000;
 
-export function resolveEmbeddingDaemonRuntimeDir(env: NodeJS.ProcessEnv = process.env): string {
+export function resolveEmbeddingDaemonRuntimeDir(env: NodeJS.ProcessEnv = process.env, projectCwd?: string): string {
   const explicit = env.CLAW_EMBEDDING_DAEMON_RUNTIME_DIR?.trim();
   if (explicit) {
-    return path.resolve(explicit);
+    return resolveWritableRuntimeDirectory({
+      explicitPath: explicit,
+      explicitEnvName: "CLAW_EMBEDDING_DAEMON_RUNTIME_DIR",
+      candidates: [],
+      purpose: "Embedding daemon",
+    });
   }
   const installRoot = fileURLToPath(new URL(".", import.meta.url));
-  const identity = `${os.userInfo().username}\0${os.homedir()}\0${installRoot}\0${process.versions.node.split(".")[0]}\0${EMBEDDING_DAEMON_PROTOCOL_VERSION}`;
+  const identity = `${safeRuntimeUser()}\0${os.homedir()}\0${installRoot}\0${process.versions.node.split(".")[0]}\0${EMBEDDING_DAEMON_PROTOCOL_VERSION}`;
   const suffix = createHash("sha256").update(identity).digest("hex").slice(0, 16);
-  return path.join(os.tmpdir(), `claw-embedding-${suffix}`);
+  return resolveWritableRuntimeDirectory({
+    explicitEnvName: "CLAW_EMBEDDING_DAEMON_RUNTIME_DIR",
+    candidates: [path.join(os.tmpdir(), `claw-embedding-${suffix}`)],
+    projectFallback: projectCwd ? projectRuntimeDirectory(projectCwd, "embedding-daemon") : undefined,
+    purpose: "Embedding daemon",
+  });
 }
 
 export function getEmbeddingDaemonStatePath(runtimeDir: string): string {
@@ -100,7 +111,7 @@ export async function requestPersistentEmbedding(
   if (env.CLAW_EMBEDDING_PERSISTENT_WORKER === "0") {
     return null;
   }
-  const runtimeDir = resolveEmbeddingDaemonRuntimeDir(env);
+  const runtimeDir = resolveEmbeddingDaemonRuntimeDir(env, input.projectCwd);
   fs.mkdirSync(runtimeDir, { recursive: true, mode: 0o700 });
 
   const existingState = readEmbeddingDaemonState(runtimeDir);
@@ -217,6 +228,7 @@ export async function sendEmbeddingDaemonRequest(
   const timeoutMs = readPositiveInteger(env.CLAW_EMBEDDING_DAEMON_REQUEST_TIMEOUT_MS, DEFAULT_REQUEST_TIMEOUT_MS);
   const response = await new Promise<EmbeddingDaemonResponse>((resolve, reject) => {
     const socket = net.createConnection({ host: "127.0.0.1", port: state.port });
+    socket.setNoDelay(true);
     let payload = "";
     const timer = setTimeout(() => {
       socket.destroy();

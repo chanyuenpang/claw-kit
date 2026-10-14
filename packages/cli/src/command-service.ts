@@ -1,10 +1,10 @@
 import { buildKnowledgeDispatch } from "./knowledge-dispatch.js";
+import { buildMemoryIndexWithoutBlocking } from "./memory-index-job.js";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import {
   ClawError,
-  buildMemoryIndex,
   activatePlan,
   appendSubplanReturnGuidance,
   completeSubplanAndRestoreParent,
@@ -489,7 +489,7 @@ export class ClawCommandService {
       }
       case "search.index.refresh":
         // The session daemon owns cwd; callers cannot target another project.
-        return { output: buildMemoryIndex({ cwd, scope: "project" }) };
+        return { output: await buildMemoryIndexWithoutBlocking(cwd) };
       case "knowledge.claim":
       case "knowledge.claim.receipt": {
         const { finalizeId } = request.input as { finalizeId: string };
@@ -613,7 +613,7 @@ export class ClawCommandService {
       if (!owner || owner.ownerSessionId !== context.agentSessionId || !["succeeded", "failed", "expired"].includes(job.status)) return { output };
       const project = owner.scope === "project"
         ? resolveProjectContext(owner.projectRoot)
-        : resolveSessionWorkflowContext(owner.ownerSessionId, { readOnly: true });
+        : resolveSessionWorkflowContext(owner.ownerSessionId, { readOnly: true, cwd: owner.projectRoot });
       if (!project || path.resolve(project.projectRoot) !== path.resolve(owner.projectRoot)) return { output };
       const delegatePath = ensureInsideDir(project.tasksDir, path.relative(project.tasksDir, owner.planPath));
       if (!delegatePath || delegatePath !== path.resolve(owner.planPath)) return { output };
@@ -909,7 +909,7 @@ export class ClawCommandService {
     catch (error) {
       if (!(error instanceof ClawError) || !["PROJECT_ROOT_NOT_FOUND", "CLAW_DIR_NOT_FOUND"].includes(error.code)) throw error;
     }
-    const session = resolveSessionWorkflowContext(this.ownerSessionKey(context));
+    const session = resolveSessionWorkflowContext(this.ownerSessionKey(context), { cwd: context.cwd });
     if (session) projects.push(session);
     return projects;
   }

@@ -71,6 +71,54 @@ test("typed command service uses explicit context and keeps current plan in v2 s
   assert.equal(registry.read(opened.identity.sessionKeyHash).currentPlan?.taskName, "service-plan");
 });
 
+test("search and index refresh do not hold the session execution queue", async () => {
+  const runtimeRoot = fixture("search-queue-runtime");
+  const projectRoot = fixture("search-queue-project");
+  initProject({ cwd: projectRoot, projectName: "Search Queue", planning: false });
+  fs.mkdirSync(path.join(projectRoot, "docs"), { recursive: true });
+  fs.writeFileSync(path.join(projectRoot, "docs", "allowed.md"), "session setup documentation", "utf-8");
+  const registry = new SessionRegistryV2(runtimeRoot);
+  let executions = 0;
+  const original = registry.withExecution.bind(registry);
+  registry.withExecution = async (key, action) => {
+    executions += 1;
+    return original(key, action);
+  };
+  const executor = new SessionCommandExecutor(registry);
+  const identity = { agentSessionId: "agent-search-queue", workdir: projectRoot, client: { kind: "adapter" as const, host: "dsh" } };
+  const previousMock = process.env.CLAW_EMBEDDING_MOCK;
+  const previousDaemon = process.env.CLAW_IN_SESSION_DAEMON;
+  process.env.CLAW_EMBEDDING_MOCK = "1";
+  process.env.CLAW_IN_SESSION_DAEMON = "1";
+  try {
+    await assert.rejects(
+      () => executor.execute(identity, { operation: "search", input: { query: "setup" } }),
+      (error: unknown) => error instanceof Error && "code" in error && (error as { code: string }).code === "MEMORY_VECTOR_INDEX_REQUIRED",
+    );
+    assert.equal(executions, 0);
+    try {
+      const refreshed = await executor.execute(identity, { operation: "search.index.refresh", input: {} });
+      assert.equal((refreshed.output as { scope?: string }).scope, "project");
+      const found = await executor.execute(identity, { operation: "search", input: { query: "setup" } });
+      assert.equal(Array.isArray((found.output as { results?: unknown }).results), true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!message.includes("fts5")) throw error;
+    }
+    assert.equal(executions, 0);
+    await executor.execute(identity, {
+      operation: "plan.create",
+      input: { taskName: "queue-plan", title: "Queue plan", goalText: "Mutations still queue" },
+    });
+    assert.equal(executions, 1);
+  } finally {
+    if (previousMock === undefined) delete process.env.CLAW_EMBEDDING_MOCK;
+    else process.env.CLAW_EMBEDDING_MOCK = previousMock;
+    if (previousDaemon === undefined) delete process.env.CLAW_IN_SESSION_DAEMON;
+    else process.env.CLAW_IN_SESSION_DAEMON = previousDaemon;
+  }
+});
+
 test("session command refreshes only its resolved project index", async () => {
   const runtimeRoot = fixture("index-runtime");
   const projectRoot = fixture("index-project");

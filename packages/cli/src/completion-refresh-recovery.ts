@@ -12,7 +12,7 @@ import { queueCompletionRefresh, resumeCompletionRefresh, tryReadCompletionRefre
  * Recovery needs a later entry if the process dies before launching its worker.
  */
 export function reconcileCompletionRefresh(cwd: string, sessionId?: string): CompletionRefreshResult[] {
-  const sessionDir = sessionId ? sessionWorkflowDir(sessionId) : undefined;
+  const sessionDir = sessionId ? sessionWorkflowDir(sessionId, process.env, cwd) : undefined;
   const manifestPath = sessionDir ? path.join(sessionDir, "session.json") : undefined;
   const manifest = manifestPath && fs.existsSync(manifestPath)
     ? JSON.parse(fs.readFileSync(manifestPath, "utf8")) as { originCwd?: string } : undefined;

@@ -33,7 +33,7 @@ export class SessionCommandExecutor {
         if (!(error instanceof ClawError) || error.code !== "CLAW_DIR_NOT_FOUND") throw error;
         projectAvailable = false;
       }
-      const legacySession = resolveSessionWorkflowContext(context.agentSessionId, { readOnly: true });
+      const legacySession = resolveSessionWorkflowContext(context.agentSessionId, { readOnly: true, cwd: context.cwd });
       if (legacySession) await recoverProjectFocusTransitions({ project: legacySession, sessionStore: this.service.focusStore });
       if (projectAvailable || legacySession) await this.service.reconcileCanonicalFocus(context);
       return action(context, canonical.sessionKeyHash);
@@ -54,6 +54,20 @@ export class SessionCommandExecutor {
     let request;
     try { request = decodeClawCommand(value, { allowTerminalSearchDir: identity.client.kind === "terminal" }); }
     catch (error) { throw withExecutionFailure(error, { operation: "command.decode", phase: "prepare", outcome: "known", effect: "none" }); }
+    // Search does not mutate focus. Holding the session execution queue across
+    // index refresh blocks the next command for the whole embedding run.
+    if (request.operation === "search" || request.operation === "search.index.refresh") {
+      const canonical = createSessionIdentity(identity.agentSessionId, identity.workdir);
+      const context: CommandContext = {
+        cwd: canonical.canonicalWorkdir,
+        agentSessionId: canonical.agentSessionId,
+        sessionKey: sessionFocusKey(canonical),
+        host: identity.client.host,
+        mode: "session",
+      };
+      const result = await this.service.execute(context, request);
+      return { schemaVersion: 1 as const, ...result };
+    }
     return this.withSession(identity, async (context, hash) => {
       const result = await this.service.execute(context, request);
       try { await this.registry.touch(hash); }
