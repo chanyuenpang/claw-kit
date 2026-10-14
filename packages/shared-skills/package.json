@@ -1,6 +1,6 @@
 {
   "name": "@veewo/claw-skills",
-  "version": "0.2.53",
+  "version": "0.2.56",
   "private": true,
   "description": "Complete canonical claw-kit skills for shared agent discovery.",
   "license": "MIT",
