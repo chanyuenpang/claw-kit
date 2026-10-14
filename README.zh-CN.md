@@ -19,6 +19,8 @@
 
 计划和结论留在仓库里。agent 把工作流写到 `.claw/tasks/`，下次会话再把它找回来。收口把可复用的 Truth 笔记和 ADR 写进项目，需要时由 agent 自己去搜这些笔记。持久会话会一直沿用同一个工作目录和当前计划。
 
+想看记录员实际记了什么？翻翻我们自己仓库的 [`.claw`](https://github.com/chanyuenpang/claw-kit/tree/main/.claw) 目录，claw-kit 本身就是用 claw-kit 开发的。
+
 ### 代码质量 skills
 
 这些 skill 在写代码之前和旁边把改动框清楚：

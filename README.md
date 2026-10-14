@@ -19,6 +19,8 @@ An out-of-the-box, beginner-friendly, professional-grade harness for coding agen
 
 The plan and the findings stay in the repo. The agent writes the workflow under `.claw/tasks/` and recovers it on a later session. Closeout writes reusable Truth notes and ADRs into the project, and the agent searches those notes when it needs them. A persistent session keeps the same workdir and current plan.
 
+Want to see what the note-taker actually records? Browse this repo's own [`.claw`](https://github.com/chanyuenpang/claw-kit/tree/main/.claw) folder — claw-kit is built with claw-kit.
+
 ### Code-quality skills
 
 These skills shape the change before and around the code:
