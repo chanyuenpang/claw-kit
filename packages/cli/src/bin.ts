@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
-import { shouldLoadCliForInvocation } from "./knowledge-hook-preflight.js";
+import { exitIfUnsupportedNode } from "./node-runtime.js";
+
+exitIfUnsupportedNode();
 
 const originalEmitWarning = process.emitWarning.bind(process);
 
@@ -20,6 +22,7 @@ async function main(): Promise<void> {
     await runCommandEntry();
     return;
   }
+  const { shouldLoadCliForInvocation } = await import("./knowledge-hook-preflight.js");
   if (!await shouldLoadCliForInvocation(args, process.cwd(), process.env)) {
     return;
   }
