@@ -2,7 +2,7 @@
 
 # claw-kit
 
-面向 agent 的项目工作流：先把工作计划清楚，回忆仓库里已经知道的内容，再在 `.claw` 里收口，让长时任务跨过对话还能接着做。
+开箱即用、小白也能上手的专业级 harness，给 coding agent 用。
 
 [![npm version](https://img.shields.io/npm/v/@veewo/claw)](https://www.npmjs.com/package/@veewo/claw)
 [![npm downloads](https://img.shields.io/npm/dm/@veewo/claw)](https://www.npmjs.com/package/@veewo/claw)
@@ -13,25 +13,88 @@
 ![claw-kit demo](docs/assets/claw-kit-demo.gif)
 -->
 
+## 你会得到什么
+
+### 项目记忆
+
+计划和结论留在仓库里。`claw plan create` 把工作流写到 `.claw/tasks/`。之后的 `claw context` 会在会话仍绑定该计划时返回这个 `activeWorkflow`。收口把可复用的 Truth 笔记和 ADR 写进项目。跑过一次 `claw search index --refresh` 之后，`claw search` 就能把它们找回来。`claw session open` 会在这次终端会话里一直沿用同一个工作目录和当前计划。
+
+### 代码质量 skills
+
+这些 skill 在写代码之前和旁边把改动框清楚：
+
+- **planning** 把一句话需求整理成要求、范围、完成标准和可以勾掉的任务。
+- **feature-architecture** 为高风险或跨系统的改动写一份短设计：谁拥有什么、不变量、一条失败路径，以及最小的一块实现。它只读源码。有活动任务时，它新增的唯一文件是那份设计报告。
+- **researcher** 针对代码、行为，或已有的 Truth 与 ADR，回答一个有边界的问题，并给出证据。它不改仓库。
+
+标准 skill 集，以及 DSH、Codex、OpenCode 适配器，都包含这三项。Cindy 公开插件包含 planning 和 researcher。
+
+### 团队协作
+
+`.claw/project.json` 是团队共享的工作流：规划开或关、默认计划模板、回忆设置。`.claw/project-override.json` 留给一个人的本地偏好。重复出现的工作可以放成 `.claw/templates` 里的模板。Truth 和 ADR 写进项目，下一个人可以直接读。提交它们仍走你平常的 git 流程。
+
+仓库完成 `.claw` 初始化之后，这套 harness 才会加入该仓库。
+
+## 支持的平台
+
+| agent 跑在哪里 | 你用什么 | 从哪开始 |
+| --- | --- | --- |
+| 任何能跑 shell 的平台 | `claw` CLI，加上标准 skills 和入口规则。同一套计划、回忆、收口。 | 通用 |
+| DeepSeek Harness (DSH) | 专用适配器。一个 `claw_run` 工具，进度和原生 goal 同步，知识收口由适配器分发。npm：`@veewo/dsh-claw-kit`。 | 优先从这里开始 |
+| Codex | 专用适配器。Marketplace 插件，带 skills、钩子和同一套工作流。 | 优先从这里开始 |
+| Cindy | 专用适配器。从 Cindy marketplace 安装 `claw-kit-cindy`。 | 专用适配器 |
+| OpenCode | 专用适配器。插件、垫片、agents 和 skills。 | 专用适配器 |
+
+优先安装 DSH 或 Codex。两者各带九个 skill，包括知识沉淀和该宿主的更新 skill，并且都会在宿主里应用同一套进度和 goal 动作。Cindy 和 OpenCode 是技能面更小的专用适配器。OpenClaw 目前只带文档 skill，见 [包地图](#package-map)。
+
 ## 快速开始
+
+有 Node.js 和 npm 就可以开始。
+
+### 在 DeepSeek Harness 或 Codex 上
+
+先装 CLI，再装适配器。插件会把 skills 一起带上。
 
 ```bash
 npm install -g @veewo/claw
-claw init
-claw plan create "My task" --goal "Define the first task"
 ```
 
-搜索索引、宿主适配器，以及其余安装步骤见 [安装 CLI](#install-the-cli)。
+- **DeepSeek Harness：** 运行 `dsh plugin --profile web add @veewo/dsh-claw-kit@latest`，然后重启 Host。逐步说明：[安装 DSH 适配器](#install-the-dsh-adapter)。
+- **Codex：** 添加 marketplace 并安装 **Claw Kit**。逐步说明：[安装 Codex 插件](#install-the-codex-plugin)。
 
-## 为什么用 claw-kit（相对只放一份 AGENTS.md / 宿主自带记忆）
+打开项目，用平常的话说一句就行，例如：「帮我计划怎么修登录 bug。」
 
-`AGENTS.md`（以及同类宿主说明文件）是一份常驻简报，告诉 agent 在这个仓库里该怎么工作。宿主自带记忆保存的是当前对话里的片段。`claw-kit` 是围着这份简报运转的项目工作流。
+### 在其他 agent 上
 
-- **计划留在会话之外。** 在已经初始化的 `.claw` 项目里，`claw plan create` 会把工作流写到 `.claw/tasks/`。之后的 `claw context` 会在会话仍绑定该计划时返回这个 `activeWorkflow`（讨论中、执行中或等待中）。使用 `claw session open` 后，后续命令会沿用同一个工作目录和当前计划。
-- **回忆读的是项目。** 收口可以把可复用的 Truth 和 ADR 笔记沉淀进仓库。`claw search index --refresh` 建好本地索引之后，`claw search` 会查询这个库，下一轮任务可以从这些笔记开始。
-- **同一套循环，团队共享，宿主可换。** `.claw/project.json` 是团队工作流：规划可以保持开启、关掉，或接到某个 planning skill。`.claw/project-override.json` 留给个人偏好。同一套循环既可以通过 `claw` CLI 跑，也可以通过宿主适配器（Codex、OpenCode、Cindy、DSH、OpenClaw）跑，还可以嵌进另一个 harness。
+```bash
+npm install -g @veewo/claw
+cd your-project
+export CLAW_SESSION_ID=my-first-session
+claw init
+claw plan create "Fix the login bug" --goal "Find why login fails and patch it"
+```
 
-只有仓库完成 `.claw` 初始化之后，这套工作流才会加入该仓库。
+这几行分别做什么：
+
+1. `npm install -g @veewo/claw` 把 `claw` 命令放到 PATH 上。
+2. `CLAW_SESSION_ID` 是这次对话的一个固定名字，你自己起。下次沿用同一个名字，就能找到同一份计划。
+3. `claw init` 在这个仓库里创建 `.claw/`。
+4. `claw plan create` 写下第一份计划，并打印 agent 该跟着走的步骤。
+
+让 agent 自己把这套循环跑起来，还要做一次这两步：
+
+1. 把 [packages/standard-adapter/README.md](packages/standard-adapter/README.md) 里点名的 skills 复制到你的 agent 扫描 skill 的文件夹。
+2. 把 [入口规则](packages/standard-adapter/docs/entry-contract.md) 贴进 agent 的常驻说明（CLAUDE.md、AGENTS.md 或自定义说明）。
+
+Cindy 和 OpenCode 的安装在下面各自的章节里。
+
+### 让这个仓库被记住（每个仓库一次）
+
+```bash
+claw search index --refresh
+```
+
+这会建好本地搜索索引。之后 `claw search "login"` 会去查项目里已有的 Truth 笔记和 ADR。
 
 `claw-kit` 是面向 agent 工作的项目级工作流与知识层。
 
@@ -64,7 +127,7 @@ GitHub Pages 产品介绍在 [docs/index.html](docs/index.html)，是一份中�
 
 - 在已初始化的项目里，`claw-kit` 负责项目工作流层：计划、回忆、truth/ADR 和收口。
 - GitNexus 是可选搭档，用于更深的代码调查和关系追踪。
-- 宿主适配器把同一套工作流模型带进 Codex、OpenCode 这类环境；团队需要自定义宿主形态时，也可以把工作流嵌进另一个 harness。
+- 宿主适配器把同一套工作流带进 DeepSeek Harness (DSH)、Codex、Cindy 和 OpenCode。其他能跑 shell 的 agent 使用 CLI 加上标准 skills。工作流也可以嵌进另一个 harness。
 
 ## 工作流形状
 
@@ -136,7 +199,7 @@ claw session open G:\Projects\my-project agent-session-id
 
 标准流程保留完整循环：`claw context` 恢复会话绑定的计划，`claw plan create` 启动项目级计划，`plan done` 时开启了沉淀的工作走标准收口负责人。默认是同一 agent 上的 `knowledge prepare/complete --source agent-memory`。显式配置的后台路线使用它提供的 capture/dispatch 步骤，以及一份不捕获知识的辅助 writer 计划。`knowledgeCapture: false` 阻止递归的知识累积；不需要公开的存储范围选择。详见 [packages/standard-adapter/README.md](packages/standard-adapter/README.md)。
 
-## 安装 Codex 插件
+<h2 id="install-the-codex-plugin">安装 Codex 插件</h2>
 
 Codex 插件是与 CLI 分开的分发面。在另一台机器上，先添加官方仓库 marketplace：
 
@@ -198,7 +261,7 @@ npm run install:opencode-plugin
 
 Cindy 适配器从它自己的 Git marketplace 仓库分发。在 Cindy 里把 `https://github.com/chanyuenpang/claw-kit-cindy-adapter.git` 加为 marketplace，安装 `claw-kit-cindy` 条目，检查权限并启用它。`claw` CLI 仍然是单独安装。完整的安装和更新顺序见 [packages/cindy-adapter/README.md](packages/cindy-adapter/README.md)。
 
-## 安装 DSH 适配器
+<h2 id="install-the-dsh-adapter">安装 DSH 适配器</h2>
 
 DSH 适配器是安装到 DSH profile 里的 npm 包。从已发布的注册表：
 
@@ -221,7 +284,7 @@ npm run install:dsh-plugin    # dsh plugin --profile web add <tarball> (--profil
 
 适配器会自动消费 CLI hostActions（进度投影 + 原生 goal 同步），并通过原生 DSH 子代理自动分发知识收口；模型只驱动单一的 `claw_run` 工具。详见 [packages/dsh-adapter/README.md](packages/dsh-adapter/README.md)。
 
-## 包地图
+<h2 id="package-map">包地图</h2>
 
 - `@veewo/claw`
   - 在项目里运行 `.claw` 工作流的 CLI 入口

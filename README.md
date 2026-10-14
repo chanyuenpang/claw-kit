@@ -2,7 +2,7 @@
 
 # claw-kit
 
-A project workflow for agents: plan the work, recall what the repo already knows, and close it out in `.claw` so long-running tasks survive the chat.
+An out-of-the-box, beginner-friendly, professional-grade harness for coding agents.
 
 [![npm version](https://img.shields.io/npm/v/@veewo/claw)](https://www.npmjs.com/package/@veewo/claw)
 [![npm downloads](https://img.shields.io/npm/dm/@veewo/claw)](https://www.npmjs.com/package/@veewo/claw)
@@ -13,25 +13,88 @@ A project workflow for agents: plan the work, recall what the repo already knows
 ![claw-kit demo](docs/assets/claw-kit-demo.gif)
 -->
 
+## What you get
+
+### Project memory
+
+The plan and the findings stay in the repo. `claw plan create` writes the workflow under `.claw/tasks/`. A later `claw context` returns that `activeWorkflow` when the session still has one. Closeout writes reusable Truth notes and ADRs into the project. After one `claw search index --refresh`, `claw search` recalls them. `claw session open` keeps the same workdir and current plan for the rest of that terminal session.
+
+### Code-quality skills
+
+These skills shape the change before and around the code:
+
+- **planning** turns a request into requirements, scope, completion criteria, and tasks you can check off.
+- **feature-architecture** writes a short design for a high-risk or cross-system change: owners, invariants, one failure path, and the smallest slice. It reads the source. With an active task, the design report is the one file it adds.
+- **researcher** answers a bounded question about the code, the behavior, or existing Truth and ADR notes, with evidence, and does not edit the repo.
+
+The standard skill set and the DSH, Codex, and OpenCode adapters include all three. Cindy's public plugin includes planning and researcher.
+
+### Team collaboration
+
+`.claw/project.json` is the workflow the team shares: planning on or off, the default plan template, and recall settings. `.claw/project-override.json` holds one person's local preferences. Repeated work can live as templates under `.claw/templates`. Truth and ADR files are written into the project for the next person to read. Committing them stays in your normal git flow.
+
+The harness joins a repository after that repository is initialized for `.claw`.
+
+## Platforms
+
+| Where the agent runs | What you use | Where to start |
+| --- | --- | --- |
+| Any platform that can run a shell | `claw` CLI plus the standard skills and entry rules. Same plan, recall, and closeout loop. | Universal |
+| DeepSeek Harness (DSH) | Dedicated adapter. One `claw_run` tool, progress and native goal sync, knowledge closeout dispatched by the adapter. npm: `@veewo/dsh-claw-kit`. | Start here |
+| Codex | Dedicated adapter. Marketplace plugin with skills, hooks, and the same workflow. | Start here |
+| Cindy | Dedicated adapter. Install `claw-kit-cindy` from the Cindy marketplace. | Dedicated |
+| OpenCode | Dedicated adapter. Plugin, shim, agents, and skills. | Dedicated |
+
+DSH and Codex are the adapters to install first. Each bundles nine skills, including knowledge capture and a host update skill, and both apply the shared progress and goal actions in the host. Cindy and OpenCode are dedicated adapters with a smaller skill set. OpenClaw ships the documentation skill only; see the [package map](#package-map).
+
 ## Quick start
+
+Node.js and npm are enough to begin.
+
+### On DeepSeek Harness or Codex
+
+Install the CLI, then the adapter. The plugin brings the skills with it.
 
 ```bash
 npm install -g @veewo/claw
-claw init
-claw plan create "My task" --goal "Define the first task"
 ```
 
-Search indexing, host adapters, and the rest of setup are in [Install the CLI](#install-the-cli).
+- **DeepSeek Harness:** run `dsh plugin --profile web add @veewo/dsh-claw-kit@latest`, then restart the host. Walkthrough: [Install the DSH adapter](#install-the-dsh-adapter).
+- **Codex:** add the marketplace and install **Claw Kit**. Walkthrough: [Install the Codex plugin](#install-the-codex-plugin).
 
-## Why claw-kit (vs. just AGENTS.md / built-in memory)
+Open the project and ask in ordinary language, for example: "Plan a fix for the login bug."
 
-An `AGENTS.md` file — or the same kind of host instruction file — is a standing brief for how the agent should work in this repo. A host's built-in memory holds pieces of the current conversation. `claw-kit` is the project workflow around that brief.
+### On any other agent
 
-- **Plans survive the session.** In an initialized `.claw` project, `claw plan create` writes a workflow under `.claw/tasks/`. A later `claw context` returns that `activeWorkflow` when the session still has one (discussing, active, or waiting). With `claw session open`, later commands keep the same workdir and current plan.
-- **Recall reads the project.** Closeout can deposit reusable Truth and ADR notes into the repo. After `claw search index --refresh` builds the local index, `claw search` queries that store so the next task can start from those notes.
-- **One loop, shared by the team, portable across hosts.** `.claw/project.json` is the team workflow: planning can stay on, be turned off, or route through a planning skill. `.claw/project-override.json` keeps personal preferences. The same loop runs through the `claw` CLI or a host adapter (Codex, OpenCode, Cindy, DSH, OpenClaw) and can sit inside another harness.
+```bash
+npm install -g @veewo/claw
+cd your-project
+export CLAW_SESSION_ID=my-first-session
+claw init
+claw plan create "Fix the login bug" --goal "Find why login fails and patch it"
+```
 
-The workflow joins a repository only after that repository is initialized for `.claw`.
+What those lines do:
+
+1. `npm install -g @veewo/claw` puts the `claw` command on your PATH.
+2. `CLAW_SESSION_ID` is any stable name for this conversation. Reuse it and the next turn finds the same plan.
+3. `claw init` creates `.claw/` in this repo.
+4. `claw plan create` writes the first plan and prints the steps the agent should follow.
+
+Two one-time steps so the agent runs that loop on its own:
+
+1. Copy the skills named in [packages/standard-adapter/README.md](packages/standard-adapter/README.md) into the folder your agent scans for skills.
+2. Paste [the entry rules](packages/standard-adapter/docs/entry-contract.md) into the agent's standing instructions (CLAUDE.md, AGENTS.md, or custom instructions).
+
+Cindy and OpenCode have their own install sections below.
+
+### Remember this repo (once)
+
+```bash
+claw search index --refresh
+```
+
+That builds the local search index. Afterward, `claw search "login"` looks up Truth notes and ADRs already in the project.
 
 `claw-kit` is a project-level workflow and knowledge layer for agentic work.
 
@@ -65,7 +128,7 @@ The GitHub Pages product deck lives in [docs/index.html](docs/index.html) and is
 
 - `claw-kit` owns the project workflow layer inside initialized projects: plan, recall, truth/ADR, and closeout.
 - GitNexus is an optional companion for deeper code investigation and relationship tracing.
-- Host adapters bring the same workflow model into environments like Codex and OpenCode, and the workflow can also be embedded into another harness when teams need a custom host shape.
+- Host adapters bring the same workflow into DeepSeek Harness (DSH), Codex, Cindy, and OpenCode. Any other agent that can run a shell uses the CLI plus the standard skills. The workflow can also sit inside another harness.
 
 ## Workflow shape
 
