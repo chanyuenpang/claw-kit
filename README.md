@@ -1,4 +1,37 @@
+[English](README.md) · [简体中文](README.zh-CN.md)
+
 # claw-kit
+
+A project workflow for agents: plan the work, recall what the repo already knows, and close it out in `.claw` so long-running tasks survive the chat.
+
+[![npm version](https://img.shields.io/npm/v/@veewo/claw)](https://www.npmjs.com/package/@veewo/claw)
+[![npm downloads](https://img.shields.io/npm/dm/@veewo/claw)](https://www.npmjs.com/package/@veewo/claw)
+[![license](https://img.shields.io/npm/l/@veewo/claw)](./LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/chanyuenpang/claw-kit)](https://github.com/chanyuenpang/claw-kit/stargazers)
+
+<!-- DEMO GIF/SCREENSHOT: replace this comment with a rendered image of plan → recall → closeout, for example:
+![claw-kit demo](docs/assets/claw-kit-demo.gif)
+-->
+
+## Quick start
+
+```bash
+npm install -g @veewo/claw
+claw init
+claw plan create "My task" --goal "Define the first task"
+```
+
+Search indexing, host adapters, and the rest of setup are in [Install the CLI](#install-the-cli).
+
+## Why claw-kit (vs. just AGENTS.md / built-in memory)
+
+An `AGENTS.md` file — or the same kind of host instruction file — is a standing brief for how the agent should work in this repo. A host's built-in memory holds pieces of the current conversation. `claw-kit` is the project workflow around that brief.
+
+- **Plans survive the session.** In an initialized `.claw` project, `claw plan create` writes a workflow under `.claw/tasks/`. A later `claw context` returns that `activeWorkflow` when the session still has one (discussing, active, or waiting). With `claw session open`, later commands keep the same workdir and current plan.
+- **Recall reads the project.** Closeout can deposit reusable Truth and ADR notes into the repo. After `claw search index --refresh` builds the local index, `claw search` queries that store so the next task can start from those notes.
+- **One loop, shared by the team, portable across hosts.** `.claw/project.json` is the team workflow: planning can stay on, be turned off, or route through a planning skill. `.claw/project-override.json` keeps personal preferences. The same loop runs through the `claw` CLI or a host adapter (Codex, OpenCode, Cindy, DSH, OpenClaw) and can sit inside another harness.
+
+The workflow joins a repository only after that repository is initialized for `.claw`.
 
 `claw-kit` is a project-level workflow and knowledge layer for agentic work.
 
