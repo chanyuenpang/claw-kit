@@ -102,8 +102,11 @@ test("session workflows and daily maintenance use the project when the home runt
   fs.mkdirSync(project);
   initProject({ cwd: project, projectName: "Runtime Fallback", planning: false });
   const previousHome = process.env.HOME;
+  const previousUserProfile = process.env.USERPROFILE;
   const previousRuntime = process.env.CLAW_SESSION_RUNTIME_DIR;
+  // os.homedir() uses USERPROFILE on Windows and HOME on POSIX.
   process.env.HOME = homeFile;
+  process.env.USERPROFILE = homeFile;
   delete process.env.CLAW_SESSION_RUNTIME_DIR;
   try {
     assert.throws(
@@ -126,6 +129,8 @@ test("session workflows and daily maintenance use the project when the home runt
   } finally {
     if (previousHome === undefined) delete process.env.HOME;
     else process.env.HOME = previousHome;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
     if (previousRuntime === undefined) delete process.env.CLAW_SESSION_RUNTIME_DIR;
     else process.env.CLAW_SESSION_RUNTIME_DIR = previousRuntime;
   }

@@ -278,7 +278,7 @@ test("release protocol keeps CLI and coordinated platform gates distinct", async
   assert.match(releaseScript, /--batch/);
   assert.doesNotMatch(releaseScript, /"delegate-writer"/);
   assert.doesNotMatch(releaseScript, /requiredPluginSkills[^\n]*release-claw-kit/);
-  assert.match(releaseScript, /promoteCandidate\(directory, \{ publish \}\)/);
+  assert.match(releaseScript, /promoteCandidate\(directory, \{ publish, trialWaiver \}\)/);
   assert.match(releaseScript, /Publishing requires --candidate/);
 });
 
