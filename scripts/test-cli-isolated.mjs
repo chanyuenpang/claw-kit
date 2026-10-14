@@ -11,7 +11,7 @@ const temporary = await fs.mkdtemp(path.join(parent, 'claw-cli-suite-'));
 let status = 1;
 try {
   status = await new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, ['--test', 'dist-test/**/*.test.js', ...process.argv.slice(2)], {
+    const child = spawn(process.execPath, ['--test', ...process.argv.slice(2), 'dist-test/**/*.test.js'], {
       cwd: packageRoot, stdio: 'inherit', windowsHide: true,
       env: { ...process.env, TEMP: temporary, TMP: temporary, TMPDIR: temporary,
         CLAW_TEST_TEMP_ROOT: temporary,

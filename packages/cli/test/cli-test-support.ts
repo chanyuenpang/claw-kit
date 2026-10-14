@@ -73,13 +73,6 @@ after(async () => {
   }
   // The shared runtime is created first: remove it last, after project fixtures.
   for (const directory of [...temporaryDirectories].reverse()) {
-    const suiteRoot = process.env.CLAW_TEST_TEMP_ROOT;
-    if (suiteRoot) {
-      const relative = path.relative(path.resolve(suiteRoot), directory);
-      // The npm suite owner deletes this tree after this process exits. Do not
-      // partially remove files while this process may still retain handles.
-      if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) continue;
-    }
     try {
       await removeTestDirectory(directory);
     } catch (error) {

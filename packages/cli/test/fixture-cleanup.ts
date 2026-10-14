@@ -22,6 +22,12 @@ export async function waitForTestCompletion(directory: string): Promise<void> {
 }
 
 export async function removeTestDirectory(directory: string): Promise<void> {
+  const suiteRoot = process.env.CLAW_TEST_TEMP_ROOT;
+  if (suiteRoot) {
+    const relative = path.relative(path.resolve(suiteRoot), path.resolve(directory));
+    // The outer npm runner verifies deletion after all test processes exit.
+    if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) return;
+  }
   await waitForTestCompletion(directory);
   const deadline = Date.now() + 10_000;
   for (;;) {
