@@ -70,11 +70,11 @@ export async function startSessionDaemon(options?: {
       const current = registry.read(expired.sessionKeyHash);
       if (current.state !== "disconnected" || Date.parse(current.expiresAt) > Date.now()) return;
       if (current.currentPlan) {
-        const identity = createSessionIdentity(
-          expired.record.agentSessionId,
-          expired.record.canonicalWorkdir,
-        );
         try {
+          const identity = createSessionIdentity(
+            current.agentSessionId,
+            current.canonicalWorkdir,
+          );
           const project = resolveProjectContext(identity.canonicalWorkdir);
           await releaseCurrentPlanFocus({
             project,

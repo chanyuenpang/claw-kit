@@ -32,6 +32,12 @@ test("daemon recovery preserves a missing workspace record without blocking vali
   const registry = new SessionRegistryV2(runtimeRoot);
   const stale = await registry.open("stale", missing, { kind: "node" });
   const healthy = await registry.open("healthy", valid, { kind: "node" });
+  const expired = await registry.open("expired", missing, { kind: "node" });
+  registry.write(expired.identity.sessionKeyHash, {
+    ...expired.record, state: "disconnected", expiresAt: new Date(0).toISOString(),
+    currentPlan: { projectRoot: missing, taskName: "retained", planFile: "plan.json" },
+  });
+  const expiredOriginal = fs.readFileSync(registry.recordPath(expired.identity.sessionKeyHash), "utf8");
   const original = fs.readFileSync(registry.recordPath(stale.identity.sessionKeyHash), "utf8");
   fs.rmdirSync(missing);
   const daemon = await startSessionDaemon({ runtimeRoot, idleTtlMs: 0 });
@@ -45,6 +51,7 @@ test("daemon recovery preserves a missing workspace record without blocking vali
       assert.equal(registry.read(healthy.identity.sessionKeyHash).state, "live");
       await assert.rejects(client.open("stale", missing), { code: "SESSION_IDENTITY_INVALID" });
       assert.ok(await session.status());
+      assert.equal(fs.readFileSync(registry.recordPath(expired.identity.sessionKeyHash), "utf8"), expiredOriginal);
     } finally { await session.close(); }
     fs.mkdirSync(missing);
     const restored = await client.open("stale", missing);

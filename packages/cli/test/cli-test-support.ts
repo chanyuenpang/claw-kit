@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { removeTestDirectory } from "./fixture-cleanup.js";
 import { shouldRunKnowledgeHook } from "../dist/knowledge-hook-preflight.js";
 import { resolveInvocationHost, withoutInvocationHost } from "../dist/invocation-host.js";
 import { resolveSessionWorkflowContext, tryEndKnowledgePlan } from "@veewo/claw-core";
@@ -36,31 +37,39 @@ export function createTemporaryDirectory(prefix: string): string {
 // from other concurrently executed CLI test modules. Individual tests may
 // still override this path through buildSpawnEnv's `extra` argument.
 export const moduleSessionRuntimeDir = createTemporaryDirectory("claw-kit-cli-runtime-");
+const daemonRuntimeRoots = new Set([path.join(moduleSessionRuntimeDir, "v2")]);
+// Some tests invoke Core in-process, so child-only environment isolation is
+// insufficient. Keep their memory workers local and let them retire promptly.
+process.env.CLAW_EMBEDDING_DAEMON_RUNTIME_DIR = path.join(moduleSessionRuntimeDir, "embedding");
+process.env.CLAW_EMBEDDING_DAEMON_IDLE_TTL_MS = "1000";
+process.env.CLAW_SEARCH_DAEMON_IDLE_TTL_MS = "1000";
 
 export function createFixture(name: string): string {
   return createTemporaryDirectory(`claw-kit-cli-${name}-`);
 }
 
-after(() => {
+after(async () => {
   const failures: unknown[] = [];
   // The daemon inherits the first CLI's cwd and can keep that fixture locked
   // on Windows. This runtime was created exclusively by this test module;
   // stop its daemon before deleting either projects or discovery state.
-  const stateFile = path.join(moduleSessionRuntimeDir, "v2", "daemon", "state.json");
-  try {
-    const state = JSON.parse(fs.readFileSync(stateFile, "utf8")) as { pid: number };
-    if (!Number.isSafeInteger(state.pid) || state.pid <= 0 || state.pid === process.pid) {
-      throw new Error("Invalid test daemon pid");
+  for (const runtime of daemonRuntimeRoots) {
+    const stateFile = path.join(runtime, "daemon", "state.json");
+    try {
+      const state = JSON.parse(fs.readFileSync(stateFile, "utf8")) as { pid: number };
+      if (!Number.isSafeInteger(state.pid) || state.pid <= 0 || state.pid === process.pid) {
+        throw new Error("Invalid test daemon pid");
+      }
+      try { process.kill(state.pid); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") failures.push(error);
     }
-    try { process.kill(state.pid); }
-    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") failures.push(error);
   }
   // The shared runtime is created first: remove it last, after project fixtures.
   for (const directory of [...temporaryDirectories].reverse()) {
     try {
-      fs.rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+      await removeTestDirectory(directory);
     } catch (error) {
       failures.push(error);
     }
@@ -145,6 +154,11 @@ export const ISOLATED_ENV_KEYS = [
 ] as const;
 
 export function buildSpawnEnv(extra?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const runtime = extra?.CLAW_SESSION_DAEMON_RUNTIME_DIR;
+  if (runtime && [...temporaryDirectories].some(root => {
+    const relative = path.relative(root, path.resolve(runtime));
+    return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+  })) daemonRuntimeRoots.add(path.resolve(runtime));
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     CLAW_EMBEDDING_WARMUP_DISABLE_LAUNCH: "1",

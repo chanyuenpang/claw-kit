@@ -1,4 +1,5 @@
 import test, { after } from "node:test";
+import { removeTestDirectory } from "./fixture-cleanup.js";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -26,8 +27,8 @@ function fixture(name: string): string {
   temporaryRoots.push(root);
   return root;
 }
-after(() => {
-  for (const root of temporaryRoots) fs.rmSync(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+after(async () => {
+  for (const root of temporaryRoots) await removeTestDirectory(root);
 });
 
 test("daemon and lightweight client share authenticated persistent session commands", async () => {
