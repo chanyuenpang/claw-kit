@@ -10,6 +10,7 @@ import { runDailyMaintenance } from "../src/daily-maintenance.js";
 import {
   canWriteDirectory,
   projectRuntimeDirectory,
+  resolveEmbeddingOutputDirectory,
   resolveWritableRuntimeDirectory,
 } from "../src/runtime-directory.js";
 import {
@@ -65,6 +66,32 @@ test("unwritable candidates fall back to the project runtime directory", () => {
   });
   assert.equal(resolved, path.join(project, ".claw", "runtime", "session-daemon"));
   assert.equal(fs.statSync(resolved).isDirectory(), true);
+});
+
+test("embedding worker output uses a writable temp directory", () => {
+  const root = tempDir("embedding-output");
+  const project = path.join(root, "project");
+  fs.mkdirSync(project);
+  const writableTmp = path.join(root, "tmp");
+  fs.mkdirSync(writableTmp);
+  const resolved = resolveEmbeddingOutputDirectory(project, writableTmp);
+  assert.equal(resolved, path.resolve(writableTmp));
+  const probe = path.join(resolved, "claw-embedding-probe.json");
+  fs.writeFileSync(probe, "{}");
+  assert.equal(fs.readFileSync(probe, "utf-8"), "{}");
+});
+
+test("read-only TMPDIR falls back to the project runtime tmp directory", () => {
+  const root = tempDir("embedding-fallback");
+  const blocker = path.join(root, "not-a-directory");
+  fs.writeFileSync(blocker, "x");
+  const project = path.join(root, "project");
+  fs.mkdirSync(project);
+  const resolved = resolveEmbeddingOutputDirectory(project, path.join(blocker, "tmp"));
+  assert.equal(resolved, path.join(project, ".claw", "runtime", "tmp"));
+  const probe = path.join(resolved, "claw-embedding-probe.json");
+  fs.writeFileSync(probe, "{\"ok\":true}");
+  assert.equal(fs.existsSync(probe), true);
 });
 
 test("session workflows and daily maintenance use the project when the home runtime is not writable", () => {

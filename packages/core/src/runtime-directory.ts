@@ -68,6 +68,19 @@ export function resolveWritableRuntimeDirectory(options: {
   );
 }
 
+/** Directory for the one-shot embedding worker's JSON output.
+ * `os.tmpdir()` follows TMPDIR. A read-only temp directory falls through to
+ * `<project>/.claw/runtime/tmp` instead of failing the refresh.
+ */
+export function resolveEmbeddingOutputDirectory(projectDir: string, tmpDir: string = os.tmpdir()): string {
+  return resolveWritableRuntimeDirectory({
+    explicitEnvName: "TMPDIR",
+    candidates: [tmpDir],
+    projectFallback: projectRuntimeDirectory(projectDir, "tmp"),
+    purpose: "Embedding worker output",
+  });
+}
+
 /** Username for daemon identity hashes. A missing passwd entry must not crash startup. */
 export function safeRuntimeUser(): string {
   try {
