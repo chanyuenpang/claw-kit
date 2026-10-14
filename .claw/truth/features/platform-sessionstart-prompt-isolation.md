@@ -1,4 +1,4 @@
-# Platform SessionStart Prompt Isolation (Codex vs opencode)
+﻿# Platform SessionStart Prompt Isolation (Codex vs opencode)
 
 ## Status
 
