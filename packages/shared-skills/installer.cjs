@@ -4,6 +4,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { createHash, randomUUID } = require('node:crypto');
 const { spawn } = require('node:child_process');
+const { nodeExecutable } = require('./node-runtime.cjs');
 const PACKAGE = '@veewo/claw-skills';
 const REGISTRY = 'https://registry.npmjs.org';
 const fail = (code, message) => Object.assign(new Error(message), { code });
@@ -235,17 +236,18 @@ async function downloadAndInstall({ homeDir, expected, download = npmDownload })
   } finally { await fs.rm(temp, { recursive: true, force: true }); }
 }
 async function npmDownload(prefix, version) {
-  const args = ['install', '--prefix', prefix, '--ignore-scripts', '--no-audit', '--no-fund', '--json', '--package-lock=false', '--cache', path.join(prefix, '.npm-cache'), '--registry=' + REGISTRY, '--@veewo:registry=' + REGISTRY, PACKAGE + '@' + version];
+  const args = ['install', '--prefix', prefix, '--global=false', '--dry-run=false', '--ignore-scripts', '--no-audit', '--no-fund', '--json', '--package-lock=false', '--cache', path.join(prefix, '.npm-cache'), '--registry=' + REGISTRY, '--@veewo:registry=' + REGISTRY, PACKAGE + '@' + version];
   let command = 'npm', commandArgs = args;
   if (process.platform === 'win32') {
-    const candidates = [path.dirname(process.execPath), ...(process.env.PATH || '').split(path.delimiter)];
+    const node = nodeExecutable();
+    const candidates = [path.dirname(node), ...(process.env.PATH || '').split(path.delimiter)];
     let cli;
     for (const dir of candidates) {
       const file = path.join(dir, 'node_modules', 'npm', 'bin', 'npm-cli.js');
       if (await exists(file)) { cli = file; break; }
     }
     if (!cli) throw fail('SKILLS_NPM_UNAVAILABLE', '找不到 npm-cli.js；请安装 Node.js/npm 后重试。');
-    command = process.execPath; commandArgs = [cli, ...args];
+    command = node; commandArgs = [cli, ...args];
   }
   await new Promise((resolve, reject) => {
     let output = '', timedOut = false;

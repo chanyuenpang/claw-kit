@@ -3,6 +3,7 @@ const { spawn } = require('node:child_process');
 const readline = require('node:readline');
 const fs = require('node:fs');
 const path = require('node:path');
+const { nodeExecutable } = require('./node-runtime.cjs');
 const {
   candidateUserDataDirs,
   resolveCindySessionContext,
@@ -189,7 +190,7 @@ function invocation(args) {
     for (const dir of (process.env.PATH || '').split(';')) {
       if (!dir || !fs.existsSync(path.join(dir, 'claw.cmd'))) continue;
       const script = path.join(dir, 'node_modules', '@veewo', 'claw', 'dist', 'bin.js');
-      if (fs.existsSync(script)) return { executable: process.execPath, args: [script, ...args] };
+      if (fs.existsSync(script)) return { executable: nodeExecutable(), args: [script, ...args] };
       break; // preserve PATH precedence for a non-npm shim
     }
     return {
@@ -1023,7 +1024,7 @@ rpcInput.on('line', async (line) => {
       return;
     }
     const collectorRegistration = await runClaw(
-      ['internal-report-collector-register', '--project-root', params.workdir, '--collector-host', 'cindy', '--executable', process.execPath, '--arg', path.join(__dirname, 'report-collector.cjs')],
+      ['internal-report-collector-register', '--project-root', params.workdir, '--collector-host', 'cindy', '--executable', nodeExecutable(), '--arg', path.join(__dirname, 'report-collector.cjs')],
       params.workdir,
       undefined,
       10000,

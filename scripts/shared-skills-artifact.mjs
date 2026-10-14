@@ -22,6 +22,7 @@ export async function buildSharedSkillsArtifact({ sourceRoot, outputRoot }) {
     await fs.writeFile(path.join(stage, 'skills-manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
     await fs.writeFile(path.join(stage, 'package.json'), JSON.stringify(pkg, null, 2) + '\n');
     await fs.copyFile(path.join(sourceRoot, 'packages/shared-skills/installer.cjs'), path.join(stage, 'installer.cjs'));
+    await fs.copyFile(path.join(sourceRoot, 'packages/shared-skills/node-runtime.cjs'), path.join(stage, 'node-runtime.cjs'));
     await fs.copyFile(path.join(sourceRoot, 'packages/shared-skills/README.md'), path.join(stage, 'README.md'));
     await fs.rename(stage, outputRoot);
     return { outputRoot, manifest };

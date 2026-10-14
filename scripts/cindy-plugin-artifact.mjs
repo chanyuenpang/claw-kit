@@ -66,6 +66,7 @@ export async function buildCindyPluginArtifact({ sourceRoot, outputRoot } = {}) 
     const assembly = await loadSkillInputs({ sourceRoot, targetHost: "standard" });
     for (const asset of pluginAssets) await copyTree(path.join(adapter, "plugin", asset), path.join(pluginDir, asset));
     await copyTree(path.join(sourceRoot, "packages/shared-skills/installer.cjs"), path.join(pluginDir, "node/shared-skills.cjs"));
+    await copyTree(path.join(sourceRoot, "packages/shared-skills/node-runtime.cjs"), path.join(pluginDir, "node/node-runtime.cjs"));
     if (manifest.skill || manifest.slots?.includes("skill")) throw new Error("Cindy must load shared skills, not register bundled skills.");
     const sharedPackage = JSON.parse(await fs.readFile(path.join(sourceRoot, "packages/shared-skills/package.json"), "utf8"));
     const skills = {};

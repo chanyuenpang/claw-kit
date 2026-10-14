@@ -16,7 +16,7 @@ Pack that directory with `npm pack --ignore-scripts`. This is not publication.
 The source package is private; only the complete composed artifact removes that
 flag. The generic installer lives in this package and is copied into the Cindy
 runtime at artifact assembly, without any bundled skill files.
-The current package version is 0.2.52; 0.2.51 was reserved by an unpublished
+The current package version is 0.2.53; 0.2.51 was reserved by an unpublished
 candidate before source reconciliation. Publication is a separate authorized step.
 Never publish different bytes under the same version. Future skill changes must
 increment this package version and rebuild the corresponding plugin candidate.
@@ -34,6 +34,13 @@ The reusable `installer.cjs` exports `install({ packageRoot, homeDir, expected }
 Installation flows can call the same API with the frozen plugin contract; tests
 and local candidate installers can use a detached package and an isolated home.
 `homeDir` is a library argument, never an agent-provided Cindy tool argument.
+
+The shared `node-runtime.cjs` resolves an independent Node executable for Electron
+workers. It never launches the Cindy application as Node. Cindy requires Node.js
+and npm on its PATH for the existing CLI integration and explicit npm download;
+if Node is absent, the operation reports `NODE_EXECUTABLE_NOT_FOUND`. npm downloads
+explicitly disable global and dry-run modes so user npm settings cannot redirect
+the isolated download or report success without extracting the package.
 
 Skills are installed in `~/.agents/skills/<original-skill-name>`. Ownership receipts,
 transaction stages and retained recovery backups live in

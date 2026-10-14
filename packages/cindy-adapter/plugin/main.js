@@ -3,7 +3,7 @@
 // the CLI through the declared Node worker and uses Cindy's public Agent slot.
 
 const CINDY_HOST_IDENTITY = "[claw host]\nplatform: cindy\nAdapter-owned host identity, independent of model/provider or skill path. Host/session arguments remain adapter-owned.\nPublic skills come from the global shared package. Resolve claw-kit:planning as the installed planning skill (and other claw-kit:<skill> references by their original skill name).";
-const CINDY_DEVELOPMENT_ENTRY = '\n\n[claw-kit Cindy hook]\n[claw host]\nplatform: cindy\n当前是 Cindy Host，与本次使用的模型无关。本次会话的开发工作需走 claw 流程：先读取全局 using-claw-kit 及其 Cindy 路由，恢复已有会话计划，再按 guidance 推进开发、记录任务状态并收口。通过 Cindy 原生 claw-kit Ghost 的 list_tools / call_tool 操作；宿主和会话身份由适配器提供，不切换到 Codex driver 或 hostless 路由。claw-kit 不可用时说明原因并继续用户任务，不伪造恢复或流程完成。\n[/claw-kit Cindy hook]';
+const CINDY_DEVELOPMENT_ENTRY = '\n\n[claw]当前是 Cindy Host，本次会话走 claw 流程，先读取 using-claw-kit 技能再开展任务[/claw]';
 const entryHookSessions = new Set();
 async function developmentEntryVerdict(msg) {
   const original = msg.data?.text;
