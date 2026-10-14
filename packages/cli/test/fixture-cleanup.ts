@@ -5,7 +5,7 @@ import { setTimeout as delay } from "node:timers/promises";
 // Detached completion work can briefly retain its cwd after the command exits.
 // Retry at the directory boundary: Windows rm's internal retries do not cover
 // every root-directory EPERM. Exhaustion remains a visible test failure.
-export async function removeTestDirectory(directory: string): Promise<void> {
+export async function waitForTestCompletion(directory: string): Promise<void> {
   // Let an already-launched completion worker finish while its inputs still
   // exist; deleting them first can turn teardown into a worker failure.
   const flight = path.join(directory, ".claw", "logs", "completion-refresh", "inflight.lock", "state.json");
@@ -19,6 +19,10 @@ export async function removeTestDirectory(directory: string): Promise<void> {
     } catch { break; }
     await delay(100);
   }
+}
+
+export async function removeTestDirectory(directory: string): Promise<void> {
+  await waitForTestCompletion(directory);
   const deadline = Date.now() + 10_000;
   for (;;) {
     try {
