@@ -4,7 +4,7 @@
 
 An out-of-the-box, beginner-friendly, professional-grade harness for coding agents.
 
-![claw-kit demo: assemble step by step](docs/assets/claw-kit-demo-en.gif)
+<a href="docs/assets/claw-kit-demo-en.mp4"><img src="docs/assets/claw-kit-demo-en.gif" alt="claw-kit demo: assemble step by step"></a>
 
 [![npm version](https://img.shields.io/npm/v/@veewo/claw)](https://www.npmjs.com/package/@veewo/claw)
 [![npm downloads](https://img.shields.io/npm/dm/@veewo/claw)](https://www.npmjs.com/package/@veewo/claw)

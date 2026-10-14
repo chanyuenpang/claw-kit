@@ -4,7 +4,7 @@
 
 开箱即用、小白也能上手的专业级 harness，给 coding agent 用。
 
-![claw-kit 演示：看一步装一步](docs/assets/claw-kit-demo-zh.gif)
+<a href="docs/assets/claw-kit-demo-zh.mp4"><img src="docs/assets/claw-kit-demo-zh.gif" alt="claw-kit 演示：看一步装一步"></a>
 
 [![npm version](https://img.shields.io/npm/v/@veewo/claw)](https://www.npmjs.com/package/@veewo/claw)
 [![npm downloads](https://img.shields.io/npm/dm/@veewo/claw)](https://www.npmjs.com/package/@veewo/claw)
