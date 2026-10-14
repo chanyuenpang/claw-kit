@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { buildKnowledgeDispatch } from "./knowledge-dispatch.js";
+import { updateAgentInstructions } from "./agent-instructions.js";
 
 import fs from "node:fs";
 import os from "node:os";
@@ -164,7 +165,7 @@ const COMMAND_HELP: Record<string, HelpNode> = {
   init: {
     usage: ["{script} init [options]"],
     description:
-      "Initialize and normalize the .claw project surface in the current directory, writing project.json, memory.md, and .gitignore.",
+      "Initialize and normalize the .claw project surface in the current directory, writing project.json, memory.md, and .gitignore. Hostless init also maintains an AGENTS.md skill-entry block.",
     options: [
       { flag: "--id <project-id>", detail: "Project id (derived from --name if omitted)." },
       { flag: "--name <project-name>", detail: "Human-readable project name." },
@@ -176,6 +177,7 @@ const COMMAND_HELP: Record<string, HelpNode> = {
       { flag: "--gitnexus true|false", detail: "Enable GitNexus integration (default false)." },
       { flag: "--max-tasks-to-keep <n>", detail: `Max archived tasks to retain (default ${DEFAULT_MAX_TASKS_TO_KEEP}).` },
       { flag: "--force", detail: "Overwrite an existing .claw project." },
+      { flag: "--skip-agent-instructions", detail: "Do not create or update the AGENTS.md bootstrap block (hostless init only)." },
     ],
   },
   context: {
@@ -696,9 +698,11 @@ async function main(): Promise<void> {
           gitnexusEnabled: readBooleanValueFlag(args, "--gitnexus") ?? false,
           force: readBooleanFlag(args, "--force"),
         };
-        printJson(
-          initProject(initInput),
-        );
+        const initialized = initProject(initInput);
+        const agentInstructions = !effectiveHost && !readBooleanFlag(args, "--skip-agent-instructions")
+          ? updateAgentInstructions(initialized.projectRoot)
+          : { status: "skipped" };
+        printJson({ ...initialized, agentInstructions });
         return;
       case "context":
         printJson(buildPublicContextOutput(await runContextCommand(args, process.cwd(), resolveOwnerSessionKey(), effectiveHost)));
