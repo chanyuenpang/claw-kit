@@ -43,10 +43,17 @@ export type RunningSessionDaemon = {
   close(): Promise<void>;
 };
 
+let hangupIgnored = false;
+
 export async function startSessionDaemon(options?: {
   runtimeRoot?: string;
   idleTtlMs?: number;
 }): Promise<RunningSessionDaemon> {
+  process.env.CLAW_IN_SESSION_DAEMON = "1";
+  if (process.platform !== "win32" && !hangupIgnored) {
+    hangupIgnored = true;
+    process.on("SIGHUP", () => {});
+  }
   const registry = new SessionRegistryV2(options?.runtimeRoot);
   ensurePrivateDirectory(path.join(registry.runtimeRoot, "daemon"));
   const releaseStartLock = acquireStartLock(registry.runtimeRoot);
@@ -128,9 +135,11 @@ export async function startSessionDaemon(options?: {
     for (const connection of connections) connection.socket.destroy();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     removeOwnedState(registry.runtimeRoot, token);
+    if (process.env.CLAW_IN_SESSION_DAEMON === "1") delete process.env.CLAW_IN_SESSION_DAEMON;
   };
 
   server.on("connection", (socket) => {
+    socket.setNoDelay(true);
     socket.setEncoding("utf-8");
     const connection: ConnectionState = {
       socket,
@@ -350,6 +359,7 @@ function removeOwnedState(runtimeRoot: string, token: string): void {
 }
 
 function isProcessAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
   try {
     process.kill(pid, 0);
     return true;

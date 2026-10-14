@@ -19,6 +19,7 @@ import { resolveDshDelegationCapability } from "./team-capability.js";
 import { FinalizerRoleDispatcher, type FinalizerAgent } from "./finalizer-roles.js";
 import { RoleDelegation, type DelegationActor } from "./delegation.js";
 import { selectDshRoleModel } from "./model-selection.js";
+import { mountConnectionRpcChannels } from "./connection-rpc.js";
 
 export const name = "claw-kit";
 
@@ -189,7 +190,10 @@ async function resolveWorkdir(
 // apply body reads is mounted. Without `inject`, a dependency-free row
 // activates immediately — before subprocess/tools/systemPrompt exist — and the
 // guard below silently returns, registering nothing.
-export const inject = ["subprocess", "tools", "systemPrompt", "skills", "goals", "connection"];
+// `connection` stays off this list. Headless DSH has no connection service, and
+// a static inject would leave the adapter pending. Settings RPC is mounted
+// after claw_run, through ctx.inject(["connection"]) on the root fiber.
+export const inject = ["subprocess", "tools", "systemPrompt", "skills", "goals"];
 
 export type DshTodo = { content: string; status: "pending" | "in_progress" | "completed" };
 
@@ -792,31 +796,6 @@ export function apply(ctx: unknown): void {
       notes: "Canonical terminal receipt matched; report/encoding/delegate effects remain unverified. No completion mutation or closeout effect was replayed." } };
   }
 
-  // Settings uses a dedicated browser RPC channel. Its payload contains only a registry
-  // workspace id and config operation fields: no browser-supplied filesystem paths.
-  const connection = c.get("connection") as {
-    rpc?: { handle(channel: string, handler: (endpoint: string, payload: unknown, signal: AbortSignal) => Promise<unknown>): unknown };
-  } | undefined;
-  if (connection?.rpc?.handle) {
-    // Authenticated, read-only transport census. The OS process tree maps
-    // runner/target PIDs via the session ID and workdir in their argv.
-    void connection.rpc.handle("/claw-session-lifecycle", async () => ({
-      ok: true,
-      value: {
-        schemaVersion: 1, idleTimeoutMs: SESSION_TRANSPORT_IDLE_MS,
-        sessions: [...new Set([...sessions.values(), ...reclaiming])].map((session) => session.status()),
-      },
-    }));
-    void connection.rpc.handle("/claw-project-config", async (endpoint, payload) => {
-      const registry = resolveRegistry() as WorkspaceRegistry | undefined;
-      if (!registry) return {
-        ok: false,
-        error: { code: "WORKSPACE_REGISTRY_UNAVAILABLE", message: "DSH workspace registry is unavailable.", details: {} },
-      };
-      return handleProjectConfigRpc(endpoint, payload, registry, (argv, cwd) => runOneOff(argv, cwd, "dsh-project-config"));
-    });
-  }
-
   // Session-start: auto-claw equivalent — recover a bound plan and inject its
   // compact guidance snapshot. Fail-open.
   c.on("agent/session-start", (payload: unknown) => {
@@ -921,8 +900,9 @@ export function apply(ctx: unknown): void {
         sessions.set(key, session);
       }
       let response: ClawExecuteResult;
-      const request = session.request(operation, input, 30000, (send) => routeCommand(
-        send, () => runCommandBaseline(subprocess as SubprocessLike, workdir, agent.id!, operation, input),
+      const timeoutMs = operation === "search.index.refresh" ? 300_000 : 30_000;
+      const request = session.request(operation, input, timeoutMs, (send) => routeCommand(
+        send, () => runCommandBaseline(subprocess as SubprocessLike, workdir, agent.id!, operation, input, undefined, timeoutMs),
       ));
       const requestOrdinal = session.status().requestsStarted;
       const recoverUnknown = async (primary: unknown): Promise<ClawExecuteResult> => {
@@ -1060,6 +1040,40 @@ export function apply(ctx: unknown): void {
       rawInput: String(callArgs?.operation ?? ""),
     }),
   });
+
+  // Settings uses a dedicated browser RPC channel. Its payload contains only a registry
+  // workspace id and config operation fields: no browser-supplied filesystem paths.
+  // Mounted after claw_run so a connection/webServer failure cannot skip the tool.
+  // Headless profiles never invoke the callback. Web profiles register through the
+  // root connection, because DSH 0.2's connection fiber cannot see webServer.
+  try {
+    mountConnectionRpcChannels(ctx, [
+      {
+        channel: "/claw-session-lifecycle",
+        handler: async () => ({
+          ok: true,
+          value: {
+            schemaVersion: 1, idleTimeoutMs: SESSION_TRANSPORT_IDLE_MS,
+            sessions: [...new Set([...sessions.values(), ...reclaiming])].map((session) => session.status()),
+          },
+        }),
+      },
+      {
+        channel: "/claw-project-config",
+        handler: async (endpoint, payload) => {
+          const registry = resolveRegistry() as WorkspaceRegistry | undefined;
+          if (!registry) return {
+            ok: false,
+            error: { code: "WORKSPACE_REGISTRY_UNAVAILABLE", message: "DSH workspace registry is unavailable.", details: {} },
+          };
+          return handleProjectConfigRpc(endpoint, payload, registry, (argv, cwd) => runOneOff(argv, cwd, "dsh-project-config"));
+        },
+      },
+    ]);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[claw-kit] settings RPC channel was not mounted: ${message}`);
+  }
 }
 
 export default { name, inject, apply };

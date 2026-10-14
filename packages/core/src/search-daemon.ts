@@ -10,6 +10,8 @@ import {
   type SearchDaemonResponse,
 } from "./search-daemon-protocol.js";
 
+if (process.platform !== "win32") process.on("SIGHUP", () => {});
+
 const DEFAULT_IDLE_TTL_MS = 10 * 60 * 1000;
 const runtimeDir = resolveRuntimeDir(process.argv.slice(2));
 const idleTtlMs = readPositiveInteger(process.env.CLAW_SEARCH_DAEMON_IDLE_TTL_MS, DEFAULT_IDLE_TTL_MS);
@@ -23,6 +25,7 @@ fs.mkdirSync(runtimeDir, { recursive: true, mode: 0o700 });
 
 const server = net.createServer((socket) => {
   resetIdleTimer();
+  socket.setNoDelay(true);
   socket.setEncoding("utf-8");
   let payload = "";
   socket.on("data", (chunk: string) => {

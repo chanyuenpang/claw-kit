@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import {
   ClawError,
+  projectRuntimeDirectory,
+  resolveWritableRuntimeDirectory,
   type FocusSessionRecord,
   type FocusSessionStore,
   type PlanRef,
@@ -38,14 +40,20 @@ export type SessionIdentityV2 = {
   sessionKeyHash: string;
 };
 
-export function resolveSessionDaemonRuntimeRoot(env: NodeJS.ProcessEnv = process.env): string {
-  if (env.CLAW_SESSION_DAEMON_RUNTIME_DIR?.trim()) {
-    return path.resolve(env.CLAW_SESSION_DAEMON_RUNTIME_DIR);
-  }
-  const userRuntime = process.platform === "win32"
-    ? env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local")
-    : env.XDG_RUNTIME_DIR ?? env.XDG_CACHE_HOME ?? path.join(os.homedir(), ".cache");
-  return path.resolve(userRuntime, "claw", "session-daemon-v2");
+export function resolveSessionDaemonRuntimeRoot(env: NodeJS.ProcessEnv = process.env, cwd?: string): string {
+  const candidates = process.platform === "win32"
+    ? [path.join(env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local"), "claw", "session-daemon-v2")]
+    : [
+        ...(env.XDG_RUNTIME_DIR?.trim() ? [path.join(env.XDG_RUNTIME_DIR, "claw", "session-daemon-v2")] : []),
+        path.join(env.XDG_CACHE_HOME?.trim() || path.join(os.homedir(), ".cache"), "claw", "session-daemon-v2"),
+      ];
+  return resolveWritableRuntimeDirectory({
+    explicitPath: env.CLAW_SESSION_DAEMON_RUNTIME_DIR,
+    explicitEnvName: "CLAW_SESSION_DAEMON_RUNTIME_DIR",
+    candidates,
+    projectFallback: cwd ? projectRuntimeDirectory(cwd, "session-daemon") : undefined,
+    purpose: "Session daemon",
+  });
 }
 
 export function canonicalizeSessionWorkdir(workdir: string): string {
@@ -100,7 +108,7 @@ export function sessionFocusKey(identity: Pick<SessionIdentityV2, "canonicalWork
 export class SessionRegistryV2 {
   readonly runtimeRoot: string;
 
-  constructor(runtimeRoot = resolveSessionDaemonRuntimeRoot()) {
+  constructor(runtimeRoot = resolveSessionDaemonRuntimeRoot(process.env, process.cwd())) {
     this.runtimeRoot = path.resolve(runtimeRoot);
     ensurePrivateDirectory(this.runtimeRoot);
     ensurePrivateDirectory(path.join(this.runtimeRoot, "sessions"));

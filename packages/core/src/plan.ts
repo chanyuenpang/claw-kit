@@ -144,7 +144,7 @@ export async function createProjectPlan(
     const taskName = deriveTaskName({ ...intent, cwd: context.cwd });
     const existingRoot = findProjectRoot(context.cwd);
     const projectRoot = existingRoot ?? path.resolve(context.cwd);
-    const legacy = resolveSessionWorkflowContext(context.ownerSessionKey, { readOnly: true });
+    const legacy = resolveSessionWorkflowContext(context.ownerSessionKey, { readOnly: true, cwd: context.cwd });
     const config = previewProjectConfig(projectRoot, buildDefaultProjectConfig({ cwd: projectRoot }));
     const templateFile = intent.templateFile ? path.resolve(context.cwd, intent.templateFile) : undefined;
     const status = intent.planStatus === undefined
@@ -857,7 +857,7 @@ function resolveSubplanProject(input: SubplanWriteInput): TaskContext["project"]
   const candidates: TaskContext["project"][] = [];
   try { candidates.push(resolveProjectContext(input.cwd)); }
   catch (error) { if (!(error instanceof ClawError) || error.code !== "CLAW_DIR_NOT_FOUND") throw error; }
-  const session = resolveSessionWorkflowContext(input.ownerSessionKey);
+  const session = resolveSessionWorkflowContext(input.ownerSessionKey, { cwd: input.cwd });
   if (session) candidates.push(session);
   const bound = candidates.filter((project) => resolveSessionBoundPlan(project, input.ownerSessionKey));
   if (bound.length > 1) throw new ClawError("PLAN_TRANSITION_CONFLICT", "Session has bindings in more than one storage scope.");

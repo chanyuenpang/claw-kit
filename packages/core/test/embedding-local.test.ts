@@ -57,10 +57,28 @@ test("resolveLocalExecutionDevice prefers environment override over config and p
       cudaAvailable: false,
     },
   );
+  const linuxIgnoresAutomaticCuda = resolveLocalExecutionDevice(
+    createEmbedding(),
+    {
+      env: {},
+      platform: "linux",
+      cudaAvailable: true,
+    },
+  );
+  const explicitLinuxCuda = resolveLocalExecutionDevice(
+    createEmbedding(),
+    {
+      env: { CLAW_EMBEDDING_LOCAL_DEVICE: "cuda" },
+      platform: "linux",
+      cudaAvailable: false,
+    },
+  );
 
   assert.equal(fromEnv, "cpu");
   assert.equal(fromConfig, "wasm");
   assert.equal(fromDefault, "cpu");
+  assert.equal(linuxIgnoresAutomaticCuda, "cpu");
+  assert.equal(explicitLinuxCuda, "cuda");
 });
 
 test("buildLocalDeviceAttemptOrder retries cpu after gpu-class devices only", () => {

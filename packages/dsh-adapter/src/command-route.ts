@@ -58,7 +58,7 @@ export function resolveCommandEntry(): string {
 /** Values travel as JSON on stdin, never as shell text or user-controlled argv. */
 export async function runCommandBaseline(
   subprocess: SubprocessLike, workdir: string, sessionId: string,
-  operation: string, input: unknown, entry = resolveCommandEntry(),
+  operation: string, input: unknown, entry = resolveCommandEntry(), timeoutMs = 30_000,
 ): Promise<ClawExecuteResult> {
   const handle = subprocess.spawn({ argv: [process.execPath, entry, "internal-command"], cwd: workdir,
     env: { CLAW_SESSION_ID: sessionId }, stdio: { stdin: "pipe",
@@ -73,7 +73,7 @@ export async function runCommandBaseline(
     sent = true; // A failed write may have delivered a prefix; never retry it.
     handle.stdin.write(JSON.stringify({ operation, input }) + "\n");
     const outcome = await Promise.race([handle.done, stdinFailure, new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(Object.assign(new Error("structured command timed out"), { code: "ETIMEDOUT" })), 30000);
+      timer = setTimeout(() => reject(Object.assign(new Error("structured command timed out"), { code: "ETIMEDOUT" })), timeoutMs);
     })]) as { exitCode?: number | null; code?: number | null; signal?: string | null } | undefined;
     const reader = handle.collected?.stdout;
     const read = reader?.readFrom?.(0);

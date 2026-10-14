@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ClawError, type ClawErrorCode } from "./errors.js";
+import { projectRuntimeDirectory, resolveWritableRuntimeDirectory, safeRuntimeUser } from "./runtime-directory.js";
 import type { MemorySearchInput, MemorySearchResult } from "./types.js";
 
 const SEARCH_DAEMON_PROTOCOL_VERSION = 1;
@@ -44,7 +45,18 @@ export async function requestPersistentSearch(
   if (env.CLAW_SEARCH_PERSISTENT_READER === "0") {
     return null;
   }
-  const runtimeDir = resolveSearchDaemonRuntimeDir(env);
+  let runtimeDir: string;
+  try {
+    runtimeDir = resolveSearchDaemonRuntimeDir(env, input.cwd);
+  } catch (error) {
+    if (
+      error instanceof ClawError
+      && error.code === "RUNTIME_DIR_NOT_WRITABLE"
+      && !env.CLAW_SEARCH_DAEMON_RUNTIME_DIR?.trim()
+      && !env.CLAW_EMBEDDING_DAEMON_RUNTIME_DIR?.trim()
+    ) return null;
+    throw error;
+  }
   fs.mkdirSync(runtimeDir, { recursive: true, mode: 0o700 });
   const existing = readState(runtimeDir);
   if (existing) {
@@ -111,19 +123,34 @@ export async function requestPersistentSearch(
   }
 }
 
-export function resolveSearchDaemonRuntimeDir(env: NodeJS.ProcessEnv = process.env): string {
+export function resolveSearchDaemonRuntimeDir(env: NodeJS.ProcessEnv = process.env, cwd?: string): string {
   const explicit = env.CLAW_SEARCH_DAEMON_RUNTIME_DIR?.trim();
   if (explicit) {
-    return path.resolve(explicit);
+    return resolveWritableRuntimeDirectory({
+      explicitPath: explicit,
+      explicitEnvName: "CLAW_SEARCH_DAEMON_RUNTIME_DIR",
+      candidates: [],
+      purpose: "Search daemon",
+    });
   }
   const embeddingRuntimeDir = env.CLAW_EMBEDDING_DAEMON_RUNTIME_DIR?.trim();
   if (embeddingRuntimeDir) {
-    return path.join(path.resolve(embeddingRuntimeDir), "search-reader");
+    return resolveWritableRuntimeDirectory({
+      explicitPath: path.join(path.resolve(embeddingRuntimeDir), "search-reader"),
+      explicitEnvName: "CLAW_EMBEDDING_DAEMON_RUNTIME_DIR",
+      candidates: [],
+      purpose: "Search daemon",
+    });
   }
   const installRoot = fileURLToPath(new URL(".", import.meta.url));
-  const identity = `${os.userInfo().username}\0${os.homedir()}\0${installRoot}\0${process.versions.node.split(".")[0]}\0${SEARCH_DAEMON_PROTOCOL_VERSION}`;
+  const identity = `${safeRuntimeUser()}\0${os.homedir()}\0${installRoot}\0${process.versions.node.split(".")[0]}\0${SEARCH_DAEMON_PROTOCOL_VERSION}`;
   const suffix = createHash("sha256").update(identity).digest("hex").slice(0, 16);
-  return path.join(os.tmpdir(), `claw-search-${suffix}`);
+  return resolveWritableRuntimeDirectory({
+    explicitEnvName: "CLAW_SEARCH_DAEMON_RUNTIME_DIR",
+    candidates: [path.join(os.tmpdir(), `claw-search-${suffix}`)],
+    projectFallback: cwd ? projectRuntimeDirectory(cwd, "search-daemon") : undefined,
+    purpose: "Search daemon",
+  });
 }
 
 export function createSearchDaemonState(runtimeDir: string, port: number): SearchDaemonState {
@@ -178,6 +205,7 @@ function sendRequest(
   const timeoutMs = readPositiveInteger(env.CLAW_SEARCH_DAEMON_REQUEST_TIMEOUT_MS, DEFAULT_REQUEST_TIMEOUT_MS);
   return new Promise((resolve, reject) => {
     const socket = net.createConnection({ host: "127.0.0.1", port: state.port });
+    socket.setNoDelay(true);
     let payload = "";
     const timer = setTimeout(() => {
       socket.destroy();
