@@ -40,6 +40,7 @@ The harness joins a repository after that repository is initialized for `.claw`.
 | Where the agent runs | What you use | Where to start |
 | --- | --- | --- |
 | Any platform that can run a shell | `claw` CLI plus the standard skills. `claw init` writes an `AGENTS.md` bootstrap, so no hook is required. | Universal |
+| Claude Code | `claw` CLI plus the standard skills. No dedicated adapter. Install, `claw init`, then talk. Bootstrap is the instruction file Claude Code actually reads: `CLAUDE.md`, or `AGENTS.md` when the project has no `CLAUDE.md`. | Universal |
 | DeepSeek Harness (DSH) | Dedicated adapter. One `claw_run` tool, progress and native goal sync, knowledge closeout dispatched by the adapter. npm: `@veewo/dsh-claw-kit`. | Start here |
 | Codex | Dedicated adapter. Marketplace plugin with skills, hooks, and the same workflow. | Start here |
 | Cindy | Dedicated adapter. Install `claw-kit-cindy` from the Cindy marketplace. | Dedicated |
@@ -63,7 +64,7 @@ On DeepSeek Harness, Codex, Cindy, or OpenCode, also install that adapter. It br
 - **Codex:** add the marketplace and install **Claw Kit**. [Install the Codex plugin](#install-the-codex-plugin).
 - **Cindy** and **OpenCode** have their own install sections below.
 
-On any other agent, install the CLI and copy the standard skills into the folder that agent scans for skills. See [packages/standard-adapter/README.md](packages/standard-adapter/README.md).
+Claude Code uses that same path: the CLI, the standard skills, and `claw init`. There is no Claude Code adapter. Any other shell agent does too. Copy the skills into the folder that agent scans. See [packages/standard-adapter/README.md](packages/standard-adapter/README.md).
 
 ### 2. Initialize the project
 
@@ -72,7 +73,7 @@ cd your-project
 claw init
 ```
 
-`claw init` creates `.claw/` and writes a bootstrap block into `AGENTS.md`, between `<!-- claw-kit:bootstrap:start -->` and `<!-- claw-kit:bootstrap:end -->`. That block tells the agent to load and follow `using-claw-kit` when it starts project work or restores context. The skill picks the host entry, resumes an existing workflow, and decides whether a plan is needed. A casual question does not become a plan.
+`claw init` creates `.claw/` and writes a bootstrap block into `AGENTS.md`, between `<!-- claw-kit:bootstrap:start -->` and `<!-- claw-kit:bootstrap:end -->`. That block tells the agent to load and follow `using-claw-kit` when it starts project work or restores context. The skill picks the host entry, resumes an existing workflow, and decides whether a plan is needed. A casual question does not become a plan. Claude Code loads `CLAUDE.md` and skips `AGENTS.md` when a `CLAUDE.md` is already on the project path, so that same block also has to be in `CLAUDE.md` for those projects.
 
 ### 3. Talk
 
@@ -80,7 +81,7 @@ Ask in ordinary language, for example: "Plan a fix for the login bug."
 
 ### How it starts
 
-That is the whole setup. Where the host has a startup hook, that hook runs by itself and points the agent at `using-claw-kit`. Everywhere else, the `AGENTS.md` bootstrap does that job.
+That is the whole setup. Where the host has a startup hook, that hook runs by itself and points the agent at `using-claw-kit`. Everywhere else, including Claude Code, the instruction-file bootstrap does that job.
 
 | Host | What starts the flow |
 | --- | --- |
@@ -88,6 +89,7 @@ That is the whole setup. Where the host has a startup hook, that hook runs by it
 | DeepSeek Harness (DSH) | The `agent/session-start` hook runs context recovery and injects the same instruction. The agent then calls `claw_run`. |
 | OpenCode | The plugin handles `session.created` and `session.compacted` (OpenCode has no `hooks.json`). It recovers context and sets the session id for later claw commands. |
 | Cindy | Ghost session and turn hooks refresh session state and can continue an active plan. They do not inject a first-turn prompt. The agent follows the installed `using-claw-kit` skill, which the `AGENTS.md` bootstrap also names. |
+| Claude Code | No hook and no dedicated adapter. Install the CLI and skills, run `claw init`, then talk. Claude Code loads `CLAUDE.md` at launch. It loads `AGENTS.md` only when the project path has no `CLAUDE.md`, `.claude/CLAUDE.md`, or `CLAUDE.local.md`. |
 | Any other agent | No hook. The `AGENTS.md` bootstrap is the startup path. |
 
 ## What the agent does under the hood

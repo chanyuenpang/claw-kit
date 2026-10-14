@@ -40,6 +40,7 @@
 | agent 跑在哪里 | 你用什么 | 从哪开始 |
 | --- | --- | --- |
 | 任何能跑 shell 的平台 | `claw` CLI，加上标准 skills。`claw init` 会写入 `AGENTS.md` 引导块，所以不需要钩子。 | 通用 |
+| Claude Code | `claw` CLI 加上标准 skills。没有专用适配器。安装、`claw init`，然后直接说。引导块要落在 Claude Code 真正会读的说明文件里：有 `CLAUDE.md` 时读它，没有时才读 `AGENTS.md`。 | 通用 |
 | DeepSeek Harness (DSH) | 专用适配器。一个 `claw_run` 工具，进度和原生 goal 同步，知识收口由适配器分发。npm：`@veewo/dsh-claw-kit`。 | 优先从这里开始 |
 | Codex | 专用适配器。Marketplace 插件，带 skills、钩子和同一套工作流。 | 优先从这里开始 |
 | Cindy | 专用适配器。从 Cindy marketplace 安装 `claw-kit-cindy`。 | 专用适配器 |
@@ -63,7 +64,7 @@ npm install -g @veewo/claw
 - **Codex：** 添加 marketplace 并安装 **Claw Kit**。[安装 Codex 插件](#install-the-codex-plugin)。
 - **Cindy** 和 **OpenCode** 的安装在下面各自的章节里。
 
-其他 agent：安装 CLI，并把标准 skills 复制到该 agent 扫描 skill 的文件夹。见 [packages/standard-adapter/README.md](packages/standard-adapter/README.md)。
+Claude Code 走同一条路：CLI、标准 skills，然后 `claw init`。没有 Claude Code 适配器。其他能跑 shell 的 agent 也一样。把 skills 复制到该 agent 扫描 skill 的文件夹。见 [packages/standard-adapter/README.md](packages/standard-adapter/README.md)。
 
 ### 2. 初始化项目
 
@@ -72,7 +73,7 @@ cd your-project
 claw init
 ```
 
-`claw init` 会创建 `.claw/`，并在 `AGENTS.md` 里写下引导块，夹在 `<!-- claw-kit:bootstrap:start -->` 和 `<!-- claw-kit:bootstrap:end -->` 之间。这段文字告诉 agent：开始项目工作或恢复上下文时，加载并遵循 `using-claw-kit`。这个 skill 自己选择宿主入口，恢复已有工作流，并决定要不要建计划。随口一问不会变成一份计划。
+`claw init` 会创建 `.claw/`，并在 `AGENTS.md` 里写下引导块，夹在 `<!-- claw-kit:bootstrap:start -->` 和 `<!-- claw-kit:bootstrap:end -->` 之间。这段文字告诉 agent：开始项目工作或恢复上下文时，加载并遵循 `using-claw-kit`。这个 skill 自己选择宿主入口，恢复已有工作流，并决定要不要建计划。随口一问不会变成一份计划。Claude Code 在项目路径上已经有 `CLAUDE.md` 时会加载它并跳过 `AGENTS.md`，所以这些项目里同一段引导块也要写进 `CLAUDE.md`。
 
 ### 3. 直接说
 
@@ -80,7 +81,7 @@ claw init
 
 ### 它怎么自己启动
 
-到这里就设置完了。宿主有启动钩子时，钩子自己跑，并把 agent 指向 `using-claw-kit`。没有钩子的地方，由 `AGENTS.md` 里的引导块来做这件事。
+到这里就设置完了。宿主有启动钩子时，钩子自己跑，并把 agent 指向 `using-claw-kit`。没有钩子的地方，包括 Claude Code，由说明文件里的引导块来做这件事。
 
 | 宿主 | 谁把流程拉起来 |
 | --- | --- |
@@ -88,6 +89,7 @@ claw init
 | DeepSeek Harness (DSH) | `agent/session-start` 钩子做同样的上下文恢复并注入同一句说明。之后 agent 调用 `claw_run`。 |
 | OpenCode | 插件处理 `session.created` 和 `session.compacted`（OpenCode 没有 `hooks.json`）。它恢复上下文，并为后续 claw 命令设置会话 id。 |
 | Cindy | Ghost 的 session 与 turn 钩子会刷新会话状态，也可以续上一个活动计划。它们不注入首轮提示。agent 遵循已安装的 `using-claw-kit` skill，`AGENTS.md` 引导块也会点名这个 skill。 |
+| Claude Code | 没有钩子，也没有专用适配器。安装 CLI 和 skills，运行 `claw init`，然后直接说。Claude Code 启动时加载 `CLAUDE.md`。只有项目路径上没有 `CLAUDE.md`、`.claude/CLAUDE.md` 或 `CLAUDE.local.md` 时，才会加载 `AGENTS.md`。 |
 | 其他 agent | 没有钩子。启动路径就是 `AGENTS.md` 引导块。 |
 
 <h2 id="under-the-hood">底层：agent 自己做什么</h2>
