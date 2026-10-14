@@ -41,12 +41,12 @@
 | --- | --- | --- |
 | 任何能跑 shell 的平台 | `claw` CLI，加上标准 skills。`claw init` 会写入 `AGENTS.md` 引导块，所以不需要钩子。 | 通用路径，[欢迎反馈](https://github.com/chanyuenpang/claw-kit/issues/new?template=platform-adapter.yml) |
 | Claude Code | `claw` CLI 加上标准 skills。没有专用适配器。安装、`claw init`，然后直接说。引导块要落在 Claude Code 真正会读的说明文件里：有 `CLAUDE.md` 时读它，没有时才读 `AGENTS.md`。 | 通用路径，[欢迎反馈](https://github.com/chanyuenpang/claw-kit/issues/new?template=platform-adapter.yml) |
-| DeepSeek Harness (DSH) | 专用适配器。一个 `claw_run` 工具，进度和原生 goal 同步，知识收口由适配器分发。npm：`@veewo/dsh-claw-kit`。 | 日常在用 |
-| Codex | 专用适配器。Marketplace 插件，带 skills、钩子和同一套工作流。 | 日常在用 |
-| Cindy | 专用适配器。从 Cindy marketplace 安装 `claw-kit-cindy`。 | 日常在用 |
-| OpenCode | 专用适配器。插件、垫片、agents 和 skills。 | 有适配器，测得不多 |
+| DeepSeek Harness (DSH) | 专用适配器。一个 `claw_run` 工具，进度和原生 goal 同步，知识收口由适配器分发。npm：`@veewo/dsh-claw-kit`。 | 稳定可用 |
+| Codex | 专用适配器。Marketplace 插件，带 skills、钩子和同一套工作流。 | 稳定可用 |
+| Cindy | 专用适配器。从 Cindy marketplace 安装 `claw-kit-cindy`。 | 稳定可用 |
+| OpenCode | 专用适配器。插件、垫片、agents 和 skills。 | 已适配，测试中 |
 
-DeepSeek Harness、Codex 和 Cindy 日常都有人在用；OpenCode 有适配器，但测得不多；其他平台欢迎试用，遇到问题请[提 issue](https://github.com/chanyuenpang/claw-kit/issues/new?template=platform-adapter.yml) 或直接发 PR。
+DeepSeek Harness、Codex、Cindy 稳定可用，我和同事每天都在用它写代码；OpenCode 已适配，还在测试；其他平台欢迎试用，遇到问题请[提 issue](https://github.com/chanyuenpang/claw-kit/issues/new?template=platform-adapter.yml) 或直接发 PR。
 
 优先安装 DSH 或 Codex。两者各带九个 skill，包括知识沉淀和该宿主的更新 skill，并且都会在宿主里应用同一套进度和 goal 动作。Cindy 和 OpenCode 是技能面更小的专用适配器。OpenClaw 目前只带文档 skill，见 [包地图](#package-map)。
 

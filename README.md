@@ -41,12 +41,12 @@ The harness joins a repository after that repository is initialized for `.claw`.
 | --- | --- | --- |
 | Any platform that can run a shell | `claw` CLI plus the standard skills. `claw init` writes an `AGENTS.md` bootstrap, so no hook is required. | Universal path, [feedback welcome](https://github.com/chanyuenpang/claw-kit/issues/new?template=platform-adapter.yml) |
 | Claude Code | `claw` CLI plus the standard skills. No dedicated adapter. Install, `claw init`, then talk. Bootstrap is the instruction file Claude Code actually reads: `CLAUDE.md`, or `AGENTS.md` when the project has no `CLAUDE.md`. | Universal path, [feedback welcome](https://github.com/chanyuenpang/claw-kit/issues/new?template=platform-adapter.yml) |
-| DeepSeek Harness (DSH) | Dedicated adapter. One `claw_run` tool, progress and native goal sync, knowledge closeout dispatched by the adapter. npm: `@veewo/dsh-claw-kit`. | In daily use |
-| Codex | Dedicated adapter. Marketplace plugin with skills, hooks, and the same workflow. | In daily use |
-| Cindy | Dedicated adapter. Install `claw-kit-cindy` from the Cindy marketplace. | In daily use |
-| OpenCode | Dedicated adapter. Plugin, shim, agents, and skills. | Adapter available, lightly tested |
+| DeepSeek Harness (DSH) | Dedicated adapter. One `claw_run` tool, progress and native goal sync, knowledge closeout dispatched by the adapter. npm: `@veewo/dsh-claw-kit`. | Stable |
+| Codex | Dedicated adapter. Marketplace plugin with skills, hooks, and the same workflow. | Stable |
+| Cindy | Dedicated adapter. Install `claw-kit-cindy` from the Cindy marketplace. | Stable |
+| OpenCode | Dedicated adapter. Plugin, shim, agents, and skills. | Adapter available, testing |
 
-DeepSeek Harness, Codex, and Cindy are in daily use. OpenCode has an adapter, but it is lightly tested. Other platforms are welcome to try it; if something goes wrong, please [open an issue](https://github.com/chanyuenpang/claw-kit/issues/new?template=platform-adapter.yml) or send a PR.
+DeepSeek Harness, Codex and Cindy are stable — my colleagues and I use them to write code every day. OpenCode has an adapter that is still being tested. Other platforms: please try it and [open an issue](https://github.com/chanyuenpang/claw-kit/issues/new?template=platform-adapter.yml) or PR if anything breaks.
 
 DSH and Codex are the adapters to install first. Each bundles nine skills, including knowledge capture and a host update skill, and both apply the shared progress and goal actions in the host. Cindy and OpenCode are dedicated adapters with a smaller skill set. OpenClaw ships the documentation skill only; see the [package map](#package-map).
 
