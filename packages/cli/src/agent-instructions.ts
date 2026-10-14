@@ -13,8 +13,12 @@ const BLOCK = [
 ].join("\n");
 
 /** Only explicit hostless init calls this; automatic setup and native adapters do not. */
-export function updateAgentInstructions(projectRoot: string) {
-  const filePath = path.join(projectRoot, "AGENTS.md");
+export function updateAgentInstructions(projectRoot: string, filename = "AGENTS.md") {
+  const matches = fs.readdirSync(projectRoot).filter((name) => name.toLowerCase() === filename.toLowerCase());
+  if (matches.length > 1) {
+    return { path: path.join(projectRoot, filename), status: "skipped", warning: `Multiple case variants of ${filename}; files were left unchanged.` };
+  }
+  const filePath = path.join(projectRoot, matches[0] ?? filename);
   const exists = fs.existsSync(filePath);
   const current = exists ? fs.readFileSync(filePath, "utf8") : "";
   const eol = current.includes("\r\n") ? "\r\n" : "\n";
@@ -25,7 +29,7 @@ export function updateAgentInstructions(projectRoot: string) {
   if ((start >= 0 || end >= 0) && (start < 0 || end < start ||
       current.indexOf(START, start + START.length) >= 0 ||
       current.indexOf(END, end + END.length) >= 0)) {
-    return { path: filePath, status: "skipped", warning: "Malformed or duplicate claw-kit bootstrap markers; AGENTS.md was left unchanged." };
+    return { path: filePath, status: "skipped", warning: `Malformed or duplicate claw-kit bootstrap markers; ${path.basename(filePath)} was left unchanged.` };
   }
   const next = start >= 0
     ? current.slice(0, start) + block + current.slice(end + END.length)

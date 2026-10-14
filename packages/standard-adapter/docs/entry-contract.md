@@ -4,15 +4,17 @@ This document is the entry contract for the claw-kit standard hostless flow:
 the workflow shape for any agent platform that can run shell commands but has
 no native claw-kit adapter, no host registration, and no lifecycle hooks.
 Install the skills shipped in this package. Explicit hostless `claw init` now
-creates or updates a short `using-claw-kit` entry block in project `AGENTS.md`.
-The host must load that file; this is startup guidance, not a background wakeup.
+creates or updates the same short `using-claw-kit` entry block in project
+`AGENTS.md` and `CLAUDE.md`. The host must load one of these files; this is startup
+guidance, not a background wakeup. Existing filename casing (such as `claude.md`)
+is preserved; multiple case variants are warned about and left untouched.
 For hosts using another instruction surface, add the same skill-loading reminder there.
 
 Only the `claw-kit:bootstrap:start` / `claw-kit:bootstrap:end` block is managed;
-other content is preserved. Init reports `agentInstructions` with its path and
+other content is preserved. Init reports `agentInstructions` and `claudeInstructions` independently with each path and
 created/updated/unchanged/skipped status. Malformed or duplicate markers produce
 a warning without changing the file. Use `--skip-agent-instructions` to leave
-the file untouched (an existing block is not removed). Reinitialization still
+both files untouched (existing blocks are not removed). Reinitialization still
 requires `--force`, which retains its existing project-config overwrite semantics;
 the entry block itself is updated idempotently. Native-host init and automatic
 project setup do not write this block. The block delegates routing and plan

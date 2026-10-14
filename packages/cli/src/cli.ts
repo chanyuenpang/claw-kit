@@ -165,7 +165,7 @@ const COMMAND_HELP: Record<string, HelpNode> = {
   init: {
     usage: ["{script} init [options]"],
     description:
-      "Initialize and normalize the .claw project surface in the current directory, writing project.json, memory.md, and .gitignore. Hostless init also maintains an AGENTS.md skill-entry block.",
+      "Initialize and normalize the .claw project surface in the current directory, writing project.json, memory.md, and .gitignore. Hostless init also maintains AGENTS.md and CLAUDE.md skill-entry blocks.",
     options: [
       { flag: "--id <project-id>", detail: "Project id (derived from --name if omitted)." },
       { flag: "--name <project-name>", detail: "Human-readable project name." },
@@ -177,7 +177,7 @@ const COMMAND_HELP: Record<string, HelpNode> = {
       { flag: "--gitnexus true|false", detail: "Enable GitNexus integration (default false)." },
       { flag: "--max-tasks-to-keep <n>", detail: `Max archived tasks to retain (default ${DEFAULT_MAX_TASKS_TO_KEEP}).` },
       { flag: "--force", detail: "Overwrite an existing .claw project." },
-      { flag: "--skip-agent-instructions", detail: "Do not create or update the AGENTS.md bootstrap block (hostless init only)." },
+      { flag: "--skip-agent-instructions", detail: "Do not create or update AGENTS.md or CLAUDE.md bootstrap blocks (hostless init only)." },
     ],
   },
   context: {
@@ -699,10 +699,14 @@ async function main(): Promise<void> {
           force: readBooleanFlag(args, "--force"),
         };
         const initialized = initProject(initInput);
-        const agentInstructions = !effectiveHost && !readBooleanFlag(args, "--skip-agent-instructions")
+        const writeAgentInstructions = !effectiveHost && !readBooleanFlag(args, "--skip-agent-instructions");
+        const agentInstructions = writeAgentInstructions
           ? updateAgentInstructions(initialized.projectRoot)
           : { status: "skipped" };
-        printJson({ ...initialized, agentInstructions });
+        const claudeInstructions = writeAgentInstructions
+          ? updateAgentInstructions(initialized.projectRoot, "CLAUDE.md")
+          : { status: "skipped" };
+        printJson({ ...initialized, agentInstructions, claudeInstructions });
         return;
       case "context":
         printJson(buildPublicContextOutput(await runContextCommand(args, process.cwd(), resolveOwnerSessionKey(), effectiveHost)));

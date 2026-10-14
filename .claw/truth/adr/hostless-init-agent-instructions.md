@@ -1,4 +1,4 @@
-﻿# ADR: Hostless init owns the project agent entry block
+﻿# ADR: Hostless init owns the project agent entry blocks
 
 ## Status
 
@@ -10,11 +10,11 @@ A newly initialized hostless project needs a short, durable instruction that rou
 
 ## Decision
 
-- Only explicit hostless `claw init` maintains the marked claw-kit bootstrap block in the project-root `AGENTS.md`.
+- Only explicit hostless `claw init` maintains the same marked claw-kit bootstrap block in project-root `AGENTS.md` and `CLAUDE.md`.
 - Keep the block concise: direct agents to load and follow `using-claw-kit`, which owns host selection, recovery, and plan admission. Do not duplicate workflow rules or add a path-based skill fallback.
-- Provide `--skip-agent-instructions`; report the operation's status in init JSON.
-- Preserve surrounding user content. Replace only one complete, unique marker pair; on malformed or duplicate markers, warn and leave the file unchanged. Repeated init must be idempotent.
-- Automatic setup and native-host init do not manage `AGENTS.md`.
+- Provide `--skip-agent-instructions` for both files and report independent results in init JSON.
+- Preserve surrounding user content. Resolve existing filenames case-insensitively; skip ambiguous case-variant duplicates. For each file independently, replace only one complete, unique marker pair; malformed or duplicate markers warn and leave that file unchanged. Repeated init must be idempotent.
+- Automatic setup and native-host init do not manage either file.
 
 ## Consequences
 
@@ -25,5 +25,5 @@ A newly initialized hostless project needs a short, durable instruction that rou
 ## Evidence
 
 - `packages/cli/src/agent-instructions.ts` implements marked-block preservation, unique-marker validation, and idempotence.
-- `packages/cli/src/cli.ts` calls it only for explicit hostless init and exposes `--skip-agent-instructions` plus `agentInstructions` status.
-- The completed task report records three focused tests passing and CLI build/test compilation success; this finalizer did not rerun tests.
+- `packages/cli/src/cli.ts` calls it only for explicit hostless init and exposes `--skip-agent-instructions` plus independent `agentInstructions` and `claudeInstructions` statuses.
+- The completed task report records five focused tests passing, CLI build/test compilation success, and `git diff --check`; this finalizer did not rerun tests.
