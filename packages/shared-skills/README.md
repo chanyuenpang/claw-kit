@@ -16,7 +16,8 @@ Pack that directory with `npm pack --ignore-scripts`. This is not publication.
 The source package is private; only the complete composed artifact removes that
 flag. The generic installer lives in this package and is copied into the Cindy
 runtime at artifact assembly, without any bundled skill files.
-The initial package version is 0.2.51; publication is a separate authorized step.
+The current package version is 0.2.52; 0.2.51 was reserved by an unpublished
+candidate before source reconciliation. Publication is a separate authorized step.
 Never publish different bytes under the same version. Future skill changes must
 increment this package version and rebuild the corresponding plugin candidate.
 This package is not automatically included in existing platform release batches.

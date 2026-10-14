@@ -23,7 +23,9 @@ async function upgrade(f) {
   await fs.cp(f.options.packageRoot, packageRoot, { recursive: true });
   await fs.appendFile(path.join(packageRoot, 'skills/planning/SKILL.md'), '\nUpgrade fixture.\n');
   const expected = structuredClone(f.options.expected);
-  expected.version = '0.2.52';
+  const parts = expected.version.split('.').map(Number);
+  parts[2]++;
+  expected.version = parts.join('.');
   expected.sourceHash = 'b'.repeat(64);
   expected.skills.planning = await installer.fingerprint(path.join(packageRoot, 'skills/planning'));
   await fs.writeFile(path.join(packageRoot, 'skills-manifest.json'), JSON.stringify(expected));
@@ -56,7 +58,7 @@ test('upgrade preserves unrelated skills and activates all content as a recovera
   await fs.mkdir(path.join(f.root, 'user-notes'));
   await fs.writeFile(path.join(f.root, 'user-notes/SKILL.md'), 'User data');
   const next = await upgrade(f);
-  assert.equal((await installer.install(next)).version, '0.2.52');
+  assert.equal((await installer.install(next)).version, next.expected.version);
   assert.equal(await fs.readFile(path.join(f.root, 'user-notes/SKILL.md'), 'utf8'), 'User data');
   assert.equal((await installer.status(f.options)).status, 'incompatible');
 });
