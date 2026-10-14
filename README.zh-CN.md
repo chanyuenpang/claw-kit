@@ -37,14 +37,16 @@
 
 ## 支持的平台
 
-| agent 跑在哪里 | 你用什么 | 从哪开始 |
+| agent 跑在哪里 | 你用什么 | 状态 |
 | --- | --- | --- |
-| 任何能跑 shell 的平台 | `claw` CLI，加上标准 skills。`claw init` 会写入 `AGENTS.md` 引导块，所以不需要钩子。 | 通用 |
-| Claude Code | `claw` CLI 加上标准 skills。没有专用适配器。安装、`claw init`，然后直接说。引导块要落在 Claude Code 真正会读的说明文件里：有 `CLAUDE.md` 时读它，没有时才读 `AGENTS.md`。 | 通用 |
-| DeepSeek Harness (DSH) | 专用适配器。一个 `claw_run` 工具，进度和原生 goal 同步，知识收口由适配器分发。npm：`@veewo/dsh-claw-kit`。 | 优先从这里开始 |
-| Codex | 专用适配器。Marketplace 插件，带 skills、钩子和同一套工作流。 | 优先从这里开始 |
-| Cindy | 专用适配器。从 Cindy marketplace 安装 `claw-kit-cindy`。 | 专用适配器 |
-| OpenCode | 专用适配器。插件、垫片、agents 和 skills。 | 专用适配器 |
+| 任何能跑 shell 的平台 | `claw` CLI，加上标准 skills。`claw init` 会写入 `AGENTS.md` 引导块，所以不需要钩子。 | 通用路径，[欢迎反馈](https://github.com/chanyuenpang/claw-kit/issues/new?template=platform-adapter.yml) |
+| Claude Code | `claw` CLI 加上标准 skills。没有专用适配器。安装、`claw init`，然后直接说。引导块要落在 Claude Code 真正会读的说明文件里：有 `CLAUDE.md` 时读它，没有时才读 `AGENTS.md`。 | 通用路径，[欢迎反馈](https://github.com/chanyuenpang/claw-kit/issues/new?template=platform-adapter.yml) |
+| DeepSeek Harness (DSH) | 专用适配器。一个 `claw_run` 工具，进度和原生 goal 同步，知识收口由适配器分发。npm：`@veewo/dsh-claw-kit`。 | 日常在用 |
+| Codex | 专用适配器。Marketplace 插件，带 skills、钩子和同一套工作流。 | 日常在用 |
+| Cindy | 专用适配器。从 Cindy marketplace 安装 `claw-kit-cindy`。 | 日常在用 |
+| OpenCode | 专用适配器。插件、垫片、agents 和 skills。 | 有适配器，测得不多 |
+
+DeepSeek Harness、Codex 和 Cindy 日常都有人在用；OpenCode 有适配器，但测得不多；其他平台欢迎试用，遇到问题请[提 issue](https://github.com/chanyuenpang/claw-kit/issues/new?template=platform-adapter.yml) 或直接发 PR。
 
 优先安装 DSH 或 Codex。两者各带九个 skill，包括知识沉淀和该宿主的更新 skill，并且都会在宿主里应用同一套进度和 goal 动作。Cindy 和 OpenCode 是技能面更小的专用适配器。OpenClaw 目前只带文档 skill，见 [包地图](#package-map)。
 
@@ -317,6 +319,10 @@ npm run install:dsh-plugin    # dsh plugin --profile web add <tarball> (--profil
 - 项目模板默认值以及 `.claw/templates` 的用法
 - memory、workflow、GitNexus 和 writer 覆盖字段
 - 需要调一个真实项目时可以照抄的示例
+
+## 参与贡献
+
+平台上的问题和小改动都欢迎。issue 表单、本地准备和发 PR 的步骤见 [CONTRIBUTING.md](CONTRIBUTING.md)。标了 `good first issue` 的问题适合第一次参与。
 
 ## 维护者文档
 
