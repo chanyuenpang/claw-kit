@@ -43,6 +43,20 @@ export function createFixture(name: string): string {
 
 after(() => {
   const failures: unknown[] = [];
+  // The daemon inherits the first CLI's cwd and can keep that fixture locked
+  // on Windows. This runtime was created exclusively by this test module;
+  // stop its daemon before deleting either projects or discovery state.
+  const stateFile = path.join(moduleSessionRuntimeDir, "v2", "daemon", "state.json");
+  try {
+    const state = JSON.parse(fs.readFileSync(stateFile, "utf8")) as { pid: number };
+    if (!Number.isSafeInteger(state.pid) || state.pid <= 0 || state.pid === process.pid) {
+      throw new Error("Invalid test daemon pid");
+    }
+    try { process.kill(state.pid); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") failures.push(error);
+  }
   // The shared runtime is created first: remove it last, after project fixtures.
   for (const directory of [...temporaryDirectories].reverse()) {
     try {
@@ -134,6 +148,7 @@ export function buildSpawnEnv(extra?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     CLAW_EMBEDDING_WARMUP_DISABLE_LAUNCH: "1",
+    CLAW_SEARCH_DAEMON_IDLE_TTL_MS: "1000",
     CLAW_SESSION_RUNTIME_DIR: moduleSessionRuntimeDir,
     CLAW_SESSION_DAEMON_RUNTIME_DIR: path.join(moduleSessionRuntimeDir, "v2"),
   };
