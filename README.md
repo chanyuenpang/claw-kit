@@ -46,7 +46,7 @@ The harness joins a repository after that repository is initialized for `.claw`.
 | Cindy | Dedicated adapter. Install `claw-kit-cindy` from the Cindy marketplace. | Stable |
 | OpenCode | Dedicated adapter. Plugin, shim, agents, and skills. | Adapter available, testing |
 
-DeepSeek Harness, Codex and Cindy are stable — my colleagues and I use them to write code every day. OpenCode has an adapter that is still being tested. Other platforms: please try it and [open an issue](https://github.com/chanyuenpang/claw-kit/issues/new?template=platform-adapter.yml) or PR if anything breaks.
+DeepSeek Harness, Codex and Cindy are stable — a team already uses them to write code every day. OpenCode has an adapter that is still being tested. Other platforms: please try it and [open an issue](https://github.com/chanyuenpang/claw-kit/issues/new?template=platform-adapter.yml) or PR if anything breaks.
 
 DSH and Codex are the adapters to install first. Each bundles nine skills, including knowledge capture and a host update skill, and both apply the shared progress and goal actions in the host. Cindy and OpenCode are dedicated adapters with a smaller skill set. OpenClaw ships the documentation skill only; see the [package map](#package-map).
 

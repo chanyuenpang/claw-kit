@@ -46,7 +46,7 @@
 | Cindy | 专用适配器。从 Cindy marketplace 安装 `claw-kit-cindy`。 | 稳定可用 |
 | OpenCode | 专用适配器。插件、垫片、agents 和 skills。 | 已适配，测试中 |
 
-DeepSeek Harness、Codex、Cindy 稳定可用，我和同事每天都在用它写代码；OpenCode 已适配，还在测试；其他平台欢迎试用，遇到问题请[提 issue](https://github.com/chanyuenpang/claw-kit/issues/new?template=platform-adapter.yml) 或直接发 PR。
+DeepSeek Harness、Codex、Cindy 稳定可用，已有团队每天在用它写代码；OpenCode 已适配，还在测试；其他平台欢迎试用，遇到问题请[提 issue](https://github.com/chanyuenpang/claw-kit/issues/new?template=platform-adapter.yml) 或直接发 PR。
 
 优先安装 DSH 或 Codex。两者各带九个 skill，包括知识沉淀和该宿主的更新 skill，并且都会在宿主里应用同一套进度和 goal 动作。Cindy 和 OpenCode 是技能面更小的专用适配器。OpenClaw 目前只带文档 skill，见 [包地图](#package-map)。
 
