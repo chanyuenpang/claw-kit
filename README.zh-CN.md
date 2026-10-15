@@ -66,7 +66,7 @@ npm install -g @veewo/claw
 - **Codex：** 添加 marketplace 并安装 **Claw Kit**。[安装 Codex 插件](#install-the-codex-plugin)。
 - **Cindy** 和 **OpenCode** 的安装在下面各自的章节里。
 
-Claude Code 走同一条路：CLI、标准 skills，然后 `claw init`。没有 Claude Code 适配器。其他能跑 shell 的 agent 也一样。把 skills 复制到该 agent 扫描 skill 的文件夹。见 [packages/standard-adapter/README.md](packages/standard-adapter/README.md)。
+Claude Code 走同一条路：CLI、标准 skills，然后 `claw init`。没有 Claude Code 适配器。其他能跑 shell 的 agent（包括 Cursor）也一样。`@veewo/claw` 不包含这些 skills。从本仓库的克隆里，把 [packages/standard-adapter/skill-inputs.json](packages/standard-adapter/skill-inputs.json) 点名的每个目录从 `.agents/skills/` 复制到该 agent 扫描 skill 的文件夹。Cursor 读取 `<project>/.agents/skills/<skill>/SKILL.md`，所以目标是被初始化项目里的 `.agents/skills/`。见 [packages/standard-adapter/README.md](packages/standard-adapter/README.md)。
 
 ### 2. 初始化项目
 
@@ -198,7 +198,7 @@ claw session open G:\Projects\my-project agent-session-id
 没有原生适配器的平台，或者任何能跑 shell 命令的 agent 环境，都可以直接使用完整的 `.claw` 工作流：不需要 `--host` 标志，不需要注册 `CLAW_HOST`，也不需要生命周期钩子。在这些环境里，`claw init` 就是启动方式：它写进 `AGENTS.md` 的引导块会告诉 agent 加载 `using-claw-kit`。
 
 1. 安装 CLI（`npm install -g @veewo/claw`）。
-2. 把 [packages/standard-adapter/README.md](packages/standard-adapter/README.md) 里说明的标准 skills 复制到该平台的 skill 发现位置。
+2. 把 [packages/standard-adapter/skill-inputs.json](packages/standard-adapter/skill-inputs.json) 点名的 skill 目录从本仓库的 `.agents/skills/` 复制到该平台的 skill 发现位置。Cursor 的位置是目标项目里的 `.agents/skills/`。详见 [packages/standard-adapter/README.md](packages/standard-adapter/README.md)。
 3. 在项目里运行 `claw init`。
 
 然后由 agent 把完整循环跑下去。它运行 `claw context` 恢复会话绑定的计划，在需要计划时运行 `claw plan create`，`plan done` 时开启了沉淀的工作走标准收口负责人。默认是同一 agent 上的 `knowledge prepare/complete --source agent-memory`。显式配置的后台路线使用它提供的 capture/dispatch 步骤，以及一份不捕获知识的辅助 writer 计划。`knowledgeCapture: false` 阻止递归的知识累积；不需要公开的存储范围选择。详见 [packages/standard-adapter/README.md](packages/standard-adapter/README.md)。
