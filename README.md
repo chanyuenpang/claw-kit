@@ -66,7 +66,7 @@ On DeepSeek Harness, Codex, Cindy, or OpenCode, also install that adapter. It br
 - **Codex:** add the marketplace and install **Claw Kit**. [Install the Codex plugin](#install-the-codex-plugin).
 - **Cindy** and **OpenCode** have their own install sections below.
 
-Claude Code uses that same path: the CLI, the standard skills, and `claw init`. There is no Claude Code adapter. Any other shell agent does too. Copy the skills into the folder that agent scans. See [packages/standard-adapter/README.md](packages/standard-adapter/README.md).
+Claude Code uses that same path: the CLI, the standard skills, and `claw init`. There is no Claude Code adapter. Any other shell agent, including Cursor, does too. `@veewo/claw` does not ship those skills. From a clone of this repo, copy each directory named in [packages/standard-adapter/skill-inputs.json](packages/standard-adapter/skill-inputs.json) from `.agents/skills/` into the folder that agent scans. Cursor loads `<project>/.agents/skills/<skill>/SKILL.md`, so the destination there is the target project's `.agents/skills/`. See [packages/standard-adapter/README.md](packages/standard-adapter/README.md).
 
 ### 2. Initialize the project
 
@@ -209,9 +209,11 @@ starts it there: the bootstrap block it writes into `AGENTS.md` tells the agent
 to load `using-claw-kit`.
 
 1. Install the CLI (`npm install -g @veewo/claw`).
-2. Copy the standard skills described in
-   [packages/standard-adapter/README.md](packages/standard-adapter/README.md)
-   into the platform's skill discovery location.
+2. Copy the skill directories named in
+   [packages/standard-adapter/skill-inputs.json](packages/standard-adapter/skill-inputs.json)
+   from this repo's `.agents/skills/` into the platform's skill discovery
+   location. Cursor's location is the target project's `.agents/skills/`.
+   See [packages/standard-adapter/README.md](packages/standard-adapter/README.md).
 3. In the project, run `claw init`.
 
 The agent then keeps the full loop. It runs `claw context` to recover a

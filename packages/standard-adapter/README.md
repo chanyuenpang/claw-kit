@@ -24,16 +24,25 @@ default main-agent prepare/complete route (or the explicitly selected background
 
 ## Installation on a host platform
 
-There is no host marketplace to register with. To adopt the standard flow:
+There is no host marketplace to register with. The published `@veewo/claw`
+package does not include these skills. To adopt the standard flow:
 
-1. Install the CLI: `npm install -g @veewo/claw`.
-2. Build the complete standard artifact with `npm run export:standard-skills`.
-   Copy its `skills/` into the platform's discovery location, or explicitly
-   reference the canonical source packages in development; the adapter source
-   tree intentionally contains no generated skill copies.
-3. Paste `docs/entry-contract.md` into the platform's persistent prompt
-   surface for the project.
-4. Ensure the conversation exports a stable `CLAW_SESSION_ID`.
+1. Install the CLI: `npm install -g @veewo/claw` (Node.js 22.13 or newer).
+2. From a clone of this repository, copy each skill directory named in
+   `skill-inputs.json` from `.agents/skills/` into the host's skill discovery
+   location. Those directories are the canonical sources. Cursor, and any
+   other agent that loads `<project>/.agents/skills/<skill>/SKILL.md`, uses
+   the target project's `.agents/skills/`.
+   `npm run export:standard-skills` writes the same folders to
+   `dist/standard-skills/skills/`, but only after `npm install` at the repo
+   root. On a fresh clone the export fails until dependencies are installed,
+   because the exporter imports them at startup.
+3. In the target project, run `claw init`. It writes the short
+   `using-claw-kit` bootstrap into `AGENTS.md` and `CLAUDE.md` when the host
+   loads those files. Paste `docs/entry-contract.md` only when the host's
+   persistent prompt is neither file.
+4. The `using-claw-kit` skill sets one stable `CLAW_SESSION_ID` for the
+   conversation before claw commands. Do not pass `--host` or set `CLAW_HOST`.
 
 ## Key semantics
 
