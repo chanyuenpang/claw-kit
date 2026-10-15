@@ -24,16 +24,72 @@ default main-agent prepare/complete route (or the explicitly selected background
 
 ## Installation on a host platform
 
-There is no host marketplace to register with. To adopt the standard flow:
+Cursor, Claude Code, and any other host without a native adapter use this
+path. The same steps are the repository
+[universal install](../../README.md#universal-install). Do not pass `--host`
+or set `CLAW_HOST`.
 
-1. Install the CLI: `npm install -g @veewo/claw`.
-2. Build the complete standard artifact with `npm run export:standard-skills`.
-   Copy its `skills/` into the platform's discovery location, or explicitly
-   reference the canonical source packages in development; the adapter source
-   tree intentionally contains no generated skill copies.
-3. Paste `docs/entry-contract.md` into the platform's persistent prompt
-   surface for the project.
-4. Ensure the conversation exports a stable `CLAW_SESSION_ID`.
+### 1. Install the CLI
+
+Requires Node.js 22.13 or newer. The published `@veewo/claw` package is the
+CLI only.
+
+```bash
+npm install -g @veewo/claw
+claw --version
+```
+
+If that fails with `EACCES` (often `mkdir '/usr/lib/node_modules'`), the first
+`node` on `PATH` is a system binary and npm is targeting a root prefix. Put
+your user-owned Node first — for nvm, its `bin` directory, such as
+`export PATH="$HOME/.nvm/versions/node/<version>/bin:$PATH"` — until
+`npm prefix -g` is a directory you can write, then run the install again. Or
+install into a writable prefix:
+`npm install -g --prefix "$HOME/.local" @veewo/claw` and
+`export PATH="$HOME/.local/bin:$PATH"`.
+
+### 2. Copy the standard skills
+
+From a clone of this repository, copy only the directories named in
+`skill-inputs.json` — `planning`, `config`, `create-claw-skill`,
+`feature-architecture`, `researcher`, `using-claw-kit`, and `claw-kit-doc` —
+from `.agents/skills/` into the target project. Those directories are the
+canonical sources.
+
+Cursor loads `<project>/.agents/skills/<skill>/SKILL.md`. For Cursor, and for
+any host with that layout, the destination is the target project's
+`.agents/skills/`:
+
+```bash
+mkdir -p /path/to/your-project/.agents/skills
+cp -a .agents/skills/planning \
+      .agents/skills/config \
+      .agents/skills/create-claw-skill \
+      .agents/skills/feature-architecture \
+      .agents/skills/researcher \
+      .agents/skills/using-claw-kit \
+      .agents/skills/claw-kit-doc \
+      /path/to/your-project/.agents/skills/
+```
+
+Another host uses the directory it scans for skills.
+`npm run export:standard-skills` is optional. It reprints the same folders
+under `dist/standard-skills/skills/` and needs `npm install` at the repository
+root first. On a fresh clone it fails with `Cannot find package 'typescript'`
+until those dependencies are installed.
+
+### 3. Initialize, then let the agent follow the skill
+
+```bash
+cd /path/to/your-project
+claw init
+```
+
+`claw init` writes a short `using-claw-kit` bootstrap into `AGENTS.md` and
+`CLAUDE.md` when the host loads those files. Paste `docs/entry-contract.md`
+only when the host's persistent prompt is neither file. The agent loads
+`using-claw-kit`, sets one stable `CLAW_SESSION_ID` for the conversation, and
+runs `claw context` before it decides whether to create a plan.
 
 ## Key semantics
 
