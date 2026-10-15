@@ -37,7 +37,7 @@
 
 | agent 跑在哪里 | 你用什么 | 状态 |
 | --- | --- | --- |
-| 任何能跑 shell 的平台 | `claw` CLI，加上标准 skills。`claw init` 会写入 `AGENTS.md` 引导块，所以不需要钩子。 | 通用路径，[欢迎反馈](https://github.com/chanyuenpang/claw-kit/issues/new?template=platform-adapter.yml) |
+| 任何能跑 shell 的平台 | `claw` CLI，加上标准 skills。[通用安装](#universal-install)。`claw init` 会写入 `AGENTS.md` 引导块，所以不需要钩子。 | 通用路径，[欢迎反馈](https://github.com/chanyuenpang/claw-kit/issues/new?template=platform-adapter.yml) |
 | Claude Code | `claw` CLI 加上标准 skills。没有专用适配器。安装、`claw init`，然后直接说。引导块要落在 Claude Code 真正会读的说明文件里：有 `CLAUDE.md` 时读它，没有时才读 `AGENTS.md`。 | 通用路径，[欢迎反馈](https://github.com/chanyuenpang/claw-kit/issues/new?template=platform-adapter.yml) |
 | DeepSeek Harness (DSH) | 专用适配器。一个 `claw_run` 工具，进度和原生 goal 同步，知识收口由适配器分发。npm：`@veewo/dsh-claw-kit`。 | 稳定可用 |
 | Codex | 专用适配器。Marketplace 插件，带 skills、钩子和同一套工作流。 | 稳定可用 |
@@ -66,7 +66,7 @@ npm install -g @veewo/claw
 - **Codex：** 添加 marketplace 并安装 **Claw Kit**。[安装 Codex 插件](#install-the-codex-plugin)。
 - **Cindy** 和 **OpenCode** 的安装在下面各自的章节里。
 
-Claude Code 走同一条路：CLI、标准 skills，然后 `claw init`。没有 Claude Code 适配器。其他能跑 shell 的 agent（包括 Cursor）也一样。`@veewo/claw` 不包含这些 skills。从本仓库的克隆里，把 [packages/standard-adapter/skill-inputs.json](packages/standard-adapter/skill-inputs.json) 点名的每个目录从 `.agents/skills/` 复制到该 agent 扫描 skill 的文件夹。Cursor 读取 `<project>/.agents/skills/<skill>/SKILL.md`，所以目标是被初始化项目里的 `.agents/skills/`。见 [packages/standard-adapter/README.md](packages/standard-adapter/README.md)。
+Claude Code 没有专用适配器。Cursor 以及其他 shell 或云端 agent 走同一条 [通用安装](#universal-install)：CLI、复制过来的标准 skills，然后 `claw init`。
 
 ### 2. 初始化项目
 
@@ -92,7 +92,51 @@ claw init
 | OpenCode | 插件处理 `session.created` 和 `session.compacted`（OpenCode 没有 `hooks.json`）。它恢复上下文，并为后续 claw 命令设置会话 id。 |
 | Cindy | Ghost 的 session 与 turn 钩子会刷新会话状态，也可以续上一个活动计划。它们不注入首轮提示。agent 遵循已安装的 `using-claw-kit` skill，`AGENTS.md` 引导块也会点名这个 skill。 |
 | Claude Code | 没有钩子，也没有专用适配器。安装 CLI 和 skills，运行 `claw init`，然后直接说。Claude Code 启动时加载 `CLAUDE.md`。只有项目路径上没有 `CLAUDE.md`、`.claude/CLAUDE.md` 或 `CLAUDE.local.md` 时，才会加载 `AGENTS.md`。 |
-| 其他 agent | 没有钩子。启动路径就是 `AGENTS.md` 引导块。 |
+| 其他 agent | 没有钩子。启动路径就是 `AGENTS.md` 引导块。按 [通用安装](#universal-install) 安装。 |
+
+<h2 id="universal-install">通用安装（shell 与云端 agent）</h2>
+
+Cursor、Claude Code，以及任何没有原生适配器的宿主，都走这条路径：CLI、复制 skills、`claw init`。不要传 `--host`，也不要设置 `CLAW_HOST`。
+
+### 1. 安装 CLI
+
+需要 Node.js 22.13 或更高版本。`@veewo/claw` 只包含 CLI。
+
+```bash
+npm install -g @veewo/claw
+claw --version
+```
+
+如果失败并报 `EACCES`（常见是 `mkdir '/usr/lib/node_modules'`），说明 `PATH` 上排在前面的 `node` 是系统二进制，npm 正在往 root 前缀里写。把你自己的 Node 放到前面——nvm 的话是它的 `bin` 目录，例如 `export PATH="$HOME/.nvm/versions/node/<version>/bin:$PATH"`——直到 `npm prefix -g` 是一个你能写的目录，再重新安装。也可以装进可写前缀：`npm install -g --prefix "$HOME/.local" @veewo/claw`，然后 `export PATH="$HOME/.local/bin:$PATH"`。
+
+### 2. 复制标准 skills
+
+从本仓库的克隆里，只复制 [packages/standard-adapter/skill-inputs.json](packages/standard-adapter/skill-inputs.json) 点名的目录——`planning`、`config`、`create-claw-skill`、`feature-architecture`、`researcher`、`using-claw-kit`、`claw-kit-doc`——从 `.agents/skills/` 到目标项目。这些目录就是规范来源。
+
+Cursor 读取 `<project>/.agents/skills/<skill>/SKILL.md`。Cursor 以及使用同一布局的宿主，目标都是被初始化项目里的 `.agents/skills/`：
+
+```bash
+mkdir -p /path/to/your-project/.agents/skills
+cp -a .agents/skills/planning \
+      .agents/skills/config \
+      .agents/skills/create-claw-skill \
+      .agents/skills/feature-architecture \
+      .agents/skills/researcher \
+      .agents/skills/using-claw-kit \
+      .agents/skills/claw-kit-doc \
+      /path/to/your-project/.agents/skills/
+```
+
+其他宿主复制到它自己扫描 skill 的目录。`npm run export:standard-skills` 是可选的。它把同样的目录再写到 `dist/standard-skills/skills/`，并且要先在仓库根目录执行 `npm install`。全新克隆在装上依赖之前会失败，报错是 `Cannot find package 'typescript'`。
+
+### 3. 初始化，然后让 agent 遵循 skill
+
+```bash
+cd /path/to/your-project
+claw init
+```
+
+`claw init` 会把一段简短的 `using-claw-kit` 引导块写入 `AGENTS.md` 和 `CLAUDE.md`。agent 加载这个 skill，为这次对话设置一个稳定的 `CLAW_SESSION_ID`，并在决定要不要建计划之前运行 `claw context`。你不用自己设置会话 id，也不用粘贴启动提示。
 
 <h2 id="under-the-hood">底层：agent 自己做什么</h2>
 
@@ -152,6 +196,8 @@ GitHub Pages 产品介绍在 [docs/index.html](docs/index.html)，是一份中�
 
 <h2 id="install-the-cli">安装 CLI</h2>
 
+Shell 和云端 agent（包括 Cursor）还要复制 skills 并运行 `claw init`。按 [通用安装（shell 与云端 agent）](#universal-install) 来，包括系统 `node` 排在用户自己的 Node 前面时的 `EACCES` 说明。
+
 用 Node.js 22.13 或更高版本安装已发布的 CLI：
 
 ```powershell
@@ -195,11 +241,7 @@ claw session open G:\Projects\my-project agent-session-id
 
 ## 使用标准无宿主流程（任意平台）
 
-没有原生适配器的平台，或者任何能跑 shell 命令的 agent 环境，都可以直接使用完整的 `.claw` 工作流：不需要 `--host` 标志，不需要注册 `CLAW_HOST`，也不需要生命周期钩子。在这些环境里，`claw init` 就是启动方式：它写进 `AGENTS.md` 的引导块会告诉 agent 加载 `using-claw-kit`。
-
-1. 安装 CLI（`npm install -g @veewo/claw`）。
-2. 把 [packages/standard-adapter/skill-inputs.json](packages/standard-adapter/skill-inputs.json) 点名的 skill 目录从本仓库的 `.agents/skills/` 复制到该平台的 skill 发现位置。Cursor 的位置是目标项目里的 `.agents/skills/`。详见 [packages/standard-adapter/README.md](packages/standard-adapter/README.md)。
-3. 在项目里运行 `claw init`。
+没有原生适配器的平台，或者任何能跑 shell 命令的 agent 环境，按 [通用安装（shell 与云端 agent）](#universal-install) 操作。不需要 `--host` 标志，不需要注册 `CLAW_HOST`，也不需要生命周期钩子。`claw init` 写进 `AGENTS.md` 的引导块会告诉 agent 加载 `using-claw-kit`。
 
 然后由 agent 把完整循环跑下去。它运行 `claw context` 恢复会话绑定的计划，在需要计划时运行 `claw plan create`，`plan done` 时开启了沉淀的工作走标准收口负责人。默认是同一 agent 上的 `knowledge prepare/complete --source agent-memory`。显式配置的后台路线使用它提供的 capture/dispatch 步骤，以及一份不捕获知识的辅助 writer 计划。`knowledgeCapture: false` 阻止递归的知识累积；不需要公开的存储范围选择。详见 [packages/standard-adapter/README.md](packages/standard-adapter/README.md)。
 
