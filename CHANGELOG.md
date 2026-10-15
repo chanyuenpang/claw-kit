@@ -4,6 +4,7 @@ All notable release-oriented changes for `claw-kit` should be recorded here.
 
 ## [Unreleased]
 
+- Move session-command completion-refresh recovery off the business response path: slow historical scans, locks and refresh launches no longer delay task completion replies; recover canonical terminal facts in a coalesced background worker without replaying mutations.
 - Fix DSH subprocess cleanup to honor synchronous `terminate(): void`; preserve timeout/disconnection errors and unknown mutation outcomes instead of throwing on `.catch`, without replaying sent operations.
 
 - Remove the residual `claw switch-task` command and its core export; it returned a transient result without changing any binding or state.

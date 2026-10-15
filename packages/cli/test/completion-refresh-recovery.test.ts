@@ -1,12 +1,13 @@
 import test, { before, after } from "node:test";
 import { createHash } from "node:crypto";
+import { spawn } from "node:child_process";
 import { ClawClient } from "@veewo/claw-client";
 import { initProject, writePlan, editPlan, showPlan, resolveProjectContext, listKnowledgeFinalizationJobs,
   readKnowledgeFinalizationJob } from "@veewo/claw-core";
 import { startSessionDaemon } from "../dist/session-daemon.js";
 import { registerReportCollector } from "../dist/report-collector-registry.js";
 import { reconcileCompletionRefresh } from "../dist/completion-refresh-recovery.js";
-import { assert, fs, path, createFixture, runClaw, waitForCompletionRefreshStatus, waitForCondition } from "./cli-test-support.js";
+import { assert, fs, path, thisDir, buildSpawnEnv, createFixture, runClaw, waitForCompletionRefreshStatus, waitForCondition } from "./cli-test-support.js";
 
 const previousMock = process.env.CLAW_EMBEDDING_MOCK;
 before(() => { process.env.CLAW_EMBEDDING_MOCK = "1"; });
@@ -46,7 +47,8 @@ test("daemon terminal and successful knowledge.done execute the real refresh wor
   try {
     await session.command({ operation: "plan.create", input: { taskName: "refresh-plan", title: "Refresh plan" } });
     await session.command({ operation: "plan.done", input: { retrospectiveSummary: "Complete" } });
-    assert.equal(receipts(root).length, 1);
+    // Canonical response precedes maintenance; wait for the real recovery worker.
+    await waitForCondition(() => receipts(root).length === 1, 30_000);
     await settled(receipts(root)[0]!);
     await idle(root);
     const jobPath = listKnowledgeFinalizationJobs(resolveProjectContext(root))[0]!;
@@ -72,6 +74,39 @@ test("daemon terminal and successful knowledge.done execute the real refresh wor
     assert.deepEqual(reconcileCompletionRefresh(root), []);
     assert.equal(fs.readFileSync(knowledgeReceipt, "utf8"), receiptBefore, "log cleanup does not erase terminal acknowledgement");
   } finally { await session.close(); await daemon.close(); }
+});
+
+test("one-shot mutation replies survive background recovery with captured stdout and open stdin", async () => {
+  const root = project("refresh one-shot & spaces");
+  const command = (operation: string, input: object) => new Promise<void>((resolve, reject) => {
+    const child = spawn(process.execPath, [path.resolve(thisDir, "..", "dist", "bin.js"), "internal-command"], {
+      cwd: root, env: buildSpawnEnv({ CLAW_SESSION_ID: "refresh-one-shot", CLAW_EMBEDDING_MOCK: "1" }),
+      stdio: ["pipe", "pipe", "pipe"], windowsHide: true, timeout: 15_000,
+    });
+    let stdout = "", stderr = "";
+    child.stdout.on("data", (chunk) => { stdout += chunk; });
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.on("error", reject);
+    child.stdin.on("error", reject);
+    child.on("close", (code) => {
+      try {
+        assert.equal(code, 0, stderr);
+        const reply = JSON.parse(stdout);
+        assert.equal(reply.ok, true, stdout);
+        assert.equal(reply.command, operation);
+        resolve();
+      } catch (error) { reject(error); }
+    });
+    // Match the adapter: it sends a line, not EOF, and waits for process exit.
+    child.stdin.write(JSON.stringify({ operation, input }) + "\n");
+  });
+  await command("plan.create", { taskName: "one-shot", title: "One-shot", goalText: "Reply once", knowledgeCapture: false });
+  await command("task.done", { tasks: [{ id: 1 }] });
+  assert.equal(showPlan({ cwd: root, taskName: "one-shot" }).plan.tasks[0]?.status, "done");
+  await command("plan.done", { retrospectiveSummary: "Complete" });
+  await waitForCondition(() => receipts(root).length === 1, 30_000);
+  await settled(receipts(root)[0]!);
+  await idle(root);
 });
 
 test("terminal plan commit without intent recovers through stateless CLI context without domain replay", async () => {

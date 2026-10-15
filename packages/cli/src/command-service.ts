@@ -79,13 +79,16 @@ export type ClawCommandResult = {
   knowledgeDispatch?: ClawKnowledgeDispatchV1;
 };
 
-import { recoverCompletionRefreshBestEffort } from "./completion-refresh-recovery.js";
+import { scheduleCompletionRefreshRecovery } from "./completion-refresh-scheduler.js";
 
 export class ClawCommandService {
   readonly registry: SessionRegistryV2;
   readonly focusStore: RegistryFocusSessionStore;
 
-  constructor(registry: SessionRegistryV2) {
+  constructor(
+    registry: SessionRegistryV2,
+    private readonly scheduleRefresh = scheduleCompletionRefreshRecovery,
+  ) {
     this.registry = registry;
     this.focusStore = new RegistryFocusSessionStore(registry);
   }
@@ -189,12 +192,14 @@ export class ClawCommandService {
     if (["knowledge.claim.receipt", "knowledge.done.receipt"].includes(request.operation)) return this.executeCommand(context, request);
     if (request.operation === "knowledge.done") {
       const result = await this.executeCommand(context, request);
-      recoverCompletionRefreshBestEffort(context.cwd, context.agentSessionId);
+      this.scheduleRefresh(context.cwd, context.agentSessionId);
       return result;
     }
-    recoverCompletionRefreshBestEffort(context.cwd, context.agentSessionId);
+    // Historical scans, hashing, locks and worker launch/recovery are optional
+    // system work, not part of a business command's execution/response budget.
+    // Schedule after the owner attempt so a newly committed terminal is visible.
     try { return await this.executeCommand(context, request); }
-    finally { recoverCompletionRefreshBestEffort(context.cwd, context.agentSessionId); }
+    finally { this.scheduleRefresh(context.cwd, context.agentSessionId); }
   }
 
   private async executeCommand(context: CommandContext, request: ClawCommandRequest): Promise<ClawCommandResult> {

@@ -1,4 +1,4 @@
-﻿# ADR: Windows Async Completion Refresh Launcher
+# ADR: Windows Async Completion Refresh Launcher
 
 ## Status
 
@@ -78,3 +78,10 @@ project-scope terminal plan finalization（由 `claw plan done` 或 `claw plan e
 ### Moved GitNexus preparation behind terminal dispatch
 
 The launcher initially assumed a foreground GitNexus embeddings preflight whose completed analyze could be reused by the background worker. That still left terminal dispatch coupled to dependency readiness. The accepted route now queues all GitNexus preparation and both memory reindexes into detached completion refresh after terminal state and knowledge dispatch are durable.
+
+<!-- dated: 2026-10-15 -->
+### Move session-command recovery scans out of the response budget
+
+Session commands previously reconciled historical terminals and refresh statuses synchronously before and after the business owner. Scanning, hashing, lock waits and worker launches could therefore consume a transport timeout either before the mutation or after its commit. Session commands now schedule a separate maintenance-only recovery worker after the owner attempt. Receipt reads still bypass recovery; `knowledge.done` schedules it only after owner success. Recovery reconstructs intent from canonical facts and never replays a business command.
+
+On Windows the asynchronous PowerShell launcher remains referenced only until `Start-Process` acknowledges worker creation, with a five-second startup bound. Immediately unreferencing the launcher lost recovery in a real one-shot CLI regression even though its JSON reply succeeded. After acknowledgment, neither launcher nor its output pipe keeps the foreground CLI alive; a surviving daemon still observes worker exit to coalesce requests and perform a trailing scan. The existing project reconciliation and refresh single-flight locks remain authoritative across processes. A process dying before launch still relies on the next system entry, not mutation replay.
