@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-opencode 适配器的 subagent agent 定义（当前为 `claw-researcher`）不得在 frontmatter 固定运行模型。`claw-knowledge-writer` 现为 `mode: primary`（由 host-aware finalizer 经 `opencode run` 直接启动，见 `hook-owned-two-phase-knowledge-finalization.md`），不再属于 subagent；但它同样不在 frontmatter 硬编码 `model:`，其运行模型由 finalizer job 快照与 runner 决定。硬编码会绕过用户选择和 knowledge job 的显式 writer config，导致：
+opencode 适配器的 subagent agent 定义（包括 `claw-researcher` 与 `claw-knowledge-writer`）不得在 frontmatter 固定运行模型。Knowledge writer 由 native child session 的 `promptAsync` 启动，finalizer 将 job 快照中的 model / reasoning effort 传给 host request；agent frontmatter 不另设模型。硬编码会绕过用户选择和 knowledge job 的显式 writer config，导致：
 
 1. **模型分叉**：subagent 与主 agent 运行在不同模型上，行为和质量不可预期。
 2. **配置漂移**：每新增一个 subagent 都要单独维护 `model:`，且容易与主 agent 的实际模型脱节。
@@ -17,7 +17,7 @@ opencode 适配器的 subagent agent 定义（当前为 `claw-researcher`）不�
 
 opencode subagent agent 定义**不得**在前置 frontmatter 硬编码 `model:` 字段：
 
-- subagent 通过省略 `model:` 使用 host 默认；knowledge finalizer 可以通过 runner 的显式 `--model` / variant 应用 job snapshot
+- subagent 通过省略 `model:` 使用 host 默认；knowledge finalizer 可在 native `promptAsync` request 中应用 job 快照的 model / reasoning effort
 - 该约定适用于 `packages/opencode-adapter/agents/` 下所有 subagent agent 定义（`mode: subagent`）
 - 与 `claw-researcher` 已有的无 `model:` 写法对齐
 
@@ -27,7 +27,7 @@ opencode subagent agent 定义**不得**在前置 frontmatter 硬编码 `model:`
 
 ## Consequences
 
-- 未显式配置的 opencode subagent 使用 host 默认；knowledge writer 的显式 job model 可由 runner 覆盖，而不会与 agent frontmatter 冲突
+- 未显式配置的 opencode subagent 使用 host 默认；knowledge writer 的显式 job model 可由 native host request 应用，而不会与 agent frontmatter 冲突
 - 新增 subagent agent 定义时无需（也不应）重复声明 `model:`
 - 若未来确有"某个 subagent 必须固定模型"的真实需求，需在本 ADR 上追加例外说明，而不是默认硬编码
 

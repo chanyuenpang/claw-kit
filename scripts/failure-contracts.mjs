@@ -1,15 +1,17 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import ts from "typescript";
 import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-export async function failureContractOutputs(sourceRoot = root) {
+export async function failureContractOutputs(sourceRoot = root, host) {
   const source = await fs.readFile(path.join(sourceRoot, "packages/core/src/errors.ts"), "utf8");
   const marker = "// Generated from packages/core/src/errors.ts; do not edit.\n";
-  return [
-    ["packages/cindy-adapter/plugin/node/failure-diagnostics.cjs", marker + ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText],
-    ["packages/opencode-adapter/plugin/failure-diagnostics.ts", marker + source],
-  ];
+  const outputs = [];
+  if (!host || host === "cindy") {
+    const { default: ts } = await import("typescript");
+    outputs.push(["packages/cindy-adapter/plugin/node/failure-diagnostics.cjs", marker + ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText]);
+  }
+  if (!host || host === "opencode") outputs.push(["packages/opencode-adapter/plugin/failure-diagnostics.ts", marker + source]);
+  return outputs;
 }
 export async function checkFailureContracts(sourceRoot = root, host) {
   // Only owners whose actual inputs consume this contract need its check.
@@ -19,7 +21,7 @@ export async function checkFailureContracts(sourceRoot = root, host) {
     const body = await fs.readFile(runtime, "utf8").catch(() => "");
     if (!body.includes("failure-diagnostics")) return;
   }
-  for (const [name, content] of await failureContractOutputs(sourceRoot)) {
+  for (const [name, content] of await failureContractOutputs(sourceRoot, host)) {
     if (host && !name.includes("/" + host + "-adapter/")) continue;
     if (await fs.readFile(path.join(sourceRoot, name), "utf8").catch(() => "") !== content) throw new Error(name + " is stale; run node scripts/failure-contracts.mjs");
   }

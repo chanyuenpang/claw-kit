@@ -31,7 +31,11 @@ Accepted
 
 - session registry 直接把当前 host 的 `sessionKey` 映射到 `.claw`-relative `planPath`
 - process-backed session open 以 project session binding 作为 pre-journal crash recovery 的 canonical anchor，并与 retained daemon focus 对账：有效 binding 可以通过既有 focus transition 原语恢复 root/subplan focus 与 parent linkage；没有 binding 但 retained focus 仍指向 live plan 时补回 binding；terminal binding 则恢复 parent 或释放 focus。该修复不扫描 task 目录、不重放 outcome-unknown mutation，也不创建第二套 workflow 状态机。
+- daemon 会话恢复只由原 session 的真实 claw 调用触发，并且只对该身份的 binding/focus 对账。共享 daemon 启动不遍历恢复历史 session，新的 `session.open` 不等待、续期、恢复或释放其他 session；历史 `live` 标记和未完成计划均不构成激活授权。
+- TTL 到期不授权其他 session 接管旧计划。本次保守保留历史记录和焦点，不在启动或握手中清扫。独立维护只能按自身明确合同释放/删除，不得打开或续期会话、恢复计划、重放旧命令；独立持久任务也必须凭自身身份与授权继续，依赖父 session 的工作等待父 session 返回。
+- 已提交 focus transaction 的 journal 一致性修复仍由既有 owner 完成；它不是激活历史 session 的入口，不得扩张为批量 session 恢复。
 - `SessionStart` 不再按 hook source 区分 `startup`、`resume`、`compact` 的恢复逻辑
+- OpenCode plugin 将 context cache 与首次消息注入状态按真实 session ID 隔离；`session.created` 与 `session.compacted` 都为该 session 刷新结构化 context，首次 `chat.message` 注入一次，system transform 为压缩后的恢复兜底。无 `.claw` 的目录只呈现轻量入口，不初始化项目；显式 plan/create 路径才负责初始化。
 - `SessionStart` 启动时只读取当前 `sessionKey` 的 direct plan binding，不扫描 task directories 推断 active workflow
 - subplan create 把 binding 切到 child，subplan done 切回 `parentPlan`，root plan done 删除 binding
 - 恢复成功时，只注入最小 workflow snapshot 和基于当前 canonical state 重算得到的 `workflowGuidance`

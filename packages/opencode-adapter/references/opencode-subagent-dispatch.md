@@ -18,7 +18,7 @@ opencode knowledge deposition is not a delegated main-agent responsibility. Neve
 
 ## Agent definitions
 
-opencode subagents are defined as `*.md` files under `packages/opencode-adapter/agents/` and installed to `~/.config/opencode/agent/`. The `claw-knowledge-writer` agent is reserved for the finalization worker (`opencode run --agent claw-knowledge-writer`); the main agent must not dispatch it directly.
+opencode subagents are defined as `*.md` files under `packages/opencode-adapter/agents/` and installed to `~/.config/opencode/agent/`. The `claw-knowledge-writer` agent is reserved for the finalization worker (native child session using `client.session.promptAsync`); the main agent must not dispatch it directly.
 
 ## Anti-patterns
 

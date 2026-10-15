@@ -186,55 +186,6 @@ export class SessionRegistryV2 {
     writeJsonFile(this.recordPath(sessionKeyHash), record);
   }
 
-  async recover(now = new Date()): Promise<{ normalized: string[]; removed: string[] }> {
-    const normalized: string[] = [];
-    const removed: string[] = [];
-    for (const sessionKeyHash of this.listSessionKeys()) {
-      // Most retained records need no recovery. Do not fsync a queue for every
-      // historical session before the shared daemon can accept a connection.
-      // This is only maintenance selection; selected records are reread under
-      // their queue, and ordinary session operations retain all owner checks.
-      let snapshot: SessionRecordV2;
-      try { snapshot = this.read(sessionKeyHash); } catch { continue; }
-      if (snapshot.state === "live") {
-        try { createSessionIdentity(snapshot.agentSessionId, snapshot.canonicalWorkdir); }
-        catch (error) {
-          if (error instanceof ClawError && error.code === "SESSION_IDENTITY_INVALID") continue;
-          throw error;
-        }
-      } else if (snapshot.state !== "disconnected" || snapshot.currentPlan
-        || Date.parse(snapshot.expiresAt) > now.getTime()) continue;
-      await this.withExecution(sessionKeyHash, async () => {
-        let record: SessionRecordV2;
-        try {
-          record = this.read(sessionKeyHash);
-        } catch {
-          return;
-        }
-        if (record.state === "live") {
-          record = refreshRecord(record, now, { state: "disconnected", preserveExpiry: true });
-          try {
-            this.write(sessionKeyHash, record);
-          } catch (error) {
-            // A retained session may refer to a removed temporary workspace. Keep
-            // its record intact; it cannot prevent unrelated sessions from opening.
-            // Live operations still enforce identity through write's owner check.
-            if (error instanceof ClawError && error.code === "SESSION_IDENTITY_INVALID") return;
-            throw error;
-          }
-          normalized.push(sessionKeyHash);
-        }
-        if (record.state === "disconnected" && Date.parse(record.expiresAt) <= now.getTime()) {
-          if (!record.currentPlan) {
-            this.removeSessionDirectory(sessionKeyHash);
-            removed.push(sessionKeyHash);
-          }
-        }
-      });
-    }
-    return { normalized, removed };
-  }
-
   cleanupExpired(now = new Date(), liveSessionKeys = new Set<string>()): string[] {
     const removed: string[] = [];
     for (const sessionKeyHash of this.listSessionKeys()) {
@@ -383,16 +334,14 @@ export class RegistryFocusSessionStore implements FocusSessionStore {
 function refreshRecord(
   record: SessionRecordV2,
   now: Date,
-  options?: { state?: SessionRecordV2["state"]; preserveExpiry?: boolean },
+  options?: { state?: SessionRecordV2["state"] },
 ): SessionRecordV2 {
   const updatedAt = now.toISOString();
   return {
     ...record,
     ...(options?.state ? { state: options.state } : {}),
     updatedAt,
-    expiresAt: options?.preserveExpiry
-      ? record.expiresAt
-      : new Date(now.getTime() + SESSION_RECORD_TTL_MS).toISOString(),
+    expiresAt: new Date(now.getTime() + SESSION_RECORD_TTL_MS).toISOString(),
   };
 }
 

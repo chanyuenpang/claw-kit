@@ -316,18 +316,14 @@ test("cli context generates search guidance from enabled embedding and GitNexus 
   }
 });
 
-test("cli context auto-initializes when .claw is missing", () => {
+test("cli context leaves an uninitialized directory unchanged", () => {
   const root = createFixture("context-init");
-
+  const before = fs.readdirSync(root);
   const result = runClaw(["context"], root);
-  const startupRecovery = result.startupRecovery as JsonRecord;
-
-  assert.equal(startupRecovery.initialized, true);
-  assert.equal("corrected" in startupRecovery, false);
-  assert.equal("protocolCheck" in result, false);
-  assert.equal(fs.existsSync(path.join(root, ".claw", "project.json")), true);
-  assert.equal((result.project as JsonRecord).projectRoot, root);
-  assert.equal("projectConfig" in (result.project as JsonRecord), false);
+  assert.equal("project" in result, false);
+  assert.equal("startupRecovery" in result, false);
+  assert.deepEqual(fs.readdirSync(root), before);
+  assert.equal(fs.existsSync(path.join(root, ".claw")), false);
 });
 
 test("cli context auto-corrects malformed existing .claw state", () => {

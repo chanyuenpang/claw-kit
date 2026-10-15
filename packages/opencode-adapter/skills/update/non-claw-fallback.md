@@ -3,7 +3,7 @@
 Use this path only when no `.claw` project is available.
 
 1. Confirm the target claw-kit version is published and obtain the maintained source checkout at that version.
-2. From that checkout run `npm run install:opencode-plugin`. This rebuilds and reinstalls the CLI before deploying the OpenCode plugin surfaces.
+2. Install the confirmed global CLI with `npm install -g @veewo/claw@<target-version>`. From that checkout run `npm ci --include=dev` then `npm run install:opencode-plugin`. This Node entry works in Bash and PowerShell and deploys only the plugin surfaces.
 3. Verify `claw --version` and `npm list -g @veewo/claw --depth=0`.
 4. Verify the plugin payload, root shim, discovered skills, agent definitions, references, and workflow guidance under `~/.config/opencode`.
 5. Confirm retired `truth-writer` and `adr-writer` discovery directories are absent.

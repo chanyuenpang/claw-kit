@@ -1,11 +1,6 @@
 ---
 description: "Dedicated delegate writer for one explicitly dispatched claw knowledge finalization."
-mode: primary
-permission:
-  edit: allow
-  bash:
-    "claw *": allow
-    "*": allow
+mode: subagent
 ---
 
 # delegate writer

@@ -12,8 +12,8 @@ through the OpenCode host's supported command tool and follow returned
 
 The default background route belongs to the plugin/worker, not the main agent.
 The plugin captures the turn on session.idle; its host-aware worker uses
-`opencode run --agent claw-knowledge-writer` in the user's OpenCode
-runtime, not Codex SDK or a Lead-spawned Codex worker. The foreground canonical
+native `client.session.create` and `client.session.promptAsync` in the current
+OpenCode service, not a second CLI process or a Lead-spawned worker. The foreground canonical
 transition resumes the parent binding or clears the root binding without
 waiting for the report or writer.
 
@@ -22,4 +22,4 @@ report, or worker failure must remain observable but cannot roll back a settled
 canonical transition. Do not repeat plan completion as compensation. Async
 writer completion and successful foreground plan.done are different evidence.
 
-OpenCode always captures at idle and launches its adapter-owned writer.
+OpenCode always captures at idle and launches its adapter-owned writer when a canonical target exists; writer children are excluded. Delivery is persisted before external effects, and uncertain delivery is never automatically resent. Execution depends on the current OpenCode service remaining alive; accepted dispatch is not a completed knowledge receipt.

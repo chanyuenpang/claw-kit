@@ -11,6 +11,7 @@ export * from "./knowledge-document.js";
 export * from "./knowledge-assignments.js";
 export * from "./knowledge-governance.js";
 export * from "./knowledge-sidecar.js";
+export * from "./opencode-finalizer-execution.js";
 export * from "./memory.js";
 export * from "./plan-events.js";
 export * from "./project-check.js";

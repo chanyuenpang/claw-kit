@@ -22,7 +22,7 @@ test("Codex invoke registers its actual adapter collector after first project in
   const env = { CLAW_SESSION_ID: "first-codex-collector", CLAW_HOST: "codex" };
   const initialized = runClaw(["codex", "invoke", encode(JSON.stringify(["context"])), encode(adapterRoot)], root, env);
   assert.ok(initialized.output);
-  assert.equal(fs.existsSync(path.join(root, ".claw", "project.json")), true);
+  assert.equal(fs.existsSync(path.join(root, ".claw", "project.json")), false);
   runClaw(["codex", "invoke", encode(JSON.stringify(["plan", "create", "First plan", "--goal", "Register collector"])), encode(adapterRoot)], root, env);
   const descriptor = JSON.parse(fs.readFileSync(path.join(root, ".claw", "runtime", "report-collectors", "codex.json"), "utf8"));
   assert.equal(descriptor.host, "codex");

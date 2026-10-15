@@ -574,7 +574,7 @@ test("daemon lets a second live client attach and retains the session until the 
   await secondDaemon.close();
 });
 
-test("daemon expiry maintenance releases retained plan ownership before deleting session state", async () => {
+test("new sessions cannot restore or release an expired session; only its own reopen restores focus", async () => {
   const runtimeRoot = fixture("expiry-runtime");
   const projectRoot = fixture("expiry-project");
   initProject({ cwd: projectRoot, projectName: "Daemon Expiry", planning: false });
@@ -597,14 +597,29 @@ test("daemon expiry maintenance releases retained plan ownership before deleting
     expiresAt: "2000-01-01T00:00:00.000Z",
   });
 
+  const recordPath = registry.recordPath(expired.identity.sessionKeyHash);
+  const original = fs.readFileSync(recordPath, "utf8");
   const daemon = await startSessionDaemon({ runtimeRoot, idleTtlMs: 0 });
-  const replacement = await new ClawClient({ runtimeRoot }).open("replacement-agent", projectRoot);
-  await replacement.command({
-    operation: "plan.resume",
-    input: { planId: "expiry-plan" },
-  });
-  assert.equal(fs.existsSync(registry.sessionDirectory(expired.identity.sessionKeyHash)), false);
+  try {
+    assert.equal(fs.readFileSync(recordPath, "utf8"), original);
+    const replacement = await new ClawClient({ runtimeRoot }).open("replacement-agent", projectRoot);
+    try {
+      assert.equal(fs.readFileSync(recordPath, "utf8"), original);
+      await assert.rejects(replacement.command({
+        operation: "plan.resume",
+        input: { planId: "expiry-plan" },
+      }), { code: "PLAN_FOCUS_CONFLICT" });
+      assert.equal(fs.readFileSync(recordPath, "utf8"), original);
+    } finally { await replacement.close(); }
 
-  await replacement.close();
-  await daemon.close();
+    const owner = await new ClawClient({ runtimeRoot }).open("expired-agent", projectRoot);
+    try {
+      const restored = registry.read(expired.identity.sessionKeyHash);
+      assert.equal(restored.state, "live");
+      assert.deepEqual(restored.currentPlan, expiredRecord.currentPlan);
+      assert.ok(Date.parse(restored.expiresAt) > Date.now());
+      const plan = await owner.command({ operation: "plan.show", input: { simple: true } }) as { goal: { text: string } };
+      assert.equal(plan.goal.text, "Release ownership");
+    } finally { await owner.close(); }
+  } finally { await daemon.close(); }
 });

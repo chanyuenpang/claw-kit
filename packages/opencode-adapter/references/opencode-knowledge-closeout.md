@@ -1,55 +1,27 @@
-# OpenCode knowledge closeout boundary
+# OpenCode native knowledge closeout
 
-## Conclusion
+## Ownership and normal path
 
-Plan and session binding are claw-kit's foreground canonical lifecycle and must stay independent of the opencode plugin hooks. Plugin event, report, or worker failures are all fail-open: they must not change `claw plan create`, `claw plan edit`, `claw plan done`, subplan parent resume, or session binding semantics.
+Foreground plan completion and session binding remain Core-owned and do not wait for knowledge deposition. Plugin failures never roll back plan.done.
 
-Knowledge capture uses a per-session registry / outbox separated from the foreground lifecycle. Creating a root plan or subplan derives an adjacent report path from the deterministic plan path: `<name>.json` pairs with `<name>.report`. Plan completion records a pending turn owner, but the canonical lifecycle immediately resumes the parent binding, or clears the binding on root completion; it never waits for report, hook, or the async writer.
+1. The plugin captures the final assistant text at session.idle with the actual parent session identity. Core produces the canonical job and bootstrap.
+2. Core reserves an opencodeExecution record before native session.create, binds the returned child ID, and records send-attempted before promptAsync. The plugin copies parent session permission rules; the writer agent does not grant blanket bash/edit permission. Host configuration and permission prompts still apply.
+3. The child receives only the canonical bootstrap, uses its own CLAW_SESSION_ID, claims the job and completes through Core knowledge.done. Core alone owns claim authorization and final success/failure.
+4. Native acceptance is not completion. Recovery inspects the persisted execution and canonical job status, including expiration; logs distinguish queued/running/terminal outcomes. No CLI executable lookup, global finalizer environment switch, or process spawn is needed for this route.
 
-## Long-term rules
+## Failure and authority boundaries
 
-- Each opencode turn writes at most one report on `session.idle`. If the current turn has a pending plan that just entered any `end.*` state, that ended plan owns the final report; otherwise the current active plan owns it. An end-state transition turn never writes two reports.
-- The finalization worker only consumes the completed `plan.json`, its adjacent report, and a finalize id. It runs one consistency-aware knowledge-steward pass across Truth and ADR, then requests recall indexing after it succeeds.
-- On opencode the worker runs through `opencode run --agent claw-knowledge-writer` inside the user's own opencode environment. It never assumes a Codex SDK runtime is installed locally; the opencode host must not require codex-runtime consent.
-- The job's `host` field selects the runner: `opencode` → `opencode run`; anything else (including legacy jobs without the field) → Codex SDK.
-- Success path order: the combined knowledge writer completes, Truth/ADR encoding normalization and completion recall refresh are requested, one idempotent `knowledge_finalization` result is appended to the report, then the `succeeded` job is persisted. Writer, encoding, refresh, or result-persistence failure enters the existing retry path; the finalize id prevents duplicate report results.
-- The report result writer only accepts paths under `.claw/tasks` and runs under file lock. A successful result exposes the finalize id, time, result text, attempts, host, writer thread, and encoding summary. The report moves with its task into `.claw/archive/tasks` and is deleted only when retention prunes that archived task; the default archive limit is `9`.
-- The main agent no longer judges or dispatches the knowledge writer; async knowledge capture must not take over plan lifecycle or session binding.
-- After a foreground plan mutation succeeds, plugin, report, or worker errors are observable side failures only; they cannot roll back, block, or rewrite canonical plan state.
+The persisted parent/project/child association is the authority for dispatch and claim. Only that parent may reserve or bind; only the bound child may claim after a send attempt. Deferring these checks until after dispatch could send the bootstrap to the wrong session or let another session consume the job. Reject only the affected operation, never unrelated plans. Missing association deliberately prevents claims rather than guessing a child from a title or directory scan.
 
-## Related code
+Create-attempted, send-attempted and unknown survive plugin restarts and never authorize automatic replay. A lost create reply can leave an unassociated empty child; do not create another. A lost prompt reply may already be executing; the known child can still claim and complete. Rejected or unknown transport is visible independently of the canonical job status. Do not retry plan.done to repair it. Read the canonical receipt/status before considering any operator recovery; this adapter does not implement automatic redispatch.
 
-- `packages/core/src/plan.ts`: canonical plan create/edit/done and root/subplan lifecycle.
-- `packages/core/src/session-bindings.ts`: explicit `sessionKey -> planPath` binding and parent resume.
-- `packages/core/src/context.ts`: recovers the current workflow only through session binding.
-- `packages/core/src/knowledge-sidecar.ts`: Truth/ADR Markdown encoding normalization, contained idempotent report-result persistence, and the `host` field on finalization jobs.
-- `packages/cli/src/cli.ts`: host-aware combined finalization runner (`runKnowledgeWriterForJob`) and the `runStopHook` message-payload path.
-- `packages/cli/src/opencode-runner.ts`: `opencode run` finalization runner and NDJSON parser.
-- `packages/opencode-adapter/plugin/index.ts`: `session.idle` report capture and `message.*` tracking.
+Writer sessions are identified from Core records, not a process-wide flag. Their shell environment marks finalizer execution; startup plan prompts, idle capture and goal continuation are suppressed only for those sessions. Parent and sibling sessions remain ordinary sessions. If Core classification is unavailable, the adapter logs the failure and suppresses claw automation for that event without throwing through the host shell hook; this conservative result is not cached. It may temporarily suppress ordinary capture but prevents recursive deposition and does not stop ordinary host work.
 
-## Known traps
+Execution lives inside the current OpenCode service. Exiting that service can interrupt deposition; durable records prevent duplicate execution but do not promise a detached worker will survive shutdown. Pending is never reported as successful Truth/ADR deposition.
 
-- Do not infer the active plan from directory scans or event streams; without a session binding, recovery must stay empty.
-- Do not treat both the pending ended plan and an already-resumed parent as the same turn's owner; that produces dual writes and ambiguous closeout evidence.
-- Async writer completion and foreground `claw plan done` success are two different things; never describe the latter as completed truth / ADR deposition.
-- Do not route the opencode host through the Codex SDK runner; the job's `host` field selects `opencode run`.
+## Verification and code
 
-## Verification
-
-- After forcing plugin, report, or worker failures, plan create/edit/done, subplan parent resume, and binding still complete via the canonical lifecycle.
-- Creating a root plan and subplan each yields exactly one adjacent `.report` path derived from the `.json`.
-- An end-state transition `session.idle` produces exactly one report owned by the pending ended plan; ordinary `session.idle` only owns the active plan.
-- The worker input only accepts a completed `plan.json`, adjacent report, and finalize id, and requests indexing after deposition.
-- opencode finalization runs through `opencode run` without any codex-runtime dependency.
-- Successful finalization leaves exactly one observable `knowledge_finalization` result in the report; archiving preserves it and retention pruning removes it with the archived task.
-
-## Search terms
-
-- `fail-open hooks`
-- `session binding`
-- `pending turn owner`
-- `plan report`
-- `finalize id`
-- `knowledge-writer`
-- `opencode run`
-- `host-aware runner`
+- Core: [execution owner](../../core/src/opencode-finalizer-execution.ts), [claim and completion](../../core/src/knowledge-sidecar.ts).
+- Adapter: [native dispatch and session hooks](../plugin/index.ts).
+- Regressions cover parent/child authorization, immutable association, at-most-once creation/send across restart, resolved SDK rejection, unknown delivery, permission copying, and child-only recursion suppression.
+- This route is the plugin's native closeout path. The older CLI runner remains for legacy CLI entry points; it is not a fallback on native dispatch failure.

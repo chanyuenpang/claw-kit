@@ -21,7 +21,7 @@
     "install:local-cli": "powershell -ExecutionPolicy Bypass -File ./scripts/install-cli.ps1",
     "install:codex-plugin": "powershell -ExecutionPolicy Bypass -File ./scripts/install-codex-plugin.ps1",
     "install:dsh-plugin": "node ./scripts/install-dsh-plugin.mjs",
-    "install:opencode-plugin": "powershell -ExecutionPolicy Bypass -File ./scripts/install-opencode-plugin.ps1",
+    "install:opencode-plugin": "node ./scripts/install-opencode-plugin.mjs",
     "publish:release": "node ./scripts/publish-release.mjs --publish",
     "beta:prepare": "node ./scripts/release-candidate.mjs prepare",
     "beta:recover": "node ./scripts/release-candidate.mjs recover",

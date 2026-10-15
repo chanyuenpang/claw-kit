@@ -107,7 +107,7 @@ test("OpenCode routed reference retains lifecycle and host-owned closeout", asyn
   }
   assert.match(entry, /do not implement, enter Goal Mode, convert\s+discussion to wait, or close before it is settled/);
   assert.match(host, /session\.idle/);
-  assert.match(host, /opencode run --agent claw-knowledge-writer/);
+  assert.match(host, /client\.session\.create/);
   assert.match(host, /Do not manually judge, duplicate, or dispatch the background writer/);
   assert.match(host, /Do not repeat plan completion as compensation/);
   assert.match(host, /OpenCode always captures at idle and launches its adapter-owned writer/);
@@ -133,7 +133,7 @@ test("OpenCode main-agent guidance leaves automatic closeout to the host", async
   assert.doesNotMatch(JSON.stringify(allDone), /truth-writer|adr-writer|knowledge-writer|subagent|deposition/i);
 
   assert.doesNotMatch(agent, /claw-kit:delegate-writer/i);
-  assert.match(agent, /mode: primary/i);
+  assert.match(agent, /mode: subagent/i);
   assert.match(agent, /internal knowledge-delegate bootstrap prompt/i);
   assert.doesNotMatch(agent, /session-scoped|through \d+\/\d+|supplied plan|report conclusions/i);
   await assert.rejects(fs.access(new URL("skills/delegate-writer/SKILL.md", adapterRoot)));

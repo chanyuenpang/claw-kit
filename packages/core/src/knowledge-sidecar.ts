@@ -149,6 +149,7 @@ export type KnowledgeFinalizationJob = {
   /** Immutable first-claim snapshot for every trusted host; never regenerated on recovery. */
   claimReceipt?: KnowledgeClaimReceipt;
   dshExecution?: DshFinalizerExecution;
+  opencodeExecution?: import("./opencode-finalizer-execution.js").OpenCodeFinalizerExecution;
   /** Immutable claim-time association for optional, host-neutral delegate closeout. */
   delegateWorkflow?: { ownerSessionId: string; planPath: string; projectRoot: string; scope?: "project" | "session" };
   truthThreadId?: string;
@@ -966,6 +967,10 @@ export function claimKnowledgeFinalizationJob(
     if (observed.dshExecution && (observed.dshExecution.delivery.state === "reserved" || observed.dshExecution.releasedAt)) {
       throw new ClawError("DSH_EXECUTION_NOT_DELIVERED", "The admitted job has no live delivery attempt.");
     }
+    if (observed.opencodeExecution && (!options?.claimant || options.claimant.agentSessionId !== observed.opencodeExecution.childSessionId
+      || !["send-attempted", "accepted", "unknown"].includes(observed.opencodeExecution.state))) {
+      completionRejection("KNOWLEDGE_CLAIM_OWNER_MISMATCH", "Only the durably bound OpenCode child may claim this delivery.");
+    }
     if (observed.claimReceipt) return null;
     Object.assign(evidence, { phase: "reconcile", outcome: "unknown", effect: "unknown" });
     const current = reconcileKnowledgeFinalizationJobLocked(jobPath, new Date());
@@ -1149,7 +1154,7 @@ export function doneKnowledgeFinalizationJob(input: KnowledgeCompletionCredentia
       sessionId: current.sessionId, host: current.host, taskName: current.taskName,
       planPath: current.planPath, reportPath: current.reportPath, attempts: current.attempts,
       claimToken: current.claimToken, claimedAt: current.claimedAt, expiresAt: current.expiresAt,
-      claimReceipt: current.claimReceipt, dshExecution: current.dshExecution, delegateWorkflow: current.delegateWorkflow,
+      claimReceipt: current.claimReceipt, dshExecution: current.dshExecution, opencodeExecution: current.opencodeExecution, delegateWorkflow: current.delegateWorkflow,
       status: input.status, finishedAt: input.finishedAt ?? new Date().toISOString(),
       ...(input.status === "succeeded" ? { finalResponse: input.result ?? "", error: undefined, operationalFailure: undefined }
         : { error: { message: input.error ?? "Knowledge finalization failed." } }),
@@ -1439,6 +1444,9 @@ export function writeKnowledgeFinalizationJob(jobPath: string, job: KnowledgeFin
     }
     if (current?.reportCapture?.endedAt !== undefined && current.reportCapture.endedAt !== job.reportCapture?.endedAt) {
       throw new Error("Knowledge report capture upper bound is immutable.");
+    }
+    if (current?.opencodeExecution && JSON.stringify(current.opencodeExecution) !== JSON.stringify(job.opencodeExecution)) {
+      throw new Error("OpenCode execution association is immutable outside dispatch transitions.");
     }
     if (current?.dshExecution && JSON.stringify(current.dshExecution) !== JSON.stringify(job.dshExecution)) {
       throw new Error("DSH execution association is immutable outside admission/delivery/release.");

@@ -62,6 +62,11 @@
 <!-- state: history -->
 ## Evolution history
 
+<!-- dated: 2026-10-15 -->
+### OpenCode plugin closeout uses native child sessions
+
+The OpenCode plugin now creates and prompts the writer through the live OpenCode service rather than launching `opencode run` for normal plugin closeout. Core persists parent/project/child association and reserve/bind/send-attempt state; only the associated child may claim, and accepted or unknown delivery is not replayed. Parent permissions are copied explicitly, and only the writer session suppresses claw automation. This remains an in-service execution path, not a detached-worker survival guarantee; source and unit evidence do not prove Linux real-model deposition. OpenCode install/agent and operational details belong to [the OpenCode install pipeline](../features/opencode-plugin-install-pipeline.md) and adapter reference.
+
 <!-- dated: 2026-10-08 -->
 ### Wrong copied token must not masquerade as an uncertain commit
 
@@ -90,16 +95,6 @@ The previous all-`end.*` finalization route let a user-requested leave detach th
 
 - 先前 finalizer 运行公开 `knowledge-writer` skill，并一度让 `wait` 建立 executor binding；Codex main agent也没有真实的 subagent launcher。当前把 delegate template 与 built-in governance 移入 Core 内部资源，以 `background | subagent` 只选择 launcher；内部 template 拥有 session scope，`wait` 只等待，claim/done 完全由 token 驱动。
 
-<!-- dated: 2026-07-30 -->
-### Task checkpoint capture 被 turn-level report 合同取代
-
-- 先前决策直接复用成功 `task.done` response 的 `ok: true` 与 `command: "task.done"`，在每次 `Stop` 中把同 turn 的成功返回绑定到最近的前置 assistant conclusion，并作为 `task_conclusion` 与最终 entry 一起保存。真实 transcript 调查证明这些 checkpoint 不是独立 Codex turn，因此决策改为每个真实 turn 只保留最终 assistant message。旧机制在新合同实施前仍是当前代码行为，保留本段用于迁移与回归解释。
-
-<!-- dated: 2026-07-22 -->
-### 移除 finalizer 自动 Git 提交
-
-- 先前决策把一次隔离的 fail-open Git commit 作为 successful finalization 的后置副作用，并以 `autoCommitKnowledge` 作为项目配置 gate。该机制已完全移除：finalizer 只写入、治理、记录结果和刷新索引，文档提交由正常开发流程负责。
-
 <!-- state: current -->
 ## Consequences
 
@@ -113,11 +108,13 @@ The previous all-`end.*` finalization route let a user-requested leave detach th
 - Job、report result、encoding、refresh 和持久化顺序成为可回归的完成证据；相邻 report 同时保留原始 turn 结论与可按 `finalizeId` 读取的 writer 结果。
 - 在 background 的独立 Stop/coverage trigger 与强制 structured closeout 尚未交付前，final message 继续同时承担用户可见的最终接受结论、内容安全网和 background job 创建令牌。Codex subagent 的 ready job 不再依赖 final message，但 claim-time capture 只拥有终态 mutation 前已存在的 task conclusions；不得把两条 policy 的覆盖边界混为一谈。
 - turn-level 合同实施后，单次 `Stop` 只保存其真实 agent turn 的最终 assistant message；同 turn 内多个 `task.done`、commentary 或工具批次不再制造额外 report entry。实施完成前的 checkpoint 捕获现状仍以 Truth owner 为准。
-- OpenCode host 的 finalizer agent 入口收敛为单一 `packages/opencode-adapter/agents/claw-knowledge-writer.md`。该 `mode: primary` agent 由 background finalizer 经 `opencode run` 启动，只消费 internal bootstrap prompt，不加载 `using-claw-kit` 或公开 writer skill；retired writer agents 与 skill discovery directories 都不再发布。
+- OpenCode host 的 finalizer agent 入口收敛为单一 `packages/opencode-adapter/agents/claw-knowledge-writer.md`。该 `mode: subagent` agent 由 plugin 在当前 OpenCode service 中通过 native child session API 接收 internal bootstrap prompt；不加载 `using-claw-kit` 或公开 writer skill，也不递归派生 writer。retired writer agents 与 skill discovery directories 都不再发布。实现与失败边界见 [OpenCode native writer Truth](../features/opencode-plugin-install-pipeline.md)。
 
 ## Related Code
 
 - `packages/core/src/knowledge-sidecar.ts`
+- `packages/core/src/opencode-finalizer-execution.ts`
+- `packages/cli/src/opencode-finalizer-execution.ts`
 - `packages/core/src/knowledge-assignments.ts`
 - `packages/core/resources/delegate-writer/TEMPLATE.json`
 - `packages/core/resources/cindy-delegate-writer/TEMPLATE.json`

@@ -10,14 +10,11 @@ import {
 } from "@veewo/claw-client";
 import {
   ClawError,
-  releaseCurrentPlanFocus,
-  resolveProjectContext,
   writeJsonFileAtomic,
 } from "@veewo/claw-core";
 import { SessionCommandExecutor } from "./session-command.js";
 import { serializeCommandFailure } from "./command-failure.js";
 import {
-  RegistryFocusSessionStore,
   SessionRegistryV2,
   createSessionIdentity,
   ensurePrivateDirectory,
@@ -57,8 +54,8 @@ export async function startSessionDaemon(options?: {
   const registry = new SessionRegistryV2(options?.runtimeRoot);
   ensurePrivateDirectory(path.join(registry.runtimeRoot, "daemon"));
   const releaseStartLock = acquireStartLock(registry.runtimeRoot);
-  await registry.recover();
-  const focusStore = new RegistryFocusSessionStore(registry);
+  // Historical records are inert. Only an original session's actual request
+  // may reopen it and reconcile its own binding/focus in SessionCommandExecutor.
   const executor = new SessionCommandExecutor(registry);
   const token = randomBytes(32).toString("hex");
   const activeSessions = new Map<string, Set<ConnectionState>>();
@@ -66,38 +63,6 @@ export async function startSessionDaemon(options?: {
   const server = net.createServer();
   let idleTimer: NodeJS.Timeout | undefined;
   let closing = false;
-
-  const cleanupExpiredSessions = async (): Promise<void> => {
-    const live = new Set(activeSessions.keys());
-    for (const expired of registry.listExpiredRecords(new Date(), live)) {
-      await registry.withExecution(expired.sessionKeyHash, async () => {
-      // Re-read after acquiring the cross-transport queue: a one-shot command
-      // may have refreshed this session since the expiry inventory was taken.
-      if (!fs.existsSync(registry.recordPath(expired.sessionKeyHash))) return;
-      const current = registry.read(expired.sessionKeyHash);
-      if (current.state !== "disconnected" || Date.parse(current.expiresAt) > Date.now()) return;
-      if (current.currentPlan) {
-        try {
-          const identity = createSessionIdentity(
-            current.agentSessionId,
-            current.canonicalWorkdir,
-          );
-          const project = resolveProjectContext(identity.canonicalWorkdir);
-          await releaseCurrentPlanFocus({
-            project,
-            sessionKey: sessionFocusKey(identity),
-            kind: "expire",
-            sessionStore: focusStore,
-          });
-        } catch (error) {
-          if (error instanceof ClawError) return;
-          throw error;
-        }
-      }
-      registry.removeReleasedExpired(expired.sessionKeyHash);
-      });
-    }
-  };
 
   const scheduleIdle = (): void => {
     if (idleTimer) clearTimeout(idleTimer);
@@ -203,7 +168,6 @@ export async function startSessionDaemon(options?: {
     try {
       if (request.operation === "session.open" || request.operation === "session.open.receipt") {
         const receiptOnly = request.operation === "session.open.receipt";
-        if (!receiptOnly) await cleanupExpiredSessions();
         await detach(connection);
         const identity = createSessionIdentity(request.input.agentSessionId, request.input.workdir);
         const opened = await executor.open(request.input, receiptOnly);

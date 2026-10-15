@@ -8,7 +8,7 @@ For `claw-kit` on opencode, prompt-driven startup recovery remains the baseline 
 
 The plugin works on these rules:
 
-- skills load reliably through `skills.paths` in `opencode.json`
+- skills are installed under the conventional `~/.config/opencode/skills/` discovery directory
 - plugin event handlers are enhancement only
 - `session.created` recovery restores startup harness state before the main workflow starts
 - if `claw context` detects that the project protocol version is ahead of the current CLI, startup recovery surfaces `startupRecovery.versionSync` in the prompt
@@ -27,7 +27,7 @@ When claw-kit is used in a real opencode project thread:
 
 ## Runtime gate
 
-opencode never checks for a Codex SDK runtime. The opencode finalization worker runs through `opencode run` and does not require `codex-runtime` consent. A missing or invalid `claw` CLI is the only local dependency the agent must surface in plain language.
+opencode never checks for a Codex SDK runtime. The plugin dispatches the finalization writer through a native child session in the current OpenCode service; it needs neither an `opencode` executable on PATH nor `codex-runtime` consent. A missing or invalid `claw` CLI is the only local dependency the agent must surface in plain language.
 
 ## Non-goals
 

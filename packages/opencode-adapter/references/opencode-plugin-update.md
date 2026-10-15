@@ -4,9 +4,9 @@ Use this note when claw-kit needs to refresh the OpenCode plugin install surface
 
 ## What gets installed
 
-`npm run install:opencode-plugin` (inside the claw-kit repo) performs a full deploy via `scripts/install-opencode-plugin.ps1` → `scripts/install-opencode-plugin.mjs` → `installOpencodePlugin()`:
+`npm run install:opencode-plugin` (inside the claw-kit repo) performs a full deploy via `node scripts/install-opencode-plugin.mjs` → `installOpencodePlugin()`:
 
-1. **Builds** core (`@veewo/claw-core`) and CLI (`@veewo/claw`) from source.
+1. **Checks** the source artifact inputs. Install development dependencies with `npm ci --include=dev` first; the installer does not build or reinstall the global CLI.
 2. **Stages** allowlisted adapter runtime plus the canonical skill packages selected by `skill-inputs.json` in an isolated artifact. `assembleSkills` copies full packages into artifact `skills/`, never back into source. The installed flat layout is unchanged; OpenCode `update` remains host-owned.
 3. **Copies plugin payload** to `~/.config/opencode/plugins/claw-kit/`:
    - `plugin/` — the TypeScript plugin entry
@@ -39,11 +39,13 @@ The plugin payload in `plugins/claw-kit/` is a **copy**, not a symlink. Every co
 
 ## Update procedure (inside the claw-kit repo)
 
-```powershell
+```sh
+npm install -g @veewo/claw@<target-version>
+npm ci --include=dev
 npm run install:opencode-plugin
 ```
 
-This single command builds core + CLI and deploys all plugin surfaces. No manual build step is needed beforehand.
+Use the confirmed published target and matching checkout. These Node-based commands work in Bash and PowerShell. TypeScript is a repository development dependency, not an added plugin runtime prerequisite.
 
 ## Verification
 
@@ -69,6 +71,6 @@ opencode loads plugins at startup. After updating the plugin, **restart opencode
 ## Guardrails
 
 - Do not edit files under `~/.config/opencode/plugins/claw-kit/` directly — they are overwritten on the next install. Edit the source in `packages/opencode-adapter/` and re-run the install script.
-- Do not edit shared-generated skill packages in the adapter — they are overwritten by `syncSharedSkills`. Edit `shared/skills/<name>/` instead. The adapter-owned `skills/update/` package is the exception and should be edited in place.
-- Do not skip the build step. The plugin references `@veewo/claw-core` and `@veewo/claw` at runtime via the global CLI; a stale build causes runtime errors.
+- Edit canonical shared skill sources under `.agents/skills/`, not installed copies. The adapter-owned `skills/update/` package is edited in place.
+- The plugin requires a matching CLI. Installing plugin files alone does not upgrade that CLI.
 - A single-surface refresh (CLI only or plugin only) is not a complete update. Always refresh both.

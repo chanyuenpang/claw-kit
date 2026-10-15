@@ -53,13 +53,15 @@ Both plugins have dedicated test suites using `node:test` + `node:assert/strict`
 - `test:codex-plugin` — `scripts/codex-plugin-bundle.test.mjs`
 - `test:opencode-plugin` — `scripts/opencode-plugin-bundle.test.mjs` (10 tests)
 
-Both use `fs.mkdtemp` for temp-directory isolation. The opencode tests cover: read source metadata; config skill entrypoint; `using-claw-kit` session-entry contracts; researcher search-query syntax; the `claw-knowledge-writer.md` primary agent consuming only the supplied internal bootstrap prompt; absence of public writer skills; shared-skills sync; export+filter; install e2e; and idempotent discovery cleanup without creating `opencode.json`.
+Both use `fs.mkdtemp` for temp-directory isolation. The opencode tests cover: read source metadata; config skill entrypoint; `using-claw-kit` session-entry contracts; researcher search-query syntax; the `claw-knowledge-writer.md` subagent consuming only the supplied internal bootstrap prompt; absence of public writer skills; shared-skills sync; export+filter; install e2e; and idempotent discovery cleanup without creating `opencode.json`.
 
-## OpenCode finalizer agent entry
+## OpenCode native knowledge finalizer
 
-`packages/opencode-adapter/agents/claw-knowledge-writer.md` is the only shipped writer agent for the OpenCode host. It is a `mode: primary` entry launched by the background finalizer through `opencode run`; its body follows the supplied internal knowledge-delegate bootstrap prompt containing the packaged template path, project root, and finalize id. It does not load `using-claw-kit` or a writer skill and does not dispatch another writer. The internal delegate session plan and its dynamic assignment subplan must complete before finalization succeeds. Retired focused writer agents remain absent.
+`packages/opencode-adapter/agents/claw-knowledge-writer.md` is a dedicated `mode: subagent` entry. The plugin dispatches from the current OpenCode service using native `session.create` and `session.promptAsync`; it does not spawn `opencode run` for the normal plugin closeout path. Before creating the child, it persists a Core-owned execution reservation; it binds the returned child ID and records send-attempted before prompt delivery. The child receives only the canonical internal bootstrap, uses its own `CLAW_SESSION_ID`, claims the matching job, creates and completes the generated assignment subplan, then records its terminal result through Core. The writer agent does not load `using-claw-kit`, a public writer skill, or another writer.
 
-Real-runner verification via `opencode run` must confirm end-to-end that the internal delegate session plan and assignment subplan reach `end.completed`, no writer skill is discovered or loaded, and no recursive finalization job is queued from the executor session; unit coverage does not substitute for this real-runner check.
+Parent permission rules are explicitly copied to the child because `parentID` alone does not inherit permissions. Writer identity is resolved from persisted Core parent/project/child association; only the writer session suppresses startup prompts, report capture, and automatic continuation. Native acceptance is not completion. Create/send accepted or unknown outcomes are not replayed; recovery inspects persisted execution and canonical job state. Plugin failures do not roll back plan completion. Execution is scoped to the live OpenCode service and is not promised to survive its shutdown. The older CLI runner remains for legacy CLI entry points, not as fallback after native dispatch failure.
+
+Source/unit evidence does not establish a Linux real-model deposition E2E or prove activation of an installed plugin; record those as unverified until exercised in that environment.
 
 ## Related files
 
@@ -68,7 +70,7 @@ Real-runner verification via `opencode run` must confirm end-to-end that the int
 - `scripts/install-opencode-plugin.mjs` — thin CLI wrapper with `--source-dir` / `--install-dir`
 - `scripts/install-opencode-plugin.ps1` — PowerShell entrypoint with `Assert-Command -Name "node"` preflight
 - `scripts/opencode-plugin-bundle.test.mjs` — 10 unit tests
-- `packages/opencode-adapter/agents/claw-knowledge-writer.md` — primary finalizer agent that consumes the internal bootstrap prompt
+- `packages/opencode-adapter/agents/claw-knowledge-writer.md` — subagent entry that consumes the internal bootstrap prompt
 - `packages/opencode-adapter/` — adapter source (plugin, skills, agents, references)
 
 ### Codex chain (symmetric counterpart)

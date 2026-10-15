@@ -263,12 +263,17 @@ Validate a template without creating a plan with `claw template validate --templ
 
 ## Install the OpenCode plugin
 
-The OpenCode plugin is a separate distribution surface from the CLI. The source of truth lives in `packages/opencode-adapter`, and this repo exposes two supported commands:
+The OpenCode plugin is separate from the CLI. From a checkout of this repository, use these commands in Bash (Linux/macOS) or PowerShell (Windows):
 
-```powershell
-npm run export:opencode-plugin
+```bash
+npm install -g @veewo/claw
+npm ci --include=dev
 npm run install:opencode-plugin
+# Optional: export a standalone plugin bundle instead of installing it
+npm run export:opencode-plugin
 ```
+
+The plugin installer uses Node, not PowerShell, and does not build or reinstall the CLI. Repository development dependencies are needed for source builds/checks; `typescript` is not an OpenCode plugin runtime dependency. The direct equivalent is `node scripts/install-opencode-plugin.mjs`.
 
 What they do:
 

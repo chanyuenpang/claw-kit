@@ -21,3 +21,4 @@ console.log(`Installed OpenCode plugin to ${result.pluginDir}`);
 console.log(`Created plugin shim at ${result.shimPath}`);
 console.log(`Copied skills to ${result.skillsDir}`);
 console.log(`Installed agent definitions to ${result.agentDir}`);
+console.log("Restart OpenCode to load the plugin. Project setup is automatic on plan creation; claw init is optional explicit setup. Small tasks do not require a plan.");

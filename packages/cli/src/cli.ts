@@ -93,6 +93,7 @@ import { recordDshFinalizerIssue, listDshFinalizerAlerts } from "./dsh-finalizer
 import { serializeCommandFailure } from "./command-failure.js";
 import { claimKnowledgeCommand, doneKnowledgeCommand } from "./knowledge-command.js";
 import { pendingDshKnowledgeDispatches } from "./knowledge-pending.js";
+import { openCodeFinalizerExecutionCommand } from "./opencode-finalizer-execution.js";
 import { reserveDshFinalizerExecutionCommand, markDshFinalizerDeliveryCommand, inspectDshFinalizerExecutionsCommand, releaseDshFinalizerExecutionCommand } from "./dsh-finalizer-execution.js";
 import { consumeBufferedHookInput } from "./knowledge-hook-preflight.js";
 import { isNativeKnowledgeFinalizationHost, resolveInvocationHost, withoutInvocationHost, type ClawHost } from "./invocation-host.js";
@@ -120,7 +121,7 @@ type HelpNode = HelpEntry & {
 
 const TOP_LEVEL_COMMANDS: { name: string; summary: string }[] = [
   { name: "init [options]", summary: "Initialize and normalize the .claw project surface." },
-  { name: "context [--task <name>]", summary: "Resolve project context, auto-initializing or correcting .claw state." },
+  { name: "context [--task <name>]", summary: "Resolve project context without initializing a missing project." },
   { name: "session clean [--expired]", summary: "Remove current or expired session workflow state." },
   { name: "check", summary: "Check and auto-correct .claw project protocol fields." },
   { name: "config <get|set|unset> [options]", summary: "Read or change one team or personal project configuration key." },
@@ -183,7 +184,7 @@ const COMMAND_HELP: Record<string, HelpNode> = {
   context: {
     usage: ["{script} context [--task <name>]"],
     description:
-      "Resolve and return the current project context, auto-initializing or auto-correcting .claw state when needed. Used by host startup recovery.",
+      "Resolve current project context without initializing a missing project; correct existing protocol state when needed. Used by host startup recovery.",
     options: [
       { flag: "--task <name>", detail: "Resolve context scoped to a specific task." },
     ],
@@ -786,6 +787,18 @@ async function main(): Promise<void> {
       case "internal-knowledge-pending":
         runInternalKnowledgePending(args);
         return;
+      case "internal-opencode-finalizer-execution": {
+        const actorSessionId = resolveOwnerSessionKey();
+        if (effectiveHost !== "opencode" || !actorSessionId) throw new ClawError("SESSION_IDENTITY_INVALID", "OpenCode dispatch requires host session identity.");
+        const action = readRequiredFlag(args, "--action");
+        const finalizeId = readOptionalFlag(args, "--finalize-id");
+        const childSessionId = readOptionalFlag(args, "--child-session-id");
+        assertNoRemainingArgs(args, command);
+        if (action !== "inspect" && action !== "reserve" && action !== "bind" && action !== "attempt" && action !== "accepted" && action !== "rejected" && action !== "unknown") throw new ClawError("PROJECT_CONFIG_INVALID", "Invalid OpenCode dispatch transition.");
+        if (action !== "inspect" && !finalizeId) throw new ClawError("KNOWLEDGE_JOB_UNAVAILABLE", "Dispatch requires finalize-id.");
+        printJson({ ok: true, ...openCodeFinalizerExecutionCommand({ cwd: process.cwd(), actorSessionId, action, finalizeId, childSessionId }) });
+        return;
+      }
       case "internal-knowledge-dispatch":
         runInternalKnowledgeDispatch(args);
         return;
@@ -2252,7 +2265,7 @@ async function runContextCommand(
   effectiveHost?: ClawHost,
 ): Promise<Record<string, unknown>> {
   const taskName = readOptionalFlag(args, "--task");
-  let initialized = false;
+  const initialized = false;
   let corrected = false;
   let fixedPaths: string[] = [];
 
@@ -2288,8 +2301,9 @@ async function runContextCommand(
     if (!(error instanceof ClawError) || error.code !== "CLAW_DIR_NOT_FOUND") {
       throw error;
     }
-    initProject({ cwd, version: CLI_VERSION });
-    initialized = true;
+    // Opening a session is not consent to initialize a project.
+    // Explicit init and plan creation remain the initialization owners.
+    return { project: null };
   }
 
   const project = resolveProjectContext(cwd);

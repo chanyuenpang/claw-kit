@@ -10,6 +10,8 @@ The opencode adapter plugin (`packages/opencode-adapter/plugin/index.ts`) establ
 2. `chat.message` — prepends the cached claw context as a synthetic text part to the session's first user message. LLMs attend to user messages far more strongly than system prompts, so this is the primary injection. Guarded by `injectedSessions` so it only fires once per session.
 3. `experimental.chat.system.transform` — pushes the cached claw context into the system prompt as a compaction fallback.
 
+Context/injection caches are scoped to the plugin instance and session. First-message recovery covers missing creation events; appearance of `.claw` refreshes an uninitialized session. Without `.claw`, context is non-initializing and the prompt explains optional `claw init` or automatic initialization by `plan.create`. Writer children are classified from Core execution records and skip ordinary workflow injection.
+
 ## Default routing
 
 - session-bound active workflow recovered: treat the recovered `workflowGuidance` as the only next-step contract; the recovered payload includes current plan content so the resumed agent can continue without reopening the plan.

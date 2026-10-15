@@ -1,7 +1,7 @@
 import { serializeFailure } from "./failure-diagnostics.js";
-import { execSync, spawn } from "node:child_process";
+import { execSync } from "node:child_process";
 import path from "node:path";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync } from "node:fs";
 import type { Plugin } from "@opencode-ai/plugin";
 import type { Part } from "@opencode-ai/sdk";
 
@@ -23,7 +23,7 @@ import type { Part } from "@opencode-ai/sdk";
  *      text per session so session.idle can hand the turn's final assistant message to claw.
  *   6. event(session.idle) — turn report capture plus Goal continuation. The
  *      plan file remains canonical: task progress resets retry state, while
- *      two unchanged task endings pause the plan.
+ *      two unchanged task endings pause local continuation, not the plan.
  */
 
 const ADAPTER_DIR = import.meta.dirname ?? path.dirname(new URL("", import.meta.url).pathname);
@@ -39,18 +39,6 @@ export function openCodeWriterEnvironment(source: NodeJS.ProcessEnv): NodeJS.Pro
   return env;
 }
 
-let inClawProject = false;
-let projectInfo: { projectId: string; projectName: string; clawDir: string } | null = null;
-let recoveredState: string | null = null;
-let clawSessionContext: string | null = null;
-// Tracks sessions that already received the claw-context user-message prefix,
-// so chat.message only injects on the first user message of each session.
-const injectedSessions = new Set<string>();
-// Turn report capture: tracks the latest assistant message id per session and its
-// accumulated text, so session.idle can hand the turn's final assistant message to
-// `claw hook auto-doc` for fail-open knowledge report capture.
-const lastAssistantMessageBySession = new Map<string, string>();
-const assistantTextByMessage = new Map<string, string>();
 type GoalSession = {
   taskId: number | null;
   retryCount: number;
@@ -58,127 +46,8 @@ type GoalSession = {
   continuationQueued: boolean;
   pausing?: boolean;
 };
-const goalSessions = new Map<string, GoalSession>();
-
 function hasClawProject(dir: string): boolean {
   return existsSync(path.join(dir, ".claw"));
-}
-
-function readProjectInfo(projectDir: string): { projectId: string; projectName: string; clawDir: string } | null {
-  const clawDir = path.join(projectDir, ".claw");
-  if (!existsSync(clawDir)) return null;
-
-  const projectJsonPath = path.join(clawDir, "project.json");
-  try {
-    if (existsSync(projectJsonPath)) {
-      const config = JSON.parse(readFileSync(projectJsonPath, "utf8"));
-      const id = config.id ?? path.basename(projectDir);
-      const name = config.name ?? id;
-      return { projectId: id, projectName: name, clawDir };
-    }
-  } catch {
-    // fall through to fallback
-  }
-
-  return {
-    projectId: path.basename(projectDir),
-    projectName: path.basename(projectDir),
-    clawDir,
-  };
-}
-
-function resolveActivePlanPath(projectDir: string): string | null {
-  const clawDir = path.join(projectDir, ".claw");
-  if (!existsSync(clawDir)) return null;
-
-  try {
-    const metaPath = path.join(clawDir, "task-meta.json");
-    if (existsSync(metaPath)) {
-      const meta = JSON.parse(readFileSync(metaPath, "utf8"));
-      if (meta.activeTaskName) {
-        return path.join(clawDir, meta.activeTaskName, "plan.json");
-      }
-    }
-  } catch {
-    // ignore
-  }
-
-  const defaultPlan = path.join(clawDir, "plan.json");
-  if (existsSync(defaultPlan)) return defaultPlan;
-
-  // Newer .claw layouts bind the active task through the runtime/session
-  // registry instead of a root task-meta.json. Keep this adapter read-only by
-  // selecting the newest active plan as a recovery fallback.
-  const activePlans: Array<{ planPath: string; updatedAt: number }> = [];
-  const visit = (dir: string): void => {
-    let entries;
-    try {
-      entries = readdirSync(dir, { withFileTypes: true, encoding: "utf8" });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      const entryPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        visit(entryPath);
-        continue;
-      }
-      if (entry.name !== "plan.json") continue;
-      try {
-        const plan = JSON.parse(readFileSync(entryPath, "utf8")) as { status?: unknown };
-        if (plan.status === "process.active") {
-          activePlans.push({ planPath: entryPath, updatedAt: statSync(entryPath).mtimeMs });
-        }
-      } catch {
-        // Ignore incomplete or unrelated plan files.
-      }
-    }
-  };
-  visit(path.join(clawDir, "tasks"));
-  activePlans.sort((left, right) => right.updatedAt - left.updatedAt);
-  if (activePlans[0]) return activePlans[0].planPath;
-
-  return null;
-}
-
-function readPlanSummary(planPath: string): string | null {
-  try {
-    if (!existsSync(planPath)) return null;
-    const plan = JSON.parse(readFileSync(planPath, "utf8"));
-    const lines: string[] = [];
-    if (plan.title) lines.push(`Active plan: ${plan.title}`);
-    lines.push(`Status: ${plan.status}`);
-    if (plan.goal?.text) lines.push(`Goal: ${plan.goal.text}`);
-    if (plan.tasks?.length) {
-      lines.push(`Tasks:`);
-      for (const task of plan.tasks) {
-        lines.push(`  #${task.id} [${task.status}] ${task.title}`);
-      }
-    }
-    return lines.join("\n");
-  } catch {
-    return null;
-  }
-}
-
-function readActivePlanState(projectDir: string): { status: string; taskId: number | null } | null {
-  const planPath = resolveActivePlanPath(projectDir);
-  if (!planPath) return null;
-  try {
-    const plan = JSON.parse(readFileSync(planPath, "utf8")) as {
-      status?: unknown;
-      tasks?: Array<{ id?: unknown; status?: unknown }>;
-    };
-    const tasks = Array.isArray(plan.tasks) ? plan.tasks : [];
-    const task = tasks.find((item) => item.status === "in_progress")
-      ?? tasks.find((item) => item.status === "pending");
-    return {
-      status: typeof plan.status === "string" ? plan.status : "",
-      taskId: Number.isInteger(task?.id) ? Number(task?.id) : null,
-    };
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -189,9 +58,9 @@ function readActivePlanState(projectDir: string): { status: string; taskId: numb
  *   - active plan recovery (when a plan exists)
  *
  * This replaces the previous hardcoded static text in experimental.chat.system.transform.
- * Returns null when claw CLI is unavailable or the directory is not a .claw project.
+ * Returns null when the CLI is unavailable; an uninitialized workspace returns empty context.
  */
-function invokeClawSessionStart(projectDir: string): string | null {
+function invokeClawSessionStart(projectDir: string, sessionID: string): Record<string, unknown> | null {
   try {
     const stdout = execSync("claw context --host opencode", {
       cwd: projectDir,
@@ -199,14 +68,17 @@ function invokeClawSessionStart(projectDir: string): string | null {
       timeout: 10_000,
       stdio: ["pipe", "pipe", "pipe"],
       env: {
-        ...process.env,
+        ...openCodeWriterEnvironment(process.env),
+        CLAW_KNOWLEDGE_FINALIZER: "0",
+        CLAW_SESSION_ID: sessionID,
         CLAW_HOST: "opencode",
         ...(existsSync(GUIDANCE_CONFIG_PATH) ? { CLAW_GUIDANCE_CONFIG: GUIDANCE_CONFIG_PATH } : {}),
       },
     });
     if (!stdout.trim()) return null;
-    return renderClawSessionStart(JSON.parse(stdout));
-  } catch {
+    return JSON.parse(stdout);
+  } catch (error) {
+    console.warn("[claw-kit] context recovery warning:", JSON.stringify(serializeFailure(error, { fallbackCode: "OPENCODE_CONTEXT_FAILED", origin: "opencode", operation: "context", fallbackOutcome: "unknown" })));
     return null;
   }
 }
@@ -224,7 +96,7 @@ function renderClawSessionStart(context: Record<string, unknown>): string {
     ].filter(Boolean).join("\n\n");
   }
   const project = context.project as { projectName?: unknown; projectId?: unknown } | undefined;
-  if (!project) return [OPENCODE_HOST_IDENTITY, runtimePrompt].filter(Boolean).join("\n\n");
+  if (!project) return [OPENCODE_HOST_IDENTITY, runtimePrompt, "Load claw-kit:using-claw-kit. Small tasks may run directly without a plan. Creating a plan initializes the project automatically; claw init is optional explicit setup."].filter(Boolean).join("\n\n");
   const projectName = typeof project.projectName === "string" ? project.projectName : project.projectId;
   return [
     OPENCODE_HOST_IDENTITY,
@@ -252,7 +124,9 @@ function invokeClawAutoDoc(
       input: JSON.stringify(payload),
       stdio: ["pipe", "pipe", "pipe"],
       env: {
-        ...process.env,
+        ...openCodeWriterEnvironment(process.env),
+        CLAW_KNOWLEDGE_FINALIZER: "0",
+        CLAW_SESSION_ID: payload.session_id,
         CLAW_HOST: "opencode",
         CLAW_KNOWLEDGE_FINALIZER_DISABLE_LAUNCH: "1",
         CLAW_KNOWLEDGE_CAPTURE_RESULT: "1",
@@ -270,43 +144,80 @@ function invokeClawAutoDoc(
   }
 }
 
-/**
- * Keep finalization detached from session.idle. The CLI supplies the canonical
- * immutable dispatch; this adapter owns the native OpenCode runtime.
- */
-function dispatchOpenCodeKnowledgeWriter(projectDir: string, jobPath: string): void {
-  let handoff: { dispatch?: { prompt?: unknown }; projectRoot?: unknown; writer?: { model?: unknown; reasoningEffort?: unknown } | null };
-  try {
-    handoff = JSON.parse(execSync(`claw internal-knowledge-dispatch --job ${JSON.stringify(jobPath)}`, {
-      cwd: projectDir,
-      encoding: "utf8",
-      timeout: 30_000,
-      stdio: ["ignore", "pipe", "pipe"],
-      env: { ...process.env, CLAW_HOST: "opencode", CLAW_KNOWLEDGE_FINALIZER: "1" },
-    })) as typeof handoff;
-  } catch (error) {
-    console.warn("[claw-kit] dispatch preparation warning:", JSON.stringify(serializeFailure(error, { fallbackCode: "OPENCODE_DISPATCH_FAILED", origin: "opencode", operation: "knowledge.dispatch", fallbackOutcome: "unknown" })));
-    return;
+type Execution = { parentSessionId: string; childSessionId?: string; messageId: string; state: string };
+type ExecutionView = { finalizeId: string; jobPath: string; status: string; execution?: Execution; error?: string; claimed?: boolean };
+type ExecutionResult = { execute?: boolean; execution?: Execution; executions?: ExecutionView[] };
+
+function executionCommand(projectDir: string, sessionID: string, action: string, finalizeId?: string, childSessionId?: string): ExecutionResult {
+  const args = ["claw internal-opencode-finalizer-execution --host opencode --action", action];
+  // These are host/Core identifiers, never free-form model text.
+  for (const [flag, value] of [["--finalize-id", finalizeId], ["--child-session-id", childSessionId]]) {
+    if (value) {
+      if (!/^[a-zA-Z0-9_-]+$/.test(value)) throw new Error("Invalid native execution identifier");
+      args.push(flag!, value);
+    }
   }
-  if (typeof handoff.dispatch?.prompt !== "string" || typeof handoff.projectRoot !== "string") return;
-  const writer = handoff.writer ?? {};
-  const command = process.platform === "win32" ? "opencode.cmd" : "opencode";
-  const args = ["run", "--format", "json", "--dir", handoff.projectRoot, "--dangerously-skip-permissions", "--agent", "claw-knowledge-writer"];
-  if (typeof writer.model === "string" && writer.model) args.push("--model", writer.model);
-  if (typeof writer.reasoningEffort === "string" && writer.reasoningEffort) args.push("--variant", writer.reasoningEffort);
-  args.push(handoff.dispatch.prompt);
-  const child = spawn(command, args, {
-    cwd: projectDir,
-    env: openCodeWriterEnvironment(process.env),
-    windowsHide: true,
-    detached: process.platform !== "win32",
-    stdio: "ignore",
-  });
-  child.on("error", (error) => {
-    console.warn("[claw-kit] writer admission warning:", JSON.stringify(serializeFailure(error, { fallbackCode: "OPENCODE_ADMISSION_FAILED", origin: "opencode", operation: "writer.spawn", fallbackOutcome: "unknown" })));
-    // A launch/acknowledgement failure is not permission to spawn again.
-  });
-  child.unref();
+  return JSON.parse(execSync(args.join(" "), { cwd: projectDir, encoding: "utf8", timeout: 30_000,
+    stdio: ["ignore", "pipe", "pipe"], env: { ...openCodeWriterEnvironment(process.env), CLAW_SESSION_ID: sessionID } }));
+}
+
+/** SDK error values are failures even when the promise resolves. */
+function sdkData<T>(result: { data?: T; error?: unknown }): T | undefined {
+  if (result.error !== undefined) throw result.error;
+  return result.data;
+}
+
+export async function dispatchOpenCodeKnowledgeWriter(
+  client: Parameters<Plugin>[0]["client"], projectDir: string, parentSessionId: string, jobPath: string, finalizeId: string,
+): Promise<void> {
+  let attempted = false;
+  let phase = "knowledge.bootstrap";
+  let rejected = false;
+  try {
+    const handoff = JSON.parse(execSync(`claw internal-knowledge-dispatch --job ${JSON.stringify(jobPath)}`, {
+      cwd: projectDir, encoding: "utf8", timeout: 30_000, stdio: ["ignore", "pipe", "pipe"],
+      env: { ...openCodeWriterEnvironment(process.env), CLAW_SESSION_ID: parentSessionId },
+    })) as { dispatch?: { prompt?: string }; writer?: { model?: string; reasoningEffort?: string } };
+    if (!handoff.dispatch?.prompt) throw new Error("Missing canonical writer bootstrap");
+    phase = "session.get";
+    const parent = sdkData(await client.session.get({ path: { id: parentSessionId }, query: { directory: projectDir } }));
+    if (!parent) throw new Error("Parent session is unavailable");
+    const reservation = executionCommand(projectDir, parentSessionId, "reserve", finalizeId);
+    if (!reservation.execute) return;
+    attempted = true;
+    // v1 SDK's older create type omits permission, but the server accepts it.
+    // Copy parent rules explicitly: parentID alone does not inherit permissions.
+    const body = { parentID: parentSessionId, title: "claw knowledge " + finalizeId,
+      permission: (parent as typeof parent & { permission?: unknown[] }).permission ?? [] };
+    phase = "session.create";
+    const creation = await client.session.create({ query: { directory: projectDir }, body });
+    if (creation.error !== undefined) {
+      rejected = true;
+      executionCommand(projectDir, parentSessionId, "rejected", finalizeId);
+    }
+    const child = sdkData(creation);
+    if (!child?.id) throw new Error("Native child creation outcome is unknown");
+    executionCommand(projectDir, parentSessionId, "bind", finalizeId, child.id);
+    const delivery = executionCommand(projectDir, parentSessionId, "attempt", finalizeId);
+    if (!delivery.execute || !delivery.execution) return;
+    const modelParts = handoff.writer?.model?.split("/");
+    phase = "session.promptAsync";
+    const result = await client.session.promptAsync({ path: { id: child.id }, query: { directory: projectDir }, body: {
+      agent: "claw-knowledge-writer", messageID: delivery.execution.messageId,
+      ...(modelParts && modelParts.length >= 2 ? { model: { providerID: modelParts[0], modelID: modelParts.slice(1).join("/") } } : {}),
+      ...(handoff.writer?.reasoningEffort ? { variant: handoff.writer.reasoningEffort } : {}),
+      parts: [{ type: "text", text: handoff.dispatch.prompt }],
+    } });
+    rejected = result.error !== undefined;
+    executionCommand(projectDir, parentSessionId, rejected ? "rejected" : "accepted", finalizeId);
+    if (result.error !== undefined) throw result.error;
+    console.info("[claw-kit] knowledge writer accepted; completion remains pending:", finalizeId);
+  } catch (error) {
+    if (attempted) {
+      try { executionCommand(projectDir, parentSessionId, "unknown", finalizeId); } catch { /* durable attempted state already forbids replay */ }
+    }
+    console.warn("[claw-kit] native writer warning:", JSON.stringify(serializeFailure(error, { fallbackCode: "OPENCODE_" + phase.replaceAll(".", "_").toUpperCase() + "_FAILED", origin: "opencode", operation: phase, fallbackOutcome: rejected ? "known" : "unknown" })));
+  }
 }
 
 async function invokeOpenCodeContinuation(
@@ -315,7 +226,7 @@ async function invokeOpenCodeContinuation(
   sessionId: string,
 ): Promise<boolean> {
   try {
-    await client.session.promptAsync({
+    const result = await client.session.promptAsync({
       path: { id: sessionId },
       query: { directory: projectDir },
       body: {
@@ -325,21 +236,7 @@ async function invokeOpenCodeContinuation(
         }],
       },
     });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function invokeOpenCodePlanWait(projectDir: string, sessionId: string): boolean {
-  try {
-    execSync("claw plan wait --host opencode", {
-      cwd: projectDir,
-      encoding: "utf8",
-      timeout: 30_000,
-      stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, CLAW_HOST: "opencode", CODEX_SESSION_ID: sessionId },
-    });
+    sdkData(result);
     return true;
   } catch {
     return false;
@@ -349,39 +246,51 @@ function invokeOpenCodePlanWait(projectDir: string, sessionId: string): boolean 
 export const ClawKitPlugin: Plugin = async ({ directory, client }) => {
   const projectDir = directory;
 
-  /**
-   * Lazily detect .claw/ — re-checks on each call until true, then caches.
-   * This handles sessions where the agent creates .claw/ mid-session (e.g.
-   * `claw init` or `claw plan new`) after session.created already ran.
-   */
-  function isClawProject(): boolean {
-    if (!inClawProject && hasClawProject(projectDir)) {
-      inClawProject = true;
+  const injectedSessions = new Set<string>();
+  const lastAssistantMessageBySession = new Map<string, string>();
+  const assistantTextByMessage = new Map<string, string>();
+  const goalSessions = new Map<string, GoalSession>();
+  const contexts = new Map<string, { projectPresent: boolean; value: Record<string, unknown> | null }>();
+  const isClawProject = () => hasClawProject(projectDir);
+
+  const writerSessions = new Set<string>();
+  const reportedExecutions = new Map<string, string>();
+  function isWriter(sessionID: string): boolean {
+    if (writerSessions.has(sessionID)) return true;
+    if (!isClawProject()) return false;
+    // Negative results are not cached: create events can precede the durable bind.
+    let views: ExecutionView[];
+    try {
+      views = executionCommand(projectDir, sessionID, "inspect").executions ?? [];
+    } catch (error) {
+      console.warn("[claw-kit] writer classification unavailable; suppressing claw automation for this event:", JSON.stringify(serializeFailure(error, { fallbackCode: "OPENCODE_EXECUTION_INSPECT_FAILED", origin: "opencode", operation: "knowledge.inspect", fallbackOutcome: "unknown" })));
+      // Do not throw through the host shell hook or risk recursive capture.
+      // This conservative result is event-local, never cached as a writer.
+      return true;
     }
-    return inClawProject;
-  }
-
-  /**
-   * One-shot initialization: detect .claw/ project, invoke claw context,
-   * read active plan state. Called from session.created and session.compacted.
-   */
-  function initClawContext(): void {
-    if (!hasClawProject(projectDir)) return;
-    inClawProject = true;
-    projectInfo = readProjectInfo(projectDir);
-
-    const hookContext = invokeClawSessionStart(projectDir);
-    if (hookContext) {
-      clawSessionContext = hookContext;
-    }
-
-    const planPath = resolveActivePlanPath(projectDir);
-    if (planPath) {
-      const summary = readPlanSummary(planPath);
-      if (summary) {
-        recoveredState = summary;
+    for (const view of views) {
+      if (view.execution?.childSessionId === sessionID) writerSessions.add(sessionID);
+      const signature = JSON.stringify([view.status, view.execution?.state, view.error]);
+      if (reportedExecutions.get(view.finalizeId) !== signature) {
+        reportedExecutions.set(view.finalizeId, signature);
+        console.info("[claw-kit] knowledge recovery:", JSON.stringify({ finalizeId: view.finalizeId, status: view.status,
+          delivery: view.execution?.state, error: view.error, note: "Canonical status only; pending/unknown delivery is never resent." }));
       }
     }
+    return writerSessions.has(sessionID);
+  }
+
+  function contextFor(sessionID: string, refresh = false): Record<string, unknown> | null {
+    if (isWriter(sessionID)) return null;
+    const projectPresent = isClawProject();
+    const cached = contexts.get(sessionID);
+    if (refresh || !cached || cached.projectPresent !== projectPresent) {
+      injectedSessions.delete(sessionID);
+      const value = invokeClawSessionStart(projectDir, sessionID);
+      contexts.set(sessionID, { projectPresent, value });
+      return value;
+    }
+    return cached.value;
   }
 
   return {
@@ -389,6 +298,7 @@ export const ClawKitPlugin: Plugin = async ({ directory, client }) => {
     // Agent's bash tool calls to claw CLI will automatically carry these
     "shell.env": async (input, output) => {
       output.env.CLAW_HOST = "opencode";
+      output.env.CLAW_KNOWLEDGE_FINALIZER = input.sessionID && isWriter(input.sessionID) ? "1" : "0";
       if (existsSync(GUIDANCE_CONFIG_PATH)) {
         output.env.CLAW_GUIDANCE_CONFIG = GUIDANCE_CONFIG_PATH;
       }
@@ -406,13 +316,15 @@ export const ClawKitPlugin: Plugin = async ({ directory, client }) => {
     event: async ({ event }) => {
       // New session: initialize claw context
       if (event.type === "session.created") {
-        initClawContext();
+        const sessionID = (event.properties as { info?: { id?: string } })?.info?.id;
+        if (sessionID) contextFor(sessionID, true);
       }
 
       // Compaction: system prompt injection is lost after context compression,
       // so re-initialize to re-inject claw context into subsequent prompts
       if (event.type === "session.compacted") {
-        initClawContext();
+        const sessionID = (event.properties as { sessionID?: string }).sessionID;
+        if (sessionID) contextFor(sessionID, true);
       }
 
       // Track the latest assistant message text per session so session.idle can
@@ -420,11 +332,11 @@ export const ClawKitPlugin: Plugin = async ({ directory, client }) => {
       if (isClawProject() && event.type === "message.updated") {
         const props = event.properties as {
           sessionID?: string;
-          info?: { id?: string; role?: string };
+          info?: { id?: string; role?: string; sessionID?: string };
         };
-        // sessionID lives at the event-property top level (not inside info).
-        if (props.info?.id && props.info.role === "assistant" && props.sessionID) {
-          lastAssistantMessageBySession.set(props.sessionID, props.info.id);
+        const messageSessionID = props.info?.sessionID ?? props.sessionID;
+        if (props.info?.id && props.info.role === "assistant" && messageSessionID) {
+          lastAssistantMessageBySession.set(messageSessionID, props.info.id);
         }
       } else if (isClawProject() && event.type === "message.part.updated") {
         const part = (event.properties as { part?: { messageID?: string; type?: string; text?: string } }).part;
@@ -439,6 +351,7 @@ export const ClawKitPlugin: Plugin = async ({ directory, client }) => {
       if (event.type === "session.idle") {
         const sessionID = (event.properties as { sessionID?: string }).sessionID;
         if (sessionID) {
+          if (isWriter(sessionID)) return;
           // Turn report capture: hand the turn's final assistant message to
           // claw so it appends one fail-open knowledge report entry (and queues
           // finalization when a plan just completed).
@@ -452,13 +365,14 @@ export const ClawKitPlugin: Plugin = async ({ directory, client }) => {
               message,
             });
             if (captured?.jobPath && captured.finalizeId) {
-              dispatchOpenCodeKnowledgeWriter(projectDir, captured.jobPath);
+              await dispatchOpenCodeKnowledgeWriter(client, projectDir, sessionID, captured.jobPath, captured.finalizeId);
             }
             assistantTextByMessage.delete(assistantMessageId);
             lastAssistantMessageBySession.delete(sessionID);
           }
 
-          const planState = readActivePlanState(projectDir);
+          const workflow = contextFor(sessionID, true)?.activeWorkflow as { planStatus?: string; workflowGuidance?: { nextTask?: { id?: number } } } | undefined;
+          const planState = workflow ? { status: workflow.planStatus, taskId: workflow.workflowGuidance?.nextTask?.id ?? null } : null;
           const existingGoal = goalSessions.get(sessionID);
           if (!planState || planState.status !== "process.active") {
             goalSessions.delete(sessionID);
@@ -493,13 +407,8 @@ export const ClawKitPlugin: Plugin = async ({ directory, client }) => {
           goal.attemptPending = true;
           const dispatched = await invokeOpenCodeContinuation(client, projectDir, sessionID);
           if (!dispatched) {
-            goal.attemptPending = false;
-            goal.continuationQueued = false;
-            goal.retryCount += 1;
-            if (goal.retryCount >= 2) {
-              goal.pausing = true;
-              console.warn("[claw-kit] automatic continuation paused for this session; canonical plan state is unchanged.");
-            }
+            goal.pausing = true;
+            console.warn("[claw-kit] continuation delivery failed or is unknown; no automatic resend. Canonical plan is unchanged.");
           }
         }
       }
@@ -510,12 +419,8 @@ export const ClawKitPlugin: Plugin = async ({ directory, client }) => {
     // workflow context is prepended to the first user message of each session. The
     // injectedSessions guard ensures this only fires once per session.
     "chat.message": async (input, output) => {
-      // Skip when there is nothing to inject (non-.claw project, or claw CLI unavailable)
-      if (!isClawProject()) return;
-      // Capture into a local const so the narrowing survives the subsequent calls;
-      // module-level `let` narrowing would otherwise be invalidated by injectedSessions use.
-      const context = clawSessionContext;
-      if (!context) return;
+      if (isWriter(input.sessionID)) return;
+      const context = renderClawSessionStart(contextFor(input.sessionID) ?? {});
       // First-message guard: inject once per session, never repeat
       if (injectedSessions.has(input.sessionID)) return;
       injectedSessions.add(input.sessionID);
@@ -535,50 +440,9 @@ export const ClawKitPlugin: Plugin = async ({ directory, client }) => {
     },
 
     // (4) Inject recovered state into system prompt — compaction fallback
-    "experimental.chat.system.transform": async (_input, output) => {
-      // The mounted adapter identifies its host even outside a claw project.
-      if (!isClawProject()) {
-        output.system.push(OPENCODE_HOST_IDENTITY);
-        return;
-      }
-
-      // Prefer full claw context (includes workflow recovery,
-      // workflowGuidance, and plan recovery)
-      if (clawSessionContext) {
-        output.system.push(clawSessionContext);
-        return;
-      }
-
-      // Fallback: static text when claw context was unavailable
-      const info = projectInfo;
-      const lines: string[] = [OPENCODE_HOST_IDENTITY];
-      lines.push("## claw-kit project context");
-      lines.push("");
-      if (info) {
-        lines.push(`This session started inside a .claw project: ${info.projectName} (${info.projectId}).`);
-        lines.push(`.claw directory: ${info.clawDir}`);
-      } else {
-        lines.push("This session started inside a .claw project.");
-      }
-      lines.push("");
-      lines.push("Load the claw-kit:using-claw-kit skill as the main workflow skill for this session.");
-      lines.push("If no task scope exists yet, let claw-kit:using-claw-kit create a plan when reusable project knowledge is expected, then keep it discussing until downstream tasks are explicit and handoff-ready.");
-      lines.push("Low-complexity work can bypass claw plan create, claw search, and workflowGuidance entirely.");
-      lines.push("For higher-complexity work, use claw plan create, then follow the claw workflowGuidance return fields as the required next-step contract.");
-      lines.push("Use claw search for project recall after plan creation when the formal claw workflow is active.");
-      lines.push("");
-
-      // Conditional: append active plan summary if recovered
-      if (recoveredState) {
-        lines.push("There is already an unfinished plan in this thread.");
-        lines.push("Tell the user and ask whether to close the current plan or continue advancing it before starting unrelated work.");
-        lines.push("After this plan finishes, keep using claw-kit in this thread for the next task.");
-        lines.push("");
-        lines.push("Active plan:");
-        lines.push(recoveredState);
-      }
-
-      output.system.push(lines.join("\n"));
+    "experimental.chat.system.transform": async (input, output) => {
+      if (input.sessionID && isWriter(input.sessionID)) { output.system.push(OPENCODE_HOST_IDENTITY); return; }
+      output.system.push(renderClawSessionStart(input.sessionID ? contextFor(input.sessionID) ?? {} : {}));
     },
   };
 };

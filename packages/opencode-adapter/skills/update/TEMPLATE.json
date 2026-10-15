@@ -26,7 +26,7 @@
     {
       "id": 2,
       "title": "Refresh the CLI and OpenCode plugin installation",
-      "detail": "Inside the claw-kit repository run `npm run install:opencode-plugin`. The maintained installer builds core and CLI, reinstalls the global CLI, deploys the plugin payload and shim, copies skills to OpenCode discovery, and installs agent definitions. Do not replace this with manual edits to `~/.config/opencode` or treat a CLI-only refresh as complete.",
+      "detail": "Install the confirmed published global CLI with `npm install -g @veewo/claw@<target-version>`. Inside the matching claw-kit checkout run `npm ci --include=dev` then `npm run install:opencode-plugin` (Node entry, Bash and PowerShell). The installer deploys the plugin payload and shim, copies skills to OpenCode discovery, and installs agent definitions; it does not build or reinstall the CLI. Do not replace this with manual edits to `~/.config/opencode` or treat a CLI-only refresh as complete.",
       "status": "pending",
       "guidance": {
         "onDone": {

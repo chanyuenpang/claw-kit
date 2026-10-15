@@ -21,7 +21,7 @@ after(() => {
   for (const root of temporaryRoots) fs.rmSync(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
 });
 
-test("daemon recovery preserves a missing workspace record without blocking valid sessions", async (t) => {
+test("daemon startup and unrelated opens leave historical records untouched, including missing workspaces", async (t) => {
   const root = fixture("missing-workspace");
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const runtimeRoot = path.join(root, "runtime");
@@ -44,7 +44,7 @@ test("daemon recovery preserves a missing workspace record without blocking vali
   try {
     assert.ok(daemon.state.port > 0);
     assert.equal(fs.readFileSync(registry.recordPath(stale.identity.sessionKeyHash), "utf8"), original);
-    assert.equal(registry.read(healthy.identity.sessionKeyHash).state, "disconnected");
+    assert.deepEqual(registry.read(healthy.identity.sessionKeyHash), healthy.record);
     const client = new ClawClient({ runtimeRoot });
     const session = await client.open("healthy", valid);
     try {
@@ -59,21 +59,44 @@ test("daemon recovery preserves a missing workspace record without blocking vali
   } finally { await daemon.close(); }
 });
 
-test("recovery tolerates a directory disappearing after its initial scan", async (t) => {
-  const root = fixture("recovery-race");
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const workdir = path.join(root, "workspace");
-  fs.mkdirSync(workdir);
-  const registry = new SessionRegistryV2(path.join(root, "runtime"));
-  const opened = await registry.open("race", workdir, { kind: "node" });
+test("daemon ready and new-session handshake never wait for a historical session execution queue", async () => {
+  const runtimeRoot = fixture("blocked-history-runtime");
+  const workdir = fixture("blocked-history-workspace");
+  const registry = new SessionRegistryV2(runtimeRoot);
+  const opened = await registry.open("history", workdir, { kind: "node" });
   const original = fs.readFileSync(registry.recordPath(opened.identity.sessionKeyHash), "utf8");
-  const withExecution = registry.withExecution.bind(registry);
-  registry.withExecution = async (key, action) => {
-    fs.rmdirSync(workdir);
-    return withExecution(key, action);
-  };
-  assert.deepEqual(await registry.recover(), { normalized: [], removed: [] });
-  assert.equal(fs.readFileSync(registry.recordPath(opened.identity.sessionKeyHash), "utf8"), original);
+  let entered!: () => void;
+  let release!: () => void;
+  const acquired = new Promise<void>((resolve) => { entered = resolve; });
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const held = registry.withExecution(opened.identity.sessionKeyHash, async () => {
+    entered();
+    await gate;
+  });
+  await acquired;
+  const starting = startSessionDaemon({ runtimeRoot, idleTtlMs: 0 });
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([
+      (async () => {
+        const daemon = await starting;
+        const session = await new ClawClient({ runtimeRoot }).open("new-agent", workdir);
+        try {
+          assert.ok(await session.status());
+          assert.equal(fs.readFileSync(registry.recordPath(opened.identity.sessionKeyHash), "utf8"), original);
+        } finally { await session.close(); }
+        assert.ok(daemon.state.port > 0);
+      })(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("Handshake waited for historical execution")), 2_000);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+    release();
+    await held;
+    await (await starting).close();
+  }
 });
 
 test("v2 session identity isolates the same agent id by canonical workdir", async () => {
@@ -93,7 +116,7 @@ test("v2 session identity isolates the same agent id by canonical workdir", asyn
   assert.equal(second.created, true);
 });
 
-test("v2 session records recover live state and expire only disconnected v2 directories", async () => {
+test("explicit retention cleanup removes only expired disconnected records without recovering sessions", async () => {
   const parent = fixture("retention-parent");
   const runtimeRoot = path.join(parent, "session-daemon-v2");
   const workdir = fixture("retention-workdir");
@@ -104,10 +127,11 @@ test("v2 session records recover live state and expire only disconnected v2 dire
   const old = new Date("2026-07-01T00:00:00.000Z");
   const opened = await registry.open("agent-expired", workdir, { kind: "node" }, old);
 
-  const recovered = await registry.recover(new Date(old.getTime() + SESSION_RECORD_TTL_MS + 1));
-
-  assert.deepEqual(recovered.normalized, [opened.identity.sessionKeyHash]);
-  assert.deepEqual(recovered.removed, [opened.identity.sessionKeyHash]);
+  const now = new Date(old.getTime() + SESSION_RECORD_TTL_MS + 1);
+  assert.deepEqual(registry.cleanupExpired(now), []);
+  assert.deepEqual(registry.read(opened.identity.sessionKeyHash), opened.record);
+  registry.write(opened.identity.sessionKeyHash, { ...opened.record, state: "disconnected" });
+  assert.deepEqual(registry.cleanupExpired(now), [opened.identity.sessionKeyHash]);
   assert.equal(fs.existsSync(registry.sessionDirectory(opened.identity.sessionKeyHash)), false);
   assert.equal(fs.readFileSync(path.join(unrelated, "keep.txt"), "utf-8"), "keep");
 });
