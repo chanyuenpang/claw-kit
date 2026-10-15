@@ -37,7 +37,7 @@ The harness joins a repository after that repository is initialized for `.claw`.
 
 | Where the agent runs | What you use | Status |
 | --- | --- | --- |
-| Any platform that can run a shell | `claw` CLI plus the standard skills. `claw init` writes an `AGENTS.md` bootstrap, so no hook is required. | Universal path, [feedback welcome](https://github.com/chanyuenpang/claw-kit/issues/new?template=platform-adapter.yml) |
+| Any platform that can run a shell | `claw` CLI plus the standard skills. [Universal install](#universal-install). `claw init` writes an `AGENTS.md` bootstrap, so no hook is required. | Universal path, [feedback welcome](https://github.com/chanyuenpang/claw-kit/issues/new?template=platform-adapter.yml) |
 | Claude Code | `claw` CLI plus the standard skills. No dedicated adapter. Install, `claw init`, then talk. Bootstrap is the instruction file Claude Code actually reads: `CLAUDE.md`, or `AGENTS.md` when the project has no `CLAUDE.md`. | Universal path, [feedback welcome](https://github.com/chanyuenpang/claw-kit/issues/new?template=platform-adapter.yml) |
 | DeepSeek Harness (DSH) | Dedicated adapter. One `claw_run` tool, progress and native goal sync, knowledge closeout dispatched by the adapter. npm: `@veewo/dsh-claw-kit`. | Stable |
 | Codex | Dedicated adapter. Marketplace plugin with skills, hooks, and the same workflow. | Stable |
@@ -66,7 +66,7 @@ On DeepSeek Harness, Codex, Cindy, or OpenCode, also install that adapter. It br
 - **Codex:** add the marketplace and install **Claw Kit**. [Install the Codex plugin](#install-the-codex-plugin).
 - **Cindy** and **OpenCode** have their own install sections below.
 
-Claude Code uses that same path: the CLI, the standard skills, and `claw init`. There is no Claude Code adapter. Any other shell agent, including Cursor, does too. `@veewo/claw` does not ship those skills. From a clone of this repo, copy each directory named in [packages/standard-adapter/skill-inputs.json](packages/standard-adapter/skill-inputs.json) from `.agents/skills/` into the folder that agent scans. Cursor loads `<project>/.agents/skills/<skill>/SKILL.md`, so the destination there is the target project's `.agents/skills/`. See [packages/standard-adapter/README.md](packages/standard-adapter/README.md).
+Claude Code has no dedicated adapter. Cursor and any other shell or cloud agent use the same [universal install](#universal-install): the CLI, the copied standard skills, and `claw init`.
 
 ### 2. Initialize the project
 
@@ -92,7 +92,51 @@ That is the whole setup. Where the host has a startup hook, that hook runs by it
 | OpenCode | The plugin handles `session.created` and `session.compacted` (OpenCode has no `hooks.json`). It recovers context and sets the session id for later claw commands. |
 | Cindy | Ghost session and turn hooks refresh session state and can continue an active plan. They do not inject a first-turn prompt. The agent follows the installed `using-claw-kit` skill, which the `AGENTS.md` bootstrap also names. |
 | Claude Code | No hook and no dedicated adapter. Install the CLI and skills, run `claw init`, then talk. Claude Code loads `CLAUDE.md` at launch. It loads `AGENTS.md` only when the project path has no `CLAUDE.md`, `.claude/CLAUDE.md`, or `CLAUDE.local.md`. |
-| Any other agent | No hook. The `AGENTS.md` bootstrap is the startup path. |
+| Any other agent | No hook. The `AGENTS.md` bootstrap is the startup path. Install with [universal install](#universal-install). |
+
+<h2 id="universal-install">Universal install (shell and cloud agents)</h2>
+
+Cursor, Claude Code, and any other host without a native adapter use this path: the CLI, the copied skills, and `claw init`. Do not pass `--host` or set `CLAW_HOST`.
+
+### 1. Install the CLI
+
+Requires Node.js 22.13 or newer. `@veewo/claw` is the CLI only.
+
+```bash
+npm install -g @veewo/claw
+claw --version
+```
+
+If that fails with `EACCES` (often `mkdir '/usr/lib/node_modules'`), the first `node` on `PATH` is a system binary and npm is targeting a root prefix. Put your user-owned Node first — for nvm, its `bin` directory, such as `export PATH="$HOME/.nvm/versions/node/<version>/bin:$PATH"` — until `npm prefix -g` is a directory you can write, then run the install again. Or install into a writable prefix: `npm install -g --prefix "$HOME/.local" @veewo/claw` and `export PATH="$HOME/.local/bin:$PATH"`.
+
+### 2. Copy the standard skills
+
+From a clone of this repository, copy only the directories named in [packages/standard-adapter/skill-inputs.json](packages/standard-adapter/skill-inputs.json) — `planning`, `config`, `create-claw-skill`, `feature-architecture`, `researcher`, `using-claw-kit`, and `claw-kit-doc` — from `.agents/skills/` into the target project. Those directories are the canonical sources.
+
+Cursor loads `<project>/.agents/skills/<skill>/SKILL.md`. For Cursor, and for any host with that layout, the destination is the target project's `.agents/skills/`:
+
+```bash
+mkdir -p /path/to/your-project/.agents/skills
+cp -a .agents/skills/planning \
+      .agents/skills/config \
+      .agents/skills/create-claw-skill \
+      .agents/skills/feature-architecture \
+      .agents/skills/researcher \
+      .agents/skills/using-claw-kit \
+      .agents/skills/claw-kit-doc \
+      /path/to/your-project/.agents/skills/
+```
+
+Another host uses the directory it scans for skills. `npm run export:standard-skills` is optional. It reprints the same folders under `dist/standard-skills/skills/` and needs `npm install` at the repository root first. On a fresh clone it fails with `Cannot find package 'typescript'` until those dependencies are installed.
+
+### 3. Initialize, then let the agent follow the skill
+
+```bash
+cd /path/to/your-project
+claw init
+```
+
+`claw init` writes a short `using-claw-kit` bootstrap into `AGENTS.md` and `CLAUDE.md`. The agent loads that skill, sets one stable `CLAW_SESSION_ID` for the conversation, and runs `claw context` before it decides whether to create a plan. You do not set the session id or paste a startup prompt.
 
 ## What the agent does under the hood
 
@@ -153,6 +197,8 @@ That loop is the core product idea: a reusable project workflow instead of a one
 
 ## Install the CLI
 
+Shell and cloud agents, including Cursor, also copy skills and run `claw init`. Use [Universal install (shell and cloud agents)](#universal-install), including the `EACCES` note when a system `node` is ahead of your user-owned Node.
+
 Install the published CLI with Node.js 22.13 or newer:
 
 ```powershell
@@ -203,18 +249,9 @@ Projects can define reusable templates directly under `.claw/templates` using `.
 ## Use the standard hostless flow (any platform)
 
 Platforms without a native adapter — or any agent environment that can run
-shell commands — can use the full `.claw` workflow directly, with no `--host`
-flag, no `CLAW_HOST` registration, and no lifecycle hooks. `claw init` is what
-starts it there: the bootstrap block it writes into `AGENTS.md` tells the agent
-to load `using-claw-kit`.
-
-1. Install the CLI (`npm install -g @veewo/claw`).
-2. Copy the skill directories named in
-   [packages/standard-adapter/skill-inputs.json](packages/standard-adapter/skill-inputs.json)
-   from this repo's `.agents/skills/` into the platform's skill discovery
-   location. Cursor's location is the target project's `.agents/skills/`.
-   See [packages/standard-adapter/README.md](packages/standard-adapter/README.md).
-3. In the project, run `claw init`.
+shell commands — follow [Universal install (shell and cloud agents)](#universal-install).
+No `--host` flag, no `CLAW_HOST` registration, and no lifecycle hooks. `claw init`
+writes the `AGENTS.md` bootstrap that tells the agent to load `using-claw-kit`.
 
 The agent then keeps the full loop. It runs `claw context` to recover a
 session-bound plan, `claw plan create` when a plan is warranted, and at
