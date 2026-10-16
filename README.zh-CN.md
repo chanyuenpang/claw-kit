@@ -2,12 +2,22 @@
 
 # claw-kit
 
-开箱即用、小白也能上手的专业级 harness，给 coding agent 用。
+开箱即用，小白也能用的超强工作流。
+
+不管多复杂，每一步只专注一个小任务。
 
 [![npm version](https://img.shields.io/npm/v/@veewo/claw)](https://www.npmjs.com/package/@veewo/claw)
 [![npm downloads](https://img.shields.io/npm/dm/@veewo/claw)](https://www.npmjs.com/package/@veewo/claw)
 [![license](https://img.shields.io/npm/l/@veewo/claw)](./LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/chanyuenpang/claw-kit)](https://github.com/chanyuenpang/claw-kit/stargazers)
+
+**想试试？** 对你的 agent 说：**帮我安装一下 chanyuenpang/claw-kit**
+
+Agent 应按本 README 做完整条路径（Node、CLI 包名 **`@veewo/claw`**——不是 npm 上的 `claw-kit`——对应宿主适配器，以及 `claw init`）。只装 CLI 不够用。
+
+在干净的 OpenCode Linux 环境上，用上述公开短语端到端装通大约 **~84 秒**，落地 **`@veewo/claw@0.2.61`**，以及 OpenCode 插件、skills、agents 和项目内 `claw init`。其他宿主走同一条 Agent 路径；此处不宣称其它宿主的墙钟耗时。
+
+维护者：**pang**。
 
 ## 你会得到什么
 
@@ -50,7 +60,11 @@ DeepSeek Harness、Codex、Cindy 稳定可用，已有团队每天在用它写�
 
 ## 快速开始
 
+> **以下步骤给 Agent 执行**（你若愿意自己装，也可照做）。对人：文首那一句「帮我安装一下 chanyuenpang/claw-kit」就够了。
+
 安装，在项目里初始化一次，然后照常和 agent 说话。你不用自己跑工作流命令，不用设置会话 id，也不用粘贴启动提示。
+
+**Agent 检查序：** Node.js ≥ 22.13 且在 `PATH` 上 → 安装 CLI **`@veewo/claw`**（GitHub 仓库名 `chanyuenpang/claw-kit` ≠ npm 包名）→ 安装宿主适配器**或**复制标准 skills → 在项目里 `claw init` → 宿主要求时重启（DSH Host / OpenCode 会话）。
 
 ### 1. 安装
 
@@ -60,15 +74,19 @@ DeepSeek Harness、Codex、Cindy 稳定可用，已有团队每天在用它写�
 npm install -g @veewo/claw
 ```
 
+**包名对照：** GitHub 仓库 = `chanyuenpang/claw-kit`。npm CLI 包 = **`@veewo/claw`**。不存在名为 `claw-kit` 的 npm 包（`npm view claw-kit` → 404）。Agent：请读本 README，不要把仓库 slug 当成 npm 包名。
+
 如果 agent 跑在 DeepSeek Harness、Codex、Cindy 或 OpenCode 上，再装对应的适配器。适配器会带上 `using-claw-kit` skill。
 
-- **DeepSeek Harness：** `dsh plugin --profile web add @veewo/dsh-claw-kit@latest`，然后重启 Host。[安装 DSH 适配器](#install-the-dsh-adapter)。
+- **DeepSeek Harness：** `dsh plugin --profile web add @veewo/dsh-claw-kit@latest`，然后**重启 Host**。[安装 DSH 适配器](#install-the-dsh-adapter)。
 - **Codex：** 添加 marketplace 并安装 **Claw Kit**。[安装 Codex 插件](#install-the-codex-plugin)。
-- **Cindy** 和 **OpenCode** 的安装在下面各自的章节里。
+- **Cindy** 和 **OpenCode** 的安装在下面各自的章节里。**OpenCode：装完必须重启 OpenCode / 新开 session**，插件和 skills 才会加载。[安装 OpenCode 插件](#install-the-opencode-plugin)。
 
 Claude Code 没有专用适配器。Cursor 以及其他 shell 或云端 agent 走同一条 [通用安装](#universal-install)：CLI、复制过来的标准 skills，然后 `claw init`。
 
 ### 2. 初始化项目
+
+新手路径**推荐始终执行 `claw init`**。它会把引导块写入 `AGENTS.md` / `CLAUDE.md`，让 agent 加载 `using-claw-kit`。不要因为「建 plan 时会自动建 `.claw`」就跳过 bootstrap。
 
 ```bash
 cd your-project
@@ -81,6 +99,16 @@ claw init
 
 用平常的话说就行，例如：「帮我计划怎么修登录 bug。」
 
+### 4. 最小验收例子
+
+在 CLI + 适配器（或已复制的标准 skills）+ `claw init`（以及宿主要求的重启）之后：
+
+1. 在空项目或小项目里，对 agent 说一句具体的小任务，例如：「加一个返回 `hello` 的 `hello()` 辅助函数，再写一行测试。」
+2. **预期：** agent 可以直接干。**小任务可以不建 plan**——这是刻意行为，不是安装坏了。
+3. **不要**自己手跑 `claw context`、`claw search index`，也不要手设 `CLAW_SESSION_ID`；由 skill / 适配器处理。
+
+若完全没反应且没有 `using-claw-kit` skill，多半是漏装适配器或漏拷标准 skills——见 [已知限制](#known-limitations)。
+
 ### 它怎么自己启动
 
 到这里就设置完了。宿主有启动钩子时，钩子自己跑，并把 agent 指向 `using-claw-kit`。没有钩子的地方，包括 Claude Code，由说明文件里的引导块来做这件事。
@@ -89,12 +117,30 @@ claw init
 | --- | --- |
 | Codex | 插件的 `SessionStart` 钩子做上下文恢复，并告诉 agent 加载 `using-claw-kit`。 |
 | DeepSeek Harness (DSH) | `agent/session-start` 钩子做同样的上下文恢复并注入同一句说明。之后 agent 调用 `claw_run`。 |
-| OpenCode | 插件处理 `session.created` 和 `session.compacted`（OpenCode 没有 `hooks.json`）。它恢复上下文，并为后续 claw 命令设置会话 id。 |
+| OpenCode | 插件处理 `session.created` 和 `session.compacted`（OpenCode 没有 `hooks.json`）。它恢复上下文，并为后续 claw 命令设置会话 id。**装完后必须重启 OpenCode / 新开 session。** |
 | Cindy | Ghost 的 session 与 turn 钩子会刷新会话状态，也可以续上一个活动计划。它们不注入首轮提示。agent 遵循已安装的 `using-claw-kit` skill，`AGENTS.md` 引导块也会点名这个 skill。 |
 | Claude Code | 没有钩子，也没有专用适配器。安装 CLI 和 skills，运行 `claw init`，然后直接说。Claude Code 启动时加载 `CLAUDE.md`。只有项目路径上没有 `CLAUDE.md`、`.claude/CLAUDE.md` 或 `CLAUDE.local.md` 时，才会加载 `AGENTS.md`。 |
 | 其他 agent | 没有钩子。启动路径就是 `AGENTS.md` 引导块。按 [通用安装](#universal-install) 安装。 |
 
-<h2 id="universal-install">通用安装（shell 与云端 agent）</h2>
+## 已知限制
+
+以下仅列有出处的事实，来自安装验证与干净机 QA（2026-10-15 / 2026-10-16）。**不是**全宿主清洁机矩阵。
+
+1. **Node.js ≥ 22.13。** 更旧的 Node（例如系统 Node 20）会直接拒绝跑 CLI。把用户自己的 Node 放在系统 Node 前面。
+2. **只装 CLI ≠ 能用。** 没有宿主适配器（或走 [通用安装](#universal-install) 拷标准 skills），就没有 `using-claw-kit`，引导块会空转。
+3. **包名：** npm 包是 **`@veewo/claw`**，不是 `claw-kit`。Agent 若先 `npm view claw-kit` 会得到 404。
+4. **DSH：** 加完插件后须**重启 Host**，live session 才会挂上 `claw_run` 和打包 skills。
+5. **OpenCode：** 装完插件后须**重启 OpenCode / 新开 session**。安装当时那次会话不会就地加载新 shim/skills。干净机 QA（OpenCode Linux，2026-10-16）：公开短语安装 **PASS**，约 **84 秒**，落地 **`@veewo/claw@0.2.61`**、8 个 skills、2 个 agents，并完成 `claw init`——这是**该次范围**的事实，不表示当晚已对所有宿主做同等清洁机验证。
+6. **克隆目录：** 若目标路径（例如 `/tmp/claw-kit` 或 `/tmp/opencode/claw-kit`）已存在且非空，**先删或换路径**再 `git clone`。不要复用脏目录。
+7. **非适配器宿主：** 必须把标准 skills 拷到该宿主的 skill 目录。缺 skills = 引导块空转。
+8. **小任务可以不建 plan。** 随口 / 很小的活可以直接执行，不跑 `claw plan create`。这是预期行为。
+9. **Embedding / 向量缓存：** 启用项目回忆且走默认 embedding 路径时，可能拉取较大本地缓存（历史上 jina 量级约 **~614MB**）。应视为体积预告，而不是静默惊喜；产品默认仍可能调整。
+10. **OpenCode 冒烟仍在跟的现象：** `report capture` 可能出现 `JSON Parse error: Unexpected EOF`；若 `opencode run` 退出过快，knowledge 沉淀可能仍在排队未完成。不要假设每次会话都会完成沉淀。
+11. **CLI 与适配器版本** 可能不一致。以各包已发布的 `latest`（或你钉住的 marketplace ref）为准；本文不公布未核实的兼容矩阵。
+
+## 通用安装（shell 与云端 agent）
+
+<a id="universal-install"></a>
 
 Cursor、Claude Code，以及任何没有原生适配器的宿主，都走这条路径：CLI、复制 skills、`claw init`。不要传 `--host`，也不要设置 `CLAW_HOST`。
 
@@ -112,6 +158,8 @@ claw --version
 ### 2. 复制标准 skills
 
 从本仓库的克隆里，只复制 [packages/standard-adapter/skill-inputs.json](packages/standard-adapter/skill-inputs.json) 点名的目录——`planning`、`config`、`create-claw-skill`、`feature-architecture`、`researcher`、`using-claw-kit`、`claw-kit-doc`——从 `.agents/skills/` 到目标项目。这些目录就是规范来源。
+
+若克隆目标目录已存在，先清理（见 [已知限制](#known-limitations)）。以 GitHub `main` 或已发布 tag 为准，不要用过期的本地工作区树。
 
 Cursor 读取 `<project>/.agents/skills/<skill>/SKILL.md`。Cursor 以及使用同一布局的宿主，目标都是被初始化项目里的 `.agents/skills/`：
 
@@ -138,7 +186,9 @@ claw init
 
 `claw init` 会把一段简短的 `using-claw-kit` 引导块写入 `AGENTS.md` 和 `CLAUDE.md`。agent 加载这个 skill，为这次对话设置一个稳定的 `CLAW_SESSION_ID`，并在决定要不要建计划之前运行 `claw context`。你不用自己设置会话 id，也不用粘贴启动提示。
 
-<h2 id="under-the-hood">底层：agent 自己做什么</h2>
+## 底层：agent 自己做什么
+
+<a id="under-the-hood"></a>
 
 这不是安装步骤。安装并执行 `claw init` 之后，agent 遵循 `using-claw-kit`，自己去跑这些命令：
 
@@ -194,17 +244,19 @@ GitHub Pages 产品介绍在 [docs/index.html](docs/index.html)，是一份中�
 - 想了解集成表面？直接看包地图。
 - 需要备用配置细节？按需使用适配器参考说明 [packages/codex-adapter/references/project-config-reference.md](packages/codex-adapter/references/project-config-reference.md) 或 [packages/opencode-adapter/references/project-config-reference.md](packages/opencode-adapter/references/project-config-reference.md)。
 
-<h2 id="install-the-cli">安装 CLI</h2>
+## 安装 CLI
+
+<a id="install-the-cli"></a>
 
 Shell 和云端 agent（包括 Cursor）还要复制 skills 并运行 `claw init`。按 [通用安装（shell 与云端 agent）](#universal-install) 来，包括系统 `node` 排在用户自己的 Node 前面时的 `EACCES` 说明。
 
 用 Node.js 22.13 或更高版本安装已发布的 CLI：
 
-```powershell
+```bash
 npm install -g @veewo/claw
 ```
 
-也可以用一次性安装脚本：
+也可以用一次性安装脚本（Windows PowerShell）：
 
 ```powershell
 .\scripts\install-cli.ps1
@@ -214,7 +266,7 @@ npm install -g @veewo/claw
 
 agent 会用到的参考命令：
 
-```powershell
+```bash
 claw init --max-tasks-to-keep 20 --planning true --external-planning-skill team-planning-skill --external-writer-skill external-knowledge-writer
 claw plan create --title "My task" --goal "Define the first task"
 claw plan create "My templated task" --template default --goal "Use the default template"
@@ -223,8 +275,8 @@ claw plan create "Auxiliary workflow" --no-knowledge-capture --goal "Run the ful
 
 要开一个持久终端会话，把不可变的项目工作目录和宿主 agent 会话 id 一起打开：
 
-```powershell
-claw session open G:\Projects\my-project agent-session-id
+```bash
+claw session open /path/to/my-project agent-session-id
 ```
 
 之后输入的命令会复用该会话的工作目录和当前计划。`plan create`、`plan resume [planId]` 和 `plan leave` 会改变当前计划焦点；普通的 `plan` 和 `task` 命令不需要反复带上任务名或计划文件。用 `search --dir <other-dir> <query>` 做一次跨目录查找，且不改变会话工作目录。关掉终端会断开实时客户端，会话元数据会保留七天。
@@ -245,17 +297,19 @@ claw session open G:\Projects\my-project agent-session-id
 
 然后由 agent 把完整循环跑下去。它运行 `claw context` 恢复会话绑定的计划，在需要计划时运行 `claw plan create`，`plan done` 时开启了沉淀的工作走标准收口负责人。默认是同一 agent 上的 `knowledge prepare/complete --source agent-memory`。显式配置的后台路线使用它提供的 capture/dispatch 步骤，以及一份不捕获知识的辅助 writer 计划。`knowledgeCapture: false` 阻止递归的知识累积；不需要公开的存储范围选择。详见 [packages/standard-adapter/README.md](packages/standard-adapter/README.md)。
 
-<h2 id="install-the-codex-plugin">安装 Codex 插件</h2>
+## 安装 Codex 插件
+
+<a id="install-the-codex-plugin"></a>
 
 Codex 插件是与 CLI 分开的分发面。在另一台机器上，先添加官方仓库 marketplace：
 
-```powershell
+```bash
 codex plugin marketplace add chanyuenpang/claw-kit --ref vcodex-0.2.42.1
 ```
 
 重启 ChatGPT 桌面应用，打开插件目录，选择 **Claw Kit** marketplace，并安装 **Claw Kit**。安装后新开一个任务，让 Codex 发现打包的 skills。更新的发布要先在 marketplace 注册里选择已发布的 `vcodex-*` ref；钉住的旧 ref 不会自己前进。用下面的命令刷新已选的 Git marketplace：
 
-```powershell
+```bash
 codex plugin marketplace upgrade claw-kit
 codex plugin add claw-kit@claw-kit
 ```
@@ -268,7 +322,7 @@ codex plugin add claw-kit@claw-kit
 
 在本仓库里工作的维护者有两条 Codex 命令：
 
-```powershell
+```bash
 npm run export:codex-plugin
 npm run install:codex-plugin
 ```
@@ -276,7 +330,7 @@ npm run install:codex-plugin
 它们的作用：
 
 1. `npm run export:codex-plugin` 把可安装的插件载荷复制到 `dist/codex-plugin/claw-kit/<plugin-version>/`。
-2. `npm run install:codex-plugin` 拉取已发布的不可变 `vcodex-<plugin-version>` marketplace 标签，把该载荷安装到 `%USERPROFILE%\.codex\plugins\cache\claw-kit\claw-kit\<plugin-version>\`，启用 `claw-kit@claw-kit`，并禁用 `claw-kit@claw-kit-local`。
+2. `npm run install:codex-plugin` 拉取已发布的不可变 `vcodex-<plugin-version>` marketplace 标签，把该载荷安装到 `%USERPROFILE%\.codex\plugins\cache\claw-kit\claw-kit\<plugin-version>\`（Unix 下为对应 home 路径），启用 `claw-kit@claw-kit`，并禁用 `claw-kit@claw-kit-local`。
 
 运行 `install:codex-plugin` 之前要先发布新版本；它会故意拒绝安装未发布的工作区内容。本地 marketplace 安装不是受支持的验证或更新路径。
 
@@ -284,22 +338,31 @@ npm run install:codex-plugin
 
 ## 安装 OpenCode 插件
 
-OpenCode 插件是与 CLI 分开的分发面。事实来源在 `packages/opencode-adapter`，本仓库提供两条受支持的命令：
+<a id="install-the-opencode-plugin"></a>
 
-```powershell
-npm run export:opencode-plugin
+OpenCode 插件是与 CLI 分开的分发面。请使用本仓库的**干净**检出（GitHub `main` 或已发布 tag）。若克隆目标已存在且非空，先删或换路径——不要复用脏目录。
+
+```bash
+rm -rf /tmp/claw-kit
+git clone --depth 1 https://github.com/chanyuenpang/claw-kit.git /tmp/claw-kit
+cd /tmp/claw-kit
+npm install -g @veewo/claw
 npm run install:opencode-plugin
+# 等价：node ./scripts/install-opencode-plugin.mjs
+# 可选：导出独立插件包而不是本机安装
+# npm run export:opencode-plugin
 ```
 
-它们的作用：
+`npm run install:opencode-plugin`（以及 `node ./scripts/install-opencode-plugin.mjs`）安装插件、垫片、skills 和 agents 时，**不要求**先 `npm ci` / 完整仓库 `node_modules`。`npm ci --include=dev` 只用于仓库源码构建与检查，不是「仅装插件」路径所必需。安装器用 Node（不是 PowerShell）。请以 GitHub `main` 为准；过期本地工作区的 `package.json` scripts 可能仍指向仅 Windows 的助手脚本。
 
-1. `npm run export:opencode-plugin` 把可安装的插件载荷复制到 `dist/opencode-plugin/claw-kit/<plugin-version>/`。
-2. `npm run install:opencode-plugin` 把同一份载荷复制到本地 OpenCode 配置 `~/.config/opencode/plugins/claw-kit/`，然后：
-   - 在 `~/.config/opencode/plugins/claw-kit.ts` 创建插件垫片，让 OpenCode 在启动时发现插件，
-   - 把每个 skill 文件夹复制到 `~/.config/opencode/skills/`，使适配器 skills 可用（OpenCode 只从约定目录发现 skills，不通过配置项），
-   - 把打包的 agent 定义复制到 `~/.config/opencode/agent/`。
+安装脚本会：
 
-安装后重启 OpenCode，新的插件、skills 和 agents 才会被加载。
+1. 把可安装插件载荷复制到 `~/.config/opencode/plugins/claw-kit/`。
+2. 在 `~/.config/opencode/plugins/claw-kit.ts` 创建插件垫片，让 OpenCode 启动时发现插件。
+3. 把每个 skill 文件夹复制到 `~/.config/opencode/skills/`（OpenCode 只从约定目录发现 skills，不通过配置项）。
+4. 把打包的 agent 定义复制到 `~/.config/opencode/agent/`。
+
+**安装后重启 OpenCode**（新进程 / 新 session），新的插件、skills 和 agents 才会被加载。执行安装的那次 `opencode run` 会话不会就地加载新垫片。
 
 想让这台机器立刻开始使用适配器时，用 `install:opencode-plugin`。想要一份干净的带版本打包、可以附在发布上、拷到另一台机器或交给另一个安装器时，用 `export:opencode-plugin`。
 
@@ -307,21 +370,23 @@ npm run install:opencode-plugin
 
 Cindy 适配器从它自己的 Git marketplace 仓库分发。在 Cindy 里把 `https://github.com/chanyuenpang/claw-kit-cindy-adapter.git` 加为 marketplace，安装 `claw-kit-cindy` 条目，检查权限并启用它。`claw` CLI 仍然是单独安装。完整的安装和更新顺序见 [packages/cindy-adapter/README.md](packages/cindy-adapter/README.md)。
 
-<h2 id="install-the-dsh-adapter">安装 DSH 适配器</h2>
+## 安装 DSH 适配器
+
+<a id="install-the-dsh-adapter"></a>
 
 DSH 适配器是安装到 DSH profile 里的 npm 包。从已发布的注册表：
 
-```powershell
+```bash
 dsh plugin --profile web add @veewo/dsh-claw-kit@latest
 ```
 
-重启 Host（`dsh --profile web`）以挂载 `claw-kit` 这一行，然后确认出现 `claw_run` 工具和打包的 skills。已安装的 `claw` CLI 必须支持 `--host dsh`。
+**重启 Host**（`dsh --profile web`）以挂载 `claw-kit` 这一行，然后确认出现 `claw_run` 工具和打包的 skills。已安装的 `claw` CLI 必须支持 `--host dsh`。
 
 由 Electron 管理的 `desktop` profile 是例外：`PATH` 上的全局 `dsh` 会以 `profile "desktop" is managed exclusively by the Electron application` 拒绝它，所以要通过该 profile 自己的插件管理器安装——`plugin_manager(action: "install_bundle", target: "@veewo/dsh-claw-kit@<version>")` 或导出的 tarball 路径——不要直接写 profile 文件。见 [desktop profile 写入边界](packages/dsh-adapter/skills/update/references/desktop-profile-write-boundary.md)。
 
 在本仓库里工作的维护者有两条命令：
 
-```powershell
+```bash
 npm run export:dsh-plugin     # build + pack the installable tarball into dist/dsh-plugin/
 npm run install:dsh-plugin    # dsh plugin --profile web add <tarball> (--profile to override)
 ```
@@ -330,7 +395,9 @@ npm run install:dsh-plugin    # dsh plugin --profile web add <tarball> (--profil
 
 适配器会自动消费 CLI hostActions（进度投影 + 原生 goal 同步），并通过原生 DSH 子代理自动分发知识收口；模型只驱动单一的 `claw_run` 工具。详见 [packages/dsh-adapter/README.md](packages/dsh-adapter/README.md)。
 
-<h2 id="package-map">包地图</h2>
+## 包地图
+
+<a id="package-map"></a>
 
 - `@veewo/claw`
   - 在项目里运行 `.claw` 工作流的 CLI 入口
