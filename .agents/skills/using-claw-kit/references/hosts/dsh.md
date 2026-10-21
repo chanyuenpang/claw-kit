@@ -18,7 +18,7 @@ Standalone non-workflow diagnostics and static authoring utilities (such as
 `claw template validate --file`) are not workflow mutations. They may use the
 host command tool when authorized; this exception never permits plan/task/
 subplan or automatic knowledge-closeout shell bypass. Explicit manual capture
-is a separate non-workflow skill with its own same-agent runner and eligibility.
+is a separate same-agent document edit, with no CLI runner or lifecycle recovery.
 
 - Session identity and workspace are host-forged: never supply session, host,
   or workdir arguments.

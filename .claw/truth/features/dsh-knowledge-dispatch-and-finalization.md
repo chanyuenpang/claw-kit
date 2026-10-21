@@ -29,7 +29,7 @@ subplan、由 Core 核对真实 claim actor 并解析凭据后调用一次 `know
 `knowledgeCapture:false` 辅助 delegate 不递归创建知识 job（新计划统一项目流程；session 身份仍负责绑定，旧 session 存储仅保留恢复兼容），通用终态 gate 由
 [finalization lifecycle ADR](<../adr/hook-owned-two-phase-knowledge-finalization.md>) 拥有。
 
-Core source 在 DSH 创建计划时登记可信 capture 起点；同一 root 的父子切换与返回保留该窗口，返回父计划不建立独立 child writer。CLI service 在成功返回父焦点回执前同步 project binding，context 与 v2 focus 必须一致。manual leave 只清理匹配计划的捕获，不能清空另一个 active plan；不同 root 的新捕获窗口不得继承旧起点。上述源码合同和定向回归不证明旧安装 Beta 已通过真实冒烟。
+Core source 在 DSH 创建计划时登记可信 capture 起点；同一 root 的父子切换与返回保留该窗口。原生 subagent host 的子计划以完成型终态结束时，即使恢复父焦点，也会为该子计划登记自己的 ready finalization job；父计划的 capture owner 与起点继续保留，父计划之后结束时仍可产生独立 job。DSH adapter 仍按 host-owned dispatch contract 派发各 job，避免把子计划终态误当作只恢复焦点而漏掉沉淀。CLI service 在成功返回父焦点回执前同步 project binding，context 与 v2 focus 必须一致。manual leave 只清理匹配计划的捕获，不能清空另一个 active plan；不同 root 的新捕获窗口不得继承旧起点。显式 `knowledgeCapture:false` 仍是无 job 的 capture opt-out。上述源码合同和定向回归不证明旧安装 Beta 已通过真实冒烟.
 
 新 background finalizer 固定使用 DSH native subagent 家族，即使当前 Agent 暴露 Team 工具；可复用 continuable 时复用相同 applied recipe，仅有 one-shot 时仍允许正常执行。低成本 model/effort 是尽力偏好：adapter 通过真实 llm/subagents 能力在 admission 前解析 applied explicit/inherit/default recipe，记录 requested/applied/resolved-or-unknown；目录、options 或精确 effort 不可用不阻塞。发送后 outcome unknown、已 admitted executor、claim/capture/权限失败仍沿用硬边界，绝不换模型/route 重发。旧 Team/native execution 保留原 pin，不迁移。
 

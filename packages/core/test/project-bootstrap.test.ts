@@ -12,7 +12,9 @@ test("automatic setup creates local defaults and is byte-preserving when repeate
   const first = ensureProjectEnvironment(cwd);
   assert.equal(first.created, true);
   assert.equal(first.projectRoot, cwd);
-  const files = [first.projectJsonPath, path.join(first.clawDir, "memory.md"), path.join(cwd, ".gitignore")];
+  assert.equal(fs.existsSync(path.join(first.clawDir, "memory.md")), false);
+  assert.equal(fs.existsSync(path.join(first.clawDir, ".knowledge")), false);
+  const files = [first.projectJsonPath, path.join(cwd, ".gitignore")];
   const before = files.map((file) => fs.readFileSync(file, "utf8"));
   const second = ensureProjectEnvironment(cwd);
   assert.equal(second.created, false);
@@ -39,15 +41,15 @@ test("automatic setup reuses an ancestor project and preserves custom configurat
   assert.equal(fs.readFileSync(overridePath, "utf8"), override);
 });
 
-test("partial setup fills missing config without replacing memory or old task data", () => {
+test("partial setup fills missing config without replacing user files or old task data", () => {
   const cwd = fixture(), claw = path.join(cwd, ".claw");
   fs.mkdirSync(path.join(claw, "tasks", "legacy"), { recursive: true });
   const oldTask = path.join(claw, "tasks", "legacy", "plan.json");
   fs.writeFileSync(oldTask, "legacy fixture bytes");
-  fs.writeFileSync(path.join(claw, "memory.md"), "User-owned memory\n");
+  fs.writeFileSync(path.join(claw, "notes.txt"), "User-owned notes\n");
   ensureProjectEnvironment(cwd);
   assert.ok(fs.existsSync(path.join(claw, "project.json")));
-  assert.equal(fs.readFileSync(path.join(claw, "memory.md"), "utf8"), "User-owned memory\n");
+  assert.equal(fs.readFileSync(path.join(claw, "notes.txt"), "utf8"), "User-owned notes\n");
   assert.equal(fs.readFileSync(oldTask, "utf8"), "legacy fixture bytes");
 });
 

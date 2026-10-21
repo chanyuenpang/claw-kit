@@ -34,27 +34,21 @@ test("template updater edits canonical sources only and leaves obsolete copies u
     "dist/dsh-plugin/skills/create-claw-skill/TEMPLATE.json",
   ];
   for (const file of [...templates, ...obsolete]) await put(file, '{"id":"demo","version":"1.0.0","tasks":[]}\n');
-  const runtimePath = await put("shared/skills/knowledge-capture/runtime.json", '{"package":"@veewo/claw","version":"1.2.2"}\n');
   const oldPins = [];
   for (const host of ["codex", "dsh"]) oldPins.push(await put("packages/" + host + "-adapter/skills/knowledge-capture/runtime.json", '{"version":"1.2.2"}\n'));
 
   assert.equal((await collectReleaseTemplatePaths(repoRoot)).length, templates.length);
   const before = await inspectTemplateVersions({ repoRoot });
   assert.equal(before.templateCount, templates.length);
-  assert.equal(before.issues.length, templates.length + 2);
+  assert.equal(before.issues.length, templates.length + 1);
   await assert.rejects(assertTemplateVersionsAligned({ repoRoot }), /canonical source changes/);
   const update = await updateTemplateVersions({ repoRoot });
   assert.equal(update.version, "7.0.0");
-  assert.equal(update.updated.length, templates.length + 2);
+  assert.equal(update.updated.length, templates.length + 1);
   await assert.doesNotReject(assertTemplateVersionsAligned({ repoRoot }));
   for (const file of templates) assert.equal(JSON.parse(await fs.readFile(path.join(repoRoot, file), "utf8")).version, "7.0.0");
   for (const file of obsolete) assert.equal(JSON.parse(await fs.readFile(path.join(repoRoot, file), "utf8")).version, "1.0.0");
   for (const file of oldPins) assert.equal(JSON.parse(await fs.readFile(file, "utf8")).version, "1.2.2");
   assert.match(await fs.readFile(defaultPath, "utf8"), /version: "7\.0\.0"/);
-  assert.equal(JSON.parse(await fs.readFile(runtimePath, "utf8")).version, "1.2.3");
   assert.deepEqual((await updateTemplateVersions({ repoRoot })).updated, []);
-  await fs.rm(runtimePath);
-  const missing = await inspectTemplateVersions({ repoRoot });
-  assert.equal(missing.issues.length, 1);
-  assert.equal(missing.issues[0].actualVersion, null);
 });

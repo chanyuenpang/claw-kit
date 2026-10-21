@@ -87,12 +87,21 @@ export async function loadSkillInputs({ sourceRoot, targetHost } = {}) {
     const sourcePath = path.join(sourceRoot, relativeSource);
     await noSymlinkAncestors(sourcePath);
     const files = await collectFiles(sourcePath);
+    // Ship the finalizer's canonical format as a standalone capture appendix.
+    const companionSources = id === "knowledge-capture" ? {
+      [path.join("references", "knowledge-format.md")]: path.join(sourceRoot, ".agents/skills/claw-kit-doc/references/knowledge-format.md"),
+    } : {};
+    for (const file of Object.keys(companionSources)) {
+      if (!files.includes(file)) files.push(file);
+    }
     if (!files.includes("SKILL.md")) throw new Error("Skill input is missing SKILL.md: " + sourcePath);
     for (const file of files) {
       hash.update(relativeSource + "/" + file.replaceAll("\\", "/") + "\0");
-      hash.update(await fs.readFile(path.join(sourcePath, file)));
+      const inputPath = companionSources[file] ?? path.join(sourcePath, file);
+      await noSymlinkAncestors(inputPath);
+      hash.update(await fs.readFile(inputPath));
     }
-    skills.push({ id, sourcePath, relativeSource, files });
+    skills.push({ id, sourcePath, relativeSource, files, companionSources });
   }
   return { sourceRoot, targetHost, declarationPath, skills, sourceHash: hash.digest("hex") };
 }
@@ -131,7 +140,7 @@ export async function assembleSkills({ sourceRoot, targetHost, outputRoot } = {}
   try {
     for (const skill of inputs.skills) {
       for (const file of skill.files) {
-        const source = path.join(skill.sourcePath, file);
+        const source = skill.companionSources[file] ?? path.join(skill.sourcePath, file);
         await noSymlinkAncestors(source);
         const destination = path.join(stage, skill.id, file);
         await fs.mkdir(path.dirname(destination), { recursive: true });

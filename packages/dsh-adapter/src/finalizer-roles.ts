@@ -1,5 +1,6 @@
 import { serializeFailure, safeFailureCode } from "../lib/errors.js";
 import { createHash } from "node:crypto";
+import { startNativeActivation, type NativeStartService } from "./native-start.js";
 import path from "node:path";
 import { resolveDshDelegationCapability, type DshDelegationCapability } from "./team-capability.js";
 import { roleLaunchRecipe, tryParseRoleSelection, type RoleSelection } from "../lib/role-preferences.js";
@@ -32,9 +33,8 @@ type TeamRuntime = {
   spawnTeammate(agent: FinalizerAgent, request: { name: string; description: string; prompt: { type: "text"; text: string }[]; context: "fresh"; provider: string; signal: AbortSignal }): Promise<{ member: Member }>;
   sendMessage(agent: FinalizerAgent, request: { target: string; content: { type: "text"; text: string }[]; signal: AbortSignal }): Promise<{ messageId: string; status?: string }>;
 };
-type NativeRuntime = {
+type NativeRuntime = NativeStartService & {
   listChildren(parentId: string): Promise<Array<{ kind?: string; id?: string; label?: string; mode?: string; createdAt?: number; activity?: string; provider?: string }>>;
-  startContinuable(spec: { childId?: string; provider: string; label: string; signal: AbortSignal; request: { parent: FinalizerAgent; prompt: { type: "text"; text: string }[]; agentOptions?: { provider?: string; model?: string; reasoningEffort?: string } } }): Promise<{ childId: string; messageId: string }>;
   sendMessage(parent: FinalizerAgent, childId: string, content: { type: "text"; text: string }[], options: { signal: AbortSignal }): Promise<string>;
 };
 export type FinalizerRoleDependencies = {
@@ -122,7 +122,7 @@ export class FinalizerRoleDispatcher {
   }
   private nativeService(): NativeRuntime {
     const service = this.deps.getService("subagents") as NativeRuntime | undefined;
-    if (!service || typeof service.listChildren !== "function" || typeof service.startContinuable !== "function"
+    if (!service || typeof service.listChildren !== "function" || typeof service.startActivation !== "function"
       || typeof service.sendMessage !== "function") throw Object.assign(new Error("DSH_NATIVE_SERVICE_UNAVAILABLE"), { code: "DSH_NATIVE_SERVICE_UNAVAILABLE" });
     return service;
   }
@@ -217,9 +217,9 @@ export class FinalizerRoleDispatcher {
     const raced = await this.nativeMember(service, agent, label, existing?.memberSessionId);
     if (raced) return raced;
     const agentOptions = dispatch.selection?.applied.options ?? {};
-    let started: { childId: string; messageId: string };
+    let started: { childId: string; messageId?: string };
     try {
-      started = await service.startContinuable({ provider, label, signal: this.deps.signal, request: { parent: agent, prompt: text(bootstrap()), ...(Object.keys(agentOptions).length ? { agentOptions } : {}) } });
+      started = await startNativeActivation(service, { provider, label, signal: this.deps.signal, request: { parent: agent, prompt: text(bootstrap()), ...(Object.keys(agentOptions).length ? { agentOptions } : {}) } });
     } catch (error) {
       const failure = serializeFailure(error, { fallbackCode: "DSH_FINALIZER_MEMBER_START_REJECTED", operation: "native.member.start", origin: "host", fallbackOutcome: "unknown" });
       throw Object.assign(new Error(failure.message), failure);

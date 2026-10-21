@@ -74,7 +74,7 @@ test("typed command service uses explicit context and keeps current plan in v2 s
 test("search and index refresh do not hold the session execution queue", async () => {
   const runtimeRoot = fixture("search-queue-runtime");
   const projectRoot = fixture("search-queue-project");
-  initProject({ cwd: projectRoot, projectName: "Search Queue", planning: false });
+  initProject({ cwd: projectRoot, projectName: "Search Queue", planning: false, externalDocPaths: ["docs"] });
   fs.mkdirSync(path.join(projectRoot, "docs"), { recursive: true });
   fs.writeFileSync(path.join(projectRoot, "docs", "allowed.md"), "session setup documentation", "utf-8");
   const registry = new SessionRegistryV2(runtimeRoot);

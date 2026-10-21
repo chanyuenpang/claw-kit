@@ -20,6 +20,7 @@ import {
   checkProjectProtocol,
   ClawError,
   withExecutionFailure,
+  serializeFailure,
   buildPlanWorkflowGuidance,
   buildMemoryIndex,
   buildSessionStartDefaultPrompt,
@@ -166,7 +167,7 @@ const COMMAND_HELP: Record<string, HelpNode> = {
   init: {
     usage: ["{script} init [options]"],
     description:
-      "Initialize and normalize the .claw project surface in the current directory, writing project.json, memory.md, and .gitignore. Hostless init also maintains AGENTS.md and CLAUDE.md skill-entry blocks.",
+      "Initialize and normalize the .claw project surface in the current directory, writing project.json and .gitignore and creating the Truth, task, and runtime directories. Hostless init also maintains AGENTS.md and CLAUDE.md skill-entry blocks.",
     options: [
       { flag: "--id <project-id>", detail: "Project id (derived from --name if omitted)." },
       { flag: "--name <project-name>", detail: "Human-readable project name." },
@@ -2685,42 +2686,32 @@ function resolveHookLogPath(effectiveHost: ClawHost | undefined): string {
 }
 
 async function runStopHook(effectiveHost: ClawHost | undefined): Promise<void> {
-  // Cindy owns task-completion closeout in its Host worker path. The CLI sidecar
-  // must not enqueue a job that it cannot execute with a Cindy session runner.
-  if (effectiveHost !== "opencode") {
-    return;
-  }
-  if (process.env.CLAW_KNOWLEDGE_FINALIZER === "1") {
-    return;
-  }
-  const payload = await readStdinJson();
-  const hookCwd = resolveHookCwd(payload);
-  const sessionId = resolveOwnerSessionKey(payload);
-  const turnId = readHookString(payload, "turn_id");
-  const payloadMessage = readHookString(payload, "message");
-  if (!hookCwd || !sessionId || !turnId || !containsClawDir(hookCwd)) {
-    return;
-  }
+  // Legacy Stop hooks stay silent; machine callers always receive one result.
+  const respond = (result: unknown): void => {
+    if (process.env.CLAW_KNOWLEDGE_CAPTURE_RESULT === "1") printJson(result);
+  };
   try {
-    const project = resolveProjectContext(hookCwd);
-    // Host adapters own history parsing and pass their current final inline.
-    const message = payloadMessage;
-    if (!message) {
+    // Cindy owns its closeout; finalizer sessions must not capture themselves.
+    if (effectiveHost !== "opencode" || process.env.CLAW_KNOWLEDGE_FINALIZER === "1") {
+      respond({ ok: true, captured: false });
       return;
     }
-    const result = tryCaptureKnowledgeStop({
-      project,
-      sessionId,
-      turnId,
-      message,
-      host: effectiveHost,
-      taskConclusions: [],
-    });
-    if (process.env.CLAW_KNOWLEDGE_CAPTURE_RESULT === "1") {
-      printJson(result);
+    const payload = await readStdinJson();
+    const hookCwd = resolveHookCwd(payload);
+    const sessionId = resolveOwnerSessionKey(payload);
+    const turnId = readHookString(payload, "turn_id");
+    const message = readHookString(payload, "message");
+    if (!hookCwd || !sessionId || !turnId || !message || !containsClawDir(hookCwd)) {
+      respond({ ok: true, captured: false });
+      return;
     }
-  } catch {
-    // Knowledge capture is a fail-open sidecar and must never block Stop.
+    const project = resolveProjectContext(hookCwd);
+    respond(tryCaptureKnowledgeStop({ project, sessionId, turnId, message, host: effectiveHost, taskConclusions: [] }));
+  } catch (error) {
+    // Fail-open must not turn a real capture failure into empty stdout / JSON EOF.
+    respond({ ok: false, error: serializeFailure(error, {
+      fallbackCode: "OPENCODE_CAPTURE_FAILED", origin: "cli", operation: "report.capture", fallbackOutcome: "unknown",
+    }) });
   }
 }
 

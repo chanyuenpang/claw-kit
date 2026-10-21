@@ -571,7 +571,6 @@ function computeCompletionDirtyHash(
   hash.update(JSON.stringify([...operations].sort()));
   const project = resolveProjectContext(cwd);
   const roots = [
-    path.join(project.clawDir, "memory.md"),
     path.join(project.clawDir, "truth"),
     findTaskDirectory(project, taskName) ?? path.join(project.tasksDir, taskName),
   ];

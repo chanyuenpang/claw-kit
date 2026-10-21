@@ -1,5 +1,6 @@
 import { serializeFailure, safeFailureCode } from "../lib/errors.js";
 import { createHash } from "node:crypto";
+import { startNativeActivation } from "./native-start.js";
 import path from "node:path";
 import { roleLaunchRecipe, tryParseRoleSelection } from "../lib/role-preferences.js";
 import { selectDshRoleModel } from "./model-selection.js";
@@ -85,7 +86,7 @@ export class FinalizerRoleDispatcher {
     }
     nativeService() {
         const service = this.deps.getService("subagents");
-        if (!service || typeof service.listChildren !== "function" || typeof service.startContinuable !== "function"
+        if (!service || typeof service.listChildren !== "function" || typeof service.startActivation !== "function"
             || typeof service.sendMessage !== "function")
             throw Object.assign(new Error("DSH_NATIVE_SERVICE_UNAVAILABLE"), { code: "DSH_NATIVE_SERVICE_UNAVAILABLE" });
         return service;
@@ -206,7 +207,7 @@ export class FinalizerRoleDispatcher {
         const agentOptions = dispatch.selection?.applied.options ?? {};
         let started;
         try {
-            started = await service.startContinuable({ provider, label, signal: this.deps.signal, request: { parent: agent, prompt: text(bootstrap()), ...(Object.keys(agentOptions).length ? { agentOptions } : {}) } });
+            started = await startNativeActivation(service, { provider, label, signal: this.deps.signal, request: { parent: agent, prompt: text(bootstrap()), ...(Object.keys(agentOptions).length ? { agentOptions } : {}) } });
         }
         catch (error) {
             const failure = serializeFailure(error, { fallbackCode: "DSH_FINALIZER_MEMBER_START_REJECTED", operation: "native.member.start", origin: "host", fallbackOutcome: "unknown" });

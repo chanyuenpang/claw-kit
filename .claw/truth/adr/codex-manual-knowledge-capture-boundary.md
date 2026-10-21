@@ -1,49 +1,34 @@
-﻿# ADR: Codex 与 DSH 显式手动知识采集边界
+# ADR: Codex 与 DSH 手动知识补录以文档为完成边界
 
 ## Context
 
-自动 knowledge finalization 从完成的 claw project plan 取得其 lifecycle、冻结的 writer 配置和受控的 delegate protocol。用户也需要把非 claw 工作中已经建立的结论写入项目 Truth/ADR，但该需要不应让 Agent 推断性启动沉淀，也不能把手动入口混入自动 closeout 的 report、job 或 worker 生命周期。
+用户需要把当前对话中遗漏的内容变更、事实和决策，以自动 finalizer 相同的格式写入 Truth/ADR。旧手动技能引入 prepare/complete、精确 CLI runtime、assignment、配置指纹及刷新；标题格式等治理失败还要求用户重新确认。它限制为非 claw 工作，与补充 finalizer 遗漏的用途冲突。
 
 ## Decision
 
-Codex 与 DSH 提供仅由用户明确请求启动的 `knowledge-capture` skill。其规范整包与 runner/pin 统一位于 `shared/skills/knowledge-capture/`，adapter 仅分发生成副本；该 skill 由发起它的同一 Agent 使用随包 runner 执行 `knowledge prepare --source agent-memory`，按返回 assignment 执行治理，并用同一次 prepare 的 runtime binding 与配置 fingerprint 执行 `knowledge complete`。runner 以插件内 `runtime.json` 作为精确 CLI 合同：只有全局 `claw` 的版本和能力都匹配时才复用它，否则仅为当次调用使用固定 npm runtime；它不更新用户安装，也不向旧 CLI 回退。该路径不得创建或消费 plan、task、subplan、report、knowledge job、background worker、thread 或 collaboration subagent，也不得从 transcript、旧 report 或重新调查中补造证据。
+将 `knowledge-capture` 收窄为用户明确请求、同 Agent 直接编辑的文档补录。支持 claw 与非 claw 工作已经建立的结论，包括 finalizer 遗漏，但不接管或重放自动归档生命周期。
 
-所有实际改动路径在同一次 complete 中批量提交；没有改动则不调用 complete。整包共享防止两个宿主的 runner/pin 漂移，但不扩大手动入口授权，更不能用于弥补 native 自动 closeout 的 transport 缺口。
+技能附录在装配时从 finalizer 同一个格式规范源复制，避免两套格式漂移。已有文档 owner 优先；仅对受影响内容做证据、格式与一致性复核。机械格式修正在原授权内完成。证据不足只影响对应结论，不阻断其他有证据的补录。
 
-自动 finalization 与其内部 `delegate-writer` / `knowledge-writer` 资源继续保持不可发现；手动 skill 只提供受限的用户入口，不成为自动触发或替代自动 closeout 的第二个 lifecycle owner。
+移除技能 runner、runtime pin 和 prepare/complete 依赖；不执行外部 writer assignment、登记、索引刷新或自动 finalizer 恢复。正确写入并复核文档即完成，不额外证明另一套生命周期成功。实际目标不明、缺失证据或写入失败仍须如实说明。
 
 ## Alternatives
 
-- 让 Agent 在任务完成时自动建议或调用手动 capture：拒绝，因为会以推断替代用户授权，并与自动 closeout 的 ownership 重叠。
-- 复用 plan/report/job/subagent finalizer：拒绝，因为手动路径只需要治理已在当前 Agent memory 中存在的结论，额外 lifecycle 产物会扩大状态和递归风险。
-- 公开内部 writer skill：拒绝，因为 writer 的 assignment、token 与 finalization 编排仍由 Core 内部资源拥有。
-- 直接调用 PATH 上的全局 `claw`：拒绝，因为插件与 CLI 可独立发布；版本字符串或安装存在都不能证明旧 CLI 具有 prepare / complete capability。
+- 保留两阶段登记，仅增加自动重试：不采用。改善重试仍保留与文档补录无关的运行时与完成门槛。
+- 独立维护技能格式副本：不采用。附录复用 finalizer 格式规范源，在打包时复制。
+- 用手动技能恢复或完成原 finalizer job：不采用。补录内容与自动任务状态是两个目标，不能用文档编辑伪造归档回执。
 
 ## Consequences
 
-- 手动沉淀有清晰的授权与证据边界；上下文压缩导致证据不足时必须无编辑退出。
-- CLI 在 complete 时检测配置漂移，并只治理 prepare 所声明的 canonical 路径；已有编辑保持可见，调用方可在重新 prepare 后决定是否重试。
-- runner 的 runtime binding 与 CLI 的 config fingerprint 分别保护执行合同和项目治理配置；任一漂移都会显式停止 complete，不产生跨版本完成。
-- 公开插件 surface、CLI contract 和 focused tests 必须共同维持“显式、同 Agent、无 job/report/subagent”的约束。
+- 已知内容不会因 CLI 缺失、配置 assignment 不兼容、登记或刷新失败而无法补录；安装产物可独立携带格式附录。
+- 保留明确用户授权、已有事实证据、已有 owner、无递归代理和无自动任务重放的必要边界。
+- 文档完成不代表即时索引更新。任何登记、刷新或自动 closeout 状态都不能由本技能推断。
+- 自动 finalizer 运行时及现有 CLI prepare/complete 接口不在本次修改范围。
 
-## Related code
+<!-- state: history -->
+## Decision evolution
 
-- `packages/codex-adapter/skills/knowledge-capture/SKILL.md`
-- `packages/codex-adapter/skills/knowledge-capture/runtime.json`
-- `packages/codex-adapter/skills/knowledge-capture/scripts/run-knowledge-capture.mjs`
-- `packages/cli/src/cli.ts`
-- `packages/core/src/knowledge-assignments.ts`
-- `packages/cli/test/cli-surface.test.ts`
-- `scripts/codex-plugin-bundle.test.mjs`
-- `../features/codex-manual-knowledge-capture.md`
-- `hook-owned-two-phase-knowledge-finalization.md`
+<!-- dated: 2026-10-21 -->
+### 替代精确 runtime 的两阶段手动采集
 
-## Search terms
-
-- `manual knowledge capture`
-- `knowledge prepare`
-- `knowledge complete`
-- `agent-memory`
-- `configFingerprint`
-- `captureRuntime.binding`
-- `KNOWLEDGE_CAPTURE_RUNTIME_CHANGED`
+此前要求技能只处理非 claw 工作，并经随包固定版本 runner 执行 prepare → assignment → complete，以 binding 和配置指纹防止跨版本完成。它原本用于隔离自动 finalization，但也把手动补录变成第二套归档流程。当前保留生命周期隔离，不再保留与文档目标无关的完成门槛。

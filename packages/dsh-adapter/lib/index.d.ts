@@ -1,4 +1,5 @@
 import { type HostAction } from "./host-actions.js";
+import { type NativeStartService } from "./native-start.js";
 export declare const name = "claw-kit";
 export type FinalizerDispatchRecord = {
     runId: string;
@@ -11,25 +12,7 @@ type SubagentChildLike = {
     mode?: string;
     label?: string;
 };
-export type SubagentsLike = {
-    start(name: string, request: {
-        label?: string;
-        prompt: Array<{
-            type: string;
-            text: string;
-        }>;
-        parent: unknown;
-        agentOptions?: {
-            provider?: string;
-            model?: string;
-            reasoningEffort?: string;
-        };
-        signal?: AbortSignal;
-    }): Promise<{
-        id: string;
-        result?: Promise<unknown>;
-        dispose?: () => Promise<void>;
-    }>;
+export type SubagentsLike = NativeStartService & {
     listChildren?(parentSessionId: string): Promise<SubagentChildLike[]>;
 };
 /** The label every writer child for one finalizeId carries. */

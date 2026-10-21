@@ -108,6 +108,7 @@ test("cli search accepts --json as a compatibility no-op", () => {
   };
 
   runClaw(["init", "--name", "Search JSON Compatibility"], root, env);
+  fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "alpha project notes\n", "utf-8");
   runClaw(["search", "index", "--refresh", "--json"], root, env);
 
   const searchResult = runClaw(["search", "alpha", "--json"], root, env);
@@ -284,7 +285,7 @@ test("cli search index refresh returns project index metadata and embedding conf
     ),
     "utf-8",
   );
-  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project alpha memory\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "project alpha memory\n", "utf-8");
   fs.writeFileSync(path.join(root, ".claw", "truth", "shared.md"), "shared beta truth\n", "utf-8");
 
   const result = runClaw(["search", "index", "--refresh"], root);
@@ -337,7 +338,7 @@ test("cli search index refresh returns local vector index metadata and only inde
     ),
     "utf-8",
   );
-  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project alpha memory\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "project alpha memory\n", "utf-8");
   fs.writeFileSync(path.join(root, ".claw", "truth", "shared.md"), "shared beta truth\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "guide.md"), "gamma markdown doc\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "notes.txt"), "should stay unindexed\n", "utf-8");

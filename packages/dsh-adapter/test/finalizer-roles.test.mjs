@@ -11,8 +11,10 @@ const capabilityURL = moduleURL(await fs.readFile(new URL("../src/team-capabilit
 const { resolveDshDelegationCapability } = await import(capabilityURL);
 const rolePreferencesURL = new URL("../lib/role-preferences.js", import.meta.url).href;
 const modelSelectionURL = new URL("../lib/model-selection.js", import.meta.url).href;
+const nativeStartURL = moduleURL(await fs.readFile(new URL("../src/native-start.ts", import.meta.url), "utf8"));
 const dispatcherSource = (await fs.readFile(new URL("../src/finalizer-roles.ts", import.meta.url), "utf8"))
   .replace('"./team-capability.js"', JSON.stringify(capabilityURL))
+  .replace('"./native-start.js"', JSON.stringify(nativeStartURL))
   .replace('"../lib/role-preferences.js"', JSON.stringify(rolePreferencesURL))
   .replace('"./model-selection.js"', JSON.stringify(modelSelectionURL))
   .replace('"../lib/errors.js"', JSON.stringify(new URL("../lib/errors.js", import.meta.url).href));
@@ -91,7 +93,7 @@ function fixture(route = "native") {
       async listChildren(parentId) { assert.equal(parentId, agent.id);
         if (state.failCatalogReads-- > 0) throw new Error("transient catalog read");
         return clone(children); },
-      async startContinuable(spec) {
+      async startActivation(spec) {
         assert.equal(spec.signal, controller.signal);
         assert.equal(spec.request.parent, agent);
         assert.match(spec.request.prompt[0].text, /initializes the role ONLY/);
@@ -174,6 +176,16 @@ function fixture(route = "native") {
   return { agent, provider, definitions, members, children, events, commands, creates, sends, rows, state, services, capability,
     fingerprint, execution, dispatcher, run, eventFor, seedMember };
 }
+
+test("current activation-only host admits and reuses the finalizer", async () => {
+  const f = fixture();
+  assert.equal((await f.run(A)).delivered, true);
+  f.rows.get(A).status = "succeeded";
+  f.rows.get(A).readyForNext = true;
+  assert.equal((await f.run(B)).reused, true);
+  assert.equal(f.creates.length, 1);
+  assert.deepEqual(f.sends.map(send => send.id), [A, B]);
+});
 
 test("native background role creates one executor for two independent full-id jobs", async () => {
   const f = fixture();
@@ -299,7 +311,7 @@ test("existing native role tolerates omitted provider and activity observations"
 
 test("structured Host start rejection keeps a safe actionable code", async () => {
   const f = fixture();
-  f.services.subagents.startContinuable = async () => { throw { code: "subagent/session-conflict" }; };
+  f.services.subagents.startActivation = async () => { throw { code: "subagent/session-conflict" }; };
   const result = await f.run();
   assert.equal(result.ok, false);
   assert.equal(result.code, "subagent/session-conflict");

@@ -13,10 +13,6 @@ const templateRoots = [
 ];
 const defaultTemplateSource = path.join("packages", "core", "src", "templates", "plans", "default.ts");
 const templateDriverSource = path.join("packages", "core", "src", "plan-templates.ts");
-// Only canonical source pins are edited. Artifact assembly copies this file verbatim.
-const knowledgeCaptureRuntimeSpecs = [
-  path.join("shared", "skills", "knowledge-capture", "runtime.json"),
-];
 
 export async function collectReleaseTemplatePaths(repoRoot = defaultRepoRoot) {
   const matches = [];
@@ -51,20 +47,6 @@ export async function inspectTemplateVersions({ repoRoot = defaultRepoRoot, expe
       actualVersion: defaultVersion,
       expectedVersion: templateDriverVersion,
     });
-  }
-
-  for (const knowledgeCaptureRuntimeSpec of knowledgeCaptureRuntimeSpecs) {
-    const runtimePath = path.join(repoRoot, knowledgeCaptureRuntimeSpec);
-    try {
-      const runtime = JSON.parse(await fs.readFile(runtimePath, "utf8"));
-      if (runtime.version !== releaseVersion) {
-        issues.push({ path: knowledgeCaptureRuntimeSpec, actualVersion: typeof runtime.version === "string" ? runtime.version : null, expectedVersion: releaseVersion });
-      }
-    } catch (error) {
-      if (error?.code !== "ENOENT") throw error;
-      // A missing canonical pin is an issue; artifact assembly cannot repair it.
-      issues.push({ path: knowledgeCaptureRuntimeSpec, actualVersion: null, expectedVersion: releaseVersion });
-    }
   }
 
   return { version: templateDriverVersion, releaseVersion, templateCount: templatePaths.length, issues };
@@ -108,22 +90,6 @@ export async function updateTemplateVersions({ repoRoot = defaultRepoRoot, expec
     );
     await fs.writeFile(defaultPath, `${before}${templateSection}`, "utf8");
     updated.push(defaultTemplateSource);
-  }
-
-  for (const knowledgeCaptureRuntimeSpec of knowledgeCaptureRuntimeSpecs) {
-    const runtimePath = path.join(repoRoot, knowledgeCaptureRuntimeSpec);
-    try {
-      const runtime = JSON.parse(await fs.readFile(runtimePath, "utf8"));
-      if (runtime.version !== releaseVersion) {
-        runtime.version = releaseVersion;
-        await fs.writeFile(runtimePath, `${JSON.stringify(runtime, null, 2)}\n`, "utf8");
-        updated.push(knowledgeCaptureRuntimeSpec);
-      }
-    } catch (error) {
-      if (error?.code !== "ENOENT") throw error;
-      // The updater cannot synthesize a missing canonical specification;
-      // inspectTemplateVersions keeps that authoring error visible.
-    }
   }
 
   return { version: templateDriverVersion, releaseVersion, templateCount: templatePaths.length, updated };

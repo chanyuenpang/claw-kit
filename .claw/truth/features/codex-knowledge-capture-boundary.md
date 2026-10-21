@@ -1,6 +1,8 @@
 ﻿# Codex 异步知识采集边界
 
 <!-- document-state: historical -->
+
+This document records the retired policy-driven executor design, not current runtime gates. Current canonical completion uses claim/identity/CAS, not snapshot trimming or fixed/all-done governance phases; all writer routes share the canonical format minimum and optional external-doc failure is independent. See [external writer contract](external-writer-skill-config.md), [corpus semantics](truth-and-adr-corpus-semantics.md), and [finalization ADR](../adr/hook-owned-two-phase-knowledge-finalization.md).
 ## 结论
 
 计划和 session binding 是 `claw-kit` 的前台 canonical lifecycle，必须独立于 Codex hooks。hook、report 或 SDK 的失败一律 fail-open：不能改变 `claw plan write`、`claw plan edit`、`claw plan done`、subplan 完成后的 parent 恢复，或 session binding 的语义。

@@ -1,5 +1,6 @@
 import { serializeFailure, type SafeFailure } from "../lib/errors.js";
 import { createHash } from "node:crypto";
+import { startNativeActivation } from "./native-start.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -315,9 +316,9 @@ export class RoleDelegation {
       await this.fresh(parent, r);
       native = this.deps.getService("subagents") as any;
       const options = r.modelSelection?.applied.options ?? {};
-      const run = await native.start("spawn", { parent, label: r.label, prompt: text(this.prompt(r)), signal: this.signal,
-        ...(Object.keys(options).length ? { agentOptions: options } : {}) });
-      await this.update(parent, r.workdir, r.id, (v) => ({ ...v, delivery: "accepted", ...(string(run?.id) ? { runId: run.id } : {}), status: terminal(v) ? v.status : "running" }));
+      const run = await startNativeActivation(native, { provider: "spawn", label: r.label, signal: this.signal, request: { parent, prompt: text(this.prompt(r)),
+        ...(Object.keys(options).length ? { agentOptions: options } : {}) } });
+      await this.update(parent, r.workdir, r.id, (v) => ({ ...v, delivery: "accepted", ...(string(run?.childId) ? { runId: run.childId } : {}), status: terminal(v) ? v.status : "running" }));
       if (run?.result && typeof run.result.then === "function") {
         const settled = async () => {
           await this.update(parent, r.workdir, r.id, (v) => terminal(v) ? v : { ...v, status: "failed", error: "DELEGATE_WORKER_ENDED_WITHOUT_COMPLETE" });
@@ -371,7 +372,7 @@ export class RoleDelegation {
       const id = nativeRoleId(parent.id, r.fingerprint);
       let rows = await this.nativeCatalog(native, parent.id);
       if (this.targetDiagnostic(rows, id)) reject("DELEGATE_NATIVE_CATALOG_UNAVAILABLE");
-      let matches = rows.filter((m: any) => m.kind === "child" && (m.id === id || m.label === r.label));
+      let matches = rows.filter((m: any) => (m.kind === undefined || m.kind === "child") && (m.id === id || m.label === r.label));
       if (matches.length > 1) reject("DELEGATE_ROLE_AMBIGUOUS");
       let member = matches[0];
       if (member && (member.id !== id || member.label !== r.label || member.mode !== "continuable")) reject("DELEGATE_ROLE_INCOMPATIBLE");
@@ -383,7 +384,7 @@ export class RoleDelegation {
         native = this.deps.getService("subagents") as any;
         rows = await this.nativeCatalog(native, parent.id);
         if (this.targetDiagnostic(rows, id)) reject("DELEGATE_NATIVE_CATALOG_UNAVAILABLE");
-        matches = rows.filter((m: any) => m.kind === "child" && (m.id === id || m.label === r.label));
+        matches = rows.filter((m: any) => (m.kind === undefined || m.kind === "child") && (m.id === id || m.label === r.label));
         if (matches.length > 1) reject("DELEGATE_ROLE_AMBIGUOUS");
         member = matches[0];
         if (member && (member.id !== id || member.label !== r.label || member.mode !== "continuable")) reject("DELEGATE_ROLE_INCOMPATIBLE");
@@ -391,7 +392,7 @@ export class RoleDelegation {
           const options = r.modelSelection?.applied.options ?? {};
           await this.update(parent, r.workdir, r.id, (v) => ({ ...v, memberAttempted: true }));
           try {
-            const created = await native.startContinuable({ childId: id, provider: "spawn", label: r.label,
+            const created = await startNativeActivation(native, { childId: id, provider: "spawn", label: r.label,
               request: { parent, prompt: text(this.bootstrap(r)), ...(Object.keys(options).length ? { agentOptions: options } : {}) }, signal: this.signal });
             if (created?.childId !== id) {
               await this.update(parent, r.workdir, r.id, (v) => ({ ...v, memberAttempted: true }));
@@ -402,7 +403,7 @@ export class RoleDelegation {
             const primary = serializeFailure(error, { fallbackCode: "DELEGATE_MEMBER_START_FAILED", operation: "native.member.start", origin: "host" });
             try { rows = await this.nativeCatalog(this.deps.getService("subagents"), parent.id); }
             catch (diagnostic) { throw Object.assign(new Error(primary.message), { ...primary, diagnostics: [serializeFailure(diagnostic, { fallbackCode: "DELEGATE_CATALOG_FAILED", operation: "native.catalog.read" })] }); }
-            const recovered = rows.filter((m: any) => m.kind === "child" && m.id === id && m.label === r.label && m.mode === "continuable");
+            const recovered = rows.filter((m: any) => (m.kind === undefined || m.kind === "child") && m.id === id && m.label === r.label && m.mode === "continuable");
             if (recovered.length !== 1) throw Object.assign(new Error(primary.message), primary);
           }
         }
@@ -432,7 +433,7 @@ export class RoleDelegation {
     if (typeof native?.listChildren !== "function") reject("DELEGATE_NATIVE_CATALOG_UNAVAILABLE");
     const rows = await this.nativeCatalog(native, parent.id);
     if (this.targetDiagnostic(rows, actor.id)) reject("DELEGATE_NATIVE_CATALOG_UNAVAILABLE");
-    const matching = rows.filter((m: any) => m.kind === "child" && m.id === actor.id && m.label === r.label
+    const matching = rows.filter((m: any) => (m.kind === undefined || m.kind === "child") && m.id === actor.id && m.label === r.label
       && m.mode === (r.backend === "native-one-shot" ? "one-shot" : "continuable"));
     if (matching.length !== 1 || (r.memberId && r.memberId !== actor.id)) reject("DELEGATE_FOREIGN_WORKER");
   }

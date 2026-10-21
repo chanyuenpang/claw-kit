@@ -133,7 +133,8 @@ function invokeClawAutoDoc(
         ...(existsSync(GUIDANCE_CONFIG_PATH) ? { CLAW_GUIDANCE_CONFIG: GUIDANCE_CONFIG_PATH } : {}),
       },
     });
-    const parsed = JSON.parse(stdout) as { jobPath?: unknown; finalizeId?: unknown };
+    const parsed = JSON.parse(stdout) as { ok?: boolean; error?: unknown; jobPath?: unknown; finalizeId?: unknown };
+    if (parsed.ok === false) throw parsed.error ?? new Error("Report capture failed without error details");
     return {
       ...(typeof parsed.jobPath === "string" ? { jobPath: parsed.jobPath } : {}),
       ...(typeof parsed.finalizeId === "string" ? { finalizeId: parsed.finalizeId } : {}),

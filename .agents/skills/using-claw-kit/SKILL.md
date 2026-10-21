@@ -52,9 +52,9 @@ unavailable. A closeout failure must remain visible, not be reported as success.
    A delegated worker obeys its assigned scope and must not take over the
    parent's lifecycle merely because it can see the plan.
 2. **Respect explicit non-workflow requests.** Public manual knowledge capture
-   is user-requested, non-claw, same-agent work, not an automatic closeout or a
-   new planning trigger. Follow its own eligibility checks; do not use it to
-   escape an active workflow or create a plan for it. Questions and chores
+   is user-requested, same-agent document supplementation, including knowledge
+   missed by a finalizer, not an automatic closeout or a new planning trigger.
+   Do not use it to escape an active workflow or create a plan for it. Questions and chores
    that will not produce reusable project knowledge normally run directly.
 3. **Template owner before generic plan.** If a workflow skill owns the request,
    use its entry and supplied adjacent template through the selected host
@@ -62,9 +62,7 @@ unavailable. A closeout failure must remain visible, not be reported as success.
 4. Otherwise create a plan for work expected to produce reusable project
    knowledge. New plans automatically initialize the local project environment
    and default configuration when needed. There is no public storage-scope
-   choice. Use knowledge_capture:false (CLI: --no-knowledge-capture) for work
-   that needs tracking without knowledge accumulation; it keeps the same plan
-   lifecycle. Finalizer auxiliary plans always opt out of recursive capture.
+   choice.
 5. Follow returned `workflowGuidance` (Cindy Ghost: `guidance`) as the only
    lifecycle contract. Stage/current task determine work; `commandHints` are
    route-specific lookup aids, not commands to run through another transport.
@@ -98,8 +96,7 @@ independent investigation contract fits; ordinary search needs no delegation.
   transition to compensate for a failed host action.
 - Automatic closeout and the public manual knowledge-capture skill have
   different triggers. Do not call that public skill from a plan or finalizer.
-- Capture opt-out, no-new-knowledge, and failed closeout are different outcomes.
-  Follow returned obligations; never skip an applicable closeout merely because
+- Follow returned obligations; never skip an applicable closeout merely because
   you expect no useful knowledge. The writer decides whether to edit.
 - Preserve host-owned identity, Goal/progress projection, dispatch, report
   collection, and turn-ending boundaries in the selected reference. Do not

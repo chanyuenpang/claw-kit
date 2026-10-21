@@ -13,6 +13,9 @@ export async function shouldLoadCliForInvocation(
   if (!isKnowledgeHookInvocation(args)) {
     return true;
   }
+  // Machine callers require a JSON result even when there is nothing to capture.
+  // Let the hook owner handle skips and failures; legacy silent hooks keep the fast path.
+  if (env.CLAW_KNOWLEDGE_CAPTURE_RESULT === "1") return true;
   const hostIndex = args.indexOf("--host");
   if ((hostIndex >= 0 ? args[hostIndex + 1] : env.CLAW_HOST) !== "opencode") return false;
   if (env.CLAW_KNOWLEDGE_FINALIZER === "1") {

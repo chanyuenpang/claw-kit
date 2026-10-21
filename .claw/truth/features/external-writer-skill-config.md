@@ -11,11 +11,11 @@
 - 固定宿主路线见 `docs/2026-10-02-fixed-host-knowledge-closeout.md`：Codex/Cindy/DSH 由各自 adapter 派发原生 writer，OpenCode 走其 idle capture，standard/hostless 由 main agent 执行 agent-memory prepare/complete。旧 policy 事实只保留在历史段，不应驱动当前路由。
 - `externalSkills` 的非空有序列表选择真实外部 skill assignments；列表缺失或为空时选择 Core 内部 built-in governance assignment。该内置 contract 不以 `claw-kit:knowledge-writer` 用户 skill 发布。`datedSectionsToKeep` 的治理语义由 `truth-and-adr-corpus-semantics.md` 唯一拥有。
 - 终态 owner 按固定宿主合同冻结 job/材料；后续重试使用该快照，不从变更后的项目配置重新推导 governance。模型软偏好可以在新的、未发送 admission 前按当前宿主能力解析；一旦 admitted 或投递未知，执行 identity 与 applied recipe 不迁移。
-- claim 把冻结配置解析为有序 assignments 与一次性 template。宿主 delegate 在 session-scoped 动态 assignment subplan 中顺序执行；任一失败都会阻止后续 assignment 并以 claim token 写入失败终态。main agent 不根据 `keyDecisions` 拆分 Truth/ADR phase。
-- `memory.autoUpdate` 有效时，冻结 external-document assignment 会在内置或 external skill assignments 之后追加；因此配置 external skills 只替换 built-in Truth/ADR governance，不会替换同一 job 的 existing-document governance stage。existing job、generated assignment plan、其 tracked subplan 与相邻 report 共同构成审计边界；`knowledge done` 保持既有协议，不接收或要求独立 doc-update receipt。doc-updater 是 Core 内部 template-backed resource：作为 active parent plan 的 stage 时创建 subplan；被显式独立调用时创建 own plan，模板或 CLI 不可用时按 fallback 运行。
+- claim 把冻结配置解析为有序 assignments 与一次性 template。Required canonical assignments 按序执行并诚实报告失败；可选 external-doc task 以记录实际结果完成，不因 updater 失败否定已成功的 Truth/ADR 维护。main agent 不根据 `keyDecisions` 拆分固定 Truth/ADR phase。
+- `memory.autoUpdate` 有效时，在所选 canonical writer 之后追加冻结范围内已有文档的可选 doc-updater assignment。其 changed paths、no-edit reason 或 failure 独立报告，保留 unresolved inconsistency，不回滚 canonical 成功。job、generated assignment plan、tracked subplan 与 report 仍是审计边界；`knowledge done` 不要求独立 doc-update receipt。
 - 内置与外部 assignment 使用不同 prompt builder。内置 prompt 直接展开隐藏治理 contract；外部 prompt 明确调用配置的 skill、要求无人值守且禁止询问、确认或等待交互。两者都要求使用 task status 区分已完成 scope 与 pending / blocked intent，禁止把 requirements 或 intentions 写成结果，也禁止在 governed docs 中引用会被销毁的 supplied materials。
-- 外部 skill 自己拥有输出语义与文档治理。finalizer 不为外部 writer 建立 canonical Markdown 写前快照，也不执行 `datedSectionsToKeep` 裁剪；通用的编码归一化、recall refresh、report result 与 job lifecycle 仍继续运行。
-- Codex 与 Cindy 的动态 assignment subplan 都必须进入 `end.completed` 且 tasks 非空、全部 `done`。内置 assignment 在没有 external-document stage 时包含六步治理合同；追加 doc-updater 时会在 ADR 后增加 existing-document stage，并把跨语料一致性复查顺延为终末任务。外部治理 skill 与可选 doc-updater 的每项完成结果都纳入同一 job 终态判断。
+- 外部 skill 自己选择治理方法，但与内置及 same-agent route 一样必须复用现有 `knowledge-format.md` 的 canonical Truth/ADR 最小格式、事实证据、实现锚点，并保留无关编辑。内置 retention 偏好不强加给外部 skill；finalizer 对任何 route 都不建立治理快照或执行 dated trimming。
+- 内置 assignment template 只有 canonical 维护与一致性复查两个 outcome tasks；可选 doc-updater 插入两者之间。外部 assignments 保留配置顺序，但不规定推理阶段。Core canonical completion 只维护既有 identity/claim/CAS 安全，不检查任意 session workflow 的 `end.completed`、非空 tasks 或全部 done。
 - `externalTruthSkill` 与 `externalAdrSkill` 只作为 legacy repair input；它们不是当前 schema owner，不能恢复独立 phase policy。
 - CLI 初始化入口 `--external-writer-skill <skill>` 写入单项 `knowledgeWriter.externalSkills` 配置。
 

@@ -54,7 +54,7 @@ test("daemon terminal and successful knowledge.done execute the real refresh wor
     const jobPath = listKnowledgeFinalizationJobs(resolveProjectContext(root))[0]!;
     const job = readKnowledgeFinalizationJob(jobPath);
     const claim = await session.command({ operation: "knowledge.claim", input: { finalizeId: job.finalizeId } }) as { claimToken: string };
-    fs.writeFileSync(path.join(root, ".claw", "memory.md"), "Knowledge deposited after plan refresh.");
+    fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "Knowledge deposited after plan refresh.");
     const input = { finalizeId: job.finalizeId, claimToken: claim.claimToken, status: "succeeded" as const, result: "Deposited" };
     await session.command({ operation: "knowledge.done", input });
     const knowledgeReceipt = path.join(receiptDir(root), createHash("sha256").update("knowledge:" + job.finalizeId).digest("hex") + ".json");

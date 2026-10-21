@@ -35,7 +35,7 @@ function fixture() {
       },
       listMembers: never, spawnTeammate: never, sendMessage: never,
     },
-    subagents: { getProvider: (name) => name === provider.name ? provider : undefined, start: never, startContinuable: never, sendMessage: never },
+    subagents: { getProvider: (name) => name === provider.name ? provider : undefined, startActivation: never, sendMessage: never },
     tools: { get(name, scope) { assert.equal(scope, agent); return definitions.get(name); } },
   };
   const input = { agent, role: "managed", provider: "spawn", getService(name) { requestedServices.push(name); return services[name]; } };
@@ -142,10 +142,11 @@ test("native preserves a valid one-shot route when continuation is absent", asyn
   const f = fixture();
   exposeNativeOnly(f);
   delete f.provider.prepareContinuable;
-  delete f.services.subagents.startContinuable;
   delete f.services.subagents.sendMessage;
   assert.deepEqual(await resolve(f.input), { selectedRoute: "native", ready: true, provider: "spawn", reusable: false });
-  delete f.services.subagents.start;
+  delete f.services.subagents.startActivation;
+  f.services.subagents.start = never;
+  f.services.subagents.startContinuable = never;
   await expectFailure(f.input, "native", "NATIVE_START_UNAVAILABLE");
 });
 

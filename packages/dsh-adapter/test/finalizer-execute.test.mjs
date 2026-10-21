@@ -120,13 +120,14 @@ function makeSubagents({ onStart, children = () => [] } = {}) {
   const state = { starts: 0, listCalls: 0 };
   const service = {
     getProvider: () => ({ name: "spawn", inheritsParentContext: false, start() {}, capabilities: { agentOptions: true } }),
-    async start(_name, request) {
+    async startActivation(spec) {
+      const request = { ...spec.request, label: spec.label, signal: spec.signal };
       state.starts += 1;
       // DSH's SubagentRun always carries `result` and `dispose`; a result
       // that never settles models a child that is still running.
       return onStart
         ? onStart(request, state)
-        : { id: "run-" + state.starts, result: new Promise(() => {}), dispose: async () => {} };
+        : { childId: "run-" + state.starts, result: new Promise(() => {}), dispose: async () => {} };
     },
     async listChildren() {
       state.listCalls += 1;
@@ -304,7 +305,7 @@ test("a running durable child with the finalizeId label is reused after an adapt
 test("a settled writer child releases the record so a stranded job can be retried", async () => {
   let settleRun;
   const { service, state } = makeSubagents({
-    onStart: () => ({ id: "run-1", result: new Promise((resolve) => { settleRun = resolve; }), dispose: async () => {} }),
+    onStart: () => ({ childId: "run-1", result: new Promise((resolve) => { settleRun = resolve; }), dispose: async () => {} }),
   });
   const harness = makeHarness({
     subagents: service,
@@ -349,7 +350,7 @@ test("an already queued next-plan request prevents completed-plan eviction", asy
     onStart: async () => {
       entered();
       await new Promise((resolve) => { unblock = resolve; });
-      return { id: "writer", result: new Promise(() => {}), dispose: async () => {} };
+      return { childId: "writer", result: new Promise(() => {}), dispose: async () => {} };
     },
   });
   const harness = makeHarness({
@@ -413,9 +414,8 @@ test("actual adapter reuses one native finalizer and wakes B after both A ends w
   }, terminate: async () => {} });
   const children = [];
   const native = {
-    start() { throw new Error("reusable provider should use continuable native role"); },
     async listChildren(id) { assert.equal(id, parent.id); return children; },
-    async startContinuable(spec) {
+    async startActivation(spec) {
       assert.equal(spec.request.parent, parent); spawned++;
       const child = makeAgent(spec.childId ?? "host-continuable-child");
       child.session.header.parentSession = parent.id;

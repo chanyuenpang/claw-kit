@@ -18,6 +18,7 @@ const rolePreferences = new URL("../lib/role-preferences.js", import.meta.url).h
 const modelSelection = await compile("model-selection.ts", { "../lib/role-preferences.js": rolePreferences });
 const { RoleDelegation } = await import(await compile("delegation.ts", {
   "./team-capability.js": capability,
+  "./native-start.js": await compile("native-start.ts"),
   "./delegation-receipts.js": receipts,
   "./model-selection.js": modelSelection,
   "../lib/role-preferences.js": rolePreferences,
@@ -72,22 +73,23 @@ async function fixture(t, backend = "team") {
       async listChildren(id) { outsideLock(); assert.equal(id, parent.id);
         if (state.failCatalogReads-- > 0) throw new Error("transient catalog read");
         return copy(children); },
-      async startContinuable(spec) {
-        outsideLock(); state.starts++; child(spec.childId);
-        children.push({ kind: "child", id: spec.childId, label: spec.label, mode: "continuable", activity: "inactive", provider: "spawn" });
-        return { childId: spec.childId, messageId: "bootstrap" };
-      },
       async sendMessage(actor, id, content) {
         outsideLock(); assert.equal(actor, parent); state.sends++; state.messages.push(content[0].text);
         await state.onSend?.(actors.get(id), content[0].text); return "native-message-" + state.sends;
       },
-      async start(name, request) {
-        outsideLock(); assert.equal(name, "spawn"); state.starts++;
+      async startActivation(spec) {
+        outsideLock(); assert.equal(spec.provider, "spawn"); state.starts++;
+        if (backend !== "one-shot") {
+          child(spec.childId);
+          children.push({ kind: "child", id: spec.childId, label: spec.label, mode: "continuable", activity: "inactive", provider: "spawn" });
+          return { childId: spec.childId, messageId: "bootstrap" };
+        }
+        const request = spec.request;
         const actor = child("actual-session-" + state.starts);
-        children.push({ kind: "child", id: actor.id, label: request.label, provider: "spawn", mode: "one-shot" });
+        children.push({ kind: "child", id: actor.id, label: spec.label, provider: "spawn", mode: "one-shot" });
         const result = deferred(); runs.push(result);
         await state.onStart?.(actor, request.prompt[0].text);
-        return { id: "opaque-run-" + state.starts, result: result.promise, dispose() {} };
+        return { childId: actor.id, result: result.promise, dispose() {} };
       },
     },
     agentTeams: {
@@ -270,12 +272,12 @@ test("native continuable roles reuse exact catalog identity", async (t) => {
   assert.equal(f.store.receipt(a.assignment_id).memberId, f.store.receipt(b.assignment_id).memberId);
 });
 
-test("native one-shot completion proves child catalog identity, not opaque run id", async (t) => {
+test("native activation completion proves child catalog identity", async (t) => {
   const f = await fixture(t, "one-shot");
   f.state.onStart = async (actor, prompt) => { const result = await f.api.complete(actor, f.workdir, { assignment_id: idFromPrompt(prompt), status: "completed", result: "one-shot evidence" }); assert.equal(result.status, "completed"); };
   const a = await f.api.start(f.parent, f.workdir, "one", { role: "researcher", brief: "q" });
   assert.equal(a.status, "completed"); const r = f.store.receipt(a.assignment_id);
-  assert.equal(r.memberId, "actual-session-1"); assert.equal(r.runId, "opaque-run-1");
+  assert.equal(r.memberId, "actual-session-1"); assert.equal(r.runId, "actual-session-1");
   f.runs[0].resolve({ output: "not authoritative" });
   assert.equal((await f.api.result(f.parent, f.workdir, { assignment_id: a.assignment_id, wait_ms: 0 })).result, "one-shot evidence");
 });

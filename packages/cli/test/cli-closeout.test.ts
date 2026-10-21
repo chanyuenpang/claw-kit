@@ -864,7 +864,7 @@ test("cli direct queues completion refresh without main-agent deposition guidanc
     root,
     env,
   );
-  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "direct flow memory\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "direct flow memory\n", "utf-8");
 
   const result = runClaw(["direct"], root, env);
 
@@ -895,7 +895,7 @@ test("overlapping direct closeouts coalesce into one completion refresh", async 
     PATH: `${shim.binDir}${path.delimiter}${process.env.PATH ?? ""}`,
   };
   runClaw(["init", "--name", "Direct Single Flight", "--gitnexus", "true"], root, env);
-  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "single-flight memory\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "single-flight memory\n", "utf-8");
 
   runClaw(["direct"], root, env);
   await waitForCondition(() => getCompletionRefreshStatusFiles(root).length >= 1, 5000);
@@ -922,7 +922,7 @@ test("completion refresh retries one transient GitNexus lock without shell warni
     PATH: `${shim.binDir}${path.delimiter}${process.env.PATH ?? ""}`,
   };
   runClaw(["init", "--name", "GitNexus Lock Retry", "--gitnexus", "true"], root, env);
-  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "lock retry memory\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "lock retry memory\n", "utf-8");
 
   const result = runClawRaw(["direct"], root, env);
   assert.equal(result.status, 0);
@@ -944,7 +944,7 @@ test("completion refresh rebuilds once after a Windows GitNexus access violation
     PATH: `${shim.binDir}${path.delimiter}${process.env.PATH ?? ""}`,
   };
   runClaw(["init", "--name", "GitNexus Access Violation", "--gitnexus", "true"], root, env);
-  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "access violation recovery\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "access violation recovery\n", "utf-8");
 
   const result = runClawRaw(["direct"], root, env);
   assert.equal(result.status, 0);

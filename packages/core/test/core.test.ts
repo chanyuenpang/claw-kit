@@ -382,7 +382,7 @@ test("knowledge sidecar failures stay fail-open for plan lifecycle callers", () 
   assert.match(result.error ?? "", /must stay inside/);
 });
 
-test("subagent plan end creates a ready job while Stop stays out of the lifecycle", () => {
+for (const host of ["codex", "cindy", "dsh"] as const) test(`${host} plan end creates child and root jobs while Stop stays out of the lifecycle`, () => {
   const root = createEmptyFixture("knowledge-subagent-ready-job");
   initProject({ cwd: root, projectName: "Knowledge Subagent Ready Job", externalDocPaths: ["docs"] });
   const project = resolveProjectContext(root);
@@ -396,7 +396,7 @@ test("subagent plan end creates a ready job while Stop stays out of the lifecycl
 
   assert.equal(tryRegisterKnowledgePlan({
     project,
-    host: "codex",
+    host,
     sessionId: "thread-subagent-ready",
     planPath,
     writer,
@@ -406,7 +406,7 @@ test("subagent plan end creates a ready job while Stop stays out of the lifecycl
   ) as Record<string, unknown>;
   assert.equal(tryRegisterKnowledgePlan({
     project,
-    host: "codex",
+    host,
     sessionId: "thread-subagent-ready",
     planPath: subplanPath,
     writer,
@@ -417,14 +417,27 @@ test("subagent plan end creates a ready job while Stop stays out of the lifecycl
   assert.equal(subplanRegistry.activeStartedAt, rootRegistry.activeStartedAt);
   const subplanEnded = tryEndKnowledgePlan({
     project,
-    host: "codex",
+    host,
     sessionId: "thread-subagent-ready",
     endedPlanPath: subplanPath,
     resumedPlanPath: planPath,
     endedAt: "2026-08-01T00:00:00.000Z",
     writer,
   });
-  assert.deepEqual(subplanEnded, { ok: true });
+  assert.equal(subplanEnded.ok, true);
+  assert.ok(subplanEnded.finalizeId);
+  assert.ok(subplanEnded.jobPath);
+  const childJob = readKnowledgeFinalizationJob(subplanEnded.jobPath!);
+  assert.equal(childJob.planPath, subplanPath);
+  assert.equal(childJob.host, host);
+  assert.equal(childJob.status, "queued");
+  assert.equal(childJob.reportCapture?.status, "pending");
+  const repeated = tryEndKnowledgePlan({
+    project, host, sessionId: "thread-subagent-ready", endedPlanPath: subplanPath,
+    resumedPlanPath: planPath, endedAt: "2026-08-01T00:00:00.000Z", writer,
+  });
+  assert.deepEqual(repeated, subplanEnded);
+  assert.deepEqual(readKnowledgeFinalizationJob(repeated.jobPath!), childJob);
   const resumedRegistry = JSON.parse(
     fs.readFileSync(knowledgeSessionRegistryPath(project, "thread-subagent-ready"), "utf-8"),
   ) as Record<string, unknown>;
@@ -434,7 +447,7 @@ test("subagent plan end creates a ready job while Stop stays out of the lifecycl
   assert.equal(resumedRegistry.pendingTurnOwner, undefined);
   const ended = tryEndKnowledgePlan({
     project,
-    host: "codex",
+    host,
     sessionId: "thread-subagent-ready",
     endedPlanPath: planPath,
     endedAt: "2026-08-01T00:00:00.000Z",
@@ -447,7 +460,7 @@ test("subagent plan end creates a ready job while Stop stays out of the lifecycl
   const queued = readKnowledgeFinalizationJob(ended.jobPath!);
   assert.equal(queued.status, "queued");
   assert.equal(queued.attempts, 0);
-  assert.equal(queued.host, "codex");
+  assert.equal(queued.host, host);
   assert.deepEqual(queued.docUpdate, { externalDocPaths: ["docs"] });
   assert.equal(queued.reportCapture?.status, "pending");
   const registry = JSON.parse(
@@ -458,7 +471,7 @@ test("subagent plan end creates a ready job while Stop stays out of the lifecycl
 
   const stop = tryCaptureKnowledgeStop({
     project,
-    host: "codex",
+    host,
     sessionId: "thread-subagent-ready",
     turnId: "turn-final",
     message: "This final answer must not be captured by Stop.",
@@ -470,10 +483,15 @@ test("subagent plan end creates a ready job while Stop stays out of the lifecycl
     prepare: () => {
       throw new Error("parent transcript unavailable");
     },
-  }), /parent transcript unavailable/);
+  }), host === "dsh" ? /trusted DSH child identity/ : /parent transcript unavailable/);
   const retryable = readKnowledgeFinalizationJob(ended.jobPath!);
   assert.equal(retryable.status, "queued");
   assert.equal(retryable.attempts, 0);
+  assert.deepEqual(tryEndKnowledgePlan({
+    project, host, sessionId: "exempt", endedPlanPath: subplanPath,
+    endedAt: "2026-08-02T00:00:00.000Z", knowledgeCapture: false, writer,
+  }), { ok: true }, "explicit opt-out creates no finalizer");
+  assert.equal(fs.existsSync(knowledgeSessionRegistryPath(project, "exempt")), false);
 });
 
 test("expired knowledge jobs revoke their claim and never become retryable", () => {
@@ -846,7 +864,8 @@ test("initProject creates a minimal .claw project scaffold", () => {
 
   assert.equal(result.projectId, "demo-project");
   assert.ok(fs.existsSync(path.join(root, ".claw", "project.json")));
-  assert.ok(fs.existsSync(path.join(root, ".claw", "memory.md")));
+  assert.equal(fs.existsSync(path.join(root, ".claw", "memory.md")), false);
+  assert.equal(fs.existsSync(path.join(root, ".claw", ".knowledge")), false);
   assert.ok(fs.statSync(path.join(root, ".claw", "truth")).isDirectory());
   assert.equal(fs.existsSync(path.join(root, ".claw", "truth", "SUMMARY.md")), false);
   assert.ok(fs.existsSync(path.join(root, ".claw", "tasks")));
@@ -4555,12 +4574,15 @@ test("memory search indexes only project-scoped recall sources", async () => {
   );
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
   fs.mkdirSync(path.join(root, ".claw", "truth", "features"), { recursive: true });
-  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project alpha memory\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "project alpha memory\n", "utf-8");
   fs.writeFileSync(path.join(root, ".claw", "truth", "shared.md"), "shared beta truth\n", "utf-8");
   fs.writeFileSync(path.join(root, ".claw", "truth", "SUMMARY.md"), "root navigation\n", "utf-8");
   fs.writeFileSync(path.join(root, ".claw", "truth", "features", "SUMMARY.md"), "module navigation\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "guide.md"), "zeta external doc\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "notes.txt"), "legacy txt doc\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "retired memory source\n", "utf-8");
+  fs.mkdirSync(path.join(root, ".claw", ".knowledge"));
+  fs.writeFileSync(path.join(root, ".claw", ".knowledge", "legacy.md"), "retired knowledge source\n", "utf-8");
   await writePlan({
     cwd: root,
     taskName: "demo-task",
@@ -4586,6 +4608,8 @@ test("memory search indexes only project-scoped recall sources", async () => {
     const txtSearch = searchMemory({ cwd: root, query: "legacy" });
 
     assert.equal(projectIndex.scope, "project");
+    assert.equal(projectIndex.sources.some((item) => item.endsWith(path.join(".claw", "memory.md"))), false);
+    assert.equal(projectIndex.sources.some((item) => item.includes(`${path.sep}.knowledge${path.sep}`)), false);
     assert.deepEqual(projectIndex.embedding, {
       provider: "local",
       model: "Snowflake/snowflake-arctic-embed-xs",
@@ -4594,7 +4618,7 @@ test("memory search indexes only project-scoped recall sources", async () => {
       },
       outputDimensionality: 384,
     });
-    assert.ok(projectSearch.results.some((item) => item.sourcePath.endsWith(path.join(".claw", "memory.md"))));
+    assert.ok(projectSearch.results.some((item) => item.sourcePath.endsWith(path.join(".claw", "truth", "project.md"))));
     assert.ok(projectIndex.sources.some((item) => item.endsWith(path.join(".claw", "truth", "shared.md"))));
     assert.equal(projectIndex.sources.some((item) => path.basename(item).toLowerCase() === "summary.md"), false);
     assert.ok(projectIndex.sources.some((item) => item.endsWith(path.join("docs", "guide.md"))));
@@ -4646,7 +4670,7 @@ test("project search rejects queries when no vector index is available", () => {
     ),
     "utf-8",
   );
-  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project alpha memory\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "project alpha memory\n", "utf-8");
 
   assert.throws(
     () => searchMemory({ cwd: root, query: "alpha" }),
@@ -4689,7 +4713,7 @@ test("project search keeps recall for multi-term Chinese queries across differen
     "utf-8",
   );
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
-  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "项目检索记忆\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "项目检索记忆\n", "utf-8");
   fs.writeFileSync(path.join(root, ".claw", "truth", "shared.md"), "共享中文 truth\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "sdtz.md"), "这里记录搜打撤模式的说明\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "hjb.md"), "这里记录哈基宝的说明\n", "utf-8");
@@ -4852,7 +4876,7 @@ test("project search skips the embedding worker for a unique exact filename hit"
     "utf-8",
   );
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
-  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project notes\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "project notes\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "coldstarttarget.md"), "focused implementation notes\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "\u89c4\u5219-gameplay\u811a\u672c\u7f16\u5199.md"), "actions only flow\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "other.md"), "unrelated notes\n", "utf-8");
@@ -4906,7 +4930,7 @@ test("project search caches embeddings by the original semantic query text", { c
     "utf-8",
   );
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
-  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project notes\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "project notes\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "sdtz.md"), "这里记录搜打撤模式说明\n", "utf-8");
 
   const previousMockEnv = process.env.CLAW_EMBEDDING_MOCK;
@@ -4972,7 +4996,7 @@ test("project query embedding cache resets when embedding config changes", { con
   };
   writeProjectConfig("Snowflake/snowflake-arctic-embed-xs");
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
-  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project notes\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "project notes\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "guide.md"), "semantic fallback target\n", "utf-8");
 
   const previousMockEnv = process.env.CLAW_EMBEDDING_MOCK;
@@ -5039,7 +5063,7 @@ test("project query embedding cache remains bounded to 128 rows", { concurrency:
     "utf-8",
   );
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
-  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project notes\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "project notes\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "guide.md"), "semantic fallback target\n", "utf-8");
 
   const previousMockEnv = process.env.CLAW_EMBEDDING_MOCK;
@@ -5104,7 +5128,7 @@ test("project search prioritizes strong-term Chinese docs for conversational que
     "utf-8",
   );
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
-  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project memory notes\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "project memory notes\n", "utf-8");
   fs.writeFileSync(path.join(root, ".claw", "truth", "shared.md"), "shared truth summary\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "sdtz-guide.md"), "\u641c\u6253\u64a4\u6a21\u5f0f\u8bf4\u660e\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "generic-plan-a.md"), "\u5185\u5b58\u4f18\u5316\u65b9\u6848\n", "utf-8");
@@ -5151,7 +5175,7 @@ test("project search demotes index-like docs when a focused Chinese doc matches 
     "utf-8",
   );
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
-  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project memory notes\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "project memory notes\n", "utf-8");
   fs.writeFileSync(path.join(root, ".claw", "truth", "shared.md"), "shared truth summary\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "contents.md"), "\u8fd9\u91cc\u5217\u51fa\u641c\u6253\u64a4\u3001\u6b66\u5668\u3001\u9053\u5177\u3001\u7cfb\u7edf\u3001\u6280\u672f\u5b9e\u73b0\u7d22\u5f15\u3002\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "sdtz-guide.md"), "\u641c\u6253\u64a4\u6a21\u5f0f\u8bf4\u660e\n", "utf-8");
@@ -5197,7 +5221,7 @@ test("project search keeps recall for multi-term Chinese queries across differen
     "utf-8",
   );
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
-  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "\u9879\u76ee\u68c0\u7d22\u8bb0\u5fc6\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "\u9879\u76ee\u68c0\u7d22\u8bb0\u5fc6\n", "utf-8");
   fs.writeFileSync(path.join(root, ".claw", "truth", "shared.md"), "\u5171\u4eab\u4e2d\u6587 truth\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "sdtz.md"), "\u8fd9\u91cc\u8bb0\u5f55\u641c\u6253\u64a4\u6a21\u5f0f\u7684\u8bf4\u660e\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "hjb.md"), "\u8fd9\u91cc\u8bb0\u5f55\u54c8\u57fa\u5b9d\u7684\u8bf4\u660e\n", "utf-8");
@@ -5249,7 +5273,7 @@ test("project search reranks multi-term Chinese queries to cover distinct strong
     "utf-8",
   );
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
-  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project memory notes\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "project memory notes\n", "utf-8");
   fs.writeFileSync(path.join(root, ".claw", "truth", "shared.md"), "shared truth summary\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "sdtz-guide.md"), "\u641c\u6253\u64a4\u6a21\u5f0f\u8bf4\u660e\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "hjb-guide.md"), "\u54c8\u57fa\u5b9d\u7cfb\u7edf\u8bf4\u660e\n", "utf-8");
@@ -5303,7 +5327,7 @@ test("project search uses substring fallback for short Chinese multi-term querie
     "utf-8",
   );
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
-  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "\u77ed\u8bcd\u4e2d\u6587\u68c0\u7d22\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "\u77ed\u8bcd\u4e2d\u6587\u68c0\u7d22\n", "utf-8");
   fs.writeFileSync(path.join(root, ".claw", "truth", "shared.md"), "\u77ed\u8bcd truth\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "sdtz.md"), "\u8fd9\u91cc\u8bb0\u5f55\u641c\u6253\u64a4\u6a21\u5f0f\u7684\u8bf4\u660e\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "hjb.md"), "\u8fd9\u91cc\u8bb0\u5f55\u54c8\u57fa\u5b9d\u89d2\u8272\u7684\u8bf4\u660e\n", "utf-8");
@@ -5355,7 +5379,7 @@ test("project search can rescue filename-aligned Chinese plan docs through candi
     "utf-8",
   );
   fs.mkdirSync(path.join(root, "docs", "plans"), { recursive: true });
-  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project memory notes\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "project memory notes\n", "utf-8");
   fs.writeFileSync(path.join(root, ".claw", "truth", "shared.md"), "shared truth summary\n", "utf-8");
   fs.writeFileSync(
     path.join(root, "docs", "plans", "\u641c\u6253\u64a4\u65b9\u6848.md"),
@@ -5409,7 +5433,7 @@ test("project search prioritizes exact Chinese document hits over weaker project
     "utf-8",
   );
   fs.mkdirSync(path.join(root, "docs"), { recursive: true });
-  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project memory notes\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "project memory notes\n", "utf-8");
   fs.writeFileSync(path.join(root, ".claw", "truth", "shared.md"), "shared truth summary\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "sdtz-guide.md"), "\u641c\u6253\u64a4\u6a21\u5f0f\u8bf4\u660e\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "hjb-guide.md"), "\u54c8\u57fa\u5b9d\u89d2\u8272\u8bf4\u660e\n", "utf-8");
@@ -5475,7 +5499,7 @@ test("project memory refresh generates local embedding metadata and vector rows 
     ),
     "utf-8",
   );
-  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project alpha memory\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "project alpha memory\n", "utf-8");
   fs.writeFileSync(path.join(root, ".claw", "truth", "shared.md"), "shared beta truth\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "guide.md"), "gamma markdown doc\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "notes.txt"), "should stay unindexed\n", "utf-8");
@@ -5559,7 +5583,7 @@ test("project memory refresh uses 768 dimensions for the default local embedding
     assert.equal(result.vectorIndex?.provider, "local");
     assert.equal(result.vectorIndex?.model, "jinaai/jina-embeddings-v2-base-zh");
     assert.equal(result.vectorIndex?.dimensions, 768);
-    assert.ok(Number(result.vectorIndex?.chunkCount) >= 3);
+    assert.equal(result.vectorIndex?.chunkCount, 2);
   } finally {
     if (previousMockEnv === undefined) {
       delete process.env.CLAW_EMBEDDING_MOCK;
@@ -5674,6 +5698,14 @@ test("project memory keeps heading context on knowledge chunks and selects tempo
       assert.ok(sharedVector);
       db.prepare("UPDATE doc_embeddings SET embedding_json = ? WHERE source_path = ?")
         .run(sharedVector, sourcePath);
+      // Equalize the active compact vectors too, so this isolates temporal ranking.
+      const compactVector = db.prepare(
+        "SELECT embedding_blob FROM doc_embedding_vectors WHERE source_path = ? AND chunk_state = 'current' LIMIT 1",
+      ).get(sourcePath) as { embedding_blob: Uint8Array } | undefined;
+      assert.ok(compactVector);
+      const updated = db.prepare("UPDATE doc_embedding_vectors SET embedding_blob = ? WHERE source_path = ?")
+        .run(compactVector.embedding_blob, sourcePath);
+      assert.equal(Number(updated.changes), rows.length);
     } finally {
       db.close();
     }
@@ -5773,7 +5805,7 @@ test("project search reports a clear error when the memory store is busy", { con
     ),
     "utf-8",
   );
-  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "busy store search target\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "busy store search target\n", "utf-8");
   const index = buildMemoryIndex({ cwd: root });
   const lockDb = new DatabaseSync(index.storePath);
   const previousBusyTimeout = process.env.CLAW_MEMORY_SQLITE_BUSY_TIMEOUT_MS;
@@ -5847,7 +5879,7 @@ test("project memory refresh incrementally reuses unchanged docs and syncs chang
     ),
     "utf-8",
   );
-  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project alpha memory\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "project alpha memory\n", "utf-8");
   fs.writeFileSync(path.join(root, ".claw", "truth", "shared.md"), "shared beta truth\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "stable.md"), "stable doc stays the same\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "change.md"), "first version paragraph\n\nsecond paragraph\n", "utf-8");
@@ -5963,7 +5995,7 @@ test("project memory refresh backfills vectors for existing docs when embeddings
     ),
     "utf-8",
   );
-  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project alpha memory\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "project alpha memory\n", "utf-8");
   fs.writeFileSync(path.join(root, ".claw", "truth", "shared.md"), "shared beta truth\n", "utf-8");
   fs.writeFileSync(path.join(root, "docs", "guide.md"), "gamma markdown doc\n", "utf-8");
 
@@ -6054,7 +6086,7 @@ test("project memory refresh defaults to processing changed files in 100-file ba
     ),
     "utf-8",
   );
-  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project alpha memory\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "project alpha memory\n", "utf-8");
   fs.writeFileSync(path.join(root, ".claw", "truth", "shared.md"), "shared beta truth\n", "utf-8");
   for (let index = 0; index < 101; index += 1) {
     fs.writeFileSync(path.join(root, "docs", `doc-${index.toString().padStart(3, "0")}.md`), `doc ${index}\n`, "utf-8");
@@ -6126,7 +6158,7 @@ test("project memory refresh still batches files after embedding config changes"
   };
 
   writeProjectConfig("Snowflake/snowflake-arctic-embed-xs");
-  fs.writeFileSync(path.join(root, ".claw", "memory.md"), "project alpha memory\n", "utf-8");
+  fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "project alpha memory\n", "utf-8");
   fs.writeFileSync(path.join(root, ".claw", "truth", "shared.md"), "shared beta truth\n", "utf-8");
   for (let index = 0; index < 101; index += 1) {
     fs.writeFileSync(path.join(root, "docs", `doc-${index.toString().padStart(3, "0")}.md`), `doc ${index}\n`, "utf-8");

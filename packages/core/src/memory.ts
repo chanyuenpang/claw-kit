@@ -515,15 +515,11 @@ function buildMemoryStoreBusyError(storePath: string, operation: string, cause: 
 
 function collectProjectMemorySources(project: ProjectContext): MemorySourceEntry[] {
   const sources: MemorySourceEntry[] = [];
-  addTextSourceIfExists(sources, path.join(project.clawDir, "memory.md"), "project_memory");
   for (const truthPath of listFiles(
     project.truthDir,
     (entry) => entry.toLowerCase().endsWith(".md") && path.basename(entry).toLowerCase() !== "summary.md",
   )) {
     addTextSourceIfExists(sources, truthPath, "truth_doc");
-  }
-  for (const knowledgePath of listFiles(path.join(project.clawDir, ".knowledge"), (entry) => /\.(md|txt|json)$/i.test(entry))) {
-    addTextSourceIfExists(sources, knowledgePath, "knowledge");
   }
   for (const externalPath of project.projectConfig?.memory?.externalDocPaths ?? []) {
     addExternalDocSources(sources, project.projectRoot, externalPath);

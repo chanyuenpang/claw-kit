@@ -86,7 +86,7 @@ test("claw_run semantic delegation owns identity, report registration and role r
     },
     async sendMessage(actor, request) { assert.equal(actor, parent); messages.push(request); return { messageId: "receipt-" + messages.length, status: "queued" }; },
   };
-  const native = { start() { throw new Error("wrong backend"); }, startContinuable() {}, sendMessage() {}, listChildren: async () => [],
+  const native = { startActivation() { throw new Error("wrong backend"); }, sendMessage() {}, listChildren: async () => [],
     getProvider: () => ({ name: "spawn", inheritsParentContext: false, start() {}, prepareContinuable() {}, capabilities: { agentOptions: true } }) };
   const services = { subprocess, agentTeams: teams, subagents: native, agents: { get: id => actors.get(id) },
     tools: { register: definition => { if (definition.name === "claw_run") tool = definition; }, get: (name, actor) => name === "spawn_teammate" && actor === parent

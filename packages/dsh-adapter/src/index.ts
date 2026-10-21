@@ -20,6 +20,7 @@ import { FinalizerRoleDispatcher, type FinalizerAgent } from "./finalizer-roles.
 import { RoleDelegation, type DelegationActor } from "./delegation.js";
 import { selectDshRoleModel } from "./model-selection.js";
 import { mountConnectionRpcChannels } from "./connection-rpc.js";
+import { startNativeActivation, type NativeStartService } from "./native-start.js";
 
 export const name = "claw-kit";
 
@@ -47,17 +48,7 @@ type SubagentChildLike = {
   label?: string;
 };
 
-export type SubagentsLike = {
-  start(
-    name: string,
-    request: {
-      label?: string;
-      prompt: Array<{ type: string; text: string }>;
-      parent: unknown;
-      agentOptions?: { provider?: string; model?: string; reasoningEffort?: string };
-      signal?: AbortSignal;
-    },
-  ): Promise<{ id: string; result?: Promise<unknown>; dispose?: () => Promise<void> }>;
+export type SubagentsLike = NativeStartService & {
   listChildren?(parentSessionId: string): Promise<SubagentChildLike[]>;
 };
 
@@ -550,7 +541,7 @@ export function apply(ctx: unknown): void {
     if (inFlight) return inFlight;
     const run = (async (): Promise<Record<string, JsonValue>> => {
       const deferred = async (phase: "capture" | "dispatch", code: string, primary?: unknown): Promise<Record<string, JsonValue>> => {
-        const detail = serializeFailure(primary ?? { code, message: code }, { fallbackCode: code, origin: "dsh", operation: phase === "capture" ? "report.capture" : "native.admission", resource: finalizeId, fallbackOutcome: "unknown" });
+        const detail = serializeFailure(primary ?? { code, message: code, outcome: "known", effect: "none", phase: "before-call" }, { fallbackCode: code, origin: "dsh", operation: phase === "capture" ? "report.capture" : "native.admission", resource: finalizeId, fallbackOutcome: "unknown" });
         const secondary = await recordDshIssue(agent.id, workdir, finalizeId, phase, detail.code, detail);
         return JSON.parse(JSON.stringify({ ok: false, ...detail, phase: detail.phase ?? phase, category: phase, guidance: FINALIZER_MANUAL_RETRY_GUIDANCE,
           ...(secondary ? { diagnostics: [...(detail.diagnostics ?? []), secondary].slice(0, 3) } : {}) })) as Record<string, JsonValue>;
@@ -601,12 +592,14 @@ export function apply(ctx: unknown): void {
       if (current.execution) return deferred("dispatch", "DSH_FINALIZER_EXECUTOR_PINNED");
       try {
         const controller = new AbortController();
-        const child = await subagents.start("spawn", {
-          label: finalizerChildLabel(finalizeId), prompt: [{ type: "text", text: current.prompt! }],
-          parent: agent, signal: controller.signal,
-          ...(Object.keys(selection.applied.options).length ? { agentOptions: selection.applied.options } : {}),
+        const child = await startNativeActivation(subagents, {
+          provider: "spawn", label: finalizerChildLabel(finalizeId), signal: controller.signal,
+          request: { parent: agent, prompt: [{ type: "text", text: current.prompt! }],
+            ...(Object.keys(selection.applied.options).length ? { agentOptions: selection.applied.options } : {}),
+          },
         });
-        const runId = String(child.id);
+        if (!child.childId) throw Object.assign(new Error("NATIVE_ADMISSION_RECEIPT_INVALID"), { code: "NATIVE_ADMISSION_RECEIPT_INVALID" });
+        const runId = child.childId;
         finalizerDispatches.set(finalizeId, { runId, settled: false });
         if (child.result !== undefined) {
           const settle = (): void => {

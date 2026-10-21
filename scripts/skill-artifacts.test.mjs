@@ -33,6 +33,7 @@ async function fixture(t) {
     await fs.writeFile(path.join(dir, "references", "guide.md"), "fixture resource\n");
     await fs.writeFile(path.join(dir, "payload.bin"), Buffer.from([0, 255, 128, 13, 10]));
   }
+  await fs.writeFile(path.join(sourceRoot, ".agents/skills/claw-kit-doc/references/knowledge-format.md"), "canonical format\n");
   return { root, sourceRoot };
 }
 
@@ -51,6 +52,17 @@ async function treeDigest(root) {
   return hash.digest("hex");
 }
 
+async function assertSkillBytes(skillsRoot, skill) {
+  if (Object.keys(skill.companionSources).length === 0) {
+    assert.equal(await treeDigest(path.join(skillsRoot, skill.id)), await treeDigest(skill.sourcePath));
+    return;
+  }
+  for (const file of skill.files) {
+    assert.deepEqual(await fs.readFile(path.join(skillsRoot, skill.id, file)),
+      await fs.readFile(skill.companionSources[file] ?? path.join(skill.sourcePath, file)));
+  }
+}
+
 test("host declarations preserve public packages without widening registration", async () => {
   for (const host of SKILL_HOSTS) {
     const declaration = JSON.parse(await fs.readFile(path.join(repoRoot, "packages", host + "-adapter", "skill-inputs.json"), "utf8"));
@@ -66,13 +78,15 @@ test("assembly copies complete binary-safe packages without source writes and su
     const result = await assembleSkills({ sourceRoot, targetHost, outputRoot });
     assert.deepEqual((await fs.readdir(result.skillsRoot)).sort(), [...matrix[targetHost]].sort());
     for (const skill of result.skills) {
-      assert.equal(await treeDigest(path.join(result.skillsRoot, skill.id)), await treeDigest(skill.sourcePath));
+      await assertSkillBytes(result.skillsRoot, skill);
     }
   }
   assert.equal(await treeDigest(sourceRoot), before);
   await fs.rename(sourceRoot, path.join(root, "detached-source"));
   const file = path.join(root, "artifacts", "dsh", "skills", "knowledge-capture", "payload.bin");
   assert.deepEqual(await fs.readFile(file), Buffer.from([0, 255, 128, 13, 10]));
+  const appendix = path.join(root, "artifacts", "dsh", "skills", "knowledge-capture", "references", "knowledge-format.md");
+  assert.equal(await fs.readFile(appendix, "utf8"), "canonical format\n");
 });
 
 test("real host artifacts retain complete cross-host skills and every companion byte", async (t) => {
@@ -81,7 +95,7 @@ test("real host artifacts retain complete cross-host skills and every companion 
   for (const targetHost of SKILL_HOSTS) {
     const result = await assembleSkills({ sourceRoot: repoRoot, targetHost, outputRoot: path.join(root, targetHost) });
     for (const skill of result.skills) {
-      assert.equal(await treeDigest(path.join(result.skillsRoot, skill.id)), await treeDigest(skill.sourcePath), targetHost + ":" + skill.id);
+      await assertSkillBytes(result.skillsRoot, skill);
     }
     if (result.skills.some(skill => skill.id === "using-claw-kit")) {
       for (const host of ["codex", "cindy", "dsh", "opencode", "standard"]) {

@@ -447,9 +447,6 @@ export function tryEndKnowledgePlan(input: {
         ...common,
         pendingTurnOwner: undefined,
       };
-      if (resumedPlanPath) {
-        return subagentCommon;
-      }
       const absolutePlanPath = resolveProjectRelativePlanPath(input.project, endedPlanPath);
       const absoluteReportPath = resolveProjectRelativeReportPath(input.project, reportPath);
       jobPath = knowledgeFinalizationJobPathForPlan(input.project, absolutePlanPath, finalizeId);
@@ -479,9 +476,6 @@ export function tryEndKnowledgePlan(input: {
       }
       return subagentCommon;
     });
-    if (resolveHostIntegrationProfile(input.host)?.supportsNativeSubagentFinalization && resumedPlanPath) {
-      return { ok: true };
-    }
     return { ok: true, finalizeId, ...(jobPath ? { jobPath } : {}) };
   } catch (error) {
     return { ok: false, error: errorMessage(error) };

@@ -115,6 +115,7 @@ export function buildDirectKnowledgeAssignments(input: {
       skill,
       promptVersion: 1,
       prompt: buildDirectExternalSkillPrompt(skill),
+      formatPath: path.join(contractRoot, "knowledge-format.md"),
     }));
   if (input.docUpdate) {
     assignments.push({
@@ -152,7 +153,7 @@ export function buildKnowledgeAssignmentTemplate(input: {
       openQuestions: [],
       acceptanceCriteria: [
         "Assignments run sequentially in their configured order.",
-        "Every assignment satisfies its supplied scope and outcome contract.",
+        "Required Truth/ADR assignments satisfy their scope and outcome contracts; optional external-document failures are reported separately and do not negate successful canonical maintenance.",
         "No assignment launches another finalizer or writer agent.",
       ],
     },
@@ -169,6 +170,7 @@ export function buildKnowledgeAssignmentTemplate(input: {
     references: [],
     rules: [
       "Run assignments sequentially; later assignments may depend on earlier documentation changes.",
+      OPTIONAL_DOC_OUTCOME,
       "Do not invoke a background finalizer, collaboration subagent, or other writer proxy.",
     ],
     keyDecisions: [],
@@ -208,7 +210,7 @@ function buildBuiltinKnowledgeTemplate(input: {
   if (docAssignment) {
     const reviewTask = template.tasks.at(-1);
     if (!reviewTask) throw new Error("Built-in knowledge template is missing its verification outcome.");
-    reviewTask.detail = (reviewTask.detail ?? "") + " Include affected external documentation in this consistency review.";
+    reviewTask.detail = (reviewTask.detail ?? "") + " Include affected external documentation in this consistency review. " + OPTIONAL_DOC_OUTCOME;
     template.tasks.splice(template.tasks.length - 1, 0, {
       id: 0, title: "Update affected external documentation", detail: docAssignment.prompt, status: "pending",
     });
@@ -224,6 +226,7 @@ function buildBuiltinKnowledgePrompt(
 ): string {
   return [
     "Execute the built-in knowledge-governance contract supplied by claw-kit.",
+    canonicalKnowledgePrompt(),
     "Maintain coherent canonical Truth and ADR from conclusion-bearing evidence; choose and revisit the investigation, editing and review method as needed.",
     `For every canonical document changed by this pass, keep at most ${job.writer?.datedSectionsToKeep ?? 6} complete evolution sections marked by \`<!-- dated: YYYY-MM-DD -->\`; do not truncate current prose or untouched documents.`,
     commonMaterialPrompt(job),
@@ -233,6 +236,7 @@ function buildBuiltinKnowledgePrompt(
 function buildDirectBuiltinKnowledgePrompt(writer?: KnowledgeWriterConfig): string {
   return [
     "Execute the built-in knowledge-governance contract supplied by claw-kit for an explicit manual knowledge capture.",
+    canonicalKnowledgePrompt(),
     "Use only conclusion-bearing content already present in the current agent memory before this invocation.",
     "Do not read or create a report, transcript, plan, subplan, finalization job, or delegation.",
     `For every canonical document changed by this pass, keep at most ${writer?.datedSectionsToKeep ?? 6} complete evolution sections marked by \`<!-- dated: YYYY-MM-DD -->\`; do not truncate current prose or untouched documents.`,
@@ -243,6 +247,7 @@ function buildDirectBuiltinKnowledgePrompt(writer?: KnowledgeWriterConfig): stri
 function buildDirectExternalSkillPrompt(skill: string): string {
   return [
     `Invoke the ${skill} skill for this explicit manual knowledge capture.`,
+    canonicalKnowledgePrompt(),
     "Use only conclusion-bearing content already present in the current agent memory before this invocation.",
     "Run in the current agent only: do not read or create a report, transcript, plan, subplan, job, background worker, or collaboration subagent.",
     "Run unattended and non-interactively. If a change is ambiguous or unsafe, skip it and report the reason.",
@@ -251,7 +256,8 @@ function buildDirectExternalSkillPrompt(skill: string): string {
 
 function buildDirectDocUpdaterPrompt(externalDocPaths: string[]): string {
   return [
-    "Use the supplied doc-updater fallback for this dependent manual knowledge-capture stage.",
+    "Use the supplied doc-updater fallback for this optional dependent manual knowledge-capture stage.",
+    OPTIONAL_DOC_OUTCOME,
     "Use only the current agent memory and the canonical Truth and ADR state produced by earlier assignments.",
     "Do not read or create a report, transcript, plan, subplan, finalization job, or delegation.",
     "Frozen external documentation paths:",
@@ -265,6 +271,7 @@ function buildExternalSkillPrompt(
 ): string {
   return [
     `Invoke the ${skill} skill and apply it to the supplied materials.`,
+    canonicalKnowledgePrompt(),
     "Run unattended and non-interactively. Do not ask questions, request confirmation or review, pause for user input, or wait for approval. If a change is ambiguous or unsafe, skip it and report the reason.",
     commonMaterialPrompt(job),
   ].join("\n");
@@ -280,11 +287,22 @@ function buildDocUpdaterPrompt(
     "SKILL.md",
   );
   return [
-    `Use the internal doc-updater skill at ${skillPath} for this dependent knowledge-finalization stage.`,
+    `Use the internal doc-updater skill at ${skillPath} for this optional dependent knowledge-finalization stage.`,
+    OPTIONAL_DOC_OUTCOME,
     "Frozen external documentation paths:",
     ...(job.docUpdate?.externalDocPaths ?? []).map((externalPath) => `- ${externalPath}`),
     "Use the canonical Truth and ADR state produced by earlier assignments together with the supplied materials.",
     commonMaterialPrompt(job),
+  ].join("\n");
+}
+
+const OPTIONAL_DOC_OUTCOME = "External-document updating is optional: report its changed paths, no-edit reason, or failure independently. A failure here does not negate successful Truth/ADR maintenance or require rolling it back. Complete this assignment by recording that outcome, including any unresolved external inconsistency; do not claim the external update succeeded or replay an accepted or outcome-unknown operation.";
+
+function canonicalKnowledgePrompt(): string {
+  const formatPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "resources", "knowledge-writer", "knowledge-format.md");
+  return [
+    `Read and follow the canonical Truth/ADR minimum format at ${formatPath} for every new or changed canonical owner; external skills may choose their method, not replace this minimum.`,
+    "Support current facts and durable decisions with conclusion-bearing evidence and relevant implementation anchors; do not promote intentions or history to implemented behavior or manufacture an ADR. Preserve unrelated user edits and untouched documents. Report changed paths, supported no-edit reasons and unresolved conflicts honestly.",
   ].join("\n");
 }
 

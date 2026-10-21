@@ -63,6 +63,12 @@ Parent permission rules are explicitly copied to the child because `parentID` al
 
 Source/unit evidence does not establish a Linux real-model deposition E2E or prove activation of an installed plugin; record those as unverified until exercised in that environment.
 
+## OpenCode idle capture result contract
+
+The plugin invokes `claw hook auto-doc --host opencode` with `CLAW_KNOWLEDGE_CAPTURE_RESULT=1` because its machine caller must receive exactly one JSON result even when capture is skipped. The CLI preflight lets the hook owner handle this result mode instead of silently exiting for a missing registry or other ineligible context; legacy hook invocations without the flag retain the silent fast path. The hook reports ordinary skips as `{ ok: true, captured: false }`, successful capture as a structured capture result, and capture exceptions as `{ ok: false, error: ... }`. The plugin parses stdout as JSON, surfaces a structured failure through its fail-open warning, and does not retry capture. This prevents empty stdout from becoming a JSON EOF while preserving real failure visibility; it does not establish Linux host activation or end-to-end deposition.
+
+Implementation anchors: `packages/cli/src/knowledge-hook-preflight.ts` (`CLAW_KNOWLEDGE_CAPTURE_RESULT`), `packages/cli/src/cli.ts` (`runStopHook`), and `packages/opencode-adapter/plugin/index.ts` (`invokeClawAutoDoc`). Regression evidence is in `packages/cli/test/opencode-capture.test.ts` and the OpenCode adapter idle capture test.
+
 ## Related files
 
 ### OpenCode chain

@@ -155,13 +155,10 @@ test("Codex plugin exposes an explicit same-agent knowledge-capture skill", asyn
   assert.match(skill, /name: knowledge-capture/);
   assert.match(skill, /user explicitly asks/i);
   assert.match(skill, /Never invoke automatically/i);
-  assert.match(skill, /run-knowledge-capture\.mjs" prepare --source agent-memory/i);
-  assert.match(skill, /run-knowledge-capture\.mjs" complete --source agent-memory/i);
-  assert.doesNotMatch(skill, /`claw knowledge (prepare|complete)/i);
-  const runtime = JSON.parse(await fs.readFile(skillUrl("knowledge-capture/runtime.json", adapterRoot), "utf8"));
-  const rootPackage = JSON.parse(await fs.readFile(new URL("../package.json", import.meta.url), "utf8"));
-  assert.deepEqual(runtime, { schemaVersion: 1, package: "@veewo/claw", version: rootPackage.version });
-  await fs.access(skillUrl("knowledge-capture/scripts/run-knowledge-capture.mjs", adapterRoot));
+  assert.match(skill, /format appendix/);
+  assert.doesNotMatch(skill, /run-knowledge-capture|runtime-binding|config-fingerprint/);
+  await assert.rejects(fs.access(skillUrl("knowledge-capture/runtime.json", adapterRoot)));
+  await assert.rejects(fs.access(skillUrl("knowledge-capture/scripts/run-knowledge-capture.mjs", adapterRoot)));
   assert.match(skill, /Do not create a plan, report, subplan.*subagent/i);
   assert.doesNotMatch(skill, /spawn_agent|create_thread|knowledgeDispatch/);
 });
@@ -569,7 +566,7 @@ test("Codex flat export is relocatable, complete and does not mutate canonical s
   for (const excluded of [".claw", "node_modules", ".agents", ".git", "packages", "shared", "skills/release-claw-kit"]) {
     await assert.rejects(fs.access(path.join(detached, excluded)));
   }
-  for (const relative of ["skills/knowledge-capture/runtime.json", "skills/knowledge-capture/scripts/run-knowledge-capture.mjs", "skills/create-claw-skill/TEMPLATE.json", "skills/create-claw-skill/FALLBACK.md", "skills/claw-kit-doc/references/knowledge-format.md"]) await fs.access(path.join(detached, relative));
+  for (const relative of ["skills/knowledge-capture/references/knowledge-format.md", "skills/create-claw-skill/TEMPLATE.json", "skills/create-claw-skill/FALLBACK.md", "skills/claw-kit-doc/references/knowledge-format.md"]) await fs.access(path.join(detached, relative));
   // Artifact-to-artifact copying works without consulting a repository catalog.
   const copied = await exportCodexPluginBundle({ sourceDir: detached, sourceRoot: path.join(root, "nonexistent-source"), outDir: path.join(root, "copied") });
   await readCodexPluginSource({ sourceDir: copied.bundleDir });

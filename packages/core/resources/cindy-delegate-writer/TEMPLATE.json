@@ -42,6 +42,7 @@
   ],
   "references": [],
   "rules": [
+    "Closing a knowledge-capturing plan, including an unfinished plan or a subplan, requires finalization while preserving actual task progress. Explicit knowledgeCapture:false exempts a plan from capture. This auxiliary finalizer and its assignment plans use that exemption to prevent recursive finalization; do not disable capture on the source plan to bypass closeout.",
     "Use only the supplied finalization id and generated assignment template.",
     "Do not modify the supplied plan or report materials.",
     "Do not start another finalizer or delegate the assignments to another agent.",

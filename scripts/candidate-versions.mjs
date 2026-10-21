@@ -178,7 +178,6 @@ export async function prepareCandidateVersions({ sourceRoot, artifacts = ["cli",
         if (data.peerDependencies?.["@veewo/claw"]) data.peerDependencies["@veewo/claw"] = base;
       });
     }
-    if (versions.cli) await update("shared/skills/knowledge-capture/runtime.json", data => { data.version = base; }, true);
     // Baseline resets are source compatibility updates, not permission to ship
     // every adapter. Never reset a previously allocated coordinate to .0.
     for (const family of families.filter(f => f !== "cli")) {

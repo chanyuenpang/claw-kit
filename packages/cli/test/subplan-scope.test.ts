@@ -62,7 +62,7 @@ test("DSH parent-child lifecycle and closeout survive a retained session manifes
     await service.execute(context, { operation: "plan.resume", input: {} });
     const resumed = await service.execute(context, { operation: "plan.show", input: {} });
     assert.equal((resumed.output as { plan: { status: string } }).plan.status, "process.active");
-    await service.execute(context, { operation: "task.done", input: { tasks: [{ id: 2 }] } });
+    const childBeforeClose = showPlan({ cwd: projectRoot, scope: "project", taskName: "冒烟父计划", planFile: output.planFile }).plan.tasks;
     const childDone = await service.execute(context, { operation: "plan.done", input: {
       retrospectiveSummary: "Child lifecycle verified" } });
     const restored = childDone.output as { planFile: string; planStatus: string;
@@ -78,11 +78,14 @@ test("DSH parent-child lifecycle and closeout survive a retained session manifes
     const recovered = runClaw(["context"], projectRoot, { CLAW_HOST: "dsh", CLAW_SESSION_ID: context.agentSessionId,
       CLAW_SESSION_RUNTIME_DIR: process.env.CLAW_SESSION_RUNTIME_DIR });
     assert.equal((recovered.activeWorkflow as { planPath: string })?.planPath, parentPath);
-    assert.equal(childDone.knowledgeDispatch, undefined, "resumed child does not finalize the root capture window");
+    assert.ok(childDone.knowledgeDispatch, "unfinished child must dispatch its own finalizer");
+    assert.deepEqual(showPlan({ cwd: projectRoot, scope: "project", taskName: "冒烟父计划", planFile: output.planFile }).plan.tasks, childBeforeClose, "early close preserves actual child progress");
     assert.ok(rootStartedAt, "DSH creation must register the capture start");
     assert.equal(readCapture().activeStartedAt, rootStartedAt, "child switch and return retain the root interval");
     assert.equal(showPlan({ cwd: projectRoot, scope: "project", taskName: "冒烟父计划" }).plan.tasks
       .find((task) => task.id === 2)?.status, "done");
+    await service.execute(context, { operation: "task.add", input: { tasks: [{ title: "Unfinished parent work" }] } });
+    const parentBeforeClose = showPlan({ cwd: projectRoot, scope: "project", taskName: "冒烟父计划" }).plan.tasks;
     const parentDone = await service.execute(context, { operation: "plan.done", input: {
       retrospectiveSummary: "Parent and child lifecycle verified" } });
     assert.equal((parentDone.output as { planStatus: string }).planStatus, "end.completed");
@@ -90,8 +93,10 @@ test("DSH parent-child lifecycle and closeout survive a retained session manifes
     assert.ok(parentDone.knowledgeDispatch, "default knowledge closeout must return a dispatch contract");
     const jobsDir = path.join(path.dirname(parentPath), ".runtime", "knowledge-finalization");
     const jobs = fs.readdirSync(jobsDir).filter(name => /^[a-f0-9]{64}\.json$/.test(name));
-    assert.equal(jobs.length, 1, "only the completed root owns a new finalizer job");
-    const job = JSON.parse(fs.readFileSync(path.join(jobsDir, jobs[0]!), "utf8"));
+    assert.equal(jobs.length, 2, "child and root each own a finalizer job");
+    assert.notEqual(childDone.knowledgeDispatch!.finalizeId, parentDone.knowledgeDispatch!.finalizeId);
+    assert.deepEqual(showPlan({ cwd: projectRoot, scope: "project", taskName: "冒烟父计划" }).plan.tasks, parentBeforeClose, "early root close preserves actual progress");
+    const job = JSON.parse(fs.readFileSync(path.join(jobsDir, `${parentDone.knowledgeDispatch!.finalizeId}.json`), "utf8"));
     assert.equal(job.planPath, parentPath);
     assert.equal(job.reportCapture.startedAt, rootStartedAt);
     assert.ok(Date.parse(job.reportCapture.endedAt) >= Date.parse(job.reportCapture.startedAt));

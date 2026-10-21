@@ -87,7 +87,10 @@ async function assertRepositorySourceSnapshot({ pluginVersion }) {
   const inputs = await loadSkillInputs({ sourceRoot: repoRoot, targetHost: "codex" });
   assertHeadPathExists("packages/codex-adapter/skill-inputs.json");
   for (const skill of inputs.skills) {
-    for (const file of skill.files) assertHeadPathExists(`${skill.relativeSource}/${file}`);
+    for (const file of skill.files) {
+      const source = skill.companionSources[file] ?? path.join(skill.sourcePath, file);
+      assertHeadPathExists(path.relative(repoRoot, source));
+    }
   }
   for (const relativePath of [".codex-plugin", "hooks", "assets", "scripts", "references", "package.json"]) {
     const sourcePath = `packages/codex-adapter/${relativePath}`;

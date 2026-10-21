@@ -85,16 +85,12 @@ function surfaceReason(view: ToolView, team: boolean, foreground: boolean): stri
 function inspectBackend(subagents: unknown, input: DshDelegationCapabilityInput): { reason?: string; reusable: boolean; supportsOptions?: boolean } {
   const no = (reason: string) => ({ reason, reusable: false });
   if (!text(input.provider)) return no("INVALID_PROVIDER");
-  const continuationMethods = Boolean(method(subagents, "startContinuable") && method(subagents, "sendMessage"));
-  const oneShot = Boolean(method(subagents, "start"));
-  if (!continuationMethods && !oneShot) return no("NATIVE_START_UNAVAILABLE");
-  // Provider metadata is a route preference only. If both carriers exist and
-  // continuation is not advertised, choose one-shot; if it is the only
-  // callable carrier, let the owner method accept or reject the real call.
+  if (!method(subagents, "startActivation")) return no("NATIVE_START_UNAVAILABLE");
+  // Provider metadata selects reuse only; the owner validates the real call.
   let provider: unknown;
   try { provider = method(subagents, "getProvider")?.call(subagents, input.provider); }
   catch { provider = undefined; }
-  const reusable = continuationMethods && (Boolean(method(provider, "prepareContinuable")) || !oneShot);
+  const reusable = Boolean(method(subagents, "sendMessage") && method(provider, "prepareContinuable"));
   return { reusable, supportsOptions: record(record(provider)?.capabilities)?.agentOptions === true };
 }
 

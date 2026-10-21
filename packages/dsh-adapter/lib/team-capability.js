@@ -67,13 +67,9 @@ function inspectBackend(subagents, input) {
     const no = (reason) => ({ reason, reusable: false });
     if (!text(input.provider))
         return no("INVALID_PROVIDER");
-    const continuationMethods = Boolean(method(subagents, "startContinuable") && method(subagents, "sendMessage"));
-    const oneShot = Boolean(method(subagents, "start"));
-    if (!continuationMethods && !oneShot)
+    if (!method(subagents, "startActivation"))
         return no("NATIVE_START_UNAVAILABLE");
-    // Provider metadata is a route preference only. If both carriers exist and
-    // continuation is not advertised, choose one-shot; if it is the only
-    // callable carrier, let the owner method accept or reject the real call.
+    // Provider metadata selects reuse only; the owner validates the real call.
     let provider;
     try {
         provider = method(subagents, "getProvider")?.call(subagents, input.provider);
@@ -81,7 +77,7 @@ function inspectBackend(subagents, input) {
     catch {
         provider = undefined;
     }
-    const reusable = continuationMethods && (Boolean(method(provider, "prepareContinuable")) || !oneShot);
+    const reusable = Boolean(method(subagents, "sendMessage") && method(provider, "prepareContinuable"));
     return { reusable, supportsOptions: record(record(provider)?.capabilities)?.agentOptions === true };
 }
 /**

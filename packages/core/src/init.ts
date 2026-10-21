@@ -11,7 +11,6 @@ import {
   DEFAULT_KNOWLEDGE_DATED_SECTIONS_TO_KEEP,
   DEFAULT_MAX_TASKS_TO_KEEP,
 } from "./project-defaults.js";
-import { ensureUtf8Bom } from "./text-encoding.js";
 import { markTaskLayoutMigrationComplete } from "./task-layout-migration.js";
 import type { ProjectConfig } from "./types.js";
 
@@ -91,7 +90,7 @@ export function buildDefaultProjectConfig(input: InitProjectInput): ProjectConfi
 
 /** Complete only missing local project scaffolding. Call after request and
  * canonical-focus validation; this never installs tools or rewrites existing
- * project configuration, overrides, memory, or Truth. */
+ * project configuration, overrides, or Truth. */
 export function ensureProjectEnvironment(cwd: string): InitProjectResult {
   const projectRoot = findProjectRoot(cwd) ?? path.resolve(cwd);
   const clawDir = path.join(projectRoot, ".claw");
@@ -115,10 +114,9 @@ export function ensureProjectEnvironment(cwd: string): InitProjectResult {
       }
       // Re-read under the same owner lock, including a concurrently created file.
       const project = resolveProjectContext(projectRoot);
-      for (const dir of [project.truthDir, tasksDir, path.join(clawDir, "runtime", "tmp"), path.join(clawDir, ".knowledge")]) {
+      for (const dir of [project.truthDir, tasksDir, path.join(clawDir, "runtime", "tmp")]) {
         ensureDir(dir, createdPaths);
       }
-      writeMissingFile(path.join(clawDir, "memory.md"), "# Project Memory\n\n- Project initialized for claw-kit.\n", createdPaths);
       if (!hadTasks) createdPaths.push(markTaskLayoutMigrationComplete(clawDir));
       ensureClawGitignoreRules(path.join(projectRoot, ".gitignore"), createdPaths);
       return { projectRoot, clawDir, projectJsonPath, created: !existed,
@@ -134,22 +132,14 @@ export function ensureProjectEnvironment(cwd: string): InitProjectResult {
   }
 }
 
-function writeMissingFile(filePath: string, content: string, createdPaths: string[]): void {
-  const next = /\.md$/i.test(filePath) ? ensureUtf8Bom(content) : content;
-  try { fs.writeFileSync(filePath, next, { encoding: "utf8", flag: "wx" }); createdPaths.push(filePath); }
-  catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
-}
-
 export function initProject(input: InitProjectInput): InitProjectResult {
   const projectRoot = path.resolve(input.cwd);
   const clawDir = path.join(projectRoot, ".claw");
   const projectJsonPath = path.join(clawDir, "project.json");
   const gitignorePath = path.join(projectRoot, ".gitignore");
-  const memoryPath = path.join(clawDir, "memory.md");
   const truthDir = path.join(clawDir, "truth");
   const tasksDir = path.join(clawDir, "tasks");
   const runtimeTmpDir = path.join(clawDir, "runtime", "tmp");
-  const knowledgeDir = path.join(clawDir, ".knowledge");
 
   const createdPaths: string[] = [];
   const exists = fs.existsSync(clawDir);
@@ -166,16 +156,10 @@ export function initProject(input: InitProjectInput): InitProjectResult {
   ensureDir(truthDir, createdPaths);
   ensureDir(tasksDir, createdPaths);
   ensureDir(runtimeTmpDir, createdPaths);
-  ensureDir(knowledgeDir, createdPaths);
   const taskLayoutMaintenancePath = markTaskLayoutMigrationComplete(clawDir);
   createdPaths.push(taskLayoutMaintenancePath);
 
   writeFile(projectJsonPath, `${JSON.stringify(projectConfig, null, 2)}\n`, createdPaths);
-  writeFile(
-    memoryPath,
-    `# Project Memory\n\n- Project initialized for claw-kit.\n- Use \`claw plan create\` to establish the first task scope.\n`,
-    createdPaths,
-  );
   ensureClawGitignoreRules(gitignorePath, createdPaths);
 
   return {
@@ -244,8 +228,7 @@ function ensureDir(dirPath: string, createdPaths: string[]): void {
 }
 
 function writeFile(filePath: string, content: string, createdPaths: string[]): void {
-  const nextContent = /\.md$/i.test(filePath) ? ensureUtf8Bom(content) : content;
-  fs.writeFileSync(filePath, nextContent, "utf-8");
+  fs.writeFileSync(filePath, content, "utf-8");
   createdPaths.push(filePath);
 }
 

@@ -1,30 +1,28 @@
 ---
 name: knowledge-capture
-description: Use only when the user explicitly asks to manually capture already-established knowledge from a non-claw task into project Truth and ADR. Never invoke automatically or recommend it based on inferred knowledge value.
+description: Use when the user explicitly asks to capture missed facts, changes, or decisions into project Truth and ADR, including omissions from an automatic finalizer. Never invoke automatically or recommend it based on inferred knowledge value.
 ---
 
 # Knowledge capture
 
-This is an explicit, same-agent manual knowledge-capture flow. It is not a claw workflow and must never be invoked automatically by an agent.
+Supplement project documents with already-established knowledge from the current conversation. The goal is accurate Truth and ADR in the same format as the automatic finalizer, not registration or recovery of its lifecycle.
 
 ## Boundaries
 
-- Start only on a direct user request to capture knowledge manually. Do not infer the request from task completion, code changes, or reusable conclusions.
-- Do not use this skill from a claw plan, subplan, automatic closeout, report, transcript, finalization job, or a delegated agent.
-- Do not create a plan, report, subplan, task, job, background worker, thread, or collaboration subagent.
-- Use only conclusion-bearing material already present in the current agent's task memory before invocation. Do not recover missing evidence from a transcript, earlier report, or fresh implementation research.
-- If context compaction leaves the evidence insufficient, stop without editing and tell the user what material is missing.
+- Start only when the user explicitly asks for manual capture. A completed task or inferred knowledge value is not authorization.
+- Work in the same agent. Do not create a plan, report, subplan, task, job, background worker, thread, or collaboration subagent for capture.
+- A user-requested supplement may cover missed knowledge from claw or non-claw work. Do not claim, resume, replay, or mark complete an automatic finalization job; do not invoke this skill automatically from a plan or finalizer.
+- Use established facts and decisions already available in the current conversation. Read the affected documents to locate their current owner and avoid conflicts or duplication. Do not reconstruct missing execution evidence from old reports or fresh implementation research. If evidence is insufficient, skip the unsupported claim and explain what is missing; continue with independent supported content.
+- Preserve unrelated edits. Do not invent facts or ADRs to fill a template.
 
-## Manual flow
+## Direct editing
 
-1. Resolve `<skill-dir>` as the directory containing this `SKILL.md`, then run `node "<skill-dir>/scripts/run-knowledge-capture.mjs" prepare --source agent-memory --project-root "<project-root>"`. Save the returned `captureRuntime.binding` in memory with the prepare result. The runner uses only the bundled exact CLI version; it may use a matching global CLI or a temporary pinned npm runtime, but never upgrades the user's installation or falls back to an incompatible `claw`.
-2. Treat the returned `assignments`, resource paths, assignment order, and `configFingerprint` as the only current configuration authority. Do not read `.claw/project.json` directly or use `claw context` as a substitute.
-3. Before writing, ensure every returned external skill is available and can run in the current agent without delegation. If any requires a subagent, thread, background worker, or confirmation, stop before all writes and report the incompatible assignment.
-4. Read every returned built-in contract and format resource in full. Follow its evidence, freshness, Truth-before-ADR, ownership, formatting, and consistency rules. For external assignments, follow the returned prompt in order. Do not copy or replace the project's configured assignment route.
-5. Keep an in-memory list of canonical Markdown files actually changed under the returned `truthDir`. Do not write a report or a separate memory note.
-6. Run `node "<skill-dir>/scripts/run-knowledge-capture.mjs" complete --source agent-memory --project-root "<project-root>" --runtime-binding "<binding>" --config-fingerprint "<fingerprint>" --changed-truth "<absolute-truth-path>"` **once**, repeating `--changed-truth "<absolute-truth-path>"` in that same invocation for every changed Truth/ADR Markdown path. If none changed, do not run complete; report the evidence-backed no-edit outcome.
-7. If complete reports configuration drift, governance failure, or refresh failure, leave existing edits visible, do not claim success, and ask the user whether to retry after a new prepare.
+1. Locate the project Truth root using available project context or existing documentation. Read project configuration only if needed to resolve a custom documentation path; otherwise use `.claw/truth/`, with ADRs under `adr/`. Ask only if the target remains genuinely ambiguous. No CLI, runtime installation, prepare, claim, or complete operation is required.
+2. Read the bundled [format appendix](references/knowledge-format.md) in full. It is copied from the same canonical source used by the finalizer.
+3. Read the relevant existing Truth and ADR owners. Update the existing owner rather than creating a duplicate; create a document only for a new topic. Write current behavior to Truth and durable decisions with their rationale and tradeoffs to ADR. Keep them consistent, preserving useful superseded knowledge as history.
+4. Check the changed passages for evidence, consistency and the appendix format. Correct mechanical formatting problems directly within the authorized edit; no additional user confirmation is needed. Do not migrate unrelated documents or rerun implementation tests merely to restate established conclusions.
+5. Stop when the supported knowledge is correctly written. Do not run configured external writer assignments, registration, index refresh, or finalizer recovery as part of this skill. They are not prerequisites for document edits or completion.
 
 ## Completion
 
-State what canonical knowledge changed, which configured assignments ran, and any skipped claims. Never claim that a report, job, subagent, or automatic finalizer participated.
+Briefly state which documents changed and what was supplemented, plus any unsupported claims skipped or actual write failures. If nothing needed changing, say so. Success means the documents were written and reviewed; never imply that registration, index refresh, or an automatic finalizer completed.

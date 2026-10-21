@@ -42,6 +42,7 @@
   ],
   "references": [],
   "rules": [
+    "Closing a knowledge-capturing plan, including an unfinished plan or a subplan, requires finalization while preserving actual task progress. Explicit knowledgeCapture:false exempts a plan from capture. This auxiliary finalizer and its assignment plans use that exemption to prevent recursive finalization; do not disable capture on the source plan to bypass closeout.",
     "Use only claw_run for all claw workflow and knowledge operations; never run claw in pwsh or a shell.",
     "Never modify supplied plan or report materials.",
     "Never start another finalizer or delegate assignment execution.",

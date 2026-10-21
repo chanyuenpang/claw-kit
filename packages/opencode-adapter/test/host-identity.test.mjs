@@ -15,12 +15,13 @@ const failureSource = await fs.readFile(new URL("../plugin/failure-diagnostics.t
 const failureExports = {};
 vm.runInNewContext(ts.transpileModule(failureSource, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, { exports: failureExports });
 
-async function harness({ project = true, context = {}, fail = false, commandResult, client = {} } = {}) {
+async function harness({ project = true, context = {}, fail = false, commandResult, captureOutput, client = {} } = {}) {
   const calls = [];
+  const warnings = [];
   const exports = {};
   vm.runInNewContext(compiled, {
     exports, __dirname: path.dirname(fileURLToPath(pluginUrl)), __filenameUrl: pluginUrl.href,
-    process: { env: {} }, console,
+    process: { env: {} }, console: { ...console, warn: (...args) => warnings.push(args) },
     require(name) {
       if (name === "./failure-diagnostics.js") return failureExports;
       if (name === "node:path") return path;
@@ -30,14 +31,14 @@ async function harness({ project = true, context = {}, fail = false, commandResu
         readdirSync: () => [], statSync: () => ({ isDirectory: () => false }),
       };
       if (name === "node:child_process") return {
-        execSync(command, options) { calls.push({ command, options }); if (commandResult) return JSON.stringify(commandResult(command, options)); if (fail) throw new Error("CLI unavailable"); if (command.includes("internal-opencode-finalizer-execution")) return JSON.stringify({ executions: [] }); return JSON.stringify(typeof context === "function" ? context(options.env.CLAW_SESSION_ID) : context); },
+        execSync(command, options) { calls.push({ command, options }); if (command.includes("hook auto-doc") && captureOutput !== undefined) return captureOutput; if (commandResult) return JSON.stringify(commandResult(command, options)); if (fail) throw new Error("CLI unavailable"); if (command.includes("internal-opencode-finalizer-execution")) return JSON.stringify({ executions: [] }); return JSON.stringify(typeof context === "function" ? context(options.env.CLAW_SESSION_ID) : context); },
         spawn() { throw new Error("No worker should launch during identity injection"); },
       };
       throw new Error("Unexpected import: " + name);
     },
   });
   const hooks = await exports.ClawKitPlugin({ directory: "/fixture", client, model: "codex", provider: "openai" });
-  return { hooks, calls, exports };
+  return { hooks, calls, exports, warnings };
 }
 
 test("OpenCode writer clears inherited identity and shell injects the child session", async () => {
@@ -117,6 +118,25 @@ test("uninitialized startup has an entry and detects mid-session initialization"
   assert.match(next.parts[0].text, /project Created/);
   assert.equal(calls.filter(call => call.command.startsWith("claw context")).length, 2);
 });
+
+for (const [output, code] of [
+  [JSON.stringify({ ok: true, captured: false }), undefined],
+  [JSON.stringify({ ok: true, captured: true }), undefined],
+  [JSON.stringify({ ok: false, error: { code: "EACCES", message: "Denied", operation: "report.write" } }), "EACCES"],
+  ["", "OPENCODE_CAPTURE_FAILED"],
+  ["{", "OPENCODE_CAPTURE_FAILED"],
+]) {
+  test("idle capture handles result without retry: " + output, async () => {
+    const { hooks, calls, warnings } = await harness({ captureOutput: output });
+    await hooks.event({ event: { type: "message.updated", properties: { info: { id: "m", role: "assistant", sessionID: "s" } } } });
+    await hooks.event({ event: { type: "message.part.updated", properties: { part: { messageID: "m", type: "text", text: "Done" } } } });
+    for (let i = 0; i < 2; i++) await hooks.event({ event: { type: "session.idle", properties: { sessionID: "s" } } });
+    assert.equal(calls.filter(c => c.command.includes("hook auto-doc")).length, 1);
+    const captureWarnings = warnings.filter(w => w[0].includes("report capture"));
+    assert.equal(captureWarnings.length, code ? 1 : 0);
+    if (code) assert.equal(JSON.parse(captureWarnings[0][1]).code, code);
+  });
+}
 
 function nativeFixture(failure) {
   let execution;

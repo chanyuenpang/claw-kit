@@ -6,38 +6,43 @@ Accepted
 
 ## Context
 
-`claw-kit` runs one consistency-aware knowledge stewardship sequence owned by a finalization job. Projects need one stable configuration surface to select launcher policy and replace the hidden built-in governance assignment without restoring the retired main-agent `delegateSubagents` writer contract.
+`claw-kit` runs one consistency-aware knowledge stewardship sequence owned by a finalization job. Projects need one stable content configuration surface to replace the hidden built-in governance assignment without restoring the retired main-agent `delegateSubagents` writer contract. Execution routes are host-owned, not a writer preference.
 
 ## Decision
 
 Use one project-level object:
 
-- `knowledgeWriter.executionPolicy`: policy enumeration and host resolution are owned by `host-aware-knowledge-execution-policy.md` (three values, optional, per-host capability-matrix default). Within this ADR's scope the policy only selects the executor launcher: Codex uses it to select the executor launcher. Cindy currently supports only its Orca subagent lifecycle and normalizes either configured value to `subagent`; this is a host capability rule, not a failure fallback. Host-specific orchestration is owned by `hook-owned-two-phase-knowledge-finalization.md`.
-- `knowledgeWriter.externalSkills`: ordered external governance skills materialized as sequential assignment tasks. A failed assignment prevents later tasks from starting. An empty or absent list selects the hidden Core built-in governance contract rather than a discoverable skill.
+- Execution routing is fixed by the invoking host; legacy `knowledgeWriter.executionPolicy` is compatibility input, not a current launcher selector. Host-specific orchestration is owned by `hook-owned-two-phase-knowledge-finalization.md` and `docs/2026-10-02-fixed-host-knowledge-closeout.md`.
+- `knowledgeWriter.externalSkills`: ordered external governance skills materialized as sequential required canonical-maintenance assignments. A failed required assignment prevents later canonical assignments from starting. An empty or absent list selects the hidden Core built-in governance contract rather than a discoverable skill.
 - `knowledgeWriter.model`: `null` uses the host runner default; a value is snapshotted into each finalization job as a best-effort model preference, not an exact-match execution requirement.
 - `knowledgeWriter.reasoningEffort`: defaults to `medium` and is snapshotted as a best-effort effort preference. A launcher may omit or adapt an unsupported effort/model before admission, provided it records the applied recipe honestly; this cannot relax permission, capture, claim, or unknown-delivery safety.
 - `knowledgeWriter.datedSectionsToKeep`: a non-negative integer snapshotted into each finalization job; the built-in retention decision and default are owned by `bounded-truth-and-adr-evolution-governance.md`.
 
-Background Stop/session-idle on supporting hosts and subagent terminal mutation both snapshot the effective configuration into `KnowledgeFinalizationJob.writer`. Cindy always takes the terminal-mutation path and snapshots the normalized `subagent` policy. All launchers share the immutable job, assignment builders, claim ownership and done protocol. Codex and Cindy use separate internal delegate templates because one invokes the shell bridge and the other invokes Host-forged Ghost operations, but both templates own claim, dynamic assignment subplan, and terminal acknowledgement.
+The host-owned closeout route snapshots effective content configuration into `KnowledgeFinalizationJob.writer`. All routes share the immutable job, assignment builders, claim ownership and done protocol; native host transport and originating-report capture remain host-specific. Admission and accepted/unknown delivery identities must not migrate or replay.
 
-Built-in and external assignments use distinct prompt builders. The built-in prompt directly supplies the hidden one-owner, Truth → ADR governance contract. An external assignment explicitly invokes its configured skill and adapts it to unattended, non-interactive execution: do not request review or confirmation, use task status to separate completed scope from pending or blocked intent, and skip ambiguous or unsafe writes. Both prompts prohibit references or links to transient supplied materials. External skills own their semantic governance and document structure; the finalizer does not inject the built-in retention or layout contract into them.
+Built-in and external assignments use distinct prompt builders but share the canonical Truth/ADR minimum in the existing `knowledge-format.md` resource, conclusion-bearing evidence, relevant implementation anchors, and preservation of unrelated edits. The built-in assignment reconciles one-owner Truth and ADR outcomes; an external assignment explicitly invokes its configured skill, whose method may vary but cannot replace the minimum format. Both run unattended, distinguish completed scope from pending or blocked intent, skip ambiguous or unsafe writes, and prohibit links to transient supplied materials. No fixed investigation or Truth→ADR phase sequence is required.
 
-Deterministic dated-section governance is built-in automation. The finalizer takes the canonical Markdown snapshot and applies the snapshotted `knowledgeWriter.datedSectionsToKeep` only for the built-in assignment; external skills skip both snapshotting and compaction. The old nested `knowledgeWriter.retention` shape is not supported. Each host delegate and its dynamic assignment subplan must complete with status `end.completed`, a non-empty task list, and every task `done`.
+Bounded dated-section retention is a built-in writer instruction, not a finalizer snapshot/trim gate. External skills do not inherit that built-in retention preference. The old nested `knowledgeWriter.retention` shape is not supported. Core completion authenticates the canonical claim and terminal compare-and-set; it does not inspect session workflows for a non-empty all-done task list or enforce governance phases.
 
-When the separately governed `memory.autoUpdate` setting is effective, claim appends the frozen `doc-updater` assignment after either the built-in assignment or all configured external skills. Selecting external skills replaces only the built-in Truth/ADR governance; it does not suppress existing-document governance. Both hosts include this appended task in the same assignment-subplan completion boundary. The existing job, generated assignment plan, tracked subplan, and report are the audit boundary; `knowledge done` retains its established protocol without a doc-update receipt. The internal template-backed doc-updater creates a subplan when it owns an active parent-plan stage, creates its own plan when explicitly invoked independently, and has a fallback when templates are unavailable.
+When `memory.autoUpdate` is effective, claim appends the frozen optional `doc-updater` assignment after either canonical writer route. It updates existing documents within frozen paths. Report its changed paths, no-edit reason or failure independently, including unresolved inconsistencies; a failure does not negate or roll back successful Truth/ADR maintenance. Completing this optional task means recording its actual outcome, not claiming a failed update succeeded. Job, generated assignment plan, tracked subplan and report remain the audit boundary; `knowledge done` retains its established claim/CAS protocol without a separate doc-update receipt or a retry of accepted/unknown delivery.
 
 Legacy `externalTruthSkill` and `externalAdrSkill` may be normalized only as backward-compatible input. They are not current project schema owners and cannot create separate phase dispatch policies.
+
+## Alternatives Considered
+
+- Let external skills replace canonical document format: rejected because method customization must not fragment project Truth/ADR semantics or evidence quality.
+- Require a separate optional-doc success receipt or runtime workflow gate: rejected because recording the actual optional outcome in the existing assignment/report is sufficient and must not negate successful canonical maintenance.
 
 ## Consequences
 
 - Projects can compose ordered writer capabilities without changing foreground plan workflow; adapters may use distinct launcher orchestration while preserving the shared job protocol.
-- External skills use their own governance model without inheriting built-in semantic or retention policy, while the host executor still provides one ordered completion boundary.
-- Job snapshots make retries reproducible even if project configuration changes after job creation.
+- External skills choose their governance method without inheriting built-in retention policy, while retaining the shared canonical format, evidence and edit-preservation minimum.
+- Job snapshots preserve the original assignment inputs if configuration changes; they do not authorize replay of accepted or outcome-unknown operations.
 - `model = null` keeps host defaults available; explicit model and reasoning effort remain frozen requested preferences, while the launcher records the supported applied recipe and does not invent resolved child facts.
 - Default built-in behavior is one hidden governance assignment that reconciles Truth and ADR together.
 - Optional existing-document governance composes after either writer route rather than becoming another external-skill replacement branch.
 - Existing-document governance is audited through the job, generated assignment plan, tracked subplan, and report without a second receipt transport.
-- Launcher policy can change executor visibility and timing without forking writer prompts, assignment ordering, claim ownership, or completion semantics.
+- Host-owned routing changes visibility and timing without forking canonical format, claim ownership or completion semantics.
 
 <!-- state: history -->
 ## Evolution history

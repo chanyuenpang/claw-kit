@@ -12,7 +12,6 @@ async function fixture(t) {
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const write = async (name, value) => { const file = path.join(root, name); await fs.mkdir(path.dirname(file), { recursive: true }); await fs.writeFile(file, JSON.stringify(value, null, 2) + "\n"); };
   await write("package.json", { name: "fixture", version: "0.2.43" });
-  await write("shared/skills/knowledge-capture/runtime.json", { schemaVersion: 1, package: "@veewo/claw", version: "0.2.43" });
   for (const name of ["core", "client", "cli"]) await write("packages/" + name + "/package.json", { name: "@veewo/claw-" + name, version: "0.2.43",
     ...(name === "cli" ? { dependencies: { "@veewo/claw-core": "0.2.43", "@veewo/claw-client": "0.2.43" } } : {}),
     ...(name === "client" ? { peerDependencies: { "@veewo/claw": "0.2.43" } } : {}) });
@@ -43,8 +42,6 @@ test("new combined preparations increment CLI and mirror dependencies, resume do
   assert.deepEqual(first.record.versions, { cli: { version: "0.2.44" }, codex: { version: "0.2.44.0" }, dsh: { version: "0.2.44.0", npmVersion: "0.2.44-rc.0" } });
   const cli = await json(path.join(root, "packages/cli/package.json"));
   assert.equal(cli.dependencies["@veewo/claw-core"], "0.2.44");
-  assert.equal((await json(path.join(root, "shared/skills/knowledge-capture/runtime.json"))).version, "0.2.44");
-  assert.ok(first.record.versionWrites["shared/skills/knowledge-capture/runtime.json"], "pin participates in same-input resume and candidate identity");
   const bridge = ".agents/skills/using-claw-kit/references/hosts/codex.md";
   assert.match(await fs.readFile(path.join(root, bridge), "utf8"), /const pluginVersion = "0\.2\.44\.0";/);
   assert.ok(first.record.versionWrites[bridge], "bridge pin participates in resumable candidate bytes");
@@ -63,7 +60,6 @@ test("adapter-only preparation changes only its family and counts unshipped hist
   const result = await prepareCandidateVersions({ sourceRoot: root, artifacts: ["dsh"] });
   assert.equal(result.record.versions.dsh.version, "0.2.43.8");
   assert.equal((await json(path.join(root, "package.json"))).version, "0.2.43");
-  assert.equal((await json(path.join(root, "shared/skills/knowledge-capture/runtime.json"))).version, "0.2.43", "adapter-only does not repin CLI");
   assert.equal((await json(path.join(root, "packages/codex-adapter/package.json"))).version, "0.2.43.0");
   assert.equal((await usedCandidateVersions([path.join(root, "dist/beta")])).dsh[0], "0.2.43.8");
 });
