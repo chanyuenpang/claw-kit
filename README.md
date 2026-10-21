@@ -2,12 +2,22 @@
 
 # claw-kit
 
-An out-of-the-box, beginner-friendly, professional-grade harness for coding agents.
+better harness for beginners.
+
+No matter how complex, each step focuses on one small task.
 
 [![npm version](https://img.shields.io/npm/v/@veewo/claw)](https://www.npmjs.com/package/@veewo/claw)
 [![npm downloads](https://img.shields.io/npm/dm/@veewo/claw)](https://www.npmjs.com/package/@veewo/claw)
 [![license](https://img.shields.io/npm/l/@veewo/claw)](./LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/chanyuenpang/claw-kit)](https://github.com/chanyuenpang/claw-kit/stargazers)
+
+**Want to try it?** Tell your agent: **help me install chanyuenpang/claw-kit**
+
+Your agent should follow this README (Node, the **`@veewo/claw`** CLI — not an npm package named `claw-kit` — the adapter for your host, and `claw init`). Installing the CLI alone is not enough.
+
+On a clean OpenCode Linux box, that one-liner has been measured end-to-end in about **~84s**, landing **`@veewo/claw@0.2.61`** plus the OpenCode plugin, skills, agents, and project `claw init`. Other hosts follow the same agent path; their wall-clock times are not claimed here.
+
+Maintained by **pang**.
 
 ## What you get
 
@@ -50,7 +60,11 @@ DSH and Codex are the adapters to install first. Each bundles nine skills, inclu
 
 ## Quick start
 
+> **For your agent (or for you if you prefer the technical path).** Humans: the one-liner at the top is enough — tell the agent to install `chanyuenpang/claw-kit` and let it read this section.
+
 Install, initialize the project once, then talk to your agent as usual. You do not run workflow commands, set a session id, or paste a startup prompt.
+
+**Agent checklist (order):** Node.js ≥ 22.13 on `PATH` → install CLI **`@veewo/claw`** (GitHub repo `chanyuenpang/claw-kit` ≠ npm name) → install the host adapter **or** copy standard skills → `claw init` in the project → restart the host when that host requires it (DSH Host / OpenCode session).
 
 ### 1. Install
 
@@ -60,15 +74,19 @@ Install, initialize the project once, then talk to your agent as usual. You do n
 npm install -g @veewo/claw
 ```
 
+**Package names:** GitHub repository = `chanyuenpang/claw-kit`. npm CLI package = **`@veewo/claw`**. There is no npm package named `claw-kit` (`npm view claw-kit` → 404). Agents: read this README; do not treat the repo slug as the npm package name.
+
 On DeepSeek Harness, Codex, Cindy, or OpenCode, also install that adapter. It brings the `using-claw-kit` skill with it.
 
-- **DeepSeek Harness:** `dsh plugin --profile web add @veewo/dsh-claw-kit@latest`, then restart the host. [Install the DSH adapter](#install-the-dsh-adapter).
+- **DeepSeek Harness:** `dsh plugin --profile web add @veewo/dsh-claw-kit@latest`, then **restart the Host**. [Install the DSH adapter](#install-the-dsh-adapter).
 - **Codex:** add the marketplace and install **Claw Kit**. [Install the Codex plugin](#install-the-codex-plugin).
-- **Cindy** and **OpenCode** have their own install sections below.
+- **Cindy** and **OpenCode** have their own install sections below. **OpenCode: after install, restart OpenCode / open a new session** so the plugin and skills load. [Install the OpenCode plugin](#install-the-opencode-plugin).
 
 Claude Code has no dedicated adapter. Cursor and any other shell or cloud agent use the same [universal install](#universal-install): the CLI, the copied standard skills, and `claw init`.
 
 ### 2. Initialize the project
+
+Always run `claw init` on the beginner path (recommended). It writes bootstrap into `AGENTS.md` / `CLAUDE.md` so the agent loads `using-claw-kit`. Do not skip it just because a plan can auto-create `.claw` later.
 
 ```bash
 cd your-project
@@ -81,6 +99,16 @@ claw init
 
 Ask in ordinary language, for example: "Plan a fix for the login bug."
 
+### 4. Minimal working example
+
+After CLI + adapter (or copied skills) + `claw init` (and a host restart when required):
+
+1. In an empty or small project, tell the agent something concrete and small, e.g. "Add a `hello()` helper that returns `hello` and a one-line test for it."
+2. **Expected:** the agent can just do the work. **Small tasks may skip creating a plan** — that is intentional, not a broken install.
+3. You should **not** hand-run `claw context`, `claw search index`, or set `CLAW_SESSION_ID` yourself; the skill / adapter does that.
+
+If nothing happens and there is no `using-claw-kit` skill, the adapter or standard-skills copy step was missed — see [Known limitations](#known-limitations).
+
 ### How it starts
 
 That is the whole setup. Where the host has a startup hook, that hook runs by itself and points the agent at `using-claw-kit`. Everywhere else, including Claude Code, the instruction-file bootstrap does that job.
@@ -89,12 +117,30 @@ That is the whole setup. Where the host has a startup hook, that hook runs by it
 | --- | --- |
 | Codex | The plugin's `SessionStart` hook runs context recovery and tells the agent to load `using-claw-kit`. |
 | DeepSeek Harness (DSH) | The `agent/session-start` hook runs context recovery and injects the same instruction. The agent then calls `claw_run`. |
-| OpenCode | The plugin handles `session.created` and `session.compacted` (OpenCode has no `hooks.json`). It recovers context and sets the session id for later claw commands. |
+| OpenCode | The plugin handles `session.created` and `session.compacted` (OpenCode has no `hooks.json`). It recovers context and sets the session id for later claw commands. **Requires a restarted OpenCode / new session after install.** |
 | Cindy | Ghost session and turn hooks refresh session state and can continue an active plan. They do not inject a first-turn prompt. The agent follows the installed `using-claw-kit` skill, which the `AGENTS.md` bootstrap also names. |
 | Claude Code | No hook and no dedicated adapter. Install the CLI and skills, run `claw init`, then talk. Claude Code loads `CLAUDE.md` at launch. It loads `AGENTS.md` only when the project path has no `CLAUDE.md`, `.claude/CLAUDE.md`, or `CLAUDE.local.md`. |
 | Any other agent | No hook. The `AGENTS.md` bootstrap is the startup path. Install with [universal install](#universal-install). |
 
-<h2 id="universal-install">Universal install (shell and cloud agents)</h2>
+## Known limitations
+
+Facts only — sourced from install verification and clean-machine QA (2026-10-15 / 2026-10-16). Do not treat this list as a full multi-host matrix.
+
+1. **Node.js ≥ 22.13.** Older Node (e.g. system Node 20) refuses to run the CLI. Put your user-owned Node ahead of system Node on `PATH`.
+2. **CLI alone is not enough.** Without a host adapter (or a [universal](#universal-install) copy of the standard skills), there is no `using-claw-kit` skill and the bootstrap block cannot drive the workflow.
+3. **Package name:** npm package is **`@veewo/claw`**, not `claw-kit`. Agents that `npm view claw-kit` will hit 404.
+4. **DSH:** after adding the plugin, **restart the Host** before the live session mounts `claw_run` and the bundled skills.
+5. **OpenCode:** after installing the plugin, **restart OpenCode / open a new session**. The install session does not load the new shim/skills in-place. Clean-machine QA (OpenCode Linux, 2026-10-16): public phrase install **PASS** in ~**84s** with **`@veewo/claw@0.2.61`**, 8 skills, 2 agents, and `claw init` — that is the scoped fact; it is not a claim that every host was clean-machine verified the same night.
+6. **Clone directory:** if the target path (e.g. `/tmp/claw-kit` or `/tmp/opencode/claw-kit`) already exists and is non-empty, **remove it or pick another path** before `git clone`. Do not reuse a dirty tree.
+7. **Non-adapter hosts:** you must copy the standard skills into the host's skill directory. Missing skills = empty bootstrap behavior.
+8. **Small tasks may skip plans.** Casual / tiny work can execute without `claw plan create`. That is expected.
+9. **Embedding / vector cache:** enabling project recall with the default embedding path can pull a large local cache (historically on the order of ~**614MB** for jina). Treat that as a size warning, not a silent surprise; product defaults may still evolve.
+10. **OpenCode smoke notes (still being tracked):** `report capture` may surface `JSON Parse error: Unexpected EOF`; knowledge deposition may still be queued if `opencode run` exits before the background writer finishes. Do not assume every session always deposits knowledge.
+11. **CLI vs adapter versions** can skew across packages. Prefer each package's published `latest` (or the pinned marketplace ref you intend); this README does not publish an unverified compatibility matrix.
+
+## Universal install (shell and cloud agents)
+
+<a id="universal-install"></a>
 
 Cursor, Claude Code, and any other host without a native adapter use this path: the CLI, the copied skills, and `claw init`. Do not pass `--host` or set `CLAW_HOST`.
 
@@ -112,6 +158,8 @@ If that fails with `EACCES` (often `mkdir '/usr/lib/node_modules'`), the first `
 ### 2. Copy the standard skills
 
 From a clone of this repository, copy only the directories named in [packages/standard-adapter/skill-inputs.json](packages/standard-adapter/skill-inputs.json) — `planning`, `config`, `create-claw-skill`, `feature-architecture`, `researcher`, `using-claw-kit`, and `claw-kit-doc` — from `.agents/skills/` into the target project. Those directories are the canonical sources.
+
+If the clone directory already exists, clean it first (see [Known limitations](#known-limitations)). Prefer GitHub `main` or a published tag — not an outdated local workspace tree.
 
 Cursor loads `<project>/.agents/skills/<skill>/SKILL.md`. For Cursor, and for any host with that layout, the destination is the target project's `.agents/skills/`:
 
@@ -201,11 +249,11 @@ Shell and cloud agents, including Cursor, also copy skills and run `claw init`. 
 
 Install the published CLI with Node.js 22.13 or newer:
 
-```powershell
+```bash
 npm install -g @veewo/claw
 ```
 
-Or use the one-shot install script:
+Or use the one-shot install script (Windows PowerShell):
 
 ```powershell
 .\scripts\install-cli.ps1
@@ -215,7 +263,7 @@ In each project, run `claw init` once. That is the user command. The snippets be
 
 Reference commands the agent uses:
 
-```powershell
+```bash
 claw init --max-tasks-to-keep 20 --planning true --external-planning-skill team-planning-skill --external-writer-skill external-knowledge-writer
 claw plan create --title "My task" --goal "Define the first task"
 claw plan create "My templated task" --template default --goal "Use the default template"
@@ -225,8 +273,8 @@ claw plan create "Auxiliary workflow" --no-knowledge-capture --goal "Run the ful
 For a persistent terminal session, open the immutable project workdir together
 with the host agent session id:
 
-```powershell
-claw session open G:\Projects\my-project agent-session-id
+```bash
+claw session open /path/to/my-project agent-session-id
 ```
 
 Commands entered after that point reuse the session workdir and current plan.
@@ -265,15 +313,17 @@ for details.
 
 ## Install the Codex plugin
 
+<a id="install-the-codex-plugin"></a>
+
 The Codex plugin is a separate distribution surface from the CLI. On another machine, add the official repository marketplace first:
 
-```powershell
+```bash
 codex plugin marketplace add chanyuenpang/claw-kit --ref vcodex-0.2.42.1
 ```
 
 Restart the ChatGPT desktop app, open the plugin directory, choose the **Claw Kit** marketplace, and install **Claw Kit**. Start a new task after installation so Codex discovers the bundled skills. For a newer release, select its published `vcodex-*` ref in the marketplace registration first; a pinned old ref does not advance by itself. Refresh the selected Git-backed marketplace with:
 
-```powershell
+```bash
 codex plugin marketplace upgrade claw-kit
 codex plugin add claw-kit@claw-kit
 ```
@@ -286,7 +336,7 @@ The committed Git marketplace snapshot is the Codex plugin release artifact. Git
 
 Maintainers working inside this repository have two Codex commands:
 
-```powershell
+```bash
 npm run export:codex-plugin
 npm run install:codex-plugin
 ```
@@ -294,7 +344,7 @@ npm run install:codex-plugin
 What they do:
 
 1. `npm run export:codex-plugin` copies the installable plugin payload into `dist/codex-plugin/claw-kit/<plugin-version>/`.
-2. `npm run install:codex-plugin` fetches the published immutable `vcodex-<plugin-version>` marketplace tag, installs that payload into `%USERPROFILE%\.codex\plugins\cache\claw-kit\claw-kit\<plugin-version>\`, enables `claw-kit@claw-kit`, and disables `claw-kit@claw-kit-local`.
+2. `npm run install:codex-plugin` fetches the published immutable `vcodex-<plugin-version>` marketplace tag, installs that payload into `%USERPROFILE%\.codex\plugins\cache\claw-kit\claw-kit\<plugin-version>\` (or the equivalent under your home on Unix), enables `claw-kit@claw-kit`, and disables `claw-kit@claw-kit-local`.
 
 Release the new version before running `install:codex-plugin`; it deliberately refuses to install unpublished workspace content. Local marketplace installation is not a supported verification or update path.
 
@@ -302,27 +352,31 @@ Validate a template without creating a plan with `claw template validate --templ
 
 ## Install the OpenCode plugin
 
-The OpenCode plugin is separate from the CLI. From a checkout of this repository, use these commands in Bash (Linux/macOS) or PowerShell (Windows):
+<a id="install-the-opencode-plugin"></a>
+
+The OpenCode plugin is separate from the CLI. Use a **clean** checkout of this repository (GitHub `main` or a published tag). If the clone target already exists and is not empty, remove it or choose another path — do not reuse a dirty directory.
 
 ```bash
+rm -rf /tmp/claw-kit
+git clone --depth 1 https://github.com/chanyuenpang/claw-kit.git /tmp/claw-kit
+cd /tmp/claw-kit
 npm install -g @veewo/claw
-npm ci --include=dev
 npm run install:opencode-plugin
+# Equivalent: node ./scripts/install-opencode-plugin.mjs
 # Optional: export a standalone plugin bundle instead of installing it
-npm run export:opencode-plugin
+# npm run export:opencode-plugin
 ```
 
-The plugin installer uses Node, not PowerShell, and does not build or reinstall the CLI. Repository development dependencies are needed for source builds/checks; `typescript` is not an OpenCode plugin runtime dependency. The direct equivalent is `node scripts/install-opencode-plugin.mjs`.
+`npm run install:opencode-plugin` (and `node ./scripts/install-opencode-plugin.mjs`) installs the plugin, shim, skills, and agents **without requiring** `npm ci` / a full repo `node_modules` tree. `npm ci --include=dev` is only needed for repository source builds and checks, not for the plugin-only install path. The installer uses Node (not PowerShell). Prefer GitHub `main` over an outdated local workspace whose `package.json` scripts may still point at Windows-only helpers.
 
-What they do:
+What the install script does:
 
-1. `npm run export:opencode-plugin` copies the installable plugin payload into `dist/opencode-plugin/claw-kit/<plugin-version>/`.
-2. `npm run install:opencode-plugin` copies that same payload into the local OpenCode config at `~/.config/opencode/plugins/claw-kit/`, then:
-   - creates a plugin shim at `~/.config/opencode/plugins/claw-kit.ts` so OpenCode can discover the plugin at startup,
-   - copies each skill folder into `~/.config/opencode/skills/` so the adapter skills become available (OpenCode discovers skills only from convention directories, not via a config option),
-   - copies the bundled agent definitions into `~/.config/opencode/agent/`.
+1. Copies the installable plugin payload into `~/.config/opencode/plugins/claw-kit/`.
+2. Creates a plugin shim at `~/.config/opencode/plugins/claw-kit.ts` so OpenCode can discover the plugin at startup.
+3. Copies each skill folder into `~/.config/opencode/skills/` (OpenCode discovers skills only from convention directories, not via a config option).
+4. Copies the bundled agent definitions into `~/.config/opencode/agent/`.
 
-Restart OpenCode after installing so the new plugin, skills, and agents are picked up.
+**Restart OpenCode** (new process / new session) after installing so the plugin, skills, and agents are picked up. The same `opencode run` session that performed the install will not load the new shim in-place.
 
 Use `install:opencode-plugin` when you want this machine to start using the adapter immediately. Use `export:opencode-plugin` when you want a clean versioned bundle that can be attached to a release, copied to another machine, or used by another installer.
 
@@ -337,14 +391,16 @@ update sequence, see
 
 ## Install the DSH adapter
 
+<a id="install-the-dsh-adapter"></a>
+
 The DSH adapter is an npm package installed into a DSH profile. From a
 published registry:
 
-```powershell
+```bash
 dsh plugin --profile web add @veewo/dsh-claw-kit@latest
 ```
 
-Restart the Host (`dsh --profile web`) to mount the `claw-kit` row; then
+**Restart the Host** (`dsh --profile web`) to mount the `claw-kit` row; then
 confirm the `claw_run` tool and the bundled skills appear. The installed `claw`
 CLI must support `--host dsh`.
 
@@ -357,7 +413,7 @@ or the exported tarball path — and never by writing profile files directly. Se
 
 Maintainers working inside this repository have two commands:
 
-```powershell
+```bash
 npm run export:dsh-plugin     # build + pack the installable tarball into dist/dsh-plugin/
 npm run install:dsh-plugin    # dsh plugin --profile web add <tarball> (--profile to override)
 ```
@@ -371,6 +427,8 @@ DSH subagent; the model only drives the single `claw_run` tool. See
 [packages/dsh-adapter/README.md](packages/dsh-adapter/README.md) for details.
 
 ## Package map
+
+<a id="package-map"></a>
 
 - `@veewo/claw`
   - CLI entrypoint for running the `.claw` workflow in a project
