@@ -448,41 +448,51 @@ async function readTurnCaptureWithRetry(sessionId) {
   return null;
 }
 
-// Adapter-owned all-final extraction for the shared report collector contract.
-function readPlanFinalAnswers(sessionId, startedAt, planPath, projectRoot) {
+// Keep the export name for existing callers; collect ordinary conversation, not finals.
+function readPlanFinalAnswers(sessionId, startedAt, planPath, projectRoot, endedAt) {
   const match = findDatabaseForSession(sessionId);
   if (!match) return null;
   try {
-    const startedAtMs = typeof startedAt === 'string' ? Date.parse(startedAt) : Number.NaN;
+    const startedAtMs = Date.parse(startedAt);
+    const endedAtMs = Date.parse(endedAt);
     const rows = readSessionMessages(match.db, match.cindySessionId);
     const answers = [];
-    let current = null;
+    let precedingUser;
     const planCreateToolUseIds = new Set();
-    const flush = () => {
-      if (!current) return;
-      const row = current.row;
-      const raw = Number(row.created_at);
-      const occurredAt = Number.isFinite(raw) ? new Date(raw < 100_000_000_000 ? raw * 1000 : raw).toISOString() : undefined;
-      answers.push({ turnId: String(row.client_id || row.id || `row-${row.rowid}`), ...(occurredAt ? { occurredAt } : {}), message: current.message });
-      current = null;
-    };
-    for (let sequence = 0; sequence < rows.length; sequence += 1) {
-      const row = rows[sequence];
+    for (const row of rows) {
       const raw = Number(row.created_at);
       const time = Number.isFinite(raw) ? (raw < 100_000_000_000 ? raw * 1000 : raw) : Number.NaN;
-      if (Number.isFinite(startedAtMs) && Number.isFinite(time) && time < startedAtMs) continue;
-      if (row.role === 'user') { flush(); continue; }
+      if (!Number.isFinite(time) || (Number.isFinite(endedAtMs) && time >= endedAtMs)) continue;
+      const message = ['user', 'assistant'].includes(row.role) ? conversationText(row.content) : '';
+      const entry = message ? {
+        turnId: String(row.client_id || row.id || ('row-' + row.rowid)),
+        role: row.role, occurredAt: new Date(time).toISOString(), message,
+      } : undefined;
+      if (Number.isFinite(startedAtMs) && time < startedAtMs) {
+        if (entry?.role === 'user') precedingUser = entry;
+        continue;
+      }
       if (row.role === 'tool_use' && row.tool_use_id && isPlanCreateToolUse(readJsonContent(row.content))) { planCreateToolUseIds.add(row.tool_use_id); continue; }
-      if (row.role === 'tool_result' && isNewPlanCreateResult(row, planCreateToolUseIds, planPath, projectRoot)) { flush(); break; }
-      if (row.role === 'assistant') { const message = messageText(row.content); if (message) current = { row, sequence, message }; }
+      if (row.role === 'tool_result' && isNewPlanCreateResult(row, planCreateToolUseIds, planPath, projectRoot)) break;
+      if (entry) answers.push(entry);
     }
-    flush();
+    if (precedingUser) answers.unshift(precedingUser);
     return answers;
   } catch {
     return null;
   } finally {
     try { match.db.close(); } catch { /* fail open */ }
   }
+}
+
+function conversationText(value) {
+  const content = readJsonContent(value);
+  const text = (item) => {
+    if (typeof item === 'string') return item;
+    if (item && (!item.type || ['text', 'input_text', 'output_text'].includes(item.type)) && typeof item.text === 'string') return item.text;
+    return '';
+  };
+  return (Array.isArray(content) ? content.map(text).join('\n') : text(content)).trim();
 }
 
 module.exports = {

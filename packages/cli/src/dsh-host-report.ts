@@ -5,7 +5,7 @@ import {
   captureDshKnowledgeReport, findKnowledgeFinalizationJobPath, resolveProjectContext,
 } from "@veewo/claw-core";
 
-/** The desktop Host sends only adapter-proven final events over private CLI stdin. */
+/** The desktop Host sends normalized visible conversation over private CLI stdin. */
 export function publishDshHostReport(input: {
   cwd: string;
   parentSessionId: string;
@@ -44,7 +44,10 @@ export function publishDshHostReport(input: {
         throw new Error("DSH_REPORT_CAPTURE_INVALID: invalid final event.");
       }
       const entry = event as Record<string, unknown>;
-      if (entry.schemaVersion !== 1 || entry.entryType !== "final_answer"
+      const conversation = entry.entryType === "conversation_message";
+      if (entry.schemaVersion !== 1 || (!conversation && entry.entryType !== "final_answer")
+        || (conversation && ((entry.role !== "user" && entry.role !== "assistant") || typeof entry.messageId !== "string" || !entry.messageId.trim()))
+        || (entry.context !== undefined && (!conversation || entry.context !== "plan_request" || entry.role !== "user"))
         || typeof entry.turnId !== "string" || typeof entry.message !== "string" || !entry.message.trim()
         || (entry.occurredAt !== undefined && (typeof entry.occurredAt !== "string" || !Number.isFinite(Date.parse(entry.occurredAt))))) {
         throw new Error("DSH_REPORT_CAPTURE_INVALID: unproven final event.");
@@ -54,11 +57,13 @@ export function publishDshHostReport(input: {
         throw new Error("DSH_REPORT_CAPTURE_INVALID: bounded final events require occurredAt.");
       }
       return {
-        schemaVersion: 1 as const, entryType: "final_answer" as const,
+        schemaVersion: 1 as const, entryType: conversation ? "conversation_message" : "final_answer",
+        ...(conversation ? { role: entry.role as "user" | "assistant", messageId: entry.messageId as string } : {}),
+        ...(entry.context === "plan_request" ? { context: "plan_request" } : {}),
         turnId: entry.turnId, ...(occurredAt ? { occurredAt } : {}), message: entry.message,
       };
     }).filter((event) => event.occurredAt === undefined // Legacy jobs may predate timestamped capture.
-      || (Date.parse(event.occurredAt) >= startedAt && Date.parse(event.occurredAt) < endedAt));
+      || ((event.context === "plan_request" || Date.parse(event.occurredAt) >= startedAt) && Date.parse(event.occurredAt) < endedAt));
     // Preserve task conclusions and retry after a crash between report publish and job receipt.
     const existing = fs.existsSync(reportPath) ? fs.readFileSync(reportPath, "utf8") : "";
     const known = new Set(existing.split(/\r?\n/).filter(Boolean));

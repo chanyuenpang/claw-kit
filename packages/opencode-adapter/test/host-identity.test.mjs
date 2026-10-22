@@ -129,7 +129,7 @@ for (const [output, code] of [
   test("idle capture handles result without retry: " + output, async () => {
     const { hooks, calls, warnings } = await harness({ captureOutput: output });
     await hooks.event({ event: { type: "message.updated", properties: { info: { id: "m", role: "assistant", sessionID: "s" } } } });
-    await hooks.event({ event: { type: "message.part.updated", properties: { part: { messageID: "m", type: "text", text: "Done" } } } });
+    await hooks.event({ event: { type: "message.part.updated", properties: { part: { id: "p", sessionID: "s", messageID: "m", type: "text", text: "Done" } } } });
     for (let i = 0; i < 2; i++) await hooks.event({ event: { type: "session.idle", properties: { sessionID: "s" } } });
     assert.equal(calls.filter(c => c.command.includes("hook auto-doc")).length, 1);
     const captureWarnings = warnings.filter(w => w[0].includes("report capture"));
@@ -209,4 +209,43 @@ test("inspection outage suppresses automation without breaking host shell or cac
   unavailable = false;
   await hooks["shell.env"]({ sessionID: "ordinary" }, output);
   assert.equal(output.env.CLAW_KNOWLEDGE_FINALIZER, "0");
+});
+
+test("idle captures SDK ordinary dialogue, not tool, reasoning, or synthetic parts", async () => {
+  const part = (messageID, id, text, extra = {}) => ({ id, messageID, sessionID: "s", type: "text", text, ...extra });
+  const row = (id, role, created, parts, extra = {}) => ({ info: { id, role, sessionID: "s", time: { created }, ...extra }, parts });
+  let reads = 0;
+  const { hooks, calls } = await harness({ captureOutput: "{}", client: { session: { messages: async () => {
+    reads++;
+    return { data: [
+      row("a2", "assistant", 3000, [part("a2", "p4", "Final")]),
+      row("u", "user", 1000, [part("u", "p1", "Correction")]),
+      row("a1", "assistant", 2000, [part("a1", "p2", "Earlier summary"),
+        part("a1", "p3", "hidden", { type: "reasoning" }),
+        part("a1", "p5", "tool", { type: "tool" }),
+        part("a1", "p6", "control", { synthetic: true }),
+        part("a1", "p7", "ignored", { ignored: true })]),
+      row("compact", "assistant", 4000, [part("compact", "p8", "compaction")], { summary: true }),
+    ] };
+  } } } });
+  await hooks.event({ event: { type: "session.idle", properties: { sessionID: "s" } } });
+  const capture = calls.find(c => c.command.includes("hook auto-doc"));
+  const payload = JSON.parse(capture.options.input);
+  assert.deepEqual(payload.conversation_entries.map(e => [e.message_id, e.role, e.message]), [
+    ["u", "user", "Correction"], ["a1", "assistant", "Earlier summary"], ["a2", "assistant", "Final"],
+  ]);
+  assert.equal(payload.conversation_entries[0].occurred_at, "1970-01-01T00:00:01.000Z");
+  assert.equal(reads, 1);
+});
+
+test("history outage uses full event snapshots without duplicating streamed text", async () => {
+  const { hooks, calls } = await harness({ captureOutput: "{}", client: { session: { messages: async () => { throw new Error("unavailable"); } } } });
+  await hooks.event({ event: { type: "message.updated", properties: { info: { id: "u", role: "user", sessionID: "s" } } } });
+  for (const text of ["partial", "Full request"]) {
+    await hooks.event({ event: { type: "message.part.updated", properties: { part: { id: "p", messageID: "u", sessionID: "s", type: "text", text } } } });
+  }
+  await hooks.event({ event: { type: "session.idle", properties: { sessionID: "s" } } });
+  const payload = JSON.parse(calls.find(c => c.command.includes("hook auto-doc")).options.input);
+  assert.equal(payload.conversation_entries.length, 1);
+  assert.equal(payload.conversation_entries[0].message, "Full request");
 });

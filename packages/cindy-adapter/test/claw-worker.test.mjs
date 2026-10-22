@@ -341,7 +341,7 @@ test("Cindy unexpected CLI exit drops old transport before a new request", { ski
   }
 });
 
-test("Cindy SQLite reader collects every plan final in chronology and closes at the next plan", () => {
+test("Cindy SQLite reader collects plan conversation in chronology and closes at the next plan", () => {
   const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-claim-capture-"));
   const dbPath = path.join(fixtureDir, "cindy-reader.db");
   const db = new DatabaseSync(dbPath);
@@ -383,10 +383,10 @@ test("Cindy SQLite reader collects every plan final in chronology and closes at 
   try {
     const { readPlanFinalAnswers } = require(sqliteReaderPath);
     assert.deepEqual(readPlanFinalAnswers("originating-sdk-session", undefined, path.join(fixtureDir, "current-plan.json"), fixtureDir), [{
-      turnId: "turn-1", occurredAt: "1970-01-01T00:00:01.000Z", message: "Implemented the report fix.",
+      turnId: "turn-1", role: "assistant", occurredAt: "1970-01-01T00:00:01.000Z", message: "Implemented the report fix.",
     }]);
     assert.deepEqual(readPlanFinalAnswers("empty-sdk-session", undefined, path.join(fixtureDir, "current-plan.json"), fixtureDir), [{
-      turnId: "empty-turn", occurredAt: "1970-01-01T00:00:01.000Z", message: "Closed a plan without a task conclusion.",
+      turnId: "empty-turn", role: "assistant", occurredAt: "1970-01-01T00:00:01.000Z", message: "Closed a plan without a task conclusion.",
     }]);
   } finally {
     if (previous === undefined) delete process.env.CINDY_USER_DATA;

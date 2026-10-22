@@ -1,24 +1,33 @@
-/** Concatenate the text blocks of a ContentBlock[]-shaped value. */
+/** Extract only ordinary text blocks, never reasoning or tool payloads. */
 export declare function textFromContent(content: unknown): string;
 export type EventLike = {
+    seq?: number;
     time?: number;
     type?: string;
     data?: {
         turn?: number;
-        interrupted?: boolean;
-        reason?: {
-            kind?: string;
-        };
         message?: {
+            id?: string;
             content?: unknown;
         };
-        name?: string;
-        arguments?: string;
+        inserted?: Array<{
+            id?: string;
+            role?: string;
+            source?: {
+                kind?: string;
+            };
+            content?: unknown;
+        }>;
     };
 };
-/** Adapter-owned normalization of DSH history into the shared final-event contract. */
-export declare function extractPlanFinalAnswers(events: EventLike[], _sessionId: string, startedAtMs?: number, endedAtMs?: number): Array<{
+/** Collect visible conversation without requiring a completed turn or a final channel. */
+export declare function extractPlanConversation(events: EventLike[], sessionId: string, startedAtMs?: number, endedAtMs?: number): {
+    schemaVersion: 1;
+    entryType: "conversation_message";
+    role: "user" | "assistant";
+    messageId: string;
     turnId: string;
     occurredAt?: string;
+    context?: "plan_request";
     message: string;
-}>;
+}[];

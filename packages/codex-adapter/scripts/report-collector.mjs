@@ -10,38 +10,33 @@ const startedAt = request.startedAt ? Date.parse(request.startedAt) : Number.NaN
 const endedAt = request.endedAt ? Date.parse(request.endedAt) : Number.NaN;
 if (!Number.isFinite(startedAt) || !Number.isFinite(endedAt) || endedAt < startedAt) process.exit(4);
 const events = [];
-let precedingAssistant;
+let precedingUser;
 for (const [sequence, line] of fs.readFileSync(transcript, "utf8").split(/\r?\n/).entries()) {
   let record;
   try { record = JSON.parse(line); } catch { continue; }
-  const timestamp = typeof record.timestamp === "string" ? record.timestamp : undefined;
+  const timestamp = typeof record?.timestamp === "string" ? record.timestamp : undefined;
+  const time = Date.parse(timestamp ?? "");
+  // Unusable records must not discard the ordinary conversation we can collect.
+  if (!Number.isFinite(time) || time >= endedAt) continue;
   const payload = record?.payload;
-  const relevant = record?.type === "response_item" && (
-    ["function_call_output", "custom_tool_call_output"].includes(payload?.type)
-    || payload?.type === "message" && payload?.role === "assistant"
-  );
-  if (relevant && (!timestamp || !Number.isFinite(Date.parse(timestamp)))) process.exit(4);
-  if (timestamp && Date.parse(timestamp) < startedAt) continue;
-  if (timestamp && Date.parse(timestamp) >= endedAt) continue;
-  if (isNewPlan(record, request.planPath)) break;
-  if (record?.type === "response_item" && ["function_call_output", "custom_tool_call_output"].includes(payload?.type)) {
-    if (precedingAssistant && successfulTaskDone(payload.output, request.planPath)) {
-      events.push({ ...precedingAssistant, turnId: `task:${payload.call_id ?? sequence}` });
-      precedingAssistant = undefined;
-    }
+  const ordinary = record?.type === "response_item" && payload?.type === "message"
+    && ["user", "assistant"].includes(payload.role);
+  const message = ordinary && Array.isArray(payload.content)
+    ? payload.content.filter((item) => (!item?.type || ["text", "input_text", "output_text"].includes(item.type)) && typeof item?.text === "string").map((item) => item.text).join("\n").trim() : "";
+  const entry = message ? {
+    occurredAt: timestamp, sequence, role: payload.role,
+    turnId: payload.internal_chat_message_metadata_passthrough?.turn_id ?? ("message:" + sequence), message,
+  } : undefined;
+  if (time < startedAt) {
+    if (entry?.role === "user" && (!precedingUser || time >= Date.parse(precedingUser.occurredAt))) precedingUser = entry;
     continue;
   }
-  if (record?.type !== "response_item" || payload?.type !== "message" || payload?.role !== "assistant") continue;
-  const turnId = payload?.internal_chat_message_metadata_passthrough?.turn_id;
-  const message = Array.isArray(payload?.content) ? payload.content.filter((item) => typeof item?.text === "string").map((item) => item.text).join("\n").trim() : "";
-  if (!message) continue;
-  precedingAssistant = { ...(timestamp ? { occurredAt: timestamp } : {}), sequence, message };
-  if (payload.phase === "final_answer" && typeof turnId === "string") {
-    events.push({ ...precedingAssistant, turnId });
-    precedingAssistant = undefined;
-  }
+  if (isNewPlan(record, request.planPath)) break;
+  if (entry) events.push(entry);
 }
-events.sort((a, b) => (Date.parse(a.occurredAt ?? "") || Number.POSITIVE_INFINITY) - (Date.parse(b.occurredAt ?? "") || Number.POSITIVE_INFINITY) || a.sequence - b.sequence);
+// Include only the nearest available triggering user, not the preceding session.
+if (precedingUser) events.push(precedingUser);
+events.sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt) || a.sequence - b.sequence);
 fs.mkdirSync(path.dirname(request.stagingReportPath), { recursive: true });
 fs.writeFileSync(request.stagingReportPath, events.length ? `${events.map(({ sequence, ...entry }) => JSON.stringify(entry)).join("\n")}\n` : "", "utf8");
 
@@ -54,18 +49,6 @@ function isNewPlan(record, planPath) {
       if (receipt?.ok === true && receipt.command === "plan.create"
         && (!planPath || typeof receipt.planPath === "string" && path.resolve(receipt.planPath) !== path.resolve(planPath))) return true;
     } catch { /* Quoted examples and diagnostics are not receipts. */ }
-  }
-  return false;
-}
-function successfulTaskDone(output, planPath) {
-  const text = typeof output === "string" ? output : Array.isArray(output) ? output.map((item) => item?.text ?? "").join("\n") : "";
-  // Tool envelopes may prefix diagnostics. Decode complete JSON lines only;
-  // quoted examples and failed mutations must never become task conclusions.
-  for (const line of text.split(/\r?\n/)) {
-    try {
-      const receipt = JSON.parse(line);
-      if (receipt?.ok === true && receipt.command === "task.done" && (!planPath || typeof receipt.planPath === "string" && path.dirname(receipt.planPath) === path.dirname(planPath))) return true;
-    } catch { /* Shell diagnostics are not receipts. */ }
   }
   return false;
 }

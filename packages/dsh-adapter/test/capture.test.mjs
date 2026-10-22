@@ -4,87 +4,47 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { extractPlanFinalAnswers, textFromContent } from "../lib/capture.js";
+import { extractPlanConversation, textFromContent } from "../lib/capture.js";
 
-test("textFromContent concatenates text blocks and ignores others", () => {
-  assert.equal(textFromContent([{ type: "text", text: "a" }, { type: "image", url: "x" }, { type: "text", text: "b" }]), "ab");
+const answer = (text, time, seq, content = []) => ({ type: "assistant/message", seq, time,
+  data: { turn: 1, message: { content: [{ type: "text", text }, ...content] } } });
+const user = (text, time, id, kind = "user") => ({ type: "agent/inbox/spliced", time,
+  data: { inserted: [{ id, role: "user", source: { kind }, content: [{ type: "text", text }] }] } });
+
+test("ordinary text whitelist ignores thinking and tool blocks", () => {
+  assert.equal(textFromContent([{ type: "text", text: "a" }, { type: "thinking", text: "secret" },
+    { type: "tool-result", text: "secret" }, { type: "reasoning", text: "secret" }, { type: "text", text: "b" }]), "ab");
   assert.equal(textFromContent(undefined), "");
 });
 
-test("mid-turn assistant messages never masquerade as final answers", () => {
-  const events = [
-    { type: "assistant/message", time: 1000, data: { turn: 1, message: { content: [{ type: "text", text: "intermediate" }] } } },
-    { type: "tool/call", time: 1001, data: { turn: 1, name: "claw_run", arguments: '{"operation":"task.done"}' } },
-    { type: "assistant/message", time: 1002, data: { turn: 1, message: { content: [{ type: "text", text: "unverified last message" }] } } },
-  ];
-  assert.deepEqual(extractPlanFinalAnswers(events, "session", 900, 1100), []);
-});
-
-test("legacy explicit final events remain supported", () => {
-  const events = [
-    { type: "assistant/message", time: 1000, data: { turn: 1, message: { content: [{ type: "text", text: "commentary" }] } } },
-    { type: "assistant/final", time: 1002, data: { turn: 1, message: { content: [{ type: "text", text: "proven final" }] } } },
-  ];
-  assert.deepEqual(extractPlanFinalAnswers(events, "session").map(({ turnId, message }) => ({ turnId, message })),
-    [{ turnId: "1", message: "proven final" }]);
-});
-
-test("DSH collector honors the plan start boundary", () => {
-  const events = [
-    { type: "assistant/final", time: 100, data: { turn: 1, message: { content: [{ type: "text", text: "old" }] } } },
-    { type: "assistant/final", time: 200, data: { turn: 2, message: { content: [{ type: "text", text: "new" }] } } },
-  ];
-  assert.deepEqual(extractPlanFinalAnswers(events, "session", 150).map((entry) => entry.message), ["new"]);
-});
-
-test("completed Host turns prove their last non-tool assistant message", () => {
-  const events = [
-    { type: "assistant/message", time: 1000, data: { turn: 1, message: { content: [{ type: "text", text: "commentary" }] } } },
-    { type: "tool/call", time: 1001, data: { turn: 1 } },
-    { type: "assistant/message", time: 1002, data: { turn: 1, message: { content: [{ type: "text", text: "real final" }] } } },
-    { type: "turn/end", time: 1003, data: { turn: 1, reason: { kind: "completed" } } },
-  ];
-  assert.deepEqual(extractPlanFinalAnswers(events, "session", 900, 1100), [
-    { schemaVersion: 1, entryType: "final_answer", turnId: "1", occurredAt: new Date(1002).toISOString(), message: "real final" },
+test("collects every visible message including penultimate commentary and an open ending turn", () => {
+  const rows = extractPlanConversation([
+    user("request", 800, "request"), answer("old", 850, 1),
+    answer("important commentary", 950, 2, [{ type: "tool-call", text: "secret" }]),
+    { type: "tool/result", time: 960, data: { message: { content: [{ type: "text", text: "secret" }] } } },
+    user("correction", 970, "correction"), user("reminder", 975, "reminder", "system"),
+    answer("short last reply", 1000, 3), answer("after plan.done", 1100, 4),
+  ], "session", 900, 1100);
+  assert.deepEqual(rows.map(r => [r.role, r.message]), [
+    ["user", "request"], ["assistant", "important commentary"], ["user", "correction"], ["assistant", "short last reply"],
   ]);
+  assert.equal(rows[0].context, "plan_request");
+  assert.ok(rows.every(r => r.entryType === "conversation_message"));
 });
 
-test("interrupted, aborted, and tool-only endings cannot prove commentary as final", () => {
-  for (const invalid of [
-    { type: "assistant/message", time: 1002, data: { turn: 1, interrupted: true, message: { content: [{ type: "text", text: "partial" }] } } },
-    { type: "assistant/message", time: 1002, data: { turn: 1, message: { content: [{ type: "tool-call", name: "read" }] } } },
-    { type: "tool/call", time: 1002, data: { turn: 1 } },
-  ]) {
-    assert.deepEqual(extractPlanFinalAnswers([
-      { type: "assistant/message", time: 1000, data: { turn: 1, message: { content: [{ type: "text", text: "commentary" }] } } },
-      invalid, { type: "turn/end", time: 1003, data: { turn: 1, reason: { kind: "completed" } } },
-    ], "session", 900, 1100), []);
-  }
-  assert.deepEqual(extractPlanFinalAnswers([
-    { type: "assistant/message", time: 1000, data: { turn: 1, message: { content: [{ type: "text", text: "partial" }] } } },
-    { type: "turn/end", time: 1003, data: { turn: 1, reason: { kind: "aborted" } } },
-  ], "session", 900, 1100), []);
+test("uses message identity rather than text and keeps legacy explicit final events", () => {
+  const first = answer("same", 1000, 1);
+  const rows = extractPlanConversation([first, first, answer("same", 1001, 2),
+    { ...answer("legacy", 1002, 3), type: "assistant/final" }], "session", 900, 1100);
+  assert.deepEqual(rows.map(r => r.message), ["same", "same", "legacy"]);
 });
 
-test("both Host final message and completion proof must fit the frozen window", () => {
-  const answer = (turn, time) => ({ type: "assistant/message", time, data: { turn, message: { content: [{ type: "text", text: String(turn) }] } } });
-  const end = (turn, time) => ({ type: "turn/end", time, data: { turn, reason: { kind: "completed" } } });
-  assert.deepEqual(extractPlanFinalAnswers([
-    answer(1, 899), end(1, 901), answer(2, 950), end(2, 1100),
-    answer(3, 1000), end(3, 1001), answer(4, 1200), end(4, 1201),
-  ], "session", 900, 1100).map(entry => entry.message), ["3"]);
-});
-
-test("bounded Host final proof refuses missing, non-finite, or backwards timestamps", () => {
-  const answer = { type: "assistant/message", time: 1000, data: { turn: 1, message: { content: [{ type: "text", text: "final" }] } } };
-  for (const time of [undefined, NaN, 999]) {
-    assert.throws(() => extractPlanFinalAnswers([
-      answer, { type: "turn/end", time, data: { turn: 1, reason: { kind: "completed" } } },
-    ], "session", 900, 1100), /DSH_REPORT_BOUNDARY_UNAVAILABLE/);
-  }
-  assert.throws(() => extractPlanFinalAnswers([
-    { ...answer, time: undefined }, { type: "turn/end", time: 1003, data: { turn: 1, reason: { kind: "completed" } } },
-  ], "session", 900, 1100), /DSH_REPORT_BOUNDARY_UNAVAILABLE/);
+test("keeps only the nearest preceding user request and tolerates missing event metadata", () => {
+  const rows = extractPlanConversation([user("unrelated", 100, "a"), user("trigger", 800, "b"),
+    answer("missing time", undefined, 1), answer("inside", 1000, 2),
+    { type: "turn/end", time: NaN }], "session", 900, 1100);
+  assert.deepEqual(rows.map(r => r.message), ["trigger", "inside"]);
+  assert.equal(extractPlanConversation([answer("legacy", undefined, 1)], "session").length, 1);
 });
 
 test("missing journal still stages existing task conclusions and permits claim", () => {

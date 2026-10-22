@@ -1384,7 +1384,7 @@ async function runInternalDshHostReportCapture(args: string[]): Promise<void> {
   const input = await readStdinJson();
   if (!input || typeof input !== "object" || Array.isArray(input)
     || !Array.isArray((input as { events?: unknown }).events)) {
-    throw new ClawError("PROJECT_CONFIG_INVALID", "DSH host capture requires final events on private stdin.");
+    throw new ClawError("PROJECT_CONFIG_INVALID", "DSH host capture requires conversation events on private stdin.");
   }
   const capture = publishDshHostReport({ cwd: process.cwd(), parentSessionId, finalizeId, collectorVersion,
     events: (input as { events: unknown[] }).events });
@@ -2701,12 +2701,13 @@ async function runStopHook(effectiveHost: ClawHost | undefined): Promise<void> {
     const sessionId = resolveOwnerSessionKey(payload);
     const turnId = readHookString(payload, "turn_id");
     const message = readHookString(payload, "message");
-    if (!hookCwd || !sessionId || !turnId || !message || !containsClawDir(hookCwd)) {
+    const conversationEntries = readHookConversationEntries(payload);
+    if (!hookCwd || !sessionId || !turnId || (!message && !conversationEntries?.length) || !containsClawDir(hookCwd)) {
       respond({ ok: true, captured: false });
       return;
     }
     const project = resolveProjectContext(hookCwd);
-    respond(tryCaptureKnowledgeStop({ project, sessionId, turnId, message, host: effectiveHost, taskConclusions: [] }));
+    respond(tryCaptureKnowledgeStop({ project, sessionId, turnId, message: message ?? undefined, conversationEntries, host: effectiveHost, taskConclusions: [] }));
   } catch (error) {
     // Fail-open must not turn a real capture failure into empty stdout / JSON EOF.
     respond({ ok: false, error: serializeFailure(error, {
@@ -2988,6 +2989,22 @@ function readHookString(payload: unknown, key: string): string | null {
   }
   const value = (payload as Record<string, unknown>)[key];
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+/** Ordinary text already selected structurally by the owning host adapter. */
+function readHookConversationEntries(payload: unknown): { messageId: string; role: "user" | "assistant"; message: string; occurredAt?: string }[] | undefined {
+  if (!payload || typeof payload !== "object") return undefined;
+  const entries = (payload as Record<string, unknown>).conversation_entries;
+  if (!Array.isArray(entries)) return undefined;
+  return entries.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return [];
+    const item = entry as Record<string, unknown>;
+    if (typeof item.message_id !== "string" || !item.message_id.trim()
+      || (item.role !== "user" && item.role !== "assistant")
+      || typeof item.message !== "string" || !item.message.trim()) return [];
+    return [{ messageId: item.message_id, role: item.role as "user" | "assistant", message: item.message,
+      ...(typeof item.occurred_at === "string" ? { occurredAt: item.occurred_at } : {}) }];
+  });
 }
 
 function readHookTaskConclusions(payload: unknown, turnId: string | null): { turnId: string; message: string }[] {

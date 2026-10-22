@@ -3,7 +3,7 @@ import { execSync } from "node:child_process";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import type { Plugin } from "@opencode-ai/plugin";
-import type { Part } from "@opencode-ai/sdk";
+import type { Message, Part } from "@opencode-ai/sdk";
 
 /**
  * claw-kit OpenCode adapter plugin.
@@ -19,8 +19,8 @@ import type { Part } from "@opencode-ai/sdk";
  *   4. experimental.chat.system.transform — push cached claw context into system prompt.
  *      Retained as a compaction fallback: after context compression the synthetic part may
  *      be summarized away, so the system prompt re-establishes claw context.
- *   5. event(message.updated) + event(message.part.updated) — track the latest assistant
- *      text per session so session.idle can hand the turn's final assistant message to claw.
+ *   5. event(message.updated) + event(message.part.updated) — aggregate ordinary user
+ *      and assistant text by message/part, with best-effort history at session.idle.
  *   6. event(session.idle) — turn report capture plus Goal continuation. The
  *      plan file remains canonical: task progress resets retry state, while
  *      two unchanged task endings pause local continuation, not the plan.
@@ -107,14 +107,15 @@ function renderClawSessionStart(context: Record<string, unknown>): string {
 }
 
 /**
- * Hand the turn's final assistant message to `claw hook auto-doc` so the claw CLI
- * can append one fail-open knowledge report entry (and queue finalization when a
- * plan just completed). opencode has no transcript file, so the message is passed
- * inline via stdin. Fail-open: any error is swallowed to keep the session responsive.
+ * Hand ordinary conversation to `claw hook auto-doc` in one inline capture so Core
+ * appends all entries before queuing a completed plan. Fail-open: any error is
+ * swallowed to keep the session responsive.
  */
+type ConversationEntry = { message_id: string; role: "user" | "assistant"; message: string; occurred_at?: string };
+
 function invokeClawAutoDoc(
   projectDir: string,
-  payload: { cwd: string; session_id: string; turn_id: string; message: string },
+  payload: { cwd: string; session_id: string; turn_id: string; message: string; conversation_entries: ConversationEntry[] },
 ): { jobPath?: string; finalizeId?: string } | null {
   try {
     const stdout = execSync("claw hook auto-doc --host opencode", {
@@ -248,8 +249,47 @@ export const ClawKitPlugin: Plugin = async ({ directory, client }) => {
   const projectDir = directory;
 
   const injectedSessions = new Set<string>();
-  const lastAssistantMessageBySession = new Map<string, string>();
-  const assistantTextByMessage = new Map<string, string>();
+  const attemptedCaptures = new Map<string, string>();
+  // Full part snapshots replace streamed updates; distinct parts/messages never overwrite each other.
+  const conversationBySession = new Map<string, Map<string, { info?: Message; parts: Map<string, Part> }>>();
+  function conversationMessage(sessionID: string, messageID: string) {
+    let messages = conversationBySession.get(sessionID);
+    if (!messages) conversationBySession.set(sessionID, messages = new Map());
+    let message = messages.get(messageID);
+    if (!message) messages.set(messageID, message = { parts: new Map() });
+    return message;
+  }
+
+  async function collectConversation(sessionID: string): Promise<ConversationEntry[]> {
+    try {
+      const history = sdkData(await client.session.messages({ path: { id: sessionID }, query: { directory: projectDir } }));
+      for (const { info, parts } of history ?? []) {
+        if (info.sessionID !== sessionID) continue;
+        const message = conversationMessage(sessionID, info.id);
+        message.info = info;
+        for (const part of parts) {
+          if (part.sessionID === sessionID && part.messageID === info.id) message.parts.set(part.id, part);
+        }
+      }
+    } catch (error) {
+      // Missing history is not a gate: event snapshots still carry ordinary conversation.
+      console.warn("[claw-kit] conversation history warning:", JSON.stringify(serializeFailure(error, { fallbackCode: "OPENCODE_HISTORY_FAILED", origin: "opencode", operation: "session.messages", fallbackOutcome: "unknown" })));
+    }
+    const entries: ConversationEntry[] = [];
+    const messages = [...(conversationBySession.get(sessionID)?.values() ?? [])];
+    messages.sort((a, b) => (a.info?.time?.created ?? 0) - (b.info?.time?.created ?? 0));
+    for (const { info, parts } of messages) {
+      if (!info || (info.role !== "user" && info.role !== "assistant")) continue;
+      if (info.role === "assistant" && info.summary) continue; // Compaction, not ordinary speech.
+      const text = [...parts.values()].flatMap(part => part.type === "text" && !part.synthetic && !part.ignored && part.text.trim() ? [part.text] : []).join("\n\n");
+      if (!text) continue;
+      const created = info.time?.created;
+      const date = typeof created === "number" ? new Date(created) : undefined;
+      entries.push({ message_id: info.id, role: info.role, message: text,
+        ...(date && Number.isFinite(date.getTime()) ? { occurred_at: date.toISOString() } : {}) });
+    }
+    return entries;
+  }
   const goalSessions = new Map<string, GoalSession>();
   const contexts = new Map<string, { projectPresent: boolean; value: Record<string, unknown> | null }>();
   const isClawProject = () => hasClawProject(projectDir);
@@ -328,48 +368,37 @@ export const ClawKitPlugin: Plugin = async ({ directory, client }) => {
         if (sessionID) contextFor(sessionID, true);
       }
 
-      // Track the latest assistant message text per session so session.idle can
-      // hand the turn's final assistant message to claw knowledge report capture.
+      // Preserve full structured snapshots; never treat reasoning/tool parts as speech.
       if (isClawProject() && event.type === "message.updated") {
-        const props = event.properties as {
-          sessionID?: string;
-          info?: { id?: string; role?: string; sessionID?: string };
-        };
-        const messageSessionID = props.info?.sessionID ?? props.sessionID;
-        if (props.info?.id && props.info.role === "assistant" && messageSessionID) {
-          lastAssistantMessageBySession.set(messageSessionID, props.info.id);
-        }
+        const info = event.properties.info;
+        if (info?.id && info.sessionID) conversationMessage(info.sessionID, info.id).info = info;
       } else if (isClawProject() && event.type === "message.part.updated") {
-        const part = (event.properties as { part?: { messageID?: string; type?: string; text?: string } }).part;
-        if (part && part.type === "text" && typeof part.text === "string" && part.text.trim() && part.messageID) {
-          // opencode emits the current full text of the part on each update, so
-          // overwrite (do not append) to avoid duplicating streamed content.
-          assistantTextByMessage.set(part.messageID, part.text);
+        const part = event.properties.part;
+        if (part?.id && part.sessionID && part.messageID) {
+          conversationMessage(part.sessionID, part.messageID).parts.set(part.id, part);
         }
       }
 
-      // Turn report capture
       if (event.type === "session.idle") {
         const sessionID = (event.properties as { sessionID?: string }).sessionID;
         if (sessionID) {
           if (isWriter(sessionID)) return;
-          // Turn report capture: hand the turn's final assistant message to
-          // claw so it appends one fail-open knowledge report entry (and queues
-          // finalization when a plan just completed).
-          const assistantMessageId = lastAssistantMessageBySession.get(sessionID);
-          const message = assistantMessageId ? assistantTextByMessage.get(assistantMessageId) : undefined;
-          if (assistantMessageId && message) {
-            const captured = invokeClawAutoDoc(projectDir, {
-              cwd: projectDir,
-              session_id: sessionID,
-              turn_id: assistantMessageId,
-              message,
-            });
-            if (captured?.jobPath && captured.finalizeId) {
-              await dispatchOpenCodeKnowledgeWriter(client, projectDir, sessionID, captured.jobPath, captured.finalizeId);
+          if (isClawProject()) {
+            const entries = await collectConversation(sessionID);
+            const latest = entries.at(-1);
+            // Core deduplicates stable message IDs and appends the whole batch before queueing.
+            // Reserve before invoking: duplicate idle events must not replay an unknown capture.
+            const signature = JSON.stringify(entries);
+            if (latest && attemptedCaptures.get(sessionID) !== signature) {
+              attemptedCaptures.set(sessionID, signature);
+              const captured = invokeClawAutoDoc(projectDir, {
+                cwd: projectDir, session_id: sessionID, turn_id: latest.message_id,
+                message: latest.message, conversation_entries: entries,
+              });
+              if (captured?.jobPath && captured.finalizeId) {
+                await dispatchOpenCodeKnowledgeWriter(client, projectDir, sessionID, captured.jobPath, captured.finalizeId);
+              }
             }
-            assistantTextByMessage.delete(assistantMessageId);
-            lastAssistantMessageBySession.delete(sessionID);
           }
 
           const workflow = contextFor(sessionID, true)?.activeWorkflow as { planStatus?: string; workflowGuidance?: { nextTask?: { id?: number } } } | undefined;

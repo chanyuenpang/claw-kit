@@ -148,11 +148,11 @@ job 被 claim 并走完 claim → assignment subplan → 单次 `knowledge done`
 <!-- state: current -->
 ## Current capture and operational constraints
 
-DSH 的父会话在终态立即冻结该 job 的半开采集窗口 `[startedAt, endedAt)`；queued 恢复沿用原窗口，旧 job 的上界兼容回退为 `queuedAt`，不会把等待 role 期间的新内容归入旧任务。adapter 与 CLI 均按窗口过滤可信 final；缺少有效上界或可证明时间不能冒充空采集。父会话通过当前宿主 `sessionQuery` 自动读取自身历史，按当前 Host 的 `assistant/message` 与 `turn/end(reason.kind=completed)` 证明同 turn 最后一条非 interrupted、无 tool-call 的 assistant 消息，并规范化为 `final_answer`；消息和完成证明都必须位于冻结窗口内，时间反序或不可证明时拒绝。旧 Host 显式 `assistant/final` 仅保留兼容。未结束的当前 turn 没有可证明 final 时可以发布有效空采集，不把 commentary 冒充 final，也不等待 Stop 或扩大窗口。受信 adapter 通过私有 stdin 将规范事件交给 CLI，CLI 保留既有 task conclusions 并在规范 job 锁内原子发布 report 与采集回执；writer claim 仅在真实回执存在时签发 token，不再读取 `.claw/runtime/report-collectors/dsh.json` 或启动旧 web 采集脚本。`sessionQuery`/历史读取的一次瞬态失败在同 operation 内立即重读一次；两次仍不可读、起点缺失或发布失败使未领取 job 保持 queued（报告提交本身绝不自动重放）；Core job 锁内保存有界阶段、错误码、关联 ID 和次数（不保存报告正文或原始异常），父会话本次派发回执和后续 `claw_run context`/session-start 可查看安全诊断，成功采集与成功终结会消解旧告警。Core 为同一 child 保存不可变 claim receipt，结果未知时只读恢复，不重做 assignment；已领取但 child 遗失或外部写入确认丢失仍不可盲重派。锚点：`packages/dsh-adapter/src/capture.ts`、`src/index.ts`、`packages/cli/src/dsh-host-report.ts`、`src/dsh-finalizer-diagnostics.ts`、`src/knowledge-pending.ts`、`packages/core/src/knowledge-sidecar.ts`。
+DSH 父会话在终态冻结 job 的采集窗口 `[startedAt, endedAt)`，queued 恢复沿用原窗口；adapter 从自身 session history 提取窗口内普通 user/assistant 文本（包括 `assistant/message` 和兼容的 `assistant/final`），不要求 completed turn 或 final channel。结构过滤只接受普通 text blocks，排除 tool/reasoning 等其他 event；最近的窗口前 user 输入可作为 `plan_request` 上下文，消息按 ID 去重。缺少有效起点或采集历史不可读仍是 capture 错误，不伪装为空采集。adapter 通过私有 stdin 将事件交给 CLI，CLI 保留既有 task conclusions 并在规范 job 锁内原子发布 report 与采集回执；writer claim 仅在真实回执存在时签发 token，不读取 `.claw/runtime/report-collectors/dsh.json` 或启动旧 web 采集脚本。各平台普通对话采集与过滤边界由 [finalizer conversation capture Truth](finalizer-conversation-capture.md) 统一记录。`sessionQuery`/历史读取的一次瞬态失败在同 operation 内立即重读一次；两次仍不可读、起点缺失或发布失败使未领取 job 保持 queued（报告提交本身绝不自动重放）；Core job 锁内保存有界阶段、错误码、关联 ID 和次数（不保存报告正文或原始异常），父会话本次派发回执和后续 `claw_run context`/session-start 可查看安全诊断，成功采集与成功终结会消解旧告警。Core 为同一 child 保存不可变 claim receipt，结果未知时只读恢复，不重做 assignment；已领取但 child 遗失或外部写入确认丢失仍不可盲重派。锚点：`packages/dsh-adapter/src/capture.ts`、`src/index.ts`、`packages/cli/src/dsh-host-report.ts`、`src/dsh-finalizer-diagnostics.ts`、`src/knowledge-pending.ts`、`packages/core/src/knowledge-sidecar.ts`。
 
 ## 已知陷阱
 
-- 原项目级 `dsh.json` executable collector 和本地 journal 不再是 DSH writer claim 的依赖。父端自动采集成功但没有可信 final event 是合法空 report；Host 历史读取或 CLI 发布失败则不启动 writer、不签 token，job 保持 queued，恢复入口继续根据规范 job 与原生 child catalog 对账。
+- 原项目级 `dsh.json` executable collector 和本地 journal 不再是 DSH writer claim 的依赖。父端成功读取历史但没有 eligible ordinary text message 时可发布空 capture；历史读取或 CLI 发布失败则不启动 writer、不签 token，job 保持 queued，恢复入口继续根据规范 job 与原生 child catalog 对账.
 - `claw_run` 的 workspace 与 session 由 adapter 锻造。`resolveWorkdir` 优先采用
   durable session header cwd，再兼容旧 session cwd/meta，最后按 exact session 的 workspace
   registry 解析；不能从宿主启动目录推导项目根。旧 child cwd 落到 `C:\Windows\System32`
@@ -192,7 +192,7 @@ DSH 的父会话在终态立即冻结该 job 的半开采集窗口 `[startedAt, 
 - 终态 mutation 返回 `knowledgeDispatch` 时，`claw_run` compact result 含
   `dispatch: { ok: true, runId, policy }` 确认（subagent 不可用时为
   `{ ok: false, reason }`），主模型不执行 writer。
-- DSH 父端成功读取历史但无可信 final event 时可发布空 capture；历史读取失败不能冒充空采集。窗口必须满足 `[startedAt, endedAt)`，queued 恢复不得扩大终态上界；验证需覆盖上界外事件排除与无有效时间的失败。writer claim 必须有真实 capture receipt，冲突 claim token 仍拒绝。
+- DSH 父端成功读取历史但无 eligible ordinary text message 时可发布空 capture；历史读取失败不能冒充空采集。窗口必须满足 `[startedAt, endedAt)`，queued 恢复不得扩大终态上界；验证需覆盖上界外事件排除与无有效时间的失败。writer claim 必须有真实 capture receipt，冲突 claim token 仍拒绝.
 - `claw_run search` 的召回列表对模型完全可见：`query` / `count` / `results[]` 的
   `sourcePath`/`kind`/`snippet`/`score`，内部字段不泄漏。
 - Native one-shot 兼容路径中，同一 `finalizeId` 连续派发时 `subagents.start` 至多调用一次，running child 命中返回

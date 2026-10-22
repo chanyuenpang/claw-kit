@@ -2,7 +2,7 @@ import { serializeFailure } from "../lib/errors.js";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { extractPlanFinalAnswers } from "./capture.js";
+import { extractPlanConversation } from "./capture.js";
 import { terminateForCleanup, ClawSession } from "./claw-session.js";
 import { compactClawOutput, consumeHostActions, } from "./host-actions.js";
 import { daemonInput, unknownOperationError, isUnknownCommandOutcome, operationFailureError, renderGuidanceSnapshot } from "./protocol.js";
@@ -429,10 +429,8 @@ export function apply(ctx) {
         const endedAt = dispatch.endedAt ? Date.parse(dispatch.endedAt) : undefined;
         if (endedAt !== undefined && (!Number.isFinite(endedAt) || endedAt < startedAt))
             throw Object.assign(new Error("DSH_REPORT_BOUNDARY_UNAVAILABLE"), { code: "DSH_REPORT_BOUNDARY_UNAVAILABLE" });
-        const events = extractPlanFinalAnswers(eventsSnapshot, parentId, startedAt, endedAt);
+        const events = extractPlanConversation(eventsSnapshot, parentId, startedAt, endedAt);
         const payload = JSON.stringify({ events });
-        if (Buffer.byteLength(payload, "utf8") > 1024 * 1024)
-            throw Object.assign(new Error("DSH_REPORT_TOO_LARGE"), { code: "DSH_REPORT_TOO_LARGE" });
         const { text } = await runOneOff(["internal-dsh-host-report-capture",
             "--finalize-id", String(dispatch.finalizeId), "--collector-version", collectorVersion()], workdir, parentId, payload);
         const result = parseProtocol(text);

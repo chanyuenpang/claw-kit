@@ -161,7 +161,7 @@ test("a queued job recovers on next context without replaying its lost plan term
   assert.equal(harness.mock.handles.length, 0, "only read-only one-off inspection ran, not plan.done");
 });
 
-test("live parent capture sends only proven in-plan finals before child dispatch", async () => {
+test("live parent capture sends all ordinary in-plan text before child dispatch", async () => {
   const { service, state } = makeSubagents();
   const harness = makeHarness({ subagents: service, initialQueued: true,
     dispatch: { finalizeId: "6".repeat(64), prompt: "writer" },
@@ -177,7 +177,7 @@ test("live parent capture sends only proven in-plan finals before child dispatch
   apply(harness.ctx);
   await harness.tool.execute({ operation: "context", args: {} }, { agent: makeAgent("parent-capture") });
   assert.equal(state.starts, 1);
-  assert.deepEqual(harness.mock.captures.flatMap((x) => x.events.map((event) => event.message)), ["verified"]);
+  assert.deepEqual(harness.mock.captures.flatMap((x) => x.events.map((event) => event.message)), ["commentary", "verified"]);
 });
 
 test("one transient parent history failure is retried before dispatch", async () => {

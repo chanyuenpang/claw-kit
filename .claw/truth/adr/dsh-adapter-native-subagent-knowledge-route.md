@@ -67,7 +67,7 @@ DSH（DeepSeek Harness）需要与 claw-kit 既有的 ready-job / claim / done �
   存活（2026-08-22 修复 `0a15891`）；compact result 仅在存在 dispatch 时前置重插该
   字段，避免 `undefined` 破坏 DSH lossless-JSON 校验（`cebd5b9`）。
 - DSH claim 依赖父端已发布的可信 capture receipt，而不是 executable collector/journal；
-  历史读取成功但没有可信 final event 可发布真实空 capture，历史读取失败不能伪装空材料。
+  历史读取成功但没有 eligible ordinary user/assistant text message 时可发布真实空 capture，历史读取失败不能伪装空材料；跨宿主采集边界见 [finalizer conversation capture Truth](../features/finalizer-conversation-capture.md)。
   Codex/Cindy 的 collector 合同与 DSH 的父端采集差异由
   [report-collection ADR](<adapter-owned-report-collection.md>) 拥有，本文不再拥有另一套采集规则。
 - `SUPPORTED_CLAW_HOSTS` 增加 `"dsh"`，`compactPlanCommandResult` 与 daemon 路径的

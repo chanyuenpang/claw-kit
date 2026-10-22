@@ -19,6 +19,17 @@ Every newly generated dispatch contains `kind: knowledge.finalize` and `host`; w
 
 Knowledge results are owner-produced business payloads, not compact plan views. Adapters retain claim materials, writer configuration, paths, receipts, and additive/deferred diagnostics. Native `hostActions` are consumed through the host route rather than exposed as agent instructions. Safe structured failure code, phase, outcome, and effect must survive the adapter boundary.
 
+## Conversation materials
+
+Native finalizers collect ordinary user and assistant text across the plan window, including intermediate commentary and penultimate summaries, in chronological order with roles preserved. They may include the nearest preceding user request as plan context. Reasoning/thinking, tool calls/results, system/control records, and synthetic adapter injections are not conversation materials. Filtering uses each host’s structured message/block types, not keywords in ordinary prose. Collection is best effort from available history; missing records do not introduce completeness quotas or new authorization gates.
+
+- Codex reads ordinary message records from its rollout JSONL; Cindy reads ordinary messages from its SQLite history rather than only the last answer in a turn. Both retain their next-plan and plan-end boundaries.
+- DSH extracts ordinary messages and real user inbox insertions from parent history before dispatch; immutable capture and claim ownership remain unchanged.
+- OpenCode merges message/part snapshots with a best-effort history read at idle. It submits one batch before queueing, using message identity (not turn identity) to avoid losing multiple messages from one turn or duplicating history across idle notifications. The host does not expose commentary/final channels, so neither is required.
+- Standard keeps its existing knowledge prepare/complete route and does not gain a transcript collector. OpenClaw has no new runtime collection route.
+
+Conversation is contextual evidence, not instructions for the finalizer or proof that requested work shipped. The writer must distinguish user requirements, corrections, tentative discussion, and verified implementation.
+
 ## Failure and lifecycle rules
 
 Call the authoritative owner once. An accepted or outcome-unknown claim/done never authorizes resend. A claim response lost before `jobPath` is known can be recovered through authenticated `knowledge.claim.receipt` (`knowledge claim-receipt --project-root … --finalize-id …` in CLI syntax). Receipt reads do not collect reports, increment attempts, or rewrite the canonical job; they may repair the disposable assignment template. An unavailable receipt preserves the original unknown outcome and blocks only that job.

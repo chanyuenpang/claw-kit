@@ -24,6 +24,7 @@ export type KnowledgeReportTarget = {
   finalizeId?: string;
   writer?: KnowledgeWriterConfig;
   docUpdate?: KnowledgeDocUpdateSnapshot;
+  startedAt?: string;
   endedAt?: string;
   /** Legacy field retained for registries written before every end.* boundary was eligible. */
   completedAt?: string;
@@ -185,7 +186,10 @@ export const KNOWLEDGE_FINALIZATION_TTL_MS = 2 * 60 * 60 * 1000;
 
 export type KnowledgeReportEntry = {
   schemaVersion: 1;
-  entryType?: "task_conclusion" | "final_answer";
+  entryType?: "task_conclusion" | "final_answer" | "conversation_message";
+  role?: "user" | "assistant";
+  messageId?: string;
+  context?: "plan_request";
   sessionId: string;
   turnId: string;
   capturedAt: string;
@@ -439,6 +443,7 @@ export function tryEndKnowledgePlan(input: {
             finalizeId,
             ...(writer ? { writer } : {}),
             ...(docUpdate ? { docUpdate } : {}),
+            ...(registry.activeStartedAt ? { startedAt: registry.activeStartedAt } : {}),
             endedAt: input.endedAt,
           },
         };
@@ -574,6 +579,7 @@ export function tryCaptureKnowledgeStop(input: {
   message?: string;
   host?: KnowledgeFinalizationHost;
   taskConclusions?: KnowledgeTaskConclusion[];
+  conversationEntries?: { messageId: string; role: "user" | "assistant"; message: string; occurredAt?: string }[];
 }): KnowledgeStopResult {
   if (input.project.scope === "session") {
     return { ok: true, captured: false };
@@ -581,7 +587,7 @@ export function tryCaptureKnowledgeStop(input: {
   const sessionId = input.sessionId?.trim();
   const turnId = input.turnId?.trim();
   const message = input.message?.trim();
-  if (!sessionId || !turnId || !message) {
+  if (!sessionId || !turnId || (!message && !input.conversationEntries?.length)) {
     return { ok: true, captured: false };
   }
   const registryPath = knowledgeSessionRegistryPath(input.project, sessionId);
@@ -610,13 +616,36 @@ export function tryCaptureKnowledgeStop(input: {
         (input.taskConclusions ?? []).filter((conclusion) => conclusion.turnId === turnId),
         capturedAt,
       );
-      const duplicate = appendKnowledgeReportEntry(reportPath, {
-        schemaVersion: 1,
-        sessionId,
-        turnId,
-        capturedAt,
-        message,
-      });
+      let duplicate = true;
+      if (input.conversationEntries !== undefined) {
+        const startedAt = Date.parse(registry.pendingTurnOwner?.startedAt ?? registry.activeStartedAt ?? "");
+        const endedAt = Date.parse(registry.pendingTurnOwner?.endedAt ?? "");
+        const entries: KnowledgeReportEntry[] = [];
+        let request: KnowledgeReportEntry | undefined;
+        for (const item of input.conversationEntries) {
+          const time = Date.parse(item.occurredAt ?? "");
+          if (Number.isFinite(time) && Number.isFinite(endedAt) && time >= endedAt) continue;
+          const entry: KnowledgeReportEntry = {
+            schemaVersion: 1, entryType: "conversation_message", sessionId, turnId,
+            messageId: item.messageId, role: item.role, message: item.message, capturedAt,
+            ...(Number.isFinite(time) ? { occurredAt: item.occurredAt } : {}),
+          };
+          if (Number.isFinite(time) && Number.isFinite(startedAt) && time < startedAt) {
+            if (item.role === "user" && (!request || time >= Date.parse(request.occurredAt ?? ""))) {
+              request = { ...entry, context: "plan_request" };
+            }
+          } else entries.push(entry);
+        }
+        if (request) entries.unshift(request);
+        for (const entry of entries) {
+          const alreadyPresent = appendKnowledgeReportEntry(reportPath, entry);
+          duplicate = duplicate && alreadyPresent;
+        }
+      } else if (message) {
+        duplicate = appendKnowledgeReportEntry(reportPath, {
+          schemaVersion: 1, sessionId, turnId, capturedAt, message,
+        });
+      }
       let jobPath: string | undefined;
       let finalizeId: string | undefined;
       if (registry.pendingTurnOwner) {
@@ -1485,6 +1514,10 @@ function appendKnowledgeReportEntry(reportPath: string, entry: KnowledgeReportEn
       const duplicate = existingLines.some((line) => {
           try {
             const existing = JSON.parse(line) as Partial<KnowledgeReportEntry>;
+            if (entry.entryType === "conversation_message") {
+              return existing.entryType === entry.entryType && existing.sessionId === entry.sessionId
+                && existing.messageId === entry.messageId;
+            }
             if (existing.sessionId !== entry.sessionId || existing.turnId !== entry.turnId) {
               return false;
             }

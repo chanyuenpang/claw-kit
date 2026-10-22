@@ -75,6 +75,26 @@ test("canonical capture excludes later parent finals and end equality; captured 
   assert.equal(fs.readFileSync(f.jobPath, "utf8"), frozenJob);
 });
 
+test("host conversation publication preserves user roles and all ordinary assistant messages", (t) => {
+  const f = fixture(t);
+  const startedAt = "2026-10-01T10:00:00.000Z", endedAt = "2026-10-01T10:01:00.000Z";
+  fs.writeFileSync(f.jobPath, JSON.stringify({ ...f.job, reportCapture: { mode: "claim", status: "pending", startedAt, endedAt } }));
+  const entry = (messageId: string, role: string, occurredAt: string) => ({
+    schemaVersion: 1, entryType: "conversation_message", messageId, role, occurredAt, turnId: "same-turn", message: messageId,
+  });
+  publishDshHostReport({ ...f.common, collectorVersion: "conversation-v1", events: [
+    { ...entry("request", "user", "2026-10-01T09:59:59.000Z"), context: "plan_request" },
+    entry("commentary", "assistant", startedAt),
+    entry("correction", "user", "2026-10-01T10:00:20.000Z"),
+    entry("penultimate-summary", "assistant", "2026-10-01T10:00:30.000Z"),
+    entry("short-final", "assistant", "2026-10-01T10:00:50.000Z"),
+    entry("after-plan", "assistant", endedAt),
+  ] });
+  const rows = fs.readFileSync(f.job.reportPath, "utf8").trim().split("\n").map((line) => JSON.parse(line));
+  assert.deepEqual(rows.map((row) => row.message), ["request", "commentary", "correction", "penultimate-summary", "short-final"]);
+  assert.deepEqual(rows.map((row) => row.role), ["user", "assistant", "user", "assistant", "assistant"]);
+});
+
 test("bounded capture rejects missing or invalid timestamps instead of fabricating empty history", (t) => {
   const f = fixture(t);
   fs.writeFileSync(f.jobPath, JSON.stringify({ ...f.job, reportCapture: { mode: "claim", status: "pending", endedAt: f.job.queuedAt } }));
