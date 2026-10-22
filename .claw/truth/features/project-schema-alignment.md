@@ -66,7 +66,7 @@
 - In the `claw-kit` repo itself, `memory.externalDocPaths` is intentionally empty, so project recall stays on `.claw` memory/truth Markdown and does not pull `docs/` into the search surface.
 - project-level `claw search --query "<topic>"` 会在 vector-required contract 内组合 query embedding、keyword plan 和 document signals；本文只确认这些能力消费 canonical project embedding schema。
 - query parsing、三路融合、rerank 常量、lexical fast path 边界与版本化质量结果由 `project-search-candidate-recall.md` 唯一拥有；本 schema 文档不重复维护排序规则。
-- Project-level search requires vector indexing to be configured and refreshed; missing `memory.embedding`, missing `vector_index` metadata, or missing stored vectors now fail with `MEMORY_VECTOR_INDEX_REQUIRED` instead of silently degrading.
+- Project-level search consumes the configured vector index when available. Expected recall prerequisites (no project, disabled memory, missing refreshed vector index, or busy store) return `results: []` plus structured `unavailable` diagnostics and a native-repository-search next step; search does not initialize projects or refresh indexes. Invalid queries and authority/integrity failures remain errors. `packages/core/src/memory.ts` owns this classification for synchronous and asynchronous search; normal terminal workflow closeout owns index maintenance.
 - Task-scope memory search still uses the existing active-plan-plus-task-memory FTS path and does not participate in the hybrid/vector recall flow.
 - Codex-facing recall is `claw search --query "<topic>"`; this reads the indexed project context before planning or investigation, and it remains document recall rather than code search.
 - `claw memory ...` remains as legacy/debug and low-level index management, not the primary Codex workflow term.

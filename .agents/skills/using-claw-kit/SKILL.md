@@ -85,8 +85,10 @@ independently manageable scope rather than letting a parent task grow forever.
   fabricated successful completion. Do not require successful finalization to
   detach canceled work; a normal user-input wait is not cancellation.
 
-Use claw search through the selected route before broader code investigation,
-then native code search for exact anchors. Invoke researcher only when its
+Attempt claw search through the selected route before broader code investigation,
+then use native code search for exact anchors. If recall is unavailable, explain
+its reported reason and continue native repository search; do not refresh indexes
+or wait for maintenance as a prerequisite. Invoke researcher only when its
 independent investigation contract fits; ordinary search needs no delegation.
 
 ## Hard boundaries

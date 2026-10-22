@@ -216,6 +216,7 @@ export function compactClawOutput(output: Record<string, unknown> | undefined, o
       return entry;
     });
   }
+  if (output.unavailable !== undefined) visible.unavailable = output.unavailable as JsonValue;
   if (output.count !== undefined) visible.count = output.count as JsonValue;
   // plan.show --simple returns a minimal projection {status, goal, tasks};
   // keep it visible so the model can still read the plan at a glance.

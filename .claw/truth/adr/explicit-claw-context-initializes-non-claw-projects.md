@@ -2,7 +2,12 @@
 
 ## Status
 
-Accepted
+Superseded
+
+Current contract: recovery outside a project returns an empty project context without
+initializing it. New root-plan creation owns automatic project setup through shared
+Core; adapters must not require a separate init step or duplicate that setup.
+The decision below is historical, not current entry guidance.
 
 ## Context
 

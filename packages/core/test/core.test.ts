@@ -4634,7 +4634,7 @@ test("memory search indexes only project-scoped recall sources", async () => {
   }
 });
 
-test("project search rejects queries when no vector index is available", () => {
+test("project search reports disabled recall without blocking repository work", () => {
   const root = createFixture("memory-search-no-vectors");
   fs.writeFileSync(
     path.join(root, ".claw", "project.json"),
@@ -4672,10 +4672,10 @@ test("project search rejects queries when no vector index is available", () => {
   );
   fs.writeFileSync(path.join(root, ".claw", "truth", "project.md"), "project alpha memory\n", "utf-8");
 
-  assert.throws(
-    () => searchMemory({ cwd: root, query: "alpha" }),
-    /memory is disabled/i,
-  );
+  const result = searchMemory({ cwd: root, query: "alpha" });
+  assert.deepEqual(result.results, []);
+  assert.equal(result.unavailable?.code, "MEMORY_DISABLED");
+  assert.match(result.unavailable!.reason, /disabled/i);
 });
 
 /* test("project keyword search plan keeps exact multi-term query and per-term Chinese fallbacks", () => {
@@ -5780,7 +5780,7 @@ test("project memory refresh surfaces embedding worker timeouts", { concurrency:
   }
 });
 
-test("project search reports a clear error when the memory store is busy", { concurrency: false }, () => {
+test("project search reports advisory unavailability when the memory store is busy", { concurrency: false }, () => {
   const root = createFixture("memory-store-busy");
   fs.writeFileSync(
     path.join(root, ".claw", "project.json"),
@@ -5816,22 +5816,11 @@ test("project search reports a clear error when the memory store is busy", { con
     lockDb.exec("PRAGMA locking_mode = EXCLUSIVE;");
     lockDb.exec("BEGIN EXCLUSIVE;");
 
-    assert.throws(
-      () => searchMemory({ cwd: root, query: "busy store" }),
-      (error: unknown) => {
-        const payload = error as {
-          code?: unknown;
-          message?: unknown;
-          details?: Record<string, unknown>;
-        };
-        assert.equal(payload.code, "MEMORY_STORE_BUSY");
-        assert.match(String(payload.message), /Memory index store is busy/);
-        assert.match(String(payload.message), /retry after that operation finishes/);
-        assert.equal(payload.details?.storePath, index.storePath);
-        assert.equal(payload.details?.operation, "search");
-        return true;
-      },
-    );
+    const result = searchMemory({ cwd: root, query: "busy store" });
+    assert.deepEqual(result.results, []);
+    assert.equal(result.unavailable?.code, "MEMORY_STORE_BUSY");
+    assert.match(result.unavailable!.reason, /busy/i);
+    assert.match(result.unavailable!.nextStep, /repository search/i);
   } finally {
     try {
       lockDb.exec("ROLLBACK;");

@@ -1354,7 +1354,7 @@ function runInternalKnowledgePending(args: string[]): void {
 
 /** Adapter-only registration. The descriptor contains no host history schema. */
 function runInternalReportCollectorRegister(args: string[]): void {
-  const projectRoot = path.resolve(readRequiredFlag(args, "--project-root"));
+  const requestedRoot = path.resolve(readRequiredFlag(args, "--project-root"));
   const host = readRequiredFlag(args, "--collector-host");
   const collectorVersion = readRequiredFlag(args, "--collector-version");
   const executable = readRequiredFlag(args, "--executable");
@@ -1363,6 +1363,8 @@ function runInternalReportCollectorRegister(args: string[]): void {
   if (resolveHostIntegrationProfile(host)?.supportsClaimTimeReportCapture !== true) {
     throw new ClawError("PROJECT_CONFIG_INVALID", "report collector host must be codex, dsh, or cindy.");
   }
+  // Registration must not create a partial .claw or target a nested project.
+  const projectRoot = resolveProjectContext(requestedRoot).projectRoot;
   registerReportCollector(projectRoot, {
     schemaVersion: 1,
     contractVersion: 1,
@@ -2351,6 +2353,7 @@ async function runContextCommand(
           ? { latestPublishedVersion: versionSync.latestPublishedVersion }
           : {}),
         ...(versionSync.message !== undefined ? { message: versionSync.message } : {}),
+        ...(versionSync.warning ? { warning: versionSync.warning } : {}),
       },
     },
   };
@@ -2525,28 +2528,26 @@ type ContextVersionSyncResult = {
   updateSkill: "claw-kit:update";
   latestPublishedVersion?: string | null;
   message?: string;
+  warning?: ReturnType<typeof serializeFailure>;
 };
 
 function syncProjectVersionWithCli(cwd: string, project: ReturnType<typeof resolveProjectContext>): ContextVersionSyncResult {
   const projectVersion = normalizeVersionString(project.projectConfig?.version);
   const autoUpdateEnabled = project.projectConfig?.autoUpdate === true;
-  if (!projectVersion) {
-    updateProjectJsonVersion(project.projectJsonPath, CLI_VERSION);
-    return {
-      cliVersion: CLI_VERSION,
-      projectVersion: null,
-      projectVersionAligned: true,
-      projectVersionUpdated: true,
-      cliVersionLagging: false,
-      updateAvailable: false,
-      autoUpdateEnabled,
-      updateSkill: "claw-kit:update",
-    };
-  }
-
-  const comparison = compareSemver(projectVersion, CLI_VERSION);
-  if (comparison < 0) {
-    updateProjectJsonVersion(project.projectJsonPath, CLI_VERSION);
+  if (!projectVersion || compareSemver(projectVersion, CLI_VERSION) < 0) {
+    try {
+      updateProjectJsonVersion(project.projectJsonPath, CLI_VERSION);
+    } catch (error) {
+      // Version metadata is maintenance, not authority for readable recovery.
+      return {
+        cliVersion: CLI_VERSION, projectVersion, projectVersionAligned: false,
+        projectVersionUpdated: false, cliVersionLagging: false, updateAvailable: false,
+        autoUpdateEnabled, updateSkill: "claw-kit:update",
+        warning: serializeFailure(error, {
+          fallbackCode: "PROJECT_VERSION_SYNC_FAILED", origin: "cli", operation: "context.version-sync",
+        }),
+      };
+    }
     return {
       cliVersion: CLI_VERSION,
       projectVersion,
@@ -2559,6 +2560,7 @@ function syncProjectVersionWithCli(cwd: string, project: ReturnType<typeof resol
     };
   }
 
+  const comparison = compareSemver(projectVersion, CLI_VERSION);
   if (comparison === 0) {
     return {
       cliVersion: CLI_VERSION,

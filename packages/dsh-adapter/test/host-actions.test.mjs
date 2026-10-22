@@ -3,6 +3,14 @@ import assert from "node:assert/strict";
 import { compactClawOutput, consumeHostActions } from "../lib/host-actions.js";
 import { createAgentGuidanceStore, projectTodos } from "../lib/index.js";
 
+test("search projection preserves unavailable reason instead of claiming zero hits", () => {
+  const unavailable = { code: "MEMORY_VECTOR_INDEX_REQUIRED", reason: "Index unavailable", nextStep: "Continue repository search" };
+  assert.deepEqual(compactClawOutput({ results: [], unavailable }, "search"), {
+    ok: true, command: "search", results: [], unavailable,
+  });
+  assert.equal(compactClawOutput({ results: [] }, "search").unavailable, undefined);
+});
+
 test("knowledge projection preserves owner claim material and additive receipt fields", () => {
   for (const command of ["knowledge.claim", "knowledge.claim.receipt", "knowledge.done", "knowledge.done.receipt"]) {
     const result = { ok: true, command, finalizeId: "id", jobPath: "job", reportPath: "report", writer: { model: "model" }, extraReceipt: { version: 2 } };

@@ -35,7 +35,7 @@
 - 已变更文档替换自身记录并重建对应 embeddings
 - 已删除文档清理 `docs`、`docs_fts`、`doc_embeddings`
 - 当 `memory.embedding` 配置变化触发向量 reset 时，`claw search index --refresh` 仍然沿用每轮默认 100 文件的 bounded batching，reset 后的后续 refresh 继续推进 backlog，而不是一次性整库重建。
-- project search 继续坚持 vector-required 契约；如果向量索引不可用，则保持 disabled，不回退成纯 `FTS` 搜索。
+- Vector/hybrid retrieval remains the preferred project recall when its prerequisites are available; expected recall unavailability is advisory rather than a workflow-blocking error, and must not silently masquerade as a successful zero-hit search.
 - project-level `claw search --query` 会生成 query embedding，并执行 trimmed hybrid recall，融合 vector candidates 与 `FTS` candidates。
 - project-level `claw search --query` 的候选生成不再依赖单一路径；它会在最终排序前汇总多条 recall routes 的候选，而不是只做一次 `FTS` 召回再与向量结果拼接。
 - 这轮 trimmed `OpenClaw` 迁移保留 exact、keyword、semantic 和 document-signal 候选来源，但不引入更大的 session-memory / host abstraction surface。
@@ -50,8 +50,8 @@
 - lexical fast path 的性能决策与唯一性门禁继续由 `workflow-cost-optimization-route.md` 唯一拥有；本轮排序决策只确认这些门禁不得为了 latency 绕过完整 hybrid 语义召回契约。
 - 固定标量权重手调已经进入边际收益区：更激进的标题权重和继续降低 vector 权重都出现 recall 回退。下一次显著质量投资应使用标注驱动的 learned reranker 或 cross-encoder stage，而不是继续叠加领域特例。
 - 同日后续 `120` 条 development split 的结果在 supplied closeout 中仍处于暂停、holdout 未解封状态；在 holdout 泛化与剩余任务完成前，它只能作为 provisional experiment，不改变上述已完成五轮 closeout 的当前决策。
-- 如果当前项目缺少 refreshed vector index，project search 返回 `MEMORY_VECTOR_INDEX_REQUIRED`，而不是 silent fallback。
-- project-level `claw search --query` 不负责在缺少 index 时隐式触发一次 refresh；项目搜索必须先有显式的 `claw search index --refresh` 结果。
+- 普通知识 recall 是可选能力：缺项目、memory 禁用、缺 refreshed vector index 或 store 忙碌时，project search 返回 `results: []` 与结构化 `unavailable`（保留原始 code、原因与继续原生仓库搜索的建议），不是阻断错误，也不是伪装正常零命中。Core 的同步/异步入口统一拥有分类，adapter 不丢弃诊断；无效请求、身份与完整性错误仍真实失败。
+- project-level `claw search --query` 不负责在缺少 index 时隐式触发 refresh，不创建项目、不要求 agent 手动维护；正常任务收口负责索引维护。显式 `claw search index --refresh` 仍是维护入口，维护失败不能伪装成功。
 - project memory refresh 从 `.claw/project.json` 读取 embedding 配置，同时支持 OpenAI embeddings 和 GitNexus-inspired local embedding provider。
 - 当选择 local provider 时，默认模型与运行策略固定为 `jinaai/jina-embeddings-v2-base-zh`、`768` 维、Windows `DirectML` 优先且回退到 CPU。
 - `Snowflake/snowflake-arctic-embed-m-v2.0` 保留为显式的 `768` 维高资源替代方案，不再是 shipped default；既有显式配置继续保持兼容，不因默认切换被静默改写。
@@ -98,7 +98,7 @@
 - `claw search` 的 recall 面继续保持项目级文档语义，不会因为外部路径或 `FTS` 回退而漂移成通用代码搜索。
 - 旧项目在第一次运行 `claw context`、`claw check` 或其他协议修复入口后，会被自动提升到可索引的默认 local embedding schema，不需要手工补 `memory.embedding`。
 - 新项目与缺少 `memory.embedding`、由 protocol auto-repair 补齐的旧项目都会采用 Jina `768` 维默认值；已经显式写入 `m-v2.0`、`xs` 或显式 `outputDimensionality` 的项目不会被偷偷改写掉它们的兼容语义。
-- 查询阶段与索引阶段共享同一套 vector contract，缺少 refreshed vectors 会显式失败，而不是悄悄降级成较弱的文本检索。
+- 查询阶段与索引阶段共享同一套 vector contract；当 project recall 的预期前置条件不可用（缺项目、禁用、缺索引或 store busy）时，返回空结果及结构化原因与继续原生仓库搜索的建议，不创建项目或隐式刷新索引。无效请求、authority/integrity 错误仍失败；终态 workflow closeout 维护索引，维护失败不撤销已完成结果。
 - refresh failure 会直接暴露 embedding/provider/runtime 问题；调用方必须修复环境或改配置，然后重新执行显式 refresh，而不是依赖 text-only refresh 继续前进。
 - 中文多词检索不再被单次严格 `MATCH` 语义卡住，keyword planner 可以更稳定地为 hybrid fusion 提供候选集。
 - 多条 recall routes 先扩充候选池、再统一重排，减少单一路径偏置，让项目搜索更接近成熟文档 recall 系统的结果质量。

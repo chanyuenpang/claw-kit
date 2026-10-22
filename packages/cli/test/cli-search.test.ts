@@ -241,14 +241,14 @@ test("cli search rejects task-local scope flags", () => {
   assert.match(String(payload.message), /project-scoped only/i);
 });
 
-test("cli search rejects project queries when no vector index is available", () => {
+test("cli search returns advisory empty results without creating a vector index", () => {
   const root = createFixture("search-requires-vectors");
   runClaw(["init", "--name", "Search Requires Vectors"], root);
 
-  const error = runClawExpectFailure(["search", "--query", "alpha"], root);
-  const payload = error.error as JsonRecord;
-  assert.equal(payload.code, "MEMORY_VECTOR_INDEX_REQUIRED");
-  assert.match(String(payload.message), /vector index|memory\.embedding/i);
+  const result = runClaw(["search", "--query", "alpha"], root);
+  assert.deepEqual(result.results, []);
+  assert.equal((result.unavailable as JsonRecord).code, "MEMORY_VECTOR_INDEX_REQUIRED");
+  assert.match(String((result.unavailable as JsonRecord).nextStep), /repository search/i);
 });
 
 test("cli search index refresh returns project index metadata and embedding config", () => {

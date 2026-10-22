@@ -5,7 +5,7 @@
 
 - `claw-kit` 的 project-level `claw search --query` 已从单次 keyword/vector 合并，演进为裁剪版 OpenClaw 风格的 multi-route candidate recall。
 - 这一轮的重点不是替换 embedding，而是把 `query planner`、`keyword recall`、`document-signal route` 和 `unified rerank` 组合起来，提升项目文档 recall 质量。
-- `claw search` 仍然只做 project-scoped 文档 recall，不扩展成代码搜索，也没有放宽 vector-required 可用性契约。
+- `claw search` 仍然只做 project-scoped 文档 recall，不扩展成代码搜索。Hybrid/vector 是可用时的检索路径；预期 prerequisites unavailable 时遵循 `search-index-refresh-and-openai-embeddings.md` 的空结果加诊断契约，不视为正常零命中。
 
 ## 长期行为
 
@@ -97,7 +97,7 @@
 ## 当前存储与执行路径
 
 - project-level search 的主入口在 `packages/core/src/memory.ts`。`.claw/memory.sqlite` 保留 `doc_embeddings.embedding_json` 作为兼容数据，同时以 `doc_embedding_vectors` 的 `embedding_blob` 保存归一化 Float32 向量；refresh 会回填缺失 BLOB，并以 `embedding_vector_storage = float32-blob-v1` 选择紧凑读取路径。
-- `searchProjectMemoryHybrid` 仍汇总 vector、`docs_fts` keyword/BM25（含 substring fallback）与 document-signal 三条候选路线，并保持 vector-required 契约。向量扫描按 source 聚合最佳候选、只在最终候选缺少文本结果时读取 `chunk_text` 构造 snippet，避免对全部向量行提前构造 snippet 或 JSON 解码。
+- `searchProjectMemoryHybrid` 在可用向量索引时汇总 vector、`docs_fts` keyword/BM25（含 substring fallback）与 document-signal 三条候选路线；预期向量/项目准备缺失由外层 search availability contract 作为 advisory empty result 报告。向量扫描按 source 聚合最佳候选、只在最终候选缺少文本结果时读取 `chunk_text` 构造 snippet，避免对全部向量行提前构造 snippet 或 JSON 解码。
 - 当 `CLAW_SEARCH_DAEMON=1` 时，reader 复用有界 SQLite 连接并缓存与 `indexed_at` 对齐的向量行；索引刷新会使缓存失效。`packages/cli/src/search-entry.ts` 先请求有界常驻 reader，reader 不可用时才走本地异步 search 路径。
 - search reader 默认空闲 `10` 分钟退出；若设置 `CLAW_EMBEDDING_DAEMON_RUNTIME_DIR`，其运行目录固定在该目录下的 `search-reader`，从而与显式 embedding runtime 的隔离边界保持一致。
 - query intent 来自 `packages/core/src/memory-query.ts` 的 `buildProjectQueryIntent` / `extractProjectKeywordTerms`；lexical terms 可以被清洗，但 query embedding 使用原始语义查询文本。fusion 继续使用 vector `0.50`、keyword `0.30`、signal `0.20`，最终 rerank 的现行常量与信号见上文。

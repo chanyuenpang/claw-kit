@@ -1,4 +1,4 @@
-# ADR: Codex 与 DSH 手动知识补录以文档为完成边界
+﻿# ADR: Codex 与 DSH 手动知识补录以文档为完成边界
 
 ## Context
 

@@ -53,6 +53,11 @@ The 2026-10-11 DSH-only promotion delivered adapter 0.2.50.1 (`@veewo/dsh-claw-k
 <!-- state: history -->
 ## Historical verification
 
+<!-- dated: 2026-10-22 -->
+### Windows DSH 0.2.63 frozen-candidate core smoke
+
+A Windows DSH session recorded completion of the frozen CLI 0.2.63 / adapter 0.2.63-rc.0 core smoke. The plan retrospective reports successful real acknowledgements for leave/unbind, plan-field editing/removal, task add/edit/remove, wait/resume, direct status editing, context recovery, one-level subplan completion that automatically completed parent task #2 and returned focus to parent task #3, and root-plan closeout. The test scope excluded publishing, building, and configuration changes. The accompanying report is a concise conversation record rather than a raw receipt log; treat this as evidence for that candidate and session only, not a general guarantee for other installations or later artifacts.
+
 <!-- dated: 2026-10-10 -->
 ### Windows DSH 0.2.50 workflow smoke scope
 

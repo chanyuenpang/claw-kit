@@ -738,8 +738,9 @@ export type MemorySearchResult = {
   scope: MemoryScope;
   storePath: string;
   results: MemorySearchResultEntry[];
+  unavailable?: { code: string; reason: string; nextStep: string };
   telemetry: {
-    route: "lexical_fast_path" | "hybrid";
+    route: "lexical_fast_path" | "hybrid" | "unavailable";
     queryEmbedding: "skipped" | "cache_hit" | "generated";
     embeddingRuntime?: "mock" | "persistent_daemon" | "one_shot" | "remote";
     vectorScanMs?: number;

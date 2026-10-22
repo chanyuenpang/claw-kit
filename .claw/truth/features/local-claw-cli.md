@@ -3,7 +3,7 @@
 <!-- state: current -->
 ## Core facts
 
-- `claw init` now exists and bootstraps a minimal `.claw` project.
+- `claw init` bootstraps a minimal `.claw` project. `plan.create` also owns first-use project setup: when no ancestor project exists, `packages/core/src/plan.ts` calls `ensureProjectEnvironment()` before task allocation, so users need not manually scaffold `.claw` for workflow creation. Startup/context recovery does not create a missing project; project search in that state is advisory and returns an empty result with an unavailable reason.
 - Explicit hostless `claw init` maintains the same concise marked `using-claw-kit` entry block in project-root `AGENTS.md` and `CLAUDE.md`; `--skip-agent-instructions` skips both, and JSON output reports independent `agentInstructions` and `claudeInstructions` statuses. Automatic setup and native-host init do not manage these files.
 - Each target resolves an existing case-insensitive filename (so `claude.md` is reused rather than creating `CLAUDE.md`); multiple case variants are skipped with a warning. Each file is updated independently, replacing only a single well-formed marker pair; malformed or duplicate markers leave that file unchanged. Missing files are created, surrounding text is preserved, and repeated init is idempotent.
 - `packages/cli/test/cli.test.ts` 的 CLI 测试项目夹具由 `createFixture()` 在 `os.tmpdir()` 下创建，名称固定为 `claw-kit-cli-<test-name>-<random-suffix>`；该前缀用于识别测试隔离目录，不表示 Git worktree。目录的实际父路径由运行测试进程的系统临时目录配置决定。所有经 `createTemporaryDirectory()` 创建的测试目录都会在测试结束时由 `after()` 清理。
@@ -92,7 +92,7 @@
 - `packages/core/test/core.test.ts` 新增了中文排序回归：`project search prioritizes exact Chinese document hits over weaker project-memory matches`。
 - 使用 `CLAW_EMBEDDING_MOCK` 的 project-search / memory-refresh 测试现在显式标记为 `{ concurrency: false }`，避免 Node test 并发下共享环境变量污染造成假红。
 - Project-level `claw search --query` now generates a real query embedding and uses a trimmed hybrid recall that fuses vector and FTS results.
-- Project-level `claw search --query` now fails with `MEMORY_VECTOR_INDEX_REQUIRED` when the refreshed vector index is missing, instead of silently degrading to non-vector search.
+- Project-level `claw search --query` treats expected recall unavailability as non-blocking: Core returns an empty `results` array and structured `unavailable` reason for missing project/index, disabled memory, or busy store. It does not create a project, build/refresh an index, or mask invalid queries and authority/integrity failures; continue with native repository search. Terminal plan closeout queues index maintenance separately, whose failure does not undo the completed workflow result.
 - Task-scope memory search still keeps the previous FTS and task-memory behavior.
 - Normal planned work should enter through `claw plan create`; if project recall helps, use `claw search --query "<topic>"` after task scope exists.
 - `claw memory ...` remains available, but it is not the recommended Codex workflow concept.

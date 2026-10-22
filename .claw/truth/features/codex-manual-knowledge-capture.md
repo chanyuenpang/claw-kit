@@ -1,4 +1,4 @@
-# Codex 与 DSH 显式手动知识补录
+﻿# Codex 与 DSH 显式手动知识补录
 
 <!-- state: current -->
 ## Current behavior

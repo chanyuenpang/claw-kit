@@ -313,8 +313,32 @@ function getMetadata(db: DatabaseSync, key: string): string | null {
   return row?.value ?? null;
 }
 
+function unavailableSearch(error: unknown, startedAt: number): MemorySearchResult {
+  // Only expected recall prerequisites are advisory. Authority, integrity and
+  // unexpected storage failures must retain their original errors.
+  if (!(error instanceof ClawError)) throw error;
+  const reasons: Record<string, string> = {
+    CLAW_DIR_NOT_FOUND: "No project knowledge environment exists.",
+    MEMORY_DISABLED: "Project knowledge search is disabled.",
+    MEMORY_VECTOR_INDEX_REQUIRED: "The knowledge vector index or embedding capability is unavailable.",
+    MEMORY_STORE_BUSY: "The knowledge index is currently busy.",
+  };
+  const reason = reasons[error.code];
+  if (!reason) throw error;
+  return {
+    scope: "project", storePath: "", results: [],
+    unavailable: { code: error.code, reason, nextStep: "Continue with native repository search. Index maintenance is not required to continue the task." },
+    telemetry: { route: "unavailable", queryEmbedding: "skipped", durationMs: Number((performance.now() - startedAt).toFixed(2)) },
+  };
+}
+
 export function searchMemory(input: MemorySearchInput): MemorySearchResult {
   const startedAt = performance.now();
+  try { return searchAvailableMemory(input, startedAt); }
+  catch (error) { return unavailableSearch(error, startedAt); }
+}
+
+function searchAvailableMemory(input: MemorySearchInput, startedAt: number): MemorySearchResult {
   if (!input.query.trim()) {
     throw new ClawError("MEMORY_QUERY_REQUIRED", "memory search requires a non-empty query.");
   }
@@ -351,14 +375,16 @@ export function searchMemory(input: MemorySearchInput): MemorySearchResult {
 
 export async function searchMemoryAsync(input: MemorySearchInput): Promise<MemorySearchResult> {
   const startedAt = performance.now();
-  const primedRuntime = await primePersistentProjectQueryEmbedding(input);
-  const result = searchMemory(input);
-  result.telemetry.durationMs = Number((performance.now() - startedAt).toFixed(2));
-  if (primedRuntime) {
-    result.telemetry.queryEmbedding = "generated";
-    result.telemetry.embeddingRuntime = primedRuntime;
-  }
-  return result;
+  try {
+    const primedRuntime = await primePersistentProjectQueryEmbedding(input);
+    const result = searchAvailableMemory(input, startedAt);
+    result.telemetry.durationMs = Number((performance.now() - startedAt).toFixed(2));
+    if (primedRuntime) {
+      result.telemetry.queryEmbedding = "generated";
+      result.telemetry.embeddingRuntime = primedRuntime;
+    }
+    return result;
+  } catch (error) { return unavailableSearch(error, startedAt); }
 }
 
 async function primePersistentProjectQueryEmbedding(

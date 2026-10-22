@@ -29,6 +29,25 @@ test("session open outside a claw project skips project recovery without hiding 
   assert.equal(opened.session.canonicalWorkdir, fs.realpathSync(workdir));
 });
 
+test("Cindy session creates an uninitialized project once and reuses it from a child directory", async () => {
+  const workdir = fixture("cindy-empty-project");
+  const executor = new SessionCommandExecutor(new SessionRegistryV2(fixture("cindy-empty-runtime")));
+  const identity = { agentSessionId: "cindy-empty", workdir, client: { kind: "adapter" as const, host: "cindy" } };
+  await executor.open(identity);
+  assert.equal(fs.existsSync(path.join(workdir, ".claw")), false);
+  await executor.execute(identity, { operation: "plan.create", input: { title: "First plan", taskName: "first-plan" } });
+  const configPath = path.join(workdir, ".claw", "project.json");
+  assert.equal(fs.existsSync(configPath), true);
+  const before = fs.readFileSync(configPath, "utf8");
+  const child = path.join(workdir, "src");
+  fs.mkdirSync(child);
+  await executor.execute({ ...identity, agentSessionId: "cindy-child", workdir: child }, {
+    operation: "plan.create", input: { title: "Child plan", taskName: "child-plan" },
+  });
+  assert.equal(fs.existsSync(path.join(child, ".claw")), false);
+  assert.equal(fs.readFileSync(configPath, "utf8"), before);
+});
+
 test("typed command service uses explicit context and keeps current plan in v2 session state", async () => {
   const runtimeRoot = fixture("command-runtime");
   const projectRoot = fixture("command-project");
@@ -91,10 +110,9 @@ test("search and index refresh do not hold the session execution queue", async (
   process.env.CLAW_EMBEDDING_MOCK = "1";
   process.env.CLAW_IN_SESSION_DAEMON = "1";
   try {
-    await assert.rejects(
-      () => executor.execute(identity, { operation: "search", input: { query: "setup" } }),
-      (error: unknown) => error instanceof Error && "code" in error && (error as { code: string }).code === "MEMORY_VECTOR_INDEX_REQUIRED",
-    );
+    const unavailable = await executor.execute(identity, { operation: "search", input: { query: "setup" } });
+    assert.deepEqual((unavailable.output as { results: unknown[] }).results, []);
+    assert.equal((unavailable.output as { unavailable: { code: string } }).unavailable.code, "MEMORY_VECTOR_INDEX_REQUIRED");
     assert.equal(executions, 0);
     try {
       const refreshed = await executor.execute(identity, { operation: "search.index.refresh", input: {} });

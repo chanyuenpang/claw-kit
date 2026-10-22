@@ -195,13 +195,13 @@ async function stopWorker(child) {
   clearTimeout(timer);
 }
 
-function writePersistentClawFixture(fixtureDir, commandHandlerSource) {
+function writePersistentClawFixture(fixtureDir, commandHandlerSource, directHandlerSource = 'process.exit(2)') {
   const scriptPath = path.join(fixtureDir, 'fake-claw-session.cjs');
   fs.writeFileSync(scriptPath, `
 const readline = require('node:readline');
 const args = process.argv.slice(2);
 if (process.env.CINDY_CLAW_OPEN_LOG) require('node:fs').appendFileSync(process.env.CINDY_CLAW_OPEN_LOG, 'open\\n');
-if (args[0] !== 'session' || args[1] !== 'open') process.exit(2);
+if (args[0] !== 'session' || args[1] !== 'open') { ${directHandlerSource}; process.exit(0); }
 process.stdout.write(JSON.stringify({ ok: true, command: 'session.open', session: { state: 'live' } }) + '\\n');
 const handle = ${commandHandlerSource};
 readline.createInterface({ input: process.stdin }).on('line', (line) => {
@@ -215,6 +215,50 @@ readline.createInterface({ input: process.stdin }).on('line', (line) => {
     'utf8',
   );
 }
+
+test("Cindy recovery skips collector registration and capture registers its version without blocking the owner", { skip: process.platform !== "win32" }, async () => {
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-collector-boundary-"));
+  const log = path.join(fixtureDir, "commands.jsonl");
+  writePersistentClawFixture(fixtureDir,
+    `(request) => process.stdout.write(JSON.stringify({ ok: true, output: { claimed: true } }) + '\\n')`,
+    `require('node:fs').appendFileSync(${JSON.stringify(log)}, JSON.stringify(args) + '\\n');
+     if (args[0] === 'internal-report-collector-register') { process.stderr.write(JSON.stringify({error:{code:'EACCES',message:'fixture denied'}})); process.exit(1); }
+     process.stdout.write(JSON.stringify({project:null,jobs:[]}));`);
+  const child = spawn(process.execPath, [workerPath], {
+    cwd: fixtureDir, env: { ...process.env, PATH: `${fixtureDir}${path.delimiter}${process.env.PATH || ""}` },
+    stdio: ["pipe", "pipe", "pipe"], windowsHide: true,
+  });
+  const params = { sessionId: "collector-boundary", workdir: fixtureDir };
+  try {
+    const startup = await requestWorker(child, { jsonrpc: "2.0", id: 1, method: "claw/session-start", params });
+    assert.equal(startup.result.ok, true, JSON.stringify(startup));
+    assert.ok(!fs.readFileSync(log, "utf8").includes("internal-report-collector-register"));
+    const claim = await requestWorker(child, { jsonrpc: "2.0", id: 2, method: "claw/execute",
+      params: { ...params, operation: "knowledge.claim", args: { finalize_id: "fixture-job" } } });
+    assert.equal(claim.result.ok, true, JSON.stringify(claim));
+    assert.equal(claim.result.result.claimed, true);
+    assert.equal(claim.result.result.postCommandFailures.length, 1);
+    const registration = fs.readFileSync(log, "utf8").trim().split("\n").map(JSON.parse).find(args => args[0] === "internal-report-collector-register");
+    assert.ok(registration[registration.indexOf("--collector-version") + 1]);
+    assert.equal(fs.existsSync(path.join(fixtureDir, ".claw")), false);
+  } finally { await stopWorker(child); }
+});
+
+test("Cindy search preserves advisory unavailability through the worker", { skip: process.platform !== "win32" }, async () => {
+  const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-search-advisory-"));
+  const unavailable = { code: "MEMORY_VECTOR_INDEX_REQUIRED", reason: "Index unavailable", nextStep: "Continue repository search" };
+  writePersistentClawFixture(fixtureDir, `(request) => process.stdout.write(JSON.stringify({ ok: true, output: { results: [], unavailable: ${JSON.stringify(unavailable)} } }) + '\\n')`);
+  const child = spawn(process.execPath, [workerPath], {
+    cwd: fixtureDir, env: { ...process.env, PATH: `${fixtureDir}${path.delimiter}${process.env.PATH || ""}` },
+    stdio: ["pipe", "pipe", "pipe"], windowsHide: true,
+  });
+  try {
+    const reply = await requestWorker(child, { jsonrpc: "2.0", id: 1, method: "claw/execute",
+      params: { operation: "search", args: { query: "decision" }, sessionId: "search-advisory", workdir: fixtureDir } });
+    assert.equal(reply.result.ok, true, JSON.stringify(reply));
+    assert.deepEqual(reply.result.result, { results: [], unavailable });
+  } finally { await stopWorker(child); }
+});
 
 test("Cindy plan.done releases its CLI transport and next plan restores same session", { skip: process.platform !== "win32" }, async () => {
   const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "claw-cindy-transport-"));

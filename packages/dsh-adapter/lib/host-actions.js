@@ -193,6 +193,8 @@ export function compactClawOutput(output, operation) {
             return entry;
         });
     }
+    if (output.unavailable !== undefined)
+        visible.unavailable = output.unavailable;
     if (output.count !== undefined)
         visible.count = output.count;
     // plan.show --simple returns a minimal projection {status, goal, tasks};

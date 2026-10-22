@@ -383,6 +383,30 @@ test("cli context aligns project.json version upward to the current CLI version"
   assert.equal(nextProjectConfig.version, cliPackageVersion);
 });
 
+test("cli context retains recovery when optional version metadata cannot be written", () => {
+  const root = createFixture("context-version-write-denied");
+  runClaw(["init", "--name", "Version Write Denied"], root);
+  const target = path.join(root, ".claw", "project.json");
+  const config = JSON.parse(fs.readFileSync(target, "utf-8"));
+  config.version = "0.1.1";
+  fs.writeFileSync(target, `${JSON.stringify(config, null, 2)}\n`);
+  const preload = path.join(root, "deny-version-write.cjs");
+  fs.writeFileSync(preload, `const fs = require('node:fs');
+const original = fs.writeFileSync;
+fs.writeFileSync = function(file, ...args) {
+  if (String(file) === ${JSON.stringify(target)}) {
+    const error = new Error('fixture version write denied'); error.code = 'EACCES'; throw error;
+  }
+  return original.call(this, file, ...args);
+};`);
+  const result = runClaw(["context"], root, { NODE_OPTIONS: `--require="${preload.replaceAll("\\", "/")}"` });
+  const versionSync = (result.startupRecovery as JsonRecord).versionSync as JsonRecord;
+  assert.ok(result.project);
+  assert.equal(versionSync.projectVersionAligned, false);
+  assert.equal((versionSync.warning as JsonRecord).operation, "context.version-sync");
+  assert.equal(JSON.parse(fs.readFileSync(target, "utf-8")).version, "0.1.1");
+});
+
 test("cli context reports lagging CLI info when project version is newer than both local CLI and npm latest", () => {
   const root = createFixture("context-version-lagging");
   const npmShim = createClawUpdateNpmShim({

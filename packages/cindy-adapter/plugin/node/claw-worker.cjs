@@ -848,10 +848,18 @@ function projectionForContext(output) {
 // The Agent sees a Cindy workflow contract, never raw CLI/Host integration
 // instructions. The Worker already owns host selection, session binding,
 // command execution, closeout dispatch, and future Goal projection.
+function registerCindyCollector(params) {
+  return runClaw(
+    ['internal-report-collector-register', '--project-root', params.workdir, '--collector-host', 'cindy', '--collector-version', require('../ghost.json').version, '--executable', nodeExecutable(), '--arg', path.join(__dirname, 'report-collector.cjs')],
+    params.workdir, undefined, 10000, params.sessionId,
+  );
+}
+
 function cindyAgentResult(output, operation) {
   if (!output || typeof output !== 'object') return output;
   if (operation === 'search') {
-    return { results: Array.isArray(output.results) ? output.results : [] };
+    return { results: Array.isArray(output.results) ? output.results : [],
+      ...(output.unavailable ? { unavailable: output.unavailable } : {}) };
   }
   // Preserve shared business results, including additive receipt/material and
   // deferred-closeout fields. Only plan presentation needs a compact projection.
@@ -1021,17 +1029,6 @@ rpcInput.on('line', async (line) => {
         reason: error instanceof Error ? error.message : String(error),
         errorPrompt: `${error instanceof Error ? error.message : String(error)} Install or update the claw CLI, then retry this message.`,
       });
-      return;
-    }
-    const collectorRegistration = await runClaw(
-      ['internal-report-collector-register', '--project-root', params.workdir, '--collector-host', 'cindy', '--executable', nodeExecutable(), '--arg', path.join(__dirname, 'report-collector.cjs')],
-      params.workdir,
-      undefined,
-      10000,
-      params.sessionId,
-    );
-    if (!collectorRegistration.ok) {
-      reply(request.id, { ok: false, errorCode: collectorRegistration.errorCode, reason: collectorRegistration.reason });
       return;
     }
     const result = await runClaw(
@@ -1230,6 +1227,8 @@ rpcInput.on('line', async (line) => {
         output = result.output;
       } else {
         const mapped = sessionRequest(operation, operationArgs, params.workdir);
+        // Collector registration belongs to capture, not session recovery.
+        const collectorRegistration = operation === 'knowledge.claim' ? await registerCindyCollector(params) : null;
         const session = await ensureSession(params.sessionId, params.workdir, ["knowledge.done", "knowledge.done.receipt", "knowledge.claim.receipt"].includes(operation));
         const command = session.request(mapped);
         const ordinal = session.requestsStarted;
@@ -1267,6 +1266,10 @@ rpcInput.on('line', async (line) => {
         }
         if (operation === 'plan.done') { completedSession = session; completedOrdinal = ordinal; }
         output = response.output;
+        if (collectorRegistration && !collectorRegistration.ok) {
+          output = { ...output, postCommandFailures: [...(output?.postCommandFailures || []),
+            serializeFailure(collectorRegistration.error || collectorRegistration, { fallbackCode: 'REPORT_COLLECTOR_REGISTRATION_FAILED', origin: 'cindy', operation: 'report-collector.register' })] };
+        }
         envelope = {
           ...(Array.isArray(response.hostActions) ? { hostActions: response.hostActions } : {}),
           ...(Array.isArray(response.postCommitEffects) ? { postCommitEffects: response.postCommitEffects } : {}),
