@@ -416,6 +416,7 @@ test("Codex claim captures its parent report without Stop", () => {
   const entries = fs.readFileSync(reportPath, "utf-8").trim().split(/\r?\n/)
     .map((line) => JSON.parse(line) as JsonRecord);
   assert.deepEqual(entries.map((entry) => entry.message), [
+    "Implemented the ready-job lifecycle and verified its invariant.",
     "Second completed plan answer.",
     "First completed plan answer.",
   ]);
@@ -452,7 +453,7 @@ test("Codex claim captures its parent report without Stop", () => {
   }, env);
   assert.equal(laterStop.status, 0);
   const finalReport = fs.readFileSync(reportPath, "utf-8");
-  assert.equal(finalReport.trim().split(/\r?\n/).length, 2);
+  assert.equal(finalReport.trim().split(/\r?\n/).length, entries.length);
   assert.doesNotMatch(finalReport, /later final answer/i);
   assert.deepEqual(fs.readdirSync(path.dirname(jobPath)).filter((entry) => (
     entry.endsWith(".json") && !entry.endsWith(".assignments.json")
