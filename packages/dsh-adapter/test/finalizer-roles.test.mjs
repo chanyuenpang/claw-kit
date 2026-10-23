@@ -228,14 +228,9 @@ test("reserved executor wins over duplicate label and missing pinned child never
     if (missing) f.children.pop();
     const result = await f.run(A);
     assert.equal(f.creates.length, 1);
-    if (missing) {
-      assert.equal(result.code, "DSH_FINALIZER_EXECUTOR_PINNED");
-      assert.equal(f.sends.length, 0);
-    } else {
-      assert.equal(result.runId, "host-child-1");
-      assert.equal(f.sends[0].childId, "host-child-1");
-      assert.equal(f.sends.length, 1);
-    }
+    assert.equal(result.runId, "host-child-1");
+    assert.equal(f.sends[0].childId, "host-child-1");
+    assert.equal(f.sends.length, 1);
   }
 });
 
@@ -278,7 +273,7 @@ test("finalizer catalog tolerates one read failure and unrelated diagnostics", a
   assert.equal(f.sends.length, 1);
 });
 
-test("finalizer target diagnostic remains a hard identity failure", async () => {
+test("reserved target diagnostic defers to the send owner's real rejection without replay", async () => {
   const f = fixture();
   const selection = { requested: { intent: "low-cost" }, applied: { mode: "inherit", options: {},
     inheritanceBasis: { provider: "llm-provider", model: "model-a", reasoningEffort: "high" } },
@@ -287,11 +282,18 @@ test("finalizer target diagnostic remains a hard identity failure", async () => 
   const targetId = "persisted-child";
   f.rows.get(A).execution = f.execution(A, { memberSessionId: targetId, configFingerprint: fingerprint, modelSelection: selection });
   f.children.push({ kind: "diagnostic", id: targetId, reason: "corrupt" });
+  f.services.subagents.sendMessage = async (_parent, childId) => {
+    f.sends.push({ childId });
+    throw Object.assign(new Error("Target unavailable"), { code: "CHILD_SESSION_UNAVAILABLE", phase: "dispatch" });
+  };
   const result = await f.run();
   assert.equal(result.ok, false);
-  assert.equal(result.code, "DSH_NATIVE_ROLE_CATALOG_UNAVAILABLE");
+  assert.equal(result.code, "CHILD_SESSION_UNAVAILABLE");
+  assert.equal(result.phase, "dispatch");
   assert.equal(f.creates.length, 0);
-  assert.equal(f.sends.length, 0);
+  assert.deepEqual(f.sends, [{ childId: targetId }]);
+  assert.equal((await f.run()).code, "DSH_FINALIZER_DELIVERY_UNCERTAIN");
+  assert.equal(f.sends.length, 1);
 });
 
 test("existing native role tolerates omitted provider and activity observations", async () => {
@@ -436,22 +438,46 @@ test("native uncertain delivery is never resent without a positive receipt", asy
   assert.equal(f.sends.length, 1);
 });
 
-test("provider/config/route capability loss cannot move an existing executor", async () => {
+test("reserved native target sends once despite missing provider, creation and catalog surfaces", async () => {
   for (const change of [
-    (f) => { f.definitions.clear(); },
     (f) => { f.services.subagents.getProvider = () => undefined; },
+    (f) => { delete f.services.subagents.getProvider; delete f.services.subagents.startActivation; delete f.services.subagents.listChildren; },
+    (f) => { f.services.subagents.listChildren = () => { throw new Error("catalog lost"); }; },
     (f) => { f.agent.options.model = "changed-model"; },
   ]) {
     const f = fixture();
-    f.seedMember();
     f.rows.get(A).execution = f.execution(A);
     const pinned = clone(f.rows.get(A).execution);
     change(f);
     const result = await f.run(A);
-    assert.equal(result.ok, false);
-    assert.deepEqual(f.rows.get(A).execution, pinned);
+    assert.equal(result.ok, true);
+    assert.equal(result.runId, pinned.memberSessionId);
+    assert.equal(f.sends[0].childId, pinned.memberSessionId);
+    assert.deepEqual(f.rows.get(A).execution, { ...pinned, delivery: { state: "accepted", receiptId: "native-receipt-" + A } });
+    assert.equal((await f.run(A)).ok, true);
     assert.equal(f.creates.length, 0);
+    assert.equal(f.sends.length, 1, "accepted delivery is never replayed");
+  }
+});
+
+test("reserved native authority mismatches have zero sends", async () => {
+  for (const invalid of [{ parentSessionId: "other-parent" }, { deliveryKey: B }, { memberSessionId: "" }]) {
+    const f = fixture();
+    f.rows.get(A).execution = f.execution(A, invalid);
+    assert.equal((await f.run()).code, "DSH_EXECUTION_LEDGER_INVALID");
     assert.equal(f.sends.length, 0);
+    assert.equal(f.creates.length, 0);
+  }
+});
+
+test("reserved native attempted and unknown deliveries never replay on metadata loss", async () => {
+  for (const state of ["attempted", "uncertain"]) {
+    const f = fixture();
+    f.rows.get(A).execution = f.execution(A, { delivery: { state } });
+    f.services.subagents = { sendMessage: f.services.subagents.sendMessage };
+    assert.equal((await f.run()).code, "DSH_FINALIZER_DELIVERY_UNCERTAIN");
+    assert.equal(f.sends.length, 0);
+    assert.equal(f.creates.length, 0);
   }
 });
 

@@ -3082,7 +3082,7 @@ function buildSessionStartAdditionalContext(
   if (activeWorkflow) {
     const prompt = buildRecoveredWorkflowAdditionalContext(activeWorkflow, versionSyncPrompt, effectiveHost);
     const recoverySyncPrompt = resolveHostIntegrationProfile(effectiveHost)?.providesActiveWorkflowRecovery === true && activeWorkflow.planStatus === "process.active"
-      ? "Before continuing, run `claw plan sync` once through the fixed Codex driver to reconcile the root-plan Goal."
+      ? "Run `claw plan sync` once through the fixed Codex driver to reconcile the root-plan Goal. If sync fails, report the diagnostic and continue the recovered workflow; do not retry a mutation or block the task on Goal projection maintenance."
       : "";
     const promptWithSync = recoverySyncPrompt ? `${prompt}\n${recoverySyncPrompt}` : prompt;
     const promptWithSearch = searchGuidance ? `${promptWithSync}\n${searchGuidance}` : promptWithSync;

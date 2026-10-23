@@ -277,6 +277,8 @@ test("renderGuidanceSnapshot emits version-sync notice when CLI lags", () => {
   });
   assert.match(text, /newer claw-kit version is available/);
   assert.match(text, /installed CLI 0\.2\.24, published latest 0\.2\.25/);
+  assert.match(text, /advisory only: continue the user's primary task without waiting/);
+  assert.doesNotMatch(text, /must be updated before continuing|wait for the answer/);
   assert.match(text, /claw project claw-kit/);
 });
 

@@ -298,9 +298,8 @@ export function renderGuidanceSnapshot(context: Record<string, unknown> | undefi
     if (versionSync.cliVersionLagging === true && versionSync.updateAvailable === true && cliVersion && latest) {
       lines.push(
         `A newer claw-kit version is available: installed CLI ${cliVersion}, published latest ${latest}. ` +
-        "Tell the user their installed claw-kit is out of date and must be updated before continuing; " +
-        "ask whether to update now and wait for the answer. After confirmation, use the update skill, " +
-        "then continue the original task.",
+        "This is advisory only: continue the user's primary task without waiting for an update. " +
+        "Mention the available update briefly; use the update skill only if the user asks to update.",
       );
     } else if (message) {
       lines.push(`Startup note: ${message}`);

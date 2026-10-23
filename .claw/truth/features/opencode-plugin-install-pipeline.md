@@ -61,6 +61,8 @@ Both use `fs.mkdtemp` for temp-directory isolation. The opencode tests cover: re
 
 Parent permission rules are explicitly copied to the child because `parentID` alone does not inherit permissions. Writer identity is resolved from persisted Core parent/project/child association; only the writer session suppresses startup prompts, report capture, and automatic continuation. Native acceptance is not completion. Create/send accepted or unknown outcomes are not replayed; recovery inspects persisted execution and canonical job state. Plugin failures do not roll back plan completion. Execution is scoped to the live OpenCode service and is not promised to survive its shutdown. The older CLI runner remains for legacy CLI entry points, not as fallback after native dispatch failure.
 
+When `executionCommand(..., "inspect")` fails during writer classification, the plugin emits a structured `OPENCODE_EXECUTION_INSPECT_FAILED` warning (`knowledge.inspect`, outcome unknown) and treats the event as unclassified. This keeps ordinary read-only context available while suppressing automation that could capture or send under an uncertain writer identity; it does not substitute a guessed writer classification or block unrelated read-only use. Anchor: `packages/opencode-adapter/plugin/index.ts` (`isWriter`).
+
 Source/unit evidence does not establish a Linux real-model deposition E2E or prove activation of an installed plugin; record those as unverified until exercised in that environment.
 
 ## OpenCode idle capture result contract

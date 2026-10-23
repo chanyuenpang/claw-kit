@@ -487,15 +487,8 @@ export function apply(ctx) {
             const subagents = c.get("subagents");
             if (!subagents)
                 return { ...await deferred("dispatch", "NATIVE_SUBAGENTS_UNAVAILABLE"), retryable: false };
-            const reused = await resolveFinalizerReuse({
-                finalizeId, parentSessionId: agent.id, label: finalizerChildLabel(finalizeId), subagents,
-            });
-            if (reused && "deferred" in reused) {
-                return deferred("dispatch", "CHILD_CATALOG_UNAVAILABLE");
-            }
-            if (reused)
-                return { ok: true, reused: true, runId: reused.runId };
-            // The job may have been claimed or expired while native children were listed.
+            // Read the canonical reservation before optional child discovery. A pinned
+            // executor must remain sendable even when catalog/creation metadata is gone.
             let pending;
             try {
                 pending = await readPendingDispatches(agent.id, workdir);
@@ -508,6 +501,16 @@ export function apply(ctx) {
                 const known = await reusableFinalizers.recoverAcknowledgement(agent, workdir, finalizeId).catch(() => undefined);
                 return known ?? { ok: false, reason: "The canonical finalizer job is no longer queued." };
             }
+            if (!current.execution) {
+                const reused = await resolveFinalizerReuse({
+                    finalizeId, parentSessionId: agent.id, label: finalizerChildLabel(finalizeId), subagents,
+                });
+                if (reused && "deferred" in reused)
+                    return deferred("dispatch", "CHILD_CATALOG_UNAVAILABLE");
+                if (reused)
+                    return { ok: true, reused: true, runId: reused.runId };
+            }
+            const pinnedNative = current.execution?.route === "native-continuable";
             let capability;
             for (let attempt = 0; attempt < 2; attempt++) {
                 capability = await resolveDshDelegationCapability({ getService: (name) => c.get(name), agent, role: "finalizer", provider: "spawn", requestedModel: current.model, requestedReasoningEffort: current.reasoningEffort });
@@ -517,19 +520,19 @@ export function apply(ctx) {
             if (!capability)
                 return deferred("dispatch", "DELEGATION_CAPABILITY_UNAVAILABLE");
             try {
-                if ((capability.reusable || capability.selectedRoute === "team") && !current.endedAt)
+                if ((pinnedNative || capability.reusable || capability.selectedRoute === "team") && !current.endedAt)
                     throw Object.assign(new Error("DSH_REPORT_BOUNDARY_UNAVAILABLE"), { code: "DSH_REPORT_BOUNDARY_UNAVAILABLE" });
                 await captureDshParentReport(agent.id, workdir, current);
             }
             catch (error) {
                 return deferred("capture", safeCaptureFailureCode(error), error);
             }
-            if (!capability.ready)
+            if (!pinnedNative && !capability.ready)
                 return deferred("dispatch", capability.reason ?? "DELEGATION_CAPABILITY_UNAVAILABLE");
             const selection = await selectDshRoleModel({ agent: agent, role: "finalizer",
                 supportsOptions: capability.supportsOptions === true, getService: (name) => c.get(name),
                 hints: { model: current.model, reasoningEffort: current.reasoningEffort } });
-            if (capability.reusable && current.preferReuse === true) {
+            if (pinnedNative || capability.reusable && current.preferReuse === true) {
                 const result = await reusableFinalizers.dispatch(agent, workdir, { ...current, finalizeId, prompt: current.prompt, selection }, capability);
                 if (result.ok !== true) {
                     const secondary = await recordDshIssue(agent.id, workdir, finalizeId, "dispatch", String(result.code ?? "REUSABLE_DISPATCH_DEFERRED"), result);

@@ -120,16 +120,16 @@ export class FinalizerRoleDispatcher {
     this.deps.signal.throwIfAborted();
     return true; // Existing admission fixes the target; current owner method decides the real call.
   }
-  private nativeService(): NativeRuntime {
+  private nativeService(creating = false): NativeRuntime {
     const service = this.deps.getService("subagents") as NativeRuntime | undefined;
-    if (!service || typeof service.listChildren !== "function" || typeof service.startActivation !== "function"
-      || typeof service.sendMessage !== "function") throw Object.assign(new Error("DSH_NATIVE_SERVICE_UNAVAILABLE"), { code: "DSH_NATIVE_SERVICE_UNAVAILABLE" });
+    if (!service || typeof service.sendMessage !== "function" || creating &&
+      (typeof service.listChildren !== "function" || typeof service.startActivation !== "function")) throw Object.assign(new Error("DSH_NATIVE_SERVICE_UNAVAILABLE"), { code: "DSH_NATIVE_SERVICE_UNAVAILABLE" });
     return service;
   }
   private async freshNative(agent: FinalizerAgent, dispatch: ReusableDispatch,
     capability: DshDelegationCapability, creating = false): Promise<NativeRuntime> {
     if (!await this.fresh(agent, dispatch, capability, creating)) throw Object.assign(new Error("DSH_NATIVE_CAPABILITY_CHANGED"), { code: "DSH_NATIVE_CAPABILITY_CHANGED" });
-    return this.nativeService();
+    return this.nativeService(true);
   }
   private async nativeMember(service: NativeRuntime, agent: FinalizerAgent, label: string,
     expectedId?: string): Promise<{ id: string; target: string; created: false } | undefined> {
@@ -249,6 +249,10 @@ export class FinalizerRoleDispatcher {
       const current = rows.find(x => x.finalizeId === dispatch.finalizeId);
       if (!current) return deferred("DSH_FINALIZER_JOB_UNAVAILABLE");
       let execution = current.execution;
+      // The canonical ledger owns the admitted target. Reject authority/identity
+      // mismatches before acknowledgements or sends, not advisory catalog drift.
+      if (execution && (execution.parentSessionId !== agent.id || execution.deliveryKey !== dispatch.finalizeId
+        || !string(execution.memberSessionId))) return deferred("DSH_EXECUTION_LEDGER_INVALID");
       const persistedSelection = tryParseRoleSelection(execution?.modelSelection);
       if (persistedSelection) dispatch = { ...dispatch, selection: persistedSelection };
       if (execution && (execution.delivery.state === "accepted" || current.status === "running" || terminal(current.status))) return this.acknowledged(execution, current.status);
@@ -259,18 +263,23 @@ export class FinalizerRoleDispatcher {
         await this.call("delivery", agent, workdir, ["--finalize-id", dispatch.finalizeId, "--delivery-key", dispatch.finalizeId, "--state", "accepted", "--receipt-id", receiptId]);
         return this.acknowledged({ ...execution, delivery: { state: "accepted", receiptId } }, current.status);
       }
-      if (!capability.ready || !capability.reusable) return deferred(capability.reason ?? "DSH_REUSABLE_FINALIZER_UNAVAILABLE", "capability");
+      const pinnedNative = execution?.route === "native-continuable";
+      if (!pinnedNative && (!capability.ready || !capability.reusable)) return deferred(capability.reason ?? "DSH_REUSABLE_FINALIZER_UNAVAILABLE", "capability");
       // Legacy admissions are never reinterpreted as new soft preferences.
       if (execution && !persistedSelection) dispatch = { ...dispatch, selection: undefined };
-      const fingerprint = execution && !persistedSelection ? execution.configFingerprint
+      const fingerprint = execution && (pinnedNative || !persistedSelection) ? execution.configFingerprint
         : finalizerConfigFingerprint(agent, workdir, dispatch, capability.provider ?? "spawn");
-      const route = capability.selectedRoute === "team" ? "team" : "native-continuable";
-      if (execution && (execution.route !== route || execution.teamId !== capability.teamId
+      const route = pinnedNative ? "native-continuable" : capability.selectedRoute === "team" ? "team" : "native-continuable";
+      if (execution && !pinnedNative && (execution.route !== route || execution.teamId !== capability.teamId
         || execution.provider !== (capability.provider ?? "spawn") || execution.configFingerprint !== fingerprint)) return deferred("DSH_FINALIZER_EXECUTOR_PINNED");
       const blocker = rows.find(x => x.finalizeId !== dispatch.finalizeId && x.execution && !x.readyForNext);
       if (blocker) return { ok: true, queued: true, admitted: false, delivered: false, phase: "waiting-for-role", blockingFinalizeId: blocker.finalizeId };
       operation = "finalizer.member"; phase = "admission";
-      const member = await this.member(agent, dispatch, capability, fingerprint, execution);
+      // A reserved native executor needs no discovery or creation. The Host send
+      // owner validates this exact ledger target; never recreate or redirect it.
+      const member = pinnedNative && execution
+        ? { id: execution.memberSessionId, target: execution.memberSessionId, created: false }
+        : await this.member(agent, dispatch, capability, fingerprint, execution);
       if (execution && execution.memberSessionId !== member.id) return deferred("DSH_FINALIZER_EXECUTOR_PINNED");
       if (!execution) {
         operation = "finalizer.reserve"; phase = "reserve";
@@ -282,7 +291,8 @@ export class FinalizerRoleDispatcher {
       if (!execution || execution.deliveryKey !== dispatch.finalizeId) return deferred("DSH_EXECUTION_LEDGER_INVALID");
       if (!await this.fresh(agent, dispatch, capability)) return deferred("DSH_FINALIZER_CAPABILITY_CHANGED", "capability");
       const team = route === "team" ? this.deps.getService("agentTeams") as TeamRuntime : undefined;
-      let native = route === "native-continuable" ? this.nativeService() : undefined;
+      const native = route === "native-continuable" ? this.nativeService() : undefined;
+      const sendNative = native?.sendMessage.bind(native);
       const attempt = await this.call("delivery", agent, workdir, ["--finalize-id", dispatch.finalizeId, "--delivery-key", dispatch.finalizeId, "--state", "attempted"]);
       if (attempt.deliver !== true) return deferred("DSH_FINALIZER_DELIVERY_UNCERTAIN", "reconcile");
       let receiptId: string;
@@ -290,7 +300,7 @@ export class FinalizerRoleDispatcher {
         const content = text(marker(dispatch.finalizeId) + dispatch.prompt);
         receiptId = team
           ? (await team.sendMessage(agent, { target: member.target, content, signal: this.deps.signal })).messageId
-          : await native!.sendMessage(agent, member.id, content, { signal: this.deps.signal });
+          : await sendNative!(agent, member.id, content, { signal: this.deps.signal });
         if (!string(receiptId)) throw Object.assign(new Error("DSH_FINALIZER_DELIVERY_RECEIPT_MISSING"), { code: "DSH_FINALIZER_DELIVERY_RECEIPT_MISSING" });
       } catch (error) {
         const failure = deferred(error, "dispatch", "native.send");

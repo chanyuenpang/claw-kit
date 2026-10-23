@@ -46,6 +46,11 @@ for (const [name, context, options] of [
     assert.deepEqual(JSON.parse(decode(calls[0].args[2])), ["context"]);
     assert.match(decode(calls[0].args[3]), /codex-adapter$/);
     if (!context.activeWorkflow) assert.doesNotMatch(text, /snapshot is recovered/);
+    else {
+      assert.match(text, /Run `claw plan sync` once/);
+      assert.match(text, /If sync fails, report the diagnostic and continue the recovered workflow/);
+      assert.doesNotMatch(text, /Before continuing, run/);
+    }
   });
 }
 

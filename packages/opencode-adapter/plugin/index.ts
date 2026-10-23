@@ -1,5 +1,5 @@
 import { serializeFailure } from "./failure-diagnostics.js";
-import { execSync } from "node:child_process";
+import { execSync as executeSync, type ExecSyncOptionsWithStringEncoding } from "node:child_process";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import type { Plugin } from "@opencode-ai/plugin";
@@ -25,6 +25,32 @@ import type { Message, Part } from "@opencode-ai/sdk";
  *      plan file remains canonical: task progress resets retry state, while
  *      two unchanged task endings pause local continuation, not the plan.
  */
+
+/** Only complete JSON failure envelopes from our CLI pipes are owner evidence.
+ * Never mine process messages/free text, and never use this diagnostic for retries.
+ */
+function execSync(command: string, options: ExecSyncOptionsWithStringEncoding): string {
+  try { return executeSync(command, options); }
+  catch (error) {
+    if (error && typeof error === "object") {
+      for (const stream of ["stdout", "stderr"] as const) {
+        let envelope;
+        try {
+          const output = (error as Record<string, unknown>)[stream];
+          if (typeof output !== "string" && !Buffer.isBuffer(output)) continue;
+          const text = output.toString();
+          if (text.length > 1_048_576) continue;
+          envelope = JSON.parse(text);
+        } catch { continue; }
+        if (envelope && !Array.isArray(envelope) && envelope.ok === false &&
+            envelope.error && typeof envelope.error === "object" && !Array.isArray(envelope.error)) {
+          throw envelope.error;
+        }
+      }
+    }
+    throw error;
+  }
+}
 
 const ADAPTER_DIR = import.meta.dirname ?? path.dirname(new URL("", import.meta.url).pathname);
 const GUIDANCE_CONFIG_PATH = path.join(ADAPTER_DIR, "..", "workflow-guidance.opencode.json");
@@ -296,7 +322,7 @@ export const ClawKitPlugin: Plugin = async ({ directory, client }) => {
 
   const writerSessions = new Set<string>();
   const reportedExecutions = new Map<string, string>();
-  function isWriter(sessionID: string): boolean {
+  function isWriter(sessionID: string): boolean | undefined {
     if (writerSessions.has(sessionID)) return true;
     if (!isClawProject()) return false;
     // Negative results are not cached: create events can precede the durable bind.
@@ -306,8 +332,8 @@ export const ClawKitPlugin: Plugin = async ({ directory, client }) => {
     } catch (error) {
       console.warn("[claw-kit] writer classification unavailable; suppressing claw automation for this event:", JSON.stringify(serializeFailure(error, { fallbackCode: "OPENCODE_EXECUTION_INSPECT_FAILED", origin: "opencode", operation: "knowledge.inspect", fallbackOutcome: "unknown" })));
       // Do not throw through the host shell hook or risk recursive capture.
-      // This conservative result is event-local, never cached as a writer.
-      return true;
+      // Unknown is event-local: allow read-only context, but not capture/send.
+      return undefined;
     }
     for (const view of views) {
       if (view.execution?.childSessionId === sessionID) writerSessions.add(sessionID);
@@ -382,7 +408,7 @@ export const ClawKitPlugin: Plugin = async ({ directory, client }) => {
       if (event.type === "session.idle") {
         const sessionID = (event.properties as { sessionID?: string }).sessionID;
         if (sessionID) {
-          if (isWriter(sessionID)) return;
+          if (isWriter(sessionID) !== false) return;
           if (isClawProject()) {
             const entries = await collectConversation(sessionID);
             const latest = entries.at(-1);

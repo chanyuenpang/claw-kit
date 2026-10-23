@@ -19,17 +19,23 @@ function info(id, role = "assistant", sessionID = "s", created = 1000) {
 function part(messageID, id, text, extra = {}) {
   return { id, sessionID: "s", messageID, type: "text", text, ...extra };
 }
-async function fixture({ history = async () => ({ data: [] }), queue = false } = {}) {
+async function fixture({ history = async () => ({ data: [] }), queue = false, inspectError, contextError } = {}) {
   const captures = [], order = [], warnings = [], requests = [];
   const exports = {};
   vm.runInNewContext(compiled, {
-    exports, __dirname: path.dirname(fileURLToPath(pluginUrl)), __filenameUrl: pluginUrl.href,
+    exports, Buffer, __dirname: path.dirname(fileURLToPath(pluginUrl)), __filenameUrl: pluginUrl.href,
     process: { env: {} }, console: { info() {}, warn: (...args) => warnings.push(args) },
     require(name) {
       if (name === "./failure-diagnostics.js") return failureExports;
       if (name === "node:path") return path;
       if (name === "node:fs") return { existsSync: file => file.endsWith(".claw") };
       if (name === "node:child_process") return { execSync(command, options) {
+        if (command.includes("--action inspect") && inspectError) throw inspectError;
+        if (command.startsWith("claw context")) {
+          order.push("context");
+          if (contextError) throw contextError;
+          return JSON.stringify({ project: { projectName: "outage-project" } });
+        }
         if (command.includes("hook auto-doc")) {
           order.push("capture"); captures.push(JSON.parse(options.input));
           return JSON.stringify(queue ? { ok: true, jobPath: "/fixture/job.json", finalizeId: "fin" } : { ok: true, captured: true });
@@ -46,7 +52,7 @@ async function fixture({ history = async () => ({ data: [] }), queue = false } =
     get: async () => ({ data: { id: "s" } }),
   } } });
   const event = (type, properties) => hooks.event({ event: { type, properties } });
-  return { event, captures, order, warnings, requests,
+  return { hooks, event, captures, order, warnings, requests,
     message: value => event("message.updated", { info: value }),
     part: value => event("message.part.updated", { part: value }),
     idle: (sessionID = "s") => event("session.idle", { sessionID }),
@@ -102,7 +108,7 @@ test("history backfills missed messages and capture precedes queue dispatch", as
   ] }) });
   await f.idle();
   assert.deepEqual(f.captures[0].conversation_entries.map(e => e.message), ["Historical request", "Historical answer"]);
-  assert.deepEqual(f.order, ["history", "capture", "dispatch"]);
+  assert.deepEqual(f.order, ["history", "capture", "dispatch", "context"]);
   assert.deepEqual(JSON.parse(JSON.stringify(f.requests[0])), { path: { id: "s" }, query: { directory: "/fixture" } });
 });
 
@@ -120,3 +126,49 @@ for (const failure of ["throw", "resolved-error"]) {
     if (failure === "resolved-error") assert.equal(JSON.parse(f.warnings[0][1]).code, "HISTORY_DENIED");
   });
 }
+
+test("inspect outage allows context and foreground env but suppresses capture and dispatch", async () => {
+  const f = await fixture({ inspectError: new Error("offline"), queue: true });
+  const env = { env: {} };
+  await f.hooks["shell.env"]({ sessionID: "s" }, env);
+  assert.equal(env.env.CLAW_KNOWLEDGE_FINALIZER, "0");
+  assert.equal(env.env.CLAW_SESSION_ID, "s");
+  const chat = { parts: [], message: { id: "u" } };
+  await f.hooks["chat.message"]({ sessionID: "s" }, chat);
+  assert.match(chat.parts[0].text, /outage-project/);
+  const system = { system: [] };
+  await f.hooks["experimental.chat.system.transform"]({ sessionID: "s" }, system);
+  assert.match(system.system[0], /outage-project/);
+  await f.message(info("a"));
+  await f.part(part("a", "p", "ordinary"));
+  await f.idle();
+  assert.equal(f.captures.length, 0);
+  assert.equal(f.requests.length, 0);
+  assert.ok(!f.order.includes("dispatch"));
+});
+
+for (const stream of ["stdout", "stderr"]) {
+  test("CLI failure preserves structured owner code and phase from " + stream, async () => {
+    const error = Object.assign(new Error("process failed"), { [stream]: Buffer.from(JSON.stringify({ ok: false, error: {
+      code: "OWNER_REJECTED", message: "token=secret", execution: { phase: "post-commit", outcome: "known", effect: "committed" },
+    } })) });
+    const f = await fixture({ contextError: error });
+    await f.event("session.created", { info: { id: "s" } });
+    const failure = JSON.parse(f.warnings[0][1]);
+    assert.equal(failure.code, "OWNER_REJECTED");
+    assert.equal(failure.phase, "post-commit");
+    assert.equal(failure.effect, "committed");
+    assert.doesNotMatch(JSON.stringify(failure), /secret/);
+  });
+}
+
+test("CLI failure does not mine free text for structured evidence", async () => {
+  const f = await fixture({ contextError: Object.assign(new Error("failed"), {
+    stdout: 'warning: {"ok":false,"error":{"code":"FAKE_RETRY"}}',
+    stderr: '{"code":"NOT_AN_ENVELOPE","phase":"commit"}',
+  }) });
+  await f.event("session.created", { info: { id: "s" } });
+  const failure = JSON.parse(f.warnings[0][1]);
+  assert.equal(failure.code, "OPENCODE_CONTEXT_FAILED");
+  assert.equal(failure.phase, undefined);
+});

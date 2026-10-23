@@ -49,7 +49,7 @@ function renderCodexSessionStart(context) {
   const versionNote = renderVersionNote(version);
   if (workflow && typeof workflow === "object") {
     const sync = workflow.planStatus === "process.active"
-      ? "\nBefore continuing, run `claw plan sync` once through the fixed Codex driver to reconcile the root-plan Goal."
+      ? "\nRun `claw plan sync` once through the fixed Codex driver to reconcile the root-plan Goal. If sync fails, report the diagnostic and continue the recovered workflow; do not retry a mutation or block the task on Goal projection maintenance."
       : "";
     return [runtimePrompt, versionNote, "Claw workflow snapshot is recovered. Treat `workflowGuidance` as the only next-step contract.", CODEX_MUTATION_ROUTE_BANNER, JSON.stringify(workflow), sync].filter(Boolean).join("\n\n");
   }

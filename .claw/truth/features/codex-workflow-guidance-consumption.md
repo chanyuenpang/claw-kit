@@ -162,7 +162,7 @@
 
 - Codex code-mode isolate 不能直接 `import` 本地插件模块，因此 `packages/codex-adapter/skills/using-claw-kit/SKILL.md` 内嵌固定的 `runClawPlanMutation` driver；`packages/cli/src/codex-driver.ts` 是可分发 source contract，repository-only legacy script 仅作对照测试，内嵌 driver 是实际 Codex 执行面。
 - Agent 每次只提供结构化 `argv`、`workdir` 与可选 `timeout_ms`，不得拼接 shell command，也不得改写 JSON 提取、schema 校验、action 顺序、id 去重、input 投影或 tool dispatch 分支。
-- Codex 只消费 `hostActions`。不得执行 `workflowGuidance.goalTool`，也没有 direct-call 或 Agent 手写 action branch fallback；恢复 active plan 的一次 `plan sync` 通过 fixed driver 执行，不重放 canonical transition；code mode 或必要 host tool 不可用时，固定程序直接报错并停止。
+- Codex 只消费 `hostActions`。不得执行 `workflowGuidance.goalTool`，也没有 direct-call 或 Agent 手写 action branch fallback；恢复 active plan 的一次 `plan sync` 通过 fixed driver 执行，不重放 canonical transition。若 fixed code-mode invocation 本身不可用，则该 invocation 无法运行；若 mutation 已提交后某个 Host projection tool 报错，CLI 保留 canonical result 并把失败作为 `hostEffectFailures` 返回，不停止生命周期或授权重放。详见 [fixed-host closeout Truth](codex-fixed-host-closeout.md)。
 
 ### 已验证证据
 

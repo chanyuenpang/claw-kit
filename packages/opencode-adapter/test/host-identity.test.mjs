@@ -205,7 +205,7 @@ test("inspection outage suppresses automation without breaking host shell or cac
   } });
   const output = { env: {} };
   await hooks["shell.env"]({ sessionID: "ordinary" }, output);
-  assert.equal(output.env.CLAW_KNOWLEDGE_FINALIZER, "1");
+  assert.equal(output.env.CLAW_KNOWLEDGE_FINALIZER, "0");
   unavailable = false;
   await hooks["shell.env"]({ sessionID: "ordinary" }, output);
   assert.equal(output.env.CLAW_KNOWLEDGE_FINALIZER, "0");

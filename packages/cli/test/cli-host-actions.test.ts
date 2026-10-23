@@ -415,6 +415,28 @@ test("Codex driver preserves canonical success when an unsupported host effect i
   ]);
 });
 
+test("Codex plan sync keeps workflow guidance when Goal projection fails", async () => {
+  const root = createFixture("codex-sync-projection-failure");
+  const envelope = runClaw(["codex", "driver"], root);
+  const runner = (0, eval)(`(${String(envelope.source)})`) as (
+    input: Record<string, unknown>, runtime: Record<string, unknown>,
+  ) => Promise<JsonRecord>;
+  let calls = 0;
+  const result = await runner(
+    { argv: ["plan", "sync"], workdir: root },
+    { tools: {
+      shell_command: async () => { calls++; return JSON.stringify({ ok: true, command: "plan.sync", stage: "execution", nextsteps: ["Continue task #2."], hostActions: [{ schemaVersion: 1, id: "sync:goal", tool: "create_goal", input: { objective: "Continue work" } }] }); },
+      get_goal: async () => { throw new Error("Goal transport unavailable"); },
+      create_goal: async () => { throw new Error("must not run after failed read"); },
+    }, text: () => {} },
+  );
+  assert.equal(calls, 1);
+  assert.equal(result.stage, "execution");
+  assert.deepEqual(result.nextsteps, ["Continue task #2."]);
+  assert.equal((result.hostEffectFailures as JsonRecord[]).length, 1);
+  assert.equal((result.hostEffectFailures as JsonRecord[])[0]?.message, "Goal transport unavailable");
+});
+
 test("Codex driver preserves structured CLI errors returned on stderr", async () => {
   const root = createFixture("codex-driver-cli-error");
   const envelope = runClaw(["codex", "driver"], root);

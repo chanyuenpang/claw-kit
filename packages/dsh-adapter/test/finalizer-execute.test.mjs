@@ -77,7 +77,7 @@ function makeMockSubprocess(respond, pending, captureError, override) {
   return { subprocess, handles, captures, issues };
 }
 
-function makeHarness({ subagents, dispatch, extraService, initialQueued = false, unknownClaim = false, receiptClaimed = true, unknownDone = false, receiptCompleted = true, captureError, businessFailure }) {
+function makeHarness({ subagents, dispatch, extraService, initialQueued = false, unknownClaim = false, receiptClaimed = true, unknownDone = false, receiptCompleted = true, captureError, businessFailure, subprocessOverride }) {
   let tool;
   const ctx = {
     get: (name) => {
@@ -106,7 +106,7 @@ function makeHarness({ subagents, dispatch, extraService, initialQueued = false,
       return { ok: true, command: "plan.done", output: { planStatus: "end.completed" }, knowledgeDispatch: dispatch };
     }
     return { ok: true, command: request.operation, output: { planStatus: "process.active" } };
-  }, () => terminalCommitted && dispatch ? [dispatch] : [], captureError);
+  }, () => terminalCommitted && dispatch ? [dispatch] : [], captureError, subprocessOverride);
   const harness = { ctx, mock, get tool() { return tool; } };
   harness.subprocess = mock.subprocess;
   return harness;
@@ -159,6 +159,41 @@ test("a queued job recovers on next context without replaying its lost plan term
   ]);
   assert.equal(state.starts, 1);
   assert.equal(harness.mock.handles.length, 0, "only read-only one-off inspection ran, not plan.done");
+});
+
+test("queued reserved native finalizer reaches send-only owner despite missing creation metadata", async () => {
+  const agent = makeAgent("reserved-parent");
+  const finalizeId = "e".repeat(64);
+  const execution = { route: "native-continuable", parentSessionId: agent.id, memberSessionId: "reserved-child",
+    provider: "spawn", configFingerprint: "frozen-config", deliveryKey: finalizeId, delivery: { state: "reserved" } };
+  const dispatch = { finalizeId, prompt: "run only reserved writer", execution, preferReuse: false,
+    captureStatus: "captured", endedAt: "2026-01-02T00:00:00.000Z" };
+  const sends = [];
+  const reply = value => ({ done: Promise.resolve({ exitCode: 0, signal: null }),
+    collected: { stdout: { readFrom: () => ({ text: JSON.stringify(value), lossy: false }) },
+      stderr: { readFrom: () => ({ text: "", lossy: false }) } }, terminate: async () => {} });
+  const harness = makeHarness({ initialQueued: true, dispatch,
+    subagents: { async sendMessage(parent, childId) {
+      assert.equal(parent, agent); sends.push(childId); return "reserved-receipt";
+    } },
+    subprocessOverride(spec) {
+      if (spec.argv.includes("internal-dsh-finalizer-inspect")) return reply({ ok: true,
+        executions: [{ finalizeId, status: "queued", readyForNext: false, execution }] });
+      if (spec.argv.includes("internal-dsh-finalizer-delivery")) {
+        const state = spec.argv[spec.argv.indexOf("--state") + 1];
+        const deliver = state === "attempted" && execution.delivery.state === "reserved";
+        execution.delivery = { state };
+        return reply({ ok: true, deliver });
+      }
+    },
+  });
+  apply(harness.ctx);
+  await harness.tool.execute({ operation: "context" }, { agent });
+  assert.deepEqual(sends, ["reserved-child"]);
+  assert.equal(execution.delivery.state, "accepted");
+  await harness.tool.execute({ operation: "context" }, { agent });
+  assert.deepEqual(sends, ["reserved-child"], "accepted target is never resent");
+  assert.equal(harness.mock.issues.length, 0);
 });
 
 test("live parent capture sends all ordinary in-plan text before child dispatch", async () => {
