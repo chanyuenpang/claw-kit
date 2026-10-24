@@ -2,6 +2,12 @@
   "schemaVersion": 1,
   "host": "openclaw",
   "skills": [
+    "planning",
+    "config",
+    "create-claw-skill",
+    "feature-architecture",
+    "researcher",
+    "using-claw-kit",
     "claw-kit-doc"
   ]
 }
